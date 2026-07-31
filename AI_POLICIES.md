@@ -35,7 +35,31 @@ Historical numbers below marked "unmirrored" used independent deals
 
 ## Active policies
 
-### `smart` — SmartBot v2 (server default)  — 86% vs heuristic
+### `mc` — MCBot (strongest; not default)  — 90% vs smart
+- File: `server/shengji/ai/mcbot.py`, 2026-07-31.
+- Determinized Monte Carlo: samples 10 opponent-hand worlds consistent with
+  public info (hand sizes, observed voids, card counts; own kitty knowledge
+  as banker), rolls out ≤6 candidate plays to round end with the heuristic
+  policy, plays the best average. Declaration/bury inherited from SmartBot.
+- ~26ms/decision (hidden inside the 0.7s bot pacing); ~400× slower than
+  heuristics in headless sim — evaluate with small n.
+- Benchmarks: **36–4 (90%) vs SmartBot v2**, mirrored full games, n=40 seed
+  4000; 57% of rounds (mirrored n=120). Small per-round edges compound over
+  ~37-round games. Enable with `SHENGJI_BOT=mc`.
+
+### `smart` — SmartBot v3 (server default)  — ~88-90% vs heuristic
+- v2 plus two research-derived rules (sources: Zhihu tractor strategy
+  columns, Ben Zhang's guide — see git history for the research summary):
+  - **Endgame control**: in the last ~6 tricks, contest every winnable
+    trick regardless of points (controls the finish; the expert version of
+    the failed "reserve for last trick"). +2pt alone.
+  - **Trump-gated kitty points**: bury points only when trump can defend
+    the kitty (11+ trumps incl. big joker → relaxed; <9 or no BJ → never).
+    +1pt alone.
+- Benchmarks: 90% (n=200 seed 1000) and 88% (n=300 seed 2000) for the two
+  rules combined; v2 reference on those seed sets: 88% / ~84-85%.
+
+### `smart-v2` — throws-era SmartBot  — 86% vs heuristic
 - File: `server/shengji/ai/smart.py` (+ `memory.py`), 2026-07-31.
 - Design: HeuristicBot + public-information memory: card counting, boss
   detection (highest card still unaccounted for), void inference, ruff/beat
@@ -76,6 +100,9 @@ Historical numbers below marked "unmirrored" used independent deals
 | `smart-feedtrump` | feeds points on any partner ruff | 115–85 (57%) unmirrored, n=200 seed 1000 | −9%: overtrumped feeds gift points |
 | `smart-anytractor` | tractor leads even into likely ruffs | 125–75 (62%) unmirrored, n=200 seed 1000 | −4%: ruffed tractors lose big |
 | declare 10/8 | more conservative declaration | 243–57 (81%) vs 83% at 9/7 and 85% at 8/6; mirrored n=300 seed 2000 | declaring the trump suit is worth more than waiting for a perfect hand |
+| `TRUMP_DRAIN_V2` | banker-side draining with cheap trumps (expert-conditioned) | 84% vs 88% ref; mirrored n=200 seed 1000 | −4pt: draining loses for the THIRD time, even refined |
+| `DECLARE_TUNE` | declare weaker of two suits + eager on point levels | 86% vs 88% ref | −2pt: suit quality matters more than the guides claim |
+| `PARTNER_VOID_LEAD` | lead suits partner is void in | 88% alone (neutral), 84% combined with v3 rules | interferes with endgame control; rejected |
 
 ## Post-mortem lessons
 

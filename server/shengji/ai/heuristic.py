@@ -64,7 +64,8 @@ class HeuristicBot:
                 v += 40  # aces
             if cnt[c] >= 2:
                 v += 25  # don't break pairs
-            v += points(c) * 2.5
+            v += points(c) * self._bury_points_mult(suit_len[TRUMP],
+                                                    hand.count("BJ") > 0)
             v -= self._bury_short_bonus(suit_len[o.eff_suit(c)])  # shed short suits
             return v
 
@@ -73,6 +74,9 @@ class HeuristicBot:
 
     def _bury_short_bonus(self, suit_len: int) -> float:
         return (8 - min(suit_len, 8)) * 0.5
+
+    def _bury_points_mult(self, trump_count: int, has_big_joker: bool) -> float:
+        return 2.5
 
     # ------------------------------------------------------------------- play
     def decide_play(self, rnd: Round, seat: int) -> list[str]:

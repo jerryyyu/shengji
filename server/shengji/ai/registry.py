@@ -20,7 +20,11 @@ REGISTRY: dict[str, type] = {
     "mc": MCBot,  # determinized Monte Carlo; ~50-150ms per decision
     # the pre-throws config (2026-07-31, 66% vs heuristic), for reproducibility:
     "smart-v1": _smart_variant("SmartV1", SAFE_THROWS=False, RESERVE_LAST=False,
-                               BURY_VOID=False, DECLARE_MIN=9, DECLARE_FINAL=7),
+                               BURY_VOID=False, DECLARE_MIN=9, DECLARE_FINAL=7,
+                               ENDGAME_CONTROL=False, BURY_TRUMP_GATE=False),
+    # v2 = throws-era config without the research-derived endgame/bury rules:
+    "smart-v2": _smart_variant("SmartV2", ENDGAME_CONTROL=False,
+                               BURY_TRUMP_GATE=False),
     # measured-but-rejected variants, kept reproducible:
     "smart-trumpdrain": _smart_variant("SmartTrumpDrain", TRUMP_DRAIN=True),
     "smart-feedtrump": _smart_variant("SmartFeedTrump", FEED_ON_TRUMP=True),

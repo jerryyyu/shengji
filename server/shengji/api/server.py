@@ -549,6 +549,11 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     await broadcast(room)
 
 
+@app.get("/healthz")
+async def healthz() -> dict:
+    return {"ok": True, "rooms": len(rooms)}
+
+
 # ------------------------------------------------------------------ static
 dist = Path(__file__).resolve().parents[3] / "web" / "dist"
 if dist.is_dir():

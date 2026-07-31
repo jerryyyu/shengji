@@ -6,7 +6,22 @@ import type { ClientMsg, ServerMsg } from "./protocol";
 
 export type ConnStatus = "connecting" | "open" | "closed";
 
-const WS_URL = `ws://${location.hostname}:8000/ws`;
+/**
+ * Pick the WebSocket URL:
+ * - Vite dev server (`npm run dev`): the page is on :5173 but the backend is on
+ *   :8000, so target it directly.
+ * - Served by the game server itself (production build behind any host/TLS):
+ *   connect same-origin, upgrading to wss when the page is https.
+ */
+function wsUrl(): string {
+  if (import.meta.env.DEV) {
+    return `ws://${location.hostname}:8000/ws`;
+  }
+  const scheme = location.protocol === "https:" ? "wss" : "ws";
+  return `${scheme}://${location.host}/ws`;
+}
+
+const WS_URL = wsUrl();
 
 const NAME_KEY = "shengji.name";
 const ROOM_KEY = "shengji.room";

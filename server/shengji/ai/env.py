@@ -69,7 +69,10 @@ def play_game(policies: list, seed: int | None = None, max_rounds: int = 200):
     logs = []
     while not game.game_over and game.round_no < max_rounds:
         logs.append(play_round(game, policies))
-    winner = 0 if game.level_idx[0] >= game.level_idx[1] else 1
+    if game.game_over and game.result is not None:
+        winner = game.result.winner_team
+    else:  # hit max_rounds: fall back to level comparison
+        winner = 0 if game.level_idx[0] >= game.level_idx[1] else 1
     return winner, game, logs
 
 

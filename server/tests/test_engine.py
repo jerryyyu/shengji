@@ -104,6 +104,27 @@ def test_beats():
     assert not won
 
 
+def test_beats_alternative_decomposition():
+    # Audit finding: hearts trump rank 7. Lead = two 2-tractors in spades.
+    # HA-HA S7-S7 D7-D7 H7-H7 greedily decomposes as 3-tractor + pair, but is
+    # also two 2-tractors ([HA,S7] + [D7,H7]) and must win as a ruff.
+    o = Ordering("H", "7")
+    lead = ["S3", "S3", "S4", "S4", "S9", "S9", "S10", "S10"]
+    top = decompose(lead, o).top_level()
+    ruff = ["HA", "HA", "S7", "S7", "D7", "D7", "H7", "H7"]
+    won, _ = beats(ruff, lead, "S", top, o)
+    assert won
+
+
+def test_beats_pair_as_two_singles():
+    # A trump pair can beat a thrown pair of singles by splitting.
+    o = Ordering("H", "2")
+    lead = ["S5", "S8"]
+    top = decompose(lead, o).top_level()
+    won, _ = beats(["H3", "H3"], lead, "S", top, o)
+    assert won
+
+
 def test_points():
     assert points("S5") == 5 and points("H10") == 10 and points("CK") == 10
     assert points("SA") == 0 and points(BJ) == 0

@@ -40,7 +40,10 @@ TODO: mirrored deals (same shuffle, teams swapped) would cut variance further.
   then boss singles; always contests in-suit wins (tempo); spends trump only
   on tricks worth taking; feeds points only when partner's win is secure.
 - Config: `FEED_ON_TRUMP=False, TRUMP_DRAIN=False, SAFE_TRACTOR_ONLY=True`.
-- Benchmarks: **203–97 (68%) vs heuristic**, n=300, seed 5000.
+- Benchmarks: **183–117 (61%) vs heuristic**, n=300, seed 5000, after the
+  2026-07-31 rules fixes (defend-at-A, format-scaled kitty multiplier).
+  Pre-fix measurement on the same seeds was 203–97 (68%); the drop is rule
+  variance (longer games, ~41.6 rounds avg), not a regression.
 
 ### `heuristic` — HeuristicBot (baseline)  — reference 50%
 - File: `server/shengji/ai/heuristic.py`, added 2026-07-31, commit `192fde2`.

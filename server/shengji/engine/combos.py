@@ -100,6 +100,55 @@ def decompose(cards: list[str], ordering: Ordering) -> Decomposition:
     return Decomposition(comps)
 
 
+def decompose_matching(cards: list[str], ordering: Ordering,
+                       shape: tuple[tuple[int, ...], int]) -> Decomposition | None:
+    """Decompose ``cards`` (one effective suit) to match a target shape, or
+    None if impossible. Unlike the greedy ``decompose``, this searches: runs
+    may split longer tractors, and unneeded pairs may break into singles.
+    Needed to judge whether a play beats a lead — the greedy decomposition is
+    not canonical (e.g. HA-HA S7-S7 D7-D7 H7-H7 can be one 3-tractor + pair
+    OR two 2-tractors when off-suit rank pairs share a level)."""
+    runs_needed, n_singles = shape
+    if len(cards) != 2 * sum(runs_needed) + n_singles:
+        return None
+    cnt = Counter(cards)
+    by_level: dict[int, list[str]] = {}
+    for c, k in cnt.items():
+        if k >= 2:
+            by_level.setdefault(ordering.level(c), []).append(c)
+
+    def backtrack(i: int, avail: dict[int, list[str]]) -> list[Component] | None:
+        if i == len(runs_needed):
+            return []
+        k = runs_needed[i]
+        for start in sorted(avail):
+            window = [start + d for d in range(k)]
+            if not all(lv in avail for lv in window):
+                continue
+            nxt = {lv: list(cs) for lv, cs in avail.items()}
+            chosen = []
+            for lv in window:
+                chosen.append(nxt[lv].pop())
+                if not nxt[lv]:
+                    del nxt[lv]
+            rest = backtrack(i + 1, nxt)
+            if rest is not None:
+                kind = "tractor" if k >= 2 else "pair"
+                comp = Component(kind, [c for c in chosen for _ in (0, 1)],
+                                 top=window[-1], pair_len=k)
+                return [comp] + rest
+        return None
+
+    run_comps = backtrack(0, by_level)
+    if run_comps is None:
+        return None
+    used = Counter(c for comp in run_comps for c in comp.cards)
+    singles = [Component("single", [c], ordering.level(c), 0)
+               for c in (cnt - used).elements()]
+    comps = sorted(run_comps + singles, key=lambda c: (-c.pair_len, -c.top))
+    return Decomposition(comps)
+
+
 def pair_count(cards: list[str]) -> int:
     return sum(k // 2 for k in Counter(cards).values())
 

@@ -16,7 +16,7 @@ from __future__ import annotations
 from collections import Counter
 
 from .cards import Ordering, TRUMP
-from .combos import Decomposition, decompose, has_tractor, pair_count
+from .combos import Decomposition, decompose, decompose_matching, has_tractor, pair_count
 
 
 class IllegalPlay(Exception):
@@ -122,8 +122,8 @@ def beats(challenger: list[str], lead: list[str], incumbent_suit: str,
     if eff is None:
         return False, 0
     lead_dec = decompose(lead, ordering)
-    ch_dec = decompose(challenger, ordering)
-    if ch_dec.shape() != lead_dec.shape():
+    ch_dec = decompose_matching(challenger, ordering, lead_dec.shape())
+    if ch_dec is None:
         return False, 0
     top = ch_dec.top_level()
     if eff == incumbent_suit:

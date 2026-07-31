@@ -12,7 +12,7 @@ from .legal import IllegalPlay, beats, check_in_hand, uniform_suit, validate_fol
 
 KITTY_SIZE = 8
 HAND_SIZE = 25
-KITTY_MULTIPLIER = 2  # kitty points x2 if attackers take the last trick
+KITTY_MULTIPLIER = 2  # x (cards in the winning play): single x2, pair x4, ...
 
 
 @dataclass
@@ -211,7 +211,9 @@ class Round:
         if not any(self.hands):
             self.last_trick_winner = winner
             if self.is_attacker(winner):
-                self.kitty_bonus = total_points(self.buried) * KITTY_MULTIPLIER
+                # multiplier scales with the final trick's format size
+                mult = KITTY_MULTIPLIER * len(self.trick.plays[0].cards)
+                self.kitty_bonus = total_points(self.buried) * mult
                 self.attacker_points += self.kitty_bonus
             self.phase = "round_end"
             self.turn = None

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { GameState, RoomMsg } from "./protocol";
 import type { ConnStatus } from "./ws";
-import { conn, saveRoom } from "./ws";
+import { clearSavedRoom, conn, saveRoom } from "./ws";
 import Lobby from "./components/Lobby";
 import Room from "./components/Room";
 import Table from "./components/Table";
@@ -31,13 +31,26 @@ export default function App() {
       switch (msg.type) {
         case "room":
           setRoom(msg);
+          // "room" is only sent while the room is in lobby state, so any
+          // previously rendered game is stale (e.g. rejoined after the game
+          // ended) — drop it so we route to the Room screen.
+          setGame(null);
           saveRoom(msg.room);
           break;
         case "state":
           setGame(msg);
           break;
         case "error":
-          showToast(msg.message);
+          if (msg.code === "room_not_found") {
+            // The room no longer exists (server restart / expiry). Stop
+            // retrying it on reconnect and return to the lobby (name kept).
+            clearSavedRoom();
+            setRoom(null);
+            setGame(null);
+            showToast("That game has ended.");
+          } else {
+            showToast(msg.message);
+          }
           break;
         case "event":
           // Optional animation hints; safe to ignore.

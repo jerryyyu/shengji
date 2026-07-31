@@ -28,6 +28,8 @@ export type ClientMsg =
 export interface ErrorMsg {
   type: "error";
   message: string;
+  /** Machine-readable cases, e.g. "room_not_found" (clear saved room, back to lobby). */
+  code?: string;
 }
 
 export interface RoomPlayer {

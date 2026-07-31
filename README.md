@@ -35,16 +35,17 @@ Headless bot-vs-bot evaluation: `uv run python -m shengji.ai.env`.
 - Follow rules: follow suit with matching count; pairs must cover pair leads;
   tractor leads oblige an in-suit tractor of that length when you hold one;
   void hands may trump with a shape-matching play.
-- Points: 5s=5, 10s/Ks=10 (200 total). Attackers win at 80. Kitty points
-  double if attackers take the last trick.
+- Points: 5s=5, 10s/Ks=10 (200 total). Attackers win at 80. If attackers
+  take the last trick, kitty points are multiplied by 2 × the size of the
+  winning play (single ×2, pair ×4, 2-pair tractor ×8).
 - Scoring: attackers 0 → banker +3, <40 → +2, <80 → +1; attackers 80+ take
-  the deal and gain (points−80)/40 levels. Win the game by winning a round
-  while at level A.
+  the deal and gain (points−80)/40 levels. The game is won by successfully
+  **defending** at level A — attackers who win at A take the deal and must
+  then hold their A.
 
 House-rule simplifications (v1): throws are checked against all three other
-hands with no 10-point penalty; the kitty multiplier is a flat ×2
-(`KITTY_MULTIPLIER` in `engine/round.py`); pair obligations for multi-
-component throws use the pair-count rule.
+hands with no 10-point penalty; pair obligations for multi-component throws
+use the pair-count rule.
 
 ## Layout
 

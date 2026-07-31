@@ -38,6 +38,15 @@ def test_game_over_on_ace():
     assert r.game_over and g.game_over
 
 
+def test_attackers_at_ace_must_still_defend():
+    g = Game()
+    g.level_idx = [0, 12]  # team 1 (attackers) at A
+    g.round = fake_round(banker=0, attacker_points=100)  # attackers win round
+    r = g.finish_round()
+    assert not r.game_over and not g.game_over
+    assert r.next_banker == 1  # they take the deal and must defend their A
+
+
 def test_deal_and_declare_flow():
     import random
     from shengji.engine.round import Round
@@ -76,6 +85,12 @@ def test_full_round_invariants():
         assert total_points(played) + total_points(rnd.buried) == 200
         # attacker points (minus kitty bonus) can't exceed points in tricks
         assert 0 <= rnd.attacker_points - rnd.kitty_bonus <= total_points(played)
+        # kitty bonus: 2 x (final-trick format size), attackers only
+        if rnd.is_attacker(rnd.last_trick_winner):
+            fmt = len(rnd.last_trick.plays[0].cards)
+            assert rnd.kitty_bonus == total_points(rnd.buried) * 2 * fmt
+        else:
+            assert rnd.kitty_bonus == 0
 
 
 def test_full_games_complete():

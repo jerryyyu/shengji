@@ -30,7 +30,10 @@ Invalid actions get an `error` message; state is unchanged.
 
 ## Server → Client
 
-### `{type: "error", message: string}`
+### `{type: "error", message: string, code?: string}`
+`code` is set for machine-readable cases: `"room_not_found"` (the room no
+longer exists — the client should clear its saved room and return to the
+lobby instead of retrying).
 
 ### `{type: "room", room: string, you: number, host: number, players: RoomPlayer[]}`
 Sent in lobby. `RoomPlayer = {seat: number, name: string, is_bot: boolean, connected: boolean}`. Seats 0–3. Teams: seats 0+2 vs 1+3.
@@ -80,8 +83,6 @@ interface GameState {
 }
 ```
 
-### `{type: "event", kind: string, ...}`
-Optional animation hints; safe to ignore. Kinds: `trick_won {winner, points}`, `declared {seat, suit}`.
 
 ## Flow
 
@@ -93,6 +94,8 @@ Optional animation hints; safe to ignore. Kinds: `trick_won {winner, points}`, `
 6. **round_end**: `round_result` populated; any human sends `next_round` to start the next round (banker/levels advance per result).
 7. **game_over** when a team wins the round while on level A.
 
-## Reconnect
+## Reconnect & lifecycle
 
 Rejoining with `join_room` using the same name reclaims the seat if it's disconnected, and the current `state` is resent. Bots act automatically after a short delay.
+
+A room survives with **no humans connected for 5 minutes** before being deleted, so refreshes and network blips can resume the game. If the current turn's human stays disconnected for **30 seconds**, the server's bot plays that turn (and keeps doing so until they reconnect).

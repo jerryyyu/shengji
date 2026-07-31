@@ -60,7 +60,9 @@ class Game:
             winner = banker_team
             gain = 3 if p == 0 else (2 if p < 40 else 1)
             next_banker = (rnd.banker + 2) % 4
-        over = self.level_idx[winner] == A_INDEX
+        # The game is won only by successfully DEFENDING at rank A: attackers
+        # winning at A merely take over the deal and must then hold their A.
+        over = winner == banker_team and self.level_idx[banker_team] == A_INDEX
         if not over:
             self.level_idx[winner] = min(A_INDEX, self.level_idx[winner] + gain)
         self.banker = next_banker

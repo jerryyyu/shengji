@@ -5,14 +5,16 @@ each section; strike or move items as they land.
 
 ## Rules correctness (from comparison with rbtying/shengji)
 
-- [ ] **Defend-at-A game-over rule**: game should end only when a team *defends*
-      (wins as banker) at level A. Today either team winning at A ends the game —
-      attackers at A should instead take over the deal and have to defend.
-      (`engine/game.py`, blocked on: audit results landing first)
-- [ ] **Format-scaled kitty multiplier**: last trick won by attackers should
-      multiply kitty points by 2×(size of winning play) — single ×2, pair ×4,
-      2-pair tractor ×8 — instead of flat ×2. (`engine/round.py`)
-- [ ] Apply findings from the engine + server/frontend audit agents (pending).
+- [x] Defend-at-A game-over rule (2026-07-31)
+- [x] Format-scaled kitty multiplier: 2×(size of final winning play) (2026-07-31)
+- [x] Audit findings applied (2026-07-31): shape-search in `beats()` so valid
+      alternative decompositions can win (incl. trump pair splitting to beat
+      thrown singles); env winner fix at A/A; server: room TTL grace instead of
+      instant deletion, malformed-input hardening, per-seat send queues, bot
+      takeover of abandoned turns; frontend: dead-room → back to lobby.
+- [ ] Remaining audit nits: declaration overcall rules are looser than
+      standard (any player may re-declare with any stronger combo); throw
+      penalty forces globally-lowest component rather than the beaten one.
 
 ## Features
 

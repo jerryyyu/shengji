@@ -24,6 +24,8 @@ BOT_DELAY = 0.7
 DEAL_DELAY = 0.09          # seconds between dealt cards (~9s full deal)
 DECLARE_GRACE = 5.0        # window after the deal; extended on new declarations
 DECLARE_EXTEND = 3.0
+ROOM_TTL = 300.0           # grace before deleting a room with no humans connected
+TAKEOVER_AFTER = 30.0      # bot plays for a disconnected human after this long
 app = FastAPI(title="shengji")
 
 rooms: dict[str, "Room"] = {}
@@ -35,6 +37,9 @@ class Seat:
     is_bot: bool = False
     ws: WebSocket | None = None
     connected: bool = False
+    queue: asyncio.Queue | None = None   # outbound messages; writer task drains
+    writer: asyncio.Task | None = None
+    last_seen: float = 0.0               # loop time of last disconnect
 
 
 @dataclass
@@ -49,6 +54,8 @@ class Room:
         default_factory=lambda: make_bot(os.environ.get("SHENGJI_BOT", "smart")))
     bot_task: asyncio.Task | None = None
     deal_task: asyncio.Task | None = None
+    watchdog_task: asyncio.Task | None = None
+    cleanup_task: asyncio.Task | None = None
 
     @property
     def round(self) -> Round | None:
@@ -182,19 +189,43 @@ def room_json(room: Room, seat: int) -> dict:
 
 
 async def send(ws: WebSocket, payload: dict) -> None:
+    """Direct send; only for sockets not yet bound to a seat."""
     try:
         await ws.send_json(payload)
     except Exception:
         pass
 
 
+def enqueue(seat: Seat, payload: dict) -> None:
+    """Non-blocking send via the seat's writer task. A slow client fills its
+    own queue (old snapshots are dropped) without stalling the room."""
+    if seat.queue is None:
+        return
+    try:
+        seat.queue.put_nowait(payload)
+    except asyncio.QueueFull:
+        try:
+            seat.queue.get_nowait()  # drop oldest, keep newest
+            seat.queue.put_nowait(payload)
+        except asyncio.QueueEmpty:
+            pass
+
+
+async def _writer(ws: WebSocket, queue: asyncio.Queue) -> None:
+    try:
+        while True:
+            await ws.send_json(await queue.get())
+    except Exception:
+        pass
+
+
 async def broadcast(room: Room) -> None:
     for i, seat in enumerate(room.seats):
-        if seat.ws is not None and seat.connected:
+        if seat.connected and not seat.is_bot:
             if room.game and room.round:
-                await send(seat.ws, state_for(room, i))
+                enqueue(seat, state_for(room, i))
             else:
-                await send(seat.ws, room_json(room, i))
+                enqueue(seat, room_json(room, i))
 
 
 # ----------------------------------------------------------------- bot pump
@@ -205,32 +236,75 @@ def current_actor(room: Room) -> int | None:
     return rnd.turn
 
 
+def bot_step(room: Room, seat: int) -> bool:
+    """One bot decision for ``seat`` (caller holds the lock). True if acted."""
+    game, rnd = room.game, room.round
+    if game is None or rnd is None or game.game_over:
+        return False
+    try:
+        if rnd.phase == "bury":
+            cards = room.bot.decide_bury(rnd, seat)
+            room.sync_kitty()
+            rnd.bury(seat, cards)
+            room.remove_codes(seat, cards)
+        elif rnd.phase == "play":
+            cards = room.bot.decide_play(rnd, seat)
+            rnd.play(seat, cards)
+            room.remove_codes(seat, cards)
+        else:
+            return False
+        if rnd.phase == "round_end" and game.result is None:
+            game.finish_round()
+        return True
+    except IllegalPlay as e:  # bot bug — shouldn't happen; skip safely
+        rnd.message = f"Bot error at seat {seat}: {e}"
+        return False
+
+
 async def pump_bots(room: Room) -> None:
     while True:
         await asyncio.sleep(BOT_DELAY)
         async with room.lock:
-            game, rnd = room.game, room.round
-            if game is None or rnd is None or game.game_over:
-                return
             seat = current_actor(room)
             if seat is None or not room.seats[seat].is_bot:
                 return
-            try:
-                if rnd.phase == "bury":
-                    cards = room.bot.decide_bury(rnd, seat)
-                    room.sync_kitty()
-                    rnd.bury(seat, cards)
-                    room.remove_codes(seat, cards)
-                elif rnd.phase == "play":
-                    cards = room.bot.decide_play(rnd, seat)
-                    rnd.play(seat, cards)
-                    room.remove_codes(seat, cards)
-                if rnd.phase == "round_end" and game.result is None:
-                    game.finish_round()
-            except IllegalPlay as e:  # bot bug — shouldn't happen; skip safely
-                rnd.message = f"Bot error at seat {seat}: {e}"
+            if not bot_step(room, seat):
                 return
             await broadcast(room)
+
+
+async def watchdog(room: Room) -> None:
+    """If the turn-holder is a disconnected human for TAKEOVER_AFTER seconds,
+    the bot plays their turn so the game can't stall forever."""
+    loop = asyncio.get_event_loop()
+    while True:
+        await asyncio.sleep(5.0)
+        async with room.lock:
+            if rooms.get(room.code) is not room:
+                return
+            seat = current_actor(room)
+            if seat is None:
+                continue
+            s = room.seats[seat]
+            if s.is_bot or s.connected:
+                continue
+            if loop.time() - s.last_seen >= TAKEOVER_AFTER:
+                if bot_step(room, seat):
+                    await broadcast(room)
+                    kick_bots(room)
+
+
+async def cleanup_room(room: Room) -> None:
+    """Delete the room only after ROOM_TTL with no humans connected, so a
+    refresh or network blip can reclaim the seat and resume the game."""
+    await asyncio.sleep(ROOM_TTL)
+    async with room.lock:
+        if any(s.connected for s in room.seats if not s.is_bot):
+            return
+        rooms.pop(room.code, None)
+        for task in (room.bot_task, room.deal_task, room.watchdog_task):
+            if task is not None:
+                task.cancel()
 
 
 def kick_bots(room: Room) -> None:
@@ -308,6 +382,15 @@ def new_code() -> str:
             return code
 
 
+def _card_ids(msg: dict) -> list[int]:
+    ids = msg.get("card_ids")
+    if (not isinstance(ids, list) or not ids
+            or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids)
+            or len(set(ids)) != len(ids)):
+        raise IllegalPlay("Invalid card selection.")
+    return ids
+
+
 async def handle_action(room: Room, seat: int, msg: dict) -> None:
     """Caller holds room.lock. Raises IllegalPlay on bad input."""
     t = msg.get("type")
@@ -334,20 +417,23 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         room.game.start_round()
         room.index_round()
         room.deal_task = asyncio.create_task(run_deal(room))
+        if room.watchdog_task is None or room.watchdog_task.done():
+            room.watchdog_task = asyncio.create_task(watchdog(room))
     elif game is None or rnd is None:
         raise IllegalPlay("Game not started.")
     elif t == "declare":
-        codes = room.codes_for(seat, msg.get("card_ids", []))
+        codes = room.codes_for(seat, _card_ids(msg))
         rnd.declare(seat, codes)
     elif t == "pass_declare":
         rnd.pass_declare(seat)
     elif t == "bury":
         room.sync_kitty()
-        codes = room.codes_for(seat, msg.get("card_ids", []))
+        ids = _card_ids(msg)
+        codes = room.codes_for(seat, ids)
         rnd.bury(seat, codes)
-        room.remove_ids(seat, msg.get("card_ids", []))
+        room.remove_ids(seat, ids)
     elif t == "play":
-        ids = msg.get("card_ids", [])
+        ids = _card_ids(msg)
         codes = room.codes_for(seat, ids)
         rnd.play(seat, codes)
         # a failed throw may have played different (fewer) cards than sent;
@@ -386,20 +472,26 @@ async def ws_endpoint(ws: WebSocket) -> None:
     try:
         while True:
             msg = await ws.receive_json()
+            if not isinstance(msg, dict):
+                continue
             t = msg.get("type")
             if room is None:
                 if t == "create_room":
                     room = Room(code=new_code())
                     rooms[room.code] = room
-                    room.seats.append(Seat(name=str(msg.get("name") or "Player"),
-                                           ws=ws, connected=True))
+                    s = Seat(name=str(msg.get("name") or "Player"),
+                             ws=ws, connected=True)
+                    s.queue = asyncio.Queue(maxsize=128)
+                    s.writer = asyncio.create_task(_writer(ws, s.queue))
+                    room.seats.append(s)
                     seat = 0
                     await broadcast(room)
                 elif t == "join_room":
                     code = str(msg.get("room", "")).upper()
                     target = rooms.get(code)
                     if target is None:
-                        await send(ws, {"type": "error", "message": "Room not found."})
+                        await send(ws, {"type": "error", "code": "room_not_found",
+                                        "message": "Room not found."})
                         continue
                     async with target.lock:
                         name = str(msg.get("name") or "Player")
@@ -416,8 +508,13 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             await send(ws, {"type": "error", "message": "Room is full."})
                             continue
                         room = target
-                        room.seats[seat].ws = ws
-                        room.seats[seat].connected = True
+                        if room.cleanup_task is not None:
+                            room.cleanup_task.cancel()
+                            room.cleanup_task = None
+                        s = room.seats[seat]
+                        s.ws, s.connected = ws, True
+                        s.queue = asyncio.Queue(maxsize=128)
+                        s.writer = asyncio.create_task(_writer(ws, s.queue))
                         await broadcast(room)
                 else:
                     await send(ws, {"type": "error", "message": "Join a room first."})
@@ -430,16 +527,24 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     await broadcast(room)
                     kick_bots(room)
                 except IllegalPlay as e:
-                    await send(ws, {"type": "error", "message": str(e)})
+                    enqueue(room.seats[seat], {"type": "error", "message": str(e)})
+                except Exception:  # malformed input must not kill the socket
+                    enqueue(room.seats[seat],
+                            {"type": "error", "message": "Invalid request."})
     except WebSocketDisconnect:
         pass
     finally:
         if room is not None and seat is not None:
             async with room.lock:
-                room.seats[seat].ws = None
-                room.seats[seat].connected = False
-                if not any(s.connected for s in room.seats if not s.is_bot):
-                    rooms.pop(room.code, None)
+                s = room.seats[seat]
+                s.ws, s.connected = None, False
+                if s.writer is not None:
+                    s.writer.cancel()
+                s.writer, s.queue = None, None
+                s.last_seen = asyncio.get_event_loop().time()
+                if not any(x.connected for x in room.seats if not x.is_bot):
+                    if room.cleanup_task is None or room.cleanup_task.done():
+                        room.cleanup_task = asyncio.create_task(cleanup_room(room))
                 else:
                     await broadcast(room)
 

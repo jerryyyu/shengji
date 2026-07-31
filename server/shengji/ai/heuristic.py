@@ -18,6 +18,9 @@ PLAIN_SUITS = "SHDC"
 
 
 class HeuristicBot:
+    DECLARE_MIN = 9     # trump-count needed to declare during the deal
+    DECLARE_FINAL = 7   # lower bar in the grace window
+
     # ---------------------------------------------------------------- declare
     def decide_declare(self, rnd: Round, seat: int,
                        final: bool = False) -> list[str] | None:
@@ -42,7 +45,8 @@ class HeuristicBot:
                 score = n_trump + (2 if len(opt) == 2 else 0)
             if score > best_score:
                 best, best_score = opt, score
-        return best if best_score >= (7 if final else 9) else None
+        return best if best_score >= (self.DECLARE_FINAL if final
+                                      else self.DECLARE_MIN) else None
 
     # ------------------------------------------------------------------- bury
     def decide_bury(self, rnd: Round, seat: int) -> list[str]:
@@ -61,11 +65,14 @@ class HeuristicBot:
             if cnt[c] >= 2:
                 v += 25  # don't break pairs
             v += points(c) * 2.5
-            v -= (8 - min(suit_len[o.eff_suit(c)], 8)) * 0.5  # shed short suits
+            v -= self._bury_short_bonus(suit_len[o.eff_suit(c)])  # shed short suits
             return v
 
         ranked = sorted(hand, key=keep_value)
         return ranked[:8]
+
+    def _bury_short_bonus(self, suit_len: int) -> float:
+        return (8 - min(suit_len, 8)) * 0.5
 
     # ------------------------------------------------------------------- play
     def decide_play(self, rnd: Round, seat: int) -> list[str]:
@@ -200,8 +207,11 @@ class HeuristicBot:
         return None
 
     def _forced_follow(self, hand: list[str], lead: list[str], o: Ordering,
-                       prefer_points: bool) -> list[str]:
-        """Construct a legal minimal follow, dumping points if asked."""
+                       prefer_points: bool,
+                       avoid: set[str] | None = None) -> list[str]:
+        """Construct a legal minimal follow, dumping points if asked.
+        Cards in ``avoid`` are kept back when there's any alternative."""
+        avoid = avoid or set()
         n = len(lead)
         lead_suit = uniform_suit(lead, o)
         assert lead_suit is not None
@@ -219,7 +229,7 @@ class HeuristicBot:
             # pair obligation
             need = min(lead_dec.n_pairs, pair_count(h_suit)) - pair_count(picked)
             pairs = sorted((c for c, k in Counter(pool).items() if k >= 2),
-                           key=o.level)
+                           key=lambda c: (c in avoid, o.level(c)))
             for c in pairs[:max(0, need)]:
                 picked += [c, c]
                 self._take(pool, [c, c])
@@ -229,7 +239,7 @@ class HeuristicBot:
             fill_pool = self._minus(hand, picked)
         while len(picked) < n:
             c = self._lowest(fill_pool, o, avoid_points=not prefer_points,
-                             seek_points=prefer_points)
+                             seek_points=prefer_points, avoid=avoid)
             picked.append(c)
             fill_pool.remove(c)
         return picked[:n]
@@ -248,12 +258,14 @@ class HeuristicBot:
         return pool
 
     def _lowest(self, cards: list[str], o: Ordering, avoid_points: bool = False,
-                seek_points: bool = False) -> str:
+                seek_points: bool = False, avoid: set[str] | None = None) -> str:
+        avoid = avoid or set()
+
         def key(c: str) -> tuple:
             trumpish = o.eff_suit(c) == TRUMP
             if seek_points:
-                return (-points(c), trumpish, o.level(c))
+                return (c in avoid, -points(c), trumpish, o.level(c))
             if avoid_points:
-                return (trumpish, points(c) > 0, o.level(c))
-            return (trumpish, o.level(c))
+                return (c in avoid, trumpish, points(c) > 0, o.level(c))
+            return (c in avoid, trumpish, o.level(c))
         return min(cards, key=key)

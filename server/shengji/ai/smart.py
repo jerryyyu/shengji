@@ -16,6 +16,57 @@ class SmartBot(HeuristicBot):
     FEED_ON_TRUMP = False   # feed points when partner ruffs, even if overtrumpable
     TRUMP_DRAIN = False     # lead boss trumps from long holdings (measured: hurts)
     SAFE_TRACTOR_ONLY = True  # skip tractor leads into likely ruffs
+    SAFE_THROWS = True      # lead multi-component throws when every part is boss
+    RESERVE_LAST = False    # hold a boss combo for the last trick (measured: hurts)
+    RESERVE_MARGIN = 3      # keep the reserve while hand exceeds its size by this
+    CONTEST_PTS = 10        # trump-spend threshold when the win isn't guaranteed
+    BURY_VOID = True        # bury toward emptying 1-3 card suits (ruff setup)
+    DECLARE_MIN = 8         # slightly more eager declarer than baseline (9)
+    DECLARE_FINAL = 6
+
+    # ------------------------------------------------------------------- bury
+    def _bury_short_bonus(self, suit_len: int) -> float:
+        if self.BURY_VOID and suit_len <= 3:
+            return {1: 15.0, 2: 12.0, 3: 8.0}[suit_len]
+        return super()._bury_short_bonus(suit_len)
+
+    # ---------------------------------------------------------------- helpers
+    def _boss_components(self, rnd: Round, seat: int, mem: Memory) -> dict[str, list]:
+        """Boss components per ruff-safe plain suit."""
+        o = rnd.ordering
+        assert o is not None
+        opps = [s for s in range(4) if s % 2 != seat % 2]
+        out: dict[str, list] = {}
+        for s in PLAIN_SUITS:
+            cards = suit_cards(rnd.hands[seat], s, o)
+            if not cards or mem.ruff_risk(s, opps):
+                continue
+            comps = []
+            for comp in decompose(cards, o).components:
+                top_code = max(comp.cards, key=o.level)
+                boss = (mem.pair_is_boss(top_code) if comp.pair_len
+                        else mem.is_boss(top_code))
+                if boss:
+                    comps.append(comp)
+            if comps:
+                out[s] = comps
+        return out
+
+    def _reserve(self, rnd: Round, seat: int, mem: Memory,
+                 boss: dict[str, list] | None = None) -> set[str]:
+        """Attackers save their biggest boss paired combo for the last trick
+        (the kitty multiplier scales with its size)."""
+        if not self.RESERVE_LAST or rnd.banker is None or not rnd.is_attacker(seat):
+            return set()
+        if boss is None:
+            boss = self._boss_components(rnd, seat, mem)
+        paired = [c for comps in boss.values() for c in comps if c.pair_len]
+        if not paired:
+            return set()
+        r = max(paired, key=lambda c: (c.pair_len, c.top))
+        if len(rnd.hands[seat]) - r.size >= self.RESERVE_MARGIN:
+            return set(r.cards)
+        return set()
 
     # ------------------------------------------------------------------- lead
     def _lead(self, rnd: Round, seat: int) -> list[str]:
@@ -26,23 +77,33 @@ class SmartBot(HeuristicBot):
         opps = [s for s in range(4) if s % 2 != seat % 2]
         by_suit = {s: suit_cards(hand, s, o) for s in list(PLAIN_SUITS) + [TRUMP]}
 
-        # Scan plain suits once for boss components (ruff-safe suits only).
-        boss_paired: list[tuple[tuple, list[str]]] = []
-        boss_single: list[tuple[tuple, list[str]]] = []
-        for s in PLAIN_SUITS:
-            cards = by_suit[s]
-            if not cards or mem.ruff_risk(s, opps):
-                continue
-            for comp in decompose(cards, o).components:
-                top_code = max(comp.cards, key=o.level)
-                boss = (mem.pair_is_boss(top_code) if comp.pair_len
-                        else mem.is_boss(top_code))
-                if boss:
-                    pts = sum(points(c) for c in comp.cards)
-                    entry = ((comp.pair_len, pts, comp.top), comp.cards)
-                    (boss_paired if comp.pair_len else boss_single).append(entry)
+        boss = self._boss_components(rnd, seat, mem)
+        reserve = self._reserve(rnd, seat, mem, boss)
+        if reserve:
+            boss = {s: [c for c in comps if not (set(c.cards) & reserve)]
+                    for s, comps in boss.items()}
+            boss = {s: comps for s, comps in boss.items() if comps}
+
+        def entry(comp) -> tuple[tuple, list[str]]:
+            pts = sum(points(c) for c in comp.cards)
+            return ((comp.pair_len, pts, comp.top), comp.cards)
+
+        # 0) Safe throw: several boss components in one suit, led together.
+        #    Every part is unbeatable in-suit, so the throw can never fail.
+        if self.SAFE_THROWS:
+            best_throw: list[str] | None = None
+            for comps in boss.values():
+                if len(comps) >= 2:
+                    cards = [c for comp in comps for c in comp.cards]
+                    if best_throw is None or len(cards) > len(best_throw):
+                        best_throw = cards
+            if best_throw:
+                return best_throw
 
         # 1) Boss pairs/tractors: guaranteed winners that also dump cards.
+        boss_paired = [entry(c) for comps in boss.values() for c in comps if c.pair_len]
+        boss_single = [entry(c) for comps in boss.values() for c in comps
+                       if not c.pair_len]
         if boss_paired:
             return max(boss_paired, key=lambda c: c[0])[1]
 
@@ -52,6 +113,8 @@ class SmartBot(HeuristicBot):
             if self.SAFE_TRACTOR_ONLY and mem.ruff_risk(s, opps):
                 continue
             for comp in decompose(by_suit[s], o).components:
+                if set(comp.cards) & reserve:
+                    continue
                 if comp.pair_len >= 2 and (best_tr is None or comp.size > len(best_tr)):
                     best_tr = comp.cards
         if best_tr:
@@ -94,13 +157,16 @@ class SmartBot(HeuristicBot):
         partner_winning = win_seat % 2 == seat % 2
         trick_pts = sum(points(c) for tp in trick.plays for c in tp.cards)
 
+        reserve = self._reserve(rnd, seat, mem)
+
         if partner_winning:
             # Feed points only when the partner's play can't be beaten by
             # anyone still to act; otherwise keep points home.
             secure = not mem.beat_risk(inc_suit, inc_top, opp_to_act)
             if self.FEED_ON_TRUMP and inc_suit == TRUMP:
                 secure = True
-            return self._forced_follow(hand, lead, o, prefer_points=secure)
+            return self._forced_follow(hand, lead, o, prefer_points=secure,
+                                       avoid=reserve)
 
         winning = self._cheapest_winning(hand, lead, inc_suit, inc_top, o)
         if winning is not None:
@@ -111,6 +177,7 @@ class SmartBot(HeuristicBot):
             # Spending trump: memory decides whether it's worth it.
             w_top = decompose(winning, o).top_level()
             holds = not mem.beat_risk(w_suit, w_top, opp_to_act)
-            if trick_pts >= 10 or (holds and trick_pts > 0):
+            if trick_pts >= self.CONTEST_PTS or (holds and trick_pts > 0):
                 return winning
-        return self._forced_follow(hand, lead, o, prefer_points=False)
+        return self._forced_follow(hand, lead, o, prefer_points=False,
+                                   avoid=reserve)

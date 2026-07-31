@@ -76,21 +76,33 @@ def play_game(policies: list, seed: int | None = None, max_rounds: int = 200):
     return winner, game, logs
 
 
-def evaluate(policy_a, policy_b, n_games: int = 100, seed: int = 0) -> dict:
-    """Team 0 = policy_a (seats 0,2), team 1 = policy_b (seats 1,3)."""
+def evaluate(policy_a, policy_b, n_games: int = 100, seed: int = 0,
+             mirrored: bool = True) -> dict:
+    """Head-to-head win rates. With ``mirrored`` (default), games run in
+    pairs on the SAME shuffle sequence with the teams swapped, so card luck
+    cancels and variance drops sharply. n_games is total games (2 per pair).
+    """
     wins = [0, 0]
     rounds = 0
-    for g in range(n_games):
-        policies = [policy_a, policy_b, policy_a, policy_b]
-        winner, game, logs = play_game(policies, seed=seed + g)
-        wins[winner] += 1
-        rounds += len(logs)
-    return {"games": n_games, "wins_a": wins[0], "wins_b": wins[1],
-            "avg_rounds_per_game": rounds / n_games}
+    flips = (0, 1) if mirrored else (0,)
+    n_seeds = n_games // len(flips)
+    for g in range(n_seeds):
+        for flip in flips:
+            if flip == 0:
+                policies = [policy_a, policy_b, policy_a, policy_b]
+            else:
+                policies = [policy_b, policy_a, policy_b, policy_a]
+            winner, game, logs = play_game(policies, seed=seed + g)
+            a_won = winner == flip  # a is team 0 unflipped, team 1 flipped
+            wins[0 if a_won else 1] += 1
+            rounds += len(logs)
+    total = n_seeds * len(flips)
+    return {"games": total, "wins_a": wins[0], "wins_b": wins[1],
+            "mirrored": mirrored, "avg_rounds_per_game": rounds / total}
 
 
 if __name__ == "__main__":
     from .heuristic import HeuristicBot
     from .smart import SmartBot
-    print("SmartBot (a) vs HeuristicBot (b):")
-    print(evaluate(SmartBot(), HeuristicBot(), n_games=100))
+    print("SmartBot (a) vs HeuristicBot (b), mirrored deals:")
+    print(evaluate(SmartBot(), HeuristicBot(), n_games=200))

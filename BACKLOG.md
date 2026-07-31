@@ -34,8 +34,12 @@ each section; strike or move items as they land.
 
 ## AI / training
 
-- [ ] **Mirrored-deal evaluation**: same shuffle with teams swapped, halves the
-      variance of `evaluate()`. Cheap and improves every future benchmark.
+- [x] Mirrored-deal evaluation (2026-07-31): `evaluate()` default; identical
+      policies score exactly 50/50.
+- [x] SmartBot v2 (2026-07-31): safe throws (+17pt), bury-to-void, eager
+      declaration → 86% vs baseline. Last-trick reserve measured harmful and
+      rejected (see AI_POLICIES.md).
+- [ ] **MCBot**: determinized Monte Carlo rollouts (in progress).
 - [ ] **RL Phase 0**: profile + speed up headless env (`ai/env.py`) for
       self-play throughput; target thousands of games/sec across processes.
 - [ ] RL Phases 1-4 (DouZero-style Deep Monte Carlo): encode obs (Memory as

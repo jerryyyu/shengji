@@ -12,7 +12,10 @@ from typing import Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 
-from ..ai.smart import SmartBot
+import os
+
+from ..ai.heuristic import HeuristicBot
+from ..ai.registry import make_bot
 from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine.round import Round
@@ -42,7 +45,8 @@ class Room:
     game: Game | None = None
     ids: list[dict[int, str]] = field(default_factory=lambda: [{} for _ in range(4)])
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    bot: SmartBot = field(default_factory=SmartBot)
+    bot: HeuristicBot = field(
+        default_factory=lambda: make_bot(os.environ.get("SHENGJI_BOT", "smart")))
     bot_task: asyncio.Task | None = None
     deal_task: asyncio.Task | None = None
 

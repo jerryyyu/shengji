@@ -21,7 +21,7 @@ from ..engine.legal import IllegalPlay
 from ..engine.round import Round
 
 BOT_DELAY = 0.7
-DEAL_DELAY = 0.09          # seconds between dealt cards (~9s full deal)
+DEAL_DELAY = 0.22          # seconds between dealt cards (~22s full deal)
 DECLARE_GRACE = 5.0        # window after the deal; extended on new declarations
 DECLARE_EXTEND = 3.0
 ROOM_TTL = 300.0           # grace before deleting a room with no humans connected

@@ -7,6 +7,7 @@ var (default "smart")."""
 from __future__ import annotations
 
 from .heuristic import HeuristicBot
+from .mcbot import MCBot
 from .smart import SmartBot
 
 
@@ -16,6 +17,7 @@ def _smart_variant(name: str, **attrs):
 REGISTRY: dict[str, type] = {
     "heuristic": HeuristicBot,
     "smart": SmartBot,
+    "mc": MCBot,  # determinized Monte Carlo; ~50-150ms per decision
     # the pre-throws config (2026-07-31, 66% vs heuristic), for reproducibility:
     "smart-v1": _smart_variant("SmartV1", SAFE_THROWS=False, RESERVE_LAST=False,
                                BURY_VOID=False, DECLARE_MIN=9, DECLARE_FINAL=7),

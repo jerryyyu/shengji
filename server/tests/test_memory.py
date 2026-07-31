@@ -57,3 +57,13 @@ def test_smartbot_full_games():
         game = Game(random.Random(seed))
         log = play_round(game, bots)
         assert log.attacker_points >= 0
+
+
+def test_mcbot_plays_legally():
+    from shengji.ai.mcbot import MCBot
+    mc = MCBot(seed=0)
+    mc.N_DETERMINIZATIONS = 3  # keep the test fast
+    bots = [mc, SmartBot(), SmartBot(), SmartBot()]
+    game = Game(random.Random(0))
+    play_round(game, bots)
+    assert all(len(h) == 0 for h in game.round.hands)

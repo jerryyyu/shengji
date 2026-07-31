@@ -1,0 +1,25 @@
+[project]
+name = "shengji"
+version = "0.1.0"
+description = "Sheng Ji (Chinese tractor) game engine, AI, and multiplayer server"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+]
+
+[project.scripts]
+shengji-server = "shengji.api.server:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "websockets>=12",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["shengji"]

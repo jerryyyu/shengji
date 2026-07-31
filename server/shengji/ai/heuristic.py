@@ -19,7 +19,10 @@ PLAIN_SUITS = "SHDC"
 
 class HeuristicBot:
     # ---------------------------------------------------------------- declare
-    def decide_declare(self, rnd: Round, seat: int) -> list[str] | None:
+    def decide_declare(self, rnd: Round, seat: int,
+                       final: bool = False) -> list[str] | None:
+        """Called after each dealt card and once more in the grace window
+        (``final=True``, lower bar so weak-trump rounds still get a suit)."""
         options = rnd.declare_options(seat)
         if not options:
             return None
@@ -39,7 +42,7 @@ class HeuristicBot:
                 score = n_trump + (2 if len(opt) == 2 else 0)
             if score > best_score:
                 best, best_score = opt, score
-        return best if best_score >= 9 else None
+        return best if best_score >= (7 if final else 9) else None
 
     # ------------------------------------------------------------------- bury
     def decide_bury(self, rnd: Round, seat: int) -> list[str]:

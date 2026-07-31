@@ -30,7 +30,11 @@ class Trick:
 
 
 class Round:
-    """State machine: declare -> bury -> play -> round_end.
+    """State machine: deal -> declare -> bury -> play -> round_end.
+
+    Cards are dealt one at a time (``deal_next``); any player may declare
+    during the deal or the declare grace window that follows it. The caller
+    (server or self-play harness) decides when to ``finalize_declare``.
 
     ``banker`` is None only on the very first round of a game, where the
     first declarer takes it (seat 0 if nobody declares).
@@ -40,17 +44,16 @@ class Round:
         rng = rng or random.Random()
         self.deck = make_deck()
         rng.shuffle(self.deck)
-        self.hands: list[list[str]] = [
-            self.deck[i * HAND_SIZE:(i + 1) * HAND_SIZE] for i in range(4)
-        ]
+        self.hands: list[list[str]] = [[] for _ in range(4)]
         self.kitty: list[str] = self.deck[4 * HAND_SIZE:]
+        self._deal_pos = 0
         self.trump_rank = trump_rank
         self.banker = banker
         self.first_round = banker is None
-        self.phase = "declare"
-        self.turn: int | None = banker if banker is not None else 0
+        self.phase = "deal"
+        self.turn: int | None = None
         self.declaration: dict | None = None  # {seat, cards, strength}
-        self._passes = 0
+        self.passed: set[int] = set()
         self.ordering: Ordering | None = None
         self.trump_suit: str | None | str = None  # set at finalize; "NT" handled as None
         self.trump_is_nt = False
@@ -66,6 +69,20 @@ class Round:
     def is_attacker(self, seat: int) -> bool:
         assert self.banker is not None
         return seat % 2 != self.banker % 2
+
+    # ------------------------------------------------------------------- deal
+    def deal_next(self) -> tuple[int, int, str]:
+        """Deal one card round-robin. Returns (seat, deck_index, code).
+        After the 100th card the phase moves to the declare grace window."""
+        assert self.phase == "deal"
+        idx = self._deal_pos
+        seat = idx % 4
+        code = self.deck[idx]
+        self.hands[seat].append(code)
+        self._deal_pos += 1
+        if self._deal_pos == 4 * HAND_SIZE:
+            self.phase = "declare"
+        return seat, idx, code
 
     # ---------------------------------------------------------------- declare
     def _declaration_strength(self, cards: list[str]) -> int | None:
@@ -83,7 +100,7 @@ class Round:
         return None
 
     def declare_options(self, seat: int) -> list[list[str]]:
-        if self.phase != "declare" or self.turn != seat:
+        if self.phase not in ("deal", "declare"):
             return []
         current = self.declaration["strength"] if self.declaration else 0
         hand = Counter(self.hands[seat])
@@ -101,46 +118,33 @@ class Round:
         return options
 
     def declare(self, seat: int, cards: list[str]) -> None:
-        self._require(seat, "declare")
+        if self.phase not in ("deal", "declare"):
+            raise IllegalPlay("Declarations are closed.")
         check_in_hand(self.hands[seat], cards)
         strength = self._declaration_strength(cards)
         current = self.declaration["strength"] if self.declaration else 0
         if strength is None or strength <= current:
             raise IllegalPlay("Not a valid (stronger) declaration.")
         self.declaration = {"seat": seat, "cards": list(cards), "strength": strength}
-        self._passes = 0
-        self._advance_declare_turn()
+        self.passed.clear()
+        nt = is_joker(cards[0])
+        label = "NT" if nt else f"{card_suit(cards[0])}{self.trump_rank}"
+        self.message = f"Seat {seat} declared {label}" + (" (pair)" if len(cards) == 2 else "")
 
     def pass_declare(self, seat: int) -> None:
-        self._require(seat, "declare")
-        self._passes += 1
-        needed = 3 if self.declaration else 4
-        if self._passes >= needed:
-            self._finalize_declare()
-        else:
-            self._advance_declare_turn()
+        if self.phase != "declare":
+            raise IllegalPlay("Nothing to pass on.")
+        self.passed.add(seat)
 
-    def _advance_declare_turn(self) -> None:
-        assert self.turn is not None
-        self.turn = (self.turn + 1) % 4
-        if self.declaration and self.turn == self.declaration["seat"]:
-            # declarer needn't outbid themselves
-            self._passes += 1
-            if self._passes >= 3:
-                self._finalize_declare()
-            else:
-                self.turn = (self.turn + 1) % 4
-
-    def _finalize_declare(self) -> None:
+    def finalize_declare(self) -> None:
+        """Close the declare window: fix trump, hand the kitty to the banker."""
+        assert self.phase == "declare"
         if self.declaration:
             code = self.declaration["cards"][0]
             self.trump_is_nt = is_joker(code)
             self.trump_suit = None if self.trump_is_nt else card_suit(code)
             if self.banker is None:
                 self.banker = self.declaration["seat"]
-            who = self.declaration["seat"]
-            label = "NT" if self.trump_is_nt else self.trump_suit
-            self.message = f"Seat {who} declared {label}{'' if self.trump_is_nt else self.trump_rank}"
         else:
             flipped = next((c for c in self.kitty if not is_joker(c)), None)
             self.trump_suit = card_suit(flipped) if flipped else None

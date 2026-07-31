@@ -136,7 +136,8 @@ input {
 .bot-tag,
 .you-tag,
 .host-tag,
-.off-tag {
+.off-tag,
+.ready-tag {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -164,6 +165,12 @@ input {
 .off-tag {
   background: #55232b;
   color: #f0a0aa;
+}
+
+.ready-tag {
+  background: #1f4a35;
+  color: #7fdda6;
+  text-transform: uppercase;
 }
 
 .conn-dot {

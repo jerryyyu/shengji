@@ -56,13 +56,14 @@ async def main():
                       f"+{state['round_result']['level_change']}, "
                       f"{actions} human actions, {errors} rejected tries")
                 return
+            if state["phase"] == "declare" and state["you"] not in state["passed"]:
+                await ws.send(json.dumps({"type": "pass_declare"}))
+                continue
             if state["turn"] != state["you"]:
                 continue
             pending_try = None
             actions += 1
-            if state["phase"] == "declare":
-                await ws.send(json.dumps({"type": "pass_declare"}))
-            elif state["phase"] == "bury":
+            if state["phase"] == "bury":
                 ids = [c["id"] for c in state["hand"][:8]]
                 await ws.send(json.dumps({"type": "bury", "card_ids": ids}))
             elif state["phase"] == "play":
@@ -77,3 +78,7 @@ async def main():
 
 
 asyncio.run(main())
+import os
+import sys
+sys.stdout.flush()
+os._exit(0)  # skip teardown of the daemonized uvicorn thread

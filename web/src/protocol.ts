@@ -17,8 +17,8 @@ export type ClientMsg =
   | { type: "add_bot" }
   | { type: "remove_bot" }
   | { type: "start_game" }
-  | { type: "declare"; card_ids: number[] }
-  | { type: "pass_declare" }
+  | { type: "declare"; card_ids: number[] } // anytime during deal or declare phase
+  | { type: "pass_declare" } // declare phase: marks you done with the declare window
   | { type: "bury"; card_ids: number[] }
   | { type: "play"; card_ids: number[] }
   | { type: "next_round" };
@@ -102,10 +102,11 @@ export interface GameState {
   levels: [string, string];
   banker: number | null;
   trump: Trump | null;
-  turn: number | null;
-  // declare phase
-  declare_options: number[][];
+  turn: number | null; // whose action is awaited (bury/play); null during deal/declare
+  // deal & declare phases (declaration is a race, not a rotation)
+  declare_options: number[][]; // your valid declarations right now; [] if you can't beat the current one
   current_declaration: Declaration | null;
+  passed: number[]; // seats done with the declare window (cleared when someone declares)
   // play phase
   trick: Trick | null;
   last_trick: LastTrick | null;

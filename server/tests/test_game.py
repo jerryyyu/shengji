@@ -38,6 +38,29 @@ def test_game_over_on_ace():
     assert r.game_over and g.game_over
 
 
+def test_deal_and_declare_flow():
+    import random
+    from shengji.engine.round import Round
+    rnd = Round("2", None, random.Random(0))
+    dealt = 0
+    while rnd.phase == "deal":
+        rnd.deal_next()
+        dealt += 1
+    assert dealt == 100
+    assert all(len(h) == 25 for h in rnd.hands)
+    assert len(rnd.kitty) == 8
+    declarer = next(s for s in range(4) if rnd.declare_options(s))
+    opt = rnd.declare_options(declarer)[0]
+    rnd.declare(declarer, opt)
+    rnd.pass_declare((declarer + 1) % 4)
+    assert rnd.passed == {(declarer + 1) % 4}
+    rnd.finalize_declare()
+    assert rnd.phase == "bury"
+    assert rnd.banker == declarer  # first round: first declarer takes it
+    assert len(rnd.hands[declarer]) == 33
+    assert rnd.ordering is not None
+
+
 def test_full_round_invariants():
     bots = [HeuristicBot() for _ in range(4)]
     for seed in range(8):

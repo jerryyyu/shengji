@@ -22,6 +22,7 @@ function declareLabel(ids: number[], hand: HandCard[]): string {
 function OpponentPanel({ player, state }: { player: StatePlayer; state: GameState }) {
   const pos = seatPos(player.seat, state.you);
   const onTurn = state.turn === player.seat;
+  const hasPassed = state.phase === "declare" && state.passed.includes(player.seat);
   const backs = Math.min(player.cards_left, 5);
   return (
     <div className={`opponent pos-${pos} team${player.team}${onTurn ? " on-turn" : ""}${player.connected || player.is_bot ? "" : " disconnected"}`}>
@@ -29,6 +30,7 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
         {player.is_banker ? <span className="banker-crown" title="Banker">👑</span> : null}
         <span>{player.name}</span>
         {player.is_bot ? <span className="bot-tag">BOT</span> : null}
+        {hasPassed ? <span className="ready-tag">ready</span> : null}
         {!player.connected && !player.is_bot ? <span className="off-tag">offline</span> : null}
       </div>
       <div className="opp-cards">
@@ -112,10 +114,16 @@ export default function Table({ state }: { state: GameState }) {
       ? state.trick
       : null;
   const declaration =
-    state.phase === "declare" || state.phase === "bury" ? state.current_declaration : null;
+    state.phase === "deal" || state.phase === "declare" || state.phase === "bury"
+      ? state.current_declaration
+      : null;
 
   let actionBar: ReactNode = null;
-  if (state.phase === "declare" && myTurn) {
+  if (state.phase === "deal" || state.phase === "declare") {
+    // Declaration is a race: options can appear for anyone during dealing and
+    // during the short declare window afterwards. No Pass while dealing.
+    const canDeclare = state.declare_options.length > 0;
+    const iPassed = state.passed.includes(state.you);
     actionBar = (
       <>
         {state.declare_options.map((ids) => (
@@ -127,9 +135,20 @@ export default function Table({ state }: { state: GameState }) {
             {declareLabel(ids, state.hand)}
           </button>
         ))}
-        <button className="btn" onClick={() => conn.send({ type: "pass_declare" })}>
-          Pass
-        </button>
+        {state.phase === "declare" ? (
+          <button
+            className="btn"
+            disabled={iPassed}
+            onClick={() => conn.send({ type: "pass_declare" })}
+          >
+            {iPassed ? "Passed" : "Pass"}
+          </button>
+        ) : null}
+        {!canDeclare ? (
+          <span className="action-hint">
+            {state.phase === "deal" ? "Dealing cards…" : "Waiting for declarations…"}
+          </span>
+        ) : null}
       </>
     );
   } else if (state.phase === "bury" && iAmBanker) {
@@ -161,8 +180,6 @@ export default function Table({ state }: { state: GameState }) {
         </button>
       </>
     );
-  } else if (state.phase === "deal") {
-    actionBar = <span className="action-hint">Dealing cards…</span>;
   } else if (state.turn !== null && !myTurn) {
     const turnPlayer = state.players.find((p) => p.seat === state.turn);
     actionBar = <span className="action-hint">Waiting for {turnPlayer?.name ?? "…"}</span>;
@@ -188,6 +205,9 @@ export default function Table({ state }: { state: GameState }) {
             {iAmBanker ? <span className="banker-crown" title="Banker">👑</span> : null}
             <span className="you-name">{me?.name ?? "You"}</span>
             {myTurn ? <span className="your-turn-tag">your turn</span> : null}
+            {state.phase === "declare" && state.passed.includes(state.you) ? (
+              <span className="ready-tag">ready</span>
+            ) : null}
           </div>
           <div className="action-bar">{actionBar}</div>
           <Hand hand={state.hand} selected={selected} selectable={selectable} onToggle={toggle} />

@@ -18,6 +18,9 @@ from ..engine.legal import IllegalPlay
 from ..engine.round import Round
 
 BOT_DELAY = 0.7
+DEAL_DELAY = 0.09          # seconds between dealt cards (~9s full deal)
+DECLARE_GRACE = 5.0        # window after the deal; extended on new declarations
+DECLARE_EXTEND = 3.0
 app = FastAPI(title="shengji")
 
 rooms: dict[str, "Room"] = {}
@@ -41,6 +44,7 @@ class Room:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     bot: HeuristicBot = field(default_factory=HeuristicBot)
     bot_task: asyncio.Task | None = None
+    deal_task: asyncio.Task | None = None
 
     @property
     def round(self) -> Round | None:
@@ -50,11 +54,7 @@ class Room:
     def index_round(self) -> None:
         rnd = self.round
         assert rnd is not None
-        self.ids = [{} for _ in range(4)]
-        for seat in range(4):
-            for i in range(25):
-                idx = seat * 25 + i
-                self.ids[seat][idx] = rnd.deck[idx]
+        self.ids = [{} for _ in range(4)]  # filled card-by-card as the deal runs
         self._kitty_ids = {100 + i: rnd.deck[100 + i] for i in range(8)}
         self._kitty_given = False
 
@@ -125,10 +125,8 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
                  "rank": rnd.trump_rank,
                  "declarer": rnd.declaration["seat"] if rnd.declaration else None}
 
-    declare_options = []
-    if rnd.phase == "declare" and rnd.turn == seat:
-        declare_options = [room.ids_for_codes(seat, opt)
-                           for opt in rnd.declare_options(seat)]
+    declare_options = [room.ids_for_codes(seat, opt)
+                       for opt in rnd.declare_options(seat)]
 
     result = game.result
     return {
@@ -148,6 +146,7 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
         "trump": trump,
         "turn": rnd.turn,
         "declare_options": declare_options,
+        "passed": sorted(rnd.passed),
         "current_declaration": (
             {"seat": rnd.declaration["seat"], "cards": rnd.declaration["cards"]}
             if rnd.declaration else None),
@@ -213,13 +212,7 @@ async def pump_bots(room: Room) -> None:
             if seat is None or not room.seats[seat].is_bot:
                 return
             try:
-                if rnd.phase == "declare":
-                    cards = room.bot.decide_declare(rnd, seat)
-                    if cards:
-                        rnd.declare(seat, cards)
-                    else:
-                        rnd.pass_declare(seat)
-                elif rnd.phase == "bury":
+                if rnd.phase == "bury":
                     cards = room.bot.decide_bury(rnd, seat)
                     room.sync_kitty()
                     rnd.bury(seat, cards)
@@ -241,6 +234,66 @@ def kick_bots(room: Room) -> None:
     if seat is not None and room.seats[seat].is_bot:
         if room.bot_task is None or room.bot_task.done():
             room.bot_task = asyncio.create_task(pump_bots(room))
+
+
+# ---------------------------------------------------------------- deal task
+def _bot_declares(room: Room, seats: list[int], final: bool = False) -> None:
+    rnd = room.round
+    assert rnd is not None
+    for s in seats:
+        if room.seats[s].is_bot:
+            cards = room.bot.decide_declare(rnd, s, final=final)
+            if cards:
+                try:
+                    rnd.declare(s, cards)
+                except IllegalPlay:
+                    pass
+
+
+async def run_deal(room: Room) -> None:
+    """Stream the deal card by card, then run the declare grace window."""
+    rnd = room.round
+    assert rnd is not None
+    while True:
+        async with room.lock:
+            if room.round is not rnd:
+                return
+            if rnd.phase != "deal":
+                break
+            seat, idx, code = rnd.deal_next()
+            room.ids[seat][idx] = code
+            _bot_declares(room, [seat])
+            await broadcast(room)
+        await asyncio.sleep(DEAL_DELAY)
+
+    loop = asyncio.get_event_loop()
+    async with room.lock:
+        _bot_declares(room, list(range(4)), final=True)
+        for s in range(4):
+            if room.seats[s].is_bot:
+                rnd.passed.add(s)
+        await broadcast(room)
+    deadline = loop.time() + DECLARE_GRACE
+    last_declaration = rnd.declaration
+    while True:
+        await asyncio.sleep(0.25)
+        async with room.lock:
+            if room.round is not rnd or rnd.phase != "declare":
+                return
+            if rnd.declaration is not last_declaration:
+                last_declaration = rnd.declaration
+                deadline = max(deadline, loop.time() + DECLARE_EXTEND)
+                _bot_declares(room, list(range(4)), final=True)
+                for s in range(4):
+                    if room.seats[s].is_bot:
+                        rnd.passed.add(s)
+            humans = [i for i, s in enumerate(room.seats)
+                      if not s.is_bot and s.connected]
+            if all(i in rnd.passed for i in humans) or loop.time() >= deadline:
+                rnd.finalize_declare()
+                await broadcast(room)
+                kick_bots(room)
+                return
 
 
 # ------------------------------------------------------------------ actions
@@ -276,6 +329,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         room.game = Game()
         room.game.start_round()
         room.index_round()
+        room.deal_task = asyncio.create_task(run_deal(room))
     elif game is None or rnd is None:
         raise IllegalPlay("Game not started.")
     elif t == "declare":
@@ -310,6 +364,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
             raise IllegalPlay("Game is over.")
         game.start_round()
         room.index_round()
+        room.deal_task = asyncio.create_task(run_deal(room))
     else:
         raise IllegalPlay(f"Unknown action: {t}")
 

@@ -40,13 +40,16 @@ class RoundLog:
 def play_round(game: Game, policies: list, record: bool = False) -> RoundLog:
     """Drive one round to completion with the given 4 policies."""
     rnd = game.start_round()
-    while rnd.phase == "declare":
-        seat = rnd.turn
+    while rnd.phase == "deal":
+        seat, _, _ = rnd.deal_next()
         cards = policies[seat].decide_declare(rnd, seat)
         if cards:
             rnd.declare(seat, cards)
-        else:
-            rnd.pass_declare(seat)
+    for seat in range(4):  # last chance with a lower bar, like the grace window
+        cards = policies[seat].decide_declare(rnd, seat, final=True)
+        if cards:
+            rnd.declare(seat, cards)
+    rnd.finalize_declare()
     assert rnd.banker is not None
     rnd.bury(rnd.banker, policies[rnd.banker].decide_bury(rnd, rnd.banker))
     history = []

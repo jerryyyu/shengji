@@ -20,8 +20,8 @@ Two decks are used, so each code appears twice. Every physical card instance has
 | `add_bot` | — | host, in lobby or between rounds |
 | `remove_bot` | — | host, lobby (removes last bot) |
 | `start_game` | — | host, lobby, exactly 4 players |
-| `declare` | `card_ids: number[]` (1 or 2 ids of a valid declaration) | your declare turn |
-| `pass_declare` | — | your declare turn |
+| `declare` | `card_ids: number[]` (1 or 2 ids of a valid declaration) | anytime during `deal` or `declare` phase |
+| `pass_declare` | — | `declare` phase (marks you done with the declare window) |
 | `bury` | `card_ids: number[]` (exactly 8) | you are banker, phase `bury` |
 | `play` | `card_ids: number[]` | your play turn |
 | `next_round` | — | phase `round_end`, any player (host advances) |
@@ -55,10 +55,11 @@ interface GameState {
   banker: number | null;          // banker seat (null before first declaration of game)
   trump: { suit: string | null; rank: string; declarer: number | null } | null;
     // suit: "S"|"H"|"D"|"C"|"NT" (jokers declared = no-trump). rank e.g. "2".
-  turn: number | null;            // whose action is awaited (declare/bury/play)
-  // --- declare phase ---
-  declare_options: number[][];    // arrays of your card ids forming valid declarations (only on your turn)
+  turn: number | null;            // whose action is awaited (bury/play); null during deal/declare
+  // --- deal & declare phases ---
+  declare_options: number[][];    // arrays of your card ids forming valid declarations, [] if you can't beat the current one
   current_declaration: { seat: number; cards: string[] } | null;
+  passed: number[];               // seats done with the declare window (cleared when someone declares)
   // --- play phase ---
   trick: { leader: number; plays: { seat: number; cards: string[] }[] } | null;
   last_trick: { leader: number; plays: { seat: number; cards: string[] }[]; winner: number; points: number } | null;
@@ -85,11 +86,12 @@ Optional animation hints; safe to ignore. Kinds: `trick_won {winner, points}`, `
 ## Flow
 
 1. `create_room` → `room` message with code; others `join_room`; host `add_bot` to fill; `start_game` requires 4 seats.
-2. **deal/declare**: hands are dealt, then a bidding loop runs, `turn` rotates. On your turn `declare_options` lists your valid declarations (single trump-rank card; pair of trump-rank cards; pair of jokers = NT). A declaration must beat the current one (pair > single, joker pair > any). Declaring or passing advances the turn; the loop ends after all others pass. If nobody declares, the server flips the kitty to fix trump. First round: first declarer's seat becomes banker; later rounds banker is fixed by rotation and declaring only sets the suit.
-3. **bury**: banker's hand shows 33 cards (25 + 8 kitty); banker sends `bury` with 8 ids.
-4. **play**: `turn` rotates; send `play` with card ids. Server validates follow rules, resolves tricks (`last_trick` updates, `trick` resets to winner leading).
-5. **round_end**: `round_result` populated; any human sends `next_round` to start the next round (banker/levels advance per result).
-6. **game_over** when a team wins the round while on level A.
+2. **deal**: cards are dealt one at a time (~10s for the full deal); each new state shows your hand growing and every player's `cards_left`. At ANY point during dealing, a player holding a valid declaration (`declare_options` non-empty) may send `declare`: single trump-rank card sets that suit; a pair of trump-rank cards beats a single; a joker pair beats both and declares NT. `turn` is null throughout — declaration is a race, not a rotation.
+3. **declare**: a short grace window (~5s) after the last card so anyone can still (over-)declare. `pass_declare` marks you done (you appear in `passed`); the window closes when every connected human has passed or the timer runs out — a new declaration resets both. If nobody declared at all, the server flips the kitty to fix trump. First round: first declarer's seat becomes banker; later rounds the banker is fixed by rotation and declaring only sets the suit.
+4. **bury**: banker's hand shows 33 cards (25 + 8 kitty); banker sends `bury` with 8 ids.
+5. **play**: `turn` rotates; send `play` with card ids. Server validates follow rules, resolves tricks (`last_trick` updates, `trick` resets to winner leading).
+6. **round_end**: `round_result` populated; any human sends `next_round` to start the next round (banker/levels advance per result).
+7. **game_over** when a team wins the round while on level A.
 
 ## Reconnect
 

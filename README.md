@@ -23,9 +23,11 @@ Headless bot-vs-bot evaluation: `uv run python -m shengji.ai.env`.
 ## Rules implemented (standard 4-player, 2 decks)
 
 - Teams 0+2 vs 1+3, levels 2→A; the banker team's level is the trump rank.
-- Bidding: reveal trump-rank card(s) to declare (pair beats single, joker
-  pair declares no-trump and beats both). No declaration → trump is flipped
-  from the kitty. First round's first declarer becomes banker.
+- Live dealing phase: cards are dealt one at a time and any player may
+  declare mid-deal by revealing trump-rank card(s) (pair beats single, joker
+  pair declares no-trump and beats both), with a short grace window after the
+  last card for over-declarations. No declaration → trump is flipped from
+  the kitty. First round's first declarer becomes banker.
 - Banker takes the 8-card kitty and buries 8.
 - Pairs, tractors (consecutive pairs, trump-aware adjacency incl. rank cards
   and jokers), and throws (甩牌) — an invalid throw is forced down to its

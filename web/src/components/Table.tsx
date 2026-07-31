@@ -36,7 +36,7 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
       <div className="opp-cards">
         <div className="back-stack">
           {Array.from({ length: backs }, (_, i) => (
-            <Card key={i} width={34} className="stacked" />
+            <Card key={i} className="stacked" />
           ))}
         </div>
         <span className="card-count">{player.cards_left}</span>

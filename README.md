@@ -50,7 +50,9 @@ component throws use the pair-count rule.
 
 ```
 server/shengji/engine/   cards, combos (tractor decomposition), legality, round, game
-server/shengji/ai/       heuristic.py (baseline bot), env.py (self-play harness)
+server/shengji/ai/       heuristic.py (baseline), memory.py (card counting /
+                         void inference), smart.py (memory-aware bot, wins
+                         ~68% of games vs baseline), env.py (self-play harness)
 server/shengji/api/      FastAPI WebSocket server (rooms, bots, per-seat state)
 server/tests/            unit tests + randomized self-play soak tests
 web/                     React + TypeScript UI (Vite)

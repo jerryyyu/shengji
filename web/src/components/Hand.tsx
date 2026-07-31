@@ -17,7 +17,6 @@ export default function Hand({ hand, selected, selectable, onToggle }: HandProps
         <div key={c.id} className="hand-slot">
           <Card
             code={c.code}
-            width={72}
             selected={selected.has(c.id)}
             onClick={selectable ? () => onToggle(c.id) : undefined}
           />

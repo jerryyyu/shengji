@@ -32,7 +32,7 @@ export default function TrickArea({ state, trick, winner, declaration }: TrickAr
           <div key={`${play.seat}-${play.cards.join(",")}`} className={`trick-play pos-${pos}${isWinner ? " winner" : ""}`}>
             <div className="trick-cards">
               {play.cards.map((code, i) => (
-                <Card key={i} code={code} width={52} />
+                <Card key={i} code={code} />
               ))}
             </div>
             <div className="trick-tag">

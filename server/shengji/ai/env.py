@@ -88,4 +88,6 @@ def evaluate(policy_a, policy_b, n_games: int = 100, seed: int = 0) -> dict:
 
 if __name__ == "__main__":
     from .heuristic import HeuristicBot
-    print(evaluate(HeuristicBot(), HeuristicBot(), n_games=20))
+    from .smart import SmartBot
+    print("SmartBot (a) vs HeuristicBot (b):")
+    print(evaluate(SmartBot(), HeuristicBot(), n_games=100))

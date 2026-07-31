@@ -60,6 +60,7 @@ class Round:
         self.buried: list[str] = []
         self.trick: Trick | None = None
         self.last_trick: Trick | None = None
+        self.history: list[Trick] = []  # resolved tricks, in order
         self.attacker_points = 0
         self.kitty_bonus = 0
         self.last_trick_winner: int | None = None
@@ -206,6 +207,7 @@ class Round:
         if self.is_attacker(winner):
             self.attacker_points += pts
         self.last_trick = self.trick
+        self.history.append(self.trick)
         if not any(self.hands):
             self.last_trick_winner = winner
             if self.is_attacker(winner):

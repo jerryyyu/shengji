@@ -76,6 +76,10 @@ export default function App() {
           {toast}
         </div>
       ) : null}
+      <div className="rotate-hint" aria-hidden="true">
+        <div className="rotate-icon">📱</div>
+        <div>Rotate your phone to play</div>
+      </div>
     </div>
   );
 }

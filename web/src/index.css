@@ -38,11 +38,17 @@ body {
 
 .app {
   height: 100%;
+  touch-action: manipulation; /* no double-tap zoom on the table */
 }
 
 button,
 input {
   font: inherit;
+}
+
+button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* ---------- shared chrome ---------- */
@@ -52,11 +58,14 @@ input {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow-y: auto;
+  padding: 12px;
   background:
     radial-gradient(ellipse 120% 90% at 50% 35%, var(--felt-1) 0%, var(--felt-2) 55%, var(--felt-3) 100%);
 }
 
 .panel {
+  margin: auto; /* keeps overflowing panels scroll-reachable in short viewports */
   background: linear-gradient(180deg, var(--panel) 0%, #171b22 100%);
   border: 1px solid var(--panel-edge);
   border-radius: 16px;
@@ -722,6 +731,7 @@ input {
 
 .back-stack {
   display: flex;
+  --cw: 34px;
 }
 
 .back-stack .card.stacked + .card.stacked {
@@ -769,6 +779,11 @@ input {
   transform: translate(-50%, -50%);
   width: 520px;
   height: 320px;
+  pointer-events: none; /* nothing here is interactive; never block taps */
+}
+
+.trick-cards {
+  --cw: 52px;
 }
 
 .trick-play {
@@ -933,6 +948,7 @@ input {
   justify-content: center;
   padding: 22px 30px 6px;
   max-width: 100vw;
+  --cw: 72px;
 }
 
 .hand-slot {
@@ -950,18 +966,21 @@ input {
   transition: transform 0.12s ease-out, box-shadow 0.12s;
 }
 
-.hand.selectable .card.clickable:hover {
-  transform: translateY(-10px);
-  z-index: 5;
+/* Hover-lift is a mouse nicety only — tap/click alone selects on touch. */
+@media (hover: hover) {
+  .hand.selectable .card.clickable:hover {
+    transform: translateY(-10px);
+    z-index: 5;
+  }
+
+  .hand.selectable .card.selected:hover {
+    transform: translateY(-22px);
+  }
 }
 
 .hand .card.selected {
   transform: translateY(-18px);
   box-shadow: 0 0 0 2px var(--gold), 0 6px 16px rgba(0, 0, 0, 0.45);
-}
-
-.hand.selectable .card.selected:hover {
-  transform: translateY(-22px);
 }
 
 /* ---------- Cards ---------- */
@@ -976,6 +995,8 @@ input {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
   flex-shrink: 0;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .card.clickable {
@@ -1157,6 +1178,7 @@ input {
 .kitty-cards {
   display: flex;
   justify-content: center;
+  --cw: 46px;
 }
 
 .kitty-cards .card + .card {
@@ -1180,4 +1202,345 @@ input {
 .victory-sub {
   margin: 0;
   color: var(--text-dim);
+}
+
+/* ============ Mobile landscape (short viewports) ============ */
+/* Phones held horizontally: ~740-930 x 360-430. Everything must fit with no
+   page scrolling. Desktop rules above are untouched. */
+
+@media (max-height: 500px) {
+  /* --- HUD: single thin bar, essentials only --- */
+  .hud {
+    padding: 3px calc(10px + env(safe-area-inset-right)) 2px calc(10px + env(safe-area-inset-left));
+  }
+
+  .room-chip,
+  .phase-chip {
+    display: none; /* non-essential on a phone */
+  }
+
+  .chip {
+    padding: 2px 9px;
+    font-size: 11px;
+    gap: 5px;
+  }
+
+  .trump-chip {
+    font-size: 12px;
+  }
+
+  .trump-suit.red,
+  .trump-suit.black {
+    font-size: 14px;
+  }
+
+  .trump-rank {
+    font-size: 13px;
+  }
+
+  .points-big {
+    font-size: 15px;
+  }
+
+  .kitty-icon {
+    width: 9px;
+    height: 13px;
+  }
+
+  .hud-message {
+    font-size: 11px;
+    padding: 2px 0 1px;
+  }
+
+  /* --- Opponent panels: name + count + badges only --- */
+  .opponent {
+    padding: 5px 10px;
+    min-width: 96px;
+    gap: 2px;
+    border-radius: 10px;
+    border-top-width: 2px;
+  }
+
+  .opp-name {
+    font-size: 12px;
+  }
+
+  .banker-crown {
+    font-size: 12px;
+  }
+
+  .opp-cards {
+    gap: 6px;
+  }
+
+  .back-stack {
+    --cw: 20px;
+  }
+
+  .back-stack .card.stacked {
+    display: none;
+  }
+
+  .back-stack .card.stacked:first-child {
+    display: block; /* a single small back as the "count" icon */
+  }
+
+  .card-count {
+    font-size: 12px;
+  }
+
+  .thinking,
+  .their-turn {
+    font-size: 10px;
+  }
+
+  .bot-tag,
+  .you-tag,
+  .host-tag,
+  .off-tag,
+  .ready-tag {
+    font-size: 8px;
+    padding: 1px 4px;
+    margin-left: 4px;
+  }
+
+  .opponent.pos-top {
+    top: 4px;
+  }
+
+  .opponent.pos-left {
+    left: calc(4px + env(safe-area-inset-left));
+    top: 36%;
+  }
+
+  .opponent.pos-right {
+    right: calc(4px + env(safe-area-inset-right));
+    top: 36%;
+  }
+
+  /* --- Center trick area: tight cross layout --- */
+  .trick-area {
+    width: 320px;
+    height: 140px;
+    top: 38%;
+  }
+
+  .trick-cards {
+    --cw: 36px;
+  }
+
+  .trick-cards .card + .card {
+    margin-left: -12px;
+  }
+
+  .trick-tag {
+    min-height: 12px;
+  }
+
+  .lead-tag,
+  .win-tag {
+    font-size: 8px;
+    padding: 1px 6px;
+  }
+
+  .declare-tag {
+    font-size: 9px;
+  }
+
+  .table-emblem {
+    font-size: 48px;
+  }
+
+  /* --- Your area: compact fan, thumb-sized buttons --- */
+  .you-area {
+    gap: 4px;
+    padding-bottom: calc(4px + env(safe-area-inset-bottom));
+  }
+
+  .you-tagline {
+    font-size: 12px;
+    padding: 2px 12px;
+  }
+
+  .action-bar {
+    min-height: 30px;
+    gap: 6px;
+  }
+
+  .action-bar .btn {
+    min-height: 40px; /* touch target */
+    padding: 6px 14px;
+    font-size: 13px;
+  }
+
+  .action-hint {
+    font-size: 12px;
+  }
+
+  /* Aggressive overlap so 25-33 cards fit ~740px; the visible sliver of each
+     card is its own hit area (cards are siblings, nothing overlays padding). */
+  .hand {
+    --cw: 54px;
+    padding: 12px calc(8px + env(safe-area-inset-right)) 4px calc(8px + env(safe-area-inset-left));
+  }
+
+  .hand-slot {
+    flex: 0 1 21px;
+    width: 21px;
+    min-width: 9px;
+  }
+
+  .hand .card.selected {
+    transform: translateY(-9px); /* reduced pop: stays inside the viewport */
+  }
+
+  /* --- Lobby / Room fit in 360px-tall viewports --- */
+  .panel {
+    padding: 16px 22px;
+  }
+
+  .lobby-panel,
+  .room-panel {
+    gap: 10px;
+    width: 360px;
+  }
+
+  .game-title {
+    font-size: 28px;
+  }
+
+  .game-title-en {
+    font-size: 11px;
+    letter-spacing: 0.25em;
+    margin-top: 2px;
+  }
+
+  .game-subtitle {
+    margin: -4px 0 0;
+  }
+
+  .field input,
+  .room-input {
+    padding: 8px 12px;
+  }
+
+  .btn.big {
+    padding: 9px 18px;
+    font-size: 14px;
+  }
+
+  .room-code {
+    font-size: 26px;
+    padding: 8px 4px 8px 16px;
+  }
+
+  .seat-list {
+    gap: 5px;
+  }
+
+  .seat-row {
+    padding: 5px 12px;
+    font-size: 13px;
+  }
+
+  .team-legend {
+    gap: 16px;
+    font-size: 11px;
+  }
+
+  /* --- Round end modal: scrollable inside, fits 360px tall --- */
+  .modal {
+    padding: 14px 20px;
+    gap: 10px;
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
+  }
+
+  .modal-title {
+    font-size: 17px;
+  }
+
+  .result-grid {
+    padding: 8px 14px;
+    gap: 4px 18px;
+  }
+
+  .result-label {
+    font-size: 12px;
+  }
+
+  .result-value {
+    font-size: 13px;
+  }
+
+  .kitty-cards {
+    --cw: 32px;
+  }
+
+  .kitty-cards .card + .card {
+    margin-left: -10px;
+  }
+
+  .victory-crown {
+    font-size: 38px;
+  }
+
+  .victory-title {
+    font-size: 20px;
+  }
+
+  .victory-sub {
+    font-size: 13px;
+  }
+
+  .toast {
+    bottom: 120px;
+    font-size: 13px;
+    padding: 8px 16px;
+  }
+
+  .reconnect-banner {
+    top: 40px;
+  }
+}
+
+/* ============ Portrait phones: rotate hint ============ */
+
+.rotate-hint {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--chrome);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+  padding: 24px;
+}
+
+.rotate-icon {
+  font-size: 48px;
+  animation: rotate-nudge 1.8s ease-in-out infinite;
+}
+
+@keyframes rotate-nudge {
+  0%,
+  20% {
+    transform: rotate(0deg);
+  }
+  60%,
+  100% {
+    transform: rotate(90deg);
+  }
+}
+
+@media (orientation: portrait) and (max-width: 600px) {
+  .rotate-hint {
+    display: flex;
+  }
 }

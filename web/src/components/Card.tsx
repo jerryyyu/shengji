@@ -23,15 +23,18 @@ export function codeLabel(code: string): string {
 interface CardProps {
   /** Card code ("S2", "H10", "BJ"...). Omit for a face-down back. */
   code?: string;
-  /** Width in px; height follows the 5:7 aspect ratio. */
+  /**
+   * Width in px; height follows the 5:7 aspect ratio. Usually omitted — the
+   * containing zone sets the `--cw` CSS variable so media queries can resize.
+   */
   width?: number;
   selected?: boolean;
   onClick?: () => void;
   className?: string;
 }
 
-export default function Card({ code, width = 70, selected = false, onClick, className }: CardProps) {
-  const style = { "--cw": `${width}px` } as CSSProperties;
+export default function Card({ code, width, selected = false, onClick, className }: CardProps) {
+  const style = width !== undefined ? ({ "--cw": `${width}px` } as CSSProperties) : undefined;
   const cls = (extra: string) =>
     ["card", extra, selected ? "selected" : "", onClick ? "clickable" : "", className ?? ""]
       .filter(Boolean)

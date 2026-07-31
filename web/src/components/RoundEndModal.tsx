@@ -73,7 +73,7 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
           <div className="kitty-reveal-label">Kitty</div>
           <div className="kitty-cards">
             {result.kitty_cards.map((code, i) => (
-              <Card key={i} code={code} width={46} />
+              <Card key={i} code={code} />
             ))}
           </div>
         </div>

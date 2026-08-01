@@ -42,10 +42,14 @@ export function setMuted(m: boolean): void {
   if (m) queue.length = 0;
 }
 
+// Bump when clips are regenerated so browsers refetch instead of using
+// cached audio from an older voice.
+const SOUNDS_VERSION = 2;
+
 function loadClip(name: string): Promise<AudioBuffer | null> {
   let p = clipCache.get(name);
   if (!p) {
-    p = fetch(`/sounds/${name}.mp3`)
+    p = fetch(`/sounds/${name}.mp3?v=${SOUNDS_VERSION}`)
       .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`${r.status}`))))
       .then((ab) => ensureCtx().decodeAudioData(ab))
       .catch(() => null); // 404 / decode failure: silently skip

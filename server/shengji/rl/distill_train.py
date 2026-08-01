@@ -14,10 +14,16 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-CE_WEIGHT = 0.3
+CE_WEIGHT = 1.0
 BATCH_DECISIONS = 512
 VALUE_SCALE = 100.0  # MC values are in points (±100+); normalize so the
 #                      MSE term is O(1) and balances the CE term
+CE_TEMP = 0.05  # CE softmax over Q/T: MSE pins Q to true value gaps (~0.1
+#                 within a decision — mostly near-ties), which leaves the
+#                 softmax nearly uniform and choices unlearnable (measured:
+#                 CE stuck ~1.0, gate 32%). The temperature decouples the
+#                 scales: a 5-point value gap becomes a confident preference
+#                 without disturbing value calibration.
 
 
 def main() -> None:
@@ -69,11 +75,12 @@ def main() -> None:
             with torch.set_grad_enabled(training):
                 q, v, a_rows = net.q_grouped(o, ar, seg, len(dec))
                 loss_val = torch.nn.functional.mse_loss(q, tg)
+                ql = q / CE_TEMP  # temperature-scaled logits for CE only
                 qmax = torch.full((len(dec),), -1e9, device=dev)
-                qmax = qmax.scatter_reduce(0, seg, q, reduce="amax")
-                ex = torch.exp(q - qmax[seg])
+                qmax = qmax.scatter_reduce(0, seg, ql, reduce="amax")
+                ex = torch.exp(ql - qmax[seg])
                 denom = torch.zeros(len(dec), device=dev).index_add_(0, seg, ex)
-                logp = (q - qmax[seg]) - torch.log(denom[seg] + 1e-9)
+                logp = (ql - qmax[seg]) - torch.log(denom[seg] + 1e-9)
                 loss_ce = -logp[chr_].mean()
                 if training:
                     loss = loss_val + CE_WEIGHT * loss_ce
@@ -84,7 +91,7 @@ def main() -> None:
             tot_ce += loss_ce.item()
             n_batches += 1
             with torch.no_grad():
-                is_best = q >= (qmax[seg] - 1e-6)
+                is_best = ql >= (qmax[seg] - 1e-6)
                 correct += int(is_best[chr_].sum().item())
                 total += len(dec)
 

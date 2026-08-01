@@ -44,6 +44,31 @@ def test_action_enumeration_legal_and_encoded():
             validate_follow(a, rnd.hands[seat], lead, rnd.ordering)
 
 
+def test_follow_enumeration_is_complete():
+    # every legal distinct-code multiset must be on the ballot (small n)
+    from itertools import combinations
+    from shengji.engine.legal import IllegalPlay
+    checked = 0
+    for seed in range(6):
+        rnd = _midround(seed=seed)
+        if rnd.phase != "play" or not rnd.trick.plays:
+            continue
+        seat = rnd.turn
+        lead = rnd.trick.plays[0].cards
+        if len(lead) > 2:
+            continue
+        ballot = {tuple(sorted(a)) for a in enumerate_actions(rnd, seat)}
+        for combo in {tuple(sorted(c)) for c in
+                      combinations(sorted(rnd.hands[seat]), len(lead))}:
+            try:
+                validate_follow(list(combo), rnd.hands[seat], lead, rnd.ordering)
+            except IllegalPlay:
+                continue
+            assert combo in ballot, (combo, lead)
+            checked += 1
+    assert checked > 10
+
+
 def test_lead_enumeration_covers_hand():
     rnd = _midround(seed=5)
     # walk to a state where someone is leading

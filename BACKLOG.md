@@ -50,7 +50,7 @@ each section; strike or move items as they land.
 - [x] RL Phase 3 infrastructure (2026-08-01): DMC actor/learner loop built
       and running (~45 rounds/s net-driven). First recipe flat-lined at
       ~34% vs SmartBot — diagnosis + fix list in RL_PLAN.md.
-- [ ] **Exhaustive follow enumeration** (evidence: 20% of humans' plays in
+- [x] **Exhaustive follow enumeration** (2026-08-01: done — (evidence: 20% of humans' plays in
       narrow spots aren't on the candidate ballot — gap analysis 2026-08-01;
       affects RL action coverage and MCBot follow candidates).
 - [ ] **RL next: MC search distillation** (dense per-candidate targets from

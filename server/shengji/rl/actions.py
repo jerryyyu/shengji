@@ -53,6 +53,44 @@ def enumerate_actions(rnd: Round, seat: int) -> list[list[str]]:
                     add(run)
         add(_helper._lead(rnd, seat))  # heuristic pick incl. safe throws
     else:
-        for cand in _helper._candidates(rnd, seat):
+        # Exhaustive follows (gap analysis 2026-08-01: the constructed
+        # candidate set missed ~20% of humans' legal plays in narrow spots).
+        # Enumerate distinct-code multisets, in-suit part first, validated by
+        # the engine; structured fallbacks seed the pathological cases.
+        from itertools import combinations
+        from ..engine.legal import IllegalPlay, uniform_suit, validate_follow
+        lead = rnd.trick.plays[0].cards
+        n = len(lead)
+        lead_suit = uniform_suit(lead, o)
+        h_suit = suit_cards(hand, lead_suit, o)
+        n_suit = min(n, len(h_suit))
+        LIMIT = 64
+
+        def valid_add(play):
+            if len(plays) >= LIMIT:
+                return
+            try:
+                validate_follow(list(play), hand, lead, o)
+            except IllegalPlay:
+                return
+            add(list(play))
+
+        for cand in _helper._candidates(rnd, seat):  # seeds (always present)
             add(cand)
+        in_suit_sets = {tuple(sorted(c))
+                        for c in combinations(sorted(h_suit), n_suit)}
+        if n_suit == n:
+            for s in sorted(in_suit_sets):
+                valid_add(s)
+        else:
+            off = list(hand)
+            for c in h_suit:
+                off.remove(c)
+            fill_k = n - n_suit
+            fill_sets = {tuple(sorted(c))
+                         for c in combinations(sorted(off), fill_k)}
+            base = tuple(sorted(h_suit))
+            if len(fill_sets) * max(len(in_suit_sets), 1) <= 4000:
+                for f in sorted(fill_sets):
+                    valid_add(base + f)
     return plays

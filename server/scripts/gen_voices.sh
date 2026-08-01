@@ -38,6 +38,7 @@ say_clip "LJ" "小王"
 say_clip "pair" "一对"
 say_clip "nt" "无主"
 say_clip "throw" "甩牌"
+say_clip "tractor" "拖拉机"
 # diaozhu: 钓 (fishing, diào 4th tone) — 调 would be misread as tiáo
 if [ ! -s "$OUT/diaozhu.mp3" ]; then
   echo "gen  diaozhu  <- 钓主 (eleven_v3)"

@@ -17,7 +17,7 @@ say_clip() {  # $1 = filename (no ext), $2 = text
 }
 
 declare -a SUITS=("S:黑桃" "H:红桃" "D:方片" "C:梅花")
-declare -a RANKS=("2:二" "3:三" "4:四" "5:五" "6:六" "7:七" "8:八" "9:九" "10:十" "J:钩" "Q:圈" "K:K" "A:尖儿")
+declare -a RANKS=("2:二" "3:三" "4:四" "5:五" "6:六" "7:七" "8:八" "9:九" "10:十" "J:钩" "Q:圈" "K:K")
 
 for s in "${SUITS[@]}"; do
   sc="${s%%:*}"; sn="${s#*:}"
@@ -25,6 +25,11 @@ for s in "${SUITS[@]}"; do
     rc="${r%%:*}"; rn="${r#*:}"
     say_clip "$sc$rc" "$sn$rn"
   done
+  # Aces use the expressive v3 model (user-auditioned: best 尖 delivery)
+  if [ ! -s "$OUT/${sc}A.mp3" ]; then
+    echo "gen  ${sc}A  <- ${sn}尖 (eleven_v3)"
+    sag speak --model-id eleven_v3 --lang zh -v "$VOICE" -o "$OUT/${sc}A.mp3" "${sn}尖"
+  fi
 done
 say_clip "BJ" "大王"
 say_clip "LJ" "小王"

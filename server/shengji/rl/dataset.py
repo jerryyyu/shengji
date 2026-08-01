@@ -20,6 +20,8 @@ class Decision:
     chosen: int
     seat: int
     ret: float = 0.0             # stamped when the round ends
+    action_values: list[float] | None = None  # per-candidate teacher values
+    #                                           (search distillation targets)
 
 
 @dataclass
@@ -51,17 +53,26 @@ class TrajectoryWriter:
         chosen = np.zeros(n, dtype=np.int32)
         rets = np.zeros(n, dtype=np.float32)
         offsets = np.zeros(n + 1, dtype=np.int64)
+        has_values = np.zeros(n, dtype=bool)
         flat_actions: list[list[float]] = []
+        flat_values: list[float] = []
         for i, d in enumerate(self._buf):
             obs[i] = d.obs
             chosen[i] = d.chosen
             rets[i] = d.ret
             offsets[i + 1] = offsets[i] + len(d.actions)
             flat_actions.extend(d.actions)
+            if d.action_values is not None:
+                has_values[i] = True
+                flat_values.extend(d.action_values)
+            else:
+                flat_values.extend([0.0] * len(d.actions))
         acts = np.asarray(flat_actions, dtype=np.float32).reshape(-1, ACT_DIM)
         path = Path(self.out_dir) / f"shard_{self._shard:05d}.npz"
         np.savez_compressed(path, obs=obs, actions=acts, offsets=offsets,
                             chosen=chosen, returns=rets,
+                            action_values=np.asarray(flat_values, dtype=np.float32),
+                            has_values=has_values,
                             enc_version=np.int32(ENC_VERSION))
         self._buf.clear()
         self._shard += 1

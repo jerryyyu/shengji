@@ -78,6 +78,7 @@ class MCBot(SmartBot):
     # ------------------------------------------------------------------- play
     def decide_play(self, rnd: Round, seat: int) -> list[str]:
         assert rnd.trick is not None and rnd.ordering is not None
+        self.last_eval = None  # (candidates, per-candidate values) for distillation
         if self.TRACTOR_LOCK and not rnd.trick.plays:
             pick = self._lead(rnd, seat)
             dec = decompose(pick, rnd.ordering)
@@ -101,6 +102,8 @@ class MCBot(SmartBot):
                 totals[i] += val if i_attack else -val
         if n_worlds == 0:
             return candidates[0]
+        # acting-team perspective values, exposed for search distillation
+        self.last_eval = (candidates, [t / n_worlds for t in totals])
         best = max(range(len(candidates)), key=lambda i: totals[i])
         # Among near-tied candidates, risk the fewest points.
         from ..engine.cards import points as _pts

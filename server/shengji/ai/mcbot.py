@@ -34,6 +34,9 @@ class MCBot(SmartBot):
     N_DETERMINIZATIONS = 10
     MAX_CANDIDATES = 8
     SAMPLE_RETRIES = 15
+    MARGIN = 5.0  # points/round a candidate must beat SmartBot's pick by;
+    #               keeps the heuristic prior unless the search is confident.
+    #               0 = pure argmax.
 
     def __init__(self, seed: int | None = None):
         self.rng = random.Random(seed)
@@ -48,15 +51,23 @@ class MCBot(SmartBot):
         mem = Memory(rnd, seat)
         i_attack = rnd.is_attacker(seat)
         totals = [0.0] * len(candidates)
+        n_worlds = 0
         for _ in range(self.N_DETERMINIZATIONS):
             sampled = self._sample_hands(rnd, seat, mem)
             if sampled is None:
                 continue
+            n_worlds += 1
             hands, buried = sampled
             for i, cand in enumerate(candidates):
                 pts = self._rollout(rnd, seat, hands, buried, cand)
                 totals[i] += pts if i_attack else -pts
+        if n_worlds == 0:
+            return candidates[0]
         best = max(range(len(candidates)), key=lambda i: totals[i])
+        # candidates[0] is SmartBot's own choice: prefer it unless the search
+        # clears the confidence margin (rollouts are noisiest early on).
+        if best != 0 and (totals[best] - totals[0]) / n_worlds < self.MARGIN:
+            return candidates[0]
         return candidates[best]
 
     # ------------------------------------------------------------- candidates

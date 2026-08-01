@@ -17,7 +17,10 @@ def _smart_variant(name: str, **attrs):
 REGISTRY: dict[str, type] = {
     "heuristic": HeuristicBot,
     "smart": SmartBot,
-    "mc": MCBot,  # determinized Monte Carlo; ~50-150ms per decision
+    "mc": MCBot,  # determinized Monte Carlo; ~30ms/decision (N=10 worlds)
+    "mc-strong": type("MCStrong", (MCBot,), {"N_DETERMINIZATIONS": 30}),
+    "mc-lite": type("MCLite", (MCBot,), {"N_DETERMINIZATIONS": 5}),
+    "mc-argmax": type("MCArgmax", (MCBot,), {"MARGIN": 0.0}),
     # the pre-throws config (2026-07-31, 66% vs heuristic), for reproducibility:
     "smart-v1": _smart_variant("SmartV1", SAFE_THROWS=False, RESERVE_LAST=False,
                                BURY_VOID=False, DECLARE_MIN=9, DECLARE_FINAL=7,

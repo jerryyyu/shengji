@@ -11,6 +11,11 @@ primary_region = 'ewr'
 
 [env]
   SHENGJI_BOT = 'mc'
+  SHENGJI_LOG_DIR = '/data/logs'
+
+[mounts]
+  source = 'shengji_data'
+  destination = '/data'
 
 [http_service]
   internal_port = 8000

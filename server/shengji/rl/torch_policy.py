@@ -26,8 +26,13 @@ class RLBot(SmartBot):
             raise RuntimeError(
                 f"RLBot checkpoint not found ({path!r}); set SHENGJI_RL_CKPT")
         state = torch.load(path, map_location="cpu")
-        self.net = QNetDueling() if any(k.startswith("trunk") for k in state) \
-            else QNet()
+        if any(k.startswith("p_head") for k in state):
+            from .model import PolicyValueNet
+            self.net = PolicyValueNet()
+        elif any(k.startswith("trunk") for k in state):
+            self.net = QNetDueling()
+        else:
+            self.net = QNet()
         self.net.load_state_dict(state)
         self.net.eval()
 

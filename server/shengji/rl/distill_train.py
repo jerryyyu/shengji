@@ -29,12 +29,12 @@ CE_TEMP = 0.05  # CE softmax over Q/T: MSE pins Q to true value gaps (~0.1
 def main() -> None:
     import numpy as np
     import torch
-    from .model import QNetDueling
+    from .model import PolicyValueNet
 
     data_dir, ckpt_out = sys.argv[1], sys.argv[2]
     epochs = int(sys.argv[3]) if len(sys.argv) > 3 else 3
     dev = "mps" if torch.backends.mps.is_available() else "cpu"
-    net = QNetDueling().to(dev)
+    net = PolicyValueNet().to(dev)
     opt = torch.optim.Adam(net.parameters(), lr=3e-4)
 
     shards = sorted(Path(data_dir).glob("shard_*.npz"))
@@ -73,9 +73,8 @@ def main() -> None:
             chr_ = torch.as_tensor(_np.array(ch_row), dtype=torch.long,
                                    device=dev)
             with torch.set_grad_enabled(training):
-                q, v, a_rows = net.q_grouped(o, ar, seg, len(dec))
+                q, ql = net.heads_grouped(o, ar, seg)  # value head, policy logits
                 loss_val = torch.nn.functional.mse_loss(q, tg)
-                ql = q / CE_TEMP  # temperature-scaled logits for CE only
                 qmax = torch.full((len(dec),), -1e9, device=dev)
                 qmax = qmax.scatter_reduce(0, seg, ql, reduce="amax")
                 ex = torch.exp(ql - qmax[seg])

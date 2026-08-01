@@ -76,3 +76,49 @@ if torch is not None:
                 seg = torch.zeros(len(acts), dtype=torch.long)
                 q, _, _ = self.q_grouped(obs, acts, seg, 1)
                 return q
+
+    class PolicyValueNet(nn.Module):
+        """AGZ-style separated heads over a shared trunk: a policy head
+        (unconstrained logits, trained by CE on the teacher's choices —
+        used for play) and a value head (trained by MSE on the teacher's
+        per-candidate values — used for hybrid leaf evaluation). One
+        output cannot serve both: measured twice (gate 32% value-pinned,
+        30% with CE temperature)."""
+
+        def __init__(self, hidden: int = 512):
+            super().__init__()
+            self.trunk = nn.Sequential(
+                nn.Linear(OBS_DIM, hidden), nn.ReLU(),
+                nn.Linear(hidden, 256), nn.ReLU(),
+            )
+            self.q_head = nn.Sequential(
+                nn.Linear(256 + ACT_DIM, 256), nn.ReLU(),
+                nn.Linear(256, 1),
+            )
+            self.p_head = nn.Sequential(
+                nn.Linear(256 + ACT_DIM, 256), nn.ReLU(),
+                nn.Linear(256, 1),
+            )
+
+        def heads_grouped(self, obs_dec, act_rows, seg):
+            feat = self.trunk(obs_dec)
+            fa = torch.cat([feat[seg], act_rows], dim=-1)
+            return self.q_head(fa).squeeze(-1), self.p_head(fa).squeeze(-1)
+
+        def score_candidates(self, obs_vec, action_vecs):
+            """Play-time scoring: the POLICY logits decide."""
+            with torch.no_grad():
+                obs = torch.as_tensor(obs_vec, dtype=torch.float32).unsqueeze(0)
+                acts = torch.as_tensor(action_vecs, dtype=torch.float32)
+                seg = torch.zeros(len(acts), dtype=torch.long)
+                _, logits = self.heads_grouped(obs, acts, seg)
+                return logits
+
+        def value_candidates(self, obs_vec, action_vecs):
+            """Hybrid/leaf evaluation: the VALUE head."""
+            with torch.no_grad():
+                obs = torch.as_tensor(obs_vec, dtype=torch.float32).unsqueeze(0)
+                acts = torch.as_tensor(action_vecs, dtype=torch.float32)
+                seg = torch.zeros(len(acts), dtype=torch.long)
+                q, _ = self.heads_grouped(obs, acts, seg)
+                return q

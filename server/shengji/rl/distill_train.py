@@ -18,12 +18,12 @@ CE_WEIGHT = 1.0
 BATCH_DECISIONS = 512
 VALUE_SCALE = 100.0  # MC values are in points (±100+); normalize so the
 #                      MSE term is O(1) and balances the CE term
-CE_TEMP = 0.05  # CE softmax over Q/T: MSE pins Q to true value gaps (~0.1
-#                 within a decision — mostly near-ties), which leaves the
-#                 softmax nearly uniform and choices unlearnable (measured:
-#                 CE stuck ~1.0, gate 32%). The temperature decouples the
-#                 scales: a 5-point value gap becomes a confident preference
-#                 without disturbing value calibration.
+SOFT_T = 0.05  # soft-target temperature (5 points at VALUE_SCALE): the
+#                policy trains toward softmax(teacher values / T) — the AGZ
+#                visit-distribution analog. Hard choice labels are partly
+#                STOCHASTIC (10-world sampling noise decides near-ties;
+#                measured: unconstrained CE stalled at 57% agreement, gates
+#                32/24) — soft targets average out the teacher's RNG.
 
 
 def main() -> None:
@@ -35,7 +35,7 @@ def main() -> None:
     epochs = int(sys.argv[3]) if len(sys.argv) > 3 else 3
     dev = "mps" if torch.backends.mps.is_available() else "cpu"
     net = PolicyValueNet().to(dev)
-    opt = torch.optim.Adam(net.parameters(), lr=3e-4)
+    opt = torch.optim.Adam(net.parameters(), lr=1e-3)
 
     shards = sorted(Path(data_dir).glob("shard_*.npz"))
     assert shards, f"no shards in {data_dir}"
@@ -75,12 +75,22 @@ def main() -> None:
             with torch.set_grad_enabled(training):
                 q, ql = net.heads_grouped(o, ar, seg)  # value head, policy logits
                 loss_val = torch.nn.functional.mse_loss(q, tg)
-                qmax = torch.full((len(dec),), -1e9, device=dev)
-                qmax = qmax.scatter_reduce(0, seg, ql, reduce="amax")
-                ex = torch.exp(ql - qmax[seg])
-                denom = torch.zeros(len(dec), device=dev).index_add_(0, seg, ex)
-                logp = (ql - qmax[seg]) - torch.log(denom[seg] + 1e-9)
-                loss_ce = -logp[chr_].mean()
+
+                def seg_logsoftmax(x):
+                    xmax = torch.full((len(dec),), -1e9, device=dev)
+                    xmax = xmax.scatter_reduce(0, seg, x, reduce="amax")
+                    ex = torch.exp(x - xmax[seg])
+                    den = torch.zeros(len(dec), device=dev).index_add_(0, seg, ex)
+                    return (x - xmax[seg]) - torch.log(den[seg] + 1e-9), xmax
+
+                logp, qmax = seg_logsoftmax(ql)
+                with torch.no_grad():
+                    soft, _ = seg_logsoftmax(tg / SOFT_T)
+                    soft = torch.exp(soft)  # teacher preference distribution
+                per_row = -(soft * logp)
+                per_dec = torch.zeros(len(dec), device=dev).index_add_(
+                    0, seg, per_row)
+                loss_ce = per_dec.mean()
                 if training:
                     loss = loss_val + CE_WEIGHT * loss_ce
                     opt.zero_grad()

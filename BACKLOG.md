@@ -39,7 +39,10 @@ each section; strike or move items as they land.
 - [x] SmartBot v2 (2026-07-31): safe throws (+17pt), bury-to-void, eager
       declaration → 86% vs baseline. Last-trick reserve measured harmful and
       rejected (see AI_POLICIES.md).
-- [ ] **MCBot**: determinized Monte Carlo rollouts (in progress).
+- [x] MCBot (2026-08-01): determinized MC with confidence margin, server
+      default; 90% full-game vs SmartBot v2. Hyperparameter space fully
+      swept — flat-MC plateaued at ~62% round-level vs SmartBot v3; next
+      strength jump requires ISMCTS or RL (see AI_POLICIES.md).
 - [ ] **RL Phase 0**: profile + speed up headless env (`ai/env.py`) for
       self-play throughput; target thousands of games/sec across processes.
 - [ ] RL Phases 1-4 (DouZero-style Deep Monte Carlo): encode obs (Memory as

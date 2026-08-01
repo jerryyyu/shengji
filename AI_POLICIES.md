@@ -57,8 +57,17 @@ Historical numbers below marked "unmirrored" used independent deals
   margin=10 over-trusts the heuristic (52%). Small per-round edges compound
   over ~37-round games.
 - Determinization sweep (round-level, n=120, margin=5): N=5 → 48%, N=10 →
-  62%, N=30 → 61%. **N=10 is the sweet spot** — beyond it the bottleneck
-  is rollout-policy quality and candidate coverage, not sampling noise.
+  62%, N=30 → 61%, N=15 → 65%. **N=10 is the sweet spot**; the 61-65%
+  spread across N≥10 is noise.
+- 2026-08-01 exhaustive sweep — the flat-MC family has **plateaued at
+  ~60-62%** round-level vs SmartBot v3. Nothing cleared the noise band:
+  candidates 4 → 58% / 12 → 60%; margin 2.5 → 57% / 7.5 → 54%;
+  level-bracket objective → 59%; MC bury search → 62%; SmartBot rollouts
+  → 67% alone (n=60) but 60% combined with objective+bury (n=90), so no
+  robust gain at 5× cost. LEVEL_OBJECTIVE / MC_BURY remain available as
+  toggles (default off). Conclusion: further strength needs structural
+  work — ISMCTS or learned policies (the RL roadmap) — not more knob
+  turning on flat determinized MC.
 
 ### `smart` — SmartBot v3  — ~88-90% vs heuristic
 - v2 plus two research-derived rules (sources: Zhihu tractor strategy

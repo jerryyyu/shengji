@@ -1,217 +1,161 @@
 # AI policy ledger
 
-Every bot policy, its design, and its measured performance. Keep this file
-updated whenever a policy is added or re-benchmarked.
+Every bot policy, its design, and its measured performance. Update this file
+whenever a policy is added, changed, or re-benchmarked. RL training plan and
+post-mortems: RL_PLAN.md.
 
-## How to swap the server's bot
+## Using policies
 
-Policies are registered by name in `server/shengji/ai/registry.py`. The
-server reads `SHENGJI_BOT` (default `mc`):
+Registered by name in `server/shengji/ai/registry.py`; the server reads
+`SHENGJI_BOT` (**default `mc`**):
 
 ```bash
 SHENGJI_BOT=smart uv run shengji-server   # e.g. an easier table
 ```
 
-## How to benchmark
-
-```bash
-cd server && uv run python -m shengji.ai.env        # default matchup
-```
-
-or in Python:
+Benchmarking (always mirrored deals — each seed runs twice with teams
+swapped, so card luck cancels; identical policies score exactly 50/50):
 
 ```python
 from shengji.ai.env import evaluate
 from shengji.ai.registry import make_bot
-evaluate(make_bot("smart"), make_bot("heuristic"), n_games=300, seed=5000)
+evaluate(make_bot("mc"), make_bot("smart"), n_games=300)
 ```
 
-Team A holds seats 0+2, team B seats 1+3. Since 2026-07-31 `evaluate()`
-plays **mirrored deals** by default: each seed runs twice on the same
-shuffle sequence with teams swapped, so card luck cancels (identical
-policies score an exact 50/50). Treat ±3% at n=200 / ±2% at n=400 as noise.
-Historical numbers below marked "unmirrored" used independent deals
-(±5% at n=100).
+Multi-policy Elo: `uv run python -m shengji.ai.tournament`. Human-agreement
+tripwire: `uv run python scripts/eval_vs_human.py "../logs/*.jsonl"`.
+Noise guide: ±3% at n=200, ±2% at n=400; round-level evals ±4.5% at n=120.
 
-## Elo pool — MC variants (2026-08-01, pre-throw-fix code)
+## The ladder (Elo, round-level, heuristic = 1000)
 
-Six-policy tournament (mirrored, 90 rounds/pairing): **mc 1137**,
-mc-smartroll 1129 (tie at 5x cost — not promoted; the single 67% reading
-was noise), mc-argmax 1092 (margin worth ~45 Elo; mc beat it 62%
-head-to-head), mc-lite 1077, smart 1012, heuristic 1000. Conclusion: the
-default config was already optimal; next strength gain requires RL.
-NOTE: measured before the throw-ruff fix / TRACTOR_LOCK / point-shy
-tiebreak — rerun the pool to rate the current generation.
+Two pools measured 2026-08-01 (pre-throw-fix code; see "shared-code
+changes" below — rerun pending):
 
-## Elo pool (2026-08-01)
+| policy | Elo | note |
+|---|---|---|
+| **mc** (server default) | **1137** | margin 5, N=10 — confirmed optimal in the variant pool |
+| mc-smartroll | 1129 | tie with mc at 5x cost — not promoted |
+| mc-argmax | 1092 | the margin is worth ~45 Elo (mc beat it 62% head-to-head) |
+| mc-lite (N=5) | 1077 | cheap mode costs real strength |
+| smart (v3) | 1032 | |
+| smart-v1 | 1022 | |
+| smart-v2 | 1020 | |
+| heuristic | 1000 | anchor |
 
-`uv run python -m shengji.ai.tournament` — round-robin, mirrored round
-pairs, Bradley-Terry fit, heuristic anchored at 1000:
-
-| policy | Elo |
-|---|---|
-| mc | 1109 |
-| smart (v3) | 1032 |
-| smart-v1 | 1022 |
-| smart-v2 | 1020 |
-| heuristic | 1000 |
-
-Reading: MCBot's edge is robust across all opponents (not overfitted to
-one baseline). The smart family's 86-90% FULL-GAME rates vs heuristic
-compress to ~50-52% round-level — their game dominance comes from winning
-rounds BIGGER (brackets/shutouts) and compounding, not winning more
-rounds. Caveats: tournament rounds are isolated fresh level-2 rounds;
-future upgrade: score pairings by average level change, or full-game Elo.
-New policies (RL checkpoints) must enter this pool, not fight a single
-baseline.
+Full-game rates compress/amplify differently: smart beat heuristic 86-90%
+of GAMES while only ~52% of rounds — game wins come from winning rounds
+BIGGER (brackets), compounding over ~37-round games.
 
 ## Active policies
 
-### `rl` — RLBot (behavior-cloned, Phase 2)  — 48% vs smart
-- `server/shengji/rl/`, 2026-08-01. QNet MLP (~0.6M params) scoring
-  (obs, action) pairs; argmax over enumerated legal plays; declare/bury
-  inherit SmartBot. Needs `uv sync --group rl` and
-  `SHENGJI_RL_CKPT=<ckpt>` (checkpoints are local, gitignored).
-- First checkpoint `ckpt_bc.pt`: behavior-cloned from 20k rounds (~500k
-  decisions) of SmartBot self-play; 89.7% imitation accuracy; **57–63
-  (48%) vs SmartBot v3** mirrored rounds — statistically even with its
-  teacher; **35–85 (29%) vs MCBot** — below the ~38% transitivity
-  expectation, i.e. search punishes the clone's ~10% imitation errors
-  harder than it punishes the teacher. That 29% → >50% is the Phase 3
-  self-play objective. **Phase 2 acceptance gate passed**: the encoding
-  carries the game. Phase 0 throughput target also met (2,067 rounds/s aggregate,
-  8 workers, after Ordering table caching). Next: DMC self-play
-  (RL_PLAN.md Phase 3) — target Elo > mc (1137).
+### `mc` — MCBot (server default)
+Determinized Monte Carlo (`ai/mcbot.py`): samples 10 opponent-hand worlds
+consistent with public info (hand sizes, observed voids, card counts; own
+kitty knowledge as banker), rolls ≤8 candidates to round end with heuristic
+rollouts, argmax — guarded by:
+- **Confidence margin** (5.0 pts/round): candidates[0] is SmartBot's pick;
+  the search overrides only when it wins by the margin. Rollouts are
+  noisiest early; the margin is worth ~45 Elo vs pure argmax.
+- **TRACTOR_LOCK**: heuristic tractor leads are final (56% vs unlocked).
+- **Point-shy tiebreak** (2.0): among near-tied candidates, risk the fewest
+  points (a beaten 10-10 lead gifts 20 immediately).
+- ~30ms/decision (invisible inside the 0.7s bot pacing); ~400x slower than
+  heuristics in headless sim — benchmark with small n or round-level.
+- Hyperparameters fully swept and flat: N∈{5..30} (N=10 best), margin
+  {0,2.5,5,7.5,10} (5 best), candidates {4,8,12} (8), SmartBot rollouts
+  (tie at 5x cost), LEAD_MARGIN {8,12,999} (ties), LEVEL_OBJECTIVE / MC_BURY
+  toggles (ties, available off by default). **Flat-MC is plateaued**; next
+  strength requires learned evaluation (RL_PLAN.md).
+- vs SmartBot v2: 36-4 (90%) mirrored full games, n=40.
+- Exposes `last_eval` (per-candidate values) for search distillation, and
+  powers the /debug/xray live inspector.
 
-### `mc` — MCBot (server default)  — 90% vs smart
-- File: `server/shengji/ai/mcbot.py`, 2026-07-31.
-- Determinized Monte Carlo: samples 10 opponent-hand worlds consistent with
-  public info (hand sizes, observed voids, card counts; own kitty knowledge
-  as banker), rolls out ≤8 candidate plays to round end with the heuristic
-  policy. Declaration/bury inherited from SmartBot.
-- **Confidence margin**: candidates[0] is always SmartBot's own pick; the
-  search overrides it only when a candidate wins by `MARGIN` (5.0) expected
-  points/round. Rollouts are noisiest on early leads — the margin keeps the
-  heuristic prior there (fixes "weird opening lead") and lets confident
-  late-round search win.
-- Hyperparameters (registry variants): `N_DETERMINIZATIONS` (10; `mc-lite`
-  5, `mc-strong` 30 — the strength/latency knob), `MAX_CANDIDATES` (8),
-  `MARGIN` (5.0; `mc-argmax` 0), rollout policy (HeuristicBot for speed).
-- ~30ms/decision (hidden inside the 0.7s bot pacing); ~400× slower than
-  heuristics in headless sim — evaluate with small n or round-level.
-- Benchmarks: **36–4 (90%) vs SmartBot v2**, mirrored full games, n=40 seed
-  4000 (pre-margin config). Round-level mirrored n=120 vs SmartBot v3:
-  57% original → 60% with ace candidates (argmax) → **62% with margin=5**;
-  margin=10 over-trusts the heuristic (52%). Small per-round edges compound
-  over ~37-round games.
-- Determinization sweep (round-level, n=120, margin=5): N=5 → 48%, N=10 →
-  62%, N=30 → 61%, N=15 → 65%. **N=10 is the sweet spot**; the 61-65%
-  spread across N≥10 is noise.
-- 2026-08-01 exhaustive sweep — the flat-MC family has **plateaued at
-  ~60-62%** round-level vs SmartBot v3. Nothing cleared the noise band:
-  candidates 4 → 58% / 12 → 60%; margin 2.5 → 57% / 7.5 → 54%;
-  level-bracket objective → 59%; MC bury search → 62%; SmartBot rollouts
-  → 67% alone (n=60) but 60% combined with objective+bury (n=90), so no
-  robust gain at 5× cost. LEVEL_OBJECTIVE / MC_BURY remain available as
-  toggles (default off). Conclusion: further strength needs structural
-  work — ISMCTS or learned policies (the RL roadmap) — not more knob
-  turning on flat determinized MC.
+### `smart` — SmartBot v3
+`ai/smart.py` + `ai/memory.py`: heuristic layered with public-information
+memory — card counting, boss detection ("is this the highest card still
+out?"), void inference, ruff/beat risk. Leads safe throws (every component
+provably unbeatable) → boss pairs/tractors → tractor pressure → boss
+singles; always contests in-suit (tempo); spends trump only on tricks worth
+taking; feeds points only when partner's win is secure; buries toward voids
+gated on trump strength; endgame control (contest everything in the last ~6
+tricks); eager declaration (8/6 thresholds).
+Lineage (all mirrored vs heuristic): v1 (memory only) 66% → v2 (+safe
+throws +17pt, bury-to-void, eager declare) 86% → v3 (+endgame control +2,
+trump-gated bury +1) ~88-90%. Registry keeps smart-v1/smart-v2 reproducible.
 
-### `smart` — SmartBot v3  — ~88-90% vs heuristic
-- v2 plus two research-derived rules (sources: Zhihu tractor strategy
-  columns, Ben Zhang's guide — see git history for the research summary):
-  - **Endgame control**: in the last ~6 tricks, contest every winnable
-    trick regardless of points (controls the finish; the expert version of
-    the failed "reserve for last trick"). +2pt alone.
-  - **Trump-gated kitty points**: bury points only when trump can defend
-    the kitty (11+ trumps incl. big joker → relaxed; <9 or no BJ → never).
-    +1pt alone.
-- Benchmarks: 90% (n=200 seed 1000) and 88% (n=300 seed 2000) for the two
-  rules combined; v2 reference on those seed sets: 88% / ~84-85%.
+### `heuristic` — baseline
+`ai/heuristic.py`: stateless rules; the fixed reference (Elo anchor 1000).
 
-### `smart-v2` — throws-era SmartBot  — 86% vs heuristic
-- File: `server/shengji/ai/smart.py` (+ `memory.py`), 2026-07-31.
-- Design: HeuristicBot + public-information memory: card counting, boss
-  detection (highest card still unaccounted for), void inference, ruff/beat
-  risk. Leads **safe throws** (multi-component 甩牌 where every part is boss
-  by card counting, so the throw penalty can never trigger), then boss
-  pairs/tractors in ruff-safe suits, tractor pressure, boss singles; always
-  contests in-suit wins (tempo); spends trump only on tricks worth taking;
-  feeds points only when partner's win is secure; buries toward emptying
-  1-3 card suits; declares slightly eagerly (8/6 trump-count thresholds).
-- Config: `SAFE_THROWS=True, RESERVE_LAST=False, BURY_VOID=True,
-  DECLARE_MIN=8, DECLARE_FINAL=6, FEED_ON_TRUMP=False, TRUMP_DRAIN=False,
-  SAFE_TRACTOR_ONLY=True`.
-- Benchmark: **342–58 (86%) vs heuristic**, mirrored, n=400, seed 9000.
-- Feature attribution (mirrored, n=200, seed 1000, v1 reference 66%):
-  safe throws +17pt (83%); bury-void ~+1pt; declare 8/6 ~+2pt (n=300
-  checks); last-trick reserve −11pt alone and −15pt when combined — see
-  post-mortems.
+### `rl` — RLBot (experimental, opt-in)
+`rl/torch_policy.py`: QNet MLP (~0.6M params) argmaxing over enumerated
+legal actions; needs `uv sync --group rl` + `SHENGJI_RL_CKPT` (checkpoints
+local, gitignored).
+- `ckpt_bc.pt` (behavior-cloned from 20k SmartBot rounds): 89.7% imitation,
+  **48% vs SmartBot** (even with teacher), **29% vs MCBot** (search punishes
+  the clone's ~10% imitation errors).
+- DMC self-play recipe v1: **closed** — flat ~30-34% vs SmartBot across
+  400k rounds; measured cause: value regression crushed the BC score scale
+  (cross-candidate spread 22.5 → 0.26 ≈ action-blind) under deal-luck
+  label noise. Fix list + revised ladder (distillation → anchored DMC →
+  hybrid) in RL_PLAN.md; distillation data generating as of 2026-08-01.
 
-### `smart-v1` — pre-throws SmartBot  — 66% vs heuristic
-- The 2026-07-31 config before safe throws (registry: `smart-v1`).
-- Mirrored benchmark 132–68 (66%), n=200 seed 1000. (Earlier unmirrored
-  measurements: 68% pre-rules-fix / 61% post-rules-fix, n=300 seed 5000.)
+## Shared-code changes affecting ALL policies
 
-### `heuristic` — HeuristicBot (baseline)  — reference 50%
-- File: `server/shengji/ai/heuristic.py`, added 2026-07-31, commit `192fde2`.
-- Design: stateless rules. Declare at trump-count ≥9 (≥7 in grace window);
-  bury by keep-value (protect trumps/aces/pairs/points, shed short suits);
-  lead tractors → aces → high pairs → low from long suit; follow: cheapest
-  winning play when worthwhile, feed points to a strong-looking partner,
-  else dump lowest junk. All plays validated against engine legality.
+- **2026-08-01 throw-ruffing fix**: no bot could contest a 甩牌 (candidate
+  generator returned None for multi-component leads). Now all bots build
+  shape-matching trump sets. Smart-vs-heuristic compressed 90% → 76% on the
+  same seeds (the baseline can now punish safe throws — SmartBot's
+  signature weapon). Numbers dated before this are pre-fix; Elo pool rerun
+  pending.
+- 2026-07-31 rules corrections (defend-at-A, format-scaled kitty
+  multiplier) similarly shifted all measurements made before them.
 
-## Measured-but-rejected variants (reproducible from the registry)
+## Experiment log (measured and rejected — reproducible via registry/toggles)
 
-| name | change vs `smart` | result vs heuristic | verdict |
-|------|-------------------|--------------------|---------|
-| `smart-reserve` | attackers hold a boss pair/tractor for the last-trick kitty multiplier | 110–90 (55%) alone, 136–64 (68%) with throws; mirrored n=200 seed 1000 | −11pt: hoarding winners loses more tempo/points than the ×4-×8 kitty steal earns |
-| `smart-trumpdrain` | leads boss trumps from 6+ trump holdings | 125–75 (62%) unmirrored, n=200 seed 1000 | −4%: wastes trump control better saved for ruffing |
-| `smart-feedtrump` | feeds points on any partner ruff | 115–85 (57%) unmirrored, n=200 seed 1000 | −9%: overtrumped feeds gift points |
-| `smart-anytractor` | tractor leads even into likely ruffs | 125–75 (62%) unmirrored, n=200 seed 1000 | −4%: ruffed tractors lose big |
-| declare 10/8 | more conservative declaration | 243–57 (81%) vs 83% at 9/7 and 85% at 8/6; mirrored n=300 seed 2000 | declaring the trump suit is worth more than waiting for a perfect hand |
-| `TRUMP_DRAIN_V2` | banker-side draining with cheap trumps (expert-conditioned) | 84% vs 88% ref; mirrored n=200 seed 1000 | −4pt: draining loses for the THIRD time, even refined |
-| `DECLARE_TUNE` | declare weaker of two suits + eager on point levels | 86% vs 88% ref | −2pt: suit quality matters more than the guides claim |
-| `PARTNER_VOID_LEAD` | lead suits partner is void in | 88% alone (neutral), 84% combined with v3 rules | interferes with endgame control; rejected |
-| `LEAD_MARGIN` 8/12/999 | higher search-override bar on leads (tempo hypothesis) | 51% / 47% / 50% vs default head-to-head, n=120 | all ties: margin-5 + heuristic prior already filter the passive-rollout lead bias |
+| idea | result | verdict |
+|---|---|---|
+| last-trick reserve (`smart-reserve`) | 55% alone, -15pt combined | hoarding loses; expert version (endgame control) adopted instead |
+| trump draining v1 (`smart-trumpdrain`) | -4% | wastes trump control |
+| trump draining v2 (banker-side, cheap trumps) | -4% | lost a third time, even expert-conditioned |
+| feed on any partner ruff (`smart-feedtrump`) | -9% | overtrumped feeds gift points |
+| tractor leads into ruff risk (`smart-anytractor`) | -4% | ruffed tractors lose big |
+| conservative declaration (10/8) | -4% vs 8/6 | declaring is worth more than a perfect hand |
+| declare the weaker suit + point-level eagerness | -2% | suit quality matters more than folk wisdom claims |
+| partner-void feeding | neutral alone, -4% combined | interferes with endgame control |
+| LEAD_MARGIN 8/12/999 (tempo hypothesis) | 51/47/50% ties | margin-5 + heuristic prior already filter the passive-rollout lead bias |
+| mc-strong (N=30) | 61% ≈ default | sampling isn't the bottleneck; rollout quality is |
 
-## 2026-08-01: throw-trumping fix (affects ALL policies)
+## Human-play validation set
 
-`_cheapest_winning` previously refused to contest multi-component throws
-(`return None`), so no bot ever ruffed a 甩牌 even holding a shape-matching
-trump set — observed as "the bot gives up against throws." Fixed with a
-trump shape-match constructor; all policies inherit it. Smart-vs-heuristic
-compressed 90% → 76% (n=200 seed 1000): the baseline can now punish safe
-throws, SmartBot's signature weapon. Numbers measured before this date are
-pre-fix; the Elo pool needs re-running post-fix.
+Logs are the corpus (`logs/*.jsonl`, gitignored; server logs fetched via
+`fetch_fly_logs.sh`). As of 2026-08-01: 245 genuine human play decisions
+(per-play bot flag — watchdog takeovers excluded), 227 with outcome labels
+converted to training shards (`rl/human_shards.py`).
+- Agreement (all policies): heuristic 52%, smart 51%, mc 50%, rl-bc 49% —
+  a STYLE metric, not strength (ranking inverts the Elo ladder).
+- Gap decomposition: forced plays 100% agreement (after the exhaustive
+  follow-enumeration fix; previously ~20% of humans' legal plays in narrow
+  spots weren't on the ballot); leads 19% vs follows 59%; of disagreements,
+  62% are value-ties (|Δ|≤3 pts), 23% favor the bot, 15% favor the human
+  (mean -0.8). Realistic agreement ceiling for ANY policy: ~65-70%.
+- Uses: regression tripwire (a policy dropping to ~30% = broken — would
+  have caught the DMC collapse instantly); distribution-shift check for RL
+  checkpoints; future human-style fine-tune.
 
-## Post-mortem lessons
+## Lessons
 
-- First SmartBot draft **lost 44–56**: it declined winnable tricks unless
-  victory was guaranteed. Fix: always contest in-suit (cheap tempo); reserve
-  the risk calculus for decisions that spend trump. Passivity is the main
-  failure mode of "smarter" logic here — benchmark every idea.
-- Feature toggles as class attributes + `evaluate()` sweeps found both the
-  bug and the bad feature in one pass. Keep new ideas toggleable.
-- **Hoarding lost twice.** The last-trick reserve (hold a boss combo for the
-  scaled kitty multiplier) sounded clever and cost 11 points; trump-draining
-  cost 4. Every measured failure so far is some form of *withholding
-  strength*; every measured win (contesting in-suit, safe throws, eager
-  declaration) is some form of *spending it sooner*. Tempo — winning tricks
-  to keep choosing the lead — is worth more in tractor than any single
-  saved combo.
-- **Safe throws were the single biggest win (+17pt)**, and they only work
-  because Memory can prove a component unbeatable before committing —
-  a feature that's only safe *because* of card counting. Look for more
-  plays that are usually risky but provably safe with public information.
-- Mirrored deals matter: identical policies score exactly 50/50, so a
-  2-point gap at n=300 is signal, not noise. All future numbers should be
-  mirrored.
-
-## Planned
-
-- RL policy via DouZero-style Deep Monte Carlo self-play (see README
-  roadmap): headless fast env → encoding (Memory as compressed history,
-  enumerate-and-score actions) → behavior-clone SmartBot → DMC self-play
-  with checkpoint pool. Will register as `rl-<checkpoint>` here with
-  mirrored-deal benchmarks.
+- **Measure everything; adopt nothing on intuition.** Feature toggles +
+  mirrored evals found every real gain and killed every plausible-but-wrong
+  idea. Single-opponent numbers mislead: rate against the pool.
+- **Hoarding loses, tempo wins** — every measured failure withheld strength
+  (reserve, draining); every win spent it sooner (in-suit contesting, safe
+  throws +17pt, eager declaration). The expert refinement that survived:
+  contest everything in the endgame, not "save the big one for last".
+- **Search beats heuristics; guarded search beats raw search.** MCBot's
+  margin (heuristic prior unless the search is confident) out-rated pure
+  argmax by 45 Elo — early-lead rollouts are noise-dominated.
+- **Learned-policy pitfalls are measurable**: BC clones inherit skill but
+  not robustness (29% vs the search); naive value regression destroys a
+  pretrained policy's ordering before it can rebuild (audit: candidate
+  score spread 22.5 → 0.26). Dense per-candidate targets (distillation)
+  and anchored objectives are the countermeasures.

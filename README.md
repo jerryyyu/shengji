@@ -55,11 +55,14 @@ use the pair-count rule.
 
 ```
 server/shengji/engine/   cards, combos (tractor decomposition), legality, round, game
-server/shengji/ai/       heuristic.py (baseline), memory.py (card counting /
-                         void inference), smart.py (memory-aware bot, wins
-                         86% vs baseline), env.py (self-play harness with
-                         mirrored-deal evaluation), registry.py (named
-                         policies; see AI_POLICIES.md)
+server/shengji/ai/       policies: heuristic.py (baseline), smart.py +
+                         memory.py (card-counting heuristic), mcbot.py
+                         (Monte Carlo search, server default, Elo 1137),
+                         registry.py + env.py + tournament.py (evaluation;
+                         ladder and all measurements in AI_POLICIES.md)
+server/shengji/rl/       learned-policy pipeline: encoder, action
+                         enumeration, BC/distillation/DMC training
+                         (roadmap in RL_PLAN.md)
 server/shengji/api/      FastAPI WebSocket server (rooms, bots, per-seat state)
 server/tests/            unit tests + randomized self-play soak tests
 web/                     React + TypeScript UI (Vite)

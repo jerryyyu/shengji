@@ -83,6 +83,13 @@ export default function Room({ room }: { room: RoomMsg }) {
         ) : (
           <div className="room-hint">Waiting for the host to start…</div>
         )}
+
+        <button
+          className="btn subtle danger leave-room-btn"
+          onClick={() => conn.send({ type: "leave_room" })}
+        >
+          Leave room
+        </button>
       </div>
     </div>
   );

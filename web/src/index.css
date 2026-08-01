@@ -120,6 +120,46 @@ button {
   background: transparent;
 }
 
+.btn.danger {
+  border-color: #5a2b33;
+  color: #f0a0aa;
+}
+
+.btn.danger:hover:not(:disabled) {
+  background: #3a1e24;
+  border-color: var(--danger);
+}
+
+.leave-room-btn {
+  align-self: center;
+}
+
+/* HUD leave control: subtle until armed */
+.leave-btn {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--panel-edge);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 11px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.leave-btn:hover {
+  color: var(--text);
+  border-color: #4a5462;
+}
+
+.leave-btn.armed {
+  background: #3a1e24;
+  border-color: var(--danger);
+  color: #ffb3bc;
+}
+
 .btn.big {
   padding: 12px 24px;
   font-size: 16px;
@@ -1377,21 +1417,55 @@ button {
     font-size: 12px;
   }
 
-  /* Aggressive overlap so 25-33 cards fit ~740px; the visible sliver of each
-     card is its own hit area (cards are siblings, nothing overlays padding). */
+  /* Card fan: slightly larger cards, wider tappable slivers.
+     Width math at 740px landscape (~724px usable):
+     - 25 cards (play): 24*27px + 58px = 706px — fits, 27px sliver each.
+     - 33 cards (bury): slots flex-shrink to ~20.8px — fits, still >= 15px min.
+     Narrower than that, the hand scrolls horizontally (auto side margins keep
+     it centered whenever it does fit). */
   .hand {
-    --cw: 54px;
-    padding: 12px calc(8px + env(safe-area-inset-right)) 4px calc(8px + env(safe-area-inset-left));
+    --cw: 58px;
+    padding: 16px calc(8px + env(safe-area-inset-right)) 4px calc(8px + env(safe-area-inset-left));
+    justify-content: flex-start;
+    overflow-x: auto;
   }
 
   .hand-slot {
-    flex: 0 1 21px;
-    width: 21px;
-    min-width: 9px;
+    flex: 0 1 27px;
+    width: 27px;
+    min-width: 15px;
+  }
+
+  .hand-slot:first-child {
+    margin-left: auto;
+  }
+
+  .hand-slot:last-child {
+    margin-right: auto;
+  }
+
+  /* Generous invisible hit area per card: full card height plus a strip above
+     the fan, so the exposed top edge of a buried card is tappable too. Each
+     card's ::after spans only its own width, so neighbors never steal the
+     visible sliver's taps. */
+  .hand .card::after {
+    content: "";
+    position: absolute;
+    top: -16px;
+    bottom: -4px;
+    left: 0;
+    right: 0;
   }
 
   .hand .card.selected {
-    transform: translateY(-9px); /* reduced pop: stays inside the viewport */
+    transform: translateY(-14px); /* bigger pop for tap feedback; absorbed by the
+                                     16px hand padding, so nothing clips */
+  }
+
+  .leave-btn {
+    font-size: 10px;
+    padding: 3px 9px;
+    min-height: 26px;
   }
 
   /* --- Lobby / Room fit in 360px-tall viewports --- */

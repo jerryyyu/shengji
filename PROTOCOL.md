@@ -25,6 +25,7 @@ Two decks are used, so each code appears twice. Every physical card instance has
 | `bury` | `card_ids: number[]` (exactly 8) | you are banker, phase `bury` |
 | `play` | `card_ids: number[]` | your play turn |
 | `next_round` | — | phase `round_end`, any player (host advances) |
+| `leave_room` | — | anytime after joining; server replies `{type:"left"}` |
 
 Invalid actions get an `error` message; state is unchanged.
 
@@ -99,3 +100,5 @@ interface GameState {
 Rejoining with `join_room` using the same name reclaims the seat if it's disconnected, and the current `state` is resent. Bots act automatically after a short delay.
 
 A room survives with **no humans connected for 5 minutes** before being deleted, so refreshes and network blips can resume the game. If the current turn's human stays disconnected for **30 seconds**, the server's bot plays that turn (and keeps doing so until they reconnect).
+
+`leave_room` is the explicit exit: in the lobby the seat is freed (host passes to the first remaining human; a room with only bots left is deleted). Mid-game the seat is kept reclaimable (bots cover it, same as a disconnect) but the leaver's client should clear its saved room. The server confirms with `{type: "left"}`, after which the same connection may `create_room`/`join_room` again.

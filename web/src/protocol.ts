@@ -21,7 +21,8 @@ export type ClientMsg =
   | { type: "pass_declare" } // declare phase: marks you done with the declare window
   | { type: "bury"; card_ids: number[] }
   | { type: "play"; card_ids: number[] }
-  | { type: "next_round" };
+  | { type: "next_round" }
+  | { type: "leave_room" }; // anytime after joining; server replies {type:"left"}
 
 // ---------- Server -> Client ----------
 
@@ -125,4 +126,9 @@ export interface EventMsg {
   [key: string]: unknown;
 }
 
-export type ServerMsg = ErrorMsg | RoomMsg | GameState | EventMsg;
+/** Confirmation of leave_room; the connection may create/join rooms again. */
+export interface LeftMsg {
+  type: "left";
+}
+
+export type ServerMsg = ErrorMsg | RoomMsg | GameState | EventMsg | LeftMsg;

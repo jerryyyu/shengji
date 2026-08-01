@@ -468,23 +468,22 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
 async def ws_endpoint(ws: WebSocket) -> None:
     await ws.accept()
     room: Room | None = None
-    seat: int | None = None
+    me: Seat | None = None  # seat OBJECT — indexes shift when lobby seats leave
     try:
         while True:
             msg = await ws.receive_json()
             if not isinstance(msg, dict):
                 continue
             t = msg.get("type")
-            if room is None:
+            if room is None or me is None:
                 if t == "create_room":
                     room = Room(code=new_code())
                     rooms[room.code] = room
-                    s = Seat(name=str(msg.get("name") or "Player"),
-                             ws=ws, connected=True)
-                    s.queue = asyncio.Queue(maxsize=128)
-                    s.writer = asyncio.create_task(_writer(ws, s.queue))
-                    room.seats.append(s)
-                    seat = 0
+                    me = Seat(name=str(msg.get("name") or "Player"),
+                              ws=ws, connected=True)
+                    me.queue = asyncio.Queue(maxsize=128)
+                    me.writer = asyncio.create_task(_writer(ws, me.queue))
+                    room.seats.append(me)
                     await broadcast(room)
                 elif t == "join_room":
                     code = str(msg.get("room", "")).upper()
@@ -496,14 +495,14 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     async with target.lock:
                         name = str(msg.get("name") or "Player")
                         reclaim = next(
-                            (i for i, s in enumerate(target.seats)
+                            (s for s in target.seats
                              if not s.is_bot and not s.connected and s.name == name),
                             None)
                         if reclaim is not None:
-                            seat = reclaim
+                            me = reclaim
                         elif len(target.seats) < 4 and target.game is None:
-                            target.seats.append(Seat(name=name))
-                            seat = len(target.seats) - 1
+                            me = Seat(name=name)
+                            target.seats.append(me)
                         else:
                             await send(ws, {"type": "error", "message": "Room is full."})
                             continue
@@ -511,42 +510,76 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         if room.cleanup_task is not None:
                             room.cleanup_task.cancel()
                             room.cleanup_task = None
-                        s = room.seats[seat]
-                        s.ws, s.connected = ws, True
-                        s.queue = asyncio.Queue(maxsize=128)
-                        s.writer = asyncio.create_task(_writer(ws, s.queue))
+                        me.ws, me.connected = ws, True
+                        me.queue = asyncio.Queue(maxsize=128)
+                        me.writer = asyncio.create_task(_writer(ws, me.queue))
                         await broadcast(room)
                 else:
                     await send(ws, {"type": "error", "message": "Join a room first."})
                 continue
 
-            assert seat is not None
+            if t == "leave_room":
+                async with room.lock:
+                    _detach(me)
+                    if room.game is None:
+                        # lobby: free the seat entirely
+                        if me in room.seats:
+                            room.seats.remove(me)
+                        humans = [i for i, x in enumerate(room.seats)
+                                  if not x.is_bot]
+                        if not humans:
+                            rooms.pop(room.code, None)
+                        else:
+                            room.host = humans[0]
+                            await broadcast(room)
+                    else:
+                        # mid-game: seat stays (reclaimable); bots cover it
+                        if not any(x.connected for x in room.seats
+                                   if not x.is_bot):
+                            if room.cleanup_task is None or room.cleanup_task.done():
+                                room.cleanup_task = asyncio.create_task(
+                                    cleanup_room(room))
+                        else:
+                            await broadcast(room)
+                await send(ws, {"type": "left"})
+                room, me = None, None
+                continue
             async with room.lock:
                 try:
-                    await handle_action(room, seat, msg)
+                    seat_idx = room.seats.index(me)
+                except ValueError:  # seat vanished — shouldn't happen mid-game
+                    room, me = None, None
+                    await send(ws, {"type": "error", "code": "room_not_found",
+                                    "message": "Seat no longer exists."})
+                    continue
+                try:
+                    await handle_action(room, seat_idx, msg)
                     await broadcast(room)
                     kick_bots(room)
                 except IllegalPlay as e:
-                    enqueue(room.seats[seat], {"type": "error", "message": str(e)})
+                    enqueue(me, {"type": "error", "message": str(e)})
                 except Exception:  # malformed input must not kill the socket
-                    enqueue(room.seats[seat],
-                            {"type": "error", "message": "Invalid request."})
+                    enqueue(me, {"type": "error", "message": "Invalid request."})
     except WebSocketDisconnect:
         pass
     finally:
-        if room is not None and seat is not None:
+        if room is not None and me is not None:
             async with room.lock:
-                s = room.seats[seat]
-                s.ws, s.connected = None, False
-                if s.writer is not None:
-                    s.writer.cancel()
-                s.writer, s.queue = None, None
-                s.last_seen = asyncio.get_event_loop().time()
+                _detach(me)
                 if not any(x.connected for x in room.seats if not x.is_bot):
                     if room.cleanup_task is None or room.cleanup_task.done():
                         room.cleanup_task = asyncio.create_task(cleanup_room(room))
                 else:
                     await broadcast(room)
+
+
+def _detach(seat: Seat) -> None:
+    """Unbind a websocket from a seat (caller holds the room lock)."""
+    seat.ws, seat.connected = None, False
+    if seat.writer is not None:
+        seat.writer.cancel()
+    seat.writer, seat.queue = None, None
+    seat.last_seen = asyncio.get_event_loop().time()
 
 
 @app.get("/healthz")

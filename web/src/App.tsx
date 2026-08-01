@@ -52,6 +52,13 @@ export default function App() {
             showToast(msg.message);
           }
           break;
+        case "left":
+          // Intentional exit confirmed: forget the room (name kept) so
+          // reconnects don't auto-rejoin, and route back to the lobby.
+          clearSavedRoom();
+          setRoom(null);
+          setGame(null);
+          break;
         case "event":
           // Optional animation hints; safe to ignore.
           break;

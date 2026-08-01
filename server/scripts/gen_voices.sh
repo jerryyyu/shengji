@@ -7,7 +7,9 @@ set -euo pipefail
 OUT="$(dirname "$0")/../../web/public/sounds"
 mkdir -p "$OUT"
 VOICE="${SHENGJI_VOICE:-0H4ruoQ81Ei2FCwjW5j1}"   # Susan - Warm Narrator (Beijing Mandarin)
-ARGS=(--model-id eleven_multilingual_v2 --seed 42 --lang zh -v "$VOICE")
+# eleven_v3 throughout: far better Mandarin tones than multilingual_v2
+# (v2 takes produced flat/anglicized readings on e.g. 四/六/三).
+ARGS=(--model-id eleven_v3 --lang zh -v "$VOICE")
 
 say_clip() {  # $1 = filename (no ext), $2 = text
   local f="$OUT/$1.mp3"

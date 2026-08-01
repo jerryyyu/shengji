@@ -44,7 +44,7 @@ export function setMuted(m: boolean): void {
 
 // Bump when clips are regenerated so browsers refetch instead of using
 // cached audio from an older voice.
-const SOUNDS_VERSION = 4;
+const SOUNDS_VERSION = 5;
 
 function loadClip(name: string): Promise<AudioBuffer | null> {
   let p = clipCache.get(name);

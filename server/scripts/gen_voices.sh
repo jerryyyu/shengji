@@ -31,6 +31,10 @@ say_clip "LJ" "小王"
 say_clip "pair" "一对"
 say_clip "nt" "无主"
 say_clip "throw" "甩牌"
-say_clip "bi" "毙！"
+# bi uses the expressive v3 model for a sharp falling-tone exclamation
+if [ ! -s "$OUT/bi.mp3" ]; then
+  echo "gen  bi  <- 毙！ (eleven_v3)"
+  sag speak --model-id eleven_v3 --lang zh -v "$VOICE" -o "$OUT/bi.mp3" "毙！"
+fi
 
 echo "done: $(ls "$OUT" | wc -l | tr -d ' ') clips in $OUT"

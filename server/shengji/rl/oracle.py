@@ -113,8 +113,12 @@ def train(data_dir: str, ckpt_out: str, epochs: int = 4) -> None:
     net = nn.Sequential(nn.Linear(ORACLE_DIM, 512), nn.ReLU(),
                         nn.Linear(512, 256), nn.ReLU(),
                         nn.Linear(256, 1)).to(dev)
-    opt = torch.optim.Adam(net.parameters(), lr=1e-3)
+    # weight decay + save-best early stopping: the un-regularized version
+    # peaked at epoch 0 (47% variance explained) and degraded after
+    opt = torch.optim.AdamW(net.parameters(), lr=1e-3, weight_decay=1e-4)
     var_y = float(np.var(yv))
+    best_mse = float("inf")
+    stale = 0
     for epoch in range(epochs):
         perm = np.random.permutation(len(xt))
         for i in range(0, len(xt), 2048):
@@ -128,12 +132,21 @@ def train(data_dir: str, ckpt_out: str, epochs: int = 4) -> None:
         with torch.no_grad():
             pv = net(torch.as_tensor(xv, device=dev)).squeeze(-1).cpu().numpy()
         mse = float(np.mean((pv - yv) ** 2))
+        marker = ""
+        if mse < best_mse:
+            best_mse = mse
+            stale = 0
+            torch.save(net.state_dict(), ckpt_out)
+            marker = "  <- saved"
+        else:
+            stale += 1
         print(f"epoch {epoch}: val MSE {mse:.3f} vs outcome variance "
-              f"{var_y:.3f} -> variance explained {1 - mse/var_y:.0%}",
+              f"{var_y:.3f} -> variance explained {1 - mse/var_y:.0%}{marker}",
               flush=True)
-    import torch as _t
-    _t.save(net.state_dict(), ckpt_out)
-    print(f"saved {ckpt_out}")
+        if stale >= 2:
+            print("early stop (no val improvement for 2 epochs)")
+            break
+    print(f"best: variance explained {1 - best_mse/var_y:.0%} -> {ckpt_out}")
 
 
 if __name__ == "__main__":

@@ -59,6 +59,20 @@ def test_smartbot_full_games():
         assert log.attacker_points >= 0
 
 
+def test_bot_can_trump_a_throw():
+    from shengji.engine.combos import decompose
+    from shengji.engine.legal import beats
+    o = Ordering("H", "2")
+    bot = HeuristicBot()
+    lead = ["SA", "SK", "SK"]  # throw: single + pair
+    hand = ["H5", "H5", "H8", "C4", "D6"]  # spade-void, holds trump pair+single
+    inc_top = decompose(lead, o).top_level()
+    play = bot._cheapest_winning(hand, lead, "S", inc_top, o)
+    assert play is not None and len(play) == 3
+    won, _ = beats(play, lead, "S", inc_top, o)
+    assert won
+
+
 def test_mcbot_plays_legally():
     from shengji.ai.mcbot import MCBot
     mc = MCBot(seed=0)

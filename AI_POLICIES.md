@@ -148,6 +148,16 @@ baseline.
 | `DECLARE_TUNE` | declare weaker of two suits + eager on point levels | 86% vs 88% ref | −2pt: suit quality matters more than the guides claim |
 | `PARTNER_VOID_LEAD` | lead suits partner is void in | 88% alone (neutral), 84% combined with v3 rules | interferes with endgame control; rejected |
 
+## 2026-08-01: throw-trumping fix (affects ALL policies)
+
+`_cheapest_winning` previously refused to contest multi-component throws
+(`return None`), so no bot ever ruffed a 甩牌 even holding a shape-matching
+trump set — observed as "the bot gives up against throws." Fixed with a
+trump shape-match constructor; all policies inherit it. Smart-vs-heuristic
+compressed 90% → 76% (n=200 seed 1000): the baseline can now punish safe
+throws, SmartBot's signature weapon. Numbers measured before this date are
+pre-fix; the Elo pool needs re-running post-fix.
+
 ## Post-mortem lessons
 
 - First SmartBot draft **lost 44–56**: it declined winnable tricks unless

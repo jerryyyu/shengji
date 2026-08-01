@@ -11,7 +11,7 @@ from collections import Counter
 
 from ..engine.cards import BJ, LJ, TRUMP, Ordering, card_rank, is_joker, points
 from ..engine.combos import decompose, find_tractor_runs, pair_count
-from ..engine.legal import IllegalPlay, suit_cards, uniform_suit, validate_follow
+from ..engine.legal import IllegalPlay, beats, suit_cards, uniform_suit, validate_follow
 from ..engine.round import Round
 
 PLAIN_SUITS = "SHDC"
@@ -178,12 +178,23 @@ class HeuristicBot:
     def _cheapest_winning(self, hand: list[str], lead: list[str], inc_suit: str,
                           inc_top: int, o: Ordering) -> list[str] | None:
         lead_dec = decompose(lead, o)
-        if len(lead_dec.components) != 1:
-            return None  # don't try to beat throws
-        comp = lead_dec.components[0]
         lead_suit = uniform_suit(lead, o)
         assert lead_suit is not None
         h_lead = suit_cards(hand, lead_suit, o)
+        if len(lead_dec.components) != 1:
+            # A throw is beatable only by matching its whole shape in trump.
+            if lead_suit == TRUMP or h_lead:
+                return None  # must be void in the led suit to ruff
+            trumps = suit_cards(hand, TRUMP, o)
+            if len(trumps) < len(lead):
+                return None
+            play = self._trump_shape_match(trumps, lead_dec, o)
+            if play is not None:
+                won, _ = beats(play, lead, inc_suit, inc_top, o)
+                if won:
+                    return play
+            return None
+        comp = lead_dec.components[0]
 
         def combo_in(cards: list[str], min_top: int) -> list[str] | None:
             if comp.kind == "single":
@@ -209,6 +220,37 @@ class HeuristicBot:
             floor = inc_top if inc_suit == TRUMP else -1
             return combo_in(trumps, floor)
         return None
+
+    def _trump_shape_match(self, trumps: list[str], lead_dec,
+                           o: Ordering) -> list[str] | None:
+        """Cheapest all-trump set matching a throw's shape (runs + singles)."""
+        runs = sorted((c.pair_len for c in lead_dec.components if c.pair_len),
+                      reverse=True)
+        n_singles = sum(1 for c in lead_dec.components if not c.pair_len)
+        pool = list(trumps)
+        picked: list[str] = []
+        for k in runs:
+            if k == 1:
+                pairs = sorted((c for c, n in Counter(pool).items() if n >= 2),
+                               key=o.level)
+                if not pairs:
+                    return None
+                c = pairs[0]
+                picked += [c, c]
+                self._take(pool, [c, c])
+            else:
+                rs = find_tractor_runs(pool, o, k)
+                if not rs:
+                    return None
+                picked += rs[0]
+                self._take(pool, rs[0])
+        for _ in range(n_singles):
+            if not pool:
+                return None
+            c = self._lowest(pool, o, avoid_points=True)
+            picked.append(c)
+            pool.remove(c)
+        return picked
 
     def _forced_follow(self, hand: list[str], lead: list[str], o: Ordering,
                        prefer_points: bool,

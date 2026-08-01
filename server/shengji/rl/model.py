@@ -37,6 +37,13 @@ if torch is not None:
                 acts = torch.as_tensor(action_vecs, dtype=torch.float32)
                 return self(obs.expand(len(acts), -1), acts)
 
+        def q_grouped(self, obs_dec, act_rows, seg, n_dec):
+            """Segment-API adapter matching QNetDueling.q_grouped, so the
+            v2 learner can train this architecture directly (no V/A split:
+            returns raw Q; V and A outputs are None-equivalents)."""
+            q = self(obs_dec[seg], act_rows)
+            return q, None, None
+
     class QNetDueling(nn.Module):
         """Q(s,a) = V(s) + A(s,a), A mean-zero across each decision's
         candidates — value-scale learning cannot crush action ranking.
@@ -53,6 +60,14 @@ if torch is not None:
                 nn.Linear(256 + ACT_DIM, 256), nn.ReLU(),
                 nn.Linear(256, 1),
             )
+
+        def forward(self, obs_rows, act_rows):
+            """Single-decision convenience: ALL rows are one decision's
+            candidates (obs_rows identical). Used by bc_train's loop."""
+            seg = torch.zeros(len(act_rows), dtype=torch.long,
+                              device=act_rows.device)
+            q, _, _ = self.q_grouped(obs_rows[:1], act_rows, seg, 1)
+            return q
 
         def q_grouped(self, obs_dec, act_rows, seg, n_dec):
             """obs_dec: (D, OBS_DIM) one row per decision; act_rows:

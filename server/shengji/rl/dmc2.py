@@ -37,6 +37,23 @@ from .encode import ACT_DIM, OBS_DIM, encode_action, encode_obs
 from .oracle import ORACLE_DIM, encode_oracle
 
 
+def load_any_net(path: str):
+    """Load a checkpoint as whichever architecture saved it (QNet /
+    QNetDueling / PolicyValueNet) — all expose score_candidates."""
+    import torch
+    from .model import QNet, QNetDueling, PolicyValueNet
+    state = torch.load(path, map_location="cpu")
+    if any(k.startswith("p_head") for k in state):
+        net = PolicyValueNet()
+    elif any(k.startswith("trunk") for k in state):
+        net = QNetDueling()
+    else:
+        net = QNet()
+    net.load_state_dict(state)
+    net.eval()
+    return net
+
+
 # ------------------------------------------------------------------ actors
 class V2Actor(SmartBot):
     """Epsilon-greedy over the net; records full candidate sets + oracle
@@ -67,16 +84,10 @@ def actor_batch(args):
     (gen_ckpt, pool_ckpts, n_rounds, eps, seed) = args
     import numpy as np
     import torch
-    from .model import QNetDueling
+    # architectures resolved via load_any_net
     rng = random.Random(seed)
 
-    def load(path):
-        net = QNetDueling()
-        net.load_state_dict(torch.load(path, map_location="cpu"))
-        net.eval()
-        return net
-
-    net = load(gen_ckpt)
+    net = load_any_net(gen_ckpt)
     me = V2Actor(net, eps, rng)
     obs_l, act_rows, offs, chosen_l, orc_l, ret_l, seat_l = \
         [], [], [0], [], [], [], []
@@ -85,7 +96,7 @@ def actor_batch(args):
         if roll < 0.8:
             bots = [me] * 4
         elif pool_ckpts and rng.random() < 0.5:
-            opp = V2Actor(load(rng.choice(pool_ckpts)), 0.0, rng)
+            opp = V2Actor(load_any_net(rng.choice(pool_ckpts)), 0.0, rng)
             bots = [me, opp, me, opp]
         else:
             sm = SmartBot()
@@ -115,14 +126,9 @@ def actor_batch(args):
 def duel(args):
     """Worker: mirrored duel between two checkpoints; returns a's win rate."""
     ckpt_a, ckpt_b, n_pairs, seed = args
-    import torch
-    from .model import QNetDueling
 
     def bot(path):
-        net = QNetDueling()
-        net.load_state_dict(torch.load(path, map_location="cpu"))
-        net.eval()
-        return V2Actor(net, 0.0, random.Random(seed))
+        return V2Actor(load_any_net(path), 0.0, random.Random(seed))
 
     wins = [0, 0]
     for s in range(n_pairs):
@@ -138,11 +144,7 @@ def duel(args):
 
 def eval_vs_smart(args):
     ckpt, n_pairs, seed = args
-    import torch
-    from .model import QNetDueling
-    net = QNetDueling()
-    net.load_state_dict(torch.load(ckpt, map_location="cpu"))
-    net.eval()
+    net = load_any_net(ckpt)
     wins = [0, 0]
     for s in range(n_pairs):
         for flip in (0, 1):
@@ -161,7 +163,7 @@ def main() -> None:
     import multiprocessing as mp
     import numpy as np
     import torch
-    from .model import QNetDueling
+    # architectures resolved via load_any_net
     from .oracle import ORACLE_DIM as _od  # noqa: F401
     from torch import nn
 
@@ -187,11 +189,11 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     dev = "mps" if torch.backends.mps.is_available() else "cpu"
 
-    net = QNetDueling().to(dev)
-    net.load_state_dict(torch.load(args.warm_start, map_location=dev))
-    anchor = QNetDueling().to(dev)
-    anchor.load_state_dict(torch.load(args.warm_start, map_location=dev))
+    net = load_any_net(args.warm_start).to(dev)
+    net.train()
+    anchor = load_any_net(args.warm_start).to(dev)
     anchor.eval()
+    print(f"warm start architecture: {type(net).__name__}", flush=True)
     oracle = nn.Sequential(nn.Linear(ORACLE_DIM, 512), nn.ReLU(),
                            nn.Linear(512, 256), nn.ReLU(),
                            nn.Linear(256, 1)).to(dev)

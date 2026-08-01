@@ -15,12 +15,14 @@ def main() -> None:
     import numpy as np
     import torch
     from torch import nn
-    from .model import QNet
+    from .model import QNet, QNetDueling
 
     data_dir, ckpt_out = sys.argv[1], sys.argv[2]
     epochs = int(sys.argv[3]) if len(sys.argv) > 3 else 3
+    arch = sys.argv[4] if len(sys.argv) > 4 else "qnet"
     dev = "mps" if torch.backends.mps.is_available() else "cpu"
-    net = QNet().to(dev)
+    net = (QNetDueling() if arch == "dueling" else QNet()).to(dev)
+    print(f"architecture: {type(net).__name__}", flush=True)
     opt = torch.optim.Adam(net.parameters(), lr=1e-3)
     shards = sorted(Path(data_dir).glob("shard_*.npz"))
     assert shards, f"no shards in {data_dir}"

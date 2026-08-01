@@ -67,6 +67,19 @@ baseline.
 
 ## Active policies
 
+### `rl` — RLBot (behavior-cloned, Phase 2)  — 48% vs smart
+- `server/shengji/rl/`, 2026-08-01. QNet MLP (~0.6M params) scoring
+  (obs, action) pairs; argmax over enumerated legal plays; declare/bury
+  inherit SmartBot. Needs `uv sync --group rl` and
+  `SHENGJI_RL_CKPT=<ckpt>` (checkpoints are local, gitignored).
+- First checkpoint `ckpt_bc.pt`: behavior-cloned from 20k rounds (~500k
+  decisions) of SmartBot self-play; 89.7% imitation accuracy; **57–63
+  (48%) vs SmartBot v3** mirrored rounds — statistically even with its
+  teacher. **Phase 2 acceptance gate passed**: the encoding carries the
+  game. Phase 0 throughput target also met (2,067 rounds/s aggregate,
+  8 workers, after Ordering table caching). Next: DMC self-play
+  (RL_PLAN.md Phase 3) — target Elo > mc (1137).
+
 ### `mc` — MCBot (server default)  — 90% vs smart
 - File: `server/shengji/ai/mcbot.py`, 2026-07-31.
 - Determinized Monte Carlo: samples 10 opponent-hand worlds consistent with

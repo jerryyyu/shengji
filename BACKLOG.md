@@ -43,12 +43,14 @@ each section; strike or move items as they land.
       default; 90% full-game vs SmartBot v2. Hyperparameter space fully
       swept — flat-MC plateaued at ~62% round-level vs SmartBot v3; next
       strength jump requires ISMCTS or RL (see AI_POLICIES.md).
-- [ ] **RL Phase 0**: profile + speed up headless env (`ai/env.py`) for
-      self-play throughput; target thousands of games/sec across processes.
-- [ ] RL Phases 1-4 (DouZero-style Deep Monte Carlo): encode obs (Memory as
-      compressed history), enumerate-and-score actions with a Q-network,
-      behavior-clone SmartBot first, then DMC self-play with checkpoint pool.
-      Register checkpoints as `rl-<name>` policies in AI_POLICIES.md.
+- [x] RL Phase 0 (2026-08-01): Ordering table caching (+11% single-core);
+      2,067 rounds/s aggregate with 8 workers — target met.
+- [x] RL Phases 1-2 (2026-08-01): encoder + action enumeration + BC pipeline;
+      rl-bc checkpoint plays even with SmartBot (48%, gate passed).
+- [ ] **RL Phase 3: DMC self-play loop** — actors (epsilon-greedy, CPU pool)
+      + replay buffer + MPS learner regressing terminal returns; opponent
+      pool of checkpoints + SmartBot; every checkpoint enters the Elo
+      tournament. Target: Elo > mc (1137). The last unbuilt piece.
 - [ ] SmartBot ideas not yet tried: exhaustion-based void inference (count
       cards, not just observed voids), bury strategy using declared trump
       knowledge, endgame perfect-info solving for the last ~4 tricks.

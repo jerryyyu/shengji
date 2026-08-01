@@ -15,6 +15,9 @@ export default function App() {
   const [game, setGame] = useState<GameState | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
+  // Single-player orchestration: when armed (via Lobby's "Play vs bots"),
+  // each lobby `room` message advances the fill-with-bots-then-start chain.
+  const autoFill = useRef(false);
 
   useEffect(() => {
     const showToast = (message: string) => {
@@ -36,11 +39,23 @@ export default function App() {
           // ended) — drop it so we route to the Room screen.
           setGame(null);
           saveRoom(msg.room);
+          // Auto-fill chain: one send per room broadcast, host only, so
+          // there is never a double-send. Each add_bot triggers the next
+          // room message; at 4 players start once and disarm.
+          if (autoFill.current && msg.you === msg.host) {
+            if (msg.players.length < 4) {
+              conn.send({ type: "add_bot" });
+            } else {
+              autoFill.current = false;
+              conn.send({ type: "start_game" });
+            }
+          }
           break;
         case "state":
           setGame(msg);
           break;
         case "error":
+          autoFill.current = false; // abort single-player orchestration
           if (msg.code === "room_not_found") {
             // The room no longer exists (server restart / expiry). Stop
             // retrying it on reconnect and return to the lobby (name kept).
@@ -78,7 +93,15 @@ export default function App() {
   } else if (room) {
     screen = <Room room={room} />;
   } else {
-    screen = <Lobby status={status} error={toast} />;
+    screen = (
+      <Lobby
+        status={status}
+        error={toast}
+        onArmAutoFill={() => {
+          autoFill.current = true;
+        }}
+      />
+    );
   }
 
   const inRoom = room !== null || game !== null;

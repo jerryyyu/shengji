@@ -33,6 +33,28 @@ policies score an exact 50/50). Treat ±3% at n=200 / ±2% at n=400 as noise.
 Historical numbers below marked "unmirrored" used independent deals
 (±5% at n=100).
 
+## Elo pool (2026-08-01)
+
+`uv run python -m shengji.ai.tournament` — round-robin, mirrored round
+pairs, Bradley-Terry fit, heuristic anchored at 1000:
+
+| policy | Elo |
+|---|---|
+| mc | 1109 |
+| smart (v3) | 1032 |
+| smart-v1 | 1022 |
+| smart-v2 | 1020 |
+| heuristic | 1000 |
+
+Reading: MCBot's edge is robust across all opponents (not overfitted to
+one baseline). The smart family's 86-90% FULL-GAME rates vs heuristic
+compress to ~50-52% round-level — their game dominance comes from winning
+rounds BIGGER (brackets/shutouts) and compounding, not winning more
+rounds. Caveats: tournament rounds are isolated fresh level-2 rounds;
+future upgrade: score pairings by average level change, or full-game Elo.
+New policies (RL checkpoints) must enter this pool, not fight a single
+baseline.
+
 ## Active policies
 
 ### `mc` — MCBot (server default)  — 90% vs smart

@@ -5,6 +5,8 @@ import { clearSavedRoom, conn, getSavedName, saveName } from "../ws";
 interface LobbyProps {
   status: ConnStatus;
   error: string | null;
+  /** Arm App's fill-with-bots-then-start orchestration before creating a room. */
+  onArmAutoFill: () => void;
 }
 
 const STATUS_LABEL: Record<ConnStatus, string> = {
@@ -13,7 +15,7 @@ const STATUS_LABEL: Record<ConnStatus, string> = {
   closed: "Disconnected — retrying…",
 };
 
-export default function Lobby({ status, error }: LobbyProps) {
+export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const [name, setName] = useState(getSavedName());
   const [roomCode, setRoomCode] = useState("");
 
@@ -24,6 +26,15 @@ export default function Lobby({ status, error }: LobbyProps) {
     const trimmed = name.trim();
     saveName(trimmed);
     clearSavedRoom(); // don't auto-rejoin an old room while creating a new one
+    conn.send({ type: "create_room", name: trimmed });
+  };
+
+  const playBots = () => {
+    if (status !== "open") return;
+    const trimmed = name.trim() || "Player";
+    saveName(trimmed);
+    clearSavedRoom();
+    onArmAutoFill();
     conn.send({ type: "create_room", name: trimmed });
   };
 
@@ -52,6 +63,10 @@ export default function Lobby({ status, error }: LobbyProps) {
             onChange={(e) => setName(e.target.value)}
           />
         </label>
+
+        <button className="btn gold big" disabled={status !== "open"} onClick={playBots}>
+          Play vs bots
+        </button>
 
         <button className="btn primary big" disabled={!ready} onClick={create}>
           Create room

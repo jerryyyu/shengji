@@ -7,7 +7,8 @@ import type { GameState, Trump } from "./protocol";
 
 const MUTE_KEY = "shengji.muted";
 const GAP_MS = 50; // pause between clips in a sequence
-const PLAYBACK_RATE = 1.25; // all clips play faster (slight pitch-up)
+const PLAYBACK_RATE = 1.0; // 1.25 was too chipmunk; regen with sag --speed
+//                            for pitch-neutral speedup if wanted later
 const MAX_QUEUE = 4; // pending sequences beyond this drop the oldest
 
 let ctx: AudioContext | null = null;

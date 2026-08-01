@@ -59,6 +59,9 @@ class MCBot(SmartBot):
     #                          raw points. Scaled so MARGIN keeps meaning.
     MC_BURY = False          # search the banker's bury over sampled worlds
     N_BURY_WORLDS = 8
+    TRACTOR_LOCK = True      # heuristic tractor leads are final (measured
+    #                          56% vs override-allowed, and fixes perceived
+    #                          "why didn't it lead the tractor" moments)
 
     def __init__(self, seed: int | None = None):
         self.rng = random.Random(seed)
@@ -67,6 +70,11 @@ class MCBot(SmartBot):
     # ------------------------------------------------------------------- play
     def decide_play(self, rnd: Round, seat: int) -> list[str]:
         assert rnd.trick is not None and rnd.ordering is not None
+        if self.TRACTOR_LOCK and not rnd.trick.plays:
+            pick = self._lead(rnd, seat)
+            dec = decompose(pick, rnd.ordering)
+            if len(dec.components) == 1 and dec.components[0].pair_len >= 2:
+                return pick
         candidates = self._candidates(rnd, seat)
         if len(candidates) <= 1:
             return candidates[0]

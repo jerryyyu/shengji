@@ -72,6 +72,13 @@ processes for heuristic rollouts.
 
 ## Phase 3 — Deep Monte Carlo self-play (the main event)
 
+**Starting point (2026-08-01):** Phases 0-2 complete. Throughput 2,067
+rounds/s aggregate (heuristic; net-driven actors ~30 rounds/s aggregate
+estimated). BC checkpoint `ckpt_bc.pt`: 89.7% imitation of SmartBot,
+**48% vs SmartBot v3** (even), **29% vs MCBot** — search exploits the
+clone's ~10% imitation errors. Phase 3 success = self-play closes
+29% → >50% vs MCBot (Elo > 1137 in the tournament pool).
+
 1. Reward: terminal per round, the level-bracket value already implemented
    in `MCBot._score` (LEVEL_OBJECTIVE scaling: brackets ±40, deal ±20,
    0.2/point tiebreak), from the acting team's perspective.

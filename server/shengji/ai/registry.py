@@ -37,6 +37,14 @@ REGISTRY: dict[str, type] = {
 }
 
 
+def _make_rl():
+    from ..rl.torch_policy import RLBot  # lazy: needs torch + a checkpoint
+    return RLBot()
+
+
+REGISTRY["rl"] = _make_rl
+
+
 def make_bot(name: str):
     try:
         return REGISTRY[name]()

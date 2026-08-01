@@ -1,7 +1,11 @@
 # Sheng Ji (升级 / Tractor)
 
+**Play it now: https://shengji.fly.dev** — solo vs bots or share a room code
+with friends (phones: landscape).
+
 Full-stack implementation of the classic Chinese partnership trick-taking game:
-Python rules engine + heuristic AI + FastAPI multiplayer server + React web UI.
+Python rules engine + Monte Carlo AI + FastAPI multiplayer server + React web
+UI with Mandarin voice announcements.
 
 ## Quick start
 

@@ -16,6 +16,10 @@ dev = [
     "pytest>=8",
     "websockets>=12",
 ]
+rl = [
+    "numpy>=1.26",
+    "torch>=2.4",
+]
 
 [build-system]
 requires = ["hatchling"]

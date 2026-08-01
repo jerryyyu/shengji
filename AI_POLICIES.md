@@ -56,6 +56,9 @@ Historical numbers below marked "unmirrored" used independent deals
   57% original → 60% with ace candidates (argmax) → **62% with margin=5**;
   margin=10 over-trusts the heuristic (52%). Small per-round edges compound
   over ~37-round games.
+- Determinization sweep (round-level, n=120, margin=5): N=5 → 48%, N=10 →
+  62%, N=30 → 61%. **N=10 is the sweet spot** — beyond it the bottleneck
+  is rollout-policy quality and candidate coverage, not sampling noise.
 
 ### `smart` — SmartBot v3  — ~88-90% vs heuristic
 - v2 plus two research-derived rules (sources: Zhihu tractor strategy

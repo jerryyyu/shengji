@@ -67,3 +67,18 @@ def test_mcbot_plays_legally():
     game = Game(random.Random(0))
     play_round(game, bots)
     assert all(len(h) == 0 for h in game.round.hands)
+
+
+def test_mcbot_level_objective_and_mc_bury():
+    from shengji.ai.mcbot import MCBot
+    cls = type("M", (MCBot,), {"LEVEL_OBJECTIVE": True, "MC_BURY": True,
+                               "N_DETERMINIZATIONS": 3, "N_BURY_WORLDS": 3})
+    mc = cls(seed=0)
+    # the 80-point cliff must dominate small point differences
+    assert mc._score(80) - mc._score(79) > 30
+    assert mc._score(40) - mc._score(39) > 30
+    assert mc._score(0) < mc._score(5)
+    bots = [cls(seed=0), SmartBot(), cls(seed=1), SmartBot()]
+    game = Game(random.Random(2))
+    play_round(game, bots)
+    assert all(len(h) == 0 for h in game.round.hands)

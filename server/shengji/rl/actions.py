@@ -21,8 +21,16 @@ from ..ai.mcbot import MCBot
 _helper = MCBot(seed=0)
 
 
-def enumerate_actions(rnd: Round, seat: int) -> list[list[str]]:
-    """All candidate plays for the acting seat, deduped, legality-guaranteed."""
+def enumerate_actions(rnd: Round, seat: int,
+                      exhaustive_follows: bool = False) -> list[list[str]]:
+    """Candidate plays for the acting seat, deduped, legality-guaranteed.
+
+    exhaustive_follows=False (default): follows come from the search's
+    candidate generator — the SAME distribution RL training data uses, so
+    play-time ballots match training ballots (a net scoring encodings it
+    never trained on collapses: measured Elo 798 vs 1022-equivalent).
+    exhaustive_follows=True: every legal distinct-code multiset (bounded) —
+    for coverage analysis and human-decision evaluation, NOT for net play."""
     assert rnd.ordering is not None and rnd.trick is not None
     o = rnd.ordering
     hand = rnd.hands[seat]
@@ -52,6 +60,9 @@ def enumerate_actions(rnd: Round, seat: int) -> list[list[str]]:
                 for run in find_tractor_runs(cards, o, length):
                     add(run)
         add(_helper._lead(rnd, seat))  # heuristic pick incl. safe throws
+    elif not exhaustive_follows:
+        for cand in _helper._candidates(rnd, seat):
+            add(cand)
     else:
         # Exhaustive follows (gap analysis 2026-08-01: the constructed
         # candidate set missed ~20% of humans' legal plays in narrow spots).

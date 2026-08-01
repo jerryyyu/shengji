@@ -57,7 +57,7 @@ def test_follow_enumeration_is_complete():
         lead = rnd.trick.plays[0].cards
         if len(lead) > 2:
             continue
-        ballot = {tuple(sorted(a)) for a in enumerate_actions(rnd, seat)}
+        ballot = {tuple(sorted(a)) for a in enumerate_actions(rnd, seat, exhaustive_follows=True)}
         for combo in {tuple(sorted(c)) for c in
                       combinations(sorted(rnd.hands[seat]), len(lead))}:
             try:

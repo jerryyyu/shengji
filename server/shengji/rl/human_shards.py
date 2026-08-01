@@ -63,7 +63,7 @@ def main() -> None:
                         continue
                     seat, cards = e["seat"], e["cards"]
                     if e.get("bot") is False and rnd.turn == seat:
-                        actions = enumerate_actions(rnd, seat)
+                        actions = enumerate_actions(rnd, seat, exhaustive_follows=True)
                         key = sorted(cards)
                         chosen = next((i for i, a in enumerate(actions)
                                        if sorted(a) == key), None)

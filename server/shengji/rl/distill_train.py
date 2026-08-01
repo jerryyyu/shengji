@@ -33,65 +33,77 @@ def main() -> None:
 
     shards = sorted(Path(data_dir).glob("shard_*.npz"))
     assert shards, f"no shards in {data_dir}"
-    print(f"{len(shards)} shards, device={dev}", flush=True)
+    val_shards = shards[:: max(len(shards) // 3, 1)][:2] if len(shards) > 2 else []
+    train_shards = [s for s in shards if s not in val_shards]
+    print(f"{len(train_shards)} train / {len(val_shards)} val shards, "
+          f"device={dev}", flush=True)
 
-    for epoch in range(epochs):
-        tot_val = tot_ce = 0.0
-        n_batches = correct = total = 0
-        for shard in shards:
-            z = np.load(shard)
-            obs, acts = z["obs"], z["actions"]
-            offs, chosen = z["offsets"], z["chosen"]
-            values, hasv = z["action_values"], z["has_values"]
-            idx_all = np.flatnonzero(hasv & (np.diff(offs) > 1))
-            np.random.shuffle(idx_all)
-            for bstart in range(0, len(idx_all), BATCH_DECISIONS):
-                dec = idx_all[bstart:bstart + BATCH_DECISIONS]
-                seg_list, rows, tgts, ch_row = [], [], [], []
-                base = 0
-                for di, i in enumerate(dec):
-                    a, b = offs[i], offs[i + 1]
-                    k = b - a
-                    rows.append(acts[a:b])
-                    tgts.append(values[a:b])
-                    seg_list.append(np.full(k, di))
-                    ch_row.append(base + chosen[i])
-                    base += k
-                o = torch.as_tensor(obs[dec], device=dev)
-                ar = torch.as_tensor(np.concatenate(rows), device=dev)
-                seg = torch.as_tensor(np.concatenate(seg_list),
-                                      dtype=torch.long, device=dev)
-                tg = torch.as_tensor(np.concatenate(tgts), device=dev) / VALUE_SCALE
-                chr_ = torch.as_tensor(np.array(ch_row), dtype=torch.long,
-                                       device=dev)
+    def run_shard(shard, training: bool):
+        nonlocal tot_val, tot_ce, n_batches, correct, total
+        import numpy as _np
+        z = _np.load(shard)
+        obs, acts = z["obs"], z["actions"]
+        offs, chosen = z["offsets"], z["chosen"]
+        values, hasv = z["action_values"], z["has_values"]
+        idx_all = _np.flatnonzero(hasv & (_np.diff(offs) > 1))
+        if training:
+            _np.random.shuffle(idx_all)
+        for bstart in range(0, len(idx_all), BATCH_DECISIONS):
+            dec = idx_all[bstart:bstart + BATCH_DECISIONS]
+            seg_list, rows, tgts, ch_row = [], [], [], []
+            base = 0
+            for di, i in enumerate(dec):
+                a, b = offs[i], offs[i + 1]
+                rows.append(acts[a:b])
+                tgts.append(values[a:b])
+                seg_list.append(_np.full(b - a, di))
+                ch_row.append(base + chosen[i])
+                base += b - a
+            o = torch.as_tensor(obs[dec], device=dev)
+            ar = torch.as_tensor(_np.concatenate(rows), device=dev)
+            seg = torch.as_tensor(_np.concatenate(seg_list),
+                                  dtype=torch.long, device=dev)
+            tg = torch.as_tensor(_np.concatenate(tgts), device=dev) / VALUE_SCALE
+            chr_ = torch.as_tensor(_np.array(ch_row), dtype=torch.long,
+                                   device=dev)
+            with torch.set_grad_enabled(training):
                 q, v, a_rows = net.q_grouped(o, ar, seg, len(dec))
                 loss_val = torch.nn.functional.mse_loss(q, tg)
-                # segment log-softmax CE toward the search's choice
                 qmax = torch.full((len(dec),), -1e9, device=dev)
                 qmax = qmax.scatter_reduce(0, seg, q, reduce="amax")
                 ex = torch.exp(q - qmax[seg])
                 denom = torch.zeros(len(dec), device=dev).index_add_(0, seg, ex)
                 logp = (q - qmax[seg]) - torch.log(denom[seg] + 1e-9)
                 loss_ce = -logp[chr_].mean()
-                loss = loss_val + CE_WEIGHT * loss_ce
-                opt.zero_grad()
-                loss.backward()
-                opt.step()
-                tot_val += loss_val.item()
-                tot_ce += loss_ce.item()
-                n_batches += 1
-                # cheap agreement stat via scatter argmax
-                with torch.no_grad():
-                    qmax = torch.full((len(dec),), -1e9, device=dev)
-                    qmax = qmax.scatter_reduce(0, seg, q, reduce="amax")
-                    is_best = q >= (qmax[seg] - 1e-6)
-                    agree = is_best[chr_]
-                    correct += int(agree.sum().item())
-                    total += len(dec)
+                if training:
+                    loss = loss_val + CE_WEIGHT * loss_ce
+                    opt.zero_grad()
+                    loss.backward()
+                    opt.step()
+            tot_val += loss_val.item()
+            tot_ce += loss_ce.item()
+            n_batches += 1
+            with torch.no_grad():
+                is_best = q >= (qmax[seg] - 1e-6)
+                correct += int(is_best[chr_].sum().item())
+                total += len(dec)
+
+    for epoch in range(epochs):
+        tot_val = tot_ce = 0.0
+        n_batches = correct = total = 0
+        for shard in train_shards:
+            run_shard(shard, training=True)
+        train_msg = (f"train mse {tot_val/n_batches:.3f} ce {tot_ce/n_batches:.3f} "
+                     f"agree {correct/max(total,1):.1%}")
+        tot_val = tot_ce = 0.0
+        n_batches = correct = total = 0
+        for shard in val_shards:
+            run_shard(shard, training=False)
+        val_msg = (f"VAL mse {tot_val/max(n_batches,1):.3f} "
+                   f"ce {tot_ce/max(n_batches,1):.3f} "
+                   f"agree {correct/max(total,1):.1%}") if val_shards else "no val"
         torch.save(net.state_dict(), ckpt_out)
-        print(f"epoch {epoch}: value_mse {tot_val/n_batches:.3f}, "
-              f"ce {tot_ce/n_batches:.3f}, "
-              f"agree-with-search {correct/max(total,1):.1%}", flush=True)
+        print(f"epoch {epoch}: {train_msg} | {val_msg}", flush=True)
     print(f"saved {ckpt_out}")
 
 

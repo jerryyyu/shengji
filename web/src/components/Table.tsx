@@ -7,6 +7,7 @@ import Hand from "./Hand";
 import Hud from "./Hud";
 import RoundEndModal from "./RoundEndModal";
 import TrickArea, { seatPos } from "./TrickArea";
+import XrayPanel from "./XrayPanel";
 
 const LAST_TRICK_MS = 1500;
 
@@ -50,6 +51,10 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
 export default function Table({ state }: { state: GameState }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [shownLastTrick, setShownLastTrick] = useState<LastTrick | null>(null);
+  // Hidden debug overlay — only reachable when localStorage["shengji.debug"]
+  // holds the server's SHENGJI_DEBUG_TOKEN (set manually via the devtools
+  // console); toggled with the "x" key. See XrayPanel.tsx.
+  const [xrayOpen, setXrayOpen] = useState(false);
   const prevStateRef = useRef<GameState | null>(null);
   const lastTrickTimer = useRef<number | null>(null);
 
@@ -86,6 +91,18 @@ export default function Table({ state }: { state: GameState }) {
     },
     []
   );
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "x" && e.key !== "X") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (!localStorage.getItem("shengji.debug")) return; // hidden unless token set
+      setXrayOpen((open) => !open);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const me = state.players.find((p) => p.seat === state.you) ?? null;
   const opponents = state.players.filter((p) => p.seat !== state.you);
@@ -217,6 +234,8 @@ export default function Table({ state }: { state: GameState }) {
       {(state.phase === "round_end" || state.phase === "game_over") && state.round_result ? (
         <RoundEndModal state={state} result={state.round_result} />
       ) : null}
+
+      {xrayOpen ? <XrayPanel state={state} onClose={() => setXrayOpen(false)} /> : null}
     </div>
   );
 }

@@ -59,6 +59,26 @@ problem.
 
 ## PLANNED (in order)
 
+### Step 1 findings so far (2026-08-01 evening, partial 450k-decision data)
+
+Four trainer iterations, all failing the gates (targets 60%/45%):
+| v | change | vs Smart / vs MC |
+|---|---|---|
+| v1 | single Q, MSE+CE | 32% / 22% |
+| v2 | + CE temperature | 30% / 27% |
+| v3 | separated policy/value heads | 32% / 24% |
+| v4 | + soft value-distribution targets, lr 1e-3 | **38% / 32%** |
+
+Diagnosis: MCBot is a STOCHASTIC teacher (10-world sampling decides
+near-ties — the majority of decisions), and ~70% of its choices are just
+SmartBot's picks via the margin, so the learnable signal is BC-plus-noise;
+its true edge (rare confident overrides) is the rarest label. Soft
+targets recovered real ground (+6/+8 pts) and remain the right form.
+Next levers, in order: full 30k dataset (2x data), more epochs at lr
+1e-3 with early stop, aux losses, THEN averaged teacher values (N>10
+world evals recorded at generation) if still short. BC (48%/29%) remains
+the strongest net and the overnight dmc2 warm start.
+
 ### Step 1 — Search distillation (the AGZ move: search is the teacher)
 Build `rl/distill_train.py`: regress Q toward per-candidate MC values +
 cross-entropy on the chosen action; filter forced single-candidate

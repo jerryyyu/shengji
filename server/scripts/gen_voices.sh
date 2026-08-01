@@ -36,7 +36,11 @@ say_clip "LJ" "小王"
 say_clip "pair" "一对"
 say_clip "nt" "无主"
 say_clip "throw" "甩牌"
-say_clip "diaozhu" "调主"
+# diaozhu: 钓 (fishing, diào 4th tone) — 调 would be misread as tiáo
+if [ ! -s "$OUT/diaozhu.mp3" ]; then
+  echo "gen  diaozhu  <- 钓主 (eleven_v3)"
+  sag speak --model-id eleven_v3 --lang zh -v "$VOICE" -o "$OUT/diaozhu.mp3" "钓主"
+fi
 # bi uses the expressive v3 model for a sharp falling-tone exclamation
 if [ ! -s "$OUT/bi.mp3" ]; then
   echo "gen  bi  <- 毙！ (eleven_v3)"

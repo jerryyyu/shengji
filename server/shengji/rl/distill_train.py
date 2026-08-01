@@ -1,0 +1,99 @@
+"""Search distillation trainer (RL_PLAN Step 1).
+
+Trains QNetDueling on MCBot's per-candidate values: MSE over ALL candidates
+(dense targets) plus a cross-entropy term on the search's chosen action.
+Vectorized over ragged candidate sets via segment indices.
+
+Usage:
+  uv run python -m shengji.rl.distill_train rl_data/distill ckpt_distill.pt [epochs]
+Requires: uv sync --group rl
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+CE_WEIGHT = 0.3
+BATCH_DECISIONS = 512
+VALUE_SCALE = 100.0  # MC values are in points (±100+); normalize so the
+#                      MSE term is O(1) and balances the CE term
+
+
+def main() -> None:
+    import numpy as np
+    import torch
+    from .model import QNetDueling
+
+    data_dir, ckpt_out = sys.argv[1], sys.argv[2]
+    epochs = int(sys.argv[3]) if len(sys.argv) > 3 else 3
+    dev = "mps" if torch.backends.mps.is_available() else "cpu"
+    net = QNetDueling().to(dev)
+    opt = torch.optim.Adam(net.parameters(), lr=3e-4)
+
+    shards = sorted(Path(data_dir).glob("shard_*.npz"))
+    assert shards, f"no shards in {data_dir}"
+    print(f"{len(shards)} shards, device={dev}", flush=True)
+
+    for epoch in range(epochs):
+        tot_val = tot_ce = 0.0
+        n_batches = correct = total = 0
+        for shard in shards:
+            z = np.load(shard)
+            obs, acts = z["obs"], z["actions"]
+            offs, chosen = z["offsets"], z["chosen"]
+            values, hasv = z["action_values"], z["has_values"]
+            idx_all = np.flatnonzero(hasv & (np.diff(offs) > 1))
+            np.random.shuffle(idx_all)
+            for bstart in range(0, len(idx_all), BATCH_DECISIONS):
+                dec = idx_all[bstart:bstart + BATCH_DECISIONS]
+                seg_list, rows, tgts, ch_row = [], [], [], []
+                base = 0
+                for di, i in enumerate(dec):
+                    a, b = offs[i], offs[i + 1]
+                    k = b - a
+                    rows.append(acts[a:b])
+                    tgts.append(values[a:b])
+                    seg_list.append(np.full(k, di))
+                    ch_row.append(base + chosen[i])
+                    base += k
+                o = torch.as_tensor(obs[dec], device=dev)
+                ar = torch.as_tensor(np.concatenate(rows), device=dev)
+                seg = torch.as_tensor(np.concatenate(seg_list),
+                                      dtype=torch.long, device=dev)
+                tg = torch.as_tensor(np.concatenate(tgts), device=dev) / VALUE_SCALE
+                chr_ = torch.as_tensor(np.array(ch_row), dtype=torch.long,
+                                       device=dev)
+                q, v, a_rows = net.q_grouped(o, ar, seg, len(dec))
+                loss_val = torch.nn.functional.mse_loss(q, tg)
+                # segment log-softmax CE toward the search's choice
+                qmax = torch.full((len(dec),), -1e9, device=dev)
+                qmax = qmax.scatter_reduce(0, seg, q, reduce="amax")
+                ex = torch.exp(q - qmax[seg])
+                denom = torch.zeros(len(dec), device=dev).index_add_(0, seg, ex)
+                logp = (q - qmax[seg]) - torch.log(denom[seg] + 1e-9)
+                loss_ce = -logp[chr_].mean()
+                loss = loss_val + CE_WEIGHT * loss_ce
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+                tot_val += loss_val.item()
+                tot_ce += loss_ce.item()
+                n_batches += 1
+                # cheap agreement stat via scatter argmax
+                with torch.no_grad():
+                    qmax = torch.full((len(dec),), -1e9, device=dev)
+                    qmax = qmax.scatter_reduce(0, seg, q, reduce="amax")
+                    is_best = q >= (qmax[seg] - 1e-6)
+                    agree = is_best[chr_]
+                    correct += int(agree.sum().item())
+                    total += len(dec)
+        torch.save(net.state_dict(), ckpt_out)
+        print(f"epoch {epoch}: value_mse {tot_val/n_batches:.3f}, "
+              f"ce {tot_ce/n_batches:.3f}, "
+              f"agree-with-search {correct/max(total,1):.1%}", flush=True)
+    print(f"saved {ckpt_out}")
+
+
+if __name__ == "__main__":
+    main()

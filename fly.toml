@@ -10,7 +10,7 @@ primary_region = 'ewr'
   dockerfile = 'Dockerfile'
 
 [env]
-  SHENGJI_BOT = 'smart'
+  SHENGJI_BOT = 'mc'
 
 [http_service]
   internal_port = 8000

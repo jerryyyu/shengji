@@ -51,7 +51,7 @@ class Room:
     ids: list[dict[int, str]] = field(default_factory=lambda: [{} for _ in range(4)])
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     bot: HeuristicBot = field(
-        default_factory=lambda: make_bot(os.environ.get("SHENGJI_BOT", "smart")))
+        default_factory=lambda: make_bot(os.environ.get("SHENGJI_BOT", "mc")))
     bot_task: asyncio.Task | None = None
     deal_task: asyncio.Task | None = None
     watchdog_task: asyncio.Task | None = None

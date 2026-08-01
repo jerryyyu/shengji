@@ -12,7 +12,7 @@ clients hold WebSockets to it. That drives every deployment rule below.
 - TLS is handled by the platform/proxy; the frontend auto-selects `wss://`
   on https pages (same-origin), no config needed.
 - Health check: `GET /healthz`.
-- Pick the bot with `SHENGJI_BOT` (`smart` default, `mc` strongest,
+- Pick the bot with `SHENGJI_BOT` (`mc` default/strongest, `smart` faster,
   `heuristic` easiest — see AI_POLICIES.md).
 
 ## Option A: Fly.io (recommended)

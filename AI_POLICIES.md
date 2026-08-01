@@ -6,10 +6,10 @@ updated whenever a policy is added or re-benchmarked.
 ## How to swap the server's bot
 
 Policies are registered by name in `server/shengji/ai/registry.py`. The
-server reads `SHENGJI_BOT` (default `smart`):
+server reads `SHENGJI_BOT` (default `mc`):
 
 ```bash
-SHENGJI_BOT=heuristic uv run shengji-server
+SHENGJI_BOT=smart uv run shengji-server   # e.g. an easier table
 ```
 
 ## How to benchmark
@@ -35,7 +35,7 @@ Historical numbers below marked "unmirrored" used independent deals
 
 ## Active policies
 
-### `mc` — MCBot (strongest; not default)  — 90% vs smart
+### `mc` — MCBot (server default)  — 90% vs smart
 - File: `server/shengji/ai/mcbot.py`, 2026-07-31.
 - Determinized Monte Carlo: samples 10 opponent-hand worlds consistent with
   public info (hand sizes, observed voids, card counts; own kitty knowledge
@@ -45,9 +45,9 @@ Historical numbers below marked "unmirrored" used independent deals
   heuristics in headless sim — evaluate with small n.
 - Benchmarks: **36–4 (90%) vs SmartBot v2**, mirrored full games, n=40 seed
   4000; 57% of rounds (mirrored n=120). Small per-round edges compound over
-  ~37-round games. Enable with `SHENGJI_BOT=mc`.
+  ~37-round games.
 
-### `smart` — SmartBot v3 (server default)  — ~88-90% vs heuristic
+### `smart` — SmartBot v3  — ~88-90% vs heuristic
 - v2 plus two research-derived rules (sources: Zhihu tractor strategy
   columns, Ben Zhang's guide — see git history for the research summary):
   - **Endgame control**: in the last ~6 tricks, contest every winnable

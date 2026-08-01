@@ -61,19 +61,29 @@ class Ordering:
         self.plain_ranks = [r for r in RANKS if r != trump_rank]
         self._plain_level = {r: i for i, r in enumerate(self.plain_ranks)}
         self._n_plain_trump = len(self.plain_ranks) if trump_suit else 0
+        # Precomputed per-card tables: the engine calls these millions of
+        # times per self-play batch (profiled hot spot); one Ordering is
+        # built per round, so computing all 54 answers up front is free.
+        self._eff: dict[str, str] = {}
+        self._lvl: dict[str, int] = {}
+        suit_order = {"S": 0, "H": 1, "C": 2, "D": 3, TRUMP: 4}
+        self._key: dict[str, tuple[int, int, str]] = {}
+        for code in set(make_deck()):
+            eff = TRUMP if self._compute_is_trump(code) else code[0]
+            lvl = self._compute_level(code)
+            self._eff[code] = eff
+            self._lvl[code] = lvl
+            self._key[code] = (suit_order[eff], lvl, code)
 
-    def is_trump(self, code: str) -> bool:
+    def _compute_is_trump(self, code: str) -> bool:
         if is_joker(code):
             return True
         if card_rank(code) == self.trump_rank:
             return True
         return self.trump_suit is not None and code[0] == self.trump_suit
 
-    def eff_suit(self, code: str) -> str:
-        return TRUMP if self.is_trump(code) else code[0]
-
-    def level(self, code: str) -> int:
-        if not self.is_trump(code):
+    def _compute_level(self, code: str) -> int:
+        if not self._compute_is_trump(code):
             return self._plain_level[card_rank(code)]
         base = self._n_plain_trump
         if code == BJ:
@@ -86,10 +96,18 @@ class Ordering:
             return base + 1 if code[0] == self.trump_suit else base
         return self._plain_level[card_rank(code)]  # plain card of the trump suit
 
+    def is_trump(self, code: str) -> bool:
+        return self._eff[code] == TRUMP
+
+    def eff_suit(self, code: str) -> str:
+        return self._eff[code]
+
+    def level(self, code: str) -> int:
+        return self._lvl[code]
+
     def sort_key(self, code: str) -> tuple[int, int, str]:
         """Stable display/sort order: plain suits first, trump group last."""
-        suit_order = {"S": 0, "H": 1, "C": 2, "D": 3, TRUMP: 4}
-        return (suit_order[self.eff_suit(code)], self.level(code), code)
+        return self._key[code]
 
 
 def natural_sort_key(code: str) -> tuple[int, int]:

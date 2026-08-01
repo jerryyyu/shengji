@@ -17,7 +17,7 @@ say_clip() {  # $1 = filename (no ext), $2 = text
 }
 
 declare -a SUITS=("S:黑桃" "H:红桃" "D:方片" "C:梅花")
-declare -a RANKS=("2:二" "3:三" "4:四" "5:五" "6:六" "7:七" "8:八" "9:九" "10:十" "J:钩" "Q:Q" "K:K" "A:A")
+declare -a RANKS=("2:二" "3:三" "4:四" "5:五" "6:六" "7:七" "8:八" "9:九" "10:十" "J:钩" "Q:圈" "K:K" "A:尖")
 
 for s in "${SUITS[@]}"; do
   sc="${s%%:*}"; sn="${s#*:}"

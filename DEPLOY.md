@@ -20,12 +20,23 @@ clients hold WebSockets to it. That drives every deployment rule below.
 ```bash
 brew install flyctl && fly auth login
 fly launch --copy-config --no-deploy   # uses fly.toml; pick an app name
-fly deploy
+fly volumes create shengji_data --size 1   # ONE volume (see below)
+fly deploy --ha=false                      # ONE machine (see below)
 ```
 
-`fly.toml` already pins one always-on machine (512MB is plenty — the engine
+`fly.toml` already pins an always-on machine (512MB is plenty — the engine
 is tiny) with `auto_stop_machines = "off"` so idle games aren't killed.
 Custom domain: `fly certs add yourdomain.com` + a CNAME.
+
+Two Fly defaults to override (learned the hard way):
+- **`--ha=false` is required**: plain `fly deploy` creates TWO machines for
+  "high availability", but rooms live in one machine's memory — the proxy
+  would route players randomly between machines and rooms would appear
+  missing. If you end up with two, `fly machine destroy <id> --force` one.
+- **Ignore the volume redundancy warning** (`-n 2`): one machine means one
+  volume. Extra volumes get claimed by phantom machines and wedge deploys
+  ("volume already claimed" / "needs an unattached volume") — destroy
+  extras with `fly volumes destroy <vol_id>`.
 
 ## Option B: any VPS with Docker
 

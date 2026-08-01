@@ -75,8 +75,11 @@ baseline.
 - First checkpoint `ckpt_bc.pt`: behavior-cloned from 20k rounds (~500k
   decisions) of SmartBot self-play; 89.7% imitation accuracy; **57–63
   (48%) vs SmartBot v3** mirrored rounds — statistically even with its
-  teacher. **Phase 2 acceptance gate passed**: the encoding carries the
-  game. Phase 0 throughput target also met (2,067 rounds/s aggregate,
+  teacher; **35–85 (29%) vs MCBot** — below the ~38% transitivity
+  expectation, i.e. search punishes the clone's ~10% imitation errors
+  harder than it punishes the teacher. That 29% → >50% is the Phase 3
+  self-play objective. **Phase 2 acceptance gate passed**: the encoding
+  carries the game. Phase 0 throughput target also met (2,067 rounds/s aggregate,
   8 workers, after Ordering table caching). Next: DMC self-play
   (RL_PLAN.md Phase 3) — target Elo > mc (1137).
 

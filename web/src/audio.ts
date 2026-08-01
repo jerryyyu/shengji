@@ -199,11 +199,13 @@ export function announceState(state: GameState, seedOnly = false): void {
     for (const c of p.cards) counts.set(c, (counts.get(c) ?? 0) + 1);
     const allPairs = n >= 2 && [...counts.values()].every((k) => k % 2 === 0);
     if (isRuff) play(["bi"]);
-    else if (n === 1) play([p.cards[0]]);
-    else if (n === 2 && allPairs) play(["pair", p.cards[0]]);
-    else if (n >= 4 && allPairs) play(["tractor"]);
-    else if (i === 0 && n >= 2) play(["throw"]); // multi-component lead
-    else playTick(); // forced mixed dump while following
+    else if (i === 0) {
+      // card names only on the LEAD of each trick
+      if (n === 1) play([p.cards[0]]);
+      else if (n === 2 && allPairs) play(["pair", p.cards[0]]);
+      else if (n >= 4 && allPairs) play(["tractor"]);
+      else play(["throw"]); // multi-component lead
+    } else playTick(); // followers: just a click (ruffs handled above)
   });
   seenPlays = nextSeen;
 }

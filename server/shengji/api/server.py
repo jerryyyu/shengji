@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import random
 import string
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -26,6 +28,9 @@ DECLARE_GRACE = 5.0        # window after the deal; extended on new declarations
 DECLARE_EXTEND = 3.0
 ROOM_TTL = 300.0           # grace before deleting a room with no humans connected
 TAKEOVER_AFTER = 30.0      # bot plays for a disconnected human after this long
+LOG_DIR = Path(os.environ.get(
+    "SHENGJI_LOG_DIR",
+    Path(__file__).resolve().parents[3] / "logs"))  # game logs (full hands!)
 app = FastAPI(title="shengji")
 
 rooms: dict[str, "Room"] = {}
@@ -60,6 +65,19 @@ class Room:
     @property
     def round(self) -> Round | None:
         return self.game.round if self.game else None
+
+    def log_event(self, kind: str, **data) -> None:
+        """Append one JSONL record to this room's game log. Best-effort —
+        logging must never break the game."""
+        try:
+            LOG_DIR.mkdir(parents=True, exist_ok=True)
+            rec = {"t": round(time.time(), 3), "room": self.code,
+                   "round": self.game.round_no if self.game else 0,
+                   "e": kind, **data}
+            with open(LOG_DIR / f"{self.code}.jsonl", "a") as f:
+                f.write(json.dumps(rec) + "\n")
+        except OSError:
+            pass
 
     # ------------------------------------------------------------- id mapping
     def index_round(self) -> None:
@@ -236,6 +254,37 @@ def current_actor(room: Room) -> int | None:
     return rnd.turn
 
 
+def _log_play(room: Room, seat: int, cards: list[str], bot: bool,
+              prev_last) -> None:
+    room.log_event("play", seat=seat, cards=cards, bot=bot)
+    rnd = room.round
+    if rnd and rnd.last_trick is not None and rnd.last_trick is not prev_last:
+        lt = rnd.last_trick
+        room.log_event("trick", winner=lt.winner, points=lt.points,
+                       plays=[{"seat": p.seat, "cards": p.cards}
+                              for p in lt.plays])
+
+
+def _log_round_start(room: Room) -> None:
+    rnd, game = room.round, room.game
+    assert rnd is not None and game is not None
+    room.log_event("round_start", deck=rnd.deck, banker=rnd.banker,
+                   trump_rank=rnd.trump_rank, levels=list(game.levels),
+                   players=[{"seat": i, "name": s.name, "is_bot": s.is_bot}
+                            for i, s in enumerate(room.seats)])
+
+
+def _log_round_end(room: Room) -> None:
+    r = room.game.result if room.game else None
+    if r is None:
+        return
+    room.log_event("round_end", attacker_points=r.attacker_points,
+                   kitty=r.kitty_cards, kitty_points=r.kitty_points,
+                   winner_team=r.winner_team, level_change=r.level_change,
+                   new_levels=list(r.new_levels), next_banker=r.next_banker,
+                   game_over=r.game_over)
+
+
 def bot_step(room: Room, seat: int) -> bool:
     """One bot decision for ``seat`` (caller holds the lock). True if acted."""
     game, rnd = room.game, room.round
@@ -247,14 +296,18 @@ def bot_step(room: Room, seat: int) -> bool:
             room.sync_kitty()
             rnd.bury(seat, cards)
             room.remove_codes(seat, cards)
+            room.log_event("bury", seat=seat, cards=cards, bot=True)
         elif rnd.phase == "play":
+            prev_last = rnd.last_trick
             cards = room.bot.decide_play(rnd, seat)
             rnd.play(seat, cards)
             room.remove_codes(seat, cards)
+            _log_play(room, seat, cards, True, prev_last)
         else:
             return False
         if rnd.phase == "round_end" and game.result is None:
             game.finish_round()
+            _log_round_end(room)
         return True
     except IllegalPlay as e:  # bot bug — shouldn't happen; skip safely
         rnd.message = f"Bot error at seat {seat}: {e}"
@@ -324,6 +377,7 @@ def _bot_declares(room: Room, seats: list[int], final: bool = False) -> None:
             if cards:
                 try:
                     rnd.declare(s, cards)
+                    room.log_event("declare", seat=s, cards=cards, bot=True)
                 except IllegalPlay:
                     pass
 
@@ -369,6 +423,9 @@ async def run_deal(room: Room) -> None:
                       if not s.is_bot and s.connected]
             if all(i in rnd.passed for i in humans) or loop.time() >= deadline:
                 rnd.finalize_declare()
+                room.log_event("trump", suit=rnd.trump_suit or "NT",
+                               rank=rnd.trump_rank, banker=rnd.banker,
+                               declared=rnd.declaration is not None)
                 await broadcast(room)
                 kick_bots(room)
                 return
@@ -416,6 +473,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         room.game = Game()
         room.game.start_round()
         room.index_round()
+        _log_round_start(room)
         room.deal_task = asyncio.create_task(run_deal(room))
         if room.watchdog_task is None or room.watchdog_task.done():
             room.watchdog_task = asyncio.create_task(watchdog(room))
@@ -424,6 +482,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
     elif t == "declare":
         codes = room.codes_for(seat, _card_ids(msg))
         rnd.declare(seat, codes)
+        room.log_event("declare", seat=seat, cards=codes, bot=False)
     elif t == "pass_declare":
         rnd.pass_declare(seat)
     elif t == "bury":
@@ -432,9 +491,11 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         codes = room.codes_for(seat, ids)
         rnd.bury(seat, codes)
         room.remove_ids(seat, ids)
+        room.log_event("bury", seat=seat, cards=codes, bot=False)
     elif t == "play":
         ids = _card_ids(msg)
         codes = room.codes_for(seat, ids)
+        prev_last = rnd.last_trick
         rnd.play(seat, codes)
         # a failed throw may have played different (fewer) cards than sent;
         # the play landed either in the open trick or the just-closed one
@@ -447,6 +508,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
             room.remove_ids(seat, ids)
         else:
             room.remove_codes(seat, played)
+        _log_play(room, seat, played, False, prev_last)
     elif t == "next_round":
         if rnd.phase != "round_end":
             raise IllegalPlay("Round not finished.")
@@ -454,6 +516,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
             raise IllegalPlay("Game is over.")
         game.start_round()
         room.index_round()
+        _log_round_start(room)
         room.deal_task = asyncio.create_task(run_deal(room))
     else:
         raise IllegalPlay(f"Unknown action: {t}")
@@ -461,6 +524,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
     rnd = room.round
     if rnd and rnd.phase == "round_end" and room.game and room.game.result is None:
         room.game.finish_round()
+        _log_round_end(room)
 
 
 # --------------------------------------------------------------- websocket

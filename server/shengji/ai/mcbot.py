@@ -32,7 +32,7 @@ from .smart import SmartBot
 
 class MCBot(SmartBot):
     N_DETERMINIZATIONS = 10
-    MAX_CANDIDATES = 6
+    MAX_CANDIDATES = 8
     SAMPLE_RETRIES = 15
 
     def __init__(self, seed: int | None = None):
@@ -89,6 +89,8 @@ class MCBot(SmartBot):
                 paired = [c for c in comps if c.pair_len]
                 if paired:
                     add(max(paired, key=lambda c: (c.pair_len, c.top)).cards)
+                # top single (the ace lead) must always be on the ballot
+                add([max(cards, key=o.level)])
                 add([self._lowest(cards, o, avoid_points=True)])
             trumps = suit_cards(hand, TRUMP, o)
             if trumps:

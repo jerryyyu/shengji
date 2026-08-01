@@ -201,7 +201,10 @@ export function announceState(state: GameState, seedOnly = false): void {
     if (isRuff) play(["bi"]);
     else if (i === 0) {
       // card names only on the LEAD of each trick
-      if (n === 1) play([p.cards[0]]);
+      const allTrump =
+        trump !== null && n > 0 && p.cards.every((c) => isTrump(c, trump));
+      if (allTrump) play(["diaozhu"]); // 调主: drawing trump
+      else if (n === 1) play([p.cards[0]]);
       else if (n === 2 && allPairs) play(["pair", p.cards[0]]);
       else if (n >= 4 && allPairs) play(["tractor"]);
       else play(["throw"]); // multi-component lead

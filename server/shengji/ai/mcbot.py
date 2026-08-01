@@ -269,3 +269,11 @@ class MCBot(SmartBot):
             assert s is not None
             clone.play(s, policy.decide_play(clone, s))
         return float(clone.attacker_points)
+
+
+class MCSmartRoll(MCBot):
+    """MCBot with SmartBot (memory-aware) rollouts — ~5x slower/decision."""
+
+    def __init__(self, seed: int | None = None):
+        super().__init__(seed)
+        self.rollout_policy = SmartBot()

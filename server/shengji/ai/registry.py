@@ -7,7 +7,7 @@ var (default "smart")."""
 from __future__ import annotations
 
 from .heuristic import HeuristicBot
-from .mcbot import MCBot
+from .mcbot import MCBot, MCSmartRoll
 from .smart import SmartBot
 
 
@@ -21,6 +21,7 @@ REGISTRY: dict[str, type] = {
     "mc-strong": type("MCStrong", (MCBot,), {"N_DETERMINIZATIONS": 30}),
     "mc-lite": type("MCLite", (MCBot,), {"N_DETERMINIZATIONS": 5}),
     "mc-argmax": type("MCArgmax", (MCBot,), {"MARGIN": 0.0}),
+    "mc-smartroll": MCSmartRoll,  # SmartBot rollouts, ~5x slower/decision
     # the pre-throws config (2026-07-31, 66% vs heuristic), for reproducibility:
     "smart-v1": _smart_variant("SmartV1", SAFE_THROWS=False, RESERVE_LAST=False,
                                BURY_VOID=False, DECLARE_MIN=9, DECLARE_FINAL=7,

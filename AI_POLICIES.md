@@ -173,6 +173,7 @@ baseline.
 | `TRUMP_DRAIN_V2` | banker-side draining with cheap trumps (expert-conditioned) | 84% vs 88% ref; mirrored n=200 seed 1000 | −4pt: draining loses for the THIRD time, even refined |
 | `DECLARE_TUNE` | declare weaker of two suits + eager on point levels | 86% vs 88% ref | −2pt: suit quality matters more than the guides claim |
 | `PARTNER_VOID_LEAD` | lead suits partner is void in | 88% alone (neutral), 84% combined with v3 rules | interferes with endgame control; rejected |
+| `LEAD_MARGIN` 8/12/999 | higher search-override bar on leads (tempo hypothesis) | 51% / 47% / 50% vs default head-to-head, n=120 | all ties: margin-5 + heuristic prior already filter the passive-rollout lead bias |
 
 ## 2026-08-01: throw-trumping fix (affects ALL policies)
 

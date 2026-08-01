@@ -83,7 +83,29 @@ Warm-start from the distilled net. Changes vs v1, all adopted from the
 5. **Opponent pool** — ~80% latest / 20% past checkpoints + SmartBot.
 6. Auxiliary heads (round points, opponent voids) for dense gradients;
    ENC_VERSION 2 adds team levels to the observation.
-7. Eval hygiene: 30-pair in-run evals every 5 min.
+7. Eval hygiene: 30-pair in-run evals every 5 min; the human-agreement
+   tripwire on every gated checkpoint.
+8. **Version/ballot freeze** (2026-08-01 incident): the action
+   enumeration and ENC_VERSION are FROZEN for the duration of the run —
+   play-time ballots must be byte-identical in distribution to training
+   ballots. Any change ⇒ regenerate, retrain, re-verify (the exhaustive-
+   follows change silently collapsed the deployed net to Elo 798).
+9. **Spread-collapse alarm**: log the cross-candidate score spread
+   (mean max−min per decision) alongside loss — v1's failure signature
+   was spread 22.5 → 0.26; alert/halt if it drops >5x from the warm
+   start. Cheap, and directly detects the known failure mode.
+10. **Oracle upkeep**: early-stop + weight decay (prototype overfits
+    after epoch 0); RETRAIN V_oracle periodically on the current
+    policy's own self-play — an oracle fitted to heuristic play drifts
+    off-distribution as the net's style departs from it.
+11. **Exploration schedule**: anneal ε 0.15 → 0.05 (v1 used fixed 0.1);
+    watch policy entropy stays in a band (Suphx).
+12. **Replay-ratio cap** (~≤4 gradient visits per sample; v1 ran ~10 on
+    a stale ring) and forced single-candidate decisions excluded from
+    action batches (measured 27% dead weight).
+13. **Bookkeeping**: every run archived in `server/runs/` (config, eval
+    curve, verdict — the dmc_v1.md precedent); keep the last ~5 gated
+    checkpoints for the opponent pool.
 **Gate: beats the distilled net ≥55% AND Elo > mc (1137) in the pool.**
 
 ### Step 3 — Phase 4 hybrid (search + learned evaluation)

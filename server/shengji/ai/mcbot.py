@@ -62,6 +62,10 @@ class MCBot(SmartBot):
     TRACTOR_LOCK = True      # heuristic tractor leads are final (measured
     #                          56% vs override-allowed, and fixes perceived
     #                          "why didn't it lead the tractor" moments)
+    POINT_SHY_EPS = 2.0      # among candidates within this of the best,
+    #                          risk the fewest points (10-10 pair leads lose
+    #                          20 immediately when beaten; expectation-equal
+    #                          but worse downside)
 
     def __init__(self, seed: int | None = None):
         self.rng = random.Random(seed)
@@ -94,6 +98,12 @@ class MCBot(SmartBot):
         if n_worlds == 0:
             return candidates[0]
         best = max(range(len(candidates)), key=lambda i: totals[i])
+        # Among near-tied candidates, risk the fewest points.
+        from ..engine.cards import points as _pts
+        close = [i for i in range(len(candidates))
+                 if (totals[best] - totals[i]) / n_worlds <= self.POINT_SHY_EPS]
+        best = min(close, key=lambda i: (sum(_pts(c) for c in candidates[i]),
+                                         -totals[i]))
         # candidates[0] is SmartBot's own choice: prefer it unless the search
         # clears the confidence margin (rollouts are noisiest early on).
         if best != 0 and (totals[best] - totals[0]) / n_worlds < self.MARGIN:

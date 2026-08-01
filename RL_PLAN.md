@@ -145,6 +145,39 @@ Revised ladder: BC(SmartBot) ✓ → **distill(MCBot)** → anchored DMC with
 advantage, warm-started from the distilled net → Phase 4 hybrid
 (MC search with the net as value function / rollout policy).
 
+### Research notes — AlphaGo-family stabilization (2026-08-01)
+
+Survey of AGZ/AlphaZero, KataGo, DouZero, Suphx, OpenAI Five, AWAC
+(sources in git history). Validations: DouZero trained from SCRATCH — no
+pretrained ordering to destroy, which is precisely why raw-return DMC
+worked for them and broke our warm start; original AlphaGo kept separate
+SL/RL policies because RL collapsed the SL policy's usable structure
+(the canonical precedent). Adopted into recipe v2:
+
+1. **Oracle value baseline (Suphx)** — we ARE the simulator: train
+   V_oracle(all four hands, state) and regress Q toward
+   `return − V_oracle`. Perfect-info baseline explains away deal luck
+   far better than partial-info V(s); should cut label noise from ~1.12
+   toward the ~0.25 true-signal scale. Training-time only, so legal.
+2. **Dueling head split Q = V(s) + A(s,a), mean-zero A** — objective
+   scale shifts move V; ranking lives in A and cannot be crushed.
+3. **Checkpoint gating (AGZ-style)** — a new net must beat the incumbent
+   ~55% on mirrored duplicate deals before it generates data (kills the
+   degraded-generator spiral; right regime at laptop scale — AlphaZero
+   only dropped gating because its throughput kept data microseconds
+   stale).
+4. **Auxiliary heads (KataGo)** — predict round points captured, final
+   margin, opponents' per-suit voids: dense low-variance gradients for
+   the trunk, discarded at play time.
+5. **Search-budget randomization (KataGo's playout cap)** — distill with
+   full MC search on a random ~25% of decisions, cheap policy for the
+   rest: volume AND target quality on 10 cores.
+6. **Opponent pool (OpenAI Five)** — ~80% latest net / 20% past
+   checkpoints + the heuristic bot, anchoring the data distribution.
+7. **Anneal the BC anchor** (RLHF-style decaying KL) — a permanent
+   anchor caps improvement; AWAC-style weighting if we move off pure
+   regression.
+
 ## Phase 4 — integration & beyond
 
 1. Register the winner as `rl`; make it the server default after a

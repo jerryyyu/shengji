@@ -6,7 +6,7 @@ set -euo pipefail
 
 OUT="$(dirname "$0")/../../web/public/sounds"
 mkdir -p "$OUT"
-VOICE="${SHENGJI_VOICE:-EXAVITQu4vr4xnSDxMaL}"   # Rachel (multilingual)
+VOICE="${SHENGJI_VOICE:-0H4ruoQ81Ei2FCwjW5j1}"   # Susan - Warm Narrator (Beijing Mandarin)
 ARGS=(--model-id eleven_multilingual_v2 --seed 42 --lang zh -v "$VOICE")
 
 say_clip() {  # $1 = filename (no ext), $2 = text

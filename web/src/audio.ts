@@ -6,7 +6,8 @@
 import type { GameState, Trump } from "./protocol";
 
 const MUTE_KEY = "shengji.muted";
-const GAP_MS = 80; // pause between clips in a sequence
+const GAP_MS = 50; // pause between clips in a sequence
+const PLAYBACK_RATE = 1.25; // all clips play faster (slight pitch-up)
 const MAX_QUEUE = 4; // pending sequences beyond this drop the oldest
 
 let ctx: AudioContext | null = null;
@@ -67,9 +68,11 @@ function playBuffer(buffer: AudioBuffer): Promise<void> {
     }
     const src = c.createBufferSource();
     src.buffer = buffer;
+    src.playbackRate.value = PLAYBACK_RATE;
     src.connect(c.destination);
     // Guard timer so a wedged onended can never stall the pump.
-    const guard = window.setTimeout(resolve, buffer.duration * 1000 + 500);
+    const guard = window.setTimeout(
+      resolve, (buffer.duration / PLAYBACK_RATE) * 1000 + 500);
     src.onended = () => {
       window.clearTimeout(guard);
       resolve();

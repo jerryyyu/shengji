@@ -64,7 +64,9 @@ def rebuild_and_analyze(path: str, n_worlds: int) -> None:
             seat, cards = e["seat"], e["cards"]
             if rnd.trick is not None and not rnd.trick.plays:
                 trick_no += 1
-            if seat in humans and rnd.turn == seat:
+            # bot flag per play, NOT seat membership: the watchdog bot can
+            # play a disconnected human's seat
+            if e.get("bot") is False and rnd.turn == seat:
                 bot_play = mc.decide_play(rnd, seat)
                 if sorted(bot_play) != sorted(cards):
                     mem = Memory(rnd, seat)

@@ -3,7 +3,7 @@
 // throw.mp3 (甩牌). Clips are fetched+decoded lazily and cached; sequences are
 // queued and played back-to-back without overlap.
 
-import type { GameState } from "./protocol";
+import type { GameState, Trump } from "./protocol";
 
 const MUTE_KEY = "shengji.muted";
 const GAP_MS = 80; // pause between clips in a sequence
@@ -87,6 +87,23 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => window.setTimeout(r, ms));
 }
 
+/** Short synthesized click for plays with no voice line (junk dumps). */
+function playTick(): void {
+  if (muted) return;
+  const c = ensureCtx();
+  if (c.state !== "running") return;
+  const t = c.currentTime;
+  const osc = c.createOscillator();
+  const gain = c.createGain();
+  osc.frequency.value = 2100;
+  gain.gain.setValueAtTime(0.07, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+  osc.connect(gain);
+  gain.connect(c.destination);
+  osc.start(t);
+  osc.stop(t + 0.07);
+}
+
 /** Enqueue a sequence of clip names (played in order, never overlapping). */
 export function play(names: string[]): void {
   if (muted || names.length === 0) return;
@@ -121,6 +138,15 @@ async function pump(): Promise<void> {
 let lastDecl: string | null = null;
 let seenPlays = new Set<string>();
 
+/** Jokers, trump-rank cards, and (for real suits) trump-suit cards are trump.
+ * trump.suit "NT" means only jokers + rank cards. */
+function isTrump(code: string, trump: Trump): boolean {
+  if (code === "BJ" || code === "LJ") return true;
+  if (code.slice(1) === trump.rank) return true;
+  const s = trump.suit;
+  return (s === "S" || s === "H" || s === "D" || s === "C") && code.startsWith(s);
+}
+
 /** Reset diff trackers (call when leaving a room / before a fresh join). */
 export function resetAnnouncer(): void {
   lastDecl = null;
@@ -152,14 +178,32 @@ export function announceState(state: GameState, seedOnly = false): void {
     }
   }
 
-  // Throws: a newly appeared play of 4+ cards in the current trick.
+  // Every newly appeared play gets a sound. Ruffs ("bi") take priority;
+  // singles say the card, pairs say 一对+card, 4+ all-pairs say 拖拉机,
+  // other multi-card plays say 甩牌; forced junk dumps get a click.
+  const trump = state.trump;
+  const plays = state.trick?.plays ?? [];
+  const lead = plays[0];
+  const leadHasTrump =
+    trump !== null && lead !== undefined ? lead.cards.some((c) => isTrump(c, trump)) : true;
   const nextSeen = new Set<string>();
-  for (const p of state.trick?.plays ?? []) {
+  plays.forEach((p, i) => {
     const key = `${p.seat}:${p.cards.join(",")}`;
     nextSeen.add(key);
-    if (!seedOnly && p.cards.length >= 4 && !seenPlays.has(key)) {
-      play(["throw"]);
-    }
-  }
+    if (seedOnly || seenPlays.has(key)) return;
+    const n = p.cards.length;
+    const isRuff =
+      i > 0 && trump !== null && !leadHasTrump && n > 0 &&
+      p.cards.every((c) => isTrump(c, trump));
+    const counts = new Map<string, number>();
+    for (const c of p.cards) counts.set(c, (counts.get(c) ?? 0) + 1);
+    const allPairs = n >= 2 && [...counts.values()].every((k) => k % 2 === 0);
+    if (isRuff) play(["bi"]);
+    else if (n === 1) play([p.cards[0]]);
+    else if (n === 2 && allPairs) play(["pair", p.cards[0]]);
+    else if (n >= 4 && allPairs) play(["tractor"]);
+    else if (i === 0 && n >= 2) play(["throw"]); // multi-component lead
+    else playTick(); // forced mixed dump while following
+  });
   seenPlays = nextSeen;
 }

@@ -31,5 +31,6 @@ say_clip "LJ" "小王"
 say_clip "pair" "一对"
 say_clip "nt" "无主"
 say_clip "throw" "甩牌"
+say_clip "bi" "毙！"
 
 echo "done: $(ls "$OUT" | wc -l | tr -d ' ') clips in $OUT"

@@ -87,17 +87,34 @@ trump-gated bury +1) ~88-90%. Registry keeps smart-v1/smart-v2 reproducible.
 `ai/heuristic.py`: stateless rules; the fixed reference (Elo anchor 1000).
 
 ### `rl` — RLBot (experimental, opt-in)
-`rl/torch_policy.py`: QNet MLP (~0.6M params) argmaxing over enumerated
-legal actions; needs `uv sync --group rl` + `SHENGJI_RL_CKPT` (checkpoints
-local, gitignored).
+`rl/torch_policy.py`: Q-net (QNet or dueling QNetDueling, auto-detected)
+argmaxing over enumerated legal actions; needs `uv sync --group rl` +
+`SHENGJI_RL_CKPT` (checkpoints local, gitignored).
 - `ckpt_bc.pt` (behavior-cloned from 20k SmartBot rounds): 89.7% imitation,
   **48% vs SmartBot** (even with teacher), **29% vs MCBot** (search punishes
   the clone's ~10% imitation errors).
+- **Hybrid preview** (MCBot with the BC net as rollout policy): **45% vs
+  plain mc** (18-22, n=40, ±8 — statistical tie), measured with the
+  degraded ballots below, so a floor not a ceiling. Full net rollouts cost
+  ~2s/decision — unusable live; Phase 4 uses truncated rollouts + net leaf
+  values instead.
+- **Ballot-mismatch incident (2026-08-01)**: the exhaustive-follow
+  enumeration change silently broke the deployed net — trained on
+  search-candidate ballots, it was suddenly scoring dozens of unseen
+  action encodings at play time and collapsed to **Elo 798** in the pool
+  (18% vs SmartBot). Fixed by matching play-time ballots to the training
+  distribution (exhaustive mode retained for human-coverage analysis);
+  recovery verified at exactly 48%. Lesson: encoding/enumeration changes
+  invalidate every trained checkpoint — bump versions and re-verify.
 - DMC self-play recipe v1: **closed** — flat ~30-34% vs SmartBot across
   400k rounds; measured cause: value regression crushed the BC score scale
   (cross-candidate spread 22.5 → 0.26 ≈ action-blind) under deal-luck
-  label noise. Fix list + revised ladder (distillation → anchored DMC →
-  hybrid) in RL_PLAN.md; distillation data generating as of 2026-08-01.
+  label noise. Run record: `server/runs/dmc_v1.md`.
+- **In progress**: search distillation (30k MCBot self-play rounds with
+  per-candidate value targets) → dueling-architecture student
+  (`distill_train.py`, val-split, ballot-matched). Oracle-baseline
+  prototype for recipe v2 explains 47% of round-outcome variance (needs
+  early-stop/capacity work). Plan and gates: RL_PLAN.md.
 
 ## Shared-code changes affecting ALL policies
 

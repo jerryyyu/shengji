@@ -682,19 +682,27 @@ def _xray(rnd, seat: int) -> dict:
     if rnd.phase == "play" and rnd.turn == seat:
         mc = room_bot_for_xray
         cands = mc._candidates(rnd, seat)
-        totals = [0.0] * len(cands)
-        n = 0
+        vals: list[list[float]] = [[] for _ in cands]
         for _ in range(30):
             smp = mc._sample_hands(rnd, seat, mem)
             if smp is None:
                 continue
-            n += 1
             hands_s, buried = smp
             for i, c in enumerate(cands):
-                totals[i] += mc._rollout(rnd, seat, hands_s, buried, list(c))
+                vals[i].append(mc._rollout(rnd, seat, hands_s, buried, list(c)))
         pick = mc.decide_play(rnd, seat)
+
+        def stats(v: list[float]) -> tuple[float, float]:
+            n = max(len(v), 1)
+            mean = sum(v) / n
+            var = sum((x - mean) ** 2 for x in v) / max(n - 1, 1)
+            return mean, (var / n) ** 0.5
         out["candidates"] = sorted(
-            [{"play": c, "attackers_avg": round(totals[i] / max(n, 1), 1),
+            [{"play": c,
+              "attackers_avg": round(stats(vals[i])[0], 1),
+              "se": round(stats(vals[i])[1], 1),  # differences under ~2 SE
+              #                                     are noise; the bot's margin
+              #                                     rule ignores them
               "heuristic_pick": i == 0,
               "bot_plays": sorted(c) == sorted(pick)}
              for i, c in enumerate(cands)],

@@ -98,6 +98,53 @@ clone's ~10% imitation errors. Phase 3 success = self-play closes
    (small, e.g. 0.05x trick points), or widen the net.
 6. Acceptance: checkpoint with Elo > `mc` in the tournament.
 
+## Phase 3 findings — first DMC attempt (2026-08-01) and the fix list
+
+First 90-min run (lr 1e-4, eps 0.1, 70/30 self-play/vs-SmartBot, terminal
+bracket reward): **flat at ~34% vs SmartBot across 243k rounds** — below
+the 48% BC starting point, no recovery trend. Diagnosis: the terminal
+return is dominated by deal luck (±3 brackets) while the per-action
+signal is tiny (±0.25 brackets); value regression destroyed BC's action
+ordering immediately (48%→32% in 2 min) and cannot rebuild it from this
+signal-to-noise at laptop scale. Loss fell throughout — the net learned
+to judge HANDS, not PLAYS.
+
+Fixes, in adoption order:
+
+1. **MC search distillation first (expert iteration)** — new step before
+   more DMC: generate MCBot self-play data recording per-candidate MC
+   values + final choices; train the net on these DENSE per-action
+   targets (no credit assignment problem at all). Teacher = 1137 Elo
+   (vs SmartBot's 1032); a net that internalizes search evaluations is
+   also exactly the value function the Phase 4 hybrid needs. Cost: MC
+   data is ~100x slower — parallel workers make 20k rounds ≈ 2-3h
+   (overnight). Inherits MC's known biases (passive-rollout lead tilt),
+   which DMC then gets to correct.
+2. **BC/policy anchor** — auxiliary loss keeping the net's action
+   ordering near its supervised starting point (annealed), so DMC never
+   pays the objective-switch dip; outcome learning accumulates on top of
+   the floor instead of underneath it.
+3. **Advantage baseline** — add a V(s) head; regress action scores
+   toward G − V(s). V absorbs deal luck; what remains is the action's
+   marginal contribution ("fed points to partner's ace and the round
+   beat the position's expectation" finally becomes a direct signal).
+4. **Mild reward shaping** (reserve dial) — small per-trick point-swing
+   term (~0.05x) to densify feedback if curves still crawl.
+5. **Eval hygiene** — 30-pair in-run evals (±6, was ±9); add team levels
+   to the observation (ENC_VERSION bump) so game context is learnable.
+6. **Scale honesty** — DouZero needed days of server compute; overnight
+   (~1.5-2M rounds) is the minimum serious attempt, and fixes 1-3 exist
+   to make those hours count.
+7. **Opponent pool** (once improving) — add past checkpoints to the
+   actor opponent mix so progress can't cycle against one frozen foe.
+8. **Later refinements** — game-context reward weighting (level cap at
+   A, defend-at-A championship rounds), inference-weighted world
+   sampling for the hybrid.
+
+Revised ladder: BC(SmartBot) ✓ → **distill(MCBot)** → anchored DMC with
+advantage, warm-started from the distilled net → Phase 4 hybrid
+(MC search with the net as value function / rollout policy).
+
 ## Phase 4 — integration & beyond
 
 1. Register the winner as `rl`; make it the server default after a

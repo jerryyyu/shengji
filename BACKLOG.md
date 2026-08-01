@@ -47,10 +47,12 @@ each section; strike or move items as they land.
       2,067 rounds/s aggregate with 8 workers — target met.
 - [x] RL Phases 1-2 (2026-08-01): encoder + action enumeration + BC pipeline;
       rl-bc checkpoint plays even with SmartBot (48%, gate passed).
-- [ ] **RL Phase 3: DMC self-play loop** — actors (epsilon-greedy, CPU pool)
-      + replay buffer + MPS learner regressing terminal returns; opponent
-      pool of checkpoints + SmartBot; every checkpoint enters the Elo
-      tournament. Target: Elo > mc (1137). The last unbuilt piece.
+- [x] RL Phase 3 infrastructure (2026-08-01): DMC actor/learner loop built
+      and running (~45 rounds/s net-driven). First recipe flat-lined at
+      ~34% vs SmartBot — diagnosis + fix list in RL_PLAN.md.
+- [ ] **RL next: MC search distillation** (dense per-candidate targets from
+      MCBot self-play, overnight data gen) → anchored DMC with advantage
+      baseline, warm-started from the distilled net. Target: Elo > mc (1137).
 - [ ] SmartBot ideas not yet tried: exhaustion-based void inference (count
       cards, not just observed voids), bury strategy using declared trump
       knowledge, endgame perfect-info solving for the last ~4 tricks.

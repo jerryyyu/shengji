@@ -39,13 +39,23 @@ Historical numbers below marked "unmirrored" used independent deals
 - File: `server/shengji/ai/mcbot.py`, 2026-07-31.
 - Determinized Monte Carlo: samples 10 opponent-hand worlds consistent with
   public info (hand sizes, observed voids, card counts; own kitty knowledge
-  as banker), rolls out ≤6 candidate plays to round end with the heuristic
-  policy, plays the best average. Declaration/bury inherited from SmartBot.
-- ~26ms/decision (hidden inside the 0.7s bot pacing); ~400× slower than
-  heuristics in headless sim — evaluate with small n.
+  as banker), rolls out ≤8 candidate plays to round end with the heuristic
+  policy. Declaration/bury inherited from SmartBot.
+- **Confidence margin**: candidates[0] is always SmartBot's own pick; the
+  search overrides it only when a candidate wins by `MARGIN` (5.0) expected
+  points/round. Rollouts are noisiest on early leads — the margin keeps the
+  heuristic prior there (fixes "weird opening lead") and lets confident
+  late-round search win.
+- Hyperparameters (registry variants): `N_DETERMINIZATIONS` (10; `mc-lite`
+  5, `mc-strong` 30 — the strength/latency knob), `MAX_CANDIDATES` (8),
+  `MARGIN` (5.0; `mc-argmax` 0), rollout policy (HeuristicBot for speed).
+- ~30ms/decision (hidden inside the 0.7s bot pacing); ~400× slower than
+  heuristics in headless sim — evaluate with small n or round-level.
 - Benchmarks: **36–4 (90%) vs SmartBot v2**, mirrored full games, n=40 seed
-  4000; 57% of rounds (mirrored n=120). Small per-round edges compound over
-  ~37-round games.
+  4000 (pre-margin config). Round-level mirrored n=120 vs SmartBot v3:
+  57% original → 60% with ace candidates (argmax) → **62% with margin=5**;
+  margin=10 over-trusts the heuristic (52%). Small per-round edges compound
+  over ~37-round games.
 
 ### `smart` — SmartBot v3  — ~88-90% vs heuristic
 - v2 plus two research-derived rules (sources: Zhihu tractor strategy

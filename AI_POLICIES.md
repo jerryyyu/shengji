@@ -33,6 +33,16 @@ policies score an exact 50/50). Treat ±3% at n=200 / ±2% at n=400 as noise.
 Historical numbers below marked "unmirrored" used independent deals
 (±5% at n=100).
 
+## Elo pool — MC variants (2026-08-01, pre-throw-fix code)
+
+Six-policy tournament (mirrored, 90 rounds/pairing): **mc 1137**,
+mc-smartroll 1129 (tie at 5x cost — not promoted; the single 67% reading
+was noise), mc-argmax 1092 (margin worth ~45 Elo; mc beat it 62%
+head-to-head), mc-lite 1077, smart 1012, heuristic 1000. Conclusion: the
+default config was already optimal; next strength gain requires RL.
+NOTE: measured before the throw-ruff fix / TRACTOR_LOCK / point-shy
+tiebreak — rerun the pool to rate the current generation.
+
 ## Elo pool (2026-08-01)
 
 `uv run python -m shengji.ai.tournament` — round-robin, mirrored round

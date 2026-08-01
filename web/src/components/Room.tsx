@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { RoomMsg } from "../protocol";
 import { conn } from "../ws";
+import MuteButton from "./MuteButton";
 
 export default function Room({ room }: { room: RoomMsg }) {
   const [copied, setCopied] = useState(false);
@@ -23,6 +24,7 @@ export default function Room({ room }: { room: RoomMsg }) {
   return (
     <div className="screen room-screen">
       <div className="panel room-panel">
+        <MuteButton />
         <div className="room-code-label">Room code — click to copy</div>
         <button className="room-code" onClick={copyCode} title="Copy room code">
           {room.room}

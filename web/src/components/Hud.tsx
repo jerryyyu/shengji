@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { GameState, Phase } from "../protocol";
 import { conn } from "../ws";
 import { SUIT_SYMBOL } from "./Card";
+import MuteButton from "./MuteButton";
 
 const PHASE_LABEL: Record<Phase, string> = {
   deal: "Dealing",
@@ -101,6 +102,7 @@ export default function Hud({ state }: { state: GameState }) {
             <span className="kitty-icon" />
             {state.kitty_count}
           </span>
+          <MuteButton />
           <LeaveButton />
         </div>
       </div>

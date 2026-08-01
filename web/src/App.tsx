@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { GameState, RoomMsg } from "./protocol";
 import type { ConnStatus } from "./ws";
 import { clearSavedRoom, conn, saveRoom } from "./ws";
+import { announceState, resetAnnouncer } from "./audio";
 import Lobby from "./components/Lobby";
 import Room from "./components/Room";
 import Table from "./components/Table";
@@ -18,6 +19,8 @@ export default function App() {
   // Single-player orchestration: when armed (via Lobby's "Play vs bots"),
   // each lobby `room` message advances the fill-with-bots-then-start chain.
   const autoFill = useRef(false);
+  // Previous game state, for audio announcement diffing (null => seed only).
+  const prevGameRef = useRef<GameState | null>(null);
 
   useEffect(() => {
     const showToast = (message: string) => {
@@ -38,6 +41,8 @@ export default function App() {
           // previously rendered game is stale (e.g. rejoined after the game
           // ended) — drop it so we route to the Room screen.
           setGame(null);
+          prevGameRef.current = null;
+          resetAnnouncer();
           saveRoom(msg.room);
           // Auto-fill chain: one send per room broadcast, host only, so
           // there is never a double-send. Each add_bot triggers the next
@@ -52,6 +57,8 @@ export default function App() {
           }
           break;
         case "state":
+          announceState(msg, prevGameRef.current === null);
+          prevGameRef.current = msg;
           setGame(msg);
           break;
         case "error":
@@ -62,6 +69,8 @@ export default function App() {
             clearSavedRoom();
             setRoom(null);
             setGame(null);
+            prevGameRef.current = null;
+            resetAnnouncer();
             showToast("That game has ended.");
           } else {
             showToast(msg.message);
@@ -73,6 +82,8 @@ export default function App() {
           clearSavedRoom();
           setRoom(null);
           setGame(null);
+          prevGameRef.current = null;
+          resetAnnouncer();
           break;
         case "event":
           // Optional animation hints; safe to ignore.

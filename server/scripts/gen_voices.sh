@@ -9,7 +9,7 @@ mkdir -p "$OUT"
 VOICE="${SHENGJI_VOICE:-0H4ruoQ81Ei2FCwjW5j1}"   # Susan - Warm Narrator (Beijing Mandarin)
 # eleven_v3 throughout: far better Mandarin tones than multilingual_v2
 # (v2 takes produced flat/anglicized readings on e.g. 四/六/三).
-ARGS=(--model-id eleven_v3 --lang zh -v "$VOICE")
+ARGS=(--model-id eleven_v3 --lang zh --speed 1.15 -v "$VOICE")
 
 say_clip() {  # $1 = filename (no ext), $2 = text
   local f="$OUT/$1.mp3"
@@ -30,7 +30,7 @@ for s in "${SUITS[@]}"; do
   # Aces use the expressive v3 model (user-auditioned: best 尖 delivery)
   if [ ! -s "$OUT/${sc}A.mp3" ]; then
     echo "gen  ${sc}A  <- ${sn}尖 (eleven_v3)"
-    sag speak --model-id eleven_v3 --lang zh -v "$VOICE" -o "$OUT/${sc}A.mp3" "${sn}尖"
+    sag speak --model-id eleven_v3 --lang zh --speed 1.15 -v "$VOICE" -o "$OUT/${sc}A.mp3" "${sn}尖"
   fi
 done
 say_clip "BJ" "大王"
@@ -41,12 +41,12 @@ say_clip "throw" "甩牌"
 # diaozhu: 钓 (fishing, diào 4th tone) — 调 would be misread as tiáo
 if [ ! -s "$OUT/diaozhu.mp3" ]; then
   echo "gen  diaozhu  <- 钓主 (eleven_v3)"
-  sag speak --model-id eleven_v3 --lang zh -v "$VOICE" -o "$OUT/diaozhu.mp3" "钓主"
+  sag speak --model-id eleven_v3 --lang zh --speed 1.15 -v "$VOICE" -o "$OUT/diaozhu.mp3" "钓主"
 fi
 # bi uses the expressive v3 model for a sharp falling-tone exclamation
 if [ ! -s "$OUT/bi.mp3" ]; then
   echo "gen  bi  <- 毙！ (eleven_v3)"
-  sag speak --model-id eleven_v3 --lang zh -v "$VOICE" -o "$OUT/bi.mp3" "毙！"
+  sag speak --model-id eleven_v3 --lang zh --speed 1.15 -v "$VOICE" -o "$OUT/bi.mp3" "毙！"
 fi
 
 echo "done: $(ls "$OUT" | wc -l | tr -d ' ') clips in $OUT"

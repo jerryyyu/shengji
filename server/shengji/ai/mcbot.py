@@ -66,6 +66,10 @@ class MCBot(SmartBot):
     #                          risk the fewest points (10-10 pair leads lose
     #                          20 immediately when beaten; expectation-equal
     #                          but worse downside)
+    LEAD_MARGIN = None       # optional higher margin for LEADS only: rollout
+    #                          opponents are too passive to punish slow play,
+    #                          biasing lead values toward low cards (None =
+    #                          use MARGIN)
 
     def __init__(self, seed: int | None = None):
         self.rng = random.Random(seed)
@@ -106,7 +110,10 @@ class MCBot(SmartBot):
                                          -totals[i]))
         # candidates[0] is SmartBot's own choice: prefer it unless the search
         # clears the confidence margin (rollouts are noisiest early on).
-        if best != 0 and (totals[best] - totals[0]) / n_worlds < self.MARGIN:
+        margin = self.MARGIN
+        if self.LEAD_MARGIN is not None and not rnd.trick.plays:
+            margin = self.LEAD_MARGIN
+        if best != 0 and (totals[best] - totals[0]) / n_worlds < margin:
             return candidates[0]
         return candidates[best]
 

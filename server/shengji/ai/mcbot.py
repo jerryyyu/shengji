@@ -50,6 +50,10 @@ class _BuryNoVoid(SmartBot):
 class MCBot(SmartBot):
     N_DETERMINIZATIONS = 10
     MAX_CANDIDATES = 8
+    WIDE_LEAD_BALLOT = False  # leads: roll out every pair/tractor/near-boss
+    #                           throw in every suit incl. trump (JVRA gap:
+    #                           sourcing, not judgment). Cap below.
+    LEAD_MAX_CANDIDATES = 14
     SAMPLE_RETRIES = 15
     MARGIN = 5.0  # points/round a candidate must beat SmartBot's pick by;
     #               keeps the heuristic prior unless the search is confident.
@@ -222,6 +226,26 @@ class MCBot(SmartBot):
                 mem_ = _M(rnd, seat)
                 for t in self.near_boss_throws(rnd, seat, mem_):
                     add(t)  # sampled worlds price the beat risk + penalty
+            if self.WIDE_LEAD_BALLOT:
+                # JVRA 2026-08-02: ballot lacked trump pairs (♣A♣A/♣8♣8) —
+                # sourcing gap, not judgment. Show rollouts EVERY pair,
+                # tractor, and near-boss throw in every suit incl. trump;
+                # the margin rule still shields the heuristic from noise.
+                from ..engine.combos import find_tractor_runs
+                mem_w = Memory(rnd, seat)
+                for t in self.near_boss_throws(rnd, seat, mem_w):
+                    add(t)
+                for s in list(PLAIN_SUITS) + [TRUMP]:
+                    cards = suit_cards(hand, s, o)
+                    for length in range(6, 1, -1):
+                        for run in find_tractor_runs(cards, o, length):
+                            add(run)
+                    for code, k in sorted(Counter(cards).items(),
+                                          key=lambda e: -o.level(e[0])):
+                        if k >= 2:
+                            add([code, code])
+                    if cards:
+                        add([max(cards, key=o.level)])
             for s in PLAIN_SUITS:
                 cards = suit_cards(hand, s, o)
                 if not cards:
@@ -249,6 +273,8 @@ class MCBot(SmartBot):
             add(self._forced_follow(hand, lead, o, prefer_points=True))
             win_seat, inc_suit, inc_top = self._current_winner(rnd)
             add(self._cheapest_winning(hand, lead, inc_suit, inc_top, o))
+        if self.WIDE_LEAD_BALLOT and not rnd.trick.plays:
+            return cands[:self.LEAD_MAX_CANDIDATES]
         return cands[:self.MAX_CANDIDATES]
 
     # ------------------------------------------------------------- sampling

@@ -22,7 +22,8 @@ _helper = MCBot(seed=0)
 
 
 def enumerate_actions(rnd: Round, seat: int,
-                      exhaustive_follows: bool = False) -> list[list[str]]:
+                      exhaustive_follows: bool = False,
+                      include_throws: bool = False) -> list[list[str]]:
     """Candidate plays for the acting seat, deduped, legality-guaranteed.
 
     exhaustive_follows=False (default): follows come from the search's
@@ -60,6 +61,20 @@ def enumerate_actions(rnd: Round, seat: int,
                 for run in find_tractor_runs(cards, o, length):
                     add(run)
         add(_helper._lead(rnd, seat))  # heuristic pick incl. safe throws
+        if include_throws:
+            # Ballot v2 (JVRA, 2026-08-02: net never saw a shuai-pai option).
+            # Every safe throw per suit plus near-boss throws goes on the
+            # ballot. DO NOT enable at play time for nets trained on v1
+            # ballots — unseen action shapes collapse them (Elo 798 incident);
+            # regenerate teacher data with this flag, then train, then play.
+            from ..ai.memory import Memory
+            mem = Memory(rnd, seat)
+            boss = _helper._boss_components(rnd, seat, mem)
+            for comps in boss.values():
+                if len(comps) >= 2:
+                    add([c for comp in comps for c in comp.cards])
+            for t in _helper.near_boss_throws(rnd, seat, mem):
+                add(t)
     elif not exhaustive_follows:
         for cand in _helper._candidates(rnd, seat):
             add(cand)

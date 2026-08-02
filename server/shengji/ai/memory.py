@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections import Counter
 
 from ..engine.cards import TRUMP, make_deck
+from ..engine.combos import pair_count
 from ..engine.round import Round
 
 
@@ -24,18 +25,29 @@ class Memory:
         self.seat = seat
         self.played: Counter[str] = Counter()
         self.voids: dict[int, set[str]] = {s: set() for s in range(4)}
+        # Proven "no pair left in suit": the rules FORCE a follower to match
+        # pairs up to the number led, so answering a pair/tractor lead with
+        # fewer in-suit pairs than led is proof their pairs there are gone.
+        self.pair_void: dict[int, set[str]] = {s: set() for s in range(4)}
 
         tricks = list(rnd.history)
         if rnd.trick and rnd.trick.plays:
             tricks.append(rnd.trick)
         for trick in tricks:
-            lead_suit = self.o.eff_suit(trick.plays[0].cards[0])
+            lead_cards = trick.plays[0].cards
+            lead_suit = self.o.eff_suit(lead_cards[0])
+            n_led_pairs = pair_count(lead_cards) if len(lead_cards) >= 2 else 0
             for i, tp in enumerate(trick.plays):
                 self.played.update(tp.cards)
                 # A follower whose play includes any off-suit card was
                 # obliged to exhaust the led suit first => void now.
                 if i > 0 and any(self.o.eff_suit(c) != lead_suit for c in tp.cards):
                     self.voids[tp.seat].add(lead_suit)
+                if i > 0 and n_led_pairs:
+                    ins = [c for c in tp.cards
+                           if self.o.eff_suit(c) == lead_suit]
+                    if pair_count(ins) < n_led_pairs:
+                        self.pair_void[tp.seat].add(lead_suit)
 
         hand = Counter(rnd.hands[seat])
         self.unseen: Counter[str] = Counter()

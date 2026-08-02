@@ -26,6 +26,12 @@ class SmartBot(HeuristicBot):
     #                         tricks (XCYB: BJ spent beating a rank-4)
     TRACTOR_FIRST = False   # tractors outrank boss pairs in the lead order
     #                         (user: "if there is a tractor, HIGHLY consider")
+    SIZE_FIRST = False      # strict "more cards is better" lead order: any
+    #                         ruff-safe tractor, then any ruff-safe pair,
+    #                         before all smaller leads (user idea, 2026-08-02)
+    PAIR_VOID_BOSS = False  # lead a LOW pair once all opponents have proven
+    #                         pair-void in its suit (forced pair-matching
+    #                         makes a broken answer proof; user, 2026-08-02)
     ANY_PAIR_OVER_JUNK = False  # last-resort leads prefer ANY pair to a
     #                             passive low single (user: junk needs a reason)
     LATE_TRUMP_PAIRS = True   # lead top trump pair when hand <= 12 (mined
@@ -236,6 +242,22 @@ class SmartBot(HeuristicBot):
         if self.TRACTOR_FIRST and best_tr:
             return best_tr
 
+        # 1.5) Strict size-first: the biggest ruff-safe structure leads, rank
+        #      be damned. (Supersedes TRACTOR_FIRST + ANY_PAIR_OVER_JUNK.)
+        if self.SIZE_FIRST:
+            if best_tr:
+                return best_tr
+            sz_pairs = []
+            for s in PLAIN_SUITS:
+                if mem.ruff_risk(s, opps):
+                    continue
+                for c, k in Counter(by_suit[s]).items():
+                    if k >= 2 and c not in reserve:
+                        sz_pairs.append((o.level(c), c))
+            if sz_pairs:
+                _, c = max(sz_pairs)
+                return [c, c]
+
         # 2) Boss pairs: guaranteed winners that also dump cards.
         boss_paired = [entry(c) for comps in boss.values() for c in comps if c.pair_len]
         boss_single = [entry(c) for comps in boss.values() for c in comps
@@ -297,11 +319,20 @@ class SmartBot(HeuristicBot):
             for s in ruff_safe:
                 for c, k in Counter(by_suit[s]).items():
                     if k >= 2 and not (set([c]) & reserve):
-                        pairs.append((o.level(c), c))
+                        pairs.append((o.level(c), c, s))
             if pairs:
-                lv, c = max(pairs)
+                lv, c, _ = max(pairs)
                 if lv >= len(o.plain_ranks) - 5:  # J-ish or better
                     return [c, c]
+                if self.PAIR_VOID_BOSS:
+                    # User insight (2026-08-02): a low pair is boss-shaped
+                    # once every opponent has PROVEN no pair in that suit
+                    # (rules force pair-matching, so a broken answer is
+                    # proof). Ruff risk already screened via ruff_safe.
+                    for plv, pc, ps in sorted(pairs, reverse=True):
+                        if all(ps in mem.pair_void[op] or ps in mem.voids[op]
+                               for op in opps):
+                            return [pc, pc]
                 if self.ANY_PAIR_OVER_JUNK:
                     low_pair = (lv, c)  # remember: beats junk as last resort
                 else:

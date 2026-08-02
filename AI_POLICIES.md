@@ -152,6 +152,13 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
 
 ## Shared-code changes affecting ALL policies
 
+- **Memory.pair_void (2026-08-02)**: per-seat proof of "no pair left in
+  this suit", inferred from the forced pair-matching rule (a follower who
+  answers a pair/tractor lead with fewer in-suit pairs than led has, by
+  rule, none). Free public info available to every consumer. The
+  heuristic lead gate built on it (PAIR_VOID_BOSS) tied at n=400; the
+  sharper queued use is constraining MC's world sampling.
+
 - **CURRENT pool (2026-08-02 ~02:45, all four night upgrades incl.
   CONTROL_LEADS + TEMPO_GUARD, seeds 3000)**: mc 1067 > **smart 1061
   (statistical tie with the champion — mc's head-to-head edge narrowed
@@ -213,6 +220,8 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
 | TRUMP_DRAIN_V2 | off | same idea, banker-side only with cheap trumps (expert-conditioned version) | −4pt | rejected |
 | FEED_ON_TRUMP | off | throws point cards to a partner winning with trump even when they could be overtrumped | −9pt | rejected |
 | RESERVE_LAST | off | attackers hold back a boss pair/tractor for the last trick (kitty multiplier) | −11pt | rejected (hoarding loses) |
+| SIZE_FIRST | off | strict "more cards is better" lead order: any ruff-safe tractor, then any ruff-safe pair, before all smaller leads | 52% h2h, n=200 | tie (consistent with its halves TRACTOR_FIRST + ANY_PAIR_OVER_JUNK both null) |
+| PAIR_VOID_BOSS | off | leads a LOW pair once every opponent has PROVEN pair-void in its suit (forced pair-matching makes a broken answer proof) | 54% first n=200, 48% fresh n=200 → 51.0% at n=400 | tie — small-n mirage caught by extension; Memory.pair_void tracker kept (see shared-code changes) |
 
 **MCBot** (search-level knobs on top of SmartBot):
 
@@ -229,6 +238,7 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
 | SmartBot rollouts | off | uses the memory-aware bot instead of the fast heuristic to play out sampled worlds | Elo tie at 5x cost | rejected |
 | RISKY_THROWS | off | puts near-boss throws (A+QQ where only one higher pair threatens) on the ballot; worlds price the risk | 53% at MC, n=120 | tie (combo w/ TRUMP_BALLOT pending) |
 | TRUMP_BALLOT | off | adds trump-pair and top-trump lead candidates (钓主) for the worlds to price | 53% at MC, n=120 | tie (combo pending) |
+| WIDE_LEAD_BALLOT | testing | leads roll out EVERY pair, tractor, and near-boss throw in every suit incl. trump (lead cap 8→14). Fix for the JVRA sourcing gap: ♣A♣A/♣8♣8 never reached the rollouts | mc-vs-mc n=120 in flight | pending |
 
 **Engine corrections** (not flags — permanent): throw-ruffing (all bots
 can contest 甩牌), pair_is_boss (+13pt), beats() alternative

@@ -34,6 +34,16 @@ and in AI_POLICIES.md; this file tracks what's NEXT.
 - [ ] SmartBot ideas untried: exhaustion-based void inference, bury strategy
       using declaration knowledge, exact endgame solving (last ~4 tricks),
       suit-symmetry data augmentation (6x), confidence-weighted CE.
+- [ ] Pair-void-constrained world sampling for MCBot: Memory.pair_void
+      (2026-08-02) proves seats hold no pair in a suit — never deal them
+      one in sampled worlds. Makes rollout pricing of pair/throw leads
+      accurate; feeds WIDE_LEAD_BALLOT. (The heuristic-gate use tied at
+      n=400; the sampler use is the sharper one.)
+- [ ] Ballot v2 for RL (`include_throws` in rl/actions.py, staged
+      2026-08-02): next teacher generation must pass it, then train, then
+      flip play-time — never hot-enable under a v1-ballot net (Elo 798).
+- [ ] Xray panel: annotate WHY, not just values — e.g. "throw unbeatable:
+      no trump pair for the AA component" (JVRA confusion, 2026-08-02).
 - [ ] Inference-weighted world sampling for MCBot (declarer likely long in
       trump, discard-pattern hints).
 - [ ] Rules nits from the audit: standard declaration-overcall restrictions;

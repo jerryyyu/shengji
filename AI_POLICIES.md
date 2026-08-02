@@ -49,29 +49,13 @@ the mc-vs-net gap widened to ~76, which is the whole case for gen-v3 +
 v8 (students of the new teacher). Goal line unchanged: an rl policy
 above mc in this pool.
 
-### Older pools
-
+### Notes
 
 IMPORTANT caveat learned 2026-08-01: Bradley-Terry ratings are
 POOL-RELATIVE — absolute numbers shift with pool composition (mc rated
-1141, 1104, and 1137 across three pools; anchors move too). Only
-within-pool gaps and head-to-head rates transfer between tables.
-
-**Latest pools (2026-08-01 night, post-throw-fix code):**
-
-| policy | Elo | pool | note |
-|---|---|---|---|
-| **mc** (server default) | **1141** | A | champion; beat rl-v5 53%, mc-v5roll 63%, rl-v6 60% |
-| rl-v5 (bare net) | 1088 | A | distilled net, no search at inference (~2ms/decision) |
-| mc-v5roll | 1074 | A | net-as-rollouts DEGRADES search — its 55% preview vs mc (n=40) reversed to 37% at n=60; bare net out-rates its own hybrid |
-| smart (v3) | 1055 | A | |
-| rl-v6 | 1032* | B | *pool B (mc 1104, smart 1006): ~25-30 above smart, ~70 below mc — v6 is the strongest standalone net (see rl section) |
-| heuristic | 1000 | A+B | anchor |
-
-Earlier pools (same day, pre-throw-fix code): mc 1137 > mc-smartroll
-1129 (tie at 5x cost) > mc-argmax 1092 (margin worth ~45 Elo) >
-mc-lite 1077 > smart 1032 ≈ smart-v1 1022 ≈ smart-v2 1020 > heuristic
-1000.
+1141, 1104, 1109 across pools; rl-v5 swung 1088 -> 971 with identical
+weights). Only within-pool gaps and head-to-head rates transfer.
+Historical pool tables live in git history and RL_PLAN's archive.
 
 Full-game rates compress/amplify differently: smart beat heuristic 86-90%
 of GAMES while only ~52% of rounds — game wins come from winning rounds

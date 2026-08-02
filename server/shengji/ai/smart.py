@@ -28,6 +28,8 @@ class SmartBot(HeuristicBot):
     #                         (user: "if there is a tractor, HIGHLY consider")
     LATE_TRUMP_PAIRS = True   # lead top trump pair when hand <= 12 (mined
     #                           from human play: +7.3/decision, 8/8 better)
+    TEMPO_SEEK = False      # spend cheap trump winning low-point tricks when
+    #                         a boss-pair/throw follow-up is waiting (user)
     BURY_VOID = True        # bury toward emptying 1-3 card suits (ruff setup)
     CONTROL_LEADS = True    # user-spec leader hierarchy: pairs > suit-emptying
     #                         > forcing singles > junk (measured 67% h2h, n=150)
@@ -353,6 +355,17 @@ class SmartBot(HeuristicBot):
             contest_at = self.CONTEST_PTS
             if self.ENDGAME_CONTROL and len(hand) <= 6:
                 contest_at = 0  # endgame: every trick controls the finish
+            elif self.TEMPO_SEEK and holds:
+                # winning buys the LEAD; if a strong follow-up is waiting
+                # (boss pairs / tractor / safe throw), cheap trumps are a
+                # fair price even on a low-point trick (user tempo idea)
+                premium = min(o.level(c) for c in winning) >= len(o.plain_ranks)
+                if not premium:
+                    boss = self._boss_components(rnd, seat, mem)
+                    followup = sum(c.size for comps in boss.values()
+                                   for c in comps if c.pair_len)
+                    if followup >= 2:
+                        contest_at = 0
             if trick_pts >= contest_at or (holds and trick_pts > 0):
                 return winning
         return self._forced_follow(hand, lead, o, prefer_points=False,

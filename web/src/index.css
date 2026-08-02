@@ -183,10 +183,6 @@ button {
   border-color: #4a5462;
 }
 
-.room-panel {
-  position: relative;
-}
-
 .room-panel > .mute-btn {
   position: absolute;
   top: 14px;
@@ -438,6 +434,7 @@ button {
 /* ---------- Room ---------- */
 
 .room-panel {
+  position: relative;
   width: 420px;
   display: flex;
   flex-direction: column;
@@ -855,10 +852,6 @@ button {
   pointer-events: none; /* nothing here is interactive; never block taps */
 }
 
-.trick-cards {
-  --cw: 52px;
-}
-
 .trick-play {
   position: absolute;
   display: flex;
@@ -900,6 +893,7 @@ button {
 }
 
 .trick-cards {
+  --cw: 52px;
   display: flex;
 }
 

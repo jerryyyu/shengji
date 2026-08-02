@@ -55,6 +55,11 @@ class MCBot(SmartBot):
     #                          sourcing, not judgment). ADOPTED: 62% vs
     #                          narrow-ballot mc (75-45, n=120), +7% latency.
     LEAD_MAX_CANDIDATES = 14
+    WIDE_FOLLOW_BALLOT = False  # follows: bounded exhaustive distinct-code
+    #                             multisets on top of the constructed set
+    #                             (audit: 21% of human follow singles were
+    #                             off-ballot — discard selection). Cap below.
+    FOLLOW_MAX_CANDIDATES = 12
     SAMPLE_RETRIES = 15
     MARGIN = 5.0  # points/round a candidate must beat SmartBot's pick by;
     #               keeps the heuristic prior unless the search is confident.
@@ -270,8 +275,33 @@ class MCBot(SmartBot):
             add(self._forced_follow(hand, lead, o, prefer_points=True))
             win_seat, inc_suit, inc_top = self._current_winner(rnd)
             add(self._cheapest_winning(hand, lead, inc_suit, inc_top, o))
+            if self.WIDE_FOLLOW_BALLOT:
+                # Every distinct-code follow (in-suit part maximal, as the
+                # rules force), validated by add(); constructed seeds above
+                # keep the known-good shapes ahead of the cap.
+                from itertools import combinations
+                suit = uniform_suit(lead, o)
+                h_suit = suit_cards(hand, suit, o)
+                n_suit = min(len(lead), len(h_suit))
+                if n_suit == len(lead):
+                    pool = {tuple(sorted(c))
+                            for c in combinations(sorted(h_suit), n_suit)}
+                else:
+                    off = list(hand)
+                    for c in h_suit:
+                        off.remove(c)
+                    base = tuple(sorted(h_suit))
+                    pool = {base + tuple(sorted(c))
+                            for c in combinations(sorted(off),
+                                                  len(lead) - n_suit)}
+                for cand in sorted(pool):
+                    if len(cands) >= self.FOLLOW_MAX_CANDIDATES:
+                        break
+                    add(list(cand))
         if self.WIDE_LEAD_BALLOT and not rnd.trick.plays:
             return cands[:self.LEAD_MAX_CANDIDATES]
+        if self.WIDE_FOLLOW_BALLOT and rnd.trick.plays:
+            return cands[:self.FOLLOW_MAX_CANDIDATES]
         return cands[:self.MAX_CANDIDATES]
 
     # ------------------------------------------------------------- sampling

@@ -176,3 +176,14 @@ converted to training shards (`rl/human_shards.py`).
   pretrained policy's ordering before it can rebuild (audit: candidate
   score spread 22.5 → 0.26). Dense per-candidate targets (distillation)
   and anchored objectives are the countermeasures.
+- **The expert-iteration chain works (2026-08-01 night)**: distill the
+  search's EVALUATIONS, not its choices — its choices are part RNG
+  (10-world sampling decides near-ties), so train toward
+  softmax(candidate values/T) (v4, +6pts) and feed it enough data (v5,
+  2.6M decisions, +4 more). The student comes out SEARCH-RESISTANT (38%
+  vs MCBot; BC clone: 29%) because it learned the judge's values instead
+  of a fixed teacher's habits. Then close the loop: that student as
+  MCBot's rollout policy beat plain MCBot 55% — the first agent above
+  the champion — confirming the sweeps' finding that rollout quality was
+  flat-MC's binding constraint. Better net → better search → (next)
+  better teacher.

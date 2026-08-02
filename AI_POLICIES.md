@@ -180,51 +180,47 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
 - 2026-07-31 rules corrections (defend-at-A, format-scaled kitty
   multiplier) similarly shifted all measurements made before them.
 
-## Toggle registry (canonical) — every flag and its measured record
+## Toggle registry (canonical) — every flag, what it does, and its record
 
 **SmartBot / HeuristicBot** (h2h = head-to-head vs same bot without the flag):
 
-| flag | default | record | verdict |
-|---|---|---|---|
-| SAFE_THROWS | ON | +17pt vs heuristic (66→83) | adopted |
-| CONTROL_LEADS | ON | 67% h2h, n=150 | adopted |
-| LATE_TRUMP_PAIRS | ON | 60% h2h, n=150 (miner-sourced) | adopted |
-| VOID_DUMP | ON | 55% h2h, n=150 | adopted |
-| TEMPO_GUARD | ON | root-fix of prod BJ-burn; verified on position | adopted |
-| ENDGAME_CONTROL | ON | +2pt | adopted |
-| BURY_TRUMP_GATE | ON | +1pt | adopted |
-| BURY_VOID | ON | ~+1pt | adopted |
-| DECLARE 8/6 (vs 9/7) | ON | +2pt (10/8 measured −4) | adopted |
-| SAFE_TRACTOR_ONLY | ON | disabling measured −4 | adopted |
-| TEMPO_SEEK v2 | off | v1 48%, v2 53%; combined w/ ANY_PAIR 49% n=200 | tie — singles were noise |
-| ANY_PAIR_OVER_JUNK | off | 52%; combined w/ TEMPO_SEEK 49% n=200 | tie — singles were noise |
-| TRACTOR_FIRST | off | 51% h2h | tie |
-| PARTNER_VOID_LEAD | off | 50% alone, −4 combined | rejected |
-| DECLARE_TUNE | off | −2pt | rejected |
-| TRUMP_DRAIN | off | −4pt | rejected |
-| TRUMP_DRAIN_V2 | off | −4pt | rejected |
-| FEED_ON_TRUMP | off | −9pt | rejected |
-| RESERVE_LAST | off | −11pt | rejected (registry: smart-reserve) |
+| flag | default | what it does | record | verdict |
+|---|---|---|---|---|
+| SAFE_THROWS | ON | leads multi-part throws (甩牌) only when card-counting proves every part unbeatable — free multi-card winners, penalty can never trigger | +17pt vs heuristic | adopted |
+| CONTROL_LEADS | ON | when in the lead with no boss cards: try pairs (J+) first, then empty a 1-2 card suit, then a forcing high non-point single — junk only as true last resort | 67% h2h, n=150 | adopted |
+| LATE_TRUMP_PAIRS | ON | with ≤12 cards left, lead the top trump pair — depleted opponents can't answer pairs (mined from human play: +7.3/decision, 8/8) | 60% h2h, n=150 | adopted |
+| VOID_DUMP | ON | when discarding junk, shed from the SHORTEST suit first — empties suits to open future ruff opportunities | 55% h2h, n=150 | adopted |
+| TEMPO_GUARD | ON | refuses to spend rank-trumps/jokers winning tricks worth 0 points (prod bot once burned BJ beating a rank-4 for nothing) | root-fix, verified on position | adopted |
+| ENDGAME_CONTROL | ON | in the last ~6 tricks, contest every winnable trick regardless of points — controlling the finish beats saving cards | +2pt | adopted |
+| BURY_TRUMP_GATE | ON | banker buries kitty points only when trump is strong enough to defend the last trick (11+ trumps incl. big joker); weak trump = never bury points | +1pt | adopted |
+| BURY_VOID | ON | banker's bury deliberately empties 1-3 card suits (ruff setup) instead of spreading discards | ~+1pt | adopted |
+| DECLARE 8/6 | ON | declares trump at 8 projected trumps (7 in the grace window) — eager beats waiting for a perfect hand (10/8 measured −4) | +2pt vs 9/7 | adopted |
+| SAFE_TRACTOR_ONLY | ON | won't lead tractors into suits where an opponent has shown void (they'd get ruffed) | disabling: −4 | adopted |
+| TEMPO_SEEK v2 | off | spends trump (even jokers, if the prize is big) to win the lead when boss pairs/tractors are waiting to be played | v1 48%, v2 53%, combo 49% n=200 | tie — noise |
+| ANY_PAIR_OVER_JUNK | off | last-resort leads prefer any pair (even low) to a passive low single | 52%; combo 49% | tie — noise |
+| TRACTOR_FIRST | off | ranks tractors above boss pairs in the lead order | 51% h2h | tie (tractors already led at step 2) |
+| PARTNER_VOID_LEAD | off | leads suits your partner is void in so they can ruff for points | 50% alone, −4 combined | rejected |
+| DECLARE_TUNE | off | declares the WEAKER of two long suits + extra-eager on point levels (5/10/K) — folk wisdom from strategy guides | −2pt | rejected |
+| TRUMP_DRAIN | off | leads boss trumps from long holdings to strip opponents' trumps early | −4pt | rejected |
+| TRUMP_DRAIN_V2 | off | same idea, banker-side only with cheap trumps (expert-conditioned version) | −4pt | rejected |
+| FEED_ON_TRUMP | off | throws point cards to a partner winning with trump even when they could be overtrumped | −9pt | rejected |
+| RESERVE_LAST | off | attackers hold back a boss pair/tractor for the last trick (kitty multiplier) | −11pt | rejected (hoarding loses) |
 
-**MCBot:**
+**MCBot** (search-level knobs on top of SmartBot):
 
-| knob | value | record | verdict |
-|---|---|---|---|
-| MARGIN | 5.0 | beat argmax 62% (~45 Elo); 2.5→57%, 7.5→54%, 10→52% | adopted |
-| N_DETERMINIZATIONS | 10 | 5→48%, 10→62%, 15→65%, 30→61% | adopted (≥10 flat) |
-| MAX_CANDIDATES | 8 | 4→58%, 12→60% | adopted |
-| TRACTOR_LOCK | ON | 56% h2h | adopted |
-| POINT_SHY_EPS | 2.0 | adopted from 10-10 lead analysis (no isolated h2h) | adopted |
-| LEVEL_OBJECTIVE | off | 59% vs 62% ref | tie |
-| MC_BURY | off | 62% = ref | tie |
-| LEAD_MARGIN | off | 8/12/999 → 51/47/50% | tie |
-| SmartBot rollouts | off | Elo tie with mc at 5x cost | rejected |
-| RISKY_THROWS | off | 53% at MC level, n=120 | tie (combo w/ TRUMP_BALLOT pending) |
-| TRUMP_BALLOT | off | 53% at MC level, n=120 | tie (combo pending) |
-
-**MC-level stack validation (2026-08-02 morning)**: mc with the four
-adopted toggles beat mc-without **57%** (n=120) — the SmartBot-level
-h2h protocol's inheritance assumption holds at the shipping level.
+| knob | value | what it does | record | verdict |
+|---|---|---|---|---|
+| MARGIN | 5.0 | SmartBot's pick is the incumbent; the search only overrides it when a candidate wins the rollouts by 5+ points/round — guards against early-round rollout noise | beat argmax 62% (~45 Elo) | adopted |
+| N_DETERMINIZATIONS | 10 | how many hidden-hand worlds are sampled per decision | 5→48%, 10→62%, 15→65%, 30→61% | adopted (≥10 flat) |
+| MAX_CANDIDATES | 8 | how many candidate plays the search evaluates | 4→58%, 12→60% | adopted |
+| TRACTOR_LOCK | ON | when the heuristic wants to lead a tractor, that's final — no rollout override | 56% h2h | adopted |
+| POINT_SHY_EPS | 2.0 | among near-tied candidates, play the one risking the fewest points (a beaten 10-10 lead gifts 20) | from the 10-10 lead analysis | adopted |
+| LEVEL_OBJECTIVE | off | scores rollouts by scoring brackets (the 80/40-point cliffs) instead of raw points | 59% vs 62% ref | tie |
+| MC_BURY | off | searches the banker's bury: heuristic pick vs loose/strict/no-void variants over sampled worlds | 62% = ref | tie |
+| LEAD_MARGIN | off | a higher override bar for leads specifically | 8/12/999 → 51/47/50% | tie |
+| SmartBot rollouts | off | uses the memory-aware bot instead of the fast heuristic to play out sampled worlds | Elo tie at 5x cost | rejected |
+| RISKY_THROWS | off | puts near-boss throws (A+QQ where only one higher pair threatens) on the ballot; worlds price the risk | 53% at MC, n=120 | tie (combo w/ TRUMP_BALLOT pending) |
+| TRUMP_BALLOT | off | adds trump-pair and top-trump lead candidates (钓主) for the worlds to price | 53% at MC, n=120 | tie (combo pending) |
 
 **Engine corrections** (not flags — permanent): throw-ruffing (all bots
 can contest 甩牌), pair_is_boss (+13pt), beats() alternative

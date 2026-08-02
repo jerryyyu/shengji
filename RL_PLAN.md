@@ -68,7 +68,16 @@ Four trainer iterations, all failing the gates (targets 60%/45%):
 | v2 | + CE temperature | 30% / 27% |
 | v3 | separated policy/value heads | 32% / 24% |
 | v4 | + soft value-distribution targets, lr 1e-3 | 38% / 32% |
-| v5 | v4 recipe on the FULL dataset (2.6M decisions, 5 epochs) | **42% / 38%** |
+| v5 | v4 recipe on the FULL dataset (2.6M decisions, 5 epochs) | 42% / 38% |
+| v6 | same, 12 epochs | **51% / 41%** |
+
+**v6 is the strongest standalone net: beats BC on both axes (48/29) and
+reaches parity-plus vs SmartBot.** Val agreement plateaued (~55.5%) while
+gate strength kept climbing v5→v6 (+9/+3) — more evidence that agreement
+measures near-tie matching, not strength. Still shy of the formal 60/45
+gates, but the trend (v4 38/32 → v5 42/38 → v6 51/41) hasn't bent yet;
+next data-side lever is a bigger/regenerated teacher dataset (N>10 world
+evals for less label noise) or aux heads.
 
 v5 confirms the data-starvation hypothesis: the v1→v4→v5 line (32→38→42
 vs Smart) hasn't plateaued, and val metrics were still improving at epoch

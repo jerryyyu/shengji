@@ -18,23 +18,15 @@ from .encode import encode_action, encode_obs
 
 class RLBot(SmartBot):
     def __init__(self, ckpt: str | None = None):
-        from .model import QNet, QNetDueling, torch
+        from .model import torch
         if torch is None:
             raise RuntimeError("RLBot needs torch: uv sync --group rl")
         path = ckpt or os.environ.get("SHENGJI_RL_CKPT", "")
         if not path or not os.path.exists(path):
             raise RuntimeError(
                 f"RLBot checkpoint not found ({path!r}); set SHENGJI_RL_CKPT")
-        state = torch.load(path, map_location="cpu")
-        if any(k.startswith("p_head") for k in state):
-            from .model import PolicyValueNet
-            self.net = PolicyValueNet()
-        elif any(k.startswith("trunk") for k in state):
-            self.net = QNetDueling()
-        else:
-            self.net = QNet()
-        self.net.load_state_dict(state)
-        self.net.eval()
+        from .model import load_any_net
+        self.net = load_any_net(path)
 
     def decide_play(self, rnd: Round, seat: int) -> list[str]:
         actions = enumerate_actions(rnd, seat)

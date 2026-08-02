@@ -19,8 +19,8 @@ export default function App() {
   // Single-player orchestration: when armed (via Lobby's "Play vs bots"),
   // each lobby `room` message advances the fill-with-bots-then-start chain.
   const autoFill = useRef(false);
-  // Previous game state, for audio announcement diffing (null => seed only).
-  const prevGameRef = useRef<GameState | null>(null);
+  // Whether the announcer has been seeded with a first game state.
+  const seededRef = useRef(false);
 
   useEffect(() => {
     const showToast = (message: string) => {
@@ -32,6 +32,18 @@ export default function App() {
       }, TOAST_MS);
     };
 
+    // Common teardown when leaving a game: drop game state, reset the
+    // announcer, and (unless staying in the room) forget the room entirely.
+    const resetToLobby = (opts?: { keepRoom?: boolean }) => {
+      if (!opts?.keepRoom) {
+        clearSavedRoom();
+        setRoom(null);
+      }
+      setGame(null);
+      seededRef.current = false;
+      resetAnnouncer();
+    };
+
     const unsubStatus = conn.subscribeStatus(setStatus);
     const unsubMsg = conn.subscribe((msg) => {
       switch (msg.type) {
@@ -40,9 +52,7 @@ export default function App() {
           // "room" is only sent while the room is in lobby state, so any
           // previously rendered game is stale (e.g. rejoined after the game
           // ended) — drop it so we route to the Room screen.
-          setGame(null);
-          prevGameRef.current = null;
-          resetAnnouncer();
+          resetToLobby({ keepRoom: true });
           saveRoom(msg.room);
           // Auto-fill chain: one send per room broadcast, host only, so
           // there is never a double-send. Each add_bot triggers the next
@@ -57,8 +67,8 @@ export default function App() {
           }
           break;
         case "state":
-          announceState(msg, prevGameRef.current === null);
-          prevGameRef.current = msg;
+          announceState(msg, !seededRef.current);
+          seededRef.current = true;
           setGame(msg);
           break;
         case "error":
@@ -66,11 +76,7 @@ export default function App() {
           if (msg.code === "room_not_found") {
             // The room no longer exists (server restart / expiry). Stop
             // retrying it on reconnect and return to the lobby (name kept).
-            clearSavedRoom();
-            setRoom(null);
-            setGame(null);
-            prevGameRef.current = null;
-            resetAnnouncer();
+            resetToLobby();
             showToast("That game has ended.");
           } else {
             showToast(msg.message);

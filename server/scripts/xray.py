@@ -10,17 +10,15 @@ Usage:
   play_idx: 0=lead (default) .. 3=last to act
 """
 
-import json
-import random
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
 
 sys.path.insert(0, ".")
 from shengji.ai.mcbot import MCBot  # noqa: E402
 from shengji.ai.memory import Memory  # noqa: E402
 from shengji.engine.cards import SUITS, TRUMP  # noqa: E402
 from shengji.engine.legal import suit_cards  # noqa: E402
-from shengji.engine.round import Round  # noqa: E402
+from shengji.rl.replay_log import group_rounds, rebuild_round  # noqa: E402
 
 SYM = {"S": "♠", "H": "♥", "D": "♦", "C": "♣", TRUMP: "T"}
 
@@ -35,27 +33,13 @@ def main() -> None:
     play_idx = int(sys.argv[4]) if len(sys.argv) > 4 else 0
     n_worlds = int(sys.argv[5]) if len(sys.argv) > 5 else 60
 
-    events = [json.loads(l) for l in open(path)]
-    evs = [e for e in events if e["round"] == rno]
+    evs = group_rounds(path)[rno]
     rs = next(e for e in evs if e["e"] == "round_start")
     tr = next(e for e in evs if e["e"] == "trump")
-    bury = next(e for e in evs if e["e"] == "bury")
     names = {p["seat"]: p["name"] + (" [bot]" if p["is_bot"] else "")
              for p in rs["players"]}
-
-    rnd = Round(rs["trump_rank"], rs["banker"], random.Random(0))
-    rnd.deck = rs["deck"]
-    rnd.hands = [[], [], [], []]
-    rnd._deal_pos = 0
-    rnd.phase = "deal"
-    rnd.kitty = rs["deck"][100:]
-    while rnd.phase == "deal":
-        rnd.deal_next()
-    for e in evs:
-        if e["e"] == "declare":
-            rnd.declare(e["seat"], e["cards"])
-    rnd.finalize_declare()
-    rnd.bury(tr["banker"], bury["cards"])
+    rnd = rebuild_round(evs)
+    assert rnd is not None, "round lacks setup events"
 
     trick_no = 0
     logged_play = None

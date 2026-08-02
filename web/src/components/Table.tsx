@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { GameState, HandCard, LastTrick, StatePlayer } from "../protocol";
 import { conn } from "../ws";
-import Card, { SUIT_SYMBOL } from "./Card";
+import Card, { shortLabel } from "./Card";
 import Hand from "./Hand";
 import Hud from "./Hud";
 import RoundEndModal from "./RoundEndModal";
@@ -15,9 +15,8 @@ function declareLabel(ids: number[], hand: HandCard[]): string {
   const codes = ids.map((id) => hand.find((c) => c.id === id)?.code ?? "?");
   const first = codes[0] ?? "?";
   if (first === "LJ" || first === "BJ") return "Declare NT";
-  const suit = SUIT_SYMBOL[first[0]] ?? first[0];
-  const rank = first.slice(1);
-  return codes.length === 2 ? `Declare ${suit}${rank} pair` : `Declare ${suit}${rank}`;
+  const label = shortLabel(first);
+  return codes.length === 2 ? `Declare ${label} pair` : `Declare ${label}`;
 }
 
 function OpponentPanel({ player, state }: { player: StatePlayer; state: GameState }) {

@@ -16,15 +16,11 @@ import sys
 from collections import Counter, defaultdict
 
 sys.path.insert(0, ".")
-sys.path.insert(0, "scripts")
-from eval_vs_human import iter_human_decisions  # noqa: E402
 from shengji.ai.mcbot import MCBot  # noqa: E402
 from shengji.ai.memory import Memory  # noqa: E402
 from shengji.ai.smart import SmartBot  # noqa: E402
+from shengji.rl.replay_log import iter_human_decisions  # noqa: E402
 from shengji.engine.cards import TRUMP, points  # noqa: E402
-
-EXCLUDE_PLAYERS = {"Smoke"}  # test scripts are not humans
-
 
 def play_shape(cards, rnd):
     o = rnd.ordering

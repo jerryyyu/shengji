@@ -37,21 +37,7 @@ from .encode import ACT_DIM, OBS_DIM, encode_action, encode_obs
 from .oracle import ORACLE_DIM, encode_oracle
 
 
-def load_any_net(path: str):
-    """Load a checkpoint as whichever architecture saved it (QNet /
-    QNetDueling / PolicyValueNet) — all expose score_candidates."""
-    import torch
-    from .model import QNet, QNetDueling, PolicyValueNet
-    state = torch.load(path, map_location="cpu")
-    if any(k.startswith("p_head") for k in state):
-        net = PolicyValueNet()
-    elif any(k.startswith("trunk") for k in state):
-        net = QNetDueling()
-    else:
-        net = QNet()
-    net.load_state_dict(state)
-    net.eval()
-    return net
+from .model import load_any_net
 
 
 # ------------------------------------------------------------------ actors
@@ -204,9 +190,8 @@ def main() -> None:
                 m.a_head[-1].weight *= args.a_scale
                 m.a_head[-1].bias *= args.a_scale
         print(f"A-head rescaled by {args.a_scale}", flush=True)
-    oracle = nn.Sequential(nn.Linear(ORACLE_DIM, 512), nn.ReLU(),
-                           nn.Linear(512, 256), nn.ReLU(),
-                           nn.Linear(256, 1)).to(dev)
+    from .oracle import oracle_net
+    oracle = oracle_net().to(dev)
     oracle.load_state_dict(torch.load(args.oracle_ckpt, map_location=dev))
     oracle.eval()
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)

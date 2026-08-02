@@ -137,3 +137,20 @@ if torch is not None:
                 seg = torch.zeros(len(acts), dtype=torch.long)
                 q, _ = self.heads_grouped(obs, acts, seg)
                 return q
+
+
+def load_any_net(path: str):
+    """Load a checkpoint as whichever architecture saved it (QNet /
+    QNetDueling / PolicyValueNet) — all expose score_candidates."""
+    if torch is None:
+        raise RuntimeError("needs torch: uv sync --group rl")
+    state = torch.load(path, map_location="cpu")
+    if any(k.startswith("p_head") for k in state):
+        net = PolicyValueNet()
+    elif any(k.startswith("trunk") for k in state):
+        net = QNetDueling()
+    else:
+        net = QNet()
+    net.load_state_dict(state)
+    net.eval()
+    return net

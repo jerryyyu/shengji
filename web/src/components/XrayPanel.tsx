@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from "react";
 import type { GameState } from "../protocol";
-import { SUIT_SYMBOL, isRedCode } from "./Card";
+import { SUIT_SYMBOL, isRedCode, shortLabel } from "./Card";
 
 interface XrayCandidate {
   play: string[];
@@ -37,11 +37,9 @@ function isError(r: XrayResp): r is { error: string } {
 
 /** Card code rendered with a suit symbol, colored like the rest of the app. */
 function CodeSpan({ c, boss }: { c: string; boss?: boolean }) {
-  const label =
-    c === "BJ" || c === "LJ" ? c : (SUIT_SYMBOL[c[0]] ?? c[0]) + c.slice(1);
   return (
     <span className={`xr-code ${isRedCode(c) ? "red" : "black"}${boss ? " boss" : ""}`}>
-      {label}
+      {shortLabel(c)}
     </span>
   );
 }

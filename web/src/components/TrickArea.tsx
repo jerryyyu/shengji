@@ -1,7 +1,7 @@
 import type { Declaration, GameState, Trick } from "../protocol";
 import Card from "./Card";
 
-export type SidePos = "bottom" | "left" | "top" | "right";
+type SidePos = "bottom" | "left" | "top" | "right";
 
 /** Relative position of a seat from your point of view. You are always bottom;
  * (you+1)%4 is left, (you+2)%4 is top, (you+3)%4 is right. */
@@ -47,7 +47,7 @@ export default function TrickArea({ state, trick, winner, declaration }: TrickAr
         <div className={`trick-play declaration pos-${seatPos(declaration.seat, state.you)}`}>
           <div className="trick-cards">
             {declaration.cards.map((code, i) => (
-              <Card key={i} code={code} width={52} />
+              <Card key={i} code={code} />
             ))}
           </div>
           <div className="trick-tag">

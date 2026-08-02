@@ -61,6 +61,14 @@ def encode_oracle(rnd: Round) -> list[float]:
     return obs
 
 
+def oracle_net():
+    """The V_oracle architecture (single definition — dmc2 loads it too)."""
+    from torch import nn
+    return nn.Sequential(nn.Linear(ORACLE_DIM, 512), nn.ReLU(),
+                         nn.Linear(512, 256), nn.ReLU(),
+                         nn.Linear(256, 1))
+
+
 class RecordingHeuristic(HeuristicBot):
     """Records the oracle state at the start of every trick."""
 
@@ -110,9 +118,7 @@ def train(data_dir: str, ckpt_out: str, epochs: int = 4) -> None:
     xv, yv = x[:n_val], y[:n_val]
     xt, yt = x[n_val:], y[n_val:]
     dev = "mps" if torch.backends.mps.is_available() else "cpu"
-    net = nn.Sequential(nn.Linear(ORACLE_DIM, 512), nn.ReLU(),
-                        nn.Linear(512, 256), nn.ReLU(),
-                        nn.Linear(256, 1)).to(dev)
+    net = oracle_net().to(dev)
     # weight decay + save-best early stopping: the un-regularized version
     # peaked at epoch 0 (47% variance explained) and degraded after
     opt = torch.optim.AdamW(net.parameters(), lr=1e-3, weight_decay=1e-4)

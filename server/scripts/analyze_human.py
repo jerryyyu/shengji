@@ -8,54 +8,31 @@ lost, and the biggest deviations.
 Usage:  uv run python scripts/analyze_human.py ../logs/RCLX.jsonl [worlds]
 """
 
-import json
-import random
 import sys
-from collections import defaultdict
 
 sys.path.insert(0, ".")
 from shengji.ai.mcbot import MCBot  # noqa: E402
 from shengji.ai.memory import Memory  # noqa: E402
-from shengji.engine.round import Round  # noqa: E402
-
-SYM = {"S": "♠", "H": "♥", "D": "♦", "C": "♣"}
+from shengji.rl.replay_log import group_rounds, rebuild_round  # noqa: E402
+from shengji.rl.replay_log import pretty as _p  # noqa: E402
 
 
 def pretty(cards):
-    return "+".join(SYM.get(c[0], "") + c[1:] if c not in ("BJ", "LJ") else c
-                    for c in cards)
+    return "+".join(_p(c) for c in cards)
 
 
 def rebuild_and_analyze(path: str, n_worlds: int) -> None:
-    events = [json.loads(l) for l in open(path)]
-    rounds = defaultdict(list)
-    for e in events:
-        rounds[e["round"]].append(e)
+    rounds = group_rounds(path)
     mc = MCBot(seed=99)
     results = []
 
     for rno in sorted(rounds):
         evs = rounds[rno]
-        rs = next((e for e in evs if e["e"] == "round_start"), None)
-        tr = next((e for e in evs if e["e"] == "trump"), None)
-        bury = next((e for e in evs if e["e"] == "bury"), None)
-        if not rs or not tr or not bury:
+        rnd = rebuild_round(evs)
+        if rnd is None:
             continue  # incomplete round
-        humans = {p["seat"] for p in rs["players"] if not p["is_bot"]}
+        rs = next(e for e in evs if e["e"] == "round_start")
         names = {p["seat"]: p["name"] for p in rs["players"]}
-        rnd = Round(rs["trump_rank"], rs["banker"], random.Random(0))
-        rnd.deck = rs["deck"]
-        rnd.hands = [[], [], [], []]
-        rnd._deal_pos = 0
-        rnd.phase = "deal"
-        rnd.kitty = rs["deck"][100:]
-        while rnd.phase == "deal":
-            rnd.deal_next()
-        for e in evs:
-            if e["e"] == "declare":
-                rnd.declare(e["seat"], e["cards"])
-        rnd.finalize_declare()
-        rnd.bury(tr["banker"], bury["cards"])
 
         trick_no = 0
         for e in evs:

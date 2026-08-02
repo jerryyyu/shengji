@@ -1,5 +1,3 @@
-import type { CSSProperties } from "react";
-
 export const SUIT_SYMBOL: Record<string, string> = {
   S: "♠",
   H: "♥",
@@ -20,39 +18,34 @@ export function codeLabel(code: string): string {
   return (SUIT_SYMBOL[code[0]] ?? code[0]) + code.slice(1);
 }
 
+/** Compact label for a card code, e.g. "H10" -> "♥10"; jokers stay "LJ"/"BJ". */
+export function shortLabel(code: string): string {
+  if (code === "BJ" || code === "LJ") return code;
+  return (SUIT_SYMBOL[code[0]] ?? code[0]) + code.slice(1);
+}
+
 interface CardProps {
   /** Card code ("S2", "H10", "BJ"...). Omit for a face-down back. */
   code?: string;
-  /**
-   * Width in px; height follows the 5:7 aspect ratio. Usually omitted — the
-   * containing zone sets the `--cw` CSS variable so media queries can resize.
-   */
-  width?: number;
   selected?: boolean;
   onClick?: () => void;
   className?: string;
 }
 
-export default function Card({ code, width, selected = false, onClick, className }: CardProps) {
-  const style = width !== undefined ? ({ "--cw": `${width}px` } as CSSProperties) : undefined;
+export default function Card({ code, selected = false, onClick, className }: CardProps) {
   const cls = (extra: string) =>
     ["card", extra, selected ? "selected" : "", onClick ? "clickable" : "", className ?? ""]
       .filter(Boolean)
       .join(" ");
 
   if (!code) {
-    return <div className={cls("back")} style={style} aria-hidden="true" />;
+    return <div className={cls("back")} aria-hidden="true" />;
   }
 
   if (code === "BJ" || code === "LJ") {
     const red = code === "BJ";
     return (
-      <div
-        className={cls(`joker ${red ? "red" : "black"}`)}
-        style={style}
-        onClick={onClick}
-        title={codeLabel(code)}
-      >
+      <div className={cls(`joker ${red ? "red" : "black"}`)} onClick={onClick} title={codeLabel(code)}>
         <span className="joker-text">JOKER</span>
         <span className="joker-star">{red ? "★" : "☆"}</span>
       </div>
@@ -65,12 +58,7 @@ export default function Card({ code, width, selected = false, onClick, className
   const red = suit === "H" || suit === "D";
 
   return (
-    <div
-      className={cls(red ? "red" : "black")}
-      style={style}
-      onClick={onClick}
-      title={codeLabel(code)}
-    >
+    <div className={cls(red ? "red" : "black")} onClick={onClick} title={codeLabel(code)}>
       <span className="corner tl">
         <span className="corner-rank">{rank}</span>
         <span className="corner-suit">{symbol}</span>

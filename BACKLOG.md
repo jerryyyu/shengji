@@ -50,8 +50,14 @@ and in AI_POLICIES.md; this file tracks what's NEXT.
       play-time (never hot-enable under a v1-ballot net — Elo 798).
 - [ ] Xray panel: annotate WHY, not just values — e.g. "throw unbeatable:
       no trump pair for the AA component" (JVRA confusion, 2026-08-02).
-- [ ] Inference-weighted world sampling for MCBot (declarer likely long in
-      trump, discard-pattern hints).
+- [ ] **Belief net for world sampling** (Libratus/Pluribus-inspired,
+      Jerry 2026-08-02): small net predicting P(seat holds card | public
+      history) — labels free from self-play logs (hidden hands recorded).
+      Use to WEIGHT MC determinizations instead of uniform sampling;
+      subsumes inference-weighted sampling (declarer long in trump) and
+      generalizes pair_void's hard proofs to soft evidence. Gate:
+      weighted-sampling mc vs uniform mc, n=120. Third net-in-search
+      pathway that avoids the fragile value route entirely.
 - [ ] Rules nits from the audit: standard declaration-overcall restrictions;
       throw penalty should force the beaten component, not the global lowest.
 

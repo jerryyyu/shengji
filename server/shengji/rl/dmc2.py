@@ -183,6 +183,10 @@ def main() -> None:
     ap.add_argument("--replay-ratio", type=float, default=4.0)
     ap.add_argument("--gate-every-min", type=float, default=20)
     ap.add_argument("--eval-every-min", type=float, default=5)
+    ap.add_argument("--a-scale", type=float, default=1.0,
+                    help="rescale the warm start's A-head output (CE-trained "
+                         "scale is arbitrary; match it to advantage-target "
+                         "scale so regression needn't shrink spread)")
     args = ap.parse_args()
 
     out = Path(args.out_dir)
@@ -194,6 +198,12 @@ def main() -> None:
     anchor = load_any_net(args.warm_start).to(dev)
     anchor.eval()
     print(f"warm start architecture: {type(net).__name__}", flush=True)
+    if args.a_scale != 1.0 and hasattr(net, "a_head"):
+        with torch.no_grad():
+            for m in (net, anchor):  # both, so the anchor KL target matches
+                m.a_head[-1].weight *= args.a_scale
+                m.a_head[-1].bias *= args.a_scale
+        print(f"A-head rescaled by {args.a_scale}", flush=True)
     oracle = nn.Sequential(nn.Linear(ORACLE_DIM, 512), nn.ReLU(),
                            nn.Linear(512, 256), nn.ReLU(),
                            nn.Linear(256, 1)).to(dev)
@@ -356,7 +366,9 @@ def main() -> None:
                 sp = (qmax - qmin).mean().item()
                 spread_ema = sp if spread_ema is None else \
                     0.99 * spread_ema + 0.01 * sp
-                if spread0 is None:
+                # arm the alarm only after a warmup: early scale adaptation
+                # to the target range is benign (ranking-preserving)
+                if spread0 is None and steps > 600:
                     spread0 = spread_ema
         if spread0 and spread_ema < spread0 / 5:
             print(f"!! SPREAD COLLAPSE ALARM: {spread_ema:.3f} vs initial "

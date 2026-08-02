@@ -67,6 +67,11 @@ both 53% at MC level (ties, combo test possible).
 
 ---
 
+**Play-test note (Aug 2):** Jerry played v6 live — verdict "some passive
+plays but feels decent." Corroborates the lead-passivity diagnosis (75%-follow
+dataset, TRACTOR_LOCK lead gap); the lead-weighted-loss arm and
+CONTROL_LEADS-era teacher data are the targeted fixes.
+
 ## PLANNED (in order)
 
 ### Step 1 findings so far (2026-08-01 evening, partial 450k-decision data)

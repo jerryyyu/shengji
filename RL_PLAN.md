@@ -128,6 +128,16 @@ Next levers, in order: full 30k dataset (2x data), more epochs at lr
 world evals recorded at generation) if still short. BC (48%/29%) remains
 the strongest net and the overnight dmc2 warm start.
 
+**Late-night addenda (2026-08-01 ~23:45):**
+- **v6 vs v5 direct duel: 62-58 (52%) for v6** — statistical equals; the
+  pool "regression" (1088 vs 1032) was pool-relativity + pairing noise.
+  Rankings come from fixed-seed gates and direct duels only.
+- **v6cont (6 extra epochs, lr 3e-4): NEGATIVE** — gates fell 51/41 →
+  44/32 while val agreement barely moved (55.6→55.2). Strength overfits
+  before val-agreement notices ⇒ model selection must use per-epoch
+  STRENGTH probes, not val loss. Snapshot sweep launched (20 epochs,
+  probe every epoch) to find the true strength peak.
+
 **Evening addenda (same day, later):**
 - **Generation complete**: 29,997 rounds, 36 shards, ~2.6M search-labeled
   decisions (169MB) — the "full dataset" lever is now loaded for the retry.

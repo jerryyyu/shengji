@@ -59,6 +59,8 @@ class MCBot(SmartBot):
     #                          raw points. Scaled so MARGIN keeps meaning.
     MC_BURY = False          # search the banker's bury over sampled worlds
     N_BURY_WORLDS = 8
+    RISKY_THROWS = False     # put near-boss throws (A+QQ) on the ballot and
+    #                          let determinization price them (user idea)
     TRACTOR_LOCK = True      # heuristic tractor leads are final (measured
     #                          56% vs override-allowed, and fixes perceived
     #                          "why didn't it lead the tractor" moments)
@@ -211,6 +213,11 @@ class MCBot(SmartBot):
 
         if not rnd.trick.plays:
             add(self._lead(rnd, seat))  # SmartBot's pick (throws included)
+            if self.RISKY_THROWS:
+                from .memory import Memory as _M
+                mem_ = _M(rnd, seat)
+                for t in self.near_boss_throws(rnd, seat, mem_):
+                    add(t)  # sampled worlds price the beat risk + penalty
             for s in PLAIN_SUITS:
                 cards = suit_cards(hand, s, o)
                 if not cards:

@@ -86,6 +86,51 @@ class SmartBot(HeuristicBot):
             return {1: 15.0, 2: 12.0, 3: 8.0}[suit_len]
         return super()._bury_short_bonus(suit_len)
 
+    def near_boss_throws(self, rnd: Round, seat: int, mem: Memory) -> list[list[str]]:
+        """Candidate throws whose pair components are boss OR near-boss
+        (beatable only if one opponent holds BOTH copies of a higher rank)
+        and whose singles are boss. Not provably safe — meant for MCBot's
+        ballot, where sampled worlds price the risk (e.g. A+QQ: AA blocked
+        by the held ace, KK possible but ~25-30% likely)."""
+        o = rnd.ordering
+        assert o is not None
+        opps = [s for s in range(4) if s % 2 != seat % 2]
+        out: list[list[str]] = []
+        for s in PLAIN_SUITS:
+            cards = suit_cards(rnd.hands[seat], s, o)
+            if not cards or mem.ruff_risk(s, opps):
+                continue
+            comps = decompose(cards, o).components
+            ok, has_near = [], False
+            for comp in comps:
+                top_code = max(comp.cards, key=o.level)
+                if comp.pair_len:
+                    if mem.pair_is_boss(top_code):
+                        ok.append(comp)
+                    else:
+                        # near-boss: no single unseen rank above with 2 copies
+                        # is required to be absent — allow exactly one such
+                        # threat rank (the "KK over QQ" case)
+                        lvl = o.level(top_code)
+                        threats = sum(1 for c, n in mem.unseen.items()
+                                      if o.eff_suit(c) == s and o.level(c) > lvl
+                                      and n >= 2)
+                        if threats == 1:
+                            ok.append(comp)
+                            has_near = True
+                        else:
+                            ok = []
+                            break
+                else:
+                    if mem.is_boss(top_code):
+                        ok.append(comp)
+                    else:
+                        ok = []
+                        break
+            if len(ok) >= 2 and has_near:
+                out.append([c for comp in ok for c in comp.cards])
+        return out
+
     # ---------------------------------------------------------------- helpers
     def _boss_components(self, rnd: Round, seat: int, mem: Memory) -> dict[str, list]:
         """Boss components per ruff-safe plain suit."""

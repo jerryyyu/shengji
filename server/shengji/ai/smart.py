@@ -26,6 +26,8 @@ class SmartBot(HeuristicBot):
     #                         tricks (XCYB: BJ spent beating a rank-4)
     TRACTOR_FIRST = False   # tractors outrank boss pairs in the lead order
     #                         (user: "if there is a tractor, HIGHLY consider")
+    LATE_TRUMP_PAIRS = False  # lead top trump pair when hand <= 12 (mined
+    #                           from human play: +7.3/decision, 8/8 better)
     BURY_VOID = True        # bury toward emptying 1-3 card suits (ruff setup)
     CONTROL_LEADS = True    # user-spec leader hierarchy: pairs > suit-emptying
     #                         > forcing singles > junk (measured 67% h2h, n=150)
@@ -269,6 +271,15 @@ class SmartBot(HeuristicBot):
             # were weak junk): non-boss PAIRS first (only a rarer higher
             # pair or ruff answers), then forcing high non-point singles;
             # weak singles only when they FINISH a short suit.
+            # Disagreement mining (2026-08-02, 884 human decisions): LATE
+            # trump-pair leads were humans' strongest edge over the bot
+            # (+7.3/decision, 8/8) — depleted opponents can't answer pairs.
+            if self.LATE_TRUMP_PAIRS and len(hand) <= 12:
+                tp = [(o.level(c), c) for c, k in
+                      Counter(by_suit[TRUMP]).items() if k >= 2]
+                if tp:
+                    _, c = max(tp)
+                    return [c, c]
             ruff_safe = [s for s in PLAIN_SUITS
                          if by_suit[s] and not mem.ruff_risk(s, opps)]
             pairs = []

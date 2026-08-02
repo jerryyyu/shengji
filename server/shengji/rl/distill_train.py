@@ -104,11 +104,29 @@ def main() -> None:
                 correct += int(is_best[chr_].sum().item())
                 total += len(dec)
 
+    # Heartbeat: long epochs are opaque (block-buffered logs, hours per
+    # line) — emit running losses per SHARD, plus a machine-readable
+    # trail beside the checkpoint for stability monitoring.
+    import json
+    import time
+    hb_path = ckpt_out + ".progress.jsonl"
+
     for epoch in range(epochs):
         tot_val = tot_ce = 0.0
         n_batches = correct = total = 0
-        for shard in train_shards:
+        for si, shard in enumerate(train_shards):
             run_shard(shard, training=True)
+            print(f"  ep {epoch} shard {si + 1}/{len(train_shards)}: "
+                  f"mse {tot_val / n_batches:.3f} "
+                  f"ce {tot_ce / n_batches:.3f} "
+                  f"agree {correct / max(total, 1):.1%}", flush=True)
+            with open(hb_path, "a") as hf:
+                hf.write(json.dumps(
+                    {"t": round(time.time()), "epoch": epoch,
+                     "shard": si + 1, "of": len(train_shards),
+                     "mse": round(tot_val / n_batches, 4),
+                     "ce": round(tot_ce / n_batches, 4),
+                     "agree": round(correct / max(total, 1), 4)}) + "\n")
         train_msg = (f"train mse {tot_val/n_batches:.3f} ce {tot_ce/n_batches:.3f} "
                      f"agree {correct/max(total,1):.1%}")
         tot_val = tot_ce = 0.0

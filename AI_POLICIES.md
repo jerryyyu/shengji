@@ -144,8 +144,15 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
 
 ## Shared-code changes affecting ALL policies
 
-- **2026-08-02 night, three user-sourced upgrades (all adopted, stacking)**:
-  pair_is_boss (+13pt, below), **VOID_DUMP** (junk dumps empty short suits
+- **CURRENT pool (2026-08-02 ~02:45, all four night upgrades incl.
+  CONTROL_LEADS + TEMPO_GUARD, seeds 3000)**: mc 1067 > **smart 1061
+  (statistical tie with the champion — mc's head-to-head edge narrowed
+  to 53%)** > rl-v6 1023 > heuristic 1000. The night's heuristics closed
+  most of the search's margin; the frozen net now trails both hand-built
+  tiers (smart beat it 58%) — the bar v7 must clear. Human-agreement on
+  the 827-decision corpus: heuristic/smart/mc all 55%, rl-v6 51%.
+- **2026-08-02 night, four user-sourced upgrades (all adopted, stacking)**:
+  pair_is_boss (+13pt, below), **TEMPO_GUARD** (no premium trumps on 0-point tricks — XCYB BJ incident), **VOID_DUMP** (junk dumps empty short suits
   first — 55% h2h vs prior smart, n=150), **CONTROL_LEADS** (leader
   hierarchy: non-boss pairs J+ → short-suit emptying → forcing non-point
   singles → junk last — **67% h2h, n=150, largest single-toggle gain

@@ -44,10 +44,11 @@ class RecordingMCBot(MCBot):
 
 
 def worker(args):
-    worker_id, n_rounds, out_dir = args
+    worker_id, n_rounds, out_dir, n_det = args
     writer = TrajectoryWriter(out_dir)
     writer._shard = worker_id * 1000  # disjoint shard numbering per worker
     bot = RecordingMCBot(seed=worker_id)
+    bot.N_DETERMINIZATIONS = n_det  # more worlds = less label noise
     bots = [bot] * 4
     seed = worker_id * 10_000_000
     done = 0
@@ -76,10 +77,12 @@ def main() -> None:
     out_dir = sys.argv[1]
     n_rounds = int(sys.argv[2])
     n_workers = int(sys.argv[3]) if len(sys.argv) > 3 else 9
+    n_det = int(sys.argv[4]) if len(sys.argv) > 4 else 10
     per = n_rounds // n_workers
     t0 = time.time()
     with mp.get_context("spawn").Pool(n_workers) as pool:
-        counts = pool.map(worker, [(i, per, out_dir) for i in range(n_workers)])
+        counts = pool.map(worker,
+                          [(i, per, out_dir, n_det) for i in range(n_workers)])
     dt = time.time() - t0
     print(f"done: {sum(counts)} rounds in {dt/60:.0f} min "
           f"({sum(counts)/dt:.1f} rounds/s aggregate) -> {out_dir}")

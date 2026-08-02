@@ -264,6 +264,25 @@ Direct net duel same day: rl-v6 beat rl-v5 54% (108-92, n=200) — v6
 confirmed the stronger net; old cross-pool Elo suggesting otherwise was
 pool-relativity.
 
+### Sourcing improvement roadmap (ranked by evidence)
+
+"Ballot" = the candidate list a bot actually scores; a play off the
+ballot can never be chosen, however good. Sourcing = what gets on it.
+
+| # | surface | status | evidence / gate |
+|---|---|---|---|
+| 1 | **Lead ballots (MC)** — every pair/tractor/near-boss throw, all suits incl. trump, cap 8→14 | **ADOPTED** (WIDE_LEAD_BALLOT) | **62% vs narrow mc** (n=120), +7% latency; 12% of leads now use wide-only plays (mostly trump pairs / top-trump drains) |
+| 2 | **Follow ballots (MC)** — bounded exhaustive distinct-code follows behind the constructed seeds, cap 12 | **measuring** (WIDE_FOLLOW_BALLOT) | follows are 75% of decisions; 21% of human discard choices (116/558) were off-ballot. Gate: vs current mc, n=120; adopt at neutral |
+| 3 | **Bury (kitty) sourcing** — structured enumeration of buries (void-emptying × point-keeping × trump-preserving) priced by rollouts | queued | MC_BURY only ever priced 4 hand-built variants; once/round so ~20 candidates is cheap; the ×2 kitty multiplier rides on it |
+| 4 | **Declare sourcing** — enumerate declare/wait (and suit) at deal time, priced by rollout | queued | never measured; a fixed threshold today; once per deal ≈ free |
+| 5 | **Rollout-interior sourcing** — simulated players inside rollouts still play the narrow heuristic; wide candidates are priced against narrow opposition | fallback design | full widening cost-prohibitive; the affordable version is Pluribus-style continuation strategies (k biased rollout personalities at leaves) |
+| 6 | **Net-side sourcing** — ballot-v2 teacher generation, then v8 students; play-time flip only after retraining | queued (RL_PLAN roadmap #5) | a net can never source what its training ballots lacked (Elo-798 rule: never hot-enable) |
+
+After #2, ballot *shapes* are effectively done (99.3% of human plays
+enumerable); the frontier moves from "can the bot see the play" to "does
+it price it right" — belief-weighted world sampling and pair-void
+constraints (see BACKLOG).
+
 ## Experiment log (measured and rejected — reproducible via registry/toggles)
 
 | idea | result | verdict |

@@ -35,7 +35,17 @@ def main() -> None:
     epochs = int(sys.argv[3]) if len(sys.argv) > 3 else 3
     dev = "mps" if torch.backends.mps.is_available() else "cpu"
     net = PolicyValueNet().to(dev)
-    opt = torch.optim.Adam(net.parameters(), lr=1e-3)
+    if "--init" in sys.argv:  # warm start (same objective => safe)
+        p = sys.argv[sys.argv.index("--init") + 1]
+        net.load_state_dict(torch.load(p, map_location=dev))
+        print(f"warm start from {p}", flush=True)
+    snap_dir = None
+    if "--snapshots" in sys.argv:  # per-epoch snapshots for probe-selection
+        snap_dir = sys.argv[sys.argv.index("--snapshots") + 1]
+        Path(snap_dir).mkdir(exist_ok=True)
+    lr = (float(sys.argv[sys.argv.index("--lr") + 1])
+          if "--lr" in sys.argv else 1e-3)
+    opt = torch.optim.Adam(net.parameters(), lr=lr)
 
     shards = sorted(Path(data_dir).glob("shard_*.npz"))
     assert shards, f"no shards in {data_dir}"
@@ -137,6 +147,8 @@ def main() -> None:
                    f"ce {tot_ce/max(n_batches,1):.3f} "
                    f"agree {correct/max(total,1):.1%}") if val_shards else "no val"
         torch.save(net.state_dict(), ckpt_out)
+        if snap_dir:
+            torch.save(net.state_dict(), f"{snap_dir}/ep{epoch:02d}.pt")
         print(f"epoch {epoch}: {train_msg} | {val_msg}", flush=True)
     print(f"saved {ckpt_out}")
 

@@ -142,10 +142,12 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
   seeds; CONTROL: v6 = 55%)**: temperature 0.03/0.10 → best 52%/52%
   (**null — 0.05 was right**, and sharp targets train unstably);
   big-trunk 1024 → best 47% (**null — capacity doesn't help; stay small**);
-  v6.1 human-blend ep0 → 50% strength (within noise of v6) and
-  **57% human-agreement vs v6's 51%** — the blend took: 801 samples
-  moved style +6pts at no strength cost. Caveat: partly in-sample
-  (trained on this corpus); the clean test is agreement on FUTURE games. Recipe robustness confirmed →
+  v6.1 human-blend ep0 → 57% human-agreement vs v6's 51% (+6, the
+  blend took). Strength: probe 50% (v6 control 55%) and DIRECT duel vs
+  v6 46% (n=200) — a small strength tax (~2-4pts, borderline noise) is
+  the likely price, not the free lunch the probe alone suggested.
+  Caveats: agreement partly in-sample; direct-duel protocol added for
+  all partial checkpoints after this exact case. Recipe robustness confirmed →
   **v7 = v6's exact recipe on the N=30 low-noise textbook** (20k rounds,
   24 shards, pairfix+voiddump teacher) — TRAINING NOW with per-epoch
   snapshot probes. Plan, gates, full history: RL_PLAN.md.

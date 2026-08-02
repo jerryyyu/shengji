@@ -81,9 +81,10 @@ is label quality — the last untested lever of the distillation series.
 **Overnight sweep verdicts (all vs the v6=55% control)**: temperature
 0.03/0.10 both null (0.05 confirmed; sharp targets train unstably);
 big-trunk 1024 null (best 47% — capacity doesn't pay, small/fast wins);
-**v6.1 human-blend ep0: 50% strength (within noise) and 57%
-human-agreement vs v6's 51% — the blend took at no strength cost**
-(caveat: partly in-sample; clean test = future games). Epochs 1-2
+**v6.1 human-blend ep0: 57% human-agreement vs v6's 51% (+6 — the
+blend took), at a likely small strength tax: probe 50%, direct duel vs
+v6 46% (n=200, borderline noise)** (agreement caveat: partly in-sample;
+clean test = future games). Epochs 1-2
 finishing. Same-day additions: value-leaf hybrid BUILT
 (rl/torch_policy.py MCValueLeaf — truncated rollouts + v6 value leaf;
 gate duel vs mc queued), sourcing audit + ballot v2 (see AI_POLICIES:

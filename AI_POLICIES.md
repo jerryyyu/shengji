@@ -144,6 +144,16 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
 
 ## Shared-code changes affecting ALL policies
 
+- **2026-08-01 ~23:55 pair_is_boss fix (+13pt)**: pairs are beaten only by
+  higher PAIRS — the old any-higher-card check vetoed unbeatable pairs
+  (holding A+KK, AA is impossible, yet KK read "not boss"). User-spotted
+  from prod-log lead-shape analysis (bots: 86% single leads, AA+K present
+  but A+KK absent — the exact fingerprint). Post-fix smart vs heuristic:
+  **89%** (was 76% on identical seeds). Affects SmartBot leads, MCBot
+  candidates/rollouts, and all teacher data generated AFTER the fix (the
+  N=30 overnight set spans it — regenerate-or-accept decision pending).
+  All Elo/gate numbers measured before this are pre-pairfix.
+
 - **2026-08-01 throw-ruffing fix**: no bot could contest a 甩牌 (candidate
   generator returned None for multi-component leads). Now all bots build
   shape-matching trump sets. Smart-vs-heuristic compressed 90% → 76% on the

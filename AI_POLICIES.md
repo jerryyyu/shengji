@@ -28,6 +28,30 @@ Noise guide: ±3% at n=200, ±2% at n=400; round-level evals ±4.5% at n=120.
 
 ## The ladder (Elo, round-level, heuristic = 1000)
 
+**CURRENT pool (2026-08-02 evening, 9 entrants, distributed run on the
+Air; dated names = that day's live config, anchor-paired):**
+
+| policy | Elo | note |
+|---|---|---|
+| mc | 1109* | wide ballot (*mc vs 0802am direct pairing still landing) |
+| mc-20260802am | 1104 | narrow ballot — what prod runs today |
+| smart | 1070 | four overnight adoptions |
+| mc-20260801 | 1069 | pre-overnight mc |
+| rl-v6 | 1033 | best standalone net |
+| rl-v6.1 | 1022 | human blend: −11 vs v6 in-pool (style tax) |
+| smart-20260801 | 1020 | pre-overnight smart |
+| heuristic | 1000 | anchor |
+| rl-v5 | 971 | BELOW heuristic vs today's pool — pool-relativity in action (rated 1088 on 2026-08-01) |
+
+48-hour staircase on one axis: smart +50 (1020→1070); mc +40
+(1069→1109). The net line FROZE while the hand-built line climbed —
+the mc-vs-net gap widened to ~76, which is the whole case for gen-v3 +
+v8 (students of the new teacher). Goal line unchanged: an rl policy
+above mc in this pool.
+
+### Older pools
+
+
 IMPORTANT caveat learned 2026-08-01: Bradley-Terry ratings are
 POOL-RELATIVE — absolute numbers shift with pool composition (mc rated
 1141, 1104, and 1137 across three pools; anchors move too). Only

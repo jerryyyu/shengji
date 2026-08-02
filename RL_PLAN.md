@@ -79,6 +79,25 @@ Next levers, in order: full 30k dataset (2x data), more epochs at lr
 world evals recorded at generation) if still short. BC (48%/29%) remains
 the strongest net and the overnight dmc2 warm start.
 
+**Evening addenda (same day, later):**
+- **Generation complete**: 29,997 rounds, 36 shards, ~2.6M search-labeled
+  decisions (169MB) — the "full dataset" lever is now loaded for the retry.
+- **dmc2 shakeout validated the alarm**: warm-starting from QNet-BC (the
+  unprotected architecture) collapsed cross-candidate spread 23.3 → 4.6 in
+  ~300 steps; the spread alarm halted the run in 2 minutes. v1's failure
+  mode is now caught live instead of post-mortem.
+- **BC retrain into QNetDueling** (for a protected warm start): epoch 0 =
+  78.0% imitation (vs QNet's 80.5% — a ~2.5pt constraint tax) → 32% vs
+  SmartBot at epoch 0 (NOT comparable to QNet's final 48%; the
+  imitation→strength curve is convex). Epoch-2 verdict pending; if it
+  stalls well below 48%, the dueling constraint tax is material for
+  imitation and a PolicyValueNet-style free policy head + dueling only on
+  the regression path becomes the alternative.
+- **Trainer engineering debt**: the per-decision BC loop is MPS-dispatch-
+  bound (~60 min/epoch regardless of free cores); port BC to the
+  vectorized ragged-batch trainer (first code task tomorrow — the same
+  data trains in ~1/4 the time).
+
 ### Step 1 — Search distillation (the AGZ move: search is the teacher)
 Build `rl/distill_train.py`: regress Q toward per-candidate MC values +
 cross-entropy on the chosen action; filter forced single-candidate

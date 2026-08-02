@@ -21,6 +21,8 @@ class SmartBot(HeuristicBot):
     RESERVE_MARGIN = 3      # keep the reserve while hand exceeds its size by this
     CONTEST_PTS = 10        # trump-spend threshold when the win isn't guaranteed
     BURY_VOID = True        # bury toward emptying 1-3 card suits (ruff setup)
+    CONTROL_LEADS = False   # no-boss fallback leads highest non-point single
+    #                         (forcing) instead of lowest junk
     DECLARE_MIN = 8         # slightly more eager declarer than baseline (9)
     DECLARE_FINAL = 6
     # --- research-derived toggles (see AI_POLICIES.md for measurements) ---
@@ -255,6 +257,13 @@ class SmartBot(HeuristicBot):
                 if by_suit[s] and not any(s in mem.voids[op] for op in opps)]
         if safe:
             _, s = max(safe)
+            if self.CONTROL_LEADS:
+                # forcing lead: highest NON-POINT single pressures out top
+                # cards instead of donating the trick (54% of in-control bot
+                # leads were weak junk — user-spotted from prod logs)
+                nonpoint = [c for c in by_suit[s] if points(c) == 0]
+                if nonpoint:
+                    return [max(nonpoint, key=o.level)]
             return [self._lowest(by_suit[s], o, avoid_points=True)]
         plain = [(len(by_suit[s]), s) for s in PLAIN_SUITS if by_suit[s]]
         if plain:

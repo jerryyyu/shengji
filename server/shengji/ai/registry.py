@@ -42,7 +42,25 @@ def _make_rl():
     return RLBot()
 
 
+def _make_mc_v5roll():
+    """MCBot with the distilled net as rollout policy (the 55%-vs-mc
+    hybrid). Needs torch + the checkpoint (SHENGJI_V5_CKPT, default
+    ckpt_distill_full.pt in the server cwd). ~2-3s per decision."""
+    import os
+    from ..rl.torch_policy import RLBot
+    from .mcbot import MCBot
+
+    class MCv5Roll(MCBot):
+        def __init__(self, seed=None):
+            super().__init__(seed)
+            self.rollout_policy = RLBot(
+                ckpt=os.environ.get("SHENGJI_V5_CKPT", "ckpt_distill_full.pt"))
+
+    return MCv5Roll()
+
+
 REGISTRY["rl"] = _make_rl
+REGISTRY["mc-v5roll"] = _make_mc_v5roll
 
 
 def make_bot(name: str):

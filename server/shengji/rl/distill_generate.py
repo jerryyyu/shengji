@@ -37,9 +37,27 @@ class RecordingMCBot(MCBot):
                            if sorted(a) == key), 0)
             self.decisions.append(Decision(
                 obs=encode_obs(rnd, seat),
-                actions=[encode_action(a, rnd) for a in candidates],
                 chosen=chosen, seat=seat,
+                actions=[encode_action(a, rnd) for a in candidates],
                 action_values=list(values)))
+        else:
+            # TRACTOR_LOCK / margin short-circuits skip the search — the
+            # teacher's most assertive plays were absent from every prior
+            # dataset. Record them as choice-only samples (no values; the
+            # trainer's CE term can use them) on the v2 ballot.
+            from .actions import enumerate_actions
+            acts = enumerate_actions(rnd, seat, include_throws=True)
+            if len(acts) > 1:
+                key = sorted(play)
+                chosen = next((i for i, a in enumerate(acts)
+                               if sorted(a) == key), None)
+                if chosen is None:
+                    acts.append(play)
+                    chosen = len(acts) - 1
+                self.decisions.append(Decision(
+                    obs=encode_obs(rnd, seat),
+                    chosen=chosen, seat=seat,
+                    actions=[encode_action(a, rnd) for a in acts]))
         return play
 
 
@@ -79,6 +97,18 @@ def main() -> None:
     n_workers = int(sys.argv[3]) if len(sys.argv) > 3 else 9
     n_det = int(sys.argv[4]) if len(sys.argv) > 4 else 10
     per = n_rounds // n_workers
+    # Provenance marker: nets trained on this data must use the SAME
+    # ballot family at play time (Elo-798 rule).
+    import json
+    import os
+    import subprocess
+    os.makedirs(out_dir, exist_ok=True)
+    sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                         capture_output=True, text=True).stdout.strip()
+    with open(f"{out_dir}/META.json", "w") as f:
+        json.dump({"ballot": "v2-wide", "include_throws": True,
+                   "n_det": n_det, "teacher_git": sha,
+                   "tractor_lock_recorded": True}, f, indent=1)
     t0 = time.time()
     with mp.get_context("spawn").Pool(n_workers) as pool:
         counts = pool.map(worker,

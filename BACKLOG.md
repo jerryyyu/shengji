@@ -5,9 +5,10 @@ and in AI_POLICIES.md; this file tracks what's NEXT.
 
 ## AI / training  (current state: mc ~1140 > rl-v6 ~net line ~70 behind — see AI_POLICIES.md)
 
-- [ ] **v7 distillation** (data generating overnight 2026-08-02): N=30
-      teacher labels (3x less noise), then v6's recipe (soft targets,
-      12 epochs) → gates → Elo pool. The one clean-variable experiment.
+- [ ] **v7 distillation — TRAINING NOW** (N=30 textbook complete; v6
+      recipe confirmed optimal by three null sweeps; control v6=55%).
+      Then: gates → Elo pool; lead-weighted loss arm (obs-derived lead
+      mask, no regen needed) if v7 lands.
 - [ ] **AWAC-style policy-head update for self-play** — the designed fix
       for DMC's measured failure (Q-regression collapses any policy
       pathway; two alarm-halted runs). Policy head learns by
@@ -20,8 +21,9 @@ and in AI_POLICIES.md; this file tracks what's NEXT.
       min/epoch vs ~12 for the ragged-batch trainer).
 - [ ] Human-style fine-tune once the human corpus reaches a few thousand
       decisions (currently 227 labeled; grows with every prod game).
-- [ ] Measure RISKY_THROWS + TRUMP_BALLOT (MC-vs-MC duels; toggles built
-      2026-08-02, need free cores).
+- [x] RISKY_THROWS / TRUMP_BALLOT measured at MC level: 53%/53% ties
+      (combined test optional); MC stack validation 57% — inheritance
+      assumption confirmed.
 - [ ] Next teacher generation inherits CONTROL_LEADS (tonight's N=30 data
       predates it) + record TRACTOR_LOCK decisions as choice-only samples
       (currently absent from all teacher data).

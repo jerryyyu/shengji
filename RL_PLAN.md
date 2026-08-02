@@ -50,12 +50,20 @@ game); live X-ray debugger; MCBot exposes per-candidate values
 
 ## IN PROGRESS
 
-**N=30 teacher-data regeneration** (overnight 2026-08-02, ~24k rounds,
-8 workers): same teacher, 30 sampled worlds per evaluation instead of 10
-— √3x less label noise on every candidate value, attacking the diagnosed
-ceiling of the v4-v6 series. **v7** = v6's exact recipe on this data,
-first thing in the morning; gates then Elo pool. (The original N=10
-30k-round dataset is complete and banked: 36 shards, ~2.6M decisions.)
+**v7 training** (2026-08-02 morning): v6's recipe on the completed N=30
+textbook (20k rounds / 24 shards, pairfix+voiddump teacher — the
+strongest labels ever). Per-epoch snapshots with automatic fixed-seed
+probes; CONTROL: v6 = 55% on the probe protocol. The isolated variable
+is label quality — the last untested lever of the distillation series.
+
+**Overnight sweep verdicts (all vs the v6=55% control)**: temperature
+0.03/0.10 both null (0.05 confirmed; sharp targets train unstably);
+big-trunk 1024 null (best 47% — capacity doesn't pay, small/fast wins);
+v6.1 human-blend ep0 at 50% (strength held within noise; agreement test
+pending, epochs 1-2 finishing). MC-level validations: the adopted
+toggle stack beats toggles-off mc 57% (n=120) — the SmartBot-level h2h
+protocol's inheritance assumption holds; RISKY_THROWS and TRUMP_BALLOT
+both 53% at MC level (ties, combo test possible).
 
 ---
 

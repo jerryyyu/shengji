@@ -138,9 +138,15 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
   scale-matched. Designed fix, unbuilt: AWAC-style advantage-weighted
   policy-head update. Oracle baseline validated offline (43-47% of
   outcome variance explained).
-- **In progress overnight (2026-08-02)**: N=30 teacher-data regeneration
-  (~24k rounds, 3x less label noise) → v7 trains on it in the morning.
-  Plan, gates, full iteration history: RL_PLAN.md.
+- **Overnight sweeps (2026-08-02, all probed vs current SmartBot on fixed
+  seeds; CONTROL: v6 = 55%)**: temperature 0.03/0.10 → best 52%/52%
+  (**null — 0.05 was right**, and sharp targets train unstably);
+  big-trunk 1024 → best 47% (**null — capacity doesn't help; stay small**);
+  v6.1 human-blend ep0 → 50% (strength within noise of v6;
+  human-agreement verdict pending). Recipe robustness confirmed →
+  **v7 = v6's exact recipe on the N=30 low-noise textbook** (20k rounds,
+  24 shards, pairfix+voiddump teacher) — TRAINING NOW with per-epoch
+  snapshot probes. Plan, gates, full history: RL_PLAN.md.
 
 ## Shared-code changes affecting ALL policies
 

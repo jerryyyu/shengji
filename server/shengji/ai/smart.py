@@ -22,6 +22,8 @@ class SmartBot(HeuristicBot):
     RESERVE_LAST = False    # hold a boss combo for the last trick (measured: hurts)
     RESERVE_MARGIN = 3      # keep the reserve while hand exceeds its size by this
     CONTEST_PTS = 10        # trump-spend threshold when the win isn't guaranteed
+    TEMPO_GUARD = True      # don't burn rank-trumps/jokers winning 0-point
+    #                         tricks (XCYB: BJ spent beating a rank-4)
     BURY_VOID = True        # bury toward emptying 1-3 card suits (ruff setup)
     CONTROL_LEADS = True    # user-spec leader hierarchy: pairs > suit-emptying
     #                         > forcing singles > junk (measured 67% h2h, n=150)
@@ -322,7 +324,13 @@ class SmartBot(HeuristicBot):
             w_suit = o.eff_suit(winning[0])
             uses_trump = w_suit == TRUMP and uniform_suit(lead, o) != TRUMP
             if not uses_trump:
-                return winning  # in-suit wins are cheap tempo — always contest
+                # in-suit wins are cheap tempo — contest, UNLESS the trick is
+                # pointless and winning burns a premium trump (rank cards /
+                # jokers): prod XCYB spent BJ on a 0-point trick this way
+                premium = (w_suit == TRUMP and
+                           min(o.level(c) for c in winning) >= len(o.plain_ranks))
+                if not (self.TEMPO_GUARD and trick_pts == 0 and premium):
+                    return winning
             # Spending trump: memory decides whether it's worth it.
             w_top = decompose(winning, o).top_level()
             holds = not mem.beat_risk(w_suit, w_top, opp_to_act)

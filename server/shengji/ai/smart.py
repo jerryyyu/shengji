@@ -26,6 +26,8 @@ class SmartBot(HeuristicBot):
     #                         tricks (XCYB: BJ spent beating a rank-4)
     TRACTOR_FIRST = False   # tractors outrank boss pairs in the lead order
     #                         (user: "if there is a tractor, HIGHLY consider")
+    ANY_PAIR_OVER_JUNK = False  # last-resort leads prefer ANY pair to a
+    #                             passive low single (user: junk needs a reason)
     LATE_TRUMP_PAIRS = True   # lead top trump pair when hand <= 12 (mined
     #                           from human play: +7.3/decision, 8/8 better)
     TEMPO_SEEK = False      # spend cheap trump winning low-point tricks when
@@ -300,14 +302,22 @@ class SmartBot(HeuristicBot):
                 lv, c = max(pairs)
                 if lv >= len(o.plain_ranks) - 5:  # J-ish or better
                     return [c, c]
+                if self.ANY_PAIR_OVER_JUNK:
+                    low_pair = (lv, c)  # remember: beats junk as last resort
+                else:
+                    low_pair = None
+            else:
+                low_pair = None
             for s in ruff_safe:
                 if len(by_suit[s]) <= 2:  # emptying a short suit is fine
                     return [self._lowest(by_suit[s], o, avoid_points=True)]
             if safe:
-                _, s = max(safe)
-                nonpoint = [c for c in by_suit[s] if points(c) == 0]
+                _, s2 = max(safe)
+                nonpoint = [c for c in by_suit[s2] if points(c) == 0]
                 if nonpoint:
                     return [max(nonpoint, key=o.level)]
+            if low_pair is not None:
+                return [low_pair[1], low_pair[1]]  # any pair > passive junk
         if safe:
             _, s = max(safe)
             return [self._lowest(by_suit[s], o, avoid_points=True)]

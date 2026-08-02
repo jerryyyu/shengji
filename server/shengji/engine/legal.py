@@ -63,22 +63,24 @@ def validate_lead(play: list[str], hand: list[str], other_hands: list[list[str]]
             oc = suit_cards(other, eff, ordering)
             if comp.pair_len == 0:
                 if any(ordering.level(c) > comp.top for c in oc):
-                    return _throw_penalty(dec)
+                    return _throw_penalty(comp)
             elif comp.pair_len == 1:
                 cnt = Counter(oc)
                 if any(n >= 2 and ordering.level(c) > comp.top for c, n in cnt.items()):
-                    return _throw_penalty(dec)
+                    return _throw_penalty(comp)
             else:
                 from .combos import find_tractor_runs
                 runs = find_tractor_runs(oc, ordering, comp.pair_len)
                 if any(ordering.level(r[-1]) > comp.top for r in runs):
-                    return _throw_penalty(dec)
+                    return _throw_penalty(comp)
     return play, None
 
 
-def _throw_penalty(dec: Decomposition) -> tuple[list[str], str]:
-    forced = min(dec.components, key=lambda c: (c.pair_len, c.top))
-    return forced.cards, "Throw failed — forced to play " + "+".join(forced.cards)
+def _throw_penalty(comp) -> tuple[list[str], str]:
+    """Force the BEATEN component (standard rule): a failed low-pair+ace
+    throw plays the low pair into the higher pair that exposed it — not
+    the boss ace (the old globally-lowest rule barely punished)."""
+    return comp.cards, "Throw failed — forced to play " + "+".join(comp.cards)
 
 
 def validate_follow(play: list[str], hand: list[str], lead: list[str],

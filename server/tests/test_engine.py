@@ -54,9 +54,15 @@ def test_throw_validation():
     play, msg = validate_lead(["SA", "SK", "SK"], hand, others, o)
     assert msg is None and len(play) == 3
     # S3 + SKSK: SQ... no single beats SK? SA is in hand not others; SQ<SK ok,
-    # but S3 single is beatable by SQ -> forced to lowest component (S3)
+    # but S3 single is beatable by SQ -> forced to the BEATEN component (S3)
     play, msg = validate_lead(["S3", "SK", "SK"], hand, others, o)
     assert play == ["S3"] and msg is not None
+    # low pair + boss ace: if the PAIR is the beatable part, the penalty
+    # forces the pair (not the ace — user-raised, standard rule)
+    hand2 = ["SA", "S5", "S5"]
+    others2 = [["S9", "S9"], ["H2"], ["C3"]]  # S9 pair beats S5 pair
+    play, msg = validate_lead(["SA", "S5", "S5"], hand2, others2, o)
+    assert play == ["S5", "S5"] and msg is not None
 
 
 def test_follow_rules():

@@ -45,7 +45,9 @@ def main() -> None:
     for g in ["smart-20260801", "mc-20260802am", "mc-20260801"]:
         factories[g] = REGISTRY[g]
     names = list(factories)
-    anchors = {"mc", "smart", "heuristic"}
+    anchors = ["heuristic", "smart", "mc"]  # LIST: set order is
+    # hash-randomized PER PROCESS -> chunked workers disagreed on pairing
+    # indices (2026-08-02: one pairing ran 3x, two never ran)
 
     pairs = [(i, j) for i in range(len(core)) for j in range(i + 1, len(core))]
     for gi in range(len(core), len(names)):
@@ -66,8 +68,8 @@ def main() -> None:
             for line in open(path):
                 if line.startswith("PAIR "):
                     _, a, b, wa, wb = line.split()
-                    wins[(idx[a], idx[b])] = int(wa)
-                    wins[(idx[b], idx[a])] = int(wb)
+                    wins[(idx[a], idx[b])] = wins.get((idx[a], idx[b]), 0) + int(wa)
+                    wins[(idx[b], idx[a])] = wins.get((idx[b], idx[a]), 0) + int(wb)
         elo = fit_elo(names, wins)
         print("\nElo ratings (round-level, heuristic = 1000):")
         for name, r in sorted(elo.items(), key=lambda kv: -kv[1]):

@@ -75,10 +75,19 @@ vs Smart) hasn't plateaued, and val metrics were still improving at epoch
 5 with no overfit gap. Headline: **38% vs MCBot makes v5 the most
 search-resistant net so far** (BC: 29% — search exploits imitation
 errors; the distilled student, trained on search's own judgments, holds
-up). Still short of the 60/45 gates. Remaining levers: more epochs/data,
-aux heads, averaged teacher values, and an AWAC-style policy-head update
-so PolicyValueNet checkpoints can enter dmc2 (its learner currently
-requires the dueling Q interface).
+up). Human tripwire: 47% (healthy). Still short of the 60/45 gates.
+Remaining levers: more epochs/data, aux heads, averaged teacher values,
+and an AWAC-style policy-head update so PolicyValueNet checkpoints can
+enter dmc2 (its learner currently requires the dueling Q interface).
+
+**v5-hybrid preview (Phase 4 signal): MCBot with v5 rollouts beat plain
+MCBot 22-18 (55%, n=40 mirrored rounds)** — vs the BC-hybrid's 45%. Not
+statistically conclusive (±8) but the first result ever ABOVE the
+champion, and the rollout-quality → hybrid-strength chain behaved as
+predicted (better rollout policy in, stronger search out). Full-net
+rollouts are ~2s/decision — the production path remains truncated
+rollouts + value-head leaves. Next verification: n≥100 duel, then Elo
+pool entry as `mc-v5roll`.
 
 Diagnosis: MCBot is a STOCHASTIC teacher (10-world sampling decides
 near-ties — the majority of decisions), and ~70% of its choices are just

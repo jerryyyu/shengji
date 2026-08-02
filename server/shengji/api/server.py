@@ -648,7 +648,8 @@ def _detach(seat: Seat) -> None:
 
 @app.get("/healthz")
 async def healthz() -> dict:
-    return {"ok": True, "rooms": len(rooms)}
+    return {"ok": True, "rooms": len(rooms),
+            "bot": os.environ.get("SHENGJI_BOT", "mc")}
 
 
 # ------------------------------------------------------------------- debug

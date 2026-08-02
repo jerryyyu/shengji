@@ -29,6 +29,10 @@ class SmartBot(HeuristicBot):
     SIZE_FIRST = False      # strict "more cards is better" lead order: any
     #                         ruff-safe tractor, then any ruff-safe pair,
     #                         before all smaller leads (user idea, 2026-08-02)
+    ACE_SEQ = False         # cash boss singles in follow-able suits before
+    #                         ruff-risky ones (expert research #1, 2026-08-02)
+    NO_OPEN_POINT_SUIT = False  # don't open point-bearing suits we don't
+    #                             boss (expert research #3, 2026-08-02)
     PAIR_VOID_BOSS = False  # lead a LOW pair once all opponents have proven
     #                         pair-void in its suit (forced pair-matching
     #                         makes a broken answer proof; user, 2026-08-02)
@@ -262,6 +266,13 @@ class SmartBot(HeuristicBot):
         boss_paired = [entry(c) for comps in boss.values() for c in comps if c.pair_len]
         boss_single = [entry(c) for comps in boss.values() for c in comps
                        if not c.pair_len]
+        if self.ACE_SEQ and boss_single:
+            # Expert rule (研究 #1): cash aces opponents must FOLLOW before
+            # aces in their likely-void suits — ruff-risky boss suits last.
+            safe_bs = [e for e in boss_single
+                       if not mem.ruff_risk(o.eff_suit(e[1][0]), opps)]
+            if safe_bs:
+                boss_single = safe_bs
         if boss_paired:
             return max(boss_paired, key=lambda c: c[0])[1]
         if best_tr:
@@ -343,7 +354,18 @@ class SmartBot(HeuristicBot):
                 if len(by_suit[s]) <= 2:  # emptying a short suit is fine
                     return [self._lowest(by_suit[s], o, avoid_points=True)]
             if safe:
-                _, s2 = max(safe)
+                pool_s = safe
+                if self.NO_OPEN_POINT_SUIT:
+                    # Expert rule (研究 #3): don't open a suit with points
+                    # still out unless we hold its boss — leave it for the
+                    # opponents to break.
+                    ok = [e for e in safe if not (
+                        any(points(c) and o.eff_suit(c) == e[1]
+                            for c in mem.unseen)
+                        and not any(mem.is_boss(c) for c in by_suit[e[1]]))]
+                    if ok:
+                        pool_s = ok
+                _, s2 = max(pool_s)
                 nonpoint = [c for c in by_suit[s2] if points(c) == 0]
                 if nonpoint:
                     return [max(nonpoint, key=o.level)]

@@ -144,6 +144,16 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
 
 ## Shared-code changes affecting ALL policies
 
+- **2026-08-02 night, three user-sourced upgrades (all adopted, stacking)**:
+  pair_is_boss (+13pt, below), **VOID_DUMP** (junk dumps empty short suits
+  first — 55% h2h vs prior smart, n=150), **CONTROL_LEADS** (leader
+  hierarchy: non-boss pairs J+ → short-suit emptying → forcing non-point
+  singles → junk last — **67% h2h, n=150, largest single-toggle gain
+  measured**). Post-fix Elo re-baseline (seeds 2000): mc 1097 > rl-v6
+  1068 > smart 1012 > heuristic 1000 (v6's apparent rise vs smart was
+  noise: n=240 recheck = 54%, matching pre-fix). Pending measurement:
+  RISKY_THROWS (near-boss A+QQ throws on MCBot's ballot), TRUMP_BALLOT
+  (trump pair/top-trump candidates). Night record: server/runs/night_20260801.md.
 - **2026-08-01 ~23:55 pair_is_boss fix (+13pt)**: pairs are beaten only by
   higher PAIRS — the old any-higher-card check vetoed unbeatable pairs
   (holding A+KK, AA is impossible, yet KK read "not boss"). User-spotted

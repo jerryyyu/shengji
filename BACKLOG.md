@@ -20,8 +20,14 @@ and in AI_POLICIES.md; this file tracks what's NEXT.
       min/epoch vs ~12 for the ragged-batch trainer).
 - [ ] Human-style fine-tune once the human corpus reaches a few thousand
       decisions (currently 227 labeled; grows with every prod game).
+- [ ] Measure RISKY_THROWS + TRUMP_BALLOT (MC-vs-MC duels; toggles built
+      2026-08-02, need free cores).
+- [ ] Next teacher generation inherits CONTROL_LEADS (tonight's N=30 data
+      predates it) + record TRACTOR_LOCK decisions as choice-only samples
+      (currently absent from all teacher data).
 - [ ] SmartBot ideas untried: exhaustion-based void inference, bury strategy
-      using declaration knowledge, exact endgame solving (last ~4 tricks).
+      using declaration knowledge, exact endgame solving (last ~4 tricks),
+      suit-symmetry data augmentation (6x), confidence-weighted CE.
 - [ ] Inference-weighted world sampling for MCBot (declarer likely long in
       trump, discard-pattern hints).
 - [ ] Rules nits from the audit: standard declaration-overcall restrictions;

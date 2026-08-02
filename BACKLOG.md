@@ -17,6 +17,10 @@ and in AI_POLICIES.md; this file tracks what's NEXT.
       + net value head at leaves. Must beat plain mc — note
       net-as-rollout-policy is a measured dead end (55% preview reversed
       to 37%; bare net out-rated its own hybrid).
+- [ ] **v7-warm arm (queued for v6.1's CPU slot)**: init from v6,
+      fine-tune on N=30 textbook — same objective, safe transfer (the
+      DMC trap was warm start + MISMATCHED objective). If warm >= scratch
+      at equal wall-clock: "init from incumbent" becomes standing policy.
 - [ ] Vectorize bc_train (per-decision loop is MPS-dispatch-bound: 60+
       min/epoch vs ~12 for the ragged-batch trainer).
 - [ ] Human-style fine-tune once the human corpus reaches a few thousand

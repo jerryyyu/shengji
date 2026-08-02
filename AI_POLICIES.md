@@ -196,8 +196,8 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
 | BURY_VOID | ON | ~+1pt | adopted |
 | DECLARE 8/6 (vs 9/7) | ON | +2pt (10/8 measured −4) | adopted |
 | SAFE_TRACTOR_ONLY | ON | disabling measured −4 | adopted |
-| TEMPO_SEEK v2 | off | v1 48%, v2 53% h2h | tie (combo test pending) |
-| ANY_PAIR_OVER_JUNK | off | 52% h2h | tie (combo test pending) |
+| TEMPO_SEEK v2 | off | v1 48%, v2 53%; combined w/ ANY_PAIR 49% n=200 | tie — singles were noise |
+| ANY_PAIR_OVER_JUNK | off | 52%; combined w/ TEMPO_SEEK 49% n=200 | tie — singles were noise |
 | TRACTOR_FIRST | off | 51% h2h | tie |
 | PARTNER_VOID_LEAD | off | 50% alone, −4 combined | rejected |
 | DECLARE_TUNE | off | −2pt | rejected |

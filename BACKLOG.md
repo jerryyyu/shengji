@@ -25,6 +25,10 @@ and in AI_POLICIES.md; this file tracks what's NEXT.
 - [ ] Next teacher generation inherits CONTROL_LEADS (tonight's N=30 data
       predates it) + record TRACTOR_LOCK decisions as choice-only samples
       (currently absent from all teacher data).
+- [ ] From the disagreement miner: dump-selection refinement (n=23, +3.9 —
+      humans shed stranded losers/keep trumps better in forced follows);
+      lower the CONTROL_LEADS pair gate for late rounds (mid pairs measured
+      well). Bot-beats-human follow-discipline categories = coach content.
 - [ ] SmartBot ideas untried: exhaustion-based void inference, bury strategy
       using declaration knowledge, exact endgame solving (last ~4 tricks),
       suit-symmetry data augmentation (6x), confidence-weighted CE.

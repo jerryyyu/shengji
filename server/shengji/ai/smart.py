@@ -4,6 +4,8 @@ memory.py)."""
 
 from __future__ import annotations
 
+from collections import Counter
+
 from ..engine.cards import TRUMP, points
 from ..engine.combos import decompose
 from ..engine.legal import suit_cards, uniform_suit
@@ -255,15 +257,32 @@ class SmartBot(HeuristicBot):
         # 4) Low card from the longest plain suit no opponent has shown void in.
         safe = [(len(by_suit[s]), s) for s in PLAIN_SUITS
                 if by_suit[s] and not any(s in mem.voids[op] for op in opps)]
-        if safe:
-            _, s = max(safe)
-            if self.CONTROL_LEADS:
-                # forcing lead: highest NON-POINT single pressures out top
-                # cards instead of donating the trick (54% of in-control bot
-                # leads were weak junk — user-spotted from prod logs)
+        if self.CONTROL_LEADS:
+            # User-specified leader hierarchy (54% of in-control bot leads
+            # were weak junk): non-boss PAIRS first (only a rarer higher
+            # pair or ruff answers), then forcing high non-point singles;
+            # weak singles only when they FINISH a short suit.
+            ruff_safe = [s for s in PLAIN_SUITS
+                         if by_suit[s] and not mem.ruff_risk(s, opps)]
+            pairs = []
+            for s in ruff_safe:
+                for c, k in Counter(by_suit[s]).items():
+                    if k >= 2 and not (set([c]) & reserve):
+                        pairs.append((o.level(c), c))
+            if pairs:
+                lv, c = max(pairs)
+                if lv >= len(o.plain_ranks) - 5:  # J-ish or better
+                    return [c, c]
+            for s in ruff_safe:
+                if len(by_suit[s]) <= 2:  # emptying a short suit is fine
+                    return [self._lowest(by_suit[s], o, avoid_points=True)]
+            if safe:
+                _, s = max(safe)
                 nonpoint = [c for c in by_suit[s] if points(c) == 0]
                 if nonpoint:
                     return [max(nonpoint, key=o.level)]
+        if safe:
+            _, s = max(safe)
             return [self._lowest(by_suit[s], o, avoid_points=True)]
         plain = [(len(by_suit[s]), s) for s in PLAIN_SUITS if by_suit[s]]
         if plain:

@@ -33,5 +33,5 @@ ssh -o BatchMode=yes -o ConnectTimeout=8 air '
   [ "$n" != "0" ] && echo "  pool pairings: $n/24 ($(pgrep -f pool_20260802 | wc -l | tr -d " ") procs alive)"
   pgrep -f "distill_generate" >/dev/null && echo "  gen: running ($(ls rl_data/gen_v3/*.npz 2>/dev/null | wc -l | tr -d " ") shards)"
   echo "  --- NOTES from Air agent (if any):"
-  sed -n "/## NOTES/,\$p" ../JOBS.md | tail -n +3 | grep -v "^(leave" | head -5
+  sed -n "/## NOTES/,\$p" ../JOBS.md | tail -n +3 | grep -v "^(leave" | head -25
 ' 2>/dev/null || echo "  Air unreachable (asleep / off tailnet / SSH off)"

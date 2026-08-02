@@ -24,6 +24,8 @@ class SmartBot(HeuristicBot):
     CONTEST_PTS = 10        # trump-spend threshold when the win isn't guaranteed
     TEMPO_GUARD = True      # don't burn rank-trumps/jokers winning 0-point
     #                         tricks (XCYB: BJ spent beating a rank-4)
+    TRACTOR_FIRST = False   # tractors outrank boss pairs in the lead order
+    #                         (user: "if there is a tractor, HIGHLY consider")
     BURY_VOID = True        # bury toward emptying 1-3 card suits (ruff setup)
     CONTROL_LEADS = True    # user-spec leader hierarchy: pairs > suit-emptying
     #                         > forcing singles > junk (measured 67% h2h, n=150)
@@ -207,14 +209,8 @@ class SmartBot(HeuristicBot):
             if best_throw:
                 return best_throw
 
-        # 1) Boss pairs/tractors: guaranteed winners that also dump cards.
-        boss_paired = [entry(c) for comps in boss.values() for c in comps if c.pair_len]
-        boss_single = [entry(c) for comps in boss.values() for c in comps
-                       if not c.pair_len]
-        if boss_paired:
-            return max(boss_paired, key=lambda c: c[0])[1]
-
-        # 2) Tractor pressure (forces pairs out), ruff-safe only.
+        # 1) Tractors first when enabled: only an equal-length higher tractor
+        #    answers (rarest holding), and they shed the most cards.
         best_tr: list[str] | None = None
         for s in PLAIN_SUITS:
             if self.SAFE_TRACTOR_ONLY and mem.ruff_risk(s, opps):
@@ -224,6 +220,15 @@ class SmartBot(HeuristicBot):
                     continue
                 if comp.pair_len >= 2 and (best_tr is None or comp.size > len(best_tr)):
                     best_tr = comp.cards
+        if self.TRACTOR_FIRST and best_tr:
+            return best_tr
+
+        # 2) Boss pairs: guaranteed winners that also dump cards.
+        boss_paired = [entry(c) for comps in boss.values() for c in comps if c.pair_len]
+        boss_single = [entry(c) for comps in boss.values() for c in comps
+                       if not c.pair_len]
+        if boss_paired:
+            return max(boss_paired, key=lambda c: c[0])[1]
         if best_tr:
             return best_tr
 

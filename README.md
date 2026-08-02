@@ -57,7 +57,7 @@ use the pair-count rule.
 server/shengji/engine/   cards, combos (tractor decomposition), legality, round, game
 server/shengji/ai/       policies: heuristic.py (baseline), smart.py +
                          memory.py (card-counting heuristic), mcbot.py
-                         (Monte Carlo search, server default, Elo 1137),
+                         (Monte Carlo search, server default, Elo ~1140),
                          registry.py + env.py + tournament.py (evaluation;
                          ladder and all measurements in AI_POLICIES.md)
 server/shengji/rl/       learned-policy pipeline: encoder, action
@@ -72,19 +72,34 @@ PROTOCOL.md              WebSocket protocol contract
 The engine is authoritative and UI-free; the server maps card instance ids to
 codes per seat so hidden information never leaves the server.
 
-## Training a stronger AI (roadmap)
+## The AI
 
-A policy is anything implementing three methods (see `ai/heuristic.py`):
-`decide_declare`, `decide_bury`, `decide_play`. The self-play harness in
-`ai/env.py` already runs policy-vs-policy games headlessly at ~360 rounds/sec
-per core and reports win rates (`evaluate(policy_a, policy_b)`).
+A policy is anything implementing three methods (`decide_declare`,
+`decide_bury`, `decide_play`); the server picks one via `SHENGJI_BOT`
+(`curl /healthz` reports the active one). The current ladder, all
+measured on mirrored deals (details in `AI_POLICIES.md`):
 
-Suggested path:
-1. Wrap `play_round` in a PettingZoo AEC env: encode hand/trick/trump/points
-   as binary features; action space = enumerated legal plays with masking.
-2. Self-play PPO (CleanRL or RLlib) with an opponent pool of past
-   checkpoints; reward = level change at round end (±gain), with small
-   per-trick point shaping to speed early learning.
-3. Drop the trained policy into the server: construct the bot in
-   `api/server.py` (`Room.bot`) with your model-backed implementation and
-   play against it in the UI.
+- **`mc` (default)** — determinized Monte Carlo search over a
+  card-counting heuristic; pool Elo ~1140.
+- **`rl`** — a neural policy trained by distilling the search's own
+  evaluations (no search at inference, ~2ms/decision); passed the
+  heuristic tier in one day of training, currently ~70 Elo behind `mc`.
+  Needs `uv sync --group rl` + a local checkpoint (`SHENGJI_RL_CKPT`).
+- `smart`, `heuristic` — the hand-written tiers below both.
+
+Training pipeline (`server/shengji/rl/`, roadmap and full experiment
+log in `RL_PLAN.md`): observation/action encoders, legal-play
+enumeration, BC + search-distillation + DMC self-play trainers, an
+oracle value baseline, and an Elo tournament + human-agreement
+validation battery.
+
+## Debugging & analysis tools
+
+- `scripts/replay.py` — render any game log (`logs/<ROOM>.jsonl`) as a
+  full transcript with all hands.
+- `scripts/xray.py` / the in-game X-ray (press `x`; needs
+  `SHENGJI_DEBUG_TOKEN`) — what the bot sees and would play from any
+  position.
+- `scripts/analyze_human.py`, `scripts/eval_vs_human.py` — score human
+  decisions against the bot / the whole policy ladder.
+- `scripts/fetch_fly_logs.sh` — pull prod game logs for the above.

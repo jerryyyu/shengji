@@ -50,10 +50,12 @@ game); live X-ray debugger; MCBot exposes per-candidate values
 
 ## IN PROGRESS
 
-**Distillation data generation** — 30k rounds of MCBot self-play recording
-per-candidate search values (`rl/distill_generate.py`, 9 workers, ~3h).
-Dense per-action targets from the 1137-Elo teacher; no credit-assignment
-problem.
+**N=30 teacher-data regeneration** (overnight 2026-08-02, ~24k rounds,
+8 workers): same teacher, 30 sampled worlds per evaluation instead of 10
+— √3x less label noise on every candidate value, attacking the diagnosed
+ceiling of the v4-v6 series. **v7** = v6's exact recipe on this data,
+first thing in the morning; gates then Elo pool. (The original N=10
+30k-round dataset is complete and banked: 36 shards, ~2.6M decisions.)
 
 ---
 

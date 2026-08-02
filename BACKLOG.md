@@ -3,19 +3,21 @@
 Open work, roughly ordered by value. History of completed items lives in git
 and in AI_POLICIES.md; this file tracks what's NEXT.
 
-## AI / training
+## AI / training  (current state: mc ~1140 > rl-v6 ~net line ~70 behind — see AI_POLICIES.md)
 
-- [ ] **MC search distillation** (in progress 2026-08-01): 30k rounds of
-      MCBot self-play with per-candidate value targets generating now;
-      then the distillation trainer (value regression + choice CE), then
-      benchmark vs SmartBot/MCBot + human-agreement tripwire.
-- [ ] **Anchored DMC** (recipe v2): warm-start from the distilled net; BC
-      ordering anchor (annealed), advantage baseline via V(s) head, forced
-      single-candidate decisions filtered from action batches, 30-pair
-      in-run evals, team levels added to obs (ENC_VERSION 2). Recipe v1
-      post-mortem: RL_PLAN.md.
-- [ ] Phase 4 hybrid: MCBot with the net as value function / rollout policy;
-      candidate pruning by net priors.
+- [ ] **v7 distillation** (data generating overnight 2026-08-02): N=30
+      teacher labels (3x less noise), then v6's recipe (soft targets,
+      12 epochs) → gates → Elo pool. The one clean-variable experiment.
+- [ ] **AWAC-style policy-head update for self-play** — the designed fix
+      for DMC's measured failure (Q-regression collapses any policy
+      pathway; two alarm-halted runs). Policy head learns by
+      advantage-WEIGHTED imitation; values stay in their own head.
+- [ ] **Value-leaf hybrid** (Phase 4's surviving path): truncated rollouts
+      + net value head at leaves. Must beat plain mc — note
+      net-as-rollout-policy is a measured dead end (55% preview reversed
+      to 37%; bare net out-rated its own hybrid).
+- [ ] Vectorize bc_train (per-decision loop is MPS-dispatch-bound: 60+
+      min/epoch vs ~12 for the ragged-batch trainer).
 - [ ] Human-style fine-tune once the human corpus reaches a few thousand
       decisions (currently 227 labeled; grows with every prod game).
 - [ ] SmartBot ideas untried: exhaustion-based void inference, bury strategy

@@ -48,7 +48,8 @@ def main() -> None:
                     if (e.get("bot") is False and rnd.turn == seat
                             and seat not in excluded):
                         actions = enumerate_actions(rnd, seat,
-                                                    exhaustive_follows=True)
+                                                    exhaustive_follows=True,
+                                                    include_throws=True)
                         key = sorted(cards)
                         chosen = next((i for i, a in enumerate(actions)
                                        if sorted(a) == key), None)

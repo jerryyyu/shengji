@@ -108,8 +108,13 @@ v5-as-rollout-policy actively degrades the search vs heuristic rollouts
 full-net rollouts are a dead end, the value-leaf design remains the
 Phase-4 path and must clear this cleaner baseline. (2) **the net line
 passed SmartBot**: rl-v5 1088 > smart 1055, from a standing start this
-morning. v6 (51/41, stronger than v5) is unrated in the pool — likely
-~1100+; goal remains Elo > mc.
+morning. v6 pool rating (4-policy pool, seeds 1200): mc 1104 > **rl-v6 1032** >
+smart 1006 > heuristic 1000 — mc beat rl-v6 60% head-to-head, perfectly
+consistent with v6's 41% gate (n=120). NOTE: Bradley-Terry numbers are
+pool-relative (mc rated 1141 in the 5-policy pool but 1104 here; smart
+1055 vs 1006) — only within-pool gaps and head-to-head rates transfer.
+Consistent story across all measurements: the net line is solidly above
+smart, ~60-70 Elo below the champion. Goal remains: beat mc.
 
 Diagnosis: MCBot is a STOCHASTIC teacher (10-world sampling decides
 near-ties — the majority of decisions), and ~70% of its choices are just

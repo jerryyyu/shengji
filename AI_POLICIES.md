@@ -219,8 +219,12 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
 | MC_BURY | off | 62% = ref | tie |
 | LEAD_MARGIN | off | 8/12/999 → 51/47/50% | tie |
 | SmartBot rollouts | off | Elo tie with mc at 5x cost | rejected |
-| RISKY_THROWS | off | — | **pending measurement** |
-| TRUMP_BALLOT | off | — | **pending measurement** |
+| RISKY_THROWS | off | 53% at MC level, n=120 | tie (combo w/ TRUMP_BALLOT pending) |
+| TRUMP_BALLOT | off | 53% at MC level, n=120 | tie (combo pending) |
+
+**MC-level stack validation (2026-08-02 morning)**: mc with the four
+adopted toggles beat mc-without **57%** (n=120) — the SmartBot-level
+h2h protocol's inheritance assumption holds at the shipping level.
 
 **Engine corrections** (not flags — permanent): throw-ruffing (all bots
 can contest 甩牌), pair_is_boss (+13pt), beats() alternative

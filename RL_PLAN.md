@@ -9,7 +9,18 @@ AI_POLICIES.md; run archives in `server/runs/`.
 
 ---
 
-## STATE OF PLAY (2026-08-02 afternoon)
+## STATE OF PLAY (2026-08-02 night)
+
+**BREAKTHROUGH: rl-v7w (warm-start from v6, 4 epochs on the N=30
+textbook, ~1.5h train) beats v6 in ALL FOUR snapshots — best ep02:
+64.5% (129-71, n=200). New best net = snapshots_v7w/ep02.pt. Both
+levers confirmed at once: label quality (N=30) AND warm-start lineage
+(adopted as standing policy — init every generation from the
+incumbent). v7-scratch killed at epoch 1/8 (superseded; its
+label-quality question answered by the warm arm). Next: gen-v3 teacher
+data -> v8 warm from v7w-ep02; vleaf retry with v7w value head.**
+
+## (previous state, afternoon)
 
 **Where the ladder stands** (within-pool gaps, latest measurements):
 

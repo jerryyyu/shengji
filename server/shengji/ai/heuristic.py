@@ -20,6 +20,8 @@ PLAIN_SUITS = "SHDC"
 class HeuristicBot:
     DECLARE_MIN = 9     # trump-count needed to declare during the deal
     DECLARE_FINAL = 7   # lower bar in the grace window
+    VOID_DUMP = False   # when dumping junk, prefer emptying short suits
+    #                     (opens ruff lanes; user-observed gap via X-ray)
 
     # ---------------------------------------------------------------- declare
     def decide_declare(self, rnd: Round, seat: int,
@@ -306,12 +308,17 @@ class HeuristicBot:
     def _lowest(self, cards: list[str], o: Ordering, avoid_points: bool = False,
                 seek_points: bool = False, avoid: set[str] | None = None) -> str:
         avoid = avoid or set()
+        if self.VOID_DUMP:
+            suit_n = Counter(o.eff_suit(c) for c in cards)
 
         def key(c: str) -> tuple:
             trumpish = o.eff_suit(c) == TRUMP
+            # shorter suit first when junking (1 card from a singleton beats
+            # an equal card from a long suit: it opens a ruff lane)
+            vlen = suit_n[o.eff_suit(c)] if self.VOID_DUMP and not trumpish else 0
             if seek_points:
                 return (c in avoid, -points(c), trumpish, o.level(c))
             if avoid_points:
-                return (c in avoid, trumpish, points(c) > 0, o.level(c))
-            return (c in avoid, trumpish, o.level(c))
+                return (c in avoid, trumpish, points(c) > 0, vlen, o.level(c))
+            return (c in avoid, trumpish, vlen, o.level(c))
         return min(cards, key=key)

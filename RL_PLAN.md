@@ -55,7 +55,8 @@ game); live X-ray debugger; MCBot exposes per-candidate values
 | `rl_data/bc` | 1.73M decisions / 35 shards / 155M | SmartBot behavior cloning (~20k rounds): obs + chosen action, no values | SmartBot | ckpt_bc, ckpt_bc_dueling |
 | `rl_data/distill` | 1.66M decisions / 36 shards / 155M | search distillation: full ballots + MC per-candidate rollout values, N=10 | MCBot (pre-CONTROL_LEADS) | v4, v5, v6, v6.1 base |
 | `rl_data/distill_n30` | 1.06M decisions / 24 shards / 104M | the low-noise textbook: same format, N=30 (3x less label noise), pairfix+voiddump teacher | upgraded MCBot | v7 (in training) |
-| `rl_data/human` | 801 decisions / 1 shard | human plays from server logs, exhaustive-follow ballots, bracket rewards | live humans | v6.1 blend |
+| `rl_data/human` | 801 decisions / 1 shard | FROZEN while v6.1 trains on it — superseded by human_v2 | live humans | v6.1 blend |
+| `rl_data/human_v2` | **1,003 decisions** / 1 shard (2026-08-02, post-fly-fetch) | rebuild with **v2 ballots** (exhaustive follows + lead throws): human throws now compete against rival throws | live humans | next blend |
 | `rl_data/oracle` | 1 shard / 10M | full-information states + outcomes (own schema) | self-play | oracle value study (43-47%) |
 | `../logs` | 18 games / 616K | raw JSONL — human corpus source, now 1,052 decisions (rebuildable in seconds) | live play | audits, agreement, miner |
 | `rl_data/dmc2_*`, smoke dirs | ~18M, no shards | dead-experiment/smoke leftovers | — | nothing |

@@ -29,17 +29,18 @@ REGISTRY: dict[str, type] = {
     # v2 = throws-era config without the research-derived endgame/bury rules:
     "smart-v2": _smart_variant("SmartV2", ENDGAME_CONTROL=False,
                                BURY_TRUMP_GATE=False),
-    # generational snapshots for longitudinal tracking (flags-only
+    # Generational snapshots, named <policy>-<yyyymmdd> = the live head
+    # on that date; bare names are always the current head. (Flags-only
     # reconstruction — shared engine/Memory fixes are NOT ablated):
     # pre-overnight-adoptions smart (before CONTROL_LEADS/TEMPO_GUARD/
     # LATE_TRUMP_PAIRS/VOID_DUMP, night of 2026-08-01):
-    "smart-0801": _smart_variant("Smart0801", CONTROL_LEADS=False,
+    "smart-20260801": _smart_variant("Smart20260801", CONTROL_LEADS=False,
                                  TEMPO_GUARD=False, LATE_TRUMP_PAIRS=False,
                                  VOID_DUMP=False),
     # start-of-day mc (2026-08-02 morning, pre-WIDE_LEAD_BALLOT):
-    "mc-0802am": type("MC0802am", (MCBot,), {"WIDE_LEAD_BALLOT": False}),
+    "mc-20260802am": type("MC20260802am", (MCBot,), {"WIDE_LEAD_BALLOT": False}),
     # pre-overnight mc (narrow ballot + pre-adoption smart layer):
-    "mc-0801": type("MC0801", (MCBot,), {"WIDE_LEAD_BALLOT": False,
+    "mc-20260801": type("MC20260801", (MCBot,), {"WIDE_LEAD_BALLOT": False,
                                          "CONTROL_LEADS": False,
                                          "TEMPO_GUARD": False,
                                          "LATE_TRUMP_PAIRS": False,

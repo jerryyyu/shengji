@@ -246,6 +246,18 @@ decompositions, defend-at-A, format-scaled kitty multiplier, throw
 penalty forces the beaten component, exhaustive-follow enumeration
 (analysis-side).
 
+## Sourcing-miss audit (2026-08-02, human corpus n=1052)
+
+15.3% of human plays are ABSENT from the bot's play-time ballot (v1):
+lead throws 77% missing (2/4-card throws: 100%), follow singles 21%
+(discard selection — biggest absolute bucket, 116/558), broken-structure
+follows 12-17%. Direct confirmation that the gap is sourcing, not
+ranking. Fixes staged: ballot v2 lead throws (RL, next teacher gen),
+WIDE_LEAD_BALLOT (MC, in measurement), wide-follow ballot (queued).
+Direct net duel same day: rl-v6 beat rl-v5 54% (108-92, n=200) — v6
+confirmed the stronger net; old cross-pool Elo suggesting otherwise was
+pool-relativity.
+
 ## Experiment log (measured and rejected — reproducible via registry/toggles)
 
 | idea | result | verdict |

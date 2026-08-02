@@ -26,7 +26,7 @@ class SmartBot(HeuristicBot):
     #                         tricks (XCYB: BJ spent beating a rank-4)
     TRACTOR_FIRST = False   # tractors outrank boss pairs in the lead order
     #                         (user: "if there is a tractor, HIGHLY consider")
-    LATE_TRUMP_PAIRS = False  # lead top trump pair when hand <= 12 (mined
+    LATE_TRUMP_PAIRS = True   # lead top trump pair when hand <= 12 (mined
     #                           from human play: +7.3/decision, 8/8 better)
     BURY_VOID = True        # bury toward emptying 1-3 card suits (ruff setup)
     CONTROL_LEADS = True    # user-spec leader hierarchy: pairs > suit-emptying

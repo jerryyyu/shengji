@@ -59,7 +59,7 @@ game); live X-ray debugger; MCBot exposes per-candidate values
 | `rl_data/human_v2` | **1,003 decisions** / 1 shard (2026-08-02, post-fly-fetch) | rebuild with **v2 ballots** (exhaustive follows + lead throws): human throws now compete against rival throws | live humans | next blend |
 | `rl_data/oracle` | 1 shard / 10M | full-information states + outcomes (own schema) | self-play | oracle value study (43-47%) |
 | `../logs` | 18 games / 616K | raw JSONL — human corpus source, now 1,052 decisions (rebuildable in seconds) | live play | audits, agreement, miner |
-| `rl_data/dmc2_*`, smoke dirs | ~18M, no shards | dead-experiment/smoke leftovers | — | nothing |
+| ~~dmc2_*/smoke dirs~~ | deleted 2026-08-02 (~21M) | dead-experiment leftovers | — | — |
 
 Key asymmetries: (1) quality ladder bc < distill < distill_n30 tracks the
 checkpoint ladder — label quality has out-predicted architecture; (2) all
@@ -278,6 +278,13 @@ rule).**
 ---
 
 ## Measurement rules (unchanged, non-negotiable)
+
+**Partial-checkpoint protocol (added 2026-08-02):** every saved snapshot
+gets (1) the fixed-seed probe vs current SmartBot (n=60, control v6=55%)
+AND (2) a direct net-vs-net mirrored duel vs the incumbent best net
+(n=200, ~minutes at 2ms/move) — the duel is transitivity-free and
+sharper for close calls. Blend checkpoints (human data) additionally get
+the human-agreement eval.
 Mirrored deals everywhere; policies rated in the Elo pool, never against a
 single opponent; every checkpoint through the human-agreement tripwire;
 negative results archived in `server/runs/`.

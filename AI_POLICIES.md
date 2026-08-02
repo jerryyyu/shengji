@@ -254,6 +254,10 @@ lead throws 77% missing (2/4-card throws: 100%), follow singles 21%
 follows 12-17%. Direct confirmation that the gap is sourcing, not
 ranking. Fixes staged: ballot v2 lead throws (RL, next teacher gen),
 WIDE_LEAD_BALLOT (MC, in measurement), wide-follow ballot (queued).
+**Same-day fix loop**: v2 enumerator (exhaustive follows + safe/near-boss
+throws) cut misses to 2.3%; adding arbitrary 2-3 component throws per
+suit (humans throw riskier than near-boss) cut them to **0.7% — 99.3%
+coverage**. Tracked tripwire: `scripts/audit_sourcing.py` (--v2).
 Direct net duel same day: rl-v6 beat rl-v5 54% (108-92, n=200) — v6
 confirmed the stronger net; old cross-pool Elo suggesting otherwise was
 pool-relativity.

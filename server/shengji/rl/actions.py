@@ -75,6 +75,16 @@ def enumerate_actions(rnd: Round, seat: int,
                     add([c for comp in comps for c in comp.cards])
             for t in _helper.near_boss_throws(rnd, seat, mem):
                 add(t)
+            # Arbitrary 2-3 component throws per suit (audit 2026-08-02:
+            # humans' 2/4-card lead throws were 100% off-ballot — they
+            # throw riskier than safe/near-boss). The scorer prices the
+            # beat risk + penalty; the ballot's job is only to show them.
+            from itertools import combinations
+            for s in list(PLAIN_SUITS) + [TRUMP]:
+                comps = decompose(suit_cards(hand, s, o), o).components
+                for k in (2, 3):
+                    for combo in combinations(comps, k):
+                        add([c for comp in combo for c in comp.cards])
     elif not exhaustive_follows:
         for cand in _helper._candidates(rnd, seat):
             add(cand)

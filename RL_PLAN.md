@@ -16,8 +16,12 @@ textbook, ~1.5h train) beats v6 in ALL FOUR snapshots — best ep02:
 64.5% (129-71, n=200). New best net = snapshots_v7w/ep02.pt. Both
 levers confirmed at once: label quality (N=30) AND warm-start lineage
 (adopted as standing policy — init every generation from the
-incumbent). v7-scratch killed at epoch 1/8 (superseded; its
-label-quality question answered by the warm arm). Next: gen-v3 teacher
+incumbent). v7-scratch killed at epoch 1/8 (superseded). CAVEAT from
+anchor pairings (round-level): v7w vs smart 45% (54-66), vs wide-mc
+32.5% (39-81) — in-pool ~v6-level (~1030-1040) DESPITE 61-64%
+game-level duels over v6: net-vs-net game duels overstate transitive
+strength. v7w still best net, but the mc gap is NOT closed; gen-v3 ->
+v8 remains the path. Next: gen-v3 teacher
 data -> v8 warm from v7w-ep02; vleaf retry with v7w value head.**
 
 ## (previous state, afternoon)

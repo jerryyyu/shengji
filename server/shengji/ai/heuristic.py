@@ -20,8 +20,9 @@ PLAIN_SUITS = "SHDC"
 class HeuristicBot:
     DECLARE_MIN = 9     # trump-count needed to declare during the deal
     DECLARE_FINAL = 7   # lower bar in the grace window
-    VOID_DUMP = False   # when dumping junk, prefer emptying short suits
-    #                     (opens ruff lanes; user-observed gap via X-ray)
+    VOID_DUMP = True    # when dumping junk, prefer emptying short suits —
+    #                     opens ruff lanes (user-observed gap via X-ray;
+    #                     measured 55% head-to-head vs plain, n=150 games)
 
     # ---------------------------------------------------------------- declare
     def decide_declare(self, rnd: Round, seat: int,

@@ -67,7 +67,18 @@ Four trainer iterations, all failing the gates (targets 60%/45%):
 | v1 | single Q, MSE+CE | 32% / 22% |
 | v2 | + CE temperature | 30% / 27% |
 | v3 | separated policy/value heads | 32% / 24% |
-| v4 | + soft value-distribution targets, lr 1e-3 | **38% / 32%** |
+| v4 | + soft value-distribution targets, lr 1e-3 | 38% / 32% |
+| v5 | v4 recipe on the FULL dataset (2.6M decisions, 5 epochs) | **42% / 38%** |
+
+v5 confirms the data-starvation hypothesis: the v1→v4→v5 line (32→38→42
+vs Smart) hasn't plateaued, and val metrics were still improving at epoch
+5 with no overfit gap. Headline: **38% vs MCBot makes v5 the most
+search-resistant net so far** (BC: 29% — search exploits imitation
+errors; the distilled student, trained on search's own judgments, holds
+up). Still short of the 60/45 gates. Remaining levers: more epochs/data,
+aux heads, averaged teacher values, and an AWAC-style policy-head update
+so PolicyValueNet checkpoints can enter dmc2 (its learner currently
+requires the dueling Q interface).
 
 Diagnosis: MCBot is a STOCHASTIC teacher (10-world sampling decides
 near-ties — the majority of decisions), and ~70% of its choices are just

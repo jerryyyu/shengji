@@ -193,6 +193,7 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
 | declare the weaker suit + point-level eagerness | -2% | suit quality matters more than folk wisdom claims |
 | partner-void feeding | neutral alone, -4% combined | interferes with endgame control |
 | LEAD_MARGIN 8/12/999 (tempo hypothesis) | 51/47/50% ties | margin-5 + heuristic prior already filter the passive-rollout lead bias |
+| TRACTOR_FIRST (tractors above boss pairs) | 51% h2h tie, n=150 | tractors already prioritized at step 2 + tractor-lock; the ordering margin is rare |
 | mc-strong (N=30) | 61% ≈ default | sampling isn't the bottleneck; rollout quality is |
 
 ## Human-play validation set

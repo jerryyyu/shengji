@@ -180,6 +180,54 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
 - 2026-07-31 rules corrections (defend-at-A, format-scaled kitty
   multiplier) similarly shifted all measurements made before them.
 
+## Toggle registry (canonical) — every flag and its measured record
+
+**SmartBot / HeuristicBot** (h2h = head-to-head vs same bot without the flag):
+
+| flag | default | record | verdict |
+|---|---|---|---|
+| SAFE_THROWS | ON | +17pt vs heuristic (66→83) | adopted |
+| CONTROL_LEADS | ON | 67% h2h, n=150 | adopted |
+| LATE_TRUMP_PAIRS | ON | 60% h2h, n=150 (miner-sourced) | adopted |
+| VOID_DUMP | ON | 55% h2h, n=150 | adopted |
+| TEMPO_GUARD | ON | root-fix of prod BJ-burn; verified on position | adopted |
+| ENDGAME_CONTROL | ON | +2pt | adopted |
+| BURY_TRUMP_GATE | ON | +1pt | adopted |
+| BURY_VOID | ON | ~+1pt | adopted |
+| DECLARE 8/6 (vs 9/7) | ON | +2pt (10/8 measured −4) | adopted |
+| SAFE_TRACTOR_ONLY | ON | disabling measured −4 | adopted |
+| TEMPO_SEEK v2 | off | v1 48%, v2 53% h2h | tie (combo test pending) |
+| ANY_PAIR_OVER_JUNK | off | 52% h2h | tie (combo test pending) |
+| TRACTOR_FIRST | off | 51% h2h | tie |
+| PARTNER_VOID_LEAD | off | 50% alone, −4 combined | rejected |
+| DECLARE_TUNE | off | −2pt | rejected |
+| TRUMP_DRAIN | off | −4pt | rejected |
+| TRUMP_DRAIN_V2 | off | −4pt | rejected |
+| FEED_ON_TRUMP | off | −9pt | rejected |
+| RESERVE_LAST | off | −11pt | rejected (registry: smart-reserve) |
+
+**MCBot:**
+
+| knob | value | record | verdict |
+|---|---|---|---|
+| MARGIN | 5.0 | beat argmax 62% (~45 Elo); 2.5→57%, 7.5→54%, 10→52% | adopted |
+| N_DETERMINIZATIONS | 10 | 5→48%, 10→62%, 15→65%, 30→61% | adopted (≥10 flat) |
+| MAX_CANDIDATES | 8 | 4→58%, 12→60% | adopted |
+| TRACTOR_LOCK | ON | 56% h2h | adopted |
+| POINT_SHY_EPS | 2.0 | adopted from 10-10 lead analysis (no isolated h2h) | adopted |
+| LEVEL_OBJECTIVE | off | 59% vs 62% ref | tie |
+| MC_BURY | off | 62% = ref | tie |
+| LEAD_MARGIN | off | 8/12/999 → 51/47/50% | tie |
+| SmartBot rollouts | off | Elo tie with mc at 5x cost | rejected |
+| RISKY_THROWS | off | — | **pending measurement** |
+| TRUMP_BALLOT | off | — | **pending measurement** |
+
+**Engine corrections** (not flags — permanent): throw-ruffing (all bots
+can contest 甩牌), pair_is_boss (+13pt), beats() alternative
+decompositions, defend-at-A, format-scaled kitty multiplier, throw
+penalty forces the beaten component, exhaustive-follow enumeration
+(analysis-side).
+
 ## Experiment log (measured and rejected — reproducible via registry/toggles)
 
 | idea | result | verdict |

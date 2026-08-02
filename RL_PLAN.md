@@ -128,6 +128,13 @@ Next levers, in order: full 30k dataset (2x data), more epochs at lr
 world evals recorded at generation) if still short. BC (48%/29%) remains
 the strongest net and the overnight dmc2 warm start.
 
+**Snapshot sweep result (overnight)**: fresh 20-epoch run, per-epoch
+strength probes (n=60, fixed seeds, vs POST-pairfix SmartBot): 38% at
+ep0 → plateau 53-57% across ep3-10 (peak ep06 57%) → no gain after,
+wobble 43-53%. Strength peaks by ~ep6-8; v6's 12 epochs were past it.
+v7 recipe: ~10 epochs + snapshot-and-probe selection (the user's
+proposal, now standard). Morning: confirm ep05/06/08 at n=120.
+
 **Late-night addenda (2026-08-01 ~23:45):**
 - **v6 vs v5 direct duel: 62-58 (52%) for v6** — statistical equals; the
   pool "regression" (1088 vs 1032) was pool-relativity + pairing noise.

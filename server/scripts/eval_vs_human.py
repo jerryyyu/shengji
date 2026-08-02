@@ -21,10 +21,20 @@ from shengji.ai.registry import REGISTRY  # noqa: E402
 from shengji.engine.round import Round  # noqa: E402
 
 
+EXCLUDE_PLAYERS = {"Smoke", "DeployTest", "X"}  # test scripts, not humans
+
+
 def iter_human_decisions(paths):
-    """Yield (rnd, seat, human_cards) at each genuine human decision."""
+    """Yield (rnd, seat, human_cards) at each genuine human decision.
+    Seats whose player name is a known test script are excluded."""
     for path in paths:
         events = [json.loads(l) for l in open(path)]
+        excluded_seats: set = set()
+        for e in events:
+            if e.get("e") == "round_start":
+                excluded_seats = {p["seat"] for p in e["players"]
+                                  if p["name"] in EXCLUDE_PLAYERS}
+                break
         by_round = {}
         for e in events:
             by_round.setdefault(e["round"], []).append(e)
@@ -51,7 +61,8 @@ def iter_human_decisions(paths):
                 for e in evs:
                     if e["e"] != "play" or rnd.phase != "play":
                         continue
-                    if e.get("bot") is False and rnd.turn == e["seat"]:
+                    if (e.get("bot") is False and rnd.turn == e["seat"]
+                            and e["seat"] not in excluded_seats):
                         yield rnd, e["seat"], e["cards"]
                     rnd.play(e["seat"], e["cards"])
             except Exception:

@@ -81,8 +81,14 @@ is label quality — the last untested lever of the distillation series.
 **Overnight sweep verdicts (all vs the v6=55% control)**: temperature
 0.03/0.10 both null (0.05 confirmed; sharp targets train unstably);
 big-trunk 1024 null (best 47% — capacity doesn't pay, small/fast wins);
-v6.1 human-blend ep0 at 50% (strength held within noise; agreement test
-pending, epochs 1-2 finishing). MC-level validations: the adopted
+**v6.1 human-blend ep0: 50% strength (within noise) and 57%
+human-agreement vs v6's 51% — the blend took at no strength cost**
+(caveat: partly in-sample; clean test = future games). Epochs 1-2
+finishing. Same-day additions: value-leaf hybrid BUILT
+(rl/torch_policy.py MCValueLeaf — truncated rollouts + v6 value leaf;
+gate duel vs mc queued), sourcing audit + ballot v2 (see AI_POLICIES:
+human-play coverage 84.7% → 99.3%), rl-v6 beat rl-v5 directly 54%
+(n=200). MC-level validations: the adopted
 toggle stack beats toggles-off mc 57% (n=120) — the SmartBot-level h2h
 protocol's inheritance assumption holds; RISKY_THROWS and TRUMP_BALLOT
 both 53% at MC level (ties, combo test possible).

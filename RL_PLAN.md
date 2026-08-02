@@ -89,14 +89,27 @@ Remaining levers: more epochs/data, aux heads, averaged teacher values,
 and an AWAC-style policy-head update so PolicyValueNet checkpoints can
 enter dmc2 (its learner currently requires the dueling Q interface).
 
-**v5-hybrid preview (Phase 4 signal): MCBot with v5 rollouts beat plain
-MCBot 22-18 (55%, n=40 mirrored rounds)** — vs the BC-hybrid's 45%. Not
-statistically conclusive (±8) but the first result ever ABOVE the
-champion, and the rollout-quality → hybrid-strength chain behaved as
-predicted (better rollout policy in, stronger search out). Full-net
-rollouts are ~2s/decision — the production path remains truncated
-rollouts + value-head leaves. Next verification: n≥100 duel, then Elo
-pool entry as `mc-v5roll`.
+**v5-hybrid: preview did NOT survive confirmation.** The 55% (n=40) duel
+vs plain mc reversed to **37% at n=60 in the tournament** (pooled ~44%,
+n=100); the human player's "feels wonky" preceded the statistical
+verdict. Full 5-policy Elo pool (2026-08-01 night, 60 rounds/pairing):
+
+| policy | Elo |
+|---|---|
+| mc | 1141 |
+| **rl-v5 (bare net)** | **1088** |
+| mc-v5roll (hybrid) | 1074 |
+| smart | 1055 |
+| heuristic | 1000 |
+
+Two findings: (1) **the bare net out-rates the hybrid built from it** —
+v5-as-rollout-policy actively degrades the search vs heuristic rollouts
+(net failure modes in the tails that search amplifies + 100x cost);
+full-net rollouts are a dead end, the value-leaf design remains the
+Phase-4 path and must clear this cleaner baseline. (2) **the net line
+passed SmartBot**: rl-v5 1088 > smart 1055, from a standing start this
+morning. v6 (51/41, stronger than v5) is unrated in the pool — likely
+~1100+; goal remains Elo > mc.
 
 Diagnosis: MCBot is a STOCHASTIC teacher (10-world sampling decides
 near-ties — the majority of decisions), and ~70% of its choices are just

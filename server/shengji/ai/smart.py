@@ -23,8 +23,8 @@ class SmartBot(HeuristicBot):
     RESERVE_MARGIN = 3      # keep the reserve while hand exceeds its size by this
     CONTEST_PTS = 10        # trump-spend threshold when the win isn't guaranteed
     BURY_VOID = True        # bury toward emptying 1-3 card suits (ruff setup)
-    CONTROL_LEADS = False   # no-boss fallback leads highest non-point single
-    #                         (forcing) instead of lowest junk
+    CONTROL_LEADS = True    # user-spec leader hierarchy: pairs > suit-emptying
+    #                         > forcing singles > junk (measured 67% h2h, n=150)
     DECLARE_MIN = 8         # slightly more eager declarer than baseline (9)
     DECLARE_FINAL = 6
     # --- research-derived toggles (see AI_POLICIES.md for measurements) ---

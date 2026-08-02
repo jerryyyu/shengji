@@ -33,13 +33,13 @@ Air; dated names = that day's live config, anchor-paired):**
 
 | policy | Elo | note |
 |---|---|---|
-| mc | 1109* | wide ballot (*mc vs 0802am direct pairing still landing) |
-| mc-20260802am | 1104 | narrow ballot — what prod runs today |
-| smart | 1070 | four overnight adoptions |
-| mc-20260801 | 1069 | pre-overnight mc |
+| mc | 1109* | search + ALL current flags: WIDE_LEAD_BALLOT, CONTROL_LEADS, TEMPO_GUARD, LATE_TRUMP_PAIRS, VOID_DUMP (*mc vs 0802am direct pairing still landing) |
+| mc-20260802am | 1104 | = mc minus WIDE_LEAD_BALLOT (narrow 8-cap ballot) — what prod runs today |
+| smart | 1070 | heuristics with CONTROL_LEADS + TEMPO_GUARD + LATE_TRUMP_PAIRS + VOID_DUMP (plus long-standing SAFE_THROWS, ENDGAME_CONTROL, BURY_* stack) |
+| mc-20260801 | 1069 | = mc minus WIDE_LEAD_BALLOT minus the four flags above (search on the older heuristic layer) |
 | rl-v6 | 1033 | best standalone net |
 | rl-v6.1 | 1022 | human blend: −11 vs v6 in-pool (style tax) |
-| smart-20260801 | 1020 | pre-overnight smart |
+| smart-20260801 | 1020 | = smart minus CONTROL_LEADS/TEMPO_GUARD/LATE_TRUMP_PAIRS/VOID_DUMP (keeps the older adopted stack) |
 | heuristic | 1000 | anchor |
 | rl-v5 | 971 | BELOW heuristic vs today's pool — pool-relativity in action (rated 1088 on 2026-08-01) |
 

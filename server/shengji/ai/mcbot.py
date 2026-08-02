@@ -61,6 +61,10 @@ class MCBot(SmartBot):
     N_BURY_WORLDS = 8
     RISKY_THROWS = False     # put near-boss throws (A+QQ) on the ballot and
     #                          let determinization price them (user idea)
+    TRUMP_BALLOT = False     # trump pair / top-trump lead candidates (钓主):
+    #                          hand-rules for draining measured -4% three
+    #                          times, but the ballot lets worlds price it
+    #                          per-position (user idea)
     TRACTOR_LOCK = True      # heuristic tractor leads are final (measured
     #                          56% vs override-allowed, and fixes perceived
     #                          "why didn't it lead the tractor" moments)
@@ -232,6 +236,12 @@ class MCBot(SmartBot):
             trumps = suit_cards(hand, TRUMP, o)
             if trumps:
                 add([self._lowest(trumps, o, avoid_points=True)])
+                if self.TRUMP_BALLOT:
+                    comps = decompose(trumps, o).components
+                    paired = [c for c in comps if c.pair_len]
+                    if paired:
+                        add(max(paired, key=lambda c: (c.pair_len, c.top)).cards)
+                    add([max(trumps, key=o.level)])  # boss/top trump drain
         else:
             add(self._follow(rnd, seat))  # SmartBot's pick
             lead = rnd.trick.plays[0].cards

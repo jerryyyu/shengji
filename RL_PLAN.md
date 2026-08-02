@@ -88,7 +88,11 @@ vleaf if it gates), belief-weighted sampling, ballot-v2 teacher gen.
 2. **v7-warm** (launches when v6.1's slot frees) — init from v6,
    fine-tune on N=30. If warm ≥ scratch at equal wall-clock, all future
    generations init from the incumbent (~3x iteration speed).
-3. **MCValueLeaf gate** (running) — truncated rollouts + v6 value leaf,
+3. **MCValueLeaf gate — FAILED (45%, 54-66 n=120 vs wide-ballot mc,
+   2026-08-02 evening).** v1 config: 4-trick truncation + v6 value head
+   (trained on old-teacher values). Not retired as a pathway: retry
+   cheaply with a v7w/v8 value head + truncation sweep, else fall back
+   to continuation-strategy leaves. Original design notes: (was running) — truncated rollouts + v6 value leaf,
    vs upgraded mc. Pluribus precedent: depth-limited search with leaf
    evaluation was its enabling trick (5 orders of magnitude compute
    reduction, ran on a 64-core workstation). Poker-transfer variant if

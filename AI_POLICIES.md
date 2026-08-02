@@ -28,19 +28,26 @@ Noise guide: ±3% at n=200, ±2% at n=400; round-level evals ±4.5% at n=120.
 
 ## The ladder (Elo, round-level, heuristic = 1000)
 
-Two pools measured 2026-08-01 (pre-throw-fix code; see "shared-code
-changes" below — rerun pending):
+IMPORTANT caveat learned 2026-08-01: Bradley-Terry ratings are
+POOL-RELATIVE — absolute numbers shift with pool composition (mc rated
+1141, 1104, and 1137 across three pools; anchors move too). Only
+within-pool gaps and head-to-head rates transfer between tables.
 
-| policy | Elo | note |
-|---|---|---|
-| **mc** (server default) | **1137** | margin 5, N=10 — confirmed optimal in the variant pool |
-| mc-smartroll | 1129 | tie with mc at 5x cost — not promoted |
-| mc-argmax | 1092 | the margin is worth ~45 Elo (mc beat it 62% head-to-head) |
-| mc-lite (N=5) | 1077 | cheap mode costs real strength |
-| smart (v3) | 1032 | |
-| smart-v1 | 1022 | |
-| smart-v2 | 1020 | |
-| heuristic | 1000 | anchor |
+**Latest pools (2026-08-01 night, post-throw-fix code):**
+
+| policy | Elo | pool | note |
+|---|---|---|---|
+| **mc** (server default) | **1141** | A | champion; beat rl-v5 53%, mc-v5roll 63%, rl-v6 60% |
+| rl-v5 (bare net) | 1088 | A | distilled net, no search at inference (~2ms/decision) |
+| mc-v5roll | 1074 | A | net-as-rollouts DEGRADES search — its 55% preview vs mc (n=40) reversed to 37% at n=60; bare net out-rates its own hybrid |
+| smart (v3) | 1055 | A | |
+| rl-v6 | 1032* | B | *pool B (mc 1104, smart 1006): ~25-30 above smart, ~70 below mc — v6 is the strongest standalone net (see rl section) |
+| heuristic | 1000 | A+B | anchor |
+
+Earlier pools (same day, pre-throw-fix code): mc 1137 > mc-smartroll
+1129 (tie at 5x cost) > mc-argmax 1092 (margin worth ~45 Elo) >
+mc-lite 1077 > smart 1032 ≈ smart-v1 1022 ≈ smart-v2 1020 > heuristic
+1000.
 
 Full-game rates compress/amplify differently: smart beat heuristic 86-90%
 of GAMES while only ~52% of rounds — game wins come from winning rounds
@@ -90,14 +97,28 @@ trump-gated bury +1) ~88-90%. Registry keeps smart-v1/smart-v2 reproducible.
 `rl/torch_policy.py`: Q-net (QNet or dueling QNetDueling, auto-detected)
 argmaxing over enumerated legal actions; needs `uv sync --group rl` +
 `SHENGJI_RL_CKPT` (checkpoints local, gitignored).
-- `ckpt_bc.pt` (behavior-cloned from 20k SmartBot rounds): 89.7% imitation,
-  **48% vs SmartBot** (even with teacher), **29% vs MCBot** (search punishes
-  the clone's ~10% imitation errors).
-- **Hybrid preview** (MCBot with the BC net as rollout policy): **45% vs
-  plain mc** (18-22, n=40, ±8 — statistical tie), measured with the
-  degraded ballots below, so a floor not a ceiling. Full net rollouts cost
-  ~2s/decision — unusable live; Phase 4 uses truncated rollouts + net leaf
-  values instead.
+- **Checkpoint ladder** (gates = mirrored n=120 vs SmartBot / vs MCBot):
+  | ckpt | method | vs Smart | vs MC |
+  |---|---|---|---|
+  | ckpt_bc | BC of SmartBot (20k rounds) | 48% | 29% |
+  | ckpt_bc_dueling | same, dueling arch | 38% | — |
+  | ckpt_distill_full (v5) | search distillation, full data, 5 ep | 42% | 38% |
+  | **ckpt_distill_v6** | same, 12 epochs | **51%** | **41%** |
+  v6 is the strongest standalone net: beats BC on both axes, parity-plus
+  vs SmartBot, Elo ~25-30 above smart / ~70 below mc in its pool. The
+  distillation series (v1-v3 failed at 32/22-ish; v4 soft targets 38/32;
+  v5 42/38; v6 51/41) — full iteration history in RL_PLAN.md.
+- **Dueling-architecture tax (measured)**: at near-equal imitation
+  (88.2% vs 89.7%), dueling-BC plays 10 points worse than free-logits BC
+  (38% vs 48%) — mean-zero A is a poor medium for a policy; free policy
+  heads win for play, dueling only where value regression happens.
+- **Hybrids (net-as-rollout-policy): measured dead end.** BC-hybrid 45%
+  vs mc (n=40); v5-hybrid previewed at 55% (n=40) then REVERSED to 37%
+  at n=60 — the bare v5 net out-rates its own hybrid in the pool (1088
+  vs 1074). Net tail-failures get amplified by search, at ~100x cost
+  (~2s/decision); a human player's "feels wonky" preceded the
+  statistical verdict. Phase 4's remaining path: truncated rollouts +
+  value-head leaves (unbuilt), which must beat plain mc to matter.
 - **Ballot-mismatch incident (2026-08-01)**: the exhaustive-follow
   enumeration change silently broke the deployed net — trained on
   search-candidate ballots, it was suddenly scoring dozens of unseen
@@ -110,11 +131,16 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
   400k rounds; measured cause: value regression crushed the BC score scale
   (cross-candidate spread 22.5 → 0.26 ≈ action-blind) under deal-luck
   label noise. Run record: `server/runs/dmc_v1.md`.
-- **In progress**: search distillation (30k MCBot self-play rounds with
-  per-candidate value targets) → dueling-architecture student
-  (`distill_train.py`, val-split, ballot-matched). Oracle-baseline
-  prototype for recipe v2 explains 47% of round-outcome variance (needs
-  early-stop/capacity work). Plan and gates: RL_PLAN.md.
+- **DMC self-play: still unsolved** — dmc2 (anchor + oracle baseline +
+  gating + spread alarm) halted twice by its own alarm: Q-regression
+  toward near-unpredictable advantage targets collapses ANY policy
+  pathway it trains (regress-to-mean → action-blind), even
+  scale-matched. Designed fix, unbuilt: AWAC-style advantage-weighted
+  policy-head update. Oracle baseline validated offline (43-47% of
+  outcome variance explained).
+- **In progress overnight (2026-08-02)**: N=30 teacher-data regeneration
+  (~24k rounds, 3x less label noise) → v7 trains on it in the morning.
+  Plan, gates, full iteration history: RL_PLAN.md.
 
 ## Shared-code changes affecting ALL policies
 

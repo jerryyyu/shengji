@@ -51,18 +51,41 @@ def main() -> None:
     for gi in range(len(core), len(names)):
         pairs += [(names.index(a), gi) for a in anchors]
 
-    wins: dict[tuple[int, int], int] = {}
+    # --chunk k/n: run only every n-th pairing starting at k, emitting
+    # merge-ready lines — lets N worker processes (or machines) split the
+    # pool; merge with --merge <files...>.
+    chunk = next((a for a in sys.argv if a.startswith("--chunk")), None)
+    if chunk:
+        k, n = map(int, chunk.split("=")[1].split("/"))
+        pairs = pairs[k::n]
+
+    if "--merge" in sys.argv:
+        wins: dict[tuple[int, int], int] = {}
+        idx = {nm: i for i, nm in enumerate(names)}
+        for path in sys.argv[sys.argv.index("--merge") + 1:]:
+            for line in open(path):
+                if line.startswith("PAIR "):
+                    _, a, b, wa, wb = line.split()
+                    wins[(idx[a], idx[b])] = int(wa)
+                    wins[(idx[b], idx[a])] = int(wb)
+        elo = fit_elo(names, wins)
+        print("\nElo ratings (round-level, heuristic = 1000):")
+        for name, r in sorted(elo.items(), key=lambda kv: -kv[1]):
+            print(f"  {name:16s} {r:7.0f}")
+        return
+
+    wins = {}
     for i, j in pairs:
         wa, wb = play_pairing(factories[names[i]], factories[names[j]],
                               n_seeds, seed0=0)
         wins[(i, j)], wins[(j, i)] = wa, wb
-        print(f"{names[i]:16s} vs {names[j]:16s}  {wa:3d} - {wb:3d} "
-              f"({wa/(wa+wb):.0%})", flush=True)
+        print(f"PAIR {names[i]} {names[j]} {wa} {wb}", flush=True)
 
-    elo = fit_elo(names, wins)
-    print("\nElo ratings (round-level, heuristic = 1000):")
-    for name, r in sorted(elo.items(), key=lambda kv: -kv[1]):
-        print(f"  {name:16s} {r:7.0f}")
+    if not chunk:
+        elo = fit_elo(names, wins)
+        print("\nElo ratings (round-level, heuristic = 1000):")
+        for name, r in sorted(elo.items(), key=lambda kv: -kv[1]):
+            print(f"  {name:16s} {r:7.0f}")
 
 
 if __name__ == "__main__":

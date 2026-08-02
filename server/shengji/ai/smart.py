@@ -143,6 +143,13 @@ class SmartBot(HeuristicBot):
                 out.append([c for comp in ok for c in comp.cards])
         return out
 
+    def _followup_size(self, rnd: Round, seat: int, mem: Memory) -> int:
+        """Cards in guaranteed paired winners waiting in hand (boss pairs /
+        tractors) — the prize that winning the current trick unlocks."""
+        boss = self._boss_components(rnd, seat, mem)
+        return sum(c.size for comps in boss.values() for c in comps
+                   if c.pair_len)
+
     # ---------------------------------------------------------------- helpers
     def _boss_components(self, rnd: Round, seat: int, mem: Memory) -> dict[str, list]:
         """Boss components per ruff-safe plain suit."""
@@ -344,10 +351,15 @@ class SmartBot(HeuristicBot):
             if not uses_trump:
                 # in-suit wins are cheap tempo — contest, UNLESS the trick is
                 # pointless and winning burns a premium trump (rank cards /
-                # jokers): prod XCYB spent BJ on a 0-point trick this way
+                # jokers): prod XCYB spent BJ on a 0-point trick this way.
+                # EXCEPTION (user): a strong waiting combo justifies even a
+                # premium spend — the lead it buys repays it.
                 premium = (w_suit == TRUMP and
                            min(o.level(c) for c in winning) >= len(o.plain_ranks))
-                if not (self.TEMPO_GUARD and trick_pts == 0 and premium):
+                if premium and self.TEMPO_GUARD and trick_pts == 0:
+                    if self.TEMPO_SEEK and self._followup_size(rnd, seat, mem) >= 4:
+                        return winning
+                else:
                     return winning
             # Spending trump: memory decides whether it's worth it.
             w_top = decompose(winning, o).top_level()
@@ -356,16 +368,14 @@ class SmartBot(HeuristicBot):
             if self.ENDGAME_CONTROL and len(hand) <= 6:
                 contest_at = 0  # endgame: every trick controls the finish
             elif self.TEMPO_SEEK and holds:
-                # winning buys the LEAD; if a strong follow-up is waiting
-                # (boss pairs / tractor / safe throw), cheap trumps are a
-                # fair price even on a low-point trick (user tempo idea)
+                # winning buys the LEAD; a waiting combo justifies the spend
+                # — cheap trumps for modest follow-ups, ANY trump (incl.
+                # premium) when the follow-up is a big combo (user: "sometimes
+                # you need to play a high trump to get tempo for the combo")
                 premium = min(o.level(c) for c in winning) >= len(o.plain_ranks)
-                if not premium:
-                    boss = self._boss_components(rnd, seat, mem)
-                    followup = sum(c.size for comps in boss.values()
-                                   for c in comps if c.pair_len)
-                    if followup >= 2:
-                        contest_at = 0
+                followup = self._followup_size(rnd, seat, mem)
+                if followup >= (4 if premium else 2):
+                    contest_at = 0
             if trick_pts >= contest_at or (holds and trick_pts > 0):
                 return winning
         return self._forced_follow(hand, lead, o, prefer_points=False,

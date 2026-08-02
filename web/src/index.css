@@ -1234,6 +1234,18 @@ button {
   padding-top: 8px;
 }
 
+.result-note {
+  color: var(--text-dim);
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.result-verdict {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin: 10px 0 0;
+}
+
 .kitty-reveal {
   display: flex;
   flex-direction: column;

@@ -71,8 +71,9 @@ interface GameState {
   kitty_count: number;            // 8 during play, shown face-down
   // --- round_end / game_over ---
   round_result: {
-    attacker_points: number;
-    kitty_points: number;         // added (already multiplied) if attackers won last trick, else 0
+    attacker_points: number;      // FINAL TOTAL, kitty bonus already included
+    kitty_points: number;         // the (multiplied) kitty portion OF that total, else 0
+                                  // trick points alone = attacker_points - kitty_points
     kitty_cards: string[];        // revealed at round end
     winner_team: 0 | 1;
     level_change: number;         // levels gained by winner

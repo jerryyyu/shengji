@@ -48,6 +48,27 @@ game); live X-ray debugger; MCBot exposes per-candidate values
 
 ---
 
+## Training data inventory (2026-08-02, all local + gitignored)
+
+| dataset | size | what it is | teacher | trained |
+|---|---|---|---|---|
+| `rl_data/bc` | 1.73M decisions / 35 shards / 155M | SmartBot behavior cloning (~20k rounds): obs + chosen action, no values | SmartBot | ckpt_bc, ckpt_bc_dueling |
+| `rl_data/distill` | 1.66M decisions / 36 shards / 155M | search distillation: full ballots + MC per-candidate rollout values, N=10 | MCBot (pre-CONTROL_LEADS) | v4, v5, v6, v6.1 base |
+| `rl_data/distill_n30` | 1.06M decisions / 24 shards / 104M | the low-noise textbook: same format, N=30 (3x less label noise), pairfix+voiddump teacher | upgraded MCBot | v7 (in training) |
+| `rl_data/human` | 801 decisions / 1 shard | human plays from server logs, exhaustive-follow ballots, bracket rewards | live humans | v6.1 blend |
+| `rl_data/oracle` | 1 shard / 10M | full-information states + outcomes (own schema) | self-play | oracle value study (43-47%) |
+| `../logs` | 18 games / 616K | raw JSONL — human corpus source, now 1,052 decisions (rebuildable in seconds) | live play | audits, agreement, miner |
+| `rl_data/dmc2_*`, smoke dirs | ~18M, no shards | dead-experiment/smoke leftovers | — | nothing |
+
+Key asymmetries: (1) quality ladder bc < distill < distill_n30 tracks the
+checkpoint ladder — label quality has out-predicted architecture; (2) all
+4.4M machine decisions share the v1 ballot and its biases (75% follows,
+no TRACTOR_LOCK leads, ~0% risky lead throws) — the next teacher gen is
+the first to fix all three (CONTROL_LEADS teacher + ballot v2 + tractor
+choice-samples); (3) the human pile is 4,000x smaller yet moved agreement
++6pts in v6.1 — highest signal-per-byte; regenerate from logs right
+before any blend.
+
 ## IN PROGRESS
 
 **v7 training** (2026-08-02 morning): v6's recipe on the completed N=30

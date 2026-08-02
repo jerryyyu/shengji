@@ -33,7 +33,7 @@ Air; dated names = that day's live config, anchor-paired):**
 
 | policy | Elo | note |
 |---|---|---|
-| mc | 1109* | search + ALL current flags: WIDE_LEAD_BALLOT, CONTROL_LEADS, TEMPO_GUARD, LATE_TRUMP_PAIRS, VOID_DUMP (*mc vs 0802am direct pairing still landing) |
+| mc | 1109 | search + ALL current flags: WIDE_LEAD_BALLOT, CONTROL_LEADS, TEMPO_GUARD, LATE_TRUMP_PAIRS, VOID_DUMP — beat 0802am 62-58 direct |
 | mc-20260802am | 1104 | = mc minus WIDE_LEAD_BALLOT (narrow 8-cap ballot) — what prod runs today |
 | smart | 1070 | heuristics with CONTROL_LEADS + TEMPO_GUARD + LATE_TRUMP_PAIRS + VOID_DUMP (plus long-standing SAFE_THROWS, ENDGAME_CONTROL, BURY_* stack) |
 | mc-20260801 | 1069 | = mc minus WIDE_LEAD_BALLOT minus the four flags above (search on the older heuristic layer) |

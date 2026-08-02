@@ -240,7 +240,7 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
 | SmartBot rollouts | off | uses the memory-aware bot instead of the fast heuristic to play out sampled worlds | Elo tie at 5x cost | rejected |
 | RISKY_THROWS | off | puts near-boss throws (A+QQ where only one higher pair threatens) on the ballot; worlds price the risk | 53% at MC, n=120 | tie (combo w/ TRUMP_BALLOT pending) |
 | TRUMP_BALLOT | off | adds trump-pair and top-trump lead candidates (钓主) for the worlds to price | 53% at MC, n=120 | tie (combo pending) |
-| WIDE_LEAD_BALLOT | testing | leads roll out EVERY pair, tractor, and near-boss throw in every suit incl. trump (lead cap 8→14). Fix for the JVRA sourcing gap: ♣A♣A/♣8♣8 never reached the rollouts | mc-vs-mc n=120 in flight | pending |
+| WIDE_LEAD_BALLOT | **ON** | leads roll out EVERY pair, tractor, and near-boss throw in every suit incl. trump (lead cap 8→14). Fix for the JVRA sourcing gap: ♣A♣A/♣8♣8 never reached the rollouts | **62% vs narrow mc (75-45, n=120), +7% latency** | **adopted — largest MC gain since the margin rule; sourcing > preference confirmed** |
 
 **Engine corrections** (not flags — permanent): throw-ruffing (all bots
 can contest 甩牌), pair_is_boss (+13pt), beats() alternative

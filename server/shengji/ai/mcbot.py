@@ -50,9 +50,10 @@ class _BuryNoVoid(SmartBot):
 class MCBot(SmartBot):
     N_DETERMINIZATIONS = 10
     MAX_CANDIDATES = 8
-    WIDE_LEAD_BALLOT = False  # leads: roll out every pair/tractor/near-boss
-    #                           throw in every suit incl. trump (JVRA gap:
-    #                           sourcing, not judgment). Cap below.
+    WIDE_LEAD_BALLOT = True  # leads: roll out every pair/tractor/near-boss
+    #                          throw in every suit incl. trump (JVRA gap:
+    #                          sourcing, not judgment). ADOPTED: 62% vs
+    #                          narrow-ballot mc (75-45, n=120), +7% latency.
     LEAD_MAX_CANDIDATES = 14
     SAMPLE_RETRIES = 15
     MARGIN = 5.0  # points/round a candidate must beat SmartBot's pick by;

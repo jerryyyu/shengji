@@ -55,8 +55,15 @@ class Memory:
         return self.higher_unseen(self.o.eff_suit(code), self.o.level(code)) == 0
 
     def pair_is_boss(self, code: str) -> bool:
-        """Conservative: no unseen *card* above it (implies no higher pair)."""
-        return self.is_boss(code)
+        """A pair is beaten only by a higher PAIR: boss iff no higher rank
+        in the suit has TWO+ copies unseen. (Holding A+KK, one ace is in
+        hand → AA impossible → KK is boss, even though an ace is unseen.
+        The old any-higher-card check wrongly vetoed exactly this, which is
+        why bots led AA+K but never A+KK — user-spotted from prod logs.)"""
+        lvl = self.o.level(code)
+        eff = self.o.eff_suit(code)
+        return not any(self.o.eff_suit(c) == eff and self.o.level(c) > lvl
+                       and n >= 2 for c, n in self.unseen.items())
 
     def unseen_trumps(self) -> int:
         return sum(n for c, n in self.unseen.items()

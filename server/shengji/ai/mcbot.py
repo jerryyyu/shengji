@@ -221,9 +221,8 @@ class MCBot(SmartBot):
 
         if not rnd.trick.plays:
             add(self._lead(rnd, seat))  # SmartBot's pick (throws included)
-            if self.RISKY_THROWS:
-                from .memory import Memory as _M
-                mem_ = _M(rnd, seat)
+            if self.RISKY_THROWS or self.WIDE_LEAD_BALLOT:
+                mem_ = Memory(rnd, seat)
                 for t in self.near_boss_throws(rnd, seat, mem_):
                     add(t)  # sampled worlds price the beat risk + penalty
             if self.WIDE_LEAD_BALLOT:
@@ -232,9 +231,6 @@ class MCBot(SmartBot):
                 # tractor, and near-boss throw in every suit incl. trump;
                 # the margin rule still shields the heuristic from noise.
                 from ..engine.combos import find_tractor_runs
-                mem_w = Memory(rnd, seat)
-                for t in self.near_boss_throws(rnd, seat, mem_w):
-                    add(t)
                 for s in list(PLAIN_SUITS) + [TRUMP]:
                     cards = suit_cards(hand, s, o)
                     for length in range(6, 1, -1):

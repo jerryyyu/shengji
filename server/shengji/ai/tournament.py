@@ -18,15 +18,37 @@ from .env import play_round
 from .registry import REGISTRY
 
 
+def _seeded(make, s: int):
+    """Construct a bot with a DETERMINISTIC per-pairing seed when it takes
+    one. Unseeded opponents (MCBot(seed=None) -> OS entropy) made anchors
+    irreproducible: the same v7w anchor gave 41% and then 31% vs mc on
+    2026-08-03 (~2.2 sigma). The RL side is deterministic, so all the
+    wobble came from the opponent."""
+    try:
+        return make(seed=s)
+    except TypeError:
+        b = make()
+        if hasattr(b, "rng"):
+            import random as _r
+            b.rng = _r.Random(s)
+        return b
+
+
 def play_pairing(make_a, make_b, n_seeds: int, seed0: int) -> tuple[int, int]:
-    """Mirrored round-pairs; returns (wins_a, wins_b) over 2*n_seeds rounds."""
+    """Mirrored round-pairs; returns (wins_a, wins_b) over 2*n_seeds rounds.
+
+    Both sides are seeded deterministically from the deal seed so a
+    pairing reproduces exactly."""
     wins = [0, 0]
     for s in range(n_seeds):
         if s and s % 15 == 0:
             print(f"PROGRESS pairing {2*s}/{2*n_seeds} rounds"
                   f" a={wins[0]} b={wins[1]}", flush=True)
         for flip in (0, 1):
-            a1, a2, b1, b2 = make_a(), make_a(), make_b(), make_b()
+            a1 = _seeded(make_a, seed0 + s)
+            a2 = _seeded(make_a, seed0 + s + 500_000)
+            b1 = _seeded(make_b, seed0 + s + 1_000_000)
+            b2 = _seeded(make_b, seed0 + s + 1_500_000)
             pol = [a1, b1, a2, b2] if flip == 0 else [b1, a1, b2, a2]
             game = Game(random.Random(seed0 + s))
             log = play_round(game, pol)

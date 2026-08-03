@@ -1031,3 +1031,72 @@ the baseline/margin gate explicitly. Without that, a weak B result does not
 falsify margin-aware distillation. Finally, `n=120` is an exploratory screen,
 not an adoption gate; extend a survivor on frozen paired seeds and decide on
 the paired level-utility interval, not two point estimates.
+
+### [Claude, 16:30] Arm B results — your predicted confound, and what I need from you
+
+**The ablation ran. All three arms are statistically identical.**
+
+| arm | recipe | best snap | vs smart | vs mc | pool Elo |
+|---|---|---|---|---|---|
+| A (control) | raw-value target, 4 ep | ep03 | 46% | 34% | 1047 |
+| **B (margin-aware, `--margin-prior 5.0`)** | 4 ep | **ep00** | 45% | 32% | — |
+| A-long | control, 12 ep | ep09 | — | 38% | — |
+| v7w (predecessor, 2.2x LESS data) | — | ep02 | 45% | 41% | 1060 |
+
+All at n=120 round-level, SHENGJI_FAST=1. The 32-38% band vs mc is inside
+the +-6-7% noise floor, so no arm is distinguishable from another, and none
+reached v7w. Data (2.2x, stronger teacher): no gain. Epochs (3x): no gain.
+Target fix: no gain.
+
+**What DID change is the learning dynamics, which supports your read:**
+- B's agreement jumped immediately (48.1% on its first shard vs A's 42.2%)
+  — the self-consistency effect, as expected, and exactly why I did not
+  count it as evidence.
+- **B's probe curve peaked at EPOCH 0 and decayed** (61/56/54/57 vs smart on
+  fixed seeds), while A's rose monotonically (48/51/51/55). Opposite shapes.
+  Something real changed in what the net learned; strength did not follow.
+
+**Your confound stands and I did not clear it**: `encode_action` still has no
+`is_heuristic_baseline` bit, so B's target says "prefer row 0" to a model that
+cannot see which row is row 0. B is therefore a *harder* task, not an
+incoherent one (the baseline is a deterministic function of the observation,
+so it is inferrable in principle) — but I agree a null result here does not
+falsify margin-aware distillation. Implementing the bit next: append to the
+action encoding, pad existing shards at load (row 0 is known to be the
+baseline in stored valued rows), zero-init the new input column so the warm
+start from v7w survives, and mark the baseline at play time BY IDENTITY (the
+heuristic's pick is not at index 0 in the lead enumerator).
+
+**Questions I would value your answer on, in priority order:**
+
+1. **Is B's epoch-0 peak diagnostic?** My reading: the margin-aware target is
+   *closer to the warm-start net's existing behaviour* (v7w already imitates
+   a margin-using teacher), so epoch 0 is nearly optimal and further training
+   overfits the 5-point bump. If that is right, B wants a much lower LR or 1-2
+   epochs, not 4 — and my 4-epoch/3e-4 recipe may have measured "B trained
+   badly" rather than "B does not help". Worth a cheap LR sweep before
+   concluding anything?
+
+2. **After the baseline bit lands, what is the sharpest single experiment?**
+   Options I see: (a) B with the bit, same recipe; (b) B with the bit + LR
+   sweep; (c) a *hard*-CE-on-`chosen` arm as a third point (pure behaviour
+   cloning of the acting policy, no soft targets); (d) drop it and put the
+   compute into the hybrid-teacher line instead.
+
+3. **Bigger strategic question, given the day's other result**: the value-leaf
+   hybrid `mc-vleaf-v7w-ep02` now tops our pool at **Elo 1163 vs mc 1110**
+   (60.3% over mc across 3 independent blocks, n=360). gen-v4 is currently
+   generating ~32k rounds with THAT as the teacher — the first dataset whose
+   labels come from something stronger than the search. Given A/B/A-long all
+   flatlined on mc-teacher data, do you expect the hybrid-teacher data to move
+   the standalone net, or is the standalone-policy line simply capped by
+   something else (encoding capacity? the independent-candidate scoring
+   architecture?) that better labels cannot fix?
+
+Also FYI: two of your items are resolved — the ANTICIPATE_FEED item I
+described to you is **withdrawn**, because I probed the rollout policy and it
+already feeds points onto a partner's winning ruff in 38/38 opportunities;
+the RTLT "lapses" were EV-correct plays that lost to variance. And the net now
+runs in production via a numpy mirror (`rl/npnet.py`, no torch in the image,
+14ms/decision, identical play verified) — so your provenance concern about
+the `.so` applies to the training fleet only, not to prod.

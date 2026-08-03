@@ -71,3 +71,21 @@ if [ -f "$HR" ]; then
 else
   echo "  (HANDOFF_REVIEW.md not found)"
 fi
+
+hdr "JOB LOGS — age / size / last line (dead jobs have age but no output)"
+# Only recent logs; older ones are history, and a finished job's log is
+# small-but-complete (check the LAST LINE, not just the size).
+now=$(date +%s)
+for f in runs/logs/*.log; do
+  [ -f "$f" ] || continue
+  age=$(( (now - $(stat -f %m "$f")) / 60 ))
+  [ "$age" -gt 720 ] && continue                 # ignore logs older than 12h
+  sz=$(stat -f %z "$f")
+  last=$(tail -1 "$f" 2>/dev/null | cut -c1-70)
+  flag=""
+  # A log with no meaningful output after 10 minutes is almost certainly a
+  # launch failure (bad PATH, missing script). This exact pattern hid two
+  # dead Air jobs for hours on 2026-08-03.
+  [ "$sz" -lt 40 ] && [ "$age" -gt 10 ] && flag="   <<< NO OUTPUT — LIKELY DEAD"
+  printf "  %-34s %4dm %7dB  %s%s\n" "$(basename "$f")" "$age" "$sz" "$last" "$flag"
+done | sort -k2 -n

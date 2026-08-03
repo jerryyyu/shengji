@@ -46,6 +46,18 @@ bar — see memory + ~/air-link.md). JOBS.md per machine = job ledger +
 inter-agent mailbox; fleet_status.sh = one-command live status; hourly
 utilization cron + daily 8:53 maintenance (session-scoped).
 
+## ⚡ PENDING CONFIRMATION (2026-08-03 ~02:30)
+
+**vleaf(v7w-ep02 value head, 4-trick truncation) beat wide-ballot mc
+72-48 (60%, n=120 games)** — the first net-in-search coupling to beat
+the plain champion. IF the fresh-seed extension holds (n=240 combined,
+running), the expert-iteration flywheel ignites: vleaf becomes the
+gen-v4 teacher and the distillation ceiling moves above mc for the
+first time. Mirage protocol applies (v5-hybrid: 55% preview reversed);
+no adoption, no ledger promotion, no celebration until the extension
+lands. Note v1 of this exact design failed at 45% with v6's head —
+the N=30-trained v7w value head was the difference.
+
 ## KEY LEARNINGS (load-bearing; each cost real compute to buy)
 
 1. **Sourcing beats preference.** Every hard-coded "play X first" rule

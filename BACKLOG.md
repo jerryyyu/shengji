@@ -10,6 +10,26 @@ and in AI_POLICIES.md; this file tracks what's NEXT.
       scratch killed. NEXT: **v8 = warm from v7w-ep02 on gen-v3** (data
       generating overnight on both machines); lead-weighted loss arm
       still available as a v8 variant.
+- [ ] **WARM vs SCRATCH — the untested control (Jerry, 2026-08-03).**
+      Hypothesis: warm-starting each generation from the previous net traps
+      us in an inherited basin, so better data only fine-tunes an old
+      teacher's style. Evidence: v7w (warm from v6) gained +1..+5; v8a/b/
+      along (warm from v7w) ALL landed below v7w on 2.2x better data; the
+      net line has sat at 1040-1060 Elo for five generations while the
+      teacher climbed 40. We never actually ran the control — v7-scratch
+      was killed at epoch 1/8 for being slow, and "warm wins" was inferred
+      from speed, not a completed comparison.
+      EXPERIMENT (on gen-v4, when spare capacity exists — do NOT displace
+      the main line): train v9-warm (from snapshots_v7w/ep02.pt, lr 3e-4)
+      and v9-scratch (random init, lr 1e-3) on identical data, per-epoch
+      snapshots, anchors-first battery on both. Cost is now trivial:
+      scratch training fell from 8h/epoch to ~2.5 min/epoch after the
+      Cython work. If scratch >= warm, warm-start stops being standing
+      policy and every future generation gets both arms.
+      Related learning levers behind it: LR schedule (fixed today), the
+      independent-candidate scoring architecture (Codex flagged that row
+      identity is invisible to the model), lead/follow loss weighting
+      (75% of rows are follows).
 - [ ] **AWAC-style policy-head update for self-play** — the designed fix
       for DMC's measured failure (Q-regression collapses any policy
       pathway; two alarm-halted runs). Policy head learns by

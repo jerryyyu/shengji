@@ -28,22 +28,27 @@ Noise guide: ±3% at n=200, ±2% at n=400; round-level evals ±4.5% at n=120.
 
 ## The ladder (Elo, round-level, heuristic = 1000)
 
-**CURRENT pool status (2026-08-03 evening): BEING RE-MEASURED.**
+**CURRENT pool (2026-08-03 evening) — SEEDED and REPRODUCIBLE**
 
-The 6-entrant table published earlier today (`mc-vleaf-v7w-ep02` 1163 >
-mc 1110 > smart 1089 > rl-v7w 1060 > rl-v8a 1047 > heuristic 1000) was
-produced with **unseeded opponents** and does not reproduce: the same
-mc-vleaf-vs-mc pairing gave 70-50 on one run and 57-63 on a re-run.
-Treat those Elo values as indicative only. A seeded, reproducible pool
-(heuristic / smart / mc / mc-vleaf-v7w-ep02 / rl-v7w / rl-v9warm) is
-running and will replace this section.
+15/15 pairings, 120 rounds each, both sides deterministically seeded, so
+every number here re-runs identically (verified).
 
-What survives the variance, from pooled head-to-heads:
-- **mc-vleaf-v7w-ep02 beats mc: 404-316 = 56.1% over n=720** (4 duel
-  blocks + 2 pool pairings), 3.3 sigma over even. Better than mc: yes.
-  By 60%: no — that was the early blocks flattering it.
-- Standalone nets (v7w, v8a/b/along, v9warm/scratch) all sit in a
-  38-48%-vs-mc band and are NOT distinguishable from each other.
+| policy | Elo | note |
+|---|---|---|
+| **mc-vleaf-v7w-ep02** | **1151** | net-in-search hybrid: truncated rollouts + rl-v7w value head at the leaves |
+| mc | 1119 | search with both wide ballots |
+| smart | 1093 | heuristic stack |
+| rl-v9warm | 1069 | best standalone net (trained on hybrid-teacher data) |
+| rl-v7w | 1042 | previous best net |
+| heuristic | 1000 | anchor |
+
+Head-to-head highlights: vleaf beats mc **64-56**, smart **60-60** (dead
+even), rl-v7w 87-33. mc beats rl-v9warm 71-49.
+
+**The earlier unseeded table (vleaf 1163 / mc 1110) is superseded** — it
+did not reproduce (the same vleaf-vs-mc pairing gave 70-50 then 57-63).
+The seeded gap vleaf-over-mc is **+32 Elo**, smaller than the +53 first
+reported. Pooled across all measurements vleaf beats mc 56.1% (n=720).
 
 ### Notes
 

@@ -363,3 +363,284 @@ def test_validate_follow_and_helpers_random_parity(pure_routing):
                     == _outcome(pure_cih, hand, play)), (hand, play)
             assert fast.uniform_suit(play, of) == pure_us(play, op)
             assert fast.pair_count(play) == pure_pc(play)
+
+
+# ---------------------------------------------------------------------------
+# 2026-08-03 validation pass (deep-correctness audit before trusting the fast
+# path for training-data generation). The tests above compare the compiled
+# kernels to their pure twins in isolation; these compare the ROUTED SYSTEM —
+# what generation, duels and the engine actually observe — by running the
+# same work with routing off (reference) and on, always on FRESH Ordering
+# instances so a shared memo can never mask a divergence.
+# ---------------------------------------------------------------------------
+
+
+def _both_modes(fn):
+    """Run ``fn()`` with routing off then on; returns (pure, fast).
+
+    Restores suite-wide activation (SHENGJI_FAST=1) afterwards.
+    """
+    was_active = bool(fast._saved)
+    try:
+        fast.deactivate()
+        pure = fn()
+        fast.activate()
+        got = fn()
+    finally:
+        fast.deactivate()
+        if was_active:
+            fast.activate()
+    return pure, got
+
+
+def _lead_outcome(play, hand, others, config):
+    """validate_lead through whatever routing is live, on a FRESH Ordering."""
+    from shengji.engine.legal import validate_lead
+    o = Ordering(*config)
+    try:
+        return ("ok", validate_lead(list(play), list(hand),
+                                    [list(h) for h in others], o))
+    except legal.IllegalPlay as e:
+        return ("IllegalPlay", str(e))
+    except AssertionError:
+        return ("AssertionError",)
+
+
+def test_validate_lead_throw_penalty_parity():
+    """The 08-03 throw rule (forfeit the LOWEST beatable component) is pure
+    Python but reads decompose / find_tractor_runs / suit_cards / level —
+    all routed. Constructed multi-component throws where SEVERAL components
+    are beatable, so the tie-break itself is observable, plus random deals.
+    """
+    rng = random.Random(24)
+    deck = make_deck()
+    fired = checked = 0
+    for i in range(400):
+        cfg = CONFIGS[i % len(CONFIGS)]
+        o0 = Ordering(*cfg)
+        eff = ("S", "H", "D", "C", TRUMP)[i % 5]
+        pool = [c for c in deck if o0.eff_suit(c) == eff]
+        codes = sorted(set(pool), key=o0.level)
+        if len(codes) < 6:
+            continue
+        lo, hi = codes[:len(codes) // 2], codes[len(codes) // 2:]
+        picks = rng.sample(lo, rng.randint(2, min(4, len(lo))))
+        play = [c for c in picks for _ in (0, 1)]
+        if rng.random() < 0.7:                    # + a high single (the ace)
+            play.append(rng.choice(hi[:max(1, len(hi) - 1)]))
+        rng.shuffle(play)
+        off = [c for c in deck if o0.eff_suit(c) != eff]
+        hand = list(play) + rng.sample(off, 5)
+        beaters = rng.sample(hi, min(len(hi), rng.randint(1, 4)))
+        others = [[c for c in beaters for _ in (0, 1)],
+                  rng.sample(off, 4),
+                  rng.sample(pool, min(4, len(pool)))]
+        pure, got = _both_modes(
+            lambda: _lead_outcome(play, hand, others, cfg))
+        assert pure == got, (play, hand, others, cfg)
+        checked += 1
+        if pure[0] == "ok" and pure[1][1]:
+            fired += 1
+    # random full deals: the shapes real leads actually take
+    for i in range(200):
+        cfg = CONFIGS[i % len(CONFIGS)]
+        o0 = Ordering(*cfg)
+        rng.shuffle(deck)
+        hands = [deck[s * 25:(s + 1) * 25] for s in range(4)]
+        hand, others = hands[0], hands[1:]
+        groups = {}
+        for c in hand:
+            groups.setdefault(o0.eff_suit(c), []).append(c)
+        g = rng.choice(list(groups.values()))
+        for play in (list(g), rng.sample(g, rng.randint(1, len(g)))):
+            pure, got = _both_modes(
+                lambda: _lead_outcome(play, hand, others, cfg))
+            assert pure == got, (play, hand, others, cfg)
+            checked += 1
+            if pure[0] == "ok" and pure[1][1]:
+                fired += 1
+    assert checked >= 700
+    assert fired >= 100, f"throw penalty never fired ({fired}) — test is blind"
+
+
+def test_points_tolerant_and_iterable_parity():
+    """points/total_points are table lookups now: every deck code, codes
+    OUTSIDE the table (pure is tolerant — the fallback must match), and the
+    non-list iterables total_points is called with (genexpr in _resolve_trick).
+    """
+    from shengji.engine import cards as cards_mod
+    deck = make_deck()
+    exotic = ["XX", "S1", "H100", "?", "Z5", "QK", "A10"]
+
+    def probe():
+        pts = [cards_mod.points(c) for c in sorted(set(deck))]
+        ex = [cards_mod.points(c) for c in exotic]
+        return (pts, ex,
+                cards_mod.total_points(deck),
+                cards_mod.total_points(tuple(deck)),
+                cards_mod.total_points(iter(deck)),
+                cards_mod.total_points(c for c in deck),
+                cards_mod.total_points([]),
+                cards_mod.total_points(iter(["SK", "H10", "D5"])))
+
+    pure, got = _both_modes(probe)
+    assert pure == got
+    assert pure[2] == 200
+
+
+def test_pure_fast_interleave_cannot_corrupt_shared_caches():
+    """One Ordering, alternating pure/fast calls, anagram inputs whose split
+    is order-dependent (equal-level trump-rank pairs). Every result must
+    equal a fresh uncached reference, and the handed-back tractor runs must
+    stay defensive copies across the mode switch (the 08-02 aliasing bug
+    class, now with two writers into one cache)."""
+    was_active = bool(fast._saved)
+    variants = [
+        ["S7", "S7", "D7", "D7"], ["D7", "D7", "S7", "S7"],
+        ["S7", "D7", "S7", "D7"], ["HA", "HA", "S7", "S7", "D7", "D7"],
+        ["HA", "HA", "D7", "D7", "S7", "S7"], [LJ, LJ, BJ, BJ, "S7", "S7"],
+    ]
+    try:
+        for cfg in (("H", "7"), (None, "7"), ("S", "2")):
+            for modes in itertools.product((False, True), repeat=3):
+                o = Ordering(*cfg)          # ONE shared Ordering
+                for pas in (modes, tuple(not m for m in modes)):
+                    for i, cards in enumerate(variants):
+                        if pas[i % 3]:
+                            fast.activate()
+                        else:
+                            fast.deactivate()
+                        ref_o = Ordering(*cfg)
+                        assert (combos.decompose(list(cards), o)
+                                == combos._decompose_uncached(list(cards),
+                                                              ref_o))
+                        for k in (1, 2, 3):
+                            runs = combos.find_tractor_runs(list(cards), o, k)
+                            assert runs == combos._find_tractor_runs_uncached(
+                                list(cards), Ordering(*cfg), k), (cards, k, cfg)
+                            for r in runs:   # poison attempt on the cache
+                                r.append("ZZ")
+                # the ctx must still point at the very dicts pure Python uses
+                fast.activate()
+                combos.decompose(["S7", "S7"], o)
+                ctx = o._fast_ctx
+                assert ctx[0] is o._dcache and ctx[1] is o._trcache
+                fast.deactivate()
+    finally:
+        fast.deactivate()
+        if was_active:
+            fast.activate()
+
+
+def test_generation_recording_parity():
+    """THE generation gate: distill_generate records VALUES, not just plays.
+
+    Runs RecordingMCBot self-play both ways on the same seed and requires
+    bit-identical observations, candidate action encodings (same set AND
+    order), chosen index, and EXACT-equal per-candidate search values. A
+    play-history-only check cannot see a value drift; a drifted value set
+    poisons the distillation targets silently.
+
+    N_DETERMINIZATIONS is dialled down for suite runtime; the wide ballots,
+    DECLARER_PIN and TRACTOR_LOCK paths (all fresh code) are the production
+    ones. The full-config sweep (N=30, 50 rounds) lives in the 08-03
+    validation run.
+    """
+    import random as _random
+
+    from shengji.ai.env import play_round
+    from shengji.engine.game import Game
+    from shengji.rl.distill_generate import RecordingMCBot
+
+    def run(seed):
+        bot = RecordingMCBot(seed=seed)
+        bot.N_DETERMINIZATIONS = 3
+        assert bot.WIDE_LEAD_BALLOT and bot.WIDE_FOLLOW_BALLOT
+        assert bot.DECLARER_PIN and bot.TRACTOR_LOCK
+        bot.decisions = []
+        game = Game(_random.Random(seed))
+        log = play_round(game, [bot] * 4, record=True)
+        return (log.history, log.attacker_points, log.level_change,
+                [(d.seat, d.chosen, d.obs, d.actions, d.action_values)
+                 for d in bot.decisions])
+
+    for seed in (3, 11):
+        pure, got = _both_modes(lambda: run(seed))
+        assert pure[0] == got[0], f"seed {seed}: play history diverged"
+        assert pure[1:3] == got[1:3], f"seed {seed}: round result diverged"
+        pd, gd = pure[3], got[3]
+        assert len(pd) == len(gd), f"seed {seed}: decision count"
+        for i, (a, b) in enumerate(zip(pd, gd)):
+            assert a[0] == b[0], (seed, i, "seat")
+            assert a[2] == b[2], (seed, i, "observation")
+            assert a[3] == b[3], (seed, i, "candidate action encodings")
+            assert a[1] == b[1], (seed, i, "chosen index")
+            assert a[4] == b[4], (seed, i, "per-candidate search values")
+        assert len(pd) > 20, f"seed {seed}: only {len(pd)} decisions recorded"
+
+
+def test_activate_routes_everything_and_deactivate_restores():
+    """Meta-guard for every differential test in this file: if deactivate()
+    leaked even one compiled binding, the 'pure' reference would silently BE
+    the fast path and the whole suite would compare fast against fast. Also
+    pins the reverse — activate() must reach ``from x import y`` aliases in
+    ai/ and rl/, not just the engine module attributes."""
+    import importlib
+    import types
+
+    tracked = []
+    for modname, attrs in (
+            ("shengji.engine.combos", ("decompose", "find_tractor_runs",
+                                       "decompose_matching", "pair_count")),
+            ("shengji.engine.legal", ("suit_cards", "beats", "uniform_suit",
+                                      "check_in_hand", "validate_follow")),
+            ("shengji.engine.cards", ("points", "total_points")),
+            ("shengji.engine.round", ("decompose", "beats", "validate_follow",
+                                      "check_in_hand", "uniform_suit",
+                                      "total_points")),
+            ("shengji.ai.heuristic", ("decompose", "beats", "suit_cards",
+                                      "find_tractor_runs", "points")),
+            ("shengji.ai.mcbot", ("decompose", "suit_cards",
+                                  "validate_follow")),
+            ("shengji.ai.smart", ("decompose", "suit_cards")),
+            ("shengji.rl.encode", ("decompose",)),
+            ("shengji.rl.actions", ("suit_cards", "find_tractor_runs")),
+    ):
+        mod = importlib.import_module(modname)
+        for a in attrs:
+            tracked.append((mod, a))
+
+    def compiled(fn):
+        return getattr(fn, "__module__", "") == "shengji.engine._fast"
+
+    was_active = bool(fast._saved)
+    try:
+        from shengji.ai.heuristic import HeuristicBot
+        fast.deactivate()
+        before = {(m.__name__, a): getattr(m, a) for m, a in tracked}
+        assert not any(compiled(v) for v in before.values())
+        pure_methods = {a: getattr(HeuristicBot, a)
+                        for a in ("_lowest", "_forced_follow")}
+
+        fast.activate()
+        unrouted = [k for (m, a), k in
+                    ((t, (t[0].__name__, t[1])) for t in tracked)
+                    if not compiled(getattr(m, a))]
+        assert not unrouted, f"activate() missed: {unrouted}"
+        assert HeuristicBot._lowest is fast._lowest_fast
+        assert HeuristicBot._forced_follow is fast._forced_follow_fast
+        # a name bound AFTER activation must see the compiled function too
+        late = types.ModuleType("late_import_probe")
+        exec("from shengji.engine.legal import beats", late.__dict__)
+        assert compiled(late.beats)
+
+        fast.deactivate()
+        leaked = [k for (m, a) in tracked
+                  for k in [(m.__name__, a)] if getattr(m, a) is not before[k]]
+        assert not leaked, f"deactivate() did not restore: {leaked}"
+        for a, fn in pure_methods.items():
+            assert getattr(HeuristicBot, a) is fn, f"method leak: {a}"
+    finally:
+        fast.deactivate()
+        if was_active:
+            fast.activate()

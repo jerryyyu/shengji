@@ -140,6 +140,34 @@ no adoption, no ledger promotion, no celebration until the extension
 lands. Note v1 of this exact design failed at 45% with v6's head —
 the N=30-trained v7w value head was the difference.
 
+## ⚠️ MEASUREMENT VARIANCE IS LARGER THAN WE ASSUMED (2026-08-03 19:00)
+
+Codex asked us to make the v7w anchor reproducible from the repo. The
+reproduction returned **31% vs mc** where the original run gave **41%** —
+same checkpoint, same opponent, same n=120, same protocol. ~2.2 sigma.
+
+Cause: tournament/anchor opponents are built via `REGISTRY[name]()` =
+`MCBot(seed=None)`, so the OPPONENT re-randomizes every run while the
+RLBot side is deterministic. Our stated noise floor (+-6-7% at n=120)
+counted binomial sampling only, not this.
+
+**Consequences for today's conclusions — stated plainly:**
+- The v8-vs-v7w comparison (34%/32%/38% vs 41%) sits INSIDE this
+  variance. "v8 is below v7w" is NOT established; the honest statement
+  is that v7w, v8a, v8b and v8a-long are indistinguishable.
+- The pool table's exact Elo values carry the same wobble (an accidental
+  duplicate pairing gave 85-35 where the original gave 84-36).
+- vleaf's result is the LEAST affected: 3 independent blocks at 60/60/61
+  plus a pool win, i.e. repeated across seeds AND protocols. Block 4 is
+  currently tracking ~49% at 80/120, which if it holds pulls the combined
+  estimate to ~57% — still over the bar, but the honest headline becomes
+  "clearly better than mc" rather than a precise 60%.
+
+**Fix (before any further checkpoint comparisons):** seed anchor
+opponents deterministically per pairing, and re-run the v7w/v8 anchors
+under the seeded protocol. Until then, treat single-checkpoint anchor
+deltas under ~10 points as noise.
+
 ## KEY LEARNINGS (load-bearing; each cost real compute to buy)
 
 1. **Sourcing beats preference.** Every hard-coded "play X first" rule

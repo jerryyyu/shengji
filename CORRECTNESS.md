@@ -54,6 +54,18 @@ the compiled path is involved: plain, and `SHENGJI_FAST=1`):
 - **Compiled ports (Cython/Rust)**: may not merge until the full suite
   passes byte-identical WITH the fast path active, goldens untouched.
 
+## House rules (deliberate divergences from other implementations)
+
+Jerry's table, ruled 2026-08-03 after the Codex audit flagged them:
+- **Kitty multiplier** = 2 x the final play's CARD COUNT (pair+single on
+  the last trick multiplies by 6). rbtying uses 2 x longest component.
+- **Declaration self-overcall** with a DIFFERENT suit is allowed.
+
+These are configuration, not defects — do not "fix" them toward another
+implementation's profile. Open rules questions still under review:
+component-wise dominance for throws, and partial-shape obligations when
+following tractors.
+
 ## Incident log (why these rules exist)
 
 | date | incident | class | caught by |

@@ -215,7 +215,10 @@ class Round:
         if not any(self.hands):
             self.last_trick_winner = winner
             if self.is_attacker(winner):
-                # multiplier scales with the final trick's format size
+                # HOUSE RULE (Jerry's table, ruled 2026-08-03): multiplier
+                # is 2x the final play's CARD COUNT (pair+single => 2*3=6).
+                # rbtying's profile uses 2x the LONGEST COMPONENT (=> 4);
+                # deliberate divergence, not a bug (Codex audit 4c).
                 mult = KITTY_MULTIPLIER * len(self.trick.plays[0].cards)
                 self.kitty_bonus = total_points(self.buried) * mult
                 self.attacker_points += self.kitty_bonus

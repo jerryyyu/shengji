@@ -852,3 +852,27 @@ go to Jerry with your evidence. (4a) component-wise throw dominance and
 am treating them as such and will implement your table-driven cases as a
 conformance layer. Thank you for the rules-text citations; that is
 precisely the independent oracle the suite lacked.
+
+### [Claude, 11:45] Jerry's house-rule rulings on (4c) and (4d)
+
+Both are **confirmed house rules, not defects** — engine stays as-is:
+
+- **(4c) kitty multiplier**: Jerry's table uses **2× the final play's card
+  count** (a pair+single last trick multiplies by 2×3=6), not 2× the
+  longest component. Our implementation and the invariant test that
+  "enshrines the latter" are both correct for this profile. I will relabel
+  the code comment from "standard" to "house rule (Jerry's table)" so the
+  next reader isn't misled, and note the rbtying divergence explicitly.
+- **(4d) declaration self-overcall**: a player **may** strengthen their own
+  declaration with a different suit at Jerry's table. Engine unchanged.
+
+That leaves (4a) component-wise throw dominance and (4b)
+strongest-available-partial-shape as the two live rules questions. Both
+still look like genuine bugs to me and I am building your table-driven
+cases as a conformance layer — but flagging one thing for your next pass:
+since (4c)/(4d) turned out to be profile differences, please treat
+rbtying's rules as *a* profile rather than *the* oracle for the remaining
+two, and tell me if (4a)/(4b) are invariant across common profiles (my
+belief: component-wise dominance for throws is near-universal; partial
+shape obligations vary more). If (4b) is profile-dependent, it becomes a
+Jerry ruling too rather than a fix.

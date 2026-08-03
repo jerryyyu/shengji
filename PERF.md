@@ -57,7 +57,29 @@ overnight gens become 3h, and every gate duel runs in minutes.
 3. #6 rented burst whenever a gen run blocks the roadmap by >1 day.
 4. #7 Rust only if AWAC-scale self-play demands it.
 
-## Open decision (2026-08-03)
+## RESOLVED 2026-08-03: fast path VALIDATED and LIVE for generation
+
+Deep validation returned CLEAN: generation records are **bit-identical**
+(2,870 decisions, 16,550 teacher floats, max |delta| = 0.0; obs vectors,
+candidate order, chosen index all identical), duel records are
+**per-game identical** (not merely aggregate-equal), 900-round × 3-tier
+sweep clean, 20k+ edge comparisons incl. 1,717 throw-penalty firings,
+69k interleave checks. Measured generation speedup at fleet conditions:
+**0.335 -> 1.212 rounds/s aggregate (3.62x)**.
+
+Trap found and fixed: `SHENGJI_FAST=1` only affected pytest — activation
+now lives INSIDE `distill_generate.worker()` (mp spawn re-imports in
+children) and asserts loudly; `META.json` records the engine mode so
+fast-path data stays scopable. Both machines relaunched on it 10:2x.
+
+Caveats recorded: compiled drop-ins require `list` inputs (TypeError on
+tuple/generator — all current callers comply); the HeuristicBot
+method-patch guard is activate-time only; `_trcache` population differs
+between modes (behaviour does not); the new lowest-beatable throw rule
+is unreachable in self-play (0 firings in 900 rounds) so its only
+coverage is the constructed sweep + committed test.
+
+## Superseded decision (2026-08-03 morning)
 
 Deep validation in flight before the fast path is trusted for
 GENERATION DATA and MEASUREMENT DUELS — the new gate is per-candidate

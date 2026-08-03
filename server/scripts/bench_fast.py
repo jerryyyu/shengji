@@ -113,6 +113,55 @@ def bench_micro(n: int = 10_000) -> None:
     print(f"suit_cards (25-card hand): {m} calls  pure {tp*1e6/m:.1f}us/call"
           f"  fast {tf*1e6/m:.1f}us/call  speedup {tp/tf:.2f}x")
 
+    # Phase 1 rules: beats / decompose_matching / validate_follow on
+    # realistic (lead, challenger, hand) triples. NOTE: must run with
+    # routing INACTIVE — pure legal.beats calls its module globals, which
+    # activation would rebind to the fast kernels.
+    assert not fast._saved, "run the microbench with routing deactivated"
+    cases = []
+    while len(cases) < n:
+        hand = rng.sample(deck, rng.randint(6, 25))
+        by = {}
+        for c in hand:
+            by.setdefault(o.eff_suit(c), []).append(c)
+        groups = [g for g in by.values()]
+        lead = rng.choice(combos.decompose(
+            rng.choice(groups), o).components).cards
+        ch_hand = rng.sample(deck, rng.randint(len(lead), 28))
+        ch = rng.sample(ch_hand, len(lead))
+        cases.append((list(lead), ch, ch_hand,
+                      legal.uniform_suit(lead, o),
+                      combos.decompose(list(lead), o).top_level(),
+                      combos.decompose(list(lead), o).shape()))
+    for name, py_fn, cy_fn in (
+        ("beats",
+         lambda t: legal.beats(t[1], t[0], t[3], t[4], o),
+         lambda t: fast.beats(t[1], t[0], t[3], t[4], o)),
+        ("decompose_matching",
+         lambda t: combos.decompose_matching(t[1], o, t[5]),
+         lambda t: fast.decompose_matching(t[1], o, t[5])),
+        ("validate_follow (outcome incl. raises)",
+         lambda t: _swallow(legal.validate_follow, t[1], t[2], t[0], o),
+         lambda t: _swallow(fast.validate_follow, t[1], t[2], t[0], o)),
+    ):
+        t0 = perf_counter()
+        for t in cases:
+            py_fn(t)
+        tp = perf_counter() - t0
+        t0 = perf_counter()
+        for t in cases:
+            cy_fn(t)
+        tf = perf_counter() - t0
+        print(f"{name}: {n} calls  pure {tp*1e6/n:.1f}us/call  "
+              f"fast {tf*1e6/n:.1f}us/call  speedup {tp/tf:.2f}x")
+
+
+def _swallow(fn, *args):
+    try:
+        fn(*args)
+    except legal.IllegalPlay:
+        pass
+
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()

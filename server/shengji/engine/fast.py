@@ -8,12 +8,15 @@ owns the str<->int boundary so NOTHING outside sees int cards:
 - a per-Ordering ``ctx`` tuple (caches + level/eff-suit byte tables) built
   lazily and stored on the Ordering instance — same lifetime as the pure
   decompose memo.
-- ``decompose`` / ``find_tractor_runs`` / ``suit_cards`` are drop-in
-  replacements (str in, str out, identical semantics incl. the memo's
-  first-caller-order freezing and defensive run copies). RULES stay in
-  Python: validate_lead/validate_follow/beats/decompose_matching untouched;
-  pure Python remains the reference implementation.
-- ``activate()`` swaps the three functions in everywhere (module attrs AND
+- ``decompose`` / ``find_tractor_runs`` / ``suit_cards`` and the RULES
+  functions ``decompose_matching`` / ``beats`` / ``validate_follow`` /
+  ``pair_count`` / ``uniform_suit`` / ``check_in_hand`` are drop-in
+  replacements (str in, str out, identical semantics incl. the memos'
+  caller-order keys, defensive run copies, and exact IllegalPlay
+  messages). validate_lead stays pure (cold path; runs the ported
+  helpers via rebinding). Pure Python remains the reference
+  implementation everywhere.
+- ``activate()`` swaps the functions in everywhere (module attrs AND
   ``from x import y`` aliases across loaded shengji modules); modules
   imported after activation bind the patched attributes automatically.
 - If the compiled module is missing, everything falls back to pure Python
@@ -77,15 +80,28 @@ def _ctx(ordering: Ordering) -> tuple:
 
 if HAVE_FAST:
     _fast.set_ctx_builder(_ctx)
+    _fast.set_code2id(CODE2ID)
     decompose = _fast.decompose                    # combos.decompose
     find_tractor_runs = _fast.find_tractor_runs    # combos.find_tractor_runs
     suit_cards = _fast.suit_cards                  # legal.suit_cards
+    decompose_matching = _fast.decompose_matching  # combos.decompose_matching
+    pair_count = _fast.pair_count                  # combos.pair_count
+    beats = _fast.beats                            # legal.beats
+    uniform_suit = _fast.uniform_suit              # legal.uniform_suit
+    check_in_hand = _fast.check_in_hand            # legal.check_in_hand
+    validate_follow = _fast.validate_follow        # legal.validate_follow
     decompose_uncached = _fast.decompose_uncached  # combos._decompose_uncached
     find_tractor_runs_uncached = _fast.find_tractor_runs_uncached
 else:  # pure-Python fallbacks
     decompose = combos.decompose
     find_tractor_runs = combos.find_tractor_runs
     suit_cards = legal.suit_cards
+    decompose_matching = combos.decompose_matching
+    pair_count = combos.pair_count
+    beats = legal.beats
+    uniform_suit = legal.uniform_suit
+    check_in_hand = legal.check_in_hand
+    validate_follow = legal.validate_follow
     decompose_uncached = combos._decompose_uncached
     find_tractor_runs_uncached = combos._find_tractor_runs_uncached
 
@@ -112,8 +128,22 @@ def _rebind(mapping: dict) -> None:
                 setattr(mod, attr, repl)
 
 
+_ROUTED = (
+    # (save-key, pure module, attr) — the compiled drop-ins swap in for these.
+    ("decompose", combos, "decompose"),
+    ("find_tractor_runs", combos, "find_tractor_runs"),
+    ("decompose_matching", combos, "decompose_matching"),
+    ("pair_count", combos, "pair_count"),
+    ("suit_cards", legal, "suit_cards"),
+    ("beats", legal, "beats"),
+    ("uniform_suit", legal, "uniform_suit"),
+    ("check_in_hand", legal, "check_in_hand"),
+    ("validate_follow", legal, "validate_follow"),
+)
+
+
 def activate() -> bool:
-    """Route decompose / find_tractor_runs / suit_cards through the kernels.
+    """Route the ported functions (see _ROUTED) through the kernels.
 
     Returns True when the fast path is (already) active, False when the
     extension isn't built. Idempotent; undo with deactivate().
@@ -122,17 +152,14 @@ def activate() -> bool:
         return False
     if _saved:
         return True
-    _saved["decompose"] = combos.decompose
-    _saved["find_tractor_runs"] = combos.find_tractor_runs
-    _saved["suit_cards"] = legal.suit_cards
-    _rebind({combos.decompose: decompose,
-             combos.find_tractor_runs: find_tractor_runs,
-             legal.suit_cards: suit_cards})
+    mapping = {}
+    for key, mod, attr in _ROUTED:
+        _saved[key] = getattr(mod, attr)
+        mapping[_saved[key]] = globals()[key]
+    _rebind(mapping)
     return True
 
 
 def deactivate() -> None:
     if _saved:
-        _rebind({decompose: _saved.pop("decompose"),
-                 find_tractor_runs: _saved.pop("find_tractor_runs"),
-                 suit_cards: _saved.pop("suit_cards")})
+        _rebind({globals()[key]: _saved.pop(key) for key, _, _ in _ROUTED})

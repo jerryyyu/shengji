@@ -55,7 +55,33 @@ is that rollout policies don't model a partner FEEDING points to the
 winner (ANTICIPATE_FEED queued — those 3 lapses = 45 of 50 attacker
 points that round). Human corpus now 1,592 decisions (+59%).
 
-## 🏆 VLEAF TOPS THE POOL (2026-08-03 15:00)
+## ✅ VLEAF ADOPTED (2026-08-03 16:00) — three blocks + pool
+
+| block | seeds | result |
+|---|---|---|
+| 1 | 0 | 72-48 (60%) |
+| 2 | 777 | 72-48 (60%) |
+| 3 | 31337 | 73-47 (61%) |
+| **combined** | | **217-143 = 60.3% at n=360** |
+
+95% CI ~[55.2%, 65.4%] — lower bound CLEARS the 55% bar, so adopted by
+our own rules. Pool: `mc-vleaf-v7w-ep02` **Elo 1163** vs mc 1110.
+Block 4 still running (tightens further, cannot overturn).
+
+**Also settled today**: SIZE_FIRST at MC level 52% (tie at both levels —
+rejected); A-long 12 epochs = 38% vs mc vs arm A's 34% at 4 epochs, a
+4-point gap INSIDE the +-6-7% noise floor => more epochs had NO effect;
+vleaf with v8a's value head tracked ~54% vs v7w's 60-61%, so gen-v3
+produced a worse EVALUATOR as well as a worse player — v7w-ep02 stays
+the value head of record.
+
+**PRODUCTIONIZED**: numpy inference path (`rl/npnet.py`) mirrors the net
+in ~40 lines; verified identical play history vs torch and 200-case
+argmax parity; 14ms/decision (FASTER than torch's 17ms, equal to plain
+mc). Prod image needs NO torch — just numpy + 2MB weights. Deploy with
+`SHENGJI_BOT=mc-vleaf-v7w-ep02` on Jerry's go.
+
+## Superseded: pool table (2026-08-03 15:00)
 
 **`mc-vleaf-v7w-ep02` = Elo 1163** vs mc 1110, smart 1089, rl-v7w 1060,
 rl-v8a 1047, heuristic 1000 (6-entrant pool, same seeds, round-level).

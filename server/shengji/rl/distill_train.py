@@ -22,6 +22,8 @@ from pathlib import Path
 
 CE_WEIGHT = 1.0
 CHOICE_CE_WEIGHT = 1.0  # hard-CE weight for choice-only (locked) rows
+MARGIN_PRIOR = 0.0  # points added to candidate 0 before softmax (set via
+#                     --margin-prior 5.0 for the margin-aware arm)
 BATCH_DECISIONS = 512
 VALUE_SCALE = 100.0  # MC values are in points (±100+); normalize so the
 #                      MSE term is O(1) and balances the CE term
@@ -50,6 +52,11 @@ def main() -> None:
     if "--snapshots" in sys.argv:  # per-epoch snapshots for probe-selection
         snap_dir = sys.argv[sys.argv.index("--snapshots") + 1]
         Path(snap_dir).mkdir(exist_ok=True)
+    global MARGIN_PRIOR
+    if "--margin-prior" in sys.argv:
+        MARGIN_PRIOR = float(sys.argv[sys.argv.index("--margin-prior") + 1])
+        print(f"margin-aware targets: +{MARGIN_PRIOR} on candidate 0",
+              flush=True)
     lr = (float(sys.argv[sys.argv.index("--lr") + 1])
           if "--lr" in sys.argv else 1e-3)
     opt = torch.optim.Adam(net.parameters(), lr=lr)
@@ -103,7 +110,23 @@ def main() -> None:
 
                 logp, qmax = seg_logsoftmax(ql)
                 with torch.no_grad():
-                    soft, _ = seg_logsoftmax(tg / SOFT_T)
+                    tgt = tg
+                    if MARGIN_PRIOR:
+                        # The teacher does NOT play raw-value argmax: it keeps
+                        # candidate 0 (the heuristic's pick) unless the search
+                        # beats it by MARGIN. Raw-value argmax matches the
+                        # actual choice only 61.7%; +margin on candidate 0
+                        # matches 98.3% (Codex audit, reproduced 2026-08-03).
+                        # Encode that prior SOFTLY so the target represents the
+                        # acting policy while keeping soft-target smoothing.
+                        first = torch.zeros_like(tgt)
+                        starts = torch.zeros(len(dec), dtype=torch.long,
+                                             device=dev)
+                        starts[1:] = torch.cumsum(
+                            torch.bincount(seg, minlength=len(dec))[:-1], 0)
+                        first[starts] = MARGIN_PRIOR / VALUE_SCALE
+                        tgt = tgt + first
+                    soft, _ = seg_logsoftmax(tgt / SOFT_T)
                     soft = torch.exp(soft)  # teacher preference distribution
                 per_row = -(soft * logp)
                 per_dec = torch.zeros(len(dec), device=dev).index_add_(

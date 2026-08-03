@@ -5,6 +5,7 @@ description = "Sheng Ji (Chinese tractor) game engine, AI, and multiplayer serve
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.110",
+    "numpy>=1.26",   # production net inference (see rl/npnet.py) — torch NOT required
     "uvicorn[standard]>=0.29",
 ]
 

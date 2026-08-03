@@ -54,11 +54,21 @@ class MCValueLeaf(MCBotBase):
 
     def __init__(self, seed: int | None = None, ckpt: str | None = None):
         super().__init__(seed)
-        from .model import load_any_net
         path = ckpt or os.environ.get("SHENGJI_RL_CKPT", "ckpt_distill_v6.pt")
-        self.net = load_any_net(path)
-        if not hasattr(self.net, "value_candidates"):
-            raise RuntimeError(f"{path}: no value head (needs PolicyValueNet)")
+        # Production path: exported numpy weights, no torch in the image.
+        # Falls back to the torch checkpoint for local/dev use. Parity is
+        # asserted by tests/test_npnet_parity.py.
+        npz = os.environ.get("SHENGJI_NPZ") or (
+            path[:-3] + ".npz" if path.endswith(".pt") else "")
+        if npz and os.path.exists(npz):
+            from .npnet import NpNet
+            self.net = NpNet(npz)
+        else:
+            from .model import load_any_net
+            self.net = load_any_net(path)
+            if not hasattr(self.net, "value_candidates"):
+                raise RuntimeError(
+                    f"{path}: no value head (needs PolicyValueNet)")
 
     def _rollout(self, rnd: Round, seat: int, sampled: dict[int, list[str]],
                  buried: list[str], candidate: list[str]) -> float:

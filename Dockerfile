@@ -12,6 +12,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /app/server
 COPY server/pyproject.toml server/uv.lock* ./
 COPY server/shengji ./shengji
+# Trained value head for the mc-vleaf hybrid (numpy weights, ~2MB — the
+# server does NOT install torch; see server/shengji/rl/npnet.py)
+COPY server/snapshots_v7w/ep02.npz ./snapshots_v7w/ep02.npz
 RUN uv sync --no-dev --frozen 2>/dev/null || uv sync --no-dev
 COPY --from=web /app/web/dist /app/web/dist
 

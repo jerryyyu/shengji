@@ -9,44 +9,38 @@ AI_POLICIES.md; run archives in `server/runs/`.
 
 ---
 
-## STATE OF PLAY (2026-08-02 night)
+## STATE OF PLAY (2026-08-02, end of day 3)
 
-**BREAKTHROUGH: rl-v7w (warm-start from v6, 4 epochs on the N=30
-textbook, ~1.5h train) beats v6 in ALL FOUR snapshots — best ep02:
-64.5% (129-71, n=200). New best net = snapshots_v7w/ep02.pt. Both
-levers confirmed at once: label quality (N=30) AND warm-start lineage
-(adopted as standing policy — init every generation from the
-incumbent). v7-scratch killed at epoch 1/8 (superseded). CAVEAT from
-anchor pairings (round-level): v7w vs smart 45% (54-66), vs wide-mc
-32.5% (39-81) — in-pool ~v6-level (~1030-1040) DESPITE 61-64%
-game-level duels over v6: net-vs-net game duels overstate transitive
-strength. v7w still best net, but the mc gap is NOT closed; gen-v3 ->
-v8 remains the path. Next: gen-v3 teacher
-data -> v8 warm from v7w-ep02; vleaf retry with v7w value head.**
+**Prod (deployed tonight): mc with BOTH wide ballots** — leads 62%
+(75-45) + follows 60% (72-48) over its prior self in one day; pool 1109.
+Sourcing coverage of human plays 84.7% -> 99.3% (audit_sourcing.py).
 
-## (previous state, afternoon)
+**Nets — rl-v7w is the new best** (warm from v6, 4 ep on the N=30
+textbook, ~1.5h): beat v6 in all 4 snapshots, best ep02 64.5% (129-71,
+n=200). Warm-start = standing policy (~5x iteration). CAVEAT: pool
+anchors put v7w ~v6-level (45% vs smart, 32.5% vs wide-mc) — net-vs-net
+game duels overstate transitive strength (nontransitivity + game/round
+amplification). The mc-net gap is NOT closed; mc gained more today than
+the nets did.
 
-**Where the ladder stands** (within-pool gaps, latest measurements):
+**Running overnight: gen-v3** — 28k+12k rounds on Air (7 workers) +
+mini (6 workers, worker-offset), N=30, full wide-ballot teacher,
+ballot-v2 throws, TRACTOR_LOCK choice samples, META provenance. The
+first textbook written by the 1109 teacher; v8 trains WARM from
+v7w-ep02 on it.
 
-- **mc** — champion, freshly upgraded: WIDE_LEAD_BALLOT adopted at
-  **62% vs its former self** (n=120) — the largest search gain since the
-  confidence margin. Prod default (redeploy picks it up).
-- **smart** — ~tied with pre-wide mc after the night's four heuristic
-  adoptions; the probe opponent for all net snapshots.
-- **rl-v6** — best standalone net: ~50-51% round-level vs smart, 41% vs
-  (pre-wide) mc, beat rl-v5 directly 54% (n=200). ~2ms/decision.
-- **rl-v6.1** — human-blend pilot: **+6 human-agreement (51%→57%)** for
-  a ~2-4pt strength tax (probe 50%, duel vs v6 46-48%). Pipeline
-  validated; not a strength play.
-- Retired: mc-v5roll (net-as-rollouts, 37% vs mc), dueling-BC, DMC v1/v2.
+**Today's other verdicts**: 9-entrant distributed pool (Air, chunked,
+~40min) — table in AI_POLICIES; v6.1 human-blend: +6->+8 agreement
+across epochs (51->57->59%) at ~2-4pt strength tax, stopped at ep2,
+rerun later on v8 + human_v2; vleaf v1 FAILED gate (45% vs wide mc —
+retry with v7w value head); heuristics batch 1 (ACE_SEQ,
+NO_OPEN_POINT_SUIT) both exact ties, off; expert-strategy research
+(9 ranked candidates) + ShengJi+ review in server/runs/.
 
-**Running right now:** v7 (scratch on N=30 textbook, ep0 saved: 39% vs
-smart at 1/8 epochs), v6.1 ep2 (final), MCValueLeaf gate duel vs
-upgraded mc. **Queued:** v7-warm (init from v6 — checkpoint-lineage
-test), six-entrant Elo pool (heuristic/smart/mc/rl-v5/rl-v6/v6.1, plus
-vleaf if it gates), belief-weighted sampling, ballot-v2 teacher gen.
-
----
+**Fleet**: mini + Jerry's MacBook Air (ssh, Tailscale; higher security
+bar — see memory + ~/air-link.md). JOBS.md per machine = job ledger +
+inter-agent mailbox; fleet_status.sh = one-command live status; hourly
+utilization cron + daily 8:53 maintenance (session-scoped).
 
 ## KEY LEARNINGS (load-bearing; each cost real compute to buy)
 
@@ -96,13 +90,9 @@ vleaf if it gates), belief-weighted sampling, ballot-v2 teacher gen.
 
 ## ROADMAP (ordered)
 
-1. **v7 verdict** — scratch training on the N=30 textbook isolates label
-   quality, the last untested distillation lever. Snapshot-and-probe
-   per epoch (+ direct duel vs v6, per protocol). Gate to care: beats
-   v6 head-to-head.
-2. **v7-warm** (launches when v6.1's slot frees) — init from v6,
-   fine-tune on N=30. If warm ≥ scratch at equal wall-clock, all future
-   generations init from the incumbent (~3x iteration speed).
+1. ~~v7 / v7-warm~~ **DONE**: warm won (all 4 snapshots > v6, best
+   64.5%; scratch killed at ep1/8). Standing policy: init every
+   generation from the incumbent.
 3. **MCValueLeaf gate — FAILED (45%, 54-66 n=120 vs wide-ballot mc,
    2026-08-02 evening).** v1 config: 4-trick truncation + v6 value head
    (trained on old-teacher values). Not retired as a pathway: retry
@@ -122,7 +112,8 @@ vleaf if it gates), belief-weighted sampling, ballot-v2 teacher gen.
    — computable exactly with no net, generalizes pair_void's hard
    proofs. Gate: weighted-sampling mc vs uniform mc, n=120. Learned
    belief net later if the exact version pays.
-5. **Ballot-v2 teacher generation** — the next dataset fixes all three
+5. **Ballot-v2 teacher generation — RUNNING (gen-v3, both machines,
+   overnight)** — the dataset fixes all three
    known biases at once: CONTROL_LEADS-era teacher, throws + component
    combos on the ballot (99.3% human-play coverage), TRACTOR_LOCK
    decisions recorded as choice-only samples. Then v8 students.

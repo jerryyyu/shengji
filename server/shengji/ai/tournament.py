@@ -22,6 +22,9 @@ def play_pairing(make_a, make_b, n_seeds: int, seed0: int) -> tuple[int, int]:
     """Mirrored round-pairs; returns (wins_a, wins_b) over 2*n_seeds rounds."""
     wins = [0, 0]
     for s in range(n_seeds):
+        if s and s % 15 == 0:
+            print(f"PROGRESS pairing {2*s}/{2*n_seeds} rounds"
+                  f" a={wins[0]} b={wins[1]}", flush=True)
         for flip in (0, 1):
             a1, a2, b1, b2 = make_a(), make_a(), make_b(), make_b()
             pol = [a1, b1, a2, b2] if flip == 0 else [b1, a1, b2, a2]

@@ -96,6 +96,11 @@ def evaluate(policy_a, policy_b, n_games: int = 100, seed: int = 0,
             a_won = winner == flip  # a is team 0 unflipped, team 1 flipped
             wins[0 if a_won else 1] += 1
             rounds += len(logs)
+            done = wins[0] + wins[1]
+            if done % 20 == 0:  # status heartbeat (Jerry, 2026-08-03)
+                print(f"PROGRESS {done}/{total if False else n_seeds*len(flips)}"
+                      f" a={wins[0]} b={wins[1]}"
+                      f" ({100*wins[0]/done:.0f}%)", flush=True)
     total = n_seeds * len(flips)
     return {"games": total, "wins_a": wins[0], "wins_b": wins[1],
             "mirrored": mirrored, "avg_rounds_per_game": rounds / total}

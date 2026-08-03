@@ -112,7 +112,13 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
   | ckpt_bc_dueling | same, dueling arch | 38% | — |
   | ckpt_distill_full (v5) | search distillation, full data, 5 ep | 42% | 38% |
   | **ckpt_distill_v6** | same, 12 epochs | **51%** | **41%** |
-  v6 is the strongest standalone net: beats BC on both axes, parity-plus
+  | **snapshots_v7w/ep02 (v7w)** | WARM from v6, 4 ep on N=30 textbook (~1.5h) | 45%* | 32.5%* vs wide-mc |
+  **v7w is the strongest net** (beat v6 in all 4 snapshots, best 64.5%
+  n=200 games; ep02 selected by probe). *Anchor caveats: round-level
+  anchors ~v6-level and were measured under a briefly-corrupted follow
+  ballot (MCBot default flip leaked into the RL enumerator — same day
+  pinned via _V1Ballot; clean rerun in flight). Net-vs-net game duels
+  overstate transitive strength. Previously: v6 was the strongest standalone net: beats BC on both axes, parity-plus
   vs SmartBot, Elo ~25-30 above smart / ~70 below mc in its pool. The
   distillation series (v1-v3 failed at 32/22-ish; v4 soft targets 38/32;
   v5 42/38; v6 51/41) — full iteration history in RL_PLAN.md.

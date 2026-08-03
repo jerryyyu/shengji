@@ -5,22 +5,20 @@ and in AI_POLICIES.md; this file tracks what's NEXT.
 
 ## AI / training  (current state: mc ~1140 > rl-v6 ~net line ~70 behind — see AI_POLICIES.md)
 
-- [ ] **v7 distillation — TRAINING NOW** (N=30 textbook complete; v6
-      recipe confirmed optimal by three null sweeps; control v6=55%).
-      Then: gates → Elo pool; lead-weighted loss arm (obs-derived lead
-      mask, no regen needed) if v7 lands.
+- [x] v7/v7-warm DONE 2026-08-02: warm-from-v6 on N=30 beat v6 in all
+      4 snapshots (best ep02 64.5% n=200); warm-start = standing policy;
+      scratch killed. NEXT: **v8 = warm from v7w-ep02 on gen-v3** (data
+      generating overnight on both machines); lead-weighted loss arm
+      still available as a v8 variant.
 - [ ] **AWAC-style policy-head update for self-play** — the designed fix
       for DMC's measured failure (Q-regression collapses any policy
       pathway; two alarm-halted runs). Policy head learns by
       advantage-WEIGHTED imitation; values stay in their own head.
-- [ ] **Value-leaf hybrid** (Phase 4's surviving path): truncated rollouts
+- [ ] **Value-leaf hybrid**: v1 (v6 head) FAILED gate 45% (n=120);
+      retry WITH v7w head running 2026-08-02 night. Original design: truncated rollouts
       + net value head at leaves. Must beat plain mc — note
       net-as-rollout-policy is a measured dead end (55% preview reversed
       to 37%; bare net out-rated its own hybrid).
-- [ ] **v7-warm arm (queued for v6.1's CPU slot)**: init from v6,
-      fine-tune on N=30 textbook — same objective, safe transfer (the
-      DMC trap was warm start + MISMATCHED objective). If warm >= scratch
-      at equal wall-clock: "init from incumbent" becomes standing policy.
 - [ ] Vectorize bc_train (per-decision loop is MPS-dispatch-bound: 60+
       min/epoch vs ~12 for the ragged-batch trainer).
 - [ ] Human-style fine-tune once the human corpus reaches a few thousand

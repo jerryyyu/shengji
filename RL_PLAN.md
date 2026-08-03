@@ -140,33 +140,73 @@ no adoption, no ledger promotion, no celebration until the extension
 lands. Note v1 of this exact design failed at 45% with v6's head —
 the N=30-trained v7w value head was the difference.
 
-## ⚠️ MEASUREMENT VARIANCE IS LARGER THAN WE ASSUMED (2026-08-03 19:00)
+## STATE OF PLAY (2026-08-03, end of day 4)
 
-Codex asked us to make the v7w anchor reproducible from the repo. The
-reproduction returned **31% vs mc** where the original run gave **41%** —
-same checkpoint, same opponent, same n=120, same protocol. ~2.2 sigma.
+### The day's two headline results — and their honest error bars
 
-Cause: tournament/anchor opponents are built via `REGISTRY[name]()` =
-`MCBot(seed=None)`, so the OPPONENT re-randomizes every run while the
-RLBot side is deterministic. Our stated noise floor (+-6-7% at n=120)
-counted binomial sampling only, not this.
+**1. Learned evaluation improves the search (the real milestone).**
+`mc-vleaf-v7w-ep02` = MC search with rollouts truncated at 4 tricks and
+leaves scored by rl-v7w's VALUE head. Across every measurement so far:
 
-**Consequences for today's conclusions — stated plainly:**
-- The v8-vs-v7w comparison (34%/32%/38% vs 41%) sits INSIDE this
-  variance. "v8 is below v7w" is NOT established; the honest statement
-  is that v7w, v8a, v8b and v8a-long are indistinguishable.
-- The pool table's exact Elo values carry the same wobble (an accidental
-  duplicate pairing gave 85-35 where the original gave 84-36).
-- vleaf's result is the LEAST affected: 3 independent blocks at 60/60/61
-  plus a pool win, i.e. repeated across seeds AND protocols. Block 4 is
-  currently tracking ~49% at 80/120, which if it holds pulls the combined
-  estimate to ~57% — still over the bar, but the honest headline becomes
-  "clearly better than mc" rather than a precise 60%.
+| measurement | result |
+|---|---|
+| duel blocks 1/2/3 (independent seeds) | 60% / 60% / 61% |
+| duel block 4 | **50%** |
+| pool pairing vs mc (unseeded) | 58% (70-50) |
+| pool pairing vs mc (re-run, unseeded) | **47.5% (57-63)** |
+| **pooled vs mc** | **404-316 = 56.1% at n=720 (3.3 sigma over even)** |
 
-**Fix (before any further checkpoint comparisons):** seed anchor
-opponents deterministically per pairing, and re-run the v7w/v8 anchors
-under the seeded protocol. Until then, treat single-checkpoint anchor
-deltas under ~10 points as noise.
+vleaf IS better than mc — 3.3 sigma is not luck — but the effect is
+**~56%, not the 60% the early blocks suggested**, and the widely-quoted
+**Elo 1163 is unreliable**: it rested on a single unseeded pairing that
+re-ran at 47.5%. A SEEDED, reproducible pool is running now and replaces
+it. Latency 14ms/decision (numpy inference, no torch) — production-ready.
+
+**2. The hybrid-teacher dataset did NOT break the ceiling.**
+gen-v4 (36,360 rounds / 1.96M decisions) is the first dataset whose
+labels come from a teacher stronger than the search. Students trained on
+it land at **38-39% vs mc** — the same band as v8 (32-38%) and v7w. So
+better-than-search labels did not produce a better-than-previous student.
+
+**3. Warm vs scratch (Jerry's hypothesis): no difference.**
+Identical data, 6 epochs each, seeded anchors:
+
+| arm | vs smart | vs mc | best snapshot |
+|---|---|---|---|
+| v9-warm (from v7w-ep02) | 48% | 39% | ep05 (last) |
+| v9-scratch (random init) | 48% | 38% | ep05 (last) |
+
+Warm neither helps nor hurts; scratch starts 3.7 points behind on
+agreement and closes to within 1 by epoch 5. **Both peaked at their LAST
+snapshot, i.e. both are still undertrained** — the epochs question is
+open and now testable under the seeded protocol.
+
+### What this means
+
+Five levers have now been tried against the standalone-policy ceiling —
+more data, better data, more epochs, a corrected target, and warm-vs-
+scratch initialisation — and **none moved it**. The nets sit at 38-48%
+vs mc regardless. Meanwhile the SAME net's value head, used inside the
+search, produces the only configuration that beats mc. The evidence
+increasingly says the limit is not the training recipe but the
+standalone-policy setting itself: a net asked to pick a move from a
+ballot, with no search, may simply be the wrong consumer for what we can
+learn. Open candidates for the real constraint: the encoding, the
+independent-candidate scoring architecture (the model cannot see which
+candidate is the heuristic baseline), or the absence of any lookahead at
+play time.
+
+### Measurement discipline (hard-won today)
+
+- **Anchor opponents were unseeded** until 2026-08-03: `REGISTRY[name]()`
+  builds `MCBot(seed=None)`. The same v7w anchor read 41% then 31%; the
+  same vleaf pairing read 58% then 47.5%. FIXED — `play_pairing` now
+  seeds both sides deterministically and pairings reproduce exactly.
+- Consequence: **all pre-fix single-pairing comparisons under ~10 points
+  are noise**, including "v8 is below v7w" (retracted) and the precise
+  Elo values in earlier pool tables.
+- A mid-run PROGRESS number is not a result (65%@20 -> 52%@40 today).
+- Verify the artifact, not the exit code (four silent no-ops today).
 
 ## KEY LEARNINGS (load-bearing; each cost real compute to buy)
 

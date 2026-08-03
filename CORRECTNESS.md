@@ -58,7 +58,6 @@ Layers (all must pass, currently 34 tests; growing via the audit):
 | 08-02 | MCBot default flip silently widened RL play-time follow ballots | shared-helper config leak | Jerry's question |
 | 08-02 | find_tractor_runs memo returned mutable lists; throw-penalty path mutated the cache | mutable-cache aliasing | golden test, day 1 |
 | 08-02 | Memory deck scan iterated set(make_deck()); world sampling differed per process | hash-order nondeterminism | golden test, day 1 |
-
 | 08-03 | memo caches keyed on sorted cards but computed on caller order — equal-level trump-rank pairs could return a different physical split per caller | cache-key/computation mismatch | audit agent |
 | 08-03 | _throw_penalty returned a live alias into the decompose cache (latent poisoning) | mutable-cache aliasing | audit agent |
 

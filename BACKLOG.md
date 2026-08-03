@@ -41,6 +41,14 @@ and in AI_POLICIES.md; this file tracks what's NEXT.
 - [ ] Next teacher generation inherits CONTROL_LEADS (tonight's N=30 data
       predates it) + record TRACTOR_LOCK decisions as choice-only samples
       (currently absent from all teacher data).
+- [ ] **ANTICIPATE_FEED heuristic** (RTLT 2026-08-03, Jerry): when
+      deciding whether to beat/over-ruff, value the trick at EXPECTED
+      end-of-trick points, not current points — if the current winner's
+      partner acts after you and can hold points (mem.points_left in
+      their possible suits), add expected feed. Bot3 ducked Jerry's low
+      trump 毙 holding a winning trump pair; SK then fed. Also xray the
+      exact RTLT position to confirm the mechanism (margin-kept
+      heuristic pass vs rollout miss) before implementing.
 - [ ] From the disagreement miner: dump-selection refinement (n=23, +3.9 —
       humans shed stranded losers/keep trumps better in forced follows);
       lower the CONTROL_LEADS pair gate for late rounds (mid pairs measured

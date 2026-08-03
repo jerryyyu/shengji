@@ -27,7 +27,10 @@ class Decision:
 @dataclass
 class TrajectoryWriter:
     out_dir: str
-    shard_size: int = 50_000
+    shard_size: int = 10_000  # smaller shards (was 50k): buffered
+    # decisions live in RAM until flush — 50k meant ~8.5h of work at
+    # risk per gen worker (Jerry, 2026-08-03: durability > file count).
+    # ~10k = ~100min flush cadence; loaders glob shards, count is free.
     _buf: list[Decision] = field(default_factory=list)
     _shard: int = 0
 

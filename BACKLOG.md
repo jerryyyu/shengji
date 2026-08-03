@@ -45,8 +45,8 @@ and in AI_POLICIES.md; this file tracks what's NEXT.
       deciding whether to beat/over-ruff, value the trick at EXPECTED
       end-of-trick points, not current points — if the current winner's
       partner acts after you and can hold points (mem.points_left in
-      their possible suits), add expected feed. Bot3 ducked Jerry's low
-      trump 毙 holding a winning trump pair; SK then fed. Also xray the
+      their possible suits), add expected feed. Bot 1 ducked Jerry's low
+      trump 毙 holding H10H10+H8H8; Sk then fed. VERIFIED by xray (R9 T8/T10): rollouts credit over-ruffs only ~2pts because rollout policies do not model the partner FEEDING the winner — T8 pure rollout miss, T10 also margin-held. The 3 lapses = 45 of 50 attacker pts that round. Also xray the
       exact RTLT position to confirm the mechanism (margin-kept
       heuristic pass vs rollout miss) before implementing.
 - [ ] From the disagreement miner: dump-selection refinement (n=23, +3.9 —

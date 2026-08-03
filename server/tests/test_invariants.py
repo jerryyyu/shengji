@@ -357,7 +357,7 @@ def test_failed_throw_bookkeeping_matches_engine():
     from shengji.engine.legal import validate_lead
 
     game = Game(random.Random(5))
-    rnd = game.round
+    rnd = game.start_round()
     while rnd.phase != "play":
         from shengji.ai.heuristic import HeuristicBot
         bot = HeuristicBot()

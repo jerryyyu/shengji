@@ -61,3 +61,13 @@ for d in rl_data/gen_v3_mini rl_data/gen_v3; do
   echo "  $d shard-writing worker ids: ${ids:-none}"
 done
 echo "  (any id here with no matching live process = orphan; quarantine its shards)"
+
+hdr "CODEX MAILBOX — HANDOFF_REVIEW.md discussion thread"
+HR=../HANDOFF_REVIEW.md
+if [ -f "$HR" ]; then
+  n=$(grep -c "^### \[Codex" "$HR" 2>/dev/null || echo 0)
+  echo "  Codex entries: $n   (file mtime: $(stat -f "%Sm" -t "%m-%d %H:%M" "$HR"))"
+  [ "$n" -gt 0 ] && sed -n "/^### \[Codex/,\$p" "$HR" | head -30
+else
+  echo "  (HANDOFF_REVIEW.md not found)"
+fi

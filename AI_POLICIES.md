@@ -261,6 +261,8 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
 | NO_OPEN_POINT_SUIT | off | don't open point-bearing suits without their boss (expert research #3) | 50%; combo also 50% | tie |
 | TEMPO_SEEK v2 (re-test 08-03) | off | re-measured on the current stack + fast engine | 98-102, 49% n=200 | tie confirmed |
 | DECLARER_PIN | **ON** | sampled worlds place the declarer's SHOWN cards in the declarer's hand (public info the sampler ignored) | **60-60, 50% n=120** | KEPT on correctness grounds: provably-correct information, fixes verified blunders (RTLT R9 T1 flips), costs nothing. Correctness-grade changes must not LOSE, not necessarily win. |
+| KITTY_POINT_POLICY | off | expert research #2: numeric bury caps — locked hand (13+ trumps, BJ) deliberately banks 10s/Ks behind the kitty multiplier; weak trump makes points near-unburiable | 101-99, 50% n=200 | tie |
+| TREE_PLANTING (树套) | off | expert research #4: with a 6+ card side suit holding top pairs, lead LOW early to exhaust the suit, then run the retained tops (deliberately overrides pairs-first) | **90-110, 45% n=200**; combined with kitty 46% | **rejected — the only expert candidate to measurably HURT** |
 | SIZE_FIRST | off | strict "more cards is better" lead order: any ruff-safe tractor, then any ruff-safe pair, before all smaller leads | 52% h2h, n=200 | tie (consistent with its halves TRACTOR_FIRST + ANY_PAIR_OVER_JUNK both null) |
 | PAIR_VOID_BOSS | off | leads a LOW pair once every opponent has PROVEN pair-void in its suit (forced pair-matching makes a broken answer proof) | 54% first n=200, 48% fresh n=200 → 51.0% at n=400 | tie — small-n mirage caught by extension; Memory.pair_void tracker kept (see shared-code changes) |
 
@@ -302,6 +304,28 @@ coverage**. Tracked tripwire: `scripts/audit_sourcing.py` (--v2).
 Direct net duel same day: rl-v6 beat rl-v5 54% (108-92, n=200) — v6
 confirmed the stronger net; old cross-pool Elo suggesting otherwise was
 pool-relativity.
+
+### Expert-strategy research: scorecard (2026-08-03)
+
+Five of the nine ranked candidates from the Chinese-strategy research pass
+have now been measured. **None helped; one hurt.**
+
+| candidate | result |
+|---|---|
+| #1 ACE_SEQ (cash aces in follow-able suits first) | 50% |
+| #3 NO_OPEN_POINT_SUIT | 50% |
+| #1+#3 combined | 50% |
+| #2 KITTY_POINT_POLICY (numeric bury caps) | 50% |
+| #4 TREE_PLANTING 树套 | **45% — harmful** |
+
+Contrast with rules derived from Jerry's OWN play observations, all
+adopted: CONTROL_LEADS 67%, LATE_TRUMP_PAIRS 60%, WIDE_LEAD_BALLOT 62%,
+WIDE_FOLLOW_BALLOT 60%. **Human strategy-guide wisdom has contributed
+nothing measurable to this bot; watching a specific human play it has
+contributed most of the heuristic gains.** Plausible reason: guides teach
+humans to compensate for what humans lack (memory, calculation), which
+the search already has — while a strong player's live reactions point at
+what the bot *specifically* gets wrong.
 
 ### Sourcing improvement roadmap (ranked by evidence)
 

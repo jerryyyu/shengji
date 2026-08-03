@@ -19,6 +19,18 @@ and in AI_POLICIES.md; this file tracks what's NEXT.
       + net value head at leaves. Must beat plain mc — note
       net-as-rollout-policy is a measured dead end (55% preview reversed
       to 37%; bare net out-rated its own hybrid).
+- [ ] **Compiled rollout core ("10-30x generation")** — profiled
+      2026-08-02: ~99% of MC time is the rollout loop (per round: 181k
+      heuristic decide_play, 845k decompose, 282k beats, 278k
+      validate_follow — all str/dict Python). Plan: (1) int-encode cards
+      (u8) + array hands inside engine primitives — this restructure is
+      most of the win and is required for either language; (2) Cython
+      pass over combos/legal/heuristic hot loop (~days, est 10-20x,
+      incremental, same repo); (3) Rust/PyO3 full engine core ONLY if
+      AWAC-scale demands 100x (bonus: wasm build = true-offline client;
+      risk: two rule implementations drifting — Python engine becomes
+      the differential-test oracle, parity on 10k seeded rounds
+      mandatory before any generated data is trusted).
 - [ ] Vectorize bc_train (per-decision loop is MPS-dispatch-bound: 60+
       min/epoch vs ~12 for the ragged-batch trainer).
 - [ ] Human-style fine-tune once the human corpus reaches a few thousand

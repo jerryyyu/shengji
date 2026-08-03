@@ -14,7 +14,7 @@ bugs cost hours; correctness bugs cost weeks and are invisible.
 cd server && uv run python -m pytest tests/ -q
 ```
 
-Layers (all must pass, **currently 55 tests**; run in BOTH modes when
+Layers (all must pass, **currently 62 tests**; run in BOTH modes when
 the compiled path is involved: plain, and `SHENGJI_FAST=1`):
 1. **Unit tests** — test_engine.py, test_game.py, test_memory.py,
    test_rl.py: rules primitives, game flow, memory inference, RL codec.
@@ -79,6 +79,7 @@ following tractors.
 | 08-03 | _throw_penalty returned a live alias into the decompose cache (latent poisoning) | mutable-cache aliasing | audit agent |
 | 08-03 | Cython prototype implemented PRE-audit memo semantics (sorted keys vs caller-order) — quarantined same day, fixed in phase 0 | two-implementation drift | contract tests, day one |
 | 08-03 | SAME BUG on the Air: 7 phase-1 workers survived the 08:24 pkill and ran 2h alongside phase-2 — the machine looked "14 hot / 900%" (healthy) while half its cores did discarded work; no data written (buffers hadn't flushed) | orphaned-worker waste | fleet_status integrity section |
+| 08-03 | (same bug, second instance) the mc-vleaf vs mc POOL pairing read 70-50 on one run and 57-63 on a re-run — the headline Elo 1163 rested on the first | non-reproducible measurement | seeded-protocol re-run |
 | 08-03 | Elo pool bots are UNSEEDED (`REGISTRY[name]()` -> `MCBot(seed=None)` -> OS entropy), so pool numbers are not reproducible run-to-run: an accidental re-run of the same vleaf pairing gave 85-35 where the original gave 84-36 | non-reproducible measurement | accidental duplicate run |
 | 08-03 | pkill by parent cmdline left 2 multiprocessing WORKERS orphaned on buggy-memo code for 10h; they silently wrote 2 more shards into the live dataset | orphaned-worker contamination | fleet check (process-age audit) |
 | 08-03 | failed throws forfeited the FIRST beatable component, not the lowest (scan order over-punished) | rules bug | Jerry, from play |

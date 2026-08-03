@@ -28,29 +28,22 @@ Noise guide: ±3% at n=200, ±2% at n=400; round-level evals ±4.5% at n=120.
 
 ## The ladder (Elo, round-level, heuristic = 1000)
 
-**CURRENT pool (2026-08-03 afternoon, 6 entrants; superseded 08-02 table below)**
+**CURRENT pool status (2026-08-03 evening): BEING RE-MEASURED.**
 
-(2026-08-02 evening, 9 entrants, distributed run on the
-Air; dated names = that day's live config, anchor-paired):**
+The 6-entrant table published earlier today (`mc-vleaf-v7w-ep02` 1163 >
+mc 1110 > smart 1089 > rl-v7w 1060 > rl-v8a 1047 > heuristic 1000) was
+produced with **unseeded opponents** and does not reproduce: the same
+mc-vleaf-vs-mc pairing gave 70-50 on one run and 57-63 on a re-run.
+Treat those Elo values as indicative only. A seeded, reproducible pool
+(heuristic / smart / mc / mc-vleaf-v7w-ep02 / rl-v7w / rl-v9warm) is
+running and will replace this section.
 
-| policy | Elo | note |
-|---|---|---|
-| **mc-vleaf-v7w-ep02** | **1163** | **net-in-search hybrid: MC search, rollouts truncated at 4 tricks, leaves evaluated by rl-v7w-ep02's VALUE head. First configuration involving the net to top the pool.** h2h: mc 70-50, smart 74-46, heuristic 84-36. Latency 17ms/decision vs mc's 14ms. |
-| mc | 1110 | search + ALL current flags: WIDE_LEAD_BALLOT, CONTROL_LEADS, TEMPO_GUARD, LATE_TRUMP_PAIRS, VOID_DUMP — beat 0802am 62-58 direct |
-| mc-20260802am | 1104 | = mc minus WIDE_LEAD_BALLOT (narrow 8-cap ballot) — what prod runs today |
-| smart | 1070 | heuristics with CONTROL_LEADS + TEMPO_GUARD + LATE_TRUMP_PAIRS + VOID_DUMP (plus long-standing SAFE_THROWS, ENDGAME_CONTROL, BURY_* stack) |
-| mc-20260801 | 1069 | = mc minus WIDE_LEAD_BALLOT minus the four flags above (search on the older heuristic layer) |
-| rl-v6 | 1033 | best standalone net |
-| rl-v6.1 | 1022 | human blend: −11 vs v6 in-pool (style tax) |
-| smart-20260801 | 1020 | = smart minus CONTROL_LEADS/TEMPO_GUARD/LATE_TRUMP_PAIRS/VOID_DUMP (keeps the older adopted stack) |
-| heuristic | 1000 | anchor |
-| rl-v5 | 971 | BELOW heuristic vs today's pool — pool-relativity in action (rated 1088 on 2026-08-01) |
-
-48-hour staircase on one axis: smart +50 (1020→1070); mc +40
-(1069→1109). The net line FROZE while the hand-built line climbed —
-the mc-vs-net gap widened to ~76, which is the whole case for gen-v3 +
-v8 (students of the new teacher). Goal line unchanged: an rl policy
-above mc in this pool.
+What survives the variance, from pooled head-to-heads:
+- **mc-vleaf-v7w-ep02 beats mc: 404-316 = 56.1% over n=720** (4 duel
+  blocks + 2 pool pairings), 3.3 sigma over even. Better than mc: yes.
+  By 60%: no — that was the early blocks flattering it.
+- Standalone nets (v7w, v8a/b/along, v9warm/scratch) all sit in a
+  38-48%-vs-mc band and are NOT distinguishable from each other.
 
 ### Notes
 

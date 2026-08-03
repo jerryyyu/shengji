@@ -88,6 +88,20 @@ VALUE parity (training data records values, not just plays), plus a
 Flip only on a clean verdict; the next mini batch (~13k rebalanced
 rounds) is the natural switch-over point.
 
+## Current perf state (2026-08-03 evening)
+
+- Cython fast path VALIDATED and live for generation, duels and tests
+  (3.4x round-level; gen-v4 ran at 1.4-2.0 rounds/s aggregate per
+  machine vs 0.33 before).
+- Profiling of the vleaf hybrid at generation settings: the value net is
+  only **8%** of the cost. Per-leaf `enumerate_actions` (32%) and
+  `encode_obs` (19%) dominate. **GPU would not help** (485k params;
+  kernel-launch overhead exceeds the math; 8 workers would serialise on
+  one device — numpy already beat torch 14ms vs 17ms).
+- Highest-value remaining perf item: a **direct V(state) head** that
+  scores a position without enumerating candidates — removes both
+  dominant costs, ~2x on generation AND on vleaf play latency.
+
 ## Rules
 
 - Every optimization ships with a differential test (identical seeded

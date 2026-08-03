@@ -29,6 +29,10 @@ class SmartBot(HeuristicBot):
     SIZE_FIRST = False      # strict "more cards is better" lead order: any
     #                         ruff-safe tractor, then any ruff-safe pair,
     #                         before all smaller leads (user idea, 2026-08-02)
+    POINTS_DRY = False      # when NO points remain in circulation, stop
+    #                         spending premium trumps on anything except
+    #                         the endgame-control window — all tricks but
+    #                         the last are worthless (user idea, 2026-08-03)
     ACE_SEQ = False         # cash boss singles in follow-able suits before
     #                         ruff-risky ones (expert research #1, 2026-08-02)
     NO_OPEN_POINT_SUIT = False  # don't open point-bearing suits we don't
@@ -421,7 +425,9 @@ class SmartBot(HeuristicBot):
                 # premium spend — the lead it buys repays it.
                 premium = (w_suit == TRUMP and
                            min(o.level(c) for c in winning) >= len(o.plain_ranks))
-                if premium and self.TEMPO_GUARD and trick_pts == 0:
+                dry = (self.POINTS_DRY and len(rnd.hands[seat]) > 6
+                       and mem.points_left() == 0 and trick_pts == 0)
+                if premium and ((self.TEMPO_GUARD and trick_pts == 0) or dry):
                     if self.TEMPO_SEEK and self._followup_size(rnd, seat, mem) >= 4:
                         return winning
                 else:

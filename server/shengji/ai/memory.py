@@ -81,6 +81,16 @@ class Memory:
         return not any(self.o.eff_suit(c) == eff and self.o.level(c) > lvl
                        and n >= 2 for c, n in self.unseen.items())
 
+    def points_left(self, eff_suit: str | None = None) -> int:
+        """Point cards (5/10/K) still in circulation — unseen pool, which
+        includes the kitty (conservative: kitty points can't be captured
+        in tricks, so this over-estimates what's winnable). 0 means every
+        remaining trick is worthless except the last (kitty multiplier).
+        Exact from public info (user idea, 2026-08-03)."""
+        from ..engine.cards import points
+        return sum(points(c) * n for c, n in self.unseen.items()
+                   if eff_suit is None or self.o.eff_suit(c) == eff_suit)
+
     def unseen_trumps(self) -> int:
         return sum(n for c, n in self.unseen.items()
                    if self.o.eff_suit(c) == TRUMP)

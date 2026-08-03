@@ -276,6 +276,54 @@ def test_beats_equal_level_trump_rank_edges(pure_routing):
                     == pure_match(ch, op, shape)), (ch, lead, shape, suit)
 
 
+def test_points_and_policy_leaves_random_parity(pure_routing):
+    """Phase 2 partial: points / total_points / HeuristicBot._lowest /
+    _forced_follow parity (both VOID_DUMP settings, avoid sets, both
+    prefer_points modes; leads incl. tractors/throws)."""
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.engine.cards import points, total_points
+
+    class _NoVoidDump(HeuristicBot):
+        VOID_DUMP = False
+
+    rng = random.Random(424242)
+    deck = make_deck()
+    for c in sorted(set(deck)):
+        assert fast.points(c) == points(c)
+    assert fast.points("XX") == 0 and fast.points("H5") == 5
+    assert fast.total_points(deck) == total_points(deck) == 200
+    assert fast.total_points(iter(["SK", "H10", "D5"])) == 25
+
+    bots = [HeuristicBot(), _NoVoidDump()]
+    checked = 0
+    for i in range(3000):
+        suit, rank = CONFIGS[i % len(CONFIGS)]
+        op, of = Ordering(suit, rank), Ordering(suit, rank)
+        bot = bots[i % 2]
+        hand = rng.sample(deck, rng.randint(1, 25))
+        avoid = (None if rng.random() < 0.4
+                 else set(rng.sample(hand, rng.randint(0, len(hand) // 2))))
+        for ap, sp in ((False, False), (True, False), (False, True)):
+            assert (fast.heuristic_lowest(hand, of, bot.VOID_DUMP, ap, sp,
+                                          avoid)
+                    == bot._lowest(hand, op, avoid_points=ap, seek_points=sp,
+                                   avoid=avoid)), (hand, ap, sp, avoid, suit)
+            checked += 1
+        # forced_follow: uniform lead from another hand's suit group
+        lead_hand = rng.sample(deck, rng.randint(1, 14))
+        lead_group = rng.choice(list(_suit_groups(lead_hand, op).values()))
+        lead = _random_lead(rng, lead_group)
+        if len(hand) < len(lead):
+            continue
+        for prefer in (False, True):
+            got = _outcome(fast.forced_follow, hand, lead, of, bot.VOID_DUMP,
+                           prefer, avoid)
+            ref = _outcome(bot._forced_follow, hand, lead, op, prefer, avoid)
+            assert got == ref, (hand, lead, prefer, avoid, suit, rank)
+            checked += 1
+    assert checked >= 10_000
+
+
 def test_validate_follow_and_helpers_random_parity(pure_routing):
     """validate_follow / check_in_hand / uniform_suit / pair_count parity:
     same result or the same exception type AND message."""

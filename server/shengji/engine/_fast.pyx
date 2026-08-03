@@ -47,14 +47,22 @@ EFF_ID = {"S": 0, "H": 1, "C": 2, "D": 3, "T": 4}
 cdef tuple EFF_NAMES = ("S", "H", "C", "D", "T")
 cdef dict _EFF_ID = EFF_ID
 
-# Global code->id table for the ordering-free helpers (pair_count,
-# check_in_hand); fast.py registers it at import.
+# Global code->id and points tables for the ordering-free helpers
+# (pair_count, check_in_hand, points); fast.py registers them at import.
 cdef dict _CODE2ID = None
+cdef int _PTS[N_CODES]
 
 
 def set_code2id(d):
     global _CODE2ID
     _CODE2ID = d
+
+
+def set_points(bytes pts):
+    cdef const unsigned char *p = <const unsigned char *>PyBytes_AS_STRING(pts)
+    cdef Py_ssize_t i
+    for i in range(N_CODES):
+        _PTS[i] = p[i]
 
 # fast.py registers its per-Ordering ctx builder here (avoids a circular
 # import); ctx = (dcache, trcache, lvl_bytes, eff_bytes, code2id).
@@ -567,6 +575,240 @@ def check_in_hand(list hand, list play):
     cdef int cntp[N_CODES]
     cdef int cnth[N_CODES]
     _check_in_hand_c(hand, play, cntp, cnth)
+
+
+# ------------------------------------------- phase 2 (partial): policy leaves
+
+cdef inline long _pts_of(object code) except -1:
+    """cards.points drop-in core (table hit; pure-logic fallback for any
+    code outside the 54-entry table, matching pure's tolerant behavior)."""
+    hit = _CODE2ID.get(code)
+    if hit is not None:
+        return _PTS[<int>hit]
+    if code == "LJ" or code == "BJ":
+        return 0
+    r = code[1:]
+    if r == "5":
+        return 5
+    if r == "10" or r == "K":
+        return 10
+    return 0
+
+
+def points(code):
+    """cards.points drop-in."""
+    return _pts_of(code)
+
+
+def total_points(codes):
+    """cards.total_points drop-in (accepts any iterable, like sum+genexpr)."""
+    cdef long tot = 0
+    if type(codes) is list:
+        for c in <list>codes:
+            tot += _pts_of(c)
+    else:
+        for c in codes:
+            tot += _pts_of(c)
+    return tot
+
+
+cdef inline long _low_key(int in_avoid, int trumpish, long pts, int vlen,
+                          int lvl, bint avoid_points,
+                          bint seek_points) noexcept:
+    """HeuristicBot._lowest key tuples packed into one comparable long
+    (fields bounded: pts<=10, vlen<=33 fits 8 bits, lvl<=15)."""
+    if seek_points:            # (in_avoid, -pts, trumpish, lvl)
+        return ((<long>in_avoid << 40) | ((10 - pts) << 32)
+                | (<long>trumpish << 24) | lvl)
+    if avoid_points:           # (in_avoid, trumpish, pts>0, vlen, lvl)
+        return ((<long>in_avoid << 40) | (<long>trumpish << 32)
+                | (<long>(1 if pts > 0 else 0) << 24)
+                | (<long>vlen << 8) | lvl)
+    return ((<long>in_avoid << 40) | (<long>trumpish << 32)  # no-flags key
+            | (<long>vlen << 8) | lvl)
+
+
+cdef Py_ssize_t _lowest_idx(list objs, const unsigned char *ids,
+                            const unsigned char *alive, Py_ssize_t n,
+                            const unsigned char *efftab,
+                            const unsigned char *lvltab, bint void_dump,
+                            bint avoid_points, bint seek_points,
+                            object avoid) except -1:
+    """Index of min(cards, key=HeuristicBot._lowest.key) over alive entries
+    (first minimum wins, like min())."""
+    cdef int suit_n[5]
+    cdef Py_ssize_t i, best_i = -1
+    cdef long k, best = 0
+    cdef int e, trumpish, vlen, in_avoid
+    cdef bint has_avoid = avoid is not None and len(avoid) > 0
+    if void_dump:
+        memset(suit_n, 0, sizeof(suit_n))
+        for i in range(n):
+            if alive[i]:
+                suit_n[efftab[ids[i]]] += 1
+    for i in range(n):
+        if not alive[i]:
+            continue
+        e = efftab[ids[i]]
+        trumpish = 1 if e == 4 else 0
+        vlen = suit_n[e] if (void_dump and not trumpish) else 0
+        in_avoid = 1 if (has_avoid and (objs[i] in avoid)) else 0
+        k = _low_key(in_avoid, trumpish, _PTS[ids[i]], vlen,
+                     <int>lvltab[ids[i]], avoid_points, seek_points)
+        if best_i < 0 or k < best:
+            best = k
+            best_i = i
+    if best_i < 0:
+        raise ValueError("min() arg is an empty sequence")
+    return best_i
+
+
+def heuristic_lowest(list cards, ordering, bint void_dump, bint avoid_points,
+                     bint seek_points, avoid=None):
+    """HeuristicBot._lowest drop-in (void_dump == self.VOID_DUMP)."""
+    cdef tuple ctx = _get_ctx(ordering)
+    cdef dict code2id = <dict>ctx[4]
+    cdef const unsigned char *efftab = \
+        <const unsigned char *>PyBytes_AS_STRING(ctx[3])
+    cdef const unsigned char *lvltab = \
+        <const unsigned char *>PyBytes_AS_STRING(ctx[2])
+    cdef unsigned char ids[MAX_CARDS]
+    cdef unsigned char alive[MAX_CARDS]
+    cdef Py_ssize_t n = _ids_of(cards, code2id, ids), i
+    for i in range(n):
+        alive[i] = 1
+    return cards[_lowest_idx(cards, ids, alive, n, efftab, lvltab,
+                             void_dump, avoid_points, seek_points, avoid)]
+
+
+def forced_follow(list hand, list lead, ordering, bint void_dump,
+                  bint prefer_points, avoid=None):
+    """HeuristicBot._forced_follow drop-in: construct a legal minimal
+    follow. Same decision order as pure — tractor obligation from the
+    memoized find_tractor_runs (runs[0]), pair obligation over remaining
+    pool pairs stable-sorted by (in avoid, level), then lowest-card fill
+    with per-iteration recomputed void-dump suit lengths."""
+    cdef tuple ctx = _get_ctx(ordering)
+    cdef dict code2id = <dict>ctx[4]
+    cdef const unsigned char *efftab = \
+        <const unsigned char *>PyBytes_AS_STRING(ctx[3])
+    cdef const unsigned char *lvltab = \
+        <const unsigned char *>PyBytes_AS_STRING(ctx[2])
+    cdef Py_ssize_t n = len(lead), nh = len(hand), i, j, bi
+    cdef unsigned char lids[MAX_CARDS]
+    cdef unsigned char hids[MAX_CARDS]
+    _ids_of(lead, code2id, lids)
+    _ids_of(hand, code2id, hids)
+    cdef int e0 = efftab[lids[0]]
+    for i in range(1, n):
+        if efftab[lids[i]] != e0:
+            raise AssertionError       # pure: assert uniform_suit(lead)
+    # Split hand into led-suit / off-suit, preserving hand order.
+    cdef list sobj = []
+    cdef list oobj = []
+    cdef unsigned char sid[MAX_CARDS]
+    cdef unsigned char oid_[MAX_CARDS]
+    cdef unsigned char alive[MAX_CARDS]
+    cdef Py_ssize_t ns = 0, no = 0
+    for i in range(nh):
+        if efftab[hids[i]] == e0:
+            sid[ns] = hids[i]
+            sobj.append(hand[i])
+            ns += 1
+        else:
+            oid_[no] = hids[i]
+            oobj.append(hand[i])
+            no += 1
+    cdef list picked = []
+    cdef list fobj
+    cdef unsigned char *fid
+    cdef Py_ssize_t nf
+    cdef int cnt[N_CODES]
+    cdef int pc[N_CODES]
+    cdef int pcode[N_CODES]
+    cdef long pkey[N_CODES]
+    cdef int npc = 0, need, k, c, cid, taken, in_av
+    cdef long kk
+    cdef bint has_avoid = avoid is not None and len(avoid) > 0
+    if ns >= n:
+        for i in range(ns):
+            alive[i] = 1
+        lead_dec = _decompose_memo(lead, ordering, ctx)
+        comps = lead_dec.components
+        # tractor obligation
+        if len(comps) == 1 and comps[0].kind == KIND_TRACTOR:
+            k = <int>comps[0].pair_len
+            runs = find_tractor_runs(sobj, ordering, k)
+            if runs:
+                run = <list>(runs[0])
+                for c_obj in run:
+                    picked.append(c_obj)
+                    cid = <int>code2id[c_obj]
+                    for j in range(ns):        # pool.remove(c): first alive
+                        if alive[j] and sid[j] == cid:
+                            alive[j] = 0
+                            break
+        # pair obligation: need = min(lead pairs, pair_count(h_suit)) - taken
+        memset(cnt, 0, sizeof(cnt))
+        need = 0
+        for i in range(ns):
+            cnt[sid[i]] += 1
+        for c in range(N_CODES):
+            need += cnt[c] // 2                # pair_count(h_suit)
+        if <int>lead_dec.n_pairs < need:
+            need = <int>lead_dec.n_pairs
+        need -= <int>len(picked) // 2          # pair_count(picked): all pairs
+        if need > 0:
+            # distinct pool codes with count >= 2, Counter (first-alive-
+            # occurrence) order, stable insertion sort by (in avoid, level)
+            memset(pc, 0, sizeof(pc))
+            for i in range(ns):
+                if alive[i]:
+                    pc[sid[i]] += 1
+            npc = 0
+            for i in range(ns):
+                if alive[i] and pc[sid[i]] >= 2:
+                    pc[sid[i]] = -pc[sid[i]]   # mark emitted
+                    in_av = 1 if (has_avoid and (sobj[i] in avoid)) else 0
+                    kk = (<long>in_av << 8) | <int>lvltab[sid[i]]
+                    j = npc
+                    while j > 0 and pkey[j - 1] > kk:
+                        pkey[j] = pkey[j - 1]
+                        pcode[j] = pcode[j - 1]
+                        j -= 1
+                    pkey[j] = kk
+                    pcode[j] = sid[i]
+                    npc += 1
+            if need > npc:
+                need = npc
+            for j in range(need):
+                cid = pcode[j]
+                taken = 0
+                for i in range(ns):            # remove + collect both copies
+                    if alive[i] and sid[i] == cid:
+                        alive[i] = 0
+                        if taken == 0:
+                            picked.append(sobj[i])
+                            picked.append(sobj[i])
+                        taken += 1
+                        if taken == 2:
+                            break
+        fobj = sobj
+        fid = sid
+        nf = ns
+    else:
+        picked = list(sobj)
+        fobj = oobj
+        fid = oid_
+        nf = no
+        for i in range(nf):
+            alive[i] = 1
+    while <Py_ssize_t>len(picked) < n:
+        bi = _lowest_idx(fobj, fid, alive, nf, efftab, lvltab, void_dump,
+                         not prefer_points, prefer_points, avoid)
+        picked.append(fobj[bi])
+        alive[bi] = 0
+    return picked[:n]
 
 
 def validate_follow(list play, list hand, list lead, ordering):

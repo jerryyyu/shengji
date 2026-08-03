@@ -30,25 +30,26 @@ Noise guide: ±3% at n=200, ±2% at n=400; round-level evals ±4.5% at n=120.
 
 **CURRENT pool (2026-08-03 evening) — SEEDED and REPRODUCIBLE**
 
-15/15 pairings, 120 rounds each, both sides deterministically seeded, so
-every number here re-runs identically (verified).
+15/15 pairings, 120 rounds each, both sides deterministically seeded.
+Raw pair records: `server/runs/pool_20260803_seeded_pairs.txt`;
+script: `server/scripts/pool_seeded.py`.
 
-| policy | Elo | note |
-|---|---|---|
-| **mc-vleaf-v7w-ep02** | **1151** | net-in-search hybrid: truncated rollouts + rl-v7w value head at the leaves |
-| mc | 1119 | search with both wide ballots |
-| smart | 1093 | heuristic stack |
-| rl-v9warm | 1069 | best standalone net (trained on hybrid-teacher data) |
-| rl-v7w | 1042 | previous best net |
-| heuristic | 1000 | anchor |
+| policy | Elo |
+|---|---|
+| mc-vleaf-v7w-ep02 | 1151 |
+| mc | 1119 |
+| smart | 1093 |
+| rl-v9warm | 1069 |
+| rl-v7w | 1042 |
+| heuristic | 1000 |
 
-Head-to-head highlights: vleaf beats mc **64-56**, smart **60-60** (dead
-even), rl-v7w 87-33. mc beats rl-v9warm 71-49.
-
-**The earlier unseeded table (vleaf 1163 / mc 1110) is superseded** — it
-did not reproduce (the same vleaf-vs-mc pairing gave 70-50 then 57-63).
-The seeded gap vleaf-over-mc is **+32 Elo**, smaller than the +53 first
-reported. Pooled across all measurements vleaf beats mc 56.1% (n=720).
+**Read these Elo values as INDIRECT estimates.** The direct
+vleaf-vs-mc pairing is **64-56 = 53.3%, Wilson 95% CI [44.4%, 62.0%]**,
+which includes 50% — so the +32 Elo gap is not a demonstrated direct win
+over mc. vleaf is the pool leader and the most promising coupling; a
+preregistered 300-500-cluster duel is required before any adoption
+claim. The earlier unseeded table (vleaf 1163 / mc 1110) is superseded
+and did not reproduce.
 
 ### Notes
 

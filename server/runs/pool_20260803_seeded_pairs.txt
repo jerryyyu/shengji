@@ -1,0 +1,15 @@
+PAIR heuristic smart 51 69
+PAIR heuristic rl-v9warm 48 72
+PAIR smart rl-v9warm 62 58
+PAIR mc-vleaf-v7w-ep02 rl-v7w 87 33
+PAIR heuristic mc 43 77
+PAIR smart mc 57 63
+PAIR mc mc-vleaf-v7w-ep02 56 64
+PAIR mc-vleaf-v7w-ep02 rl-v9warm 74 46
+PAIR heuristic mc-vleaf-v7w-ep02 33 87
+PAIR smart mc-vleaf-v7w-ep02 60 60
+PAIR mc rl-v7w 73 47
+PAIR rl-v7w rl-v9warm 55 65
+PAIR heuristic rl-v7w 46 74
+PAIR smart rl-v7w 66 54
+PAIR mc rl-v9warm 71 49

@@ -14,7 +14,7 @@ def register_debug(app, rooms) -> None:
     DEBUG_TOKEN = os.environ.get("SHENGJI_DEBUG_TOKEN", "")
 
 
-    def _xray(rnd, seat: int) -> dict:
+    def _xray(rnd, seat: int, room=None) -> dict:
         """What the bot sees and would play from this seat, right now."""
         from ..ai.memory import Memory
         from ..engine.cards import SUITS, TRUMP
@@ -39,17 +39,22 @@ def register_debug(app, rooms) -> None:
             "candidates": None,
         }
         if rnd.phase == "play" and rnd.turn == seat:
-            mc = room_bot_for_xray
-            cands = mc._candidates(rnd, seat)
-            vals: list[list[float]] = [[] for _ in cands]
-            for _ in range(30):
-                smp = mc._sample_hands(rnd, seat, mem)
-                if smp is None:
-                    continue
-                hands_s, buried = smp
-                for i, c in enumerate(cands):
-                    vals[i].append(mc._rollout(rnd, seat, hands_s, buried, list(c)))
+            # Show what the ROOM'S bot actually saw. Previously this panel
+            # ran its own 30-world sample for the displayed values and then
+            # called decide_play() (an independent 10-world sample) for the
+            # highlighted pick — so the numbers did not explain the choice,
+            # and a candidate could look 7 points better than the one played
+            # (XICD, 2026-08-03). Now the pick and the values come from the
+            # SAME evaluation, via last_eval.
+            mc = getattr(room, "bot", None) or room_bot_for_xray
             pick = mc.decide_play(rnd, seat)
+            if getattr(mc, "last_eval", None) is not None:
+                cands, means = mc.last_eval
+                # last_eval is acting-team perspective; report attacker points
+                sign = 1.0 if rnd.is_attacker(seat) else -1.0
+                vals = [[sign * m] for m in means]
+            else:                      # TRACTOR_LOCK / forced play: no search
+                cands, vals = [pick], [[]]
 
             def stats(v: list[float]) -> tuple[float, float]:
                 n = max(len(v), 1)
@@ -82,6 +87,6 @@ def register_debug(app, rooms) -> None:
         if r is None or r.round is None or r.round.ordering is None:
             return {"error": "no active round"}
         async with r.lock:
-            return _xray(r.round, seat)
+            return _xray(r.round, seat, r)
 
 

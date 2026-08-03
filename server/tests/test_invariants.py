@@ -67,7 +67,7 @@ def test_throw_penalty_fires_and_returns_fresh_list():
     play = ["H3", "H5", "H5"]
     others = [["H6", "H6", "D3"], ["C4"], ["C5"]]
     forced, msg = validate_lead(play, hand, others, o)
-    assert sorted(forced) == ["H5", "H5"]  # the beaten pair, not the single
+    assert sorted(forced) == ["H3"]  # rule 2026-08-03: LOWEST beatable part (both were beatable; single < pair)
     assert msg and "Throw failed" in msg
     forced[0] = "XX"  # caller mutates its play in place
     forced2, _ = validate_lead(play, hand, others, o)

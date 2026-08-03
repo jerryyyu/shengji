@@ -85,3 +85,24 @@ def make_bot(name: str):
     except KeyError:
         raise ValueError(
             f"Unknown bot policy {name!r}. Available: {', '.join(sorted(REGISTRY))}")
+
+
+def _make_vleaf(ckpt: str):
+    """Value-leaf hybrid, named by its VALUE-HEAD checkpoint.
+
+    The hybrid's strength depends entirely on which net evaluates the
+    truncated-rollout leaves, so the checkpoint is part of the policy's
+    identity — never register or report a bare "mc-vleaf" (2026-08-03:
+    the pool headline was un-reproducible because the value head wasn't
+    named in the result).
+    """
+    def f():
+        from ..rl.torch_policy import MCValueLeaf
+        return MCValueLeaf(ckpt=ckpt)
+    return f
+
+
+# Value-leaf hybrids, one entry per value head. Elo pool 2026-08-03:
+# mc-vleaf-v7w-ep02 = 1163 (mc 1110, smart 1089, rl-v7w 1060, heuristic 1000)
+REGISTRY["mc-vleaf-v7w-ep02"] = _make_vleaf("snapshots_v7w/ep02.pt")
+REGISTRY["mc-vleaf-v8a-ep03"] = _make_vleaf("snapshots_v8a/ep03.pt")

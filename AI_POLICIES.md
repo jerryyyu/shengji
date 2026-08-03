@@ -28,12 +28,15 @@ Noise guide: ±3% at n=200, ±2% at n=400; round-level evals ±4.5% at n=120.
 
 ## The ladder (Elo, round-level, heuristic = 1000)
 
-**CURRENT pool (2026-08-02 evening, 9 entrants, distributed run on the
+**CURRENT pool (2026-08-03 afternoon, 6 entrants; superseded 08-02 table below)**
+
+(2026-08-02 evening, 9 entrants, distributed run on the
 Air; dated names = that day's live config, anchor-paired):**
 
 | policy | Elo | note |
 |---|---|---|
-| mc | 1109 | search + ALL current flags: WIDE_LEAD_BALLOT, CONTROL_LEADS, TEMPO_GUARD, LATE_TRUMP_PAIRS, VOID_DUMP — beat 0802am 62-58 direct |
+| **mc-vleaf-v7w-ep02** | **1163** | **net-in-search hybrid: MC search, rollouts truncated at 4 tricks, leaves evaluated by rl-v7w-ep02's VALUE head. First configuration involving the net to top the pool.** h2h: mc 70-50, smart 74-46, heuristic 84-36. Latency 17ms/decision vs mc's 14ms. |
+| mc | 1110 | search + ALL current flags: WIDE_LEAD_BALLOT, CONTROL_LEADS, TEMPO_GUARD, LATE_TRUMP_PAIRS, VOID_DUMP — beat 0802am 62-58 direct |
 | mc-20260802am | 1104 | = mc minus WIDE_LEAD_BALLOT (narrow 8-cap ballot) — what prod runs today |
 | smart | 1070 | heuristics with CONTROL_LEADS + TEMPO_GUARD + LATE_TRUMP_PAIRS + VOID_DUMP (plus long-standing SAFE_THROWS, ENDGAME_CONTROL, BURY_* stack) |
 | mc-20260801 | 1069 | = mc minus WIDE_LEAD_BALLOT minus the four flags above (search on the older heuristic layer) |

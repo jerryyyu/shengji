@@ -55,7 +55,32 @@ is that rollout policies don't model a partner FEEDING points to the
 winner (ANTICIPATE_FEED queued — those 3 lapses = 45 of 50 attacker
 points that round). Human corpus now 1,592 decisions (+59%).
 
-## ⚡ VLEAF: SECOND INDEPENDENT BLOCK CONFIRMS (2026-08-03 14:00)
+## 🏆 VLEAF TOPS THE POOL (2026-08-03 15:00)
+
+**`mc-vleaf-v7w-ep02` = Elo 1163** vs mc 1110, smart 1089, rl-v7w 1060,
+rl-v8a 1047, heuristic 1000 (6-entrant pool, same seeds, round-level).
+Head-to-head: beat mc 70-50, smart 74-46, heuristic 84-36. Plus duel
+blocks 1 (60%) and 3 (61%) on independent seeds — four seed sets agree.
+
+**NAMING**: always name the hybrid by its VALUE HEAD
+(`mc-vleaf-<net>-<epoch>`); the hybrid's strength is the head's. Both
+variants are registered (`mc-vleaf-v7w-ep02`, `mc-vleaf-v8a-ep03`) so
+the result is repo-reproducible — Codex correctly flagged that the
+first headline was not.
+
+**What it does and does not mean**: for the first time a configuration
+containing the net is the strongest thing we have — but the net is
+EVALUATING inside the search, not playing. Standalone nets remain
+50-60 Elo below mc. The project goal ("an RL policy above mc") is met
+on a plain reading, but the honest framing is: *the search got stronger
+by borrowing the net's judgment*. Pure-policy parity is still unmet.
+
+**Unlocks**: (1) a teacher ABOVE the distillation ceiling — gen-v4
+recorded from the hybrid would be the first dataset whose labels beat
+mc; (2) a deployable bot (17ms vs 14ms/decision — the blocker is that
+prod has never shipped torch, not speed).
+
+## Superseded: second-block confirmation (2026-08-03 14:00)
 
 **Block 1** (seeds 0, pure engine): vleaf(v7w) 72-48 vs mc = **60%**
 **Block 3** (seeds 31337, fast engine, fresh): 73-47 = **61%**

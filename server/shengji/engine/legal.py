@@ -58,21 +58,29 @@ def validate_lead(play: list[str], hand: list[str], other_hands: list[list[str]]
     if len(dec.components) == 1:
         return play, None
 
+    beatable = []
+
     for comp in dec.components:
         for other in other_hands:
             oc = suit_cards(other, eff, ordering)
             if comp.pair_len == 0:
                 if any(ordering.level(c) > comp.top for c in oc):
-                    return _throw_penalty(comp)
+                    beatable.append(comp)
             elif comp.pair_len == 1:
                 cnt = Counter(oc)
                 if any(n >= 2 and ordering.level(c) > comp.top for c, n in cnt.items()):
-                    return _throw_penalty(comp)
+                    beatable.append(comp)
             else:
                 from .combos import find_tractor_runs
                 runs = find_tractor_runs(oc, ordering, comp.pair_len)
                 if any(ordering.level(r[-1]) > comp.top for r in runs):
-                    return _throw_penalty(comp)
+                    beatable.append(comp)
+    if beatable:
+        # Rule (Jerry, 2026-08-03): the thrower forfeits the LOWEST
+        # beatable part — not whichever the scan met first (component
+        # order put bigger/higher structures first, over-punishing).
+        return _throw_penalty(min(beatable,
+                                  key=lambda c: (c.pair_len, c.top)))
     return play, None
 
 

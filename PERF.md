@@ -13,7 +13,9 @@ overnight gens become 3h, and every gate duel runs in minutes.
 
 | metric | value | conditions |
 |---|---|---|
-| MC round, single core | ~5.9s | wide ballots, N=10, post-memo, loaded machine |
+| MC round, single core (pure) | ~5.7s | wide ballots, N=10, post-memo, loaded machine |
+| MC round, single core (**SHENGJI_FAST=1**) | **~1.7s (3.42x)** | same conditions; opt-in, validation pending for gen/duels |
+| full test suite | 18.6s pure / 7.0s fast | 55 tests, both modes green |
 | MC round, single core, SHENGJI_FAST=1 | **~1.7s (3.42x)** | same load, seed-7 best-of-3 interleaved (08-03); opt-in only, histories byte-identical (seeds 3/7/11/23/42/99 checked) |
 | generation rate | 0.03-0.04 r/s/worker | N=30, wide ballots (gen-v3 config) |
 | fleet aggregate | ~0.55 r/s (15 workers) | mini 8 + Air 7 |
@@ -38,7 +40,7 @@ overnight gens become 3h, and every gate duel runs in minutes.
 |---|---|---|---|---|
 | 1 | Memory rebuilt per decision (full history rescan, O(tricks²)/round) | incremental Memory carried through rollouts | 1.1-1.2x | open |
 | 2 | str card codes ("H10") → dict-hash on every eff_suit/level/beats; list-of-str hands | u8 int cards + array hands inside engine primitives | enabler for #3 | de-quarantined 08-03 (caller-order keys, suite green both modes). str stays at ALL public boundaries; u8 conversion happens per compiled call. Full int-native hands (convert once per rollout, only back at Round.play) still open — the remaining chunk of the 10-20x. |
-| 3 | interpreted Python hot loop (per round: 181k heuristic decisions, 845k decompose, 282k beats, 278k validate_follow) | Cython over combos/legal/heuristic AFTER #2 | **10-20x combined** | in progress — **3.42x measured** (rules + policy leaves compiled, opt-in SHENGJI_FAST=1). Post-3.42x profile (fast active, cProfile): heuristic._lead 1.0s, _follow orchestration ~0.8s own, Round.play/_resolve_trick 1.3s, _cheapest_winning 0.5s, _current_winner 0.5s of 4.1s profiled. Next ports: _lead/_current_winner/_cheapest_winning (est. → ~5x), then int-native hands + compiled Round.play for the rest. |
+| 3 | interpreted Python hot loop (PARTIALLY DONE: phases 0-2 shipped 08-03) (per round: 181k heuristic decisions, 845k decompose, 282k beats, 278k validate_follow) | Cython over combos/legal/heuristic AFTER #2 | **10-20x combined** | in progress — **3.42x measured** (rules + policy leaves compiled, opt-in SHENGJI_FAST=1). Post-3.42x profile (fast active, cProfile): heuristic._lead 1.0s, _follow orchestration ~0.8s own, Round.play/_resolve_trick 1.3s, _cheapest_winning 0.5s, _current_winner 0.5s of 4.1s profiled. Next ports: _lead/_current_winner/_cheapest_winning (est. → ~5x), then int-native hands + compiled Round.play for the rest. |
 | 4 | Round/Trick clone churn per rollout (3.8k clones/round) | reusable scratch state | ~1.1x | open |
 | 5 | rollouts always play to round end | early-terminate decided brackets | speculative — BIASES values, gate carefully | parked |
 | 6 | single-machine ceiling | rented 32-core burst (~$5/gen) | 4x fleet, zero code | available anytime |
@@ -54,6 +56,15 @@ overnight gens become 3h, and every gate duel runs in minutes.
    (Elo-798 lesson applied to rules).
 3. #6 rented burst whenever a gen run blocks the roadmap by >1 day.
 4. #7 Rust only if AWAC-scale self-play demands it.
+
+## Open decision (2026-08-03)
+
+Deep validation in flight before the fast path is trusted for
+GENERATION DATA and MEASUREMENT DUELS — the new gate is per-candidate
+VALUE parity (training data records values, not just plays), plus a
+300-round sweep, duel-record equivalence, and interleaving safety.
+Flip only on a clean verdict; the next mini batch (~13k rebalanced
+rounds) is the natural switch-over point.
 
 ## Rules
 

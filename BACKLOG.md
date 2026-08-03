@@ -19,7 +19,12 @@ and in AI_POLICIES.md; this file tracks what's NEXT.
       + net value head at leaves. Must beat plain mc — note
       net-as-rollout-policy is a measured dead end (55% preview reversed
       to 37%; bare net out-rated its own hybrid).
-- [ ] **Compiled rollout core ("10-30x generation")** — profiled
+- [~] **Compiled rollout core** — phases 0-2 MERGED 08-03 (**3.42x**,
+      55/55 both modes, goldens identical; opt-in SHENGJI_FAST=1; deep
+      generation-value validation in flight before gen/duels switch).
+      Remaining: leaf ports for _lead/_current_winner/_cheapest_winning
+      (~1 day, ~5x), then int-native hands (multi-day). Original notes:
+      profiled
       2026-08-02: ~99% of MC time is the rollout loop (per round: 181k
       heuristic decide_play, 845k decompose, 282k beats, 278k
       validate_follow — all str/dict Python). Plan: (1) int-encode cards

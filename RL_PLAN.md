@@ -154,6 +154,12 @@ human pile is 4,000x smaller but highest signal-per-byte.
   (<55%) are not adopted — EXCEPT menu-widening changes, which adopt at
   neutral (they compound with future evaluation improvements; preference
   rules must pay now).
+- **Strength vs selection (v7w lesson, 2026-08-02):** STRENGTH claims
+  come only from anchor pairings vs smart AND mc (round-level).
+  Net-vs-net duels against the incumbent are for SELECTION among
+  sibling checkpoints and tiebreaks — descendants exploit ancestors
+  (v7w: 64.5% over v6, yet ~v6-level on anchors), so a family duel is
+  never a ladder claim.
 - **Partial-checkpoint protocol:** every snapshot gets (1) fixed-seed
   round-level probe vs current SmartBot (n=60, compare only within a
   seed batch) AND (2) a direct mirrored duel vs the incumbent best net

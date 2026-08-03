@@ -23,9 +23,16 @@ from .dataset import Decision, TrajectoryWriter
 from .encode import encode_action, encode_obs
 
 
-class RecordingMCBot(MCBot):
-    def __init__(self, seed=None):
-        super().__init__(seed)
+class _RecordMixin:
+    """Recording behaviour, applied to whichever teacher generates.
+
+    The teacher's identity is the dataset's most important property —
+    gen-v4 (2026-08-03) is the first dataset recorded from a teacher
+    STRONGER than plain mc (mc-vleaf-v7w-ep02, Elo 1163 vs mc 1110), so
+    its labels are not capped by the search the way every previous
+    dataset was."""
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)   # MCBot(seed) or MCValueLeaf(seed, ckpt)
         self.decisions: list[Decision] = []
 
     def decide_play(self, rnd, seat):
@@ -77,15 +84,32 @@ def _maybe_fast() -> bool:
     return True
 
 
+class RecordingMCBot(_RecordMixin, MCBot):
+    pass
+
+
+def _make_recorder(teacher: str, seed: int):
+    if teacher == "mc":
+        return RecordingMCBot(seed=seed)
+    if teacher.startswith("mc-vleaf-"):       # e.g. mc-vleaf-v7w-ep02
+        from ..ai.mcbot import MCBot as _MC   # noqa: F401 (kept for clarity)
+        from ..rl.torch_policy import MCValueLeaf
+        tag = teacher[len("mc-vleaf-"):]      # v7w-ep02
+        net, ep = tag.rsplit("-", 1)
+        cls = type("RecordingVLeaf", (_RecordMixin, MCValueLeaf), {})
+        return cls(seed=seed, ckpt=f"snapshots_{net}/{ep}.pt")
+    raise SystemExit(f"unknown teacher: {teacher}")
+
+
 def worker(args):
-    worker_id, n_rounds, out_dir, n_det = args
+    worker_id, n_rounds, out_dir, n_det, teacher = args
     fast_on = _maybe_fast()
     if worker_id % 100 == 0:
         print(f"worker{worker_id}: engine={'FAST' if fast_on else 'pure'}",
               flush=True)
     writer = TrajectoryWriter(out_dir)
     writer._shard = worker_id * 1000  # disjoint shard numbering per worker
-    bot = RecordingMCBot(seed=worker_id)
+    bot = _make_recorder(teacher, worker_id)
     bot.N_DETERMINIZATIONS = n_det  # more worlds = less label noise
     bots = [bot] * 4
     seed = worker_id * 10_000_000
@@ -118,9 +142,12 @@ def main() -> None:
     n_rounds = int(sys.argv[2])
     n_workers = int(sys.argv[3]) if len(sys.argv) > 3 else 9
     n_det = int(sys.argv[4]) if len(sys.argv) > 4 else 10
+    teacher = (sys.argv[sys.argv.index("--teacher") + 1]
+               if "--teacher" in sys.argv else "mc")
     off = int(sys.argv[5]) if len(sys.argv) > 5 else 0  # worker-id offset:
     # lets a second MACHINE join the same dataset (disjoint seeds+shards)
     per = n_rounds // n_workers
+    print(f"teacher: {teacher}", flush=True)
     # Provenance marker: nets trained on this data must use the SAME
     # ballot family at play time (Elo-798 rule).
     import json
@@ -136,11 +163,12 @@ def main() -> None:
                    # engine mode is provenance: fast-path data must be
                    # scopable/quarantinable (Elo-798 rule)
                    "engine": ("fast" if os.environ.get("SHENGJI_FAST") == "1"
-                              else "pure")}, f, indent=1)
+                              else "pure"),
+                   "teacher": teacher}, f, indent=1)
     t0 = time.time()
     with mp.get_context("spawn").Pool(n_workers) as pool:
         counts = pool.map(worker,
-                          [(off + i, per, out_dir, n_det) for i in range(n_workers)])
+                          [(off + i, per, out_dir, n_det, teacher) for i in range(n_workers)])
     dt = time.time() - t0
     print(f"done: {sum(counts)} rounds in {dt/60:.0f} min "
           f"({sum(counts)/dt:.1f} rounds/s aggregate) -> {out_dir}")

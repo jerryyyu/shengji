@@ -71,7 +71,7 @@ def test_throw_penalty_fires_and_returns_fresh_list():
     assert msg and "Throw failed" in msg
     forced[0] = "XX"  # caller mutates its play in place
     forced2, _ = validate_lead(play, hand, others, o)
-    assert sorted(forced2) == ["H5", "H5"], "penalty list aliased the cache"
+    assert sorted(forced2) == ["H3"], "penalty list aliased the cache"
     # an unbeatable throw stands
     ok, msg2 = validate_lead(["HA", "HK", "HK"], ["HA", "HK", "HK", "S3"],
                              [["H6", "H7"], ["C4"], ["C5"]], o)

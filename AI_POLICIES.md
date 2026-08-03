@@ -112,6 +112,7 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
   | ckpt_bc_dueling | same, dueling arch | 38% | — |
   | ckpt_distill_full (v5) | search distillation, full data, 5 ep | 42% | 38% |
   | **ckpt_distill_v6** | same, 12 epochs | **51%** | **41%** |
+  | **snapshots_v8a/ep03 (v8a)** | warm from v7w on gen-v3 (43k rounds, 2.33M dec, choice-only rows included) | 46%* | 34%* — NO improvement over v7w despite 2.2x data from a stronger teacher; suggests the TARGET (raw values vs acting policy) is the binding constraint, not data volume |
   | **snapshots_v7w/ep02 (v7w)** | WARM from v6, 4 ep on N=30 textbook (~1.5h) | 45%* | 32.5%* vs wide-mc |
   **v7w is the strongest net** (beat v6 in all 4 snapshots, best 64.5%
   n=200 games; ep02 selected by probe). *Anchor caveats: round-level
@@ -255,6 +256,7 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
 | POINTS_DRY | off | once points-in-circulation hits 0, stop spending premium trumps outside the endgame window (user idea; Memory.points_left is exact from public info) | 100-100, 50% n=200 | tie — the regime is real but rare + TEMPO_GUARD/search already cover most of it; points_left() kept in Memory for future consumers |
 | ACE_SEQ | off | cash boss singles in follow-able suits before ruff-risky ones (expert research #1) | 50% h2h n=200 | tie — search/ruff-risk already covers it |
 | NO_OPEN_POINT_SUIT | off | don't open point-bearing suits without their boss (expert research #3) | 50%; combo also 50% | tie |
+| TEMPO_SEEK v2 (re-test 08-03) | off | re-measured on the current stack + fast engine | 98-102, 49% n=200 | tie confirmed |
 | SIZE_FIRST | off | strict "more cards is better" lead order: any ruff-safe tractor, then any ruff-safe pair, before all smaller leads | 52% h2h, n=200 | tie (consistent with its halves TRACTOR_FIRST + ANY_PAIR_OVER_JUNK both null) |
 | PAIR_VOID_BOSS | off | leads a LOW pair once every opponent has PROVEN pair-void in its suit (forced pair-matching makes a broken answer proof) | 54% first n=200, 48% fresh n=200 → 51.0% at n=400 | tie — small-n mirage caught by extension; Memory.pair_void tracker kept (see shared-code changes) |
 

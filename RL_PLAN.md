@@ -55,7 +55,24 @@ is that rollout policies don't model a partner FEEDING points to the
 winner (ANTICIPATE_FEED queued — those 3 lapses = 45 of 50 attacker
 points that round). Human corpus now 1,592 decisions (+59%).
 
-## ⚡ PENDING CONFIRMATION (2026-08-03 ~02:30)
+## ⚡ VLEAF: SECOND INDEPENDENT BLOCK CONFIRMS (2026-08-03 14:00)
+
+**Block 1** (seeds 0, pure engine): vleaf(v7w) 72-48 vs mc = **60%**
+**Block 3** (seeds 31337, fast engine, fresh): 73-47 = **61%**
+**Combined: 145-95 = 60.4% at n=240**, two independent seed sets.
+
+95% CI ~[54.2%, 66.6%] — the lower bound sits ON our 55% adoption bar,
+so this is a strong screen, NOT yet an adoption. Blocks 2 (pure, ~4h,
+still running) and 4 (Air, fresh seeds) will take it to n~480 and
+decide. Per Codex: judge on the paired level-utility interval, not two
+point estimates.
+
+**If it holds, this is the flywheel**: a search+net hybrid stronger than
+plain mc is a teacher above the distillation ceiling — gen-v4 records
+vleaf instead of mc, and the next student learns from above-mc play for
+the first time. NO adoption or deploy without Jerry.
+
+## Superseded pending block (2026-08-03 ~02:30)
 
 **vleaf(v7w-ep02 value head, 4-trick truncation) beat wide-ballot mc
 72-48 (60%, n=120 games)** — the first net-in-search coupling to beat

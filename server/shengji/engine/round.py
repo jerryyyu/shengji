@@ -243,3 +243,28 @@ class Round:
             return sorted(self.hands[seat], key=self.ordering.sort_key)
         from .cards import natural_sort_key
         return sorted(self.hands[seat], key=natural_sort_key)
+
+
+def actual_play_after(rnd, seat: int, prev_last) -> list[str]:
+    """The cards the ENGINE actually recorded for ``seat``'s last action.
+
+    A failed throw is replaced by its forced component, so the attempted
+    cards are not what was played. The play landed either in the open
+    trick or in the trick that just closed. Every caller that mirrors
+    engine state (server room ids, logs, recorded simulations) must use
+    this rather than the attempted list — the bot path did not, and room
+    bookkeeping desynced from the engine (Codex audit, 2026-08-03).
+    """
+    if rnd.trick and rnd.trick.plays:
+        for p in reversed(rnd.trick.plays):
+            if p.seat == seat:
+                return list(p.cards)
+    if rnd.last_trick is not None and rnd.last_trick is not prev_last:
+        for p in rnd.last_trick.plays:
+            if p.seat == seat:
+                return list(p.cards)
+    if rnd.last_trick is not None:
+        for p in rnd.last_trick.plays:
+            if p.seat == seat:
+                return list(p.cards)
+    return []

@@ -20,7 +20,7 @@ from ..ai.heuristic import HeuristicBot
 from ..ai.registry import make_bot
 from ..engine.game import Game
 from ..engine.legal import IllegalPlay
-from ..engine.round import Round
+from ..engine.round import Round, actual_play_after
 
 BOT_DELAY = 0.7
 DEAL_DELAY = 0.22          # seconds between dealt cards (~22s full deal)
@@ -301,8 +301,11 @@ def bot_step(room: Room, seat: int) -> bool:
             prev_last = rnd.last_trick
             cards = room.bot.decide_play(rnd, seat)
             rnd.play(seat, cards)
-            room.remove_codes(seat, cards)
-            _log_play(room, seat, cards, True, prev_last)
+            # a failed throw plays fewer cards than attempted — mirror what
+            # the ENGINE recorded, not what the bot asked for
+            played = actual_play_after(rnd, seat, prev_last)
+            room.remove_codes(seat, played)
+            _log_play(room, seat, played, True, prev_last)
         else:
             return False
         if rnd.phase == "round_end" and game.result is None:

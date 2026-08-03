@@ -344,3 +344,56 @@ def test_enumerate_actions_deterministic_across_processes():
         assert out.returncode == 0, out.stderr
         digests.append(out.stdout.strip())
     assert digests[0] == digests[1], "ballots differ across hash seeds"
+
+
+def test_failed_throw_bookkeeping_matches_engine():
+    """A bot's FAILED throw must remove/log what the ENGINE played, not the
+    attempt. Regression for the 2026-08-03 server desync (Codex audit):
+    ordinary self-play almost never fires a throw penalty, so this must be
+    constructed."""
+    import random
+    from shengji.engine.game import Game
+    from shengji.engine.round import actual_play_after
+    from shengji.engine.legal import validate_lead
+
+    game = Game(random.Random(5))
+    rnd = game.round
+    while rnd.phase != "play":
+        from shengji.ai.heuristic import HeuristicBot
+        bot = HeuristicBot()
+        if rnd.phase == "deal":
+            rnd.deal_next()
+        elif rnd.phase == "declare":
+            rnd.finalize_declare()
+        elif rnd.phase == "bury":
+            rnd.bury(rnd.banker, bot.decide_bury(rnd, rnd.banker))
+    o = rnd.ordering
+    seat = rnd.turn
+    hand = rnd.hands[seat]
+    # find a beatable multi-component throw in this seat's hand
+    from collections import Counter
+    from shengji.engine.cards import TRUMP
+    from shengji.engine.legal import suit_cards
+    attempt = None
+    for s in "SHDC":
+        cs = suit_cards(hand, s, o)
+        cnt = Counter(cs)
+        pair = next((c for c, n in cnt.items() if n >= 2), None)
+        single = next((c for c in cs if c != pair), None)
+        if pair and single:
+            cand = [pair, pair, single]
+            others = [rnd.hands[x] for x in range(4) if x != seat]
+            played, msg = validate_lead(cand, hand, others, o)
+            if msg:  # penalty fired
+                attempt = (cand, played)
+                break
+    if attempt is None:
+        import pytest
+        pytest.skip("no beatable throw available in this deal")
+    cand, expected = attempt
+    prev_last = rnd.last_trick
+    rnd.play(seat, cand)
+    actual = actual_play_after(rnd, seat, prev_last)
+    assert sorted(actual) == sorted(expected), (
+        "helper must report the engine's forced play, not the attempt")
+    assert len(actual) < len(cand), "this deal should have forced a penalty"

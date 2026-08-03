@@ -23,6 +23,7 @@ import random
 from dataclasses import dataclass, field
 
 from ..engine.game import Game
+from ..engine.round import actual_play_after
 from ..engine.round import Round
 
 
@@ -56,9 +57,10 @@ def play_round(game: Game, policies: list, record: bool = False) -> RoundLog:
     while rnd.phase == "play":
         seat = rnd.turn
         cards = policies[seat].decide_play(rnd, seat)
+        prev_last = rnd.last_trick
         rnd.play(seat, cards)
-        if record:
-            history.append((seat, list(cards)))
+        if record:  # engine truth, not the attempt (failed throws differ)
+            history.append((seat, actual_play_after(rnd, seat, prev_last)))
     result = game.finish_round()
     return RoundLog(rnd.trump_rank, rnd.banker, result.attacker_points,
                     result.winner_team, result.level_change, history=history)

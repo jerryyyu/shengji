@@ -8,12 +8,15 @@ owns the str<->int boundary so NOTHING outside sees int cards:
 - a per-Ordering ``ctx`` tuple (caches + level/eff-suit byte tables) built
   lazily and stored on the Ordering instance — same lifetime as the pure
   decompose memo.
-- ``decompose`` / ``find_tractor_runs`` / ``suit_cards`` are drop-in
-  replacements (str in, str out, identical semantics incl. the memo's
-  first-caller-order freezing and defensive run copies). RULES stay in
-  Python: validate_lead/validate_follow/beats/decompose_matching untouched;
-  pure Python remains the reference implementation.
-- ``activate()`` swaps the three functions in everywhere (module attrs AND
+- ``decompose`` / ``find_tractor_runs`` / ``suit_cards`` and the RULES
+  functions ``decompose_matching`` / ``beats`` / ``validate_follow`` /
+  ``pair_count`` / ``uniform_suit`` / ``check_in_hand`` are drop-in
+  replacements (str in, str out, identical semantics incl. the memos'
+  caller-order keys, defensive run copies, and exact IllegalPlay
+  messages). validate_lead stays pure (cold path; runs the ported
+  helpers via rebinding). Pure Python remains the reference
+  implementation everywhere.
+- ``activate()`` swaps the functions in everywhere (module attrs AND
   ``from x import y`` aliases across loaded shengji modules); modules
   imported after activation bind the patched attributes automatically.
 - If the compiled module is missing, everything falls back to pure Python
@@ -27,6 +30,7 @@ from __future__ import annotations
 
 import sys
 
+from . import cards as _cards
 from . import combos, legal
 from .cards import Ordering, make_deck
 from .combos import Decomposition
@@ -44,10 +48,24 @@ EFF_ID = {"S": 0, "H": 1, "C": 2, "D": 3, "T": 4}
 
 
 def _ctx(ordering: Ordering) -> tuple:
-    """(dcache, trcache, lvl_bytes, eff_bytes, code2id) per Ordering."""
+    """(dcache, trcache, lvl_bytes, eff_bytes, code2id) per Ordering.
+
+    dcache/trcache are the SAME dicts the pure implementations use
+    (``ordering._dcache`` / ``ordering._trcache``), with the same
+    caller-order key contract (``tuple(cards)`` / ``(tuple(cards), k)``,
+    CORRECTNESS.md 08-03) — so the invariant suite's cache audit and any
+    interleaved pure/fast calls see one coherent memo."""
     ctx = getattr(ordering, "_fast_ctx", None)
     if ctx is None:
-        ctx = ({}, {},
+        dcache = getattr(ordering, "_dcache", None)
+        if dcache is None:
+            dcache = {}
+            ordering._dcache = dcache
+        trcache = getattr(ordering, "_trcache", None)
+        if trcache is None:
+            trcache = {}
+            ordering._trcache = trcache
+        ctx = (dcache, trcache,
                bytes(ordering.level(c) for c in ID2CODE),
                bytes(EFF_ID[ordering.eff_suit(c)] for c in ID2CODE),
                CODE2ID)
@@ -63,15 +81,37 @@ def _ctx(ordering: Ordering) -> tuple:
 
 if HAVE_FAST:
     _fast.set_ctx_builder(_ctx)
+    _fast.set_code2id(CODE2ID)
+    _fast.set_points(bytes(_cards.points(c) for c in ID2CODE))
     decompose = _fast.decompose                    # combos.decompose
     find_tractor_runs = _fast.find_tractor_runs    # combos.find_tractor_runs
     suit_cards = _fast.suit_cards                  # legal.suit_cards
+    decompose_matching = _fast.decompose_matching  # combos.decompose_matching
+    pair_count = _fast.pair_count                  # combos.pair_count
+    beats = _fast.beats                            # legal.beats
+    uniform_suit = _fast.uniform_suit              # legal.uniform_suit
+    check_in_hand = _fast.check_in_hand            # legal.check_in_hand
+    validate_follow = _fast.validate_follow        # legal.validate_follow
+    points = _fast.points                          # cards.points
+    total_points = _fast.total_points              # cards.total_points
+    heuristic_lowest = _fast.heuristic_lowest      # HeuristicBot._lowest core
+    forced_follow = _fast.forced_follow            # HeuristicBot._forced_follow
     decompose_uncached = _fast.decompose_uncached  # combos._decompose_uncached
     find_tractor_runs_uncached = _fast.find_tractor_runs_uncached
 else:  # pure-Python fallbacks
     decompose = combos.decompose
     find_tractor_runs = combos.find_tractor_runs
     suit_cards = legal.suit_cards
+    decompose_matching = combos.decompose_matching
+    pair_count = combos.pair_count
+    beats = legal.beats
+    uniform_suit = legal.uniform_suit
+    check_in_hand = legal.check_in_hand
+    validate_follow = legal.validate_follow
+    points = _cards.points
+    total_points = _cards.total_points
+    heuristic_lowest = None
+    forced_follow = None
     decompose_uncached = combos._decompose_uncached
     find_tractor_runs_uncached = combos._find_tractor_runs_uncached
 
@@ -98,8 +138,47 @@ def _rebind(mapping: dict) -> None:
                 setattr(mod, attr, repl)
 
 
+_ROUTED = (
+    # (save-key, pure module, attr) — the compiled drop-ins swap in for these.
+    ("decompose", combos, "decompose"),
+    ("find_tractor_runs", combos, "find_tractor_runs"),
+    ("decompose_matching", combos, "decompose_matching"),
+    ("pair_count", combos, "pair_count"),
+    ("suit_cards", legal, "suit_cards"),
+    ("beats", legal, "beats"),
+    ("uniform_suit", legal, "uniform_suit"),
+    ("check_in_hand", legal, "check_in_hand"),
+    ("validate_follow", legal, "validate_follow"),
+    ("points", _cards, "points"),
+    ("total_points", _cards, "total_points"),
+)
+
+
+# Method drop-ins for HeuristicBot (phase 2 partial): thin wrappers that
+# forward the per-instance VOID_DUMP flag into the kernels. Patched onto
+# the CLASS by activate() (SmartBot/MCBot inherit; no subclass overrides
+# these two — asserted at activation).
+def _lowest_fast(self, cards, o, avoid_points=False, seek_points=False,
+                 avoid=None):
+    return _fast.heuristic_lowest(cards, o, self.VOID_DUMP, avoid_points,
+                                  seek_points, avoid)
+
+
+def _forced_follow_fast(self, hand, lead, o, prefer_points, avoid=None):
+    return _fast.forced_follow(hand, lead, o, self.VOID_DUMP, prefer_points,
+                               avoid)
+
+
+_METHOD_ROUTED = (
+    # (save-key, class attr on HeuristicBot, wrapper)
+    ("HeuristicBot._lowest", "_lowest", _lowest_fast),
+    ("HeuristicBot._forced_follow", "_forced_follow", _forced_follow_fast),
+)
+
+
 def activate() -> bool:
-    """Route decompose / find_tractor_runs / suit_cards through the kernels.
+    """Route the ported functions (_ROUTED) and HeuristicBot methods
+    (_METHOD_ROUTED) through the kernels.
 
     Returns True when the fast path is (already) active, False when the
     extension isn't built. Idempotent; undo with deactivate().
@@ -108,17 +187,37 @@ def activate() -> bool:
         return False
     if _saved:
         return True
-    _saved["decompose"] = combos.decompose
-    _saved["find_tractor_runs"] = combos.find_tractor_runs
-    _saved["suit_cards"] = legal.suit_cards
-    _rebind({combos.decompose: decompose,
-             combos.find_tractor_runs: find_tractor_runs,
-             legal.suit_cards: suit_cards})
+    from ..ai.heuristic import HeuristicBot  # deferred: ai imports engine
+    mapping = {}
+    for key, mod, attr in _ROUTED:
+        _saved[key] = getattr(mod, attr)
+        mapping[_saved[key]] = globals()[key]
+    _rebind(mapping)
+    for key, attr, wrapper in _METHOD_ROUTED:
+        # The wrappers hard-code HeuristicBot semantics: a subclass override
+        # would be silently bypassed on instances of that subclass only if
+        # it overrode these — refuse loudly instead of drifting.
+        assert all(attr not in vars(k) for k in _subclasses(HeuristicBot)), \
+            f"a HeuristicBot subclass overrides {attr}; fast path unsafe"
+        _saved[key] = getattr(HeuristicBot, attr)
+        setattr(HeuristicBot, attr, wrapper)
     return True
 
 
+def _subclasses(cls) -> list[type]:
+    out = []
+    stack = list(cls.__subclasses__())
+    while stack:
+        k = stack.pop()
+        out.append(k)
+        stack.extend(k.__subclasses__())
+    return out
+
+
 def deactivate() -> None:
-    if _saved:
-        _rebind({decompose: _saved.pop("decompose"),
-                 find_tractor_runs: _saved.pop("find_tractor_runs"),
-                 suit_cards: _saved.pop("suit_cards")})
+    if not _saved:
+        return
+    from ..ai.heuristic import HeuristicBot
+    for key, attr, _ in _METHOD_ROUTED:
+        setattr(HeuristicBot, attr, _saved.pop(key))
+    _rebind({globals()[key]: _saved.pop(key) for key, _, _ in _ROUTED})

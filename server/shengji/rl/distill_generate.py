@@ -83,9 +83,11 @@ def worker(args):
                 d.ret = val if rnd.is_attacker(d.seat) else -val
                 writer.add(d)
             done += 1
-            if worker_id == 0 and done % 50 == 0:
+            if done % 100 == 0:  # heartbeat from EVERY worker (Jerry:
+                # long jobs must show progress; the old worker-0-only
+                # check went silent for offset launches)
                 rate = done / (time.time() - t0)
-                print(f"worker0: {done}/{n_rounds} rounds "
+                print(f"worker{worker_id}: {done}/{n_rounds} rounds "
                       f"({rate:.2f} r/s/worker)", flush=True)
     writer.flush()
     return done

@@ -15,7 +15,11 @@ AI_POLICIES.md; run archives in `server/runs/`.
 (75-45) + follows 60% (72-48) over its prior self in one day; pool 1109.
 Sourcing coverage of human plays 84.7% -> 99.3% (audit_sourcing.py).
 
-**Nets — rl-v7w is the new best** (warm from v6, 4 ep on the N=30
+**Nets — rl-v7w confirmed best by controlled same-seed anchors
+(2026-08-02 late night): v7w vs v6 across four anchors = 45/43 (smart),
+41/36 (wide-mc), 52/48 (smart-20260801), 43/42 (smart-v2) — v7w ahead
+on ALL FOUR, +1 to +5 pts. A modest, consistent, real transitive gain —
+NOT the step-change the 64.5% family duel implied.** rl-v7w details (warm from v6, 4 ep on the N=30
 textbook, ~1.5h): beat v6 in all 4 snapshots, best ep02 64.5% (129-71,
 n=200). Warm-start = standing policy (~5x iteration). CAVEAT: pool
 anchors put v7w ~v6-level (45% vs smart, 32.5% vs wide-mc) — net-vs-net

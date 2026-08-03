@@ -52,8 +52,9 @@ caught two of its own regressions on day one. See CORRECTNESS.md.
 K-pair-into-declared-pair blunder at the exact position (HK-HK went
 from best-on-ballot to second-worst); the ducked over-ruff root cause
 is that rollout policies don't model a partner FEEDING points to the
-winner (ANTICIPATE_FEED queued — those 3 lapses = 45 of 50 attacker
-points that round). Human corpus now 1,592 decisions (+59%).
+winner (ANTICIPATE_FEED WITHDRAWN 2026-08-03: probe shows rollouts DO feed
+(38/38); the search preferred the duck WITH feeding modelled, so those
+plays were expected-value-correct and lost to variance, not lapses). Human corpus now 1,592 decisions (+59%).
 
 ## ✅ VLEAF ADOPTED (2026-08-03 16:00) — three blocks + pool
 

@@ -46,14 +46,19 @@ and in AI_POLICIES.md; this file tracks what's NEXT.
 - [ ] Next teacher generation inherits CONTROL_LEADS (tonight's N=30 data
       predates it) + record TRACTOR_LOCK decisions as choice-only samples
       (currently absent from all teacher data).
-- [ ] **ANTICIPATE_FEED heuristic** (RTLT 2026-08-03, Jerry): when
-      deciding whether to beat/over-ruff, value the trick at EXPECTED
-      end-of-trick points, not current points — if the current winner's
-      partner acts after you and can hold points (mem.points_left in
-      their possible suits), add expected feed. Bot 1 ducked Jerry's low
-      trump 毙 holding H10H10+H8H8; Sk then fed. VERIFIED by xray (R9 T8/T10): rollouts credit over-ruffs only ~2pts because rollout policies do not model the partner FEEDING the winner — T8 pure rollout miss, T10 also margin-held. The 3 lapses = 45 of 50 attacker pts that round. Also xray the
-      exact RTLT position to confirm the mechanism (margin-kept
-      heuristic pass vs rollout miss) before implementing.
+- [x] ~~ANTICIPATE_FEED~~ **WITHDRAWN 2026-08-03 — the premise was false.**
+      Probed the rollout policy directly: it feeds points onto a partner's
+      winning ruff in **38/38 opportunities (100%)** (`strong = inc_suit ==
+      TRUMP` sets prefer_points). The RTLT diagnosis ("rollouts don't model
+      the feed") was wrong; the search valued the duck at 70.2 vs 71.6/71.8
+      for over-ruffs WITH feeding modelled, i.e. it made a correct
+      expected-value choice that lost to realization (Sk happened to hold
+      two 10s). The ledger claim that 3 "lapses" cost 45 points is
+      likely wrong for the over-ruff cases. REPLACEMENT candidate worth
+      measuring: **sampler point-calibration** — do sampled worlds give the
+      feeding seat systematically fewer point cards than reality? That is a
+      measurable distribution question, not a policy fix.
+
 - [ ] From the disagreement miner: dump-selection refinement (n=23, +3.9 —
       humans shed stranded losers/keep trumps better in forced follows);
       lower the CONTROL_LEADS pair gate for late rounds (mid pairs measured

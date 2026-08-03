@@ -218,7 +218,9 @@ class SmartBot(HeuristicBot):
 
         def entry(comp) -> tuple[tuple, list[str]]:
             pts = sum(points(c) for c in comp.cards)
-            return ((comp.pair_len, pts, comp.top), comp.cards)
+            # list(): comp.cards aliases the decompose cache — never let it
+            # escape as a play the caller might mutate (cache-poison class)
+            return ((comp.pair_len, pts, comp.top), list(comp.cards))
 
         # 0) Safe throw: several boss components in one suit, led together.
         #    Every part is unbeatable in-suit, so the throw can never fail.
@@ -242,7 +244,7 @@ class SmartBot(HeuristicBot):
                 if set(comp.cards) & reserve:
                     continue
                 if comp.pair_len >= 2 and (best_tr is None or comp.size > len(best_tr)):
-                    best_tr = comp.cards
+                    best_tr = list(comp.cards)  # decouple from decompose cache
         if self.TRACTOR_FIRST and best_tr:
             return best_tr
 
@@ -294,7 +296,7 @@ class SmartBot(HeuristicBot):
             for comp in sorted(decompose(by_suit[TRUMP], o).components,
                                key=lambda c: (-c.pair_len, -c.top)):
                 if mem.is_boss(max(comp.cards, key=o.level)):
-                    return comp.cards
+                    return list(comp.cards)  # decouple from decompose cache
 
         # 3.5) Feed partner ruffs: lead a suit partner is void in (and no
         # opponent is), while partner can still hold trump.

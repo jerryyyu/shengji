@@ -68,7 +68,11 @@ class Ordering:
         self._lvl: dict[str, int] = {}
         suit_order = {"S": 0, "H": 1, "C": 2, "D": 3, TRUMP: 4}
         self._key: dict[str, tuple[int, int, str]] = {}
-        for code in set(make_deck()):
+        # sorted(): set iteration is hash-randomized per process. Values are
+        # pure per-code lookups, but deterministic INSERTION order means any
+        # future iteration over these tables can't go hash-random (the
+        # Memory.unseen bug class, 2026-08-02).
+        for code in sorted(set(make_deck())):
             eff = TRUMP if self._compute_is_trump(code) else code[0]
             lvl = self._compute_level(code)
             self._eff[code] = eff

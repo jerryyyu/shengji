@@ -72,9 +72,13 @@ Block 4 still running (tightens further, cannot overturn).
 **Also settled today**: SIZE_FIRST at MC level 52% (tie at both levels —
 rejected); A-long 12 epochs = 38% vs mc vs arm A's 34% at 4 epochs, a
 4-point gap INSIDE the +-6-7% noise floor => more epochs had NO effect;
-vleaf with v8a's value head tracked ~54% vs v7w's 60-61%, so gen-v3
-produced a worse EVALUATOR as well as a worse player — v7w-ep02 stays
-the value head of record.
+vleaf with v8a's value head FINISHED at 70-50 = **58%** vs mc (the ~54%
+I reported mid-run was a partial). vs v7w's head at 60-61% on the same
+seeds, that is INSIDE the noise floor — the two value heads are not
+distinguishable at n=120. CORRECTION: my earlier claim that "gen-v3
+produced a worse evaluator" is not supported. v7w-ep02 remains the head
+of record only because it is measured on more blocks, not because v8a's
+is worse.
 
 **PRODUCTIONIZED**: numpy inference path (`rl/npnet.py`) mirrors the net
 in ~40 lines; verified identical play history vs torch and 200-case

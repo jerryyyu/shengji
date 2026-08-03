@@ -26,6 +26,7 @@ overnight gens become 3h, and every gate duel runs in minutes.
 |---|---|---|---|
 | 07-31 | Ordering lookup tables | +11% single-core | killed then-#1 hotspot |
 | 08-02 | decompose memo (cache on Ordering, per-round lifetime) | **1.26x** | pure function; differential-tested byte-identical |
+| 08-03 | Cython port phases 0-2 (caller-order semantics, rules kernels, leaf ports) | **3.42x** round (5.74->1.68s); beats 11.3x micro | 54/54 both modes, goldens byte-identical 6 seeds; opt-in SHENGJI_FAST=1 |
 | 08-02 | trusted-rollout fast path (skip follow re-validation in MC clones only) | ~1% solo (memo cheapened validation) | validate_lead always runs (throw penalties) |
 | 08-03 | Cython quarantine fix: caller-order memo keys (tuple(cards)) shared with pure `_dcache`/`_trcache` | **1.10x** round (pure 5.83s / fast 5.29s, seed-7 best-of-3 interleaved) | de-quarantined; 3 red contract tests now green; hashes identical |
 | 08-03 | Cython rules port: beats / decompose_matching / validate_follow / pair_count / uniform_suit / check_in_hand | **2.36x** round (pure 6.02s / fast 2.55s) | micro: beats 11.3x, decompose_matching 6.9x, validate_follow 4.0x; 10k+ randomized parity cases per function; hashes identical |

@@ -96,6 +96,8 @@ def main() -> None:
     n_rounds = int(sys.argv[2])
     n_workers = int(sys.argv[3]) if len(sys.argv) > 3 else 9
     n_det = int(sys.argv[4]) if len(sys.argv) > 4 else 10
+    off = int(sys.argv[5]) if len(sys.argv) > 5 else 0  # worker-id offset:
+    # lets a second MACHINE join the same dataset (disjoint seeds+shards)
     per = n_rounds // n_workers
     # Provenance marker: nets trained on this data must use the SAME
     # ballot family at play time (Elo-798 rule).
@@ -112,7 +114,7 @@ def main() -> None:
     t0 = time.time()
     with mp.get_context("spawn").Pool(n_workers) as pool:
         counts = pool.map(worker,
-                          [(i, per, out_dir, n_det) for i in range(n_workers)])
+                          [(off + i, per, out_dir, n_det) for i in range(n_workers)])
     dt = time.time() - t0
     print(f"done: {sum(counts)} rounds in {dt/60:.0f} min "
           f"({sum(counts)/dt:.1f} rounds/s aggregate) -> {out_dir}")

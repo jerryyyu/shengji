@@ -9,3 +9,8 @@ logs/
 .env
 rl_data/
 *.pt
+
+# Cython build artifacts (rebuild: cd server && uv run python setup.py build_ext --inplace)
+server/build/
+server/shengji/engine/_fast.c
+*.so

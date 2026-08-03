@@ -168,6 +168,22 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
 
 ## Shared-code changes affecting ALL policies
 
+- **DECLARER_PIN (2026-08-03, MCBot default ON)**: sampled worlds place
+  the declarer's SHOWN cards in the declarer's hand. Declarations are
+  public, but the sampler was scattering them — a declared trump-rank
+  PAIR got split across hands, making a beatable K-pair lead look boss
+  (RTLT R9 T1: HK-HK valued best-on-ballot without the pin, second-worst
+  with it; the bot's pick changes). Correctness-grade, `pair_is_boss`
+  precedent; confirmation duel queued.
+- **Throw penalty -> LOWEST beatable component (2026-08-03)**: a failed
+  甩牌 now forfeits the smallest/lowest beatable part, not whichever the
+  component scan met first (scan order put bigger structures first, so
+  throws were systematically over-punished). Jerry's ruling from play;
+  goldens deliberately regenerated.
+- **Determinism + cache-safety fixes (2026-08-03)**: caller-order memo
+  keys, defensive copies out of caches, sorted deck iteration. See
+  CORRECTNESS.md incident log.
+
 - **Memory.pair_void (2026-08-02)**: per-seat proof of "no pair left in
   this suit", inferred from the forced pair-matching rule (a follower who
   answers a pair/tractor lead with fewer in-suit pairs than led has, by
@@ -320,6 +336,12 @@ constraints (see BACKLOG).
 | mc-strong (N=30) | 61% ≈ default | sampling isn't the bottleneck; rollout quality is |
 
 ## Human-play validation set
+
+**Current: 1,592 human decisions / 59 completed rounds** (`rl_data/human_v3`,
+2026-08-03, +59% after the RTLT session). Ballot coverage 99.2%
+(13/1,630 off-ballot, all large throws). Miner: humans beat the bot on
+early trump-pair leads (+2.0/decision) and late mixed throws (+1.8);
+the bot beats humans on late trump-single leads (-9.6/decision).
 
 Logs are the corpus (`logs/*.jsonl`, gitignored; server logs fetched via
 `fetch_fly_logs.sh`). As of 2026-08-01: 245 genuine human play decisions

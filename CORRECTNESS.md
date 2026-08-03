@@ -14,7 +14,8 @@ bugs cost hours; correctness bugs cost weeks and are invisible.
 cd server && uv run python -m pytest tests/ -q
 ```
 
-Layers (all must pass, currently 34 tests; growing via the audit):
+Layers (all must pass, **currently 55 tests**; run in BOTH modes when
+the compiled path is involved: plain, and `SHENGJI_FAST=1`):
 1. **Unit tests** — test_engine.py, test_game.py, test_memory.py,
    test_rl.py: rules primitives, game flow, memory inference, RL codec.
 2. **Golden histories** — test_engine_parity.py: fixed-seed full rounds
@@ -60,6 +61,8 @@ Layers (all must pass, currently 34 tests; growing via the audit):
 | 08-02 | Memory deck scan iterated set(make_deck()); world sampling differed per process | hash-order nondeterminism | golden test, day 1 |
 | 08-03 | memo caches keyed on sorted cards but computed on caller order — equal-level trump-rank pairs could return a different physical split per caller | cache-key/computation mismatch | audit agent |
 | 08-03 | _throw_penalty returned a live alias into the decompose cache (latent poisoning) | mutable-cache aliasing | audit agent |
+| 08-03 | Cython prototype implemented PRE-audit memo semantics (sorted keys vs caller-order) — quarantined same day, fixed in phase 0 | two-implementation drift | contract tests, day one |
+| 08-03 | failed throws forfeited the FIRST beatable component, not the lowest (scan order over-punished) | rules bug | Jerry, from play |
 
 Update this table whenever a correctness incident occurs — the log is
 the argument for the rules.

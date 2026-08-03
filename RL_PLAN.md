@@ -9,42 +9,46 @@ AI_POLICIES.md; run archives in `server/runs/`.
 
 ---
 
-## STATE OF PLAY (2026-08-02, end of day 3)
+## STATE OF PLAY (2026-08-03 morning, day 4)
 
-**Prod (deployed tonight): mc with BOTH wide ballots** — leads 62%
-(75-45) + follows 60% (72-48) over its prior self in one day; pool 1109.
-Sourcing coverage of human plays 84.7% -> 99.3% (audit_sourcing.py).
+**Prod**: mc with BOTH wide ballots (leads 62%, follows 60% over its
+predecessor), pool 1109, deployed 08-02 evening. NOT yet deployed:
+DECLARER_PIN + the lowest-beatable throw-penalty rule + correctness
+fixes — all in main, awaiting Jerry's next deploy.
 
-**Nets — rl-v7w confirmed best by controlled same-seed anchors
-(2026-08-02 late night): v7w vs v6 across four anchors = 45/43 (smart),
-41/36 (wide-mc), 52/48 (smart-20260801), 43/42 (smart-v2) — v7w ahead
-on ALL FOUR, +1 to +5 pts. A modest, consistent, real transitive gain —
-NOT the step-change the 64.5% family duel implied.** rl-v7w details (warm from v6, 4 ep on the N=30
-textbook, ~1.5h): beat v6 in all 4 snapshots, best ep02 64.5% (129-71,
-n=200). Warm-start = standing policy (~5x iteration). CAVEAT: pool
-anchors put v7w ~v6-level (45% vs smart, 32.5% vs wide-mc) — net-vs-net
-game duels overstate transitive strength (nontransitivity + game/round
-amplification). The mc-net gap is NOT closed; mc gained more today than
-the nets did.
+**Best net: rl-v7w** (`snapshots_v7w/ep02.pt`) — warm from v6, 4 epochs
+on the N=30 textbook (~1.5h). Controlled same-seed anchors vs v6: ahead
+on all four (45/43 smart, 41/36 wide-mc, 52/48 smart-0801, 43/42
+smart-v2) — a modest, real, transitive +1..+5. Warm-start from the
+incumbent is standing policy (~5x iteration speed).
 
-**Running overnight: gen-v3** — 28k+12k rounds on Air (7 workers) +
-mini (6 workers, worker-offset), N=30, full wide-ballot teacher,
-ballot-v2 throws, TRACTOR_LOCK choice samples, META provenance. The
-first textbook written by the 1109 teacher; v8 trains WARM from
-v7w-ep02 on it.
+**gen-v3 (running, ~52%)**: the first textbook written by the 1109
+teacher — N=30, wide ballots, v2 throws, TRACTOR_LOCK choice samples,
+META provenance. Mini ~14.6k rounds banked (24 shards); Air ~6.5k (7
+shards) + phase-2 on a reduced 6k budget; mini absorbs the rebalance
+(~13k more) since its unniced workers run ~3-5x the Air's niced rate.
+Mid-run engine upgrades (memos, DECLARER_PIN, penalty rule) mean later
+shards are strictly better-informed; 2 shards from the buggy-memo
+window are QUARANTINED (`rl_data/gen_v3_quarantine/`, excluded from
+training).
 
-**Today's other verdicts**: 9-entrant distributed pool (Air, chunked,
-~40min) — table in AI_POLICIES; v6.1 human-blend: +6->+8 agreement
-across epochs (51->57->59%) at ~2-4pt strength tax, stopped at ep2,
-rerun later on v8 + human_v2; vleaf v1 FAILED gate (45% vs wide mc —
-retry with v7w value head); heuristics batch 1 (ACE_SEQ,
-NO_OPEN_POINT_SUIT) both exact ties, off; expert-strategy research
-(9 ranked candidates) + ShengJi+ review in server/runs/.
+**Engine speed: Cython phases 0-2 merged** — 3.42x per MC round
+(5.74s -> 1.68s), 55/55 tests in BOTH modes, goldens byte-identical
+across 6 seeds. Opt-in only (`SHENGJI_FAST=1`); a deep validation pass
+(generation-VALUE parity, 300-round sweep, duel equivalence) gates
+whether generation and duels switch over.
 
-**Fleet**: mini + Jerry's MacBook Air (ssh, Tailscale; higher security
-bar — see memory + ~/air-link.md). JOBS.md per machine = job ledger +
-inter-agent mailbox; fleet_status.sh = one-command live status; hourly
-utilization cron + daily 8:53 maintenance (session-scoped).
+**Correctness**: suite 34 -> 55 tests overnight. Two audit-found bugs
+fixed (cache-key/computation mismatch; live cache alias in the throw
+penalty), plus hash-order determinism repairs. The golden-history guard
+caught two of its own regressions on day one. See CORRECTNESS.md.
+
+**From RTLT (Jerry's session, xray-verified)**: DECLARER_PIN flips the
+K-pair-into-declared-pair blunder at the exact position (HK-HK went
+from best-on-ballot to second-worst); the ducked over-ruff root cause
+is that rollout policies don't model a partner FEEDING points to the
+winner (ANTICIPATE_FEED queued — those 3 lapses = 45 of 50 attacker
+points that round). Human corpus now 1,592 decisions (+59%).
 
 ## ⚡ PENDING CONFIRMATION (2026-08-03 ~02:30)
 

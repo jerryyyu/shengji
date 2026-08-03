@@ -25,13 +25,25 @@ from shengji.engine.cards import TRUMP, Ordering, make_deck  # noqa: E402
 from shengji.engine.game import Game  # noqa: E402
 
 
-def one_round() -> tuple[float, str]:
+def one_round(seed: int = 7) -> tuple[float, str]:
     t0 = perf_counter()
-    game = Game(random.Random(7))
+    game = Game(random.Random(seed))
     play_round(game, [MCBot(seed=i) for i in range(4)])
     dt = perf_counter() - t0
     hist = [[p.seat, sorted(p.cards)] for t in game.round.history for p in t.plays]
     return dt, hashlib.sha256(json.dumps(hist).encode()).hexdigest()[:16]
+
+
+def diff_seeds(seeds) -> None:
+    """Differential evidence beyond seed 7: pure vs fast history hash per
+    seed (no timing claims — just byte-identity of full MC rounds)."""
+    for seed in seeds:
+        _, hp = one_round(seed)
+        assert fast.activate(), "extension not built"
+        _, hf = one_round(seed)
+        fast.deactivate()
+        tag = "IDENTICAL" if hp == hf else "MISMATCH (BUG!)"
+        print(f"seed {seed}: pure {hp}  fast {hf}  -> {tag}")
 
 
 def bench_round(reps: int = 3) -> None:
@@ -166,9 +178,14 @@ def _swallow(fn, *args):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--micro", action="store_true", help="microbench only")
+    ap.add_argument("--diff-seeds", type=int, nargs="*", metavar="SEED",
+                    help="extra pure-vs-fast history-hash checks")
     args = ap.parse_args()
     if not fast.HAVE_FAST:
         sys.exit("extension not built: uv run python setup.py build_ext --inplace")
+    if args.diff_seeds:
+        diff_seeds(args.diff_seeds)
+        sys.exit(0)
     bench_micro()
     if not args.micro:
         bench_round()

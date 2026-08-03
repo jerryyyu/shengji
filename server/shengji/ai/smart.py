@@ -37,6 +37,14 @@ class SmartBot(HeuristicBot):
     #                         ruff-risky ones (expert research #1, 2026-08-02)
     NO_OPEN_POINT_SUIT = False  # don't open point-bearing suits we don't
     #                             boss (expert research #3, 2026-08-02)
+    KITTY_POINT_POLICY = False  # expert research #2: numeric bury caps by
+    #   trump strength — weak trump hard-caps buried points at <=5; a locked
+    #   hand DELIBERATELY buries unprotectable 10s/Ks to bank them at the
+    #   kitty multiplier (91y dealer series; Sina 保底原则)
+    TREE_PLANTING = False   # expert research #4 (树套): with a 6+ card side
+    #   suit holding top pairs, lead LOW from it early to exhaust the suit,
+    #   then cash the retained tops. Deliberately OVERRIDES the pairs-first
+    #   control-lead order for these hands (gameabc: "不懂树套就不算高手")
     PAIR_VOID_BOSS = False  # lead a LOW pair once all opponents have proven
     #                         pair-void in its suit (forced pair-matching
     #                         makes a broken answer proof; user, 2026-08-02)
@@ -101,6 +109,14 @@ class SmartBot(HeuristicBot):
 
     # ------------------------------------------------------------------- bury
     def _bury_points_mult(self, trump_count: int, has_big_joker: bool) -> float:
+        if self.KITTY_POINT_POLICY:
+            # locked hand: points in the kitty are BANKED at the multiplier
+            if trump_count >= 13 and has_big_joker:
+                return 0.5
+            # can't defend the last trick: points must not go down
+            if trump_count < 11 or not has_big_joker:
+                return 12.0
+            return 2.5
         if not self.BURY_TRUMP_GATE:
             return super()._bury_points_mult(trump_count, has_big_joker)
         if trump_count >= 11 and has_big_joker:
@@ -316,6 +332,22 @@ class SmartBot(HeuristicBot):
         # 4) Low card from the longest plain suit no opponent has shown void in.
         safe = [(len(by_suit[s]), s) for s in PLAIN_SUITS
                 if by_suit[s] and not any(s in mem.voids[op] for op in opps)]
+        if self.TREE_PLANTING and len(hand) >= 16:
+            # 树套: a long side suit with top pairs is worth EXHAUSTING first
+            # — lead low to strip the others, then the retained tops run.
+            # Only early (hand >= 16) and only ruff-safe suits.
+            for s_ in PLAIN_SUITS:
+                cs = by_suit[s_]
+                if len(cs) < 6 or mem.ruff_risk(s_, opps):
+                    continue
+                cnt_s = Counter(cs)
+                tops = [c for c, k in cnt_s.items()
+                        if k >= 2 and o.level(c) >= len(o.plain_ranks) - 3]
+                if tops:                      # AA / KK / QQ retained
+                    low = self._lowest(cs, o, avoid_points=True)
+                    if o.level(low) < min(o.level(t) for t in tops):
+                        return [low]
+
         if self.CONTROL_LEADS:
             # User-specified leader hierarchy (54% of in-control bot leads
             # were weak junk): non-boss PAIRS first (only a rarer higher

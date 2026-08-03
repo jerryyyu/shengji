@@ -27,8 +27,13 @@ teacher — N=30, wide ballots, v2 throws, TRACTOR_LOCK choice samples,
 META provenance. Mini ~14.6k rounds banked (24 shards); Air ~6.5k (7
 shards) + phase-2 on a reduced 6k budget; mini absorbs the rebalance
 (~13k more) since its unniced workers run ~3-5x the Air's niced rate.
-Mid-run engine upgrades (memos, DECLARER_PIN, penalty rule) mean later
-shards are strictly better-informed; 2 shards from the buggy-memo
+PROVENANCE (verified 08-03 maintenance): the Air ran phase-1 on the
+ORIGINAL engine until 08:15 (7 shards / 6.5k rounds — no DECLARER_PIN,
+old throw-penalty rule); its phase-2 (ids 300-306) and the mini
+phase-2/3 shards carry both fixes. Mixed-generation data is acceptable
+(same rules, better-informed later sampling) but v8 post-mortems should
+know the split. Mid-run engine upgrades mean later shards are
+strictly better-informed; 2 shards from the buggy-memo
 window are QUARANTINED (`rl_data/gen_v3_quarantine/`, excluded from
 training).
 

@@ -13,7 +13,9 @@ shengji-server = "shengji.api.server:main"
 
 [dependency-groups]
 dev = [
+    "cython>=3.2.9",
     "pytest>=8",
+    "setuptools>=83.0.0",
     "websockets>=12",
 ]
 rl = [

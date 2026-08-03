@@ -32,8 +32,8 @@ overnight gens become 3h, and every gate duel runs in minutes.
 | # | gap | fix | est. win | status |
 |---|---|---|---|---|
 | 1 | Memory rebuilt per decision (full history rescan, O(tricks²)/round) | incremental Memory carried through rollouts | 1.1-1.2x | open |
-| 2 | str card codes ("H10") → dict-hash on every eff_suit/level/beats; list-of-str hands | u8 int cards + array hands inside engine primitives | enabler for #3 | open — most of the work AND most of the win |
-| 3 | interpreted Python hot loop (per round: 181k heuristic decisions, 845k decompose, 282k beats, 278k validate_follow) | Cython over combos/legal/heuristic AFTER #2 | **10-20x combined** | open — "the 10-30x generation" backlog item |
+| 2 | str card codes ("H10") → dict-hash on every eff_suit/level/beats; list-of-str hands | u8 int cards + array hands inside engine primitives | enabler for #3 | prototype (08-02): Cython leaf port of decompose/find_tractor_runs/suit_cards with str at all boundaries — primitives 2-6x, round only **1.11x** (goldens byte-identical). Lesson: leaf porting is boundary-conversion-bound; full win needs int-native hands through the rollout loop. See `server/shengji/engine/_fast.pyx` + `fast.py` |
+| 3 | interpreted Python hot loop (per round: 181k heuristic decisions, 845k decompose, 282k beats, 278k validate_follow) | Cython over combos/legal/heuristic AFTER #2 | **10-20x combined** | open — toolchain + parity gate proven by the #2 prototype ("the 10-30x generation" backlog item) |
 | 4 | Round/Trick clone churn per rollout (3.8k clones/round) | reusable scratch state | ~1.1x | open |
 | 5 | rollouts always play to round end | early-terminate decided brackets | speculative — BIASES values, gate carefully | parked |
 | 6 | single-machine ceiling | rented 32-core burst (~$5/gen) | 4x fleet, zero code | available anytime |

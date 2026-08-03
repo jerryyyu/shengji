@@ -79,8 +79,13 @@ def validate_lead(play: list[str], hand: list[str], other_hands: list[list[str]]
 def _throw_penalty(comp) -> tuple[list[str], str]:
     """Force the BEATEN component (standard rule): a failed low-pair+ace
     throw plays the low pair into the higher pair that exposed it — not
-    the boss ace (the old globally-lowest rule barely punished)."""
-    return comp.cards, "Throw failed — forced to play " + "+".join(comp.cards)
+    the boss ace (the old globally-lowest rule barely punished).
+
+    Returns a COPY: comp.cards aliases the Decomposition held in the
+    per-Ordering decompose cache, and handing the caller the live list
+    lets any in-place mutation poison the cache (the find_tractor_runs
+    bug class, caught 2026-08-02)."""
+    return list(comp.cards), "Throw failed — forced to play " + "+".join(comp.cards)
 
 
 def validate_follow(play: list[str], hand: list[str], lead: list[str],

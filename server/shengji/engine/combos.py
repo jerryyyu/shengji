@@ -55,8 +55,14 @@ class Decomposition:
 def decompose(cards: list[str], ordering: Ordering) -> Decomposition:
     # Memo per-Ordering (perf audit 2026-08-02): 845k calls/round in MC
     # rollouts, huge repeat rate. Cache lives on the Ordering (per-round
-    # lifetime => bounded, auto-invalidated). Pure function => safe.
-    key = tuple(sorted(cards))
+    # lifetime => bounded, auto-invalidated).
+    # Key is the EXACT input order, not sorted (audit 2026-08-02): the
+    # greedy decomposition is order-dependent when distinct codes share a
+    # level (off-suit trump-rank pairs, e.g. S7S7 vs D7D7 under H7) — a
+    # sorted key collapsed different orders onto one entry, so a cache hit
+    # could return a different physical-card split than the reference
+    # computation for the caller's order (first caller's order won).
+    key = tuple(cards)
     cache = getattr(ordering, "_dcache", None)
     if cache is None:
         cache = {}
@@ -172,7 +178,9 @@ def pair_count(cards: list[str]) -> int:
 
 def find_tractor_runs(cards: list[str], ordering: Ordering, k: int) -> list[list[str]]:
     # Memo (perf pass 2, 2026-08-02): 815k calls/round post-decompose-memo.
-    key = (tuple(sorted(cards)), k)
+    # Exact-order key (see decompose): window code choice at a shared level
+    # depends on input order, so sorted keys broke cached == reference.
+    key = (tuple(cards), k)
     cache = getattr(ordering, "_trcache", None)
     if cache is None:
         cache = {}

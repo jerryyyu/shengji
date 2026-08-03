@@ -255,7 +255,8 @@ class MCBot(SmartBot):
                 comps = decompose(cards, o).components
                 paired = [c for c in comps if c.pair_len]
                 if paired:
-                    add(max(paired, key=lambda c: (c.pair_len, c.top)).cards)
+                    # list(): .cards aliases the decompose cache
+                    add(list(max(paired, key=lambda c: (c.pair_len, c.top)).cards))
                 # top single (the ace lead) must always be on the ballot
                 add([max(cards, key=o.level)])
                 add([self._lowest(cards, o, avoid_points=True)])
@@ -266,7 +267,7 @@ class MCBot(SmartBot):
                     comps = decompose(trumps, o).components
                     paired = [c for c in comps if c.pair_len]
                     if paired:
-                        add(max(paired, key=lambda c: (c.pair_len, c.top)).cards)
+                        add(list(max(paired, key=lambda c: (c.pair_len, c.top)).cards))
                     add([max(trumps, key=o.level)])  # boss/top trump drain
         else:
             add(self._follow(rnd, seat))  # SmartBot's pick

@@ -61,8 +61,28 @@ class RecordingMCBot(MCBot):
         return play
 
 
+def _maybe_fast() -> bool:
+    """Opt into the compiled engine (SHENGJI_FAST=1). Must run INSIDE the
+    worker: mp spawn re-imports in children, so activating in main() does
+    nothing. Fails LOUDLY — a silent fallback to pure Python would run
+    3.5x slower and blow the ETA without any signal (validation agent,
+    2026-08-03)."""
+    import os as _os
+    if _os.environ.get("SHENGJI_FAST") != "1":
+        return False
+    from ..engine import fast
+    assert fast.activate(), (
+        "SHENGJI_FAST=1 but shengji/engine/_fast is not built; run: "
+        "uv run python setup.py build_ext --inplace")
+    return True
+
+
 def worker(args):
     worker_id, n_rounds, out_dir, n_det = args
+    fast_on = _maybe_fast()
+    if worker_id % 100 == 0:
+        print(f"worker{worker_id}: engine={'FAST' if fast_on else 'pure'}",
+              flush=True)
     writer = TrajectoryWriter(out_dir)
     writer._shard = worker_id * 1000  # disjoint shard numbering per worker
     bot = RecordingMCBot(seed=worker_id)
@@ -112,7 +132,11 @@ def main() -> None:
     with open(f"{out_dir}/META.json", "w") as f:
         json.dump({"ballot": "v2-wide", "include_throws": True,
                    "n_det": n_det, "teacher_git": sha,
-                   "tractor_lock_recorded": True}, f, indent=1)
+                   "tractor_lock_recorded": True,
+                   # engine mode is provenance: fast-path data must be
+                   # scopable/quarantinable (Elo-798 rule)
+                   "engine": ("fast" if os.environ.get("SHENGJI_FAST") == "1"
+                              else "pure")}, f, indent=1)
     t0 = time.time()
     with mp.get_context("spawn").Pool(n_workers) as pool:
         counts = pool.map(worker,

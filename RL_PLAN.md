@@ -9,52 +9,66 @@ AI_POLICIES.md; run archives in `server/runs/`.
 
 ---
 
-## STATE OF PLAY (2026-08-03 morning, day 4)
+## STATE OF PLAY (2026-08-03, end of day 4)
 
-**Prod**: mc with BOTH wide ballots (leads 62%, follows 60% over its
-predecessor), pool 1109, deployed 08-02 evening. NOT yet deployed:
-DECLARER_PIN + the lowest-beatable throw-penalty rule + correctness
-fixes — all in main, awaiting Jerry's next deploy.
+### 1. Value-leaf hybrid: the leading candidate, NOT a proven win
 
-**Best net: rl-v7w** (`snapshots_v7w/ep02.pt`) — warm from v6, 4 epochs
-on the N=30 textbook (~1.5h). Controlled same-seed anchors vs v6: ahead
-on all four (45/43 smart, 41/36 wide-mc, 52/48 smart-0801, 43/42
-smart-v2) — a modest, real, transitive +1..+5. Warm-start from the
-incumbent is standing policy (~5x iteration speed).
+`mc-vleaf-v7w-ep02` = MC search, rollouts truncated at 4 tricks, leaves
+scored by rl-v7w's VALUE head. It **tops the seeded pool at Elo 1151**
+(mc 1119, smart 1093, rl-v9warm 1069, rl-v7w 1042, heuristic 1000).
 
-**gen-v3 (running, ~52%)**: the first textbook written by the 1109
-teacher — N=30, wide ballots, v2 throws, TRACTOR_LOCK choice samples,
-META provenance. Mini ~14.6k rounds banked (24 shards); Air ~6.5k (7
-shards) + phase-2 on a reduced 6k budget; mini absorbs the rebalance
-(~13k more) since its unniced workers run ~3-5x the Air's niced rate.
-PROVENANCE (verified 08-03 maintenance): the Air ran phase-1 on the
-ORIGINAL engine until 08:15 (7 shards / 6.5k rounds — no DECLARER_PIN,
-old throw-penalty rule); its phase-2 (ids 300-306) and the mini
-phase-2/3 shards carry both fixes. Mixed-generation data is acceptable
-(same rules, better-informed later sampling) but v8 post-mortems should
-know the split. Mid-run engine upgrades mean later shards are
-strictly better-informed; 2 shards from the buggy-memo
-window are QUARANTINED (`rl_data/gen_v3_quarantine/`, excluded from
-training).
+**But it is not proven superior to mc** (Codex ruling, 18:20, accepted):
+- The only corrected-protocol DIRECT evidence is the seeded pairing
+  **64-56 = 53.3%, Wilson 95% CI [44.4%, 62.0%] — the interval INCLUDES
+  50%.**
+- The +32 Elo is an INDIRECT Bradley-Terry estimate, not a direct win.
+- The earlier "404-316 = 56.1%, 3.3 sigma" pooling was **invalid**: it
+  mixed mirrored seed clusters, reused/overlapping seed blocks, a
+  sequentially extended test, and two explicitly unseeded runs.
+- Earlier headlines in this file claiming "ADOPTED", 60.3%, and Elo 1163
+  have been REMOVED. They were produced under the unseeded protocol.
 
-**Engine speed: Cython phases 0-2 merged** — 3.42x per MC round
-(5.74s -> 1.68s), 55/55 tests in BOTH modes, goldens byte-identical
-across 6 seeds. Opt-in only (`SHENGJI_FAST=1`); a deep validation pass
-(generation-VALUE parity, 300-round sweep, duel equivalence) gates
-whether generation and duels switch over.
+**Settling experiment (preregistered, not yet run):** a fresh
+deterministic duel over 300-500 INDEPENDENT mirrored seed clusters, no
+seed reuse, per-seed records saved, paired level-utility reported
+alongside round wins, and an equal-wall-time gate (the hybrid reallocates
+compute). Predeclare the bar before running: lower bound >50%, or the
+stronger >55% adoption target.
 
-**Correctness**: suite 34 -> 55 tests overnight. Two audit-found bugs
-fixed (cache-key/computation mismatch; live cache alias in the throw
-penalty), plus hash-order determinism repairs. The golden-history guard
-caught two of its own regressions on day one. See CORRECTNESS.md.
+Production-ready regardless of the verdict: numpy inference
+(`rl/npnet.py`), no torch in the image, 14ms/decision, identical play
+verified vs torch.
 
-**From RTLT (Jerry's session, xray-verified)**: DECLARER_PIN flips the
-K-pair-into-declared-pair blunder at the exact position (HK-HK went
-from best-on-ballot to second-worst); the ducked over-ruff root cause
-is that rollout policies don't model a partner FEEDING points to the
-winner (ANTICIPATE_FEED WITHDRAWN 2026-08-03: probe shows rollouts DO feed
-(38/38); the search preferred the duck WITH feeding modelled, so those
-plays were expected-value-correct and lost to variance, not lapses). Human corpus now 1,592 decisions (+59%).
+### 2. Standalone policy line: no lever has moved it, but no ceiling proven
+
+Tried and null so far: more data, better-than-search labels (gen-v4),
+more epochs, a corrected margin-aware target, warm-vs-scratch init.
+Nets sit ~38-48% vs mc throughout. **However** (Codex, accepted): the
+6-epoch v9 arms BOTH peaked at their last epoch, so they are
+undertrained; they also used different LRs, so warm-vs-scratch is
+"no DETECTED difference", not an equivalence result. Extensions to 16
+epochs are running. A stronger-teacher failure AFTER convergence, with
+the baseline feature representable, would be evidence for an
+architecture/encoding ceiling — the current result is not.
+
+### 3. gen-v4: the first dataset whose labels come from a hybrid teacher
+
+36,360 rounds / 1.96M decisions, teacher `mc-vleaf-v7w-ep02`, fast
+engine, choice-only TRACTOR_LOCK rows included (19,691 per epoch).
+`rl-v9warm` trained on it sits 27 Elo above rl-v7w in the seeded pool —
+the first movement in the net line for several generations, though a
+clean direct seeded v9-vs-v7w comparison has NOT been run yet.
+
+### 4. Measurement discipline (all learned the hard way today)
+
+- Anchor/pool opponents were UNSEEDED until 08-03: the same v7w anchor
+  read 41% then 31%; the same vleaf pairing read 58% then 47.5%. FIXED
+  (`play_pairing` seeds both sides; pairings now reproduce exactly).
+- Consequence: every pre-fix single-pairing comparison under ~10 points
+  is noise, including "v8 is below v7w" (retracted).
+- Do not pool heterogeneous blocks as one binomial.
+- A mid-run PROGRESS number is not a result.
+- Verify the artifact, not the exit code (four silent no-ops today).
 
 ## KEY LEARNINGS (load-bearing; each cost real compute to buy)
 

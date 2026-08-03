@@ -39,7 +39,35 @@ Production-ready regardless of the verdict: numpy inference
 (`rl/npnet.py`), no torch in the image, 14ms/decision, identical play
 verified vs torch.
 
-### 2. Standalone policy line: no lever has moved it, but no ceiling proven
+### 1b. FLYWHEEL TEST: NEGATIVE (2026-08-03 20:30)
+
+v7w's value head generated gen-v4; v9warm learned from gen-v4. Does
+v9warm's head make a BETTER hybrid than the head that produced its
+training data?
+
+**No.** `vleaf(v9warm-ep05)` vs mc = **64-56 (53%)** on the same seeds
+where `vleaf(v7w-ep02)` scored 60%. Same seeds, same protocol — the new
+head is no better, possibly slightly worse (well inside noise either
+way). So one turn of the loop produced no compounding: a stronger
+teacher yielded a student whose VALUE HEAD is not a stronger evaluator.
+
+This is the single most informative negative of the day. The
+expert-iteration flywheel requires each turn to improve the evaluator;
+this turn did not. Either the value head is at its own ceiling
+(architecture/encoding), or one generation is too small a step to see,
+or gen-v4's labels are not actually better despite coming from a
+higher-rated teacher (plausible: the hybrid's ADVANTAGE over mc is
+itself unproven — 53.3% with a CI including 50%).
+
+### 1c. Epoch count: SETTLED — strength peaks near epoch 8
+
+v9warm-16 probe curve: ep05 56%, **ep08 60%**, ep11 56%, ep13 54%,
+ep15 52%. A clean rise-and-fall, so the 6-epoch arms WERE undertrained
+and 16 is past the peak. Best snapshot anchors: **56% vs smart** (the
+best any standalone net has managed) and 37% vs mc. Standing recipe:
+~8 epochs with per-epoch snapshot-probe selection.
+
+### 2. Standalone policy line: no lever has moved it vs mc
 
 Tried and null so far: more data, better-than-search labels (gen-v4),
 more epochs, a corrected margin-aware target, warm-vs-scratch init.

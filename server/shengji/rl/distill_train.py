@@ -1,7 +1,13 @@
 """Search distillation trainer (RL_PLAN Step 1).
 
 Trains QNetDueling on MCBot's per-candidate values: MSE over ALL candidates
-(dense targets) plus a cross-entropy term on the search's chosen action.
+(dense targets) plus a cross-entropy term against the SOFTENED VALUE
+DISTRIBUTION softmax(values/T) — NOT the teacher's post-processed choice
+(margin / point-shy / TRACTOR_LOCK are not represented in valued rows).
+Choice-only rows (has_values=False, e.g. TRACTOR_LOCK short-circuits)
+are trained with hard CE on `chosen`, which is the only signal they
+carry. Codex audit 2026-08-03 caught that these rows were being dropped
+entirely.
 Vectorized over ragged candidate sets via segment indices.
 
 Usage:
@@ -15,6 +21,7 @@ import sys
 from pathlib import Path
 
 CE_WEIGHT = 1.0
+CHOICE_CE_WEIGHT = 1.0  # hard-CE weight for choice-only (locked) rows
 BATCH_DECISIONS = 512
 VALUE_SCALE = 100.0  # MC values are in points (±100+); normalize so the
 #                      MSE term is O(1) and balances the CE term
@@ -55,13 +62,14 @@ def main() -> None:
           f"device={dev}", flush=True)
 
     def run_shard(shard, training: bool):
-        nonlocal tot_val, tot_ce, n_batches, correct, total
+        nonlocal tot_val, tot_ce, n_batches, correct, total, n_choice
         import numpy as _np
         z = _np.load(shard)
         obs, acts = z["obs"], z["actions"]
         offs, chosen = z["offsets"], z["chosen"]
         values, hasv = z["action_values"], z["has_values"]
         idx_all = _np.flatnonzero(hasv & (_np.diff(offs) > 1))
+        idx_choice = _np.flatnonzero((~hasv.astype(bool)) & (_np.diff(offs) > 1))
         if training:
             _np.random.shuffle(idx_all)
         for bstart in range(0, len(idx_all), BATCH_DECISIONS):
@@ -114,6 +122,43 @@ def main() -> None:
                 correct += int(is_best[chr_].sum().item())
                 total += len(dec)
 
+        # Choice-only rows (no teacher values): hard CE on the chosen
+        # action. These are the teacher's most assertive plays
+        # (TRACTOR_LOCK leads) and were silently dropped until the Codex
+        # audit, 2026-08-03. Ballots here are the wide v2 enumeration
+        # (up to ~500 candidates) — a different distribution from valued
+        # rows, so they are trained but NOT used to justify a play-time
+        # ballot change (Elo-798 rule).
+        for bstart in range(0, len(idx_choice), BATCH_DECISIONS):
+            dec = idx_choice[bstart:bstart + BATCH_DECISIONS]
+            seg_list, rows, ch_row = [], [], []
+            base = 0
+            for di, i in enumerate(dec):
+                a, b = offs[i], offs[i + 1]
+                rows.append(acts[a:b])
+                seg_list.append(_np.full(b - a, di))
+                ch_row.append(base + chosen[i])
+                base += b - a
+            o = torch.as_tensor(obs[dec], device=dev)
+            ar = torch.as_tensor(_np.concatenate(rows), device=dev)
+            seg = torch.as_tensor(_np.concatenate(seg_list),
+                                  dtype=torch.long, device=dev)
+            chr_ = torch.as_tensor(_np.array(ch_row), dtype=torch.long,
+                                   device=dev)
+            with torch.set_grad_enabled(training):
+                _, ql = net.heads_grouped(o, ar, seg)
+                xmax = torch.full((len(dec),), -1e9, device=dev)
+                xmax = xmax.scatter_reduce(0, seg, ql, reduce="amax")
+                ex = torch.exp(ql - xmax[seg])
+                den = torch.zeros(len(dec), device=dev).index_add_(0, seg, ex)
+                logp = (ql - xmax[seg]) - torch.log(den[seg] + 1e-9)
+                loss_c = CHOICE_CE_WEIGHT * (-logp[chr_].mean())
+                if training:
+                    opt.zero_grad()
+                    loss_c.backward()
+                    opt.step()
+            n_choice += len(dec)
+
     # Heartbeat: long epochs are opaque (block-buffered logs, hours per
     # line) — emit running losses per SHARD, plus a machine-readable
     # trail beside the checkpoint for stability monitoring.
@@ -123,7 +168,7 @@ def main() -> None:
 
     for epoch in range(epochs):
         tot_val = tot_ce = 0.0
-        n_batches = correct = total = 0
+        n_batches = correct = total = n_choice = 0
         for si, shard in enumerate(train_shards):
             run_shard(shard, training=True)
             print(f"  ep {epoch} shard {si + 1}/{len(train_shards)}: "
@@ -138,7 +183,7 @@ def main() -> None:
                      "ce": round(tot_ce / n_batches, 4),
                      "agree": round(correct / max(total, 1), 4)}) + "\n")
         train_msg = (f"train mse {tot_val/n_batches:.3f} ce {tot_ce/n_batches:.3f} "
-                     f"agree {correct/max(total,1):.1%}")
+                     f"agree {correct/max(total,1):.1%} choiceCE_rows {n_choice}")
         tot_val = tot_ce = 0.0
         n_batches = correct = total = 0
         for shard in val_shards:

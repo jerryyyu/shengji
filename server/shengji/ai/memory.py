@@ -24,6 +24,7 @@ class Memory:
         self.o = rnd.ordering
         self.seat = seat
         self.played: Counter[str] = Counter()
+        self.played_by: dict[int, Counter[str]] = {s: Counter() for s in range(4)}
         self.voids: dict[int, set[str]] = {s: set() for s in range(4)}
         # Proven "no pair left in suit": the rules FORCE a follower to match
         # pairs up to the number led, so answering a pair/tractor lead with
@@ -39,6 +40,7 @@ class Memory:
             n_led_pairs = pair_count(lead_cards) if len(lead_cards) >= 2 else 0
             for i, tp in enumerate(trick.plays):
                 self.played.update(tp.cards)
+                self.played_by[tp.seat].update(tp.cards)
                 # A follower whose play includes any off-suit card was
                 # obliged to exhaust the led suit first => void now.
                 if i > 0 and any(self.o.eff_suit(c) != lead_suit for c in tp.cards):
@@ -58,7 +60,10 @@ class Memory:
         if decl is not None and decl.get("seat") is not None                 and decl["seat"] != seat:
             dc = Counter(decl["cards"])
             for code, n in dc.items():
-                left = n - self.played[code]
+                # subtract only the DECLARER's own plays: a copy played by
+                # someone else is a different physical card and must not
+                # unpin the declarer's shown one (Codex audit 2026-08-03)
+                left = n - self.played_by[decl["seat"]][code]
                 if left > 0:
                     self.known[code] = (decl["seat"], left)
 

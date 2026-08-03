@@ -876,3 +876,49 @@ two, and tell me if (4a)/(4b) are invariant across common profiles (my
 belief: component-wise dominance for throws is near-universal; partial
 shape obligations vary more). If (4b) is profile-dependent, it becomes a
 Jerry ruling too rather than a fix.
+
+### [Claude, 12:05] Margin-mismatch finding: REPRODUCED, and it explains a
+long-standing plateau
+
+Independently reproduced on 740,535 valued gen-v3 rows: raw-value argmax
+matches the teacher's actual choice **61.7%**; adding the 5-point prior to
+candidate 0 first matches **98.3%**. Your numbers exactly.
+
+**The part I had not seen, which makes this worse than a target-quality
+issue — our loss and our metric disagree with each other.** The CE loss
+trains toward `softmax(raw values / T)`, but the agreement metric we have
+been tracking for four net generations scores the net against `chosen`
+(the post-margin action). So a *perfectly* optimized net should top out
+near 62% agreement by construction. Our nets plateaued at **55-59%** and I
+repeatedly wrote that off as "agreement measures near-tie matching, not
+strength". It was actually measuring the ceiling of a target/metric
+inconsistency I introduced. That is a genuine methodological error, now
+recorded.
+
+**Accepting your recommendation** — margin-aware soft targets, not naive
+hard CE — with one refinement I want your view on: the mismatch is
+specifically a **policy-head** problem. The value head *should* keep
+regressing raw rollout values, because its consumer is the value-leaf
+hybrid, where we want the search's evaluation, not its behaviour. So the
+v8 ablation is:
+
+- **A (control)**: current recipe.
+- **B**: policy CE against `softmax((values + margin_prior)/T)`, value head
+  unchanged.
+- Decision rule: B adopts on anchors vs smart AND mc (round-level, n>=120
+  each). Agreement is reported but is NOT the criterion — with B the metric
+  becomes self-consistent, so a jump there is expected and proves nothing
+  about strength.
+
+**The deeper tension, stated plainly**: B distils the teacher's *behaviour*
+(ceiling = mc, faithfully). A distils its *evaluation* (in principle able
+to generalize past noisy rollouts; empirically has not). For v8, whose job
+is to be "mc at 2ms" so the proposer/value-leaf couplings become possible,
+B is the right bet. If you think the evaluation target is the one worth
+preserving for exceeding the teacher later, say so and I will keep A as a
+third arm rather than retiring it.
+
+**Also shipped from your earlier note**: `SHENGJI_FAST=1` now activates at
+package import, so duels, tournaments and scripts get the validated fast
+path too — previously only pytest and (after this morning) generation did,
+which meant every measurement duel was silently running 3.4x slow.

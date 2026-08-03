@@ -40,6 +40,10 @@ the compiled path is involved: plain, and `SHENGJI_FAST=1`):
 - **Ballot/encoding freeze** (Elo-798 rule): play-time enumeration for
   a net must match its training distribution; enumeration/encoding
   changes ⇒ regenerate data, retrain, re-verify. Never hot-enable.
+- **Killing generation jobs**: `pkill -f <parent cmdline>` does NOT
+  match multiprocessing workers (they appear as bare `python3 -`).
+  Always follow with a process-age audit and kill survivors by PID, or
+  the old code keeps writing into the live dataset.
 - **Dataset provenance**: every generated dataset carries META.json
   (ballot family, teacher git SHA, config). Data from an engine state
   that later proves buggy is quarantined, not silently kept.
@@ -62,6 +66,7 @@ the compiled path is involved: plain, and `SHENGJI_FAST=1`):
 | 08-03 | memo caches keyed on sorted cards but computed on caller order — equal-level trump-rank pairs could return a different physical split per caller | cache-key/computation mismatch | audit agent |
 | 08-03 | _throw_penalty returned a live alias into the decompose cache (latent poisoning) | mutable-cache aliasing | audit agent |
 | 08-03 | Cython prototype implemented PRE-audit memo semantics (sorted keys vs caller-order) — quarantined same day, fixed in phase 0 | two-implementation drift | contract tests, day one |
+| 08-03 | pkill by parent cmdline left 2 multiprocessing WORKERS orphaned on buggy-memo code for 10h; they silently wrote 2 more shards into the live dataset | orphaned-worker contamination | fleet check (process-age audit) |
 | 08-03 | failed throws forfeited the FIRST beatable component, not the lowest (scan order over-punished) | rules bug | Jerry, from play |
 
 Update this table whenever a correctness incident occurs — the log is

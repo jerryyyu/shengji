@@ -3,7 +3,34 @@
 Open work, roughly ordered by value. History of completed items lives in git
 and in AI_POLICIES.md; this file tracks what's NEXT.
 
-## AI / training  (current state: mc ~1140 > rl-v6 ~net line ~70 behind — see AI_POLICIES.md)
+## AI / training
+
+**Top of the list after day 4 (2026-08-03):**
+- [x] ~~warm vs scratch~~ **ANSWERED: no difference** (48%/39% vs
+      48%/38%, seeded anchors, identical data). Warm neither traps nor
+      helps. Both arms peaked at their LAST snapshot => both
+      undertrained; the epochs question is open and now testable under
+      the seeded protocol.
+- [ ] **Extend the undertrained arms**: v9warm/v9scratch to 12-16
+      epochs, re-battery under seeded anchors. Cheap (~5 min/arm). This
+      is the one recipe lever not yet cleanly tested.
+- [ ] **The standalone-policy ceiling is the real problem.** Five levers
+      tried, none moved it: more data, better-than-search labels
+      (gen-v4), more epochs, corrected target (margin-aware), warm-vs-
+      scratch. Nets sit at 38-48% vs mc regardless. Candidates for the
+      actual constraint, in order of my confidence:
+      (a) the independent-candidate scoring architecture — the model
+          cannot see WHICH candidate is the heuristic baseline
+          (`is_heuristic_baseline` bit, still unbuilt);
+      (b) the encoding (531-dim; no trump-relative canonicalisation —
+          ShengJi+ reported better point differentials with it);
+      (c) the absence of ANY lookahead at play time, which is exactly
+          what the vleaf result suggests matters most.
+- [ ] **Direct V(state) head** — biggest perf AND capability item:
+      removes per-leaf enumerate_actions (32%) + encode_obs (19%),
+      ~2x generation and vleaf latency, and is a prerequisite for a
+      real PUCT tree.
+  (current state: mc ~1140 > rl-v6 ~net line ~70 behind — see AI_POLICIES.md)
 
 - [x] v7/v7-warm DONE 2026-08-02: warm-from-v6 on N=30 beat v6 in all
       4 snapshots (best ep02 64.5% n=200); warm-start = standing policy;

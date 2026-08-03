@@ -103,3 +103,18 @@ validation battery.
 - `scripts/analyze_human.py`, `scripts/eval_vs_human.py` — score human
   decisions against the bot / the whole policy ladder.
 - `scripts/fetch_fly_logs.sh` — pull prod game logs for the above.
+
+
+## Project docs
+
+| file | what it holds |
+|---|---|
+| `RL_PLAN.md` | state of play, key learnings, roadmap, measurement rules |
+| `AI_POLICIES.md` | every bot policy + toggle with its measured record |
+| `CORRECTNESS.md` | validation suite, house rules, incident index |
+| `incidents/` | postmortems (what happened, why detection was slow) |
+| `PERF.md` | profiling, shipped optimisations, ranked gaps |
+| `BACKLOG.md` | open work, roughly by value |
+| `MAINTENANCE.md` | daily routine (any session can execute it) |
+| `HANDOFF_REVIEW.md` | external-review thread (Codex <-> Claude) |
+| `DEPLOY.md` / `PROTOCOL.md` | hosting + wire protocol |

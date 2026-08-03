@@ -35,3 +35,29 @@ ssh -o BatchMode=yes -o ConnectTimeout=8 air '
   echo "  --- NOTES from Air agent (if any):"
   sed -n "/## NOTES/,\$p" ../JOBS.md | tail -n +3 | grep -v "^(leave" | head -25
 ' 2>/dev/null || echo "  Air unreachable (asleep / off tailnet / SSH off)"
+
+hdr "INTEGRITY — process identity + dataset provenance"
+# Aggregates (hot count / total CPU) hide orphans: on 2026-08-03 two
+# workers killed by pkill survived 10h on buggy code and wrote into the
+# live dataset. Identify EVERY long-running python by its open files,
+# and flag shards from worker ids that no live process owns.
+for pid in $(pgrep -f "server/.venv/bin/python"); do
+  et=$(ps -o etime= -p "$pid" | tr -d ' ')
+  # etime is [[DD-]HH:]MM:SS — only 2+ colons (or a day part) means hours
+  case "$et" in
+    *-*) hrs=99;;
+    *:*:*) hrs=${et%%:*};;
+    *) hrs=0;;
+  esac
+  tag=$(lsof -p "$pid" 2>/dev/null | grep -oE "runs/logs/[a-z0-9_]*\.log|rl_data/[a-z0-9_]+" | sort -u | head -1)
+  [ -z "$tag" ] && tag="(unidentified — INVESTIGATE)"
+  if [ "${hrs:-0}" -ge 6 ] 2>/dev/null; then
+    echo "  !! pid=$pid age=$et  $tag   <-- long-running, confirm intentional"
+  fi
+done
+for d in rl_data/gen_v3_mini rl_data/gen_v3; do
+  [ -d "$d" ] || continue
+  ids=$(ls "$d" 2>/dev/null | sed -n 's/shard_\([0-9]\{3\}\).*/\1/p' | sort -u | tr '\n' ' ')
+  echo "  $d shard-writing worker ids: ${ids:-none}"
+done
+echo "  (any id here with no matching live process = orphan; quarantine its shards)"

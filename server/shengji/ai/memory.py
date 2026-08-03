@@ -49,6 +49,19 @@ class Memory:
                     if pair_count(ins) < n_led_pairs:
                         self.pair_void[tp.seat].add(lead_suit)
 
+        # Declarer's shown cards (RTLT 2026-08-03: a declared trump-rank
+        # PAIR is provably in ONE hand — sampling it split made KK-pair
+        # leads look boss in most worlds). Track declared cards still
+        # unplayed and not our own: the sampler pins them to the declarer.
+        self.known: dict[str, tuple[int, int]] = {}  # code -> (seat, copies)
+        decl = rnd.declaration
+        if decl is not None and decl.get("seat") is not None                 and decl["seat"] != seat:
+            dc = Counter(decl["cards"])
+            for code, n in dc.items():
+                left = n - self.played[code]
+                if left > 0:
+                    self.known[code] = (decl["seat"], left)
+
         hand = Counter(rnd.hands[seat])
         self.unseen: Counter[str] = Counter()
         # sorted: set iteration is hash-randomized PER PROCESS — unseen's

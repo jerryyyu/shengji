@@ -61,6 +61,10 @@ class MCBot(SmartBot):
     #                             off-ballot — discard selection). Cap below.
     FOLLOW_MAX_CANDIDATES = 12
     SAMPLE_RETRIES = 15
+    DECLARER_PIN = True   # sampled worlds place the declarer's SHOWN cards
+    #                       in the declarer's hand (public info; RTLT: a
+    #                       declared rank pair was sampled split, making a
+    #                       beatable K-pair lead look boss)
     MARGIN = 5.0  # points/round a candidate must beat SmartBot's pick by;
     #               keeps the heuristic prior unless the search is confident.
     #               0 = pure argmax.
@@ -330,7 +334,21 @@ class MCBot(SmartBot):
             hands: dict[int, list[str]] = {s: [] for s in others}
             kitty: list[str] = []
             ok = True
+            pinned: Counter[str] = Counter()
+            if self.DECLARER_PIN:
+                # Declared cards are PUBLIC: pin them to the declarer's
+                # sampled hand instead of scattering them (RTLT incident).
+                for code, (dseat, ncopies) in mem.known.items():
+                    if dseat in hands:
+                        take = min(ncopies,
+                                   sizes[dseat] - len(hands[dseat]))
+                        for _ in range(take):
+                            hands[dseat].append(code)
+                            pinned[code] += 1
             for c in pool:
+                if pinned.get(c, 0) > 0:
+                    pinned[c] -= 1
+                    continue
                 eff = o.eff_suit(c)
                 slots = [s for s in others
                          if len(hands[s]) < sizes[s]

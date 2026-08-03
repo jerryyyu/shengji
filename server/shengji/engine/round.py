@@ -180,7 +180,11 @@ class Round:
             others = [self.hands[s] for s in range(4) if s != seat]
             cards, msg = validate_lead(cards, self.hands[seat], others, self.ordering)
             self.message = msg
-        else:
+        elif not getattr(self, "_trusted_rollout", False):
+            # Rollout fast path (perf audit 2026-08-02): heuristic follows
+            # are legal by construction; skip re-validation ONLY inside MC
+            # rollout clones (validate_lead always runs — throw penalties
+            # change outcomes). ~24% of rollout time was re-validation.
             lead = self.trick.plays[0].cards
             validate_follow(cards, self.hands[seat], lead, self.ordering)
         self._remove(seat, cards)

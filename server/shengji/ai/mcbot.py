@@ -360,6 +360,7 @@ class MCBot(SmartBot):
         clone.history = list(rnd.history)
         clone.last_trick = rnd.last_trick
         clone.message = None
+        clone._trusted_rollout = True  # skip follow re-validation (audit)
         clone.play(seat, list(candidate))
         policy = self.rollout_policy
         while clone.phase == "play":

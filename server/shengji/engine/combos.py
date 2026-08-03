@@ -53,6 +53,23 @@ class Decomposition:
 
 
 def decompose(cards: list[str], ordering: Ordering) -> Decomposition:
+    # Memo per-Ordering (perf audit 2026-08-02): 845k calls/round in MC
+    # rollouts, huge repeat rate. Cache lives on the Ordering (per-round
+    # lifetime => bounded, auto-invalidated). Pure function => safe.
+    key = tuple(sorted(cards))
+    cache = getattr(ordering, "_dcache", None)
+    if cache is None:
+        cache = {}
+        ordering._dcache = cache
+    hit = cache.get(key)
+    if hit is not None:
+        return hit
+    result = _decompose_uncached(cards, ordering)
+    cache[key] = result
+    return result
+
+
+def _decompose_uncached(cards: list[str], ordering: Ordering) -> Decomposition:
     """Split ``cards`` (all one effective suit) into tractors, pairs, singles.
 
     Tractors are maximal runs of pairs on strictly consecutive levels, longest

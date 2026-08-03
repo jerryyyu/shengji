@@ -3,6 +3,16 @@
 Run at least once a day (scheduled in the Claude session; this file is the
 canonical checklist so any session can execute it).
 
+**Step 0 — audit the prompts themselves.** Recurring prompts rot: they
+name jobs that finished, plans that a finding invalidated, or paths that
+moved. Before executing any scheduled routine, check its own text against
+reality and reschedule a corrected version if stale (CronDelete +
+CronCreate; for the dynamic /loop, pass a corrected prompt to the next
+ScheduleWakeup). A wrong recurring prompt silently drives wrong work —
+on 2026-08-03 the goal loop still said "flip play-time ballots to v2 for
+v8", which an external audit had just proven would recreate the Elo-798
+collapse.
+
 1. **Pull status** — run `server/scripts/fleet_status.sh` (mini + Air):
    every running training/duel/generation job, PID + CPU (alive and
    working?), snapshots landed, probe/duel results since yesterday.
@@ -20,7 +30,10 @@ canonical checklist so any session can execute it).
    logic from rapid edits, stale one-off scripts. Verify with a smoke game
    + `scripts/audit_sourcing.py` rerun. (Deleting measured-rejected toggle
    bodies stays a Jerry-approval item.)
-5. **Remove dead artifacts** — experiment dirs feeding nothing (empty
+5. **Check the external-review thread** — `HANDOFF_REVIEW.md` for new
+   Codex entries; reply inline when actionable, and open an incident file
+   under `incidents/` for anything it finds that reached data or prod.
+6. **Remove dead artifacts** — experiment dirs feeding nothing (empty
    dmc2_*/smoke dirs), superseded shard dirs no process holds open, stale
    tmp logs. Never touch: checkpoints in the ladder, snapshots_* probe
    evidence, logs/ (source of truth), anything a live PID has open.

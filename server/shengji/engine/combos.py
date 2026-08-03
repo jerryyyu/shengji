@@ -171,6 +171,20 @@ def pair_count(cards: list[str]) -> int:
 
 
 def find_tractor_runs(cards: list[str], ordering: Ordering, k: int) -> list[list[str]]:
+    # Memo (perf pass 2, 2026-08-02): 815k calls/round post-decompose-memo.
+    key = (tuple(sorted(cards)), k)
+    cache = getattr(ordering, "_trcache", None)
+    if cache is None:
+        cache = {}
+        ordering._trcache = cache
+    hit = cache.get(key)
+    if hit is None:
+        hit = _find_tractor_runs_uncached(cards, ordering, k)
+        cache[key] = hit
+    return hit
+
+
+def _find_tractor_runs_uncached(cards: list[str], ordering: Ordering, k: int) -> list[list[str]]:
     """All k-length tractors (as card lists) available in ``cards`` (one suit),
     lowest first. Windows over consecutive levels each holding a pair."""
     cnt = Counter(cards)

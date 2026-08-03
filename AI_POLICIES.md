@@ -282,7 +282,7 @@ ballot can never be chosen, however good. Sourcing = what gets on it.
 | # | surface | status | evidence / gate |
 |---|---|---|---|
 | 1 | **Lead ballots (MC)** — every pair/tractor/near-boss throw, all suits incl. trump, cap 8→14 | **ADOPTED** (WIDE_LEAD_BALLOT) | **62% vs narrow mc** (n=120), +7% latency; 12% of leads now use wide-only plays (mostly trump pairs / top-trump drains) |
-| 2 | **Follow ballots (MC)** — bounded exhaustive distinct-code follows behind the constructed seeds, cap 12 | **measuring** (WIDE_FOLLOW_BALLOT) | follows are 75% of decisions; 21% of human discard choices (116/558) were off-ballot. Gate: vs current mc, n=120; adopt at neutral |
+| 2 | **Follow ballots (MC)** — bounded exhaustive distinct-code follows behind the constructed seeds, cap 12 | **ADOPTED — 60% (72-48, n=120)** (WIDE_FOLLOW_BALLOT) | follows are 75% of decisions; 21% of human discard choices (116/558) were off-ballot. Gate: vs current mc, n=120; adopt at neutral |
 | 3 | **Bury (kitty) sourcing** — structured enumeration of buries (void-emptying × point-keeping × trump-preserving) priced by rollouts | queued | MC_BURY only ever priced 4 hand-built variants; once/round so ~20 candidates is cheap; the ×2 kitty multiplier rides on it |
 | 4 | **Declare sourcing** — enumerate declare/wait (and suit) at deal time, priced by rollout | queued | never measured; a fixed threshold today; once per deal ≈ free |
 | 5 | **Rollout-interior sourcing** — simulated players inside rollouts still play the narrow heuristic; wide candidates are priced against narrow opposition | fallback design | full widening cost-prohibitive; the affordable version is Pluribus-style continuation strategies (k biased rollout personalities at leaves) |

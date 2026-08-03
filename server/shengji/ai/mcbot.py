@@ -55,7 +55,7 @@ class MCBot(SmartBot):
     #                          sourcing, not judgment). ADOPTED: 62% vs
     #                          narrow-ballot mc (75-45, n=120), +7% latency.
     LEAD_MAX_CANDIDATES = 14
-    WIDE_FOLLOW_BALLOT = False  # follows: bounded exhaustive distinct-code
+    WIDE_FOLLOW_BALLOT = True  # ADOPTED 60% (72-48, n=120). Follows: bounded exhaustive distinct-code
     #                             multisets on top of the constructed set
     #                             (audit: 21% of human follow singles were
     #                             off-ballot — discard selection). Cap below.

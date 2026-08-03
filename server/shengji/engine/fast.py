@@ -44,10 +44,24 @@ EFF_ID = {"S": 0, "H": 1, "C": 2, "D": 3, "T": 4}
 
 
 def _ctx(ordering: Ordering) -> tuple:
-    """(dcache, trcache, lvl_bytes, eff_bytes, code2id) per Ordering."""
+    """(dcache, trcache, lvl_bytes, eff_bytes, code2id) per Ordering.
+
+    dcache/trcache are the SAME dicts the pure implementations use
+    (``ordering._dcache`` / ``ordering._trcache``), with the same
+    caller-order key contract (``tuple(cards)`` / ``(tuple(cards), k)``,
+    CORRECTNESS.md 08-03) — so the invariant suite's cache audit and any
+    interleaved pure/fast calls see one coherent memo."""
     ctx = getattr(ordering, "_fast_ctx", None)
     if ctx is None:
-        ctx = ({}, {},
+        dcache = getattr(ordering, "_dcache", None)
+        if dcache is None:
+            dcache = {}
+            ordering._dcache = dcache
+        trcache = getattr(ordering, "_trcache", None)
+        if trcache is None:
+            trcache = {}
+            ordering._trcache = trcache
+        ctx = (dcache, trcache,
                bytes(ordering.level(c) for c in ID2CODE),
                bytes(EFF_ID[ordering.eff_suit(c)] for c in ID2CODE),
                CODE2ID)

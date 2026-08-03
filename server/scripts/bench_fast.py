@@ -34,7 +34,7 @@ def one_round() -> tuple[float, str]:
     return dt, hashlib.sha256(json.dumps(hist).encode()).hexdigest()[:16]
 
 
-def bench_round(reps: int = 2) -> None:
+def bench_round(reps: int = 3) -> None:
     results: dict[str, list[float]] = {"pure": [], "fast": []}
     hashes: dict[str, set] = {"pure": set(), "fast": set()}
     for _ in range(reps):

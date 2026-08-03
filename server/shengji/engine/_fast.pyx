@@ -1,26 +1,27 @@
 # cython: language_level=3, boundscheck=False, wraparound=False
-"""Cython hot-path kernels for combos.py / legal.py (prototype, PERF.md #2+#3).
+"""Cython hot-path kernels for combos.py / legal.py (PERF.md #2+#3).
 
 Cards are u8 ids (index into fast.ID2CODE, 54 codes sorted lexicographically)
 INTERNALLY only; every public function takes and returns str card codes —
 shengji/engine/fast.py owns the tables and passes them in via a per-Ordering
 ``ctx`` tuple: (dcache, trcache, lvl_bytes, eff_bytes, code2id).
 
-Each memoized entry point fuses the whole per-call pipeline in C: id scan,
-sorted-multiset key build, dict probe, and (on the rare miss) the kernel and
-result construction. Result objects are the same Component/Decomposition
-dataclasses, holding the caller's original str objects.
-
 CORRECTNESS CONTRACT: byte-identical ports of combos.decompose /
-combos.find_tractor_runs / legal.suit_cards, including order sensitivity:
-Counter insertion order == first occurrence in the input list, pop(0)
-consumption, first-longest-run tie-break, the stable final sort, the memo's
-first-caller-order freezing (key equivalence == tuple(sorted(cards))), and
-defensive copies of cached tractor runs. tests/test_fast_parity.py enforces
-this on random hands; the golden-history suite enforces it end-to-end.
+combos.find_tractor_runs / legal.suit_cards / combos.decompose_matching /
+legal.beats (and helpers), including order sensitivity: Counter insertion
+order == first occurrence in the input list, pop(0)/pop() consumption,
+first-longest-run tie-break, the stable final sort, and defensive copies
+of cached tractor runs. Memo semantics follow the CALLER-ORDER contract
+(CORRECTNESS.md incident 08-03): keys are ``tuple(cards)`` in the exact
+input order — greedy/backtracking splits are order-dependent when distinct
+codes share a level, so anagram orders may NOT share a cache entry — and
+the cache dicts are the SAME ``ordering._dcache`` / ``ordering._trcache``
+dicts the pure implementations use (the invariant suite audits them by
+name and key shape). tests/test_fast_parity.py enforces parity on random
+hands; the golden-history suite enforces it end-to-end.
 """
 
-from cpython.bytes cimport PyBytes_AS_STRING, PyBytes_FromStringAndSize
+from cpython.bytes cimport PyBytes_AS_STRING
 from cpython.dict cimport PyDict_GetItem
 from cpython.object cimport PyObject
 from libc.string cimport memset
@@ -70,23 +71,6 @@ cdef Py_ssize_t _ids_of(list cards, dict code2id, unsigned char *ids) except -1:
     for i in range(n):
         ids[i] = <unsigned char><int>code2id[cards[i]]
     return n
-
-
-cdef bytes _sorted_key(const unsigned char *ids, Py_ssize_t n):
-    """bytes of sorted ids — multiset-equivalent to tuple(sorted(cards))
-    because id order == lexicographic code order."""
-    cdef unsigned char buf[MAX_CARDS]
-    cdef Py_ssize_t i
-    cdef int j
-    cdef unsigned char v
-    for i in range(n):   # insertion sort a copy (n is tiny)
-        v = ids[i]
-        j = <int>i - 1
-        while j >= 0 and buf[j] > v:
-            buf[j + 1] = buf[j]
-            j -= 1
-        buf[j + 1] = v
-    return PyBytes_FromStringAndSize(<char *>buf, n)
 
 
 cdef object _decompose_core(list cards, const unsigned char *ids,
@@ -220,43 +204,47 @@ cdef list _tractor_runs_core(list cards, const unsigned char *ids,
 # ------------------------------------------------------- public entry points
 
 def decompose(list cards, ordering):
-    """combos.decompose drop-in: fused key build + memo probe + kernel.
+    """combos.decompose drop-in: memo probe + kernel.
 
-    Memo semantics match the pure version exactly: keys are multiset-
-    equivalent to tuple(sorted(cards)) and the cached value keeps the FIRST
-    caller's card order (order-sensitive ties frozen identically).
+    Memo semantics match the pure version exactly (caller-order contract,
+    CORRECTNESS.md 08-03): key is ``tuple(cards)`` in the caller's exact
+    order, value computed on that order, stored in ``ordering._dcache`` —
+    the same dict the pure implementation uses.
     """
     cdef tuple ctx = _get_ctx(ordering)
     cdef dict cache = <dict>ctx[0]
+    key = tuple(cards)
+    cdef PyObject *hit = PyDict_GetItem(cache, key)
+    if hit != NULL:
+        return <object>hit
     cdef dict code2id = <dict>ctx[4]
     cdef const unsigned char *lvl = \
         <const unsigned char *>PyBytes_AS_STRING(ctx[2])
     cdef unsigned char ids[MAX_CARDS]
     cdef Py_ssize_t n = _ids_of(cards, code2id, ids)
-    key = _sorted_key(ids, n)
-    cdef PyObject *hit = PyDict_GetItem(cache, key)
-    if hit != NULL:
-        return <object>hit
     result = _decompose_core(cards, ids, n, lvl)
     cache[key] = result
     return result
 
 
 def find_tractor_runs(list cards, ordering, int k):
-    """combos.find_tractor_runs drop-in: memo + defensive copies."""
+    """combos.find_tractor_runs drop-in: caller-order memo + defensive
+    copies, stored in ``ordering._trcache`` keyed ``(tuple(cards), k)``."""
     cdef tuple ctx = _get_ctx(ordering)
     cdef dict cache = <dict>ctx[1]
-    cdef dict code2id = <dict>ctx[4]
-    cdef const unsigned char *lvl = \
-        <const unsigned char *>PyBytes_AS_STRING(ctx[2])
-    cdef unsigned char ids[MAX_CARDS]
-    cdef Py_ssize_t n = _ids_of(cards, code2id, ids)
-    key = (_sorted_key(ids, n), k)
+    key = (tuple(cards), k)
     cdef PyObject *hitp = PyDict_GetItem(cache, key)
     cdef list hit
+    cdef dict code2id
+    cdef const unsigned char *lvl
+    cdef unsigned char ids[MAX_CARDS]
+    cdef Py_ssize_t n
     if hitp != NULL:
         hit = <list><object>hitp
     else:
+        code2id = <dict>ctx[4]
+        lvl = <const unsigned char *>PyBytes_AS_STRING(ctx[2])
+        n = _ids_of(cards, code2id, ids)
         hit = _tractor_runs_core(cards, ids, n, lvl, k)
         cache[key] = hit
     # Same rule as combos: callers may mutate runs (throw penalties), so

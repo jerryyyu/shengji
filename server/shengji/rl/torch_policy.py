@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 
+from ..ai.mcbot import MCBot as MCBotBase
 from ..ai.smart import SmartBot
 from ..engine.round import Round
 from .actions import enumerate_actions
@@ -36,3 +37,62 @@ class RLBot(SmartBot):
         encoded = [encode_action(a, rnd) for a in actions]
         scores = self.net.score_candidates(obs, encoded)
         return actions[int(scores.argmax())]
+
+class MCValueLeaf(MCBotBase):
+    """Value-leaf hybrid (Suphx-style): MC search with TRUNCATED heuristic
+    rollouts — after TRUNC_TRICKS tricks the net's VALUE head evaluates the
+    leaf instead of playing the round out.
+
+    Rationale (RL_PLAN Phase 4): net-as-rollout-policy amplified the net's
+    tail mistakes over ~20 decisions and lost to plain mc (37%, n=60); a
+    value leaf asks the net ONE question it is measurably decent at
+    (oracle study: value explains 43-47% of outcome variance). Must beat
+    plain mc head-to-head to earn a pool slot.
+    """
+
+    TRUNC_TRICKS = 4
+
+    def __init__(self, seed: int | None = None, ckpt: str | None = None):
+        super().__init__(seed)
+        from .model import load_any_net
+        path = ckpt or os.environ.get("SHENGJI_RL_CKPT", "ckpt_distill_v6.pt")
+        self.net = load_any_net(path)
+        if not hasattr(self.net, "value_candidates"):
+            raise RuntimeError(f"{path}: no value head (needs PolicyValueNet)")
+
+    def _rollout(self, rnd: Round, seat: int, sampled: dict[int, list[str]],
+                 buried: list[str], candidate: list[str]) -> float:
+        import copy
+        from ..engine.round import Trick, TrickPlay
+        clone: Round = copy.copy(rnd)
+        clone.hands = [list(sampled.get(s, rnd.hands[s])) for s in range(4)]
+        clone.hands[seat] = list(rnd.hands[seat])
+        clone.buried = list(buried)
+        assert rnd.trick is not None
+        clone.trick = Trick(
+            leader=rnd.trick.leader,
+            plays=[TrickPlay(p.seat, list(p.cards)) for p in rnd.trick.plays])
+        clone.history = list(rnd.history)
+        clone.last_trick = rnd.last_trick
+        clone.message = None
+        clone.play(seat, list(candidate))
+        policy = self.rollout_policy
+        start = len(clone.history)
+        while (clone.phase == "play"
+               and len(clone.history) - start < self.TRUNC_TRICKS):
+            s = clone.turn
+            assert s is not None
+            clone.play(s, policy.decide_play(clone, s))
+        if clone.phase != "play":  # round ended inside the horizon
+            return float(clone.attacker_points)
+        # Leaf: value head from the to-act seat's perspective. Training
+        # target was MC's acting-team value / 100 (final attacker points,
+        # sign-flipped for the banker team) — invert that mapping here.
+        s = clone.turn
+        assert s is not None
+        actions = enumerate_actions(clone, s)  # v1 ballot = training dist
+        obs = encode_obs(clone, s)
+        vals = self.net.value_candidates(
+            obs, [encode_action(a, clone) for a in actions])
+        v = float(vals.max()) * 100.0  # actor plays their best
+        return v if clone.is_attacker(s) else -v

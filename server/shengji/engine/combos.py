@@ -181,7 +181,11 @@ def find_tractor_runs(cards: list[str], ordering: Ordering, k: int) -> list[list
     if hit is None:
         hit = _find_tractor_runs_uncached(cards, ordering, k)
         cache[key] = hit
-    return hit
+    # Defensive copies: callers put runs on ballots where validate_lead's
+    # throw-penalty path can MUTATE the list in place — returning the
+    # cached object let one call poison later ones (caught by the golden
+    # parity test on its first day: mc-13 diverged).
+    return [list(r) for r in hit]
 
 
 def _find_tractor_runs_uncached(cards: list[str], ordering: Ordering, k: int) -> list[list[str]]:

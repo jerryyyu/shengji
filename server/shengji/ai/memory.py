@@ -51,7 +51,11 @@ class Memory:
 
         hand = Counter(rnd.hands[seat])
         self.unseen: Counter[str] = Counter()
-        for code in set(make_deck()):
+        # sorted: set iteration is hash-randomized PER PROCESS — unseen's
+        # insertion order fed the world sampler and made "fixed-seed" MC
+        # runs differ across processes (caught by the golden parity test,
+        # 2026-08-02; same bug class as the tournament-chunk incident).
+        for code in sorted(set(make_deck())):
             n = 2 - self.played[code] - hand[code]
             if n > 0:
                 self.unseen[code] = n

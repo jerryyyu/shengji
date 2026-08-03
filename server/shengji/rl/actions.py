@@ -60,7 +60,7 @@ def enumerate_actions(rnd: Round, seat: int,
             cards = suit_cards(hand, s, o)
             if not cards:
                 continue
-            for code in set(cards):
+            for code in dict.fromkeys(cards):  # not set(): hash-random order
                 add([code])
             cnt = Counter(cards)
             for code, k in cnt.items():

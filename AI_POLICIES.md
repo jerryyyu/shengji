@@ -10,51 +10,18 @@ rules. It is deliberately **not** a notebook or live conversation.
 - Model chronology and post-mortems: `RL_PLAN.md`
 - Superseded detail: `docs_archive/`
 
-Update this file only when a policy's behavior or role changes, or when new
-evidence changes the synthesized conclusion. Screens belong here only when
-clearly labelled and decision-relevant; raw progress belongs in the working
-documents above.
+**Structure.** Everything above the `# Working notes` fold is synthesis and
+durable reference: what is true now, what is callable, what each flag does.
+Everything below is dated measurement detail, kept because a number without its
+protocol is how six claims were made and lost — but it is not what a reader
+should act on.
 
-## Sampler certification (2026-08-04) — validity and completeness only
+Update the top only when a policy's behavior or role changes, or when new
+evidence changes a synthesized conclusion. Append run reports below the fold,
+and when a run changes a conclusion, EDIT the synthesis rather than letting the
+newest entry sit on top and speak for the file.
 
-`scripts/certify_sampler.py` validates emitted worlds against constraints
-re-derived from the trick record and `validate_follow`, never from `Memory`.
-The earlier 18.2k-search screen checked the sampler against `Memory`, so
-producer and validator shared the same inference: that showed self-consistency,
-not legality (Codex).
-
-| regime | states | worlds | invalid | no-world | validator rejected real deal |
-|---|---|---|---|---|---|
-| ply>=8 | 1,500 | 35,995 | 0 | 0 | 0 |
-| ply>=16 | 1,200 | 28,800 | **12** | 0 | 0 |
-
-**The 12 were a real defect.** The declarer pin places publicly declared cards
-into a sampled hand BEFORE dealing; the pair cap refused to DEAL a forbidden
-pair but counted only the cards it was itself placing. A seat that had declared
-one `C2` was pinned that copy and then dealt the second, forming a pair the
-history proves it cannot hold. `_deal_suit` now seeds its count from the pinned
-cards. Re-certified: 0 invalid.
-
-Only visible at late ply — at ply>=8, 35,995 worlds showed nothing, because
-early in a round no one has failed a pair lead yet and the constraint does not
-exist to be violated. A single job at the default depth would have read clean.
-
-**NOT certified: distribution fidelity.** Two biases are identified
-analytically and NOT yet measured:
-
-1. `_splits` picks among feasible count matrices roughly uniformly, but
-   matrices admit wildly different numbers of card assignments (2/2/2 admits
-   far more than 6/0/0), so balanced worlds are under-weighted. Fix: weight
-   each matrix by its exact admissible-fill count via a small per-code DP, and
-   sample proportional to it.
-2. `_deal_suit` takes the first card that keeps a seat under its cap, which
-   prefers distinct codes beyond what the constraint requires. Fix: uniform
-   rejection within the suit, or the same DP restricted by the cap.
-
-Both affect every MC value estimate, but are common-mode across arms that share
-the sampler, so paired contrasts should be robust to them.
-
-## Current synthesis — 2026-08-04
+## Current synthesis — 2026-08-04 20:40
 
 - **Strength incumbent:** deployed N=10 `mc`. No learned policy, value leaf,
   learned search prior, ballot variant, or higher-N search arm has a verified
@@ -70,162 +37,24 @@ the sampler, so paired contrasts should be robust to them.
   reservoir, not an oracle. Its old-ballot/non-strict/same-world-selected labels
   have produced no online gain. The 12,000-state late supplement is raw-state
   distribution correction and has not yet been cleanly relabelled or trained.
-- **Sampler conclusion:** count-first assignment, declaration pins, voids, and
-  remaining-pair constraints are material correctness improvements, but
-  independent full-history certification is still open. Do not call the world
-  distribution constraint-correct or posterior-correct yet.
+- **Sampler conclusion:** count-first assignment removed the allocator
+  dead-ends that were silently invalidating runs (14 zero-world decisions in
+  the determinization blocks; now 0). Independent certification over 64,795
+  worlds found and fixed one real defect — the declarer pin completing a pair
+  the history forbade — but **the P0 certification gate in `BACKLOG.md` is NOT
+  met**: it does not run on reservoir states, check kitty conservation,
+  declaration pins or tractor obligations, count individual failed draws, or
+  record provenance, and "the real deal passes the validator" is not the same
+  as "the sampler can produce it". Do not call the world distribution
+  constraint-correct or posterior-correct.
+- **Determinization is REOPENED.** N=30 over N=10 was closed NOT CONFIRMED on
+  the old sampler (+0.101 +/- 0.150). On the corrected sampler one clean block
+  gives +0.290 +/- 0.210. One block is not a claim; it needs fresh seeds and a
+  null control.
 - **Next champion-path experiment:** after the bounded sampler and action-
   semantics gates, run the clean 512-state lead pilot comparing current, V3,
   random-fill, `MC-more`, fixed-14 contextual, and full-universe/high-compute
   arms on disjoint proposal/report worlds. Details live in `BACKLOG.md`.
-
-## World sampler rewrite — improved, independent certification open
-
-The sampler was a greedy first-fit: shuffle the unseen pool, give each card to
-a random seat that still has room. That dead-ends on states where a legal world
-plainly exists — place two off-suit cards early and the only seat that can take
-the next suit is already full. **Fourteen of those dead-ends landed inside the
-determinization confirmation blocks**, each forcing `PROTOCOL FAILURES` and
-invalidating the run it appeared in. It also never consumed `pair_cap`, which
-Codex raised four times.
-
-**Counts before cards.** There are at most five effective suits and four
-receivers (three seats plus the kitty), so the count matrix is tiny and can be
-searched exactly: most-constrained suit first, complete lazy enumeration of
-splits in random order, forward checking on remaining capacity. If any legal
-assignment exists this finds one. Cards are distributed inside a suit only
-afterwards, where pair caps apply.
-
-**`pair_cap` replaces `pair_void`.** The first rewrite got the rule wrong and a
-real rule-derived regression corrected it: if a follower shows fewer pairs
-than were led, `validate_follow` proves they played every pair they held. The
-remaining cap is therefore **zero after both a pair and a tractor lead**.
-`pair_void` survives as the derived `cap == 0` view.
-
-| measure, 300 rounds / ~18.2k searches | before | after |
-|---|---|---|
-| zero-world decisions | 14 in the confirmation blocks | **0** |
-| worlds rejected under REQUIRE_VOIDS | 5 | **0** |
-| worlds violating a proven void | — | **0** |
-| wall clock | 234s | 235s |
-
-Two bugs of my own along the way, both caught by tests rather than review: the
-first rewrite indexed into a shared list while also writing slices back into
-it, which dealt a **third copy of a two-copy card** — fixed by taking cards by
-REMOVAL so conservation is structural; and `_take` collided with
-`HeuristicBot._take`, silently breaking follow generation from a subclass.
-
-The ~18.2k-search screen pins useful allocator invariants but is not a complete
-certificate. Its validator initially shared assumptions with `Memory`; the
-first independent certifier later omitted the returned kitty, declaration-pin
-interactions, full unseen-pool reconstruction, tractor obligations, and hid
-five individual failed draws by counting only states where all 24 draws failed.
-That certifier did find another real bug—an already pinned declared card could
-combine with a sampled copy into a forbidden pair—which is now fixed with a
-regression. Full validity/completeness certification remains the current P0 in
-`BACKLOG.md`; distribution fidelity is a separate later question.
-
-**This changes `mc`'s play.** Golden histories were regenerated deliberately.
-Prod runs `mc`, so this is a behaviour change awaiting a strength check and
-Jerry's go — it is a CORRECTNESS fix and is not claimed to be a strength gain.
-
-## Static ballot coverage audit — dev split, 2026-08-04
-
-**CORRECTED 17:45** after a Codex audit: the structured-action filter was wrong
-and the headline number moved from 54.0% to 51.2%.
-
-12,340 dev-split states rebuilt by replay, **0 rebuild errors**. That number is
-itself a result: the corpus is a sound state reservoir, so replaying it reuses
-20,845 states without re-running 37M evaluations.
-
-Fraction of the *structured* action space (singles, pairs, true tractors) the
-deployed ballot never offers:
-
-| surface | omitted |
-|---|---|
-| leads | **51.2%** (n=3,960) |
-| follows | **0.9%** (n=8,380) |
-
-**What was wrong.** `structured()` accepted any multi-card action whose card
-multiplicities were all two — which also accepts two UNRELATED pairs thrown
-together. That is a throw, not a tractor. It now asks the engine: an action is
-structured iff it decomposes into exactly one component. Leads move 54.0% ->
-51.2%, follows 0.9% (Codex independently computed 51.18% and 0.883%; both
-reproduce).
-
-Two other overstatements from the first write-up, both corrected in the script:
-
-- "fraction of the legal space" was too strong. `enumerate_actions()` caps
-  exhaustive follows at 64, skips large fill products, and bounds lead throws
-  to 2-3 components. It is a DIAGNOSTIC reference, not the legal universe.
-- the per-ply table used the throw-dominated all-actions counter, so its
-  83-91% figures said nothing about structured sourcing. On the structured
-  counter, omission **declines** with ply: 44.8% at ply 0-4, ~33-35% through
-  ply 19, 25.8% by ply 25+. Late-ply sourcing is not the gap.
-
-**Follows are effectively solved: 0.9%.** Pairs are covered almost everywhere
-(19 omitted against 14,037 offered), and zero tractors are missed. Every
-remaining structural gap is lead SINGLES — 45,191 of them, because the ballot
-offers only the top card and the lowest non-point card per suit.
-
-**The caution this raises.** That singles gap is exactly what the V3 arm added,
-and V3 did NOT confirm online (+0.065 +/- 0.144, with its random-fill control
-scoring higher). So coverage is measured AND known not to be the binding
-constraint. A Phase 1 quota arm must justify itself by SELECTION quality inside
-a fixed budget, not by how much of the space it recovers.
-
-Audit outputs now carry git SHA, tree-dirty state, and digests of the script,
-corpus, split and ballot.
-
-## Determinization screen — N=30 is NOT better than N=10 (2026-08-04, closed)
-
-**CORRECTED 17:45** after a Codex audit. Two published numbers were wrong; the
-verdict is unchanged.
-
-**Preregistered primary: paired per-seed level utility, N=30 minus N=10.**
-
-| block | seeds | N=30 - N=10 | role |
-|---|---|---|---|
-| 1 | 93M | +0.274 +/- 0.214 | selection screen |
-| 2 | 94M | +0.155 +/- 0.215 | confirmation |
-| 3 | 95M | +0.048 +/- 0.210 | confirmation (declared final before running) |
-| **confirmation only (2+3)** | | **+0.101 +/- 0.150, n=504** | **INCLUDES 0 — NOT CONFIRMED** |
-
-**What was wrong.** Block 1 was first published as `+0.282 +/- 0.223`. That
-number came from globbing `runs/logs/eval_*.jsonl`, which silently swept in 40
-arm records from an ABORTED earlier attempt (`c737e70`) covering seeds already
-produced by the complete rerun. The arm side had 544 records against 504 for
-reference and control, and seeds 93,000,126-93,000,145 were counted twice on
-one side only. Clean block 1 is `+0.274 +/- 0.214`; clean three-block pooling
-is `+0.159 +/- 0.123`, not `+0.161 +/- 0.125`. The confirmation blocks were
-never contaminated, so the NOT CONFIRMED verdict stands unchanged.
-
-`scripts/aggregate_shards.py` now refuses to pool when labels have unequal
-record counts, when a (label, seed, flip) repeats, when shards disagree about
-their commit, when record schemas differ, or when any zero-world decision is
-present. It catches this exact contamination.
-
-**The N=10-over-N=5 result is PROVISIONAL, not confirmed.** It was first
-written up as confirmed. On fresh clusters N=5 minus N=10 is `-0.347 +/- 0.145`
-and N=30 minus N=5 is `+0.448 +/- 0.147`, but blocks 2+3 contain **14
-zero-world fallbacks across nine seeds**, distributed unequally (9 on the N=10
-arm, 2 on N=5, 3 on N=30), and every affected shard log printed `PROTOCOL
-FAILURES — verdict forced to NOT CONFIRMED`. Reading a paired mean out of runs
-the evaluator had already failed is exactly the semantics error the checklist
-warns about. This contrast also had no declared primary bar of its own. Treat
-it as strong dose-response evidence pending a constraint-correct sampler rerun.
-
-Fresh-cluster win rates are **53.0% / 51.7% / 44.7%** for N=30 / N=10 / N=5.
-The previously published 53.1% / 50.6% / 44.3% were computed over all three
-blocks while being labelled "the same 504 fresh clusters".
-
-**What this closes.** Search width is not a route to the goal: N=30 does not
-beat the deployed N=10 on fresh seeds, and the monotone per-block decay
-(+0.274 -> +0.155 -> +0.048) is what a winner's curse looks like. Block 3 was
-declared final in writing before it ran, so there was no version of this where
-the interval got extended until it cleared.
-
-This is the seventh promising screen that did not survive confirmation.
 
 ## Policy status details
 
@@ -297,47 +126,6 @@ play_pairing(make_a, make_b, n_seeds=150, seed0=1_000_000)
 Multi-policy Elo: `uv run python -m shengji.ai.tournament`. Human-agreement
 tripwire: `uv run python scripts/eval_vs_human.py "../logs/*.jsonl"`. Pool Elo,
 unpaired blocks, and small-n rates are selection screens, not strength claims.
-
-## Ballot V3, lead layer — sourcing gap CONFIRMED, the fix NOT CONFIRMED (2026-08-04)
-
-Codex's audit (verified exactly): the ballot MC actually searches covers 94.2%
-of human plays, but misses **15.5% of LEADS** (93/601) against 2.0% of follows.
-Per suit it only ever offers the top card and the lowest non-point card, so
-every middle rank is unreachable. Nothing downstream can repair that — race4
-only removes candidates from this list, and the high-N corpus values only what
-is on it.
-
-`mc-v3lead` offers one single per DISTINCT effective level, recovering **51 of
-the 93 missed leads** (15.5% -> 7.0%) within the same cap.
-
-Evaluated through `scripts/evaluate.py` (arm, control and reference on the same
-400 mirrored deals, paired per-seed utility clustered by seed, bar declared
-before the run):
-
-| arm | win% vs mc | paired level utility/seed | rollouts |
-|---|---|---|---|
-| mc-v3lead | 47.5% | +0.065 ± 0.144 | 845,890 |
-| reference (mc vs mc) | 46.2% | 0 | 725,910 |
-| control (same slots, ARBITRARY singles) | 50.5% | +0.245 ± 0.247 | 847,890 |
-
-**NOT CONFIRMED.** The arm's interval includes 0, and the random-fill control
-scores nominally HIGHER — so whatever small movement exists is not attributable
-to better sourcing. The arm also spends 17% more rollouts than mc for the
-fuller ballot.
-
-**The sourcing gap is real and the fix is not.** Recovering the missing leads
-does not by itself make the search stronger: MC still has to VALUE them, and 10
-worlds spread over a fuller ballot resolves each candidate worse. That points
-at Codex's three-layer design — generation, then an archetype-aware SELECTOR,
-then evaluation — rather than at simply generating more.
-
-## Root-prior racing — closed
-
-The seeded selection pool put the random-prune control at or above the v11pair
-prior, and the paired confirmation agreed: the learned prior added nothing
-detectable. Pool gaps were all within the project's unresolved band, so their
-Elo ordering is not retained here as a policy ranking. Exact screen artifacts
-and chronology belong in `RL_PLAN.md` and `docs_archive/`.
 
 ## Active policies
 
@@ -578,6 +366,271 @@ decompositions, defend-at-A, format-scaled kitty multiplier, throw
 penalty forces the beaten component, exhaustive-follow enumeration
 (analysis-side).
 
+## Lessons
+
+- **Measure everything; adopt nothing on intuition.** Feature toggles +
+  mirrored evals found every real gain and killed every plausible-but-wrong
+  idea. Small pools and single point estimates both mislead: use pools for
+  selection and preregistered paired direct anchors for strength.
+- **Hoarding loses, tempo wins** — every measured failure withheld strength
+  (reserve, draining); every win spent it sooner (in-suit contesting, safe
+  throws +17pt, eager declaration). The expert refinement that survived:
+  contest everything in the endgame, not "save the big one for last".
+- **Search beats heuristics; guarded search beats raw search.** MCBot's
+  margin (heuristic prior unless the search is confident) out-rated pure
+  argmax by 45 Elo — early-lead rollouts are noise-dominated.
+- **Learned-policy pitfalls are measurable**: BC clones inherit skill but
+  not robustness (29% vs the search); naive value regression destroys a
+  pretrained policy's ordering before it can rebuild (audit: candidate
+  score spread 22.5 → 0.26). Dense per-candidate targets (distillation)
+  and anchored objectives are the countermeasures.
+- **Distillation works; the expert-iteration flywheel did not close.** Soft
+  per-candidate search values improved standalone students over behavior
+  cloning, and the correctly implemented v11 pairwise objective produced a
+  strong direct override. But the early 55% rollout-policy preview reversed,
+  a second stronger-rollout test tied, and training on hybrid-generated data
+  did not produce a better value leaf. Current lesson: optimize the exact
+  deployed root decision, preserve ballot identity, and do not infer
+  “better net → better search” without a direct equal-budget result.
+
+---
+
+# Working notes
+
+Dated run reports and measurement detail. Nothing here is a
+conclusion on its own — the synthesis above is what a reader should
+act on. Entries are kept because a number without its protocol is
+how six claims were made and lost, but they are deliberately below
+the fold.
+
+## Sampler certification (2026-08-04) — validity and completeness only
+
+`scripts/certify_sampler.py` validates emitted worlds against constraints
+re-derived from the trick record and `validate_follow`, never from `Memory`.
+The earlier 18.2k-search screen checked the sampler against `Memory`, so
+producer and validator shared the same inference: that showed self-consistency,
+not legality (Codex).
+
+| regime | states | worlds | invalid | no-world | validator rejected real deal |
+|---|---|---|---|---|---|
+| ply>=8 | 1,500 | 35,995 | 0 | 0 | 0 |
+| ply>=16 | 1,200 | 28,800 | **12** | 0 | 0 |
+
+**The 12 were a real defect.** The declarer pin places publicly declared cards
+into a sampled hand BEFORE dealing; the pair cap refused to DEAL a forbidden
+pair but counted only the cards it was itself placing. A seat that had declared
+one `C2` was pinned that copy and then dealt the second, forming a pair the
+history proves it cannot hold. `_deal_suit` now seeds its count from the pinned
+cards. Re-certified: 0 invalid.
+
+Only visible at late ply — at ply>=8, 35,995 worlds showed nothing, because
+early in a round no one has failed a pair lead yet and the constraint does not
+exist to be violated. A single job at the default depth would have read clean.
+
+**NOT certified: distribution fidelity.** Two biases are identified
+analytically and NOT yet measured:
+
+1. `_splits` picks among feasible count matrices roughly uniformly, but
+   matrices admit wildly different numbers of card assignments (2/2/2 admits
+   far more than 6/0/0), so balanced worlds are under-weighted. Fix: weight
+   each matrix by its exact admissible-fill count via a small per-code DP, and
+   sample proportional to it.
+2. `_deal_suit` takes the first card that keeps a seat under its cap, which
+   prefers distinct codes beyond what the constraint requires. Fix: uniform
+   rejection within the suit, or the same DP restricted by the cap.
+
+Both affect every MC value estimate, but are common-mode across arms that share
+the sampler, so paired contrasts should be robust to them.
+
+## World sampler rewrite — improved, independent certification open
+
+The sampler was a greedy first-fit: shuffle the unseen pool, give each card to
+a random seat that still has room. That dead-ends on states where a legal world
+plainly exists — place two off-suit cards early and the only seat that can take
+the next suit is already full. **Fourteen of those dead-ends landed inside the
+determinization confirmation blocks**, each forcing `PROTOCOL FAILURES` and
+invalidating the run it appeared in. It also never consumed `pair_cap`, which
+Codex raised four times.
+
+**Counts before cards.** There are at most five effective suits and four
+receivers (three seats plus the kitty), so the count matrix is tiny and can be
+searched exactly: most-constrained suit first, complete lazy enumeration of
+splits in random order, forward checking on remaining capacity. If any legal
+assignment exists this finds one. Cards are distributed inside a suit only
+afterwards, where pair caps apply.
+
+**`pair_cap` replaces `pair_void`.** The first rewrite got the rule wrong and a
+real rule-derived regression corrected it: if a follower shows fewer pairs
+than were led, `validate_follow` proves they played every pair they held. The
+remaining cap is therefore **zero after both a pair and a tractor lead**.
+`pair_void` survives as the derived `cap == 0` view.
+
+| measure, 300 rounds / ~18.2k searches | before | after |
+|---|---|---|
+| zero-world decisions | 14 in the confirmation blocks | **0** |
+| worlds rejected under REQUIRE_VOIDS | 5 | **0** |
+| worlds violating a proven void | — | **0** |
+| wall clock | 234s | 235s |
+
+Two bugs of my own along the way, both caught by tests rather than review: the
+first rewrite indexed into a shared list while also writing slices back into
+it, which dealt a **third copy of a two-copy card** — fixed by taking cards by
+REMOVAL so conservation is structural; and `_take` collided with
+`HeuristicBot._take`, silently breaking follow generation from a subclass.
+
+The ~18.2k-search screen pins useful allocator invariants but is not a complete
+certificate. Its validator initially shared assumptions with `Memory`; the
+first independent certifier later omitted the returned kitty, declaration-pin
+interactions, full unseen-pool reconstruction, tractor obligations, and hid
+five individual failed draws by counting only states where all 24 draws failed.
+That certifier did find another real bug—an already pinned declared card could
+combine with a sampled copy into a forbidden pair—which is now fixed with a
+regression. Full validity/completeness certification remains the current P0 in
+`BACKLOG.md`; distribution fidelity is a separate later question.
+
+**This changes `mc`'s play.** Golden histories were regenerated deliberately.
+Prod runs `mc`, so this is a behaviour change awaiting a strength check and
+Jerry's go — it is a CORRECTNESS fix and is not claimed to be a strength gain.
+
+## Static ballot coverage audit — dev split, 2026-08-04
+
+**CORRECTED 17:45** after a Codex audit: the structured-action filter was wrong
+and the headline number moved from 54.0% to 51.2%.
+
+12,340 dev-split states rebuilt by replay, **0 rebuild errors**. That number is
+itself a result: the corpus is a sound state reservoir, so replaying it reuses
+20,845 states without re-running 37M evaluations.
+
+Fraction of the *structured* action space (singles, pairs, true tractors) the
+deployed ballot never offers:
+
+| surface | omitted |
+|---|---|
+| leads | **51.2%** (n=3,960) |
+| follows | **0.9%** (n=8,380) |
+
+**What was wrong.** `structured()` accepted any multi-card action whose card
+multiplicities were all two — which also accepts two UNRELATED pairs thrown
+together. That is a throw, not a tractor. It now asks the engine: an action is
+structured iff it decomposes into exactly one component. Leads move 54.0% ->
+51.2%, follows 0.9% (Codex independently computed 51.18% and 0.883%; both
+reproduce).
+
+Two other overstatements from the first write-up, both corrected in the script:
+
+- "fraction of the legal space" was too strong. `enumerate_actions()` caps
+  exhaustive follows at 64, skips large fill products, and bounds lead throws
+  to 2-3 components. It is a DIAGNOSTIC reference, not the legal universe.
+- the per-ply table used the throw-dominated all-actions counter, so its
+  83-91% figures said nothing about structured sourcing. On the structured
+  counter, omission **declines** with ply: 44.8% at ply 0-4, ~33-35% through
+  ply 19, 25.8% by ply 25+. Late-ply sourcing is not the gap.
+
+**Follows are effectively solved: 0.9%.** Pairs are covered almost everywhere
+(19 omitted against 14,037 offered), and zero tractors are missed. Every
+remaining structural gap is lead SINGLES — 45,191 of them, because the ballot
+offers only the top card and the lowest non-point card per suit.
+
+**The caution this raises.** That singles gap is exactly what the V3 arm added,
+and V3 did NOT confirm online (+0.065 +/- 0.144, with its random-fill control
+scoring higher). So coverage is measured AND known not to be the binding
+constraint. A Phase 1 quota arm must justify itself by SELECTION quality inside
+a fixed budget, not by how much of the space it recovers.
+
+Audit outputs now carry git SHA, tree-dirty state, and digests of the script,
+corpus, split and ballot.
+
+## Determinization screen — N=30 is NOT better than N=10 (2026-08-04, closed)
+
+**CORRECTED 17:45** after a Codex audit. Two published numbers were wrong; the
+verdict is unchanged.
+
+**Preregistered primary: paired per-seed level utility, N=30 minus N=10.**
+
+| block | seeds | N=30 - N=10 | role |
+|---|---|---|---|
+| 1 | 93M | +0.274 +/- 0.214 | selection screen |
+| 2 | 94M | +0.155 +/- 0.215 | confirmation |
+| 3 | 95M | +0.048 +/- 0.210 | confirmation (declared final before running) |
+| **confirmation only (2+3)** | | **+0.101 +/- 0.150, n=504** | **INCLUDES 0 — NOT CONFIRMED** |
+
+**What was wrong.** Block 1 was first published as `+0.282 +/- 0.223`. That
+number came from globbing `runs/logs/eval_*.jsonl`, which silently swept in 40
+arm records from an ABORTED earlier attempt (`c737e70`) covering seeds already
+produced by the complete rerun. The arm side had 544 records against 504 for
+reference and control, and seeds 93,000,126-93,000,145 were counted twice on
+one side only. Clean block 1 is `+0.274 +/- 0.214`; clean three-block pooling
+is `+0.159 +/- 0.123`, not `+0.161 +/- 0.125`. The confirmation blocks were
+never contaminated, so the NOT CONFIRMED verdict stands unchanged.
+
+`scripts/aggregate_shards.py` now refuses to pool when labels have unequal
+record counts, when a (label, seed, flip) repeats, when shards disagree about
+their commit, when record schemas differ, or when any zero-world decision is
+present. It catches this exact contamination.
+
+**The N=10-over-N=5 result is PROVISIONAL, not confirmed.** It was first
+written up as confirmed. On fresh clusters N=5 minus N=10 is `-0.347 +/- 0.145`
+and N=30 minus N=5 is `+0.448 +/- 0.147`, but blocks 2+3 contain **14
+zero-world fallbacks across nine seeds**, distributed unequally (9 on the N=10
+arm, 2 on N=5, 3 on N=30), and every affected shard log printed `PROTOCOL
+FAILURES — verdict forced to NOT CONFIRMED`. Reading a paired mean out of runs
+the evaluator had already failed is exactly the semantics error the checklist
+warns about. This contrast also had no declared primary bar of its own. Treat
+it as strong dose-response evidence pending a constraint-correct sampler rerun.
+
+Fresh-cluster win rates are **53.0% / 51.7% / 44.7%** for N=30 / N=10 / N=5.
+The previously published 53.1% / 50.6% / 44.3% were computed over all three
+blocks while being labelled "the same 504 fresh clusters".
+
+**What this closes.** Search width is not a route to the goal: N=30 does not
+beat the deployed N=10 on fresh seeds, and the monotone per-block decay
+(+0.274 -> +0.155 -> +0.048) is what a winner's curse looks like. Block 3 was
+declared final in writing before it ran, so there was no version of this where
+the interval got extended until it cleared.
+
+This is the seventh promising screen that did not survive confirmation.
+
+## Ballot V3, lead layer — sourcing gap CONFIRMED, the fix NOT CONFIRMED (2026-08-04)
+
+Codex's audit (verified exactly): the ballot MC actually searches covers 94.2%
+of human plays, but misses **15.5% of LEADS** (93/601) against 2.0% of follows.
+Per suit it only ever offers the top card and the lowest non-point card, so
+every middle rank is unreachable. Nothing downstream can repair that — race4
+only removes candidates from this list, and the high-N corpus values only what
+is on it.
+
+`mc-v3lead` offers one single per DISTINCT effective level, recovering **51 of
+the 93 missed leads** (15.5% -> 7.0%) within the same cap.
+
+Evaluated through `scripts/evaluate.py` (arm, control and reference on the same
+400 mirrored deals, paired per-seed utility clustered by seed, bar declared
+before the run):
+
+| arm | win% vs mc | paired level utility/seed | rollouts |
+|---|---|---|---|
+| mc-v3lead | 47.5% | +0.065 ± 0.144 | 845,890 |
+| reference (mc vs mc) | 46.2% | 0 | 725,910 |
+| control (same slots, ARBITRARY singles) | 50.5% | +0.245 ± 0.247 | 847,890 |
+
+**NOT CONFIRMED.** The arm's interval includes 0, and the random-fill control
+scores nominally HIGHER — so whatever small movement exists is not attributable
+to better sourcing. The arm also spends 17% more rollouts than mc for the
+fuller ballot.
+
+**The sourcing gap is real and the fix is not.** Recovering the missing leads
+does not by itself make the search stronger: MC still has to VALUE them, and 10
+worlds spread over a fuller ballot resolves each candidate worse. That points
+at Codex's three-layer design — generation, then an archetype-aware SELECTOR,
+then evaluation — rather than at simply generating more.
+
+## Root-prior racing — closed
+
+The seeded selection pool put the random-prune control at or above the v11pair
+prior, and the paired confirmation agreed: the learned prior added nothing
+detectable. Pool gaps were all within the project's unresolved band, so their
+Elo ordering is not retained here as a policy ranking. Exact screen artifacts
+and chronology belong in `RL_PLAN.md` and `docs_archive/`.
+
 ## Sourcing coverage (rerun 2026-08-04, human corpus n=2,061)
 
 Does the action ballot actually contain the move a human played?
@@ -592,32 +645,6 @@ concentrated in rare follow-throws and one pair case. The 2026-08-02 audit that
 motivated the widening (n=1052, v1 missing 15.3%) is in
 `docs_archive/sourcing-audit-2026-08-02.md`.
 
-
-## MC determinization scaling — superseded selection screen (2026-08-04 15:45)
-
-This selection block cleared its bar and motivated confirmation. Codex
-preregistered the design in JOBS.md: six parallel shards, seeds
-93,000,000-93,000,251, strict sampling and required voids, **all six
-aggregated regardless of individual verdicts**. Two shards cleared on their own
-— aggregating only those would have been exactly the cherry-pick this protocol
-exists to prevent.
-
-| contrast | paired utility/seed | n | verdict |
-|---|---|---|---|
-| **N=30 - N=10 (PRIMARY)** | **+0.274 +/- 0.214** | 252 | **excludes 0** |
-| N=30 - N=5 | +0.583 +/- 0.226 | 252 | excludes 0 |
-| N=5 - N=10 (dose check) | -0.310 +/- 0.199 | 252 | excludes 0 |
-
-Win rates are monotone in the same order: N=30 53.6%, N=10 48.4%, N=5 43.5%.
-
-The monotone dose response was useful evidence for running a fresh block, not
-protection against selection noise. The two confirmation blocks did not confirm
-N=30 over N=10.
-
-The first published aggregate accidentally included 40 stale arm records from
-the aborted attempt as well as the complete rerun; the table above uses only
-the six complete `ff7b121` shards. This remains selection evidence only. The
-fresh-seed verdict is recorded at the top of this file.
 
 ## What the high-N corpus actually taught us (2026-08-04 14:40)
 
@@ -675,30 +702,11 @@ limits. The lead effect size remains unmeasured.
 
 ## Threshold hypothesis (margin 0.005) — NOT CONFIRMED (2026-08-04 14:15)
 
-Codex's full-corpus offline diagnostic (fit on even deal seeds, reported on
-odd) found margin 0.005 cutting stored all-state regret from 1.261 at the
-deployed 0.02 to 1.142 raw points/decision. Tested online through the gated
-evaluator, 250 shared mirrored deals, control = the deployed 0.02:
-
-| arm | win% vs mc | paired level utility |
-|---|---|---|
-| margin 0.005 | 45.6% | −0.244 ± 0.205 |
-| control, margin 0.02 (deployed) | 48.0% | −0.212 ± 0.211 |
-| reference (mc vs mc) | 51.4% | 0 |
-
-Paired contrast, 0.005 minus 0.02: **−0.032 ± 0.184 over 250 clusters — not
-distinguishable.** The offline regret improvement did not transfer, which is
-the same pattern as the earlier margin-0 refit (offline better, online 47%).
-
-Two things worth keeping from this run. Both override arms sit BELOW the
-mc-vs-mc reference here, where an earlier unpaired block put v11pair at ~51%
-against mc — more evidence that the unpaired blocks were optimistic. And the
-reference itself came in at 51.4% rather than 50%, which is the scale of
-seat/flip noise at n=500 and a useful reminder of what a 2-3 point "edge"
-is worth at this sample size.
-
-**Offline regret on this corpus has now failed to predict online strength
-three times.** It may reject; it may not promote.
+The offline split preferred 0.005 over deployed 0.02, but their direct online
+paired contrast was **−0.032 ± 0.184 over 250 clusters**: indistinguishable and
+nominally in the wrong direction. Together with the margin-0 and v13 results,
+offline regret on the old high-N corpus has failed to predict online strength
+three times. It may reject an obviously bad arm; it may not promote one.
 
 ## Learned override (residual distillation)
 
@@ -731,52 +739,14 @@ three times.** It may reject; it may not promote.
 
 ## Human-play validation set
 
-**Current shard: 1,850 human decisions** (`rl_data/human_v4`, verified from the
-NPZ shape on 2026-08-04). The 59-round / 1,592-decision statistics and 99.2%
-ballot-coverage analysis below were computed on the superseded `human_v3`
-snapshot; retain them as historical diagnostics until v4 is re-audited.
-That v3 miner found humans ahead on early trump-pair leads (+2.0/decision) and
-late mixed throws (+1.8), while the bot was ahead on late trump-single leads
-(-9.6/decision).
+The current artifact is `rl_data/human_v5`: **2,061 decisions from 77 rounds**,
+with current v2 ballots. Older v1-v4 statistics are historical and live in the
+archive; do not mix their denominators into current claims.
 
-Logs are the corpus (`logs/*.jsonl`, gitignored; server logs fetched via
-`fetch_fly_logs.sh`). As of 2026-08-01: 245 genuine human play decisions
-(per-play bot flag — watchdog takeovers excluded), 227 with outcome labels
-converted to training shards (`rl/human_shards.py`).
-- Agreement (all policies): heuristic 52%, smart 51%, mc 50%, rl-bc 49% —
-  a STYLE metric, not strength (ranking inverts the Elo ladder).
-- Gap decomposition: forced plays 100% agreement (after the exhaustive
-  follow-enumeration fix; previously ~20% of humans' legal plays in narrow
-  spots weren't on the ballot); leads 19% vs follows 59%; of disagreements,
-  62% are value-ties (|Δ|≤3 pts), 23% favor the bot, 15% favor the human
-  (mean -0.8). Realistic agreement ceiling for ANY policy: ~65-70%.
-- Uses: regression tripwire (a policy dropping to ~30% = broken — would
-  have caught the DMC collapse instantly); distribution-shift check for RL
-  checkpoints; future human-style fine-tune.
-
-## Lessons
-
-- **Measure everything; adopt nothing on intuition.** Feature toggles +
-  mirrored evals found every real gain and killed every plausible-but-wrong
-  idea. Small pools and single point estimates both mislead: use pools for
-  selection and preregistered paired direct anchors for strength.
-- **Hoarding loses, tempo wins** — every measured failure withheld strength
-  (reserve, draining); every win spent it sooner (in-suit contesting, safe
-  throws +17pt, eager declaration). The expert refinement that survived:
-  contest everything in the endgame, not "save the big one for last".
-- **Search beats heuristics; guarded search beats raw search.** MCBot's
-  margin (heuristic prior unless the search is confident) out-rated pure
-  argmax by 45 Elo — early-lead rollouts are noise-dominated.
-- **Learned-policy pitfalls are measurable**: BC clones inherit skill but
-  not robustness (29% vs the search); naive value regression destroys a
-  pretrained policy's ordering before it can rebuild (audit: candidate
-  score spread 22.5 → 0.26). Dense per-candidate targets (distillation)
-  and anchored objectives are the countermeasures.
-- **Distillation works; the expert-iteration flywheel did not close.** Soft
-  per-candidate search values improved standalone students over behavior
-  cloning, and the correctly implemented v11 pairwise objective produced a
-  strong direct override. But the early 55% rollout-policy preview reversed,
-  a second stronger-rollout test tied, and training on hybrid-generated data
-  did not produce a better value leaf. Current lesson: optimize the exact
-  deployed root decision, preserve ballot identity, and do not infer
-  “better net → better search” without a direct equal-budget result.
+Human agreement is a style/regression tripwire, not a strength metric—the
+policy ordering has previously inverted the Elo ordering. Its durable uses are
+detecting catastrophic policy collapse, checking distribution shift, measuring
+whether a ballot can express human actions, and mining outcome-weighted
+disagreements. The current sourcing result is recorded above: deployed MC
+misses 15.5% of human leads and 2.0% of follows, which supports investigating
+lead selection but does not promote a policy.

@@ -1571,3 +1571,11 @@ each emitted world via an independent history-derived validator; (2)
 deal as a witness; and (3) **distribution fidelity**, checked against exact toy
 posteriors/marginals and seat/card-exchangeability tests. Generating many
 different worlds improves coverage, but by itself proves none of those three.
+
+**Post-fix run provenance:** `1daf98f` correctly changes the remaining pair cap
+to zero and replaces the vacuous test with rule- and hidden-hand-derived checks.
+The dose rerun in `JOBS.md` was announced/launched at `5f15301`, before that
+fix. Its processes therefore loaded the old weaker sampler. Do not call that
+run final constraint-correct evidence; restart it from `1daf98f` (fresh seeds)
+or conservatively keep it only as a screen. The evaluator manifest should make
+the commit distinction mechanical.

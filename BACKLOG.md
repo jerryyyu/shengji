@@ -1,5 +1,60 @@
 # Backlog
 
+## EXECUTION VIEW — 2026-08-04 15:10
+
+One table for "what is happening and what closes it". The detailed reasoning
+for each item lives in the sections below, which Codex also maintains — this
+view is a summary, not a replacement.
+
+### NOW (running)
+
+| item | where | gate that closes it |
+|---|---|---|
+| **N=30 vs N=10 determinization screen** — latency is unconstrained in prod, so does more search simply win? `mc-lite` (N=5) is the dose-response control | mini, 6 parallel shards, seeds 93,000,000-93,000,251 | paired utility (N=30 − N=10) > 0 with the interval excluding 0, aggregated over ALL six shards regardless of interim results |
+| **Late-ply state capture** — the first corpus is 90% at ply<=15, which is why v13 was mis-aimed | Air | raw states only; **its N=240 labels are contract-dirty and must not be trained on** |
+
+### NEXT (highest value first)
+
+| item | why it matters | gate |
+|---|---|---|
+| **1. Unify candidate generation behind a versioned `BallotSpec`** — the ballot work and Codex cleanup #1 are ONE job | `MCBot._candidates()` and `rl.actions.enumerate_actions()` are two independent ballot systems, and that is the structural cause of the Elo-798, v10 and v13 train/deploy mismatches. Anything built before it risks being invalid the same way | one generator, one spec, version recorded in every manifest |
+| **2. Action-identity P0** | "one representative per effective level" is not a sound equivalence, and `decompose()` keeps input-order dependence for tied-level trump pairs while dedupe uses a sorted multiset — generator and engine can disagree about which action was played | permutation-invariant attempted-play semantics, or an explicit decomposition choice |
+| **3. BALLOT_PLAN arm one** — evaluation-free archetype quotas | Leads carry **3x** the forfeit of follows (2.96 vs 1.01 points), half are provably improvable, and the ballot misses **15.5% of leads** vs 2.0% of follows. Two independent measurements, one target | `MC-more` in the same comparison; paired and controlled |
+| **4. Evaluator → library + one CLI**; retire `race_confirm`, `vleaf_settle`, `gate_duel`, `kitty_duel`, `v11_extend`, dated pool scripts | seed handling, manifests, contrasts, counters and shards should exist once — duplication is how the seed-dropping lambda survived in five places | old runners deleted, not deprecated |
+| **5. `pair_void` has no sampler consumer** | computed and never used; Codex has raised it three times and it gates any final sampler claim | sampler refuses to deal a pair into a proven pair-void seat |
+| **6. Clean-contract high-N relabelling** — capture states first, relabel only the stratified union we will report | avoids repeating 37.1M old-ballot evaluations; the only route to labels worth training on | new schema; report worlds never used for selection |
+
+### LATER
+
+Encoder/trainer dataset contract (cleanup #6) · immutable policy specs
+replacing the flag matrix (cleanup #4) · `segbatch.py` has no importer while
+trainers carry local copies, and `replay_log.pretty_cards` is unreferenced
+(cleanup #3) · split the 1,117-line API module along tested seams, only after
+the reconnect tests stand as contract tests (cleanup #5) · `MCPriorRace` has no
+inference timer and `MCBot.search_secs` starts after the prior runs, so every
+"equal compute" claim is incomplete · move `seatPos`/card helpers out of
+component modules (cleanup #7) · frontend concurrent-load soak · belief-weighted
+sampling (the sampler is the one direction never tried).
+
+### CLOSED — do not re-queue
+
+vleaf equals mc · vleaf with a pairwise head is INVALID not merely failed ·
+v10res was a no-op checkpoint · root-prior racing refuted by its own control ·
+V3 lead ballot NOT CONFIRMED · direct-V leaf v13abs NOT CONFIRMED (doubly
+misaligned) · margin 0.005 NOT CONFIRMED · BANKER_KITTY correctness-only ·
+absolute value heads interchangeable · heuristics #2/#4 · ANTICIPATE_FEED ·
+mc-smartroll · standalone policy line PAUSED as a development target.
+
+**Standing rules.** Strength claims go through `scripts/evaluate.py` and no
+other path. Six claims have died to correlated blocks read as reproduction: a
+screen may reject, only a paired confirmation may promote. Offline regret on
+the high-N corpus has failed to predict online strength three times — it may
+reject, never promote.
+
+---
+
+## Detail (maintained with Codex)
+
 Open work, roughly ordered by value. Completed items live in git and in
 AI_POLICIES.md's toggle registry; resolved AI items with their reasoning are
 in `docs_archive/backlog-ai-items-through-2026-08-03.md`. This file tracks

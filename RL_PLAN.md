@@ -13,10 +13,11 @@ AI_POLICIES.md; run archives in `server/runs/`.
 
 **RESIDUAL/OVERRIDE LEARNING WORKS — the first positive result from the
 learned line.** `rl-override-v11pair` (SmartBot + a learned override, NO
-search, ~2ms/decision) beats SmartBot **57.7%** over n=480 on two disjoint
-seed blocks that agree to 0.1 points. Against mc it is 52.7% (n=480) with the
-interval still including 50; blocks 3 and 4 are running to settle that, and
-that is the standing-goal question. Details in 1i.
+search, p50 0.4ms) beats SmartBot **57.7%** (n=480). Against mc it is LEVEL:
+51.3% over n=2880, five blocks all just above 50 with the interval still
+including it. The preregistered final block is running. A gated variant
+(search only on the ~12% of states the net flags as high-stakes) scores 53.3%
+vs mc at 55% of the wall-clock. Details in 1i and 1k.
 
 **THE HYBRID IS NOT BETTER THAN mc. Settled 2026-08-03 23:20 at n=1200.**
 
@@ -260,83 +261,68 @@ validation split rather than the reported one. Only then does it earn a seeded
 duel. If a corrected arm fails offline, residual learning gets parked with an
 honest "tried properly, did not work."
 
-### 1i. RESIDUAL LEARNING WORKS — v11pair beats SmartBot, reproduced (2026-08-04 01:00)
+### 1i. RESIDUAL/OVERRIDE LEARNING WORKS — beats smart, LEVEL with mc (2026-08-04)
 
-The first genuinely positive result from the learned line this week, and it
-came from fixing the implementation rather than from more data or more epochs.
+The first positive result from the learned line, and it came from fixing the
+implementation rather than from more data or more epochs.
 
-| block | seeds | vs smart |
+**vs SmartBot — its declared bar, cleared:** 277-203 = **57.7%** (n=480, two
+disjoint seed blocks agreeing to 0.1 points, Wilson [53.2%, 62.0%]). v10res
+scored 47% on the same bar.
+
+**vs mc — level, not ahead:**
+
+| block | seeds | result |
 |---|---|---|
-| anchor | 3.3M+ | 104-76 = 57.8% |
-| extension (fresh) | 8.8M+ | 173-127 = 57.7% |
-| **pooled** | disjoint | **277-203 = 57.7%, Wilson [53.2%, 62.0%]** |
+| 1 | 3.3M | 94-86 = 52.2% |
+| 2 | 9.2M | 159-141 = 53.0% |
+| 3 | 10.5M | 308-292 = 51.3% |
+| 4 | 11M | 306-294 = 51.0% |
+| 5 | 12M | 611-589 = 50.9% |
+| **pooled** | disjoint | **1478-1402 = 51.3%, n=2880, Wilson [49.5%, 53.1%]** |
 
-Two blocks on disjoint seeds agreeing to 0.1 points, interval clearly
-excluding 50. This clears the bar declared when the arm was designed: it must
-beat SmartBot, because it IS SmartBot plus a learned override.
+Five independent blocks, every one above 50, and the pooled interval still
+includes it. That is what a real-but-tiny edge and no edge at all look like
+from the inside — they are not distinguishable at this n, and saying so is the
+honest answer. Block 6 (seeds 13M, the preregistered final block) is running;
+it takes pooled n to ~4080. **No extension beyond it**, whatever it says.
 
-**What changed from v10res, which scored 47% vs smart:**
+**What fixed it vs v10res (47% vs smart):**
 
-1. It optimises the DEPLOYED quantity. v10res regressed each row
-   independently and was never told what a_0 was, so it never learned
-   `q_i - q_0` — the thing the override rule actually gates on. v11pair
-   optimises `(q_i - q_0)` against `(Q_i - Q_0)` directly, with Huber loss and
-   extra weight where the true delta sits near the margin, which is exactly
-   where a wrong sign flips a decision.
-2. The ballot matches. Collection valued `MCBot._candidates()`; inference
+1. Optimise the DEPLOYED quantity. v10res regressed rows independently and was
+   never told what a_0 was, so it never learned `q_i - q_0` — the thing the
+   override rule gates on.
+2. Match the ballot. Collection valued `MCBot._candidates()`; inference
    enumerated `enumerate_actions()`. **11 of 12 decisions enumerated
-   differently** (13 candidates vs 26 on seed 5), so the net was scoring
-   actions it had never seen valued — the Elo-798 failure in another costume.
-3. The threshold was fitted on one half of the holdout and reported on the
-   other (0.02, regret 1.943 vs 2.103 for always-candidate-0), not chosen
-   after seeing the duel.
+   differently** (13 vs 26 candidates on seed 5) — the Elo-798 failure again.
+3. Fit the threshold off-split (0.02 on half A, reported on half B).
 
-**Honest limits.** The offline gate did NOT separate v11pair from v10res
-(1.943 vs 1.909 regret on the same protocol) — the offline metric is a weaker
-discriminator than the duel, which is worth remembering before trusting it as
-a filter. And vs mc the first block was 52.2% with an interval including 50;
-an extension on the Air (seeds 9.2M+) is running. mc is the number that
-matters for the standing goal.
+None of that is scale. The signal was present in v10res's data all along.
 
-**Why this is interesting beyond the score:** v11pair does NO search. One
-forward pass, ~2ms, against mc's 30 sampled worlds. Reaching SmartBot+7.7
-points at that latency is a different value proposition from anything else in
-the ladder, whatever the mc verdict turns out to be.
+**Production-ready** (measured 2026-08-04): numpy path, no torch, **p50 0.4ms
+/ p95 0.5ms** against mc's 57/107ms; 2MB weights; 33MB RSS; 33ms cold start;
+parity with torch verified on 90 real decisions (max diff 7.5e-8, zero argmax
+disagreements) from COMMITTED fixtures. Deploying it is a COST decision, not a
+strength upgrade.
 
-### 1j. vleaf with the v11pair head: 32.5% — a PREDICTED failure (2026-08-04 01:45)
+### 1k. The gated variant: same strength, ~half the compute (2026-08-04)
 
-Jerry asked whether the hybrid should use v11pair's value head, since that net
-is the one that finally worked. Answer: no, and the reason was predictable
-before the duel — which is why the prediction went into the registry comment
-before the run, not after.
+`mc-gate-v11pair` uses the net's delta as a ~2ms detector of HIGH-STAKES
+states and spends search only on the ~12% it flags: **160-140 = 53.3%** vs mc
+(n=300, CI [47.7%, 58.9%]) while the table ran at **55% of an all-mc table's
+wall-clock**.
 
-**39-81 = 32.5% vs mc (n=120)**, the worst hybrid measured. Mechanism: the
-pairwise objective constrains only DIFFERENCES within a decision. Add any
-per-state constant to the head's output and the loss is unchanged, so the
-absolute level is free to drift from state to state. That is fine for an
-override, which only ever compares candidates inside one decision. It is fatal
-for vleaf, which compares leaf values ACROSS different states and sampled
-worlds — there is no shared anchor to compare against.
+Calibration behind the design (held-out gen-v4, gain from acting on the net vs
+keeping SmartBot's pick): **+3.23 / +1.51 / +0.31 / -0.02** as confidence
+falls. Note this INVERTS Codex's proposal, which was to act when confident and
+search when unsure: acting on the net still carries ~2.6 regret against the
+search's best even at high confidence, so gating that way trades strength for
+speed. Detecting where the decision MATTERS is the useful direction.
 
-**Codex's correction, accepted (22:55, independently reached):** this duel is
-INVALID as a test of learned leaves, not merely a failure of one. Because the
-objective is invariant to a different additive offset in every state, the
-head's cross-state scale is not identified — the numbers look like values but
-are not on a common axis. So 32.5% says something about this checkpoint's
-calibration and nothing about whether a learned leaf evaluator could work. The
-honest verdict is "not a valid experiment", which is weaker and more accurate
-than "the idea failed".
-
-Worth stating plainly because it cuts against the obvious intuition: **the net
-that plays best is not the net that evaluates best.** They are trained for
-different jobs. A head that beats SmartBot as a comparator is uncalibrated as
-a value function, and the 1f finding (all three absolute-value heads
-interchangeable at 60/53/48%) says the reverse too — being a better evaluator
-never made a better hybrid.
-
-If a future arm needs both, the objective has to pin the level: add an
-absolute-value term, or anchor each decision's baseline to the teacher's own
-Q(a_0) rather than letting it float.
+A first read of that calibration looked like the signal was anti-calibrated —
+high-confidence buckets showed higher absolute regret. That evaporated once
+regret was compared against the right baseline within each bucket: those are
+simply higher-stakes states. Worth recording as a near-miss.
 
 ### 2. Standalone policy line: still stuck — but the OVERRIDE line is not
 

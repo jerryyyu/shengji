@@ -55,11 +55,26 @@ def test_returns_are_per_world_not_a_mean():
     assert s.mean == pytest.approx(sum(s.returns) / 8)
 
 
-def test_paired_diff_refuses_mismatched_folds():
-    a = Scored(action=("S3",), returns=[1.0, 2.0])
-    b = Scored(action=("S4",), returns=[1.0])
-    with pytest.raises(ValueError, match="same worlds"):
+def test_paired_diff_refuses_unrelated_equal_length_vectors():
+    """Equal length is not the same fold. Codex paired two unrelated vectors
+    through the old check and got a plausible difference back."""
+    a = Scored(action=("S3",), returns=[1.0, 2.0], state_key="k",
+               fold="report", world_keys=("w1", "w2"))
+    b = Scored(action=("S4",), returns=[3.0, 4.0], state_key="k",
+               fold="report", world_keys=("w3", "w4"))
+    with pytest.raises(ValueError, match="different worlds"):
         a.paired_diff(b)
+    c = Scored(action=("S4",), returns=[3.0, 4.0], state_key="OTHER",
+               fold="report", world_keys=("w1", "w2"))
+    with pytest.raises(ValueError, match="cannot pair across"):
+        a.paired_diff(c)
+
+
+def test_empty_fold_fails_closed():
+    """An empty fold used to mean 0.0 — so an empty oracle fold selected its
+    first action and an empty report fold reported zero regret."""
+    with pytest.raises(ValueError, match="empty fold"):
+        Scored(action=("S3",), state_key="k", fold="report").mean
 
 
 def test_union_ballot_covers_every_arm():
@@ -88,12 +103,13 @@ def test_oracle_is_chosen_on_the_oracle_fold_only():
     ballots = {a: propose(a, bot, rnd, seat, budget=14, seed=1, state_key="s")
                for a in ARMS}
     ref = oracle_reference(bot, rnd, seat, fw.worlds["oracle"],
-                           union_ballot(ballots))
+                           union_ballot(ballots), state_key="s", expect=6)
     assert len(ref.returns) == 6, "the oracle scored on the ORACLE fold"
 
     # re-scoring the frozen action on report worlds must be a fresh estimate
     out = report_regret(bot, rnd, seat, fw.worlds["report"],
-                        ballots["current"][0], list(ref.action))
+                        ballots["current"][0], list(ref.action),
+                        state_key="s", expect=6)
     assert out["n_worlds"] == 6
     assert out["reference_mean"] != ref.mean or len(set(ref.returns)) == 1, \
         "the reference's ORACLE-fold mean was reused instead of re-scored"
@@ -108,7 +124,8 @@ def test_regret_is_zero_when_the_arm_plays_the_reference():
                     salt="t", state_key="s")
     action = propose("current", bot, rnd, seat, budget=14, seed=1,
                      state_key="s")[0]
-    out = report_regret(bot, rnd, seat, fw.worlds["report"], action, action)
+    out = report_regret(bot, rnd, seat, fw.worlds["report"], action, action,
+                        state_key="s", expect=6)
     assert out["regret"] == pytest.approx(0.0)
     assert all(d == 0 for d in
                [r - a for r, a in zip(out["reference_returns"],

@@ -36,13 +36,26 @@ ARMS = ("current", "v3", "random_fill", "quota", "full_universe")
 
 
 def _legal(rnd, seat, cards) -> bool:
-    others = [rnd.hands[s] for s in range(4) if s != seat]
-    try:
-        played, msg = validate_lead(list(cards), rnd.hands[seat], others,
-                                    rnd.ordering)
-    except Exception:
+    """Is this a well-formed ATTEMPTED lead, from PUBLIC state plus this hand?
+
+    It must not consult the other seats. The previous version passed the true
+    hidden hands to `validate_lead` and required `not msg`, i.e. it required
+    the throw to SUCCEED — so the universe became a function of hidden cards:
+    `CA CJ CJ` was in it under the real deal and vanished under a different
+    sampler-valid world (Codex). A proposer cannot see that, and a ballot that
+    depends on it is not reproducible from the state.
+
+    Whether a throw is beaten is an OUTCOME, priced later by the rollouts. At
+    proposal time the only questions are: does the seat hold these cards, and
+    is the play a single effective suit.
+    """
+    if not cards:
         return False
-    return sorted(played) == sorted(cards) and not msg
+    hand = Counter(rnd.hands[seat])
+    if any(n > hand.get(c, 0) for c, n in Counter(cards).items()):
+        return False
+    o = rnd.ordering
+    return len({o.eff_suit(c) for c in cards}) == 1
 
 
 def structured_universe(rnd, seat, bot=None) -> list[list[str]]:
@@ -131,8 +144,20 @@ def _rng(seed, state_key, arm) -> random.Random:
 
 
 def protected(bot, rnd, seat) -> list[str]:
-    """SmartBot's pick. Every arm keeps it, so no arm can lose by omission."""
-    return sorted(bot._lead(rnd, seat))
+    """SmartBot's pick. Every arm keeps it, so no arm can lose by omission.
+
+    Canonicalised in hand order for the same reason `_candidates` is: `_lead`
+    walks the hand, so its pick depended on list order. Exhausting all 720
+    permutations of one late state gave THREE different protected leads — H2,
+    S2 and D2 — in both engines (Codex). The `_candidates` fix did not cover
+    this because `_lead` is called from outside it.
+    """
+    saved = rnd.hands[seat]
+    rnd.hands[seat] = sorted(saved)
+    try:
+        return sorted(bot._lead(rnd, seat))
+    finally:
+        rnd.hands[seat] = saved
 
 
 def propose(arm: str, bot, rnd, seat, *, budget: int, seed: int,

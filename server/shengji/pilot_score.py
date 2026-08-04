@@ -29,32 +29,60 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Scored:
-    """One action's return on every world of one fold, in fold order."""
+    """One action's return on every world of one fold, in fold order.
+
+    Carries the IDENTITY of what it was scored on. Without it `paired_diff`
+    could only compare lengths, and two unrelated equal-length vectors paired
+    happily into a plausible-looking difference (Codex reproduced this).
+    """
 
     action: tuple
     returns: list = field(default_factory=list)
+    state_key: str = ""
+    fold: str = ""
+    world_keys: tuple = ()
 
     @property
     def mean(self) -> float:
-        return sum(self.returns) / len(self.returns) if self.returns else 0.0
+        if not self.returns:
+            raise ValueError(
+                f"mean of an empty fold ({self.state_key}/{self.fold}): an "
+                f"empty fold silently scored 0.0, which made an empty oracle "
+                f"fold select its first action and an empty report fold return "
+                f"zero regret.")
+        return sum(self.returns) / len(self.returns)
 
     def paired_diff(self, other: "Scored") -> list:
-        """Per-world difference. Requires the SAME fold, same order."""
-        if len(self.returns) != len(other.returns):
+        """Per-world difference. Requires the SAME worlds, in the same order."""
+        if (self.state_key, self.fold) != (other.state_key, other.fold):
             raise ValueError(
-                f"paired difference needs the same worlds: "
-                f"{len(self.returns)} vs {len(other.returns)}")
+                f"cannot pair across {self.state_key}/{self.fold} and "
+                f"{other.state_key}/{other.fold}")
+        if self.world_keys != other.world_keys:
+            raise ValueError(
+                "cannot pair: the two scores were taken on different worlds "
+                "or in a different order. Equal length is not the same fold.")
         return [a - b for a, b in zip(self.returns, other.returns)]
 
 
-def score_action(bot, rnd, seat, worlds, action) -> Scored:
+def score_action(bot, rnd, seat, worlds, action, *, state_key="", fold="",
+                 expect=None) -> Scored:
     """Roll `action` out on every world of a fold, keeping each return.
 
     One rollout per world, from the acting SEAT's perspective, with the sign
     convention the evaluator uses (attacker-positive, flipped for the banker
     team) so a number here means the same thing as a number there.
     """
-    out = Scored(action=tuple(sorted(action)))
+    if expect is not None and len(worlds) != expect:
+        raise ValueError(
+            f"{state_key}/{fold}: {len(worlds)} worlds, preregistered {expect}. "
+            f"A short fold must fail closed — silently scoring fewer worlds "
+            f"changes the estimator without changing the number.")
+    if not worlds:
+        raise ValueError(f"{state_key}/{fold}: empty fold")
+    from .pilot_folds import world_key
+    out = Scored(action=tuple(sorted(action)), state_key=state_key, fold=fold,
+                 world_keys=tuple(world_key(h, e) for h, e in worlds))
     i_attack = rnd.is_attacker(seat)
     for hands, buried in worlds:
         raw = bot._rollout(rnd, seat, hands, buried, list(action))
@@ -63,7 +91,8 @@ def score_action(bot, rnd, seat, worlds, action) -> Scored:
     return out
 
 
-def oracle_reference(bot, rnd, seat, oracle_worlds, union_actions) -> Scored:
+def oracle_reference(bot, rnd, seat, oracle_worlds, union_actions, *,
+                     state_key="", expect=None) -> Scored:
     """The reference action: argmax over the union ballot, on the ORACLE fold.
 
     Chosen here and FROZEN. Re-choosing it on the report fold would make the
@@ -74,21 +103,25 @@ def oracle_reference(bot, rnd, seat, oracle_worlds, union_actions) -> Scored:
         raise ValueError("empty union ballot: nothing to select a reference from")
     best = None
     for a in union_actions:
-        s = score_action(bot, rnd, seat, oracle_worlds, a)
+        s = score_action(bot, rnd, seat, oracle_worlds, a,
+                         state_key=state_key, fold="oracle", expect=expect)
         if best is None or s.mean > best.mean:
             best = s
     return best
 
 
-def report_regret(bot, rnd, seat, report_worlds, chosen, reference_action):
+def report_regret(bot, rnd, seat, report_worlds, chosen, reference_action, *,
+                  state_key="", expect=None):
     """Paired regret of `chosen` against the frozen reference, on REPORT worlds.
 
     Positive regret means the arm's action did worse than the reference. Both
     are re-scored here: the oracle's own fold estimate is a selected maximum
     and must never be reused as the reference's value.
     """
-    a = score_action(bot, rnd, seat, report_worlds, chosen)
-    r = score_action(bot, rnd, seat, report_worlds, reference_action)
+    a = score_action(bot, rnd, seat, report_worlds, chosen,
+                     state_key=state_key, fold="report", expect=expect)
+    r = score_action(bot, rnd, seat, report_worlds, reference_action,
+                     state_key=state_key, fold="report", expect=expect)
     diffs = r.paired_diff(a)              # reference minus arm
     n = len(diffs)
     mean = sum(diffs) / n if n else 0.0
@@ -97,7 +130,11 @@ def report_regret(bot, rnd, seat, report_worlds, chosen, reference_action):
         half = 1.96 * math.sqrt(var / n)
     else:
         half = float("inf")
-    return {"regret": mean, "half": half, "n_worlds": n,
+    # `half` is WITHIN-STATE Monte Carlo uncertainty only. The experiment
+    # interval must come from one paired mean per state, clustered by deal —
+    # treating states x worlds as independent observations would understate it
+    # by roughly sqrt(n_worlds) (Codex).
+    return {"regret": mean, "within_state_half": half, "n_worlds": n,
             "arm_mean": a.mean, "reference_mean": r.mean,
             "arm_returns": a.returns, "reference_returns": r.returns}
 

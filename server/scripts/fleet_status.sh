@@ -29,9 +29,16 @@ done
 hdr "AIR — via JOBS.md + live probe"
 ssh -o BatchMode=yes -o ConnectTimeout=8 air '
   cd ~/Projects/shengji-compute/server 2>/dev/null || exit 1
-  n=$(grep -h "^PAIR" pool_*.log 2>/dev/null | wc -l | tr -d " ")
-  [ "$n" != "0" ] && echo "  pool pairings: $n/24 ($(pgrep -f pool_20260802 | wc -l | tr -d " ") procs alive)"
-  pgrep -f "distill_generate" >/dev/null && echo "  gen: running ($(ls rl_data/gen_v3/*.npz 2>/dev/null | wc -l | tr -d " ") shards)"
+  # Generic probe: name the jobs that are actually running, not the ones
+  # that happened to be running when this script was written (the pool_/
+  # gen_v3 greps outlived their jobs by two days).
+  ps -eo pid,etime,command | grep "[p]ython" | grep -v "grep" |
+    sed "s|/Users/[^ ]*/python3*|python|" | awk "{printf \"  proc %s up %s: %s %s %s\\n\", \$1, \$2, \$3, \$4, \$5}" | head -6
+  for f in runs/logs/*.log *.log; do
+    [ -f "$f" ] || continue
+    age=$(( ($(date +%s) - $(stat -f %m "$f")) / 60 ))
+    [ "$age" -lt 720 ] && echo "  $(basename "$f") (${age}m): $(tail -1 "$f" | cut -c1-100)"
+  done 2>/dev/null | head -8
   echo "  --- NOTES from Air agent (if any):"
   sed -n "/## NOTES/,\$p" ../JOBS.md | tail -n +3 | grep -v "^(leave" | head -25
 ' 2>/dev/null || echo "  Air unreachable (asleep / off tailnet / SSH off)"

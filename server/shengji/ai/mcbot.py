@@ -107,7 +107,7 @@ class MCBot(SmartBot):
         candidates = self._candidates(rnd, seat)
         if len(candidates) <= 1:
             return candidates[0]
-        mem = Memory(rnd, seat)
+        mem = Memory(rnd, seat, own_kitty=getattr(self, 'BANKER_KITTY', True))
         i_attack = rnd.is_attacker(seat)
         totals = [0.0] * len(candidates)
         n_worlds = 0
@@ -170,7 +170,7 @@ class MCBot(SmartBot):
                 cands.append(c)
         if len(cands) == 1:
             return base
-        mem = Memory(rnd, seat)
+        mem = Memory(rnd, seat, own_kitty=getattr(self, 'BANKER_KITTY', True))
         totals = [0.0] * len(cands)
         n_worlds = 0
         for _ in range(self.N_BURY_WORLDS):
@@ -232,7 +232,7 @@ class MCBot(SmartBot):
         if not rnd.trick.plays:
             add(self._lead(rnd, seat))  # SmartBot's pick (throws included)
             if self.RISKY_THROWS or self.WIDE_LEAD_BALLOT:
-                mem_ = Memory(rnd, seat)
+                mem_ = Memory(rnd, seat, own_kitty=getattr(self, 'BANKER_KITTY', True))
                 for t in self.near_boss_throws(rnd, seat, mem_):
                     add(t)  # sampled worlds price the beat risk + penalty
             if self.WIDE_LEAD_BALLOT:

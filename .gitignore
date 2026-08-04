@@ -14,3 +14,4 @@ rl_data/
 server/build/
 server/shengji/engine/_fast.c
 *.so
+logs/local/

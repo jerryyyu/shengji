@@ -96,7 +96,9 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
         {(() => {
           // Everyone reviews the round at their own pace: the server only
           // advances once EVERY connected human has confirmed.
-          const humans = state.players.filter((p) => !p.is_bot);
+          // Only CONNECTED humans are counted — a player who drops during
+          // the round-end screen is taken off the tally server-side too.
+          const humans = state.players.filter((p) => !p.is_bot && p.connected);
           const ready = state.ready ?? [];
           const iAmReady = ready.includes(state.you);
           const waiting = humans.filter((p) => !ready.includes(p.seat));

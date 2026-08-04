@@ -5,8 +5,9 @@ never from hidden hands — so it is exactly the information a human player
 could track: which cards have been seen, who has shown void in which suit,
 and whether a given card/pair is the highest still in circulation ("boss").
 
-Note: the banker's 8 buried cards are unseen, so `unseen` slightly
-overestimates what opponents can hold. That errs on the cautious side.
+Note: when this seat IS the banker its own buried cards count as known
+(its own information). For every other seat the kitty is genuinely
+unseen, which errs on the cautious side.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from ..engine.round import Round
 
 
 class Memory:
-    def __init__(self, rnd: Round, seat: int):
+    def __init__(self, rnd: Round, seat: int, own_kitty: bool = True):
         assert rnd.ordering is not None
         self.o = rnd.ordering
         self.seat = seat
@@ -68,6 +69,14 @@ class Memory:
                     self.known[code] = (decl["seat"], left)
 
         hand = Counter(rnd.hands[seat])
+        # The BANKER buried 8 cards itself — its own private information,
+        # exactly like its hand, and it makes those cards provably
+        # unavailable to opponents. Without this a banker that buried the
+        # other ace does not know its own K is boss (the pair_is_boss class
+        # of bug; that fix was worth +13 points). MCBot's world sampler
+        # already accounted for this; Memory did not.
+        if own_kitty and rnd.banker == seat and rnd.buried:
+            hand = hand + Counter(rnd.buried)
         self.unseen: Counter[str] = Counter()
         # sorted: set iteration is hash-randomized PER PROCESS — unseen's
         # insertion order fed the world sampler and made "fixed-seed" MC

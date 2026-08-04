@@ -37,6 +37,9 @@ class SmartBot(HeuristicBot):
     #                         ruff-risky ones (expert research #1, 2026-08-02)
     NO_OPEN_POINT_SUIT = False  # don't open point-bearing suits we don't
     #                             boss (expert research #3, 2026-08-02)
+    BANKER_KITTY = True     # count the banker's OWN buried cards as known
+    #   (its own information). Off = the pre-2026-08-03 behaviour, where a
+    #   banker that buried the other ace did not know its K was boss.
     KITTY_POINT_POLICY = False  # expert research #2: numeric bury caps by
     #   trump strength — weak trump hard-caps buried points at <=5; a locked
     #   hand DELIBERATELY buries unprotectable 10s/Ks to bank them at the
@@ -224,7 +227,7 @@ class SmartBot(HeuristicBot):
     def _lead(self, rnd: Round, seat: int) -> list[str]:
         o = rnd.ordering
         assert o is not None
-        mem = Memory(rnd, seat)
+        mem = Memory(rnd, seat, own_kitty=getattr(self, 'BANKER_KITTY', True))
         hand = rnd.hands[seat]
         opps = [s for s in range(4) if s % 2 != seat % 2]
         by_suit = {s: suit_cards(hand, s, o) for s in list(PLAIN_SUITS) + [TRUMP]}
@@ -422,7 +425,7 @@ class SmartBot(HeuristicBot):
     def _follow(self, rnd: Round, seat: int) -> list[str]:
         o = rnd.ordering
         assert o is not None and rnd.trick is not None
-        mem = Memory(rnd, seat)
+        mem = Memory(rnd, seat, own_kitty=getattr(self, 'BANKER_KITTY', True))
         hand = rnd.hands[seat]
         trick = rnd.trick
         lead = trick.plays[0].cards

@@ -30,9 +30,13 @@ DECLARE_GRACE = 5.0        # window after the deal; extended on new declarations
 DECLARE_EXTEND = 3.0
 ROOM_TTL = 300.0           # grace before deleting a room with no humans connected
 TAKEOVER_AFTER = 30.0      # bot plays for a disconnected human after this long
+# Game logs (full hands!). Prod sets SHENGJI_LOG_DIR=/data/logs and those
+# files are fetched into logs/ as the HUMAN CORPUS, so a dev server must not
+# write there: local multiplayer testing would otherwise be mined as real
+# human play (Jerry's VKHW/DPMV test games, 2026-08-03).
 LOG_DIR = Path(os.environ.get(
     "SHENGJI_LOG_DIR",
-    Path(__file__).resolve().parents[3] / "logs"))  # game logs (full hands!)
+    Path(__file__).resolve().parents[3] / "logs" / "local"))
 app = FastAPI(title="shengji")
 
 rooms: dict[str, "Room"] = {}
@@ -167,6 +171,10 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
         "type": "state",
         "room": room.code,
         "you": seat,
+        # The round-end tally lives here too: in-game broadcasts send ONLY
+        # state_for, so without this the client's ready count was always
+        # 0/N and "Next round" never disabled (2026-08-03).
+        "ready": sorted(room.ready),
         "phase": phase,
         "players": [{
             "seat": s, "name": room.seats[s].name, "is_bot": room.seats[s].is_bot,
@@ -282,6 +290,34 @@ def _log_play(room: Room, seat: int, cards: list[str], bot: bool,
         room.log_event("trick", winner=lt.winner, points=lt.points,
                        plays=[{"seat": p.seat, "cards": p.cards}
                               for p in lt.plays])
+
+
+
+def pending_ready(room: Room) -> set[int]:
+    """Connected humans who have not yet confirmed the round end."""
+    return {i for i, sd in enumerate(room.seats)
+            if not sd.is_bot and sd.connected} - room.ready
+
+
+async def advance_if_all_ready(room: Room) -> bool:
+    """Start the next round once every CONNECTED human has confirmed.
+
+    Called both when someone clicks and when someone drops: a player who
+    leaves during the round-end screen must stop being counted, or the
+    remaining players wait forever on a browser that is never coming back
+    (Jerry, 2026-08-03).
+    """
+    rnd, game = room.round, room.game
+    if game is None or rnd is None or rnd.phase != "round_end" or game.game_over:
+        return False
+    if pending_ready(room) or not room.ready:
+        return False
+    room.ready.clear()
+    game.start_round()
+    room.index_round()
+    _log_round_start(room)
+    room.deal_task = asyncio.create_task(run_deal(room))
+    return True
 
 
 def _log_round_start(room: Room) -> None:
@@ -560,16 +596,8 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         # Wait for EVERY connected human to confirm, so nobody's review of
         # the round gets cut short by a faster clicker (Jerry, 2026-08-03).
         room.ready.add(seat)
-        humans = {i for i, sd in enumerate(room.seats)
-                  if not sd.is_bot and sd.connected}
-        if not humans <= room.ready:
+        if not await advance_if_all_ready(room):
             await broadcast(room)
-            return
-        room.ready.clear()
-        game.start_round()
-        room.index_round()
-        _log_round_start(room)
-        room.deal_task = asyncio.create_task(run_deal(room))
     else:
         raise IllegalPlay(f"Unknown action: {t}")
 
@@ -601,6 +629,24 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     me.writer = asyncio.create_task(_writer(ws, me.queue))
                     room.seats.append(me)
                     await broadcast(room)
+                elif t == "peek_room":
+                    # Who is sitting where, WITHOUT joining — the lobby uses
+                    # this to offer a seat picker for a game in progress.
+                    target = rooms.get(str(msg.get("room", "")).upper())
+                    if target is None:
+                        await send(ws, {"type": "error", "code": "room_not_found",
+                                        "message": "Room not found."})
+                        continue
+                    await send(ws, {
+                        "type": "room_seats",
+                        "room": target.code,
+                        "in_game": target.game is not None,
+                        "seats": [{"seat": i, "name": sd.name,
+                                   "is_bot": sd.is_bot,
+                                   "connected": sd.connected,
+                                   "team": i % 2}
+                                  for i, sd in enumerate(target.seats)],
+                    })
                 elif t == "join_room":
                     code = str(msg.get("room", "")).upper()
                     target = rooms.get(code)
@@ -720,12 +766,15 @@ async def ws_endpoint(ws: WebSocket) -> None:
             async with room.lock:
                 if not me.is_bot and me.connected:
                     chat_system(room, f"{me.name} disconnected")
+                if me in room.seats:
+                    room.ready.discard(room.seats.index(me))
                 _detach(me)
                 if not any(x.connected for x in room.seats if not x.is_bot):
                     if room.cleanup_task is None or room.cleanup_task.done():
                         room.cleanup_task = asyncio.create_task(cleanup_room(room))
                 else:
-                    await broadcast(room)
+                    if not await advance_if_all_ready(room):
+                        await broadcast(room)
 
 
 def _detach(seat: Seat) -> None:

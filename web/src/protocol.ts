@@ -13,7 +13,6 @@ export type Phase = "deal" | "declare" | "bury" | "play" | "round_end" | "game_o
 
 export type ClientMsg =
   | { type: "create_room"; name: string }
-  | { type: "join_room"; room: string; name: string }
   | { type: "add_bot" }
   | { type: "remove_bot" }
   | { type: "start_game" }
@@ -23,6 +22,8 @@ export type ClientMsg =
   | { type: "play"; card_ids: number[] }
   | { type: "next_round" }
   | { type: "chat"; text: string }
+  | { type: "peek_room"; room: string }
+  | { type: "join_room"; room: string; name: string; seat?: number }
   | { type: "leave_room" }; // anytime after joining; server replies {type:"left"}
 
 // ---------- Server -> Client ----------
@@ -134,3 +135,10 @@ export interface LeftMsg {
 }
 
 export type ServerMsg = ErrorMsg | RoomMsg | GameState | EventMsg | LeftMsg;
+
+export interface RoomSeats {
+  type: "room_seats";
+  room: string;
+  in_game: boolean;
+  seats: { seat: number; name: string; is_bot: boolean; connected: boolean; team: number }[];
+}

@@ -1,3 +1,4 @@
+import type { RoomSeats } from "../protocol";
 import { useEffect, useRef, useState } from "react";
 import type { ConnStatus } from "../ws";
 import { clearSavedRoom, conn, getSavedName, saveName } from "../ws";
@@ -24,6 +25,14 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   // link drops you straight into the table (Jerry, 2026-08-03).
   const autoJoined = useRef(false);
   const nameRef = useRef<HTMLInputElement>(null);
+  // Mid-game joins pick their seat: partner choice matters (0&2 vs 1&3).
+  const [seatChoice, setSeatChoice] = useState<RoomSeats | null>(null);
+  useEffect(() => conn.subscribe((m: any) => {
+    if (m?.type !== "room_seats") return;
+    const bots = m.seats.filter((sd: any) => sd.is_bot);
+    if (m.in_game && bots.length > 1) setSeatChoice(m);
+    else joinSeat(undefined, m.room);      // nothing to choose
+  }), [name]);
 
   const ready = status === "open" && name.trim().length > 0;
 
@@ -55,13 +64,21 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     }
   };
 
-  const join = () => {
-    const code = roomCode.trim().toUpperCase();
-    if (!ready || code.length !== 4) return;
+  const joinSeat = (seat: number | undefined, code?: string) => {
+    const target = (code ?? roomCode).trim().toUpperCase();
     const trimmed = name.trim();
     saveName(trimmed);
     clearInvite();
-    conn.send({ type: "join_room", room: code, name: trimmed });
+    setSeatChoice(null);
+    conn.send({ type: "join_room", room: target, name: trimmed, seat });
+  };
+
+  const join = () => {
+    const code = roomCode.trim().toUpperCase();
+    if (!ready || code.length !== 4) return;
+    // Ask who's sitting where first; the subscriber either shows a picker
+    // (game in progress, >1 bot) or joins straight through.
+    conn.send({ type: "peek_room", room: code });
   };
 
   // Invite links prefill the room code and focus the NAME field — they do
@@ -84,6 +101,37 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
       nameRef.current?.select();
     }
   }, [ready, invited, invitedName]);
+
+  if (seatChoice) {
+    const you = name.trim() || "You";
+    return (
+      <div className="screen lobby-screen">
+        <div className="lobby-card">
+          <h2>Take a seat in {seatChoice.room}</h2>
+          <p className="seat-hint">
+            Game in progress — pick a bot to replace. Seats 0 &amp; 2 are one
+            team, 1 &amp; 3 the other.
+          </p>
+          <div className="seat-grid">
+            {seatChoice.seats.map((sd: RoomSeats["seats"][number]) => (
+              <button
+                key={sd.seat}
+                className={"seat-option team" + sd.team + (sd.is_bot ? "" : " taken")}
+                disabled={!sd.is_bot}
+                onClick={() => joinSeat(sd.seat)}
+              >
+                <span className="seat-num">Seat {sd.seat}</span>
+                <span className="seat-who">{sd.is_bot ? `${sd.name} (bot)` : sd.name}</span>
+                <span className="seat-team">Team {sd.team === 0 ? "A" : "B"}</span>
+                {sd.is_bot && <span className="seat-take">{you} sits here</span>}
+              </button>
+            ))}
+          </div>
+          <button className="btn" onClick={() => setSeatChoice(null)}>Cancel</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="screen lobby-screen">

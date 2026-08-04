@@ -4,7 +4,7 @@ Every bot policy, its design, and its measured performance. Update this file
 whenever a policy is added, changed, or re-benchmarked. RL training plan and
 post-mortems: RL_PLAN.md.
 
-## Current status — 2026-08-04 08:10
+## Current status — 2026-08-04 08:15
 
 - **Deployment-cost candidate:** `rl-override-v11pair` beats SmartBot 57.7%
   (n=480) and runs at p50 0.25ms / p95 0.52ms on the production numpy path.
@@ -27,8 +27,9 @@ post-mortems: RL_PLAN.md.
 - **High-N prototype is not evidence yet.** Its reported 2.803-point MC regret
   is computed against a selected maximum on the same non-strict worlds used to
   choose/significance-filter 148 early-state rows. The completed 600-row set,
-  partial 401-row corpus, refitted m0 policy, and partial unseeded m0 duel are
-  debugging artifacts—not a stronger teacher or promotion result.
+  partial 845-row corpus, refitted m0 policy, and completed but unseeded m0
+  duel are debugging/SCREEN artifacts—not a stronger teacher or promotion
+  result.
 - **No valid v11 leaf exists.** v11pair predicts relative action deltas; its
   cross-state scale is unidentified. Root reranking/allocation is a valid use;
   MC/MCTS leaf evaluation requires a separately trained absolute value model.
@@ -410,7 +411,7 @@ constraints (see BACKLOG).
 | `rl-override-v11pair` | SmartBot + learned pairwise override on `(q_i - q_0)`, threshold 0.02 fitted on calibration A and read on report B, matched train/play ballot | **CONFIRM vs Smart:** 57.7% (277-203, n=480). **SCREEN vs MC:** 51.1% over n=4,880, but every MC opponent was unseeded; no superiority and no formal non-inferiority claim | current deployment-cost candidate; no search, numpy p50 0.25ms / p95 0.52ms |
 | `mc-vleaf-v11pair` | attempted to use v11pair's pairwise head as a leaf | 32.5% vs MC (39-81, n=120) | **INVALID configuration**, not a leaf-learning result: cross-state scale is unidentified; quarantined and unregistered |
 | `mc-gate-v11pair` | v11 delta detects states on which the registered policy escalates from SmartBot to full MC | online **SCREEN** 53.3% vs MC (n=300); 55% timing was extrapolated. T2 missed its declared bar, but noisy max-Q/candidate-count bias prevents the stronger “cheap gate explains it” conclusion | not adopted; the attempted equal-budget T3 was invalid/terminated. Its repaired runner has no valid replayed result yet |
-| `rl-override-v11pair-m0` | the same net with the override margin removed (fitted on the unbiased N=240 reference) | offline regret better than deployed on held-out states (1.132 vs 1.141); **online 235-265 = 47.0%** vs mc, worse than the 0.02 rule | REJECTED — and the reason is the finding: one-ply offline regret did not transfer |
+| `rl-override-v11pair-m0` | same net with the override margin removed, post-hoc fit on the prototype N=240 estimates | offline selected-max regret was lower than deployed on its held-out half (1.132 vs 1.141); online **SCREEN** 235-265 = 47.0% vs OS-seeded MC, Wilson [42.7%, 51.4%] | **not promoted**. It did not show an advantage; it was not a seeded same-block comparison with the 0.02 rule and is not a clean rejection |
 | `rl-override-v10res` | the same idea with an independent-row objective and a MISMATCHED play-time ballot | 47% vs smart; overrode 1.5% of states where the teacher overrode ~15% | near no-op — the checkpoint failed, not the idea |
 
 ## Experiment log (measured and rejected — reproducible via registry/toggles)

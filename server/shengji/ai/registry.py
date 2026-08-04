@@ -173,6 +173,18 @@ def _make_override_thr(path: str, margin: float):
 # fitted on the teacher's own biased estimates; refitted against the N=240
 # reference the best bar is ZERO, and held-out regret drops 2.870 -> 2.152,
 # below deployed mc's 2.803 (2026-08-04).
+def _make_race(ckpt: str, keep: int):
+    def f(**kw):
+        from ..rl.torch_policy import MCPriorRace
+        b = MCPriorRace(ckpt, seed=kw.get("seed"))
+        b.KEEP = keep
+        return b
+    return f
+
+
+# Net as a root prior; same rollout budget, concentrated on fewer candidates.
+REGISTRY["mc-race3-v11pair"] = _make_race("snapshots_v11pair/ep07.pt", 3)
+REGISTRY["mc-race4-v11pair"] = _make_race("snapshots_v11pair/ep07.pt", 4)
 REGISTRY["rl-override-v11pair-m0"] = _make_override_thr(
     "snapshots_v11pair/ep07.pt", 0.0)
 REGISTRY["rl-override-v11pair"] = _make_override_thr(

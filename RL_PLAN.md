@@ -17,7 +17,7 @@ MPS). Toggle results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## WHERE THINGS STAND — 2026-08-04 08:10 (read this first)
+## WHERE THINGS STAND — 2026-08-04 08:15 (read this first)
 
 1. **Direct v11pair is the learned line's first positive result and the current
    deployment-cost candidate.** `rl-override-v11pair` (SmartBot + learned
@@ -49,6 +49,11 @@ MPS). Toggle results live in `AI_POLICIES.md`; run archives in `server/runs/`.
    high-N artifact used the invalid prototype: no independent selection/eval,
    versioned round-trip schema, manifest, or strict-world evidence. No
    training, high-N rerun, T3 screen, or T4 confirmation is authorised today.
+5. **The prototype's “2.8 points of headroom” is a HYPOTHESIS, not a result.**
+   It selected/significance-filtered states and scored regret against the same
+   noisy N=240 maximum on non-strict, overwhelmingly early-game worlds. The
+   derived m0 policy, completed unseeded duel, and partial 20,000-state corpus
+   are quarantined; see 1n–1o.
 
 The machine is intentionally idle. A cheap policy or direct v11 winning the
 strength/latency Pareto comparison is a success even if no RL-search design
@@ -513,50 +518,52 @@ promising, but it is not a committed schema/round-trip test.
 useful and that v11's error distribution deserves study. Test it with strict
 worlds, phase/score quotas, deal-disjoint selection and report world sets,
 familywise or simultaneous uncertainty, and a final seeded online comparison.
-The partial 20,000-state corpus and m0 duel launched from this analysis were
-stopped and are not results; active high-N labelling is not authorised yet.
+The non-strict 20,000-state corpus was found still running after the ledger
+called it stopped and was terminated at 845 rows; the m0 duel completed but was
+unseeded at its actual call site. Neither is a confirming result, and active
+high-N labelling is not authorised yet.
 
-### 1n. ONE-PLY HIGH-N REGRET DOES NOT PREDICT ONLINE STRENGTH (2026-08-04 08:40)
+### 1o. m0's offline gain did not transfer in an unseeded online screen (2026-08-04 08:17)
 
-An experiment that failed usefully, and the failure constrains how the whole
-high-N programme can be used.
+This experiment is a useful warning, but its committed “seeded rejection”
+interpretation is stronger than the evidence.
 
-The reference said v11's problem was calibration, so I refitted its decision
-rule against those unbiased labels, splitting states by seed and reporting only
-on the half never used for fitting. The fitted rule was to REMOVE the margin
-entirely (trust the net's argmax):
+The prototype suggested v11's problem might be calibration, so the decision
+rule was refitted on even deal seeds and reported on odd deal seeds. The fitted
+rule removed the margin entirely (trust the net's argmax):
 
 | rule | offline regret, significant states | offline regret, ALL states |
 |---|---|---|
 | v11 @0.02 (deployed) | 2.870 | 1.141 |
 | v11 @0 (fitted) | **2.152** | **1.132** |
 
-Then the online duel: **235-265 = 47.0%** vs mc, Wilson [42.7%, 51.4%] — where
-the deployed 0.02 rule scores ~51%. **The offline improvement reversed
-online.**
+The online screen was **235-265 = 47.0%** vs MC, Wilson [42.7%, 51.4%]. It did
+not earn promotion. It was not seeded: `v11_extend.py` accepted `**k` but called
+`make_bot(opp)` without forwarding it, so MC used OS entropy. The deployed
+0.02 rule's ~51% came from different, also-unseeded blocks rather than a paired
+same-seed control. Therefore this is neither a statistically clear loss nor a
+clean measurement of reversal.
 
-**Why this matters more than the individual result.** The reference value of a
-candidate is its expected outcome when the HEURISTIC plays the rest of the
-round. A policy that deviates from the heuristic more often drifts further from
-the states where that estimate is accurate, so one-ply regret systematically
-flatters aggressive overriding. Errors also compound over ~25 decisions in a
-way a single-decision metric cannot see.
+**Plausible explanation to test, not an established cause:** each candidate's
+prototype value assumes HeuristicBot finishes the round. A deployed policy that
+deviates repeatedly induces a different continuation distribution, and errors
+can compound across many decisions. Same-world selected-max bias is another
+explanation. A valid paired control is required to separate them.
 
-This is Codex's warning about `max_a Q` arriving empirically: selection
-optimism plus a continuation-policy mismatch. Its recommendation — predict a
-calibrated bracket distribution or expected signed level utility **under one
-fixed continuation policy** — is exactly the shape that survives this finding.
+The result is consistent with the warning against training a state value on
+`max_a Q`, but does not prove one-ply action values are useless. A direct
+`V(state)` still needs a named action-and-continuation policy and calibrated
+bracket/level-utility target. The corpus stores forced-action Q estimates under
+a heuristic continuation; those are not automatically that V target.
 
-**Consequences, adopted:**
-1. Offline high-N regret is a SCREEN. It may reject a rule; it may not promote
-   one. Only a seeded online duel promotes.
-2. The one-ply argmax is the wrong training target. The corpus being generated
-   is still the right asset, because what it actually stores IS the expected
-   outcome under a fixed continuation policy — the target Codex recommends for
-   a direct V head — but training to imitate its per-decision argmax would
-   repeat this failure at scale.
-3. The deployed margin of 0.02 stays. It was fitted on biased estimates and is
-   apparently not optimal, but nothing measured so far beats it online.
+**Consequences:**
+1. Offline prototype regret may generate hypotheses; it cannot promote or
+   reject a rule until worlds, selection/report split, state distribution, and
+   coverage are valid. Only a seeded paired online duel promotes.
+2. Do not train on the prototype argmax or treat forced-action Q as direct V.
+   Rebuild the target contract first.
+3. Keep the deployed margin at 0.02. m0 showed no evidence of improvement and
+   is a diagnostic registry entry only.
 
 ### 2. Standalone policy line: still stuck — but the OVERRIDE line is not
 
@@ -642,7 +649,7 @@ comparison stays open rather than counted.
 
 ---
 
-## RUN STATUS — 2026-08-04 08:10 (supersedes the earlier T0-T4 authorization)
+## RUN STATUS — 2026-08-04 08:15 (supersedes the earlier T0-T4 authorization)
 
 **RUNNING: nothing.** The attempted T3 screen was invalid and terminated. No
 substitute high-N generation, training, duel, or confirmation is authorised.

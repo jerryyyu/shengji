@@ -35,8 +35,8 @@ larger experiment.
       confirmation.
 - [ ] **Build a valid, tiny high-N diagnostic pilot.** Before running the
       prototype again—or using the completed Air artifact as evidence—add a
-      versioned raw-state round trip (including
-      initial banker and declaration history), strict worlds, deal-grouped
+      versioned raw-state round trip (including initial banker and declaration
+      history), strict worlds, deal-grouped
       splits, phase/score quotas, disjoint candidate-selection and evaluation
       worlds, stored per-world differences/covariance, collision-free named RNG
       streams, a cost estimate, and exclusive manifested output. Inspect the

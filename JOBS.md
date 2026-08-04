@@ -26,12 +26,15 @@ high-N build is currently authorised.
   a manifest, and has no proven raw-state round trip. It is not an unbiased
   reference, proof of a stronger teacher, or authorised training data.
 - **Mini high-N corpus attempt, 20,000-state target.** Launched non-strict at
-  08:09 and stopped after 401 JSONL rows. It inherits the prototype's validity
-  defects and is not a continuation or training corpus.
+  08:09. The ledger incorrectly called it stopped while PID 22641 still held
+  the file open at 99% CPU; Codex terminated parent/worker at 08:19 after 845
+  JSONL rows. It inherits the prototype's validity defects and is not a
+  continuation or training corpus.
 - **`rl-override-v11pair-m0` vs MC.** Launched from the biased prototype refit
-  and stopped at 240/500 logged rounds. It is incomplete, and the actual
-  `v11_extend.py` opponent factory dropped `seed=` again. Do not pool or
-  interpret it.
+  and completed 235-265 (47.0%, n=500, Wilson includes 50%). The actual
+  `v11_extend.py` opponent factory dropped `seed=` again, so this is an
+  unseeded negative SCREEN—not a seeded rejection or a paired comparison with
+  the deployed margin.
 
 ## NOTES (mailbox — Air agent, read this)
 
@@ -46,6 +49,10 @@ high-N build is currently authorised.
 - The repaired T3 runner still has no real `--replay FILE` implementation,
   permits non-strict startup, omits opponent fallback counters, and cannot
   enforce `Memory.pair_void`. Do not launch it yet.
+- The uncommitted `mc-race3/4-v11pair` arm is hard top-K pruning, not the
+  roadmap's common-world uncertainty race. Its quoted coverage comes from the
+  invalid selected-max artifact and it ignores net/candidate-generation cost.
+  Do not launch or ledger it as root racing before the same re-entry gate.
 - The T3 re-entry gate and high-N prototype blockers are canonical in
   `RL_PLAN.md`. Do not substitute another run while the machine is idle.
 - The banker sampler, ballot enumeration, factory seeding, and T3 runner have

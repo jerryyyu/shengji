@@ -203,3 +203,62 @@ class MCGatedOverride(RLOverrideBot):
             from ..ai.mcbot import MCBot
             self._mc = MCBot(seed=getattr(self, "_seed", None))
         return self._mc.decide_play(rnd, seat)
+
+
+class MCPriorRace(MCBotBase):
+    """Net as a ROOT PRIOR: prune the ballot, then race the survivors with the
+    SAME total rollout budget (Codex's queued arm).
+
+    Deployed mc spends N=10 worlds on every candidate, so with a 6-candidate
+    ballot it resolves each one with 10 samples. If the net can say which 3 are
+    worth considering, the same 60 rollouts buy 20 worlds each — the same
+    compute, better resolved.
+
+    Measured coverage on the N=240 reference: the net's top-3 (candidate 0
+    always kept) contains the reference-best action 80.5% of the time, top-4
+    87.2%. So the trade is a ~20% chance of discarding the best action against
+    a 2x reduction in the noise that decides among the rest.
+
+    The budget is matched PER DECISION, not on average: worlds scale with the
+    ratio of full to kept ballot size, because ballot sizes vary a lot.
+    """
+
+    KEEP = 3
+    BASE_N = 10          # deployed mc's N_DETERMINIZATIONS
+
+    def __init__(self, ckpt: str | None = None, seed: int | None = None):
+        super().__init__(seed=seed)
+        path = ckpt or os.environ.get("SHENGJI_RL_CKPT", "")
+        npz = os.environ.get("SHENGJI_NPZ") or (
+            path[:-3] + ".npz" if path.endswith(".pt") else "")
+        if npz and os.path.exists(npz):
+            from .npnet import NpNet
+            self.net = NpNet(npz)
+        else:
+            from .model import load_any_net
+            self.net = load_any_net(path)
+        self._pruned = None
+
+    def _candidates(self, rnd: Round, seat: int):
+        if self._pruned is not None:
+            return self._pruned
+        return super()._candidates(rnd, seat)
+
+    def decide_play(self, rnd: Round, seat: int) -> list[str]:
+        full = super()._candidates(rnd, seat)
+        if len(full) <= self.KEEP:
+            return super().decide_play(rnd, seat)
+        obs = encode_obs(rnd, seat)
+        enc = [encode_action(a, rnd) for a in full]
+        v = self.net.value_candidates(obs, enc)
+        order = sorted(range(len(full)), key=lambda i: -float(v[i]))
+        keep_idx = [0] + [i for i in order if i != 0][:self.KEEP - 1]
+        self._pruned = [full[i] for i in keep_idx]
+        # Equal total rollouts: N * kept == BASE_N * full.
+        self.N_DETERMINIZATIONS = max(
+            self.BASE_N, round(self.BASE_N * len(full) / len(self._pruned)))
+        try:
+            return super().decide_play(rnd, seat)
+        finally:
+            self._pruned = None
+            self.N_DETERMINIZATIONS = self.BASE_N

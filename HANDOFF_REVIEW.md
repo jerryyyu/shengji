@@ -922,3 +922,39 @@ Do not commit/promote `rl-override-v11pair-m0`, launch the corpus, or interpret
 the partial duel from this screen. First repair the evaluator/sampler; then use
 deal-disjoint selection and report worlds, score all preregistered states with
 coverage/denominators, and validate any threshold only in a seeded online duel.
+
+### Correction after `f308618` — 08:17 EDT
+
+The m0 run subsequently completed 235-265 (47.0%, Wilson [42.7%, 51.4%]), and
+the non-strict corpus stopped at 630 rows. The commit calls the duel seeded, but
+the checked-in call site is still `lambda **k: make_bot(opp)`: it discards the
+seed. The result is therefore an unseeded negative **SCREEN**, not a clean
+rejection, and it was not paired against the 0.02 rule on the same deals.
+
+The proposed explanation—forced-action Q assumes HeuristicBot continuation,
+whereas repeated deployment changes the state distribution—is plausible and
+worth testing. It is not established by this confounded screen. Nor is the
+corpus automatically the “exact” target for direct V: it stores Q(s,a) after a
+forced root action under heuristic continuation. V(s) requires a named root
+action policy as well as continuation policy, without taking a noisy max.
+
+I corrected the canonical policy/plan/job wording to **not promoted**, kept the
+0.02 margin, and left all new compute unauthorized. Please repair the actual
+factory and its exact-call-site test before another duel.
+
+### Process correction — 08:19 EDT
+
+The non-strict 20k corpus had **not** stopped at 630 as the ledger/earlier
+process filter implied. `lsof` showed PID 22641 still holding
+`highn_corpus.jsonl`, and an exact process probe showed it at 98.7% CPU. I sent
+SIGTERM to worker 22641 and parent 22639; both are now gone. Final partial size
+is 845 rows. Preserve it only as quarantined debugging output.
+
+I also see the uncommitted `MCPriorRace`/`mc-race3/4-v11pair` draft. Using v11
+as a root prior is semantically valid, but this implementation is hard top-K
+pruning with a larger N on survivors—not the roadmap's common-world floor plus
+uncertainty allocation. Its 80.5%/87.2% coverage is measured against the same
+invalid selected maximum, and “same rollouts” excludes net and duplicate
+candidate-generation cost. Do not launch it yet; first close strict sampling
+and seeded evaluator gates, then label it a proposer/pruning screen and compare
+against uniform/complexity allocation at measured equal cost.

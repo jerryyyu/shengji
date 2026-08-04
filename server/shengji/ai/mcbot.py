@@ -112,7 +112,9 @@ class MCBot(SmartBot):
         # refused: refusing them killed the search outright in constrained
         # late-round states where no void-respecting world exists.
         self.impossible_worlds = 0
-        self.rejected_worlds = 0     # kept at 0; readers still reference it
+        self.rejected_worlds = 0
+        # Decisions that fell back to candidate 0 with NO world sampled.
+        self.zero_world_decisions = 0     # kept at 0; readers still reference it
 
     # ------------------------------------------------------------------- play
     def decide_play(self, rnd: Round, seat: int) -> list[str]:
@@ -149,11 +151,13 @@ class MCBot(SmartBot):
         self.rollouts += n_worlds * len(candidates)
         self.search_secs += time.perf_counter() - _t0
         if n_worlds == 0:
-            # Reaching here means sampling is broken (it silently disabled
-            # banker search for a day). Loud in tests, harmless in prod.
-            if os.environ.get("SHENGJI_STRICT_SAMPLING"):
-                raise AssertionError(
-                    f"no worlds sampled for seat {seat} (banker {rnd.banker})")
+            # Sampling produced nothing. This once meant banker search was
+            # silently disabled for a day, so it must never pass unnoticed —
+            # but killing a 42-cluster shard over one rare decision throws away
+            # hours of compute for no information. COUNT it; the evaluator
+            # treats a nonzero count as a protocol failure, which is loud
+            # without being destructive (2026-08-04).
+            self.zero_world_decisions += 1
             return candidates[0]
         # acting-team perspective values, exposed for search distillation
         self.last_eval = (candidates, [t / n_worlds for t in totals])

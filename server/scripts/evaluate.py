@@ -55,7 +55,9 @@ def counters(bots):
             "search_secs": round(sum(getattr(b, "search_secs", 0.0)
                                      for b in bots), 4),
             "void_fallbacks": sum(getattr(b, "impossible_worlds", 0)
-                                  for b in bots)}
+                                  for b in bots),
+            "zero_world": sum(getattr(b, "zero_world_decisions", 0)
+                              for b in bots)}
 
 
 def run_arm(label, policy, opponent, clusters, seed0, fh, run_id):
@@ -209,6 +211,11 @@ def main() -> None:
         problems.append("a net arm ran with no --ckpt digest recorded")
     if dirty:
         problems.append("tree was DIRTY: the git SHA does not describe the run")
+    zw = sum(x["arm"]["zero_world"] + x["opp"]["zero_world"]
+             for r in results.values() for x in r)
+    if zw:
+        problems.append(f"{zw} decisions searched ZERO worlds and fell back to "
+                        f"candidate 0 — the search did not run there")
 
     print(f"\nDECLARED BAR: {metric} > {threshold}")
     print(f"MEASURED:     {value:+.3f} +/- {half:.3f}  -> "

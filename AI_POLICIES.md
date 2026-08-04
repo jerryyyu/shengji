@@ -21,11 +21,64 @@ evidence changes a synthesized conclusion. Append run reports below the fold,
 and when a run changes a conclusion, EDIT the synthesis rather than letting the
 newest entry sit on top and speak for the file.
 
+## N=30 CONFIRMED over N=10 on the rewritten sampler (2026-08-04, preregistered)
+
+**First strength claim in this project to clear a preregistered confirmation.**
+
+| contrast | result | n |
+|---|---|---|
+| **N=30 minus N=10 (PRIMARY)** | **+0.262 +/- 0.154, excludes 0** | 504 |
+| N=30 minus null control | +0.310 +/- 0.153, excludes 0 | 504 |
+| null control minus N=10 | -0.048 +/- 0.162, **includes 0** | 504 |
+
+win rates 55.4% (N=30) / 49.2% (N=10) / 49.1% (null).
+
+Preregistered in `JOBS.md` before launch: one block, 504 clusters, seeds
+99,000,000+, disjoint from every earlier block, `--bar "paired_utility > 0"`,
+**no extension regardless of result**, screen block NOT pooled. Aggregated
+through `scripts/aggregate_shards.py`, which reported no problems — equal
+label counts, no duplicate (label, seed, flip), one commit, one schema, zero
+zero-world decisions.
+
+**The null control is what makes this different from the six claims that
+died.** `mc-null` is `mc` with a different RNG stream — same ballot digest,
+same N=10, no differing config attribute. It scored -0.048 +/- 0.162 against
+`mc`: the harness produces nothing from nothing. And arm-minus-control excludes
+zero, so the effect is attributable to search width rather than to the pipeline.
+
+**Individual shards all read NOT CONFIRMED and that is expected**, not a
+caveat being waved away: at n=84 a shard's interval is about +/-0.37, far too
+wide. The preregistered unit of analysis was the 504-cluster aggregate,
+declared in advance precisely so a shard-level result could not be cherry-picked.
+
+**Why this reverses the afternoon's verdict.** On the OLD sampler the same
+comparison gave +0.101 +/- 0.150 and did not confirm. The plausible mechanism
+is that the sampler now emits worlds that respect voids, pair caps and tractor
+obligations, so additional worlds carry real information; when a fraction of
+sampled worlds were impossible, more of them bought less. That is a hypothesis
+consistent with the data, not a demonstrated causal claim.
+
+**Caveats, stated rather than buried.**
+
+- It ran on the PRE-FIX `decompose` kernel; the action-semantics fix landed
+  after launch. The ambiguity is common-mode across arms so the contrast
+  holds, but the absolute policy differs slightly from current `main`.
+- N=5 was deliberately excluded. The dose ladder is a separate diagnostic and
+  including it re-creates the three-treatment design that voided the last run.
+- This is MC-vs-MC search width. **The goal — an RL policy beating MC — is
+  still not met.** This is the strongest verified bot, not a learned one.
+- `mc-strong` costs 3x the search of `mc`. Latency is not an optimisation
+  target here, but this is a deployment decision for Jerry, not an adoption
+  that follows automatically from the measurement.
+
 ## Current synthesis — 2026-08-04 22:15
 
-- **Strength incumbent:** deployed N=10 `mc`. No learned policy, value leaf,
-  learned search prior, ballot variant, or higher-N search arm has a verified
-  edge over it.
+- **Strength incumbent:** `mc-strong` (N=30) is now the strongest VERIFIED
+  policy: +0.262 +/- 0.154 paired level utility over deployed N=10 `mc` on 504
+  preregistered fresh clusters, with a null control at -0.048 +/- 0.162. It is
+  NOT deployed — that is Jerry's call, and it costs 3x the search.
+  No learned policy, value leaf, learned search prior, or ballot variant has a
+  verified edge over `mc`.
 - **Best learned result:** `rl-override-v11pair` beats SmartBot 57.7% (n=480)
   and is very fast, but its MC comparison is unseeded screen evidence. It is a
   deployment-cost candidate, not the strongest verified bot.

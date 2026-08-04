@@ -37,16 +37,19 @@ newest entry sit on top and speak for the file.
   reservoir, not an oracle. Its old-ballot/non-strict/same-world-selected labels
   have produced no online gain. The 12,000-state late supplement is raw-state
   distribution correction and has not yet been cleanly relabelled or trained.
-- **Sampler conclusion:** count-first assignment removed the allocator
-  dead-ends that were silently invalidating runs (14 zero-world decisions in
-  the determinization blocks; now 0). Independent certification over 64,795
-  worlds found and fixed one real defect — the declarer pin completing a pair
-  the history forbade — but **the P0 certification gate in `BACKLOG.md` is NOT
-  met**: it does not run on reservoir states, check kitty conservation,
-  declaration pins or tractor obligations, count individual failed draws, or
-  record provenance, and "the real deal passes the validator" is not the same
-  as "the sampler can produce it". Do not call the world distribution
-  constraint-correct or posterior-correct.
+- **Sampler: the P0 gate is MET for VALIDITY and COMPLETENESS** (run
+  `eea78d2`, clean tree). 38,399 worlds over reservoir states: 0 invalid
+  against a rules-derived validator covering conservation, pins, voids, pair
+  and tractor obligations. Completeness proved by exhaustive enumeration on
+  120 constructed deep-banker states — every legal world produced, real deal
+  reached in all 120. Three sampler defects were found and fixed getting here
+  (allocator dead-ends, the declarer pin completing a forbidden pair, and
+  tractor run-length caps never consumed).
+  **NOT certified: distribution fidelity.** Two biases are named and
+  unmeasured — `_splits` samples count matrices roughly uniformly though they
+  admit very different numbers of completions, and `_deal_suit` prefers
+  distinct codes beyond what the caps require. Do not call the world
+  distribution posterior-correct.
 - **Determinization is REOPENED.** N=30 over N=10 was closed NOT CONFIRMED on
   the old sampler (+0.101 +/- 0.150). On the corrected sampler one clean block
   gives +0.290 +/- 0.210. One block is not a claim; it needs fresh seeds and a

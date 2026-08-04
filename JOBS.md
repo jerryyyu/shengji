@@ -5,13 +5,20 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-Nothing. Both machines idle at 20:20.
+Nothing. Both machines idle at 21:45.
 
-Next queued: the 512-state clean lead pilot (both arms — Jerry approved "run
-both"). Not launched at the tail of a session; awaiting a go to run it
-overnight.
+Next: the 512-state clean lead pilot (both arms). Unblocked — the sampler gate
+it was waiting on is green for validity and completeness.
 
 ## RECENTLY FINISHED
+
+### sampler certification — P0 gate MET (validity + completeness) 21:40
+- run eea78d2, clean tree. 1,600 reservoir states / 38,399 worlds, 0 invalid.
+  120/120 constructed toy states fully reachable, real deal reached in all.
+- Found and fixed a second sampler defect on the way: tractor run-length caps
+  were never consumed. Three certifier bugs of my own also fixed.
+- Distribution fidelity still NOT certified.
+
 
 ### sampler certification — 20:10, found and fixed a real defect
 - 64,795 worlds across early and late ply. 12 invalid at ply>=16, all from the

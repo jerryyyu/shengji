@@ -557,6 +557,23 @@ result.
 Prod runs `mc`, so this is a behaviour change awaiting a strength check and
 Jerry's go — it is a CORRECTNESS fix and is not claimed to be a strength gain.
 
+## Static ballot coverage audit — dev split, REFRESHED 2026-08-05
+
+**Refreshed after the tied-code tractor fix, and the headline did NOT move:
+51.2% leads / 0.9% follows, unchanged.**
+
+I told Codex the 51.2% was an undercount because the diagnostic reference
+shared the tied-tractor omission. That was wrong in a way worth recording: the
+omission lived in `find_tractor_runs`, which is called by BOTH the deployed
+ballot (`MCBot._candidates`, 2 sites) and the reference generator
+(`rl.actions.enumerate_actions:70`). Fixing it added the same actions to both
+sides, so the omission FRACTION is legitimately unchanged.
+
+The fix did propagate — offered tractor candidates rose 1,701 -> 1,736, offered
+pairs 14,037 -> 14,033, omitted pairs 19 -> 23 — it simply moved numerator and
+denominator together. The baseline is now honest and the lead pilot is
+unblocked on this prerequisite.
+
 ## Static ballot coverage audit — dev split, 2026-08-04
 
 **CORRECTED 17:45** after a Codex audit: the structured-action filter was wrong

@@ -125,11 +125,19 @@ def main() -> None:
 
     sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
                          capture_output=True, text=True).stdout.strip()
+    # A bare SHA lies when the tree is dirty: the 09:50 run stamped a7f94e3
+    # while executing code that only landed in 9b23a1a (Codex). Record the
+    # dirt, and digest the script actually executed.
+    dirty = subprocess.run(["git", "status", "--porcelain"],
+                           capture_output=True, text=True).stdout.strip()
+    script_sha = hashlib.sha256(open(__file__, "rb").read()).hexdigest()[:16]
     npz = "snapshots_v11pair/ep07.npz"
     digest = hashlib.sha256(open(npz, "rb").read()).hexdigest()[:16] \
         if os.path.exists(npz) else "MISSING"
     run_id = f"race_confirm_{int(time.time())}_{sha}"
-    manifest = {"run": run_id, "git": sha, "ckpt": npz, "ckpt_sha256_16": digest,
+    manifest = {"run": run_id, "git": sha, "tree_dirty": bool(dirty),
+                "dirty_files": dirty.split("\n")[:20] if dirty else [],
+                "script_sha256_16": script_sha, "ckpt": npz, "ckpt_sha256_16": digest,
                 "clusters": clusters, "seed0": seed0, "arms": ARMS,
                 "impossible_worlds": "counted, not refused",
                 "fast_engine": bool(os.environ.get("SHENGJI_FAST")),
@@ -171,10 +179,13 @@ def main() -> None:
               for r in results.values() for x in r)
     rej = sum(x["arm_side"]["rejected"] + x["mc_side"]["rejected"]
               for r in results.values() for x in r)
-    tot_worlds = sum(x["arm_side"]["rollouts"] + x["mc_side"]["rollouts"]
-                     for r in results.values() for x in r)
-    print(f"\nimpossible-world fallbacks USED: {imp} "
-          f"({100*imp/max(tot_worlds,1):.3f}% of rollout-worlds) | rejected {rej}")
+    # Denominator is SAMPLED WORLDS, not candidate rollouts: each world is
+    # scored once per candidate, so dividing by rollouts understated the rate
+    # by the ballot size (Codex).
+    calls = sum(x["arm_side"]["search_calls"] + x["mc_side"]["search_calls"]
+                for r in results.values() for x in r)
+    print(f"\nimpossible-world fallbacks USED: {imp} over ~{calls} searches "
+          f"| rejected {rej}   (rate per SEARCH, not per rollout)")
     print(f"records: {out}")
     print("\nPRIMARY = paired signed level utility vs the mc-vs-mc reference. "
           "The rand4 arm is the control: if it moves with race4, the gain is "

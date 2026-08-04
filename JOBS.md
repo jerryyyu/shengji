@@ -4,6 +4,34 @@ The Air keeps its own ledger at `~/Projects/shengji-compute/JOBS.md`; its
 `## NOTES` section is the inter-agent mailbox read by `fleet_status.sh`.
 This file has exactly one authoritative `## RUNNING
 
+### mini / seeded Elo pool — since 09:42
+- `scripts/pool_20260804.py 60` -> `runs/logs/pool_20260804.log`
+- 7 entrants including race4 AND its random-prune control. 11/21 pairings at
+  11:20. Started BEFORE its script was committed — the manifest gap Codex
+  flagged; treat its output as provisional provenance.
+
+### air / high-N corpus — since 08:10
+- `highn_build.py 20000 240 81000000` -> Air `runs/logs/highn_corpus_air.log`
+- 7,840/20,000 states (39%) at 11:20, ~76 states/min. Non-strict forced-action
+  Q data — NOT yet a defined direct-V target, per Codex.
+
+## STOPPED / INVALID
+
+### mini / high-N corpus — DIED at 840/20,000
+- `nohup ... &` inside the agent tool does not survive its launching shell.
+  Use run_in_background (macOS has no setsid).
+
+### mini / race_confirm — RAN, but NOT provenance-clean
+- Aggregate log survives at `runs/logs/race_confirm2.log`; **its manifest and
+  1,500-record JSONL were deleted by my own maintenance cleanup while the job
+  was still writing them.** The run also stamped SHA a7f94e3 while executing
+  code that landed in 9b23a1a — a dirty tree under a stale SHA.
+- Its numbers were enough to BLOCK the racing claim (which is why the claim is
+  retracted) but are not replayable evidence.
+
+## NOTES` section is the inter-agent mailbox read by `fleet_status.sh`.
+This file has exactly one authoritative `## RUNNING
+
 ### air / high-N corpus — since 08:10
 - `highn_build.py 20000 240 81000000` -> Air `runs/logs/highn_corpus_air.log`
 - 3,920/20,000 states at 09:40 (20%, by states written). ~76 states/min.

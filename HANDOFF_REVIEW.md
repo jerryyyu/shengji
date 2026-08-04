@@ -631,3 +631,109 @@ Also fixed in this pass: `fetch_fly_logs.sh` was creating `server/logs/` when
 run from `server/`, so 14 fetched prod games never reached the corpus; and the
 dev server on :8899 predates the LOG_DIR change, so its local test games were
 landing in the human corpus. Both quarantined and recorded in CORRECTNESS.md.
+
+---
+
+## Codex bounded audit — 2026-08-04 09:52 EDT (host clock; failed gate, not a clean confirmation)
+
+The retraction is operationally correct: withdraw every “net beats MC” claim
+and do not promote. Statistically, however, race4 at 49.8% and paired utility
+−0.012 ± 0.209 do **not** prove inferiority or equivalence; this is a failed
+superiority confirmation. The old nominal n=2,900 screen cannot be rescued by
+its size because it lacked the confirming protocol, so do not pool the two.
+Rand4 is also no finding: its primary paired utility +0.188 ± 0.224 spans zero;
+the 55.4% Wilson interval still treats correlated flips as independent.
+
+This run is not provenance-clean. `race_confirm2.log` identifies `a7f94e3`,
+but its lenient manifest vocabulary and behavior first landed in `9b23a1a`
+after the run started, proving it executed dirty code under a stale SHA. The
+named manifest and 1,500-record JSONL are now absent; only the aggregate log
+survives. Moreover, `SHENGJI_STRICT_SAMPLING` no longer rejects relaxed
+suit-void worlds, `pair_void` still has no sampler consumer, the printed
+fallback percentage divides sampled-hand fallbacks by candidate rollouts, and
+the advertised net-inference timing is never recorded. The contradictory
+number is enough to block promotion, not to call this artifact replayable.
+
+The sampler diagnosis also needs correction: a valid observed history has at
+least the actual hidden deal satisfying its public suit voids, assuming Memory
+and the engine are correct. Fourteen failed greedy constructions indicate a
+sampler/inference defect, not proof that no constraint-correct world exists.
+Lenient fallback may preserve availability, but it does not close the belief
+correctness gate.
+
+The ledger is stale and contradictory. At 09:48 the exact local process check
+found no mini high-N or confirmation job, but did find unledgered
+`pool_20260804.py 60` PIDs 25774/25776, started 09:42 and using ~99% of one
+core. `JOBS.md` simultaneously lists the mini corpus as running and stopped;
+the pool began before its script commit and has no immutable manifest. I did
+not interfere. The Air corpus was not remotely verified and remains
+non-strict forced-action Q data, not an already-defined direct-V target.
+
+Focused sampler/memory/compiled-parity tests pass (28/28). No frontend or
+native-source file changed after the 08:50 checkpoint, so there is no new
+evidence on those surfaces.
+
+---
+
+## Codex follow-up — 2026-08-04 10:09 EDT (latest pool + the next sourcing lever)
+
+The new pool completed after this audit first observed it mid-pairing. Its
+direct `mc` / `mc-race4-v11pair` result is **57-63 (race4 52.5%, n=120)**;
+the fitted gap is race4 +21 Elo over MC, below the pool's own 40-Elo
+resolution rule. More importantly, the random-prune control beat MC **67-53**,
+ranked +28 Elo over MC, and tied race4 **61-59**. Thus the pool does not revive
+the learned-prior claim: its control again matches or outscores the treatment.
+It remains a selection screen—no per-seed utility records or immutable run
+manifest—and there is no live pool process now.
+
+The pool also exposed a separate evaluator tripwire. On the same seed-0 block,
+the old seeded pool logged `mc` / `mc-vleaf-v7w-ep02` as 56-64; this pool logged
+82-38. More importantly, `scripts/vleaf_settle.py` still constructs its leaf
+arm as `lambda **kw: make_bot("mc-vleaf-v7w-ep02")`, dropping `kw`, so the
+claimed 1,200-round *seeded* settlement never seeded the vleaf side. The 50.4%
+aggregate remains exploratory evidence, not a reproducible paired settlement;
+the 38/120 current block is an anomaly to diagnose, not proof that vleaf is
+32%-strength.
+
+Jerry's sourcing question uncovered a real documentation/architecture gap.
+Rerunning the 2,112-play human audit against the ballot **MC actually
+searches**, rather than the exhaustive v2 analysis ballot, gives:
+
+| ballot | missing human plays | coverage |
+|---|---:|---:|
+| deployed `MCBot._candidates` (caps 14/12) | 123/2,112 | 94.2% |
+| same MC generator with caps removed | 94/2,112 | 95.5% |
+| exhaustive v2 audit ballot | 19/2,112 | 99.1% |
+
+The split is diagnostic: deployed MC misses **93/601 leads (15.5%)**, mostly
+55 middle-rank singles and 38 non-safe/component throws; removing its cap does
+not recover those. It misses only **30/1,511 follows (2.0%)**, and removing the
+cap recovers 29 of them. Follow truncation affects 168/1,511 states and today
+keeps the lexicographically sorted remainder after four constructed seeds.
+That is generation-order bias, not a strategic selector. Naively feeding v2
+to MC is not viable: the audit ballot averages 80.4 lead actions (max 336),
+and uncapped follow construction can explode combinatorially.
+
+Therefore current rollout work does **not** cover sourcing. `highn_build.py`
+calls the current capped `MCBot._candidates`, and race4 only removes actions
+from that same list. Neither can discover or value an off-ballot play.
+
+Highest-EV bounded next design: a versioned **Ballot V3** with three separate
+layers—complete/lazy canonical generation, an archetype-aware selector, then
+MC evaluation. Keep candidate 0 and the constructed legal responses; reserve
+slots across win/cheap-win, feed/dump points, create-void, preserve/break
+structure, cheap/strong ruff, and lead single/pair/tractor/throw archetypes.
+Never truncate by suit/card-code order. First arm should target lead sourcing
+(all strategically distinct singleton ranks plus a small beam of component
+throws); second should replace follow lexicographic truncation with a Pareto or
+quota selector at the same cap. Pure MC can test these without retraining.
+Current v11 must **not** score the widened ballot until it has matching dense
+labels—the Elo-798 train/play mismatch still applies.
+
+Cheap gate before an online duel: on a small frozen set enriched for the 123
+misses, evaluate `current union V3` with common selection worlds and disjoint
+evaluation worlds. Report current-ballot best-action recall and regret, not
+only human recall. Offline one-ply evidence may reject but cannot promote; an
+arm that survives gets a manifested same-cap/equal-rollout paired duel with
+signed level utility. This buys information about sourcing without a training
+run or a large corpus.

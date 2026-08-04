@@ -45,7 +45,14 @@ collapse.
 5. **Check the external-review thread** — `HANDOFF_REVIEW.md` for new
    Codex entries; reply inline when actionable, and open an incident file
    under `incidents/` for anything it finds that reached data or prod.
-6. **Remove dead artifacts** — experiment dirs feeding nothing (empty
+6. **Remove dead artifacts** — and check `lsof` FIRST. On 2026-08-04 the
+   "delete run files with <200 records" rule matched the JSONL of a
+   confirmation that was still running, deleting the evidence out from under
+   the live process; the aggregate log survived but the per-seed records and
+   manifest did not. The checklist already said "never touch anything a live
+   PID has open" and I broke it by filtering on size instead of liveness.
+   Run `lsof -t <file>` (or skip files newer than the oldest running job) before
+   deleting anything under `runs/`. — experiment dirs feeding nothing (empty
    dmc2_*/smoke dirs), superseded shard dirs no process holds open, stale
    tmp logs. Never touch: checkpoints in the ladder, snapshots_* probe
    evidence, logs/ (source of truth), anything a live PID has open.

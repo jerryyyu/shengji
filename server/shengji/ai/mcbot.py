@@ -404,14 +404,22 @@ class MCBot(SmartBot):
                     # This world was only buildable by IGNORING observed voids,
                     # i.e. it is impossible given the play history.
                     #
-                    # Strict mode REFUSED these outright at first, which turned
-                    # out to break the bot: in tightly constrained late-round
-                    # states no void-respecting world exists at all, every
-                    # retry was rejected, and the search died with zero worlds
-                    # (2026-08-04). Refusing to model a state is not more
-                    # rigorous than modelling it imperfectly — it just moves
-                    # the failure. So the fallback is USED and COUNTED, and an
-                    # experiment reports the rate instead of asserting zero.
+                    # I first claimed refusing these breaks the bot because
+                    # "no void-respecting world exists" in constrained states.
+                    # That was WRONG twice over (Codex, 2026-08-04): a valid
+                    # history always admits at least the real deal, and
+                    # measurement then showed 0 zero-world decisions across 300
+                    # mc-vs-mc rounds with voids REQUIRED (262 worlds rejected
+                    # and absorbed). Requiring them is safe; the earlier crash
+                    # has some other, still-unexplained cause.
+                    # SHENGJI_REQUIRE_VOIDS makes this a hard constraint. A
+                    # constraint-correct world ALWAYS exists (the real deal is
+                    # one), so a failure under this flag is a defect in the
+                    # greedy construction — not proof of impossibility, which
+                    # is what I wrongly concluded on 2026-08-04 (Codex).
+                    if os.environ.get("SHENGJI_REQUIRE_VOIDS"):
+                        self.rejected_worlds += 1
+                        return None
                     self.impossible_worlds += 1
                 return hands, (buried or kitty)
         return None

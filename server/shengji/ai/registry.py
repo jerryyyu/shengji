@@ -139,4 +139,17 @@ def _make_override_thr(path: str, margin: float):
 # (regret 1.943 vs 2.103 for always-candidate-0), so it is not post-hoc.
 REGISTRY["rl-override-v11pair"] = _make_override_thr(
     "snapshots_v11pair/ep07.pt", 0.02)
+def _make_gate(path: str, gate: float):
+    def f(**kw):
+        from ..rl.torch_policy import MCGatedOverride
+        b = MCGatedOverride(path)
+        b.GATE = gate
+        b._seed = kw.get("seed")
+        return b
+    return f
+
+
+# Cheap net as a stakes DETECTOR: SmartBot on low-stakes decisions, full MC
+# search on the ~12% the net flags. Gate fitted on a disjoint holdout half.
+REGISTRY["mc-gate-v11pair"] = _make_gate("snapshots_v11pair/ep07.pt", 0.02)
 REGISTRY["rl-override-v10res"] = _make_override("snapshots_v10res/ep09.pt")

@@ -909,3 +909,187 @@ Useful MC combinations, in priority order:
 My preferred first experiment is (1), followed by (2). Both reuse the result
 we actually established—v11's action ranking—without pretending it learned an
 absolute value function.
+
+---
+
+## Codex audit — 2026-08-03 23:01 EDT (`f4216e8`; frontend, DMC2, architecture)
+
+### Release verdict on the current frontend
+
+The direction is better: `App` now owns reconnect intent, `_attach`/`_detach`
+centralise part of membership, and case-folded reclaim fixes Jerry's observed
+lockout once the old socket is known disconnected. Verification on the latest
+code-bearing head is green: **87/87 server tests** in both pure and fast modes,
+the production web build passes, and lint has six warnings (five Fast Refresh,
+one missing `joinSeat` effect dependency).
+
+I still would **not call the multiplayer lifecycle ready to deploy**. Four
+observable defects remain:
+
+1. **Chat scrollback is still broken.** Server replay messages have no `room`
+   field. `ws.ts` appends those room-less `chat` messages, then the first
+   room-bearing `state`/`room` message changes `chatRoom` and clears the log
+   immediately before `Table` reads it. On a same-room reconnect, the full
+   replay is appended again because there are no message ids. The claimed
+   room-keying therefore loses initial history and still duplicates reconnect
+   history. Use one `chat_history {room, messages}` replace snapshot plus live
+   `chat {room, id, ...}` messages deduped by monotonic id.
+2. **A refresh can still strand the returning player.** Reclaim requires the
+   old seat to be `connected=False`. If the new socket's join arrives before
+   the old socket's `finally`, it gets `room_full`; the new socket remains open,
+   so no later reconnect event retries the saved join after the old socket
+   finally detaches. Use a stable session/player token and last-connection-wins
+   rebinding. Store a connection generation on the seat, and let an old
+   socket's `finally` detach only if it still owns that generation.
+3. **Lobby disconnects have a deterministic peek/join loop.** A full pre-game
+   lobby with one dropped human reports `in_game=false` and one claimable seat.
+   `Lobby` only opens the picker when `in_game`; it blind-joins, receives
+   `choose_seat`, peeks, and repeats. If the lobby has fewer than four seats,
+   a newcomer is appended instead of replacing the stale dropped seat. The
+   simplest rule is to remove disconnected seats immediately before a game;
+   otherwise show the same picker regardless of `in_game`.
+4. **Explicit leave still diverges from disconnect.** `_detach` now removes the
+   seat from `ready`, but the explicit `leave_room` branch never calls
+   `advance_if_all_ready()`. If that seat was the final outstanding round-end
+   confirmation, the room remains stuck. Mid-game explicit leave also waits
+   the full disconnect grace before the watchdog can act, even if it was the
+   leaver's turn.
+
+Jerry's desired semantics—“a disconnected seat becomes a bot seat, and the
+player can come back”—need two separate fields, not more inference from
+`is_bot`: **seat owner** (identity/name/reservation) and **current controller**
+(`human` or `bot`). Suggested contract: explicit leave activates bot control
+immediately and makes the seat claimable; abrupt disconnect activates bot
+control while reserving the owner for a short reconnect grace; after grace it
+becomes generally claimable; the original token may reclaim according to the
+chosen house rule. The wire state should expose `controller`/`reserved_until`,
+so “offline,” “bot covering,” and “permanent bot” are not collapsed together.
+
+Add browser-side tests; the 17 socket tests cannot see bugs in the TypeScript
+buffer/controller. Minimum matrix: `[chat_history,state]`, same-room reconnect
+dedupe, invite over saved resume, overlapping old/new sockets, old socket
+closing after a successful rebind, full pre-game lobby drop, explicit leave on
+the current turn, explicit leave as final round-end holdout, claim before/after
+grace, and claim while a bot action is pending. Also put `RoomSeats` and
+`ChatMsg` into `ServerMsg` and remove the `any` subscribers.
+
+### DMC2: the two alarm-halted runs are implementation-invalid
+
+Jerry's concern that a failed hypothesis may actually be a failed
+implementation is correct here. There is a concrete role-sign bug in the core
+target:
+
+- `oracle.encode_oracle()` and oracle training explicitly use an
+  **attacker-perspective** target.
+- `actor_batch()` flips the terminal return into the **acting team's**
+  perspective: attacker gets `val`, banker gets `-val`.
+- ingestion then computes `adv = rets - vo` for both roles.
+
+That is correct for an attacker and wrong for a banker. If the oracle predicts
+attacker value `vo`, the acting-team baseline is `vo` for attackers and `-vo`
+for bankers. The intended target is
+`role * (attacker_return - attacker_oracle)`, where role is +1 attacker / -1
+banker. `seat_l` is allocated in `actor_batch()` but never populated or
+returned, which is strong evidence the role needed by this calculation was
+dropped. With an exact oracle, both roles should get zero advantage; current
+banker rows instead get roughly `-2*vo` contamination.
+
+There are also two exact-artifact gating failures:
+
+1. The async gate evaluates the bytes saved to `candidate.pt`, but on a pass
+   the learner promotes the **current live `net.state_dict()`**, which has kept
+   training. The promoted policy is not the policy that passed.
+2. Gate and Smart evaluation both reuse and overwrite the same
+   `candidate.pt`; actors likewise read an in-place-overwritten
+   `generator.pt`. A worker can load a later snapshot than the task names, or
+   observe a partial write.
+
+Use unique immutable snapshots (`candidate_step_<n>_<hash>.pt`), write via
+temp + atomic replace, pass the exact path/hash through the async result, and
+promote that exact artifact. The alarm itself is a useful tripwire, but its
+“initial” spread is armed only after 600 updates on the current random batch,
+not on a frozen reference batch; it can detect a later collapse but cannot
+prove the warm start was preserved. No test currently mentions `dmc2`.
+
+Therefore: retain the conceptual scaffolding (opponent pool, frozen oracle,
+anchor, epsilon schedule, replay cap, alarm), but do **not** reuse “90% of
+`dmc2.py`” unreviewed for AWAC. Fix and unit-test role symmetry, immutable
+snapshots, exact promotion, and alarm/reference semantics first. Reclassify
+the historical result as **DMC2 implementation failed / Q-regression
+hypothesis untested**, not “Q-regression collapses any policy pathway.” AWAC
+will also weight the wrong banker advantages if it inherits this target.
+
+### v11pair: real win, with reproducibility work still needed
+
+The 277-203 result against SmartBot is real positive evidence. The reported
+Wilson interval treats 480 mirrored outcomes as independent even though the
+independent unit is 240 deal-seed clusters. Future evaluators must persist one
+record per seed/flip and use a cluster bootstrap or decisive-pair sign test.
+Encouragingly, the aggregate is strong enough that even the least-favourable
+possible split composition gives an exact paired sign-test p ~= 0.0197, so the
+SmartBot win survives this correction; the exact Wilson interval does not.
+Record level utility/full-game outcome too, not round wins alone.
+
+“Matched ballot” is also not yet a frozen artifact contract. `gen-v4` records
+`teacher_git=367a822`, while the deployed override creates today's `SmartBot`
+and today's default `MCBot()` at runtime; banker-knowledge behavior changed
+after that data was produced. More importantly, any future Smart/MC class
+default silently changes what the already-measured checkpoint means. Bundle a
+versioned `PolicySpec` with checkpoint hash, encoder version, candidate-policy
+version/config, baseline-policy version/config, threshold, and engine/rule
+profile; refuse to load on a digest mismatch. “Calls the same helper name” is
+not the same as “uses the same ballot.” The product duel remains valid for the
+current composite policy, but the alias is not immutable/reproducible yet.
+
+The offline evaluator still compares raw teacher-point deltas to normalized
+network deltas in its headline RMSE, and the committed script does not contain
+the claimed A-fit/B-report split. Fix and archive that procedure before using
+it as the next model gate. The pairwise boundary weight is also centered on
+zero (`abs(dt) < 2*margin`), not on the deployed `+margin` threshold; record
+that as the actual v11 recipe and test the declared boundary-centered variant
+separately.
+
+### Simplification and performance priorities
+
+1. **One experiment runner, not 24 one-off scripts.** A canonical runner
+   should consume an immutable `ExperimentSpec`, write per-seed JSONL plus a
+   manifest (git SHA, policy/checkpoint hashes, rule/engine mode, seed range),
+   calculate paired statistics and level utility, and resume by seed id. Docs
+   should quote those artifacts. This removes duplicated Wilson code,
+   accidental seed reuse, mutable aliases, and irreproducible manual splits.
+2. **Share immutable network weights within each duel worker.** Today
+   `play_pairing()` constructs four bots for every mirrored round, and each
+   `RLOverrideBot` deserializes the same checkpoint. Locally, 20 constructions
+   took 0.405 s (~20 ms each), while 20,000 MCBot constructions took 0.114 s.
+   A 1,200-round learned duel can waste roughly 48 s just reloading identical
+   weights. Load/export once per process, share the stateless net, and create
+   only lightweight per-seat RNG/controller state. Export v11 to NPZ and add
+   torch/NumPy parity before production.
+3. **Replace global fast-path monkeypatching with an explicit rollout
+   backend.** `fast.activate()` scans `sys.modules`, rewrites imported
+   function objects, and patches class methods; this is difficult to reason
+   about and already required special spawn handling. Keep the Python engine
+   canonical for live games, but have MCBot call an explicit
+   `PureRolloutBackend` or `CompiledRolloutBackend`. The next large win should
+   compile one int-native `rollout_to_end` state loop, amortising string/int
+   conversion and Python dispatch, rather than adding more globally patched
+   leaf functions. Differentially compare complete rollout returns/histories.
+4. **Make strictness the default for experiments and CI.** Yes, the
+   silent-fallback sweep is worth the bounded day. Current examples include
+   sampler -> candidate 0, override ballot miss -> SmartBot, `state_for` id
+   minting, broad websocket/action exception swallowing, human replay dropping
+   corrupt rounds, and logging errors being ignored. Production may recover,
+   but every recovery needs a counter + structured warning; offline training,
+   eval, and tests should raise. A plausible fallback without telemetry is an
+   unlabelled policy change.
+5. **Separate model responsibilities in code.** Name/API the heads by their
+   contract: `ActionComparator` (within-state deltas), `PolicyPrior`, and
+   `AbsoluteStateValue`. Do not let each expose a generic
+   `value_candidates()` that makes the v11-as-leaf misuse type-correct. The
+   same separation should exist in metrics and checkpoint metadata.
+
+My overall view: the engine/test foundation and measured 3.4x compiled gain
+are strong, and v11pair is the best ML result so far. The next leverage comes
+from making identities and transitions explicit—not adding another model or
+frontend feature while policy composition, experiment artifacts, and seat
+control can still change implicitly.

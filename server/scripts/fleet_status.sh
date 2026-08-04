@@ -72,8 +72,14 @@ echo "  (any id here with no matching live process = orphan; quarantine its shar
 hdr "CODEX MAILBOX — HANDOFF_REVIEW.md discussion thread"
 HR=../HANDOFF_REVIEW.md
 if [ -f "$HR" ]; then
-  n=$(grep -c "^### \[Codex" "$HR" 2>/dev/null || echo 0)
+  # Match how entries are ACTUALLY written ("### Codex reply — ...",
+  # "## Codex audit message ..."). The old pattern "^### \[Codex" matched
+  # nothing and reported 0 unread while real replies sat in the file
+  # (found 2026-08-04 — a monitor that cannot fail loudly is worse than none).
+  n=$(grep -cE "^#{2,3} Codex" "$HR" 2>/dev/null || echo 0)
   echo "  Codex entries: $n   (file mtime: $(stat -f "%Sm" -t "%m-%d %H:%M" "$HR"))"
+  last=$(grep -nE "^#{2,3} (Codex|Claude reply)" "$HR" | tail -2 | sed "s/^/    /")
+  [ -n "$last" ] && printf "  last exchange:\n%s\n" "$last"
   [ "$n" -gt 0 ] && sed -n "/^### \[Codex/,\$p" "$HR" | head -30
 else
   echo "  (HANDOFF_REVIEW.md not found)"

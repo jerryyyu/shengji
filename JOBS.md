@@ -8,6 +8,25 @@ AI_POLICIES.md, not when the process exits.
 
 ## RUNNING
 
+### mini / v11pair vs mc block 5 — 02:10, PREREGISTERED FINAL
+- `scripts/v11_extend.py mc 600 12000000` -> `runs/logs/v11_mc_block5.log`
+- Air runs block 6 (seeds 13M). Pooled 1-4: 867-813 = 51.6%, n=1680,
+  CI [49.2, 54.0]. Blocks 5+6 take pooled n to ~4080. **Last extension either
+  way** — running until the interval clears 50 would be p-hacking.
+
+### mini / gate duel — 02:25
+- `scripts/gate_duel.py 150 5700000` -> `runs/logs/gate_duel.log`
+- mc-gate-v11pair vs mc, reporting strength AND wall-clock together (the whole
+  claim is near-mc strength at a fraction of the compute; either number alone
+  is meaningless). Smoke: gated side ~15% of mc's per-decision cost.
+
+## NOTES` section is read by
+`fleet_status.sh` every hourly check). Keep this one current: entries are
+deleted when the job is done AND its result is ledgered in RL_PLAN.md or
+AI_POLICIES.md, not when the process exits.
+
+## RUNNING
+
 ### mini / vleaf-settle block 2 — launched 2026-08-03 22:45
 - `scripts/vleaf_settle.py 300 7400000` -> `server/runs/logs/vleaf_settle_mini.log`
 - SECOND preregistered block of the Air's settling duel, seeds 7.4M+ (disjoint

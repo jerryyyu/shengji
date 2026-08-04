@@ -157,3 +157,49 @@ class RLOverrideBot(SmartBot):
         d = [float(x) - float(d[0]) for x in d]        # deltas vs the baseline
         j = max(range(len(d)), key=lambda k: d[k])
         return actions[j] if d[j] > self.MARGIN else base
+
+
+class MCGatedOverride(RLOverrideBot):
+    """Cheap net first; spend MC search only where the decision is HIGH-STAKES.
+
+    Calibration on held-out gen-v4 (2026-08-04) measured, per confidence
+    bucket, the regret of acting on the net vs keeping SmartBot's pick:
+
+        delta >= 0.05   1.7% of states   keeping a0 costs 5.83
+        0.02..0.05      9.9%             keeping a0 costs 3.84
+        0.01..0.02      9.9%             keeping a0 costs 3.88
+        < 0.01         78.5%             keeping a0 costs 1.52
+
+    So the net's delta is a ~2ms DETECTOR of states where the choice matters.
+    Codex proposed gating the other way (act when confident, search when
+    unsure), but that trades strength for speed: even at high confidence the
+    net's pick still carries ~2.6 regret against the search's best. Inverting
+    the trigger keeps search exactly where it pays and skips it on the ~88%
+    of decisions that are nearly free.
+    """
+
+    GATE = 0.02          # fitted on a disjoint holdout half
+    _mc = None
+
+    def decide_play(self, rnd: Round, seat: int) -> list[str]:
+        base = SmartBot.decide_play(self, rnd, seat)
+        actions = self._ballot._candidates(rnd, seat)
+        if len(actions) <= 1:
+            return base
+        key = sorted(base)
+        try:
+            i0 = next(i for i, a in enumerate(actions) if sorted(a) == key)
+        except StopIteration:
+            return base
+        actions = [actions[i0]] + actions[:i0] + actions[i0 + 1:]
+        obs = encode_obs(rnd, seat)
+        enc = [encode_action(a, rnd) for a in actions]
+        d = self.net.value_candidates(obs, enc)
+        d = [float(x) - float(d[0]) for x in d]
+        j = max(range(len(d)), key=lambda k: d[k])
+        if d[j] < self.GATE:
+            return base                       # low stakes: SmartBot, ~2ms
+        if self._mc is None:                  # high stakes: pay for search
+            from ..ai.mcbot import MCBot
+            self._mc = MCBot(seed=getattr(self, "_seed", None))
+        return self._mc.decide_play(rnd, seat)

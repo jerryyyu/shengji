@@ -318,6 +318,15 @@ override, which only ever compares candidates inside one decision. It is fatal
 for vleaf, which compares leaf values ACROSS different states and sampled
 worlds — there is no shared anchor to compare against.
 
+**Codex's correction, accepted (22:55, independently reached):** this duel is
+INVALID as a test of learned leaves, not merely a failure of one. Because the
+objective is invariant to a different additive offset in every state, the
+head's cross-state scale is not identified — the numbers look like values but
+are not on a common axis. So 32.5% says something about this checkpoint's
+calibration and nothing about whether a learned leaf evaluator could work. The
+honest verdict is "not a valid experiment", which is weaker and more accurate
+than "the idea failed".
+
 Worth stating plainly because it cuts against the obvious intuition: **the net
 that plays best is not the net that evaluates best.** They are trained for
 different jobs. A head that beats SmartBot as a comparator is uncalibrated as

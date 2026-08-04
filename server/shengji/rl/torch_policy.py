@@ -262,3 +262,29 @@ class MCPriorRace(MCBotBase):
         finally:
             self._pruned = None
             self.N_DETERMINIZATIONS = self.BASE_N
+
+
+class MCRandomRace(MCPriorRace):
+    """CONTROL: prune to the same size at RANDOM, same budget scaling.
+
+    Without this arm, "the net's prior improves search" is indistinguishable
+    from "spending the same rollouts on fewer candidates improves search".
+    If random pruning wins too, the result is about search allocation and the
+    net is incidental.
+    """
+
+    def decide_play(self, rnd: Round, seat: int) -> list[str]:
+        full = MCBotBase._candidates(self, rnd, seat)
+        if len(full) <= self.KEEP:
+            return MCBotBase.decide_play(self, rnd, seat)
+        rest = [i for i in range(len(full)) if i != 0]
+        self.rng.shuffle(rest)
+        keep_idx = [0] + rest[:self.KEEP - 1]
+        self._pruned = [full[i] for i in keep_idx]
+        self.N_DETERMINIZATIONS = max(
+            self.BASE_N, round(self.BASE_N * len(full) / len(self._pruned)))
+        try:
+            return MCBotBase.decide_play(self, rnd, seat)
+        finally:
+            self._pruned = None
+            self.N_DETERMINIZATIONS = self.BASE_N

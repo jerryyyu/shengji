@@ -183,6 +183,17 @@ def _make_race(ckpt: str, keep: int):
 
 
 # Net as a root prior; same rollout budget, concentrated on fewer candidates.
+def _make_randrace(keep: int):
+    def f(**kw):
+        from ..rl.torch_policy import MCRandomRace
+        b = MCRandomRace("snapshots_v11pair/ep07.pt", seed=kw.get("seed"))
+        b.KEEP = keep
+        return b
+    return f
+
+
+# THE CONTROL for the racing result: same pruning size and budget, no net.
+REGISTRY["mc-randrace4"] = _make_randrace(4)
 REGISTRY["mc-race3-v11pair"] = _make_race("snapshots_v11pair/ep07.pt", 3)
 REGISTRY["mc-race4-v11pair"] = _make_race("snapshots_v11pair/ep07.pt", 4)
 REGISTRY["rl-override-v11pair-m0"] = _make_override_thr(

@@ -25,8 +25,10 @@ n = int(sys.argv[2]) if len(sys.argv) > 2 else 150
 seed0 = int(sys.argv[3]) if len(sys.argv) > 3 else 8_800_000
 print(f"EXTENSION {BOT} vs {opp}, {2*n} rounds, seed0={seed0}",
       flush=True)
-a, b = play_pairing(lambda **k: make_bot(BOT),
-                    lambda **k: make_bot(opp), n, seed0)
+# Forward kwargs: `lambda **k: make_bot(BOT)` accepts the seed and drops it,
+# which is exactly the defect that made every earlier block unseeded.
+a, b = play_pairing(lambda **k: make_bot(BOT, **k),
+                    lambda **k: make_bot(opp, **k), n, seed0)
 p, lo, hi = wilson(a, a + b)
 print(f"RESULT {BOT} vs {opp}: {a}-{b} ({100*p:.1f}%) n={a+b} "
       f"Wilson95=[{100*lo:.1f}%, {100*hi:.1f}%]", flush=True)

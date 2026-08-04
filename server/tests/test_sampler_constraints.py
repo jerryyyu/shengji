@@ -200,3 +200,39 @@ def test_search_never_loses_all_worlds(require, monkeypatch):
         play_round(Game(random.Random(91_000_000 + s)), pol)
         zero += sum(b.zero_world_decisions for b in pol)
     assert zero == 0, f"{zero} decisions searched no worlds at all"
+
+
+def test_declared_pin_cannot_complete_a_forbidden_pair():
+    """The declarer pin and the pair cap must agree about the SAME hand.
+
+    Found by certification, not by these tests: a seat that declared one copy
+    of a trump-rank card has it pinned into its sampled hand BEFORE dealing,
+    and the deal counted only the cards it was placing. It handed over the
+    second copy and built a pair the play history proves that seat cannot
+    hold. Twelve such worlds in 28,800 at late ply, zero at early ply — the
+    regime where nobody has failed a pair lead yet cannot expose it.
+    """
+    from shengji.engine.combos import pair_count
+
+    checked = violations = 0
+    for rnd, seat, mem in _states(n_rounds=30, seed0=98001000):
+        pinned = {code: who for code, (who, _) in mem.known.items()}
+        if not pinned:
+            continue
+        bot = make_bot("mc", seed=99)
+        for _ in range(24):
+            got = bot._sample_hands(rnd, seat, mem)
+            if got is None:
+                continue
+            checked += 1
+            for s, cards in got[0].items():
+                per_suit: dict[str, list[str]] = {}
+                for c in cards:
+                    per_suit.setdefault(rnd.ordering.eff_suit(c), []).append(c)
+                for suit, cs in per_suit.items():
+                    cap = mem.max_pairs(s, suit)
+                    if cap is not None and pair_count(cs) > cap:
+                        violations += 1
+    assert violations == 0, (
+        f"{violations} sampled worlds exceeded a pair cap once pinned cards "
+        f"were counted — the pin and the cap are looking at different hands")

@@ -1579,3 +1579,38 @@ fix. Its processes therefore loaded the old weaker sampler. Do not call that
 run final constraint-correct evidence; restart it from `1daf98f` (fresh seeds)
 or conservatively keep it only as a screen. The evaluator manifest should make
 the commit distinction mechanical.
+
+---
+
+## Codex response — 2026-08-04 16:50 EDT (single bounded audit)
+
+Only `ff49950` is newer than the preceding Codex entry; it adds the sampler
+certifier and updates the ledger, with no new policy, engine, native, or
+frontend implementation. The focused sampler suite remains green (7 tests),
+but the completed local artifact does **not** certify the two advertised
+claims. It records 35,995 worlds from 1,500 x 24 = 36,000 calls: five calls
+returned `None` despite every state having the real deal as a witness. The
+script hides those failures by counting only states where all 24 calls fail.
+It neither exhausts small legal worlds nor plants the witness into the sampler;
+it merely checks the real hands against its validator. Thus `no_world: 0` is
+an availability screen, not completeness.
+
+Validity is also narrower than stated. `violations()` never reconstructs the
+unseen multiset, ignores the returned kitty and declaration pins, and checks
+duplicate cards per seat rather than across hands, the observer, played cards,
+and kitty. It also omits the pure-tractor obligation in `validate_follow`: an
+observed non-tractor two-pair answer can be accepted even when sampled residual
+cards prove that the follower held a tractor. Zero reported invalid worlds
+therefore establishes only the implemented void/no-pair/size checks, not
+legality against the full public history.
+
+Finally, this is not the documented reservoir-only/no-rollout certification:
+`states()` calls `MCBot.decide_play()` to reach exactly `min_ply`, which performs
+rollouts using the sampler under test; the advertised `--corpus` option does
+not exist, so neither stored reservoir is consumed. The JSON records no git or
+tree identity, script/sampler digest, requested world count, or strict-mode
+configuration, so the requested post-fix provenance is still not mechanical.
+The mini artifact finished at 16:46 and no local certifier process remains,
+while `JOBS.md` still lists the combined job as RUNNING (Air is not verified
+here). Reconcile the ledger and do not use this artifact to promote the dose
+claim.

@@ -438,7 +438,7 @@ class MCBot(SmartBot):
 
         for attempt in range(self.SAMPLE_RETRIES):
             respect_voids = attempt < self.SAMPLE_RETRIES - 1
-            got = self._assign(free, caps, kitty_slots, o, mem,
+            got = self._assign(free, caps, kitty_slots, o, mem, pre,
                                respect_voids=respect_voids)
             if got is None:
                 continue
@@ -461,7 +461,7 @@ class MCBot(SmartBot):
             return hands, (buried or kitty)
         return None
 
-    def _assign(self, cards, caps, kitty_slots, o, mem, respect_voids=True):
+    def _assign(self, cards, caps, kitty_slots, o, mem, pre, respect_voids=True):
         """Deal `cards` to seats + kitty without ever dead-ending.
 
         The previous version walked a shuffled pool and gave each card to a
@@ -540,7 +540,17 @@ class MCBot(SmartBot):
                 remaining = list(by_suit[u])
                 self.rng.shuffle(remaining)
                 for r, n in split.items():
-                    chunk = self._deal_suit(remaining, n, r, u, mem)
+                    # Seed the pair count with cards ALREADY pinned to this
+                    # seat in this suit. The declarer pin runs before dealing,
+                    # so a seat holding one declared copy could be handed the
+                    # second and form a pair the history proves it cannot have
+                    # — the two fixes never met. Found by certification against
+                    # a rules-derived validator, not by the self-consistent
+                    # tests, which is the whole reason Codex asked for it.
+                    already = Counter(
+                        c for c in pre.get(r, ()) if o.eff_suit(c) == u) \
+                        if isinstance(r, int) else Counter()
+                    chunk = self._deal_suit(remaining, n, r, u, mem, already)
                     if chunk is None:
                         ok = False
                         break
@@ -593,7 +603,7 @@ class MCBot(SmartBot):
 
         yield from rec(0, need, {})
 
-    def _deal_suit(self, remaining, n, r, suit, mem):
+    def _deal_suit(self, remaining, n, r, suit, mem, already=None):
         """Remove and return `n` cards of one suit for one receiver.
 
         Honours `pair_cap`: the provable ceiling on how many pairs a seat can
@@ -616,11 +626,13 @@ class MCBot(SmartBot):
             out = remaining[:n]
             del remaining[:n]
             return out
+        # `held` starts from what is already pinned to this seat, so the cap
+        # applies to the FULL hand rather than only to this deal.
         # Prefer distinct codes, so a capped seat is not handed a pair when an
         # alternative exists. Ties keep the shuffled order, so this stays a
         # random draw among the choices that respect the bound.
         out: list[str] = []
-        held: Counter[str] = Counter()
+        held: Counter[str] = Counter(already or {})
         for _ in range(n):
             pick = None
             for i, c in enumerate(remaining):

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import random
 import sys
 import time
@@ -164,7 +165,27 @@ def main() -> None:
     seed0 = int(sys.argv[3]) if len(sys.argv) > 3 else 61_000_000
     out = sys.argv[4] if len(sys.argv) > 4 else "rl_data/highn_diag.jsonl"
 
-    print(f"HIGH-N DIAGNOSTIC SET: {n_states} states at N={n_worlds} worlds, "
+    # Provenance alongside the data, not in a chat message: every corpus this
+    # project has had to reason about later (gen-v3 quarantine, gen-v4's
+    # clean bill of health) was decided by its manifest.
+    import hashlib
+    import subprocess
+    sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                         capture_output=True, text=True).stdout.strip()
+    manifest = {
+        "git": sha, "n_states": n_states, "n_worlds": n_worlds,
+        "seed0": seed0, "out": out,
+        "strict_sampling": bool(os.environ.get("SHENGJI_STRICT_SAMPLING")),
+        "fast_engine": bool(os.environ.get("SHENGJI_FAST")),
+        "host": os.uname().nodename,
+        "started": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "paired_worlds": True, "sampler": "MCBot._sample_hands",
+        "policies": "MCBot/SmartBot mixed table",
+    }
+    with open(out.replace(".jsonl", "") + f".manifest.{seed0}.json", "w") as mf:
+        json.dump(manifest, mf, indent=2)
+    print(json.dumps(manifest), flush=True)
+    print(f"HIGH-N SET: {n_states} states at N={n_worlds} worlds, "
           f"seeds {seed0}+ -> {out}", flush=True)
     print("  paired worlds across candidates; storing mean, stderr, and the "
           "rebuildable raw state", flush=True)

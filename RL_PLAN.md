@@ -9,7 +9,14 @@ AI_POLICIES.md; run archives in `server/runs/`.
 
 ---
 
-## WHERE THINGS STAND — 2026-08-03 23:05 (read this first)
+## WHERE THINGS STAND — 2026-08-04 01:30 (read this first)
+
+**RESIDUAL/OVERRIDE LEARNING WORKS — the first positive result from the
+learned line.** `rl-override-v11pair` (SmartBot + a learned override, NO
+search, ~2ms/decision) beats SmartBot **57.7%** over n=480 on two disjoint
+seed blocks that agree to 0.1 points. Against mc it is 52.7% (n=480) with the
+interval still including 50; blocks 3 and 4 are running to settle that, and
+that is the standing-goal question. Details in 1i.
 
 **THE HYBRID IS NOT BETTER THAN mc. Settled 2026-08-03 23:20 at n=1200.**
 
@@ -61,7 +68,7 @@ no search at all for ~40 minutes. gen-v4 proven clean via its recorded
 
 ---
 
-## STATE OF PLAY (2026-08-03, end of day 4)
+## STATE OF PLAY (2026-08-04, day 5)
 
 ### 1. Value-leaf hybrid: MEASURED EQUAL TO mc (n=1200) — retired as a strength candidate
 
@@ -213,6 +220,46 @@ mc-smartroll tie — the search machinery around this game may matter far less
 than its per-decision cost implies. It is a hypothesis, not a finding: the
 comparison was never designed and the banker is one seat of four.
 
+### 1h. v10res: the CHECKPOINT is rejected, the IDEA is untested (2026-08-03 23:50)
+
+I originally ledgered this as "residual distillation REJECTED" on a duel
+result (47% vs smart). Codex's post-mortem shows that was the wrong reading,
+and I accept it: **v10res is a near no-op, so the duel could not have measured
+the idea.** At the deployed 0.05 gate it overrides ~1.3-1.5% of states where
+the teacher overrides ~15%. A policy that almost never fires necessarily plays
+like SmartBot and necessarily scores like SmartBot.
+
+Offline evidence (`scripts/residual_eval.py`, run on exactly the two shards
+distill_train withholds, n=1491 valued states):
+
+| metric | v10res | trivial baseline |
+|---|---|---|
+| pairwise delta RMSE | 6.1995 | 6.2112 (predict zero) |
+| regret vs teacher-best @0.05 | 1.924 | 1.965 (always candidate 0) |
+| override precision / recall | 68.3% / 75.9% (argmax, ungated) | — |
+
+It beats "predict no override" by 0.2%. That is weak, badly calibrated signal
+— not nothing, and not a refutation.
+
+**Four implementation defects mean the strongest formulation was never
+tried** (Codex): `--residual` transforms targets to Q(ai)-Q(a0) but the model
+still scores rows independently and is never told what a0 was; the loss is
+unweighted MSE with no ranking or threshold awareness around the consequential
++5 boundary; training reports agreement from the POLICY head while deployment
+gates on the VALUE head; and collection used `MCBot._candidates()` while
+`RLOverrideBot` infers over `enumerate_actions()` — a train/deploy ballot
+mismatch of exactly the kind that produced Elo 798.
+
+The registry alias also pointed at ep05 while the battery measured ep09, so
+anyone playing `rl-override-v10res` got a different net than the one reported.
+Fixed.
+
+**Gate for the successor arm, declared now:** pairwise RMSE below the zero
+predictor AND regret below always-candidate-0, at a threshold chosen on a
+validation split rather than the reported one. Only then does it earn a seeded
+duel. If a corrected arm fails offline, residual learning gets parked with an
+honest "tried properly, did not work."
+
 ### 1i. RESIDUAL LEARNING WORKS — v11pair beats SmartBot, reproduced (2026-08-04 01:00)
 
 The first genuinely positive result from the learned line this week, and it
@@ -256,65 +303,32 @@ forward pass, ~2ms, against mc's 30 sampled worlds. Reaching SmartBot+7.7
 points at that latency is a different value proposition from anything else in
 the ladder, whatever the mc verdict turns out to be.
 
-### 1h. v10res: the CHECKPOINT is rejected, the IDEA is untested (2026-08-03 23:50)
+### 2. Standalone policy line: still stuck — but the OVERRIDE line is not
 
-I originally ledgered this as "residual distillation REJECTED" on a duel
-result (47% vs smart). Codex's post-mortem shows that was the wrong reading,
-and I accept it: **v10res is a near no-op, so the duel could not have measured
-the idea.** At the deployed 0.05 gate it overrides ~1.3-1.5% of states where
-the teacher overrides ~15%. A policy that almost never fires necessarily plays
-like SmartBot and necessarily scores like SmartBot.
+Standalone nets remain ~38-48% vs mc across every lever tried: more data,
+better-than-search labels (gen-v4), more epochs, a margin-aware target, and
+warm-vs-scratch init. Codex's caveat stands: the 6-epoch v9 arms both peaked
+at their last epoch and used different LRs, so warm-vs-scratch is "no DETECTED
+difference", not an equivalence result.
 
-Offline evidence (`scripts/residual_eval.py`, run on exactly the two shards
-distill_train withholds, n=1491 valued states):
+**What changed on 2026-08-04:** the same nets, used as a learned OVERRIDE on
+top of SmartBot rather than as a standalone policy, beat SmartBot 57.7% over
+n=480. The signal was there all along; asking the net to pick from scratch was
+the wrong question to ask it. That reframes the ceiling: it may be less about
+what the net knows than about what it is asked to decide.
 
-| metric | v10res | trivial baseline |
-|---|---|---|
-| pairwise delta RMSE | 6.1995 | 6.2112 (predict zero) |
-| regret vs teacher-best @0.05 | 1.924 | 1.965 (always candidate 0) |
-| override precision / recall | 68.3% / 75.9% (argmax, ungated) | — |
+### 3. gen-v4: the dataset every current arm trains on
 
-It beats "predict no override" by 0.2%. That is weak, badly calibrated signal
-— not nothing, and not a refutation.
+36,360 rounds / 1.96M decisions, teacher `mc-vleaf-v7w-ep02`, fast engine,
+choice-only TRACTOR_LOCK rows included (19,691 per epoch). Proven clean of the
+banker-search bug via its recorded `teacher_git` (367a822, seven hours before
+the defect landed).
 
-**Four implementation defects mean the strongest formulation was never
-tried** (Codex): `--residual` transforms targets to Q(ai)-Q(a0) but the model
-still scores rows independently and is never told what a0 was; the loss is
-unweighted MSE with no ranking or threshold awareness around the consequential
-+5 boundary; training reports agreement from the POLICY head while deployment
-gates on the VALUE head; and collection used `MCBot._candidates()` while
-`RLOverrideBot` infers over `enumerate_actions()` — a train/deploy ballot
-mismatch of exactly the kind that produced Elo 798.
-
-The registry alias also pointed at ep05 while the battery measured ep09, so
-anyone playing `rl-override-v10res` got a different net than the one reported.
-Fixed.
-
-**Gate for the successor arm, declared now:** pairwise RMSE below the zero
-predictor AND regret below always-candidate-0, at a threshold chosen on a
-validation split rather than the reported one. Only then does it earn a seeded
-duel. If a corrected arm fails offline, residual learning gets parked with an
-honest "tried properly, did not work."
-
-### 2. Standalone policy line: no lever has moved it vs mc
-
-Tried and null so far: more data, better-than-search labels (gen-v4),
-more epochs, a corrected margin-aware target, warm-vs-scratch init.
-Nets sit ~38-48% vs mc throughout. **However** (Codex, accepted): the
-6-epoch v9 arms BOTH peaked at their last epoch, so they are
-undertrained; they also used different LRs, so warm-vs-scratch is
-"no DETECTED difference", not an equivalence result. Extensions to 16
-epochs are running. A stronger-teacher failure AFTER convergence, with
-the baseline feature representable, would be evidence for an
-architecture/encoding ceiling — the current result is not.
-
-### 3. gen-v4: the first dataset whose labels come from a hybrid teacher
-
-36,360 rounds / 1.96M decisions, teacher `mc-vleaf-v7w-ep02`, fast
-engine, choice-only TRACTOR_LOCK rows included (19,691 per epoch).
-`rl-v9warm` trained on it sits 27 Elo above rl-v7w in the seeded pool —
-the first movement in the net line for several generations, though a
-clean direct seeded v9-vs-v7w comparison has NOT been run yet.
+The earlier claim that `rl-v9warm` sat "27 Elo above rl-v7w" came from the
+seeded pool, and pool gaps under ~40 Elo have since been shown unreliable —
+the same pool put vleaf +32 above mc, which a 1200-round direct duel then
+measured at 50.4%. No direct seeded v9-vs-v7w duel has been run, so that
+comparison stays open rather than counted.
 
 ### 4. Measurement discipline (all learned the hard way today)
 
@@ -373,63 +387,73 @@ clean direct seeded v9-vs-v7w comparison has NOT been run yet.
 
 ---
 
-## ROADMAP (ordered)
+## ROADMAP (ordered, rewritten 2026-08-04 01:30)
 
-1. ~~v7 / v7-warm~~ **DONE**: warm won (all 4 snapshots > v6, best
-   64.5%; scratch killed at ep1/8). Standing policy: init every
-   generation from the incumbent.
-3. **MCValueLeaf gate — FAILED (45%, 54-66 n=120 vs wide-ballot mc,
-   2026-08-02 evening).** v1 config: 4-trick truncation + v6 value head
-   (trained on old-teacher values). Not retired as a pathway: retry
-   cheaply with a v7w/v8 value head + truncation sweep, else fall back
-   to continuation-strategy leaves. Original design notes: (was running) — truncated rollouts + v6 value leaf,
-   vs upgraded mc. Pluribus precedent: depth-limited search with leaf
-   evaluation was its enabling trick (5 orders of magnitude compute
-   reduction, ran on a 64-core workstation). Poker-transfer variant if
-   the plain version falls short: *continuation-strategy leaves* —
-   evaluate leaves under k biased rollout policies (aggressive-trump /
-   conservative / point-feeding) instead of one, so opponents at the
-   leaf get to "choose" their bias (robustness without a net).
-4. **Belief-weighted world sampling** — Pluribus updates beliefs over
-   hidden cards by Bayes' rule under an assumed strategy. Our version:
-   weight determinizations by likelihood that the heuristic (as opponent
-   model) would have played the observed actions given the sampled hand
-   — computable exactly with no net, generalizes pair_void's hard
-   proofs. Gate: weighted-sampling mc vs uniform mc, n=120. Learned
-   belief net later if the exact version pays.
-5. **Ballot-v2 teacher generation — RUNNING (gen-v3, both machines,
-   overnight)** — the dataset fixes all three
-   known biases at once: CONTROL_LEADS-era teacher, throws + component
-   combos on the ballot (99.3% human-play coverage), TRACTOR_LOCK
-   decisions recorded as choice-only samples. Then v8 students.
-6. **AWAC-style dmc2 rewrite** — self-play beyond the teacher via
-   advantage-weighted policy-head imitation (values stay in their own
-   head; the measured-fatal Q-regression pathway never touches the
-   policy). Reuses ~90% of dmc2.py, incl. oracle baseline + spread
-   alarm + gating (archive: 13-point spec).
-7. **Contingency** — if the net line stalls with all of the above:
-   encoder audit (aux-head probes) before more training; rented compute
-   (fat-CPU actors + GPU learner, 10-30x throughput) only if a curve is
-   climbing but slowly.
+The previous roadmap had rotted: it claimed "warm won, scratch killed" (later
+refuted — no detected difference), called MCValueLeaf a 45% failure (since
+settled at 50.4% over n=1200), and listed gen-v3 generation as running months
+of results ago. Rewritten against what is actually known.
 
----
+1. **Settle v11pair vs mc** — RUNNING on both machines (blocks 3 and 4, seeds
+   10.5M/11M, 1200 rounds). Pooled so far 253-227 = 52.7%, CI [48.2, 57.1].
+   This is the standing-goal question: a search-free policy at or above mc
+   would be the milestone. Blocks 1 and 2 were both above 50, which is
+   suggestive and not yet evidence.
 
-## Training data inventory (updated 2026-08-03; all local + gitignored)
+2. **Push the override line, since it is the one that worked.** v11pair beats
+   SmartBot 57.7% (n=480, reproduced on disjoint seeds) where v10res scored
+   47%, and the difference was implementation, not scale: optimise the
+   deployed quantity, match the ballot, fit the threshold off-split. Obvious
+   next levers, cheapest first — a wider training ballot (the override can
+   only choose what it enumerates), more epochs at the pairwise objective,
+   and an override on top of MCBot rather than SmartBot.
 
-| dataset | size | what it is | teacher | trained |
+3. **Ballot-width ablation** (Codex's two-stage design, adopted as written).
+   Offline: freeze states, high-N worlds, nested ballots, measure best-action
+   coverage and opportunity regret as width grows. Online: compare widths at
+   equal TOTAL rollout budget, not fixed worlds per candidate, which would
+   hand the wider ballot extra compute. Caveat that keeps this honest: the
+   teacher/student gap of ~19 points is measured on the SAME candidate sets,
+   so enumeration cannot be the whole story even if width matters.
+
+4. **Direct V(state) head** — removes 51% of vleaf's per-decision cost and is
+   the prerequisite for a real PUCT tree. Target `max_a` teacher-Q or a
+   calibrated bracket distribution, never the behaviour return. Gate at equal
+   wall-clock.
+
+5. **Belief-weighted world sampling** — weight determinizations by how likely
+   the heuristic opponent model would have played the observed actions given
+   the sampled hand. Computable exactly, no net, generalises pair_void's hard
+   proofs. Now more interesting than it was: four attempts to improve the
+   EVALUATOR did nothing, so improving the SAMPLER is the untried direction.
+   Gate: weighted vs uniform mc, n>=300 seeded.
+
+6. **AWAC-style self-play** — advantage-weighted policy-head imitation, values
+   in their own head, so the measured-fatal Q-regression pathway never touches
+   the policy. Parked until the questions above resolve.
+
+7. **Contingency** — if every line above stalls: encoder audit via aux-head
+   probes before any more training, and rented compute only if a curve is
+   climbing but slowly. Do not buy compute to accelerate a flat curve.
+
+## Training data inventory (rebuilt from disk 2026-08-04; local + gitignored)
+
+| dataset | size | what it is | teacher | used by |
 |---|---|---|---|---|
-| `rl_data/bc` | 1.73M decisions / 35 shards / 155M | SmartBot behavior cloning (~20k rounds): obs + chosen action, no values | SmartBot | ckpt_bc, ckpt_bc_dueling |
-| `rl_data/distill` | 1.66M decisions / 36 shards / 155M | search distillation: full ballots + MC per-candidate rollout values, N=10 | MCBot (pre-CONTROL_LEADS) | v4, v5, v6, v6.1 base |
-| `rl_data/distill_n30` | 1.06M decisions / 24 shards / 104M | the low-noise textbook: same format, N=30 (3x less label noise), pairfix+voiddump teacher | upgraded MCBot | v7 (in training) |
-| `rl_data/human` | 801 decisions / 1 shard | FROZEN while v6.1 trains on it — superseded by human_v2 | live humans | v6.1 blend |
-| `rl_data/human_v2` | **1,003 decisions** / 1 shard (2026-08-02, post-fly-fetch) | rebuild with **v2 ballots** (exhaustive follows + lead throws): human throws now compete against rival throws | live humans | next blend |
-| `rl_data/oracle` | 1 shard / 10M | full-information states + outcomes (own schema) | self-play | oracle value study (43-47%) |
-| `../logs` | 21 games / ~1M | raw JSONL — human corpus source, 1,052 decisions and growing (rebuildable in seconds) | live play | audits, agreement, miner |
+| `rl_data/gen_v4_all` | 205 shards / 245 MB / **~2.05M decisions** | the current corpus: hybrid-teacher values, wide v2 ballot, TRACTOR_LOCK rows recorded as choice-only. Provenance in META (`teacher_git` 367a822) | `mc-vleaf-v7w-ep02` | v9warm/v9scratch, v10res, **v11pair** |
+| `rl_data/gen_v3_all` | 162 shards / 276 MB / ~1.62M | first fast-engine generation; superseded by gen-v4 | upgraded MCBot | v8a/v8b |
+| `rl_data/gen_v3_quarantine` | 4 shards / 24 MB | **CONTAMINATED — never merge.** Written by orphaned workers running buggy code for 10h | — | nothing, deliberately |
+| `rl_data/distill_n30` | 24 shards / 102 MB / ~1.2M | low-noise N=30 search distillation | upgraded MCBot | v7, v7w |
+| `rl_data/distill` | 36 shards / 158 MB / ~1.8M | original N=10 distillation | MCBot (pre-CONTROL_LEADS) | v4, v5, v6, v6.1 |
+| `rl_data/bc` | 35 shards / 160 MB / ~1.75M | SmartBot behaviour cloning, no values | SmartBot | ckpt_bc |
+| `rl_data/oracle` | 1 shard / 10 MB / ~322k | full-information states + outcomes | self-play | oracle value study (43-47%) |
+| `rl_data/human_v4` | 1 shard / **1,850 decisions** | live human play, current v2 ballots (v1-v3 superseded) | live humans | blends, agreement audits |
+| `../logs/*.jsonl` | 23 games | raw human corpus source, rebuildable in seconds. Local test games live in `logs/local/` and are NEVER mined | live play | audits, miner |
 
-Key asymmetries: quality ladder bc < distill < n30 tracks net strength;
-all 4.4M machine decisions share the v1 ballot's biases (75% follows, no
-TRACTOR_LOCK leads, ~0% risky throws) — roadmap #5 fixes all three; the
-human pile is 4,000x smaller but highest signal-per-byte.
+Two asymmetries still hold: the quality ladder bc < distill < n30 < gen-v4
+tracks net strength, and the human pile is ~1,000x smaller but the highest
+signal per byte. The v1-ballot bias critique no longer applies to gen-v3/v4 —
+both carry throws, component combos, and choice-only lock rows.
 
 ---
 

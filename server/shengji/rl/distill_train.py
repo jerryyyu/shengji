@@ -22,6 +22,13 @@ from pathlib import Path
 
 CE_WEIGHT = 1.0
 CHOICE_CE_WEIGHT = 1.0  # hard-CE weight for choice-only (locked) rows
+RESIDUAL = False  # train on DELTAS from candidate 0 (the heuristic's pick)
+#   instead of absolute values. Matches the teacher's real control
+#   structure (keep a0 unless something clears the margin), cancels the
+#   rollout noise shared by all candidates in a state — which the
+#   label-noise diagnostic showed corrupts 63% of states — and makes the
+#   net a learned OVERRIDE rather than a from-scratch replacement.
+#   (Codex recommendation, 2026-08-03.)
 MARGIN_PRIOR = 0.0  # points added to candidate 0 before softmax (set via
 #                     --margin-prior 5.0 for the margin-aware arm)
 BATCH_DECISIONS = 512
@@ -52,7 +59,10 @@ def main() -> None:
     if "--snapshots" in sys.argv:  # per-epoch snapshots for probe-selection
         snap_dir = sys.argv[sys.argv.index("--snapshots") + 1]
         Path(snap_dir).mkdir(exist_ok=True)
-    global MARGIN_PRIOR
+    global MARGIN_PRIOR, RESIDUAL
+    if "--residual" in sys.argv:
+        RESIDUAL = True
+        print("residual targets: Q(s,a_i) - Q(s,a_0)", flush=True)
     if "--margin-prior" in sys.argv:
         MARGIN_PRIOR = float(sys.argv[sys.argv.index("--margin-prior") + 1])
         print(f"margin-aware targets: +{MARGIN_PRIOR} on candidate 0",
@@ -94,6 +104,8 @@ def main() -> None:
             ar = torch.as_tensor(_np.concatenate(rows), device=dev)
             seg = torch.as_tensor(_np.concatenate(seg_list),
                                   dtype=torch.long, device=dev)
+            if RESIDUAL:   # subtract each decision's candidate-0 value
+                tgts = [t - t[0] for t in tgts]
             tg = torch.as_tensor(_np.concatenate(tgts), device=dev) / VALUE_SCALE
             chr_ = torch.as_tensor(_np.array(ch_row), dtype=torch.long,
                                    device=dev)

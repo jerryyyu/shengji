@@ -106,3 +106,44 @@ class MCValueLeaf(MCBotBase):
             obs, [encode_action(a, clone) for a in actions])
         v = float(vals.max()) * 100.0  # actor plays their best
         return v if clone.is_attacker(s) else -v
+
+
+class RLOverrideBot(SmartBot):
+    """Residual-distillation play policy: a learned OVERRIDE of SmartBot.
+
+    The net predicts Delta(s,a) = Q(s,a) - Q(s,a_0) where a_0 is
+    SmartBot's own pick. We keep a_0 unless a candidate's predicted delta
+    clears MARGIN — exactly MCBot's control structure, but with the net
+    supplying the comparison instead of rollouts. Costs one forward pass
+    (~2ms) instead of a search.
+    """
+
+    MARGIN = 5.0 / 100.0   # VALUE_SCALE-normalised, matching training
+
+    def __init__(self, ckpt: str | None = None):
+        path = ckpt or os.environ.get("SHENGJI_RL_CKPT", "")
+        npz = path[:-3] + ".npz" if path.endswith(".pt") else ""
+        if npz and os.path.exists(npz):
+            from .npnet import NpNet
+            self.net = NpNet(npz)
+        else:
+            from .model import load_any_net
+            self.net = load_any_net(path)
+
+    def decide_play(self, rnd: Round, seat: int) -> list[str]:
+        base = super().decide_play(rnd, seat)          # SmartBot's pick = a_0
+        actions = enumerate_actions(rnd, seat)
+        if len(actions) <= 1:
+            return base
+        key = sorted(base)
+        try:                                # a_0 must be row 0, as in training
+            i0 = next(i for i, a in enumerate(actions) if sorted(a) == key)
+        except StopIteration:
+            return base
+        actions = [actions[i0]] + actions[:i0] + actions[i0 + 1:]
+        obs = encode_obs(rnd, seat)
+        enc = [encode_action(a, rnd) for a in actions]
+        d = self.net.value_candidates(obs, enc)
+        d = [float(x) - float(d[0]) for x in d]        # deltas vs the baseline
+        j = max(range(len(d)), key=lambda k: d[k])
+        return actions[j] if d[j] > self.MARGIN else base

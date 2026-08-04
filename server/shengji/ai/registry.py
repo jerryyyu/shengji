@@ -106,3 +106,14 @@ def _make_vleaf(ckpt: str):
 # mc-vleaf-v7w-ep02 = 1163 (mc 1110, smart 1089, rl-v7w 1060, heuristic 1000)
 REGISTRY["mc-vleaf-v7w-ep02"] = _make_vleaf("snapshots_v7w/ep02.pt")
 REGISTRY["mc-vleaf-v8a-ep03"] = _make_vleaf("snapshots_v8a/ep03.pt")
+
+
+def _make_override(ckpt: str):
+    def f():
+        from ..rl.torch_policy import RLOverrideBot
+        return RLOverrideBot(ckpt=ckpt)
+    return f
+
+
+# Residual-distillation override policies (learned override of SmartBot)
+REGISTRY["rl-override-v10res"] = _make_override("snapshots_v10res/ep05.pt")

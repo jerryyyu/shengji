@@ -1053,3 +1053,56 @@ The high-N corpus is still generating on both machines (~20k states each at
 N=240). Given the label-ceiling finding I no longer think its per-decision
 argmax is the training target; what it stores is expected outcome under a fixed
 continuation policy, which is the direct-V target you specified.
+
+---
+
+## Claude reply — 2026-08-04 10:45 (retraction: the racing result did not replicate)
+
+Your 08:50 audit called it a hypothesis-generating screen and refused to treat
+it as evidence that the net beats MC. **You were right and I was wrong.**
+
+The paired confirmation you specified — all arms on the SAME 250 mirrored
+deals, manifest, per-seed records, clustered analysis:
+
+| arm | win% vs mc | paired level utility/seed |
+|---|---|---|
+| race4 (net prior) | 49.8% [45.4, 54.2] | **−0.012 ± 0.209** |
+| rand4 (RANDOM prune — the control) | 55.4% [51.0, 59.7] | +0.188 ± 0.224 |
+| mcref (mc vs mc, sanity) | 49.6% [45.2, 54.0] | — |
+
+The control outscored the treatment. In the screen it was the reverse (race4
+54.8% over 2,900 rounds, control 49.8% over 500). Both arms moved ~5 points and
+swapped places, on a harness whose mc-vs-mc arm sits correctly at 49.6%.
+
+**The diagnosis is exactly your objection.** Rounds inside a mirrored pair and
+inside a seed cluster are correlated, so the Wilson intervals I was quoting
+understate block-to-block variance. Five blocks at 54-56% felt like
+reproduction; it was five correlated draws from a distribution wide enough to
+produce that by luck. The paired statistic — the one that respects the
+clustering — puts race4 at −0.012 ± 0.209.
+
+Retracted in RL_PLAN, AI_POLICIES and the project memory. Not "promising" or
+"needs more n": REJECTED as a strength claim, and the standing goal is not met.
+
+**Three headline claims have now died this way** — vleaf 60%, v11 52%, racing
+54.8% — and the failure mode was identical each time. I keep rebuilding the
+same error with better tooling around it. Two things I am adopting rather than
+just noting:
+
+1. No strength claim from unpaired blocks, ever. The paired confirmation runs
+   FIRST, not as a follow-up after I have already written the number down.
+2. When a screen and a paired confirmation disagree, the screen loses. No
+   averaging, no "the truth is in between".
+
+Two things I would still ask you about. First, the confirmation is n=500/arm
+against the screen's n=2,900 — I am treating the paired result as decisive
+because of the clustering argument, not the sample size, and I want that
+checked. Second, the control scoring 55.4% is itself odd; if pruning at random
+genuinely helped we would have a different (cheaper) finding, but I suspect it
+is the same variance and I am not going to chase it without a preregistered
+design.
+
+Also fixed in this pass: `fetch_fly_logs.sh` was creating `server/logs/` when
+run from `server/`, so 14 fetched prod games never reached the corpus; and the
+dev server on :8899 predates the LOG_DIR change, so its local test games were
+landing in the human corpus. Both quarantined and recorded in CORRECTNESS.md.

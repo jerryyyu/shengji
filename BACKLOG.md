@@ -1,6 +1,6 @@
 # Backlog
 
-## EXECUTION VIEW — 2026-08-04 17:30
+## EXECUTION VIEW — 2026-08-04 16:57 EDT
 
 One table for "what is happening and what closes it". The detailed reasoning
 for each item lives in the sections below, which Codex also maintains — this
@@ -8,20 +8,31 @@ view is a summary, not a replacement.
 
 ### NOW (running)
 
-Nothing running. The determinization screen closed negative and the late-ply
-capture finished (12,000 states, pulled to `rl_data/highn_late_air.jsonl`).
+No strength experiment is currently validly running. The mini sampler screen
+finished, but its artifact does not establish the validity/completeness claims
+printed by the script; Air is still listed as running but has not been verified
+from this checkout. A sampler/certifier repair is in progress locally.
 
 | item | where | gate that closes it |
 |---|---|---|
+| **P0 sampler certification repair** | mini code; reconcile Air ledger | On original + late raw reservoir states, independently validate full unseen-card conservation (observer, sampled hands, kitty, played cards), hand sizes, declaration pins, suit voids, pair/tractor obligations, and every individual `None`. Record requested/accepted/rejected counts plus git/tree/config/script/sampler digests. Separately prove completeness on exhaustively enumerable toy states or by a sampler path that can actually consume a planted witness. Distribution fidelity remains a separate later claim. |
 
 ### NEXT (highest value first)
 
 | item | why it matters | gate |
 |---|---|---|
-| **2. Action-identity P0** | "one representative per effective level" is not a sound equivalence, and `decompose()` keeps input-order dependence for tied-level trump pairs while dedupe uses a sorted multiset — generator and engine can disagree about which action was played | permutation-invariant attempted-play semantics, or an explicit decomposition choice |
-| **3. BALLOT_PLAN arm one** — evaluation-free archetype quotas | Leads carry **3x** the forfeit of follows (2.96 vs 1.01 points), half are provably improvable, and the ballot omits **54.0% of the structured lead space vs 0.9% of follows** (dev-split audit, 12,340 states). BUT coverage is known NOT to be sufficient on its own — V3 added exactly the missing singles and did not confirm. This arm must win on SELECTION quality at a fixed budget | `MC-more` in the same comparison; paired and controlled |
-| **5. `pair_void` has no sampler consumer** | computed and never used; Codex has raised it three times and it gates any final sampler claim | sampler refuses to deal a pair into a proven pair-void seat |
-| **6. Clean-contract high-N relabelling** — capture states first, relabel only the stratified union we will report | avoids repeating 37.1M old-ballot evaluations; the only route to labels worth training on | new schema; report worlds never used for selection |
+| **1. Bounded action-semantics gate** | The unsound V3 effective-level equivalence is fixed, but the reported `decompose()` order dependence for tied-level trump pairs remains neither reproduced nor disproved | Exhaustive/metamorphic permutation test over bounded small hands; if it fails, make attempted-play semantics permutation-invariant or represent explicit decomposition |
+| **2. Clean 512-state lead-ballot pilot** | The corrected audit finds **51.2% structured lead omission vs 0.9% follows**, almost entirely lead singles. The provisional lead forfeit is larger than follows (2.96 vs 1.01), but selected-max bias means this is directional, not “half provably improvable.” V3 proved widening alone is insufficient | On deal-grouped DEV states balanced across original/late reservoirs, compare current, V3, random-fill, `MC-more`, fixed-14 contextual selection, and full-universe/high-compute using disjoint proposal/report worlds; predeclare fresh-world regret and oracle-best-recall gates |
+| **3. CALIB then paired online confirmation** | Offline regret has failed to predict online strength three times | Only the selected ballot arm advances; REPORT stays untouched until selection, then a fixed-size paired evaluator run on fresh seeds must clear arm-minus-MC and arm-minus-control bars with zero protocol failures |
+| **4. Clean relabel + learned proposal only after a ballot win** | Repeating 37.1M old-ballot evaluations or training v11pair on actions outside its training ballot cannot improve the champion | Relabel only disagreement/high-uncertainty states under the frozen winning `BallotSpec`; a learned proposer must beat quota, random, and `MC-more` controls before entering production search |
+
+### PRIORITY POLICY
+
+Finish the two bounded correctness gates above, then bias effort roughly
+**70% strength / 20% correctness hardening / 10% simplification**. Do not start
+a broad cleanup campaign. Simplification moves ahead only when it removes a
+duplicate source of experimental truth, makes the next strength test cheaper,
+or closes a known silent-failure boundary.
 
 ### LATER
 
@@ -29,11 +40,12 @@ Encoder/trainer dataset contract (cleanup #6) · immutable policy specs
 replacing the flag matrix (cleanup #4) · `segbatch.py` has no importer while
 trainers carry local copies, and `replay_log.pretty_cards` is unreferenced
 (cleanup #3) · split the 1,117-line API module along tested seams, only after
-the reconnect tests stand as contract tests (cleanup #5) · `MCPriorRace` has no
-inference timer and `MCBot.search_secs` starts after the prior runs, so every
-"equal compute" claim is incomplete · move `seatPos`/card helpers out of
-component modules (cleanup #7) · frontend concurrent-load soak · belief-weighted
-sampling (the sampler is the one direction never tried).
+the reconnect tests stand as contract tests (cleanup #5) · move
+`seatPos`/card helpers out of component modules (cleanup #7) · frontend
+concurrent-load soak · exact endgame solving · belief-weighted sampling after
+the uniform sampler's distribution fidelity is measured. If learned-prior
+racing is ever reopened, first include prior inference in its work/timing
+accounting; the current racing claim is closed.
 
 ### CLOSED — do not re-queue
 
@@ -53,6 +65,25 @@ gap that mis-aimed v13. Raw states only — its N=240 labels are contract-dirty.
 `pool_20260804` — 35 scripts down to 31. Their seed/interval invariants are
 guarded by `tests/test_evaluation_lib.py` (10 tests). `t3_gate_screen.py`
 was NOT retired: it is a screen with its own logic, not another duel runner.
+
+**Deterministic evaluation repaired (2026-08-04).** Factory seeds propagate
+through the actual runner boundary; constructor failures are not swallowed;
+every normal strength claim writes exclusive records/manifests and reports the
+paired arm-minus-control contrast. `aggregate_shards.py` refuses duplicate or
+unequal records, mixed commits/schemas, and zero-world fallbacks.
+
+**Sampler constraints implemented, certification still open (2026-08-04).**
+The greedy allocator was replaced by count-first exhaustive assignment with
+forward checking; declaration pins, suit voids and remaining-pair constraints
+are consumed, and the post-play tractor inference now correctly records zero
+pairs. These are shipped implementation improvements. The independent
+certifier is the open P0 because its first artifact checked only a subset of
+the advertised invariants and hid five individual `None` returns.
+
+**Action code identity fixed (2026-08-04).** Different card-code multisets no
+longer collapse merely because their effective levels tie. The separate
+`decompose()` permutation question remains a bounded test item above, not a
+reason to keep the known V3 bug open.
 
 vleaf equals mc · vleaf with a pairwise head is INVALID not merely failed ·
 v10res was a no-op checkpoint · root-prior racing refuted by its own control ·
@@ -78,60 +109,46 @@ what is NEXT — if an item is done, delete it here rather than checking it off.
 
 ## AI / training
 
-**Current question (2026-08-04): can v11pair's relative root ranking allocate
-a fixed MC budget better than plain MC, direct v11, and cheap allocation
-rules?** Direct v11 convincingly beats SmartBot and is plausibly near MC at a
-small fraction of its latency, but the MC comparison is only an unseeded
-screen. The selective-search runner and current high-N builder are not valid
-measurement instruments. The next work is correctness and measurement, not a
-larger experiment.
+**Current question (2026-08-04): can a better lead ballot plus correctly
+sampled MC beat deployed N=10 MC?** Direct v11pair beats SmartBot but has no
+seeded proof over MC; value-leaf, learned root-prior racing, threshold refits,
+naive V3 widening, and N=30 scaling all failed to produce a verified edge.
+Latency is secondary to strength, so the next experiment tests both fixed-
+budget selection quality and a widened high-compute ceiling.
 
-- [ ] **Make belief sampling constraint-correct.** Enforce every proven suit
-      void, pair-void constraint, and declared-card pin on every sampled world.
-      Strict mode now rejects/counts the last-retry suit-void relaxation;
-      normal mode may still use it and pair-voids remain unenforced. Expose
-      requested/valid/rejected/relaxed counts for all seats and add impossible-
-      state, pair-void, and last-retry regressions before generating labels.
-- [ ] **Repair deterministic evaluation.** Replace
-      `tournament._seeded()`'s no-`rng` fallthrough with an unconditional
-      return, test both a seedless deterministic bot and a constructor that
-      raises internally through that exact boundary, and persist/compare every
-      deal-seed and flip result. Every run needs an exclusive output plus
-      immutable manifest and checkpoint hash.
-- [ ] **Settle the deployment Pareto choice.** On the repaired evaluator,
-      compare SmartBot, direct v11pair, MC N=5/10/20, and the settled v7 value-
-      leaf speed arm. Predeclare signed level utility as primary, the
-      non-inferiority/superiority margin, seed clusters, and latency method.
-      The existing 4,880-round v11-vs-MC aggregate is SCREEN evidence, not a
-      confirmation.
-- [ ] **Build a valid, tiny high-N diagnostic pilot.** Before running the
-      prototype again—or using the completed Air artifact as evidence—add a
-      versioned raw-state round trip (including initial banker and declaration
-      history), strict worlds, deal-grouped
-      splits, phase/score quotas, disjoint candidate-selection and evaluation
-      worlds, stored per-world differences/covariance, collision-free named RNG
-      streams, a cost estimate, and exclusive manifested output. Inspect the
-      pilot before authorising a corpus.
-- [ ] **Representation test on independent labels.** Compare the current
-      encoder with exactly one enriched encoder on that frozen pilot, holding
-      model, initialization, data, and at least three train seeds fixed. Test
-      trump-relative canonicalisation, ordered recent tricks, declaration
-      owner/cards, pair-voids, team levels, and legal banker-private burial.
-      Bulk generation is earned only by consistent untouched-regret gains.
-- [ ] **Root racing, not v11 leaf evaluation.** Give every legal root action a
-      common-world rollout floor, then allocate the remaining fixed budget
-      using v11 rank plus empirical uncertainty. Compare with uniform and
-      candidate-count allocation at equal actual rollouts or policy-local
-      wall time. v11pair's scale is relative within a state and is invalid as
-      an MC/MCTS leaf value.
+- [ ] **Finish independent sampler certification.** The count-first allocator,
+      void/pair constraints and declaration pins are implemented. Repair the
+      certifier so it consumes original plus late raw states without rollout-
+      generating its own state distribution, checks the complete unseen
+      multiset and returned kitty, declaration pins and tractor obligations,
+      counts every failed draw rather than only all-draw failures, and records
+      immutable provenance. Add exhaustive toy posterior/completeness cases;
+      do not call availability across 24 retries “completeness.”
+- [ ] **Close the bounded action-semantics gate.** Exhaustively permute small
+      tied-level trump hands and compare legality/decomposition/successor state.
+      The card-code identity bug is fixed; either reproduce and fix the separate
+      list-order problem or close it with a committed property test.
+- [ ] **Run the 512-state ballot pilot described in the execution view.** Use
+      at most one state per deal, a frozen DEV-only original/late split,
+      named independent RNG streams, and per-world/covariance records. Keep
+      proposal, oracle-selection, and report worlds disjoint.
+- [ ] **Run one paired online confirmation only for the selected ballot arm.**
+      Compare against deployed MC and the correct attribution control on fresh
+      seeds; enforce exact work counters and all evaluator protocol gates.
+- [ ] **Representation or learned-proposal tests only on new-contract labels.**
+      If the non-learned ballot wins, compare the current encoder with one
+      enriched encoder while holding model/data/init and at least three train
+      seeds fixed. Old v11pair cannot score newly widened actions as evidence.
 - [ ] **Absolute value contract.** Predict a calibrated attacker scoring-
       bracket distribution or expected signed level utility under one named
       continuation policy. Do not use noisy `max_a Q` as the default target.
-      This is a prerequisite for PUCT/MCTS, not an implicit extension of v11.
+      This is a later prerequisite for PUCT/MCTS, not the next champion-path
+      experiment and not an implicit extension of v11.
 - [ ] **Belief model only after the hard sampler is correct.** Learn card-
       ownership weights from self-play, then compare tempered weighted worlds
-      with uniform worlds while reporting effective sample size and sampler
-      calibration. A net must not mask impossible base worlds.
+      with a validated uniform reference while reporting exact toy-posterior
+      calibration and effective sample size. A net must not mask impossible or
+      already-biased base worlds.
 - [ ] **AWAC-style self-play is parked, not disproven.** Resume only after
       role-sign, immutable-artifact, evaluator, and fallback invariants are
       tested. Start with a bounded shadow run and keep policy advantages out
@@ -147,32 +164,34 @@ larger experiment.
 
 - [ ] **Bounded silent-fallback sweep.** Inventory broad catches, default
       actions, constraint relaxation, and unimplemented protocol paths in the
-      decision/evaluation/protocol boundaries. Convert each finding into a
-      loud failure or a named, counted, tested fallback. This directly covers
-      the current sampler and `_seeded()` holes; keep enforcing the rule as
-      touched code evolves.
+      decision, data-generation, and protocol boundaries. Convert each finding
+      into a loud failure or a named, counted, tested fallback. Seed forwarding
+      is already repaired; apply this next only around the sampler/certifier and
+      then incrementally as strength-path code is touched.
 - [ ] **Frontend release soak.** Deterministic coverage is release-candidate
       quality. Before production promotion, run one bounded multi-tab scenario
       covering join, seat race, disconnect-to-bot, reconnect/takeover,
       displaced/stale sockets, second absence, private-hand visibility, chat
       before first state and over 50 messages, and saved-room invite
       precedence. This is a minutes-long ship gate, not an open-ended project.
-- [ ] **Provenance and ABI contracts.** Write per-shard manifests with
-      temp+`os.replace`; refuse stale compiled extensions using an API version
-      plus source digest; assert the versioned ballot contract at collection,
-      training, and play; maintain a house-v1 conformance corpus with positive
-      and negative cases.
+- [ ] **Remaining provenance and ABI contracts.** Evaluator manifests and
+      ballot/checkpoint identities are shipped. Add atomic manifests to data
+      generators/certifiers, refuse stale compiled extensions using an API
+      version plus source digest, and maintain a house-v1 conformance corpus
+      with positive and negative cases.
 - [ ] **Boundary-level tests.** Drive the failed-throw regression through
-      `bot_step`/`Room`, test the exact tournament seed boundary, round-trip a
-      high-N raw record, and keep numpy/Torch parity on committed fixtures.
+      `bot_step`/`Room` and add a committed high-N raw-record round trip. The
+      exact tournament factory-seed boundary and numpy/Torch parity are already
+      covered; keep those fixtures green rather than re-queueing their work.
 - [ ] **Scoring-contract fix**: `Game.finish_round()` allows >+3 while
       `round_value()` caps at +3, and `play_game`'s tie fallback awards team 0.
 - [ ] Compiled rollout core, remaining phases: leaf ports for
       `_lead`/`_current_winner`/`_cheapest_winning` (~1 day, ~5x), then
       int-native hands (multi-day). Phases 0-2 merged 08-03 at 3.42x.
 - [ ] Vectorize bc_train (per-decision loop is MPS-dispatch-bound).
-- [ ] Ballot v2 for RL at PLAY time — data side done; never hot-enable under a
-      v1-ballot net (Elo 798). Requires teacher generation on v2 first.
+- [ ] Unify MC/data/RL generation behind the selected executable `BallotSpec`
+      before training a proposal model. Never hot-enable a widened play ballot
+      under an old-ballot net (the Elo-798 failure).
 - [ ] Xray panel: annotate WHY, not just values; render the per-candidate ±SE
       the endpoint already returns.
 

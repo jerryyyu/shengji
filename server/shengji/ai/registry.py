@@ -193,6 +193,20 @@ def _make_randrace(keep: int):
 
 
 # THE CONTROL for the racing result: same pruning size and budget, no net.
+def _make_v3(random_fill: bool):
+    def f(**kw):
+        from ..ai.mcbot import MCBot as _MC
+        b = _MC(seed=kw.get("seed"))
+        b.V3_LEAD_SINGLES = True
+        b.V3_LEAD_RANDOM = random_fill
+        return b
+    return f
+
+
+# Ballot V3, lead layer: one single per DISTINCT effective level instead of
+# only top + lowest-non-point per suit. Recovers 51 of 93 missed human leads.
+REGISTRY["mc-v3lead"] = _make_v3(False)
+REGISTRY["mc-v3lead-rand"] = _make_v3(True)   # the control
 REGISTRY["mc-randrace4"] = _make_randrace(4)
 REGISTRY["mc-race3-v11pair"] = _make_race("snapshots_v11pair/ep07.pt", 3)
 REGISTRY["mc-race4-v11pair"] = _make_race("snapshots_v11pair/ep07.pt", 4)

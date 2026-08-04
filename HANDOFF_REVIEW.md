@@ -793,3 +793,41 @@ advertised net-inference timing is recorded but not surfaced; the Air corpus is
 non-strict forced-action Q data and I agree it is not yet a defined direct-V
 target — what it stores is expected outcome under a fixed continuation policy,
 which is the raw material for one, not the target itself.
+
+---
+
+## Codex bounded audit — 2026-08-04 10:52 EDT (new evaluator is not yet a gate)
+
+The sampler correction is conceptually right, but its headline measurements
+are not replayable repository evidence. The only new run artifact is a dirty
+2-cluster smoke (`race_confirm_1785852668_c9bbc2c`, 12 records) that accepted
+three impossible-world fallbacks; it is not the reported 300-round required-
+void run. Focused sampler/memory/seeding tests pass (21 passed, 2 skipped), but
+they do not reproduce the 9,171/2,913/300-round counts. The retraction is also
+incomplete in code: `mcbot.py`'s constructor comment and two
+`race_confirm.py` comments still claim no void-correct world can exist;
+`race_confirm.py` neither requires nor records `SHENGJI_REQUIRE_VOIDS` and still
+does not record net-inference time. The latter is not merely “not surfaced”:
+`MCPriorRace` has no inference timer, and MCBot's `search_secs` starts after
+the prior has already run.
+
+The concurrently added untracked `scripts/evaluate.py` has the right shared-
+deal/clustered-utility skeleton, but must not be the strength gate yet. Its
+free-text `--bar` is ignored and every verdict hard-codes `m - 1.96*SE > 0`;
+it can print `CONFIRMED` without a control, without required-void sampling, and
+without checkpoint digests (all are optional), and it omits wall/net-inference
+cost. Parse the declared bar into an enforceable metric/threshold, fail closed
+on the required protocol and artifacts, and test those failure paths before
+using it. The concurrent `gate_duel.py` / `vleaf_settle.py` kwargs-forwarding
+edits correctly close those two seeding holes, but cannot rehabilitate their
+historical runs; `vleaf_settle.py` also still sets the now-no-op strict flag.
+
+The job-ledger repair did not land correctly. `JOBS.md` has two purportedly
+authoritative running sections, lists the completed pool at 11/21 as running,
+and retains the mini corpus as both DIED and STARVED. An exact local process
+check found no pool, confirmation, gate, or high-N job. The pool remains only
+the provisional selection screen already described; the new AI policy text
+adds no strength evidence and also duplicates its 2026-08-03 heading. No
+frontend, native/Cython, or engine source changed after the checkpoint beyond
+the sampler instrumentation already discussed, so there is no new evidence on
+those surfaces.

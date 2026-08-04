@@ -58,6 +58,10 @@ class MCBot(SmartBot):
     #                          sourcing, not judgment). ADOPTED: 62% vs
     #                          narrow-ballot mc (75-45, n=120), +7% latency.
     LEAD_MAX_CANDIDATES = 14
+    # Ballot V3 lead layer: offer one single per distinct effective level
+    # instead of only the top and lowest-non-point card per suit.
+    V3_LEAD_SINGLES = False
+    V3_LEAD_RANDOM = False      # control: same slots, arbitrary singles
     WIDE_FOLLOW_BALLOT = True  # ADOPTED 60% (72-48, n=120). Follows: bounded exhaustive distinct-code
     #                             multisets on top of the constructed set
     #                             (audit: 21% of human follow singles were
@@ -332,7 +336,38 @@ class MCBot(SmartBot):
                     if len(cands) >= self.FOLLOW_MAX_CANDIDATES:
                         break
                     add(list(cand))
-        if self.WIDE_LEAD_BALLOT and not rnd.trick.plays:
+        if self.V3_LEAD_SINGLES and not rnd.trick.plays:
+            # BALLOT V3, lead layer (Codex audit 2026-08-04). The deployed
+            # ballot misses 15.5% of human LEADS — 55 of them middle-rank
+            # singles — because per suit it only ever offers the top card and
+            # the lowest non-point card. Everything in between is unreachable,
+            # so no amount of search or learning can find it: race4 only
+            # REMOVES from this list, and highn_build values only what is on
+            # it.
+            #
+            # Offer one representative per DISTINCT effective level, which is
+            # what "strategically distinct" means here — two cards of the same
+            # level are interchangeable for the trick. The cap is unchanged, so
+            # rollout cost is comparable; what changes is WHAT fills it.
+            for suit in list(PLAIN_SUITS) + [TRUMP]:
+                cards = suit_cards(hand, suit, o)
+                seen_levels = set()
+                order = sorted(cards, key=lambda x: -o.level(x))
+                if self.V3_LEAD_RANDOM:
+                    # CONTROL: fill the same number of slots with arbitrary
+                    # legal singles. Without it, "better sourcing helps" cannot
+                    # be told apart from "a fuller ballot helps".
+                    order = list(cards)
+                    self.rng.shuffle(order)
+                for c in order:
+                    lv = o.level(c)
+                    if lv in seen_levels:
+                        continue
+                    seen_levels.add(lv)
+                    if len(cands) >= self.LEAD_MAX_CANDIDATES:
+                        break
+                    add([c])
+        if (self.WIDE_LEAD_BALLOT or self.V3_LEAD_SINGLES) and not rnd.trick.plays:
             return cands[:self.LEAD_MAX_CANDIDATES]
         if self.WIDE_FOLLOW_BALLOT and rnd.trick.plays:
             return cands[:self.FOLLOW_MAX_CANDIDATES]

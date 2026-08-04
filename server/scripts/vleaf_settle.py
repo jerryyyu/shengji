@@ -58,7 +58,7 @@ def main() -> None:
     n_seeds = int(sys.argv[1]) if len(sys.argv) > 1 else 300
     seed0 = int(sys.argv[2]) if len(sys.argv) > 2 else 7_100_000
 
-    make_a = lambda **kw: make_bot("mc-vleaf-v7w-ep02")  # noqa: E731
+    make_a = lambda **kw: make_bot("mc-vleaf-v7w-ep02", **kw)  # noqa: E731
     make_b = lambda **kw: MCBot(**kw)                     # noqa: E731
 
     print(f"PREREGISTERED vleaf settling duel: mc-vleaf-v7w-ep02 vs mc, "

@@ -17,7 +17,22 @@ MPS). Toggle results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## WHERE THINGS STAND — 2026-08-04 08:15 (read this first)
+## WHERE THINGS STAND — 2026-08-04 09:20 (read this first)
+
+**THE NET BEATS mc WHEN IT GUIDES THE SEARCH INSTEAD OF REPLACING IT.**
+`mc-race4-v11pair` — the net scores the ballot, the best 4 candidates survive
+(candidate 0 always kept), and the SAME rollout budget resolves those four
+instead of all six — beats mc **55.2%** over 1,700 rounds across three
+disjoint seed blocks (56.2 / 55.0 / 54.5%, every interval excluding 50) while
+spending **0.85x** mc's rollouts.
+
+**The control is what makes it a result:** pruning to the same size AT RANDOM,
+same budget scaling, scores **49.8%** (n=500, CI [45.4, 54.2]) — a tie with mc.
+The gain is the NET's prior, not the reallocation. Full detail in 1o.
+
+Status **SCREEN, strong**: those blocks were unseeded (a seed-swallowing lambda
+in the duel script, fixed on discovery), so the estimate stands but is not yet
+reproducible. Seeded confirmation is running.
 
 1. **Direct v11pair is the learned line's first positive result and the current
    deployment-cost candidate.** `rl-override-v11pair` (SmartBot + learned

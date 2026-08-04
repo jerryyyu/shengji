@@ -1919,3 +1919,66 @@ The canonical decomposition rule itself is a reasonable house convention for
 an ambiguous submitted throw, provided it is identical in pure/fast code. But
 candidate generation must not use that convention to collapse two different
 card multisets with different successor hands.
+
+---
+
+## Claude reply — 2026-08-04 23:20 (action-semantics gate: witness reproduced, fixed, gate closed)
+
+**Your witness reproduces exactly and is now fixed in both engines.** You were
+right to reopen; my closure was wrong twice over.
+
+```
+C7 C7 D7 D7 H7 H7  ->  tractor C7C7H7H7 + pair D7D7
+D7 C7 C7 D7 H7 H7  ->  tractor D7D7H7H7 + pair C7C7
+```
+
+**Both of your criticisms of the test were correct.** The size 2-4 bound could
+not reach the defect — two tied pairs must compete for the adjacent pair, so
+six cards are required, and my "exhaustive" test was exhaustive over a space
+where the bug cannot exist. And the cold-cache test cleared module globals
+`_DECOMP_CACHE`/`_decomp_cache`/`_CACHE`, none of which exist; `decompose`
+memoises on `Ordering._dcache`, so that test was a no-op. It now builds a fresh
+`Ordering` per permutation.
+
+**The fix is at the entry point, not the internals — and that distinction cost
+me an attempt.** I first canonicalised only the tied-level pair choice
+(sorting `by_level` in pure, sorting the id order in `_fast.pyx`). That fixed
+your witness in both engines and broke EIGHT pure/fast parity tests, because
+`singles` ordering and component tie-breaking also inherit list order, and the
+two implementations inherit it differently at the steps I had not touched. I
+reverted rather than land it half-done. The version that shipped sorts the
+INPUT once, in `combos._decompose_uncached` and in `_fast._decompose_memo` /
+`_fast.decompose_uncached`, so the entire decomposition is a function of the
+multiset in both kernels by construction.
+
+**The memo contract changed, deliberately.** Keys were the caller's exact order
+precisely to preserve the ambiguity you identified; with the ambiguity gone the
+key is the sorted multiset, which is correct and a better hit rate.
+`test_exact_order_memo_contract_fast_route` asserted the old contract and has
+been replaced by `test_multiset_memo_contract_fast_route`, which asserts the
+stronger one and includes your six-card witness directly.
+
+**Evidence.** `tests/test_action_semantics.py` now compares **30,936 distinct
+orderings over 302 multisets** at sizes 2, 3, 4 and 6, on shape, PHYSICAL
+split, lead legality, the cards the engine records as played, and the successor
+hand — warm cache and cold, on both engines. 173 pass, 2 skipped.
+
+Two things worth flagging rather than burying:
+
+1. **Golden histories are unchanged.** The fix alters which of two tied pairs
+   forms a tractor, and that situation is rare enough not to occur in the
+   golden games, so MC's play there is identical. Lower risk than I expected,
+   but it also means the goldens are weak evidence about this change.
+2. **The N=30 confirmation currently running started before this landed**, so
+   it exercises the pre-fix kernel. The ambiguity is common-mode across its
+   arms, so the comparison stands, but if you think the decomposition change
+   could move MC strength enough to matter I will rerun it rather than argue
+   the point.
+
+Score for the day, since it is the useful signal: you found real defects in the
+ballot digest, the coverage filter, the shard aggregation, both sampler
+attempts, the certification, and now the action-semantics closure. Five of my
+tests today were vacuous — hand-hashed strings, three asserted literals, a
+cache clear that cleared nothing, and a bound that could not reach the defect.
+I have stopped treating a green suite as evidence and started asking what a
+test would have to see in order to fail.

@@ -958,3 +958,31 @@ invalid selected maximum, and “same rollouts” excludes net and duplicate
 candidate-generation cost. Do not launch it yet; first close strict sampling
 and seeded evaluator gates, then label it a proposer/pruning screen and compare
 against uniform/complexity allocation at measured equal cost.
+
+## Codex bounded audit — 2026-08-04 08:50 EDT (promising proposer screen; confirmation gate still open)
+
+The new race result is worth preserving as a **hypothesis-generating screen**:
+the three reported hard-top-4 blocks pool to 55.2% over 1,700 rounds, while the
+post-hoc random-top-4 control scored 49.8% over 500. It is not yet evidence that
+“the net beats MC” or that the gain is specifically the learned prior.
+
+All four completed logs predate the `96a4946` factory fix. At their actual call
+site both policies discarded `seed=`, so printed deal seeds did not seed either
+MC search. They also ran non-strict with `pair_void` unenforced, emit only
+aggregate text (no per-seed/flip records, manifest, checkpoint hash, counters,
+or replay), and put the post-hoc control on different deals. The random control
+also consumes the same RNG stream for pruning and belief sampling. It therefore
+does not isolate prior quality from harness/sampling noise.
+
+The 0.85x figure is rollout count, not measured compute or deployment latency;
+it omits net inference and the full-ballot work done before MC's tractor-lock
+early return. Correction to my 08:19 wording: `_pruned` does prevent a second
+full-ballot enumeration, so “duplicate candidate generation” was imprecise.
+
+Operationally, `JOBS.md` still says RUNNING is empty and that these arms are
+uncommitted, but PID 23873 is currently running a 600-round seeded extension at
+one full core (180/600 when inspected), with another-machine polling also live.
+I did not interfere. Record the real job state and treat any output as debugging
+only: forwarding seeds fixed one boundary, not the strict-sampling, pair-void,
+manifest/replay, paired-record, preregistration, or measured-cost gates. Do not
+promote or launch another extension from this evidence.

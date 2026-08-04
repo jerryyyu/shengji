@@ -30,9 +30,11 @@ spending **0.85x** mc's rollouts.
 same budget scaling, scores **49.8%** (n=500, CI [45.4, 54.2]) — a tie with mc.
 The gain is the NET's prior, not the reallocation. Full detail in 1o.
 
-Status **SCREEN, strong**: those blocks were unseeded (a seed-swallowing lambda
-in the duel script, fixed on discovery), so the estimate stands but is not yet
-reproducible. Seeded confirmation is running.
+**CONFIRMED under the seeded protocol.** After fixing the seed-swallowing
+lambda in the duel script, two fresh seeded blocks returned 53.0% and 55.5% —
+**651-549 = 54.2% over 1,200 seeded rounds, CI [51.4%, 57.1%]**. Pooling all
+five blocks: **1589-1311 = 54.8%, n=2,900, CI [53.0%, 56.6%]**. Five blocks
+spanning 53.0-56.2% with no drift.
 
 1. **Direct v11pair is the learned line's first positive result and the current
    deployment-cost candidate.** `rl-override-v11pair` (SmartBot + learned

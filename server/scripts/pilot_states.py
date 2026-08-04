@@ -127,8 +127,7 @@ def main() -> None:
         sys.exit(3)
 
     bot = MCBot(seed=1)
-    seen_deals: set[int] = set()
-    by_stratum: dict[str, list] = defaultdict(list)
+    by_deal: dict[int, list] = defaultdict(list)
     errors = skipped_follow = skipped_dupe = 0
 
     for source, corpus, split_path in SOURCES:
@@ -139,9 +138,12 @@ def main() -> None:
                 row = json.loads(line)
                 if split.get(row["seed"]) != "dev":
                     continue
-                if row["seed"] in seen_deals:
-                    skipped_dupe += 1
-                    continue
+                # NOT skipped here. Marking a deal seen at its FIRST eligible
+                # row meant later lead states from that deal never competed for
+                # selection, which is why v2 held 229 early / 281 mid / 2 LATE
+                # states under the trick-index unit while its raw-play summary
+                # called it late-heavy (Codex). Gather every eligible row per
+                # deal, then choose one.
                 try:
                     rnd = replay(row)
                 except Exception:
@@ -156,31 +158,49 @@ def main() -> None:
                 except Exception:
                     errors += 1
                     continue
-                seen_deals.add(row["seed"])
                 st = stratum(rnd, seat, n_cands)
-                by_stratum[st].append({
+                by_deal[row["seed"]].append({
                     "source": source, "seed": row["seed"], "ply": row["ply"],
                     "seat": seat, "n_candidates": n_cands,
                     # recorded ON the row: the previous artifact reported strata
                     # computed AFTER selection popped rows, so the figure
                     # described the residual pool, not the selected set (Codex)
                     "stratum": st, "is_banker_seat": seat == rnd.banker,
+                    "tricks": len(rnd.history),
+                    "band": ("early" if len(rnd.history) < 5 else
+                             "mid" if len(rnd.history) < 12 else "late"),
                 })
 
-    available = {k: len(v) for k, v in by_stratum.items()}   # BEFORE popping
-    # Round-robin across strata so no band dominates, deterministic order.
+    # One state per DEAL, chosen to fill explicitly named trick-index bands.
     rng = random.Random(int(hashlib.sha256(args.salt.encode()).hexdigest()[:8], 16))
-    for v in by_stratum.values():
-        v.sort(key=lambda d: (d["source"], d["seed"]))
+    BANDS = ("early", "mid", "late")
+    # Which deals can supply which band
+    deals_for: dict[str, list] = {b: [] for b in BANDS}
+    for seed, rows in by_deal.items():
+        for b in {r["band"] for r in rows}:
+            deals_for[b].append(seed)
+    available = {b: len(v) for b, v in deals_for.items()}
+    for v in deals_for.values():
+        v.sort()
         rng.shuffle(v)
-    picked = []
-    strata = sorted(by_stratum)
+
+    picked, used_deals = [], set()
     i = 0
-    while len(picked) < args.n and any(by_stratum[s] for s in strata):
-        s = strata[i % len(strata)]
-        if by_stratum[s]:
-            picked.append(by_stratum[s].pop())
+    while len(picked) < args.n and any(deals_for[b] for b in BANDS):
+        b = BANDS[i % len(BANDS)]
         i += 1
+        while deals_for[b]:
+            seed = deals_for[b].pop()
+            if seed in used_deals:
+                continue
+            options = [r for r in by_deal[seed] if r["band"] == b]
+            if not options:
+                continue
+            options.sort(key=lambda d: (d["tricks"], d["ply"], d["seat"]))
+            used_deals.add(seed)
+            picked.append(options[rng.randrange(len(options))])
+            break
+    skipped_dupe = sum(len(v) for v in by_deal.values()) - len(picked)
 
     sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
                          capture_output=True, text=True).stdout.strip()
@@ -197,7 +217,9 @@ def main() -> None:
                     for name, c, sp in SOURCES},
         "requested": args.n, "selected": len(picked),
         "one_state_per_deal": True, "side": "dev", "leads_only": True,
-        "strata_available": available,
+        "band_deals_available": available,
+        "bands_selected": dict(Counter(p["band"] for p in picked)),
+        "tricks_histogram": dict(Counter(p["tricks"] // 5 * 5 for p in picked)),
         "strata_selected": dict(Counter(p["stratum"] for p in picked)),
         "picked_by_source_ply": dict(Counter(
             f'{p["source"]}/{"early" if p["ply"] < 5 else ("mid" if p["ply"] < 12 else "late")}'
@@ -216,8 +238,8 @@ def main() -> None:
     print(f"  replay errors {errors}   follows skipped {skipped_follow}   "
           f"same-deal skipped {skipped_dupe}")
     print(f"  by source/ply: {payload['picked_by_source_ply']}")
-    print(f"  strata: {len(payload['strata_available'])} available, "
-          f"{len(payload['strata_selected'])} represented in the selection")
+    print(f"  BANDS selected (trick index): {payload['bands_selected']}")
+    print(f"  deals available per band     : {payload['band_deals_available']}")
     print(f"  ballot at selection: {payload['ballot_at_selection']}")
     print(f"\nwrote {args.out}")
 

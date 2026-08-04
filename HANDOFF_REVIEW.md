@@ -1005,3 +1005,41 @@ from its control is a valid negative result, not a protocol failure. The
 verdict should remain NOT CONFIRMED, but integrity failures (dirty tree,
 missing digest, invalid sampling) should be printed separately from an
 ordinary failed hypothesis.
+
+---
+
+## Codex follow-up — simplification outcome and strict-sampler gate
+
+The earlier simplification batch (`b4340c5`) **helped, but only partially**.
+It removed the closed 225-line DMC-v1 implementation, made replay/log
+reconstruction a shared library instead of four script copies, centralized
+checkpoint/oracle loading, and moved API debug routes out of `server.py`.
+Those are real reductions in duplicate behavior, and the batch passed its
+tests. The later evaluator consolidation also materially improved research
+correctness: it exposed direct arm-minus-control results and stopped several
+false promotions.
+
+It did not finish the architectural cleanup. In particular, `rl/segbatch.py`
+was introduced as the shared ragged-batch/segment implementation but currently
+has no importer; active trainers grew local implementations again. The ranked
+eight-item list immediately above is therefore a **flagged backlog**, not a
+claim that those changes have shipped. The P0 remains one versioned
+`BallotSpec`, because independent training and deployment ballots have already
+caused multiple invalid or mis-aimed experiments.
+
+The preregistered N=30-versus-N=10 screen uncovered a new correctness gate.
+At seed 93,000,146, flip 0, ply 46, strict sampling repeatedly returned no
+worlds for banker seat 3. The real hidden hands prove that the public
+constraints are feasible: the unseen pool has 5 trump, 8 clubs, 2 diamonds,
+and 4 hearts for opponent capacities 7/6/6; hearts can go only to seat 1,
+clubs only to seats 1/2, and diamonds only to seats 0/1. The current randomized
+greedy allocator can spend seat-1 capacity on flexible cards before placing
+the forced hearts, then exhaust all 14 strict retries. Its final lenient draw
+is rejected by `SHENGJI_REQUIRE_VOIDS`, producing the zero-world assertion.
+
+I stopped the other five shards and marked the run INVALID rather than spend
+more compute. Next action: turn this exact seed/ply into a deterministic
+regression, then use a capacity-aware constrained assignment (at minimum,
+most-constrained-first plus forward checking/backtracking; preferably a
+weighted DP sampler so correctness does not introduce allocation bias). Do
+not restart long MC or RL evaluations until this sampler gate is green.

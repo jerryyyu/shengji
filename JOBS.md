@@ -5,48 +5,19 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-### mini / MC determinization scaling — 6 parallel shards, launched 14:55
-- Codex's preregistered screen: does N=30 (`mc-strong`) beat deployed N=10?
-  `mc-lite` (N=5) is the dose-response control. Seeds 93,000,000-93,000,251,
-  42 clusters per shard, strict sampling AND required voids, one exclusive
-  manifest/JSONL per shard. ALL six aggregate regardless of interim results.
-- Latency is unconstrained in production, so if N=30 wins this is a strength
-  gain with no ML at all.
+### mini
+- Nothing. A strict-sampler feasibility regression invalidated the N=30/N=10
+  screen, so starting another MC/RL strength job before that gate is fixed
+  would waste compute. A local process check found no surviving corpus or
+  evaluator job.
 
-### air / late-ply state capture — since 13:50
+### air / late-ply state capture — last reported since 13:50
 - **CONTRACT-DIRTY, do not train on these labels** (Codex): the job sets
   MIN_PLY and FAST but not REQUIRE_VOIDS or STRICT_SAMPLING, so its N=240
   labels repeat the non-strict, capped-ballot, same-world-selected-maximum
   contract. The raw STATES are reusable; the labels are not.
-- The mini's copy of this job was STOPPED at 617 states for the same reason.
-
-
-### mini / LATE-PLY high-N corpus — launched 2026-08-04 14:25
-- `SHENGJI_MIN_PLY=16 highn_build.py 12000 240 95000000 rl_data/highn_late_mini.jsonl`
-- Seeds 95M+, disjoint from the Air's 91M+. Doubles throughput on the one
-  asset we know is needed: post-4-trick states, which the first corpus lacks
-  (90% at ply<=15) and which is why v13 was mis-aimed.
-- Data generation, not a claim — it cannot produce a false positive.
-
-### air / LATE-PLY high-N corpus — since 13:50
-- `SHENGJI_MIN_PLY=16 highn_build.py 12000 240 91000000`
-- 1,540/12,000 states (13%) at 14:25, ~117 states/min.
-
-### mini / MC determinization scaling — preregistered, launching 2026-08-04
-- Question: with latency unconstrained, does the otherwise identical N=30
-  policy (`mc-strong`) beat deployed N=10 (`mc`)? N=5 (`mc-lite`) is the
-  dose-response control.
-- Six parallel shards of 42 seed clusters use contiguous, disjoint seeds
-  93,000,000 through 93,000,251 (252 clusters / 504 mirrored rounds per arm).
-  Every shard is included regardless of its interim or individual verdict.
-- Primary: paired signed level utility, N=30 minus N=10, clustered by deal
-  seed; preregistered bar `paired_utility > 0` with the interval excluding 0.
-  N=30 minus N=5 is supporting attribution, not a substitute for the primary.
-- `SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 SHENGJI_STRICT_SAMPLING=1`; clean
-  commit, one exclusive evaluator manifest/JSONL/log per shard. Aggregate all
-  six before making a claim.
-- This is a current-stack production SCREEN, not the final sampler verdict:
-  `pair_void` is still unenforced and must be fixed before final promotion.
+- Status cannot be verified from the mini. The last reported count was
+  1,540/12,000 states; keep only the raw states if the job completed.
 
 ## RECENTLY FINISHED (results ledgered)
 
@@ -74,6 +45,17 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## STOPPED / INVALID
 
+- **MC determinization scaling (N=30 vs N=10, N=5 control)** — INVALID. One
+  of six strict shards aborted after 40 records at deal seed 93,000,146,
+  flip 0, ply 46: `no worlds sampled for seat 3 (banker 3)`. The other five
+  shards were terminated rather than burn compute on an aggregate that could
+  no longer satisfy its preregistered contract. The public information is
+  feasible (the real hidden hands provide a witness); the greedy sampler can
+  consume capacity needed by constrained suits. Add this seed as a regression
+  and replace the allocator with a constraint-correct sampler before rerun.
+- **mini late-ply high-N corpus** — STOPPED at 617 states because it omitted
+  `SHENGJI_REQUIRE_VOIDS` and `SHENGJI_STRICT_SAMPLING`. Raw states may be
+  relabelled later; quarantine its N=240 labels.
 - **mini high-N corpus** — DIED at 840/20,000. `nohup ... &` inside the agent
   tool does not survive its launching shell; use run_in_background.
 

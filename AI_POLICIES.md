@@ -391,6 +391,52 @@ motivated the widening (n=1052, v1 missing 15.3%) is in
 `docs_archive/sourcing-audit-2026-08-02.md`.
 
 
+## What the high-N corpus actually taught us (2026-08-04 14:40)
+
+Measured across all 20,845 states, not selected ones.
+
+**Leads are where the game is decided.** Splitting by role:
+
+| role | mean forfeit from keeping the heuristic's pick | % with a provably better alternative |
+|---|---|---|
+| **leads** | **2.959 points** | **49%** |
+| follows | 1.006 points | 16% |
+
+Half of all lead decisions have an alternative that beats the heuristic's
+choice by more than 2 paired SE; for follows it is one in six, at a third of
+the stakes.
+
+**This converges with the sourcing audit from a completely different
+direction.** That audit found the deployed ballot misses **15.5% of human
+LEADS** and only **2.0% of follows**. So the decision class carrying ~3x the
+value is the same class where the ballot is weakest. Two independent
+measurements, one conclusion: work on leads.
+
+**The opportunity is flat across the round**, which was not what I expected:
+
+| ply band | forfeit | significant |
+|---|---|---|
+| 0-3 | 1.497 | 25% |
+| 4-7 | 1.593 | 26% |
+| 8-11 | 1.749 | 28% |
+| 12-15 | 1.806 | 29% |
+| 16+ | 1.718 | 27% |
+
+So the late-ply corpus now generating is needed to MATCH the leaf deployment
+distribution, but it will not reveal a new pocket of opportunity — the value is
+spread evenly through the round.
+
+**What the corpus did NOT deliver.** No strength gain has come from it. v13
+learned its labels 34% better (RMSE 0.1052 -> 0.0699) and played
+indistinguishably (v13 minus v7 = -0.028 ± 0.185). Offline regret computed on
+it has failed to predict online strength three times. Its headline "~2.8 points
+of headroom" is a selected, non-strict, early-state figure — a hypothesis, not
+a measured ceiling.
+
+The honest summary: 37.1M candidate evaluations bought one robust negative
+(better label fit does not transfer), one sharp targeting result (leads), and a
+clear statement of the corpus's own limits.
+
 ## Threshold hypothesis (margin 0.005) — NOT CONFIRMED (2026-08-04 14:15)
 
 Codex's full-corpus offline diagnostic (fit on even deal seeds, reported on

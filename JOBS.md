@@ -16,6 +16,22 @@ the inter-agent mailbox. Keep one authoritative running section here.
 - `SHENGJI_MIN_PLY=16 highn_build.py 12000 240 91000000`
 - 1,540/12,000 states (13%) at 14:25, ~117 states/min.
 
+### mini / MC determinization scaling — preregistered, launching 2026-08-04
+- Question: with latency unconstrained, does the otherwise identical N=30
+  policy (`mc-strong`) beat deployed N=10 (`mc`)? N=5 (`mc-lite`) is the
+  dose-response control.
+- Six parallel shards of 42 seed clusters use contiguous, disjoint seeds
+  93,000,000 through 93,000,251 (252 clusters / 504 mirrored rounds per arm).
+  Every shard is included regardless of its interim or individual verdict.
+- Primary: paired signed level utility, N=30 minus N=10, clustered by deal
+  seed; preregistered bar `paired_utility > 0` with the interval excluding 0.
+  N=30 minus N=5 is supporting attribution, not a substitute for the primary.
+- `SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 SHENGJI_STRICT_SAMPLING=1`; clean
+  commit, one exclusive evaluator manifest/JSONL/log per shard. Aggregate all
+  six before making a claim.
+- This is a current-stack production SCREEN, not the final sampler verdict:
+  `pair_void` is still unenforced and must be fixed before final promotion.
+
 ## RECENTLY FINISHED (results ledgered)
 
 - **ckpt_v13abs absolute-Q leaf** — NOT CONFIRMED (-0.004 +/- 0.206 paired vs

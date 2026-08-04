@@ -895,3 +895,85 @@ flushed per state, so partial output survives, and I am not retry-looping.
 
 Next from BALLOT_PLAN, once the action-identity P0 is fixed: arm one,
 evaluation-free archetype quotas, with `MC-more` in the same comparison.
+
+---
+
+## Codex follow-up — 2026-08-04: fleet utilization and cleanup audit
+
+The margin-0.005 run is a useful negative result, not a setback in process:
+the direct contrast versus 0.02 was `-0.032 +/- 0.184`, so the offline regret
+gain failed online and was correctly not promoted. The more important progress
+is that `evaluate.py` now prints the direct arm-control statistic and the v13
+deployment mismatch is documented. I also extended the authoritative lineage
+in `RL_PLAN.md` back through BC, distillation v1-v6, v6.1, and the separate DMC
+branch (`c31d957`, pushed). It explicitly separates distillation, DMC-recipe,
+and ballot version namespaces.
+
+**Fleet correction.** The new mini late-ply builder is live at ~98% of one
+logical core; it does not utilize the 10-core machine. More importantly, its
+command sets `SHENGJI_MIN_PLY` and `SHENGJI_FAST` but not
+`SHENGJI_REQUIRE_VOIDS` or `SHENGJI_STRICT_SAMPLING`. The resulting raw states
+are reusable, but the expensive N=240 labels repeat the known non-strict,
+current-capped-ballot, same-world-selected-maximum contract. “Data generation
+cannot produce a false positive” is too broad: training on those labels can.
+Do not merge them into a v14 training set or scale this recipe again without a
+new manifest/schema and independent report worlds. If the goal is principally
+late-ply states, state capture and high-N relabelling should be separate so we
+only spend 240 worlds on the small stratified union we will actually report.
+
+To use the remaining mini cores on a contract-clean question, I preregistered
+the current-stack `mc-strong` N=30 versus deployed N=10 screen in `JOBS.md`,
+with N=5 as control: six parallel 42-cluster shards, contiguous seeds 93M
+through 93M+251, all shards aggregated regardless of intermediate results,
+and both strict-sampling flags. This directly matters for Jerry's
+latency-unconstrained production objective. It is still only a screen until
+`pair_void` is enforced.
+
+**Cleanup/simplification pass (ranked):**
+
+1. Unify candidate generation behind the versioned `BallotSpec` already
+   designed in `BALLOT_PLAN.md`. `MCBot._candidates()` and
+   `rl.actions.enumerate_actions()` are independent ballot systems; that is the
+   structural source of the Elo-798, v10, and v13 train/deploy mismatches.
+2. Turn `scripts/evaluate.py` into a reusable evaluation library plus one CLI,
+   then retire/archive the duplicated runners (`race_confirm`, `vleaf_settle`,
+   `gate_duel`, `kitty_duel`, `v11_extend`, dated pool scripts). Seed handling,
+   manifests, clustered contrasts, counters, and parallel shards should exist
+   once. Its second-resolution run id currently collides if parallel shards
+   start in the same second, and the serial CLI leaves nine mini cores idle.
+3. `shengji/rl/segbatch.py` has no importer even though it was added to
+   centralize ragged collation and segment math. Active trainers again carry
+   local `seg_logsoftmax`/KL/spread implementations. Either wire the shared
+   module into every trainer and test it, or delete it; the current aspirational
+   abstraction is dead code. `replay_log.pretty_cards` is also unreferenced.
+4. Replace experiment subclasses/closures and boolean flag matrices in
+   `ai/registry.py`/`MCBot` with immutable policy specs carrying ballot,
+   sampler, objective, checkpoint digest, and RNG-stream versions. Historical
+   experiments should be data manifests, not permanent executable registry
+   branches.
+5. Split the 1,117-line API module along tested seams: room/seat lifecycle,
+   pure protocol transitions, state serialization, and websocket transport.
+   Do this only after the reconnect/takeover tests remain as contract tests;
+   the join state machine is subtle and should not be rewritten wholesale.
+6. Consolidate the high-N encoder/trainer into the versioned dataset contract.
+   Today they drop seed/ply metadata, use ad-hoc shard splits and unseeded
+   shuffling, save the last checkpoint, and do not assert schema/encoder/
+   ballot provenance. The small artifacts `meta = []` in `highn_encode.py`
+   and `tot = n = (0.0, 0)` in two analysis/train scripts are literal dead
+   locals, but the missing contract is the real cleanup.
+7. Frontend cleanup is modest, not urgent: the build and all 13 tests pass.
+   Oxlint's five warnings come from exporting card-display helpers and
+   `seatPos` from component modules; move them to non-component utility files.
+   A lexical CSS pass found no convincing dead selectors (the apparent
+   `pos-*` misses are dynamic), so do not prune the 1,941-line stylesheet by
+   regex alone.
+8. Keep the Cython path rather than rewrite it: pure/fast suites are green and
+   it buys real speed. The global import rebinding in `engine/fast.py` is the
+   risky seam; keep expanding parity tests and avoid adding a third rules
+   implementation.
+
+One evaluator terminology cleanup: an arm statistically indistinguishable
+from its control is a valid negative result, not a protocol failure. The
+verdict should remain NOT CONFIRMED, but integrity failures (dirty tree,
+missing digest, invalid sampling) should be printed separately from an
+ordinary failed hypothesis.

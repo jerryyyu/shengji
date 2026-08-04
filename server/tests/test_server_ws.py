@@ -130,3 +130,34 @@ def test_seat_claim_chat_names_the_bot(client):
             line = _drain(b, "chat")
     assert line["text"] == f"jerry mbp took {botname}'s seat"
     assert line["seat"] == -1
+
+
+def test_two_clients_race_for_same_bot_seat(client):
+    """The loser of a seat race must be refused, never silently reseated."""
+    with client.websocket_connect("/ws") as a:
+        code = _room_with_bots(a)
+        with client.websocket_connect("/ws") as b, \
+                client.websocket_connect("/ws") as c:
+            b.send_json({"type": "peek_room", "room": code})
+            want = [s["seat"] for s in _drain(b, "room_seats")["seats"]
+                    if s["is_bot"]][0]
+            b.send_json({"type": "join_room", "room": code,
+                         "name": "first", "seat": want})
+            assert _drain(b, "room")["you"] == want
+            c.send_json({"type": "join_room", "room": code,
+                         "name": "second", "seat": want})
+            err = _drain(c, "error")
+    assert err["code"] == "seat_unavailable"
+    from shengji.api import server as srv
+    assert srv.rooms[code].seats[want].name == "first"
+    assert not any(sd.name == "second" for sd in srv.rooms[code].seats)
+
+
+def test_malformed_seat_falls_back_to_any_bot(client):
+    with client.websocket_connect("/ws") as a:
+        code = _room_with_bots(a)
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "join_room", "room": code,
+                         "name": "odd", "seat": True})   # bool is not a seat
+            st = _drain(b, "room")
+    assert st["you"] in (1, 2, 3)

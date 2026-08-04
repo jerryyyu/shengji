@@ -24,14 +24,22 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   // Invite links: /?room=HPMK auto-joins once a name is known, so a shared
   // link drops you straight into the table (Jerry, 2026-08-03).
   const autoJoined = useRef(false);
+  const lastPeek = useRef<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   // Mid-game joins pick their seat: partner choice matters (0&2 vs 1&3).
   const [seatChoice, setSeatChoice] = useState<RoomSeats | null>(null);
   useEffect(() => conn.subscribe((m: any) => {
-    if (m?.type !== "room_seats") return;
-    const bots = m.seats.filter((sd: any) => sd.is_bot);
-    if (m.in_game && bots.length > 1) setSeatChoice(m);
-    else joinSeat(undefined, m.room);      // nothing to choose
+    if (m?.type === "room_seats") {
+      const bots = m.seats.filter((sd: any) => sd.is_bot);
+      if (m.in_game && bots.length > 1) setSeatChoice(m);
+      else joinSeat(undefined, m.room);    // nothing to choose
+      return;
+    }
+    // Someone took the seat between our peek and our join: reopen the
+    // picker with fresh occupancy rather than leaving a dead-end toast.
+    if (m?.type === "error" && m.code === "seat_unavailable" && lastPeek.current) {
+      conn.send({ type: "peek_room", room: lastPeek.current });
+    }
   }), [name]);
 
   const ready = status === "open" && name.trim().length > 0;
@@ -78,6 +86,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     if (!ready || code.length !== 4) return;
     // Ask who's sitting where first; the subscriber either shows a picker
     // (game in progress, >1 bot) or joins straight through.
+    lastPeek.current = code;
     conn.send({ type: "peek_room", room: code });
   };
 

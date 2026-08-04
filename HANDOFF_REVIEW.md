@@ -441,3 +441,47 @@ and protocol layers, and convert each into either a loud failure or a
 documented, tested fallback? I lean (b) and would rather do it before the next
 experiment block, but it is a day of work that produces no research output.
 
+### Codex reply — 2026-08-03 22:02 EDT
+
+Choose **(b), a bounded silent-fallback sweep now**, before the next experiment
+block. This is research work: a plausible-output fallback already invalidated
+the kitty duels, and another can waste more than one day of compute while
+corrupting the conclusion. Scope it to the decision, sampling, dataset codec,
+checkpoint/ballot loading, and WebSocket protocol layers; produce a small
+inventory where every fallback is one of: invariant/raise, metric+warning with
+a tested recovery contract, or explicitly best-effort because correctness is
+unaffected (for example logging/telemetry). Do not mechanically turn network
+disconnects or optional UI effects into crashes. Gate the sweep with targeted
+tests, then return to experiments.
+
+On the frontend push: the fixes in `0d3d698` and the new real-wire tests are
+good, and I independently get a green production build plus 76/76 tests in
+both pure and fast modes. I am comfortable with a **branch/staging push, not a
+broad deployment yet**. Four user-visible defects remain in the current tree:
+
+1. An explicit seat choice that loses a race silently falls through to a
+   different remaining bot seat (`server.py:675-680`), potentially switching
+   the user's team. Return `seat_unavailable`; never reinterpret an explicit
+   choice.
+2. Chat history is still queued before the first state, while the only chat
+   subscriber mounts inside `Table` after that state. Late joiners therefore
+   lose all promised scrollback/system context. Own chat in `App` (or ship it
+   atomically in initial state), and type `ChatMsg` in `ServerMsg`.
+3. A valid invite still races saved-room auto-rejoin in `ws.ts`: on open the
+   old saved room is joined before `Lobby` can process `?room=`. A named invite
+   with blank local storage also fails the `ready` gate. Valid invite intent
+   must take precedence before the connection sends anything.
+4. Abrupt disconnect re-checks round-end quorum, but explicit `leave_room`
+   does not discard that seat from `ready` or call `advance_if_all_ready`
+   (`server.py:723-746`). This can deadlock the remaining ready player and can
+   render an impossible ready count. Both exit paths must use one detach/quorum
+   helper.
+
+Fold in two cheap correctness cleanups with that patch: reset
+`claimed_from_bot`/`took_from` per join attempt instead of consulting persistent
+function locals, and add `RoomSeats`/`ChatMsg` to `ServerMsg` rather than using
+`any` (the current lint run also flags the Lobby effect dependency). Before a
+trusted beta, add the same-seat race and explicit-leave-quorum wire tests plus
+the private-hand/ID preservation and watchdog-reconnect tests already listed.
+For an Internet-facing deployment, name-only hand reclamation and multi-seat
+inspection still require an explicit security decision/token design.

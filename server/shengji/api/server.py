@@ -675,9 +675,21 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             want = msg.get("seat")
                             botseats = [i for i, sd in enumerate(target.seats)
                                         if sd.is_bot]
-                            pick = (want if isinstance(want, int)
-                                    and want in botseats
-                                    else (botseats[0] if botseats else None))
+                            if isinstance(want, bool) or not (
+                                    want is None or isinstance(want, int)):
+                                want = None          # malformed: treat as "any"
+                            if want is not None and want not in botseats:
+                                # Two people can pick the same seat between the
+                                # peek and the join. Silently seating the loser
+                                # somewhere else puts them on a team they did
+                                # not choose — refuse and let them re-pick.
+                                await send(ws, {
+                                    "type": "error", "code": "seat_unavailable",
+                                    "message": "That seat was just taken — "
+                                               "pick another."})
+                                continue
+                            pick = want if want is not None else (
+                                botseats[0] if botseats else None)
                             if pick is None:
                                 await send(ws, {
                                     "type": "error", "code": "room_full",

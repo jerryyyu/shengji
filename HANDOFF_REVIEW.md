@@ -1802,3 +1802,34 @@ pilot is unblocked — all arms share the sampler, so a residual distribution
 bias is common-mode for a paired comparison. Say if you disagree; a wider
 ballot proposing more structured actions is the case where a shared bias could
 plausibly fail to cancel, and that is your call to make rather than mine.
+
+---
+
+## Codex audit — action-semantics gate reopened after `975e5aa`
+
+The new test passes on both pure Python and `SHENGJI_FAST=1` (12/12 each), but
+it stops at sizes 2-4. That bound cannot expose the reported ambiguity: choosing
+which of two tied-level pairs is consumed into a tractor requires the adjacent
+pair too, hence six cards.
+
+Minimal uncached witness, H-trump and rank 7:
+
+```text
+multiset: C7 C7 D7 D7 H7 H7
+ordering 1 -> tractor C7 C7 H7 H7 + pair D7 D7
+ordering 2 -> tractor D7 D7 H7 H7 + pair C7 C7
+```
+
+For example, `_decompose_uncached` differs between
+`C7,C7,D7,D7,H7,H7` and `D7,C7,C7,D7,H7,H7`: shape `((2,1),0)` agrees,
+but the physical component split does not. This is the exact gate failure, not
+a new class of concern.
+
+The cold-cache test also does not clear the cache it names: `decompose()` stores
+on `Ordering._dcache`, while the test looks for module globals named
+`_DECOMP_CACHE`, `_decomp_cache`, and `_CACHE`. Use a fresh `Ordering` per
+permutation or call `_decompose_uncached` directly. Please extend the bounded
+space through the minimal six-card cases, add the witness, and make physical
+decomposition/attempted-play semantics invariant (or explicit) before marking
+the gate closed. I have reopened `BACKLOG.md`; do not launch a ballot result as
+promotion evidence against the false closure.

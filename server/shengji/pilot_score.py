@@ -41,6 +41,10 @@ class Scored:
     state_key: str = ""
     fold: str = ""
     world_keys: tuple = ()
+    #: raw attacker points and scoring bracket per world, kept so a change to
+    #: `_score` can be re-derived rather than invalidating the run
+    raw_points: list = field(default_factory=list)
+    brackets: list = field(default_factory=list)
 
     @property
     def mean(self) -> float:
@@ -88,6 +92,8 @@ def score_action(bot, rnd, seat, worlds, action, *, state_key="", fold="",
         raw = bot._rollout(rnd, seat, hands, buried, list(action))
         val = bot._score(raw)
         out.returns.append(val if i_attack else -val)
+        out.raw_points.append(raw)
+        out.brackets.append(bracket(raw))
     return out
 
 
@@ -153,3 +159,58 @@ def union_ballot(ballots: dict) -> list:
                 seen.add(key)
                 out.append(list(key))
     return out
+
+
+def bracket(attacker_pts: float) -> int:
+    """Scoring bracket the round lands in, from raw attacker points.
+
+    Kept alongside the signed return because `BALLOT_PLAN` asks for bracket
+    outcomes, and because a scalar-policy change (`_score`) cannot be audited
+    later from signed values alone — the brackets are what actually decide the
+    round, and 79 vs 80 points is a cliff.
+    """
+    p = attacker_pts
+    if p >= 80:
+        return min(3, int(p - 80) // 40)
+    if p == 0:
+        return -3
+    return -(1 + int(79 - p) // 40)
+
+
+def choose_action(bot, rnd, seat, proposal_worlds, ballot, *, state_key="",
+                  expect=None):
+    """The action an arm's POLICY plays, chosen on the PROPOSAL fold.
+
+    Reproduces the deployed selection semantics exactly, because a pilot that
+    compares ballots while ignoring how the policy picks from them compares
+    something nobody would ship:
+
+      * `POINT_SHY_EPS` — among near-tied candidates, risk the fewest points;
+      * `MARGIN` / `LEAD_MARGIN` — keep SmartBot's pick unless the search beats
+        it by the confidence margin, since rollouts are noisiest early;
+      * candidate 0 is SmartBot's own choice and is protected.
+
+    Chosen on the PROPOSAL fold and scored later on REPORT, so the action is
+    never selected on the worlds that judge it.
+    """
+    from .engine.cards import points as _pts
+
+    if not ballot:
+        raise ValueError(f"{state_key}: empty ballot, nothing to choose from")
+    scored = [score_action(bot, rnd, seat, proposal_worlds, a,
+                           state_key=state_key, fold="proposal", expect=expect)
+              for a in ballot]
+    means = [s.mean for s in scored]
+    best = max(range(len(ballot)), key=lambda i: means[i])
+    close = [i for i in range(len(ballot))
+             if means[best] - means[i] <= bot.POINT_SHY_EPS]
+    best = min(close, key=lambda i: (sum(_pts(c) for c in ballot[i]), -means[i]))
+    margin = bot.MARGIN
+    if bot.LEAD_MARGIN is not None and not rnd.trick.plays:
+        margin = bot.LEAD_MARGIN
+    if best != 0 and means[best] - means[0] < margin:
+        best = 0
+    return {"action": list(ballot[best]), "index": best,
+            "proposal_means": means,
+            "kept_heuristic": best == 0,
+            "n_candidates": len(ballot)}

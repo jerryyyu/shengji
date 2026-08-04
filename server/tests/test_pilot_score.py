@@ -150,3 +150,63 @@ def test_scoring_is_deterministic_for_a_fixed_fold():
     a = score_action(bot, rnd, seat, fw.worlds["report"], action)
     b = score_action(bot, rnd, seat, fw.worlds["report"], action)
     assert a.returns == b.returns, "rollout scoring is not reproducible"
+
+
+def test_choice_reproduces_deployed_margin_and_point_shy():
+    """The arm must play what its POLICY would play, not the raw argmax.
+
+    A pilot that compares ballots while ignoring selection compares something
+    nobody would ship (Codex).
+    """
+    from shengji.pilot_score import choose_action
+
+    rnd, seat = _lead_state()
+    bot = make_bot("mc", seed=4)
+    mem = Memory(rnd, seat)
+    fw = draw_folds(bot, rnd, seat, mem, {"proposal": 6, "oracle": 4, "report": 4},
+                    salt="t", state_key="s")
+    ballot = propose("current", bot, rnd, seat, budget=14, seed=1, state_key="s")
+    got = choose_action(bot, rnd, seat, fw.worlds["proposal"], ballot,
+                        state_key="s", expect=6)
+    means = got["proposal_means"]
+    if not got["kept_heuristic"]:
+        assert means[got["index"]] - means[0] >= bot.MARGIN, \
+            "overrode SmartBot without clearing the confidence margin"
+    assert got["action"] in ballot
+
+
+def test_choice_prefers_the_protected_action_on_a_tie():
+    """MARGIN exists because rollouts are noisiest early; a tie must not
+    override the heuristic prior."""
+    from shengji.pilot_score import choose_action
+
+    rnd, seat = _lead_state()
+    bot = make_bot("mc", seed=4)
+    mem = Memory(rnd, seat)
+    fw = draw_folds(bot, rnd, seat, mem, {"proposal": 4, "oracle": 2, "report": 2},
+                    salt="t", state_key="s")
+    ballot = propose("current", bot, rnd, seat, budget=14, seed=1, state_key="s")
+    got = choose_action(bot, rnd, seat, fw.worlds["proposal"], ballot,
+                        state_key="s", expect=4)
+    m = got["proposal_means"]
+    beat_margin = [i for i in range(len(m)) if i and m[i] - m[0] >= bot.MARGIN]
+    if not beat_margin:
+        assert got["kept_heuristic"], "nothing cleared the margin, yet it overrode"
+
+
+def test_raw_points_and_brackets_are_preserved():
+    """A scalar-policy change must be auditable without rerunning."""
+    from shengji.pilot_score import bracket
+
+    rnd, seat = _lead_state()
+    bot = make_bot("mc", seed=4)
+    mem = Memory(rnd, seat)
+    fw = draw_folds(bot, rnd, seat, mem, {"proposal": 2, "oracle": 2, "report": 5},
+                    salt="t", state_key="s")
+    action = propose("current", bot, rnd, seat, budget=14, seed=1,
+                     state_key="s")[0]
+    s = score_action(bot, rnd, seat, fw.worlds["report"], action,
+                     state_key="s", fold="report", expect=5)
+    assert len(s.raw_points) == 5 and len(s.brackets) == 5
+    assert all(b == bracket(p) for b, p in zip(s.brackets, s.raw_points))
+    assert bracket(0) == -3 and bracket(80) == 0 and bracket(120) == 1

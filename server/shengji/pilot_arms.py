@@ -32,7 +32,14 @@ from .engine.cards import TRUMP, points
 from .engine.combos import decompose, find_tractor_runs
 from .engine.legal import suit_cards, validate_lead
 
-ARMS = ("current", "v3", "random_fill", "quota", "full_universe")
+ARMS = ("current", "v3", "random_fill", "quota", "mc_more", "full_universe")
+
+#: `mc_more` keeps the DEPLOYED ballot and spends the extra proposal compute on
+#: more worlds instead. It is the arm that decides whether any of this is worth
+#: doing: if simply pricing the old ballot harder matches a wider ballot at the
+#: same total work, the simpler bot wins and the pilot has its answer.
+#: BALLOT_PLAN calls it essential and it was missing (Codex).
+MC_MORE_WORLD_MULTIPLIER = 3
 
 
 def _legal(rnd, seat, cards) -> bool:
@@ -167,7 +174,10 @@ def propose(arm: str, bot, rnd, seat, *, budget: int, seed: int,
         raise ValueError(f"unknown arm {arm!r}; expected one of {ARMS}")
     keep = protected(bot, rnd, seat)
 
-    if arm == "current":
+    if arm in ("current", "mc_more"):
+        # Same ballot. `mc_more` differs only in how many worlds price it —
+        # the runner gives it MC_MORE_WORLD_MULTIPLIER x the proposal fold, so
+        # the comparison is equal-work rather than equal-ballot.
         return _dedupe([keep] + [sorted(a) for a in bot._candidates(rnd, seat)],
                        budget)
     if arm == "v3":

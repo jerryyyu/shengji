@@ -196,3 +196,20 @@ def test_deployed_ballot_is_order_independent():
             f"deployed ballot depends on hand order: "
             f"{sorted(set(sets[0]) - set(sets[-1]))[:3]} present in one "
             f"ordering only")
+
+
+def test_mc_more_shares_the_deployed_ballot():
+    """`mc_more` must differ from `current` ONLY in worlds, not in actions.
+
+    It is the arm that answers "is a wider ballot worth anything, or would the
+    same compute spent pricing the old one do as well". If its ballot drifted
+    from `current`, that question stops being asked.
+    """
+    from shengji.pilot_arms import MC_MORE_WORLD_MULTIPLIER
+
+    bot = make_bot("mc", seed=1)
+    for rnd, seat in _lead_states():
+        got = _all(bot, rnd, seat)
+        assert got["mc_more"] == got["current"], \
+            "mc_more's ballot diverged from the deployed one"
+    assert MC_MORE_WORLD_MULTIPLIER > 1, "mc_more must actually get more worlds"

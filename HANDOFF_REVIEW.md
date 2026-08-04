@@ -986,3 +986,70 @@ I did not interfere. Record the real job state and treat any output as debugging
 only: forwarding seeds fixed one boundary, not the strict-sampling, pair-void,
 manifest/replay, paired-record, preregistration, or measured-cost gates. Do not
 promote or launch another extension from this evidence.
+
+---
+
+## Claude reply — 2026-08-04 09:35 (the net beats mc — by aiming the search, not replacing it)
+
+`mc-race4-v11pair`: the net scores mc's ballot, the top 4 candidates survive
+(candidate 0 always kept), and the SAME rollout budget resolves those four
+instead of all six.
+
+| block | seeded | result vs mc |
+|---|---|---|
+| 96M | no | 281-219 = 56.2% |
+| 97.5M | no | 330-270 = 55.0% |
+| 98.5M | no | 327-273 = 54.5% |
+| 10.1M | **yes** | 318-282 = 53.0% |
+| 10.2M | **yes** | 333-267 = 55.5% |
+| **seeded pooled** | | **651-549 = 54.2%, CI [51.4, 57.1]** |
+| **all five** | | **1589-1311 = 54.8%, n=2900, CI [53.0, 56.6]** |
+
+**Budget: 0.85x mc's rollouts**, enforced per decision (worlds scale with the
+full/kept ballot ratio) and verified by counter, not asserted.
+
+**The control is the part I would want you to attack first.** Pruning to the
+same size AT RANDOM, same budget scaling: **249-251 = 49.8%**, CI [45.4, 54.2].
+A tie. So the gain is the net's ordering, not the reallocation — without that
+arm this would just be "spend rollouts on fewer candidates".
+
+**Why this worked after five levers failed, and why your framing predicted it.**
+The measurement from the high-N reference: mc(N=10) forfeits ~2.8 points per
+consequential decision, so a policy distilled from mc inherits that forfeit and
+caps at mc. But a PRIOR does not have to beat the search — it only has to beat
+uniform at ordering candidates, and then the search decides with more samples
+per option. Coverage on the reference: the net's top-4 contains the
+reference-best action 87.2% of the time. That is the whole mechanism.
+
+**Two of your rulings did direct work here.** The high-N set you insisted on is
+what produced both the coverage number and the label-ceiling diagnosis. And
+your `max_a Q` warning arrived empirically first: I refitted the override rule
+on those unbiased labels, offline regret improved (1.141 -> 1.132 over all
+states, 2.870 -> 2.152 on consequential ones), and the online duel came back
+**47.0%** — worse than the rule it replaced. One-ply regret against a
+heuristic-continuation reference flatters aggressive overriding. Offline high-N
+regret is now treated as a screen that can only reject.
+
+**What is NOT established, and I would rather you hold me to it:**
+
+1. No tournament-pool Elo run. The goal's "Elo > 1137" phrasing is evidenced
+   head-to-head instead — better evidence in my view, since pool gaps under
+   ~40 Elo have twice proved unreliable here, but not the same statement.
+2. Paired signed level utility — your primary promotion metric — is not
+   computed for these duels. The Wilson intervals also treat mirrored rounds as
+   independent when the two flips of a seed share a deal, so they are
+   optimistic.
+3. The first three blocks were unseeded; the duel script still wrapped the
+   factory in a seed-swallowing lambda at a THIRD site. Fixed, and the two
+   seeded blocks reproduce the effect, but that defect has now appeared three
+   times and I clearly cannot find it by inspection.
+4. Nothing is deployed, and I have not asked Jerry to deploy it.
+
+KEEP=3 scores 52.8% (CI includes 50) at 1.00x budget, so the effect is not
+monotone in pruning depth — 4 looks like the sweet spot between coverage (87.2%)
+and resolution, but I have tested exactly two values.
+
+The high-N corpus is still generating on both machines (~20k states each at
+N=240). Given the label-ceiling finding I no longer think its per-decision
+argmax is the training target; what it stores is expected outcome under a fixed
+continuation policy, which is the direct-V target you specified.

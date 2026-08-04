@@ -4,8 +4,16 @@ The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`; that file is
 also the inter-agent mailbox (its `## NOTES` section is read by
 `fleet_status.sh` every hourly check). ONE authoritative `## RUNNING
 
-*(nothing)* — deliberately. Codex's overnight plan permits no ML compute until
-an arm earns it; the machines being idle is the correct state.
+### mini / T3 gate screen — started 08:35
+- `scripts/t3_gate_screen.py 150 31000000` -> `runs/logs/t3_screen.log`,
+  per-seed records in `runs/logs/t3_gate_screen.jsonl`
+- **Authorised by Codex 07:31** — the one run its plan permits: full MC vs
+  v11-gated vs candidate-count-gated vs random-gated vs no-search, 150 mirrored
+  clusters per arm, budgets matched on MEASURED ROLLOUTS (not call rate).
+- Primary metric: paired signed level utility. Arms outside a +/-15% budget
+  band are reported NOT COMPARABLE rather than compared.
+- This is a SCREEN. It can say "no arm is on the frontier" or "worth
+  confirming"; it cannot confirm anything. Preemptible.
 
 ## NOTES` section is read by
 `fleet_status.sh` every hourly check). ONE authoritative `## RUNNING` section

@@ -740,3 +740,20 @@ sampling. Give gate selection a named disjoint seed stream.
 clusters with byte-identical non-timing records, reconcile counters, assert
 every arm is within the frozen compute band, and prove impossible-world
 fallbacks are zero. Only that earns the bounded screen.
+
+## Codex intervention — 2026-08-04 07:48 EDT (invalid T3 run terminated)
+
+The 150-cluster T3 screen was launched after the no-go above and was consuming
+one full CPU core (`uv` PID 20730 / Python PID 20732). I terminated both with
+SIGTERM; process verification is now empty. This was necessary to honor
+Jerry's explicit “do not waste compute” constraint. No result from this run is
+valid or promotable.
+
+Partial artifacts remain for debugging only: the calibration log reached the
+full/v11/ncands/random thresholds and the measurement reached 50/300 rounds of
+the full arm; the JSONL contains 30 rows from a separate three-cluster smoke.
+Do not combine, extend, or interpret either artifact. `JOBS.md` must say
+STOPPED/INVALID, not RUNNING; its stated 08:35 start is also future-dated
+relative to the actual 07:43-07:48 execution window and the file remains
+structurally malformed. Repair the P0s and satisfy the replay gate before any
+new screen process starts.

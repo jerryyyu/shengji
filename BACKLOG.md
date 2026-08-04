@@ -126,8 +126,10 @@ versus widened/high-compute ballot selection.
       uniform constrained draw. Also make reservoir reconstruction replay the
       stored declarations directly; all 1,600 P0 rows matched today, but that
       should be structural rather than dependent on current bot behavior.
-- [x] **Bounded action-semantics gate CLOSED 2026-08-04 (second attempt).**
-      Codex's witness reproduced and is FIXED in both engines. `C7 C7 D7 D7 H7
+- [ ] **Bounded action-semantics gate — FIX LANDED, AWAITING CODEX VERIFICATION.**
+      NOT closed by me. I closed this once already on a test that could not
+      reach the defect, so the second closure is Codex's to make.
+      Codex's witness reproduced and is fixed in both engines. `C7 C7 D7 D7 H7
       H7` vs `D7 C7 C7 D7 H7 H7` gave the same shape with a different physical
       split; SIX cards are required to expose it, which is why my first
       closure — bounded at sizes 2-4 — was wrong.

@@ -51,6 +51,11 @@ SOURCES = [
 ]
 
 
+def dirty_at_start() -> bool:
+    return bool(subprocess.run(["git", "status", "--porcelain"],
+                               capture_output=True, text=True).stdout.strip())
+
+
 def digest(path):
     if not path or not os.path.exists(path):
         return None
@@ -89,8 +94,13 @@ def replay(row):
 
 def stratum(rnd, seat, n_cands):
     """Role x ply band x ballot size. Coarse on purpose: fine strata with one
-    member each are not strata, they are a shuffled list."""
-    role = "banker" if rnd.is_attacker(seat) is False else "attacker"
+    member each are not strata, they are a shuffled list.
+
+    The role label is the TEAM, not the seat. It said "banker" while meaning
+    `not is_attacker`, i.e. the whole defending pair — the banker's partner was
+    labelled banker too (Codex).
+    """
+    role = "defender" if not rnd.is_attacker(seat) else "attacker"
     ply = len(rnd.history)
     band = "early" if ply < 5 else ("mid" if ply < 12 else "late")
     size = "small" if n_cands <= 4 else ("med" if n_cands <= 9 else "wide")
@@ -104,6 +114,12 @@ def main() -> None:
     ap.add_argument("--salt", default="pilot-v1")
     args = ap.parse_args()
 
+    if dirty_at_start():
+        print("REFUSING: the tree is dirty. A frozen artifact from a dirty "
+              "tree cannot be tied to the code that produced it — the previous "
+              "version recorded tree_dirty=true and was not promotion-grade "
+              "(Codex). Commit first.")
+        sys.exit(3)
     if os.path.exists(args.out):
         print(f"REFUSING: {args.out} exists. A frozen pilot set is never "
               f"redrawn in place — a set reselected after seeing results is "
@@ -141,11 +157,17 @@ def main() -> None:
                     errors += 1
                     continue
                 seen_deals.add(row["seed"])
-                by_stratum[stratum(rnd, seat, n_cands)].append({
+                st = stratum(rnd, seat, n_cands)
+                by_stratum[st].append({
                     "source": source, "seed": row["seed"], "ply": row["ply"],
                     "seat": seat, "n_candidates": n_cands,
+                    # recorded ON the row: the previous artifact reported strata
+                    # computed AFTER selection popped rows, so the figure
+                    # described the residual pool, not the selected set (Codex)
+                    "stratum": st, "is_banker_seat": seat == rnd.banker,
                 })
 
+    available = {k: len(v) for k, v in by_stratum.items()}   # BEFORE popping
     # Round-robin across strata so no band dominates, deterministic order.
     rng = random.Random(int(hashlib.sha256(args.salt.encode()).hexdigest()[:8], 16))
     for v in by_stratum.values():
@@ -175,10 +197,9 @@ def main() -> None:
                     for name, c, sp in SOURCES},
         "requested": args.n, "selected": len(picked),
         "one_state_per_deal": True, "side": "dev", "leads_only": True,
-        "strata": dict(Counter(
-            stratum_of["stratum"] for stratum_of in
-            [{"stratum": k} for k, v in by_stratum.items() for _ in v])),
-        "picked_strata": dict(Counter(
+        "strata_available": available,
+        "strata_selected": dict(Counter(p["stratum"] for p in picked)),
+        "picked_by_source_ply": dict(Counter(
             f'{p["source"]}/{"early" if p["ply"] < 5 else ("mid" if p["ply"] < 12 else "late")}'
             for p in picked)),
         "skipped_follows": skipped_follow, "skipped_same_deal": skipped_dupe,

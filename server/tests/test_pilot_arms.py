@@ -81,7 +81,7 @@ def test_budget_matched_arms_emit_the_same_count():
     bot = make_bot("mc", seed=1)
     for rnd, seat in _lead_states():
         got = _all(bot, rnd, seat)
-        universe = len(structured_universe(rnd, seat))
+        universe = len(structured_universe(rnd, seat, bot))
         sizes = {a: len(got[a]) for a in ("random_fill", "quota")}
         # these two draw from the same universe, so at equal budget they must
         # agree in size whenever the universe is large enough to fill it
@@ -96,10 +96,13 @@ def test_full_universe_is_a_superset_and_not_budget_capped():
     for rnd, seat in _lead_states():
         got = _all(bot, rnd, seat)
         full = {tuple(a) for a in got["full_universe"]}
-        for arm in ("random_fill", "quota"):
+        # `current` too. Checking only the new arms is how the missing-throws
+        # defect survived: the high-compute arm was not a superset of the
+        # BASELINE, which is the one comparison that has to hold (Codex).
+        for arm in ("random_fill", "quota", "current", "v3"):
             assert {tuple(a) for a in got[arm]} <= full, \
                 f"{arm} proposed something outside the structured universe"
-        if len(structured_universe(rnd, seat)) > BUDGET:
+        if len(structured_universe(rnd, seat, bot)) > BUDGET:
             assert len(got["full_universe"]) > BUDGET, \
                 "the high-compute arm must not be silently budget-capped"
 
@@ -143,7 +146,7 @@ def test_quota_spreads_across_archetypes_more_than_random_does():
     quota_better = random_better = 0
     for rnd, seat in _lead_states(n=10, seed0=773000):
         got = _all(bot, rnd, seat)
-        if len(structured_universe(rnd, seat)) <= BUDGET:
+        if len(structured_universe(rnd, seat, bot)) <= BUDGET:
             continue                      # nothing to select between
         nq = len({archetype(rnd, seat, a) for a in got["quota"]})
         nr = len({archetype(rnd, seat, a) for a in got["random_fill"]})

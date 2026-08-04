@@ -63,24 +63,33 @@ def test_world_key_is_seat_aware():
     assert a != b
 
 
-def test_folds_share_no_world():
+def test_every_successful_draw_is_kept():
+    """Independence comes from the STREAMS, not from disjoint support.
+
+    Rejecting a world because another fold drew it conditions this fold on
+    that one. With P(A)=0.8/P(B)=0.2, dropping the proposal outcome from a
+    two-world report fold makes report A appear only when proposal drew B —
+    0.2 instead of 0.8 (Codex). The first version of this module did exactly
+    that and called it disjointness.
+    """
     rnd, seat = _state()
     bot = make_bot("mc", seed=5)
     mem = Memory(rnd, seat)
     counts = {"proposal": 6, "oracle": 6, "report": 6}
     drawn = draw_folds(bot, rnd, seat, mem, counts, salt="t", state_key="s1")
-    drawn.assert_disjoint()          # explicit, though draw_folds also asserts
-    allk = [k for f in FOLDS for k in drawn.keys(f)]
-    assert len(allk) == len(set(allk)), "a world appeared in two folds"
+    for f in FOLDS:
+        assert len(drawn.worlds[f]) == counts[f], \
+            f"{f} came up short; draws must not be filtered"
 
 
-def test_disjointness_is_checked_not_assumed():
-    """A hand-built overlap must be caught, or the guarantee is decorative."""
-    bad = FoldedWorlds(state_key="x")
+def test_coincidences_are_counted_not_rejected():
+    """Overlap is a diagnostic. A fold that reports it must not act on it."""
+    shared = FoldedWorlds(state_key="x")
     w = ({1: ["S3"], 2: ["S4"], 3: ["S5"]}, [])
-    bad.worlds = {"proposal": [w], "oracle": [w], "report": []}
-    with pytest.raises(AssertionError, match="share nothing"):
-        bad.assert_disjoint()
+    shared.worlds = {"proposal": [w], "oracle": [w], "report": []}
+    assert shared.shared_keys() == 1
+    assert not hasattr(shared, "assert_disjoint"), \
+        "disjointness must not be enforced; enforcing it is the bias"
 
 
 def test_drawing_one_fold_cannot_shift_another():
@@ -120,13 +129,18 @@ def test_same_state_reproduces_and_different_states_differ():
     assert a.keys("report") != c.keys("report"), "different states must differ"
 
 
-def test_caller_rng_is_restored():
-    """draw_folds swaps the bot's RNG; leaving it swapped would silently
-    change every later decision that bot makes."""
+def test_caller_rng_object_is_restored():
+    """The original OBJECT, not an equivalent Random carrying its state.
+
+    Anything holding a reference to `bot.rng` would otherwise keep the old
+    object while the bot used a new one (Codex).
+    """
     rnd, seat = _state()
     mem = Memory(rnd, seat)
     bot = make_bot("mc", seed=11)
+    before_obj = bot.rng
     before = bot.rng.getstate()
     draw_folds(bot, rnd, seat, mem, {"proposal": 3, "oracle": 3, "report": 3},
                salt="t", state_key="s3")
+    assert bot.rng is before_obj, "a NEW Random was installed, not the original"
     assert bot.rng.getstate() == before, "the bot's RNG state was not restored"

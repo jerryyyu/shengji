@@ -45,12 +45,22 @@ def _legal(rnd, seat, cards) -> bool:
     return sorted(played) == sorted(cards) and not msg
 
 
-def structured_universe(rnd, seat) -> list[list[str]]:
-    """Every single, pair and true tractor the seat can legally lead.
+def structured_universe(rnd, seat, bot=None) -> list[list[str]]:
+    """The broad lead universe: structured actions AND throws.
 
-    The denominator the coverage audit uses, and the `full_universe` arm's
-    ballot. Deterministic and sorted, so it is a function of the hand rather
-    than of hand order.
+    Singles, pairs and true tractors, PLUS the deployed ballot's own actions —
+    which include safe/near-boss throws and bounded component throws that no
+    amount of singles/pairs/tractors reproduces.
+
+    Including the deployed actions is not a convenience. Without them the
+    "high-compute" arm was not even a SUPERSET of the arm it is supposed to
+    dominate: a 100-lead probe found deployed actions missing from it in 7
+    states — throws like `DA DA DK`, `HA HK`, `H10 H8 H9` (Codex). An arm that
+    cannot propose what the baseline proposes cannot be read as an upper bound
+    on what sourcing can achieve.
+
+    Deterministic and sorted, so it is a function of the hand rather than of
+    hand order.
     """
     o = rnd.ordering
     hand = rnd.hands[seat]
@@ -66,6 +76,8 @@ def structured_universe(rnd, seat) -> list[list[str]]:
         for k in range(2, len(cs) // 2 + 1):
             for run in find_tractor_runs(cs, o, k):
                 out.append(sorted(run))
+    if bot is not None:
+        out += [sorted(a) for a in bot._candidates(rnd, seat)]
     seen, uniq = set(), []
     for a in out:
         key = tuple(sorted(a))
@@ -142,7 +154,7 @@ def propose(arm: str, bot, rnd, seat, *, budget: int, seed: int,
             bot.V3_LEAD_SINGLES = was
         return _dedupe([keep] + cands, budget)
 
-    universe = structured_universe(rnd, seat)
+    universe = structured_universe(rnd, seat, bot)
     if arm == "full_universe":
         return _dedupe([keep] + universe, None)      # NOT budget-matched
     if arm == "random_fill":

@@ -1,6 +1,6 @@
-"""Disjoint belief-world folds for the lead-ballot pilot.
+"""Cross-fitted belief-world folds for the lead-ballot pilot.
 
-BALLOT_PLAN Phase 2 requires three folds that never share a world:
+BALLOT_PLAN Phase 2 requires three INDEPENDENTLY DRAWN folds:
 
   1. **proposal** — only arms that SEARCH for proposals may look at it;
   2. **oracle-selection** — picks the reference action from the union of every
@@ -16,8 +16,20 @@ select-and-test-on-the-same-worlds defect that made the high-N corpus's `best`
 and `gap` columns unusable, and a wider-ballot arm is precisely the shape that
 would exploit it.
 
-Disjointness here is STRUCTURAL, not incidental. Each fold draws from its own
-named RNG stream, derived by hashing (salt, state key, fold name) so that:
+**Independence comes from the STREAMS, not from disjoint realised support.**
+The first version of this module rejected a sampled world whose key had already
+appeared, in the same or another fold. That is wrong, and wrong in the
+direction that matters: it conditions later draws on earlier outcomes and
+changes their distribution. Codex's example is decisive — with a toy posterior
+P(A)=0.8, P(B)=0.2, rejecting the proposal fold's outcome from a two-world
+report fold makes report A occur only when proposal drew B, i.e. 0.2 instead of
+0.8. Rejecting duplicates WITHIN a fold overweights rare worlds the same way.
+Two independent draws are allowed to coincide; forbidding it is the bias.
+
+So every successful draw is accepted, equal keys are counted as a DIAGNOSTIC
+only, and cross-fitting rests on the streams being independent. Each fold
+draws from its own named RNG stream, derived by hashing (salt, state key, fold
+name) so that:
 
   * drawing from one fold cannot advance another — the historical
     `Ordering._dcache`-style coupling where two consumers shared a generator
@@ -25,10 +37,9 @@ named RNG stream, derived by hashing (salt, state key, fold name) so that:
   * the same state always yields the same worlds, so a rerun reproduces;
   * two different states never collide, because the state key is in the hash.
 
-Worlds are compared by a canonical key and asserted disjoint, rather than
-assumed disjoint because the streams differ — different streams CAN produce
-the same world, and for a constrained late state the legal space is small
-enough that they sometimes will.
+Worlds carry a canonical seat-aware key, used to REPORT coincidence between
+folds. It is a diagnostic: a high rate says the legal space is small, not that
+anything is wrong.
 """
 from __future__ import annotations
 
@@ -64,7 +75,7 @@ def world_key(hands, extra) -> tuple:
 
 @dataclass
 class FoldedWorlds:
-    """Worlds for one state, partitioned into folds that share nothing."""
+    """Worlds for one state, drawn independently per fold."""
 
     state_key: str
     worlds: dict = field(default_factory=dict)     # fold -> list[(hands, extra)]
@@ -74,37 +85,38 @@ class FoldedWorlds:
     def keys(self, fold: str) -> set:
         return {world_key(h, e) for h, e in self.worlds[fold]}
 
-    def assert_disjoint(self) -> None:
-        seen: dict = {}
+    def shared_keys(self) -> int:
+        """How many worlds coincide across folds. DIAGNOSTIC, never an error.
+
+        Independent draws may legitimately land on the same world, and in a
+        constrained late state they often will. Rejecting the coincidence is
+        what breaks independence, so this is reported and not acted on.
+        """
+        seen: set = set()
+        shared = 0
         for fold in FOLDS:
-            for k in self.keys(fold):
-                if k in seen:
-                    raise AssertionError(
-                        f"{self.state_key}: a world appears in both "
-                        f"{seen[k]} and {fold}. Folds must share nothing — "
-                        f"an arm that proposes and is scored on the same world "
-                        f"is measuring its own selection noise.")
-                seen[k] = fold
+            ks = self.keys(fold)
+            shared += len(ks & seen)
+            seen |= ks
+        return shared
 
 
 def draw_folds(bot, rnd, seat, mem, counts: dict, *, salt: str,
                state_key: str, max_attempts_factor: int = 40) -> FoldedWorlds:
-    """Draw `counts[fold]` distinct worlds per fold, sharing none.
+    """Draw `counts[fold]` worlds per fold from independent streams.
 
-    Each fold gets its OWN bot RNG state, restored afterwards, so drawing the
-    report fold cannot shift what the proposal fold would have produced. A
-    world already claimed by an earlier fold is skipped rather than reused,
-    and the skip is counted — silently reusing it is the whole defect.
+    Each fold draws from its own named stream. EVERY successful draw is kept,
+    including one that coincides with a world another fold drew: forbidding
+    the coincidence would condition this fold on that one and bias it.
+    Coincidences are counted for reporting only.
     """
     out = FoldedWorlds(state_key=state_key)
-    claimed: set = set()
-    saved = bot.rng.getstate()
+    original_rng = bot.rng          # restore the OBJECT, not a copy of state
     try:
         for fold in FOLDS:
             want = counts[fold]
             bot.rng = random.Random(stream_seed(salt, state_key, fold))
             got: list = []
-            seen_here: set = set()
             attempts = 0
             while len(got) < want and attempts < want * max_attempts_factor:
                 attempts += 1
@@ -112,21 +124,11 @@ def draw_folds(bot, rnd, seat, mem, counts: dict, *, salt: str,
                 if sampled is None:
                     out.rejected += 1
                     continue
-                hands, extra = sampled
-                k = world_key(hands, extra)
-                if k in claimed:
-                    out.collisions += 1
-                    continue
-                if k in seen_here:
-                    continue          # duplicate within a fold: not an error
-                seen_here.add(k)
-                claimed.add(k)
-                got.append((hands, extra))
+                got.append(sampled)
             out.worlds[fold] = got
     finally:
-        bot.rng = random.Random()
-        bot.rng.setstate(saved)
-    out.assert_disjoint()
+        bot.rng = original_rng
+    out.collisions = out.shared_keys()
     return out
 
 

@@ -9,6 +9,39 @@ teacher data (gen-v3: ~28h fleet-wide), duels, tournaments, and MC's
 live latency all sit on the same rollout loop. Rough math: 10x here =
 overnight gens become 3h, and every gate duel runs in minutes.
 
+## Deployment Pareto table (measured 2026-08-04)
+
+What could actually be shipped, strength against cost. Latency is per decision
+on the mini, torch-free numpy path where a net is involved; strength is the
+direct seeded/mirrored evidence, not pool Elo (pool gaps under ~40 have twice
+proved unreliable).
+
+| policy | p50 | p95 | strength | notes |
+|---|---|---|---|---|
+| `heuristic` | 0.02 ms | 0.04 ms | pool 1000 (baseline) | |
+| `smart` | 0.05 ms | 0.13 ms | pool ~1093 | hand-written, no search |
+| **`rl-override-v11pair`** | **0.25 ms** | **0.52 ms** | **57.7% vs smart** (n=480); **51.1% vs mc** (n=4880, CI includes 50) | SmartBot + learned override, NO search |
+| `mc-vleaf-v7w-ep02` | 32 ms | 67 ms | 50.4% vs mc (n=1200) | truncated rollouts + net value leaf |
+| `mc-gate-v11pair` | 0.25 ms | 30 ms | 53.3% vs mc (n=300, screen only) | searches the ~12% it flags; FAILED its offline gate |
+| `mc` (current default) | 77 ms | 150 ms | pool ~1119 | 30-world determinized search |
+
+**The Pareto frontier is two policies wide.** `smart` is the floor at
+~0.05 ms. `rl-override-v11pair` is level with `mc` on 4,880 rounds at
+**300x lower p50 and 290x lower p95** — that is the whole result. `mc-vleaf`
+and `mc-gate` are dominated: both cost far more than the override and neither
+is measurably stronger than `mc`.
+
+Practical reading for a deploy decision:
+- Switching prod from `mc` to `rl-override-v11pair` buys ~300x headroom per
+  decision and removes the 150 ms p95 stalls, at no measured strength cost.
+  It is a COST and RESPONSIVENESS decision, not an AI upgrade.
+- `mc`'s p95 of 150 ms is per decision; a four-bot table compounds that, which
+  is what makes the tail visible during play.
+- The override's own max (3.3 ms) is a first-call artefact — the numpy weights
+  load lazily.
+
+---
+
 ## Current measured baselines (2026-08-02)
 
 | metric | value | conditions |

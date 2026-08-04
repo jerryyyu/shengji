@@ -295,9 +295,17 @@ What survives and what does not:
   "deterministic, so the machine does not matter" was simply false.
 - The v11-vs-Smart result is unaffected: SmartBot is deterministic.
 
-`make_bot` now forwards kwargs and `tests/test_duel_factories_seeded.py`
-exercises the exact factory FORM the scripts use, so this cannot recur
-silently. A properly seeded confirmation is running.
+`make_bot` now forwards kwargs — dispatching on the factory SIGNATURE, not by
+catching TypeError, which would swallow a real constructor bug and retry
+(Codex) — and `tests/test_duel_factories_seeded.py` runs a complete pairing
+twice through the exact script lambda and compares SCORES.
+
+One more block completed after the retraction (409-391 = 51.1%, n=800), which
+was ALSO launched before the fix landed and is therefore also unseeded. It
+agrees with everything else. Across 4,880 exploratory rounds the estimate has
+not moved off ~51%: **v11pair is level with mc.** A genuinely seeded
+confirmation has still not been run, and on the evidence so far it would be
+buying reproducibility rather than changing the answer.
 
 **What fixed it vs v10res (47% vs smart):**
 

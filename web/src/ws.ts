@@ -48,12 +48,28 @@ type StatusListener = (status: ConnStatus) => void;
 class Connection {
   status: ConnStatus = "closed";
 
+  /** Chat received so far, including lines that arrived before the table
+   *  mounted. Cleared on room change, NOT on reconnect (the server replays
+   *  scrollback and duplicates would double up). */
+  private chatLog: any[] = [];
+
   private ws: WebSocket | null = null;
   private msgListeners = new Set<MsgListener>();
   private statusListeners = new Set<StatusListener>();
   private backoff = 500;
   private reconnectTimer: number | null = null;
   private started = false;
+
+  /** Chat buffered since the last room change. */
+  chatHistory(): any[] {
+    return this.chatLog.slice();
+  }
+
+  /** Drop buffered chat — call when LEAVING a room, so the next room starts
+   *  clean. Not called on reconnect: the server replays its own scrollback. */
+  clearChat(): void {
+    this.chatLog = [];
+  }
 
   /** Idempotent: begin connecting (called once from App). */
   start(): void {
@@ -105,6 +121,13 @@ class Connection {
         msg = JSON.parse(ev.data as string) as ServerMsg;
       } catch {
         return;
+      }
+      // Chat scrollback is delivered on join, BEFORE the first state — i.e.
+      // before <Table> mounts and subscribes. Buffer it here or a joiner sees
+      // an empty log (Codex case 7).
+      if ((msg as any)?.type === "chat") {
+        this.chatLog.push(msg as any);
+        if (this.chatLog.length > 100) this.chatLog.splice(0, this.chatLog.length - 100);
       }
       for (const fn of this.msgListeners) fn(msg);
     };

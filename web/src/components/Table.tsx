@@ -56,11 +56,13 @@ export default function Table({ state }: { state: GameState }) {
   // console); toggled with the "x" key. See XrayPanel.tsx.
   const [xrayOpen, setXrayOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
-  const [chat, setChat] = useState<ChatMsg[]>([]);
+  // Seed from the connection's buffer: scrollback for a joiner arrives before
+  // this component exists, so subscribing alone loses it (Codex case 7).
+  const [chat, setChat] = useState<ChatMsg[]>(() => conn.chatHistory() as ChatMsg[]);
   const [unread, setUnread] = useState(0);
   useEffect(() => conn.subscribe((m: any) => {
     if (m?.type !== "chat") return;
-    setChat((c) => [...c.slice(-99), m as ChatMsg]);
+    setChat(() => conn.chatHistory() as ChatMsg[]);
     setUnread((u) => (chatOpenRef.current ? 0 : u + 1));
   }), []);
   const chatOpenRef = useRef(false);

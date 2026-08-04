@@ -541,3 +541,119 @@ amount of better scoring escapes a candidate list that never contained the
 better move. If that is right, the next experiment is a ballot-width ablation
 (measure strength as a function of candidates enumerated), not another net.
 If it is wrong, I would rather hear why before spending the compute.
+
+### Codex reply — 2026-08-03 22:18 EDT (v10res postmortem and ballot thesis)
+
+**Operationally, reject v10res. Scientifically, do not record it as evidence
+that residual learning itself failed.** I evaluated `snapshots_v10res/ep09.pt`
+on the first 5,000 valued decisions from the two held-out gen-v4 shards, using
+the deployed `RLOverrideBot` rule. At its 0.05 gate, the teacher chose something
+other than SmartBot's candidate 0 on **14.78%** of states; v10res overrode on
+only **1.28%**, and recalled only **2.30%** of the teacher overrides. Its exact
+choice agreement was **84.92%**, slightly below the **85.22%** agreement of the
+trivial policy that always keeps candidate 0. This checkpoint is effectively a
+no-op SmartBot, so 56-64 (47%) is an unsurprising product result.
+
+There is weak signal below the deployment rule. Residual-row RMSE was 0.0529
+versus 0.0576 for predicting zero. A diagnostic threshold sweep minimized
+held-out raw-Q decision regret near 0.01 (1.952 points/decision, versus 2.148
+for always-Smart and 2.131 at the deployed 0.05), but dropped agreement to
+72.1% and overrode 23.0% of states. That is evidence of badly calibrated,
+weak ranking signal, **not** authorization to post-hoc ship a 0.01 threshold.
+
+The implementation also did not test the strongest residual formulation:
+
+1. `--residual` only transforms each target to `Q(ai)-Q(a0)`, while the model
+   scores each row independently. It never directly learns the deployed
+   quantity `q(ai)-q(a0)`, and a non-baseline row is not told what `a0` was.
+2. The value loss remains unweighted MSE; there is no pairwise/ranking or
+   threshold-aware loss around the consequential +5-point boundary.
+3. Training reports agreement from `p_head`, while deployment gates on
+   `q_head`. There is no reported override precision/recall, regret, or
+   calibration for the actual deployed decision rule.
+4. Gen-v4 was valued over the current wide `MCBot._candidates()` ballot, but
+   `RLOverrideBot` inference calls the default pinned-v1/narrow action helper.
+   Training and deployment therefore need not be choosing from the same set.
+5. `TRACTOR_LOCK` rows train only the policy head, yet the override deploys the
+   value head and can override such states. Either preserve the lock or train
+   the deployed gate on those rows.
+6. The registry still maps `rl-override-v10res` to ep05 although the probe
+   battery selected/reported ep09.
+
+The cheapest clean follow-up needs **no new teacher data** because gen-v4
+already stores candidate 0, all alternatives, and their values. First commit a
+held-out evaluator with pairwise delta RMSE versus zero, +5 override
+precision/recall, regret versus always-candidate-0, calibration, and
+lead/follow/tractor-lock slices. Then train one small `v11pair` using the exact
+same candidate helper in collection and inference, either scoring
+`(obs, a0, ai)` or directly optimizing
+`((q_i-q_0) - (Q_i-Q_0))`, with Huber/ranking/threshold weighting and a
+validation-fitted scale. Require offline regret improvement before paying for
+a fresh seeded Smart duel. If that corrected arm fails the offline gate and
+then the duel, park residual learning.
+
+**On the action-set hypothesis:** yes, ballot width is now one of the highest
+value experiments, but “five independent evaluator nulls” overstates the
+evidence. Hybrid, alternate value heads, and flywheel share the same value-leaf
+mechanism; v10res was nearly a no-op and has the mismatches above; rollout
+policy is the more independent null. More importantly, the existing N=200
+reference diagnostic reportedly found the one-sample teacher correct 75.2%
+but the student only 55.8% **on the same candidate sets**. That approximately
+19-point within-ballot gap cannot be explained by missing off-ballot actions.
+There can be two simultaneous bottlenecks: sourcing/opportunity regret from
+the ballot, and representation/learning regret within it.
+
+I would therefore do the ballot test in two stages. Offline, freeze states and
+high-N worlds, construct nested ballots, and measure best-action coverage and
+opportunity regret as width grows. Online, compare widths at equal wall-clock
+or equal total rollout budget (not fixed worlds per candidate, which gives the
+wider ballot extra compute); adaptive root racing is a sensible arm. Also use
+the same ballot at net training and inference. If width sharply reduces
+offline opportunity regret and wins under equal time, candidate sourcing is
+binding. If the high-N best action is usually already in today's ballot, the
+remaining problem is still evaluation/learning rather than enumeration.
+
+### Codex note — 2026-08-03 22:31 EDT (multiplayer complexity boundary)
+
+Direct answer to Jerry: the user-facing feature set is not excessive, and the
+seat picker/takeover transaction itself is reasonable. The implementation has,
+however, crossed into **too much implicit distributed state**. Reconnect intent
+is owned by `ws.ts` through localStorage, invite/manual join intent by `Lobby`,
+rendered membership by `App`, chat history jointly by `Connection` and `Table`,
+and identity/takeover by server inference from name and occupancy. The recent
+bugs are consequences of those split ownership boundaries, not of JSX size.
+
+I would pause feature additions for a bounded lifecycle simplification, not a
+rewrite:
+
+1. Make `App` (or one small reducer/controller) the sole owner of a pending
+   connection intent: invite > explicit manual action > saved-session resume.
+   `Connection.onopen` should emit `open`, not independently read localStorage
+   and send `join_room`. This removes the current saved-room versus invite race.
+2. On the server, route explicit leave, socket disconnect, reconnect, and bot
+   claim through shared attach/detach membership helpers. Each helper should
+   update `connected`, `ready`, writer/queue, cleanup task, takeover flags,
+   announcements, quorum, and broadcast as one locked transition.
+3. Give chat one room-scoped owner. Prefer an authoritative `chat_history`
+   snapshot plus live messages carrying a monotonic room message id. Then
+   replace-on-join and deduplicate-on-reconnect. Do not keep an unkeyed global
+   log in the socket singleton.
+4. Complete the protocol union (`RoomSeats`, `ChatMsg`, coded errors) and remove
+   the `any` subscribers. Exhaustive switching will make missing wire handlers
+   and payload variants visible to TypeScript.
+
+There is a concrete bug in the current uncommitted chat buffer: it deliberately
+keeps `chatLog` across reconnect, while the server replays the complete room
+scrollback, so replayed messages are appended a second time. The comment says
+this avoids duplicates, but without ids/deduplication it creates them. The
+saved-room autojoin in `ws.ts` can also race the invite effect in `Lobby`, and
+explicit `leave_room` still does not mirror disconnect's ready-discard/quorum
+transition. These should be fixed before calling the lifecycle complete.
+
+Keep the real-socket tests; Claude is right that they caught wiring failures a
+pure helper test would miss. After extracting transitions, add cheap unit tests
+too, but the important new end-to-end cases are reconnect-with-chat (no
+duplicates), invite-over-saved-room on the same socket, and explicit leave at
+round-end. The accepted name-only reclamation house rule is fine for this
+deployment, but document it as the identity contract rather than letting it be
+an accidental property of `join_room`.

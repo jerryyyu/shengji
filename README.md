@@ -118,3 +118,5 @@ validation battery.
 | `MAINTENANCE.md` | daily routine (any session can execute it) |
 | `HANDOFF_REVIEW.md` | external-review thread (Codex <-> Claude) |
 | `DEPLOY.md` / `PROTOCOL.md` | hosting + wire protocol |
+| `web/README.md` | client architecture, protocol contract, UI invariants |
+| `docs_archive/` | compacted history (RL chronology, resolved backlog, old review rounds) |

@@ -96,6 +96,12 @@ class Room:
         self._kitty_ids = {100 + i: rnd.deck[100 + i] for i in range(8)}
         self._kitty_given = False
 
+    def mint_card_id(self, seat: int, code: str) -> int:
+        """Fresh id for a card the id map is missing (desync recovery)."""
+        nid = max([*self.ids[seat], 199]) + 1
+        self.ids[seat][nid] = code
+        return nid
+
     def sync_kitty(self) -> None:
         rnd = self.round
         if rnd and rnd.phase in ("bury", "play", "round_end") and not self._kitty_given:
@@ -153,8 +159,17 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
     id_pool = dict(room.ids[seat])
     hand = []
     for code in hand_codes:
-        cid = next(i for i, c in id_pool.items() if c == code)
-        del id_pool[cid]
+        # Total by construction: a bare next() here raises StopIteration
+        # INSIDE a coroutine, which Python turns into RuntimeError and which
+        # killed every subsequent broadcast to the room, not just this seat.
+        # If the id map ever disagrees with the hand, mint a fresh handle and
+        # carry on — ids are per-round client handles, and an unknown id sent
+        # back is already rejected by codes_for().
+        cid = next((i for i, c in id_pool.items() if c == code), None)
+        if cid is None:
+            cid = room.mint_card_id(seat, code)
+        else:
+            del id_pool[cid]
         hand.append({"id": cid, "code": code})
 
     trump = None
@@ -648,6 +663,12 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                   for i, sd in enumerate(target.seats)],
                     })
                 elif t == "join_room":
+                    # Per-JOIN, not per-socket: these were read back via
+                    # locals(), so a player who claimed a bot seat in one room
+                    # kept claimed_from_bot/took_from set and the NEXT room
+                    # announced a stale bot's name (Codex case 8).
+                    claimed_from_bot = False
+                    took_from = ""
                     code = str(msg.get("room", "")).upper()
                     target = rooms.get(code)
                     if target is None:
@@ -721,7 +742,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                 + (" — taking over from the bot"
                                    if me.bot_announced else ""))
                             me.bot_announced = False
-                        elif locals().get("claimed_from_bot"):
+                        elif claimed_from_bot:
                             chat_system(room,
                                         f"{name} took {took_from}'s seat")
                         else:

@@ -38,6 +38,7 @@ export default function App() {
       if (!opts?.keepRoom) {
         clearSavedRoom();
         setRoom(null);
+        conn.clearChat();   // next room starts with an empty log
       }
       setGame(null);
       seededRef.current = false;

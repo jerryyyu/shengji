@@ -21,8 +21,24 @@ def client(tmp_path, monkeypatch):
     from shengji.api import server as srv
 
     srv.LOG_DIR = tmp_path / "logs"
+    # A real deal is ~22s of DEAL_DELAY; these tests care about the protocol,
+    # not the pacing. BOT_DELAY is left alone — one test needs a bot turn to
+    # still be PENDING when a human claims that seat.
+    monkeypatch.setattr(srv, "DEAL_DELAY", 0.0)
+    monkeypatch.setattr(srv, "DECLARE_GRACE", 0.05)
+    monkeypatch.setattr(srv, "DECLARE_EXTEND", 0.05)
     srv.rooms.clear()
-    return TestClient(srv.app)
+    with TestClient(srv.app) as c:
+        yield c
+    # Rooms outlive a test's event loop; their asyncio.Lock binds to whichever
+    # loop touches it first, so a leftover room makes the NEXT test fail with
+    # "attached to a different loop". Tear down explicitly.
+    for room in list(srv.rooms.values()):
+        for task in (room.cleanup_task, room.deal_task,
+                     getattr(room, "watchdog_task", None)):
+            if task is not None:
+                task.cancel()
+    srv.rooms.clear()
 
 
 def _drain(ws, want, tries=40):
@@ -161,3 +177,139 @@ def test_malformed_seat_falls_back_to_any_bot(client):
                          "name": "odd", "seat": True})   # bool is not a seat
             st = _drain(b, "room")
     assert st["you"] in (1, 2, 3)
+
+
+def _start_game(client, a, to_play=False):
+    """Room with 3 bots, game running, returns (code, room).
+
+    With to_play=True this drives the REAL deal path (the fixture zeroes
+    DEAL_DELAY and shortens the declare window) rather than advancing the
+    round in-process — an in-process loop races the server's own deal task
+    and both end up calling deal_next on the same round.
+    """
+    from shengji.api import server as srv
+
+    code = _room_with_bots(a)
+    a.send_json({"type": "start_game"})
+    st = _drain(a, "state", tries=60)
+    if to_play:
+        for _ in range(400):
+            if st.get("phase") == "play":
+                break
+            st = _drain(a, "state", tries=400)
+        assert st.get("phase") == "play", "round never reached the play phase"
+    return code, srv.rooms[code]
+
+
+def test_claim_preserves_private_hand_and_ids(client):
+    """The claimant gets that seat's REAL remaining cards; others see counts."""
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a, to_play=True)
+        want = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
+        before = sorted(room.round.hands[want])
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "join_room", "room": code,
+                         "name": "late", "seat": want})
+            st = _drain(b, "state", tries=60)
+            assert st["you"] == want
+            got = sorted(c["code"] for c in st["hand"])
+            assert got == before, "claimant did not receive the seat's hand"
+            assert len({c["id"] for c in st["hand"]}) == len(st["hand"]), \
+                "duplicate card ids handed to the claimant"
+            # Everyone else still sees only public counts for that seat.
+            other = next(p for p in st["players"] if p["seat"] != want)
+            assert "hand" not in other and "cards_left" in other
+        # And the seat's hand was not mutated by the claim itself.
+        assert sorted(room.round.hands[want]) == before
+
+
+def test_claim_during_bot_delay_is_atomic(client):
+    """Claiming the seat whose bot turn is pending must cancel that bot move."""
+    import asyncio
+
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a, to_play=True)
+        turn = room.round.turn
+        assert turn is not None and room.round.phase == "play"
+        if not room.seats[turn].is_bot:      # seat 0 (human) leads
+            turn = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
+        hand_before = list(room.round.hands[turn])
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "join_room", "room": code,
+                         "name": "sniper", "seat": turn})
+            _drain(b, "state", tries=60)
+            # pump_bots re-checks is_bot after sleeping; the seat is human now.
+            assert not room.seats[turn].is_bot
+            assert room.round.turn == turn, "bot moved for a claimed seat"
+            assert list(room.round.hands[turn]) == hand_before
+    del asyncio, srv
+
+
+def test_disconnect_takeover_and_reconnect_resets_each_absence(client):
+    """bot_announced must reset per absence, not latch after the first."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a)
+        seat0 = room.seats[0]
+        for absence in (1, 2):
+            seat0.connected = False
+            seat0.bot_announced = True          # as the watchdog would set it
+            with client.websocket_connect("/ws") as b:
+                b.send_json({"type": "join_room", "room": code, "name": "jerry"})
+                _drain(b, "state", tries=60)
+                me = srv.rooms[code].seats[0]
+                assert me is seat0, "reconnect must reuse the SAME Seat object"
+                assert not me.is_bot and me.connected
+                assert not me.bot_announced, \
+                    f"bot_announced still set after absence {absence}"
+                assert me.name == "jerry"
+        # Reclaiming must not have spawned extra seats.
+        assert len(srv.rooms[code].seats) == 4
+
+
+def test_reconnect_cancels_room_cleanup(client):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, _ = _start_game(client, a)
+    room = srv.rooms.get(code)
+    assert room is not None, "room deleted immediately instead of after TTL"
+    assert room.cleanup_task is not None
+    with client.websocket_connect("/ws") as b:
+        b.send_json({"type": "join_room", "room": code, "name": "jerry"})
+        _drain(b, "state", tries=60)
+        assert room.cleanup_task is None or room.cleanup_task.cancelled()
+
+
+def test_claim_state_does_not_leak_across_rooms_on_one_socket(client):
+    """Claiming a bot seat in room A must not label a later join of room B."""
+    with client.websocket_connect("/ws") as a, \
+            client.websocket_connect("/ws") as host_b:
+        code_a, room_a = _start_game(client, a)
+        # Room B has SPACE (one bot, two free seats), so a join there is an
+        # ordinary lobby join — any "took ...'s seat" line is leaked state.
+        host_b.send_json({"type": "create_room", "name": "hostb"})
+        code_b = _drain(host_b, "room")["room"]
+        host_b.send_json({"type": "add_bot"})
+        with client.websocket_connect("/ws") as mover:
+            want = next(i for i, sd in enumerate(room_a.seats) if sd.is_bot)
+            mover.send_json({"type": "join_room", "room": code_a,
+                             "name": "wanderer", "seat": want})
+            first = _drain(mover, "chat")
+            assert "took" in first["text"]
+            mover.send_json({"type": "leave_room"})
+            mover.send_json({"type": "join_room", "room": code_b,
+                             "name": "wanderer"})
+            lines = []
+            for _ in range(30):
+                m = mover.receive_json()
+                if m.get("type") == "chat":
+                    lines.append(m["text"])
+                if m.get("type") in ("room", "state") and lines:
+                    break
+    joined = [t for t in lines if "wanderer" in t]
+    assert joined and all("took" not in t for t in joined), \
+        f"stale claim state leaked into the next room: {joined}"

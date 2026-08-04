@@ -16,7 +16,9 @@ Two decks are used, so each code appears twice. Every physical card instance has
 | type | fields | when |
 |------|--------|------|
 | `create_room` | `name` (player display name) | anytime before joining |
-| `join_room` | `room` (4-letter code), `name` | lobby |
+| `join_room` | `room` (4-letter code), `name`, optional `seat` | lobby, OR mid-game to claim a bot's seat |
+| `peek_room` | `room` | anytime, WITHOUT joining — answered with `room_seats` |
+| `chat` | `text` (<=300 chars) | after joining |
 | `add_bot` | — | host, in lobby or between rounds |
 | `remove_bot` | — | host, lobby (removes last bot) |
 | `start_game` | — | host, lobby, exactly 4 players |
@@ -24,7 +26,7 @@ Two decks are used, so each code appears twice. Every physical card instance has
 | `pass_declare` | — | `declare` phase (marks you done with the declare window) |
 | `bury` | `card_ids: number[]` (exactly 8) | you are banker, phase `bury` |
 | `play` | `card_ids: number[]` | your play turn |
-| `next_round` | — | phase `round_end`, any player (host advances) |
+| `next_round` | — | phase `round_end`; EVERY connected human must send it before the round advances |
 | `leave_room` | — | anytime after joining; server replies `{type:"left"}` |
 
 Invalid actions get an `error` message; state is unchanged.
@@ -32,12 +34,29 @@ Invalid actions get an `error` message; state is unchanged.
 ## Server → Client
 
 ### `{type: "error", message: string, code?: string}`
+
+Codes: `room_not_found`, `room_full`, `seat_unavailable` (the seat was claimed
+between a peek and the join — the client should re-peek rather than accept a
+different seat, since a different seat means a different TEAM).
 `code` is set for machine-readable cases: `"room_not_found"` (the room no
 longer exists — the client should clear its saved room and return to the
 lobby instead of retrying).
 
 ### `{type: "room", room: string, you: number, host: number, players: RoomPlayer[]}`
 Sent in lobby. `RoomPlayer = {seat: number, name: string, is_bot: boolean, connected: boolean}`. Seats 0–3. Teams: seats 0+2 vs 1+3.
+
+### `{type: "room_seats", room, in_game: bool, seats: [{seat, name, is_bot, connected, team}]}`
+
+Reply to `peek_room`. Read-only: it does not seat the asker and reveals no
+private information. The lobby uses it to show a seat picker when a game is in
+progress and more than one bot seat is open — which bot you replace decides
+who your partner is.
+
+### `{type: "chat", seat: number, name: string, text: string, t: float}`
+
+`seat: -1` marks a SYSTEM line (joins, leaves, seat claims, bot takeover and
+handback). Up to 50 messages of scrollback are replayed on join, **before**
+the first state — a client that only subscribes on mount will miss them.
 
 ### `{type: "state", ...GameState}`
 Full personalized game state:

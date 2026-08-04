@@ -129,6 +129,11 @@ class RLOverrideBot(SmartBot):
         else:
             from .model import load_any_net
             self.net = load_any_net(path)
+        # A real MCBot supplies the candidate ballot — the SAME one the teacher
+        # valued. Borrowing the unbound method with `self` misses MCBot's class
+        # attributes (WIDE_FOLLOW_BALLOT et al).
+        from ..ai.mcbot import MCBot as _MC
+        self._ballot = _MC()
 
     def decide_play(self, rnd: Round, seat: int) -> list[str]:
         base = super().decide_play(rnd, seat)          # SmartBot's pick = a_0
@@ -137,9 +142,7 @@ class RLOverrideBot(SmartBot):
         # enumerate_actions() — 11 of 12 decisions enumerate differently
         # (13 vs 26 candidates on seed 5), so the net was scoring actions it
         # never saw valued. Same class as the Elo-798 mismatch.
-        from ..ai.mcbot import MCBot as _MC
-        actions = _MC._candidates(self, rnd, seat) \
-            if hasattr(_MC, "_candidates") else enumerate_actions(rnd, seat)
+        actions = self._ballot._candidates(rnd, seat)
         if len(actions) <= 1:
             return base
         key = sorted(base)

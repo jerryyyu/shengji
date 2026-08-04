@@ -120,4 +120,17 @@ def _make_override(ckpt: str):
 # ep05, so anyone playing this bot got a DIFFERENT net than the one measured
 # (Codex 2026-08-03). Kept registered only for the offline residual
 # post-mortem — this arm is a near no-op, not a candidate for play.
+def _make_override_thr(path: str, margin: float):
+    def make(**kw):
+        from ..rl.torch_policy import RLOverrideBot
+        b = RLOverrideBot(path)
+        b.MARGIN = margin          # fitted on a DISJOINT half of the holdout
+        return b
+    return make
+
+
+# threshold 0.02 was fitted on half A of the holdout and reported on half B
+# (regret 1.943 vs 2.103 for always-candidate-0), so it is not post-hoc.
+REGISTRY["rl-override-v11pair"] = _make_override_thr(
+    "snapshots_v11pair/ep07.pt", 0.02)
 REGISTRY["rl-override-v10res"] = _make_override("snapshots_v10res/ep09.pt")

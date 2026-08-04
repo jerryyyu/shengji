@@ -313,3 +313,29 @@ def test_claim_state_does_not_leak_across_rooms_on_one_socket(client):
     joined = [t for t in lines if "wanderer" in t]
     assert joined and all("took" not in t for t in joined), \
         f"stale claim state leaked into the next room: {joined}"
+
+
+def test_state_reports_takeover_countdown(client):
+    """A disconnected human's seat carries seconds-until-bot; others None."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a, to_play=True)
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "join_room", "room": code, "name": "james"})
+            _drain(b, "state", tries=60)
+            seat_b = next(i for i, sd in enumerate(room.seats)
+                          if sd.name == "james")
+        # b's socket closed: the watchdog has not fired yet, so a countdown
+        # must be visible to everyone still at the table.
+        st = srv.state_for(room, 0)
+        me = next(p for p in st["players"] if p["seat"] == seat_b)
+        assert me["takeover_in"] is not None
+        assert 0 < me["takeover_in"] <= srv.TAKEOVER_AFTER
+        assert all(p["takeover_in"] is None
+                   for p in st["players"] if p["seat"] != seat_b)
+        # Once the bot has taken over, the countdown stops being reported.
+        room.seats[seat_b].bot_announced = True
+        st2 = srv.state_for(room, 0)
+        assert next(p for p in st2["players"]
+                    if p["seat"] == seat_b)["takeover_in"] is None

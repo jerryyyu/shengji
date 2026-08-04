@@ -132,7 +132,14 @@ class RLOverrideBot(SmartBot):
 
     def decide_play(self, rnd: Round, seat: int) -> list[str]:
         base = super().decide_play(rnd, seat)          # SmartBot's pick = a_0
-        actions = enumerate_actions(rnd, seat)
+        # MUST match the ballot the teacher VALUED. gen-v4 valued
+        # MCBot._candidates() rows while this inferred over
+        # enumerate_actions() — 11 of 12 decisions enumerate differently
+        # (13 vs 26 candidates on seed 5), so the net was scoring actions it
+        # never saw valued. Same class as the Elo-798 mismatch.
+        from ..ai.mcbot import MCBot as _MC
+        actions = _MC._candidates(self, rnd, seat) \
+            if hasattr(_MC, "_candidates") else enumerate_actions(rnd, seat)
         if len(actions) <= 1:
             return base
         key = sorted(base)

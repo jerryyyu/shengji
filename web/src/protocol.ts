@@ -58,6 +58,9 @@ export interface StatePlayer {
   team: 0 | 1; // seat % 2
   cards_left: number;
   is_banker: boolean;
+  /** Seconds until a bot covers this disconnected human; null otherwise.
+   *  Tick it down locally — broadcasts are event-driven, not per-second. */
+  takeover_in: number | null;
 }
 
 export interface Trump {

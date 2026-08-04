@@ -46,7 +46,11 @@ rooms: dict[str, "Room"] = {}
 class Seat:
     name: str
     is_bot: bool = False
-    bot_announced: bool = False  # bot-takeover announced for this absence
+    bot_announced: bool = False
+    # Monotonic stamp of the disconnect, independent of the event loop, so the
+    # takeover countdown can be computed anywhere (loop.time() is only
+    # meaningful inside a running loop).
+    left_at: float | None = None  # bot-takeover announced for this absence
     ws: WebSocket | None = None
     connected: bool = False
     queue: asyncio.Queue | None = None   # outbound messages; writer task drains
@@ -148,6 +152,16 @@ def trick_json(t) -> dict | None:
     return d
 
 
+def _takeover_in(room: Room, seat: int) -> float | None:
+    """Seconds before the bot plays for a disconnected human (None if N/A)."""
+    sd = room.seats[seat]
+    if sd.is_bot or sd.connected or sd.bot_announced:
+        return None
+    if sd.left_at is None:
+        return None
+    return round(max(0.0, TAKEOVER_AFTER - (time.monotonic() - sd.left_at)), 1)
+
+
 def state_for(room: Room, seat: int) -> dict[str, Any]:
     game = room.game
     rnd = room.round
@@ -196,6 +210,11 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
             "connected": room.seats[s].connected or room.seats[s].is_bot,
             "team": s % 2, "cards_left": len(rnd.hands[s]),
             "is_banker": banker == s,
+            # Seconds until the bot covers this seat, so the table can show a
+            # countdown instead of a bare "offline" (Jerry, 2026-08-03).
+            # Clients tick it down locally: broadcasts are event-driven, not
+            # per-second, and an absolute time would need clock agreement.
+            "takeover_in": _takeover_in(room, s),
         } for s in range(4)],
         "hand": hand,
         "levels": list(game.levels),
@@ -731,6 +750,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             room.cleanup_task.cancel()
                             room.cleanup_task = None
                         me.ws, me.connected = ws, True
+                        me.left_at = None
                         me.queue = asyncio.Queue(maxsize=128)
                         me.writer = asyncio.create_task(_writer(ws, me.queue))
                         for entry in room.chat:      # scrollback for context
@@ -817,6 +837,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
 def _detach(seat: Seat) -> None:
     """Unbind a websocket from a seat (caller holds the room lock)."""
     seat.ws, seat.connected = None, False
+    seat.left_at = time.monotonic()
     if seat.writer is not None:
         seat.writer.cancel()
     seat.writer, seat.queue = None, None

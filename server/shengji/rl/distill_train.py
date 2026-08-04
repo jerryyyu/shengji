@@ -29,6 +29,8 @@ RESIDUAL = False  # train on DELTAS from candidate 0 (the heuristic's pick)
 #   label-noise diagnostic showed corrupts 63% of states — and makes the
 #   net a learned OVERRIDE rather than a from-scratch replacement.
 #   (Codex recommendation, 2026-08-03.)
+PAIRWISE = False   # --pairwise: train the DEPLOYED quantity q_i-q_0 directly
+BOUNDARY_W = 3.0   # extra weight on rows straddling the override margin
 MARGIN_PRIOR = 0.0  # points added to candidate 0 before softmax (set via
 #                     --margin-prior 5.0 for the margin-aware arm)
 BATCH_DECISIONS = 512
@@ -59,7 +61,12 @@ def main() -> None:
     if "--snapshots" in sys.argv:  # per-epoch snapshots for probe-selection
         snap_dir = sys.argv[sys.argv.index("--snapshots") + 1]
         Path(snap_dir).mkdir(exist_ok=True)
-    global MARGIN_PRIOR, RESIDUAL
+    global MARGIN_PRIOR, RESIDUAL, PAIRWISE
+    if "--pairwise" in sys.argv:
+        PAIRWISE = True
+        print("PAIRWISE objective: optimising (q_i - q_0) directly against "
+              "(Q_i - Q_0), Huber, with weight concentrated near the "
+              "+/-MARGIN decision boundary", flush=True)
     if "--residual" in sys.argv:
         RESIDUAL = True
         print("residual targets: Q(s,a_i) - Q(s,a_0)", flush=True)
@@ -111,7 +118,28 @@ def main() -> None:
                                    device=dev)
             with torch.set_grad_enabled(training):
                 q, ql = net.heads_grouped(o, ar, seg)  # value head, policy logits
-                loss_val = torch.nn.functional.mse_loss(q, tg)
+                if PAIRWISE:
+                    # v10res regressed each row independently and was never
+                    # told what a_0 was, so it never learned the quantity the
+                    # override rule actually gates on. Optimise that quantity:
+                    #   (q_i - q_0) vs (Q_i - Q_0)
+                    # Huber, because a few huge deltas dominated the MSE, and
+                    # up-weighted where the teacher's delta sits near the
+                    # margin — that is where a wrong sign flips a decision.
+                    starts0 = torch.zeros(len(dec), dtype=torch.long, device=dev)
+                    starts0[1:] = torch.cumsum(
+                        torch.bincount(seg, minlength=len(dec))[:-1], 0)
+                    q0 = q[starts0][seg]        # this decision's baseline
+                    t0 = tg[starts0][seg]
+                    dq, dt = q - q0, tg - t0
+                    margin = MARGIN_PRIOR / VALUE_SCALE if MARGIN_PRIOR else \
+                        5.0 / VALUE_SCALE
+                    near = (dt.abs() < 2.0 * margin).float()
+                    w = 1.0 + BOUNDARY_W * near
+                    loss_val = (w * torch.nn.functional.huber_loss(
+                        dq, dt, reduction="none", delta=margin)).mean()
+                else:
+                    loss_val = torch.nn.functional.mse_loss(q, tg)
 
                 def seg_logsoftmax(x):
                     xmax = torch.full((len(dec),), -1e9, device=dev)

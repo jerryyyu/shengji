@@ -63,7 +63,11 @@ Client → server messages worth knowing:
 4. **Typing must not fire hotkeys.** The x-ray panel is bound to `x`; the chat
    input calls `stopPropagation()` on keydown and the global handler ignores
    events targeting inputs, textareas, and contenteditable.
-5. **The chat launcher appears only with more than one human** — solo-vs-bots
+5. **The takeover countdown ticks client-side.** `takeover_in` arrives with a
+   state, and states are event-driven, not per-second — `useCountdown` restarts
+   from the server's number whenever it changes, so the display can never drift
+   away from the server's own deadline.
+6. **The chat launcher appears only with more than one human** — solo-vs-bots
    should not show a chat button.
 
 ## Testing

@@ -20,8 +20,24 @@ function declareLabel(ids: number[], hand: HandCard[]): string {
   return codes.length === 2 ? `Declare ${label} pair` : `Declare ${label}`;
 }
 
+/** Local countdown: the server sends seconds-remaining with each state, and
+ *  states arrive on events, not on a timer. Restart whenever the server's
+ *  number changes so we never drift away from it. */
+function useCountdown(seconds: number | null): number | null {
+  const [left, setLeft] = useState(seconds);
+  useEffect(() => {
+    setLeft(seconds);
+    if (seconds === null) return;
+    const id = window.setInterval(
+      () => setLeft((v) => (v === null ? null : Math.max(0, v - 1))), 1000);
+    return () => window.clearInterval(id);
+  }, [seconds]);
+  return left;
+}
+
 function OpponentPanel({ player, state }: { player: StatePlayer; state: GameState }) {
   const pos = seatPos(player.seat, state.you);
+  const takeover = useCountdown(player.takeover_in ?? null);
   const onTurn = state.turn === player.seat;
   const hasPassed = state.phase === "declare" && state.passed.includes(player.seat);
   const backs = Math.min(player.cards_left, 5);
@@ -32,7 +48,13 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
         <span>{player.name}</span>
         {player.is_bot ? <span className="bot-tag">BOT</span> : null}
         {hasPassed ? <span className="ready-tag">ready</span> : null}
-        {!player.connected && !player.is_bot ? <span className="off-tag">offline</span> : null}
+        {!player.connected && !player.is_bot ? (
+          <span className="off-tag">
+            {takeover !== null && takeover > 0
+              ? `offline — bot in ${Math.ceil(takeover)}s`
+              : "offline"}
+          </span>
+        ) : null}
       </div>
       <div className="opp-cards">
         <div className="back-stack">

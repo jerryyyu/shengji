@@ -657,3 +657,57 @@ duplicates), invite-over-saved-room on the same socket, and explicit leave at
 round-end. The accepted name-only reclamation house rule is fine for this
 deployment, but document it as the identity contract rather than letting it be
 an accidental property of `join_room`.
+
+### Codex recheck — 2026-08-03 22:37 EDT (`b62b18d`)
+
+Verification is green: `server/.venv/bin/pytest tests/test_server_ws.py -q`
+passes **13/13 in 2.12s**, and `web/npm run build` passes. The new tests and
+the per-join `claimed_from_bot` reset are worthwhile. However, the commit title
+“Close Codex frontend cases 3,4,5,7,8” is broader than what is actually closed:
+
+- Case 3 (claimed hand/id preservation): covered and looks closed.
+- Case 4 (disconnect/watchdog/reconnect): the reclaim/reset branch is covered,
+  but the test manually sets `connected=False` and `bot_announced=True`; it does
+  not drive the watchdog/timed takeover path. This is useful partial coverage,
+  not the complete state-machine case.
+- Case 5 (claim during `BOT_DELAY`): implementation looks safe because the bot
+  re-checks `is_bot` under the room lock after sleeping, but the test observes
+  immediately after the claim rather than waiting beyond `BOT_DELAY`. It does
+  not prove that the pending task later exits without playing.
+- Case 7 (chat before first state): initial buffering is addressed in the
+  commit, but same-room reconnect replay still duplicates history.
+- Case 8: the stale `locals()` state on same-socket room reuse is fixed, but
+  invite precedence over saved-room autojoin is unchanged.
+
+**P0 in the current uncommitted `chatRoom` follow-up:** it reintroduces the
+original scrollback-loss bug. Server chat payloads are
+`{type, seat, name, text, t}` and have no `room`. On join, those messages append
+while `chatRoom` remains null; the first subsequent `room`/`state` payload has
+the room code, so `ws.ts` treats it as a room change and clears `chatLog`
+immediately before `Table` mounts and reads it. It also cannot solve same-room
+reconnect duplication: the room matches, so the replay is still appended.
+Do not commit that patch as written.
+
+The clean small protocol is one `chat_history {room, messages}` snapshot on
+join (replace the room-scoped client log), followed by live `chat` messages
+carrying `room` plus a monotonic per-room id (dedupe by id). This simultaneously
+solves pre-mount ordering, cross-room clearing, and reconnect replay. Add a
+client test for `[chat_history, state]` and reconnecting to the same room.
+
+Two previously reported lifecycle bugs remain in the code:
+
+1. `Connection.onopen` still independently autojoins the saved room while the
+   `Lobby` invite effect can send a different join. A bare invite with a saved
+   room is especially clear: the old room wins and `Lobby` unmounts before the
+   invite can even remain visible. Resolve intent before sending anything;
+   at minimum, presence of a valid `?room=` must suppress saved-room autojoin.
+2. Explicit mid-game `leave_room` still calls `_detach()` without discarding
+   that seat from `room.ready` or invoking `advance_if_all_ready()`, unlike the
+   disconnect `finally` path. The two exit modes still diverge at round end.
+
+Also still open: `RoomSeats` and `ChatMsg` are not members of `ServerMsg`, so
+both consumers remain `any`. Finally, `state_for()` now silently mints a card
+id on map/hand desync. That prevents a room broadcast from dying, but it is the
+same plausible-output fallback class we agreed to sweep; retain recovery only
+with a loud metric/warning and a strict invariant mode, otherwise it can hide
+the next id-map correctness bug.

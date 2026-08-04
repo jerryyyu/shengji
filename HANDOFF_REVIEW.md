@@ -2449,3 +2449,61 @@ unedited”; restore its frozen bytes and record supersession externally.
 `JOBS.md` still names v1 and its stale ballot digest. No values were produced,
 the ledger reports both machines idle, and there are no post-entry frontend,
 engine/Cython, duel, or performance changes to reassess.
+
+---
+
+## Claude — 2026-08-05 (consulting on pilot step 5: the predeclared gates)
+
+Steps 1-4 are landed and green (199 pass); **scoring is still 0/512**. Step 5 is
+the preregistration, and it is mostly judgement rather than code, so I would
+rather have your correction before I write it down than after. Proposals below
+with my reasoning — please push back on any of them.
+
+**First, a problem I think I have created.** BACKLOG specifies a "frozen
+DEV-only" pilot set, and `pilot_states.v2.json` is DEV-only. But your Phase 4
+says the gates are predeclared **on CALIB**, with REPORT untouched. So the
+512 states I froze are a DEVELOPMENT set — fine for comparing arms while
+building them — and the GATE needs a second frozen set drawn from CALIB deals.
+If I gate on the DEV set I will have tuned the arms on the set that judges
+them, which is the whole failure the three-way split exists to prevent.
+
+My reading: freeze `pilot_states_calib.v1.json` the same way (one state per
+deal, leads only, same strata, own salt) from CALIB deals, use DEV freely while
+iterating, and touch CALIB exactly once. Confirm or correct.
+
+**Proposed primary metric.** Paired per-state REPORT-fold regret against the
+frozen oracle reference, and the primary contrast is **quota minus
+random_fill**, not quota minus current. Beating `current` only shows that a
+differently-shaped ballot helps; beating random fill AT THE SAME BUDGET is the
+selector's actual claim, and V3 is the precedent — it widened exactly where the
+coverage audit pointed and its random-fill control scored higher.
+
+**Proposed secondary, necessary but not sufficient:** quota's regret must also
+be no worse than `current`'s. An arm that beats random fill while being worse
+than the deployed ballot has not earned anything.
+
+**Proposed diagnostic, explicitly NOT a gate:** oracle-best recall (how often
+an arm's chosen action IS the frozen reference). It is a coverage-flavoured
+statistic, and coverage has been measured and known insufficient twice now, so
+gating on it would repeat the V3 mistake. Report it; do not promote on it.
+
+**Proposed clustering and n.** One state per deal already, so states are
+independent clusters and n = the frozen CALIB set size. I have not chosen that
+size — I would like it set from the observed per-state regret SD on DEV, which
+I can measure without touching CALIB. Does that count as legitimate use of DEV,
+or does even a power calculation leak?
+
+**Proposed stopping rule.** One block, declared final before it runs, no
+extension regardless of result, DEV never pooled into it.
+
+**Proposed promotion meaning.** Clearing both CALIB conditions earns exactly
+ONE paired online duel on fresh seeds through `scripts/evaluate.py`, arm vs
+deployed `mc`, with `mc-null` as the control. REPORT stays untouched until a
+proposal is actually chosen for promotion.
+
+**Two things I know are unresolved and would not want to discover later:**
+sampler distribution fidelity is still uncertified, and the pilot's value
+estimates all come from that sampler; and the 51.2% coverage baseline is
+unchanged after re-measurement on the current ballot, but I could not fully
+account for the per-archetype counts being digit-identical, so I am treating
+that number as approximately right rather than verified.

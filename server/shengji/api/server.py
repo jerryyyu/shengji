@@ -42,6 +42,7 @@ rooms: dict[str, "Room"] = {}
 class Seat:
     name: str
     is_bot: bool = False
+    bot_announced: bool = False  # bot-takeover announced for this absence
     ws: WebSocket | None = None
     connected: bool = False
     queue: asyncio.Queue | None = None   # outbound messages; writer task drains
@@ -364,6 +365,14 @@ async def watchdog(room: Room) -> None:
                 continue
             if loop.time() - s.last_seen >= TAKEOVER_AFTER:
                 if bot_step(room, seat):
+                    # Say so in chat: otherwise a card appears from an
+                    # "offline" seat and the table cannot tell whether the
+                    # player came back (Jerry, 2026-08-03). Announce once
+                    # per absence, not once per trick.
+                    if not s.bot_announced:
+                        s.bot_announced = True
+                        chat_system(room, f"bot is playing for {s.name} "
+                                          f"(disconnected)")
                     await broadcast(room)
                     kick_bots(room)
 
@@ -645,7 +654,12 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         for entry in room.chat:      # scrollback for context
                             enqueue(me, {"type": "chat", **entry})
                         if reclaim is not None:
-                            chat_system(room, f"{name} reconnected")
+                            chat_system(
+                                room,
+                                f"{name} reconnected"
+                                + (" — taking over from the bot"
+                                   if me.bot_announced else ""))
+                            me.bot_announced = False
                         elif locals().get("claimed_from_bot"):
                             chat_system(room, f"{name} took a bot's seat")
                         else:

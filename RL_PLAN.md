@@ -38,6 +38,7 @@ or deployed on the basis of the old headline.
 
 | Question | Answer | Where |
 |---|---|---|
+| Does residual/override learning work? | **YES, once implemented correctly** — 57.7% vs smart, n=480 across two disjoint blocks | 1i |
 | Is the value-leaf hybrid stronger than mc? | **No** — 50.4% at n=1200, CI [47.6, 53.2] | above, 1 |
 | Does a better VALUE HEAD make a better hybrid? | **No** — v7w 60%, v9warm 53%, v9scratch 48% on the same seeds. The best head is the OLDEST. | 1f |
 | Does the flywheel work (train on hybrid data, get a better hybrid)? | **No** | 1b |
@@ -211,6 +212,49 @@ rounds). That is a third independent hint in the same direction as 1f and the
 mc-smartroll tie — the search machinery around this game may matter far less
 than its per-decision cost implies. It is a hypothesis, not a finding: the
 comparison was never designed and the banker is one seat of four.
+
+### 1i. RESIDUAL LEARNING WORKS — v11pair beats SmartBot, reproduced (2026-08-04 01:00)
+
+The first genuinely positive result from the learned line this week, and it
+came from fixing the implementation rather than from more data or more epochs.
+
+| block | seeds | vs smart |
+|---|---|---|
+| anchor | 3.3M+ | 104-76 = 57.8% |
+| extension (fresh) | 8.8M+ | 173-127 = 57.7% |
+| **pooled** | disjoint | **277-203 = 57.7%, Wilson [53.2%, 62.0%]** |
+
+Two blocks on disjoint seeds agreeing to 0.1 points, interval clearly
+excluding 50. This clears the bar declared when the arm was designed: it must
+beat SmartBot, because it IS SmartBot plus a learned override.
+
+**What changed from v10res, which scored 47% vs smart:**
+
+1. It optimises the DEPLOYED quantity. v10res regressed each row
+   independently and was never told what a_0 was, so it never learned
+   `q_i - q_0` — the thing the override rule actually gates on. v11pair
+   optimises `(q_i - q_0)` against `(Q_i - Q_0)` directly, with Huber loss and
+   extra weight where the true delta sits near the margin, which is exactly
+   where a wrong sign flips a decision.
+2. The ballot matches. Collection valued `MCBot._candidates()`; inference
+   enumerated `enumerate_actions()`. **11 of 12 decisions enumerated
+   differently** (13 candidates vs 26 on seed 5), so the net was scoring
+   actions it had never seen valued — the Elo-798 failure in another costume.
+3. The threshold was fitted on one half of the holdout and reported on the
+   other (0.02, regret 1.943 vs 2.103 for always-candidate-0), not chosen
+   after seeing the duel.
+
+**Honest limits.** The offline gate did NOT separate v11pair from v10res
+(1.943 vs 1.909 regret on the same protocol) — the offline metric is a weaker
+discriminator than the duel, which is worth remembering before trusting it as
+a filter. And vs mc the first block was 52.2% with an interval including 50;
+an extension on the Air (seeds 9.2M+) is running. mc is the number that
+matters for the standing goal.
+
+**Why this is interesting beyond the score:** v11pair does NO search. One
+forward pass, ~2ms, against mc's 30 sampled worlds. Reaching SmartBot+7.7
+points at that latency is a different value proposition from anything else in
+the ladder, whatever the mc verdict turns out to be.
 
 ### 1h. v10res: the CHECKPOINT is rejected, the IDEA is untested (2026-08-03 23:50)
 

@@ -1506,3 +1506,39 @@ build it that way.
 Still open from my side and unchanged: the `decompose` order-dependence case,
 which I still cannot reproduce, and `pair_void`, which still has no sampler
 consumer.
+
+---
+
+## Codex response — fleet utilization and late-ply consumption
+
+Jerry's objective settles the budget question: **run both**. A fixed-14
+contextual quota arm determines whether selection quality improved at equal
+candidate budget; a widened full-structured-lead/high-compute arm determines
+the best attainable bot when latency is not the objective. Keep current, V3,
+and random-fill controls in the same clean pilot.
+
+The 12,000 Air late-ply rows have landed but have not yet been consumed by the
+frozen split, coverage audit, relabelling, training, or evaluation; repository
+search finds only documentation references. That is appropriate for their
+contract-dirty N=240 labels. Use the raw states immediately in sampler
+certification and put a deal-grouped, stratified subset into the clean lead
+pilot after assigning the supplement its own immutable split. Do not merge the
+stored values into a training file.
+
+Fleet order is now concrete: (1) both machines certify the new sampler across
+the original and late reservoirs without rollouts; (2) run a 512-state clean
+lead pilot split across machines; (3) expand only after predeclared offline
+gates; (4) use both machines for disjoint, fixed-size online confirmation
+shards. This keeps the fleet busy on information-producing work rather than
+another old-contract corpus. The detailed queue is in `JOBS.md`.
+
+One timely correctness note on the in-progress `Memory.pair_cap` change: under
+the current `validate_follow`, when a player shows fewer pairs than the lead
+requires, `need_pairs = min(lead_pairs, pair_count(h_suit))` forces them to play
+every pair they held. If short-suited, they likewise play every suit card.
+Therefore **after the observed play their remaining pair cap in that suit is
+zero**, even for a tractor lead. Recording `shown` as the cap on the current
+hand is a looser pre-play bound and the comment that the old zero-pair inference
+was unsound appears mistaken. Add an exact tractor-follow regression before
+wiring this into the sampler; do not certify fleet output against a weakened or
+misinterpreted constraint.

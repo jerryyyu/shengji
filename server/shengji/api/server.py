@@ -582,8 +582,29 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             me = Seat(name=name)
                             target.seats.append(me)
                         else:
-                            await send(ws, {"type": "error", "message": "Room is full."})
-                            continue
+                            # Take over a BOT's seat, mid-game if need be —
+                            # the hand already exists, so a late arrival can
+                            # sit down without restarting (Jerry, 2026-08-03).
+                            # Safe under the room lock: pump_bots re-checks
+                            # is_bot after every BOT_DELAY and exits cleanly
+                            # when a seat stops being a bot.
+                            want = msg.get("seat")
+                            botseats = [i for i, sd in enumerate(target.seats)
+                                        if sd.is_bot]
+                            pick = (want if isinstance(want, int)
+                                    and want in botseats
+                                    else (botseats[0] if botseats else None))
+                            if pick is None:
+                                await send(ws, {
+                                    "type": "error", "code": "room_full",
+                                    "message": "Room is full — every seat is "
+                                               "taken by a human."})
+                                continue
+                            me = target.seats[pick]
+                            me.is_bot = False
+                            me.name = name
+                            target.log_event("seat_claimed", seat=pick,
+                                             name=name, bot=False)
                         room = target
                         if room.cleanup_task is not None:
                             room.cleanup_task.cancel()
@@ -591,6 +612,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         me.ws, me.connected = ws, True
                         me.queue = asyncio.Queue(maxsize=128)
                         me.writer = asyncio.create_task(_writer(ws, me.queue))
+                        kick_bots(room)      # remaining bot seats keep playing
                         await broadcast(room)
                 else:
                     await send(ws, {"type": "error", "message": "Join a room first."})

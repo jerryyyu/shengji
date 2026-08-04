@@ -571,3 +571,86 @@ After tonight, the priority is: deployment Pareto table -> small controlled
 representation diagnostic -> active high-N labelling -> root racing -> exact
 belief sampler -> separate bracket-distribution V -> AWAC. The standalone line
 is paused until the representation test moves untouched high-N regret.
+
+---
+
+## Claude reply — 2026-08-04 06:10 (re-audit closed; your overnight gate FAILED and I stopped)
+
+Both public-path failures reproduced exactly as you described, and both are
+fixed. Your corrections were right in every case I could check, including two
+where I had convinced myself otherwise.
+
+**Frontend.** `create_room` bypassed `_attach`, so a creator had no token and
+no generation and an overlapping refresh appended them as a second seat.
+Displaced sockets could still act — the stale `leave_room` detached the live
+connection and deleted the room. Both now covered by tests that drive real
+sockets end to end (create -> wire token -> overlapping refresh; stale
+`leave_room` -> `stale_connection`). Token rotates on any ownership transfer,
+including name re-entry.
+
+**You were right that my test contradicted itself.** `test_resume_token_beats_name_identity`
+claimed an impostor "must not seize" a seat and then asserted they get it.
+Replaced with two honest tests, and the trust model is now stated rather than
+implied: name re-entry into a dropped seat is allowed — it is the same
+permission the picker grants deliberately — but it never inherits the existing
+token.
+
+**Bot-cover contract (#5): adopted your ship-gate semantics, with one
+deliberate deviation.** A dropped seat is now RESERVED for its owner for
+`TAKEOVER_AFTER`, and only claimable afterwards; previously it was claimable
+the instant someone blipped. I kept ONE deadline for both the reservation and
+the bot's first action rather than your prompt-bot-plus-separate-clock, because
+then the countdown a player sees is the same number the server enforces and
+there is one thing to reason about. `reserved_secs` is on the wire; the picker
+shows "held 24s". If you think the prompt bot matters, say so and I will split
+them.
+
+**Your seeding correction was the most valuable thing in the audit.** Wrapping
+`factory(**kw)` in `except TypeError` would indeed have swallowed a genuine
+constructor bug and retried — the same silent-fallback shape as the defects it
+was fixing. Now dispatched on the factory SIGNATURE, with a test that a real
+`TypeError` propagates, and the seeding test runs a complete pairing twice
+through the exact script lambda and compares SCORES rather than two initial RNG
+states.
+
+**Three defects in my own test harness**, all found because the suite HUNG
+instead of failing: `_drain` blocked forever when fewer messages arrived than
+expected; the fixture cancelled room tasks after the TestClient context exited,
+so that teardown never ran and shutdown waited on the forever-looping watchdog;
+and switching to a bare TestClient fixed the hang but gave every socket its own
+loop, breaking multi-socket tests on `Room.lock`. A suite that cannot fail fast
+hides its own breakage.
+
+### Your overnight gate: T3 FAILED, and I stopped there
+
+`scripts/gate_offline.py`, 3,000 held-out states, three blocks, matched search
+rates:
+
+| rate | v11 vs random | v11 vs candidate-count |
+|---|---|---|
+| 5% | +5.8 to +8.0% | −3.8 to +2.4% |
+| 12% | +14.5 to +18.1% | +3.8 to +8.8% |
+| 25% | +28.4 to +33.4% | +6.6 to +11.6% |
+
+Bar was ≥15% against both, every block. It clears random at 25% and **never
+clears candidate-count at any rate.** Most of what the net knows about "this
+decision matters" is reproduced by counting how many candidates exist — free,
+no net, no data. So the 53.3%/55%-wall-clock screen was probably measuring "a
+gate that spends search on high-branching states", which needs no learning.
+
+Per your instruction the 1,000-cluster confirmation was NOT launched and I
+started no substitute work. The machine is idle.
+
+Two things I would put to you before the next block. First: the oracle gate
+leaves 766 forfeited value where v11 leaves 1,402 at a 12% rate, so a good
+stakes detector is worth roughly three times what this one delivers — is that
+worth a targeted attempt, or is the candidate-count gate simply the answer?
+Second: should the candidate-count gate be screened online on its own? It is
+free, it appears to carry most of the signal, and if it matches v11 the cheap
+version ships. I have not run it, because it is exactly the kind of substitute
+your plan told me not to start.
+
+Still open from earlier, now seven: the standalone line, level-utility as the
+primary metric, architecture-ceiling evidence, direct-V target, my
+first-number-that-fits habit, the silent-fallback sweep, and whether a
+concurrent soak gates the release.

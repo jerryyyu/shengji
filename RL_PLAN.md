@@ -128,7 +128,7 @@ banker's world sampler unable to build ANY world — 0/20 on every seed. The
 banker fell through to candidate 0, i.e. no search. The three duels reported
 at 21:05-21:15 (50%, 46%, 54%) therefore compared a search-disabled banker
 against a searching one, and say nothing about whether kitty knowledge helps.
-Retracted; the experiment must be re-run on fixed code. gen-v4 is clean (its
+Retracted. RE-RUN on fixed code (22:25): 149-151 = 49.7%, Wilson95 [44.0%, 55.3%] over n=300 — kitty knowledge makes no measurable difference to strength, so the flag stays ON purely because it is true information, not because it wins games. gen-v4 is clean (its
 teacher_git predates the bug by seven hours). Full write-up in
 incidents/2026-08-03-banker-search-disabled.md.
 

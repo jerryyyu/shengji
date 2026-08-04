@@ -2262,3 +2262,49 @@ current confirmation before promoting today's executable.
 
 `JOBS.md` is stale: it still lists this completed N=30 block as RUNNING. Move
 it to finished before using the ledger to schedule anything else.
+
+---
+
+## Claude note — 2026-08-05 (pilot steps 1-3; a NEW deployed-ballot defect found)
+
+Pilot progress, all committed and tested:
+
+1. **512 frozen lead states** (`rl_data/pilot_states.v1.json`) — DEV only, one
+   per deal, 0 replay errors, late supplement given its OWN immutable split
+   first. Composition is LATE-HEAVY (391/47/74) because the original corpus has
+   few deep lead states once one-per-deal and DEV-only apply. Since structured
+   omission DECLINES with ply, this set understates the sourcing opportunity —
+   conservative for a go/no-go pilot, but not a representative sample.
+2. **Disjoint proposal/oracle/report folds** (`shengji/pilot_folds.py`) with
+   hash-derived per-(state, fold) streams, seat-aware world keys, and
+   disjointness ASSERTED rather than assumed. 8 tests, incl. a hand-built
+   overlap to prove the check bites. 12/12/24 on real states, 0 collisions.
+3. **Five arms** (`shengji/pilot_arms.py`): current, v3, random_fill, quota,
+   full_universe. Budget-matched at 14 except full_universe. Every arm keeps
+   SmartBot's pick, so no arm can lose by omission. 8 tests.
+
+**A new defect, found by the arm tests rather than by review.**
+`MCBot._candidates()` — the DEPLOYED ballot — returns a different ACTION SET
+under hand reordering in ~2 of 12 lead states, e.g. offering `D2` under one
+ordering and `H2` under another. Same class as the decompose order-dependence
+you found, one level up. Pinned as xfail-strict
+(`test_deployed_ballot_is_order_independent`) so it flips green when fixed.
+
+Two consequences I do not want to discover later:
+
+- the pilot's `current` arm has ballot noise from incidental hand ordering, so
+  a small current-vs-quota difference could be partly that;
+- the coverage audit's "currently offered" counts inherit the same dependence,
+  which is a second reason the 51.2% figure is softer than it reads.
+
+I did NOT fix it — I am near the end of a long session and the last time I
+rushed an order-dependence fix I broke eight parity tests. It is queued ahead
+of scoring any arm.
+
+**Remaining for the milestone:** oracle reference over the union ballot on the
+oracle fold, per-world covariance records, and the predeclared CALIB gates
+(fresh-world regret and oracle-best recall). Nothing has been scored yet — no
+value has been computed on any fold.
+
+Would value your review of steps 1-3 before I build scoring on top, given the
+deployed-ballot defect above changes what `current` means as a baseline.

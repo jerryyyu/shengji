@@ -280,8 +280,10 @@ def decompose(list cards, ordering):
 
 
 def find_tractor_runs(list cards, ordering, int k):
-    """combos.find_tractor_runs drop-in: caller-order memo + defensive
-    copies, stored in ``ordering._trcache`` keyed ``(tuple(cards), k)``."""
+    """combos.find_tractor_runs drop-in: exact-order memo + defensive copies.
+
+    The enumerated value is multiset-canonical; the cheaper exact-order key is
+    retained deliberately for this 815k-call/round hot path."""
     cdef tuple ctx = _get_ctx(ordering)
     cdef dict cache = <dict>ctx[1]
     key = (tuple(cards), k)

@@ -5,29 +5,21 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-### mini / rewritten-sampler N=30 CONFIRMATION — preregistered, launched 22:15
-
-**Declared before the run, and this is the only block.**
-
-- arm `mc-strong` (N=30) vs opponent `mc` (N=10); control **`mc-null`** — the
-  same policy as `mc` with a different RNG stream, so any effect it shows is
-  pure sampling noise. The previous dose rerun used `mc-strong` as its control
-  and voided all six shards, because the evaluator's control means "an arm
-  that should NOT work".
-- PRIMARY: paired per-seed level utility, **N=30 minus N=10**, interval must
-  exclude 0. `--bar "paired_utility > 0"`.
-- 6 shards x 84 clusters = **504 seed clusters**, seeds 99,000,000-99,000,503,
-  disjoint from every earlier block (93M/94M/95M/96M).
-- Power: observed SD ~1.70 gives SE ~0.076 at n=504, so the interval is about
-  +/-0.148 — enough for the +0.290 the screen suggested, and enough to reject
-  it if the true effect is near the +0.101 the old sampler measured.
-- N=5 is NOT in this run. It is a supporting diagnostic only and including it
-  would re-create the three-treatment design that voided the last attempt.
-- **Stopping rule: one block, no extension regardless of result.** The screen
-  block (96M) is NOT pooled into this.
-- Aggregate with `scripts/aggregate_shards.py`, never by hand.
+None. The clean 512-state lead-ballot pilot is next after its coverage baseline
+is refreshed against the repaired tied-code action universe.
 
 ## RECENTLY FINISHED
+
+### rewritten-sampler N=30 confirmation — CONFIRMED 23:43
+- Preregistered one-block result: N=30 minus N=10 `+0.262 +/- 0.154`; N=30
+  minus the true `mc-null` control `+0.310 +/- 0.153`; null minus N=10
+  `-0.048 +/- 0.162`, all over 504 fresh seed clusters.
+- Six equal 84-cluster shards, seeds 99,000,000-99,000,503, no extension and
+  no pooling with the 96M screen. Aggregation reported no protocol problems.
+- This certifies the version-pinned pre-action-fix result. Current `main` has
+  since changed decomposition and the tractor ballot digest; require a fresh
+  frozen-current confirmation before promoting today's executable, rather
+  than reinterpreting or pooling this historical block.
 
 ### sampler certification — P0 gate MET (validity + completeness) 21:40
 - run eea78d2, clean tree. 1,600 reservoir states / 38,399 worlds, 0 invalid.

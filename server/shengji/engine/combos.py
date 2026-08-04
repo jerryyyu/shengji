@@ -189,8 +189,11 @@ def pair_count(cards: list[str]) -> int:
 
 def find_tractor_runs(cards: list[str], ordering: Ordering, k: int) -> list[list[str]]:
     # Memo (perf pass 2, 2026-08-02): 815k calls/round post-decompose-memo.
-    # Exact-order key (see decompose): window code choice at a shared level
-    # depends on input order, so sorted keys broke cached == reference.
+    # The RESULT is multiset-canonical, but keep the exact caller-order key:
+    # tuple(sorted(cards)) costs ~3x tuple(cards) on representative groups,
+    # or roughly 75ms at the profiled 815k calls/round. Callers normally retain
+    # stable hand order, so avoiding that hot-path tax beats deduping rare
+    # anagram entries without changing semantics.
     key = (tuple(cards), k)
     cache = getattr(ordering, "_trcache", None)
     if cache is None:

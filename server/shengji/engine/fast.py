@@ -11,8 +11,8 @@ owns the str<->int boundary so NOTHING outside sees int cards:
 - ``decompose`` / ``find_tractor_runs`` / ``suit_cards`` and the RULES
   functions ``decompose_matching`` / ``beats`` / ``validate_follow`` /
   ``pair_count`` / ``uniform_suit`` / ``check_in_hand`` are drop-in
-  replacements (str in, str out, identical semantics incl. the memos'
-  caller-order keys, defensive run copies, and exact IllegalPlay
+  replacements (str in, str out, identical semantics incl. memo keys,
+  defensive run copies, and exact IllegalPlay
   messages). validate_lead stays pure (cold path; runs the ported
   helpers via rebinding). Pure Python remains the reference
   implementation everywhere.
@@ -52,8 +52,8 @@ def _ctx(ordering: Ordering) -> tuple:
 
     dcache/trcache are the SAME dicts the pure implementations use
     (``ordering._dcache`` / ``ordering._trcache``), with the same
-    caller-order key contract (``tuple(cards)`` / ``(tuple(cards), k)``,
-    CORRECTNESS.md 08-03) — so the invariant suite's cache audit and any
+    key contracts (a sorted multiset for decompose; exact caller order for the
+    hotter tractor lookup) — so the invariant suite's cache audit and any
     interleaved pure/fast calls see one coherent memo."""
     ctx = getattr(ordering, "_fast_ctx", None)
     if ctx is None:

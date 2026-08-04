@@ -2,9 +2,8 @@
 
 Extends the test_engine_parity.py pattern: the compiled kernels in
 shengji/engine/_fast must reproduce combos._decompose_uncached and
-combos._find_tractor_runs_uncached byte-identically — including their
-order sensitivity (input order feeds Counter insertion order, which the
-memo layer then freezes for the round). Pure Python stays the reference.
+combos._find_tractor_runs_uncached byte-identically — including physical card
+codes and canonical enumeration order. Pure Python stays the reference.
 
 Skipped when the extension isn't built:
     cd server && uv run python setup.py build_ext --inplace
@@ -104,8 +103,7 @@ def test_memoized_route_matches_reference():
     fast.activate()
     try:
         for _ in range(300):
-            # Fresh Ordering => fresh memo per hand (keeps every probe a
-            # first-touch of its exact-order key).
+            # Fresh Ordering => fresh memo per hand.
             o = Ordering("S", "9")
             hand = rng.sample(deck, rng.randint(2, 16))
             groups = {}
@@ -162,6 +160,8 @@ def test_multiset_memo_contract_fast_route():
         combos.find_tractor_runs(t2, o, 2)
         assert (combos.find_tractor_runs(t1, o, 2)
                 == combos._find_tractor_runs_uncached(t1, o, 2))
+        assert (tuple(t1), 2) in o._trcache
+        assert (tuple(t2), 2) in o._trcache
         # the fast route fills the SAME dicts the invariant audit reads
         assert tuple(sorted(c1)) in o._dcache
     finally:

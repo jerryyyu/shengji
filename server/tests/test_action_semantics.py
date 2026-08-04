@@ -257,6 +257,28 @@ def test_tractor_enumeration_is_permutation_invariant():
     assert len(seen) == 1, f"enumeration depends on input order: {seen}"
 
 
+def test_live_mc_ballot_contains_all_tied_code_tractors():
+    """The repaired helper must reach the consumer that motivated the gate."""
+    from shengji.ai.mcbot import MCBot
+
+    expected = {
+        ("C7", "C7", "H7", "H7"),
+        ("D7", "D7", "H7", "H7"),
+    }
+    orders = [
+        ["C7", "C7", "D7", "D7", "H7", "H7"],
+        ["D7", "C7", "C7", "D7", "H7", "H7"],
+    ]
+    for hand in orders:
+        rnd = _failed_throw_round()
+        rnd.hands[0] = list(hand)
+        bot = MCBot(seed=1)
+        ballot = {tuple(sorted(c)) for c in bot._candidates(rnd, 0)}
+        assert expected <= ballot, (
+            f"hand order {hand} omitted tied-code tractor(s): "
+            f"{expected - ballot}")
+
+
 def test_pure_and_fast_agree_on_PHYSICAL_cards_not_just_shape():
     """Shape parity would pass while the engines picked different cards.
 
@@ -267,31 +289,25 @@ def test_pure_and_fast_agree_on_PHYSICAL_cards_not_just_shape():
     from shengji.engine import combos as pure
     from shengji.engine import fast
 
+    if not fast.HAVE_FAST:
+        pytest.skip("compiled extension not built")
+
     hands = [
         ["C7", "C7", "D7", "D7", "H7", "H7"],
         ["S7", "S7", "D7", "D7", "H7", "H7", "H8", "H8"],
         ["C7", "C7", "D7", "D7", "S7", "S7", "H7", "H7"],
         ["H8", "H8", "H9", "H9", "H10", "H10"],
     ]
-    was_active = bool(fast._saved)
-    try:
-        for hand in hands:
-            fast.deactivate()
-            o_pure = Ordering("H", "7")
-            p_dec = pure._decompose_uncached(list(hand), o_pure)
-            p_run = pure._find_tractor_runs_uncached(list(hand), o_pure, 2)
-            fast.activate()
-            o_fast = Ordering("H", "7")
-            f_dec = pure._decompose_uncached(list(hand), o_fast)
-            f_run = pure._find_tractor_runs_uncached(list(hand), o_fast, 2)
-            assert _split(p_dec) == _split(f_dec), (
-                f"{hand}: engines split differently — pure {_split(p_dec)} "
-                f"vs fast {_split(f_dec)}")
-            assert [sorted(r) for r in p_run] == [sorted(r) for r in f_run], (
-                f"{hand}: engines enumerate different PHYSICAL tractors — "
-                f"pure {p_run} vs fast {f_run}")
-    finally:
-        if was_active:
-            fast.activate()
-        else:
-            fast.deactivate()
+    for hand in hands:
+        o_pure = Ordering("H", "7")
+        p_dec = pure._decompose_uncached(list(hand), o_pure)
+        p_run = pure._find_tractor_runs_uncached(list(hand), o_pure, 2)
+        o_fast = Ordering("H", "7")
+        f_dec = fast.decompose_uncached(list(hand), o_fast)
+        f_run = fast.find_tractor_runs_uncached(list(hand), o_fast, 2)
+        assert _split(p_dec) == _split(f_dec), (
+            f"{hand}: engines split differently — pure {_split(p_dec)} "
+            f"vs fast {_split(f_dec)}")
+        assert [sorted(r) for r in p_run] == [sorted(r) for r in f_run], (
+            f"{hand}: engines enumerate different PHYSICAL tractors — "
+            f"pure {p_run} vs fast {f_run}")

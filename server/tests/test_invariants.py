@@ -56,6 +56,8 @@ def test_find_tractor_runs_cache_exact_order_contract():
     combos.find_tractor_runs(t2, o, 2)  # prime with the other order
     assert (combos.find_tractor_runs(t1, o, 2)
             == combos._find_tractor_runs_uncached(t1, o, 2))
+    assert (tuple(t1), 2) in o._trcache
+    assert (tuple(t2), 2) in o._trcache
 
 
 def test_throw_penalty_fires_and_returns_fresh_list():

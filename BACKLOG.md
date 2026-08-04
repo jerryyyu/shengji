@@ -13,23 +13,21 @@ sampler validity/support gate is closed at `eea78d2`, and the preregistered
 rewritten-sampler N=30 confirmation has completed positive. The 512-state lead
 pilot is now the next strength screen. Posterior distribution fidelity remains
 P1: it gates interpreting offline ballot values as calibrated, but it is not
-the same claim as legality/support. The bounded submitted-action semantics gate
-is closed after independent verification; a separate tied-code tractor
-proposal omission remains open below.
+the same claim as legality/support. The bounded action-semantics gate, including
+the tied-code tractor proposal omission, is closed after independent
+verification.
 
 ### NEXT (highest value first)
 
 | item | why it matters | gate |
 |---|---|---|
-| **1. Tied-code tractor proposal completeness** | `find_tractor_runs()` promises all runs but returns only the first code at a tied effective level. From the same `C7 C7 D7 D7 H7 H7` hand, list order decides whether MC sees `C7+C7+H7+H7` or `D7+D7+H7+H7`; these are distinct actions with distinct residual pairs | Enumerate the Cartesian code choices at every tied level in pure and compiled kernels, canonicalise the memo key/output order, and assert that the live MC ballot contains both actions independent of hand-list order. Measure ballot/work growth before adoption |
-| **2. Clean 512-state lead-ballot pilot** | The corrected audit finds **51.2% structured lead omission vs 0.9% follows**, almost entirely lead singles. The provisional lead forfeit is larger than follows (2.96 vs 1.01), but selected-max bias means this is directional, not “half provably improvable.” V3 proved widening alone is insufficient | On deal-grouped DEV states balanced across original/late reservoirs, compare current, V3, random-fill, `MC-more`, fixed-14 contextual selection, and full-universe/high-compute using disjoint proposal/report worlds; predeclare fresh-world regret and oracle-best-recall gates |
-| **3. CALIB then paired online confirmation** | Offline regret has failed to predict online strength three times | Only the selected ballot arm advances; REPORT stays untouched until selection, then a fixed-size paired evaluator run on fresh seeds must clear arm-minus-MC and arm-minus-control bars with zero protocol failures |
-| **4. Clean relabel + learned proposal only after a ballot win** | Repeating 37.1M old-ballot evaluations or training v11pair on actions outside its training ballot cannot improve the champion | Relabel only disagreement/high-uncertainty states under the frozen winning `BallotSpec`; a learned proposer must beat quota, random, and `MC-more` controls before entering production search |
+| **1. Clean 512-state lead-ballot pilot** | The prior audit found **51.2% structured lead omission vs 0.9% follows**, almost entirely lead singles, but its reference generator shared the now-fixed tied-code omission; refresh that baseline first. The provisional lead forfeit was larger than follows (2.96 vs 1.01), but selected-max bias makes it directional, not “half provably improvable.” V3 proved widening alone is insufficient | On deal-grouped DEV states balanced across original/late reservoirs, compare current, V3, random-fill, `MC-more`, fixed-14 contextual selection, and full-universe/high-compute using disjoint proposal/report worlds; predeclare fresh-world regret and oracle-best-recall gates |
+| **2. CALIB then paired online confirmation** | Offline regret has failed to predict online strength three times | Only the selected ballot arm advances; REPORT stays untouched until selection, then a fixed-size paired evaluator run on fresh seeds must clear arm-minus-MC and arm-minus-control bars with zero protocol failures |
+| **3. Clean relabel + learned proposal only after a ballot win** | Repeating 37.1M old-ballot evaluations or training v11pair on actions outside its training ballot cannot improve the champion | Relabel only disagreement/high-uncertainty states under the frozen winning `BallotSpec`; a learned proposer must beat quota, random, and `MC-more` controls before entering production search |
 
 ### PRIORITY POLICY
 
-Fix the bounded tied-code proposal omission before freezing the lead-pilot
-ballots, then bias effort roughly
+Run the refreshed lead audit and clean 512-state pilot, then bias effort roughly
 **70% strength / 20% correctness hardening / 10% simplification**. Do not start
 a broad cleanup campaign. Simplification moves ahead only when it removes a
 duplicate source of experimental truth, makes the next strength test cheaper,
@@ -92,10 +90,16 @@ code multisets no longer collapse merely because their effective levels tie,
 and `decompose()` now canonicalises its input in pure and compiled kernels.
 The six-card `C7 C7 D7 D7 H7 H7` witness, 30,936 bounded reorderings, cold and
 warm caches, and the real failed-throw `Round.play` successor are invariant.
-Both full suites pass (173 passed, 2 skipped per engine). Sorting is sound for
-all arities by construction, and the multiset memo is per-`Ordering`. The open
-`find_tractor_runs()` item above is proposal completeness, not submitted-play
-interpretation.
+`find_tractor_runs()` now enumerates every physical tied-code choice in both
+kernels; the live MC ballot contains both successor-distinct tractors under
+either hand ordering, and anagrams enumerate identically. The product is
+bounded at three choices in suited trump and four in no-trump; a deterministic
+20,000-hand scan found an added run in 11 hands (0.055%), with no explosion.
+Both full suites pass (176 passed, 2 skipped per engine). Sorting is sound for
+all arities by construction, and both memos are per-`Ordering`. The tractor
+memo deliberately retains its cheaper exact-order key: canonical sorting was
+3x the key-construction cost on this 815k-call/round hot path, while values are
+still canonical.
 
 vleaf equals mc · vleaf with a pairwise head is INVALID not merely failed ·
 v10res was a no-op checkpoint · root-prior racing refuted by its own control ·
@@ -136,15 +140,6 @@ experiment is fixed-budget versus widened/high-compute ballot selection.
       uniform constrained draw. Also make reservoir reconstruction replay the
       stored declarations directly; all 1,600 P0 rows matched today, but that
       should be structural rather than dependent on current bot behavior.
-- [ ] **Complete tied-code tractor proposals before freezing the lead pilot.**
-      `find_tractor_runs()` advertises all tractors but keeps only the first
-      physical code at a tied effective level. The live MC ballot therefore
-      offers exactly one of `C7+C7+H7+H7` and `D7+D7+H7+H7` from a hand that
-      holds both, selected by arbitrary hand-list order. Enumerate all distinct
-      code combinations in pure and compiled paths, make their ordering and
-      memo multiset-canonical, then measure candidate/work growth. This is a
-      proposal-completeness/strength bug, not a reason to reopen the submitted-
-      action engine gate.
 - [ ] **Run the 512-state ballot pilot described in the execution view.** Use
       at most one state per deal, a frozen DEV-only original/late split,
       named independent RNG streams, and per-world/covariance records. Keep

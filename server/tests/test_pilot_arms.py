@@ -45,21 +45,42 @@ def _all(bot, rnd, seat):
                        state_key="k") for a in ARMS}
 
 
-def test_every_proposed_action_is_a_legal_lead():
+def test_every_proposed_action_is_a_legal_ATTEMPTED_lead():
+    """Attempt-validity, not success.
+
+    Whether a throw is beaten depends on HIDDEN cards, so requiring `not msg`
+    made the ballot a function of the deal — the defect Codex found. A proposer
+    may legitimately offer a throw that turns out to be beaten; the rollouts
+    price that. What must hold is that the seat owns the cards and the play is
+    a single effective suit.
+    """
     bot = make_bot("mc", seed=1)
     checked = 0
     for rnd, seat in _lead_states():
-        others = [rnd.hands[s] for s in range(4) if s != seat]
+        o = rnd.ordering
         for arm, ballot in _all(bot, rnd, seat).items():
             for a in ballot:
-                played, msg = validate_lead(list(a), rnd.hands[seat], others,
-                                            rnd.ordering)
-                assert sorted(played) == sorted(a) and not msg, \
-                    f"{arm} proposed an illegal or penalised lead {a}"
+                assert a, f"{arm} proposed an empty action"
                 assert all(a.count(c) <= rnd.hands[seat].count(c) for c in set(a)), \
                     f"{arm} proposed cards the seat does not hold: {a}"
+                assert len({o.eff_suit(c) for c in a}) == 1, \
+                    f"{arm} proposed a mixed-suit lead {a}"
                 checked += 1
     assert checked > 100, f"only {checked} actions checked"
+
+
+def test_the_deployed_ballot_stays_within_successful_leads():
+    """The BASELINE arm should still only offer leads that actually succeed —
+    it is the shipped policy. Only the widened arms may attempt-and-lose."""
+    bot = make_bot("mc", seed=1)
+    for rnd, seat in _lead_states():
+        others = [rnd.hands[s] for s in range(4) if s != seat]
+        for a in propose("current", bot, rnd, seat, budget=BUDGET, seed=7,
+                         state_key="k"):
+            played, msg = validate_lead(list(a), rnd.hands[seat], others,
+                                        rnd.ordering)
+            assert sorted(played) == sorted(a) and not msg, \
+                f"the deployed ballot offered a losing throw {a}"
 
 
 def test_every_arm_keeps_the_protected_action():

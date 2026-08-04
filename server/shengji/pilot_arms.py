@@ -98,6 +98,7 @@ def structured_universe(rnd, seat, bot=None) -> list[list[str]]:
                 out.append(sorted(run))
     if bot is not None:
         out += [sorted(a) for a in bot._candidates(rnd, seat)]
+    out += _component_mutations(rnd, seat, out)
     seen, uniq = set(), []
     for a in out:
         key = tuple(sorted(a))
@@ -107,6 +108,64 @@ def structured_universe(rnd, seat, bot=None) -> list[list[str]]:
         uniq.append(sorted(a))
     uniq.sort()
     return uniq
+
+
+def _component_mutations(rnd, seat, base) -> list[list[str]]:
+    """Bounded add / remove / replace of ONE component of a same-suit throw.
+
+    `BALLOT_PLAN` lines 123-139 ask for these explicitly. Without them the
+    universe holds only whole structured actions, so a throw one component away
+    from a good one is unreachable however wide the ballot gets.
+
+    Bounded on purpose: one component changed, same effective suit, and only
+    from actions already in the pool.
+    """
+    o = rnd.ordering
+    out: list[list[str]] = []
+    by_suit: dict[str, list[str]] = {}
+    for c in rnd.hands[seat]:
+        by_suit.setdefault(o.eff_suit(c), []).append(c)
+    for action in base:
+        if len(action) < 2:
+            continue
+        eff = o.eff_suit(action[0])
+        dec = decompose(list(action), o)
+        comps = [list(c.cards) for c in dec.components]
+        if len(comps) < 1:
+            continue
+        pool = list(by_suit.get(eff, []))
+        for c in action:
+            if c in pool:
+                pool.remove(c)
+        for i in range(len(comps)):
+            # REMOVE one component
+            rest = [c for j, comp in enumerate(comps) if j != i for c in comp]
+            if rest:
+                out.append(sorted(rest))
+            # REPLACE it with a same-size run of spare cards in the suit
+            need = len(comps[i])
+            if len(pool) >= need:
+                swap = rest + sorted(pool)[:need]
+                out.append(sorted(swap))
+        # ADD one spare card as an extra single component
+        if pool:
+            out.append(sorted(list(action) + [sorted(pool)[0]]))
+    return out
+
+
+def _farthest_point(candidates, chosen, feat):
+    """Pick the candidate whose feature vector is furthest from those chosen.
+
+    Round-robin over archetypes spreads across KINDS of action; this spreads
+    WITHIN a kind, which is what BALLOT_PLAN asks for and what a plain shuffle
+    does not do.
+    """
+    if not chosen:
+        return candidates[0]
+    def dist(a):
+        fa = feat(a)
+        return min(sum((x - y) ** 2 for x, y in zip(fa, feat(b))) for b in chosen)
+    return max(candidates, key=dist)
 
 
 def archetype(rnd, seat, action) -> tuple:
@@ -128,7 +187,10 @@ def archetype(rnd, seat, action) -> tuple:
     # where the action sits within what the seat holds in that suit
     same = [c for c in hand if o.eff_suit(c) == eff]
     levels = sorted({o.level(c) for c in same})
-    lv = o.level(action[0])
+    # The action's rank is its DECOMPOSITION top, not the level of whatever
+    # card happens to sit first. For a throw or tractor those differ, and the
+    # feature silently described the wrong action (Codex).
+    lv = dec.top_level()
     rank = ("high" if lv == levels[-1] else
             "low" if lv == levels[0] else "mid") if levels else "low"
     # does playing this empty the suit, and does it break residual structure?
@@ -206,14 +268,25 @@ def propose(arm: str, bot, rnd, seat, *, budget: int, seed: int,
     for v in by_arch.values():
         v.sort()
         rng.shuffle(v)
+    def feat(a):
+        d = decompose(list(a), o)
+        return (len(a), d.n_pairs, d.max_pair_run(), d.top_level(),
+                sum(points(c) for c in a))
+
+    o = rnd.ordering
     picked = [keep]
     arches = sorted(by_arch)
     i = 0
     while len(picked) < budget and any(by_arch[k] for k in arches):
         k = arches[i % len(arches)]
-        if by_arch[k]:
-            picked.append(by_arch[k].pop())
         i += 1
+        if not by_arch[k]:
+            continue
+        # WITHIN an archetype, take the action furthest from what is already
+        # on the ballot rather than an arbitrary shuffled one.
+        pick = _farthest_point(by_arch[k], picked, feat)
+        by_arch[k].remove(pick)
+        picked.append(pick)
     return _dedupe(picked, budget)
 
 

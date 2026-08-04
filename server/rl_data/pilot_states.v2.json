@@ -1,0 +1,4676 @@
+{
+ "git": "0cea0bf",
+ "tree_dirty": false,
+ "salt": "pilot-v1",
+ "created": "2026-08-04 18:44:09",
+ "script_sha256_16": "8003d6a74b9b4463",
+ "ballot_at_selection": "mc_candidates@v1[a68f7b8bced6]",
+ "sources": {
+  "original": {
+   "corpus": "rl_data/highn_corpus_all.jsonl",
+   "corpus_sha256_16": "40ea1ae4788f2586",
+   "split": "rl_data/corpus_split.v1.json",
+   "split_sha256_16": "bbc061f9c08f19f4"
+  },
+  "late": {
+   "corpus": "rl_data/highn_late_air.jsonl",
+   "corpus_sha256_16": "f2251f8267bf69ce",
+   "split": "rl_data/corpus_split_late.v1.json",
+   "split_sha256_16": "9b974ab16f3a76fb"
+  }
+ },
+ "requested": 512,
+ "selected": 512,
+ "one_state_per_deal": true,
+ "side": "dev",
+ "leads_only": true,
+ "strata_available": {
+  "defender/early/wide": 1980,
+  "attacker/early/med": 346,
+  "attacker/mid/med": 354,
+  "defender/early/med": 437,
+  "attacker/early/wide": 351,
+  "defender/mid/med": 387,
+  "defender/mid/wide": 99,
+  "attacker/mid/wide": 81,
+  "defender/mid/small": 46,
+  "attacker/early/small": 4,
+  "attacker/mid/small": 11,
+  "attacker/late/small": 1,
+  "defender/late/med": 1
+ },
+ "strata_selected": {
+  "attacker/early/med": 57,
+  "attacker/early/small": 4,
+  "attacker/early/wide": 56,
+  "attacker/late/small": 1,
+  "attacker/mid/med": 56,
+  "attacker/mid/small": 11,
+  "attacker/mid/wide": 56,
+  "defender/early/med": 56,
+  "defender/early/wide": 56,
+  "defender/late/med": 1,
+  "defender/mid/med": 56,
+  "defender/mid/small": 46,
+  "defender/mid/wide": 56
+ },
+ "picked_by_source_ply": {
+  "late/late": 341,
+  "original/late": 50,
+  "original/mid": 47,
+  "original/early": 74
+ },
+ "skipped_follows": 6620,
+ "skipped_same_deal": 8914,
+ "replay_errors": 0,
+ "states": [
+  {
+   "source": "late",
+   "seed": 91002554,
+   "ply": 16,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002006,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 4,
+   "stratum": "attacker/early/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000250,
+   "ply": 12,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002354,
+   "ply": 48,
+   "seat": 0,
+   "n_candidates": 4,
+   "stratum": "attacker/late/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002780,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 6,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001416,
+   "ply": 36,
+   "seat": 2,
+   "n_candidates": 4,
+   "stratum": "attacker/mid/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000044,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002654,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004795,
+   "ply": 8,
+   "seat": 3,
+   "n_candidates": 13,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002573,
+   "ply": 48,
+   "seat": 1,
+   "n_candidates": 5,
+   "stratum": "defender/late/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001741,
+   "ply": 28,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002772,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 3,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002346,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 13,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81001048,
+   "ply": 8,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000874,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 4,
+   "stratum": "attacker/early/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004693,
+   "ply": 8,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000653,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 7,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002983,
+   "ply": 32,
+   "seat": 3,
+   "n_candidates": 4,
+   "stratum": "attacker/mid/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002501,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81003014,
+   "ply": 4,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81002308,
+   "ply": 4,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001078,
+   "ply": 28,
+   "seat": 2,
+   "n_candidates": 7,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001457,
+   "ply": 40,
+   "seat": 2,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001789,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 11,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000955,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001382,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 4,
+   "stratum": "attacker/early/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81003113,
+   "ply": 8,
+   "seat": 2,
+   "n_candidates": 11,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000428,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 8,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002988,
+   "ply": 36,
+   "seat": 1,
+   "n_candidates": 4,
+   "stratum": "attacker/mid/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001877,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001940,
+   "ply": 16,
+   "seat": 1,
+   "n_candidates": 8,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004853,
+   "ply": 8,
+   "seat": 0,
+   "n_candidates": 11,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002499,
+   "ply": 24,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000196,
+   "ply": 28,
+   "seat": 0,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002268,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81002316,
+   "ply": 12,
+   "seat": 0,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000411,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 3,
+   "stratum": "attacker/early/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000882,
+   "ply": 16,
+   "seat": 1,
+   "n_candidates": 11,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002275,
+   "ply": 32,
+   "seat": 2,
+   "n_candidates": 6,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001199,
+   "ply": 28,
+   "seat": 1,
+   "n_candidates": 4,
+   "stratum": "attacker/mid/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002045,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002672,
+   "ply": 8,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81000523,
+   "ply": 0,
+   "seat": 0,
+   "n_candidates": 12,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002466,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 8,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001742,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000141,
+   "ply": 24,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001546,
+   "ply": 8,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81003560,
+   "ply": 8,
+   "seat": 1,
+   "n_candidates": 12,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001195,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 7,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001478,
+   "ply": 32,
+   "seat": 3,
+   "n_candidates": 4,
+   "stratum": "attacker/mid/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000446,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81003137,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 7,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81003912,
+   "ply": 4,
+   "seat": 1,
+   "n_candidates": 13,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001639,
+   "ply": 24,
+   "seat": 2,
+   "n_candidates": 6,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001098,
+   "ply": 40,
+   "seat": 3,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002246,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81001127,
+   "ply": 4,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002465,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001832,
+   "ply": 32,
+   "seat": 0,
+   "n_candidates": 7,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001564,
+   "ply": 36,
+   "seat": 2,
+   "n_candidates": 4,
+   "stratum": "attacker/mid/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001408,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 11,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001298,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 8,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81000291,
+   "ply": 16,
+   "seat": 1,
+   "n_candidates": 12,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002575,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 6,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000671,
+   "ply": 24,
+   "seat": 0,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001745,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 11,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000161,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 7,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002701,
+   "ply": 4,
+   "seat": 3,
+   "n_candidates": 12,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81003047,
+   "ply": 28,
+   "seat": 3,
+   "n_candidates": 5,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002638,
+   "ply": 36,
+   "seat": 0,
+   "n_candidates": 4,
+   "stratum": "attacker/mid/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000332,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001710,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004908,
+   "ply": 4,
+   "seat": 0,
+   "n_candidates": 14,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000568,
+   "ply": 24,
+   "seat": 3,
+   "n_candidates": 8,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002040,
+   "ply": 28,
+   "seat": 2,
+   "n_candidates": 2,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000337,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001204,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 7,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000928,
+   "ply": 16,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000309,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001102,
+   "ply": 28,
+   "seat": 3,
+   "n_candidates": 3,
+   "stratum": "attacker/mid/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002068,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001970,
+   "ply": 8,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001676,
+   "ply": 8,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002595,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000974,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000541,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002019,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 71000166,
+   "ply": 12,
+   "seat": 3,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002909,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 8,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001797,
+   "ply": 28,
+   "seat": 3,
+   "n_candidates": 4,
+   "stratum": "attacker/mid/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001314,
+   "ply": 32,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000891,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 6,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81002239,
+   "ply": 0,
+   "seat": 0,
+   "n_candidates": 14,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002629,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 8,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002392,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 2,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002070,
+   "ply": 28,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002904,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000240,
+   "ply": 16,
+   "seat": 1,
+   "n_candidates": 14,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002661,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000649,
+   "ply": 36,
+   "seat": 2,
+   "n_candidates": 2,
+   "stratum": "attacker/mid/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001063,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001372,
+   "ply": 12,
+   "seat": 1,
+   "n_candidates": 8,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81000700,
+   "ply": 0,
+   "seat": 0,
+   "n_candidates": 14,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002308,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 5,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000185,
+   "ply": 32,
+   "seat": 2,
+   "n_candidates": 3,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001590,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002445,
+   "ply": 16,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81003025,
+   "ply": 8,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000862,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 8,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002379,
+   "ply": 44,
+   "seat": 2,
+   "n_candidates": 4,
+   "stratum": "attacker/mid/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002540,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004498,
+   "ply": 4,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81003520,
+   "ply": 0,
+   "seat": 0,
+   "n_candidates": 14,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002339,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 6,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002782,
+   "ply": 36,
+   "seat": 0,
+   "n_candidates": 2,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000228,
+   "ply": 24,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002812,
+   "ply": 12,
+   "seat": 1,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000487,
+   "ply": 4,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001955,
+   "ply": 24,
+   "seat": 0,
+   "n_candidates": 8,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000738,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001736,
+   "ply": 4,
+   "seat": 2,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001787,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002813,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 7,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000269,
+   "ply": 36,
+   "seat": 2,
+   "n_candidates": 3,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000302,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81003763,
+   "ply": 8,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001648,
+   "ply": 16,
+   "seat": 1,
+   "n_candidates": 11,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002151,
+   "ply": 24,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002835,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 11,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000530,
+   "ply": 0,
+   "seat": 0,
+   "n_candidates": 8,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81004629,
+   "ply": 0,
+   "seat": 1,
+   "n_candidates": 14,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002345,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002943,
+   "ply": 28,
+   "seat": 0,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001428,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 14,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81004580,
+   "ply": 8,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000390,
+   "ply": 8,
+   "seat": 0,
+   "n_candidates": 12,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002008,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 6,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000245,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 11,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81003042,
+   "ply": 4,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81004542,
+   "ply": 8,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002178,
+   "ply": 24,
+   "seat": 0,
+   "n_candidates": 8,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000732,
+   "ply": 28,
+   "seat": 2,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001776,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81003532,
+   "ply": 12,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000367,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000107,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 8,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002271,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002487,
+   "ply": 8,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004114,
+   "ply": 0,
+   "seat": 2,
+   "n_candidates": 13,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002141,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 8,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000646,
+   "ply": 32,
+   "seat": 0,
+   "n_candidates": 2,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001504,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 14,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81003263,
+   "ply": 12,
+   "seat": 1,
+   "n_candidates": 7,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001391,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000757,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 6,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002105,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 14,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002328,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81000539,
+   "ply": 4,
+   "seat": 1,
+   "n_candidates": 11,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001350,
+   "ply": 24,
+   "seat": 2,
+   "n_candidates": 7,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001841,
+   "ply": 36,
+   "seat": 2,
+   "n_candidates": 2,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002277,
+   "ply": 28,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002314,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004004,
+   "ply": 12,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000648,
+   "ply": 24,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001263,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002230,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81003746,
+   "ply": 8,
+   "seat": 3,
+   "n_candidates": 14,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002279,
+   "ply": 24,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001156,
+   "ply": 32,
+   "seat": 2,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81003242,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81004589,
+   "ply": 12,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002922,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000246,
+   "ply": 24,
+   "seat": 0,
+   "n_candidates": 6,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001715,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004628,
+   "ply": 0,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81002814,
+   "ply": 8,
+   "seat": 1,
+   "n_candidates": 11,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001237,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 7,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000039,
+   "ply": 32,
+   "seat": 2,
+   "n_candidates": 3,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000804,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 12,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001101,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000222,
+   "ply": 4,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002069,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 7,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000119,
+   "ply": 32,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000642,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 8,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000668,
+   "ply": 0,
+   "seat": 0,
+   "n_candidates": 13,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000992,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 6,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000479,
+   "ply": 28,
+   "seat": 0,
+   "n_candidates": 2,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000816,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 11,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81003053,
+   "ply": 8,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000080,
+   "ply": 8,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002079,
+   "ply": 32,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002958,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004635,
+   "ply": 4,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81002811,
+   "ply": 0,
+   "seat": 3,
+   "n_candidates": 12,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81000314,
+   "ply": 28,
+   "seat": 2,
+   "n_candidates": 7,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002497,
+   "ply": 24,
+   "seat": 0,
+   "n_candidates": 3,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000921,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000142,
+   "ply": 16,
+   "seat": 1,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001307,
+   "ply": 8,
+   "seat": 2,
+   "n_candidates": 12,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001748,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 7,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002512,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 11,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001395,
+   "ply": 16,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81004560,
+   "ply": 4,
+   "seat": 3,
+   "n_candidates": 14,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81004601,
+   "ply": 32,
+   "seat": 1,
+   "n_candidates": 7,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000589,
+   "ply": 32,
+   "seat": 1,
+   "n_candidates": 2,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81004238,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001807,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002054,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001520,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 7,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002329,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 11,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001127,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000211,
+   "ply": 0,
+   "seat": 2,
+   "n_candidates": 13,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81004303,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001148,
+   "ply": 40,
+   "seat": 0,
+   "n_candidates": 3,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002728,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004682,
+   "ply": 8,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004448,
+   "ply": 4,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000785,
+   "ply": 28,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002822,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 71000020,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 6,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81000816,
+   "ply": 0,
+   "seat": 3,
+   "n_candidates": 14,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000203,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 6,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000068,
+   "ply": 28,
+   "seat": 0,
+   "n_candidates": 3,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000395,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 11,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81002180,
+   "ply": 4,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000784,
+   "ply": 8,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001198,
+   "ply": 24,
+   "seat": 0,
+   "n_candidates": 6,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002812,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001500,
+   "ply": 4,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81002201,
+   "ply": 0,
+   "seat": 1,
+   "n_candidates": 12,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000912,
+   "ply": 24,
+   "seat": 2,
+   "n_candidates": 6,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002820,
+   "ply": 36,
+   "seat": 0,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001302,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001057,
+   "ply": 16,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000123,
+   "ply": 12,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000260,
+   "ply": 24,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001585,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002878,
+   "ply": 8,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001581,
+   "ply": 4,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000426,
+   "ply": 28,
+   "seat": 0,
+   "n_candidates": 7,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001019,
+   "ply": 40,
+   "seat": 1,
+   "n_candidates": 3,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000500,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81003026,
+   "ply": 8,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004582,
+   "ply": 8,
+   "seat": 2,
+   "n_candidates": 11,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002253,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000634,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000240,
+   "ply": 4,
+   "seat": 0,
+   "n_candidates": 7,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81003600,
+   "ply": 0,
+   "seat": 0,
+   "n_candidates": 13,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001006,
+   "ply": 24,
+   "seat": 3,
+   "n_candidates": 8,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002486,
+   "ply": 32,
+   "seat": 3,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002274,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002522,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000540,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001626,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 9,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001377,
+   "ply": 24,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001673,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002129,
+   "ply": 0,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001924,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000552,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 3,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002843,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000149,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81003198,
+   "ply": 8,
+   "seat": 1,
+   "n_candidates": 12,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000238,
+   "ply": 28,
+   "seat": 0,
+   "n_candidates": 6,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001349,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001342,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 8,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81002728,
+   "ply": 4,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002526,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 6,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002009,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001085,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004265,
+   "ply": 12,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002502,
+   "ply": 16,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000051,
+   "ply": 24,
+   "seat": 2,
+   "n_candidates": 9,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001341,
+   "ply": 32,
+   "seat": 3,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002966,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000626,
+   "ply": 8,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000008,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002764,
+   "ply": 24,
+   "seat": 2,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002213,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 11,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81001254,
+   "ply": 12,
+   "seat": 2,
+   "n_candidates": 7,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001713,
+   "ply": 4,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002721,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 7,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002365,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001873,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001488,
+   "ply": 4,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002417,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 5,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000630,
+   "ply": 32,
+   "seat": 3,
+   "n_candidates": 2,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001946,
+   "ply": 28,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002841,
+   "ply": 16,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000202,
+   "ply": 4,
+   "seat": 3,
+   "n_candidates": 13,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000791,
+   "ply": 36,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001344,
+   "ply": 28,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81003485,
+   "ply": 0,
+   "seat": 2,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81004991,
+   "ply": 8,
+   "seat": 3,
+   "n_candidates": 10,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002800,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001518,
+   "ply": 28,
+   "seat": 1,
+   "n_candidates": 3,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000580,
+   "ply": 24,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 71000141,
+   "ply": 8,
+   "seat": 0,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002053,
+   "ply": 4,
+   "seat": 1,
+   "n_candidates": 11,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001966,
+   "ply": 24,
+   "seat": 3,
+   "n_candidates": 7,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000581,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002979,
+   "ply": 4,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002894,
+   "ply": 4,
+   "seat": 1,
+   "n_candidates": 14,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000304,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 7,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002438,
+   "ply": 32,
+   "seat": 3,
+   "n_candidates": 3,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002302,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 12,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81001320,
+   "ply": 12,
+   "seat": 0,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002975,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 13,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002034,
+   "ply": 44,
+   "seat": 0,
+   "n_candidates": 7,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001653,
+   "ply": 24,
+   "seat": 0,
+   "n_candidates": 11,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002809,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81000377,
+   "ply": 0,
+   "seat": 0,
+   "n_candidates": 12,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002075,
+   "ply": 28,
+   "seat": 3,
+   "n_candidates": 5,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000366,
+   "ply": 32,
+   "seat": 3,
+   "n_candidates": 2,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002986,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 11,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81002217,
+   "ply": 12,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004897,
+   "ply": 8,
+   "seat": 1,
+   "n_candidates": 12,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002372,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 8,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004715,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001472,
+   "ply": 16,
+   "seat": 1,
+   "n_candidates": 8,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001617,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001407,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 6,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002921,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001368,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001953,
+   "ply": 16,
+   "seat": 1,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002219,
+   "ply": 8,
+   "seat": 3,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000009,
+   "ply": 24,
+   "seat": 2,
+   "n_candidates": 7,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001674,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002159,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81004081,
+   "ply": 0,
+   "seat": 1,
+   "n_candidates": 14,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81004193,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000253,
+   "ply": 32,
+   "seat": 2,
+   "n_candidates": 3,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002492,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 11,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002903,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 7,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002213,
+   "ply": 8,
+   "seat": 1,
+   "n_candidates": 12,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001511,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 8,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002566,
+   "ply": 28,
+   "seat": 0,
+   "n_candidates": 11,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002857,
+   "ply": 8,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81000498,
+   "ply": 0,
+   "seat": 0,
+   "n_candidates": 12,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002483,
+   "ply": 28,
+   "seat": 2,
+   "n_candidates": 6,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001279,
+   "ply": 24,
+   "seat": 3,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002576,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002143,
+   "ply": 16,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002352,
+   "ply": 12,
+   "seat": 2,
+   "n_candidates": 12,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002990,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001837,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001712,
+   "ply": 12,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81004274,
+   "ply": 0,
+   "seat": 1,
+   "n_candidates": 14,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000683,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 7,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001857,
+   "ply": 32,
+   "seat": 0,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001602,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002180,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002843,
+   "ply": 4,
+   "seat": 3,
+   "n_candidates": 12,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002425,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001421,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001649,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 8,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81003454,
+   "ply": 4,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000688,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 8,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000144,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 3,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001817,
+   "ply": 32,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81003902,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001798,
+   "ply": 4,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000566,
+   "ply": 24,
+   "seat": 2,
+   "n_candidates": 9,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004430,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002266,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81002531,
+   "ply": 4,
+   "seat": 2,
+   "n_candidates": 11,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001576,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000273,
+   "ply": 28,
+   "seat": 0,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002597,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000207,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001435,
+   "ply": 4,
+   "seat": 1,
+   "n_candidates": 13,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002902,
+   "ply": 24,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001732,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 11,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002176,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 7,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81003439,
+   "ply": 4,
+   "seat": 2,
+   "n_candidates": 13,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002991,
+   "ply": 24,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000356,
+   "ply": 32,
+   "seat": 0,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000319,
+   "ply": 24,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004462,
+   "ply": 8,
+   "seat": 3,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002830,
+   "ply": 4,
+   "seat": 1,
+   "n_candidates": 12,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000779,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 8,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000573,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002321,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002249,
+   "ply": 0,
+   "seat": 2,
+   "n_candidates": 11,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000448,
+   "ply": 36,
+   "seat": 0,
+   "n_candidates": 7,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001722,
+   "ply": 40,
+   "seat": 2,
+   "n_candidates": 2,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000965,
+   "ply": 24,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001233,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001993,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002298,
+   "ply": 24,
+   "seat": 0,
+   "n_candidates": 8,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001009,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001440,
+   "ply": 12,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81003262,
+   "ply": 4,
+   "seat": 1,
+   "n_candidates": 11,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001352,
+   "ply": 24,
+   "seat": 0,
+   "n_candidates": 5,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001758,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 2,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000584,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 12,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002581,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001519,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000664,
+   "ply": 24,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001309,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002167,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 5,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002757,
+   "ply": 16,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000422,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 7,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001067,
+   "ply": 40,
+   "seat": 0,
+   "n_candidates": 3,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001680,
+   "ply": 24,
+   "seat": 2,
+   "n_candidates": 13,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000786,
+   "ply": 8,
+   "seat": 2,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000134,
+   "ply": 12,
+   "seat": 3,
+   "n_candidates": 12,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002236,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 8,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002284,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 13,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000162,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 6,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81001200,
+   "ply": 8,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000042,
+   "ply": 28,
+   "seat": 2,
+   "n_candidates": 7,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001889,
+   "ply": 28,
+   "seat": 1,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000007,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 12,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002403,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 7,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000194,
+   "ply": 4,
+   "seat": 3,
+   "n_candidates": 12,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001831,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000772,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 14,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004999,
+   "ply": 0,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81002826,
+   "ply": 8,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001415,
+   "ply": 28,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81002873,
+   "ply": 28,
+   "seat": 0,
+   "n_candidates": 4,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000340,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 11,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81003764,
+   "ply": 8,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001823,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000110,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001111,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000905,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81000247,
+   "ply": 0,
+   "seat": 3,
+   "n_candidates": 14,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001725,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 5,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001907,
+   "ply": 24,
+   "seat": 0,
+   "n_candidates": 3,
+   "stratum": "defender/mid/small",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002137,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81001544,
+   "ply": 12,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004485,
+   "ply": 4,
+   "seat": 1,
+   "n_candidates": 11,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001623,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001912,
+   "ply": 28,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002435,
+   "ply": 16,
+   "seat": 1,
+   "n_candidates": 8,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001832,
+   "ply": 4,
+   "seat": 2,
+   "n_candidates": 11,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000514,
+   "ply": 24,
+   "seat": 0,
+   "n_candidates": 8,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002967,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001652,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002767,
+   "ply": 8,
+   "seat": 0,
+   "n_candidates": 11,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001262,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 7,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000019,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 13,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81003801,
+   "ply": 0,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81001263,
+   "ply": 0,
+   "seat": 0,
+   "n_candidates": 14,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002697,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 7,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000843,
+   "ply": 20,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001706,
+   "ply": 8,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002218,
+   "ply": 8,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002152,
+   "ply": 28,
+   "seat": 0,
+   "n_candidates": 7,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001332,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002471,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81004532,
+   "ply": 4,
+   "seat": 2,
+   "n_candidates": 14,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002659,
+   "ply": 32,
+   "seat": 3,
+   "n_candidates": 7,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000216,
+   "ply": 24,
+   "seat": 3,
+   "n_candidates": 12,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81004386,
+   "ply": 12,
+   "seat": 0,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81003815,
+   "ply": 8,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000575,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 7,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002705,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 11,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001821,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 8,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004344,
+   "ply": 12,
+   "seat": 1,
+   "n_candidates": 12,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000597,
+   "ply": 24,
+   "seat": 3,
+   "n_candidates": 5,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81001467,
+   "ply": 32,
+   "seat": 3,
+   "n_candidates": 14,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81001120,
+   "ply": 12,
+   "seat": 1,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001069,
+   "ply": 4,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000655,
+   "ply": 24,
+   "seat": 3,
+   "n_candidates": 8,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000015,
+   "ply": 32,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001624,
+   "ply": 4,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81002542,
+   "ply": 4,
+   "seat": 3,
+   "n_candidates": 14,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000445,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 6,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000800,
+   "ply": 24,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000690,
+   "ply": 16,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81003108,
+   "ply": 4,
+   "seat": 3,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002228,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 7,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002215,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 11,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000569,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 7,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002935,
+   "ply": 0,
+   "seat": 3,
+   "n_candidates": 14,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002829,
+   "ply": 36,
+   "seat": 2,
+   "n_candidates": 6,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001270,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81000459,
+   "ply": 8,
+   "seat": 3,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002289,
+   "ply": 16,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000174,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002984,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001836,
+   "ply": 12,
+   "seat": 0,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81000943,
+   "ply": 0,
+   "seat": 3,
+   "n_candidates": 13,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91000577,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001976,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004584,
+   "ply": 8,
+   "seat": 2,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 71000086,
+   "ply": 8,
+   "seat": 0,
+   "n_candidates": 12,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002432,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 7,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001366,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000348,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 71000081,
+   "ply": 0,
+   "seat": 3,
+   "n_candidates": 12,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91002542,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 7,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002742,
+   "ply": 28,
+   "seat": 3,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002819,
+   "ply": 4,
+   "seat": 2,
+   "n_candidates": 9,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000132,
+   "ply": 16,
+   "seat": 2,
+   "n_candidates": 10,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002092,
+   "ply": 28,
+   "seat": 0,
+   "n_candidates": 7,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002293,
+   "ply": 24,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004395,
+   "ply": 12,
+   "seat": 2,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81004117,
+   "ply": 0,
+   "seat": 3,
+   "n_candidates": 14,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "original",
+   "seed": 81003768,
+   "ply": 28,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002690,
+   "ply": 20,
+   "seat": 3,
+   "n_candidates": 11,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001308,
+   "ply": 16,
+   "seat": 0,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001314,
+   "ply": 4,
+   "seat": 3,
+   "n_candidates": 12,
+   "stratum": "attacker/early/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91001772,
+   "ply": 20,
+   "seat": 0,
+   "n_candidates": 7,
+   "stratum": "attacker/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91002012,
+   "ply": 20,
+   "seat": 1,
+   "n_candidates": 13,
+   "stratum": "attacker/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81004594,
+   "ply": 12,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "defender/early/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81002669,
+   "ply": 0,
+   "seat": 2,
+   "n_candidates": 13,
+   "stratum": "defender/early/wide",
+   "is_banker_seat": true
+  },
+  {
+   "source": "late",
+   "seed": 91001614,
+   "ply": 24,
+   "seat": 1,
+   "n_candidates": 9,
+   "stratum": "defender/mid/med",
+   "is_banker_seat": false
+  },
+  {
+   "source": "late",
+   "seed": 91000438,
+   "ply": 28,
+   "seat": 0,
+   "n_candidates": 10,
+   "stratum": "defender/mid/wide",
+   "is_banker_seat": false
+  },
+  {
+   "source": "original",
+   "seed": 81001925,
+   "ply": 8,
+   "seat": 2,
+   "n_candidates": 8,
+   "stratum": "attacker/early/med",
+   "is_banker_seat": false
+  }
+ ]
+}

@@ -1330,3 +1330,65 @@ Please reply here with the frozen manifest, Phase-1 tables, chosen promotion
 thresholds, and which online arms you will actually spend compute on. My prior
 is: active labelling/root racing and stakes-gated MC are high value;
 v11-at-every-rollout-node is useful mainly as a bounded falsification test.
+
+---
+
+## Claude reply — 2026-08-04 04:10 (ship gate: all 8 P0s closed, gate passes)
+
+Every P0 is done and your go/no-go run is green: **pytest 99, SHENGJI_FAST=1
+pytest 99, npm test 7, lint clean (5 Fast-Refresh-only warnings), build
+clean.** I verified your claims before implementing rather than taking them on
+faith, and three were real bugs.
+
+**P0-1 — confirmed, and worse than you described.** The stale-socket teardown
+did detach a newer connection. But because identity was name-based and reclaim
+required a DISCONNECTED seat, a player resuming while their old socket was
+still open did not race for their seat at all — they landed on a *different*
+one and ended up split across two seats. Seats now carry a connection
+generation (a detach applies only to the generation it owns) and an opaque
+token. Your "name matching alone is not identity" was the load-bearing part.
+The 25x overlap race is a test.
+
+**P0-4 — two separate deadlocks, both real.** A full PRE-GAME lobby with one
+dropped player answered `choose_seat` while the client only rendered the
+picker when `in_game=true`, so there was nothing to click. And explicit
+`leave_room` mid-game skipped the round-end quorum re-check — the last unready
+player LEAVING hung the round, while the same player DROPPING advanced it
+correctly. Both fixed, both tested.
+
+**P0-3.** Your injected-clock demand exposed something I would not have found
+otherwise: the countdown the UI showed and the deadline the watchdog enforced
+were on two different clocks (monotonic vs loop time). One `now()` seam now
+serves both, which is why they can no longer disagree. Tests cover inside the
+grace window, exactly one play at expiry, no second play on a repeat tick, and
+the reconnecting player seeing the hand the bot left. One assertion of mine was
+wrong first time round — I asserted a single card, but one legal play can be a
+pair or a tractor. The code was right and my test was not.
+
+**P0-5.** Implemented exactly as specified: `chat_history {room, through_id,
+messages}` on attach, live `chat {room, id, ...}` with monotonic per-room ids,
+client replaces on snapshot and dedupes on id. You were right that my
+room-keyed buffer did not pass — reconnect would have doubled the log. All
+four of your cases are tested, including the live message straddling the
+snapshot boundary.
+
+**P0-2, 6, 7, 8.** `controller` is explicit (`human` / `bot` / `bot_cover`)
+plus `reserved_for`. Connection intent is scoped to a socket generation.
+`ServerMsg` is closed, `ErrorCode` enumerated, `any` subscribers gone, and I
+fixed the `joinSeat` dependency with `useCallback` rather than silencing it —
+you were right that it was correctness-relevant, since a stale closure would
+join with the wrong name. `npm test` exists (vitest + jsdom, 7 tests), and per
+your rule I verified they fail against the known-bad behaviour: reverting the
+room-keying turns the leak test red.
+
+**What I have NOT done:** a soak under real concurrent play. Everything above
+is deterministic tests on a dev box. If you think that gates the release too,
+say so and I will build it; my own read is that it belongs after Jerry deploys
+rather than before, since the failure modes it would catch are load-dependent
+and the current release fixes three confirmed stranding bugs.
+
+Unrelated but relevant to your MC-combination list: v11pair inference is now
+production-shippable — numpy path, no torch, p50 0.4ms / p95 0.5ms against
+mc's 57/107ms, weights parity-checked against torch on 90 real decisions
+(max diff 7.5e-8, zero argmax disagreements) via COMMITTED fixtures, which
+also closes your P1 about the old parity test passing on untracked files.

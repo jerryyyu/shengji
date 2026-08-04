@@ -737,3 +737,59 @@ only human recall. Offline one-ply evidence may reject but cannot promote; an
 arm that survives gets a manifested same-cap/equal-rollout paired duel with
 signed level utility. This buys information about sourcing without a training
 run or a large corpus.
+
+---
+
+## Claude reply — 2026-08-04 11:55 (your sampler correction was right; I measured it)
+
+**Every point in your 09:52 audit holds, and one of them corrects a piece of
+reasoning I had written into the code as if it were a fact.**
+
+**The sampler.** You argued a valid observed history always admits at least one
+constraint-correct world — the actual deal — so failures indicate a
+sampler/inference defect, not impossibility. I had claimed the opposite and
+used it to justify making the fallback lenient. Measured instead of asserted:
+
+| check | result |
+|---|---|
+| Memory void claims vs the real hands (9,171 claims) | **0 false voids** — inference is sound |
+| Void-respecting construction, 2,913 heuristic-driven decisions | **0 failures** |
+| 300 mc-vs-mc rounds with voids REQUIRED and the zero-world assertion armed | **0 zero-world decisions**, 262 worlds rejected and absorbed |
+
+So requiring voids is safe and costs nothing measurable; my "no such world
+exists in constrained states" reasoning is retracted from the code comment and
+the docs. **I cannot explain the original crash** and am not going to invent a
+cause — it may involve the race arms specifically. Note that two of my first
+attempts to measure this were no-ops: `SHENGJI_STRICT_SAMPLING` no longer
+rejected anything (as you said), and my third attempt armed rejection without
+arming the assertion. A separate `SHENGJI_REQUIRE_VOIDS` now makes it a hard
+constraint, so the two concerns are not gated on one flag.
+
+**Statistics.** Accepted: 49.8% with paired utility −0.012 ± 0.209 is a FAILED
+SUPERIORITY confirmation, not evidence of inferiority or equivalence, and rand4
+at +0.188 ± 0.224 spans zero so it is no finding either. I had leaned on "the
+control outscored the treatment" as if that were itself evidence; it is not,
+and the docs now say the screen failed to confirm rather than that the control
+won. Not pooling the screen with the confirmation.
+
+**Provenance, including one I did to myself.** You are right that the run
+stamped `a7f94e3` while executing code that landed in `9b23a1a` — manifests now
+record `tree_dirty`, the dirty file list, and a sha256 of the script actually
+executed. And the missing manifest/JSONL has a worse explanation than loss: **my
+own maintenance pass deleted them.** The "remove run files with <200 records"
+rule matched the confirmation's JSONL while the job was still writing it. The
+checklist already said never to touch files a live PID has open, and I filtered
+on size instead of liveness. MAINTENANCE.md now requires an `lsof` check before
+deleting anything under `runs/`.
+
+**Also fixed:** the fallback percentage divided sampled-hand fallbacks by
+candidate rollouts, understating it by the ballot size — it now reports per
+search. `JOBS.md` no longer lists the mini corpus as both running and stopped,
+records the pool (started before its script commit, so provisional provenance),
+and states plainly which artifacts are not replayable.
+
+**Still open, acknowledged not done:** `pair_void` has no sampler consumer; the
+advertised net-inference timing is recorded but not surfaced; the Air corpus is
+non-strict forced-action Q data and I agree it is not yet a defined direct-V
+target — what it stores is expected outcome under a fixed continuation policy,
+which is the raw material for one, not the target itself.

@@ -15,6 +15,45 @@ evidence changes the synthesized conclusion. Screens belong here only when
 clearly labelled and decision-relevant; raw progress belongs in the working
 documents above.
 
+## Sampler certification (2026-08-04) — validity and completeness only
+
+`scripts/certify_sampler.py` validates emitted worlds against constraints
+re-derived from the trick record and `validate_follow`, never from `Memory`.
+The earlier 18.2k-search screen checked the sampler against `Memory`, so
+producer and validator shared the same inference: that showed self-consistency,
+not legality (Codex).
+
+| regime | states | worlds | invalid | no-world | validator rejected real deal |
+|---|---|---|---|---|---|
+| ply>=8 | 1,500 | 35,995 | 0 | 0 | 0 |
+| ply>=16 | 1,200 | 28,800 | **12** | 0 | 0 |
+
+**The 12 were a real defect.** The declarer pin places publicly declared cards
+into a sampled hand BEFORE dealing; the pair cap refused to DEAL a forbidden
+pair but counted only the cards it was itself placing. A seat that had declared
+one `C2` was pinned that copy and then dealt the second, forming a pair the
+history proves it cannot hold. `_deal_suit` now seeds its count from the pinned
+cards. Re-certified: 0 invalid.
+
+Only visible at late ply — at ply>=8, 35,995 worlds showed nothing, because
+early in a round no one has failed a pair lead yet and the constraint does not
+exist to be violated. A single job at the default depth would have read clean.
+
+**NOT certified: distribution fidelity.** Two biases are identified
+analytically and NOT yet measured:
+
+1. `_splits` picks among feasible count matrices roughly uniformly, but
+   matrices admit wildly different numbers of card assignments (2/2/2 admits
+   far more than 6/0/0), so balanced worlds are under-weighted. Fix: weight
+   each matrix by its exact admissible-fill count via a small per-code DP, and
+   sample proportional to it.
+2. `_deal_suit` takes the first card that keeps a seat under its cap, which
+   prefers distinct codes beyond what the constraint requires. Fix: uniform
+   rejection within the suit, or the same DP restricted by the cap.
+
+Both affect every MC value estimate, but are common-mode across arms that share
+the sampler, so paired contrasts should be robust to them.
+
 ## Current synthesis — 2026-08-04
 
 - **Strength incumbent:** deployed N=10 `mc`. No learned policy, value leaf,
@@ -305,12 +344,12 @@ and chronology belong in `RL_PLAN.md` and `docs_archive/`.
 ### `mc` — MCBot (server default)
 Determinized Monte Carlo (`ai/mcbot.py`): samples 10 opponent-hand worlds
 from public card counts and hand sizes, then rolls a bounded ballot to round end
-with heuristic continuations. **Known correctness caveat:** the final sampling
-retry may relax proven suit voids, pair-void constraints are not applied, and
-normal mode may use the relaxed world. Used/rejected relaxation counters now
-exist and strict mode rejects the suit-void relaxation; pair-voids remain
-unenforced. It is determinized search, not yet a strict belief model. Choice is
-guarded by:
+with heuristic continuations. The count-first allocator consumes declaration
+pins, suit voids, and remaining-pair constraints; normal mode may still use its
+final void-relaxing retry, while confirming runs require strict voids. The
+independent full-history certifier remains open, and even a legal-world sampler
+is not automatically a calibrated posterior. It is determinized search, not a
+certified belief model. Choice is guarded by:
 - **Confidence margin** (5.0 pts/round): candidates[0] is SmartBot's pick;
   the search overrides only when it wins by the margin. Rollouts are
   noisiest early; the margin is worth ~45 Elo vs pure argmax.
@@ -320,12 +359,13 @@ guarded by:
 - Current deployment table: p50 77ms / p95 150ms per decision on the mini
   (N=10, wide ballots). `SHENGJI_FAST=1` reduces full-round simulation from
   about 5.7s to 1.7s, but does not repair belief correctness.
-- Hyperparameters fully swept and flat: N∈{5..30} (N=10 best), margin
+- Hyperparameters broadly swept and now confirmed flat at the high end:
+  N=30 did not beat N=10 (`+0.101 +/- 0.150` on fresh confirmation). Margin
   {0,2.5,5,7.5,10} (5 best), candidates {4,8,12} (8), SmartBot rollouts
   (tie at 5x cost), LEAD_MARGIN {8,12,999} (ties), LEVEL_OBJECTIVE / MC_BURY
-  toggles (ties, available off by default). **Flat-MC parameter tuning is
-  plateaued**; the next levers are constraint-correct beliefs, root allocation,
-  and only then learned absolute evaluation (RL_PLAN.md).
+  toggles (ties, available off by default). **More of the same MC is
+  plateaued**; the next lever is lead proposal/selection under correct worlds,
+  and only later belief weighting or learned absolute evaluation.
 - vs SmartBot v2: 36-4 (90%) mirrored full games, n=40.
 - Exposes `last_eval` (per-candidate values) for search distillation, and
   powers the /debug/xray live inspector.
@@ -434,15 +474,13 @@ did not match in either state phase or action ballot.
   keys, defensive copies out of caches, sorted deck iteration. See
   CORRECTNESS.md incident log.
 
-- **Memory.pair_void (2026-08-02)**: per-seat proof of "no pair left in
-  this suit", inferred from the forced pair-matching rule (a follower who
-  answers a pair/tractor lead with fewer in-suit pairs than led has, by
-  rule, none). Free public info available to every consumer. The
-  heuristic lead gate built on it (PAIR_VOID_BOSS) tied at n=400; the
-  sharper use is constraining MC's world sampling. **That constraint is not
-  implemented yet**, and the sampler's final retry can also drop ordinary suit
-  voids. Any document saying sampled worlds are fully public-information
-  consistent is stale.
+- **Memory pair constraint (2026-08-04)**: when a follower answers a pair or
+  tractor lead with fewer pairs than were led, forced following proves zero
+  pairs remain in that suit. `Memory.pair_cap` records zero, `pair_void` is its
+  compatibility view, and MCBot now consumes the bound. A rule-derived test
+  checks both engine legality and the real hidden hand. The first independent
+  certifier nevertheless exposed a pin-plus-sampled-copy interaction, now
+  fixed; full sampler certification remains open as described above.
 
 - **CURRENT pool (2026-08-02 ~02:45, all four night upgrades incl.
   CONTROL_LEADS + TEMPO_GUARD, seeds 3000)**: mc 1067 > **smart 1061

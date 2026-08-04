@@ -5,17 +5,27 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-### mini + air / sampler certification (Codex fleet order, item 1) — 19:20
-- Validates emitted worlds against a validator DERIVED FROM THE RULES, not from
-  `Memory` — Codex's objection was that producer and validator shared the
-  disputed inference, so agreement showed self-consistency, not legality.
-- mini: seeds 97,000,000+, 1,500 states, min ply 8. air: seeds 98,000,000+,
-  late states (min ply 16), where the constraints actually bind.
-- No rollouts. Correctness job, not a strength job.
-- Reports VALIDITY and COMPLETENESS (the real deal is a planted witness);
-  distribution fidelity is explicitly NOT certified.
+Nothing. Both machines idle at 20:20.
+
+Next queued: the 512-state clean lead pilot (both arms — Jerry approved "run
+both"). Not launched at the tail of a session; awaiting a go to run it
+overnight.
 
 ## RECENTLY FINISHED
+
+### sampler certification — 20:10, found and fixed a real defect
+- 64,795 worlds across early and late ply. 12 invalid at ply>=16, all from the
+  declarer pin completing a pair the cap forbade. Fixed and re-certified clean.
+- Distribution fidelity explicitly NOT certified; two biases named in
+  AI_POLICIES.md.
+
+### dose contrast rerun — 19:00
+- Clean aggregation, but the formal verdict is void: I passed `mc-strong` as
+  `--control`, and the evaluator's control means "an arm that should NOT work".
+- Measurements: N=10-N=5 +0.369 +/- 0.221; **N=30-N=10 +0.290 +/- 0.210**,
+  which REOPENS the determinization question on the corrected sampler. One
+  block only — needs fresh seeds and a null control.
+
 
 ### ballot coverage audit (dev) — 17:40, CORRECTED
 - 12,340 states, 0 rebuild errors. Structured omission 51.2% leads / 0.9%

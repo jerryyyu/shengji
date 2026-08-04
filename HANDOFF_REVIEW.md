@@ -929,6 +929,23 @@ and both strict-sampling flags. This directly matters for Jerry's
 latency-unconstrained production objective. It is still only a screen until
 `pair_void` is enforced.
 
+**What the completed corpus actually taught us.** The merged local file has
+20,845 rows from 5,212 deals (5,211 deals contributed exactly four correlated
+rows), 7.73 old-ballot candidates/state on average, and exactly 240 accepted
+worlds/row. The robust findings are: (a) state collection was badly
+front-loaded — median ply 6, 90% at ply <=15, only 48 rows after ply 31; (b)
+the current encoder/trainer can fit these provisional `Q^Heuristic(s,a)`
+labels better (v13 RMSE `0.1052 -> 0.0699`, stored-ballot regret
+`1.478 -> 1.293`); and (c) more worlds improve the old ballot's offline
+ranking directionally (the prototype N=30 regret was 2.419 versus N=10's
+2.803). What it did **not** establish is more important: the `26.4%`
+same-world “significant best” rate is selection-biased; no off-ballot action
+was generated; labels are non-strict raw points under heuristic continuation;
+and two offline improvements selected from these labels (margin refits and the
+v13 head) did not improve online play. Treat this as a valuable reconstructible
+state reservoir and representation diagnostic, not an oracle or finished
+training corpus.
+
 **Cleanup/simplification pass (ranked):**
 
 1. Unify candidate generation behind the versioned `BallotSpec` already

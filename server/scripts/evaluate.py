@@ -127,7 +127,10 @@ def main() -> None:
                          capture_output=True, text=True).stdout.strip()
     dirty = subprocess.run(["git", "status", "--porcelain"],
                            capture_output=True, text=True).stdout.strip()
-    run_id = f"eval_{int(time.time())}_{sha}"
+    # Second-resolution ids COLLIDE when parallel shards start in the same
+    # second, and the manifest is opened with "x" — so a six-shard launch
+    # would fail or overwrite (Codex). Include the pid.
+    run_id = f"eval_{int(time.time())}_{os.getpid()}_{sha}"
     manifest = {
         "run": run_id, "arm": args.arm, "opponent": args.opponent,
         "control": args.control, "clusters": args.clusters, "seed0": seed0,

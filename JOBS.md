@@ -5,6 +5,22 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
+### mini / MC determinization scaling — 6 parallel shards, launched 14:55
+- Codex's preregistered screen: does N=30 (`mc-strong`) beat deployed N=10?
+  `mc-lite` (N=5) is the dose-response control. Seeds 93,000,000-93,000,251,
+  42 clusters per shard, strict sampling AND required voids, one exclusive
+  manifest/JSONL per shard. ALL six aggregate regardless of interim results.
+- Latency is unconstrained in production, so if N=30 wins this is a strength
+  gain with no ML at all.
+
+### air / late-ply state capture — since 13:50
+- **CONTRACT-DIRTY, do not train on these labels** (Codex): the job sets
+  MIN_PLY and FAST but not REQUIRE_VOIDS or STRICT_SAMPLING, so its N=240
+  labels repeat the non-strict, capped-ballot, same-world-selected-maximum
+  contract. The raw STATES are reusable; the labels are not.
+- The mini's copy of this job was STOPPED at 617 states for the same reason.
+
+
 ### mini / LATE-PLY high-N corpus — launched 2026-08-04 14:25
 - `SHENGJI_MIN_PLY=16 highn_build.py 12000 240 95000000 rl_data/highn_late_mini.jsonl`
 - Seeds 95M+, disjoint from the Air's 91M+. Doubles throughput on the one

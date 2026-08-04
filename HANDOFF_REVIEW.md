@@ -1730,3 +1730,75 @@ protocol evidence under `# Working notes`. Live jobs, gates, discussion, and
 model chronology remain in `JOBS.md`, `BACKLOG.md`, `HANDOFF_REVIEW.md`, and
 `RL_PLAN.md` respectively. Please preserve that boundary rather than appending
 live run narration to the synthesis.
+
+---
+
+## Claude reply — 2026-08-04 21:40 (P0 sampler certification MET for validity and completeness)
+
+**Jerry asked whether the BACKLOG P0 gate was met. It was not — I had about
+three of ten clauses and had written it up as though it were a certification.**
+The gate is now implemented clause by clause and passes on a clean tree.
+
+```
+run eea78d2, tree_dirty false
+states 1,600   requested 38,400   accepted 38,399   rejected 1
+VALIDITY      invalid worlds: 0
+COMPLETENESS  toy states fully reachable: 120/120   never produced: 0
+WITNESS       real deal reached in 120/120 enumerated toy states
+digests  sampler bc6e3a3e97085d74  memory 905873b332fd5447
+         script 48f58a4128830bc6
+         corpus 40ea1ae4788f2586  late f2251f8267bf69ce
+```
+
+Clause by clause: reservoir states replayed from the original corpus and the
+late supplement rather than self-generated; full conservation over observer
+hand, sampled hands, returned kitty and played cards against the 108-card deck;
+declaration pins; suit voids; pair obligations; **tractor obligations**; every
+individual draw counted as requested/accepted/rejected; git SHA, tree state and
+digests of script, sampler, memory, both reservoirs and the split.
+
+**Completeness is now proved, not asserted.** Exhaustive enumeration on
+constructed deep-BANKER states — the banker knows its own burial, so its unseen
+pool is just the three other hands and reaches six or seven cards late in a
+round, where every legal assignment can be enumerated by combination. On all
+120, the sampler produced EVERY legal world, and the real deal was among them
+and was reached. No part of this rests on "a world was available within 24
+retries", which you explicitly ruled out.
+
+**The repair found a second real sampler defect.** The sampler consumed the
+pair cap but had no notion of RUN LENGTH. A seat that answers a pure two-pair
+tractor lead with a shorter run has proven it holds no 2-run in that suit, yet
+the sampler would still deal it one. These are different constraints — two
+non-consecutive pairs are two pairs and no tractor — so `pair_cap` did not
+cover it. `Memory.run_cap` records the bound and `_deal_suit` honours it. Eight
+invalid worlds per 3,000 at deep ply, now zero.
+
+**Three of the bugs were in my certifier, and each one made it look like it was
+working.** The enumerator permuted the pool (479M orderings for twelve cards),
+so it returned "too large" on every state while `0/0` read as an honest
+absence. The banker's `extra` was built from leftover pool rather than the real
+burial, so conservation rejected every world — and `return legal or None`
+conflated that with "too large", hiding it behind the first bug. And the world
+key sorted hands, losing WHICH SEAT held which, collapsing ninety assignments
+into nine shapes so an illegal assignment masked the legal one. Splitting
+"space too large" from "zero legal worlds" into distinct outcomes is what
+surfaced the second and third.
+
+That is three sampler defects and three certifier defects today, and the
+pattern is consistent: every one was invisible to the tests that existed when
+it was introduced. I have stopped treating a green suite as evidence about the
+sampler.
+
+**Still NOT certified: distribution fidelity**, unchanged from my last note.
+The two biases I can name analytically remain unmeasured: `_splits` picks among
+feasible count matrices roughly uniformly when they admit wildly different
+numbers of completions, and `_deal_suit` takes the first card that respects the
+caps, which prefers distinct codes beyond what the constraints require. The fix
+for the first is the weighted per-code DP you described; the second wants
+uniform rejection within the suit. Neither is done.
+
+Given validity and completeness are green, my read is that the 512-state lead
+pilot is unblocked — all arms share the sampler, so a residual distribution
+bias is common-mode for a paired comparison. Say if you disagree; a wider
+ballot proposing more structured actions is the case where a shared bias could
+plausibly fail to cancel, and that is your call to make rather than mine.

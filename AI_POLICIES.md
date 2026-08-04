@@ -51,10 +51,12 @@ newest entry sit on top and speak for the file.
   the old sampler (+0.101 +/- 0.150). On the corrected sampler one clean block
   gives +0.290 +/- 0.210. One block is not a claim; it needs fresh seeds and a
   null control.
-- **Next champion-path experiment:** after the bounded sampler and action-
-  semantics gates, run the clean 512-state lead pilot comparing current, V3,
-  random-fill, `MC-more`, fixed-14 contextual, and full-universe/high-compute
-  arms on disjoint proposal/report worlds. Details live in `BACKLOG.md`.
+- **Next strength work:** run one correctly controlled fresh N=30 dose
+  confirmation because the rewritten-sampler screen reopened that cheap
+  hypothesis, and run the structural 512-state lead pilot comparing current,
+  V3, random-fill, `MC-more`, fixed-14 contextual, and full-universe/high-
+  compute arms on disjoint proposal/report worlds. Do not pool either selection
+  result into its confirmation. Gates and ordering live in `BACKLOG.md`.
 
 ## Policy status details
 
@@ -147,13 +149,14 @@ certified belief model. Choice is guarded by:
 - Current deployment table: p50 77ms / p95 150ms per decision on the mini
   (N=10, wide ballots). `SHENGJI_FAST=1` reduces full-round simulation from
   about 5.7s to 1.7s, but does not repair belief correctness.
-- Hyperparameters broadly swept and now confirmed flat at the high end:
-  N=30 did not beat N=10 (`+0.101 +/- 0.150` on fresh confirmation). Margin
-  {0,2.5,5,7.5,10} (5 best), candidates {4,8,12} (8), SmartBot rollouts
-  (tie at 5x cost), LEAD_MARGIN {8,12,999} (ties), LEVEL_OBJECTIVE / MC_BURY
-  toggles (ties, available off by default). **More of the same MC is
-  plateaued**; the next lever is lead proposal/selection under correct worlds,
-  and only later belief weighting or learned absolute evaluation.
+- Most hyperparameters are flat at the high end: margin {0,2.5,5,7.5,10}
+  (5 best), candidates {4,8,12} (8), SmartBot rollouts (tie at 5x cost),
+  LEAD_MARGIN {8,12,999} (ties), and LEVEL_OBJECTIVE / MC_BURY (ties, off by
+  default). The old sampler did not establish N=30 over N=10
+  (`+0.101 +/- 0.150` on fresh confirmation); one post-rewrite selection block
+  was positive (`+0.290 +/- 0.210`) but formally void and unconfirmed. Run one
+  clean dose confirmation, but treat lead proposal/selection—not indiscriminate
+  search scaling—as the main structural lever.
 - vs SmartBot v2: 36-4 (90%) mirrored full games, n=40.
 - Exposes `last_eval` (per-candidate values) for search distillation, and
   powers the /debug/xray live inspector.
@@ -403,44 +406,34 @@ act on. Entries are kept because a number without its protocol is
 how six claims were made and lost, but they are deliberately below
 the fold.
 
-## Sampler certification (2026-08-04) — validity and completeness only
+## Sampler certification status — a useful screen, not a full certificate
 
-`scripts/certify_sampler.py` validates emitted worlds against constraints
-re-derived from the trick record and `validate_follow`, never from `Memory`.
-The earlier 18.2k-search screen checked the sampler against `Memory`, so
-producer and validator shared the same inference: that showed self-consistency,
-not legality (Codex).
+`scripts/certify_sampler.py` independently re-derived suit-void and remaining-
+pair constraints from the trick record. That was materially better than
+checking the sampler against `Memory`, and its late-ply run found 12 genuinely
+invalid worlds: a pinned declared card plus a sampled second copy completed a
+pair the history ruled out. The pin-aware pair-cap fix re-ran clean for the
+implemented checks.
 
-| regime | states | worlds | invalid | no-world | validator rejected real deal |
-|---|---|---|---|---|---|
-| ply>=8 | 1,500 | 35,995 | 0 | 0 | 0 |
-| ply>=16 | 1,200 | 28,800 | **12** | 0 | 0 |
+The result is narrower than its first label implied:
 
-**The 12 were a real defect.** The declarer pin places publicly declared cards
-into a sampled hand BEFORE dealing; the pair cap refused to DEAL a forbidden
-pair but counted only the cards it was itself placing. A seat that had declared
-one `C2` was pinned that copy and then dealt the second, forming a pair the
-history proves it cannot hold. `_deal_suit` now seeds its count from the pinned
-cards. Re-certified: 0 invalid.
+- The ply>=8 run requested 36,000 worlds and accepted 35,995; those five
+  individual `None` draws were hidden by a counter that only reports states
+  where all 24 retries fail. Zero such states is availability evidence, not a
+  completeness proof.
+- The validator still does not reconstruct the full unseen multiset including
+  observer, sampled hands, played cards and returned kitty; directly verify
+  declaration pins; or enforce the pure-tractor obligation against sampled
+  residual cards.
+- It validates the real hidden deal as a witness but does not make the sampler
+  consume that witness or exhaust all small legal worlds.
 
-Only visible at late ply — at ply>=8, 35,995 worlds showed nothing, because
-early in a round no one has failed a pair lead yet and the constraint does not
-exist to be violated. A single job at the default depth would have read clean.
-
-**NOT certified: distribution fidelity.** Two biases are identified
-analytically and NOT yet measured:
-
-1. `_splits` picks among feasible count matrices roughly uniformly, but
-   matrices admit wildly different numbers of card assignments (2/2/2 admits
-   far more than 6/0/0), so balanced worlds are under-weighted. Fix: weight
-   each matrix by its exact admissible-fill count via a small per-code DP, and
-   sample proportional to it.
-2. `_deal_suit` takes the first card that keeps a seat under its cap, which
-   prefers distinct codes beyond what the constraint requires. Fix: uniform
-   rejection within the suit, or the same DP restricted by the cap.
-
-Both affect every MC value estimate, but are common-mode across arms that share
-the sampler, so paired contrasts should be robust to them.
+Two distribution biases are also identified analytically and unmeasured:
+count matrices are sampled without weighting by how many card assignments they
+admit, and the pair-cap card draw greedily prefers distinct codes. Shared bias
+may partially cancel in paired arms, but a wider structured ballot can interact
+with it, so robustness is an experiment—not an assumption. The open gates are
+full validity, toy-state completeness, and exact-posterior/marginal calibration.
 
 ## World sampler rewrite — improved, independent certification open
 
@@ -540,55 +533,22 @@ a fixed budget, not by how much of the space it recovers.
 Audit outputs now carry git SHA, tree-dirty state, and digests of the script,
 corpus, split and ballot.
 
-## Determinization screen — N=30 is NOT better than N=10 (2026-08-04, closed)
+## Determinization dose — mixed evidence, no verified N=30 edge
 
-**CORRECTED 17:45** after a Codex audit. Two published numbers were wrong; the
-verdict is unchanged.
+On the old sampler, the two fresh confirmation blocks gave N=30 minus N=10
+`+0.101 +/- 0.150` over 504 seed clusters: not confirmed. Those blocks also
+contained 14 zero-world fallbacks, so their N=10-over-N=5 dose contrast is only
+provisional. A stale 40-record partial contaminated the first published
+selection aggregate; `aggregate_shards.py` now refuses duplicate/unequal
+records, mixed commits/schemas, or zero-world fallbacks.
 
-**Preregistered primary: paired per-seed level utility, N=30 minus N=10.**
-
-| block | seeds | N=30 - N=10 | role |
-|---|---|---|---|
-| 1 | 93M | +0.274 +/- 0.214 | selection screen |
-| 2 | 94M | +0.155 +/- 0.215 | confirmation |
-| 3 | 95M | +0.048 +/- 0.210 | confirmation (declared final before running) |
-| **confirmation only (2+3)** | | **+0.101 +/- 0.150, n=504** | **INCLUDES 0 — NOT CONFIRMED** |
-
-**What was wrong.** Block 1 was first published as `+0.282 +/- 0.223`. That
-number came from globbing `runs/logs/eval_*.jsonl`, which silently swept in 40
-arm records from an ABORTED earlier attempt (`c737e70`) covering seeds already
-produced by the complete rerun. The arm side had 544 records against 504 for
-reference and control, and seeds 93,000,126-93,000,145 were counted twice on
-one side only. Clean block 1 is `+0.274 +/- 0.214`; clean three-block pooling
-is `+0.159 +/- 0.123`, not `+0.161 +/- 0.125`. The confirmation blocks were
-never contaminated, so the NOT CONFIRMED verdict stands unchanged.
-
-`scripts/aggregate_shards.py` now refuses to pool when labels have unequal
-record counts, when a (label, seed, flip) repeats, when shards disagree about
-their commit, when record schemas differ, or when any zero-world decision is
-present. It catches this exact contamination.
-
-**The N=10-over-N=5 result is PROVISIONAL, not confirmed.** It was first
-written up as confirmed. On fresh clusters N=5 minus N=10 is `-0.347 +/- 0.145`
-and N=30 minus N=5 is `+0.448 +/- 0.147`, but blocks 2+3 contain **14
-zero-world fallbacks across nine seeds**, distributed unequally (9 on the N=10
-arm, 2 on N=5, 3 on N=30), and every affected shard log printed `PROTOCOL
-FAILURES — verdict forced to NOT CONFIRMED`. Reading a paired mean out of runs
-the evaluator had already failed is exactly the semantics error the checklist
-warns about. This contrast also had no declared primary bar of its own. Treat
-it as strong dose-response evidence pending a constraint-correct sampler rerun.
-
-Fresh-cluster win rates are **53.0% / 51.7% / 44.7%** for N=30 / N=10 / N=5.
-The previously published 53.1% / 50.6% / 44.3% were computed over all three
-blocks while being labelled "the same 504 fresh clusters".
-
-**What this closes.** Search width is not a route to the goal: N=30 does not
-beat the deployed N=10 on fresh seeds, and the monotone per-block decay
-(+0.274 -> +0.155 -> +0.048) is what a winner's curse looks like. Block 3 was
-declared final in writing before it ran, so there was no version of this where
-the interval got extended until it cleared.
-
-This is the seventh promising screen that did not survive confirmation.
+After the sampler rewrite, one new block measured N=10-minus-N=5
+`+0.369 +/- 0.221` and N=30-minus-N=10 `+0.290 +/- 0.210`. Its formal verdict
+is void because `mc-strong` was incorrectly supplied as the evaluator's null
+control, but the measurement reopens the dose hypothesis under changed sampler
+behavior. It is one selection block, not a strength claim. N=30 remains
+undeployable until a fresh preregistered confirmation with an actual null
+control clears.
 
 ## Ballot V3, lead layer — sourcing gap CONFIRMED, the fix NOT CONFIRMED (2026-08-04)
 

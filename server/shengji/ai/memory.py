@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections import Counter
 
 from ..engine.cards import TRUMP, make_deck
-from ..engine.combos import pair_count
+from ..engine.combos import decompose, pair_count
 from ..engine.round import Round
 
 
@@ -37,6 +37,11 @@ class Memory:
         # and a future inference may prove a nonzero bound; the value today is
         # always 0.
         self.pair_cap: dict[int, dict[str, int]] = {s: {} for s in range(4)}
+        # Provable upper bound on the longest PAIR RUN (tractor) still held.
+        # Answering a pure k-pair tractor lead with a shorter run proves no
+        # k-run remains. Distinct from pair_cap: a seat can hold two pairs and
+        # still have no 2-RUN if they are not consecutive.
+        self.run_cap: dict[int, dict[str, int]] = {s: {} for s in range(4)}
 
         tricks = list(rnd.history)
         if rnd.trick and rnd.trick.plays:
@@ -45,6 +50,9 @@ class Memory:
             lead_cards = trick.plays[0].cards
             lead_suit = self.o.eff_suit(lead_cards[0])
             n_led_pairs = pair_count(lead_cards) if len(lead_cards) >= 2 else 0
+            _ldec = decompose(list(lead_cards), self.o)
+            pure_tractor = (len(_ldec.components) == 1
+                            and _ldec.components[0].pair_len >= 2)
             for i, tp in enumerate(trick.plays):
                 self.played.update(tp.cards)
                 self.played_by[tp.seat].update(tp.cards)
@@ -65,6 +73,12 @@ class Memory:
                         # weaker than the boolean it replaced, which had the
                         # inference right all along.
                         self.pair_cap[tp.seat][lead_suit] = 0
+                    if pure_tractor and ins:
+                        k = _ldec.components[0].pair_len
+                        if decompose(ins, self.o).max_pair_run() < k:
+                            prev = self.run_cap[tp.seat].get(lead_suit)
+                            self.run_cap[tp.seat][lead_suit] = (
+                                k - 1 if prev is None else min(prev, k - 1))
 
         # Declarer's shown cards (RTLT 2026-08-03: a declared trump-rank
         # PAIR is provably in ONE hand — sampling it split made KK-pair
@@ -122,6 +136,10 @@ class Memory:
     def max_pairs(self, seat: int, eff_suit: str) -> int | None:
         """Provable upper bound on pairs, or None if nothing is known."""
         return self.pair_cap[seat].get(eff_suit)
+
+    def max_run(self, seat: int, eff_suit: str) -> int | None:
+        """Provable upper bound on the longest pair RUN, or None."""
+        return self.run_cap[seat].get(eff_suit)
 
     def higher_unseen(self, eff_suit: str, level: int) -> int:
         """How many unseen cards of ``eff_suit`` beat ``level``."""

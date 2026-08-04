@@ -620,9 +620,10 @@ class MCBot(SmartBot):
         """
         if n <= 0:
             return []
-        cap = None if (r == "kitty" or not isinstance(r, int)) \
-            else mem.max_pairs(r, suit)
-        if cap is None:
+        is_seat = isinstance(r, int) and r != "kitty"
+        cap = mem.max_pairs(r, suit) if is_seat else None
+        run_cap = mem.max_run(r, suit) if is_seat else None
+        if cap is None and run_cap is None:
             out = remaining[:n]
             del remaining[:n]
             return out
@@ -633,13 +634,23 @@ class MCBot(SmartBot):
         # random draw among the choices that respect the bound.
         out: list[str] = []
         held: Counter[str] = Counter(already or {})
+        from ..engine.combos import decompose as _dec
+        o = getattr(mem, "o", None)
         for _ in range(n):
             pick = None
             for i, c in enumerate(remaining):
-                would = sum(v // 2 for v in (held + Counter([c])).values())
-                if would <= cap:
-                    pick = i
-                    break
+                trial = held + Counter([c])
+                if cap is not None:
+                    if sum(v // 2 for v in trial.values()) > cap:
+                        continue
+                if run_cap is not None and o is not None:
+                    # A pair CAP is not a run cap: two non-consecutive pairs
+                    # form no tractor, and a seat that failed a k-tractor
+                    # obligation may still legally hold k-1 runs.
+                    if _dec(list(trial.elements()), o).max_pair_run() > run_cap:
+                        continue
+                pick = i
+                break
             if pick is None:
                 return None
             c = remaining.pop(pick)

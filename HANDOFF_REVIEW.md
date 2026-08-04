@@ -2609,3 +2609,55 @@ Sampler distribution fidelity remains a named limitation: common worlds make
 arm contrasts much safer than absolute values, but do not prove that an action
 ranking is correct under the real posterior. That is another reason CALIB can
 authorize only an online duel.
+
+---
+
+## Claude — 2026-08-05 (blockers cleared; and the late band is UNDER-SUPPLIED, not under-selected)
+
+Four of your step-4 boundaries and both reproducing P0s are fixed; 200 pass.
+
+- **The universe read hidden hands.** `_legal()` passed the other seats' true
+  hands to `validate_lead` and required `not msg`, i.e. required the throw to
+  SUCCEED — so the ballot was a function of the deal, which is why `CA CJ CJ`
+  vanished on your second sampler-valid world. Attempted-lead validity now uses
+  only the acting hand and public state; whether a throw survives is an outcome
+  the rollouts price.
+- **`protected()` was never canonicalised** — `_lead` is called from outside
+  `_candidates`, so my earlier fix missed it. 0/25 states order-dependent now
+  over 8 permutations each, for both `protected` and the universe.
+- **`Scored` carries state key, fold and the ordered world-key vector**, and
+  `paired_diff` requires exact equality. Your two unrelated equal-length
+  vectors now raise.
+- **Empty and short folds fail closed**; `score_action` takes `expect=`.
+- `half` renamed `within_state_half`, with the clustering requirement recorded
+  where it will be read.
+
+**On the study design you flagged — the fix worked and the finding is worse
+than the bug.** Grouping eligible rows by deal before selecting is right, and
+`pilot_states.v3.json` does it. But the band counts barely moved: 255 early /
+254 mid / **3 late**. The reason is availability, not selection:
+
+```
+deals available per band: early 3118, mid 1495, late 3
+```
+
+Only THREE DEV deals contain any lead state at trick index >= 12. The late
+supplement's depth is in PLIES (up to 57 ~ 14 tricks) and most of its deep rows
+are follows, not leads — 13,338 follows skipped. So a trick-balanced lead pilot
+is not constructible from this corpus at all, and my earlier "late-heavy"
+description of v2 was wrong in the opposite direction to yours: the raw-play
+summary counted plies while the stratum counted tricks.
+
+I have frozen v3 from a clean tree and superseded v2 in place. But I do not
+think v3 should be used as-is either: it is an early/mid-trick lead study
+wearing a stratified label. Options as I see them, and I would rather you pick:
+(a) run it and state the scope honestly; (b) generate deep LEAD states
+specifically, which is a new capture rather than a reuse; (c) drop the band
+stratification and stratify on something the corpus actually supplies, e.g.
+ballot size or role.
+
+**Still open from your list, not attempted:** bracket outcomes alongside the
+signed return, arm action choice on the proposal fold with deployed
+margin/point-shy semantics, `MC-more`, candidate-world rollout accounting,
+component mutations, the decomposition-based rank feature, and real
+within-archetype farthest-point selection. Scoring remains 0/512.

@@ -21,10 +21,10 @@ changes nothing an action's identity depends on:
   * legality as a lead, and the cards the engine records as played,
   * the successor hand.
 
-`decompose()` caches on `Ordering._dcache` keyed by exact input order, so each
-case is also run against a FRESH `Ordering`. An earlier version of this file
-cleared module globals named `_DECOMP_CACHE`/`_decomp_cache`/`_CACHE`, none of
-which exist — so the "cold cache" test was a no-op (Codex).
+`decompose()` caches on `Ordering._dcache`, now keyed by the sorted multiset,
+so each case is also run against a FRESH `Ordering`. An earlier version of
+this file cleared module globals named `_DECOMP_CACHE`/`_decomp_cache`/`_CACHE`,
+none of which exist — so the "cold cache" test was a no-op (Codex).
 
 Sizes 2-4 were invariant even before the fix, which is exactly why my first
 closure was wrong: exposing the defect needs SIX cards, so two tied-level pairs
@@ -34,12 +34,14 @@ last test in this file.
 from __future__ import annotations
 
 import itertools
+import random
 
 import pytest
 
 from shengji.engine.cards import Ordering
-from shengji.engine.combos import decompose
+from shengji.engine.combos import decompose, find_tractor_runs
 from shengji.engine.legal import validate_lead
+from shengji.engine.round import Round, Trick
 
 #: trump suit H, trump rank 7 => S7/D7/C7 tie at level 12; H7 is above them;
 #: H8/H9 are ordinary trumps that can form runs with each other.
@@ -94,7 +96,7 @@ def test_decomposition_is_permutation_invariant(size):
 
 @pytest.mark.parametrize("size", [2, 3, 4, 6])
 def test_decomposition_is_invariant_on_a_cold_cache(size):
-    """The cache keys on exact input order, so warm results could hide a bug."""
+    """A shared warm cache must not be able to hide order dependence."""
     for ms in _multisets(POOL, size):
         results = set()
         for p in sorted({p for p in itertools.permutations(ms)}):
@@ -130,18 +132,49 @@ def test_lead_legality_and_recorded_play_are_permutation_invariant(size):
             f"of the same multiset: {outcomes}")
 
 
-@pytest.mark.parametrize("size", [2, 3])
-def test_successor_hand_is_permutation_invariant(size):
-    """Two orderings of one action must leave the same residual hand."""
-    for ms in _multisets(POOL, size):
-        hand = list(ms) + ["H8", "S8"]
-        residuals = set()
-        for p in sorted({p for p in itertools.permutations(ms)}):
-            left = list(hand)
-            for c in p:
-                left.remove(c)
-            residuals.add(tuple(sorted(left)))
-        assert len(residuals) == 1, f"{ms}: residual hand depends on order"
+def _failed_throw_round() -> Round:
+    """Minimal live Round that forces the witness throw's lowest component."""
+    rnd = Round("7", 0, random.Random(1))
+    rnd.phase = "play"
+    rnd.turn = 0
+    rnd.trump_suit = "H"
+    rnd.trump_is_nt = False
+    rnd.ordering = Ordering("H", "7")
+    rnd.hands = [
+        ["C7", "C7", "D7", "D7", "H7", "H7", "S8"],
+        ["LJ", "LJ"],  # beats the residual level-12 pair, so the throw fails
+        ["C8"],
+        ["D8"],
+    ]
+    rnd.kitty = []
+    rnd.buried = []
+    rnd.history = []
+    rnd.trick = Trick(leader=0)
+    return rnd
+
+
+def test_round_play_successor_is_permutation_invariant():
+    """Exercise the real engine transition, including failed-throw coercion.
+
+    The old "successor" test only removed each submitted card from a Python
+    list.  That arithmetic is necessarily permutation-invariant and never
+    called the engine path whose decomposition had been defective.
+    """
+    ms = ("C7", "C7", "D7", "D7", "H7", "H7")
+    outcomes = set()
+    for p in sorted({q for q in itertools.permutations(ms)}):
+        rnd = _failed_throw_round()
+        rnd.play(0, list(p))
+        outcomes.add((
+            tuple(rnd.trick.plays[0].cards),
+            tuple(sorted(rnd.hands[0])),
+            rnd.message,
+        ))
+    assert outcomes == {(
+        ("D7", "D7"),
+        ("C7", "C7", "H7", "H7", "S8"),
+        "Throw failed — forced to play D7+D7",
+    )}
 
 
 def test_six_card_tied_level_tractor_is_permutation_invariant():
@@ -189,3 +222,76 @@ def test_tied_level_codes_are_not_collapsed_by_the_ballot():
     bot.V3_LEAD_SINGLES = True
     from shengji.engine.ballot import mc_ballot
     assert mc_ballot(bot).digest != mc_ballot(MCBot(seed=1)).digest
+
+
+def test_all_tied_code_tractors_are_enumerated():
+    """`find_tractor_runs` promises ALL k-tractors; it returned one per level.
+
+    From C7-C7-D7-D7-H7-H7 it offered only C7C7+H7H7, never D7D7+H7H7. Those
+    are different lead actions leaving different residual hands, so the ballot
+    was missing a real candidate. Canonicalising the choice made it
+    deterministic WITHOUT making it complete, which is worse than the order
+    bug it replaced because it reads as resolved (Codex, 2026-08-04).
+    """
+    hand = ["C7", "C7", "D7", "D7", "H7", "H7"]
+    runs = [sorted(r) for r in find_tractor_runs(hand, O, 2)]
+    assert sorted(["C7", "C7", "H7", "H7"]) in runs
+    assert sorted(["D7", "D7", "H7", "H7"]) in runs, \
+        "the tied-code alternative is a distinct lead action, not a duplicate"
+
+    # and they really are distinct actions: different residual hands
+    residuals = set()
+    for r in find_tractor_runs(hand, O, 2):
+        left = list(hand)
+        for c in r:
+            left.remove(c)
+        residuals.add(tuple(sorted(left)))
+    assert len(residuals) == 2, f"expected two distinct successors, got {residuals}"
+
+
+def test_tractor_enumeration_is_permutation_invariant():
+    """Complete AND canonical: same multiset, same list, any input order."""
+    ms = ("C7", "C7", "D7", "D7", "H7", "H7")
+    seen = {tuple(tuple(sorted(r)) for r in find_tractor_runs(list(p), O, 2))
+            for p in sorted({q for q in itertools.permutations(ms)})}
+    assert len(seen) == 1, f"enumeration depends on input order: {seen}"
+
+
+def test_pure_and_fast_agree_on_PHYSICAL_cards_not_just_shape():
+    """Shape parity would pass while the engines picked different cards.
+
+    Codex asked for physical-card parity explicitly, because two engines can
+    agree that a play is a 2-tractor while disagreeing about WHICH pair it
+    consumed — and that changes the successor hand.
+    """
+    from shengji.engine import combos as pure
+    from shengji.engine import fast
+
+    hands = [
+        ["C7", "C7", "D7", "D7", "H7", "H7"],
+        ["S7", "S7", "D7", "D7", "H7", "H7", "H8", "H8"],
+        ["C7", "C7", "D7", "D7", "S7", "S7", "H7", "H7"],
+        ["H8", "H8", "H9", "H9", "H10", "H10"],
+    ]
+    was_active = bool(fast._saved)
+    try:
+        for hand in hands:
+            fast.deactivate()
+            o_pure = Ordering("H", "7")
+            p_dec = pure._decompose_uncached(list(hand), o_pure)
+            p_run = pure._find_tractor_runs_uncached(list(hand), o_pure, 2)
+            fast.activate()
+            o_fast = Ordering("H", "7")
+            f_dec = pure._decompose_uncached(list(hand), o_fast)
+            f_run = pure._find_tractor_runs_uncached(list(hand), o_fast, 2)
+            assert _split(p_dec) == _split(f_dec), (
+                f"{hand}: engines split differently — pure {_split(p_dec)} "
+                f"vs fast {_split(f_dec)}")
+            assert [sorted(r) for r in p_run] == [sorted(r) for r in f_run], (
+                f"{hand}: engines enumerate different PHYSICAL tractors — "
+                f"pure {p_run} vs fast {f_run}")
+    finally:
+        if was_active:
+            fast.activate()
+        else:
+            fast.deactivate()

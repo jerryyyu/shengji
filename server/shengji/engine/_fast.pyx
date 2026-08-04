@@ -193,14 +193,20 @@ cdef list _tractor_runs_core(list cards, const unsigned char *ids,
             n_order += 1
             objmap[c] = cards[i]
         cnt[c] += 1
-    # by_level[lv][0] == first code with count>=2 in Counter (first-
-    # occurrence) order — NOT the first to reach count 2 in scan order.
+    # EVERY pair-capable code per level, sorted by card string. Taking only
+    # the first meant C7-C7-D7-D7-H7-H7 offered C7C7+H7H7 and never
+    # D7D7+H7H7 — distinct lead actions leaving different residual hands
+    # (Codex, 2026-08-04). Mirrors combos._find_tractor_runs_uncached.
+    cdef list lev_all = [[] for _ in range(MAX_LEVEL)]
     for j in range(n_order):
         c = order[j]
         if cnt[c] >= 2:
             L = lvl[c]
             if first_at[L] < 0:
                 first_at[L] = c
+            (<list>lev_all[L]).append(objmap[c])
+    for j in range(MAX_LEVEL):
+        (<list>lev_all[j]).sort()
 
     out = []
     if k <= 0 or k > MAX_LEVEL:
@@ -214,13 +220,28 @@ cdef list _tractor_runs_core(list cards, const unsigned char *ids,
                 ok = 0
                 break
         if ok:
-            run = []
-            for d in range(k):
-                obj = objmap[first_at[start + d]]
-                run.append(obj)
-                run.append(obj)
-            out.append(run)
+            # Cartesian product over the window, same order as itertools.product
+            windows = [lev_all[start + d] for d in range(k)]
+            for combo in _product(windows):
+                run = []
+                for obj in combo:
+                    run.append(obj)
+                    run.append(obj)
+                out.append(run)
     return out
+
+
+cdef list _product(list pools):
+    """itertools.product over a small list of lists, order-identical."""
+    cdef list result = [[]]
+    cdef list pool, nxt
+    for pool in pools:
+        nxt = []
+        for prefix in result:
+            for item in pool:
+                nxt.append(prefix + [item])
+        result = nxt
+    return result
 
 
 # ------------------------------------------------------- public entry points

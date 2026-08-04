@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -207,20 +208,39 @@ def find_tractor_runs(cards: list[str], ordering: Ordering, k: int) -> list[list
 
 
 def _find_tractor_runs_uncached(cards: list[str], ordering: Ordering, k: int) -> list[list[str]]:
-    """All k-length tractors (as card lists) available in ``cards`` (one suit),
-    lowest first. Windows over consecutive levels each holding a pair."""
+    """ALL k-length tractors (as card lists) available in ``cards`` (one suit),
+    lowest first.
+
+    Windows over consecutive levels each holding a pair. When a level holds
+    more than one pair-capable CODE — off-suit trump-rank pairs like C7C7 and
+    D7D7 both sitting at the trump-rank level — every combination is a
+    distinct tractor, so the Cartesian product over the window is enumerated
+    rather than one representative per level.
+
+    That was the contract all along; the implementation took `by_level[lv][0]`
+    and returned one. From C7-C7-D7-D7-H7-H7 it offered only C7C7+H7H7, never
+    D7D7+H7H7, and those are different lead actions leaving different residual
+    hands (D7D7 versus C7C7). Canonicalising the choice made it deterministic
+    without making it complete, which reads as fixed while a real lead
+    candidate is still missing (Codex, 2026-08-04).
+
+    Codes within a level are sorted, so the enumeration order is a function of
+    the multiset rather than of the caller's list order.
+    """
     cnt = Counter(cards)
     by_level: dict[int, list[str]] = {}
     for c, n in cnt.items():
         if n >= 2:
             by_level.setdefault(ordering.level(c), []).append(c)
+    for codes in by_level.values():
+        codes.sort()
     levels = sorted(by_level)
     out: list[list[str]] = []
     for start in levels:
         window = [start + d for d in range(k)]
         if all(lv in by_level for lv in window):
-            chosen = [by_level[lv][0] for lv in window]
-            out.append([c for c in chosen for _ in (0, 1)])
+            for combo in itertools.product(*(by_level[lv] for lv in window)):
+                out.append([c for c in combo for _ in (0, 1)])
     return out
 
 

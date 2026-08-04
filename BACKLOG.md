@@ -9,27 +9,27 @@ view is a summary, not a replacement.
 ### NOW (running)
 
 No strength experiment is currently running; both machines are idle. The P0
-sampler validity/support gate is closed at `eea78d2`, so the fresh N=30
-confirmation and 512-state lead pilot are unblocked as screens. Posterior
-distribution fidelity remains P1: it gates interpreting offline ballot values
-as calibrated, but it is not the same claim as legality/support. The separate
-bounded action-semantics gate is **reopened**: the first committed property test
-stopped below the minimum six-card counterexample.
+sampler validity/support gate is closed at `eea78d2`, and the preregistered
+rewritten-sampler N=30 confirmation has completed positive. The 512-state lead
+pilot is now the next strength screen. Posterior distribution fidelity remains
+P1: it gates interpreting offline ballot values as calibrated, but it is not
+the same claim as legality/support. The bounded submitted-action semantics gate
+is closed after independent verification; a separate tied-code tractor
+proposal omission remains open below.
 
 ### NEXT (highest value first)
 
 | item | why it matters | gate |
 |---|---|---|
-| **1. Bounded action-semantics gate — FIX LANDED, AWAITING CODEX VERIFICATION** (I closed this once wrongly; the second closure is Codex's to make) | Under H-trump/rank 7, `C7 C7 D7 D7 H7 H7` decomposes into either `C7+H7` tractor plus `D7` pair or `D7+H7` tractor plus `C7` pair depending on list order. The 1,416-ordering test covered only sizes 2-4, and its cold-cache loop does not clear `Ordering._dcache` | Add the exact six-card witness, extend the exhaustive bound through the smallest tractor-plus-tied-pair cases, use a fresh `Ordering` or `_decompose_uncached`, then make physical decomposition/attempted-play semantics permutation-invariant or represent the decomposition explicitly. Verify pure and compiled paths. **Status 23:20:** witness reproduced and fixed by canonicalising the INPUT at both kernels' entry; 30,936 orderings over 302 multisets at sizes 2/3/4/6 invariant on both engines; memo key now the sorted multiset; 173 tests pass; golden histories unchanged. An earlier attempt canonicalising only the tied-level pair choice broke 8 parity tests and was reverted. NOT self-certified — Codex to confirm |
-| **2. Fresh rewritten-sampler N=30 confirmation** | The old-sampler confirmation was null, but one post-rewrite selection block measured N=30 minus N=10 at `+0.290 +/- 0.210`; its formal verdict was void because `mc-strong` was incorrectly used as the evaluator's null control | P0 is closed. Use fresh disjoint seeds, strict worlds, an actual null control, N=30-minus-N=10 as the declared primary, and N=5 only as a supporting dose diagnostic; never pool the selection block into confirmation |
-| **3. Clean 512-state lead-ballot pilot** | The corrected audit finds **51.2% structured lead omission vs 0.9% follows**, almost entirely lead singles. The provisional lead forfeit is larger than follows (2.96 vs 1.01), but selected-max bias means this is directional, not “half provably improvable.” V3 proved widening alone is insufficient | On deal-grouped DEV states balanced across original/late reservoirs, compare current, V3, random-fill, `MC-more`, fixed-14 contextual selection, and full-universe/high-compute using disjoint proposal/report worlds; predeclare fresh-world regret and oracle-best-recall gates |
-| **4. CALIB then paired online confirmation** | Offline regret has failed to predict online strength three times | Only the selected ballot arm advances; REPORT stays untouched until selection, then a fixed-size paired evaluator run on fresh seeds must clear arm-minus-MC and arm-minus-control bars with zero protocol failures |
-| **5. Clean relabel + learned proposal only after a ballot win** | Repeating 37.1M old-ballot evaluations or training v11pair on actions outside its training ballot cannot improve the champion | Relabel only disagreement/high-uncertainty states under the frozen winning `BallotSpec`; a learned proposer must beat quota, random, and `MC-more` controls before entering production search |
+| **1. Tied-code tractor proposal completeness** | `find_tractor_runs()` promises all runs but returns only the first code at a tied effective level. From the same `C7 C7 D7 D7 H7 H7` hand, list order decides whether MC sees `C7+C7+H7+H7` or `D7+D7+H7+H7`; these are distinct actions with distinct residual pairs | Enumerate the Cartesian code choices at every tied level in pure and compiled kernels, canonicalise the memo key/output order, and assert that the live MC ballot contains both actions independent of hand-list order. Measure ballot/work growth before adoption |
+| **2. Clean 512-state lead-ballot pilot** | The corrected audit finds **51.2% structured lead omission vs 0.9% follows**, almost entirely lead singles. The provisional lead forfeit is larger than follows (2.96 vs 1.01), but selected-max bias means this is directional, not “half provably improvable.” V3 proved widening alone is insufficient | On deal-grouped DEV states balanced across original/late reservoirs, compare current, V3, random-fill, `MC-more`, fixed-14 contextual selection, and full-universe/high-compute using disjoint proposal/report worlds; predeclare fresh-world regret and oracle-best-recall gates |
+| **3. CALIB then paired online confirmation** | Offline regret has failed to predict online strength three times | Only the selected ballot arm advances; REPORT stays untouched until selection, then a fixed-size paired evaluator run on fresh seeds must clear arm-minus-MC and arm-minus-control bars with zero protocol failures |
+| **4. Clean relabel + learned proposal only after a ballot win** | Repeating 37.1M old-ballot evaluations or training v11pair on actions outside its training ballot cannot improve the champion | Relabel only disagreement/high-uncertainty states under the frozen winning `BallotSpec`; a learned proposer must beat quota, random, and `MC-more` controls before entering production search |
 
 ### PRIORITY POLICY
 
-Close the bounded action-semantics gate while using the fleet for the two
-unblocked strength screens, then bias effort roughly
+Fix the bounded tied-code proposal omission before freezing the lead-pilot
+ballots, then bias effort roughly
 **70% strength / 20% correctness hardening / 10% simplification**. Do not start
 a broad cleanup campaign. Simplification moves ahead only when it removes a
 duplicate source of experimental truth, makes the next strength test cheaper,
@@ -81,10 +81,21 @@ reservoir states (38,399 accepted worlds, one counted rejection, zero invalid)
 and reached every legal world plus the real-deal witness in 120/120 exhaustively
 enumerated toy states. This closes P0, not posterior fidelity.
 
-**Action code identity fixed (2026-08-04).** Different card-code multisets no
-longer collapse merely because their effective levels tie. The separate
-`decompose()` permutation question remains a bounded test item above, not a
-reason to keep the known V3 bug open.
+**Rewritten-sampler N=30 confirmed (2026-08-04).** On 504 preregistered fresh
+clusters, N=30 minus N=10 was `+0.262 +/- 0.154`; N=30 minus the true null was
+`+0.310 +/- 0.153`, while null minus N=10 was `-0.048 +/- 0.162`. This closes
+the dose question on the evaluated pre-action-fix revision; it does not prove
+an RL edge or posterior fidelity.
+
+**Bounded submitted-action semantics verified (2026-08-04).** Different card-
+code multisets no longer collapse merely because their effective levels tie,
+and `decompose()` now canonicalises its input in pure and compiled kernels.
+The six-card `C7 C7 D7 D7 H7 H7` witness, 30,936 bounded reorderings, cold and
+warm caches, and the real failed-throw `Round.play` successor are invariant.
+Both full suites pass (173 passed, 2 skipped per engine). Sorting is sound for
+all arities by construction, and the multiset memo is per-`Ordering`. The open
+`find_tractor_runs()` item above is proposal completeness, not submitted-play
+interpretation.
 
 vleaf equals mc · vleaf with a pairwise head is INVALID not merely failed ·
 v10res was a no-op checkpoint · root-prior racing refuted by its own control ·
@@ -110,14 +121,13 @@ what is NEXT — if an item is done, delete it here rather than checking it off.
 
 ## AI / training
 
-**Current question (2026-08-04): can a better lead ballot plus correctly
-sampled MC beat deployed N=10 MC?** Direct v11pair beats SmartBot but has no
-seeded proof over MC; value-leaf, learned root-prior racing, threshold refits,
-and naive V3 widening all failed to produce a verified edge. Old-sampler N=30
-did not confirm; one post-rewrite selection block reopened it but was formally
-void and is not evidence for deployment. Latency is secondary to strength, so
-the next experiments test both clean determinization dose and fixed-budget
-versus widened/high-compute ballot selection.
+**Current question (2026-08-04): can a better lead ballot beat verified N=30
+MC?** The preregistered rewritten-sampler confirmation established N=30 over
+N=10 at `+0.262 +/- 0.154` on 504 fresh clusters with a flat null control.
+Direct v11pair beats SmartBot but has no seeded proof over MC; value-leaf,
+learned root-prior racing, threshold refits, and naive V3 widening all failed
+to produce a verified edge. Latency is secondary to strength, so the next
+experiment is fixed-budget versus widened/high-compute ballot selection.
 
 - [ ] **Measure and repair sampler posterior fidelity (P1).** Enumerate exact
       legal toy posteriors, then compare total-variation distance, per-card/seat
@@ -126,33 +136,15 @@ versus widened/high-compute ballot selection.
       uniform constrained draw. Also make reservoir reconstruction replay the
       stored declarations directly; all 1,600 P0 rows matched today, but that
       should be structural rather than dependent on current bot behavior.
-- [ ] **Bounded action-semantics gate — FIX LANDED, AWAITING CODEX VERIFICATION.**
-      NOT closed by me. I closed this once already on a test that could not
-      reach the defect, so the second closure is Codex's to make.
-      Codex's witness reproduced and is fixed in both engines. `C7 C7 D7 D7 H7
-      H7` vs `D7 C7 C7 D7 H7 H7` gave the same shape with a different physical
-      split; SIX cards are required to expose it, which is why my first
-      closure — bounded at sizes 2-4 — was wrong.
-      **Fix:** canonicalise the INPUT at both kernels' entry
-      (`combos._decompose_uncached`, `_fast._decompose_memo` and
-      `_fast.decompose_uncached`), so the decomposition is a function of the
-      multiset. Canonicalising only the tied-level pair choice was NOT enough:
-      `singles` ordering and component tie-breaking also inherit list order and
-      pure/fast inherited it differently at the missed steps, breaking eight
-      parity tests — that attempt was reverted before this one landed. The memo
-      key is now the sorted multiset, correct and a better hit rate; the old
-      caller-order contract is replaced by a stronger one and its test
-      rewritten.
-      **Evidence:** `tests/test_action_semantics.py` compares **30,936 distinct
-      orderings over 302 multisets** (sizes 2/3/4/6) for shape, physical split,
-      lead legality, recorded play and successor hand, warm and cold cache, on
-      both engines. Golden histories unchanged, so MC's play there is
-      unaffected.
-- [ ] **Confirm or close rewritten-sampler N=30.** P0 is closed; run fresh
-      disjoint seeds through `scripts/evaluate.py` with an actual null
-      control, strict sampling, N=30-minus-N=10 as the declared primary, and
-      N=5 only as a supporting diagnostic. Do not pool the positive selection
-      block into this result.
+- [ ] **Complete tied-code tractor proposals before freezing the lead pilot.**
+      `find_tractor_runs()` advertises all tractors but keeps only the first
+      physical code at a tied effective level. The live MC ballot therefore
+      offers exactly one of `C7+C7+H7+H7` and `D7+D7+H7+H7` from a hand that
+      holds both, selected by arbitrary hand-list order. Enumerate all distinct
+      code combinations in pure and compiled paths, make their ordering and
+      memo multiset-canonical, then measure candidate/work growth. This is a
+      proposal-completeness/strength bug, not a reason to reopen the submitted-
+      action engine gate.
 - [ ] **Run the 512-state ballot pilot described in the execution view.** Use
       at most one state per deal, a frozen DEV-only original/late split,
       named independent RNG streams, and per-world/covariance records. Keep

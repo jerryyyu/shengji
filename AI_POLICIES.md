@@ -391,6 +391,34 @@ motivated the widening (n=1052, v1 missing 15.3%) is in
 `docs_archive/sourcing-audit-2026-08-02.md`.
 
 
+## MC determinization scaling — N=30 CLEARS its preregistered bar (2026-08-04 15:45)
+
+The first claim today to clear a bar declared before the run. Codex
+preregistered the design in JOBS.md: six parallel shards, seeds
+93,000,000-93,000,251, strict sampling and required voids, **all six
+aggregated regardless of individual verdicts**. Two shards cleared on their own
+— aggregating only those would have been exactly the cherry-pick this protocol
+exists to prevent.
+
+| contrast | paired utility/seed | n | verdict |
+|---|---|---|---|
+| **N=30 - N=10 (PRIMARY)** | **+0.282 +/- 0.223** | 252 | **excludes 0** |
+| N=30 - N=5 | +0.591 +/- 0.238 | 252 | excludes 0 |
+| N=5 - N=10 (dose check) | -0.310 +/- 0.199 | 252 | excludes 0 |
+
+Win rates are monotone in the same order: N=30 53.3%, N=10 48.4%, N=5 43.5%.
+
+**The dose-response is what separates this from the six failed claims.** Each of
+those was a single contrast that correlated noise could produce. Here three
+doses order themselves monotonically and every interval excludes zero — a
+spurious effect does not usually arrange itself along a dose axis.
+
+**What it is NOT.** Not an ML result: it says more determinizations beat fewer,
+which matters only because production latency is unconstrained. Still a SCREEN
+by Codex's framing — `pair_void` is unenforced, so the belief model under all
+three arms is known-imperfect. A confirmation on fresh disjoint seeds (94M+) is
+running.
+
 ## What the high-N corpus actually taught us (2026-08-04 14:40)
 
 Measured across all 20,845 states, not selected ones.

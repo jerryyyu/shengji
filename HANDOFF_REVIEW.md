@@ -711,3 +711,70 @@ id on map/hand desync. That prevents a room broadcast from dying, but it is the
 same plausible-output fallback class we agreed to sweep; retain recovery only
 with a loud metric/warning and a strict invariant mode, otherwise it can hide
 the next id-map correctness bug.
+
+### Codex urgent follow-up — 2026-08-03 22:40 EDT (`b037749` + v11pair WIP)
+
+Two fresh correctness issues in the latest ML/frontend work:
+
+1. **`scripts/residual_eval.py` mixes units in its headline RMSE.** Teacher
+   `action_values` are raw points, while `net.value_candidates()` returns the
+   `/100`-normalised training scale. The script compares
+   `qt[i]-qt[0]` directly with `qp[i]-qp[0]`, so the documented 6.1995 versus
+   6.2112 and “0.2% improvement” are not meaningful. On the same 1,500-state
+   invocation used for the documented 1,491 valued states, multiplying `qp`
+   by 100 gives **5.5949 versus 6.2112**, about a 9.9% delta-RMSE improvement.
+   On 5,000 rows / 4,954 valued states I get **5.8105 versus 6.3460**. The
+   deployed decision remains weak (1.29% override; regret 2.130 versus 2.147
+   always-a0), but the representation signal is stronger than the new ledger
+   says. Fix the evaluator before using it as the v11 gate. The threshold sweep
+   itself is in normalized units and its action/regret calculations are okay.
+
+   Also, the evaluator advertises lead/follow/tractor-lock slices but implements
+   none; it skips lock rows and reports only aggregates. Its precision/recall is
+   binary “should override at all,” not “selected the teacher's action”; retain
+   that metric but label it and add exact-choice recall/regret. Finally, these
+   two shards are observed every training epoch, so split validation (checkpoint
+   and threshold selection) from a final untouched report shard.
+
+2. **The current uncommitted matched-ballot inference will raise immediately.**
+   `RLOverrideBot` inherits `SmartBot`, then calls
+   `_MC._candidates(self, rnd, seat)`. That method reads MCBot-only attributes
+   such as `RISKY_THROWS`, `WIDE_LEAD_BALLOT`, `WIDE_FOLLOW_BALLOT`, and
+   `MAX_CANDIDATES`; none exists on `RLOverrideBot` (confirmed all false via
+   `hasattr`). Extract one shared candidate function/config or use a properly
+   configured MCBot instance—do not invoke the unbound method on the wrong
+   class. Add a one-decision smoke test for every registered override alias.
+
+The v11pair training process itself can keep running: its pairwise training
+loss does not exercise `RLOverrideBot` inference. But its boundary weight is
+currently `abs(dt) < 2*margin`, centered at zero, while the deployed override
+boundary is `dt = +margin`; baseline rows and mildly negative alternatives are
+therefore upweighted too. This is not necessarily fatal, but it is not the
+declared “concentrated near +5 boundary” objective. Correct or explicitly
+record that deviation before interpreting the arm.
+
+Finally, the broken `chatRoom` patch identified in the preceding note is now
+committed in `b037749`, not merely uncommitted: the first room-bearing state
+clears the room-less pre-state chat messages. It needs prompt correction.
+
+#### Head moved again: `3dcad4b`
+
+Re-verified the new head: **14/14 socket tests pass in 3.10s** and the production
+web build passes. Those checks still cannot see the chat ordering regression or
+the override runtime failure above. `3dcad4b` committed the matched-ballot
+`torch_policy.py` code, so issue 2 is now in HEAD rather than WIP; fix it before
+trying to register/evaluate v11pair.
+
+The disconnect countdown is a reasonable UX addition, but it introduces
+`left_at = time.monotonic()` beside the existing `last_seen = loop.time()` for
+one lifecycle event. Consolidate on one monotonic timestamp so display and
+watchdog eligibility cannot drift. Also describe it as time until bot
+*eligibility*: the watchdog acts only when that disconnected seat is the
+current actor, so a non-acting seat can reach zero without a takeover occurring.
+This is lower priority than the committed chat regression, invite race, and
+explicit-leave quorum bug.
+
+Avoid committing the actively growing `ckpt_v11pair.pt.progress.jsonl` again;
+it already put 574 generated lines into `3dcad4b` and is dirty again while the
+job runs. Keep experiment outputs out of mixed source/UX commits or snapshot
+them once with an explicit result provenance commit.

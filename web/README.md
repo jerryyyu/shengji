@@ -38,7 +38,10 @@ Client → server messages worth knowing:
 - **`peek_room`** — who is sitting where, *without* joining; answered with
   `room_seats`. The lobby uses it to decide between joining straight through
   and showing the seat picker.
-- **`join_room`** with an optional `seat` — claims that specific bot seat. If
+- **`join_room`** with an optional `seat`. Reclaim by name is normalised
+  (trimmed, case-folded), so returning as "Amy " recovers the seat left by
+  "amy" instead of being told the room is full.
+- **`join_room`** seat semantics — claims that specific bot seat. If
   the seat was taken between the peek and the join, the server replies
   `seat_unavailable` and the client re-peeks rather than accepting a
   different one: **a different seat means a different team.**

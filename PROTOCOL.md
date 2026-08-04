@@ -35,7 +35,10 @@ Invalid actions get an `error` message; state is unchanged.
 
 ### `{type: "error", message: string, code?: string}`
 
-Codes: `room_not_found`, `room_full`, `seat_unavailable` (the seat was claimed
+Codes: `room_not_found`, `room_full` (every seat held by a CONNECTED human),
+`choose_seat` (seats exist but each belongs to a dropped player — the client
+should re-peek and offer the picker rather than auto-taking one),
+`seat_unavailable` (the seat was claimed
 between a peek and the join — the client should re-peek rather than accept a
 different seat, since a different seat means a different TEAM).
 `code` is set for machine-readable cases: `"room_not_found"` (the room no

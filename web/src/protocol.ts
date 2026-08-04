@@ -143,5 +143,10 @@ export interface RoomSeats {
   type: "room_seats";
   room: string;
   in_game: boolean;
-  seats: { seat: number; name: string; is_bot: boolean; connected: boolean; team: number }[];
+  seats: {
+    seat: number; name: string; is_bot: boolean; connected: boolean;
+    team: number;
+    /** Bot seat, OR a human who has dropped (a bot is covering it). */
+    claimable: boolean;
+  }[];
 }

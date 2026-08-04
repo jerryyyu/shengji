@@ -678,7 +678,10 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         "seats": [{"seat": i, "name": sd.name,
                                    "is_bot": sd.is_bot,
                                    "connected": sd.connected,
-                                   "team": i % 2}
+                                   "team": i % 2,
+                                   # What the lobby actually needs to know:
+                                   # a dropped human's seat can be taken too.
+                                   "claimable": sd.is_bot or not sd.connected}
                                   for i, sd in enumerate(target.seats)],
                     })
                 elif t == "join_room":
@@ -688,6 +691,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     # announced a stale bot's name (Codex case 8).
                     claimed_from_bot = False
                     took_from = ""
+                    took_over_human = False
                     code = str(msg.get("room", "")).upper()
                     target = rooms.get(code)
                     if target is None:
@@ -696,9 +700,15 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         continue
                     async with target.lock:
                         name = str(msg.get("name") or "Player")
+                        # Match on a normalised name: an exact-only match
+                        # locked people out of their own seat whenever they
+                        # came back on another device or retyped their name
+                        # with different capitalisation (Jerry, 2026-08-03).
+                        key = name.strip().casefold()
                         reclaim = next(
                             (s for s in target.seats
-                             if not s.is_bot and not s.connected and s.name == name),
+                             if not s.is_bot and not s.connected
+                             and s.name.strip().casefold() == key),
                             None)
                         if reclaim is not None:
                             me = reclaim
@@ -713,12 +723,21 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             # is_bot after every BOT_DELAY and exits cleanly
                             # when a seat stops being a bot.
                             want = msg.get("seat")
+                            # Claimable = bot seats, plus seats whose human has
+                            # dropped (a bot is covering those anyway). Without
+                            # the second group a 4-human game with one player
+                            # offline reported "room full" and NOBODY could
+                            # take the seat — not even that player under a
+                            # different name (Jerry, 2026-08-03).
                             botseats = [i for i, sd in enumerate(target.seats)
                                         if sd.is_bot]
+                            dropped = [i for i, sd in enumerate(target.seats)
+                                       if not sd.is_bot and not sd.connected]
+                            claimable = botseats + dropped
                             if isinstance(want, bool) or not (
                                     want is None or isinstance(want, int)):
                                 want = None          # malformed: treat as "any"
-                            if want is not None and want not in botseats:
+                            if want is not None and want not in claimable:
                                 # Two people can pick the same seat between the
                                 # peek and the join. Silently seating the loser
                                 # somewhere else puts them on a team they did
@@ -731,15 +750,27 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             pick = want if want is not None else (
                                 botseats[0] if botseats else None)
                             if pick is None:
-                                await send(ws, {
-                                    "type": "error", "code": "room_full",
-                                    "message": "Room is full — every seat is "
-                                               "taken by a human."})
+                                if dropped:
+                                    # Seats exist, but each belongs to someone
+                                    # who may be reconnecting: make the caller
+                                    # choose one deliberately.
+                                    await send(ws, {
+                                        "type": "error", "code": "choose_seat",
+                                        "message": "Every seat is taken, but "
+                                                   "a player is offline — pick "
+                                                   "their seat to take over."})
+                                else:
+                                    await send(ws, {
+                                        "type": "error", "code": "room_full",
+                                        "message": "Room is full — every seat "
+                                                   "is taken by a human."})
                                 continue
                             me = target.seats[pick]
-                            # Name the bot they replaced: "took bot 1's seat"
+                            # Name whoever they replaced: "took Bot 1's seat"
                             # says WHICH seat far better than "a bot's seat".
                             took_from = me.name
+                            took_over_human = not me.is_bot
+                            me.bot_announced = False
                             me.is_bot = False
                             me.name = name
                             target.log_event("seat_claimed", seat=pick,
@@ -763,8 +794,11 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                    if me.bot_announced else ""))
                             me.bot_announced = False
                         elif claimed_from_bot:
-                            chat_system(room,
-                                        f"{name} took {took_from}'s seat")
+                            chat_system(
+                                room,
+                                f"{name} took over for {took_from} (offline)"
+                                if took_over_human
+                                else f"{name} took {took_from}'s seat")
                         else:
                             chat_system(room, f"{name} joined")
                         kick_bots(room)      # remaining bot seats keep playing

@@ -339,3 +339,84 @@ def test_state_reports_takeover_countdown(client):
         st2 = srv.state_for(room, 0)
         assert next(p for p in st2["players"]
                     if p["seat"] == seat_b)["takeover_in"] is None
+
+
+def _four_humans(client, a):
+    """Room of 4 HUMANS mid-game — no bot seat anywhere."""
+    from shengji.api import server as srv
+
+    a.send_json({"type": "create_room", "name": "jerry"})
+    code = _drain(a, "room")["room"]
+    socks = []
+    for n in ("amy", "bo", "cy"):
+        w = client.websocket_connect("/ws").__enter__()
+        w.send_json({"type": "join_room", "room": code, "name": n})
+        _drain(w, "room")
+        socks.append(w)
+    a.send_json({"type": "start_game"})
+    _drain(a, "state", tries=60)
+    return code, srv.rooms[code], socks
+
+
+def test_dropped_human_seat_is_claimable_not_locked(client):
+    """A disconnected player's seat must never become unreachable."""
+    with client.websocket_connect("/ws") as a:
+        code, room, socks = _four_humans(client, a)
+        socks[0].__exit__(None, None, None)          # amy drops
+        assert not room.seats[1].connected and not room.seats[1].is_bot
+
+        # Peek must advertise the seat as claimable.
+        with client.websocket_connect("/ws") as p:
+            p.send_json({"type": "peek_room", "room": code})
+            seats = _drain(p, "room_seats")["seats"]
+        assert seats[1]["claimable"] and not seats[1]["is_bot"]
+        assert not seats[1]["connected"]
+
+        # A blind join is told to choose rather than being refused outright.
+        with client.websocket_connect("/ws") as q:
+            q.send_json({"type": "join_room", "room": code, "name": "newbie"})
+            err = _drain(q, "error")
+            assert err["code"] == "choose_seat"
+
+        # An explicit choice takes the seat over.
+        with client.websocket_connect("/ws") as r:
+            r.send_json({"type": "join_room", "room": code,
+                         "name": "newbie", "seat": 1})
+            st = _drain(r, "state", tries=60)
+            assert st["you"] == 1
+            assert len(st["hand"]) > 0, "took over a seat but got no hand"
+        for w in socks[1:]:
+            w.__exit__(None, None, None)
+
+
+def test_reclaim_is_case_and_space_insensitive(client):
+    """Coming back as 'Amy ' must reclaim the seat left by 'amy'."""
+    with client.websocket_connect("/ws") as a:
+        code, room, socks = _four_humans(client, a)
+        socks[0].__exit__(None, None, None)
+        with client.websocket_connect("/ws") as back:
+            back.send_json({"type": "join_room", "room": code, "name": " Amy "})
+            st = _drain(back, "state", tries=60)
+            assert st["you"] == 1, "did not reclaim the original seat"
+            assert room.seats[1].connected
+        for w in socks[1:]:
+            w.__exit__(None, None, None)
+
+
+def test_takeover_of_dropped_human_is_announced_as_such(client):
+    with client.websocket_connect("/ws") as a:
+        code, room, socks = _four_humans(client, a)
+        socks[0].__exit__(None, None, None)
+        with client.websocket_connect("/ws") as r:
+            r.send_json({"type": "join_room", "room": code,
+                         "name": "newbie", "seat": 1})
+            texts = []
+            for _ in range(40):
+                m = r.receive_json()
+                if m.get("type") == "chat":
+                    texts.append(m["text"])
+                elif m.get("type") == "state" and texts:
+                    break
+        assert any("took over for amy" in t for t in texts), texts
+        for w in socks[1:]:
+            w.__exit__(None, None, None)

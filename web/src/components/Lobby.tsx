@@ -30,14 +30,23 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const [seatChoice, setSeatChoice] = useState<RoomSeats | null>(null);
   useEffect(() => conn.subscribe((m: any) => {
     if (m?.type === "room_seats") {
+      const open = m.seats.filter((sd: any) => sd.claimable);
       const bots = m.seats.filter((sd: any) => sd.is_bot);
-      if (m.in_game && bots.length > 1) setSeatChoice(m);
-      else joinSeat(undefined, m.room);    // nothing to choose
+      // Offer the picker whenever more than one seat is open, or when the
+      // only open seat belongs to a dropped human — taking someone's seat
+      // should always be deliberate.
+      if (m.in_game && (open.length > 1 || (open.length === 1 && !bots.length))) {
+        setSeatChoice(m);
+      } else {
+        joinSeat(undefined, m.room);       // nothing to choose
+      }
       return;
     }
     // Someone took the seat between our peek and our join: reopen the
     // picker with fresh occupancy rather than leaving a dead-end toast.
-    if (m?.type === "error" && m.code === "seat_unavailable" && lastPeek.current) {
+    if (m?.type === "error"
+        && (m.code === "seat_unavailable" || m.code === "choose_seat")
+        && lastPeek.current) {
       conn.send({ type: "peek_room", room: lastPeek.current });
     }
   }), [name]);
@@ -118,21 +127,29 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
         <div className="lobby-card">
           <h2>Take a seat in {seatChoice.room}</h2>
           <p className="seat-hint">
-            Game in progress — pick a bot to replace. Seats 0 &amp; 2 are one
-            team, 1 &amp; 3 the other.
+            Game in progress — pick a seat to take. Seats 0 &amp; 2 are one
+            team, 1 &amp; 3 the other. A seat whose player has gone offline can
+            be taken over too; a bot is playing it in the meantime.
           </p>
           <div className="seat-grid">
             {seatChoice.seats.map((sd: RoomSeats["seats"][number]) => (
               <button
                 key={sd.seat}
-                className={"seat-option team" + sd.team + (sd.is_bot ? "" : " taken")}
-                disabled={!sd.is_bot}
+                className={"seat-option team" + sd.team + (sd.claimable ? "" : " taken")}
+                disabled={!sd.claimable}
                 onClick={() => joinSeat(sd.seat)}
               >
                 <span className="seat-num">Seat {sd.seat}</span>
-                <span className="seat-who">{sd.is_bot ? `${sd.name} (bot)` : sd.name}</span>
+                <span className="seat-who">
+                  {sd.is_bot ? `${sd.name} (bot)`
+                    : sd.connected ? sd.name : `${sd.name} (offline)`}
+                </span>
                 <span className="seat-team">Team {sd.team === 0 ? "A" : "B"}</span>
-                {sd.is_bot && <span className="seat-take">{you} sits here</span>}
+                {sd.claimable && (
+                  <span className="seat-take">
+                    {sd.is_bot ? `${you} sits here` : `${you} takes over`}
+                  </span>
+                )}
               </button>
             ))}
           </div>

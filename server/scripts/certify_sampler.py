@@ -191,38 +191,110 @@ def check_world(world, extra, rnd, seat, cons):
 
 # ------------------------------------------------------------ completeness
 
-def enumerate_legal(rnd, seat, cons, limit=20000):
-    """Every legal assignment of the unseen pool, for states small enough.
+def enumerate_legal(rnd, seat, cons, cap=60000):
+    """Every legal assignment of the unseen pool, by multiset combination.
 
-    Returns None when the space is too large to enumerate — completeness is
-    then only claimed on the states where it really was enumerated.
+    The first version permuted the pool, which is 479 million orderings for
+    twelve cards and simply never returned — so `enumerate_legal` silently
+    reported "too large" on every state and toy completeness read 0/0 while
+    looking implemented. Choosing each hand as a COMBINATION of the remaining
+    indices is the same set of worlds at a tractable size: C(12,4)*C(8,4) is
+    34,650, not 12!.
+
+    Returns None when the space exceeds `cap`, so completeness is claimed only
+    where it was genuinely exhausted.
     """
     mem = Memory(rnd, seat)
     pool = sorted(mem.unseen.elements())
     others = [s for s in range(4) if s != seat]
     sizes = [len(rnd.hands[s]) for s in others]
     kitty_slots = 0 if seat == rnd.banker else len(rnd.buried)
-    if len(pool) > 14 or sum(sizes) + kitty_slots != len(pool):
+    if sum(sizes) + kitty_slots != len(pool) or len(pool) > 14:
         return None
-    seen = set()
-    legal = set()
-    for perm in set(itertools.permutations(pool)):
-        if len(seen) > limit:
-            return None
-        seen.add(perm)
-        i = 0
-        world = {}
-        for s, n in zip(others, sizes):
-            world[s] = list(perm[i:i + n])
-            i += n
-        extra = list(perm[i:])
-        key = (tuple(sorted(tuple(sorted(v)) for v in world.values())),
-               tuple(sorted(extra)))
-        if key in legal:
-            continue
-        if not check_world(world, extra, rnd, seat, cons):
-            legal.add(key)
+
+    legal: set = set()
+    seen_shapes: set = set()
+
+    def rec(idx_left, i, world):
+        if len(legal) > cap or len(seen_shapes) > 20 * cap:
+            raise StopIteration
+        if i == len(others):
+            # Match what the SAMPLER returns as `extra`: the banker's own
+            # burial (which is not in its unseen pool), or the sampled kitty
+            # for anyone else. Building it from leftover pool gave the banker
+            # an empty kitty, so conservation rejected every world and the
+            # enumerator reported "too large" for a space of ninety.
+            extra = (sorted(rnd.buried) if seat == rnd.banker
+                     else sorted(pool[j] for j in idx_left))
+            # Seat-KEYED. Sorting the hands loses which seat holds which,
+            # and seats are not interchangeable — they carry different voids
+            # and caps. That collapsed 90 assignments to 9 shapes and let an
+            # illegal assignment mask the legal one behind the same key.
+            key = (tuple(sorted((k, tuple(sorted(v)))
+                                for k, v in world.items())),
+                   tuple(extra))
+            if key in seen_shapes:
+                return
+            seen_shapes.add(key)
+            if not check_world(world, extra, rnd, seat, cons):
+                legal.add(key)
+            return
+        for combo in itertools.combinations(sorted(idx_left), sizes[i]):
+            world[others[i]] = [pool[j] for j in combo]
+            rec(idx_left - set(combo), i + 1, world)
+        world.pop(others[i], None)
+
+    try:
+        rec(set(range(len(pool))), 0, {})
+    except StopIteration:
+        return None                 # genuinely too large to exhaust
+    if not legal:
+        # Distinct from "too large": zero legal worlds means the validator
+        # rejects even the real deal, which is a bug in the validator.
+        raise RuntimeError(
+            f"enumerated {len(seen_shapes)} assignments and found NONE legal; "
+            f"the real deal is legal by construction, so the validator is wrong")
     return legal
+
+
+def toy_states(n_want, seed0=880000, max_pool=7):
+    """Deep BANKER states, where the unseen pool is small enough to enumerate.
+
+    The banker knows its own burial, so its unseen pool is just the three other
+    hands — roughly twelve cards once each holds four. Non-banker seats always
+    carry the eight-card kitty on top, which puts them out of reach. Corpus rows
+    stop far too early to contain any of these, so they are constructed here;
+    that is what "exhaustively enumerable toy states" means, and it is a
+    completeness test, not a distribution claim.
+    """
+    made = 0
+    seed = seed0
+    while made < n_want and seed < seed0 + 4000:
+        seed += 1
+        game = Game(random.Random(seed))
+        rnd = game.start_round()
+        pol = [MCBot(seed=seed + 7), SmartBot(), MCBot(seed=seed + 11), SmartBot()]
+        try:
+            while rnd.phase == "deal":
+                s, _, _ = rnd.deal_next()
+                cs = pol[s].decide_declare(rnd, s)
+                if cs:
+                    rnd.declare(s, cs)
+            rnd.finalize_declare()
+            rnd.bury(rnd.banker, pol[rnd.banker].decide_bury(rnd, rnd.banker))
+            while rnd.phase == "play":
+                s = rnd.turn
+                if s is None:
+                    break
+                if s == rnd.banker:
+                    pool = sum(len(rnd.hands[x]) for x in range(4) if x != s)
+                    if pool <= max_pool:
+                        made += 1
+                        yield seed, rnd, s
+                        break
+                rnd.play(s, pol[s].decide_play(rnd, s))
+        except Exception:
+            continue
 
 
 def reachable(bot, rnd, seat, mem, targets, draws):
@@ -238,7 +310,8 @@ def reachable(bot, rnd, seat, mem, targets, draws):
         if got is None:
             continue
         hands, extra = got
-        key = (tuple(sorted(tuple(sorted(v)) for v in hands.values())),
+        key = (tuple(sorted((k, tuple(sorted(v)))
+                            for k, v in hands.items())),
                tuple(sorted(extra)))
         if key in targets:
             hit.add(key)
@@ -297,6 +370,8 @@ def main() -> None:
     ap.add_argument("--worlds", type=int, default=24)
     ap.add_argument("--min-ply", type=int, default=0)
     ap.add_argument("--toy-draws", type=int, default=4000)
+    ap.add_argument("--toy-states", type=int, default=40,
+                    help="constructed deep-banker states, exhaustively enumerated")
     ap.add_argument("--out", default="runs/logs/certify_sampler.json")
     args = ap.parse_args()
 
@@ -325,7 +400,7 @@ def main() -> None:
 
     bot = MCBot(seed=99)
     n_states = requested = accepted = rejected = n_bad = 0
-    toy_states = toy_complete = toy_worlds_missed = 0
+    toy_states_n = toy_complete = toy_worlds_missed = 0
     witness_states = witness_hit = witness_missing = 0
     bad_examples: list[str] = []
     t0 = time.time()
@@ -352,50 +427,51 @@ def main() -> None:
                         f"{os.path.basename(path)} seed {seed} "
                         f"ply {len(rnd.history)}: {bad[0]}")
 
-        # ---- completeness 1: exhaustive toy enumeration ----
-        legal = enumerate_legal(rnd, seat, cons)
-        if legal:
-            toy_states += 1
-            hit = reachable(bot, rnd, seat, mem, legal, args.toy_draws)
-            if hit == legal:
-                toy_complete += 1
-            else:
-                toy_worlds_missed += len(legal - hit)
-                if len(bad_examples) < 12:
-                    bad_examples.append(
-                        f"seed {seed}: sampler reached {len(hit)}/{len(legal)} "
-                        f"enumerated legal worlds")
-
-        # ---- completeness 2: the PLANTED WITNESS ----
-        # Only meaningful where the legal space is small enough that a draw
-        # could plausibly land on one specific world. On a full-size state the
-        # space is astronomically large, so "did not reach the real deal in
-        # 400 draws" is a property of the arithmetic, not of the sampler — my
-        # first attempt reported 0/25 and meant nothing by it.
-        real = {s: sorted(rnd.hands[s]) for s in range(4) if s != seat}
-        real_extra = sorted(rnd.buried) if seat != rnd.banker else []
-        if legal and not check_world(real, real_extra, rnd, seat, cons):
-            witness_states += 1
-            key = (tuple(sorted(tuple(sorted(v)) for v in real.values())),
-                   tuple(sorted(real_extra)))
-            if key not in legal:
-                witness_missing += 1     # validator and enumeration disagree
-            elif reachable(bot, rnd, seat, mem, {key}, args.toy_draws):
-                witness_hit += 1
-
         if n_states % 100 == 0:
             print(f"  {n_states} states, {accepted} worlds, {n_bad} invalid, "
                   f"{time.time()-t0:.0f}s", flush=True)
+
+    # ---- COMPLETENESS: constructed toy states, exhaustively enumerated ----
+    print("\n  toy completeness phase...", flush=True)
+    for seed, rnd, seat in toy_states(args.toy_states):
+        cons_t = constraints(rnd)
+        try:
+            legal = enumerate_legal(rnd, seat, cons_t)
+        except RuntimeError as exc:
+            bad_examples.append(f"toy seed {seed}: {exc}")
+            continue
+        if not legal:
+            continue
+        toy_states_n += 1
+        mem_t = Memory(rnd, seat)
+        hit = reachable(bot, rnd, seat, mem_t, legal, 60 * len(legal) + 600)
+        if hit == legal:
+            toy_complete += 1
+        else:
+            toy_worlds_missed += len(legal - hit)
+            if len(bad_examples) < 12:
+                bad_examples.append(
+                    f"toy seed {seed}: reached {len(hit)}/{len(legal)} "
+                    f"enumerated legal worlds")
+        # the real deal is one of the enumerated worlds; it must be reachable
+        real = {x: sorted(rnd.hands[x]) for x in range(4) if x != seat}
+        rkey = (tuple(sorted((k, tuple(sorted(v))) for k, v in real.items())),
+                tuple(sorted(rnd.buried) if seat == rnd.banker else ()))
+        if rkey in legal:
+            witness_states += 1
+            if rkey in hit:
+                witness_hit += 1
+        else:
+            witness_missing += 1
 
     print(f"\nstates {n_states:,}   requested {requested:,}   "
           f"accepted {accepted:,}   rejected {rejected:,}   "
           f"{time.time()-t0:.0f}s")
     print(f"VALIDITY      invalid worlds: {n_bad}")
-    print(f"COMPLETENESS  toy states fully reachable: {toy_complete}/{toy_states}"
+    print(f"COMPLETENESS  toy states fully reachable: {toy_complete}/{toy_states_n}"
           f"   enumerated worlds never produced: {toy_worlds_missed}")
     print(f"WITNESS       real deal reached in {witness_hit}/{witness_states} "
-          f"enumerable states  (skipped where the legal space is too large "
-          f"for reachability to mean anything)")
+          f"enumerated toy states")
     if witness_missing:
         print(f"  !! {witness_missing} states where the REAL deal was not in "
               f"the enumerated legal set — the enumerator is wrong")
@@ -408,13 +484,13 @@ def main() -> None:
     os.makedirs("runs/logs", exist_ok=True)
     result = {**prov, "states": n_states, "requested": requested,
               "accepted": accepted, "rejected": rejected, "invalid": n_bad,
-              "toy_states": toy_states, "toy_complete": toy_complete,
+              "toy_states": toy_states_n, "toy_complete": toy_complete,
               "toy_worlds_missed": toy_worlds_missed,
               "witness_states": witness_states, "witness_hit": witness_hit,
               "witness_missing": witness_missing,
               "examples": bad_examples,
-              "certified": bool(n_states and not n_bad and toy_states
-                                and toy_complete == toy_states
+              "certified": bool(n_states and not n_bad and toy_states_n
+                                and toy_complete == toy_states_n
                                 and not witness_missing
                                 and witness_hit == witness_states)}
     with open(args.out, "w") as fh:

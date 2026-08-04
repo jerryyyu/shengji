@@ -1,6 +1,6 @@
 # Backlog
 
-## EXECUTION VIEW — 2026-08-04 16:57 EDT
+## EXECUTION VIEW — 2026-08-04 20:40 EDT
 
 One table for "what is happening and what closes it". The detailed reasoning
 for each item lives in the sections below, which Codex also maintains — this
@@ -8,10 +8,12 @@ view is a summary, not a replacement.
 
 ### NOW (running)
 
-No strength experiment is currently validly running. The mini sampler screen
-finished, but its artifact does not establish the validity/completeness claims
-printed by the script; Air is still listed as running but has not been verified
-from this checkout. A sampler/certifier repair is in progress locally.
+No strength experiment is currently running; both machines are idle. The first
+independent sampler screen found and fixed a real declaration-pin/pair-cap
+defect, then re-ran clean for its implemented checks. It still does not meet
+the full validity, toy-completeness, or distribution-fidelity gates below. The
+512-state lead pilot is queued and a clean N=30 confirmation is newly reopened,
+but neither result may promote a policy before its stated gate holds.
 
 | item | where | gate that closes it |
 |---|---|---|
@@ -22,9 +24,10 @@ from this checkout. A sampler/certifier repair is in progress locally.
 | item | why it matters | gate |
 |---|---|---|
 | **1. Bounded action-semantics gate** | The unsound V3 effective-level equivalence is fixed, but the reported `decompose()` order dependence for tied-level trump pairs remains neither reproduced nor disproved | Exhaustive/metamorphic permutation test over bounded small hands; if it fails, make attempted-play semantics permutation-invariant or represent explicit decomposition |
-| **2. Clean 512-state lead-ballot pilot** | The corrected audit finds **51.2% structured lead omission vs 0.9% follows**, almost entirely lead singles. The provisional lead forfeit is larger than follows (2.96 vs 1.01), but selected-max bias means this is directional, not “half provably improvable.” V3 proved widening alone is insufficient | On deal-grouped DEV states balanced across original/late reservoirs, compare current, V3, random-fill, `MC-more`, fixed-14 contextual selection, and full-universe/high-compute using disjoint proposal/report worlds; predeclare fresh-world regret and oracle-best-recall gates |
-| **3. CALIB then paired online confirmation** | Offline regret has failed to predict online strength three times | Only the selected ballot arm advances; REPORT stays untouched until selection, then a fixed-size paired evaluator run on fresh seeds must clear arm-minus-MC and arm-minus-control bars with zero protocol failures |
-| **4. Clean relabel + learned proposal only after a ballot win** | Repeating 37.1M old-ballot evaluations or training v11pair on actions outside its training ballot cannot improve the champion | Relabel only disagreement/high-uncertainty states under the frozen winning `BallotSpec`; a learned proposer must beat quota, random, and `MC-more` controls before entering production search |
+| **2. Fresh rewritten-sampler N=30 confirmation** | The old-sampler confirmation was null, but one post-rewrite selection block measured N=30 minus N=10 at `+0.290 +/- 0.210`; its formal verdict was void because `mc-strong` was incorrectly used as the evaluator's null control | After the P0 validity gate, use fresh disjoint seeds, strict worlds, an actual null control, N=30-minus-N=10 as the declared primary, and N=5 only as a supporting dose diagnostic; never pool the selection block into confirmation |
+| **3. Clean 512-state lead-ballot pilot** | The corrected audit finds **51.2% structured lead omission vs 0.9% follows**, almost entirely lead singles. The provisional lead forfeit is larger than follows (2.96 vs 1.01), but selected-max bias means this is directional, not “half provably improvable.” V3 proved widening alone is insufficient | On deal-grouped DEV states balanced across original/late reservoirs, compare current, V3, random-fill, `MC-more`, fixed-14 contextual selection, and full-universe/high-compute using disjoint proposal/report worlds; predeclare fresh-world regret and oracle-best-recall gates |
+| **4. CALIB then paired online confirmation** | Offline regret has failed to predict online strength three times | Only the selected ballot arm advances; REPORT stays untouched until selection, then a fixed-size paired evaluator run on fresh seeds must clear arm-minus-MC and arm-minus-control bars with zero protocol failures |
+| **5. Clean relabel + learned proposal only after a ballot win** | Repeating 37.1M old-ballot evaluations or training v11pair on actions outside its training ballot cannot improve the champion | Relabel only disagreement/high-uncertainty states under the frozen winning `BallotSpec`; a learned proposer must beat quota, random, and `MC-more` controls before entering production search |
 
 ### PRIORITY POLICY
 
@@ -112,9 +115,11 @@ what is NEXT — if an item is done, delete it here rather than checking it off.
 **Current question (2026-08-04): can a better lead ballot plus correctly
 sampled MC beat deployed N=10 MC?** Direct v11pair beats SmartBot but has no
 seeded proof over MC; value-leaf, learned root-prior racing, threshold refits,
-naive V3 widening, and N=30 scaling all failed to produce a verified edge.
-Latency is secondary to strength, so the next experiment tests both fixed-
-budget selection quality and a widened high-compute ceiling.
+and naive V3 widening all failed to produce a verified edge. Old-sampler N=30
+did not confirm; one post-rewrite selection block reopened it but was formally
+void and is not evidence for deployment. Latency is secondary to strength, so
+the next experiments test both clean determinization dose and fixed-budget
+versus widened/high-compute ballot selection.
 
 - [ ] **Finish independent sampler certification.** The count-first allocator,
       void/pair constraints and declaration pins are implemented. Repair the
@@ -128,6 +133,11 @@ budget selection quality and a widened high-compute ceiling.
       tied-level trump hands and compare legality/decomposition/successor state.
       The card-code identity bug is fixed; either reproduce and fix the separate
       list-order problem or close it with a committed property test.
+- [ ] **Confirm or close rewritten-sampler N=30.** After the P0 validity gate,
+      run fresh disjoint seeds through `scripts/evaluate.py` with an actual null
+      control, strict sampling, N=30-minus-N=10 as the declared primary, and
+      N=5 only as a supporting diagnostic. Do not pool the positive selection
+      block into this result.
 - [ ] **Run the 512-state ballot pilot described in the execution view.** Use
       at most one state per deal, a frozen DEV-only original/late split,
       named independent RNG streams, and per-world/covariance records. Keep

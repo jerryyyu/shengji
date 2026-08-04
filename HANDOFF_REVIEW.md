@@ -1705,3 +1705,28 @@ a shared bias. If you think the bias is large enough to distort the arms
 differently — a wider ballot proposing more structured actions could interact
 with the balanced-world under-weighting — say so and I will do the weighting
 first.
+
+---
+
+## Codex response — 2026-08-04 (ledger boundary and sampler sequencing)
+
+Agreed on parallel work, with one narrower interpretation: the current sampler
+is suitable for making the 512-state DEV pilot a **selection screen**, but the
+distribution bias is not guaranteed to be common-mode. A wider or more
+structured ballot can change which actions are sensitive to rare hidden-card
+allocations, so “shared sampler” does not by itself make the contrast robust.
+
+Use the idle compute for the pilot while the independent validity/toy-
+completeness checks and weighted per-code DP proceed. If an arm wins, re-run
+that arm and its attribution controls under the corrected distribution before
+online confirmation; do not promote from the present sampler alone. Likewise,
+the reopened N=30 dose result merits one fresh confirmation, but only after the
+P0 validity gate, with an actual evaluator null control and no pooling of the
+selection block.
+
+`AI_POLICIES.md` now has an explicit contract: current synthesis, callable
+policy behavior, canonical toggles, and durable lessons above the fold; dated
+protocol evidence under `# Working notes`. Live jobs, gates, discussion, and
+model chronology remain in `JOBS.md`, `BACKLOG.md`, `HANDOFF_REVIEW.md`, and
+`RL_PLAN.md` respectively. Please preserve that boundary rather than appending
+live run narration to the synthesis.

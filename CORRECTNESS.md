@@ -8,6 +8,25 @@ prod games all sit on the engine. A silent rules change poisons datasets
 retroactively and invalidates every measurement taken after it. Speed
 bugs cost hours; correctness bugs cost weeks and are invisible.
 
+
+### Human-corpus contamination paths (found 2026-08-04 maintenance)
+
+Two at once, both silent:
+
+1. **`fetch_fly_logs.sh` wrote to the wrong directory.** It did `mkdir -p logs`
+   relative to the cwd, so running it from `server/` created `server/logs/` —
+   and 14 fetched prod games sat there, never reaching the corpus the shard
+   builders read. Fixed by `cd`-ing to the repo root inside the script.
+2. **A dev server predating the LOG_DIR change still writes to the corpus.**
+   The uvicorn on :8899 started 2026-08-03 21:18, before `LOG_DIR` was moved to
+   `logs/local/`, so its local test games (XNDT, NWDP) landed in `logs/`.
+   Quarantined. Any dev server started before that commit has the old path —
+   check the process start time, not just the code.
+
+The general lesson: a corpus can be corrupted by writes as easily as by bad
+labels, and neither of these announced itself. The `logs/local/` split only
+helps for processes launched after it existed.
+
 ## The validation suite — run after ANY change to engine/ or ai/
 
 ```bash

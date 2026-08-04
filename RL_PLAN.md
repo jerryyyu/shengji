@@ -795,8 +795,8 @@ offline result.
 | `rl_data/distill` | 36 shards / 158 MB / ~1.8M | original N=10 distillation | MCBot (pre-CONTROL_LEADS) | v4, v5, v6, v6.1 |
 | `rl_data/bc` | 35 shards / 160 MB / ~1.75M | SmartBot behaviour cloning, no values | SmartBot | ckpt_bc |
 | `rl_data/oracle` | 1 shard / 10 MB / ~322k | full-information states + outcomes | self-play | oracle value study (43-47%) |
-| `rl_data/human_v4` | 1 shard / **1,850 decisions** | live human play, current v2 ballots (v1-v3 superseded) | live humans | blends, agreement audits |
-| `../logs/*.jsonl` | 23 games | raw human corpus source, rebuildable in seconds. Local test games live in `logs/local/` and are NEVER mined | live play | audits, miner |
+| `rl_data/human_v5` | 1 shard / **2,061 decisions** from 77 rounds | live human play, current v2 ballots (v1-v4 superseded) | live humans | blends, agreement audits |
+| `../logs/*.jsonl` | 26 games | raw human corpus source, rebuildable in seconds. Local test games live in `logs/local/` (17) and are NEVER mined | live play | audits, miner |
 
 Two asymmetries still hold: the quality ladder bc < distill < n30 < gen-v4
 tracks net strength, and the human pile is ~1,000x smaller but the highest

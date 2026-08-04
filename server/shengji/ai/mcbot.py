@@ -401,15 +401,16 @@ class MCBot(SmartBot):
                     and len(kitty) == kitty_slots:
                 if not respect_voids:
                     # This world was only buildable by IGNORING observed voids,
-                    # i.e. it is impossible given the play history. Silently
-                    # accepted before, so "zero fallbacks" could never have
-                    # been proven (Codex, 2026-08-04). USED and REJECTED are
-                    # counted separately: one number that means either is the
-                    # kind of ambiguous instrumentation that keeps misleading
-                    # us.
-                    if os.environ.get("SHENGJI_STRICT_SAMPLING"):
-                        self.rejected_worlds += 1
-                        return None
+                    # i.e. it is impossible given the play history.
+                    #
+                    # Strict mode REFUSED these outright at first, which turned
+                    # out to break the bot: in tightly constrained late-round
+                    # states no void-respecting world exists at all, every
+                    # retry was rejected, and the search died with zero worlds
+                    # (2026-08-04). Refusing to model a state is not more
+                    # rigorous than modelling it imperfectly — it just moves
+                    # the failure. So the fallback is USED and COUNTED, and an
+                    # experiment reports the rate instead of asserting zero.
                     self.impossible_worlds += 1
                 return hands, (buried or kitty)
         return None

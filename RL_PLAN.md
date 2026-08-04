@@ -19,7 +19,11 @@ MPS). Toggle results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ## WHERE THINGS STAND — 2026-08-04 09:20 (read this first)
 
-**THE NET BEATS mc WHEN IT GUIDES THE SEARCH INSTEAD OF REPLACING IT.**
+**RETRACTED (10:40): the net does NOT beat mc.** The racing result below was
+reported as a win and did not replicate under the paired protocol — the random
+control outscored it. Detail in section 1. The standing goal is NOT met.
+
+Previously claimed, now withdrawn:
 `mc-race4-v11pair` — the net scores the ballot, the best 4 candidates survive
 (candidate 0 always kept), and the SAME rollout budget resolves those four
 instead of all six — beats mc **55.2%** over 1,700 rounds across three
@@ -127,59 +131,44 @@ defect according to its recorded `teacher_git`. Full write-up:
 
 ## STATE OF PLAY (2026-08-04, day 5)
 
-### 1. ROOT-PRIOR RACING — the arm that beats mc
+### 1. ROOT-PRIOR RACING — RETRACTED: did not replicate (2026-08-04 10:40)
 
-`mc-race4-v11pair`: the net scores mc's ballot, the top 4 candidates survive
-(the heuristic's own pick always kept), and mc's rollout budget resolves those
-four instead of all six.
+I reported this as beating mc. **The paired confirmation refutes it**, and the
+claim is withdrawn.
 
-| block | seeded | vs mc |
+The confirmation ran all three arms on the SAME 250 mirrored deals, with a
+manifest, per-seed records, and paired level utility clustered by seed — the
+protocol Codex asked for:
+
+| arm | win% vs mc | paired level utility/seed |
 |---|---|---|
-| 96M / 97.5M / 98.5M | no | 56.2 / 55.0 / 54.5% |
-| 10.1M / 10.2M | **yes** | 53.0 / 55.5% |
-| **seeded pooled** | | **651-549 = 54.2%, CI [51.4, 57.1]** |
-| **all five** | | **1589-1311 = 54.8%, n=2900, CI [53.0, 56.6]** |
-| **CONTROL — random prune to 4** | | **249-251 = 49.8%** |
+| race4 (net prior) | 49.8% [45.4, 54.2] | **−0.012 ± 0.209** |
+| rand4 (RANDOM prune, the control) | 55.4% [51.0, 59.7] | +0.188 ± 0.224 |
+| mcref (mc vs mc, sanity) | 49.6% [45.2, 54.0] | 0 by construction |
 
-The control is what makes it attributable: pruning to the same size at random
-is a tie, so the gain is the net's ordering, not the reallocation.
+**The control outscored the treatment.** In the screen it was the reverse
+(race4 54.8% over 2,900 rounds, control 49.8% over 500). Both arms moved about
+five points and swapped places, on a harness whose mc-vs-mc arm sits correctly
+at 49.6%.
 
-**Cost: ~1.06x mc's rollouts, 1.08x its search seconds** — roughly equal
-compute, NOT the 0.85x first reported (that came from three hand-picked
-rounds; the world-count formula rounds upward and floors at BASE_N).
+**What that means.** Block-to-block variance is far larger than the binomial
+intervals imply, because rounds inside a mirrored pair and inside a seed
+cluster are correlated — exactly Codex's objection that Wilson treats them as
+independent. Five blocks agreeing at 54-56% felt like reproduction; it was five
+draws from a distribution wide enough to produce that by luck. The paired
+statistic, which is the one that respects the clustering, puts race4 at
+−0.012 ± 0.209: a tie.
 
-**Why this worked after five levers failed.** Distilling a policy from mc
-trains it on mc's own preferences, so it inherits mc's forfeit and caps at mc
-(1m: mc N=10 gives up ~2.8 points per consequential decision against a
-240-world reference). A PRIOR does not have to beat the search — it only has to
-beat uniform at ordering candidates, and then the search decides with more
-samples per option. The net's top-4 contains the reference-best action 87.2% of
-the time.
+**Status: REJECTED as a strength claim.** Not "promising", not "needs more n" —
+the honest reading is that nothing here beats mc, and the standing goal is NOT
+met. If the idea is revisited it starts from scratch with the paired protocol
+and a preregistered n, and any screen that disagrees with a paired
+confirmation loses.
 
-**Open:** a paired confirmation (all arms on the same deals, manifest,
-per-seed records) is running; Codex's remaining objection is that the control
-shared one RNG stream for pruning and belief sampling. No pool Elo yet.
-
-
-### Findings so far (each cost real compute; details in
-`docs_archive/rl-plan-experiments-1b-1o.md`)
-
-| # | Question | Answer |
-|---|---|---|
-| 1b | Flywheel: train on hybrid-teacher data, get a better hybrid? | **No** |
-| 1c | More epochs? | Strength peaks near epoch 8 |
-| 1d | Are noisy labels the binding constraint? | Teacher self-agrees 78.5%; ~19 points of signal remain recoverable |
-| 1e | Is model capacity or the optimiser binding? | **No** — fits clean labels at 99.6% |
-| 1f | Does a better VALUE HEAD make a better hybrid? | **No** — v7w 60% / v9warm 53% / v9scratch 48%; the best is the OLDEST |
-| 1g | Does the banker knowing its own burial help? | **No** — 49.7%, CI [44.0, 55.3]. Kept as correctness only |
-| 1h | Residual distillation (v10res) | Checkpoint was a NO-OP (overrode 1.3% where the teacher overrode 15%); the idea was untested, not refuted |
-| 1i | Override done correctly (v11pair) | **Beats SmartBot 57.7%** (n=480, reproduced); level with mc |
-| 1j | vleaf using the pairwise head | 32.5% — but INVALID as a leaf test: a pairwise head has no identified cross-state scale |
-| 1k | Stakes-gated search | 53.3% screen; FAILS its offline gate — candidate count captures most of the signal |
-| 1l | Does the gate beat trivial alternatives offline? | Beats random, never beats candidate-count by the required margin |
-| 1m | How much does mc(N=10) leave on the table? | **~2.8 points per consequential decision** vs a 240-world reference — the LABEL CEILING |
-| 1n | Does one-ply high-N regret predict online strength? | **No** — an offline gain reversed to 47.0% online. Offline regret may only REJECT |
-| 1o | Net as ROOT PRIOR (mc-race4) | **Beats mc 54.8%** over 2,900 rounds; random-prune control 49.8% |
+**The lesson is the one this project keeps re-learning at increasing cost.**
+The vleaf 60% headline died the same way, the v11 52% died the same way, and I
+still treated five consistent blocks as evidence rather than as five
+correlated draws. Consistency across blocks is not independence.
 
 ### 2. Value-leaf hybrid: CLOSED — equal to mc (50.4%, n=1200), never stronger
 

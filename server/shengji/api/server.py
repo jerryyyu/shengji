@@ -15,6 +15,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 
 import os
+import secrets
 
 from ..ai.heuristic import HeuristicBot
 from ..ai.registry import make_bot
@@ -56,6 +57,16 @@ class Seat:
     queue: asyncio.Queue | None = None   # outbound messages; writer task drains
     writer: asyncio.Task | None = None
     last_seen: float = 0.0               # loop time of last disconnect
+    # Connection GENERATION. A dropped socket's `finally` can run long after a
+    # newer socket has resumed the seat; without this the old cleanup detaches
+    # the LIVE connection and strands the player (Codex ship gate P0-1).
+    # Every attach bumps it; a detach only applies to the generation it owns.
+    gen: int = 0
+    # Opaque resume token: names are not identity. Two people called "jerry",
+    # or one person on two devices, must not be able to seize each other's
+    # seat, and a returning player must be able to resume even while their
+    # stale socket is still open.
+    token: str = field(default_factory=lambda: secrets.token_urlsafe(12))
 
 
 @dataclass
@@ -152,6 +163,13 @@ def trick_json(t) -> dict | None:
     return d
 
 
+def _controller(room: Room, seat: int) -> str:
+    sd = room.seats[seat]
+    if sd.is_bot:
+        return "bot"
+    return "human" if sd.connected else "bot_cover"
+
+
 def _takeover_in(room: Room, seat: int) -> float | None:
     """Seconds before the bot plays for a disconnected human (None if N/A)."""
     sd = room.seats[seat]
@@ -215,6 +233,15 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
             # Clients tick it down locally: broadcasts are event-driven, not
             # per-second, and an absolute time would need clock agreement.
             "takeover_in": _takeover_in(room, s),
+            # Explicit three-way state instead of inferring it from is_bot:
+            #   "human"     — a connected person is playing
+            #   "bot"       — a permanent bot seat
+            #   "bot_cover" — a bot covering a human who dropped
+            "controller": _controller(room, s),
+            # Seconds the absent owner keeps the right to reclaim. After it
+            # expires anyone may claim the seat.
+            "reserved_for": (room.seats[s].name
+                             if _controller(room, s) == "bot_cover" else None),
         } for s in range(4)],
         "hand": hand,
         "levels": list(game.levels),
@@ -647,6 +674,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
     await ws.accept()
     room: Room | None = None
     me: Seat | None = None  # seat OBJECT — indexes shift when lobby seats leave
+    my_gen = 0              # connection generation this socket owns
     try:
         while True:
             msg = await ws.receive_json()
@@ -681,7 +709,10 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                    "team": i % 2,
                                    # What the lobby actually needs to know:
                                    # a dropped human's seat can be taken too.
-                                   "claimable": sd.is_bot or not sd.connected}
+                                   "claimable": sd.is_bot or not sd.connected,
+                                   "controller": ("bot" if sd.is_bot else
+                                                  "human" if sd.connected
+                                                  else "bot_cover")}
                                   for i, sd in enumerate(target.seats)],
                     })
                 elif t == "join_room":
@@ -704,12 +735,24 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         # locked people out of their own seat whenever they
                         # came back on another device or retyped their name
                         # with different capitalisation (Jerry, 2026-08-03).
-                        key = name.strip().casefold()
-                        reclaim = next(
-                            (s for s in target.seats
-                             if not s.is_bot and not s.connected
-                             and s.name.strip().casefold() == key),
-                            None)
+                        # Identity order: TOKEN first (the only real identity;
+                        # it also lets a player resume while their stale socket
+                        # is still open — the newest connection wins), then a
+                        # normalised name among DISCONNECTED seats.
+                        tok = msg.get("token")
+                        reclaim = None
+                        if isinstance(tok, str) and tok:
+                            reclaim = next(
+                                (s for s in target.seats
+                                 if not s.is_bot and secrets.compare_digest(
+                                     s.token, tok)), None)
+                        if reclaim is None:
+                            key = name.strip().casefold()
+                            reclaim = next(
+                                (s for s in target.seats
+                                 if not s.is_bot and not s.connected
+                                 and s.name.strip().casefold() == key),
+                                None)
                         if reclaim is not None:
                             me = reclaim
                         elif len(target.seats) < 4 and target.game is None:
@@ -777,7 +820,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                              name=name, bot=False)
                             claimed_from_bot = True
                         room = target
-                        _attach(room, me, ws)
+                        my_gen = _attach(room, me, ws)
                         if reclaim is not None:
                             chat_system(
                                 room,
@@ -821,7 +864,12 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             if room.cleanup_task is None or room.cleanup_task.done():
                                 room.cleanup_task = asyncio.create_task(
                                     cleanup_room(room))
-                        else:
+                        # Explicit leave must re-check the round-end quorum
+                        # exactly like an abrupt disconnect: the last unready
+                        # player LEAVING used to deadlock everyone else while
+                        # the same player DROPPING advanced the round
+                        # (Codex ship gate P0-4).
+                        elif not await advance_if_all_ready(room):
                             await broadcast(room)
                 await send(ws, {"type": "left"})
                 room, me = None, None
@@ -849,7 +897,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
             async with room.lock:
                 if not me.is_bot and me.connected:
                     chat_system(room, f"{me.name} disconnected")
-                _detach(me, room)
+                _detach(me, room, my_gen)
                 if not any(x.connected for x in room.seats if not x.is_bot):
                     if room.cleanup_task is None or room.cleanup_task.done():
                         room.cleanup_task = asyncio.create_task(cleanup_room(room))
@@ -859,7 +907,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
 
 
 
-def _attach(room: Room, seat: Seat, ws: WebSocket) -> None:
+def _attach(room: Room, seat: Seat, ws: WebSocket) -> int:
     """Bind a socket to a seat as ONE transition (caller holds the room lock).
 
     Membership used to be updated inline at each call site — connected flag,
@@ -871,21 +919,29 @@ def _attach(room: Room, seat: Seat, ws: WebSocket) -> None:
     if room.cleanup_task is not None:
         room.cleanup_task.cancel()
         room.cleanup_task = None
+    if seat.writer is not None:      # displace any older live socket
+        seat.writer.cancel()
+    seat.gen += 1
     seat.ws, seat.connected = ws, True
     seat.left_at = None
     seat.queue = asyncio.Queue(maxsize=128)
     seat.writer = asyncio.create_task(_writer(ws, seat.queue))
+    enqueue(seat, {"type": "resume", "token": seat.token, "gen": seat.gen})
     for entry in room.chat:            # scrollback, before the first state
         enqueue(seat, {"type": "chat", **entry})
+    return seat.gen
 
 
-def _detach(seat: Seat, room: Room | None = None) -> None:
+def _detach(seat: Seat, room: Room | None = None,
+            gen: int | None = None) -> None:
     """Unbind a websocket from a seat (caller holds the room lock).
 
     Also drops the seat from the round-end quorum: a player who leaves must
     stop being waited on, or everyone else sits on a browser that is never
     coming back.
     """
+    if gen is not None and gen != seat.gen:
+        return                       # a newer socket owns this seat now
     if room is not None and seat in room.seats:
         room.ready.discard(room.seats.index(seat))
     seat.ws, seat.connected = None, False
@@ -893,7 +949,10 @@ def _detach(seat: Seat, room: Room | None = None) -> None:
     if seat.writer is not None:
         seat.writer.cancel()
     seat.writer, seat.queue = None, None
-    seat.last_seen = asyncio.get_event_loop().time()
+    try:                     # watchdog clock; unavailable off-loop (tests)
+        seat.last_seen = asyncio.get_event_loop().time()
+    except RuntimeError:
+        pass
 
 
 @app.get("/healthz")

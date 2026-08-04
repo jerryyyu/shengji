@@ -1,12 +1,7 @@
+export type { ChatMsg } from "../protocol";
+import type { ChatMsg } from "../protocol";
 import { useEffect, useRef, useState } from "react";
 import { conn } from "../ws";
-
-export interface ChatMsg {
-  seat: number;
-  name: string;
-  text: string;
-  t: number;
-}
 
 /** Toggled overlay, not a side panel: in landscape the table already fills
  *  the screen, so chat slides over it and closes again. Unread count lives

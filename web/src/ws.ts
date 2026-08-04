@@ -25,6 +25,7 @@ const WS_URL = wsUrl();
 
 const NAME_KEY = "shengji.name";
 const ROOM_KEY = "shengji.room";
+const TOKEN_KEY = "shengji.token";   // opaque seat identity, per room
 
 export function getSavedName(): string {
   return localStorage.getItem(NAME_KEY) ?? "";
@@ -40,6 +41,18 @@ export function saveRoom(room: string): void {
 }
 export function clearSavedRoom(): void {
   localStorage.removeItem(ROOM_KEY);
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+/** Opaque resume token for our seat. Names are NOT identity: two players
+ *  called "jerry", or one player on two devices, must not be able to seize
+ *  each other's seat, and a returning player must be able to resume even
+ *  while a stale socket of theirs is still open. */
+export function getResumeToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+export function saveResumeToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
 }
 
 type MsgListener = (msg: ServerMsg) => void;
@@ -129,6 +142,9 @@ class Connection {
       if (typeof room === "string" && room !== this.chatRoom) {
         this.chatRoom = room;      // room changed: the old log is not ours
         this.chatLog = [];
+      }
+      if ((msg as any)?.type === "resume" && (msg as any).token) {
+        saveResumeToken((msg as any).token as string);
       }
       if ((msg as any)?.type === "chat") {
         this.chatLog.push(msg as any);

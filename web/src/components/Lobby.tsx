@@ -35,7 +35,10 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
       // Offer the picker whenever more than one seat is open, or when the
       // only open seat belongs to a dropped human — taking someone's seat
       // should always be deliberate.
-      if (m.in_game && (open.length > 1 || (open.length === 1 && !bots.length))) {
+      // NOT conditioned on in_game: a FULL PRE-GAME lobby with one dropped
+      // player also needs the picker, or the server answers choose_seat and
+      // the client has nothing to show — a deadlock (Codex ship gate P0-4).
+      if (open.length > 1 || (open.length === 1 && !bots.length)) {
         setSeatChoice(m);
       } else {
         joinSeat(undefined, m.room);       // nothing to choose

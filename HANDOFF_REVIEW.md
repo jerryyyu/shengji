@@ -1139,3 +1139,194 @@ equal wall-clock: (A) act with v11 when calibrated, search uncertainty; (B)
 search predicted high-stakes states, otherwise SmartBot. The offline table
 suggests B may be cheaper, but only live call-rate/strength measurements can
 decide.
+
+## Codex frontend ship gate — 2026-08-03 23:18 EDT
+
+Jerry asked for actionable criteria rather than another open-ended frontend
+review. **Current result: NO-GO.** The UI looks good, but the release is not
+ready until every P0 checkbox below has an automated proof. These are
+observable contracts; the named fields are an implementation suggestion, not
+a demand for a large refactor.
+
+### P0 — all required before deployment
+
+- [ ] **Overlapping reconnect is generation-safe.** Give a player an opaque
+  room-resume token (name matching alone is not identity), and make the newest
+  connection authoritative. Test with real sockets: A joins and starts a
+  game; A2 resumes *before A closes*; A2 receives the same seat, hand, and card
+  ids; then A closes; A2 remains attached and can make the next legal action.
+  Repeat the race at least 25 times. An old socket's `finally` must only detach
+  the connection generation it owns. A rejected resume must produce a coded
+  response that causes the open client to recover, not remain stranded until
+  another network reconnect.
+
+- [ ] **Owner, controller, and reservation have explicit semantics.** The
+  recommended house contract is: abrupt disconnect switches the controller to
+  a bot (using the ordinary short bot-action delay) while reserving the owner
+  token for 30 seconds; that token can reclaim during the grace period. After
+  grace, another player may claim it. Explicit `leave_room` relinquishes the
+  owner immediately, enables bot control immediately, and makes the seat
+  claimable. Expose enough wire state (`controller` and `reserved_until`, or an
+  equivalent) for the UI to distinguish permanent bot, bot covering a human,
+  and connected human. Do not encode all three by inference from `is_bot`.
+
+- [ ] **Takeover/reclaim cannot double-play.** With an injected clock (no
+  30-second sleeps), cover: disconnect on the current turn; reconnect before
+  grace; reconnect after a bot has played; claim exactly as a bot task is
+  pending; and explicit leave on the current turn. Each turn advances exactly
+  once, a canceled/stale bot task never plays, and the reconnecting player sees
+  the same remaining hand. These must be server tests, not only UI smoke tests.
+
+- [ ] **Pre-game and round-end membership cannot deadlock.** Before a game,
+  either remove disconnected seats immediately or show the claim picker even
+  when `in_game=false`; a full lobby with one dropped player must not enter the
+  current peek/join/`choose_seat` loop. Add tests for a full pre-game lobby
+  drop and a not-yet-full lobby drop. At round end, both explicit leave and
+  abrupt disconnect must remove the leaver from the ready quorum and invoke
+  advancement; test the final unready player leaving and assert the next round
+  starts exactly once. Duplicate leave/close events must be idempotent.
+
+- [ ] **Chat uses a room-keyed snapshot plus identified live events.** On
+  attach, send one `chat_history {room, through_id, messages}` snapshot and
+  guarantee that subsequent `chat {room, id, ...}` events have increasing ids.
+  The client replaces that room's snapshot and deduplicates live ids. Client
+  tests must cover history arriving before `<Table>` mounts, same-room
+  reconnect (no duplicates), leaving A then joining B (no A leakage), and a
+  live message on the snapshot boundary (neither lost nor doubled). The
+  current room-less replay followed by `chatRoom` clearing does not pass.
+
+- [ ] **Connection intent is deterministic per socket generation.** Define
+  precedence as invite URL > an explicit pending user action > saved resume.
+  Permit the expected multi-message seat-choice transaction, but only one
+  active membership transaction per generation; ignore responses belonging to
+  an older generation. With a fake WebSocket, test: saved room plus a different
+  invite; manual create/join during reconnect; `choose_seat` continuation; and
+  `room_not_found` clearing the saved resume rather than retrying forever.
+
+- [ ] **The TypeScript protocol is closed and exhaustive.** Put
+  `RoomSeats`, `ChatHistory`, and `ChatMsg` (including coded errors) in
+  `ServerMsg`; remove `any` message subscribers; and use an exhaustive message
+  switch or equivalent compile-time check. Fix the `joinSeat` dependency
+  warning because it is correctness-relevant. Fast Refresh-only warnings may
+  remain for this release.
+
+- [ ] **There is client-side regression coverage.** Add a non-watch
+  `npm test` command (Vitest or equivalent) containing the chat and connection
+  intent cases above. The existing 17 wire tests cannot observe the
+  TypeScript buffering and reconnect bugs. Server lifecycle tests should use
+  real TestClient sockets and controlled time. Tests must fail against the
+  known-bad behavior before their fixes are accepted.
+
+### Final go/no-go run
+
+Ship only from a clean source tree at a named commit after all of these pass:
+
+```text
+cd server && uv run pytest -q
+cd server && env SHENGJI_FAST=1 uv run pytest -q
+cd web && npm test
+cd web && npm run lint
+cd web && npm run build
+```
+
+Then do one multi-tab sanity run: create a room, start with humans plus bots,
+refresh the acting player with the old tab still alive, close the old tab,
+disconnect/reclaim another player, explicitly leave on a turn, cross a round
+boundary, and leave A/join B while checking chat isolation. The run is a
+**no-go** on any stuck turn, repeated membership request, duplicate/missing
+chat line, console exception, or unexpected server traceback. Record the
+commit SHA and command results here; any subsequent lifecycle/protocol change
+invalidates the sign-off and reruns the gate.
+
+### Allowed follow-ups (not ship blockers)
+
+Persistent chat across a server restart, full account authentication beyond
+the opaque local resume token, exact countdown wording/animation, Fast
+Refresh-only lint warnings, and a broader connection/reducer refactor may
+follow. They must not be used to defer any P0 behavior or test above.
+
+## Request to Claude — staged v11pair + MC explorations (2026-08-03 23:18 EDT)
+
+Jerry wants us to actively explore how v11pair and MC can complement each
+other. Please run this as a staged Pareto study, not as one more unconstrained
+hybrid. The contract matters: v11pair identifies **within-state action
+differences**. Its maximum delta may indicate that a decision has stakes, but
+does not by itself measure epistemic confidence, and it does not identify an
+absolute value across leaf states.
+
+### Phase 0 — make the experiment valid
+
+1. Fix the public factory seeding issue in the preceding urgent note and add a
+   repeatability test through the exact `play_pairing` factory path.
+2. Freeze the v11 checkpoint hash, ballot policy/version, Smart baseline, MC
+   settings, engine SHA, and calibration/report seed ranges in one manifest.
+   Persist one record per deal seed and flip.
+3. Instrument policy-local `net_calls`, `mc_calls`, candidate count, chosen
+   arm, decision latency, and MC rollouts. Do not infer gated-policy time from
+   a separate MC-vs-MC run.
+4. Quarantine `REGISTRY["mc-vleaf-v11pair"]`. Registering it currently makes an
+   implementation-invalid use look supported: pairwise training leaves the
+   cross-state additive offset unidentified, while `MCValueLeaf` compares
+   values across states/worlds.
+
+### Phase 1 — offline screen before duels
+
+On a frozen untouched state set with substantially higher-N MC labels, report:
+
+- exact teacher-action recall and regret for v11, not merely “override exists”;
+- teacher-best coverage for candidate 0 + v11 top-K, K=1/2/4/8;
+- regret and MC-call rate for thresholds fitted on calibration A and reported
+  once on B, with lead/follow, candidate-count, score-bracket, and
+  tractor/throw slices;
+- v11 stakes-gate versus a random gate and simple gates (candidate count,
+  lead/follow, score proximity) at the **same MC-call rate**. If those cheap
+  gates tie it, the network is not earning its inference cost;
+- stability across at least three data/deal seed blocks.
+
+Do not call a large v11 delta “confidence.” If we want an uncertainty-gated
+arm, obtain an actual uncertainty proxy—small checkpoint ensemble,
+out-of-distribution score, or calibrated error model—and validate that error
+decreases by bucket on B.
+
+### Phase 2 — online arms at matched cost
+
+Keep full MC, SmartBot, and direct v11pair as anchors. Then compare:
+
+1. **Stakes-first gate (current detector idea):** Smart on low predicted
+   opportunity; full MC on high-opportunity states.
+2. **Search-on-uncertainty:** direct v11 only where a separately validated
+   confidence proxy is reliable; MC elsewhere. Do not implement this by merely
+   reversing the delta threshold.
+3. **Root prior with safe racing:** retain candidate 0, give every candidate a
+   small rollout floor, then use v11 top-K/ranking to allocate the remaining
+   fixed total rollout or wall-clock budget. Test hard top-K pruning only after
+   offline teacher-best coverage shows it is safe.
+4. **Active-label loop:** use disagreement/high predicted regret to choose
+   states for high-N MC relabelling, retrain the pairwise head, and evaluate on
+   an untouched chronological report block. This may be the highest-value way
+   for MC to improve v11 without paying search cost on every live decision.
+
+For arms 1–3, sweep budgets rather than one magic setting and plot strength
+against mean and p95 decision latency. Use identical deal seeds/world seeds,
+equal total rollout/time budgets, clustered paired inference, round win plus
+level utility, and timeouts/fallback counts. Pre-register the calibration,
+screen, confirmation sizes, and a non-inferiority margin before reading the
+confirmation block; only promote a statistically defensible Pareto point.
+
+### Phase 3 — bounded lower-priority probes
+
+- **v11 as the simulated rollout actor** is semantically valid, unlike using
+  it as the leaf, but repeated inference compounds policy errors and previously
+  cost roughly two orders of magnitude. First profile a single root decision
+  with Torch and NPZ. Continue only if a mixed policy (Smart by default, v11
+  override on a small subset) is remotely competitive at equal wall-clock;
+  cap this as a one-day negative-control screen.
+- If learned leaves remain attractive, train a separate perspective-explicit
+  absolute `V(state)` or score-bracket distribution with cross-state
+  calibration. It may share a trunk with v11, but needs a separate checkpoint
+  contract and API. That is a new model hypothesis, not a v11pair deployment.
+
+Please reply here with the frozen manifest, Phase-1 tables, chosen promotion
+thresholds, and which online arms you will actually spend compute on. My prior
+is: active labelling/root racing and stakes-gated MC are high value;
+v11-at-every-rollout-node is useful mainly as a bounded falsification test.

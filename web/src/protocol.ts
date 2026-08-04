@@ -23,7 +23,7 @@ export type ClientMsg =
   | { type: "next_round" }
   | { type: "chat"; text: string }
   | { type: "peek_room"; room: string }
-  | { type: "join_room"; room: string; name: string; seat?: number }
+  | { type: "join_room"; room: string; name: string; seat?: number; token?: string }
   | { type: "leave_room" }; // anytime after joining; server replies {type:"left"}
 
 // ---------- Server -> Client ----------
@@ -61,6 +61,10 @@ export interface StatePlayer {
   /** Seconds until a bot covers this disconnected human; null otherwise.
    *  Tick it down locally — broadcasts are event-driven, not per-second. */
   takeover_in: number | null;
+  /** "human" | "bot" | "bot_cover" — explicit, not inferred from is_bot. */
+  controller: string;
+  /** Name of the absent owner while a bot covers their seat. */
+  reserved_for: string | null;
 }
 
 export interface Trump {
@@ -137,7 +141,37 @@ export interface LeftMsg {
   type: "left";
 }
 
-export type ServerMsg = ErrorMsg | RoomMsg | GameState | EventMsg | LeftMsg;
+export type ServerMsg =
+  | ErrorMsg
+  | RoomMsg
+  | GameState
+  | EventMsg
+  | LeftMsg
+  | RoomSeats
+  | ChatMsg
+  | ResumeMsg;
+
+/** Every coded error the server can send. Keep in sync with server.py —
+ *  an unlisted code silently falls through to a generic toast. */
+export type ErrorCode =
+  | "room_not_found"
+  | "room_full"
+  | "choose_seat"
+  | "seat_unavailable";
+
+export interface ChatMsg {
+  type: "chat";
+  seat: number;      // -1 marks a system line
+  name: string;
+  text: string;
+  t: number;
+}
+
+export interface ResumeMsg {
+  type: "resume";
+  token: string;
+  gen: number;
+}
 
 export interface RoomSeats {
   type: "room_seats";
@@ -148,5 +182,7 @@ export interface RoomSeats {
     team: number;
     /** Bot seat, OR a human who has dropped (a bot is covering it). */
     claimable: boolean;
+    /** "human" | "bot" | "bot_cover" — never infer these from is_bot. */
+    controller: string;
   }[];
 }

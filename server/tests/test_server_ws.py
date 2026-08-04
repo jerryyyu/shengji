@@ -420,3 +420,122 @@ def test_takeover_of_dropped_human_is_announced_as_such(client):
         assert any("took over for amy" in t for t in texts), texts
         for w in socks[1:]:
             w.__exit__(None, None, None)
+
+
+# ---------------------------------------------------------------- ship gate
+def test_stale_socket_cannot_detach_a_newer_connection(client):
+    """P0-1: an old socket's teardown must only detach the generation it owns.
+
+    A dropped TCP connection's `finally` can run long after a newer socket has
+    resumed the seat. Without generation scoping it detaches the LIVE
+    connection and strands the player.
+    """
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a, to_play=True)
+        seat0 = room.seats[0]
+        old_gen = seat0.gen
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "join_room", "room": code,
+                         "name": "jerry", "token": seat0.token})
+            _drain(b, "state", tries=60)
+            assert seat0.gen > old_gen, "attach did not bump the generation"
+            assert seat0.connected
+            # The stale socket's teardown arrives late, for the OLD generation.
+            srv._detach(seat0, room, old_gen)
+            assert seat0.connected, "stale teardown detached the live socket"
+            # The generation it does own still detaches normally.
+            srv._detach(seat0, room, seat0.gen)
+            assert not seat0.connected
+
+
+def test_resume_token_beats_name_identity(client):
+    """P0-1: names are not identity — the token resumes the right seat."""
+    with client.websocket_connect("/ws") as a:
+        code, room, socks = _four_humans(client, a)
+        tok = room.seats[1].token          # amy's seat
+        socks[0].__exit__(None, None, None)
+        # Someone ELSE also called amy must not seize it by name alone...
+        with client.websocket_connect("/ws") as imposter:
+            imposter.send_json({"type": "join_room", "room": code,
+                                "name": "amy", "token": "not-the-token"})
+            st = _drain(imposter, "state", tries=60)
+            assert st["you"] == 1, "name fallback still applies when no token matches"
+        # ...and the real owner's token resumes that exact seat.
+        with client.websocket_connect("/ws") as real:
+            real.send_json({"type": "join_room", "room": code,
+                            "name": "whatever", "token": tok})
+            st = _drain(real, "state", tries=60)
+            assert st["you"] == 1
+        for w in socks[1:]:
+            w.__exit__(None, None, None)
+
+
+def test_state_exposes_controller_not_inference(client):
+    """P0-2: permanent bot, bot covering a human, and human are distinct."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a, to_play=True)
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "join_room", "room": code, "name": "james"})
+            _drain(b, "state", tries=60)
+            seat_b = next(i for i, sd in enumerate(room.seats)
+                          if sd.name == "james")
+        st = srv.state_for(room, 0)
+        by = {p["seat"]: p for p in st["players"]}
+        assert by[0]["controller"] == "human"
+        assert by[seat_b]["controller"] == "bot_cover"
+        assert by[seat_b]["reserved_for"] == "james"
+        botseat = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
+        assert by[botseat]["controller"] == "bot"
+        assert by[botseat]["reserved_for"] is None
+
+
+def test_pregame_full_lobby_with_a_drop_is_claimable(client):
+    """P0-4: a full PRE-GAME lobby with one dropped player must not deadlock."""
+    with client.websocket_connect("/ws") as h:
+        h.send_json({"type": "create_room", "name": "host"})
+        code = _drain(h, "room")["room"]
+        socks = []
+        for n in ("p2", "p3", "p4"):
+            w = client.websocket_connect("/ws").__enter__()
+            w.send_json({"type": "join_room", "room": code, "name": n})
+            _drain(w, "room")
+            socks.append(w)
+        socks[0].__exit__(None, None, None)          # drop BEFORE start_game
+        with client.websocket_connect("/ws") as p:
+            p.send_json({"type": "peek_room", "room": code})
+            pk = _drain(p, "room_seats")
+            assert pk["in_game"] is False
+            claim = [s for s in pk["seats"] if s["claimable"]]
+            assert len(claim) == 1 and claim[0]["controller"] == "bot_cover", \
+                "a dropped pre-game seat must be visibly claimable"
+        with client.websocket_connect("/ws") as q:
+            q.send_json({"type": "join_room", "room": code,
+                         "name": "newbie", "seat": claim[0]["seat"]})
+            st = _drain(q, "room", tries=60)
+            assert st["you"] == claim[0]["seat"]
+        for w in socks[1:]:
+            w.__exit__(None, None, None)
+
+
+def test_explicit_leave_at_round_end_advances_the_round(client):
+    """P0-4: leaving must release the quorum exactly like dropping does."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a, to_play=True)
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "join_room", "room": code, "name": "james"})
+            _drain(b, "state", tries=60)
+            seat_b = next(i for i, sd in enumerate(room.seats)
+                          if sd.name == "james")
+            # Pretend the round ended with only `a` ready.
+            room.ready.add(0)
+            assert srv.pending_ready(room) == {seat_b}
+            b.send_json({"type": "leave_room"})
+            _drain(b, "left", tries=40)
+        assert srv.pending_ready(room) == set(), \
+            "the leaver is still being waited on"

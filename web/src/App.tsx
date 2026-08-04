@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { GameState, RoomMsg } from "./protocol";
 import type { ConnStatus } from "./ws";
-import { clearSavedRoom, conn, getSavedName, getSavedRoom, saveRoom } from "./ws";
+import { clearSavedRoom, conn, getResumeToken, getSavedName, getSavedRoom, saveRoom } from "./ws";
 import { announceState, resetAnnouncer } from "./audio";
 import Lobby from "./components/Lobby";
 import Room from "./components/Room";
@@ -55,7 +55,10 @@ export default function App() {
       if (invited) return;              // Lobby owns the invite flow
       const room = getSavedRoom();
       const name = getSavedName();
-      if (room && name) conn.send({ type: "join_room", room, name });
+      if (room && name) {
+        const token = getResumeToken();
+        conn.send({ type: "join_room", room, name, ...(token ? { token } : {}) });
+      }
     });
     const unsubMsg = conn.subscribe((msg) => {
       switch (msg.type) {

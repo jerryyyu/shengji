@@ -25,6 +25,8 @@ This section owns the experiment history: what changed, what question it
 tested, and what survived. `AI_POLICIES.md` owns runnable policy names and
 their current deployment status. Keeping the full ladder in both files caused
 model checkpoints, policy wrappers, and search roles to be conflated.
+The BC-through-v6 chronology remains in
+`docs_archive/rl-plan-chronology-through-2026-08-03.md`.
 
 `v12` was never assigned to a model or experiment; the sequence intentionally
 jumps from v11 to v13. A version number is not a promotion, and historical
@@ -38,7 +40,7 @@ small-n or unseeded results below are labelled as such.
 | **v10res** | First residual override attempt: regress `Q(s,a_i)-Q(s,a_0)` and let SmartBot's candidate 0 stand unless predicted gain clears a threshold. | It overrode only about 1.3-1.5% of states where the teacher overrode about 15%; pairwise RMSE was 6.1995 versus 6.2112 for predicting zero, and it scored 47% vs Smart in its screen. The model still scored rows independently without a pairwise loss, train/play ballots differed, training and deployment read different heads, and the registered epoch initially differed from the evaluated one. | **Invalid test of the residual-learning hypothesis.** The checkpoint was a near no-op; do not count it as evidence that residual learning failed. |
 | **v11pair** | Corrected v10 around the deployed decision: optimize `(q_i-q_0)` against `(Q_i-Q_0)` with Huber loss and boundary weighting, use the exact valued ballot at inference, and fit the 0.02 threshold on one split before reporting another. | `rl-override-v11pair` **CONFIRMED** 57.7% vs SmartBot (277-203, n=480, two disjoint blocks). Its 51.1% vs MC over 4,880 rounds used MC factories that silently discarded their seeds, so it is a SCREEN of approximate parity, not superiority or non-inferiority. Gating and root racing were not confirmed; using pairwise deltas as a leaf is invalid because cross-state scale is unidentified. | The only confirmed online gain in v7-v13, and the key lesson is exact objective/ballot alignment. Keep it as a direct override or root proposal/ranking candidate; it has not beaten MC. |
 | **v12** | No model, checkpoint, or experiment used this number. | — | Skipped; do not infer a missing failure. |
-| **v13abs** | Warm-started v7w and fit the value output to absolute 240-world means from 20,845 high-N states, using inverse-variance weighting. The actual target is raw-point action value under heuristic continuation, `Q^H(s,a)`, not a generic state value. The trainer updated the whole network, not only a detached head. | Offline SCREEN: unweighted RMSE improved `0.1052 -> 0.0699` and stored-ballot regret `1.478 -> 1.293`. Online leaf SCREEN: v13 and v7 each won 52.8%; v13 was `-0.004 +/- 0.206` versus the MC reference and v7 `+0.024 +/- 0.215`. The direct paired v13-minus-v7 contrast, computed from the shared JSONL, is **`-0.028 +/- 0.185`** (250 seed clusters; win-rate difference 0). The corpus is non-strict, old-ballot, and 90% at ply <=15, whereas the model was deployed after four tricks. | **NOT CONFIRMED.** It learned its offline labels better but did not improve the bot. This tested a misaligned leaf deployment, not whether correctly targeted absolute value learning can help. |
+| **v13abs** | Warm-started v7w and fit the value output to absolute 240-world means from 20,845 high-N states, using inverse-variance weighting. The actual target is raw-point action value under heuristic continuation, `Q^H(s,a)`, not a generic state value. The trainer updated the whole network, not only a detached head. | Offline SCREEN: unweighted RMSE improved `0.1052 -> 0.0699` and stored-ballot regret `1.478 -> 1.293`. Online leaf SCREEN: v13 and v7 each won 52.8%; v13 was `-0.004 +/- 0.206` versus the MC reference and v7 `+0.024 +/- 0.215`. The direct paired v13-minus-v7 contrast, computed from the shared JSONL, is **`-0.028 +/- 0.185`** (250 seed clusters; win-rate difference 0). There were two train/deploy shifts: 90% of training states were at ply <=15 while deployment followed four simulated tricks, and high-N labels covered `MCBot._candidates()` while the leaf maximized over `enumerate_actions()`'s pinned v1 ballot. | **NOT CONFIRMED.** It learned its offline labels better but did not improve the bot. This tested a doubly misaligned leaf deployment, not whether correctly targeted absolute value learning can help. |
 
 The progression is therefore not “each version got stronger.” v7 reduced
 teacher noise; v8 repaired the data and behavior-target contract; v9 tested
@@ -48,6 +50,11 @@ quantity and ballot exactly match deployment; v13 improved supervised fit but
 exposed a state-distribution and value-contract mismatch. No v7-v13 model has
 yet shown a verified advantage over `mc`; v11's confirmed gain over SmartBot is
 the one positive learned-policy result.
+
+Before any v14-style leaf experiment, checkpoint metadata must name and assert
+the target, perspective, continuation policy, state sampler/horizon, ballot
+version, and encoder version. A mismatch is an invalid run, not a negative ML
+result.
 
 ---
 
@@ -63,7 +70,8 @@ the one positive learned-policy result.
 3. **Neither learned leaf is promoted.** The historical v7 settling run
    reported 50.4% at n=1,200, but its leaf factory silently discarded policy
    seeds. The current hardened screen puts v7 at `+0.024 +/- 0.215` versus the
-   MC reference. v13 fit its offline labels better but was
+   MC reference. v13 fit its offline labels better but changed both the state
+   and action-ballot distributions at deployment; it was
    `-0.028 +/- 0.185` directly versus v7 on the same 250 seed clusters.
 4. **Correct belief sampling and evaluation gate more compute.** Normal MC
    still lacks pair-void enforcement. The high-N corpus used the old non-strict
@@ -116,7 +124,8 @@ protocol Codex asked for:
 | rand4 (RANDOM prune, the control) | 55.4% [51.0, 59.7] | +0.188 ± 0.224 |
 | mcref (mc vs mc, sanity) | 49.6% [45.2, 54.0] | 0 by construction |
 
-**The control outscored the treatment.** In the screen it was the reverse
+**The control was nominally higher, but neither arm cleared zero.** In the
+screen it was the reverse
 (race4 54.8% over 2,900 rounds, control 49.8% over 500). Both arms moved about
 five points and swapped places, on a harness whose mc-vs-mc arm sits correctly
 at 49.6%.
@@ -159,6 +168,7 @@ a correctly targeted leaf distribution and value contract earn a new test.
 Production-ready regardless of the verdict: numpy inference
 (`rl/npnet.py`), no torch in the image, 14ms/decision, identical play
 verified vs torch.
+
 ### 3. Standalone policy line: still stuck — but the OVERRIDE line is not
 
 Standalone nets remain ~38-48% vs mc across every lever tried: more data,
@@ -182,9 +192,9 @@ the defect landed).
 
 The earlier claim that `rl-v9warm` sat "27 Elo above rl-v7w" came from the
 seeded pool, and pool gaps under ~40 Elo have since been shown unreliable —
-the same pool put vleaf +32 above mc, which a 1200-round direct duel then
-measured at 50.4%. No direct seeded v9-vs-v7w duel has been run, so that
-comparison stays open rather than counted.
+the same pool put vleaf +32 above mc, while a later n=1,200 run with an
+unseeded leaf arm landed at 50.4%. No direct seeded v9-vs-v7w duel has been
+run, so that comparison stays open rather than counted.
 
 ### 5. Measurement discipline (all learned the hard way today)
 
@@ -331,7 +341,7 @@ offline result.
 
 | dataset | size | what it is | teacher | used by |
 |---|---|---|---|---|
-| `rl_data/highn_corpus` | 20,000 states / 31 MB / **37.1M candidate evaluations** | each old-ballot candidate scored over 240 shared worlds, with marginal and candidate-0 paired SEs; raw states rebuild exactly. Non-strict sampler, same-world max selection, overwhelmingly early states, and raw-point labels | MCBot N=240, heuristic continuation | rebuildable state reservoir; provisional `Q^Heuristic(s,a)` labels for representation/calibration diagnostics, **not** an unbiased oracle or bracket/direct-V target |
+| `rl_data/highn_corpus` | 20,000 states / 31 MB / **37.1M candidate evaluations** | each old-ballot candidate scored over 240 shared worlds, with marginal and candidate-0 paired SEs; raw states rebuild exactly. Non-strict sampler, same-world max selection, overwhelmingly early states, and raw-point labels | MCBot N=240, heuristic continuation | rebuildable state reservoir; provisional `Q^Heuristic(s,a)` labels for representation/calibration diagnostics, **not** an unbiased oracle, bracket target, or generic state value |
 | `rl_data/gen_v4_all` | 205 shards / 245 MB / **~2.05M decisions** | the current corpus: hybrid-teacher values, wide v2 ballot, TRACTOR_LOCK rows recorded as choice-only. Provenance in META (`teacher_git` 367a822) | `mc-vleaf-v7w-ep02` | v9warm/v9scratch, v10res, **v11pair** |
 | `rl_data/gen_v3_all` | 162 shards / 276 MB / ~1.62M | first fast-engine generation; superseded by gen-v4 | upgraded MCBot | v8a/v8b |
 | `rl_data/gen_v3_quarantine` | 4 shards / 24 MB | **CONTAMINATED — never merge.** Written by orphaned workers running buggy code for 10h | — | nothing, deliberately |

@@ -133,9 +133,10 @@ def _make_vleaf(ckpt: str):
 # Value-leaf hybrids, one entry per value head. Elo pool 2026-08-03:
 # mc-vleaf-v7w-ep02 = 1163 (mc 1110, smart 1089, rl-v7w 1060, heuristic 1000)
 REGISTRY["mc-vleaf-v7w-ep02"] = _make_vleaf("snapshots_v7w/ep02.pt")
-# Direct-V head trained on ABSOLUTE 240-world labels. Its control is the SAME
-# architecture in the SAME role trained on N=30 teacher labels (v7w), so the
-# comparison isolates LABEL QUALITY — the label-ceiling hypothesis.
+# Absolute action-Q head trained on 240-world `Q^H(s,a)` labels. The v7w arm is
+# the same architecture/wrapper, but the comparison does NOT isolate label
+# quality: v13's MCBot-candidate/early-state training distribution differs from
+# the pinned-v1/post-four-trick distribution used by MCValueLeaf.
 REGISTRY["mc-vleaf-v13abs"] = _make_vleaf("ckpt_v13abs.pt")
 REGISTRY["mc-vleaf-v8a-ep03"] = _make_vleaf("snapshots_v8a/ep03.pt")
 # CAVEAT (Jerry's question, 2026-08-04): v11pair was trained with a PAIRWISE

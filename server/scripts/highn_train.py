@@ -1,24 +1,25 @@
-"""Train a DIRECT-V head on high-N labels — the label-ceiling attack.
+"""Train an absolute action-value output on the provisional high-N labels.
 
-The obstacle, measured: mc(N=10) forfeits ~2.8 points per consequential
-decision against a 240-world reference, so a student distilled from mc's own
-N=10/N=30 preferences inherits that forfeit and caps at mc. Beating mc needs
-labels stronger than mc, which is what this corpus is.
+An earlier selected, non-strict prototype suggested that mc(N=10) forfeited
+about 2.8 raw points per consequential decision against its 240-world labels.
+That is a label-quality hypothesis, not a measured global ceiling.
 
 The target is the ABSOLUTE 240-world mean — the expected outcome of playing a
-candidate when the heuristic finishes the round. Codex's spec, and deliberately
-not `max_a Q` (selection optimism) nor the per-decision argmax (which improved
-offline regret and then REVERSED online to 47%, RL_PLAN 1n).
+candidate when the heuristic finishes the round, from the acting team's
+perspective. It is `Q^H(s,a)` in raw points: deliberately not `max_a Q`, but
+also not signed level utility or a generic state value.
 
-Why absolute matters, concretely: v11pair's head learned only WITHIN-decision
+Why absolute scale matters, concretely: v11pair learned only WITHIN-decision
 differences, so adding any per-state constant left its loss unchanged. Its
 cross-state scale was never identified, which is why using it as a leaf
-evaluator was INVALID rather than merely unsuccessful. A head fit here has the
-anchor that one lacked, so it is also the first honest test of a learned leaf.
+evaluator was invalid. These labels identify a scale only on their own state,
+ballot, perspective, and continuation-policy distribution; they do not by
+themselves make a valid leaf evaluator.
 
-Warm-started from a checkpoint whose value head is already absolute-scaled
-(v7w), because 161k rows is far too little to learn a 531-dim encoder from
-scratch — this fits the head, it does not rebuild the net.
+Warm-started from a checkpoint whose value output is already absolute-scaled
+(v7w). Despite the historical description “fit the head,” the optimizer below
+updates the shared trunk and value head; only the unused policy head receives
+no gradient.
 
 Rows are weighted by inverse variance, so states the reference resolved
 sharply count for more than noisy ones.

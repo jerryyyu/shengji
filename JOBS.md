@@ -13,7 +13,8 @@ machines, so no compute starts without an explicit go.)*
 - **ckpt_v13abs absolute-Q leaf** — NOT CONFIRMED (-0.004 +/- 0.206 paired vs
   the MC reference; v7 control +0.024 +/- 0.215). The direct paired v13-minus-
   v7 contrast is -0.028 +/- 0.185 with identical 52.8% win rates. Mis-aimed:
-  trained mostly on ply<=15 `Q^H(s,a)` states, deployed as a post-4-trick leaf.
+  trained mostly on ply<=15 `Q^H(s,a)` states and MCBot candidates, then
+  deployed post-4-trick over the pinned-v1 `enumerate_actions()` ballot.
 
 - **high-N corpus — COMPLETE** (Air, 247 min): 20,000 states x 240 shared
   worlds = 37.1M candidate evaluations, 31 MB, mean 7.7 candidates/state,
@@ -21,7 +22,7 @@ machines, so no compute starts without an explicit go.)*
   with its manifest. Raw states rebuild exactly, but labels used the old
   non-strict sampler/current capped ballot and same-world maximum. This is a
   state reservoir and provisional `Q^Heuristic(s,a)` dataset, not an unbiased
-  oracle or a bracket/direct-V target.
+  oracle, bracket target, or generic state-value target.
 
 - **seeded Elo pool** — completed 21/21. Random-prune control ranked ABOVE the
   net-prior arm; all gaps <=28 Elo, inside the unresolved band. In AI_POLICIES.

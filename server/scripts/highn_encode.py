@@ -5,16 +5,15 @@ but training needs tensors, so encode once here rather than inside the training
 loop.
 
 The target is the ABSOLUTE 240-world mean: the expected outcome of playing a
-candidate when the heuristic finishes the round. That is Codex's "expected
-signed value under one fixed continuation policy", and it is deliberately NOT
-`max_a Q` (selection optimism) and NOT the per-decision argmax (which reversed
-online at 47% — RL_PLAN 1n).
+candidate when the heuristic finishes the round, from the acting team's
+perspective. It is raw-point `Q^H(s,a)`, deliberately not `max_a Q`, but also
+not signed level utility or a generic state value.
 
-Absolute matters. v11pair's head was trained on WITHIN-decision differences, so
+Absolute scale matters. v11pair was trained on WITHIN-decision differences, so
 adding any per-state constant left its loss unchanged and its cross-state scale
-was never identified — which is why using it as a leaf evaluator was
-invalid rather than merely unsuccessful. A head fit to these targets has the
-anchor that one lacked.
+was never identified. These targets provide an anchor on the corpus's own
+state/action/continuation distribution; using the result elsewhere still
+requires an explicit contract match.
 
 Each row also carries an inverse-variance weight from the marginal SE, so
 well-resolved states count for more than noisy ones.

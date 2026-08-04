@@ -4,7 +4,7 @@ Every bot policy, its design, and its measured performance. Update this file
 whenever a policy is added, changed, or re-benchmarked. RL training plan and
 post-mortems: RL_PLAN.md.
 
-## Current status — 2026-08-04 08:15
+## Current status — 2026-08-04
 
 - **Deployment-cost candidate:** `rl-override-v11pair` beats SmartBot 57.7%
   (n=480) and runs at p50 0.25ms / p95 0.52ms on the production numpy path.
@@ -21,20 +21,26 @@ post-mortems: RL_PLAN.md.
   Its historical 50.4% at n=1,200 predated the leaf factory's seed-forwarding
   repair. In the current hardened screen it scored 52.8% and
   `+0.024 +/- 0.215` paired utility versus the MC reference: not confirmed.
+- **v13abs is not promotable:** it improved offline `Q^H(s,a)` fit, then tied
+  v7 at 52.8%; the direct paired v13-minus-v7 contrast was
+  `-0.028 +/- 0.185`. Its training states were much earlier than its deployed
+  leaves, and its high-N `MCBot._candidates()` training ballot did not match
+  the pinned-v1 `enumerate_actions()` ballot maximized at the leaf.
 - **Not promotable:** `mc-gate-v11pair` has one encouraging n=300 online
   screen, but its T2 did not earn confirmation. The later five-arm T3 runner
   was invalid, partially run, and terminated; it produced no result. A repaired
   runner exists but has not passed artifact replay/all-seat fallback gates and
   has not produced a new result.
-- **High-N prototype is not evidence yet.** Its reported 2.803-point MC regret
-  is computed against a selected maximum on the same non-strict worlds used to
-  choose/significance-filter 148 early-state rows. The completed 600-row set,
-  partial 845-row corpus, refitted m0 policy, and completed but unseeded m0
-  duel are debugging/SCREEN artifacts—not a stronger teacher or promotion
-  result.
+- **The high-N corpus is diagnostic, not an oracle.** The completed artifact
+  has 20,000 Air states plus an accidentally merged 845-state mini partial,
+  but uses non-strict worlds, the old capped ballot, raw-point heuristic
+  continuation labels, and an overwhelmingly early-state distribution. Its
+  selected-maximum “regret” analyses and the unseeded m0 duel are SCREEN
+  artifacts, not promotion evidence.
 - **No valid v11 leaf exists.** v11pair predicts relative action deltas; its
   cross-state scale is unidentified. Root reranking/allocation is a valid use;
-  MC/MCTS leaf evaluation requires a separately trained absolute value model.
+  MC/MCTS leaf evaluation requires a separately trained absolute value model
+  whose state, action-ballot, perspective, and return contracts match the leaf.
 
 Policy objective: maximize verified strength. Latency is not a tradeoff for
 the champion policy; measured compute and matched-work controls remain useful
@@ -121,9 +127,9 @@ then evaluation — rather than at simply generating more.
 
 **Read this pool as unresolved, not as a ranking.** Every gap is <=28 Elo, and
 gaps under ~40 have twice failed to survive a direct duel here (its predecessor
-put vleaf +32 over mc; 1,200 rounds then measured 50.4%). Direct pairings at
-120 rounds: mc-race4 52.5% vs mc, mc-randrace4 55.8% vs mc, and randrace4
-edges race4 59-61.
+put vleaf +32 over mc; a later, ultimately unseeded-arm run landed at 50.4%).
+Direct n=120 pairings: mc-race4 52.5% vs mc, mc-randrace4 55.8% vs mc, and
+randrace4 edges race4 59-61.
 
 What it DOES add: the RANDOM-prune control ranks at or above the net-prior arm
 here, as it did in the paired confirmation. Two independent looks now agree the
@@ -199,7 +205,7 @@ experimental absolute action-value leaf that was **NOT CONFIRMED**. The old
 prototype's “~2.8 points of headroom” is a selected, non-strict early-state
 HYPOTHESIS, not a measured global ceiling. v13 cannot validate or refute that
 hypothesis because its training distribution and deployed leaf distribution
-did not match.
+did not match in either state phase or action ballot.
 
 - **Dueling-architecture tax (measured)**: at near-equal imitation
   (88.2% vs 89.7%), dueling-BC plays 10 points worse than free-logits BC

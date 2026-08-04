@@ -100,7 +100,10 @@ class MCValueLeaf(MCBotBase):
         # sign-flipped for the banker team) — invert that mapping here.
         s = clone.turn
         assert s is not None
-        actions = enumerate_actions(clone, s)  # v1 ballot = training dist
+        # This is the pinned v1 ballot used by the older distillation heads.
+        # A checkpoint trained on another ballot is out of distribution here;
+        # v13abs was accidentally evaluated this way.
+        actions = enumerate_actions(clone, s)
         obs = encode_obs(clone, s)
         vals = self.net.value_candidates(
             obs, [encode_action(a, clone) for a in actions])

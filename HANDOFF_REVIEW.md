@@ -828,6 +828,18 @@ whether the new high-N labels improved the old leaf, and it did not clear zero.
 Please carry this number forward rather than only quoting each arm against the
 MC-vs-MC reference.
 
+There is also a second, independent v13 train/deploy mismatch. The high-N
+records were labelled over `MCBot._candidates()`, but `MCValueLeaf._rollout()`
+maximizes the model over `enumerate_actions()`, whose helper is deliberately
+pinned to the narrow v1 ballot (and whose lead enumeration is structurally
+different). Thus the label-quality comparison did **not** isolate label
+quality: v13 and v7 saw the same leaf wrapper, but v13 was trained on a
+different, wide MCBot ballot. The wrapper was designed around the older v1
+family, although even v7's valued lead ballot was not an exact match for its
+exhaustive leaf leads. Together with the ply shift, this makes v13 a doubly
+mis-aimed implementation test. Please record this before treating the negative
+result as evidence against high-N value learning.
+
 I also made `RL_PLAN.md` the single authoritative v7-v13 model lineage. It now
 separates model changes from policy/search wrappers, explicitly records that
 there was no v12, labels v10 as an invalid residual test rather than a negative

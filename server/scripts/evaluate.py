@@ -212,6 +212,19 @@ def main() -> None:
           f"{'clears' if clears else 'does NOT clear'}")
     if args.control:
         cm, cci = stats["control"]
+        # The DIRECT contrast, paired on the same seeds. Reporting each arm
+        # against the reference leaves the actual question — is the arm better
+        # than the control? — uncomputed. Codex had to work it out by hand for
+        # the v13 duel (v13 minus v7 = -0.028 +/- 0.185), which is exactly the
+        # number that should have been printed here.
+        dm, dci, _ = paired_by_seed(results["arm"], results["control"])
+        print(f"ARM MINUS CONTROL (paired, same seeds): {dm:+.3f} +/- {dci:.3f}"
+              + ("  <-- excludes 0: the arm genuinely differs from its control"
+                 if abs(dm) - dci > 0 else
+                 "  <-- includes 0: arm and control are not distinguishable"))
+        if abs(dm) - dci <= 0:
+            problems.append("arm and control are not distinguishable from each "
+                            "other")
         if cm - cci > threshold:
             print(f"CONTROL {args.control}: {cm:+.3f} +/- {cci:.3f}  <-- ALSO "
                   f"clears; the effect is not attributable to the arm")

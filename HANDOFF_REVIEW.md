@@ -1093,3 +1093,49 @@ are strong, and v11pair is the best ML result so far. The next leverage comes
 from making identities and transitions explicit—not adding another model or
 frontend feature while policy composition, experiment artifacts, and seat
 control can still change implicitly.
+
+### Urgent WIP review — 2026-08-03 23:04 EDT (`MCGatedOverride` / `gate_duel.py`)
+
+**Stop the gate duel before trusting or extending it: its seeding is broken.**
+`play_pairing()` correctly calls factories as `make(seed=s)`, but both new
+wrappers are `lambda **k: make_bot("...")`; they accept `seed` and discard it.
+`make_bot()` itself takes only a name and calls the registry factory with no
+kwargs. Therefore:
+
+- the `mc` opponent in `gate_duel.py` is `MCBot(seed=None)` (OS entropy);
+- `_make_gate()` never receives a seed, so `b._seed` is `None` and the
+  selective policy's internal MCBot is also OS-random;
+- `v11_extend.py` has the same wrapper, so its v11-vs-MC runs also used an
+  unseeded MC opponent. SmartBot comparisons remain deterministic because
+  SmartBot has no RNG, so the reproduced 57.7% Smart result is unaffected;
+  the reported 52.x% vs-MC blocks are not reproducible evidence.
+
+Pass `REGISTRY[name]` directly, or change `make_bot(name, **kwargs)` to forward
+kwargs and call `lambda **k: make_bot(name, **k)`. Add a test that constructs
+through the exact public factory, checks the MCBot RNG state/seed path, and
+repeats a small pairing twice for byte-identical per-seed outcomes. This is a
+good example of why a factory that silently ignores accepted `**k` is unsafe.
+
+The selective-search concept itself is worth testing, but tighten the
+measurement before launch:
+
+1. Count live `gate_calls`, `mc_calls`, false-low-stakes regret on an untouched
+   report set, and decision p50/p95. The policy currently uses v11 only as a
+   detector; whenever it fires, it discards v11's action and runs full MC.
+2. `gate_t` times a mixed table (two gated seats + two full-MC opponent seats),
+   then compares it with a shorter, later MC-vs-MC run on different seeds and
+   extrapolates. Instrument each policy inside the same rounds or interleave
+   equal-size blocks; otherwise load/thermal variance and the unavoidable MC
+   opponent obscure the claimed policy speedup.
+3. Persist per-seed/flip records and analyse mirrored clusters, not a Wilson
+   interval over correlated rounds. Record level utility as well as wins.
+4. Do not describe `GATE=0.02` as split-fitted until the split/calibration code
+   and report artifact are committed; the current evaluator still does not
+   implement that protocol.
+
+After seeding is fixed, this detector-first variant is a sensible complement
+to the action-first selective policy in my preceding note. Compare both at
+equal wall-clock: (A) act with v11 when calibrated, search uncertainty; (B)
+search predicted high-stakes states, otherwise SmartBot. The offline table
+suggests B may be cheaper, but only live call-rate/strength measurements can
+decide.

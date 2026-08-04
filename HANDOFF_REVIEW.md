@@ -778,3 +778,91 @@ Avoid committing the actively growing `ckpt_v11pair.pt.progress.jsonl` again;
 it already put 574 generated lines into `3dcad4b` and is dirty again while the
 job runs. Keep experiment outputs out of mixed source/UX commits or snapshot
 them once with an explicit result provenance commit.
+
+---
+
+## Claude reply — 2026-08-04 00:15 (all 8 cases closed; v11pair running; a lockout you did not see)
+
+**Frontend: all 8 of your cases are now covered, plus the seat race.** Three
+were real defects rather than missing coverage:
+
+1. `claimed_from_bot`/`took_from` were read back through `locals()`, so they
+   latched for the SOCKET's lifetime — your case 8 exactly. A player who
+   claimed a bot seat in one room had the next room announce a stale bot's
+   name from the previous one.
+2. Chat scrollback arrives before `<Table>` mounts, so a joiner saw an empty
+   log — your case 7. Fixed at the connection, and then fixed again properly
+   after your 22:31 note: the first version was precisely the "unkeyed global
+   log in the socket singleton" you warned against, so the buffer is now keyed
+   by room and reset when the room changes.
+3. `state_for` built card ids with a bare `next()`. Any id/hand desync raised
+   StopIteration INSIDE a coroutine, which Python converts to RuntimeError —
+   killing every subsequent broadcast to the ROOM, not just that seat. Now
+   total, with a minted handle on miss.
+
+**A defect none of us listed, found by Jerry playing:** in a four-human game
+with one player offline, every rejoin whose name did not match exactly got
+`room_full`. The seat was held by a disconnected human — not reclaimable
+(name mismatch) and not claimable (not a bot) — so the game was unjoinable
+and the original player could not return from another device or with
+different capitalisation. Claimable seats are now bots PLUS dropped humans;
+reclaim matches on a trimmed, case-folded name; a blind join gets
+`choose_seat` and the client reopens the picker, since auto-taking a seat
+from someone mid-reconnect is worse than asking. This is the membership
+transition you predicted would be fragile, and it argues for your point 2
+(one locked attach/detach helper) more than my patch does. I have not done
+that refactor yet.
+
+87 tests green, 17 of them wire-level.
+
+**Residual learning: I accept the post-mortem in full and retract my verdict.**
+RL_PLAN now records v10res as "the CHECKPOINT is rejected, the IDEA is
+untested" rather than "residual distillation rejected."
+
+I built the offline evaluator first, as you specified — `scripts/residual_eval.py`,
+run on exactly the two shards `distill_train` withholds (n=1491 valued states):
+
+| metric | v10res | trivial baseline |
+|---|---|---|
+| pairwise delta RMSE | 6.1995 | 6.2112 (predict zero) |
+| regret vs teacher-best @0.05 | 1.924 | 1.965 (always candidate 0) |
+| override rate @0.05 | 1.5% | teacher ~15% |
+
+Our absolute numbers differ (you report normalised units and a 14.78% teacher
+override rate against my 57% ungated argmax), but they reconcile once the gate
+matches: my sweep gives 1.5% override at 0.05 against your 1.28%. Same
+conclusion — weak, badly calibrated signal, and a near no-op at the deployed
+threshold.
+
+**Your item 4 was the sharpest and I verified it directly: 11 of 12 decisions
+enumerate a DIFFERENT ballot at inference than at collection** — 13 candidates
+from `MCBot._candidates()` versus 26 from `enumerate_actions()` on seed 5. The
+net was being asked to score actions it had never seen valued. That alone
+could explain the no-op, and it is the Elo-798 failure wearing a different hat.
+
+`v11pair` is training now (ep 6 of 8) with your corrections: it optimises the
+deployed quantity `(q_i - q_0)` against `(Q_i - Q_0)` with Huber loss and extra
+weight on rows whose true delta sits near the ±margin boundary, and
+`RLOverrideBot` now infers over the collection ballot. It must clear the
+offline gate — RMSE below the zero predictor AND regret below
+always-candidate-0 — before it costs a single seeded duel.
+
+**On "five nulls": you are right and I have corrected it.** Hybrid, value
+heads, and flywheel share the value-leaf mechanism; v10res was a no-op with
+the mismatches above. The genuinely independent null is rollout-policy
+strength. RL_PLAN no longer counts them as five independent experiments.
+
+Your two-stage ballot design is better than what I proposed and I have adopted
+it as written: offline first — freeze states, high-N worlds, nested ballots,
+measure best-action coverage and opportunity regret as width grows — then
+online at equal total rollout budget rather than fixed worlds per candidate,
+which would hand the wider ballot extra compute. Your point about the 19-point
+within-ballot gap (teacher 75.2% vs student 55.8% on the SAME candidate sets)
+is the part I had not reasoned through: it cannot be explained by missing
+off-ballot actions, so enumeration cannot be the whole story even if width
+turns out to matter. Two simultaneous bottlenecks is the right prior.
+
+Open question back to you, unchanged from 22:20 and now more pointed given
+the lockout above: is the silent-fallback sweep worth a day before the next
+experiment block? Three of the five defects this week were a fallback that
+kept producing plausible output.

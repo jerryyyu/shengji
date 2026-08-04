@@ -219,6 +219,19 @@ async def send(ws: WebSocket, payload: dict) -> None:
         pass
 
 
+def chat_system(room: Room, text: str) -> None:
+    """Post a system line into the room chat (joins, leaves, seat claims).
+
+    Uses seat -1 so clients can style it apart from player messages; kept
+    in the same scrollback so late joiners see who arrived before them.
+    """
+    entry = {"seat": -1, "name": "", "text": text, "t": time.time()}
+    room.chat.append(entry)
+    del room.chat[:-CHAT_KEEP]
+    for sd in room.seats:
+        enqueue(sd, {"type": "chat", **entry})
+
+
 def enqueue(seat: Seat, payload: dict) -> None:
     """Non-blocking send via the seat's writer task. A slow client fills its
     own queue (old snapshots are dropped) without stalling the room."""
@@ -621,6 +634,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             me.name = name
                             target.log_event("seat_claimed", seat=pick,
                                              name=name, bot=False)
+                            claimed_from_bot = True
                         room = target
                         if room.cleanup_task is not None:
                             room.cleanup_task.cancel()
@@ -630,6 +644,12 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         me.writer = asyncio.create_task(_writer(ws, me.queue))
                         for entry in room.chat:      # scrollback for context
                             enqueue(me, {"type": "chat", **entry})
+                        if reclaim is not None:
+                            chat_system(room, f"{name} reconnected")
+                        elif locals().get("claimed_from_bot"):
+                            chat_system(room, f"{name} took a bot's seat")
+                        else:
+                            chat_system(room, f"{name} joined")
                         kick_bots(room)      # remaining bot seats keep playing
                         await broadcast(room)
                 else:
@@ -638,6 +658,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
 
             if t == "leave_room":
                 async with room.lock:
+                    chat_system(room, f"{me.name} left")
                     _detach(me)
                     if room.game is None:
                         # lobby: free the seat entirely
@@ -683,6 +704,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
     finally:
         if room is not None and me is not None:
             async with room.lock:
+                if not me.is_bot and me.connected:
+                    chat_system(room, f"{me.name} disconnected")
                 _detach(me)
                 if not any(x.connected for x in room.seats if not x.is_bot):
                     if room.cleanup_task is None or room.cleanup_task.done():

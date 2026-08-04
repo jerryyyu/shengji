@@ -1883,3 +1883,29 @@ button.room-chip.copied {
   background: rgba(120, 200, 130, 0.22);
   border-color: rgba(140, 220, 150, 0.5);
 }
+
+/* System lines in chat (joins / leaves / seat claims) */
+.chat-msg.system {
+  opacity: 0.55;
+  font-style: italic;
+  font-size: 13px;
+  text-align: center;
+  margin: 6px 0;
+}
+
+/* Hover tooltip on the in-game room chip */
+button.room-chip { position: relative; }
+button.room-chip::after {
+  content: attr(data-tip);
+  position: absolute; top: calc(100% + 6px); left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  background: rgba(12, 18, 14, 0.96);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px; font-style: normal; letter-spacing: 0;
+  opacity: 0; pointer-events: none; transition: opacity 0.12s ease;
+  z-index: 50;
+}
+button.room-chip:hover::after { opacity: 1; }

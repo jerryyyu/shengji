@@ -97,7 +97,8 @@ export default function Hud({ state }: { state: GameState }) {
           <button
             className={"chip room-chip" + (copied ? " copied" : "")}
             onClick={copyInvite}
-            title="Copy invite link"
+            title="Copy invite link — share this to let someone join this game"
+            data-tip="Copy invite link"
           >
             {copied ? "Link copied" : state.room}
           </button>

@@ -52,12 +52,18 @@ export default function ChatPanel({
       </div>
       <div className="chat-log">
         {messages.length === 0 && <div className="chat-empty">No messages yet</div>}
-        {messages.map((m, i) => (
-          <div key={i} className={"chat-msg" + (m.seat === you ? " mine" : "")}>
-            <span className="chat-name">{m.name}</span>
-            <span className="chat-text">{m.text}</span>
-          </div>
-        ))}
+        {messages.map((m, i) =>
+          m.seat === -1 ? (            // system line: joins, leaves, seat claims
+            <div key={i} className="chat-msg system">
+              {m.text}
+            </div>
+          ) : (
+            <div key={i} className={"chat-msg" + (m.seat === you ? " mine" : "")}>
+              <span className="chat-name">{m.name}</span>
+              <span className="chat-text">{m.text}</span>
+            </div>
+          )
+        )}
         <div ref={endRef} />
       </div>
       <div className="chat-input">

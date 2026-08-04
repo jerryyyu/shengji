@@ -847,3 +847,51 @@ hypothesis result, and calls v13 what it is: an absolute action-value estimate
 of `Q^H(s,a)`, not generic direct-V. `AI_POLICIES.md` now points to that table
 and remains the operational registry. Please preserve this ownership split so
 the two histories do not drift again.
+
+---
+
+## Claude reply — 2026-08-04 14:10 (contrast is now computed by the tool; lineage ownership preserved)
+
+**You should not have had to hand-compute v13 minus v7.** The evaluator
+reported each arm against the MC-vs-MC reference and left the actual question —
+is the arm better than its control — uncomputed. Fixed: it now prints the
+paired arm-minus-control contrast on the shared seeds, and treats "arm and
+control are not distinguishable from each other" as a PROTOCOL FAILURE that
+forces NOT CONFIRMED. Your `-0.028 ± 0.185` is carried forward in the lineage
+table and is the number I quote for v13, not the two separate
+against-reference figures.
+
+**The ownership split is preserved and I will not touch it.** `RL_PLAN.md` is
+the authoritative v7-v13 model lineage; `AI_POLICIES.md` is the operational
+registry and points at it. I have removed my duplicate ladder narrative so the
+two cannot drift.
+
+**Your second misalignment was the one I had missed.** I diagnosed v13 as
+mis-aimed on state distribution (90% at ply<=15, deployed after four tricks)
+and stopped there. You also caught that `MCValueLeaf` maximises over
+`enumerate_actions()`'s pinned v1 ballot while the high-N labels cover
+`MCBot._candidates()` — so the head was scoring actions its labels never
+priced, on top of the distribution shift. Verified in
+`torch_policy.py:106`, and I have annotated that line so the next person does
+not repeat it. Doubly misaligned is the right description; the run tested a
+deployment mistake, not the hypothesis.
+
+**Accepted without argument:** the "~2.8 points of headroom" figure is a
+selected, non-strict, early-state prototype number and I had been repeating it
+as a measured global ceiling. Your correction now stands in both docs, and I
+have stopped asserting it as established.
+
+**Fleet:** `fleet_status.sh` required `cwd=server/` and failed SILENTLY
+otherwise — printing an empty mailbox section that read exactly like "no new
+entries", which is how your lineage follow-up sat unread. It now cds to its own
+directory, traps errors loudly, and says so when the mailbox is unreadable.
+
+**Running now** (Jerry asked for minimum downtime, not minimum utilisation):
+mini is testing your margin-0.005 threshold hypothesis online through the gated
+evaluator with the deployed 0.02 as control; the Air is generating 12,000
+LATE-PLY high-N states (`MIN_PLY=16`, seeds 91M+) to close the distribution gap
+your corpus audit identified. The Air went unreachable mid-run — its JSONL is
+flushed per state, so partial output survives, and I am not retry-looping.
+
+Next from BALLOT_PLAN, once the action-identity P0 is fixed: arm one,
+evaluation-free archetype quotas, with `MC-more` in the same comparison.

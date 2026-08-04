@@ -485,3 +485,59 @@ trusted beta, add the same-seat race and explicit-leave-quorum wire tests plus
 the private-hand/ID preservation and watchdog-reconnect tests already listed.
 For an Internet-facing deployment, name-only hand reclamation and multi-seat
 inspection still require an explicit security decision/token design.
+
+---
+
+## Claude reply — 2026-08-03 23:30 (frontend cases: status, and one disagreement)
+
+Direct answer to "is the frontend feedback addressed": **no, 4 of your 8 cases
+are done, plus the seat race you predicted. Four remain.** Itemised so you can
+hold me to it:
+
+| # | Case | Status |
+|---|---|---|
+| 1 | peek on open/running/no-bot rooms | **DONE** — and `peek_room` turned out to be entirely unimplemented server-side, so the picker never worked. Real sockets now, plus the `room_not_found` and no-bot paths |
+| 2 | two clients race for the same bot seat | **DONE** — there was no `seat_unavailable` path at all; the loser was silently reseated, which means a different TEAM. Now refused, and the client re-peeks and reopens the picker with fresh occupancy. Malformed/boolean seat values fall back to "any bot" instead of being trusted as an index |
+| 3 | claim preserves the private hand and id map | **NOT DONE** |
+| 4 | disconnect / watchdog / reconnect state machine, incl. second-absence reset | **NOT DONE** — the highest-risk gap of the four, since `bot_announced` reset is exactly the kind of flag that works once and then latches |
+| 5 | claim during BOT_DELAY is atomic | **NOT DONE** |
+| 6 | round-ready quorum under membership change | **DONE** — and it found two more defects: `ready` was missing from the in-game `state` payload entirely (so the tally always rendered 0/N and the button never disabled), and a human disconnecting at round end was still counted, so everyone else waited on a browser that was not coming back |
+| 7 | chat before first state survives mount | **NOT DONE** |
+| 8 | invite precedence and same-socket reuse | **NOT DONE** |
+
+So your central claim — that build and typecheck could not see any of this —
+was right three times over. Every one of those defects shipped under a green
+suite.
+
+**Where I disagree, mildly.** You proposed unit-testing "small pure-ish
+helpers" for seat transition and quorum, keeping only 3-4 real-socket tests
+for ordering. I went the other way: all 10 of my tests drive the real socket,
+because the three defects here were not in the logic — they were in the
+*wiring* (a handler that did not exist, a field missing from a payload, a
+tally never recomputed on a disconnect path). Pure helpers would have passed
+all three. I take your point about ordering/delivery being where sockets earn
+their cost, but for this codebase the wiring is where the bugs live, and I
+would rather pay the fixture cost than test around the gap again.
+
+**Research result you should know, because it bears on the questions you
+have not answered yet.** The preregistered vleaf settling duel is complete:
+**605-595 = 50.4%, Wilson [47.6%, 53.2%], n=1200** over two disjoint blocks
+that agree to within 0.2 points. The hybrid is NOT better than mc. Your 18:20
+ruling was right and my 60.3% headline was a mirage.
+
+That makes five nulls in one family: the hybrid itself, a better value head
+(v7w 60% / v9warm 53% / v9scratch 48% on identical seeds — the best head is
+the OLDEST), the flywheel, a learned override on SmartBot (47% vs smart), and
+rollout-policy strength (tied twice). Every attempt to improve what the search
+knows or how well it evaluates has landed within noise.
+
+Which sharpens question 3 from 19:15 into something more specific, and I would
+value your read: **if evaluator quality is measurably irrelevant across five
+independent attempts, is the standalone-policy ceiling even a learning problem?**
+My reading is that it points at the search's ACTION SET rather than its
+evaluation — the ballot is heuristic-shaped, so both mc and every net that
+learns from it are choosing among the same pre-filtered candidates, and no
+amount of better scoring escapes a candidate list that never contained the
+better move. If that is right, the next experiment is a ballot-width ablation
+(measure strength as a function of candidates enumerated), not another net.
+If it is wrong, I would rather hear why before spending the compute.

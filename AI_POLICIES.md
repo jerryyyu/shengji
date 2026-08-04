@@ -6,96 +6,101 @@ post-mortems: RL_PLAN.md.
 
 ## Static ballot coverage audit — dev split, 2026-08-04
 
-12,340 dev-split states replayed under the current engine with **0 rebuild
-errors**. That is strong evidence the corpus is useful as a raw-state reservoir,
-so most follow-up work need not rerun the original 37M evaluations.
+**CORRECTED 17:45** after a Codex audit: the structured-action filter was wrong
+and the headline number moved from 54.0% to 51.2%.
 
-Fraction of the bounded diagnostic action enumeration the deployed ballot
-never offers:
+12,340 dev-split states rebuilt by replay, **0 rebuild errors**. That number is
+itself a result: the corpus is a sound state reservoir, so replaying it reuses
+20,845 states without re-running 37M evaluations.
 
-| surface | all legal actions | structured only (singles/pairs/tractors) |
-|---|---|---|
-| leads | 91.9% | **51.2%** (n=3,960) |
-| follows | 6.9% | **0.88%** (n=8,380) |
+Fraction of the *structured* action space (singles, pairs, true tractors) the
+deployed ballot never offers:
 
-The all-actions column is not the interesting one — `include_throws` enumerates
-a large bounded subset of the combinatorial throw space and a sane ballot
-should omit most of it. The originally reported 54.0% structured-lead figure
-also included unrelated collections of pairs because `structured()` checked
-only that every multiplicity was two. Requiring exactly one decomposed pair or
-tractor component gives the corrected 51.2% above.
+| surface | omitted |
+|---|---|
+| leads | **51.2%** (n=3,960) |
+| follows | **0.9%** (n=8,380) |
 
-**Within the bounded reference, follows have little sourcing gap: 0.88%.** The
-lead gap is almost entirely singles: 45,191 omitted singles and 19 omitted
-pairs; no tractor was omitted in these states. The ballot offers 27,931 lead
-singles and 14,037 lead pairs. The bounded follow reference still omitted 922
-singles and 42 pairs, so “follows are solved” should mean low measured sourcing
-omission, not complete or strategically optimal play.
+**What was wrong.** `structured()` accepted any multi-card action whose card
+multiplicities were all two — which also accepts two UNRELATED pairs thrown
+together. That is a throw, not a tractor. It now asks the engine: an action is
+structured iff it decomposes into exactly one component. Leads move 54.0% ->
+51.2%, follows 0.9% (Codex independently computed 51.18% and 0.883%; both
+reproduce).
 
-**The caution this raises.** V3 added a bounded representative layer from this
-single-card surface and did NOT confirm online (`+0.065 +/- 0.144`, with its
-random-fill control scoring higher). That shows coverage alone is not a
-promotion and finite-N winner selection can erase the benefit of a wider
-ballot. It does not show that generation is irrelevant: V3 tested one capped
-proposal rule, not full structured-lead enumeration with independent
-proposal/report worlds.
+Two other overstatements from the first write-up, both corrected in the script:
 
-The earlier 83-91% ply statement used the throw-dominated all-actions column,
-not structured omission, and therefore does not establish that the structured
-gap is flat across the round. Late states also remain sparse. Use the late-ply
-raw states, but relabel them under the corrected sampler rather than trusting
-their contract-dirty N=240 labels.
+- "fraction of the legal space" was too strong. `enumerate_actions()` caps
+  exhaustive follows at 64, skips large fill products, and bounds lead throws
+  to 2-3 components. It is a DIAGNOSTIC reference, not the legal universe.
+- the per-ply table used the throw-dominated all-actions counter, so its
+  83-91% figures said nothing about structured sourcing. On the structured
+  counter, omission **declines** with ply: 44.8% at ply 0-4, ~33-35% through
+  ply 19, 25.8% by ply 25+. Late-ply sourcing is not the gap.
 
-## Determinization screen — N=30 is NOT shown better than N=10 (2026-08-04, closed)
+**Follows are effectively solved: 0.9%.** Pairs are covered almost everywhere
+(19 omitted against 14,037 offered), and zero tractors are missed. Every
+remaining structural gap is lead SINGLES — 45,191 of them, because the ballot
+offers only the top card and the lowest non-point card per suit.
+
+**The caution this raises.** That singles gap is exactly what the V3 arm added,
+and V3 did NOT confirm online (+0.065 +/- 0.144, with its random-fill control
+scoring higher). So coverage is measured AND known not to be the binding
+constraint. A Phase 1 quota arm must justify itself by SELECTION quality inside
+a fixed budget, not by how much of the space it recovers.
+
+Audit outputs now carry git SHA, tree-dirty state, and digests of the script,
+corpus, split and ballot.
+
+## Determinization screen — N=30 is NOT better than N=10 (2026-08-04, closed)
+
+**CORRECTED 17:45** after a Codex audit. Two published numbers were wrong; the
+verdict is unchanged.
 
 **Preregistered primary: paired per-seed level utility, N=30 minus N=10.**
 
 | block | seeds | N=30 - N=10 | role |
 |---|---|---|---|
-| 1 | 93M | +0.274 +/- 0.214 | selection screen (clean rerun only) |
+| 1 | 93M | +0.274 +/- 0.214 | selection screen |
 | 2 | 94M | +0.155 +/- 0.215 | confirmation |
 | 3 | 95M | +0.048 +/- 0.210 | confirmation (declared final before running) |
 | **confirmation only (2+3)** | | **+0.101 +/- 0.150, n=504** | **INCLUDES 0 — NOT CONFIRMED** |
 
-Pooling the three clean blocks gives +0.159 +/- 0.123, which excludes zero. That number is
-not the verdict: block 1 selected this arm, and Phase 4 of BALLOT_PLAN says
-not to pool a selection screen into its own confirmation. On fresh seeds the
-effect is +0.101 +/- 0.150 and the per-block decay is monotone
-(+0.274 -> +0.155 -> +0.048), consistent with a winner's curse.
+**What was wrong.** Block 1 was first published as `+0.282 +/- 0.223`. That
+number came from globbing `runs/logs/eval_*.jsonl`, which silently swept in 40
+arm records from an ABORTED earlier attempt (`c737e70`) covering seeds already
+produced by the complete rerun. The arm side had 544 records against 504 for
+reference and control, and seeds 93,000,126-93,000,145 were counted twice on
+one side only. Clean block 1 is `+0.274 +/- 0.214`; clean three-block pooling
+is `+0.159 +/- 0.123`, not `+0.161 +/- 0.125`. The confirmation blocks were
+never contaminated, so the NOT CONFIRMED verdict stands unchanged.
 
-The originally published block-1 values (`+0.282 +/- 0.223`) were reproduced
-only by concatenating 40 arm records from the aborted `c737e70` attempt with
-the complete `ff7b121` rerun. Those games were counted twice. The correction
-does not change the selection-screen verdict, but stale partial artifacts must
-never be globbed into an aggregate again.
+`scripts/aggregate_shards.py` now refuses to pool when labels have unequal
+record counts, when a (label, seed, flip) repeats, when shards disagree about
+their commit, when record schemas differ, or when any zero-world decision is
+present. It catches this exact contamination.
 
-**Strong secondary contrasts on the same 504 fresh clusters:**
+**The N=10-over-N=5 result is PROVISIONAL, not confirmed.** It was first
+written up as confirmed. On fresh clusters N=5 minus N=10 is `-0.347 +/- 0.145`
+and N=30 minus N=5 is `+0.448 +/- 0.147`, but blocks 2+3 contain **14
+zero-world fallbacks across nine seeds**, distributed unequally (9 on the N=10
+arm, 2 on N=5, 3 on N=30), and every affected shard log printed `PROTOCOL
+FAILURES — verdict forced to NOT CONFIRMED`. Reading a paired mean out of runs
+the evaluator had already failed is exactly the semantics error the checklist
+warns about. This contrast also had no declared primary bar of its own. Treat
+it as strong dose-response evidence pending a constraint-correct sampler rerun.
 
-- N=5 is WORSE than N=10 by -0.347 +/- 0.145
-- N=30 beats N=5 by +0.448 +/- 0.147
-- win rates 53.0% / 51.7% / 44.7% for N=30 / N=10 / N=5
+Fresh-cluster win rates are **53.0% / 51.7% / 44.7%** for N=30 / N=10 / N=5.
+The previously published 53.1% / 50.6% / 44.3% were computed over all three
+blocks while being labelled "the same 504 fresh clusters".
 
-These secondary contrasts are numerically strong, but they did not have their
-own declared primary bar and blocks 2-3 contain 14 zero-world fallbacks; every
-affected shard was forced to NOT CONFIRMED by the evaluator's protocol. Treat
-N=10 over N=5 as strong provisional evidence, not a confirmed promotion claim,
-until the constraint-correct sampler is rerun.
+**What this closes.** Search width is not a route to the goal: N=30 does not
+beat the deployed N=10 on fresh seeds, and the monotone per-block decay
+(+0.274 -> +0.155 -> +0.048) is what a winner's curse looks like. Block 3 was
+declared final in writing before it ran, so there was no version of this where
+the interval got extended until it cleared.
 
-Deployed `mc` is already N=10. Tripling to N=30 bought no confirmed improvement
-at this sample size, so do not spend more compute or deploy N=30 now. This was
-not an equivalence test, however: `+0.101 +/- 0.150` remains compatible with a
-small positive benefit, so “saturated at 10” is stronger than the data show.
-
-This is the seventh promising screen that did not survive confirmation. The
-difference is that this time the protocol caught it before it was claimed:
-block 3 was declared final in writing before it ran, so there was no version
-of this where the interval was extended until it cleared.
-
-**Where that leaves the search direction:** which actions get priced is now a
-higher-priority lever than simply tripling this sampler's width. That agrees with the corpus
-measurements already on record — leads carry 3x the forfeit of follows
-(2.96 vs 1.01 points) and the deployed ballot misses 15.5% of human leads
-versus 2.0% of follows.
+This is the seventh promising screen that did not survive confirmation.
 
 ## Current status — 2026-08-04
 

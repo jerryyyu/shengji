@@ -189,3 +189,59 @@ def test_unconstructable_policy_raises_rather_than_being_omitted():
     """_arm_ballots used to `continue` past a failure, hiding an arm."""
     with pytest.raises(Exception):
         ballot_for_policy("no-such-policy-xyz")
+
+
+def test_digest_covers_self_method_helpers():
+    """The generator's real work is in self._lead/_follow; editing those must
+    move the identity. Covering only bare-name calls left it bound to almost
+    nothing (Codex)."""
+    from shengji.ai.mcbot import MCBot
+    from shengji.engine.ballot import _project_callees
+
+    names = {getattr(o, "__name__", "") for o in
+             _project_callees(MCBot._candidates, owner=MCBot)}
+    assert {"_lead", "_follow"} <= names, \
+        f"generator helpers missing from the identity: {sorted(names)}"
+
+
+def test_multi_stage_policy_reports_every_stage(monkeypatch):
+    """A value-leaf policy binds its checkpoint at the LEAF, not the root.
+
+    Reporting only the inherited MC root ballot is what hid the v13abs
+    mismatch behind a manifest that looked complete.
+    """
+    from shengji.engine.ballot import policy_ballots
+
+    # v7w is legacy and unstamped; every construction in this test needs the
+    # declared research-only exception, including the one in the last assert.
+    monkeypatch.setenv(ESCAPE_HATCH, "1")
+    st = policy_ballots("mc-vleaf-v7w-ep02")
+    assert set(st) == {"root", "leaf"}
+    assert st["root"].name == "mc_candidates"
+    assert st["leaf"].name == "rl_actions"
+    assert ballot_for_policy("mc-vleaf-v7w-ep02").digest == st["leaf"].digest
+
+
+def test_override_policy_is_not_reported_as_ballotless(monkeypatch):
+    """rl-override keeps its generator on `_ballot`; dropping that lookup made
+    it report none@v0 while it was scoring _ballot._candidates()."""
+    from shengji.engine.ballot import policy_ballots
+
+    monkeypatch.setenv(ESCAPE_HATCH, "1")
+    st = policy_ballots("rl-override-v11pair")
+    assert st["root"] is not NO_BALLOT
+    assert st["root"].name == "mc_candidates"
+
+
+def test_stamped_checkpoint_round_trips(tmp_path):
+    from shengji.ai.mcbot import MCBot
+    from shengji.rl.provenance import ballot_of, record_ballot, require_ballot
+
+    ck = tmp_path / "w.pt"
+    ck.write_bytes(b"weights")
+    spec = mc_ballot(MCBot(seed=1))
+    record_ballot(str(ck), spec)
+    assert ballot_of(str(ck)).digest == spec.digest
+    require_ballot(str(ck), spec)           # matching pair passes
+    with pytest.raises(BallotMismatch):
+        require_ballot(str(ck), rl_ballot())

@@ -1391,3 +1391,26 @@ queries, (b) exercise constrained hidden-card sampling after many observed
 voids, and (c) cover endgame trump control, point transfer, and final-trick
 kitty stakes. Stratify them into the clean relabel set; do not train on the
 existing late-builder labels, which used the non-strict old-ballot contract.
+
+---
+
+## Codex response — 2026-08-04 15:49 EDT (single bounded audit)
+
+Only `e002a3c` is newer than the preceding Codex entry, and it changes only
+`BACKLOG.md`; there is no new engine, native, frontend, evaluator, or policy
+implementation to validate. Its **“Ballot identity enforced” closure is
+incorrect**: `record_ballot()` still has no caller and there are no
+`.ballot.json` sidecars; `require_ballot()` still gates only `MCValueLeaf`;
+override/gated/prior/ordinary RL policies remain unchecked;
+`ballot_for_policy("rl-override-v11pair")` still cannot represent the ballot it
+executes; and `source_digest()` still follows only bare-name calls, not the
+attribute-method ballot helpers identified above. Keep the provenance P0 open.
+
+The late-ply pull is real but its records need two corrections. The only Air
+artifact here is `server/rl_data/highn_late_air.jsonl`, with no matching Air
+manifest or log. It parses as 12,000 unique `(seed, ply, seat)` rows from 3,000
+seeds, all labelled with 240 worlds; the stored range is **ply 16–56**, not
+15–57. Exactly 8,393 rows are ply>=20, so 844 + 8,393 = 9,237 does reproduce.
+`JOBS.md` still says the Air capture is running. Preserve these as raw states,
+quarantine their contract-dirty labels, and reconcile the ledger plus artifact
+provenance before using them in a frozen split or any strength claim.

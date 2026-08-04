@@ -13,9 +13,10 @@ been burned:
   * **Deterministic, not random.** Assignment is a stable hash of the seed, so
     the split is reproducible from the seed alone and cannot silently differ
     between two machines or two runs.
-  * **Frozen.** Refuses to overwrite an existing split file. A split that can
-    be regenerated after seeing results is not a split; it is a knob. Use
-    --force only to create a NEW named version.
+  * **Frozen.** Refuses to overwrite an existing split path, unconditionally
+    and with no override flag. A split that can be regenerated after seeing
+    results is not a split; it is a knob. A new version means a new --out and
+    a new --salt, so the previous assignment stays on disk to be audited.
 
 The report side is the scarce resource. Nothing may look at it until a
 predeclared comparison is ready — every offline number that has been checked
@@ -64,14 +65,19 @@ def main() -> None:
     ap.add_argument("--corpus", default="rl_data/highn_corpus_all.jsonl")
     ap.add_argument("--out", default="rl_data/corpus_split.v1.json")
     ap.add_argument("--salt", default="v1")
-    ap.add_argument("--force", action="store_true",
-                    help="create a NEW split version; never to redraw an old one")
     args = ap.parse_args()
 
-    if os.path.exists(args.out) and not args.force:
-        print(f"REFUSING: {args.out} already exists. A frozen split may not be "
-              f"redrawn — that is how a report set stops being held out. To "
-              f"create a genuinely new version, pass a new --out and --salt.")
+    # No --force. An existing split path is UNCONDITIONALLY non-overwritable:
+    # the previous version offered a flag that overwrote the same path while
+    # printing "a frozen split may not be redrawn", which made the guarantee
+    # decorative (Codex). A new version means a new path and a new salt, so the
+    # old assignment survives to be checked against.
+    if os.path.exists(args.out):
+        print(f"REFUSING: {args.out} already exists and a frozen split is "
+              f"never redrawn in place — that is how a report set stops being "
+              f"held out. Create a genuinely new version with a new --out AND "
+              f"a new --salt; keep this file so the old assignment stays "
+              f"auditable.")
         sys.exit(3)
 
     seeds, per_seed, plies = set(), Counter(), Counter()
@@ -91,6 +97,7 @@ def main() -> None:
     sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
                          capture_output=True, text=True).stdout.strip()
     payload = {
+        "split_script_sha256_16": file_digest(os.path.abspath(__file__)),
         "corpus": args.corpus,
         "corpus_digest": file_digest(args.corpus),
         "corpus_rows": sum(per_seed.values()),

@@ -29,6 +29,7 @@ sharply count for more than noisy ones.
 from __future__ import annotations
 
 import glob
+import os
 import sys
 import time
 
@@ -124,8 +125,46 @@ def main() -> None:
         print(f"epoch {ep+1}: train wMSE {run/max(nb,1):.4f}  "
               f"val wRMSE {evaluate():.4f}  ({time.time()-t0:.0f}s)", flush=True)
         torch.save(torch_net.state_dict(), out)
+        stamp_ballot(out, shards)
         del tot, n
     print(f"saved {out}")
+
+
+def stamp_ballot(ckpt_path, shards):
+    """Record the ballot these labels covered, next to the weights.
+
+    Without this the contract is only half-built: a checkpoint that cannot say
+    which action set it was trained against is one that `require_ballot()` must
+    refuse at load, so saving an unstamped file is saving a dud. The labelled
+    ballot is read from the corpus manifest rather than from live code — the
+    point is what the DATA covered, which live flags cannot tell us.
+    """
+    import glob as _glob
+    import json as _json
+
+    from shengji.engine.ballot import BallotSpec
+    from shengji.rl.provenance import record_ballot
+
+    mans = sorted(_glob.glob("rl_data/*.manifest.*.json"))
+    if not mans:
+        print("REFUSING to stamp: no corpus manifest found, so the labelled "
+              "ballot is unknown. This checkpoint will be rejected at load "
+              "until its provenance can be established.", flush=True)
+        return
+    with open(mans[0]) as fh:
+        m = _json.load(fh)
+    if "ballot_config" not in m:
+        print(f"REFUSING to stamp: {mans[0]} predates ballot provenance.",
+              flush=True)
+        return
+    spec = BallotSpec(
+        name="mc_candidates", version=1, source="MCBot._candidates",
+        config=tuple(tuple(kv) for kv in m["ballot_config"]),
+        source_digest=m.get("ballot_source_digest", ""),
+        note=f"labels from {os.path.basename(mans[0])}")
+    path = record_ballot(ckpt_path, spec, corpus_manifest=mans[0],
+                         n_shards=len(shards))
+    print(f"  stamped {path} -> {spec}", flush=True)
 
 
 if __name__ == "__main__":

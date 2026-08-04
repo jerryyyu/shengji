@@ -31,8 +31,21 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from shengji.ai.mcbot import MCBot            # noqa: E402
 from shengji.ai.smart import SmartBot         # noqa: E402
+from shengji.engine.combos import decompose   # noqa: E402
 from shengji.engine.game import Game          # noqa: E402
 from shengji.rl.actions import enumerate_actions  # noqa: E402
+
+
+def _digest_file(path):
+    """Provenance for every input an audit number depends on."""
+    import hashlib
+    if not path or not os.path.exists(path):
+        return None
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()[:16]
 
 
 class RebuildMismatch(RuntimeError):
@@ -69,19 +82,29 @@ def rebuild(row) -> tuple:
     return rnd, rnd.turn
 
 
-def structured(cards) -> bool:
-    """A single, a pair, or a tractor — i.e. an action a proposer would ever add.
+def structured(cards, rnd) -> bool:
+    """A single, a pair, or a TRUE tractor — one component under the engine.
 
     `include_throws` enumerates the whole combinatorial multi-card throw space,
     most of which no sane ballot would offer. Measuring omission against THAT
     makes the deployed ballot look 92% incomplete while saying nothing about
     lost value. The structured subset is the honest denominator for "what is a
     quota arm actually competing to add".
+
+    Defining it as "every code multiplicity is 2" was wrong: that also accepts
+    two UNRELATED pairs thrown together, which is a throw, not a tractor
+    (Codex). The engine already knows the difference, so ask it — a structured
+    action decomposes into exactly one component.
     """
     if len(cards) == 1:
         return True
-    counts = Counter(cards)
-    return len(cards) >= 2 and all(v == 2 for v in counts.values())
+    o = rnd.ordering
+    if o is None:
+        return False
+    try:
+        return len(decompose(list(cards), o).components) == 1
+    except Exception:
+        return False
 
 
 def archetype(cards, rnd, seat) -> str:
@@ -155,12 +178,12 @@ def main() -> None:
             seen += 1
             frac = len(missing) / max(len(wide), 1)
             (miss_frac_lead if is_lead else miss_frac_follow).append(frac)
-            s_wide = [a for a in wide if structured(a)]
+            s_wide = [a for a in wide if structured(a, rnd)]
             s_missing = [a for a in s_wide if key(a) not in off]
             s_frac = len(s_missing) / max(len(s_wide), 1)
             (s_lead if is_lead else s_follow).append(s_frac)
-            per_ply[row["ply"] // 5 * 5][0] += len(missing)
-            per_ply[row["ply"] // 5 * 5][1] += len(wide)
+            per_ply[row["ply"] // 5 * 5][0] += len(s_missing)
+            per_ply[row["ply"] // 5 * 5][1] += len(s_wide)
             if missing:
                 miss_states += 1
             if is_lead:
@@ -179,7 +202,8 @@ def main() -> None:
     print(f"\nstates audited {seen:,}   rebuild/enumeration errors {errors}")
     print(f"states with >=1 omitted legal action: {miss_states:,} "
           f"({miss_states/max(seen,1)*100:.1f}%)")
-    print(f"\nmean fraction of the legal space omitted")
+    print(f"\nmean fraction of the DIAGNOSTIC reference space omitted")
+    print(f"  (enumerate_actions caps exhaustive follows at 64 and bounds\n   throw generation, so this is a diagnostic reference, NOT the legal universe)")
     print(f"  leads   {mean(miss_frac_lead)*100:5.1f}%  (n={len(miss_frac_lead)})")
     print(f"  follows {mean(miss_frac_follow)*100:5.1f}%  (n={len(miss_frac_follow)})")
     print(f"\nSTRUCTURED actions only (singles/pairs/tractors) — the honest number")
@@ -190,14 +214,26 @@ def main() -> None:
     for k, v in missed_by_arch.most_common():
         print(f"  {k:22} {v:7,}  {v/tot*100:5.1f}%   "
               f"(currently offered: {offered_by_arch.get(k,0):,})")
-    print(f"\nomitted fraction by ply bucket")
+    print(f"\nomitted STRUCTURED fraction by ply bucket")
     for p in sorted(per_ply):
         m, w = per_ply[p]
         print(f"  ply {p:2}-{p+4:<2} {m/max(w,1)*100:5.1f}%  ({w:,} legal actions)")
 
     os.makedirs("runs/logs", exist_ok=True)
     with open(args.out, "w") as fh:
+        import subprocess
+        sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                             capture_output=True, text=True).stdout.strip()
+        from shengji.engine.ballot import mc_ballot as _mb
         json.dump({
+            "git": sha,
+            "tree_dirty": bool(subprocess.run(["git", "status", "--porcelain"],
+                                              capture_output=True,
+                                              text=True).stdout.strip()),
+            "script_sha256_16": _digest_file(os.path.abspath(__file__)),
+            "corpus": args.corpus, "corpus_sha256_16": _digest_file(args.corpus),
+            "split": args.split, "split_sha256_16": _digest_file(args.split),
+            "ballot": str(_mb(bot)),
             "side": args.side, "states": seen, "errors": errors,
             "miss_states": miss_states,
             "mean_omitted_lead": mean(miss_frac_lead),

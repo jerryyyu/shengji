@@ -151,26 +151,36 @@ def _fingerprint(obj) -> str:
         return f"opaque:{_module_name_of(obj)}.{getattr(obj, '__name__', '?')}"
 
 
-def _project_callees(fn) -> list:
+def _project_callees(fn, owner=None) -> list:
     """Direct callees of `fn` that belong to this project.
 
-    Depth 1 and package-scoped: deep enough to cover the helpers where a quiet
-    action-set change would actually live, bounded enough that the identity
-    does not sprawl across the whole dependency graph.
+    Two call shapes, because covering only the first left the identity bound to
+    almost nothing that matters. `MCBot._candidates` calls seven helpers as
+    `self._lead(...)`, `self._follow(...)` and so on — those methods ARE the
+    generator, and an earlier version of this function, which looked only at
+    bare names, would not have noticed any of them changing (Codex).
     """
     try:
         tree = ast.parse(inspect.getsource(fn).lstrip())
     except (OSError, SyntaxError, TypeError):
         return []
-    called = {n.func.id for n in ast.walk(tree)
-              if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
-    # Resolve through the function's own globals — the same lookup a bare-name
-    # call performs at runtime. Going via inspect.getmodule() instead returns
-    # None whenever the module is not in sys.modules, which silently dropped
-    # every helper and made this a no-op its own test could not see.
-    g = getattr(fn, "__globals__", {})
     out = []
-    for name in sorted(called):
+    g = getattr(fn, "__globals__", {})
+    bare, methods = set(), set()
+    for n in ast.walk(tree):
+        if not isinstance(n, ast.Call):
+            continue
+        if isinstance(n.func, ast.Name):
+            bare.add(n.func.id)
+        elif (isinstance(n.func, ast.Attribute)
+              and isinstance(n.func.value, ast.Name)
+              and n.func.value.id == "self"):
+            methods.add(n.func.attr)
+    # Resolve bare names through the function's own globals — the same lookup a
+    # bare-name call performs at runtime. Going via inspect.getmodule() instead
+    # returns None whenever the module is not in sys.modules, which silently
+    # dropped every helper and made this a no-op its own test could not see.
+    for name in sorted(bare):
         obj = g.get(name)
         if obj is None or inspect.isclass(obj):
             continue
@@ -180,19 +190,41 @@ def _project_callees(fn) -> list:
         # (scripts, experiments) whose helpers sit right beside them.
         if mod.split(".")[0] == _PKG or mod == getattr(fn, "__module__", None):
             out.append(obj)
+    # Resolve self.<method> against the owning class, walking the MRO so an
+    # override in a subclass is the code that actually runs.
+    if owner is not None:
+        for name in sorted(methods):
+            obj = getattr(owner, name, None)
+            if inspect.isfunction(obj) or inspect.ismethod(obj):
+                out.append(obj)
     return out
 
 
-def source_digest(fn) -> str:
+def _key(obj) -> tuple:
+    return (getattr(obj, "__module__", ""),
+            getattr(obj, "__qualname__", getattr(obj, "__name__", repr(obj))))
+
+
+def source_digest(fn, owner=None, max_depth: int = 3) -> str:
     """Digest binding a ballot's identity to the code that implements it.
 
-    Covers the generator itself plus its project-level callees, so a change to
-    the executable action set moves the identity even when no flag changed.
+    Walks the call graph TRANSITIVELY from the generator, through project
+    functions and through `self.<method>` helpers on the owning class, so a
+    change to the executable action set moves the identity even when no flag
+    changed. Bounded by `max_depth` and a visited set; parts are sorted so the
+    digest does not depend on traversal order.
+
     Compiled callees are folded in by binary digest, deduplicated by module so
-    four functions from one .so hash it once.
+    several functions from one .so hash it once.
     """
-    parts, seen_bin = [_fingerprint(fn)], set()
-    for obj in _project_callees(fn):
+    parts, seen, seen_bin = [], set(), set()
+    stack = [(fn, 0)]
+    while stack:
+        obj, depth = stack.pop()
+        k = _key(obj)
+        if k in seen:
+            continue
+        seen.add(k)
         fp = _fingerprint(obj)
         if fp.startswith("bin:"):
             mod = fp.split(":")[1]
@@ -200,7 +232,9 @@ def source_digest(fn) -> str:
                 continue
             seen_bin.add(mod)
         parts.append(fp)
-    return hashlib.sha256("".join(parts).encode()).hexdigest()[:16]
+        if depth < max_depth:
+            stack += [(c, depth + 1) for c in _project_callees(obj, owner)]
+    return hashlib.sha256("".join(sorted(parts)).encode()).hexdigest()[:16]
 
 
 # ------------------------------------------------------------- MC derivation
@@ -225,9 +259,13 @@ def mc_ballot(bot) -> BallotSpec:
     """Derive the ballot a live MCBot is configured to enumerate."""
     from ..ai.mcbot import MCBot
     cfg = tuple(sorted((a, getattr(bot, a, None)) for a in MC_BALLOT_ATTRS))
+    # owner is the LIVE class, so a subclass that overrides _lead/_follow gets
+    # a different identity — which it must, because it generates differently.
+    owner = type(bot) if not inspect.isclass(bot) else bot
     return BallotSpec(
         name="mc_candidates", version=1, source="MCBot._candidates",
-        config=cfg, source_digest=source_digest(MCBot._candidates))
+        config=cfg,
+        source_digest=source_digest(MCBot._candidates, owner=owner))
 
 
 def rl_ballot(exhaustive_follows: bool = False,
@@ -245,18 +283,43 @@ def rl_ballot(exhaustive_follows: bool = False,
         config=cfg, source_digest=source_digest(enumerate_actions))
 
 
-def ballot_for_policy(name: str) -> BallotSpec:
-    """The ballot a registered policy name enumerates.
+def policy_ballots(name: str) -> dict:
+    """Every ballot STAGE a registered policy uses, keyed by stage.
+
+    Policies are not all single-stage, and reporting one ballot for a
+    multi-stage policy is how v13abs was mis-scored. `MCValueLeaf` enumerates
+    root candidates with `MCBot._candidates` but asks its NET about leaf
+    actions from `enumerate_actions` — the leaf is the stage that binds the
+    checkpoint, and reporting only the root hid exactly that (Codex).
 
     Raises rather than returning "unknown": a manifest that guesses is worse
-    than one that refuses, because it reads as authoritative (Codex).
+    than one that refuses, because it reads as authoritative.
     """
     from ..ai.registry import make_bot
     bot = make_bot(name)                    # a construction failure is fatal
-    inner = getattr(bot, "mc", bot)
-    if hasattr(inner, "_candidates"):
-        return mc_ballot(inner)
-    return NO_BALLOT
+    stages = {}
+    # `_ballot` is the attribute an override policy keeps its generator on.
+    # Dropping it from this lookup made `rl-override-v11pair` report `none@v0`
+    # while it was in fact scoring `self._ballot._candidates()`.
+    for attr in ("mc", "_ballot", None):
+        inner = bot if attr is None else getattr(bot, attr, None)
+        if inner is not None and hasattr(inner, "_candidates"):
+            stages["root"] = mc_ballot(inner)
+            break
+    # Any policy holding a net evaluates leaves over the RL enumeration.
+    if getattr(bot, "net", None) is not None:
+        stages["leaf"] = rl_ballot()
+    return stages or {"root": NO_BALLOT}
+
+
+def ballot_for_policy(name: str) -> BallotSpec:
+    """The single ballot that BINDS a policy — its leaf stage if it has one.
+
+    For a multi-stage policy the binding stage is the one a checkpoint is
+    trained against, not the root the search happens to enumerate.
+    """
+    stages = policy_ballots(name)
+    return stages.get("leaf") or stages["root"]
 
 
 # ---------------------------------------------------------------- the gate

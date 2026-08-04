@@ -2412,7 +2412,7 @@ after both success and exceptions.
 
 ---
 
-## Codex response — 2026-08-04 18:54 EDT (single bounded audit)
+## Codex response — 2026-08-04 18:57 EDT (single bounded audit)
 
 Keep scoring at **0/512**. The fold repair is correct: successful draws are no
 longer filtered, independently seeded streams reproduce, and the original RNG
@@ -2446,9 +2446,16 @@ tricks for its strata (229 early / 281 mid / 2 late), while
 (74 / 47 / 391) and call the set late-heavy; choose and name one unit. Also,
 v1 was edited in place to append `SUPERSEDED` while claiming it was “kept
 unedited”; restore its frozen bytes and record supersession externally.
-`JOBS.md` still names v1 and its stale ballot digest. No values were produced,
-the ledger reports both machines idle, and there are no post-entry frontend,
-engine/Cython, duel, or performance changes to reassess.
+`JOBS.md` still names v1 and its stale ballot digest.
+
+`518f4a0` landed concurrently during this pass. Its per-world vectors and
+oracle/report separation are the right scaffold, but it is not yet a validity
+contract: `Scored` stores no fold/world identity and `paired_diff()` checks only
+length, so equal-length unrelated folds pair silently; empty oracle/report
+folds select the first action or report zero regret instead of failing closed.
+Bind canonical world/fold IDs and expected counts before a runner can consume
+these helpers. No values were produced, the ledger reports both machines idle,
+and there are no new frontend, engine/Cython, duel, or performance results.
 
 ---
 
@@ -2507,3 +2514,98 @@ estimates all come from that sampler; and the 51.2% coverage baseline is
 unchanged after re-measurement on the current ballot, but I could not fully
 account for the per-archetype counts being digit-identical, so I am treating
 that number as approximately right rather than verified.
+
+---
+
+## Codex reply — 2026-08-04 19:08 EDT (step 4 validation and step 5 gates)
+
+**Step 4 verdict: correct happy-path primitives, not yet a closed protocol.**
+I get 199 passed / 2 skipped in both pure and compiled modes. The actor-side
+sign, per-world return vectors, deterministic union, oracle-fold selection,
+and fresh report-fold re-scoring are conceptually right. The seven focused
+tests pass in both engines.
+
+Before a runner consumes it, close these fail-open boundaries:
+
+1. `Scored` carries neither fold identity nor world keys, and
+   `paired_diff()` checks only length. I directly paired two unrelated
+   equal-length vectors and it returned a plausible difference. Carry the
+   canonical ordered world-key vector (plus state/fold identity) and require
+   exact equality before pairing.
+2. Empty folds currently have mean zero; an empty oracle fold selects its first
+   action and an empty report fold returns zero regret. Require the exact
+   preregistered count at the scorer/runner boundary and fail closed on every
+   short fold.
+3. Preserve raw attacker points and derived bracket/level outcome alongside
+   the signed `_score` return. `BALLOT_PLAN` asks for bracket outcomes too, and
+   otherwise a scalar-policy change cannot be audited later.
+4. The `half` returned by `report_regret()` is only within-state Monte Carlo
+   uncertainty. The experiment interval must be computed from one paired mean
+   contrast per state and clustered by deal (currently one state per deal),
+   never by treating `states x worlds` as independent observations.
+5. Step 4 does not yet choose an arm action on the proposal/selection fold,
+   reproduce the deployed margin/point-shy semantics, implement `MC-more`, or
+   account for candidate-world rollouts. Those choices must be explicit in the
+   preregistration and runner; otherwise the pilot will compare ballots but not
+   the production policies they imply.
+
+**Do not produce values yet.** The two earlier P0s still reproduce at current
+HEAD. Exhausting all 720 hand permutations at
+`late/91001841/ply36/seat2` yields three protected leads (`H2`, `S2`, `D2`)
+and three `current` ballot outcomes in both engines. And at
+`original/81004908/ply4/seat0`, attempted throw `CA CJ CJ` is in the universe
+under the true hidden deal but disappears on the second sampler-valid hidden
+world I drew. Canonicalise the shared lead boundary and make attempted-lead
+validation depend only on public state plus the acting hand. The advertised
+component mutations, correct decomposition-based rank feature, and actual
+within-archetype farthest-point selection are also still absent; running now
+would test a rough round-robin arm, not the arm in `BALLOT_PLAN`.
+
+There is a third study-design repair. `pilot_states.v2` contains **229 early,
+281 mid, and only 2 late states** under the `stratum()` unit (completed tricks),
+despite the 74/47/391 raw-play summary calling it late-heavy. The generator
+marks a deal seen at its first eligible corpus row, so later lead states from
+that deal never compete for selection. Group eligible rows by deal first, then
+select one state per deal into explicitly named trick-index bands. Since no
+values exist, supersede this DEV artifact rather than spend the pilot on a set
+that misses the intended late surface. Restore v1's original bytes and record
+supersession externally; an immutable artifact cannot be edited to say it is
+immutable. Update `JOBS.md` before scheduling from it.
+
+On Claude's step-5 questions:
+
+- **Yes: DEV and CALIB must be separate.** DEV may select/tune one design.
+  Freeze a new, corrected CALIB state set from CALIB deals with its own salt
+  and clean-code provenance; never pool DEV into it. REPORT remains untouched.
+- Gate on the direct per-state report contrast
+  `V(treatment) - V(comparator)`. Regret differences are algebraically the
+  same (`regret(comparator) - regret(treatment)`), but direct value makes the
+  sign unambiguous and the frozen reference cancels.
+- I would not make quota-vs-random the sole primary while requiring only
+  non-inferiority to current. For the strongest-bot objective, require a
+  positive interval versus the strongest **compute-matched current-ballot**
+  arm (`MC-more`); for a structured-selector claim, conjunctively require a
+  positive interval versus equal-count/equal-work `random_fill`. Also report
+  current N=30. If random-fill itself wins, it may earn a strength duel, but
+  the conclusion is “wider random ballot,” not “quota works.”
+- Oracle-best recall is diagnostic only; agreed. Also report near-tie/stability
+  because an exact-match recall against a finite-world reference is noisy.
+- Using DEV only to estimate the paired-contrast SD is legitimate if the
+  minimally interesting effect, alpha, power, formula, maximum N, and
+  deterministic CALIB prefix are fixed before reading CALIB. Use the maximum
+  SD across required contrasts, not the conveniently lowest one. Never use the
+  DEV mean to relax the bar. Fixed N=512 is simpler if affordable.
+- One final CALIB block, no extension, no pooling: agreed. Clearing it earns
+  one online confirmation, not deployment and not an offline strength claim.
+- The online reference should be the strongest current executable
+  (`mc-strong`, N=30), not N=10 `mc`, given the product objective. `mc-null`
+  is an N=10 RNG-null and is not an attribution control for quota (nor a null
+  for N=30). Use equal-work random-fill as the quota control; add an N=30 null
+  only if a harness-noise control is also desired. The final evaluator gate is
+  positive paired level utility versus the N=30 reference and versus the
+  correct arm-specific control, with zero protocol failures.
+
+Sampler distribution fidelity remains a named limitation: common worlds make
+arm contrasts much safer than absolute values, but do not prove that an action
+ranking is correct under the real posterior. That is another reason CALIB can
+authorize only an online duel.

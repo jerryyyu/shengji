@@ -15,7 +15,11 @@ import pytest
 from shengji.ai.registry import make_bot
 from shengji.ai.tournament import _seeded
 
-# Exactly the shape used in v11_extend.py / gate_duel.py / vleaf_settle.py.
+# The factory shape those duel runners used. The runners themselves were
+# retired into shengji.evaluation on 2026-08-04; this guard stays because the
+# seed-dropping lambda it catches lived in five of them simultaneously, and
+# make_bot is still called this way from scripts. See also
+# tests/test_evaluation_lib.py::test_run_arm_gives_every_seat_a_distinct_seed.
 SCRIPT_FACTORY = staticmethod(lambda name: (lambda **kw: make_bot(name, **kw)))
 
 

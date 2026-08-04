@@ -1,6 +1,6 @@
 # Backlog
 
-## EXECUTION VIEW — 2026-08-04 15:10
+## EXECUTION VIEW — 2026-08-04 17:30
 
 One table for "what is happening and what closes it". The detailed reasoning
 for each item lives in the sections below, which Codex also maintains — this
@@ -10,7 +10,6 @@ view is a summary, not a replacement.
 
 | item | where | gate that closes it |
 |---|---|---|
-| **N=30 vs N=10 determinization screen** — latency is unconstrained in prod, so does more search simply win? `mc-lite` (N=5) is the dose-response control | mini, 6 parallel shards, seeds 93,000,000-93,000,251 | paired utility (N=30 − N=10) > 0 with the interval excluding 0, aggregated over ALL six shards regardless of interim results |
 | **Late-ply state capture** — the first corpus is 90% at ply<=15, which is why v13 was mis-aimed | Air | raw states only; **its N=240 labels are contract-dirty and must not be trained on** |
 
 ### NEXT (highest value first)
@@ -20,7 +19,6 @@ view is a summary, not a replacement.
 | **1. Unify candidate generation behind a versioned `BallotSpec`** — the ballot work and Codex cleanup #1 are ONE job | `MCBot._candidates()` and `rl.actions.enumerate_actions()` are two independent ballot systems, and that is the structural cause of the Elo-798, v10 and v13 train/deploy mismatches. Anything built before it risks being invalid the same way | one generator, one spec, version recorded in every manifest |
 | **2. Action-identity P0** | "one representative per effective level" is not a sound equivalence, and `decompose()` keeps input-order dependence for tied-level trump pairs while dedupe uses a sorted multiset — generator and engine can disagree about which action was played | permutation-invariant attempted-play semantics, or an explicit decomposition choice |
 | **3. BALLOT_PLAN arm one** — evaluation-free archetype quotas | Leads carry **3x** the forfeit of follows (2.96 vs 1.01 points), half are provably improvable, and the ballot misses **15.5% of leads** vs 2.0% of follows. Two independent measurements, one target | `MC-more` in the same comparison; paired and controlled |
-| **4. Evaluator → library + one CLI**; retire `race_confirm`, `vleaf_settle`, `gate_duel`, `kitty_duel`, `v11_extend`, dated pool scripts | seed handling, manifests, contrasts, counters and shards should exist once — duplication is how the seed-dropping lambda survived in five places | old runners deleted, not deprecated |
 | **5. `pair_void` has no sampler consumer** | computed and never used; Codex has raised it three times and it gates any final sampler claim | sampler refuses to deal a pair into a proven pair-void seat |
 | **6. Clean-contract high-N relabelling** — capture states first, relabel only the stratified union we will report | avoids repeating 37.1M old-ballot evaluations; the only route to labels worth training on | new schema; report worlds never used for selection |
 
@@ -37,6 +35,13 @@ component modules (cleanup #7) · frontend concurrent-load soak · belief-weight
 sampling (the sampler is the one direction never tried).
 
 ### CLOSED — do not re-queue
+
+**Evaluator consolidated (2026-08-04).** The protocol now lives in
+`shengji/evaluation.py` with `scripts/evaluate.py` as a thin CLI. Deleted:
+`race_confirm`, `vleaf_settle`, `gate_duel`, `kitty_duel`, `v11_extend`,
+`pool_20260804` — 35 scripts down to 31. Their seed/interval invariants are
+guarded by `tests/test_evaluation_lib.py` (10 tests). `t3_gate_screen.py`
+was NOT retired: it is a screen with its own logic, not another duel runner.
 
 vleaf equals mc · vleaf with a pairwise head is INVALID not merely failed ·
 v10res was a no-op checkpoint · root-prior racing refuted by its own control ·

@@ -13,8 +13,10 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ### determinization screen — CLOSED 2026-08-04, negative
 - Three blocks, 756 seed clusters. N=30 vs N=10 NOT CONFIRMED
-  (+0.101 +/- 0.150 on the two confirmation blocks). N=10 vs N=5 confirmed
-  (-0.347 +/- 0.145). Search width has saturated at the deployed N=10.
+  (+0.101 +/- 0.150 on the two confirmation blocks). N=10 vs N=5 has a strong
+  secondary contrast (-0.347 +/- 0.145), but 14 zero-world fallbacks make it
+  provisional under the evaluator's own protocol. Do not deploy N=30; rerun
+  the dose check only after the constraint-correct sampler lands.
 - Full ledger in AI_POLICIES.md.
 
 

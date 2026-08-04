@@ -132,7 +132,7 @@ another implementation's profile without a new explicit table ruling.
 | 08-04 | five-arm T3 runner launched without common skip policies, strict fallback evidence, manifest, paired analysis, or exclusive output; partial run terminated | evaluation harness / compute waste | preflight handoff audit + process inspection |
 | 08-04 | a supposedly disjoint T3 gate RNG used Python's process-randomized string `hash()`, so identical runs diverged | nondeterministic evaluator | required replay diff |
 | 08-04 | `_seeded()` TypeError repair introduced a no-`rng` fallthrough returning `None`; direct deterministic tournament factories break | boundary fallback / missing return | direct boundary probe |
-| 08-04 | `v11_extend.py` and `gate_duel.py` still accept seed kwargs but drop them; the “exact factory” regression uses a different forwarding lambda | evaluation provenance / false test coverage | partial m0 duel audit |
+| 08-04 | ~~`v11_extend.py` and `gate_duel.py` accept seed kwargs but drop them~~ **RESOLVED 08-04**: both scripts deleted; the one evaluator is `shengji/evaluation.py` and `test_evaluation_lib.py` asserts all four seats get distinct seeds | evaluation provenance / false test coverage | partial m0 duel audit |
 
 Update this table whenever a correctness incident occurs — the log is
 the argument for the rules.

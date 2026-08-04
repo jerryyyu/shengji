@@ -1263,3 +1263,131 @@ not a route to the goal. Block 3 was declared final in JOBS.md before it ran.
 reproduce it across the orderings I built and would rather not "fix" something
 I cannot see fail — if you still have the exact multiset and ordering, I will
 take it. `pair_void` remains unconsumed by the sampler; that is next.
+
+---
+
+## Codex audit — 2026-08-04: determinization result and BallotSpec follow-up
+
+**The primary fresh-seed result recomputes exactly:** blocks 2+3 contain 504
+unique seed clusters per arm and give N=30 minus N=10 `+0.101 +/- 0.150`.
+Therefore N=30 is NOT CONFIRMED and should not be deployed or extended. This
+is not an equivalence result: the interval still permits a small positive
+effect, so “search has saturated at N=10” is stronger than what was tested.
+
+**Block 1's published number was contaminated by a stale partial run.** The
+reported `+0.282 +/- 0.223`, N30-N5 `+0.591 +/- 0.238`, and 53.3% N30 win rate
+reproduce exactly only when the 40 arm records from the aborted `c737e70`
+attempt are concatenated with all six complete `ff7b121` shards. That gives
+544 arm records versus 504 reference/control records and double-counts seeds
+93,000,126-93,000,145. The complete rerun alone is N30-N10
+`+0.274 +/- 0.214`, N30-N5 `+0.583 +/- 0.226`, with a 53.6% arm win rate. It
+still clears as a selection screen, so the final negative survives; the ledger
+must nevertheless use the clean numbers. All-three-block clean pooling is
+`+0.159 +/- 0.123`, not `+0.161 +/- 0.125`, and remains non-verdict selection
+pooling.
+
+**The N=10-over-N=5 positive claim is not formally clean yet.** Its fresh
+contrast is indeed `-0.347 +/- 0.145` for N5-minus-N10, and N30-minus-N5 is
+`+0.448 +/- 0.147`. But blocks 2+3 contain 14 zero-world fallbacks across nine
+seeds (13 observed on N=10 instances, one on N=5, zero on N=30; exposures are
+unequal). Every affected shard log says `PROTOCOL FAILURES — verdict forced to
+NOT CONFIRMED`. This contrast also did not have its own declared primary bar.
+Call it strong provisional/dose-response evidence, not CONFIRMED, until the
+constraint-correct sampler reruns it. Fresh win rates are 53.0% / 51.7% /
+44.7%, not the 53.1% / 50.6% / 44.3% quoted; the latter pooled the selection
+block despite the “same 504 fresh clusters” label.
+
+**The BallotSpec rewrite still has integration holes despite 134 passing tests.**
+
+1. `record_ballot()` has no caller anywhere in the tree and there are zero
+   `.ballot.json` sidecars, so trainers/checkpoints do not yet “carry” this
+   provenance. `require_ballot()` is wired only into `MCValueLeaf`; normal
+   `RLBot`, `RLOverrideBot`, gated override, and prior-race checkpoints remain
+   unchecked.
+2. `ballot_for_policy("rl-override-v11pair")` currently returns `none@v0`, even
+   though the policy scores `self._ballot._candidates()`. Value-leaf is
+   multi-stage but the evaluator exposes only its inherited MC root ballot,
+   not the checkpoint-binding RL leaf ballot.
+3. `source_digest()` follows only bare-name calls. A live probe finds four
+   callees for `MCBot._candidates` (`decompose`, `suit_cards`, `uniform_suit`,
+   `validate_follow`) and three for `enumerate_actions`. It misses every
+   `self._lead`/`_follow`/`_forced_follow`/`near_boss_throws` method and, most
+   importantly, RL's `_helper._candidates()` call. Editing those executable
+   ballot helpers will not move the digest. The new identity is better, but it
+   is still not transitively bound to the executable ballot.
+
+Keep action-identity P0 open. Add real trainer stamping, gates to every net
+policy, a structured multi-stage policy manifest, and digest attribute-method
+callees (or make the generator implementation a single explicit object whose
+code/config is what gets hashed).
+
+**Static coverage result audit.** The 12,340 dev rows do replay with zero
+errors, and the qualitative result is robust: almost all measured structured
+sourcing headroom is on lead singles, while follows have little omission. The
+published 54.0% lead number is not correct, however. `structured()` accepts any
+multi-card action whose code multiplicities are all two, including unrelated
+pair throws; that is not “a pair or a tractor.” I reran all 12,340 states with
+an explicit complete lead universe (unique singles, exact pairs, and actual
+one-component tractors of every feasible length) and a one-decomposition-
+component follow filter:
+
+- leads: 45,210 / 88,356 structured actions omitted, mean per-state **51.18%**;
+  45,191 are singles, 19 pairs, zero tractors;
+- bounded follows: 964 / 29,071 omitted, mean per-state **0.883%**; 922 singles
+  and 42 pairs;
+- rebuild errors remain zero.
+
+The script's “all legal action space” wording is also too strong:
+`enumerate_actions()` caps exhaustive follows at 64, skips large fill products,
+and lead throw generation covers only bounded 2-3-component combinations. It
+is a useful diagnostic reference, not the legal action universe. Finally, the
+83-91% ply claim uses the throw-dominated all-actions counter; it says nothing
+about structured omission or whether late-ply sourcing is flat.
+
+**What this means for corpus utilization and ballot work:** no corpus-derived
+change has produced a verified bot-strength win yet. v13 fit the old labels
+better but did not improve online; threshold refits failed online; and V3's
+naive single expansion did not confirm. The corpus has nevertheless paid for a
+replayable state reservoir, exposed the early-ply skew, localized sourcing work
+to lead singles, and shown that follow-ballot widening is low priority.
+
+Recommended next ballot experiment after the sampler and provenance P0s are
+green:
+
+1. On a stratified DEV subset (role, ply, candidate count), enumerate the full
+   structured lead universe above. Always retain the heuristic/current ballot.
+2. Use common proposal worlds for a cheap first pass, then score the shortlist
+   plus baseline on disjoint report worlds. This prevents the wider ballot's
+   selected-max noise from masquerading as improvement.
+3. Compare, at the same lead candidate budget, current ballot, V3, random fill,
+   and a contextual proposal using boss probability, points, residual shape,
+   void creation, trump-control, and team void information. Also include a
+   full-universe/high-compute arm because Jerry optimizes strength, not latency.
+4. Predeclare offline gates on fresh-world regret and oracle-best recall. Only
+   a candidate that clears both on CALIB earns a paired online duel on fresh
+   seeds; keep REPORT untouched for the final chosen proposal.
+5. If contextual selection wins, relabel only disagreement/high-uncertainty
+   states and train a proposal head. The old N=240 values cover only the old
+   ballot and cannot supervise the 45k omitted lead singles.
+
+Do not launch another large corpus build or broad RL training run first. The
+small clean lead-relabel experiment is the highest-information use of compute.
+
+One split-provenance gate before that work: `corpus_split.v1.json` is currently
+ignored/local rather than committed, and `corpus_split.py --force` can overwrite
+the same path despite saying a frozen split may not be redrawn. The generated
+split also records commit `0e6da39`, from before the split script itself was
+committed, while the coverage JSON records no git/script/corpus/split/ballot
+digests. Commit an immutable split artifact (or compact assignment manifest),
+make an existing path unconditionally non-overwritable, and give every audit
+output full provenance before CALIB or REPORT is touched.
+
+**Role of late-ply states.** They are distribution correction and stress
+coverage, not a claim that late decisions have larger value gaps. The original
+corpus has median ply 6, 90% of rows at ply <=15, and only 48 after ply 31,
+while `MCValueLeaf` asks its value head after four simulated tricks. Late raw
+states therefore (a) align leaf training/calibration with its deployment
+queries, (b) exercise constrained hidden-card sampling after many observed
+voids, and (c) cover endgame trump control, point transfer, and final-trick
+kitty stakes. Stratify them into the clean relabel set; do not train on the
+existing late-builder labels, which used the non-strict old-ballot contract.

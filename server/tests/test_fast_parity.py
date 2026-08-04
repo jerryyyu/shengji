@@ -122,11 +122,21 @@ def test_memoized_route_matches_reference():
             fast.deactivate()
 
 
-def test_exact_order_memo_contract_fast_route():
-    """The 08-03 audit contract, enforced on the COMPILED memo route: keys
-    are the caller's exact order, so anagram inputs with equal-level pairs
-    each get their own reference-identical result (a sorted key collapses
-    them — the bug that quarantined the prototype)."""
+def test_multiset_memo_contract_fast_route():
+    """The memo contract, REPLACED 2026-08-04 and enforced on the compiled route.
+
+    It used to be that keys were the caller's EXACT order, because the greedy
+    split resolved tied-level pairs by input order and a sorted key would have
+    collapsed genuinely different results onto one entry. Codex's witness
+    showed that order dependence was itself the defect, not something to
+    preserve: `C7 C7 D7 D7 H7 H7` and `D7 C7 C7 D7 H7 H7` gave the same shape
+    with different physical splits.
+
+    Both kernels now canonicalise their input, so the contract is stronger:
+    anagram inputs return the SAME decomposition, the key is the multiset, and
+    a cache hit can no longer hand back a different split than a fresh
+    computation would.
+    """
     was_active = bool(fast._saved)
     fast.activate()
     try:
@@ -136,13 +146,24 @@ def test_exact_order_memo_contract_fast_route():
         combos.decompose(c2, o)  # prime with the other order
         assert combos.decompose(c1, o) == combos._decompose_uncached(c1, o)
         assert combos.decompose(c2, o) == combos._decompose_uncached(c2, o)
+        assert combos.decompose(c1, o) == combos.decompose(c2, o), \
+            "anagrams must decompose identically"
+
+        # the six-card case that reopened the gate
+        w1 = ["C7", "C7", "D7", "D7", "H7", "H7"]
+        w2 = ["D7", "C7", "C7", "D7", "H7", "H7"]
+        d1, d2 = combos.decompose(w1, o), combos.decompose(w2, o)
+        assert [sorted(c.cards) for c in d1.components] == \
+               [sorted(c.cards) for c in d2.components], \
+            "the Codex witness must not split differently by input order"
+
         t1 = ["HA", "HA", "S7", "S7", "D7", "D7"]
         t2 = ["HA", "HA", "D7", "D7", "S7", "S7"]
         combos.find_tractor_runs(t2, o, 2)
         assert (combos.find_tractor_runs(t1, o, 2)
                 == combos._find_tractor_runs_uncached(t1, o, 2))
         # the fast route fills the SAME dicts the invariant audit reads
-        assert tuple(c1) in o._dcache and (tuple(t1), 2) in o._trcache
+        assert tuple(sorted(c1)) in o._dcache
     finally:
         if not was_active:
             fast.deactivate()

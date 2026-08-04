@@ -56,13 +56,13 @@ def decompose(cards: list[str], ordering: Ordering) -> Decomposition:
     # Memo per-Ordering (perf audit 2026-08-02): 845k calls/round in MC
     # rollouts, huge repeat rate. Cache lives on the Ordering (per-round
     # lifetime => bounded, auto-invalidated).
-    # Key is the EXACT input order, not sorted (audit 2026-08-02): the
-    # greedy decomposition is order-dependent when distinct codes share a
-    # level (off-suit trump-rank pairs, e.g. S7S7 vs D7D7 under H7) — a
-    # sorted key collapsed different orders onto one entry, so a cache hit
-    # could return a different physical-card split than the reference
-    # computation for the caller's order (first caller's order won).
-    key = tuple(cards)
+    # Key is the SORTED multiset. It could not be before: the greedy split was
+    # order-dependent for distinct codes sharing a level, so a sorted key
+    # collapsed different orders onto one entry and the first caller's order
+    # won. `_decompose_uncached` now canonicalises its input, so equal
+    # multisets have equal decompositions and sorting the key is both correct
+    # and a better hit rate.
+    key = tuple(sorted(cards))
     cache = getattr(ordering, "_dcache", None)
     if cache is None:
         cache = {}
@@ -81,7 +81,17 @@ def _decompose_uncached(cards: list[str], ordering: Ordering) -> Decomposition:
     Tractors are maximal runs of pairs on strictly consecutive levels, longest
     first. Two different pairs sharing a level (off-suit trump-rank pairs)
     cannot join the same tractor.
+
+    The input is CANONICALISED first. Everything below inherits list order —
+    `Counter` iteration fixes which tied-level pair is consumed into a tractor,
+    which singles are emitted in what order, and how equal sort keys break —
+    so `C7 C7 D7 D7 H7 H7` and `D7 C7 C7 D7 H7 H7` produced the same shape with
+    a DIFFERENT physical split (Codex witness, 2026-08-04). Sorting once here
+    makes the whole decomposition a function of the multiset, rather than
+    canonicalising each internal step and having pure and fast inherit order
+    differently at the steps that were missed.
     """
+    cards = sorted(cards)
     cnt = Counter(cards)
     pair_codes = [c for c, k in cnt.items() if k >= 2]
     singles = [c for c, k in cnt.items() if k == 1]

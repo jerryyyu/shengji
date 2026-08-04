@@ -226,11 +226,19 @@ cdef list _tractor_runs_core(list cards, const unsigned char *ids,
 # ------------------------------------------------------- public entry points
 
 cdef object _decompose_memo(list cards, object ordering, tuple ctx):
-    """Shared memoized decompose (caller-order contract, CORRECTNESS.md
-    08-03): key is ``tuple(cards)`` in the caller's exact order, value
-    computed on that order, stored in ``ordering._dcache`` — the same
-    dict the pure implementation uses."""
+    """Shared memoized decompose. The input is CANONICALISED (sorted) first,
+    so the key is the multiset and the value is a function of it — matching
+    `combos._decompose_uncached`, which sorts at the same point.
+
+    The old caller-order contract existed because the greedy split resolved
+    tied-level pairs by input order: `C7 C7 D7 D7 H7 H7` built its tractor from
+    C7 and `D7 C7 C7 D7 H7 H7` from D7 (Codex witness, 2026-08-04). Keying on
+    caller order preserved that ambiguity faithfully instead of removing it.
+    Sorting at entry makes the ambiguity go away, so the multiset key is now
+    both correct and a better hit rate. Stored in ``ordering._dcache``, the
+    same dict the pure implementation uses."""
     cdef dict cache = <dict>ctx[0]
+    cards = sorted(cards)
     key = tuple(cards)
     cdef PyObject *hit = PyDict_GetItem(cache, key)
     if hit != NULL:
@@ -292,7 +300,11 @@ def suit_cards(list hand, eff, ordering):
 
 def decompose_uncached(list cards, ordering):
     """Uncached kernel (combos._decompose_uncached drop-in) — for parity
-    tests and benchmarks; the memoized path above is what ships."""
+    tests and benchmarks; the memoized path above is what ships.
+
+    Canonicalises its input exactly as the pure kernel does, so the two agree
+    on which tied-level pair joins a tractor."""
+    cards = sorted(cards)
     cdef tuple ctx = _get_ctx(ordering)
     cdef dict code2id = <dict>ctx[4]
     cdef const unsigned char *lvl = \

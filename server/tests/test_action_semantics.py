@@ -26,9 +26,10 @@ case is also run against a FRESH `Ordering`. An earlier version of this file
 cleared module globals named `_DECOMP_CACHE`/`_decomp_cache`/`_CACHE`, none of
 which exist — so the "cold cache" test was a no-op (Codex).
 
-**THE GATE IS OPEN.** Sizes 2-4 are invariant, but Codex's six-card witness
-reproduces: two tied-level pairs competing for the adjacent pair are resolved
-by input order. That case is marked xfail(strict) below.
+Sizes 2-4 were invariant even before the fix, which is exactly why my first
+closure was wrong: exposing the defect needs SIX cards, so two tied-level pairs
+can compete for the adjacent pair. Codex supplied that witness and it is the
+last test in this file.
 """
 from __future__ import annotations
 
@@ -66,7 +67,7 @@ def _multisets(pool, size):
     return sorted({tuple(sorted(c)) for c in itertools.combinations(pool, size)})
 
 
-@pytest.mark.parametrize("size", [2, 3, 4])
+@pytest.mark.parametrize("size", [2, 3, 4, 6])
 def test_decomposition_is_permutation_invariant(size):
     """Shape AND physical split must not depend on list order."""
     checked = multisets = reorderable = 0
@@ -91,7 +92,7 @@ def test_decomposition_is_permutation_invariant(size):
         f"test is not exercising anything")
 
 
-@pytest.mark.parametrize("size", [2, 3, 4])
+@pytest.mark.parametrize("size", [2, 3, 4, 6])
 def test_decomposition_is_invariant_on_a_cold_cache(size):
     """The cache keys on exact input order, so warm results could hide a bug."""
     for ms in _multisets(POOL, size):
@@ -106,7 +107,7 @@ def test_decomposition_is_invariant_on_a_cold_cache(size):
             f"{results}")
 
 
-@pytest.mark.parametrize("size", [2, 3, 4])
+@pytest.mark.parametrize("size", [2, 3, 4, 6])
 def test_lead_legality_and_recorded_play_are_permutation_invariant(size):
     """The ENGINE must not interpret two orderings of one multiset differently.
 
@@ -143,13 +144,8 @@ def test_successor_hand_is_permutation_invariant(size):
         assert len(residuals) == 1, f"{ms}: residual hand depends on order"
 
 
-@pytest.mark.xfail(reason="KNOWN DEFECT, reproduced 2026-08-04 from Codex's "
-                          "witness: two tied-level pairs competing for the "
-                          "adjacent pair pick by input order. Needs six cards "
-                          "to expose, which is why sizes 2-4 missed it.",
-                   strict=True)
 def test_six_card_tied_level_tractor_is_permutation_invariant():
-    """Codex's minimal witness. Fails today; the gate stays OPEN until it passes.
+    """Codex's minimal witness. FIXED 2026-08-04; was xfail-strict until then.
 
         C7 C7 D7 D7 H7 H7  ->  tractor C7C7H7H7 + pair D7D7
         D7 C7 C7 D7 H7 H7  ->  tractor D7D7H7H7 + pair C7C7
@@ -158,9 +154,11 @@ def test_six_card_tied_level_tractor_is_permutation_invariant():
     dedupes on a sorted multiset, so the generator and the engine can disagree
     about which action was played.
 
-    Marked xfail(strict) rather than deleted: it must start passing the moment
-    the decomposition is made canonical, and it must fail loudly if someone
-    marks the gate closed again while this still reproduces.
+    Both kernels now sort their input at entry, so the whole decomposition is a
+    function of the multiset. Canonicalising only the tied-level pair choice was
+    not enough: `singles` ordering and component tie-breaking also inherit list
+    order, and pure and fast inherited it differently at the steps that were
+    missed, which broke eight parity tests.
     """
     ms = ("C7", "C7", "D7", "D7", "H7", "H7")
     splits = set()

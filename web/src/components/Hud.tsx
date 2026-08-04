@@ -73,11 +73,34 @@ function LeaveButton() {
 }
 
 export default function Hud({ state }: { state: GameState }) {
+  // Tapping the room chip mid-game copies a full invite link, so you can
+  // pull someone into a game already in progress — they land on a bot's
+  // seat (Jerry, 2026-08-03).
+  const [copied, setCopied] = useState(false);
+  const copyInvite = () => {
+    const url = `${window.location.origin}/?room=${state.room}`;
+    navigator.clipboard
+      .writeText(url)
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1400);
+      })
+      .catch(() => {
+        /* clipboard blocked (non-https / permissions); leave the chip as-is */
+      });
+  };
+
   return (
     <div className="hud">
       <div className="hud-bar">
         <div className="hud-group">
-          <span className="chip room-chip">{state.room}</span>
+          <button
+            className={"chip room-chip" + (copied ? " copied" : "")}
+            onClick={copyInvite}
+            title="Copy invite link"
+          >
+            {copied ? "Link copied" : state.room}
+          </button>
           <span className="chip phase-chip">{PHASE_LABEL[state.phase]}</span>
         </div>
 

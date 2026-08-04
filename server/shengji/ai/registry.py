@@ -94,15 +94,25 @@ def make_bot(name: str, **kw):
     except KeyError:
         raise ValueError(
             f"Unknown bot policy {name!r}. Available: {', '.join(sorted(REGISTRY))}")
+    # Decide by SIGNATURE, never by catching TypeError: a genuine TypeError
+    # raised inside a bot's constructor would be swallowed and retried, turning
+    # a real bug into another plausible-looking fallback — the exact pattern
+    # that has cost us three days this week (Codex, 2026-08-04).
+    import inspect
     try:
+        params = inspect.signature(factory).parameters
+    except (TypeError, ValueError):        # builtins without introspection
+        params = {}
+    takes_kwargs = any(p.kind is inspect.Parameter.VAR_KEYWORD
+                       for p in params.values()) or "seed" in params
+    if takes_kwargs:
         return factory(**kw)
-    except TypeError:
-        bot = factory()          # factory takes no kwargs
-        seed = kw.get("seed")
-        if seed is not None and hasattr(bot, "rng"):
-            import random as _r
-            bot.rng = _r.Random(seed)
-        return bot
+    bot = factory()
+    seed = kw.get("seed")
+    if seed is not None and hasattr(bot, "rng"):
+        import random as _r
+        bot.rng = _r.Random(seed)
+    return bot
 
 
 def _make_vleaf(ckpt: str):

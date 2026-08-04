@@ -208,6 +208,22 @@ def now() -> float:
     return time.monotonic()
 
 
+def _reserved(room: Room, seat: int) -> bool:
+    """Is this dropped seat still exclusively its owner's?
+
+    HOUSE RULE (adopted explicitly, 2026-08-04): ONE window, TAKEOVER_AFTER
+    long, serves both purposes — the bot does not act and nobody else may
+    claim the seat until it expires. Codex offered the alternative of a prompt
+    bot plus a separate reservation clock; a single deadline was chosen so the
+    countdown a player sees is the same number the server enforces. Before
+    this, a seat was claimable the instant its player blipped.
+    """
+    sd = room.seats[seat]
+    if sd.is_bot or sd.connected or sd.left_at is None:
+        return False
+    return (now() - sd.left_at) < TAKEOVER_AFTER
+
+
 def _controller(room: Room, seat: int) -> str:
     sd = room.seats[seat]
     if sd.is_bot:
@@ -287,6 +303,10 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
             # expires anyone may claim the seat.
             "reserved_for": (room.seats[s].name
                              if _controller(room, s) == "bot_cover" else None),
+            # Seconds the seat stays exclusively its owner's — the SAME
+            # deadline the takeover countdown shows, so they cannot disagree.
+            "reserved_secs": (_takeover_in(room, s)
+                              if _reserved(room, s) else None),
         } for s in range(4)],
         "hand": hand,
         "levels": list(game.levels),
@@ -785,7 +805,12 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                    "team": i % 2,
                                    # What the lobby actually needs to know:
                                    # a dropped human's seat can be taken too.
-                                   "claimable": sd.is_bot or not sd.connected,
+                                   "claimable": sd.is_bot or (
+                                       not sd.connected
+                                       and not _reserved(target, i)),
+                                   "reserved_secs": (_takeover_in(target, i)
+                                                     if _reserved(target, i)
+                                                     else None),
                                    "controller": ("bot" if sd.is_bot else
                                                   "human" if sd.connected
                                                   else "bot_cover")}
@@ -852,8 +877,13 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             # different name (Jerry, 2026-08-03).
                             botseats = [i for i, sd in enumerate(target.seats)
                                         if sd.is_bot]
+                            # A dropped seat is RESERVED for its owner during
+                            # the grace window: anyone could previously claim
+                            # it the instant a player blipped. After the window
+                            # the bot is covering and the seat is open to all.
                             dropped = [i for i, sd in enumerate(target.seats)
-                                       if not sd.is_bot and not sd.connected]
+                                       if not sd.is_bot and not sd.connected
+                                       and not _reserved(target, i)]
                             claimable = botseats + dropped
                             if isinstance(want, bool) or not (
                                     want is None or isinstance(want, int)):
@@ -871,7 +901,18 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             pick = want if want is not None else (
                                 botseats[0] if botseats else None)
                             if pick is None:
-                                if dropped:
+                                reserved = [i for i, sd in enumerate(target.seats)
+                                            if _reserved(target, i)]
+                                if reserved and not dropped:
+                                    secs = max((_takeover_in(target, i) or 0)
+                                               for i in reserved)
+                                    await send(ws, {
+                                        "type": "error", "code": "seat_reserved",
+                                        "message": f"A player just dropped — "
+                                                   f"their seat is held for "
+                                                   f"{secs:.0f}s in case they "
+                                                   f"come back."})
+                                elif dropped:
                                     # Seats exist, but each belongs to someone
                                     # who may be reconnecting: make the caller
                                     # choose one deliberately.

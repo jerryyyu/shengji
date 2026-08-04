@@ -37,3 +37,35 @@ def test_different_seeds_actually_differ():
 
 def test_make_bot_forwards_seed_kwarg():
     assert make_bot("mc", seed=7).rng.getstate() == make_bot("mc", seed=7).rng.getstate()
+
+
+@pytest.mark.parametrize("opp", ["mc", "smart"])
+def test_full_pairing_reproduces_through_the_script_lambda(opp):
+    """End-to-end: the same seeds must give the same SCORE, twice.
+
+    Comparing two fresh RNG states only proves the constructor took a seed.
+    It would not catch a factory that seeds correctly and then, say, reseeds
+    from entropy on first use (Codex, 2026-08-04).
+    """
+    from shengji.ai.tournament import play_pairing
+
+    make_a = lambda **kw: make_bot("heuristic", **kw)   # noqa: E731
+    make_b = lambda **kw: make_bot(opp, **kw)           # noqa: E731
+    first = play_pairing(make_a, make_b, 3, 555_000)
+    second = play_pairing(make_a, make_b, 3, 555_000)
+    assert first == second, f"same seeds gave {first} then {second}"
+
+
+def test_a_constructor_bug_is_not_swallowed():
+    """A real TypeError inside a bot must propagate, not trigger a retry."""
+    from shengji.ai.registry import REGISTRY
+
+    def exploding(**kw):
+        raise TypeError("bug inside the bot constructor")
+
+    REGISTRY["__exploding__"] = exploding
+    try:
+        with pytest.raises(TypeError, match="bug inside"):
+            make_bot("__exploding__", seed=1)
+    finally:
+        REGISTRY.pop("__exploding__", None)

@@ -28,26 +28,67 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(srv, "DECLARE_GRACE", 0.05)
     monkeypatch.setattr(srv, "DECLARE_EXTEND", 0.05)
     srv.rooms.clear()
+    # ONE event loop for the whole test: a bare TestClient gives each
+    # websocket_connect its own portal, and a Room's asyncio.Lock binds to
+    # whichever loop touches it first — so multi-socket tests died with
+    # "bound to a different event loop".
+    #
+    # The reason the context manager was avoided is that its shutdown waits on
+    # the per-room watchdog, which loops forever, hanging the suite. So the
+    # watchdog is stubbed out here instead: every test that needs takeover
+    # drives `watchdog_tick` directly with the injected clock, which is more
+    # deterministic than waiting on a 5-second poll anyway.
+    async def _no_watchdog(room):
+        return
+
+    monkeypatch.setattr(srv, "watchdog", _no_watchdog)
+    monkeypatch.setattr(srv, "ROOM_TTL", 0.2)   # don't sleep 5 min on teardown
+
     with TestClient(srv.app) as c:
         yield c
-    # Rooms outlive a test's event loop; their asyncio.Lock binds to whichever
-    # loop touches it first, so a leftover room makes the NEXT test fail with
-    # "attached to a different loop". Tear down explicitly.
-    for room in list(srv.rooms.values()):
-        for task in (room.cleanup_task, room.deal_task,
-                     getattr(room, "watchdog_task", None)):
-            if task is not None:
-                task.cancel()
+        for room in list(srv.rooms.values()):
+            for task in (room.cleanup_task, room.deal_task,
+                         room.watchdog_task, room.bot_task):
+                if task is not None:
+                    task.cancel()
+        srv.rooms.clear()
     srv.rooms.clear()
 
 
-def _drain(ws, want, tries=40):
-    """Next message of type `want` (states/chat interleave freely)."""
+_READER = None  # lazily-built reader pool; a thread blocked on a dead socket
+                # is abandoned rather than joined (joining it re-created the
+                # hang the bounded read was meant to prevent)
+
+
+def _drain(ws, want, tries=40, timeout=5.0):
+    """Next message of type `want` (states/chat interleave freely).
+
+    Each read is bounded: a bare receive_json() blocks forever when the server
+    sends fewer messages than expected, which turned four behaviour changes
+    into a HUNG suite instead of four failures (2026-08-04). A test that
+    cannot fail fast is a test that hides its own breakage.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import TimeoutError as _TO
+
+    global _READER
+    if _READER is None:
+        _READER = ThreadPoolExecutor(max_workers=32,
+                                     thread_name_prefix="ws-drain")
+    seen = []
     for _ in range(tries):
-        m = ws.receive_json()
+        fut = _READER.submit(ws.receive_json)
+        try:
+            m = fut.result(timeout=timeout)
+        except _TO:
+            # Do NOT wait for the blocked reader: joining it is what turned a
+            # bounded read back into a hang.
+            raise AssertionError(
+                f"no {want!r} within {timeout}s; saw {seen}") from None
+        seen.append(m.get("type"))
         if m.get("type") == want:
             return m
-    raise AssertionError(f"no {want!r} message arrived")
+    raise AssertionError(f"no {want!r} in {tries} messages; saw {seen}")
 
 
 def _room_with_bots(ws, name="jerry"):
@@ -358,35 +399,50 @@ def _four_humans(client, a):
     return code, srv.rooms[code], socks
 
 
-def test_dropped_human_seat_is_claimable_not_locked(client):
-    """A disconnected player's seat must never become unreachable."""
+def test_dropped_seat_is_reserved_during_grace_then_claimable(client, clock):
+    """A blip must not cost you your seat; a real departure must not lock it.
+
+    Both halves matter: the seat was previously claimable the INSTANT someone
+    dropped (so a momentary disconnect could lose it), and before that it was
+    never claimable at all (so a four-human game with one player gone was
+    unjoinable). One window, TAKEOVER_AFTER long, settles both.
+    """
+    from shengji.api import server as srv
+
     with client.websocket_connect("/ws") as a:
         code, room, socks = _four_humans(client, a)
         socks[0].__exit__(None, None, None)          # amy drops
-        assert not room.seats[1].connected and not room.seats[1].is_bot
 
-        # Peek must advertise the seat as claimable.
+        # --- inside the grace window: reserved for amy ---
         with client.websocket_connect("/ws") as p:
             p.send_json({"type": "peek_room", "room": code})
             seats = _drain(p, "room_seats")["seats"]
-        assert seats[1]["claimable"] and not seats[1]["is_bot"]
-        assert not seats[1]["connected"]
-
-        # A blind join is told to choose rather than being refused outright.
+        assert not seats[1]["claimable"], "seat claimable during its grace window"
+        assert seats[1]["reserved_secs"] is not None
         with client.websocket_connect("/ws") as q:
-            q.send_json({"type": "join_room", "room": code, "name": "newbie"})
-            err = _drain(q, "error")
-            assert err["code"] == "choose_seat"
+            q.send_json({"type": "join_room", "room": code, "name": "vulture"})
+            assert _drain(q, "error")["code"] == "seat_reserved"
+        # amy herself can still return.
+        with client.websocket_connect("/ws") as amy:
+            amy.send_json({"type": "join_room", "room": code, "name": "amy"})
+            assert _drain(amy, "state", tries=60)["you"] == 1
+            amy.__exit__ if False else None
+        socks[0] = None
 
-        # An explicit choice takes the seat over.
+        # --- after it expires: anyone may take over ---
+        clock["v"] += srv.TAKEOVER_AFTER + 1
+        with client.websocket_connect("/ws") as p2:
+            p2.send_json({"type": "peek_room", "room": code})
+            seats2 = _drain(p2, "room_seats")["seats"]
+        assert seats2[1]["claimable"], "seat still locked after the grace window"
         with client.websocket_connect("/ws") as r:
             r.send_json({"type": "join_room", "room": code,
                          "name": "newbie", "seat": 1})
             st = _drain(r, "state", tries=60)
-            assert st["you"] == 1
-            assert len(st["hand"]) > 0, "took over a seat but got no hand"
+            assert st["you"] == 1 and len(st["hand"]) > 0
         for w in socks[1:]:
-            w.__exit__(None, None, None)
+            if w is not None:
+                w.__exit__(None, None, None)
 
 
 def test_reclaim_is_case_and_space_insensitive(client):
@@ -403,10 +459,12 @@ def test_reclaim_is_case_and_space_insensitive(client):
             w.__exit__(None, None, None)
 
 
-def test_takeover_of_dropped_human_is_announced_as_such(client):
+def test_takeover_of_dropped_human_is_announced_as_such(client, clock):
     with client.websocket_connect("/ws") as a:
         code, room, socks = _four_humans(client, a)
         socks[0].__exit__(None, None, None)
+        from shengji.api import server as srv
+        clock["v"] += srv.TAKEOVER_AFTER + 1          # past the reservation
         with client.websocket_connect("/ws") as r:
             r.send_json({"type": "join_room", "room": code,
                          "name": "newbie", "seat": 1})
@@ -511,7 +569,7 @@ def test_state_exposes_controller_not_inference(client):
         assert by[botseat]["reserved_for"] is None
 
 
-def test_pregame_full_lobby_with_a_drop_is_claimable(client):
+def test_pregame_full_lobby_with_a_drop_is_claimable(client, clock):
     """P0-4: a full PRE-GAME lobby with one dropped player must not deadlock."""
     with client.websocket_connect("/ws") as h:
         h.send_json({"type": "create_room", "name": "host"})
@@ -523,6 +581,8 @@ def test_pregame_full_lobby_with_a_drop_is_claimable(client):
             _drain(w, "room")
             socks.append(w)
         socks[0].__exit__(None, None, None)          # drop BEFORE start_game
+        from shengji.api import server as srv
+        clock["v"] += srv.TAKEOVER_AFTER + 1          # past the reservation
         with client.websocket_connect("/ws") as p:
             p.send_json({"type": "peek_room", "room": code})
             pk = _drain(p, "room_seats")
@@ -749,12 +809,14 @@ def test_displaced_socket_cannot_act(client):
                 pass
 
 
-def test_claiming_a_seat_rotates_its_token(client):
+def test_claiming_a_seat_rotates_its_token(client, clock):
     """The previous owner must not be able to displace the new one later."""
     with client.websocket_connect("/ws") as a:
         code, room, socks = _four_humans(client, a)
         old_tok = room.seats[1].token
         socks[0].__exit__(None, None, None)          # amy drops
+        from shengji.api import server as srv
+        clock["v"] += srv.TAKEOVER_AFTER + 1          # past the reservation
         with client.websocket_connect("/ws") as taker:
             taker.send_json({"type": "join_room", "room": code,
                              "name": "newbie", "seat": 1})

@@ -52,7 +52,9 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
           <span className="off-tag">
             {takeover !== null && takeover > 0
               ? `offline — bot in ${Math.ceil(takeover)}s`
-              : "offline"}
+              : player.controller === "bot_cover"
+                ? "bot playing"
+                : "offline"}
           </span>
         ) : null}
       </div>

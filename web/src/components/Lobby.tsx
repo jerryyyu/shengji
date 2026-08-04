@@ -160,7 +160,10 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
                 <span className="seat-num">Seat {sd.seat}</span>
                 <span className="seat-who">
                   {sd.is_bot ? `${sd.name} (bot)`
-                    : sd.connected ? sd.name : `${sd.name} (offline)`}
+                    : sd.connected ? sd.name
+                    : sd.reserved_secs != null
+                      ? `${sd.name} (held ${Math.ceil(sd.reserved_secs)}s)`
+                      : `${sd.name} (offline)`}
                 </span>
                 <span className="seat-team">Team {sd.team === 0 ? "A" : "B"}</span>
                 {sd.claimable && (

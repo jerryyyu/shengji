@@ -66,6 +66,10 @@ export interface StatePlayer {
   controller: Controller;
   /** Name of the absent owner while a bot covers their seat. */
   reserved_for: string | null;
+  /** Seconds this seat stays exclusively its owner's after a drop; null once
+   *  the window has passed and anyone may claim it. Same deadline as
+   *  takeover_in, so the two can never disagree. */
+  reserved_secs: number | null;
 }
 
 export interface Trump {
@@ -167,6 +171,7 @@ export type ErrorCode =
   | "room_full"
   | "choose_seat"
   | "seat_unavailable"
+  | "seat_reserved"
   | "stale_connection";
 
 /** "human" — a connected person; "bot" — a permanent bot seat;
@@ -206,5 +211,6 @@ export interface RoomSeats {
     /** Bot seat, OR a human who has dropped (a bot is covering it). */
     claimable: boolean;
     controller: Controller;
+    reserved_secs: number | null;
   }[];
 }

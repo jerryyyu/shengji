@@ -117,13 +117,15 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
   | **ckpt_distill_v6** | same, 12 epochs | **51%** | **41%** |
   | **snapshots_v8a/ep03 (v8a)** | warm from v7w on gen-v3 (43k rounds, 2.33M dec, choice-only rows included) | 46%* | 34%* — NO improvement over v7w despite 2.2x data from a stronger teacher; suggests the TARGET (raw values vs acting policy) is the binding constraint, not data volume |
   | **snapshots_v7w/ep02 (v7w)** | WARM from v6, 4 ep on N=30 textbook (~1.5h) | 45%* | 32.5%* vs wide-mc |
-  **v7w is the strongest net** (beat v6 in all 4 snapshots, best 64.5%
-  n=200 games; ep02 selected by probe). *Anchor caveats: round-level
-  anchors ~v6-level and were measured under a briefly-corrupted follow
-  ballot (MCBot default flip leaked into the RL enumerator — same day
-  pinned via _V1Ballot; clean rerun in flight). Net-vs-net game duels
-  overstate transitive strength. Previously: v6 was the strongest standalone net: beats BC on both axes, parity-plus
-  vs SmartBot, Elo ~25-30 above smart / ~70 below mc in its pool. The
+  **v7w was the strongest STANDALONE net** (beat v6 in all 4 snapshots,
+  best 64.5% n=200 games; ep02 selected by probe). Superseded as the
+  interesting line entirely: standalone nets plateau at 38-48% vs mc,
+  while the same weights used as an OVERRIDE on SmartBot beat it 57.7%
+  (n=480). See `rl-override-v11pair` above. The clean anchor rerun that
+  this entry once promised was made moot — those anchors were measured
+  under a briefly-corrupted follow ballot, and the whole standalone line
+  has since been measured many times under seeded anchors. Previously:
+  v6 was the strongest standalone net. The
   distillation series (v1-v3 failed at 32/22-ish; v4 soft targets 38/32;
   v5 42/38; v6 51/41) — full iteration history in RL_PLAN.md.
 - **Dueling-architecture tax (measured)**: at near-equal imitation
@@ -219,7 +221,8 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
   but A+KK absent — the exact fingerprint). Post-fix smart vs heuristic:
   **89%** (was 76% on identical seeds). Affects SmartBot leads, MCBot
   candidates/rollouts, and all teacher data generated AFTER the fix (the
-  N=30 overnight set spans it — regenerate-or-accept decision pending).
+  N=30 set spans the fix; ACCEPTED rather than regenerated, and superseded
+  anyway by gen-v3/gen-v4, which are entirely post-fix).
   All Elo/gate numbers measured before this are pre-pairfix.
 
 - **2026-08-01 throw-ruffing fix**: no bot could contest a 甩牌 (candidate

@@ -79,14 +79,14 @@ between modes (behaviour does not); the new lowest-beatable throw rule
 is unreachable in self-play (0 firings in 900 rounds) so its only
 coverage is the constructed sweep + committed test.
 
-## Superseded decision (2026-08-03 morning)
+## Fast path: RESOLVED (2026-08-03)
 
-Deep validation in flight before the fast path is trusted for
-GENERATION DATA and MEASUREMENT DUELS — the new gate is per-candidate
-VALUE parity (training data records values, not just plays), plus a
-300-round sweep, duel-record equivalence, and interleaving safety.
-Flip only on a clean verdict; the next mini batch (~13k rebalanced
-rounds) is the natural switch-over point.
+The deep validation this section once described as "in flight" completed:
+per-candidate VALUE parity, a 300-round sweep, duel-record equivalence, and
+interleaving safety all passed, and `SHENGJI_FAST=1` has since generated
+gen-v3 and gen-v4 and run every duel on both machines. Bit-identical parity is
+asserted by `tests/test_fast_parity.py` and the golden histories.
+
 
 ## Current perf state (2026-08-03 evening)
 

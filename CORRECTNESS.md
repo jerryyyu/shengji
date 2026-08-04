@@ -14,7 +14,7 @@ bugs cost hours; correctness bugs cost weeks and are invisible.
 cd server && uv run python -m pytest tests/ -q
 ```
 
-Layers (all must pass, **currently 62 tests**; run in BOTH modes when
+Layers (all must pass, **87 tests** as of 2026-08-04; run in BOTH modes when
 the compiled path is involved: plain, and `SHENGJI_FAST=1`):
 1. **Unit tests** — test_engine.py, test_game.py, test_memory.py,
    test_rl.py: rules primitives, game flow, memory inference, RL codec.

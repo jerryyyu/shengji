@@ -82,8 +82,10 @@ measured on mirrored deals (details in `AI_POLICIES.md`):
 - **`mc` (default)** — determinized Monte Carlo search over a
   card-counting heuristic; pool Elo ~1140.
 - **`rl`** — a neural policy trained by distilling the search's own
-  evaluations (no search at inference, ~2ms/decision); passed the
-  heuristic tier in one day of training, currently ~70 Elo behind `mc`.
+  evaluations (no search at inference, ~2ms/decision). As a STANDALONE
+  policy it plateaus around 38-48% vs `mc`. The same distillation used as
+  a learned OVERRIDE on SmartBot (`rl-override-v11pair`) beats SmartBot
+  57.7% over n=480 and is level with `mc` so far — still being settled.
   Needs `uv sync --group rl` + a local checkpoint (`SHENGJI_RL_CKPT`).
 - `smart`, `heuristic` — the hand-written tiers below both.
 

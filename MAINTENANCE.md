@@ -23,9 +23,21 @@ collapse.
 2. **Update human data** — `scripts/fetch_fly_logs.sh`, then rebuild human
    shards with current (v2) ballots into a NEW dir if any training has the
    old one open. Report corpus growth.
-3. **Update documentation + cleanup** — sync AI_POLICIES.md / RL_PLAN.md /
-   BACKLOG.md with all results since last sync; prune stale IN PROGRESS
-   blocks and completed backlog items; push.
+3. **Update documentation — PRUNE, don't append.** Sync AI_POLICIES.md /
+   RL_PLAN.md / BACKLOG.md with results since the last sync, and in the same
+   pass DELETE what is now wrong. Appending alone is how RL_PLAN ended up
+   claiming "warm won, scratch killed" after that was refuted, calling
+   MCValueLeaf a 45% failure after it settled at 50.4%, and listing finished
+   generation as RUNNING (Jerry, 2026-08-03). Specifically:
+   - put current state at the TOP with a date; if a reader must grep to find
+     what changed, the update did not land;
+   - re-read the sections you did NOT edit — especially "RUNNING", "in
+     training", "in flight", "next", and any claim a later result overturned;
+   - delete finished items instead of ticking them off; move long history to
+     `docs_archive/` with a digest that keeps the reasoning;
+   - rebuild factual tables (data inventory, job lists, test counts) from the
+     source — disk, git log, the process list — never from the old version.
+   Then push.
 4. **Cleanup code** — behavior-preserving only: dead imports, duplicate
    logic from rapid edits, stale one-off scripts. Verify with a smoke game
    + `scripts/audit_sourcing.py` rerun. (Deleting measured-rejected toggle

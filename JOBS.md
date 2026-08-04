@@ -8,6 +8,21 @@ AI_POLICIES.md, not when the process exits.
 
 ## RUNNING
 
+### mini / v11pair vs mc block 6 — 04:35, PREREGISTERED FINAL
+- `scripts/v11_extend.py mc 600 13000000` -> `runs/logs/v11_mc_block6_mini.log`
+- Running on the MINI although block 6 was assigned to the Air: the Air went
+  offline around 04:20. The seeds (13M) were preregistered and the duel is
+  deterministic given seeds, so the machine is irrelevant to the result.
+- Pooled blocks 1-5: 1478-1402 = 51.3%, n=2880, CI [49.5%, 53.1%]. This block
+  takes it to ~4080. **Last extension either way.**
+
+## NOTES` section is read by
+`fleet_status.sh` every hourly check). Keep this one current: entries are
+deleted when the job is done AND its result is ledgered in RL_PLAN.md or
+AI_POLICIES.md, not when the process exits.
+
+## RUNNING
+
 ### mini / v11pair vs mc block 5 — 02:10, PREREGISTERED FINAL
 - `scripts/v11_extend.py mc 600 12000000` -> `runs/logs/v11_mc_block5.log`
 - Air runs block 6 (seeds 13M). Pooled 1-4: 867-813 = 51.6%, n=1680,
@@ -44,6 +59,11 @@ AI_POLICIES.md, not when the process exits.
   50%; ledgered in AI_POLICIES.md. Flag stays ON as true information.
 
 ## NOTES (mailbox — Air agent, read this)
+
+- 08-04 04:20: the Air was unreachable, so its block 6 was re-run on the mini
+  with the same preregistered seeds. If the Air comes back holding a finished
+  `runs/logs/v11_mc_block6.log`, the two are the SAME experiment — report one,
+  do not pool them as if independent.
 
 - The banker world sampler was broken 21:05-21:48 today (incident
   `incidents/2026-08-03-banker-search-disabled.md`). ANY duel or battery

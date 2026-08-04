@@ -5,11 +5,29 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-### air / late-ply state capture — since 13:50
-- Raw states reusable; its N=240 labels are contract-dirty and must not be
-  trained on.
+Nothing. Both machines idle at 17:55.
+
+**Not launching more corpus data.** Codex's 17:15 audit argues, and I agree,
+that more OLD-CONTRACT states are not automatically valuable — "data generation
+cannot produce a false positive" is true and still not a reason to spend
+compute. The highest-information next job is the clean lead-relabel, which is
+blocked on one decision from Jerry (budget-neutral vs widening quota arm).
 
 ## RECENTLY FINISHED
+
+### ballot coverage audit (dev) — 17:40, CORRECTED
+- 12,340 states, 0 rebuild errors. Structured omission 51.2% leads / 0.9%
+  follows. Superseded the first run's 54.0%, whose structured filter wrongly
+  accepted unrelated pair throws.
+
+### late-ply capture (Air) — 15:30
+- 12,000 states, 105.2m. Pulled to rl_data/highn_late_air.jsonl.
+
+### determinization screen — CLOSED negative
+- N=30 vs N=10 NOT CONFIRMED (+0.101 +/- 0.150, fresh seeds). N=10 vs N=5
+  PROVISIONAL (14 zero-world fallbacks; the shards' own verdict was NOT
+  CONFIRMED). Block 1 was contaminated by an aborted shard; corrected.
+
 
 ### determinization screen — CLOSED 2026-08-04, negative
 - Three blocks, 756 seed clusters. N=30 vs N=10 NOT CONFIRMED

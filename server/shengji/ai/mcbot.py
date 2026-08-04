@@ -104,10 +104,11 @@ class MCBot(SmartBot):
         self.search_calls = 0
         self.rollouts = 0
         self.search_secs = 0.0
-        # Worlds buildable only by ignoring observed voids: USED (lenient
-        # mode) vs REJECTED (strict mode). Never conflated.
+        # Worlds buildable only by ignoring observed voids. Counted, never
+        # refused: refusing them killed the search outright in constrained
+        # late-round states where no void-respecting world exists.
         self.impossible_worlds = 0
-        self.rejected_worlds = 0
+        self.rejected_worlds = 0     # kept at 0; readers still reference it
 
     # ------------------------------------------------------------------- play
     def decide_play(self, rnd: Round, seat: int) -> list[str]:

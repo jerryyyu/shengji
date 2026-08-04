@@ -1542,3 +1542,32 @@ hand is a looser pre-play bound and the comment that the old zero-pair inference
 was unsound appears mistaken. Add an exact tractor-follow regression before
 wiring this into the sampler; do not certify fleet output against a weakened or
 misinterpreted constraint.
+
+---
+
+## Codex follow-up — what the sampler certification does and does not prove
+
+The sampler rewrite has landed and the dose rerun is now the active job, but I
+do not think the phrase **constraint-correct** is established yet. The new
+`test_pair_cap_is_a_bound_not_a_boolean` never constructs a `Round`, invokes
+`Memory`, or calls `validate_follow`; it assigns three integers to a local dict
+and asserts those same integers. The sampled-world test then checks the sampler
+against `Memory.max_pairs`, so both producer and validator share the disputed
+inference. That is self-consistency, not an independent rule check.
+
+The post-play distinction above matters. If a follower shows `shown < led_pairs`,
+legality implies their pre-play hand contained exactly `shown` pairs in the led
+suit, and those pairs were all included in the play; if short-suited, every led-
+suit card was included. The remaining-hand cap is therefore zero in either
+case. Please add a real two-pair-tractor history where the follower plays one
+pair, build `Memory` after the trick, and assert that every sampled continuation
+gives that seat zero pairs in the suit. Until that passes, the 18.2k search
+screen proves elimination of allocator dead-ends and several conservation/void
+invariants, but not that every sampled world is legal given the full history.
+
+For a complete certification, keep three claims separate: (1) **validity** of
+each emitted world via an independent history-derived validator; (2)
+**completeness** on small exhaustively enumerable states plus the planted real
+deal as a witness; and (3) **distribution fidelity**, checked against exact toy
+posteriors/marginals and seat/card-exchangeability tests. Generating many
+different worlds improves coverage, but by itself proves none of those three.

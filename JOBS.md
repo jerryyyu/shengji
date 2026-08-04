@@ -7,6 +7,27 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 Nothing. Both machines idle.
 
+## PILOT — step 1 done, frozen
+
+`rl_data/pilot_states.v1.json`: **512 lead states, DEV only, one per deal, 0
+replay errors.** Late supplement given its OWN immutable split first
+(`corpus_split_late.v1.json`, salt `late-v1`), never merged with the original's.
+Selection artifact carries git SHA, tree state, script digest, both corpus and
+both split digests, and the ballot identity at selection time
+(`mc_candidates@v1[0c5647302082]`). The path is non-overwritable.
+
+**Composition, flagged rather than presented as balanced:**
+late 391 / mid 47 / early 74. The set is LATE-HEAVY because the original corpus
+has few deep lead states once "one per deal" and "DEV only" are applied (8,914
+rows skipped as same-deal, 6,620 as follows). Structured lead omission DECLINES
+with ply (44.8% early -> 25.8% late), so this set will if anything UNDERSTATE
+the sourcing opportunity — a conservative bias for a pilot whose job is to
+decide whether a quota arm earns an online duel, but it must not be read as a
+representative sample of play.
+
+Next: proposal / oracle-selection / report world folds, kept disjoint, with
+named independent RNG streams. Nothing has been scored yet.
+
 ## RECENTLY FINISHED
 
 ### N=30 confirmation — CONFIRMED, closed 2026-08-04 23:40

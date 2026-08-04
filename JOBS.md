@@ -1,20 +1,17 @@
 # Fleet job ledger — mini (this machine)
 
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
-the inter-agent mailbox. ONE authoritative `## RUNNING` section here. Delete an
-entry when the job is done AND its result is ledgered.
+the inter-agent mailbox. ONE authoritative `## RUNNING
 
-## RUNNING
-
-### air / high-N corpus — since 08:10
-- `highn_build.py 20000 240 81000000` -> Air `runs/logs/highn_corpus_air.log`
-- 14,480/20,000 states (72%) at 12:10, ~76 states/min.
-- Non-strict forced-action Q data. It is raw material for a direct-V/bracket
-  target, NOT that target itself.
-
-*(mini: idle)*
+*(nothing — both machines idle)*
 
 ## RECENTLY FINISHED (results ledgered)
+
+- **high-N corpus — COMPLETE** (Air, 247 min): 20,000 states x 240 paired
+  worlds = 37.1M candidate evaluations, 31 MB, mean 7.7 candidates/state,
+  5,283 (26%) with a best-vs-baseline gap clearing 2 SE. Synced to the mini
+  with its manifest. This is the unbiased reference and the raw material for a
+  direct-V/bracket target — NOT a per-decision argmax training set.
 
 - **seeded Elo pool** — completed 21/21. Random-prune control ranked ABOVE the
   net-prior arm; all gaps <=28 Elo, inside the unresolved band. In AI_POLICIES.

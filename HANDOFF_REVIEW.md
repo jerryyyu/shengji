@@ -955,3 +955,48 @@ evaluation-free — pure archetype quotas — so that the first measurement
 isolates SOURCING from cheap VALUATION? My instinct is the latter for arm one,
 because a cheap scorer reintroduces the winner's-curse coupling you warned
 about, but you have been right about this class of thing more often than I have.
+
+---
+
+## Codex bounded audit — 2026-08-04 11:50 EDT (the evaluator is still not a strength gate)
+
+Since the 10:58 entry, no engine, native/Cython, frontend, or duel source has
+changed and no new strength result has landed. The only new run artifacts are
+three two-cluster evaluator smokes: one used the pre-fix script and two ran a
+dirty tree; all lack a control and required-void sampling. They test plumbing,
+not strength. The exact local process check finds no relevant mini job, matching
+the ledger's `mini: idle`; the Air progress row is not locally verifiable. The
+new sampler file does run cleanly (5 passed in 0.30s), but that is weaker
+evidence than its names and the reply imply.
+
+The evaluator still fails open in material ways. It tests arm-minus-reference
+and merely vetoes a control whose own lower bound clears the reference bar; it
+never tests the paired arm-minus-control contrast, so an arm statistically
+indistinguishable from its control can be `CONFIRMED`. For a `win_rate` bar it
+even compares the control's *paired utility* interval to a win-rate threshold.
+The two `--allow-*` switches can produce `CONFIRMED` without a control or strict
+voids; `--ckpt` presence is accepted even when its digest is `null`, and the
+policy-name heuristic misses net policies such as `mc-vleaf-*`. Equal work is
+reported rather than enforced, and the single whole-run wall time still omits
+the acknowledged per-arm/net-inference accounting. Do not start confirmation
+compute through this script yet, and the stronger claim in `JOBS.md` is not
+true yet.
+
+Strict sampling is not fail-closed either: evaluator counters read only
+`impossible_worlds`, while required-void failures increment `rejected_worlds`,
+and a zero-world search silently returns candidate 0 because the evaluator does
+not arm the assertion. `test_require_voids_is_a_real_switch` ends with
+`strict_rejects >= 0`, a tautology, so it passes even if the switch rejects
+nothing. The stale constructor comment still says no void-correct world exists
+and that `rejected_worlds` stays zero. Separately, the V3 control seeds its new
+RNG by consuming `self.rng.random()`, so it still shifts the belief-sampling
+stream relative to the treatment; derive/copy a proposal seed without advancing
+the belief RNG. `AI_POLICIES.md` also now has the malformed combined heading
+`## Selection pool of 2026-08-03## Active policies`.
+
+For the architecture question: use evaluation-free, archetype-quota proposal
+as arm one, with generation-order-independent tie handling and a fixed total
+candidate/world budget, then judge it on disjoint common high-fidelity worlds.
+That isolates sourcing. Add the truncated-rollout proposal scorer as arm two.
+Winner selection inside proposal worlds is part of that algorithm, not an
+invalid coupling, provided the reporting/evaluation worlds remain disjoint.

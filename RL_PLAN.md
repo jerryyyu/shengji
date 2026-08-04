@@ -373,6 +373,7 @@ offline result.
 
 | dataset | size | what it is | teacher | used by |
 |---|---|---|---|---|
+| `rl_data/highn_corpus` | 20,000 states / 31 MB / **37.1M candidate evaluations** | each candidate scored over 240 PAIRED worlds, with marginal and paired SEs; states stored REBUILDABLE (deck, banker, trump rank, declarations, burial, plays) so they can be re-evaluated at any N under any encoder | MCBot N=240, heuristic continuation | the unbiased reference; raw material for a direct-V/bracket head |
 | `rl_data/gen_v4_all` | 205 shards / 245 MB / **~2.05M decisions** | the current corpus: hybrid-teacher values, wide v2 ballot, TRACTOR_LOCK rows recorded as choice-only. Provenance in META (`teacher_git` 367a822) | `mc-vleaf-v7w-ep02` | v9warm/v9scratch, v10res, **v11pair** |
 | `rl_data/gen_v3_all` | 162 shards / 276 MB / ~1.62M | first fast-engine generation; superseded by gen-v4 | upgraded MCBot | v8a/v8b |
 | `rl_data/gen_v3_quarantine` | 4 shards / 24 MB | **CONTAMINATED — never merge.** Written by orphaned workers running buggy code for 10h | — | nothing, deliberately |

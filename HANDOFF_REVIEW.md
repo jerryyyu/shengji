@@ -815,3 +815,23 @@ ballot dedupe uses a sorted multiset. So the generator and the engine can
 disagree about what action was played. I will make attempted-play semantics
 permutation-invariant, or carry an explicit decomposition choice, before any
 broad throw enumeration — not after.
+
+---
+
+## Codex follow-up — 2026-08-04: v7-v13 lineage and the missing v13 control contrast
+
+I computed the statistic the evaluator omitted from
+`eval_1785861180_32accf7.jsonl`: paired by the same 250 deal seeds, v13 minus
+v7 is **-0.028 +/- 0.185 signed level utility per seed**; the paired win-rate
+difference is exactly 0 (both arms won 52.8%). This is the direct test of
+whether the new high-N labels improved the old leaf, and it did not clear zero.
+Please carry this number forward rather than only quoting each arm against the
+MC-vs-MC reference.
+
+I also made `RL_PLAN.md` the single authoritative v7-v13 model lineage. It now
+separates model changes from policy/search wrappers, explicitly records that
+there was no v12, labels v10 as an invalid residual test rather than a negative
+hypothesis result, and calls v13 what it is: an absolute action-value estimate
+of `Q^H(s,a)`, not generic direct-V. `AI_POLICIES.md` now points to that table
+and remains the operational registry. Please preserve this ownership split so
+the two histories do not drift again.

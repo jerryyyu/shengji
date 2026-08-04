@@ -19,91 +19,59 @@ MPS). Toggle results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## WHERE THINGS STAND — 2026-08-04 09:20 (read this first)
+## Model lineage: v7 through v13 (authoritative summary)
 
-**RETRACTED (10:40): the net does NOT beat mc.** The racing result below was
-reported as a win and did not replicate under the paired protocol — the random
-control outscored it. Detail in section 1. The standing goal is NOT met.
+This section owns the experiment history: what changed, what question it
+tested, and what survived. `AI_POLICIES.md` owns runnable policy names and
+their current deployment status. Keeping the full ladder in both files caused
+model checkpoints, policy wrappers, and search roles to be conflated.
 
-Previously claimed, now withdrawn:
-`mc-race4-v11pair` — the net scores the ballot, the best 4 candidates survive
-(candidate 0 always kept), and the SAME rollout budget resolves those four
-instead of all six — beats mc **55.2%** over 1,700 rounds across three
-disjoint seed blocks (56.2 / 55.0 / 54.5%, every interval excluding 50) at roughly
-EQUAL compute (see the cost correction in 1o).
+`v12` was never assigned to a model or experiment; the sequence intentionally
+jumps from v11 to v13. A version number is not a promotion, and historical
+small-n or unseeded results below are labelled as such.
 
-**The control is what makes it a result:** pruning to the same size AT RANDOM,
-same budget scaling, scores **49.8%** (n=500, CI [45.4, 54.2]) — a tie with mc.
-The gain is the NET's prior, not the reallocation. Full detail in 1o.
+| model | improvement / hypothesis tested | best evidence | conclusion |
+|---|---|---|---|
+| **v7 / v7w** | Same dueling policy-plus-value architecture, but trained on the lower-noise N=30 `distill_n30` teacher corpus. `v7w` warm-started v6; the scratch v7 arm was stopped early. | v7w won the sibling-selection duel against v6 (best snapshot 64.5%) and was selected as the next initializer. Those family duels did not establish strength against MC. The old v7-leaf “50.4%, n=1,200” settling run predated the seed-forwarding fix; in the current hardened screen the v7 leaf control was 52.8%, `+0.024 +/- 0.215` paired utility versus the MC reference. | Lower-noise labels produced a useful successor checkpoint, not a verified MC improvement. Retain v7w as the historical initializer and leaf control only. |
+| **v8 family** (`v8a`, `v8b`, `v8along`) | Moved to the larger `gen_v3` corpus and fixed the trainer so choice-only TRACTOR_LOCK rows were no longer discarded. A was the raw-value soft-target control; B added the acting policy's +5 candidate-0 margin to the policy target while leaving the value head absolute; A-long tested 12 epochs. | Margin-aware B raised held-out teacher-choice agreement from roughly 43% to 62.5%, proving the loss/metric mismatch was real. The strength anchors were run before the stochastic-opponent seeding repair and did not show a reliable gain; longer A training and the v8 value-head screen also showed no detected benefit. | Important data-contract and target-alignment fix, but no promotable strength result. Better imitation alone did not imply a better bot. |
+| **v9 warm / scratch** | Trained on `gen_v4`, whose teacher was the v7 value-leaf hybrid; directly tested warm versus random initialization and then extended both arms to 16 epochs. This was the first flywheel attempt: train on the hybrid teacher, then reuse the new value head in the hybrid. | Warm and scratch had no detected difference after six epochs. In later n=120 screens both peaked near epoch 8 and then weakened; the logged warm arm was 56% vs Smart / 37% vs MC and scratch 47% / 33%. A v9-leaf head did not improve on the v7 head in the same small screen. | No evidence that warm start, more epochs, or one expert-iteration turn improved strength. The negative result is about this pipeline, not proof that expert iteration cannot work. |
+| **v10res** | First residual override attempt: regress `Q(s,a_i)-Q(s,a_0)` and let SmartBot's candidate 0 stand unless predicted gain clears a threshold. | It overrode only about 1.3-1.5% of states where the teacher overrode about 15%; pairwise RMSE was 6.1995 versus 6.2112 for predicting zero, and it scored 47% vs Smart in its screen. The model still scored rows independently without a pairwise loss, train/play ballots differed, training and deployment read different heads, and the registered epoch initially differed from the evaluated one. | **Invalid test of the residual-learning hypothesis.** The checkpoint was a near no-op; do not count it as evidence that residual learning failed. |
+| **v11pair** | Corrected v10 around the deployed decision: optimize `(q_i-q_0)` against `(Q_i-Q_0)` with Huber loss and boundary weighting, use the exact valued ballot at inference, and fit the 0.02 threshold on one split before reporting another. | `rl-override-v11pair` **CONFIRMED** 57.7% vs SmartBot (277-203, n=480, two disjoint blocks). Its 51.1% vs MC over 4,880 rounds used MC factories that silently discarded their seeds, so it is a SCREEN of approximate parity, not superiority or non-inferiority. Gating and root racing were not confirmed; using pairwise deltas as a leaf is invalid because cross-state scale is unidentified. | The only confirmed online gain in v7-v13, and the key lesson is exact objective/ballot alignment. Keep it as a direct override or root proposal/ranking candidate; it has not beaten MC. |
+| **v12** | No model, checkpoint, or experiment used this number. | — | Skipped; do not infer a missing failure. |
+| **v13abs** | Warm-started v7w and fit the value output to absolute 240-world means from 20,845 high-N states, using inverse-variance weighting. The actual target is raw-point action value under heuristic continuation, `Q^H(s,a)`, not a generic state value. The trainer updated the whole network, not only a detached head. | Offline SCREEN: unweighted RMSE improved `0.1052 -> 0.0699` and stored-ballot regret `1.478 -> 1.293`. Online leaf SCREEN: v13 and v7 each won 52.8%; v13 was `-0.004 +/- 0.206` versus the MC reference and v7 `+0.024 +/- 0.215`. The direct paired v13-minus-v7 contrast, computed from the shared JSONL, is **`-0.028 +/- 0.185`** (250 seed clusters; win-rate difference 0). The corpus is non-strict, old-ballot, and 90% at ply <=15, whereas the model was deployed after four tricks. | **NOT CONFIRMED.** It learned its offline labels better but did not improve the bot. This tested a misaligned leaf deployment, not whether correctly targeted absolute value learning can help. |
 
-**CONFIRMED under the seeded protocol.** After fixing the seed-swallowing
-lambda in the duel script, two fresh seeded blocks returned 53.0% and 55.5% —
-**651-549 = 54.2% over 1,200 seeded rounds, CI [51.4%, 57.1%]**. Pooling all
-five blocks: **1589-1311 = 54.8%, n=2,900, CI [53.0%, 56.6%]**. Five blocks
-spanning 53.0-56.2% with no drift.
+The progression is therefore not “each version got stronger.” v7 reduced
+teacher noise; v8 repaired the data and behavior-target contract; v9 tested
+initialization, duration, and one flywheel turn; v10-v11 showed that an
+implementation can make a valid hypothesis look inert until the trained
+quantity and ballot exactly match deployment; v13 improved supervised fit but
+exposed a state-distribution and value-contract mismatch. No v7-v13 model has
+yet shown a verified advantage over `mc`; v11's confirmed gain over SmartBot is
+the one positive learned-policy result.
 
-1. **Direct v11pair is the learned line's first positive result and the current
-   deployment-cost candidate.** `rl-override-v11pair` (SmartBot + learned
-   pairwise override, no search) beats SmartBot **57.7%** (n=480). Against MC,
-   all **4,880** rounds were mirrored but the MC factories were accidentally
-   OS-seeded: the aggregate is 51.1%, useful **SCREEN** evidence of approximate
-   parity, not a seeded confirmation. Production numpy latency is p50 0.25ms /
-   p95 0.52ms versus MC's p50 77ms / p95 150ms on the measured mini.
-2. **Combining v11 with search is unresolved.** The original gated online
-   result (53.3% vs MC, n=300, about 55% table wall-clock) is a SCREEN. Its
-   offline T2 did not earn confirmation and was itself over-interpreted: noisy
-   max-Q labels favor high-candidate states and equal state-call rate was not
-   equal compute. A later five-arm T3 runner violated its preregistration and
-   was terminated after a partial full-MC arm. It produced **no result**. The
-   runner has since gained a shared cheap policy, manifested exclusive output,
-   stable RNG streams, paired seed analysis, and work-band enforcement, but it
-   still lacks real artifact replay, complete all-seat fallback accounting,
-   and a strict pair-void sampler. It has not earned a rerun.
-3. **Use the model according to its contract.** v11pair is suitable as a direct
-   action reranker and potentially a root proposer/prior or fixed-budget compute
-   allocator. Its pairwise action deltas are not an absolute state value and
-   therefore are not a valid MC/MCTS leaf. Replacing the rollout policy has tied
-   twice and is not the next lever.
-4. **Correctness and evaluation currently gate more compute.** The belief
-   sampler's normal mode may use a final-retry suit-void relaxation and never
-   enforces pair-voids. Strict mode now rejects/counts that suit relaxation.
-   `tournament._seeded()` now dispatches by signature but falls through to
-   `None` for seedless factories whose bot has no `rng`. The completed Air
-   high-N artifact used the invalid prototype: no independent selection/eval,
-   versioned round-trip schema, manifest, or strict-world evidence. No
-   training, high-N rerun, T3 screen, or T4 confirmation is authorised today.
-5. **The prototype's “2.8 points of headroom” is a HYPOTHESIS, not a result.**
-   It selected/significance-filtered states and scored regret against the same
-   noisy N=240 maximum on non-strict, overwhelmingly early-game worlds. The
-   derived m0 policy, completed unseeded duel, and partial 20,000-state corpus
-   are quarantined; see 1n–1o.
+---
 
-The machine is intentionally idle. A cheap policy or direct v11 winning the
-strength/latency Pareto comparison is a success even if no RL-search design
-ships.
+## Current state — 2026-08-04
 
-**THE HYBRID IS NOT BETTER THAN mc. Settled 2026-08-03 23:20 at n=1200.**
-
-The preregistered settling duel ran on both machines over disjoint independent
-seed blocks, with the pooling rule and the bar declared before either result
-existed:
-
-| block | result | Wilson 95% |
-|---|---|---|
-| Air (seeds 7.1M+) | 303-297 = 50.5% | [46.5%, 54.5%] |
-| mini (seeds 7.4M+) | 302-298 = 50.3% | [46.3%, 54.3%] |
-| **POOLED** | **605-595 = 50.4%** | **[47.6%, 53.2%]** |
-
-Level utility pooled: vleaf 680 vs mc 663 — no meaningful edge there either.
-The two blocks agree to within 0.2 points, which is what a real coin flip
-looks like. The original 60.3% headline was a mirage produced by invalid
-pooling; the +32 Elo in the seeded pool was Bradley-Terry inferring a gap
-from 120-round pairings that a 1200-round direct duel does not support.
-
-**Consequence:** mc-vleaf-v7w-ep02 is retired as "the leading candidate." It
-is an equal-strength, CHEAPER alternative to mc (truncated rollouts), which
-makes it interesting for LATENCY, not for strength. Nothing should be adopted
-or deployed on the basis of the old headline.
+1. **`mc` remains the strength incumbent.** No standalone model or learned
+   search hybrid has a verified advantage over it.
+2. **v11pair is the learned line's one confirmed gain.** The direct SmartBot
+   override wins 57.7% (n=480, two disjoint blocks). Its 51.1% vs MC is only an
+   unseeded-MC SCREEN, and its gate and root-prior search variants have not
+   survived paired confirmation. Use v11 only for relative decisions at the
+   root; it is not an absolute leaf value.
+3. **Neither learned leaf is promoted.** The historical v7 settling run
+   reported 50.4% at n=1,200, but its leaf factory silently discarded policy
+   seeds. The current hardened screen puts v7 at `+0.024 +/- 0.215` versus the
+   MC reference. v13 fit its offline labels better but was
+   `-0.028 +/- 0.185` directly versus v7 on the same 250 seed clusters.
+4. **Correct belief sampling and evaluation gate more compute.** Normal MC
+   still lacks pair-void enforcement. The high-N corpus used the old non-strict
+   sampler, capped ballot, same-world selected maximum, early-state-heavy
+   distribution, and raw-point `Q^H` targets. It is a diagnostic reservoir,
+   not an oracle.
+5. **Both machines are intentionally idle.** The next work is the ballot and
+   representation/evaluator gates below, not another bulk training run.
 
 **Current decisions:**
 
@@ -111,9 +79,9 @@ or deployed on the basis of the old headline.
 |---|---|---|
 | Does residual/override learning work? | **YES as an override of SmartBot**, once the pairwise target and ballot match — 57.7% vs smart, n=480 | 1i |
 | Is direct v11 proven equal to MC? | **No formal confirmation.** 51.1% over 4,880 unseeded-MC exploratory rounds suggests parity; superiority is not shown. | 1i |
-| Is the value-leaf hybrid stronger than mc? | **No** — 50.4% at n=1200, CI [47.6, 53.2] | above, 1 |
-| Does a better VALUE HEAD make a better hybrid? | **No** — v7w 60%, v9warm 53%, v9scratch 48% on the same seeds. The best head is the OLDEST. | 1f |
-| Does the flywheel work (train on hybrid data, get a better hybrid)? | **No** | 1b |
+| Is the value-leaf hybrid stronger than mc? | **Not shown.** The historical n=1,200 arm was unseeded; the current hardened v7 screen is `+0.024 +/- 0.215` versus the MC reference. | above, 1 |
+| Does a better value head make a better hybrid? | **No detected benefit yet.** v13 improved offline fit but its direct paired contrast versus v7 was `-0.028 +/- 0.185`. | lineage table |
+| Does the flywheel work (train on hybrid data, get a better hybrid)? | **Not in the v9 attempt.** This is a pipeline result, not a general rejection of expert iteration. | 1b |
 | Did v10res test residual learning? | **No.** It was a near-no-op with a train/play ballot mismatch; v11pair is the corrected test. | 1h, 1i |
 | Is selective v11-gated MC ready? | **No.** T2 did not earn confirmation; the later T3 runner was invalid and halted. | 1l, 1m |
 | Does the banker knowing its own burial help? | **No measurable effect** — 49.7%, CI [44.0, 55.3] | 1g, AI_POLICIES |
@@ -172,33 +140,21 @@ The vleaf 60% headline died the same way, the v11 52% died the same way, and I
 still treated five consistent blocks as evidence rather than as five
 correlated draws. Consistency across blocks is not independence.
 
-### 2. Value-leaf hybrid: CLOSED — equal to mc (50.4%, n=1200), never stronger
+### 2. Value-leaf hybrid: CLOSED — no verified edge over mc
 
-`mc-vleaf-v7w-ep02` = MC search, rollouts truncated at 4 tricks, leaves
-scored by rl-v7w's VALUE head. It **tops the seeded pool at Elo 1151**
-(mc 1119, smart 1093, rl-v9warm 1069, rl-v7w 1042, heuristic 1000).
+`mc-vleaf-v7w-ep02` truncates MC rollouts after four tricks and scores leaves
+with v7w's value output. Its original 60% and pool-leader headlines came from
+invalid pooling. A later preregistered two-machine run reported 605-595 =
+50.4%, but the post-run audit found that its leaf factory accepted `**kw` and
+failed to forward them, leaving that stochastic arm unseeded. It is useful
+historical evidence against a large effect, not a seeded confirmation of
+equality.
 
-**But it is not proven superior to mc** (Codex ruling, 18:20, accepted):
-- The only corrected-protocol DIRECT evidence is the seeded pairing
-  **64-56 = 53.3%, Wilson 95% CI [44.4%, 62.0%] — the interval INCLUDES
-  50%.**
-- The +32 Elo is an INDIRECT Bradley-Terry estimate, not a direct win.
-- The earlier "404-316 = 56.1%, 3.3 sigma" pooling was **invalid**: it
-  mixed mirrored seed clusters, reused/overlapping seed blocks, a
-  sequentially extended test, and two explicitly unseeded runs.
-- Earlier headlines in this file claiming "ADOPTED", 60.3%, and Elo 1163
-  have been REMOVED. They were produced under the unseeded protocol.
-
-**Settling experiment: COMPLETE 2026-08-03 23:20 — 605-595 = 50.4%, CI
-[47.6%, 53.2%], n=1200 pooled over two disjoint blocks. VERDICT: not
-distinguishable from mc.** Design as preregistered:
-`scripts/vleaf_settle.py`, 300 independent mirrored clusters per machine on
-disjoint seed blocks (Air 7.1M+, mini 7.4M+), per-seed JSONL, paired level
-utility alongside round wins. The bar is declared in the script's docstring:
-Wilson lower bound >50% means genuinely ahead, >=55% makes it an adoption
-candidate (Jerry's call), an interval spanning 50% retires the "seeded-pool
-leader" framing. Equal-wall-time is satisfied by construction — vleaf
-truncates at 4 tricks and is the CHEAPER bot per decision.
+The current hardened evaluator gives the v7 leaf 52.8% and
+`+0.024 +/- 0.215` paired utility versus the MC reference. That does not show
+superiority. v13, trained on high-N absolute `Q^H` labels, also failed to
+improve it directly (`-0.028 +/- 0.185`). The strength path is retired unless
+a correctly targeted leaf distribution and value contract earn a new test.
 
 Production-ready regardless of the verdict: numpy inference
 (`rl/npnet.py`), no torch in the image, 14ms/decision, identical play

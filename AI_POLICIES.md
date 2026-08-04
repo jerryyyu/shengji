@@ -17,8 +17,10 @@ post-mortems: RL_PLAN.md.
   and counts the suit-void relaxation, but does not close the pair-void gap.
   Treat improvements and high-N labels built without strict evidence as
   provisional.
-- **Retired strength arm:** `mc-vleaf-v7w-ep02` is 50.4% vs MC at n=1,200. It
-  is an equal-strength speed candidate, not a stronger agent.
+- **Retired strength arm:** `mc-vleaf-v7w-ep02` has no verified edge over MC.
+  Its historical 50.4% at n=1,200 predated the leaf factory's seed-forwarding
+  repair. In the current hardened screen it scored 52.8% and
+  `+0.024 +/- 0.215` paired utility versus the MC reference: not confirmed.
 - **Not promotable:** `mc-gate-v11pair` has one encouraging n=300 online
   screen, but its T2 did not earn confirmation. The later five-arm T3 runner
   was invalid, partially run, and terminated; it produced no result. A repaired
@@ -34,9 +36,10 @@ post-mortems: RL_PLAN.md.
   cross-state scale is unidentified. Root reranking/allocation is a valid use;
   MC/MCTS leaf evaluation requires a separately trained absolute value model.
 
-Policy objective: maximize verified strength per unit of latency/compute.
-RL-guided search is one contender and must beat direct v11, plain MC, and cheap
-allocation rules on a common Pareto table.
+Policy objective: maximize verified strength. Latency is not a tradeoff for
+the champion policy; measured compute and matched-work controls remain useful
+for attribution. RL-guided search is one contender and must beat direct v11,
+plain MC, and cheap allocation rules under the same evaluation protocol.
 
 ## Using policies
 
@@ -179,36 +182,24 @@ trump-gated bury +1) ~88-90%. Registry keeps smart-v1/smart-v2 reproducible.
 
 **This line is PAUSED as a development target** (Codex ruling 2026-08-04):
 kept as the cheap diagnostic and deployment baseline, not pursued for strength.
-Standalone nets plateau at 38-48% vs mc across every lever tried, and the
-reason is now measured rather than guessed — see the label ceiling below.
+Standalone nets historically screened around 38-48% vs mc across the tested
+levers. No single cause has been established; label quality, representation,
+ballot coverage, and train/deploy alignment have all been confounded at least
+once.
 
-**Checkpoint ladder** — gates are mirrored n>=120 vs SmartBot / vs MCBot.
-Read these as a HISTORY of the standalone line, not a live leaderboard; the
-current entries live under "Learned override" and "Ballot V3" above.
+**Model history lives in one place.** See RL_PLAN.md, “Model lineage: v7
+through v13,” for the authoritative intervention/evidence/verdict table. This
+ledger intentionally does not duplicate that chronology; it records callable
+policies and their present roles.
 
-| ckpt | method | vs Smart | vs MC |
-|---|---|---|---|
-| ckpt_bc | BC of SmartBot (20k rounds) | 48% | 29% |
-| ckpt_distill_full (v5) | search distillation, 5 ep | 42% | 38% |
-| ckpt_distill_v6 | same, 12 epochs | 51% | 41% |
-| snapshots_v7w/ep02 | warm from v6, N=30 textbook | 45% | 32.5% |
-| snapshots_v8a/ep03 | warm from v7w on gen-v3 (2.33M dec) | 46% | 34% |
-| snapshots_v9warm / v9scratch | gen-v4, warm vs scratch | — | 48% / 48% — no detected difference |
-| ckpt_v10res | residual override, independent-row objective | 47% | — near no-op, overrode 1.3% of states |
-| **ckpt_v11pair** | residual override done right (deployed quantity, matched ballot, off-split threshold) | **57.7%** (n=480, reproduced) | **~51%** (n=4,880) — level, not better |
-| ckpt_v13abs | direct-V head on ABSOLUTE 240-world labels, used as an MC leaf | — | **NOT CONFIRMED**: −0.004 ± 0.206 paired vs mc (control +0.024 ± 0.215). Mis-aimed: trained on ply<=15 states, deployed as a post-4-trick leaf |
-
-**Why the standalone line stalls — measured, not inferred.** mc(N=10) forfeits
-~2.8 points per consequential decision against a 240-world reference, so a
-student trained on mc's own N=10/N=30 preferences inherits that forfeit and
-caps at mc. Distillation cannot cross a gap its labels do not contain.
-
-**What that does NOT license.** Training on high-N labels did not fix it either
-(v13abs above). Codex's corpus audit explains why the first attempt was
-mis-aimed: the corpus is 90% at ply <=15 (median ply 6), while an MC leaf is
-evaluated after four tricks — the head was fit on one distribution and used on
-another. The labels are also raw points under heuristic continuation, i.e.
-`Q^H(s,a)`, not a generic value function.
+Operationally, the standalone checkpoint line is paused; v11pair is retained
+as a direct override/root-ranking candidate because it is the only learned
+model with a confirmed gain (against SmartBot, not MC); and v13abs is an
+experimental absolute action-value leaf that was **NOT CONFIRMED**. The old
+prototype's “~2.8 points of headroom” is a selected, non-strict early-state
+HYPOTHESIS, not a measured global ceiling. v13 cannot validate or refute that
+hypothesis because its training distribution and deployed leaf distribution
+did not match.
 
 - **Dueling-architecture tax (measured)**: at near-equal imitation
   (88.2% vs 89.7%), dueling-BC plays 10 points worse than free-logits BC
@@ -216,9 +207,11 @@ another. The labels are also raw points under heuristic continuation, i.e.
   heads win for play, dueling only where value regression happens.
 - **Search hybrids are settled by role.** Replacing the rollout policy tied
   twice (the early v5 55% preview reversed, and a later 93-Elo-stronger roller
-  still tied). The valid truncated-rollout + v7 absolute-value leaf reached
-  **50.4% vs MC at n=1,200**: cheaper, not stronger. The v11pair “leaf” test is
-  invalid because relative action deltas have no cross-state value scale.
+  still tied). The truncated-rollout + v7 absolute-value leaf has no confirmed
+  strength edge: its historical n=1,200 run had an unseeded leaf arm, and its
+  current hardened screen was `+0.024 +/- 0.215` versus the MC reference. The
+  v11pair “leaf” test is invalid because relative action deltas have no
+  cross-state value scale.
 - **Ballot-mismatch incident (2026-08-01)**: the exhaustive-follow
   enumeration change silently broke the deployed net — trained on
   search-candidate ballots, it was suddenly scoring dozens of unseen

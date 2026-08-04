@@ -9,7 +9,16 @@
 # Convention for NEW long jobs: run as a named script/module logging to
 # server/runs/logs/<name>.log, and note intent in the machine's JOBS.md.
 
+# Run from anywhere. This used to require cwd=server/, and when the caller's
+# cwd had drifted the script simply failed — printing an EMPTY Codex mailbox
+# section that read exactly like "no new entries" (2026-08-04). A monitor that
+# can fail silently is worse than no monitor.
+cd "$(dirname "$0")/.." || { echo "FATAL: cannot reach server/"; exit 1; }
+
 hdr() { printf "\n\033[1m== %s ==\033[0m\n" "$1"; }
+
+# Any unexpected failure must be LOUD, not an empty section.
+trap 'echo "FLEET_STATUS FAILED at line $LINENO — do not read the output above as an all-clear"' ERR
 
 hdr "MINI — server-venv python jobs"
 for pid in $(pgrep -f "server/.venv/bin/python"); do
@@ -77,6 +86,9 @@ if [ -f "$HR" ]; then
   # nothing and reported 0 unread while real replies sat in the file
   # (found 2026-08-04 — a monitor that cannot fail loudly is worse than none).
   n=$(grep -cE "^#{2,3} Codex" "$HR" 2>/dev/null || echo 0)
+  if [ ! -f "$HR" ]; then
+    echo "  MAILBOX UNREADABLE at $HR — this is NOT 'no new entries'"
+  fi
   echo "  Codex entries: $n   (file mtime: $(stat -f "%Sm" -t "%m-%d %H:%M" "$HR"))"
   last=$(grep -nE "^#{2,3} (Codex|Claude reply)" "$HR" | tail -2 | sed "s/^/    /")
   [ -n "$last" ] && printf "  last exchange:\n%s\n" "$last"

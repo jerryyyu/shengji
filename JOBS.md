@@ -10,9 +10,10 @@ machines, so no compute starts without an explicit go.)*
 
 ## RECENTLY FINISHED (results ledgered)
 
-- **ckpt_v13abs direct-V leaf** — NOT CONFIRMED (-0.004 +/- 0.206 paired vs mc,
-  control +0.024 +/- 0.215). Mis-aimed: trained on ply<=15 states, deployed as
-  a post-4-trick leaf. Fifth failed claim.
+- **ckpt_v13abs absolute-Q leaf** — NOT CONFIRMED (-0.004 +/- 0.206 paired vs
+  the MC reference; v7 control +0.024 +/- 0.215). The direct paired v13-minus-
+  v7 contrast is -0.028 +/- 0.185 with identical 52.8% win rates. Mis-aimed:
+  trained mostly on ply<=15 `Q^H(s,a)` states, deployed as a post-4-trick leaf.
 
 - **high-N corpus — COMPLETE** (Air, 247 min): 20,000 states x 240 shared
   worlds = 37.1M candidate evaluations, 31 MB, mean 7.7 candidates/state,

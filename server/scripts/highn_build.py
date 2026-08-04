@@ -93,6 +93,9 @@ def evaluate_high_n(rnd, seat, n_worlds: int, seed: int):
     return cands, means, ses, paired_se, used
 
 
+MIN_PLY = int(os.environ.get("SHENGJI_MIN_PLY", "0"))
+
+
 def play_and_sample(seed: int, n_worlds: int, want: int, fh, stats):
     """Play one round with mixed policies, evaluating sampled decisions."""
     game = Game(random.Random(seed))
@@ -127,7 +130,12 @@ def play_and_sample(seed: int, n_worlds: int, want: int, fh, stats):
         s = rnd.turn
         # Sample ~1 in 3 decisions: consecutive decisions in one round are
         # highly correlated, so taking every one buys little diversity.
-        take = rng.random() < 0.34
+        # MIN_PLY targets the distribution gap Codex found: the first corpus
+        # is 90% at ply<=15 (median 6) because this sampler takes the first
+        # few decisions of each round, so it cannot represent the post-4-trick
+        # states an MC leaf actually evaluates. That mismatch is why v13 was
+        # mis-aimed.
+        take = len(plays) >= MIN_PLY and rng.random() < 0.34
         if take:
             t0 = time.perf_counter()
             got = evaluate_high_n(rnd, s, n_worlds, seed * 31 + len(plays))
@@ -180,6 +188,7 @@ def main() -> None:
         "host": os.uname().nodename,
         "started": time.strftime("%Y-%m-%d %H:%M:%S"),
         "paired_worlds": True, "sampler": "MCBot._sample_hands",
+        "min_ply": MIN_PLY,
         "policies": "MCBot/SmartBot mixed table",
     }
     with open(out.replace(".jsonl", "") + f".manifest.{seed0}.json", "w") as mf:

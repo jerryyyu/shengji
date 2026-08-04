@@ -23,8 +23,8 @@ MPS). Toggle results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 `mc-race4-v11pair` — the net scores the ballot, the best 4 candidates survive
 (candidate 0 always kept), and the SAME rollout budget resolves those four
 instead of all six — beats mc **55.2%** over 1,700 rounds across three
-disjoint seed blocks (56.2 / 55.0 / 54.5%, every interval excluding 50) while
-spending **0.85x** mc's rollouts.
+disjoint seed blocks (56.2 / 55.0 / 54.5%, every interval excluding 50) at roughly
+EQUAL compute (see the cost correction in 1o).
 
 **The control is what makes it a result:** pruning to the same size AT RANDOM,
 same budget scaling, scores **49.8%** (n=500, CI [45.4, 54.2]) — a tie with mc.

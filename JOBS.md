@@ -2,13 +2,23 @@
 
 The Air keeps its own ledger at `~/Projects/shengji-compute/JOBS.md`; its
 `## NOTES` section is the inter-agent mailbox read by `fleet_status.sh`.
-This file has exactly one authoritative `## RUNNING` section. A process may
-start only when its immutable manifest and ledger entry already exist.
+This file has exactly one authoritative `## RUNNING
 
-## RUNNING
+### air / high-N corpus — since 08:10
+- `highn_build.py 20000 240 81000000` -> Air `runs/logs/highn_corpus_air.log`
+- 3,920/20,000 states at 09:40 (20%, by states written). ~76 states/min.
 
-*(nothing)* — deliberately. No ML generation, training, duel, T3 screen, or
-high-N build is currently authorised.
+### mini / high-N corpus — since 08:10, STARVED
+- `highn_build.py 20000 240 71000000` -> `runs/logs/highn_corpus_mini.log`
+- 840/20,000 (4%). Far behind the Air because duels were sharing the box.
+  Its value is now for a DIRECT-V target, not the per-decision argmax that
+  1n showed does not transfer, so it is the lower priority of the two.
+
+### mini / racing duels — COMPLETED 09:30
+- 5 blocks of `mc-race4-v11pair` vs mc + 1 random-prune control. Results in
+  RL_PLAN 1o. Codex's 08:50 audit is right that these are a SCREEN: the
+  control ran on DIFFERENT deals, there are no per-seed records or manifest,
+  and sampling was non-strict. A paired confirmation is the next job.
 
 ## STOPPED / INVALID
 

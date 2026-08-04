@@ -391,6 +391,33 @@ motivated the widening (n=1052, v1 missing 15.3%) is in
 `docs_archive/sourcing-audit-2026-08-02.md`.
 
 
+## Threshold hypothesis (margin 0.005) — NOT CONFIRMED (2026-08-04 14:15)
+
+Codex's full-corpus offline diagnostic (fit on even deal seeds, reported on
+odd) found margin 0.005 cutting stored all-state regret from 1.261 at the
+deployed 0.02 to 1.142 raw points/decision. Tested online through the gated
+evaluator, 250 shared mirrored deals, control = the deployed 0.02:
+
+| arm | win% vs mc | paired level utility |
+|---|---|---|
+| margin 0.005 | 45.6% | −0.244 ± 0.205 |
+| control, margin 0.02 (deployed) | 48.0% | −0.212 ± 0.211 |
+| reference (mc vs mc) | 51.4% | 0 |
+
+Paired contrast, 0.005 minus 0.02: **−0.032 ± 0.184 over 250 clusters — not
+distinguishable.** The offline regret improvement did not transfer, which is
+the same pattern as the earlier margin-0 refit (offline better, online 47%).
+
+Two things worth keeping from this run. Both override arms sit BELOW the
+mc-vs-mc reference here, where an earlier unpaired block put v11pair at ~51%
+against mc — more evidence that the unpaired blocks were optimistic. And the
+reference itself came in at 51.4% rather than 50%, which is the scale of
+seat/flip noise at n=500 and a useful reminder of what a 2-3 point "edge"
+is worth at this sample size.
+
+**Offline regret on this corpus has now failed to predict online strength
+three times.** It may reject; it may not promote.
+
 ## Learned override (residual distillation)
 
 | policy | what it is | measured | verdict |

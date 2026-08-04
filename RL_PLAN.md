@@ -9,9 +9,60 @@ AI_POLICIES.md; run archives in `server/runs/`.
 
 ---
 
+## WHERE THINGS STAND — 2026-08-03 23:05 (read this first)
+
+**THE HYBRID IS NOT BETTER THAN mc. Settled 2026-08-03 23:20 at n=1200.**
+
+The preregistered settling duel ran on both machines over disjoint independent
+seed blocks, with the pooling rule and the bar declared before either result
+existed:
+
+| block | result | Wilson 95% |
+|---|---|---|
+| Air (seeds 7.1M+) | 303-297 = 50.5% | [46.5%, 54.5%] |
+| mini (seeds 7.4M+) | 302-298 = 50.3% | [46.3%, 54.3%] |
+| **POOLED** | **605-595 = 50.4%** | **[47.6%, 53.2%]** |
+
+Level utility pooled: vleaf 680 vs mc 663 — no meaningful edge there either.
+The two blocks agree to within 0.2 points, which is what a real coin flip
+looks like. The original 60.3% headline was a mirage produced by invalid
+pooling; the +32 Elo in the seeded pool was Bradley-Terry inferring a gap
+from 120-round pairings that a 1200-round direct duel does not support.
+
+**Consequence:** mc-vleaf-v7w-ep02 is retired as "the leading candidate." It
+is an equal-strength, CHEAPER alternative to mc (truncated rollouts), which
+makes it interesting for LATENCY, not for strength. Nothing should be adopted
+or deployed on the basis of the old headline.
+
+**Settled today, do not re-litigate:**
+
+| Question | Answer | Where |
+|---|---|---|
+| Is the value-leaf hybrid stronger than mc? | **No** — 50.4% at n=1200, CI [47.6, 53.2] | above, 1 |
+| Does a better VALUE HEAD make a better hybrid? | **No** — v7w 60%, v9warm 53%, v9scratch 48% on the same seeds. The best head is the OLDEST. | 1f |
+| Does the flywheel work (train on hybrid data, get a better hybrid)? | **No** | 1b |
+| Residual distillation (net as a learned override on SmartBot)? | **REJECTED** — 47% vs smart, and its bar was to beat smart | 1h |
+| Does the banker knowing its own burial help? | **No measurable effect** — 49.7%, CI [44.0, 55.3] | 1g, AI_POLICIES |
+| Does rollout-policy strength matter? | **No** — tied twice, second time with a 93-Elo-stronger roller | AI_POLICIES |
+
+**The through-line: nothing about making the EVALUATOR better has moved this
+game's search.** FIVE independent attempts — the hybrid itself, a better value
+head, the flywheel, a learned override, a stronger rollout policy — all landed
+within noise of the thing they were meant to beat.
+That is now the most informative pattern in the project, and it points away
+from "train a better net" and toward asking what the search is actually
+limited by.
+
+**P0 fixed today (Codex):** BANKER_KITTY double-subtracted the burial and left
+the banker's world sampler unable to build ANY world — the banker played with
+no search at all for ~40 minutes. gen-v4 proven clean via its recorded
+`teacher_git`. Full write-up: `incidents/2026-08-03-banker-search-disabled.md`.
+
+---
+
 ## STATE OF PLAY (2026-08-03, end of day 4)
 
-### 1. Value-leaf hybrid: the leading candidate, NOT a proven win
+### 1. Value-leaf hybrid: MEASURED EQUAL TO mc (n=1200) — retired as a strength candidate
 
 `mc-vleaf-v7w-ep02` = MC search, rollouts truncated at 4 tricks, leaves
 scored by rl-v7w's VALUE head. It **tops the seeded pool at Elo 1151**
@@ -28,12 +79,16 @@ scored by rl-v7w's VALUE head. It **tops the seeded pool at Elo 1151**
 - Earlier headlines in this file claiming "ADOPTED", 60.3%, and Elo 1163
   have been REMOVED. They were produced under the unseeded protocol.
 
-**Settling experiment (preregistered, not yet run):** a fresh
-deterministic duel over 300-500 INDEPENDENT mirrored seed clusters, no
-seed reuse, per-seed records saved, paired level-utility reported
-alongside round wins, and an equal-wall-time gate (the hybrid reallocates
-compute). Predeclare the bar before running: lower bound >50%, or the
-stronger >55% adoption target.
+**Settling experiment: COMPLETE 2026-08-03 23:20 — 605-595 = 50.4%, CI
+[47.6%, 53.2%], n=1200 pooled over two disjoint blocks. VERDICT: not
+distinguishable from mc.** Design as preregistered:
+`scripts/vleaf_settle.py`, 300 independent mirrored clusters per machine on
+disjoint seed blocks (Air 7.1M+, mini 7.4M+), per-seed JSONL, paired level
+utility alongside round wins. The bar is declared in the script's docstring:
+Wilson lower bound >50% means genuinely ahead, >=55% makes it an adoption
+candidate (Jerry's call), an interval spanning 50% retires the "seeded-pool
+leader" framing. Equal-wall-time is satisfied by construction — vleaf
+truncates at 4 tricks and is the CHEAPER bot per decision.
 
 Production-ready regardless of the verdict: numpy inference
 (`rl/npnet.py`), no torch in the image, 14ms/decision, identical play
@@ -121,6 +176,24 @@ Next rung: the representation test — same model, enriched observation on
 a diagnostic set. If added information cuts high-N regret, it is an
 ENCODING ceiling, not an architecture one.
 
+### 1f. VALUE HEADS ARE INTERCHANGEABLE (2026-08-03 22:00)
+
+vleaf tested with three different value heads on the SAME seeds:
+
+| value head | vs mc |
+|---|---|
+| rl-v7w-ep02 (the original) | 60% |
+| rl-v9warm-ep05 (trained on hybrid-teacher data) | 53% |
+| rl-v9scratch-ep05 (cold-trained, same data) | **48%** |
+
+All three within ~12 points of each other on n=120, i.e. no head is
+distinguishable from another, and the best is the OLDEST. Combined with
+the flywheel negative (1b), this says the hybrid's strength does not
+come from the quality of the value head — any competent evaluator seems
+to do. That is a different, cheaper story than "we need a better net",
+and it predicts the direct-V head will matter more for SPEED than
+strength.
+
 ### 1g. RETRACTION: the kitty duels measured the wrong thing (2026-08-03 22:15)
 
 Codex found that BANKER_KITTY double-subtracted the burial and left the
@@ -145,24 +218,6 @@ Preregistered bar was "must beat SmartBot, since it IS SmartBot plus a learned
 override." ep09 scored 47% vs smart (56-64) and 45% vs mc (54-66, and the mc
 side was weakened by the banker bug, so that number flatters it). The override
 did not learn a useful correction. No further epochs queued.
-
-### 1f. VALUE HEADS ARE INTERCHANGEABLE (2026-08-03 22:00)
-
-vleaf tested with three different value heads on the SAME seeds:
-
-| value head | vs mc |
-|---|---|
-| rl-v7w-ep02 (the original) | 60% |
-| rl-v9warm-ep05 (trained on hybrid-teacher data) | 53% |
-| rl-v9scratch-ep05 (cold-trained, same data) | **48%** |
-
-All three within ~12 points of each other on n=120, i.e. no head is
-distinguishable from another, and the best is the OLDEST. Combined with
-the flywheel negative (1b), this says the hybrid's strength does not
-come from the quality of the value head — any competent evaluator seems
-to do. That is a different, cheaper story than "we need a better net",
-and it predicts the direct-V head will matter more for SPEED than
-strength.
 
 ### 2. Standalone policy line: no lever has moved it vs mc
 
@@ -282,7 +337,7 @@ clean direct seeded v9-vs-v7w comparison has NOT been run yet.
 
 ---
 
-## Training data inventory (2026-08-02, all local + gitignored)
+## Training data inventory (updated 2026-08-03; all local + gitignored)
 
 | dataset | size | what it is | teacher | trained |
 |---|---|---|---|---|
@@ -324,52 +379,8 @@ human pile is 4,000x smaller but highest signal-per-byte.
   AI_POLICIES experiment log).
 
 ---
+## ARCHIVE
 
-## ARCHIVE (chronology, compressed — details in git + server/runs/)
-
-**Phases 0-2 (complete):** fast env (2,067 rounds/s multiproc); 531-dim
-obs + 60-dim action encoding (ENC_VERSION 1); exhaustive follow + v2
-lead enumeration; BC gate passed (89.7% imitation → 48% vs smart / 29%
-vs mc — search exploits clone errors; encoding carries the game).
-
-**DMC v1 (closed):** warm start + raw-return regression = flat 30-34%
-over 400k rounds; value regression crushed BC ordering (spread
-22.5→0.26); degraded policy then fed itself. `server/runs/dmc_v1.md`.
-Root insight: DouZero trains from scratch; AlphaGo 2016 kept SL/RL nets
-separate for exactly this reason.
-
-**Distillation series:** v1 32/22 → v2 (+CE temp) 30/27 → v3 (split
-heads) 32/24 → v4 (+soft targets) 38/32 → v5 (full data) 42/38 → **v6
-(12 ep) 51/41** — no bend in the curve until data ran out. Diagnosis:
-teacher is stochastic and ~70% of labels are SmartBot-via-margin; soft
-targets average the teacher's RNG.
-
-**Snapshot sweep:** 20-epoch run probed per epoch: 38% ep0 → 53-57%
-plateau ep3-10 → wobble after. v6cont (6 extra epochs) NEGATIVE (44/32).
-Strength peaks early; probe-select thereafter.
-
-**Hybrid v1 (net rollouts): dead.** 55% preview (n=40) reversed to 37%
-(n=60); bare v5 out-rated its own hybrid in-pool (1088 vs 1074); "feels
-wonky" preceded the stats.
-
-**dmc2 (halted twice by its own spread alarm):** the 13-point recipe
-(dueling split, Suphx oracle baseline, annealed anchor, gating, opponent
-pool, aux heads, ballot freeze, spread alarm, oracle upkeep, ε schedule,
-replay cap, run bookkeeping) remains the AWAC rewrite's scaffolding —
-the alarm works (caught spread collapse in 2 min); the Q-regression
-core is what AWAC replaces.
-
-**Overnight sweeps (2026-08-02):** temperature 0.03/0.10 null; 1024
-trunk null; MC-level stack validation 57% (heuristic-level h2h testing
-inherits to MC); RISKY_THROWS/TRUMP_BALLOT 53%/53% solo (superseded by
-wide ballot).
-
-**Historical pools:** 2026-08-01 A: mc 1141 > rl-v5 1088 > mc-v5roll
-1074 > smart 1055 > heuristic 1000. Pool B: mc 1104 > rl-v6 1032 >
-smart 1006 > heuristic 1000. 2026-08-02 night: mc 1067 > smart 1061 >
-rl-v6 1023 > heuristic 1000 (heuristic adoptions closed most of the
-search's margin). Cross-pool numbers do not compare.
-
-**Play-test notes:** Jerry vs v6 live (2026-08-02): "some passive plays
-but feels decent" — corroborates the 75%-follow dataset bias; fixes:
-lead-weighted loss arm, ballot-v2 teacher data.
+Day-by-day chronology moved to `docs_archive/rl-plan-chronology-through-2026-08-03.md`
+(2026-08-03). Conclusions live in KEY LEARNINGS above; that file is the record
+of how each was reached, including the dead ends.

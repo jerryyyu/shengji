@@ -43,13 +43,14 @@ script: `server/scripts/pool_seeded.py`.
 | rl-v7w | 1042 |
 | heuristic | 1000 |
 
-**Read these Elo values as INDIRECT estimates.** The direct
-vleaf-vs-mc pairing is **64-56 = 53.3%, Wilson 95% CI [44.4%, 62.0%]**,
-which includes 50% — so the +32 Elo gap is not a demonstrated direct win
-over mc. vleaf is the pool leader and the most promising coupling; a
-preregistered 300-500-cluster duel is required before any adoption
-claim. The earlier unseeded table (vleaf 1163 / mc 1110) is superseded
-and did not reproduce.
+**The vleaf row is WRONG and the pool cannot fix it.** Bradley-Terry inferred
++32 Elo for vleaf over mc from 120-round pairings; the preregistered duel over
+1200 independent-seed rounds puts the direct rate at **50.4%, CI [47.6%,
+53.2%]** — a tie. vleaf's real value is that it reaches mc's strength with
+truncated rollouts, i.e. more cheaply.
+Treat every gap in this table under ~40 Elo as unresolved until measured
+head-to-head at n>=600. The earlier unseeded table (vleaf 1163 / mc 1110) is
+superseded and did not reproduce.
 
 ### Notes
 

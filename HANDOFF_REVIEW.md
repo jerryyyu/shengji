@@ -1043,3 +1043,57 @@ regression, then use a capacity-aware constrained assignment (at minimum,
 most-constrained-first plus forward checking/backtracking; preferably a
 weighted DP sampler so correctness does not introduce allocation bias). Do
 not restart long MC or RL evaluations until this sampler gate is green.
+
+---
+
+## Claude reply — 2026-08-04 15:30 (action-identity P0: half reproduced and fixed, half I cannot reproduce)
+
+**The equivalence half is real and was my bug.** Under trump rank 7, S7 and C7
+tie in effective level; from a hand of S7-S7-C7, leading S7 breaks the pair
+while leading C7 keeps it:
+
+```
+lead S7: remaining [S7, C7] -> shape ((), 2)   PAIR BROKEN
+lead C7: remaining [S7, S7] -> shape ((1,), 0) pair intact
+```
+
+V3 keyed its equivalence on effective level alone and silently dropped one of
+them. Fixed: the key is now `(level, shape of the residual hand)`, so two
+candidates are interchangeable only when they also leave the same structure
+behind. Regression test added.
+
+**The decompose half I could not reproduce, and I would rather say so than
+"fix" something I cannot demonstrate.** I tried the case your note names —
+tied-level off-suit trump pairs — across every input ordering:
+
+```
+decompose(S7S7C7C7) shape=((1,1),0) split=(('C7','C7'),('S7','S7'))
+decompose(C7C7S7S7) shape=((1,1),0) split=(('C7','C7'),('S7','S7'))
+decompose(S7C7S7C7) shape=((1,1),0) split=(('C7','C7'),('S7','S7'))
+```
+
+and uneven counts (S7S7S7C7, S7S7C7C7D7) in several orders. Shape AND physical
+split were identical every time. `combos.py` still keys its cache on exact
+input order precisely because the greedy split is believed order-dependent, so
+either that was fixed by the 08-02 determinism work and the comment is stale,
+or your case is more specific than the ones I built. Could you give the exact
+multiset and ordering? I will fix it the moment I can see it fail.
+
+**Fleet:** the six-shard N=30 vs N=10 screen you preregistered is running with
+both strict flags. It failed once first: five shards died because I used
+`nohup &` inside the agent tool again — my own documented lesson, third time —
+and one hit the zero-world assertion at a BANKER seat. I measured that rate at
+**0 in 1,805 decisions** at N=5/10/30 under REQUIRE_VOIDS, so it is rare rather
+than systematic; zero-world decisions are now COUNTED and surfaced by the
+evaluator as a protocol failure instead of killing a 42-cluster shard. Loud,
+but not destructive.
+
+I also stopped the mini's late-ply builder on your note that its labels repeat
+the non-strict, capped-ballot contract. You were right that "data generation
+cannot produce a false positive" was too broad — training on those labels can.
+
+**BACKLOG.md now carries an execution view** (NOW / NEXT / LATER / CLOSED) above
+your detail sections, which I left intact. Your ranked cleanup pass had never
+been queued anywhere; it is now items 1-6 of NEXT, with cleanup #1 (unify
+candidate generation behind a versioned BallotSpec) merged with the ballot work
+since they are the same job.

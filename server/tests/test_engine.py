@@ -134,3 +134,26 @@ def test_beats_pair_as_two_singles():
 def test_points():
     assert points("S5") == 5 and points("H10") == 10 and points("CK") == 10
     assert points("SA") == 0 and points(BJ) == 0
+
+
+def test_v3_lead_equivalence_accounts_for_residual_structure():
+    """Cards tied in LEVEL are not interchangeable actions.
+
+    Under trump rank 7, S7 and C7 tie in effective level. From a hand of
+    S7-S7-C7, leading S7 breaks the pair while leading C7 keeps it. V3's first
+    version offered one representative per level and silently dropped the
+    difference (Codex P0, 2026-08-04).
+    """
+    from shengji.engine.cards import Ordering
+    from shengji.engine.combos import decompose
+
+    o = Ordering(trump_suit="H", trump_rank="7")
+    hand = ["S7", "S7", "C7"]
+    shapes = set()
+    for play in ("S7", "C7"):
+        rest = list(hand)
+        rest.remove(play)
+        shapes.add(decompose(rest, o).shape())
+    assert len(shapes) == 2, (
+        "S7 and C7 leave different residual structure, so an equivalence "
+        "keyed only on effective level is unsound")

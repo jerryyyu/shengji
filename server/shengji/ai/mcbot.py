@@ -355,7 +355,13 @@ class MCBot(SmartBot):
             # rollout cost is comparable; what changes is WHAT fills it.
             for suit in list(PLAIN_SUITS) + [TRUMP]:
                 cards = suit_cards(hand, suit, o)
-                seen_levels = set()
+                # Equivalence must include what the play LEAVES BEHIND, not
+                # just its immediate strength. Under trump rank 7, S7 and C7
+                # tie in level, but from S7-S7-C7 leading S7 breaks the pair
+                # while leading C7 keeps it — so "one representative per
+                # effective level" silently dropped a materially different
+                # action (Codex P0, reproduced 2026-08-04).
+                seen_keys = set()
                 order = sorted(cards, key=lambda x: -o.level(x))
                 if self.V3_LEAD_RANDOM:
                     # CONTROL: fill the same slots with arbitrary legal
@@ -370,10 +376,12 @@ class MCBot(SmartBot):
                     order = list(cards)
                     self._proposal_rng.shuffle(order)
                 for c in order:
-                    lv = o.level(c)
-                    if lv in seen_levels:
+                    rest = list(cards)
+                    rest.remove(c)
+                    key = (o.level(c), decompose(rest, o).shape() if rest else ())
+                    if key in seen_keys:
                         continue
-                    seen_levels.add(lv)
+                    seen_keys.add(key)
                     if len(cands) >= self.LEAD_MAX_CANDIDATES:
                         break
                     add([c])

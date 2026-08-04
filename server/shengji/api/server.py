@@ -21,6 +21,7 @@ from ..ai.heuristic import HeuristicBot
 from ..ai.registry import make_bot
 from ..engine.game import Game
 from ..engine.legal import IllegalPlay
+from ..engine import combos
 from ..engine.round import Round, actual_play_after
 
 BOT_DELAY = 0.7
@@ -153,11 +154,44 @@ class Room:
 
 
 # --------------------------------------------------------------------- state
-def trick_json(t) -> dict | None:
+def play_shape(cards: list[str], ordering) -> str:
+    """What the play IS, decided by the engine — "single" | "pair" |
+    "tractor" | "throw".
+
+    The voice announcer used to infer this client-side ("4+ cards, all even
+    counts => tractor"), which called a two-PAIR throw a 拖拉机 (Jerry,
+    2026-08-04). A tractor needs CONSECUTIVE pairs in one effective suit, and
+    consecutiveness depends on the trump ordering — trump-rank cards and
+    jokers sit outside their printed ranks — which the client cannot see.
+    """
+    n = len(cards)
+    if n == 0:
+        return "throw"
+    if n == 1:
+        return "single"
+    if ordering is None:
+        return "throw"
+    suits = {ordering.eff_suit(c) for c in cards}
+    if len(suits) > 1:
+        return "throw"          # multi-suit is always a throw
+    dec = combos.decompose(list(cards), ordering)
+    if len(dec.components) != 1:
+        return "throw"          # e.g. 55 + 99: two components, not a run
+    comp = dec.components[0]
+    if comp.pair_len == 1 and comp.size == 2:
+        return "pair"
+    if comp.pair_len >= 2:
+        return "tractor"
+    return "throw"
+
+
+def trick_json(t, ordering=None) -> dict | None:
     if t is None:
         return None
     d = {"leader": t.leader,
-         "plays": [{"seat": p.seat, "cards": p.cards} for p in t.plays]}
+         "plays": [{"seat": p.seat, "cards": p.cards,
+                    "shape": play_shape(p.cards, ordering)}
+                   for p in t.plays]}
     if t.winner is not None:
         d["winner"] = t.winner
         d["points"] = t.points
@@ -264,8 +298,8 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
         "current_declaration": (
             {"seat": rnd.declaration["seat"], "cards": rnd.declaration["cards"]}
             if rnd.declaration else None),
-        "trick": trick_json(rnd.trick),
-        "last_trick": trick_json(rnd.last_trick),
+        "trick": trick_json(rnd.trick, rnd.ordering),
+        "last_trick": trick_json(rnd.last_trick, rnd.ordering),
         "attacker_points": rnd.attacker_points,
         "kitty_count": 8,
         "round_result": ({

@@ -773,3 +773,33 @@ def test_claiming_a_seat_rotates_its_token(client):
                 assert seat != 1, "stale token displaced the new owner"
         for w in socks[1:]:
             w.__exit__(None, None, None)
+
+
+def test_play_shape_distinguishes_tractor_from_two_pair_throw():
+    """A two-PAIR throw is not a tractor — the audio called it 拖拉机."""
+    import random
+
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.api.server import play_shape
+    from shengji.engine.game import Game
+
+    g = Game(random.Random(5))
+    r = g.start_round()
+    hb = HeuristicBot()
+    while r.phase != "play":
+        if r.phase == "deal":
+            r.deal_next()
+        elif r.phase == "declare":
+            r.finalize_declare()
+        elif r.phase == "bury":
+            r.bury(r.banker, hb.decide_bury(r, r.banker))
+    o = r.ordering
+    assert play_shape(["S5"], o) == "single"
+    assert play_shape(["S5", "S5"], o) == "pair"
+    assert play_shape(["S5", "S5", "S6", "S6"], o) == "tractor"
+    # The reported bug: two pairs that are NOT consecutive.
+    assert play_shape(["S5", "S5", "S9", "S9"], o) == "throw"
+    # Two pairs in different suits are a throw too.
+    assert play_shape(["S5", "S5", "H9", "H9"], o) == "throw"
+    # Three consecutive pairs remain a tractor.
+    assert play_shape(["S5", "S5", "S6", "S6", "S7", "S7"], o) == "tractor"

@@ -207,11 +207,16 @@ export function announceState(state: GameState, seedOnly = false): void {
       // card names only on the LEAD of each trick
       const allTrump =
         trump !== null && n > 0 && p.cards.every((c) => isTrump(c, trump));
+      // The SERVER decides the shape: whether pairs form a tractor depends on
+      // consecutiveness under the trump ordering, which this side cannot see.
+      // Guessing "4+ cards, all even counts => tractor" announced a two-pair
+      // 甩牌 as 拖拉机 (Jerry, 2026-08-04).
+      const shape = p.shape ?? (n === 1 ? "single" : allPairs && n === 2 ? "pair" : "throw");
       if (allTrump) play(["diaozhu"]); // 调主: drawing trump
-      else if (n === 1) play([p.cards[0]]);
-      else if (n === 2 && allPairs) play(["pair", p.cards[0]]);
-      else if (n >= 4 && allPairs) play(["tractor"]);
-      else play(["throw"]); // multi-component lead
+      else if (shape === "single") play([p.cards[0]]);
+      else if (shape === "pair") play(["pair", p.cards[0]]);
+      else if (shape === "tractor") play(["tractor"]);
+      else play(["throw"]);
     } else playTick(); // followers: just a click (ruffs handled above)
   });
   seenPlays = nextSeen;

@@ -48,6 +48,14 @@ lobby instead of retrying).
 ### `{type: "room", room: string, you: number, host: number, players: RoomPlayer[]}`
 Sent in lobby. `RoomPlayer = {seat: number, name: string, is_bot: boolean, connected: boolean}`. Seats 0–3. Teams: seats 0+2 vs 1+3.
 
+### Trick plays carry a `shape`
+
+Each play in `trick` / `last_trick` includes `shape`: `"single" | "pair" |
+`"tractor" | "throw"`, decided by the ENGINE. Clients must not infer it —
+whether pairs form a tractor depends on consecutiveness under the trump
+ordering, where trump-rank cards and jokers sit outside their printed ranks.
+The voice announcer inferred it and called a two-pair 甩牌 a 拖拉机.
+
 ### `{type: "room_seats", room, in_game: bool, seats: [{seat, name, is_bot, connected, team}]}`
 
 Reply to `peek_room`. Read-only: it does not seat the asker and reveals no

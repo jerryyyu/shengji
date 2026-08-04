@@ -74,9 +74,16 @@ export interface Trump {
   declarer: number | null;
 }
 
+/** What a play IS, as decided by the engine. The client cannot compute this:
+ *  whether pairs form a tractor depends on consecutiveness under the trump
+ *  ordering, where trump-rank cards and jokers sit outside their printed
+ *  ranks. */
+export type PlayShape = "single" | "pair" | "tractor" | "throw";
+
 export interface TrickPlay {
   seat: number;
   cards: string[]; // codes only for other players
+  shape?: PlayShape;
 }
 
 export interface Trick {

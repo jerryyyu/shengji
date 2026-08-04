@@ -73,12 +73,17 @@ def score_of(rec, cards) -> float:
 
 
 def main() -> None:
-    path = sys.argv[1] if len(sys.argv) > 1 else "rl_data/highn_diag.jsonl"
-    cap = int(sys.argv[2]) if len(sys.argv) > 2 else 10_000
+    _args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    path = _args[0] if _args else "rl_data/highn_diag.jsonl"
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    cap = int(args[1]) if len(args) > 1 else 10_000
 
     recs = [json.loads(l) for l in open(path)][:cap]
-    sig = [r for r in recs if r["significant"]]
-    print(f"{len(recs)} states, {len(sig)} with a reference gap > 2 paired SE")
+    only_sig = "--all" not in sys.argv
+    sig = [r for r in recs if r["significant"]] if only_sig else recs
+    print(f"{len(recs)} states; scoring on "
+          + (f"{len(sig)} with a reference gap > 2 paired SE"
+             if only_sig else f"ALL {len(sig)} states"))
     print("regret = reference value of the BEST candidate minus the value of "
           "the one chosen (points; lower is better)\n")
 

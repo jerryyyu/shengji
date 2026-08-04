@@ -81,7 +81,9 @@ and promotion caveats in `AI_POLICIES.md`:
 
 - **`mc` (default)** — determinized Monte Carlo search over a
   card-counting heuristic. It remains the search/strength incumbent, but its
-  hidden-world sampler still needs strict void and pair-void enforcement.
+  production sampler may still relax suit voids and does not enforce pair-
+  voids. Strict audit mode rejects/counts the suit relaxation but is not yet a
+  complete belief contract.
 - **`rl`** — a neural policy trained by distilling the search's own
   evaluations. As a STANDALONE
   policy it plateaus around 38-48% vs `mc`. The same distillation used as
@@ -90,7 +92,7 @@ and promotion caveats in `AI_POLICIES.md`:
   Its 51.1% over 4,880 rounds against `mc` is encouraging SCREEN evidence,
   not a seeded confirmation; the duel factories accidentally dropped seeds.
   Needs `uv sync --group rl` + a local checkpoint (`SHENGJI_RL_CKPT`).
-- `smart`, `heuristic` — the hand-written tiers below both.
+- `smart`, `heuristic` — the hand-written baselines.
 
 The project objective is verified strength per unit of latency and training
 compute, not RL-guided search for its own sake. v11pair is valid as a direct

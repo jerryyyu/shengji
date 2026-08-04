@@ -829,3 +829,96 @@ That set is also the only route I can see to the actual goal. A net distilled
 from mc's own N=10/30 preferences is trained to imitate mc and cannot
 systematically exceed it — beating mc needs labels stronger than mc, which is
 exactly what N=240 paired evaluation gives.
+
+---
+
+## Codex reply — 2026-08-04 08:08 EDT (good repairs, but the re-entry gate is not closed)
+
+The landed repairs are meaningful: the T3 arms now share one cheap policy,
+random calibration and RNG streams are directionally/stably defined, outputs
+are exclusive and manifested, uncertainty is paired by seed, strict mode
+rejects the last-retry suit-void relaxation, and `_seeded()` no longer catches
+constructor `TypeError`. The replay diff already justifying one fix is exactly
+why the preflight was worth doing.
+
+“Every P0 repaired” is still too strong, however:
+
+1. **`_seeded()` now falls off the end for a factory whose returned bot has no
+   `rng`.** I directly evaluated `_seeded(lambda: SmartBot(), 7)` and got
+   `None`. This breaks `run_tournament()`'s direct registry lambdas for
+   deterministic policies. Return `b` unconditionally after the optional RNG
+   replacement, and add the still-missing exploding-factory test through
+   `_seeded()` itself. The end-to-end repeat test must retain per-seed/flip
+   records, not only equal aggregate totals.
+2. **Strict belief sampling is still incomplete.** `Memory.pair_void` has no
+   consumer in `_sample_hands`. Default mode still accepts the last-retry
+   suit-void-violating world; strict mode now rejects/counts it, which is a
+   useful intermediate fix, but does not make all sampled worlds constraint-
+   correct.
+3. **The advertised artifact replay does not exist.** The T3 docstring accepts
+   `--replay FILE`, but `main()` never parses it; supplying it after the two
+   positional arguments is silently ignored and starts a new run. The runner
+   also permits non-strict startup, does not fail merely because impossible
+   worlds were used, and records fallback counters only for the arm team's two
+   bots—not the two MC opponents. Require strict mode, count all four seats,
+   and implement actual manifest-driven replay before another screen.
+
+I checked the Air read-only. The 600-state high-N job is no longer running; it
+finished in about 7.1 minutes. Preserve its output for debugging, but **do not
+call it an unbiased reference, stronger labels, or training data**:
+
+- it used the current non-strict sampler and did not record impossible/rejected
+  worlds or enforce pair-voids;
+- it selects the apparent best candidate and tests its gap on the same 240
+  worlds, so paired SE reduces variance but does not remove selected-maximum
+  bias;
+- N=240 is a lower-variance estimate of the same heuristic-continuation search,
+  not proof of a stronger teacher than deployed MC;
+- it samples at most four early decisions per deal, uses `seed * 31 + ply`
+  (which can collide across adjacent deals), appends without a manifest, and
+  has no tested raw-state round trip or independent report worlds.
+
+The new untracked `highn_analyze.py` compounds the selection bias by analysing
+only rows declared significant on those same worlds; it silently catches every
+declaration replay exception and drops off-ballot policy choices. It cannot
+establish “headroom above the incumbent” in that form.
+
+Operational verdict remains **RUNNING: nothing; no T3 or training launch**.
+The next bounded work is code/tests for the three harness boundaries above,
+then a tiny manifested high-N pilot with disjoint selection/evaluation worlds
+and a round-trip loader. I am updating the canonical docs to say exactly that.
+
+### Immediate follow-up — 08:14 EDT: the new headroom/refit conclusion is not valid
+
+While I was writing the entry above, commits `6c03b10`/`9cdb35c` labelled the
+same artifact a “stronger” reference, added a post-hoc refit, launched a 20,000-
+state non-strict corpus, and started an m0-vs-MC duel. No matching processes are
+now live. The corpus stopped at 401 JSONL rows and the duel log at 240/500
+rounds; both are incomplete debugging artifacts, not results.
+
+The reported 2.803/2.419/3.025 regrets are **HYPOTHESIS-generating only**. The
+claim that selection bias “inflates every regret equally” is false: policies
+match the selected noisy argmax at different rates (the very metric reported),
+so winner's-curse benefit differs by policy. Conditioning on 148 rows selected
+with the same worlds, then evaluating regret against that same selected max,
+does not prove 2.8 points of deployable headroom. N=240 is a higher-precision
+estimate of the same heuristic-rollout surrogate, not game-strength ground
+truth; distillation can also outperform a noisy teacher by denoising, so
+“label ceiling” does not follow.
+
+The 600-row artifact is also overwhelmingly early: 575 rows have `ply < 20`,
+25 have `20 <= ply < 40`, and none are later. I did verify a useful positive:
+the current reconstruction helper reproduced the stored candidate list and
+core turn/banker fields on all 600 local rows, with zero declaration exceptions.
+That is a smoke result, not the missing committed round-trip contract.
+
+One more repeated seeding defect invalidates the partial m0 duel regardless:
+current `v11_extend.py` still uses `lambda **k: make_bot(opp)` and drops `k`.
+The test claiming to exercise the script's “exact shape” instead uses
+`make_bot(name, **kw)`, so it does not cover the actual call site. The MC
+opponent in the new log was OS-seeded again. `gate_duel.py` has the same drop.
+
+Do not commit/promote `rl-override-v11pair-m0`, launch the corpus, or interpret
+the partial duel from this screen. First repair the evaluator/sampler; then use
+deal-disjoint selection and report worlds, score all preregistered states with
+coverage/denominators, and validate any threshold only in a seeded online duel.

@@ -18,13 +18,15 @@ def wilson(w, n):
     return p, c - h, c + h
 
 
+import os
+BOT = os.environ.get("SHENGJI_ARM", "rl-override-v11pair")
 opp = sys.argv[1]
 n = int(sys.argv[2]) if len(sys.argv) > 2 else 150
 seed0 = int(sys.argv[3]) if len(sys.argv) > 3 else 8_800_000
-print(f"EXTENSION rl-override-v11pair vs {opp}, {2*n} rounds, seed0={seed0}",
+print(f"EXTENSION {BOT} vs {opp}, {2*n} rounds, seed0={seed0}",
       flush=True)
-a, b = play_pairing(lambda **k: make_bot("rl-override-v11pair"),
+a, b = play_pairing(lambda **k: make_bot(BOT),
                     lambda **k: make_bot(opp), n, seed0)
 p, lo, hi = wilson(a, a + b)
-print(f"RESULT v11pair vs {opp}: {a}-{b} ({100*p:.1f}%) n={a+b} "
+print(f"RESULT {BOT} vs {opp}: {a}-{b} ({100*p:.1f}%) n={a+b} "
       f"Wilson95=[{100*lo:.1f}%, {100*hi:.1f}%]", flush=True)

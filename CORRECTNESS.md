@@ -73,18 +73,23 @@ another implementation's profile without a new explicit table ruling.
 
 1. **Belief worlds are not strict.** MCBot's last sampler retry sets
    `respect_voids=False`, and `Memory.pair_void` is never enforced in sampled
-   hands. `SHENGJI_STRICT_SAMPLING` currently catches only zero returned worlds,
-   not a relaxed/impossible world. Add counters and make strict mode reject all
-   constraint relaxation before trusting high-N labels or selective-search
-   comparisons.
-2. **One seed fallback remains.** `registry.make_bot` dispatches by signature,
-   but `tournament._seeded()` still catches any constructor `TypeError` and
-   retries without the seed. Test an exploding constructor through `_seeded`
-   and compare per-seed/per-flip records, not only aggregate scores.
+   hands. Used/rejected counters now distinguish the final relaxation and
+   `SHENGJI_STRICT_SAMPLING` rejects it, but normal mode still accepts it and
+   strict mode does not yet enforce pair-voids. Close that remaining contract
+   before trusting high-N labels or selective-search comparisons.
+2. **The seed boundary still has a fallthrough.** `registry.make_bot` and
+   `tournament._seeded()` now dispatch by signature rather than swallowing
+   constructor `TypeError`, but `_seeded()` returns `None` when a seedless
+   factory returns a bot without `rng` (including direct SmartBot factories).
+   Return the bot unconditionally, test an exploding constructor through the
+   exact boundary, and compare per-seed/per-flip records rather than only
+   aggregate scores.
 3. **Raw-state datasets need round-trip proof.** A “rebuildable” record is not
    authoritative until a versioned loader reconstructs it and reproduces the
    same legal candidates, observation, role/phase, and continuation. The
-   current high-N prototype has no such test or manifest.
+   current high-N prototype has no such test. The 600-row artifact predates the
+   sidecar-manifest patch; current code overwrites the sidecar while appending
+   JSONL, so it does not prevent mixed runs.
 
 ## Incident log (why these rules exist)
 
@@ -106,6 +111,9 @@ another implementation's profile without a new explicit table ruling.
 | 08-03 | BANKER_KITTY cards were removed from `Memory.unseen`, then removed again by the sampler; banker search returned zero worlds and silently fell back to candidate 0 | search correctness / silent fallback | Codex audit; strict banker regression |
 | 08-04 | duel call-site lambdas accepted `seed=` but dropped it, so 4,880 v11-vs-MC rounds labelled seeded actually used OS-entropy MC opponents | evaluation provenance | exact-factory audit |
 | 08-04 | five-arm T3 runner launched without common skip policies, strict fallback evidence, manifest, paired analysis, or exclusive output; partial run terminated | evaluation harness / compute waste | preflight handoff audit + process inspection |
+| 08-04 | a supposedly disjoint T3 gate RNG used Python's process-randomized string `hash()`, so identical runs diverged | nondeterministic evaluator | required replay diff |
+| 08-04 | `_seeded()` TypeError repair introduced a no-`rng` fallthrough returning `None`; direct deterministic tournament factories break | boundary fallback / missing return | direct boundary probe |
+| 08-04 | `v11_extend.py` and `gate_duel.py` still accept seed kwargs but drop them; the “exact factory” regression uses a different forwarding lambda | evaluation provenance / false test coverage | partial m0 duel audit |
 
 Update this table whenever a correctness incident occurs — the log is
 the argument for the rules.

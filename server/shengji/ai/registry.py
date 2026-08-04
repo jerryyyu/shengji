@@ -169,6 +169,12 @@ def _make_override_thr(path: str, margin: float):
 
 # threshold 0.02 was fitted on half A of the holdout and reported on half B
 # (regret 1.943 vs 2.103 for always-candidate-0), so it is not post-hoc.
+# MARGIN 0 = trust the net's argmax over the MC ballot. The 0.02 bar was
+# fitted on the teacher's own biased estimates; refitted against the N=240
+# reference the best bar is ZERO, and held-out regret drops 2.870 -> 2.152,
+# below deployed mc's 2.803 (2026-08-04).
+REGISTRY["rl-override-v11pair-m0"] = _make_override_thr(
+    "snapshots_v11pair/ep07.pt", 0.0)
 REGISTRY["rl-override-v11pair"] = _make_override_thr(
     "snapshots_v11pair/ep07.pt", 0.02)
 def _make_gate(path: str, gate: float):

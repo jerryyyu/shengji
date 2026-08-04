@@ -17,14 +17,16 @@ larger experiment.
 
 - [ ] **Make belief sampling constraint-correct.** Enforce every proven suit
       void, pair-void constraint, and declared-card pin on every sampled world.
-      Remove the last-retry constraint drop; expose requested/valid/rejected/
-      relaxed world counts and fail strict runs on any relaxation. Add
-      impossible-state and last-retry regressions before generating labels.
+      Strict mode now rejects/counts the last-retry suit-void relaxation;
+      normal mode may still use it and pair-voids remain unenforced. Expose
+      requested/valid/rejected/relaxed counts for all seats and add impossible-
+      state, pair-void, and last-retry regressions before generating labels.
 - [ ] **Repair deterministic evaluation.** Replace
-      `tournament._seeded()`'s blanket `TypeError` fallback with signature
-      dispatch, test a constructor that raises internally through that exact
-      boundary, and persist/compare every deal-seed and flip result. Every run
-      needs an exclusive output plus immutable manifest and checkpoint hash.
+      `tournament._seeded()`'s no-`rng` fallthrough with an unconditional
+      return, test both a seedless deterministic bot and a constructor that
+      raises internally through that exact boundary, and persist/compare every
+      deal-seed and flip result. Every run needs an exclusive output plus
+      immutable manifest and checkpoint hash.
 - [ ] **Settle the deployment Pareto choice.** On the repaired evaluator,
       compare SmartBot, direct v11pair, MC N=5/10/20, and the settled v7 value-
       leaf speed arm. Predeclare signed level utility as primary, the
@@ -32,7 +34,8 @@ larger experiment.
       The existing 4,880-round v11-vs-MC aggregate is SCREEN evidence, not a
       confirmation.
 - [ ] **Build a valid, tiny high-N diagnostic pilot.** Before running the
-      committed prototype, add a versioned raw-state round trip (including
+      prototype again—or using the completed Air artifact as evidence—add a
+      versioned raw-state round trip (including
       initial banker and declaration history), strict worlds, deal-grouped
       splits, phase/score quotas, disjoint candidate-selection and evaluation
       worlds, stored per-world differences/covariance, collision-free named RNG

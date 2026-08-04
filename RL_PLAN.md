@@ -17,7 +17,7 @@ MPS). Toggle results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## WHERE THINGS STAND — 2026-08-04 07:55 (read this first)
+## WHERE THINGS STAND — 2026-08-04 08:10 (read this first)
 
 1. **Direct v11pair is the learned line's first positive result and the current
    deployment-cost candidate.** `rl-override-v11pair` (SmartBot + learned
@@ -31,18 +31,24 @@ MPS). Toggle results live in `AI_POLICIES.md`; run archives in `server/runs/`.
    offline T2 did not earn confirmation and was itself over-interpreted: noisy
    max-Q labels favor high-candidate states and equal state-call rate was not
    equal compute. A later five-arm T3 runner violated its preregistration and
-   was terminated after a partial full-MC arm. It produced **no result**.
+   was terminated after a partial full-MC arm. It produced **no result**. The
+   runner has since gained a shared cheap policy, manifested exclusive output,
+   stable RNG streams, paired seed analysis, and work-band enforcement, but it
+   still lacks real artifact replay, complete all-seat fallback accounting,
+   and a strict pair-void sampler. It has not earned a rerun.
 3. **Use the model according to its contract.** v11pair is suitable as a direct
    action reranker and potentially a root proposer/prior or fixed-budget compute
    allocator. Its pairwise action deltas are not an absolute state value and
    therefore are not a valid MC/MCTS leaf. Replacing the rollout policy has tied
    twice and is not the next lever.
 4. **Correctness and evaluation currently gate more compute.** The belief
-   sampler may relax proven suit voids on its final retry and never enforces
-   pair-voids; `tournament._seeded()` still has a blanket `TypeError` fallback;
-   and the new high-N builder does not yet provide independent selection/eval,
-   a versioned round-trip schema, or strict-world guarantees. No training,
-   high-N generation, T3 screen, or T4 confirmation is authorised today.
+   sampler's normal mode may use a final-retry suit-void relaxation and never
+   enforces pair-voids. Strict mode now rejects/counts that suit relaxation.
+   `tournament._seeded()` now dispatches by signature but falls through to
+   `None` for seedless factories whose bot has no `rng`. The completed Air
+   high-N artifact used the invalid prototype: no independent selection/eval,
+   versioned round-trip schema, manifest, or strict-world evidence. No
+   training, high-N rerun, T3 screen, or T4 confirmation is authorised today.
 
 The machine is intentionally idle. A cheap policy or direct v11 winning the
 strength/latency Pareto comparison is a success even if no RL-search design
@@ -324,12 +330,14 @@ What survives and what does not:
   "deterministic, so the machine does not matter" was simply false.
 - The v11-vs-Smart result is unaffected: SmartBot is deterministic.
 
-`make_bot` now forwards kwargs by inspecting the factory signature. One
-boundary remains open: `tournament._seeded()` itself still catches a blanket
-`TypeError` and retries without a seed, and its constructor-error regression
-test exercises `make_bot` rather than an exploding factory through `_seeded`.
-The end-to-end repeat test also compares aggregate scores rather than
-per-seed/per-flip records. Do not call the general harness fully repaired yet.
+`make_bot` and `tournament._seeded()` now dispatch by factory signature rather
+than catching constructor `TypeError`. The boundary is still open in two new
+ways: `_seeded()` falls through to `None` when a seedless factory returns a bot
+without `rng`, and the actual `v11_extend.py` / `gate_duel.py` lambdas still
+accept `**k` but fail to forward it to `make_bot`. Their regression test uses a
+different, correctly forwarding lambda. The end-to-end repeat test also
+compares aggregate scores rather than per-seed/per-flip records. Do not call
+the general harness repaired yet.
 
 One more block completed after the retraction (409-391 = 51.1%, n=800), which
 was ALSO launched before the fix landed and is therefore also unseeded. It
@@ -459,45 +467,96 @@ exclusive per-seed/per-flip JSONL, reconcile all counters, and fail on any
 impossible-world fallback. Only then may a separately preregistered
 150-cluster diagnostic be considered.
 
-### 1m. HIGH-N REFERENCE: how much mc(N=10) actually leaves on the table (2026-08-04 08:20)
+### 1n. HIGH-N PROTOTYPE SCREEN: the 2.8-point headroom claim is not established (2026-08-04 08:14)
 
-The first measurement in this project taken against something STRONGER than
-the thing we are trying to beat. 600 raw states, every candidate evaluated
-over 240 independent paired worlds; scored on the 148 states where the
-reference gap clears 2 paired SE (i.e. where the decision provably matters).
+The prototype evaluated each candidate on 240 shared worlds for 600 raw
+states, then analysed the 148 rows where its selected best beat candidate 0 by
+more than two paired SE. It reported:
 
-| policy | mean regret vs N=240 best | picks the reference best |
+| policy | mean regret vs selected N=240 best | picks that selected best |
 |---|---|---|
 | SmartBot (candidate 0) | 5.066 | 0.0% (by construction) |
 | heuristic | 4.946 | 1.4% |
-| **mc N=10 (deployed)** | **2.803** | 23.6% |
+| mc N=10 (deployed) | 2.803 | 23.6% |
 | mc N=30 (label teacher) | 2.419 | 30.4% |
-| v11 override | 3.025 | **29.7%** |
+| v11 override | 3.025 | 29.7% |
 
-**Three things follow.**
+These are useful debugging numbers, but they do **not** establish deployable
+headroom, a stronger teacher, a label ceiling, or a calibration-only failure:
 
-1. **The headroom above the incumbent is large.** mc(N=10) forfeits ~2.8
-   points per consequential decision against a 240-world reference. Search
-   budget is doing real work: N=10 -> N=30 removes 14% of the forfeit.
-2. **Distillation from mc cannot cross that gap.** A student trained on
-   N=10/N=30 labels inherits the teacher's forfeit; imitating mc caps you at
-   mc. This is the cleanest explanation yet for why five levers all landed at
-   ~51% — not a learning failure, a LABEL CEILING.
-3. **The override's error profile is the interesting part.** v11 picks the
-   reference-best MORE often than deployed mc (29.7% vs 23.6%) while carrying
-   WORSE mean regret (3.025 vs 2.803). Its hits are as good as a 30-world
-   search; its misses cost more. That is a calibration problem, not a
-   knowledge problem, and it is fixable in the objective.
+1. The apparent best candidate and its significance were selected and scored
+   on the same worlds. Paired SE reduces variance of a fixed comparison; it
+   does not correct a maximum selected among up to 14 noisy candidates. The
+   bias cannot “inflate every regret equally” because the policies choose that
+   selected noisy argmax at different rates.
+2. N=240 is a more precise estimate of the same determinized, heuristic-
+   continuation surrogate. It has not beaten N=10 in a correct online pairing
+   and is not game-strength ground truth. A distilled model can also outperform
+   a stochastic teacher by averaging label noise, so “imitating MC caps the
+   learner at MC” is not a theorem or a diagnosis supplied by this screen.
+3. The artifact used non-strict worlds and no pair-void constraints. It was
+   generated before the later sidecar-manifest patch and records no fallback
+   counters. The current sidecar still overwrites while JSONL appends, so it
+   does not prevent mixed runs.
+4. The state sample is early-game-biased: 575/600 rows have `ply < 20`, the
+   remaining 25 have `20 <= ply < 40`, and none are later; there are only 150
+   deals because collection stops after four accepted states per deal.
+5. `highn_analyze.py` silently skips replay/policy errors and off-ballot choices
+   and originally restricted evaluation to the same 148 selected rows. Report
+   coverage and failures per policy; never let them change denominators.
 
-Caveat kept explicit: these 148 states are selected BY the reference as ones
-where candidate 0 is provably beatable, so SmartBot's 5.07 is inflated by
-construction. The comparison AMONG mc10 / mc30 / v11 is unaffected — none of
-them takes part in the selection. The reference argmax retains a little
-winner's curse even at N=240, which inflates every regret equally.
+A read-only smoke did reconstruct all 600 stored candidate lists and core
+turn/banker fields with zero declaration exceptions. That makes the raw format
+promising, but it is not a committed schema/round-trip test.
 
-**Consequence for the goal:** the path to beating mc is not a better learner on
-mc's labels, it is BETTER LABELS. That makes active high-N labelling the
-highest-value next run.
+**What survives:** a **HYPOTHESIS** that independent high-N root labels may be
+useful and that v11's error distribution deserves study. Test it with strict
+worlds, phase/score quotas, deal-disjoint selection and report world sets,
+familywise or simultaneous uncertainty, and a final seeded online comparison.
+The partial 20,000-state corpus and m0 duel launched from this analysis were
+stopped and are not results; active high-N labelling is not authorised yet.
+
+### 1n. ONE-PLY HIGH-N REGRET DOES NOT PREDICT ONLINE STRENGTH (2026-08-04 08:40)
+
+An experiment that failed usefully, and the failure constrains how the whole
+high-N programme can be used.
+
+The reference said v11's problem was calibration, so I refitted its decision
+rule against those unbiased labels, splitting states by seed and reporting only
+on the half never used for fitting. The fitted rule was to REMOVE the margin
+entirely (trust the net's argmax):
+
+| rule | offline regret, significant states | offline regret, ALL states |
+|---|---|---|
+| v11 @0.02 (deployed) | 2.870 | 1.141 |
+| v11 @0 (fitted) | **2.152** | **1.132** |
+
+Then the online duel: **235-265 = 47.0%** vs mc, Wilson [42.7%, 51.4%] — where
+the deployed 0.02 rule scores ~51%. **The offline improvement reversed
+online.**
+
+**Why this matters more than the individual result.** The reference value of a
+candidate is its expected outcome when the HEURISTIC plays the rest of the
+round. A policy that deviates from the heuristic more often drifts further from
+the states where that estimate is accurate, so one-ply regret systematically
+flatters aggressive overriding. Errors also compound over ~25 decisions in a
+way a single-decision metric cannot see.
+
+This is Codex's warning about `max_a Q` arriving empirically: selection
+optimism plus a continuation-policy mismatch. Its recommendation — predict a
+calibrated bracket distribution or expected signed level utility **under one
+fixed continuation policy** — is exactly the shape that survives this finding.
+
+**Consequences, adopted:**
+1. Offline high-N regret is a SCREEN. It may reject a rule; it may not promote
+   one. Only a seeded online duel promotes.
+2. The one-ply argmax is the wrong training target. The corpus being generated
+   is still the right asset, because what it actually stores IS the expected
+   outcome under a fixed continuation policy — the target Codex recommends for
+   a direct V head — but training to imitate its per-decision argmax would
+   repeat this failure at scale.
+3. The deployed margin of 0.02 stays. It was fitted on biased estimates and is
+   apparently not optimal, but nothing measured so far beats it online.
 
 ### 2. Standalone policy line: still stuck — but the OVERRIDE line is not
 
@@ -583,7 +642,7 @@ comparison stays open rather than counted.
 
 ---
 
-## RUN STATUS — 2026-08-04 07:55 (supersedes the earlier T0-T4 authorization)
+## RUN STATUS — 2026-08-04 08:10 (supersedes the earlier T0-T4 authorization)
 
 **RUNNING: nothing.** The attempted T3 screen was invalid and terminated. No
 substitute high-N generation, training, duel, or confirmation is authorised.
@@ -592,24 +651,26 @@ status is:
 
 | stage | status | authoritative reason |
 |---|---|---|
-| T0 — measuring instrument | **INCOMPLETE** | `make_bot` forwards seeds, but `tournament._seeded()` can still swallow constructor `TypeError`; the repeat test compares aggregate scores, not per-seed/flip records. |
-| T1 — trustworthy evaluator | **FAILED / UNBUILT** | T3 emitted no manifest or fallback field, appended into a shared JSONL, lacked paired clustered analysis and replay proof, and measured an instrumented/Torch path rather than complete production-policy cost. |
+| T0 — measuring instrument | **INCOMPLETE** | Signature dispatch no longer swallows constructor `TypeError`, but `_seeded()` returns `None` when a seedless factory returns a bot without `rng`; the exact exploding-factory boundary is untested and repeat evidence is aggregate-only. |
+| T1 — trustworthy evaluator | **PARTIALLY BUILT / NOT PASSED** | The repaired runner adds a manifest, exclusive JSONL, production numpy path, stable RNG streams, paired seed analysis, and enforced work band. Its advertised `--replay FILE` is not implemented, it permits non-strict runs, and it omits opponent fallback counters. |
 | T2 — offline proposer screen | **STOP** | It did not meet its declared bar, and noisy selected-max labels plus unequal compute make the candidate-count/oracle interpretation scientifically inconclusive. |
-| T3 — online diagnostic | **INVALID / TERMINATED** | Arms used different skip policies; impossible-world fallbacks were unobservable; partial artifacts are quarantined. |
+| T3 — online diagnostic | **INVALID / TERMINATED; NO RERUN** | The first arms used different skip policies and partial artifacts are quarantined. Repairs have no valid result and have not passed the full re-entry gate. |
 | T4 — confirmation | **NOT AUTHORISED** | Prerequisites did not pass. |
 
 ### Re-entry gate before any experimental compute
 
-1. Replace `_seeded()`'s exception fallback with signature dispatch and test an
-   exploding constructor through that exact boundary. Persist and compare each
-   seed/flip outcome, not only the aggregate score.
-2. Make strict sampling literal: never drop proven suit voids, enforce
-   pair-void constraints and declaration pins, count every rejected/relaxed
-   world, and fail the run if any impossible-world fallback occurs.
+1. Return the constructed bot on every `_seeded()` path; test both a seedless
+   no-`rng` bot and an exploding constructor through that exact boundary.
+   Persist and compare each seed/flip outcome, not only the aggregate score.
+2. Make strict sampling literal: retain the landed suit-relaxation counters and
+   rejection, enforce pair-void constraints and declaration pins, count every
+   rejected/relaxed world from all four seats, and fail the run if any
+   impossible-world fallback occurs.
 3. Use one immutable manifest (git SHA, checkpoint SHA-256, engine/fast mode,
    policy and ballot config, seed ranges, calibration/report split, schema
    version) and a new exclusive JSONL per run. Refuse an existing output.
-4. Replay the same 10 clusters twice and require byte-identical non-timing
+4. Implement the advertised manifest-driven `--replay FILE`; do not silently
+   ignore it. Replay the same 10 clusters and require byte-identical non-timing
    records. Counters must reconcile with decisions and sampled worlds.
 5. For a gate comparison, hold the cheap action policy identical across arms,
    isolate gate/search RNG streams, match actual rollout or policy-local time
@@ -653,12 +714,15 @@ they change what gets built, not just what gets said.
    passes re-entry. Product promotion may use a preregistered non-inferiority
    margin plus speed; “beats MC” still requires superiority.
 3. **Build a valid small high-N diagnostic set—then stop and inspect it.** The
-   committed `highn_build.py` is a prototype, not an authorised generator. It
-   still uses the constraint-relaxing sampler; selects the apparent best and
-   tests it on the same worlds (paired SE alone does not remove max-selection
-   bias); truncates each round after early sampled decisions; uses potentially
-   colliding `seed * 31 + ply` RNG ids; appends without a manifest; and has no
-   tested round-trip loader. Before running it, add:
+   completed 600-state Air output came from a prototype and is debugging-only,
+   not an unbiased reference or training corpus. `highn_build.py` uses the
+   constraint-relaxing sampler; selects the apparent best and tests it on the
+   same worlds (paired SE alone does not remove max-selection bias); truncates
+   each round after early sampled decisions; uses potentially colliding
+   `seed * 31 + ply` RNG ids; and has no tested round-trip loader. The completed
+   artifact predates the sidecar manifest; current code overwrites that sidecar
+   while still appending JSONL, so it can still mix runs. Before any rerun or
+   evidentiary use, add:
    - a versioned schema and reconstruction test including initial banker,
      declaration timing/final declaration, phase, ballot hash, engine/config
      hashes, and exact seed ids;

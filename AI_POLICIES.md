@@ -71,7 +71,30 @@ report paired signed level utility with clustered uncertainty, and fail on
 fallbacks. Pool Elo and small-n rates are selection screens, not strength
 claims.
 
-## Selection pool of 2026-08-03 (SUPERSEDED — a new seeded pool including mc-race4 is running 08-04; and this pool put vleaf +32 over mc, which a 1,200-round duel then measured at 50.4%)
+## Seeded pool of 2026-08-04 (current; heuristic = 1000)
+
+| policy | Elo |
+|---|---|
+| mc-randrace4 (RANDOM-prune control) | 1159 |
+| mc-race4-v11pair (net prior) | 1152 |
+| mc | 1131 |
+| rl-override-v11pair | 1129 |
+| smart | 1091 |
+| heuristic | 1000 |
+| mc-vleaf-v7w-ep02 | 979 |
+
+**Read this pool as unresolved, not as a ranking.** Every gap is <=28 Elo, and
+gaps under ~40 have twice failed to survive a direct duel here (its predecessor
+put vleaf +32 over mc; 1,200 rounds then measured 50.4%). Direct pairings at
+120 rounds: mc-race4 52.5% vs mc, mc-randrace4 55.8% vs mc, and randrace4
+edges race4 59-61.
+
+What it DOES add: the RANDOM-prune control ranks at or above the net-prior arm
+here, as it did in the paired confirmation. Two independent looks now agree the
+learned prior adds nothing detectable, which is why the racing claim stays
+retracted.
+
+## Selection pool of 2026-08-03## Selection pool of 2026-08-03 (SUPERSEDED — a new seeded pool including mc-race4 is running 08-04; and this pool put vleaf +32 over mc, which a 1,200-round duel then measured at 50.4%)
 
 **2026-08-03 evening pool — seeded under the normal registered factories.**
 It predates v11pair and is not the deployment ranking.

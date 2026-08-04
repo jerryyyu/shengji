@@ -25,20 +25,20 @@ so they are exploratory evidence of a tie, not a reproducible seeded result
 | `smart` | 0.05 ms | 0.13 ms | pool ~1093 | hand-written, no search |
 | **`rl-override-v11pair`** | **0.25 ms** | **0.52 ms** | **57.7% vs smart** (n=480); **51.1% vs mc** (n=4880, CI includes 50) | SmartBot + learned override, NO search |
 | `mc-vleaf-v7w-ep02` | 32 ms | 67 ms | 50.4% vs mc (n=1200) | truncated rollouts + net value leaf |
-| `mc-gate-v11pair` | 0.25 ms | 30 ms | 53.3% vs mc (n=300, screen only) | searches the ~12% it flags; FAILED its offline gate |
+| `mc-gate-v11pair` | 0.25 ms | 30 ms | 53.3% vs MC (n=300, SCREEN only) | 55% timing was extrapolated; T2 did not earn confirmation; later T3 runner was INVALID/terminated with no result |
 | `mc` (current default) | 77 ms | 150 ms | pool ~1119 | determinized search, N_DETERMINIZATIONS=10 |
 
-**The Pareto frontier is two policies wide.** `smart` is the floor at
-~0.05 ms. `rl-override-v11pair` is level with `mc` on 4,880 rounds at
-**300x lower p50 and 290x lower p95** — that is the whole result. `mc-vleaf`
-and `mc-gate` are dominated: both cost far more than the override and neither
-is measurably stronger than `mc`.
+**The provisional deployment frontier is two policies wide.** `smart` is the
+floor at ~0.05ms. `rl-override-v11pair` is plausibly near MC on 4,880
+exploratory rounds at **~300x lower p50 and ~290x lower p95**. Because those MC
+opponents were unseeded, do not call this confirmed non-inferiority. The v7
+value-leaf is confirmed equal to MC but slower than direct v11; the gated arm
+has no valid equal-budget result.
 
 Practical reading for a deploy decision:
 - Switching prod from `mc` to `rl-override-v11pair` buys ~300x headroom per
-  decision and removes the 150 ms p95 stalls, at no measured strength cost —
-  where "no measured cost" rests on provisional unseeded evidence, not a
-  seeded confirmation.
+  decision and removes the 150ms p95 stalls, with no strength cost detected in
+  exploratory evidence. That is not yet a seeded non-inferiority claim.
   It is a COST and RESPONSIVENESS decision, not an AI upgrade.
 - `mc`'s p95 of 150 ms is per decision; a four-bot table compounds that, which
   is what makes the tail visible during play.
@@ -52,12 +52,12 @@ Practical reading for a deploy decision:
 | metric | value | conditions |
 |---|---|---|
 | MC round, single core (pure) | ~5.7s | wide ballots, N=10, post-memo, loaded machine |
-| MC round, single core (**SHENGJI_FAST=1**) | **~1.7s (3.42x)** | same conditions; opt-in, validation pending for gen/duels |
-| full test suite | 18.6s pure / 7.0s fast | 55 tests, both modes green |
+| MC round, single core (**SHENGJI_FAST=1**) | **~1.7s (3.42x)** | same conditions; opt-in, seeded histories parity-validated |
+| full test suite (08-04 audit) | 44.8s pure / 23.7s fast | 112 passed, 2 skipped in both modes |
 | MC round, single core, SHENGJI_FAST=1 | **~1.7s (3.42x)** | same load, seed-7 best-of-3 interleaved (08-03); opt-in only, histories byte-identical (seeds 3/7/11/23/42/99 checked) |
 | generation rate | 0.03-0.04 r/s/worker | N=30, wide ballots (gen-v3 config) |
 | fleet aggregate | ~0.55 r/s (15 workers) | mini 8 + Air 7 |
-| net inference | ~2ms/decision | v1 ballot, MPS/CPU |
+| v11 numpy inference | p50 0.25ms / p95 0.52ms | production torch-free path; first call is slower |
 | benchmark cmd | one seeded MC round, see `server/runs/perf_audit_20260802.md` | compare like-for-like load only |
 
 ## Shipped

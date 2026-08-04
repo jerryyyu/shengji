@@ -4,6 +4,30 @@ Every bot policy, its design, and its measured performance. Update this file
 whenever a policy is added, changed, or re-benchmarked. RL training plan and
 post-mortems: RL_PLAN.md.
 
+## Current status — 2026-08-04 07:55
+
+- **Deployment-cost candidate:** `rl-override-v11pair` beats SmartBot 57.7%
+  (n=480) and runs at p50 0.25ms / p95 0.52ms on the production numpy path.
+  Its 51.1% against MC over 4,880 rounds is **SCREEN** evidence only because
+  every MC factory in those blocks was OS-seeded. It is plausibly near MC, not
+  formally confirmed equal and not superior.
+- **Strength incumbent:** `mc` remains the default. Its search is not yet a
+  correct belief sampler: the last retry may discard proven suit voids and
+  pair-voids are not enforced. Treat improvements and high-N labels built on
+  those worlds as provisional until strict sampling is fixed.
+- **Retired strength arm:** `mc-vleaf-v7w-ep02` is 50.4% vs MC at n=1,200. It
+  is an equal-strength speed candidate, not a stronger agent.
+- **Not promotable:** `mc-gate-v11pair` has one encouraging n=300 online
+  screen, but its T2 did not earn confirmation. The later five-arm T3 runner
+  was invalid, partially run, and terminated; it produced no result.
+- **No valid v11 leaf exists.** v11pair predicts relative action deltas; its
+  cross-state scale is unidentified. Root reranking/allocation is a valid use;
+  MC/MCTS leaf evaluation requires a separately trained absolute value model.
+
+Policy objective: maximize verified strength per unit of latency/compute.
+RL-guided search is one contender and must beat direct v11, plain MC, and cheap
+allocation rules on a common Pareto table.
+
 ## Using policies
 
 Registered by name in `server/shengji/ai/registry.py`; the server reads
@@ -13,22 +37,32 @@ Registered by name in `server/shengji/ai/registry.py`; the server reads
 SHENGJI_BOT=smart uv run shengji-server   # e.g. an easier table
 ```
 
-Benchmarking (always mirrored deals — each seed runs twice with teams
-swapped, so card luck cancels; identical policies score exactly 50/50):
+Benchmarking uses factories, deterministic policy seeds, and mirrored deal
+clusters. Do not use `env.evaluate(make_bot(...), make_bot(...))` for a
+reproducibility claim: it constructs stochastic bots without explicit seeds
+and reuses their RNG state. Use the pairing harness after its remaining
+blanket-`TypeError` fallback is repaired:
 
 ```python
-from shengji.ai.env import evaluate
 from shengji.ai.registry import make_bot
-evaluate(make_bot("mc"), make_bot("smart"), n_games=300)
+from shengji.ai.tournament import play_pairing
+
+make_a = lambda **kw: make_bot("mc", **kw)
+make_b = lambda **kw: make_bot("smart", **kw)
+play_pairing(make_a, make_b, n_seeds=150, seed0=1_000_000)
 ```
 
 Multi-policy Elo: `uv run python -m shengji.ai.tournament`. Human-agreement
 tripwire: `uv run python scripts/eval_vs_human.py "../logs/*.jsonl"`.
-Noise guide: ±3% at n=200, ±2% at n=400; round-level evals ±4.5% at n=120.
+Every confirming runner must also emit a manifest and per-seed/per-flip JSONL,
+report paired signed level utility with clustered uncertainty, and fail on
+fallbacks. Pool Elo and small-n rates are selection screens, not strength
+claims.
 
-## The ladder (Elo, round-level, heuristic = 1000)
+## Latest completed selection pool (historical; heuristic = 1000)
 
-**CURRENT pool (2026-08-03 evening) — SEEDED and REPRODUCIBLE**
+**2026-08-03 evening pool — seeded under the normal registered factories.**
+It predates v11pair and is not the deployment ranking.
 
 15/15 pairings, 120 rounds each, both sides deterministically seeded.
 Raw pair records: `server/runs/pool_20260803_seeded_pairs.txt`;
@@ -43,7 +77,7 @@ script: `server/scripts/pool_seeded.py`.
 | rl-v7w | 1042 |
 | heuristic | 1000 |
 
-**The vleaf row is WRONG and the pool cannot fix it.** Bradley-Terry inferred
+**The vleaf row does not establish a strength lead.** Bradley-Terry inferred
 +32 Elo for vleaf over mc from 120-round pairings; the preregistered duel over
 1200 independent-seed rounds puts the direct rate at **50.4%, CI [47.6%,
 53.2%]** — a tie. vleaf's real value is that it reaches mc's strength with
@@ -68,22 +102,26 @@ BIGGER (brackets), compounding over ~37-round games.
 
 ### `mc` — MCBot (server default)
 Determinized Monte Carlo (`ai/mcbot.py`): samples 10 opponent-hand worlds
-consistent with public info (hand sizes, observed voids, card counts; own
-kitty knowledge as banker), rolls ≤8 candidates to round end with heuristic
-rollouts, argmax — guarded by:
+from public card counts and hand sizes, then rolls a bounded ballot to round end
+with heuristic continuations. **Known correctness caveat:** the final sampling
+retry may relax proven suit voids, pair-void constraints are not applied, and
+the fallback is not counted. It is determinized search, not yet a strict belief
+model. Choice is guarded by:
 - **Confidence margin** (5.0 pts/round): candidates[0] is SmartBot's pick;
   the search overrides only when it wins by the margin. Rollouts are
   noisiest early; the margin is worth ~45 Elo vs pure argmax.
 - **TRACTOR_LOCK**: heuristic tractor leads are final (56% vs unlocked).
 - **Point-shy tiebreak** (2.0): among near-tied candidates, risk the fewest
   points (a beaten 10-10 lead gifts 20 immediately).
-- ~30ms/decision (invisible inside the 0.7s bot pacing); ~400x slower than
-  heuristics in headless sim — benchmark with small n or round-level.
+- Current deployment table: p50 77ms / p95 150ms per decision on the mini
+  (N=10, wide ballots). `SHENGJI_FAST=1` reduces full-round simulation from
+  about 5.7s to 1.7s, but does not repair belief correctness.
 - Hyperparameters fully swept and flat: N∈{5..30} (N=10 best), margin
   {0,2.5,5,7.5,10} (5 best), candidates {4,8,12} (8), SmartBot rollouts
   (tie at 5x cost), LEAD_MARGIN {8,12,999} (ties), LEVEL_OBJECTIVE / MC_BURY
-  toggles (ties, available off by default). **Flat-MC is plateaued**; next
-  strength requires learned evaluation (RL_PLAN.md).
+  toggles (ties, available off by default). **Flat-MC parameter tuning is
+  plateaued**; the next levers are constraint-correct beliefs, root allocation,
+  and only then learned absolute evaluation (RL_PLAN.md).
 - vs SmartBot v2: 36-4 (90%) mirrored full games, n=40.
 - Exposes `last_eval` (per-candidate values) for search distillation, and
   powers the /debug/xray live inspector.
@@ -132,13 +170,11 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
   (88.2% vs 89.7%), dueling-BC plays 10 points worse than free-logits BC
   (38% vs 48%) — mean-zero A is a poor medium for a policy; free policy
   heads win for play, dueling only where value regression happens.
-- **Hybrids (net-as-rollout-policy): measured dead end.** BC-hybrid 45%
-  vs mc (n=40); v5-hybrid previewed at 55% (n=40) then REVERSED to 37%
-  at n=60 — the bare v5 net out-rates its own hybrid in the pool (1088
-  vs 1074). Net tail-failures get amplified by search, at ~100x cost
-  (~2s/decision); a human player's "feels wonky" preceded the
-  statistical verdict. Phase 4's remaining path: truncated rollouts +
-  value-head leaves (unbuilt), which must beat plain mc to matter.
+- **Search hybrids are settled by role.** Replacing the rollout policy tied
+  twice (the early v5 55% preview reversed, and a later 93-Elo-stronger roller
+  still tied). The valid truncated-rollout + v7 absolute-value leaf reached
+  **50.4% vs MC at n=1,200**: cheaper, not stronger. The v11pair “leaf” test is
+  invalid because relative action deltas have no cross-state value scale.
 - **Ballot-mismatch incident (2026-08-01)**: the exhaustive-follow
   enumeration change silently broke the deployed net — trained on
   search-candidate ballots, it was suddenly scoring dozens of unseen
@@ -151,13 +187,13 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
   400k rounds; measured cause: value regression crushed the BC score scale
   (cross-candidate spread 22.5 → 0.26 ≈ action-blind) under deal-luck
   label noise. Run record: `server/runs/dmc_v1.md`.
-- **DMC self-play: still unsolved** — dmc2 (anchor + oracle baseline +
-  gating + spread alarm) halted twice by its own alarm: Q-regression
-  toward near-unpredictable advantage targets collapses ANY policy
-  pathway it trains (regress-to-mean → action-blind), even
-  scale-matched. Designed fix, unbuilt: AWAC-style advantage-weighted
-  policy-head update. Oracle baseline validated offline (43-47% of
-  outcome variance explained).
+- **DMC self-play: implementation unresolved, not a hypothesis rejection.**
+  dmc2's spread alarm correctly halted two action-blind collapses, but those
+  runs show that pipeline/target was unsafe—not that every Q or policy-gradient
+  method must fail. AWAC-style policy updates remain a design candidate only
+  after role-sign, immutable-checkpoint, replay, and fallback invariants pass.
+  The oracle study explains 43-47% of outcome variance on its own distribution;
+  it is a diagnostic, not a deployable value proof.
 - **Overnight sweeps (2026-08-02, all probed vs current SmartBot on fixed
   seeds; CONTROL: v6 = 55%)**: temperature 0.03/0.10 → best 52%/52%
   (**null — 0.05 was right**, and sharp targets train unstably);
@@ -169,8 +205,9 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
   Caveats: agreement partly in-sample; direct-duel protocol added for
   all partial checkpoints after this exact case. Recipe robustness confirmed →
   **v7 = v6's exact recipe on the N=30 low-noise textbook** (20k rounds,
-  24 shards, pairfix+voiddump teacher) — TRAINING NOW with per-epoch
-  snapshot probes. Plan, gates, full history: RL_PLAN.md.
+  24 shards, pairfix+voiddump teacher). That historical run is complete;
+  standalone development is now paused pending a representation diagnostic.
+  Plan, gates, and chronology: RL_PLAN.md.
 
 ## Shared-code changes affecting ALL policies
 
@@ -195,7 +232,10 @@ argmaxing over enumerated legal actions; needs `uv sync --group rl` +
   answers a pair/tractor lead with fewer in-suit pairs than led has, by
   rule, none). Free public info available to every consumer. The
   heuristic lead gate built on it (PAIR_VOID_BOSS) tied at n=400; the
-  sharper queued use is constraining MC's world sampling.
+  sharper use is constraining MC's world sampling. **That constraint is not
+  implemented yet**, and the sampler's final retry can also drop ordinary suit
+  voids. Any document saying sampled worlds are fully public-information
+  consistent is stale.
 
 - **CURRENT pool (2026-08-02 ~02:45, all four night upgrades incl.
   CONTROL_LEADS + TEMPO_GUARD, seeds 3000)**: mc 1067 > **smart 1061
@@ -354,9 +394,9 @@ constraints (see BACKLOG).
 
 | policy | what it is | measured | verdict |
 |---|---|---|---|
-| `rl-override-v11pair` | SmartBot + a learned override on `(q_i - q_0)`, threshold 0.02 fitted on a disjoint holdout half, matched train/play ballot | **57.7% vs smart** (277-203, n=480, two disjoint seed blocks, Wilson [53.2%, 62.0%]); vs mc **51.1%, n=4080, CI [49.6, 52.6] — a tie, not a win** | beats its bar; no search at all (~2ms/decision) |
-| `mc-vleaf-v11pair` | the hybrid using v11pair's value head | **32.5% vs mc** (39-81, n=120) | rejected as a CONFIGURATION, but INVALID as a test of learned leaves: a pairwise head's cross-state scale is unidentified, so the number measures calibration, not the idea (predicted in advance; Codex concurred independently) |
-| `mc-gate-v11pair` | SmartBot+override, escalating to full MC search on the ~12% of states the net flags as high-stakes | online screen 53.3% vs mc (n=300) at 55% wall-clock; **FAILS its offline gate** — beats random by 14-18% but candidate-count by only 4-9%, bar was 15% vs both | not adopted; the cheap candidate-count gate captures most of the same signal |
+| `rl-override-v11pair` | SmartBot + learned pairwise override on `(q_i - q_0)`, threshold 0.02 fitted on calibration A and read on report B, matched train/play ballot | **CONFIRM vs Smart:** 57.7% (277-203, n=480). **SCREEN vs MC:** 51.1% over n=4,880, but every MC opponent was unseeded; no superiority and no formal non-inferiority claim | current deployment-cost candidate; no search, numpy p50 0.25ms / p95 0.52ms |
+| `mc-vleaf-v11pair` | attempted to use v11pair's pairwise head as a leaf | 32.5% vs MC (39-81, n=120) | **INVALID configuration**, not a leaf-learning result: cross-state scale is unidentified; quarantined and unregistered |
+| `mc-gate-v11pair` | v11 delta detects states on which the registered policy escalates from SmartBot to full MC | online **SCREEN** 53.3% vs MC (n=300); 55% timing was extrapolated. T2 missed its declared bar, but noisy max-Q/candidate-count bias prevents the stronger “cheap gate explains it” conclusion | not adopted; later equal-budget T3 runner was invalid, partially run, and terminated—no T3 result exists |
 | `rl-override-v10res` | the same idea with an independent-row objective and a MISMATCHED play-time ballot | 47% vs smart; overrode 1.5% of states where the teacher overrode ~15% | near no-op — the checkpoint failed, not the idea |
 
 ## Experiment log (measured and rejected — reproducible via registry/toggles)
@@ -376,15 +416,17 @@ constraints (see BACKLOG).
 | TEMPO_SEEK (cheap trump for the lead when boss follow-up waits) | 48% h2h tie, n=150 | in-suit tempo rule + endgame control already capture most tempo value |
 | TEMPO_SEEK v2 (premium trumps allowed for big follow-ups) | 53% h2h, n=150 | +5 over v1 in the predicted direction but still within noise; off |
 | ANY_PAIR_OVER_JUNK (last-resort pair leads at any level) | 52% h2h tie, n=150 | control-leads hierarchy already avoids most passive junk |
-| mc-strong (N=30) | 61% ≈ default | sampling isn't the bottleneck; rollout quality is |
+| mc-strong (N=30) | 61% ≈ default on the small sweep | increasing N alone did not establish a gain; this does not identify rollout quality as the bottleneck |
 
 ## Human-play validation set
 
-**Current: 1,592 human decisions / 59 completed rounds** (`rl_data/human_v3`,
-2026-08-03, +59% after the RTLT session). Ballot coverage 99.2%
-(13/1,630 off-ballot, all large throws). Miner: humans beat the bot on
-early trump-pair leads (+2.0/decision) and late mixed throws (+1.8);
-the bot beats humans on late trump-single leads (-9.6/decision).
+**Current shard: 1,850 human decisions** (`rl_data/human_v4`, verified from the
+NPZ shape on 2026-08-04). The 59-round / 1,592-decision statistics and 99.2%
+ballot-coverage analysis below were computed on the superseded `human_v3`
+snapshot; retain them as historical diagnostics until v4 is re-audited.
+That v3 miner found humans ahead on early trump-pair leads (+2.0/decision) and
+late mixed throws (+1.8), while the bot was ahead on late trump-single leads
+(-9.6/decision).
 
 Logs are the corpus (`logs/*.jsonl`, gitignored; server logs fetched via
 `fetch_fly_logs.sh`). As of 2026-08-01: 245 genuine human play decisions
@@ -405,7 +447,8 @@ converted to training shards (`rl/human_shards.py`).
 
 - **Measure everything; adopt nothing on intuition.** Feature toggles +
   mirrored evals found every real gain and killed every plausible-but-wrong
-  idea. Single-opponent numbers mislead: rate against the pool.
+  idea. Small pools and single point estimates both mislead: use pools for
+  selection and preregistered paired direct anchors for strength.
 - **Hoarding loses, tempo wins** — every measured failure withheld strength
   (reserve, draining); every win spent it sooner (in-suit contesting, safe
   throws +17pt, eager declaration). The expert refinement that survived:
@@ -418,14 +461,11 @@ converted to training shards (`rl/human_shards.py`).
   pretrained policy's ordering before it can rebuild (audit: candidate
   score spread 22.5 → 0.26). Dense per-candidate targets (distillation)
   and anchored objectives are the countermeasures.
-- **The expert-iteration chain works (2026-08-01 night)**: distill the
-  search's EVALUATIONS, not its choices — its choices are part RNG
-  (10-world sampling decides near-ties), so train toward
-  softmax(candidate values/T) (v4, +6pts) and feed it enough data (v5,
-  2.6M decisions, +4 more). The student comes out SEARCH-RESISTANT (38%
-  vs MCBot; BC clone: 29%) because it learned the judge's values instead
-  of a fixed teacher's habits. Then close the loop: that student as
-  MCBot's rollout policy beat plain MCBot 55% — the first agent above
-  the champion — confirming the sweeps' finding that rollout quality was
-  flat-MC's binding constraint. Better net → better search → (next)
-  better teacher.
+- **Distillation works; the expert-iteration flywheel did not close.** Soft
+  per-candidate search values improved standalone students over behavior
+  cloning, and the correctly implemented v11 pairwise objective produced a
+  strong direct override. But the early 55% rollout-policy preview reversed,
+  a second stronger-rollout test tied, and training on hybrid-generated data
+  did not produce a better value leaf. Current lesson: optimize the exact
+  deployed root decision, preserve ballot identity, and do not infer
+  “better net → better search” without a direct equal-budget result.

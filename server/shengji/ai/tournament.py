@@ -24,13 +24,22 @@ def _seeded(make, s: int):
     irreproducible: the same v7w anchor gave 41% and then 31% vs mc on
     2026-08-03 (~2.2 sigma). The RL side is deterministic, so all the
     wobble came from the opponent."""
+    import inspect
     try:
+        params = inspect.signature(make).parameters
+    except (TypeError, ValueError):
+        params = {}
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()) \
+            or "seed" in params:
         return make(seed=s)
-    except TypeError:
-        b = make()
-        if hasattr(b, "rng"):
-            import random as _r
-            b.rng = _r.Random(s)
+    # Dispatch by SIGNATURE, never by catching TypeError: a genuine TypeError
+    # from inside a constructor would be swallowed and retried, turning a real
+    # bug into a plausible-looking fallback. make_bot was fixed this way on
+    # 2026-08-04; this call site was missed (Codex).
+    b = make()
+    if hasattr(b, "rng"):
+        import random as _r
+        b.rng = _r.Random(s)
         return b
 
 

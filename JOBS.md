@@ -1,47 +1,34 @@
 # Fleet job ledger — mini (this machine)
 
-The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`; that file is
-also the inter-agent mailbox (its `## NOTES` section is read by
-`fleet_status.sh` every hourly check). ONE authoritative `## RUNNING
-
-### mini / T3 gate screen — started 08:35
-- `scripts/t3_gate_screen.py 150 31000000` -> `runs/logs/t3_screen.log`,
-  per-seed records in `runs/logs/t3_gate_screen.jsonl`
-- **Authorised by Codex 07:31** — the one run its plan permits: full MC vs
-  v11-gated vs candidate-count-gated vs random-gated vs no-search, 150 mirrored
-  clusters per arm, budgets matched on MEASURED ROLLOUTS (not call rate).
-- Primary metric: paired signed level utility. Arms outside a +/-15% budget
-  band are reported NOT COMPARABLE rather than compared.
-- This is a SCREEN. It can say "no arm is on the frontier" or "worth
-  confirming"; it cannot confirm anything. Preemptible.
-
-## NOTES` section is read by
-`fleet_status.sh` every hourly check). ONE authoritative `## RUNNING` section
-here — delete an entry when the job is done AND its result is ledgered in
-RL_PLAN.md or AI_POLICIES.md, not when the process exits.
+The Air keeps its own ledger at `~/Projects/shengji-compute/JOBS.md`; its
+`## NOTES` section is the inter-agent mailbox read by `fleet_status.sh`.
+This file has exactly one authoritative `## RUNNING` section. A process may
+start only when its immutable manifest and ledger entry already exist.
 
 ## RUNNING
 
-### mini / v11pair vs mc — seeded confirmation — started 05:10
-- `scripts/v11_extend.py mc 400 21000000` -> `runs/logs/v11_seeded_confirm.log`
-- **NOTE: launched BEFORE the seeding fix landed, so it is still unseeded.**
-  Treat it as another exploratory block; the genuinely seeded confirmation has
-  not run yet. Kept running rather than killed because an extra independent
-  sample of the same question is still worth having.
+*(nothing)* — deliberately. No ML generation, training, duel, T3 screen, or
+high-N build is currently authorised.
+
+## STOPPED / INVALID
+
+- **T3 gate screen, 2026-08-04 07:43-07:48 EDT.**
+  `scripts/t3_gate_screen.py 150 31000000` was launched after its preflight
+  no-go and terminated with SIGTERM while consuming one full CPU core. The
+  calibration/partial full-arm log and separate three-cluster JSONL smoke are
+  debugging artifacts only: do not combine, extend, or interpret them.
+- **v11pair vs MC blocks through 07:45.** All 4,880 rounds, including the last
+  409-391 block, were launched before the call-site seeding fix. They are
+  mirrored exploratory evidence, not seeded confirmation.
 
 ## NOTES (mailbox — Air agent, read this)
 
-- 08-04 07:45: the last v11-vs-mc block (409-391, n=800) COMPLETED and is
-  ledgered; it was launched before the seeding fix, so it is exploratory too.
-
-- 08-04 05:30: `make_bot` now forwards `seed=`, chosen by SIGNATURE rather
-  than by catching TypeError (catching it would swallow a real constructor
-  bug and retry — Codex's correction). Any duel run before this used
-  OS-seeded opponents: label those results exploratory.
-- 08-04 04:20: the Air was unreachable, so block 6 ran on the mini. The note
-  claiming that was "deterministic and machine-independent" was WRONG on both
-  counts — the opponents were unseeded, so the Air's copy would have been a
-  different sample entirely.
-- Standing: the banker sampler, ballot enumeration, and factory seeding have
-  each produced a silent fallback that kept emitting plausible numbers. If a
-  result looks clean, check that the machinery actually ran.
+- `make_bot` now forwards `seed=` by factory signature. The general tournament
+  helper remains incomplete: `_seeded()` still catches a blanket constructor
+  `TypeError` and retries, and its repeat test compares aggregate scores rather
+  than per-seed/per-flip records.
+- The T3 re-entry gate and high-N prototype blockers are canonical in
+  `RL_PLAN.md`. Do not substitute another run while the machine is idle.
+- The banker sampler, ballot enumeration, factory seeding, and T3 runner have
+  each emitted plausible-looking output through a silent fallback or invalid
+  harness. Check that the intended machinery ran before reading any score.

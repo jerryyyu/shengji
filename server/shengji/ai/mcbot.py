@@ -104,6 +104,10 @@ class MCBot(SmartBot):
         self.search_calls = 0
         self.rollouts = 0
         self.search_secs = 0.0
+        # Worlds buildable only by ignoring observed voids: USED (lenient
+        # mode) vs REJECTED (strict mode). Never conflated.
+        self.impossible_worlds = 0
+        self.rejected_worlds = 0
 
     # ------------------------------------------------------------------- play
     def decide_play(self, rnd: Round, seat: int) -> list[str]:
@@ -133,8 +137,11 @@ class MCBot(SmartBot):
             for i, cand in enumerate(candidates):
                 val = self._score(self._rollout(rnd, seat, hands, buried, cand))
                 totals[i] += val if i_attack else -val
-                self.rollouts += 1
         self.last_n_worlds = n_worlds
+        # Batched, not incremented inside the candidate/world loop: an
+        # attribute write in MC's hottest path taxes every production search
+        # for the sake of instrumentation (Codex).
+        self.rollouts += n_worlds * len(candidates)
         self.search_secs += time.perf_counter() - _t0
         if n_worlds == 0:
             # Reaching here means sampling is broken (it silently disabled
@@ -392,6 +399,18 @@ class MCBot(SmartBot):
                     break
             if ok and all(len(hands[s]) == sizes[s] for s in others) \
                     and len(kitty) == kitty_slots:
+                if not respect_voids:
+                    # This world was only buildable by IGNORING observed voids,
+                    # i.e. it is impossible given the play history. Silently
+                    # accepted before, so "zero fallbacks" could never have
+                    # been proven (Codex, 2026-08-04). USED and REJECTED are
+                    # counted separately: one number that means either is the
+                    # kind of ambiguous instrumentation that keeps misleading
+                    # us.
+                    if os.environ.get("SHENGJI_STRICT_SAMPLING"):
+                        self.rejected_worlds += 1
+                        return None
+                    self.impossible_worlds += 1
                 return hands, (buried or kitty)
         return None
 

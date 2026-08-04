@@ -14,8 +14,8 @@ bugs cost hours; correctness bugs cost weeks and are invisible.
 cd server && uv run python -m pytest tests/ -q
 ```
 
-Layers (all must pass, **87 tests** as of 2026-08-04; run in BOTH modes when
-the compiled path is involved: plain, and `SHENGJI_FAST=1`):
+Layers (all must pass; the 2026-08-04 audit ran **112 passed / 2 skipped** in
+both plain and `SHENGJI_FAST=1` modes):
 1. **Unit tests** — test_engine.py, test_game.py, test_memory.py,
    test_rl.py: rules primitives, game flow, memory inference, RL codec.
 2. **Golden histories** — test_engine_parity.py: fixed-seed full rounds
@@ -60,11 +60,31 @@ Jerry's table, ruled 2026-08-03 after the Codex audit flagged them:
 - **Kitty multiplier** = 2 x the final play's CARD COUNT (pair+single on
   the last trick multiplies by 6). rbtying uses 2 x longest component.
 - **Declaration self-overcall** with a DIFFERENT suit is allowed.
+- **Multi-component throw comparison** uses the engine's top-component rule,
+  not component-by-component dominance against the incumbent throw.
+- **Partial tractor following** requires a full matching tractor when one is
+  available; otherwise it preserves the required pair count but does not force
+  the strongest available shorter tractor before unrelated pairs.
 
-These are configuration, not defects — do not "fix" them toward another
-implementation's profile. Open rules questions still under review:
-component-wise dominance for throws, and partial-shape obligations when
-following tractors.
+These are deliberate house rules, not open defects. Do not “fix” them toward
+another implementation's profile without a new explicit table ruling.
+
+## Open correctness gates (block new search data/evaluation)
+
+1. **Belief worlds are not strict.** MCBot's last sampler retry sets
+   `respect_voids=False`, and `Memory.pair_void` is never enforced in sampled
+   hands. `SHENGJI_STRICT_SAMPLING` currently catches only zero returned worlds,
+   not a relaxed/impossible world. Add counters and make strict mode reject all
+   constraint relaxation before trusting high-N labels or selective-search
+   comparisons.
+2. **One seed fallback remains.** `registry.make_bot` dispatches by signature,
+   but `tournament._seeded()` still catches any constructor `TypeError` and
+   retries without the seed. Test an exploding constructor through `_seeded`
+   and compare per-seed/per-flip records, not only aggregate scores.
+3. **Raw-state datasets need round-trip proof.** A “rebuildable” record is not
+   authoritative until a versioned loader reconstructs it and reproduces the
+   same legal candidates, observation, role/phase, and continuation. The
+   current high-N prototype has no such test or manifest.
 
 ## Incident log (why these rules exist)
 
@@ -83,6 +103,9 @@ following tractors.
 | 08-03 | Elo pool bots are UNSEEDED (`REGISTRY[name]()` -> `MCBot(seed=None)` -> OS entropy), so pool numbers are not reproducible run-to-run: an accidental re-run of the same vleaf pairing gave 85-35 where the original gave 84-36 | non-reproducible measurement | accidental duplicate run |
 | 08-03 | pkill by parent cmdline left 2 multiprocessing WORKERS orphaned on buggy-memo code for 10h; they silently wrote 2 more shards into the live dataset | orphaned-worker contamination | fleet check (process-age audit) |
 | 08-03 | failed throws forfeited the FIRST beatable component, not the lowest (scan order over-punished) | rules bug | Jerry, from play |
+| 08-03 | BANKER_KITTY cards were removed from `Memory.unseen`, then removed again by the sampler; banker search returned zero worlds and silently fell back to candidate 0 | search correctness / silent fallback | Codex audit; strict banker regression |
+| 08-04 | duel call-site lambdas accepted `seed=` but dropped it, so 4,880 v11-vs-MC rounds labelled seeded actually used OS-entropy MC opponents | evaluation provenance | exact-factory audit |
+| 08-04 | five-arm T3 runner launched without common skip policies, strict fallback evidence, manifest, paired analysis, or exclusive output; partial run terminated | evaluation harness / compute waste | preflight handoff audit + process inspection |
 
 Update this table whenever a correctness incident occurs — the log is
 the argument for the rules.

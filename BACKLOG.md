@@ -7,95 +7,90 @@ what is NEXT — if an item is done, delete it here rather than checking it off.
 
 ## AI / training
 
-**The one big question (day 4 close): four separate attempts to give the
-search a better evaluator have all produced no measurable strength** — a
-better value head (v7w/v9warm/v9scratch indistinguishable, best is oldest),
-the flywheel (train on hybrid data → no better hybrid), a learned override on
-SmartBot (v10res, 47% vs smart), and a stronger rollout policy (tied twice).
-Meanwhile the standalone policy line has resisted five levers and sits at
-38-48% vs mc. Before spending more compute on *better evaluators*, the next
-work should test what the search is actually limited by.
+**Current question (2026-08-04): can v11pair's relative root ranking allocate
+a fixed MC budget better than plain MC, direct v11, and cheap allocation
+rules?** Direct v11 convincingly beats SmartBot and is plausibly near MC at a
+small fraction of its latency, but the MC comparison is only an unseeded
+screen. The selective-search runner and current high-N builder are not valid
+measurement instruments. The next work is correctness and measurement, not a
+larger experiment.
 
-- [ ] **vleaf follow-up: is it CHEAPER at equal strength?** The settling duel
-      answered the strength question — 50.4% at n=1200, a tie (2026-08-03
-      23:20). What is still unmeasured is the latency claim: truncating
-      rollouts at 4 tricks should cost less per decision, so the open question
-      is whether vleaf reaches mc's strength at materially lower wall-clock,
-      which would matter for prod responsiveness and for generation
-      throughput. Measure decisions/sec at equal N, not round win-rate.
-- [ ] **v11pair — the corrected residual arm** (Codex's spec, gated offline
-      first by `scripts/residual_eval.py`): score `(obs, a0, ai)` or directly
-      optimise `((q_i-q_0) - (Q_i-Q_0))` with Huber/ranking/threshold
-      weighting; use the SAME candidate helper in collection and inference;
-      handle TRACTOR_LOCK rows explicitly since the override deploys the value
-      head on them. Needs no new teacher data — gen-v4 already stores
-      candidate 0, the alternatives, and their values.
-- [ ] **`is_heuristic_baseline` bit** — the model cannot currently see WHICH
-      candidate is the heuristic baseline, my top suspect for the standalone
-      ceiling. Codex's correction: candidate 0 IS the baseline for valued rows
-      but NOT for choice-only TRACTOR_LOCK rows, so mark the recorded `chosen`
-      row; zero-init the new input column; assert all three cases in codec
-      tests. Then the B+bit arm, same recipe, no simultaneous LR sweep.
-- [ ] **Direct V(state) head** — removes 51% of vleaf's per-decision cost
-      (enumerate_actions 32% + encode_obs 19%), ~2x generation speed, and is
-      the prerequisite for a real PUCT tree. Train toward `max_a` teacher-Q or
-      a calibrated bracket distribution, NOT the behaviour return. Gate at
-      equal wall-clock.
-- [ ] **Representation test** (diagnostic ladder rung 3, the last untested
-      ceiling hypothesis besides irreducible ambiguity): add banker's buried
-      cards, declaration owner, pair_void, ordered history, team levels;
-      needs fresh generation. Rungs 1 and 2 are closed — labels are noisy but
-      leave ~19 points of recoverable signal, and the model fits clean labels
-      at 99.6%.
-- [ ] **Belief net for world sampling** (Libratus/Pluribus-inspired, Jerry
-      2026-08-02): predict P(seat holds card | public history), labels free
-      from self-play logs, use it to WEIGHT determinizations. This is the one
-      remaining net-in-search pathway that does NOT go through the value
-      route — and given that four evaluator-quality experiments came back
-      null, it is now the more interesting branch. Subsumes pair_void
-      sampling and inference-weighted sampling. Gate: weighted vs uniform mc,
-      n>=300 seeded.
-- [ ] **Sampler point-calibration** — do sampled worlds systematically give
-      the feeding seat fewer point cards than reality? A measurable
-      distribution question, and the surviving replacement for the withdrawn
-      ANTICIPATE_FEED idea.
-- [ ] AWAC-style policy-head update for self-play (designed fix for DMC's
-      measured failure; advantage-weighted imitation, values in their own
-      head). Parked until the questions above resolve.
+- [ ] **Make belief sampling constraint-correct.** Enforce every proven suit
+      void, pair-void constraint, and declared-card pin on every sampled world.
+      Remove the last-retry constraint drop; expose requested/valid/rejected/
+      relaxed world counts and fail strict runs on any relaxation. Add
+      impossible-state and last-retry regressions before generating labels.
+- [ ] **Repair deterministic evaluation.** Replace
+      `tournament._seeded()`'s blanket `TypeError` fallback with signature
+      dispatch, test a constructor that raises internally through that exact
+      boundary, and persist/compare every deal-seed and flip result. Every run
+      needs an exclusive output plus immutable manifest and checkpoint hash.
+- [ ] **Settle the deployment Pareto choice.** On the repaired evaluator,
+      compare SmartBot, direct v11pair, MC N=5/10/20, and the settled v7 value-
+      leaf speed arm. Predeclare signed level utility as primary, the
+      non-inferiority/superiority margin, seed clusters, and latency method.
+      The existing 4,880-round v11-vs-MC aggregate is SCREEN evidence, not a
+      confirmation.
+- [ ] **Build a valid, tiny high-N diagnostic pilot.** Before running the
+      committed prototype, add a versioned raw-state round trip (including
+      initial banker and declaration history), strict worlds, deal-grouped
+      splits, phase/score quotas, disjoint candidate-selection and evaluation
+      worlds, stored per-world differences/covariance, collision-free named RNG
+      streams, a cost estimate, and exclusive manifested output. Inspect the
+      pilot before authorising a corpus.
+- [ ] **Representation test on independent labels.** Compare the current
+      encoder with exactly one enriched encoder on that frozen pilot, holding
+      model, initialization, data, and at least three train seeds fixed. Test
+      trump-relative canonicalisation, ordered recent tricks, declaration
+      owner/cards, pair-voids, team levels, and legal banker-private burial.
+      Bulk generation is earned only by consistent untouched-regret gains.
+- [ ] **Root racing, not v11 leaf evaluation.** Give every legal root action a
+      common-world rollout floor, then allocate the remaining fixed budget
+      using v11 rank plus empirical uncertainty. Compare with uniform and
+      candidate-count allocation at equal actual rollouts or policy-local
+      wall time. v11pair's scale is relative within a state and is invalid as
+      an MC/MCTS leaf value.
+- [ ] **Absolute value contract.** Predict a calibrated attacker scoring-
+      bracket distribution or expected signed level utility under one named
+      continuation policy. Do not use noisy `max_a Q` as the default target.
+      This is a prerequisite for PUCT/MCTS, not an implicit extension of v11.
+- [ ] **Belief model only after the hard sampler is correct.** Learn card-
+      ownership weights from self-play, then compare tempered weighted worlds
+      with uniform worlds while reporting effective sample size and sampler
+      calibration. A net must not mask impossible base worlds.
+- [ ] **AWAC-style self-play is parked, not disproven.** Resume only after
+      role-sign, immutable-artifact, evaluator, and fallback invariants are
+      tested. Start with a bounded shadow run and keep policy advantages out
+      of the absolute value head.
 - [ ] Human-style fine-tune once the human corpus is a few thousand decisions.
 - [ ] From the disagreement miner: dump-selection refinement (n=23, +3.9);
       lower the CONTROL_LEADS pair gate for late rounds.
-- [ ] SmartBot ideas untried: exhaustion-based void inference, bury strategy
-      using declaration knowledge, exact endgame solving (last ~4 tricks),
-      suit-symmetry augmentation (6x), confidence-weighted CE.
+- [ ] SmartBot ideas untried: exhaustion-based void inference, declaration-
+      aware burying, exact endgame solving (last ~4 tricks), suit-symmetry
+      augmentation, and confidence-weighted CE.
 
 ## Engineering / hardening
 
-- [ ] **Silent-fallback sweep** (asked of Codex 2026-08-03 22:20, awaiting its
-      view): every `except: pass`, `return <default>`, and unimplemented
-      message path in the decision and protocol layers becomes either a loud
-      failure or a documented, tested fallback. Motivation: four defects in
-      two days shared this shape — dropped choice-only rows, the banker
-      sampler returning candidate 0, `peek_room` unimplemented, `ready`
-      missing from in-game state. Each produced plausible output while doing
-      nothing.
-- [ ] **Codex's remaining frontend cases**: private-hand preservation on seat
-      claim; the disconnect/watchdog/reconnect state machine including the
-      second-absence reset; chat-before-first-state ordering with >50
-      messages; invite precedence with a saved room. (Landed already: peek on
-      open/running rooms, peek-then-join-chosen-seat, the two-client seat
-      race, ready quorum excluding disconnected humans, `ready` in in-game
-      state, seat-claim chat naming the bot.)
-- [ ] **P1 hardening from Codex**: per-shard provenance manifests written with
-      temp+os.replace (already proved their worth — `teacher_git` cleared
-      gen-v4 of the banker bug in one command); FAST_API_VERSION + source
-      digest refusing a stale .so; versioned ballot contract asserted at both
-      train and play; house-v1 conformance corpus with positive AND negative
-      cases.
-- [ ] **P1 test coverage**: the failed-throw regression must drive
-      `bot_step`/`Room` rather than the engine alone; the npnet parity test
-      must use COMMITTED fixtures (it currently passes only because of
-      untracked local files).
+- [ ] **Bounded silent-fallback sweep.** Inventory broad catches, default
+      actions, constraint relaxation, and unimplemented protocol paths in the
+      decision/evaluation/protocol boundaries. Convert each finding into a
+      loud failure or a named, counted, tested fallback. This directly covers
+      the current sampler and `_seeded()` holes; keep enforcing the rule as
+      touched code evolves.
+- [ ] **Frontend release soak.** Deterministic coverage is release-candidate
+      quality. Before production promotion, run one bounded multi-tab scenario
+      covering join, seat race, disconnect-to-bot, reconnect/takeover,
+      displaced/stale sockets, second absence, private-hand visibility, chat
+      before first state and over 50 messages, and saved-room invite
+      precedence. This is a minutes-long ship gate, not an open-ended project.
+- [ ] **Provenance and ABI contracts.** Write per-shard manifests with
+      temp+`os.replace`; refuse stale compiled extensions using an API version
+      plus source digest; assert the versioned ballot contract at collection,
+      training, and play; maintain a house-v1 conformance corpus with positive
+      and negative cases.
+- [ ] **Boundary-level tests.** Drive the failed-throw regression through
+      `bot_step`/`Room`, test the exact tournament seed boundary, round-trip a
+      high-N raw record, and keep numpy/Torch parity on committed fixtures.
 - [ ] **Scoring-contract fix**: `Game.finish_round()` allows >+3 while
       `round_value()` caps at +3, and `play_game`'s tie fallback awards team 0.
 - [ ] Compiled rollout core, remaining phases: leaf ports for
@@ -104,8 +99,6 @@ work should test what the search is actually limited by.
 - [ ] Vectorize bc_train (per-decision loop is MPS-dispatch-bound).
 - [ ] Ballot v2 for RL at PLAY time — data side done; never hot-enable under a
       v1-ballot net (Elo 798). Requires teacher generation on v2 first.
-- [ ] Rules nits: standard declaration-overcall restrictions; throw penalty
-      should force the beaten component, not the global lowest.
 - [ ] Xray panel: annotate WHY, not just values; render the per-candidate ±SE
       the endpoint already returns.
 

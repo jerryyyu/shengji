@@ -1,23 +1,52 @@
 # RL Plan: training a learned Sheng Ji policy
 
-Goal: a neural policy that **beats MCBot in the Elo tournament pool**
-(the standing "Elo > 1137" milestone — pool-relative, so operationally:
-rl above mc in the same pool). Hardware: one Mac mini (M4, 10 cores,
-MPS). Everything measured: mirrored deals, fixed-seed probes, direct
-duels, Elo pools, human-agreement tripwire. Toggle-level results live in
-AI_POLICIES.md; run archives in `server/runs/`.
+## Objective and evidence standard
+
+The product objective is **maximum verified Shengji strength per unit of
+deployment latency and training compute**, under a correct engine and a
+reproducible evaluator. “Put RL inside search” is a hypothesis, not the goal.
+The research-superiority milestone remains beating the current `mc` policy in
+a preregistered paired direct comparison; pool Elo is useful for screening but
+cannot establish that claim.
+
+Primary promotion metric: paired signed level utility by deal seed. Round
+win-rate is secondary; a final deployment candidate gets a mirrored full-game
+level-progression check. Every reported number is labelled **HYPOTHESIS**,
+**SCREEN**, **CONFIRM**, or **REJECT**. Hardware: one Mac mini (M4, 10 cores,
+MPS). Toggle results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## WHERE THINGS STAND — 2026-08-04 01:30 (read this first)
+## WHERE THINGS STAND — 2026-08-04 07:55 (read this first)
 
-**RESIDUAL/OVERRIDE LEARNING WORKS — the first positive result from the
-learned line.** `rl-override-v11pair` (SmartBot + a learned override, NO
-search, p50 0.4ms) beats SmartBot **57.7%** (n=480). Against mc it is **NOT better**: 51.1% over n=4080, Wilson [49.6%, 52.6%] —
-the interval includes 50, so the standing goal is not met. Those blocks were
-exploratory, not seeded (retraction in 1i); a seeded confirmation is running. A gated variant
-(search only on the ~12% of states the net flags as high-stakes) scores 53.3%
-vs mc at 55% of the wall-clock. Details in 1i and 1k.
+1. **Direct v11pair is the learned line's first positive result and the current
+   deployment-cost candidate.** `rl-override-v11pair` (SmartBot + learned
+   pairwise override, no search) beats SmartBot **57.7%** (n=480). Against MC,
+   all **4,880** rounds were mirrored but the MC factories were accidentally
+   OS-seeded: the aggregate is 51.1%, useful **SCREEN** evidence of approximate
+   parity, not a seeded confirmation. Production numpy latency is p50 0.25ms /
+   p95 0.52ms versus MC's p50 77ms / p95 150ms on the measured mini.
+2. **Combining v11 with search is unresolved.** The original gated online
+   result (53.3% vs MC, n=300, about 55% table wall-clock) is a SCREEN. Its
+   offline T2 did not earn confirmation and was itself over-interpreted: noisy
+   max-Q labels favor high-candidate states and equal state-call rate was not
+   equal compute. A later five-arm T3 runner violated its preregistration and
+   was terminated after a partial full-MC arm. It produced **no result**.
+3. **Use the model according to its contract.** v11pair is suitable as a direct
+   action reranker and potentially a root proposer/prior or fixed-budget compute
+   allocator. Its pairwise action deltas are not an absolute state value and
+   therefore are not a valid MC/MCTS leaf. Replacing the rollout policy has tied
+   twice and is not the next lever.
+4. **Correctness and evaluation currently gate more compute.** The belief
+   sampler may relax proven suit voids on its final retry and never enforces
+   pair-voids; `tournament._seeded()` still has a blanket `TypeError` fallback;
+   and the new high-N builder does not yet provide independent selection/eval,
+   a versioned round-trip schema, or strict-world guarantees. No training,
+   high-N generation, T3 screen, or T4 confirmation is authorised today.
+
+The machine is intentionally idle. A cheap policy or direct v11 winning the
+strength/latency Pareto comparison is a success even if no RL-search design
+ships.
 
 **THE HYBRID IS NOT BETTER THAN mc. Settled 2026-08-03 23:20 at n=1200.**
 
@@ -42,30 +71,29 @@ is an equal-strength, CHEAPER alternative to mc (truncated rollouts), which
 makes it interesting for LATENCY, not for strength. Nothing should be adopted
 or deployed on the basis of the old headline.
 
-**Settled today, do not re-litigate:**
+**Current decisions:**
 
 | Question | Answer | Where |
 |---|---|---|
-| Does residual/override learning work? | **YES, once implemented correctly** — 57.7% vs smart, n=480 across two disjoint blocks | 1i |
+| Does residual/override learning work? | **YES as an override of SmartBot**, once the pairwise target and ballot match — 57.7% vs smart, n=480 | 1i |
+| Is direct v11 proven equal to MC? | **No formal confirmation.** 51.1% over 4,880 unseeded-MC exploratory rounds suggests parity; superiority is not shown. | 1i |
 | Is the value-leaf hybrid stronger than mc? | **No** — 50.4% at n=1200, CI [47.6, 53.2] | above, 1 |
 | Does a better VALUE HEAD make a better hybrid? | **No** — v7w 60%, v9warm 53%, v9scratch 48% on the same seeds. The best head is the OLDEST. | 1f |
 | Does the flywheel work (train on hybrid data, get a better hybrid)? | **No** | 1b |
-| Residual distillation (net as a learned override on SmartBot)? | **REJECTED** — 47% vs smart, and its bar was to beat smart | 1h |
+| Did v10res test residual learning? | **No.** It was a near-no-op with a train/play ballot mismatch; v11pair is the corrected test. | 1h, 1i |
+| Is selective v11-gated MC ready? | **No.** T2 did not earn confirmation; the later T3 runner was invalid and halted. | 1l, 1m |
 | Does the banker knowing its own burial help? | **No measurable effect** — 49.7%, CI [44.0, 55.3] | 1g, AI_POLICIES |
 | Does rollout-policy strength matter? | **No** — tied twice, second time with a 93-Elo-stronger roller | AI_POLICIES |
 
-**The through-line: nothing about making the EVALUATOR better has moved this
-game's search.** FIVE independent attempts — the hybrid itself, a better value
-head, the flywheel, a learned override, a stronger rollout policy — all landed
-within noise of the thing they were meant to beat.
-That is now the most informative pattern in the project, and it points away
-from "train a better net" and toward asking what the search is actually
-limited by.
+**The through-line:** changing rollout or leaf evaluation has not improved MC;
+correctly learning *relative root decisions* did improve SmartBot. The next
+search question is therefore fixed-budget root allocation with common worlds,
+not another rollout-policy swap and not forcing pairwise v11 into a leaf API.
 
 **P0 fixed today (Codex):** BANKER_KITTY double-subtracted the burial and left
-the banker's world sampler unable to build ANY world — the banker played with
-no search at all for ~40 minutes. gen-v4 proven clean via its recorded
-`teacher_git`. Full write-up: `incidents/2026-08-03-banker-search-disabled.md`.
+the banker's world sampler unable to build any world. gen-v4 predates that
+defect according to its recorded `teacher_git`. Full write-up:
+`incidents/2026-08-03-banker-search-disabled.md`.
 
 ---
 
@@ -119,9 +147,9 @@ This is the single most informative negative of the day. The
 expert-iteration flywheel requires each turn to improve the evaluator;
 this turn did not. Either the value head is at its own ceiling
 (architecture/encoding), or one generation is too small a step to see,
-or gen-v4's labels are not actually better despite coming from a
-higher-rated teacher (plausible: the hybrid's ADVANTAGE over mc is
-itself unproven — 53.3% with a CI including 50%).
+or gen-v4's labels are not actually better despite coming from a teacher that
+was believed stronger at the time. The later n=1,200 duel settled that teacher
+at 50.4% vs MC: equal, not stronger.
 
 ### 1c. Epoch count: SETTLED — strength peaks near epoch 8
 
@@ -131,8 +159,7 @@ and 16 is past the peak. Best snapshot anchors: **56% vs smart** (the
 best any standalone net has managed) and 37% vs mc. Standing recipe:
 ~8 epochs with per-epoch snapshot-probe selection.
 
-### 1d. LABEL-NOISE CEILING DIAGNOSTIC — the labels are NOT the binding
-constraint (2026-08-03 21:00, Codex's #1 recommended test)
+### 1d. LABEL-NOISE DIAGNOSTIC — the student is below same-teacher repeatability; cause unresolved (2026-08-03 21:00)
 
 120 frozen real decision states, 8 independent N=30 teacher seeds each,
 plus an N=200 reference:
@@ -144,11 +171,12 @@ plus an N=200 reference:
 | student (v9warm16-ep08) vs the same reference | **55.8%** |
 | states where the 8 teacher seeds disagreed at all | **63.3%** |
 
-**Interpretation (Codex's stated rule): the student is ~19 points BELOW
-what a single noisy teacher sample achieves, so more student capacity
-CAN still recover signal that is demonstrably present. The labels are
-noisy — 63% of states see the teacher disagree with itself across seeds
-— but they are not yet the ceiling.**
+**Interpretation:** the student is about 19 points below one sample of the same
+teacher when both are judged against an N=200 estimate. This shows an
+unexplained imitation/generalisation gap; it does **not** prove that the labels
+are unbiased or that capacity alone can recover it. The N=200 reference shares
+the same rollout policy and currently non-strict belief sampler, and 63% of
+states show teacher disagreement.
 
 This argues AGAINST an architecture-ceiling conclusion and FOR the next
 rungs of the diagnostic ladder: optimizer/capacity sanity on a small
@@ -159,7 +187,7 @@ residual distillation: predicting Delta from the baseline is a far
 easier target than reproducing an absolute ranking through this much
 label noise.
 
-### 1e. CAPACITY SANITY — the model/optimizer is NOT binding
+### 1e. MEMORISATION SANITY — optimizer can fit selected rows; generalisation remains open
 (2026-08-03 21:30, diagnostic ladder rung 2)
 
 Overfit test: 6,000 UNAMBIGUOUS rows (teacher's best beats second by
@@ -168,10 +196,10 @@ lr 1e-3, 60 epochs.
 
 **Final train accuracy: 99.6%.**
 
-The model can memorise clean labels essentially perfectly. So the
-trainer, capacity and optimiser are NOT the bottleneck — which, combined
-with 1d (labels are noisy but leave ~19 points of recoverable signal),
-narrows the diagnosis to two remaining candidates:
+The model can memorise selected high-margin labels almost perfectly. That
+rules out a gross implementation failure on this subset; it does not rule out
+an architecture, regularisation, optimization, or representation limit in
+out-of-sample generalisation. Combined with 1d, the main candidates are:
 
 1. **Representation** — the observation may not carry what is needed for
    the decisions the net gets wrong (missing: banker's buried cards,
@@ -261,7 +289,7 @@ validation split rather than the reported one. Only then does it earn a seeded
 duel. If a corrected arm fails offline, residual learning gets parked with an
 honest "tried properly, did not work."
 
-### 1i. RESIDUAL/OVERRIDE LEARNING WORKS — beats smart, LEVEL with mc (2026-08-04)
+### 1i. RESIDUAL/OVERRIDE LEARNING WORKS — beats smart; MC parity is provisional (2026-08-04)
 
 The first positive result from the learned line, and it came from fixing the
 implementation rather than from more data or more epochs.
@@ -286,26 +314,30 @@ SAME defect as the unseeded-anchor incident of 08-03, reintroduced one layer
 up at the call site by the fix for it.
 
 What survives and what does not:
-- **The conclusion survives.** Unseeded opponents add variance but no bias;
-  the mirrored pairing still controls deal luck. 51.1% over 4,080 rounds
-  remains good evidence that v11pair is LEVEL with mc, and the standing goal
-  is still not met.
+- **A useful screen survives, not a confirmation.** Unseeded opponents add
+  uncontrolled variance while mirrored deals still control deal luck. The
+  result suggests approximate parity and clearly does not establish
+  superiority; it cannot support a reproducibility or formal non-inferiority
+  claim.
 - **The protocol claim does not.** This was exploratory evidence, not the
   declared reproducible confirmation, and JOBS' claim that block 6 was
   "deterministic, so the machine does not matter" was simply false.
 - The v11-vs-Smart result is unaffected: SmartBot is deterministic.
 
-`make_bot` now forwards kwargs — dispatching on the factory SIGNATURE, not by
-catching TypeError, which would swallow a real constructor bug and retry
-(Codex) — and `tests/test_duel_factories_seeded.py` runs a complete pairing
-twice through the exact script lambda and compares SCORES.
+`make_bot` now forwards kwargs by inspecting the factory signature. One
+boundary remains open: `tournament._seeded()` itself still catches a blanket
+`TypeError` and retries without a seed, and its constructor-error regression
+test exercises `make_bot` rather than an exploding factory through `_seeded`.
+The end-to-end repeat test also compares aggregate scores rather than
+per-seed/per-flip records. Do not call the general harness fully repaired yet.
 
 One more block completed after the retraction (409-391 = 51.1%, n=800), which
 was ALSO launched before the fix landed and is therefore also unseeded. It
 agrees with everything else. Across 4,880 exploratory rounds the estimate has
-not moved off ~51%: **v11pair is level with mc.** A genuinely seeded
-confirmation has still not been run, and on the evidence so far it would be
-buying reproducibility rather than changing the answer.
+not moved off ~51%: v11pair is **plausibly near MC**, but this remains a
+SCREEN. A genuinely seeded confirmation has not run; do not spend it merely to
+turn an unpromising superiority hypothesis into a more precise tie unless a
+deployment decision requires a formal non-inferiority bound.
 
 **What fixed it vs v10res (47% vs smart):**
 
@@ -319,18 +351,22 @@ buying reproducibility rather than changing the answer.
 
 None of that is scale. The signal was present in v10res's data all along.
 
-**Production-ready** (measured 2026-08-04): numpy path, no torch, **p50 0.4ms
-/ p95 0.5ms** against mc's 57/107ms; 2MB weights; 33MB RSS; 33ms cold start;
+**Production-capable inference path** (measured 2026-08-04): numpy, no torch,
+**p50 0.25ms / p95 0.52ms** against MC's 77/150ms in the current deployment
+table; 2MB weights; 33MB RSS; 33ms cold start;
 parity with torch verified on 90 real decisions (max diff 7.5e-8, zero argmax
-disagreements) from COMMITTED fixtures. Deploying it is a COST decision, not a
+disagreements) from committed fixtures. Production promotion still needs the
+bounded frontend soak and an explicit decision about whether provisional MC
+non-inferiority is sufficient. It is a cost/latency candidate, not a proven
 strength upgrade.
 
-### 1k. The gated variant: same strength, ~half the compute (2026-08-04)
+### 1k. The gated variant: encouraging online SCREEN, not a strength result (2026-08-04)
 
-`mc-gate-v11pair` uses the net's delta as a ~2ms detector of HIGH-STAKES
-states and spends search only on the ~12% it flags: **160-140 = 53.3%** vs mc
-(n=300, CI [47.7%, 58.9%]) while the table ran at **55% of an all-mc table's
-wall-clock**.
+`mc-gate-v11pair` uses the net's delta as a detector of high-predicted-gain
+states and spends search only on the ~12% it flags: **160-140 = 53.3%** vs MC
+(n=300, CI [47.7%, 58.9%]). The “55% wall-clock” figure was extrapolated from
+a separate timing run, not measured as an interleaved equal-budget comparison.
+This is hypothesis-generating only.
 
 Calibration behind the design (held-out gen-v4, gain from acting on the net vs
 keeping SmartBot's pick): **+3.23 / +1.51 / +0.31 / -0.02** as confidence
@@ -344,7 +380,7 @@ high-confidence buckets showed higher absolute regret. That evaporated once
 regret was compared against the right baseline within each bucket: those are
 simply higher-stakes states. Worth recording as a near-miss.
 
-### 1l. THE GATED ARM FAILS ITS OFFLINE GATE — counting candidates is nearly as good (2026-08-04 05:50)
+### 1l. T2 did not earn confirmation; what candidate count explains is unresolved (2026-08-04 05:50)
 
 Codex's overnight plan required the stakes-gate to beat trivial alternatives
 offline, at the SAME search rate, before earning a 1,000-cluster confirmation.
@@ -384,21 +420,44 @@ conclusion about what the net knows.
 
 This does not touch the override result (57.7% vs smart stands); it says the
 *gating* application is weakly motivated. And it explains why the online screen
-looked encouraging at 53.3%: a gate that spends search on high-branching states
-is a reasonable gate — it just does not need a neural network.
+looked encouraging at 53.3%: spending search on high-branching states is a
+plausible explanation to test, not an established substitute for the network.
 
-Headroom is real, though: the oracle gate (rank by TRUE forfeited value) leaves
-766 where v11 leaves 1,402 at a 12% rate. A good stakes detector would be worth
-having; this one recovers maybe a fifth of what is there.
+The screen suggests possible but **unquantified** headroom: its 766/1,402
+“oracle” comparison uses the same selected maximum of noisy labels and is not
+true opportunity. Retain those numbers only as biased diagnostics.
 
-**Per the plan: the confirmation run is NOT launched.** Codex's follow-up
-authorises exactly one thing — a small preregistered T3 online screen comparing
-full MC, v11-gated, candidate-count-gated, and a cheap/random gate on the same
-150 seed clusters per arm, at equal MEASURED search work rather than equal call
-rate, logging per-seed records, search calls, rollout counts, elapsed search
-time, fallbacks, and signed level utility. A targeted stakes detector is
-explicitly NOT authorised: its apparent headroom rests on the same biased
-estimate.
+The operational decision was “no 1,000-cluster confirmation.” A small online
+diagnostic was subsequently proposed, but its implementation failed preflight
+and was halted as described next. There is no current T3 or targeted-detector
+authorization.
+
+### 1m. T3 implementation was invalid and the partial run was terminated (2026-08-04 07:48)
+
+The five-arm runner was committed and launched despite its no-go review. It
+was stopped after calibration and roughly 50/300 rounds of the full-MC arm;
+the partial log and a separate three-cluster JSONL smoke are quarantined and
+must not be combined, extended, or interpreted.
+
+Blocking defects:
+
+- v11 used a learned cheap action while candidate-count/random fell back to
+  SmartBot, confounding the gate with the skip policy;
+- no manifest, run id, fallback field/counter, paired clustered analysis, or
+  exclusive output existed;
+- “strict sampling” could not detect the sampler's deliberate final-retry
+  void relaxation or missing pair-void enforcement;
+- timing excluded gating/ballot work, loaded Torch rather than the production
+  numpy policy, and hot-loop counters changed MC's measured implementation;
+- the compute band was reported but not enforced as an exit condition.
+
+The random-calibration direction was fixed before the long launch, but the
+other validity defects remained. A future root-allocation screen must first
+replay 10 clusters byte-identically (excluding timing), use one identical cheap
+policy across gates, isolate RNG streams, produce an immutable manifest plus
+exclusive per-seed/per-flip JSONL, reconcile all counters, and fail on any
+impossible-world fallback. Only then may a separately preregistered
+150-cluster diagnostic be considered.
 
 ### 2. Standalone policy line: still stuck — but the OVERRIDE line is not
 
@@ -484,111 +543,48 @@ comparison stays open rather than counted.
 
 ---
 
-## TONIGHT RUNBOOK — 2026-08-04 (ordered; no blind compute)
+## RUN STATUS — 2026-08-04 07:55 (supersedes the earlier T0-T4 authorization)
 
-**Decision:** do not launch another training run or full data-generation job
-tonight. Do not rerun the entire v11-vs-MC duel merely to repair its seed
-provenance: the 4,080 unseeded-search rounds are already enough to say the
-effect is approximately a tie and too small to be the next lever. The only
-long run allowed tonight is a corrected confirmation of the selective MC gate,
-and it earns that run only by passing the cheap gates below. An idle machine is
-better than another invalid or uninformative block.
+**RUNNING: nothing.** The attempted T3 screen was invalid and terminated. No
+substitute high-N generation, training, duel, or confirmation is authorised.
+The older T0-T4 sequence remains useful as an incident record; its actual
+status is:
 
-### T0 — repair the measuring instrument (30–60 minutes, CPU-light)
+| stage | status | authoritative reason |
+|---|---|---|
+| T0 — measuring instrument | **INCOMPLETE** | `make_bot` forwards seeds, but `tournament._seeded()` can still swallow constructor `TypeError`; the repeat test compares aggregate scores, not per-seed/flip records. |
+| T1 — trustworthy evaluator | **FAILED / UNBUILT** | T3 emitted no manifest or fallback field, appended into a shared JSONL, lacked paired clustered analysis and replay proof, and measured an instrumented/Torch path rather than complete production-policy cost. |
+| T2 — offline proposer screen | **STOP** | It did not meet its declared bar, and noisy selected-max labels plus unequal compute make the candidate-count/oracle interpretation scientifically inconclusive. |
+| T3 — online diagnostic | **INVALID / TERMINATED** | Arms used different skip policies; impossible-world fallbacks were unobservable; partial artifacts are quarantined. |
+| T4 — confirmation | **NOT AUTHORISED** | Prerequisites did not pass. |
 
-- [ ] Standardise the registry factory contract and forward `seed` through the
-  **exact** factories used by `v11_extend.py` and `gate_duel.py`. Do not catch a
-  blanket `TypeError` around `factory(**kw)`: that can swallow a real exception
-  raised *inside* a constructor and silently instantiate a different policy.
-- [ ] Tests: same seed produces the same RNG state; different seeds differ;
-  the exact 10-seed pairing run twice produces byte-identical outcomes. Run
-  with `SHENGJI_STRICT_SAMPLING=1` and fail on every fallback.
-- [ ] Freeze a manifest containing git SHA, checkpoint SHA-256, policy/ballot
-  configuration, engine mode, seed range, and calibration/report split. Mark
-  the six old v11-vs-MC blocks as useful exploratory evidence, not seeded
-  confirmation. Do **not** spend tonight recreating them.
-- [ ] Clean `JOBS.md` to one authoritative RUNNING section before launching
-  anything. A job absent from the manifest and ledger does not run.
+### Re-entry gate before any experimental compute
 
-**Exit gate:** exact-factory determinism is green twice from a clean source
-tree. Otherwise stop; no experiment starts.
+1. Replace `_seeded()`'s exception fallback with signature dispatch and test an
+   exploding constructor through that exact boundary. Persist and compare each
+   seed/flip outcome, not only the aggregate score.
+2. Make strict sampling literal: never drop proven suit voids, enforce
+   pair-void constraints and declaration pins, count every rejected/relaxed
+   world, and fail the run if any impossible-world fallback occurs.
+3. Use one immutable manifest (git SHA, checkpoint SHA-256, engine/fast mode,
+   policy and ballot config, seed ranges, calibration/report split, schema
+   version) and a new exclusive JSONL per run. Refuse an existing output.
+4. Replay the same 10 clusters twice and require byte-identical non-timing
+   records. Counters must reconcile with decisions and sampled worlds.
+5. For a gate comparison, hold the cheap action policy identical across arms,
+   isolate gate/search RNG streams, match actual rollout or policy-local time
+   budgets, and compute paired seed-cluster differences with uncertainty.
 
-### T1 — one trustworthy selective-search evaluator (60–90 minutes)
+### Explicitly do not run yet
 
-Extend one runner rather than adding another one-off duel. It must write one
-JSONL row per deal seed and flip plus a manifest, and report:
-
-- round winner, signed level change, and fallback/error counters;
-- policy-local `net_calls`, `mc_calls`, sampled worlds, and p50/p95 latency;
-- paired/clustered uncertainty by deal seed (not Wilson over two correlated
-  flips); and
-- an interleaved or in-round all-MC timing baseline, not a shorter later run
-  on different seeds extrapolated 4x.
-
-**Exit gate:** replaying the same 10 clusters reproduces every non-timing field
-byte-for-byte, counters reconcile with decisions, and no fallback fires.
-
-### T2 — offline gate/proposer screen (<=45 minutes; reuse existing data)
-
-Fix the evaluator's raw-points versus `/100` unit mismatch and implement an
-actual shard-disjoint calibration-A/report-B split. On valued gen-v4 rows:
-
-1. Fit the v11 stakes threshold on A and read B once.
-2. At the identical `mc_call_rate`, compare v11 with (a) a random gate and
-   (b) a candidate-count/lead-follow complexity gate. Define missed
-   opportunity as `max_i Q_i - Q_0` on states where search is skipped.
-3. Report three independent shard blocks and the consequential-state slices;
-   do not call max predicted delta “confidence.”
-4. Report candidate-0 + v11 top-K teacher-best coverage and opportunity regret
-   for K=1/2/4/8. This informs root racing; it does not authorize hard pruning
-   tonight.
-
-**Promotion gate:** on untouched B, the v11 gate must reduce mean missed
-opportunity by at least 15% relative to **both** matched-rate cheap gates, with
-the same direction in all three shard blocks. If it fails, stop the gate line
-and leave the machine idle. Do not rescue it with a threshold chosen on B.
-
-### T3 — small online screen (only if T2 passes; about 150 seed clusters/arm)
-
-Use the same frozen seed block and strict runner for:
-
-1. full MC N=10;
-2. v11 stakes-gated MC;
-3. random-gated MC at the same search-call rate; and
-4. complexity-gated MC at the same search-call rate.
-
-This is a screen, not a strength claim. Continue only if the v11 gate beats
-both cheap gates on the point estimates for paired level utility, has no
-fallbacks, achieves at least 48% round wins versus full MC, loses no more than
-0.03 signed levels per round, and consumes at most 60% of the all-MC table
-wall-clock. Record these rules before starting.
-
-### T4 — the only permitted overnight run
-
-If and only if T0–T3 all pass, launch **one** preregistered confirmation of
-v11-gated MC versus full MC (1,000 deal-seed clusters, two flips each). Primary
-metric is paired signed level utility; round win-rate is secondary. Promotion
-requires:
-
-- clustered 95% lower bound above -0.03 signed levels/round;
-- clustered 95% lower bound above -2 percentage points in round win-rate;
-- table wall-clock <=60% of all-MC; and
-- zero silent fallback, timeout, or zero-world decisions.
-
-If it misses, record the result and stop. Do not extend until an interval
-crosses the line. If T2 or T3 fails, **run nothing overnight**.
-
-### Explicitly do not run tonight
-
-- no more v11 epochs, wider-ballot training, or full gen-v5 corpus;
-- no standalone-policy duel (park it as a diagnostic baseline);
-- no v11 pairwise head as an MC leaf;
-- no AWAC/DMC restart—the role-sign and immutable-artifact issues are not yet
-  closed by tests;
-- no PUCT/MCTS: a calibrated absolute information-state value and a belief
-  model are prerequisites; and
-- no belief weighting until the hard sampler itself never emits an impossible
-  world under strict mode.
+- no more v11 epochs, wider-ballot corpus, or standalone-policy duel;
+- no T3 restart or targeted stakes-detector training;
+- no high-N dataset from the current prototype (see roadmap gate below);
+- no v11 pairwise head as an MC/MCTS leaf;
+- no AWAC/DMC restart until role-sign, immutable promotion, and fallback tests
+  are closed; and
+- no PUCT/MCTS or belief weighting until the hard sampler is constraint-correct
+  and a calibrated absolute information-state value exists.
 
 ## DECISIONS TAKEN (Codex, 2026-08-04 07:31 — answers to the standing questions)
 
@@ -605,41 +601,54 @@ they change what gets built, not just what gets said.
 | Silent fallbacks | **One bounded repository-wide sweep first**, converting each boundary into a strict invariant or counter, then site-by-site enforcement while touching code. A sweep without durable invariants decays; local-only work misses the next hidden boundary. |
 | Frontend soak | Deterministic tests are strong enough for a RELEASE CANDIDATE. Run one bounded multi-tab reconnect/takeover/chat soak before production promotion — minutes, not a project — and it does not gate the ML stop decision. |
 
-## ROADMAP AFTER TONIGHT (ordered by information per unit compute)
+## ROADMAP FROM THE CURRENT STOP (ordered by information per unit compute)
 
-1. **Establish the deployment Pareto frontier.** Keep SmartBot, direct v11,
-   MC N=5/10/20, the settled value-leaf speed arm, and any surviving selective
-   gate on one reproducible strength/latency table. Product promotion can use
-   non-inferiority plus speed; “beats MC” still requires superiority.
-2. **Representation diagnostic, not another bulk training run.** Create a
-   versioned raw-state dataset that stores episode/seed/decision ids, role,
-   phase, ballot hash, and teacher artifact. On a small high-N frozen set,
-   compare the current encoder against exactly one enriched encoder using the
-   same model, initialization, data, and three training seeds. Add
-   trump-relative canonicalisation, ordered recent tricks, declaration
-   owner/cards, pair-voids, team levels, and banker-private burial where legal.
-   Generate a full corpus only if untouched high-N regret improves >=10% in
-   all three seeds.
-3. **Active high-N expert iteration.** Spend expensive MC labels on v11/MC
-   disagreements, high predicted opportunity, ensemble disagreement, and
-   score-bracket/late-round states; keep an anchor replay mixture. This is more
-   likely to move v11 than another epoch over the same noisy N=30 corpus.
-4. **Root racing before tree search.** Give every candidate a small common-
+1. **Repair correctness and measurement boundaries.** Fix the belief sampler
+   and `_seeded()` fallback, add strict counters/invariants, and build one
+   manifest-driven paired evaluator. These are prerequisites, not experiment
+   arms.
+2. **Establish the deployment Pareto frontier.** Compare SmartBot, direct v11,
+   MC N=5/10/20, and the settled v7 value-leaf speed arm on one reproducible
+   strength/latency table. Do not include selective gates until their runner
+   passes re-entry. Product promotion may use a preregistered non-inferiority
+   margin plus speed; “beats MC” still requires superiority.
+3. **Build a valid small high-N diagnostic set—then stop and inspect it.** The
+   committed `highn_build.py` is a prototype, not an authorised generator. It
+   still uses the constraint-relaxing sampler; selects the apparent best and
+   tests it on the same worlds (paired SE alone does not remove max-selection
+   bias); truncates each round after early sampled decisions; uses potentially
+   colliding `seed * 31 + ply` RNG ids; appends without a manifest; and has no
+   tested round-trip loader. Before running it, add:
+   - a versioned schema and reconstruction test including initial banker,
+     declaration timing/final declaration, phase, ballot hash, engine/config
+     hashes, and exact seed ids;
+   - strict legal-world sampling, disjoint selection/evaluation worlds (or a
+     simultaneous multiple-comparison interval), and stored covariance or
+     per-world differences;
+   - deal-grouped splits plus explicit early/mid/late and score-bracket quotas;
+   - exclusive output and a small cost estimate. Generate only a tiny frozen
+     pilot after these gates pass.
+4. **Representation diagnostic, not bulk training.** On that independently
+   evaluated pilot, compare the current encoder against exactly one enriched
+   encoder using identical model/initialization/data and at least three train
+   seeds. Add trump-relative canonicalisation, ordered recent tricks,
+   declaration owner/cards, pair-voids, team levels, and banker-private burial
+   where legal. A full corpus is earned only if untouched high-N regret improves
+   at least 10% in every seed.
+5. **Root racing before tree search.** Give every candidate a small common-
    world rollout floor, then allocate the remaining fixed budget using v11's
-   ranking plus empirical uncertainty. Compare at equal total wall-clock.
-5. **Fix then improve the belief sampler.** Enforce suit voids, pair-voids, and
-   declared-card pins without a constraint-dropping fallback; then test
-   tempered belief weights with effective-sample-size reporting against
-   uniform worlds.
+   ranking plus empirical uncertainty. Compare against uniform allocation and
+   simple complexity allocation at equal total rollout/time budget.
 6. **A real absolute value model.** Predict the attacker-perspective scoring-
-   bracket distribution / expected signed level utility under a named fixed
+   bracket distribution or expected signed level utility under a named fixed
    continuation policy, with calibration metrics. Do not use noisy `max_a Q`
-   as the default target. It may share v11's trunk but must have a separate
-   contract and API.
-7. **AWAC last.** Resume only after role symmetry, immutable checkpoint
-   promotion, strict fallbacks, and the active-label pipeline are tested. Keep
-   policy advantages out of the absolute value head and start with a bounded
-   shadow run.
+   as the target. It may share v11's trunk but needs a separate contract/API.
+7. **Active labels, then AWAC; MCTS last.** Spend high-N labels on verified
+   disagreements and consequential phase/score slices while retaining an
+   anchor mixture. Resume AWAC only after role symmetry, immutable checkpoint
+   promotion, strict fallbacks, and the active-label pipeline are tested.
+   Revisit PUCT/MCTS only after both a calibrated absolute value and a correct
+   belief model exist.
 
 For online selection, paired signed level utility is primary because it is the
 actual game objective; round win-rate remains the higher-power secondary
@@ -670,10 +679,10 @@ both carry throws, component combos, and choice-only lock rows.
 
 ## Measurement rules (non-negotiable)
 
-- Mirrored deals everywhere; n≥120 round-level or n≥200 games; ties
-  (<55%) are not adopted — EXCEPT menu-widening changes, which adopt at
-  neutral (they compound with future evaluation improvements; preference
-  rules must pay now).
+- Mirrored deal-seed clusters everywhere, with deterministic factories and an
+  immutable manifest. Report paired/clustered uncertainty and signed level
+  utility; a raw round count or Wilson interval over correlated flips is not a
+  confirmation. Small n is a SCREEN only.
 - **Strength vs selection (v7w lesson, 2026-08-02):** STRENGTH claims
   come only from anchor pairings vs smart AND mc (round-level).
   Net-vs-net duels against the incumbent are for SELECTION among
@@ -684,9 +693,12 @@ both carry throws, component combos, and choice-only lock rows.
   round-level probe vs current SmartBot (n=60, compare only within a
   seed batch) AND (2) a direct mirrored duel vs the incumbent best net
   (n=200). Blend checkpoints also get the human-agreement eval.
-- Policies rated in Elo pools, never a single opponent; pool numbers are
-  pool-relative; promotion to server default requires a full-game
-  mirrored match vs `mc`.
+- Elo pools and sibling duels select candidates; direct seeded pairings against
+  named anchors establish strength. Promotion to server default requires the
+  declared non-inferiority/superiority gate plus a full-game mirrored match.
+- A run with a missing/dirty manifest, reused output, seed-forwarding failure,
+  impossible sampled world, silent fallback, or unreconciled counter is INVALID
+  regardless of its score.
 - Negative results are archived, not deleted (`server/runs/`,
   AI_POLICIES experiment log).
 

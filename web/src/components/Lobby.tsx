@@ -44,7 +44,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   }, [name, roomCode]);
 
   useEffect(() => conn.subscribe((msg: ServerMsg) => {
-    const m = msg as Extract<ServerMsg, { type: string }> & Record<string, any>;
+    const m = msg;
     // Ignore anything answering a transaction from a previous socket.
     if (peekGen.current !== null && peekGen.current !== conn.generation) {
       peekGen.current = null;
@@ -52,7 +52,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
       return;
     }
     if (m?.type === "room_seats") {
-      const seats = m.seats as RoomSeats["seats"];
+      const seats = m.seats;
       const open = seats.filter((sd) => sd.claimable);
       const bots = seats.filter((sd) => sd.is_bot);
       // Offer the picker whenever more than one seat is open, or when the
@@ -62,7 +62,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
       // player also needs the picker, or the server answers choose_seat and
       // the client has nothing to show — a deadlock (Codex ship gate P0-4).
       if (open.length > 1 || (open.length === 1 && !bots.length)) {
-        setSeatChoice(m as RoomSeats);
+        setSeatChoice(m);
       } else {
         joinSeat(undefined, m.room);       // nothing to choose
       }

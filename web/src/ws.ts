@@ -2,7 +2,7 @@
 // send(msg), subscribers for messages + status. On (re)connect, re-sends
 // join_room with the room/name persisted in localStorage so refresh survives.
 
-import type { ClientMsg, ServerMsg } from "./protocol";
+import type { ChatMsg, ClientMsg, ServerMsg } from "./protocol";
 
 export type ConnStatus = "connecting" | "open" | "closed";
 
@@ -64,7 +64,7 @@ class Connection {
   /** Chat received so far, including lines that arrived before the table
    *  mounted. Cleared on room change, NOT on reconnect (the server replays
    *  scrollback and duplicates would double up). */
-  private chatLog: any[] = [];
+  private chatLog: ChatMsg[] = [];
   private chatRoom: string | null = null;
   private chatSeen = new Set<number>();
   /** Bumped on every socket open. A membership transaction (peek -> pick ->
@@ -81,7 +81,7 @@ class Connection {
   private started = false;
 
   /** Chat buffered since the last room change. */
-  chatHistory(): any[] {
+  chatHistory(): ChatMsg[] {
     return this.chatLog.slice();
   }
 
@@ -144,29 +144,35 @@ class Connection {
         return;
       }
       // Chat arrives BEFORE the first state — i.e. before <Table> mounts and
-      // subscribes — so it is buffered here. The server sends one authoritative
-      // chat_history snapshot per attach, then live events with room-scoped
-      // monotonic ids, which is what makes reconnect deduplication possible
-      // (Codex ship gate P0-5).
-      const m = msg as any;
-      const room = m?.room;
+      // subscribes — so it is buffered here. The server sends one
+      // authoritative chat_history snapshot per attach, then live events with
+      // room-scoped monotonic ids, which is what makes reconnect
+      // deduplication possible (Codex ship gate P0-5).
+      const room = "room" in msg ? msg.room : undefined;
       if (typeof room === "string" && room !== this.chatRoom) {
         this.chatRoom = room;      // room changed: the old log is not ours
         this.chatLog = [];
         this.chatSeen.clear();
       }
-      if (m?.type === "resume" && m.token) {
-        saveResumeToken(m.token as string);
-      }
-      if (m?.type === "chat_history") {
-        this.chatLog = (m.messages ?? []).slice(-100);   // REPLACE, not merge
-        this.chatSeen = new Set(this.chatLog.map((x: any) => x.id));
-      } else if (m?.type === "chat") {
-        if (!this.chatSeen.has(m.id)) {
-          this.chatSeen.add(m.id);
-          this.chatLog.push(m);
-          if (this.chatLog.length > 100) this.chatLog.splice(0, this.chatLog.length - 100);
-        }
+      switch (msg.type) {
+        case "resume":
+          if (msg.token) saveResumeToken(msg.token);
+          break;
+        case "chat_history":
+          this.chatLog = msg.messages.slice(-100);   // REPLACE, never merge
+          this.chatSeen = new Set(this.chatLog.map((x) => x.id));
+          break;
+        case "chat":
+          if (!this.chatSeen.has(msg.id)) {
+            this.chatSeen.add(msg.id);
+            this.chatLog.push(msg);
+            if (this.chatLog.length > 100) {
+              this.chatLog.splice(0, this.chatLog.length - 100);
+            }
+          }
+          break;
+        default:
+          break;
       }
       for (const fn of this.msgListeners) fn(msg);
     };

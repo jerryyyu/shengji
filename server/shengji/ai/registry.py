@@ -79,12 +79,30 @@ REGISTRY["rl"] = _make_rl
 REGISTRY["mc-v5roll"] = _make_mc_v5roll
 
 
-def make_bot(name: str):
+def make_bot(name: str, **kw):
+    """Build a policy by name, FORWARDING kwargs (notably seed=).
+
+    make_bot used to take no kwargs, so every duel script wrapped it as
+    `lambda **k: make_bot("mc")` — which accepts a seed and silently drops it.
+    `_seeded()` then never hit its TypeError fallback, and every MC opponent
+    ran on OS entropy while the logs claimed a seeded, reproducible protocol
+    (Codex, 2026-08-04). This is the SAME defect as the unseeded-anchor
+    incident, reintroduced one layer up at the call site.
+    """
     try:
-        return REGISTRY[name]()
+        factory = REGISTRY[name]
     except KeyError:
         raise ValueError(
             f"Unknown bot policy {name!r}. Available: {', '.join(sorted(REGISTRY))}")
+    try:
+        return factory(**kw)
+    except TypeError:
+        bot = factory()          # factory takes no kwargs
+        seed = kw.get("seed")
+        if seed is not None and hasattr(bot, "rng"):
+            import random as _r
+            bot.rng = _r.Random(seed)
+        return bot
 
 
 def _make_vleaf(ckpt: str):

@@ -7,8 +7,16 @@ interface RoundEndModalProps {
   result: RoundResult;
 }
 
-function teamName(team: 0 | 1): string {
-  return team === 0 ? "Blue team (seats 0 & 2)" : "Orange team (seats 1 & 3)";
+/** Name the actual players, not the seat numbers: "Blue team (seats 0 & 2)"
+ *  makes you work out who that was, and "you" should be obvious (Jerry). */
+function teamName(team: 0 | 1, state?: GameState): string {
+  const colour = team === 0 ? "Blue" : "Orange";
+  if (!state) return `${colour} team`;
+  const members = state.players
+    .filter((p) => p.team === team)
+    .sort((a, b) => a.seat - b.seat)
+    .map((p) => (p.seat === state.you ? `${p.name} (you)` : p.name));
+  return members.length ? `${colour} team — ${members.join(" & ")}` : `${colour} team`;
 }
 
 export default function RoundEndModal({ state, result }: RoundEndModalProps) {
@@ -25,7 +33,7 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
         <div className="panel modal victory">
           <div className="victory-crown">👑</div>
           <h2 className={`victory-title team${result.winner_team}`}>
-            {teamName(result.winner_team)} wins the game!
+            {teamName(result.winner_team, state)} wins the game!
           </h2>
           <p className="victory-sub">
             Final levels — Blue: {result.new_levels[0]} · Orange: {result.new_levels[1]}
@@ -47,7 +55,7 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
   return (
     <div className="modal-backdrop">
       <div className="panel modal">
-        <h2 className={`modal-title team${result.winner_team}`}>{teamName(result.winner_team)} wins the round</h2>
+        <h2 className={`modal-title team${result.winner_team}`}>{teamName(result.winner_team, state)} wins the round</h2>
 
         <div className="result-grid">
           <span className="result-label">Trick points</span>
@@ -80,8 +88,8 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
 
         <p className="result-verdict">
           {total >= 80
-            ? `Attackers reached ${total} of the 80 needed — ${teamName(result.winner_team)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`
-            : `Attackers fell short with ${total} of the 80 needed — ${teamName(result.winner_team)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`}
+            ? `Attackers reached ${total} of the 80 needed — ${teamName(result.winner_team, state)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`
+            : `Attackers fell short with ${total} of the 80 needed — ${teamName(result.winner_team, state)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`}
         </p>
 
         <div className="kitty-reveal">

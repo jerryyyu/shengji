@@ -31,8 +31,9 @@ export type ClientMsg =
 export interface ErrorMsg {
   type: "error";
   message: string;
-  /** Machine-readable cases, e.g. "room_not_found" (clear saved room, back to lobby). */
-  code?: string;
+  /** Machine-readable case. Typed so a new server code cannot be handled by
+   *  a stale client branch that silently falls through to a generic toast. */
+  code?: ErrorCode;
 }
 
 export interface RoomPlayer {
@@ -62,7 +63,7 @@ export interface StatePlayer {
    *  Tick it down locally — broadcasts are event-driven, not per-second. */
   takeover_in: number | null;
   /** "human" | "bot" | "bot_cover" — explicit, not inferred from is_bot. */
-  controller: string;
+  controller: Controller;
   /** Name of the absent owner while a bot covers their seat. */
   reserved_for: string | null;
 }
@@ -158,7 +159,12 @@ export type ErrorCode =
   | "room_not_found"
   | "room_full"
   | "choose_seat"
-  | "seat_unavailable";
+  | "seat_unavailable"
+  | "stale_connection";
+
+/** "human" — a connected person; "bot" — a permanent bot seat;
+ *  "bot_cover" — a bot covering someone who dropped. Never infer from is_bot. */
+export type Controller = "human" | "bot" | "bot_cover";
 
 export interface ChatHistory {
   type: "chat_history";
@@ -192,7 +198,6 @@ export interface RoomSeats {
     team: number;
     /** Bot seat, OR a human who has dropped (a bot is covering it). */
     claimable: boolean;
-    /** "human" | "bot" | "bot_cover" — never infer these from is_bot. */
-    controller: string;
+    controller: Controller;
   }[];
 }

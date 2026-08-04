@@ -450,24 +450,42 @@ def test_stale_socket_cannot_detach_a_newer_connection(client):
             assert not seat0.connected
 
 
-def test_resume_token_beats_name_identity(client):
-    """P0-1: names are not identity — the token resumes the right seat."""
+def test_resume_token_resumes_the_exact_seat(client):
+    """The token is identity: it resumes that seat regardless of the name."""
     with client.websocket_connect("/ws") as a:
         code, room, socks = _four_humans(client, a)
         tok = room.seats[1].token          # amy's seat
         socks[0].__exit__(None, None, None)
-        # Someone ELSE also called amy must not seize it by name alone...
-        with client.websocket_connect("/ws") as imposter:
-            imposter.send_json({"type": "join_room", "room": code,
-                                "name": "amy", "token": "not-the-token"})
-            st = _drain(imposter, "state", tries=60)
-            assert st["you"] == 1, "name fallback still applies when no token matches"
-        # ...and the real owner's token resumes that exact seat.
         with client.websocket_connect("/ws") as real:
             real.send_json({"type": "join_room", "room": code,
-                            "name": "whatever", "token": tok})
+                            "name": "totally-different-name", "token": tok})
             st = _drain(real, "state", tries=60)
             assert st["you"] == 1
+        for w in socks[1:]:
+            w.__exit__(None, None, None)
+
+
+def test_name_reentry_is_allowed_but_does_not_inherit_the_token(client):
+    """The house trust model, asserted honestly rather than wished away.
+
+    Typing a dropped player's name DOES re-enter their seat — the same
+    permission the seat picker already grants deliberately, so the name path
+    is not a privilege escalation. What it must NOT do is hand over that
+    seat's existing token, or an impersonator could later displace the real
+    owner. An earlier version of this test claimed the opposite of what it
+    asserted (Codex, 2026-08-04).
+    """
+    with client.websocket_connect("/ws") as a:
+        code, room, socks = _four_humans(client, a)
+        original = room.seats[1].token
+        socks[0].__exit__(None, None, None)
+        with client.websocket_connect("/ws") as other:
+            other.send_json({"type": "join_room", "room": code,
+                             "name": "AMY ", "token": "not-the-token"})
+            st = _drain(other, "state", tries=60)
+            assert st["you"] == 1, "name re-entry should reach the dropped seat"
+            assert room.seats[1].token != original, \
+                "name re-entry inherited the original owner's token"
         for w in socks[1:]:
             w.__exit__(None, None, None)
 
@@ -671,4 +689,87 @@ def test_overlapping_resume_race_is_stable(client):
             assert seat0.connected
             srv._detach(seat0, room, gen_before)     # stale teardown, late
             assert seat0.connected, f"iteration {i}: stale teardown won"
+            w.__exit__(None, None, None)
+
+
+# ------------------------------- Codex re-audit 2026-08-04: public-path bugs
+def test_create_room_issues_a_resume_token(client):
+    """create_room bypassed _attach: no token, no generation, no identity."""
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        res = _drain(a, "resume")
+        assert res["token"] and res["gen"] >= 1
+
+
+def test_creator_refresh_does_not_duplicate_the_seat(client):
+    """The exact client path: create, take the wire token, refresh over it."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        tok = _drain(a, "resume")["token"]
+        code = _drain(a, "room")["room"]
+        with client.websocket_connect("/ws") as a2:
+            a2.send_json({"type": "join_room", "room": code,
+                          "name": "jerry", "token": tok})
+            st = _drain(a2, "room")
+            assert st["you"] == 0, "refresh landed on a different seat"
+            assert len(srv.rooms[code].seats) == 1, \
+                "refresh appended a second seat for the same person"
+
+
+def test_displaced_socket_cannot_act(client):
+    """A socket replaced by a newer one owns nothing — not even leave_room."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as h:
+        h.send_json({"type": "create_room", "name": "host"})
+        code = _drain(h, "room")["room"]
+        old = client.websocket_connect("/ws").__enter__()
+        old.send_json({"type": "join_room", "room": code, "name": "bob"})
+        tok = _drain(old, "resume")["token"]
+        _drain(old, "room")
+        new = client.websocket_connect("/ws").__enter__()
+        new.send_json({"type": "join_room", "room": code,
+                       "name": "bob", "token": tok})
+        _drain(new, "room")
+        room = srv.rooms[code]
+        assert room.seats[1].connected
+
+        old.send_json({"type": "leave_room"})     # the DISPLACED socket acts
+        err = _drain(old, "error")
+        assert err["code"] == "stale_connection"
+        assert code in srv.rooms, "stale leave deleted the room"
+        assert len(room.seats) == 2, "stale leave removed the live seat"
+        assert room.seats[1].connected, "stale leave detached the live socket"
+        for w in (old, new):
+            try:
+                w.__exit__(None, None, None)
+            except Exception:
+                pass
+
+
+def test_claiming_a_seat_rotates_its_token(client):
+    """The previous owner must not be able to displace the new one later."""
+    with client.websocket_connect("/ws") as a:
+        code, room, socks = _four_humans(client, a)
+        old_tok = room.seats[1].token
+        socks[0].__exit__(None, None, None)          # amy drops
+        with client.websocket_connect("/ws") as taker:
+            taker.send_json({"type": "join_room", "room": code,
+                             "name": "newbie", "seat": 1})
+            _drain(taker, "state", tries=60)
+            assert room.seats[1].token != old_tok, "token survived the transfer"
+            # The old token must no longer resume that seat.
+            with client.websocket_connect("/ws") as amy:
+                amy.send_json({"type": "join_room", "room": code,
+                               "name": "amy", "token": old_tok})
+                m = None
+                for _ in range(40):
+                    m = amy.receive_json()
+                    if m.get("type") in ("room", "state", "error"):
+                        break
+                seat = m.get("you") if m.get("type") in ("room", "state") else None
+                assert seat != 1, "stale token displaced the new owner"
+        for w in socks[1:]:
             w.__exit__(None, None, None)

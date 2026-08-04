@@ -724,11 +724,14 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 if t == "create_room":
                     room = Room(code=new_code())
                     rooms[room.code] = room
-                    me = Seat(name=str(msg.get("name") or "Player"),
-                              ws=ws, connected=True)
-                    me.queue = asyncio.Queue(maxsize=128)
-                    me.writer = asyncio.create_task(_writer(ws, me.queue))
+                    # Through _attach like every other path: hand-rolling the
+                    # queue/writer here skipped the generation bump AND the
+                    # resume token, so a creator had no identity and an
+                    # overlapping refresh appended them as a SECOND seat
+                    # (Codex, 2026-08-04).
+                    me = Seat(name=str(msg.get("name") or "Player"))
                     room.seats.append(me)
+                    my_gen = _attach(room, me, ws)
                     await broadcast(room)
                 elif t == "peek_room":
                     # Who is sitting where, WITHOUT joining — the lobby uses
@@ -785,6 +788,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                 (s for s in target.seats
                                  if not s.is_bot and secrets.compare_digest(
                                      s.token, tok)), None)
+                        by_name = False
                         if reclaim is None:
                             key = name.strip().casefold()
                             reclaim = next(
@@ -792,6 +796,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                  if not s.is_bot and not s.connected
                                  and s.name.strip().casefold() == key),
                                 None)
+                            by_name = reclaim is not None
                         if reclaim is not None:
                             me = reclaim
                         elif len(target.seats) < 4 and target.game is None:
@@ -853,12 +858,26 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             took_from = me.name
                             took_over_human = not me.is_bot
                             me.bot_announced = False
+                            # New owner => new identity. Keeping the old token
+                            # would let the previous owner present it later and
+                            # displace the person who took the seat.
+                            me.token = secrets.token_urlsafe(12)
                             me.is_bot = False
                             me.name = name
                             target.log_event("seat_claimed", seat=pick,
                                              name=name, bot=False)
                             claimed_from_bot = True
                         room = target
+                        if by_name:
+                            # HOUSE TRUST MODEL, stated plainly: a dropped
+                            # seat can be re-entered by anyone who types that
+                            # player's name. It is the same permission the
+                            # seat picker already grants deliberately, so the
+                            # name path grants no MORE access — but it must
+                            # not hand over the original owner's token, or an
+                            # impersonator could later displace the real owner
+                            # (Codex, 2026-08-04).
+                            me.token = secrets.token_urlsafe(12)
                         my_gen = _attach(room, me, ws)
                         if reclaim is not None:
                             chat_system(
@@ -881,10 +900,19 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     await send(ws, {"type": "error", "message": "Join a room first."})
                 continue
 
+            # A socket that has been displaced by a newer connection owns
+            # nothing: its leave_room previously detached the LIVE connection
+            # and deleted the room, and it could still submit plays.
+            if my_gen != me.gen:
+                await send(ws, {"type": "error", "code": "stale_connection",
+                                "message": "This connection was replaced by a "
+                                           "newer one."})
+                break
+
             if t == "leave_room":
                 async with room.lock:
                     chat_system(room, f"{me.name} left")
-                    _detach(me, room)
+                    _detach(me, room, my_gen)
                     if room.game is None:
                         # lobby: free the seat entirely
                         if me in room.seats:

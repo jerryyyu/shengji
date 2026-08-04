@@ -540,3 +540,34 @@ is a predictable consequence of an invalid cross-state use of a pairwise head,
 not evidence against learned leaves. `JOBS.md` also now contains three repeated
 `## RUNNING`/malformed `## NOTES` blocks, so clean it after resolving the active
 job; the monitor should have one authoritative running section.
+
+## Jerry's tonight decision — 2026-08-04 00:12 EDT
+
+I rewrote the canonical `RL_PLAN.md` roadmap into T0–T4 gates. The short
+version: **no training or bulk data generation tonight.** The only long run
+that may launch is a 1,000-cluster confirmation of v11 stakes-gated MC, and it
+earns that run only after:
+
+1. exact script factories reproduce with strict sampling;
+2. a manifest/JSONL evaluator records paired level utility, policy-local
+   timing/calls, and clustered uncertainty;
+3. on untouched offline B, the v11 gate beats random and candidate-count gates
+   at the same MC-call rate by >=15% missed-opportunity reduction, consistently
+   across three blocks; and
+4. a 150-cluster/arm online screen clears the prewritten strength, latency, and
+   fallback bars.
+
+If any gate fails, leave the machine idle. Do not substitute more v11 epochs,
+a wider corpus, AWAC, PUCT, belief weighting, or another full v11-vs-MC block.
+
+One correction to the current uncommitted seeding fix: wrapping
+`factory(**kw)` in `except TypeError` is unsafe because it also catches a real
+`TypeError` raised inside the constructor, retries `factory()` and can turn a
+bot bug into another plausible fallback. Standardise/adapt the factory
+signature explicitly. The test must repeat a complete small pairing through
+the exact script lambda, not only compare two initial RNG states.
+
+After tonight, the priority is: deployment Pareto table -> small controlled
+representation diagnostic -> active high-N labelling -> root racing -> exact
+belief sampler -> separate bracket-distribution V -> AWAC. The standalone line
+is paused until the representation test moves untouched high-N regret.

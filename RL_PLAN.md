@@ -417,54 +417,153 @@ comparison stays open rather than counted.
 
 ---
 
-## ROADMAP (ordered, rewritten 2026-08-04 01:30)
+## TONIGHT RUNBOOK — 2026-08-04 (ordered; no blind compute)
 
-The previous roadmap had rotted: it claimed "warm won, scratch killed" (later
-refuted — no detected difference), called MCValueLeaf a 45% failure (since
-settled at 50.4% over n=1200), and listed gen-v3 generation as running months
-of results ago. Rewritten against what is actually known.
+**Decision:** do not launch another training run or full data-generation job
+tonight. Do not rerun the entire v11-vs-MC duel merely to repair its seed
+provenance: the 4,080 unseeded-search rounds are already enough to say the
+effect is approximately a tie and too small to be the next lever. The only
+long run allowed tonight is a corrected confirmation of the selective MC gate,
+and it earns that run only by passing the cheap gates below. An idle machine is
+better than another invalid or uninformative block.
 
-1. **Settle v11pair vs mc** — RUNNING on both machines (blocks 3 and 4, seeds
-   10.5M/11M, 1200 rounds). Pooled so far 253-227 = 52.7%, CI [48.2, 57.1].
-   This is the standing-goal question: a search-free policy at or above mc
-   would be the milestone. Blocks 1 and 2 were both above 50, which is
-   suggestive and not yet evidence.
+### T0 — repair the measuring instrument (30–60 minutes, CPU-light)
 
-2. **Push the override line, since it is the one that worked.** v11pair beats
-   SmartBot 57.7% (n=480, reproduced on disjoint seeds) where v10res scored
-   47%, and the difference was implementation, not scale: optimise the
-   deployed quantity, match the ballot, fit the threshold off-split. Obvious
-   next levers, cheapest first — a wider training ballot (the override can
-   only choose what it enumerates), more epochs at the pairwise objective,
-   and an override on top of MCBot rather than SmartBot.
+- [ ] Standardise the registry factory contract and forward `seed` through the
+  **exact** factories used by `v11_extend.py` and `gate_duel.py`. Do not catch a
+  blanket `TypeError` around `factory(**kw)`: that can swallow a real exception
+  raised *inside* a constructor and silently instantiate a different policy.
+- [ ] Tests: same seed produces the same RNG state; different seeds differ;
+  the exact 10-seed pairing run twice produces byte-identical outcomes. Run
+  with `SHENGJI_STRICT_SAMPLING=1` and fail on every fallback.
+- [ ] Freeze a manifest containing git SHA, checkpoint SHA-256, policy/ballot
+  configuration, engine mode, seed range, and calibration/report split. Mark
+  the six old v11-vs-MC blocks as useful exploratory evidence, not seeded
+  confirmation. Do **not** spend tonight recreating them.
+- [ ] Clean `JOBS.md` to one authoritative RUNNING section before launching
+  anything. A job absent from the manifest and ledger does not run.
 
-3. **Ballot-width ablation** (Codex's two-stage design, adopted as written).
-   Offline: freeze states, high-N worlds, nested ballots, measure best-action
-   coverage and opportunity regret as width grows. Online: compare widths at
-   equal TOTAL rollout budget, not fixed worlds per candidate, which would
-   hand the wider ballot extra compute. Caveat that keeps this honest: the
-   teacher/student gap of ~19 points is measured on the SAME candidate sets,
-   so enumeration cannot be the whole story even if width matters.
+**Exit gate:** exact-factory determinism is green twice from a clean source
+tree. Otherwise stop; no experiment starts.
 
-4. **Direct V(state) head** — removes 51% of vleaf's per-decision cost and is
-   the prerequisite for a real PUCT tree. Target `max_a` teacher-Q or a
-   calibrated bracket distribution, never the behaviour return. Gate at equal
-   wall-clock.
+### T1 — one trustworthy selective-search evaluator (60–90 minutes)
 
-5. **Belief-weighted world sampling** — weight determinizations by how likely
-   the heuristic opponent model would have played the observed actions given
-   the sampled hand. Computable exactly, no net, generalises pair_void's hard
-   proofs. Now more interesting than it was: four attempts to improve the
-   EVALUATOR did nothing, so improving the SAMPLER is the untried direction.
-   Gate: weighted vs uniform mc, n>=300 seeded.
+Extend one runner rather than adding another one-off duel. It must write one
+JSONL row per deal seed and flip plus a manifest, and report:
 
-6. **AWAC-style self-play** — advantage-weighted policy-head imitation, values
-   in their own head, so the measured-fatal Q-regression pathway never touches
-   the policy. Parked until the questions above resolve.
+- round winner, signed level change, and fallback/error counters;
+- policy-local `net_calls`, `mc_calls`, sampled worlds, and p50/p95 latency;
+- paired/clustered uncertainty by deal seed (not Wilson over two correlated
+  flips); and
+- an interleaved or in-round all-MC timing baseline, not a shorter later run
+  on different seeds extrapolated 4x.
 
-7. **Contingency** — if every line above stalls: encoder audit via aux-head
-   probes before any more training, and rented compute only if a curve is
-   climbing but slowly. Do not buy compute to accelerate a flat curve.
+**Exit gate:** replaying the same 10 clusters reproduces every non-timing field
+byte-for-byte, counters reconcile with decisions, and no fallback fires.
+
+### T2 — offline gate/proposer screen (<=45 minutes; reuse existing data)
+
+Fix the evaluator's raw-points versus `/100` unit mismatch and implement an
+actual shard-disjoint calibration-A/report-B split. On valued gen-v4 rows:
+
+1. Fit the v11 stakes threshold on A and read B once.
+2. At the identical `mc_call_rate`, compare v11 with (a) a random gate and
+   (b) a candidate-count/lead-follow complexity gate. Define missed
+   opportunity as `max_i Q_i - Q_0` on states where search is skipped.
+3. Report three independent shard blocks and the consequential-state slices;
+   do not call max predicted delta “confidence.”
+4. Report candidate-0 + v11 top-K teacher-best coverage and opportunity regret
+   for K=1/2/4/8. This informs root racing; it does not authorize hard pruning
+   tonight.
+
+**Promotion gate:** on untouched B, the v11 gate must reduce mean missed
+opportunity by at least 15% relative to **both** matched-rate cheap gates, with
+the same direction in all three shard blocks. If it fails, stop the gate line
+and leave the machine idle. Do not rescue it with a threshold chosen on B.
+
+### T3 — small online screen (only if T2 passes; about 150 seed clusters/arm)
+
+Use the same frozen seed block and strict runner for:
+
+1. full MC N=10;
+2. v11 stakes-gated MC;
+3. random-gated MC at the same search-call rate; and
+4. complexity-gated MC at the same search-call rate.
+
+This is a screen, not a strength claim. Continue only if the v11 gate beats
+both cheap gates on the point estimates for paired level utility, has no
+fallbacks, achieves at least 48% round wins versus full MC, loses no more than
+0.03 signed levels per round, and consumes at most 60% of the all-MC table
+wall-clock. Record these rules before starting.
+
+### T4 — the only permitted overnight run
+
+If and only if T0–T3 all pass, launch **one** preregistered confirmation of
+v11-gated MC versus full MC (1,000 deal-seed clusters, two flips each). Primary
+metric is paired signed level utility; round win-rate is secondary. Promotion
+requires:
+
+- clustered 95% lower bound above -0.03 signed levels/round;
+- clustered 95% lower bound above -2 percentage points in round win-rate;
+- table wall-clock <=60% of all-MC; and
+- zero silent fallback, timeout, or zero-world decisions.
+
+If it misses, record the result and stop. Do not extend until an interval
+crosses the line. If T2 or T3 fails, **run nothing overnight**.
+
+### Explicitly do not run tonight
+
+- no more v11 epochs, wider-ballot training, or full gen-v5 corpus;
+- no standalone-policy duel (park it as a diagnostic baseline);
+- no v11 pairwise head as an MC leaf;
+- no AWAC/DMC restart—the role-sign and immutable-artifact issues are not yet
+  closed by tests;
+- no PUCT/MCTS: a calibrated absolute information-state value and a belief
+  model are prerequisites; and
+- no belief weighting until the hard sampler itself never emits an impossible
+  world under strict mode.
+
+## ROADMAP AFTER TONIGHT (ordered by information per unit compute)
+
+1. **Establish the deployment Pareto frontier.** Keep SmartBot, direct v11,
+   MC N=5/10/20, the settled value-leaf speed arm, and any surviving selective
+   gate on one reproducible strength/latency table. Product promotion can use
+   non-inferiority plus speed; “beats MC” still requires superiority.
+2. **Representation diagnostic, not another bulk training run.** Create a
+   versioned raw-state dataset that stores episode/seed/decision ids, role,
+   phase, ballot hash, and teacher artifact. On a small high-N frozen set,
+   compare the current encoder against exactly one enriched encoder using the
+   same model, initialization, data, and three training seeds. Add
+   trump-relative canonicalisation, ordered recent tricks, declaration
+   owner/cards, pair-voids, team levels, and banker-private burial where legal.
+   Generate a full corpus only if untouched high-N regret improves >=10% in
+   all three seeds.
+3. **Active high-N expert iteration.** Spend expensive MC labels on v11/MC
+   disagreements, high predicted opportunity, ensemble disagreement, and
+   score-bracket/late-round states; keep an anchor replay mixture. This is more
+   likely to move v11 than another epoch over the same noisy N=30 corpus.
+4. **Root racing before tree search.** Give every candidate a small common-
+   world rollout floor, then allocate the remaining fixed budget using v11's
+   ranking plus empirical uncertainty. Compare at equal total wall-clock.
+5. **Fix then improve the belief sampler.** Enforce suit voids, pair-voids, and
+   declared-card pins without a constraint-dropping fallback; then test
+   tempered belief weights with effective-sample-size reporting against
+   uniform worlds.
+6. **A real absolute value model.** Predict the attacker-perspective scoring-
+   bracket distribution / expected signed level utility under a named fixed
+   continuation policy, with calibration metrics. Do not use noisy `max_a Q`
+   as the default target. It may share v11's trunk but must have a separate
+   contract and API.
+7. **AWAC last.** Resume only after role symmetry, immutable checkpoint
+   promotion, strict fallbacks, and the active-label pipeline are tested. Keep
+   policy advantages out of the absolute value head and start with a bounded
+   shadow run.
+
+For online selection, paired signed level utility is primary because it is the
+actual game objective; round win-rate remains the higher-power secondary
+metric, and a final candidate gets a full-game confirmation. Standalone policy
+development is paused until the representation diagnostic supplies a positive
+offline result.
 
 ## Training data inventory (rebuilt from disk 2026-08-04; local + gitignored)
 

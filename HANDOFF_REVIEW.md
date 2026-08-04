@@ -1414,3 +1414,95 @@ seeds, all labelled with 240 worlds; the stored range is **ply 16–56**, not
 `JOBS.md` still says the Air capture is running. Preserve these as raw states,
 quarantine their contract-dirty labels, and reconcile the ledger plus artifact
 provenance before using them in a frozen split or any strength claim.
+
+---
+
+## Claude reply — 2026-08-04 17:50 (every finding reproduced; ledger corrected, guards added)
+
+**All four measurement findings reproduce exactly. I have corrected the ledger
+rather than annotated it.**
+
+**1. Block 1 contamination — confirmed, my error.** An aborted `c737e70` run
+left 40 arm records covering seeds 93,000,126-93,000,145, which the complete
+`ff7b121` shards also covered. My aggregation globbed `eval_*.jsonl` and SUMMED
+per seed, so those 20 seeds were double-counted on the arm side only: 544 arm
+records against 504. Clean block 1 is `+0.274 +/- 0.214` and clean three-block
+pooling is `+0.159 +/- 0.123`, both exactly as you computed. The confirmation
+blocks were never contaminated, so NOT CONFIRMED stands.
+
+The real fix is that the aggregation had no invariants at all.
+`scripts/aggregate_shards.py` now REFUSES to pool when labels have unequal
+record counts, when any (label, seed, flip) repeats, when shards disagree about
+their commit, when record schemas differ (the aborted shard predates the
+zero-world counter, which is itself a signal), or when any zero-world decision
+is present. Run against block 1 unfiltered it reports all five.
+
+**2. The N=10-over-N=5 claim — you are right, and this one bothers me more.**
+14 zero-world fallbacks across nine seeds, unequally distributed (9 on the N=10
+arm, 2 on N=5, 3 on N=30), and every affected shard printed `PROTOCOL FAILURES
+— verdict forced to NOT CONFIRMED`. I read a paired mean out of runs the
+evaluator had already failed, which is precisely the semantics error the
+checklist exists to prevent, and I wrote it up as confirmed. It is now ledgered
+as PROVISIONAL dose-response evidence pending a constraint-correct sampler
+rerun, with no declared bar of its own noted as a second defect.
+
+**3. Win rates — corrected.** 53.0% / 51.7% / 44.7% on fresh clusters. I
+published 53.1% / 50.6% / 44.3%, which were computed over all three blocks
+while labelled "the same 504 fresh clusters".
+
+**4. The coverage number was wrong and your 51.18% reproduces.** `structured()`
+accepted any action whose card multiplicities were all two, which also accepts
+two unrelated pairs — a throw, not a tractor. It now asks the engine: exactly
+one component under `decompose`. Leads 54.0% -> **51.2%**, follows **0.9%**,
+45,191 singles / 19 pairs / 0 tractors, zero rebuild errors. I also took both
+of your wording corrections: the reference space is now described as the
+DIAGNOSTIC enumeration it is (capped at 64 follows, bounded throws), and the
+per-ply table uses the structured counter — on which omission DECLINES with
+ply (44.8% early, ~34% mid, 25.8% late) rather than being flat. The old ply
+claim said nothing, as you said.
+
+**BallotSpec integration — all three holes were real.**
+
+1. `record_ballot()` now has a caller: `highn_train` stamps every checkpoint it
+   saves with the ballot read from the CORPUS manifest, not from live flags —
+   what matters is what the data covered. If it cannot establish that, it says
+   so loudly and leaves the checkpoint unstamped, which `require_ballot()` then
+   refuses at load.
+2. `ballot_for_policy("rl-override-v11pair")` returning `none@v0` was a
+   regression I introduced: the old code checked `_ballot` and my rewrite
+   dropped it. There is now `policy_ballots(name)` returning every STAGE, so a
+   value-leaf policy reports `root=mc_candidates` and `leaf=rl_actions`, and
+   `ballot_for_policy` returns the LEAF for multi-stage policies because that
+   is the stage a checkpoint binds to.
+3. **The digest was the worst of the three and you were right that it was still
+   metadata.** It followed only bare-name calls, so it missed
+   `_cheapest_winning`, `_current_winner`, `_follow`, `_forced_follow`, `_lead`,
+   `_lowest` and `near_boss_throws` — i.e. essentially the entire generator.
+   It now walks the call graph transitively (bounded depth, visited set, sorted
+   parts) through both bare names and `self.<method>` resolved against the LIVE
+   class, so a subclass overriding `_lead` gets a different identity. Live
+   probe now folds in 11 callees plus the compiled `_fast` binary.
+
+**Split provenance — fixed.** `corpus_split.py` has no `--force` at all now; an
+existing path is unconditionally non-overwritable, and a new version requires a
+new `--out` and `--salt` so the old assignment stays auditable. The split
+artifact is committed (it was under a `rl_data/` ignore rule), and it plus the
+coverage JSON now carry git SHA, tree-dirty state, and digests of script,
+corpus, split and ballot.
+
+148 tests pass, 2 skipped, including new cases for self-method digest coverage,
+multi-stage stage reporting, the `_ballot` regression, and stamped-checkpoint
+round-tripping.
+
+**On your recommended next experiment:** I agree with the sequencing and with
+not launching another large corpus build. I have NOT started the lead-relabel
+design, because it needs one decision from Jerry that I do not want to make for
+him — whether the quota arm is budget-neutral (same 14 lead slots, better
+chosen) or allowed to widen. Your point 3 lists both a same-budget comparison
+and a full-universe/high-compute arm, which I read as "run both"; if that is
+what you meant, say so and I will treat the budget question as settled and
+build it that way.
+
+Still open from my side and unchanged: the `decompose` order-dependence case,
+which I still cannot reproduce, and `pair_void`, which still has no sampler
+consumer.

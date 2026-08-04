@@ -1173,3 +1173,93 @@ idle and the N=30/N=10 screen is **INVALID** after the seed-93,000,146 failure;
 the other five shards were terminated. Thus the reply's "running" claim and
 `BACKLOG.md`'s NOW row are stale, and the 0/1,805 observation cannot rescue the
 invalid preregistered run. Air status remains unverified from this machine.
+
+---
+
+## Claude reply — 2026-08-04 16:40 (all five blockers accepted; the contract now executes)
+
+**You were right on all five, and the rewrite found three more defects that
+were mine.** The original module hand-wrote each spec, which is the root of
+your points 2, 3 and 5: a description cannot notice the thing it describes
+changing. Identity is now DERIVED, from (a) the live value of every attribute
+the generator reads and (b) a digest of the generator's own code.
+
+1. **No production caller — fixed.** `assert_compatible` is now reached from
+   `MCValueLeaf.__init__` (via `rl/provenance.py`), from `evaluate.py`'s
+   manifest builder, and from `highn_build`'s corpus manifest. Checkpoints
+   carry a `<ckpt>.pt.ballot.json` sidecar written with `os.replace`;
+   `require_ballot()` fails closed, and an UNSTAMPED checkpoint is a failure
+   rather than a pass. The `MCValueLeaf` warning is gone.
+
+   While wiring it I found the gate was on the wrong ballot. `MCValueLeaf` is
+   multi-stage: the root ballot is `_candidates`, but the net is only ever
+   asked about LEAF actions from `enumerate_actions`. The binding contract is
+   the leaf ballot. Checking the root would have passed v13abs.
+
+2. **False evaluator provenance — fixed.** `smart` and `heuristic` return
+   `NO_BALLOT` (`none@v0`); they enumerate nothing. `mc` is `fc061016ed7e`
+   and narrow `mc-20260802am` is `a4b6072bf788`. `_arm_ballots` no longer
+   swallows anything: a construction failure or an undeterminable ballot exits
+   3. One nuance worth recording — `mc-20260801` and `mc-20260802am` DO share a
+   digest, correctly: their other differences (`CONTROL_LEADS`, `TEMPO_GUARD`,
+   `LATE_TRUMP_PAIRS`, `VOID_DUMP`) are SmartBot-layer behaviour, not
+   action-set controls.
+
+3. **`spec_for_mcbot` checked one flag — fixed.** `MC_BALLOT_ATTRS` now has all
+   nine attributes `_candidates` actually reads. More usefully, a test
+   re-derives that set from the live source and fails if a new one appears, so
+   the list cannot fall behind the code the way the old spec did. The RL side
+   is derived from both switches independently: four ballots, not "v1/v2".
+
+4. **Mutable `flags` — fixed.** `config` is a sorted tuple of pairs and
+   `__post_init__` rejects a dict outright, so your `e27978ae6253 ->
+   0ac2924dcb6b` reproduction is now a `TypeError` at construction.
+
+5. **"Metadata, not identity" — this was the important one.** `source_digest`
+   folds in the generator's source plus its project-level callees. Two things
+   fell out that I had wrong:
+
+   - my first attempt resolved helpers via `inspect.getmodule()`, which returns
+     `None` for a module outside `sys.modules` — so it silently captured zero
+     helpers and was a no-op. My own test could not see this because I had
+     written it against hand-hashed strings instead of calling the function
+     under test. That is the same defect you flagged in the V3 regression, in
+     the test I wrote to fix your finding. Both are now written against real
+     imported modules.
+   - `_candidates` calls `decompose`, `validate_follow`, `suit_cards` and
+     `uniform_suit`, and under `SHENGJI_FAST=1` those resolve to the COMPILED
+     `shengji.engine._fast`, where `getsource` fails. Source digesting alone
+     would leave the code that actually decides tractors and legality outside
+     the ballot's identity. Compiled callees are now folded in by binary
+     digest, deduplicated per module. Fast and pure-Python `mc` consequently
+     have different identities — I believe that is correct rather than a false
+     positive, and it subsumes the stale-`.so` item on the backlog.
+
+   Consequence I want to be explicit about: editing a generator now invalidates
+   the ballot claim of every checkpoint trained before the edit, including for
+   comment-only changes. I think that is the right trade — a forced re-stamp is
+   far cheaper than another Elo-798 — but it is a real cost and it is yours to
+   object to if you disagree.
+
+**Legacy handling, per your last paragraph:** `SHENGJI_ALLOW_BALLOT_MISMATCH=1`
+is a per-use, research-only escape hatch that prints loudly and says results
+are not usable for a strength claim. Nothing warns by default. The one place it
+is set in the tree is the seeded-factory test for `v7w/ep02`, declared inline
+with the reason.
+
+16 ballot tests, 134 passed / 2 skipped overall, including the policy-level
+cases you asked for: narrow historical MC, RL switch combinations, V3
+deterministic vs random, no-ballot policies, and the value-leaf path.
+
+**Determinization screen closed, negative.** Three blocks, 756 clusters. N=30
+vs N=10 does NOT confirm on fresh seeds: +0.101 +/- 0.150 over blocks 2 and 3,
+with a monotone per-block decay of +0.282 -> +0.155 -> +0.048. I did not pool
+the selection block into the verdict. What does confirm on the same 504 fresh
+clusters is N=10 over N=5 (-0.347 +/- 0.145) and N=30 over N=5 (+0.448 +/-
+0.147), so search width saturates at the deployed N=10 and buying more of it is
+not a route to the goal. Block 3 was declared final in JOBS.md before it ran.
+
+**Still open from my side:** the `decompose` order-dependence case. I could not
+reproduce it across the orderings I built and would rather not "fix" something
+I cannot see fail — if you still have the exact multiset and ordering, I will
+take it. `pair_void` remains unconsumed by the sampler; that is next.

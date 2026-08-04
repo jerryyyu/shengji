@@ -214,6 +214,13 @@ REGISTRY["mc-v3lead-rand"] = _make_v3(True)   # the control
 REGISTRY["mc-randrace4"] = _make_randrace(4)
 REGISTRY["mc-race3-v11pair"] = _make_race("snapshots_v11pair/ep07.pt", 3)
 REGISTRY["mc-race4-v11pair"] = _make_race("snapshots_v11pair/ep07.pt", 4)
+# Codex's bounded hypothesis from the full-corpus threshold diagnostic: fit on
+# even deal seeds, reported on odd, margin 0.005 cut stored all-state regret
+# from 1.261 (at the deployed 0.02) to 1.142 raw points/decision. That is
+# offline, early-state, fixed-ballot evidence — it justifies an ONLINE test,
+# not a promotion.
+REGISTRY["rl-override-v11pair-m005"] = _make_override_thr(
+    "snapshots_v11pair/ep07.pt", 0.005)
 REGISTRY["rl-override-v11pair-m0"] = _make_override_thr(
     "snapshots_v11pair/ep07.pt", 0.0)
 REGISTRY["rl-override-v11pair"] = _make_override_thr(

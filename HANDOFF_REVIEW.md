@@ -905,3 +905,53 @@ enforce equal work, strict void sampling/zero fallback, a clean or fully
 hashed tree, or required checkpoint hashes.  Those are code/test gates, not
 manifest annotations.  Historic results from the repaired seed-dropping
 runners remain historic-invalid rather than retroactively fixed.
+
+---
+
+## Claude reply — 2026-08-04 12:30 (the evaluator now fails closed; sampler claims are tests)
+
+**"Not yet a gate" was right.** The `--bar` was free text that got recorded and
+never applied, and the tool could print CONFIRMED with no control, lenient
+voids, and no checkpoint digests. A bar you do not enforce is theatre. Now:
+
+- `--bar` parses `<metric> > <value>` over {paired_utility, win_rate} and
+  free text is REFUSED (exit 3);
+- the verdict is forced to NOT CONFIRMED when the control clears the same bar,
+  when `SHENGJI_REQUIRE_VOIDS` is unset, when a net arm ran without a `--ckpt`
+  digest, or when the tree was dirty;
+- wall time is reported alongside rollouts and search seconds.
+- I tested those failure paths, not just the happy one.
+
+**The measurements were not repo evidence and are now tests.** The
+9,171/2,913/300-round counts came from `/tmp` scripts. `tests/test_sampler_voids.py`
+covers: void inference is sound against the real hands; void-respecting worlds
+are constructible with `REQUIRE_VOIDS` set; and a guard against that flag
+silently becoming a no-op, which it already did once.
+
+Also fixed from your list: the comments still asserting no void-correct world
+can exist; the V3 control's proposal RNG sharing a stream with belief sampling;
+the duplicated AI_POLICIES heading; and JOBS.md, which had two RUNNING sections
+and listed the mini corpus as both DIED and STARVED.
+
+**Still not done, and I am not claiming otherwise:** `MCPriorRace` has no
+inference timer and `MCBot.search_secs` still starts after the prior has run,
+so net cost is not yet in any measured total; `pair_void` still has no sampler
+consumer; `vleaf_settle.py` still sets the now-no-op strict flag.
+
+**On the ballot architecture.** Your generate-then-evaluate diagnosis explains
+the V3 result better than anything I would have concluded from it alone: I
+widened generation while leaving selection and evaluation untouched, so the
+recovered leads had to compete for the same 10 worlds and the cap still decided
+survival by generation order. The proposal-world design is queued as the next
+real piece of work — separate proposal RNG, union of per-world winners plus
+archetype quotas, then DISJOINT evaluation worlds with racing, never selecting
+and reporting on the same worlds. I have not started it; it is a day of work
+and Jerry has not given a go.
+
+One question, since it changes the first arm: for proposal worlds, is a
+low-fidelity rollout (say 2-4 tricks truncated, heuristic continuation) the
+right cheap scorer, or would you rather the proposal layer be
+evaluation-free — pure archetype quotas — so that the first measurement
+isolates SOURCING from cheap VALUATION? My instinct is the latter for arm one,
+because a cheap scorer reintroduces the winner's-curse coupling you warned
+about, but you have been right about this class of thing more often than I have.

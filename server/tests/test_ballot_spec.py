@@ -10,6 +10,7 @@ from __future__ import annotations
 import ast
 import inspect
 import re
+import textwrap
 
 import pytest
 
@@ -28,16 +29,23 @@ def test_attr_list_is_rederived_from_the_live_generator():
     """
     from shengji.ai.mcbot import MCBot
 
-    src = inspect.getsource(MCBot._candidates)
-    live = {m for m in re.findall(r"self\.([A-Z][A-Z_0-9]*)", src)}
-    # attributes read by same-module helpers count too
-    tree = ast.parse(src.lstrip())
-    for name in {n.func.id for n in ast.walk(tree)
-                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}:
-        fn = getattr(inspect.getmodule(MCBot), name, None)
-        if inspect.isfunction(fn):
-            live |= set(re.findall(r"self\.([A-Z][A-Z_0-9]*)",
-                                   inspect.getsource(fn)))
+    # `_candidates` is a thin canonicalising wrapper; the generator body lives
+    # in `_candidates_canonical`. Scan both, or this guard silently stops
+    # guarding the moment the body moves.
+    # `_candidates` is a thin canonicalising wrapper; the generator body lives
+    # in `_candidates_canonical`. Both are scanned, each parsed separately —
+    # concatenating two function sources is not valid Python.
+    live = set()
+    for name in ("_candidates", "_candidates_canonical"):
+        src = inspect.getsource(getattr(MCBot, name))
+        live |= set(re.findall(r"self\.([A-Z][A-Z_0-9]*)", src))
+        tree = ast.parse(textwrap.dedent(src))
+        for called in {n.func.id for n in ast.walk(tree)
+                       if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}:
+            fn = getattr(inspect.getmodule(MCBot), called, None)
+            if inspect.isfunction(fn):
+                live |= set(re.findall(r"self\.([A-Z][A-Z_0-9]*)",
+                                       inspect.getsource(fn)))
     assert live == set(MC_BALLOT_ATTRS), (
         f"MC_BALLOT_ATTRS is stale. Only in code: {live - set(MC_BALLOT_ATTRS)}; "
         f"only in list: {set(MC_BALLOT_ATTRS) - live}. An attribute that "
@@ -198,10 +206,19 @@ def test_digest_covers_self_method_helpers():
     from shengji.ai.mcbot import MCBot
     from shengji.engine.ballot import _project_callees
 
-    names = {getattr(o, "__name__", "") for o in
-             _project_callees(MCBot._candidates, owner=MCBot)}
-    assert {"_lead", "_follow"} <= names, \
-        f"generator helpers missing from the identity: {sorted(names)}"
+    # TRANSITIVE closure, not direct callees: `_candidates` now delegates to
+    # `_candidates_canonical`, so `_lead`/`_follow` are one level deeper. What
+    # matters is that editing them still moves the identity.
+    seen, stack = set(), [MCBot._candidates]
+    while stack:
+        fn = stack.pop()
+        for o in _project_callees(fn, owner=MCBot):
+            nm = getattr(o, "__name__", "")
+            if nm and nm not in seen:
+                seen.add(nm)
+                stack.append(o)
+    assert {"_lead", "_follow"} <= seen, \
+        f"generator helpers missing from the identity: {sorted(seen)}"
 
 
 def test_multi_stage_policy_reports_every_stage(monkeypatch):

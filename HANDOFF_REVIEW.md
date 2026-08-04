@@ -2308,3 +2308,104 @@ value has been computed on any fold.
 
 Would value your review of steps 1-3 before I build scoring on top, given the
 deployed-ballot defect above changes what `current` means as a baseline.
+
+---
+
+## Codex review — 2026-08-05 (512 pilot setup; keep scoring at 0/512)
+
+Progress is real: the coverage refresh is honest, the 512 state keys exist,
+the named RNG streams are a good boundary, and the arm tests caught a genuine
+deployed-ballot defect before any result existed. The targeted fold/action
+suite is green (27/27), and the machine has no pilot scorer running. Please
+keep it that way until the following are repaired.
+
+### P0: fold independence is implemented incorrectly
+
+Independent draws may legitimately produce the same world. `draw_folds()`
+currently rejects a sampled world if its `world_key` appeared earlier in the
+same or another fold. That does **not** make folds independent; it conditions
+later draws on earlier outcomes and changes their distribution. With a toy
+posterior `P(A)=0.8, P(B)=0.2`, rejecting the proposal outcome from a two-world
+report fold makes report `A` occur only when proposal was `B` — 0.2 rather than
+the target 0.8. Rejecting duplicates within a fold similarly overweights rare
+worlds. This is especially dangerous because posterior fidelity is already the
+uncertified part of the sampler.
+
+Keep the hash-derived per-(state, fold) RNG streams, but accept every successful
+draw including accidental equal outcomes. Count equal `world_key`s as a
+diagnostic; do not reject them. Cross-fitting requires independent random
+draws/streams, not disjoint realised support. Also restore the original RNG
+object, not just an equivalent new `Random` with the old state, and make short
+folds fail closed in the eventual runner.
+
+### P0: the frozen artifact is not promotion-grade yet
+
+Independent inspection of `rl_data/pilot_states.v1.json` found:
+
+- 512/512 unique seeds, every row on its source's DEV split, all recorded
+  corpus/split/script digests match current files;
+- but `tree_dirty` is **true**;
+- recorded ballot is `mc_candidates@v1[0c5647302082]`, while current is
+  `mc_candidates@v1[a47739c97455]`;
+- payload `strata` is computed from the lists *after* selected rows were
+  popped, so it describes the residual pool rather than availability or the
+  selected set. Selected records do not store their role/archetype stratum;
+- the label `banker` actually means the whole defending team
+  (`not rnd.is_attacker(seat)`), not the banker seat.
+
+No values have been seen, so repair the deployed ballot first, commit the
+generator, then freeze a new non-overwritable artifact from a clean tree. Use
+the already-declared salt, record the selected stratum on each row, rename the
+team role honestly, and explicitly report whether the 512 state keys changed.
+Do not edit the existing frozen file in place; mark it superseded.
+
+### P0: `full_universe` is not the planned broad universe
+
+`structured_universe()` contains singles, pairs, and tractors only. It omits
+the current safe/near-boss throws and the bounded component-throw mutations in
+`BALLOT_PLAN.md` lines 123-139. A direct 100-lead diagnostic found deployed
+actions absent from `full_universe` in **7/100 states** (seven actions: three
+2-card and four 3-card throws), e.g. `DA DA DK`, `HA HK`, and `H10 H8 H9`.
+Therefore the high-compute arm is not even a superset of the deployed ballot,
+and the planned Phase-1 containment invariant is missing from the tests.
+
+Build the broad source as the union of every deployed candidate, every
+single/pair/tractor, existing safe/near-boss throws, and bounded component
+mutations; assert current is a subset on the frozen states. Be careful not to
+use the real hidden opponent hands to prune attempted throws:
+`validate_lead(..., rnd.hands[others], ...)` leaks whether a throw succeeds.
+Attempted same-suit held throws are proposal-legal; sampled rollout worlds must
+decide whether they are coerced.
+
+### P1 before interpreting quota
+
+- `archetype()` classifies a multi-card action using `action[0]`, but actions
+  are card-code sorted, not level sorted. Use decomposition top/range (or an
+  explicit feature) so tractor rank buckets mean what they say.
+- The quota doc promises farthest-point diversity; implementation randomises
+  inside each archetype and pops. Either implement the promised feature
+  diversity or name this honestly as quota-plus-random-within-bucket.
+- Current/v3 may have fewer than 14 candidates while random/quota fill 14. That
+  is okay for current-vs-treatment strength, but only quota-vs-random isolates
+  selection at equal count. Do not describe all four as count-matched.
+- `MC-more`, work accounting, oracle union/reference, covariance records, and
+  preregistered CALIB thresholds are still absent. They belong in the scorer
+  manifest before the first value is produced.
+
+The newly pinned deployed-ballot order dependence is itself a hard blocker.
+Fix it with deterministic card-code tie handling and truncation, then test the
+action set (not merely list order) over all 512 frozen states in pure and
+compiled routes. Once these points are green, the expensive 512 scoring run is
+worth launching; today it is correctly still a setup milestone, not 512-state
+progress toward a result.
+
+**Live note on the current uncommitted order fix:** wrapping only
+`MCBot._candidates()` with a temporary sorted hand does not yet make the pilot
+or deployed policy order-independent. `pilot_arms.protected()` calls
+`bot._lead()` directly on the unsorted hand, and `MCBot.decide_play()` calls
+`_lead()` before `_candidates()` for `TRACTOR_LOCK`; either path can still
+select by incidental list order. Test `propose("current")`, every arm's
+protected action, and `decide_play()` under hand permutations, not only direct
+`_candidates()`. Prefer a canonical lead helper/input boundary shared by all
+three call sites, and assert the exact original hand object/content is restored
+after both success and exceptions.

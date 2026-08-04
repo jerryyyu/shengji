@@ -112,10 +112,9 @@ def test_new_arms_are_deterministic_and_order_independent():
     not change it. A ballot that depends on hand order is not a function of
     the state.
 
-    Scoped to the arms this pilot introduces. `current` and `v3` call the
-    DEPLOYED `_candidates`, which is order-dependent — see the pinned test
-    below. That is a real defect in the baseline, not something to paper over
-    by weakening this assertion for everyone.
+    Scoped to the arms this pilot introduces; the deployed ballot has its own
+    test below, kept separate because it guards shipped code rather than
+    pilot code.
     """
     bot = make_bot("mc", seed=1)
     for rnd, seat in _lead_states(n=4):
@@ -162,16 +161,15 @@ def test_unknown_arm_is_refused():
         propose("quotaa", bot, rnd, seat, budget=BUDGET, seed=1, state_key="k")
 
 
-@pytest.mark.xfail(reason="KNOWN DEFECT in the DEPLOYED ballot, found while "
-                          "building the pilot 2026-08-05: MCBot._candidates "
-                          "returns a different ACTION SET under hand "
-                          "reordering in ~17% of lead states (e.g. offering "
-                          "D2 in one ordering and H2 in another). Same class "
-                          "as the decompose order-dependence, one level up. "
-                          "Pinned so it flips green when fixed.",
-                   strict=True)
 def test_deployed_ballot_is_order_independent():
     """The baseline arm's ballot must be a function of the state, not the list.
+
+    FIXED 2026-08-05, having been pinned xfail-strict for one commit.
+    `_candidates` returned a different ACTION SET under hand reordering in
+    roughly one lead state in six — offering `D2` under one ordering and `H2`
+    under another — because generation walks the hand and the caps truncate
+    whatever came first. It now sorts the hand for the duration of generation,
+    so every helper sees one canonical order.
 
     This matters for the pilot beyond tidiness: if `current` proposes different
     actions depending on incidental hand ordering, its measured strength is

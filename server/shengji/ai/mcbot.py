@@ -249,8 +249,29 @@ class MCBot(SmartBot):
 
     # ------------------------------------------------------------- candidates
     def _candidates(self, rnd: Round, seat: int) -> list[list[str]]:
+        """The ballot. CANONICALISED in the seat's hand order.
+
+        Generation walks the hand and the caps truncate whatever was produced
+        first, so the emitted ACTION SET depended on incidental list order —
+        `D2` was offered under one ordering and `H2` under another, in roughly
+        one lead state in six (found while building the pilot, 2026-08-05).
+        Same class as the `decompose` order-dependence, one level up, and it
+        put ballot noise into every measurement that used this ballot.
+
+        The hand is sorted for the duration of generation and restored after,
+        so every helper below — `_lead`, `_follow`, the throw builders — sees
+        one canonical order without each needing to sort defensively.
+        """
         o = rnd.ordering
         assert o is not None and rnd.trick is not None
+        _saved_hand = rnd.hands[seat]
+        rnd.hands[seat] = sorted(_saved_hand)
+        try:
+            return self._candidates_canonical(rnd, seat, o)
+        finally:
+            rnd.hands[seat] = _saved_hand
+
+    def _candidates_canonical(self, rnd: Round, seat: int, o) -> list[list[str]]:
         hand = rnd.hands[seat]
         cands: list[list[str]] = []
 

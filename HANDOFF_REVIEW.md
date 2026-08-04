@@ -615,3 +615,128 @@ One small harness hardening remains: the new exact-factory test compares only
 aggregate pairing scores. Preserve and compare the per-seed/per-flip outcome
 records too; equal totals can coincide despite different trajectories. This is
 P1 hardening, not a reason to reopen the frontend ship gate.
+
+## Codex hourly review — 2026-08-04 07:38 EDT (retraction accepted; repair the ledger/protocol before a screen)
+
+I reviewed `ffce64a` and `cd405c5`. The central scientific correction is now
+stated honestly, the PERF provenance/N=10 fixes are right, and no new ML result
+needs interpretation. There are, however, two fresh documentation regressions
+that must be closed before a runner treats these files as instructions.
+
+1. **`JOBS.md` is malformed and contradictory.** The attempted empty RUNNING
+   section was inserted inside the introductory sentence (including an
+   unterminated `` `## RUNNING`` fragment), while the old `## RUNNING` section
+   and completed v11 job remain below it. There are therefore still two
+   apparent ledger states. The completion note is also stamped 07:45 in a
+   commit made at 07:36 / reviewed at 07:38. Restore one intact introduction,
+   exactly one `## RUNNING` heading containing `*(nothing)*`, and one `## NOTES`
+   heading; date the completion note with its actual observed time.
+2. **The selective-search protocol now has incompatible branches.** The new
+   paragraph says an equal-measured-work four-arm online screen is authorised
+   after the T2 failure. The canonical T3 section still says “only if T2
+   passes,” matches `mc_call_rate`, and promotes only the v11 arm. Meanwhile
+   `gate_offline.py` still opens with “T2/T3” and prints `GATE (Codex T3)` even
+   after correctly calling itself T2 in the limitations block. Consolidate
+   this as an explicit, one-time **T3 diagnostic exception** (not continuation
+   of the failed v11 gate): same frozen seed clusters, equal measured rollout
+   or search-time budget, all four arms, signed level utility primary, and no
+   T4 authorization unless the resulting winner is on the measured Pareto
+   frontier. Remove the obsolete call-rate contract and fix both script labels.
+
+There is one remaining internal overclaim in `RL_PLAN.md`: immediately after
+explaining that the noisy max makes oracle headroom untrustworthy, it says
+“Headroom is real” and again calls the metric TRUE forfeited value. Replace
+that with “the screen suggests possible, unquantified headroom.” The numbers
+766 and 1,402 may be retained only as biased screen diagnostics.
+
+Until those three textual contradictions are repaired, leave RUNNING empty.
+This is not a request for another analysis or training job, and it does not
+change the frontend release-candidate verdict.
+
+### Strategic objective clarification (Jerry, 07:38)
+
+The main objective is **not** “make search with an RL policy work” at any cost.
+It is: **maximize verified Shengji strength per unit of latency/training
+compute, under a correct engine and reproducible evaluator.** RL-guided search
+is one promising means to that end and must beat simpler Pareto alternatives.
+
+For the present model, separate three roles that have too often been conflated:
+
+- v11pair is already useful as a direct action reranker and may be useful as a
+  root proposer/prior or compute allocator;
+- it is not an absolute state-value function, so using it as an MC/MCTS leaf is
+  semantically invalid without a separately trained value contract; and
+- replacing SmartBot inside rollouts has already tied twice, so “stronger RL
+  rollout policy” is not presently the highest-information lever.
+
+The near-term search question is therefore narrower and testable: **can v11
+ranking plus common-world root racing allocate a fixed MC budget better than
+plain MC, candidate-count allocation, and direct v11?** In parallel, belief
+sampling must become constraint-correct. Longer term, a calibrated
+scoring-bracket value head plus a correct belief model can justify revisiting
+MCTS/PUCT. If direct v11 remains equally strong at ~300x lower latency, or a
+cheap heuristic gate wins the Pareto comparison, those are successes—not
+failures to achieve an RL-search narrative.
+
+## Codex immediate audit — 2026-08-04 07:38 EDT (`t3_gate_screen.py` is NO-GO; it has not launched)
+
+I saw the uncommitted runner and MCBot instrumentation appear during this
+review. Process inspection confirms no T3 experiment is running, so these are
+cheap preflight findings, not a reason to discard results after spending them.
+
+### P0 validity defects
+
+1. **The arms do not share a cheap policy.** The doc says every gated arm uses
+   SmartBot+v11 override when it skips search. In code, v11 may return its
+   learned `pick`, while `ncands` and `random` return plain SmartBot. Moreover,
+   if calibration moves the v11 threshold above 0.02, this v11 arm no longer
+   matches the registered `MCGatedOverride`, which returns SmartBot below its
+   gate. This confounds “where to search” with “what to do when not searching.”
+   Freeze one identical cheap policy for every gate (direct v11 is the most
+   deployment-relevant), or explicitly make this a composite-policy study and
+   stop attributing differences to the gate.
+2. **Random calibration moves in the wrong direction.** For `random`, a larger
+   threshold is a larger search probability. Lines 193-194 multiply it by 1.6
+   when the arm is already over budget and by 0.65 when it is under budget, so
+   calibration diverges; it is also not clamped to [0,1]. v11's threshold has
+   the opposite monotonicity, so the two cannot share that update rule.
+3. **The preregistered evidence is not emitted.** The JSONL promises
+   `fallbacks` but writes no such field; the runner does not enforce strict
+   sampling, write a manifest/checkpoint hash/git SHA/run id, compute paired
+   seed differences or clustered uncertainty, or verify replay. It opens one
+   fixed output in append mode, so reruns silently mix records. Aggregate arm
+   utility is not a paired analysis merely because the seeds match.
+4. **“Strict sampling” would not currently prove strictness anyway.** The
+   sampler deliberately sets `respect_voids=False` on its last retry.
+   `SHENGJI_STRICT_SAMPLING` only raises when *zero* worlds are returned; it
+   neither forbids nor counts that impossible-world fallback, and pair-voids
+   are never enforced. A zero-fallback T3 claim is impossible until the sampler
+   exposes and rejects/counts these cases.
+5. **The latency/work instrumentation is incomplete and intrusive.**
+   `search_secs` starts after candidate generation and excludes the first
+   ballot, net/gate time, and duplicated ballot on escalation. The script loads
+   the Torch `.pt` afresh for every v11 bot rather than using the production
+   numpy path, so its wall time is not deployment latency. The new
+   `self.rollouts += 1` attribute write is inside MC's hottest candidate/world
+   loop and taxes every production/generation search; batch the count outside
+   the inner loop or make instrumentation opt-in. The ±15% budget band is only
+   prose—the script still prints/completes normally when an arm misses it.
+
+### Existing seeding hole still open
+
+`registry.make_bot` correctly dispatches by signature, but
+`tournament._seeded()` still wraps `make(seed=s)` in a blanket `except
+TypeError` and retries `make()`. The claimed constructor-error regression test
+calls `make_bot` directly, so it does not cover this remaining swallowing site.
+Add an exploding factory test through `_seeded` itself and replace the fallback
+with signature dispatch before calling the general evaluator repaired.
+
+Minor but real: the random gate and its MC engine are initialized from the same
+seed into separate identical RNG streams, coupling gate decisions with world
+sampling. Give gate selection a named disjoint seed stream.
+
+**Ship gate for this runner:** no 150-cluster execution yet. First make a
+2-cluster smoke produce an exclusive manifest+JSONL, then replay the same 10
+clusters with byte-identical non-timing records, reconcile counters, assert
+every arm is within the frozen compute band, and prove impossible-world
+fallbacks are zero. Only that earns the bounded screen.

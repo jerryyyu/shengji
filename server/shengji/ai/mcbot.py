@@ -18,6 +18,7 @@ Declaration and burying are inherited from SmartBot.
 from __future__ import annotations
 
 import os
+import time
 
 import copy
 import random
@@ -96,6 +97,13 @@ class MCBot(SmartBot):
     def __init__(self, seed: int | None = None):
         self.rng = random.Random(seed)
         self.rollout_policy = HeuristicBot()
+        # CUMULATIVE work counters (not per-decision): comparing gates at equal
+        # call RATE is not comparing compute, because search cost scales with
+        # candidates and worlds and a candidate-count gate deliberately selects
+        # expensive states (Codex, 2026-08-04).
+        self.search_calls = 0
+        self.rollouts = 0
+        self.search_secs = 0.0
 
     # ------------------------------------------------------------------- play
     def decide_play(self, rnd: Round, seat: int) -> list[str]:
@@ -110,6 +118,8 @@ class MCBot(SmartBot):
         candidates = self._candidates(rnd, seat)
         if len(candidates) <= 1:
             return candidates[0]
+        self.search_calls += 1
+        _t0 = time.perf_counter()
         mem = Memory(rnd, seat, own_kitty=getattr(self, 'BANKER_KITTY', True))
         i_attack = rnd.is_attacker(seat)
         totals = [0.0] * len(candidates)
@@ -123,7 +133,9 @@ class MCBot(SmartBot):
             for i, cand in enumerate(candidates):
                 val = self._score(self._rollout(rnd, seat, hands, buried, cand))
                 totals[i] += val if i_attack else -val
+                self.rollouts += 1
         self.last_n_worlds = n_worlds
+        self.search_secs += time.perf_counter() - _t0
         if n_worlds == 0:
             # Reaching here means sampling is broken (it silently disabled
             # banker search for a day). Loud in tests, harmless in prod.

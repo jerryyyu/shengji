@@ -303,6 +303,32 @@ forward pass, ~2ms, against mc's 30 sampled worlds. Reaching SmartBot+7.7
 points at that latency is a different value proposition from anything else in
 the ladder, whatever the mc verdict turns out to be.
 
+### 1j. vleaf with the v11pair head: 32.5% — a PREDICTED failure (2026-08-04 01:45)
+
+Jerry asked whether the hybrid should use v11pair's value head, since that net
+is the one that finally worked. Answer: no, and the reason was predictable
+before the duel — which is why the prediction went into the registry comment
+before the run, not after.
+
+**39-81 = 32.5% vs mc (n=120)**, the worst hybrid measured. Mechanism: the
+pairwise objective constrains only DIFFERENCES within a decision. Add any
+per-state constant to the head's output and the loss is unchanged, so the
+absolute level is free to drift from state to state. That is fine for an
+override, which only ever compares candidates inside one decision. It is fatal
+for vleaf, which compares leaf values ACROSS different states and sampled
+worlds — there is no shared anchor to compare against.
+
+Worth stating plainly because it cuts against the obvious intuition: **the net
+that plays best is not the net that evaluates best.** They are trained for
+different jobs. A head that beats SmartBot as a comparator is uncalibrated as
+a value function, and the 1f finding (all three absolute-value heads
+interchangeable at 60/53/48%) says the reverse too — being a better evaluator
+never made a better hybrid.
+
+If a future arm needs both, the objective has to pin the level: add an
+absolute-value term, or anchor each decision's baseline to the teacher's own
+Q(a_0) rather than letting it float.
+
 ### 2. Standalone policy line: still stuck — but the OVERRIDE line is not
 
 Standalone nets remain ~38-48% vs mc across every lever tried: more data,

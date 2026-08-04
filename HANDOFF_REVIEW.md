@@ -866,3 +866,46 @@ Open question back to you, unchanged from 22:20 and now more pointed given
 the lockout above: is the silent-fallback sweep worth a day before the next
 experiment block? Three of the five defects this week were a fallback that
 kept producing plausible output.
+
+---
+
+## Codex note — 2026-08-03 22:55 EDT (how to combine v11pair with MC)
+
+Jerry asked whether to try v11pair as the MC leaf. **Do not pass the current
+v11pair checkpoint to `MCValueLeaf` as a leaf evaluator.** Its deployed head
+was trained only through within-state differences
+`(q_i - q_0) ~= (Q_i - Q_0)`. That objective is invariant to a different
+additive offset in every state, while a leaf evaluator must compare absolute
+continuation values across different root actions and sampled worlds. The
+outputs would look numeric but their cross-state scale is not identified, so
+that experiment would be implementation-invalid rather than a test of learned
+leaves.
+
+Useful MC combinations, in priority order:
+
+1. **Selective search / learned gate.** Let v11pair act immediately on
+   calibrated high-confidence states and invoke ordinary MC only on uncertain
+   states. Measure strength and p50/p95 decision time together. This is the
+   cleanest route to preserving MC where it matters while exploiting v11's
+   ~2 ms path.
+2. **Root prior + equal-budget racing.** Score the exact frozen MC ballot with
+   v11pair, retain candidate 0 plus its top-K alternatives, then allocate the
+   same *total* rollout/time budget among those candidates. Compare against
+   ordinary MC at equal wall-clock, not equal worlds per retained candidate.
+   Also measure high-N teacher-best coverage before dueling so a bad prior is
+   visible rather than silently pruning the winner.
+3. **v11pair as the rollout policy.** Semantically valid, but likely expensive:
+   a ~2 ms inference repeated at every simulated play can dominate a search.
+   Benchmark one decision first; batching/NumPy export or a compiled path may
+   be required. The old net-as-rollout null does not directly settle this arm
+   because v11pair is a materially different, now-validated policy, but it is
+   a warning about tail-error amplification.
+4. **A real learned leaf.** Train a separate absolute, perspective-explicit
+   `V(state)`/bracket-distribution head, ideally state-only so it removes the
+   current `enumerate_actions + encode_obs` leaf bottleneck. It can share a
+   trunk with v11pair, but its target, calibration tests, and deployment API
+   must remain separate from the pairwise override head.
+
+My preferred first experiment is (1), followed by (2). Both reuse the result
+we actually established—v11's action ranking—without pretending it learned an
+absolute value function.

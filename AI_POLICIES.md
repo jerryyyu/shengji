@@ -352,6 +352,7 @@ constraints (see BACKLOG).
 | policy | what it is | measured | verdict |
 |---|---|---|---|
 | `rl-override-v11pair` | SmartBot + a learned override on `(q_i - q_0)`, threshold 0.02 fitted on a disjoint holdout half, matched train/play ballot | **57.7% vs smart** (277-203, n=480, two disjoint seed blocks, Wilson [53.2%, 62.0%]); vs mc 52.2% n=180 CI includes 50, extension running | beats its bar; no search at all (~2ms/decision) |
+| `mc-vleaf-v11pair` | the hybrid using v11pair's value head | **32.5% vs mc** (39-81, n=120) | rejected, and predicted in advance: a pairwise-trained head has no absolute anchor, so it cannot rank leaves across states |
 | `rl-override-v10res` | the same idea with an independent-row objective and a MISMATCHED play-time ballot | 47% vs smart; overrode 1.5% of states where the teacher overrode ~15% | near no-op — the checkpoint failed, not the idea |
 
 ## Experiment log (measured and rejected — reproducible via registry/toggles)

@@ -71,6 +71,39 @@ report paired signed level utility with clustered uncertainty, and fail on
 fallbacks. Pool Elo and small-n rates are selection screens, not strength
 claims.
 
+## Ballot V3, lead layer — sourcing gap CONFIRMED, the fix NOT CONFIRMED (2026-08-04)
+
+Codex's audit (verified exactly): the ballot MC actually searches covers 94.2%
+of human plays, but misses **15.5% of LEADS** (93/601) against 2.0% of follows.
+Per suit it only ever offers the top card and the lowest non-point card, so
+every middle rank is unreachable. Nothing downstream can repair that — race4
+only removes candidates from this list, and the high-N corpus values only what
+is on it.
+
+`mc-v3lead` offers one single per DISTINCT effective level, recovering **51 of
+the 93 missed leads** (15.5% -> 7.0%) within the same cap.
+
+Evaluated through `scripts/evaluate.py` (arm, control and reference on the same
+400 mirrored deals, paired per-seed utility clustered by seed, bar declared
+before the run):
+
+| arm | win% vs mc | paired level utility/seed | rollouts |
+|---|---|---|---|
+| mc-v3lead | 47.5% | +0.065 ± 0.144 | 845,890 |
+| reference (mc vs mc) | 46.2% | 0 | 725,910 |
+| control (same slots, ARBITRARY singles) | 50.5% | +0.245 ± 0.247 | 847,890 |
+
+**NOT CONFIRMED.** The arm's interval includes 0, and the random-fill control
+scores nominally HIGHER — so whatever small movement exists is not attributable
+to better sourcing. The arm also spends 17% more rollouts than mc for the
+fuller ballot.
+
+**The sourcing gap is real and the fix is not.** Recovering the missing leads
+does not by itself make the search stronger: MC still has to VALUE them, and 10
+worlds spread over a fuller ballot resolves each candidate worse. That points
+at Codex's three-layer design — generation, then an archetype-aware SELECTOR,
+then evaluation — rather than at simply generating more.
+
 ## Seeded pool of 2026-08-04 (current; heuristic = 1000)
 
 | policy | Elo |

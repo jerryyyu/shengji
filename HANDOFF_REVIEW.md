@@ -831,3 +831,77 @@ adds no strength evidence and also duplicates its 2026-08-03 heading. No
 frontend, native/Cython, or engine source changed after the checkpoint beyond
 the sampler instrumentation already discussed, so there is no new evidence on
 those surfaces.
+
+---
+
+## Codex follow-up — 2026-08-04 10:58 EDT (ballot architecture and production choice)
+
+Jerry's question about whether we should be using rollouts to *create* the
+ballot exposes a real architectural limitation.  Current MC is
+**generate-then-evaluate only**: `_candidates()` hand-constructs and truncates
+the root actions, and the rollout loop can only price that frozen list.  A
+rollout can never discover an omitted middle single, discard multiset,
+component throw, bury, or declaration.  Race4 further removes actions, and
+`highn_build.py` values the same pre-existing list.  So neither search nor
+learning currently closes a sourcing miss.
+
+The generator also conflates four separate concerns: legal/canonical action
+enumeration, strategic proposal, ordering, and a hard compute cap.  As a
+result, truncation makes implementation order part of the policy.  V3 appends
+high-to-low singles suit-by-suit after the existing candidates, so the 14-slot
+cap favors early suits/ranks; wide follows seed a few constructed actions and
+then take lexicographically sorted combinations.  V3's random control also
+uses the same RNG later used for belief sampling.  Finally, a fixed candidate
+cap is not an equal-compute comparison: the static corpus audit moves mean
+lead candidates from 6.58 to 10.05 (+53%; about +19% candidate work across all
+human decisions).
+
+Recommended replacement is a bounded **proposal/search/evaluation** pipeline,
+not an unbounded exhaustive ballot:
+
+1. Lazily enumerate canonical legal actions by archetype (single, pair,
+   tractor, component throw; follow win/feed/dump/void/preserve; later bury and
+   declaration).  Generation order must not decide survival.
+2. On separate *proposal worlds*, cheaply source actions: start with the
+   heuristic action, sample or beam-search legal component/card substitutions,
+   and give a broad set one or two low-fidelity rollouts.  Union the per-world
+   winners plus quota representatives for every archetype.  This is the
+   missing sense in which rollouts can create a ballot.
+3. On disjoint *evaluation worlds*, use paired common worlds and successive
+   halving/racing to spend the remaining budget on survivors.  Never select
+   and report on the same worlds (winner's-curse/strategy-fusion risk).  Always
+   retain candidate 0.
+4. Keep proposal RNG separate from belief/evaluation RNG and log generated,
+   retained, and evaluated counts plus total rollouts/wall time.
+
+A cheap first proof needs no training: freeze a small set enriched for current
+off-ballot human leads/follows; compare current MC, V3, random-fill, and the
+proposal-world arm at an equal total candidate-world budget.  Primary offline
+metrics should be independent-world best-action recall and regret, not human
+recall alone.  Only a survivor earns a same-seed online duel.  Do not build the
+full component-throw/follow machinery until this lead-only experiment shows
+that rollout-guided proposal beats a quota/random fuller ballot.
+
+Production recommendation remains conservative: **MC is the strongest
+verified default.**  No RL policy has cleanly beaten it.  `rl-override-v11pair`
+is the only credible production RL option, but as an opt-in/feature-flagged
+fast mode: it is confirmed 57.7% vs Smart and roughly 0.25 ms p50, while its
+near-MC result is not a valid superiority or non-inferiority confirmation due
+to the historical unseeded-opponent evaluator.  Run a clean manifested
+non-inferiority gate before replacing MC; do not deploy race4, v7 leaf, gate,
+or the other RL arms as champion.
+
+**Product-objective clarification from Jerry:** latency is not a meaningful
+tradeoff here; optimize for maximum playing strength.  Therefore do not spend
+today on validating v11pair merely as a cheaper MC replacement and do not put
+an RL fast mode on the champion path.  Keep full MC as production incumbent;
+RL earns deployment only by adding statistically confirmed strength to search
+(proposal/prior/leaf/continuation), not by approximating it faster.
+
+No compute should start under `scripts/evaluate.py` yet.  In addition to the
+issues in the preceding audit, confirmation ignores the control: the verdict
+only tests arm-minus-reference, not arm-minus-control.  It also does not
+enforce equal work, strict void sampling/zero fallback, a clean or fully
+hashed tree, or required checkpoint hashes.  Those are code/test gates, not
+manifest annotations.  Historic results from the repaired seed-dropping
+runners remain historic-invalid rather than retroactively fixed.

@@ -39,6 +39,7 @@ from shengji.ai.heuristic import HeuristicBot   # noqa: E402
 from shengji.ai.mcbot import MCBot              # noqa: E402
 from shengji.ai.memory import Memory            # noqa: E402
 from shengji.ai.smart import SmartBot           # noqa: E402
+from shengji.engine.ballot import MC_CANDIDATES_V1 as _BALLOT  # noqa: E402
 from shengji.engine.game import Game            # noqa: E402
 
 
@@ -188,6 +189,10 @@ def main() -> None:
         "host": os.uname().nodename,
         "started": time.strftime("%Y-%m-%d %H:%M:%S"),
         "paired_worlds": True, "sampler": "MCBot._sample_hands",
+        # The ballot these labels cover. Without it a later trainer cannot
+        # tell which action set was priced — which is how v10res and v13abs
+        # were each trained against one ballot and deployed against another.
+        "ballot_spec": str(_BALLOT), "ballot_digest": _BALLOT.digest,
         "min_ply": MIN_PLY,
         "policies": "MCBot/SmartBot mixed table",
     }

@@ -44,6 +44,23 @@ from shengji.ai.registry import make_bot     # noqa: E402
 from shengji.engine.game import Game         # noqa: E402
 
 
+def _arm_ballots(names):
+    """Which ballot each arm enumerates, recorded so a mismatch is visible."""
+    from shengji.engine.ballot import spec_for_mcbot
+    out = {}
+    for n in names:
+        try:
+            bot = make_bot(n)
+        except Exception:
+            continue
+        inner = getattr(bot, "mc", getattr(bot, "_ballot", bot))
+        try:
+            out[n] = str(spec_for_mcbot(inner))
+        except Exception:
+            out[n] = "unknown"
+    return out
+
+
 def digest(path):
     return hashlib.sha256(open(path, "rb").read()).hexdigest()[:16] \
         if os.path.exists(path) else None
@@ -132,6 +149,7 @@ def main() -> None:
     # Second-resolution ids COLLIDE when parallel shards start in the same
     # second, and the manifest is opened with "x" — so a six-shard launch
     # would fail or overwrite (Codex). Include the pid.
+    plan_names = [args.arm, args.opponent] + ([args.control] if args.control else [])
     run_id = f"eval_{int(time.time())}_{os.getpid()}_{sha}"
     manifest = {
         "run": run_id, "arm": args.arm, "opponent": args.opponent,
@@ -141,6 +159,7 @@ def main() -> None:
         "dirty_files": dirty.split("\n")[:20] if dirty else [],
         "script_sha256_16": digest(__file__),
         "ckpt_digests": {c: digest(c) for c in args.ckpt},
+        "ballots": _arm_ballots(plan_names),
         "fast_engine": bool(os.environ.get("SHENGJI_FAST")),
         "require_voids": bool(os.environ.get("SHENGJI_REQUIRE_VOIDS")),
         "started": time.strftime("%Y-%m-%d %H:%M:%S"),

@@ -777,15 +777,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                              name=name, bot=False)
                             claimed_from_bot = True
                         room = target
-                        if room.cleanup_task is not None:
-                            room.cleanup_task.cancel()
-                            room.cleanup_task = None
-                        me.ws, me.connected = ws, True
-                        me.left_at = None
-                        me.queue = asyncio.Queue(maxsize=128)
-                        me.writer = asyncio.create_task(_writer(ws, me.queue))
-                        for entry in room.chat:      # scrollback for context
-                            enqueue(me, {"type": "chat", **entry})
+                        _attach(room, me, ws)
                         if reclaim is not None:
                             chat_system(
                                 room,
@@ -810,7 +802,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
             if t == "leave_room":
                 async with room.lock:
                     chat_system(room, f"{me.name} left")
-                    _detach(me)
+                    _detach(me, room)
                     if room.game is None:
                         # lobby: free the seat entirely
                         if me in room.seats:
@@ -857,9 +849,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
             async with room.lock:
                 if not me.is_bot and me.connected:
                     chat_system(room, f"{me.name} disconnected")
-                if me in room.seats:
-                    room.ready.discard(room.seats.index(me))
-                _detach(me)
+                _detach(me, room)
                 if not any(x.connected for x in room.seats if not x.is_bot):
                     if room.cleanup_task is None or room.cleanup_task.done():
                         room.cleanup_task = asyncio.create_task(cleanup_room(room))
@@ -868,8 +858,36 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         await broadcast(room)
 
 
-def _detach(seat: Seat) -> None:
-    """Unbind a websocket from a seat (caller holds the room lock)."""
+
+def _attach(room: Room, seat: Seat, ws: WebSocket) -> None:
+    """Bind a socket to a seat as ONE transition (caller holds the room lock).
+
+    Membership used to be updated inline at each call site — connected flag,
+    queue, writer, cleanup task, scrollback — and the paths drifted apart.
+    That is how a dropped player's seat became unreachable while still looking
+    occupied (Jerry, 2026-08-03) and why Codex asked for a single owner of the
+    transition.
+    """
+    if room.cleanup_task is not None:
+        room.cleanup_task.cancel()
+        room.cleanup_task = None
+    seat.ws, seat.connected = ws, True
+    seat.left_at = None
+    seat.queue = asyncio.Queue(maxsize=128)
+    seat.writer = asyncio.create_task(_writer(ws, seat.queue))
+    for entry in room.chat:            # scrollback, before the first state
+        enqueue(seat, {"type": "chat", **entry})
+
+
+def _detach(seat: Seat, room: Room | None = None) -> None:
+    """Unbind a websocket from a seat (caller holds the room lock).
+
+    Also drops the seat from the round-end quorum: a player who leaves must
+    stop being waited on, or everyone else sits on a browser that is never
+    coming back.
+    """
+    if room is not None and seat in room.seats:
+        room.ready.discard(room.seats.index(seat))
     seat.ws, seat.connected = None, False
     seat.left_at = time.monotonic()
     if seat.writer is not None:

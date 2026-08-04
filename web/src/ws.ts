@@ -108,13 +108,11 @@ class Connection {
 
     ws.onopen = () => {
       this.backoff = 500;
+      // Report "open" and stop there. Deciding WHETHER to rejoin, and which
+      // room wins between an invite link, an explicit action, and a saved
+      // session, is App's call — the connection reading localStorage on its
+      // own raced the invite flow (Codex, 2026-08-03).
       this.setStatus("open");
-      // Rejoin the saved room (reclaims our seat after refresh/reconnect).
-      const room = getSavedRoom();
-      const name = getSavedName();
-      if (room && name) {
-        this.send({ type: "join_room", room, name });
-      }
     };
 
     ws.onmessage = (ev: MessageEvent) => {

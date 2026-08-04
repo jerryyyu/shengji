@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { GameState, RoomMsg } from "./protocol";
 import type { ConnStatus } from "./ws";
-import { clearSavedRoom, conn, saveRoom } from "./ws";
+import { clearSavedRoom, conn, getSavedName, getSavedRoom, saveRoom } from "./ws";
 import { announceState, resetAnnouncer } from "./audio";
 import Lobby from "./components/Lobby";
 import Room from "./components/Room";
@@ -45,7 +45,18 @@ export default function App() {
       resetAnnouncer();
     };
 
-    const unsubStatus = conn.subscribeStatus(setStatus);
+    // Single owner of connection intent, in precedence order:
+    //   invite link > explicit action already in flight > saved session.
+    // An invite must never be overridden by whatever room we were last in.
+    const unsubStatus = conn.subscribeStatus((s) => {
+      setStatus(s);
+      if (s !== "open") return;
+      const invited = new URLSearchParams(window.location.search).get("room");
+      if (invited) return;              // Lobby owns the invite flow
+      const room = getSavedRoom();
+      const name = getSavedName();
+      if (room && name) conn.send({ type: "join_room", room, name });
+    });
     const unsubMsg = conn.subscribe((msg) => {
       switch (msg.type) {
         case "room":

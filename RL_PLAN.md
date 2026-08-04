@@ -19,14 +19,33 @@ MPS). Toggle results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Model lineage: v7 through v13 (authoritative summary)
+## Model lineage: BC through v13 (authoritative summary)
 
 This section owns the experiment history: what changed, what question it
 tested, and what survived. `AI_POLICIES.md` owns runnable policy names and
 their current deployment status. Keeping the full ladder in both files caused
 model checkpoints, policy wrappers, and search roles to be conflated.
-The BC-through-v6 chronology remains in
+The detailed day-by-day chronology remains in
 `docs_archive/rl-plan-chronology-through-2026-08-03.md`.
+
+The early project reused version numbers in three namespaces. **Distillation
+v1-v13** below names model/training iterations; **DMC recipe v1/v2** names a
+self-play training branch; **ballot v1/v2/v3** names action enumerators. They
+are not successive versions of one artifact. Historical pre-v7 gates also
+predate the current seeded, paired evaluator and are directional screens, not
+promotion evidence.
+
+| model / branch | improvement / hypothesis tested | best evidence | conclusion |
+|---|---|---|---|
+| **BC baseline** (pre-v1) | Behavior-cloned SmartBot from about 20k rounds using the original 531-dimensional observation and 60-dimensional action encoding. | 89.7% teacher imitation; historical gates 48% vs SmartBot and 29% vs MC. A later play-time ballot expansion sent the same family to Elo 798 until the training ballot was restored. | The encoder carried substantial game signal, but small imitation errors were exploitable by search. Established the ballot/version-freeze requirement. |
+| **DMC recipe v1 branch** | Warm-started BC, then regressed raw terminal returns in self-play. This was a self-play branch, not distillation model v1. | Flat 30-34% vs SmartBot over roughly 400k rounds; cross-candidate score spread collapsed `22.5 -> 0.26`. | Closed as an unsafe implementation/target combination: raw-return regression destroyed the pretrained ordering and the degraded policy generated its own data. It did not prove self-play RL cannot work. |
+| **distill v1** | Single-Q search distillation with MSE on MC candidate values plus CE on the selected action, on the partial N=10 corpus. | Historical gate 32% vs SmartBot / 22% vs MC. | Dense search labels alone were insufficient under this loss and data scale. |
+| **distill v2** | Added a CE temperature to decouple choice learning from raw value scale. | 30% / 27% in the same historical gates. Later `0.03` and `0.10` sweeps did not beat the `0.05` recipe. | No detected standalone gain from temperature tuning. |
+| **distill v3** | Split policy and value heads so value-scale movement could not directly define the policy scores. | 32% / 24% in the historical gates. | Architecture separation alone did not solve the noisy stochastic-teacher target. |
+| **distill v4** | Added soft value-distribution targets for the stochastic teacher and used the stabilized `lr=1e-3` recipe. | 38% / 32%, a `+6/+8` directional move over v3 in the original small gate. | First useful distillation recipe improvement; soft targets were retained, but the old gate cannot isolate every recipe change or establish strength. |
+| **distill v5** | Ran the v4 recipe for five epochs on the full N=10 corpus (about 2.6M decisions in the original ledger). | 42% / 38%; historical pool placed the bare net above SmartBot, while the v5-as-rollout-policy hybrid's 55% preview reversed to 37% in its next small block. | More data helped the standalone student. Replacing heuristic rollouts with the net was both slower and weaker in that test. |
+| **distill v6 / v6cont** | Extended the same corpus/recipe to 12 epochs; `v6cont` tested six more lower-LR epochs. | v6 reached 51% / 41% in the historical gates and beat v5 only 54% in a direct n=200 sibling duel. `v6cont` fell to 44% / 32% while validation agreement moved only 0.4 points. | Best pre-v7 standalone checkpoint, but not MC-level. Established per-epoch strength probes: validation loss/agreement did not detect strength overfit. |
+| **v6.1 human blend** | Fine-tuned v6 on the small human corpus to test style adaptation without rebuilding the machine-data line. | Human agreement rose about 51% to 57%; direct sibling duel scored 46% vs v6 at n=200. | The blend mechanism worked, with a possible small strength tax. Keep as a style branch, not a strength successor. |
 
 `v12` was never assigned to a model or experiment; the sequence intentionally
 jumps from v11 to v13. A version number is not a promotion, and historical

@@ -354,11 +354,17 @@ class MCBot(SmartBot):
                 seen_levels = set()
                 order = sorted(cards, key=lambda x: -o.level(x))
                 if self.V3_LEAD_RANDOM:
-                    # CONTROL: fill the same number of slots with arbitrary
-                    # legal singles. Without it, "better sourcing helps" cannot
-                    # be told apart from "a fuller ballot helps".
+                    # CONTROL: fill the same slots with arbitrary legal
+                    # singles, so "better sourcing helps" can be told apart
+                    # from "a fuller ballot helps". Its RNG is SEPARATE from
+                    # self.rng: sharing the stream would couple which actions
+                    # are proposed to how worlds are sampled (Codex).
+                    if not hasattr(self, "_proposal_rng"):
+                        import random as _r
+                        self._proposal_rng = _r.Random(
+                            (self.rng.random() * 1e9).__int__() ^ 0xC0FFEE)
                     order = list(cards)
-                    self.rng.shuffle(order)
+                    self._proposal_rng.shuffle(order)
                 for c in order:
                     lv = o.level(c)
                     if lv in seen_levels:

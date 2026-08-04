@@ -127,46 +127,7 @@ here, as it did in the paired confirmation. Two independent looks now agree the
 learned prior adds nothing detectable, which is why the racing claim stays
 retracted.
 
-## Selection pool of 2026-08-03## Selection pool of 2026-08-03 (SUPERSEDED — a new seeded pool including mc-race4 is running 08-04; and this pool put vleaf +32 over mc, which a 1,200-round duel then measured at 50.4%)
-
-**2026-08-03 evening pool — seeded under the normal registered factories.**
-It predates v11pair and is not the deployment ranking.
-
-15/15 pairings, 120 rounds each, both sides deterministically seeded.
-Raw pair records: `server/runs/pool_20260803_seeded_pairs.txt`;
-script: `server/scripts/pool_seeded.py`.
-
-| policy | Elo |
-|---|---|
-| mc-vleaf-v7w-ep02 | 1151 |
-| mc | 1119 |
-| smart | 1093 |
-| rl-v9warm | 1069 |
-| rl-v7w | 1042 |
-| heuristic | 1000 |
-
-**The vleaf row does not establish a strength lead.** Bradley-Terry inferred
-+32 Elo for vleaf over mc from 120-round pairings; the preregistered duel over
-1200 independent-seed rounds puts the direct rate at **50.4%, CI [47.6%,
-53.2%]** — a tie. vleaf's real value is that it reaches mc's strength with
-truncated rollouts, i.e. more cheaply.
-Treat every gap in this table under ~40 Elo as unresolved until measured
-head-to-head at n>=600. The earlier unseeded table (vleaf 1163 / mc 1110) is
-superseded and did not reproduce.
-
-### Notes
-
-IMPORTANT caveat learned 2026-08-01: Bradley-Terry ratings are
-POOL-RELATIVE — absolute numbers shift with pool composition (mc rated
-1141, 1104, 1109 across pools; rl-v5 swung 1088 -> 971 with identical
-weights). Only within-pool gaps and head-to-head rates transfer.
-Historical pool tables live in git history and RL_PLAN's archive.
-
-Full-game rates compress/amplify differently: smart beat heuristic 86-90%
-of GAMES while only ~52% of rounds — game wins come from winning rounds
-BIGGER (brackets), compounding over ~37-round games.
-
-## Active policies
+## Selection pool of 2026-08-03## Active policies
 
 ### `mc` — MCBot (server default)
 Determinized Monte Carlo (`ai/mcbot.py`): samples 10 opponent-hand worlds

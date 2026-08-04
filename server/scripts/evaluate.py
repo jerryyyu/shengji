@@ -113,7 +113,11 @@ def main() -> None:
                     help="an arm that SHOULD NOT work; without one, a positive "
                          "result cannot be attributed to the thing you changed")
     ap.add_argument("--bar", required=True,
-                    help="declared BEFORE the run and recorded in the manifest")
+                    help="ENFORCED, not decorative: '<metric> > <value>' with "
+                         "metric in {paired_utility, win_rate}. The clustered "
+                         "interval must exclude the value to CONFIRM.")
+    ap.add_argument("--allow-no-control", action="store_true")
+    ap.add_argument("--allow-lenient-voids", action="store_true")
     ap.add_argument("--ckpt", action="append", default=[],
                     help="checkpoint paths to digest into the manifest")
     args = ap.parse_args()
@@ -136,6 +140,7 @@ def main() -> None:
         "require_voids": bool(os.environ.get("SHENGJI_REQUIRE_VOIDS")),
         "started": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
+    t_start = time.time()
     os.makedirs("runs/logs", exist_ok=True)
     with open(f"runs/logs/{run_id}.manifest.json", "x") as mf:
         json.dump(manifest, mf, indent=2)
@@ -168,24 +173,63 @@ def main() -> None:
               f"{sum(x['arm']['rollouts'] for x in r):10d} "
               f"{sum(x['arm']['search_secs'] for x in r):9.1f}")
 
+    # ---- ENFORCE the declared bar, rather than printing it as prose ----
+    import re as _re
+    mt = _re.match(r"\s*(paired_utility|win_rate)\s*>\s*(-?[\d.]+)\s*$", args.bar)
+    if not mt:
+        print("\nREFUSING: --bar must be enforceable, e.g. 'paired_utility > 0' "
+              "or 'win_rate > 0.5'. Free text cannot gate anything, and a bar "
+              "that is recorded but not applied is theatre (Codex).")
+        sys.exit(3)
+    metric, threshold = mt.group(1), float(mt.group(2))
     m, ci = stats["arm"]
-    confirmed = m - ci > 0
-    print(f"\nDECLARED BAR: {args.bar}")
-    print(f"VERDICT: {'CONFIRMED' if confirmed else 'NOT CONFIRMED'} "
-          f"(paired {m:+.3f} +/- {ci:.3f} vs the reference)")
+    if metric == "paired_utility":
+        value, half = m, ci
+    else:
+        r = results["arm"]
+        by = {}
+        for x in r:
+            by.setdefault(x["seed"], []).append(x["won"])
+        per = [sum(v) / len(v) for v in by.values()]
+        value = sum(per) / len(per)
+        var = sum((p - value) ** 2 for p in per) / max(len(per) - 1, 1)
+        half = 1.96 * math.sqrt(var / len(per))
+    clears = value - half > threshold
+
+    problems = []
+    if not args.control and not args.allow_no_control:
+        problems.append("no --control: a positive result is unattributable")
+    if not os.environ.get("SHENGJI_REQUIRE_VOIDS") and not args.allow_lenient_voids:
+        problems.append("SHENGJI_REQUIRE_VOIDS unset: sampled worlds may "
+                        "violate observed voids")
+    if not args.ckpt and any(("rl" in p or "v11" in p) for _, p in plan):
+        problems.append("a net arm ran with no --ckpt digest recorded")
+    if dirty:
+        problems.append("tree was DIRTY: the git SHA does not describe the run")
+
+    print(f"\nDECLARED BAR: {metric} > {threshold}")
+    print(f"MEASURED:     {value:+.3f} +/- {half:.3f}  -> "
+          f"{'clears' if clears else 'does NOT clear'}")
     if args.control:
         cm, cci = stats["control"]
-        print(f"CONTROL {args.control}: {cm:+.3f} +/- {cci:.3f}"
-              + ("  <-- moves WITH the arm: the effect is not attributable "
-                 "to what you changed" if cm - cci > 0 else ""))
-    else:
-        print("NO CONTROL was run. A positive result here cannot be attributed "
-              "to the thing you changed.")
+        if cm - cci > threshold:
+            print(f"CONTROL {args.control}: {cm:+.3f} +/- {cci:.3f}  <-- ALSO "
+                  f"clears; the effect is not attributable to the arm")
+            problems.append("the control clears the same bar")
+        else:
+            print(f"CONTROL {args.control}: {cm:+.3f} +/- {cci:.3f} (does not clear)")
+    if problems:
+        print("\nPROTOCOL FAILURES — verdict forced to NOT CONFIRMED:")
+        for p_ in problems:
+            print(f"  - {p_}")
+    confirmed = clears and not problems
+    print(f"\nVERDICT: {'CONFIRMED' if confirmed else 'NOT CONFIRMED'}")
     fb = sum(x["arm"]["void_fallbacks"] + x["opp"]["void_fallbacks"]
              for r in results.values() for x in r)
     sr = sum(x["arm"]["searches"] + x["opp"]["searches"]
              for r in results.values() for x in r)
-    print(f"void fallbacks: {fb} over {sr} searches")
+    print(f"void fallbacks: {fb} over {sr} searches | wall "
+          f"{(time.time()-t_start)/60:.1f} min")
     print(f"records: {out}\nmanifest: runs/logs/{run_id}.manifest.json")
     sys.exit(0 if confirmed else 1)
 

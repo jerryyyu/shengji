@@ -10,9 +10,11 @@ This run fixes all of that at once:
 
   * EVERY arm plays the SAME seed clusters, mirrored — so the control is
     paired with the treatment rather than compared across different deals;
-  * impossible-world fallbacks COUNTED and reported as a rate (refusing them
-    outright killed the search in constrained late-round states, where no
-    void-respecting world exists — see the note in mcbot._sample_hands);
+  * impossible-world fallbacks COUNTED and reported per SEARCH. (An earlier
+    version of this comment claimed no void-respecting world exists in
+    constrained states. That was wrong — the real deal is always one, and
+    tests/test_sampler_voids.py shows construction succeeds with voids
+    REQUIRED. Superseded by scripts/evaluate.py.)
   * per-seed/flip JSONL plus a manifest (git SHA, checkpoint digest, args,
     environment), written to an exclusive per-run file;
   * paired differences vs mc computed PER SEED and clustered by seed, since
@@ -118,10 +120,8 @@ def wilson(w, n):
 def main() -> None:
     clusters = int(sys.argv[1]) if len(sys.argv) > 1 else 250
     seed0 = int(sys.argv[2]) if len(sys.argv) > 2 else 12_000_000
-    # Impossible-world fallbacks are COUNTED and reported, not forbidden:
-    # refusing them made the search die outright in constrained late-round
-    # states, where no void-respecting world exists. A disclosed rate is the
-    # honest version of "zero fallbacks" (2026-08-04).
+    # Superseded by scripts/evaluate.py, which enforces the protocol rather
+    # than describing it. Kept only for the record of the run it produced.
 
     sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
                          capture_output=True, text=True).stdout.strip()

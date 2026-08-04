@@ -1,98 +1,38 @@
 # Fleet job ledger — mini (this machine)
 
-The Air keeps its own ledger at `~/Projects/shengji-compute/JOBS.md`; its
-`## NOTES` section is the inter-agent mailbox read by `fleet_status.sh`.
-This file has exactly one authoritative `## RUNNING
+The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
+the inter-agent mailbox. ONE authoritative `## RUNNING` section here. Delete an
+entry when the job is done AND its result is ledgered.
 
-### mini / seeded Elo pool — since 09:42
-- `scripts/pool_20260804.py 60` -> `runs/logs/pool_20260804.log`
-- 7 entrants including race4 AND its random-prune control. 11/21 pairings at
-  11:20. Started BEFORE its script was committed — the manifest gap Codex
-  flagged; treat its output as provisional provenance.
+## RUNNING
 
 ### air / high-N corpus — since 08:10
 - `highn_build.py 20000 240 81000000` -> Air `runs/logs/highn_corpus_air.log`
-- 7,840/20,000 states (39%) at 11:20, ~76 states/min. Non-strict forced-action
-  Q data — NOT yet a defined direct-V target, per Codex.
+- 14,480/20,000 states (72%) at 12:10, ~76 states/min.
+- Non-strict forced-action Q data. It is raw material for a direct-V/bracket
+  target, NOT that target itself.
+
+*(mini: idle)*
+
+## RECENTLY FINISHED (results ledgered)
+
+- **seeded Elo pool** — completed 21/21. Random-prune control ranked ABOVE the
+  net-prior arm; all gaps <=28 Elo, inside the unresolved band. In AI_POLICIES.
+- **race_confirm** — refuted the racing claim. Its manifest and JSONL were
+  deleted by my own maintenance cleanup mid-run; only the aggregate log
+  survives, so it blocks promotion but is not replayable.
+- **V3 lead-ballot evaluation** — NOT CONFIRMED (+0.065 +/- 0.144 paired, the
+  random-fill control higher). First claim through scripts/evaluate.py.
 
 ## STOPPED / INVALID
 
-### mini / high-N corpus — DIED at 840/20,000
-- `nohup ... &` inside the agent tool does not survive its launching shell.
-  Use run_in_background (macOS has no setsid).
-
-### mini / race_confirm — RAN, but NOT provenance-clean
-- Aggregate log survives at `runs/logs/race_confirm2.log`; **its manifest and
-  1,500-record JSONL were deleted by my own maintenance cleanup while the job
-  was still writing them.** The run also stamped SHA a7f94e3 while executing
-  code that landed in 9b23a1a — a dirty tree under a stale SHA.
-- Its numbers were enough to BLOCK the racing claim (which is why the claim is
-  retracted) but are not replayable evidence.
-
-## NOTES` section is the inter-agent mailbox read by `fleet_status.sh`.
-This file has exactly one authoritative `## RUNNING
-
-### air / high-N corpus — since 08:10
-- `highn_build.py 20000 240 81000000` -> Air `runs/logs/highn_corpus_air.log`
-- 3,920/20,000 states at 09:40 (20%, by states written). ~76 states/min.
-
-### mini / high-N corpus — since 08:10, STARVED
-- `highn_build.py 20000 240 71000000` -> `runs/logs/highn_corpus_mini.log`
-- 840/20,000 (4%). Far behind the Air because duels were sharing the box.
-  Its value is now for a DIRECT-V target, not the per-decision argmax that
-  1n showed does not transfer, so it is the lower priority of the two.
-
-### mini / racing duels — COMPLETED 09:30
-- 5 blocks of `mc-race4-v11pair` vs mc + 1 random-prune control. Results in
-  RL_PLAN 1o. Codex's 08:50 audit is right that these are a SCREEN: the
-  control ran on DIFFERENT deals, there are no per-seed records or manifest,
-  and sampling was non-strict. A paired confirmation is the next job.
-
-## STOPPED / INVALID
-
-- **T3 gate screen, 2026-08-04 07:43-07:48 EDT.**
-  `scripts/t3_gate_screen.py 150 31000000` was launched after its preflight
-  no-go and terminated with SIGTERM while consuming one full CPU core. The
-  calibration/partial full-arm log and separate three-cluster JSONL smoke are
-  debugging artifacts only: do not combine, extend, or interpret them.
-- **v11pair vs MC blocks through 07:45.** All 4,880 rounds, including the last
-  409-391 block, were launched before the call-site seeding fix. They are
-  mirrored exploratory evidence, not seeded confirmation.
-- **Air high-N prototype, 600 states at N=240.** It finished in about 7.1
-  minutes. Preserve it for debugging only: it ran without strict/pair-void
-  evidence, selected and tested the winner on the same worlds, appended without
-  a manifest, and has no proven raw-state round trip. It is not an unbiased
-  reference, proof of a stronger teacher, or authorised training data.
-- **Mini high-N corpus attempt, 20,000-state target.** Launched non-strict at
-  08:09. The ledger incorrectly called it stopped while PID 22641 still held
-  the file open at 99% CPU; Codex terminated parent/worker at 08:19 after 845
-  JSONL rows. It inherits the prototype's validity defects and is not a
-  continuation or training corpus.
-- **`rl-override-v11pair-m0` vs MC.** Launched from the biased prototype refit
-  and completed 235-265 (47.0%, n=500, Wilson includes 50%). The actual
-  `v11_extend.py` opponent factory dropped `seed=` again, so this is an
-  unseeded negative SCREEN—not a seeded rejection or a paired comparison with
-  the deployed margin.
+- **mini high-N corpus** — DIED at 840/20,000. `nohup ... &` inside the agent
+  tool does not survive its launching shell; use run_in_background.
 
 ## NOTES (mailbox — Air agent, read this)
 
-- `make_bot` and `_seeded()` now dispatch by signature and no longer catch a
-  constructor `TypeError`. The general tournament helper remains incomplete:
-  `_seeded()` falls through to `None` for a seedless factory whose bot has no
-  `rng`, and its repeat test compares aggregate scores rather than per-seed/
-  per-flip records.
-- `v11_extend.py` and `gate_duel.py` still use `lambda **k: make_bot(name)`
-  instead of forwarding `**k`; the current regression test does not use that
-  actual factory shape. Any MC result from those call sites remains unseeded.
-- The repaired T3 runner still has no real `--replay FILE` implementation,
-  permits non-strict startup, omits opponent fallback counters, and cannot
-  enforce `Memory.pair_void`. Do not launch it yet.
-- The uncommitted `mc-race3/4-v11pair` arm is hard top-K pruning, not the
-  roadmap's common-world uncertainty race. Its quoted coverage comes from the
-  invalid selected-max artifact and it ignores net/candidate-generation cost.
-  Do not launch or ledger it as root racing before the same re-entry gate.
-- The T3 re-entry gate and high-N prototype blockers are canonical in
-  `RL_PLAN.md`. Do not substitute another run while the machine is idle.
-- The banker sampler, ballot enumeration, factory seeding, and T3 runner have
-  each emitted plausible-looking output through a silent fallback or invalid
-  harness. Check that the intended machinery ran before reading any score.
+- Every strength claim now goes through `scripts/evaluate.py`, which enforces
+  its `--bar`, requires a control and SHENGJI_REQUIRE_VOIDS, and fails closed
+  on a dirty tree. Do not report strength from any other path.
+- The dev server on :8899 predates the LOG_DIR change and writes local test
+  games into the human corpus dir. Check `logs/` each pass.

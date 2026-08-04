@@ -5,15 +5,15 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-### mini / dose contrast RERUN on the constraint-correct sampler — 18:35
-- `mc` (N=10) vs `mc-lite` (N=5), control `mc-strong` (N=30), 6 shards,
-  seeds 96,000,000-96,000,251, 252 clusters, `--bar "paired_utility > 0"`.
-- WHY: the original N=10-over-N=5 result (-0.347 +/- 0.145) is PROVISIONAL
-  because its shards contained 14 zero-world fallbacks and printed `PROTOCOL
-  FAILURES`. Codex said it stands only "until the constraint-correct sampler
-  reruns it". The sampler is now green (0 zero-world decisions in 18.2k
-  searches), so this is that rerun.
-- Fresh disjoint seeds; no reuse with the 93M/94M/95M blocks.
+### mini + air / sampler certification (Codex fleet order, item 1) — 19:20
+- Validates emitted worlds against a validator DERIVED FROM THE RULES, not from
+  `Memory` — Codex's objection was that producer and validator shared the
+  disputed inference, so agreement showed self-consistency, not legality.
+- mini: seeds 97,000,000+, 1,500 states, min ply 8. air: seeds 98,000,000+,
+  late states (min ply 16), where the constraints actually bind.
+- No rollouts. Correctness job, not a strength job.
+- Reports VALIDITY and COMPLETENESS (the real deal is a planted witness);
+  distribution fidelity is explicitly NOT certified.
 
 ## RECENTLY FINISHED
 

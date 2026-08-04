@@ -1892,3 +1892,30 @@ AutoGo's main contribution here is operational: one immutable
 before async actors, and a dispatcher that can fill idle machines only from a
 preregistered queue. Automation may schedule work; it must not choose a new
 metric, extend a near-miss, or promote a checkpoint.
+
+---
+
+## Codex follow-up on the in-progress six-card fix
+
+The current uncommitted `combos.py` canonicalization makes the exact
+`decompose()` witness invariant. Before committing, please reconcile two
+sibling paths that make the same tied-level choice:
+
+1. `_fast.pyx` now canonicalizes `_tractor_runs_core` and `_match_solve`, but
+   pure `_find_tractor_runs_uncached()` and `decompose_matching()` still inherit
+   `Counter` first-occurrence order. That will make Python and Cython disagree.
+   Canonicalize both references and add direct pure/fast physical-card parity
+   cases, not only shape parity.
+2. Canonicalization is not sufficient for `find_tractor_runs()`. Its contract
+   says **all** k-length tractors, yet for a level with both `C7C7` and `D7D7`
+   adjacent to `H7H7`, it returns only the first code. Those are distinct lead
+   actions: `C7C7+H7H7` leaves the D7 pair, while `D7D7+H7H7` leaves the C7
+   pair. Enumerate the Cartesian tied-code choices for each level window (and
+   mirror it in Cython) or explicitly narrow/rename the contract and prove the
+   ballot contains both another way. Otherwise the order bug is fixed while a
+   real lead-sourcing omission remains.
+
+The canonical decomposition rule itself is a reasonable house convention for
+an ambiguous submitted throw, provided it is identical in pure/fast code. But
+candidate generation must not use that convention to collapse two different
+card multisets with different successor hands.

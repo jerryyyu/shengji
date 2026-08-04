@@ -21,9 +21,14 @@ changes nothing an action's identity depends on:
   * legality as a lead, and the cards the engine records as played,
   * the successor hand.
 
-`combos.py` caches on exact input order, so each case is also run against a
-cold cache; a cache that returned an order-dependent result would otherwise be
-masked by whichever ordering happened to run first.
+`decompose()` caches on `Ordering._dcache` keyed by exact input order, so each
+case is also run against a FRESH `Ordering`. An earlier version of this file
+cleared module globals named `_DECOMP_CACHE`/`_decomp_cache`/`_CACHE`, none of
+which exist — so the "cold cache" test was a no-op (Codex).
+
+**THE GATE IS OPEN.** Sizes 2-4 are invariant, but Codex's six-card witness
+reproduces: two tied-level pairs competing for the adjacent pair are resolved
+by input order. That case is marked xfail(strict) below.
 """
 from __future__ import annotations
 
@@ -89,16 +94,12 @@ def test_decomposition_is_permutation_invariant(size):
 @pytest.mark.parametrize("size", [2, 3, 4])
 def test_decomposition_is_invariant_on_a_cold_cache(size):
     """The cache keys on exact input order, so warm results could hide a bug."""
-    import shengji.engine.combos as combos
-
     for ms in _multisets(POOL, size):
         results = set()
         for p in sorted({p for p in itertools.permutations(ms)}):
-            for cache in ("_DECOMP_CACHE", "_decomp_cache", "_CACHE"):
-                c = getattr(combos, cache, None)
-                if isinstance(c, dict):
-                    c.clear()
-            dec = decompose(list(p), O)
+            # A FRESH Ordering is the cold cache: decompose memoises on
+            # `Ordering._dcache`, so clearing module globals cleared nothing.
+            dec = decompose(list(p), Ordering("H", "7"))
             results.add((dec.shape(), _split(dec)))
         assert len(results) == 1, (
             f"{ms} decomposes differently across orderings on a cold cache: "
@@ -140,6 +141,34 @@ def test_successor_hand_is_permutation_invariant(size):
                 left.remove(c)
             residuals.add(tuple(sorted(left)))
         assert len(residuals) == 1, f"{ms}: residual hand depends on order"
+
+
+@pytest.mark.xfail(reason="KNOWN DEFECT, reproduced 2026-08-04 from Codex's "
+                          "witness: two tied-level pairs competing for the "
+                          "adjacent pair pick by input order. Needs six cards "
+                          "to expose, which is why sizes 2-4 missed it.",
+                   strict=True)
+def test_six_card_tied_level_tractor_is_permutation_invariant():
+    """Codex's minimal witness. Fails today; the gate stays OPEN until it passes.
+
+        C7 C7 D7 D7 H7 H7  ->  tractor C7C7H7H7 + pair D7D7
+        D7 C7 C7 D7 H7 H7  ->  tractor D7D7H7H7 + pair C7C7
+
+    Same multiset, same shape ((2,1),0), different PHYSICAL split. The ballot
+    dedupes on a sorted multiset, so the generator and the engine can disagree
+    about which action was played.
+
+    Marked xfail(strict) rather than deleted: it must start passing the moment
+    the decomposition is made canonical, and it must fail loudly if someone
+    marks the gate closed again while this still reproduces.
+    """
+    ms = ("C7", "C7", "D7", "D7", "H7", "H7")
+    splits = set()
+    for p in sorted({q for q in itertools.permutations(ms)}):
+        dec = decompose(list(p), Ordering("H", "7"))
+        splits.add((dec.shape(), _split(dec)))
+    assert len(splits) == 1, (
+        f"{len(splits)} distinct decompositions of one multiset: {splits}")
 
 
 def test_tied_level_codes_are_not_collapsed_by_the_ballot():

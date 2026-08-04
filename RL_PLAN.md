@@ -459,6 +459,46 @@ exclusive per-seed/per-flip JSONL, reconcile all counters, and fail on any
 impossible-world fallback. Only then may a separately preregistered
 150-cluster diagnostic be considered.
 
+### 1m. HIGH-N REFERENCE: how much mc(N=10) actually leaves on the table (2026-08-04 08:20)
+
+The first measurement in this project taken against something STRONGER than
+the thing we are trying to beat. 600 raw states, every candidate evaluated
+over 240 independent paired worlds; scored on the 148 states where the
+reference gap clears 2 paired SE (i.e. where the decision provably matters).
+
+| policy | mean regret vs N=240 best | picks the reference best |
+|---|---|---|
+| SmartBot (candidate 0) | 5.066 | 0.0% (by construction) |
+| heuristic | 4.946 | 1.4% |
+| **mc N=10 (deployed)** | **2.803** | 23.6% |
+| mc N=30 (label teacher) | 2.419 | 30.4% |
+| v11 override | 3.025 | **29.7%** |
+
+**Three things follow.**
+
+1. **The headroom above the incumbent is large.** mc(N=10) forfeits ~2.8
+   points per consequential decision against a 240-world reference. Search
+   budget is doing real work: N=10 -> N=30 removes 14% of the forfeit.
+2. **Distillation from mc cannot cross that gap.** A student trained on
+   N=10/N=30 labels inherits the teacher's forfeit; imitating mc caps you at
+   mc. This is the cleanest explanation yet for why five levers all landed at
+   ~51% — not a learning failure, a LABEL CEILING.
+3. **The override's error profile is the interesting part.** v11 picks the
+   reference-best MORE often than deployed mc (29.7% vs 23.6%) while carrying
+   WORSE mean regret (3.025 vs 2.803). Its hits are as good as a 30-world
+   search; its misses cost more. That is a calibration problem, not a
+   knowledge problem, and it is fixable in the objective.
+
+Caveat kept explicit: these 148 states are selected BY the reference as ones
+where candidate 0 is provably beatable, so SmartBot's 5.07 is inflated by
+construction. The comparison AMONG mc10 / mc30 / v11 is unaffected — none of
+them takes part in the selection. The reference argmax retains a little
+winner's curse even at N=240, which inflates every regret equally.
+
+**Consequence for the goal:** the path to beating mc is not a better learner on
+mc's labels, it is BETTER LABELS. That makes active high-N labelling the
+highest-value next run.
+
 ### 2. Standalone policy line: still stuck — but the OVERRIDE line is not
 
 Standalone nets remain ~38-48% vs mc across every lever tried: more data,

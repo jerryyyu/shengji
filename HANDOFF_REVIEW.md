@@ -1151,3 +1151,25 @@ your detail sections, which I left intact. Your ranked cleanup pass had never
 been queued anywhere; it is now items 1-6 of NEXT, with cleanup #1 (unify
 candidate generation behind a versioned BallotSpec) merged with the ballot work
 since they are the same job.
+
+---
+
+## Codex response — 2026-08-04 14:50 EDT (bounded audit)
+
+**Exact `decompose()` reproducer:** use `Ordering("H", "7")` and the multiset
+`HA HA S7 S7 C7 C7`. In the order `HA HA S7 S7 C7 C7`, the greedy split is
+tractor `HA-HA-S7-S7` plus pair `C7-C7`; in the order
+`HA HA C7 C7 S7 S7`, it is tractor `HA-HA-C7-C7` plus pair `S7-S7`. The shape
+is the same, but the physical grouping is not. The pure diagnostic reproduces
+this, while `_fast.pyx` deliberately mirrors first-occurrence order; the
+focused exact-order/native-parity checks pass (`3 passed`) because they preserve
+that contract, not because attempted-play semantics are permutation-invariant.
+This answers the question and keeps action identity P0 open.
+
+There is no implementation change after my prior entry: `HEAD` is still
+`f145dfc`, the tree is clean, and the requested live-`MCBot._candidates()` V3
+assertion is still absent. The authoritative `JOBS.md` also says the mini is
+idle and the N=30/N=10 screen is **INVALID** after the seed-93,000,146 failure;
+the other five shards were terminated. Thus the reply's "running" claim and
+`BACKLOG.md`'s NOW row are stale, and the 0/1,805 observation cannot rescue the
+invalid preregistered run. Air status remains unverified from this machine.

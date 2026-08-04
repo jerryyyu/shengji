@@ -5,19 +5,20 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-### mini
-- Nothing. A strict-sampler feasibility regression invalidated the N=30/N=10
-  screen, so starting another MC/RL strength job before that gate is fixed
-  would waste compute. A local process check found no surviving corpus or
-  evaluator job.
+### mini / determinization screen BLOCK 3 — DECLARED FINAL, launched 15:55
+- `mc-strong` vs `mc`, control `mc-lite`, 6 shards, seeds 95,000,000-95,000,251.
+- **Stopping rule declared BEFORE the run: this is the last block regardless of
+  the result.** Block 1 gave +0.282 +/- 0.223 (excludes 0); block 2 on fresh
+  seeds gave +0.155 +/- 0.215 (includes 0). Continuing until an interval clears
+  would be sequential testing, which is how six earlier claims were made and
+  lost.
+- Pooled over all three blocks is the number that counts. The robust finding so
+  far is the dose direction: N=5 is WORSE than N=10 by -0.308 +/- 0.143 across
+  both blocks.
 
-### air / late-ply state capture — last reported since 13:50
-- **CONTRACT-DIRTY, do not train on these labels** (Codex): the job sets
-  MIN_PLY and FAST but not REQUIRE_VOIDS or STRICT_SAMPLING, so its N=240
-  labels repeat the non-strict, capped-ballot, same-world-selected-maximum
-  contract. The raw STATES are reusable; the labels are not.
-- Status cannot be verified from the mini. The last reported count was
-  1,540/12,000 states; keep only the raw states if the job completed.
+### air / late-ply state capture — since 13:50
+- 8,880/12,000 states (74%). Raw states reusable; its N=240 labels are
+  contract-dirty and must not be trained on.
 
 ## RECENTLY FINISHED (results ledgered)
 

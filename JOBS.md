@@ -5,8 +5,16 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-*(nothing — deliberately. Jerry asked to minimise utilisation across both
-machines, so no compute starts without an explicit go.)*
+### mini / LATE-PLY high-N corpus — launched 2026-08-04 14:25
+- `SHENGJI_MIN_PLY=16 highn_build.py 12000 240 95000000 rl_data/highn_late_mini.jsonl`
+- Seeds 95M+, disjoint from the Air's 91M+. Doubles throughput on the one
+  asset we know is needed: post-4-trick states, which the first corpus lacks
+  (90% at ply<=15) and which is why v13 was mis-aimed.
+- Data generation, not a claim — it cannot produce a false positive.
+
+### air / LATE-PLY high-N corpus — since 13:50
+- `SHENGJI_MIN_PLY=16 highn_build.py 12000 240 91000000`
+- 1,540/12,000 states (13%) at 14:25, ~117 states/min.
 
 ## RECENTLY FINISHED (results ledgered)
 

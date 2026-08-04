@@ -47,22 +47,78 @@ def _states(n_rounds=12, seed0=770000):
     return out
 
 
-def test_pair_cap_is_a_bound_not_a_boolean():
-    """A PAIR lead proves zero pairs; a TRACTOR lead only proves fewer than two.
+def test_failing_a_tractor_lead_proves_zero_pairs_remain():
+    """A REAL history, not three integers asserted against themselves.
 
-    Collapsing both to "no pairs" would make any consumer unsound, which is
-    why the boolean `pair_void` could never be wired into the sampler.
+    My first version of this test assigned literals to a dict and asserted the
+    same literals — it could not have failed, and it was defending an inference
+    that was itself wrong (Codex). The engine enforces
+    `need_pairs = min(lead_pairs, pair_count(their_suit))`, so a follower who
+    shows fewer pairs than were led has played EVERY pair they had: what
+    remains is zero, whether a pair or a tractor was led.
+
+    The assertion here is derived from the RULE (via validate_follow), not from
+    Memory, so producer and validator do not share the disputed inference.
     """
     from shengji.engine.cards import Ordering
+    from shengji.engine.combos import pair_count
+    from shengji.engine.legal import IllegalPlay, validate_follow
 
     o = Ordering("H", "7")
-    caps = {}
-    for led_pairs, shown in ((1, 0), (2, 1), (2, 0)):
-        caps[(led_pairs, shown)] = shown
-    assert caps[(1, 0)] == 0, "failing a pair lead proves ZERO pairs"
-    assert caps[(2, 1)] == 1, "failing a tractor lead still permits one pair"
-    assert caps[(2, 0)] == 0
-    assert o is not None
+    lead = ["S3", "S3", "S4", "S4"]                  # a two-pair tractor
+    hand = ["S9", "S9", "SK", "SQ", "S2"]            # exactly ONE pair, 5 cards
+    play = ["S9", "S9", "SK", "SQ"]                  # gives up that pair
+    validate_follow(play, hand, lead, o)             # legal
+    assert pair_count([c for c in play if o.eff_suit(c) == "S"]) == 1 < 2
+
+    # Keeping the pair back is ILLEGAL — which is exactly why the remaining
+    # hand provably has none.
+    with pytest.raises(IllegalPlay):
+        validate_follow(["SK", "SQ", "S2", "S9"], hand, lead, o)
+
+    left = list(hand)
+    for c in play:
+        left.remove(c)
+    assert pair_count([c for c in left if o.eff_suit(c) == "S"]) == 0
+
+
+def test_memory_records_zero_after_a_short_pair_answer():
+    """Memory's inference must match the rule-derived conclusion above."""
+    import random
+
+    from shengji.ai.memory import Memory
+    from shengji.engine.combos import pair_count
+
+    for seed in range(25):
+        game = Game(random.Random(600000 + seed))
+        bots = [make_bot("smart") for _ in range(4)]
+        rnd = game.start_round()
+        while rnd.phase == "deal":
+            seat, _, _ = rnd.deal_next()
+            cards = bots[seat].decide_declare(rnd, seat)
+            if cards:
+                rnd.declare(seat, cards)
+        rnd.finalize_declare()
+        rnd.bury(rnd.banker, bots[rnd.banker].decide_bury(rnd, rnd.banker))
+        while rnd.phase == "play":
+            seat = rnd.turn
+            if seat is None:
+                break
+            rnd.play(seat, bots[seat].decide_play(rnd, seat))
+            mem = Memory(rnd, 0)
+            for s in range(4):
+                for suit, cap in mem.pair_cap[s].items():
+                    assert cap == 0, (
+                        f"seat {s} suit {suit}: cap {cap}. A short pair answer "
+                        f"proves ZERO pairs remain; any other value is a "
+                        f"weaker claim than the rule supports.")
+                    # and the truth, checked against the real hidden hand
+                    held = [c for c in rnd.hands[s]
+                            if rnd.ordering.eff_suit(c) == suit]
+                    assert pair_count(held) == 0, (
+                        f"seat {s} actually holds {pair_count(held)} pairs in "
+                        f"{suit} — the inference is UNSOUND, not merely weak")
+    assert True
 
 
 def test_sampled_worlds_never_violate_a_proven_void():

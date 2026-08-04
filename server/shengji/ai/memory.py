@@ -27,14 +27,15 @@ class Memory:
         self.played: Counter[str] = Counter()
         self.played_by: dict[int, Counter[str]] = {s: Counter() for s in range(4)}
         self.voids: dict[int, set[str]] = {s: set() for s in range(4)}
-        # Proven UPPER BOUND on pairs left in a suit. The rules FORCE a
-        # follower to match pairs up to the number led, so answering a lead of
-        # k pairs with fewer than k in-suit pairs proves they hold at most
-        # k-1 there. Recorded as a bound rather than a boolean because the two
-        # cases are genuinely different: a PAIR lead (k=1) proves ZERO pairs,
-        # but a TRACTOR lead (k=2) only proves fewer than two — the seat may
-        # still hold one. `pair_void` treated both as "no pairs", which would
-        # have made any sampler consuming it unsound in the tractor case.
+        # Proven UPPER BOUND on pairs left in a suit. `validate_follow`
+        # enforces `need_pairs = min(lead_pairs, pair_count(their_suit))`, so a
+        # follower who shows fewer pairs than were led had no more to give and
+        # played all of them. The remaining count is ZERO in every such case,
+        # whether a pair or a tractor was led.
+        #
+        # Kept as an int rather than a set because the sampler wants a number
+        # and a future inference may prove a nonzero bound; the value today is
+        # always 0.
         self.pair_cap: dict[int, dict[str, int]] = {s: {} for s in range(4)}
 
         tricks = list(rnd.history)
@@ -56,11 +57,14 @@ class Memory:
                            if self.o.eff_suit(c) == lead_suit]
                     shown = pair_count(ins)
                     if shown < n_led_pairs:
-                        # They produced every pair they had, so they hold at
-                        # most `shown`. Keep the TIGHTEST bound seen.
-                        prev = self.pair_cap[tp.seat].get(lead_suit)
-                        self.pair_cap[tp.seat][lead_suit] = (
-                            shown if prev is None else min(prev, shown))
+                        # The engine enforces need_pairs = min(led_pairs,
+                        # their_pairs), so showing FEWER pairs than led proves
+                        # they played every pair they had in this suit. What
+                        # remains is therefore ZERO, not `shown` — I recorded
+                        # `shown` and Codex caught it: sound but strictly
+                        # weaker than the boolean it replaced, which had the
+                        # inference right all along.
+                        self.pair_cap[tp.seat][lead_suit] = 0
 
         # Declarer's shown cards (RTLT 2026-08-03: a declared trump-rank
         # PAIR is provably in ONE hand — sampling it split made KK-pair

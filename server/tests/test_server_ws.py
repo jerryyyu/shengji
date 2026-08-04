@@ -114,3 +114,19 @@ def test_state_carries_ready_tally(client):
         srv.rooms[code].ready.add(0)
         assert "ready" in srv.state_for(srv.rooms[code], 0)
         assert srv.state_for(srv.rooms[code], 0)["ready"] == [0]
+
+
+def test_seat_claim_chat_names_the_bot(client):
+    """"took Bot 1's seat" — which seat, not just "a bot's seat"."""
+    with client.websocket_connect("/ws") as a:
+        code = _room_with_bots(a)
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "peek_room", "room": code})
+            seats = _drain(b, "room_seats")["seats"]
+            want = [s["seat"] for s in seats if s["is_bot"]][-1]
+            botname = next(s["name"] for s in seats if s["seat"] == want)
+            b.send_json({"type": "join_room", "room": code,
+                         "name": "jerry mbp", "seat": want})
+            line = _drain(b, "chat")
+    assert line["text"] == f"jerry mbp took {botname}'s seat"
+    assert line["seat"] == -1

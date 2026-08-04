@@ -1873,11 +1873,21 @@ button {
   border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.06); color: #eee;
 }
 
-/* Room chip is a button in-game: tap to copy an invite link */
+/* Room chip is a button in-game: tap to copy an invite link. Keep the GOLD
+   accent of the lobby's gold action — `color: inherit` here made the code
+   render plain and look unrelated to it (Jerry, 2026-08-03). */
 button.room-chip {
   cursor: pointer;
   font: inherit;
-  color: inherit;
+  color: var(--gold);
+  letter-spacing: 0.2em;
+  font-weight: 800;
+  border-color: rgba(242, 193, 78, 0.45);
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+button.room-chip:hover {
+  background: rgba(242, 193, 78, 0.14);
+  border-color: var(--gold);
 }
 button.room-chip.copied {
   background: rgba(120, 200, 130, 0.22);

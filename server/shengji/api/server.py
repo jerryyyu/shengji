@@ -685,6 +685,9 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                                "taken by a human."})
                                 continue
                             me = target.seats[pick]
+                            # Name the bot they replaced: "took bot 1's seat"
+                            # says WHICH seat far better than "a bot's seat".
+                            took_from = me.name
                             me.is_bot = False
                             me.name = name
                             target.log_event("seat_claimed", seat=pick,
@@ -707,7 +710,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                    if me.bot_announced else ""))
                             me.bot_announced = False
                         elif locals().get("claimed_from_bot"):
-                            chat_system(room, f"{name} took a bot's seat")
+                            chat_system(room,
+                                        f"{name} took {took_from}'s seat")
                         else:
                             chat_system(room, f"{name} joined")
                         kick_bots(room)      # remaining bot seats keep playing

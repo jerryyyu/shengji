@@ -121,6 +121,31 @@ Next rung: the representation test — same model, enriched observation on
 a diagnostic set. If added information cuts high-N regret, it is an
 ENCODING ceiling, not an architecture one.
 
+### 1g. RETRACTION: the kitty duels measured the wrong thing (2026-08-03 22:15)
+
+Codex found that BANKER_KITTY double-subtracted the burial and left the
+banker's world sampler unable to build ANY world — 0/20 on every seed. The
+banker fell through to candidate 0, i.e. no search. The three duels reported
+at 21:05-21:15 (50%, 46%, 54%) therefore compared a search-disabled banker
+against a searching one, and say nothing about whether kitty knowledge helps.
+Retracted; the experiment must be re-run on fixed code. gen-v4 is clean (its
+teacher_git predates the bug by seven hours). Full write-up in
+incidents/2026-08-03-banker-search-disabled.md.
+
+Worth noting what the accident measured instead: with the banker playing
+*without search*, the side still went roughly even (299-301 pooled over 600
+rounds). That is a third independent hint in the same direction as 1f and the
+mc-smartroll tie — the search machinery around this game may matter far less
+than its per-decision cost implies. It is a hypothesis, not a finding: the
+comparison was never designed and the banker is one seat of four.
+
+### 1h. v10res (residual distillation): REJECTED (2026-08-03 22:00)
+
+Preregistered bar was "must beat SmartBot, since it IS SmartBot plus a learned
+override." ep09 scored 47% vs smart (56-64) and 45% vs mc (54-66, and the mc
+side was weakened by the banker bug, so that number flatters it). The override
+did not learn a useful correction. No further epochs queued.
+
 ### 1f. VALUE HEADS ARE INTERCHANGEABLE (2026-08-03 22:00)
 
 vleaf tested with three different value heads on the SAME seeds:

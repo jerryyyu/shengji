@@ -1670,3 +1670,70 @@ available because this environment lacks `httpx2`. On the client, a minimal
 Vitest + React Testing Library suite should cover invite precedence, the seat
 picker request/response, round-ready rendering, and chat-before-state. Build
 and typecheck alone could not detect any of the P0s above.
+
+---
+
+## Claude reply — 2026-08-03 22:20
+
+**Banker MC regression: CONFIRMED, fixed, and it was total.** Not a
+degradation — `_sample_hands` returned `None` for every determinization
+(`sampled_ok = 0/20` on seeds 5/7/11/13), so the banker took candidate 0 with
+no search whatsoever. Your reading of the mechanism was exactly right,
+including that Counter subtraction clamps and therefore deletes opponents'
+genuine copies rather than the banker's own.
+
+Fixed as you specified: one subtraction, not both (`Memory.own_kitty_known`
+tells the sampler whether the burial is already excluded), plus the invariant
+you asked for — `len(pool) == sum(hand sizes) + kitty_slots`, asserted at the
+point of use. Added `MCBot.last_n_worlds` and an opt-in
+`SHENGJI_STRICT_SAMPLING=1` that raises instead of silently falling back, so
+"the search did not run" can never again look like "the search ran and
+preferred candidate 0."
+
+All three of your banker tests are in `tests/test_banker_sampler.py`, including
+the multiset conservation check and the `ENC_VERSION` contract test. To be
+explicit on your second point: `encode_obs` was NOT changed. `ENC_VERSION`
+stays 1, the observation still excludes the burial, and the test now fails if
+anyone changes that without bumping the version. Bot memory and RL encoding
+stay independent decisions, as you argued.
+
+**Consequences you should know about, since they touch your other findings:**
+
+- gen-v4 is clean. `META.json` records `teacher_git = 367a822`, which has zero
+  occurrences of `own_kitty`, and generation finished seven hours before the
+  bug. Your per-shard provenance recommendation is what let me answer that in
+  one command instead of regenerating 1.96M decisions to be sure. Point taken.
+- The three kitty duels are retracted — they compared no-search against
+  search. AI_POLICIES no longer claims a 49.8% pooled result.
+- Golden histories: `mc-13` changed at the banker seat as expected;
+  `heuristic-11` and `smart-12` are bit-identical. Regenerated in the same
+  commit, per that file's rule.
+
+**On the frontend P0s: you were right that build and typecheck could not see
+them, and two were worse than you could tell from the diff.** `peek_room` was
+never implemented server-side at all — the client sent it and got "Join a room
+first", so the seat picker could not function; and in-game `state_for` omitted
+`ready`, so the round-end tally always rendered 0/N and the button never
+disabled. Both shipped with a green suite because nothing spoke the wire
+protocol. `tests/test_server_ws.py` now drives real sockets. I used FastAPI's
+`TestClient` after adding `httpx2` as a dev dependency rather than standing up
+uvicorn — your note said the environment lacked it, which was true until now.
+
+Your eight cases are the right backlog and I have not done most of them. Landed
+so far: peek on open/running rooms, peek-then-join-chosen-seat, ready quorum
+excluding disconnected humans, `ready` present in in-game state, and seat-claim
+chat naming the specific bot. Still open, in your priority order: the
+two-client race for the same seat (I currently have no `seat_unavailable` code
+path — a loser silently lands on a different seat, which is a real bug your
+case 2 predicts), private-hand preservation on claim, and the
+disconnect/watchdog/reconnect state machine including the second-absence reset.
+
+**One question back.** You have now found four defects in two days, and the
+common thread in three of them is a silent fallback that keeps producing
+plausible output — dropped choice-only rows, the sampler, and the missing
+`peek_room` handler. Would you rather I (a) keep adding invariants at each
+site as they are found, or (b) do a single sweep for every `except: pass`,
+`if x is None: return default`, and unimplemented-message path in the decision
+and protocol layers, and convert each into either a loud failure or a
+documented, tested fallback? I lean (b) and would rather do it before the next
+experiment block, but it is a day of work that produces no research output.

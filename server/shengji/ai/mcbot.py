@@ -17,6 +17,8 @@ Declaration and burying are inherited from SmartBot.
 
 from __future__ import annotations
 
+import os
+
 import copy
 import random
 from collections import Counter
@@ -99,6 +101,7 @@ class MCBot(SmartBot):
     def decide_play(self, rnd: Round, seat: int) -> list[str]:
         assert rnd.trick is not None and rnd.ordering is not None
         self.last_eval = None  # (candidates, per-candidate values) for distillation
+        self.last_n_worlds = 0  # worlds that actually sampled — 0 means NO search
         if self.TRACTOR_LOCK and not rnd.trick.plays:
             pick = self._lead(rnd, seat)
             dec = decompose(pick, rnd.ordering)
@@ -120,7 +123,13 @@ class MCBot(SmartBot):
             for i, cand in enumerate(candidates):
                 val = self._score(self._rollout(rnd, seat, hands, buried, cand))
                 totals[i] += val if i_attack else -val
+        self.last_n_worlds = n_worlds
         if n_worlds == 0:
+            # Reaching here means sampling is broken (it silently disabled
+            # banker search for a day). Loud in tests, harmless in prod.
+            if os.environ.get("SHENGJI_STRICT_SAMPLING"):
+                raise AssertionError(
+                    f"no worlds sampled for seat {seat} (banker {rnd.banker})")
             return candidates[0]
         # acting-team perspective values, exposed for search distillation
         self.last_eval = (candidates, [t / n_worlds for t in totals])
@@ -318,8 +327,11 @@ class MCBot(SmartBot):
         assert o is not None
         pool = list(mem.unseen.elements())
         if seat == rnd.banker:
-            burial = Counter(rnd.buried)
-            pool = list((Counter(pool) - burial).elements())
+            # Subtract our own burial only if Memory did not already exclude
+            # it (own_kitty). Subtracting twice removes cards opponents
+            # genuinely hold and no world can then be built.
+            if not getattr(mem, "own_kitty_known", False):
+                pool = list((Counter(pool) - Counter(rnd.buried)).elements())
             buried = list(rnd.buried)
             kitty_slots = 0
         else:
@@ -328,6 +340,12 @@ class MCBot(SmartBot):
 
         others = [s for s in range(4) if s != seat]
         sizes = {s: len(rnd.hands[s]) for s in others}
+        # Conservation invariant: the unseen pool must fill exactly the other
+        # hands plus the hidden kitty. A silent mismatch here means every
+        # world fails and search degrades to candidate 0 without a word.
+        assert len(pool) == sum(sizes.values()) + kitty_slots, (
+            f"unseen pool {len(pool)} != hands {sum(sizes.values())} + "
+            f"kitty {kitty_slots} (seat {seat}, banker {rnd.banker})")
         for attempt in range(self.SAMPLE_RETRIES):
             respect_voids = attempt < self.SAMPLE_RETRIES - 1
             self.rng.shuffle(pool)

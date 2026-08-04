@@ -75,7 +75,13 @@ class Memory:
         # other ace does not know its own K is boss (the pair_is_boss class
         # of bug; that fix was worth +13 points). MCBot's world sampler
         # already accounted for this; Memory did not.
-        if own_kitty and rnd.banker == seat and rnd.buried:
+        # Flag it: the world sampler must NOT subtract the burial a second
+        # time from `unseen` (doing so deleted real opponent copies, left the
+        # pool 8 cards short, and failed EVERY sample — the banker then took
+        # candidate 0 with no search at all. Codex audit, 2026-08-03).
+        self.own_kitty_known = bool(own_kitty and rnd.banker == seat
+                                    and rnd.buried)
+        if self.own_kitty_known:
             hand = hand + Counter(rnd.buried)
         self.unseen: Counter[str] = Counter()
         # sorted: set iteration is hash-randomized PER PROCESS — unseen's

@@ -8,17 +8,18 @@ view is a summary, not a replacement.
 
 ### NOW (running)
 
+Nothing running. The determinization screen closed negative and the late-ply
+capture finished (12,000 states, pulled to `rl_data/highn_late_air.jsonl`).
+
 | item | where | gate that closes it |
 |---|---|---|
-| **Late-ply state capture** — the first corpus is 90% at ply<=15, which is why v13 was mis-aimed | Air | raw states only; **its N=240 labels are contract-dirty and must not be trained on** |
 
 ### NEXT (highest value first)
 
 | item | why it matters | gate |
 |---|---|---|
-| **1. Unify candidate generation behind a versioned `BallotSpec`** — the ballot work and Codex cleanup #1 are ONE job | `MCBot._candidates()` and `rl.actions.enumerate_actions()` are two independent ballot systems, and that is the structural cause of the Elo-798, v10 and v13 train/deploy mismatches. Anything built before it risks being invalid the same way | one generator, one spec, version recorded in every manifest |
 | **2. Action-identity P0** | "one representative per effective level" is not a sound equivalence, and `decompose()` keeps input-order dependence for tied-level trump pairs while dedupe uses a sorted multiset — generator and engine can disagree about which action was played | permutation-invariant attempted-play semantics, or an explicit decomposition choice |
-| **3. BALLOT_PLAN arm one** — evaluation-free archetype quotas | Leads carry **3x** the forfeit of follows (2.96 vs 1.01 points), half are provably improvable, and the ballot misses **15.5% of leads** vs 2.0% of follows. Two independent measurements, one target | `MC-more` in the same comparison; paired and controlled |
+| **3. BALLOT_PLAN arm one** — evaluation-free archetype quotas | Leads carry **3x** the forfeit of follows (2.96 vs 1.01 points), half are provably improvable, and the ballot omits **54.0% of the structured lead space vs 0.9% of follows** (dev-split audit, 12,340 states). BUT coverage is known NOT to be sufficient on its own — V3 added exactly the missing singles and did not confirm. This arm must win on SELECTION quality at a fixed budget | `MC-more` in the same comparison; paired and controlled |
 | **5. `pair_void` has no sampler consumer** | computed and never used; Codex has raised it three times and it gates any final sampler claim | sampler refuses to deal a pair into a proven pair-void seat |
 | **6. Clean-contract high-N relabelling** — capture states first, relabel only the stratified union we will report | avoids repeating 37.1M old-ballot evaluations; the only route to labels worth training on | new schema; report worlds never used for selection |
 
@@ -35,6 +36,16 @@ component modules (cleanup #7) · frontend concurrent-load soak · belief-weight
 sampling (the sampler is the one direction never tried).
 
 ### CLOSED — do not re-queue
+
+**Ballot identity enforced (2026-08-04).** `BallotSpec` derives identity from
+the live value of all nine attributes `_candidates()` reads plus a digest of
+the generator's source AND the compiled `_fast` binary it calls. Checkpoints
+carry provenance sidecars; unstamped fails closed. Policies that run no search
+report `none@v0` instead of a fabricated MC identity. 16 tests.
+
+**Late-ply supplement captured (2026-08-04).** 12,000 states, ply 15-57. Takes
+ply>=20 coverage from 844 to 9,237 states (10.9x), which is the distribution
+gap that mis-aimed v13. Raw states only — its N=240 labels are contract-dirty.
 
 **Evaluator consolidated (2026-08-04).** The protocol now lives in
 `shengji/evaluation.py` with `scripts/evaluate.py` as a thin CLI. Deleted:

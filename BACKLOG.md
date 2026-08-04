@@ -23,6 +23,13 @@ work should test what the search is actually limited by.
       is whether vleaf reaches mc's strength at materially lower wall-clock,
       which would matter for prod responsiveness and for generation
       throughput. Measure decisions/sec at equal N, not round win-rate.
+- [ ] **v11pair — the corrected residual arm** (Codex's spec, gated offline
+      first by `scripts/residual_eval.py`): score `(obs, a0, ai)` or directly
+      optimise `((q_i-q_0) - (Q_i-Q_0))` with Huber/ranking/threshold
+      weighting; use the SAME candidate helper in collection and inference;
+      handle TRACTOR_LOCK rows explicitly since the override deploys the value
+      head on them. Needs no new teacher data — gen-v4 already stores
+      candidate 0, the alternatives, and their values.
 - [ ] **`is_heuristic_baseline` bit** — the model cannot currently see WHICH
       candidate is the heuristic baseline, my top suspect for the standalone
       ceiling. Codex's correction: candidate 0 IS the baseline for valued rows

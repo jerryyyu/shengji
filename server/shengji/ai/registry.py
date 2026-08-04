@@ -116,4 +116,8 @@ def _make_override(ckpt: str):
 
 
 # Residual-distillation override policies (learned override of SmartBot)
-REGISTRY["rl-override-v10res"] = _make_override("snapshots_v10res/ep05.pt")
+# ep09 is the checkpoint the battery actually evaluated; the alias pointed at
+# ep05, so anyone playing this bot got a DIFFERENT net than the one measured
+# (Codex 2026-08-03). Kept registered only for the offline residual
+# post-mortem — this arm is a near no-op, not a candidate for play.
+REGISTRY["rl-override-v10res"] = _make_override("snapshots_v10res/ep09.pt")

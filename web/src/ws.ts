@@ -52,6 +52,7 @@ class Connection {
    *  mounted. Cleared on room change, NOT on reconnect (the server replays
    *  scrollback and duplicates would double up). */
   private chatLog: any[] = [];
+  private chatRoom: string | null = null;
 
   private ws: WebSocket | null = null;
   private msgListeners = new Set<MsgListener>();
@@ -69,6 +70,7 @@ class Connection {
    *  clean. Not called on reconnect: the server replays its own scrollback. */
   clearChat(): void {
     this.chatLog = [];
+    this.chatRoom = null;
   }
 
   /** Idempotent: begin connecting (called once from App). */
@@ -125,6 +127,11 @@ class Connection {
       // Chat scrollback is delivered on join, BEFORE the first state — i.e.
       // before <Table> mounts and subscribes. Buffer it here or a joiner sees
       // an empty log (Codex case 7).
+      const room = (msg as any)?.room;
+      if (typeof room === "string" && room !== this.chatRoom) {
+        this.chatRoom = room;      // room changed: the old log is not ours
+        this.chatLog = [];
+      }
       if ((msg as any)?.type === "chat") {
         this.chatLog.push(msg as any);
         if (this.chatLog.length > 100) this.chatLog.splice(0, this.chatLog.length - 100);

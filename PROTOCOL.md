@@ -87,6 +87,9 @@ interface GameState {
   trick: { leader: number; plays: { seat: number; cards: string[] }[] } | null;
   last_trick: { leader: number; plays: { seat: number; cards: string[] }[]; winner: number; points: number } | null;
   attacker_points: number;        // points captured by non-banker team this round
+  ready: number[];              // seats that confirmed the round end;
+                                // the round advances only when every
+                                // CONNECTED human appears here
   kitty_count: number;            // 8 during play, shown face-down
   // --- round_end / game_over ---
   round_result: {

@@ -212,12 +212,45 @@ mc-smartroll tie — the search machinery around this game may matter far less
 than its per-decision cost implies. It is a hypothesis, not a finding: the
 comparison was never designed and the banker is one seat of four.
 
-### 1h. v10res (residual distillation): REJECTED (2026-08-03 22:00)
+### 1h. v10res: the CHECKPOINT is rejected, the IDEA is untested (2026-08-03 23:50)
 
-Preregistered bar was "must beat SmartBot, since it IS SmartBot plus a learned
-override." ep09 scored 47% vs smart (56-64) and 45% vs mc (54-66, and the mc
-side was weakened by the banker bug, so that number flatters it). The override
-did not learn a useful correction. No further epochs queued.
+I originally ledgered this as "residual distillation REJECTED" on a duel
+result (47% vs smart). Codex's post-mortem shows that was the wrong reading,
+and I accept it: **v10res is a near no-op, so the duel could not have measured
+the idea.** At the deployed 0.05 gate it overrides ~1.3-1.5% of states where
+the teacher overrides ~15%. A policy that almost never fires necessarily plays
+like SmartBot and necessarily scores like SmartBot.
+
+Offline evidence (`scripts/residual_eval.py`, run on exactly the two shards
+distill_train withholds, n=1491 valued states):
+
+| metric | v10res | trivial baseline |
+|---|---|---|
+| pairwise delta RMSE | 6.1995 | 6.2112 (predict zero) |
+| regret vs teacher-best @0.05 | 1.924 | 1.965 (always candidate 0) |
+| override precision / recall | 68.3% / 75.9% (argmax, ungated) | — |
+
+It beats "predict no override" by 0.2%. That is weak, badly calibrated signal
+— not nothing, and not a refutation.
+
+**Four implementation defects mean the strongest formulation was never
+tried** (Codex): `--residual` transforms targets to Q(ai)-Q(a0) but the model
+still scores rows independently and is never told what a0 was; the loss is
+unweighted MSE with no ranking or threshold awareness around the consequential
++5 boundary; training reports agreement from the POLICY head while deployment
+gates on the VALUE head; and collection used `MCBot._candidates()` while
+`RLOverrideBot` infers over `enumerate_actions()` — a train/deploy ballot
+mismatch of exactly the kind that produced Elo 798.
+
+The registry alias also pointed at ep05 while the battery measured ep09, so
+anyone playing `rl-override-v10res` got a different net than the one reported.
+Fixed.
+
+**Gate for the successor arm, declared now:** pairwise RMSE below the zero
+predictor AND regret below always-candidate-0, at a threshold chosen on a
+validation split rather than the reported one. Only then does it earn a seeded
+duel. If a corrected arm fails offline, residual learning gets parked with an
+honest "tried properly, did not work."
 
 ### 2. Standalone policy line: no lever has moved it vs mc
 

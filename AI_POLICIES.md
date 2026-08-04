@@ -196,7 +196,7 @@ current entries live under "Learned override" and "Ballot V3" above.
 | snapshots_v9warm / v9scratch | gen-v4, warm vs scratch | — | 48% / 48% — no detected difference |
 | ckpt_v10res | residual override, independent-row objective | 47% | — near no-op, overrode 1.3% of states |
 | **ckpt_v11pair** | residual override done right (deployed quantity, matched ballot, off-split threshold) | **57.7%** (n=480, reproduced) | **~51%** (n=4,880) — level, not better |
-| ckpt_v13abs | direct-V head on ABSOLUTE 240-world labels, used as an MC leaf | — | **NOT CONFIRMED**: −0.004 ± 0.206 paired vs mc, control +0.024 ± 0.215 |
+| ckpt_v13abs | direct-V head on ABSOLUTE 240-world labels, used as an MC leaf | — | **NOT CONFIRMED**: −0.004 ± 0.206 paired vs mc (control +0.024 ± 0.215). Mis-aimed: trained on ply<=15 states, deployed as a post-4-trick leaf |
 
 **Why the standalone line stalls — measured, not inferred.** mc(N=10) forfeits
 ~2.8 points per consequential decision against a 240-world reference, so a

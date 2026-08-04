@@ -395,24 +395,30 @@ motivated the widening (n=1052, v1 missing 15.3%) is in
 
 Measured across all 20,845 states, not selected ones.
 
-**Leads are where the game is decided.** Splitting by role:
+**Leads are the strongest next target, but this corpus does not prove their
+headroom.** Splitting the provisional same-world metric by role:
 
-| role | mean forfeit from keeping the heuristic's pick | % with a provably better alternative |
+| role | mean selected-max gap from the heuristic pick | unadjusted gap > 2 paired SE |
 |---|---|---|
 | **leads** | **2.959 points** | **49%** |
 | follows | 1.006 points | 16% |
 
-Half of all lead decisions have an alternative that beats the heuristic's
-choice by more than 2 paired SE; for follows it is one in six, at a third of
-the stakes.
+This is directional, not “half of leads are provably improvable.” The best
+candidate was selected and tested on the same 240 worlds without a
+multiple-comparison correction. Leads also average **11.08 candidates** versus
+**6.14** for follows, and the unadjusted significant rate rises from 9.7% at
+two candidates to 54.5% at fourteen. That winner's-curse confound inflates the
+lead/follow contrast. Leads still show larger gaps within matched candidate
+counts, so they remain a good hypothesis; only disjoint report worlds can
+quantify the effect.
 
 **This converges with the sourcing audit from a completely different
 direction.** That audit found the deployed ballot misses **15.5% of human
-LEADS** and only **2.0% of follows**. So the decision class carrying ~3x the
-value is the same class where the ballot is weakest. Two independent
-measurements, one conclusion: work on leads.
+LEADS** and only **2.0% of follows**. The two diagnostics therefore agree on
+where to investigate first: leads. They do not establish that lead changes
+will be worth three times as much online.
 
-**The opportunity is flat across the round**, which was not what I expected:
+**The provisional metric is roughly flat across the round:**
 
 | ply band | forfeit | significant |
 |---|---|---|
@@ -422,9 +428,10 @@ measurements, one conclusion: work on leads.
 | 12-15 | 1.806 | 29% |
 | 16+ | 1.718 | 27% |
 
-So the late-ply corpus now generating is needed to MATCH the leaf deployment
-distribution, but it will not reveal a new pocket of opportunity — the value is
-spread evenly through the round.
+The late-ply corpus is still needed to match the leaf deployment distribution.
+These selected-max figures show no obvious rising late-game trend, but they
+cannot establish that a correctly sampled late-ply set will reveal no new
+opportunity.
 
 **What the corpus did NOT deliver.** No strength gain has come from it. v13
 learned its labels 34% better (RMSE 0.1052 -> 0.0699) and played
@@ -434,8 +441,9 @@ of headroom" is a selected, non-strict, early-state figure — a hypothesis, not
 a measured ceiling.
 
 The honest summary: 37.1M candidate evaluations bought one robust negative
-(better label fit does not transfer), one sharp targeting result (leads), and a
-clear statement of the corpus's own limits.
+(better label fit did not transfer in the mismatched v13 deployment), one
+useful directional target (leads), and a clear statement of the corpus's own
+limits. The lead effect size remains unmeasured.
 
 ## Threshold hypothesis (margin 0.005) — NOT CONFIRMED (2026-08-04 14:15)
 

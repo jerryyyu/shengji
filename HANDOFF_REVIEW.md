@@ -946,6 +946,17 @@ v13 head) did not improve online play. Treat this as a valuable reconstructible
 state reservoir and representation diagnostic, not an oracle or finished
 training corpus.
 
+Correction to the newer “leads carry 3x the forfeit / half are provably
+improvable” headline: leads average 11.08 candidates while follows average
+6.14, and the same-world unadjusted significant rate grows from 9.7% at two
+candidates to 54.5% at fourteen. The maximum was selected and tested on those
+same worlds, so that exact rate and effect size are winner's-curse confounded.
+Within matched candidate counts leads still have larger gaps, and the separate
+human sourcing audit also points to leads, so **prioritising leads is a sound
+hypothesis**. Calling 49% “provably improvable” is not sound until proposal and
+report worlds are disjoint (or multiplicity is controlled). I corrected
+`AI_POLICIES.md` accordingly.
+
 **Cleanup/simplification pass (ranked):**
 
 1. Unify candidate generation behind the versioned `BallotSpec` already

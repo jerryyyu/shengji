@@ -67,6 +67,34 @@ and 16 is past the peak. Best snapshot anchors: **56% vs smart** (the
 best any standalone net has managed) and 37% vs mc. Standing recipe:
 ~8 epochs with per-epoch snapshot-probe selection.
 
+### 1d. LABEL-NOISE CEILING DIAGNOSTIC — the labels are NOT the binding
+constraint (2026-08-03 21:00, Codex's #1 recommended test)
+
+120 frozen real decision states, 8 independent N=30 teacher seeds each,
+plus an N=200 reference:
+
+| measurement | value |
+|---|---|
+| teacher self-agreement (modal share of 8 seeds) | **78.5%** |
+| ONE teacher sample vs the N=200 reference | **75.2%** |
+| student (v9warm16-ep08) vs the same reference | **55.8%** |
+| states where the 8 teacher seeds disagreed at all | **63.3%** |
+
+**Interpretation (Codex's stated rule): the student is ~19 points BELOW
+what a single noisy teacher sample achieves, so more student capacity
+CAN still recover signal that is demonstrably present. The labels are
+noisy — 63% of states see the teacher disagree with itself across seeds
+— but they are not yet the ceiling.**
+
+This argues AGAINST an architecture-ceiling conclusion and FOR the next
+rungs of the diagnostic ladder: optimizer/capacity sanity on a small
+clean set, then the representation test (does adding the banker's buried
+cards, declaration owner, pair_void, ordered history and team levels
+close the gap with the SAME model?). It also strengthens the case for
+residual distillation: predicting Delta from the baseline is a far
+easier target than reproducing an absolute ranking through this much
+label noise.
+
 ### 2. Standalone policy line: no lever has moved it vs mc
 
 Tried and null so far: more data, better-than-search labels (gen-v4),

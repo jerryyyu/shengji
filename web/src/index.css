@@ -1826,3 +1826,11 @@ button {
   background: var(--gold);
   color: #201703;
 }
+
+/* Round-end readiness (all humans must confirm before advancing) */
+.ready-status {
+  margin-top: 10px;
+  font-size: 13px;
+  opacity: 0.75;
+  text-align: center;
+}

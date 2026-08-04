@@ -100,6 +100,7 @@ export interface GameState {
   room: string;
   you: number;
   phase: Phase;
+  ready?: number[];   // seats that confirmed the round end
   players: StatePlayer[];
   hand: HandCard[];
   levels: [string, string];

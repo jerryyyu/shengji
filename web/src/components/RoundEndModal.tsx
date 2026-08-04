@@ -93,9 +93,33 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
           </div>
         </div>
 
-        <button className="btn primary big" onClick={() => conn.send({ type: "next_round" })}>
-          Next round
-        </button>
+        {(() => {
+          // Everyone reviews the round at their own pace: the server only
+          // advances once EVERY connected human has confirmed.
+          const humans = state.players.filter((p) => !p.is_bot);
+          const ready = state.ready ?? [];
+          const iAmReady = ready.includes(state.you);
+          const waiting = humans.filter((p) => !ready.includes(p.seat));
+          return (
+            <>
+              <button
+                className="btn primary big"
+                disabled={iAmReady}
+                onClick={() => conn.send({ type: "next_round" })}
+              >
+                {iAmReady ? "Waiting for others…" : "Next round"}
+              </button>
+              {humans.length > 1 && (
+                <div className="ready-status">
+                  {ready.length}/{humans.length} ready
+                  {waiting.length > 0 && iAmReady && (
+                    <> — waiting for {waiting.map((p) => p.name).join(", ")}</>
+                  )}
+                </div>
+              )}
+            </>
+          );
+        })()}
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ConnStatus } from "../ws";
 import { clearSavedRoom, conn, getSavedName, saveName } from "../ws";
 
@@ -17,7 +17,12 @@ const STATUS_LABEL: Record<ConnStatus, string> = {
 
 export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const [name, setName] = useState(getSavedName());
-  const [roomCode, setRoomCode] = useState("");
+  const [roomCode, setRoomCode] = useState(
+    () => new URLSearchParams(window.location.search).get("room")?.toUpperCase() ?? ""
+  );
+  // Invite links: /?room=HPMK auto-joins once a name is known, so a shared
+  // link drops you straight into the table (Jerry, 2026-08-03).
+  const autoJoined = useRef(false);
 
   const ready = status === "open" && name.trim().length > 0;
 
@@ -45,6 +50,17 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     saveName(trimmed);
     conn.send({ type: "join_room", room: code, name: trimmed });
   };
+
+  // Auto-join from an invite link once the socket is ready and we have a
+  // name. Fires once; if the name is blank the user just clicks Join.
+  useEffect(() => {
+    if (autoJoined.current || !ready) return;
+    const invited = new URLSearchParams(window.location.search).get("room");
+    if (!invited || invited.length !== 4 || !name.trim()) return;
+    autoJoined.current = true;
+    saveName(name.trim());
+    conn.send({ type: "join_room", room: invited.toUpperCase(), name: name.trim() });
+  }, [ready, name, conn]);
 
   return (
     <div className="screen lobby-screen">

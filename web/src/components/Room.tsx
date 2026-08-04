@@ -11,7 +11,7 @@ export default function Room({ room }: { room: RoomMsg }) {
 
   const copyCode = () => {
     navigator.clipboard
-      .writeText(room.room)
+      .writeText(`${window.location.origin}/?room=${room.room}`)   // invite LINK, not just the code
       .then(() => {
         setCopied(true);
         window.setTimeout(() => setCopied(false), 1200);
@@ -25,7 +25,7 @@ export default function Room({ room }: { room: RoomMsg }) {
     <div className="screen room-screen">
       <div className="panel room-panel">
         <MuteButton />
-        <div className="room-code-label">Room code — click to copy</div>
+        <div className="room-code-label">Room code — click to copy invite link</div>
         <button className="room-code" onClick={copyCode} title="Copy room code">
           {room.room}
           <span className={`copied-tag${copied ? " show" : ""}`}>Copied!</span>

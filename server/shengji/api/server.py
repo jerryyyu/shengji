@@ -53,6 +53,7 @@ class Room:
     seats: list[Seat] = field(default_factory=list)
     host: int = 0
     game: Game | None = None
+    ready: set[int] = field(default_factory=set)  # seats confirming round end
     ids: list[dict[int, str]] = field(default_factory=lambda: [{} for _ in range(4)])
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     bot: HeuristicBot = field(
@@ -200,6 +201,7 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
 def room_json(room: Room, seat: int) -> dict:
     return {
         "type": "room", "room": room.code, "you": seat, "host": room.host,
+        "ready": sorted(room.ready),
         "players": [{"seat": i, "name": s.name, "is_bot": s.is_bot,
                      "connected": s.connected or s.is_bot}
                     for i, s in enumerate(room.seats)],
@@ -517,6 +519,15 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
             raise IllegalPlay("Round not finished.")
         if game.game_over:
             raise IllegalPlay("Game is over.")
+        # Wait for EVERY connected human to confirm, so nobody's review of
+        # the round gets cut short by a faster clicker (Jerry, 2026-08-03).
+        room.ready.add(seat)
+        humans = {i for i, sd in enumerate(room.seats)
+                  if not sd.is_bot and sd.connected}
+        if not humans <= room.ready:
+            await broadcast(room)
+            return
+        room.ready.clear()
         game.start_round()
         room.index_round()
         _log_round_start(room)

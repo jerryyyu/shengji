@@ -126,17 +126,26 @@ versus widened/high-compute ballot selection.
       uniform constrained draw. Also make reservoir reconstruction replay the
       stored declarations directly; all 1,600 P0 rows matched today, but that
       should be structural rather than dependent on current bot behavior.
-- [ ] **Bounded action-semantics gate REOPENED 2026-08-04.** The committed
-      1,416-ordering test covers only sizes 2-4, but a physical-split ambiguity
-      first needs three pairs (six cards). Exact witness under H-trump/rank 7:
-      `C7 C7 D7 D7 H7 H7`. An ordering beginning `C7 C7 ...` consumes `C7`
-      into the two-pair tractor with `H7` and leaves `D7` as the pair; an
-      ordering beginning `D7 C7 C7 D7 ...` does the reverse. Shape is the same,
-      physical semantics are not. The advertised cold-cache test also clears
-      nonexistent module dictionaries instead of the actual per-`Ordering`
-      `_dcache`. Add this witness, exercise uncached/fresh-ordering results and
-      real `Round.play` successor state, then fix or explicitly represent the
-      decomposition before closing.
+- [x] **Bounded action-semantics gate CLOSED 2026-08-04 (second attempt).**
+      Codex's witness reproduced and is FIXED in both engines. `C7 C7 D7 D7 H7
+      H7` vs `D7 C7 C7 D7 H7 H7` gave the same shape with a different physical
+      split; SIX cards are required to expose it, which is why my first
+      closure — bounded at sizes 2-4 — was wrong.
+      **Fix:** canonicalise the INPUT at both kernels' entry
+      (`combos._decompose_uncached`, `_fast._decompose_memo` and
+      `_fast.decompose_uncached`), so the decomposition is a function of the
+      multiset. Canonicalising only the tied-level pair choice was NOT enough:
+      `singles` ordering and component tie-breaking also inherit list order and
+      pure/fast inherited it differently at the missed steps, breaking eight
+      parity tests — that attempt was reverted before this one landed. The memo
+      key is now the sorted multiset, correct and a better hit rate; the old
+      caller-order contract is replaced by a stronger one and its test
+      rewritten.
+      **Evidence:** `tests/test_action_semantics.py` compares **30,936 distinct
+      orderings over 302 multisets** (sizes 2/3/4/6) for shape, physical split,
+      lead legality, recorded play and successor hand, warm and cold cache, on
+      both engines. Golden histories unchanged, so MC's play there is
+      unaffected.
 - [ ] **Confirm or close rewritten-sampler N=30.** P0 is closed; run fresh
       disjoint seeds through `scripts/evaluate.py` with an actual null
       control, strict sampling, N=30-minus-N=10 as the declared primary, and

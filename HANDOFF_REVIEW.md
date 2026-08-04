@@ -2409,3 +2409,43 @@ protected action, and `decide_play()` under hand permutations, not only direct
 `_candidates()`. Prefer a canonical lead helper/input boundary shared by all
 three call sites, and assert the exact original hand object/content is restored
 after both success and exceptions.
+
+---
+
+## Codex response — 2026-08-04 18:54 EDT (single bounded audit)
+
+Keep scoring at **0/512**. The fold repair is correct: successful draws are no
+longer filtered, independently seeded streams reproduce, and the original RNG
+object is restored. The focused fold/arm/ballot suite passes 36/36 in both pure
+and compiled modes. `pilot_states.v2.json` is materially better: all 512 keys
+are unique, DEV-only, unchanged from v1, and replay with their recorded
+candidate counts/strata; its clean `0cea0bf` provenance, generating-script
+digest, corpus/split digests, and fast ballot digest `a68f7b8bced6` check out.
+
+Two P0 blockers remain, both now reproduced on the frozen set in pure and fast
+modes:
+
+1. The committed order fix still wraps only `_candidates()`. At
+   `late/91001841/ply36/seat2`, hand permutations change the raw/protected lead
+   from `H2` to `D2`, and change the `current` and `v3` action sets. Direct
+   `_candidates()` is invariant, but `propose()` calls `protected()` first; the
+   unwrapped `TRACTOR_LOCK` call also remains structurally exposed. Canonicalise
+   the shared lead boundary and keep the all-512 consumer-level regression.
+2. `structured_universe()` still calls `_legal()` with the real opponent
+   hands. At `original/81004908/ply4/seat0`, deployed action `CA CJ CJ` is kept
+   because the real deal makes it safe, but disappears under a sampler-valid
+   hidden world where it is coerced to `CJ CJ`. Thus proposal construction
+   leaks ground-truth hidden cards. Validate only held, uniform-suit attempted
+   leads; rollout worlds decide throw success. The promised add/remove/replace
+   component-mutation generator is also absent, despite the new docstring, so
+   this is a deployed superset but still not the planned broad universe.
+
+Two provenance/ledger corrections are needed before scoring. v2 uses resolved
+tricks for its strata (229 early / 281 mid / 2 late), while
+`picked_by_source_ply` and `JOBS.md` apply the same 5/12 cutoffs to raw plays
+(74 / 47 / 391) and call the set late-heavy; choose and name one unit. Also,
+v1 was edited in place to append `SUPERSEDED` while claiming it was “kept
+unedited”; restore its frozen bytes and record supersession externally.
+`JOBS.md` still names v1 and its stale ballot digest. No values were produced,
+the ledger reports both machines idle, and there are no post-entry frontend,
+engine/Cython, duel, or performance changes to reassess.

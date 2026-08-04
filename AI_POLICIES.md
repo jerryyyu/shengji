@@ -71,8 +71,9 @@ newest entry sit on top and speak for the file.
 - **Strength incumbent:** `mc` remains the default. Its count-first sampler now
   consumes declaration, void and remaining-pair constraints; normal mode can
   still use the final void-relaxing retry, while confirming evaluation requires
-  strict voids. Full independent validity/completeness and posterior-fidelity
-  claims remain open, so old non-strict labels stay provisional.
+  strict voids. Independent reservoir validity and exhaustive-toy support have
+  passed; posterior fidelity has not. Old non-strict labels therefore remain
+  provisional even though new strict evaluations are unblocked.
 - **Retired strength arm:** `mc-vleaf-v7w-ep02` has no verified edge over MC.
   Its historical 50.4% at n=1,200 predated the leaf factory's seed-forwarding
   repair. In the current hardened screen it scored 52.8% and
@@ -409,36 +410,34 @@ act on. Entries are kept because a number without its protocol is
 how six claims were made and lost, but they are deliberately below
 the fold.
 
-## Sampler certification status — a useful screen, not a full certificate
+## Sampler certification status — P0 passed; posterior fidelity open
 
-`scripts/certify_sampler.py` independently re-derived suit-void and remaining-
-pair constraints from the trick record. That was materially better than
-checking the sampler against `Memory`, and its late-ply run found 12 genuinely
-invalid worlds: a pinned declared card plus a sampled second copy completed a
-pair the history ruled out. The pin-aware pair-cap fix re-ran clean for the
-implemented checks.
+The first certifier was only an availability screen. The repaired version at
+`eea78d2` consumes the original and late raw-state reservoirs, re-derives
+constraints independently of `Memory`, checks full deck/kitty conservation,
+declaration pins, voids, remaining pair/run obligations and every failed draw,
+and records clean-tree provenance. Its final artifact reports:
 
-The result is narrower than its first label implied:
+| claim | result |
+|---|---|
+| reservoir validity | 1,600 states; 38,399/38,400 worlds produced; 1 rejected draw; **0 invalid** |
+| exhaustive toy support | **120/120** states reached every enumerated legal world; 0 worlds missed |
+| planted witness | real deal reached in **120/120** toy states |
 
-- The ply>=8 run requested 36,000 worlds and accepted 35,995; those five
-  individual `None` draws were hidden by a counter that only reports states
-  where all 24 retries fail. Zero such states is availability evidence, not a
-  completeness proof.
-- The validator still does not reconstruct the full unseen multiset including
-  observer, sampled hands, played cards and returned kitty; directly verify
-  declaration pins; or enforce the pure-tractor obligation against sampled
-  residual cards.
-- It validates the real hidden deal as a witness but does not make the sampler
-  consume that witness or exhaust all small legal worlds.
+That closes the bounded P0 validity/support claim. A reconstruction audit also
+confirmed that all 1,600 accepted rows matched their stored banker, trump rank,
+and final declaration, although the certifier should still replay stored
+declarations directly rather than rely on today's bots reproducing them.
 
-Two distribution biases are also identified analytically and unmeasured:
-count matrices are sampled without weighting by how many card assignments they
-admit, and the pair-cap card draw greedily prefers distinct codes. Shared bias
-may partially cancel in paired arms, but a wider structured ballot can interact
-with it, so robustness is an experiment—not an assumption. The open gates are
-full validity, toy-state completeness, and exact-posterior/marginal calibration.
+It does **not** close distribution fidelity. Two biases are identified
+analytically and unmeasured: count matrices are sampled without weighting by
+how many concrete card assignments they admit, and the pair-cap card draw
+greedily prefers distinct codes. Shared bias may partially cancel in paired
+arms, but a wider structured ballot can interact with it, so robustness is an
+experiment—not an assumption. P1 is exact toy-posterior/marginal calibration,
+then a weighted per-card-code DP or equivalent uniform constrained sampler.
 
-## World sampler rewrite — improved, independent certification open
+## World sampler rewrite — P0 certified, distribution calibration open
 
 The sampler was a greedy first-fit: shuffle the unseen pool, give each card to
 a random seat that still has room. That dead-ends on states where a legal world
@@ -474,15 +473,13 @@ it, which dealt a **third copy of a two-copy card** — fixed by taking cards by
 REMOVAL so conservation is structural; and `_take` collided with
 `HeuristicBot._take`, silently breaking follow generation from a subclass.
 
-The ~18.2k-search screen pins useful allocator invariants but is not a complete
-certificate. Its validator initially shared assumptions with `Memory`; the
-first independent certifier later omitted the returned kitty, declaration-pin
-interactions, full unseen-pool reconstruction, tractor obligations, and hid
-five individual failed draws by counting only states where all 24 draws failed.
-That certifier did find another real bug—an already pinned declared card could
-combine with a sampled copy into a forbidden pair—which is now fixed with a
-regression. Full validity/completeness certification remains the current P0 in
-`BACKLOG.md`; distribution fidelity is a separate later question.
+The ~18.2k-search screen pinned useful allocator invariants but was not a
+certificate. Its independent successor first found another real bug—an already
+pinned declared card could combine with a sampled copy into a forbidden pair—
+then was repaired to check the full P0 contract. The clean `eea78d2` artifact
+closes reservoir validity and exhaustive-toy support. Distribution fidelity is
+still a separate question and no old non-strict label is upgraded by this
+result.
 
 **This changes `mc`'s play.** Golden histories were regenerated deliberately.
 Prod runs `mc`, so this is a behaviour change awaiting a strength check and

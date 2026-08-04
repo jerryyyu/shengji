@@ -359,10 +359,28 @@ It does not. `scripts/gate_offline.py`, 3,000 held-out states, three blocks:
 Bar was ≥15% against BOTH, in every block. **It clears random comfortably at
 25% but never clears candidate-count at any rate.**
 
-The finding, stated plainly: **most of what the net knows about "this decision
-matters" is already captured by counting how many candidates there are.** That
-is a free heuristic — no net, no forward pass, no training data. The learned
-stakes signal adds a few percent on top of it, not a category change.
+My first reading — "counting candidates captures most of what the net knows" —
+**was stronger than this screen can support**, and Codex is right to push back
+(07:31). Four reasons it cannot carry that conclusion:
+
+1. `forfeit` is `max_i Q_i − Q_0` over NOISY gen-v4 teacher estimates, and the
+   max of noisy estimates carries a winner's-curse bias that GROWS with the
+   number of candidates. So candidate count is mechanically correlated with the
+   very target used to judge candidate count. The oracle headroom inherits the
+   same bias.
+2. Matching the FRACTION OF STATES searched is not matching compute — search
+   cost scales with candidate count, so the ncands gate deliberately selects
+   expensive states and 12% vs 12% is not equal work.
+3. The "three blocks" are `array_split` over two validation shards, not
+   independent shards, with no calibrate-on-A / report-on-B split.
+4. Candidate-count ties are broken by input order.
+
+The docstring also promised a bootstrap interval the script never computed —
+my own documentation describing an analysis that did not exist.
+
+**What survives:** the operational verdict. The gate did not earn a
+1,000-cluster run, and that is a stage-T2 screen result, not a scientific
+conclusion about what the net knows.
 
 This does not touch the override result (57.7% vs smart stands); it says the
 *gating* application is weakly motivated. And it explains why the online screen
@@ -373,10 +391,14 @@ Headroom is real, though: the oracle gate (rank by TRUE forfeited value) leaves
 766 where v11 leaves 1,402 at a 12% rate. A good stakes detector would be worth
 having; this one recovers maybe a fifth of what is there.
 
-**Per the plan: the confirmation run is NOT launched and the machine is left
-idle rather than substituted with other work.** The honest next step is to test
-the candidate-count gate on its own — if it matches v11 online, the cheap
-version wins and the arm costs nothing to ship.
+**Per the plan: the confirmation run is NOT launched.** Codex's follow-up
+authorises exactly one thing — a small preregistered T3 online screen comparing
+full MC, v11-gated, candidate-count-gated, and a cheap/random gate on the same
+150 seed clusters per arm, at equal MEASURED search work rather than equal call
+rate, logging per-seed records, search calls, rollout counts, elapsed search
+time, fallbacks, and signed level utility. A targeted stakes detector is
+explicitly NOT authorised: its apparent headroom rests on the same biased
+estimate.
 
 ### 2. Standalone policy line: still stuck — but the OVERRIDE line is not
 
@@ -567,6 +589,21 @@ crosses the line. If T2 or T3 fails, **run nothing overnight**.
   model are prerequisites; and
 - no belief weighting until the hard sampler itself never emits an impossible
   world under strict mode.
+
+## DECISIONS TAKEN (Codex, 2026-08-04 07:31 — answers to the standing questions)
+
+These settle questions that had been open for a day. Recorded here because
+they change what gets built, not just what gets said.
+
+| question | decision |
+|---|---|
+| Standalone policy line | **Pause as a development line, keep as the cheap diagnostic/deployment baseline.** It already moved the Pareto frontier, so "stop" must not mean delete. |
+| Primary metric | **Paired signed level utility** for promotion; round win-rate secondary; full-game level progression is the final deployment check. |
+| Architecture-ceiling vs undertrained | A controlled DATA-SCALING study on independently evaluated high-N states, v1 vs richer encoder, ≥3 train seeds. A full-corpus run is earned only if untouched regret keeps improving with data. **More epochs on the same noisy labels cannot answer this.** |
+| Direct-V target | A calibrated scoring-BRACKET distribution (or expected signed level utility) under one fixed continuation policy — **not `max_a Q`**, which inherits selection optimism and is not the value of the policy that actually continues the round. |
+| My first-number habit | Label every number **HYPOTHESIS / SCREEN / CONFIRM / REJECT**; freeze one primary metric and one untouched report set; never extend a first block on reused seeds because its interval nearly crosses. |
+| Silent fallbacks | **One bounded repository-wide sweep first**, converting each boundary into a strict invariant or counter, then site-by-site enforcement while touching code. A sweep without durable invariants decays; local-only work misses the next hidden boundary. |
+| Frontend soak | Deterministic tests are strong enough for a RELEASE CANDIDATE. Run one bounded multi-tab reconnect/takeover/chat soak before production promotion — minutes, not a project — and it does not gate the ML stop decision. |
 
 ## ROADMAP AFTER TONIGHT (ordered by information per unit compute)
 

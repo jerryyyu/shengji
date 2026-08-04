@@ -13,9 +13,9 @@ AI_POLICIES.md; run archives in `server/runs/`.
 
 **RESIDUAL/OVERRIDE LEARNING WORKS — the first positive result from the
 learned line.** `rl-override-v11pair` (SmartBot + a learned override, NO
-search, p50 0.4ms) beats SmartBot **57.7%** (n=480). Against mc it is LEVEL:
-51.3% over n=2880, five blocks all just above 50 with the interval still
-including it. The preregistered final block is running. A gated variant
+search, p50 0.4ms) beats SmartBot **57.7%** (n=480). Against mc it is **NOT better**: 51.1% over n=4080 (six preregistered blocks),
+Wilson [49.6%, 52.6%] — the interval includes 50, so the standing goal is not
+met. A gated variant
 (search only on the ~12% of states the net flags as high-stakes) scores 53.3%
 vs mc at 55% of the wall-clock. Details in 1i and 1k.
 
@@ -270,7 +270,7 @@ implementation rather than from more data or more epochs.
 disjoint seed blocks agreeing to 0.1 points, Wilson [53.2%, 62.0%]). v10res
 scored 47% on the same bar.
 
-**vs mc — level, not ahead:**
+**vs mc — NOT BETTER. Final, preregistered, n=4080:**
 
 | block | seeds | result |
 |---|---|---|
@@ -279,13 +279,22 @@ scored 47% on the same bar.
 | 3 | 10.5M | 308-292 = 51.3% |
 | 4 | 11M | 306-294 = 51.0% |
 | 5 | 12M | 611-589 = 50.9% |
-| **pooled** | disjoint | **1478-1402 = 51.3%, n=2880, Wilson [49.5%, 53.1%]** |
+| 6 | 13M | 607-593 = 50.6% |
+| **POOLED** | disjoint | **2085-1995 = 51.1%, Wilson [49.6%, 52.6%]** |
 
-Five independent blocks, every one above 50, and the pooled interval still
-includes it. That is what a real-but-tiny edge and no edge at all look like
-from the inside — they are not distinguishable at this n, and saying so is the
-honest answer. Block 6 (seeds 13M, the preregistered final block) is running;
-it takes pooled n to ~4080. **No extension beyond it**, whatever it says.
+The interval includes 50, so **v11pair does not beat mc** and the standing goal
+(an RL policy rated above MCBot in the same pool) is NOT met.
+
+Read the block sequence downward: 52.2, 53.0, 51.3, 51.0, 50.9, 50.6. The early
+blocks were the small ones (n=180, n=300) and they read high; every larger block
+pulled the estimate toward ~51%. That is textbook regression to the true value,
+and it is the same shape as the vleaf 60% mirage. The lesson is not subtle and
+it has now cost two headline claims: **a first block is an invitation to
+measure, never a result.**
+
+Resolving whether a ~1% edge is real would need n~5,700+; at some point the
+honest move is to say the effect is too small to matter for play, not to keep
+buying resolution. Design complete, stopped as declared.
 
 **What fixed it vs v10res (47% vs smart):**
 

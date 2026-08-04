@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { GameState, RoomMsg } from "./protocol";
+import { decideIntent, intentToJoin } from "./intent";
 import type { ConnStatus } from "./ws";
 import { clearSavedRoom, conn, getResumeToken, getSavedName, getSavedRoom, saveRoom } from "./ws";
 import { announceState, resetAnnouncer } from "./audio";
@@ -51,14 +52,21 @@ export default function App() {
     const unsubStatus = conn.subscribeStatus((s) => {
       setStatus(s);
       if (s !== "open") return;
-      const invited = new URLSearchParams(window.location.search).get("room");
-      if (invited) return;              // Lobby owns the invite flow
-      const room = getSavedRoom();
-      const name = getSavedName();
-      if (room && name) {
-        const token = getResumeToken();
-        conn.send({ type: "join_room", room, name, ...(token ? { token } : {}) });
-      }
+      // ONE decision, made in intent.ts and unit-tested there. An invite is
+      // handled by the Lobby (it must not auto-submit without a name), so the
+      // only thing to act on here is a saved resume.
+      const params = new URLSearchParams(window.location.search);
+      const inviteRoom = params.get("room");
+      const intent = decideIntent({
+        invite: inviteRoom ? { room: inviteRoom,
+                               name: params.get("name") ?? undefined } : null,
+        savedRoom: getSavedRoom(),
+        savedName: getSavedName(),
+        savedToken: getResumeToken(),
+      });
+      if (intent.kind !== "resume") return;   // Lobby owns invite + pending
+      const join = intentToJoin(intent);
+      if (join) conn.send(join as never);
     });
     const unsubMsg = conn.subscribe((msg) => {
       switch (msg.type) {

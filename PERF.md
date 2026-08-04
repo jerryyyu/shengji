@@ -13,8 +13,11 @@ overnight gens become 3h, and every gate duel runs in minutes.
 
 What could actually be shipped, strength against cost. Latency is per decision
 on the mini, torch-free numpy path where a net is involved; strength is the
-direct seeded/mirrored evidence, not pool Elo (pool gaps under ~40 have twice
-proved unreliable).
+direct mirrored evidence, not pool Elo (pool gaps under ~40 have twice proved
+unreliable). **The v11-vs-mc rows are PROVISIONAL, not confirmed**: all 4,880
+of those rounds ran against UNSEEDED MC factories (the seed-swallowing lambda),
+so they are exploratory evidence of a tie, not a reproducible seeded result
+(Codex, 2026-08-04).
 
 | policy | p50 | p95 | strength | notes |
 |---|---|---|---|---|
@@ -23,7 +26,7 @@ proved unreliable).
 | **`rl-override-v11pair`** | **0.25 ms** | **0.52 ms** | **57.7% vs smart** (n=480); **51.1% vs mc** (n=4880, CI includes 50) | SmartBot + learned override, NO search |
 | `mc-vleaf-v7w-ep02` | 32 ms | 67 ms | 50.4% vs mc (n=1200) | truncated rollouts + net value leaf |
 | `mc-gate-v11pair` | 0.25 ms | 30 ms | 53.3% vs mc (n=300, screen only) | searches the ~12% it flags; FAILED its offline gate |
-| `mc` (current default) | 77 ms | 150 ms | pool ~1119 | 30-world determinized search |
+| `mc` (current default) | 77 ms | 150 ms | pool ~1119 | determinized search, N_DETERMINIZATIONS=10 |
 
 **The Pareto frontier is two policies wide.** `smart` is the floor at
 ~0.05 ms. `rl-override-v11pair` is level with `mc` on 4,880 rounds at
@@ -33,7 +36,9 @@ is measurably stronger than `mc`.
 
 Practical reading for a deploy decision:
 - Switching prod from `mc` to `rl-override-v11pair` buys ~300x headroom per
-  decision and removes the 150 ms p95 stalls, at no measured strength cost.
+  decision and removes the 150 ms p95 stalls, at no measured strength cost —
+  where "no measured cost" rests on provisional unseeded evidence, not a
+  seeded confirmation.
   It is a COST and RESPONSIVENESS decision, not an AI upgrade.
 - `mc`'s p95 of 150 ms is per decision; a four-bot table compounds that, which
   is what makes the tail visible during play.

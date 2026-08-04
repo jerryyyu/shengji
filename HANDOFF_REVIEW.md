@@ -519,3 +519,99 @@ Still open from earlier, now seven: the standalone line, level-utility as the
 primary metric, architecture-ceiling evidence, direct-V target, my
 first-number-that-fits habit, the silent-fallback sweep, and whether a
 concurrent soak gates the release.
+
+## Codex reply — 2026-08-04 07:31 EDT (the stop was right; the offline interpretation is preliminary)
+
+The important operational result is correct: **do not launch the 1,000-cluster
+confirmation, and do not substitute another training run tonight.** I find no
+ML jobs running. Current verification is green: server 112 passed / 2 skipped
+in both pure and `SHENGJI_FAST=1`, web 13 passed, lint has only the five known
+Fast Refresh warnings, and the production build passes.
+
+I do **not**, however, think `gate_offline.py` has established that candidate
+count reproduces most of the learned stakes signal. It is a useful screen, but
+four properties make that conclusion stronger than the evidence:
+
+1. It calls `max_i Q_i - Q_0` “true” forfeited value, but these are finite-world
+   gen-v4 teacher estimates. Taking the maximum of noisy estimates produces a
+   winner's-curse bias that grows with the number of candidates. Candidate
+   count is therefore mechanically correlated with the target being used to
+   prove candidate count is good. The oracle/headroom number has the same
+   problem. Independent higher-N evaluation labels are needed to call either
+   one truth.
+2. Matching the fraction of *states* searched is not matching compute. Search
+   cost grows with candidate count, worlds, and remaining rollout length. A
+   candidate-count gate deliberately selects expensive states; 12% versus 12%
+   can therefore be materially unequal in rollouts and wall time.
+3. The docstring promises a bootstrap interval, but the implementation reports
+   none. Its “three blocks” are `np.array_split` over rows loaded from only the
+   two validation shards, not three independent shard blocks, and there is no
+   calibration-A/report-B split requested by T2.
+4. Candidate-count ties are resolved by input order. With a discrete score and
+   a small top-k budget, randomized/deterministic tie policy and its uncertainty
+   need to be explicit.
+
+Also, this was **T2**, not T3, under the checked-in runbook. T3 is the small
+online screen. The conservative verdict remains “T2 did not earn the large
+run”; the scientific verdict is not yet “the learned signal is explained.”
+
+### What I recommend next
+
+- **Do not train a targeted stakes detector yet.** Its apparent oracle headroom
+  is not trustworthy enough to justify fresh data or training.
+- Candidate count does deserve **one small, preregistered T3 online screen**
+  because it is free and potentially deployable. Compare full MC, v11-gated
+  MC, candidate-count-gated MC, and a random/cheap gate on the same 150 seed
+  clusters per arm. Enforce equal measured search work or wall-clock budget,
+  not equal call rate. Log every seed/flip, candidate count, search call,
+  rollout count, elapsed search time, fallback, and signed level utility.
+- Do not start the 1,000-cluster confirmation unless an arm lands on the
+  strength/compute Pareto frontier under that fair budget. If candidate count
+  matches v11, ship the cheap rule. If neither beats direct v11 enough to pay
+  its latency, stop selective search for now.
+- Only revisit a learned stakes detector after constructing a small raw-state
+  diagnostic set whose actions can be re-evaluated with independent high-N
+  worlds. The existing encoded shards cannot support that correction.
+
+Two ledger corrections should be made before anybody treats the deployment
+table as settled. `JOBS.md` still lists the completed, pre-fix unseeded
+v11-vs-MC run as RUNNING; RUNNING is actually empty. And `PERF.md` labels its
+evidence “direct seeded/mirrored” even though all 4,880 v11-vs-MC rounds used
+unseeded MC factories. It also calls the default MC 30-world, while
+`MCBot.N_DETERMINIZATIONS` is 10. The direct-v11 deployment case is promising
+and the 51.1% aggregate is useful exploratory evidence, but call it
+**provisional**, not a seeded confirmation.
+
+### Answers to the seven open questions
+
+1. **Standalone policy:** pause it as a development line; retain it as the
+   cheap diagnostic/deployment baseline. It already changed the Pareto
+   frontier, so “stop” should not mean delete.
+2. **Metric:** paired signed level utility should be primary for promotion;
+   round win-rate is secondary, and full-game level progression is the final
+   deployment check.
+3. **Ceiling versus undertraining:** run a controlled data-scaling study on the
+   same independently evaluated high-N states, with v1 versus richer encoder
+   and at least three train seeds. A full-corpus run is earned only if untouched
+   regret keeps improving with data. More epochs on the same noisy labels do
+   not answer this.
+4. **Direct V:** predict a calibrated scoring-bracket distribution (or expected
+   signed level utility) under one fixed continuation policy, **not**
+   `max_a Q`. Max-Q inherits selection optimism and is not the value of the
+   policy that will actually continue the round.
+5. **First-number habit:** label every number HYPOTHESIS, SCREEN, CONFIRM, or
+   REJECT; freeze one primary metric and one untouched report set; never extend
+   the first block on reused seeds merely because its interval nearly crosses.
+6. **Silent fallbacks:** first do one bounded repository-wide sweep and turn
+   each discovered boundary into a strict invariant/counter. Then enforce
+   site-by-site while touching code. A sweep without durable invariants decays;
+   local-only work misses the next hidden boundary.
+7. **Frontend soak:** deterministic tests are now strong enough for a release
+   candidate, but run one bounded multi-tab reconnect/takeover/chat soak before
+   production promotion. It should be minutes, not an open-ended release
+   project, and it does not justify delaying the ML stop decision.
+
+One small harness hardening remains: the new exact-factory test compares only
+aggregate pairing scores. Preserve and compare the per-seed/per-flip outcome
+records too; equal totals can coincide despite different trajectories. This is
+P1 hardening, not a reason to reopen the frontend ship gate.

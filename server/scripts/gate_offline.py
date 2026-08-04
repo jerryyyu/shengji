@@ -19,7 +19,23 @@ Gates compared at matched rate:
   * ncands   — rank by candidate count, i.e. "complex decisions matter"
   * oracle   — rank by TRUE forfeited value; the ceiling, not a contender
 
-Reported per block and pooled, with a bootstrap interval over states.
+Reported per block at several matched rates.
+
+LIMITS, stated because this screen was over-read once already (Codex,
+2026-08-04):
+  * `forfeit` uses gen-v4 teacher estimates, and taking max_i Q_i over
+    candidates carries a winner's-curse bias that GROWS with candidate count —
+    so candidate count is mechanically correlated with the very target used to
+    judge it. Neither the ncands result nor the oracle headroom is truth
+    without independent higher-N labels.
+  * Matching the FRACTION OF STATES searched is not matching compute: search
+    cost scales with candidate count, so a candidate-count gate deliberately
+    picks expensive states and 12% vs 12% is not equal work.
+  * The blocks are array_split over two validation shards, not independent
+    shard blocks, and there is no calibrate-on-A / report-on-B split.
+  * Candidate-count ties are broken by input order.
+This is a SCREEN (runbook stage T2). It can say "not earned"; it cannot say
+"the learned signal is explained"
 
     uv run python scripts/gate_offline.py [n_states] [blocks]
 """

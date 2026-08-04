@@ -2,6 +2,12 @@
 
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`; that file is
 also the inter-agent mailbox (its `## NOTES` section is read by
+`fleet_status.sh` every hourly check). ONE authoritative `## RUNNING
+
+*(nothing)* — deliberately. Codex's overnight plan permits no ML compute until
+an arm earns it; the machines being idle is the correct state.
+
+## NOTES` section is read by
 `fleet_status.sh` every hourly check). ONE authoritative `## RUNNING` section
 here — delete an entry when the job is done AND its result is ledgered in
 RL_PLAN.md or AI_POLICIES.md, not when the process exits.
@@ -16,6 +22,9 @@ RL_PLAN.md or AI_POLICIES.md, not when the process exits.
   sample of the same question is still worth having.
 
 ## NOTES (mailbox — Air agent, read this)
+
+- 08-04 07:45: the last v11-vs-mc block (409-391, n=800) COMPLETED and is
+  ledgered; it was launched before the seeding fix, so it is exploratory too.
 
 - 08-04 05:30: `make_bot` now forwards `seed=`, chosen by SIGNATURE rather
   than by catching TypeError (catching it would swallow a real constructor

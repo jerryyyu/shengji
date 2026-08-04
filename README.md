@@ -57,7 +57,7 @@ use the pair-count rule.
 server/shengji/engine/   cards, combos (tractor decomposition), legality, round, game
 server/shengji/ai/       policies: heuristic.py (baseline), smart.py +
                          memory.py (card-counting heuristic), mcbot.py
-                         (Monte Carlo search, server default, Elo ~1140),
+                         (Monte Carlo search, server default),
                          registry.py + env.py + tournament.py (evaluation;
                          ladder and all measurements in AI_POLICIES.md)
 server/shengji/rl/       learned-policy pipeline: encoder, action
@@ -76,18 +76,27 @@ codes per seat so hidden information never leaves the server.
 
 A policy is anything implementing three methods (`decide_declare`,
 `decide_bury`, `decide_play`); the server picks one via `SHENGJI_BOT`
-(`curl /healthz` reports the active one). The current ladder, all
-measured on mirrored deals (details in `AI_POLICIES.md`):
+(`curl /healthz` reports the active one). Current evidence, with provenance
+and promotion caveats in `AI_POLICIES.md`:
 
 - **`mc` (default)** — determinized Monte Carlo search over a
-  card-counting heuristic; pool Elo ~1140.
+  card-counting heuristic. It remains the search/strength incumbent, but its
+  hidden-world sampler still needs strict void and pair-void enforcement.
 - **`rl`** — a neural policy trained by distilling the search's own
-  evaluations (no search at inference, ~2ms/decision). As a STANDALONE
+  evaluations. As a STANDALONE
   policy it plateaus around 38-48% vs `mc`. The same distillation used as
   a learned OVERRIDE on SmartBot (`rl-override-v11pair`) beats SmartBot
-  57.7% over n=480 and is level with `mc` so far — still being settled.
+  57.7% over n=480 and runs at p50 0.25ms / p95 0.52ms on the numpy path.
+  Its 51.1% over 4,880 rounds against `mc` is encouraging SCREEN evidence,
+  not a seeded confirmation; the duel factories accidentally dropped seeds.
   Needs `uv sync --group rl` + a local checkpoint (`SHENGJI_RL_CKPT`).
 - `smart`, `heuristic` — the hand-written tiers below both.
+
+The project objective is verified strength per unit of latency and training
+compute, not RL-guided search for its own sake. v11pair is valid as a direct
+root reranker/proposer; it is not an absolute state-value leaf. New search
+experiments are blocked on strict belief sampling and a reproducible paired
+evaluator; see `RL_PLAN.md` for the ordered roadmap.
 
 Training pipeline (`server/shengji/rl/`, roadmap and full experiment
 log in `RL_PLAN.md`): observation/action encoders, legal-play

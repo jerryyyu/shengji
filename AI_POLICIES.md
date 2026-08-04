@@ -73,10 +73,13 @@ consistent with the data, not a demonstrated causal claim.
 
 ## Current synthesis — 2026-08-04 22:15
 
-- **Strength incumbent:** `mc-strong` (N=30) is now the strongest VERIFIED
-  policy: +0.262 +/- 0.154 paired level utility over deployed N=10 `mc` on 504
-  preregistered fresh clusters, with a null control at -0.048 +/- 0.162. It is
-  NOT deployed — that is Jerry's call, and it costs 3x the search.
+- **Strength incumbent:** `mc-strong` (N=30) beat deployed N=10 `mc` by
+  +0.262 +/- 0.154 on 504 preregistered fresh clusters, null control
+  -0.048 +/- 0.162, independently reproduced by Codex. **That result is pinned
+  to commit `e3aeec1` and does NOT transfer to current `main`:** the action
+  semantics and tractor ballot changed afterwards and the run's ballot digest
+  no longer matches source. Promoting today's executable requires a FRESH
+  frozen-current confirmation. Not deployed; 3x search cost.
   No learned policy, value leaf, learned search prior, or ballot variant has a
   verified edge over `mc`.
 - **Best learned result:** `rl-override-v11pair` beats SmartBot 57.7% (n=480)

@@ -5,10 +5,23 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-None. The clean 512-state lead-ballot pilot is next after its coverage baseline
-is refreshed against the repaired tied-code action universe.
+Nothing. Both machines idle.
 
 ## RECENTLY FINISHED
+
+### N=30 confirmation — CONFIRMED, closed 2026-08-04 23:40
+- **+0.262 +/- 0.154** vs N=10 over 504 preregistered clusters (seeds 99M);
+  arm-minus-null +0.310 +/- 0.153; null control -0.048 +/- 0.162 (includes 0).
+  Independently reproduced by Codex from the raw six shards.
+- **PINNED TO `e3aeec1`, NOT current main.** The action semantics and tractor
+  ballot have changed since, and the manifest's ballot digest no longer matches
+  source. Common-mode exposure preserves that contrast's internal validity but
+  does not rule out an N-by-ballot interaction. Do NOT rerun to reinterpret the
+  old result; a promotion of today's executable needs a FRESH frozen-current
+  confirmation (Codex).
+
+### action-semantics gate — CLOSED by Codex 2026-08-05 at `a2560ba`
+
 
 ### rewritten-sampler N=30 confirmation — CONFIRMED 23:43
 - Preregistered one-block result: N=30 minus N=10 `+0.262 +/- 0.154`; N=30

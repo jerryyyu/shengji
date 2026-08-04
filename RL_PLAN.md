@@ -336,6 +336,40 @@ high-confidence buckets showed higher absolute regret. That evaporated once
 regret was compared against the right baseline within each bucket: those are
 simply higher-stakes states. Worth recording as a near-miss.
 
+### 1l. THE GATED ARM FAILS ITS OFFLINE GATE — counting candidates is nearly as good (2026-08-04 05:50)
+
+Codex's overnight plan required the stakes-gate to beat trivial alternatives
+offline, at the SAME search rate, before earning a 1,000-cluster confirmation.
+It does not. `scripts/gate_offline.py`, 3,000 held-out states, three blocks:
+
+| search rate | v11 vs random | v11 vs candidate-count |
+|---|---|---|
+| 5% | +5.8 to +8.0% | −3.8 to +2.4% |
+| 12% | +14.5 to +18.1% | +3.8 to +8.8% |
+| 25% | +28.4 to +33.4% | +6.6 to +11.6% |
+
+Bar was ≥15% against BOTH, in every block. **It clears random comfortably at
+25% but never clears candidate-count at any rate.**
+
+The finding, stated plainly: **most of what the net knows about "this decision
+matters" is already captured by counting how many candidates there are.** That
+is a free heuristic — no net, no forward pass, no training data. The learned
+stakes signal adds a few percent on top of it, not a category change.
+
+This does not touch the override result (57.7% vs smart stands); it says the
+*gating* application is weakly motivated. And it explains why the online screen
+looked encouraging at 53.3%: a gate that spends search on high-branching states
+is a reasonable gate — it just does not need a neural network.
+
+Headroom is real, though: the oracle gate (rank by TRUE forfeited value) leaves
+766 where v11 leaves 1,402 at a 12% rate. A good stakes detector would be worth
+having; this one recovers maybe a fifth of what is there.
+
+**Per the plan: the confirmation run is NOT launched and the machine is left
+idle rather than substituted with other work.** The honest next step is to test
+the candidate-count gate on its own — if it matches v11 online, the cheap
+version wins and the arm costs nothing to ship.
+
 ### 2. Standalone policy line: still stuck — but the OVERRIDE line is not
 
 Standalone nets remain ~38-48% vs mc across every lever tried: more data,

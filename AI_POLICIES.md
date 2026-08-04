@@ -356,6 +356,7 @@ constraints (see BACKLOG).
 |---|---|---|---|
 | `rl-override-v11pair` | SmartBot + a learned override on `(q_i - q_0)`, threshold 0.02 fitted on a disjoint holdout half, matched train/play ballot | **57.7% vs smart** (277-203, n=480, two disjoint seed blocks, Wilson [53.2%, 62.0%]); vs mc **51.1%, n=4080, CI [49.6, 52.6] — a tie, not a win** | beats its bar; no search at all (~2ms/decision) |
 | `mc-vleaf-v11pair` | the hybrid using v11pair's value head | **32.5% vs mc** (39-81, n=120) | rejected as a CONFIGURATION, but INVALID as a test of learned leaves: a pairwise head's cross-state scale is unidentified, so the number measures calibration, not the idea (predicted in advance; Codex concurred independently) |
+| `mc-gate-v11pair` | SmartBot+override, escalating to full MC search on the ~12% of states the net flags as high-stakes | online screen 53.3% vs mc (n=300) at 55% wall-clock; **FAILS its offline gate** — beats random by 14-18% but candidate-count by only 4-9%, bar was 15% vs both | not adopted; the cheap candidate-count gate captures most of the same signal |
 | `rl-override-v10res` | the same idea with an independent-row objective and a MISMATCHED play-time ballot | 47% vs smart; overrode 1.5% of states where the teacher overrode ~15% | near no-op — the checkpoint failed, not the idea |
 
 ## Experiment log (measured and rejected — reproducible via registry/toggles)

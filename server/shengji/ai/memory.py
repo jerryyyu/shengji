@@ -27,10 +27,15 @@ class Memory:
         self.played: Counter[str] = Counter()
         self.played_by: dict[int, Counter[str]] = {s: Counter() for s in range(4)}
         self.voids: dict[int, set[str]] = {s: set() for s in range(4)}
-        # Proven "no pair left in suit": the rules FORCE a follower to match
-        # pairs up to the number led, so answering a pair/tractor lead with
-        # fewer in-suit pairs than led is proof their pairs there are gone.
-        self.pair_void: dict[int, set[str]] = {s: set() for s in range(4)}
+        # Proven UPPER BOUND on pairs left in a suit. The rules FORCE a
+        # follower to match pairs up to the number led, so answering a lead of
+        # k pairs with fewer than k in-suit pairs proves they hold at most
+        # k-1 there. Recorded as a bound rather than a boolean because the two
+        # cases are genuinely different: a PAIR lead (k=1) proves ZERO pairs,
+        # but a TRACTOR lead (k=2) only proves fewer than two — the seat may
+        # still hold one. `pair_void` treated both as "no pairs", which would
+        # have made any sampler consuming it unsound in the tractor case.
+        self.pair_cap: dict[int, dict[str, int]] = {s: {} for s in range(4)}
 
         tricks = list(rnd.history)
         if rnd.trick and rnd.trick.plays:
@@ -49,8 +54,13 @@ class Memory:
                 if i > 0 and n_led_pairs:
                     ins = [c for c in tp.cards
                            if self.o.eff_suit(c) == lead_suit]
-                    if pair_count(ins) < n_led_pairs:
-                        self.pair_void[tp.seat].add(lead_suit)
+                    shown = pair_count(ins)
+                    if shown < n_led_pairs:
+                        # They produced every pair they had, so they hold at
+                        # most `shown`. Keep the TIGHTEST bound seen.
+                        prev = self.pair_cap[tp.seat].get(lead_suit)
+                        self.pair_cap[tp.seat][lead_suit] = (
+                            shown if prev is None else min(prev, shown))
 
         # Declarer's shown cards (RTLT 2026-08-03: a declared trump-rank
         # PAIR is provably in ONE hand — sampling it split made KK-pair
@@ -94,6 +104,21 @@ class Memory:
                 self.unseen[code] = n
 
     # ------------------------------------------------------------------ query
+    @property
+    def pair_void(self) -> dict[int, set[str]]:
+        """Suits where a seat provably holds NO pair — cap of exactly zero.
+
+        Derived so existing readers keep the SOUND half of the old meaning. A
+        tractor lead only bounds a seat below two pairs, and treating that as
+        "no pairs" was the unsound part.
+        """
+        return {s: {suit for suit, cap in caps.items() if cap == 0}
+                for s, caps in self.pair_cap.items()}
+
+    def max_pairs(self, seat: int, eff_suit: str) -> int | None:
+        """Provable upper bound on pairs, or None if nothing is known."""
+        return self.pair_cap[seat].get(eff_suit)
+
     def higher_unseen(self, eff_suit: str, level: int) -> int:
         """How many unseen cards of ``eff_suit`` beat ``level``."""
         return sum(n for c, n in self.unseen.items()

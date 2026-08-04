@@ -113,6 +113,7 @@ class MCBot(SmartBot):
         # late-round states where no void-respecting world exists.
         self.impossible_worlds = 0
         self.rejected_worlds = 0
+        self.reject_cause = Counter()
         # Decisions that fell back to candidate 0 with NO world sampled.
         self.zero_world_decisions = 0     # kept at 0; readers still reference it
 
@@ -419,63 +420,220 @@ class MCBot(SmartBot):
         assert len(pool) == sum(sizes.values()) + kitty_slots, (
             f"unseen pool {len(pool)} != hands {sum(sizes.values())} + "
             f"kitty {kitty_slots} (seat {seat}, banker {rnd.banker})")
+        # Pin the declarer's PUBLIC shown cards before anything else, so the
+        # assignment below only has to place genuinely unknown cards (RTLT
+        # incident: scattering a declared trump-rank pair across hands made
+        # KK-pair leads look boss in most worlds).
+        pinned: Counter[str] = Counter()
+        pre: dict[int, list[str]] = {s: [] for s in others}
+        if self.DECLARER_PIN:
+            for code, (dseat, ncopies) in mem.known.items():
+                if dseat in pre:
+                    take = min(ncopies, sizes[dseat] - len(pre[dseat]))
+                    for _ in range(take):
+                        pre[dseat].append(code)
+                        pinned[code] += 1
+        free = list((Counter(pool) - pinned).elements())
+        caps = {s: sizes[s] - len(pre[s]) for s in others}
+
         for attempt in range(self.SAMPLE_RETRIES):
             respect_voids = attempt < self.SAMPLE_RETRIES - 1
-            self.rng.shuffle(pool)
-            hands: dict[int, list[str]] = {s: [] for s in others}
+            got = self._assign(free, caps, kitty_slots, o, mem,
+                               respect_voids=respect_voids)
+            if got is None:
+                continue
+            hands, kitty = got
+            for s in others:
+                hands[s] = pre[s] + hands[s]
+            if not respect_voids:
+                # This world was only buildable by IGNORING observed voids,
+                # i.e. it is impossible given the play history.
+                #
+                # SHENGJI_REQUIRE_VOIDS makes this a hard constraint. A
+                # constraint-correct world ALWAYS exists (the real deal is
+                # one), so a failure under this flag is a defect in the
+                # construction — not proof of impossibility, which is what I
+                # wrongly concluded on 2026-08-04 (Codex).
+                if os.environ.get("SHENGJI_REQUIRE_VOIDS"):
+                    self.rejected_worlds += 1
+                    return None
+                self.impossible_worlds += 1
+            return hands, (buried or kitty)
+        return None
+
+    def _assign(self, cards, caps, kitty_slots, o, mem, respect_voids=True):
+        """Deal `cards` to seats + kitty without ever dead-ending.
+
+        The previous version walked a shuffled pool and gave each card to a
+        random seat that still had room. That is a greedy first-fit, and it
+        FAILS on states where a feasible world plainly exists: place two
+        off-suit cards early and the only seat that can legally take the next
+        suit is already full. Those failures were not theoretical — 14 of them
+        landed in the determinization confirmation blocks, each one forcing
+        `PROTOCOL FAILURES` and invalidating the run they appeared in.
+
+        The fix is to decide COUNTS before cards. There are at most five
+        effective suits and four receivers, so the count matrix is tiny and can
+        be searched exactly with randomized backtracking and forward checking:
+        if any legal assignment exists, this finds one. Cards are only then
+        distributed inside each suit, where pair caps apply.
+        """
+        by_suit: dict[str, list[str]] = {}
+        for c in cards:
+            by_suit.setdefault(o.eff_suit(c), []).append(c)
+
+        seats = list(caps)
+        recv = seats + ["kitty"]
+        cap = dict(caps)
+        cap["kitty"] = kitty_slots
+        allowed = {
+            u: [r for r in recv
+                if r == "kitty" or not (respect_voids and u in mem.voids[r])]
+            for u in by_suit
+        }
+        # Most-constrained suit first: fewest receivers, then most cards.
+        order = sorted(by_suit,
+                       key=lambda u: (len(allowed[u]), -len(by_suit[u]), u))
+        counts: dict[str, dict] = {}
+        rem = dict(cap)
+
+        def place(i: int) -> bool:
+            if i == len(order):
+                return True
+            u = order[i]
+            need = len(by_suit[u])
+            opts = [r for r in allowed[u] if rem[r] > 0]
+            # Forward check: everything still unplaced must still fit.
+            def feasible() -> bool:
+                for j in range(i + 1, len(order)):
+                    v = order[j]
+                    if sum(rem[r] for r in allowed[v]) < len(by_suit[v]):
+                        return False
+                return True
+
+            for split in self._splits(need, opts, rem):
+                for r, n in split.items():
+                    rem[r] -= n
+                if feasible() and place(i + 1):
+                    counts[u] = split
+                    return True
+                for r, n in split.items():
+                    rem[r] += n
+            return False
+
+        if not place(0):
+            self.reject_cause["no_void_assignment"] += 1
+            return None
+
+        # Counts are feasible for VOIDS; whether they are feasible for PAIR
+        # CAPS depends on which specific cards land where, so a failure here is
+        # a reason to redraw the cards, not to abandon the world.
+        for _ in range(8):
+            hands: dict[int, list[str]] = {s: [] for s in seats}
             kitty: list[str] = []
             ok = True
-            pinned: Counter[str] = Counter()
-            if self.DECLARER_PIN:
-                # Declared cards are PUBLIC: pin them to the declarer's
-                # sampled hand instead of scattering them (RTLT incident).
-                for code, (dseat, ncopies) in mem.known.items():
-                    if dseat in hands:
-                        take = min(ncopies,
-                                   sizes[dseat] - len(hands[dseat]))
-                        for _ in range(take):
-                            hands[dseat].append(code)
-                            pinned[code] += 1
-            for c in pool:
-                if pinned.get(c, 0) > 0:
-                    pinned[c] -= 1
-                    continue
-                eff = o.eff_suit(c)
-                slots = [s for s in others
-                         if len(hands[s]) < sizes[s]
-                         and not (respect_voids and eff in mem.voids[s])]
-                if slots:
-                    hands[self.rng.choice(slots)].append(c)
-                elif len(kitty) < kitty_slots:
-                    kitty.append(c)
-                else:
-                    ok = False
+            for u, split in counts.items():
+                # Work from an explicit REMAINING list and remove what is
+                # taken. The previous version indexed into a shared list while
+                # also writing slices back into it, and a swap left the taken
+                # region stale — which dealt a third copy of a two-copy card.
+                remaining = list(by_suit[u])
+                self.rng.shuffle(remaining)
+                for r, n in split.items():
+                    chunk = self._deal_suit(remaining, n, r, u, mem)
+                    if chunk is None:
+                        ok = False
+                        break
+                    if r == "kitty":
+                        kitty += chunk
+                    else:
+                        hands[r] += chunk
+                if not ok:
                     break
-            if ok and all(len(hands[s]) == sizes[s] for s in others) \
-                    and len(kitty) == kitty_slots:
-                if not respect_voids:
-                    # This world was only buildable by IGNORING observed voids,
-                    # i.e. it is impossible given the play history.
-                    #
-                    # I first claimed refusing these breaks the bot because
-                    # "no void-respecting world exists" in constrained states.
-                    # That was WRONG twice over (Codex, 2026-08-04): a valid
-                    # history always admits at least the real deal, and
-                    # measurement then showed 0 zero-world decisions across 300
-                    # mc-vs-mc rounds with voids REQUIRED (262 worlds rejected
-                    # and absorbed). Requiring them is safe; the earlier crash
-                    # has some other, still-unexplained cause.
-                    # SHENGJI_REQUIRE_VOIDS makes this a hard constraint. A
-                    # constraint-correct world ALWAYS exists (the real deal is
-                    # one), so a failure under this flag is a defect in the
-                    # greedy construction — not proof of impossibility, which
-                    # is what I wrongly concluded on 2026-08-04 (Codex).
-                    if os.environ.get("SHENGJI_REQUIRE_VOIDS"):
-                        self.rejected_worlds += 1
-                        return None
-                    self.impossible_worlds += 1
-                return hands, (buried or kitty)
+            if ok:
+                return hands, kitty
+        self.reject_cause["pair_cap"] += 1
         return None
+
+    def _splits(self, need, opts, rem):
+        """EVERY distribution of `need` cards over `opts`, in random order.
+
+        Drawing a bounded number of random splits made this a search that could
+        fail while a legal assignment existed — 5 rejected worlds in 18k
+        searches, small but the same class of defect as the greedy it replaced.
+        Enumerating lazily costs nothing in the common case, because the first
+        split that survives forward checking is almost always accepted; the
+        completeness only does work in the constrained states where the old
+        code gave up.
+        """
+        if not opts:
+            if need == 0:
+                yield {}
+            return
+        order = list(opts)
+        self.rng.shuffle(order)
+
+        def rec(i, left, acc):
+            if i == len(order):
+                if left == 0:
+                    yield dict(acc)
+                return
+            r = order[i]
+            room = min(rem[r], left)
+            # Remaining capacity after this receiver, so impossible tails are
+            # never explored.
+            tail = sum(rem[x] for x in order[i + 1:])
+            lo = max(0, left - tail)
+            choices = list(range(lo, room + 1))
+            self.rng.shuffle(choices)
+            for n in choices:
+                acc[r] = n
+                yield from rec(i + 1, left - n, acc)
+            acc.pop(r, None)
+
+        yield from rec(0, need, {})
+
+    def _deal_suit(self, remaining, n, r, suit, mem):
+        """Remove and return `n` cards of one suit for one receiver.
+
+        Honours `pair_cap`: the provable ceiling on how many pairs a seat can
+        still hold in a suit — zero after failing to follow a PAIR lead, one
+        after failing a tractor. Dealing them a pair anyway builds a world the
+        play history has already ruled out. Nothing consumed this before;
+        Codex raised it four times.
+
+        Cards are REMOVED from `remaining`, so conservation is structural
+        rather than something the index arithmetic has to get right.
+
+        NOT named `_take`: HeuristicBot already defines one, and shadowing it
+        from a subclass broke follow generation everywhere.
+        """
+        if n <= 0:
+            return []
+        cap = None if (r == "kitty" or not isinstance(r, int)) \
+            else mem.max_pairs(r, suit)
+        if cap is None:
+            out = remaining[:n]
+            del remaining[:n]
+            return out
+        # Prefer distinct codes, so a capped seat is not handed a pair when an
+        # alternative exists. Ties keep the shuffled order, so this stays a
+        # random draw among the choices that respect the bound.
+        out: list[str] = []
+        held: Counter[str] = Counter()
+        for _ in range(n):
+            pick = None
+            for i, c in enumerate(remaining):
+                would = sum(v // 2 for v in (held + Counter([c])).values())
+                if would <= cap:
+                    pick = i
+                    break
+            if pick is None:
+                return None
+            c = remaining.pop(pick)
+            out.append(c)
+            held[c] += 1
+        return out
 
     # -------------------------------------------------------------- rollout
     def _rollout(self, rnd: Round, seat: int, sampled: dict[int, list[str]],

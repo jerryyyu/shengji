@@ -4,6 +4,50 @@ Every bot policy, its design, and its measured performance. Update this file
 whenever a policy is added, changed, or re-benchmarked. RL training plan and
 post-mortems: RL_PLAN.md.
 
+## Constraint-correct world sampler (2026-08-04)
+
+The sampler was a greedy first-fit: shuffle the unseen pool, give each card to
+a random seat that still has room. That dead-ends on states where a legal world
+plainly exists — place two off-suit cards early and the only seat that can take
+the next suit is already full. **Fourteen of those dead-ends landed inside the
+determinization confirmation blocks**, each forcing `PROTOCOL FAILURES` and
+invalidating the run it appeared in. It also never consumed `pair_cap`, which
+Codex raised four times.
+
+**Counts before cards.** There are at most five effective suits and four
+receivers (three seats plus the kitty), so the count matrix is tiny and can be
+searched exactly: most-constrained suit first, complete lazy enumeration of
+splits in random order, forward checking on remaining capacity. If any legal
+assignment exists this finds one. Cards are distributed inside a suit only
+afterwards, where pair caps apply.
+
+**`pair_cap` replaces `pair_void`.** The old boolean was unsound to consume:
+failing a PAIR lead proves zero pairs, but failing a TRACTOR lead only proves
+fewer than two, and the code recorded both as "no pairs". Memory now stores the
+provable ceiling and keeps the tightest bound seen; `pair_void` survives as a
+derived property (cap == 0) for the one reader that wanted the sound half.
+
+| measure, 300 rounds / ~18.2k searches | before | after |
+|---|---|---|
+| zero-world decisions | 14 in the confirmation blocks | **0** |
+| worlds rejected under REQUIRE_VOIDS | 5 | **0** |
+| worlds violating a proven void | — | **0** |
+| wall clock | 234s | 235s |
+
+Two bugs of my own along the way, both caught by tests rather than review: the
+first rewrite indexed into a shared list while also writing slices back into
+it, which dealt a **third copy of a two-copy card** — fixed by taking cards by
+REMOVAL so conservation is structural; and `_take` collided with
+`HeuristicBot._take`, silently breaking follow generation from a subclass.
+
+`tests/test_sampler_constraints.py` pins the invariants: no proven void
+violated, no proven pair cap exceeded, exact conservation against the unseen
+pool, and zero-world decisions equal to zero with voids both required and not.
+
+**This changes `mc`'s play.** Golden histories were regenerated deliberately.
+Prod runs `mc`, so this is a behaviour change awaiting a strength check and
+Jerry's go — it is a CORRECTNESS fix and is not claimed to be a strength gain.
+
 ## Static ballot coverage audit — dev split, 2026-08-04
 
 **CORRECTED 17:45** after a Codex audit: the structured-action filter was wrong

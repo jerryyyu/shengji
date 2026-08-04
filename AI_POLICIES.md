@@ -4,6 +4,41 @@ Every bot policy, its design, and its measured performance. Update this file
 whenever a policy is added, changed, or re-benchmarked. RL training plan and
 post-mortems: RL_PLAN.md.
 
+## Static ballot coverage audit — dev split, 2026-08-04
+
+12,340 dev-split states rebuilt by replay, **0 rebuild errors**. That number is
+itself a result: the corpus is a sound state reservoir, so replaying it is a
+legitimate way to reuse 20,845 states without re-running 37M evaluations.
+
+Fraction of the legal action space the deployed ballot never offers:
+
+| surface | all legal actions | structured only (singles/pairs/tractors) |
+|---|---|---|
+| leads | 91.9% | **54.0%** (n=3,960) |
+| follows | 6.9% | **0.9%** (n=8,380) |
+
+The all-actions column is not the interesting one — `include_throws` enumerates
+the whole combinatorial multi-card throw space and a sane ballot SHOULD omit
+almost all of it. The structured column is the honest denominator.
+
+**Follows are effectively solved: 0.9%.** Pairs are covered essentially
+everywhere (19 omitted against 14,037 offered). Every remaining structural gap
+is on leads, and within leads it is almost entirely SINGLES — 45,191 omitted
+singles against 27,931 offered, because the ballot offers only the top card and
+the lowest non-point card per suit.
+
+**The caution this raises.** That singles gap is exactly what the V3 arm added,
+and V3 did NOT confirm online (+0.065 +/- 0.144, with its random-fill control
+scoring higher). So coverage is now measured at 54% on leads AND known not to
+be the binding constraint on its own. This is the third independent signal that
+widening generation is not the lever. A Phase 1 quota arm has to justify itself
+by SELECTION quality inside a fixed budget, not by how much of the space it
+recovers — and BALLOT_PLAN already says as much ("merely recovering more human
+actions is not a promotion").
+
+Omission is flat across ply (83-91% from ply 0 to 24), so it is not a late-game
+phenomenon and the late-ply supplement does not change this picture.
+
 ## Determinization screen — N=30 is NOT better than N=10 (2026-08-04, closed)
 
 **Preregistered primary: paired per-seed level utility, N=30 minus N=10.**

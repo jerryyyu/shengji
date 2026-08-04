@@ -1,10 +1,46 @@
 # AI policy ledger
 
-Every bot policy, its design, and its measured performance. Update this file
-whenever a policy is added, changed, or re-benchmarked. RL training plan and
-post-mortems: RL_PLAN.md.
+This is the authoritative synthesized ledger for callable bot policies,
+policy-affecting behavior, and conclusions that survived the measurement
+rules. It is deliberately **not** a notebook or live conversation.
 
-## Constraint-correct world sampler (2026-08-04)
+- Active priorities and gates: `BACKLOG.md`
+- Running and completed compute: `JOBS.md`
+- Reviewer/Claude discussion: `HANDOFF_REVIEW.md`
+- Model chronology and post-mortems: `RL_PLAN.md`
+- Superseded detail: `docs_archive/`
+
+Update this file only when a policy's behavior or role changes, or when new
+evidence changes the synthesized conclusion. Screens belong here only when
+clearly labelled and decision-relevant; raw progress belongs in the working
+documents above.
+
+## Current synthesis — 2026-08-04
+
+- **Strength incumbent:** deployed N=10 `mc`. No learned policy, value leaf,
+  learned search prior, ballot variant, or higher-N search arm has a verified
+  edge over it.
+- **Best learned result:** `rl-override-v11pair` beats SmartBot 57.7% (n=480)
+  and is very fast, but its MC comparison is unseeded screen evidence. It is a
+  deployment-cost candidate, not the strongest verified bot.
+- **Main strength hypothesis:** improve lead-ballot selection, then let MC do
+  final evaluation. The ballot omits 51.2% of the diagnostic structured lead
+  space and only 0.9% of follows, but naive V3 widening failed; selection and
+  rollout allocation, not raw coverage, are the target.
+- **Data conclusion:** the 20,845-state high-N artifact is a replayable state
+  reservoir, not an oracle. Its old-ballot/non-strict/same-world-selected labels
+  have produced no online gain. The 12,000-state late supplement is raw-state
+  distribution correction and has not yet been cleanly relabelled or trained.
+- **Sampler conclusion:** count-first assignment, declaration pins, voids, and
+  remaining-pair constraints are material correctness improvements, but
+  independent full-history certification is still open. Do not call the world
+  distribution constraint-correct or posterior-correct yet.
+- **Next champion-path experiment:** after the bounded sampler and action-
+  semantics gates, run the clean 512-state lead pilot comparing current, V3,
+  random-fill, `MC-more`, fixed-14 contextual, and full-universe/high-compute
+  arms on disjoint proposal/report worlds. Details live in `BACKLOG.md`.
+
+## World sampler rewrite — improved, independent certification open
 
 The sampler was a greedy first-fit: shuffle the unseen pool, give each card to
 a random seat that still has room. That dead-ends on states where a legal world
@@ -21,11 +57,11 @@ splits in random order, forward checking on remaining capacity. If any legal
 assignment exists this finds one. Cards are distributed inside a suit only
 afterwards, where pair caps apply.
 
-**`pair_cap` replaces `pair_void`.** The old boolean was unsound to consume:
-failing a PAIR lead proves zero pairs, but failing a TRACTOR lead only proves
-fewer than two, and the code recorded both as "no pairs". Memory now stores the
-provable ceiling and keeps the tightest bound seen; `pair_void` survives as a
-derived property (cap == 0) for the one reader that wanted the sound half.
+**`pair_cap` replaces `pair_void`.** The first rewrite got the rule wrong and a
+real rule-derived regression corrected it: if a follower shows fewer pairs
+than were led, `validate_follow` proves they played every pair they held. The
+remaining cap is therefore **zero after both a pair and a tractor lead**.
+`pair_void` survives as the derived `cap == 0` view.
 
 | measure, 300 rounds / ~18.2k searches | before | after |
 |---|---|---|
@@ -40,9 +76,15 @@ it, which dealt a **third copy of a two-copy card** — fixed by taking cards by
 REMOVAL so conservation is structural; and `_take` collided with
 `HeuristicBot._take`, silently breaking follow generation from a subclass.
 
-`tests/test_sampler_constraints.py` pins the invariants: no proven void
-violated, no proven pair cap exceeded, exact conservation against the unseen
-pool, and zero-world decisions equal to zero with voids both required and not.
+The ~18.2k-search screen pins useful allocator invariants but is not a complete
+certificate. Its validator initially shared assumptions with `Memory`; the
+first independent certifier later omitted the returned kitty, declaration-pin
+interactions, full unseen-pool reconstruction, tractor obligations, and hid
+five individual failed draws by counting only states where all 24 draws failed.
+That certifier did find another real bug—an already pinned declared card could
+combine with a sampled copy into a forbidden pair—which is now fixed with a
+regression. Full validity/completeness certification remains the current P0 in
+`BACKLOG.md`; distribution fidelity is a separate later question.
 
 **This changes `mc`'s play.** Golden histories were regenerated deliberately.
 Prod runs `mc`, so this is a behaviour change awaiting a strength check and
@@ -146,19 +188,18 @@ the interval got extended until it cleared.
 
 This is the seventh promising screen that did not survive confirmation.
 
-## Current status — 2026-08-04
+## Policy status details
 
 - **Deployment-cost candidate:** `rl-override-v11pair` beats SmartBot 57.7%
   (n=480) and runs at p50 0.25ms / p95 0.52ms on the production numpy path.
   Its 51.1% against MC over 4,880 rounds is **SCREEN** evidence only because
   every MC factory in those blocks was OS-seeded. It is plausibly near MC, not
   formally confirmed equal and not superior.
-- **Strength incumbent:** `mc` remains the default. Its search is not yet a
-  correct belief sampler: normal mode may use a last-retry world that discards
-  proven suit voids, and pair-voids are not enforced. Strict mode now rejects
-  and counts the suit-void relaxation, but does not close the pair-void gap.
-  Treat improvements and high-N labels built without strict evidence as
-  provisional.
+- **Strength incumbent:** `mc` remains the default. Its count-first sampler now
+  consumes declaration, void and remaining-pair constraints; normal mode can
+  still use the final void-relaxing retry, while confirming evaluation requires
+  strict voids. Full independent validity/completeness and posterior-fidelity
+  claims remain open, so old non-strict labels stay provisional.
 - **Retired strength arm:** `mc-vleaf-v7w-ep02` has no verified edge over MC.
   Its historical 50.4% at n=1,200 predated the leaf factory's seed-forwarding
   repair. In the current hardened screen it scored 52.8% and
@@ -168,11 +209,10 @@ This is the seventh promising screen that did not survive confirmation.
   `-0.028 +/- 0.185`. Its training states were much earlier than its deployed
   leaves, and its high-N `MCBot._candidates()` training ballot did not match
   the pinned-v1 `enumerate_actions()` ballot maximized at the leaf.
-- **Not promotable:** `mc-gate-v11pair` has one encouraging n=300 online
-  screen, but its T2 did not earn confirmation. The later five-arm T3 runner
-  was invalid, partially run, and terminated; it produced no result. A repaired
-  runner exists but has not passed artifact replay/all-seat fallback gates and
-  has not produced a new result.
+- **Closed strength arm:** `mc-gate-v11pair` had one encouraging n=300 screen,
+  but its offline gate failed and its attempted multi-arm run was invalid.
+  Learned root-prior racing was independently refuted by a random-prune
+  control. Neither is on the current champion path.
 - **The high-N corpus is diagnostic, not an oracle.** The completed artifact
   has 20,000 Air states plus an accidentally merged 845-state mini partial,
   but uses non-strict worlds, the old capped ballot, raw-point heuristic
@@ -186,8 +226,8 @@ This is the seventh promising screen that did not survive confirmation.
 
 Policy objective: maximize verified strength. Latency is not a tradeoff for
 the champion policy; measured compute and matched-work controls remain useful
-for attribution. RL-guided search is one contender and must beat direct v11,
-plain MC, and cheap allocation rules under the same evaluation protocol.
+for attribution. The immediate contender is structured lead proposal plus MC,
+not another broad standalone-RL or value-leaf run.
 
 ## Using policies
 
@@ -199,12 +239,12 @@ SHENGJI_BOT=smart uv run shengji-server   # e.g. an easier table
 ```
 
 Benchmarking uses factories, deterministic policy seeds, and mirrored deal
-clusters. Do not use `env.evaluate(make_bot(...), make_bot(...))` for a
-reproducibility claim: it constructs stochastic bots without explicit seeds
-and reuses their RNG state. The pairing harness no longer catches constructor
-`TypeError`, but is still not a confirming harness: `_seeded()` currently
-returns `None` for a seedless factory whose bot has no `rng`, and the repeat
-test retains aggregate totals rather than per-seed/flip records.
+clusters. The factory seed boundary is now tested and constructor failures are
+not swallowed. `play_pairing` and Elo pools remain selection tools; every
+strength claim goes through `scripts/evaluate.py`, which writes exclusive
+per-seed/per-flip records and a manifest, clusters uncertainty by deal seed,
+enforces the preregistered bar, and reports the paired arm-minus-control
+contrast.
 
 ```python
 from shengji.ai.registry import make_bot
@@ -216,11 +256,8 @@ play_pairing(make_a, make_b, n_seeds=150, seed0=1_000_000)
 ```
 
 Multi-policy Elo: `uv run python -m shengji.ai.tournament`. Human-agreement
-tripwire: `uv run python scripts/eval_vs_human.py "../logs/*.jsonl"`.
-Every confirming runner must also emit a manifest and per-seed/per-flip JSONL,
-report paired signed level utility with clustered uncertainty, and fail on
-fallbacks. Pool Elo and small-n rates are selection screens, not strength
-claims.
+tripwire: `uv run python scripts/eval_vs_human.py "../logs/*.jsonl"`. Pool Elo,
+unpaired blocks, and small-n rates are selection screens, not strength claims.
 
 ## Ballot V3, lead layer — sourcing gap CONFIRMED, the fix NOT CONFIRMED (2026-08-04)
 
@@ -255,30 +292,15 @@ worlds spread over a fuller ballot resolves each candidate worse. That points
 at Codex's three-layer design — generation, then an archetype-aware SELECTOR,
 then evaluation — rather than at simply generating more.
 
-## Seeded pool of 2026-08-04 (current; heuristic = 1000)
+## Root-prior racing — closed
 
-| policy | Elo |
-|---|---|
-| mc-randrace4 (RANDOM-prune control) | 1159 |
-| mc-race4-v11pair (net prior) | 1152 |
-| mc | 1131 |
-| rl-override-v11pair | 1129 |
-| smart | 1091 |
-| heuristic | 1000 |
-| mc-vleaf-v7w-ep02 | 979 |
+The seeded selection pool put the random-prune control at or above the v11pair
+prior, and the paired confirmation agreed: the learned prior added nothing
+detectable. Pool gaps were all within the project's unresolved band, so their
+Elo ordering is not retained here as a policy ranking. Exact screen artifacts
+and chronology belong in `RL_PLAN.md` and `docs_archive/`.
 
-**Read this pool as unresolved, not as a ranking.** Every gap is <=28 Elo, and
-gaps under ~40 have twice failed to survive a direct duel here (its predecessor
-put vleaf +32 over mc; a later, ultimately unseeded-arm run landed at 50.4%).
-Direct n=120 pairings: mc-race4 52.5% vs mc, mc-randrace4 55.8% vs mc, and
-randrace4 edges race4 59-61.
-
-What it DOES add: the RANDOM-prune control ranks at or above the net-prior arm
-here, as it did in the paired confirmation. Two independent looks now agree the
-learned prior adds nothing detectable, which is why the racing claim stays
-retracted.
-
-## Selection pool of 2026-08-03## Active policies
+## Active policies
 
 ### `mc` — MCBot (server default)
 Determinized Monte Carlo (`ai/mcbot.py`): samples 10 opponent-hand worlds

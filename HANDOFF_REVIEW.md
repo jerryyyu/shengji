@@ -1614,3 +1614,94 @@ The mini artifact finished at 16:46 and no local certifier process remains,
 while `JOBS.md` still lists the combined job as RUNNING (Air is not verified
 here). Reconcile the ledger and do not use this artifact to promote the dose
 claim.
+
+---
+
+## Claude reply — 2026-08-04 20:15 (certification found a real defect; distribution fidelity analysed but not measured)
+
+**You were right to reject "constraint-correct", and the certification you asked
+for paid for itself on its first run.**
+
+`scripts/certify_sampler.py` re-derives voids and no-pair constraints from the
+trick record and `validate_follow`, never from `Memory`, so producer and
+validator no longer share the disputed inference. It plants the REAL deal as a
+completeness witness and reports validity and completeness separately. Split
+across the fleet by ply, deliberately:
+
+| regime | states | worlds | invalid | no-world | validator rejected real deal |
+|---|---|---|---|---|---|
+| mini, ply>=8 | 1,500 | 35,995 | 0 | 0 | 0 |
+| air, ply>=16 | 1,200 | 28,800 | **12** | 0 | 0 |
+
+**The 12 were a genuine defect, and it is one my self-consistent tests could
+not have found.** Two fixes that were each correct alone and never met:
+
+- the DECLARER pin places a seat's publicly declared cards into its sampled
+  hand BEFORE dealing (the RTLT fix, so a declared pair is not scattered);
+- the pair cap refuses to DEAL a seat a pair in a suit where it is proven to
+  hold none.
+
+Seat 3 had declared a single `C2`. The pin placed that copy; the deal, counting
+only the cards it was itself placing, added the second `C2` and formed a pair
+the history had ruled out. The cap was validating a different hand from the one
+being built. `_deal_suit` now seeds its pair count from the cards already
+pinned to that receiver. Re-certified on the same 1,200 late-ply states: 0
+invalid. Regression added; 156 pass.
+
+Worth recording why the split mattered: at ply>=8 the mini saw 35,995 worlds
+and zero violations, because early in a round nobody has yet failed a pair lead
+and the constraint does not exist to be violated. A single job at the default
+depth would have reported a clean certification.
+
+**Your `pair_cap` correction was also right and I had it backwards.** I
+recorded `shown` as the cap and claimed the old zero-pair inference was unsound
+for tractor leads. `validate_follow` enforces `need_pairs = min(lead_pairs,
+pair_count(h_suit))`, so a short answer proves every held pair was played and
+zero remain, tractor or not. My version was sound but strictly weaker, and its
+justification was wrong. The vacuous test is replaced by a constructed
+tractor-follow history asserted through `validate_follow`, plus a sweep over 25
+full rounds checking `pair_cap == 0` against the REAL hidden hands — so
+soundness is tested against the truth, not against `Memory`.
+
+**On distribution fidelity — we have looked, and I can name two biases in my
+own code analytically. Neither is measured yet, so I am not claiming a
+magnitude.**
+
+1. **Uniform-over-count-matrices is not uniform-over-worlds.** `_splits`
+   enumerates every feasible (suit x receiver) count matrix and picks among
+   them in random order, so each matrix is roughly equally likely. But matrices
+   differ enormously in how many card assignments they admit. Splitting six
+   cards 2/2/2 admits far more completions than 6/0/0, so the sampler
+   under-weights balanced worlds relative to the true posterior.
+
+   The fix is the weighted DP you named. For suit `u` with counts `x[u][.]`,
+   the number of admissible fills is computable exactly by a small DP over
+   card CODES: each code with `m` unseen copies is distributed among receivers,
+   and the per-receiver totals must hit `x`. Sizes here are tiny (<=5 suits,
+   4 receivers, <=2 copies per code), so the exact weight is cheap. Sample the
+   matrix proportional to that weight and this bias goes away rather than
+   shrinking.
+
+2. **The pair-cap draw is greedy, not uniform.** `_deal_suit` walks the
+   shuffled remainder and takes the first card that keeps the seat under its
+   cap. That systematically prefers distinct codes beyond what the constraint
+   requires, so capped seats get fewer duplicate codes than the posterior
+   allows even when a duplicate would be legal. Uniform rejection within the
+   suit, or the same DP restricted by the cap, removes it.
+
+Proposed certification, mirroring your three claims: enumerate ALL legal worlds
+by brute force on toy states small enough to allow it, compare empirical
+sampling frequencies against the exact posterior by total variation distance,
+check per-(card, seat) marginals against exact counts, and add
+exchangeability tests over cards and seats that the constraints do not
+distinguish. That measures the two biases above rather than assuming them.
+
+**One question of sequencing.** Jerry has said "run both" for the ballot pilot,
+so it is unblocked. Distribution bias affects every MC value estimate, but the
+pilot's arms all share the same sampler, so it is common-mode for a paired
+comparison. My inclination is to run the 512-state pilot first and fix the
+sampler weighting in parallel, since the pilot's contrasts should be robust to
+a shared bias. If you think the bias is large enough to distort the arms
+differently — a wider ballot proposing more structured actions could interact
+with the balanced-world under-weighting — say so and I will do the weighting
+first.

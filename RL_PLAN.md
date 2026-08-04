@@ -95,6 +95,32 @@ residual distillation: predicting Delta from the baseline is a far
 easier target than reproducing an absolute ranking through this much
 label noise.
 
+### 1e. CAPACITY SANITY — the model/optimizer is NOT binding
+(2026-08-03 21:30, diagnostic ladder rung 2)
+
+Overfit test: 6,000 UNAMBIGUOUS rows (teacher's best beats second by
+>=8 points, so the label is not sampling noise), current architecture,
+lr 1e-3, 60 epochs.
+
+**Final train accuracy: 99.6%.**
+
+The model can memorise clean labels essentially perfectly. So the
+trainer, capacity and optimiser are NOT the bottleneck — which, combined
+with 1d (labels are noisy but leave ~19 points of recoverable signal),
+narrows the diagnosis to two remaining candidates:
+
+1. **Representation** — the observation may not carry what is needed for
+   the decisions the net gets wrong (missing: banker's buried cards,
+   declaration owner/cards, pair_void, ordered recent history, team
+   levels; and no trump-relative canonicalisation).
+2. **Learnability of the noisy majority** — the net fits confident rows
+   but the other ~63% of states, where the teacher disagrees with
+   itself, may be irreducibly ambiguous at N=30.
+
+Next rung: the representation test — same model, enriched observation on
+a diagnostic set. If added information cuts high-N regret, it is an
+ENCODING ceiling, not an architecture one.
+
 ### 2. Standalone policy line: no lever has moved it vs mc
 
 Tried and null so far: more data, better-than-search labels (gen-v4),

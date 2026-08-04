@@ -121,6 +121,24 @@ Next rung: the representation test — same model, enriched observation on
 a diagnostic set. If added information cuts high-N regret, it is an
 ENCODING ceiling, not an architecture one.
 
+### 1f. VALUE HEADS ARE INTERCHANGEABLE (2026-08-03 22:00)
+
+vleaf tested with three different value heads on the SAME seeds:
+
+| value head | vs mc |
+|---|---|
+| rl-v7w-ep02 (the original) | 60% |
+| rl-v9warm-ep05 (trained on hybrid-teacher data) | 53% |
+| rl-v9scratch-ep05 (cold-trained, same data) | **48%** |
+
+All three within ~12 points of each other on n=120, i.e. no head is
+distinguishable from another, and the best is the OLDEST. Combined with
+the flywheel negative (1b), this says the hybrid's strength does not
+come from the quality of the value head — any competent evaluator seems
+to do. That is a different, cheaper story than "we need a better net",
+and it predicts the direct-V head will matter more for SPEED than
+strength.
+
 ### 2. Standalone policy line: no lever has moved it vs mc
 
 Tried and null so far: more data, better-than-search labels (gen-v4),

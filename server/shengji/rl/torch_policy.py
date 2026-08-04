@@ -87,6 +87,20 @@ class MCValueLeaf(MCBotBase):
                 raise RuntimeError(
                     f"{path}: no value head (needs PolicyValueNet)")
 
+        # A net may only score the ballot it was trained on. This used to be a
+        # printed warning, which is indistinguishable from no check at all once
+        # a run is a few thousand lines of log: v13abs maximised over one
+        # action set while its labels covered another, and nothing stopped it.
+        #
+        # This policy is MULTI-STAGE and the two stages use different ballots:
+        # the root ballot is MCBot._candidates, but the NET is only ever asked
+        # about leaf actions from enumerate_actions. So the contract that binds
+        # the checkpoint is the leaf ballot, not the root one.
+        from ..engine.ballot import rl_ballot
+        from .provenance import require_ballot
+        require_ballot(path, rl_ballot(),
+                       context=f"{type(self).__name__} leaf evaluator")
+
     def _rollout(self, rnd: Round, seat: int, sampled: dict[int, list[str]],
                  buried: list[str], candidate: list[str]) -> float:
         import copy
@@ -117,14 +131,11 @@ class MCValueLeaf(MCBotBase):
         # sign-flipped for the banker team) — invert that mapping here.
         s = clone.turn
         assert s is not None
-        # This is the pinned v1 ballot used by the older distillation heads.
-        # A checkpoint trained on another ballot is out of distribution here;
-        # v13abs was accidentally evaluated this way.
-        if not getattr(self, "_ballot_checked", False):
-            self._ballot_checked = True
-            from ..engine.ballot import MC_CANDIDATES_V1, RL_ACTIONS_V1
-            check_ballot(getattr(self, "TRAINED_BALLOT", MC_CANDIDATES_V1),
-                         RL_ACTIONS_V1, type(self).__name__ + " leaf")
+        # The leaf ballot is enforced once at load (see __init__), against the
+        # checkpoint's recorded provenance rather than a default guessed here.
+        # The previous per-decision warning defaulted the "trained" ballot in
+        # code, so it compared an assumption against a constant and could not
+        # fail; v13abs was evaluated this way and looked like a failed idea.
         actions = enumerate_actions(clone, s)
         obs = encode_obs(clone, s)
         vals = self.net.value_candidates(

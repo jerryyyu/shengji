@@ -5,22 +5,18 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-### mini / determinization screen BLOCK 3 — DECLARED FINAL, launched 15:55
-- `mc-strong` vs `mc`, control `mc-lite`, 6 shards, seeds 95,000,000-95,000,251.
-- **Stopping rule declared BEFORE the run: this is the last block regardless of
-  the result.** Block 1 gave +0.282 +/- 0.223 (excludes 0); block 2 on fresh
-  seeds gave +0.155 +/- 0.215 (includes 0). Continuing until an interval clears
-  would be sequential testing, which is how six earlier claims were made and
-  lost.
-- Pooled over all three blocks is the number that counts. The robust finding so
-  far is the dose direction: N=5 is WORSE than N=10 by -0.308 +/- 0.143 across
-  both blocks.
-
 ### air / late-ply state capture — since 13:50
-- 8,880/12,000 states (74%). Raw states reusable; its N=240 labels are
-  contract-dirty and must not be trained on.
+- Raw states reusable; its N=240 labels are contract-dirty and must not be
+  trained on.
 
-## RECENTLY FINISHED (results ledgered)
+## RECENTLY FINISHED
+
+### determinization screen — CLOSED 2026-08-04, negative
+- Three blocks, 756 seed clusters. N=30 vs N=10 NOT CONFIRMED
+  (+0.101 +/- 0.150 on the two confirmation blocks). N=10 vs N=5 confirmed
+  (-0.347 +/- 0.145). Search width has saturated at the deployed N=10.
+- Full ledger in AI_POLICIES.md.
+
 
 - **ckpt_v13abs absolute-Q leaf** — NOT CONFIRMED (-0.004 +/- 0.206 paired vs
   the MC reference; v7 control +0.024 +/- 0.215). The direct paired v13-minus-

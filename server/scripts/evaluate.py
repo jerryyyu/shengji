@@ -45,19 +45,26 @@ from shengji.engine.game import Game         # noqa: E402
 
 
 def _arm_ballots(names):
-    """Which ballot each arm enumerates, recorded so a mismatch is visible."""
-    from shengji.engine.ballot import spec_for_mcbot
+    """Which ballot each arm enumerates, recorded so a mismatch is visible.
+
+    Every failure here is fatal. The previous version swallowed a construction
+    error with `continue` (silently dropping an arm from the manifest) and
+    fell back to "unknown" on any other error. Codex showed the result was
+    worse than useless: `smart`, `heuristic`, `mc` and the narrow historical
+    `mc-20260802am` were all reported as the same ballot, so the manifest
+    looked authoritative while being false. A manifest that cannot establish
+    what was on the ballot has not recorded the experiment.
+    """
+    from shengji.engine.ballot import ballot_for_policy
     out = {}
     for n in names:
         try:
-            bot = make_bot(n)
-        except Exception:
-            continue
-        inner = getattr(bot, "mc", getattr(bot, "_ballot", bot))
-        try:
-            out[n] = str(spec_for_mcbot(inner))
-        except Exception:
-            out[n] = "unknown"
+            out[n] = str(ballot_for_policy(n))
+        except Exception as exc:
+            print(f"REFUSING: cannot determine the ballot for arm {n!r}: "
+                  f"{type(exc).__name__}: {exc}\nAn experiment whose action "
+                  f"sets are unknown cannot support a strength claim.")
+            sys.exit(3)
     return out
 
 

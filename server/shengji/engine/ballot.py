@@ -15,103 +15,286 @@ times:
     maximised over the pinned v1 ballot — one of two misalignments that made
     the run uninformative.
 
-So a ballot is given an explicit, versioned identity that travels with the
-data and the policy. Training records the spec it labelled; play records the
-spec it enumerated; `assert_compatible` refuses the pairing when they differ.
-Cheap to carry, and it converts a silent day-long mystery into an exception.
+An identity is only worth carrying if it cannot drift from the thing it names.
+The first version of this module hand-wrote each spec, which Codex correctly
+rejected: a hand-maintained description does not change when the generator
+changes, and it captured 4 of the 9 attributes `_candidates()` actually reads.
+So identity is now DERIVED, from two things that both really determine the
+action set:
 
-Adding a generator or changing caps/flags means a NEW version. Never mutate an
-existing spec in place — old shards claim it.
+  1. the live values of every attribute the generator reads, and
+  2. a digest of the generator's own source (plus the same-module helpers it
+     calls), so editing the code changes the identity.
+
+Consequence, and it is the intended one: refactoring a generator invalidates
+the ballot claim of every checkpoint trained before it. That is correct. If
+the code that enumerates actions changed, you no longer have evidence that a
+previously-trained net saw the same action set, and a comment-only edit
+forcing a re-stamp is a much cheaper failure than another Elo-798.
+
+Policies that do not run a search ballot at all (`smart`, `heuristic`) report
+`NO_BALLOT`, never a fabricated MC identity.
 """
 from __future__ import annotations
 
+import ast
 import hashlib
+import inspect
 import json
+import os
 from dataclasses import asdict, dataclass, field
 
 
 @dataclass(frozen=True)
 class BallotSpec:
-    """One configuration of "which legal actions are offered for scoring"."""
+    """One configuration of "which legal actions are offered for scoring".
+
+    `config` is a sorted tuple of pairs, not a dict: a frozen dataclass holding
+    a mutable dict is not frozen in the way that matters. Mutating one entry
+    changed the digest after registration, so a registry key and the object it
+    pointed at could disagree.
+    """
 
     name: str
     version: int
     #: which generator implements it — the thing that actually differed
     source: str
-    lead_cap: int | None = None
-    follow_cap: int | None = None
-    #: toggles that materially change WHICH actions appear
-    flags: dict = field(default_factory=dict)
+    #: every attribute the generator reads, at its live value
+    config: tuple[tuple[str, object], ...] = ()
+    #: sha256 over the generator's source and its same-module helpers
+    source_digest: str = ""
     note: str = ""
+
+    def __post_init__(self):
+        if not isinstance(self.config, tuple):
+            raise TypeError(
+                "config must be an immutable tuple of sorted pairs; a dict "
+                "lets a caller change this spec's identity after it has been "
+                "recorded (Codex).")
 
     @property
     def digest(self) -> str:
         """Stable short hash over everything that changes the action set."""
         payload = json.dumps(
             {k: v for k, v in asdict(self).items() if k != "note"},
-            sort_keys=True)
+            sort_keys=True, default=str)
         return hashlib.sha256(payload.encode()).hexdigest()[:12]
 
     def __str__(self) -> str:
         return f"{self.name}@v{self.version}[{self.digest}]"
+
+    def explain(self, other: "BallotSpec") -> str:
+        """Human-readable reason two ballots differ — for the failure message."""
+        if self.source != other.source:
+            return f"different generators: {self.source} vs {other.source}"
+        if self.source_digest != other.source_digest:
+            return (f"same generator, EDITED source "
+                    f"({self.source_digest[:8]} vs {other.source_digest[:8]})")
+        a, b = dict(self.config), dict(other.config)
+        diffs = [f"{k}: {a.get(k, '-')} -> {b.get(k, '-')}"
+                 for k in sorted(set(a) | set(b)) if a.get(k) != b.get(k)]
+        return "; ".join(diffs) or "no attribute differs (name/version differ)"
 
 
 class BallotMismatch(RuntimeError):
     """Raised when data labelled under one ballot meets another at play time."""
 
 
-def assert_compatible(labelled: BallotSpec, played: BallotSpec) -> None:
+#: Policies that never enumerate a search ballot. Reporting these as
+#: `mc_candidates@v1` made the evaluator manifest authoritatively wrong.
+NO_BALLOT = BallotSpec(
+    name="none", version=0, source="(no search ballot)",
+    note="Policy chooses an action directly; nothing is enumerated or scored.")
+
+
+# ------------------------------------------------------------ source digests
+
+#: Top-level package whose code counts as "part of the ballot". Callees outside
+#: it (stdlib, numpy) are treated as fixed infrastructure.
+_PKG = "shengji"
+
+
+def _module_name_of(obj) -> str:
+    """Defining module of a callable, including C extension members.
+
+    Compiled functions from a C extension often carry no usable `__module__`,
+    so fall back to finding the loaded module that actually holds this object.
+    """
+    name = getattr(obj, "__module__", None)
+    if name:
+        return name
+    import sys
+    for mod_name, mod in list(sys.modules.items()):
+        if mod is not None and getattr(mod, "__dict__", None):
+            if any(v is obj for v in mod.__dict__.values()):
+                return mod_name
+    return ""
+
+
+def _fingerprint(obj) -> str:
+    """Source text if it exists, else the bytes of the compiled artifact.
+
+    The generator calls into `shengji.engine._fast`, a compiled extension.
+    Digesting only source would leave the ballot's real implementation — the
+    .so that actually decides tractors and legality — outside its identity.
+    """
+    try:
+        return "src:" + inspect.getsource(obj)
+    except (OSError, TypeError):
+        import sys
+        mod = sys.modules.get(_module_name_of(obj))
+        path = getattr(mod, "__file__", None)
+        if path and os.path.exists(path):
+            with open(path, "rb") as fh:
+                return (f"bin:{_module_name_of(obj)}:"
+                        f"{hashlib.sha256(fh.read()).hexdigest()[:16]}")
+        return f"opaque:{_module_name_of(obj)}.{getattr(obj, '__name__', '?')}"
+
+
+def _project_callees(fn) -> list:
+    """Direct callees of `fn` that belong to this project.
+
+    Depth 1 and package-scoped: deep enough to cover the helpers where a quiet
+    action-set change would actually live, bounded enough that the identity
+    does not sprawl across the whole dependency graph.
+    """
+    try:
+        tree = ast.parse(inspect.getsource(fn).lstrip())
+    except (OSError, SyntaxError, TypeError):
+        return []
+    called = {n.func.id for n in ast.walk(tree)
+              if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+    # Resolve through the function's own globals — the same lookup a bare-name
+    # call performs at runtime. Going via inspect.getmodule() instead returns
+    # None whenever the module is not in sys.modules, which silently dropped
+    # every helper and made this a no-op its own test could not see.
+    g = getattr(fn, "__globals__", {})
+    out = []
+    for name in sorted(called):
+        obj = g.get(name)
+        if obj is None or inspect.isclass(obj):
+            continue
+        mod = _module_name_of(obj)
+        # Same module as the generator, or anywhere in this package. The
+        # same-module arm matters for generators that live outside `shengji`
+        # (scripts, experiments) whose helpers sit right beside them.
+        if mod.split(".")[0] == _PKG or mod == getattr(fn, "__module__", None):
+            out.append(obj)
+    return out
+
+
+def source_digest(fn) -> str:
+    """Digest binding a ballot's identity to the code that implements it.
+
+    Covers the generator itself plus its project-level callees, so a change to
+    the executable action set moves the identity even when no flag changed.
+    Compiled callees are folded in by binary digest, deduplicated by module so
+    four functions from one .so hash it once.
+    """
+    parts, seen_bin = [_fingerprint(fn)], set()
+    for obj in _project_callees(fn):
+        fp = _fingerprint(obj)
+        if fp.startswith("bin:"):
+            mod = fp.split(":")[1]
+            if mod in seen_bin:
+                continue
+            seen_bin.add(mod)
+        parts.append(fp)
+    return hashlib.sha256("".join(parts).encode()).hexdigest()[:16]
+
+
+# ------------------------------------------------------------- MC derivation
+
+#: Every attribute `MCBot._candidates()` reads. Not a curated subset — the
+#: test re-derives this from the live source and fails if a new one appears,
+#: which is what stops the identity from quietly falling behind the code.
+MC_BALLOT_ATTRS = (
+    "FOLLOW_MAX_CANDIDATES",
+    "LEAD_MAX_CANDIDATES",
+    "MAX_CANDIDATES",
+    "RISKY_THROWS",
+    "TRUMP_BALLOT",
+    "V3_LEAD_RANDOM",
+    "V3_LEAD_SINGLES",
+    "WIDE_FOLLOW_BALLOT",
+    "WIDE_LEAD_BALLOT",
+)
+
+
+def mc_ballot(bot) -> BallotSpec:
+    """Derive the ballot a live MCBot is configured to enumerate."""
+    from ..ai.mcbot import MCBot
+    cfg = tuple(sorted((a, getattr(bot, a, None)) for a in MC_BALLOT_ATTRS))
+    return BallotSpec(
+        name="mc_candidates", version=1, source="MCBot._candidates",
+        config=cfg, source_digest=source_digest(MCBot._candidates))
+
+
+def rl_ballot(exhaustive_follows: bool = False,
+              include_throws: bool = False) -> BallotSpec:
+    """Derive the ballot `enumerate_actions` produces for these switches.
+
+    These are independent switches, so there are four ballots, not the two
+    ("v1"/"v2") the hand-written registry pretended existed.
+    """
+    from ..rl.actions import enumerate_actions
+    cfg = (("exhaustive_follows", bool(exhaustive_follows)),
+           ("include_throws", bool(include_throws)))
+    return BallotSpec(
+        name="rl_actions", version=1, source="rl.actions.enumerate_actions",
+        config=cfg, source_digest=source_digest(enumerate_actions))
+
+
+def ballot_for_policy(name: str) -> BallotSpec:
+    """The ballot a registered policy name enumerates.
+
+    Raises rather than returning "unknown": a manifest that guesses is worse
+    than one that refuses, because it reads as authoritative (Codex).
+    """
+    from ..ai.registry import make_bot
+    bot = make_bot(name)                    # a construction failure is fatal
+    inner = getattr(bot, "mc", bot)
+    if hasattr(inner, "_candidates"):
+        return mc_ballot(inner)
+    return NO_BALLOT
+
+
+# ---------------------------------------------------------------- the gate
+
+#: Legacy checkpoints predate provenance. An explicit, loud, per-run opt-out —
+#: never a default warning, which is the failure mode this module exists to end.
+ESCAPE_HATCH = "SHENGJI_ALLOW_BALLOT_MISMATCH"
+
+
+def assert_compatible(labelled: BallotSpec, played: BallotSpec,
+                      *, context: str = "") -> None:
     """Refuse a train/play pairing whose action sets are not the same contract.
 
-    This is the guard that would have caught Elo-798, v10res and v13abs. It
-    compares digests rather than names, so silently widening a cap counts as a
-    different ballot — which is exactly what went wrong the first time.
+    This is the guard that would have caught Elo-798, v10res and v13abs.
     """
-    if labelled.digest != played.digest:
-        raise BallotMismatch(
-            f"ballot mismatch: labelled under {labelled}, played under "
-            f"{played}. A model may only score the ballot it was trained on — "
-            f"widening it at play time is the Elo-798 failure. Regenerate "
-            f"labels under the play ballot, or pin play to the labelled one.")
+    if labelled.digest == played.digest:
+        return
+    where = f" [{context}]" if context else ""
+    msg = (f"ballot mismatch{where}: labelled under {labelled}, played under "
+           f"{played}. Difference: {labelled.explain(played)}. A model may "
+           f"only score the ballot it was trained on — widening it at play "
+           f"time is the Elo-798 failure. Regenerate labels under the play "
+           f"ballot, or pin play to the labelled one.")
+    if os.environ.get(ESCAPE_HATCH):
+        print(f"\n*** BALLOT MISMATCH ALLOWED BY {ESCAPE_HATCH} ***\n{msg}\n"
+              f"*** Results from this run are RESEARCH ONLY and must not be "
+              f"used for a strength claim. ***\n", flush=True)
+        return
+    raise BallotMismatch(msg)
 
 
-# --------------------------------------------------------------- known specs
-# Registered rather than inferred: a spec that can be derived from live flags
-# would drift with them, which is the problem it exists to prevent.
+# ------------------------------------------------------- historical records
+# What the three failures were, kept as documentation. These are RECORDED
+# identities, not live ones: they cannot be re-derived because the code they
+# named has since changed. Never compare a live ballot against them.
 
-MC_CANDIDATES_V1 = BallotSpec(
-    name="mc_candidates", version=1, source="MCBot._candidates",
-    lead_cap=14, follow_cap=12,
-    flags={"wide_lead": True, "wide_follow": True, "v3_lead_singles": False},
-    note="The deployed search ballot. Covers 94.2% of human plays; misses "
-         "15.5% of LEADS because per suit it offers only the top card and the "
-         "lowest non-point card.")
-
-MC_CANDIDATES_V3LEAD = BallotSpec(
-    name="mc_candidates", version=3, source="MCBot._candidates",
-    lead_cap=14, follow_cap=12,
-    flags={"wide_lead": True, "wide_follow": True, "v3_lead_singles": True},
-    note="Adds one lead single per (effective level, residual shape). Recovers "
-         "51 of 93 missed human leads. NOT CONFIRMED online: +0.065 +/- 0.144, "
-         "and its random-fill control scored higher.")
-
-RL_ACTIONS_V1 = BallotSpec(
-    name="rl_actions", version=1, source="rl.actions.enumerate_actions",
-    note="The pinned enumeration the older distillation heads were trained "
-         "against. A DIFFERENT action set from mc_candidates — 11 of 12 "
-         "decisions enumerate differently.")
-
-RL_ACTIONS_V2 = BallotSpec(
-    name="rl_actions", version=2, source="rl.actions.enumerate_actions",
-    flags={"throws": True, "component_combos": True},
-    note="Widened analysis ballot: 99.1% human coverage. Used for AUDITS. "
-         "Never enable at play time under a v1-trained net.")
-
-REGISTRY = {str(s): s for s in (MC_CANDIDATES_V1, MC_CANDIDATES_V3LEAD,
-                                RL_ACTIONS_V1, RL_ACTIONS_V2)}
-
-
-def spec_for_mcbot(bot) -> BallotSpec:
-    """The spec a live MCBot is currently configured to enumerate."""
-    return (MC_CANDIDATES_V3LEAD if getattr(bot, "V3_LEAD_SINGLES", False)
-            else MC_CANDIDATES_V1)
+HISTORICAL = {
+    "elo798": "play-time enumeration widened under a net trained narrow",
+    "v10res": "labels over MCBot._candidates, inference over enumerate_actions",
+    "v13abs": "high-N labels over _candidates, leaf maximised over pinned v1",
+}

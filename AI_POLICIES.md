@@ -4,6 +4,45 @@ Every bot policy, its design, and its measured performance. Update this file
 whenever a policy is added, changed, or re-benchmarked. RL training plan and
 post-mortems: RL_PLAN.md.
 
+## Determinization screen — N=30 is NOT better than N=10 (2026-08-04, closed)
+
+**Preregistered primary: paired per-seed level utility, N=30 minus N=10.**
+
+| block | seeds | N=30 - N=10 | role |
+|---|---|---|---|
+| 1 | 93M | +0.282 +/- 0.223 | selection screen |
+| 2 | 94M | +0.155 +/- 0.215 | confirmation |
+| 3 | 95M | +0.048 +/- 0.210 | confirmation (declared final before running) |
+| **confirmation only (2+3)** | | **+0.101 +/- 0.150, n=504** | **INCLUDES 0 — NOT CONFIRMED** |
+
+Pooling all three gives +0.161 +/- 0.125, which excludes zero. That number is
+not the verdict: block 1 selected this arm, and Phase 4 of BALLOT_PLAN says
+not to pool a selection screen into its own confirmation. On fresh seeds the
+effect is +0.101 +/- 0.150 and the per-block decay is monotone
+(+0.282 -> +0.155 -> +0.048), which is what a winner's curse looks like.
+
+**What IS confirmed, on the same 504 fresh clusters:**
+
+- N=5 is WORSE than N=10 by -0.347 +/- 0.145
+- N=30 beats N=5 by +0.448 +/- 0.147
+- win rates 53.1% / 50.6% / 44.3% for N=30 / N=10 / N=5
+
+So search width matters sharply from 5 to 10 and has saturated by 10. Deployed
+`mc` already sits at N=10, on the right side of that knee. **Tripling search
+buys nothing measurable**, which closes off "just spend more compute" as a
+route to the goal and is worth knowing for its own sake.
+
+This is the seventh promising screen that did not survive confirmation. The
+difference is that this time the protocol caught it before it was claimed:
+block 3 was declared final in writing before it ran, so there was no version
+of this where the interval was extended until it cleared.
+
+**Where that leaves the search direction:** the remaining lever is which
+actions get priced, not how hard they are priced. That agrees with the corpus
+measurements already on record — leads carry 3x the forfeit of follows
+(2.96 vs 1.01 points) and the deployed ballot misses 15.5% of human leads
+versus 2.0% of follows.
+
 ## Current status — 2026-08-04
 
 - **Deployment-cost candidate:** `rl-override-v11pair` beats SmartBot 57.7%

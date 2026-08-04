@@ -39,7 +39,7 @@ from shengji.ai.heuristic import HeuristicBot   # noqa: E402
 from shengji.ai.mcbot import MCBot              # noqa: E402
 from shengji.ai.memory import Memory            # noqa: E402
 from shengji.ai.smart import SmartBot           # noqa: E402
-from shengji.engine.ballot import MC_CANDIDATES_V1 as _BALLOT  # noqa: E402
+from shengji.engine.ballot import mc_ballot  # noqa: E402
 from shengji.engine.game import Game            # noqa: E402
 
 
@@ -181,6 +181,10 @@ def main() -> None:
     import subprocess
     sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
                          capture_output=True, text=True).stdout.strip()
+    # Derived from a labeller built exactly as the ones above, so the recorded
+    # identity is the one that actually enumerated these rows. Seed does not
+    # enter the ballot; the class-level action-set config does.
+    _ballot = mc_ballot(MCBot(seed=0))
     manifest = {
         "git": sha, "n_states": n_states, "n_worlds": n_worlds,
         "seed0": seed0, "out": out,
@@ -192,7 +196,9 @@ def main() -> None:
         # The ballot these labels cover. Without it a later trainer cannot
         # tell which action set was priced — which is how v10res and v13abs
         # were each trained against one ballot and deployed against another.
-        "ballot_spec": str(_BALLOT), "ballot_digest": _BALLOT.digest,
+        "ballot_spec": str(_ballot), "ballot_digest": _ballot.digest,
+        "ballot_config": [list(kv) for kv in _ballot.config],
+        "ballot_source_digest": _ballot.source_digest,
         "min_ply": MIN_PLY,
         "policies": "MCBot/SmartBot mixed table",
     }

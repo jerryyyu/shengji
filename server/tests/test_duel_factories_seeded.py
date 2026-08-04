@@ -21,7 +21,12 @@ SCRIPT_FACTORY = staticmethod(lambda name: (lambda **kw: make_bot(name, **kw)))
 
 @pytest.mark.parametrize("name", ["mc", "smart", "heuristic",
                                   "mc-vleaf-v7w-ep02"])
-def test_script_factory_reproduces_under_seeded(name):
+def test_script_factory_reproduces_under_seeded(name, monkeypatch):
+    # v7w predates checkpoint ballot provenance, so loading it is a deliberate
+    # research-only exception rather than a default pass. Declared per-use and
+    # narrowly: a blanket warning is what let three runs score action sets they
+    # were never trained on (Codex). This test checks RNG seeding, not strength.
+    monkeypatch.setenv("SHENGJI_ALLOW_BALLOT_MISMATCH", "1")
     make = lambda **kw: make_bot(name, **kw)      # noqa: E731
     a, b = _seeded(make, 4242), _seeded(make, 4242)
     if not hasattr(a, "rng"):

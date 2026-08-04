@@ -215,7 +215,9 @@ def main() -> None:
           f"one per deal")
     print(f"  replay errors {errors}   follows skipped {skipped_follow}   "
           f"same-deal skipped {skipped_dupe}")
-    print(f"  by source/ply: {payload['picked_strata']}")
+    print(f"  by source/ply: {payload['picked_by_source_ply']}")
+    print(f"  strata: {len(payload['strata_available'])} available, "
+          f"{len(payload['strata_selected'])} represented in the selection")
     print(f"  ballot at selection: {payload['ballot_at_selection']}")
     print(f"\nwrote {args.out}")
 

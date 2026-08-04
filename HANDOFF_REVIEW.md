@@ -1833,3 +1833,62 @@ space through the minimal six-card cases, add the witness, and make physical
 decomposition/attempted-play semantics invariant (or explicit) before marking
 the gate closed. I have reopened `BACKLOG.md`; do not launch a ballot result as
 promotion evidence against the false closure.
+
+---
+
+## Codex literature/roadmap pass — keep separate from sampler work
+
+Jerry asked for an independent synthesis of AlphaGo/Zero, Suphx and Mahjong
+systems, DouZero, Libratus/Pluribus/ReBeL/Noam Brown's imperfect-information
+work, and Eric Jang's AutoGo. I added the sourced architecture map and revised
+roadmap to `RL_PLAN.md`; `AI_POLICIES.md` gets only the durable conclusions.
+
+The immediate conclusion is **not “make MCTS with v11 work.”** AlphaGo's useful
+division of labour transfers—policy narrows breadth, value truncates depth,
+search improves training targets—but its fully observed state/MCTS assumption
+does not. ReBeL and the poker work make the missing object explicit: beliefs or
+ranges plus policy-consistent continuation. Shengji adds decentralized
+teammates, so even the two-player equilibrium guarantees do not transfer.
+
+Champion path remains: hard-valid and then posterior-calibrated worlds → clean
+N=30 answer → contextual/full lead-ballot selection → common-world floor plus
+sequential root allocation → learned lead/follow proposer on the winning exact
+ballot. A Pluribus-inspired small continuation-policy portfolio is a later
+equal-work robustness arm. Public-belief tree search comes after a calibrated
+ownership/action-likelihood model, not before.
+
+### New P0 finding in the parked RL code
+
+`dmc2.py` does not currently define a symmetric learner target:
+
+- `round_value()` and `oracle.py` are attacker-perspective;
+- `actor_batch()` stores `val` for attacker seats and `-val` for defenders;
+- ingestion then computes `adv = rets - vo` for every seat without signing
+  `vo` by role.
+
+Thus a defender gets `-R - V_attacker`; the symmetric residual is
+`-R - (-V_attacker)`. `seat_l` is initialized but never consumed, which looks
+like the missing transform. Please confirm if there was a different intended
+contract; absent one, this invalidates both halted dmc2 runs as RL evidence.
+
+There are two separate attribution errors too. The scalar subtraction is not
+Suphx oracle guiding: Suphx trained a privileged-information policy and
+gradually removed the privileged features, and reported simple oracle
+distillation did not substitute for it. The recipe is not a faithful DouZero
+baseline either: DouZero trained from scratch, used role-specific action-value
+nets, direct episodic returns and sequential action history at enormous actor
+scale. Our warm-started dueling/residual bundle cannot reject either method.
+
+Backlog gate before any AWAC/DMC resume: unit-test attacker/defender target
+antisymmetry, use immutable actor snapshots instead of a mutable
+`generator.pt` pathname, and use the clustered evaluator instead of a
+20-pair/55% promotion coin flip. Then run two *separate* synchronous 20-30
+minute microbaselines: Suphx privileged-policy feature removal with controls;
+DouZero role-conditioned direct Q from scratch. No async fleet run until
+spread, replay/resume and a predeclared held-out metric are stable.
+
+AutoGo's main contribution here is operational: one immutable
+`ExperimentSpec`, self-contained artifacts, synchronous collect→train→evaluate
+before async actors, and a dispatcher that can fill idle machines only from a
+preregistered queue. Automation may schedule work; it must not choose a new
+metric, extend a near-miss, or promote a checkpoint.

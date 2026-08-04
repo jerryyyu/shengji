@@ -21,7 +21,7 @@ evidence changes a synthesized conclusion. Append run reports below the fold,
 and when a run changes a conclusion, EDIT the synthesis rather than letting the
 newest entry sit on top and speak for the file.
 
-## Current synthesis — 2026-08-04 20:40
+## Current synthesis — 2026-08-04 22:15
 
 - **Strength incumbent:** deployed N=10 `mc`. No learned policy, value leaf,
   learned search prior, ballot variant, or higher-N search arm has a verified
@@ -54,12 +54,26 @@ newest entry sit on top and speak for the file.
   the old sampler (+0.101 +/- 0.150). On the corrected sampler one clean block
   gives +0.290 +/- 0.210. One block is not a claim; it needs fresh seeds and a
   null control.
-- **Next strength work:** run one correctly controlled fresh N=30 dose
-  confirmation because the rewritten-sampler screen reopened that cheap
-  hypothesis, and run the structural 512-state lead pilot comparing current,
-  V3, random-fill, `MC-more`, fixed-14 contextual, and full-universe/high-
-  compute arms on disjoint proposal/report worlds. Do not pool either selection
-  result into its confirmation. Gates and ordering live in `BACKLOG.md`.
+- **RL/search architecture boundary:** AlphaZero-style MCTS is not the next
+  champion path. Shengji is a four-seat, decentralized hidden-information team
+  game, so a private observation has no strategy-independent scalar leaf value.
+  Near-term search stays at the root over calibrated beliefs with a better
+  proposal/allocation policy; long-term tree search requires public belief
+  state and policy-consistent continuation. Literature mapping and sources are
+  in `RL_PLAN.md`.
+- **DMC2 is implementation-invalid, not an RL rejection.** It signs terminal
+  return by the acting team but subtracts the attacker-perspective oracle from
+  defenders without flipping the oracle sign. Its scalar residual is also not
+  Suphx's privileged-policy curriculum, and the warm-started dueling recipe is
+  not DouZero's from-scratch role-specific direct-Q baseline. Preserve the
+  alarms/scaffolding; do not interpret the two halted runs as testing either
+  paper's hypothesis.
+- **Next strength work:** the correctly controlled fresh N=30 dose confirmation
+  is running as one preregistered 504-cluster block with a true same-policy
+  null. Next is the structural 512-state lead pilot comparing current, V3,
+  random-fill, `MC-more`, fixed-14 contextual, and full-universe/high-compute
+  arms on disjoint proposal/report worlds. Do not pool either selection result
+  into its confirmation. Gates and ordering live in `BACKLOG.md`.
 
 ## Policy status details
 
@@ -230,12 +244,14 @@ did not match in either state phase or action ballot.
   (cross-candidate spread 22.5 → 0.26 ≈ action-blind) under deal-luck
   label noise. Run record: `server/runs/dmc_v1.md`.
 - **DMC self-play: implementation unresolved, not a hypothesis rejection.**
-  dmc2's spread alarm correctly halted two action-blind collapses, but those
-  runs show that pipeline/target was unsafe—not that every Q or policy-gradient
-  method must fail. AWAC-style policy updates remain a design candidate only
-  after role-sign, immutable-checkpoint, replay, and fallback invariants pass.
-  The oracle study explains 43-47% of outcome variance on its own distribution;
-  it is a diagnostic, not a deployable value proof.
+  dmc2's spread alarm correctly halted two action-blind collapses, but the
+  target has a concrete role-sign defect: defender returns are negated while
+  the attacker-perspective oracle is not. The “Suphx oracle” label is also
+  wrong—Suphx gradually removed privileged features from a policy—and the
+  recipe is not a faithful DouZero baseline. AWAC/DMC may resume only after
+  attacker/defender symmetry, immutable-checkpoint, replay and fallback
+  invariants pass. The oracle's 43-47% explained variance is a diagnostic on
+  its own heuristic trick-start distribution, not a value ceiling.
 - **Overnight sweeps (2026-08-02, all probed vs current SmartBot on fixed
   seeds; CONTROL: v6 = 55%)**: temperature 0.03/0.10 → best 52%/52%
   (**null — 0.05 was right**, and sharp targets train unstably);

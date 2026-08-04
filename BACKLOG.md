@@ -163,10 +163,15 @@ versus widened/high-compute ballot selection.
       with a validated uniform reference while reporting exact toy-posterior
       calibration and effective sample size. A net must not mask impossible or
       already-biased base worlds.
-- [ ] **AWAC-style self-play is parked, not disproven.** Resume only after
-      role-sign, immutable-artifact, evaluator, and fallback invariants are
-      tested. Start with a bounded shadow run and keep policy advantages out
-      of the absolute value head.
+- [ ] **Repair the DMC2 contract before any AWAC/DMC resume.** The oracle is
+      attacker-perspective, but dmc2 negates defender returns without negating
+      the oracle before subtraction; add an attacker/defender antisymmetry test
+      and fix the target. Stop calling the scalar residual “Suphx oracle
+      guiding”; separately micro-test (a) Suphx-style privileged-policy feature
+      removal and (b) DouZero-style from-scratch role-conditioned direct Q.
+      Actors must load immutable snapshots and the gate must use the clustered
+      evaluator. Start synchronously for 20-30 minutes; only stable spread plus
+      a predeclared held-out improvement earns a fleet run.
 - [ ] Human-style fine-tune once the human corpus is a few thousand decisions.
 - [ ] From the disagreement miner: dump-selection refinement (n=23, +3.9);
       lower the CONTROL_LEADS pair gate for late rounds.
@@ -193,6 +198,12 @@ versus widened/high-compute ballot selection.
       generators/certifiers, refuse stale compiled extensions using an API
       version plus source digest, and maintain a house-v1 conformance corpus
       with positive and negative cases.
+- [ ] **One immutable `ExperimentSpec` and bounded fleet queue (AutoGo lesson).**
+      Unify hypothesis, code/data/ballot/encoder hashes, frozen actor paths,
+      seeds, budget, primary metric, null, stop rule and artifact destinations.
+      First make collect→train→evaluate exactly replayable synchronously; only
+      then let a dispatcher keep both machines full from preregistered jobs.
+      Scheduling may be automatic; promotion and metric changes may not be.
 - [ ] **Boundary-level tests.** Drive the failed-throw regression through
       `bot_step`/`Room` and add a committed high-N raw-record round trip. The
       exact tournament factory-seed boundary and numpy/Torch parity are already

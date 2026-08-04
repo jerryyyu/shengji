@@ -14,8 +14,90 @@ cannot establish that claim.
 Primary promotion metric: paired signed level utility by deal seed. Round
 win-rate is secondary; a final deployment candidate gets a mirrored full-game
 level-progression check. Every reported number is labelled **HYPOTHESIS**,
-**SCREEN**, **CONFIRM**, or **REJECT**. Hardware: one Mac mini (M4, 10 cores,
-MPS). Toggle results live in `AI_POLICIES.md`; run archives in `server/runs/`.
+**SCREEN**, **CONFIRM**, or **REJECT**. The current fleet is an M4 Mac mini plus
+an intermittently available MacBook Air; every manifest records the actual
+worker/config rather than treating hardware as part of the claim. Toggle
+results live in `AI_POLICIES.md`; run archives in `server/runs/`.
+
+---
+
+## Literature-derived design constraints — 2026-08-04
+
+This is an architecture filter, not a list of famous systems to imitate. The
+transfer question is whether a result survives Shengji's four seats, two
+cooperating teams, decentralized private hands, combinatorial plays, and
+action-dependent information. Detailed run history remains below; this section
+states what the external evidence changes now.
+
+| system | useful result | Shengji consequence / non-transfer |
+|---|---|---|
+| [AlphaGo](https://storage.googleapis.com/deepmind-media/alphago/AlphaGoNaturePaper.pdf), [AlphaGo Zero](https://www.nature.com/articles/nature24270), [AlphaZero](https://arxiv.org/abs/1712.01815) | A policy focuses search, a value model truncates it, and search can generate improved policy targets for the next self-play generation. | This is the right *division of labour*, but those searches act on fully observed two-player states. A scalar observation value plus ordinary MCTS is not a sound direct transplant into hidden-information team play. Use the expert-iteration idea first at the root over a belief distribution. |
+| [Suphx](https://arxiv.org/abs/2003.13590) | Human-log pretraining followed by distributed self-play; controlled entropy; separate decision models; privileged-information **policy** curriculum; and per-hand Monte-Carlo policy adaptation (pMCPA). Simple oracle distillation did not deliver the same result. | Faithful tests are (a) gradually remove full-hand features while training the same policy objective, and (b) bounded round-local adaptation over sampled worlds. Our full-information scalar subtraction is not Suphx oracle guiding. Lead/follow, declaration and burial deserve separate heads or models before another monolith. |
+| [Meowjong](https://arxiv.org/abs/2202.12847), [Mortal](https://mortal.ekyu.moe/), [Mahjax](https://arxiv.org/abs/2605.20577) | Other Mahjong systems reinforce two practical themes: decision-type specialization and a simulator fast enough that simple on-policy/self-play recipes see enormous, diverse experience. | Split the heterogeneous Shengji surfaces before adding a more exotic loss, and treat native/vectorized simulation as research leverage. Simulator throughput improves the experiment; it does not repair a wrong target or evaluator. |
+| [DouZero](https://proceedings.mlr.press/v139/zha21a.html) | Deep Monte Carlo learned action values directly from terminal returns at scale, with explicit action encoding, action-history recurrence, and separate networks for the three asymmetric roles. It did not need inference-time search. | The closest faithful baseline is from-scratch, role-conditioned/action-conditioned Q learning with immutable actor snapshots and direct signed returns. Warm-starting a dueling policy head and regressing an oracle residual is a different algorithm, so its collapse does not reject DouZero. |
+| [Libratus](https://noambrown.github.io/papers/17-Science-Superhuman.pdf), [Pluribus](https://noambrown.github.io/papers/19-Science-Superhuman.pdf), [depth-limited solving](https://arxiv.org/abs/1805.08195) | A blueprint plus real-time search can exceed either alone; hidden-information subgames depend on ranges and off-path strategy. Pluribus evaluates leaves against a small portfolio of continuation strategies rather than pretending one scalar continuation is universal. | Keep a fixed blueprint/partner policy during root search and test a small continuation-policy portfolio as a robustness arm. Do not label one heuristic-continuation `Q(s,a)` target a generic value. Poker's equilibrium guarantees do not transfer to a decentralized four-player partnership. |
+| [ReBeL](https://papers.nips.cc/paper/2020/hash/c61f571dbd2fb949d3fe5ae1608dd48b-Abstract.html), [Student of Games](https://arxiv.org/abs/2112.03178), [policy search in cooperative partially observed games](https://arxiv.org/abs/1912.02318) | Search in imperfect information needs a public belief/range state and policy-consistent continuation; a private observation does not possess one strategy-independent scalar value. Cooperative search must preserve the policy teammates use to interpret public actions. | The long-term search state is public history plus beliefs over hands and continuation policies. Root determinization with fixed public-information rollouts is a useful approximation; independent per-world MCTS or a v11 relative score used as a leaf is not. |
+| [AutoGo](https://evjang.com/2026/04/28/autogo.html#cover) / [repository](https://github.com/ericjang/autogo) | Simple learning loops become productive when experiments are self-contained, fleet jobs are reproducible, and collect→train→evaluate is first made stable synchronously; asynchronous throughput comes later. | Adopt one immutable `ExperimentSpec`, frozen actor/checkpoint paths, bounded automated queues, and machine-readable gates. Let automation schedule preregistered work, never invent a new metric or promote a checkpoint. This is experiment infrastructure, not evidence for one RL algorithm. |
+
+### What this changes in the strength plan
+
+1. **Do not make “MCTS with the RL policy” the primary objective.** The near-
+   term champion path is still hard-valid, calibrated belief sampling; a wide
+   contextual lead ballot; a common-world rollout floor; then sequential root
+   allocation. That directly attacks the measured sourcing gap without taking
+   on hidden-information tree-search semantics.
+2. **Use learned models first where the target is identifiable.** v11pair can
+   rank/propose actions on its exact ballot. The next learned proposer should be
+   trained on the winning ballot and split lead from follow. A value model must
+   name its perspective, belief, continuation policy and horizon; otherwise it
+   is not a leaf contract.
+3. **Treat rollout-policy uncertainty explicitly.** After the ballot/dose tests,
+   compare the incumbent single continuation against a small fixed portfolio
+   (for example current Smart, conservative/tempo, and point-aggressive
+   continuations) at equal total work. This is a robustness experiment, not a
+   claim that a stronger standalone roller automatically makes stronger MC.
+4. **Run faithful self-play probes, not another hybrid recipe bundle.** One
+   Suphx-style privileged-policy curriculum and one DouZero-style direct-Q
+   baseline should each get a tiny synchronous shadow run with invariant tests.
+   Only a stable learning curve earns fleet-scale asynchronous actors.
+5. **Belief-state search is the long-term tree-search lane.** Learn action-
+   conditioned card ownership/ranges, calibrate them against held-out hidden
+   deals and exact toy posteriors, then search public belief states with a fixed
+   continuation-policy portfolio. ReBeL's convergence result is two-player
+   zero-sum; Shengji should borrow the representation, not claim the theorem.
+
+### Current DMC2 is not a valid Suphx or DouZero test
+
+The negative result remains useful as a pipeline alarm, but it is not evidence
+against the underlying RL families:
+
+- **There is a defender-perspective sign defect.** `round_value()` and the
+  oracle are attacker-perspective. `actor_batch()` signs terminal return by the
+  acting seat, but ingestion computes `adv = signed_return - V_attacker` for
+  every seat. A defender needs `-return - (-V_attacker)`, not
+  `-return - V_attacker`. The unused `seat_l` list is consistent with a missing
+  intended sign transform. This alone invalidates the dmc2 learning verdict.
+- **The “Suphx oracle baseline” is a different method.** Suphx trained a
+  full-information policy and gradually removed privileged inputs. Here a
+  scalar value trained on heuristic trick-start states is subtracted from a
+  chosen-action regression target at arbitrary decision states. Suphx also
+  reported that simple oracle distillation did not work.
+- **The “DouZero-style DMC” omits defining parts of the baseline.** It warm-
+  starts a dueling CE/distillation network, uses one network across roles,
+  compresses history into aggregate card planes, and fits oracle-residual
+  targets. DouZero trained role-specific action-value networks from scratch on
+  direct episodic returns with sequential history and massive actor throughput.
+- **Run integrity is not immutable.** Actor tasks receive the mutable
+  `generator.pt` pathname while promotion overwrites it; candidate/generator
+  gates use only 20 mirrored deals at a 55% threshold. Snapshot identity and a
+  clustered evaluator must be fixed before interpreting another curve.
+
+Verdict: preserve the spread alarm, replay cap, opponent-pool idea and run
+bookkeeping, but do not resume AWAC or DMC on top of the current target path.
+First add unit tests for attacker/defender target symmetry, role symmetry,
+immutable actor snapshots and exact resume/replay behavior. Then compare the
+two faithful microbaselines independently so a recipe bundle cannot hide which
+idea worked.
 
 ---
 
@@ -92,13 +174,20 @@ result.
    MC reference. v13 fit its offline labels better but changed both the state
    and action-ballot distributions at deployment; it was
    `-0.028 +/- 0.185` directly versus v7 on the same 250 seed clusters.
-4. **Correct belief sampling and evaluation gate more compute.** Normal MC
-   still lacks pair-void enforcement. The high-N corpus used the old non-strict
-   sampler, capped ballot, same-world selected maximum, early-state-heavy
-   distribution, and raw-point `Q^H` targets. It is a diagnostic reservoir,
-   not an oracle.
-5. **Both machines are intentionally idle.** The next work is the ballot and
-   representation/evaluator gates below, not another bulk training run.
+4. **Hard-constraint sampling P0 passed; posterior fidelity is P1.** The clean
+   `eea78d2` artifact found zero invalid worlds over 38,399 accepted reservoir
+   draws and reached every enumerated legal world in 120/120 toy states. Count-
+   matrix and capped-card weighting are still biased, so the old non-strict,
+   capped-ballot, same-world-selected high-N labels remain a diagnostic
+   reservoir rather than an oracle.
+5. **The next compute is bounded and unblocked.** Run the preregistered fresh
+   N=30 confirmation and the clean lead-ballot pilot; neither is permission for
+   another bulk training corpus. The separate action-semantics gate remains
+   open on the exact six-card tied-level decomposition witness in `BACKLOG.md`.
+6. **DMC2 is implementation-invalid, not an RL rejection.** Its defender
+   residual subtracts an attacker-perspective oracle with the wrong sign, and
+   the method is neither Suphx's privileged-policy curriculum nor DouZero's
+   role-specific direct-return baseline.
 
 **Current decisions:**
 
@@ -113,6 +202,7 @@ result.
 | Is selective v11-gated MC ready? | **No.** T2 did not earn confirmation; the later T3 runner was invalid and halted. | 1l, 1m |
 | Does the banker knowing its own burial help? | **No measurable effect** — 49.7%, CI [44.0, 55.3] | 1g, AI_POLICIES |
 | Does rollout-policy strength matter? | **No** — tied twice, second time with a 93-Elo-stronger roller | AI_POLICIES |
+| Did DMC2 disprove Suphx/DouZero-style self-play? | **No.** The defender oracle sign is wrong, the “oracle guiding” mechanism is different from Suphx, and the warm-started residual/dueling recipe is not a faithful DouZero baseline. | literature/DMC2 audit above |
 
 **The through-line:** changing rollout or leaf evaluation has not improved MC;
 correctly learning *relative root decisions* did improve SmartBot. The next
@@ -245,13 +335,15 @@ run, so that comparison stays open rather than counted.
    Raw-return regression on a warm start crushed action ordering (spread
    22.5 → 0.26, twice, alarm-verified); net-as-rollout-policy amplified
    tail errors (37% vs mc at 100x cost). Full-information oracle study:
-   only 43-47% of outcome variance is predictable at all. Surviving
-   net-in-search designs ask one bounded question: value at a truncated
-   leaf (vleaf, in gate), world likelihood (belief sampling, queued),
-   candidate priors (proposer, queued).
-5. **Warm starts are safe iff the objective matches.** v6→v6.1 (same
-   distill loss): fine. BC→DMC (raw returns): destroyed the checkpoint.
-   v7-warm tests whether "init from incumbent" becomes standing policy.
+   only 43-47% of outcome variance is predictable on its training
+   distribution. The dmc2 collapse is additionally confounded by a defender-
+   sign bug and a non-Suphx baseline, so it cannot establish a value ceiling.
+   Ask one identifiable question at a time: relative root ranking, world
+   likelihood, or a calibrated value under one named continuation policy.
+5. **Warm starts are safe only under an unchanged objective.** v6→v6.1 (same
+   distillation loss) was stable; BC→raw/residual Q regression destroyed the
+   checkpoint. This is a warning about scale and objective shift, not a reason
+   to require warm starts in a faithful from-scratch DouZero baseline.
 6. **Strength overfits before val metrics notice.** v6cont: gates fell
    51/41→44/32 while val agreement moved 0.4pt. Model selection =
    per-epoch snapshot **strength probes**, never loss. Peak lands ~ep3-8.
@@ -272,16 +364,18 @@ run, so that comparison stays open rather than counted.
 
 ---
 
-## RUN STATUS — 2026-08-04 10:15
+## RUN STATUS — 2026-08-04 22:15
 
-Jerry reactivated the goal ("use RL to beat MC — check codex and proceed") and
-the stop that preceded it is superseded. Running now: the paired racing
-confirmation (mini), the seeded Elo pool including race4 and its control
-(mini), and the high-N corpus (Air, ~7,200/20,000).
+The rewritten-sampler N=30 confirmation is preregistered and running on the
+mini: one 504-cluster block, fresh 99M seeds, N=30-minus-N=10 primary, a true
+same-policy/different-RNG null, no N=5 arm and no extension. The lead-ballot
+pilot remains next. P0 sampler validity/support is closed; distribution
+fidelity and the reopened six-card action-semantics witness are separate
+correctness work. No bulk RL/data run is authorized by either screen.
 
-The re-entry discipline still applies to anything new: preregister the bar,
-seed both sides through a factory that FORWARDS kwargs, write a manifest and
-per-seed records, and treat a first block as a screen.
+The re-entry discipline applies to anything new: preregister the bar, seed both
+sides through a factory that forwards kwargs, write immutable manifests and
+per-seed records, and treat a first block as selection only.
 
 ## DECISIONS TAKEN (Codex, 2026-08-04 07:31 — answers to the standing questions)
 
@@ -298,63 +392,53 @@ they change what gets built, not just what gets said.
 | Silent fallbacks | **One bounded repository-wide sweep first**, converting each boundary into a strict invariant or counter, then site-by-site enforcement while touching code. A sweep without durable invariants decays; local-only work misses the next hidden boundary. |
 | Frontend soak | Deterministic tests are strong enough for a RELEASE CANDIDATE. Run one bounded multi-tab reconnect/takeover/chat soak before production promotion — minutes, not a project — and it does not gate the ML stop decision. |
 
-## ROADMAP FROM THE CURRENT STOP (ordered by information per unit compute)
+## ROADMAP FROM HERE (ordered by information per unit compute)
 
-1. **Repair correctness and measurement boundaries.** Fix the belief sampler
-   and `_seeded()` fallback, add strict counters/invariants, and build one
-   manifest-driven paired evaluator. These are prerequisites, not experiment
-   arms.
-2. **Establish the deployment Pareto frontier.** Compare SmartBot, direct v11,
-   MC N=5/10/20, and the settled v7 value-leaf speed arm on one reproducible
-   strength/latency table. Do not include selective gates until their runner
-   passes re-entry. Product promotion may use a preregistered non-inferiority
-   margin plus speed; “beats MC” still requires superiority.
-3. **Build a valid small high-N diagnostic set—then stop and inspect it.** The
-   completed 600-state Air output came from a prototype and is debugging-only,
-   not an unbiased reference or training corpus. `highn_build.py` uses the
-   constraint-relaxing sampler; selects the apparent best and tests it on the
-   same worlds (paired SE alone does not remove max-selection bias); truncates
-   each round after early sampled decisions; uses potentially colliding
-   `seed * 31 + ply` RNG ids; and has no tested round-trip loader. The completed
-   artifact predates the sidecar manifest; current code overwrites that sidecar
-   while still appending JSONL, so it can still mix runs. Before any rerun or
-   evidentiary use, add:
-   - a versioned schema and reconstruction test including initial banker,
-     declaration timing/final declaration, phase, ballot hash, engine/config
-     hashes, and exact seed ids;
-   - strict legal-world sampling, disjoint selection/evaluation worlds (or a
-     simultaneous multiple-comparison interval), and stored covariance or
-     per-world differences;
-   - deal-grouped splits plus explicit early/mid/late and score-bracket quotas;
-   - exclusive output and a small cost estimate. Generate only a tiny frozen
-     pilot after these gates pass.
-4. **Representation diagnostic, not bulk training.** On that independently
-   evaluated pilot, compare the current encoder against exactly one enriched
-   encoder using identical model/initialization/data and at least three train
-   seeds. Add trump-relative canonicalisation, ordered recent tricks,
-   declaration owner/cards, pair-voids, team levels, and banker-private burial
-   where legal. A full corpus is earned only if untouched high-N regret improves
-   at least 10% in every seed.
-5. **Root racing before tree search.** Give every candidate a small common-
-   world rollout floor, then allocate the remaining fixed budget using v11's
-   ranking plus empirical uncertainty. Compare against uniform allocation and
-   simple complexity allocation at equal total rollout/time budget.
-6. **A real absolute value model.** Predict the attacker-perspective scoring-
-   bracket distribution or expected signed level utility under a named fixed
-   continuation policy, with calibration metrics. Do not use noisy `max_a Q`
-   as the target. It may share v11's trunk but needs a separate contract/API.
-7. **Active labels, then AWAC; MCTS last.** Spend high-N labels on verified
-   disagreements and consequential phase/score slices while retaining an
-   anchor mixture. Resume AWAC only after role symmetry, immutable checkpoint
-   promotion, strict fallbacks, and the active-label pipeline are tested.
-   Revisit PUCT/MCTS only after both a calibrated absolute value and a correct
-   belief model exist.
+1. **Finish the two live champion-path screens.** Settle N=30 with the one
+   preregistered online block. In parallel, fix the six-card action-semantics
+   witness, then run the clean 512-state lead pilot across current, contextual-
+   14, full-universe/high-compute, V3, random-fill and `MC-more` controls. The
+   current sampler can select; a winning ballot arm must be re-priced after P1
+   distribution calibration before its final online confirmation.
+2. **Measure and correct the belief distribution.** Exact-enumerate toy
+   posteriors, report TV distance/card-seat marginals/exchangeability, then
+   weight suit-count matrices by their admissible per-code completions and
+   sample capped fills uniformly. After the hard posterior is calibrated, fit
+   an action-likelihood/ownership model only as a measured soft refinement.
+3. **Turn the winning ballot into a learned proposer.** Cleanly relabel
+   disagreement, late-ply and high-uncertainty states under one frozen
+   `BallotSpec`; train separate lead and follow proposal/ranking heads; compare
+   against contextual quota, random fill and equal-work `MC-more`. v11pair is
+   an initializer/diagnostic only where its old ballot is exact.
+4. **Test continuation robustness before a scalar leaf.** At equal total
+   rollout work, compare the incumbent continuation against a preregistered
+   small policy portfolio. Record per-policy action values and covariance. If
+   no arm changes online strength, close this lane rather than train another
+   generic leaf on heuristic-only outcomes.
+5. **Run two faithful synchronous RL microbaselines.** Suphx lane: one policy
+   objective with a scheduled privileged-information mask, plus a partial-only
+   and simple-distillation control. DouZero lane: from-scratch role-conditioned
+   Q networks, direct signed episodic returns, sequential action history and
+   immutable actors. Unit-test role signs and snapshot identity; a 20–30 minute
+   shadow must preserve action spread and improve a held-out fixed-policy metric
+   before either gets fleet scale.
+6. **Build belief-state search only after those contracts hold.** Represent
+   public history, calibrated hand ranges and a small continuation-strategy
+   portfolio. Start with root/subgame search and policy-preserving partner
+   behavior. A calibrated bracket/level value may assist it, but must name the
+   belief, role, horizon and continuation policy in checkpoint metadata.
+7. **Operate the flywheel AutoGo-style.** Every run gets one immutable
+   `ExperimentSpec`: hypothesis, code/data/ballot/encoder hashes, frozen actor
+   paths, budget, primary metric, null and stop rule. Keep collect→train→evaluate
+   synchronous until replay/resume is exact; only then let a dispatcher fill
+   the fleet from a preregistered queue. Promotion remains a separate human-
+   visible paired gate.
 
 For online selection, paired signed level utility is primary because it is the
 actual game objective; round win-rate remains the higher-power secondary
 metric, and a final candidate gets a full-game confirmation. Standalone policy
-development is paused until the representation diagnostic supplies a positive
-offline result.
+scaling remains paused; only the two bounded, faithful self-play microbaselines
+above may reopen it, and only after their implementation invariants pass.
 
 ## Training data inventory (rebuilt from disk 2026-08-04; local + gitignored)
 

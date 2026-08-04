@@ -1,7 +1,7 @@
-import type { RoomSeats } from "../protocol";
-import { useEffect, useRef, useState } from "react";
+import type { RoomSeats, ServerMsg } from "../protocol";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConnStatus } from "../ws";
-import { clearSavedRoom, conn, getSavedName, saveName } from "../ws";
+import { clearSavedRoom, conn, getResumeToken, getSavedName, saveName } from "../ws";
 
 interface LobbyProps {
   status: ConnStatus;
@@ -25,13 +25,36 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   // link drops you straight into the table (Jerry, 2026-08-03).
   const autoJoined = useRef(false);
   const lastPeek = useRef<string | null>(null);
+  const peekGen = useRef<number | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   // Mid-game joins pick their seat: partner choice matters (0&2 vs 1&3).
   const [seatChoice, setSeatChoice] = useState<RoomSeats | null>(null);
-  useEffect(() => conn.subscribe((m: any) => {
+  // Declared before the subscriber and memoised so the effect can list it as
+  // a dependency instead of silencing the warning: it closes over `name` and
+  // `roomCode`, and a stale copy would join with the wrong name.
+  const joinSeat = useCallback((seat: number | undefined, code?: string) => {
+    const target = (code ?? roomCode).trim().toUpperCase();
+    const trimmed = name.trim();
+    saveName(trimmed);
+    clearInvite();
+    setSeatChoice(null);
+    const token = getResumeToken();
+    conn.send({ type: "join_room", room: target, name: trimmed, seat,
+                ...(token ? { token } : {}) });
+  }, [name, roomCode]);
+
+  useEffect(() => conn.subscribe((msg: ServerMsg) => {
+    const m = msg as Extract<ServerMsg, { type: string }> & Record<string, any>;
+    // Ignore anything answering a transaction from a previous socket.
+    if (peekGen.current !== null && peekGen.current !== conn.generation) {
+      peekGen.current = null;
+      setSeatChoice(null);
+      return;
+    }
     if (m?.type === "room_seats") {
-      const open = m.seats.filter((sd: any) => sd.claimable);
-      const bots = m.seats.filter((sd: any) => sd.is_bot);
+      const seats = m.seats as RoomSeats["seats"];
+      const open = seats.filter((sd) => sd.claimable);
+      const bots = seats.filter((sd) => sd.is_bot);
       // Offer the picker whenever more than one seat is open, or when the
       // only open seat belongs to a dropped human — taking someone's seat
       // should always be deliberate.
@@ -39,7 +62,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
       // player also needs the picker, or the server answers choose_seat and
       // the client has nothing to show — a deadlock (Codex ship gate P0-4).
       if (open.length > 1 || (open.length === 1 && !bots.length)) {
-        setSeatChoice(m);
+        setSeatChoice(m as RoomSeats);
       } else {
         joinSeat(undefined, m.room);       // nothing to choose
       }
@@ -52,7 +75,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
         && lastPeek.current) {
       conn.send({ type: "peek_room", room: lastPeek.current });
     }
-  }), [name]);
+  }), [name, joinSeat]);
 
   const ready = status === "open" && name.trim().length > 0;
 
@@ -84,21 +107,13 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     }
   };
 
-  const joinSeat = (seat: number | undefined, code?: string) => {
-    const target = (code ?? roomCode).trim().toUpperCase();
-    const trimmed = name.trim();
-    saveName(trimmed);
-    clearInvite();
-    setSeatChoice(null);
-    conn.send({ type: "join_room", room: target, name: trimmed, seat });
-  };
-
   const join = () => {
     const code = roomCode.trim().toUpperCase();
     if (!ready || code.length !== 4) return;
     // Ask who's sitting where first; the subscriber either shows a picker
     // (game in progress, >1 bot) or joins straight through.
     lastPeek.current = code;
+    peekGen.current = conn.generation;   // this transaction belongs to this socket
     conn.send({ type: "peek_room", room: code });
   };
 

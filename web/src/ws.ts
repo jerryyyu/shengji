@@ -66,6 +66,12 @@ class Connection {
    *  scrollback and duplicates would double up). */
   private chatLog: any[] = [];
   private chatRoom: string | null = null;
+  private chatSeen = new Set<number>();
+  /** Bumped on every socket open. A membership transaction (peek -> pick ->
+   *  join) belongs to ONE generation; a response that arrives after a
+   *  reconnect refers to a socket the server no longer has, so acting on it
+   *  would join the wrong room (Codex ship gate P0-6). */
+  generation = 0;
 
   private ws: WebSocket | null = null;
   private msgListeners = new Set<MsgListener>();
@@ -84,6 +90,7 @@ class Connection {
   clearChat(): void {
     this.chatLog = [];
     this.chatRoom = null;
+    this.chatSeen.clear();
   }
 
   /** Idempotent: begin connecting (called once from App). */
@@ -121,6 +128,7 @@ class Connection {
 
     ws.onopen = () => {
       this.backoff = 500;
+      this.generation += 1;
       // Report "open" and stop there. Deciding WHETHER to rejoin, and which
       // room wins between an invite link, an explicit action, and a saved
       // session, is App's call — the connection reading localStorage on its
@@ -135,20 +143,30 @@ class Connection {
       } catch {
         return;
       }
-      // Chat scrollback is delivered on join, BEFORE the first state — i.e.
-      // before <Table> mounts and subscribes. Buffer it here or a joiner sees
-      // an empty log (Codex case 7).
-      const room = (msg as any)?.room;
+      // Chat arrives BEFORE the first state — i.e. before <Table> mounts and
+      // subscribes — so it is buffered here. The server sends one authoritative
+      // chat_history snapshot per attach, then live events with room-scoped
+      // monotonic ids, which is what makes reconnect deduplication possible
+      // (Codex ship gate P0-5).
+      const m = msg as any;
+      const room = m?.room;
       if (typeof room === "string" && room !== this.chatRoom) {
         this.chatRoom = room;      // room changed: the old log is not ours
         this.chatLog = [];
+        this.chatSeen.clear();
       }
-      if ((msg as any)?.type === "resume" && (msg as any).token) {
-        saveResumeToken((msg as any).token as string);
+      if (m?.type === "resume" && m.token) {
+        saveResumeToken(m.token as string);
       }
-      if ((msg as any)?.type === "chat") {
-        this.chatLog.push(msg as any);
-        if (this.chatLog.length > 100) this.chatLog.splice(0, this.chatLog.length - 100);
+      if (m?.type === "chat_history") {
+        this.chatLog = (m.messages ?? []).slice(-100);   // REPLACE, not merge
+        this.chatSeen = new Set(this.chatLog.map((x: any) => x.id));
+      } else if (m?.type === "chat") {
+        if (!this.chatSeen.has(m.id)) {
+          this.chatSeen.add(m.id);
+          this.chatLog.push(m);
+          if (this.chatLog.length > 100) this.chatLog.splice(0, this.chatLog.length - 100);
+        }
       }
       for (const fn of this.msgListeners) fn(msg);
     };

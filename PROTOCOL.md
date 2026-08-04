@@ -55,11 +55,24 @@ private information. The lobby uses it to show a seat picker when a game is in
 progress and more than one bot seat is open — which bot you replace decides
 who your partner is.
 
-### `{type: "chat", seat: number, name: string, text: string, t: float}`
+### `{type: "chat_history", room, through_id, messages[]}`
+
+One authoritative snapshot per attach, sent **before** the first state. The
+client REPLACES that room's log with it — never merges — so a reconnect cannot
+double the log.
+
+### `{type: "chat", room, id, seat, name, text, t}`
 
 `seat: -1` marks a SYSTEM line (joins, leaves, seat claims, bot takeover and
-handback). Up to 50 messages of scrollback are replayed on join, **before**
-the first state — a client that only subscribes on mount will miss them.
+handback). `id` is monotonic **per room**, so a client drops any id already in
+its snapshot. Ids restart per room; always key the log by `room`.
+
+### `{type: "resume", token, gen}`
+
+Sent on every attach. `token` is the seat's opaque identity — names are NOT
+identity, and the token is what lets a player resume their own seat even while
+a stale socket of theirs is still open. Store it and send it back in
+`join_room`. `gen` is the connection generation that now owns the seat.
 
 ### `{type: "state", ...GameState}`
 Full personalized game state:

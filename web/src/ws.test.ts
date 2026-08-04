@@ -48,40 +48,58 @@ beforeEach(() => {
   FakeWS.last = null;
 });
 
-describe("chat buffering", () => {
-  it("keeps messages that arrive before any component subscribes", async () => {
+describe("chat: snapshot + identified live events", () => {
+  const hist = (room: string, msgs: any[]) => ({
+    type: "chat_history", room, through_id: msgs.at(-1)?.id ?? 0, messages: msgs,
+  });
+  const line = (room: string, id: number, text: string) => ({
+    type: "chat", room, id, seat: 0, name: "a", text, t: id,
+  });
+
+  it("keeps history that arrives before any component subscribes", async () => {
     const { conn } = await load();
     conn.start();
     FakeWS.last!.onopen?.();
-    // Scrollback is delivered on join, ahead of the first state — i.e. before
-    // <Table> exists. Subscribing alone would lose it.
-    FakeWS.last!.deliver({ type: "room", room: "AAAA", you: 0 });
-    FakeWS.last!.deliver({ type: "chat", seat: -1, name: "", text: "a joined", t: 1 });
-    FakeWS.last!.deliver({ type: "chat", seat: 0, name: "a", text: "hi", t: 2 });
+    // The snapshot is delivered on attach, ahead of the first state — i.e.
+    // before <Table> exists. Subscribing alone would lose it.
+    FakeWS.last!.deliver(hist("AAAA", [line("AAAA", 1, "a joined"), line("AAAA", 2, "hi")]));
     expect(conn.chatHistory().map((m: any) => m.text)).toEqual(["a joined", "hi"]);
   });
 
-  it("drops the previous room's log when the room changes", async () => {
+  it("does not double messages when the same room reconnects", async () => {
     const { conn } = await load();
     conn.start();
     FakeWS.last!.onopen?.();
-    FakeWS.last!.deliver({ type: "room", room: "AAAA", you: 0 });
-    FakeWS.last!.deliver({ type: "chat", seat: 0, name: "a", text: "in A", t: 1 });
-    FakeWS.last!.deliver({ type: "room", room: "BBBB", you: 1 });
-    expect(conn.chatHistory()).toHaveLength(0);
-    FakeWS.last!.deliver({ type: "chat", seat: 1, name: "b", text: "in B", t: 2 });
-    expect(conn.chatHistory().map((m: any) => m.text)).toEqual(["in B"]);
+    FakeWS.last!.deliver(hist("AAAA", [line("AAAA", 1, "one"), line("AAAA", 2, "two")]));
+    // Reconnect: the server replays its snapshot, which now also contains a
+    // line we already saw live. Neither may appear twice.
+    FakeWS.last!.deliver(line("AAAA", 3, "three"));
+    FakeWS.last!.deliver(hist("AAAA", [
+      line("AAAA", 1, "one"), line("AAAA", 2, "two"), line("AAAA", 3, "three"),
+    ]));
+    expect(conn.chatHistory().map((m: any) => m.text)).toEqual(["one", "two", "three"]);
   });
 
-  it("does not leak room A's chat after leaving it", async () => {
-    const { conn, clearSavedRoom } = await load();
+  it("keeps a live message that straddles the snapshot boundary", async () => {
+    const { conn } = await load();
     conn.start();
     FakeWS.last!.onopen?.();
-    FakeWS.last!.deliver({ type: "room", room: "AAAA", you: 0 });
-    FakeWS.last!.deliver({ type: "chat", seat: 0, name: "a", text: "secret", t: 1 });
-    conn.clearChat();
-    clearSavedRoom();
+    FakeWS.last!.deliver(hist("AAAA", [line("AAAA", 1, "one")]));
+    FakeWS.last!.deliver(line("AAAA", 2, "live"));       // after through_id
+    expect(conn.chatHistory().map((m: any) => m.text)).toEqual(["one", "live"]);
+    expect(conn.chatHistory()).toHaveLength(2);          // not lost, not doubled
+  });
+
+  it("leaks nothing from room A after joining room B", async () => {
+    const { conn } = await load();
+    conn.start();
+    FakeWS.last!.onopen?.();
+    FakeWS.last!.deliver(hist("AAAA", [line("AAAA", 1, "secret")]));
+    FakeWS.last!.deliver({ type: "room", room: "BBBB", you: 1 });
     expect(conn.chatHistory()).toHaveLength(0);
+    // Ids restart per room; an id already seen in A must not suppress B's.
+    FakeWS.last!.deliver(line("BBBB", 1, "in B"));
+    expect(conn.chatHistory().map((m: any) => m.text)).toEqual(["in B"]);
   });
 });
 

@@ -539,3 +539,136 @@ def test_explicit_leave_at_round_end_advances_the_round(client):
             _drain(b, "left", tries=40)
         assert srv.pending_ready(room) == set(), \
             "the leaver is still being waited on"
+
+
+# ------------------------------------------------- P0-3: no double-play ever
+@pytest.fixture()
+def clock(monkeypatch):
+    """Injected clock: advance time instead of sleeping through TAKEOVER_AFTER."""
+    from shengji.api import server as srv
+
+    t = {"v": 1000.0}
+    monkeypatch.setattr(srv, "now", lambda: t["v"])
+    return t
+
+
+def _plays_by(room, seat):
+    """How many TIMES this seat has played — not how many cards, since one
+    legal play can be a pair, a tractor, or a throw."""
+    rnd = room.round
+    n = sum(1 for t in rnd.history for p in t.plays if p.seat == seat)
+    if rnd.trick is not None:
+        n += sum(1 for p in rnd.trick.plays if p.seat == seat)
+    return n
+
+
+def _turn_owner_drops(client, a, code, room):
+    """Make the seat on turn a disconnected human. Returns (seat, socket)."""
+    turn = room.round.turn
+    if room.seats[turn].is_bot:
+        # Put a human on the seat that is about to act.
+        w = client.websocket_connect("/ws").__enter__()
+        w.send_json({"type": "join_room", "room": code, "name": "onturn",
+                     "seat": turn})
+        _drain(w, "state", tries=60)
+        w.__exit__(None, None, None)
+    return turn
+
+
+def test_bot_does_not_act_before_the_grace_period(client, clock):
+    """Inside the grace window the absent player's seat must not be played."""
+    import asyncio as aio
+
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a, to_play=True)
+        seat = _turn_owner_drops(client, a, code, room)
+        if room.seats[seat].connected or room.seats[seat].is_bot:
+            pytest.skip("could not place a disconnected human on turn")
+        before = list(room.round.hands[seat])
+        clock["v"] += srv.TAKEOVER_AFTER - 1          # still inside the grace
+        loop = aio.new_event_loop()
+        try:
+            acted = loop.run_until_complete(srv.watchdog_tick(room))
+        finally:
+            loop.close()
+        assert not acted, "bot acted before the grace period expired"
+        assert list(room.round.hands[seat]) == before
+        assert room.round.turn == seat, "turn advanced without a play"
+
+
+def test_takeover_plays_exactly_once_then_stops(client, clock):
+    """Advance past grace: one bot action, and not a second for the same turn."""
+    import asyncio as aio
+
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a, to_play=True)
+        seat = _turn_owner_drops(client, a, code, room)
+        if room.seats[seat].connected or room.seats[seat].is_bot:
+            pytest.skip("could not place a disconnected human on turn")
+        plays_before = _plays_by(room, seat)
+        clock["v"] += srv.TAKEOVER_AFTER + 1
+        loop = aio.new_event_loop()
+        try:
+            acted = loop.run_until_complete(srv.watchdog_tick(room))
+            assert acted, "bot never covered the absent player"
+            assert _plays_by(room, seat) == plays_before + 1, \
+                "the covered seat played more than once for one turn"
+            # Ticking again must not play a second time for the same turn.
+            if room.round.turn != seat:
+                loop.run_until_complete(srv.watchdog_tick(room))
+                assert _plays_by(room, seat) == plays_before + 1
+        finally:
+            loop.close()
+
+
+def test_reconnect_after_takeover_sees_the_bot_s_hand(client, clock):
+    import asyncio as aio
+
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a, to_play=True)
+        seat = _turn_owner_drops(client, a, code, room)
+        if room.seats[seat].connected or room.seats[seat].is_bot:
+            pytest.skip("could not place a disconnected human on turn")
+        tok = room.seats[seat].token
+        clock["v"] += srv.TAKEOVER_AFTER + 1
+        loop = aio.new_event_loop()
+        try:
+            loop.run_until_complete(srv.watchdog_tick(room))
+        finally:
+            loop.close()
+        expect = sorted(room.round.hands[seat])
+        with client.websocket_connect("/ws") as back:
+            back.send_json({"type": "join_room", "room": code,
+                            "name": "onturn", "token": tok})
+            st = _drain(back, "state", tries=60)
+            assert st["you"] == seat
+            assert sorted(c["code"] for c in st["hand"]) == expect, \
+                "reconnecting player did not see the hand the bot left"
+            assert room.seats[seat].bot_announced is False
+
+
+def test_overlapping_resume_race_is_stable(client):
+    """P0-1: repeat the overlap race; the newest socket must always own it."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a, to_play=True)
+        seat0 = room.seats[0]
+        tok = seat0.token
+        for i in range(25):
+            gen_before = seat0.gen
+            w = client.websocket_connect("/ws").__enter__()
+            w.send_json({"type": "join_room", "room": code,
+                         "name": "jerry", "token": tok})
+            _drain(w, "state", tries=60)
+            assert seat0.gen > gen_before, f"iteration {i}: generation stalled"
+            assert seat0.connected
+            srv._detach(seat0, room, gen_before)     # stale teardown, late
+            assert seat0.connected, f"iteration {i}: stale teardown won"
+            w.__exit__(None, None, None)

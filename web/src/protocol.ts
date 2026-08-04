@@ -149,6 +149,7 @@ export type ServerMsg =
   | LeftMsg
   | RoomSeats
   | ChatMsg
+  | ChatHistory
   | ResumeMsg;
 
 /** Every coded error the server can send. Keep in sync with server.py —
@@ -159,8 +160,17 @@ export type ErrorCode =
   | "choose_seat"
   | "seat_unavailable";
 
+export interface ChatHistory {
+  type: "chat_history";
+  room: string;
+  through_id: number;
+  messages: ChatMsg[];
+}
+
 export interface ChatMsg {
   type: "chat";
+  id: number;
+  room: string;
   seat: number;      // -1 marks a system line
   name: string;
   text: string;

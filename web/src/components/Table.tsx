@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { GameState, HandCard, LastTrick, StatePlayer } from "../protocol";
+import type { GameState, HandCard, LastTrick, ServerMsg, StatePlayer } from "../protocol";
 import { conn } from "../ws";
 import Card, { shortLabel } from "./Card";
 import Hand from "./Hand";
@@ -82,8 +82,10 @@ export default function Table({ state }: { state: GameState }) {
   // this component exists, so subscribing alone loses it (Codex case 7).
   const [chat, setChat] = useState<ChatMsg[]>(() => conn.chatHistory() as ChatMsg[]);
   const [unread, setUnread] = useState(0);
-  useEffect(() => conn.subscribe((m: any) => {
-    if (m?.type !== "chat") return;
+  useEffect(() => conn.subscribe((msg: ServerMsg) => {
+    // chat and chat_history both mutate the log; read it back from the
+    // connection rather than reconstructing it here.
+    if (msg.type !== "chat" && msg.type !== "chat_history") return;
     setChat(() => conn.chatHistory() as ChatMsg[]);
     setUnread((u) => (chatOpenRef.current ? 0 : u + 1));
   }), []);

@@ -76,6 +76,7 @@ class Room:
     host: int = 0
     game: Game | None = None
     ready: set[int] = field(default_factory=set)  # seats confirming round end
+    chat_seq: int = 0            # monotonic per-room chat id
     chat: list[dict] = field(default_factory=list)  # last CHAT_KEEP messages
     ids: list[dict[int, str]] = field(default_factory=lambda: [{} for _ in range(4)])
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -163,6 +164,16 @@ def trick_json(t) -> dict | None:
     return d
 
 
+def now() -> float:
+    """The single clock for takeover timing.
+
+    One seam, so tests can advance time instead of sleeping 30 seconds, and
+    so the countdown the UI shows and the deadline the watchdog enforces can
+    never disagree (they were on different clocks: loop.time() vs monotonic).
+    """
+    return time.monotonic()
+
+
 def _controller(room: Room, seat: int) -> str:
     sd = room.seats[seat]
     if sd.is_bot:
@@ -177,7 +188,7 @@ def _takeover_in(room: Room, seat: int) -> float | None:
         return None
     if sd.left_at is None:
         return None
-    return round(max(0.0, TAKEOVER_AFTER - (time.monotonic() - sd.left_at)), 1)
+    return round(max(0.0, TAKEOVER_AFTER - (now() - sd.left_at)), 1)
 
 
 def state_for(room: Room, seat: int) -> dict[str, Any]:
@@ -289,17 +300,35 @@ async def send(ws: WebSocket, payload: dict) -> None:
         pass
 
 
+def chat_post(room: Room, entry: dict) -> None:
+    """Append with a room-scoped monotonic id and fan out.
+
+    Ids let a client deduplicate: on attach it gets ONE chat_history snapshot
+    for the room, then live events it can drop if already present. The old
+    scheme replayed bare messages with no room and no id, so a reconnect
+    doubled the log and a room switch leaked the previous room's lines
+    (Codex ship gate P0-5).
+    """
+    room.chat_seq += 1
+    entry = {**entry, "id": room.chat_seq, "room": room.code}
+    room.chat.append(entry)
+    del room.chat[:-CHAT_KEEP]
+    for sd in room.seats:
+        enqueue(sd, {"type": "chat", **entry})
+
+
+def chat_snapshot(room: Room) -> dict:
+    return {"type": "chat_history", "room": room.code,
+            "through_id": room.chat_seq, "messages": list(room.chat)}
+
+
 def chat_system(room: Room, text: str) -> None:
     """Post a system line into the room chat (joins, leaves, seat claims).
 
     Uses seat -1 so clients can style it apart from player messages; kept
     in the same scrollback so late joiners see who arrived before them.
     """
-    entry = {"seat": -1, "name": "", "text": text, "t": time.time()}
-    room.chat.append(entry)
-    del room.chat[:-CHAT_KEEP]
-    for sd in room.seats:
-        enqueue(sd, {"type": "chat", **entry})
+    chat_post(room, {"seat": -1, "name": "", "text": text, "t": time.time()})
 
 
 def enqueue(seat: Seat, payload: dict) -> None:
@@ -445,33 +474,47 @@ async def pump_bots(room: Room) -> None:
             await broadcast(room)
 
 
+async def watchdog_tick(room: Room) -> bool:
+    """One takeover check. Returns True if a bot acted for an absent human.
+
+    Split out of the loop so tests can drive it with an injected clock rather
+    than sleeping through TAKEOVER_AFTER (Codex ship gate P0-3).
+    """
+    async with room.lock:
+        return await _watchdog_body(room)
+
+
+async def _watchdog_body(room: Room) -> bool:
+    """Caller holds the room lock."""
+    if rooms.get(room.code) is not room:
+        return False
+    seat = current_actor(room)
+    if seat is None:
+        return False
+    s = room.seats[seat]
+    if s.is_bot or s.connected or s.left_at is None:
+        return False
+    if now() - s.left_at >= TAKEOVER_AFTER:
+        if bot_step(room, seat):
+            if not s.bot_announced:
+                s.bot_announced = True
+                chat_system(room, f"bot is playing for {s.name} "
+                                  f"(disconnected)")
+            await broadcast(room)
+            kick_bots(room)
+            return True
+    return False
+
+
 async def watchdog(room: Room) -> None:
     """If the turn-holder is a disconnected human for TAKEOVER_AFTER seconds,
     the bot plays their turn so the game can't stall forever."""
-    loop = asyncio.get_event_loop()
     while True:
         await asyncio.sleep(5.0)
+        if rooms.get(room.code) is not room:
+            return
         async with room.lock:
-            if rooms.get(room.code) is not room:
-                return
-            seat = current_actor(room)
-            if seat is None:
-                continue
-            s = room.seats[seat]
-            if s.is_bot or s.connected:
-                continue
-            if loop.time() - s.last_seen >= TAKEOVER_AFTER:
-                if bot_step(room, seat):
-                    # Say so in chat: otherwise a card appears from an
-                    # "offline" seat and the table cannot tell whether the
-                    # player came back (Jerry, 2026-08-03). Announce once
-                    # per absence, not once per trick.
-                    if not s.bot_announced:
-                        s.bot_announced = True
-                        chat_system(room, f"bot is playing for {s.name} "
-                                          f"(disconnected)")
-                    await broadcast(room)
-                    kick_bots(room)
+            await _watchdog_body(room)
 
 
 async def cleanup_room(room: Room) -> None:
@@ -584,13 +627,9 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         text = str(msg.get("text", "")).strip()[:CHAT_MAX_LEN]
         if not text:
             return
-        entry = {"seat": seat, "name": room.seats[seat].name, "text": text,
-                 "t": time.time()}
-        room.chat.append(entry)
-        del room.chat[:-CHAT_KEEP]
         room.log_event("chat", seat=seat, text=text, bot=False)
-        for sd in room.seats:          # push to everyone, including the sender
-            enqueue(sd, {"type": "chat", **entry})
+        chat_post(room, {"seat": seat, "name": room.seats[seat].name,
+                         "text": text, "t": time.time()})
         return
 
     if t == "add_bot":
@@ -927,8 +966,7 @@ def _attach(room: Room, seat: Seat, ws: WebSocket) -> int:
     seat.queue = asyncio.Queue(maxsize=128)
     seat.writer = asyncio.create_task(_writer(ws, seat.queue))
     enqueue(seat, {"type": "resume", "token": seat.token, "gen": seat.gen})
-    for entry in room.chat:            # scrollback, before the first state
-        enqueue(seat, {"type": "chat", **entry})
+    enqueue(seat, chat_snapshot(room))   # one snapshot, before the first state
     return seat.gen
 
 
@@ -945,7 +983,7 @@ def _detach(seat: Seat, room: Room | None = None,
     if room is not None and seat in room.seats:
         room.ready.discard(room.seats.index(seat))
     seat.ws, seat.connected = None, False
-    seat.left_at = time.monotonic()
+    seat.left_at = now()
     if seat.writer is not None:
         seat.writer.cancel()
     seat.writer, seat.queue = None, None

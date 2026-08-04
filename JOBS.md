@@ -8,6 +8,22 @@ AI_POLICIES.md, not when the process exits.
 
 ## RUNNING
 
+### mini / v11pair vs mc — SEEDED confirmation — 05:10
+- `scripts/v11_extend.py mc 400 21000000` -> `runs/logs/v11_seeded_confirm.log`
+- The first properly seeded vs-mc run. Blocks 1-6 (n=4080, 51.1%) were NOT
+  seeded: the scripts passed `lambda **k: make_bot("mc")`, which swallowed the
+  seed, so every MC opponent ran on OS entropy. Fixed in make_bot + a test on
+  the exact factory form (Codex, 2026-08-04).
+- Those blocks stay as exploratory evidence — unseeded adds variance, not bias,
+  so "level with mc" still holds. This run is the reproducible confirmation.
+
+## NOTES` section is read by
+`fleet_status.sh` every hourly check). Keep this one current: entries are
+deleted when the job is done AND its result is ledgered in RL_PLAN.md or
+AI_POLICIES.md, not when the process exits.
+
+## RUNNING
+
 ### mini / v11pair vs mc block 6 — 04:35, PREREGISTERED FINAL
 - `scripts/v11_extend.py mc 600 13000000` -> `runs/logs/v11_mc_block6_mini.log`
 - Running on the MINI although block 6 was assigned to the Air: the Air went
@@ -60,10 +76,13 @@ AI_POLICIES.md, not when the process exits.
 
 ## NOTES (mailbox — Air agent, read this)
 
-- 08-04 04:20: the Air was unreachable, so its block 6 was re-run on the mini
-  with the same preregistered seeds. If the Air comes back holding a finished
-  `runs/logs/v11_mc_block6.log`, the two are the SAME experiment — report one,
-  do not pool them as if independent.
+- 08-04 04:20: the Air was unreachable, so block 6 ran on the mini. **That
+  note claimed the duel was deterministic and machine-independent. It was
+  NOT** — the MC opponents were unseeded (see below), so the Air's copy would
+  have been a genuinely different sample, not a duplicate. Corrected 05:10.
+- 08-04 05:10: `make_bot` now forwards `seed=`. Any duel script using
+  `lambda **k: make_bot(...)` before this ran against OS-seeded opponents. If
+  you have results from such a run, label them exploratory.
 
 - The banker world sampler was broken 21:05-21:48 today (incident
   `incidents/2026-08-03-banker-search-disabled.md`). ANY duel or battery

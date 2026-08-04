@@ -129,7 +129,11 @@ REGISTRY["mc-vleaf-v8a-ep03"] = _make_vleaf("snapshots_v8a/ep03.pt")
 # head's absolute level is free to drift per state. vleaf compares leaves
 # ACROSS states, so this head may be uncalibrated for exactly the use the
 # hybrid puts it to. Worth measuring; the prediction is that it underperforms.
-REGISTRY["mc-vleaf-v11pair"] = _make_vleaf("snapshots_v11pair/ep07.pt")
+# QUARANTINED (Codex, 2026-08-04): a pairwise head has no identified
+# cross-state scale, so using it as a leaf evaluator is implementation-invalid.
+# The measured 32.5% is a consequence of that, not evidence about learned
+# leaves. Left unregistered so it cannot be duelled again by accident.
+# REGISTRY["mc-vleaf-v11pair"] = _make_vleaf("snapshots_v11pair/ep07.pt")
 
 
 def _make_override(ckpt: str):

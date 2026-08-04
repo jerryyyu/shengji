@@ -13,9 +13,9 @@ AI_POLICIES.md; run archives in `server/runs/`.
 
 **RESIDUAL/OVERRIDE LEARNING WORKS — the first positive result from the
 learned line.** `rl-override-v11pair` (SmartBot + a learned override, NO
-search, p50 0.4ms) beats SmartBot **57.7%** (n=480). Against mc it is **NOT better**: 51.1% over n=4080 (six preregistered blocks),
-Wilson [49.6%, 52.6%] — the interval includes 50, so the standing goal is not
-met. A gated variant
+search, p50 0.4ms) beats SmartBot **57.7%** (n=480). Against mc it is **NOT better**: 51.1% over n=4080, Wilson [49.6%, 52.6%] —
+the interval includes 50, so the standing goal is not met. Those blocks were
+exploratory, not seeded (retraction in 1i); a seeded confirmation is running. A gated variant
 (search only on the ~12% of states the net flags as high-stakes) scores 53.3%
 vs mc at 55% of the wall-clock. Details in 1i and 1k.
 
@@ -270,31 +270,34 @@ implementation rather than from more data or more epochs.
 disjoint seed blocks agreeing to 0.1 points, Wilson [53.2%, 62.0%]). v10res
 scored 47% on the same bar.
 
-**vs mc — NOT BETTER. Final, preregistered, n=4080:**
+**vs mc — NOT BETTER (and the protocol claim is retracted):**
 
 | block | seeds | result |
 |---|---|---|
-| 1 | 3.3M | 94-86 = 52.2% |
-| 2 | 9.2M | 159-141 = 53.0% |
-| 3 | 10.5M | 308-292 = 51.3% |
-| 4 | 11M | 306-294 = 51.0% |
-| 5 | 12M | 611-589 = 50.9% |
-| 6 | 13M | 607-593 = 50.6% |
-| **POOLED** | disjoint | **2085-1995 = 51.1%, Wilson [49.6%, 52.6%]** |
+| 1-6 | 3.3M / 9.2M / 10.5M / 11M / 12M / 13M | 52.2 / 53.0 / 51.3 / 51.0 / 50.9 / 50.6% |
+| **pooled** | disjoint | **2085-1995 = 51.1%, n=4080, Wilson [49.6%, 52.6%]** |
 
-The interval includes 50, so **v11pair does not beat mc** and the standing goal
-(an RL policy rated above MCBot in the same pool) is NOT met.
+**RETRACTION (Codex, 2026-08-04): these blocks were NOT seeded.** `_seeded()`
+calls `make(seed=s)`, but every duel script passed
+`lambda **k: make_bot("mc")` — a lambda that accepts a seed and silently drops
+it — so the TypeError fallback never fired and every MC opponent ran on OS
+entropy while the logs claimed a reproducible seeded protocol. This is the
+SAME defect as the unseeded-anchor incident of 08-03, reintroduced one layer
+up at the call site by the fix for it.
 
-Read the block sequence downward: 52.2, 53.0, 51.3, 51.0, 50.9, 50.6. The early
-blocks were the small ones (n=180, n=300) and they read high; every larger block
-pulled the estimate toward ~51%. That is textbook regression to the true value,
-and it is the same shape as the vleaf 60% mirage. The lesson is not subtle and
-it has now cost two headline claims: **a first block is an invitation to
-measure, never a result.**
+What survives and what does not:
+- **The conclusion survives.** Unseeded opponents add variance but no bias;
+  the mirrored pairing still controls deal luck. 51.1% over 4,080 rounds
+  remains good evidence that v11pair is LEVEL with mc, and the standing goal
+  is still not met.
+- **The protocol claim does not.** This was exploratory evidence, not the
+  declared reproducible confirmation, and JOBS' claim that block 6 was
+  "deterministic, so the machine does not matter" was simply false.
+- The v11-vs-Smart result is unaffected: SmartBot is deterministic.
 
-Resolving whether a ~1% edge is real would need n~5,700+; at some point the
-honest move is to say the effect is too small to matter for play, not to keep
-buying resolution. Design complete, stopped as declared.
+`make_bot` now forwards kwargs and `tests/test_duel_factories_seeded.py`
+exercises the exact factory FORM the scripts use, so this cannot recur
+silently. A properly seeded confirmation is running.
 
 **What fixed it vs v10res (47% vs smart):**
 

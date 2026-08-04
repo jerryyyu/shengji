@@ -5,10 +5,27 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-Nothing. Both machines idle at 21:45.
+### mini / rewritten-sampler N=30 CONFIRMATION — preregistered, launched 22:15
 
-Next: the 512-state clean lead pilot (both arms). Unblocked — the sampler gate
-it was waiting on is green for validity and completeness.
+**Declared before the run, and this is the only block.**
+
+- arm `mc-strong` (N=30) vs opponent `mc` (N=10); control **`mc-null`** — the
+  same policy as `mc` with a different RNG stream, so any effect it shows is
+  pure sampling noise. The previous dose rerun used `mc-strong` as its control
+  and voided all six shards, because the evaluator's control means "an arm
+  that should NOT work".
+- PRIMARY: paired per-seed level utility, **N=30 minus N=10**, interval must
+  exclude 0. `--bar "paired_utility > 0"`.
+- 6 shards x 84 clusters = **504 seed clusters**, seeds 99,000,000-99,000,503,
+  disjoint from every earlier block (93M/94M/95M/96M).
+- Power: observed SD ~1.70 gives SE ~0.076 at n=504, so the interval is about
+  +/-0.148 — enough for the +0.290 the screen suggested, and enough to reject
+  it if the true effect is near the +0.101 the old sampler measured.
+- N=5 is NOT in this run. It is a supporting diagnostic only and including it
+  would re-create the three-treatment design that voided the last attempt.
+- **Stopping rule: one block, no extension regardless of result.** The screen
+  block (96M) is NOT pooled into this.
+- Aggregate with `scripts/aggregate_shards.py`, never by hand.
 
 ## RECENTLY FINISHED
 

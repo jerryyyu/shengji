@@ -14,12 +14,31 @@ from .smart import SmartBot
 def _smart_variant(name: str, **attrs):
     return type(name, (SmartBot,), attrs)
 
+
+class MCNull(MCBot):
+    """NULL CONTROL: identical to `mc` in every way except its random draws.
+
+    Same ballot, same N, same flags — only the RNG stream differs. Any effect
+    it shows against `mc` is therefore pure sampling noise, which makes it the
+    right control for "does more search help": if the null clears the same bar
+    the arm did, the bar is measuring the harness rather than the treatment.
+
+    This exists because the first dose rerun used `mc-strong` as its control.
+    The evaluator's control means "an arm that should NOT work", and passing it
+    a stronger treatment voided all six shards for a reason that was the setup,
+    not the data.
+    """
+
+    def __init__(self, seed: int | None = None):
+        super().__init__(None if seed is None else seed + 999_983)
+
 REGISTRY: dict[str, type] = {
     "heuristic": HeuristicBot,
     "smart": SmartBot,
     "mc": MCBot,  # determinized Monte Carlo; ~30ms/decision (N=10 worlds)
     "mc-strong": type("MCStrong", (MCBot,), {"N_DETERMINIZATIONS": 30}),
     "mc-lite": type("MCLite", (MCBot,), {"N_DETERMINIZATIONS": 5}),
+    "mc-null": MCNull,  # null control: same policy, different RNG stream
     "mc-argmax": type("MCArgmax", (MCBot,), {"MARGIN": 0.0}),
     "mc-smartroll": MCSmartRoll,  # SmartBot rollouts, ~5x slower/decision
     # the pre-throws config (2026-07-31, 66% vs heuristic), for reproducibility:

@@ -155,3 +155,23 @@ def test_ballots_distinguish_policies_that_search_from_ones_that_do_not():
     b = arm_ballots(["mc", "smart"])
     assert b["mc"] != b["smart"]
     assert b["smart"].startswith("none@")
+
+
+def test_null_control_differs_from_mc_only_in_its_random_draws():
+    """`mc-null` is the control the N=30 confirmation depends on.
+
+    If it ever drifts into being a different POLICY, it stops being a null and
+    the confirmation silently loses its attribution. The first dose rerun was
+    voided for the mirror-image mistake: passing `mc-strong`, a stronger
+    treatment, where the evaluator expects an arm that should not work.
+    """
+    from shengji.ai.registry import make_bot
+    from shengji.engine.ballot import ballot_for_policy
+
+    null, base = make_bot("mc-null", seed=7), make_bot("mc", seed=7)
+    assert ballot_for_policy("mc-null").digest == ballot_for_policy("mc").digest
+    differing = [a for a in dir(base)
+                 if a.isupper() and getattr(null, a, None) != getattr(base, a, None)]
+    assert not differing, f"mc-null is not a null: it differs in {differing}"
+    assert null.rng.getstate() != base.rng.getstate(), \
+        "mc-null must draw differently, or it measures nothing"

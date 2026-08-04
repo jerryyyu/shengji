@@ -2,9 +2,11 @@
 
 ## Objective and evidence standard
 
-The product objective is **maximum verified Shengji strength per unit of
-deployment latency and training compute**, under a correct engine and a
-reproducible evaluator. “Put RL inside search” is a hypothesis, not the goal.
+The product objective is **maximum verified Shengji strength**, under a correct
+engine and a reproducible evaluator. Deployment latency is not a meaningful
+tradeoff for the champion policy; compute is still recorded to attribute
+experiments and understand operational cost. “Put RL inside search” is a
+hypothesis, not the goal.
 The research-superiority milestone remains beating the current `mc` policy in
 a preregistered paired direct comparison; pool Elo is useful for screening but
 cannot establish that claim.

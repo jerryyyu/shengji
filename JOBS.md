@@ -5,36 +5,15 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-Nothing. Both machines idle at 17:55.
-
-**Not launching more corpus data.** Codex's 17:15 audit argues, and I agree,
-that more OLD-CONTRACT states are not automatically valuable — "data generation
-cannot produce a false positive" is true and still not a reason to spend
-compute. The budget decision is now resolved: run BOTH a fixed-14 contextual
-selector and a full-structured-lead/high-compute arm. The clean relabel remains
-blocked only on the in-progress constraint-correct sampler and its certification.
-
-## QUEUED (launch in this order)
-
-1. **Sampler certification, both machines:** shard the original plus late raw
-   states by deal; require every sampled world to satisfy capacity, suit voids,
-   pair bounds, and declaration pins. Record requested/accepted/rejected counts
-   and fail on any zero-world feasible state. No rollout labels in this gate.
-2. **Clean lead pilot:** 512 deal-grouped DEV lead states, balanced between the
-   original and late-ply reservoirs and stratified by ply/candidate count. Use
-   common screen worlds over the full structured lead universe, then disjoint
-   high-N worlds for the shortlist plus baseline.
-3. **Both ballot questions in one pilot:** current ballot, V3, random-fill,
-   fixed-14 contextual selection, and widened full-universe/high-compute. The
-   fixed arm isolates selection quality; the widened arm matches the production
-   objective where latency is secondary to strength.
-4. Expand to CALIB and then a paired online duel only if the pilot clears its
-   predeclared fresh-world regret and oracle-best-recall gates. REPORT remains
-   untouched until one proposal is selected.
-
-Use one process per physical/logical core with exclusive manifests, shard by
-deal rather than row, leave one mini core for development, and launch via the
-durable background mechanism rather than `nohup &` inside an agent shell.
+### mini / dose contrast RERUN on the constraint-correct sampler — 18:35
+- `mc` (N=10) vs `mc-lite` (N=5), control `mc-strong` (N=30), 6 shards,
+  seeds 96,000,000-96,000,251, 252 clusters, `--bar "paired_utility > 0"`.
+- WHY: the original N=10-over-N=5 result (-0.347 +/- 0.145) is PROVISIONAL
+  because its shards contained 14 zero-world fallbacks and printed `PROTOCOL
+  FAILURES`. Codex said it stands only "until the constraint-correct sampler
+  reruns it". The sampler is now green (0 zero-world decisions in 18.2k
+  searches), so this is that rerun.
+- Fresh disjoint seeds; no reuse with the 93M/94M/95M blocks.
 
 ## RECENTLY FINISHED
 

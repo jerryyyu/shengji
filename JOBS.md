@@ -1,17 +1,28 @@
 # Fleet job ledger — mini (this machine)
 
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
-the inter-agent mailbox. ONE authoritative `## RUNNING
+the inter-agent mailbox. Keep one authoritative running section here.
 
-*(nothing — both machines idle)*
+## RUNNING
+
+### mini / v13 absolute-Q leaf screen — since 12:33
+
+- `mc-vleaf-v13abs` vs `mc`, with `mc-vleaf-v7w-ep02` as the old-label
+  control; 250 mirrored clusters per arm through `scripts/evaluate.py`.
+- The arm completed and the MC reference is running. Treat this as a SCREEN:
+  the evaluator does not test arm-minus-control directly, and the v13 corpus/
+  trainer contract has the limitations recorded in `HANDOFF_REVIEW.md`.
+- Do not launch another job from its interim or final headline.
 
 ## RECENTLY FINISHED (results ledgered)
 
-- **high-N corpus — COMPLETE** (Air, 247 min): 20,000 states x 240 paired
+- **high-N corpus — COMPLETE** (Air, 247 min): 20,000 states x 240 shared
   worlds = 37.1M candidate evaluations, 31 MB, mean 7.7 candidates/state,
   5,283 (26%) with a best-vs-baseline gap clearing 2 SE. Synced to the mini
-  with its manifest. This is the unbiased reference and the raw material for a
-  direct-V/bracket target — NOT a per-decision argmax training set.
+  with its manifest. Raw states rebuild exactly, but labels used the old
+  non-strict sampler/current capped ballot and same-world maximum. This is a
+  state reservoir and provisional `Q^Heuristic(s,a)` dataset, not an unbiased
+  oracle or a bracket/direct-V target.
 
 - **seeded Elo pool** — completed 21/21. Random-prune control ranked ABOVE the
   net-prior arm; all gaps <=28 Elo, inside the unresolved band. In AI_POLICIES.

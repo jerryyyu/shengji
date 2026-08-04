@@ -1026,3 +1026,91 @@ arm's extra compute as additional worlds on the old ballot. If that is just as
 strong, use the simpler bot. Jerry's objective is maximum strength, so a
 winner may later consume more compute, but matched-work controls are still
 needed to attribute the gain.
+
+---
+
+## Codex corpus audit — completed high-N artifact and next use
+
+I audited the actual synced artifact rather than the completion headline.
+Integrity is good: 20,000 unique `(seed, ply)` rows from exactly 5,000 deal
+seeds (four rows each), every row has 240 worlds and aligned finite arrays, and
+all 20,000 rebuild with the correct turn. Reconstructed `_candidates()` has
+**zero set or order mismatches**. Artifact SHA-256 is
+`d72c40c5b4916222d9e9ab676c0e4a2c94d878fa0f210ce20919ea7dd9c0a48b`.
+
+It is nevertheless not the “unbiased reference” now claimed in `JOBS.md` and
+the RL inventory. It ran at `e787e46` under the old sampler: the final retry
+ignored observed suit voids, there was no fallback counter, and pair-void was
+unused. It labels only the old capped ballot. The `best`, gap, and 5,283
+“significant” rows select and test a maximum on the same worlds; paired SE
+against candidate 0 does not correct that multiple selection. The saved means
+are expected **raw points under heuristic continuation**, so the file cannot
+produce the promised bracket distribution or signed-level target without
+fresh rollouts.
+
+The state distribution is also narrow: median ply 6; 90% at ply <=15; 1,923
+rows at ply 16-31 and only 48 later. There are 6,432 leads and 13,568 follows;
+mean candidates are 11.08 and 6.14 respectively. This is useful for early-root
+diagnostics, not a general four-trick leaf distribution.
+
+Safe next use, in order:
+
+1. Preserve the JSONL and checksum; freeze deal-grouped train/calibration/test
+   splits before more analysis. Never split the four rows of one seed.
+2. Use raw states as the reservoir for the ballot plan: take a 100-200-state
+   one-row-per-deal lead subset plus newly generated late states; generate
+   current/quota/random/proposal unions; re-label only that union using strict,
+   pair-void-correct and disjoint proposal/report worlds. Store per-world
+   returns/covariance and bracket outcomes. This avoids repeating 37.1M old-
+   ballot evaluations.
+3. Run the planned v1-versus-enriched-encoder diagnostic on untouched per-
+   action means with >=3 training seeds. Use all rows, not the selected
+   significant subset, and require deal-clustered report metrics.
+4. Only after those gates, train an absolute **action value under heuristic
+   continuation** (`Q^H(s,a)`) and try it first as a root proposer. Do not call
+   the current labels a generic direct-V or deploy them as a leaf.
+
+The new untracked `highn_encode.py` / `highn_train.py` should not run as
+written. Encoding discards seed/ply identity (preventing guaranteed deal-
+grouped splits), silently skips reconstruction failures, and writes no corpus
+digest. Training has no locked report set or reproducible train seeds, saves
+only an overwritten last epoch, updates the entire trunk despite claiming to
+fit a head, and reports only weighted RMSE. Inverse marginal-variance weights
+also change the action/state distribution and need a decision-normalized
+ablation. Fix these contracts before even a cheap training run.
+
+A read-only full-corpus v11 threshold diagnostic did find a bounded hypothesis:
+fit on even deal seeds and reported on odd seeds, margin 0.005 reduced stored
+all-state regret from 1.261 (`0.02`) to 1.142 raw points/decision. That
+comparison is useful calibration evidence because the common selected-maximum
+term cancels, but it is non-strict, early-state, fixed-ballot offline evidence;
+it does not promote v11 or justify an online job before the evaluator gate is
+repaired. Also, `refit_override.py`'s printed MC N=10/N=30 numbers are
+hard-coded from the earlier prototype, not recomputed on this 20k corpus.
+
+**Concurrent-work correction:** the encoder/trainer were committed and run
+while this audit was in progress, and `mc-vleaf-v13abs` is now in an active
+duel; the ledger incorrectly said both machines were idle. The encoded input
+was not the audited 20,000-row Air artifact alone: `highn_corpus_all.jsonl`
+concatenates it with the stopped 845-row mini partial, producing 20,845 states
+and 161,039 action rows. The two validation shards are deal-disjoint, but
+there is no locked report set or retained group metadata. Training saved only
+epoch 8 although weighted validation RMSE was best at epoch 6 (0.0695, then
+0.0701 at epoch 8).
+
+A read-only validation-shard diagnostic gives v13 a genuine offline SCREEN
+signal versus its v7 initializer/control: unweighted value RMSE 0.1052 ->
+0.0699, stored-ballot regret 1.478 -> 1.293 raw points, chosen gain over
+candidate 0 0.116 -> 0.301, best-hit 41.02% -> 42.55%, and within-state delta
+correlation 0.573 -> 0.627. These shards influenced epoch monitoring, the
+target is non-strict early-state `Q^H`, and the online leaf distribution is
+shifted, so this earns a screen, not promotion.
+
+The running duel's declared control is scientifically appropriate but the
+evaluator does not calculate the appropriate statistic: it compares v13-minus-
+MC and v7-minus-MC separately, then vetoes only if v7 itself clears zero. The
+label-quality hypothesis requires a paired **v13-minus-v7** contrast on the
+same seed/flip records. Compute that from the finished JSONL and treat the
+script's printed verdict as non-authoritative. No follow-on compute should be
+launched until that contrast, strict rejection/zero-world counters, and the
+training provenance caveats are reported.

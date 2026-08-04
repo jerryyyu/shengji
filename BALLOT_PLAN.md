@@ -25,6 +25,47 @@ reachable state
 
 Do not train a model until the non-learned ballot contract is stable.
 
+## Using the completed high-N corpus
+
+`rl_data/highn_corpus.jsonl` is valuable primarily as a **rebuildable state
+reservoir**. Its 20,000 rows rebuild exactly under the current engine and its
+stored current-MC candidates replay exactly. It must not be treated as a
+finished oracle for the new ballot:
+
+- it contains only the old capped `_candidates()` actions, so it has no value
+  label for an action the new proposer discovers;
+- generation used the old sampler's unconstrained final retry and did not
+  record void fallbacks; `pair_void` was not enforced;
+- the apparent best, gap, and `significant` flag were selected and measured on
+  the same 240 worlds, with no multiple-comparison correction;
+- labels are expected raw round points under `HeuristicBot` continuation, not
+  a scoring-bracket distribution or expected signed level utility;
+- four states were saved from each of 5,000 deals and collection stopped after
+  the fourth sample: median ply is 6, 90% are at ply 15 or earlier, and only 48
+  rows are later than ply 31.
+
+Use it as follows:
+
+1. Freeze deal-grouped train/calibration/report assignments before fitting
+   anything. Keep all four rows from a seed together and store the split file.
+2. Use the development deals for static current/quota/random ballot coverage,
+   determinism, and candidate-distribution analysis.
+3. Select a small stratified lead subset, at most one state per deal, and add a
+   newly generated late-game supplement. Re-evaluate the union of current and
+   newly proposed actions with strict sampling, pair-void enforcement, and
+   disjoint proposal/oracle-selection/report worlds. Store per-world returns or
+   covariance plus bracket outcomes; means alone are insufficient.
+4. Use untouched existing labels for representation and calibration
+   diagnostics only. A predeclared policy choice can be compared with another
+   predeclared choice on report rows because the selected-maximum term cancels;
+   do not train or report on `best`/`significant` rows alone.
+5. If an absolute action-value model is tested, call its contract
+   `Q^Heuristic(s,a)` and evaluate it as a root scorer first. Existing rows do
+   not by themselves justify a generic state-value/leaf model.
+
+Do not rerun 37 million evaluations. Re-label only the small stratified union
+needed to decide whether the new proposer finds valuable off-ballot actions.
+
 ## P0 correctness and measurement gates
 
 Complete these before an online strength claim or a large corpus run:
@@ -231,8 +272,9 @@ best non-learned search, not because it is faster.
 2. Implement `CanonicalAction`, trace/schema, and evaluation-free lead
    enumeration/classification behind a new policy name; do not change `mc`.
 3. Add the Phase 1 property/golden tests.
-4. Build a 100-200-state frozen lead corpus and run the no-rollout static
-   coverage/determinism audit.
+4. Draw a 100-200-state, one-row-per-deal frozen lead subset from the completed
+   high-N state reservoir, add a late-game supplement, and run the no-rollout
+   static coverage/determinism audit.
 5. Run a small independent-world offline comparison of current, random-fill,
    and quota. Stop if quota does not improve report-fold regret.
 6. Only then implement rollout-guided proposals. No training or large duel is

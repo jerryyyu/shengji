@@ -22,6 +22,7 @@ export type ClientMsg =
   | { type: "bury"; card_ids: number[] }
   | { type: "play"; card_ids: number[] }
   | { type: "next_round" }
+  | { type: "chat"; text: string }
   | { type: "leave_room" }; // anytime after joining; server replies {type:"left"}
 
 // ---------- Server -> Client ----------

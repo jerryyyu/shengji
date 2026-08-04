@@ -23,6 +23,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   // Invite links: /?room=HPMK auto-joins once a name is known, so a shared
   // link drops you straight into the table (Jerry, 2026-08-03).
   const autoJoined = useRef(false);
+  const nameRef = useRef<HTMLInputElement>(null);
 
   const ready = status === "open" && name.trim().length > 0;
 
@@ -30,6 +31,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     if (!ready) return;
     const trimmed = name.trim();
     saveName(trimmed);
+    clearInvite();
     clearSavedRoom(); // don't auto-rejoin an old room while creating a new one
     conn.send({ type: "create_room", name: trimmed });
   };
@@ -43,24 +45,45 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     conn.send({ type: "create_room", name: trimmed });
   };
 
+
+  // Drop the invite param once the user acts: otherwise a stale ?room=
+  // keeps steering later flows (including starting a fresh game) and the
+  // name field looks "stuck" on whatever the link implied.
+  const clearInvite = () => {
+    if (window.location.search) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  };
+
   const join = () => {
     const code = roomCode.trim().toUpperCase();
     if (!ready || code.length !== 4) return;
     const trimmed = name.trim();
     saveName(trimmed);
+    clearInvite();
     conn.send({ type: "join_room", room: code, name: trimmed });
   };
 
-  // Auto-join from an invite link once the socket is ready and we have a
-  // name. Fires once; if the name is blank the user just clicks Join.
+  // Invite links prefill the room code and focus the NAME field — they do
+  // not auto-submit, because a returning player has a saved name and would
+  // otherwise be thrown into the room before they could change it (Jerry,
+  // 2026-08-03). Auto-join only when the link carries a name too, which is
+  // an explicit choice by whoever built the link.
+  const invited = new URLSearchParams(window.location.search).get("room");
+  const invitedName = new URLSearchParams(window.location.search).get("name");
   useEffect(() => {
-    if (autoJoined.current || !ready) return;
-    const invited = new URLSearchParams(window.location.search).get("room");
-    if (!invited || invited.length !== 4 || !name.trim()) return;
-    autoJoined.current = true;
-    saveName(name.trim());
-    conn.send({ type: "join_room", room: invited.toUpperCase(), name: name.trim() });
-  }, [ready, name, conn]);
+    if (autoJoined.current || !ready || !invited || invited.length !== 4) return;
+    if (invitedName && invitedName.trim()) {
+      autoJoined.current = true;
+      saveName(invitedName.trim());
+      clearInvite();
+      conn.send({ type: "join_room", room: invited.toUpperCase(),
+                  name: invitedName.trim() });
+    } else {
+      nameRef.current?.focus();
+      nameRef.current?.select();
+    }
+  }, [ready, invited, invitedName]);
 
   return (
     <div className="screen lobby-screen">
@@ -73,6 +96,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
         <label className="field">
           <span className="field-label">Your name</span>
           <input
+            ref={nameRef}
             value={name}
             maxLength={20}
             placeholder="e.g. Jerry"

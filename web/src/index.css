@@ -1834,3 +1834,41 @@ button {
   opacity: 0.75;
   text-align: center;
 }
+
+/* ---- Chat: toggled overlay (the table fills landscape screens) ---- */
+.chat-launch {
+  position: fixed; right: 14px; bottom: 14px; z-index: 40;
+  width: 46px; height: 46px; border-radius: 50%;
+  background: rgba(20, 28, 22, 0.92); border: 1px solid rgba(255,255,255,0.18);
+  font-size: 20px; cursor: pointer;
+}
+.chat-badge {
+  position: absolute; top: -4px; right: -4px;
+  background: #d9534f; color: #fff; border-radius: 10px;
+  font-size: 11px; padding: 1px 5px; font-weight: 600;
+}
+.chat-panel {
+  position: fixed; right: 12px; bottom: 68px; z-index: 41;
+  width: min(320px, 82vw); max-height: min(58vh, 380px);
+  display: flex; flex-direction: column;
+  background: rgba(16, 22, 18, 0.97); color: #eee;
+  border: 1px solid rgba(255,255,255,0.16); border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+}
+.chat-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.12);
+  font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase;
+  opacity: 0.85;
+}
+.chat-close { background: none; border: none; color: #eee; font-size: 20px; cursor: pointer; }
+.chat-log { flex: 1; overflow-y: auto; padding: 8px 12px; font-size: 14px; }
+.chat-empty { opacity: 0.5; font-size: 13px; }
+.chat-msg { margin: 4px 0; word-break: break-word; }
+.chat-msg .chat-name { opacity: 0.65; margin-right: 6px; font-weight: 600; }
+.chat-msg.mine .chat-name { color: #8fd18f; }
+.chat-input { display: flex; gap: 6px; padding: 8px; border-top: 1px solid rgba(255,255,255,0.12); }
+.chat-input input {
+  flex: 1; min-width: 0; padding: 7px 9px; border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.06); color: #eee;
+}

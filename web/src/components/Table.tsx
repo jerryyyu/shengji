@@ -8,6 +8,7 @@ import Hud from "./Hud";
 import RoundEndModal from "./RoundEndModal";
 import TrickArea, { seatPos } from "./TrickArea";
 import XrayPanel from "./XrayPanel";
+import ChatPanel, { type ChatMsg } from "./ChatPanel";
 
 const LAST_TRICK_MS = 1500;
 
@@ -54,6 +55,16 @@ export default function Table({ state }: { state: GameState }) {
   // holds the server's SHENGJI_DEBUG_TOKEN (set manually via the devtools
   // console); toggled with the "x" key. See XrayPanel.tsx.
   const [xrayOpen, setXrayOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chat, setChat] = useState<ChatMsg[]>([]);
+  const [unread, setUnread] = useState(0);
+  useEffect(() => conn.subscribe((m: any) => {
+    if (m?.type !== "chat") return;
+    setChat((c) => [...c.slice(-99), m as ChatMsg]);
+    setUnread((u) => (chatOpenRef.current ? 0 : u + 1));
+  }), []);
+  const chatOpenRef = useRef(false);
+  useEffect(() => { chatOpenRef.current = chatOpen; if (chatOpen) setUnread(0); }, [chatOpen]);
   const prevStateRef = useRef<GameState | null>(null);
   const lastTrickTimer = useRef<number | null>(null);
 
@@ -235,6 +246,14 @@ export default function Table({ state }: { state: GameState }) {
       ) : null}
 
       {xrayOpen ? <XrayPanel state={state} onClose={() => setXrayOpen(false)} /> : null}
+      {state.players.filter((p) => !p.is_bot).length > 1 && (
+        <button className="chat-launch" onClick={() => setChatOpen((o) => !o)}
+                aria-label="Chat">
+          💬{unread > 0 && <span className="chat-badge">{unread}</span>}
+        </button>
+      )}
+      <ChatPanel messages={chat} you={state.you} open={chatOpen}
+                 onClose={() => setChatOpen(false)} />
     </div>
   );
 }

@@ -23,6 +23,8 @@ from ..engine.legal import IllegalPlay
 from ..engine.round import Round, actual_play_after
 
 BOT_DELAY = 0.7
+CHAT_KEEP = 50        # scrollback kept per room (in memory, like game state)
+CHAT_MAX_LEN = 300    # per-message cap
 DEAL_DELAY = 0.22          # seconds between dealt cards (~22s full deal)
 DECLARE_GRACE = 5.0        # window after the deal; extended on new declarations
 DECLARE_EXTEND = 3.0
@@ -54,6 +56,7 @@ class Room:
     host: int = 0
     game: Game | None = None
     ready: set[int] = field(default_factory=set)  # seats confirming round end
+    chat: list[dict] = field(default_factory=list)  # last CHAT_KEEP messages
     ids: list[dict[int, str]] = field(default_factory=lambda: [{} for _ in range(4)])
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     bot: HeuristicBot = field(
@@ -458,6 +461,19 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
     t = msg.get("type")
     game, rnd = room.game, room.round
 
+    if t == "chat":
+        text = str(msg.get("text", "")).strip()[:CHAT_MAX_LEN]
+        if not text:
+            return
+        entry = {"seat": seat, "name": room.seats[seat].name, "text": text,
+                 "t": time.time()}
+        room.chat.append(entry)
+        del room.chat[:-CHAT_KEEP]
+        room.log_event("chat", seat=seat, text=text, bot=False)
+        for sd in room.seats:          # push to everyone, including the sender
+            enqueue(sd, {"type": "chat", **entry})
+        return
+
     if t == "add_bot":
         if seat != room.host or len(room.seats) >= 4:
             raise IllegalPlay("Cannot add a bot now.")
@@ -612,6 +628,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         me.ws, me.connected = ws, True
                         me.queue = asyncio.Queue(maxsize=128)
                         me.writer = asyncio.create_task(_writer(ws, me.queue))
+                        for entry in room.chat:      # scrollback for context
+                            enqueue(me, {"type": "chat", **entry})
                         kick_bots(room)      # remaining bot seats keep playing
                         await broadcast(room)
                 else:

@@ -5,16 +5,14 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-### mini / v13 absolute-Q leaf screen — since 12:33
-
-- `mc-vleaf-v13abs` vs `mc`, with `mc-vleaf-v7w-ep02` as the old-label
-  control; 250 mirrored clusters per arm through `scripts/evaluate.py`.
-- The arm completed and the MC reference is running. Treat this as a SCREEN:
-  the evaluator does not test arm-minus-control directly, and the v13 corpus/
-  trainer contract has the limitations recorded in `HANDOFF_REVIEW.md`.
-- Do not launch another job from its interim or final headline.
+*(nothing — deliberately. Jerry asked to minimise utilisation across both
+machines, so no compute starts without an explicit go.)*
 
 ## RECENTLY FINISHED (results ledgered)
+
+- **ckpt_v13abs direct-V leaf** — NOT CONFIRMED (-0.004 +/- 0.206 paired vs mc,
+  control +0.024 +/- 0.215). Mis-aimed: trained on ply<=15 states, deployed as
+  a post-4-trick leaf. Fifth failed claim.
 
 - **high-N corpus — COMPLETE** (Air, 247 min): 20,000 states x 240 shared
   worlds = 37.1M candidate evaluations, 31 MB, mean 7.7 candidates/state,

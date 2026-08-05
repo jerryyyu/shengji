@@ -515,8 +515,8 @@ unscored until a separately preregistered audit.
 | artifact | size / identity | what it is | status / allowed use |
 |---|---|---|---|
 | `rl_data/deep_leads.v1.jsonl` + `deep_lead_split.v1.json` | 768 raw lead states; 256 each DEV/CALIB/REPORT; 48 split/trick/role cells x16; data hash `ffccfde64932eb3a` | Reconstructable state reservoir captured before ballot scoring. It supplies the late/deep coverage missing from the older corpora. | **FROZEN reservoir.** May build registered evaluation sets; never train from split identity or inspect REPORT outcomes. |
-| `rl_data/pilot_dev512.v3.json` | 512 unique deals; hash `d8d5d04abb9f9262`; 170/171/171 early/mid/late; role-balanced | Current DEV worksheet for the lead-ballot design screen. All rows independently replay, but candidate size was only a within-deal tie-break and the builder could publish a short/error-bearing set. | **PROVISIONAL; 0/512 scored.** Do not score or train on it. It will be superseded by v4 after the fail-closed freezer gate. |
-| `rl_data/pilot_calib512.v3.json` | 512 unique deals, disjoint from DEV; hash `5e4c9a8d4a6310ac`; same band/role structure | Untouched holdout intended to judge exactly one frozen DEV-selected design. It has no action labels or scores. | **PROVISIONAL; untouched.** Do not tune, train, or score. It will be superseded by the matching v4 artifact. |
+| `rl_data/pilot_dev512.v4.json` | 512 unique deals; hash `1cab080956d038b3`; bands 170/171/171; size 0/72/98, 11/131/29, 152/19/0; roles 85/85, 86/85, 86/85 | DEV worksheet for the lead-ballot design screen. Frozen from clean `4d0f1d3` by a fail-closed freezer: size now DRIVES deal selection, and a shortage or replay error publishes nothing instead of a short file. | **0/512 scored, awaiting Codex gate PASS.** Do not score or train on it until then. Supersedes v3 (`d8d5d04abb9f9262`), which is retained only as a test negative-control. |
+| `rl_data/pilot_calib512.v4.json` | 512 unique deals, disjoint from DEV; hash `8c55b3f809d43992`; identical band/size/role allocation | Untouched holdout to judge exactly one frozen DEV-selected design. No action labels or scores. | **UNTOUCHED.** Do not tune, train, or score. Supersedes v3 (`5e4c9a8d4a6310ac`). |
 | `pilot_{dev,calib}512.v4.json` | 512 + 512 planned, hashes pending | Promotion-grade successors with identical predeclared band-size marginals, exact role marginals, fail-closed publication and full 1,024-row replay/split/disjointness validation. | **NOT YET FROZEN.** They become the registered DEV/CALIB sets only after the live gate in `HANDOFF_ACTIVE.md` passes. |
 
 The 512+512 design is sized for **selection followed by an independent
@@ -538,7 +538,7 @@ calculation, as required by `BALLOT_PLAN.md`.
 | `rl_data/distill` | 36 shards / 158 MB / ~1.8M | original N=10 distillation | MCBot (pre-CONTROL_LEADS) | v4, v5, v6, v6.1 |
 | `rl_data/bc` | 35 shards / 160 MB / ~1.75M | SmartBot behaviour cloning, no values | SmartBot | ckpt_bc |
 | `rl_data/oracle` | 1 shard / 10 MB / ~322k | full-information states + outcomes | self-play | oracle value study (43-47%) |
-| `rl_data/human_v5` | 1 shard / **2,061 decisions** from 77 rounds | live human play, current v2 ballots (v1-v4 superseded) | live humans | blends, agreement audits |
+| `rl_data/human_v6` | 1 shard / **2,169 decisions** from 81 completed rounds | live human play, current v2 ballots (v1-v5 superseded) | live humans | blends, agreement audits |
 | `../logs/*.jsonl` | 26 games | raw human corpus source, rebuildable in seconds. Local test games live in `logs/local/` (17) and are NEVER mined | live play | audits, miner |
 
 Two asymmetries still hold: the quality ladder bc < distill < n30 < gen-v4

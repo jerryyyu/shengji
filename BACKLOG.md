@@ -8,15 +8,17 @@ view is a summary, not a replacement.
 
 ### NOW
 
-The immediate job is to close the freeze and runner contracts, then launch the
-DEV-512 ballot screen. The current v3 artifacts are tracked and all 1,024 rows
-independently replay, but the builder still does not enforce one identical,
-predeclared candidate-size allocation or fail closed on a short/error-bearing
-build. The runner also points at a nonexistent default and does not pin the
-artifact hash or reject experimental sampler flags. Exact work and acceptance
-criteria are in `HANDOFF_ACTIVE.md`. **Pilot scoring remains 0/512 until those
-two bounded code gates pass; it is no longer blocked on more toy-posterior
-measurement.**
+Both code gates are CLOSED (2026-08-05). The freezer enforces the registered
+size and role marginals, size now drives deal selection, and a shortage or
+replay error publishes nothing; the runner requires an explicit artifact plus
+its sha256 (compared before parsing), refuses any experimental sampler flag,
+and labels limited runs `smoke` so they cannot pool into a DEV verdict. v4 is
+frozen from clean `4d0f1d3` — DEV `1cab080956d038b3`, CALIB `8c55b3f809d43992`
+— and all 1,024 rows replay.
+
+**The only thing left before launch is Codex answering PASS on the gate packet
+in `HANDOFF_ACTIVE.md`.** Pilot scoring is 0/512 and the 8-shard command is
+written but deliberately not run. Nothing here is self-certified.
 
 The sampler remains posterior-incorrect and all repair flags remain OFF. That
 is a separate P1 correctness lane. DEV is allowed to compare ballot/search
@@ -30,8 +32,8 @@ play real games -> teach a model from clean answers**:
 
 | item | plain English | status / exit condition |
 |---|---|---|
-| **0. Freeze the exam** | Create two balanced lists of real lead decisions. DEV is the worksheet; CALIB is the unopened exam. No model trains on either. | **In progress.** Close exact size/role quotas and fail-closed publication, then freeze and audit v4. |
-| **1. Try ballot designs on DEV** | On the same 512 situations, ask whether smart candidate selection beats the current ballot, random extra candidates, simply spending more MC on the old ballot, and brute-force widening. | **Next compute.** One fixed run; choose one entire design or conclude none wins. |
+| **0. Freeze the exam** | Create two balanced lists of real lead decisions. DEV is the worksheet; CALIB is the unopened exam. No model trains on either. | **Built and audited, awaiting Codex sign-off.** v4 frozen from clean `4d0f1d3`: exact size/role quotas, size drives selection, publication fails closed, 1,024 rows replay, DEV/CALIB deal-disjoint. Not self-certified. |
+| **1. Try ballot designs on DEV** | On the same 512 situations, ask whether smart candidate selection beats the current ballot, random extra candidates, simply spending more MC on the old ballot, and brute-force widening. | **Ready, blocked on the gate packet only.** Runner pins the artifact hash and refuses flagged/short/smoke launches; 8-shard command is written. Scores under the sampler production deploys — a strength screen, not a posterior-correctness claim. |
 | **2. Verify once on CALIB** | Take the single DEV winner, lock every setting, and run it on 512 situations it never saw. This catches an idea that merely fit DEV. | **Waiting on item 1.** No tuning or second candidate after seeing CALIB. |
 | **3. Play real paired games** | Put the frozen candidate and current production MC into full games built from the same deal seeds and seat flips. This answers “does it actually win Shengji?”, not merely “does it score actions better offline?” | **Waiting on CALIB.** Must improve paired signed level utility against current MC, while a null control stays flat and every protocol counter is clean. |
 | **4. Learn from the winner** | Only after a ballot truly wins, regenerate labels for the new action space and train a model to propose/rank those actions cheaply and consistently. | **Waiting on an online win.** The learned proposer must beat simple quota, random-fill, and more-MC controls before entering production search. |

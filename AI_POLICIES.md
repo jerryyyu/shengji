@@ -63,8 +63,12 @@ newest entry sit on top and speak for the file.
   The one contrast that resolves is the high-work pair, favouring more MC over
   brute-force widening (`-0.495 +/- 0.477`). So the lever is not WHICH actions
   get priced but HOW MUCH search prices them — and the N=60-vs-N=30 lane already
-  found no confirmed gain above N=30, so both halves of this hypothesis are now
-  measured and neither is a path forward. Mark it a DEV SCREEN, not a strength
+  found no confirmed gain above N=30. State this carefully: DEV supports only
+  that **no REGISTERED ballot design advances at this resolution** — it does not
+  establish that action selection can never be a lever, and the N=60 interval
+  was a superiority test that did NOT establish equivalence. Both lanes are
+  measured and neither produced a winner; that is weaker than "neither is a
+  path forward", which is what this entry said before Codex corrected it. Mark it a DEV SCREEN, not a strength
   claim: DEV selects designs, it does not establish playing strength. CALIB and
   REPORT remain sealed, because the contract runs CALIB on one DEV-selected
   design and there is none. The 51.2%/0.9% structured-omission figures still

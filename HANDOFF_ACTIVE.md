@@ -66,15 +66,22 @@ Summary of what they settled:
 - the rejection was an implementation defect, not expected behaviour;
 - the repair is a pair-cap forward check in the count-matrix search
   (`75b06da`), which Codex verified cannot prune a feasible split;
-- that check is now proven NECESSARY AND SUFFICIENT for matrix feasibility
-  (171,801 exhaustive + 20,000 randomized instances, zero disagreements);
+- that check is a SAFE NECESSARY prune — Codex verified it cannot remove a
+  feasible split. It is necessary AND sufficient only in a REDUCED MODEL with
+  no declared pins and no run caps; it does NOT characterize production
+  feasibility. Counterexample in the committed tests: a receiver already pinned
+  one `H7`, offered one free `H7` with n=1, D=1, cap 0, satisfies the condition
+  and still cannot be dealt, because `_assign` computes D over free cards while
+  `_deal_suit` enforces the cap on `pre + chunk`;
 - G5's two-machine corpus/split preflight shipped with refusal tests;
 - all seven pre-fix shards are quarantined and were never combined.
 
-**Still open:** the greedy card dealer is not proven to FIND an assignment the
-matrix admits — bounded by eight retries, empirically zero rejects in 92,160
-draws. The constructive fix follows from the sufficiency proof but changes world
-sampling, which would void the accepted DEV block, so it needs an explicit go.
+**Still open:** the global dealer guarantee. The greedy dealer is not proven to
+find an assignment the matrix admits (bounded by eight retries; empirically zero
+rejects in 92,160 draws), AND the reduced-model proof does not cover declared
+pins or run caps. Any constructive dealer must handle both — Codex has said
+explicitly not to build it from the reduced proof alone. It would also change
+world sampling and void the accepted DEV block, so it needs an explicit go.
 
 ## Required return packet
 

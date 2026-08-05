@@ -5,24 +5,12 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-No DEV shard worker remains live as of 12:01. Codex passed the v6 launch in
-`5ef4fe6`. Mini shards 0–3 and Air shards 4, 6 and 7 completed cleanly under
-one experiment ID; do not inspect outcomes or aggregate seven shards.
+Nothing. Fleet idle, verified by `ps`.
 
-**Blocker: Air shard 5 failed closed.** Its first attempt found missing
-gitignored replay corpora (the fatal named `highn_late_air.jsonl`). Original,
-late and deep inputs now match registered hashes on Air; future two-machine
-preflight must check them explicitly. The protocol-identical retry reached
-`original:81002046:4` and refused on `rejected_worlds=1`, leaving no JSON or
-partial artifact. Preserve the evidence and follow package G in
-`HANDOFF_ACTIVE.md`: bounded deterministic diagnosis, no state/seed/counter
-relaxation, and all eight shards rerun if code or protocol changes.
-
-Gate sets: `pilot_dev512.v6.json` `af78748586034f6f`, `pilot_calib512.v6.json`
-`3872350f57a4dd60`, frozen from clean `53d9b67`. v3, v4 and v5 are SUPERSEDED —
-v4 selected in corpus order, v5 deduplicated on the marginal cell (52/512 exact
-DEV states moved under row reversal). DEV has seven complete unaggregated
-shards; CALIB and REPORT remain unscored.
+DEV-512 is COMPLETE and accepted: 512/512 scored, SELECT NONE. See the PILOT
+section below. CALIB and REPORT are sealed and unscored. No experiment is
+registered as next; the ballot lane closed without a winner and roadmap items
+2-5 all gate behind one.
 
 ## FINISHED — decision-sensitivity screen (Codex's unblocking condition), 06:05
 

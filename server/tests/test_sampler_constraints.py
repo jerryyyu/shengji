@@ -338,10 +338,10 @@ def _prune_condition(mults, quotas, caps):
 def test_pair_cap_condition_is_necessary_and_sufficient_exhaustively():
     import itertools
     checked = 0
-    for ncodes in range(1, 4):
+    for ncodes in range(1, 5):
         for mults in itertools.product((1, 2), repeat=ncodes):
             N = sum(mults)
-            for R in (2, 3):
+            for R in (2, 3, 4):
                 for quotas in itertools.product(range(N + 1), repeat=R):
                     if sum(quotas) != N:
                         continue
@@ -350,13 +350,13 @@ def test_pair_cap_condition_is_necessary_and_sufficient_exhaustively():
                         assert (_prune_condition(mults, quotas, caps)
                                 == _suit_assignment_exists(mults, quotas, caps)), \
                             f"mults={mults} quotas={quotas} caps={caps}"
-    assert checked > 1000, checked
+    assert checked > 170000, checked   # the bound actually claimed
 
 
 def test_pair_cap_condition_holds_at_realistic_suit_sizes():
     import random
     rng = random.Random(20260805)
-    for _ in range(400):
+    for _ in range(4000):
         D = rng.randint(1, 9)
         mults = tuple(rng.choice((1, 2)) for _ in range(D))
         N = sum(mults)
@@ -367,6 +367,30 @@ def test_pair_cap_condition_holds_at_realistic_suit_sizes():
         assert (_prune_condition(mults, quotas, caps)
                 == _suit_assignment_exists(mults, quotas, caps)), \
             f"mults={mults} quotas={quotas} caps={caps}"
+
+
+def test_the_condition_does_NOT_characterize_the_production_dealer():
+    """The sufficiency proof holds in a REDUCED MODEL only (Codex).
+
+    `_assign` computes D over FREE cards, having removed declared `pre` pins,
+    while `_deal_suit` enforces the cap on `pre + chunk`. So a receiver already
+    pinned one H7, offered one free H7 with n=1, D=1, cap 0, satisfies
+    `n - D <= cap` and still cannot be dealt. `run_cap` is a second omitted
+    failure class. The check therefore remains a SAFE NECESSARY prune — it
+    never removes a feasible split — but it is not an exact characterization of
+    production feasibility, and any constructive dealer built from the proof
+    must cover pins and run caps.
+    """
+    from collections import Counter
+    from unittest.mock import MagicMock
+    from shengji.ai.mcbot import MCBot
+    bot = MCBot(seed=1)
+    mem = MagicMock()
+    mem.max_pairs.return_value = 0
+    mem.max_run.return_value = None
+    mem.o = None
+    assert _prune_condition((1,), [1], [0]) is True
+    assert bot._deal_suit(["H7"], 1, 0, "H", mem, Counter({"H7": 1})) is None
 
 
 def test_at_most_one_receiver_can_exceed_the_distinct_code_count():

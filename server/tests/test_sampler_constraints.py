@@ -287,3 +287,97 @@ def test_pair_cap_forward_check_prevents_a_rejected_world():
     assert bot.rejected_worlds == 0, (
         "the void-ignoring fallback fired; a constraint-correct world exists "
         "and the search must find it")
+
+
+# --- pair-cap prune: necessary AND sufficient -------------------------------
+# Codex accepted `n_r <= D + cap_r` as NECESSARY and left completeness open.
+# It is also SUFFICIENT, and the proof is short:
+#
+#   Necessity  — a receiver given n_r cards drawn from D distinct codes must
+#                double at least n_r - D of them, so n_r - D <= cap_r.
+#   Sufficiency— with multiplicity <= 2, N = D + P where P is the number of
+#                doubled codes, so N <= 2D. Two receivers both above D would
+#                need n_A + n_B > 2D >= N, impossible. So AT MOST ONE receiver
+#                exceeds D, and for it n_r - D <= N - D = P, i.e. enough
+#                doubled codes exist to supply the pairs it is forced into.
+#
+# The tests below check the claim by brute force rather than trusting the
+# argument, because the argument is exactly the kind of thing I have been wrong
+# about before.
+
+def _suit_assignment_exists(mults, quotas, caps):
+    """Brute force: hit every quota without exceeding any pair cap."""
+    import itertools
+    R = len(quotas)
+
+    def rec(i, rem_q, rem_cap):
+        if i == len(mults):
+            return all(q == 0 for q in rem_q)
+        m = mults[i]
+        for combo in itertools.product(range(m + 1), repeat=R):
+            if sum(combo) != m:
+                continue
+            if any(c > rem_q[r] for r, c in enumerate(combo)):
+                continue
+            pairs = [1 if c == 2 else 0 for c in combo]
+            if any(pairs[r] > rem_cap[r] for r in range(R)):
+                continue
+            if rec(i + 1, tuple(rem_q[r] - combo[r] for r in range(R)),
+                   tuple(rem_cap[r] - pairs[r] for r in range(R))):
+                return True
+        return False
+
+    return rec(0, tuple(quotas), tuple(caps))
+
+
+def _prune_condition(mults, quotas, caps):
+    D = len(mults)
+    return all(q - D <= c for q, c in zip(quotas, caps))
+
+
+def test_pair_cap_condition_is_necessary_and_sufficient_exhaustively():
+    import itertools
+    checked = 0
+    for ncodes in range(1, 4):
+        for mults in itertools.product((1, 2), repeat=ncodes):
+            N = sum(mults)
+            for R in (2, 3):
+                for quotas in itertools.product(range(N + 1), repeat=R):
+                    if sum(quotas) != N:
+                        continue
+                    for caps in itertools.product(range(3), repeat=R):
+                        checked += 1
+                        assert (_prune_condition(mults, quotas, caps)
+                                == _suit_assignment_exists(mults, quotas, caps)), \
+                            f"mults={mults} quotas={quotas} caps={caps}"
+    assert checked > 1000, checked
+
+
+def test_pair_cap_condition_holds_at_realistic_suit_sizes():
+    import random
+    rng = random.Random(20260805)
+    for _ in range(400):
+        D = rng.randint(1, 9)
+        mults = tuple(rng.choice((1, 2)) for _ in range(D))
+        N = sum(mults)
+        R = rng.randint(2, 4)
+        cuts = sorted(rng.randint(0, N) for _ in range(R - 1))
+        quotas = [b - a for a, b in zip([0] + cuts, cuts + [N])]
+        caps = [rng.randint(0, 3) for _ in range(R)]
+        assert (_prune_condition(mults, quotas, caps)
+                == _suit_assignment_exists(mults, quotas, caps)), \
+            f"mults={mults} quotas={quotas} caps={caps}"
+
+
+def test_at_most_one_receiver_can_exceed_the_distinct_code_count():
+    """The lemma sufficiency rests on. N = D + P <= 2D."""
+    import random
+    rng = random.Random(7)
+    for _ in range(20000):
+        D = rng.randint(1, 13)
+        mults = [rng.choice((1, 2)) for _ in range(D)]
+        N = sum(mults)
+        R = rng.randint(2, 4)
+        cuts = sorted(rng.randint(0, N) for _ in range(R - 1))
+        quotas = [b - a for a, b in zip([0] + cuts, cuts + [N])]
+        assert sum(1 for q in quotas if q > D) <= 1, (mults, quotas)

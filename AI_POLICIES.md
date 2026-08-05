@@ -153,11 +153,26 @@ newest entry sit on top and speak for the file.
   not DouZero's from-scratch role-specific direct-Q baseline. Preserve the
   alarms/scaffolding; do not interpret the two halted runs as testing either
   paper's hypothesis.
-- **Next strength work:** the ballot lane ended at SELECT NONE; CALIB and REPORT
-  remain sealed. The next named hypothesis is fixed-budget common-world root
-  allocation on the incumbent ballot, with matched uniform and random-
-  allocation controls. Register power/feasibility first and reject without a
-  run if the remaining fresh deals cannot resolve the declared effect.
+- **A live blunder report isolates finite-N override noise, not sourcing.** In
+  `QHKR` round 4 trick 1, banker-team Bot 2 led `DJ` while holding `SAAK`.
+  `SAAK` was present and was SmartBot's candidate 0. A 240-world replay prefers
+  it by about 5.4 attacker points; across 500 independent N=30 replicas it is
+  selected 479 times and `DJ` twice. Both `DJ` draws overestimated it by just
+  enough (5.8/6.3 points) to clear the fixed five-point override margin. The
+  immediate mechanism is paired uncertainty/confidence-aware allocation and a
+  candidate-0 fallback—not another ballot rule. Live decision logs must retain
+  policy/git, candidate values/paired SE and RNG-stream identity for exact
+  reproduction.
+- **Next strength work has three parallel lanes, not one defensive gate.** The
+  ballot lane ended at SELECT NONE and CALIB/REPORT remain sealed, but compute
+  can pursue: (A) confidence-gated/adaptive MC plus structured bury and sampled
+  exact endgames; (B) a 2,048-state, 512-common-world/action counterfactual
+  teacher pilot with signed level-bracket outcomes, followed by three-seed
+  ranking/calibration models and iterative relabelling only after online wins;
+  and (C) faithful synchronous Suphx-style and DouZero-style role-conditioned
+  self-play after target-sign and immutable-actor tests. More old-contract rows
+  are not progress: they only imitate old-ballot `Q^Heuristic` more precisely.
+  `BACKLOG.md` owns the staged gates and fleet queue.
 
 ## Policy status details
 

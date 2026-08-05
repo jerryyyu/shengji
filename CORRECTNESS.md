@@ -224,3 +224,31 @@ safely refused.
 
 Update this table whenever a correctness incident occurs — the log is
 the argument for the rules.
+
+## Sampler certificate — original+late+deep, aea3774 (2026-08-05)
+
+The FIRST certificate covering all three reservoirs. Stored at
+`server/runs/logs/certify_sampler_v3.json`.
+
+```
+  states 1,500 = 500 original + 500 late + 500 deep
+  worlds 36,000 requested = 36,000 accepted, 0 rejected, 0 invalid
+  toys   120/120 fully reachable, real deal reached in 120/120
+  skips  all four counters 0
+  git aea3774, tree_dirty false, compiled ACTIVE, strict voids ON
+```
+
+**SUPERSEDED — none of these is original+late+deep certification:**
+
+- `eea78d2` — the long-standing "P0" certificate. `reservoir_states` kept ONE
+  global counter across ordered paths and `original` holds 20,845 rows, so it
+  exhausted its limit inside `original` and exercised ZERO `late` rows. It was
+  original-only while advertising original+late.
+- `c1ceca1` — my attempted replacement. Same defect, plus 40/40 toys against a
+  registered 120.
+- the dirty `v2` run — generated before the implementing commit
+  (`tree_dirty=true`), so not a clean-current artifact.
+
+Scope: this closes the bounded P0 certificate ONLY. It does not prove posterior
+fidelity, and it does not prove the production dealer globally complete under
+all declaration-pin/run-cap combinations. Both remain open in `BACKLOG.md`.

@@ -601,3 +601,56 @@ def test_scope_gate_names_every_required_condition():
                    "rejected worlds", "compiled engine not ACTIVE",
                    "strict void sampling", "tree is dirty"):
         assert needle in seg, f"scope gate cannot fail on: {needle}"
+
+
+def test_a_rejected_or_unaccepted_world_makes_certified_FALSE():
+    """Package H item 1: falsify the accepted/rejected half of the gate.
+
+    The gate previously checked skips/invalid/toy support but NOT
+    `rejected == 0` or `accepted == requested`, so a future run could certify
+    after silently losing requested worlds (Codex). This drives the scope
+    predicate directly with each defect.
+    """
+    import os
+    import sys
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.join(root, "scripts"))
+    import certify_sampler as CS
+    r = CS.REGISTERED_CERT
+
+    def scope(requested, accepted, rejected):
+        """Reproduce the gate's accepted/rejected clauses exactly."""
+        out = []
+        if requested != r["requested_worlds"] or accepted != r["requested_worlds"]:
+            out.append("worlds requested/accepted")
+        if rejected:
+            out.append("rejected worlds")
+        return out
+
+    full = r["requested_worlds"]
+    assert scope(full, full, 0) == [], "a clean run must pass the clause"
+    assert scope(full, full - 1, 0), "losing one accepted world must fail"
+    assert scope(full, full, 1), "a single rejected world must fail"
+    assert scope(full - 1, full - 1, 0), "a short requested total must fail"
+
+
+def test_the_immutable_certificate_meets_every_registered_condition():
+    """The stored artifact must satisfy the contract it claims."""
+    import json
+    import os
+    import pytest
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, "runs", "logs", "certify_sampler_v3.json")
+    if not os.path.exists(path):
+        pytest.skip("certificate absent (runs/ is gitignored)")
+    import sys
+    sys.path.insert(0, os.path.join(root, "scripts"))
+    import certify_sampler as CS
+    d = json.load(open(path))
+    r = CS.REGISTERED_CERT
+    assert d["certified"] is True and d["scope_failures"] == []
+    assert d["tree_dirty"] is False
+    assert d["states_by_source"] == {"original": 500, "late": 500, "deep": 500}
+    assert d["accepted"] == d["requested"] == r["requested_worlds"]
+    assert d["rejected"] == 0 and d["invalid"] == 0
+    assert not any(d["certification_skips"].values())

@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-05 18:45 EDT.
+Last re-derived: 2026-08-05 19:50 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -20,40 +20,135 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   full-game strength result.
 - CALIB-512 and REPORT remain sealed and unscored. The abandoned ballot lane's
   CALIB, online-confirmation and learn-from-winner stages are **NOT REACHED / CLOSED**.
-- No fleet run is authorized. The next strength idea needs a registered
-  feasibility/power design first.
+- No blind bulk run is authorized, but the roadmap now has three parallel
+  strength lanes ready for bounded gates: adaptive search, clean teacher/model
+  iteration, and faithful role-conditioned self-play.
 
 ## NOW — ordered by value
 
 | priority | work | exit gate |
 |---|---|---|
 | **P0 correctness** | Finish the sampler-certifier contract landed in `fc19d26` | Require original/late/deep files, exact 500/500/500 quotas, 120 toys, zero named skips, zero invalid/rejected worlds, `accepted == requested`, clean current HEAD, compiled+strict mode, and one immutable artifact. The current v2 artifact is pre-commit and `tree_dirty=true`; `certified` also does not yet consult rejected/accepted counts, and the CLI default requests 40 toys while the contract requires 120. |
-| **Strength design** | Register fixed-budget, common-world **root allocation on the incumbent ballot** | First declare the allocation rule, uniform and random-allocation controls, total candidate-world work, paired deal-seed estimand, smallest worthwhile effect, sample size and one-block stop rule. Reject without running if fresh-deal supply cannot resolve the declared effect. This is not permission to widen the ballot, repeat N=60, or revive learned-prior racing. |
-| **RL contract** | Make future learning experiments interpretable before spending fleet compute | Unit-test attacker/defender target signs; version the reward target separately from uncapped game scoring; bind immutable actor checkpoints; then run only the already specified faithful synchronous Suphx-style and DouZero-style microbaselines. A 20–30 minute stability/held-out gate must pass before fleet scale. |
+| **S0 search strength** | Build confidence-gated adaptive MC on the incumbent ballot | Reproduce the live `QHKR` round-4 `DJ` over `SAAK` variance failure; persist paired per-world deltas/SE; compare current uniform N=30, confidence fallback, deterministic adaptive allocation, random allocation and equal-work uniform controls. Promote only on fresh paired full games. |
+| **S1 teacher/model** | Generate a small clean counterfactual teacher pilot, then earn scale | Start with 2,048 stratified non-evaluation states, current executable ballot, 512 common worlds/action, per-world scoring-bracket outcomes and an explicit strong continuation. Train three-seed action ranker + calibrated outcome head; scale only if untouched regret and paired games improve. |
+| **S2 self-play RL** | Run faithful role-conditioned synchronous microbaselines | Unit-test attacker/defender signs, separately version reward targets, and bind immutable actors. Then run Suphx-style feature removal and DouZero-style direct-Q baselines for 20–30 minutes; stable spread plus held-out improvement earns fleet scale. |
+| **S3 structured search** | Attack decisions outside ordinary play selection | In parallel, screen structured MC bury sourcing and sampled exact solving for the final ~4 tricks. Each changes a different once-per-round/tactical bottleneck and must duel the production champion directly. |
 | **Frontend ship gate** | Run one bounded multi-tab soak | Cover join, simultaneous seat claim, disconnect-to-bot, reconnect/takeover, stale/displaced sockets, second absence, private-hand visibility, chat before initial state and >50 messages, and saved-room invite precedence. |
 | **Evaluator boundary** | Repair legacy full-game cutoff semantics | A cutoff must return an explicit tie/refusal, never silently award team 0. Keep the engine's uncapped house-rule progression; the `+3` clip remains a separately versioned RL target. |
 
-### Root-allocation feasibility rule
+## AI-strength program
 
-The primary deployment estimand is paired signed level utility per fresh deal
-cluster, with seat/team flips inside the cluster. A practical planning threshold
-is `+0.10` levels/deal: using the conservative observed cluster SD of about
-1.60, roughly 2,048 clusters gives about 80% two-sided power at 5%. A `+0.05`
-effect would require roughly 8,000 clusters and is outside the remaining fresh
-deal supply. Recompute from the exact frozen protocol before registration; do
-not substitute DEV-512 state-level regret variance for online deal variance.
+More rows from the old pipeline are not the answer. Existing nets mostly learn
+old-ballot `Q^Heuristic(s,a)` under a non-strict biased sampler; scaling those
+labels makes the model imitate that ceiling more precisely. Compute must buy
+either a stronger search decision, a stronger target, or genuine policy
+improvement.
 
-The experiment must compare, at identical total work:
+### Lane A — make the production search stronger now
 
-1. incumbent uniform allocation;
-2. one deterministic adaptive allocation rule driven only by observations
-   available within the search; and
-3. a matched random-allocation control.
+The live `QHKR` round-4 opener is the motivating regression. Banker-team Bot 2
+held `SAAK`; that play was in the ballot and was SmartBot's candidate 0, yet one
+N=30 draw let `DJ` clear the fixed five-point override margin. With current code:
 
-Use common sampled worlds wherever the algorithms permit, record allocation
-and accepted/rejected-world counts per action, and freeze one block with no
-extension. A screen may eliminate the idea; only a fresh paired confirmation
-may promote it.
+- 240 worlds prefer `SAAK` by about 5.4 attacker points;
+- 500 independent N=30 replicas choose `SAAK` 479 times and `DJ` twice;
+- the two `DJ` replicas overestimated it by 5.8 and 6.3 points, just enough to
+  clear the fixed margin.
+
+So the first mechanism is **paired uncertainty**, not another ballot. Start all
+candidates on common worlds, compute paired deltas and SE versus candidate 0,
+eliminate clear losers, and spend remaining rollout work only on unresolved
+leaders. If no alternative proves it clears the policy margin, retain candidate
+0. Persist policy name/git, candidates, per-world or sufficient paired moments,
+SE, accepted/rejected counts and an RNG stream identity so the next live anomaly
+is exactly reproducible.
+
+The attribution matrix is:
+
+1. current uniform N=30;
+2. confidence-gated N=30 with no adaptive reallocation;
+3. deterministic adaptive allocation at the same candidate-world work;
+4. matched random allocation at that work; and
+5. uniform and adaptive high-budget arms at the same larger cap.
+
+Primary deployment estimand is paired signed level utility per fresh deal
+cluster with seat/team flips. Using conservative observed cluster SD ~1.60,
+about 2,048 clusters gives roughly 80% two-sided power for `+0.10` levels/deal;
+`+0.05` needs roughly 8,000. Recompute from the frozen protocol, then register
+one block with no extension. Random game seeds are not limited by the 3,842
+unused corpus deals; that scarcity applied to the frozen state instrument, not
+fresh online self-play.
+
+Two independent search improvements can run beside it:
+
+- **Structured bury search:** the old `MC_BURY` test priced four hand-built
+  variants and tied. Enumerate ~20–50 point-preserving, void-forming and trump-
+  preserving buries, price them with common worlds and evaluate full rounds.
+  Once per round makes this a cheap place to spend much more compute.
+- **Sampled exact endgame:** for the final ~4 tricks, solve each determinized
+  world exactly or with bounded minimax instead of heuristic continuation, then
+  aggregate under the acting seat's belief. Gate on endgame challenge states,
+  then fresh paired games.
+
+### Lane B — generate data that can exceed the old teacher
+
+Build `teacher-v1` as a vertically labelled counterfactual dataset, never from
+DEV/CALIB/REPORT. The first gate is 2,048 states balanced across lead/follow,
+early/mid/late, banker/attacker/defender, candidate count, close margins and
+policy disagreement. Include a small incident tranche from real human games.
+
+For every state store the exact replay and `BallotSpec`, every candidate, 512
+common strict worlds, per-world terminal attacker points and signed level
+bracket, paired deltas/SE, sampler/continuation identities and all counters. A
+gold subset should use champion or exact-late continuation to test whether the
+cheap continuation preserves candidate ranking before scaling it. This single
+tensor supports allocation research, uncertainty calibration and supervised
+learning without rerunning rollouts.
+
+Train three seeds at increasing state counts with:
+
+- a listwise/pairwise action-ranking head aligned to the deployed choice—the
+  useful `v11pair` insight;
+- a separate calibrated scoring-bracket distribution head for absolute outcome
+  and uncertainty, never treating pairwise deltas as a cross-state leaf; and
+- role, public history, candidate/action and suit-symmetry aware encoding.
+
+First use the model to rank/prune/allocate inside MC. Only a held-out teacher
+gain plus a fresh paired win over `mc-strong` earns a direct override or a
+larger 10k/50k-state generation wave. A promoted policy becomes the next
+continuation teacher: collect -> train -> paired gate -> replace champion ->
+relabel, rather than generating millions of labels once from a fixed teacher.
+
+### Lane C — learn beyond MC imitation
+
+In parallel with teacher work, repair the DMC2 role-sign target and snapshot
+contract, then run two faithful synchronous baselines:
+
+- Suphx-style policy learning with scheduled privileged-feature removal and
+  partial-only/distillation controls;
+- DouZero-style from-scratch role-conditioned direct Q from signed episodic
+  returns and sequential action history.
+
+Keep actors immutable within an iteration, train against a frozen opponent
+pool, and gate every candidate against the production champion on paired deal
+clusters. A short micro-run must preserve action spread and improve a frozen
+held-out metric before filling the fleet. AWAC is a later optimizer on the same
+valid replay contract, not a substitute for fixing its target.
+
+### Compute queue
+
+After the small P0 certificate repair closes, keep compute occupied with staged
+work rather than one speculative monolith:
+
+1. Air: shard the 2,048-state teacher pilot and endgame/bury screens.
+2. Mini: implement and replay the confidence allocator plus challenge corpus.
+3. Training device: three model seeds and data-scaling curves as teacher shards
+   arrive.
+4. Both machines: fixed paired evaluation shards only for candidates that pass
+   their local gate.
+
+At each stage, failure frees the queue for the next mechanism; it does not
+authorize adding more data to a target that failed.
 
 ## Correctness and data
 

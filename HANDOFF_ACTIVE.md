@@ -1,18 +1,21 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-05 18:50 EDT. Historical discussion and superseded gate
+Last update: 2026-08-05 19:55 EDT. Historical discussion and superseded gate
 packets live in `HANDOFF_REVIEW.md`.
 
 ## Current status
 
-- Production: compiled `mc-strong` (N=30).
+- Production: compiled `mc-strong` (N=30), shipped overnight. **Daytime work
+  produced no stronger champion.**
 - DEV-512: complete, strict aggregate reproduced, **SELECT NONE**.
 - CALIB-512 and REPORT: sealed and unscored; the ballot lane ended without a
   DEV winner, so its downstream stages are NOT REACHED / CLOSED.
-- Fleet: no run authorized.
-- Next strength hypothesis: fixed-budget common-world root allocation on the
-  incumbent ballot, but only after a power/feasibility registration. Do not
-  launch width, uniform-N, continuation-robustness or learned-prior reruns.
+- Fleet: no run authorized until package H returns, but the next queue is now
+  strength-first rather than another open-ended correctness audit.
+- Positive program: (A) confidence-aware/adaptive MC plus structured bury and
+  exact-late search; (B) a clean counterfactual teacher/model iteration; and
+  (C) faithful role-conditioned self-play. Do not launch width, uniform-N,
+  continuation-robustness or learned-prior reruns.
 
 ## Active package H — finish the sampler certificate honestly
 
@@ -57,6 +60,41 @@ This closes the bounded P0 certificate only. It does not prove posterior
 fidelity, and it does not prove the production dealer globally complete under
 all declaration-pin/run-cap combinations. Those remain separately named in
 `BACKLOG.md`.
+
+## Queued package S0 — first positive strength build after H
+
+The user-reported live incident is reproduced from `logs/QHKR.jsonl`, round 4,
+trick 1. Banker-team Bot 2 led `DJ` while holding `SAAK`. This is **not a ballot
+omission**: `SAAK` is candidate 0. Current-code evidence:
+
+```text
+240 worlds: SAAK 100.2 attacker pts, DJ 105.6 (lower is better for banker team)
+500 independent N=30 replicas: SAAK 479, SA 7, DJ 2, all others 12
+the two DJ draws clear candidate 0 by only 5.8 and 6.3 points
+fixed override margin: 5.0 points
+```
+
+The diagnosis is finite-N override variance. The live logs do not retain the
+bot seed/RNG position or candidate values, so the exact production draw cannot
+be replayed—an observability gap to close with the policy change.
+
+After H passes, build a bounded confidence-aware root evaluator:
+
+1. retain candidate 0 unless an alternative's paired lower confidence bound
+   clears the policy margin;
+2. start on common worlds, prune clear losers, and allocate remaining fixed
+   candidate-world work to unresolved leaders;
+3. persist policy/git/ballot, RNG stream identity, candidates, paired moments/
+   SE, work and sampler counters for every bot override;
+4. add the exact QHKR state as a variance regression/challenge case; and
+5. preregister current N=30, confidence-only, deterministic adaptive, random-
+   allocation and equal-work high-budget controls. No duel until the mechanism,
+   work accounting and power packet return for review.
+
+In parallel after H, specify—not bulk-launch—the 2,048-state teacher pilot and
+the role-sign/immutable-actor RL microgate in `BACKLOG.md`. The first successful
+local gate should immediately feed the fleet; correctness work should return to
+bounded entry checks, not consume the full day.
 
 ## Decisions that should not be reopened
 

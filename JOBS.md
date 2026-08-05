@@ -7,16 +7,18 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 Nothing. Fleet idle, verified by `ps`.
 
-**SAMPLER CERTIFICATION REMAINS OPEN.** `fc19d26` fixed the population contract:
-`original`, `late` and `deep` are mandatory; exact quotas are 500/500/500; the
-counter resets per source; short sources refuse; and 120 toys are required.
-The retained v2 artifact is not gate evidence because it records `git=8c401a0`
-and `tree_dirty=true`. Before a clean rerun, make `certified` require zero
-rejected worlds and `accepted == requested`, and align the CLI's 40-toy default
-with the registered 120. Required clean result: 1,500 states, 36,000 requested
-= accepted, zero rejected/invalid/skips, 120/120 support and witnesses,
-compiled+strict current HEAD. `eea78d2` and `c1ceca1` remain original-only
-historical evidence, not original+late+deep certificates.
+**SAMPLER CERTIFICATE — CURRENT.** `server/runs/logs/certify_sampler_v3.json`,
+git `aea3774`, clean tree, compiled ACTIVE, strict voids ON. 1,500 states at
+500/500/500 across original/late/deep; 36,000 requested = accepted; 0 rejected,
+0 invalid, all four skip counters 0; 120/120 toys reachable with the real deal
+reached in all. `certified: true` with `scope_failures: []`.
+
+SUPERSEDED, and none of them was original+late+deep certification: `eea78d2`
+(original-only — one global counter across ordered paths starved `late`),
+`c1ceca1` (same defect plus 40/40 toys against a registered 120), and the dirty
+v2 run (generated pre-commit, `tree_dirty=true`).
+
+Closure NOT self-declared — package H's return packet is with Codex.
 
 ## FINISHED — decision-sensitivity screen (Codex's unblocking condition), 06:05
 

@@ -366,15 +366,15 @@ run, so that comparison stays open rather than counted.
 
 ## RUN STATUS — 2026-08-05 18:50
 
-No bulk RL/data run is authorized. Compiled N=30 MC is deployed and reproduced
-on current main (`+0.222 +/- 0.140` versus N=10); N=60 produced no confirmed
-increment. The six-arm DEV-512 ballot screen completed with **SELECT NONE**, so
+No bulk RL/data run is authorized. Compiled N=30 MC—the champion shipped
+overnight—is still the incumbent; **daytime work produced no stronger policy**.
+N=60 produced no confirmed increment. The six-arm DEV-512 ballot screen
+completed with **SELECT NONE**, so
 its CALIB, online-confirmation and learn-from-winner stages are NOT REACHED /
-CLOSED and CALIB/REPORT remain sealed. The next named strength hypothesis is
-fixed-budget root allocation on the incumbent ballot, pending a registered
-power/feasibility design. The current three-reservoir sampler certificate also
-remains open until its fail-closed accepted/rejected gate and clean artifact
-land; posterior fidelity is a separate P1 issue.
+CLOSED and CALIB/REPORT remain sealed. The positive program now has three lanes:
+confidence-aware/adaptive search, clean counterfactual teacher iteration, and
+faithful role-conditioned self-play. The current three-reservoir sampler
+certificate remains a short shared gate, not the roadmap's main product.
 
 The re-entry discipline applies to anything new: preregister the bar, seed both
 sides through a factory that forwards kwargs, write immutable manifests and
@@ -395,38 +395,44 @@ they change what gets built, not just what gets said.
 | Silent fallbacks | **One bounded repository-wide sweep first**, converting each boundary into a strict invariant or counter, then site-by-site enforcement while touching code. A sweep without durable invariants decays; local-only work misses the next hidden boundary. |
 | Frontend soak | Deterministic tests are strong enough for a RELEASE CANDIDATE. Run one bounded multi-tab reconnect/takeover/chat soak before production promotion — minutes, not a project — and it does not gate the ML stop decision. |
 
-## ROADMAP FROM HERE (ordered by information per unit compute)
+## ROADMAP FROM HERE — strength first, correctness as a gate
 
-1. **Close the measurement boundary before another run.** Produce one clean,
-   current, compiled+strict sampler certificate with explicit original/late/
-   deep quotas and zero accepted-path loss. This is bounded P0 evidence, not a
-   posterior-fidelity or global constructive-dealer proof.
-2. **Power the root-allocation hypothesis before building it.** The estimand is
-   paired signed level utility per fresh deal cluster at identical total root
-   work. Compare incumbent uniform allocation, one deterministic adaptive rule
-   and a matched random-allocation control. Use the exact online variance and a
-   predeclared meaningful effect; reject without a run if fresh-deal supply is
-   insufficient. Do not reopen ballot width, uniform N=60 or learned-prior
-   racing.
-3. **Measure/correct belief sampling only as a separately versioned policy
-   change.** Exact toy posteriors already show material weighting bias. Any
-   constrained uniform dealer must cover declaration pins and run caps, report
-   calibration/runtime, and revalidate every downstream policy result. A learned
-   ownership model may reweight only valid calibrated base worlds.
-4. **Run two faithful synchronous RL microbaselines only after target and actor
-   contracts pass.** Suphx lane: one policy
-   objective with a scheduled privileged-information mask, plus a partial-only
-   and simple-distillation control. DouZero lane: from-scratch role-conditioned
-   Q networks, direct signed episodic returns, sequential action history and
-   immutable actors. Unit-test role signs and snapshot identity; a 20–30 minute
-   shadow must preserve action spread and improve a held-out fixed-policy metric
-   before either gets fleet scale.
-5. **Build belief-state search only after those contracts hold.** Represent
-   public history, calibrated hand ranges and a small continuation-strategy
-   portfolio. Start with root/subgame search and policy-preserving partner
-   behavior. A calibrated bracket/level value may assist it, but must name the
-   belief, role, horizon and continuation policy in checkpoint metadata.
-6. **Operate the flywheel AutoGo-style.** Every run gets one immutable
+1. **Fix the measured N=30 decision failure with confidence-aware search.** In
+   live `QHKR` round 4, `SAAK` was candidate 0, yet one N=30 sample let `DJ`
+   clear the fixed five-point margin. A 240-world replay prefers `SAAK`; 500
+   N=30 replicas select it 479 times and `DJ` twice. Record paired per-world
+   deltas/SE, retain candidate 0 unless an alternative clears a confidence
+   bound, and adaptively spend common-world rollouts on unresolved candidates.
+   Compare current uniform N=30, confidence-only, deterministic adaptive,
+   random-allocation and equal-work high-budget controls before a fresh paired
+   full-game gate.
+2. **Build a teacher that can exceed the old teacher.** Generate a 2,048-state
+   pilot outside every evaluation split, balanced by phase/role/lead-follow/
+   candidate count/disagreement. Store 512 common worlds per action, per-world
+   terminal points and signed scoring bracket, exact ballot/sampler/
+   continuation identity, paired uncertainty and counters. Use a strong or
+   exact-late gold subset to validate the cheap continuation before scaling.
+3. **Train for the deployed decision and for calibrated outcome separately.**
+   Use a v11pair-style pairwise/listwise ranking head on exact candidates plus a
+   separate scoring-bracket distribution head. Train three seeds and state-count
+   curves. First deploy the model as an MC ranker/pruner/allocator; only a held-
+   out teacher gain and fresh paired win earns direct override or a 10k/50k
+   relabelling wave.
+4. **Run faithful self-play that is not bounded by MC imitation.** After role-
+   sign and immutable-actor tests, run short synchronous Suphx-style privileged-
+   feature-removal and DouZero-style role-conditioned direct-Q baselines. Stable
+   action spread plus held-out improvement earns fleet scale and opponent-pool
+   iteration. AWAC may optimize the valid replay later; it cannot repair a bad
+   target.
+5. **Attack two orthogonal game decisions.** Price 20–50 structured bury
+   candidates with common worlds—the old four-variant `MC_BURY` tie did not test
+   this—and build sampled exact/minimax solving for the final ~4 tricks. Screen
+   on targeted states, then duel the production champion directly.
+6. **Close sampler P0 quickly, then keep it out of the critical path.** Produce
+   the clean current original/late/deep certificate with zero accepted-path
+   loss. Posterior research remains separately versioned; it must not consume
+   the whole strength budget unless a policy experiment depends on it.
+7. **Operate the flywheel AutoGo-style.** Every run gets one immutable
    `ExperimentSpec`: hypothesis, code/data/ballot/encoder hashes, frozen actor
    paths, budget, primary metric, null and stop rule. Keep collect→train→evaluate
    synchronous until replay/resume is exact; only then let a dispatcher fill
@@ -436,8 +442,9 @@ they change what gets built, not just what gets said.
 For online selection, paired signed level utility is primary because it is the
 actual game objective; round win-rate remains the higher-power secondary
 metric, and a final candidate gets a full-game confirmation. Standalone policy
-scaling remains paused; only the two bounded, faithful self-play microbaselines
-above may reopen it, and only after their implementation invariants pass.
+scaling on old labels remains paused. The clean teacher pilot may earn staged
+supervised scale, while the two faithful self-play microbaselines may earn RL
+scale; both must pass their own implementation and held-out gates first.
 
 ## Training-data doctrine: spend compute vertically before horizontally
 

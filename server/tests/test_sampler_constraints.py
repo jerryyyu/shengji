@@ -565,3 +565,39 @@ def test_a_missing_registered_reservoir_is_REFUSED(tmp_path):
     missing = str(tmp_path / "absent.jsonl")
     with pytest.raises(FileNotFoundError, match="registered reservoir missing"):
         list(CS.reservoir_states([missing], 10, 0, per_source={missing: 1}))
+
+
+def test_global_certificate_requires_the_registered_scope():
+    """`certified` must mean the registered scope, not a narrower run.
+
+    Each field closes a hole that let `certified=true` stand for less than it
+    claimed (Codex): `--worlds 0` certified with zero sampled worlds, a
+    single-source invocation certified while three were mandatory, and neither
+    a clean tree nor an ACTIVE compiled path was required.
+    """
+    import os
+    import sys
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.join(root, "scripts"))
+    import certify_sampler as CS
+    r = CS.REGISTERED_CERT
+    assert tuple(sorted(r["sources"])) == ("deep", "late", "original")
+    assert r["states"] == 1500 and r["worlds_per_state"] == 24
+    assert r["requested_worlds"] == 36000
+    assert r["toy_states"] == CS.REGISTERED_TOY_STATES == 120
+    # the CLI default must not undercut the contract
+    src = open(os.path.join(root, "scripts", "certify_sampler.py")).read()
+    assert 'default=REGISTERED_TOY_STATES' in src, \
+        "the --toy-states default still undercuts the registered contract"
+
+
+def test_scope_gate_names_every_required_condition():
+    """Structural: each registered condition must be able to fail the gate."""
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(root, "scripts", "certify_sampler.py")).read()
+    seg = src[src.index("scope_failures = []"):src.index("skips = certification_skips()")]
+    for needle in ("sources", "states", "worlds/state", "requested/accepted",
+                   "rejected worlds", "compiled engine not ACTIVE",
+                   "strict void sampling", "tree is dirty"):
+        assert needle in seg, f"scope gate cannot fail on: {needle}"

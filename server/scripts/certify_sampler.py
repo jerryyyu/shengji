@@ -78,6 +78,20 @@ SOURCE_QUOTA = {"original": 500, "late": 500, "deep": 500}
 #: report 40/40 where the registered certificate claimed 120/120.
 REGISTERED_TOY_STATES = 120
 
+#: The EXACT scope a GLOBAL certificate must have. Anything narrower is SCREEN
+#: evidence, never a certificate. Each field closes a hole that let
+#: `certified=true` stand for less than it claimed (Codex): `--worlds 0`
+#: certified with zero sampled worlds; a single-source invocation certified
+#: while the ledger said all three sources were mandatory; and neither a clean
+#: tree nor an actually-active compiled path was required.
+REGISTERED_CERT = {
+    "sources": ("original", "late", "deep"),
+    "states": 1500,          # 500 per source
+    "worlds_per_state": 24,
+    "requested_worlds": 36000,
+    "toy_states": 120,
+}
+
 
 def digest(path):
     if not path or not os.path.exists(path):
@@ -417,7 +431,7 @@ def main() -> None:
     ap.add_argument("--worlds", type=int, default=24)
     ap.add_argument("--min-ply", type=int, default=0)
     ap.add_argument("--toy-draws", type=int, default=4000)
-    ap.add_argument("--toy-states", type=int, default=40,
+    ap.add_argument("--toy-states", type=int, default=REGISTERED_TOY_STATES,
                     help="constructed deep-banker states, exhaustively enumerated")
     ap.add_argument("--out", default="runs/logs/certify_sampler.json")
     args = ap.parse_args()
@@ -546,6 +560,36 @@ def main() -> None:
               f"report 40/40 against a certificate claiming 120/120.")
         sys.exit(5)
 
+    from shengji.engine import combos as _combos, fast as _fast
+    compiled_active = bool(_fast.HAVE_FAST
+                           and _combos.decompose is _fast.decompose)
+    scope_failures = []
+    if tuple(sorted(RESERVOIRS)) != tuple(sorted(REGISTERED_CERT["sources"])) \
+            or len(paths) != len(REGISTERED_CERT["sources"]):
+        scope_failures.append(
+            f"sources {sorted(seen_by_source)} != registered "
+            f"{sorted(REGISTERED_CERT['sources'])}")
+    if n_states != REGISTERED_CERT["states"]:
+        scope_failures.append(
+            f"states {n_states} != registered {REGISTERED_CERT['states']}")
+    if args.worlds != REGISTERED_CERT["worlds_per_state"]:
+        scope_failures.append(
+            f"worlds/state {args.worlds} != registered "
+            f"{REGISTERED_CERT['worlds_per_state']}")
+    if requested != REGISTERED_CERT["requested_worlds"] \
+            or accepted != REGISTERED_CERT["requested_worlds"]:
+        scope_failures.append(
+            f"worlds requested/accepted {requested}/{accepted} != registered "
+            f"{REGISTERED_CERT['requested_worlds']}")
+    if rejected:
+        scope_failures.append(f"{rejected} rejected worlds")
+    if not compiled_active:
+        scope_failures.append("compiled engine not ACTIVE (not merely requested)")
+    if os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
+        scope_failures.append("strict void sampling not enabled")
+    if dirty:
+        scope_failures.append("tree is dirty")
+
     skips = certification_skips()
     print(f"POPULATION    states/rows SKIPPED before certifying: {skips}")
     if any(skips.values()):
@@ -574,7 +618,12 @@ def main() -> None:
         # stay true while replay loops silently dropped states and rows, which
         # certifies the sampler over whatever happened to rebuild (Codex).
         # Fail closed: a nonzero skip means look, not assume.
-        "certified": bool(not any(certification_skips().values())
+        "registered_cert": REGISTERED_CERT,
+        "scope_failures": scope_failures,
+        # A GLOBAL certificate requires the exact registered scope, a clean
+        # tree, and the compiled path actually active — not merely requested.
+        "certified": bool(not scope_failures
+                                and not any(certification_skips().values())
                                 and n_states and not n_bad and toy_states_n
                                 and toy_complete == toy_states_n
                                 and not witness_missing

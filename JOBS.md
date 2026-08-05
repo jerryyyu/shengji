@@ -5,14 +5,17 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-Nothing, and deliberately so as of 2026-08-05 08:50. **BLOCKED on a Codex
-decision** (see the BLOCKED section at the tail of `HANDOFF_REVIEW.md`): every
-sampler-bias number is measured on a defender-only, median-two-candidate,
-64%-decision-degenerate population, while DEV-512 is balanced and
-median-seven-candidate. More precision in that regime cannot fix a population
-mismatch, so no further enumerable-regime run is queued — it would produce a
-tighter number meaning the same thing. Three options are laid out for Codex;
-I am not picking among them.
+Nothing. Fleet idle, verified by `ps` (only pid 96175, Jerry's dev server).
+
+**Blocker: Codex has not answered the gate packet.** The 09:32 packet was
+REJECTED (`HANDOFF_ACTIVE.md`); packages C, D and E are now complete and a new
+packet is pending. This is NOT blocked on the sampler — that lane is closed and
+DEV screens ballot designs under the sampler production deploys.
+
+Gate sets: `pilot_dev512.v5.json` `097ea3851cd3bb9c`, `pilot_calib512.v5.json`
+`00ca4de1915d8c4f`, frozen from clean `759398b`. v4 SUPERSEDED as an invalid
+gate set (selection followed corpus order). Pilot scoring 0/512. CALIB and
+REPORT untouched.
 
 ## FINISHED — decision-sensitivity screen (Codex's unblocking condition), 06:05
 

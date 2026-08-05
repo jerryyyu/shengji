@@ -11,13 +11,20 @@ bytes.
 | `pilot_states.v1.json` | `717091bd15b7` | SUPERSEDED | written from a DIRTY tree; stale ballot digest `0c5647302082`; strata computed AFTER selection popped rows, so they described the residual pool |
 | `pilot_states.v2.json` | `3c60d73e3f13` | SUPERSEDED | the generator marked a deal seen at its FIRST eligible row, so later lead states from that deal never competed: 229 early / 281 mid / **2 late** under the trick index |
 | `pilot_states.v3.json` | current | **DEV ENGINEERING SET ONLY** | deal-grouped and banded, clean tree, ballot `a68f7b8bced6`. NOT a gate set: 255/254/**3** by trick band and 199/313 attacker/defender is not the balanced broad-lead gate BALLOT_PLAN specifies |
+| `pilot_dev512.v3.json` | `d8d5d04abb9f9262` | SUPERSEDED | candidate size was recorded but only used as a within-deal tie-break, and the builder could publish a short or replay-error-bearing set and exit 0 |
+| `pilot_calib512.v3.json` | `5e4c9a8d4a6310ac` | SUPERSEDED | same builder defects as its DEV counterpart |
+| `pilot_dev512.v4.json` | `1cab080956d038b37dcd441c66e6a4814f4cb2491d23d0c0c23d805dad7c9ea6` | **SUPERSEDED — INVALID GATE SET** | selection followed CORPUS INSERTION ORDER: `deals_for` was shuffled and never read, while selection walked a supply index built in `SOURCES`/file order. Source mix drifted to DEV mid 163 original / 8 late vs CALIB 55 / 116, so CALIB was a different population, not a held-out replicate |
+| `pilot_calib512.v4.json` | `8c55b3f809d439924bb7ffe63d5bfe36292e8e41df8a63fb66eb7e94220326a6` | **SUPERSEDED — INVALID GATE SET** | same order-dependent selection as its DEV counterpart |
+| `pilot_dev512.v5.json` | `097ea3851cd3bb9c3ef96ba1f58b3dcc897ff0a74275cbc8b759109e460e66b6` | **GATE SET — awaiting Codex verification** | frozen from clean `759398b`, salt `dev512-v5`. Order-independent selection by SHA-256 row priority. Four exact marginals: band 170/171/171; size 0/72/98, 11/131/29, 152/19/0; role 85/85, 86/85, 86/85; source 129/41/0, 17/154/0, 0/1/170. 512 unique deals, 0 replay errors, 0 REPORT rows. NOT self-certified; 0/512 scored |
+| `pilot_calib512.v5.json` | `00ca4de1915d8c4f5a8a18de9cc342f4a175f6acb2585bd03f93641cd9921b76` | **HELD-OUT — UNTOUCHED** | identical registered marginals to DEV, disjoint deals (overlap 0). Never scored, tuned or inspected |
 
 The Gate 2 runner contract was smoke-verified twice on the first eight v3
 states at clean commit `8ee2d93`; both complete JSON files had SHA-256
 `a926cbb013fb54188a81017394b87bf23d78f8486173603c9165fe772b3f46f1`
 and passed aggregation. This is protocol evidence only, not an artifact or a
-strength result. The next immutable rows will be registered here only after
-the deep reservoir's merge succeeds.
+strength result. v4 is retained on disk and in the test suite as the known-bad regression that
+proves the source-marginal guard is not vacuous. Never edit a frozen file to
+mark it superseded — supersession lives in this table.
 
 ## What v3 is and is not
 

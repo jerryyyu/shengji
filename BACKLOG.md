@@ -12,10 +12,13 @@ Both code gates are CLOSED (2026-08-05). The freezer enforces the registered
 size and role marginals, size now drives deal selection, and a shortage or
 replay error publishes nothing; the runner requires an explicit artifact plus
 its sha256 (compared before parsing), refuses any experimental sampler flag,
-and labels limited runs `smoke` so they cannot pool into a DEV verdict. v4 is
-frozen from clean `4d0f1d3` — DEV `1cab080956d038b3`, CALIB `8c55b3f809d43992`
-— and all 1,024 rows replay.
+and labels limited runs `smoke` so they cannot pool into a DEV verdict. v5 is frozen from clean `759398b` — DEV `097ea3851cd3bb9c`, CALIB
+`00ca4de1915d8c4f` — and all 1,024 rows replay. v4 was REJECTED at review: its
+selection followed corpus insertion order, so DEV and CALIB drew different
+source mixes and CALIB was not a held-out replicate.
 
+Selection is now order-independent, source is a registered marginal, and the
+runner pins the entire full-DEV protocol rather than only the state hash.
 **The only thing left before launch is Codex answering PASS on the gate packet
 in `HANDOFF_ACTIVE.md`.** Pilot scoring is 0/512 and the 8-shard command is
 written but deliberately not run. Nothing here is self-certified.
@@ -32,7 +35,7 @@ play real games -> teach a model from clean answers**:
 
 | item | plain English | status / exit condition |
 |---|---|---|
-| **0. Freeze the exam** | Create two balanced lists of real lead decisions. DEV is the worksheet; CALIB is the unopened exam. No model trains on either. | **Built and audited, awaiting Codex sign-off.** v4 frozen from clean `4d0f1d3`: exact size/role quotas, size drives selection, publication fails closed, 1,024 rows replay, DEV/CALIB deal-disjoint. Not self-certified. |
+| **0. Freeze the exam** | Create two balanced lists of real lead decisions. DEV is the worksheet; CALIB is the unopened exam. No model trains on either. | **v5 frozen, awaiting Codex verification.** Order-independent selection (SHA-256 row priority); four exact marginals incl. SOURCE; publication fails closed; 1,024 rows replay; DEV/CALIB deal-disjoint. v4 was rejected — its population followed corpus order. Not self-certified. |
 | **1. Try ballot designs on DEV** | On the same 512 situations, ask whether smart candidate selection beats the current ballot, random extra candidates, simply spending more MC on the old ballot, and brute-force widening. | **Ready, blocked on the gate packet only.** Runner pins the artifact hash and refuses flagged/short/smoke launches; 8-shard command is written. Scores under the sampler production deploys — a strength screen, not a posterior-correctness claim. |
 | **2. Verify once on CALIB** | Take the single DEV winner, lock every setting, and run it on 512 situations it never saw. This catches an idea that merely fit DEV. | **Waiting on item 1.** No tuning or second candidate after seeing CALIB. |
 | **3. Play real paired games** | Put the frozen candidate and current production MC into full games built from the same deal seeds and seat flips. This answers “does it actually win Shengji?”, not merely “does it score actions better offline?” | **Waiting on CALIB.** Must improve paired signed level utility against current MC, while a null control stays flat and every protocol counter is clean. |

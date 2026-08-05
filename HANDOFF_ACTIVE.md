@@ -57,6 +57,68 @@ reference and twelve disjoint report worlds score every chosen action.
 This is an offline lead-decision experiment. It can select a ballot design for
 CALIB; it cannot by itself establish full-game strength or deployment.
 
+## PROPOSED — roadmap item 4: continuation-policy ROBUSTNESS (needs registration)
+
+Not launched. Requesting registration or rejection.
+
+**Why this and not the strength version.** The strength form is already largely
+answered against us: `mc-smartroll` TIED TWICE — the second time with a
+continuation 93 Elo above the heuristic — and the accidental banker-without-
+search run went roughly even. Rerunning "is a stronger continuation stronger"
+buys little. The unanswered question is ROBUSTNESS: **does MC's chosen action
+depend on WHICH continuation values its rollouts?**
+
+It matters because of what we just concluded. DEV-512 said no ballot design
+advances and the N=60 lane found no gain above N=30. Both were measured under
+ONE arbitrary continuation. If the argmax is stable across continuations, those
+negatives rest on solid ground. If it is not, they are confounded by a choice
+nobody registered.
+
+**Design.**
+
+- Portfolio, predeclared, chosen to be behaviourally DIVERGENT rather than
+  strength-ordered (divergence is the point): incumbent `HeuristicBot`,
+  `SmartBot`, `smart-trumpdrain`, `smart-feedtrump`. The seam already exists —
+  `MCSmartRoll` sets `self.rollout_policy`.
+- OFFLINE, on frozen states. No online duels.
+- **Shared worlds across continuations.** Every continuation values the SAME
+  sampled worlds for a state, so the only thing varying is the valuation. This
+  is the load-bearing control: without it, sampler noise and continuation
+  effects are inseparable.
+- Per state, per candidate: action value under each continuation.
+
+**Primary:** rate at which a continuation's argmax differs from the incumbent's,
+against a paired control that resamples worlds under the INCUMBENT at the same
+count — so Monte Carlo noise is subtracted, exactly as the decision-sensitivity
+harness does. Reporting raw disagreement without that control would restate
+noise as instability.
+
+**Secondary:** exact-measure regret of the disagreements, and correlation of
+action values across continuations.
+
+**Preregistered close condition.** High agreement after noise subtraction ->
+close the lane and record that MC's output is robust to continuation, which
+strengthens the ballot and dose negatives. Low agreement -> those negatives are
+confounded and must be re-priced under a portfolio before they stand.
+
+**Deviation from the roadmap wording, flagged.** RL_PLAN item 4 says "at equal
+total rollout work". For a robustness question I propose equal WORLDS instead:
+`SmartBot` rollouts are ~5x slower, so equal work would give it ~5x fewer worlds
+and conflate "different valuation" with "noisier estimate". Equal work is the
+right control for a strength claim; equal worlds is the right control for
+"does the answer change". I want this difference registered, not assumed.
+
+**State set.** DEV-512 v6, the designated worksheet, already frozen and
+replayed. This is a SECOND and DIFFERENT estimand on those states; anything it
+selects would still need CALIB and online confirmation. If you would rather draw
+fresh states from the reservoir to avoid multiple use, say so — I did not want
+to spend another freeze cycle without asking.
+
+**Cost:** ~512 states x ~7 candidates x 12 shared worlds x 4 continuations
+≈ 172k rollouts, minutes on Mini for the fast continuations and longer for
+SmartBot. No CALIB, no REPORT, no sampler change, so it cannot void the accepted
+DEV block.
+
 ## Resolved and pruned
 
 Package G (shard-5 diagnosis) and the 12:15 sampler HOLD are CLOSED; their

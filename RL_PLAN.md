@@ -364,14 +364,17 @@ run, so that comparison stays open rather than counted.
 
 ---
 
-## RUN STATUS — 2026-08-04 22:15
+## RUN STATUS — 2026-08-05 18:50
 
-The rewritten-sampler N=30 confirmation is preregistered and running on the
-mini: one 504-cluster block, fresh 99M seeds, N=30-minus-N=10 primary, a true
-same-policy/different-RNG null, no N=5 arm and no extension. The lead-ballot
-pilot remains next. P0 sampler validity/support is closed; distribution
-fidelity and the reopened six-card action-semantics witness are separate
-correctness work. No bulk RL/data run is authorized by either screen.
+No bulk RL/data run is authorized. Compiled N=30 MC is deployed and reproduced
+on current main (`+0.222 +/- 0.140` versus N=10); N=60 produced no confirmed
+increment. The six-arm DEV-512 ballot screen completed with **SELECT NONE**, so
+its CALIB, online-confirmation and learn-from-winner stages are NOT REACHED /
+CLOSED and CALIB/REPORT remain sealed. The next named strength hypothesis is
+fixed-budget root allocation on the incumbent ballot, pending a registered
+power/feasibility design. The current three-reservoir sampler certificate also
+remains open until its fail-closed accepted/rejected gate and clean artifact
+land; posterior fidelity is a separate P1 issue.
 
 The re-entry discipline applies to anything new: preregister the bar, seed both
 sides through a factory that forwards kwargs, write immutable manifests and
@@ -394,40 +397,36 @@ they change what gets built, not just what gets said.
 
 ## ROADMAP FROM HERE (ordered by information per unit compute)
 
-1. **Finish the two live champion-path screens.** Settle N=30 with the one
-   preregistered online block. In parallel, fix the six-card action-semantics
-   witness, then run the clean 512-state lead pilot across current, contextual-
-   14, full-universe/high-compute, V3, random-fill and `MC-more` controls. The
-   current sampler can select; a winning ballot arm must be re-priced after P1
-   distribution calibration before its final online confirmation.
-2. **Measure and correct the belief distribution.** Exact-enumerate toy
-   posteriors, report TV distance/card-seat marginals/exchangeability, then
-   weight suit-count matrices by their admissible per-code completions and
-   sample capped fills uniformly. After the hard posterior is calibrated, fit
-   an action-likelihood/ownership model only as a measured soft refinement.
-3. **Turn the winning ballot into a learned proposer.** Cleanly relabel
-   disagreement, late-ply and high-uncertainty states under one frozen
-   `BallotSpec`; train separate lead and follow proposal/ranking heads; compare
-   against contextual quota, random fill and equal-work `MC-more`. v11pair is
-   an initializer/diagnostic only where its old ballot is exact.
-4. **Test continuation robustness before a scalar leaf.** At equal total
-   rollout work, compare the incumbent continuation against a preregistered
-   small policy portfolio. Record per-policy action values and covariance. If
-   no arm changes online strength, close this lane rather than train another
-   generic leaf on heuristic-only outcomes.
-5. **Run two faithful synchronous RL microbaselines.** Suphx lane: one policy
+1. **Close the measurement boundary before another run.** Produce one clean,
+   current, compiled+strict sampler certificate with explicit original/late/
+   deep quotas and zero accepted-path loss. This is bounded P0 evidence, not a
+   posterior-fidelity or global constructive-dealer proof.
+2. **Power the root-allocation hypothesis before building it.** The estimand is
+   paired signed level utility per fresh deal cluster at identical total root
+   work. Compare incumbent uniform allocation, one deterministic adaptive rule
+   and a matched random-allocation control. Use the exact online variance and a
+   predeclared meaningful effect; reject without a run if fresh-deal supply is
+   insufficient. Do not reopen ballot width, uniform N=60 or learned-prior
+   racing.
+3. **Measure/correct belief sampling only as a separately versioned policy
+   change.** Exact toy posteriors already show material weighting bias. Any
+   constrained uniform dealer must cover declaration pins and run caps, report
+   calibration/runtime, and revalidate every downstream policy result. A learned
+   ownership model may reweight only valid calibrated base worlds.
+4. **Run two faithful synchronous RL microbaselines only after target and actor
+   contracts pass.** Suphx lane: one policy
    objective with a scheduled privileged-information mask, plus a partial-only
    and simple-distillation control. DouZero lane: from-scratch role-conditioned
    Q networks, direct signed episodic returns, sequential action history and
    immutable actors. Unit-test role signs and snapshot identity; a 20–30 minute
    shadow must preserve action spread and improve a held-out fixed-policy metric
    before either gets fleet scale.
-6. **Build belief-state search only after those contracts hold.** Represent
+5. **Build belief-state search only after those contracts hold.** Represent
    public history, calibrated hand ranges and a small continuation-strategy
    portfolio. Start with root/subgame search and policy-preserving partner
    behavior. A calibrated bracket/level value may assist it, but must name the
    belief, role, horizon and continuation policy in checkpoint metadata.
-7. **Operate the flywheel AutoGo-style.** Every run gets one immutable
+6. **Operate the flywheel AutoGo-style.** Every run gets one immutable
    `ExperimentSpec`: hypothesis, code/data/ballot/encoder hashes, frozen actor
    paths, budget, primary metric, null and stop rule. Keep collect→train→evaluate
    synchronous until replay/resume is exact; only then let a dispatcher fill
@@ -515,7 +514,7 @@ unscored until a separately preregistered audit.
 | artifact | size / identity | what it is | status / allowed use |
 |---|---|---|---|
 | `rl_data/deep_leads.v1.jsonl` + `deep_lead_split.v1.json` | 768 raw lead states; 256 each DEV/CALIB/REPORT; 48 split/trick/role cells x16; data hash `ffccfde64932eb3a` | Reconstructable state reservoir captured before ballot scoring. It supplies the late/deep coverage missing from the older corpora. | **FROZEN reservoir.** May build registered evaluation sets; never train from split identity or inspect REPORT outcomes. |
-| `rl_data/pilot_dev512.v6.json` | 512 unique deals; hash `af78748586034f6f`; bands 170/171/171; size 0/72/98, 11/131/29, 152/19/0; roles 85/85, 86/85, 86/85; source 129/41/0, 17/154/0, 0/1/170 | DEV worksheet for the lead-ballot design screen. Frozen from clean `53d9b67` by a fail-closed freezer: size now DRIVES deal selection, and a shortage or replay error publishes nothing instead of a short file. | **0/512 scored, awaiting Codex gate PASS.** Do not score or train on it until then. Supersedes v5 (`097ea3851cd3bb9c`), whose dedup keyed on the marginal cell so 52/512 exact DEV states changed under row reversal. v3/v4/v5 are retained only as named test negative controls. |
+| `rl_data/pilot_dev512.v6.json` | 512 unique deals; hash `af78748586034f6f`; bands 170/171/171; size 0/72/98, 11/131/29, 152/19/0; roles 85/85, 86/85, 86/85; source 129/41/0, 17/154/0, 0/1/170 | DEV worksheet for the lead-ballot design screen. Frozen from clean `53d9b67` by a fail-closed freezer: size drives deal selection, and a shortage or replay error publishes nothing instead of a short file. | **512/512 SCORED; SELECT NONE.** Eight clean shards at `884030f`, strict aggregate reproduced; no design advanced and this asset may not train a model. Supersedes v5 (`097ea3851cd3bb9c`), whose marginal-cell dedup moved 52/512 exact DEV states under row reversal. v3/v4/v5 remain named negative controls. |
 | `rl_data/pilot_calib512.v6.json` | 512 unique deals, disjoint from DEV; hash `3872350f57a4dd60`; identical band/size/role allocation | Untouched holdout to judge exactly one frozen DEV-selected design. No action labels or scores. | **UNTOUCHED.** Do not tune, train, or score. Supersedes v5 (`00ca4de1915d8c4f`). |
 
 The 512+512 design is sized for **selection followed by an independent

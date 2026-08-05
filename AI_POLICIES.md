@@ -21,7 +21,7 @@ evidence changes a synthesized conclusion. Append run reports below the fold,
 and when a run changes a conclusion, EDIT the synthesis rather than letting the
 newest entry sit on top and speak for the file.
 
-## Current synthesis — 2026-08-05 01:20
+## Current synthesis — 2026-08-05 18:50
 
 - **More search width is not the next lever.** N=5->N=10 was large,
   N=10->N=30 was +0.262 +/- 0.154 confirmed, and N=30->N=60 was
@@ -36,20 +36,14 @@ newest entry sit on top and speak for the file.
   in between. Caveat: these shards predate the `rejected_worlds` counter, so
   like the N=60 lane this is a policy-as-run comparison rather than proof of an
   exact accepted dose.
-- **DEPLOYED 2026-08-05:** prod runs `mc-strong` (N=30) with the compiled
-  engine (`{"bot":"mc-strong","fast":true}`). The image now builds the Cython
-  extension, taking prod from 45ms/decision (N=10, pure Python) to 36ms (N=30,
-  compiled) — more search for less latency. The backing result is pinned to
-  `e3aeec1`; a frozen-current confirmation is running.
-- **Strength incumbent:** `mc-strong` (N=30) beat deployed N=10 `mc` by
-  +0.262 +/- 0.154 on 504 preregistered fresh clusters, null control
-  -0.048 +/- 0.162, independently reproduced by Codex. **That result is pinned
-  to commit `e3aeec1` and does NOT transfer to current `main`:** the action
-  semantics and tractor ballot changed afterwards and the run's ballot digest
-  no longer matches source. Promoting today's executable requires a FRESH
-  frozen-current confirmation. Not deployed; 3x search cost.
-  No learned policy, value leaf, learned search prior, or ballot variant has a
-  verified edge over `mc`.
+- **DEPLOYED STRENGTH INCUMBENT:** prod runs compiled `mc-strong` (N=30),
+  exposed as `{"bot":"mc-strong","fast":true}`. The production image builds
+  the Cython extension, taking the measured path from about 45ms/decision
+  (N=10 pure Python) to 36ms (N=30 compiled). A fresh current-main block over
+  504 preregistered clusters confirmed `+0.222 +/- 0.140` versus N=10;
+  arm-minus-null was `+0.230 +/- 0.139` and null was `-0.008 +/- 0.154`.
+  No learned policy, value leaf, learned search prior or ballot variant has a
+  verified edge over it.
 - **Best learned result:** `rl-override-v11pair` beats SmartBot 57.7% (n=480)
   and is very fast, but its MC comparison is unseeded screen evidence. It is a
   deployment-cost candidate, not the strongest verified bot.
@@ -81,20 +75,22 @@ newest entry sit on top and speak for the file.
   measurement: current `mc` vs the pre-fix bot layer is -0.054 +/- 0.156
   (provisional; the old bot's zero-world decisions make it not protocol-clean).
   N=30 was unconfirmable before the sampler rewrite and confirmable after.
-- **Sampler distribution fidelity is BAD, and now measured.** Mean TV excess
+- **Sampler distribution fidelity is materially biased, and measured.** Mean TV excess
   0.161 over the sampling-noise floor; 6 of 8 enumerable states materially
-  biased; every legal world still reachable, so this is weighting, not
-  coverage. **Pilot scoring must not start on this sampler** — shared
-  proposal/report worlds lower variance but do not cancel a belief bias that
-  changes which action is best.
-- **Sampler: the P0 gate is MET for VALIDITY and COMPLETENESS** (run
-  `eea78d2`, clean tree). 38,399 worlds over reservoir states: 0 invalid
-  against a rules-derived validator covering conservation, pins, voids, pair
-  and tractor obligations. Completeness proved by exhaustive enumeration on
-  120 constructed deep-banker states — every legal world produced, real deal
-  reached in all 120. Three sampler defects were found and fixed getting here
-  (allocator dead-ends, the declarer pin completing a forbidden pair, and
-  tractor run-length caps never consumed).
+  biased. This blocks posterior-correctness and clean-label claims; it did not
+  block the completed DEV screen, whose estimand deliberately froze the
+  production sampler as part of each policy. Shared proposal/report worlds
+  lower variance but do not make the posterior correct.
+- **Sampler P0 certificate is temporarily OPEN after a population audit.** The
+  earlier `eea78d2` artifact was original-only because one global limit starved
+  later sources, despite being described as original+late, and it predates skip
+  counters. `fc19d26` now requires original/late/deep with exact 500/500/500
+  quotas and 120 toys, but the retained v2 artifact is pre-commit and dirty;
+  the gate also needs `rejected == 0` and `accepted == requested` wired into
+  `certified` before one clean current rerun. The underlying work did find and
+  fix allocator dead-ends, forbidden declared-card pair completion and ignored
+  tractor run caps; do not turn those real fixes into an overstated population
+  certificate.
   **NOT certified: distribution fidelity — now MEASURED, and the two named
   causes do not account for it.** Against a uniform-over-PHYSICAL-DEALS
   reference on 24 enumerable states (paired, pairing machine-verified):
@@ -157,12 +153,11 @@ newest entry sit on top and speak for the file.
   not DouZero's from-scratch role-specific direct-Q baseline. Preserve the
   alarms/scaffolding; do not interpret the two halted runs as testing either
   paper's hypothesis.
-- **Next strength work:** finish the structural 512-state lead-pilot preflight
-  and the preregistered deep-lead DEV/CALIB/REPORT capture. The pilot compares
-  current, V3, random-fill, `MC-more`, fixed-14 contextual, and full-universe/
-  high-compute arms on disjoint proposal/report worlds. It remains at 0/512
-  until the live gates in `HANDOFF_REVIEW.md` close and `BACKLOG.md` is
-  reconciled; do not pool its selection result into confirmation.
+- **Next strength work:** the ballot lane ended at SELECT NONE; CALIB and REPORT
+  remain sealed. The next named hypothesis is fixed-budget common-world root
+  allocation on the incumbent ballot, with matched uniform and random-
+  allocation controls. Register power/feasibility first and reject without a
+  run if the remaining fresh deals cannot resolve the declared effect.
 
 ## Policy status details
 
@@ -171,13 +166,15 @@ newest entry sit on top and speak for the file.
   Its 51.1% against MC over 4,880 rounds is **SCREEN** evidence only because
   every MC factory in those blocks was OS-seeded. It is plausibly near MC, not
   formally confirmed equal and not superior.
-- **Strength incumbent:** `mc` remains the default. Its count-first sampler now
+- **Strength incumbent:** deployed `mc-strong` is N=30 search over the current
+  MC policy. Its count-first sampler now
   consumes declaration, void, remaining-pair and remaining-tractor-run
   constraints. Normal mode can still use the final void-relaxing retry, while
   evidence-producing evaluation requires `SHENGJI_REQUIRE_VOIDS=1` and clean
-  sampler counters. Independent reservoir validity and exhaustive-toy support
-  have passed; posterior fidelity has not. Old non-strict labels therefore
-  remain provisional even though new strict evaluations are unblocked. See
+  sampler counters. The current three-reservoir P0 certificate is pending the
+  clean rerun described above; posterior fidelity is also open. Old non-strict
+  labels therefore remain provisional even though strict policy evaluations
+  can fail closed on their own counters. See
   `CORRECTNESS.md` for the certified boundary rather than inferring it from a
   policy result.
 - **Retired strength arm:** `mc-vleaf-v7w-ep02` has no verified edge over MC.

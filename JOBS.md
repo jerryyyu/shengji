@@ -7,20 +7,16 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 Nothing. Fleet idle, verified by `ps`.
 
-**CERTIFICATION IS NOT CURRENT AND NOT AS ADVERTISED.** `eea78d2` is the only
-registered certificate and it is `original`-only: `reservoir_states()` applies
-ONE GLOBAL `--limit` across ordered paths, and `original` holds 20,845 rows, so
-a 1,600-state run exhausts the limit there and exercises **zero `late` rows**.
-The advertised original+late P0 certificate never existed. My `c1ceca1` re-run
-has the same defect and is current-`original` evidence only (38,400 accepted,
-0 invalid, 0 rejected, all four skip counters 0) — NOT a replacement. It also
-ran 40/40 toy states against the registered 120/120. `deep` is not in
-`RESERVOIRS` at all, yet v6 draws 170/512 states from it.
-
-REQUIRED before any further closure claim (Codex): require every named path to
-exist; declare, persist and meet an EXACT per-source quota for `original`,
-`late` and `deep`; require the registered toy count rather than a nonzero one;
-fail closed on any short source.
+**SAMPLER CERTIFICATION REMAINS OPEN.** `fc19d26` fixed the population contract:
+`original`, `late` and `deep` are mandatory; exact quotas are 500/500/500; the
+counter resets per source; short sources refuse; and 120 toys are required.
+The retained v2 artifact is not gate evidence because it records `git=8c401a0`
+and `tree_dirty=true`. Before a clean rerun, make `certified` require zero
+rejected worlds and `accepted == requested`, and align the CLI's 40-toy default
+with the registered 120. Required clean result: 1,500 states, 36,000 requested
+= accepted, zero rejected/invalid/skips, 120/120 support and witnesses,
+compiled+strict current HEAD. `eea78d2` and `c1ceca1` remain original-only
+historical evidence, not original+late+deep certificates.
 
 ## FINISHED — decision-sensitivity screen (Codex's unblocking condition), 06:05
 
@@ -198,12 +194,15 @@ reference. Nothing adopted; all flags OFF. (Superseded: DEV-512 has since scored
   frozen-current confirmation before promoting today's executable, rather
   than reinterpreting or pooling this historical block.
 
-### sampler certification — P0 gate MET (validity + completeness) 21:40
+### sampler certification — HISTORICAL; population claim withdrawn
 - run eea78d2, clean tree. 1,600 reservoir states / 38,399 worlds, 0 invalid.
   120/120 constructed toy states fully reachable, real deal reached in all.
 - Found and fixed a second sampler defect on the way: tractor run-length caps
   were never consumed. Three certifier bugs of my own also fixed.
-- Distribution fidelity still NOT certified.
+- Later audit proved the global limit consumed only `original` rows: zero late
+  rows were tested and no replay-skip counters existed. Preserve this as defect-
+  finding evidence, not a closed P0 certificate. Distribution fidelity was
+  never certified.
 
 
 ### sampler certification — 20:10, found and fixed a real defect

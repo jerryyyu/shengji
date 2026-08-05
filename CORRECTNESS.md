@@ -87,27 +87,35 @@ declarations; and obey every proven suit-void, remaining-pair and remaining-
 tractor-run constraint. A decision that produces zero valid worlds is a
 protocol failure, not permission to fall back silently to candidate zero.
 
-The P0 **validity and support/reachability** gate closed at clean commit
-`eea78d2` with `SHENGJI_REQUIRE_VOIDS=1` and the compiled engine active:
+The earlier claim that P0 closed at `eea78d2` is **withdrawn as a population
+claim**. Its single global limit was exhausted inside the 20,845-row `original`
+source, so it exercised zero `late` rows while advertising original+late; it
+also predates named replay-skip counters. `c1ceca1` is useful current-original
+evidence only and ran 40 rather than the registered 120 toys. Neither artifact
+certifies the stated population.
 
-- 1,600 replayed original/late reservoir states;
-- 38,400 requested draws, 38,399 accepted, one explicitly rejected and zero
-  worlds rejected by the independent rules-derived validator;
-- 120 exhaustively enumerable deep-banker toy states, with every legal world
-  reached and the planted real deal reached in all 120;
-- clean-tree plus script, sampler, Memory, corpus and split digests recorded in
-  `server/runs/logs/certify_sampler.json`.
+`fc19d26` repairs the certifier's population contract: original, late and deep
+are mandatory, counters reset per source, exact 500/500/500 quotas and 120 toys
+are persisted and enforced, and missing/short sources refuse. The first v2
+artifact was generated pre-commit with `tree_dirty=true`, and the current
+`certified` expression still needs to require zero rejected worlds and
+`accepted == requested`. P0 therefore remains **open pending one clean-current,
+compiled, strict artifact** with 1,500 states, 36,000/36,000 accepted worlds,
+zero rejected/invalid/skipped rows, 120/120 exhaustive support and 120/120 real
+witnesses.
 
-That certification found real producer defects: greedy card-first allocation
+The certification work found real producer defects: greedy card-first allocation
 could dead-end despite a feasible assignment; a pinned declared card could be
 completed into a pair the history forbade; and pair limits did not enforce the
 distinct tractor-run constraint. The certifier itself also initially collapsed
-seat identity and failed to distinguish an overlarge enumeration from an empty
-legal set. The durable rule is that sampler certification needs an independent
-history-derived validator plus exhaustive small worlds; producer-owned
-invariants and “some world appeared within N retries” are insufficient.
+seat identity, failed to distinguish an overlarge enumeration from an empty
+legal set, silently dropped unreplayable rows, and starved later sources behind
+a global limit. The durable rule is that sampler certification needs an
+independent history-derived validator, explicit population accounting and
+exhaustive small worlds; producer-owned invariants and “some world appeared
+within N retries” are insufficient.
 
-The gate proves two claims only:
+Once the gate closes, it proves two bounded claims only:
 
 - **validity:** accepted strict worlds satisfy the tested public constraints;
 - **support:** every legal world is reachable on the exhaustive toy family.

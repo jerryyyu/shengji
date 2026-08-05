@@ -1,325 +1,151 @@
 # Backlog
 
-## EXECUTION VIEW — 2026-08-05 12:01 EDT
+Last re-derived: 2026-08-05 18:45 EDT.
 
-One table for "what is happening and what closes it". The detailed reasoning
-for each item lives in the sections below, which Codex also maintains — this
-view is a summary, not a replacement.
+This is the execution queue, not an experiment notebook. Durable policy
+conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
+artifacts in `JOBS.md`, and detailed reviewer discussion in
+`HANDOFF_REVIEW.md`.
 
-### NOW
+## Current state
 
-**The ballot pipeline has ENDED at SELECT NONE (Codex ruling, 2026-08-05).** Not
-"waiting" — ended. Its CALIB run, online confirmation and learn-from-winner
-steps are NOT REACHED and are closed, because they all gate on a DEV winner that
-this instrument cannot produce: per-contrast sizing puts `quota-current` at
-~10,250 states against 3,842 remaining deals. CALIB and REPORT stay sealed and
-unscored.
+- Production runs compiled `mc-strong` (N=30). Its frozen-current confirmation
+  was `+0.222 +/- 0.140` paired signed level utility versus N=10 over 504 fresh
+  deal clusters; the null was flat. N=60 versus N=30 was
+  `-0.002 +/- 0.119`, so another uniform-N dose is not justified.
+- The six-arm DEV-512 ballot experiment is complete and selected **NONE**.
+  The current ballot had the lowest equal-work regret; quota widening did not
+  beat random widening, and equal large work favoured more MC on the incumbent
+  ballot over brute-force action expansion. This is an offline screen, not a
+  full-game strength result.
+- CALIB-512 and REPORT remain sealed and unscored. The abandoned ballot lane's
+  CALIB, online-confirmation and learn-from-winner stages are **NOT REACHED / CLOSED**.
+- No fleet run is authorized. The next strength idea needs a registered
+  feasibility/power design first.
 
-**There is no live RL-beats-MC route inside that design.** Say so plainly rather
-than hardening infrastructure around a closed lane.
+## NOW — ordered by value
 
-**Named next hypothesis (NOT yet registered, no run authorized):** fixed-budget,
-common-world **ROOT ALLOCATION on the incumbent ballot**, with matched uniform
-and random-allocation controls. Explicitly NOT more width, NOT another uniform-N
-dose, NOT learned-prior racing — all three are measured and closed. Register a
-POWER/FEASIBILITY design first; **if the remaining fresh deal supply cannot
-resolve a predeclared meaningful effect, reject it without a run.**
-
-The learned lane is limited to contract work for role-correct targets and
-immutable actors, followed at most by the separately specified faithful
-synchronous microbaselines.
-
-### Plain-English strength path
-
-Think of the sequence as **build the exam -> try ideas -> verify the winner ->
-play real games -> teach a model from clean answers**:
-
-| item | plain English | status / exit condition |
+| priority | work | exit gate |
 |---|---|---|
-| **0. Freeze the exam** | Create two balanced lists of real lead decisions. DEV is the worksheet; CALIB is the unopened exam. No model trains on either. | **CLOSED / CODEX PASS.** v6 dedups on exact state `(source, seed, ply, seat)`; real-corpus order difference 0; four exact marginals including source; all 1,024 rows replay; DEV/CALIB deal-disjoint. v4/v5 remain negative controls. |
-| **1. Try ballot designs on DEV** | On the same 512 situations, ask whether smart candidate selection beats the current ballot, random extra candidates, simply spending more MC on the old ballot, and brute-force widening. | **DONE — SELECT NONE (Codex accepted 2026-08-05).** All 8 shards clean at `884030f`, aggregated once. Primary `quota - random_fill` `+0.110 +/- 0.337` includes 0. At equal work the shipped ballot has the LOWEST regret (0.135) and every redesign is worse. The high-work attribution favours more MC over brute-force widening (`-0.495 +/- 0.477`) as an OFFLINE SCREEN, not a strength claim. |
-| **2. Verify once on CALIB** | Take the single DEV winner, lock every setting, and run it on 512 situations it never saw. This catches an idea that merely fit DEV. | **Waiting on item 1.** No tuning or second candidate after seeing CALIB. |
-| **3. Play real paired games** | Put the frozen candidate and current production MC into full games built from the same deal seeds and seat flips. This answers “does it actually win Shengji?”, not merely “does it score actions better offline?” | **Waiting on CALIB.** Must improve paired signed level utility against current MC, while a null control stays flat and every protocol counter is clean. |
-| **4. Learn from the winner** | Only after a ballot truly wins, regenerate labels for the new action space and train a model to propose/rank those actions cheaply and consistently. | **Waiting on an online win.** The learned proposer must beat simple quota, random-fill, and more-MC controls before entering production search. |
+| **P0 correctness** | Finish the sampler-certifier contract landed in `fc19d26` | Require original/late/deep files, exact 500/500/500 quotas, 120 toys, zero named skips, zero invalid/rejected worlds, `accepted == requested`, clean current HEAD, compiled+strict mode, and one immutable artifact. The current v2 artifact is pre-commit and `tree_dirty=true`; `certified` also does not yet consult rejected/accepted counts, and the CLI default requests 40 toys while the contract requires 120. |
+| **Strength design** | Register fixed-budget, common-world **root allocation on the incumbent ballot** | First declare the allocation rule, uniform and random-allocation controls, total candidate-world work, paired deal-seed estimand, smallest worthwhile effect, sample size and one-block stop rule. Reject without running if fresh-deal supply cannot resolve the declared effect. This is not permission to widen the ballot, repeat N=60, or revive learned-prior racing. |
+| **RL contract** | Make future learning experiments interpretable before spending fleet compute | Unit-test attacker/defender target signs; version the reward target separately from uncapped game scoring; bind immutable actor checkpoints; then run only the already specified faithful synchronous Suphx-style and DouZero-style microbaselines. A 20–30 minute stability/held-out gate must pass before fleet scale. |
+| **Frontend ship gate** | Run one bounded multi-tab soak | Cover join, simultaneous seat claim, disconnect-to-bot, reconnect/takeover, stale/displaced sockets, second absence, private-hand visibility, chat before initial state and >50 messages, and saved-room invite precedence. |
+| **Evaluator boundary** | Repair legacy full-game cutoff semantics | A cutoff must return an explicit tie/refusal, never silently award team 0. Keep the engine's uncapped house-rule progression; the `+3` clip remains a separately versioned RL target. |
 
-### DEV-512 experiment matrix
+### Root-allocation feasibility rule
 
-| arm | what changes | what it isolates |
-|---|---|---|
-| `current` | Deployed MC lead ballot | Baseline |
-| `v3` | Current plus the earlier residual-shape/level single expansion, capped at 14 candidates | Whether that specific widening helps |
-| `random_fill` | Protected heuristic lead plus random structured actions, capped at 14 | Mere widening at the same ballot budget |
-| `quota` | Protected lead plus archetype quotas and within-archetype diversity, capped at 14 | Deliberate selection versus random fill — the primary contrast |
-| `mc_more_full_work` | Current ballot with enough worlds to spend the full universe's total proposal work | More MC on the old ballot versus new sourcing |
-| `full_universe` | Uncapped structured universe plus deployed actions and bounded component mutations | High-compute sourcing/coverage ceiling |
+The primary deployment estimand is paired signed level utility per fresh deal
+cluster, with seat/team flips inside the cluster. A practical planning threshold
+is `+0.10` levels/deal: using the conservative observed cluster SD of about
+1.60, roughly 2,048 clusters gives about 80% two-sided power at 5%. A `+0.05`
+effect would require roughly 8,000 clusters and is outside the remaining fresh
+deal supply. Recompute from the exact frozen protocol before registration; do
+not substitute DEV-512 state-level regret variance for online deal variance.
 
-The first four arms target 168 candidate-world evaluations (14 candidates x 12
-proposal worlds, within 5%). `mc_more_full_work` matches the much larger
-`full_universe` proposal work. All arms share separate 12-world oracle and
-12-world report folds. Primary: `quota` versus `random_fill`. Attribution:
-`full_universe` versus `mc_more_full_work`. This selects a design for CALIB; it
-does not establish full-game strength.
+The experiment must compare, at identical total work:
 
-### NEXT (highest value first)
+1. incumbent uniform allocation;
+2. one deterministic adaptive allocation rule driven only by observations
+   available within the search; and
+3. a matched random-allocation control.
 
-| item | why it matters | gate |
-|---|---|---|
-| **0. Diagnose shard-5 sampler rejection** | The full pilot reached a real state where the production sampler recorded one rejected world; ignoring it would defeat the fail-closed launch contract | Preserve evidence; reproduce `original:81002046:4` with identical RNG; identify fold/draw/cause; add a regression and two-machine replay-corpus digest preflight. Do not drop/reroll/relax. If behavior changes, quarantine seven shards and rerun all eight |
-| **1. Complete and aggregate DEV-512 once** | The six-arm matrix separates selection quality, mere widening, more MC and the broad-universe ceiling | Require eight manifest-identical, counter-clean shards. Run the strict aggregator once; primary is quota vs random-fill, attribution is full-universe vs equal-work MC-more; select at most one design or none |
-| **2. One frozen design on CALIB-512 — NOT REACHED / CLOSED** | Offline regret has failed to predict online strength three times, so DEV selection cannot promote its own winner | Freeze the full `BallotSpec`, selector/quota, rollout allocation and thresholds before CALIB. Run the chosen design once; no post-CALIB tuning, arm substitution or pooling back into DEV. REPORT remains untouched by selection |
-| **3. Paired online strength confirmation — NOT REACHED / CLOSED** | A ballot can improve fixed-state regret without improving the game | On fresh deal seeds, the frozen candidate must clear arm-minus-current-MC and arm-minus-null/control bars in paired signed level utility with zero protocol failures; full-game level progression is the final deployment check. Any one-shot REPORT audit must be preregistered and cannot tune the design |
-| **4. Relabel + learned proposal — NOT REACHED / CLOSED** | Repeating 37.1M old-ballot evaluations or training v11pair on actions outside its training ballot cannot improve the champion | Relabel only disagreement/high-uncertainty/late states under the frozen winning `BallotSpec`; train a lead-specific proposer, and require it to beat quota, random and `MC-more` controls before it enters production search |
+Use common sampled worlds wherever the algorithms permit, record allocation
+and accepted/rejected-world counts per action, and freeze one block with no
+extension. A screen may eliminate the idea; only a fresh paired confirmation
+may promote it.
 
-### POST-512 CONTRACT
+## Correctness and data
 
-“512 states” names a **frozen evaluation artifact**, not a supervised or RL
-training dataset. The post-freeze sequence is therefore:
+- [ ] **Current P0 sampler certificate.** Close the exact gate above. The old
+      `eea78d2` certificate is not an original+late certificate: one global
+      limit exhausted inside `original`, so it covered zero late rows and had
+      no skip counters. `c1ceca1` is current-original evidence only. The
+      `fc19d26` per-source contract is the right repair but still needs the
+      zero-rejection guard and a clean rerun.
+- [ ] **Global dealer completeness/runtime.** The pair-cap forward check in
+      `75b06da` is a sound necessary prune and fixed the observed DEV rejection,
+      but it is sufficient only in a reduced no-pin/no-run-cap model. Production
+      still uses up to eight randomized card fills per count matrix. Do not call
+      this globally complete without a bounded constructive allocation or proof
+      covering declaration pins and run caps.
+- [ ] **Posterior fidelity (P1).** Accepted worlds are not sampled at the true
+      physical-deal proportions. Weighted count splits reduced excess TV by
+      `0.060 +/- 0.031` but remained biased and was too slow; uniform card choice
+      contributed essentially nothing. All experimental sampler flags remain
+      OFF. Any repair needs exact-toy calibration, runtime measurement and new
+      policy revalidation.
+- [ ] **Dataset contract.** New training records must bind exact state replay,
+      role/perspective, legal action multiset, `BallotSpec`, sampler, continuation
+      policy, utility target, actor checkpoint and source/split digests. The
+      high-N and late corpora are valuable state reservoirs, not clean oracles.
+- [ ] **House-v1 conformance corpus and native ABI guard.** Preserve positive
+      and negative rule cases; refuse a stale compiled extension using an API
+      version and source/binary digest.
 
-1. score all registered arms on DEV-512 with independent proposal/report
-   worlds and clustered paired uncertainty;
-2. select exactly one complete design on DEV (or stop with no winner), then
-   freeze its ballot, selector, allocation and thresholds;
-3. run that one design once on disjoint CALIB-512 without tuning;
-4. only a CALIB pass earns fresh-seed paired online confirmation against
-   current MC and a null/control; REPORT is never used to choose or repair the
-   arm;
-5. only an online win earns targeted relabelling and learned-proposer training.
+## ML / RL
 
-An N=60-versus-N=30 current-main dose test is an **orthogonal lane**, not a use
-of the 512 states and not permission to change the pilot's registered work
-budgets. Use fresh paired deal seeds, an independent N=30 null, strict sampling
-and one fixed block with no extension. If both a higher-N policy and a new
-ballot win independently, their combination needs one final direct
-confirmation because ballot width and determinization dose can interact.
+- [ ] **Role-correct target test.** DMC2 signs terminal returns by acting team
+      but subtracts an attacker-perspective oracle from defenders without
+      flipping it. Fix and falsify with attacker/defender antisymmetry before
+      interpreting any AWAC/DMC result.
+- [ ] **Faithful synchronous microbaselines.** Separately test a Suphx-style
+      privileged-feature-removal policy curriculum and a DouZero-style
+      from-scratch role-conditioned direct-Q learner. Do not describe the old
+      scalar residual recipe as either paper's algorithm.
+- [ ] **Absolute value contract.** If a leaf is revisited, predict a calibrated
+      scoring-bracket distribution or expected signed level utility under a
+      named belief, role and continuation policy. `v11pair` is a useful direct
+      override/ranker on its exact ballot, not a cross-state scalar leaf.
+- [ ] **Belief model only after the hard sampler boundary is current.** Learned
+      ownership weights may reweight valid worlds; they must not hide invalid
+      or already-biased base sampling. Report exact-toy calibration and effective
+      sample size.
+- [ ] Human-style fine-tuning only after the human corpus contains a few
+      thousand validated decisions.
 
-### PRIORITY POLICY
+## Performance and simplification
 
-Run the refreshed lead audit and clean 512-state pilot, then bias effort roughly
-**70% strength / 20% correctness hardening / 10% simplification**. Do not start
-a broad cleanup campaign. Simplification moves ahead only when it removes a
-duplicate source of experimental truth, makes the next strength test cheaper,
-or closes a known silent-failure boundary.
+- [ ] Port the remaining rollout hot leaves (`_lead`, `_current_winner`,
+      `_cheapest_winning`) to the compiled core, then evaluate int-native hands.
+      Existing phases 0–2 delivered about 3.42x; require pure/compiled parity
+      tests and end-to-end decision timing for each phase.
+- [ ] Vectorize `bc_train`; its per-decision loop is MPS-dispatch-bound.
+- [ ] Introduce one immutable `ExperimentSpec` containing code/data/ballot/
+      encoder hashes, actor paths, seeds, budget, metric, null, stop rule and
+      artifact destinations. Only then add a bounded fleet queue; scheduling may
+      be automatic, promotion and metric changes may not.
+- [ ] Remove duplicated/dead helpers when their replacement has tests:
+      unimported `segbatch.py`, unreferenced `replay_log.pretty_cards`, trainer
+      batch copies, and component-local `seatPos`/card helpers.
+- [ ] Split the large API module only along established room/reconnect test
+      seams; do not mix this with frontend behavior changes.
+- [ ] Add GitHub Actions for server tests and the frontend build.
 
-### LATER
+## Product backlog
 
-Encoder/trainer dataset contract (cleanup #6) · immutable policy specs
-replacing the flag matrix (cleanup #4) · `segbatch.py` has no importer while
-trainers carry local copies, and `replay_log.pretty_cards` is unreferenced
-(cleanup #3) · split the 1,117-line API module along tested seams, only after
-the reconnect tests stand as contract tests (cleanup #5) · move
-`seatPos`/card helpers out of component modules (cleanup #7) · frontend
-concurrent-load soak · exact endgame solving · belief-weighted sampling after
-the uniform sampler's distribution fidelity is measured. If learned-prior
-racing is ever reopened, first include prior inference in its work/timing
-accounting; the current racing claim is closed.
+- Spectator mode with no private hand or action bar.
+- Trick-history and full-game replay viewers.
+- X-ray explanations and per-candidate uncertainty already returned by the API.
+- Persistent rooms across server restart; public lobby/profiles only if usage
+  justifies SQLite.
+- Portrait layout, card animations and zh-CN strings.
+- Optional local commentator/coach, kept asynchronous from gameplay.
 
-### CLOSED — do not re-queue
+## Closed — do not re-queue
 
-**Ballot identity enforced (2026-08-04).** `BallotSpec` derives identity from
-the live value of all nine attributes `_candidates()` reads plus a digest of
-the generator's source AND the compiled `_fast` binary it calls. Checkpoints
-carry provenance sidecars; unstamped fails closed. Policies that run no search
-report `none@v0` instead of a fabricated MC identity. 16 tests.
+- N=30 over N=10 confirmed twice; N=60 over N=30 found no advantage.
+- DEV-512 ballot sourcing/selection experiment completed with SELECT NONE;
+  CALIB/REPORT remain sealed.
+- V3 widening, full-universe widening, learned root-prior racing, v7/V13 value
+  leaves and pairwise-as-leaf are not champion paths on current evidence.
+- Bounded submitted-action semantics and pure/compiled tractor enumeration are
+  covered, including the server-boundary failed-throw regression.
+- Evaluator consolidation, deterministic seed forwarding, strict shard merge,
+  ballot/checkpoint identity and two-machine replay-corpus preflight shipped.
+- Late-ply state capture and the balanced DEV/CALIB evaluation assets are done;
+  they are evaluation/state assets, not automatically valid training labels.
 
-**Late-ply supplement captured (2026-08-04).** 12,000 states, ply 15-57. Takes
-ply>=20 coverage from 844 to 9,237 states (10.9x), which is the distribution
-gap that mis-aimed v13. Raw states only — its N=240 labels are contract-dirty.
-
-**Evaluator consolidated (2026-08-04).** The protocol now lives in
-`shengji/evaluation.py` with `scripts/evaluate.py` as a thin CLI. Deleted:
-`race_confirm`, `vleaf_settle`, `gate_duel`, `kitty_duel`, `v11_extend`,
-`pool_20260804` — 35 scripts down to 31. Their seed/interval invariants are
-guarded by `tests/test_evaluation_lib.py` (10 tests). `t3_gate_screen.py`
-was NOT retired: it is a screen with its own logic, not another duel runner.
-
-**Deterministic evaluation repaired (2026-08-04).** Factory seeds propagate
-through the actual runner boundary; constructor failures are not swallowed;
-every normal strength claim writes exclusive records/manifests and reports the
-paired arm-minus-control contrast. `aggregate_shards.py` refuses duplicate or
-unequal records, mixed commits/schemas, and zero-world fallbacks.
-
-**Sampler P0 validity/support certification passed (2026-08-04, `eea78d2`).**
-The greedy allocator was replaced by count-first exhaustive assignment with
-forward checking; declaration pins, suit voids and remaining-pair/run
-constraints are consumed. A clean artifact checked 1,600 original+late
-reservoir states (38,399 accepted worlds, one counted rejection, zero invalid)
-and reached every legal world plus the real-deal witness in 120/120 exhaustively
-enumerated toy states. This closes P0, not posterior fidelity.
-
-**Rewritten-sampler N=30 confirmed (2026-08-04).** On 504 preregistered fresh
-clusters, N=30 minus N=10 was `+0.262 +/- 0.154`; N=30 minus the true null was
-`+0.310 +/- 0.153`, while null minus N=10 was `-0.048 +/- 0.162`. This closes
-the dose question on the evaluated pre-action-fix revision; it does not prove
-an RL edge or posterior fidelity.
-
-**Bounded submitted-action semantics verified (2026-08-04).** Different card-
-code multisets no longer collapse merely because their effective levels tie,
-and `decompose()` now canonicalises its input in pure and compiled kernels.
-The six-card `C7 C7 D7 D7 H7 H7` witness, 30,936 bounded reorderings, cold and
-warm caches, and the real failed-throw `Round.play` successor are invariant.
-`find_tractor_runs()` now enumerates every physical tied-code choice in both
-kernels; the live MC ballot contains both successor-distinct tractors under
-either hand ordering, and anagrams enumerate identically. The product is
-bounded at three choices in suited trump and four in no-trump; a deterministic
-20,000-hand scan found an added run in 11 hands (0.055%), with no explosion.
-Both full suites pass (176 passed, 2 skipped per engine). Sorting is sound for
-all arities by construction, and both memos are per-`Ordering`. The tractor
-memo deliberately retains its cheaper exact-order key: canonical sorting was
-3x the key-construction cost on this 815k-call/round hot path, while values are
-still canonical.
-
-vleaf equals mc · vleaf with a pairwise head is INVALID not merely failed ·
-v10res was a no-op checkpoint · root-prior racing refuted by its own control ·
-V3 lead ballot NOT CONFIRMED · direct-V leaf v13abs NOT CONFIRMED (doubly
-misaligned) · margin 0.005 NOT CONFIRMED · BANKER_KITTY correctness-only ·
-absolute value heads interchangeable · heuristics #2/#4 · ANTICIPATE_FEED ·
-mc-smartroll · standalone policy line PAUSED as a development target.
-
-**Standing rules.** Strength claims go through `scripts/evaluate.py` and no
-other path. Six claims have died to correlated blocks read as reproduction: a
-screen may reject, only a paired confirmation may promote. Offline regret on
-the high-N corpus has failed to predict online strength three times — it may
-reject, never promote.
-
----
-
-## Detail (maintained with Codex)
-
-Open work, roughly ordered by value. Completed items live in git and in
-AI_POLICIES.md's toggle registry; resolved AI items with their reasoning are
-in `docs_archive/backlog-ai-items-through-2026-08-03.md`. This file tracks
-what is NEXT — if an item is done, delete it here rather than checking it off.
-
-## AI / training
-
-**Current question (2026-08-04): can a better lead ballot beat verified N=30
-MC?** The preregistered rewritten-sampler confirmation established N=30 over
-N=10 at `+0.262 +/- 0.154` on 504 fresh clusters with a flat null control.
-Direct v11pair beats SmartBot but has no seeded proof over MC; value-leaf,
-learned root-prior racing, threshold refits, and naive V3 widening all failed
-to produce a verified edge. Latency is secondary to strength, so the next
-experiment is fixed-budget versus widened/high-compute ballot selection.
-
-- [ ] **Measure and repair sampler posterior fidelity (P1).** Enumerate exact
-      legal toy posteriors, then compare total-variation distance, per-card/seat
-      marginals and exchangeability. Weight count matrices by their number of
-      admissible concrete fills and replace greedy capped-card placement with a
-      uniform constrained draw. Also make reservoir reconstruction replay the
-      stored declarations directly; all 1,600 P0 rows matched today, but that
-      should be structural rather than dependent on current bot behavior.
-- [ ] **Run the 512-state ballot pilot described in the execution view.** Use
-      at most one state per deal, a frozen DEV-only original/late split,
-      named independent RNG streams, and per-world/covariance records. Keep
-      proposal, oracle-selection, and report worlds disjoint.
-- [ ] **Run one paired online confirmation only for the selected ballot arm.**
-      Compare against deployed MC and the correct attribution control on fresh
-      seeds; enforce exact work counters and all evaluator protocol gates.
-- [ ] **Representation or learned-proposal tests only on new-contract labels.**
-      If the non-learned ballot wins, compare the current encoder with one
-      enriched encoder while holding model/data/init and at least three train
-      seeds fixed. Old v11pair cannot score newly widened actions as evidence.
-- [ ] **Absolute value contract.** Predict a calibrated attacker scoring-
-      bracket distribution or expected signed level utility under one named
-      continuation policy. Do not use noisy `max_a Q` as the default target.
-      This is a later prerequisite for PUCT/MCTS, not the next champion-path
-      experiment and not an implicit extension of v11.
-- [ ] **Belief model only after the hard sampler is correct.** Learn card-
-      ownership weights from self-play, then compare tempered weighted worlds
-      with a validated uniform reference while reporting exact toy-posterior
-      calibration and effective sample size. A net must not mask impossible or
-      already-biased base worlds.
-- [ ] **Repair the DMC2 contract before any AWAC/DMC resume.** The oracle is
-      attacker-perspective, but dmc2 negates defender returns without negating
-      the oracle before subtraction; add an attacker/defender antisymmetry test
-      and fix the target. Stop calling the scalar residual “Suphx oracle
-      guiding”; separately micro-test (a) Suphx-style privileged-policy feature
-      removal and (b) DouZero-style from-scratch role-conditioned direct Q.
-      Actors must load immutable snapshots and the gate must use the clustered
-      evaluator. Start synchronously for 20-30 minutes; only stable spread plus
-      a predeclared held-out improvement earns a fleet run.
-- [ ] Human-style fine-tune once the human corpus is a few thousand decisions.
-- [ ] From the disagreement miner: dump-selection refinement (n=23, +3.9);
-      lower the CONTROL_LEADS pair gate for late rounds.
-- [ ] SmartBot ideas untried: exhaustion-based void inference, declaration-
-      aware burying, exact endgame solving (last ~4 tricks), suit-symmetry
-      augmentation, and confidence-weighted CE.
-
-## Engineering / hardening
-
-- [~] **Bounded silent-fallback sweep — sampler/certifier slice DONE
-      2026-08-05.** Inventoried `mcbot.py`, `memory.py`, `certify_sampler.py`.
-      The two broad `except Exception: continue` in the certifier's replay
-      loops each dropped a state or row SILENTLY, so it could report
-      "120/120 certified" over whatever happened to rebuild. Both are now named,
-      counted (`SKIPPED`), reported to stdout AND persisted in the artifact,
-      with an AST test asserting each increment sits inside its handler. The
-      four `getattr(..., default)` in the sampler are currently dead — both
-      attributes are always set — and are recorded rather than changed.
-      REMAINING: apply incrementally as strength-path code is touched.
-- [ ] **Frontend release soak.** Deterministic coverage is release-candidate
-      quality. Before production promotion, run one bounded multi-tab scenario
-      covering join, seat race, disconnect-to-bot, reconnect/takeover,
-      displaced/stale sockets, second absence, private-hand visibility, chat
-      before first state and over 50 messages, and saved-room invite
-      precedence. This is a minutes-long ship gate, not an open-ended project.
-- [ ] **Remaining provenance and ABI contracts.** Evaluator manifests and
-      ballot/checkpoint identities are shipped. Add atomic manifests to data
-      generators/certifiers, refuse stale compiled extensions using an API
-      version plus source digest, and maintain a house-v1 conformance corpus
-      with positive and negative cases.
-- [ ] **One immutable `ExperimentSpec` and bounded fleet queue (AutoGo lesson).**
-      Unify hypothesis, code/data/ballot/encoder hashes, frozen actor paths,
-      seeds, budget, primary metric, null, stop rule and artifact destinations.
-      First make collect→train→evaluate exactly replayable synchronously; only
-      then let a dispatcher keep both machines full from preregistered jobs.
-      Scheduling may be automatic; promotion and metric changes may not be.
-- [x] **Boundary-level tests — DONE 2026-08-05.** The failed-throw regression
-      now runs through `bot_step`/`Room` (the seam the 2026-08-03 desync lived
-      in, which the engine-level test structurally could not see), and the
-      high-N raw records have a committed round trip. Both ship with a
-      falsification: the injected historical desync is caught, and a corrupted
-      deck is rejected. The round trip asserts REPLAYABILITY only — stored
-      `candidates`/`mean`/`best` came from the old ballot and non-strict
-      sampler, so requiring them to regenerate would fail legitimately.
-- [ ] **Scoring-contract fix**: `Game.finish_round()` allows >+3 while
-      `round_value()` caps at +3, and `play_game`'s tie fallback awards team 0.
-- [ ] Compiled rollout core, remaining phases: leaf ports for
-      `_lead`/`_current_winner`/`_cheapest_winning` (~1 day, ~5x), then
-      int-native hands (multi-day). Phases 0-2 merged 08-03 at 3.42x.
-- [ ] Vectorize bc_train (per-decision loop is MPS-dispatch-bound).
-- [ ] Unify MC/data/RL generation behind the selected executable `BallotSpec`
-      before training a proposal model. Never hot-enable a widened play ballot
-      under an old-ballot net (the Elo-798 failure).
-- [ ] Xray panel: annotate WHY, not just values; render the per-candidate ±SE
-      the endpoint already returns.
-
-## Features
-
-- [ ] **Spectator mode**: watch a room without a seat (read-only state, no
-      hand; UI hides the action bar).
-- [ ] **LLM commentator / coach** (local Ollama): narrate bot reasoning from
-      Memory (voids, boss cards) async; coach mode = compare human play vs
-      bot recommendation per trick (the analyze_human pipeline, live).
-- [ ] Trick history viewer in the UI (engine records Round.history; xray and
-      replay.py exist server-side).
-- [ ] Game replay viewer (logs contain full decks; replay.py renders text —
-      a UI scrubber would make it shareable).
-- [ ] Public lobby list; persistent profiles/stats (needs SQLite); daily
-      deal (same seeded shuffle for everyone).
-
-## Hosting / ops
-
-- [ ] GitHub Actions CI: pytest + frontend build on push.
-- [ ] Persist in-progress games across server restarts (state is in-memory;
-      restart drops games — fine for casual, fix if it ever matters).
-- [ ] Decide repo visibility (public-ready per secrets audit; fix commit
-      author identity first if desired).
-- [ ] True-offline single-player (Pyodide build of the engine) — probably
-      not worth it; solo-vs-bots covers the use case.
-
-## Polish
-
-- [ ] Portrait-mode phone layout (landscape-only today, rotate hint shown).
-- [ ] Card-play animations (fly from hand to trick area).
-- [ ] zh-CN UI strings toggle.
-- [ ] X-ray panel: render the per-candidate ±SE the endpoint now returns.
+Standing rule: strength claims use `scripts/evaluate.py`, paired deal clusters,
+an explicit null and immutable manifests. Offline regret may reject an idea; it
+cannot promote one to production.

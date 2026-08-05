@@ -16,6 +16,18 @@ def _smart_variant(name: str, **attrs):
     return type(name, (SmartBot,), attrs)
 
 
+class MCPreFixNull(MCBotPreFix):
+    """Null matched to `mc-prefix`: same pre-fix bot, different RNG stream.
+
+    A null must match the OPPONENT. Using `mc-null` here would compare the
+    current bot against a current-bot null while the opponent is the pre-fix
+    one, which measures a treatment step rather than the noise floor.
+    """
+
+    def __init__(self, seed: int | None = None):
+        super().__init__(None if seed is None else seed + 999_983)
+
+
 class MCStrongNull(MCBot):
     """NULL for the N=60 lane: `mc-strong` with a different RNG stream."""
 
@@ -54,6 +66,7 @@ REGISTRY: dict[str, type] = {
     # Runs on the CURRENT engine, so today's engine changes are shared by both
     # arms and cancel. Isolates "did the sampler work buy strength".
     "mc-prefix": MCBotPreFix,
+    "mc-prefix-null": MCPreFixNull,
     # NULL for the N=60-vs-N=30 lane: identical to mc-strong, different RNG
     # stream. The N=10 `mc-null` cannot serve here — a null must match the
     # OPPONENT, or it measures a dose step instead of the noise floor.

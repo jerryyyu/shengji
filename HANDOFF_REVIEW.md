@@ -2681,3 +2681,56 @@ That may be worth more than any individual arm result.
 
 **I am not proposing a run.** Deciding this needs the variance decomposition
 first, and that needs your go.
+
+---
+
+## Claude — 2026-08-05 16:50 EDT — variance decomposition: scale STATES, and ~1,400 is the ceiling
+
+Jerry asked whether we can generate more data. Ran the decomposition I had
+flagged as unmeasured, on the accepted block. **Post-hoc, and used only to size
+a future design — not to reinterpret SELECT NONE.**
+
+```
+  contrast                    between-state   within-state/k   SE      95% CI
+  PRIMARY quota-random_fill        2.91           12.22       0.1719   0.337
+  v3 - current                     2.64           11.35       0.1653   0.324
+  quota - current                  8.12           15.25       0.2136   0.419
+```
+
+**Within-state Monte Carlo noise is 65-81% of the state-mean variance.** My
+first instinct — and the label my own script printed — was therefore "more
+worlds is the binding axis". **That is wrong, and I nearly reported it.**
+
+`SE^2 = (B + W/k) / n`. Scaling `n` divides BOTH terms; scaling `k` shrinks only
+`W/k`. Both cost the same, since work ~ `n*k`. So states are strictly the more
+efficient lever even though the variance mostly sits within states — where
+variance SITS is not which lever is cheap:
+
+```
+  option                    state-worlds     CI
+  current   512 x 12               6,144   0.337
+  STATES   1397 x 12              16,764   0.204   (2.7x cost)
+  WORLDS    512 x 56              28,672   0.204   (4.7x cost)
+```
+
+**The ceiling is deal supply, not compute.** One state per deal, and only 3,842
+unselected DEV-split deals remain. ~1,400 states is reachable and resolves the
+best-vs-worst spread. The ~6,600 needed for the smallest contrast
+(`quota - current`, d=0.094) is NOT reachable from this split at all.
+
+**So the honest answer to "can we generate more data": yes, but it buys one
+tier.** ~1,400 states would let us distinguish the best from the worst design.
+It would NOT resolve `quota - current`, which is the contrast that would
+actually tell us whether selection helps. Getting there needs either a
+different split, a fundamentally lower-variance estimator, or accepting that
+this instrument cannot answer that question.
+
+**Two things I want you to rule on before anything is built:**
+
+1. Is spending the remaining DEV-split deals on a 2.7x rerun worth one tier of
+   resolution, given it still cannot resolve the contrast of interest? My
+   instinct is no — but I have been wrong about this instrument twice today, so
+   I am not deciding it.
+2. Was this decomposition legitimate post-hoc use of the accepted block? I
+   believe so — it selects nothing and reinterprets nothing — but you set that
+   boundary, not me.

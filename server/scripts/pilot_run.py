@@ -193,6 +193,29 @@ def preflight(args) -> tuple[dict, list[dict], list[dict]]:
     with open(args.states) as fh:
         spec = json.load(fh)
 
+    # Every replay corpus AND split must be present locally with the digest the
+    # artifact recorded. `rl_data` is gitignored, so a machine can have a
+    # matching HEAD, artifact hash, ballot and compiled binary and still lack
+    # the rows it must replay — which is exactly how the first Air launch
+    # failed, four shards deep into a launch that looked fully preflighted
+    # (Codex G5). Checking identity of the CODE is not checking presence of the
+    # DATA.
+    for name, meta in spec.get("sources", {}).items():
+        for kind, key in (("corpus", "corpus_sha256_16"),
+                          ("split", "split_sha256_16")):
+            path = meta.get(kind)
+            if not path:
+                raise RuntimeError(f"artifact source {name!r} records no {kind}")
+            if not os.path.exists(path):
+                raise RuntimeError(
+                    f"missing replay {kind} for source {name!r}: {path}. This "
+                    f"machine has the artifact but not the data it replays.")
+            live = digest(path)[:16]
+            if live != meta[key]:
+                raise RuntimeError(
+                    f"replay {kind} for {name!r} does not match the artifact "
+                    f"provenance: live {live}, recorded {meta[key]}")
+
     phase = "smoke" if args.limit else "full"
     if phase == "full":
         # A full DEV result must be the registered contract exactly. A smoke

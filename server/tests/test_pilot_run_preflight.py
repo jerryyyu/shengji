@@ -163,3 +163,32 @@ def test_the_gate_artifacts_exist_and_are_tracked():
     """A missing gate artifact must fail, never skip."""
     for p in (DEV, CALIB):
         assert os.path.exists(p), f"{p} missing — gate artifacts are tracked"
+
+
+def test_refuses_when_a_replay_corpus_is_missing(tmp_path, monkeypatch):
+    """Identity of the CODE is not presence of the DATA.
+
+    Air had matching HEAD, artifact hash, ballot and compiled binary, and still
+    lacked the gitignored corpora — discovered only after launching (Codex G5).
+    """
+    import json as _json
+    d = _json.load(open(DEV))
+    name = next(iter(d["sources"]))
+    d["sources"][name]["corpus"] = "rl_data/does_not_exist.jsonl"
+    p = tmp_path / "art.json"
+    p.write_text(_json.dumps(d))
+    with pytest.raises(RuntimeError, match="missing replay corpus"):
+        PR.preflight(_args(tmp_path, states=str(p),
+                           expected_states_sha256=PR.digest(str(p))))
+
+
+def test_refuses_when_a_replay_corpus_digest_drifted(tmp_path):
+    import json as _json
+    d = _json.load(open(DEV))
+    name = next(iter(d["sources"]))
+    d["sources"][name]["corpus_sha256_16"] = "0" * 16
+    p = tmp_path / "art2.json"
+    p.write_text(_json.dumps(d))
+    with pytest.raises(RuntimeError, match="does not match the artifact"):
+        PR.preflight(_args(tmp_path, states=str(p),
+                           expected_states_sha256=PR.digest(str(p))))

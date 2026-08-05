@@ -115,25 +115,39 @@ Also require `git diff --check`, all sampler flags false by default, a clean
 tree, and a pushed commit. Land the current dirty diagnostics separately first;
 do not mix measurement artifacts and the launch-runner patch in one commit.
 
-## Gate review packet — return this, not another narrative
-
-Claude should post exactly:
+## Gate packet — package A COMPLETE, package B not started (09:55)
 
 ```text
-STATE: READY_FOR_CODEX_GATE | BLOCKED
-HEAD / origin HEAD:
-dirty files:
-v4 DEV hash / CALIB hash:
+STATE: BLOCKED — package A done; package B (runner preflight) not started,
+       so there are no smoke hashes and no launch command yet.
+HEAD / origin HEAD: 4b94871 / 4b94871 (in sync)
+dirty files: none
+v4 DEV hash:   1cab080956d038b37dcd441c66e6a4814f4cb2491d23d0c0c23d805dad7c9ea6
+v4 CALIB hash: 8c55b3f809d439924bb7ffe63d5bfe36292e8e41df8a63fb66eb7e94220326a6
 quota + role + replay + split + disjoint audit:
-pure tests / compiled tests:
-two identical smoke hashes:
-sampler flags:
-exact fleet command:
-if BLOCKED: failing command, first error, recommended fix, ETA
+  frozen from clean 4d0f1d3, tree_dirty=false, salts dev512-v4 / calib512-v4
+  size  early 0/72/98   mid 11/131/29   late 152/19/0     EXACT, both sides
+  role  early 85/85     mid 86/85       late 86/85        EXACT, both sides
+  512 selected / 512 unique deals / 0 replay errors / DEV-CALIB overlap 0
+  all 512 seeds per side resolved through their own split file; 0 REPORT
+  all 1,024 rows replay to the recorded seat
+  ballot at selection mc_candidates@v1[a68f7b8bced6]
+  feasibility censused on BOTH sides BEFORE selection; tightest cell
+    calib late/med = 19 needed from 25 distinct deals
+pure tests / compiled tests: 104 passed / 104 passed (required battery)
+  full suite 276 passed, 2 skipped
+two identical smoke hashes: NOT YET — requires package B
+sampler flags: WEIGHTED_SPLITS=false UNIFORM_DEAL=false PHYSICAL_FILLS=false
+exact fleet command: NOT YET — requires package B
+if BLOCKED:
+  failing command: none; package B simply not yet implemented
+  first error: pilot_run.py:133 still defaults --states to
+    rl_data/pilot_states.v4.json, which does not exist and is NOT the name of
+    either artifact frozen above
+  recommended fix: package B items 1-4 as written
+  ETA: 30-60 min
 ```
 
-Codex will answer `PASS` or list numbered defects. Do not start a new research
-branch while waiting for that review.
 
 ## After PASS — launch DEV-512, not CALIB
 

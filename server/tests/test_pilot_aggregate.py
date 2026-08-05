@@ -45,6 +45,12 @@ def _run(records):
         "budget": 14, "work_target": 168, "band": .05,
         "report_worlds": 2, "oracle_worlds": 2,
         "full_proposal_worlds": 2, "salt": "pilot", "tree_dirty": False,
+        # cross-shard identity: a smoke must not pool into a DEV verdict and a
+        # flagged shard must not pool with unflagged ones
+        "phase": "full",
+        "sampler_flags": {"SHENGJI_WEIGHTED_SPLITS": False,
+                          "SHENGJI_UNIFORM_DEAL": False,
+                          "SHENGJI_PHYSICAL_FILLS": False},
         "complete": True, "work_violations": [], "replay_errors": 0,
         "protocol_failures": [],
         "sampler_counter_totals": {name: 0 for name in agg.SAMPLER_COUNTERS},
@@ -145,3 +151,25 @@ def test_missing_shard_is_refused():
     run.update(shard_count=2, shard_index=0, experiment_n_states=2)
     with pytest.raises(agg.ProtocolError, match="shards"):
         agg.validate_runs([run])
+
+
+def test_a_smoke_run_cannot_aggregate_as_a_DEV_result():
+    run = _run([_record("a", 1), _record("b", 2)])
+    run["phase"] = "smoke"
+    with pytest.raises(agg.ProtocolError, match="smoke run must never aggregate"):
+        agg.validate_runs([run])
+
+
+def test_a_shard_with_an_enabled_sampler_flag_is_refused():
+    run = _run([_record("a", 1), _record("b", 2)])
+    run["sampler_flags"]["SHENGJI_WEIGHTED_SPLITS"] = True
+    with pytest.raises(agg.ProtocolError, match="sampler flags"):
+        agg.validate_runs([run])
+
+
+def test_shards_disagreeing_on_phase_are_refused():
+    a, b = _run([_record("a", 1), _record("b", 2)]), _run([_record("a", 1), _record("b", 2)])
+    a.update(shard_count=2, shard_index=0)
+    b.update(shard_count=2, shard_index=1, phase="smoke")
+    with pytest.raises(agg.ProtocolError, match="mixed phase|smoke run"):
+        agg.validate_runs([a, b])

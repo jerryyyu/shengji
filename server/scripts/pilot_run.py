@@ -102,6 +102,10 @@ def load_rows(states: list[dict]) -> dict[tuple[str, int, int], dict]:
     return found
 
 
+SAMPLER_FLAGS = ("SHENGJI_WEIGHTED_SPLITS", "SHENGJI_UNIFORM_DEAL",
+                 "SHENGJI_PHYSICAL_FILLS")
+
+
 def preflight(args) -> tuple[dict, list[dict], list[dict]]:
     """Refuse unstable inputs before loading corpora or constructing a bot."""
     if os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
@@ -117,20 +121,68 @@ def preflight(args) -> tuple[dict, list[dict], list[dict]]:
         raise RuntimeError("pilot scoring refuses a dirty tree")
     if not 0 <= args.shard_index < args.shard_count:
         raise RuntimeError("shard index must satisfy 0 <= index < count")
+
+    # An experimental sampler flag would change the belief distribution every
+    # arm searches under, so a run with one set is not the frozen-production
+    # estimand this pilot is defined on. Refuse rather than record it.
+    live = [f for f in SAMPLER_FLAGS if os.environ.get(f)]
+    if live:
+        raise RuntimeError(
+            f"experimental sampler flag(s) set: {live}. DEV-512 scores the "
+            f"sampler production deploys; unset them.")
+
+    # Digest BEFORE parsing. Verifying after load would already have accepted
+    # whatever the file said, and the whole point is to prove the bytes are the
+    # registered artifact before anything downstream trusts them.
+    if not args.expected_states_sha256:
+        raise RuntimeError("--expected-states-sha256 is required; a run whose "
+                           "state set is not pinned cannot be aggregated with "
+                           "another shard")
+    actual = digest(args.states)
+    if actual != args.expected_states_sha256:
+        raise RuntimeError(
+            f"state artifact digest mismatch\n  expected "
+            f"{args.expected_states_sha256}\n  actual   {actual}")
+
     with open(args.states) as fh:
         spec = json.load(fh)
+
+    phase = "smoke" if args.limit else "full"
+    if phase == "full":
+        # A full DEV result must be the registered contract exactly. A smoke
+        # run is allowed to be small, but is LABELLED so the aggregator cannot
+        # pool it into a DEV verdict.
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import pilot_states as PS
+        if spec.get("side") != "dev":
+            raise RuntimeError(f"full run needs the DEV side, got "
+                               f"{spec.get('side')!r}; CALIB and REPORT are "
+                               f"untouched by selection")
+        if spec.get("replay_errors"):
+            raise RuntimeError(f"{spec['replay_errors']} replay error(s) in "
+                               f"the artifact")
+        bad = PS.check_contract(spec["states"], spec.get("requested", 512),
+                                spec.get("replay_errors", 0))
+        if bad:
+            raise RuntimeError("state artifact violates the registered "
+                               "contract: " + "; ".join(bad))
+
     experiment_states = list(spec["states"])
     if args.limit:
         experiment_states = experiment_states[:args.limit]
     states = experiment_states[args.shard_index::args.shard_count]
     if not states:
         raise RuntimeError("state shard is empty")
-    return spec, experiment_states, states
+    return spec, experiment_states, states, phase, actual
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--states", default="rl_data/pilot_states.v4.json")
+    ap.add_argument("--states", required=True,
+                    help="frozen state artifact; no default, because the old "
+                         "default named a file that does not exist")
+    ap.add_argument("--expected-states-sha256", default="",
+                    help="full sha256 of --states, compared BEFORE parsing")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--budget", type=int, default=14)
     ap.add_argument("--work", type=int, default=168)
@@ -145,7 +197,7 @@ def main() -> None:
     args = ap.parse_args()
 
     try:
-        _spec, experiment_states, states = preflight(args)
+        _spec, experiment_states, states, phase, states_sha = preflight(args)
         rows = load_rows(states)
     except (RuntimeError, OSError, ValueError) as exc:
         print(f"REFUSING: {exc}", file=sys.stderr)
@@ -156,7 +208,10 @@ def main() -> None:
     protocol = {
         "schema": RUN_SCHEMA,
         "git": git_output("rev-parse", "HEAD"), "tree_dirty": False,
-        "states_artifact": args.states, "states_sha256": digest(args.states),
+        "states_artifact": args.states, "states_sha256": states_sha,
+        "expected_states_sha256": args.expected_states_sha256,
+        "phase": phase,
+        "sampler_flags": {f: False for f in SAMPLER_FLAGS},
         "ballot": str(mc_ballot(bot)), "required_arms": list(ARMS),
         "budget": args.budget, "work_target": args.work, "band": args.band,
         "report_worlds": args.report_worlds,

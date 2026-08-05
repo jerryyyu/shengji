@@ -133,12 +133,25 @@ def validate_runs(datas: list[dict], labels: list[str] | None = None):
     for data, label in zip(datas, labels):
         problems.extend(_run_problems(data, label))
 
+    # `phase` and `sampler_flags` are cross-shard identity, not decoration:
+    # without them a `smoke` shard pools into a DEV verdict, and a shard run
+    # under an experimental sampler flag pools with shards that were not —
+    # both produce a plausible aggregate over incomparable estimands.
     common_fields = ("schema", "git", "ballot", "experiment_id",
                      "states_sha256", "required_arms", "shard_count",
                      "experiment_n_states", "budget", "work_target", "band",
                      "report_worlds", "oracle_worlds", "full_proposal_worlds",
-                     "salt")
+                     "salt", "phase", "sampler_flags")
     first = datas[0]
+    if first.get("phase") != "full":
+        problems.append(
+            f"phase is {first.get('phase')!r}, not 'full' — a smoke run must "
+            f"never aggregate as a DEV result")
+    for index, data in enumerate(datas):
+        flags = data.get("sampler_flags")
+        if flags is None or any(flags.values()):
+            problems.append(f"run-{index}: sampler flags {flags} — a scored "
+                            f"shard must record all three as false")
     for index, data in enumerate(datas[1:], 1):
         for field in common_fields:
             if data.get(field) != first.get(field):

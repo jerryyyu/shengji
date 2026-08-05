@@ -71,7 +71,7 @@ consistent with the data, not a demonstrated causal claim.
   target here, but this is a deployment decision for Jerry, not an adoption
   that follows automatically from the measurement.
 
-## N=60 vs N=30 — NO EFFECT, search width has saturated (2026-08-05)
+## N=60 vs N=30 — NO CONFIRMED ADVANTAGE (2026-08-05)
 
 Preregistered orthogonal lane on CURRENT main, one fixed block, no extension.
 
@@ -90,8 +90,15 @@ no problems reported: equal label counts, no duplicate seeds, one commit, one
 schema, zero zero-world decisions.
 
 **This is the tightest interval any block has produced today (+/-0.119) and it
-is centred on zero.** Not an underpowered null: doubling the search from 30 to
-60 worlds moves nothing measurable.
+is centred on zero.** It fails the preregistered superiority bar and bounds the
+primary effect to roughly `[-0.121, +0.117]`; it was not an equivalence test,
+so it does not prove zero effect or saturation.
+
+The evaluator also omitted `MCBot.rejected_worlds` from its per-game counters.
+The records therefore cannot prove that every nominal N=60/N=30 search
+accepted exactly 60/30 worlds. This remains a valid comparison of the two
+`f506a7e` policies as actually run, but not an exact accepted-world dose audit.
+Future dose claims must record and gate rejected proposals.
 
 **The dose curve, assembled:**
 
@@ -99,23 +106,25 @@ is centred on zero.** Not an underpowered null: doubling the search from 30 to
 |---|---|
 | N=5 -> N=10 | large, -0.347 +/- 0.145 for N=5 (two independent blocks) |
 | N=10 -> N=30 | +0.262 +/- 0.154 CONFIRMED (pinned to `e3aeec1`) |
-| N=30 -> N=60 | **-0.002 +/- 0.119, nothing** |
+| N=30 -> N=60 | **-0.002 +/- 0.119, no confirmed gain** |
 
-So determinization count is exhausted as a lever somewhere between 30 and 60.
-Whatever remains is in WHICH actions get priced and HOW worlds are sampled, not
-in how many worlds. That is the same conclusion the coverage work reached from
-the other direction, now with a hard upper bound attached.
+The evidence does not justify more production search dose above N=30 as the
+next lever. WHICH actions get priced and HOW worlds are sampled are better
+current hypotheses. That is a priority decision from a tight null-centred
+interval, not proof that determinization count is exhausted.
 
-Practical consequence: there is no reason to consider N>30 in production, and
+Practical consequence: there is no measured reason to promote N>30, and
 `mc-strong` at N=30 remains the strongest verified policy — still pinned to
 `e3aeec1`, still undeployed, still needing a fresh frozen-current confirmation
 before promotion.
 
 ## Current synthesis — 2026-08-04 22:15
 
-- **Search width is exhausted as a lever.** N=5->N=10 large, N=10->N=30
-  +0.262 +/- 0.154 confirmed, N=30->N=60 **-0.002 +/- 0.119 on current main**.
-  Do not consider N>30.
+- **More search width is not the next lever.** N=5->N=10 was large,
+  N=10->N=30 was +0.262 +/- 0.154 confirmed, and N=30->N=60 was
+  **-0.002 +/- 0.119 on current main**. That last block found no advantage but
+  did not test equivalence; do not repeat it without a new mechanism and full
+  accepted/rejected-world accounting.
 - **Strength incumbent:** `mc-strong` (N=30) beat deployed N=10 `mc` by
   +0.262 +/- 0.154 on 504 preregistered fresh clusters, null control
   -0.048 +/- 0.162, independently reproduced by Codex. **That result is pinned

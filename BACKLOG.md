@@ -8,16 +8,20 @@ view is a summary, not a replacement.
 
 ### NOW (ready, not yet running)
 
-The N=60-versus-N=30 block is closed with no effect (`-0.002 +/- 0.119`), so
-do not spend more compute on search dose above N=30. Gate 3 raw capture is
+The N=60-versus-N=30 block is closed with no confirmed advantage
+(`-0.002 +/- 0.119`); it was a superiority test, not proof of equivalence or
+saturation, and omitted rejected-world accounting. Do not repeat it without a
+new mechanism. Gate 3 raw capture is
 complete and independently validated: 768 unique/replayed rows, 256 per split,
 all 48 split/trick/role cells exactly 16, and zero accepted-path counters,
 errors, or values. The provisional DEV-512 and CALIB-512 v2 files also pass a
 1,024-state replay/count/disjointness audit, but the freeze gate is **not yet
 closed**: candidate-size stratification is recorded but not enforced, the JSON
 artifacts are ignored/unversioned, and the freezer has no fail-closed contract
-tests. **Pilot scoring remains 0/512.** Posterior distribution fidelity remains
-P1 and still limits value calibration, not legality/support.
+tests. **Pilot scoring remains 0/512.** Before the expensive score run, add the
+missing rejected-world evaluator counter and run the cheap exact-toy posterior
+fidelity probe: common folds reduce variance between arms but cannot remove a
+shared sampling bias in their action values.
 
 ### NEXT (highest value first)
 

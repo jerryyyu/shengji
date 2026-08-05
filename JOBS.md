@@ -50,13 +50,15 @@ remains 0/512.
 
 ## RECENTLY FINISHED
 
-### N=60 vs N=30 dose test — NO EFFECT, closed 2026-08-04 23:46
+### N=60 vs N=30 dose test — NO CONFIRMED ADVANTAGE, closed 2026-08-04 23:46
 - Primary N=60-minus-N=30 paired utility **-0.002 +/- 0.119** over 504 fresh
   clusters; N=60-minus-null +0.004 +/- 0.129; null-minus-N=30
-  +0.006 +/- 0.135. Every interval includes zero.
-- One preregistered block, strict sampling, no extension. Search dose has
-  saturated by N=30 on this executable; do not allocate more fleet compute to
-  N>30 without a materially different search/ballot hypothesis.
+  **-0.006 +/- 0.134**. Every interval includes zero.
+- One preregistered superiority block, no extension. This does not prove
+  equivalence or saturation. The evaluator omitted rejected-world accounting,
+  so interpret it as the two policies as run, not guaranteed exact accepted
+  N=60/N=30 dose. Do not repeat without a materially different hypothesis and
+  repaired counters.
 
 ### N=30 confirmation — CONFIRMED, closed 2026-08-04 23:40
 - **+0.262 +/- 0.154** vs N=10 over 504 preregistered clusters (seeds 99M);

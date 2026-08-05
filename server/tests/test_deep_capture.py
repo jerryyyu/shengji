@@ -115,3 +115,20 @@ def test_global_merge_reports_exact_cell_shortage():
     rows = [{"seed": 1, "split": cell[0], "trick": cell[1], "role": cell[2]}]
     _, shortages = cap.select_candidates(rows, {cell}, 4)
     assert shortages == {"report/19/defender": 3}
+
+
+def test_preplay_groups_partition_cells_without_duplicate_deal_work():
+    cells = cap.all_cells()
+    assignments = [cap.owned_cells(cells, index, 8) for index in range(8)]
+    assert set().union(*assignments) == cells
+    assert sum(len(group) for group in assignments) == len(cells)
+    for left in range(8):
+        for right in range(left + 1, 8):
+            assert assignments[left].isdisjoint(assignments[right])
+    # Role is deliberately paired on one owner because it is unknown pre-play.
+    for split, trick in cap.GROUPS:
+        owners = {cap.group_owner(split, trick, 8)}
+        assert len(owners) == 1
+        owner = owners.pop()
+        assert (split, trick, "attacker") in assignments[owner]
+        assert (split, trick, "defender") in assignments[owner]

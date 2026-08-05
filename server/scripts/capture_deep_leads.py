@@ -2,10 +2,11 @@
 
 The real artifact is 3 splits x tricks 12..19 x two leader roles x 16 rows.
 Split and target trick are hash-derived before play; role is observed at the
-assigned target and never steered.  Capture shards use disjoint seed residues,
-retain their first 16 candidates per cell, and scan a fixed exclusive ceiling.
-The merge sorts the union by seed and takes the global first 16, so worker
-completion order cannot select the corpus.
+assigned target and never steered.  The 24 pre-play (split, trick) groups are
+partitioned across workers, so a deal is simulated by at most one worker and
+each worker sees its groups' seeds in global ascending order.  The merge still
+sorts by seed and takes the first 16, so worker completion order cannot select
+the corpus without making every shard over-capture every cell.
 
 Capture one shard (repeat for every index):
 
@@ -43,6 +44,7 @@ from shengji.state_replay import (DEEP_LEAD_STATE_SCHEMA,      # noqa: E402
 SPLITS = ("dev", "calib", "report")
 TRICKS = tuple(range(12, 20))
 ROLES = ("attacker", "defender")
+GROUPS = tuple((split, trick) for split in SPLITS for trick in TRICKS)
 PER_CELL = 16
 SEED0 = 92_000_000
 MAX_SEEDS = 60_000                 # exclusive: seed0 <= seed < seed0 + n
@@ -79,6 +81,17 @@ def cell_name(cell: tuple[str, int, str]) -> str:
 def all_cells() -> set[tuple[str, int, str]]:
     return {(split, trick, role) for split in SPLITS for trick in TRICKS
             for role in ROLES}
+
+
+def group_owner(split: str, trick: int, shard_count: int) -> int:
+    """Worker owning a group known before play; roles cannot be steered."""
+    return GROUPS.index((split, trick)) % shard_count
+
+
+def owned_cells(cells: set[tuple[str, int, str]], shard_index: int,
+                shard_count: int) -> set[tuple[str, int, str]]:
+    return {cell for cell in cells
+            if group_owner(cell[0], cell[1], shard_count) == shard_index}
 
 
 def parse_cells(values: list[str]) -> set[tuple[str, int, str]]:
@@ -247,6 +260,7 @@ def config_for(args, cells) -> dict:
         "cells": sorted(cell_name(c) for c in cells),
         "actor_seed_formula": "deal_seed * 4 + seat",
         "split_target_stream": "sha256(salt|deal|seed)",
+        "sharding": "preplay_(split,trick)_group_mod_shard_count",
         "report_frozen": True, "smoke": args.smoke,
     }
 
@@ -257,6 +271,8 @@ def capture(args) -> int:
                                per_cell=args.per_cell)
     if not 0 <= args.shard_index < args.shard_count:
         raise RuntimeError("shard index must satisfy 0 <= index < count")
+    if args.shard_count > len(GROUPS):
+        raise RuntimeError(f"shard count exceeds the {len(GROUPS)} pre-play groups")
     out = shard_path(args.out, args.shard_index, args.shard_count)
     partial = out + ".partial"
     mpath = manifest_path(out)
@@ -269,7 +285,8 @@ def capture(args) -> int:
     digests = source_digests()
     from shengji.engine.ballot import mc_ballot
     ballot = str(mc_ballot(make_bot(args.bot, seed=1)))
-    kept: dict[tuple[str, int, str], int] = {cell: 0 for cell in cells}
+    mine = owned_cells(cells, args.shard_index, args.shard_count)
+    kept: dict[tuple[str, int, str], int] = {cell: 0 for cell in mine}
     reject_reasons = Counter()
     sampler_totals = Counter()
     sampler_causes = Counter()
@@ -277,15 +294,14 @@ def capture(args) -> int:
     last_seed = None
 
     with open(partial, "x") as fh:
-        for seed in range(args.seed0 + args.shard_index,
-                          args.seed0 + args.max_seeds, args.shard_count):
+        for seed in range(args.seed0, args.seed0 + args.max_seeds):
             scanned += 1
             last_seed = seed
             split, target = cell_targets(seed, args.salt)
             possible = [(split, target, role) for role in ROLES
-                        if (split, target, role) in cells]
+                        if (split, target, role) in mine]
             if not possible:
-                reject_reasons["unassigned_preplay_cell"] += 1
+                reject_reasons["not_owned_preplay_group"] += 1
                 continue
             if all(kept[cell] >= args.per_cell for cell in possible):
                 reject_reasons["local_cell_cap"] += 1
@@ -334,7 +350,8 @@ def capture(args) -> int:
         "schema": SHARD_SCHEMA, **runtime, "config": config,
         "source_digests": digests, "ballot": ballot,
         "shard_index": args.shard_index, "shard_count": args.shard_count,
-        "seed_residue": args.shard_index, "scan_complete": True,
+        "owned_cells": sorted(cell_name(cell) for cell in mine),
+        "scan_complete": True,
         "stopped": ("local_cell_cap" if all(n >= args.per_cell for n in kept.values())
                     else "exclusive_seed_ceiling"),
         "scanned_seeds": scanned, "played_deals": played,
@@ -342,7 +359,10 @@ def capture(args) -> int:
         "records_sha256": sha256_file(partial),
         "cell_candidates": {cell_name(c): kept[c] for c in sorted(kept)},
         "reject_reasons": dict(sorted(reject_reasons.items())),
-        "sampler_counters": dict(sampler_totals),
+        "sampler_counters": {name: int(sampler_totals[name])
+                             for name in ("zero_world_decisions",
+                                          "rejected_worlds",
+                                          "impossible_worlds")},
         "sampler_reject_causes": dict(sorted(sampler_causes.items())),
         "illegal_actions": 0, "engine_errors": 0, "scored_values": 0,
     }
@@ -383,6 +403,10 @@ def validate_shard(manifest: dict, rows: list[dict], args, index: int,
         problems.append(f"shard {index}: schema")
     if manifest.get("shard_index") != index or manifest.get("shard_count") != args.shard_count:
         problems.append(f"shard {index}: identity")
+    expected_owned = sorted(cell_name(cell) for cell in owned_cells(
+        set(parse_cells(args.only_cell)), index, args.shard_count))
+    if manifest.get("owned_cells") != expected_owned:
+        problems.append(f"shard {index}: cell ownership")
     if manifest.get("config") != expected_config:
         problems.append(f"shard {index}: config drift")
     for key in ("git", "tree_dirty", "fast_engine", "require_voids"):
@@ -405,8 +429,8 @@ def validate_shard(manifest: dict, rows: list[dict], args, index: int,
         if set(row) != allowed or row.get("schema") != DEEP_LEAD_STATE_SCHEMA:
             problems.append(f"shard {index}: non-raw or wrong-schema row")
             break
-        if (row["seed"] - args.seed0) % args.shard_count != index:
-            problems.append(f"shard {index}: seed outside residue")
+        if group_owner(row["split"], row["trick"], args.shard_count) != index:
+            problems.append(f"shard {index}: row outside owned pre-play group")
             break
         if (row["split"], row["trick"]) != cell_targets(row["seed"], args.salt):
             problems.append(f"shard {index}: post-hoc cell")
@@ -418,6 +442,8 @@ def merge(args) -> int:
     cells = parse_cells(args.only_cell)
     runtime = runtime_contract(smoke=args.smoke, bot=args.bot,
                                per_cell=args.per_cell)
+    if args.shard_count > len(GROUPS):
+        raise RuntimeError(f"shard count exceeds the {len(GROUPS)} pre-play groups")
     config = config_for(args, cells)
     final_manifest = manifest_path(args.out)
     final_split = split_path(args.out)
@@ -450,6 +476,11 @@ def merge(args) -> int:
     seeds = [row["seed"] for row in rows]
     if len(seeds) != len(set(seeds)):
         problems.append("duplicate deal seed across shards")
+    declared_owners = [cell for manifest in manifests
+                       for cell in manifest.get("owned_cells", [])]
+    expected_owners = sorted(cell_name(cell) for cell in cells)
+    if sorted(declared_owners) != expected_owners:
+        problems.append("owned cells do not partition the target cells exactly")
     if problems:
         raise RuntimeError("merge refused: " + "; ".join(problems))
 

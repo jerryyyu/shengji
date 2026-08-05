@@ -53,8 +53,11 @@ from shengji.pilot_score import (choose_action, oracle_reference,  # noqa: E402
 SOURCES = {"original": "rl_data/highn_corpus_all.jsonl",
            "late": "rl_data/highn_late_air.jsonl",
            "deep": "rl_data/deep_leads.v1.jsonl"}
-#: arms held to the equal-work band. `full_universe` is exempt by design.
-EQUAL_WORK_ARMS = tuple(a for a in ARMS if a != "full_universe")
+#: arms held to the equal-work band. `full_universe` is exempt by design (it is
+#: the upper-bound arm) and `mc_more` is budgeted against full_universe's work
+#: instead, since at the band it degenerates into `current`.
+EQUAL_WORK_ARMS = tuple(a for a in ARMS
+                        if a not in ("full_universe", "mc_more"))
 
 
 def digest(path):
@@ -144,10 +147,22 @@ def main() -> None:
         ballots = {a: propose(a, bot, rnd, seat, budget=args.budget,
                               seed=arm_seed, state_key=key)
                    for a in ARMS}
-        # proposal worlds sized per arm for EQUAL WORK; report/oracle common
+        # proposal worlds sized per arm for EQUAL WORK; report/oracle common.
+        #
+        # `mc_more` is the exception in the OTHER direction. At equal work with
+        # the deployed ballot it IS `current` — the smoke run reported
+        # mc_more - current = +0.000 +/- 0.000, which is proof the control was
+        # degenerate rather than evidence of a tie. Its question is "if the
+        # deployed ballot were given the compute the WIDE arm spends, would it
+        # do as well?", so it is budgeted against full_universe's work, not the
+        # band. BALLOT_PLAN: "all extra proposal compute moved into more
+        # worlds".
         prop_worlds = {a: (args.report_worlds if a == "full_universe"
                            else worlds_for_equal_work(args.work, len(ballots[a])))
                        for a in ARMS}
+        wide_work = len(ballots["full_universe"]) * prop_worlds["full_universe"]
+        prop_worlds["mc_more"] = worlds_for_equal_work(
+            wide_work, len(ballots["mc_more"]))
         counts = {"proposal": max(prop_worlds.values()),
                   "oracle": args.oracle_worlds, "report": args.report_worlds}
         fw = draw_folds(bot, rnd, seat, mem, counts, salt=args.salt,
@@ -170,7 +185,11 @@ def main() -> None:
                               "tractor_locked": got["tractor_locked"],
                               "work": got["candidate_world_rollouts"],
                               "proposal_worlds": len(worlds)}
-            if a in EQUAL_WORK_ARMS and not got["tractor_locked"]:
+            if a == "mc_more" and not got["tractor_locked"]:
+                w = got["candidate_world_rollouts"]
+                if abs(w - wide_work) > args.band * wide_work:
+                    work_violations.append((key, a, w))
+            elif a in EQUAL_WORK_ARMS and not got["tractor_locked"]:
                 w = got["candidate_world_rollouts"]
                 if abs(w - args.work) > args.band * args.work:
                     work_violations.append((key, a, w))

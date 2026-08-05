@@ -57,6 +57,99 @@ SOURCES = [
 #: Registered composition per Codex: 512 = 170 early + 171 mid + 171 late.
 BAND_QUOTA = {"early": 170, "mid": 171, "late": 171}
 
+#: REGISTERED candidate-size allocation, identical for DEV and CALIB.
+#: These are the rounded pooled midpoint of the already-visible v3 metadata
+#: (Codex); no action values or outcomes were inspected to derive them. They
+#: are deliberately NOT even across bands: candidate count is close to
+#: determined by depth, so late leads cannot supply `wide` at all and early
+#: leads barely supply `small`. A census of the DEV corpus confirms every cell
+#: below is satisfiable (late/wide needs 0 and 0 exist; early/small needs 0 and
+#: 5 exist), whereas an even 56/57/57 split is infeasible in three cells.
+SIZE_QUOTA = {
+    "early": {"small": 0,   "med": 72,  "wide": 98},
+    "mid":   {"small": 11,  "med": 131, "wide": 29},
+    "late":  {"small": 152, "med": 19,  "wide": 0},
+}
+
+#: REGISTERED role marginals per band. Exact band-level marginals, not
+#: role-by-size cells — inventing joint targets would be a post-hoc stratum.
+ROLE_QUOTA = {
+    "early": {"attacker": 85, "defender": 85},
+    "mid":   {"attacker": 86, "defender": 85},
+    "late":  {"attacker": 86, "defender": 85},
+}
+
+
+def size_of(row) -> str:
+    return row["stratum"].split("/")[-1]
+
+
+def publish_or_refuse(payload, out, tmp, violations):
+    """Write the artifact, or refuse and leave NOTHING behind.
+
+    Separated from `main` so the refusal is callable in a test. The failure
+    this closes is specific: a shortage used to be recorded in a payload field
+    and written anyway, exiting 0, which is indistinguishable from a complete
+    freeze at the point of use. The temp file is removed too — a half-written
+    `.tmp` beside the target is how a later run gets promoted by accident.
+    """
+    if violations:
+        print("REFUSING to publish — contract violated:")
+        for v in violations:
+            print(f"  - {v}")
+        print("Nothing written. A short or unbalanced gate set must FAIL, not "
+              "be published with its shortfall recorded in a field nobody "
+              "reads at the point of use.")
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise SystemExit(4)
+    with open(tmp, "w") as fh:
+        json.dump(payload, fh, indent=1)
+    os.replace(tmp, out)
+    return out
+
+
+def check_contract(picked, requested, errors, *, band_quota=None,
+                   size_quota=None, role_quota=None):
+    """Every way this freeze can be WRONG, as a list of violations.
+
+    Split out from the writer so it is callable — and therefore testable —
+    without running a full selection. The previous code enforced nothing here:
+    when a band ran out of deals the fill loop simply exited, the payload was
+    written with fewer states than requested, and the process exited 0. A short
+    artifact that reports its own shortness in a field nobody reads is
+    indistinguishable from a complete one at the point of use.
+    """
+    band_quota = BAND_QUOTA if band_quota is None else band_quota
+    size_quota = SIZE_QUOTA if size_quota is None else size_quota
+    bad = []
+    if errors:
+        bad.append(f"{errors} replay error(s): a state that does not replay "
+                   f"cannot be scored, so the set is not usable")
+    if len(picked) != requested:
+        bad.append(f"selected {len(picked)}, requested {requested}")
+    for b, want in band_quota.items():
+        got = sum(1 for p in picked if p["band"] == b)
+        if got != want:
+            bad.append(f"band {b}: {got} selected, quota {want}")
+    for b, wants in size_quota.items():
+        have = Counter(p["stratum"].split("/")[-1]
+                       for p in picked if p["band"] == b)
+        for size, want in wants.items():
+            if have.get(size, 0) != want:
+                bad.append(f"band {b} size {size}: {have.get(size, 0)} "
+                           f"selected, quota {want}")
+    for b, wants in (ROLE_QUOTA if role_quota is None else role_quota).items():
+        have = Counter(p.get("role") for p in picked if p["band"] == b)
+        for role, want in wants.items():
+            if have.get(role, 0) != want:
+                bad.append(f"band {b} role {role}: {have.get(role, 0)} "
+                           f"selected, quota {want}")
+    seeds = [p["seed"] for p in picked]
+    if len(seeds) != len(set(seeds)):
+        bad.append("duplicate deal seeds: one-state-per-deal violated")
+    return bad
+
 
 def dirty_at_start() -> bool:
     return bool(subprocess.run(["git", "status", "--porcelain"],
@@ -122,19 +215,29 @@ def main() -> None:
     ap.add_argument("--n", type=int, default=512)
     ap.add_argument("--out", default="rl_data/pilot_states.v1.json")
     ap.add_argument("--salt", default="pilot-v1")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="select and report contract compliance; write nothing")
+    ap.add_argument("--census", action="store_true",
+                    help="report (band,size) availability and exit without "
+                         "writing; answers whether a size quota is feasible")
     ap.add_argument("--side", default="dev", choices=("dev", "calib"),
                     help="REPORT is never selectable here: it is reserved for a "
                          "single preregistered audit and must not be inspected "
                          "during design.")
     args = ap.parse_args()
 
-    if dirty_at_start():
+    if args.n != 512:
+        print(f"REFUSING: --n {args.n}. The registered band/size/role quotas "
+              f"are a 512-STATE CONTRACT (170/171/171); any other n would "
+              f"satisfy no declared allocation.")
+        sys.exit(3)
+    if not (args.census or args.dry_run) and dirty_at_start():
         print("REFUSING: the tree is dirty. A frozen artifact from a dirty "
               "tree cannot be tied to the code that produced it — the previous "
               "version recorded tree_dirty=true and was not promotion-grade "
               "(Codex). Commit first.")
         sys.exit(3)
-    if os.path.exists(args.out):
+    if not (args.census or args.dry_run) and os.path.exists(args.out):
         print(f"REFUSING: {args.out} exists. A frozen pilot set is never "
               f"redrawn in place — a set reselected after seeing results is "
               f"not a set, it is a knob. Use a new --out and --salt.")
@@ -205,46 +308,101 @@ def main() -> None:
         rng.shuffle(v)
 
     picked, used_deals = [], set()
-    # Fill each band to its REGISTERED quota, alternating leader role inside the
-    # band so a band is not silently all-attacker. Deal-disjointness across DEV
-    # and CALIB is guaranteed upstream by the immutable splits.
-    want_role = {b: 0 for b in BANDS}
+    if getattr(args, "census", False):
+        # Availability BEFORE selection. Whether a predeclared size quota is
+        # satisfiable at all is a property of the corpus, not of the selector,
+        # and guessing a quota that the corpus cannot supply would make the
+        # freezer refuse forever. Reports and exits without writing.
+        cens = defaultdict(Counter)
+        for seed, rows in by_deal.items():
+            bands = {r["band"] for r in rows}
+            for r in rows:
+                cens[r["band"]][r["stratum"].split("/")[-1]] += 1
+        deals = defaultdict(Counter)
+        for seed, rows in by_deal.items():
+            for b in {r["band"] for r in rows}:
+                sizes = {r["stratum"].split("/")[-1]
+                         for r in rows if r["band"] == b}
+                for sz in sizes:
+                    deals[b][sz] += 1
+        print(f"CENSUS side={args.side}  deals={len(by_deal)}  "
+              f"replay_errors={errors}")
+        print(f"  {'band':6} {'quota':>6} | rows small/med/wide | "
+              f"DEALS able to supply small/med/wide")
+        for b in ("early", "mid", "late"):
+            q = BAND_QUOTA.get(b, 0)
+            print(f"  {b:6} {q:>6} | "
+                  f"{cens[b]['small']:5d}/{cens[b]['med']:5d}/"
+                  f"{cens[b]['wide']:5d} | "
+                  f"{deals[b]['small']:5d}/{deals[b]['med']:5d}/"
+                  f"{deals[b]['wide']:5d}")
+        print("\n  DEALS is the binding column: one state per deal, so a band "
+              "can only fill a size bucket from distinct deals able to supply "
+              "it.")
+        short = [(b, sz, deals[b][sz], w)
+                 for b, ws in SIZE_QUOTA.items() for sz, w in ws.items()
+                 if deals[b][sz] < w]
+        if short:
+            print("  INFEASIBLE cells for the current SIZE_QUOTA:")
+            for b, sz, have, want in short:
+                print(f"    {b}/{sz}: {have} deals available, quota {want}")
+        else:
+            print("  current SIZE_QUOTA is satisfiable on availability")
+        sys.exit(0)
+
+    # Fill each band by chasing the LIVE (size, role) deficit.
+    #
+    # The previous selector chose a deal first — by role, first-fit — and only
+    # then picked the least-held size among that deal's rows. Size therefore
+    # never influenced WHICH deal was taken, so the size stratum was recorded
+    # rather than enforced and the v3 sets came out with 0 early/small and 151
+    # late/small (Codex). Here the scarcest unmet size cell selects the deal.
+    #
+    # Scarcity, not need, drives the order: a cell with 19 needed from 33
+    # available must be served before one needing 98 from 2346, or the deals
+    # that could have satisfied it get consumed by the abundant cell first.
+    need_size = {b: dict(SIZE_QUOTA.get(b, {})) for b in BANDS}
+    need_role = {b: dict(ROLE_QUOTA.get(b, {})) for b in BANDS}
+
+    supply = defaultdict(lambda: defaultdict(list))   # band -> size -> [seed]
+    for seed, rows in by_deal.items():
+        for r in rows:
+            supply[r["band"]][size_of(r)].append(seed)
+
     for b in BANDS:
-        quota = BAND_QUOTA.get(b, 0)
-        while len([p for p in picked if p["band"] == b]) < quota and deals_for[b]:
-            target = ("attacker", "defender")[want_role[b] % 2]
-            chosen = None
-            for pos, seed in enumerate(deals_for[b]):
-                if seed in used_deals:
-                    continue
-                opts = [r for r in by_deal[seed]
-                        if r["band"] == b and r.get("role", target) == target]
-                if opts:
-                    chosen = (pos, seed, opts)
-                    break
-            if chosen is None:      # role exhausted; take any remaining deal
-                for pos, seed in enumerate(deals_for[b]):
-                    if seed in used_deals:
-                        continue
-                    opts = [r for r in by_deal[seed] if r["band"] == b]
-                    if opts:
-                        chosen = (pos, seed, opts)
-                        break
-            if chosen is None:
+        while sum(need_size[b].values()) > 0:
+            live = {sz: [d for d in supply[b][sz] if d not in used_deals]
+                    for sz, n in need_size[b].items() if n > 0}
+            if not live:
                 break
-            pos, seed, opts = chosen
-            deals_for[b].pop(pos)
+            # slack = how many spare deals this cell has; smallest slack first
+            sz = min(live, key=lambda z: (len(live[z]) - need_size[b][z], z))
+            if len(live[sz]) < need_size[b][sz]:
+                break                      # unsatisfiable; contract will refuse
+            short_roles = [r for r, n in need_role[b].items() if n > 0]
+            chosen = None
+            for seed in live[sz]:
+                rows = [r for r in by_deal[seed]
+                        if r["band"] == b and size_of(r) == sz]
+                pref = [r for r in rows if r.get("role") in short_roles]
+                if pref:
+                    chosen = (seed, sorted(
+                        pref, key=lambda d: (d["tricks"], d["ply"],
+                                             d["seat"]))[0])
+                    break
+            if chosen is None:
+                seed = live[sz][0]
+                rows = sorted((r for r in by_deal[seed]
+                               if r["band"] == b and size_of(r) == sz),
+                              key=lambda d: (d["tricks"], d["ply"], d["seat"]))
+                chosen = (seed, rows[0])
+            seed, row = chosen
             used_deals.add(seed)
-            # Secondary balance: candidate-size stratum. Recording the stratum
-            # without enforcing it left ballot size free to drift with whatever
-            # the deals happened to supply (Codex). Prefer the size bucket this
-            # band currently holds least of.
-            have = Counter(p["stratum"].split("/")[-1] for p in picked
-                           if p["band"] == b)
-            opts.sort(key=lambda d: (have[d["stratum"].split("/")[-1]],
-                                     d["tricks"], d["ply"], d["seat"]))
-            picked.append(opts[0])
-            want_role[b] += 1
+            picked.append(row)
+            need_size[b][sz] -= 1
+            if row.get("role") in need_role[b]:
+                need_role[b][row["role"]] -= 1
+
     skipped_dupe = sum(len(v) for v in by_deal.values()) - len(picked)
 
     sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
@@ -281,9 +439,21 @@ def main() -> None:
         "states": picked,
     }
     tmp = args.out + ".tmp"
-    with open(tmp, "w") as fh:
-        json.dump(payload, fh, indent=1)
-    os.replace(tmp, args.out)
+    violations = check_contract(picked, args.n, errors)
+    if getattr(args, "dry_run", False):
+        print(f"DRY RUN side={args.side}  picked={len(picked)}  "
+              f"replay_errors={errors}")
+        for b in BANDS:
+            sz = Counter(size_of(p) for p in picked if p["band"] == b)
+            ro = Counter(p.get("role") for p in picked if p["band"] == b)
+            print(f"  {b:6} n={sum(1 for p in picked if p['band']==b):3d} "
+                  f"size {dict(sz)}  role {dict(ro)}")
+        print(f"  contract violations: {len(violations)}")
+        for v in violations:
+            print(f"   - {v}")
+        sys.exit(0 if not violations else 5)
+
+    publish_or_refuse(payload, args.out, tmp, violations)
 
     print(f"selected {len(picked)} / {args.n} lead states, DEV only, "
           f"one per deal")

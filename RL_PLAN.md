@@ -201,7 +201,7 @@ result.
 | Did v10res test residual learning? | **No.** It was a near-no-op with a train/play ballot mismatch; v11pair is the corrected test. | 1h, 1i |
 | Is selective v11-gated MC ready? | **No.** T2 did not earn confirmation; the later T3 runner was invalid and halted. | 1l, 1m |
 | Does the banker knowing its own burial help? | **No measurable effect** — 49.7%, CI [44.0, 55.3] | 1g, AI_POLICIES |
-| Does rollout-policy strength matter? | **No** — tied twice, second time with a 93-Elo-stronger roller | AI_POLICIES |
+| Does rollout-policy strength matter? | **Not shown to** — two FAILED SUPERIORITY tests (tied twice, second with a 93-Elo-stronger roller). Neither established equivalence, so this is "no continuation has been shown stronger", NOT "strength is known not to matter" | AI_POLICIES |
 | Did DMC2 disprove Suphx/DouZero-style self-play? | **No.** The defender oracle sign is wrong, the “oracle guiding” mechanism is different from Suphx, and the warm-started residual/dueling recipe is not a faithful DouZero baseline. | literature/DMC2 audit above |
 
 **The through-line:** changing rollout or leaf evaluation has not improved MC;

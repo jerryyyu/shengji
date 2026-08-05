@@ -57,71 +57,45 @@ reference and twelve disjoint report worlds score every chosen action.
 This is an offline lead-decision experiment. It can select a ballot design for
 CALIB; it cannot by itself establish full-game strength or deployment.
 
-## PROPOSED v2 — item 4 continuation robustness (HOLD; revised per 14:49)
+## PROPOSED v3 — item 4 continuation robustness (HOLD; revised per 15:55)
 
-Not launched. Four errors in v1 are corrected below rather than argued.
+Not launched. The v2 gate was on the WRONG quantity; corrected below.
 
-**Correction 1 — I repeated the superiority/equivalence error.** I wrote that
-the strength form was "largely answered against us" because `mc-smartroll` tied
-twice. Those are FAILED SUPERIORITY tests; they are not equivalence evidence.
-The right statement is that no continuation has been shown stronger, not that
-continuation strength is known not to matter.
+**The gate now sits on RAW disagreement.** v2 put the 0.05 bound on
+control-subtracted EXCESS disagreement. Codex's counterexample kills that: 20%
+raw disagreement minus an 18% incumbent-resample rate passes a 5% excess bound
+while ONE ACTION IN FIVE still changes when only the continuation changes. The
+question is raw shared-world action stability, so:
 
-**Correction 2 — a common continuation is not a confounder.** I claimed DEV's
-SELECT NONE and the N=60 null were "confounded" by an unregistered continuation.
-Wrong: a continuation held common across arms DEFINES the conditional estimand.
-Instability would show limited TRANSPORT or an interaction — it would not
-invalidate either contrast. The revised claim is scoped accordingly.
+- **PRIMARY gate:** upper 95% bound of RAW disagreement vs the incumbent
+  < 0.05, for every portfolio member.
+- **SECONDARY, attribution only:** excess over an incumbent-resample control at
+  the same world count, to say how much of any instability is continuation
+  rather than Monte Carlo noise. It no longer gates anything.
 
-**Correction 3 — plain argmax is the wrong decision rule** for a claim about
-shipped MC. The measured decision must apply deployed semantics: `MARGIN` /
-`LEAD_MARGIN`, `POINT_SHY_EPS`, and candidate-0 protection, via
-`choose_action`. Plain argmax measures a policy nobody runs.
+**Three specifications v2 left undefined:**
 
-**Correction 4 — this cannot strengthen N=30/N=60.** A 12-world, lead-only
-assay says nothing about a full-game dose result. That needs a separate
-continuation-by-dose design, which I am NOT proposing here.
+- **Independent oracle-selection fold.** The regret reference must be chosen on
+  its OWN fold, never on the report worlds. Selecting the best action on report
+  worlds restores the same-world maximum bias that invalidated the original
+  high-N labels. Folds: `proposal` (selection), `oracle` (reference selection),
+  `report` (scoring), mutually disjoint — the existing `draw_folds` machinery
+  already provides exactly this.
+- **Exact report-world count:** 12 report worlds per state, matching the
+  registered pilot budget, declared before any run.
+- **CI procedure:** per-state disagreement indicator, one state = one cluster =
+  one deal; mean over states; 95% interval from the state-level clustered
+  standard error, reported as an upper bound for the gate.
 
-### Registered claim, scoped
+**Unchanged from v2:** portfolio (heuristic, SmartBot, smart-trumpdrain,
+smart-feedtrump); deployed `choose_action` semantics with ties resolved by that
+rule; fresh frozen primary from UNSELECTED DEV-split deals with DEV-512 only as
+a labelled post-hoc secondary; CALIB and REPORT sealed.
 
-Does the DEPLOYED lead decision change when only the continuation policy
-changes, holding worlds fixed? Nothing more.
-
-### Preregistration
-
-- **Portfolio** (behaviourally divergent, not strength-ordered): incumbent
-  `HeuristicBot`, `SmartBot`, `smart-trumpdrain`, `smart-feedtrump`.
-- **States — fresh frozen primary.** The DEV split holds 4,354 deals and
-  DEV-512 consumed 512, so freeze a new-salt 512-state set from DEV-split deals
-  NOT selected into v6. That is genuinely fresh, keeps CALIB and REPORT sealed,
-  and reuses the proven freezer. **DEV-512 is a POST-HOC SECONDARY audit only**,
-  labelled as such.
-- **Worlds:** shared across continuations within a state; proposal worlds for
-  selection, DISJOINT report worlds for scoring.
-- **Decision rule:** `choose_action` with deployed `MARGIN`/`POINT_SHY_EPS`/
-  candidate-0. **Tie rule:** ties are resolved BY the deployed rule; agreement
-  is measured on the final chosen action, never on a raw value ordering.
-- **Primary:** continuation-attributable excess disagreement = (disagreement of
-  continuation c vs incumbent) minus (disagreement of an INCUMBENT-RESAMPLE
-  control at the same world count). One state = one cluster = one deal;
-  aggregate at state level; 95% CI clustered by state.
-- **Equivalence bound, numeric and preregistered:** claim stability only if the
-  UPPER 95% bound of excess disagreement is **below 0.05** for every portfolio
-  member. Above 0.05 -> report limited transport, not invalidation. A point
-  estimate near zero with a wide interval is NOT stability — that is the
-  N=60 mistake and I will not repeat it.
-- **Regret:** under a NAMED continuation-specific reference — for continuation
-  c, the best action under c — evaluated on the disjoint report worlds.
-- **Cost, including the controls I omitted in v1:** 4 continuations + 1
-  incumbent-resample control = 5 selection passes, plus report passes, over
-  ~512 states x ~7 candidates x 12 worlds. SmartBot-family rollouts are ~5x
-  slower, so budget the run by wall clock rather than by world count.
-
-### Open for you
-
-Whether a fresh freeze from unused DEV-split deals is acceptable as the
-confirmatory primary, or whether this should wait entirely. I am not launching,
-and I am not freezing anything, until this is registered or rejected.
+**Still my recommendation to REJECT rather than run.** Its best outcome tightens
+the interpretation of results we already hold without moving the RL-beats-MC
+goal. I have specified it properly so the decision is on merit, not on an
+under-specified design.
 
 ## Resolved and pruned
 

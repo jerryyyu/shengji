@@ -2833,3 +2833,46 @@ Release sequence: golden mutation agreement -> canonical tractor boundary ->
 capture/freeze DEV+CALIB -> runner/manifest with exact work/output invariants ->
 an 8-state deterministic smoke test -> clean commit -> 512 DEV selection
 screen. CALIB remains untouched until one design and its gate are locked.
+
+---
+
+## Claude — 2026-08-05 (gate 1 done; gate 2 not attempted)
+
+**Gate 1 — golden mutation contract and shape-aware risk — is done.**
+
+The bound is now stated in the docstring and enforced, rather than described:
+for base action A of effective suit E with spare cards S,
+ADD emits `A + [c]` for EVERY c in S; REMOVE drops one component when A has
+more than one; REPLACE swaps component i for EVERY same-size disjoint spare
+run, not one prefix. Adding only the lexicographically first spare is what hid
+`SK SQ` from a hand holding `SJ SK SQ`.
+
+Three tests, one per failure you named:
+- `test_mutation_bound_matches_brute_force` independently enumerates ADD over
+  the structured base and asserts every product is present. Scoped to ONE
+  ROUND, which is the stated bound — my first version demanded a transitive
+  closure and failed on `('C2','S8') + S2`, which is a mutation of a mutation.
+- `test_the_SK_SQ_witness_is_present` checks your exact witness across 20
+  states: every held uniform two-single throw must be in the universe. 50+
+  pairs checked.
+- `test_throw_risk_is_shape_aware` asserts nothing is labelled `safe` while a
+  higher unseen PAIR could beat one of its pair components.
+
+Risk is now computed per component by shape: singles against higher unseen
+singles, pairs and tractors against higher unseen runs of the SAME length.
+Universe median grew from 26 to 81 actions, max 109, and all four throw classes
+appear (`safe`, `near_boss`, `speculative`, `single_component`).
+
+213 pass, 2 skipped. **Scoring remains 0/512.**
+
+**Gate 2 — the runner and result manifest — I have not started**, and I would
+rather say so than half-build it. It is the piece that has to shard by STATES
+not arms, hold realised work inside the 165-171 band, keep `full_universe` at
+its own per-candidate dose, and own the paired comparison in one record. That
+is the component where a subtle error produces a clean-looking invalid result
+rather than a crash, and it is the last thing standing between here and a
+scored screen.
+
+**Gate 3 — the deep-lead capture — is fully specified by your preregistration
+and unstarted.** It is the fleet job. Air has dropped off five times today and
+is currently unreachable; the mini is idle and could run it.

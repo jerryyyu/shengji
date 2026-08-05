@@ -61,7 +61,22 @@ from shengji.engine.combos import decompose, pair_count  # noqa: E402
 from shengji.engine.game import Game                     # noqa: E402
 
 RESERVOIRS = {"original": "rl_data/highn_corpus_all.jsonl",
-              "late": "rl_data/highn_late_air.jsonl"}
+              "late": "rl_data/highn_late_air.jsonl",
+              "deep": "rl_data/deep_leads.v1.jsonl"}
+
+#: REGISTERED per-source state quotas. A single global `--limit` across ordered
+#: paths certified whatever the FIRST path supplied: `original` holds 20,845
+#: rows, so every 1,600-state run exhausted its limit inside `original` and
+#: exercised ZERO `late` rows. Both the `eea78d2` certificate and its
+#: replacement were therefore original-only while advertising more (Codex).
+#: Per-source quotas make the certified population explicit and checkable.
+#: `deep` is capped by supply (768 rows) and is the reservoir v6 draws all 170
+#: of its late-band states from.
+SOURCE_QUOTA = {"original": 500, "late": 500, "deep": 500}
+
+#: The registered toy-state count. Accepting "some nonzero number" let a run
+#: report 40/40 where the registered certificate claimed 120/120.
+REGISTERED_TOY_STATES = 120
 
 
 def digest(path):
@@ -342,16 +357,23 @@ def reachable(bot, rnd, seat, mem, targets, draws):
 
 # ------------------------------------------------------------- state source
 
-def reservoir_states(paths, limit, min_ply):
-    """Replay rows from the CORPUS, so the distribution is the real one."""
-    n = 0
+def reservoir_states(paths, limit, min_ply, per_source=None):
+    """Replay rows from the CORPUS, so the distribution is the real one.
+
+    `per_source` maps path -> exact quota. The counter is PER PATH; a single
+    global counter certified only whatever the first path supplied.
+    """
     for path in paths:
+        n = 0                      # PER PATH, not shared across paths
+        cap = limit if per_source is None else per_source.get(path, 0)
         if not os.path.exists(path):
-            continue
+            raise FileNotFoundError(
+                f"registered reservoir missing: {path}. A silently ignored "
+                f"path certifies a population that excludes it.")
         with open(path) as fh:
             for line in fh:
-                if n >= limit:
-                    return
+                if n >= cap:
+                    break
                 row = json.loads(line)
                 if row["ply"] < min_ply:
                     continue
@@ -390,7 +412,7 @@ def reservoir_states(paths, limit, min_ply):
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--reservoir", default="both",
-                    choices=["original", "late", "both"])
+                    choices=["original", "late", "deep", "both"])
     ap.add_argument("--limit", type=int, default=800)
     ap.add_argument("--worlds", type=int, default=24)
     ap.add_argument("--min-ply", type=int, default=0)
@@ -430,8 +452,13 @@ def main() -> None:
     bad_examples: list[str] = []
     t0 = time.time()
 
+    per_source_quota = {RESERVOIRS[k]: v for k, v in SOURCE_QUOTA.items()
+                        if RESERVOIRS[k] in paths}
+    seen_by_source: dict = {p: 0 for p in paths}
     for path, seed, rnd, seat in reservoir_states(paths, args.limit,
-                                                  args.min_ply):
+                                                  args.min_ply,
+                                                  per_source=per_source_quota):
+        seen_by_source[path] = seen_by_source.get(path, 0) + 1
         n_states += 1
         cons = constraints(rnd)
         mem = Memory(rnd, seat)
@@ -502,6 +529,23 @@ def main() -> None:
               f"the enumerated legal set — the enumerator is wrong")
     for e in bad_examples:
         print(f"  - {e}")
+    shortfalls = [f"{p}: {seen_by_source.get(p, 0)} states, quota "
+                  f"{per_source_quota.get(p, 0)}"
+                  for p in paths if seen_by_source.get(p, 0)
+                  != per_source_quota.get(p, 0)]
+    if shortfalls:
+        print("REFUSING to certify — a source did not meet its registered "
+              "quota. Certifying a short source certifies whatever that "
+              "path happened to supply:")
+        for sf in shortfalls:
+            print(f"  - {sf}")
+        sys.exit(5)
+    if toy_states_n != REGISTERED_TOY_STATES:
+        print(f"REFUSING to certify — toy states {toy_states_n}, registered "
+              f"{REGISTERED_TOY_STATES}. Accepting any nonzero count let a run "
+              f"report 40/40 against a certificate claiming 120/120.")
+        sys.exit(5)
+
     skips = certification_skips()
     print(f"POPULATION    states/rows SKIPPED before certifying: {skips}")
     if any(skips.values()):
@@ -521,6 +565,10 @@ def main() -> None:
               "witness_missing": witness_missing,
               "examples": bad_examples,
               "certification_skips": certification_skips(),
+        "states_by_source": {k: seen_by_source.get(v, 0)
+                             for k, v in RESERVOIRS.items() if v in paths},
+        "source_quota": SOURCE_QUOTA,
+        "registered_toy_states": REGISTERED_TOY_STATES,
         "skipped_any": any(certification_skips().values()),
         # `certified` now requires a COMPLETE population. It previously could
         # stay true while replay loops silently dropped states and rows, which

@@ -511,3 +511,57 @@ def test_every_skip_site_has_its_own_named_counter():
     for key in ("toy_state_replay", "corpus_row_replay",
                 "corpus_deck_mismatch", "corpus_wrong_seat_or_phase"):
         assert f'SKIPPED["{key}"] += 1' in src, f"{key} is never incremented"
+
+
+def test_certifier_registers_all_three_reservoirs_with_exact_quotas():
+    """A global limit certified only whatever the FIRST path supplied.
+
+    `original` holds 20,845 rows, so every 1,600-state run exhausted its limit
+    inside `original` and exercised ZERO `late` rows — both the eea78d2
+    certificate and its attempted replacement were original-only while
+    advertising more (Codex). Per-source quotas make the population explicit.
+    """
+    import os
+    import sys
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.join(root, "scripts"))
+    import certify_sampler as CS
+    assert set(CS.RESERVOIRS) == {"original", "late", "deep"}, CS.RESERVOIRS
+    assert set(CS.SOURCE_QUOTA) == set(CS.RESERVOIRS), "every source needs a quota"
+    assert all(v > 0 for v in CS.SOURCE_QUOTA.values())
+    assert CS.REGISTERED_TOY_STATES == 120
+
+
+def test_reservoir_states_counts_per_path_not_globally():
+    """The defect itself: a shared counter starves later paths.
+
+    Asserts the per-path reset exists inside the loop, structurally.
+    """
+    import ast
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(root, "scripts", "certify_sampler.py")).read()
+    tree = ast.parse(src)
+    fn = next(n for n in ast.walk(tree)
+              if isinstance(n, ast.FunctionDef) and n.name == "reservoir_states")
+    for node in ast.walk(fn):
+        if isinstance(node, ast.For):
+            resets = [t.id for st in node.body if isinstance(st, ast.Assign)
+                      for t in st.targets if isinstance(t, ast.Name)]
+            if "n" in resets:
+                return
+    raise AssertionError("`n` is not reset per path; a global counter certifies "
+                         "only what the first reservoir supplied")
+
+
+def test_a_missing_registered_reservoir_is_REFUSED(tmp_path):
+    """A silently ignored path certifies a population that excludes it."""
+    import os
+    import sys
+    import pytest
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.join(root, "scripts"))
+    import certify_sampler as CS
+    missing = str(tmp_path / "absent.jsonl")
+    with pytest.raises(FileNotFoundError, match="registered reservoir missing"):
+        list(CS.reservoir_states([missing], 10, 0, per_source={missing: 1}))

@@ -115,12 +115,11 @@ Also require `git diff --check`, all sampler flags false by default, a clean
 tree, and a pushed commit. Land the current dirty diagnostics separately first;
 do not mix measurement artifacts and the launch-runner patch in one commit.
 
-## Gate packet — package A COMPLETE, package B not started (09:55)
+## Gate packet — packages A and B COMPLETE (10:25)
 
 ```text
-STATE: BLOCKED — package A done; package B (runner preflight) not started,
-       so there are no smoke hashes and no launch command yet.
-HEAD / origin HEAD: 4b94871 / 4b94871 (in sync)
+STATE: READY_FOR_CODEX_GATE
+HEAD / origin HEAD: 1820ecb / 1820ecb (in sync)
 dirty files: none
 v4 DEV hash:   1cab080956d038b37dcd441c66e6a4814f4cb2491d23d0c0c23d805dad7c9ea6
 v4 CALIB hash: 8c55b3f809d439924bb7ffe63d5bfe36292e8e41df8a63fb66eb7e94220326a6
@@ -134,20 +133,30 @@ quota + role + replay + split + disjoint audit:
   ballot at selection mc_candidates@v1[a68f7b8bced6]
   feasibility censused on BOTH sides BEFORE selection; tightest cell
     calib late/med = 19 needed from 25 distinct deals
-pure tests / compiled tests: 104 passed / 104 passed (required battery)
-  full suite 276 passed, 2 skipped
-two identical smoke hashes: NOT YET — requires package B
+pure tests / compiled tests: 107 passed + 9 skipped / 116 passed
+  full suite 288 passed, 2 skipped
+  (the 9 skips are the preflight cases; `preflight` requires the compiled
+   engine by design, so they are meaningless without it)
+two identical smoke hashes:
+  c29ec473cad19ae128620d6ed6c9b8326a2c9135ce7f47ff5940b1c94d7468cb
+  c29ec473cad19ae128620d6ed6c9b8326a2c9135ce7f47ff5940b1c94d7468cb
+  byte-identical; manifest phase=smoke, tree_dirty=false, git=1820ecb,
+  states_sha256 == expected_states_sha256
 sampler flags: WEIGHTED_SPLITS=false UNIFORM_DEAL=false PHYSICAL_FILLS=false
-exact fleet command: NOT YET — requires package B
-if BLOCKED:
-  failing command: none; package B simply not yet implemented
-  first error: pilot_run.py:133 still defaults --states to
-    rl_data/pilot_states.v4.json, which does not exist and is NOT the name of
-    either artifact frozen above
-  recommended fix: package B items 1-4 as written
-  ETA: 30-60 min
+  (recorded in every manifest; preflight refuses if any is set)
+exact fleet command:
+  # Mini shards 0-3, Air shards 4-7. One process per shard. No --limit.
+  SHA=1cab080956d038b37dcd441c66e6a4814f4cb2491d23d0c0c23d805dad7c9ea6
+  SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 uv run python scripts/pilot_run.py \
+    --states rl_data/pilot_dev512.v4.json \
+    --expected-states-sha256 $SHA \
+    --budget 14 --work 168 --band 0.05 \
+    --full-proposal-worlds 12 --oracle-worlds 12 --report-worlds 12 \
+    --salt pilot-run-v1 \
+    --shard-index <N> --shard-count 8 \
+    --out runs/logs/dev512_shard<N>.jsonl
+NOT DONE / awaiting PASS: no scoring run launched. CALIB and REPORT untouched.
 ```
-
 
 ## After PASS — launch DEV-512, not CALIB
 

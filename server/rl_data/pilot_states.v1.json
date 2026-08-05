@@ -3628,6 +3628,5 @@
    "seat": 2,
    "n_candidates": 8
   }
- ],
- "SUPERSEDED": "by pilot_states.v2.json (2026-08-05). Not promotion-grade: written from a DIRTY tree, records a stale ballot digest (0c5647302082 vs a68f7b8bced6), and its strata figures were computed AFTER selection popped rows so they described the residual pool. Kept unedited for the record; do not use."
+ ]
 }

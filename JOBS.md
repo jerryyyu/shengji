@@ -7,26 +7,26 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 Nothing. Both machines idle.
 
-## PILOT — step 1 done, frozen
+## PILOT — steps 1-4 built, SCORING AT 0/512 (Codex hold)
 
-`rl_data/pilot_states.v1.json`: **512 lead states, DEV only, one per deal, 0
-replay errors.** Late supplement given its OWN immutable split first
-(`corpus_split_late.v1.json`, salt `late-v1`), never merged with the original's.
-Selection artifact carries git SHA, tree state, script digest, both corpus and
-both split digests, and the ballot identity at selection time
-(`mc_candidates@v1[0c5647302082]`). The path is non-overwritable.
+Artifact ledger: `server/rl_data/PILOT_ARTIFACTS.md`. Current DEV engineering
+set is **v3**; v1 and v2 are superseded and restored to their frozen bytes.
 
-**Composition, flagged rather than presented as balanced:**
-late 391 / mid 47 / early 74. The set is LATE-HEAVY because the original corpus
-has few deep lead states once "one per deal" and "DEV only" are applied (8,914
-rows skipped as same-deal, 6,620 as follows). Structured lead omission DECLINES
-with ply (44.8% early -> 25.8% late), so this set will if anything UNDERSTATE
-the sourcing opportunity — a conservative bias for a pilot whose job is to
-decide whether a quota arm earns an online duel, but it must not be read as a
-representative sample of play.
+**v3 is NOT the gate set.** 255 early / 254 mid / 3 late by trick index, and
+199/313 attacker/defender. Only 3 DEV deals supply a late lead state, so a
+balanced broad-lead gate is not constructible from this corpus. Codex chose
+option (b): capture deep LEAD states as a new job, then freeze distinct DEV and
+CALIB artifacts.
 
-Next: proposal / oracle-selection / report world folds, kept disjoint, with
-named independent RNG streams. Nothing has been scored yet.
+Open blockers before any value is produced:
+- `choose_action()` omits production `TRACTOR_LOCK`; v3 has 12 protected-tractor
+  states where the deployed policy returns immediately with no search.
+- `MC-more` is an alias plus an unused constant. Equal-work needs real
+  candidate-world accounting: current averages 9.19 candidates, random/quota
+  13.81, full-universe 23.19.
+- Component mutations skip singleton bases, so a one-component add like
+  `SJ -> SJ SK` is unreachable; no safe/near-boss/speculative-throw archetype.
+- `report_regret()` drops raw points and brackets; no manifest preserves them.
 
 ## RECENTLY FINISHED
 

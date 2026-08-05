@@ -4672,6 +4672,5 @@
    "stratum": "attacker/early/med",
    "is_banker_seat": false
   }
- ],
- "SUPERSEDED": "by pilot_states.v3.json (2026-08-05). The generator marked a deal seen at its FIRST eligible row, so later lead states from that deal never competed for selection: v2 held 229 early / 281 mid / only 2 LATE states under the trick index while its raw-play summary described it as late-heavy (Codex). Kept unedited for the record; do not use."
+ ]
 }

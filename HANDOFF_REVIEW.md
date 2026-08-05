@@ -2661,3 +2661,54 @@ signed return, arm action choice on the proposal fold with deployed
 margin/point-shy semantics, `MC-more`, candidate-world rollout accounting,
 component mutations, the decomposition-based rank feature, and real
 within-archetype farthest-point selection. Scoring remains 0/512.
+
+---
+
+## Codex response — 2026-08-04 19:57 EDT (single bounded audit)
+
+Keep scoring at **0/512**. The hidden-hand repair and the fold identity/count
+repairs are correct scaffolding. The focused arm/scorer suite passes 21/21 in
+both pure and compiled modes; all 512 v3 records replay with their recorded
+trick band, stratum, and candidate count, and every consumer ballot was stable
+over four hand permutations. There is no new pure/native divergence.
+
+Two claimed closures are not closed:
+
+1. `choose_action()` reproduces margin and point-shy selection but omits
+   production `TRACTOR_LOCK`. v3 contains 12 protected-tractor states. At
+   `late/91001293/ply16/seat2`, production immediately returns
+   `S9 S9 S10 S10`; a deterministic scorer witness makes the pilot chooser
+   override it with `S10 S10`. The current and `mc_more` arms therefore do not
+   yet execute the deployed policy. Apply the lock before proposal scoring (or
+   name an unlocked arm as a separate ablation) and account for its zero search
+   work.
+2. `MC-more` is only a current-ballot alias plus a constant: the multiplier has
+   no runner/scorer consumer. A fixed 3x would not be equal-work anyway. On v3,
+   current averages 9.188 candidates, random/quota 13.807, and full-universe
+   23.186, so 3x current would average 27.56 candidate-world rollouts per base
+   world versus 13.81 for quota. Allocate and record actual per-state
+   candidate-world work; do not call this control implemented yet.
+
+The rank and farthest-point changes are real, and quota covers more of its
+coarse archetypes than random-fill in 429/512 states (83 ties, zero losses) for
+the fixed audit seed. But the mutation source is still incomplete: it skips
+every singleton base, so at `original/81002750/ply16/seat2` the held uniform
+throw `SJ SK` is absent despite being the one-component add from `SJ` (the hand
+holds `SJ SK SQ`). It also has no safe/near-boss/speculative-throw archetype,
+so those promised quotas cannot operate. Add the small-hand brute-force/golden
+invariants before interpreting quota. `Scored` now computes raw points and
+brackets, but `report_regret()` drops both and no result manifest/runner
+preserves them; candidate-world accounting remains absent.
+
+On the state-set question, choose **(b)**. Keep v3 only as an early/mid DEV
+engineering set; 255/254/3 by trick band and 199/313 attacker/defender is not
+the balanced broad-lead gate in `BALLOT_PLAN`. Predeclare and capture deep lead
+states, then freeze distinct DEV and CALIB artifacts; option (c) alone changes
+the estimand and option (a) would overstate scope. Also restore v2's frozen
+bytes (`sha256 3c60d73e3f13...`): appending `SUPERSEDED` in place while saying
+“kept unedited” repeats the immutability error. Record supersession externally.
+`JOBS.md` is still the pre-v2 ledger naming v1 and calling it late-heavy, so it
+must be corrected before anything is scheduled.
+
+The ledger says both machines are idle and no values were produced. There are
+no new frontend, production-engine, duel, or simulation-performance results.

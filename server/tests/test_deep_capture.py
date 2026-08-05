@@ -65,9 +65,9 @@ def test_engine_errors_propagate_and_leave_only_a_partial(tmp_path, monkeypatch)
 
 
 @pytest.mark.parametrize("counter", [
-    "zero_world_decisions", "rejected_worlds", "impossible_worlds",
+    "zero_world_decisions", "impossible_worlds",
 ])
-def test_any_forbidden_sampler_counter_aborts_shard(
+def test_fatal_sampler_counter_aborts_shard(
         counter, tmp_path, monkeypatch):
     args = _args(tmp_path, max_seeds=1)
     split, trick = cap.cell_targets(args.seed0, args.salt)
@@ -79,8 +79,37 @@ def test_any_forbidden_sampler_counter_aborts_shard(
     setattr(policy, counter, 1)
     outcome = cap.DealOutcome(None, None, {}, [], [policy])
     monkeypatch.setattr(cap, "play_to_trick", lambda *_: outcome)
-    with pytest.raises(RuntimeError, match="forbidden sampler counters"):
+    with pytest.raises(RuntimeError, match="fatal sampler counters"):
         cap.capture(args)
+
+
+def test_rejected_world_excludes_whole_deal_but_completes_shard(
+        tmp_path, monkeypatch):
+    args = _args(tmp_path, max_seeds=1)
+    split, trick = cap.cell_targets(args.seed0, args.salt)
+    args.only_cell = [f"{split}/{trick}/attacker",
+                      f"{split}/{trick}/defender"]
+    monkeypatch.setattr(cap, "runtime_contract", _fake_runtime)
+    monkeypatch.setattr(cap, "source_digests", lambda: {"test": "1"})
+    policy = SimpleNamespace(zero_world_decisions=0, rejected_worlds=2,
+                             impossible_worlds=0,
+                             reject_cause={"pair_cap": 7})
+    outcome = cap.DealOutcome(None, None, {}, [], [policy])
+    monkeypatch.setattr(cap, "play_to_trick", lambda *_: outcome)
+
+    assert cap.capture(args) == 0
+    spath = cap.shard_path(args.out, 0, 1)
+    assert open(spath).read() == ""
+    manifest = json.load(open(cap.manifest_path(spath)))
+    assert manifest["accepted"] == 0
+    assert manifest["sampler_counters"] == {
+        "zero_world_decisions": 0, "rejected_worlds": 0,
+        "impossible_worlds": 0,
+    }
+    assert manifest["observed_sampler_counters"]["rejected_worlds"] == 2
+    assert manifest["sampler_rejected_deals"] == 1
+    assert manifest["reject_reasons"]["strict_sampler_rejected_deal"] == 1
+    assert manifest["sampler_reject_causes"] == {"pair_cap": 7}
 
 
 def test_captured_setup_replays_without_reinvoking_declaration_policy():
@@ -167,7 +196,11 @@ def test_merge_refuses_source_drift_across_complete_shards(
 @pytest.mark.parametrize("mutation,needle", [
     (lambda manifest: manifest.update(scan_complete=False), "incomplete scan"),
     (lambda manifest: manifest["sampler_counters"].update(rejected_worlds=1),
-     "forbidden sampler fallback"),
+     "forbidden accepted sampler fallback"),
+    (lambda manifest: manifest["observed_sampler_counters"].update(
+        impossible_worlds=1), "fatal observed sampler counter"),
+    (lambda manifest: manifest.update(sampler_rejected_deals=1),
+     "sampler rejection accounting"),
     (lambda manifest: manifest.update(accepted=1), "record count"),
     (lambda manifest: manifest.update(owned_cells=[]), "cell ownership"),
 ])

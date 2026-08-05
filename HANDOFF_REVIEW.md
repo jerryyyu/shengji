@@ -477,3 +477,85 @@ Mini's binary to Air and backed up Air's own build to
 `.local_backup/_fast.air-built.so`; preflight JSON is now byte-identical.
 Standing rule: never `build_ext` on Air — ship Mini's .so and re-preflight.
 Air is still not in this capture, since shards own disjoint pre-play groups.
+
+---
+
+## Codex — 2026-08-04 22:34 EDT (admission contract answered; v2 relaunch pending validation)
+
+**Answer: reject the whole deal and continue only for `rejected_worlds`; do
+not weaken the fatal boundary.** `rejected_worlds` means the invalid proposed
+world was refused inside MCBot and never entered a rollout. The resulting
+decision did, however, use fewer than the registered N=30 worlds, so no state
+from that trajectory is eligible for this reservoir. Conditioning this already
+stratified state reservoir on the rare, preregistered actor-validity check is
+preferable to either admitting an under-dose trajectory or making the finite
+scan mathematically uncompletable.
+
+I reproduced seed `92000381` under compiled+strict execution: CALIB/trick 12,
+48 prior plays, reached target, `rejected_worlds=2`,
+`zero_world_decisions=impossible_worlds=0`, 344 internal `pair_cap` retries.
+It now deterministically receives disposition `reject_deal`.
+
+The implementation is fail-closed and auditable:
+
+- shard/manifest schema is bumped to v2;
+- accepted-trajectory `sampler_counters` must remain exactly zero;
+- separate `observed_sampler_counters`, `sampler_rejected_deals`, rejection
+  reason and internal causes preserve what was excluded;
+- zero-world heuristic fallback or impossible-world use still aborts at once;
+- merge rejects missing/malformed accounting, any accepted counter, or any
+  observed fatal counter.
+
+Current artifact status is four completed v1 shards (1/2/3/5, 96 rows each)
+and four partials (0/4/6/7: 51/83/30/42); no worker remains, no merge ran, and
+scoring remains **0/512**. All eight must be moved together to a named
+quarantine and rerun from one clean pushed v2 HEAD—do not reuse the four v1
+completions, because git/source/config/schema identity changed. Before fleet
+launch, rerun the targeted suite plus two independent compiled eight-shard
+smokes and compare their semantic artifacts. Air may participate only after
+the full preflight JSON remains byte-identical to Mini; continue shipping the
+Mini-built `.so` rather than rebuilding it on Air.
+
+---
+
+## Claude — 2026-08-05 (capture finished at exactly 4/8; the abort rate is measured)
+
+The run is over. No shards alive, Mini idle at 84%.
+
+```
+shard 0: ABORTED   51 rows discarded    seed 92000381  rejected_worlds: 2
+shard 1: COMPLETE  96 rows
+shard 2: COMPLETE  96 rows
+shard 3: COMPLETE  96 rows
+shard 4: ABORTED   83 rows discarded    seed 92000424  rejected_worlds: 1
+shard 5: COMPLETE  96 rows
+shard 6: ABORTED   30 rows discarded    seed 92000914  rejected_worlds: 1
+shard 7: ABORTED   68 rows discarded    seed 92001708  rejected_worlds: 1
+```
+
+**384 of 768 rows captured — exactly half — and the four survivors each filled
+their full 96-row quota.** So the machinery, cell structure, disjoint-group
+sharding and quota logic all work. The only failure mode is the forbidden-counter
+abort, and it took out 4 of 8 shards within roughly the first 1,700 seeds.
+
+That rate is far higher than my earlier "1 in 185,000 worlds" would suggest,
+because a shard plays thousands of deals x ~20 tricks x 4 seats x N=30 worlds —
+so the per-shard exposure is enormous. Three of the four aborts were a SINGLE
+rejected world. Extrapolating, no shard survives a full 60,000-seed scan.
+
+**The decision is still yours and now has numbers behind it.** If a forbidden
+counter should reject the DEAL and continue, the artifact still contains zero
+forbidden fallback (the deal never enters the corpus) and the scan completes.
+If it should abort the SHARD, this capture cannot be produced at all and the
+design needs a different route — a smaller scan, a relaxed sampler contract, or
+an accepted partial artifact.
+
+I have not changed the code and have not merged. The four completed shard files
+and their manifests are intact on disk; the four partials are untouched and can
+be discarded or inspected as you prefer. No pilot values exist, REPORT is
+untouched, scoring is 0/512.
+
+One thing I would flag as more than bookkeeping: the four survivors hitting
+exactly 96/96 is good evidence the preregistered cell structure is satisfiable
+at these depths. That was the open worry behind option (b) — that deep lead
+states might simply be too rare. They are not.

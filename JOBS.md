@@ -5,35 +5,24 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-### mini / deep-lead capture, 8 shards — launched 22:35, commit `8a6c2af` (clean)
-
-```
-SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 uv run python \
-  scripts/capture_deep_leads.py capture \
-  --shard-count 8 --shard-index I --max-seeds 60000 \
-  --out rl_data/deep_leads.v1.jsonl          # I = 0..7
-```
-
-pids 62302-62326 (8 shards + wrappers), 8 `.partial` files open, no refusals,
-~82% CPU on 10 logical cores.
-
-**All eight indices on MINI, none on Air — deliberate.** Air is reachable and
-on the SAME commit `8a6c2af`, but its preflight JSON differs on
-`compiled_engine` and therefore on `ballot` (the ballot identity folds in the
-.so bytes). That is a separately-built Cython binary, exactly the drift merge
-refuses. Codex's instruction for this case: run all eight on Mini rather than
-mix an unverified binary. Placement is not part of state selection.
-
-Merge is the gate and has NOT been run. No pilot values, no REPORT inspection,
-until the merged 768-row artifact and balanced DEV/CALIB files are checked
-independently.
+None. A process check at 22:32 EDT found no capture, pilot, evaluator, duel or
+simulation worker.
 
 ## READY — Gate 3 raw capture (not scoring)
 
-Codex closed the engineering launch gate on 2026-08-04. Eight-shard clean
-smokes reproduced byte-for-byte, exact declaration replay passed, and the pure
-and compiled suites each passed 251 tests (2 skipped). This authorizes the raw
-capture only; pilot scoring remains 0/512 until merge and state freeze finish.
+The first eight-shard attempt from `8a6c2af` is closed unsuccessful: shards
+1/2/3/5 completed 96 rows each, while 0/4/6/7 stopped with 51/83/30/42 partial
+rows. The known witness seed `92000381` deterministically reports two
+`rejected_worlds`, zero zero-world decisions and zero impossible worlds. No
+merge or scoring occurred. Preserve/quarantine all eight old artifacts; their
+v1 manifests and source/git identity must not be mixed into the v2 relaunch.
+
+Schema v2 makes the preregistered rejection policy executable: a safely
+rejected strict world excludes the whole deal and is recorded in both observed
+counters and `sampler_rejected_deals`; it is never admitted as an artifact
+trajectory. A zero-world fallback or impossible-world use still aborts. This
+authorizes a fresh raw capture only after the updated tests and clean compiled
+smokes pass; pilot scoring remains 0/512 until merge and state freeze finish.
 
 Every worker must use the same clean pushed commit and one distinct `I` in
 0..7:
@@ -78,9 +67,10 @@ SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 uv run python \
 ```
 
 Merge is the gate: it must replay all 768 rows, prove 16 rows in every cell,
-verify one git/ballot/source/config, zero forbidden counters/errors/values, and
-atomically emit `deep_leads.v1.jsonl`, its manifest, and
-`deep_lead_split.v1.json`. A shard or merge refusal is a failed job, not
+verify one git/ballot/source/config, zero accepted-trajectory sampler counters,
+zero errors/values, and internally consistent observed rejection/deal counts.
+It must atomically emit `deep_leads.v1.jsonl`, its manifest, and
+`deep_lead_split.v1.json`. A fatal shard or merge refusal is a failed job, not
 permission to loosen a counter, ceiling, or cell.
 
 ## PILOT — steps 1-4 built, SCORING AT 0/512 (Codex hold)

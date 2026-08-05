@@ -50,9 +50,11 @@ SEED0 = 92_000_000
 MAX_SEEDS = 60_000                 # exclusive: seed0 <= seed < seed0 + n
 SALT = "deep-leads-v1"
 BOT = "mc-strong"
-SHARD_SCHEMA = "deep-lead-shard-v1"
-MANIFEST_SCHEMA = "deep-lead-manifest-v1"
+SHARD_SCHEMA = "deep-lead-shard-v2"
+MANIFEST_SCHEMA = "deep-lead-manifest-v2"
 SPLIT_SCHEMA = "deep-lead-split-v1"
+SAMPLER_COUNTER_NAMES = ("zero_world_decisions", "rejected_worlds",
+                         "impossible_worlds")
 
 
 def sha256_file(path: str | os.PathLike) -> str:
@@ -181,12 +183,27 @@ def runtime_contract(*, smoke: bool, bot: str, per_cell: int) -> dict:
 
 def sampler_counters(policies) -> tuple[dict[str, int], Counter]:
     totals = {name: sum(int(getattr(bot, name, 0)) for bot in policies)
-              for name in ("zero_world_decisions", "rejected_worlds",
-                           "impossible_worlds")}
+              for name in SAMPLER_COUNTER_NAMES}
     causes = Counter()
     for bot in policies:
         causes.update(getattr(bot, "reject_cause", {}))
     return totals, causes
+
+
+def sampler_disposition(counters: dict[str, int]) -> str:
+    """Classify one deal without weakening the accepted-path contract.
+
+    A rejected world was never used, but its decision ran at less than the
+    registered N=30 dose.  Exclude the whole trajectory and keep scanning.
+    A zero-world decision did use the heuristic fallback, and an impossible
+    world means a void-violating sample was used; either is a fatal contract
+    failure under strict capture.
+    """
+    if counters.get("zero_world_decisions") or counters.get("impossible_worlds"):
+        return "abort"
+    if counters.get("rejected_worlds"):
+        return "reject_deal"
+    return "accept"
 
 
 @dataclass
@@ -261,6 +278,10 @@ def config_for(args, cells) -> dict:
         "actor_seed_formula": "deal_seed * 4 + seat",
         "split_target_stream": "sha256(salt|deal|seed)",
         "sharding": "preplay_(split,trick)_group_mod_shard_count",
+        "sampler_admission": (
+            "exclude_deal_on_rejected_world;"
+            "abort_on_zero_world_or_impossible_world"
+        ),
         "report_frozen": True, "smoke": args.smoke,
     }
 
@@ -288,8 +309,10 @@ def capture(args) -> int:
     mine = owned_cells(cells, args.shard_index, args.shard_count)
     kept: dict[tuple[str, int, str], int] = {cell: 0 for cell in mine}
     reject_reasons = Counter()
-    sampler_totals = Counter()
+    observed_sampler_totals = Counter()
+    accepted_sampler_totals = Counter()
     sampler_causes = Counter()
+    sampler_rejected_deals = 0
     accepted = scanned = played = 0
     last_seed = None
 
@@ -310,12 +333,24 @@ def capture(args) -> int:
             played += 1
             result = play_to_trick(seed, target, args.bot)
             counters, causes = sampler_counters(result.policies)
-            sampler_totals.update(counters)
+            observed_sampler_totals.update(counters)
             sampler_causes.update(causes)
-            forbidden = {k: v for k, v in counters.items() if v}
-            if forbidden:
-                raise RuntimeError(f"seed {seed} hit forbidden sampler counters: "
-                                   f"{forbidden}")
+            disposition = sampler_disposition(counters)
+            if disposition == "abort":
+                fatal = {k: v for k, v in counters.items()
+                         if k in ("zero_world_decisions", "impossible_worlds")
+                         and v}
+                raise RuntimeError(f"seed {seed} hit fatal sampler counters: "
+                                   f"{fatal}")
+            if disposition == "reject_deal":
+                # The invalid proposal was rejected inside MCBot, but that
+                # decision consequently used fewer than N=30 worlds.  Keeping
+                # no state from the trajectory preserves the registered actor
+                # dose without turning a rare, safely refused proposal into a
+                # shard-killing event.
+                sampler_rejected_deals += 1
+                reject_reasons["strict_sampler_rejected_deal"] += 1
+                continue
             if not result.reached:
                 reject_reasons["round_ended_before_target"] += 1
                 continue
@@ -339,6 +374,7 @@ def capture(args) -> int:
             # Round-trip before the row is allowed into even a shard.
             replay_deep_lead(row)
             fh.write(json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n")
+            accepted_sampler_totals.update(counters)
             kept[cell] += 1
             accepted += 1
             if all(n >= args.per_cell for n in kept.values()):
@@ -359,10 +395,16 @@ def capture(args) -> int:
         "records_sha256": sha256_file(partial),
         "cell_candidates": {cell_name(c): kept[c] for c in sorted(kept)},
         "reject_reasons": dict(sorted(reject_reasons.items())),
-        "sampler_counters": {name: int(sampler_totals[name])
-                             for name in ("zero_world_decisions",
-                                          "rejected_worlds",
-                                          "impossible_worlds")},
+        # `sampler_counters` retains its fail-closed meaning for trajectories
+        # admitted to the artifact.  `observed_sampler_counters` separately
+        # makes excluded attempts auditable instead of silently erasing them.
+        "sampler_counters": {name: int(accepted_sampler_totals[name])
+                             for name in SAMPLER_COUNTER_NAMES},
+        "observed_sampler_counters": {
+            name: int(observed_sampler_totals[name])
+            for name in SAMPLER_COUNTER_NAMES
+        },
+        "sampler_rejected_deals": sampler_rejected_deals,
         "sampler_reject_causes": dict(sorted(sampler_causes.items())),
         "illegal_actions": 0, "engine_errors": 0, "scored_values": 0,
     }
@@ -420,9 +462,33 @@ def validate_shard(manifest: dict, rows: list[dict], args, index: int,
         problems.append(f"shard {index}: record digest")
     if manifest.get("illegal_actions") or manifest.get("engine_errors") or manifest.get("scored_values"):
         problems.append(f"shard {index}: forbidden failure/value counter")
-    if any(manifest.get("sampler_counters", {}).get(k, 0)
-           for k in ("zero_world_decisions", "rejected_worlds", "impossible_worlds")):
-        problems.append(f"shard {index}: forbidden sampler fallback")
+    accepted_counters = manifest.get("sampler_counters")
+    observed_counters = manifest.get("observed_sampler_counters")
+    if (not isinstance(accepted_counters, dict)
+            or set(accepted_counters) != set(SAMPLER_COUNTER_NAMES)
+            or any(not isinstance(v, int) or v < 0
+                   for v in accepted_counters.values())):
+        problems.append(f"shard {index}: accepted sampler counter schema")
+    elif any(accepted_counters.values()):
+        problems.append(f"shard {index}: forbidden accepted sampler fallback")
+    if (not isinstance(observed_counters, dict)
+            or set(observed_counters) != set(SAMPLER_COUNTER_NAMES)
+            or any(not isinstance(v, int) or v < 0
+                   for v in observed_counters.values())):
+        problems.append(f"shard {index}: observed sampler counter schema")
+    else:
+        if (observed_counters["zero_world_decisions"]
+                or observed_counters["impossible_worlds"]):
+            problems.append(f"shard {index}: fatal observed sampler counter")
+        rejected_deals = manifest.get("sampler_rejected_deals")
+        recorded_rejections = manifest.get("reject_reasons", {}).get(
+            "strict_sampler_rejected_deal", 0)
+        if (not isinstance(rejected_deals, int) or rejected_deals < 0
+                or rejected_deals != recorded_rejections
+                or bool(rejected_deals) != bool(observed_counters["rejected_worlds"])
+                or (isinstance(rejected_deals, int)
+                    and observed_counters["rejected_worlds"] < rejected_deals)):
+            problems.append(f"shard {index}: sampler rejection accounting")
     allowed = {"schema", "seed", "split", "trick", "role", "seat", "ply",
                "setup", "plays"}
     for row in rows:
@@ -516,10 +582,17 @@ def merge(args) -> int:
                     "records_sha256": manifests[i]["records_sha256"],
                     "accepted_candidates": manifests[i]["accepted"]}
                    for i in range(args.shard_count)],
-        "sampler_counters": {k: sum(m["sampler_counters"].get(k, 0)
-                                      for m in manifests)
-                             for k in ("zero_world_decisions", "rejected_worlds",
-                                       "impossible_worlds")},
+        "sampler_counters": {
+            k: sum(m["sampler_counters"][k] for m in manifests)
+            for k in SAMPLER_COUNTER_NAMES
+        },
+        "observed_sampler_counters": {
+            k: sum(m["observed_sampler_counters"][k] for m in manifests)
+            for k in SAMPLER_COUNTER_NAMES
+        },
+        "sampler_rejected_deals": sum(
+            m["sampler_rejected_deals"] for m in manifests
+        ),
         "illegal_actions": 0, "engine_errors": 0, "scored_values": 0,
     }
     write_json(final_manifest + ".partial", manifest)

@@ -178,6 +178,17 @@ Partial shards and final artifacts use completion-marker renames, and manifests
 bind script, engine, compiled binary, sampler, Memory, actor, replay, ballot,
 configuration and git identities.
 
+Its sampler admission rule is deliberately narrower than “ignore a counter.”
+If strict sampling rejects a proposed world, that world was not used, but the
+action used fewer than the registered 30 worlds; capture therefore excludes
+the **entire deal**, counts both the rejected worlds and excluded deal, and
+continues scanning. A zero-world heuristic fallback or an actually used
+void-violating world still aborts the shard. Shard schema v2 separates zeroed
+accepted-trajectory counters from observed counters on excluded deals, and
+merge validates the accounting. This preserves the accepted actor contract
+without making a 60,000-seed scan impossible because one invalid proposal was
+safely refused.
+
 ## Incident log (why these rules exist)
 
 | date | incident | class | caught by |

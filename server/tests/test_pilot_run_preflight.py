@@ -60,8 +60,12 @@ pytestmark = [
 
 def _args(tmp_path, **over):
     a = dict(states=DEV, expected_states_sha256=PR.digest(DEV), limit=0,
-             shard_index=0, shard_count=1,
-             out=str(tmp_path / "shard.jsonl"))
+             shard_index=0, shard_count=8,
+             out=str(tmp_path / "shard.json"),
+             **{k: v for k, v in PR.FULL_DEV_PROTOCOL.items()
+                if k in ("budget", "band", "salt")},
+             work=PR.FULL_DEV_PROTOCOL["work_target"],
+             full_proposal_worlds=12, oracle_worlds=12, report_worlds=12)
     a.update(over)
     return argparse.Namespace(**a)
 
@@ -123,5 +127,40 @@ def test_the_good_launch_still_passes(tmp_path):
     """Guards against the refusals being unconditional."""
     spec, experiment, states, phase, sha = PR.preflight(_args(tmp_path))
     assert phase == "full"
-    assert len(experiment) == 512 and len(states) == 512
+    # 512 experiment states striped over the registered 8 shards
+    assert len(experiment) == 512 and len(states) == 64
     assert sha == PR.digest(DEV)
+
+
+# --- D: a typo must not launch a valid-looking wrong experiment -------------
+# Recording a CLI value is not checking it: mistyped shards carry a manifest
+# consistent with themselves, so eight of them aggregate cleanly as long as
+# they share the typo (Codex). Every registered field is compared.
+
+@pytest.mark.parametrize("field,bad", [
+    ("budget", 13),
+    ("work", 160),
+    ("band", 0.10),
+    ("full_proposal_worlds", 11),
+    ("oracle_worlds", 24),
+    ("report_worlds", 6),
+    ("salt", "pilot-run-v2"),
+    ("shard_count", 4),
+])
+def test_full_run_refuses_any_off_protocol_value(tmp_path, field, bad):
+    with pytest.raises(RuntimeError, match="registered protocol"):
+        PR.preflight(_args(tmp_path, **{field: bad}))
+
+
+def test_full_run_refuses_a_different_but_contract_valid_artifact(tmp_path):
+    """CALIB satisfies the contract yet is NOT the registered DEV set."""
+    with pytest.raises(RuntimeError, match="DEV side|registered protocol"):
+        PR.preflight(_args(tmp_path, states=CALIB,
+                           expected_states_sha256=PR.digest(CALIB)))
+
+
+def test_the_registered_launch_still_passes(tmp_path):
+    """Guards against the protocol check rejecting everything."""
+    spec, experiment, states, phase, sha = PR.preflight(_args(tmp_path))
+    assert phase == "full" and len(experiment) == 512
+    assert sha == PR.FULL_DEV_PROTOCOL["states_sha256"]

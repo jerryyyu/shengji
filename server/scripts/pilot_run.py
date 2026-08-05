@@ -102,6 +102,52 @@ def load_rows(states: list[dict]) -> dict[tuple[str, int, int], dict]:
     return found
 
 
+#: The six arms registered for the DEV screen, asserted rather than assumed.
+REGISTERED_ARMS = ("current", "v3", "random_fill", "quota",
+                   "mc_more_full_work", "full_universe")
+
+#: The ONE immutable full-DEV protocol. Every value a full run may use is
+#: registered here and compared, not merely recorded. Recording alone let a
+#: typo launch a valid-looking wrong experiment: mistyped shards still carry a
+#: consistent manifest, so eight of them aggregate cleanly as long as they
+#: share the same typo (Codex).
+FULL_DEV_PROTOCOL = {
+    "phase": "full",
+    "states_sha256": "097ea3851cd3bb9c3ef96ba1f58b3dcc"
+                     "897ff0a74275cbc8b759109e460e66b6",
+    "budget": 14,
+    "work_target": 168,
+    "band": 0.05,
+    "full_proposal_worlds": 12,
+    "oracle_worlds": 12,
+    "report_worlds": 12,
+    "salt": "pilot-run-v1",
+    "shard_count": 8,
+    "limit": 0,
+    "side": "dev",
+}
+
+
+def protocol_violations(args, spec, states_sha) -> list[str]:
+    """Every way a FULL launch can silently differ from the registered one."""
+    got = {"phase": "full", "states_sha256": states_sha,
+           "budget": args.budget, "work_target": args.work,
+           "band": args.band,
+           "full_proposal_worlds": args.full_proposal_worlds,
+           "oracle_worlds": args.oracle_worlds,
+           "report_worlds": args.report_worlds,
+           "salt": args.salt, "shard_count": args.shard_count,
+           "limit": args.limit, "side": spec.get("side")}
+    bad = []
+    for k, want in FULL_DEV_PROTOCOL.items():
+        if got.get(k) != want:
+            bad.append(f"{k}: {got.get(k)!r}, registered {want!r}")
+    if list(ARMS) != list(REGISTERED_ARMS):
+        bad.append(f"required_arms {list(ARMS)}, registered "
+                   f"{list(REGISTERED_ARMS)}")
+    return bad
+
+
 SAMPLER_FLAGS = ("SHENGJI_WEIGHTED_SPLITS", "SHENGJI_UNIFORM_DEAL",
                  "SHENGJI_PHYSICAL_FILLS")
 
@@ -166,6 +212,13 @@ def preflight(args) -> tuple[dict, list[dict], list[dict]]:
         if bad:
             raise RuntimeError("state artifact violates the registered "
                                "contract: " + "; ".join(bad))
+
+    if phase == "full":
+        bad = protocol_violations(args, spec, actual)
+        if bad:
+            raise RuntimeError(
+                "full run does not match the registered protocol:\n  "
+                + "\n  ".join(bad))
 
     experiment_states = list(spec["states"])
     if args.limit:

@@ -7,10 +7,20 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 Nothing. Fleet idle, verified by `ps`.
 
-DEV-512 is COMPLETE and accepted: 512/512 scored, SELECT NONE. See the PILOT
-section below. CALIB and REPORT are sealed and unscored. No experiment is
-registered as next; the ballot lane closed without a winner and roadmap items
-2-5 all gate behind one.
+**CERTIFICATION IS NOT CURRENT AND NOT AS ADVERTISED.** `eea78d2` is the only
+registered certificate and it is `original`-only: `reservoir_states()` applies
+ONE GLOBAL `--limit` across ordered paths, and `original` holds 20,845 rows, so
+a 1,600-state run exhausts the limit there and exercises **zero `late` rows**.
+The advertised original+late P0 certificate never existed. My `c1ceca1` re-run
+has the same defect and is current-`original` evidence only (38,400 accepted,
+0 invalid, 0 rejected, all four skip counters 0) — NOT a replacement. It also
+ran 40/40 toy states against the registered 120/120. `deep` is not in
+`RESERVOIRS` at all, yet v6 draws 170/512 states from it.
+
+REQUIRED before any further closure claim (Codex): require every named path to
+exist; declare, persist and meet an EXACT per-source quota for `original`,
+`late` and `deep`; require the registered toy count rather than a nonzero one;
+fail closed on any short source.
 
 ## FINISHED — decision-sensitivity screen (Codex's unblocking condition), 06:05
 

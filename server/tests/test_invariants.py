@@ -589,18 +589,22 @@ def test_a_corrupted_high_n_record_is_REJECTED():
 
 
 def test_deep_lead_rows_round_trip_candidates_role_and_phase():
-    """Closes CORRECTNESS.md's round-trip obligation where it IS closeable.
+    """Replay-boundary test for deep-lead rows. Does NOT close CORRECTNESS.md.
 
-    CORRECTNESS.md:165 — "a rebuildable record is not authoritative until a
-    versioned loader reconstructs it and reproduces the same legal candidates,
-    observation, role/phase, and continuation." The high-N round trip above
-    proves replay/seat/conservation only, and CANNOT close this: those rows
-    carry old-ballot candidates, so requiring them to regenerate would fail
-    legitimately (Codex). The deep-lead schema can, because its loader replays
-    stored events WITHOUT invoking a current bot.
+    NARROWED after review (Codex): this proves deterministic replay plus
+    seat/phase/role/trick metadata, and that the CURRENT MC ballot is nonempty
+    and names only held card codes. It does NOT close the
+    candidate/observation/continuation obligation at CORRECTNESS.md:165 — the
+    row stores no candidate oracle, observation or continuation, and this
+    compares neither exact legal sets nor card MULTIPLICITY. Keep it as a
+    valuable replay-boundary check, not as the closure I first claimed.
 
-    This matters directly: the v6 gate sets draw all 170 late-band states from
-    the deep reservoir.
+    The high-N round trip above proves replay/seat/conservation only and also
+    cannot close CORRECTNESS.md:165, since those rows carry old-ballot
+    candidates. Neither test closes that obligation; both are boundary checks.
+
+    Still load-bearing: the v6 gate sets draw all 170 late-band states from the
+    deep reservoir.
     """
     import json
     import os

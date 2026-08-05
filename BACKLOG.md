@@ -8,30 +8,26 @@ view is a summary, not a replacement.
 
 ### NOW
 
-Both code gates are CLOSED (2026-08-05). The freezer enforces the registered
-size and role marginals, size now drives deal selection, and a shortage or
-replay error publishes nothing; the runner requires an explicit artifact plus
-its sha256 (compared before parsing), refuses any experimental sampler flag,
-and labels limited runs `smoke` so they cannot pool into a DEV verdict. v6 is frozen from clean `53d9b67` — DEV `af78748586034f6f`, CALIB
-`3872350f57a4dd60` — and all 1,024 rows replay. Two earlier freezes were
-REJECTED at review for order dependence: v4 selected in corpus insertion order,
-and v5 deduplicated on the marginal cell so a deal with two decisions in one
-cell kept whichever row was read last (52/512 exact DEV states moved under row
-reversal). v6 dedups on the exact state and measures 0 difference.
+**The ballot pipeline has ENDED at SELECT NONE (Codex ruling, 2026-08-05).** Not
+"waiting" — ended. Its CALIB run, online confirmation and learn-from-winner
+steps are NOT REACHED and are closed, because they all gate on a DEV winner that
+this instrument cannot produce: per-contrast sizing puts `quota-current` at
+~10,250 states against 3,842 remaining deals. CALIB and REPORT stay sealed and
+unscored.
 
-Selection is now order-independent, source is a registered marginal, and the
-runner pins the entire full-DEV protocol rather than only the state hash. Codex
-gave **PASS** in `5ef4fe6` and the DEV run launched. Seven shards completed
-cleanly, but shard 5 failed closed at `original:81002046:4` after one forbidden
-`rejected_worlds` event. There is no shard-5 artifact and no aggregate. Diagnose
-that exact event without dropping the state, changing the seed or weakening the
-counter gate; any code/protocol change invalidates the seven completed shards
-and requires all eight to rerun from one clean HEAD.
+**There is no live RL-beats-MC route inside that design.** Say so plainly rather
+than hardening infrastructure around a closed lane.
 
-The sampler remains posterior-incorrect and all repair flags remain OFF. That
-is a separate P1 correctness lane. DEV is allowed to compare ballot/search
-designs under the frozen sampler actually used in production; CALIB and online
-games are still required before any strength or deployment claim.
+**Named next hypothesis (NOT yet registered, no run authorized):** fixed-budget,
+common-world **ROOT ALLOCATION on the incumbent ballot**, with matched uniform
+and random-allocation controls. Explicitly NOT more width, NOT another uniform-N
+dose, NOT learned-prior racing — all three are measured and closed. Register a
+POWER/FEASIBILITY design first; **if the remaining fresh deal supply cannot
+resolve a predeclared meaningful effect, reject it without a run.**
+
+The learned lane is limited to contract work for role-correct targets and
+immutable actors, followed at most by the separately specified faithful
+synchronous microbaselines.
 
 ### Plain-English strength path
 
@@ -70,9 +66,9 @@ does not establish full-game strength.
 |---|---|---|
 | **0. Diagnose shard-5 sampler rejection** | The full pilot reached a real state where the production sampler recorded one rejected world; ignoring it would defeat the fail-closed launch contract | Preserve evidence; reproduce `original:81002046:4` with identical RNG; identify fold/draw/cause; add a regression and two-machine replay-corpus digest preflight. Do not drop/reroll/relax. If behavior changes, quarantine seven shards and rerun all eight |
 | **1. Complete and aggregate DEV-512 once** | The six-arm matrix separates selection quality, mere widening, more MC and the broad-universe ceiling | Require eight manifest-identical, counter-clean shards. Run the strict aggregator once; primary is quota vs random-fill, attribution is full-universe vs equal-work MC-more; select at most one design or none |
-| **2. One frozen design on untouched CALIB-512** | Offline regret has failed to predict online strength three times, so DEV selection cannot promote its own winner | Freeze the full `BallotSpec`, selector/quota, rollout allocation and thresholds before CALIB. Run the chosen design once; no post-CALIB tuning, arm substitution or pooling back into DEV. REPORT remains untouched by selection |
-| **3. Paired online strength confirmation** | A ballot can improve fixed-state regret without improving the game | On fresh deal seeds, the frozen candidate must clear arm-minus-current-MC and arm-minus-null/control bars in paired signed level utility with zero protocol failures; full-game level progression is the final deployment check. Any one-shot REPORT audit must be preregistered and cannot tune the design |
-| **4. Clean relabel + learned proposal only after a ballot win** | Repeating 37.1M old-ballot evaluations or training v11pair on actions outside its training ballot cannot improve the champion | Relabel only disagreement/high-uncertainty/late states under the frozen winning `BallotSpec`; train a lead-specific proposer, and require it to beat quota, random and `MC-more` controls before it enters production search |
+| **2. One frozen design on CALIB-512 — NOT REACHED / CLOSED** | Offline regret has failed to predict online strength three times, so DEV selection cannot promote its own winner | Freeze the full `BallotSpec`, selector/quota, rollout allocation and thresholds before CALIB. Run the chosen design once; no post-CALIB tuning, arm substitution or pooling back into DEV. REPORT remains untouched by selection |
+| **3. Paired online strength confirmation — NOT REACHED / CLOSED** | A ballot can improve fixed-state regret without improving the game | On fresh deal seeds, the frozen candidate must clear arm-minus-current-MC and arm-minus-null/control bars in paired signed level utility with zero protocol failures; full-game level progression is the final deployment check. Any one-shot REPORT audit must be preregistered and cannot tune the design |
+| **4. Relabel + learned proposal — NOT REACHED / CLOSED** | Repeating 37.1M old-ballot evaluations or training v11pair on actions outside its training ballot cannot improve the champion | Relabel only disagreement/high-uncertainty/late states under the frozen winning `BallotSpec`; train a lead-specific proposer, and require it to beat quota, random and `MC-more` controls before it enters production search |
 
 ### POST-512 CONTRACT
 

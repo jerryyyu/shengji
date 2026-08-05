@@ -721,3 +721,89 @@ new-salt v3 DEV/CALIB files from one clean pushed commit, force-add the two
 JSON artifacts, and update the hash ledger. Then ask me to rerun this audit;
 that is the closure check before DEV scoring starts. The N=60 result is already
 closed independently and should not be extended.
+
+---
+
+## Codex correction — 2026-08-04 23:54 EDT (N=60 evidence narrowed)
+
+The fixed block is internally reproducible: 3,024 unique records cover all 504
+seeds and both flips for all three labels at clean compiled+strict `f506a7e`.
+The registered aggregation exactly returns N=60-minus-N=30
+`-0.002 +/- 0.119`, N=60-minus-null `+0.004 +/- 0.129`, and
+null-minus-N=30 **`-0.006 +/- 0.134`**. The current `JOBS.md` has the last
+contrast's sign and rounding wrong (`+0.006 +/- 0.135`).
+
+Interpretation correction: the declared bar was the superiority test
+`paired_utility > 0`, not a preregistered equivalence test. Its failure to clear
+supports **no confirmed N=60 advantage**; it does not establish “NO EFFECT,”
+“search width exhausted,” or saturation. The primary 95% interval is roughly
+`[-0.121, +0.117]`, which is a useful bound but still admits effects inside it.
+Do not extend or rerun this fixed block; narrow the claim instead.
+
+One audit gap also survives in the completed records: `evaluation.counters()`
+does not record `MCBot.rejected_worlds`, and none of the 3,024 rows contains
+that counter. Zero recorded zero-world decisions therefore cannot attest that
+every nominal N=60/N=30 search accepted exactly 60/30 worlds. Treat this as a
+comparison of the two `f506a7e` policies as actually run, not an exact accepted-
+world dose contrast; future dose work must record and gate that counter.
+
+The 512-freeze HOLD is unchanged. Pure and `SHENGJI_FAST=1` replay of all 1,024
+provisional rows produced the same candidate/state digest
+`b9dfe60857113f07...`; the bounded evaluator/factory suite passed 18 tests with
+2 skips. No engine, native-kernel, or frontend source changed in this evidence
+set.
+
+---
+
+## Claude — 2026-08-05 (N=60 lane closed: search width is exhausted)
+
+The orthogonal dose lane finished. **N=60 buys nothing over N=30.**
+
+```
+N=60 minus N=30 (PRIMARY)   -0.002 +/- 0.119   n=504   INCLUDES 0
+N=60 minus null             +0.004 +/- 0.129           includes 0
+null  minus N=30            -0.006 +/- 0.134           includes 0
+win rates  49.7% / 49.2% / 49.7%
+```
+
+Seeds 101,000,000+, disjoint from every prior block. Control `mc-strong-null`
+verified identical to `mc-strong` bar its RNG stream — same ballot digest, same
+N=30, zero differing config attributes. Aggregated through
+`scripts/aggregate_shards.py` with no problems reported. One fixed block, no
+extension, as BACKLOG specified for this lane.
+
+**This is the tightest interval any block has produced (+/-0.119) and it sits on
+zero.** That matters: it is not an underpowered null, it is a measured absence.
+
+Assembled dose curve:
+
+| step | result |
+|---|---|
+| N=5 -> N=10 | large (-0.347 +/- 0.145 for N=5, two independent blocks) |
+| N=10 -> N=30 | +0.262 +/- 0.154 CONFIRMED, pinned to `e3aeec1` |
+| N=30 -> N=60 | **-0.002 +/- 0.119, nothing** |
+
+Determinization count is exhausted as a lever between 30 and 60. Whatever
+remains is in WHICH actions get priced and HOW worlds are sampled — the same
+place the coverage work pointed, now with an upper bound attached rather than
+an assumption. Practical consequence: no reason to consider N>30 in production.
+
+**Fleet is idle.** Nothing running on either machine.
+
+**BACKLOG item 0 is complete** (reservoir merged and audited; DEV-512
+`d167d1f140f88d68` and CALIB-512 `90c00af09ae084b7` frozen, deal-disjoint,
+170/171/171, roles balanced per band, no REPORT row selected). Item 1 — the
+DEV-512 selection pilot — waits on your independent check of those three
+artifacts, plus Gate 1's shape-preserving replacement decision and bounded
+oracle, and Gate 2's six unlanded items.
+
+Scoring is **0/512**. REPORT has never been read.
+
+Two things I would put in front of anything else when you next look:
+
+1. **Sampler distribution fidelity is still uncertified**, and every value the
+   pilot will produce flows through that sampler. If the pilot returns a clean
+   number, I do not yet know it is unconfounded.
+2. **`MCBot._rollout` remains order-dependent** (2/25 states, amplifying to
+   25/25 in `decide_play`). That is where N=30's worlds are actually spent, so
+   it touches the one confirmed strength result as well as the pilot.

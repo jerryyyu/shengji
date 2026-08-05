@@ -47,6 +47,11 @@ replaced correct-but-wasteful residue sharding that would have over-captured
 every cell once per worker. Copy all eight shard JSONLs and manifests to one
 clean checkout, then run:
 
+If Air is asleep/unreachable, do not leave the gate idle: the Mini reports 10
+logical CPUs and may run all I=0..7. Machine placement is not part of state
+selection. Conversely, do not add Air midway until its full source/ballot JSON
+matches Mini; a mismatched shard is guaranteed merge refusal.
+
 ```bash
 SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 uv run python \
   scripts/capture_deep_leads.py merge \

@@ -23,6 +23,11 @@ import time
 #: Sample count matrices in proportion to the number of card-assignments they
 #: admit, rather than uniformly. Off by default until Codex adopts it.
 WEIGHTED_SPLITS = bool(os.environ.get("SHENGJI_WEIGHTED_SPLITS"))
+#: Draw uniformly among cap-respecting cards instead of taking the first legal
+#: one — the second named posterior bias. Also off by default.
+UNIFORM_DEAL = bool(os.environ.get("SHENGJI_UNIFORM_DEAL"))
+PHYSICAL_FILLS = bool(os.environ.get("SHENGJI_PHYSICAL_FILLS"))
+from math import factorial as _fact
 
 import copy
 import random
@@ -639,8 +644,22 @@ class MCBot(SmartBot):
                 nonlocal total
                 if j == len(rem_caps):
                     if left == 0:
-                        total += rec(i + 1, tuple(a - b for a, b in
-                                                  zip(rem_caps, acc)))
+                        # PHYSICAL_FILLS: a multiset assignment giving receiver
+                        # j exactly acc[j] copies of this code is realised by
+                        # m!/prod(acc[j]!) distinct PHYSICAL deals, because the
+                        # deck holds separate copies. Counting each multiset
+                        # once targets a flat-over-multisets prior; the stated
+                        # target is flat over DEALS. `AABB` split 2/2 is 3
+                        # multisets but 6 deals (1/4/1), so the uncorrected
+                        # count under-weights balanced hands even here, in the
+                        # very function written to stop under-weighting them.
+                        coef = 1
+                        if PHYSICAL_FILLS:
+                            coef = _fact(m)
+                            for k in acc:
+                                coef //= _fact(k)
+                        total += coef * rec(i + 1, tuple(a - b for a, b in
+                                                         zip(rem_caps, acc)))
                     return
                 for k in range(min(left, rem_caps[j]) + 1):
                     dist(j + 1, left - k, acc + (k,))
@@ -752,6 +771,26 @@ class MCBot(SmartBot):
         o = getattr(mem, "o", None)
         for _ in range(n):
             pick = None
+            # UNIFORM among cap-respecting cards, rather than first-legal.
+            # First-legal prefers distinct codes beyond what the caps require —
+            # the second named posterior bias. Flagged so its contribution is
+            # measurable separately from the split weighting.
+            if UNIFORM_DEAL:
+                elig = []
+                for i, c in enumerate(remaining):
+                    t = held + Counter([c])
+                    if cap is not None and sum(v // 2 for v in t.values()) > cap:
+                        continue
+                    if run_cap is not None and o is not None and \
+                            _dec(list(t.elements()), o).max_pair_run() > run_cap:
+                        continue
+                    elig.append(i)
+                if not elig:
+                    return None
+                c = remaining.pop(self.rng.choice(elig))
+                out.append(c)
+                held[c] += 1
+                continue
             for i, c in enumerate(remaining):
                 trial = held + Counter([c])
                 if cap is not None:

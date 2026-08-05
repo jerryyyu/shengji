@@ -89,13 +89,51 @@ def main() -> None:
     # dominated and three runs hung past 10 minutes without reaching the
     # measurement at all. The states are just positions — how they were found
     # does not change the posterior over their hidden hands.
-    _w = os.environ.pop("SHENGJI_WEIGHTED_SPLITS", None)
+    # EVERY sampler flag must be neutralised here, not just the one that
+    # existed when this was written. `toy_states()` self-plays to reach the
+    # measurement positions, so any flag left active changes WHICH STATES are
+    # generated and silently unpairs the arms. That is exactly what happened:
+    # the weighted arm was neutralised and stayed paired (24/24 identical
+    # `legal_keys`), while `SHENGJI_UNIFORM_DEAL`, added later, was not and
+    # produced 0/24 — a paired statistic computed over different states.
+    # Listing the flags in one place makes the next flag fail loudly instead.
     import shengji.ai.mcbot as _M
-    _M.WEIGHTED_SPLITS = False
+    SAMPLER_FLAGS = {"SHENGJI_WEIGHTED_SPLITS": "WEIGHTED_SPLITS",
+                     "SHENGJI_UNIFORM_DEAL": "UNIFORM_DEAL",
+                     "SHENGJI_PHYSICAL_FILLS": "PHYSICAL_FILLS"}
+    for _env, _attr in SAMPLER_FLAGS.items():
+        if not hasattr(_M, _attr):
+            print(f"REFUSING: {_env} maps to unknown MCBot attribute {_attr}")
+            sys.exit(4)
+    # Validating only what is already listed cannot catch the failure that
+    # actually happened: a NEW flag added to the sampler and never registered
+    # here stayed live during state generation and silently unpaired the arms
+    # (Codex). So audit the module SOURCE for module-level flag reads and
+    # refuse on any that is neither registered nor explicitly exempt.
+    import inspect
+    import re
+    _EXEMPT = {"SHENGJI_REQUIRE_VOIDS",     # strictness, not a sampler variant
+               "SHENGJI_STRICT_SAMPLING",
+               "SHENGJI_FAST"}              # compiled engine selection
+    _src = inspect.getsource(_M).split("\ndef ")[0].split("\nclass ")[0]
+    _found = set(re.findall(r'os\.environ\.get\("(SHENGJI_[A-Z_]+)"\)', _src))
+    _unregistered = _found - set(SAMPLER_FLAGS) - _EXEMPT
+    if _unregistered:
+        print(f"REFUSING: {sorted(_unregistered)} read at module level in "
+              "mcbot.py but not in SAMPLER_FLAGS. An unregistered flag stays "
+              "ACTIVE during state generation, which unpairs the arms while "
+              "leaving the seeds looking matched. Register or exempt it.")
+        sys.exit(4)
+    _saved = {e: (os.environ.pop(e, None), getattr(_M, a))
+              for e, a in SAMPLER_FLAGS.items()}
+    for _e, _a in SAMPLER_FLAGS.items():
+        setattr(_M, _a, False)
     states = list(toy_states(args.states * 3))
-    if _w:
-        os.environ["SHENGJI_WEIGHTED_SPLITS"] = _w
-        _M.WEIGHTED_SPLITS = True
+    for _e, _a in SAMPLER_FLAGS.items():
+        _env_val, _mod_val = _saved[_e]
+        if _env_val is not None:
+            os.environ[_e] = _env_val
+        setattr(_M, _a, _mod_val)
 
     bot = MCBot(seed=4242)
     rows = []
@@ -141,7 +179,18 @@ def main() -> None:
             have = card_seat.get(key, 0) / ok
             if abs(have - want) > worst_gap:
                 worst_gap, worst_card = abs(have - want), key
+        # Record the raw sampled-world histogram and the exact reference
+        # counts. Codex: the current reference is flat over DEDUPLICATED
+        # multiset keys, not over physical index assignments, so every TV here
+        # aims at a target that is itself under repair. Without the histogram
+        # these runs cannot be reweighted once the reference is fixed and the
+        # compute is simply lost. `legal_counts` is what `enumerate_legal`
+        # currently believes; storing it makes the wrong reference explicit and
+        # correctable rather than baked into a scalar.
         rows.append({"seed": seed, "n_legal": n, "draws": ok,
+                     "sampled_hist": sorted(
+                         (f"{k}", v) for k, v in seen.items()),
+                     "legal_keys": sorted(f"{k}" for k in legal),
                      "tv": tv, "tv_noise_95": band,
                      "tv_excess": max(0.0, tv - band),
                      "worst_marginal_gap": worst_gap,
@@ -170,7 +219,19 @@ def main() -> None:
           "repair before pilot scoring; it is not a certification.")
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     with open(args.out, "w") as fh:
-        json.dump({"states": len(rows), "mean_tv": mtv, "mean_tv_excess": mex,
+        json.dump({"states": len(rows),
+                   "mode": {"weighted_splits": bool(os.environ.get(
+                                "SHENGJI_WEIGHTED_SPLITS")),
+                            "uniform_deal": bool(os.environ.get(
+                                "SHENGJI_UNIFORM_DEAL")),
+                            "physical_fills": bool(os.environ.get(
+                                "SHENGJI_PHYSICAL_FILLS")),
+                            "require_voids": bool(os.environ.get(
+                                "SHENGJI_REQUIRE_VOIDS")),
+                            "fast": bool(os.environ.get("SHENGJI_FAST"))},
+                   "reference": "flat-over-deduplicated-multiset "
+                                "(UNDER REPAIR - see HANDOFF_REVIEW)",
+                   "mean_tv": mtv, "mean_tv_excess": mex,
                    "mean_worst_marginal_gap": mmg, "biased_states": biased,
                    "draws": args.draws, "rows": rows}, fh, indent=1)
     print(f"\nwrote {args.out}")

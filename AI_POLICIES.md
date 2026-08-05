@@ -79,12 +79,49 @@ newest entry sit on top and speak for the file.
   reached in all 120. Three sampler defects were found and fixed getting here
   (allocator dead-ends, the declarer pin completing a forbidden pair, and
   tractor run-length caps never consumed).
-  **NOT certified: distribution fidelity.** Two biases are named and
-  unmeasured — `_splits` samples count matrices roughly uniformly though they
-  admit very different numbers of completions, and `_deal_suit` prefers
-  distinct codes beyond what the caps require. Do not call the world
-  distribution posterior-correct. `CORRECTNESS.md` is authoritative for the
-  exact proof obligations, certification boundary and sampler incidents.
+  **NOT certified: distribution fidelity — now MEASURED, and the two named
+  causes do not account for it.** Against a uniform-over-PHYSICAL-DEALS
+  reference on 24 enumerable states (paired, pairing machine-verified):
+  `_splits` sampling count matrices roughly uniformly is a real contributor —
+  weighting them cuts excess TV by `-0.060 +/- 0.031`, CONFIRMED. `_deal_suit`
+  preferring distinct codes is NOT — `-0.0001 +/- 0.0027`, bounded to nothing.
+  A third cause is unidentified: baseline excess stays at `0.109` after the
+  reference itself was repaired, so it is neither of the named biases nor an
+  artifact of the old flat-over-multisets reference (which explained only ~6%).
+  Two counting defects were found and repaired in the measurement apparatus
+  itself: the reference collapsed physical deals into multisets, and `_fills`
+  counts `AABB, 2/2` as 3 rather than the physical 6.
+  **TV excess is a weak proxy for what the pilot cares about, because the
+  enumerable population is mostly decision-degenerate.** 54 of 84 enumerable
+  states have every candidate returning an identical value on every world — with
+  two cards left `C2` and `H2` are the same move — so no sampler could change
+  the choice there, yet those states carry the TV. On 30 decision-LIVE states
+  (N=30, 600 reps) the bias-attributable excess argmax disagreement is
+  `-0.0066 +/- 0.0169` and excess regret `-0.0098 +/- 0.0171` — neither
+  distinguishable from zero — while a PERFECT sampler at the same N already
+  disagrees with the exact argmax up to 20.3% from Monte Carlo noise alone.
+  **But "zero on average" is not "harmless per state":** only 9 of 30 live
+  states disagree at all, and among those the excess swings from `+0.158`
+  (seed 880050: biased 32.2% vs control 16.3%) to `-0.160` (seed 880060, where
+  the bias happened to help). So the bias does move individual decisions
+  materially in BOTH directions, with no detectable systematic direction. This
+  is bounded evidence that noise dominates bias in aggregate at N=30 — NOT
+  evidence the sampler is correct, and not a reason to ignore per-state
+  variance in a pilot that aggregates per-state regret. NOTHING IS ADOPTED — all
+  sampler flags default OFF. **Two estimands, decided 2026-08-05 (Codex):**
+  the CORRECTNESS estimand — does the sampler draw the true physical-deal
+  posterior — is NOT certified and stays open; weighted splits are slow and
+  still biased, so all three flags remain OFF. The STRENGTH-SCREEN estimand —
+  which ballot/search design decides best when paired with the sampler
+  production actually deploys — is legitimate and is what DEV-512 answers. The
+  sampler is frozen as PART OF THE POLICY under test. So: do NOT call the
+  distribution posterior-correct or the bias harmless, and do NOT block the DEV
+  screen on an exact-posterior research project. A DEV winner needs CALIB plus
+  paired online confirmation before promotion, and must be revalidated if the
+  sampler ever changes. No further enumerable-regime posterior or
+  decision-sensitivity measurement is requested.
+  `CORRECTNESS.md` is authoritative for the exact proof obligations,
+  certification boundary and sampler incidents.
 - **Determinization is version-pinned CONFIRMED.** On the corrected sampler,
   the preregistered fresh 504-cluster block measured N=30 minus N=10 at
   `+0.262 +/- 0.154`, with a flat true null. It ran before the later action-
@@ -469,7 +506,12 @@ the fold.
 
 `mc` (current) vs `mc-prefix` (the BOT layer frozen at `b3f8f61`: old greedy
 sampler, no `pair_cap`/`run_cap`, no canonical hand order), both N=10, 504
-preregistered clusters at seeds 103M, control `mc-prefix-null`.
+clusters at seeds 103M, control `mc-prefix-null`.
+
+**NOT preregistered** (corrected 2026-08-05 — this section previously said it
+was). No block size, bar or primary contrast was registered before the run, and
+it is protocol-failed besides, so it is a post-hoc SCREEN and cannot confirm or
+refute anything on its own.
 
 | contrast | result |
 |---|---|
@@ -632,10 +674,26 @@ noise. Without that band a raw TV of 0.2 could not be distinguished from the
 floor at all.
 
 **Zero legal worlds were never drawn**, in every state. So this is purely a
-proportions failure, exactly as the two named biases predict: `_splits` samples
-count matrices roughly uniformly though they admit very different numbers of
-completions, and `_deal_suit` prefers distinct codes beyond what the caps
-require. Completeness is intact; weighting is not.
+proportions failure. Completeness is intact; weighting is not.
+
+**SUPERSEDED 2026-08-05 by a 24-state paired block against a repaired
+reference — the attribution above was wrong.** This n=8 table stands as the
+historical first measurement; its numbers are against a reference that has
+since been shown incorrect, and the sentence that once followed it ("exactly as
+the two named biases predict") is withdrawn. Only ONE of the two named biases
+contributes:
+
+| cause | paired dTV_excess, physical reference, n=24 | verdict |
+|---|---|---|
+| `_splits` uniform over count matrices | **-0.060 +/- 0.031** | CONFIRMED contributor |
+| `_deal_suit` first-legal preference | **-0.0001 +/- 0.0027** | bounded to nothing |
+
+Baseline excess against the repaired reference is `0.109`, versus `0.116`
+against the old flat-over-multisets one — so the wrong reference explained only
+~6% of the bias and **a third cause remains unidentified.** Two defects were
+also found in the measuring apparatus rather than the sampler: the reference
+collapsed physical deals into multisets, and `_fills` counts `AABB, 2/2` as 3
+where the physical count is 6.
 
 **Consequence for the pilot.** Codex's condition was "repair first only if that
 bounded probe shows material bias". It does. Sharing proposal and report worlds
@@ -643,9 +701,14 @@ gives low-variance paired comparisons but does NOT cancel a biased belief
 distribution when the bias changes which action is best — and a bias this size
 plausibly does. **Pilot scoring should not start on this sampler.**
 
-Reference is uniform-over-legal-worlds because determinization assumes an
-uninformative prior over deals consistent with the public record. That is the
-sampler's own stated target.
+Reference is uniform over PHYSICAL DEALS consistent with the public record,
+because that is what "an uninformative prior over deals" means with a double
+deck. The original reference was flat over deduplicated multiset worlds, which
+is a different distribution: `AABB` split 2/2 is three multisets but six deals
+(weights 1/4/1), so the old reference under-weighted balanced worlds — the same
+direction the `_splits` repair pushes. That is why the `-0.060` was re-derived
+against the corrected reference before being believed; it got LARGER, not
+smaller, so it is not an artifact of the reference's own error.
 
 ## Sampler certification status — P0 passed; posterior fidelity open
 

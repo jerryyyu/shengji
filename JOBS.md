@@ -5,22 +5,90 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-### mini / N=30 vs N=10 FROZEN-CURRENT confirmation — preregistered, 00:55
+Nothing, and deliberately so as of 2026-08-05 08:50. **BLOCKED on a Codex
+decision** (see the BLOCKED section at the tail of `HANDOFF_REVIEW.md`): every
+sampler-bias number is measured on a defender-only, median-two-candidate,
+64%-decision-degenerate population, while DEV-512 is balanced and
+median-seven-candidate. More precision in that regime cannot fix a population
+mismatch, so no further enumerable-regime run is queued — it would produce a
+tighter number meaning the same thing. Three options are laid out for Codex;
+I am not picking among them.
 
-Prod now serves `mc-strong` (N=30, compiled engine). The evidence for that
-switch is +0.262 +/- 0.154, pinned to commit `e3aeec1`. Current `main` has a
-different sampler, ballot and decompose path, so this re-runs the SAME
-protocol against what is actually deployed.
+## FINISHED — decision-sensitivity screen (Codex's unblocking condition), 06:05
 
-- arm `mc-strong` vs opponent `mc`; control `mc-null` (N=10, RNG-shifted only).
-- PRIMARY: paired per-seed level utility, N=30 minus N=10, interval excludes 0.
-- 6 shards x 84 clusters = 504 clusters, seeds 102,000,000-102,000,503,
-  disjoint from 93M/94M/95M/96M/99M/101M.
-- One fixed block, no extension regardless of result. Aggregate with
-  `scripts/aggregate_shards.py`.
+Does the sampler's posterior bias change WHICH ACTION is chosen? Fixed value
+table per (action, world) so rollout noise cannot vary; compare argmax under the
+exact physical posterior, N=30 from the real sampler, and N=30 from the exact
+posterior as a CONTROL that absorbs Monte Carlo noise.
 
-If it fails to reproduce, prod should go back to `mc` — the deploy would then
-be resting on a result that does not describe the deployed code.
+- 30 decision-LIVE states, 600 reps: excess disagreement `-0.0066 +/- 0.0169`,
+  excess regret `-0.0098 +/- 0.0171`. Both include zero; sign flipped between
+  the 12- and 30-state blocks, so read neither point estimate.
+- **54 of 84 enumerable states are DECISION-DEGENERATE** — every candidate
+  identical on every world. The harness excludes and counts them and REFUSES if
+  none remain, because there a broken probe and a perfect sampler both print
+  0.000.
+- NOT harmless per state: only 9/30 live states disagree at all, with excess
+  from `+0.158` (bias nearly doubles the error rate) to `-0.160` (bias helps).
+- Fill-failure retry reweighting RULED OUT here: 0 failed draws in 540,000 attempts with 0 failed draws (recorded in the v2 artifact)
+  empty `reject_cause`.
+- Screen, not preregistered; population is small, endgame-heavy and
+  unrepresentative of the deep-lead states the pilot scores. Gate NOT called.
+
+## FINISHED — reference repair + residual attribution, 2026-08-05 03:10
+
+Physical-deal reference implemented and brute-force verified (`AABB 2/2` -> 6,
+`AABBCC 2/2/2` -> 90). All blocks reweighted from stored histograms, no
+resampling. Weighted splits CONFIRMED at `-0.0600 +/- 0.0310` against the
+corrected reference (larger than the `-0.0514` flat figure, so not a reference
+artifact). `PHYSICAL_FILLS` adds `-0.0031 +/- 0.0048` — below resolution, 22/24
+states unchanged, 0 worse. Residual attributed: split-choice TV `0.0697` vs
+card-choice `0.0330`, so it remains in `_splits` after weighting. Off-support
+sampled mass is 0.0000 everywhere. Nothing adopted, all flags OFF.
+
+## FINISHED — 103M `mc` vs `mc-prefix` bot-layer contrast (Jerry's ask)
+
+**Strength: NOT CONFIRMED, and PROVISIONAL — do not quote as a clean result.**
+`arm minus reference -0.054 +/- 0.156`, n=504, includes 0. Win rates 48.3% arm
+/ 49.0% reference / 52.1% control. The aggregator REFUSED a pooled number
+(4 zero-world decisions, all in `control`); the figure above is its
+`--allow-problems` provisional read.
+
+**This contrast cannot be made clean by rerunning, and that is the finding.**
+The protocol failures are produced BY the thing under test. Per-side counters:
+
+```
+  label/side          searches   rejected   zero
+  arm/arm   (current)    30757          2      0     0.00007  <- only current row
+  arm/opp   (pre-fix)    30685        410      0
+  control/arm(pre-fix)   30667        507      2
+  control/opp(pre-fix)   30619        519      2
+  reference/arm(pre-fix) 30609        493      0
+  reference/opp(pre-fix) 30618        578      0
+  ------------------------------------------------
+  ALL sides                          2,509      4
+  pre-fix aggregate    153,198      2,507            0.01636
+  current                30,757          2            0.00007   ~252x lower
+```
+(Corrected 2026-08-05: an earlier version of this table omitted the `opp` side
+of `control` and `reference`, so it displayed partial counts. Codex caught it;
+the totals above are re-derived from the raw shards.)
+
+The pre-fix bot layer rejects 2,507 of 153,198 sampled worlds (1.64%); the
+current bot rejects 2 of 30,757 (0.007%), a ~252x lower rate, and produces no
+zero-world fallbacks where the pre-fix layer produced 4. This is a DESCRIPTIVE
+post-hoc screen, not preregistered and protocol-failed. So the
+strict evaluator's own no-zero-world requirement is violated by `mc-prefix` BY
+CONSTRUCTION. Any rerun hits the same wall; only a changed estimand escapes it.
+
+**What this does and does not say.** It quantifies, for the first time, what the
+correctness work bought: a ~250x reduction in constraint-violating world
+proposals and the elimination of zero-world fallbacks, measured with both bot
+layers on the SAME current engine so engine changes cancel. It does NOT show a
+strength gain — the level-utility contrast includes 0. Correctness and strength
+are separate axes here and only the first moved. `mc-prefix`'s ballot digest
+also differs (`4d73f8cb` vs `a68f7b8b`), so this is a whole-bot-layer contrast,
+not a sampler-only one.
 
 ## FINISHED — Gate 3 raw capture (not scoring)
 
@@ -40,29 +108,61 @@ Fresh schema-v2 capture and merge completed at 23:15 from clean compiled+strict
 The first v1 attempt remains recoverably quarantined. Gate 3 capture is closed;
 do not rerun it.
 
-## PILOT — steps 1-4 built, SCORING AT 0/512 (Codex hold)
+## PILOT — gate sets FROZEN and COMMITTED; SCORING STILL 0/512 (Codex hold)
 
-Artifact ledger: `server/rl_data/PILOT_ARTIFACTS.md`. The old
-`pilot_states.v3.json` remains an engineering-only set. New DEV/CALIB v2 files
-are provisional and must not be scored yet.
+Artifact ledger: `server/rl_data/PILOT_ARTIFACTS.md`.
 
-**v3 is NOT the gate set.** 255 early / 254 mid / 3 late by trick index, and
-199/313 attacker/defender. Only 3 DEV deals supply a late lead state, so a
-balanced broad-lead gate is not constructible from this corpus. Codex chose
-option (b): capture deep LEAD states as a new job, then freeze distinct DEV and
-CALIB artifacts.
+**Item 0 is ~90% and NOT certified (Codex 08:52)** — re-verified 2026-08-05 07:20 (this section previously
+still described the v2 files as provisional and the v3 gate sets as
+nonexistent — Codex flagged it, and the following was checked from disk, not
+copied from a prior note):
 
-The former runner/ballot blockers are closed in code. Independent validation
-replayed every provisional v2 row: 512 unique states per side, exact
-170/171/171 bands, 85/85 + 86/85 + 86/85 role counts, zero split mismatch and
-zero DEV/CALIB seed overlap. Their hashes match the ledger. They still fail
-the registered freeze contract because candidate-size strata are descriptive
-only, the files are ignored rather than committed, and the freezer does not
-fail closed or have contract tests. Predeclare the exact size allocation,
-repair/test the freezer, and create new-salt committed v3 files. Pilot scoring
-remains 0/512.
+- `rl_data/pilot_dev512.v3.json`   sha256 `d8d5d04abb9f9262...` — in git;
+- `rl_data/pilot_calib512.v3.json` sha256 `5e4c9a8d4a6310ac...` — in git;
+- `tests/test_pilot_freezer.py` 10/10 passing as the committed contract.
+
+Bands 170/171/171, roles balanced per band, deal-disjoint, zero REPORT rows.
+**Candidate-size is NOT enforced** — the registered v3 sets fail the size check
+9 ways per side. The freezer now refuses on shortage, replay errors, missed
+band/size quota and duplicate deals (`check_contract`, 6 tests asserting each
+refusal fires, 16/16). Remaining: pick a feasible size quota, then regenerate
+v3 -> v4. A census shows an identical per-band quota is IMPOSSIBLE
+(`late/wide` = 0 deals, `early/small` = 5). Awaiting Codex's choice.
+
+**The reservoir** is `ffccfde64932eb3a` (768 rows, 48 cells x 16, replayed).
+
+**What still blocks scoring is the sampler, not the artifacts.** Pilot scoring
+remains 0/512 pending Codex's ruling on posterior bias. Do not touch the
+pilot's registered budgets.
+
+## FINISHED — N=30 frozen-current confirmation (seeds 102M)
+
+**+0.222 +/- 0.140** vs N=10 over 504 preregistered fresh clusters;
+arm-minus-null +0.230 +/- 0.139; null -0.008 +/- 0.154; win rates
+55.2/50.9/51.2. So the `e3aeec1` result (+0.262 +/- 0.154) transfers to the
+deployed executable despite sampler, ballot and decompose changes in between.
+Caveat: these shards predate the `rejected_worlds` counter, so this is a
+policy-as-run comparison, not proof of an exact accepted dose. Prod is live on
+this (`mc-strong`, N=30, compiled engine); no redeploy without Jerry's go.
 
 ## RECENTLY FINISHED
+
+### sampler posterior 24-state paired probe — SUPERSEDED, see the physical-
+### reference block above (2026-08-05 03:10)
+
+Kept only as a pointer. Two figures once published here are WITHDRAWN, not
+merely superseded:
+
+- the uniform-deal `+0.018 +/- 0.045` was computed over arms that shared 0 of
+  24 enumerated legal sets — a sampler flag was live during state generation,
+  so the "paired" statistic compared different states (Codex);
+- the inference that the residual was an artifact of the flat reference is
+  refuted: against the repaired physical reference the residual is 0.109 vs
+  0.116, so the reference explained ~6% of it.
+
+Current figures: weighted splits `-0.0600 +/- 0.0310`, uniform deal
+`-0.0001 +/- 0.0027`, both 24/24 pairing-verified against the physical
+reference. Nothing adopted; all flags OFF; pilot scoring 0/512.
 
 ### N=60 vs N=30 dose test — NO CONFIRMED ADVANTAGE, closed 2026-08-04 23:46
 - Primary N=60-minus-N=30 paired utility **-0.002 +/- 0.119** over 504 fresh
@@ -127,7 +227,7 @@ remains 0/512.
   accepted unrelated pair throws.
 
 ### late-ply capture (Air) — 15:30
-- 12,000 states, 105.2m. Pulled to rl_data/highn_late_air.jsonl.
+- 540,000 attempts with 0 failed draws (recorded in the v2 artifact)
 
 ### determinization screen — CLOSED negative
 - N=30 vs N=10 NOT CONFIRMED (+0.101 +/- 0.150, fresh seeds). N=10 vs N=5

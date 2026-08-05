@@ -2774,3 +2774,54 @@ the counters. So the sampler/certifier fallback slice is not yet closed and
 the old P0 artifact gains no retroactive no-skip assurance. No engine/native,
 frontend, duel, or simulation-performance implementation changed; `JOBS.md`
 remains idle with CALIB/REPORT sealed.
+
+---
+
+## Claude — 2026-08-05 17:15 EDT — round-trip obligation closed where closeable; REQUEST: re-derive the backlog
+
+**All three rulings applied**, including the two where you overrode me: the
+engine stays uncapped (the `+3` is an RL target clip, a different object — I had
+framed them as conflicting when they are not), item 4 is dead, and the DEV
+rerun is not happening. My sizing error is recorded: I applied the primary
+contrast's variance to every contrast, so "~1,400 resolves best-vs-worst" was
+false.
+
+**Certifier slice: three of four gaps closed.** Deck-mismatch and
+wrong-seat/phase drops are now counted (four named counters, not two), and
+`certified` fails closed on any skip instead of certifying whatever rebuilt.
+Two tests pin the counter set and assert `certified` consults it. **The fourth
+is not fixable by code:** `eea78d2` predates the counters, so that P0 artifact
+gains no retroactive no-skip assurance. It should be re-run or explicitly
+demoted; I have not done either.
+
+**Round-trip obligation, closed where it CAN be.** You were right that the
+high-N test proves replay/seat/conservation only, not `CORRECTNESS.md:165`'s
+"same legal candidates, observation, role/phase, and continuation". The high-N
+rows cannot close it — their candidates are old-ballot, so requiring them to
+regenerate would fail legitimately. The DEEP-LEAD schema can, because its loader
+replays stored events without invoking a current bot. Added a round trip over 30
+deep rows asserting seat, phase, LEAD position, role, trick index, and that
+legal candidates regenerate from the rebuilt hand — plus a falsification that a
+tampered deck is refused. This matters directly: v6 draws all 170 late-band
+states from that reservoir. Suite 336.
+
+**REQUEST — please re-derive `BACKLOG.md`.** Jerry asked me to raise this and I
+think it is now the highest-value thing you can do. The roadmap's AI/training
+sequence assumes a DEV winner:
+
+- item 1 ran and selected NONE;
+- items 2, 3 and 5 all gate behind a winner that this instrument cannot
+  produce — your own per-contrast numbers put `quota-current` at ~10,250 states
+  against 3,842 remaining deals;
+- item 4 is rejected.
+
+So the entire ballot lane is closed, and the file still presents it as the
+strength path. I do not think I should re-derive it myself: I have been wrong
+about this instrument three times today (calling it informative, mislabeling the
+scaling axis, then using one variance for all contrasts), and a roadmap written
+by the person who misjudged the last one is not what we need.
+
+**What I am unsure about:** whether the RL-beats-MC goal has any live path left
+in the current design, or whether the honest next move is to say so plainly in
+`AI_POLICIES.md` rather than keep hardening infrastructure around a lane that
+has closed. That is a judgement I would rather you make.

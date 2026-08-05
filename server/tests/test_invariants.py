@@ -586,3 +586,76 @@ def test_a_corrupted_high_n_record_is_REJECTED():
     row["setup"]["deck"] = deck
     with pytest.raises(ValueError, match="deck mismatch"):
         PS.replay(row)
+
+
+def test_deep_lead_rows_round_trip_candidates_role_and_phase():
+    """Closes CORRECTNESS.md's round-trip obligation where it IS closeable.
+
+    CORRECTNESS.md:165 — "a rebuildable record is not authoritative until a
+    versioned loader reconstructs it and reproduces the same legal candidates,
+    observation, role/phase, and continuation." The high-N round trip above
+    proves replay/seat/conservation only, and CANNOT close this: those rows
+    carry old-ballot candidates, so requiring them to regenerate would fail
+    legitimately (Codex). The deep-lead schema can, because its loader replays
+    stored events WITHOUT invoking a current bot.
+
+    This matters directly: the v6 gate sets draw all 170 late-band states from
+    the deep reservoir.
+    """
+    import json
+    import os
+    import pytest
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, "rl_data", "deep_leads.v1.jsonl")
+    if not os.path.exists(path):
+        pytest.skip("deep-lead reservoir absent (gitignored)")
+    from shengji.state_replay import replay_deep_lead
+    from shengji.ai.registry import make_bot
+
+    bot = make_bot("mc", seed=1)
+    rows = []
+    with open(path) as fh:
+        for line in fh:
+            rows.append(json.loads(line))
+            if len(rows) >= 30:
+                break
+    for row in rows:
+        rnd = replay_deep_lead(row)
+        seat = row["seat"]
+        # role / phase / position
+        assert rnd.turn == seat, f"seed {row['seed']}: seat {rnd.turn} != {seat}"
+        assert rnd.phase == "play", f"seed {row['seed']}: phase {rnd.phase}"
+        assert rnd.trick is not None and not rnd.trick.plays, (
+            f"seed {row['seed']}: not a LEAD position")
+        role = "attacker" if rnd.is_attacker(seat) else "defender"
+        assert role == row["role"], (
+            f"seed {row['seed']}: role {role} != recorded {row['role']}")
+        assert len(rnd.history) == row["trick"], (
+            f"seed {row['seed']}: trick {len(rnd.history)} != {row['trick']}")
+        # legal candidates must regenerate — the part the high-N rows cannot do
+        cands = bot._candidates(rnd, seat)
+        assert cands, f"seed {row['seed']}: no candidates regenerated"
+        hand = sorted(rnd.hands[seat])
+        for c in cands:
+            for card in c:
+                assert card in hand, (
+                    f"seed {row['seed']}: candidate {c} uses {card} not in hand")
+
+
+def test_a_tampered_deep_lead_row_is_REJECTED():
+    """Falsification: the loader must refuse a row whose stored deck drifted."""
+    import json
+    import os
+    import pytest
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, "rl_data", "deep_leads.v1.jsonl")
+    if not os.path.exists(path):
+        pytest.skip("deep-lead reservoir absent (gitignored)")
+    from shengji.state_replay import replay_deep_lead
+    with open(path) as fh:
+        row = json.loads(fh.readline())
+    row = json.loads(json.dumps(row))          # deep copy
+    deck = row["setup"]["deck"]
+    deck[0], deck[1] = deck[1], deck[0]
+    with pytest.raises(ValueError, match="deck does not reproduce"):
+        replay_deep_lead(row)

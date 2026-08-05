@@ -44,8 +44,8 @@ def test_registered_quota_is_170_171_171():
     assert sum(PS.BAND_QUOTA.values()) == 512
 
 
-@pytest.mark.parametrize("name", ["pilot_dev512.v4.json",
-                                  "pilot_calib512.v4.json"])
+@pytest.mark.parametrize("name", ["pilot_dev512.v6.json",
+                                  "pilot_calib512.v6.json"])
 def test_no_selected_state_belongs_to_the_REPORT_split(name):
     """REPORT membership checked against the DECLARED SPLIT FILES.
 
@@ -73,7 +73,7 @@ def test_no_selected_state_belongs_to_the_REPORT_split(name):
     assert checked == 512, f"only {checked} states resolved against a split"
 
 
-@pytest.mark.parametrize("name", ["pilot_dev512.v5.json", "pilot_calib512.v5.json"])
+@pytest.mark.parametrize("name", ["pilot_dev512.v6.json", "pilot_calib512.v6.json"])
 def test_frozen_artifact_meets_the_contract(name):
     d = _load(name)
     assert d["selected"] == 512
@@ -93,7 +93,7 @@ def test_frozen_artifact_meets_the_contract(name):
 def test_role_balance_is_enforced_not_merely_recorded():
     """The first freeze reported `?` for every band: rows carried no role, so
     the balancing loop matched nothing and silently fell through."""
-    for name in ("pilot_dev512.v3.json", "pilot_calib512.v3.json"):
+    for name in ("pilot_dev512.v6.json", "pilot_calib512.v6.json"):
         d = _load(name)
         for band, counts in d["roles_by_band"].items():
             assert "?" not in counts, f"{name}/{band}: role never carried"
@@ -103,7 +103,7 @@ def test_role_balance_is_enforced_not_merely_recorded():
 
 
 def test_dev_and_calib_are_deal_disjoint():
-    d, c = _load("pilot_dev512.v3.json"), _load("pilot_calib512.v3.json")
+    d, c = _load("pilot_dev512.v6.json"), _load("pilot_calib512.v6.json")
     kd = {(s["source"], s["seed"]) for s in d["states"]}
     kc = {(s["source"], s["seed"]) for s in c["states"]}
     assert not (kd & kc), f"{len(kd & kc)} deals appear in BOTH gate sets"
@@ -112,15 +112,20 @@ def test_dev_and_calib_are_deal_disjoint():
 
 def test_source_and_split_digests_are_recorded_and_current():
     """A frozen set whose inputs cannot be identified is not reproducible."""
-    for name in ("pilot_dev512.v3.json", "pilot_calib512.v3.json"):
+    for name in ("pilot_dev512.v6.json", "pilot_calib512.v6.json"):
         d = _load(name)
         for src, meta in d["sources"].items():
             assert meta.get("corpus_sha256_16"), f"{name}/{src}: no corpus digest"
             assert meta.get("split_sha256_16"), f"{name}/{src}: no split digest"
-            live = PS.digest(os.path.join(ART, os.path.basename(meta["corpus"])))
-            if live:
-                assert live == meta["corpus_sha256_16"], \
-                    f"{name}/{src}: corpus changed since the freeze"
+            # Compare BOTH against live bytes. The previous version asserted
+            # the split digest was merely PRESENT and only ever compared the
+            # corpus, so a split file edited after the freeze passed (Codex).
+            for kind, key in (("corpus", "corpus_sha256_16"),
+                              ("split", "split_sha256_16")):
+                path = os.path.join(ART, os.path.basename(meta[kind]))
+                assert os.path.exists(path), f"{name}/{src}: {kind} missing"
+                assert PS.digest(path)[:16] == meta[key], \
+                    f"{name}/{src}: {kind} changed since the freeze"
 
 
 def test_freezer_refuses_a_dirty_tree_and_an_existing_path():
@@ -134,8 +139,8 @@ def test_freezer_refuses_a_dirty_tree_and_an_existing_path():
         "an existing frozen path must be unconditionally non-overwritable"
 
 
-@pytest.mark.parametrize("art", ["pilot_dev512.v5.json",
-                                 "pilot_calib512.v5.json"])
+@pytest.mark.parametrize("art", ["pilot_dev512.v6.json",
+                                 "pilot_calib512.v6.json"])
 def test_every_selected_state_replays(art):
     """A state that cannot be rebuilt cannot be scored. All 1,024 rows."""
     d = _load(art)
@@ -204,6 +209,15 @@ def test_check_contract_refuses_duplicate_deals():
     assert any("duplicate deal seeds" in v for v in bad), bad
 
 
+def test_superseded_sets_are_REJECTED_by_the_current_contract():
+    """v3/v4/v5 are retained ONLY as named negative controls."""
+    for art in ("pilot_dev512.v3.json", "pilot_dev512.v4.json"):
+        d = _load(art)
+        assert PS.check_contract(d["states"], d.get("requested", 512),
+                                 d.get("replay_errors", 0)), \
+            f"{art} must be rejected by the current contract"
+
+
 def test_v4_is_SUPERSEDED_and_fails_the_source_marginals():
     """Known-bad regression: v4's population depended on corpus order.
 
@@ -226,10 +240,9 @@ def test_the_frozen_v3_sets_FAIL_the_size_quota_as_registered():
     The v3 artifacts predate size enforcement, so a check that passes them is
     not checking anything. This asserts the known-bad input is REJECTED.
     """
-    import json
-    import pilot_states as P
     d = _load("pilot_dev512.v3.json")
-    bad = P.check_contract(d["states"], d["requested"], d["replay_errors"])
+    bad = PS.check_contract(d["states"], d.get("requested", 512),
+                            d.get("replay_errors", 0))
     assert any("size" in v for v in bad), "size quota is not being enforced"
 
 
@@ -391,9 +404,9 @@ def test_unsatisfiable_marginals_are_reported_not_silently_relaxed():
     assert unsatisfied, "an impossible source quota must be reported"
 
 
-@pytest.mark.parametrize("name", ["pilot_dev512.v5.json",
-                                  "pilot_calib512.v5.json"])
-def test_v5_source_marginals_are_exact(name):
+@pytest.mark.parametrize("name", ["pilot_dev512.v6.json",
+                                  "pilot_calib512.v6.json"])
+def test_v6_source_marginals_are_exact(name):
     """The marginal v4 lacked; asserted separately so it cannot regress."""
     d = _load(name)
     for band, wants in PS.SOURCE_QUOTA.items():
@@ -406,9 +419,9 @@ def test_v5_source_marginals_are_exact(name):
                 f"{name} {band}/{src}: {have.get(src, 0)} != {want}"
 
 
-def test_v5_dev_and_calib_share_the_population_but_not_the_deals():
+def test_v6_dev_and_calib_share_the_population_but_not_the_deals():
     """The property v4 broke: same structure, disjoint deals."""
-    dev, cal = _load("pilot_dev512.v5.json"), _load("pilot_calib512.v5.json")
+    dev, cal = _load("pilot_dev512.v6.json"), _load("pilot_calib512.v6.json")
     for q in (PS.SIZE_QUOTA, PS.ROLE_QUOTA, PS.SOURCE_QUOTA):
         for band in q:
             f = lambda d, k: sum(1 for s in d["states"]
@@ -457,3 +470,18 @@ def test_conflicting_metadata_for_one_exact_state_fails_closed():
     picked, unsatisfied = PS.select_states(base, "s1", "dev", **_Q)
     assert picked == [] and any("conflicting" in u for u in unsatisfied), \
         unsatisfied
+
+
+@pytest.mark.parametrize("art", ["pilot_dev512.v6.json",
+                                 "pilot_calib512.v6.json"])
+def test_v6_exact_state_identities_are_unique(art):
+    """One decision per deal, identified by (source, seed, ply, seat).
+
+    v5 could select two different decisions depending on traversal order; this
+    asserts the published identity set is exactly 512 distinct states.
+    """
+    d = _load(art)
+    idents = {(s["source"], s["seed"], s["ply"], s["seat"])
+              for s in d["states"]}
+    assert len(idents) == 512, f"{art}: {len(idents)} distinct identities"
+    assert len({s["seed"] for s in d["states"]}) == 512

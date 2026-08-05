@@ -30,32 +30,12 @@ pytestmark = pytest.mark.skipif(
     not fast.HAVE_FAST or combos.decompose is not fast.decompose,
     reason="compiled engine inactive; run with SHENGJI_FAST=1")
 
-# Point at the newest artifact that SATISFIES the registered contract. v4 is
-# superseded (its population followed corpus order and it fails the source
-# marginals), so the runner correctly refuses it; these cases skip rather than
-# pretend to pass until v5 is frozen from a clean commit.
-import pilot_states as PS                                       # noqa: E402
-
-
-def _gate(side):
-    for ver in ("v5", "v4"):
-        path = os.path.join(ROOT, "rl_data", f"pilot_{side}512.{ver}.json")
-        if not os.path.exists(path):
-            continue
-        d = json.load(open(path))
-        if not PS.check_contract(d["states"], d["requested"],
-                                 d["replay_errors"]):
-            return path
-    return None
-
-
-DEV, CALIB = _gate("dev"), _gate("calib")
-pytestmark = [
-    pytestmark,
-    pytest.mark.skipif(DEV is None or CALIB is None,
-                       reason="no contract-satisfying gate artifact yet "
-                              "(v5 pending; v4 is superseded)"),
-]
+# PINNED to the tracked v6 gate artifacts. The previous version searched for
+# "the newest artifact that satisfies the contract" and skipped if none did —
+# so a missing or broken gate set produced a green suite instead of a failure
+# (Codex). If these files are absent the tests MUST fail.
+DEV = os.path.join(ROOT, "rl_data", "pilot_dev512.v6.json")
+CALIB = os.path.join(ROOT, "rl_data", "pilot_calib512.v6.json")
 
 
 def _args(tmp_path, **over):
@@ -164,3 +144,22 @@ def test_the_registered_launch_still_passes(tmp_path):
     spec, experiment, states, phase, sha = PR.preflight(_args(tmp_path))
     assert phase == "full" and len(experiment) == 512
     assert sha == PR.FULL_DEV_PROTOCOL["states_sha256"]
+
+
+def test_full_run_refuses_an_altered_arms_tuple(monkeypatch, tmp_path):
+    """The ballot arms are part of the registered protocol.
+
+    Swapping an arm keeps every numeric parameter valid, so without this the
+    shards would agree with each other and aggregate cleanly while scoring a
+    different experiment.
+    """
+    monkeypatch.setattr(PR, "ARMS", ("current", "v3", "random_fill", "quota",
+                                     "mc_more_full_work", "SOMETHING_ELSE"))
+    with pytest.raises(RuntimeError, match="required_arms"):
+        PR.preflight(_args(tmp_path))
+
+
+def test_the_gate_artifacts_exist_and_are_tracked():
+    """A missing gate artifact must fail, never skip."""
+    for p in (DEV, CALIB):
+        assert os.path.exists(p), f"{p} missing — gate artifacts are tracked"

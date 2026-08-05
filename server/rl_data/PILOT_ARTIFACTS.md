@@ -15,11 +15,14 @@ bytes.
 | `pilot_calib512.v3.json` | `5e4c9a8d4a6310ac` | SUPERSEDED | same builder defects as its DEV counterpart |
 | `pilot_dev512.v4.json` | `1cab080956d038b37dcd441c66e6a4814f4cb2491d23d0c0c23d805dad7c9ea6` | **SUPERSEDED — INVALID GATE SET** | selection followed CORPUS INSERTION ORDER: `deals_for` was shuffled and never read, while selection walked a supply index built in `SOURCES`/file order. Source mix drifted to DEV mid 163 original / 8 late vs CALIB 55 / 116, so CALIB was a different population, not a held-out replicate |
 | `pilot_calib512.v4.json` | `8c55b3f809d439924bb7ffe63d5bfe36292e8e41df8a63fb66eb7e94220326a6` | **SUPERSEDED — INVALID GATE SET** | same order-dependent selection as its DEV counterpart |
-| `pilot_dev512.v5.json` | `097ea3851cd3bb9c3ef96ba1f58b3dcc897ff0a74275cbc8b759109e460e66b6` | **GATE SET — awaiting Codex verification** | frozen from clean `759398b`, salt `dev512-v5`. Order-independent selection by SHA-256 row priority. Four exact marginals: band 170/171/171; size 0/72/98, 11/131/29, 152/19/0; role 85/85, 86/85, 86/85; source 129/41/0, 17/154/0, 0/1/170. 512 unique deals, 0 replay errors, 0 REPORT rows. NOT self-certified; 0/512 scored |
-| `pilot_calib512.v5.json` | `00ca4de1915d8c4f5a8a18de9cc342f4a175f6acb2585bd03f93641cd9921b76` | **HELD-OUT — UNTOUCHED** | identical registered marginals to DEV, disjoint deals (overlap 0). Never scored, tuned or inspected |
+| `pilot_dev512.v5.json` | `097ea3851cd3bb9c3ef96ba1f58b3dcc897ff0a74275cbc8b759109e460e66b6` | **SUPERSEDED — INVALID GATE SET** | REJECTED at review: dedup keyed on the marginal cell, so a deal with two decisions in one cell kept whichever row was read LAST, and priority omitted ply/seat so they tied. Reversing rows changed 52/512 exact DEV states, systematically favouring deeper forward states. Four exact marginals: band 170/171/171; size 0/72/98, 11/131/29, 152/19/0; role 85/85, 86/85, 86/85; source 129/41/0, 17/154/0, 0/1/170. 512 unique deals, 0 replay errors, 0 REPORT rows. NOT self-certified; 0/512 scored |
+| `pilot_calib512.v5.json` | `00ca4de1915d8c4f5a8a18de9cc342f4a175f6acb2585bd03f93641cd9921b76` | **SUPERSEDED — INVALID GATE SET** | same order-dependent dedup as its DEV counterpart; 41/512 exact states changed under row reversal |
+| `pilot_dev512.v6.json` | `af78748586034f6f97e96a167008b2c540c0e4b1670a683ef6b5f05ec85d3e7b` | **GATE SET — awaiting Codex verification** | frozen from clean `53d9b67`, salt `dev512-v6`. Dedup is on the EXACT STATE `(source, seed, ply, seat)`, so two decisions from one deal in the same marginal cell no longer collapse to whichever was read last. Forward-vs-reversed exact-state difference measured 0 on the real corpus before freezing. Four exact marginals; all six live corpus AND split digests current. NOT self-certified; 0/512 scored |
+| `pilot_calib512.v6.json` | `3872350f57a4dd602d958182c0a0aecc27c6bf99c9330e8265bcf84c9c3dce05` | **HELD-OUT — UNTOUCHED** | identical registered marginals to DEV, deal overlap 0, forward/reversed difference 0. Never scored, tuned or inspected |
 
-The Gate 2 runner contract was smoke-verified twice on the first eight v3
-states at clean commit `8ee2d93`; both complete JSON files had SHA-256
+HISTORICAL (v3 era; v3 is superseded per the table above). The Gate 2 runner
+contract was smoke-verified twice on the first eight v3 states at clean commit
+`8ee2d93`; both complete JSON files had SHA-256
 `a926cbb013fb54188a81017394b87bf23d78f8486173603c9165fe772b3f46f1`
 and passed aggregation. This is protocol evidence only, not an artifact or a
 strength result. v4 is retained on disk and in the test suite as the known-bad regression that

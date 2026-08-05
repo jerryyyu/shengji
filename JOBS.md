@@ -7,15 +7,16 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 Nothing. Fleet idle, verified by `ps` (only pid 96175, Jerry's dev server).
 
-**Blocker: Codex has not answered the gate packet.** The 09:32 packet was
-REJECTED (`HANDOFF_ACTIVE.md`); packages C, D and E are now complete and a new
+**Blocker: Codex has not answered the gate packet.** The 10:15 packet was
+REJECTED (`HANDOFF_ACTIVE.md`); packages F1-F4 are now complete and a new
 packet is pending. This is NOT blocked on the sampler — that lane is closed and
 DEV screens ballot designs under the sampler production deploys.
 
-Gate sets: `pilot_dev512.v5.json` `097ea3851cd3bb9c`, `pilot_calib512.v5.json`
-`00ca4de1915d8c4f`, frozen from clean `759398b`. v4 SUPERSEDED as an invalid
-gate set (selection followed corpus order). Pilot scoring 0/512. CALIB and
-REPORT untouched.
+Gate sets: `pilot_dev512.v6.json` `af78748586034f6f`, `pilot_calib512.v6.json`
+`3872350f57a4dd60`, frozen from clean `53d9b67`. v3, v4 and v5 are SUPERSEDED —
+v4 selected in corpus order, v5 deduplicated on the marginal cell (52/512 exact
+DEV states moved under row reversal). Pilot scoring 0/512. CALIB and REPORT
+untouched.
 
 ## FINISHED — decision-sensitivity screen (Codex's unblocking condition), 06:05
 
@@ -111,32 +112,22 @@ Fresh schema-v2 capture and merge completed at 23:15 from clean compiled+strict
 The first v1 attempt remains recoverably quarantined. Gate 3 capture is closed;
 do not rerun it.
 
-## PILOT — gate sets FROZEN and COMMITTED; SCORING STILL 0/512 (Codex hold)
+## PILOT — v6 gate sets frozen; SCORING 0/512 (Codex HOLD)
 
-Artifact ledger: `server/rl_data/PILOT_ARTIFACTS.md`.
+Artifact ledger: `server/rl_data/PILOT_ARTIFACTS.md` is authoritative.
 
-**Item 0 is ~90% and NOT certified (Codex 08:52)** — re-verified 2026-08-05 07:20 (this section previously
-still described the v2 files as provisional and the v3 gate sets as
-nonexistent — Codex flagged it, and the following was checked from disk, not
-copied from a prior note):
+- `pilot_dev512.v6.json`   `af78748586034f6f`
+- `pilot_calib512.v6.json` `3872350f57a4dd60`
+- frozen from clean `53d9b67`; four exact marginals (band/size/role/source),
+  512 unique exact-state identities per side, 0 replay errors, DEV/CALIB deal
+  overlap 0, all six live corpus AND split digests current.
 
-- `rl_data/pilot_dev512.v3.json`   sha256 `d8d5d04abb9f9262...` — in git;
-- `rl_data/pilot_calib512.v3.json` sha256 `5e4c9a8d4a6310ac...` — in git;
-- `tests/test_pilot_freezer.py` 10/10 passing as the committed contract.
+**Blocker: Codex HOLD.** The 10:15 packet was rejected — v5 was not
+order-independent. v3, v4 and v5 are SUPERSEDED and retained only as named
+test negative controls. This is NOT a sampler blocker: that lane is closed and
+DEV screens ballot designs under the sampler production deploys.
 
-Bands 170/171/171, roles balanced per band, deal-disjoint, zero REPORT rows.
-**Candidate-size is NOT enforced** — the registered v3 sets fail the size check
-9 ways per side. The freezer now refuses on shortage, replay errors, missed
-band/size quota and duplicate deals (`check_contract`, 6 tests asserting each
-refusal fires, 16/16). Remaining: pick a feasible size quota, then regenerate
-v3 -> v4. A census shows an identical per-band quota is IMPOSSIBLE
-(`late/wide` = 0 deals, `early/small` = 5). Awaiting Codex's choice.
-
-**The reservoir** is `ffccfde64932eb3a` (768 rows, 48 cells x 16, replayed).
-
-**What still blocks scoring is the sampler, not the artifacts.** Pilot scoring
-remains 0/512 pending Codex's ruling on posterior bias. Do not touch the
-pilot's registered budgets.
+**DEV 0/512 scored. CALIB and REPORT unscored and untouched.**
 
 ## FINISHED — N=30 frozen-current confirmation (seeds 102M)
 

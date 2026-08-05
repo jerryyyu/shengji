@@ -113,8 +113,8 @@ REGISTERED_ARMS = ("current", "v3", "random_fill", "quota",
 #: share the same typo (Codex).
 FULL_DEV_PROTOCOL = {
     "phase": "full",
-    "states_sha256": "097ea3851cd3bb9c3ef96ba1f58b3dcc"
-                     "897ff0a74275cbc8b759109e460e66b6",
+    "states_sha256": "af78748586034f6f97e96a167008b2c5"
+                     "40c0e4b1670a683ef6b5f05ec85d3e7b",
     "budget": 14,
     "work_target": 168,
     "band": 0.05,

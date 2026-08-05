@@ -315,7 +315,6 @@ def main() -> None:
         # freezer refuse forever. Reports and exits without writing.
         cens = defaultdict(Counter)
         for seed, rows in by_deal.items():
-            bands = {r["band"] for r in rows}
             for r in rows:
                 cens[r["band"]][r["stratum"].split("/")[-1]] += 1
         deals = defaultdict(Counter)

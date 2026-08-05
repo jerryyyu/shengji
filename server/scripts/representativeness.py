@@ -65,7 +65,7 @@ def main() -> None:
 
     bot = MCBot(seed=4242)
     probe = {"cands": [], "hidden": [], "ply": [], "worlds": [], "roles": []}
-    live = degen = 0
+    live = 0
     for seed, rnd, seat in toy_states(args.scan):
         try:
             legal = enumerate_legal(rnd, seat, constraints(rnd))
@@ -89,7 +89,6 @@ def main() -> None:
         probe["ply"].append(len(rnd.history))
         probe["roles"].append("attacker" if rnd.is_attacker(seat) else "defender")
         live += 1
-    degen = live  # census of usable probe states; degeneracy counted elsewhere
 
     dev_c = [r["n_candidates"] for r in dev_rows if "n_candidates" in r]
     dev_p = [r["ply"] for r in dev_rows if "ply" in r]

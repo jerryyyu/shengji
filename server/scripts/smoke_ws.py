@@ -28,7 +28,15 @@ async def main():
     time.sleep(1.0)
     async with websockets.connect(f"ws://127.0.0.1:{PORT}/ws") as ws:
         await ws.send(json.dumps({"type": "create_room", "name": "Smoke"}))
-        msg = await recv_msg(ws)
+        # The server now opens with a `resume` frame carrying a reconnect
+        # token before the `room` frame. This asserted `room` on the FIRST
+        # message and so failed on every run once that was added — meaning the
+        # maintenance routine's own smoke verification silently verified
+        # nothing. Skip non-`room` control frames instead of assuming order.
+        for _ in range(5):
+            msg = await recv_msg(ws)
+            if msg["type"] == "room":
+                break
         assert msg["type"] == "room", msg
         for _ in range(3):
             await ws.send(json.dumps({"type": "add_bot"}))

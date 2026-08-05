@@ -26,10 +26,33 @@ fidelity remains P1 and still limits value calibration, not legality/support.
 
 | item | why it matters | gate |
 |---|---|---|
-| **0. Capture/freeze the deep-lead reservoir** | Existing DEV has only three trick-12+ leads, so it cannot support the registered state distribution | Schema-v2 validation is closed; run the exact eight-shard command in `JOBS.md`. Merge must replay 768 raw rows, fill every split/trick/role cell exactly, report zero accepted-path sampler counters/errors/values, and audit all sampler-rejected deals before DEV/CALIB selection |
-| **1. Clean 512-state lead-ballot pilot** | The prior audit found **51.2% structured lead omission vs 0.9% follows**, almost entirely lead singles, but its reference generator shared the now-fixed tied-code omission; refresh that baseline first. The provisional lead forfeit was larger than follows (2.96 vs 1.01), but selected-max bias makes it directional, not “half provably improvable.” V3 proved widening alone is insufficient | On deal-grouped DEV states balanced across original/late reservoirs, compare current, V3, random-fill, `MC-more`, fixed-14 contextual selection, and full-universe/high-compute using disjoint proposal/report worlds; predeclare fresh-world regret and oracle-best-recall gates |
-| **2. CALIB then paired online confirmation** | Offline regret has failed to predict online strength three times | Only the selected ballot arm advances; REPORT stays untouched until selection, then a fixed-size paired evaluator run on fresh seeds must clear arm-minus-MC and arm-minus-control bars with zero protocol failures |
-| **3. Clean relabel + learned proposal only after a ballot win** | Repeating 37.1M old-ballot evaluations or training v11pair on actions outside its training ballot cannot improve the champion | Relabel only disagreement/high-uncertainty states under the frozen winning `BallotSpec`; a learned proposer must beat quota, random, and `MC-more` controls before entering production search |
+| **0. Capture/freeze the deep-lead reservoir and 512-state artifacts** | Existing DEV has only three trick-12+ leads, so it cannot support the registered state distribution | Schema-v2 validation is closed; run the exact eight-shard command in `JOBS.md`. Merge must replay 768 raw rows, fill every split/trick/role cell exactly, report zero accepted-path sampler counters/errors/values, and audit all sampler-rejected deals. Then freeze separate deal-disjoint, band/role-balanced DEV-512 and CALIB-512 state artifacts; these are evaluation sets, not training corpora |
+| **1. DEV-512 lead-ballot selection pilot** | The refreshed audit found **51.2% structured lead omission vs 0.9% follows**, almost entirely lead singles. The provisional lead forfeit was larger than follows (2.96 vs 1.01), but selected-max bias makes it directional, not “half provably improvable.” V3 proved widening alone is insufficient | Compare current, V3, random-fill, `MC-more`, fixed-14 contextual selection, and full-universe/high-compute using disjoint proposal/report worlds. Predeclare fresh-world regret, oracle-best-recall and work gates; select exactly one design or select none |
+| **2. One frozen design on untouched CALIB-512** | Offline regret has failed to predict online strength three times, so DEV selection cannot promote its own winner | Freeze the full `BallotSpec`, selector/quota, rollout allocation and thresholds before CALIB. Run the chosen design once; no post-CALIB tuning, arm substitution or pooling back into DEV. REPORT remains untouched by selection |
+| **3. Paired online strength confirmation** | A ballot can improve fixed-state regret without improving the game | On fresh deal seeds, the frozen candidate must clear arm-minus-current-MC and arm-minus-null/control bars in paired signed level utility with zero protocol failures; full-game level progression is the final deployment check. Any one-shot REPORT audit must be preregistered and cannot tune the design |
+| **4. Clean relabel + learned proposal only after a ballot win** | Repeating 37.1M old-ballot evaluations or training v11pair on actions outside its training ballot cannot improve the champion | Relabel only disagreement/high-uncertainty/late states under the frozen winning `BallotSpec`; train a lead-specific proposer, and require it to beat quota, random and `MC-more` controls before it enters production search |
+
+### POST-512 CONTRACT
+
+“512 states” names a **frozen evaluation artifact**, not a supervised or RL
+training dataset. The post-freeze sequence is therefore:
+
+1. score all registered arms on DEV-512 with independent proposal/report
+   worlds and clustered paired uncertainty;
+2. select exactly one complete design on DEV (or stop with no winner), then
+   freeze its ballot, selector, allocation and thresholds;
+3. run that one design once on disjoint CALIB-512 without tuning;
+4. only a CALIB pass earns fresh-seed paired online confirmation against
+   current MC and a null/control; REPORT is never used to choose or repair the
+   arm;
+5. only an online win earns targeted relabelling and learned-proposer training.
+
+An N=60-versus-N=30 current-main dose test is an **orthogonal lane**, not a use
+of the 512 states and not permission to change the pilot's registered work
+budgets. Use fresh paired deal seeds, an independent N=30 null, strict sampling
+and one fixed block with no extension. If both a higher-N policy and a new
+ballot win independently, their combination needs one final direct
+confirmation because ballot width and determinization dose can interact.
 
 ### PRIORITY POLICY
 

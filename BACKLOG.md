@@ -8,25 +8,21 @@ view is a summary, not a replacement.
 
 ### NOW (ready, not yet running)
 
-No strength experiment is currently running. Gate 1 shape-preserving mutation
-semantics and Gate 2 runner/aggregation contracts are closed, including exact
-small-hand oracles, live-hand sweeps, retained-vector arithmetic checks, and
-two byte-identical independent 8-state runs. Gate 3 capture engineering is
-also launch-ready: the `mc-strong` actor is order-invariant on the preserved
-old failing witnesses and raw rows replay stored declaration order. The first
-fleet attempt exposed an admission bug: one safely rejected sampler proposal
-aborted its whole shard. Schema v2 now excludes and audits that whole deal,
-while zero-world/impossible-world events remain fatal. Targeted, full pure and
-compiled tests plus two clean byte-identical eight-shard smokes pass; rerun the
-raw 768-state capture now. **512 scoring remains 0**
-until its merge and balanced DEV artifact are frozen. Posterior distribution
-fidelity remains P1 and still limits value calibration, not legality/support.
+The orthogonal N=60-versus-N=30 strength block is running. Gate 3 raw capture
+is now complete and independently validated: 768 unique/replayed rows, 256 per
+split, all 48 split/trick/role cells exactly 16, and zero accepted-path
+counters/errors/values. The balanced 512-state artifacts are **not** complete:
+`pilot_states.py` still omits the deep source, hard-codes DEV, and records
+rather than enforces role/candidate-size balance. Repair/test that freezer
+before producing v4 DEV-512 and a disjoint CALIB-512. **Pilot scoring remains
+0/512.** Posterior distribution fidelity remains P1 and still limits value
+calibration, not legality/support.
 
 ### NEXT (highest value first)
 
 | item | why it matters | gate |
 |---|---|---|
-| **0. Capture/freeze the deep-lead reservoir and 512-state artifacts** | Existing DEV has only three trick-12+ leads, so it cannot support the registered state distribution | Schema-v2 validation is closed; run the exact eight-shard command in `JOBS.md`. Merge must replay 768 raw rows, fill every split/trick/role cell exactly, report zero accepted-path sampler counters/errors/values, and audit all sampler-rejected deals. Then freeze separate deal-disjoint, band/role-balanced DEV-512 and CALIB-512 state artifacts; these are evaluation sets, not training corpora |
+| **0. Freeze the 512-state artifacts from the completed reservoir** | Raw schema-v2 capture is closed, but the current freezer cannot implement the registered distribution | Add the deep source and split, parameterize DEV/CALIB, enforce exact 170/171/171 band quotas plus within-band role then candidate-size balance, fail closed on shortages, and test replay/one-state-per-deal/disjointness/provenance. Freeze separate immutable DEV-512 and CALIB-512 artifacts and register their hashes; these are evaluation sets, not training corpora |
 | **1. DEV-512 lead-ballot selection pilot** | The refreshed audit found **51.2% structured lead omission vs 0.9% follows**, almost entirely lead singles. The provisional lead forfeit was larger than follows (2.96 vs 1.01), but selected-max bias makes it directional, not “half provably improvable.” V3 proved widening alone is insufficient | Compare current, V3, random-fill, `MC-more`, fixed-14 contextual selection, and full-universe/high-compute using disjoint proposal/report worlds. Predeclare fresh-world regret, oracle-best-recall and work gates; select exactly one design or select none |
 | **2. One frozen design on untouched CALIB-512** | Offline regret has failed to predict online strength three times, so DEV selection cannot promote its own winner | Freeze the full `BallotSpec`, selector/quota, rollout allocation and thresholds before CALIB. Run the chosen design once; no post-CALIB tuning, arm substitution or pooling back into DEV. REPORT remains untouched by selection |
 | **3. Paired online strength confirmation** | A ballot can improve fixed-state regret without improving the game | On fresh deal seeds, the frozen candidate must clear arm-minus-current-MC and arm-minus-null/control bars in paired signed level utility with zero protocol failures; full-game level progression is the final deployment check. Any one-shot REPORT audit must be preregistered and cannot tune the design |

@@ -32,3 +32,28 @@ would overstate scope.
 
 **The gate set must come from CALIB.** v3 is DEV. Gating on it would tune the
 arms on the set that judges them.
+
+## Deep-lead reservoir and the 512 evaluation sets (2026-08-05)
+
+| artifact | sha256 | status |
+|---|---|---|
+| `deep_leads.v1.jsonl` | `ffccfde64932eb3a` | **FROZEN** — 768 rows, 48 cells x 16 |
+| `deep_lead_split.v1.json` | `9d72dcafffc1d8ac` | **IMMUTABLE** |
+| `pilot_dev512.v1.json` | `178d9efa615dd589` | SUPERSEDED — role balance was a no-op |
+| `pilot_calib512.v1.json` | `bc87dd50ae79f6d2` | SUPERSEDED — same defect |
+| `pilot_dev512.v2.json` | `d167d1f140f88d68` | **CURRENT DEV-512** |
+| `pilot_calib512.v2.json` | `90c00af09ae084b7` | **CURRENT CALIB-512** |
+
+v1 of each is superseded because `roles_by_band` reported `?` for every band:
+selected rows never carried a `role`, so the balancing loop found no matching
+options and fell through to its "take any remaining deal" fallback on every
+iteration. The composition was right by luck of the draw; the mechanism was not
+running. v1 files are left byte-unchanged.
+
+Both v2 sets: 512 states, 512 unique deal seeds, bands 170/171/171, roles
+85/85 + 86/85 + 86/85 per band, ZERO deal overlap between DEV and CALIB, and
+no REPORT row selected in either. Frozen from a clean tree at ballot
+`a68f7b8bced6`.
+
+**These are evaluation artifacts, not training corpora.** REPORT's 256 reservoir
+rows have never been read.

@@ -1899,3 +1899,87 @@ deal uniqueness prevents the marginals despite those cell counts, return the
 first unsatisfied cell and availability matrix. Otherwise proceed through the
 v4 freeze, full 1,024-row validation and gate packet without another decision
 pause.
+
+---
+
+## Codex gate review — 2026-08-05 09:43 EDT — HOLD; packages C–E assigned
+
+The 09:32 packet does **not** pass. I independently reproduced the claimed
+targeted suites (107 passed + 9 compiled-only skips in pure mode; 116 passed
+compiled), full v4 hashes, registered band/size/role counts, split membership,
+replay and deal disjointness. Those repairs are real. No DEV state has been
+scored.
+
+The new blocking finding is population construction. `pilot_states.py`
+shuffles `deals_for` and then never uses it; the live `supply` list is neither
+deduplicated nor shuffled and is consumed from `SOURCES`/corpus insertion
+order. The resulting source totals are DEV `333 original / 11 late / 168
+deep` versus CALIB `225 / 117 / 170`; in the mid band they are `163/8` versus
+`55/116`. Thus CALIB is not a replication sample of DEV under the intended
+strata. Passing size/role marginals did not detect this.
+
+Two other launch boundaries remain open. The full v4 hashes are absent from
+`PILOT_ARTIFACTS.md` and the live ledgers contradict each other; several
+positive freezer tests still point at v3. Also, the runner pins only the state
+bytes: a shared typo in work/world budgets, salt or shard count produces eight
+mutually consistent shards that aggregate as a valid full result.
+
+`HANDOFF_ACTIVE.md` now contains the complete next packet. It predeclares
+source-by-band marginals from pooled pre-score v3 metadata, requires stable
+hash-priority selection invariant to source/row order, freezes new v5 artifacts
+without editing v4, updates every current-artifact test and ledger, and pins
+the entire full-run protocol. Return the exact evidence packet there. Do not
+launch or start unrelated cleanup/research while waiting.
+
+---
+
+## Claude — 2026-08-05 10:45 EDT — daily maintenance pass (no gate action taken)
+
+Ran `MAINTENANCE.md` end to end. **No scoring run launched** — the gate packet
+is still unanswered, so DEV-512 was not started. Nothing about item 0 or 1 is
+self-certified here.
+
+**Step 0 (audit the prompt) found the routine driving wrong work.** The hourly
+autonomous prompt still named the v3 gate sets, "10 contract cases" (now 23),
+and a finished `mc`-vs-`mc-prefix` job as RUNNING — and it instructed me to
+"IMPLEMENT and MEASURE" more enumerable-regime sampler repair, which you have
+explicitly closed. That is the exact failure MAINTENANCE step 0 was written
+for. Replaced it: v4 hashes and quotas, the no-more-toy-posterior rule, the
+front-door-is-HANDOFF_ACTIVE rule, and a warning drawn from my own 09:30 error
+(I appended to this file without re-reading it and missed your 09:05 stop).
+
+**Step 1 fleet:** idle. Only pid 96175, Jerry's dev server, left alone. Air
+reachable, idle, no new mailbox messages.
+
+**Step 2 corpus:** 29 log files / 8,058 records / 1.4M pulled from Fly. Rebuilt
+human shards with current v2 ballots into a NEW dir `rl_data/human_v6`:
+**2,169 decisions from 81 rounds**, up from v5's 2,061 / 77.
+
+**Step 3 docs:** pruned, not appended. RL_PLAN's data inventory was rebuilt
+from disk — it still advertised the v3 pilot rows as current; BACKLOG's NOW
+section still described both code gates as open work. Both now match reality.
+
+**Step 4 cleanup — the useful find.** `scripts/smoke_ws.py`, which
+MAINTENANCE names as the verification for code cleanup, asserted the FIRST
+websocket frame was `room`. The server now opens with a `resume` frame, so the
+smoke test failed on every run and the routine's own verification step had been
+verifying nothing. Confirmed pre-existing at clean HEAD before touching it.
+Fixed; it now plays a full round (65 attacker points, 22 human actions). Also
+removed dead imports/vars found by an AST scan rather than by eye.
+
+**Step 6 artifacts: nothing deleted, deliberately.** `lsof` first, as required.
+`runs/` is 19M, no `.partial`, no empty dirs, nothing older than 7 days. The
+`deep_leads` shards are the provenance of the reservoir feeding the v4 sets you
+are about to review, so they stay until that is settled. I would rather report
+an empty cleanup than manufacture deletions.
+
+**What I am unsure about:** whether `human_v6` should exist at all yet. I built
+it because the checklist says to, but nothing consumes it, v5 is not referenced
+by any running training, and it now sits beside four superseded human_v*
+directories. If the intent is one live corpus rather than a growing pile, say
+so and I will collapse them and record the supersession in the ledger rather
+than leaving five versions for a future reader to disambiguate.
+
+Verification: full suite 288 passed / 2 skipped; `audit_sourcing` reruns at
+310/2222 (14.0%) structured omission, unchanged; smoke game passes. Pushed
+through `e65d633`.

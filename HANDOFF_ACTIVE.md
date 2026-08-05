@@ -1,188 +1,156 @@
 # Active Claude/Codex handoff
 
-Last decision: 2026-08-05 09:00 EDT. Read this file before the append-only
-discussion in `HANDOFF_REVIEW.md`. This is the operational front door; keep it
-short and replace stale status instead of appending a second answer.
+Last review: 2026-08-05 09:43 EDT. This is the operational front door.
+`HANDOFF_REVIEW.md` is the append-only evidence log, not the work queue.
 
-## The decision that unblocks the work
+## Status: HOLD — the 09:32 gate packet did not pass
 
-The sampler question had two different estimands mixed together:
+No DEV scoring is authorized; 0/512 states have been scored and CALIB/REPORT
+remain untouched. The freezer and runner repairs are real progress, but the
+published v4 population and launch contract still have load-bearing defects.
 
-1. **Correctness estimand:** does the sampler draw the true physical-deal
-   posterior? No. P0 validity/support passed, but posterior weighting is not
-   certified. Weighted splits are slow and still biased, so all three
-   experimental sampler flags remain OFF.
-2. **Strength-screen estimand:** which ballot/search design makes the strongest
-   decisions when paired with the exact MC sampler deployed today? The DEV
-   pilot may answer this. Freeze the current sampler as part of the policy,
-   compare every arm under it, and require CALIB plus full-game online
-   confirmation before promotion.
+What independently passed:
 
-Therefore do **not** describe the bias as harmless or the sampler as correct,
-but do **not** block the DEV strength screen on an exact-posterior research
-project. If the sampler changes later, the winning ballot must be revalidated.
-Do not run another enumerable-state posterior or decision-sensitivity job now.
+- clean HEAD/origin, v4 hashes, exact band/size/role marginals, 512 unique
+  deals per side, zero overlap and full split/replay checks;
+- targeted pure suite: 107 passed, 9 compiled-only skips;
+- targeted compiled suite: 116 passed;
+- two byte-identical smokes and all experimental sampler flags OFF.
 
-## Current state
+Why the packet is rejected:
 
-- Experiment code is based on `0f65dbf`; Claude's sampler diagnostics and
-  documentation are dirty. A later Codex docs-only commit may sit above it.
-- DEV/CALIB v3 files are tracked and their current bytes replay correctly, but
-  the registered freeze mechanism is not closed: candidate-size allocation was
-  not predeclared identically, shortage can write a short artifact, and the
-  tests do not exercise those failures.
-- The lead pilot has scored 0/512 states. The fleet is idle.
-- `pilot_run.py` still defaults to nonexistent `pilot_states.v4.json` and does
-  not fail closed against the registered artifact hash or sampler flags.
+1. **Corpus insertion order determines v4 selection.** The code shuffles
+   `deals_for`, then never reads it. `supply` is populated in `SOURCES`/file
+   order, is not deduplicated or shuffled, and selection takes the first live
+   seed. DEV consequently contains 333 original / 11 late / 168 deep states,
+   while CALIB contains 225 / 117 / 170. In the mid band alone the split is
+   DEV 163 original / 8 late versus CALIB 55 / 116. This is a population shift,
+   not random held-out replication; both artifacts are invalid gate sets.
+2. **The frozen artifact is not registered consistently.** The authoritative
+   `PILOT_ARTIFACTS.md` has no v4 entry; `RL_PLAN.md` contains both live-v4 and
+   “v4 not yet frozen” rows; `BACKLOG.md` has a closed headline plus a stale
+   item-0 row; `JOBS.md` still says the sampler/Codex decision blocks scoring.
+3. **A typo can launch a valid-looking wrong experiment.** Full-run CLI values
+   for budget, work band, proposal/oracle/report worlds, salt and shard count
+   are recorded but not compared with the registered protocol. Such shards can
+   aggregate cleanly as long as they share the same typo.
+4. **Some freezer tests still certify v3.** Role balance, DEV/CALIB
+   disjointness and live source/split digests use v3 paths, so the green suite
+   does not prove those current-artifact contracts.
+5. The packet named code HEAD `1820ecb` while current packet HEAD was
+   `9dcdb45`, and its 10:25 timestamp was in the future relative to the 09:34
+   workspace clock. The next packet must distinguish run-code HEAD from the
+   later documentation-only packet HEAD.
 
-## Claude work package A — close the freeze gate (do this now; 60–90 min)
+## Work package C — repair the population and freeze v5
 
-**Live review stop:** the current dirty `pilot_states.py` patch uses an even
-`56/57/57` size allocation in every band and only checks it after the old
-deal-first selector runs. Do not continue or commit that patch. It contradicts
-the table below (and the game's natural early/late supply), is expected to be
-infeasible, and does not make size drive deal selection. Replace `SIZE_QUOTA`
-with the registered table below and change the selector itself.
+Do this before touching the runner again. Do not start cleanup, sampler,
+training or other research while this package is active.
 
-Predeclare and implement these identical DEV/CALIB band-size marginals. They
-are the rounded pooled midpoint of the already-visible v3 metadata; no action
-values or outcomes have been inspected:
+### C1. Make selection independent of input order
 
-| trick band | small | med | wide | total |
+Extract selection into a pure, directly tested function. Build each supply
+cell from **unique deal IDs** and give every eligible row/deal a stable
+SHA-256 priority derived from `(salt, side, source, seed, band, size, role)`.
+Do not advance one shared RNG according to file traversal. With one salt, the
+selected identities must be invariant under:
+
+- reversing/permuting `SOURCES`;
+- reversing corpus rows and rows within a deal;
+- duplicate eligible rows for the same deal.
+
+Add a negative regression showing the v4 source-order selector fails this
+property. The salt must actually affect identity; two named salts should not
+select byte-identical state lists.
+
+### C2. Enforce source marginals as well as size and role
+
+Source is a population covariate because `original`, `late` and `deep` were
+captured under different state-generation regimes. Register the following
+per-band marginals, identical in DEV and CALIB. They are the rounded pooled v3
+metadata, fixed before any action scores were seen:
+
+| band | original | late | deep | total |
 |---|---:|---:|---:|---:|
-| early | 0 | 72 | 98 | 170 |
-| mid | 11 | 131 | 29 | 171 |
-| late | 152 | 19 | 0 | 171 |
+| early | 129 | 41 | 0 | 170 |
+| mid | 17 | 154 | 0 | 171 |
+| late | 0 | 1 | 170 | 171 |
 
-Role marginals remain attacker/defender 85/85 in early and 86/85 in each of
-mid and late. Size and role are exact band-level marginals; do not invent
-post-hoc role-by-size targets. Selection must choose a deal that fills a live
-size deficit, not pick a deal first and merely choose among that deal's rows.
+Keep the existing band-size and band-role marginals unchanged. These are three
+separate marginals; do not invent post-hoc source-by-size-by-role quotas. Use a
+constraint-aware deterministic selector and fail closed if the joint
+marginals cannot be satisfied. A pre-score census shows the component supply
+is plausible on both sides; if the joint problem fails, report the first
+unsatisfied cell and do not reroll salts or relax a quota.
 
-Acceptance criteria, all mandatory:
+Commit/push selector and tests first. From that clean commit freeze new-salt
+`pilot_dev512.v5.json` and `pilot_calib512.v5.json`; never edit v4. Mark v4
+SUPERSEDED because its selection depended on corpus order.
 
-0. First finish the current dirty diagnostic block: reconcile `JOBS.md` to the
-   recorded 540,000-attempt result and item-0 status, revise `AI_POLICIES.md`
-   to separate posterior correctness from the frozen-production strength
-   estimand, verify all flags default OFF, then commit and push. Do not carry a
-   dirty measurement tree into the freezer work.
-1. `--n` must equal 512; any other value is refused because the quotas are a
-   512-state contract.
-2. Before writing, assert exactly 512 picks, exact band/size and band/role
-   marginals, 512 unique deals, the requested DEV or CALIB split, no REPORT
-   membership, zero replay errors, and current source **and split** digests.
-3. Any shortage, replay error, mismatch, dirty tree, or existing output path
-   exits nonzero and leaves no final artifact. Do not merely record the defect.
-4. Tests must execute a synthetic shortage and replay-error path and prove no
-   artifact is published. Replace the vacuous `state.get("split")` REPORT check
-   with membership checks against the declared split files. Replay all 1,024
-   frozen states in the certification test or a dedicated validator, not six.
-5. Commit and push the freezer/test change first. From that clean commit freeze
-   new-salt `pilot_dev512.v4.json` and `pilot_calib512.v4.json`, force-add them,
-   register full hashes, and commit/push the artifacts. Do not edit v1–v3.
+### C3. Make current-artifact tests current
 
-If the exact quotas are infeasible, stop within 30 minutes and report the
-available `(band, size, role, split)` matrix plus the first unsatisfied cell.
-Do not silently relax or choose replacement quotas.
+Every positive gate test must point to v5. Specifically:
 
-## Claude work package B — make the score runner launch-safe (30–60 min)
+- role, band, size and source marginals on both artifacts;
+- DEV/CALIB deal disjointness;
+- all source **and split** digests rederived from live files;
+- all 1,024 rows found in their declared split and replayed to the recorded
+  seat/lead/band/role/size;
+- zero REPORT membership, 512 unique deals, zero replay errors;
+- a known-bad v4 source-marginal/order regression that proves the new guard is
+  not vacuous.
 
-Start only after v4 hashes exist. Make the smallest patch that closes these
-specific holes:
+## Work package D — pin the whole launch, not only the state hash
 
-1. Remove the nonexistent v4 default: require an explicit `--states` and
-   `--expected-states-sha256`, compare the full digest before corpus loading,
-   and record both in every shard.
-2. For a full run, refuse anything except 512 selected states, the DEV side,
-   exact registered marginals, unique deals, and zero replay errors. A limited
-   smoke must be labelled `smoke` in the manifest so it cannot aggregate as a
-   full DEV result.
-3. Refuse if `SHENGJI_WEIGHTED_SPLITS`, `SHENGJI_UNIFORM_DEAL`, or
-   `SHENGJI_PHYSICAL_FILLS` is set. Require compiled mode and strict voids as
-   today. Record the three flags as false in the manifest.
-4. Add runner-preflight tests for wrong hash, wrong side/count, an enabled
-   sampler flag, and a smoke masquerading as a full run. Add `phase` and flag
-   identity to the aggregator's cross-shard equality checks.
-
-Before the runner commit, run from `server/`:
+After v5 hashes exist, define one immutable full-DEV protocol in code (or one
+tracked spec consumed by the runner). Full mode must refuse any mismatch in:
 
 ```text
-uv run pytest -q tests/test_pilot_freezer.py tests/test_pilot_arms.py tests/test_pilot_folds.py tests/test_pilot_score.py tests/test_pilot_aggregate.py tests/test_banker_sampler.py tests/test_sampler_constraints.py tests/test_sampler_voids.py
-SHENGJI_FAST=1 uv run pytest -q tests/test_pilot_freezer.py tests/test_pilot_arms.py tests/test_pilot_folds.py tests/test_pilot_score.py tests/test_pilot_aggregate.py tests/test_banker_sampler.py tests/test_sampler_constraints.py tests/test_sampler_voids.py
+phase=full, v5 DEV sha256=<registered full hash>
+budget=14, work=168, band=0.05
+full_proposal_worlds=12, oracle_worlds=12, report_worlds=12
+salt=pilot-run-v1, shard_count=8, limit=0
+required_arms=<the exact six registered arms>
+sampler flags=false, strict voids=true, compiled engine=true
 ```
 
-Also require `git diff --check`, all sampler flags false by default, a clean
-tree, and a pushed commit. Land the current dirty diagnostics separately first;
-do not mix measurement artifacts and the launch-runner patch in one commit.
+Add parameterized refusal tests for every field, including a different but
+contract-valid DEV artifact/hash. Smoke mode remains explicitly labelled and
+unaggregatable. Use `.json` output names because each shard is one JSON object,
+not JSONL.
 
-## Gate packet — packages A and B COMPLETE (10:25)
+## Work package E — reconcile the ledgers
+
+In the same bounded pass:
+
+- add full v4 SUPERSEDED and v5 GATE-SET hashes/reasons to
+  `server/rl_data/PILOT_ARTIFACTS.md`;
+- replace the duplicate/stale evaluation rows in `RL_PLAN.md` with v5 status;
+- make `BACKLOG.md` item 0 agree with its execution headline;
+- make `JOBS.md` report live process state, v5 hashes and the actual blocker;
+- leave CALIB and REPORT explicitly untouched.
+
+## Required return packet
+
+Return this exact compact packet and then wait:
 
 ```text
-STATE: READY_FOR_CODEX_GATE
-HEAD / origin HEAD: 1820ecb / 1820ecb (in sync)
-dirty files: none
-v4 DEV hash:   1cab080956d038b37dcd441c66e6a4814f4cb2491d23d0c0c23d805dad7c9ea6
-v4 CALIB hash: 8c55b3f809d439924bb7ffe63d5bfe36292e8e41df8a63fb66eb7e94220326a6
-quota + role + replay + split + disjoint audit:
-  frozen from clean 4d0f1d3, tree_dirty=false, salts dev512-v4 / calib512-v4
-  size  early 0/72/98   mid 11/131/29   late 152/19/0     EXACT, both sides
-  role  early 85/85     mid 86/85       late 86/85        EXACT, both sides
-  512 selected / 512 unique deals / 0 replay errors / DEV-CALIB overlap 0
-  all 512 seeds per side resolved through their own split file; 0 REPORT
-  all 1,024 rows replay to the recorded seat
-  ballot at selection mc_candidates@v1[a68f7b8bced6]
-  feasibility censused on BOTH sides BEFORE selection; tightest cell
-    calib late/med = 19 needed from 25 distinct deals
-pure tests / compiled tests: 107 passed + 9 skipped / 116 passed
-  full suite 288 passed, 2 skipped
-  (the 9 skips are the preflight cases; `preflight` requires the compiled
-   engine by design, so they are meaningless without it)
-two identical smoke hashes:
-  c29ec473cad19ae128620d6ed6c9b8326a2c9135ce7f47ff5940b1c94d7468cb
-  c29ec473cad19ae128620d6ed6c9b8326a2c9135ce7f47ff5940b1c94d7468cb
-  byte-identical; manifest phase=smoke, tree_dirty=false, git=1820ecb,
-  states_sha256 == expected_states_sha256
-sampler flags: WEIGHTED_SPLITS=false UNIFORM_DEAL=false PHYSICAL_FILLS=false
-  (recorded in every manifest; preflight refuses if any is set)
-exact fleet command:
-  # Mini shards 0-3, Air shards 4-7. One process per shard. No --limit.
-  SHA=1cab080956d038b37dcd441c66e6a4814f4cb2491d23d0c0c23d805dad7c9ea6
-  SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 uv run python scripts/pilot_run.py \
-    --states rl_data/pilot_dev512.v4.json \
-    --expected-states-sha256 $SHA \
-    --budget 14 --work 168 --band 0.05 \
-    --full-proposal-worlds 12 --oracle-worlds 12 --report-worlds 12 \
-    --salt pilot-run-v1 \
-    --shard-index <N> --shard-count 8 \
-    --out runs/logs/dev512_shard<N>.jsonl
-NOT DONE / awaiting PASS: no scoring run launched. CALIB and REPORT untouched.
+STATE: READY_FOR_CODEX_GATE | BLOCKED
+RUN-CODE HEAD / origin HEAD:
+PACKET HEAD / origin HEAD:
+workspace timestamp and dirty files:
+live pilot/evaluator processes:
+v5 DEV hash / CALIB hash / artifact-ledger lines:
+band-size-role-source audit for both sides:
+DEV-CALIB overlap / REPORT leakage / all-row replay:
+source-order + row-order + duplicate-deal regressions:
+pure targeted / compiled targeted / full-suite tests:
+two identical v5 smoke hashes and manifest identity:
+full registered protocol and exact eight-shard commands:
+Mini/Air HEAD, artifact, ballot and compiled-binary preflight:
+if BLOCKED: first failing command, first error, recommended fix, ETA
 ```
 
-## After PASS — launch DEV-512, not CALIB
-
-Use eight state-strided shards from one clean pushed commit: Mini indices 0–3,
-Air 4–7, one process per shard. Before launch, both machines must report the
-same HEAD, DEV artifact hash, ballot identity, and Mini-built compiled binary
-identity; do not rebuild the extension on Air. The command must retain the
-registered values: budget 14, equal work 168 +/-5%, 12 full-proposal worlds,
-12 oracle worlds, 12 report worlds, one salt, and no `--limit`.
-
-Monitor only liveness, completeness, hashes, counters, and protocol failures.
-Do not inspect arm outcomes or extend the sample while shards are running. Stop
-on any short fold, rejected/impossible/zero-world counter, replay error, work
-violation, mixed identity, or missing state. After all eight complete, aggregate
-once. The result may select exactly one complete design or select none.
-
-## Handoff protocol from now on
-
-- `HANDOFF_ACTIVE.md`: one current decision, one active package, one gate
-  packet. Target under 200 lines.
-- `HANDOFF_REVIEW.md`: append-only evidence and disagreements; never the place
-  someone must search to discover today's command.
-- `JOBS.md`: facts from live processes/artifacts only. Check processes before
-  writing RUNNING.
-- `BACKLOG.md`: product sequence and gates in plain English, not run chatter.
-- Every claim is marked `CONFIRMED`, `PROVISIONAL`, `SCREEN`, or `WITHDRAWN`.
-- A diagnostic gets a written question, decision threshold, and timebox before
-  code or compute. At the timebox, recommend one path; do not leave three
-  uncosted options for the next reviewer.
+No launch occurs until Codex answers PASS. After PASS, Mini owns shards 0–3
+and Air 4–7; monitor only liveness/protocol counters and do not inspect arm
+outcomes until all eight shards are complete and aggregate once.

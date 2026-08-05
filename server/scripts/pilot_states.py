@@ -136,6 +136,7 @@ def row_priority(salt: str, side: str, row: dict) -> str:
     selected, while a new salt changes everything.
     """
     key = "|".join((salt, side, str(row["source"]), str(row["seed"]),
+                    str(row["ply"]), str(row["seat"]),
                     str(row["band"]), size_of(row), str(row.get("role"))))
     return hashlib.sha256(key.encode()).hexdigest()
 
@@ -158,13 +159,36 @@ def select_states(by_deal: dict, salt: str, side: str, *, band_quota=None,
     role_quota = ROLE_QUOTA if role_quota is None else role_quota
     source_quota = SOURCE_QUOTA if source_quota is None else source_quota
 
-    rows_by_deal = {}
+    # Deduplicate on the EXACT STATE, never on its marginal cell. Keying by
+    # (band, size, role, source) collapsed two genuinely different decisions
+    # from one deal into whichever row was encountered LAST, and `row_priority`
+    # omitted ply/seat so those rows tied — so which decision survived was a
+    # function of traversal order. Measured consequence: reversing rows within
+    # each deal changed 52/512 exact DEV states and 41/512 CALIB, and the
+    # forward-traversal states were systematically DEEPER (DEV +81 tricks).
+    # A cell-keyed dedup cannot be order-independent no matter how the priority
+    # is computed (Codex).
+    rows_by_deal, conflicts = {}, []
     for seed, rows in by_deal.items():
         seen = {}
         for r in rows:
-            seen[(r["band"], size_of(r), r.get("role"), r["source"])] = r
+            ident = (r["source"], r["seed"], r["ply"], r["seat"])
+            prev = seen.get(ident)
+            if prev is not None:
+                for f in ("band", "role", "tricks"):
+                    if prev.get(f) != r.get(f):
+                        conflicts.append(
+                            f"state {ident} carries conflicting {f}: "
+                            f"{prev.get(f)!r} vs {r.get(f)!r}")
+                if size_of(prev) != size_of(r):
+                    conflicts.append(
+                        f"state {ident} carries conflicting size: "
+                        f"{size_of(prev)} vs {size_of(r)}")
+            seen[ident] = r
         rows_by_deal[seed] = sorted(
             seen.values(), key=lambda r: row_priority(salt, side, r))
+    if conflicts:
+        return [], sorted(set(conflicts))
 
     picked, used, unsatisfied = [], set(), []
     for b in BANDS:

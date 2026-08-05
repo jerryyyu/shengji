@@ -281,25 +281,35 @@ def test_registered_quotas_are_internally_consistent():
 # assert the property directly rather than inspecting a produced artifact.
 
 def _synth(n=60):
-    """Eligible rows across three sources, several per deal."""
+    """Eligible rows across three sources, several per deal.
+
+    CRITICAL: each deal carries TWO decisions in the SAME
+    source/band/size/role cell, differing only in ply/seat. The earlier fixture
+    had one row per cell, so a selector that collapsed a cell to its LAST row
+    and tied on priority still looked order-independent. That blind spot let a
+    real 52/512 DEV order dependence ship (Codex).
+    """
     out = {}
     srcs = ["original", "late", "deep"]
     for i in range(n):
         rows = []
         for j, band in enumerate(("early", "mid", "late")):
             for k, size in enumerate(("small", "med", "wide")):
-                rows.append({
-                    "seed": 1000 + i, "band": band, "source": srcs[(i + j) % 3],
-                    "role": ("attacker", "defender")[(i + k) % 2],
-                    "stratum": f"{band}/x/{size}", "tricks": j, "ply": k,
-                    "seat": i % 4})
+                for dup, ply in enumerate((4 + k, 12 + k)):
+                    rows.append({
+                        "seed": 1000 + i, "band": band,
+                        "source": srcs[(i + j) % 3],
+                        "role": ("attacker", "defender")[(i + k) % 2],
+                        "stratum": f"{band}/x/{size}", "tricks": j,
+                        "ply": ply, "seat": (i + dup) % 4})
         out[1000 + i] = rows
     return out
 
 
 def _ids(picked):
-    return [(p["seed"], p["band"], PS.size_of(p), p.get("role"), p["source"])
-            for p in picked]
+    """FULL identity. Comparing only deal/stratum hid which decision won."""
+    return [(p["source"], p["seed"], p["ply"], p["seat"], p["band"],
+             PS.size_of(p), p.get("role")) for p in picked]
 
 
 _Q = dict(band_quota={"early": 3, "mid": 3, "late": 3},
@@ -410,3 +420,40 @@ def test_v5_dev_and_calib_share_the_population_but_not_the_deals():
                     assert f(dev, (field, key)) == f(cal, (field, key))
     assert not ({s["seed"] for s in dev["states"]}
                 & {s["seed"] for s in cal["states"]})
+
+
+def test_cell_keyed_dedup_FAILS_exact_state_invariance():
+    """Negative control reproducing the v5 defect precisely.
+
+    v5 deduplicated with `seen[(band, size, role, source)] = row`, so when one
+    deal held two decisions in a cell the LAST one encountered won, and
+    priority omitted ply/seat so they tied. Reversing rows changed 52/512 DEV
+    and 41/512 CALIB exact states, systematically favouring deeper forward
+    states. Without this control the invariance tests could pass against a
+    selector that still had the bug.
+    """
+    def v5_dedup(by_deal):
+        out = {}
+        for seed, rows in by_deal.items():
+            seen = {}
+            for r in rows:
+                seen[(r["band"], PS.size_of(r), r.get("role"), r["source"])] = r
+            out[seed] = list(seen.values())
+        return out
+    base = _synth()
+    rev = {k: list(reversed(v)) for k, v in base.items()}
+    a = _ids(sum(v5_dedup(base).values(), []))
+    b = _ids(sum(v5_dedup(rev).values(), []))
+    assert a != b, "the v5 cell-keyed dedup must be order-dependent"
+
+
+def test_conflicting_metadata_for_one_exact_state_fails_closed():
+    """One (source, seed, ply, seat) cannot be two different states."""
+    base = _synth(4)
+    first = next(iter(base))
+    clash = dict(base[first][0])
+    clash["band"] = "late" if clash["band"] != "late" else "early"
+    base[first] = base[first] + [clash]
+    picked, unsatisfied = PS.select_states(base, "s1", "dev", **_Q)
+    assert picked == [] and any("conflicting" in u for u in unsatisfied), \
+        unsatisfied

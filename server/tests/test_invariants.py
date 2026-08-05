@@ -508,3 +508,81 @@ def test_the_boundary_check_CATCHES_the_historical_desync():
         return
     import pytest
     pytest.fail("no beatable throw found in 40 deals")
+
+
+# --- high-N raw-record round trip -------------------------------------------
+# The v6 gate artifacts REPLAY from these corpora, so a record that stops
+# rebuilding breaks a frozen artifact silently. Nothing in the suite covered
+# the raw records until now (no test referenced `highn` at all).
+#
+# The round trip asserts REPLAYABILITY, deliberately not the stored labels:
+# `candidates`/`mean`/`best` were captured under the old ballot and non-strict
+# sampler, so requiring them to regenerate would fail for legitimate reasons
+# and the test would be deleted rather than believed.
+
+def _highn_rows(n):
+    import json
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, "rl_data", "highn_corpus_all.jsonl")
+    if not os.path.exists(path):
+        return None
+    out = []
+    with open(path) as fh:
+        for line in fh:
+            out.append(json.loads(line))
+            if len(out) >= n:
+                break
+    return out
+
+
+def test_high_n_raw_records_round_trip_to_their_declared_state():
+    import os
+    import sys
+    import pytest
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.join(root, "scripts"))
+    rows = _highn_rows(40)
+    if not rows:
+        pytest.skip("high-N corpus absent (gitignored)")
+    import pilot_states as PS
+    from shengji.engine.cards import make_deck
+    deck_size = len(make_deck())
+    checked = 0
+    for row in rows:
+        rnd = PS.replay(row)
+        assert rnd.turn == row["seat"], (
+            f"seed {row['seed']} ply {row['ply']}: replayed to seat "
+            f"{rnd.turn}, record declares {row['seat']}")
+        # conservation: every card is in a hand, buried, or already played
+        held = sum(len(h) for h in rnd.hands)
+        played = sum(len(p["cards"]) for p in row["plays"])
+        assert held + played + len(rnd.buried) == deck_size, (
+            f"seed {row['seed']}: {held} held + {played} played + "
+            f"{len(rnd.buried)} buried != {deck_size}")
+        checked += 1
+    assert checked == len(rows), "every sampled record must rebuild"
+
+
+def test_a_corrupted_high_n_record_is_REJECTED():
+    """Falsification: the round trip must fail on a tampered record.
+
+    Without this, `replay` could silently accept a mismatched deck and the test
+    above would pass against a corpus that no longer describes its states.
+    """
+    import os
+    import sys
+    import pytest
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.join(root, "scripts"))
+    rows = _highn_rows(1)
+    if not rows:
+        pytest.skip("high-N corpus absent (gitignored)")
+    import pilot_states as PS
+    row = dict(rows[0])
+    row["setup"] = dict(row["setup"])
+    deck = list(row["setup"]["deck"])
+    deck[0], deck[1] = deck[1], deck[0]      # swap two cards
+    row["setup"]["deck"] = deck
+    with pytest.raises(ValueError, match="deck mismatch"):
+        PS.replay(row)

@@ -273,10 +273,14 @@ experiment is fixed-budget versus widened/high-compute ballot selection.
       First make collect→train→evaluate exactly replayable synchronously; only
       then let a dispatcher keep both machines full from preregistered jobs.
       Scheduling may be automatic; promotion and metric changes may not be.
-- [ ] **Boundary-level tests.** Drive the failed-throw regression through
-      `bot_step`/`Room` and add a committed high-N raw-record round trip. The
-      exact tournament factory-seed boundary and numpy/Torch parity are already
-      covered; keep those fixtures green rather than re-queueing their work.
+- [x] **Boundary-level tests — DONE 2026-08-05.** The failed-throw regression
+      now runs through `bot_step`/`Room` (the seam the 2026-08-03 desync lived
+      in, which the engine-level test structurally could not see), and the
+      high-N raw records have a committed round trip. Both ship with a
+      falsification: the injected historical desync is caught, and a corrupted
+      deck is rejected. The round trip asserts REPLAYABILITY only — stored
+      `candidates`/`mean`/`best` came from the old ballot and non-strict
+      sampler, so requiring them to regenerate would fail legitimately.
 - [ ] **Scoring-contract fix**: `Game.finish_round()` allows >+3 while
       `round_value()` caps at +3, and `play_game`'s tie fallback awards team 0.
 - [ ] Compiled rollout core, remaining phases: leaf ports for

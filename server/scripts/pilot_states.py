@@ -235,8 +235,15 @@ def main() -> None:
             pos, seed, opts = chosen
             deals_for[b].pop(pos)
             used_deals.add(seed)
-            opts.sort(key=lambda d: (d["tricks"], d["ply"], d["seat"]))
-            picked.append(opts[rng.randrange(len(opts))])
+            # Secondary balance: candidate-size stratum. Recording the stratum
+            # without enforcing it left ballot size free to drift with whatever
+            # the deals happened to supply (Codex). Prefer the size bucket this
+            # band currently holds least of.
+            have = Counter(p["stratum"].split("/")[-1] for p in picked
+                           if p["band"] == b)
+            opts.sort(key=lambda d: (have[d["stratum"].split("/")[-1]],
+                                     d["tricks"], d["ply"], d["seat"]))
+            picked.append(opts[0])
             want_role[b] += 1
     skipped_dupe = sum(len(v) for v in by_deal.values()) - len(picked)
 
@@ -261,6 +268,9 @@ def main() -> None:
         "roles_selected": dict(Counter(p.get("role", "?") for p in picked)),
         "roles_by_band": {b: dict(Counter(p.get("role", "?") for p in picked
                                           if p["band"] == b)) for b in BANDS},
+        "sizes_by_band": {b: dict(Counter(p["stratum"].split("/")[-1]
+                                          for p in picked if p["band"] == b))
+                          for b in BANDS},
         "tricks_histogram": dict(Counter(p["tricks"] // 5 * 5 for p in picked)),
         "strata_selected": dict(Counter(p["stratum"] for p in picked)),
         "picked_by_source_ply": dict(Counter(

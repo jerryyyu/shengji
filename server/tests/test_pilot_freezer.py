@@ -1,0 +1,130 @@
+"""Freezer contract. A gate artifact is only as good as what its builder enforces.
+
+Every case here is a property Codex named as unenforced when the first 512 sets
+were frozen: the source list, the side selector, the exact registered quotas,
+one-state-per-deal, DEV/CALIB disjointness, and fail-closed behaviour. The
+freezer recorded role and candidate-size strata without enforcing either, and
+reported `?` for role because the field was never carried — a mechanism that
+looked implemented and was not.
+"""
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from collections import Counter
+
+import pytest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+import pilot_states as PS  # noqa: E402
+
+ART = os.path.join(os.path.dirname(__file__), "..", "rl_data")
+
+
+def _load(name):
+    p = os.path.join(ART, name)
+    if not os.path.exists(p):
+        pytest.skip(f"{name} not frozen in this checkout")
+    return json.load(open(p))
+
+
+def test_sources_include_the_deep_reservoir():
+    """Without it the registered late band is unreachable: the mined corpora
+    hold only 3 DEV deals with a lead at trick >= 12."""
+    names = {n for n, _, _ in PS.SOURCES}
+    assert "deep" in names, f"deep reservoir missing from SOURCES: {names}"
+    for _, corpus, split in PS.SOURCES:
+        assert corpus and split, "every source needs a corpus AND a split"
+
+
+def test_registered_quota_is_170_171_171():
+    assert PS.BAND_QUOTA == {"early": 170, "mid": 171, "late": 171}
+    assert sum(PS.BAND_QUOTA.values()) == 512
+
+
+def test_side_is_selectable_and_report_is_not():
+    """REPORT must not be selectable at all — it is reserved for one
+    preregistered audit and must not be inspected during design."""
+    src = open(PS.__file__).read()
+    assert 'choices=("dev", "calib")' in src, \
+        "the side selector must exclude report"
+
+
+@pytest.mark.parametrize("name", ["pilot_dev512.v2.json", "pilot_calib512.v2.json"])
+def test_frozen_artifact_meets_the_contract(name):
+    d = _load(name)
+    assert d["selected"] == 512
+    assert d["bands_selected"] == PS.BAND_QUOTA, \
+        f"{name} band composition {d['bands_selected']} != registered quota"
+    seeds = [s["seed"] for s in d["states"]]
+    assert len(set(seeds)) == 512, "one state per deal violated"
+    assert d["leads_only"] and d["one_state_per_deal"]
+    assert d["tree_dirty"] is False, "frozen from a dirty tree"
+    assert d["ballot_at_selection"], "no ballot identity recorded"
+    for key in ("script_sha256_16", "sources"):
+        assert d.get(key), f"{name} missing provenance: {key}"
+    assert not any(s.get("split") == "report" for s in d["states"]), \
+        "a REPORT row was selected"
+
+
+def test_role_balance_is_enforced_not_merely_recorded():
+    """The first freeze reported `?` for every band: rows carried no role, so
+    the balancing loop matched nothing and silently fell through."""
+    for name in ("pilot_dev512.v2.json", "pilot_calib512.v2.json"):
+        d = _load(name)
+        for band, counts in d["roles_by_band"].items():
+            assert "?" not in counts, f"{name}/{band}: role never carried"
+            assert set(counts) == {"attacker", "defender"}, counts
+            lo, hi = min(counts.values()), max(counts.values())
+            assert hi - lo <= 1, f"{name}/{band} role imbalance {counts}"
+
+
+def test_dev_and_calib_are_deal_disjoint():
+    d, c = _load("pilot_dev512.v2.json"), _load("pilot_calib512.v2.json")
+    kd = {(s["source"], s["seed"]) for s in d["states"]}
+    kc = {(s["source"], s["seed"]) for s in c["states"]}
+    assert not (kd & kc), f"{len(kd & kc)} deals appear in BOTH gate sets"
+    assert d["salt"] != c["salt"], "the two sets must use distinct salts"
+
+
+def test_source_and_split_digests_are_recorded_and_current():
+    """A frozen set whose inputs cannot be identified is not reproducible."""
+    for name in ("pilot_dev512.v2.json", "pilot_calib512.v2.json"):
+        d = _load(name)
+        for src, meta in d["sources"].items():
+            assert meta.get("corpus_sha256_16"), f"{name}/{src}: no corpus digest"
+            assert meta.get("split_sha256_16"), f"{name}/{src}: no split digest"
+            live = PS.digest(os.path.join(ART, os.path.basename(meta["corpus"])))
+            if live:
+                assert live == meta["corpus_sha256_16"], \
+                    f"{name}/{src}: corpus changed since the freeze"
+
+
+def test_freezer_refuses_a_dirty_tree_and_an_existing_path():
+    src = open(PS.__file__).read()
+    assert "REFUSING: the tree is dirty" in src
+    assert "REFUSING: {args.out} exists" in src or "exists. A frozen pilot set" in src
+    # The real property is that no override ARGUMENT exists — a docstring
+    # explaining why the flag was removed is desirable, and grepping for the
+    # bare string flagged that prose instead of the behaviour.
+    assert 'add_argument("--force"' not in src, \
+        "an existing frozen path must be unconditionally non-overwritable"
+
+
+def test_every_selected_state_replays():
+    """A state that cannot be rebuilt cannot be scored."""
+    d = _load("pilot_dev512.v2.json")
+    import random
+    sample = random.Random(7).sample(d["states"], 6)
+    srcs = {n: c for n, c, _ in PS.SOURCES}
+    for st in sample:
+        path = os.path.join(ART, os.path.basename(srcs[st["source"]]))
+        if not os.path.exists(path):
+            pytest.skip(f"{st['source']} corpus absent")
+        row = next(json.loads(l) for l in open(path)
+                   if json.loads(l)["seed"] == st["seed"]
+                   and json.loads(l)["ply"] == st["ply"])
+        rnd = PS.replay(row)
+        assert rnd.turn == st["seat"], f"{st['seed']} replayed to another seat"

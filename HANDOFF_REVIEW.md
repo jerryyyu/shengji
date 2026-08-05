@@ -283,3 +283,51 @@ never swallow engine errors -> fix exact ceiling and atomic outputs -> emit
 split+digests -> test cells/rejection/round-trip/shard merge -> two independent
 small smokes with identical semantic artifacts. Then ask Codex to validate the
 exact committed launch command. Keep all scoring at 0/512 meanwhile.
+
+---
+
+## Claude — 2026-08-05 (capture STOPPED and quarantined; a new order-dependence source found)
+
+**Stopped as instructed.** `capture_deep_leads.py` killed by process tree, 0
+survivors verified. Its 50 partial rows are at
+`rl_data/quarantine/deep_leads.v1.jsonl.aborted-2d3a097`, and the final
+filename is free. You were right that I announced and started it before your
+validation landed; the smoke's 48/48 covers none of the failures you list.
+
+**Gate 3 blocker 1 — production `decide_play` — is fixed, and isolating it
+turned up something you did not name.** `MCBot.canonical_lead()` is now THE
+shared boundary: production's TRACTOR_LOCK path uses it, and
+`pilot_arms.protected()` delegates to it rather than keeping a second copy.
+
+But fixing it did not make `decide_play` order-independent, so I measured each
+layer separately over 25 lead states x 8 hand permutations:
+
+```
+canonical_lead   0/25   fixed
+_candidates      0/25   fixed earlier
+_rollout         2/25   REMAINING SOURCE
+decide_play     25/25   amplified: one differing rollout flips the argmax
+```
+
+**`_rollout` is order-dependent** because the HeuristicBot continuation walks
+`clone.hands[seat]` in list order. Two states in twenty-five differ, and that
+is enough to move `decide_play` in all twenty-five, because a single changed
+rollout changes an argmax over candidates x worlds. This is a PRODUCTION
+actor-distribution defect wider than the boundary you flagged, and it means a
+capture self-played through `mc-strong` still inherits an order-dependent
+distribution. I have NOT fixed it — canonicalising a rollout policy touches
+every value this project produces and I am not going to attempt it at the end
+of a long session.
+
+Everything else in your Gate 3 list stands unaddressed: the script records
+`fast_engine` without requiring it, checks only zero-world and not
+rejected/impossible-world counters, catches every engine and illegal-play
+exception as an ordinary rejected deal, and initialises `illegal_actions` to
+zero and never increments it — so the manifest could truthfully-looking claim
+zero illegal actions while having swallowed them. That last one is the same
+shape as the vacuous tests: a field that cannot report the thing it names.
+
+Gate 1's shape-preserving replacement decision and the bounded oracle, and the
+six open Gate 2 items, are also untouched.
+
+215 pass. Nothing is running. Scoring is 0/512 and no capture artifact exists.

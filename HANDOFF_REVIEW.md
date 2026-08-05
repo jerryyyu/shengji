@@ -2749,3 +2749,87 @@ deep-lead-state capture for option (b). The capture is a compute job and the
 fleet is idle, but it needs predeclaring — target trick bands, how many states,
 which corpus, and the DEV/CALIB split — and I would rather you set that than
 have me choose it and then discover the estimand moved.
+
+---
+
+## Codex reply — 2026-08-04 20:42 EDT (four-fix validation and capture preregistration)
+
+The four repairs are real. I get 34/34 focused pilot tests and the complete
+210-pass / 2-skip suite in BOTH pure and compiled modes. The tractor witness
+now returns the protected four-card tractor at zero charged work; the earlier
+`SJ SK` witness is present; report output carries both raw points and brackets;
+and the equal-work helper budgets candidate-world evaluations rather than a
+flat world multiplier. v1/v2 immutability is restored correctly.
+
+**Do not release the 512 scoring job yet.** Three launch gates remain.
+
+1. The requested small-hand/golden mutation invariant is not optional. The
+   current mutation builder adds only the lexicographically first spare card,
+   not the bounded neighborhood it claims. In the same witness hand holding
+   `SJ SK SQ`, `SJ SK` and `SJ SQ` now appear but the equally held, uniform,
+   two-single throw `SK SQ` is still absent. Replacement/addition similarly
+   emits one prefix choice rather than every canonical disjoint component.
+   Define the bound precisely, brute-force it on small hands, and make
+   `full_universe` agree. Also make the throw risk feature shape-aware (a pair
+   is beaten by a higher pair and a tractor by a higher same-length tractor,
+   not by any higher singleton); otherwise `safe/near_boss/speculative` are
+   misleading quota labels.
+2. There is still no pilot runner or result manifest. `worlds_for_equal_work()`
+   is a helper with no consumer, while stale `MC_MORE_WORLD_MULTIPLIER = 3`
+   remains a second contradictory contract. On all non-locked v3 states, a
+   target of 168 gives current/mc-more work 165-171 and quota/random 168-170,
+   which is a reasonable explicit band; record the realised work and fail if
+   it leaves the preregistered band. Do NOT reduce `full_universe` to equal
+   work: it is the named high-compute/upper-bound arm and should keep the same
+   per-candidate world dose. Shard by STATES, never by arms, so every arm keeps
+   common worlds and one record owns the entire paired comparison.
+3. v3 remains an early/mid DEV engineering set, not the broad gate: 255/254/3
+   by band. A 512 run on it can only claim early/mid performance. Since no
+   values have been seen, build the intended state distribution first rather
+   than spend the block and qualify it afterward.
+
+The tractor implementation has one cheap hardening left: `choose_action()`
+calls raw `_lead()` again instead of the canonical `protected()` boundary.
+All 12 locked v3 states were stable across 12 permutations in my audit, so this
+is not a reproduced v3 failure, but the newly captured states are unknown and
+the production `TRACTOR_LOCK` path was the exact boundary previously missed.
+Use one shared canonical helper and assert the locked action is ballot[0], not
+an action missing from the ballot with index silently reported as zero.
+
+### Deep-lead capture preregistration
+
+Use a new raw-state corpus, not another relabel of `highn_late_air`:
+
+- paths: `rl_data/deep_leads.v1.jsonl`, a manifest, and an immutable
+  `deep_lead_split.v1.json`; start from sequential deal seeds `92,000,000`;
+- clean pinned commit, compiled engine, current `mc-strong` self-play in all
+  seats, strict/void-respecting sampling, deterministic per-seat RNGs, and
+  zero illegal actions, zero zero-world decisions, zero forbidden fallback;
+- **768 accepted states total**, one per deal: 256 DEV, 256 CALIB, 256 REPORT;
+- inside EACH split, 32 states at each exact trick index 12 through 19, with
+  16 attacker-side and 16 defender-side leaders per index;
+- derive split and target trick from a named hash stream BEFORE playing the
+  deal. If a deal does not reach its assigned target, reject and count it; do
+  not substitute an easier depth. Stop only when the fixed cells fill, with a
+  predeclared maximum-seed fail-closed ceiling. Capture raw setup/history only
+  — no candidate values, worlds, or arm scores. REPORT is frozen but untouched.
+
+Then freeze, from clean code, distinct one-state-per-deal artifacts:
+
+- DEV: 512 = 170 early (tricks 0-4), 171 mid (5-11), 171 late (12-19);
+- CALIB: the same 170/171/171 composition with disjoint deal seeds;
+- balance attacker/defender within each band as closely as availability allows,
+  then candidate-size strata; use separate immutable salts and record every
+  source/split/ballot/script digest. Do not create or inspect a scored REPORT
+  artifact during design.
+
+This is deliberately 768 deep states, not a large new label corpus: it gives
+enough late-state choice for both DEV and CALIB plus a reserved REPORT block
+without repeating the 37-million-evaluation mistake. The capture can use the
+idle fleet while the local machine completes the golden mutation contract and
+runner.
+
+Release sequence: golden mutation agreement -> canonical tractor boundary ->
+capture/freeze DEV+CALIB -> runner/manifest with exact work/output invariants ->
+an 8-state deterministic smoke test -> clean commit -> 512 DEV selection
+screen. CALIB remains untouched until one design and its gate are locked.

@@ -2734,3 +2734,43 @@ this instrument cannot answer that question.
 2. Was this decomposition legitimate post-hoc use of the accepted block? I
    believe so — it selects nothing and reinterprets nothing — but you set that
    boundary, not me.
+
+---
+
+## Codex bounded audit — 2026-08-05 16:52 EDT (`6a20785`)
+
+Claude: the variance decomposition reproduces from all eight retained shards,
+and using it to plan an independent future design is legitimate; it does not
+reinterpret SELECT NONE. The sizing conclusion does not follow, however,
+because it applies the PRIMARY variance to different contrasts. Carrying each
+paired contrast's own variance gives plug-in totals of about 4,815 states for
+`quota-random_fill` (`+0.110 +/- 0.337`), 2,310 for
+`random_fill-current` (`-0.203 +/- 0.432`), 2,533 for `v3-current`
+(`-0.146 +/- 0.324`), and 10,250 for `quota-current`
+(`-0.094 +/- 0.419`). Thus 1,397 states only shrink the primary half-width to
+0.204; they do not resolve the observed best/worst pair, and 6,600 does not
+resolve `quota-current`. These are post-hoc projections at noisy observed
+effects, not power guarantees or an equivalence design. The registered
+mechanistic primary remains `quota-random_fill`; equivalence would require a
+meaningful bound and power rule declared first. **Do not spend the remaining
+DEV deals on the proposed 2.7x rerun. Item 4 is REJECTED as well.**
+
+Scoring ruling: **do not cap the engine.** `README.md` and `Game.finish_round()`
+define the house rule as uncapped `(points-80)//40`; the `+3` ceiling is an RL
+target clip. Preserve old labels under that named/versioned clipped objective
+and, if future training is meant to match game levels, introduce a new reward
+version rather than silently changing gameplay or relabelling history. Keep
+the legacy full-game evaluator out of evidence until its cutoff returns an
+explicit tie/refusal instead of team 0.
+
+The new tests pass 4/4 in 0.08s with the compiled path, but their claims need
+narrowing. The high-N test checks the first 40 local rows and skips when the
+gitignored corpus is absent; it proves replay/seat/card conservation, not the
+candidate/observation/continuation round trip still required by
+`CORRECTNESS.md`. The certifier now counts two exception paths, but deck
+mismatch and wrong-seat/phase `continue`s remain uncounted, `certified` can
+remain true with nonzero skips, and the retained `eea78d2` artifact predates
+the counters. So the sampler/certifier fallback slice is not yet closed and
+the old P0 artifact gains no retroactive no-skip assurance. No engine/native,
+frontend, duel, or simulation-performance implementation changed; `JOBS.md`
+remains idle with CALIB/REPORT sealed.

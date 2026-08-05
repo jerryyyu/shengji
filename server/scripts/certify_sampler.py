@@ -264,7 +264,8 @@ def enumerate_legal(rnd, seat, cons, cap=60000):
 #: "a result only describes the population it measured" trap that has bitten
 #: this project repeatedly. Counting them makes the certified population
 #: legible; `certification_skips()` is printed with every run.
-SKIPPED = {"toy_state_replay": 0, "corpus_row_replay": 0}
+SKIPPED = {"toy_state_replay": 0, "corpus_row_replay": 0,
+           "corpus_deck_mismatch": 0, "corpus_wrong_seat_or_phase": 0}
 
 
 def certification_skips() -> dict:
@@ -371,6 +372,7 @@ def reservoir_states(paths, limit, min_ply):
                             rnd.declare(s, cs)
                     rnd.finalize_declare()
                     if list(rnd.deck) != list(row["setup"]["deck"]):
+                        SKIPPED["corpus_deck_mismatch"] += 1
                         continue
                     rnd.bury(rnd.banker, list(row["setup"]["buried"]))
                     for p in row["plays"]:
@@ -379,6 +381,7 @@ def reservoir_states(paths, limit, min_ply):
                     SKIPPED["corpus_row_replay"] += 1
                     continue
                 if rnd.turn != row["seat"] or rnd.phase != "play":
+                    SKIPPED["corpus_wrong_seat_or_phase"] += 1
                     continue
                 n += 1
                 yield path, seed, rnd, row["seat"]
@@ -518,7 +521,13 @@ def main() -> None:
               "witness_missing": witness_missing,
               "examples": bad_examples,
               "certification_skips": certification_skips(),
-        "certified": bool(n_states and not n_bad and toy_states_n
+        "skipped_any": any(certification_skips().values()),
+        # `certified` now requires a COMPLETE population. It previously could
+        # stay true while replay loops silently dropped states and rows, which
+        # certifies the sampler over whatever happened to rebuild (Codex).
+        # Fail closed: a nonzero skip means look, not assume.
+        "certified": bool(not any(certification_skips().values())
+                                and n_states and not n_bad and toy_states_n
                                 and toy_complete == toy_states_n
                                 and not witness_missing
                                 and witness_hit == witness_states)}

@@ -1043,3 +1043,19 @@ whether a ballot can express human actions, and mining outcome-weighted
 disagreements. The current sourcing result is recorded above: deployed MC
 misses 15.5% of human leads and 2.0% of follows, which supports investigating
 lead selection but does not promote a policy.
+
+
+## Scoring contract: the engine is uncapped BY RULE (2026-08-05, Codex ruling)
+
+`Game.finish_round()` awards `(points-80)//40` levels with no cap, and
+`README.md` states that as the house rule. `bc_generate.round_value()`'s `+3`
+ceiling is an **RL TARGET CLIP**, not a game rule, so the two are not in
+conflict — they are different objects. Do NOT cap the engine to match the
+reward: that would change gameplay. Old labels stay valid under the named
+clipped objective; if training must ever match game levels, add a NEW reward
+version rather than relabelling history.
+
+Separately, `ai.env.play_game`'s max-round cutoff awards team 0 on a tie. The
+registered evaluator never reaches it (`evaluation.run_arm` uses one
+`play_round`), and that legacy full-game path stays OUT of evidence until the
+cutoff returns an explicit tie or refusal.

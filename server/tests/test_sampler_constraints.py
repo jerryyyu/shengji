@@ -421,8 +421,10 @@ def test_certifier_counts_rows_it_cannot_rebuild():
     import certify_sampler as CS
 
     CS.reset_certification_skips()
-    assert CS.certification_skips() == {"toy_state_replay": 0,
-                                        "corpus_row_replay": 0}
+    assert all(v == 0 for v in CS.certification_skips().values())
+    assert set(CS.certification_skips()) >= {
+        "toy_state_replay", "corpus_row_replay",
+        "corpus_deck_mismatch", "corpus_wrong_seat_or_phase"}
     # drive the counted path directly: the swallow sites increment these
     CS.SKIPPED["corpus_row_replay"] += 1
     assert CS.certification_skips()["corpus_row_replay"] == 1, \
@@ -467,3 +469,45 @@ def test_certifier_skip_counters_are_wired_to_the_swallow_sites():
         assert key in inside, (
             f"SKIPPED[{key!r}] is not incremented INSIDE an except handler; a "
             f"counter no failure path touches counts nothing")
+
+
+def test_certified_is_false_when_the_population_was_incomplete():
+    """`certified: true` must not survive silent drops.
+
+    It previously depended only on invalid-world / reachability / witness
+    counts, so a run that skipped rows it could not rebuild still certified
+    (Codex). Asserted structurally: the skip check must appear inside the
+    `certified` expression.
+    """
+    import ast
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(root, "scripts", "certify_sampler.py")).read()
+    tree = ast.parse(src)
+    found = False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        for k, v in zip(node.keys, node.values):
+            if isinstance(k, ast.Constant) and k.value == "certified":
+                calls = [n.func.id for n in ast.walk(v)
+                         if isinstance(n, ast.Call)
+                         and isinstance(n.func, ast.Name)]
+                assert "any" in calls and "certification_skips" in calls, (
+                    "`certified` does not consult the skip counters")
+                found = True
+    assert found, "no `certified` key found to check"
+
+
+def test_every_skip_site_has_its_own_named_counter():
+    """Each silent drop must be counted separately, not lumped or omitted.
+
+    Codex found deck-mismatch and wrong-seat/phase drops still uncounted after
+    the first pass; this pins all four so a new silent `continue` is visible.
+    """
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(root, "scripts", "certify_sampler.py")).read()
+    for key in ("toy_state_replay", "corpus_row_replay",
+                "corpus_deck_mismatch", "corpus_wrong_seat_or_phase"):
+        assert f'SKIPPED["{key}"] += 1' in src, f"{key} is never incremented"

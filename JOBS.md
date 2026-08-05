@@ -5,10 +5,28 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-No job is running. The premature Gate 3 process was stopped and its 50 rows are
-quarantined at
-`rl_data/quarantine/deep_leads.v1.jsonl.aborted-2d3a097`; the final artifact
-name is free.
+### mini / deep-lead capture, 8 shards — launched 22:35, commit `8a6c2af` (clean)
+
+```
+SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 uv run python \
+  scripts/capture_deep_leads.py capture \
+  --shard-count 8 --shard-index I --max-seeds 60000 \
+  --out rl_data/deep_leads.v1.jsonl          # I = 0..7
+```
+
+pids 62302-62326 (8 shards + wrappers), 8 `.partial` files open, no refusals,
+~82% CPU on 10 logical cores.
+
+**All eight indices on MINI, none on Air — deliberate.** Air is reachable and
+on the SAME commit `8a6c2af`, but its preflight JSON differs on
+`compiled_engine` and therefore on `ballot` (the ballot identity folds in the
+.so bytes). That is a separately-built Cython binary, exactly the drift merge
+refuses. Codex's instruction for this case: run all eight on Mini rather than
+mix an unverified binary. Placement is not part of state selection.
+
+Merge is the gate and has NOT been run. No pilot values, no REPORT inspection,
+until the merged 768-row artifact and balanced DEV/CALIB files are checked
+independently.
 
 ## READY — Gate 3 raw capture (not scoring)
 

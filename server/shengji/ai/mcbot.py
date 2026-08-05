@@ -20,6 +20,10 @@ from __future__ import annotations
 import os
 import time
 
+#: Sample count matrices in proportion to the number of card-assignments they
+#: admit, rather than uniformly. Off by default until Codex adopts it.
+WEIGHTED_SPLITS = bool(os.environ.get("SHENGJI_WEIGHTED_SPLITS"))
+
 import copy
 import random
 from collections import Counter
@@ -554,7 +558,8 @@ class MCBot(SmartBot):
                         return False
                 return True
 
-            for split in self._splits(need, opts, rem):
+            for split in self._splits(need, opts, rem,
+                                      cards=by_suit[u] if WEIGHTED_SPLITS else None):
                 for r, n in split.items():
                     rem[r] -= n
                 if feasible() and place(i + 1):
@@ -608,7 +613,43 @@ class MCBot(SmartBot):
         self.reject_cause["pair_cap"] += 1
         return None
 
-    def _splits(self, need, opts, rem):
+    @staticmethod
+    def _fills(cards, split) -> int:
+        """How many distinct card-assignments realise this count matrix.
+
+        Two splits of six cards into 2/2/2 versus 6/0/0 are NOT equally likely
+        worlds: the first admits far more completions. Sampling count matrices
+        uniformly therefore under-weights balanced hands, which is the larger
+        of the two named posterior biases. This counts the completions exactly
+        by DP over CODES, so equal codes are not treated as distinguishable.
+        """
+        recv = [r for r in split]
+        caps = tuple(split[r] for r in recv)
+        codes = sorted(Counter(cards).items())
+        from functools import lru_cache
+
+        @lru_cache(maxsize=None)
+        def rec(i, rem_caps):
+            if i == len(codes):
+                return 1 if not any(rem_caps) else 0
+            _, m = codes[i]
+            total = 0
+            # distribute m identical copies over the receivers
+            def dist(j, left, acc):
+                nonlocal total
+                if j == len(rem_caps):
+                    if left == 0:
+                        total += rec(i + 1, tuple(a - b for a, b in
+                                                  zip(rem_caps, acc)))
+                    return
+                for k in range(min(left, rem_caps[j]) + 1):
+                    dist(j + 1, left - k, acc + (k,))
+            dist(0, m, ())
+            return total
+
+        return rec(0, caps)
+
+    def _splits(self, need, opts, rem, cards=None):
         """EVERY distribution of `need` cards over `opts`, in random order.
 
         Drawing a bounded number of random splits made this a search that could
@@ -644,7 +685,37 @@ class MCBot(SmartBot):
                 yield from rec(i + 1, left - n, acc)
             acc.pop(r, None)
 
-        yield from rec(0, need, {})
+        if cards is None:
+            yield from rec(0, need, {})
+            return
+        # WEIGHTED: enumerate every feasible split, weight each by the number
+        # of card-assignments it admits, and sample proportionally. Yields in
+        # weighted-random order so the caller's first accepted split is drawn
+        # from the right distribution.
+        all_splits = list(rec(0, need, {}))
+        if not all_splits:
+            return
+        weights = [max(self._fills(cards, sp), 0) for sp in all_splits]
+        if sum(weights) <= 0:
+            yield from all_splits
+            return
+        pool = list(zip(all_splits, weights))
+        while pool:
+            tot = sum(w for _, w in pool)
+            if tot <= 0:
+                for sp, _ in pool:
+                    yield sp
+                return
+            pick = self.rng.random() * tot
+            acc = 0.0
+            for idx, (sp, w) in enumerate(pool):
+                acc += w
+                if acc >= pick:
+                    yield sp
+                    pool.pop(idx)
+                    break
+            else:
+                yield pool.pop()[0]
 
     def _deal_suit(self, remaining, n, r, suit, mem, already=None):
         """Remove and return `n` cards of one suit for one receiver.

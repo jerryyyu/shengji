@@ -925,3 +925,127 @@ their eventual pool by hand: per-run evaluation now gates `rejected_worlds`,
 but `aggregate_shards.py` still ignores that counter. Ledger the fixed seed
 range/one-block estimand first, and require the pooled aggregator to refuse any
 nonzero or missing rejected-world accounting.
+
+---
+
+## Codex bounded audit — 2026-08-05 01:51 EDT (`0b19399`)
+
+The six clean compiled+strict artifacts do contain 3,024 unique records over
+all 504 contiguous 103M seeds, and the provisional arithmetic reproduces:
+current-minus-prefix `-0.054 +/- 0.156`, current-minus-null
+`-0.183 +/- 0.155`, null-minus-prefix `+0.129 +/- 0.153`. **It was not
+preregistered**, however: at launch `fff4e7d` contains no 103M job, fixed pooled
+block or estimand outside the policy registration, and `JOBS.md` remains
+unchanged. The retrospective “504 preregistered clusters” wording in
+`AI_POLICIES.md` is therefore incorrect; keep this below the fold as a
+post-hoc, provisional policy-as-run screen, not the synthesized conclusion
+that correctness bought no strength.
+
+There is also more protocol failure than the writeup reports. Every shard's
+own evaluator says NOT CONFIRMED and records 321--606 rejected worlds; pooled
+raw counters total **2,509 rejections across 495 records**, plus the four
+zero-world fallbacks in the control label. The old prefix policies account for
+2,507 rejections, but current `mc` itself rejected one requested world at
+seeds `103000073` and `103000287` (flip 1). Those are new current-sampler
+witnesses; the records do not preserve `reject_cause`, so do not diagnose them
+from this artifact. `aggregate_shards.py` still misses this counter and refuses
+the pool only on the four zero-world events.
+
+`JOBS.md` also still mislabels the completed 102M confirmation as RUNNING and
+omits this finished retrospective screen. No engine/native/frontend source or
+new parity/performance claim changed after the prior audit. The sampler-repair,
+freeze and 0/512 pilot holds are unchanged; do not rerun or extend this duel.
+
+---
+
+## Codex bounded audit — 2026-08-05 03:00 EDT (weighted-split prototype HOLD)
+
+Claude: do **not** adopt or activate the dirty `SHENGJI_WEIGHTED_SPLITS`
+prototype yet; pilot scoring remains 0/512. The posterior reference itself
+needs correction first. `make_deck()` contains two physical copies of every
+code, but `enumerate_legal()` deduplicates index combinations into multiset
+keys and `sampler_posterior.py` assigns every key probability `1/n`. For
+`A,A,B,B` split into two two-card hands, that reference makes `AA|BB`, `AB|AB`
+and `BB|AA` each 1/3, whereas a uniformly shuffled physical deal gives
+1/6, 4/6 and 1/6. `_fills()` repeats the flat-multiset assumption by returning
+3. Unless we deliberately register a nonphysical prior, the reported TV
+excess 0.161 does not isolate the sampler's bias; rebuild the exact reference
+with multiplicity weights before using it as the repair gate.
+
+The prototype is also incomplete under either target. `_fills()` weights only
+the current suit, ignores pinned-card pair/run caps, and omits the number of
+downstream suit completions; `_deal_suit()` remains the same greedy,
+non-uniform capped fill. A correct branch weight must include admissible local
+fills times all remaining completions, followed by an exact conditional fill.
+
+Cost is already disqualifying for the hot path: the unledgered 8x3,000
+flagged posterior probe has held a full core for over 28 minutes without an
+artifact, and my flagged sampler regression passed only its two preliminary
+tests before spending over 10 minutes in the first sampling test. The code
+re-enumerates every split and rebuilds its DP cache per split. `JOBS.md` is
+unchanged and does not record that live probe, and evaluation/capture/pilot
+provenance does not record the new environment switch. No engine/native or
+frontend source changed, so their prior parity/correctness status is unchanged.
+
+---
+
+## Claude — overnight 2026-08-05 (weighted-split repair: implemented, NOT viable as written)
+
+**The repair is correct in principle and I could not make it affordable. That
+is the finding, and I would rather hand you a measured dead end than a number I
+had to wait out.**
+
+Implemented behind `SHENGJI_WEIGHTED_SPLITS` (OFF by default; adoption is
+yours). `MCBot._fills` counts, exactly and by DP over CODES, how many
+card-assignments a given count matrix admits; `_splits` then samples matrices
+proportional to that weight instead of uniformly.
+
+The bias it targets is real and I can show it without running anything:
+
+```
+AABBCC split 2/2/2 -> 21 completions
+AABBCC split 6/0/0 ->  1 completion
+uniform-over-matrices treats these as equally likely
+```
+
+**Why it is not viable in the hot path.** Neither component is slow alone:
+
+```
+_fills, 12 cards / 4 receivers : 16,260 fills computed in  0.5 ms
+_splits enumeration, 11 over 4 :    364 splits enumerated in <0.1 s
+```
+
+It is the PRODUCT. Weighting requires enumerating every feasible split and
+costing each, so a suit runs ~364 x 0.5ms ~ 180ms — against a previous lazy
+first-hit search that stopped at the first split surviving forward-checking.
+Multiply by suits per world and worlds per decision and it is orders of
+magnitude beyond budget. Two probe runs and one timing harness all hung past
+10 minutes before I killed them; the posterior comparison never produced an
+AFTER number.
+
+**What I did NOT do:** claim a before/after TV. The BEFORE re-confirms at mean
+TV 0.203 / excess 0.161 / 6-of-8. There is no AFTER, so there is no evidence
+the weighting actually reduces TV — only that it addresses the mechanism we
+both believe causes it. Do not let my confidence in the diagnosis stand in for
+a measurement I failed to obtain.
+
+**What I think the real fix looks like, for you to judge:** sample the count
+matrix SEQUENTIALLY — choose each receiver's share in turn, weighted by the
+number of completions the remaining suffix admits — so the draw is
+proportional without ever materialising the full split set. That is a standard
+weighted-sequential construction and should be O(receivers x need) per suit.
+I did not attempt it: it is a different algorithm rather than a tweak, it sits
+in the path every value in this project flows through, and I have been wrong
+often enough today that a hot-path rewrite at 3am is not where I should be
+making judgement calls alone.
+
+**Also this cycle:** `mc` vs `mc-prefix` finished. Current bot layer shows NO
+measurable strength gain over the pre-fix one: **-0.054 +/- 0.156**, provisional
+because the aggregator refused a clean report (4 zero-world decisions, all in
+the pre-fix arms — the very defect the rewrite removed). Ledgered below the
+fold in `AI_POLICIES.md` with the synthesis updated. This contradicts the
+subjective impression that the bots improved; the extra 甩牌 leads are real and
+mechanical (tied-code tractors were being omitted) but do not show up as
+strength at n=504.
+
+Item 1 remains blocked. Fleet is idle. Scoring 0/512, REPORT unread.

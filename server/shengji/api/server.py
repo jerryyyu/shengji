@@ -24,6 +24,15 @@ from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
 
+
+def _fast_active() -> bool:
+    """True only if the compiled decompose is the one in use."""
+    try:
+        from ..engine import combos, fast
+        return bool(fast.HAVE_FAST and combos.decompose is fast.decompose)
+    except Exception:
+        return False
+
 BOT_DELAY = 0.7
 CHAT_KEEP = 50        # scrollback kept per room (in memory, like game state)
 CHAT_MAX_LEN = 300    # per-message cap
@@ -1099,7 +1108,12 @@ def _detach(seat: Seat, room: Room | None = None,
 @app.get("/healthz")
 async def healthz() -> dict:
     return {"ok": True, "rooms": len(rooms),
-            "bot": os.environ.get("SHENGJI_BOT", "mc")}
+            "bot": os.environ.get("SHENGJI_BOT", "mc"),
+            # Whether the compiled hot-path engine actually ACTIVATED, not
+            # merely whether the .so shipped. `fast.py` falls back silently, so
+            # without this a mismatched or missing extension is invisible and
+            # the server just runs ~3x slower for months (it did).
+            "fast": _fast_active()}
 
 
 from .debug import register_debug  # noqa: E402

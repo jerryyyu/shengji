@@ -18,6 +18,9 @@ primary_region = 'ewr'
   # the pure-Python engine — roughly 3x the per-decision cost of the compiled
   # numbers quoted in AI_POLICIES.md.
   SHENGJI_BOT = 'mc-strong'
+  # Compiled engine, built in the fastbuild stage. fast.py falls back to pure
+  # Python if the .so is missing, so this is safe to set unconditionally.
+  SHENGJI_FAST = '1'
   SHENGJI_LOG_DIR = '/data/logs'
 
 [mounts]

@@ -132,6 +132,74 @@ Reconcile rather than merely prepend:
 - replace the stale v3/sampler PILOT section in `JOBS.md`;
 - state DEV 0/512, CALIB/REPORT unscored and this Codex HOLD everywhere.
 
+## Return packet — packages F1-F4 complete (10:49 EDT)
+
+```text
+STATE: READY_FOR_CODEX_GATE
+RUN-CODE HEAD / origin HEAD: 4b1b6cd / 4b1b6cd
+PACKET HEAD / origin HEAD: 4b1b6cd / 4b1b6cd  (identical; the packet commit
+  follows, so this line will read <packet>/<packet> with run-code 4b1b6cd)
+workspace timestamp and dirty files: 2026-08-05 10:49:25 EDT; 0 dirty
+live pilot/evaluator processes: none (matched by `ps`, printed not counted —
+  a grep on "pilot_run" also matches tests/test_pilot_run_preflight.py)
+v6 DEV hash / CALIB hash / artifact-ledger lines:
+  DEV   af78748586034f6f97e96a167008b2c540c0e4b1670a683ef6b5f05ec85d3e7b
+  CALIB 3872350f57a4dd602d958182c0a0aecc27c6bf99c9330e8265bcf84c9c3dce05
+  PILOT_ARTIFACTS.md registers v3/v4/v5 SUPERSEDED (v5 with the measured
+  52/41 exact-state order dependence) and v6 as the gate set. v1-v5 unedited.
+band-size-role-source audit for both sides (IDENTICAL, exact):
+  band    early 170      mid 171        late 171
+  size    0/72/98        11/131/29      152/19/0     small/med/wide
+  role    85/85          86/85          86/85        attacker/defender
+  source  129/41/0       17/154/0       0/1/170      original/late/deep
+DEV-CALIB overlap / REPORT leakage / all-row replay:
+  overlap 0 deals; 512 UNIQUE exact identities (source, seed, ply, seat) per
+  side; 0 REPORT rows, every seed resolved through its own split file; all
+  1,024 rows replay to the recorded seat; 0 replay errors.
+source-order + row-order + duplicate-deal regressions:
+  REAL-CORPUS forward vs reversed, run before freezing: exact-state difference
+  0 on DEV and 0 on CALIB (v5 measured 52 and 41).
+  Synthetic fixture now carries TWO ply-distinct decisions per deal in the same
+  source/band/size/role cell and `_ids` compares (source, seed, ply, seat,
+  band, size, role) — the previous fixture had one row per cell and omitted
+  ply/seat, which is why it could not see the v5 defect.
+  Negative controls: a v5-style cell-keyed dedup asserted to FAIL invariance;
+  an order-dependent selector asserted to FAIL; conflicting metadata for one
+  exact identity fails closed; salt AND side each proven to change selection.
+pure targeted / compiled targeted / full-suite tests:
+  122 passed + 21 pure-only skips / 143 passed / 315 passed + 2 skipped
+two identical v6 smoke hashes and manifest identity:
+  9fbb530e1c9fd055506e99c1076d5d029e065dd144973d789e00c1a2cf95f443
+  9fbb530e1c9fd055506e99c1076d5d029e065dd144973d789e00c1a2cf95f443
+  retained at server/runs/logs/smoke_v6/smoke{1,2}.json (+ .log)
+  command: as the eight-shard command below but --limit 8 --shard-index 0
+           --shard-count 1
+  manifest: phase=smoke, tree_dirty=false, git=4b1b6cd, all three sampler
+  flags false, states_sha256 == expected_states_sha256,
+  ballot mc_candidates@v1[a68f7b8bced6]
+full registered protocol and exact eight-shard commands:
+  FULL_DEV_PROTOCOL compares phase, v6 DEV sha256, budget 14, work 168,
+  band 0.05, 12/12/12 worlds, salt pilot-run-v1, shard_count 8, limit 0,
+  side dev, and the six registered arms (an altered ARMS tuple is refused).
+  SHA=af78748586034f6f97e96a167008b2c540c0e4b1670a683ef6b5f05ec85d3e7b
+  SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 uv run python scripts/pilot_run.py \
+    --states rl_data/pilot_dev512.v6.json --expected-states-sha256 $SHA \
+    --budget 14 --work 168 --band 0.05 \
+    --full-proposal-worlds 12 --oracle-worlds 12 --report-worlds 12 \
+    --salt pilot-run-v1 --shard-index <N> --shard-count 8 \
+    --out runs/logs/dev512_shard<N>.json
+  Mini N=0..3, Air N=4..7, one process per shard, no --limit.
+Mini/Air HEAD, artifact, ballot and compiled-binary preflight:
+  HEAD        mini 4b1b6cd        air 4b1b6cd        (both clean)
+  v6 DEV sha  af78748586034f6f... air identical
+  _fast .so   9c9e77fbdc4c6cac... air identical (Mini-built, rsynced; Air NOT
+              rebuilt)
+  ballot      mc_candidates@v1[a68f7b8bced6]
+if BLOCKED: n/a
+```
+
+No launch has occurred. DEV 0/512. CALIB and REPORT unscored and untouched.
+
 ## Required return packet
 
 Return only this packet, then wait:

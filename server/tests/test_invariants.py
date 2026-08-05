@@ -399,3 +399,112 @@ def test_failed_throw_bookkeeping_matches_engine():
     assert sorted(actual) == sorted(expected), (
         "helper must report the engine's forced play, not the attempt")
     assert len(actual) < len(cand), "this deal should have forced a penalty"
+
+
+def _room_at_play(seed: int):
+    """A Room advanced to the play phase, with ids mirroring the dealt hands.
+
+    Built directly rather than over a websocket because the regression needs a
+    SPECIFIC failed throw, which ordinary play almost never produces.
+    """
+    import random
+    from shengji.api.server import Room
+    from shengji.engine.game import Game
+    from shengji.ai.heuristic import HeuristicBot
+
+    room = Room(code="TST")
+    room.game = Game(random.Random(seed))
+    rnd = room.game.start_round()
+    helper = HeuristicBot()
+    while rnd.phase != "play":
+        if rnd.phase == "deal":
+            rnd.deal_next()
+        elif rnd.phase == "declare":
+            rnd.finalize_declare()
+        elif rnd.phase == "bury":
+            rnd.bury(rnd.banker, helper.decide_bury(rnd, rnd.banker))
+    # ids mirror hands exactly; the desync this guards against is precisely
+    # these two drifting apart
+    room.ids = [{i * 4 + s: c for i, c in enumerate(rnd.hands[s])}
+                for s in range(4)]
+    return room, rnd
+
+
+def _find_failing_throw(rnd, seat):
+    """A multi-component lead this seat can be BEATEN on, so the penalty fires."""
+    from collections import Counter
+    from shengji.engine.legal import suit_cards, validate_lead
+    o = rnd.ordering
+    hand = rnd.hands[seat]
+    for s in "SHDC":
+        cs = suit_cards(hand, s, o)
+        cnt = Counter(cs)
+        pair = next((c for c, n in cnt.items() if n >= 2), None)
+        single = next((c for c in cs if c != pair), None)
+        if pair and single:
+            cand = [pair, pair, single]
+            others = [rnd.hands[x] for x in range(4) if x != seat]
+            played, msg = validate_lead(cand, hand, others, o)
+            if msg and len(played) < len(cand):
+                return cand, played
+    return None, None
+
+
+def test_failed_throw_does_not_desync_the_room_at_the_SERVER_boundary():
+    """The 2026-08-03 desync lived in `bot_step`, not in the engine.
+
+    `tests/test_invariants.py::test_failed_throw_bookkeeping_matches_engine`
+    covers `validate_lead` directly, so it cannot see a server-layer regression:
+    `bot_step` must remove and log what the ENGINE played, not what the bot
+    attempted. This drives the same failure through the real seam and asserts
+    the client-visible hand (`room.ids`) still matches the engine hand.
+    """
+    from shengji.api.server import bot_step
+    for seed in range(40):
+        room, rnd = _room_at_play(seed)
+        seat = rnd.turn
+        cand, played = _find_failing_throw(rnd, seat)
+        if cand is None:
+            continue
+        room.bot.decide_play = lambda r, s, _c=cand: list(_c)
+        assert bot_step(room, seat) is True
+        assert len(played) < len(cand), "the penalty must actually fire"
+        assert sorted(room.ids[seat].values()) == sorted(rnd.hands[seat]), (
+            "room ids desynced from the engine hand after a failed throw")
+        return
+    import pytest
+    pytest.fail("no beatable throw found in 40 deals — fixture is not "
+                "exercising the regression")
+
+
+def test_the_boundary_check_CATCHES_the_historical_desync():
+    """Falsification: reintroduce the bug and require the check to fail.
+
+    Without this, the test above would pass against a `bot_step` that removed
+    the attempt instead of the played cards, and would prove nothing.
+    """
+    import shengji.api.server as server
+    from shengji.api.server import bot_step
+    for seed in range(40):
+        room, rnd = _room_at_play(seed)
+        seat = rnd.turn
+        cand, played = _find_failing_throw(rnd, seat)
+        if cand is None:
+            continue
+        room.bot.decide_play = lambda r, s, _c=cand: list(_c)
+        original = server.actual_play_after
+        # the historical bug: mirror the ATTEMPT rather than what was played
+        server.actual_play_after = lambda r, s, prev, _c=cand: list(_c)
+        try:
+            try:
+                bot_step(room, seat)
+            except StopIteration:
+                return  # removing cards the hand no longer holds — also caught
+            assert sorted(room.ids[seat].values()) != sorted(rnd.hands[seat]), (
+                "the injected desync was not detected; the boundary assertion "
+                "is vacuous")
+        finally:
+            server.actual_play_after = original
+        return
+    import pytest
+    pytest.fail("no beatable throw found in 40 deals")

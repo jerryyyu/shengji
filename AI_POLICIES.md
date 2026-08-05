@@ -21,7 +21,7 @@ evidence changes a synthesized conclusion. Append run reports below the fold,
 and when a run changes a conclusion, EDIT the synthesis rather than letting the
 newest entry sit on top and speak for the file.
 
-## Current synthesis — 2026-08-05 18:50
+## Current synthesis — 2026-08-05 19:50
 
 - **More search width is not the next lever.** N=5->N=10 was large,
   N=10->N=30 was +0.262 +/- 0.154 confirmed, and N=30->N=60 was
@@ -65,8 +65,14 @@ newest entry sit on top and speak for the file.
   path forward", which is what this entry said before Codex corrected it. Mark it a DEV SCREEN, not a strength
   claim: DEV selects designs, it does not establish playing strength. CALIB and
   REPORT remain sealed, because the contract runs CALIB on one DEV-selected
-  design and there is none. The 51.2%/0.9% structured-omission figures still
-  describe the ballot's coverage; they no longer motivate a redesign.
+  design and there is none. DEV-512 was fit for rejecting a conspicuous design
+  win, not for training a policy or proving a small online effect: its primary
+  half-width was 0.337; at unchanged variance 2,048 rows would still be about
+  0.169, and roughly 5,800 would be needed to resolve 0.10 offline regret.
+  Never append to inspected DEV or try more arms on it. Build a separately
+  versioned deeper-label teacher/challenge asset, and reserve fresh paired full
+  games for strength. The 51.2%/0.9% structured-omission figures still describe
+  the ballot's coverage; they no longer motivate the rejected redesigns.
 - **Data conclusion:** the 20,845-state high-N artifact is a replayable state
   reservoir, not an oracle. Its old-ballot/non-strict/same-world-selected labels
   have produced no online gain. The 12,000-state late supplement is raw-state
@@ -81,16 +87,16 @@ newest entry sit on top and speak for the file.
   block the completed DEV screen, whose estimand deliberately froze the
   production sampler as part of each policy. Shared proposal/report worlds
   lower variance but do not make the posterior correct.
-- **Sampler P0 certificate is temporarily OPEN after a population audit.** The
+- **Sampler P0 certificate is CLOSED at clean `aea3774`.** The
   earlier `eea78d2` artifact was original-only because one global limit starved
   later sources, despite being described as original+late, and it predates skip
-  counters. `fc19d26` now requires original/late/deep with exact 500/500/500
-  quotas and 120 toys, but the retained v2 artifact is pre-commit and dirty;
-  the gate also needs `rejected == 0` and `accepted == requested` wired into
-  `certified` before one clean current rerun. The underlying work did find and
-  fix allocator dead-ends, forbidden declared-card pair completion and ignored
-  tractor run caps; do not turn those real fixes into an overstated population
-  certificate.
+  counters. The v3 artifact requires and records original/late/deep at exact
+  500/500/500 quotas, 36,000 requested = accepted, zero rejected/invalid/named
+  skips, 120/120 exhaustive toys/witnesses, a clean tree and compiled+strict
+  execution. This closes bounded hard validity/support only. The underlying
+  work also found and fixed allocator dead-ends, forbidden declared-card pair
+  completion and ignored tractor run caps; do not turn those real fixes into a
+  posterior-fidelity or globally-complete-dealer claim.
   **NOT certified: distribution fidelity — now MEASURED, and the two named
   causes do not account for it.** Against a uniform-over-PHYSICAL-DEALS
   reference on 24 enumerable states (paired, pairing machine-verified):
@@ -186,10 +192,10 @@ newest entry sit on top and speak for the file.
   consumes declaration, void, remaining-pair and remaining-tractor-run
   constraints. Normal mode can still use the final void-relaxing retry, while
   evidence-producing evaluation requires `SHENGJI_REQUIRE_VOIDS=1` and clean
-  sampler counters. The current three-reservoir P0 certificate is pending the
-  clean rerun described above; posterior fidelity is also open. Old non-strict
-  labels therefore remain provisional even though strict policy evaluations
-  can fail closed on their own counters. See
+  sampler counters. The current three-reservoir bounded P0 certificate passed;
+  posterior fidelity is still open. Old non-strict labels therefore remain
+  provisional even though strict policy evaluations can fail closed on their
+  own counters. See
   `CORRECTNESS.md` for the certified boundary rather than inferring it from a
   policy result.
 - **Retired strength arm:** `mc-vleaf-v7w-ep02` has no verified edge over MC.

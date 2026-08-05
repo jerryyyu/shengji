@@ -94,15 +94,11 @@ also predates named replay-skip counters. `c1ceca1` is useful current-original
 evidence only and ran 40 rather than the registered 120 toys. Neither artifact
 certifies the stated population.
 
-`fc19d26` repairs the certifier's population contract: original, late and deep
-are mandatory, counters reset per source, exact 500/500/500 quotas and 120 toys
-are persisted and enforced, and missing/short sources refuse. The first v2
-artifact was generated pre-commit with `tree_dirty=true`, and the current
-`certified` expression still needs to require zero rejected worlds and
-`accepted == requested`. P0 therefore remains **open pending one clean-current,
-compiled, strict artifact** with 1,500 states, 36,000/36,000 accepted worlds,
-zero rejected/invalid/skipped rows, 120/120 exhaustive support and 120/120 real
-witnesses.
+`fc19d26` repaired the population contract, and `aea3774` closed the remaining
+fail-closed holes. The clean v3 artifact requires exact original/late/deep
+500/500/500 quotas, 36,000 requested = accepted, zero rejected/invalid/named
+skips, 120/120 exhaustive support and real witnesses, clean current HEAD, and
+compiled+strict execution. The bounded P0 certificate is therefore **closed**.
 
 The certification work found real producer defects: greedy card-first allocation
 could dead-end despite a feasible assignment; a pinned declared card could be
@@ -115,7 +111,7 @@ independent history-derived validator, explicit population accounting and
 exhaustive small worlds; producer-owned invariants and “some world appeared
 within N retries” are insufficient.
 
-Once the gate closes, it proves two bounded claims only:
+The closed gate proves two bounded claims only:
 
 - **validity:** accepted strict worlds satisfy the tested public constraints;
 - **support:** every legal world is reachable on the exhaustive toy family.
@@ -228,7 +224,8 @@ the argument for the rules.
 ## Sampler certificate — original+late+deep, aea3774 (2026-08-05)
 
 The FIRST certificate covering all three reservoirs. Stored at
-`server/runs/logs/certify_sampler_v3.json`.
+`server/runs/logs/certify_sampler_v3.json` (SHA-256
+`e31e67f9aeb4739aa598faa66051ec4004fd47751b297457242dc95a30cc224c`).
 
 ```
   states 1,500 = 500 original + 500 late + 500 deep

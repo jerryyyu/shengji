@@ -174,12 +174,14 @@ result.
    MC reference. v13 fit its offline labels better but changed both the state
    and action-ballot distributions at deployment; it was
    `-0.028 +/- 0.185` directly versus v7 on the same 250 seed clusters.
-4. **Hard-constraint sampling P0 passed; posterior fidelity is P1.** The clean
-   `eea78d2` artifact found zero invalid worlds over 38,399 accepted reservoir
-   draws and reached every enumerated legal world in 120/120 toy states. Count-
-   matrix and capped-card weighting are still biased, so the old non-strict,
-   capped-ballot, same-world-selected high-N labels remain a diagnostic
-   reservoir rather than an oracle.
+4. **Hard-constraint sampling P0 passed; posterior fidelity is P1.** The old
+   `eea78d2` population claim was withdrawn because its global limit starved the
+   late source. The clean replacement at `aea3774` covers exactly 500 original
+   + 500 late + 500 deep states, accepts 36,000/36,000 worlds with zero
+   invalid/rejected/skips, and reaches every legal world and real witness in
+   120/120 exhaustive toys. Count-matrix weighting is still biased, so the old
+   non-strict, capped-ballot, same-world-selected high-N labels remain a
+   diagnostic reservoir rather than an oracle.
 5. **The next compute is bounded and unblocked.** Run the preregistered fresh
    N=30 confirmation and the clean lead-ballot pilot; neither is permission for
    another bulk training corpus. The separate action-semantics gate remains
@@ -374,7 +376,8 @@ its CALIB, online-confirmation and learn-from-winner stages are NOT REACHED /
 CLOSED and CALIB/REPORT remain sealed. The positive program now has three lanes:
 confidence-aware/adaptive search, clean counterfactual teacher iteration, and
 faithful role-conditioned self-play. The current three-reservoir sampler
-certificate remains a short shared gate, not the roadmap's main product.
+certificate passed at clean `aea3774`; it is no longer on the strength critical
+path. Posterior fidelity remains a separately versioned research issue.
 
 The re-entry discipline applies to anything new: preregister the bar, seed both
 sides through a factory that forwards kwargs, write immutable manifests and
@@ -428,10 +431,10 @@ they change what gets built, not just what gets said.
    candidates with common worlds—the old four-variant `MC_BURY` tie did not test
    this—and build sampled exact/minimax solving for the final ~4 tricks. Screen
    on targeted states, then duel the production champion directly.
-6. **Close sampler P0 quickly, then keep it out of the critical path.** Produce
-   the clean current original/late/deep certificate with zero accepted-path
-   loss. Posterior research remains separately versioned; it must not consume
-   the whole strength budget unless a policy experiment depends on it.
+6. **Keep the closed sampler P0 out of the critical path.** The clean current
+   original/late/deep certificate passed with zero accepted-path loss.
+   Posterior research remains separately versioned; it must not consume the
+   strength budget unless a policy experiment depends on it.
 7. **Operate the flywheel AutoGo-style.** Every run gets one immutable
    `ExperimentSpec`: hypothesis, code/data/ballot/encoder hashes, frozen actor
    paths, budget, primary metric, null and stop rule. Keep collect→train→evaluate
@@ -530,6 +533,17 @@ meaningful paired offline effect, while a tiny edge may remain inconclusive.
 The observed per-state paired variance must be reported; do not extend DEV
 after seeing results. Full-game confirmation receives its own fresh-seed power
 calculation, as required by `BALLOT_PLAN.md`.
+
+In the completed screen, the primary 95% half-width was 0.337. Holding that
+variance fixed, 2,048 comparable states would narrow it only to about 0.169,
+and roughly 5,800 would be required to resolve a 0.10 regret effect. The right
+response is therefore **not** to append to inspected DEV-512 or cycle more
+ballot arms through it. Preserve it as a negative design worksheet. The new
+2,048-state `teacher-v1` proposal is a different asset: non-evaluation states,
+much deeper common-world counterfactual labels, per-world outcomes and an
+iterative training purpose. It may grow to 10k/50k only after held-out teacher
+metrics and fresh paired games show that its learned mechanism improves the
+champion.
 
 ## Training data inventory (rebuilt from disk 2026-08-04)
 

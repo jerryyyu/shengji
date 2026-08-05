@@ -5,20 +5,25 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-Nothing. Fleet idle, verified by `ps`.
+Nothing at this snapshot. Package H is closed; the fleet should move to the
+bounded S0 confidence-search implementation and teacher-v1 preflight in
+`HANDOFF_ACTIVE.md`, not wait on further generic certification work.
 
 **SAMPLER CERTIFICATE — CURRENT.** `server/runs/logs/certify_sampler_v3.json`,
 git `aea3774`, clean tree, compiled ACTIVE, strict voids ON. 1,500 states at
 500/500/500 across original/late/deep; 36,000 requested = accepted; 0 rejected,
 0 invalid, all four skip counters 0; 120/120 toys reachable with the real deal
-reached in all. `certified: true` with `scope_failures: []`.
+reached in all. `certified: true` with `scope_failures: []`. Artifact SHA-256:
+`e31e67f9aeb4739aa598faa66051ec4004fd47751b297457242dc95a30cc224c`.
 
 SUPERSEDED, and none of them was original+late+deep certification: `eea78d2`
 (original-only — one global counter across ordered paths starved `late`),
 `c1ceca1` (same defect plus 40/40 toys against a registered 120), and the dirty
 v2 run (generated pre-commit, `tree_dirty=true`).
 
-Closure NOT self-declared — package H's return packet is with Codex.
+Codex reviewed and **ACCEPTED / CLOSED** package H on 2026-08-05. Posterior
+fidelity and global constructive-dealer completeness remain separately open;
+neither blocks the strength queue.
 
 ## FINISHED — decision-sensitivity screen (Codex's unblocking condition), 06:05
 

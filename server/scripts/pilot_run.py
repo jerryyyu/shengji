@@ -57,7 +57,7 @@ SOURCES = {"original": "rl_data/highn_corpus_all.jsonl",
 #: the upper-bound arm) and `mc_more` is budgeted against full_universe's work
 #: instead, since at the band it degenerates into `current`.
 EQUAL_WORK_ARMS = tuple(a for a in ARMS
-                        if a not in ("full_universe", "mc_more"))
+                        if a not in ("full_universe", "mc_more_full_work"))
 
 
 def digest(path):
@@ -80,6 +80,10 @@ def main() -> None:
     ap.add_argument("--band", type=float, default=0.05,
                     help="fractional tolerance on realised work")
     ap.add_argument("--report-worlds", type=int, default=12)
+    ap.add_argument("--full-proposal-worlds", type=int, default=12,
+                    help="PREREGISTERED proposal dose for full_universe. "
+                         "Separate from --report-worlds: reusing that value "
+                         "silently coupled two independent budgets (Codex).")
     ap.add_argument("--oracle-worlds", type=int, default=12)
     ap.add_argument("--salt", default="pilot-run-v1")
     ap.add_argument("--out", required=True)
@@ -110,6 +114,7 @@ def main() -> None:
         "budget": args.budget, "work_target": args.work, "band": args.band,
         "report_worlds": args.report_worlds,
         "oracle_worlds": args.oracle_worlds,
+        "full_proposal_worlds": args.full_proposal_worlds,
         "salt": args.salt, "n_states": len(states),
         "equal_work_arms": list(EQUAL_WORK_ARMS),
         "require_voids": True,
@@ -157,12 +162,12 @@ def main() -> None:
         # do as well?", so it is budgeted against full_universe's work, not the
         # band. BALLOT_PLAN: "all extra proposal compute moved into more
         # worlds".
-        prop_worlds = {a: (args.report_worlds if a == "full_universe"
+        prop_worlds = {a: (args.full_proposal_worlds if a == "full_universe"
                            else worlds_for_equal_work(args.work, len(ballots[a])))
                        for a in ARMS}
         wide_work = len(ballots["full_universe"]) * prop_worlds["full_universe"]
-        prop_worlds["mc_more"] = worlds_for_equal_work(
-            wide_work, len(ballots["mc_more"]))
+        prop_worlds["mc_more_full_work"] = worlds_for_equal_work(
+            wide_work, len(ballots["mc_more_full_work"]))
         counts = {"proposal": max(prop_worlds.values()),
                   "oracle": args.oracle_worlds, "report": args.report_worlds}
         fw = draw_folds(bot, rnd, seat, mem, counts, salt=args.salt,
@@ -185,7 +190,7 @@ def main() -> None:
                               "tractor_locked": got["tractor_locked"],
                               "work": got["candidate_world_rollouts"],
                               "proposal_worlds": len(worlds)}
-            if a == "mc_more" and not got["tractor_locked"]:
+            if a == "mc_more_full_work" and not got["tractor_locked"]:
                 w = got["candidate_world_rollouts"]
                 if abs(w - wide_work) > args.band * wide_work:
                     work_violations.append((key, a, w))

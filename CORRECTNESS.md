@@ -33,8 +33,8 @@ helps for processes launched after it existed.
 cd server && uv run python -m pytest tests/ -q
 ```
 
-Layers (all must pass; the 2026-08-04 audit ran **112 passed / 2 skipped** in
-both plain and `SHENGJI_FAST=1` modes):
+Layers (all must pass; current `main` collects **215 tests**, with both the
+plain and `SHENGJI_FAST=1` routes required):
 1. **Unit tests** — test_engine.py, test_game.py, test_memory.py,
    test_rl.py: rules primitives, game flow, memory inference, RL codec.
 2. **Golden histories** — test_engine_parity.py: fixed-seed full rounds
@@ -73,6 +73,62 @@ both plain and `SHENGJI_FAST=1` modes):
 - **Compiled ports (Cython/Rust)**: may not merge until the full suite
   passes byte-identical WITH the fast path active, goldens untouched.
 
+## Hidden-world sampler correctness boundary
+
+MC values are meaningful only if each determinization is compatible with the
+public history. “The sampler returned a hand” is not evidence of that. A valid
+world must conserve the complete 108-card multiset across the observer's hand,
+played cards, other hands and hidden kitty; preserve hand sizes and public
+declarations; and obey every proven suit-void, remaining-pair and remaining-
+tractor-run constraint. A decision that produces zero valid worlds is a
+protocol failure, not permission to fall back silently to candidate zero.
+
+The P0 **validity and support/reachability** gate closed at clean commit
+`eea78d2` with `SHENGJI_REQUIRE_VOIDS=1` and the compiled engine active:
+
+- 1,600 replayed original/late reservoir states;
+- 38,400 requested draws, 38,399 accepted, one explicitly rejected and zero
+  worlds rejected by the independent rules-derived validator;
+- 120 exhaustively enumerable deep-banker toy states, with every legal world
+  reached and the planted real deal reached in all 120;
+- clean-tree plus script, sampler, Memory, corpus and split digests recorded in
+  `server/runs/logs/certify_sampler.json`.
+
+That certification found real producer defects: greedy card-first allocation
+could dead-end despite a feasible assignment; a pinned declared card could be
+completed into a pair the history forbade; and pair limits did not enforce the
+distinct tractor-run constraint. The certifier itself also initially collapsed
+seat identity and failed to distinguish an overlarge enumeration from an empty
+legal set. The durable rule is that sampler certification needs an independent
+history-derived validator plus exhaustive small worlds; producer-owned
+invariants and “some world appeared within N retries” are insufficient.
+
+The gate proves two claims only:
+
+- **validity:** accepted strict worlds satisfy the tested public constraints;
+- **support:** every legal world is reachable on the exhaustive toy family.
+
+It does **not** prove **distribution fidelity**. `_splits()` samples feasible
+suit-count matrices without weighting by how many card-level completions each
+admits, and `_deal_suit()` takes the first cap-respecting card from a shuffled
+list. Both can give legal worlds the wrong probabilities. More worlds reduce
+Monte Carlo variance around that biased distribution; they do not remove the
+bias.
+
+Operational consequences:
+
+- every data, pilot and confirmation runner must require
+  `SHENGJI_REQUIRE_VOIDS=1`, record it in its manifest, and fail on any
+  impossible-world, rejected-world or zero-world counter unless a rejection
+  policy was explicitly preregistered;
+- production `mc` still retains a final lenient retry when that environment
+  guard is absent, so its worlds are not unconditionally strict by construction;
+- `highn_corpus` predates this repair and remains provisional. Passing today's
+  certifier cannot retroactively clean its labels;
+- `RL_PLAN.md` owns the resulting data/training contract, while
+  `AI_POLICIES.md` records which callable policies use this sampler and how the
+  uncertified posterior limits their evidence.
+
 ## House rules (deliberate divergences from other implementations)
 
 Jerry's table, ruled 2026-08-03 after the Codex audit flagged them:
@@ -88,21 +144,20 @@ Jerry's table, ruled 2026-08-03 after the Codex audit flagged them:
 These are deliberate house rules, not open defects. Do not “fix” them toward
 another implementation's profile without a new explicit table ruling.
 
-## Open correctness gates (block new search data/evaluation)
+## Open correctness gates (each item states what it blocks)
 
-1. **Belief worlds are not strict.** MCBot's last sampler retry sets
-   `respect_voids=False`, and `Memory.pair_void` is never enforced in sampled
-   hands. Used/rejected counters now distinguish the final relaxation and
-   `SHENGJI_STRICT_SAMPLING` rejects it, but normal mode still accepts it and
-   strict mode does not yet enforce pair-voids. Close that remaining contract
-   before trusting high-N labels or selective-search comparisons.
-2. **The seed boundary still has a fallthrough.** `registry.make_bot` and
-   `tournament._seeded()` now dispatch by signature rather than swallowing
-   constructor `TypeError`, but `_seeded()` returns `None` when a seedless
-   factory returns a bot without `rng` (including direct SmartBot factories).
-   Return the bot unconditionally, test an exploding constructor through the
-   exact boundary, and compare per-seed/per-flip records rather than only
-   aggregate scores.
+1. **Posterior probabilities are not certified.** Exact-enumerate small legal
+   posteriors and measure total-variation distance, per-card/seat marginals and
+   exchangeability. Then sample count matrices proportional to admissible
+   card-level completions and make capped fills uniform. Until that closes,
+   common worlds support DEV selection screens but a winning structured ballot
+   must be re-priced under the corrected distribution before promotion or new
+   teacher labels.
+2. **Strictness is runner-enforced, not the production default.** The final
+   sampler retry may still ignore observed voids unless
+   `SHENGJI_REQUIRE_VOIDS=1`. All evidence-producing paths now fail closed on
+   this, but production should either make strict construction unconditional
+   or retain explicit telemetry and a deliberate product-level exception.
 3. **Raw-state datasets need round-trip proof.** A “rebuildable” record is not
    authoritative until a versioned loader reconstructs it and reproduces the
    same legal candidates, observation, role/phase, and continuation. The

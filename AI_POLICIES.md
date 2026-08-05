@@ -105,11 +105,13 @@ consistent with the data, not a demonstrated causal claim.
   unmeasured — `_splits` samples count matrices roughly uniformly though they
   admit very different numbers of completions, and `_deal_suit` prefers
   distinct codes beyond what the caps require. Do not call the world
-  distribution posterior-correct.
-- **Determinization is REOPENED.** N=30 over N=10 was closed NOT CONFIRMED on
-  the old sampler (+0.101 +/- 0.150). On the corrected sampler one clean block
-  gives +0.290 +/- 0.210. One block is not a claim; it needs fresh seeds and a
-  null control.
+  distribution posterior-correct. `CORRECTNESS.md` is authoritative for the
+  exact proof obligations, certification boundary and sampler incidents.
+- **Determinization is version-pinned CONFIRMED.** On the corrected sampler,
+  the preregistered fresh 504-cluster block measured N=30 minus N=10 at
+  `+0.262 +/- 0.154`, with a flat true null. It ran before the later action-
+  semantics/tractor-ballot changes, so it establishes the sampled version's
+  dose result but does not by itself promote current `main`.
 - **RL/search architecture boundary:** AlphaZero-style MCTS is not the next
   champion path. Shengji is a four-seat, decentralized hidden-information team
   game, so a private observation has no strategy-independent scalar leaf value.
@@ -124,12 +126,12 @@ consistent with the data, not a demonstrated causal claim.
   not DouZero's from-scratch role-specific direct-Q baseline. Preserve the
   alarms/scaffolding; do not interpret the two halted runs as testing either
   paper's hypothesis.
-- **Next strength work:** the correctly controlled fresh N=30 dose confirmation
-  is running as one preregistered 504-cluster block with a true same-policy
-  null. Next is the structural 512-state lead pilot comparing current, V3,
-  random-fill, `MC-more`, fixed-14 contextual, and full-universe/high-compute
-  arms on disjoint proposal/report worlds. Do not pool either selection result
-  into its confirmation. Gates and ordering live in `BACKLOG.md`.
+- **Next strength work:** finish the structural 512-state lead-pilot preflight
+  and the preregistered deep-lead DEV/CALIB/REPORT capture. The pilot compares
+  current, V3, random-fill, `MC-more`, fixed-14 contextual, and full-universe/
+  high-compute arms on disjoint proposal/report worlds. It remains at 0/512
+  until the live gates in `HANDOFF_REVIEW.md` close and `BACKLOG.md` is
+  reconciled; do not pool its selection result into confirmation.
 
 ## Policy status details
 
@@ -139,11 +141,14 @@ consistent with the data, not a demonstrated causal claim.
   every MC factory in those blocks was OS-seeded. It is plausibly near MC, not
   formally confirmed equal and not superior.
 - **Strength incumbent:** `mc` remains the default. Its count-first sampler now
-  consumes declaration, void and remaining-pair constraints; normal mode can
-  still use the final void-relaxing retry, while confirming evaluation requires
-  strict voids. Independent reservoir validity and exhaustive-toy support have
-  passed; posterior fidelity has not. Old non-strict labels therefore remain
-  provisional even though new strict evaluations are unblocked.
+  consumes declaration, void, remaining-pair and remaining-tractor-run
+  constraints. Normal mode can still use the final void-relaxing retry, while
+  evidence-producing evaluation requires `SHENGJI_REQUIRE_VOIDS=1` and clean
+  sampler counters. Independent reservoir validity and exhaustive-toy support
+  have passed; posterior fidelity has not. Old non-strict labels therefore
+  remain provisional even though new strict evaluations are unblocked. See
+  `CORRECTNESS.md` for the certified boundary rather than inferring it from a
+  policy result.
 - **Retired strength arm:** `mc-vleaf-v7w-ep02` has no verified edge over MC.
   Its historical 50.4% at n=1,200 predated the leaf factory's seed-forwarding
   repair. In the current hardened screen it scored 52.8% and

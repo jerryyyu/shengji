@@ -32,7 +32,8 @@ from .engine.cards import TRUMP, points
 from .engine.combos import decompose, find_tractor_runs
 from .engine.legal import suit_cards, validate_lead
 
-ARMS = ("current", "v3", "random_fill", "quota", "mc_more", "full_universe")
+ARMS = ("current", "v3", "random_fill", "quota", "mc_more_full_work",
+        "full_universe")
 
 #: `mc_more` keeps the DEPLOYED ballot and spends the extra proposal compute on
 #: more worlds instead. It is the arm that decides whether any of this is worth
@@ -153,10 +154,15 @@ def _component_mutations(rnd, seat, base) -> list[list[str]]:
             rest = [c for j, comp in enumerate(comps) if j != i for c in comp]
             if rest:
                 out.append(sorted(rest))
-            # REPLACE it with EVERY same-size spare run, not one prefix
+            # REPLACE with every same-size spare component, WITH MULTIPLICITY.
+            # `combinations(set(pool), need)` cannot produce a pair from two
+            # copies of one code, so from hand S3 S3 S4 S4 S5 S6 and base
+            # S3 S3 S5 the required `S4 S4 S5` was absent while `S4 S5 S6`
+            # appeared — the invariant the docstring claimed was false (Codex).
             need = len(comps[i])
-            for combo in itertools.combinations(sorted(set(pool)), need):
-                if all(pool.count(c) >= list(combo).count(c) for c in combo):
+            pc = Counter(pool)
+            for combo in set(itertools.combinations(sorted(pool), need)):
+                if all(pc[c] >= n for c, n in Counter(combo).items()):
                     out.append(sorted(rest + list(combo)))
         # ADD: every spare card in the suit, not just the first
         for c in sorted(set(pool)):
@@ -226,15 +232,17 @@ def archetype(rnd, seat, action) -> tuple:
                 return mem.higher_unseen(eff, comp.top)
             # how many unseen codes above this component could form a run of
             # the same pair length
-            higher = sorted(o.level(c) for c, n in mem.unseen.items()
-                            if o.eff_suit(c) == eff and n >= 2
-                            and o.level(c) > comp.top)
+            # Every unseen pair level, NOT only those above `comp.top`: a run
+            # of the same length may begin at or below this component's top and
+            # still END above it, which beats it (Codex).
+            levels = sorted({o.level(c) for c, n in mem.unseen.items()
+                             if o.eff_suit(c) == eff and n >= 2})
             runs = 0
-            for idx in range(len(higher)):
-                if all(higher[idx + d] == higher[idx] + d
-                       for d in range(comp.pair_len)
-                       if idx + d < len(higher)) and \
-                   idx + comp.pair_len <= len(higher):
+            for idx in range(len(levels) - comp.pair_len + 1):
+                window = levels[idx:idx + comp.pair_len]
+                if window[-1] - window[0] != comp.pair_len - 1:
+                    continue                      # not consecutive
+                if window[-1] > comp.top:         # ends above => beats it
                     runs += 1
             return runs
 
@@ -282,7 +290,7 @@ def propose(arm: str, bot, rnd, seat, *, budget: int, seed: int,
         raise ValueError(f"unknown arm {arm!r}; expected one of {ARMS}")
     keep = protected(bot, rnd, seat)
 
-    if arm in ("current", "mc_more"):
+    if arm in ("current", "mc_more_full_work"):
         # Same ballot. `mc_more` differs only in how many worlds price it —
         # the runner gives it MC_MORE_WORLD_MULTIPLIER x the proposal fold, so
         # the comparison is equal-work rather than equal-ballot.

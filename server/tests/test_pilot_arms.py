@@ -232,7 +232,7 @@ def test_mc_more_shares_the_deployed_ballot():
     bot = make_bot("mc", seed=1)
     for rnd, seat in _lead_states():
         got = _all(bot, rnd, seat)
-        assert got["mc_more"] == got["current"], \
+        assert got["mc_more_full_work"] == got["current"], \
             "mc_more's ballot diverged from the deployed one"
     assert not hasattr(pa, "MC_MORE_WORLD_MULTIPLIER"), \
         "a flat world multiplier is a SECOND contradictory work contract; " \
@@ -274,6 +274,39 @@ def test_throw_archetypes_are_distinguished():
     assert "single_component" in classes
     assert len(classes & {"safe", "near_boss", "speculative"}) >= 2, \
         f"throws were not differentiated: {classes}"
+
+
+def test_replace_emits_same_size_components_with_multiplicity():
+    """Codex's exact witness. `combinations(set(pool), n)` cannot build a pair
+    from two copies of one code, so the required pair replacement was absent
+    while a three-distinct-card one appeared."""
+    from shengji.engine.cards import Ordering
+    from shengji.pilot_arms import _component_mutations
+
+    class _R:
+        ordering = Ordering("H", "7")
+        hands = [["S3", "S3", "S4", "S4", "S5", "S6"], [], [], []]
+
+    out = {tuple(sorted(a))
+           for a in _component_mutations(_R(), 0, [["S3", "S3", "S5"]])}
+    assert ("S4", "S4", "S5") in out, "pair replacement absent"
+    assert ("S4", "S5", "S6") in out, "distinct replacement absent"
+
+
+def test_remove_and_replace_are_exercised_not_just_add():
+    """The old test was named for the bound but only checked ADD (Codex)."""
+    from shengji.engine.cards import Ordering
+    from shengji.pilot_arms import _component_mutations
+
+    class _R:
+        ordering = Ordering("H", "7")
+        hands = [["S3", "S3", "S5", "S6"], [], [], []]
+
+    out = {tuple(sorted(a))
+           for a in _component_mutations(_R(), 0, [["S3", "S3", "S5"]])}
+    assert ("S3", "S3") in out, "REMOVE of the single component is missing"
+    assert ("S5",) in out or ("S3", "S3") in out, "REMOVE produced nothing"
+    assert ("S3", "S3", "S5", "S6") in out, "ADD of a spare is missing"
 
 
 def test_mutation_bound_matches_brute_force():
@@ -351,7 +384,21 @@ def test_throw_risk_is_shape_aware():
                 higher_pairs = [c for c, n in mem.unseen.items()
                                 if o.eff_suit(c) == eff and n >= 2
                                 and o.level(c) > comp.top]
-                assert not higher_pairs or comp.pair_len > 1, (
-                    f"{a} called SAFE while a higher unseen PAIR exists "
-                    f"({higher_pairs[:2]})")
+                # NO tractor exemption. The old `or comp.pair_len > 1` made
+                # this prove pair risk only, which is half the claim (Codex).
+                if comp.pair_len == 1:
+                    assert not higher_pairs, (
+                        f"{a} called SAFE while a higher unseen PAIR exists "
+                        f"({higher_pairs[:2]})")
+                else:
+                    levels = sorted({o.level(c) for c, n in mem.unseen.items()
+                                     if o.eff_suit(c) == eff and n >= 2})
+                    beat = any(
+                        levels[i:i + comp.pair_len][-1] - levels[i] ==
+                        comp.pair_len - 1 and
+                        levels[i:i + comp.pair_len][-1] > comp.top
+                        for i in range(len(levels) - comp.pair_len + 1))
+                    assert not beat, (
+                        f"{a} called SAFE while a higher unseen "
+                        f"{comp.pair_len}-run exists")
     assert checked > 0, "no safe multi-component throws found to check"

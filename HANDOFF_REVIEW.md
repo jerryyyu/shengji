@@ -2996,3 +2996,83 @@ makes the control's budget data-dependent, which I do not love.
 Also outstanding and not attempted: the deep-lead capture (gate 3), which is
 the fleet job and is fully specified by your preregistration. Scoring is still
 0/512 — the smoke used 8 DEV states to exercise machinery only.
+
+---
+
+## Codex — 2026-08-04 21:05 EDT (`mc_more` decision; gates 1-3 re-audit)
+
+**Choose (a), with a sharper name and contrast.** `mc_more` should match
+`full_universe`'s realised proposal work **per state**. That budget is not
+outcome-dependent: it is determined before sampling or scoring by the frozen
+full ballot size times a separately preregistered full-ballot proposal dose.
+Floating with hand/ballot size is desirable matching, not post-hoc movement.
+`current` is already the compute control for quota/random at the 168 band;
+another identical current-ballot arm at that band contains no information.
+
+But the implementation does not yet ask the resulting question. The decisive
+attribution contrast is **`full_universe - mc_more` at matched realised work**.
+`pilot_aggregate.py` reports `full_universe-current` and
+`mc_more-current`, but never compares full-universe directly with its matched
+control. Add that contrast; retain `mc_more-current` only as a dose diagnostic.
+Call the arm/manifest field something unambiguous such as
+`mc_more_full_work`, and use a dedicated preregistered
+`--full-proposal-worlds` argument. Reusing `--report-worlds` as the
+full-universe proposal dose silently couples two conceptually independent
+budgets.
+
+**Gate 1 is reopened; its claimed invariant is still false.** The production
+code says REPLACE emits every same-size spare component, but it iterates
+`combinations(sorted(set(pool)), need)`, which cannot produce a pair from two
+copies of the same code. Exact current-tree witness:
+
+```
+hand: S3 S3 S4 S4 S5 S6
+base: S3 S3 S5
+required pair replacement: S4 S4 S5       ABSENT
+emitted replacement:        S4 S5 S6       PRESENT
+```
+
+The new `test_mutation_bound_matches_brute_force` only checks ADD from
+singletons; it checks neither REMOVE nor REPLACE despite its name/docstring.
+The tractor-risk test similarly exempts every tractor with
+`or comp.pair_len > 1`, so it proves pair risk only. The implementation also
+filters candidate pair levels to those strictly above the current tractor top;
+a higher same-length run may begin at/below that top and end above it. Enumerate
+same-shaped spare components with multiplicity (prefer the engine's physical
+run enumerator), and make an independent small-hand oracle cover ADD, REMOVE,
+REPLACE and pair/tractor risk. The 37 focused tests passing in both engines do
+not close an invariant they do not exercise.
+
+**Gate 2 is close, but not closed.** The state-sharded runner, named fold
+streams, common report worlds, per-world vectors and dirty-run aggregation
+refusal are good; I reproduced 37/37 focused passes in pure and compiled modes
+and the 8-state artifact aggregates. Before calling it launch-grade:
+
+1. add `full_universe - mc_more` and every arm's named baseline/attribution
+   contrast (V3 currently has no contrast at all), with unit tests for sign and
+   pairing;
+2. write `reference_brackets` to the record — `report_regret()` returns them,
+   but the runner drops them while preserving only reference returns/raw
+   points;
+3. record fold rejected/short/collision counters and sampler counter deltas;
+   fail closed on a short fold, forbidden lenient attempt, missing arm, or
+   `len(records) != manifest.n_states`;
+4. refuse a dirty tree before spending compute, not only when aggregating it;
+5. separate the full-universe proposal dose from report-fold size as above.
+
+**Gate 3 may be engineered in parallel, but it is not ready to launch.** The
+preregistration is complete; no capture script, manifest or deterministic
+smoke exists yet. One capture-specific precondition from the declared release
+sequence is also still open: production `MCBot.decide_play()` calls raw
+`_lead()` in its `TRACTOR_LOCK` path, while only the pilot boundary was
+canonicalised. Fix and test that production boundary before pinning the
+`mc-strong` actor used to define the new corpus distribution.
+
+Then implement the preassigned 768-cell raw-only capture exactly as registered
+(256 DEV/CALIB/REPORT; tricks 12-19 x 32 per split; 16 attacker/16 defender per
+cell group; one state/deal; fixed seed ceiling; clean+compiled+strict; zero
+fallback). Run two tiny independent-process capture smokes and byte-compare
+them before occupying the fleet. Capture can then run while Gates 1 and 2 are
+repaired because it produces no ballot values and inspects no CALIB/REPORT
+scores. **Decision: start Gate 3 implementation now; do not launch its fleet
+job or the 512 scoring run on the current tree.**

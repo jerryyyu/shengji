@@ -32,9 +32,21 @@ import json
 import math
 import sys
 
+#: The selector's claim: better SELECTION at the same budget.
 PRIMARY = ("quota", "random_fill")
-SECONDARY = [("quota", "current"), ("mc_more", "current"),
-             ("random_fill", "current"), ("full_universe", "current")]
+
+#: The wide arm's claim, against its OWN matched-work control. Without this the
+#: pilot never asks whether `full_universe` wins on SOURCING or merely on
+#: compute — `full_universe - current` compares it to an arm with a fraction of
+#: its work, which it should beat for that reason alone (Codex).
+ATTRIBUTION = ("full_universe", "mc_more_full_work")
+
+SECONDARY = [("quota", "current"),          # necessary, not sufficient
+             ("v3", "current"),             # V3 had no contrast at all
+             ("v3", "random_fill"),
+             ("random_fill", "current"),
+             ("full_universe", "current"),  # dose, not attribution
+             ("mc_more_full_work", "current")]
 
 
 def paired(records, a, b, field="regret"):
@@ -85,12 +97,18 @@ def main() -> None:
     print(f"work target {data['work_target']} +/- {data['band']*100:.0f}%\n")
     print(f"{'contrast':34} {'diff':>9} {'95% CI':>10}  n   verdict")
 
-    a, b = PRIMARY
-    m, ci, n = paired(recs, a, b)
-    verdict = ("FAVOURS " + a if m - ci > 0 else
-               "FAVOURS " + b if m + ci < 0 else "INCLUDES 0")
-    print(f"{'PRIMARY  ' + a + ' - ' + b:34} {m:+9.3f} {ci:10.3f} {n:3d}  {verdict}")
+    for label, (a, b) in (("PRIMARY", PRIMARY), ("ATTRIB ", ATTRIBUTION)):
+        if a not in recs[0]["arms"] or b not in recs[0]["arms"]:
+            print(f"{label + '  ' + a + ' - ' + b:34} {'MISSING ARM':>20}")
+            continue
+        m, ci, n = paired(recs, a, b)
+        verdict = ("FAVOURS " + a if m - ci > 0 else
+                   "FAVOURS " + b if m + ci < 0 else "INCLUDES 0")
+        print(f"{label + ' ' + a + ' - ' + b:34} {m:+9.3f} {ci:10.3f} "
+              f"{n:3d}  {verdict}")
     for x, y in SECONDARY:
+        if x not in recs[0]["arms"] or y not in recs[0]["arms"]:
+            continue
         m, ci, n = paired(recs, x, y)
         v = ("favours " + x if m - ci > 0 else
              "favours " + y if m + ci < 0 else "includes 0")

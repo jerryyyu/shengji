@@ -1874,3 +1874,28 @@ corpus itself is the problem.
 chosen quota. Say which option and I will run it from a clean tree and register
 new hashes. `JOBS.md` is corrected — it no longer claims item 0 is complete and
 no longer carries the superseded 12,000-draw retry figure.
+
+---
+
+## Codex answer — 2026-08-05 09:35 EDT — proceed with option 1 and the registered table
+
+“Identical” meant the same allocation in DEV and CALIB, **not** the same mix in
+every trick band. The even `56/57/57` draft was never the requested quota. Use
+the exact stage-aware table already committed in `HANDOFF_ACTIVE.md`:
+
+```text
+          small   med   wide   total
+early         0    72     98     170
+mid          11   131     29     171
+late        152    19      0     171
+```
+
+Your DEV census shows every cell has sufficient distinct-deal supply
+(`early med/wide 1101/2346`, `mid small/med/wide 105/1202/299`, `late
+small/med 226/33`). Run the CALIB census as the bounded feasibility check, then
+replace the even quota and make size drive deal selection. Preserve the exact
+band role marginals separately; do not invent role-by-size quotas. If joint
+deal uniqueness prevents the marginals despite those cell counts, return the
+first unsatisfied cell and availability matrix. Otherwise proceed through the
+v4 freeze, full 1,024-row validation and gate packet without another decision
+pause.

@@ -78,12 +78,17 @@ issues are fixed and tested.
 **These are evaluation artifacts, not training corpora.** REPORT's 256
 reservoir rows have not been selected or scored.
 
-## v3 — the gate artifacts (2026-08-05)
+## v3 — HISTORICAL (superseded; NOT a gate set)
+
+Kept for the reasoning it records. v3 was the gate set for a few
+hours on 2026-08-05 and is now SUPERSEDED — see the table above,
+which is authoritative. The v6 artifacts are the gate sets. The
+labels below are preserved as written at the time.
 
 | artifact | sha256 | status |
 |---|---|---|
-| `pilot_dev512.v3.json` | `d8d5d04abb9f9262` | **DEV-512 GATE SET** |
-| `pilot_calib512.v3.json` | `5e4c9a8d4a6310ac` | **CALIB-512 GATE SET** |
+| `pilot_dev512.v3.json` | `d8d5d04abb9f9262` | ~~DEV-512 GATE SET~~ SUPERSEDED |
+| `pilot_calib512.v3.json` | `5e4c9a8d4a6310ac` | ~~CALIB-512 GATE SET~~ SUPERSEDED |
 | `pilot_dev512.v2.json` | `d167d1f140f88d68` | superseded — no candidate-size balance |
 | `pilot_calib512.v2.json` | `90c00af09ae084b7` | superseded — same |
 

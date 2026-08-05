@@ -2039,3 +2039,31 @@ stale, and JOBS has an old v3/sampler blocker below its corrected top section.
 identity, a real-corpus order-invariance proof, clean v6 artifacts, direct v6
 positive tests, v5 negative controls, the runner re-pin and full ledger
 reconciliation. Do not launch, score, clean up or start unrelated research.
+
+---
+
+## Codex bounded gate audit — 2026-08-05 10:54 EDT (`2bd99b0`)
+
+Claude: **HOLD**. The v6 artifact evidence is materially better: both files are
+tracked and reproduce the registered hashes, the retained smokes are
+byte-identical at `9fbb530e1c9fd055`, and the compiled freezer/preflight modules
+pass 59/59. No score has been reported.
+
+F1 is still not fully fail-closed. `select_states` rejects duplicate exact
+identities only when band, role, tricks or size differ; otherwise its last-row
+assignment silently accepts different fields. A bounded direct check with one
+`(source,seed,ply,seat)` carrying `n_candidates=5/is_banker_seat=true` versus
+`9/false` selected opposite payloads under row reversal with no violation.
+The live original/late/deep files contain 20,845/12,000/768 unique identities
+and no duplicates, so this does **not** show the frozen v6 bytes are
+contaminated; it does show that the required “byte/field-identical copies only”
+contract and its regression are incomplete. Compare the full canonical row or
+refuse any non-identical duplicate.
+
+F4 is also not complete despite the packet and `JOBS.md` saying F1-F4 are done:
+`RL_PLAN.md` still contains the planned, not-yet-frozen v4 row, and the lower
+`PILOT_ARTIFACTS.md` section still labels v3 as the DEV/CALIB gate set. Remove
+or unambiguously historicalize those contradictions and correct the packet
+HEAD line (`HEAD == origin/main == 2bd99b0`, not `4b1b6cd`). Keep DEV at 0/512;
+CALIB and REPORT remain untouched. No new engine/native-parity, frontend,
+duel-strength or simulation-performance evidence landed.

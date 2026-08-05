@@ -468,8 +468,8 @@ def test_conflicting_metadata_for_one_exact_state_fails_closed():
     clash["band"] = "late" if clash["band"] != "late" else "early"
     base[first] = base[first] + [clash]
     picked, unsatisfied = PS.select_states(base, "s1", "dev", **_Q)
-    assert picked == [] and any("conflicting" in u for u in unsatisfied), \
-        unsatisfied
+    assert picked == [] and any("non-identical duplicate" in u
+                                for u in unsatisfied), unsatisfied
 
 
 @pytest.mark.parametrize("art", ["pilot_dev512.v6.json",
@@ -485,3 +485,67 @@ def test_v6_exact_state_identities_are_unique(art):
               for s in d["states"]}
     assert len(idents) == 512, f"{art}: {len(idents)} distinct identities"
     assert len({s["seed"] for s in d["states"]}) == 512
+
+
+def test_duplicate_identity_differing_in_ANY_field_fails_closed():
+    """The contract is byte/field-identical copies only.
+
+    Checking a named subset (band/role/tricks/size) let a duplicate identity
+    differing in `n_candidates` or `is_banker_seat` reach the last-row
+    assignment, so row reversal selected the opposite payload with no
+    violation raised (Codex). These fields are outside the marginals, which is
+    exactly why a subset check missed them.
+    """
+    for field, a, b in (("n_candidates", 5, 9),
+                        ("is_banker_seat", True, False)):
+        base = _synth(4)
+        first = next(iter(base))
+        row = dict(base[first][0])
+        row[field] = a
+        twin = dict(row)
+        twin[field] = b
+        base[first] = [row, twin] + base[first][1:]
+        picked, unsatisfied = PS.select_states(base, "s1", "dev", **_Q)
+        assert picked == [], f"{field}: selection proceeded despite a conflict"
+        assert any("non-identical duplicate" in u and field in u
+                   for u in unsatisfied), (field, unsatisfied)
+
+
+def test_identical_duplicate_rows_are_still_accepted():
+    """Guards against the new check refusing legitimate exact copies."""
+    base = _synth()
+    first = next(iter(base))
+    base[first] = [dict(base[first][0])] + base[first]
+    picked, unsatisfied = PS.select_states(base, "s1", "dev", **_Q)
+    assert not unsatisfied and picked, unsatisfied
+
+
+def test_an_unsatisfiable_cell_REPORTS_instead_of_crashing():
+    """Fail closed means a message, not a traceback.
+
+    With fewer deals than the band quota the tightest cell has demand and no
+    candidates; that path used to reach `cand[0]` and raise IndexError.
+    """
+    picked, unsatisfied = PS.select_states(_synth(6), "s1", "dev", **_Q)
+    # Selection may partially fill before hitting the wall; what matters is
+    # that it REPORTS the cell rather than raising, and that `main` refuses on
+    # any non-empty `unsatisfied` so no short artifact is published.
+    assert any("no eligible deal remains" in u for u in unsatisfied), \
+        unsatisfied
+    assert len(picked) < 512
+
+
+def test_selection_is_invariant_under_source_grouping_order():
+    """Codex listed source permutation explicitly; assert it directly.
+
+    Verified faithfully through the real freezer too: with
+    SHENGJI_SOURCES_ORDER set to two different permutations, the dry run
+    reproduced the frozen v6 DEV set 512/512.
+    """
+    base = _synth()
+    order = {"deep": 0, "late": 1, "original": 2}
+    perm = {k: sorted(v, key=lambda r: order[r["source"]])
+            for k, v in base.items()}
+    a, _ = PS.select_states(base, "s1", "dev", **_Q)
+    b, _ = PS.select_states(perm, "s1", "dev", **_Q)
+    assert _ids(a) == _ids(b)

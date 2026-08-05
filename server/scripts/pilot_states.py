@@ -124,6 +124,11 @@ def publish_or_refuse(payload, out, tmp, violations):
     return out
 
 
+def _canon(row: dict) -> tuple:
+    """Full canonical form of a row: every field, order-independent."""
+    return tuple(sorted((k, repr(v)) for k, v in row.items()))
+
+
 def row_priority(salt: str, side: str, row: dict) -> str:
     """Stable per-row priority, independent of how the corpus was traversed.
 
@@ -174,16 +179,19 @@ def select_states(by_deal: dict, salt: str, side: str, *, band_quota=None,
         for r in rows:
             ident = (r["source"], r["seed"], r["ply"], r["seat"])
             prev = seen.get(ident)
-            if prev is not None:
-                for f in ("band", "role", "tricks"):
-                    if prev.get(f) != r.get(f):
-                        conflicts.append(
-                            f"state {ident} carries conflicting {f}: "
-                            f"{prev.get(f)!r} vs {r.get(f)!r}")
-                if size_of(prev) != size_of(r):
-                    conflicts.append(
-                        f"state {ident} carries conflicting size: "
-                        f"{size_of(prev)} vs {size_of(r)}")
+            if prev is not None and _canon(prev) != _canon(r):
+                # Compare the FULL canonical row, not a named subset. Checking
+                # only band/role/tricks/size still let a duplicate identity
+                # differing in, say, `n_candidates` or `is_banker_seat` fall
+                # through to the last-row assignment and select opposite
+                # payloads under row reversal with no violation raised
+                # (Codex). The contract is "byte/field-identical copies only",
+                # so anything not identical must refuse.
+                diff = sorted(k for k in set(prev) | set(r)
+                              if prev.get(k) != r.get(k))
+                conflicts.append(
+                    f"state {ident} has non-identical duplicate rows; "
+                    f"differing fields: {diff}")
             seen[ident] = r
         rows_by_deal[seed] = sorted(
             seen.values(), key=lambda r: row_priority(salt, side, r))
@@ -222,6 +230,16 @@ def select_states(by_deal: dict, salt: str, side: str, *, band_quota=None,
             tightest = min(slack, key=lambda k: (slack[k], k))
             cand = [(s, r) for s, r in live
                     if dict(cells(r))[tightest[0]] == tightest[1]]
+            if not cand:
+                # The tightest cell has demand but no eligible deal. This used
+                # to fall through to `cand[0]` and raise IndexError — a crash,
+                # not a refusal, so an unsatisfiable configuration produced a
+                # traceback instead of the first unsatisfied cell.
+                unsatisfied.append(
+                    f"band {b}: {tightest[0]} {tightest[1]!r} still needs "
+                    f"{need[tightest[0]][tightest[1]]} but no eligible deal "
+                    f"remains")
+                break
             cand.sort(key=lambda sr: row_priority(salt, side, sr[1]))
             seed, row = cand[0]
             used.add(seed)
@@ -340,6 +358,24 @@ def stratum(rnd, seat, n_cands):
     return f"{role}/{band}/{size}"
 
 
+def _sources_for_run():
+    """SOURCES, optionally permuted, to TEST order-invariance faithfully.
+
+    Selection must not depend on the order corpora are read. Verifying that
+    with a hand-rebuilt row set is not enough — a reconstruction that differs
+    slightly from `main`'s gathering answers a different question.
+    """
+    order = os.environ.get("SHENGJI_SOURCES_ORDER")
+    if not order:
+        return SOURCES
+    want = [x.strip() for x in order.split(",")]
+    by = {name: t for t in SOURCES for name in (t[0],)}
+    if sorted(want) != sorted(by):
+        raise SystemExit(f"REFUSING: SHENGJI_SOURCES_ORDER {want} is not a "
+                         f"permutation of {sorted(by)}")
+    return [by[n] for n in want]
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=512)
@@ -377,7 +413,7 @@ def main() -> None:
     by_deal: dict[int, list] = defaultdict(list)
     errors = skipped_follow = skipped_dupe = 0
 
-    for source, corpus, split_path in SOURCES:
+    for source, corpus, split_path in _sources_for_run():
         with open(split_path) as fh:
             split = {int(k): v for k, v in json.load(fh)["assign"].items()}
         with open(corpus) as fh:
@@ -527,6 +563,17 @@ def main() -> None:
     tmp = args.out + ".tmp"
     violations = check_contract(picked, args.n, errors)
     if getattr(args, "dry_run", False):
+        cmp_path = os.environ.get("SHENGJI_DRYRUN_COMPARE")
+        if cmp_path and os.path.exists(cmp_path):
+            with open(cmp_path) as fh:
+                ref = json.load(fh)
+            def _id(x):
+                return (x["source"], x["seed"], x["ply"], x["seat"])
+            a = {_id(x) for x in picked}
+            b = {_id(x) for x in ref["states"]}
+            print(f"  COMPARE vs {os.path.basename(cmp_path)}: "
+                  f"{len(a & b)}/{len(b)} identical exact states "
+                  f"(new-only {len(a - b)}, ref-only {len(b - a)})")
         print(f"DRY RUN side={args.side}  picked={len(picked)}  "
               f"replay_errors={errors}")
         for b in BANDS:

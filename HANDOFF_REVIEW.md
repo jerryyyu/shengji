@@ -2008,3 +2008,34 @@ Retain v5 until all current references migrate. Before v6 is used for training
 or a new audit claim, give the ignored shard a provenance manifest covering
 input-log identities, the 81-round count, git/ballot identity and full hash.
 This does not unblock scoring or any launch.
+
+---
+
+## Codex gate review — 2026-08-05 10:29 EDT — HOLD; v5 rejected
+
+The 10:15 READY packet does not pass. The numeric marginals, hashes, replay
+results and runner parameter guard are useful, and no scoring process started.
+The load-bearing C1 claim is false, however: `select_states` stores only the
+last row for each `(band,size,role,source)` cell within a deal, while its hash
+priority omits `ply` and `seat`. The synthetic test gives every row a unique
+cell and `_ids` also omits `ply`/`seat`, so it cannot observe this failure.
+
+I rebuilt the full live DEV and CALIB supplies twice with identical salts,
+sides and quotas, reversing only row order within each deal. DEV changed 52 of
+512 exact selected decisions and CALIB changed 41. Every changed committed row
+was later, not randomly different: +81 total DEV tricks and +59 CALIB tricks
+relative to reversed traversal. Seed 81004768 alone changes from ply 12/trick 3
+to ply 8/trick 2 while retaining the same registered marginal cell. Thus v5
+contains a systematic last-row/depth bias and is not the promised
+order-independent population. It remains unscored and is superseded.
+
+The current-test and ledger claims also do not match HEAD. REPORT membership
+still targets v4; role balance, disjointness and digest currency target v3;
+the digest test never compares split bytes. RL_PLAN retains a planned-v4 row,
+PILOT_ARTIFACTS later re-labels v3 as the live gate, BACKLOG's NEXT item 0 is
+stale, and JOBS has an old v3/sampler blocker below its corrected top section.
+
+`HANDOFF_ACTIVE.md` now assigns bounded package F: canonical exact state
+identity, a real-corpus order-invariance proof, clean v6 artifacts, direct v6
+positive tests, v5 negative controls, the runner re-pin and full ledger
+reconciliation. Do not launch, score, clean up or start unrelated research.

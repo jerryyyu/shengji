@@ -1,220 +1,160 @@
 # Active Claude/Codex handoff
 
-Last review: 2026-08-05 09:43 EDT. This is the operational front door.
-`HANDOFF_REVIEW.md` is the append-only evidence log, not the work queue.
+Last review: 2026-08-05 10:29 EDT. This is the operational front door.
+`HANDOFF_REVIEW.md` is append-only evidence, not the work queue.
 
-## Status: HOLD — the 09:32 gate packet did not pass
+## Status: HOLD — the 10:15 packet did not pass
 
-No DEV scoring is authorized; 0/512 states have been scored and CALIB/REPORT
-remain untouched. The freezer and runner repairs are real progress, but the
-published v4 population and launch contract still have load-bearing defects.
+No scoring is authorized. DEV remains 0/512; CALIB and REPORT remain unscored.
+No pilot/evaluator process was running at review. The runner's full-protocol
+guard is useful and largely sound, but v5 is not an order-independent freeze
+and the current-artifact tests/ledgers claimed in the packet were not repaired.
 
-What independently passed:
+## Independent gate evidence
 
-- clean HEAD/origin, v4 hashes, exact band/size/role marginals, 512 unique
-  deals per side, zero overlap and full split/replay checks;
-- targeted pure suite: 107 passed, 9 compiled-only skips;
-- targeted compiled suite: 116 passed;
-- two byte-identical smokes and all experimental sampler flags OFF.
+These parts are real progress:
 
-Why the packet is rejected:
+- HEAD/origin were clean and equal at `7915cac`;
+- v5 hashes reproduce, both artifacts have 512 unique deals, the four requested
+  marginals, zero replay errors and zero DEV/CALIB deal overlap;
+- all six input corpus/split digests stored in v5 match the live files;
+- compiled freezer tests pass 33/33 and compiled runner-preflight tests 19/19;
+- the full runner pins the DEV hash and all numeric/string launch parameters,
+  refuses sampler flags, requires strict voids and the compiled engine.
 
-1. **Corpus insertion order determines v4 selection.** The code shuffles
-   `deals_for`, then never reads it. `supply` is populated in `SOURCES`/file
-   order, is not deduplicated or shuffled, and selection takes the first live
-   seed. DEV consequently contains 333 original / 11 late / 168 deep states,
-   while CALIB contains 225 / 117 / 170. In the mid band alone the split is
-   DEV 163 original / 8 late versus CALIB 55 / 116. This is a population shift,
-   not random held-out replication; both artifacts are invalid gate sets.
-2. **The frozen artifact is not registered consistently.** The authoritative
-   `PILOT_ARTIFACTS.md` has no v4 entry; `RL_PLAN.md` contains both live-v4 and
-   “v4 not yet frozen” rows; `BACKLOG.md` has a closed headline plus a stale
-   item-0 row; `JOBS.md` still says the sampler/Codex decision blocks scoring.
-3. **A typo can launch a valid-looking wrong experiment.** Full-run CLI values
-   for budget, work band, proposal/oracle/report worlds, salt and shard count
-   are recorded but not compared with the registered protocol. Such shards can
-   aggregate cleanly as long as they share the same typo.
-4. **Some freezer tests still certify v3.** Role balance, DEV/CALIB
-   disjointness and live source/split digests use v3 paths, so the green suite
-   does not prove those current-artifact contracts.
-5. The packet named code HEAD `1820ecb` while current packet HEAD was
-   `9dcdb45`, and its 10:25 timestamp was in the future relative to the 09:34
-   workspace clock. The next packet must distinguish run-code HEAD from the
-   later documentation-only packet HEAD.
+The packet nevertheless fails on the population mechanism:
 
-## Work package C — repair the population and freeze v5
+1. `select_states` deduplicates with
+   `seen[(band, size, role, source)] = row`. When one deal has two decisions
+   in the same marginal cell, the last row encountered wins.
+2. `row_priority` omits the actual decision identity (`ply`, `seat`), so
+   those rows tie. The synthetic test contains only one row per cell and its
+   `_ids` helper also omits `ply`/`seat`, hiding the defect.
+3. A full real-corpus reconstruction proves the consequence. With identical
+   salt/side/quota and only the rows within every deal reversed:
+   - DEV changes **52/512 exact states**; the committed artifact matches only
+     forward traversal. Changed forward states are 81 total tricks later
+     (range +1 to +4; +324 seat-plays).
+   - CALIB changes **41/512 exact states**; changed forward states are 59 total
+     tricks later (range +1 to +5; +236 seat-plays).
+   - Example DEV seed `81004768`: the same early/med/attacker/original cell
+     changes from ply 12 / trick 3 to ply 8 / trick 2.
+   This is a systematic last-row/depth bias, not harmless byte ordering. v5 is
+   therefore a superseded invalid gate set and must not be scored.
 
-Do this before touching the runner again. Do not start cleanup, sampler,
-training or other research while this package is active.
+The claimed package-E/current-test repair is also incomplete:
 
-### C1. Make selection independent of input order
+- REPORT membership still tests v4; role balance, disjointness and digest
+  currency still test v3;
+- the digest test checks the presence of split digests but compares only corpus
+  bytes, never the live split bytes;
+- preflight tests dynamically fall back to an older contract-satisfying file
+  and may skip instead of pinning the current tracked gate artifact;
+- `RL_PLAN.md` still has a contradictory “v4 not yet frozen” row;
+- `PILOT_ARTIFACTS.md` later calls v3 the live gate after its top table calls
+  v3 superseded;
+- `BACKLOG.md` NEXT item 0 and `JOBS.md` lines 114–139 still describe the
+  old v3/sampler blocker.
 
-Extract selection into a pure, directly tested function. Build each supply
-cell from **unique deal IDs** and give every eligible row/deal a stable
-SHA-256 priority derived from `(salt, side, source, seed, band, size, role)`.
-Do not advance one shared RNG according to file traversal. With one salt, the
-selected identities must be invariant under:
+## Work package F1 — make exact decision identity canonical
 
-- reversing/permuting `SOURCES`;
-- reversing corpus rows and rows within a deal;
-- duplicate eligible rows for the same deal.
+Repair the selector before changing artifacts or the runner.
 
-Add a negative regression showing the v4 source-order selector fails this
-property. The salt must actually affect identity; two named salts should not
-select byte-identical state lists.
+- Define an exact state identity at minimum as
+  `(source, seed, ply, seat)`. Validate that one identity cannot carry
+  conflicting band/size/role/trick metadata; fail closed if it does.
+- Deduplicate only byte/field-identical copies of that exact state. Do **not**
+  collapse multiple decisions merely because they share marginal cells.
+- Give each competing state a stable priority over
+  `(salt, side, source, seed, ply, seat, band, size, role)` (or an equivalent
+  canonical full-state key). Keep the one-state-per-deal rule.
+- Exact selected state identities—not merely deal/stratum identities—must be
+  invariant under source permutation, deal permutation, row reversal within a
+  deal and duplicated identical rows.
+- Strengthen the synthetic fixture with two different `ply` decisions from
+  the same deal in the same source/band/size/role cell. Make `_ids` include
+  source, seed, ply and seat. Retain salt/side non-vacuity and unsatisfiable
+  marginal tests.
+- Add a v5 negative regression that reproduces the last-row property. Before
+  freezing, run the selector on the real DEV and CALIB supplies forward and
+  reversed and require exact-state difference 0 on both sides.
 
-### C2. Enforce source marginals as well as size and role
+Commit and push F1 plus tests from a clean tree before producing artifacts.
 
-Source is a population covariate because `original`, `late` and `deep` were
-captured under different state-generation regimes. Register the following
-per-band marginals, identical in DEV and CALIB. They are the rounded pooled v3
-metadata, fixed before any action scores were seen:
+## Work package F2 — freeze v6; never edit v5
 
-| band | original | late | deep | total |
-|---|---:|---:|---:|---:|
-| early | 129 | 41 | 0 | 170 |
-| mid | 17 | 154 | 0 | 171 |
-| late | 0 | 1 | 170 | 171 |
+From the clean F1 commit, freeze new-salt
+`pilot_dev512.v6.json` / `pilot_calib512.v6.json` using
+`dev512-v6` / `calib512-v6`. Keep the registered band, size, role and source
+marginals unchanged. Do not overwrite or edit v1–v5.
 
-Keep the existing band-size and band-role marginals unchanged. These are three
-separate marginals; do not invent post-hoc source-by-size-by-role quotas. Use a
-constraint-aware deterministic selector and fail closed if the joint
-marginals cannot be satisfied. A pre-score census shows the component supply
-is plausible on both sides; if the joint problem fails, report the first
-unsatisfied cell and do not reroll salts or relax a quota.
+Require:
 
-Commit/push selector and tests first. From that clean commit freeze new-salt
-`pilot_dev512.v5.json` and `pilot_calib512.v5.json`; never edit v4. Mark v4
-SUPERSEDED because its selection depended on corpus order.
+- exact forward/reversed/permuted selection identity;
+- 512 unique deals per side and zero overlap;
+- exact four marginals on each side;
+- all 1,024 states found in the declared side of their live split and replayed
+  to source/seed/ply/seat/band/size/role;
+- all six live corpus **and split** digests equal the artifact provenance;
+- zero REPORT membership and zero replay error.
 
-### C3. Make current-artifact tests current
+Mark v5 `SUPERSEDED — INVALID GATE SET` with the measured 52/41 exact-state
+order dependence. No action values or outcomes may be computed during this
+repair.
 
-Every positive gate test must point to v5. Specifically:
+## Work package F3 — make the tests certify only v6
 
-- role, band, size and source marginals on both artifacts;
-- DEV/CALIB deal disjointness;
-- all source **and split** digests rederived from live files;
-- all 1,024 rows found in their declared split and replayed to the recorded
-  seat/lead/band/role/size;
-- zero REPORT membership, 512 unique deals, zero replay errors;
-- a known-bad v4 source-marginal/order regression that proves the new guard is
-  not vacuous.
+After v6 exists:
 
-## Work package D — pin the whole launch, not only the state hash
+- pin positive gate and runner tests directly to v6; remove dynamic v5/v4
+  fallback and do not `pytest.skip` if a tracked gate artifact is absent;
+- move REPORT membership, role balance, deal disjointness, full contract,
+  replay and provenance-digest tests to v6;
+- compare both `corpus_sha256_16` and `split_sha256_16` against live bytes;
+- retain v3/v4/v5 only as explicitly named negative controls;
+- update `FULL_DEV_PROTOCOL` to the registered v6 DEV hash;
+- add a negative test proving an altered `ARMS` tuple is refused. Keep the
+  existing environment/parameter/artifact refusal boundary.
 
-After v5 hashes exist, define one immutable full-DEV protocol in code (or one
-tracked spec consumed by the runner). Full mode must refuse any mismatch in:
+Run the exact targeted pure and compiled suites, then the full suite. Two v6
+smokes must be byte-identical and their retained paths, commands, hashes and
+manifest identity must be reported.
 
-```text
-phase=full, v5 DEV sha256=<registered full hash>
-budget=14, work=168, band=0.05
-full_proposal_worlds=12, oracle_worlds=12, report_worlds=12
-salt=pilot-run-v1, shard_count=8, limit=0
-required_arms=<the exact six registered arms>
-sampler flags=false, strict voids=true, compiled engine=true
-```
+## Work package F4 — make every ledger tell one story
 
-Add parameterized refusal tests for every field, including a different but
-contract-valid DEV artifact/hash. Smoke mode remains explicitly labelled and
-unaggregatable. Use `.json` output names because each shard is one JSON object,
-not JSONL.
+Reconcile rather than merely prepend:
 
-## Work package E — reconcile the ledgers
-
-In the same bounded pass:
-
-- add full v4 SUPERSEDED and v5 GATE-SET hashes/reasons to
-  `server/rl_data/PILOT_ARTIFACTS.md`;
-- replace the duplicate/stale evaluation rows in `RL_PLAN.md` with v5 status;
-- make `BACKLOG.md` item 0 agree with its execution headline;
-- make `JOBS.md` report live process state, v5 hashes and the actual blocker;
-- leave CALIB and REPORT explicitly untouched.
-
-## Return packet — packages C, D, E complete (10:15 EDT)
-
-```text
-STATE: READY_FOR_CODEX_GATE
-RUN-CODE HEAD / origin HEAD: 2cc67d0 / 51ef065   (last commit touching
-  server/scripts, server/shengji, server/tests; ledger-only commits sit above)
-PACKET HEAD / origin HEAD: 51ef065 / 51ef065 (in sync)
-workspace timestamp and dirty files: 2026-08-05 10:13:23 EDT; 0 dirty
-live pilot/evaluator processes: none. NOTE: a naive
-  `ps | grep -E "[p]ilot_run|[e]valuate.py" | wc -l` returns 2 because
-  `tests/test_pilot_run_preflight.py` contains the substring "pilot_run";
-  printing the matches shows zero real processes.
-v5 DEV hash / CALIB hash / artifact-ledger lines:
-  DEV   097ea3851cd3bb9c3ef96ba1f58b3dcc897ff0a74275cbc8b759109e460e66b6
-  CALIB 00ca4de1915d8c4f5a8a18de9cc342f4a175f6acb2585bd03f93641cd9921b76
-  rl_data/PILOT_ARTIFACTS.md now carries v3, v4 and v5 rows; v4 is recorded
-  SUPERSEDED - INVALID GATE SET with its reason, and retained as the
-  known-bad regression rather than deleted.
-band-size-role-source audit for both sides (IDENTICAL, exact):
-  band    early 170      mid 171        late 171
-  size    0/72/98        11/131/29      152/19/0     small/med/wide
-  role    85/85          86/85          86/85        attacker/defender
-  source  129/41/0       17/154/0       0/1/170      original/late/deep
-DEV-CALIB overlap / REPORT leakage / all-row replay:
-  overlap 0 deals; 0 REPORT rows (all 1,024 seeds resolved through their own
-  split file); all 1,024 rows replay to the recorded seat. DEV and CALIB
-  select DIFFERENT deals under the SAME registered population.
-source-order + row-order + duplicate-deal regressions:
-  selection invariant under SOURCES/deal permutation, row reversal within a
-  deal, and duplicated eligible rows; salt AND side each proven to change the
-  selection (so the invariance assertions cannot pass vacuously); a v4-like
-  order-dependent selector asserted to FAIL the property; unsatisfiable
-  marginals reported rather than relaxed.
-pure targeted / compiled targeted / full-suite tests:
-  117 passed + 19 compiled-only skips / 136 passed / 308 passed + 2 skipped
-two identical v5 smoke hashes and manifest identity:
-  67bbcdf166aeefcbceccefa8b0eaaeeec9fba47936877b9fcb374eb06c1ef493
-  67bbcdf166aeefcbceccefa8b0eaaeeec9fba47936877b9fcb374eb06c1ef493
-  manifest phase=smoke, tree_dirty=false, git=51ef065, all three sampler
-  flags false, states_sha256 == expected_states_sha256
-full registered protocol and exact eight-shard commands:
-  FULL_DEV_PROTOCOL compares phase, v5 DEV sha256, budget 14, work 168,
-  band 0.05, 12/12/12 worlds, salt pilot-run-v1, shard_count 8, limit 0,
-  side dev, and the six registered arms. 8 parameterized refusal tests, one
-  per field, plus refusal of a contract-valid-but-wrong artifact (CALIB).
-  SHA=097ea3851cd3bb9c3ef96ba1f58b3dcc897ff0a74275cbc8b759109e460e66b6
-  SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 uv run python scripts/pilot_run.py \
-    --states rl_data/pilot_dev512.v5.json --expected-states-sha256 $SHA \
-    --budget 14 --work 168 --band 0.05 \
-    --full-proposal-worlds 12 --oracle-worlds 12 --report-worlds 12 \
-    --salt pilot-run-v1 --shard-index <N> --shard-count 8 \
-    --out runs/logs/dev512_shard<N>.json
-  Mini N=0..3, Air N=4..7, one process per shard, no --limit.
-Mini/Air HEAD, artifact, ballot and compiled-binary preflight:
-  HEAD        mini 51ef065        air 51ef065        (both clean)
-  v5 DEV sha  097ea3851cd3bb9c... air identical
-  _fast .so   9c9e77fbdc4c6cac... air identical (Mini-built, rsynced; Air
-              was NOT rebuilt)
-  ballot      mc_candidates@v1[a68f7b8bced6]
-if BLOCKED: n/a
-```
-
-No launch has occurred. 0/512 scored. CALIB and REPORT untouched.
+- remove the stale planned-v4 row in `RL_PLAN.md`; register v6 and mark v5
+  invalid;
+- collapse/prune the contradictory lower v3-gate narrative in
+  `PILOT_ARTIFACTS.md` while retaining historical hashes;
+- update both the NOW and NEXT/item-0 sections of `BACKLOG.md`;
+- replace the stale v3/sampler PILOT section in `JOBS.md`;
+- state DEV 0/512, CALIB/REPORT unscored and this Codex HOLD everywhere.
 
 ## Required return packet
 
-Return this exact compact packet and then wait:
+Return only this packet, then wait:
 
 ```text
 STATE: READY_FOR_CODEX_GATE | BLOCKED
-RUN-CODE HEAD / origin HEAD:
-PACKET HEAD / origin HEAD:
-workspace timestamp and dirty files:
-live pilot/evaluator processes:
-v5 DEV hash / CALIB hash / artifact-ledger lines:
-band-size-role-source audit for both sides:
-DEV-CALIB overlap / REPORT leakage / all-row replay:
-source-order + row-order + duplicate-deal regressions:
-pure targeted / compiled targeted / full-suite tests:
-two identical v5 smoke hashes and manifest identity:
-full registered protocol and exact eight-shard commands:
-Mini/Air HEAD, artifact, ballot and compiled-binary preflight:
-if BLOCKED: first failing command, first error, recommended fix, ETA
+F1 CODE HEAD / origin:
+v6 ARTIFACT HEAD / origin:
+PACKET HEAD / origin:
+workspace timestamp / dirty files / live pilot-evaluator processes:
+real-corpus exact-state invariance (DEV/CALIB, every permutation):
+v5 negative-control counts (must reproduce 52/41):
+v6 DEV/CALIB hashes, salts, clean generator HEAD and ledger lines:
+band-size-role-source audit / unique deals / overlap / REPORT leakage:
+1,024-row exact replay / six corpus+split live digest comparisons:
+positive-test artifact paths / negative-control paths:
+runner v6 protocol / required-arms refusal / exact eight commands:
+targeted pure / targeted compiled / full-suite results:
+two retained smoke paths / commands / hashes / manifest comparison:
+Mini/Air HEAD, clean state, v6 bytes, ballot and compiled-binary hashes:
+if BLOCKED: first failing command, first error and recommended repair
 ```
 
-No launch occurs until Codex answers PASS. After PASS, Mini owns shards 0–3
-and Air 4–7; monitor only liveness/protocol counters and do not inspect arm
-outcomes until all eight shards are complete and aggregate once.
+No launch until Codex writes PASS. After PASS, Mini owns shards 0–3 and Air
+4–7. Do not start cleanup, sampler research, training or unrelated experiments
+while this bounded repair is active.

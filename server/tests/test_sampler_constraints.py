@@ -405,3 +405,65 @@ def test_at_most_one_receiver_can_exceed_the_distinct_code_count():
         cuts = sorted(rng.randint(0, N) for _ in range(R - 1))
         quotas = [b - a for a, b in zip([0] + cuts, cuts + [N])]
         assert sum(1 for q in quotas if q > D) <= 1, (mults, quotas)
+
+
+def test_certifier_counts_rows_it_cannot_rebuild():
+    """A silent skip lets a certifier certify whatever happened to work.
+
+    Both replay loops in `certify_sampler` swallow exceptions and `continue`.
+    That is defensible — an unrebuildable row cannot be certified — but it must
+    be COUNTED and reported, or the certified population is whatever survived.
+    """
+    import os
+    import sys
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.join(root, "scripts"))
+    import certify_sampler as CS
+
+    CS.reset_certification_skips()
+    assert CS.certification_skips() == {"toy_state_replay": 0,
+                                        "corpus_row_replay": 0}
+    # drive the counted path directly: the swallow sites increment these
+    CS.SKIPPED["corpus_row_replay"] += 1
+    assert CS.certification_skips()["corpus_row_replay"] == 1, \
+        "the skip counter is not observable"
+    CS.reset_certification_skips()
+    assert CS.certification_skips()["corpus_row_replay"] == 0
+
+
+def test_certifier_skip_counters_are_wired_to_the_swallow_sites():
+    """Guards against the counters existing but never being incremented.
+
+    Uses the AST, not string proximity. My first version asserted
+    `"except Exception:" in src[before-200:before]`, which STILL PASSED when the
+    increment was moved outside the handler — the except line remained inside
+    the window. That is the vacuous-mechanism pattern this test exists to
+    prevent, so it is checked structurally: the increment must be a descendant
+    of an `ExceptHandler` node.
+    """
+    import ast
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    tree = ast.parse(open(os.path.join(root, "scripts",
+                                       "certify_sampler.py")).read())
+
+    def increments_in_handlers():
+        found = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ExceptHandler):
+                continue
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.AugAssign) and \
+                        isinstance(sub.target, ast.Subscript) and \
+                        isinstance(sub.target.value, ast.Name) and \
+                        sub.target.value.id == "SKIPPED":
+                    key = sub.target.slice
+                    if isinstance(key, ast.Constant):
+                        found.add(key.value)
+        return found
+
+    inside = increments_in_handlers()
+    for key in ("toy_state_replay", "corpus_row_replay"):
+        assert key in inside, (
+            f"SKIPPED[{key!r}] is not incremented INSIDE an except handler; a "
+            f"counter no failure path touches counts nothing")

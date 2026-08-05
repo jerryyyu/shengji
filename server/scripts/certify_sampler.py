@@ -257,6 +257,26 @@ def enumerate_legal(rnd, seat, cons, cap=60000):
     return legal
 
 
+#: Named, counted fallbacks. Both generators below skip a state or row whose
+#: replay raises. That is defensible — a corpus row that cannot be rebuilt
+#: cannot be certified — but a SILENT skip lets the certifier report
+#: "120/120 certified" over whatever happened to work, which is the same
+#: "a result only describes the population it measured" trap that has bitten
+#: this project repeatedly. Counting them makes the certified population
+#: legible; `certification_skips()` is printed with every run.
+SKIPPED = {"toy_state_replay": 0, "corpus_row_replay": 0}
+
+
+def certification_skips() -> dict:
+    """How many states/rows were dropped before certifying. Must be reported."""
+    return dict(SKIPPED)
+
+
+def reset_certification_skips() -> None:
+    for k in SKIPPED:
+        SKIPPED[k] = 0
+
+
 def toy_states(n_want, seed0=880000, max_pool=7):
     """Deep BANKER states, where the unseen pool is small enough to enumerate.
 
@@ -294,6 +314,7 @@ def toy_states(n_want, seed0=880000, max_pool=7):
                         break
                 rnd.play(s, pol[s].decide_play(rnd, s))
         except Exception:
+            SKIPPED["toy_state_replay"] += 1
             continue
 
 
@@ -355,6 +376,7 @@ def reservoir_states(paths, limit, min_ply):
                     for p in row["plays"]:
                         rnd.play(p["seat"], list(p["cards"]))
                 except Exception:
+                    SKIPPED["corpus_row_replay"] += 1
                     continue
                 if rnd.turn != row["seat"] or rnd.phase != "play":
                     continue
@@ -477,6 +499,12 @@ def main() -> None:
               f"the enumerated legal set — the enumerator is wrong")
     for e in bad_examples:
         print(f"  - {e}")
+    skips = certification_skips()
+    print(f"POPULATION    states/rows SKIPPED before certifying: {skips}")
+    if any(skips.values()):
+        print("  !! the certified population EXCLUDES these. A certifier that "
+              "silently drops what it cannot rebuild certifies whatever "
+              "happened to work.")
     print("\nNOT CERTIFIED: distribution fidelity. Legality and reachability "
           "say nothing about whether worlds are produced in the right "
           "PROPORTIONS; that needs exact toy posteriors (Codex).")
@@ -489,7 +517,8 @@ def main() -> None:
               "witness_states": witness_states, "witness_hit": witness_hit,
               "witness_missing": witness_missing,
               "examples": bad_examples,
-              "certified": bool(n_states and not n_bad and toy_states_n
+              "certification_skips": certification_skips(),
+        "certified": bool(n_states and not n_bad and toy_states_n
                                 and toy_complete == toy_states_n
                                 and not witness_missing
                                 and witness_hit == witness_states)}

@@ -2634,7 +2634,7 @@ behaviour is what makes it worth having.
 
 ---
 
-## Claude — 2026-08-05 16:55 EDT — DEV-512 was underpowered; what scaling would cost
+## Claude — 2026-08-05 16:28 EDT — DEV-512 was underpowered; what scaling would cost
 
 **Jerry asked what the 512 DEV/CALIB artifact bought. Answering honestly
 surfaced something I had not ledgered: the screen could not resolve the

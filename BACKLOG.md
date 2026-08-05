@@ -250,12 +250,16 @@ experiment is fixed-budget versus widened/high-compute ballot selection.
 
 ## Engineering / hardening
 
-- [ ] **Bounded silent-fallback sweep.** Inventory broad catches, default
-      actions, constraint relaxation, and unimplemented protocol paths in the
-      decision, data-generation, and protocol boundaries. Convert each finding
-      into a loud failure or a named, counted, tested fallback. Seed forwarding
-      is already repaired; apply this next only around the sampler/certifier and
-      then incrementally as strength-path code is touched.
+- [~] **Bounded silent-fallback sweep — sampler/certifier slice DONE
+      2026-08-05.** Inventoried `mcbot.py`, `memory.py`, `certify_sampler.py`.
+      The two broad `except Exception: continue` in the certifier's replay
+      loops each dropped a state or row SILENTLY, so it could report
+      "120/120 certified" over whatever happened to rebuild. Both are now named,
+      counted (`SKIPPED`), reported to stdout AND persisted in the artifact,
+      with an AST test asserting each increment sits inside its handler. The
+      four `getattr(..., default)` in the sampler are currently dead — both
+      attributes are always set — and are recorded rather than changed.
+      REMAINING: apply incrementally as strength-path code is touched.
 - [ ] **Frontend release soak.** Deterministic coverage is release-candidate
       quality. Before production promotion, run one bounded multi-tab scenario
       covering join, seat race, disconnect-to-bot, reconnect/takeover,

@@ -563,8 +563,32 @@ class MCBot(SmartBot):
                         return False
                 return True
 
+            # PAIR-CAP FORWARD CHECK. The search previously forward-checked
+            # VOIDS only, so it proposed count matrices no fill could satisfy
+            # and the failure surfaced later as an exhausted card deal. A
+            # receiver given `n` cards drawn from `d` distinct codes is FORCED
+            # to hold at least `n - d` pairs, so `n - d > cap` is impossible
+            # however the cards are shuffled. Example that produced a rejected
+            # world at original:81002046:4 — 6 clubs over 4 codes (C10 and CQ
+            # doubled), seat 2 void, kitty full, and pair_cap 0 everywhere: any
+            # split handing one seat 5 clubs is dead on arrival, but `place`
+            # could not see it and `_deal_suit` burned its retries discovering
+            # it. This is a necessary condition and costs O(receivers).
+            ncodes = len(set(by_suit[u]))
+            caps_u = {r: (mem.max_pairs(r, u) if isinstance(r, int) else None)
+                      for r in allowed[u]}
+
+            def pair_feasible(split) -> bool:
+                for r, n in split.items():
+                    cap_r = caps_u.get(r)
+                    if cap_r is not None and n - ncodes > cap_r:
+                        return False
+                return True
+
             for split in self._splits(need, opts, rem,
                                       cards=by_suit[u] if WEIGHTED_SPLITS else None):
+                if not pair_feasible(split):
+                    continue
                 for r, n in split.items():
                     rem[r] -= n
                 if feasible() and place(i + 1):

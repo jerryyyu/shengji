@@ -236,3 +236,54 @@ def test_declared_pin_cannot_complete_a_forbidden_pair():
     assert violations == 0, (
         f"{violations} sampled worlds exceeded a pair cap once pinned cards "
         f"were counted — the pin and the cap are looking at different hands")
+
+
+def test_pair_cap_forward_check_prevents_a_rejected_world():
+    """Regression for the state that stopped the first DEV-512 launch.
+
+    `original:81002046:4`: 6 effective clubs over 4 codes (C10 and CQ doubled),
+    seat 2 void in clubs, kitty full, and pair_cap 0 for every seat. A receiver
+    given n cards from d distinct codes is FORCED to hold n-d pairs, so any
+    split handing one seat 5 clubs is impossible however the cards shuffle.
+    `place` forward-checked VOIDS only, proposed such splits, and `_deal_suit`
+    exhausted its retries discovering it — after which the sampler fell back to
+    IGNORING VOIDS and counted a rejected world, failing the run's protocol
+    invariant.
+
+    The world is sampled through the runner's own per-fold stream, because the
+    bot's default RNG does not reach the failing draw (it is attempt 31 of the
+    proposal stream) — a probe on the default stream reports zero and proves
+    nothing.
+    """
+    import json
+    import random
+    import sys
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.join(root, "scripts"))
+    import pilot_states as PS
+    from shengji.ai.registry import make_bot
+    from shengji.ai.memory import Memory
+    from shengji.pilot_folds import stream_seed
+
+    art = os.path.join(root, "rl_data", "pilot_dev512.v6.json")
+    if not os.path.exists(art):
+        pytest.skip("v6 gate artifact absent")
+    st = next(s for s in json.load(open(art))["states"]
+              if s["seed"] == 81002046 and s["ply"] == 4)
+    corpus = {n: c for n, c, _ in PS.SOURCES}[st["source"]]
+    row = next(json.loads(l) for l in open(corpus)
+               if json.loads(l)["seed"] == st["seed"]
+               and json.loads(l)["ply"] == st["ply"])
+    rnd = PS.replay(row)
+    seat = st["seat"]
+    bot = make_bot("mc", seed=1)
+    mem = Memory(rnd, seat)
+    bot.rng = random.Random(
+        stream_seed("pilot-run-v1", "original:81002046:4", "proposal"))
+    bot.rejected_worlds = 0
+    for _ in range(200):
+        bot._sample_hands(rnd, seat, mem)
+    assert bot.rejected_worlds == 0, (
+        "the void-ignoring fallback fired; a constraint-correct world exists "
+        "and the search must find it")

@@ -5,8 +5,22 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-None. The next fleet job is the DEV-512 scoring pilot, but it remains on hold
-until the state-freeze gate below closes.
+### mini / N=30 vs N=10 FROZEN-CURRENT confirmation — preregistered, 00:55
+
+Prod now serves `mc-strong` (N=30, compiled engine). The evidence for that
+switch is +0.262 +/- 0.154, pinned to commit `e3aeec1`. Current `main` has a
+different sampler, ballot and decompose path, so this re-runs the SAME
+protocol against what is actually deployed.
+
+- arm `mc-strong` vs opponent `mc`; control `mc-null` (N=10, RNG-shifted only).
+- PRIMARY: paired per-seed level utility, N=30 minus N=10, interval excludes 0.
+- 6 shards x 84 clusters = 504 clusters, seeds 102,000,000-102,000,503,
+  disjoint from 93M/94M/95M/96M/99M/101M.
+- One fixed block, no extension regardless of result. Aggregate with
+  `scripts/aggregate_shards.py`.
+
+If it fails to reproduce, prod should go back to `mc` — the deploy would then
+be resting on a result that does not describe the deployed code.
 
 ## FINISHED — Gate 3 raw capture (not scoring)
 

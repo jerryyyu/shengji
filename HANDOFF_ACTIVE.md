@@ -37,6 +37,13 @@ Do not run another enumerable-state posterior or decision-sensitivity job now.
 
 ## Claude work package A — close the freeze gate (do this now; 60–90 min)
 
+**Live review stop:** the current dirty `pilot_states.py` patch uses an even
+`56/57/57` size allocation in every band and only checks it after the old
+deal-first selector runs. Do not continue or commit that patch. It contradicts
+the table below (and the game's natural early/late supply), is expected to be
+infeasible, and does not make size drive deal selection. Replace `SIZE_QUOTA`
+with the registered table below and change the selector itself.
+
 Predeclare and implement these identical DEV/CALIB band-size marginals. They
 are the rounded pooled midpoint of the already-visible v3 metadata; no action
 values or outcomes have been inspected:

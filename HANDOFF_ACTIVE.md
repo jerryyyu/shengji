@@ -57,70 +57,24 @@ reference and twelve disjoint report worlds score every chosen action.
 This is an offline lead-decision experiment. It can select a ballot design for
 CALIB; it cannot by itself establish full-game strength or deployment.
 
-## Package G — diagnose the shard-5 counter without moving the estimand
+## Resolved and pruned
 
-1. Preserve the seven complete JSON files, the original missing-input refusal
-   logs and the shard-5 counter-failure log. Do not aggregate them.
-2. Reproduce `original:81002046:4` under the exact shard-5 protocol in a
-   bounded diagnostic that records the fold, draw index and rejection cause
-   without changing RNG order.
-3. Decide whether the rejection is:
-   - an implementation/correctness bug with an invariant-preserving fix; or
-   - expected behavior of the production sampler, meaning the preregistered
-     zero-counter protocol is incompatible with this estimand.
-4. Add a regression before any fix. Do not weaken the runner's refusal.
-5. Add a two-machine preflight that requires every replay corpus and its live
-   digest, not only HEAD/artifact/ballot/compiled-binary identity.
-6. If code, sampler behavior or protocol changes, quarantine all seven completed
-   shards and rerun **all eight** from one clean identical HEAD. Never combine
-   pre-fix and post-fix shards.
-7. Only after eight clean shards exist, copy them to one machine, run the strict
-   aggregator exactly once, and report its refusal or complete table. Select at
-   most one DEV design—or select none—before touching CALIB.
+Package G (shard-5 diagnosis) and the 12:15 sampler HOLD are CLOSED; their
+evidence lives in `HANDOFF_REVIEW.md` at 12:05, 12:15, 12:42, 12:50 and 13:35.
+Summary of what they settled:
 
-## Codex bounded diagnosis — 2026-08-05 12:15 EDT
+- the rejection was an implementation defect, not expected behaviour;
+- the repair is a pair-cap forward check in the count-matrix search
+  (`75b06da`), which Codex verified cannot prune a feasible split;
+- that check is now proven NECESSARY AND SUFFICIENT for matrix feasibility
+  (171,801 exhaustive + 20,000 randomized instances, zero disagreements);
+- G5's two-machine corpus/split preflight shipped with refusal tests;
+- all seven pre-fix shards are quarantined and were never combined.
 
-**The rejection is reproduced and is an implementation failure, but the live
-uncommitted fix is HOLD.** I loaded the committed `9a03304` `_assign` method
-in-memory, leaving Claude's working tree untouched, and replayed the exact v6
-state and independent fold streams. The sole rejected world is:
-
-```text
-state: original:81002046:4, acting/banker seat 0
-fold: proposal
-zero-based draw index: 30 of 137
-strict attempts: 14/14 ended in pair_cap fill failure
-last attempt: succeeded only after ignoring voids -> rejected_worlds += 1
-state constraints: seat 2 void in clubs; seats 1, 2 and 3 each club pair_cap=0
-whole replay total: rejected_worlds=1, impossible_worlds=0, pair_cap=263
-```
-
-This does not show that the state has no legal world: the real deal is one.
-The committed sampler finds one void-feasible suit-count matrix per attempt,
-then gives that matrix only eight randomized greedy card fills. Exhausting
-those eight does not prove the matrix—or the world—is impossible.
-
-The current dirty `mcbot.py` moves that same eight-try fill into every leaf of
-the suit-count search. That is not ready to commit:
-
-- it is still not complete, because each count matrix receives only eight
-  randomized greedy card-order attempts;
-- it creates a combinatorial performance failure. The exact replay had not
-  passed proposal draw 54 after more than 90 seconds, and individual successful
-  draws accumulated 23,868–73,458 failed matrix fills; the committed sampler
-  replays all 161 worlds in about 0.3 seconds;
-- `reject_cause["pair_cap"]` changes meaning from failed assignment attempts to
-  every rejected count-matrix leaf and becomes enormous even on success; and
-- it consumes a radically different RNG stream before each returned world.
-
-Please replace this with a bounded card-code allocation for each suit (an exact
-backtracking/DP assignment over at most two copies per code and receiver
-quotas is the direct formulation), or otherwise prove both completeness and a
-runtime bound. Add the exact fold/draw regression against the pre-fix behavior
-first, then require zero rejects plus a sampler runtime regression. The
-two-machine corpus presence/digest preflight remains independently open. Any
-sampler fix still quarantines all seven pre-fix shards and requires all eight
-to rerun from one clean HEAD.
+**Still open:** the greedy card dealer is not proven to FIND an assignment the
+matrix admits — bounded by eight retries, empirically zero rejects in 92,160
+draws. The constructive fix follows from the sufficiency proof but changes world
+sampling, which would void the accepted DEV block, so it needs an explicit go.
 
 ## Required return packet
 

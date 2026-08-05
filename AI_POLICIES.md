@@ -53,10 +53,22 @@ newest entry sit on top and speak for the file.
 - **Best learned result:** `rl-override-v11pair` beats SmartBot 57.7% (n=480)
   and is very fast, but its MC comparison is unseeded screen evidence. It is a
   deployment-cost candidate, not the strongest verified bot.
-- **Main strength hypothesis:** improve lead-ballot selection, then let MC do
-  final evaluation. The ballot omits 51.2% of the diagnostic structured lead
-  space and only 0.9% of follows, but naive V3 widening failed; selection and
-  rollout allocation, not raw coverage, are the target.
+- **Main strength hypothesis — TESTED AND NOT SUPPORTED (2026-08-05).** The
+  hypothesis was that improving lead-ballot SELECTION, then letting MC evaluate,
+  would buy strength. The DEV-512 screen ran all six registered arms on 512
+  frozen lead states and **selected no design**: primary `quota - random_fill`
+  `+0.110 +/- 0.337` includes 0, and at EQUAL WORK the shipped ballot has the
+  lowest mean regret (0.135) with every redesign worse — quota 0.229, v3 0.281,
+  random_fill 0.339. Codex reproduced the aggregate and accepted SELECT NONE.
+  The one contrast that resolves is the high-work pair, favouring more MC over
+  brute-force widening (`-0.495 +/- 0.477`). So the lever is not WHICH actions
+  get priced but HOW MUCH search prices them — and the N=60-vs-N=30 lane already
+  found no confirmed gain above N=30, so both halves of this hypothesis are now
+  measured and neither is a path forward. Mark it a DEV SCREEN, not a strength
+  claim: DEV selects designs, it does not establish playing strength. CALIB and
+  REPORT remain sealed, because the contract runs CALIB on one DEV-selected
+  design and there is none. The 51.2%/0.9% structured-omission figures still
+  describe the ballot's coverage; they no longer motivate a redesign.
 - **Data conclusion:** the 20,845-state high-N artifact is a replayable state
   reservoir, not an oracle. Its old-ballot/non-strict/same-world-selected labels
   have produced no online gain. The 12,000-state late supplement is raw-state

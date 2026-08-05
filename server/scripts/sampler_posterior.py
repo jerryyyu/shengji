@@ -83,9 +83,23 @@ def main() -> None:
               "sampler measures a distribution nothing uses.")
         sys.exit(3)
 
+    # Generate states with the DEFAULT sampler, then measure with whatever is
+    # configured. `toy_states` self-plays full rounds with mc-strong to reach
+    # deep banker positions; under the weighted sampler that GENERATION cost
+    # dominated and three runs hung past 10 minutes without reaching the
+    # measurement at all. The states are just positions — how they were found
+    # does not change the posterior over their hidden hands.
+    _w = os.environ.pop("SHENGJI_WEIGHTED_SPLITS", None)
+    import shengji.ai.mcbot as _M
+    _M.WEIGHTED_SPLITS = False
+    states = list(toy_states(args.states * 3))
+    if _w:
+        os.environ["SHENGJI_WEIGHTED_SPLITS"] = _w
+        _M.WEIGHTED_SPLITS = True
+
     bot = MCBot(seed=4242)
     rows = []
-    for seed, rnd, seat in toy_states(args.states * 3):
+    for seed, rnd, seat in states:
         cons = constraints(rnd)
         try:
             legal = enumerate_legal(rnd, seat, cons)

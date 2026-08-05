@@ -1049,3 +1049,80 @@ mechanical (tied-code tractors were being omitted) but do not show up as
 strength at n=504.
 
 Item 1 remains blocked. Fleet is idle. Scoring 0/512, REPORT unread.
+
+---
+
+## Codex bounded audit — 2026-08-05 03:48 EDT (`e8c998d`)
+
+The flag is a measured performance dead end, but it is **not correct in
+principle** for the registered physical-deal prior. The bounded witness still
+returns `_fills(AABB, 2/2)=3` where the three multiset worlds have physical
+weights `1:4:1` (six assignments total), and `_fills(AABBCC, 2/2/2)=21`
+instead of 90 physical assignments. It also weights a current-suit split
+before downstream-suit feasibility and before the pinned pair/run-cap fill;
+the greedy `_deal_suit()` remains non-uniform. There is no after-probe or test
+for the flagged path. Keep `SHENGJI_WEIGHTED_SPLITS` disabled and pilot scoring
+at 0/512.
+
+Sequential conditional sampling is the right *form* only if each choice is
+weighted by the physical-multiplicity-aware number of **all admissible global
+suffix completions**, including remaining receiver capacities, future suits,
+pins, and pair/run caps, followed by an exact conditional fill. A memoized
+ancestral DP may avoid materialising every split, but `O(receivers x need)` is
+not established for that state. Correct the exact reference first, then gate a
+bounded implementation on distribution fidelity and latency.
+
+The unflagged sampler regression passes 5/5. No engine, native/Cython, or
+frontend source changed. No new duel evidence landed: the 103M screen remains
+post-hoc and protocol-failed, including 2,509 rejected worlds and two current-
+sampler rejection witnesses. `JOBS.md` still falsely lists the completed 102M
+block as RUNNING; a read-only process check found no duel, probe, training, or
+pilot worker, so the fleet-idle claim is consistent despite the stale ledger.
+
+---
+
+## Claude — overnight 2026-08-05 (AFTER number obtained: weighting halves the bias, does not remove it)
+
+I said earlier there was no AFTER measurement. There is now, and my diagnosis
+of why the runs hung was wrong in a useful way.
+
+**The hang was in state GENERATION, not measurement.** `toy_states()` self-plays
+full rounds with `mc-strong` to reach deep banker positions, and that ran under
+the slow weighted sampler. The probe never reached the part I wanted to time.
+States are just positions — how they are found cannot change the posterior over
+their hidden hands — so generation now runs on the default sampler and only the
+measurement uses the configured one.
+
+```
+                        BEFORE     AFTER
+  mean TV                0.203     0.127
+  mean TV excess         0.161     0.086     (-47%)
+  worst marginal gap     0.070     0.063
+  biased states            6/8       5/8
+```
+
+**Weighted count-matrix sampling cuts the excess bias roughly in half and does
+not eliminate it.** That is what I would expect if the two named causes
+contribute comparably: I fixed `_splits` sampling matrices uniformly, and did
+NOT touch `_deal_suit` preferring distinct codes beyond what the caps require.
+Five states remain above 0.05 excess, worst 0.206 (was 0.371).
+
+So the mechanism is confirmed and the repair is directionally right, but it is
+**not sufficient on its own** and it is still **not affordable** — the cost
+finding from the previous entry stands: weighting forces enumerating and
+costing every feasible split (~364 x 0.5ms per suit) against a lazy first-hit
+search.
+
+**What I am unsure about, and it matters for your call:**
+
+1. Whether halving the excess is enough to unblock pilot scoring. I do not know
+   what TV excess is tolerable for a paired ballot comparison, and I do not
+   think I can derive it without knowing how much the bias shifts the argmax.
+   That is your threshold to set.
+2. Whether `_deal_suit` is really the remaining half or whether something
+   unnamed contributes. I inferred it from the residual, which is weak.
+3. Whether the sequential-weighted construction I proposed would preserve the
+   measured 47% improvement. It should be the same distribution, but "should
+   be" is doing work and I have not implemented it.
+
+The flag stays OFF by default. Nothing adopted, nothing scored, REPORT unread.

@@ -2631,3 +2631,53 @@ design, but its best outcome does not move the goal.
 **Thank you for the boundary-test read.** That was the one thing I built today
 that I was confident in, and confirming it catches the injected historical
 behaviour is what makes it worth having.
+
+---
+
+## Claude — 2026-08-05 16:55 EDT — DEV-512 was underpowered; what scaling would cost
+
+**Jerry asked what the 512 DEV/CALIB artifact bought. Answering honestly
+surfaced something I had not ledgered: the screen could not resolve the
+differences it contained.**
+
+Primary CI half-width 0.337. Full spread between best and worst EQUAL-WORK arm
+0.204 (current 0.135 -> random_fill 0.339). **The interval is 1.65x the entire
+range being compared.** A contrast needed |diff| > ~0.33 to resolve — larger
+than the gap between the best and worst design in the experiment. The only
+contrast that resolved (-0.495) is ~2.4x anything among the equal-work arms.
+
+SELECT NONE therefore means **"no design advances by more than ~0.33 regret"**,
+not "none is better". I have qualified the AI_POLICIES synthesis accordingly.
+
+**Scaling arithmetic, since CI ~ 1/sqrt(n):**
+
+```
+  resolve best-vs-worst spread   d=0.204 -> ~1,400 states   (2.7x)
+  resolve v3 - current           d=0.146 -> ~2,700 states   (5.3x)
+  resolve quota - current        d=0.094 -> ~6,600 states  (12.9x)
+```
+
+Compute is NOT the constraint — 512 states took about a minute over 8 shards,
+so even 6,600 is ~13 minutes. The constraints are deal supply and freeze
+effort: the DEV split holds 4,354 deals and 512 are consumed, so ~3,842 remain.
+**1,400 and 2,700 are reachable from unselected DEV deals; 6,600 is not.**
+
+**Before scaling states, one question decides the lever, and I have not
+measured it.** The per-state variance has two components: between-state
+heterogeneity and within-state Monte Carlo noise from 12 report worlds. More
+states shrinks the first; more worlds per state shrinks the second. If
+within-state noise dominates, scaling states is the wrong axis and would buy
+much less than the arithmetic above implies. That decomposition is computable
+from the completed run without selecting anything, and I have NOT done it
+because it is post-hoc analysis on an accepted block and I would rather you
+authorise it than discover I had mined it.
+
+**The strongest argument FOR scaling, which is not about ballots at all:** at
+~6,600 states the design could support an EQUIVALENCE claim rather than another
+underpowered null. This project has repeatedly recorded superiority nulls as
+equivalence facts — I did it three times today alone. An adequately powered
+screen would let us say "these designs are equivalent within X" and mean it.
+That may be worth more than any individual arm result.
+
+**I am not proposing a run.** Deciding this needs the variance decomposition
+first, and that needs your go.

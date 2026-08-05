@@ -48,7 +48,14 @@ from shengji.engine.game import Game          # noqa: E402
 SOURCES = [
     ("original", "rl_data/highn_corpus_all.jsonl", "rl_data/corpus_split.v1.json"),
     ("late", "rl_data/highn_late_air.jsonl", "rl_data/corpus_split_late.v1.json"),
+    # The captured reservoir. The mined corpora hold only 3 DEV deals with a
+    # lead at trick >= 12, so the registered late band is unreachable without
+    # it. Its split is immutable and REPORT is never selected from here.
+    ("deep", "rl_data/deep_leads.v1.jsonl", "rl_data/deep_lead_split.v1.json"),
 ]
+
+#: Registered composition per Codex: 512 = 170 early + 171 mid + 171 late.
+BAND_QUOTA = {"early": 170, "mid": 171, "late": 171}
 
 
 def dirty_at_start() -> bool:
@@ -115,6 +122,10 @@ def main() -> None:
     ap.add_argument("--n", type=int, default=512)
     ap.add_argument("--out", default="rl_data/pilot_states.v1.json")
     ap.add_argument("--salt", default="pilot-v1")
+    ap.add_argument("--side", default="dev", choices=("dev", "calib"),
+                    help="REPORT is never selectable here: it is reserved for a "
+                         "single preregistered audit and must not be inspected "
+                         "during design.")
     args = ap.parse_args()
 
     if dirty_at_start():
@@ -139,7 +150,7 @@ def main() -> None:
         with open(corpus) as fh:
             for line in fh:
                 row = json.loads(line)
-                if split.get(row["seed"]) != "dev":
+                if split.get(row["seed"]) != args.side:
                     continue
                 # NOT skipped here. Marking a deal seen at its FIRST eligible
                 # row meant later lead states from that deal never competed for
@@ -188,21 +199,39 @@ def main() -> None:
         rng.shuffle(v)
 
     picked, used_deals = [], set()
-    i = 0
-    while len(picked) < args.n and any(deals_for[b] for b in BANDS):
-        b = BANDS[i % len(BANDS)]
-        i += 1
-        while deals_for[b]:
-            seed = deals_for[b].pop()
-            if seed in used_deals:
-                continue
-            options = [r for r in by_deal[seed] if r["band"] == b]
-            if not options:
-                continue
-            options.sort(key=lambda d: (d["tricks"], d["ply"], d["seat"]))
+    # Fill each band to its REGISTERED quota, alternating leader role inside the
+    # band so a band is not silently all-attacker. Deal-disjointness across DEV
+    # and CALIB is guaranteed upstream by the immutable splits.
+    want_role = {b: 0 for b in BANDS}
+    for b in BANDS:
+        quota = BAND_QUOTA.get(b, 0)
+        while len([p for p in picked if p["band"] == b]) < quota and deals_for[b]:
+            target = ("attacker", "defender")[want_role[b] % 2]
+            chosen = None
+            for pos, seed in enumerate(deals_for[b]):
+                if seed in used_deals:
+                    continue
+                opts = [r for r in by_deal[seed]
+                        if r["band"] == b and r.get("role", target) == target]
+                if opts:
+                    chosen = (pos, seed, opts)
+                    break
+            if chosen is None:      # role exhausted; take any remaining deal
+                for pos, seed in enumerate(deals_for[b]):
+                    if seed in used_deals:
+                        continue
+                    opts = [r for r in by_deal[seed] if r["band"] == b]
+                    if opts:
+                        chosen = (pos, seed, opts)
+                        break
+            if chosen is None:
+                break
+            pos, seed, opts = chosen
+            deals_for[b].pop(pos)
             used_deals.add(seed)
-            picked.append(options[rng.randrange(len(options))])
-            break
+            opts.sort(key=lambda d: (d["tricks"], d["ply"], d["seat"]))
+            picked.append(opts[rng.randrange(len(opts))])
+            want_role[b] += 1
     skipped_dupe = sum(len(v) for v in by_deal.values()) - len(picked)
 
     sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
@@ -219,9 +248,13 @@ def main() -> None:
                            "split": sp, "split_sha256_16": digest(sp)}
                     for name, c, sp in SOURCES},
         "requested": args.n, "selected": len(picked),
-        "one_state_per_deal": True, "side": "dev", "leads_only": True,
+        "one_state_per_deal": True, "side": args.side, "leads_only": True,
+        "band_quota": BAND_QUOTA,
         "band_deals_available": available,
         "bands_selected": dict(Counter(p["band"] for p in picked)),
+        "roles_selected": dict(Counter(p.get("role", "?") for p in picked)),
+        "roles_by_band": {b: dict(Counter(p.get("role", "?") for p in picked
+                                          if p["band"] == b)) for b in BANDS},
         "tricks_histogram": dict(Counter(p["tricks"] // 5 * 5 for p in picked)),
         "strata_selected": dict(Counter(p["stratum"] for p in picked)),
         "picked_by_source_ply": dict(Counter(

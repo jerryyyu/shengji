@@ -73,7 +73,7 @@ def test_no_selected_state_belongs_to_the_REPORT_split(name):
     assert checked == 512, f"only {checked} states resolved against a split"
 
 
-@pytest.mark.parametrize("name", ["pilot_dev512.v4.json", "pilot_calib512.v4.json"])
+@pytest.mark.parametrize("name", ["pilot_dev512.v5.json", "pilot_calib512.v5.json"])
 def test_frozen_artifact_meets_the_contract(name):
     d = _load(name)
     assert d["selected"] == 512
@@ -134,8 +134,8 @@ def test_freezer_refuses_a_dirty_tree_and_an_existing_path():
         "an existing frozen path must be unconditionally non-overwritable"
 
 
-@pytest.mark.parametrize("art", ["pilot_dev512.v4.json",
-                                 "pilot_calib512.v4.json"])
+@pytest.mark.parametrize("art", ["pilot_dev512.v5.json",
+                                 "pilot_calib512.v5.json"])
 def test_every_selected_state_replays(art):
     """A state that cannot be rebuilt cannot be scored. All 1,024 rows."""
     d = _load(art)
@@ -379,3 +379,34 @@ def test_unsatisfiable_marginals_are_reported_not_silently_relaxed():
                          for b in ("early", "mid", "late")}
     picked, unsatisfied = PS.select_states(_synth(6), "s1", "dev", **q)
     assert unsatisfied, "an impossible source quota must be reported"
+
+
+@pytest.mark.parametrize("name", ["pilot_dev512.v5.json",
+                                  "pilot_calib512.v5.json"])
+def test_v5_source_marginals_are_exact(name):
+    """The marginal v4 lacked; asserted separately so it cannot regress."""
+    d = _load(name)
+    for band, wants in PS.SOURCE_QUOTA.items():
+        have = {}
+        for s in d["states"]:
+            if s["band"] == band:
+                have[s["source"]] = have.get(s["source"], 0) + 1
+        for src, want in wants.items():
+            assert have.get(src, 0) == want, \
+                f"{name} {band}/{src}: {have.get(src, 0)} != {want}"
+
+
+def test_v5_dev_and_calib_share_the_population_but_not_the_deals():
+    """The property v4 broke: same structure, disjoint deals."""
+    dev, cal = _load("pilot_dev512.v5.json"), _load("pilot_calib512.v5.json")
+    for q in (PS.SIZE_QUOTA, PS.ROLE_QUOTA, PS.SOURCE_QUOTA):
+        for band in q:
+            f = lambda d, k: sum(1 for s in d["states"]
+                                 if s["band"] == band and s.get(k[0]) == k[1])
+            for key in q[band]:
+                field = ("source" if q is PS.SOURCE_QUOTA
+                         else "role" if q is PS.ROLE_QUOTA else None)
+                if field:
+                    assert f(dev, (field, key)) == f(cal, (field, key))
+    assert not ({s["seed"] for s in dev["states"]}
+                & {s["seed"] for s in cal["states"]})

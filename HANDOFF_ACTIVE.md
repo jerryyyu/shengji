@@ -57,67 +57,71 @@ reference and twelve disjoint report worlds score every chosen action.
 This is an offline lead-decision experiment. It can select a ballot design for
 CALIB; it cannot by itself establish full-game strength or deployment.
 
-## PROPOSED — roadmap item 4: continuation-policy ROBUSTNESS (needs registration)
+## PROPOSED v2 — item 4 continuation robustness (HOLD; revised per 14:49)
 
-Not launched. Requesting registration or rejection.
+Not launched. Four errors in v1 are corrected below rather than argued.
 
-**Why this and not the strength version.** The strength form is already largely
-answered against us: `mc-smartroll` TIED TWICE — the second time with a
-continuation 93 Elo above the heuristic — and the accidental banker-without-
-search run went roughly even. Rerunning "is a stronger continuation stronger"
-buys little. The unanswered question is ROBUSTNESS: **does MC's chosen action
-depend on WHICH continuation values its rollouts?**
+**Correction 1 — I repeated the superiority/equivalence error.** I wrote that
+the strength form was "largely answered against us" because `mc-smartroll` tied
+twice. Those are FAILED SUPERIORITY tests; they are not equivalence evidence.
+The right statement is that no continuation has been shown stronger, not that
+continuation strength is known not to matter.
 
-It matters because of what we just concluded. DEV-512 said no ballot design
-advances and the N=60 lane found no gain above N=30. Both were measured under
-ONE arbitrary continuation. If the argmax is stable across continuations, those
-negatives rest on solid ground. If it is not, they are confounded by a choice
-nobody registered.
+**Correction 2 — a common continuation is not a confounder.** I claimed DEV's
+SELECT NONE and the N=60 null were "confounded" by an unregistered continuation.
+Wrong: a continuation held common across arms DEFINES the conditional estimand.
+Instability would show limited TRANSPORT or an interaction — it would not
+invalidate either contrast. The revised claim is scoped accordingly.
 
-**Design.**
+**Correction 3 — plain argmax is the wrong decision rule** for a claim about
+shipped MC. The measured decision must apply deployed semantics: `MARGIN` /
+`LEAD_MARGIN`, `POINT_SHY_EPS`, and candidate-0 protection, via
+`choose_action`. Plain argmax measures a policy nobody runs.
 
-- Portfolio, predeclared, chosen to be behaviourally DIVERGENT rather than
-  strength-ordered (divergence is the point): incumbent `HeuristicBot`,
-  `SmartBot`, `smart-trumpdrain`, `smart-feedtrump`. The seam already exists —
-  `MCSmartRoll` sets `self.rollout_policy`.
-- OFFLINE, on frozen states. No online duels.
-- **Shared worlds across continuations.** Every continuation values the SAME
-  sampled worlds for a state, so the only thing varying is the valuation. This
-  is the load-bearing control: without it, sampler noise and continuation
-  effects are inseparable.
-- Per state, per candidate: action value under each continuation.
+**Correction 4 — this cannot strengthen N=30/N=60.** A 12-world, lead-only
+assay says nothing about a full-game dose result. That needs a separate
+continuation-by-dose design, which I am NOT proposing here.
 
-**Primary:** rate at which a continuation's argmax differs from the incumbent's,
-against a paired control that resamples worlds under the INCUMBENT at the same
-count — so Monte Carlo noise is subtracted, exactly as the decision-sensitivity
-harness does. Reporting raw disagreement without that control would restate
-noise as instability.
+### Registered claim, scoped
 
-**Secondary:** exact-measure regret of the disagreements, and correlation of
-action values across continuations.
+Does the DEPLOYED lead decision change when only the continuation policy
+changes, holding worlds fixed? Nothing more.
 
-**Preregistered close condition.** High agreement after noise subtraction ->
-close the lane and record that MC's output is robust to continuation, which
-strengthens the ballot and dose negatives. Low agreement -> those negatives are
-confounded and must be re-priced under a portfolio before they stand.
+### Preregistration
 
-**Deviation from the roadmap wording, flagged.** RL_PLAN item 4 says "at equal
-total rollout work". For a robustness question I propose equal WORLDS instead:
-`SmartBot` rollouts are ~5x slower, so equal work would give it ~5x fewer worlds
-and conflate "different valuation" with "noisier estimate". Equal work is the
-right control for a strength claim; equal worlds is the right control for
-"does the answer change". I want this difference registered, not assumed.
+- **Portfolio** (behaviourally divergent, not strength-ordered): incumbent
+  `HeuristicBot`, `SmartBot`, `smart-trumpdrain`, `smart-feedtrump`.
+- **States — fresh frozen primary.** The DEV split holds 4,354 deals and
+  DEV-512 consumed 512, so freeze a new-salt 512-state set from DEV-split deals
+  NOT selected into v6. That is genuinely fresh, keeps CALIB and REPORT sealed,
+  and reuses the proven freezer. **DEV-512 is a POST-HOC SECONDARY audit only**,
+  labelled as such.
+- **Worlds:** shared across continuations within a state; proposal worlds for
+  selection, DISJOINT report worlds for scoring.
+- **Decision rule:** `choose_action` with deployed `MARGIN`/`POINT_SHY_EPS`/
+  candidate-0. **Tie rule:** ties are resolved BY the deployed rule; agreement
+  is measured on the final chosen action, never on a raw value ordering.
+- **Primary:** continuation-attributable excess disagreement = (disagreement of
+  continuation c vs incumbent) minus (disagreement of an INCUMBENT-RESAMPLE
+  control at the same world count). One state = one cluster = one deal;
+  aggregate at state level; 95% CI clustered by state.
+- **Equivalence bound, numeric and preregistered:** claim stability only if the
+  UPPER 95% bound of excess disagreement is **below 0.05** for every portfolio
+  member. Above 0.05 -> report limited transport, not invalidation. A point
+  estimate near zero with a wide interval is NOT stability — that is the
+  N=60 mistake and I will not repeat it.
+- **Regret:** under a NAMED continuation-specific reference — for continuation
+  c, the best action under c — evaluated on the disjoint report worlds.
+- **Cost, including the controls I omitted in v1:** 4 continuations + 1
+  incumbent-resample control = 5 selection passes, plus report passes, over
+  ~512 states x ~7 candidates x 12 worlds. SmartBot-family rollouts are ~5x
+  slower, so budget the run by wall clock rather than by world count.
 
-**State set.** DEV-512 v6, the designated worksheet, already frozen and
-replayed. This is a SECOND and DIFFERENT estimand on those states; anything it
-selects would still need CALIB and online confirmation. If you would rather draw
-fresh states from the reservoir to avoid multiple use, say so — I did not want
-to spend another freeze cycle without asking.
+### Open for you
 
-**Cost:** ~512 states x ~7 candidates x 12 shared worlds x 4 continuations
-≈ 172k rollouts, minutes on Mini for the fast continuations and longer for
-SmartBot. No CALIB, no REPORT, no sampler change, so it cannot void the accepted
-DEV block.
+Whether a fresh freeze from unused DEV-split deals is acceptable as the
+confirmatory primary, or whether this should wait entirely. I am not launching,
+and I am not freezing anything, until this is registered or rejected.
 
 ## Resolved and pruned
 

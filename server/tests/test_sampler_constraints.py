@@ -356,8 +356,8 @@ def test_pair_cap_condition_is_necessary_and_sufficient_exhaustively():
 def test_pair_cap_condition_holds_at_realistic_suit_sizes():
     import random
     rng = random.Random(20260805)
-    for _ in range(4000):
-        D = rng.randint(1, 9)
+    for _ in range(20000):
+        D = rng.randint(1, 11)
         mults = tuple(rng.choice((1, 2)) for _ in range(D))
         N = sum(mults)
         R = rng.randint(2, 4)
@@ -397,7 +397,7 @@ def test_at_most_one_receiver_can_exceed_the_distinct_code_count():
     """The lemma sufficiency rests on. N = D + P <= 2D."""
     import random
     rng = random.Random(7)
-    for _ in range(20000):
+    for _ in range(200000):
         D = rng.randint(1, 13)
         mults = [rng.choice((1, 2)) for _ in range(D)]
         N = sum(mults)

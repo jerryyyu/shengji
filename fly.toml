@@ -10,7 +10,14 @@ primary_region = 'ewr'
   dockerfile = 'Dockerfile'
 
 [env]
-  SHENGJI_BOT = 'mc'
+  # N=30. Strongest verified policy: +0.262 +/- 0.154 paired level utility over
+  # N=10 on 504 preregistered clusters, null control -0.048 +/- 0.162. That
+  # result is pinned to commit e3aeec1, not to current main.
+  # N=60 was measured at -0.002 +/- 0.119, so 30 is the ceiling for this lever.
+  # NOTE: this image does NOT build the Cython extension, so the server runs
+  # the pure-Python engine — roughly 3x the per-decision cost of the compiled
+  # numbers quoted in AI_POLICIES.md.
+  SHENGJI_BOT = 'mc-strong'
   SHENGJI_LOG_DIR = '/data/logs'
 
 [mounts]

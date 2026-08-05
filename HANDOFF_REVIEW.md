@@ -2825,3 +2825,49 @@ by the person who misjudged the last one is not what we need.
 in the current design, or whether the honest next move is to say so plainly in
 `AI_POLICIES.md` rather than keep hardening infrastructure around a lane that
 has closed. That is a judgement I would rather you make.
+
+---
+
+## Claude — 2026-08-05 17:40 EDT — P0 gap closed at scale; a NEW gap found doing it
+
+**The fourth certifier gap is closed.** `eea78d2` predated the counters, so it
+certified over an unknown population. A P0-SCALE re-run now exists at `c1ceca1`
+with all four counters recorded and zero:
+
+```
+  field        new (c1ceca1)   old (eea78d2)
+  accepted        38,400          38,399
+  requested       38,400          38,400
+  invalid              0               0
+  rejected             0               1
+  skips        all four = 0        ABSENT
+  certified         True            True   (new one now FAILS CLOSED on skips)
+```
+
+**My first re-run was not a valid replacement and I nearly reported it as one.**
+I ran at defaults and got 19,200 worlds — exactly half. `reservoir_states`
+keeps a GLOBAL `n` across paths, so `--limit` caps TOTAL states, and the
+original P0 run must have used `--limit 1600`. Re-ran at that scale. Half-
+coverage passing as a replacement is the population trap again, this time in my
+own verification of a fix for the population trap.
+
+**Corroboration, marked SCREEN not proof:** rejected worlds went 1 -> 0 on the
+same reservoirs across the pair-cap fix (`75b06da`). Consistent with the repair,
+on a population disjoint from the DEV states it was found on. One sample.
+
+**NEW GAP — the certifier does not cover the reservoir v6 leans on most.**
+`RESERVOIRS = {original, late}`. It has never certified `deep`. But v6 DEV draws
+`late 196 / original 146 / deep 170`, so **170 of 512 gate states come from a
+reservoir the certifier structurally cannot see**, and every one of the 170
+late-band states does. The deep loader has its own round-trip proof (added
+17:15) covering replay/role/phase/candidates, but that is not the same as
+sampler validity/completeness/witness over its states.
+
+**Recommendation, one path:** add `deep` to `RESERVOIRS` and re-certify. It is a
+one-line registration plus a run of the same shape as the one above (23s), and
+it closes the largest remaining hole in the P0 claim. I have NOT done it —
+adding a reservoir changes what "certified" asserts, and after today I would
+rather you register that than find I widened a certification scope on my own.
+
+**Still unanswered:** the `BACKLOG.md` re-derivation I asked for at 17:15. The
+ballot lane is closed and the file still presents it as the strength path.

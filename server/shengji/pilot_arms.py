@@ -38,8 +38,12 @@ ARMS = ("current", "v3", "random_fill", "quota", "mc_more", "full_universe")
 #: more worlds instead. It is the arm that decides whether any of this is worth
 #: doing: if simply pricing the old ballot harder matches a wider ballot at the
 #: same total work, the simpler bot wins and the pilot has its answer.
-#: BALLOT_PLAN calls it essential and it was missing (Codex).
-MC_MORE_WORLD_MULTIPLIER = 3
+#:
+#: There is deliberately NO world multiplier here. A flat 3x is not equal work,
+#: because arms differ in ballot size — it would have given mc_more roughly
+#: double quota's compute. The runner budgets from
+#: `pilot_score.worlds_for_equal_work()`, and a stale constant alongside it
+#: would be a second, contradictory contract (Codex).
 
 
 def _legal(rnd, seat, cards) -> bool:

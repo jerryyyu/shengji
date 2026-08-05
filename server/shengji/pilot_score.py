@@ -211,11 +211,20 @@ def choose_action(bot, rnd, seat, proposal_worlds, ballot, *, state_key="",
     # S10 S10 (Codex). It also costs zero candidate-world work, which the
     # equal-work accounting has to reflect.
     if getattr(bot, "TRACTOR_LOCK", False) and not rnd.trick.plays:
-        pick = sorted(bot._lead(rnd, seat))
+        # Through the CANONICAL boundary, not raw `_lead`. `_lead` walks the
+        # hand and was order-dependent; `protected()` sorts first. The lock is
+        # exactly the boundary that was missed once already, and the newly
+        # captured deep states are unknown territory (Codex).
+        from .pilot_arms import protected as _protected
+        pick = _protected(bot, rnd, seat)
         dec = decompose(list(pick), rnd.ordering)
         if len(dec.components) == 1 and dec.components[0].pair_len >= 2:
-            return {"action": pick, "index": ballot.index(pick)
-                    if pick in ballot else 0,
+            if not ballot or list(ballot[0]) != list(pick):
+                raise ValueError(
+                    f"{state_key}: TRACTOR_LOCK selected {pick}, which is not "
+                    f"ballot[0]. Reporting index 0 for an action missing from "
+                    f"the ballot would silently mislabel what was played.")
+            return {"action": list(pick), "index": 0,
                     "proposal_means": [], "kept_heuristic": True,
                     "n_candidates": len(ballot), "tractor_locked": True,
                     "candidate_world_rollouts": 0}

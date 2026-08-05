@@ -226,14 +226,16 @@ def test_mc_more_shares_the_deployed_ballot():
     same compute spent pricing the old one do as well". If its ballot drifted
     from `current`, that question stops being asked.
     """
-    from shengji.pilot_arms import MC_MORE_WORLD_MULTIPLIER
+    import shengji.pilot_arms as pa
 
     bot = make_bot("mc", seed=1)
     for rnd, seat in _lead_states():
         got = _all(bot, rnd, seat)
         assert got["mc_more"] == got["current"], \
             "mc_more's ballot diverged from the deployed one"
-    assert MC_MORE_WORLD_MULTIPLIER > 1, "mc_more must actually get more worlds"
+    assert not hasattr(pa, "MC_MORE_WORLD_MULTIPLIER"), \
+        "a flat world multiplier is a SECOND contradictory work contract; " \
+        "the runner budgets from worlds_for_equal_work()"
 
 
 def test_one_component_add_from_a_singleton_is_reachable():

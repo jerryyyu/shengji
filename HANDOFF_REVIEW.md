@@ -2480,3 +2480,63 @@ outcome is "the deployed decision is stable under continuation swaps", which
 tightens the interpretation of results we already have rather than moving the
 GOAL, and the RL-beats-MC objective is untouched either way. I have written it
 so you can reject it cheaply. Nothing is frozen and nothing is launched.
+
+---
+
+## Claude — 2026-08-05 15:25 EDT — I was wrong that the queue was empty; scoring-contract bug verified
+
+**Correcting myself first.** I told Jerry the queue was empty. It was not — I
+had only been reading the pilot lane. `BACKLOG.md` carries substantial unblocked
+work in Engineering/hardening, Hosting/ops, Features and Polish, none of which
+touches a gated artifact. That was a reporting failure, not an actual absence of
+work.
+
+**The scoring-contract item is a REAL and REACHABLE bug, verified in source and
+by construction rather than assumed:**
+
+1. **Level gain is uncapped in the engine, capped in the reward.**
+   `Game.finish_round()` computes `gain = (p - 80) // 40` with no cap;
+   `bc_generate.round_value()` uses `min(3, (p - 80) // 40)`. These disagree
+   whenever `p >= 240`.
+
+   It is reachable because the kitty bonus is MULTIPLIED:
+   `kitty_bonus = total_points(buried) * (KITTY_MULTIPLIER * len(final play))`.
+   Deck total is 200 points, best 8-card kitty is 80 face value, and the
+   multiplier is 2x the final play's card count. Even the smallest multiplier
+   (single-card final play, mult 2) bounds `p` at 360 -> `gain = 7` where the
+   reward models 3. A pair-plus-single final play (mult 6) bounds it at 680.
+
+   So the engine can award up to A-clamp in one round while every RL target,
+   every `round_value` label and the whole gen-v* corpus believe the maximum is
+   3. That is a train/environment contract mismatch, not cosmetic.
+
+2. **`play_game`'s tie fallback silently awards team 0.**
+   `winner = 0 if game.level_idx[0] >= game.level_idx[1] else 1`. A genuine tie
+   at `max_rounds` becomes a team-0 win. In `evaluate` with `mirrored=True` the
+   bias cancels across the pair, which is why it has not shown up; with
+   `mirrored=False`, or an odd count, it is a systematic advantage to whoever
+   sits as team 0.
+
+**I am not fixing either unilaterally, because both are decisions, not typos.**
+Capping the engine changes game rules (is a >3-level jump legitimate at Jerry's
+table? — adjacent to the 4c/4d house-rule rulings); uncapping `round_value`
+changes every historical label and the meaning of level utility, which is the
+promotion metric. The tie fallback is more clearly a defect, but changing it
+changes duel semantics and therefore comparability with past results.
+
+**One recommendation, since you asked me not to leave uncosted options:** cap
+the ENGINE at +3 to match `round_value`, and make the tie fallback report a tie
+explicitly rather than award it. That keeps every existing label and every past
+duel number valid, and it makes the engine agree with the reward the whole RL
+lane is trained against. The alternative — uncapping the reward — invalidates
+the corpus and the metric, which is a far larger blast radius for a case that
+may never have occurred in a real game.
+
+**What I do not know:** whether `p >= 240` has EVER occurred in the logged
+corpus. That is cheap to check and I will check it before anyone acts, because
+if it is unreachable in practice the urgency drops sharply even though the
+contract mismatch stands.
+
+**Jerry also asked me to request this:** if you consider the backlog stale,
+please update it. I am not out of work — the items above are real — but you may
+want to re-prioritise now that the ballot lane is closed.

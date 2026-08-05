@@ -1,33 +1,46 @@
 # Backlog
 
-## EXECUTION VIEW — 2026-08-04 23:55 EDT
+## EXECUTION VIEW — 2026-08-05 09:00 EDT
 
 One table for "what is happening and what closes it". The detailed reasoning
 for each item lives in the sections below, which Codex also maintains — this
 view is a summary, not a replacement.
 
-### NOW (ready, not yet running)
+### NOW
 
-The N=60-versus-N=30 block is closed with no confirmed advantage
-(`-0.002 +/- 0.119`); it was a superiority test, not proof of equivalence or
-saturation, and omitted rejected-world accounting. Do not repeat it without a
-new mechanism. Gate 3 raw capture is
-complete and independently validated: 768 unique/replayed rows, 256 per split,
-all 48 split/trick/role cells exactly 16, and zero accepted-path counters,
-errors, or values. The provisional DEV-512 and CALIB-512 v2 files also pass a
-1,024-state replay/count/disjointness audit, but the freeze gate is **not yet
-closed**: candidate-size stratification is recorded but not enforced, the JSON
-artifacts are ignored/unversioned, and the freezer has no fail-closed contract
-tests. **Pilot scoring remains 0/512.** Before the expensive score run, add the
-missing rejected-world evaluator counter and run the cheap exact-toy posterior
-fidelity probe: common folds reduce variance between arms but cannot remove a
-shared sampling bias in their action values.
+The immediate job is to close the freeze and runner contracts, then launch the
+DEV-512 ballot screen. The current v3 artifacts are tracked and all 1,024 rows
+independently replay, but the builder still does not enforce one identical,
+predeclared candidate-size allocation or fail closed on a short/error-bearing
+build. The runner also points at a nonexistent default and does not pin the
+artifact hash or reject experimental sampler flags. Exact work and acceptance
+criteria are in `HANDOFF_ACTIVE.md`. **Pilot scoring remains 0/512 until those
+two bounded code gates pass; it is no longer blocked on more toy-posterior
+measurement.**
+
+The sampler remains posterior-incorrect and all repair flags remain OFF. That
+is a separate P1 correctness lane. DEV is allowed to compare ballot/search
+designs under the frozen sampler actually used in production; CALIB and online
+games are still required before any strength or deployment claim.
+
+### Plain-English strength path
+
+Think of the sequence as **build the exam -> try ideas -> verify the winner ->
+play real games -> teach a model from clean answers**:
+
+| item | plain English | status / exit condition |
+|---|---|---|
+| **0. Freeze the exam** | Create two balanced lists of real lead decisions. DEV is the worksheet; CALIB is the unopened exam. No model trains on either. | **In progress.** Close exact size/role quotas and fail-closed publication, then freeze and audit v4. |
+| **1. Try ballot designs on DEV** | On the same 512 situations, ask whether smart candidate selection beats the current ballot, random extra candidates, simply spending more MC on the old ballot, and brute-force widening. | **Next compute.** One fixed run; choose one entire design or conclude none wins. |
+| **2. Verify once on CALIB** | Take the single DEV winner, lock every setting, and run it on 512 situations it never saw. This catches an idea that merely fit DEV. | **Waiting on item 1.** No tuning or second candidate after seeing CALIB. |
+| **3. Play real paired games** | Put the frozen candidate and current production MC into full games built from the same deal seeds and seat flips. This answers “does it actually win Shengji?”, not merely “does it score actions better offline?” | **Waiting on CALIB.** Must improve paired signed level utility against current MC, while a null control stays flat and every protocol counter is clean. |
+| **4. Learn from the winner** | Only after a ballot truly wins, regenerate labels for the new action space and train a model to propose/rank those actions cheaply and consistently. | **Waiting on an online win.** The learned proposer must beat simple quota, random-fill, and more-MC controls before entering production search. |
 
 ### NEXT (highest value first)
 
 | item | why it matters | gate |
 |---|---|---|
-| **0. Finish the 512-state freeze** | Provisional v2 contents pass replay, exact 170/171/171 band quotas, role balance, and DEV/CALIB disjointness, but do not implement the registered candidate-size stratum and are not in git | Predeclare an exact candidate-size allocation, implement it after band/role selection, fail closed on every shortage/mismatch, and add tests for quotas, replay, one-state-per-deal, split disjointness and provenance. Freeze new-salt v3 artifacts from a clean commit, force-add the two JSON files, register full hashes, and independently validate them; these are evaluation sets, not training corpora |
+| **0. Finish the 512-state freeze** | Current v3 bytes pass a full replay/count/disjointness audit, but the mechanism can still publish a short/error-bearing set and candidate size is only a within-deal tie-break | Enforce the exact common band-size and role marginals in `HANDOFF_ACTIVE.md`, make every mismatch fail before publication, exercise those failures in tests, then freeze new-salt v4 DEV/CALIB artifacts from clean code and independently validate all 1,024 rows |
 | **1. DEV-512 lead-ballot selection pilot** | The refreshed audit found **51.2% structured lead omission vs 0.9% follows**, almost entirely lead singles. The provisional lead forfeit was larger than follows (2.96 vs 1.01), but selected-max bias makes it directional, not “half provably improvable.” V3 proved widening alone is insufficient | Compare current, V3, random-fill, `MC-more`, fixed-14 contextual selection, and full-universe/high-compute using disjoint proposal/report worlds. Predeclare fresh-world regret, oracle-best-recall and work gates; select exactly one design or select none |
 | **2. One frozen design on untouched CALIB-512** | Offline regret has failed to predict online strength three times, so DEV selection cannot promote its own winner | Freeze the full `BallotSpec`, selector/quota, rollout allocation and thresholds before CALIB. Run the chosen design once; no post-CALIB tuning, arm substitution or pooling back into DEV. REPORT remains untouched by selection |
 | **3. Paired online strength confirmation** | A ballot can improve fixed-state regret without improving the game | On fresh deal seeds, the frozen candidate must clear arm-minus-current-MC and arm-minus-null/control bars in paired signed level utility with zero protocol failures; full-game level progression is the final deployment check. Any one-shot REPORT audit must be preregistered and cannot tune the design |

@@ -5,29 +5,8 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-### mini / N=60 vs N=30 dose test — PREREGISTERED, launched 23:40
-
-**Orthogonal lane** (BACKLOG): not a use of the 512 pilot states, and not
-permission to change the pilot's registered work budgets.
-
-- arm `mc-vstrong` (N=60) vs opponent `mc-strong` (N=30); control
-  **`mc-strong-null`** — identical to `mc-strong` with a different RNG stream.
-  Verified: same ballot digest `a68f7b8bced6`, same N=30, zero differing config
-  attributes. The N=10 `mc-null` would NOT serve here — a null must match the
-  OPPONENT or it measures a dose step instead of the noise floor.
-- PRIMARY: paired per-seed level utility, **N=60 minus N=30**, interval must
-  exclude 0. `--bar "paired_utility > 0"`.
-- 6 shards x 84 clusters = **504 seed clusters**, seeds 101,000,000-101,000,503,
-  disjoint from every prior block (93M/94M/95M/96M/99M).
-- Strict sampling, `SHENGJI_REQUIRE_VOIDS=1`.
-- **One fixed block, no extension regardless of result** (BACKLOG's wording).
-- Aggregate with `scripts/aggregate_shards.py`, never by hand.
-
-**What this can and cannot say.** It measures the N=60 step on CURRENT main.
-It does NOT re-confirm N=30 over N=10 — that result stays pinned to `e3aeec1`.
-If a wider ballot later wins independently, BACKLOG requires one final direct
-confirmation of the combination, since ballot width and determinization dose
-can interact.
+None. The next fleet job is the DEV-512 scoring pilot, but it remains on hold
+until the state-freeze gate below closes.
 
 ## FINISHED — Gate 3 raw capture (not scoring)
 
@@ -45,13 +24,13 @@ Fresh schema-v2 capture and merge completed at 23:15 from clean compiled+strict
   `ffccfde64932eb3a0129765f3ba903099f2e5c1da16a8287aebd0024f3456982`.
 
 The first v1 attempt remains recoverably quarantined. Gate 3 capture is closed;
-do not rerun it. The next blocker is the balanced DEV/CALIB freezer described
-below and in the latest `HANDOFF_REVIEW.md` entry.
+do not rerun it.
 
 ## PILOT — steps 1-4 built, SCORING AT 0/512 (Codex hold)
 
-Artifact ledger: `server/rl_data/PILOT_ARTIFACTS.md`. Current DEV engineering
-set is **v3**; v1 and v2 are superseded and restored to their frozen bytes.
+Artifact ledger: `server/rl_data/PILOT_ARTIFACTS.md`. The old
+`pilot_states.v3.json` remains an engineering-only set. New DEV/CALIB v2 files
+are provisional and must not be scored yet.
 
 **v3 is NOT the gate set.** 255 early / 254 mid / 3 late by trick index, and
 199/313 attacker/defender. Only 3 DEV deals supply a late lead state, so a
@@ -59,17 +38,25 @@ balanced broad-lead gate is not constructible from this corpus. Codex chose
 option (b): capture deep LEAD states as a new job, then freeze distinct DEV and
 CALIB artifacts.
 
-The former runner/ballot blockers are closed in code. A clean v3 engineering
-smoke ran twice in independent processes and produced the identical SHA-256
-`a926cbb013fb54188a81017394b87bf23d78f8486173603c9165fe772b3f46f1`;
-both copies passed the strict aggregator. Those eight descriptive states are
-not evidence and are not part of the 512-state result. The remaining blocker
-is the state freezer: current `pilot_states.py` omits the completed deep source,
-hard-codes DEV, and does not enforce role/candidate-size balance. Repair and
-test it before freezing distinct DEV-512/CALIB-512 artifacts. No v4 artifact
-exists and pilot scoring remains 0/512.
+The former runner/ballot blockers are closed in code. Independent validation
+replayed every provisional v2 row: 512 unique states per side, exact
+170/171/171 bands, 85/85 + 86/85 + 86/85 role counts, zero split mismatch and
+zero DEV/CALIB seed overlap. Their hashes match the ledger. They still fail
+the registered freeze contract because candidate-size strata are descriptive
+only, the files are ignored rather than committed, and the freezer does not
+fail closed or have contract tests. Predeclare the exact size allocation,
+repair/test the freezer, and create new-salt committed v3 files. Pilot scoring
+remains 0/512.
 
 ## RECENTLY FINISHED
+
+### N=60 vs N=30 dose test — NO EFFECT, closed 2026-08-04 23:46
+- Primary N=60-minus-N=30 paired utility **-0.002 +/- 0.119** over 504 fresh
+  clusters; N=60-minus-null +0.004 +/- 0.129; null-minus-N=30
+  +0.006 +/- 0.135. Every interval includes zero.
+- One preregistered block, strict sampling, no extension. Search dose has
+  saturated by N=30 on this executable; do not allocate more fleet compute to
+  N>30 without a materially different search/ballot hypothesis.
 
 ### N=30 confirmation — CONFIRMED, closed 2026-08-04 23:40
 - **+0.262 +/- 0.154** vs N=10 over 504 preregistered clusters (seeds 99M);

@@ -41,8 +41,8 @@ arms on the set that judges them.
 | `deep_lead_split.v1.json` | `9d72dcafffc1d8ac` | **IMMUTABLE** |
 | `pilot_dev512.v1.json` | `178d9efa615dd589` | SUPERSEDED — role balance was a no-op |
 | `pilot_calib512.v1.json` | `bc87dd50ae79f6d2` | SUPERSEDED — same defect |
-| `pilot_dev512.v2.json` | `d167d1f140f88d68` | **CURRENT DEV-512** |
-| `pilot_calib512.v2.json` | `90c00af09ae084b7` | **CURRENT CALIB-512** |
+| `pilot_dev512.v2.json` | `d167d1f140f88d68` | PROVISIONAL — structural audit passes; freeze contract does not |
+| `pilot_calib512.v2.json` | `90c00af09ae084b7` | PROVISIONAL — structural audit passes; freeze contract does not |
 
 v1 of each is superseded because `roles_by_band` reported `?` for every band:
 selected rows never carried a `role`, so the balancing loop found no matching
@@ -50,10 +50,20 @@ options and fell through to its "take any remaining deal" fallback on every
 iteration. The composition was right by luck of the draw; the mechanism was not
 running. v1 files are left byte-unchanged.
 
-Both v2 sets: 512 states, 512 unique deal seeds, bands 170/171/171, roles
-85/85 + 86/85 + 86/85 per band, ZERO deal overlap between DEV and CALIB, and
-no REPORT row selected in either. Frozen from a clean tree at ballot
-`a68f7b8bced6`.
+Both v2 sets were generated from a clean tree at ballot `a68f7b8bced6` and
+independently replay clean: 512 states, 512 unique deal seeds, bands
+170/171/171, roles 85/85 + 86/85 + 86/85 per band, ZERO deal overlap between
+DEV and CALIB, and no REPORT row selected in either.
 
-**These are evaluation artifacts, not training corpora.** REPORT's 256 reservoir
-rows have never been read.
+They are **not promotion-grade frozen artifacts**. `pilot_states.py` alternates
+roles, but merely reports candidate-size strata after selection; it never uses
+candidate size to select a row, contrary to the preregistration. It can also
+write fewer than the requested quota without failing, and has no contract test
+for the frozen-set invariants. Finally, all four DEV/CALIB JSON files are under
+the repository-wide `rl_data/` ignore rule and are not tracked by git, so a
+fresh clone contains only these hashes, not the purported artifacts. Keep v2
+byte-unchanged and supersede it with new-salt v3 outputs only after those
+issues are fixed and tested.
+
+**These are evaluation artifacts, not training corpora.** REPORT's 256
+reservoir rows have not been selected or scored.

@@ -1,6 +1,6 @@
 # Backlog
 
-## EXECUTION VIEW — 2026-08-04 20:40 EDT
+## EXECUTION VIEW — 2026-08-04 23:55 EDT
 
 One table for "what is happening and what closes it". The detailed reasoning
 for each item lives in the sections below, which Codex also maintains — this
@@ -8,21 +8,22 @@ view is a summary, not a replacement.
 
 ### NOW (ready, not yet running)
 
-The orthogonal N=60-versus-N=30 strength block is running. Gate 3 raw capture
-is now complete and independently validated: 768 unique/replayed rows, 256 per
-split, all 48 split/trick/role cells exactly 16, and zero accepted-path
-counters/errors/values. The balanced 512-state artifacts are **not** complete:
-`pilot_states.py` still omits the deep source, hard-codes DEV, and records
-rather than enforces role/candidate-size balance. Repair/test that freezer
-before producing v4 DEV-512 and a disjoint CALIB-512. **Pilot scoring remains
-0/512.** Posterior distribution fidelity remains P1 and still limits value
-calibration, not legality/support.
+The N=60-versus-N=30 block is closed with no effect (`-0.002 +/- 0.119`), so
+do not spend more compute on search dose above N=30. Gate 3 raw capture is
+complete and independently validated: 768 unique/replayed rows, 256 per split,
+all 48 split/trick/role cells exactly 16, and zero accepted-path counters,
+errors, or values. The provisional DEV-512 and CALIB-512 v2 files also pass a
+1,024-state replay/count/disjointness audit, but the freeze gate is **not yet
+closed**: candidate-size stratification is recorded but not enforced, the JSON
+artifacts are ignored/unversioned, and the freezer has no fail-closed contract
+tests. **Pilot scoring remains 0/512.** Posterior distribution fidelity remains
+P1 and still limits value calibration, not legality/support.
 
 ### NEXT (highest value first)
 
 | item | why it matters | gate |
 |---|---|---|
-| **0. Freeze the 512-state artifacts from the completed reservoir** | Raw schema-v2 capture is closed, but the current freezer cannot implement the registered distribution | Add the deep source and split, parameterize DEV/CALIB, enforce exact 170/171/171 band quotas plus within-band role then candidate-size balance, fail closed on shortages, and test replay/one-state-per-deal/disjointness/provenance. Freeze separate immutable DEV-512 and CALIB-512 artifacts and register their hashes; these are evaluation sets, not training corpora |
+| **0. Finish the 512-state freeze** | Provisional v2 contents pass replay, exact 170/171/171 band quotas, role balance, and DEV/CALIB disjointness, but do not implement the registered candidate-size stratum and are not in git | Predeclare an exact candidate-size allocation, implement it after band/role selection, fail closed on every shortage/mismatch, and add tests for quotas, replay, one-state-per-deal, split disjointness and provenance. Freeze new-salt v3 artifacts from a clean commit, force-add the two JSON files, register full hashes, and independently validate them; these are evaluation sets, not training corpora |
 | **1. DEV-512 lead-ballot selection pilot** | The refreshed audit found **51.2% structured lead omission vs 0.9% follows**, almost entirely lead singles. The provisional lead forfeit was larger than follows (2.96 vs 1.01), but selected-max bias makes it directional, not “half provably improvable.” V3 proved widening alone is insufficient | Compare current, V3, random-fill, `MC-more`, fixed-14 contextual selection, and full-universe/high-compute using disjoint proposal/report worlds. Predeclare fresh-world regret, oracle-best-recall and work gates; select exactly one design or select none |
 | **2. One frozen design on untouched CALIB-512** | Offline regret has failed to predict online strength three times, so DEV selection cannot promote its own winner | Freeze the full `BallotSpec`, selector/quota, rollout allocation and thresholds before CALIB. Run the chosen design once; no post-CALIB tuning, arm substitution or pooling back into DEV. REPORT remains untouched by selection |
 | **3. Paired online strength confirmation** | A ballot can improve fixed-state regret without improving the game | On fresh deal seeds, the frozen candidate must clear arm-minus-current-MC and arm-minus-null/control bars in paired signed level utility with zero protocol failures; full-game level progression is the final deployment check. Any one-shot REPORT audit must be preregistered and cannot tune the design |

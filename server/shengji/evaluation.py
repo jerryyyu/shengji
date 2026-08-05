@@ -85,6 +85,13 @@ def counters(bots) -> dict:
                                      for b in bots), 4),
             "void_fallbacks": sum(getattr(b, "impossible_worlds", 0)
                                   for b in bots),
+            # A world the constraint-correct sampler REFUSED to build. Absent
+            # until 2026-08-05, which made the N=60 lane a policy-as-run
+            # comparison rather than proof of an exact accepted dose: an arm
+            # whose worlds were silently rejected searched fewer than N of
+            # them and nothing recorded it (Codex).
+            "rejected_worlds": sum(getattr(b, "rejected_worlds", 0)
+                                   for b in bots),
             "zero_world": sum(getattr(b, "zero_world_decisions", 0)
                               for b in bots)}
 
@@ -265,6 +272,12 @@ def evaluate(arm, opponent, *, clusters=250, seed0=None, control=None, bar,
         problems.append("a net arm ran with no checkpoint digest recorded")
     if dirty:
         problems.append("tree was DIRTY: the git SHA does not describe the run")
+    rw = sum(x["arm"].get("rejected_worlds", 0) + x["opp"].get("rejected_worlds", 0)
+             for r in results.values() for x in r)
+    if rw:
+        problems.append(f"{rw} sampled worlds were REJECTED — the arms did not "
+                        f"all search their nominal dose, so this is a "
+                        f"policy-as-run comparison, not an exact-dose one")
     zw = sum(x["arm"]["zero_world"] + x["opp"]["zero_world"]
              for r in results.values() for x in r)
     if zw:

@@ -2953,3 +2953,46 @@ by your preregistration.
 
 Scoring is still 0/512: the smoke test used 8 states of the DEV engineering set
 to exercise the machinery, and no screen has been run.
+
+---
+
+## Claude — 2026-08-05 (a design call I made alone on `mc_more`; please check it)
+
+Gate 2 is built: runner, deterministic 8-state smoke, and clustered
+aggregation. The aggregator refuses runs with work-band violations, replay
+errors, or a dirty tree — that fired on my first attempt, correctly.
+
+**The question.** At the equal-work band, `mc_more - current` came out
++0.000 +/- 0.000. Not a tie: at equal work with the SAME ballot, `mc_more`
+literally IS `current`, so the control was degenerate and a naive reading would
+have called that a null result.
+
+I changed it so `mc_more` is budgeted against `full_universe`'s realised work
+rather than the band — 782 rollouts on the deployed ballot against
+full_universe's 783 — on the reading that its question is "if the deployed
+ballot were given the compute the WIDE arm spends, would it do as well?", and
+that BALLOT_PLAN's "all extra proposal compute moved into more worlds" means
+extra relative to the treatment.
+
+**I made that call alone and I would rather you set it.** Three readings I can
+see:
+
+(a) what I did — `mc_more` matches `full_universe`'s work. Answers "is a wider
+    ballot worth anything, or would that compute do as well on the old one?",
+    which is the question BALLOT_PLAN says is essential. But `full_universe` is
+    the unbounded arm, so `mc_more`'s budget then floats with hand size.
+(b) `mc_more` matches the QUOTA arm's work at a higher world count — but that
+    is the band, and there it degenerates into `current` again, so this only
+    works if the quota arm's budget is raised above `current`'s.
+(c) `mc_more` gets a fixed multiple of `current`'s work, declared in advance,
+    independent of the other arms. Stable and preregisterable, but no longer
+    tied to what any treatment actually spends.
+
+My reasoning for (a) is that the control only earns its place by answering the
+counterfactual for the arm that might win, and if `full_universe` wins on
+compute rather than sourcing then (a) is exactly what exposes it. But that
+makes the control's budget data-dependent, which I do not love.
+
+Also outstanding and not attempted: the deep-lead capture (gate 3), which is
+the fleet job and is fully specified by your preregistration. Scoring is still
+0/512 — the smoke used 8 DEV states to exercise machinery only.

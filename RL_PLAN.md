@@ -440,6 +440,70 @@ metric, and a final candidate gets a full-game confirmation. Standalone policy
 scaling remains paused; only the two bounded, faithful self-play microbaselines
 above may reopen it, and only after their implementation invariants pass.
 
+## Training-data doctrine: spend compute vertically before horizontally
+
+The important 2026-08-04 change was not simply generating more rows. The old
+pipeline spent compute **horizontally**: it collected roughly 1-2 million
+sequential self-play decisions and attached relatively low-dose N=10/N=30 or
+hybrid-teacher labels. That gave broad trajectory coverage, but each close
+action comparison was noisy, the natural deal stream overrepresented early
+play, and the available targets were irrevocably restricted to the ballot and
+sampler used during collection.
+
+`highn_corpus` spent compute **vertically** instead. It rebuilt 20,000 fixed
+states, evaluated every offered action over 240 shared hidden worlds, and
+stored action means, candidate-0 paired differences, uncertainty estimates and
+the raw state needed for replay. Common worlds make close actions much easier
+to compare than independently sampled labels. This was a useful diagnostic
+shift: it exposed the early-ply skew, quantified a low-N label ceiling and
+localized much of the actionable forfeit to lead decisions.
+
+It did **not** create a final oracle. Those labels use the pre-repair non-strict
+sampler, the old finite ballot, raw points, heuristic continuation and
+same-world selected maxima; the state distribution is overwhelmingly early.
+They estimate the specifically named quantity `Q^Heuristic(s,a)` under that
+contract, not generic state value or expected level utility. v13 fitting these
+labels substantially better offline without improving online is the durable
+warning: **higher precision cannot repair the wrong estimand, action set or
+state distribution.** Keep high-N as a replayable reservoir and provisional
+diagnostic set, not the foundation for an unqualified bulk retrain.
+
+Three artifacts must remain separate:
+
+1. A **state reservoir** stores reconstructable setup/history and a frozen
+   deal-disjoint assignment, but no action scores. The planned deep-lead
+   capture is initially this artifact, not training data.
+2. A **counterfactual teacher set** fixes the ballot, belief sampler,
+   continuation policy and utility target, then evaluates every compared
+   action on common proposal worlds with disjoint report worlds. It stores raw
+   per-world returns or sufficient paired statistics, not only the selected
+   action.
+3. An **episodic RL set** stores immutable actor identity, role-correct signed
+   terminal returns and sequential public/action history. It must not be mixed
+   with search-distillation rows as though their targets were interchangeable.
+
+The next clean teacher data is therefore earned in this order:
+
+1. retain the closed hard-validity/support certification while measuring and
+   correcting posterior weighting;
+2. use the lead pilot to select and freeze the proposal ballot;
+3. freeze deal-disjoint DEV/CALIB/REPORT state assignments *before* labels are
+   inspected, with explicit early/mid/late and attacker/defender coverage;
+4. relabel the highest-information regions first: ballot disagreements,
+   late-ply decisions and high-uncertainty states, using common proposal worlds
+   and independent report worlds;
+5. train separate lead/follow proposal or ranking heads and require untouched
+   CALIB regret/recall improvement before authorizing bulk collection;
+6. preserve REPORT for the single selected design and require a paired online
+   gate before calling the new data strength-producing.
+
+Every generated dataset must name and digest its state-selection rule, split,
+`BallotSpec`, engine, sampler, continuation policy, target/perspective, world
+budget, generator and source checkpoint. Incompatible shards are never merged
+silently. Corpus size is not progress by itself; progress is lower held-out
+decision regret under the deployment contract followed by verified online
+strength.
+
 ## Training data inventory (rebuilt from disk 2026-08-04; local + gitignored)
 
 | dataset | size | what it is | teacher | used by |

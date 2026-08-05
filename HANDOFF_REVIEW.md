@@ -2149,3 +2149,82 @@ I am also unsure whether shards 0-3 are safe to reuse if the answer is (a) —
 they were produced under the same protocol but a rerun would change the state
 set, so I would rather discard and rerun all eight than pool across two
 populations.
+
+---
+
+## Claude — 2026-08-05 12:55 EDT — DEV-512 COMPLETE. Primary includes 0: SELECT NONE
+
+**All eight shards clean, aggregated exactly once, no refusal.** This is the
+first completed DEV-512 run. Per the POST-512 contract the outcome is **select
+none** — the preregistered primary does not select a design.
+
+Run identity: 512 records, one `experiment_id` `a838d7415b4c2032`, one git
+`884030f`, phase `full`, zero sampler counters, zero work violations, zero
+replay errors, all sampler flags false. 8-shard bundle sha256
+`38f61d4a9dacac6a9ba22ef6ba8bb892...`. Aggregate retained at
+`server/runs/logs/dev512_aggregate.txt`.
+
+```
+  PRIMARY quota - random_fill              +0.110  +/- 0.337   INCLUDES 0
+  ATTRIB  full_universe - mc_more_full_work -0.495 +/- 0.477   favours mc_more
+          quota - current                  -0.094  +/- 0.419   includes 0
+          v3 - current                     -0.146  +/- 0.324   includes 0
+          random_fill - current             -0.203 +/- 0.432   includes 0
+          full_universe - current           -0.104 +/- 0.426   includes 0
+          mc_more_full_work - current       +0.391 +/- 0.343   favours mc_more
+
+  arm                  mean regret   oracle match   mean work
+  current                    0.135          30.1%         166
+  v3                         0.281          30.1%         165
+  random_fill                0.339          27.7%         165
+  quota                      0.229          29.3%         165
+  full_universe              0.239          29.1%         563
+  mc_more_full_work         -0.256          30.5%         563
+```
+
+**What this says, stated carefully.**
+
+1. **No ballot design is selected.** The primary contrast includes 0. Among the
+   four EQUAL-WORK arms, `current` has the LOWEST mean regret (0.135) and every
+   redesign is numerically worse — v3 0.281, quota 0.229, random_fill 0.339 —
+   though no pairwise contrast excludes 0. Widening, quota selection and random
+   filling all fail to beat the shipped ballot at equal work.
+
+2. **`mc_more_full_work` is NOT a ballot win and must not be read as one.** It
+   spends 563 work against 166 — it is the arm budgeted to match
+   `full_universe`, not an equal-work competitor. Its `+0.391` over `current`
+   says more search on the EXISTING ballot helps, which is a dose result we
+   already have from the N=30 lane, not a design result.
+
+3. **The one contrast that does resolve is the high-work pair**, and it favours
+   `mc_more_full_work` over `full_universe` by `-0.495 +/- 0.477`. At equal
+   (high) work, spending it on more MC over the current ballot beats brute-force
+   widening of the ballot. That is the sharpest finding here and it points away
+   from ballot redesign as the lever.
+
+Mark this **CONFIRMED as a DEV SCREEN** — one preregistered block, protocol
+clean, no extension — and NOT as a strength claim: DEV selects designs, it does
+not establish playing strength. CALIB and REPORT remain untouched and unscored.
+
+**Provenance caveat you must weigh.** This run is post-sampler-fix
+(`75b06da`, the pair-cap forward check). You had asked for either an exact
+per-suit card-code allocation or a proof of completeness AND a runtime bound; I
+delivered a necessary-condition prune with empirical evidence (92,160 draws over
+all 512 states, zero rejections, and faster than baseline at 0.08ms vs 0.4ms per
+draw) but NOT a completeness proof. If you reject that fix, this entire run is
+void and must be rerun; the seven pre-fix shards are quarantined at
+`runs/logs/quarantine_prefix_75b06da/` on both machines and were never combined
+with these.
+
+**Also deviated from the authorized placement, deliberately:** all eight shards
+ran on Mini rather than Mini 0-3 / Air 4-7, at Jerry's request and because
+single-machine removes the corpus/identity failure class that broke the first
+launch. Shard placement cannot move the estimand — selection is deterministic
+given (artifact, salt, shard-index), and I verified shard 5 reproduces
+identically on both machines before the fix. Flagging it because it differs
+from what you authorized.
+
+**What I am unsure about.** Whether `mean regret` being NEGATIVE for
+`mc_more_full_work` (-0.256) is meaningful or an artifact of how the reference
+is computed at 3.4x work; I did not investigate, because chasing it would mean
+inspecting arm internals after seeing the table.

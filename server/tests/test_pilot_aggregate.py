@@ -27,8 +27,10 @@ def _record(name, seed, *, quota=1.0, random_fill=3.0,
         "sampler_counter_deltas": {name: 0 for name in agg.SAMPLER_COUNTERS},
         "arms": {arm: {
             "regret": regrets[arm], "matched_oracle": False, "work": 168,
+            "arm_mean": 2.0 - regrets[arm],
             "report_world_digest": digest, "n_report_worlds": 2,
-            "arm_returns": [0.0, 0.0], "arm_raw_points": [40, 40],
+            "arm_returns": [2.0 - regrets[arm], 2.0 - regrets[arm]],
+            "arm_raw_points": [40, 40],
             "arm_brackets": [-1, -1],
         } for arm in ARMS},
     }
@@ -93,6 +95,27 @@ def test_different_report_world_identity_is_refused():
     run["records"][0]["arms"]["quota"]["report_world_digest"] = "other"
     with pytest.raises(agg.ProtocolError, match="different report worlds"):
         agg.validate_runs([run])
+
+
+def test_stored_regret_and_mean_must_rederive_from_retained_vectors():
+    run = _run([_record("a", 1), _record("b", 2)])
+    run["records"][0]["arms"]["quota"]["regret"] += 0.25
+    run["records"][1]["arms"]["current"]["arm_mean"] += 0.25
+    with pytest.raises(agg.ProtocolError) as exc:
+        agg.validate_runs([run])
+    assert "stored regret != returns" in str(exc.value)
+    assert "stored arm mean != returns" in str(exc.value)
+
+
+def test_short_fold_and_per_state_sampler_fallback_are_refused():
+    run = _run([_record("a", 1), _record("b", 2)])
+    run["records"][0]["fold_stats"]["report"].update(
+        accepted=1, short=1, attempts=1)
+    run["records"][1]["sampler_counter_deltas"]["impossible_worlds"] = 1
+    with pytest.raises(agg.ProtocolError) as exc:
+        agg.validate_runs([run])
+    assert "invalid report fold stats" in str(exc.value)
+    assert "forbidden sampler delta" in str(exc.value)
 
 
 def test_duplicate_state_or_deal_is_refused():

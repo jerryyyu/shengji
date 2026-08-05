@@ -132,3 +132,54 @@ def test_preplay_groups_partition_cells_without_duplicate_deal_work():
         owner = owners.pop()
         assert (split, trick, "attacker") in assignments[owner]
         assert (split, trick, "defender") in assignments[owner]
+
+
+def test_merge_refuses_missing_shards_without_occupying_final_name(
+        tmp_path, monkeypatch):
+    args = _args(tmp_path, mode="merge", shard_count=2,
+                 only_cell=["report/17/defender"])
+    monkeypatch.setattr(cap, "runtime_contract", _fake_runtime)
+    with pytest.raises(RuntimeError, match="missing artifact or manifest"):
+        cap.merge(args)
+    assert not (tmp_path / "deep.jsonl").exists()
+    assert not (tmp_path / "deep.manifest.json").exists()
+
+
+def test_merge_refuses_source_drift_across_complete_shards(
+        tmp_path, monkeypatch):
+    args = _args(tmp_path, shard_count=2, only_cell=["report/17/defender"])
+    monkeypatch.setattr(cap, "runtime_contract", _fake_runtime)
+    monkeypatch.setattr(cap, "source_digests", lambda: {"test": "1"})
+    for index in range(2):
+        args.shard_index = index
+        cap.capture(args)
+    second = cap.manifest_path(cap.shard_path(args.out, 1, 2))
+    payload = json.load(open(second))
+    payload["source_digests"] = {"test": "DIFFERENT"}
+    with open(second, "w") as fh:
+        json.dump(payload, fh)
+    args.mode = "merge"
+    with pytest.raises(RuntimeError, match="source/ballot drift"):
+        cap.merge(args)
+    assert not (tmp_path / "deep.jsonl").exists()
+
+
+@pytest.mark.parametrize("mutation,needle", [
+    (lambda manifest: manifest.update(scan_complete=False), "incomplete scan"),
+    (lambda manifest: manifest["sampler_counters"].update(rejected_worlds=1),
+     "forbidden sampler fallback"),
+    (lambda manifest: manifest.update(accepted=1), "record count"),
+    (lambda manifest: manifest.update(owned_cells=[]), "cell ownership"),
+])
+def test_shard_manifest_refusal_paths(mutation, needle, tmp_path, monkeypatch):
+    args = _args(tmp_path, shard_count=1, only_cell=["report/17/defender"])
+    monkeypatch.setattr(cap, "runtime_contract", _fake_runtime)
+    monkeypatch.setattr(cap, "source_digests", lambda: {"test": "1"})
+    cap.capture(args)
+    spath = cap.shard_path(args.out, 0, 1)
+    manifest = json.load(open(cap.manifest_path(spath)))
+    mutation(manifest)
+    problems = cap.validate_shard(manifest, [], args, 0,
+                                  cap.config_for(args, cap.parse_cells(args.only_cell)),
+                                  _fake_runtime())
+    assert any(needle in problem for problem in problems), problems

@@ -109,6 +109,18 @@ def _run_problems(data: dict, label: str) -> list[str]:
             for field in ("arm_returns", "arm_raw_points", "arm_brackets"):
                 if len(outcome.get(field, [])) != report_n:
                     problems.append(f"{where}/{arm}: missing/short {field}")
+            arm_returns = outcome.get("arm_returns", [])
+            reference_returns = record.get("reference_returns", [])
+            if len(arm_returns) == report_n and len(reference_returns) == report_n:
+                derived = sum(r - a for r, a in zip(reference_returns,
+                                                     arm_returns)) / report_n
+                if not math.isclose(outcome.get("regret", float("nan")), derived,
+                                    rel_tol=1e-12, abs_tol=1e-12):
+                    problems.append(f"{where}/{arm}: stored regret != returns")
+                arm_mean = sum(arm_returns) / report_n
+                if not math.isclose(outcome.get("arm_mean", float("nan")), arm_mean,
+                                    rel_tol=1e-12, abs_tol=1e-12):
+                    problems.append(f"{where}/{arm}: stored arm mean != returns")
     return problems
 
 

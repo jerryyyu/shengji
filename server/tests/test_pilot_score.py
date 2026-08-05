@@ -186,6 +186,37 @@ def test_rollout_is_invariant_to_hand_list_order():
         rnd.hands = original
 
 
+@pytest.mark.parametrize("seed,old_outputs", [
+    (772006, {("H5", "H5"), ("SJ",)}),
+    (772045, {("S10",), ("CQ",)}),
+])
+def test_mc_strong_decision_is_order_invariant_on_old_end_to_end_witnesses(
+        seed, old_outputs):
+    """Preserve states where the pre-fix continuation flipped MC's action.
+
+    An explicit old-boundary probe (same bot seed for every permutation) chose
+    both actions in ``old_outputs`` across eight hand orderings.  The capture
+    actor is mc-strong, so test that exact policy boundary rather than only a
+    direct `_rollout` call.
+    """
+    rnd, seat = _lead_state(seed)
+    original = [list(hand) for hand in rnd.hands]
+    decisions = []
+    try:
+        for permutation in range(8):
+            rng = random.Random(permutation)
+            for s in range(4):
+                rnd.hands[s] = list(original[s])
+                rng.shuffle(rnd.hands[s])
+            decisions.append(tuple(sorted(
+                make_bot("mc-strong", seed=123).decide_play(rnd, seat))))
+    finally:
+        rnd.hands = original
+    assert len(set(decisions)) == 1, (
+        f"mc-strong still changes action with hand list order: {decisions}; "
+        f"the old boundary emitted {old_outputs}")
+
+
 def test_choice_reproduces_deployed_margin_and_point_shy():
     """The arm must play what its POLICY would play, not the raw argmax.
 

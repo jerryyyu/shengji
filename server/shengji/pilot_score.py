@@ -142,7 +142,12 @@ def report_regret(bot, rnd, seat, report_worlds, chosen, reference_action, *,
     # by roughly sqrt(n_worlds) (Codex).
     return {"regret": mean, "within_state_half": half, "n_worlds": n,
             "arm_mean": a.mean, "reference_mean": r.mean,
-            "arm_returns": a.returns, "reference_returns": r.returns}
+            "arm_returns": a.returns, "reference_returns": r.returns,
+            # carried through, not dropped: a later change to `_score` must be
+            # re-derivable from a finished run rather than invalidating it
+            "arm_raw_points": a.raw_points, "arm_brackets": a.brackets,
+            "reference_raw_points": r.raw_points,
+            "reference_brackets": r.brackets}
 
 
 def union_ballot(ballots: dict) -> list:
@@ -194,9 +199,26 @@ def choose_action(bot, rnd, seat, proposal_worlds, ballot, *, state_key="",
     never selected on the worlds that judge it.
     """
     from .engine.cards import points as _pts
+    from .engine.combos import decompose
 
     if not ballot:
         raise ValueError(f"{state_key}: empty ballot, nothing to choose from")
+
+    # TRACTOR_LOCK fires BEFORE any search: production returns a heuristic
+    # tractor lead immediately and prices nothing. Omitting it meant `current`
+    # and `mc_more` were not executing the deployed policy — at one v3 state
+    # production plays S9 S9 S10 S10 while the pilot chooser overrode it with
+    # S10 S10 (Codex). It also costs zero candidate-world work, which the
+    # equal-work accounting has to reflect.
+    if getattr(bot, "TRACTOR_LOCK", False) and not rnd.trick.plays:
+        pick = sorted(bot._lead(rnd, seat))
+        dec = decompose(list(pick), rnd.ordering)
+        if len(dec.components) == 1 and dec.components[0].pair_len >= 2:
+            return {"action": pick, "index": ballot.index(pick)
+                    if pick in ballot else 0,
+                    "proposal_means": [], "kept_heuristic": True,
+                    "n_candidates": len(ballot), "tractor_locked": True,
+                    "candidate_world_rollouts": 0}
     scored = [score_action(bot, rnd, seat, proposal_worlds, a,
                            state_key=state_key, fold="proposal", expect=expect)
               for a in ballot]
@@ -213,4 +235,22 @@ def choose_action(bot, rnd, seat, proposal_worlds, ballot, *, state_key="",
     return {"action": list(ballot[best]), "index": best,
             "proposal_means": means,
             "kept_heuristic": best == 0,
-            "n_candidates": len(ballot)}
+            "n_candidates": len(ballot),
+            "tractor_locked": False,
+            # the real work unit: one rollout per (candidate, world). A fixed
+            # world multiplier is NOT equal work, because arms differ in ballot
+            # size — current averages 9.19 candidates against quota's 13.81.
+            "candidate_world_rollouts": len(ballot) * len(proposal_worlds)}
+
+
+def worlds_for_equal_work(target_rollouts: int, n_candidates: int) -> int:
+    """How many proposal worlds an arm needs to match a work budget.
+
+    Equal work means equal (candidate x world) rollouts, not equal worlds. A
+    flat 3x multiplier on `mc_more` would have given it 27.6 candidate-world
+    rollouts per base world against quota's 13.8 — a compute advantage dressed
+    as a control (Codex).
+    """
+    if n_candidates <= 0:
+        raise ValueError("cannot budget work for an empty ballot")
+    return max(1, round(target_rollouts / n_candidates))

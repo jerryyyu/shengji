@@ -234,3 +234,40 @@ def test_mc_more_shares_the_deployed_ballot():
         assert got["mc_more"] == got["current"], \
             "mc_more's ballot diverged from the deployed one"
     assert MC_MORE_WORLD_MULTIPLIER > 1, "mc_more must actually get more worlds"
+
+
+def test_one_component_add_from_a_singleton_is_reachable():
+    """`SJ` -> `SJ SK` was unreachable because mutations skipped len<2 bases.
+
+    Codex's witness: the hand holds SJ SK SQ and the uniform throw SJ SK never
+    appeared in the universe despite being a one-component add.
+    """
+    bot = make_bot("mc", seed=1)
+    hits = 0
+    for rnd, seat in _lead_states(n=12, seed0=786000):
+        o = rnd.ordering
+        u = {tuple(sorted(a)) for a in structured_universe(rnd, seat, bot)}
+        singles = [a for a in u if len(a) == 1]
+        for (code,) in singles[:4]:
+            eff = o.eff_suit(code)
+            spare = [c for c in rnd.hands[seat]
+                     if o.eff_suit(c) == eff and c != code]
+            if not spare:
+                continue
+            grown = tuple(sorted([code, sorted(spare)[0]]))
+            if grown in u:
+                hits += 1
+    assert hits > 0, "no one-component add from a singleton reached the universe"
+
+
+def test_throw_archetypes_are_distinguished():
+    """Without a throw class the safe/near-boss/speculative quotas cannot
+    operate — every multi-component action fell in one bucket."""
+    bot = make_bot("mc", seed=1)
+    classes = set()
+    for rnd, seat in _lead_states(n=12, seed0=787000):
+        for a in structured_universe(rnd, seat, bot):
+            classes.add(archetype(rnd, seat, a)[-1])
+    assert "single_component" in classes
+    assert len(classes & {"safe", "near_boss", "speculative"}) >= 2, \
+        f"throws were not differentiated: {classes}"

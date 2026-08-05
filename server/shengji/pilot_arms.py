@@ -126,18 +126,17 @@ def _component_mutations(rnd, seat, base) -> list[list[str]]:
     for c in rnd.hands[seat]:
         by_suit.setdefault(o.eff_suit(c), []).append(c)
     for action in base:
-        if len(action) < 2:
-            continue
+        # Singletons included: adding one card to `SJ` is the one-component add
+        # that reaches the held uniform throw `SJ SK`, and skipping len<2 made
+        # that unreachable however wide the ballot got (Codex).
         eff = o.eff_suit(action[0])
         dec = decompose(list(action), o)
         comps = [list(c.cards) for c in dec.components]
-        if len(comps) < 1:
-            continue
         pool = list(by_suit.get(eff, []))
         for c in action:
             if c in pool:
                 pool.remove(c)
-        for i in range(len(comps)):
+        for i in range(len(comps) if len(comps) > 1 else 0):
             # REMOVE one component
             rest = [c for j, comp in enumerate(comps) if j != i for c in comp]
             if rest:
@@ -201,10 +200,25 @@ def archetype(rnd, seat, action) -> tuple:
     before = decompose(same, o).n_pairs
     after = decompose([c for c in left if o.eff_suit(c) == eff], o).n_pairs
     breaks = after < before - dec.n_pairs
+    # Throw class, so the safe / near-boss / speculative quotas BALLOT_PLAN
+    # promises can actually operate — without it every multi-component action
+    # fell into one undifferentiated bucket (Codex).
+    if len(dec.components) > 1:
+        from .ai.memory import Memory
+        mem = Memory(rnd, seat)
+        tops = [c.top for c in dec.components]
+        if all(mem.higher_unseen(eff, t) == 0 for t in tops):
+            throw = "safe"
+        elif max(mem.higher_unseen(eff, t) for t in tops) <= 2:
+            throw = "near_boss"
+        else:
+            throw = "speculative"
+    else:
+        throw = "single_component"
     return (shape, "trump" if is_trump else "side", rank,
             "pts" if pts else "nopts",
             "void" if creates_void else "keep",
-            "breaks" if breaks else "intact")
+            "breaks" if breaks else "intact", throw)
 
 
 def _rng(seed, state_key, arm) -> random.Random:

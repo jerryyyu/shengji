@@ -210,3 +210,77 @@ def test_raw_points_and_brackets_are_preserved():
     assert len(s.raw_points) == 5 and len(s.brackets) == 5
     assert all(b == bracket(p) for b, p in zip(s.brackets, s.raw_points))
     assert bracket(0) == -3 and bracket(80) == 0 and bracket(120) == 1
+
+
+def test_tractor_lock_returns_immediately_with_zero_work():
+    """Production returns a heuristic tractor lead WITHOUT searching.
+
+    Omitting the lock meant `current` and `mc_more` were not executing the
+    deployed policy: at one v3 state production plays S9 S9 S10 S10 while the
+    chooser overrode it with S10 S10 (Codex). The zero work matters too — an
+    arm that pays for search it never did is not equal-work.
+    """
+    from shengji.engine.combos import decompose
+    from shengji.pilot_score import choose_action
+
+    bot = make_bot("mc", seed=4)
+    assert bot.TRACTOR_LOCK, "precondition: the deployed policy locks tractors"
+    found = 0
+    for k in range(60):
+        try:
+            rnd, seat = _lead_state(779100 + k * 17)
+        except AssertionError:
+            continue
+        pick = sorted(bot._lead(rnd, seat))
+        d = decompose(list(pick), rnd.ordering)
+        if not (len(d.components) == 1 and d.components[0].pair_len >= 2):
+            continue
+        found += 1
+        mem = Memory(rnd, seat)
+        fw = draw_folds(bot, rnd, seat, mem,
+                        {"proposal": 4, "oracle": 2, "report": 2},
+                        salt="t", state_key="s")
+        ballot = propose("current", bot, rnd, seat, budget=14, seed=1,
+                         state_key="s")
+        got = choose_action(bot, rnd, seat, fw.worlds["proposal"], ballot,
+                            state_key="s", expect=4)
+        assert got["tractor_locked"], "the lock did not fire"
+        assert got["action"] == pick, "locked state did not play the heuristic pick"
+        assert got["candidate_world_rollouts"] == 0, \
+            "a locked decision searched nothing but was charged for work"
+        if found >= 2:
+            return
+    pytest.skip("no protected-tractor lead state in the sampled range")
+
+
+def test_equal_work_is_candidate_worlds_not_worlds():
+    """A flat world multiplier is a compute advantage dressed as a control.
+
+    current averages 9.19 candidates and quota 13.81, so 3x current would be
+    27.6 candidate-world rollouts against quota's 13.8 (Codex).
+    """
+    from shengji.pilot_score import worlds_for_equal_work
+
+    budget = 13.81 * 12          # quota's work at 12 proposal worlds
+    assert worlds_for_equal_work(round(budget), 9) > 12, \
+        "a smaller ballot must get MORE worlds to match the same work"
+    assert worlds_for_equal_work(round(budget), 23) < 12, \
+        "a larger ballot must get FEWER worlds to match the same work"
+    with pytest.raises(ValueError):
+        worlds_for_equal_work(100, 0)
+
+
+def test_regret_carries_raw_points_and_brackets():
+    """Dropped by report_regret before; a finished run must stay auditable."""
+    rnd, seat = _lead_state()
+    bot = make_bot("mc", seed=4)
+    mem = Memory(rnd, seat)
+    fw = draw_folds(bot, rnd, seat, mem, {"proposal": 2, "oracle": 2, "report": 4},
+                    salt="t", state_key="s")
+    action = propose("current", bot, rnd, seat, budget=14, seed=1,
+                     state_key="s")[0]
+    out = report_regret(bot, rnd, seat, fw.worlds["report"], action, action,
+                        state_key="s", expect=4)
+    for k in ("arm_raw_points", "arm_brackets", "reference_raw_points",
+              "reference_brackets"):
+        assert len(out[k]) == 4, f"{k} was dropped"

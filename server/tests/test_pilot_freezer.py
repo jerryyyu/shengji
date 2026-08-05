@@ -44,8 +44,8 @@ def test_registered_quota_is_170_171_171():
     assert sum(PS.BAND_QUOTA.values()) == 512
 
 
-@pytest.mark.parametrize("name", ["pilot_dev512.v3.json",
-                                  "pilot_calib512.v3.json"])
+@pytest.mark.parametrize("name", ["pilot_dev512.v4.json",
+                                  "pilot_calib512.v4.json"])
 def test_no_selected_state_belongs_to_the_REPORT_split(name):
     """REPORT membership checked against the DECLARED SPLIT FILES.
 
@@ -73,7 +73,7 @@ def test_no_selected_state_belongs_to_the_REPORT_split(name):
     assert checked == 512, f"only {checked} states resolved against a split"
 
 
-@pytest.mark.parametrize("name", ["pilot_dev512.v3.json", "pilot_calib512.v3.json"])
+@pytest.mark.parametrize("name", ["pilot_dev512.v4.json", "pilot_calib512.v4.json"])
 def test_frozen_artifact_meets_the_contract(name):
     d = _load(name)
     assert d["selected"] == 512
@@ -134,9 +134,11 @@ def test_freezer_refuses_a_dirty_tree_and_an_existing_path():
         "an existing frozen path must be unconditionally non-overwritable"
 
 
-def test_every_selected_state_replays():
-    """A state that cannot be rebuilt cannot be scored."""
-    d = _load("pilot_dev512.v3.json")
+@pytest.mark.parametrize("art", ["pilot_dev512.v4.json",
+                                 "pilot_calib512.v4.json"])
+def test_every_selected_state_replays(art):
+    """A state that cannot be rebuilt cannot be scored. All 1,024 rows."""
+    d = _load(art)
     # ALL of them. Sampling six of 512 leaves a 1-in-85 chance of touching any
     # given bad state, so the previous version could pass with dozens of
     # unreplayable rows (Codex).
@@ -202,6 +204,15 @@ def test_check_contract_refuses_duplicate_deals():
     assert any("duplicate deal seeds" in v for v in bad), bad
 
 
+def test_v4_passes_the_full_contract():
+    """The published sets must satisfy every registered marginal."""
+    import json
+    for art in ("pilot_dev512.v4.json", "pilot_calib512.v4.json"):
+        d = _load(art)
+        bad = PS.check_contract(d["states"], d["requested"], d["replay_errors"])
+        assert not bad, f"{art}: {bad}"
+
+
 def test_the_frozen_v3_sets_FAIL_the_size_quota_as_registered():
     """Guards against the check being vacuous.
 
@@ -210,8 +221,7 @@ def test_the_frozen_v3_sets_FAIL_the_size_quota_as_registered():
     """
     import json
     import pilot_states as P
-    with open("rl_data/pilot_dev512.v3.json") as fh:
-        d = json.load(fh)
+    d = _load("pilot_dev512.v3.json")
     bad = P.check_contract(d["states"], d["requested"], d["replay_errors"])
     assert any("size" in v for v in bad), "size quota is not being enforced"
 

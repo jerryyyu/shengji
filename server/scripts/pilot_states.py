@@ -180,6 +180,12 @@ def main() -> None:
                     # computed AFTER selection popped rows, so the figure
                     # described the residual pool, not the selected set (Codex)
                     "stratum": st, "is_banker_seat": seat == rnd.banker,
+                    # Carried onto the row. Without it the role-balancing loop
+                    # below found no matching options, fell through to its
+                    # "take any remaining deal" fallback every iteration, and
+                    # reported `?` in the manifest — a mechanism that looked
+                    # implemented and was not.
+                    "role": "attacker" if rnd.is_attacker(seat) else "defender",
                     "tricks": len(rnd.history),
                     "band": ("early" if len(rnd.history) < 5 else
                              "mid" if len(rnd.history) < 12 else "late"),

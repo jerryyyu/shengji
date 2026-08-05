@@ -275,12 +275,8 @@ def protected(bot, rnd, seat) -> list[str]:
     S2 and D2 — in both engines (Codex). The `_candidates` fix did not cover
     this because `_lead` is called from outside it.
     """
-    saved = rnd.hands[seat]
-    rnd.hands[seat] = sorted(saved)
-    try:
-        return sorted(bot._lead(rnd, seat))
-    finally:
-        rnd.hands[seat] = saved
+    # ONE shared boundary with production's TRACTOR_LOCK path.
+    return bot.canonical_lead(rnd, seat)
 
 
 def propose(arm: str, bot, rnd, seat, *, budget: int, seed: int,

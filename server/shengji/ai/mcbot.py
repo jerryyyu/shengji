@@ -123,7 +123,7 @@ class MCBot(SmartBot):
         self.last_eval = None  # (candidates, per-candidate values) for distillation
         self.last_n_worlds = 0  # worlds that actually sampled — 0 means NO search
         if self.TRACTOR_LOCK and not rnd.trick.plays:
-            pick = self._lead(rnd, seat)
+            pick = self.canonical_lead(rnd, seat)
             dec = decompose(pick, rnd.ordering)
             if len(dec.components) == 1 and dec.components[0].pair_len >= 2:
                 return pick
@@ -248,6 +248,22 @@ class MCBot(SmartBot):
         return float(clone.attacker_points)
 
     # ------------------------------------------------------------- candidates
+    def canonical_lead(self, rnd: Round, seat: int) -> list[str]:
+        """SmartBot's lead pick, through the canonical hand order.
+
+        THE shared boundary. `_lead` walks the hand, so its pick depended on
+        list order; the TRACTOR_LOCK path in `decide_play` called it raw and
+        therefore returned different leads for the same state. That is a
+        PRODUCTION actor-distribution defect, not just a pilot one — a capture
+        self-played through it inherits the wrong distribution (Codex).
+        """
+        saved = rnd.hands[seat]
+        rnd.hands[seat] = sorted(saved)
+        try:
+            return sorted(self._lead(rnd, seat))
+        finally:
+            rnd.hands[seat] = saved
+
     def _candidates(self, rnd: Round, seat: int) -> list[list[str]]:
         """The ballot. CANONICALISED in the seat's hand order.
 

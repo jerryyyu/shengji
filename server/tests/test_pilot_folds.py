@@ -144,3 +144,29 @@ def test_caller_rng_object_is_restored():
                salt="t", state_key="s3")
     assert bot.rng is before_obj, "a NEW Random was installed, not the original"
     assert bot.rng.getstate() == before, "the bot's RNG state was not restored"
+
+
+def test_fold_stats_name_every_requested_and_failed_draw(monkeypatch):
+    rnd, seat = _state()
+    mem = Memory(rnd, seat)
+    bot = make_bot("mc", seed=11)
+    real = bot._sample_hands
+    calls = 0
+
+    def reject_first(*args):
+        nonlocal calls
+        calls += 1
+        return None if calls == 1 else real(*args)
+
+    monkeypatch.setattr(bot, "_sample_hands", reject_first)
+    counts = {"proposal": 2, "oracle": 2, "report": 2}
+    drawn = draw_folds(bot, rnd, seat, mem, counts, salt="t", state_key="stats")
+    stats = drawn.stats()
+    assert set(stats) == set(FOLDS)
+    assert stats["proposal"] == {
+        "requested": 2, "accepted": 2, "attempts": 3, "rejected": 1,
+        "short": 0, "collision_within": stats["proposal"]["collision_within"],
+        "collision_cross": stats["proposal"]["collision_cross"],
+    }
+    assert all(stats[f]["requested"] == stats[f]["accepted"] == 2
+               for f in FOLDS)

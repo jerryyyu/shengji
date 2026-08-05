@@ -232,8 +232,14 @@ class MCBot(SmartBot):
                            sampled: dict[int, list[str]],
                            bury_cards: list[str]) -> float:
         clone: Round = copy.copy(rnd)
-        clone.hands = [list(sampled.get(s, rnd.hands[s])) for s in range(4)]
-        clone.hands[seat] = list(rnd.hands[seat])
+        # A determinization is a CARD MULTISET per seat.  The sampler's list
+        # order is incidental, but HeuristicBot walks hands in list order.  A
+        # rollout therefore used to assign different values to the same world
+        # after nothing more than a hand permutation, and one changed value
+        # was enough to flip MC's argmax.  Canonicalise at the rollout-policy
+        # boundary so every continuation sees one representation of a world.
+        clone.hands = [sorted(sampled.get(s, rnd.hands[s])) for s in range(4)]
+        clone.hands[seat] = sorted(rnd.hands[seat])
         clone.buried = []
         clone.trick = None
         clone.last_trick = None
@@ -699,9 +705,13 @@ class MCBot(SmartBot):
     def _rollout(self, rnd: Round, seat: int, sampled: dict[int, list[str]],
                  buried: list[str], candidate: list[str]) -> float:
         clone: Round = copy.copy(rnd)
-        clone.hands = [list(sampled.get(s, rnd.hands[s])) for s in range(4)]
-        clone.hands[seat] = list(rnd.hands[seat])
-        clone.buried = list(buried)
+        # Sampled hands represent multisets, not sequences.  HeuristicBot's
+        # continuation policy is intentionally simple and walks a list, so it
+        # must receive a canonical representation or `_rollout` is a function
+        # of sampler insertion order rather than of the game state.
+        clone.hands = [sorted(sampled.get(s, rnd.hands[s])) for s in range(4)]
+        clone.hands[seat] = sorted(rnd.hands[seat])
+        clone.buried = sorted(buried)
         assert rnd.trick is not None
         clone.trick = Trick(
             leader=rnd.trick.leader,

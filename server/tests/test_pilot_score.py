@@ -152,6 +152,40 @@ def test_scoring_is_deterministic_for_a_fixed_fold():
     assert a.returns == b.returns, "rollout scoring is not reproducible"
 
 
+def test_rollout_is_invariant_to_hand_list_order():
+    """A sampled world is a multiset per seat, never a list-order policy knob.
+
+    Before the rollout boundary canonicalised hands, permuting an otherwise
+    identical world changed HeuristicBot's continuation and therefore MC's
+    action values (2/25 probed lead states, amplified to 25/25 decisions).
+    """
+    rnd, seat = _lead_state(780321)
+    bot = make_bot("mc", seed=17)
+    mem = Memory(rnd, seat)
+    sampled = bot._sample_hands(rnd, seat, mem)
+    assert sampled is not None
+    hands, buried = sampled
+    candidate = list(bot._candidates(rnd, seat)[0])
+    expected = bot._rollout(rnd, seat, hands, buried, candidate)
+
+    original = [list(h) for h in rnd.hands]
+    try:
+        for k in range(8):
+            rng = random.Random(9000 + k)
+            for hand in rnd.hands:
+                rng.shuffle(hand)
+            permuted = {s: list(h) for s, h in hands.items()}
+            for hand in permuted.values():
+                rng.shuffle(hand)
+            pburied = list(buried)
+            pcandidate = list(candidate)
+            rng.shuffle(pburied)
+            rng.shuffle(pcandidate)
+            assert bot._rollout(rnd, seat, permuted, pburied, pcandidate) == expected
+    finally:
+        rnd.hands = original
+
+
 def test_choice_reproduces_deployed_margin_and_point_shy():
     """The arm must play what its POLICY would play, not the raw argmax.
 
@@ -284,3 +318,41 @@ def test_regret_carries_raw_points_and_brackets():
     for k in ("arm_raw_points", "arm_brackets", "reference_raw_points",
               "reference_brackets"):
         assert len(out[k]) == 4, f"{k} was dropped"
+
+
+def test_precomputed_report_scores_remove_duplicate_rollouts(monkeypatch):
+    """Six arms must not price the same frozen reference six times."""
+    rnd, seat = _lead_state()
+    bot = make_bot("mc", seed=4)
+    mem = Memory(rnd, seat)
+    fw = draw_folds(bot, rnd, seat, mem,
+                    {"proposal": 2, "oracle": 2, "report": 4},
+                    salt="t", state_key="cache")
+    action = propose("current", bot, rnd, seat, budget=14, seed=1,
+                     state_key="cache")[0]
+    calls = 0
+    original_rollout = bot._rollout
+
+    def counted(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original_rollout(*args, **kwargs)
+
+    monkeypatch.setattr(bot, "_rollout", counted)
+    scored = score_action(bot, rnd, seat, fw.worlds["report"], action,
+                          state_key="cache", fold="report", expect=4)
+    before = calls
+    out = report_regret(
+        bot, rnd, seat, fw.worlds["report"], action, action,
+        state_key="cache", expect=4, arm_scored=scored,
+        reference_scored=scored)
+    assert calls == before, "cached report score still reran rollouts"
+    assert out["regret"] == 0
+
+    wrong = Scored(action=tuple(sorted(action)), returns=list(scored.returns),
+                   state_key="other", fold="report",
+                   world_keys=scored.world_keys)
+    with pytest.raises(ValueError, match="different identity"):
+        report_regret(bot, rnd, seat, fw.worlds["report"], action, action,
+                      state_key="cache", expect=4, arm_scored=wrong,
+                      reference_scored=scored)

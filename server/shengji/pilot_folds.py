@@ -79,11 +79,18 @@ class FoldedWorlds:
 
     state_key: str
     worlds: dict = field(default_factory=dict)     # fold -> list[(hands, extra)]
+    requested: dict = field(default_factory=dict)
+    attempts: dict = field(default_factory=dict)
+    rejected_by_fold: dict = field(default_factory=dict)
     rejected: int = 0
     collisions: int = 0
 
     def keys(self, fold: str) -> set:
         return {world_key(h, e) for h, e in self.worlds[fold]}
+
+    def ordered_keys(self, fold: str) -> tuple:
+        """World identity in scoring order (duplicates deliberately retained)."""
+        return tuple(world_key(h, e) for h, e in self.worlds[fold])
 
     def shared_keys(self) -> int:
         """How many worlds coincide across folds. DIAGNOSTIC, never an error.
@@ -100,6 +107,24 @@ class FoldedWorlds:
             seen |= ks
         return shared
 
+    def stats(self) -> dict:
+        """Auditable requested/accepted/rejected/short/collision counts."""
+        result = {}
+        key_sets = {fold: self.keys(fold) for fold in FOLDS}
+        for fold in FOLDS:
+            ordered = self.ordered_keys(fold)
+            other = set().union(*(key_sets[f] for f in FOLDS if f != fold))
+            result[fold] = {
+                "requested": self.requested[fold],
+                "accepted": len(self.worlds[fold]),
+                "attempts": self.attempts[fold],
+                "rejected": self.rejected_by_fold[fold],
+                "short": self.requested[fold] - len(self.worlds[fold]),
+                "collision_within": len(ordered) - len(set(ordered)),
+                "collision_cross": len(set(ordered) & other),
+            }
+        return result
+
 
 def draw_folds(bot, rnd, seat, mem, counts: dict, *, salt: str,
                state_key: str, max_attempts_factor: int = 40) -> FoldedWorlds:
@@ -111,6 +136,7 @@ def draw_folds(bot, rnd, seat, mem, counts: dict, *, salt: str,
     Coincidences are counted for reporting only.
     """
     out = FoldedWorlds(state_key=state_key)
+    out.requested = {fold: int(counts[fold]) for fold in FOLDS}
     original_rng = bot.rng          # restore the OBJECT, not a copy of state
     try:
         for fold in FOLDS:
@@ -126,6 +152,8 @@ def draw_folds(bot, rnd, seat, mem, counts: dict, *, salt: str,
                     continue
                 got.append(sampled)
             out.worlds[fold] = got
+            out.attempts[fold] = attempts
+            out.rejected_by_fold[fold] = attempts - len(got)
     finally:
         bot.rng = original_rng
     out.collisions = out.shared_keys()

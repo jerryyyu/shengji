@@ -1,132 +1,202 @@
-"""Aggregate a pilot run into paired contrasts clustered by deal.
-
-The runner deliberately prints per-state means and calls them descriptive. This
-is the file that produces an experiment number, and it treats one STATE as one
-cluster — the pilot set is one state per deal, so states are independent and
-`states x worlds` is not. Pooling worlds as observations would understate the
-interval by roughly sqrt(n_worlds), which is the same correlated-cluster error
-that killed six strength claims.
-
-Contrasts, in the order they matter:
-
-  * **quota minus random_fill** is PRIMARY. Beating `current` only shows a
-    differently shaped ballot helps; beating random fill AT THE SAME BUDGET is
-    the selector's actual claim. V3 is the precedent — it widened exactly where
-    the coverage audit pointed and its random-fill control scored higher.
-  * **quota minus current** is necessary but not sufficient: an arm that beats
-    random fill while losing to the deployed ballot has earned nothing.
-  * **mc_more minus current** asks whether spending the same work on more
-    worlds over the OLD ballot does as well. If it does, the simpler bot wins.
-  * `full_universe` is reported but is not a control — it has more compute by
-    design and answers "what is reachable", not "is selection working".
-
-Refuses to report when the run recorded work-band violations or replay errors:
-a number computed over a run that failed its own invariants is not evidence.
-
-    uv run python scripts/pilot_aggregate.py runs/logs/pilot_smoke.json
-"""
+"""Validate and aggregate paired lead-pilot shards, clustered by deal/state."""
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import sys
 
-#: The selector's claim: better SELECTION at the same budget.
 PRIMARY = ("quota", "random_fill")
-
-#: The wide arm's claim, against its OWN matched-work control. Without this the
-#: pilot never asks whether `full_universe` wins on SOURCING or merely on
-#: compute — `full_universe - current` compares it to an arm with a fraction of
-#: its work, which it should beat for that reason alone (Codex).
 ATTRIBUTION = ("full_universe", "mc_more_full_work")
+SECONDARY = [
+    ("quota", "current"), ("v3", "current"), ("v3", "random_fill"),
+    ("random_fill", "current"), ("full_universe", "current"),
+    ("mc_more_full_work", "current"),
+]
+RUN_SCHEMA = "lead-ballot-pilot-v1"
+SAMPLER_COUNTERS = ("zero_world_decisions", "rejected_worlds",
+                    "impossible_worlds")
 
-SECONDARY = [("quota", "current"),          # necessary, not sufficient
-             ("v3", "current"),             # V3 had no contrast at all
-             ("v3", "random_fill"),
-             ("random_fill", "current"),
-             ("full_universe", "current"),  # dose, not attribution
-             ("mc_more_full_work", "current")]
+
+class ProtocolError(ValueError):
+    pass
+
+
+def stable_digest(value) -> str:
+    return hashlib.sha256(json.dumps(
+        value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def paired(records, a, b, field="regret"):
-    """Mean per-STATE difference with a clustered interval.
-
-    Lower regret is better, so the difference is reported as `b - a`: positive
-    means `a` has LESS regret than `b`, i.e. `a` is better.
-    """
-    d = [r["arms"][b][field] - r["arms"][a][field] for r in records
-         if a in r["arms"] and b in r["arms"]]
+    """Per-state ``b-a``; positive means arm ``a`` has lower regret."""
+    d = [record["arms"][b][field] - record["arms"][a][field]
+         for record in records]
     n = len(d)
     if n < 2:
-        return 0.0, float("inf"), n
-    m = sum(d) / n
-    var = sum((x - m) ** 2 for x in d) / (n - 1)
-    return m, 1.96 * math.sqrt(var / n), n
+        return (sum(d) / n if n else 0.0), float("inf"), n
+    mean = sum(d) / n
+    var = sum((value - mean) ** 2 for value in d) / (n - 1)
+    return mean, 1.96 * math.sqrt(var / n), n
+
+
+def _run_problems(data: dict, label: str) -> list[str]:
+    problems = []
+    records = data.get("records", [])
+    required = data.get("required_arms", [])
+    report_n = data.get("report_worlds")
+    if data.get("schema") != RUN_SCHEMA:
+        problems.append(f"{label}: wrong schema")
+    if not data.get("complete"):
+        problems.append(f"{label}: run is not complete")
+    if data.get("tree_dirty"):
+        problems.append(f"{label}: dirty tree")
+    if data.get("work_violations"):
+        problems.append(f"{label}: work-band violations")
+    if data.get("replay_errors"):
+        problems.append(f"{label}: replay errors")
+    if data.get("protocol_failures"):
+        problems.append(f"{label}: runner protocol failures")
+    if any(data.get("sampler_counter_totals", {}).get(name, 0)
+           for name in SAMPLER_COUNTERS):
+        problems.append(f"{label}: forbidden sampler counter")
+    if not required or len(required) != len(set(required)):
+        problems.append(f"{label}: invalid required-arm declaration")
+    if len(records) != data.get("n_states"):
+        problems.append(f"{label}: {len(records)} records != n_states "
+                        f"{data.get('n_states')}")
+
+    seen = set()
+    for index, record in enumerate(records):
+        where = f"{label}/record-{index}"
+        state = record.get("state")
+        if state in seen:
+            problems.append(f"{where}: duplicate state {state}")
+        seen.add(state)
+        arms = record.get("arms", {})
+        if set(arms) != set(required):
+            problems.append(f"{where}: required arms not present exactly once")
+            continue
+        keys = record.get("report_world_keys")
+        if not isinstance(keys, list) or len(keys) != report_n:
+            problems.append(f"{where}: report-world identity/count")
+            continue
+        digest = record.get("report_world_digest")
+        if digest != stable_digest(keys):
+            problems.append(f"{where}: report-world digest")
+        for field in ("reference_returns", "reference_raw_points",
+                      "reference_brackets"):
+            if len(record.get(field, [])) != report_n:
+                problems.append(f"{where}: missing/short {field}")
+        stats = record.get("fold_stats", {})
+        if set(stats) != {"proposal", "oracle", "report"}:
+            problems.append(f"{where}: fold stats missing")
+        else:
+            for fold, stat in stats.items():
+                names = {"requested", "accepted", "attempts", "rejected",
+                         "short", "collision_within", "collision_cross"}
+                if set(stat) != names or stat["short"] != 0 \
+                        or stat["accepted"] != stat["requested"]:
+                    problems.append(f"{where}: invalid {fold} fold stats")
+        if any(record.get("sampler_counter_deltas", {}).get(name, 0)
+               for name in SAMPLER_COUNTERS):
+            problems.append(f"{where}: forbidden sampler delta")
+        for arm, outcome in arms.items():
+            if outcome.get("report_world_digest") != digest:
+                problems.append(f"{where}/{arm}: different report worlds")
+            if outcome.get("n_report_worlds") != report_n:
+                problems.append(f"{where}/{arm}: report count")
+            for field in ("arm_returns", "arm_raw_points", "arm_brackets"):
+                if len(outcome.get(field, [])) != report_n:
+                    problems.append(f"{where}/{arm}: missing/short {field}")
+    return problems
+
+
+def validate_runs(datas: list[dict], labels: list[str] | None = None):
+    """Return merged records or raise on any completeness/provenance defect."""
+    if not datas:
+        raise ProtocolError("no run shards supplied")
+    labels = labels or [f"run-{i}" for i in range(len(datas))]
+    problems = []
+    for data, label in zip(datas, labels):
+        problems.extend(_run_problems(data, label))
+
+    common_fields = ("schema", "git", "ballot", "experiment_id",
+                     "states_sha256", "required_arms", "shard_count",
+                     "experiment_n_states", "budget", "work_target", "band",
+                     "report_worlds", "oracle_worlds", "full_proposal_worlds",
+                     "salt")
+    first = datas[0]
+    for index, data in enumerate(datas[1:], 1):
+        for field in common_fields:
+            if data.get(field) != first.get(field):
+                problems.append(f"run-{index}: mixed {field}")
+    shard_count = first.get("shard_count")
+    indices = [data.get("shard_index") for data in datas]
+    if not isinstance(shard_count, int) or shard_count <= 0:
+        problems.append("invalid shard count")
+    elif sorted(indices) != list(range(shard_count)):
+        problems.append(f"shards {sorted(indices)} != required "
+                        f"{list(range(shard_count))}")
+
+    records = [record for data in datas for record in data.get("records", [])]
+    states = [record.get("state") for record in records]
+    deals = [record.get("deal_seed") for record in records]
+    if len(states) != len(set(states)):
+        problems.append("duplicate state across shards")
+    if len(deals) != len(set(deals)):
+        problems.append("more than one state from a deal")
+    if len(records) != first.get("experiment_n_states"):
+        problems.append(f"merged {len(records)} records != experiment_n_states "
+                        f"{first.get('experiment_n_states')}")
+    if not records:
+        problems.append("no records")
+    if problems:
+        raise ProtocolError("; ".join(problems))
+    return records, first
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("run")
-    ap.add_argument("--allow-failed-run", action="store_true")
+    ap.add_argument("runs", nargs="+")
     args = ap.parse_args()
+    datas = [json.load(open(path)) for path in args.runs]
+    try:
+        records, manifest = validate_runs(datas, args.runs)
+    except ProtocolError as exc:
+        print(f"REFUSING: {exc}", file=sys.stderr)
+        raise SystemExit(3)
 
-    data = json.load(open(args.run))
-    recs = data["records"]
-    problems = []
-    if data.get("work_violations"):
-        problems.append(f"{len(data['work_violations'])} work-band violations")
-    if data.get("replay_errors"):
-        problems.append(f"{data['replay_errors']} replay errors")
-    if data.get("tree_dirty"):
-        problems.append("tree was DIRTY: the git SHA does not describe the run")
-    if problems and not args.allow_failed_run:
-        print("REFUSING to aggregate a run that failed its own invariants:")
-        for p in problems:
-            print(f"  - {p}")
-        print("A number computed over such a run is not evidence.")
-        sys.exit(3)
-
-    seen = {r["state"] for r in recs}
-    if len(seen) != len(recs):
-        print(f"REFUSING: {len(recs)} records over {len(seen)} distinct states "
-              f"— a repeated state is a repeated cluster.")
-        sys.exit(3)
-
-    print(f"run {data['git']}  states {len(recs)}  ballot {data['ballot']}")
-    print(f"work target {data['work_target']} +/- {data['band']*100:.0f}%\n")
+    print(f"run {manifest['git']}  states {len(records)}  "
+          f"ballot {manifest['ballot']}")
+    print(f"work target {manifest['work_target']} +/- "
+          f"{manifest['band']*100:.0f}%\n")
     print(f"{'contrast':34} {'diff':>9} {'95% CI':>10}  n   verdict")
+    for label, (arm, control) in (("PRIMARY", PRIMARY),
+                                  ("ATTRIB ", ATTRIBUTION)):
+        mean, half, n = paired(records, arm, control)
+        verdict = (f"FAVOURS {arm}" if mean - half > 0 else
+                   f"FAVOURS {control}" if mean + half < 0 else "INCLUDES 0")
+        print(f"{label + ' ' + arm + ' - ' + control:34} {mean:+9.3f} "
+              f"{half:10.3f} {n:3d}  {verdict}")
+    for arm, control in SECONDARY:
+        mean, half, n = paired(records, arm, control)
+        verdict = (f"favours {arm}" if mean - half > 0 else
+                   f"favours {control}" if mean + half < 0 else "includes 0")
+        print(f"{'  ' + arm + ' - ' + control:34} {mean:+9.3f} "
+              f"{half:10.3f} {n:3d}  {verdict}")
 
-    for label, (a, b) in (("PRIMARY", PRIMARY), ("ATTRIB ", ATTRIBUTION)):
-        if a not in recs[0]["arms"] or b not in recs[0]["arms"]:
-            print(f"{label + '  ' + a + ' - ' + b:34} {'MISSING ARM':>20}")
-            continue
-        m, ci, n = paired(recs, a, b)
-        verdict = ("FAVOURS " + a if m - ci > 0 else
-                   "FAVOURS " + b if m + ci < 0 else "INCLUDES 0")
-        print(f"{label + ' ' + a + ' - ' + b:34} {m:+9.3f} {ci:10.3f} "
-              f"{n:3d}  {verdict}")
-    for x, y in SECONDARY:
-        if x not in recs[0]["arms"] or y not in recs[0]["arms"]:
-            continue
-        m, ci, n = paired(recs, x, y)
-        v = ("favours " + x if m - ci > 0 else
-             "favours " + y if m + ci < 0 else "includes 0")
-        print(f"{'  ' + x + ' - ' + y:34} {m:+9.3f} {ci:10.3f} {n:3d}  {v}")
-
-    print(f"\n{'arm':16} {'mean regret':>12} {'oracle match':>13} "
+    print(f"\n{'arm':24} {'mean regret':>12} {'oracle match':>13} "
           f"{'mean work':>10}")
-    for arm in sorted(recs[0]["arms"]):
-        rs = [r["arms"][arm]["regret"] for r in recs]
-        mo = [r["arms"][arm]["matched_oracle"] for r in recs]
-        wk = [r["arms"][arm]["work"] for r in recs]
-        print(f"{arm:16} {sum(rs)/len(rs):12.3f} "
-              f"{100*sum(mo)/len(mo):12.1f}% {sum(wk)/len(wk):10.0f}")
-
-    print("\nOne STATE is one cluster; the pilot set is one state per deal. "
-          "Worlds are NOT observations.")
-    print("Diagnostic only, never a gate: oracle-best recall. Coverage-flavoured "
-          "statistics have been measured and known insufficient twice.")
+    for arm in manifest["required_arms"]:
+        regrets = [record["arms"][arm]["regret"] for record in records]
+        matches = [record["arms"][arm]["matched_oracle"] for record in records]
+        work = [record["arms"][arm]["work"] for record in records]
+        print(f"{arm:24} {sum(regrets)/len(regrets):12.3f} "
+              f"{100*sum(matches)/len(matches):12.1f}% "
+              f"{sum(work)/len(work):10.0f}")
+    print("\nOne state/deal is one cluster. Worlds are paired Monte Carlo draws, "
+          "not independent experiment observations.")
 
 
 if __name__ == "__main__":

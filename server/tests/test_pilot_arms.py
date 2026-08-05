@@ -290,7 +290,8 @@ def test_replace_emits_same_size_components_with_multiplicity():
     out = {tuple(sorted(a))
            for a in _component_mutations(_R(), 0, [["S3", "S3", "S5"]])}
     assert ("S4", "S4", "S5") in out, "pair replacement absent"
-    assert ("S4", "S5", "S6") in out, "distinct replacement absent"
+    assert ("S4", "S5", "S6") not in out, \
+        "pair replacement changed shape into two singletons"
 
 
 def test_remove_and_replace_are_exercised_not_just_add():
@@ -310,13 +311,60 @@ def test_remove_and_replace_are_exercised_not_just_add():
 
 
 def test_mutation_bound_matches_brute_force():
-    """The universe must equal the CLOSURE of the stated rule, independently
-    enumerated. "Bounded neighbourhood" was claimed while only the
-    lexicographically first spare card was added (Codex)."""
+    """Exact-set check against an independently enumerated mutation oracle."""
     import itertools as it
-    from collections import Counter as C
 
+    from shengji.engine.cards import Ordering
     from shengji.engine.combos import decompose
+    from shengji.pilot_arms import _component_mutations
+
+    def oracle(hand, base, o):
+        """Brute-force ADD/REMOVE/REPLACE without calling the implementation.
+
+        Replacement candidates are physical sub-multisets of the spare pool;
+        decomposition is used only as the rules-level shape predicate.
+        """
+        expected = set()
+        for action in base:
+            dec = decompose(list(action), o)
+            pool = list(hand)
+            for c in action:
+                pool.remove(c)
+            for c in set(pool):
+                expected.add(tuple(sorted(list(action) + [c])))
+            for i, comp in enumerate(dec.components):
+                rest = [c for j, other in enumerate(dec.components) if j != i
+                        for c in other.cards]
+                if len(dec.components) > 1:
+                    expected.add(tuple(sorted(rest)))
+                # Enumerate physical index subsets, then independently accept
+                # exactly one component whose shape matches the removed one.
+                for idxs in it.combinations(range(len(pool)), len(comp.cards)):
+                    repl = [pool[j] for j in idxs]
+                    rd = decompose(repl, o)
+                    if len(rd.components) != 1:
+                        continue
+                    rc = rd.components[0]
+                    if rc.pair_len == comp.pair_len:
+                        expected.add(tuple(sorted(rest + repl)))
+        return expected
+
+    cases = [
+        (["S3", "S4", "S5"], [["S3"]]),
+        (["S3", "S3", "S4", "S4", "S5", "S6"],
+         [["S3", "S3", "S5"]]),
+        (["S3", "S3", "S4", "S4", "S5", "S5", "S6", "S6", "S8"],
+         [["S3", "S3", "S4", "S4", "S8"]]),
+    ]
+    o = Ordering("H", "7")
+    for hand, base in cases:
+        class _R:
+            ordering = o
+            hands = [list(hand), [], [], []]
+        got = {tuple(sorted(a)) for a in _component_mutations(_R(), 0, base)}
+        assert got == oracle(hand, base, o), (
+            f"mutation mismatch for {hand}/{base}: missing "
+            f"{oracle(hand, base, o) - got}, extra {got - oracle(hand, base, o)}")
 
     bot = make_bot("mc", seed=1)
     for rnd, seat in _lead_states(n=6, seed0=791000):
@@ -337,6 +385,39 @@ def test_mutation_bound_matches_brute_force():
                 assert grown in u, (
                     f"one-component ADD {base} + {c} = {grown} is missing; "
                     f"the universe is not the closure of the stated bound")
+
+
+def test_mutation_bound_live_hand_sweep_has_no_order_hidden_or_overuse_leak():
+    """Broad deterministic sweep beyond the three exact small-hand oracles."""
+    from collections import Counter
+    from shengji.pilot_arms import _component_mutations
+
+    bot = make_bot("mc", seed=1)
+    checked = 0
+    for rnd, seat in _lead_states(n=24, seed0=794000):
+        base = bot._candidates(rnd, seat)
+        expected = {tuple(sorted(a))
+                    for a in _component_mutations(rnd, seat, base)}
+        hand = Counter(rnd.hands[seat])
+        assert all(not (Counter(action) - hand) for action in expected), \
+            "mutation emitted cards the acting seat does not hold"
+
+        saved = [list(cards) for cards in rnd.hands]
+        try:
+            # Reverse the actor's representation and erase all hidden hands.
+            # A public proposer may use its own cards, never the true deal.
+            rnd.hands[seat] = list(reversed(rnd.hands[seat]))
+            for other in range(4):
+                if other != seat:
+                    rnd.hands[other] = []
+            got = {tuple(sorted(a))
+                   for a in _component_mutations(rnd, seat,
+                                                  list(reversed(base)))}
+            assert got == expected, "mutation read list order or a hidden hand"
+        finally:
+            rnd.hands = saved
+        checked += len(expected)
+    assert checked > 250, f"broad sweep exercised only {checked} mutations"
 
 
 def test_the_SK_SQ_witness_is_present():

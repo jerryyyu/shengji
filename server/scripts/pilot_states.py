@@ -68,6 +68,9 @@ def digest(path):
 
 def replay(row):
     """Rebuild a corpus row to its decision point, verified against the deck."""
+    if row.get("schema") == "deep-lead-state-v1":
+        from shengji.state_replay import replay_deep_lead
+        return replay_deep_lead(row)
     seed = row["seed"]
     game = Game(random.Random(seed))
     rnd = game.start_round()

@@ -117,17 +117,36 @@ def oracle_reference(bot, rnd, seat, oracle_worlds, union_actions, *,
 
 
 def report_regret(bot, rnd, seat, report_worlds, chosen, reference_action, *,
-                  state_key="", expect=None):
+                  state_key="", expect=None, arm_scored: Scored | None = None,
+                  reference_scored: Scored | None = None):
     """Paired regret of `chosen` against the frozen reference, on REPORT worlds.
 
     Positive regret means the arm's action did worse than the reference. Both
     are re-scored here: the oracle's own fold estimate is a selected maximum
     and must never be reused as the reference's value.
     """
-    a = score_action(bot, rnd, seat, report_worlds, chosen,
-                     state_key=state_key, fold="report", expect=expect)
-    r = score_action(bot, rnd, seat, report_worlds, reference_action,
-                     state_key=state_key, fold="report", expect=expect)
+    # A six-arm run used to score the identical frozen reference SIX times per
+    # state, and score duplicate chosen actions again too.  Accept precomputed
+    # scores so the runner can cache by action.  Validate identity as strictly
+    # as a fresh score: a cache hit from another state/fold/world vector would
+    # otherwise create a very fast, very plausible wrong result.
+    from .pilot_folds import world_key
+    keys = tuple(world_key(h, e) for h, e in report_worlds)
+
+    def use(scored, action):
+        if scored is None:
+            return score_action(bot, rnd, seat, report_worlds, action,
+                                state_key=state_key, fold="report", expect=expect)
+        if (scored.action != tuple(sorted(action))
+                or scored.state_key != state_key or scored.fold != "report"
+                or scored.world_keys != keys):
+            raise ValueError("precomputed report score has different identity")
+        if expect is not None and len(scored.returns) != expect:
+            raise ValueError("precomputed report score has wrong world count")
+        return scored
+
+    a = use(arm_scored, chosen)
+    r = use(reference_scored, reference_action)
     diffs = r.paired_diff(a)              # reference minus arm
     n = len(diffs)
     mean = sum(diffs) / n if n else 0.0
@@ -142,6 +161,7 @@ def report_regret(bot, rnd, seat, report_worlds, chosen, reference_action, *,
     # by roughly sqrt(n_worlds) (Codex).
     return {"regret": mean, "within_state_half": half, "n_worlds": n,
             "arm_mean": a.mean, "reference_mean": r.mean,
+            "world_keys": a.world_keys,
             "arm_returns": a.returns, "reference_returns": r.returns,
             # carried through, not dropped: a later change to `_score` must be
             # re-derivable from a finished run rather than invalidating it

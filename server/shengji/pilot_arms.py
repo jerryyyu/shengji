@@ -24,7 +24,6 @@ proposal worlds away from report worlds.
 from __future__ import annotations
 
 import hashlib
-import itertools
 import random
 from collections import Counter
 
@@ -123,8 +122,9 @@ def _component_mutations(rnd, seat, base) -> list[list[str]]:
 
       ADD      A + [c]                for EVERY c in S
       REMOVE   A minus one component  (only when A has >1 component)
-      REPLACE  (A minus component i) + one spare component of the same SIZE,
-               for every component i and every same-size disjoint spare run
+      REPLACE  (A minus component i) + one disjoint spare component of the
+               same SHAPE: singleton -> singleton, pair -> pair, and a
+               k-tractor -> another k-tractor
 
     Adding only the lexicographically first spare was not this bound: from a
     hand holding `SJ SK SQ` it produced `SJ SK` and `SJ SQ` but never the
@@ -149,21 +149,27 @@ def _component_mutations(rnd, seat, base) -> list[list[str]]:
         for c in action:
             if c in pool:
                 pool.remove(c)
-        for i in range(len(comps) if len(comps) > 1 else 0):
-            # REMOVE one component
-            rest = [c for j, comp in enumerate(comps) if j != i for c in comp]
-            if rest:
+        for i, comp in enumerate(dec.components):
+            rest = [c for j, other in enumerate(dec.components) if j != i
+                    for c in other.cards]
+            # REMOVE is defined only when another component survives.
+            if len(dec.components) > 1:
                 out.append(sorted(rest))
-            # REPLACE with every same-size spare component, WITH MULTIPLICITY.
-            # `combinations(set(pool), need)` cannot produce a pair from two
-            # copies of one code, so from hand S3 S3 S4 S4 S5 S6 and base
-            # S3 S3 S5 the required `S4 S4 S5` was absent while `S4 S5 S6`
-            # appeared — the invariant the docstring claimed was false (Codex).
-            need = len(comps[i])
-            pc = Counter(pool)
-            for combo in set(itertools.combinations(sorted(pool), need)):
-                if all(pc[c] >= n for c, n in Counter(combo).items()):
-                    out.append(sorted(rest + list(combo)))
+
+            # REPLACE preserves component shape, not merely card count.  The
+            # old combinations(pool, size) admitted S4-S5 in place of S3-S3,
+            # silently changing one pair into two singles.  Cross-shape
+            # mutations may be useful later, but they are a different arm.
+            replacements: list[list[str]]
+            if comp.pair_len == 0:             # singleton -> singleton
+                replacements = [[c] for c in sorted(set(pool))]
+            elif comp.pair_len == 1:           # pair -> pair
+                replacements = [[c, c] for c, n in sorted(Counter(pool).items())
+                                if n >= 2]
+            else:                              # k-tractor -> k-tractor
+                replacements = find_tractor_runs(pool, o, comp.pair_len)
+            for replacement in replacements:
+                out.append(sorted(rest + list(replacement)))
         # ADD: every spare card in the suit, not just the first
         for c in sorted(set(pool)):
             out.append(sorted(list(action) + [c]))

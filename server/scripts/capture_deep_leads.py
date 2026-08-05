@@ -1,35 +1,24 @@
-"""Capture deep LEAD states, to Codex's preregistration.
+"""Capture and merge the preregistered deep-lead raw-state reservoir.
 
-The corpus cannot supply a balanced broad-lead gate: only 3 DEV deals hold any
-lead state at trick index >= 12, because the late supplement's depth is in
-PLIES and most of its deep rows are follows. So the states are captured rather
-than mined.
+The real artifact is 3 splits x tricks 12..19 x two leader roles x 16 rows.
+Split and target trick are hash-derived before play; role is observed at the
+assigned target and never steered.  Capture shards use disjoint seed residues,
+retain their first 16 candidates per cell, and scan a fixed exclusive ceiling.
+The merge sorts the union by seed and takes the global first 16, so worker
+completion order cannot select the corpus.
 
-**The cell structure is fixed in advance and filled exactly.**
+Capture one shard (repeat for every index):
 
-    768 accepted states, one per deal
-      = 3 splits (DEV / CALIB / REPORT)
-      x 8 exact trick indices (12..19)
-      x 2 leader roles (attacker / defender)
-      x 16 states per cell
+    SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 uv run python \
+      scripts/capture_deep_leads.py capture --shard-count 8 --shard-index 0
 
-**Split and target trick are derived from a named hash stream BEFORE the deal
-is played.** That is the whole point: choosing them afterwards would let the
-capture prefer deals that happened to reach a convenient depth, and the depth
-distribution is exactly what is being controlled. If a deal does not reach its
-assigned target with the required leader role, it is REJECTED and counted —
-never substituted with an easier depth.
+Merge only after all shards completed:
 
-Raw setup and history only. No candidate values, no worlds, no arm scores;
-REPORT is frozen at capture and must stay untouched until a design and its
-gate are locked.
+    SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 uv run python \
+      scripts/capture_deep_leads.py merge --shard-count 8
 
-Fail-closed: refuses a dirty tree, requires strict void-respecting sampling,
-and stops at a predeclared maximum seed rather than running until the cells
-happen to fill.
-
-    SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 \\
-    uv run python scripts/capture_deep_leads.py --max-seeds 40000
+Capture produces raw setup/history only.  It never enumerates a pilot ballot,
+draws scoring folds, or touches arm values; REPORT remains frozen.
 """
 from __future__ import annotations
 
@@ -40,188 +29,508 @@ import os
 import random
 import subprocess
 import sys
-import time
 from collections import Counter, defaultdict
+from dataclasses import dataclass
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from shengji.ai.registry import make_bot          # noqa: E402
-from shengji.engine.game import Game              # noqa: E402
+from shengji.ai.registry import make_bot                       # noqa: E402
+from shengji.engine.game import Game                           # noqa: E402
+from shengji.state_replay import (DEEP_LEAD_STATE_SCHEMA,      # noqa: E402
+                                  replay_deep_lead)
 
 SPLITS = ("dev", "calib", "report")
-TRICKS = tuple(range(12, 20))          # exact trick indices
+TRICKS = tuple(range(12, 20))
 ROLES = ("attacker", "defender")
-PER_CELL = 16                          # 3 x 8 x 2 x 16 = 768
+PER_CELL = 16
+SEED0 = 92_000_000
+MAX_SEEDS = 60_000                 # exclusive: seed0 <= seed < seed0 + n
+SALT = "deep-leads-v1"
+BOT = "mc-strong"
+SHARD_SCHEMA = "deep-lead-shard-v1"
+MANIFEST_SCHEMA = "deep-lead-manifest-v1"
+SPLIT_SCHEMA = "deep-lead-split-v1"
 
 
-def cell_targets(seed: int, salt: str):
-    """(split, target trick) for a deal, decided BEFORE it is played.
+def sha256_file(path: str | os.PathLike) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
-    Hash-derived so the assignment cannot drift with what the deal turns out to
-    contain. The leader ROLE is not assigned — it is whatever the deal produces
-    at that trick — so role cells fill by rejection, not by steering.
-    """
+
+def git_output(*args: str) -> str:
+    return subprocess.run(["git", *args], check=True, capture_output=True,
+                          text=True).stdout.strip()
+
+
+def cell_targets(seed: int, salt: str) -> tuple[str, int]:
+    """Split and target trick for a deal, fixed before any cards are played."""
     h = hashlib.sha256(f"{salt}|deal|{seed}".encode()).digest()
-    split = SPLITS[h[0] % len(SPLITS)]
-    trick = TRICKS[h[1] % len(TRICKS)]
-    return split, trick
+    return SPLITS[h[0] % len(SPLITS)], TRICKS[h[1] % len(TRICKS)]
 
 
-def play_to_trick(seed: int, target: int, bot_name: str):
-    """Self-play a deal to the START of `target`, returning the lead state.
+def cell_name(cell: tuple[str, int, str]) -> str:
+    return f"{cell[0]}/{cell[1]}/{cell[2]}"
 
-    Returns None if the round ends first — that deal is rejected, not retried
-    at a shallower depth.
-    """
+
+def all_cells() -> set[tuple[str, int, str]]:
+    return {(split, trick, role) for split in SPLITS for trick in TRICKS
+            for role in ROLES}
+
+
+def parse_cells(values: list[str]) -> set[tuple[str, int, str]]:
+    if not values:
+        return all_cells()
+    out = set()
+    for value in values:
+        try:
+            split, trick_s, role = value.split("/")
+            cell = (split, int(trick_s), role)
+        except (ValueError, TypeError):
+            raise ValueError(f"invalid --only-cell {value!r}; use dev/12/attacker")
+        if cell not in all_cells():
+            raise ValueError(f"invalid --only-cell {value!r}")
+        out.add(cell)
+    return out
+
+
+def sibling(path: str, infix: str, suffix: str) -> str:
+    p = Path(path)
+    stem = p.name[:-6] if p.name.endswith(".jsonl") else p.name
+    return str(p.with_name(stem + infix + suffix))
+
+
+def shard_path(base: str, index: int, count: int) -> str:
+    return sibling(base, f".shard-{index:03d}-of-{count:03d}", ".jsonl")
+
+
+def manifest_path(path: str) -> str:
+    return sibling(path, "", ".manifest.json")
+
+
+def split_path(base: str) -> str:
+    return str(Path(base).with_name("deep_lead_split.v1.json"))
+
+
+def write_json(path: str, payload: dict) -> None:
+    with open(path, "x") as fh:
+        json.dump(payload, fh, sort_keys=True, indent=2)
+        fh.write("\n")
+
+
+def source_digests() -> dict[str, str]:
+    """Executable boundaries that define actor, sampler, engine and replay."""
+    import shengji.ai.heuristic as heuristic
+    import shengji.ai.mcbot as mcbot
+    import shengji.ai.memory as memory
+    import shengji.ai.registry as registry
+    import shengji.ai.smart as smart
+    import shengji.engine.combos as combos
+    import shengji.engine.fast as fast
+    import shengji.engine.legal as legal
+    import shengji.engine.round as round_mod
+    import shengji.state_replay as state_replay
+
+    paths = {
+        "capture": __file__, "mcbot_sampler": mcbot.__file__,
+        "memory": memory.__file__, "registry": registry.__file__,
+        "heuristic_rollout": heuristic.__file__, "smart_actor": smart.__file__,
+        "engine_round": round_mod.__file__, "engine_legal": legal.__file__,
+        "engine_combos": combos.__file__, "state_replay": state_replay.__file__,
+    }
+    if not fast.HAVE_FAST or fast._fast is None:
+        raise RuntimeError("compiled engine is unavailable")
+    paths["compiled_engine"] = fast._fast.__file__
+    return {name: sha256_file(path) for name, path in sorted(paths.items())}
+
+
+def runtime_contract(*, smoke: bool, bot: str, per_cell: int) -> dict:
+    if os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
+        raise RuntimeError("set SHENGJI_REQUIRE_VOIDS=1")
+    if os.environ.get("SHENGJI_FAST") != "1":
+        raise RuntimeError("set SHENGJI_FAST=1; compiled execution is mandatory")
+    from shengji.engine import combos, fast
+    if not fast.HAVE_FAST or combos.decompose is not fast.decompose:
+        raise RuntimeError("SHENGJI_FAST=1 did not activate the compiled engine")
+    if bot != BOT:
+        raise RuntimeError(f"actor must be {BOT!r}, got {bot!r}")
+    if not smoke and per_cell != PER_CELL:
+        raise RuntimeError(f"real capture requires exactly {PER_CELL} per cell")
+    dirty = git_output("status", "--porcelain")
+    if dirty and not smoke:
+        raise RuntimeError("real capture refuses a dirty tree")
+    return {"git": git_output("rev-parse", "HEAD"), "tree_dirty": bool(dirty),
+            "fast_engine": True, "require_voids": True}
+
+
+def sampler_counters(policies) -> tuple[dict[str, int], Counter]:
+    totals = {name: sum(int(getattr(bot, name, 0)) for bot in policies)
+              for name in ("zero_world_decisions", "rejected_worlds",
+                           "impossible_worlds")}
+    causes = Counter()
+    for bot in policies:
+        causes.update(getattr(bot, "reject_cause", {}))
+    return totals, causes
+
+
+@dataclass
+class DealOutcome:
+    rnd: object
+    seat: int | None
+    setup: dict
+    plays: list[dict]
+    policies: list
+
+    @property
+    def reached(self) -> bool:
+        return self.seat is not None
+
+
+def play_to_trick(seed: int, target: int, bot_name: str = BOT) -> DealOutcome:
+    """Self-play to the start of exactly ``target`` and retain replay inputs."""
     game = Game(random.Random(seed))
     rnd = game.start_round()
-    # deterministic per-seat RNGs, distinct per seat and per deal
-    pol = [make_bot(bot_name, seed=seed * 4 + s) for s in range(4)]
+    policies = [make_bot(bot_name, seed=seed * 4 + seat) for seat in range(4)]
+    declarations: list[dict] = []
     while rnd.phase == "deal":
-        s, _, _ = rnd.deal_next()
-        cs = pol[s].decide_declare(rnd, s)
-        if cs:
-            rnd.declare(s, cs)
-    for s in range(4):
-        cs = pol[s].decide_declare(rnd, s, final=True)
-        if cs:
-            rnd.declare(s, cs)
+        seat, _, _ = rnd.deal_next()
+        cards = policies[seat].decide_declare(rnd, seat)
+        if cards:
+            rnd.declare(seat, cards)
+            declarations.append({"stage": "deal", "deal_pos": rnd._deal_pos,
+                                 "seat": seat, "cards": list(cards)})
+    for seat in range(4):
+        cards = policies[seat].decide_declare(rnd, seat, final=True)
+        if cards:
+            rnd.declare(seat, cards)
+            declarations.append({"stage": "final", "deal_pos": rnd._deal_pos,
+                                 "seat": seat, "cards": list(cards)})
     rnd.finalize_declare()
     assert rnd.banker is not None
-    buried = pol[rnd.banker].decide_bury(rnd, rnd.banker)
-    setup = {"deck": list(rnd.deck), "banker": rnd.banker,
-             "trump_rank": rnd.trump_rank, "buried": list(buried)}
+    buried = policies[rnd.banker].decide_bury(rnd, rnd.banker)
+    final_decl = None if rnd.declaration is None else {
+        "seat": rnd.declaration["seat"], "cards": list(rnd.declaration["cards"]),
+        "strength": rnd.declaration["strength"],
+    }
+    setup = {
+        "deck": list(rnd.deck), "initial_banker": None,
+        "trump_rank": rnd.trump_rank, "banker": rnd.banker,
+        "trump_suit": rnd.trump_suit, "trump_is_nt": rnd.trump_is_nt,
+        "declarations": declarations, "final_declaration": final_decl,
+        "buried": list(buried),
+    }
     rnd.bury(rnd.banker, buried)
     plays: list[dict] = []
     while rnd.phase == "play":
-        if len(rnd.history) == target and rnd.trick is not None \
-                and not rnd.trick.plays:
-            seat = rnd.turn
-            return rnd, seat, setup, plays, pol
-        s = rnd.turn
-        if s is None:
+        if (len(rnd.history) == target and rnd.trick is not None
+                and not rnd.trick.plays):
+            return DealOutcome(rnd, rnd.turn, setup, plays, policies)
+        seat = rnd.turn
+        if seat is None:
             break
-        cards = pol[s].decide_play(rnd, s)
-        rnd.play(s, list(cards))
-        plays.append({"seat": s, "cards": list(cards)})
-    return None
+        cards = policies[seat].decide_play(rnd, seat)
+        # IllegalPlay and every other engine exception intentionally propagate.
+        rnd.play(seat, list(cards))
+        plays.append({"seat": seat, "cards": list(cards)})
+    return DealOutcome(rnd, None, setup, plays, policies)
+
+
+def config_for(args, cells) -> dict:
+    return {
+        "seed0": args.seed0, "max_seeds": args.max_seeds,
+        "seed_ceiling_exclusive": args.seed0 + args.max_seeds,
+        "salt": args.salt, "bot": args.bot, "per_cell": args.per_cell,
+        "shard_count": args.shard_count,
+        "cells": sorted(cell_name(c) for c in cells),
+        "actor_seed_formula": "deal_seed * 4 + seat",
+        "split_target_stream": "sha256(salt|deal|seed)",
+        "report_frozen": True, "smoke": args.smoke,
+    }
+
+
+def capture(args) -> int:
+    cells = parse_cells(args.only_cell)
+    runtime = runtime_contract(smoke=args.smoke, bot=args.bot,
+                               per_cell=args.per_cell)
+    if not 0 <= args.shard_index < args.shard_count:
+        raise RuntimeError("shard index must satisfy 0 <= index < count")
+    out = shard_path(args.out, args.shard_index, args.shard_count)
+    partial = out + ".partial"
+    mpath = manifest_path(out)
+    for path in (out, partial, mpath):
+        if os.path.exists(path):
+            raise RuntimeError(f"refusing to overwrite {path}")
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+
+    config = config_for(args, cells)
+    digests = source_digests()
+    from shengji.engine.ballot import mc_ballot
+    ballot = str(mc_ballot(make_bot(args.bot, seed=1)))
+    kept: dict[tuple[str, int, str], int] = {cell: 0 for cell in cells}
+    reject_reasons = Counter()
+    sampler_totals = Counter()
+    sampler_causes = Counter()
+    accepted = scanned = played = 0
+    last_seed = None
+
+    with open(partial, "x") as fh:
+        for seed in range(args.seed0 + args.shard_index,
+                          args.seed0 + args.max_seeds, args.shard_count):
+            scanned += 1
+            last_seed = seed
+            split, target = cell_targets(seed, args.salt)
+            possible = [(split, target, role) for role in ROLES
+                        if (split, target, role) in cells]
+            if not possible:
+                reject_reasons["unassigned_preplay_cell"] += 1
+                continue
+            if all(kept[cell] >= args.per_cell for cell in possible):
+                reject_reasons["local_cell_cap"] += 1
+                continue
+
+            played += 1
+            result = play_to_trick(seed, target, args.bot)
+            counters, causes = sampler_counters(result.policies)
+            sampler_totals.update(counters)
+            sampler_causes.update(causes)
+            forbidden = {k: v for k, v in counters.items() if v}
+            if forbidden:
+                raise RuntimeError(f"seed {seed} hit forbidden sampler counters: "
+                                   f"{forbidden}")
+            if not result.reached:
+                reject_reasons["round_ended_before_target"] += 1
+                continue
+            rnd, seat = result.rnd, result.seat
+            assert seat is not None
+            role = "attacker" if rnd.is_attacker(seat) else "defender"
+            cell = (split, target, role)
+            if cell not in cells:
+                reject_reasons["unselected_role"] += 1
+                continue
+            if kept[cell] >= args.per_cell:
+                reject_reasons["local_role_cap"] += 1
+                continue
+
+            row = {
+                "schema": DEEP_LEAD_STATE_SCHEMA,
+                "seed": seed, "split": split, "trick": target, "role": role,
+                "seat": seat, "ply": len(result.plays),
+                "setup": result.setup, "plays": result.plays,
+            }
+            # Round-trip before the row is allowed into even a shard.
+            replay_deep_lead(row)
+            fh.write(json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n")
+            kept[cell] += 1
+            accepted += 1
+            if all(n >= args.per_cell for n in kept.values()):
+                break  # later local seeds cannot enter the global first 16
+        fh.flush()
+        os.fsync(fh.fileno())
+
+    payload = {
+        "schema": SHARD_SCHEMA, **runtime, "config": config,
+        "source_digests": digests, "ballot": ballot,
+        "shard_index": args.shard_index, "shard_count": args.shard_count,
+        "seed_residue": args.shard_index, "scan_complete": True,
+        "stopped": ("local_cell_cap" if all(n >= args.per_cell for n in kept.values())
+                    else "exclusive_seed_ceiling"),
+        "scanned_seeds": scanned, "played_deals": played,
+        "last_seed": last_seed, "accepted": accepted,
+        "records_sha256": sha256_file(partial),
+        "cell_candidates": {cell_name(c): kept[c] for c in sorted(kept)},
+        "reject_reasons": dict(sorted(reject_reasons.items())),
+        "sampler_counters": dict(sampler_totals),
+        "sampler_reject_causes": dict(sorted(sampler_causes.items())),
+        "illegal_actions": 0, "engine_errors": 0, "scored_values": 0,
+    }
+    write_json(mpath + ".partial", payload)
+    os.replace(mpath + ".partial", mpath)
+    # The data path is the shard completion marker and moves last.
+    os.replace(partial, out)
+    print(f"wrote shard {out}: {accepted} candidates from {played} played deals "
+          f"({scanned} assigned seed positions)")
+    return 0
+
+
+def load_jsonl(path: str) -> list[dict]:
+    with open(path) as fh:
+        return [json.loads(line) for line in fh if line.strip()]
+
+
+def select_candidates(rows: list[dict], cells: set[tuple[str, int, str]],
+                      per_cell: int) -> tuple[list[dict], dict[str, int]]:
+    """Global first-N selection, independent of shard or completion order."""
+    by_cell = defaultdict(list)
+    for row in rows:
+        by_cell[(row["split"], row["trick"], row["role"])].append(row)
+    selected, shortages = [], {}
+    for cell in sorted(cells):
+        candidates = sorted(by_cell[cell], key=lambda row: row["seed"])
+        if len(candidates) < per_cell:
+            shortages[cell_name(cell)] = per_cell - len(candidates)
+        selected.extend(candidates[:per_cell])
+    selected.sort(key=lambda row: row["seed"])
+    return selected, shortages
+
+
+def validate_shard(manifest: dict, rows: list[dict], args, index: int,
+                   expected_config: dict, expected_runtime: dict) -> list[str]:
+    problems = []
+    if manifest.get("schema") != SHARD_SCHEMA:
+        problems.append(f"shard {index}: schema")
+    if manifest.get("shard_index") != index or manifest.get("shard_count") != args.shard_count:
+        problems.append(f"shard {index}: identity")
+    if manifest.get("config") != expected_config:
+        problems.append(f"shard {index}: config drift")
+    for key in ("git", "tree_dirty", "fast_engine", "require_voids"):
+        if manifest.get(key) != expected_runtime[key]:
+            problems.append(f"shard {index}: runtime {key} drift")
+    if not manifest.get("scan_complete"):
+        problems.append(f"shard {index}: incomplete scan")
+    if manifest.get("accepted") != len(rows):
+        problems.append(f"shard {index}: record count")
+    if manifest.get("records_sha256") != sha256_file(shard_path(args.out, index, args.shard_count)):
+        problems.append(f"shard {index}: record digest")
+    if manifest.get("illegal_actions") or manifest.get("engine_errors") or manifest.get("scored_values"):
+        problems.append(f"shard {index}: forbidden failure/value counter")
+    if any(manifest.get("sampler_counters", {}).get(k, 0)
+           for k in ("zero_world_decisions", "rejected_worlds", "impossible_worlds")):
+        problems.append(f"shard {index}: forbidden sampler fallback")
+    allowed = {"schema", "seed", "split", "trick", "role", "seat", "ply",
+               "setup", "plays"}
+    for row in rows:
+        if set(row) != allowed or row.get("schema") != DEEP_LEAD_STATE_SCHEMA:
+            problems.append(f"shard {index}: non-raw or wrong-schema row")
+            break
+        if (row["seed"] - args.seed0) % args.shard_count != index:
+            problems.append(f"shard {index}: seed outside residue")
+            break
+        if (row["split"], row["trick"]) != cell_targets(row["seed"], args.salt):
+            problems.append(f"shard {index}: post-hoc cell")
+            break
+    return problems
+
+
+def merge(args) -> int:
+    cells = parse_cells(args.only_cell)
+    runtime = runtime_contract(smoke=args.smoke, bot=args.bot,
+                               per_cell=args.per_cell)
+    config = config_for(args, cells)
+    final_manifest = manifest_path(args.out)
+    final_split = split_path(args.out)
+    for path in (args.out, final_manifest, final_split,
+                 args.out + ".partial", final_manifest + ".partial",
+                 final_split + ".partial"):
+        if os.path.exists(path):
+            raise RuntimeError(f"refusing to overwrite {path}")
+
+    manifests, rows, problems = [], [], []
+    expected_sources = None
+    expected_ballot = None
+    for index in range(args.shard_count):
+        spath = shard_path(args.out, index, args.shard_count)
+        mpath = manifest_path(spath)
+        if not os.path.exists(spath) or not os.path.exists(mpath):
+            problems.append(f"shard {index}: missing artifact or manifest")
+            continue
+        manifest = json.load(open(mpath))
+        shard_rows = load_jsonl(spath)
+        problems += validate_shard(manifest, shard_rows, args, index, config, runtime)
+        if expected_sources is None:
+            expected_sources = manifest.get("source_digests")
+            expected_ballot = manifest.get("ballot")
+        elif (manifest.get("source_digests") != expected_sources
+              or manifest.get("ballot") != expected_ballot):
+            problems.append(f"shard {index}: source/ballot drift")
+        manifests.append(manifest)
+        rows.extend(shard_rows)
+    seeds = [row["seed"] for row in rows]
+    if len(seeds) != len(set(seeds)):
+        problems.append("duplicate deal seed across shards")
+    if problems:
+        raise RuntimeError("merge refused: " + "; ".join(problems))
+
+    for row in rows:
+        replay_deep_lead(row)
+    selected, shortages = select_candidates(rows, cells, args.per_cell)
+    if shortages:
+        raise RuntimeError(f"exclusive seed ceiling left cells short: {shortages}")
+
+    os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
+    data_tmp = args.out + ".partial"
+    with open(data_tmp, "x") as fh:
+        for row in selected:
+            fh.write(json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    split_payload = {
+        "schema": SPLIT_SCHEMA, "source": os.path.basename(args.out),
+        "source_sha256": sha256_file(data_tmp), "salt": args.salt,
+        "report_frozen": True,
+        "assign": {str(row["seed"]): row["split"] for row in selected},
+        "cells": {cell_name(cell): args.per_cell for cell in sorted(cells)},
+    }
+    write_json(final_split + ".partial", split_payload)
+    manifest = {
+        "schema": MANIFEST_SCHEMA, **runtime, "config": config,
+        "source_digests": expected_sources, "ballot": expected_ballot,
+        "complete": True, "accepted": len(selected), "replay_verified": len(selected),
+        "records_sha256": sha256_file(data_tmp),
+        "split_sha256": sha256_file(final_split + ".partial"),
+        "cell_counts": {cell_name(cell): args.per_cell for cell in sorted(cells)},
+        "shards": [{"index": i,
+                    "records_sha256": manifests[i]["records_sha256"],
+                    "accepted_candidates": manifests[i]["accepted"]}
+                   for i in range(args.shard_count)],
+        "sampler_counters": {k: sum(m["sampler_counters"].get(k, 0)
+                                      for m in manifests)
+                             for k in ("zero_world_decisions", "rejected_worlds",
+                                       "impossible_worlds")},
+        "illegal_actions": 0, "engine_errors": 0, "scored_values": 0,
+    }
+    write_json(final_manifest + ".partial", manifest)
+    # The data file is the completion marker and moves last.
+    os.replace(final_split + ".partial", final_split)
+    os.replace(final_manifest + ".partial", final_manifest)
+    os.replace(data_tmp, args.out)
+    print(f"wrote complete reservoir {args.out}: {len(selected)} replayed rows")
+    print(f"wrote immutable split {final_split}")
+    return 0
+
+
+def parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("mode", choices=("capture", "merge"))
+    ap.add_argument("--seed0", type=int, default=SEED0)
+    ap.add_argument("--max-seeds", type=int, default=MAX_SEEDS)
+    ap.add_argument("--bot", default=BOT)
+    ap.add_argument("--salt", default=SALT)
+    ap.add_argument("--out", default="rl_data/deep_leads.v1.jsonl")
+    ap.add_argument("--per-cell", type=int, default=PER_CELL)
+    ap.add_argument("--shard-index", type=int, default=0)
+    ap.add_argument("--shard-count", type=int, default=1)
+    ap.add_argument("--smoke", action="store_true",
+                    help="engineering only: permits dirty tree/non-16 cells")
+    ap.add_argument("--only-cell", action="append", default=[],
+                    help="smoke only, e.g. dev/12/attacker")
+    return ap
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--seed0", type=int, default=92_000_000)
-    ap.add_argument("--max-seeds", type=int, default=60_000,
-                    help="PREDECLARED ceiling; the run fails closed here "
-                         "rather than searching until the cells fill")
-    ap.add_argument("--bot", default="mc-strong")
-    ap.add_argument("--salt", default="deep-leads-v1")
-    ap.add_argument("--out", default="rl_data/deep_leads.v1.jsonl")
-    ap.add_argument("--limit-cells", type=int, default=PER_CELL,
-                    help="smoke runs may fill smaller cells; a real capture "
-                         "must use the preregistered 16")
-    args = ap.parse_args()
-
-    if not os.environ.get("SHENGJI_REQUIRE_VOIDS"):
-        print("REFUSING: set SHENGJI_REQUIRE_VOIDS=1 — a capture whose search "
-              "used impossible worlds is not the distribution we want.")
-        sys.exit(3)
-    dirty = subprocess.run(["git", "status", "--porcelain"],
-                           capture_output=True, text=True).stdout.strip()
-    if dirty:
-        print("REFUSING: dirty tree. A frozen capture must be tied to the code "
-              "that produced it.")
-        sys.exit(3)
-    if os.path.exists(args.out):
-        print(f"REFUSING: {args.out} exists; a capture is never rewritten.")
-        sys.exit(3)
-
-    need = {(sp, tr, ro): args.limit_cells
-            for sp in SPLITS for tr in TRICKS for ro in ROLES}
-    total_needed = sum(need.values())
-    sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
-                         capture_output=True, text=True).stdout.strip()
-    print(f"target {total_needed} states  ({len(SPLITS)} splits x "
-          f"{len(TRICKS)} tricks x {len(ROLES)} roles x {args.limit_cells})",
-          flush=True)
-
-    accepted = rejected = zero_world = illegal = 0
-    reject_reason: Counter = Counter()
-    t0 = time.time()
-    fh = open(args.out, "x")
-    seed = args.seed0 - 1
-    last = args.seed0 + args.max_seeds
-    while sum(need.values()) > 0 and seed < last:
-        seed += 1
-        split, target = cell_targets(seed, args.salt)
-        if not any(need[(split, target, ro)] for ro in ROLES):
-            reject_reason["cell_already_full"] += 1
-            rejected += 1
-            continue
-        try:
-            got = play_to_trick(seed, target, args.bot)
-        except Exception:
-            reject_reason["engine_error"] += 1
-            rejected += 1
-            continue
-        if got is None:
-            reject_reason["round_ended_before_target"] += 1
-            rejected += 1
-            continue
-        rnd, seat, setup, plays, pol = got
-        role = "attacker" if rnd.is_attacker(seat) else "defender"
-        if not need[(split, target, role)]:
-            reject_reason["role_cell_full"] += 1
-            rejected += 1
-            continue
-        zw = sum(getattr(b, "zero_world_decisions", 0) for b in pol)
-        if zw:
-            zero_world += zw
-            reject_reason["zero_world_decision"] += 1
-            rejected += 1
-            continue
-        need[(split, target, role)] -= 1
-        accepted += 1
-        fh.write(json.dumps({
-            "seed": seed, "split": split, "trick": target, "role": role,
-            "seat": seat, "ply": len(plays),
-            "setup": setup, "plays": plays,
-        }) + "\n")
-        if accepted % 25 == 0:
-            fh.flush()
-            print(f"  {accepted}/{total_needed} accepted, {rejected} rejected, "
-                  f"seed {seed}, {time.time()-t0:.0f}s", flush=True)
-    fh.close()
-
-    filled = total_needed - sum(need.values())
-    complete = sum(need.values()) == 0
-    manifest = {
-        "git": sha, "tree_dirty": False, "bot": args.bot, "salt": args.salt,
-        "seed0": args.seed0, "last_seed": seed, "max_seeds": args.max_seeds,
-        "per_cell": args.limit_cells, "target_states": total_needed,
-        "accepted": accepted, "rejected": rejected,
-        "reject_reasons": dict(reject_reason),
-        "zero_world_decisions": zero_world, "illegal_actions": illegal,
-        "complete": complete,
-        "unfilled_cells": {f"{sp}/{tr}/{ro}": n
-                           for (sp, tr, ro), n in need.items() if n},
-        "require_voids": True,
-        "fast_engine": bool(os.environ.get("SHENGJI_FAST")),
-        "finished": time.strftime("%Y-%m-%d %H:%M:%S"),
-    }
-    with open(args.out.replace(".jsonl", ".manifest.json"), "x") as mf:
-        json.dump(manifest, mf, indent=2)
-
-    print(f"\naccepted {accepted}   rejected {rejected}   "
-          f"seeds {args.seed0}-{seed}   {time.time()-t0:.0f}s")
-    print(f"reject reasons: {dict(reject_reason)}")
-    print(f"zero-world decisions: {zero_world}  (any >0 is a rejected deal)")
-    if not complete:
-        print(f"\nINCOMPLETE: {sum(need.values())} of {total_needed} cells "
-              f"unfilled at the predeclared seed ceiling. This is a fail-closed "
-              f"stop, not a result — raise --max-seeds and rerun to a NEW path, "
-              f"or accept that the depth is unreachable and say so.")
-    print(f"\nwrote {args.out}")
-    sys.exit(0 if complete else 1)
+    args = parser().parse_args()
+    if args.max_seeds < 0 or args.per_cell <= 0 or args.shard_count <= 0:
+        raise SystemExit("max-seeds >= 0, per-cell > 0 and shard-count > 0 required")
+    if args.only_cell and not args.smoke:
+        raise SystemExit("--only-cell is an engineering-smoke option only")
+    try:
+        code = capture(args) if args.mode == "capture" else merge(args)
+    except (RuntimeError, ValueError) as exc:
+        print(f"REFUSING: {exc}", file=sys.stderr)
+        raise SystemExit(3)
+    raise SystemExit(code)
 
 
 if __name__ == "__main__":

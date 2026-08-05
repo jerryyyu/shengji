@@ -132,55 +132,59 @@ Reconcile rather than merely prepend:
 - replace the stale v3/sampler PILOT section in `JOBS.md`;
 - state DEV 0/512, CALIB/REPORT unscored and this Codex HOLD everywhere.
 
-## Return packet — packages F1-F4 complete (10:49 EDT)
+## Return packet — 10:54 audit items closed (11:49 EDT)
 
 ```text
 STATE: READY_FOR_CODEX_GATE
-RUN-CODE HEAD / origin HEAD: 4b1b6cd / 4b1b6cd
-PACKET HEAD / origin HEAD: 4b1b6cd / 4b1b6cd  (identical; the packet commit
-  follows, so this line will read <packet>/<packet> with run-code 4b1b6cd)
-workspace timestamp and dirty files: 2026-08-05 10:49:25 EDT; 0 dirty
-live pilot/evaluator processes: none (matched by `ps`, printed not counted —
-  a grep on "pilot_run" also matches tests/test_pilot_run_preflight.py)
-v6 DEV hash / CALIB hash / artifact-ledger lines:
+RUN-CODE HEAD / origin HEAD: 8897e41 / 8897e41
+PACKET HEAD / origin HEAD: 8897e41 / 8897e41
+  (previous packet mis-stated this as 4b1b6cd when HEAD was 2bd99b0 — the
+   run-code and packet commits were the same object and I reported the older
+   one. Corrected.)
+workspace timestamp and dirty files: 2026-08-05 11:49:34 EDT; 0 dirty
+live pilot/evaluator processes: none
+v6 DEV hash / CALIB hash / artifact-ledger lines: UNCHANGED, no re-freeze
   DEV   af78748586034f6f97e96a167008b2c540c0e4b1670a683ef6b5f05ec85d3e7b
   CALIB 3872350f57a4dd602d958182c0a0aecc27c6bf99c9330e8265bcf84c9c3dce05
-  PILOT_ARTIFACTS.md registers v3/v4/v5 SUPERSEDED (v5 with the measured
-  52/41 exact-state order dependence) and v6 as the gate set. v1-v5 unedited.
+  PILOT_ARTIFACTS.md top table authoritative: v3/v4/v5 SUPERSEDED, v6 gate.
+  The lower v3 section is now headed HISTORICAL with its GATE SET labels
+  struck through; RL_PLAN's planned "NOT YET FROZEN" pilot-v4 row is gone.
+G1 — dedup now refuses ANY non-identical duplicate:
+  full canonical row compared, not band/role/tricks/size. Regression covers
+  n_candidates 5-vs-9 and is_banker_seat true-vs-false — both outside the
+  marginals, which is why the subset check missed them — plus a positive case
+  asserting identical copies are still accepted.
+  ALSO FIXED, found while testing: an unsatisfiable tightest cell raised
+  IndexError instead of reporting. Fail closed now means a message.
+v6 needs NO re-freeze, verified through the REAL freezer:
+  dry run at salt dev512-v6 reproduces the frozen DEV artifact 512/512.
+  (My hand-rebuilt probe said 506/512; the probe was unfaithful, not the code.
+   Recording it because I nearly reported it as drift.)
 band-size-role-source audit for both sides (IDENTICAL, exact):
-  band    early 170      mid 171        late 171
-  size    0/72/98        11/131/29      152/19/0     small/med/wide
-  role    85/85          86/85          86/85        attacker/defender
-  source  129/41/0       17/154/0       0/1/170      original/late/deep
+  band 170/171/171; size 0/72/98, 11/131/29, 152/19/0;
+  role 85/85, 86/85, 86/85; source 129/41/0, 17/154/0, 0/1/170
 DEV-CALIB overlap / REPORT leakage / all-row replay:
-  overlap 0 deals; 512 UNIQUE exact identities (source, seed, ply, seat) per
-  side; 0 REPORT rows, every seed resolved through its own split file; all
-  1,024 rows replay to the recorded seat; 0 replay errors.
+  overlap 0; 512 unique exact identities per side; 0 REPORT rows; all 1,024
+  rows replay; 0 replay errors
 source-order + row-order + duplicate-deal regressions:
-  REAL-CORPUS forward vs reversed, run before freezing: exact-state difference
-  0 on DEV and 0 on CALIB (v5 measured 52 and 41).
-  Synthetic fixture now carries TWO ply-distinct decisions per deal in the same
-  source/band/size/role cell and `_ids` compares (source, seed, ply, seat,
-  band, size, role) — the previous fixture had one row per cell and omitted
-  ply/seat, which is why it could not see the v5 defect.
-  Negative controls: a v5-style cell-keyed dedup asserted to FAIL invariance;
-  an order-dependent selector asserted to FAIL; conflicting metadata for one
-  exact identity fails closed; salt AND side each proven to change selection.
+  SOURCE PERMUTATION now verified FAITHFULLY, closing the gap I flagged last
+  cycle: SHENGJI_SOURCES_ORDER=deep,late,original and late,original,deep each
+  reproduce v6 512/512 through the real freezer; a direct unit test added.
+  Real-corpus forward-vs-reversed exact-state difference remains 0/0.
+  Negative controls retained: v5-style cell-keyed dedup FAILS invariance; an
+  order-dependent selector FAILS; salt and side each change selection.
 pure targeted / compiled targeted / full-suite tests:
-  122 passed + 21 pure-only skips / 143 passed / 315 passed + 2 skipped
+  126 passed + 21 pure-only skips / 147 passed / 319 passed + 2 skipped
 two identical v6 smoke hashes and manifest identity:
-  9fbb530e1c9fd055506e99c1076d5d029e065dd144973d789e00c1a2cf95f443
-  9fbb530e1c9fd055506e99c1076d5d029e065dd144973d789e00c1a2cf95f443
-  retained at server/runs/logs/smoke_v6/smoke{1,2}.json (+ .log)
-  command: as the eight-shard command below but --limit 8 --shard-index 0
-           --shard-count 1
-  manifest: phase=smoke, tree_dirty=false, git=4b1b6cd, all three sampler
-  flags false, states_sha256 == expected_states_sha256,
-  ballot mc_candidates@v1[a68f7b8bced6]
-full registered protocol and exact eight-shard commands:
-  FULL_DEV_PROTOCOL compares phase, v6 DEV sha256, budget 14, work 168,
-  band 0.05, 12/12/12 worlds, salt pilot-run-v1, shard_count 8, limit 0,
-  side dev, and the six registered arms (an altered ARMS tuple is refused).
+  650ac2139e176ebe211f086177ff032658b2291e699b6e015294fd6df0cd2099
+  650ac2139e176ebe211f086177ff032658b2291e699b6e015294fd6df0cd2099
+  retained at server/runs/logs/smoke_v6/smoke{3,4}.json (+ .log); smoke{1,2}
+  are the pre-fix pair at 9fbb530e1c9fd055 and are kept for comparison
+  manifest: phase=smoke, tree_dirty=false, git=8897e41, all three sampler
+  flags false, states_sha256 == expected_states_sha256
+full registered protocol and exact eight-shard commands: unchanged from the
+  previous packet except HEAD; FULL_DEV_PROTOCOL pins the v6 DEV hash and an
+  altered ARMS tuple is refused.
   SHA=af78748586034f6f97e96a167008b2c540c0e4b1670a683ef6b5f05ec85d3e7b
   SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 uv run python scripts/pilot_run.py \
     --states rl_data/pilot_dev512.v6.json --expected-states-sha256 $SHA \
@@ -190,15 +194,14 @@ full registered protocol and exact eight-shard commands:
     --out runs/logs/dev512_shard<N>.json
   Mini N=0..3, Air N=4..7, one process per shard, no --limit.
 Mini/Air HEAD, artifact, ballot and compiled-binary preflight:
-  HEAD        mini 4b1b6cd        air 4b1b6cd        (both clean)
+  HEAD        mini 8897e41        air 8897e41        (both clean)
   v6 DEV sha  af78748586034f6f... air identical
-  _fast .so   9c9e77fbdc4c6cac... air identical (Mini-built, rsynced; Air NOT
-              rebuilt)
+  _fast .so   9c9e77fbdc4c6cac... air identical (Mini-built, rsynced)
   ballot      mc_candidates@v1[a68f7b8bced6]
 if BLOCKED: n/a
 ```
 
-No launch has occurred. DEV 0/512. CALIB and REPORT unscored and untouched.
+No launch. DEV 0/512. CALIB and REPORT unscored and untouched.
 
 ## Required return packet
 

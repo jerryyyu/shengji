@@ -71,8 +71,51 @@ consistent with the data, not a demonstrated causal claim.
   target here, but this is a deployment decision for Jerry, not an adoption
   that follows automatically from the measurement.
 
+## N=60 vs N=30 — NO EFFECT, search width has saturated (2026-08-05)
+
+Preregistered orthogonal lane on CURRENT main, one fixed block, no extension.
+
+| contrast | result | n |
+|---|---|---|
+| **N=60 minus N=30 (PRIMARY)** | **-0.002 +/- 0.119, INCLUDES 0** | 504 |
+| N=60 minus null | +0.004 +/- 0.129, includes 0 | 504 |
+| null minus N=30 | -0.006 +/- 0.134, includes 0 | 504 |
+
+win rates 49.7% / 49.2% / 49.7%.
+
+Seeds 101,000,000+, disjoint from every prior block. Control `mc-strong-null`
+is `mc-strong` with a different RNG stream — same ballot digest, same N=30, zero
+differing config attributes. Aggregated via `scripts/aggregate_shards.py` with
+no problems reported: equal label counts, no duplicate seeds, one commit, one
+schema, zero zero-world decisions.
+
+**This is the tightest interval any block has produced today (+/-0.119) and it
+is centred on zero.** Not an underpowered null: doubling the search from 30 to
+60 worlds moves nothing measurable.
+
+**The dose curve, assembled:**
+
+| step | result |
+|---|---|
+| N=5 -> N=10 | large, -0.347 +/- 0.145 for N=5 (two independent blocks) |
+| N=10 -> N=30 | +0.262 +/- 0.154 CONFIRMED (pinned to `e3aeec1`) |
+| N=30 -> N=60 | **-0.002 +/- 0.119, nothing** |
+
+So determinization count is exhausted as a lever somewhere between 30 and 60.
+Whatever remains is in WHICH actions get priced and HOW worlds are sampled, not
+in how many worlds. That is the same conclusion the coverage work reached from
+the other direction, now with a hard upper bound attached.
+
+Practical consequence: there is no reason to consider N>30 in production, and
+`mc-strong` at N=30 remains the strongest verified policy — still pinned to
+`e3aeec1`, still undeployed, still needing a fresh frozen-current confirmation
+before promotion.
+
 ## Current synthesis — 2026-08-04 22:15
 
+- **Search width is exhausted as a lever.** N=5->N=10 large, N=10->N=30
+  +0.262 +/- 0.154 confirmed, N=30->N=60 **-0.002 +/- 0.119 on current main**.
+  Do not consider N>30.
 - **Strength incumbent:** `mc-strong` (N=30) beat deployed N=10 `mc` by
   +0.262 +/- 0.154 on 504 preregistered fresh clusters, null control
   -0.048 +/- 0.162, independently reproduced by Codex. **That result is pinned

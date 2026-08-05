@@ -29,77 +29,24 @@ If a wider ballot later wins independently, BACKLOG requires one final direct
 confirmation of the combination, since ballot width and determinization dose
 can interact.
 
-## READY — Gate 3 raw capture (not scoring)
+## FINISHED — Gate 3 raw capture (not scoring)
 
-The first eight-shard attempt from `8a6c2af` is closed unsuccessful: shards
-1/2/3/5 completed 96 rows each, while 0/4/6/7 stopped with 51/83/30/68 partial
-rows. The known witness seed `92000381` deterministically reports two
-`rejected_worlds`, zero zero-world decisions and zero impossible worlds. No
-merge or scoring occurred. All twelve v1 files are preserved under
-`rl_data/quarantine/deep_leads_v1_8a6c2af_abort_20260804_2235/`; their
-v1 manifests and source/git identity must not be mixed into the v2 relaunch.
+Fresh schema-v2 capture and merge completed at 23:15 from clean compiled+strict
+`836cc07`. Independent validation replayed all 768 unique rows and confirmed:
 
-Schema v2 makes the preregistered rejection policy executable: a safely
-rejected strict world excludes the whole deal and is recorded in both observed
-counters and `sampler_rejected_deals`; it is never admitted as an artifact
-trajectory. A zero-world fallback or impossible-world use still aborts.
-Validation is closed: 17 targeted capture tests passed; the full pure and
-compiled suites independently passed **253 tests (2 skipped)**; and two clean
-compiled eight-shard capture+merge smokes at `db20b7a` were byte-identical:
-row `b16bc0135f3f0dd94fa46b31bdfb7f6286b55da24e33ee9b4cc28ab6157f17a5`,
-manifest `88713abf7599cb318effa27dba1586e95030ef8d901018b9271ae2069e34f146`,
-split `1e58ed847408b121f189d7d719bd516836c1fc6782699f24ed227c1721f9aa10`.
-**Fresh v2 raw capture is GO.** Pilot scoring remains 0/512 until merge and
-state freeze finish.
+- 256 DEV / 256 CALIB / 256 REPORT;
+- exactly 16 rows in every split/trick-12..19/role cell and 128/128 role
+  balance per split;
+- zero accepted-path sampler counters, illegal actions, engine errors or
+  scored values;
+- 12 rejected proposals across 9 excluded deals, with zero observed
+  zero-world/impossible-world events;
+- data SHA-256
+  `ffccfde64932eb3a0129765f3ba903099f2e5c1da16a8287aebd0024f3456982`.
 
-Every worker must use the same clean pushed commit and one distinct `I` in
-0..7:
-
-Before spending compute, compare `git rev-parse HEAD` and the complete JSON
-printed by this command on Mini and Air; both must be byte-identical. In
-particular, separately built Cython binaries can have different digests even
-when their source agrees, and merge intentionally refuses that drift.
-
-```bash
-cd server
-SHENGJI_FAST=1 uv run python -c \
-  'import json; from scripts.capture_deep_leads import source_digests; from shengji.ai.registry import make_bot; from shengji.engine.ballot import mc_ballot; print(json.dumps({"sources": source_digests(), "ballot": str(mc_ballot(make_bot("mc-strong", seed=1)))}, sort_keys=True))'
-```
-
-Only after that preflight matches:
-
-```bash
-cd server
-SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 uv run python \
-  scripts/capture_deep_leads.py capture \
-  --shard-count 8 --shard-index I --max-seeds 60000 \
-  --out rl_data/deep_leads.v1.jsonl
-```
-
-Suggested allocation: Mini I=0..3, Air I=4..7. Shards own disjoint pre-play
-`(split,trick)` groups, so no deal is simulated by more than one worker; this
-replaced correct-but-wasteful residue sharding that would have over-captured
-every cell once per worker. Copy all eight shard JSONLs and manifests to one
-clean checkout, then run:
-
-If Air is asleep/unreachable, do not leave the gate idle: the Mini reports 10
-logical CPUs and may run all I=0..7. Machine placement is not part of state
-selection. Conversely, do not add Air midway until its full source/ballot JSON
-matches Mini; a mismatched shard is guaranteed merge refusal.
-
-```bash
-SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 uv run python \
-  scripts/capture_deep_leads.py merge \
-  --shard-count 8 --max-seeds 60000 \
-  --out rl_data/deep_leads.v1.jsonl
-```
-
-Merge is the gate: it must replay all 768 rows, prove 16 rows in every cell,
-verify one git/ballot/source/config, zero accepted-trajectory sampler counters,
-zero errors/values, and internally consistent observed rejection/deal counts.
-It must atomically emit `deep_leads.v1.jsonl`, its manifest, and
-`deep_lead_split.v1.json`. A fatal shard or merge refusal is a failed job, not
-permission to loosen a counter, ceiling, or cell.
+The first v1 attempt remains recoverably quarantined. Gate 3 capture is closed;
+do not rerun it. The next blocker is the balanced DEV/CALIB freezer described
+below and in the latest `HANDOFF_REVIEW.md` entry.
 
 ## PILOT — steps 1-4 built, SCORING AT 0/512 (Codex hold)
 
@@ -117,7 +64,10 @@ smoke ran twice in independent processes and produced the identical SHA-256
 `a926cbb013fb54188a81017394b87bf23d78f8486173603c9165fe772b3f46f1`;
 both copies passed the strict aggregator. Those eight descriptive states are
 not evidence and are not part of the 512-state result. The remaining blocker
-is the balanced deep reservoir plus newly frozen DEV/CALIB state artifacts.
+is the state freezer: current `pilot_states.py` omits the completed deep source,
+hard-codes DEV, and does not enforce role/candidate-size balance. Repair and
+test it before freezing distinct DEV-512/CALIB-512 artifacts. No v4 artifact
+exists and pilot scoring remains 0/512.
 
 ## RECENTLY FINISHED
 

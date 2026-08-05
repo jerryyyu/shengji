@@ -28,6 +28,14 @@ newest entry sit on top and speak for the file.
   **-0.002 +/- 0.119 on current main**. That last block found no advantage but
   did not test equivalence; do not repeat it without a new mechanism and full
   accepted/rejected-world accounting.
+- **N=30 REPRODUCES ON CURRENT MAIN.** Frozen-current confirmation, 504
+  preregistered fresh clusters (seeds 102M): **+0.222 +/- 0.140** vs N=10,
+  arm-minus-null +0.230 +/- 0.139, null -0.008 +/- 0.154, win rates
+  55.2/50.9/51.2. The `e3aeec1` result (+0.262 +/- 0.154) therefore transfers
+  to the deployed executable despite the sampler, ballot and decompose changes
+  in between. Caveat: these shards predate the `rejected_worlds` counter, so
+  like the N=60 lane this is a policy-as-run comparison rather than proof of an
+  exact accepted dose.
 - **DEPLOYED 2026-08-05:** prod runs `mc-strong` (N=30) with the compiled
   engine (`{"bot":"mc-strong","fast":true}`). The image now builds the Cython
   extension, taking prod from 45ms/decision (N=10, pure Python) to 36ms (N=30,

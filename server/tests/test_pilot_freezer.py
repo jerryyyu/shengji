@@ -52,7 +52,7 @@ def test_side_is_selectable_and_report_is_not():
         "the side selector must exclude report"
 
 
-@pytest.mark.parametrize("name", ["pilot_dev512.v2.json", "pilot_calib512.v2.json"])
+@pytest.mark.parametrize("name", ["pilot_dev512.v3.json", "pilot_calib512.v3.json"])
 def test_frozen_artifact_meets_the_contract(name):
     d = _load(name)
     assert d["selected"] == 512
@@ -72,7 +72,7 @@ def test_frozen_artifact_meets_the_contract(name):
 def test_role_balance_is_enforced_not_merely_recorded():
     """The first freeze reported `?` for every band: rows carried no role, so
     the balancing loop matched nothing and silently fell through."""
-    for name in ("pilot_dev512.v2.json", "pilot_calib512.v2.json"):
+    for name in ("pilot_dev512.v3.json", "pilot_calib512.v3.json"):
         d = _load(name)
         for band, counts in d["roles_by_band"].items():
             assert "?" not in counts, f"{name}/{band}: role never carried"
@@ -82,7 +82,7 @@ def test_role_balance_is_enforced_not_merely_recorded():
 
 
 def test_dev_and_calib_are_deal_disjoint():
-    d, c = _load("pilot_dev512.v2.json"), _load("pilot_calib512.v2.json")
+    d, c = _load("pilot_dev512.v3.json"), _load("pilot_calib512.v3.json")
     kd = {(s["source"], s["seed"]) for s in d["states"]}
     kc = {(s["source"], s["seed"]) for s in c["states"]}
     assert not (kd & kc), f"{len(kd & kc)} deals appear in BOTH gate sets"
@@ -91,7 +91,7 @@ def test_dev_and_calib_are_deal_disjoint():
 
 def test_source_and_split_digests_are_recorded_and_current():
     """A frozen set whose inputs cannot be identified is not reproducible."""
-    for name in ("pilot_dev512.v2.json", "pilot_calib512.v2.json"):
+    for name in ("pilot_dev512.v3.json", "pilot_calib512.v3.json"):
         d = _load(name)
         for src, meta in d["sources"].items():
             assert meta.get("corpus_sha256_16"), f"{name}/{src}: no corpus digest"
@@ -115,7 +115,7 @@ def test_freezer_refuses_a_dirty_tree_and_an_existing_path():
 
 def test_every_selected_state_replays():
     """A state that cannot be rebuilt cannot be scored."""
-    d = _load("pilot_dev512.v2.json")
+    d = _load("pilot_dev512.v3.json")
     import random
     sample = random.Random(7).sample(d["states"], 6)
     srcs = {n: c for n, c, _ in PS.SOURCES}

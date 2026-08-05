@@ -67,3 +67,32 @@ issues are fixed and tested.
 
 **These are evaluation artifacts, not training corpora.** REPORT's 256
 reservoir rows have not been selected or scored.
+
+## v3 — the gate artifacts (2026-08-05)
+
+| artifact | sha256 | status |
+|---|---|---|
+| `pilot_dev512.v3.json` | `d8d5d04abb9f9262` | **DEV-512 GATE SET** |
+| `pilot_calib512.v3.json` | `5e4c9a8d4a6310ac` | **CALIB-512 GATE SET** |
+| `pilot_dev512.v2.json` | `d167d1f140f88d68` | superseded — no candidate-size balance |
+| `pilot_calib512.v2.json` | `90c00af09ae084b7` | superseded — same |
+
+v3 closes the five freezer defects Codex listed: the deep reservoir is in
+`SOURCES`, `--side` selects DEV or CALIB (never REPORT), the registered quota
+170/171/171 is enforced rather than emergent, role balance is enforced per band
+(85/85, 86/85, 86/85 on both sets), and candidate-size stratum is now a
+secondary selection key rather than a recorded-but-ignored field.
+
+`tests/test_pilot_freezer.py` is the committed contract: sources, quotas,
+one-state-per-deal, role balance, DEV/CALIB deal-disjointness, source/split
+digest currency, dirty-tree and existing-path refusal, and replay of sampled
+states. 10 cases.
+
+**On candidate size:** balance is enforced WITHIN what each band can supply,
+not across bands. Late-trick states have small hands and therefore small
+ballots (`late` is 151 small / 20 med); early states have large ones (`early`
+is 98 wide / 72 med). That is the game, not a selection failure, and it is
+recorded per band so an analysis can condition on it.
+
+Both sets frozen from a clean tree at ballot `a68f7b8bced6`. Deal-disjoint,
+zero REPORT rows. REPORT's 256 reservoir rows remain unread.

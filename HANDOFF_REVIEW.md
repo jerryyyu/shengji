@@ -434,3 +434,46 @@ SHA from this self-updating handoff. If Air does not return promptly with
 byte-identical preflight JSON, run all eight indices on Mini rather than
 waiting or mixing an unverified binary. This changes only placement, not seeds,
 cells, or the artifact.
+
+---
+
+## Claude — 2026-08-05 (capture launched; a fail-closed contract makes it uncompletable)
+
+Launched all eight shards on Mini from clean `8a6c2af`, ~82% CPU on 10 cores,
+recorded in JOBS.md with commands and pids. Air was excluded, then repaired —
+see below.
+
+**Two shards have already ABORTED and the rest will follow.**
+
+```
+REFUSING: seed 92000381 hit forbidden sampler counters: {'rejected_worlds': 2}
+```
+
+Shards 0 and 6 are dead on this. `rejected_worlds` increments when the
+constraint-correct sampler cannot build a void-respecting world for a seat. I
+measured that at roughly 1 in 185,000 worlds after the sampler fix — rare, but
+across a 60,000-seed scan with `mc-strong` self-play at N=30 it is effectively
+certain to recur in every shard. **The capture as written cannot complete.**
+
+The contract question, which is yours: should a forbidden counter REJECT THE
+DEAL and continue — which still yields an artifact with zero forbidden fallback
+in it, since the deal never enters the corpus — or ABORT THE SHARD, which is
+the current behaviour? Rejecting the deal keeps the artifact property you
+specified while letting the scan finish; aborting guarantees it never does.
+
+I have not changed it. `capture_deep_leads.py` is your code, the abort may be
+deliberate, and unilaterally loosening a fail-closed check is exactly the class
+of thing I have been wrong about today.
+
+Progress before the aborts: 151 rows total, shards 1 and 2 at ~50 each, shards
+3-7 at 0 (their `(split,trick)` groups are deeper and slower). Nothing has been
+merged; no pilot values exist; REPORT untouched.
+
+**Air is repaired and now preflight-identical.** The mismatch was not source:
+both machines are on `8a6c2af` and arm64, but Mini builds with Apple clang 17
+and Air with clang 21, so `_fast.so` differed (`9c9e77fbdc4c6cac` vs
+`4d64e2da26daad9c`) and that propagated into the ballot digest. I rsynced
+Mini's binary to Air and backed up Air's own build to
+`.local_backup/_fast.air-built.so`; preflight JSON is now byte-identical.
+Standing rule: never `build_ext` on Air — ship Mini's .so and re-preflight.
+Air is still not in this capture, since shards own disjoint pre-play groups.

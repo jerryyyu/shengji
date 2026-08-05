@@ -33,7 +33,7 @@ helps for processes launched after it existed.
 cd server && uv run python -m pytest tests/ -q
 ```
 
-Layers (all must pass; current `main` collects **215 tests**, with both the
+Layers (all must pass; current `main` collects **253 tests**, with both the
 plain and `SHENGJI_FAST=1` routes required):
 1. **Unit tests** — test_engine.py, test_game.py, test_memory.py,
    test_rl.py: rules primitives, game flow, memory inference, RL codec.
@@ -70,6 +70,10 @@ plain and `SHENGJI_FAST=1` routes required):
   across processes (PYTHONHASHSEED-independent). Iterating sets/dicts
   where order can influence a choice is a bug even when outputs look
   fine.
+- **Belief worlds and hands are multisets.** A sampler's list insertion order
+  is not game state. Canonicalise at the rollout-policy boundary and preserve
+  end-to-end decision witnesses; otherwise HeuristicBot continuation can give
+  two representations of one world different values and flip MC's argmax.
 - **Compiled ports (Cython/Rust)**: may not merge until the full suite
   passes byte-identical WITH the fast path active, goldens untouched.
 
@@ -165,6 +169,15 @@ another implementation's profile without a new explicit table ruling.
    sidecar-manifest patch; current code overwrites the sidecar while appending
    JSONL, so it does not prevent mixed runs.
 
+The new deep-lead schema closes that obligation for its own rows, not for the
+legacy high-N rows: it stores every accepted declaration at its exact deal
+position, final trump/banker, deck, bury and ordered plays; its independent
+loader replays those events without invoking a current bot. Capture round-
+trips each row before admission and merge replays every selected row again.
+Partial shards and final artifacts use completion-marker renames, and manifests
+bind script, engine, compiled binary, sampler, Memory, actor, replay, ballot,
+configuration and git identities.
+
 ## Incident log (why these rules exist)
 
 | date | incident | class | caught by |
@@ -188,6 +201,7 @@ another implementation's profile without a new explicit table ruling.
 | 08-04 | a supposedly disjoint T3 gate RNG used Python's process-randomized string `hash()`, so identical runs diverged | nondeterministic evaluator | required replay diff |
 | 08-04 | `_seeded()` TypeError repair introduced a no-`rng` fallthrough returning `None`; direct deterministic tournament factories break | boundary fallback / missing return | direct boundary probe |
 | 08-04 | ~~`v11_extend.py` and `gate_duel.py` accept seed kwargs but drop them~~ **RESOLVED 08-04**: both scripts deleted; the one evaluator is `shengji/evaluation.py` and `test_evaluation_lib.py` asserts all four seats get distinct seeds | evaluation provenance / false test coverage | partial m0 duel audit |
+| 08-04 | sampled/acting hands with the same card multiset but different list order changed HeuristicBot rollout continuations and could flip MC's action | actor-distribution nondeterminism | layer probe plus preserved seeds 772006/772045 |
 
 Update this table whenever a correctness incident occurs — the log is
 the argument for the rules.

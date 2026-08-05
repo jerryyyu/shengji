@@ -5,26 +5,60 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-### mini / deep-lead capture (gate 3) — launched 21:30
+No job is running. The premature Gate 3 process was stopped and its 50 rows are
+quarantined at
+`rl_data/quarantine/deep_leads.v1.jsonl.aborted-2d3a097`; the final artifact
+name is free.
 
-Codex's preregistration, implemented in `scripts/capture_deep_leads.py`:
+## READY — Gate 3 raw capture (not scoring)
 
-- **768 accepted states, one per deal** = 3 splits x 8 exact trick indices
-  (12-19) x 2 leader roles x 16 per cell.
-- Split AND target trick are hash-derived from the deal seed **before the deal
-  is played**. A deal that does not reach its target with a needed role is
-  REJECTED and counted — never substituted with a shallower depth.
-- `mc-strong` self-play in all seats, deterministic per-seat RNGs, strict
-  void-respecting sampling, clean pinned tree. Any zero-world decision rejects
-  the deal.
-- Raw setup/history only — no values, worlds, or arm scores. REPORT is frozen
-  at capture and stays untouched.
-- Fail-closed at a predeclared 60,000-seed ceiling rather than running until
-  the cells happen to fill.
+Codex closed the engineering launch gate on 2026-08-04. Eight-shard clean
+smokes reproduced byte-for-byte, exact declaration replay passed, and the pure
+and compiled suites each passed 251 tests (2 skipped). This authorizes the raw
+capture only; pilot scoring remains 0/512 until merge and state freeze finish.
 
-Smoke at 1-per-cell: 48/48 filled from 208 seeds in 254s, 0 zero-world.
-The real run is ~16x the states with a rising rejection rate as cells fill, so
-expect hours rather than minutes.
+Every worker must use the same clean pushed commit and one distinct `I` in
+0..7:
+
+Before spending compute, compare `git rev-parse HEAD` and the complete JSON
+printed by this command on Mini and Air; both must be byte-identical. In
+particular, separately built Cython binaries can have different digests even
+when their source agrees, and merge intentionally refuses that drift.
+
+```bash
+cd server
+SHENGJI_FAST=1 uv run python -c \
+  'import json; from scripts.capture_deep_leads import source_digests; from shengji.ai.registry import make_bot; from shengji.engine.ballot import mc_ballot; print(json.dumps({"sources": source_digests(), "ballot": str(mc_ballot(make_bot("mc-strong", seed=1)))}, sort_keys=True))'
+```
+
+Only after that preflight matches:
+
+```bash
+cd server
+SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 uv run python \
+  scripts/capture_deep_leads.py capture \
+  --shard-count 8 --shard-index I --max-seeds 60000 \
+  --out rl_data/deep_leads.v1.jsonl
+```
+
+Suggested allocation: Mini I=0..3, Air I=4..7. Shards own disjoint pre-play
+`(split,trick)` groups, so no deal is simulated by more than one worker; this
+replaced correct-but-wasteful residue sharding that would have over-captured
+every cell once per worker. Copy all eight shard JSONLs and manifests to one
+clean checkout, then run:
+
+```bash
+SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 uv run python \
+  scripts/capture_deep_leads.py merge \
+  --shard-count 8 --max-seeds 60000 \
+  --out rl_data/deep_leads.v1.jsonl
+```
+
+Merge is the gate: it must replay all 768 rows, prove 16 rows in every cell,
+verify one git/ballot/source/config, zero forbidden counters/errors/values, and
+atomically emit `deep_leads.v1.jsonl`, its manifest, and
+`deep_lead_split.v1.json`. A shard or merge refusal is a failed job, not
+permission to loosen a counter, ceiling, or cell.
 
 ## PILOT — steps 1-4 built, SCORING AT 0/512 (Codex hold)
 
@@ -37,15 +71,12 @@ balanced broad-lead gate is not constructible from this corpus. Codex chose
 option (b): capture deep LEAD states as a new job, then freeze distinct DEV and
 CALIB artifacts.
 
-Open blockers before any value is produced:
-- `choose_action()` omits production `TRACTOR_LOCK`; v3 has 12 protected-tractor
-  states where the deployed policy returns immediately with no search.
-- `MC-more` is an alias plus an unused constant. Equal-work needs real
-  candidate-world accounting: current averages 9.19 candidates, random/quota
-  13.81, full-universe 23.19.
-- Component mutations skip singleton bases, so a one-component add like
-  `SJ -> SJ SK` is unreachable; no safe/near-boss/speculative-throw archetype.
-- `report_regret()` drops raw points and brackets; no manifest preserves them.
+The former runner/ballot blockers are closed in code. A clean v3 engineering
+smoke ran twice in independent processes and produced the identical SHA-256
+`a926cbb013fb54188a81017394b87bf23d78f8486173603c9165fe772b3f46f1`;
+both copies passed the strict aggregator. Those eight descriptive states are
+not evidence and are not part of the 512-state result. The remaining blocker
+is the balanced deep reservoir plus newly frozen DEV/CALIB state artifacts.
 
 ## RECENTLY FINISHED
 

@@ -68,6 +68,14 @@ needed to decide whether the new proposer finds valuable off-ballot actions.
 
 ## P0 correctness and measurement gates
 
+**Status 2026-08-04.** The bounded action and pilot-measurement portions below
+are implemented: card-code multiset identity, permutation-invariant pure/fast
+decomposition, complete tied-code tractors, shape-preserving component
+replacement, independent fold streams, exact work accounting, retained
+per-world vectors/brackets, and fail-closed aggregation. Two clean 8-state
+processes produced byte-identical outputs. The next action is raw deep-lead
+capture and a newly frozen state set—not more design changes to this gate.
+
 Complete these before an online strength claim or a large corpus run:
 
 1. Make `scripts/evaluate.py` test the paired arm-minus-control contrast, not

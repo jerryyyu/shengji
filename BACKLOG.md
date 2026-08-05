@@ -6,21 +6,24 @@ One table for "what is happening and what closes it". The detailed reasoning
 for each item lives in the sections below, which Codex also maintains — this
 view is a summary, not a replacement.
 
-### NOW (running)
+### NOW (ready, not yet running)
 
-No strength experiment is currently running; both machines are idle. The P0
-sampler validity/support gate is closed at `eea78d2`, and the preregistered
-rewritten-sampler N=30 confirmation has completed positive. The 512-state lead
-pilot is now the next strength screen. Posterior distribution fidelity remains
-P1: it gates interpreting offline ballot values as calibrated, but it is not
-the same claim as legality/support. The bounded action-semantics gate, including
-the tied-code tractor proposal omission, is closed after independent
-verification.
+No strength experiment is currently running. Gate 1 shape-preserving mutation
+semantics and Gate 2 runner/aggregation contracts are closed, including exact
+small-hand oracles, live-hand sweeps, retained-vector arithmetic checks, and
+two byte-identical independent 8-state runs. Gate 3 capture engineering is
+also launch-ready: the `mc-strong` actor is order-invariant on the preserved
+old failing witnesses, raw rows replay stored declaration order, all strict
+counters/errors fail closed, and two clean eight-shard capture/merge smokes are
+byte-identical. Run the raw 768-state capture next; **512 scoring remains 0**
+until its merge and balanced DEV artifact are frozen. Posterior distribution
+fidelity remains P1 and still limits value calibration, not legality/support.
 
 ### NEXT (highest value first)
 
 | item | why it matters | gate |
 |---|---|---|
+| **0. Capture/freeze the deep-lead reservoir** | Existing DEV has only three trick-12+ leads, so it cannot support the registered state distribution | Run the exact eight-shard command in `JOBS.md`; merge must replay 768 raw rows, fill every split/trick/role cell exactly, and report zero forbidden counters/errors/values before DEV/CALIB selection |
 | **1. Clean 512-state lead-ballot pilot** | The prior audit found **51.2% structured lead omission vs 0.9% follows**, almost entirely lead singles, but its reference generator shared the now-fixed tied-code omission; refresh that baseline first. The provisional lead forfeit was larger than follows (2.96 vs 1.01), but selected-max bias makes it directional, not “half provably improvable.” V3 proved widening alone is insufficient | On deal-grouped DEV states balanced across original/late reservoirs, compare current, V3, random-fill, `MC-more`, fixed-14 contextual selection, and full-universe/high-compute using disjoint proposal/report worlds; predeclare fresh-world regret and oracle-best-recall gates |
 | **2. CALIB then paired online confirmation** | Offline regret has failed to predict online strength three times | Only the selected ballot arm advances; REPORT stays untouched until selection, then a fixed-size paired evaluator run on fresh seeds must clear arm-minus-MC and arm-minus-control bars with zero protocol failures |
 | **3. Clean relabel + learned proposal only after a ballot win** | Repeating 37.1M old-ballot evaluations or training v11pair on actions outside its training ballot cannot improve the champion | Relabel only disagreement/high-uncertainty states under the frozen winning `BallotSpec`; a learned proposer must beat quota, random, and `MC-more` controls before entering production search |

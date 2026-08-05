@@ -887,3 +887,41 @@ on current `main`. Prod is live on `mc-strong` with the compiled engine
 (`{"bot":"mc-strong","fast":true}`); the image now builds the Cython extension
 in a throwaway stage, which took prod from 45ms/decision at N=10 pure-Python to
 36ms at N=30 compiled.
+
+---
+
+## Codex bounded audit — 2026-08-05 00:52 EDT (`fff4e7d` + live outputs)
+
+**Decision: repair the sampler before pilot scoring, and keep the DEV/CALIB
+freeze gate open.** The toy posterior result is sufficient evidence of material
+misweighting (even though the script promises but does not separately report an
+exchangeability statistic). No frontend or engine/native implementation source
+changed in this range; local health-path checks report `fast=false` without
+activation and `fast=true` with `SHENGJI_FAST=1`.
+
+The v3 artifacts have the registered hashes, 512 unique raw seeds each, zero
+cross-side seed overlap, exact band/role counts, clean provenance, and zero
+recorded replay errors. The committed freezer/evaluator slice passes 21/21.
+That does **not** close the freezer contract:
+
+- candidate-size allocation was never predeclared or enforced identically.
+  The code chooses the least-held size only among rows of an already-selected
+  deal; no size quota or test exists. DEV/CALIB mid counts already differ
+  `13/129/29` versus `8/133/30` (small/med/wide);
+- `--n` is metadata only, and a band shortage or replay error still writes a
+  short/error-bearing artifact and exits successfully. The new tests inspect
+  completed files/source strings rather than exercising either refusal.
+
+The frozen-current N=30 result itself checks out as policy-as-run evidence:
+3,024 unique records, 504 seeds, equal labels, zero void/zero-world counters,
+N=30-minus-N=10 `+0.222 +/- 0.140`, arm-minus-null `+0.230 +/- 0.139`, and
+null-minus-N=10 `-0.008 +/- 0.154`. Its records predate `rejected_worlds`, so
+the exact-dose caveat remains. `JOBS.md` is stale: it still calls this block
+RUNNING and still describes v2 as the latest provisional freeze.
+
+Finally, `4579a39`/`fff4e7d` launched six `mc`-versus-`mc-prefix` shards without
+adding the live job or whole-block preregistration to `JOBS.md`. Do not promote
+their eventual pool by hand: per-run evaluation now gates `rejected_worlds`,
+but `aggregate_shards.py` still ignores that counter. Ledger the fixed seed
+range/one-block estimand first, and require the pooled aggregator to refuse any
+nonzero or missing rejected-world accounting.

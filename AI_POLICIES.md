@@ -61,6 +61,10 @@ newest entry sit on top and speak for the file.
   reservoir, not an oracle. Its old-ballot/non-strict/same-world-selected labels
   have produced no online gain. The 12,000-state late supplement is raw-state
   distribution correction and has not yet been cleanly relabelled or trained.
+- **Correctness work bought no measurable STRENGTH**, but bought trustworthy
+  measurement: current `mc` vs the pre-fix bot layer is -0.054 +/- 0.156
+  (provisional; the old bot's zero-world decisions make it not protocol-clean).
+  N=30 was unconfirmable before the sampler rewrite and confirmable after.
 - **Sampler distribution fidelity is BAD, and now measured.** Mean TV excess
   0.161 over the sampling-noise floor; 6 of 8 enumerable states materially
   biased; every legal world still reachable, so this is weighting, not
@@ -460,6 +464,51 @@ conclusion on its own — the synthesis above is what a reader should
 act on. Entries are kept because a number without its protocol is
 how six claims were made and lost, but they are deliberately below
 the fold.
+
+## Did the correctness work buy strength? NO measurable gain (2026-08-05)
+
+`mc` (current) vs `mc-prefix` (the BOT layer frozen at `b3f8f61`: old greedy
+sampler, no `pair_cap`/`run_cap`, no canonical hand order), both N=10, 504
+preregistered clusters at seeds 103M, control `mc-prefix-null`.
+
+| contrast | result |
+|---|---|
+| **current minus pre-fix (PRIMARY)** | **-0.054 +/- 0.156, INCLUDES 0** |
+| current minus null | -0.183 +/- 0.155, excludes 0 |
+| null minus pre-fix | +0.129 +/- 0.153, includes 0 |
+
+win rates 48.3% / 52.1% / 49.0%.
+
+**PROVISIONAL, not confirmable.** The aggregator refused a clean report: 4
+zero-world decisions, all in the pre-fix arms. That is the exact defect the
+sampler rewrite removed, so the old bot exhibiting it is expected — but it
+means exposure is unequal and the contrast is not protocol-clean. Reported with
+`--allow-problems`.
+
+**The honest reading: today's correctness work did not measurably improve
+playing strength.** The point estimate is slightly NEGATIVE and the interval
+comfortably includes zero. The three contrasts are arithmetically consistent
+(-0.054 - 0.129 ~ -0.183), so the one interval that excludes zero is explained
+by the control's draw rather than by the arm being worse.
+
+This matters because it contradicts an intuition worth naming: Jerry observed
+the bots seeming to play noticeably better, and more 甩牌 leads appearing. The
+throws part is real and mechanical — `find_tractor_runs` was omitting tied-code
+tractors, so fixing it literally added lead candidates. But "plays better" does
+not survive measurement at n=504.
+
+**What the correctness work DID buy** is measurement that can be trusted. The
+old sampler produced zero-world decisions — searches that fell back to the
+heuristic pick with no search at all — and they appear in this very run. N=30
+over N=10 was NOT confirmable before the rewrite (+0.101 +/- 0.150) and IS
+after (+0.262, then +0.222 on current main). So the value was in making
+strength claims possible, not in strength itself.
+
+**Caveat on scope.** `mc-prefix` runs on the CURRENT engine, so the engine
+changes of 2026-08-05 (canonical `decompose` input, tied-code tractors) are
+shared by both arms and cancel. This measures the bot layer only. Its ballot
+digest differs (`4d73f8cb` vs `a68f7b8b`), so it is also not a
+sampler-only contrast.
 
 ## N=30 CONFIRMED over N=10 on the rewritten sampler (2026-08-04, preregistered)
 

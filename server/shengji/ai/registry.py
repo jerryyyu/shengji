@@ -15,6 +15,15 @@ def _smart_variant(name: str, **attrs):
     return type(name, (SmartBot,), attrs)
 
 
+class MCStrongNull(MCBot):
+    """NULL for the N=60 lane: `mc-strong` with a different RNG stream."""
+
+    N_DETERMINIZATIONS = 30
+
+    def __init__(self, seed: int | None = None):
+        super().__init__(None if seed is None else seed + 999_983)
+
+
 class MCNull(MCBot):
     """NULL CONTROL: identical to `mc` in every way except its random draws.
 
@@ -38,6 +47,11 @@ REGISTRY: dict[str, type] = {
     "mc": MCBot,  # determinized Monte Carlo; ~30ms/decision (N=10 worlds)
     "mc-strong": type("MCStrong", (MCBot,), {"N_DETERMINIZATIONS": 30}),
     "mc-lite": type("MCLite", (MCBot,), {"N_DETERMINIZATIONS": 5}),
+    "mc-vstrong": type("MCVStrong", (MCBot,), {"N_DETERMINIZATIONS": 60}),
+    # NULL for the N=60-vs-N=30 lane: identical to mc-strong, different RNG
+    # stream. The N=10 `mc-null` cannot serve here — a null must match the
+    # OPPONENT, or it measures a dose step instead of the noise floor.
+    "mc-strong-null": MCStrongNull,
     "mc-null": MCNull,  # null control: same policy, different RNG stream
     "mc-argmax": type("MCArgmax", (MCBot,), {"MARGIN": 0.0}),
     "mc-smartroll": MCSmartRoll,  # SmartBot rollouts, ~5x slower/decision

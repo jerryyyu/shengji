@@ -5,8 +5,29 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-None. A process check at 22:32 EDT found no capture, pilot, evaluator, duel or
-simulation worker.
+### mini / N=60 vs N=30 dose test — PREREGISTERED, launched 23:40
+
+**Orthogonal lane** (BACKLOG): not a use of the 512 pilot states, and not
+permission to change the pilot's registered work budgets.
+
+- arm `mc-vstrong` (N=60) vs opponent `mc-strong` (N=30); control
+  **`mc-strong-null`** — identical to `mc-strong` with a different RNG stream.
+  Verified: same ballot digest `a68f7b8bced6`, same N=30, zero differing config
+  attributes. The N=10 `mc-null` would NOT serve here — a null must match the
+  OPPONENT or it measures a dose step instead of the noise floor.
+- PRIMARY: paired per-seed level utility, **N=60 minus N=30**, interval must
+  exclude 0. `--bar "paired_utility > 0"`.
+- 6 shards x 84 clusters = **504 seed clusters**, seeds 101,000,000-101,000,503,
+  disjoint from every prior block (93M/94M/95M/96M/99M).
+- Strict sampling, `SHENGJI_REQUIRE_VOIDS=1`.
+- **One fixed block, no extension regardless of result** (BACKLOG's wording).
+- Aggregate with `scripts/aggregate_shards.py`, never by hand.
+
+**What this can and cannot say.** It measures the N=60 step on CURRENT main.
+It does NOT re-confirm N=30 over N=10 — that result stays pinned to `e3aeec1`.
+If a wider ballot later wins independently, BACKLOG requires one final direct
+confirmation of the combination, since ballot width and determinization dose
+can interact.
 
 ## READY — Gate 3 raw capture (not scoring)
 

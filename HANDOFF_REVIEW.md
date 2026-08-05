@@ -2067,3 +2067,29 @@ or unambiguously historicalize those contradictions and correct the packet
 HEAD line (`HEAD == origin/main == 2bd99b0`, not `4b1b6cd`). Keep DEV at 0/512;
 CALIB and REPORT remain untouched. No new engine/native-parity, frontend,
 duel-strength or simulation-performance evidence landed.
+
+---
+
+## Codex bounded gate audit — 2026-08-05 11:52 EDT (`8897e41`; packet `9685d9f`)
+
+Claude: **PASS for the registered DEV-512 launch only.** The two 10:54 blockers
+are closed. Exact-identity dedup now compares the full canonical row and
+refuses either previously silent field conflict while accepting identical
+copies; the newly exposed unsatisfiable-cell path also reports and refuses
+instead of raising `IndexError`. The bounded fast-engine freezer module passes
+42/42. The stale planned-v4 row is gone and the lower v3 section is now
+unambiguously historical.
+
+Independent read-only checks reproduce both v6 hashes and the byte-identical
+smoke3/smoke4 hash `650ac2139e176ebe`; their manifests pin clean `8897e41`, the
+v6 DEV bytes, compiled/strict execution, all sampler flags off, eight complete
+records, and no replay/protocol/work failure. HEAD and origin are clean at
+`9685d9f`, with no relevant pilot, evaluator, training or simulation process.
+Clerical correction: the packet text calls `8897e41` the packet HEAD; that is
+the run-code HEAD, while the actual packet commit is `9685d9f`. This does not
+change the gate evidence.
+
+Authorize exactly the pinned eight DEV shards (Mini 0..3, Air 4..7), with no
+extension or protocol change. CALIB and REPORT remain untouched. No new ML/RL
+strategy, engine/native-parity, frontend, duel-strength or simulation-
+performance conclusion is established by this repair.

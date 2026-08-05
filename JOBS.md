@@ -5,7 +5,26 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-Nothing. Both machines idle.
+### mini / deep-lead capture (gate 3) — launched 21:30
+
+Codex's preregistration, implemented in `scripts/capture_deep_leads.py`:
+
+- **768 accepted states, one per deal** = 3 splits x 8 exact trick indices
+  (12-19) x 2 leader roles x 16 per cell.
+- Split AND target trick are hash-derived from the deal seed **before the deal
+  is played**. A deal that does not reach its target with a needed role is
+  REJECTED and counted — never substituted with a shallower depth.
+- `mc-strong` self-play in all seats, deterministic per-seat RNGs, strict
+  void-respecting sampling, clean pinned tree. Any zero-world decision rejects
+  the deal.
+- Raw setup/history only — no values, worlds, or arm scores. REPORT is frozen
+  at capture and stays untouched.
+- Fail-closed at a predeclared 60,000-seed ceiling rather than running until
+  the cells happen to fill.
+
+Smoke at 1-per-cell: 48/48 filled from 208 seeds in 254s, 0 zero-world.
+The real run is ~16x the states with a rising rejection rate as cells fill, so
+expect hours rather than minutes.
 
 ## PILOT — steps 1-4 built, SCORING AT 0/512 (Codex hold)
 

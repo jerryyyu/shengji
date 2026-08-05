@@ -118,22 +118,23 @@ Fresh schema-v2 capture and merge completed at 23:15 from clean compiled+strict
 The first v1 attempt remains recoverably quarantined. Gate 3 capture is closed;
 do not rerun it.
 
-## PILOT — v6 gate sets frozen; SCORING 0/512 (Codex HOLD)
+## PILOT — DEV-512 COMPLETE, SELECT NONE; CALIB/REPORT SEALED
 
-Artifact ledger: `server/rl_data/PILOT_ARTIFACTS.md` is authoritative.
+Gate sets: `pilot_dev512.v6.json` `af78748586034f6f`, `pilot_calib512.v6.json`
+`3872350f57a4dd60` (byte-unchanged, never scored).
 
-- `pilot_dev512.v6.json`   `af78748586034f6f`
-- `pilot_calib512.v6.json` `3872350f57a4dd60`
-- frozen from clean `53d9b67`; four exact marginals (band/size/role/source),
-  512 unique exact-state identities per side, 0 replay errors, DEV/CALIB deal
-  overlap 0, all six live corpus AND split digests current.
+**DEV 512/512 scored.** Eight clean shards at `884030f`, one experiment id
+`a838d7415b4c2032`, bundle sha `38f61d4a9dacac6a`, aggregated exactly once with
+no refusal. Codex independently reproduced both. Primary
+`quota - random_fill` `+0.110 +/- 0.337` INCLUDES 0 -> **no ballot design
+selected**. Aggregate retained at `runs/logs/dev512_aggregate.txt`; the seven
+pre-fix shards are quarantined at `runs/logs/quarantine_prefix_75b06da/` and
+were never combined.
 
-**Blocker: Codex HOLD.** The 10:15 packet was rejected — v5 was not
-order-independent. v3, v4 and v5 are SUPERSEDED and retained only as named
-test negative controls. This is NOT a sampler blocker: that lane is closed and
-DEV screens ballot designs under the sampler production deploys.
+**CALIB and REPORT remain unscored and untouched** — the contract runs CALIB on
+one DEV-selected design, and there is none.
 
-**DEV 0/512 scored. CALIB and REPORT unscored and untouched.**
+**Open:** global sampler completeness. `75b06da` is sound but necessary-only.
 
 ## FINISHED — N=30 frozen-current confirmation (seeds 102M)
 
@@ -162,7 +163,7 @@ merely superseded:
 
 Current figures: weighted splits `-0.0600 +/- 0.0310`, uniform deal
 `-0.0001 +/- 0.0027`, both 24/24 pairing-verified against the physical
-reference. Nothing adopted; all flags OFF; pilot scoring 0/512.
+reference. Nothing adopted; all flags OFF. (Superseded: DEV-512 has since scored 512/512 with SELECT NONE.)
 
 ### N=60 vs N=30 dose test — NO CONFIRMED ADVANTAGE, closed 2026-08-04 23:46
 - Primary N=60-minus-N=30 paired utility **-0.002 +/- 0.119** over 504 fresh

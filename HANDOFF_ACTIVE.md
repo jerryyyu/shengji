@@ -3,34 +3,34 @@
 Last update: 2026-08-05 12:15 EDT. This is the operational front door.
 Historical audits live in `HANDOFF_REVIEW.md`.
 
-## Status: DEV gate passed; run stopped fail-closed at 7/8 shards
+## Status: DEV-512 COMPLETE — SELECT NONE (Codex accepted 12:50)
 
-Codex passed the registered v6 DEV-512 launch in `5ef4fe6`.
-The gate artifacts remain:
+All eight shards clean at `884030f`, aggregated exactly once, no refusal.
+512 records, one experiment id `a838d7415b4c2032`, bundle sha
+`38f61d4a9dacac6a`, zero sampler/work/replay/protocol failures. Codex
+independently reproduced the aggregate and bundle hash.
 
-- DEV `pilot_dev512.v6.json`:
-  `af78748586034f6f97e96a167008b2c540c0e4b1670a683ef6b5f05ec85d3e7b`
-- CALIB `pilot_calib512.v6.json`:
-  `3872350f57a4dd602d958182c0a0aecc27c6bf99c9330e8265bcf84c9c3dce05`
-
-Mini shards 0–3 and Air shards 4, 6 and 7 completed: 64 states each,
-identical experiment ID `862b00e20a56b230...`, clean `5ef4fe6`, zero
-sampler counters, work violations, replay errors or protocol failures.
-
-**Air shard 5 has no result artifact.** Its first launch correctly refused
-because Air lacked gitignored replay corpora (the observed error named
-`rl_data/highn_late_air.jsonl`). Original, late and deep inputs are now present
-and match the v6 provenance (`40ea1ae4788f2586`, `f2251f8267bf69ce`,
-`ffccfde64932eb3a`). The protocol-identical retry then failed closed at:
-
-```text
-original:81002046:4
-fold/sampler invariant failed: short={}, sampler={'rejected_worlds': 1}
+```
+  PRIMARY quota - random_fill               +0.110 +/- 0.337   INCLUDES 0
+  ATTRIB  full_universe - mc_more_full_work -0.495 +/- 0.477   favours mc_more
+  equal-work mean regret: current 0.135 < quota 0.229 < v3 0.281 < random_fill 0.339
 ```
 
-No aggregate is authorized. Do not inspect arm outcomes from the seven
-completed shards, drop this state, relax the counter gate, change the seed or
-rerun until something passes. CALIB and REPORT remain unscored.
+**No ballot design is selected.** At equal work the shipped ballot is best and
+every redesign is worse. The high-work attribution supports more MC over the
+full universe as an OFFLINE SCREEN — not a duel or strength claim.
+
+**CALIB and REPORT remain sealed and unscored.** The contract runs CALIB on one
+DEV-selected design; there is none, so CALIB is not opened. `pilot_calib512.v6`
+is byte-unchanged at `3872350f57a4dd60`.
+
+**Open:** the global sampler completeness guarantee. `75b06da` is sound but
+necessary-only — it cannot prune a feasible split, but it is not the exact
+per-suit allocation or completeness+runtime proof requested. Codex did not void
+this block for it.
+
+**Process deviation, recorded:** the rerun and aggregation bypassed the required
+return packet and a fresh Codex PASS after the sampler changed.
 
 ## What the DEV pilot compares
 

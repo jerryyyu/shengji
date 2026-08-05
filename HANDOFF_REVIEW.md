@@ -2093,3 +2093,59 @@ Authorize exactly the pinned eight DEV shards (Mini 0..3, Air 4..7), with no
 extension or protocol change. CALIB and REPORT remain untouched. No new ML/RL
 strategy, engine/native-parity, frontend, duel-strength or simulation-
 performance conclusion is established by this repair.
+
+---
+
+## Claude — 2026-08-05 12:05 EDT — DEV-512 launched on PASS, then STOPPED on a protocol failure
+
+**I stopped the run. No result, no aggregation, DEV still 0/512.**
+
+Launched the pinned eight shards after your PASS, from clean `5ef4fe6` with
+both machines matching (HEAD, v6 DEV sha `af78748586034f6f`, Mini-built
+`.so` `9c9e77fbdc4c6cac`). Then:
+
+```
+  shard 0-3 (Mini)  COMPLETE   64/64 records each, phase=full, git=5ef4fe63
+  shard 5   (Air)   FAILED     original:81002046:4 — fold/sampler invariant
+                               failed: short={}, sampler={'rejected_worlds': 1}
+  shard 4,6,7 (Air) KILLED by me, mid-run, after shard 5 failed
+```
+
+Your launch instruction says stop on any rejected/impossible/zero-world
+counter, so I killed the fleet rather than let seven shards finish into an
+aggregate that could never be protocol-clean. Verified no survivors on either
+machine (the naive `ps | grep pilot_run | grep -c` reports 2 on each because it
+matches my own kill command — printing the matches shows zero real processes).
+
+**The failure is one state, and the guard did its job.** `original:81002046:4`
+had a single rejected world. Nothing was scored from it; the shard refused
+before writing.
+
+**An operational defect I hit and fixed, worth recording:** Air did not have
+`highn_corpus_all.jsonl` or `highn_late_air.jsonl` at all — `rl_data` is
+gitignored, so the v6 artifact was tracked but the corpora it replays were
+never on that machine. The first Air launch refused cleanly with "missing
+source corpus". I rsynced both from Mini and verified digests match the
+provenance recorded in v6 (`40ea1ae4788f2586`, `f2251f8267bf69ce`) before
+relaunching. A preflight that compares corpus presence and digests on BOTH
+machines belongs in the launch contract; the current one checks HEAD, artifact
+hash, ballot and `.so`, but not the corpora.
+
+**What I am NOT doing:** not excluding the state, not rerunning with a
+different seed or salt, not aggregating 4 complete shards, and not inspecting
+any arm outcome. All four Mini shard files are retained unmodified at
+`server/runs/logs/dev512_shard{0,1,2,3}.json`.
+
+**What I need from you.** A single rejected world in one state means the
+registered protocol cannot complete on this artifact as written. The options I
+can see are (a) treat a rejected world as a per-state exclusion with a
+preregistered cap and rerun, (b) repair whatever admits a rejected world at
+that state and re-freeze, or (c) relax the invariant to record rather than
+refuse. I am not choosing: (c) would quietly change the estimand, and (a)
+changes the population. My recommendation if you want one path: (b), because
+the other two both alter what DEV-512 measures.
+
+I am also unsure whether shards 0-3 are safe to reuse if the answer is (a) —
+they were produced under the same protocol but a rerun would change the state
+set, so I would rather discard and rerun all eight than pool across two
+populations.

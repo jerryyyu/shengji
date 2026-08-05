@@ -11,18 +11,25 @@ simulation worker.
 ## READY — Gate 3 raw capture (not scoring)
 
 The first eight-shard attempt from `8a6c2af` is closed unsuccessful: shards
-1/2/3/5 completed 96 rows each, while 0/4/6/7 stopped with 51/83/30/42 partial
+1/2/3/5 completed 96 rows each, while 0/4/6/7 stopped with 51/83/30/68 partial
 rows. The known witness seed `92000381` deterministically reports two
 `rejected_worlds`, zero zero-world decisions and zero impossible worlds. No
-merge or scoring occurred. Preserve/quarantine all eight old artifacts; their
+merge or scoring occurred. All twelve v1 files are preserved under
+`rl_data/quarantine/deep_leads_v1_8a6c2af_abort_20260804_2235/`; their
 v1 manifests and source/git identity must not be mixed into the v2 relaunch.
 
 Schema v2 makes the preregistered rejection policy executable: a safely
 rejected strict world excludes the whole deal and is recorded in both observed
 counters and `sampler_rejected_deals`; it is never admitted as an artifact
-trajectory. A zero-world fallback or impossible-world use still aborts. This
-authorizes a fresh raw capture only after the updated tests and clean compiled
-smokes pass; pilot scoring remains 0/512 until merge and state freeze finish.
+trajectory. A zero-world fallback or impossible-world use still aborts.
+Validation is closed: 17 targeted capture tests passed; the full pure and
+compiled suites independently passed **253 tests (2 skipped)**; and two clean
+compiled eight-shard capture+merge smokes at `db20b7a` were byte-identical:
+row `b16bc0135f3f0dd94fa46b31bdfb7f6286b55da24e33ee9b4cc28ab6157f17a5`,
+manifest `88713abf7599cb318effa27dba1586e95030ef8d901018b9271ae2069e34f146`,
+split `1e58ed847408b121f189d7d719bd516836c1fc6782699f24ed227c1721f9aa10`.
+**Fresh v2 raw capture is GO.** Pilot scoring remains 0/512 until merge and
+state freeze finish.
 
 Every worker must use the same clean pushed commit and one distinct `I` in
 0..7:

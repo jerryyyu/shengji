@@ -21,150 +21,18 @@ evidence changes a synthesized conclusion. Append run reports below the fold,
 and when a run changes a conclusion, EDIT the synthesis rather than letting the
 newest entry sit on top and speak for the file.
 
-## N=30 CONFIRMED over N=10 on the rewritten sampler (2026-08-04, preregistered)
-
-**First strength claim in this project to clear a preregistered confirmation.**
-
-| contrast | result | n |
-|---|---|---|
-| **N=30 minus N=10 (PRIMARY)** | **+0.262 +/- 0.154, excludes 0** | 504 |
-| N=30 minus null control | +0.310 +/- 0.153, excludes 0 | 504 |
-| null control minus N=10 | -0.048 +/- 0.162, **includes 0** | 504 |
-
-win rates 55.4% (N=30) / 49.2% (N=10) / 49.1% (null).
-
-Preregistered in `JOBS.md` before launch: one block, 504 clusters, seeds
-99,000,000+, disjoint from every earlier block, `--bar "paired_utility > 0"`,
-**no extension regardless of result**, screen block NOT pooled. Aggregated
-through `scripts/aggregate_shards.py`, which reported no problems — equal
-label counts, no duplicate (label, seed, flip), one commit, one schema, zero
-zero-world decisions.
-
-**The null control is what makes this different from the six claims that
-died.** `mc-null` is `mc` with a different RNG stream — same ballot digest,
-same N=10, no differing config attribute. It scored -0.048 +/- 0.162 against
-`mc`: the harness produces nothing from nothing. And arm-minus-control excludes
-zero, so the effect is attributable to search width rather than to the pipeline.
-
-**Individual shards all read NOT CONFIRMED and that is expected**, not a
-caveat being waved away: at n=84 a shard's interval is about +/-0.37, far too
-wide. The preregistered unit of analysis was the 504-cluster aggregate,
-declared in advance precisely so a shard-level result could not be cherry-picked.
-
-**Why this reverses the afternoon's verdict.** On the OLD sampler the same
-comparison gave +0.101 +/- 0.150 and did not confirm. The plausible mechanism
-is that the sampler now emits worlds that respect voids, pair caps and tractor
-obligations, so additional worlds carry real information; when a fraction of
-sampled worlds were impossible, more of them bought less. That is a hypothesis
-consistent with the data, not a demonstrated causal claim.
-
-**Caveats, stated rather than buried.**
-
-- It ran on the PRE-FIX `decompose` kernel; the action-semantics fix landed
-  after launch. The ambiguity is common-mode across arms so the contrast
-  holds, but the absolute policy differs slightly from current `main`.
-- N=5 was deliberately excluded. The dose ladder is a separate diagnostic and
-  including it re-creates the three-treatment design that voided the last run.
-- This is MC-vs-MC search width. **The goal — an RL policy beating MC — is
-  still not met.** This is the strongest verified bot, not a learned one.
-- `mc-strong` costs 3x the search of `mc`. Latency is not an optimisation
-  target here, but this is a deployment decision for Jerry, not an adoption
-  that follows automatically from the measurement.
-
-## N=60 vs N=30 — NO CONFIRMED ADVANTAGE (2026-08-05)
-
-Preregistered orthogonal lane on CURRENT main, one fixed block, no extension.
-
-| contrast | result | n |
-|---|---|---|
-| **N=60 minus N=30 (PRIMARY)** | **-0.002 +/- 0.119, INCLUDES 0** | 504 |
-| N=60 minus null | +0.004 +/- 0.129, includes 0 | 504 |
-| null minus N=30 | -0.006 +/- 0.134, includes 0 | 504 |
-
-win rates 49.7% / 49.2% / 49.7%.
-
-Seeds 101,000,000+, disjoint from every prior block. Control `mc-strong-null`
-is `mc-strong` with a different RNG stream — same ballot digest, same N=30, zero
-differing config attributes. Aggregated via `scripts/aggregate_shards.py` with
-no problems reported: equal label counts, no duplicate seeds, one commit, one
-schema, zero zero-world decisions.
-
-**This is the tightest interval any block has produced today (+/-0.119) and it
-is centred on zero.** It fails the preregistered superiority bar and bounds the
-primary effect to roughly `[-0.121, +0.117]`; it was not an equivalence test,
-so it does not prove zero effect or saturation.
-
-The evaluator also omitted `MCBot.rejected_worlds` from its per-game counters.
-The records therefore cannot prove that every nominal N=60/N=30 search
-accepted exactly 60/30 worlds. This remains a valid comparison of the two
-`f506a7e` policies as actually run, but not an exact accepted-world dose audit.
-Future dose claims must record and gate rejected proposals.
-
-**The dose curve, assembled:**
-
-| step | result |
-|---|---|
-| N=5 -> N=10 | large, -0.347 +/- 0.145 for N=5 (two independent blocks) |
-| N=10 -> N=30 | +0.262 +/- 0.154 CONFIRMED (pinned to `e3aeec1`) |
-| N=30 -> N=60 | **-0.002 +/- 0.119, no confirmed gain** |
-
-The evidence does not justify more production search dose above N=30 as the
-next lever. WHICH actions get priced and HOW worlds are sampled are better
-current hypotheses. That is a priority decision from a tight null-centred
-interval, not proof that determinization count is exhausted.
-
-Practical consequence: there is no measured reason to promote N>30, and
-`mc-strong` at N=30 remains the strongest verified policy — still pinned to
-`e3aeec1`, still undeployed, still needing a fresh frozen-current confirmation
-before promotion.
-
-## Sampler distribution fidelity — MATERIAL BIAS MEASURED (2026-08-05)
-
-Certification established every emitted world is LEGAL and every legal world is
-REACHABLE. Neither speaks to FREQUENCY. The bounded probe Codex asked for
-(`scripts/sampler_posterior.py`) measures it against an exact reference on
-states small enough to enumerate every legal world.
-
-| state | legal worlds | TV | noise band | **excess** | worst marginal gap |
-|---|---|---|---|---|---|
-| 880001 | 6 | 0.186 | 0.027 | **0.159** | 0.186 |
-| 880002 | 6 | 0.012 | 0.027 | 0.000 | 0.009 |
-| 880003 | 48 | 0.318 | 0.059 | **0.259** | 0.066 |
-| 880004 | 54 | 0.228 | 0.064 | **0.164** | 0.025 |
-| 880005 | 36 | 0.334 | 0.053 | **0.282** | 0.051 |
-| 880006 | 14 | 0.406 | 0.035 | **0.371** | 0.119 |
-| 880007 | 12 | 0.027 | 0.033 | 0.000 | 0.018 |
-| 880008 | 42 | 0.113 | 0.056 | **0.056** | 0.083 |
-
-**Mean TV excess 0.161 over the sampling-noise floor; 6 of 8 states exceed
-0.05.** The noise band is the 95th-percentile TV a PERFECT uniform sampler
-shows at this draw count, so the excess is the part that is not finite-sample
-noise. Without that band a raw TV of 0.2 could not be distinguished from the
-floor at all.
-
-**Zero legal worlds were never drawn**, in every state. So this is purely a
-proportions failure, exactly as the two named biases predict: `_splits` samples
-count matrices roughly uniformly though they admit very different numbers of
-completions, and `_deal_suit` prefers distinct codes beyond what the caps
-require. Completeness is intact; weighting is not.
-
-**Consequence for the pilot.** Codex's condition was "repair first only if that
-bounded probe shows material bias". It does. Sharing proposal and report worlds
-gives low-variance paired comparisons but does NOT cancel a biased belief
-distribution when the bias changes which action is best — and a bias this size
-plausibly does. **Pilot scoring should not start on this sampler.**
-
-Reference is uniform-over-legal-worlds because determinization assumes an
-uninformative prior over deals consistent with the public record. That is the
-sampler's own stated target.
-
-## Current synthesis — 2026-08-04 22:15
+## Current synthesis — 2026-08-05 01:20
 
 - **More search width is not the next lever.** N=5->N=10 was large,
   N=10->N=30 was +0.262 +/- 0.154 confirmed, and N=30->N=60 was
   **-0.002 +/- 0.119 on current main**. That last block found no advantage but
   did not test equivalence; do not repeat it without a new mechanism and full
   accepted/rejected-world accounting.
+- **DEPLOYED 2026-08-05:** prod runs `mc-strong` (N=30) with the compiled
+  engine (`{"bot":"mc-strong","fast":true}`). The image now builds the Cython
+  extension, taking prod from 45ms/decision (N=10, pure Python) to 36ms (N=30,
+  compiled) — more search for less latency. The backing result is pinned to
+  `e3aeec1`; a frozen-current confirmation is running.
 - **Strength incumbent:** `mc-strong` (N=30) beat deployed N=10 `mc` by
   +0.262 +/- 0.154 on 504 preregistered fresh clusters, null control
   -0.048 +/- 0.162, independently reproduced by Codex. **That result is pinned
@@ -185,9 +53,12 @@ sampler's own stated target.
   reservoir, not an oracle. Its old-ballot/non-strict/same-world-selected labels
   have produced no online gain. The 12,000-state late supplement is raw-state
   distribution correction and has not yet been cleanly relabelled or trained.
-- **Sampler distribution fidelity is BAD, and now measured**: mean TV excess
-  0.161 over the noise floor, 6 of 8 toy states materially biased, all legal
-  worlds reachable. Repair before pilot scoring.
+- **Sampler distribution fidelity is BAD, and now measured.** Mean TV excess
+  0.161 over the sampling-noise floor; 6 of 8 enumerable states materially
+  biased; every legal world still reachable, so this is weighting, not
+  coverage. **Pilot scoring must not start on this sampler** — shared
+  proposal/report worlds lower variance but do not cancel a belief bias that
+  changes which action is best.
 - **Sampler: the P0 gate is MET for VALIDITY and COMPLETENESS** (run
   `eea78d2`, clean tree). 38,399 worlds over reservoir states: 0 invalid
   against a rules-derived validator covering conservation, pins, voids, pair
@@ -581,6 +452,143 @@ conclusion on its own — the synthesis above is what a reader should
 act on. Entries are kept because a number without its protocol is
 how six claims were made and lost, but they are deliberately below
 the fold.
+
+## N=30 CONFIRMED over N=10 on the rewritten sampler (2026-08-04, preregistered)
+
+**First strength claim in this project to clear a preregistered confirmation.**
+
+| contrast | result | n |
+|---|---|---|
+| **N=30 minus N=10 (PRIMARY)** | **+0.262 +/- 0.154, excludes 0** | 504 |
+| N=30 minus null control | +0.310 +/- 0.153, excludes 0 | 504 |
+| null control minus N=10 | -0.048 +/- 0.162, **includes 0** | 504 |
+
+win rates 55.4% (N=30) / 49.2% (N=10) / 49.1% (null).
+
+Preregistered in `JOBS.md` before launch: one block, 504 clusters, seeds
+99,000,000+, disjoint from every earlier block, `--bar "paired_utility > 0"`,
+**no extension regardless of result**, screen block NOT pooled. Aggregated
+through `scripts/aggregate_shards.py`, which reported no problems — equal
+label counts, no duplicate (label, seed, flip), one commit, one schema, zero
+zero-world decisions.
+
+**The null control is what makes this different from the six claims that
+died.** `mc-null` is `mc` with a different RNG stream — same ballot digest,
+same N=10, no differing config attribute. It scored -0.048 +/- 0.162 against
+`mc`: the harness produces nothing from nothing. And arm-minus-control excludes
+zero, so the effect is attributable to search width rather than to the pipeline.
+
+**Individual shards all read NOT CONFIRMED and that is expected**, not a
+caveat being waved away: at n=84 a shard's interval is about +/-0.37, far too
+wide. The preregistered unit of analysis was the 504-cluster aggregate,
+declared in advance precisely so a shard-level result could not be cherry-picked.
+
+**Why this reverses the afternoon's verdict.** On the OLD sampler the same
+comparison gave +0.101 +/- 0.150 and did not confirm. The plausible mechanism
+is that the sampler now emits worlds that respect voids, pair caps and tractor
+obligations, so additional worlds carry real information; when a fraction of
+sampled worlds were impossible, more of them bought less. That is a hypothesis
+consistent with the data, not a demonstrated causal claim.
+
+**Caveats, stated rather than buried.**
+
+- It ran on the PRE-FIX `decompose` kernel; the action-semantics fix landed
+  after launch. The ambiguity is common-mode across arms so the contrast
+  holds, but the absolute policy differs slightly from current `main`.
+- N=5 was deliberately excluded. The dose ladder is a separate diagnostic and
+  including it re-creates the three-treatment design that voided the last run.
+- This is MC-vs-MC search width. **The goal — an RL policy beating MC — is
+  still not met.** This is the strongest verified bot, not a learned one.
+- `mc-strong` costs 3x the search of `mc`. Latency is not an optimisation
+  target here, but this is a deployment decision for Jerry, not an adoption
+  that follows automatically from the measurement.
+
+## N=60 vs N=30 — NO CONFIRMED ADVANTAGE (2026-08-05)
+
+Preregistered orthogonal lane on CURRENT main, one fixed block, no extension.
+
+| contrast | result | n |
+|---|---|---|
+| **N=60 minus N=30 (PRIMARY)** | **-0.002 +/- 0.119, INCLUDES 0** | 504 |
+| N=60 minus null | +0.004 +/- 0.129, includes 0 | 504 |
+| null minus N=30 | -0.006 +/- 0.134, includes 0 | 504 |
+
+win rates 49.7% / 49.2% / 49.7%.
+
+Seeds 101,000,000+, disjoint from every prior block. Control `mc-strong-null`
+is `mc-strong` with a different RNG stream — same ballot digest, same N=30, zero
+differing config attributes. Aggregated via `scripts/aggregate_shards.py` with
+no problems reported: equal label counts, no duplicate seeds, one commit, one
+schema, zero zero-world decisions.
+
+**This is the tightest interval any block has produced today (+/-0.119) and it
+is centred on zero.** It fails the preregistered superiority bar and bounds the
+primary effect to roughly `[-0.121, +0.117]`; it was not an equivalence test,
+so it does not prove zero effect or saturation.
+
+The evaluator also omitted `MCBot.rejected_worlds` from its per-game counters.
+The records therefore cannot prove that every nominal N=60/N=30 search
+accepted exactly 60/30 worlds. This remains a valid comparison of the two
+`f506a7e` policies as actually run, but not an exact accepted-world dose audit.
+Future dose claims must record and gate rejected proposals.
+
+**The dose curve, assembled:**
+
+| step | result |
+|---|---|
+| N=5 -> N=10 | large, -0.347 +/- 0.145 for N=5 (two independent blocks) |
+| N=10 -> N=30 | +0.262 +/- 0.154 CONFIRMED (pinned to `e3aeec1`) |
+| N=30 -> N=60 | **-0.002 +/- 0.119, no confirmed gain** |
+
+The evidence does not justify more production search dose above N=30 as the
+next lever. WHICH actions get priced and HOW worlds are sampled are better
+current hypotheses. That is a priority decision from a tight null-centred
+interval, not proof that determinization count is exhausted.
+
+Practical consequence: there is no measured reason to promote N>30, and
+`mc-strong` at N=30 remains the strongest verified policy — still pinned to
+`e3aeec1`, still undeployed, still needing a fresh frozen-current confirmation
+before promotion.
+
+## Sampler distribution fidelity — MATERIAL BIAS MEASURED (2026-08-05)
+
+Certification established every emitted world is LEGAL and every legal world is
+REACHABLE. Neither speaks to FREQUENCY. The bounded probe Codex asked for
+(`scripts/sampler_posterior.py`) measures it against an exact reference on
+states small enough to enumerate every legal world.
+
+| state | legal worlds | TV | noise band | **excess** | worst marginal gap |
+|---|---|---|---|---|---|
+| 880001 | 6 | 0.186 | 0.027 | **0.159** | 0.186 |
+| 880002 | 6 | 0.012 | 0.027 | 0.000 | 0.009 |
+| 880003 | 48 | 0.318 | 0.059 | **0.259** | 0.066 |
+| 880004 | 54 | 0.228 | 0.064 | **0.164** | 0.025 |
+| 880005 | 36 | 0.334 | 0.053 | **0.282** | 0.051 |
+| 880006 | 14 | 0.406 | 0.035 | **0.371** | 0.119 |
+| 880007 | 12 | 0.027 | 0.033 | 0.000 | 0.018 |
+| 880008 | 42 | 0.113 | 0.056 | **0.056** | 0.083 |
+
+**Mean TV excess 0.161 over the sampling-noise floor; 6 of 8 states exceed
+0.05.** The noise band is the 95th-percentile TV a PERFECT uniform sampler
+shows at this draw count, so the excess is the part that is not finite-sample
+noise. Without that band a raw TV of 0.2 could not be distinguished from the
+floor at all.
+
+**Zero legal worlds were never drawn**, in every state. So this is purely a
+proportions failure, exactly as the two named biases predict: `_splits` samples
+count matrices roughly uniformly though they admit very different numbers of
+completions, and `_deal_suit` prefers distinct codes beyond what the caps
+require. Completeness is intact; weighting is not.
+
+**Consequence for the pilot.** Codex's condition was "repair first only if that
+bounded probe shows material bias". It does. Sharing proposal and report worlds
+gives low-variance paired comparisons but does NOT cancel a biased belief
+distribution when the bias changes which action is best — and a bias this size
+plausibly does. **Pilot scoring should not start on this sampler.**
+
+Reference is uniform-over-legal-worlds because determinization assumes an
+uninformative prior over deals consistent with the public record. That is the
+sampler's own stated target.
 
 ## Sampler certification status — P0 passed; posterior fidelity open
 

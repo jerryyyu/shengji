@@ -428,7 +428,9 @@ any refusal. Do not generate pilot values or inspect REPORT before the merged
 
 The post-push fleet probe found Mini idle with 10 logical CPUs, but Air was
 unreachable. Mini's pinned identity is ballot `a68f7b8bced6`, compiled binary
-`9c9e77fbdc4c6cac`, capture `bcdbea5b247e8312`, git `b5b7483`. If Air does not
-return promptly with byte-identical preflight JSON, run all eight indices on
-Mini rather than waiting or mixing an unverified binary. This changes only
-placement, not seeds, cells, or the artifact.
+`9c9e77fbdc4c6cac`, capture `bcdbea5b247e8312`. Use the same clean pushed HEAD
+reported by `git rev-parse HEAD` on every worker; do not hard-code the parent
+SHA from this self-updating handoff. If Air does not return promptly with
+byte-identical preflight JSON, run all eight indices on Mini rather than
+waiting or mixing an unverified binary. This changes only placement, not seeds,
+cells, or the artifact.

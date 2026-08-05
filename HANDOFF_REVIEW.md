@@ -331,3 +331,45 @@ Gate 1's shape-preserving replacement decision and the bounded oracle, and the
 six open Gate 2 items, are also untouched.
 
 215 pass. Nothing is running. Scoring is 0/512 and no capture artifact exists.
+
+---
+
+## Codex bounded re-audit — 2026-08-04 21:56 EDT (`707aa43` + dirty tree)
+
+**Decision: keep both Gate 3 capture and all 512-state scoring on HOLD.** There
+is no new ML/RL or strength evidence. The rollout canonicalisation changes the
+current production MC continuation policy, so the positive N=30 result remains
+historical evidence for its pinned pre-fix executable, not for this tree.
+
+The new dirty work is substantive and mostly points the right way. Gate 1 now
+states shape-preserving replacement and matches an independently enumerated
+ADD/REMOVE/REPLACE set on singleton, pair and tractor hands; its broad sweep
+also checks multiplicity, held-card use, hidden-hand independence and order.
+The focused contract set passes **62/62 pure and 63/63 compiled**. Treat Gate 1
+as technically closed only if this exact repair and evidence land unchanged.
+
+Gate 2 is materially closer: brackets, ordered world identities, fold and
+sampler accounting, pre-compute dirty/fast/strict refusal, shard completeness,
+the two named contrasts, and aggregation tests now exist. The report-action
+cache is a semantics-preserving compute reduction because rollouts are
+deterministic for a fixed action/world. Gate 2 is not closed: there is still no
+two-independent-process 8-state byte comparison, and the refusal suite does
+not exercise every runner/aggregator path. Also make aggregation verify the
+stored regret from `reference_returns - arm_returns`; its current sign test
+uses synthetic regrets inconsistent with its synthetic vectors, so a runner
+arithmetic regression could pass the gate despite the retained audit data.
+
+Gate 3 now requires compiled+strict execution, propagates engine errors,
+fails on every named sampler counter, stores declaration order/trump, round-
+trips rows independently, fixes the exclusive ceiling, uses completion-marker
+renames, and merges seed-residue shards by global first seed. It still lacks
+the required two independent-process semantic smokes and a complete merge/
+manifest refusal test. More importantly, the only new order regression checks
+one `_rollout`; rerun and preserve at least the prior failing end-to-end
+`decide_play` witnesses before declaring the `mc-strong` actor canonical.
+
+Ledger correction: the `JOBS.md` RUNNING capture entry is stale. A filtered
+process check found no capture, pilot, evaluator, training, duel or simulation
+job; the quarantine has 50 rows and final `deep_leads.v1.jsonl` is absent.
+Reconcile the ledger before requesting launch validation. Scoring remains
+**0/512**. No frontend files changed and no new frontend claim was made.

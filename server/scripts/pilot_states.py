@@ -55,6 +55,7 @@ SOURCES = [
 ]
 
 #: Registered composition per Codex: 512 = 170 early + 171 mid + 171 late.
+BANDS = ("early", "mid", "late")
 BAND_QUOTA = {"early": 170, "mid": 171, "late": 171}
 
 #: REGISTERED candidate-size allocation, identical for DEV and CALIB.
@@ -77,6 +78,20 @@ ROLE_QUOTA = {
     "early": {"attacker": 85, "defender": 85},
     "mid":   {"attacker": 86, "defender": 85},
     "late":  {"attacker": 86, "defender": 85},
+}
+
+
+#: REGISTERED source marginals per band, identical DEV/CALIB. Source is a
+#: POPULATION COVARIATE: `original`, `late` and `deep` were captured under
+#: different state-generation regimes, so an uncontrolled source mix makes
+#: CALIB a different population rather than a held-out replicate of DEV. v4
+#: drifted to DEV mid 163 original / 8 late against CALIB 55 / 116 because
+#: selection followed corpus insertion order (Codex). Rounded pooled v3
+#: metadata, fixed before any action score was seen.
+SOURCE_QUOTA = {
+    "early": {"original": 129, "late": 41,  "deep": 0},
+    "mid":   {"original": 17,  "late": 154, "deep": 0},
+    "late":  {"original": 0,   "late": 1,   "deep": 170},
 }
 
 
@@ -109,8 +124,92 @@ def publish_or_refuse(payload, out, tmp, violations):
     return out
 
 
+def row_priority(salt: str, side: str, row: dict) -> str:
+    """Stable per-row priority, independent of how the corpus was traversed.
+
+    v4 selected by walking `supply`, which was populated in SOURCES/file order,
+    and took the first live seed. The `deals_for` shuffle above it was dead —
+    built, shuffled, never read — so the artifact was a deterministic function
+    of insertion order and DEV/CALIB drew different source mixes (Codex).
+    Hashing the row's own identity makes order irrelevant: permuting SOURCES,
+    reversing rows, or duplicating an eligible row cannot change what is
+    selected, while a new salt changes everything.
+    """
+    key = "|".join((salt, side, str(row["source"]), str(row["seed"]),
+                    str(row["band"]), size_of(row), str(row.get("role"))))
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+def select_states(by_deal: dict, salt: str, side: str, *, band_quota=None,
+                  size_quota=None, role_quota=None, source_quota=None):
+    """Pick one row per deal hitting three EXACT per-band marginals.
+
+    Pure: takes the eligible rows, returns (picked, unsatisfied). No file
+    handles, no globals, no RNG — so order-invariance is directly testable
+    rather than inferred from a produced artifact.
+
+    Size, role and source are three SEPARATE marginals, not a joint cell
+    target. A row is taken only if all three of its cells still have remaining
+    need, and cells are served scarcest-slack first so a tight cell is not
+    starved by an abundant one consuming the deals that could have filled it.
+    """
+    band_quota = BAND_QUOTA if band_quota is None else band_quota
+    size_quota = SIZE_QUOTA if size_quota is None else size_quota
+    role_quota = ROLE_QUOTA if role_quota is None else role_quota
+    source_quota = SOURCE_QUOTA if source_quota is None else source_quota
+
+    rows_by_deal = {}
+    for seed, rows in by_deal.items():
+        seen = {}
+        for r in rows:
+            seen[(r["band"], size_of(r), r.get("role"), r["source"])] = r
+        rows_by_deal[seed] = sorted(
+            seen.values(), key=lambda r: row_priority(salt, side, r))
+
+    picked, used, unsatisfied = [], set(), []
+    for b in BANDS:
+        need = {"size": dict(size_quota.get(b, {})),
+                "role": dict(role_quota.get(b, {})),
+                "source": dict(source_quota.get(b, {}))}
+
+        def cells(r):
+            return (("size", size_of(r)), ("role", r.get("role")),
+                    ("source", r["source"]))
+
+        def fits(r):
+            return all(need[d].get(v, 0) > 0 for d, v in cells(r))
+
+        while sum(need["size"].values()) > 0:
+            live = [(seed, r) for seed, rows in rows_by_deal.items()
+                    if seed not in used for r in rows
+                    if r["band"] == b and fits(r)]
+            if not live:
+                first = next(((d, v) for d in need for v, n in need[d].items()
+                              if n > 0), None)
+                unsatisfied.append(f"band {b}: no eligible deal for {first}")
+                break
+            slack = {}
+            for d in need:
+                for v, n in need[d].items():
+                    if n <= 0:
+                        continue
+                    have = sum(1 for _s, r in live if dict(cells(r))[d] == v)
+                    slack[(d, v)] = have - n
+            tightest = min(slack, key=lambda k: (slack[k], k))
+            cand = [(s, r) for s, r in live
+                    if dict(cells(r))[tightest[0]] == tightest[1]]
+            cand.sort(key=lambda sr: row_priority(salt, side, sr[1]))
+            seed, row = cand[0]
+            used.add(seed)
+            picked.append(row)
+            for d, v in cells(row):
+                need[d][v] -= 1
+    return picked, unsatisfied
+
+
 def check_contract(picked, requested, errors, *, band_quota=None,
-                   size_quota=None, role_quota=None):
+                   size_quota=None, role_quota=None,
+                   source_quota=None):
     """Every way this freeze can be WRONG, as a list of violations.
 
     Split out from the writer so it is callable — and therefore testable —
@@ -144,6 +243,13 @@ def check_contract(picked, requested, errors, *, band_quota=None,
         for role, want in wants.items():
             if have.get(role, 0) != want:
                 bad.append(f"band {b} role {role}: {have.get(role, 0)} "
+                           f"selected, quota {want}")
+    for b, wants in (SOURCE_QUOTA if source_quota is None
+                     else source_quota).items():
+        have = Counter(p.get("source") for p in picked if p["band"] == b)
+        for src, want in wants.items():
+            if have.get(src, 0) != want:
+                bad.append(f"band {b} source {src}: {have.get(src, 0)} "
                            f"selected, quota {want}")
     seeds = [p["seed"] for p in picked]
     if len(seeds) != len(set(seeds)):
@@ -296,18 +402,19 @@ def main() -> None:
 
     # One state per DEAL, chosen to fill explicitly named trick-index bands.
     rng = random.Random(int(hashlib.sha256(args.salt.encode()).hexdigest()[:8], 16))
-    BANDS = ("early", "mid", "late")
     # Which deals can supply which band
     deals_for: dict[str, list] = {b: [] for b in BANDS}
     for seed, rows in by_deal.items():
         for b in {r["band"] for r in rows}:
             deals_for[b].append(seed)
     available = {b: len(v) for b, v in deals_for.items()}
-    for v in deals_for.values():
-        v.sort()
-        rng.shuffle(v)
+    # NOT shuffled. `deals_for` is only an availability count now; selection is
+    # `select_states`, whose order comes from per-row SHA-256 priority. The
+    # previous code shuffled this list and then never read it, which read as
+    # randomisation while the artifact was actually a function of corpus
+    # insertion order (Codex).
 
-    picked, used_deals = [], set()
+    picked = []
     if getattr(args, "census", False):
         # Availability BEFORE selection. Whether a predeclared size quota is
         # satisfiable at all is a property of the corpus, not of the selector,
@@ -349,58 +456,14 @@ def main() -> None:
             print("  current SIZE_QUOTA is satisfiable on availability")
         sys.exit(0)
 
-    # Fill each band by chasing the LIVE (size, role) deficit.
-    #
-    # The previous selector chose a deal first — by role, first-fit — and only
-    # then picked the least-held size among that deal's rows. Size therefore
-    # never influenced WHICH deal was taken, so the size stratum was recorded
-    # rather than enforced and the v3 sets came out with 0 early/small and 151
-    # late/small (Codex). Here the scarcest unmet size cell selects the deal.
-    #
-    # Scarcity, not need, drives the order: a cell with 19 needed from 33
-    # available must be served before one needing 98 from 2346, or the deals
-    # that could have satisfied it get consumed by the abundant cell first.
-    need_size = {b: dict(SIZE_QUOTA.get(b, {})) for b in BANDS}
-    need_role = {b: dict(ROLE_QUOTA.get(b, {})) for b in BANDS}
-
-    supply = defaultdict(lambda: defaultdict(list))   # band -> size -> [seed]
-    for seed, rows in by_deal.items():
-        for r in rows:
-            supply[r["band"]][size_of(r)].append(seed)
-
-    for b in BANDS:
-        while sum(need_size[b].values()) > 0:
-            live = {sz: [d for d in supply[b][sz] if d not in used_deals]
-                    for sz, n in need_size[b].items() if n > 0}
-            if not live:
-                break
-            # slack = how many spare deals this cell has; smallest slack first
-            sz = min(live, key=lambda z: (len(live[z]) - need_size[b][z], z))
-            if len(live[sz]) < need_size[b][sz]:
-                break                      # unsatisfiable; contract will refuse
-            short_roles = [r for r, n in need_role[b].items() if n > 0]
-            chosen = None
-            for seed in live[sz]:
-                rows = [r for r in by_deal[seed]
-                        if r["band"] == b and size_of(r) == sz]
-                pref = [r for r in rows if r.get("role") in short_roles]
-                if pref:
-                    chosen = (seed, sorted(
-                        pref, key=lambda d: (d["tricks"], d["ply"],
-                                             d["seat"]))[0])
-                    break
-            if chosen is None:
-                seed = live[sz][0]
-                rows = sorted((r for r in by_deal[seed]
-                               if r["band"] == b and size_of(r) == sz),
-                              key=lambda d: (d["tricks"], d["ply"], d["seat"]))
-                chosen = (seed, rows[0])
-            seed, row = chosen
-            used_deals.add(seed)
-            picked.append(row)
-            need_size[b][sz] -= 1
-            if row.get("role") in need_role[b]:
-                need_role[b][row["role"]] -= 1
+    picked, unsatisfied = select_states(by_deal, args.salt, args.side)
+    if unsatisfied:
+        print("REFUSING: the joint marginals cannot be satisfied:")
+        for u in unsatisfied:
+            print(f"  - {u}")
+        print("Not rerolling the salt and not relaxing a quota — either would "
+              "make the artifact a function of how many times we tried.")
+        sys.exit(6)
 
     skipped_dupe = sum(len(v) for v in by_deal.values()) - len(picked)
 
@@ -445,8 +508,11 @@ def main() -> None:
         for b in BANDS:
             sz = Counter(size_of(p) for p in picked if p["band"] == b)
             ro = Counter(p.get("role") for p in picked if p["band"] == b)
+            so = Counter(p.get("source") for p in picked if p["band"] == b)
             print(f"  {b:6} n={sum(1 for p in picked if p['band']==b):3d} "
-                  f"size {dict(sz)}  role {dict(ro)}")
+                  f"size {dict(sorted(sz.items()))}  "
+                  f"role {dict(sorted(ro.items()))}  "
+                  f"source {dict(sorted(so.items()))}")
         print(f"  contract violations: {len(violations)}")
         for v in violations:
             print(f"   - {v}")

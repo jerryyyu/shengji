@@ -204,13 +204,20 @@ def test_check_contract_refuses_duplicate_deals():
     assert any("duplicate deal seeds" in v for v in bad), bad
 
 
-def test_v4_passes_the_full_contract():
-    """The published sets must satisfy every registered marginal."""
-    import json
+def test_v4_is_SUPERSEDED_and_fails_the_source_marginals():
+    """Known-bad regression: v4's population depended on corpus order.
+
+    v4 satisfies band, size and role but NOT source, because selection walked a
+    supply index built in file order. DEV came out mid 163 original / 8 late
+    against CALIB 55 / 116 — a population shift, so CALIB was not a held-out
+    replicate of DEV. Asserting v4 is REJECTED keeps the source guard from
+    silently becoming vacuous later.
+    """
     for art in ("pilot_dev512.v4.json", "pilot_calib512.v4.json"):
         d = _load(art)
         bad = PS.check_contract(d["states"], d["requested"], d["replay_errors"])
-        assert not bad, f"{art}: {bad}"
+        assert any("source" in b for b in bad), \
+            f"{art} should fail the source marginals, got {bad}"
 
 
 def test_the_frozen_v3_sets_FAIL_the_size_quota_as_registered():
@@ -264,3 +271,111 @@ def test_registered_quotas_are_internally_consistent():
         assert sum(PS.SIZE_QUOTA[b].values()) == want
         assert sum(PS.ROLE_QUOTA[b].values()) == want
     assert sum(PS.BAND_QUOTA.values()) == 512
+
+
+# --- C1: selection must not depend on corpus traversal order ----------------
+# v4's selector walked a supply index built in SOURCES/file order and took the
+# first live seed, while the `deals_for` shuffle above it was dead code. The
+# artifact was therefore a function of insertion order, and DEV/CALIB drew
+# different source mixes (DEV mid 163 original/8 late vs CALIB 55/116). These
+# assert the property directly rather than inspecting a produced artifact.
+
+def _synth(n=60):
+    """Eligible rows across three sources, several per deal."""
+    out = {}
+    srcs = ["original", "late", "deep"]
+    for i in range(n):
+        rows = []
+        for j, band in enumerate(("early", "mid", "late")):
+            for k, size in enumerate(("small", "med", "wide")):
+                rows.append({
+                    "seed": 1000 + i, "band": band, "source": srcs[(i + j) % 3],
+                    "role": ("attacker", "defender")[(i + k) % 2],
+                    "stratum": f"{band}/x/{size}", "tricks": j, "ply": k,
+                    "seat": i % 4})
+        out[1000 + i] = rows
+    return out
+
+
+def _ids(picked):
+    return [(p["seed"], p["band"], PS.size_of(p), p.get("role"), p["source"])
+            for p in picked]
+
+
+_Q = dict(band_quota={"early": 3, "mid": 3, "late": 3},
+          size_quota={b: {"small": 1, "med": 1, "wide": 1}
+                      for b in ("early", "mid", "late")},
+          role_quota={b: {"attacker": 2, "defender": 1}
+                      for b in ("early", "mid", "late")},
+          source_quota={b: {"original": 1, "late": 1, "deep": 1}
+                        for b in ("early", "mid", "late")})
+
+
+def test_selection_is_invariant_under_deal_order():
+    a, _ = PS.select_states(_synth(), "s1", "dev", **_Q)
+    shuffled = dict(reversed(list(_synth().items())))
+    b, _ = PS.select_states(shuffled, "s1", "dev", **_Q)
+    assert _ids(a) == _ids(b)
+
+
+def test_selection_is_invariant_under_row_order_within_a_deal():
+    base = _synth()
+    rev = {k: list(reversed(v)) for k, v in base.items()}
+    a, _ = PS.select_states(base, "s1", "dev", **_Q)
+    b, _ = PS.select_states(rev, "s1", "dev", **_Q)
+    assert _ids(a) == _ids(b)
+
+
+def test_duplicate_eligible_rows_do_not_change_selection():
+    base = _synth()
+    dup = {k: v + list(v) for k, v in base.items()}
+    a, _ = PS.select_states(base, "s1", "dev", **_Q)
+    b, _ = PS.select_states(dup, "s1", "dev", **_Q)
+    assert _ids(a) == _ids(b)
+
+
+def test_the_salt_actually_changes_what_is_selected():
+    """Guards against the priority being constant, which would make every
+    invariance test above pass vacuously."""
+    a, _ = PS.select_states(_synth(), "salt-A", "dev", **_Q)
+    b, _ = PS.select_states(_synth(), "salt-B", "dev", **_Q)
+    assert _ids(a) != _ids(b)
+
+
+def test_side_changes_selection_so_DEV_and_CALIB_are_not_twins():
+    a, _ = PS.select_states(_synth(), "s1", "dev", **_Q)
+    b, _ = PS.select_states(_synth(), "s1", "calib", **_Q)
+    assert _ids(a) != _ids(b)
+
+
+def test_an_order_dependent_selector_FAILS_this_property():
+    """Negative control reproducing the v4 defect.
+
+    Without it, the invariance tests could pass against any selector and would
+    not demonstrate that the property is the thing being enforced.
+    """
+    def v4_like(by_deal):
+        picked, used = [], set()
+        for band in ("early", "mid", "late"):
+            need = 3
+            for seed, rows in by_deal.items():       # insertion order
+                if seed in used or need == 0:
+                    continue
+                for r in rows:
+                    if r["band"] == band:
+                        picked.append(r)
+                        used.add(seed)
+                        need -= 1
+                        break
+        return picked
+    base = _synth()
+    rev = dict(reversed(list(base.items())))
+    assert _ids(v4_like(base)) != _ids(v4_like(rev))
+
+
+def test_unsatisfiable_marginals_are_reported_not_silently_relaxed():
+    q = dict(_Q)
+    q["source_quota"] = {b: {"original": 3, "late": 0, "deep": 0}
+                         for b in ("early", "mid", "late")}
+    picked, unsatisfied = PS.select_states(_synth(6), "s1", "dev", **q)
+    assert unsatisfied, "an impossible source quota must be reported"

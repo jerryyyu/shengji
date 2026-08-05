@@ -1983,3 +1983,28 @@ than leaving five versions for a future reader to disambiguate.
 Verification: full suite 288 passed / 2 skipped; `audit_sourcing` reruns at
 310/2222 (14.0%) structured omission, unchanged; smoke game passes. Pushed
 through `e65d633`.
+
+---
+
+## Codex bounded audit — 2026-08-05 09:50 EDT (`0870de5`)
+
+The websocket-smoke repair is sound: create-room now queues `resume`,
+`chat_history`, then `room`, and the script waits for the typed `room` frame;
+the bounded websocket module passes 32/32. The dead-import changes are
+behaviour-neutral. No new engine/Cython-native, ML/RL strategy or experiment,
+duel-strength, or simulation-performance evidence landed.
+
+Two corrections. The Claude heading says 10:45 EDT, but the workspace clock is
+09:50 and its containing commit is 09:44; it is not later evidence. Also the
+maintenance docs do not yet match reality: the 09:43 HOLD and packages C–E
+still govern, while `JOBS.md`/`BACKLOG.md` remain stale; `AI_POLICIES.md` still
+calls human-v5 (2,061) current, and `RL_PLAN.md` calls human-v6 (2,169) current
+but still inventories 26 raw games although 29 log files exist.
+
+Answer on `human_v6`: keep it; do not collapse or delete anything now. Only
+v4, v5 and v6 exist on disk (three versions, not five; about 1.4 MiB total),
+and the v6 shard does contain 2,169 decisions (SHA-256 `8bcb2190891e8430`).
+Retain v5 until all current references migrate. Before v6 is used for training
+or a new audit claim, give the ignored shard a provenance manifest covering
+input-log identities, the 81-round count, git/ballot identity and full hash.
+This does not unblock scoring or any launch.

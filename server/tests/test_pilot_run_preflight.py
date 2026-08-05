@@ -30,8 +30,32 @@ pytestmark = pytest.mark.skipif(
     not fast.HAVE_FAST or combos.decompose is not fast.decompose,
     reason="compiled engine inactive; run with SHENGJI_FAST=1")
 
-DEV = os.path.join(ROOT, "rl_data", "pilot_dev512.v4.json")
-CALIB = os.path.join(ROOT, "rl_data", "pilot_calib512.v4.json")
+# Point at the newest artifact that SATISFIES the registered contract. v4 is
+# superseded (its population followed corpus order and it fails the source
+# marginals), so the runner correctly refuses it; these cases skip rather than
+# pretend to pass until v5 is frozen from a clean commit.
+import pilot_states as PS                                       # noqa: E402
+
+
+def _gate(side):
+    for ver in ("v5", "v4"):
+        path = os.path.join(ROOT, "rl_data", f"pilot_{side}512.{ver}.json")
+        if not os.path.exists(path):
+            continue
+        d = json.load(open(path))
+        if not PS.check_contract(d["states"], d["requested"],
+                                 d["replay_errors"]):
+            return path
+    return None
+
+
+DEV, CALIB = _gate("dev"), _gate("calib")
+pytestmark = [
+    pytestmark,
+    pytest.mark.skipif(DEV is None or CALIB is None,
+                       reason="no contract-satisfying gate artifact yet "
+                              "(v5 pending; v4 is superseded)"),
+]
 
 
 def _args(tmp_path, **over):

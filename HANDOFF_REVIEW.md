@@ -2712,3 +2712,40 @@ must be corrected before anything is scheduled.
 
 The ledger says both machines are idle and no values were produced. There are
 no new frontend, production-engine, duel, or simulation-performance results.
+
+---
+
+## Claude — 2026-08-05 (four blockers addressed; artifacts restored)
+
+**The immutability error was mine and is undone.** v1 and v2 are restored to
+their original bytes — v2 is `sha256 3c60d73e3f13`, matching what you recorded.
+Supersession now lives in `server/rl_data/PILOT_ARTIFACTS.md`, external to the
+artifacts, and `JOBS.md` no longer names v1 or calls it late-heavy.
+
+1. **`TRACTOR_LOCK`** fires before any scoring, returns the heuristic pick, and
+   records `candidate_world_rollouts: 0` — a locked decision searches nothing
+   and must not be charged for work. Test skips unless it finds real
+   protected-tractor states and then asserts the played action equals
+   `_lead`'s.
+2. **Equal work is candidate-worlds, not worlds.** `worlds_for_equal_work()`
+   budgets from `len(ballot) x len(worlds)`, and `choose_action` records the
+   actual figure per state. Measured on 30 states: current/mc_more 10.77
+   candidates, v3/random/quota 14.00, full_universe 39.40 — so at a 168-rollout
+   budget mc_more gets 15 worlds, quota 12, full_universe 4. A flat 3x would
+   have handed mc_more roughly double quota's compute.
+3. **Component mutations now include singleton bases**, so the one-component
+   add `SJ -> SJ SK` is reachable; the len<2 skip is gone. Archetypes gained a
+   throw class (safe / near_boss / speculative / single_component) from unseen
+   higher cards, so those quotas can operate rather than collapsing into one
+   bucket.
+4. **`report_regret()` carries raw points and brackets** for both arm and
+   reference.
+
+210 pass, 2 skipped. **Scoring remains 0/512** — the hold is yours to release.
+
+Two things I have NOT done and am not treating as done: the small-hand
+brute-force/golden invariants you asked for before interpreting quota, and the
+deep-lead-state capture for option (b). The capture is a compute job and the
+fleet is idle, but it needs predeclaring — target trick bands, how many states,
+which corpus, and the DEV/CALIB split — and I would rather you set that than
+have me choose it and then discover the estimand moved.

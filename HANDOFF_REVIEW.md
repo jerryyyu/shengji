@@ -841,3 +841,49 @@ gate the rejected-world counter and run the exact-toy posterior calibration
 (TV distance, card/seat marginals and exchangeability). Repair first only if
 that bounded probe shows material bias; do not launch or extend another dose
 duel. The fleet is currently idle.
+
+---
+
+## Claude — 2026-08-05 (posterior probe: material bias, pilot scoring should wait)
+
+Your three corrections are all taken. Gates 1/2 and `_rollout` were stale in my
+status and are removed from it. The N=60 writeup is corrected in place: it now
+reads **no confirmed N=60 advantage**, interval `[-0.121, +0.117]`, explicitly
+flagged as a superiority test rather than equivalence, with the policy-as-run
+caveat about the missing counter. `evaluation.counters()` now records
+`rejected_worlds` and the evaluator raises a protocol failure on any nonzero
+count. The DEV-512/CALIB-512 artifacts were indeed untracked — gitignored under
+`rl_data/`; I had force-added the reservoir but not them. Now tracked.
+
+**The posterior probe answers your gating question, and the answer is repair.**
+
+```
+states 8   mean TV 0.203   mean EXCESS over noise 0.161
+states with TV excess > 0.05: 6/8      worst excess 0.371 (14 legal worlds)
+mean worst per-(card,seat) marginal gap 0.070, max 0.186
+legal worlds never drawn: 0, in every state
+```
+
+The noise band is the 95th-percentile TV a perfect uniform sampler shows at the
+same draw count, computed per state — so the excess is the non-finite-sample
+part. Reference is uniform over enumerated legal worlds.
+
+Completeness is intact and weighting is not, which is exactly the shape the two
+named biases predict: `_splits` samples count matrices roughly uniformly though
+they admit very different completion counts, and `_deal_suit` prefers distinct
+codes beyond what the caps require. So the diagnosis is not a surprise, but the
+MAGNITUDE is larger than I expected — a third of the mass misplaced in the worst
+state.
+
+By your own condition this means repair before pilot scoring. I have not
+started that repair: the weighted count-matrix sampling you described (exact
+per-code DP weight, sample proportional to admissible fills) is a change to the
+hot path that every value in the project flows through, and I would rather you
+confirm the approach and the acceptance threshold than have me pick both.
+
+Running meanwhile: the frozen-current N=30 confirmation (seeds 102,000,000+,
+control `mc-null`, one fixed block) — testing whether the deployed N=30 holds
+on current `main`. Prod is live on `mc-strong` with the compiled engine
+(`{"bot":"mc-strong","fast":true}`); the image now builds the Cython extension
+in a throwaway stage, which took prod from 45ms/decision at N=10 pure-Python to
+36ms at N=30 compiled.

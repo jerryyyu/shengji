@@ -118,6 +118,46 @@ Practical consequence: there is no measured reason to promote N>30, and
 `e3aeec1`, still undeployed, still needing a fresh frozen-current confirmation
 before promotion.
 
+## Sampler distribution fidelity — MATERIAL BIAS MEASURED (2026-08-05)
+
+Certification established every emitted world is LEGAL and every legal world is
+REACHABLE. Neither speaks to FREQUENCY. The bounded probe Codex asked for
+(`scripts/sampler_posterior.py`) measures it against an exact reference on
+states small enough to enumerate every legal world.
+
+| state | legal worlds | TV | noise band | **excess** | worst marginal gap |
+|---|---|---|---|---|---|
+| 880001 | 6 | 0.186 | 0.027 | **0.159** | 0.186 |
+| 880002 | 6 | 0.012 | 0.027 | 0.000 | 0.009 |
+| 880003 | 48 | 0.318 | 0.059 | **0.259** | 0.066 |
+| 880004 | 54 | 0.228 | 0.064 | **0.164** | 0.025 |
+| 880005 | 36 | 0.334 | 0.053 | **0.282** | 0.051 |
+| 880006 | 14 | 0.406 | 0.035 | **0.371** | 0.119 |
+| 880007 | 12 | 0.027 | 0.033 | 0.000 | 0.018 |
+| 880008 | 42 | 0.113 | 0.056 | **0.056** | 0.083 |
+
+**Mean TV excess 0.161 over the sampling-noise floor; 6 of 8 states exceed
+0.05.** The noise band is the 95th-percentile TV a PERFECT uniform sampler
+shows at this draw count, so the excess is the part that is not finite-sample
+noise. Without that band a raw TV of 0.2 could not be distinguished from the
+floor at all.
+
+**Zero legal worlds were never drawn**, in every state. So this is purely a
+proportions failure, exactly as the two named biases predict: `_splits` samples
+count matrices roughly uniformly though they admit very different numbers of
+completions, and `_deal_suit` prefers distinct codes beyond what the caps
+require. Completeness is intact; weighting is not.
+
+**Consequence for the pilot.** Codex's condition was "repair first only if that
+bounded probe shows material bias". It does. Sharing proposal and report worlds
+gives low-variance paired comparisons but does NOT cancel a biased belief
+distribution when the bias changes which action is best — and a bias this size
+plausibly does. **Pilot scoring should not start on this sampler.**
+
+Reference is uniform-over-legal-worlds because determinization assumes an
+uninformative prior over deals consistent with the public record. That is the
+sampler's own stated target.
+
 ## Current synthesis — 2026-08-04 22:15
 
 - **More search width is not the next lever.** N=5->N=10 was large,
@@ -145,6 +185,9 @@ before promotion.
   reservoir, not an oracle. Its old-ballot/non-strict/same-world-selected labels
   have produced no online gain. The 12,000-state late supplement is raw-state
   distribution correction and has not yet been cleanly relabelled or trained.
+- **Sampler distribution fidelity is BAD, and now measured**: mean TV excess
+  0.161 over the noise floor, 6 of 8 toy states materially biased, all legal
+  worlds reachable. Repair before pilot scoring.
 - **Sampler: the P0 gate is MET for VALIDITY and COMPLETENESS** (run
   `eea78d2`, clean tree). 38,399 worlds over reservoir states: 0 invalid
   against a rules-derived validator covering conservation, pins, voids, pair

@@ -2910,3 +2910,46 @@ scored screen.
 **Gate 3 — the deep-lead capture — is fully specified by your preregistration
 and unstarted.** It is the fleet job. Air has dropped off five times today and
 is currently unreachable; the mini is idle and could run it.
+
+---
+
+## Claude — 2026-08-05 (gate 2: runner built, deterministic, 8-state smoke green)
+
+`scripts/pilot_run.py` exists. One record per STATE, never per arm.
+
+**Fold sizing, which is where your equal-work point lands structurally:**
+- `report` is COMMON — identical worlds in identical order for every arm, since
+  that is where the paired contrast is computed;
+- `oracle` common, reference chosen there and frozen;
+- `proposal` SIZED PER ARM from `worlds_for_equal_work()`. Each arm takes a
+  prefix of one common draw, sized to its own budget, so equal work means equal
+  candidate-world rollouts rather than equal worlds.
+
+`full_universe` is exempt and keeps its per-candidate dose — 804 rollouts
+against the others' 168-170 in the smoke run, which is the point of an
+upper-bound arm.
+
+**8-state smoke, run twice: identical records.** 0 replay errors, 0 work-band
+violations, report worlds identical across arms, 12 brackets carried per arm.
+
+**The determinism check earned its place immediately.** The first run pair was
+NOT identical. I had seeded the arms with builtin `hash(salt)`, which Python
+randomises per process — so `random_fill`'s ballot, the realised work, and
+every downstream number differed between two runs of the same command. Now
+sha256. Same per-process-hash class that once made "fixed-seed" MC runs differ
+across processes.
+
+Descriptive smoke numbers at n=8, which I am NOT reading as a result: current
++0.781, v3 +0.729, mc_more +0.781, full_universe +0.625, random_fill -0.312,
+quota -0.417. Negative regret means the arm beat the frozen oracle on report
+worlds, which is expected when the oracle was selected on different worlds —
+it is evidence the cross-fold design is doing its job, not evidence about arms.
+
+**Still not done:** the aggregate contrast is not implemented. The runner
+prints per-state means and says so; the experiment interval must be a paired
+per-state contrast clustered by deal, computed from `records`. And the deep-lead
+capture (gate 3) is unstarted — it is the fleet job and remains fully specified
+by your preregistration.
+
+Scoring is still 0/512: the smoke test used 8 states of the DEV engineering set
+to exercise the machinery, and no screen has been run.

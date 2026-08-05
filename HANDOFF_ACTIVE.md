@@ -130,6 +130,70 @@ In the same bounded pass:
 - make `JOBS.md` report live process state, v5 hashes and the actual blocker;
 - leave CALIB and REPORT explicitly untouched.
 
+## Return packet — packages C, D, E complete (10:15 EDT)
+
+```text
+STATE: READY_FOR_CODEX_GATE
+RUN-CODE HEAD / origin HEAD: 2cc67d0 / 51ef065   (last commit touching
+  server/scripts, server/shengji, server/tests; ledger-only commits sit above)
+PACKET HEAD / origin HEAD: 51ef065 / 51ef065 (in sync)
+workspace timestamp and dirty files: 2026-08-05 10:13:23 EDT; 0 dirty
+live pilot/evaluator processes: none. NOTE: a naive
+  `ps | grep -E "[p]ilot_run|[e]valuate.py" | wc -l` returns 2 because
+  `tests/test_pilot_run_preflight.py` contains the substring "pilot_run";
+  printing the matches shows zero real processes.
+v5 DEV hash / CALIB hash / artifact-ledger lines:
+  DEV   097ea3851cd3bb9c3ef96ba1f58b3dcc897ff0a74275cbc8b759109e460e66b6
+  CALIB 00ca4de1915d8c4f5a8a18de9cc342f4a175f6acb2585bd03f93641cd9921b76
+  rl_data/PILOT_ARTIFACTS.md now carries v3, v4 and v5 rows; v4 is recorded
+  SUPERSEDED - INVALID GATE SET with its reason, and retained as the
+  known-bad regression rather than deleted.
+band-size-role-source audit for both sides (IDENTICAL, exact):
+  band    early 170      mid 171        late 171
+  size    0/72/98        11/131/29      152/19/0     small/med/wide
+  role    85/85          86/85          86/85        attacker/defender
+  source  129/41/0       17/154/0       0/1/170      original/late/deep
+DEV-CALIB overlap / REPORT leakage / all-row replay:
+  overlap 0 deals; 0 REPORT rows (all 1,024 seeds resolved through their own
+  split file); all 1,024 rows replay to the recorded seat. DEV and CALIB
+  select DIFFERENT deals under the SAME registered population.
+source-order + row-order + duplicate-deal regressions:
+  selection invariant under SOURCES/deal permutation, row reversal within a
+  deal, and duplicated eligible rows; salt AND side each proven to change the
+  selection (so the invariance assertions cannot pass vacuously); a v4-like
+  order-dependent selector asserted to FAIL the property; unsatisfiable
+  marginals reported rather than relaxed.
+pure targeted / compiled targeted / full-suite tests:
+  117 passed + 19 compiled-only skips / 136 passed / 308 passed + 2 skipped
+two identical v5 smoke hashes and manifest identity:
+  67bbcdf166aeefcbceccefa8b0eaaeeec9fba47936877b9fcb374eb06c1ef493
+  67bbcdf166aeefcbceccefa8b0eaaeeec9fba47936877b9fcb374eb06c1ef493
+  manifest phase=smoke, tree_dirty=false, git=51ef065, all three sampler
+  flags false, states_sha256 == expected_states_sha256
+full registered protocol and exact eight-shard commands:
+  FULL_DEV_PROTOCOL compares phase, v5 DEV sha256, budget 14, work 168,
+  band 0.05, 12/12/12 worlds, salt pilot-run-v1, shard_count 8, limit 0,
+  side dev, and the six registered arms. 8 parameterized refusal tests, one
+  per field, plus refusal of a contract-valid-but-wrong artifact (CALIB).
+  SHA=097ea3851cd3bb9c3ef96ba1f58b3dcc897ff0a74275cbc8b759109e460e66b6
+  SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 uv run python scripts/pilot_run.py \
+    --states rl_data/pilot_dev512.v5.json --expected-states-sha256 $SHA \
+    --budget 14 --work 168 --band 0.05 \
+    --full-proposal-worlds 12 --oracle-worlds 12 --report-worlds 12 \
+    --salt pilot-run-v1 --shard-index <N> --shard-count 8 \
+    --out runs/logs/dev512_shard<N>.json
+  Mini N=0..3, Air N=4..7, one process per shard, no --limit.
+Mini/Air HEAD, artifact, ballot and compiled-binary preflight:
+  HEAD        mini 51ef065        air 51ef065        (both clean)
+  v5 DEV sha  097ea3851cd3bb9c... air identical
+  _fast .so   9c9e77fbdc4c6cac... air identical (Mini-built, rsynced; Air
+              was NOT rebuilt)
+  ballot      mc_candidates@v1[a68f7b8bced6]
+if BLOCKED: n/a
+```
+
+No launch has occurred. 0/512 scored. CALIB and REPORT untouched.
+
 ## Required return packet
 
 Return this exact compact packet and then wait:

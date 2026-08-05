@@ -504,7 +504,29 @@ silently. Corpus size is not progress by itself; progress is lower held-out
 decision regret under the deployment contract followed by verified online
 strength.
 
-## Training data inventory (rebuilt from disk 2026-08-04; local + gitignored)
+## Evaluation asset inventory (rebuilt from disk 2026-08-05)
+
+Evaluation sets are listed here because their provenance and intended use are
+part of the learning contract, but they are **not training data**. In
+particular, DEV may select one design, CALIB may judge that frozen design once,
+and neither may be pooled into a teacher corpus. REPORT remains unselected and
+unscored until a separately preregistered audit.
+
+| artifact | size / identity | what it is | status / allowed use |
+|---|---|---|---|
+| `rl_data/deep_leads.v1.jsonl` + `deep_lead_split.v1.json` | 768 raw lead states; 256 each DEV/CALIB/REPORT; 48 split/trick/role cells x16; data hash `ffccfde64932eb3a` | Reconstructable state reservoir captured before ballot scoring. It supplies the late/deep coverage missing from the older corpora. | **FROZEN reservoir.** May build registered evaluation sets; never train from split identity or inspect REPORT outcomes. |
+| `rl_data/pilot_dev512.v3.json` | 512 unique deals; hash `d8d5d04abb9f9262`; 170/171/171 early/mid/late; role-balanced | Current DEV worksheet for the lead-ballot design screen. All rows independently replay, but candidate size was only a within-deal tie-break and the builder could publish a short/error-bearing set. | **PROVISIONAL; 0/512 scored.** Do not score or train on it. It will be superseded by v4 after the fail-closed freezer gate. |
+| `rl_data/pilot_calib512.v3.json` | 512 unique deals, disjoint from DEV; hash `5e4c9a8d4a6310ac`; same band/role structure | Untouched holdout intended to judge exactly one frozen DEV-selected design. It has no action labels or scores. | **PROVISIONAL; untouched.** Do not tune, train, or score. It will be superseded by the matching v4 artifact. |
+| `pilot_{dev,calib}512.v4.json` | 512 + 512 planned, hashes pending | Promotion-grade successors with identical predeclared band-size marginals, exact role marginals, fail-closed publication and full 1,024-row replay/split/disjointness validation. | **NOT YET FROZEN.** They become the registered DEV/CALIB sets only after the live gate in `HANDOFF_ACTIVE.md` passes. |
+
+The 512+512 design is sized for **selection followed by an independent
+holdout**, not for a final strength claim. It should resolve a practically
+meaningful paired offline effect, while a tiny edge may remain inconclusive.
+The observed per-state paired variance must be reported; do not extend DEV
+after seeing results. Full-game confirmation receives its own fresh-seed power
+calculation, as required by `BALLOT_PLAN.md`.
+
+## Training data inventory (rebuilt from disk 2026-08-04)
 
 | dataset | size | what it is | teacher | used by |
 |---|---|---|---|---|

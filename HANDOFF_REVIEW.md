@@ -3002,3 +3002,75 @@ question unless a finite seed registry is declared. Freeze adaptive-minus-
 uniform as the sole primary contrast and random allocation as attribution
 before any run. No new engine/native-parity, frontend, duel or simulation-
 performance implementation evidence landed.
+
+---
+
+## Claude — 2026-08-05 20:00 EDT — package H return packet
+
+```text
+STATE: READY_FOR_CODEX_GATE
+HEAD / origin / dirty state: c77ac30 / c77ac30 / DIRTY
+  (the certificate itself was produced from clean aea3774, one commit earlier;
+   this commit adds only tests and ledger text, no certifier logic)
+certified-expression and default-command repairs:
+  REGISTERED_CERT declares the exact scope — sources (original, late, deep),
+  1,500 states, 24 worlds/state, 36,000 requested worlds, 120 toys. `certified`
+  now requires all of it PLUS rejected == 0, accepted == requested, clean tree,
+  compiled path ACTIVE (not merely SHENGJI_FAST requested), and strict voids
+  enabled. Failures are listed in `scope_failures`, not collapsed to a bare
+  false. `--toy-states` now defaults to REGISTERED_TOY_STATES (was 40).
+falsifying tests plus targeted/full-suite results:
+  --worlds 0           -> certified False: worlds/state 0 != 24, 0/0 != 36000
+  --reservoir original -> certified False: sources/states/worlds named
+  pure mode            -> certified False: compiled engine not ACTIVE
+  dirty tree           -> certified False: tree is dirty
+  scope predicate      -> one lost accepted world, one rejected world, and a
+                          short requested total each fail; clean run passes
+  suites: sampler-focused 24 passed; full 343 passed, 2 skipped
+exact clean certification command:
+  SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 uv run python scripts/certify_sampler.py \
+    --out runs/logs/certify_sampler_v3.json
+  (all other values are registered defaults: --reservoir both, --worlds 24,
+   --toy-states 120)
+artifact path and SHA-256:
+  server/runs/logs/certify_sampler_v3.json
+  e31e67f9aeb4739aa598faa66051ec4004fd47751b297457242dc95a30cc224c
+git/script/sampler/Memory/corpus/split/compiled identities:
+  git aea3774  tree_dirty False
+  script a81fe78b69eb97c2  sampler 03ac85d1da53da05  Memory 905873b332fd5447
+  corpora original 40ea1ae4788f2586
+           late     f2251f8267bf69ce
+           deep     ffccfde64932eb3a
+  split bbc061f9c08f19f4  fast_engine True  require_voids True
+states_by_source / requested / accepted / rejected / invalid / skips:
+  {'original': 500, 'late': 500, 'deep': 500}
+  requested 36000  accepted 36000  rejected 0  invalid 0
+  skips {'toy_state_replay': 0, 'corpus_row_replay': 0, 'corpus_deck_mismatch': 0, 'corpus_wrong_seat_or_phase': 0}
+toy completeness / real witness:
+  120/120 fully reachable; real deal reached 120/120
+JOBS.md and CORRECTNESS.md reconciliation:
+  CORRECTNESS.md registers the certificate and explicitly supersedes eea78d2,
+  c1ceca1 and the dirty v2 run, stating none was original+late+deep
+  certification. JOBS.md's certification block replaced to match. Both keep the
+  scope explicit: bounded P0 only, NOT posterior fidelity and NOT global dealer
+  completeness under all pin/run-cap combinations.
+CALIB / REPORT confirmation: sealed and unscored
+```
+
+Stopping here per the package. Nothing launched.
+
+**One thing I want on the record before you rule.** Jerry watched a live game
+where a teammate bot led `DJ` holding `DA` at trick 16, and asked me to explain
+it. Diagnosis: SmartBot picks `DJ`, that becomes candidate 0, and `MARGIN = 5.0`
+protects it unless search beats it by 5 points/round. Measured over 3,000
+worlds `DA` is better by only `1.075 +/- 0.180`, and at production N=30 the SE
+on that contrast is ~0.89 — so the search cannot resolve a ~1.08 edge and defers
+to the heuristic. Not a crash; the resolution limit showing up in a watched
+play.
+
+I got that analysis WRONG first and reported the opposite: I omitted the
+defender sign flip `_decide` applies (`val if i_attack else -val`) and concluded
+`DJ` was better. I caught it only by re-measuring in raw attacker points and
+getting the opposite sign. Recording it because the backlog's RL-contract line
+asks for exactly this — unit tests on attacker/defender target signs — and I
+have just demonstrated why.

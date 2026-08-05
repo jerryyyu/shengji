@@ -20,6 +20,10 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   full-game strength result.
 - CALIB-512 and REPORT remain sealed and unscored. The abandoned ballot lane's
   CALIB, online-confirmation and learn-from-winner stages are **NOT REACHED / CLOSED**.
+- DEV-512 was a design screen, not training data or an online-strength proof.
+  Its primary half-width was 0.337; at the same variance 2,048 states would
+  still be about 0.169, and resolving a 0.10 offline effect would take roughly
+  5,800 states. Do not append to the inspected DEV set or try more arms on it.
 - No blind bulk run is authorized, but the roadmap now has three parallel
   strength lanes ready for bounded gates: adaptive search, clean teacher/model
   iteration, and faithful role-conditioned self-play.
@@ -28,9 +32,8 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 
 | priority | work | exit gate |
 |---|---|---|
-| **P0 correctness** | Finish the sampler-certifier contract landed in `fc19d26` | Require original/late/deep files, exact 500/500/500 quotas, 120 toys, zero named skips, zero invalid/rejected worlds, `accepted == requested`, clean current HEAD, compiled+strict mode, and one immutable artifact. The current v2 artifact is pre-commit and `tree_dirty=true`; `certified` also does not yet consult rejected/accepted counts, and the CLI default requests 40 toys while the contract requires 120. |
 | **S0 search strength** | Build confidence-gated adaptive MC on the incumbent ballot | Reproduce the live `QHKR` round-4 `DJ` over `SAAK` variance failure; persist paired per-world deltas/SE; compare current uniform N=30, confidence fallback, deterministic adaptive allocation, random allocation and equal-work uniform controls. Promote only on fresh paired full games. |
-| **S1 teacher/model** | Generate a small clean counterfactual teacher pilot, then earn scale | Start with 2,048 stratified non-evaluation states, current executable ballot, 512 common worlds/action, per-world scoring-bracket outcomes and an explicit strong continuation. Train three-seed action ranker + calibrated outcome head; scale only if untouched regret and paired games improve. |
+| **S1 teacher/model** | Generate a new clean counterfactual teacher pilot, then earn scale | Start with 2,048 stratified non-evaluation states, current executable ballot, 512 common worlds/action, per-world scoring-bracket outcomes and an explicit strong continuation. This is a new training/challenge asset, not an enlargement of DEV-512. Train three-seed action ranker + calibrated outcome head; scale only if untouched regret and paired games improve. |
 | **S2 self-play RL** | Run faithful role-conditioned synchronous microbaselines | Unit-test attacker/defender signs, separately version reward targets, and bind immutable actors. Then run Suphx-style feature removal and DouZero-style direct-Q baselines for 20–30 minutes; stable spread plus held-out improvement earns fleet scale. |
 | **S3 structured search** | Attack decisions outside ordinary play selection | In parallel, screen structured MC bury sourcing and sampled exact solving for the final ~4 tricks. Each changes a different once-per-round/tactical bottleneck and must duel the production champion directly. |
 | **Frontend ship gate** | Run one bounded multi-tab soak | Cover join, simultaneous seat claim, disconnect-to-bot, reconnect/takeover, stale/displaced sockets, second absence, private-hand visibility, chat before initial state and >50 messages, and saved-room invite precedence. |
@@ -137,8 +140,8 @@ valid replay contract, not a substitute for fixing its target.
 
 ### Compute queue
 
-After the small P0 certificate repair closes, keep compute occupied with staged
-work rather than one speculative monolith:
+The bounded P0 certificate passed at `aea3774`; keep compute occupied with
+staged strength work rather than one speculative monolith:
 
 1. Air: shard the 2,048-state teacher pilot and endgame/bury screens.
 2. Mini: implement and replay the confidence allocator plus challenge corpus.
@@ -152,12 +155,12 @@ authorize adding more data to a target that failed.
 
 ## Correctness and data
 
-- [ ] **Current P0 sampler certificate.** Close the exact gate above. The old
-      `eea78d2` certificate is not an original+late certificate: one global
-      limit exhausted inside `original`, so it covered zero late rows and had
-      no skip counters. `c1ceca1` is current-original evidence only. The
-      `fc19d26` per-source contract is the right repair but still needs the
-      zero-rejection guard and a clean rerun.
+- [x] **Current bounded P0 sampler certificate.** `aea3774` plus
+      `server/runs/logs/certify_sampler_v3.json` passed the registered clean,
+      compiled+strict scope: 500 original + 500 late + 500 deep states,
+      36,000 requested = accepted, zero rejected/invalid/skips, and 120/120
+      exhaustive toys/witnesses. This proves bounded hard validity/support,
+      not posterior fidelity or a globally complete constructive dealer.
 - [ ] **Global dealer completeness/runtime.** The pair-cap forward check in
       `75b06da` is a sound necessary prune and fixed the observed DEV rejection,
       but it is sufficient only in a reduced no-pin/no-run-cap model. Production
@@ -229,6 +232,9 @@ authorize adding more data to a target that failed.
 
 ## Closed — do not re-queue
 
+- The bounded original+late+deep sampler certificate passed at `aea3774`;
+  posterior weighting and global constructive completeness remain separately
+  open, but neither holds the strength queue.
 - N=30 over N=10 confirmed twice; N=60 over N=30 found no advantage.
 - DEV-512 ballot sourcing/selection experiment completed with SELECT NONE;
   CALIB/REPORT remain sealed.

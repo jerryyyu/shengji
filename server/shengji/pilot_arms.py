@@ -115,14 +115,22 @@ def structured_universe(rnd, seat, bot=None) -> list[list[str]]:
 
 
 def _component_mutations(rnd, seat, base) -> list[list[str]]:
-    """Bounded add / remove / replace of ONE component of a same-suit throw.
+    """Bounded add / remove / replace of ONE component of a same-suit action.
 
-    `BALLOT_PLAN` lines 123-139 ask for these explicitly. Without them the
-    universe holds only whole structured actions, so a throw one component away
-    from a good one is unreachable however wide the ballot gets.
+    **The bound, stated precisely** — for each base action A of effective suit
+    E, and writing S for the cards of suit E in hand that A does not use:
 
-    Bounded on purpose: one component changed, same effective suit, and only
-    from actions already in the pool.
+      ADD      A + [c]                for EVERY c in S
+      REMOVE   A minus one component  (only when A has >1 component)
+      REPLACE  (A minus component i) + one spare component of the same SIZE,
+               for every component i and every same-size disjoint spare run
+
+    Adding only the lexicographically first spare was not this bound: from a
+    hand holding `SJ SK SQ` it produced `SJ SK` and `SJ SQ` but never the
+    equally held `SK SQ`, so a one-component add was still unreachable (Codex).
+    `full_universe` is exactly the closure of this rule over the structured
+    base, and `test_mutation_bound_matches_brute_force` checks that on small
+    hands by enumerating the rule independently.
     """
     o = rnd.ordering
     out: list[list[str]] = []
@@ -145,14 +153,14 @@ def _component_mutations(rnd, seat, base) -> list[list[str]]:
             rest = [c for j, comp in enumerate(comps) if j != i for c in comp]
             if rest:
                 out.append(sorted(rest))
-            # REPLACE it with a same-size run of spare cards in the suit
+            # REPLACE it with EVERY same-size spare run, not one prefix
             need = len(comps[i])
-            if len(pool) >= need:
-                swap = rest + sorted(pool)[:need]
-                out.append(sorted(swap))
-        # ADD one spare card as an extra single component
-        if pool:
-            out.append(sorted(list(action) + [sorted(pool)[0]]))
+            for combo in itertools.combinations(sorted(set(pool)), need):
+                if all(pool.count(c) >= list(combo).count(c) for c in combo):
+                    out.append(sorted(rest + list(combo)))
+        # ADD: every spare card in the suit, not just the first
+        for c in sorted(set(pool)):
+            out.append(sorted(list(action) + [c]))
     return out
 
 
@@ -210,10 +218,30 @@ def archetype(rnd, seat, action) -> tuple:
     if len(dec.components) > 1:
         from .ai.memory import Memory
         mem = Memory(rnd, seat)
-        tops = [c.top for c in dec.components]
-        if all(mem.higher_unseen(eff, t) == 0 for t in tops):
+        # SHAPE-AWARE: a pair is beaten by a higher PAIR and a tractor by a
+        # higher same-length tractor, not by any higher singleton. Counting
+        # singletons made `safe` and `near_boss` misleading labels (Codex).
+        def _beatable(comp) -> int:
+            if comp.pair_len == 0:
+                return mem.higher_unseen(eff, comp.top)
+            # how many unseen codes above this component could form a run of
+            # the same pair length
+            higher = sorted(o.level(c) for c, n in mem.unseen.items()
+                            if o.eff_suit(c) == eff and n >= 2
+                            and o.level(c) > comp.top)
+            runs = 0
+            for idx in range(len(higher)):
+                if all(higher[idx + d] == higher[idx] + d
+                       for d in range(comp.pair_len)
+                       if idx + d < len(higher)) and \
+                   idx + comp.pair_len <= len(higher):
+                    runs += 1
+            return runs
+
+        risks = [_beatable(c) for c in dec.components]
+        if all(r == 0 for r in risks):
             throw = "safe"
-        elif max(mem.higher_unseen(eff, t) for t in tops) <= 2:
+        elif max(risks) <= 2:
             throw = "near_boss"
         else:
             throw = "speculative"

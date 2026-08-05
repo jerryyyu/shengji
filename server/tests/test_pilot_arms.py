@@ -3,6 +3,7 @@ measures that difference instead of the one it claims to.
 """
 from __future__ import annotations
 
+import itertools
 import random
 
 import pytest
@@ -273,3 +274,84 @@ def test_throw_archetypes_are_distinguished():
     assert "single_component" in classes
     assert len(classes & {"safe", "near_boss", "speculative"}) >= 2, \
         f"throws were not differentiated: {classes}"
+
+
+def test_mutation_bound_matches_brute_force():
+    """The universe must equal the CLOSURE of the stated rule, independently
+    enumerated. "Bounded neighbourhood" was claimed while only the
+    lexicographically first spare card was added (Codex)."""
+    import itertools as it
+    from collections import Counter as C
+
+    from shengji.engine.combos import decompose
+
+    bot = make_bot("mc", seed=1)
+    for rnd, seat in _lead_states(n=6, seed0=791000):
+        o = rnd.ordering
+        u = {tuple(sorted(a)) for a in structured_universe(rnd, seat, bot)}
+        # independently enumerate ADD over every base in the universe
+        by_suit = {}
+        for c in rnd.hands[seat]:
+            by_suit.setdefault(o.eff_suit(c), []).append(c)
+        # ONE ROUND over the structured base, which is the stated bound —
+        # not a transitive closure over mutation products. Singles are always
+        # in the base, so they are the honest slice to check.
+        for base in [a for a in u if len(a) == 1]:
+            eff = o.eff_suit(base[0])
+            spare = [c for c in by_suit.get(eff, []) if c != base[0]]
+            for c in set(spare):
+                grown = tuple(sorted(list(base) + [c]))
+                assert grown in u, (
+                    f"one-component ADD {base} + {c} = {grown} is missing; "
+                    f"the universe is not the closure of the stated bound")
+
+
+def test_the_SK_SQ_witness_is_present():
+    """Codex's exact witness: a hand holding SJ SK SQ must offer SK SQ."""
+    bot = make_bot("mc", seed=1)
+    seen = 0
+    for rnd, seat in _lead_states(n=20, seed0=792000):
+        o = rnd.ordering
+        u = {tuple(sorted(a)) for a in structured_universe(rnd, seat, bot)}
+        for suit, cards in {s: [c for c in rnd.hands[seat] if o.eff_suit(c) == s]
+                            for s in {o.eff_suit(c) for c in rnd.hands[seat]}}.items():
+            distinct = sorted(set(cards))
+            for a, b in itertools.combinations(distinct, 2):
+                seen += 1
+                assert tuple(sorted([a, b])) in u, \
+                    f"held uniform two-single throw {a} {b} absent from universe"
+    assert seen > 50, f"only {seen} pairs checked"
+
+
+def test_throw_risk_is_shape_aware():
+    """A pair is beaten by a higher PAIR, not by any higher singleton.
+
+    Counting singletons made `safe` and `near_boss` misleading quota labels.
+    """
+    from shengji.ai.memory import Memory
+    from shengji.engine.combos import decompose
+
+    bot = make_bot("mc", seed=1)
+    checked = 0
+    for rnd, seat in _lead_states(n=14, seed0=793000):
+        o = rnd.ordering
+        mem = Memory(rnd, seat)
+        for a in structured_universe(rnd, seat, bot):
+            dec = decompose(list(a), o)
+            if len(dec.components) < 2:
+                continue
+            klass = archetype(rnd, seat, a)[-1]
+            if klass != "safe":
+                continue
+            checked += 1
+            for comp in dec.components:
+                if comp.pair_len == 0:
+                    continue
+                eff = o.eff_suit(a[0])
+                higher_pairs = [c for c, n in mem.unseen.items()
+                                if o.eff_suit(c) == eff and n >= 2
+                                and o.level(c) > comp.top]
+                assert not higher_pairs or comp.pair_len > 1, (
+                    f"{a} called SAFE while a higher unseen PAIR exists "
+                    f"({higher_pairs[:2]})")
+    assert checked > 0, "no safe multi-component throws found to check"

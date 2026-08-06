@@ -47,14 +47,17 @@ newest entry sit on top and speak for the file.
 - **Best learned result:** `rl-override-v11pair` beats SmartBot 57.7% (n=480)
   and is very fast, but its MC comparison is unseeded screen evidence. It is a
   deployment-cost candidate, not the strongest verified bot.
-- **The untested v11 composition is a protected MC anchor.** Prior racing
+- **The v11 protected-anchor composition is implemented but unmeasured.** Prior racing
   hard-pruned actions, the gate chose whether to search, and the leaf use was
   invalid; none asked v11's confirmed improvement over SmartBot to replace the
   candidate-0 prior that N=30 protects with a five-point margin while retaining
-  every candidate and rollout. Revalidate frozen v11 directly on current code,
-  then test this anchor at equal N=30 work with Smart-anchor and same-trigger
-  random-anchor controls. Only after an independent win may it combine with
-  adaptive allocation. `RL_PLAN.md` owns the exact sequence.
+  every candidate and rollout. `mc-v11anchor` now does exactly that and
+  `mc-v11anchor-random` is its same-trigger attribution control; both preserve
+  the current ballot, N=30 and tractor lock, and neither has strength evidence.
+  First run the frozen direct-current compatibility block. Freeze the later
+  anchor comparison only after S0 names the terminal champion. Only an
+  independent win may combine it with adaptive allocation. `RL_PLAN.md` owns
+  the exact sequence.
 - **Main strength hypothesis — TESTED AND NOT SUPPORTED (2026-08-05).** The
   hypothesis was that improving lead-ballot SELECTION, then letting MC evaluate,
   would buy strength. The DEV-512 screen ran all six registered arms on 512
@@ -1066,6 +1069,8 @@ three times. It may reject an obviously bad arm; it may not promote one.
 | policy | what it is | measured | verdict |
 |---|---|---|---|
 | `rl-override-v11pair` | SmartBot + learned pairwise override on `(q_i - q_0)`, threshold 0.02 fitted on calibration A and read on report B, matched train/play ballot | **CONFIRM vs Smart:** 57.7% (277-203, n=480). **SCREEN vs MC:** 51.1% over n=4,880, but every MC opponent was unseeded; no superiority and no formal non-inferiority claim | current deployment-cost candidate; no search, numpy p50 0.25ms / p95 0.52ms |
+| `mc-v11anchor` | complete current MC ballot and ordinary N=30 common-world search, with frozen v11pair's thresholded action moved to protected candidate 0; Smart remains in the ballot | **NOT RUN**; implementation/provenance tests only | experimental code ready; direct v11/current compatibility and then a fresh anchor-strength gate are required |
+| `mc-v11anchor-random` | same v11 trigger and equal N=30 work, but a separately seeded random non-Smart action becomes candidate 0 | **NOT RUN**; implementation/provenance tests only | attribution control, never a production candidate by itself |
 | `mc-vleaf-v11pair` | attempted to use v11pair's pairwise head as a leaf | 32.5% vs MC (39-81, n=120) | **INVALID configuration**, not a leaf-learning result: cross-state scale is unidentified; quarantined and unregistered |
 | `mc-gate-v11pair` | v11 delta detects states on which the registered policy escalates from SmartBot to full MC | online **SCREEN** 53.3% vs MC (n=300); 55% timing was extrapolated. T2 missed its declared bar, but noisy max-Q/candidate-count bias prevents the stronger “cheap gate explains it” conclusion | not adopted; the attempted equal-budget T3 was invalid/terminated. Its repaired runner has no valid replayed result yet |
 | `rl-override-v11pair-m0` | same net with the override margin removed, post-hoc fit on the prototype N=240 estimates | offline selected-max regret was lower than deployed on its held-out half (1.132 vs 1.141); online **SCREEN** 235-265 = 47.0% vs OS-seeded MC, Wilson [42.7%, 51.4%] | **not promoted**. It did not show an advantage; it was not a seeded same-block comparison with the 0.02 rule and is not a clean rejection |

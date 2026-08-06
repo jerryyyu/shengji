@@ -306,8 +306,16 @@ def policy_ballots(name: str) -> dict:
         if inner is not None and hasattr(inner, "_candidates"):
             stages["root"] = mc_ballot(inner)
             break
-    # Any policy holding a net evaluates leaves over the RL enumeration.
-    if getattr(bot, "net", None) is not None:
+    # A net is not synonymous with an RL-enumeration LEAF.  Override, racing
+    # and protected-anchor policies score the MC ROOT ballot; reporting them as
+    # rl_actions was the provenance version of the v10res mismatch.  Those
+    # policies expose the exact generator on `_net_ballot`.  Only policies that
+    # really ask their model about rl.actions (RLBot/MCValueLeaf) fall through
+    # to the leaf identity.
+    model_ballot = getattr(bot, "_net_ballot", None)
+    if getattr(bot, "net", None) is not None and model_ballot is not None:
+        stages["model"] = mc_ballot(model_ballot)
+    elif getattr(bot, "net", None) is not None:
         stages["leaf"] = rl_ballot()
     return stages or {"root": NO_BALLOT}
 
@@ -319,7 +327,7 @@ def ballot_for_policy(name: str) -> BallotSpec:
     trained against, not the root the search happens to enumerate.
     """
     stages = policy_ballots(name)
-    return stages.get("leaf") or stages["root"]
+    return stages.get("model") or stages.get("leaf") or stages["root"]
 
 
 # ---------------------------------------------------------------- the gate

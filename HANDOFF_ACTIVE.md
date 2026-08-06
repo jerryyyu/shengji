@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 08:59 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 09:34 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -19,9 +19,13 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   `0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49`.
   S0b-LCB launched 8/8 exact parent-bound Mini shards at 06:58 EDT. Air remains
   duplicate fallback only; never pool its records or launch a child from Air.
+  At 09:18 all eight shards completed the adaptive label and entered
+  uniform-report; stderr remains empty. Do not inspect partial effects.
 - Teacher-v1 mechanics/gold gates, the v11 protected-anchor compatibility block
   and the role-conditioned RL microgates remain independent parallel strength
-  work; none should be folded into S0 before each wins alone.
+  work; none should be folded into S0 before each wins alone. V11 and
+  teacher-v1 entry-gate code is ready and tested, but neither has run a
+  promotable evidence block.
 
 ## S0 implementation packet — S0a accepted, S0b-LCB running
 
@@ -221,12 +225,21 @@ any drift.
 
 ## Other active strength lanes
 
-1. **V11 protected-anchor lane (separate from S0):** first revalidate frozen `rl-override-v11pair` against
-   current N=30 on the registered fresh 2,048-cluster block. Only then implement
-   the protected-anchor hybrid; never use the pairwise head as a scalar leaf.
-2. **S1 teacher/model:** execute `TEACHER_V1_SPEC.md` Stage A (64 mechanics) and
-   Stage B (128 gold continuation). Only a Stage-B regret upper bound <=0.10
-   signed levels authorizes its 2,048-state wave.
+1. **V11 protected-anchor lane (separate from S0):**
+   `server/scripts/v11_revalidate.py` and policies `mc-v11anchor` /
+   `mc-v11anchor-random` are code-ready; a two-cluster compiled+strict smoke
+   completed cleanly and is non-promotable. First run the frozen direct
+   `rl-override-v11pair` versus current N=30 block at seeds 121M. That result
+   can authorize only a later anchor experiment. Do not freeze that later
+   experiment's reference/seeds until S0 names the terminal champion; never
+   use the pairwise head as a scalar leaf.
+2. **S1 teacher/model:** capture/diagnose/freeze and Stage-A/B producer/gates
+   are code-ready at `server/scripts/teacher_v1_*.py`; the full server suite
+   passed 405 tests (two optional skips) and a one-deal smoke passed. No
+   evidence run exists. Execute
+   Stage A (64 mechanics plus deterministic rerun), then disjoint Stage B (128
+   production-N30 gold continuation). Only a Stage-B regret upper bound <=0.10
+   signed levels authorizes implementing/launching its 2,048-state wave.
 3. **S2 self-play RL:** close role-sign and immutable-actor tests, then run short
    faithful Suphx-style feature-removal and DouZero-style role-Q microbaselines.
 4. **S3 structured search:** independently screen broad bury search and

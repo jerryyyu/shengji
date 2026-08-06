@@ -1,8 +1,11 @@
 # Teacher-v1 staged experiment spec
 
-Status: proposed for execution, 2026-08-05. This is the operational contract
-for the new counterfactual training/challenge asset. It is not an extension of
-DEV-512 and may not read or score CALIB-512 or REPORT.
+Status: Stage-A/Stage-B entry-gate code ready and focused tests passing,
+2026-08-06; **no promotable teacher evidence has run**. The executable boundary
+is `server/shengji/teacher_v1.py` plus
+`server/scripts/teacher_v1_{states,label,gate}.py`. This is the operational
+contract for a new counterfactual training/challenge asset. It is not an
+extension of DEV-512 and may not read or score CALIB-512 or REPORT.
 
 ## Objective and stop rule
 
@@ -24,7 +27,8 @@ teacher usefulness; a held-out teacher gain alone does not prove bot strength.
   zero-world decision, rejection, invalid world or named skip fails the shard.
 - Freeze exact state identities and split assignment before action outcomes are
   inspected. Train/tune/holdout are deal-disjoint 70/15/15 hashes. Existing
-  DEV/CALIB/REPORT deals are excluded from all three.
+  original, late and deep-lead DEV/CALIB/REPORT deal identities are all
+  digest-pinned and excluded from all three.
 
 ## State population
 
@@ -42,8 +46,11 @@ The full pilot contains 2,048 states:
 
 The two reconstructed QHKR incidents are challenge regressions outside the
 2,048 training rows. Record candidate count, role, banker identity, phase,
-lead/follow, action archetype and selection probability/stratum so deployment-
-weighted diagnostics remain possible.
+lead/follow, action archetype and selection design. Representative rows are a
+hash reservoir within each stratum and carry an honest inclusion probability.
+Boundary/uncertainty rows are deterministic challenge ranks: they carry
+conditional inclusion `1.0` and `deployment_weightable:false`, never a
+plausible-looking inverse-probability weight.
 
 ## Label tensor
 
@@ -51,9 +58,12 @@ For every state, store exact replay, every current-ballot candidate and 512
 strict common worlds shared by all candidates. Split worlds before scoring:
 256 selection and 256 report. For every `(state, fold, world, candidate)` store
 terminal attacker points, acting-team signed points, scoring bracket and signed
-level utility. Also store paired deltas/moments versus candidate 0, sampler
-counters, continuation id and exact candidate-world work. Compressed shards may
-store the dense tensor; the manifest must expose its shape and hashes.
+level utility under the uncapped house-rule target
+`teacher-v1-uncapped-possession-utility-v1`. A future `+3` clip must be a new
+named target, not an in-place label change. Also store paired deltas/moments
+versus candidate 0, sampler counters, continuation id and exact candidate-world
+work. Compressed shards may store the dense tensor; the manifest must expose its
+shape and hashes.
 
 The bulk continuation candidate is the deterministic heuristic only because it
 is cheap. It is not presumed to be a valid teacher.
@@ -67,19 +77,24 @@ Pass requires 64/64 exact replays, complete legal held ballots, 512/512 accepted
 worlds per state, exact tensor shapes, fold disjointness, deterministic rerun
 hashes, all counters zero and a measured runtime/work projection. Failure stops
 and repairs the producer. Passing authorizes Stage B, not the 2,048-state wave.
+The implemented gate requires two full executions whose evidence is identical
+after excluding wall time.
 
 ## Stage B — continuation-quality gate
 
-Freeze 128 stratified states from the fresh pilot population. On the same
-candidates, add a gold continuation:
+Freeze 128 stratified states, disjoint from Stage A, from the fresh population.
+On the same candidates, add a gold continuation:
 
 - production `mc-strong` N=30 for downstream partial-information decisions;
-- exact/minimax continuation where the registered late-state solver is
-  tractable **and information-set legal**. A solver that lets a player act on
-  opponents' hidden hands is an oracle diagnostic, not a deployable gold
-  continuation; and
 - 64 gold-selection plus 64 disjoint gold-report common worlds per action,
   with deterministic inner policy seeds.
+
+Teacher-v1's first executable Stage-B estimand is exactly the production N=30
+continuation above. An exact/minimax late continuation is not implemented or
+silently mixed into this gate. It may become a separately named teacher only
+after a registered solver is proved **information-set legal**; a solver that
+lets a player act on opponents' hidden hands is an oracle diagnostic, not a
+deployable gold continuation.
 
 Choose the cheap action on its selection fold and the gold reference action on
 the gold-selection fold. On gold-report worlds, estimate paired signed-level
@@ -88,13 +103,16 @@ state. The gate passes only if its one-sided 95% upper bound is at most 0.10
 signed levels per decision. Top-1 agreement and rank correlation are diagnostics,
 not substitutes for regret.
 
-- PASS: automatically launch Stage C with the named cheap continuation.
+- PASS: authorizes implementation and launch of Stage C with the named cheap
+  continuation; it does not auto-launch compute.
 - FAIL or inconclusive: do not bulk-label/train the cheap target. Use the next
   compute block to expand gold worlds to a predeclared fixed cap or label a
   smaller set with the stronger continuation; amend the continuation identity
   before any full wave.
 
 ## Stage C — 2,048-state pilot
+
+Status: not implemented and not authorized until Stage B passes.
 
 Shard the frozen state list across the fleet. Expected scale is roughly 7-8M
 candidate-world heuristic rollouts if candidate counts resemble current assets.

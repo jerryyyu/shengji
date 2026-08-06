@@ -289,8 +289,17 @@ def _make_override(ckpt: str):
 # post-mortem — this arm is a near no-op, not a candidate for play.
 def _make_override_thr(path: str, margin: float):
     def make(**kw):
+        from pathlib import Path
         from ..rl.torch_policy import RLOverrideBot
-        b = RLOverrideBot(path)
+        resolved = Path(path)
+        server_relative = Path(__file__).resolve().parents[2] / resolved
+        # The numpy production artifact is what the v11 registry entry loads;
+        # accept construction from repo root as well as server/ without ever
+        # choosing a different checkpoint.
+        if not resolved.exists() and (server_relative.exists() or
+                                      server_relative.with_suffix(".npz").exists()):
+            resolved = server_relative
+        b = RLOverrideBot(str(resolved))
         b.MARGIN = margin          # fitted on a DISJOINT half of the holdout
         return b
     return make
@@ -350,6 +359,26 @@ REGISTRY["rl-override-v11pair-m0"] = _make_override_thr(
     "snapshots_v11pair/ep07.pt", 0.0)
 REGISTRY["rl-override-v11pair"] = _make_override_thr(
     "snapshots_v11pair/ep07.pt", 0.02)
+
+
+def _make_v11_anchor(*, random_control: bool = False):
+    """Frozen v11pair proposal inside an otherwise ordinary N=30 search."""
+    def make(**kw):
+        from ..rl.torch_policy import (MCV11ProtectedAnchor,
+                                       MCV11RandomAnchor)
+        cls = MCV11RandomAnchor if random_control else MCV11ProtectedAnchor
+        return cls("snapshots_v11pair/ep07.npz", seed=kw.get("seed"))
+    return make
+
+
+# The first learned/search composition that preserves the complete current
+# action set and all N=30 common worlds.  The random arm fires on exactly the
+# same v11 threshold but protects an arbitrary non-Smart action, separating
+# proposal quality from the generic effect of changing candidate 0.
+REGISTRY["mc-v11anchor"] = _make_v11_anchor()
+REGISTRY["mc-v11anchor-random"] = _make_v11_anchor(random_control=True)
+
+
 def _make_gate(path: str, gate: float):
     def f(**kw):
         from ..rl.torch_policy import MCGatedOverride

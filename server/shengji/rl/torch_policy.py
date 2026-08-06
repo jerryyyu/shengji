@@ -8,13 +8,58 @@ checkpoint exists.
 
 from __future__ import annotations
 
+import hashlib
+import math
 import os
+import random
+from functools import lru_cache
+from pathlib import Path
 
 from ..ai.mcbot import MCBot as MCBotBase
 from ..ai.smart import SmartBot
 from ..engine.round import Round
 from .actions import enumerate_actions
 from .encode import encode_action, encode_obs
+
+
+@lru_cache(maxsize=16)
+def _cached_npnet(path: str, mtime_ns: int, ctime_ns: int, size: int):
+    """Load immutable numpy weights once per process and file generation.
+
+    Evaluation constructs four fresh bots for every mirrored round.  Loading
+    the same 2 MB NPZ thousands of times is pure orchestration overhead, not a
+    policy difference.  The stat fields are part of the cache key so replacing
+    a development checkpoint at the same path still causes a reload.
+    """
+    del mtime_ns, ctime_ns, size
+    from .npnet import NpNet
+    net = NpNet(path)
+    # Bots now share this object.  Make the contract executable: an accidental
+    # in-place calibration/update in one bot must not change every other arm
+    # in the process halfway through a paired evaluation.
+    for value in net.w.values():
+        value.flags.writeable = False
+    return net
+
+
+def _load_npnet(path: str):
+    resolved = Path(path).resolve()
+    stat = resolved.stat()
+    return _cached_npnet(
+        str(resolved), stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size)
+
+
+@lru_cache(maxsize=32)
+def _cached_sha256(path: str, mtime_ns: int, ctime_ns: int, size: int) -> str:
+    del mtime_ns, ctime_ns, size
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _file_sha256(path: Path) -> str:
+    resolved = path.resolve()
+    stat = resolved.stat()
+    return _cached_sha256(
+        str(resolved), stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size)
 
 
 class RLBot(SmartBot):
@@ -78,8 +123,7 @@ class MCValueLeaf(MCBotBase):
         npz = os.environ.get("SHENGJI_NPZ") or (
             path[:-3] + ".npz" if path.endswith(".pt") else "")
         if npz and os.path.exists(npz):
-            from .npnet import NpNet
-            self.net = NpNet(npz)
+            self.net = _load_npnet(npz)
         else:
             from .model import load_any_net
             self.net = load_any_net(path)
@@ -160,8 +204,7 @@ class RLOverrideBot(SmartBot):
         path = ckpt or os.environ.get("SHENGJI_RL_CKPT", "")
         npz = path[:-3] + ".npz" if path.endswith(".pt") else ""
         if npz and os.path.exists(npz):
-            from .npnet import NpNet
-            self.net = NpNet(npz)
+            self.net = _load_npnet(npz)
         else:
             from .model import load_any_net
             self.net = load_any_net(path)
@@ -170,6 +213,10 @@ class RLOverrideBot(SmartBot):
         # attributes (WIDE_FOLLOW_BALLOT et al).
         from ..ai.mcbot import MCBot as _MC
         self._ballot = _MC()
+        # The net scores this MC root ballot, not rl.actions.  Carry the
+        # executable generator so experiment manifests can bind the right
+        # action set instead of repeating the v10res mismatch in provenance.
+        self._net_ballot = self._ballot
 
     def decide_play(self, rnd: Round, seat: int) -> list[str]:
         base = super().decide_play(rnd, seat)          # SmartBot's pick = a_0
@@ -241,6 +288,175 @@ class MCGatedOverride(RLOverrideBot):
         return self._mc.decide_play(rnd, seat)
 
 
+class MCV11ProtectedAnchor(MCBotBase):
+    """Equal-work N=30 MC with frozen v11pair as the protected root anchor.
+
+    Production MC protects candidate 0 (Smart's choice) with a five-point
+    rollout margin.  v11pair is known to improve that direct choice, but the
+    earlier hybrids either deleted actions, skipped search, or misused its
+    within-state deltas as cross-state leaf values.  This composition does
+    none of those things: it preserves the complete current MC ballot and
+    merely moves v11's thresholded choice to index 0 before ordinary search.
+
+    The checkpoint and threshold are deliberately frozen.  Missing or changed
+    weights raise: an experiment must never turn into Smart-anchor MC through
+    a silent model fallback.
+    """
+
+    N_DETERMINIZATIONS = 30
+    V11_THRESHOLD = 0.02
+    V11_NPZ_SHA256 = (
+        "cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003"
+    )
+    ANCHOR_MODE = "v11"
+
+    def __init__(self, ckpt: str | None = None, seed: int | None = None):
+        super().__init__(seed=seed)
+        requested = ckpt or "snapshots_v11pair/ep07.npz"
+        path = Path(requested)
+        if not path.is_file():
+            # Registry construction is valid from either repo root or server/.
+            server_relative = Path(__file__).resolve().parents[2] / requested
+            if server_relative.is_file():
+                path = server_relative
+        if not path.is_file():
+            raise RuntimeError(
+                f"frozen v11pair checkpoint unavailable: {requested!r}")
+        actual = _file_sha256(path)
+        if actual != self.V11_NPZ_SHA256:
+            raise RuntimeError(
+                f"frozen v11pair checkpoint digest {actual}, expected "
+                f"{self.V11_NPZ_SHA256}; refusing anchor fallback")
+        if self.ANCHOR_MODE not in {"v11", "same_trigger_random"}:
+            raise RuntimeError(f"unknown protected-anchor mode {self.ANCHOR_MODE!r}")
+        self.checkpoint_path = str(path.resolve())
+        self.checkpoint_sha256 = actual
+        self.net = _load_npnet(self.checkpoint_path)
+        # The net scores this class's inherited MCBot root ballot.
+        self._net_ballot = self
+        # Random attribution must not advance the common-world RNG.  The same
+        # world seed therefore produces the same determinizations in Smart,
+        # v11 and random-anchor arms; only candidate order differs.
+        self._anchor_rng = random.Random(
+            None if seed is None else seed ^ 0x563131414E43484F52)
+        self._pending_anchor_record = None
+        self.last_anchor_record = None
+
+    @staticmethod
+    def _action_key(action) -> tuple[str, ...]:
+        return tuple(sorted(action))
+
+    def decide_play(self, rnd: Round, seat: int) -> list[str]:
+        self._pending_anchor_record = None
+        self.last_anchor_record = None
+        played = super().decide_play(rnd, seat)
+        # One-candidate decisions return before MCBot creates its search record.
+        # Retain a truthful small record when the anchor ballot did run; the
+        # TRACTOR_LOCK fast path remains completely untouched and unrecorded.
+        if self.last_decision_record is None and self._pending_anchor_record:
+            rec = dict(self._pending_anchor_record)
+            rec.update({"played": list(played), "played_index": 0,
+                        "reason": "single_candidate",
+                        "mc_v11_minus_smart": None,
+                        "mc_protected_minus_smart": None})
+            self.last_anchor_record = rec
+        return played
+
+    def _candidates(self, rnd: Round, seat: int):
+        full = super()._candidates(rnd, seat)
+        keys = [self._action_key(action) for action in full]
+        if len(keys) != len(set(keys)):
+            raise RuntimeError("protected-anchor ballot contains duplicate actions")
+        if not full:
+            raise RuntimeError("protected-anchor ballot is empty")
+
+        smart_idx = 0                 # MCBot's executable candidate-0 contract
+        v11_idx = 0
+        predicted_delta = 0.0
+        triggered = False
+        if len(full) > 1:
+            obs = encode_obs(rnd, seat)
+            encoded = [encode_action(action, rnd) for action in full]
+            values = [float(x) for x in self.net.value_candidates(obs, encoded)]
+            if len(values) != len(full) or not all(map(math.isfinite, values)):
+                raise RuntimeError(
+                    "frozen v11pair returned missing or non-finite root scores")
+            deltas = [value - values[smart_idx] for value in values]
+            v11_idx = max(range(len(deltas)), key=deltas.__getitem__)
+            predicted_delta = deltas[v11_idx]
+            triggered = (v11_idx != smart_idx and
+                         predicted_delta > self.V11_THRESHOLD)
+
+        protected_idx = smart_idx
+        if triggered:
+            if self.ANCHOR_MODE == "v11":
+                protected_idx = v11_idx
+            else:
+                protected_idx = self._anchor_rng.choice(
+                    [i for i in range(len(full)) if i != smart_idx])
+
+        reordered = ([full[protected_idx]] + full[:protected_idx] +
+                     full[protected_idx + 1:] if protected_idx else list(full))
+        action_set = sorted(keys)
+        self._pending_anchor_record = {
+            "schema": "v11-protected-anchor-v1",
+            "mode": self.ANCHOR_MODE,
+            "checkpoint_sha256": self.checkpoint_sha256,
+            "threshold": self.V11_THRESHOLD,
+            "candidate_count": len(full),
+            "action_set_sha256": hashlib.sha256(
+                repr(action_set).encode()).hexdigest(),
+            "smart": list(full[smart_idx]),
+            "smart_original_index": smart_idx,
+            "v11": list(full[v11_idx]),
+            "v11_original_index": v11_idx,
+            "v11_predicted_delta": predicted_delta,
+            "v11_triggered": triggered,
+            "protected": list(full[protected_idx]),
+            "protected_original_index": protected_idx,
+            "proposal_reason": (
+                "same_trigger_random_anchor" if triggered and
+                self.ANCHOR_MODE == "same_trigger_random" else
+                "v11_threshold_override" if triggered else
+                "v11_below_threshold_keep_smart" if v11_idx != smart_idx else
+                "v11_kept_smart"),
+        }
+        return reordered
+
+    def _finalise_record(self, candidates, played_index, reason):
+        super()._finalise_record(candidates, played_index, reason)
+        record = self.last_decision_record
+        anchor = self._pending_anchor_record
+        if record is None or anchor is None:
+            return
+        meta = dict(anchor)
+        by_key = {self._action_key(action): i
+                  for i, action in enumerate(candidates)}
+        smart_index = by_key[self._action_key(meta["smart"])]
+        v11_index = by_key[self._action_key(meta["v11"])]
+        protected_index = by_key[self._action_key(meta["protected"])]
+        means = record["means"]
+        meta.update({
+            "smart_index": smart_index,
+            "v11_index": v11_index,
+            "protected_index": protected_index,
+            "mc_v11_minus_smart": means[v11_index] - means[smart_index],
+            "mc_protected_minus_smart": (
+                means[protected_index] - means[smart_index]),
+            "played": list(candidates[played_index]),
+            "played_index": played_index,
+            "reason": reason,
+        })
+        record["protected_anchor"] = meta
+        self.last_anchor_record = meta
+
+
+class MCV11RandomAnchor(MCV11ProtectedAnchor):
+    """Attribution control: random non-Smart anchor on v11-triggered states."""
+
+    ANCHOR_MODE = "same_trigger_random"
+
+
 class MCPriorRace(MCBotBase):
     """Net as a ROOT PRIOR: prune the ballot, then race the survivors with the
     SAME total rollout budget (Codex's queued arm).
@@ -268,11 +484,12 @@ class MCPriorRace(MCBotBase):
         npz = os.environ.get("SHENGJI_NPZ") or (
             path[:-3] + ".npz" if path.endswith(".pt") else "")
         if npz and os.path.exists(npz):
-            from .npnet import NpNet
-            self.net = NpNet(npz)
+            self.net = _load_npnet(npz)
         else:
             from .model import load_any_net
             self.net = load_any_net(path)
+        # Unlike MCValueLeaf, this model scores the MC ROOT candidates.
+        self._net_ballot = self
         self._pruned = None
 
     def _candidates(self, rnd: Round, seat: int):

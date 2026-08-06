@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-06 07:02 EDT.
+Last re-derived: 2026-08-06 09:31 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -34,7 +34,9 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   `0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49`.
   This is a mechanism-screen survivor, not a deployment result. Its exact
   parent-bound `s0b-lcb` block launched 8/8 Mini shards at 06:58 EDT. Air's
-  duplicate records may never be pooled.
+  duplicate records may never be pooled. At 09:18 all eight shards completed
+  the adaptive label and entered the uniform-report label together; stderr is
+  empty, but no partial effects are admissible.
 - The roadmap has three parallel strength lanes: S0 search, clean teacher/model
   iteration, and faithful role-conditioned self-play. Do not wait for S0a to run
   the bounded teacher/RL entry gates on other workers.
@@ -44,10 +46,10 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 | priority | work | exit gate |
 |---|---|---|
 | **S0a search strength — COMPLETE** | Frozen decision-rule screen accepted on authoritative Mini | Eight clean 256-cluster shards selected report-LCB. Independent recomputation matched the registered aggregate; this block cannot promote. |
-| **S0b allocation — RUNNING** | Test allocation separately under the selected LCB report rule | Eight exact parent-bound `s0b-lcb` shards cover seeds 134,000,000–134,002,047 on Mini. Deterministic adaptive must beat both uniform-report and random allocation by paired point estimate; otherwise report-LCB survives. |
+| **S0b allocation — RUNNING** | Test allocation separately under the selected LCB report rule | Eight exact parent-bound `s0b-lcb` shards cover seeds 134,000,000–134,002,047 on Mini. The adaptive label is complete on every shard and uniform-report is running; random allocation follows. Deterministic adaptive must beat both controls by paired point estimate; otherwise report-LCB survives. Do not score partials. |
 | **S0c confirmation** | Independently confirm exactly the S0b survivor | Eight 1,024-cluster shards on seeds 135,000,000–135,008,191 compare survivor, `mc-strong-null`, and current. Promote only if survivor-current and survivor-null paired 95% lower bounds are >0 and the null does not clear; otherwise close S0 SELECT NONE. |
-| **V11 protected-anchor lane — SEPARATE FROM S0** | Use the one confirmed learned improvement as MC's protected root anchor | First revalidate frozen `rl-override-v11pair` directly against current compiled N=30 on one fresh 2,048-cluster paired block. Then test an equal-work hybrid that preserves the full current ballot and N=30 worlds but protects v11's thresholded choice instead of SmartBot's. Hard pruning, pairwise-as-leaf and search/no-search gating are not this experiment, and this lane is not required to close S0. |
-| **S1 teacher/model** | Execute `TEACHER_V1_SPEC.md`, then earn scale | Pass the 64-state mechanics and 128-state gold-continuation gates before the 2,048-state wave. This is a new training/challenge asset, not an enlargement of DEV-512. Train three-seed action ranker + calibrated outcome head; scale only if untouched regret and paired games improve. |
+| **V11 protected-anchor lane — CODE READY, SEPARATE FROM S0** | Use the one confirmed learned improvement as MC's protected root anchor | The frozen 2,048-cluster direct-current revalidation runner and equal-work `mc-v11anchor`/same-trigger-random policies are implemented and focused tests pass. Do not launch evidence from a dirty tree. The later anchor-strength seed block and promotion rule wait for S0's terminal champion so the reference cannot move underneath the estimand. |
+| **S1 teacher/model — ENTRY GATES CODE READY** | Execute `TEACHER_V1_SPEC.md`, then earn scale | Fresh replay-state capture/diagnosis, Stage-A 64-state deterministic mechanics, and Stage-B 128-state N=30 gold-continuation/regret gates are implemented and tested. No evidence run has started. Pass both gates before implementing/launching the 2,048-state wave; this is not an enlargement of DEV-512. |
 | **S2 self-play RL** | Run faithful role-conditioned synchronous microbaselines | Unit-test attacker/defender signs, separately version reward targets, and bind immutable actors. Then run Suphx-style feature removal and DouZero-style direct-Q baselines for 20–30 minutes; stable spread plus held-out improvement earns fleet scale. |
 | **S3 structured search** | Attack decisions outside ordinary play selection | In parallel, screen structured MC bury sourcing and sampled exact solving for the final ~4 tricks. Each changes a different once-per-round/tactical bottleneck and must duel the production champion directly. |
 | **Frontend ship gate** | Run one bounded multi-tab soak | Cover join, simultaneous seat claim, disconnect-to-bot, reconnect/takeover, stale/displaced sockets, second absence, private-hand visibility, chat before initial state and >50 messages, and saved-room invite precedence. |
@@ -129,12 +131,13 @@ the best use of that fact:
   equal-budget follow-up never produced a valid result; and
 - pairwise deltas are not an absolute leaf value.
 
-The new minimal hybrid keeps every current candidate and the full N=30 common-
+The implemented minimal hybrid keeps every current candidate and the full N=30 common-
 world budget. On states where the frozen 0.02 v11 rule overrides SmartBot,
 reorder that action to candidate 0 so the existing five-point MC margin protects
 the demonstrably stronger learned prior; keep Smart's action in the ballot and
 leave `TRACTOR_LOCK` unchanged for the first attribution arm. This tests anchor
-quality, not sourcing, pruning, latency or leaf evaluation.
+quality, not sourcing, pruning, latency or leaf evaluation. The checkpoint is
+digest-pinned and fail-closed; the cached numpy weights are immutable.
 
 Required sequence:
 
@@ -143,14 +146,18 @@ Required sequence:
    mc-vs-mc null, strict counters and checkpoint NPZ SHA-256
    `cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003`.
    Direct v11 promotes only on superiority; an interval containing zero is not
-   equivalence.
+   equivalence. `server/scripts/v11_revalidate.py` now implements this exact
+   block and cannot promote production.
 2. **Anchor implementation:** exact same action set/worlds/candidate-world work
    as N=30; only candidate order/protected anchor changes. Record Smart and v11
    choices, predicted delta, MC paired delta and final reason. A same-trigger
-   random-action anchor is the attribution control.
+   random-action anchor is the attribution control. Registered policies are
+   `mc-v11anchor` and `mc-v11anchor-random`; implementation is complete, but
+   neither has strength evidence.
 3. **Anchor strength:** primary contrast v11-anchor minus Smart-anchor on fresh
-   paired signed level utility. Do not combine it with adaptive/confidence
-   changes until each wins separately.
+   paired signed level utility. Freeze its reference, seeds, sample size and
+   advancement rule only after S0 names the terminal production champion. Do
+   not combine it with adaptive/confidence changes until each wins separately.
 4. **Soft allocation, later:** after S0 has valid simultaneous/time-uniform
    inference, allow v11 only to prioritize unresolved candidates after a common-
    world floor. Compare it with uncertainty-only and random priorities at exact
@@ -168,9 +175,10 @@ allocator; no cross-state leaf.
 ### Lane B — generate data that can exceed the old teacher
 
 Build `teacher-v1` as a vertically labelled counterfactual dataset, never from
-DEV/CALIB/REPORT. The first gate is 2,048 states balanced across lead/follow,
-early/mid/late, banker/attacker/defender, candidate count, close margins and
-policy disagreement. Include a small incident tranche from real human games.
+DEV/CALIB/REPORT. First prove mechanics on 64 states and continuation quality
+on 128 disjoint states; only then freeze the 2,048-state pilot balanced across
+lead/follow, early/mid/late, attacker/defender, close margins and policy
+disagreement. Keep real-human incidents as separate regression cases.
 
 Use the historical high-N corpora to decide **where**, not **what**, to label.
 The fixed-pair audit at `ab3c652` found that frozen v11 has real old-surrogate
@@ -184,7 +192,8 @@ play. Next:
    boundary disagreements, high-SE rows and lead action-type transitions;
 2. freeze the resulting selector and apply it to fresh non-evaluation deals;
 3. feed those fresh states into teacher-v1's strict, disjoint-world, bracket-
-   outcome labeller, including the union of Smart/v11/current/proposed actions;
+   outcome labeller over the complete ordered current MC ballot; assert that
+   Smart, N=30 and v11 choices are present rather than inventing a new ballot;
 4. keep mined old losses as regression cases, not training or promotion data;
    and
 5. do not rerun 37.1M old evaluations or fit another deployable threshold to
@@ -235,12 +244,17 @@ valid replay contract, not a substitute for fixing its target.
 The bounded P0 certificate passed at `aea3774`; keep compute occupied with
 staged strength work rather than one speculative monolith:
 
-1. Air: shard the 2,048-state teacher pilot and endgame/bury screens.
-2. Mini: implement and replay the confidence allocator plus challenge corpus.
-3. Training device: three model seeds and data-scaling curves as teacher shards
-   arrive.
-4. Both machines: fixed paired evaluation shards only for candidates that pass
-   their local gate.
+1. Mini remains authoritative for the live S0b/S0c chain; do not displace or
+   pool those eight workers. All current S0 capacity is productively occupied.
+2. When Mini has a free sub-hour window, run the clean bounded V11 direct-
+   compatibility block or teacher Stage-A mechanics. Air is fallback for a
+   whole immutable block only, never a source to pool into Mini evidence.
+3. A Stage-A pass authorizes only the 128-state teacher gold gate. A Stage-B
+   pass authorizes implementing and sharding Stage C; it does not silently
+   launch millions of labels.
+4. Training hardware receives three-seed scaling runs only after a valid frozen
+   teacher asset exists. Full-game fleet evaluation is reserved for candidates
+   that pass their local data/model gate.
 
 At each stage, failure frees the queue for the next mechanism; it does not
 authorize adding more data to a target that failed.

@@ -700,14 +700,21 @@ def test_QHKR_override_variance_regression():
     assert list(cands[0]) == ["SA", "SA", "SK"], (
         f"candidate 0 must be the SAAK throw, got {cands[0]}")
 
-    # with the LCB override the correct card must survive every replica
-    picks = set()
-    for k in range(20):
-        bot = make_bot("mc-strong", seed=500 + k)
-        bot.CONFIDENCE_OVERRIDE = True
-        picks.add(tuple(bot.decide_play(rnd, seat)))
-    assert picks == {("SA", "SA", "SK")}, (
-        f"LCB override deviated from candidate 0 on this state: {picks}")
+    # SAME-SEED A/B on the known fixed-margin witnesses. Codex identified
+    # seeds 238 and 344 as draws where the current rule actually plays `DJ`;
+    # the earlier version used seeds 500-519, which happened to contain no
+    # witness at all, so it could pass against a rule that changed nothing.
+    for seed in (238, 344):
+        cur = make_bot("mc-strong", seed=seed)
+        cur.CONFIDENCE_OVERRIDE = False
+        assert list(cur.decide_play(rnd, seat)) == ["DJ"], (
+            f"seed {seed} is registered as a fixed-margin DJ witness; if it no "
+            f"longer overrides, the A/B below proves nothing")
+        new_rule = make_bot("mc-strong", seed=seed)
+        new_rule.CONFIDENCE_OVERRIDE = True
+        new_rule.ADAPTIVE_ALLOCATION = True
+        assert list(new_rule.decide_play(rnd, seat)) == ["SA", "SA", "SK"], (
+            f"seed {seed}: the proposed rule must refuse the noisy override")
 
 
 def test_acting_team_sign_is_correct_for_both_roles():
@@ -741,6 +748,7 @@ def test_acting_team_sign_is_correct_for_both_roles():
             r = json.loads(line)
             rows[(name, r["seed"], r["ply"])] = r
     states = json.load(open(art))["states"]
+    tested_roles = set()
     for role in ("attacker", "defender"):
         st = next(s for s in states if s["role"] == role)
         rnd = PS.replay(rows[(st["source"], st["seed"], st["ply"])])
@@ -749,7 +757,7 @@ def test_acting_team_sign_is_correct_for_both_roles():
         bot.decide_play(rnd, seat)
         rec = bot.last_decision_record
         if rec is None or len(rec["candidates"]) < 2:
-            continue
+            continue        # counted below; the suite FAILS if a role is skipped
         means, cands = rec["means"], rec["candidates"]
         hi = max(range(len(cands)), key=lambda i: means[i])
         lo = min(range(len(cands)), key=lambda i: means[i])
@@ -774,3 +782,7 @@ def test_acting_team_sign_is_correct_for_both_roles():
             assert a_hi < a_lo, (
                 "defender: the best acting-team mean must have FEWER attacker "
                 f"points ({a_hi:.1f} vs {a_lo:.1f})")
+        tested_roles.add(role)
+    assert tested_roles == {"attacker", "defender"}, (
+        f"only tested {tested_roles or 'nothing'} — the loop can `continue` "
+        f"past a role, so passing without testing both proves nothing")

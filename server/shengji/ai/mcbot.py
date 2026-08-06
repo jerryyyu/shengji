@@ -84,6 +84,7 @@ class MCBot(SmartBot):
     #                       beatable K-pair lead look boss)
     CONFIDENCE_OVERRIDE = False   # S0: require a paired LCB, not a point gap
     ADAPTIVE_ALLOCATION = False   # S0: fixed budget, spent on contenders
+    SAMPLE_ATTEMPT_FACTOR = 40    # cap draws per decision; None-loops hung
     CONFIDENCE_Z = 1.64           # one-sided 95%
     MARGIN = 5.0  # points/round a candidate must beat SmartBot's pick by;
     #               keeps the heuristic prior unless the search is confident.
@@ -148,6 +149,17 @@ class MCBot(SmartBot):
         if len(candidates) <= 1:
             return candidates[0]
         self.search_calls += 1
+        # Reset per-decision state FIRST. Tractor-lock, one-candidate and
+        # zero-world exits return before the search block, so a stale record
+        # from the previous decision would otherwise be logged against this
+        # play — the log would explain a move that never happened (Codex).
+        self.last_decision_record = None
+        self.last_override_stats = None
+        self.last_alloc = None
+        # Full pre-decision RNG state: a digest identifies a stream position
+        # but cannot restore it, so the logged draw was not replayable even in
+        # principle. This works whether or not construction used a seed.
+        pre_rng_state = self.rng.getstate()
         _t0 = time.perf_counter()
         mem = Memory(rnd, seat, own_kitty=getattr(self, 'BANKER_KITTY', True))
         i_attack = rnd.is_attacker(seat)
@@ -206,14 +218,21 @@ class MCBot(SmartBot):
             self.zero_world_decisions += 1
             return candidates[0]
         # acting-team perspective values, exposed for search distillation
+        # Select ONLY among candidates that received the full world budget.
+        # A pruned candidate keeps a frozen mean from few worlds and can win on
+        # noise — the exact spurious-override failure this package removes,
+        # re-entering at the final step (Codex).
+        full_n = max(n_by) if n_by else 0
+        eligible = [i for i in range(len(candidates))
+                    if n_by[i] == full_n and full_n > 0] or [0]
         means = [totals[i] / n_by[i] if n_by[i] else float("-inf")
                  for i in range(len(candidates))]
         self.last_eval = (candidates, means)
-        best = max(range(len(candidates)), key=lambda i: means[i])
+        best = max(eligible, key=lambda i: means[i])
         # Among near-tied candidates, risk the fewest points.
         from ..engine.cards import points as _pts
-        close = [i for i in range(len(candidates))
-                 if n_by[i] and means[best] - means[i] <= self.POINT_SHY_EPS]
+        close = [i for i in eligible
+                 if means[best] - means[i] <= self.POINT_SHY_EPS]
         best = min(close, key=lambda i: (sum(_pts(c) for c in candidates[i]),
                                          -means[i]))
         # candidates[0] is SmartBot's own choice: prefer it unless the search
@@ -235,14 +254,14 @@ class MCBot(SmartBot):
             "margin": margin,
             "z": self.CONFIDENCE_Z,
             "seed": self.seed,
-            "rng_state_digest": hashlib.sha256(
-                repr(self.rng.getstate()).encode()).hexdigest()[:16],
+            "rng_state": pre_rng_state,
+            "eligible_indices": list(eligible),
             "candidates": [list(c) for c in candidates],
             "means": list(means),
             "n_by_candidate": list(n_by),
             "paired_se": [self._paired_se(d_sum[i], d_sq[i], n_by[i])
                           for i in range(len(candidates))],
-            "chosen_index": best,
+            "raw_winner_index": best,
             "worlds": n_worlds,
             "alloc": self.last_alloc,
             "sampler_counters": {
@@ -273,10 +292,28 @@ class MCBot(SmartBot):
                     "candidate0": list(candidates[0]),
                 }
                 if gap - self.CONFIDENCE_Z * se < margin:
+                    self._finalise_record(candidates, 0, "lcb_below_margin")
                     return candidates[0]
             elif gap < margin:
+                self._finalise_record(candidates, 0, "below_fixed_margin")
                 return candidates[0]
+        self._finalise_record(candidates, best, "search_override"
+                              if best != 0 else "candidate0_best")
         return candidates[best]
+
+    def _finalise_record(self, candidates, played_index, reason):
+        """Stamp the ACTUAL played move on the record, after all fallbacks.
+
+        `raw_winner_index` is the search's argmax; the move finally returned can
+        differ because of the margin/confidence fallback. Logging only the
+        former let the record name an alternative the bot never played (Codex).
+        """
+        rec = self.last_decision_record
+        if rec is None:
+            return
+        rec["played_index"] = played_index
+        rec["played"] = list(candidates[played_index])
+        rec["reason"] = reason
 
     def _decide_adaptive(self, rnd, seat, candidates, mem, i_attack):
         """Fixed-budget adaptive allocation (S0 item 2).
@@ -304,7 +341,14 @@ class MCBot(SmartBot):
         worlds = 0
         seed_batch = max(4, self.N_DETERMINIZATIONS // 4)
 
+        attempts = 0
+        max_attempts = budget * self.SAMPLE_ATTEMPT_FACTOR
         while rollouts + len(alive) <= budget:
+            if attempts >= max_attempts:
+                # A repeatedly-failing sampler advances neither `rollouts` nor
+                # the loop, so this spun forever rather than failing (Codex).
+                break
+            attempts += 1
             sampled = self._sample_hands(rnd, seat, mem)
             if sampled is None:
                 continue
@@ -341,7 +385,9 @@ class MCBot(SmartBot):
                         continue        # upper bound below the leader's lower
                     keep.append(i)
                 alive = keep
-        self.last_alloc = {"worlds": worlds, "rollouts": rollouts,
+        self.last_alloc = {"attempts": attempts,
+                           "attempt_cap_hit": attempts >= max_attempts,
+                           "worlds": worlds, "rollouts": rollouts,
                            "budget": budget, "survivors": len(alive),
                            "n_by_candidate": list(n_by)}
         return totals, d_sum, d_sq, n_by, worlds, rollouts

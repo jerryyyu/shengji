@@ -436,7 +436,17 @@ def current_actor(room: Room) -> int | None:
 
 def _log_play(room: Room, seat: int, cards: list[str], bot: bool,
               prev_last) -> None:
-    room.log_event("play", seat=seat, cards=cards, bot=bot)
+    # S0 item 3: attach the search's own account of the decision. A live game
+    # previously recorded only the CARD, so a reported misplay could not be
+    # replayed — the QHKR incident had to be diagnosed from replicas rather
+    # than from the actual draw. Best-effort and bot-only; a policy that ran no
+    # search simply has no record.
+    extra = {}
+    if bot:
+        rec = getattr(room.bot, "last_decision_record", None)
+        if rec is not None:
+            extra["decision"] = rec
+    room.log_event("play", seat=seat, cards=cards, bot=bot, **extra)
     rnd = room.round
     if rnd and rnd.last_trick is not None and rnd.last_trick is not prev_last:
         lt = rnd.last_trick

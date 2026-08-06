@@ -30,6 +30,7 @@ PHYSICAL_FILLS = bool(os.environ.get("SHENGJI_PHYSICAL_FILLS"))
 from math import factorial as _fact
 
 import copy
+import hashlib
 import random
 from collections import Counter
 
@@ -112,6 +113,7 @@ class MCBot(SmartBot):
 
     def __init__(self, seed: int | None = None):
         self.rng = random.Random(seed)
+        self.seed = seed
         self.rollout_policy = HeuristicBot()
         # CUMULATIVE work counters (not per-decision): comparing gates at equal
         # call RATE is not comparing compute, because search cost scales with
@@ -127,6 +129,7 @@ class MCBot(SmartBot):
         self.rejected_worlds = 0
         self.last_override_stats = None
         self.last_alloc = None
+        self.last_decision_record = None
         self.reject_cause = Counter()
         # Decisions that fell back to candidate 0 with NO world sampled.
         self.zero_world_decisions = 0     # kept at 0; readers still reference it
@@ -218,6 +221,36 @@ class MCBot(SmartBot):
         margin = self.MARGIN
         if self.LEAD_MARGIN is not None and not rnd.trick.plays:
             margin = self.LEAD_MARGIN
+        # S0 item 3: persist enough to REPLAY this exact decision. The live
+        # logs retained neither the RNG position nor the candidate values, so
+        # the reported QHKR draw could not be reproduced — the diagnosis had to
+        # be inferred from replicas. Recorded for every contested decision, not
+        # only overrides, because "why did it NOT override" is the same
+        # question.
+        self.last_decision_record = {
+            "policy": type(self).__name__,
+            "n_determinizations": self.N_DETERMINIZATIONS,
+            "confidence_override": self.CONFIDENCE_OVERRIDE,
+            "adaptive_allocation": self.ADAPTIVE_ALLOCATION,
+            "margin": margin,
+            "z": self.CONFIDENCE_Z,
+            "seed": self.seed,
+            "rng_state_digest": hashlib.sha256(
+                repr(self.rng.getstate()).encode()).hexdigest()[:16],
+            "candidates": [list(c) for c in candidates],
+            "means": list(means),
+            "n_by_candidate": list(n_by),
+            "paired_se": [self._paired_se(d_sum[i], d_sq[i], n_by[i])
+                          for i in range(len(candidates))],
+            "chosen_index": best,
+            "worlds": n_worlds,
+            "alloc": self.last_alloc,
+            "sampler_counters": {
+                "rejected_worlds": self.rejected_worlds,
+                "zero_world_decisions": self.zero_world_decisions,
+                "impossible_worlds": getattr(self, "impossible_worlds", 0),
+            },
+        }
         if best != 0:
             gap = means[best] - means[0]
             if self.CONFIDENCE_OVERRIDE:

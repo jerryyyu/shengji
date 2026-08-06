@@ -123,6 +123,55 @@ worksheet, not training data or a strength proof. The role-sign/immutable-actor
 RL microgate may run in parallel. Correctness work returns to bounded entry
 checks.
 
+
+## S0 preregistration — five arms, declared before any duel
+
+Mechanism and work accounting are built (items 1-4). This registers item 5. **No
+duel has run.**
+
+**Arms**, all at the SAME total candidate-world work (`N x K`):
+
+| arm | override rule | allocation |
+|---|---|---|
+| `current` (incumbent) | fixed 5.0-point margin on point estimates | uniform N=30 |
+| `confidence-only` | paired LCB, z=1.64 | uniform N=30 |
+| `adaptive-deterministic` | paired LCB, z=1.64 | prune on bounds, reallocate |
+| `random-allocation` | paired LCB, z=1.64 | reallocate at RANDOM (attribution) |
+| `equal-work-high-budget` | fixed margin | uniform, budget = adaptive's spend |
+
+`random-allocation` is the attribution control: if it matches
+`adaptive-deterministic`, the gain is from spending more worlds on FEWER
+candidates, not from choosing WHICH candidates intelligently.
+`equal-work-high-budget` separates "confidence rule" from "more search".
+
+**Primary contrast:** `adaptive-deterministic` minus `current`, paired signed
+level utility per fresh deal cluster with seat/team flips inside the cluster.
+One fixed block, no extension.
+
+**Not yet declared, and I am not choosing them:** the smallest worthwhile effect
+and the resulting sample size. Codex's arithmetic gives SD about 1.60, so about
+2,048 clusters for 80% power at `+0.10` and about 8,040 at `+0.05`. `+0.10` is a
+stakeholder threshold, not evidence-derived. **Jerry or Codex sets it; the block
+size follows from it.**
+
+**Offline evidence so far** (120 DEV states, work verified against budget):
+
+```
+  current                overrides 31/120 (25.8%)   work  96.8%
+  confidence-only        overrides  3/120 ( 2.5%)   work  96.8%
+  adaptive + confidence  overrides  9/120 ( 7.5%)   work  96.2%, 43 worlds/state
+```
+
+Override rate is a MECHANISM diagnostic, not strength. Fewer overrides is not
+better; it is only better if the suppressed overrides were noise.
+
+**Known observability limit, stated rather than papered over:** the decision
+record stores an RNG-state DIGEST, which identifies a stream position but cannot
+restore it. Production room bots are constructed unseeded (`seed=None`), so an
+exact live draw still cannot be replayed byte-for-byte. Closing that needs the
+server to seed room bots deterministically — a production behaviour change I
+have NOT made.
+
 ## Decisions that should not be reopened
 
 - Engine level progression remains the uncapped house rule. The `+3` clip is a

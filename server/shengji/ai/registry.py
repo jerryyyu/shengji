@@ -104,6 +104,67 @@ REGISTRY: dict[str, type] = {
     "smart-reserve": _smart_variant("SmartReserve", RESERVE_LAST=True),
 }
 
+# S0 v1: one frozen report dose and explicit, separable mechanisms. Production
+# `mc-strong` is unchanged. Every report arm spends N*K selection rollouts plus
+# exactly 2R paired report rollouts on each contested decision; the uniform-work
+# control spends the same N*K+2R total entirely on uniform selection.
+S0_REPORT_WORLDS = 120
+REGISTRY.update({
+    "mc-s0-report-mean": type("MCS0ReportMean", (MCBot,), {
+        "N_DETERMINIZATIONS": 30,
+        "REQUIRE_EXACT_WORK": True,
+        "REPORT_FOLD_WORLDS": S0_REPORT_WORLDS,
+        "REPORT_RULE": "mean",
+        "REPORT_MIN_GAIN": 0.0,
+    }),
+    "mc-s0-report-lcb": type("MCS0ReportLCB", (MCBot,), {
+        "N_DETERMINIZATIONS": 30,
+        "REQUIRE_EXACT_WORK": True,
+        "REPORT_FOLD_WORLDS": S0_REPORT_WORLDS,
+        "REPORT_RULE": "lcb",
+        "REPORT_MIN_GAIN": 0.0,
+    }),
+    "mc-s0-adaptive": type("MCS0Adaptive", (MCBot,), {
+        "N_DETERMINIZATIONS": 30,
+        "REQUIRE_EXACT_WORK": True,
+        "ADAPTIVE_ALLOCATION": True,
+        "REPORT_FOLD_WORLDS": S0_REPORT_WORLDS,
+        "REPORT_RULE": "lcb",
+        "REPORT_MIN_GAIN": 0.0,
+    }),
+    "mc-s0-adaptive-mean": type("MCS0AdaptiveMean", (MCBot,), {
+        "N_DETERMINIZATIONS": 30,
+        "REQUIRE_EXACT_WORK": True,
+        "ADAPTIVE_ALLOCATION": True,
+        "REPORT_FOLD_WORLDS": S0_REPORT_WORLDS,
+        "REPORT_RULE": "mean",
+        "REPORT_MIN_GAIN": 0.0,
+    }),
+    "mc-s0-random": type("MCS0Random", (MCBot,), {
+        "N_DETERMINIZATIONS": 30,
+        "REQUIRE_EXACT_WORK": True,
+        "ADAPTIVE_ALLOCATION": True,
+        "RANDOM_ALLOCATION": True,
+        "REPORT_FOLD_WORLDS": S0_REPORT_WORLDS,
+        "REPORT_RULE": "lcb",
+        "REPORT_MIN_GAIN": 0.0,
+    }),
+    "mc-s0-random-mean": type("MCS0RandomMean", (MCBot,), {
+        "N_DETERMINIZATIONS": 30,
+        "REQUIRE_EXACT_WORK": True,
+        "ADAPTIVE_ALLOCATION": True,
+        "RANDOM_ALLOCATION": True,
+        "REPORT_FOLD_WORLDS": S0_REPORT_WORLDS,
+        "REPORT_RULE": "mean",
+        "REPORT_MIN_GAIN": 0.0,
+    }),
+    "mc-s0-uniform-work": type("MCS0UniformWork", (MCBot,), {
+        "N_DETERMINIZATIONS": 30,
+        "REQUIRE_EXACT_WORK": True,
+        "EXTRA_SELECTION_WORK": 2 * S0_REPORT_WORLDS,
+    }),
+})
+
 
 def _make_rl():
     from ..rl.torch_policy import RLBot  # lazy: needs torch + a checkpoint
@@ -158,12 +219,20 @@ def make_bot(name: str, **kw):
     takes_kwargs = any(p.kind is inspect.Parameter.VAR_KEYWORD
                        for p in params.values()) or "seed" in params
     if takes_kwargs:
-        return factory(**kw)
-    bot = factory()
-    seed = kw.get("seed")
-    if seed is not None and hasattr(bot, "rng"):
-        import random as _r
-        bot.rng = _r.Random(seed)
+        bot = factory(**kw)
+    else:
+        bot = factory()
+        seed = kw.get("seed")
+        if seed is not None and hasattr(bot, "rng"):
+            import random as _r
+            bot.rng = _r.Random(seed)
+    # A class name is not a registry policy identity: several registered arms
+    # share one class/factory with different checkpoints or thresholds. Bind
+    # the exact name at construction so live decision records can be replayed.
+    try:
+        bot.policy_name = name
+    except (AttributeError, TypeError):
+        pass
     return bot
 
 

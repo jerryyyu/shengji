@@ -92,6 +92,14 @@ def counters(bots) -> dict:
             # them and nothing recorded it (Codex).
             "rejected_worlds": sum(getattr(b, "rejected_worlds", 0)
                                    for b in bots),
+            "sample_attempts": sum(getattr(b, "sample_attempts", 0)
+                                   for b in bots),
+            "accepted_worlds": sum(getattr(b, "accepted_worlds", 0)
+                                   for b in bots),
+            "failed_worlds": sum(getattr(b, "failed_worlds", 0)
+                                 for b in bots),
+            "short_searches": sum(getattr(b, "short_search_decisions", 0)
+                                  for b in bots),
             "zero_world": sum(getattr(b, "zero_world_decisions", 0)
                               for b in bots)}
 
@@ -272,12 +280,18 @@ def evaluate(arm, opponent, *, clusters=250, seed0=None, control=None, bar,
         problems.append("a net arm ran with no checkpoint digest recorded")
     if dirty:
         problems.append("tree was DIRTY: the git SHA does not describe the run")
-    rw = sum(x["arm"].get("rejected_worlds", 0) + x["opp"].get("rejected_worlds", 0)
-             for r in results.values() for x in r)
-    if rw:
-        problems.append(f"{rw} sampled worlds were REJECTED — the arms did not "
-                        f"all search their nominal dose, so this is a "
-                        f"policy-as-run comparison, not an exact-dose one")
+    all_counts = [side for r in results.values() for x in r
+                  for side in (x["arm"], x["opp"])]
+    unreconciled = sum(abs(c.get("sample_attempts", 0)
+                           - c.get("accepted_worlds", 0)
+                           - c.get("failed_worlds", 0)) for c in all_counts)
+    if unreconciled:
+        problems.append(f"sampler accounting is unreconciled by {unreconciled} "
+                        "attempts")
+    short = sum(c.get("short_searches", 0) for c in all_counts)
+    if short:
+        problems.append(f"{short} search decisions failed to consume their "
+                        "registered selection/report dose")
     zw = sum(x["arm"]["zero_world"] + x["opp"]["zero_world"]
              for r in results.values() for x in r)
     if zw:

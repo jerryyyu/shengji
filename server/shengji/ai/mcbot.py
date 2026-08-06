@@ -19,6 +19,10 @@ from __future__ import annotations
 
 import os
 import time
+import subprocess
+from dataclasses import asdict
+from functools import lru_cache
+from pathlib import Path
 
 #: Sample count matrices in proportion to the number of card-assignments they
 #: admit, rather than uniformly. Off by default until Codex adopts it.
@@ -38,6 +42,72 @@ from ..engine.cards import TRUMP
 from ..engine.combos import decompose
 from ..engine.legal import IllegalPlay, suit_cards, uniform_suit, validate_follow
 from ..engine.round import Round, Trick, TrickPlay
+
+
+def random_state_from_json(value):
+    """Restore the tuple tree that ``json`` turns into lists.
+
+    ``random.Random.getstate()`` is JSON-serialisable, but ``setstate`` refuses
+    the decoded list representation.  Keeping the conversion here gives live
+    decision logs an executable replay path instead of merely enough bytes for
+    a human to reconstruct one.
+    """
+    if isinstance(value, list):
+        return tuple(random_state_from_json(v) for v in value)
+    return value
+
+
+def restore_random_state(rng: random.Random, logged_state) -> None:
+    """Set ``rng`` from either the live tuple or its JSON-decoded form."""
+    rng.setstate(random_state_from_json(logged_state))
+
+
+def _child_seed(state, purpose: str) -> int:
+    """A named RNG stream derived without advancing the selection stream."""
+    raw = hashlib.sha256(f"{purpose}|{state!r}".encode()).digest()
+    return int.from_bytes(raw[:16], "big")
+
+
+@lru_cache(maxsize=1)
+def _runtime_identity() -> dict:
+    """Git and executable-file identity, computed once per process."""
+    path = Path(__file__).resolve()
+    code_sha = hashlib.sha256(path.read_bytes()).hexdigest()
+    repo = path.parents[3]
+    try:
+        git_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=repo, check=True,
+            capture_output=True, text=True).stdout.strip()
+        dirty = bool(subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=repo, check=True, capture_output=True,
+            text=True).stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        git_sha, dirty = None, None
+    return {"git_sha": git_sha, "git_dirty": dirty,
+            "mcbot_sha256": code_sha}
+
+
+@lru_cache(maxsize=128)
+def _cached_ballot_identity(bot_cls, config: tuple) -> dict:
+    """Derive the ballot once per live class/configuration, not per move."""
+    from ..engine.ballot import BallotSpec, source_digest
+
+    spec = BallotSpec(
+        name="mc_candidates", version=1, source="MCBot._candidates",
+        config=config,
+        source_digest=source_digest(MCBot._candidates, owner=bot_cls))
+    out = asdict(spec)
+    out.update({"digest": spec.digest, "display": str(spec)})
+    return out
+
+
+def _ballot_identity(bot) -> dict:
+    from ..engine.ballot import MC_BALLOT_ATTRS
+
+    config = tuple(sorted((name, getattr(bot, name, None))
+                          for name in MC_BALLOT_ATTRS))
+    return dict(_cached_ballot_identity(type(bot), config))
 from .heuristic import PLAIN_SUITS, HeuristicBot
 from .memory import Memory
 from .smart import SmartBot
@@ -84,8 +154,18 @@ class MCBot(SmartBot):
     #                       beatable K-pair lead look boss)
     CONFIDENCE_OVERRIDE = False   # S0: require a paired LCB, not a point gap
     ADAPTIVE_ALLOCATION = False   # S0: fixed budget, spent on contenders
+    RANDOM_ALLOCATION = False     # S0 attribution: prune identities at random
     SAMPLE_ATTEMPT_FACTOR = 40    # cap draws per decision; None-loops hung
-    REPORT_FOLD_WORLDS = 0        # >0: bound the winner on DISJOINT worlds
+    REQUIRE_EXACT_WORK = False    # experimental arms retry/refuse a short dose
+    EXTRA_SELECTION_WORK = 0      # equal-work control; candidate rollouts
+    REPORT_FOLD_WORLDS = 0        # >0: score a challenger on DISJOINT worlds
+    REPORT_RULE = "none"          # one of: none, mean, lcb
+    REPORT_MIN_GAIN = 0.0         # distinct from incumbent point MARGIN=5
+    REPORT_ALPHA = 0.05
+    # Conservative one-sided Student-t critical for every supported report
+    # fold (n >= 30; t_29,0.95 = 1.699). This is a frozen decision heuristic,
+    # not the full-game promotion interval.
+    REPORT_T_CRITICAL = 1.70
     CONFIDENCE_Z = 1.64           # one-sided 95%
     MARGIN = 5.0  # points/round a candidate must beat SmartBot's pick by;
     #               keeps the heuristic prior unless the search is confident.
@@ -129,6 +209,10 @@ class MCBot(SmartBot):
         # late-round states where no void-respecting world exists.
         self.impossible_worlds = 0
         self.rejected_worlds = 0
+        self.sample_attempts = 0
+        self.accepted_worlds = 0
+        self.failed_worlds = 0
+        self.short_search_decisions = 0
         self.last_override_stats = None
         self.last_alloc = None
         self.last_decision_record = None
@@ -141,6 +225,13 @@ class MCBot(SmartBot):
         assert rnd.trick is not None and rnd.ordering is not None
         self.last_eval = None  # (candidates, per-candidate values) for distillation
         self.last_n_worlds = 0  # worlds that actually sampled — 0 means NO search
+        # Literal decision boundary: every early return below must expose NO
+        # evidence from the preceding move.  Putting this after candidate
+        # generation left tractor-lock and one-candidate plays with stale logs.
+        self.last_decision_record = None
+        self.last_override_stats = None
+        self.last_alloc = None
+        sampler_before = self._sampler_snapshot()
         if self.TRACTOR_LOCK and not rnd.trick.plays:
             pick = self.canonical_lead(rnd, seat)
             dec = decompose(pick, rnd.ordering)
@@ -149,18 +240,21 @@ class MCBot(SmartBot):
         candidates = self._candidates(rnd, seat)
         if len(candidates) <= 1:
             return candidates[0]
+        if self.REPORT_RULE not in {"none", "mean", "lcb"}:
+            raise ValueError(f"unknown REPORT_RULE {self.REPORT_RULE!r}")
+        if self.REPORT_RULE != "none" and self.REPORT_FOLD_WORLDS <= 0:
+            raise ValueError("REPORT_RULE requires REPORT_FOLD_WORLDS > 0")
+        if self.REPORT_FOLD_WORLDS and self.REPORT_RULE == "none":
+            raise ValueError("REPORT_FOLD_WORLDS requires REPORT_RULE")
+        if self.REPORT_RULE == "lcb" and self.REPORT_FOLD_WORLDS < 30:
+            raise ValueError("S0 report LCB requires at least 30 paired worlds")
         self.search_calls += 1
-        # Reset per-decision state FIRST. Tractor-lock, one-candidate and
-        # zero-world exits return before the search block, so a stale record
-        # from the previous decision would otherwise be logged against this
-        # play — the log would explain a move that never happened (Codex).
-        self.last_decision_record = None
-        self.last_override_stats = None
-        self.last_alloc = None
         # Full pre-decision RNG state: a digest identifies a stream position
         # but cannot restore it, so the logged draw was not replayable even in
         # principle. This works whether or not construction used a seed.
         pre_rng_state = self.rng.getstate()
+        report_seed = _child_seed(pre_rng_state, "s0-report")
+        allocation_seed = _child_seed(pre_rng_state, "s0-allocation")
         _t0 = time.perf_counter()
         mem = Memory(rnd, seat, own_kitty=getattr(self, 'BANKER_KITTY', True))
         i_attack = rnd.is_attacker(seat)
@@ -177,65 +271,85 @@ class MCBot(SmartBot):
         n_by = [0] * len(candidates)
         if self.ADAPTIVE_ALLOCATION:
             totals, d_sum, d_sq, n_by, n_worlds, _rk = self._decide_adaptive(
-                rnd, seat, candidates, mem, i_attack)
-        for _ in range(0 if self.ADAPTIVE_ALLOCATION
-                       else self.N_DETERMINIZATIONS):
-            sampled = self._sample_hands(rnd, seat, mem)
-            if sampled is None:
-                continue
-            n_worlds += 1
-            hands, buried = sampled
-            world_vals = []
-            for i, cand in enumerate(candidates):
-                val = self._score(self._rollout(rnd, seat, hands, buried, cand))
-                val = val if i_attack else -val
-                totals[i] += val
-                world_vals.append(val)
-            base = world_vals[0]
-            for i, v in enumerate(world_vals):
-                d = v - base
-                d_sum[i] += d
-                d_sq[i] += d * d
-                n_by[i] += 1
+                rnd, seat, candidates, mem, i_attack,
+                allocation_rng=random.Random(allocation_seed))
+        else:
+            # Uniform arms have an exact candidate-world budget.  The
+            # equal-total-work control may add 2R candidate evaluations; whole
+            # common worlds affect estimates and an unavoidable <K residual is
+            # executed but deliberately excluded as `dummy_rollouts`.
+            K = len(candidates)
+            budget = self.N_DETERMINIZATIONS * K + self.EXTRA_SELECTION_WORK
+            full_target, residual = divmod(budget, K)
+            target_draws = full_target + int(bool(residual))
+            attempts = 0
+            cap = (target_draws * self.SAMPLE_ATTEMPT_FACTOR
+                   if self.REQUIRE_EXACT_WORK else target_draws)
+            while n_worlds < full_target and attempts < cap:
+                attempts += 1
+                sampled = self._sample_hands(rnd, seat, mem)
+                if sampled is None:
+                    continue
+                n_worlds += 1
+                hands, buried = sampled
+                world_vals = []
+                for i, cand in enumerate(candidates):
+                    val = self._score(
+                        self._rollout(rnd, seat, hands, buried, cand))
+                    val = val if i_attack else -val
+                    totals[i] += val
+                    world_vals.append(val)
+                base = world_vals[0]
+                for i, value in enumerate(world_vals):
+                    delta = value - base
+                    d_sum[i] += delta
+                    d_sq[i] += delta * delta
+                    n_by[i] += 1
+
+            dummy_rollouts = 0
+            # Consume the exact residual without letting a subset receive a
+            # noisier/differently-selected mean. This is real matched compute,
+            # explicitly recorded as unused by the decision rule.
+            while (n_worlds == full_target and dummy_rollouts < residual
+                   and attempts < cap):
+                attempts += 1
+                sampled = self._sample_hands(rnd, seat, mem)
+                if sampled is None:
+                    continue
+                hands, buried = sampled
+                for cand in candidates[:residual]:
+                    self._score(self._rollout(rnd, seat, hands, buried, cand))
+                    dummy_rollouts += 1
+
+            selection_rollouts = n_worlds * K + dummy_rollouts
+            short = n_worlds < full_target or dummy_rollouts < residual
+            self.last_alloc = {
+                "mode": "uniform", "attempts": attempts,
+                "attempt_cap": cap, "attempt_cap_hit": attempts >= cap and short,
+                "worlds": n_worlds, "rollouts": selection_rollouts,
+                "decision_rollouts": n_worlds * K,
+                "dummy_rollouts": dummy_rollouts, "budget": budget,
+                "short": short, "survivors": K,
+                "survivor_indices": list(range(K)),
+                "n_by_candidate": list(n_by),
+            }
         self.last_n_worlds = n_worlds
-        # Batched, not incremented inside the candidate/world loop: an
-        # attribute write in MC's hottest path taxes every production search
-        # for the sake of instrumentation (Codex).
-        # Adaptive prunes, so the true spend is the allocator's own count.
-        # `n_worlds * K` would charge every world to every candidate and report
-        # 144% of budget for a run that never exceeded it — an accounting
-        # artifact that would make the fixed-budget comparison meaningless.
-        self.rollouts += (self.last_alloc["rollouts"]
-                          if self.ADAPTIVE_ALLOCATION and self.last_alloc
-                          else n_worlds * len(candidates))
-        self.search_secs += time.perf_counter() - _t0
-        if n_worlds == 0:
-            # Sampling produced nothing. This once meant banker search was
-            # silently disabled for a day, so it must never pass unnoticed —
-            # but killing a 42-cluster shard over one rare decision throws away
-            # hours of compute for no information. COUNT it; the evaluator
-            # treats a nonzero count as a protocol failure, which is loud
-            # without being destructive (2026-08-04).
-            self.zero_world_decisions += 1
-            return candidates[0]
+        selection_rollouts = int(self.last_alloc["rollouts"])
+        self.rollouts += selection_rollouts
         # acting-team perspective values, exposed for search distillation
-        # Select ONLY among candidates that received the full world budget.
-        # A pruned candidate keeps a frozen mean from few worlds and can win on
-        # noise — the exact spurious-override failure this package removes,
-        # re-entering at the final step (Codex).
-        full_n = max(n_by) if n_by else 0
-        eligible = [i for i in range(len(candidates))
-                    if n_by[i] == full_n and full_n > 0] or [0]
+        # Adaptive selection names its explicit survivor set; uniform selection
+        # includes every candidate that received a scoring world. A pruned
+        # candidate can therefore never re-enter on its frozen noisy mean.
+        eligible = ([i for i in self.last_alloc.get("survivor_indices", [])
+                     if n_by[i] > 0] if self.ADAPTIVE_ALLOCATION else
+                    [i for i, n in enumerate(n_by) if n > 0]) or [0]
         means = [totals[i] / n_by[i] if n_by[i] else float("-inf")
                  for i in range(len(candidates))]
         self.last_eval = (candidates, means)
-        best = max(eligible, key=lambda i: means[i])
-        # Among near-tied candidates, risk the fewest points.
-        from ..engine.cards import points as _pts
-        close = [i for i in eligible
-                 if means[best] - means[i] <= self.POINT_SHY_EPS]
-        best = min(close, key=lambda i: (sum(_pts(c) for c in candidates[i]),
-                                         -means[i]))
+        best = self._pick_index(candidates, means, eligible)
+        alternatives = [i for i in eligible if i != 0]
+        challenger = (self._pick_index(candidates, means, alternatives)
+                      if alternatives else None)
         # candidates[0] is SmartBot's own choice: prefer it unless the search
         # clears the confidence margin (rollouts are noisiest early on).
         margin = self.MARGIN
@@ -248,14 +362,25 @@ class MCBot(SmartBot):
         # only overrides, because "why did it NOT override" is the same
         # question.
         self.last_decision_record = {
-            "policy": type(self).__name__,
+            "schema": "mc-decision-v2",
+            "policy": getattr(self, "policy_name", type(self).__name__),
+            "policy_class": type(self).__name__,
+            "code": _runtime_identity(),
+            "ballot": _ballot_identity(self),
             "n_determinizations": self.N_DETERMINIZATIONS,
             "confidence_override": self.CONFIDENCE_OVERRIDE,
             "adaptive_allocation": self.ADAPTIVE_ALLOCATION,
+            "random_allocation": self.RANDOM_ALLOCATION,
             "margin": margin,
             "z": self.CONFIDENCE_Z,
+            "report_rule": self.REPORT_RULE,
+            "report_min_gain": self.REPORT_MIN_GAIN,
+            "report_worlds_requested": self.REPORT_FOLD_WORLDS,
+            "report_alpha": self.REPORT_ALPHA,
             "seed": self.seed,
             "rng_state": pre_rng_state,
+            "report_seed": report_seed,
+            "allocation_seed": allocation_seed,
             "eligible_indices": list(eligible),
             "candidates": [list(c) for c in candidates],
             "means": list(means),
@@ -263,14 +388,65 @@ class MCBot(SmartBot):
             "paired_se": [self._paired_se(d_sum[i], d_sq[i], n_by[i])
                           for i in range(len(candidates))],
             "raw_winner_index": best,
+            "report_candidate_index": challenger,
             "worlds": n_worlds,
             "alloc": self.last_alloc,
-            "sampler_counters": {
-                "rejected_worlds": self.rejected_worlds,
-                "zero_world_decisions": self.zero_world_decisions,
-                "impossible_worlds": getattr(self, "impossible_worlds", 0),
+            "work": {
+                "selection_budget": int(self.last_alloc["budget"]),
+                "selection_rollouts": selection_rollouts,
+                "report_budget": 2 * self.REPORT_FOLD_WORLDS,
+                "report_rollouts": 0,
+                "total_budget": (int(self.last_alloc["budget"])
+                                 + 2 * self.REPORT_FOLD_WORLDS),
+                "total_rollouts": selection_rollouts,
             },
         }
+        if self.last_alloc.get("short") or n_worlds == 0:
+            if n_worlds == 0:
+                self.zero_world_decisions += 1
+            self.short_search_decisions += 1
+            return self._finish_decision(
+                candidates, 0, "selection_underfilled", _t0, sampler_before)
+
+        if self.REPORT_FOLD_WORLDS:
+            if challenger is None:
+                # Defensive: adaptive keeps one challenger, and every uniform
+                # contested ballot has one. Refuse instead of fabricating work.
+                self.short_search_decisions += 1
+                return self._finish_decision(
+                    candidates, 0, "no_report_challenger", _t0, sampler_before)
+            report = self._report_fold_gap(
+                rnd, seat, mem, i_attack, candidates[challenger], candidates[0],
+                self.REPORT_FOLD_WORLDS, seed=report_seed)
+            report_rollouts = 2 * report["worlds"]
+            self.rollouts += report_rollouts
+            self.last_decision_record["work"]["report_rollouts"] = report_rollouts
+            self.last_decision_record["work"]["total_rollouts"] += report_rollouts
+            critical = statistic = None
+            if report["complete"]:
+                critical = (0.0 if self.REPORT_RULE == "mean"
+                            else self._report_critical(report["worlds"]))
+                statistic = report["gap"] - critical * report["se"]
+            self.last_override_stats = {
+                **report, "fold": "report", "rule": self.REPORT_RULE,
+                "critical": critical, "statistic": statistic,
+                "min_gain": self.REPORT_MIN_GAIN,
+                "bound": ("paired_mean" if self.REPORT_RULE == "mean" else
+                          "paired_student_t_one_sided_95_conservative_df>=29"),
+            }
+            self.last_decision_record["report_fold"] = self.last_override_stats
+            if not report["complete"]:
+                self.short_search_decisions += 1
+                return self._finish_decision(
+                    candidates, 0, "report_underfilled", _t0, sampler_before)
+            if statistic < self.REPORT_MIN_GAIN:
+                return self._finish_decision(
+                    candidates, 0, f"report_{self.REPORT_RULE}_below_min_gain",
+                    _t0, sampler_before)
+            return self._finish_decision(
+                candidates, challenger, f"report_{self.REPORT_RULE}_override",
+                _t0, sampler_before)
+
         if best != 0:
             # PAIRED gap, from the same worlds the SE is computed on.
             # `means[best] - means[0]` mixes subsets: under adaptive allocation
@@ -280,25 +456,6 @@ class MCBot(SmartBot):
             # (Codex). `d_sum[best]/n_by[best]` is the mean of per-world
             # differences on worlds where BOTH were evaluated.
             gap = (d_sum[best] / n_by[best]) if n_by[best] else 0.0
-            if self.CONFIDENCE_OVERRIDE and self.REPORT_FOLD_WORLDS:
-                # Bound the SELECTED candidate on worlds that had no part in
-                # selecting it.
-                r_gap, r_se, r_used, r_att = self._report_fold_gap(
-                    rnd, seat, mem, i_attack, candidates[best], candidates[0],
-                    self.REPORT_FOLD_WORLDS)
-                self.last_override_stats = {
-                    "fold": "report", "gap": r_gap, "se": r_se,
-                    "worlds": r_used, "attempts": r_att,
-                    "lcb": r_gap - self.CONFIDENCE_Z * r_se, "margin": margin,
-                }
-                if self.last_decision_record is not None:
-                    self.last_decision_record["report_fold"] = \
-                        self.last_override_stats
-                if r_gap - self.CONFIDENCE_Z * r_se < margin:
-                    self._finalise_record(candidates, 0, "report_lcb_below_margin")
-                    return candidates[0]
-                self._finalise_record(candidates, best, "report_lcb_override")
-                return candidates[best]
             if self.CONFIDENCE_OVERRIDE:
                 # Require the paired LOWER CONFIDENCE BOUND to clear the
                 # margin, not the point estimate. This is what the fixed
@@ -312,14 +469,45 @@ class MCBot(SmartBot):
                     "candidate0": list(candidates[0]),
                 }
                 if gap - self.CONFIDENCE_Z * se < margin:
-                    self._finalise_record(candidates, 0, "lcb_below_margin")
-                    return candidates[0]
+                    return self._finish_decision(
+                        candidates, 0, "lcb_below_margin", _t0, sampler_before)
             elif gap < margin:
-                self._finalise_record(candidates, 0, "below_fixed_margin")
-                return candidates[0]
-        self._finalise_record(candidates, best, "search_override"
-                              if best != 0 else "candidate0_best")
-        return candidates[best]
+                return self._finish_decision(
+                    candidates, 0, "below_fixed_margin", _t0, sampler_before)
+        return self._finish_decision(
+            candidates, best, "search_override" if best != 0 else
+            "candidate0_best", _t0, sampler_before)
+
+    def _pick_index(self, candidates, means, indices):
+        """Argmax with the production point-shy tie-break, over `indices`."""
+        from ..engine.cards import points as _pts
+
+        indices = list(indices)
+        if not indices:
+            raise ValueError("cannot choose from an empty candidate set")
+        best = max(indices, key=lambda i: means[i])
+        close = [i for i in indices
+                 if means[best] - means[i] <= self.POINT_SHY_EPS]
+        return min(close, key=lambda i: (sum(_pts(c) for c in candidates[i]),
+                                         -means[i]))
+
+    def _finish_decision(self, candidates, played_index, reason, started,
+                         sampler_before):
+        """Finalize observability and timing exactly once for every search."""
+        elapsed = time.perf_counter() - started
+        self.search_secs += elapsed
+        self._finalise_record(candidates, played_index, reason)
+        rec = self.last_decision_record
+        if rec is not None:
+            rec["search_secs"] = elapsed
+            rec["sampler_counters"] = {
+                "before": sampler_before,
+                "after": self._sampler_snapshot(),
+                "delta": self._sampler_delta(sampler_before),
+            }
+            work = rec["work"]
+            work["complete"] = work["total_rollouts"] == work["total_budget"]
+        return candidates[played_index]
 
     def _finalise_record(self, candidates, played_index, reason):
         """Stamp the ACTUAL played move on the record, after all fallbacks.
@@ -335,7 +523,24 @@ class MCBot(SmartBot):
         rec["played"] = list(candidates[played_index])
         rec["reason"] = reason
 
-    def _report_fold_gap(self, rnd, seat, mem, i_attack, cand_a, cand_b, n):
+    def _sampler_snapshot(self) -> dict[str, int]:
+        return {name: int(getattr(self, name, 0)) for name in (
+            "sample_attempts", "accepted_worlds", "failed_worlds",
+            "rejected_worlds", "impossible_worlds")}
+
+    def _sampler_delta(self, before) -> dict[str, int]:
+        after = self._sampler_snapshot()
+        return {name: after[name] - before[name] for name in after}
+
+    def _report_critical(self, n: int) -> float:
+        if self.REPORT_ALPHA != 0.05:
+            raise ValueError("S0 v1 registers only one-sided alpha=0.05")
+        if n < 30:
+            return float("inf")
+        return self.REPORT_T_CRITICAL
+
+    def _report_fold_gap(self, rnd, seat, mem, i_attack, cand_a, cand_b, n,
+                         *, seed: int, keep_deltas: bool = False):
         """Paired gap and SE for A vs B on FRESH worlds, on the same draws.
 
         Selecting the empirical winner among K candidates and then bounding it
@@ -346,31 +551,49 @@ class MCBot(SmartBot):
         worlds, so the pairing is exact rather than an overlap approximation.
         """
         d_sum = d_sq = 0.0
+        deltas = []
         used = 0
         attempts = 0
         cap = n * self.SAMPLE_ATTEMPT_FACTOR
-        while used < n and attempts < cap:
-            attempts += 1
-            sampled = self._sample_hands(rnd, seat, mem)
-            if sampled is None:
-                continue
-            hands, buried = sampled
-            va = self._score(self._rollout(rnd, seat, hands, buried,
-                                           list(cand_a)))
-            vb = self._score(self._rollout(rnd, seat, hands, buried,
-                                           list(cand_b)))
-            if not i_attack:
-                va, vb = -va, -vb
-            d = va - vb
-            d_sum += d
-            d_sq += d * d
-            used += 1
-        if used < 2:
-            return 0.0, float("inf"), used, attempts
-        mean = d_sum / used
-        return mean, self._paired_se(d_sum, d_sq, used), used, attempts
+        original_rng = self.rng
+        try:
+            self.rng = random.Random(seed)
+            while used < n and attempts < cap:
+                attempts += 1
+                sampled = self._sample_hands(rnd, seat, mem)
+                if sampled is None:
+                    continue
+                hands, buried = sampled
+                va = self._score(self._rollout(rnd, seat, hands, buried,
+                                               list(cand_a)))
+                vb = self._score(self._rollout(rnd, seat, hands, buried,
+                                               list(cand_b)))
+                if not i_attack:
+                    va, vb = -va, -vb
+                delta = va - vb
+                d_sum += delta
+                d_sq += delta * delta
+                if keep_deltas:
+                    deltas.append(delta)
+                used += 1
+        finally:
+            self.rng = original_rng
+        mean = d_sum / used if used else 0.0
+        out = {
+            "gap": mean,
+            "se": self._paired_se(d_sum, d_sq, used),
+            "worlds": used,
+            "attempts": attempts,
+            "rejected": attempts - used,
+            "complete": used == n,
+            "seed": seed,
+        }
+        if keep_deltas:
+            out["deltas"] = deltas
+        return out
 
-    def _decide_adaptive(self, rnd, seat, candidates, mem, i_attack):
+    def _decide_adaptive(self, rnd, seat, candidates, mem, i_attack,
+                         *, allocation_rng):
         """Fixed-budget adaptive allocation (S0 item 2).
 
         Uniform search spends `N x K` candidate-worlds evenly, so every
@@ -391,10 +614,17 @@ class MCBot(SmartBot):
         d_sum = [0.0] * K
         d_sq = [0.0] * K
         n_by = [0] * K
+        # Direct paired moments for candidate i - candidate j on worlds where
+        # both were alive. Pruning no longer manufactures a leader bound by
+        # adding two candidate-vs-zero SEs and ignoring their covariance.
+        pair_sum = [[0.0] * K for _ in range(K)]
+        pair_sq = [[0.0] * K for _ in range(K)]
+        pair_n = [[0] * K for _ in range(K)]
         alive = list(range(K))
         rollouts = 0
         worlds = 0
         seed_batch = max(4, self.N_DETERMINIZATIONS // 4)
+        prune_log = []
 
         attempts = 0
         max_attempts = budget * self.SAMPLE_ATTEMPT_FACTOR
@@ -424,27 +654,80 @@ class MCBot(SmartBot):
                     d = v - base
                     d_sum[i] += d
                     d_sq[i] += d * d
+            for i, vi in vals.items():
+                for j, vj in vals.items():
+                    delta = vi - vj
+                    pair_sum[i][j] += delta
+                    pair_sq[i][j] += delta * delta
+                    pair_n[i][j] += 1
             # prune only after a stable prefix, and never candidate 0
             if worlds >= seed_batch and len(alive) > 2:
                 means = {i: totals[i] / n_by[i] for i in alive}
-                lead = max(means, key=lambda i: means[i])
+                # Preserve one nonzero challenger even when candidate 0 leads,
+                # so the fixed report fold always has a nominated pair.
+                lead = max((i for i in alive if i != 0), key=means.get)
                 keep = []
                 for i in alive:
                     if i in (0, lead):
                         keep.append(i)
                         continue
-                    se = self._paired_se(d_sum[i], d_sq[i], n_by[i])
-                    se_l = self._paired_se(d_sum[lead], d_sq[lead], n_by[lead])
-                    spread = self.CONFIDENCE_Z * (se + se_l)
-                    if means[i] + spread < means[lead]:
+                    overlap = pair_n[i][lead]
+                    direct_gap = (pair_sum[i][lead] / overlap
+                                  if overlap else float("-inf"))
+                    direct_se = self._paired_se(
+                        pair_sum[i][lead], pair_sq[i][lead], overlap)
+                    if direct_gap + self.CONFIDENCE_Z * direct_se < 0:
                         continue        # upper bound below the leader's lower
                     keep.append(i)
+                deterministic_keep = list(keep)
+                if self.RANDOM_ALLOCATION:
+                    # Same survivor COUNT and exact total work, random survivor
+                    # identities. A named child RNG keeps sampling worlds on the
+                    # same stream rather than advancing it to shuffle arms.
+                    take = max(1, len(keep) - 1)
+                    pool = [i for i in alive if i != 0]
+                    keep = [0] + allocation_rng.sample(pool, min(take, len(pool)))
+                    keep.sort()
+                if set(keep) != set(alive):
+                    prune_log.append({
+                        "world": worlds, "leader": lead,
+                        "deterministic_survivors": deterministic_keep,
+                        "survivors": list(keep),
+                    })
                 alive = keep
-        self.last_alloc = {"attempts": attempts,
-                           "attempt_cap_hit": attempts >= max_attempts,
-                           "worlds": worlds, "rollouts": rollouts,
-                           "budget": budget, "survivors": len(alive),
-                           "n_by_candidate": list(n_by)}
+
+        # The old loop stranded `budget - rollouts` whenever fewer than one
+        # survivor batch remained. Execute that <len(alive) residual as explicit
+        # dummy work, excluded from all estimates, so every successful decision
+        # consumes exactly N*K candidate rollouts.
+        dummy_rollouts = 0
+        residual = budget - rollouts
+        while residual and attempts < max_attempts:
+            attempts += 1
+            sampled = self._sample_hands(rnd, seat, mem)
+            if sampled is None:
+                continue
+            hands, buried = sampled
+            for i in alive[:residual]:
+                self._score(self._rollout(rnd, seat, hands, buried,
+                                          candidates[i]))
+                dummy_rollouts += 1
+            rollouts += dummy_rollouts
+            residual = 0
+
+        short = rollouts != budget
+        self.last_alloc = {
+            "mode": "random_adaptive" if self.RANDOM_ALLOCATION else
+                    "deterministic_adaptive",
+            "attempts": attempts, "attempt_cap": max_attempts,
+            "attempt_cap_hit": attempts >= max_attempts and short,
+            "worlds": worlds, "rollouts": rollouts,
+            "decision_rollouts": rollouts - dummy_rollouts,
+            "dummy_rollouts": dummy_rollouts,
+            "budget": budget, "short": short,
+            "survivors": len(alive), "survivor_indices": list(alive),
+            "n_by_candidate": list(n_by), "prunes": prune_log,
+        }
         return totals, d_sum, d_sq, n_by, worlds, rollouts
 
     @staticmethod
@@ -718,6 +1001,7 @@ class MCBot(SmartBot):
         """Deal unseen cards to the other three seats (+ hidden kitty when we
         aren't the banker), respecting hand sizes and observed voids.
         Returns (hands, buried) or None if sampling failed."""
+        self.sample_attempts += 1
         o = rnd.ordering
         assert o is not None
         pool = list(mem.unseen.elements())
@@ -777,9 +1061,12 @@ class MCBot(SmartBot):
                 # wrongly concluded on 2026-08-04 (Codex).
                 if os.environ.get("SHENGJI_REQUIRE_VOIDS"):
                     self.rejected_worlds += 1
+                    self.failed_worlds += 1
                     return None
                 self.impossible_worlds += 1
+            self.accepted_worlds += 1
             return hands, (buried or kitty)
+        self.failed_worlds += 1
         return None
 
     def _assign(self, cards, caps, kitty_slots, o, mem, pre, respect_voids=True):

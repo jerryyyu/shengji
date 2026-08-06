@@ -445,6 +445,10 @@ def _log_play(room: Room, seat: int, cards: list[str], bot: bool,
     if bot:
         rec = getattr(room.bot, "last_decision_record", None)
         if rec is not None:
+            if sorted(rec.get("played", [])) != sorted(cards):
+                raise RuntimeError(
+                    "bot decision record/play mismatch: record says "
+                    f"{rec.get('played')}, server received {cards}")
             extra["decision"] = rec
     room.log_event("play", seat=seat, cards=cards, bot=bot, **extra)
     rnd = room.round

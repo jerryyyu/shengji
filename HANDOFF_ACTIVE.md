@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-05 20:31 EDT. Historical discussion and superseded gate
+Last update: 2026-08-05 20:52 EDT. Historical discussion and superseded gate
 packets live in `HANDOFF_REVIEW.md`.
 
 ## Current status
@@ -18,6 +18,87 @@ packets live in `HANDOFF_REVIEW.md`.
   exact-late search; (B) a clean counterfactual teacher/model iteration; and
   (C) faithful role-conditioned self-play. Do not launch width, uniform-N,
   continuation-robustness or learned-prior reruns.
+
+## Codex review of `b30908c` — S0 remains BLOCKED
+
+The disjoint report fold is the right resolution to the selected-maximum and
+adaptive-repeated-look problem: selection may be arbitrary and data-dependent
+if the final candidate-vs-candidate-0 test uses a fixed, complete set of fresh
+worlds that played no part in selection. The raw-winner/final-play split,
+pre-decision RNG state, full-budget eligibility, sampler-attempt cap, named QHKR
+witnesses and both-role assertion are also useful repairs. The full suite is
+green at 346 passed / 2 skipped.
+
+The package is **not duel-ready** yet:
+
+1. The claimed early-exit reset is still in the wrong location. At
+   `mcbot.py:144-151`, tractor-lock and one-candidate returns occur before the
+   reset at lines 157-159. A direct probe returned a new one-candidate play while
+   retaining `{"stale": true}` as its decision record; `_log_play` would attach
+   it. Move all three resets to the literal start of `decide_play` and add an
+   end-to-end stale-record regression for tractor-lock and one-candidate exits.
+2. The report fold has no registered policy or fixed size, is not exercised by
+   the QHKR test, uses an unnamed small-sample normal approximation, and silently
+   proceeds with `2 <= used < requested`. A report fold must consume exactly its
+   frozen dose or refuse the override. Treat its one-sided paired interval as a
+   preregistered decision heuristic; the fresh paired full-game gate, not a
+   per-move normal approximation, is the strength inference.
+3. Report work is absent from both `self.rollouts` and `search_secs`. A 10-world
+   QHKR probe spent 330 selection candidate-worlds plus 20 report rollouts but
+   recorded only 330. Adaptive residual work is still stranded, the two control
+   policies remain absent, and sampler counters remain cumulative rather than
+   per-decision deltas.
+4. Full RNG state contains enough information: live tuple replay reproduced the
+   same card and all means exactly. But JSON turns nested tuples into lists and
+   `Random.setstate()` then raises `TypeError`; add a tested log-to-state restore
+   helper. Also bind registry policy, git/code identity and `BallotSpec`.
+5. The 150-state/20-override analysis exists only as prose. Return a committed
+   script plus an immutable compact artifact containing the 20 state keys,
+   selection/report RNG identities, candidate pair, all 300 paired deltas,
+   acting-team role, sampler/ballot/code identity and the rule by which those 20
+   were selected. Until then, `12/20` and mean `+1.69` are a useful hypothesis,
+   not evidence that "MC's real overrides are worth 1.4-1.7 points." The sample
+   is selected and small; 12/20 has a roughly 39%-78% Wilson interval for the
+   positive-override rate.
+6. Add falsifying mechanism tests. Use deterministic paired-delta fixtures where
+   a positive challenger must override and a negative challenger must fall back,
+   plus the real QHKR refusal. The current QHKR test turns confidence and adaptive
+   allocation on together and leaves `REPORT_FOLD_WORLDS=0`, so it does not test
+   the new report-fold path. Minimise the live fixture and remove room/timestamp
+   identity.
+
+### Margin decision and reduced experiment
+
+Do **not** reuse one variable for two different meanings:
+
+- incumbent `current` stays frozen at point-estimate `MARGIN=5.0`;
+- the new confidence arm gets a separate `REPORT_MIN_GAIN=0.0` and overrides
+  only when the fresh paired report lower bound is above zero.
+
+Five was a regularizer for a noisy point estimate. Requiring an LCB to exceed
+five instead asks for evidence that the *true* gain is greater than five; that is
+a much stronger policy and explains the near-SmartBot degeneration. Setting the
+new estimand to zero is not choosing the duel result: it defines "supported to
+be better at all," before a fresh strength block. Do not tune that threshold on
+the fresh block.
+
+Split S0 so confidence and allocation are not changed at once:
+
+1. **S0a decision-rule screen:** uniform N=30 selection, then the same frozen
+   disjoint report dose for (a) report point-mean `>0` and (b) report lower-bound
+   `>0`, alongside frozen current and an equal-total-work uniform control. Use
+   the returned DEV deltas only to choose/report the report-fold dose from a
+   predeclared grid; then freeze it. This screen is diagnostic, not promotion.
+2. **S0b allocation screen:** only after S0a, compare uniform, deterministic
+   adaptive and random allocation at exact matched selection work, all using the
+   identical report rule/dose. This isolates whether intelligent allocation
+   helps rather than crediting extra confirmation work.
+3. Freeze one survivor and compare it directly with current on fresh paired full
+   games. An independent confirmation interval above zero is the promotion gate.
+
+Return with a clean tree, named registry arms, exact selection/report accounting,
+the immutable override artifact and the falsifying tests above. Do not launch the
+2,048-cluster mechanism screen before that return.
 
 ## Closed package H — sampler certificate
 

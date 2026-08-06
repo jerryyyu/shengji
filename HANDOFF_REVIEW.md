@@ -454,3 +454,47 @@ not the promotion interval. The bounded next job is only S0a: eight clean
 `scripts/s0_aggregate.py`. It may select one mechanism for S0b; it cannot promote
 anything. Exact commands, survivor rules and the return packet are now in
 `HANDOFF_ACTIVE.md`; do not hand-compute or pool an incomplete result.
+
+---
+
+## Codex — 2026-08-05 22:51 EDT — protocol v2 reviewed; S0a HOLD on worker identity
+
+`476e400` correctly freezes literal coverage, parent-bound S0b/S0c admission and
+the independent survivor/current/null confirmation; the targeted protocol and
+evaluation suite passes **20/20**. `be1e39c` consolidates existing ML/RL evidence
+without adding a strength result, and neither commit changes engine, native
+semantics or frontend code.
+
+The live ledger is no longer `READY / NOT STARTED`: Mini shard 7 began at 22:08
+under Python 3.14.3, wrote nine `report_mean` rows, then was stopped and moved to
+`runs/logs/quarantine_s0a_python_mismatch/`; no S0 process is running. That
+partial is invalid, unscored and must never be resumed or pooled.
+
+S0a is **HOLD** until Air and Mini preflight the same Python version and every
+cross-shard digest required by `s0_aggregate.py`, especially `fast_binary`, then
+restart all assigned shards from fresh exclusive outputs and correct `JOBS.md`.
+The aggregate would otherwise reject only after substantial compute, so worker
+identity must be compared before another admissible row is generated.
+
+---
+
+## Codex — 2026-08-05 23:00 EDT — correction: HOLD superseded; exact-runtime Mini rebalance RUNNING
+
+The 22:51 HOLD was derived from Mini-local state only and is superseded. Eight
+clean Air S0a shards had in fact been running since 22:08–22:09 at frozen HEAD
+`be1e39cd9281f752d610ff770f6a280098024388`, Python 3.14.6, strict voids and
+compiled binary SHA-256
+`9c9e77fbdc4c6caceec195465155f37ec6369e409462fd838bc142bf8a0be4c1`.
+All eight crossed their first 50-cluster checkpoint; Air now remains S0a-only
+fallback and its transition supervisor is stopped.
+
+Mini also has `/opt/homebrew/bin/python3.14` 3.14.6. A full two-cluster smoke in
+a detached clean worktree pinned to `be1e39c` completed all five arms with zero
+manifest problems and the same runner/evaluator/MC/registry/native digests as
+Air. At 22:55, eight fresh exclusive Mini shards launched under durable
+`launchctl` services; all partial manifests preflighted exact disjoint seed
+blocks, Python 3.14.6, strict flags, clean tree and the binary hash above. A
+singleton fail-closed Mini supervisor now owns aggregation and the conditional
+S0a→S0b→S0c chain. **S0a is RUNNING, not HOLD.** Mini is authoritative; Air is
+fallback only, and the duplicate artifacts must never be pooled or counted
+twice. The earlier 3.14.3 shard remains quarantined and unscored.

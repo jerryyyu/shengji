@@ -3,17 +3,29 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / frozen launch assignment
+## RUNNING / exact-runtime S0a rebalance
 
-S0a launches immediately after the clean protocol-v2 packet is pushed: Air owns
-shards 0–6 and Mini owns shard 7, each 256 clusters on the literal seed range
-132,000,000–132,002,047. The R=300 Mini smoke measured about 58 seconds/cluster,
-so these are approximately four-hour shards and intentionally not treated as
-sub-hour Mini jobs. Each uses a durable named `screen` session and a distinct
-log; the JSONL/manifest pair remains the source of truth. No earlier S0a shard
-existed at this freeze point.
+Mini is the authoritative S0 pipeline. At 22:55 EDT all eight S0a shards began
+from fresh exclusive outputs in detached clean worktree
+`/Users/jerryyu/Projects/shengji-s0-mini`, frozen at full HEAD
+`be1e39cd9281f752d610ff770f6a280098024388`. They run as durable
+`com.shengji.s0mini.s0a.0`…`.7` launch services under Python 3.14.6 with strict
+voids and compiled binary SHA-256
+`9c9e77fbdc4c6caceec195465155f37ec6369e409462fd838bc142bf8a0be4c1`.
+All eight partial manifests preflighted exact disjoint seed blocks and a clean
+tree. `com.shengji.s0mini.supervisor` is the singleton fail-closed owner of
+aggregation and conditional child launch; `com.shengji.s0mini.keepawake` holds
+the power assertion.
 
-## READY / NOT STARTED — S0a decision-rule screen
+Air's eight clean Python-3.14.6 S0a shards, started at 22:08–22:09, continue as
+compute-only fallback. All crossed 50 clusters. Their transition supervisor is
+stopped, so they cannot independently launch S0b. Never pool or double-count
+Mini and Air duplicates: use the first complete verifier-accepted authoritative
+set, with Air recoverable only if Mini fails. The initial Python-3.14.3 Mini
+shard 7 was stopped after preflight exposed the mismatch and remains quarantined
+and unscored under `runs/logs/quarantine_s0a_python_mismatch/`.
+
+## FROZEN PROTOCOL — S0a decision-rule screen
 
 - Policies: `mc-s0-report-mean`, `mc-s0-report-lcb`,
   `mc-s0-uniform-work`, `mc-strong-null`, `mc-strong`, all paired on the same
@@ -30,8 +42,9 @@ existed at this freeze point.
   arms (20 mirrored records) with zero short/zero-world or unreconciled
   searches and no manifest problems. It is marked `promotable:false` and is
   mechanics only; its game scores are not evidence.
-- Frozen ownership: Air `I=0..6`; Mini `I=7`. A launch counts only after the
-  live process, non-empty log and `.partial` manifest are all observed.
+- Frozen coverage: authoritative Mini `I=0..7`; Air `I=0..7` is fallback only.
+  A launch counts only after the live process, log and `.partial` manifest are
+  all observed. Both hosts use Python 3.14.6 and the exact native hash above.
 - The entire conditional chain is predeclared before S0a is inspected. S0b
   requires the exact S0a aggregate via `--parent`; S0c requires the exact S0b
   aggregate. S0c uses seeds 135,000,000–135,008,191, 8x1,024 clusters, one

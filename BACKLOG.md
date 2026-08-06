@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-05 21:39 EDT.
+Last re-derived: 2026-08-05 21:59 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -38,7 +38,8 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 | priority | work | exit gate |
 |---|---|---|
 | **S0a search strength** | Run the frozen decision-rule screen now that the code gate is closed | Eight 256-cluster shards (seeds 132M) compare report-mean, report-LCB, equal-work uniform, null and current. Aggregate only with `s0_aggregate.py`; carry one rule by the registered screen criterion, never promote from this block. |
-| **S0b allocation** | If S0a selects a report rule, test allocation separately | Run exactly one of `s0b-mean` / `s0b-lcb`: deterministic adaptive must beat both uniform-report and random allocation by paired point estimate. Freeze one survivor for an independent 8,192-cluster superiority confirmation. |
+| **S0b allocation** | If S0a selects a report rule, test allocation separately | Run exactly one parent-bound `s0b-mean` / `s0b-lcb`: deterministic adaptive must beat both uniform-report and random allocation by paired point estimate. Freeze one survivor; every child refuses a wrong aggregate/SHA. |
+| **S0c confirmation** | Independently confirm exactly the S0b survivor | Eight 1,024-cluster shards on seeds 135,000,000–135,008,191 compare survivor, `mc-strong-null`, and current. Promote only if survivor-current and survivor-null paired 95% lower bounds are >0 and the null does not clear; otherwise close S0 SELECT NONE. |
 | **S0b v11pair utilization** | Use the one confirmed learned improvement as MC's protected root anchor | First revalidate frozen `rl-override-v11pair` directly against current compiled N=30 on one fresh 2,048-cluster paired block. Then test an equal-work hybrid that preserves the full current ballot and N=30 worlds but protects v11's thresholded choice instead of SmartBot's. Hard pruning, pairwise-as-leaf and search/no-search gating are not this experiment. |
 | **S1 teacher/model** | Execute `TEACHER_V1_SPEC.md`, then earn scale | Pass the 64-state mechanics and 128-state gold-continuation gates before the 2,048-state wave. This is a new training/challenge asset, not an enlargement of DEV-512. Train three-seed action ranker + calibrated outcome head; scale only if untouched regret and paired games improve. |
 | **S2 self-play RL** | Run faithful role-conditioned synchronous microbaselines | Unit-test attacker/defender signs, separately version reward targets, and bind immutable actors. Then run Suphx-style feature removal and DouZero-style direct-Q baselines for 20–30 minutes; stable spread plus held-out improvement earns fleet scale. |
@@ -88,8 +89,9 @@ The executable sequence is:
    high-work control over 2,048 fresh clusters (8x256, seeds 132M);
 2. S0b: only the selected report rule, comparing uniform, deterministic adaptive
    and matched random allocation at exact `30K+600` work; and
-3. independent 8,192-cluster survivor-vs-current confirmation. Its paired 95%
-   interval must be above zero to promote.
+3. independent 8,192-cluster survivor/current/null confirmation on frozen seeds
+   135M. Survivor-current and survivor-null paired 95% lower bounds must both
+   exceed zero while null-current does not clear; otherwise S0 selects none.
 
 Primary deployment estimand is paired signed level utility per fresh deal
 cluster with seat/team flips. Using conservative observed cluster SD ~1.60,

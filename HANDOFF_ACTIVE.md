@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-05 21:42 EDT. Historical discussion and superseded gates
+Last update: 2026-08-05 21:59 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -21,8 +21,10 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 ## S0 implementation packet — ready for bounded S0a
 
 Base implementation commit: `df0a7b9`; calibration/freeze commit: `316542a`
-(both pushed). The latter adds the immutable audit artifact and freezes its
-selected report dose.
+(both pushed). End-to-end parent-bound S0a/S0b/S0c protocol commit: `476e400`.
+The calibration commit adds the immutable audit artifact and freezes its
+selected report dose; the protocol commit freezes exact coverage, controls and
+the independent confirmation before any S0a result is inspected.
 
 ### What is now closed
 
@@ -124,16 +126,55 @@ cd server
 ```
 
 The frozen screen rule carries forward the larger of report-mean/report-LCB only
-if its paired point estimate is positive versus current and exceeds the
-equal-work uniform control; ties choose report-mean. The aggregate explicitly
-states `promotion: false`.
+if its paired point estimate is positive versus current and its direct paired
+contrast versus the equal-work uniform control is positive; ties choose
+report-mean. The aggregate explicitly states `promotion: false`.
 
 Only the selected rule may launch its corresponding `s0b-mean` or `s0b-lcb`
 block. S0b promotes adaptive allocation over uniform report selection only if
 adaptive-minus-uniform and adaptive-minus-random paired point estimates are both
-positive. Then freeze one survivor for an independent 8,192-cluster direct
-confirmation against current; production promotion requires its paired 95%
-interval above zero. Do not pool S0a/S0b with confirmation.
+positive. Every child shard requires `--parent` and refuses unless the aggregate
+names the exact expected survivor, git SHA and 2,048-cluster parent block.
+
+After S0a, run the one admitted S0b phase on eight workers with `I=0..7`:
+
+```bash
+cd server
+SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 .venv/bin/python \
+  scripts/s0_run.py s0b-mean --parent runs/logs/s0a-v1.aggregate.json \
+  --shard-index I
+# Substitute s0b-lcb only when the S0a aggregate names mc-s0-report-lcb.
+```
+
+Aggregate that phase with `s0_aggregate.py` and freeze its survivor. Exactly one
+corresponding confirmation protocol may then run:
+
+| S0b survivor | confirmation phase |
+|---|---|
+| `mc-s0-report-mean` | `s0c-report-mean` |
+| `mc-s0-adaptive-mean` | `s0c-adaptive-mean` |
+| `mc-s0-report-lcb` | `s0c-report-lcb` |
+| `mc-s0-adaptive` | `s0c-adaptive-lcb` |
+
+S0c is frozen at 8,192 independent clusters, seeds
+135,000,000–135,008,191, eight shards of 1,024. Each shard runs the survivor,
+`mc-strong-null`, and current `mc-strong` on identical mirrored deals and binds
+the S0b aggregate by SHA-256. Example:
+
+```bash
+cd server
+SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 .venv/bin/python \
+  scripts/s0_run.py s0c-adaptive-mean \
+  --parent runs/logs/s0b-mean-v1.aggregate.json --shard-index I
+```
+
+Production promotion requires all three machine-checked criteria: the paired
+two-sided 95% lower bounds for survivor-minus-current and survivor-minus-null
+are both above zero, and the null-minus-current lower bound is not above zero.
+Otherwise S0 closes **SELECT NONE**. S0a/S0b/S0c are disjoint and may never be
+pooled. The v2 runner records host, Python, compiled binary digest, strict mode,
+literal seed coverage, parent digest and exact counters; the aggregator refuses
+any drift.
 
 ## Other active strength lanes
 
@@ -151,14 +192,20 @@ interval above zero. Do not pool S0a/S0b with confirmation.
 ## Return packet for Claude
 
 ```text
-STATE: S0A_COMPLETE | BLOCKED
+STATE: S0_COMPLETE_PROMOTE | S0_COMPLETE_SELECT_NONE | BLOCKED
 HEAD / origin / dirty state:
-8 manifest paths and one aggregate path:
+S0a 8 manifest paths + aggregate path/hash and survivor:
+S0b 8 manifest paths + aggregate path/hash and survivor (or NOT REACHED):
+S0c 8 manifest paths + aggregate path/hash (or NOT REACHED):
 per-label seed/flip counts and exact coverage:
+host and compiled binary digest agreement:
 sampler attempt = accepted + failed; short/zero counts:
-paired effects vs reference and direct report-rule vs uniform-work contrast:
-frozen survivor decision (or SELECT NONE) from the registered rule:
+S0a paired effects and direct report-rule vs uniform-work contrasts:
+S0b adaptive-minus-uniform and adaptive-minus-random contrasts:
+S0c arm-current, arm-null and null-current effects/95% intervals + criteria:
+final production decision from the registered rule:
 CALIB / REPORT confirmation: sealed and unscored
 ```
 
-Do not start S0b from an incomplete shard set or a hand-computed aggregate.
+Do not start a child phase from an incomplete shard set, a hand-computed
+aggregate, a different git SHA or a parent that does not name its exact policy.

@@ -3,13 +3,15 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING
+## RUNNING / frozen launch assignment
 
-Nothing at this snapshot. Package H is closed and the S0 implementation packet
-is runnable. The next authorized fleet launch is S0a: eight shards x256 clusters
-on seeds 132,000,000-132,002,047 using `scripts/s0_run.py s0a`. Teacher-v1 Stage
-A/B and the RL role-sign/immutable-actor microgate can use otherwise idle workers
-in parallel; do not wait on more generic certification work.
+S0a launches immediately after the clean protocol-v2 packet is pushed: Air owns
+shards 0–6 and Mini owns shard 7, each 256 clusters on the literal seed range
+132,000,000–132,002,047. The R=300 Mini smoke measured about 58 seconds/cluster,
+so these are approximately four-hour shards and intentionally not treated as
+sub-hour Mini jobs. Each uses a durable named `screen` session and a distinct
+log; the JSONL/manifest pair remains the source of truth. No earlier S0a shard
+existed at this freeze point.
 
 ## READY / NOT STARTED — S0a decision-rule screen
 
@@ -28,7 +30,14 @@ in parallel; do not wait on more generic certification work.
   arms (20 mirrored records) with zero short/zero-world or unreconciled
   searches and no manifest problems. It is marked `promotable:false` and is
   mechanics only; its game scores are not evidence.
-- No S0a shard or strength duel has started at this snapshot.
+- Frozen ownership: Air `I=0..6`; Mini `I=7`. A launch counts only after the
+  live process, non-empty log and `.partial` manifest are all observed.
+- The entire conditional chain is predeclared before S0a is inspected. S0b
+  requires the exact S0a aggregate via `--parent`; S0c requires the exact S0b
+  aggregate. S0c uses seeds 135,000,000–135,008,191, 8x1,024 clusters, one
+  frozen survivor plus `mc-strong-null` and current. Its final gate requires
+  survivor-current and survivor-null paired 95% lower bounds >0 and a null that
+  does not clear. No extension is authorized.
 
 **SAMPLER CERTIFICATE — CURRENT.** `server/runs/logs/certify_sampler_v3.json`,
 git `aea3774`, clean tree, compiled ACTIVE, strict voids ON. 1,500 states at

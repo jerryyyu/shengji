@@ -7,9 +7,9 @@ engine and a reproducible evaluator. Deployment latency is not a meaningful
 tradeoff for the champion policy; compute is still recorded to attribute
 experiments and understand operational cost. “Put RL inside search” is a
 hypothesis, not the goal.
-The research-superiority milestone remains beating the current `mc` policy in
-a preregistered paired direct comparison; pool Elo is useful for screening but
-cannot establish that claim.
+The research-superiority milestone is beating the deployed `mc-strong` policy
+in a preregistered paired direct comparison; pool Elo is useful for screening
+but cannot establish that claim.
 
 Primary promotion metric: paired signed level utility by deal seed. Round
 win-rate is secondary; a final deployment candidate gets a mirrored full-game
@@ -18,6 +18,127 @@ level-progression check. Every reported number is labelled **HYPOTHESIS**,
 an intermittently available MacBook Air; every manifest records the actual
 worker/config rather than treating hardware as part of the claim. Toggle
 results live in `AI_POLICIES.md`; run archives in `server/runs/`.
+
+---
+
+## Current synthesis — 2026-08-05 21:59 EDT
+
+This section is the current decision layer. The lineage table below owns model
+history; **Data and evaluation contract** owns dataset/evaluation provenance;
+`AI_POLICIES.md` owns callable policy conclusions; `BACKLOG.md` owns the live
+queue; `JOBS.md` owns run artifacts; and the chronology archive owns superseded
+day-by-day detail. A historical result below does not reopen a closed lane.
+
+### Operational state and active lanes
+
+- **Production strength incumbent:** compiled `mc-strong` (N=30). A
+  frozen-current 504-cluster confirmation measured `+0.222 +/- 0.140` paired
+  signed level utility versus N=10; arm-minus-null was `+0.230 +/- 0.139` and
+  the null was `-0.008 +/- 0.154`. N=60 versus N=30 was
+  `-0.002 +/- 0.119`, so uniform search width beyond N=30 has no confirmed
+  increment. No learned policy, value leaf, learned search prior or ballot
+  variant has a verified edge over the deployed champion.
+- **S0 confidence-aware search is the next bounded online lane.** Its mechanics,
+  disjoint report folds, exact-work controls, replay records and fail-closed
+  sharded runner are complete. The immutable 150-state DEV diagnostic selected
+  report dose R=300; it is calibration, not strength. S0a is the authorized
+  2,048-cluster decision-rule screen; only its registered survivor may enter
+  S0b allocation, then an independent 8,192-cluster survivor/current/null
+  confirmation. Its survivor-current and survivor-null paired 95% lower bounds
+  must both exceed zero while the null does not clear. No S0 strength result or
+  deployment exists yet.
+- **The six-arm DEV-512 ballot screen is closed with `SELECT NONE`.** The
+  primary `quota - random_fill` contrast was `+0.110 +/- 0.337`; at equal work
+  the shipped ballot had the lowest mean regret (current 0.135, quota 0.229,
+  v3 0.281, random-fill 0.339), and the resolved high-work contrast favoured
+  more MC over brute-force widening (`-0.495 +/- 0.477`). This rejects only the
+  registered designs at this resolution, not all future action-selection work.
+  CALIB-512 and REPORT remain sealed; do not append arms or train from DEV.
+- **v11pair is the learned line's one confirmed online gain:** its direct
+  SmartBot override won 57.7% (277-203, n=480, two disjoint blocks). The 51.1%
+  result versus MC used factories that discarded seeds and remains a SCREEN.
+  Revalidate frozen v11 against current N=30 before testing the still-untried
+  protected-anchor composition; its within-state deltas are valid for ranking,
+  not as scalar leaf values.
+- **Two independent learning lanes remain open.** Teacher-v1 must pass its
+  64-state mechanics and 128-state gold-continuation gates before producing
+  2,048 clean counterfactual states. Faithful Suphx-style privileged-feature
+  removal and DouZero-style role-conditioned direct-Q microbaselines must first
+  pass attacker/defender-sign, immutable-actor and replay/resume invariants.
+- **Structured search remains independent.** Broader burial sourcing and an
+  information-set-legal sampled exact solver for the final roughly four tricks
+  attack different bottlenecks and must each duel the champion directly.
+- **Sampler hard-validity/support P0 is closed at clean `aea3774`.** The v3
+  certificate covers exactly 500 original + 500 late + 500 deep states,
+  accepts 36,000/36,000 worlds with zero rejected/invalid/named skips, and
+  reaches every legal world plus the real witness in 120/120 exhaustive toys.
+  It supersedes `eea78d2`, whose global cap starved the late reservoir despite
+  an original+late population claim. Posterior fidelity remains biased and
+  separately versioned; the old
+  non-strict, capped-ballot, same-world-selected high-N labels are diagnostic,
+  not an oracle.
+- **DMC2 is implementation-invalid, not an RL rejection.** Its defender
+  residual uses an attacker-perspective oracle with the wrong sign; it is also
+  neither Suphx's privileged-policy curriculum nor DouZero's role-specific
+  direct-return method. Preserve its spread/replay alarms, but do not resume
+  that target path.
+
+### Settled experiment evidence
+
+| question / arm | evidence that survives | current conclusion |
+|---|---|---|
+| Root-prior racing | Paired 250-seed confirmation: race4 49.8%, `-0.012 +/- 0.209`; random-prune control 55.4%, `+0.188 +/- 0.224`; MC self-reference 49.6%. This reversed the unpaired screen (54.8% race4 over 2,900 rounds, 49.8% control over 500). | **REJECTED.** Hard pruning did not beat MC or its control. Five agreeing unpaired blocks were correlated evidence, not replication. |
+| v7 value leaf | Historical 605-595 (50.4%, n=1,200) used a leaf factory that discarded seeds. The hardened screen was 52.8%, `+0.024 +/- 0.215` versus the MC reference. | No verified edge; retain only as historical initializer/control. Numpy inference remains useful engineering (about 14 ms/decision and torch-identical play). |
+| v13 absolute-value leaf | Offline fit improved, but direct paired v13-minus-v7 was `-0.028 +/- 0.185`; train/deploy shifted both ply distribution and ballot. | **NOT CONFIRMED.** Better fit to `Q^Heuristic` did not improve the bot. |
+| Standalone learned policy | Across more data, better labels, epochs, margin-aware targets and warm/scratch starts, standalone nets remained roughly 38-48% versus MC. | Pause as a strength-development line; keep as a cheap diagnostic/deployment baseline. |
+| gen-v4 flywheel | About two million decisions from 36,360 rounds, teacher `mc-vleaf-v7w-ep02`, fast engine, choice-only `TRACTOR_LOCK` rows retained; recorded `teacher_git` `367a822` predates the banker-search defect. v9 did not produce a stronger leaf or standalone policy. | Clean enough for the historical v9-v11 questions, but not a reason to scale the same teacher contract. Pool-Elo gaps under about 40 are not direct evidence. |
+| Rollout-policy replacement | Two superiority tests tied, including one with a roller rated 93 Elo stronger; neither was an equivalence test. | No continuation has been shown stronger. This is not evidence that continuation strength cannot matter. |
+| Banker knows its burial | Corrected duel 149-151 = 49.7%, CI [44.0, 55.3]. | No measurable strength effect; retain the information because it is correct. Incident: `incidents/2026-08-03-banker-search-disabled.md`. |
+
+### Durable lessons and operating decisions
+
+1. **Coverage is a contract, not by itself a strength claim.** Historical
+   widening moved human-play coverage 84.7% -> 99.3% and produced a 62% screen,
+   but DEV-512 selected no redesign. Generate on a wide, explicit ballot;
+   freeze its identity through training and deployment; require paired online
+   evidence for strength. The old exhaustive-follows mismatch once collapsed a
+   deployed net to Elo 798.
+2. **Target quality and alignment dominate recipe tweaks.** The historical
+   `bc < distill < N=30 < gen-v4` ladder tracked net quality, while capacity and
+   temperature sweeps were nulls; soft stochastic-teacher targets were useful.
+   v11 worked only when pairwise objective, threshold and deployed ballot
+   matched. More precise labels do not repair the wrong estimand, action set,
+   continuation or state distribution.
+3. **Ask value models one identifiable question.** Warm-start raw-return
+   regression collapsed cross-candidate spread `22.5 -> 0.26`; a net rollout
+   policy reached 37% versus MC at about 100x cost; the full-information oracle
+   explained only 43-47% of outcome variance on its own distribution. A value
+   target must name perspective, belief, continuation and horizon. Direct-V
+   means a calibrated scoring-bracket distribution or expected signed utility
+   under one fixed continuation, never selected `max_a Q`.
+4. **Warm starts are safe only under an unchanged objective.** v6->v6.1 was
+   stable under the same loss; BC->raw/residual-Q was not. A faithful
+   from-scratch DouZero baseline should not inherit a warm-start requirement.
+5. **Strength overfits before validation notices.** v6cont's gates fell
+   51/41 -> 44/32 while validation agreement moved 0.4 points; snapshots need
+   per-epoch strength probes, with historical peaks around epochs 3-8.
+   Agreement is a style/sanity metric, not strength: wide-ballot MC gained 12
+   head-to-head points while agreement stayed 55% (lead agreement 31% vs 30%).
+6. **Small or unpaired samples reverse.** Examples include 55% (n=40) -> 37%
+   (n=60) for the v5 hybrid and 54% (n=200) -> 51% (n=400) for
+   `PAIR_VOID_BOSS`. Compare only inside one seed batch; game- and round-level
+   rates are not interchangeable (historically, 52% rounds was about 88% games
+   versus heuristic). Mid-run progress is not a result.
+7. **Direct paired duels outrank transitive evidence.** Elo is pool-relative
+   (`mc` appeared at 1141/1104/1067 with no code change); sibling duels select
+   checkpoints but cannot promote them. Missing seeds, manifests, counters or
+   artifacts make a run invalid regardless of its exit code.
+
+Current operating decisions follow from those lessons: no old-contract bulk
+RL/data run; three-seed/state-count scaling only after untouched teacher gain;
+separate ranking and outcome heads; strict invariants at every silent-fallback
+boundary; and one bounded frontend soak before production promotion, tracked
+outside this RL plan. The current roadmap below is the executable consequence.
 
 ---
 
@@ -42,21 +163,22 @@ states what the external evidence changes now.
 ### What this changes in the strength plan
 
 1. **Do not make “MCTS with the RL policy” the primary objective.** The near-
-   term champion path is still hard-valid, calibrated belief sampling; a wide
-   contextual lead ballot; a common-world rollout floor; then sequential root
-   allocation. That directly attacks the measured sourcing gap without taking
-   on hidden-information tree-search semantics.
+   term champion path is confidence-aware evaluation and allocation on the
+   current ballot, followed independently by structured burial and endgame
+   search. DEV-512 selected no widening design, so contextual lead expansion is
+   a closed screen result rather than an active prerequisite.
 2. **Use learned models first where the target is identifiable.** v11pair can
    rank/propose actions on its exact ballot and is the natural alternative to
-   SmartBot as MC's protected root anchor. The next learned proposer should be
-   trained on the winning ballot and split lead from follow. A value model must
-   name its perspective, belief, continuation policy and horizon; otherwise it
-   is not a leaf contract.
-3. **Treat rollout-policy uncertainty explicitly.** After the ballot/dose tests,
-   compare the incumbent single continuation against a small fixed portfolio
-   (for example current Smart, conservative/tempo, and point-aggressive
-   continuations) at equal total work. This is a robustness experiment, not a
-   claim that a stronger standalone roller automatically makes stronger MC.
+   SmartBot as MC's protected root anchor. Teacher-v1 should compare the exact
+   current ballot, Smart/v11 choices and registered proposal actions, then
+   train separate lead/follow ranking surfaces only if untouched teacher
+   metrics support them. A value model must name its perspective, belief,
+   continuation policy and horizon; otherwise it is not a leaf contract.
+3. **Treat rollout-policy uncertainty explicitly.** As a later bounded
+   robustness arm, compare the incumbent single continuation against a small
+   fixed portfolio (for example current Smart, conservative/tempo, and
+   point-aggressive continuations) at equal total work. This is not a claim
+   that a stronger standalone roller automatically makes stronger MC.
 4. **Run faithful self-play probes, not another hybrid recipe bundle.** One
    Suphx-style privileged-policy curriculum and one DouZero-style direct-Q
    baseline should each get a tiny synchronous shadow run with invariant tests.
@@ -150,8 +272,8 @@ initialization, duration, and one flywheel turn; v10-v11 showed that an
 implementation can make a valid hypothesis look inert until the trained
 quantity and ballot exactly match deployment; v13 improved supervised fit but
 exposed a state-distribution and value-contract mismatch. No v7-v13 model has
-yet shown a verified advantage over `mc`; v11's confirmed gain over SmartBot is
-the one positive learned-policy result.
+shown a verified advantage over the deployed `mc-strong`; v11's confirmed gain
+over SmartBot is the one positive learned-policy result.
 
 Before any v14-style leaf experiment, checkpoint metadata must name and assert
 the target, perspective, continuation policy, state sampler/horizon, ballot
@@ -159,248 +281,6 @@ version, and encoder version. A mismatch is an invalid run, not a negative ML
 result.
 
 ---
-
-## Current state — 2026-08-04
-
-1. **`mc` remains the strength incumbent.** No standalone model or learned
-   search hybrid has a verified advantage over it.
-2. **v11pair is the learned line's one confirmed gain.** The direct SmartBot
-   override wins 57.7% (n=480, two disjoint blocks). Its 51.1% vs MC is only an
-   unseeded-MC SCREEN, and its gate and root-prior search variants have not
-   survived paired confirmation. Use v11 only for relative decisions at the
-   root; it is not an absolute leaf value.
-3. **Neither learned leaf is promoted.** The historical v7 settling run
-   reported 50.4% at n=1,200, but its leaf factory silently discarded policy
-   seeds. The current hardened screen puts v7 at `+0.024 +/- 0.215` versus the
-   MC reference. v13 fit its offline labels better but changed both the state
-   and action-ballot distributions at deployment; it was
-   `-0.028 +/- 0.185` directly versus v7 on the same 250 seed clusters.
-4. **Hard-constraint sampling P0 passed; posterior fidelity is P1.** The old
-   `eea78d2` population claim was withdrawn because its global limit starved the
-   late source. The clean replacement at `aea3774` covers exactly 500 original
-   + 500 late + 500 deep states, accepts 36,000/36,000 worlds with zero
-   invalid/rejected/skips, and reaches every legal world and real witness in
-   120/120 exhaustive toys. Count-matrix weighting is still biased, so the old
-   non-strict, capped-ballot, same-world-selected high-N labels remain a
-   diagnostic reservoir rather than an oracle.
-5. **The next compute is bounded and unblocked.** Run the preregistered fresh
-   N=30 confirmation and the clean lead-ballot pilot; neither is permission for
-   another bulk training corpus. The separate action-semantics gate remains
-   open on the exact six-card tied-level decomposition witness in `BACKLOG.md`.
-6. **DMC2 is implementation-invalid, not an RL rejection.** Its defender
-   residual subtracts an attacker-perspective oracle with the wrong sign, and
-   the method is neither Suphx's privileged-policy curriculum nor DouZero's
-   role-specific direct-return baseline.
-
-**Current decisions:**
-
-| Question | Answer | Where |
-|---|---|---|
-| Does residual/override learning work? | **YES as an override of SmartBot**, once the pairwise target and ballot match — 57.7% vs smart, n=480 | 1i |
-| Is direct v11 proven equal to MC? | **No formal confirmation.** 51.1% over 4,880 unseeded-MC exploratory rounds suggests parity; superiority is not shown. | 1i |
-| Is the value-leaf hybrid stronger than mc? | **Not shown.** The historical n=1,200 arm was unseeded; the current hardened v7 screen is `+0.024 +/- 0.215` versus the MC reference. | above, 1 |
-| Does a better value head make a better hybrid? | **No detected benefit yet.** v13 improved offline fit but its direct paired contrast versus v7 was `-0.028 +/- 0.185`. | lineage table |
-| Does the flywheel work (train on hybrid data, get a better hybrid)? | **Not in the v9 attempt.** This is a pipeline result, not a general rejection of expert iteration. | 1b |
-| Did v10res test residual learning? | **No.** It was a near-no-op with a train/play ballot mismatch; v11pair is the corrected test. | 1h, 1i |
-| Is selective v11-gated MC ready? | **No.** T2 did not earn confirmation; the later T3 runner was invalid and halted. | 1l, 1m |
-| Does the banker knowing its own burial help? | **No measurable effect** — 49.7%, CI [44.0, 55.3] | 1g, AI_POLICIES |
-| Does rollout-policy strength matter? | **Not shown to** — two FAILED SUPERIORITY tests (tied twice, second with a 93-Elo-stronger roller). Neither established equivalence, so this is "no continuation has been shown stronger", NOT "strength is known not to matter" | AI_POLICIES |
-| Did DMC2 disprove Suphx/DouZero-style self-play? | **No.** The defender oracle sign is wrong, the “oracle guiding” mechanism is different from Suphx, and the warm-started residual/dueling recipe is not a faithful DouZero baseline. | literature/DMC2 audit above |
-
-**The through-line:** changing rollout or leaf evaluation has not improved MC;
-correctly learning *relative root decisions* did improve SmartBot. The next
-search question is therefore fixed-budget root allocation with common worlds,
-not another rollout-policy swap and not forcing pairwise v11 into a leaf API.
-
-**P0 fixed today (Codex):** BANKER_KITTY double-subtracted the burial and left
-the banker's world sampler unable to build any world. gen-v4 predates that
-defect according to its recorded `teacher_git`. Full write-up:
-`incidents/2026-08-03-banker-search-disabled.md`.
-
----
-
-## STATE OF PLAY (2026-08-04, day 5)
-
-### 1. ROOT-PRIOR RACING — RETRACTED: did not replicate (2026-08-04 10:40)
-
-I reported this as beating mc. **The paired confirmation refutes it**, and the
-claim is withdrawn.
-
-The confirmation ran all three arms on the SAME 250 mirrored deals, with a
-manifest, per-seed records, and paired level utility clustered by seed — the
-protocol Codex asked for:
-
-| arm | win% vs mc | paired level utility/seed |
-|---|---|---|
-| race4 (net prior) | 49.8% [45.4, 54.2] | **−0.012 ± 0.209** |
-| rand4 (RANDOM prune, the control) | 55.4% [51.0, 59.7] | +0.188 ± 0.224 |
-| mcref (mc vs mc, sanity) | 49.6% [45.2, 54.0] | 0 by construction |
-
-**The control was nominally higher, but neither arm cleared zero.** In the
-screen it was the reverse
-(race4 54.8% over 2,900 rounds, control 49.8% over 500). Both arms moved about
-five points and swapped places, on a harness whose mc-vs-mc arm sits correctly
-at 49.6%.
-
-**What that means.** Block-to-block variance is far larger than the binomial
-intervals imply, because rounds inside a mirrored pair and inside a seed
-cluster are correlated — exactly Codex's objection that Wilson treats them as
-independent. Five blocks agreeing at 54-56% felt like reproduction; it was five
-draws from a distribution wide enough to produce that by luck. The paired
-statistic, which is the one that respects the clustering, puts race4 at
-−0.012 ± 0.209: a tie.
-
-**Status: REJECTED as a strength claim.** Not "promising", not "needs more n" —
-the honest reading is that nothing here beats mc, and the standing goal is NOT
-met. If the idea is revisited it starts from scratch with the paired protocol
-and a preregistered n, and any screen that disagrees with a paired
-confirmation loses.
-
-**The lesson is the one this project keeps re-learning at increasing cost.**
-The vleaf 60% headline died the same way, the v11 52% died the same way, and I
-still treated five consistent blocks as evidence rather than as five
-correlated draws. Consistency across blocks is not independence.
-
-### 2. Value-leaf hybrid: CLOSED — no verified edge over mc
-
-`mc-vleaf-v7w-ep02` truncates MC rollouts after four tricks and scores leaves
-with v7w's value output. Its original 60% and pool-leader headlines came from
-invalid pooling. A later preregistered two-machine run reported 605-595 =
-50.4%, but the post-run audit found that its leaf factory accepted `**kw` and
-failed to forward them, leaving that stochastic arm unseeded. It is useful
-historical evidence against a large effect, not a seeded confirmation of
-equality.
-
-The current hardened evaluator gives the v7 leaf 52.8% and
-`+0.024 +/- 0.215` paired utility versus the MC reference. That does not show
-superiority. v13, trained on high-N absolute `Q^H` labels, also failed to
-improve it directly (`-0.028 +/- 0.185`). The strength path is retired unless
-a correctly targeted leaf distribution and value contract earn a new test.
-
-Production-ready regardless of the verdict: numpy inference
-(`rl/npnet.py`), no torch in the image, 14ms/decision, identical play
-verified vs torch.
-
-### 3. Standalone policy line: still stuck — but the OVERRIDE line is not
-
-Standalone nets remain ~38-48% vs mc across every lever tried: more data,
-better-than-search labels (gen-v4), more epochs, a margin-aware target, and
-warm-vs-scratch init. Codex's caveat stands: the 6-epoch v9 arms both peaked
-at their last epoch and used different LRs, so warm-vs-scratch is "no DETECTED
-difference", not an equivalence result.
-
-**What changed on 2026-08-04:** the same nets, used as a learned OVERRIDE on
-top of SmartBot rather than as a standalone policy, beat SmartBot 57.7% over
-n=480. The signal was there all along; asking the net to pick from scratch was
-the wrong question to ask it. That reframes the ceiling: it may be less about
-what the net knows than about what it is asked to decide.
-
-### 4. gen-v4: the dataset every current arm trains on
-
-36,360 rounds / 1.96M decisions, teacher `mc-vleaf-v7w-ep02`, fast engine,
-choice-only TRACTOR_LOCK rows included (19,691 per epoch). Proven clean of the
-banker-search bug via its recorded `teacher_git` (367a822, seven hours before
-the defect landed).
-
-The earlier claim that `rl-v9warm` sat "27 Elo above rl-v7w" came from the
-seeded pool, and pool gaps under ~40 Elo have since been shown unreliable —
-the same pool put vleaf +32 above mc, while a later n=1,200 run with an
-unseeded leaf arm landed at 50.4%. No direct seeded v9-vs-v7w duel has been
-run, so that comparison stays open rather than counted.
-
-### 5. Measurement discipline (all learned the hard way today)
-
-- Anchor/pool opponents were UNSEEDED until 08-03: the same v7w anchor
-  read 41% then 31%; the same vleaf pairing read 58% then 47.5%. FIXED
-  (`play_pairing` seeds both sides; pairings now reproduce exactly).
-- Consequence: every pre-fix single-pairing comparison under ~10 points
-  is noise, including "v8 is below v7w" (retracted).
-- Do not pool heterogeneous blocks as one binomial.
-- A mid-run PROGRESS number is not a result.
-- Verify the artifact, not the exit code (four silent no-ops today).
-
-## KEY LEARNINGS (load-bearing; each cost real compute to buy)
-
-1. **Sourcing beats preference.** Every hard-coded "play X first" rule
-   measured ≤53% (ties); widening what the search *sees* measured 62%.
-   Ballot coverage of human plays went 84.7% → 99.3% in one day
-   (`scripts/audit_sourcing.py` is the tripwire). Same shape at the RL
-   layer: ballots must be wide at *data generation*, then frozen.
-2. **Label quality out-predicts architecture.** bc < distill < N=30
-   textbook tracks the checkpoint ladder exactly; capacity (1024-trunk)
-   and temperature sweeps were nulls; soft targets (T=0.05) were the one
-   recipe fix that mattered (stochastic teacher ⇒ distribution targets).
-3. **Ballot/encoding freeze.** Play-time enumeration must match training
-   distribution byte-for-byte — the exhaustive-follows change silently
-   collapsed a deployed net to Elo 798. Any change ⇒ regenerate,
-   retrain, re-verify.
-4. **The value pathway is fragile; ask the net small questions.**
-   Raw-return regression on a warm start crushed action ordering (spread
-   22.5 → 0.26, twice, alarm-verified); net-as-rollout-policy amplified
-   tail errors (37% vs mc at 100x cost). Full-information oracle study:
-   only 43-47% of outcome variance is predictable on its training
-   distribution. The dmc2 collapse is additionally confounded by a defender-
-   sign bug and a non-Suphx baseline, so it cannot establish a value ceiling.
-   Ask one identifiable question at a time: relative root ranking, world
-   likelihood, or a calibrated value under one named continuation policy.
-5. **Warm starts are safe only under an unchanged objective.** v6→v6.1 (same
-   distillation loss) was stable; BC→raw/residual Q regression destroyed the
-   checkpoint. This is a warning about scale and objective shift, not a reason
-   to require warm starts in a faithful from-scratch DouZero baseline.
-6. **Strength overfits before val metrics notice.** v6cont: gates fell
-   51/41→44/32 while val agreement moved 0.4pt. Model selection =
-   per-epoch snapshot **strength probes**, never loss. Peak lands ~ep3-8.
-7. **Small samples reverse.** 55% (n=40) → 37% (n=60) killed the v5
-   hybrid; 54% (n=200) → 51% (n=400) killed PAIR_VOID_BOSS. Extensions
-   are mandatory; and probes only compare *within* one seed batch —
-   game-level and round-level rates are not interchangeable (games
-   compound round edges: 52% rounds ≈ 88% games vs heuristic).
-8. **Direct duels > transitive probes** for close calls (protocol below).
-9. **Agreement ≠ strength**, measured twice: v6's val agreement froze
-   while strength climbed; wide-ballot mc gained 12pts h2h with
-   agreement flat (55%, leads 31% vs 30%). Agreement is a style/sanity
-   metric — the tripwire, and the human-blend target — not a strength
-   signal.
-10. **Elo is pool-relative.** mc rated 1141/1104/1067 across pools with
-    no code change. Only within-pool gaps, fixed-seed gates, and direct
-    duels transfer between tables.
-
----
-
-## RUN STATUS — 2026-08-05 18:50
-
-No old-contract bulk RL/data run is authorized. The bounded S0 challenge,
-64-state teacher-v1 preflight, automatic 2,048-state launch after a clean
-preflight, and short faithful RL microbaselines are authorized. Compiled N=30
-MC—the champion shipped overnight—is still the incumbent; **daytime work
-produced no stronger policy**.
-N=60 produced no confirmed increment. The six-arm DEV-512 ballot screen
-completed with **SELECT NONE**, so
-its CALIB, online-confirmation and learn-from-winner stages are NOT REACHED /
-CLOSED and CALIB/REPORT remain sealed. The positive program now has three lanes:
-confidence-aware/adaptive search, clean counterfactual teacher iteration, and
-faithful role-conditioned self-play. The current three-reservoir sampler
-certificate passed at clean `aea3774`; it is no longer on the strength critical
-path. Posterior fidelity remains a separately versioned research issue.
-
-The re-entry discipline applies to anything new: preregister the bar, seed both
-sides through a factory that forwards kwargs, write immutable manifests and
-per-seed records, and treat a first block as selection only.
-
-## DECISIONS TAKEN (Codex, 2026-08-04 07:31 — answers to the standing questions)
-
-These settle questions that had been open for a day. Recorded here because
-they change what gets built, not just what gets said.
-
-| question | decision |
-|---|---|
-| Standalone policy line | **Pause as a development line, keep as the cheap diagnostic/deployment baseline.** It already moved the Pareto frontier, so "stop" must not mean delete. |
-| Primary metric | **Paired signed level utility** for promotion; round win-rate secondary; full-game level progression is the final deployment check. |
-| Architecture-ceiling vs undertrained | A controlled DATA-SCALING study on independently evaluated high-N states, v1 vs richer encoder, ≥3 train seeds. A full-corpus run is earned only if untouched regret keeps improving with data. **More epochs on the same noisy labels cannot answer this.** |
-| Direct-V target | A calibrated scoring-BRACKET distribution (or expected signed level utility) under one fixed continuation policy — **not `max_a Q`**, which inherits selection optimism and is not the value of the policy that actually continues the round. |
-| My first-number habit | Label every number **HYPOTHESIS / SCREEN / CONFIRM / REJECT**; freeze one primary metric and one untouched report set; never extend a first block on reused seeds because its interval nearly crosses. |
-| Silent fallbacks | **One bounded repository-wide sweep first**, converting each boundary into a strict invariant or counter, then site-by-site enforcement while touching code. A sweep without durable invariants decays; local-only work misses the next hidden boundary. |
-| Frontend soak | Deterministic tests are strong enough for a RELEASE CANDIDATE. Run one bounded multi-tab reconnect/takeover/chat soak before production promotion — minutes, not a project — and it does not gate the ML stop decision. |
 
 ## ROADMAP FROM HERE — strength first, correctness as a gate
 
@@ -413,8 +293,10 @@ they change what gets built, not just what gets said.
    first-150-DEV / first-20-override calibration found 12 positive N=300 gaps,
    mean +0.570; its predeclared grid selected R=300. Run S0a (report mean vs
    report LCB vs extra uniform compute), then S0b allocation only for the
-   selected rule, then an independent 8,192-cluster full-game confirmation.
-   No S0 policy is strong or deployable before the last interval clears zero.
+   selected rule, then an independent 8,192-cluster paired current/null
+   confirmation. That closes the S0 research milestone. A confirmed candidate
+   still receives a separately registered full-game progression/stress check
+   before product deployment; do not pool that product check into S0 evidence.
 2. **Build a teacher that can exceed the old teacher.** Follow
    `TEACHER_V1_SPEC.md`: mechanics first, then a gold continuation-quality gate,
    then generate a 2,048-state pilot outside every evaluation split, balanced
@@ -429,8 +311,8 @@ they change what gets built, not just what gets said.
 3. **Train for the deployed decision and for calibrated outcome separately.**
    Use a v11pair-style pairwise/listwise ranking head on exact candidates plus a
    separate scoring-bracket distribution head. Train three seeds and state-count
-   curves. First deploy the model as an MC ranker/pruner/allocator; only a held-
-   out teacher gain and fresh paired win earns direct override or a 10k/50k
+   curves. First test the model as an MC ranker/pruner/allocator; only an
+   untouched teacher gain and fresh paired win earns direct override or a 10k/50k
    relabelling wave.
 4. **Run faithful self-play that is not bounded by MC imitation.** After role-
    sign and immutable-actor tests, run short synchronous Suphx-style privileged-
@@ -495,22 +377,14 @@ Teacher-v1 Stage B should first measure whether v11 continuation changes gold
 rankings usefully. Earlier Smart/v5 rollout-policy ties make this a bounded
 secondary test rather than the first fleet bet.
 
-For online selection, paired signed level utility is primary because it is the
-actual game objective; round win-rate remains the higher-power secondary
-metric, and a final candidate gets a full-game confirmation. Standalone policy
-scaling on old labels remains paused. The clean teacher pilot may earn staged
-supervised scale, while the two faithful self-play microbaselines may earn RL
-scale; both must pass their own implementation and held-out gates first.
+## Data and evaluation contract
 
-## Training-data doctrine: spend compute vertically before horizontally
-
-The important 2026-08-04 change was not simply generating more rows. The old
-pipeline spent compute **horizontally**: it collected roughly 1-2 million
-sequential self-play decisions and attached relatively low-dose N=10/N=30 or
-hybrid-teacher labels. That gave broad trajectory coverage, but each close
-action comparison was noisy, the natural deal stream overrepresented early
-play, and the available targets were irrevocably restricted to the ballot and
-sampler used during collection.
+Old distillation spent compute **horizontally**: roughly 1-2 million sequential
+self-play decisions received low-dose N=10/N=30 or hybrid-teacher labels. That
+bought trajectory coverage, but close choices stayed noisy, early play was
+overrepresented, and the targets were locked to the collection ballot and
+sampler. New compute must instead buy deeper common-world comparisons on a
+frozen deployment contract, followed by untouched and online tests.
 
 `highn_corpus` spent compute **vertically** instead. It rebuilt 20,845 fixed
 states, evaluated every offered action over 240 shared hidden worlds, and
@@ -518,7 +392,7 @@ stored action means, candidate-0 paired differences, uncertainty estimates and
 the raw state needed for replay. Common worlds make close actions much easier
 to compare than independently sampled labels. This was a useful diagnostic
 shift: it exposed the early-ply skew and selected-maximum problem, and
-localized a promising diagnostic surface to lead decisions.
+localized a diagnostic surface to lead decisions.
 
 It did **not** create a final oracle. Those labels use the pre-repair non-strict
 sampler, the old finite ballot, raw points, heuristic continuation and
@@ -530,7 +404,7 @@ warning: **higher precision cannot repair the wrong estimand, action set or
 state distribution.** Keep high-N as a replayable reservoir and provisional
 diagnostic set, not the foundation for an unqualified bulk retrain.
 
-### High-N workbench — diagnose fixed choices, then relabel fresh states
+### Historical high-N workbench — diagnose, never promote
 
 There is one comparison the old labels support more cleanly than “regret to
 the selected high-N best.” A policy trained independently of this artifact can
@@ -563,70 +437,63 @@ yet their action-type tails differ sharply: non-point-single to pair is strong
 in this surrogate, while point-single to pair and single to tractor are noisy.
 Those post-hoc archetypes are hypothesis strata, **not deployable filters**.
 
-Use the workbench in this order:
+### Artifact boundaries and clean-teacher sequence
 
-1. Mine DEV only, at most one state per deal, into named strata: clear v11
-   wins, clear v11 losses, threshold-boundary disagreements, high paired-SE
-   decisions and lead action-type transitions. Preserve every denominator and
-   do not inspect the old CALIB/REPORT assignments.
-2. Freeze a state-selection rule from those patterns, then apply the rule to
-   **fresh non-evaluation deals** for teacher-v1. Do not train a successor or
-   fit a production safety filter on the mined old rows.
-3. Relabel the fresh union of current ballot, Smart choice, v11 choice and any
-   new proposal action using today's strict sampler, disjoint selection/report
-   worlds and signed scoring-bracket outcomes. Deep-lead raw states identify
-   missing strata, but the original corpus has zero true-late DEV decisions and
-   the supplement only eight, so it cannot answer late strategy by itself.
-4. Keep a small set of old clear-loss rows as regression/challenge fixtures.
-   They may falsify a model or allocator; they are not a held-out promotion
-   set after being mined.
-5. Promote only from fresh paired games. Do not rerun all 37.1M historical
-   evaluations, refit another threshold to their surrogate, or train a generic
-   leaf from them.
+The inspected high-N rows may only diagnose and generate hypotheses. Mine DEV
+at no more than one state per deal into named strata (clear v11 wins/losses,
+threshold disagreements, high paired-SE choices and lead transitions), preserve
+every denominator, and leave old CALIB/REPORT assignments uninspected. Freeze
+any resulting state-selection rule, then apply it to **fresh non-evaluation
+deals**; never fit a production filter or successor on the mined rows. The
+original corpus has zero true-late DEV decisions and the supplement only eight,
+so the frozen deep-lead reservoir supplies missing state coverage, not labels.
+Old clear-loss rows may remain regression/challenge fixtures, but not a
+promotion set. Do not rerun all 37.1M historical evaluations, refit another
+threshold to their surrogate, or train a generic leaf from them.
 
-Three artifacts must remain separate:
+Keep three artifact classes separate:
 
 1. A **state reservoir** stores reconstructable setup/history and a frozen
-   deal-disjoint assignment, but no action scores. The planned deep-lead
-   capture is initially this artifact, not training data.
+   deal-disjoint assignment, but no action scores. The frozen deep-lead capture
+   is such a reservoir, not training data.
 2. A **counterfactual teacher set** fixes the ballot, belief sampler,
-   continuation policy and utility target, then evaluates every compared
-   action on common proposal worlds with disjoint report worlds. It stores raw
-   per-world returns or sufficient paired statistics, not only the selected
+   continuation policy and utility target, then evaluates every compared action
+   on common proposal worlds with disjoint report worlds. It stores raw
+   per-world returns or sufficient paired statistics, not only a selected
    action.
 3. An **episodic RL set** stores immutable actor identity, role-correct signed
    terminal returns and sequential public/action history. It must not be mixed
    with search-distillation rows as though their targets were interchangeable.
 
-The next clean teacher data is therefore earned in this order:
+Teacher-v1 earns scale in this order:
 
-1. retain the closed hard-validity/support certification while measuring and
-   correcting posterior weighting;
-2. use the lead pilot to select and freeze the proposal ballot;
-3. freeze deal-disjoint DEV/CALIB/REPORT state assignments *before* labels are
-   inspected, with explicit early/mid/late and attacker/defender coverage;
-4. relabel the highest-information regions first: ballot disagreements,
-   late-ply decisions and high-uncertainty states, using common proposal worlds
-   and independent report worlds;
-5. train separate lead/follow proposal or ranking heads and require untouched
-   CALIB regret/recall improvement before authorizing bulk collection;
-6. preserve REPORT for the single selected design and require a paired online
-   gate before calling the new data strength-producing.
+1. retain the closed hard-validity/support certificate and explicitly version
+   any posterior weighting;
+2. pass the 64-state mechanics and 128-state gold-continuation gates;
+3. freeze a fresh, non-evaluation, deal-disjoint selection rule with explicit
+   early/mid/late, role, lead/follow, candidate-count and disagreement coverage;
+4. relabel the union of the exact current ballot, Smart choice, frozen-v11
+   choice and registered proposal actions with common proposal worlds,
+   independent report worlds and signed scoring-bracket outcomes;
+5. train separate ranking and calibrated-outcome heads across three seeds and
+   state-count curves; untouched teacher metrics must improve before a
+   10k/50k collection wave;
+6. preserve REPORT for one selected design, then require fresh paired games
+   before calling the new data strength-producing.
 
 Every generated dataset must name and digest its state-selection rule, split,
 `BallotSpec`, engine, sampler, continuation policy, target/perspective, world
 budget, generator and source checkpoint. Incompatible shards are never merged
-silently. Corpus size is not progress by itself; progress is lower held-out
+silently. Corpus size is not progress by itself; progress is lower untouched
 decision regret under the deployment contract followed by verified online
 strength.
 
-## Evaluation asset inventory (rebuilt from disk 2026-08-05)
+### Frozen evaluation assets — rebuilt from disk 2026-08-05
 
-Evaluation sets are listed here because their provenance and intended use are
-part of the learning contract, but they are **not training data**. In
-particular, DEV may select one design, CALIB may judge that frozen design once,
-and neither may be pooled into a teacher corpus. REPORT remains unselected and
-unscored until a separately preregistered audit.
+These assets are **not training data**. DEV may select one design and CALIB may
+judge that frozen design once; neither may be pooled into a teacher corpus.
+Because DEV-512 selected none, its CALIB and REPORT assets remain sealed. Any
+new teacher or strength audit receives a separately versioned split.
 
 | artifact | size / identity | what it is | status / allowed use |
 |---|---|---|---|
@@ -635,14 +502,7 @@ unscored until a separately preregistered audit.
 | `rl_data/pilot_calib512.v6.json` | 512 unique deals, disjoint from DEV; hash `3872350f57a4dd60`; identical band/size/role allocation | Untouched holdout to judge exactly one frozen DEV-selected design. No action labels or scores. | **UNTOUCHED.** Do not tune, train, or score. Supersedes v5 (`00ca4de1915d8c4f`). |
 | `tests/data/s0_override_audit.v1.json` | 150 frozen DEV decisions; first 20 actual N=30 overrides each carry all 300 fresh signed paired deltas; SHA-256 `9703b50817fb03622c3739e44f73e19083b1e8337300be7054774e2308e13ef5` | Reproducible calibration/challenge asset for report-fold dose and both-role override semantics. It selected R=300 by a committed rule. | **INSPECTED DEV DIAGNOSTIC.** May regression-test S0 mechanics and dose identity; never a strength result, promotion set, generic teacher or training corpus. |
 
-The 512+512 design is sized for **selection followed by an independent
-holdout**, not for a final strength claim. It should resolve a practically
-meaningful paired offline effect, while a tiny edge may remain inconclusive.
-The observed per-state paired variance must be reported; do not extend DEV
-after seeing results. Full-game confirmation receives its own fresh-seed power
-calculation, as required by `BALLOT_PLAN.md`.
-
-In the completed screen, the primary 95% half-width was 0.337. Holding that
+The completed screen's primary 95% half-width was 0.337. Holding that
 variance fixed, 2,048 comparable states would narrow it only to about 0.169,
 and roughly 5,800 would be required to resolve a 0.10 regret effect. The right
 response is therefore **not** to append to inspected DEV-512 or cycle more
@@ -651,9 +511,10 @@ ballot arms through it. Preserve it as a negative design worksheet. The new
 much deeper common-world counterfactual labels, per-world outcomes and an
 iterative training purpose. It may grow to 10k/50k only after held-out teacher
 metrics and fresh paired games show that its learned mechanism improves the
-champion.
+champion. A final strength claim receives its own fresh-seed power calculation
+and full-game confirmation, as required by `BALLOT_PLAN.md`.
 
-## Training data inventory (rebuilt from disk 2026-08-04)
+### Historical training-data inventory — rebuilt from disk 2026-08-04
 
 | dataset | size | what it is | teacher | used by |
 |---|---|---|---|---|
@@ -682,28 +543,24 @@ both carry throws, component combos, and choice-only lock rows.
   immutable manifest. Report paired/clustered uncertainty and signed level
   utility; a raw round count or Wilson interval over correlated flips is not a
   confirmation. Small n is a SCREEN only.
-- **Strength vs selection (v7w lesson, 2026-08-02):** STRENGTH claims
-  come only from anchor pairings vs smart AND mc (round-level).
-  Net-vs-net duels against the incumbent are for SELECTION among
-  sibling checkpoints and tiebreaks — descendants exploit ancestors
-  (v7w: 64.5% over v6, yet ~v6-level on anchors), so a family duel is
-  never a ladder claim.
-- **Partial-checkpoint protocol:** every snapshot gets (1) fixed-seed
-  round-level probe vs current SmartBot (n=60, compare only within a
-  seed batch) AND (2) a direct mirrored duel vs the incumbent best net
-  (n=200). Blend checkpoints also get the human-agreement eval.
-- Elo pools and sibling duels select candidates; direct seeded pairings against
-  named anchors establish strength. Promotion to server default requires the
-  declared non-inferiority/superiority gate plus a full-game mirrored match.
+- **Strength vs selection (v7w lesson, 2026-08-02):** net-vs-net sibling duels
+  and Elo pools select checkpoints; they do not establish a ladder claim.
+  Descendants exploit ancestors (v7w beat v6 64.5% yet stayed near v6 on
+  anchors). Legacy distillation snapshots may still use the fixed-seed n=60
+  Smart probe plus n=200 sibling duel, but both are SCREEN diagnostics.
+- Strength requires a fresh direct paired comparison against the named deployed
+  champion and registered controls. Promotion requires the declared
+  superiority/non-inferiority gate plus a full-game mirrored match.
 - A run with a missing/dirty manifest, reused output, seed-forwarding failure,
   impossible sampled world, silent fallback, or unreconciled counter is INVALID
   regardless of its score.
-- Negative results are archived, not deleted (`server/runs/`,
-  AI_POLICIES experiment log).
+- Negative results are archived, not deleted (`server/runs/` and the
+  `AI_POLICIES.md` experiment log).
 
 ---
+
 ## ARCHIVE
 
 Day-by-day chronology moved to `docs_archive/rl-plan-chronology-through-2026-08-03.md`
-(2026-08-03). Conclusions live in KEY LEARNINGS above; that file is the record
-of how each was reached, including the dead ends.
+(2026-08-03). Current conclusions live in the synthesis and lineage above; the
+archive records how they were reached, including the dead ends.

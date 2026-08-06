@@ -396,3 +396,61 @@ uniform control. Only then compare deterministic versus random adaptive
 allocation under the identical report rule. Full return requirements and the
 no-launch gate are now explicit in `HANDOFF_ACTIVE.md`. `JOBS.md` still shows no
 running fleet work; that is appropriate until this bounded code gate closes.
+
+---
+
+## Codex — 2026-08-05 21:42 EDT — S0 code gate CLOSED; S0a ready
+
+```text
+STATE: READY_FOR_S0A (implementation/mechanics only; no strength result)
+IMPLEMENTATION / FREEZE COMMITS: df0a7b9 / 316542a (both pushed)
+HEAD / origin / dirty at packet freeze: 316542a / 316542a / clean
+
+closed blockers:
+  winner selection   fixed challenger is judged on an exact disjoint report fold
+  report semantics   incumbent point margin 5; new report minimum gain 0
+  report dose        frozen R=300 by the committed DEV rule/artifact
+  exact work         report/adaptive/random/uniform controls use exact matched work
+  residual work      executed and explicitly decision-excluded, never stranded
+  short samples      refuse to candidate 0; no finite partial fold may decide
+  controls           true N=30 null, current, report mean/LCB, equal-work uniform;
+                     S0b adds deterministic and matched random allocation
+  action semantics   pruned candidates cannot re-enter; candidate 0 plus a
+                     challenger survive; raw winner and actual play are distinct
+  replay             full pre-selection RNG state survives JSON and restores exactly
+  provenance         policy/class/git/dirty/code/ballot, named child seeds,
+                     candidates, work, timing and per-decision counter deltas
+  server seam        refuses decision-record/play mismatch
+  challenge          fixture minimised/sanitised; both-role real LCB-positive
+                     witnesses prevent a never-override implementation from passing
+
+immutable diagnostic:
+  server/tests/data/s0_override_audit.v1.json
+  SHA-256 9703b50817fb03622c3739e44f73e19083b1e8337300be7054774e2308e13ef5
+  first 150 frozen DEV states; 48 current overrides; first 20 detailed with
+  300 signed paired deltas each; 12/20 positive; mean +0.570; median |gap| 2.775
+  frozen rule retains 2/3/5/6 positives at R=30/60/120/300, zero N=300-negative
+  supports, and selects R=300. Calibration only—not population strength.
+
+verification:
+  SHENGJI_FAST=1 full suite: 365 passed, 2 skipped
+  SHENGJI_FAST=0 full suite: 365 passed, 2 skipped
+  final targeted suite on each backend: 40 passed
+  dirty R=300 mechanics smoke: all five S0a arms, 20 mirrored records,
+  zero short/zero-world, reconciled counters, no manifest problems,
+  promotable:false
+
+CALIB / REPORT confirmation: sealed and unscored
+```
+
+Production remains compiled `mc-strong` N=30 and every S0 flag is off. One
+intentional correctness change applies to current search: if its accepted world
+dose is short, it now falls back to candidate 0 and records the short decision
+instead of silently deciding from a partial sample.
+
+The report LCB is a named conservative one-sided Student-t decision heuristic,
+not the promotion interval. The bounded next job is only S0a: eight clean
+256-cluster shards on the frozen 132M seed block, aggregated by
+`scripts/s0_aggregate.py`. It may select one mechanism for S0b; it cannot promote
+anything. Exact commands, survivor rules and the return packet are now in
+`HANDOFF_ACTIVE.md`; do not hand-compute or pool an incomplete result.

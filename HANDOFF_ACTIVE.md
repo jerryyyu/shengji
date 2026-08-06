@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-05 21:39 EDT. Historical discussion and superseded gates
+Last update: 2026-08-05 21:42 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -20,8 +20,9 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## S0 implementation packet — ready for bounded S0a
 
-Base implementation commit: `df0a7b9` (pushed). The final packet commit adds
-the immutable calibration artifact and freezes its selected report dose.
+Base implementation commit: `df0a7b9`; calibration/freeze commit: `316542a`
+(both pushed). The latter adds the immutable audit artifact and freezes its
+selected report dose.
 
 ### What is now closed
 

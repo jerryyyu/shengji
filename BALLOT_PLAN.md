@@ -13,6 +13,33 @@ discover an action that generation omitted. The replacement must separate
 legal action generation, strategic proposal, candidate selection, and final
 evaluation.
 
+## Outcome — 2026-08-05
+
+The registered lead-ballot experiment completed its DEV stage and selected
+**NONE**. Across 512 frozen states, quota minus random-fill was
+`+0.110 +/- 0.337`; at equal work the shipped ballot had the lowest mean regret,
+and the resolved high-work contrast favoured putting extra MC on the incumbent
+ballot over brute-force full-universe expansion. CALIB and REPORT remain sealed
+because no DEV design earned advancement.
+
+This is what the 512 states were for: reject an obvious ballot-design win
+cheaply before spending on full games. They were never training data and cannot
+prove online strength. At the observed variance, 2,048 comparable rows would
+still have a primary half-width near 0.169; resolving a 0.10 offline regret
+effect would need roughly 5,800. Do **not** append to inspected DEV, open CALIB
+without a selected design, or cycle more proposal arms through the worksheet.
+
+The result rejects these registered selectors, not every possible action-search
+idea. Ballot-related strength work now moves to three different estimands:
+
+1. confidence-aware/adaptive allocation on the incumbent ballot;
+2. a new deep counterfactual teacher/challenge asset outside all evaluation
+   splits; and
+3. structured bury search, where the once-per-round action set can afford a
+   much wider proposal budget.
+
+Fresh paired full games—not a larger DEV worksheet—remain the promotion gate.
+
 ```text
 reachable state
     -> lazy canonical legal actions
@@ -68,13 +95,12 @@ needed to decide whether the new proposer finds valuable off-ballot actions.
 
 ## P0 correctness and measurement gates
 
-**Status 2026-08-04.** The bounded action and pilot-measurement portions below
-are implemented: card-code multiset identity, permutation-invariant pure/fast
+**Status 2026-08-05.** The bounded action and pilot-measurement portions below
+are implemented and the DEV experiment is complete: card-code multiset identity, permutation-invariant pure/fast
 decomposition, complete tied-code tractors, shape-preserving component
 replacement, independent fold streams, exact work accounting, retained
-per-world vectors/brackets, and fail-closed aggregation. Two clean 8-state
-processes produced byte-identical outputs. The next action is raw deep-lead
-capture and a newly frozen state set—not more design changes to this gate.
+per-world vectors/brackets, and fail-closed aggregation. The clean v6 asset and
+all eight scoring shards passed; SELECT NONE is final for this design.
 
 Complete these before an online strength claim or a large corpus run:
 
@@ -276,14 +302,13 @@ best non-learned search, not because it is faster.
 
 ## Immediate bounded work
 
-1. Fix the P0 evaluator/sampler and tied-level action-semantics issues.
-2. Implement `CanonicalAction`, trace/schema, and evaluation-free lead
-   enumeration/classification behind a new policy name; do not change `mc`.
-3. Add the Phase 1 property/golden tests.
-4. Draw a 100-200-state, one-row-per-deal frozen lead subset from the completed
-   high-N state reservoir, add a late-game supplement, and run the no-rollout
-   static coverage/determinism audit.
-5. Run a small independent-world offline comparison of current, random-fill,
-   and quota. Stop if quota does not improve report-fold regret.
-6. Only then implement rollout-guided proposals. No training or large duel is
-   authorized by the static coverage result alone.
+1. Preserve DEV-512/CALIB-512/REPORT exactly; the registered lead-ballot lane is
+   closed at SELECT NONE.
+2. Implement confidence-gated, common-world adaptive allocation on the current
+   ballot with fixed candidate-world work and uniform/random controls.
+3. Build the new teacher-v1 asset outside every evaluation split; its 64-state
+   replay/schema preflight may automatically launch the registered 2,048-state
+   pilot, but not a 10k/50k expansion.
+4. Enumerate and price 20–50 structured bury candidates as a separate surface;
+   the historical four-variant `MC_BURY` tie did not test this proposal space.
+5. Promote only after fresh paired full games beat compiled `mc-strong` N=30.

@@ -663,3 +663,48 @@ def test_a_tampered_deep_lead_row_is_REJECTED():
     deck[0], deck[1] = deck[1], deck[0]
     with pytest.raises(ValueError, match="deck does not reproduce"):
         replay_deep_lead(row)
+
+
+def test_QHKR_override_variance_regression():
+    """S0 item 4: the live incident Jerry reported, as a challenge case.
+
+    Round 4 trick 0, banker seat 2 holds `SA SA SK`; candidate 0 IS the
+    `SA SA SK` throw, so this was never a ballot omission. Production led `DJ`.
+    Measured: over N=30 replicas the fixed-margin override picks a non-candidate-0
+    card a few percent of the time, because it compares POINT ESTIMATES against a
+    5.0 margin and a lucky draw clears it. The paired lower-confidence-bound
+    override suppresses that.
+
+    Pinned as a regression so a future change cannot silently restore the
+    variance-driven override on this exact state.
+    """
+    import json
+    import os
+    from shengji.rl.replay_log import rebuild_round
+    from shengji.ai.registry import make_bot
+    here = os.path.dirname(os.path.abspath(__file__))
+    fx = json.load(open(os.path.join(here, "data",
+                                     "qhkr_round4_override.json")))
+    evs = fx["events"]
+    seat = fx["seat"]
+    rnd = rebuild_round(evs)
+    for e in evs:
+        if e["e"] != "play":
+            continue
+        if (rnd.trick is None or not rnd.trick.plays) and e["seat"] == seat:
+            break
+        rnd.play(e["seat"], list(e["cards"]))
+
+    b = make_bot("mc-strong", seed=1)
+    cands = b._candidates(rnd, seat)
+    assert list(cands[0]) == ["SA", "SA", "SK"], (
+        f"candidate 0 must be the SAAK throw, got {cands[0]}")
+
+    # with the LCB override the correct card must survive every replica
+    picks = set()
+    for k in range(20):
+        bot = make_bot("mc-strong", seed=500 + k)
+        bot.CONFIDENCE_OVERRIDE = True
+        picks.add(tuple(bot.decide_play(rnd, seat)))
+    assert picks == {("SA", "SA", "SK")}, (
+        f"LCB override deviated from candidate 0 on this state: {picks}")

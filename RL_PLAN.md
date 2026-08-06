@@ -368,8 +368,11 @@ run, so that comparison stays open rather than counted.
 
 ## RUN STATUS — 2026-08-05 18:50
 
-No bulk RL/data run is authorized. Compiled N=30 MC—the champion shipped
-overnight—is still the incumbent; **daytime work produced no stronger policy**.
+No old-contract bulk RL/data run is authorized. The bounded S0 challenge,
+64-state teacher-v1 preflight, automatic 2,048-state launch after a clean
+preflight, and short faithful RL microbaselines are authorized. Compiled N=30
+MC—the champion shipped overnight—is still the incumbent; **daytime work
+produced no stronger policy**.
 N=60 produced no confirmed increment. The six-arm DEV-512 ballot screen
 completed with **SELECT NONE**, so
 its CALIB, online-confirmation and learn-from-winner stages are NOT REACHED /
@@ -409,12 +412,17 @@ they change what gets built, not just what gets said.
    Compare current uniform N=30, confidence-only, deterministic adaptive,
    random-allocation and equal-work high-budget controls before a fresh paired
    full-game gate.
-2. **Build a teacher that can exceed the old teacher.** Generate a 2,048-state
-   pilot outside every evaluation split, balanced by phase/role/lead-follow/
+2. **Build a teacher that can exceed the old teacher.** Follow
+   `TEACHER_V1_SPEC.md`: mechanics first, then a gold continuation-quality gate,
+   then generate a 2,048-state pilot outside every evaluation split, balanced
+   by phase/role/lead-follow/
    candidate count/disagreement. Store 512 common worlds per action, per-world
    terminal points and signed scoring bracket, exact ballot/sampler/
    continuation identity, paired uncertainty and counters. Use a strong or
-   exact-late gold subset to validate the cheap continuation before scaling.
+   exact-late gold subset to validate the cheap continuation before scaling;
+   require the cheap-selected action's gold-regret 95% upper bound to stay at
+   or below 0.10 signed levels, otherwise relabel with the stronger
+   continuation rather than training a more precise imitation of a bad target.
 3. **Train for the deployed decision and for calibrated outcome separately.**
    Use a v11pair-style pairwise/listwise ranking head on exact candidates plus a
    separate scoring-bracket distribution head. Train three seeds and state-count

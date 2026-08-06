@@ -61,17 +61,38 @@ Build a bounded confidence-aware root evaluator:
    allocation and equal-work high-budget controls. No duel until the mechanism,
    work accounting and power packet return for review.
 
-In parallel, prepare a 64-state schema/replay preflight for a **new** 2,048-state
-teacher/challenge asset. If all 64 rows replay exactly, every candidate is legal
-and held, 512/512 common strict worlds per candidate are accepted, tensors have
-the registered shape and all sampler/skip counters are zero, automatically
-launch the 2,048-state shards. Do
-not enlarge or rescore DEV-512: it was an inspected design-selection worksheet,
-not training data or a strength proof. Its primary 95% half-width was 0.337;
-2,048 comparable rows would still be about 0.169. The new asset earns its cost
-by storing far deeper counterfactual labels and per-world outcomes, not merely
-by being four times larger. The role-sign/immutable-actor RL microgate may run
-in parallel. Correctness work returns to bounded entry checks.
+### Codex live audit of the in-progress S0 worktree
+
+The initial paired-moment implementation has the right acting-team sign and
+common-world basis, but do not commit the policy as finished yet:
+
+- selecting the empirical best of up to 13 alternatives and then applying an
+  unadjusted one-candidate 95% LCB on those same worlds is anti-conservative;
+  use simultaneous bounds (or disjoint selection/report worlds). Adaptive
+  repeated looks additionally require a time-uniform confidence sequence or a
+  frozen alpha-spending schedule;
+- a fixed normal `z=1.64` is not the registered small-N bound. Pin and test the
+  actual finite-sample/simultaneous rule;
+- reset `last_override_stats` at every decision, including one-candidate,
+  candidate-0 and confidence-disabled exits, or logs can report stale evidence;
+- retain moments/bounds for every alternative, not only the selected one, and
+  record whether the final action was candidate 0 and why;
+- an RNG-state digest alone cannot replay a mutable stream. Store a derived
+  per-decision seed/stream identity (or the complete pre-decision state) plus
+  policy/git/ballot and accepted/rejected work; and
+- keep production `mc-strong` behavior unchanged under a separately registered
+  policy until the QHKR challenge, fixed-work controls and paired game gate pass.
+
+In parallel, execute `TEACHER_V1_SPEC.md`: a 64-state mechanics preflight, then
+a 128-state continuation-quality gate. Only the second gate—gold-report regret
+upper bound at most 0.10 signed levels—automatically launches the 2,048-state
+shards. A replay-clean schema alone is not evidence that heuristic continuation
+is a useful teacher. Any exact-late gold must be information-set legal; a
+perfect-information solver is a diagnostic oracle, not a policy target. Do not
+enlarge/rescore DEV-512: it was an inspected design
+worksheet, not training data or a strength proof. The role-sign/immutable-actor
+RL microgate may run in parallel. Correctness work returns to bounded entry
+checks.
 
 ## Decisions that should not be reopened
 
@@ -101,7 +122,7 @@ RL role-sign / immutable-actor microgate status:
 CALIB / REPORT confirmation: sealed and unscored
 ```
 
-Return after the implementation/preflight packet before a full online duel or
-any 10k/50k teacher expansion. Bounded local challenge runs and the 64-state
-preflight are authorized; a clean preflight automatically authorizes the
-registered 2,048-state shards. CALIB and REPORT remain sealed.
+Return after the S0 implementation packet before a full online duel, and after
+teacher Stages A/B before any continuation change. A Stage-B pass automatically
+authorizes the registered 2,048-state Stage C, but no 10k/50k expansion. CALIB
+and REPORT remain sealed.

@@ -81,6 +81,8 @@ class MCBot(SmartBot):
     #                       in the declarer's hand (public info; RTLT: a
     #                       declared rank pair was sampled split, making a
     #                       beatable K-pair lead look boss)
+    CONFIDENCE_OVERRIDE = False   # S0: require a paired LCB, not a point gap
+    CONFIDENCE_Z = 1.64           # one-sided 95%
     MARGIN = 5.0  # points/round a candidate must beat SmartBot's pick by;
     #               keeps the heuristic prior unless the search is confident.
     #               0 = pure argmax.
@@ -122,6 +124,7 @@ class MCBot(SmartBot):
         # late-round states where no void-respecting world exists.
         self.impossible_worlds = 0
         self.rejected_worlds = 0
+        self.last_override_stats = None
         self.reject_cause = Counter()
         # Decisions that fell back to candidate 0 with NO world sampled.
         self.zero_world_decisions = 0     # kept at 0; readers still reference it
@@ -144,6 +147,14 @@ class MCBot(SmartBot):
         mem = Memory(rnd, seat, own_kitty=getattr(self, 'BANKER_KITTY', True))
         i_attack = rnd.is_attacker(seat)
         totals = [0.0] * len(candidates)
+        # Paired running moments of (candidate_i - candidate_0) on the SAME
+        # world. The fixed-margin override compares point estimates only, so a
+        # noisy draw can clear it: in the QHKR incident `DJ` beat candidate 0 by
+        # 5.8-6.3 against a 5.0 margin in 2 of 500 N=30 replicas, while the
+        # correct card won the other 479. Pairing on shared worlds removes the
+        # world-to-world variance that dominates the raw spread.
+        d_sum = [0.0] * len(candidates)
+        d_sq = [0.0] * len(candidates)
         n_worlds = 0
         for _ in range(self.N_DETERMINIZATIONS):
             sampled = self._sample_hands(rnd, seat, mem)
@@ -151,9 +162,17 @@ class MCBot(SmartBot):
                 continue
             n_worlds += 1
             hands, buried = sampled
+            world_vals = []
             for i, cand in enumerate(candidates):
                 val = self._score(self._rollout(rnd, seat, hands, buried, cand))
-                totals[i] += val if i_attack else -val
+                val = val if i_attack else -val
+                totals[i] += val
+                world_vals.append(val)
+            base = world_vals[0]
+            for i, v in enumerate(world_vals):
+                d = v - base
+                d_sum[i] += d
+                d_sq[i] += d * d
         self.last_n_worlds = n_worlds
         # Batched, not incremented inside the candidate/world loop: an
         # attribute write in MC's hottest path taxes every production search
@@ -183,9 +202,34 @@ class MCBot(SmartBot):
         margin = self.MARGIN
         if self.LEAD_MARGIN is not None and not rnd.trick.plays:
             margin = self.LEAD_MARGIN
-        if best != 0 and (totals[best] - totals[0]) / n_worlds < margin:
-            return candidates[0]
+        if best != 0:
+            gap = (totals[best] - totals[0]) / n_worlds
+            if self.CONFIDENCE_OVERRIDE:
+                # Require the paired LOWER CONFIDENCE BOUND to clear the
+                # margin, not the point estimate. This is what the fixed
+                # margin could not do: distinguish "genuinely better" from
+                # "ahead on a lucky draw".
+                se = self._paired_se(d_sum[best], d_sq[best], n_worlds)
+                self.last_override_stats = {
+                    "gap": gap, "se": se, "n_worlds": n_worlds,
+                    "lcb": gap - self.CONFIDENCE_Z * se, "margin": margin,
+                    "candidate": list(candidates[best]),
+                    "candidate0": list(candidates[0]),
+                }
+                if gap - self.CONFIDENCE_Z * se < margin:
+                    return candidates[0]
+            elif gap < margin:
+                return candidates[0]
         return candidates[best]
+
+    @staticmethod
+    def _paired_se(d_sum: float, d_sq: float, n: int) -> float:
+        """SE of the paired mean difference. Zero variance -> zero SE."""
+        if n < 2:
+            return float("inf")
+        mean = d_sum / n
+        var = max(0.0, d_sq / n - mean * mean) * n / (n - 1)
+        return (var / n) ** 0.5
 
     def _score(self, attacker_pts: float) -> float:
         """Rollout value from the attackers' perspective.

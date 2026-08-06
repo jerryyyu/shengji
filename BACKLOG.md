@@ -33,7 +33,7 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 | priority | work | exit gate |
 |---|---|---|
 | **S0 search strength** | Build confidence-gated adaptive MC on the incumbent ballot | Reproduce the live `QHKR` round-4 `DJ` over `SAAK` variance failure; persist paired per-world deltas/SE; compare current uniform N=30, confidence fallback, deterministic adaptive allocation, random allocation and equal-work uniform controls. Promote only on fresh paired full games. |
-| **S1 teacher/model** | Generate a new clean counterfactual teacher pilot, then earn scale | Start with 2,048 stratified non-evaluation states, current executable ballot, 512 common worlds/action, per-world scoring-bracket outcomes and an explicit strong continuation. This is a new training/challenge asset, not an enlargement of DEV-512. Train three-seed action ranker + calibrated outcome head; scale only if untouched regret and paired games improve. |
+| **S1 teacher/model** | Execute `TEACHER_V1_SPEC.md`, then earn scale | Pass the 64-state mechanics and 128-state gold-continuation gates before the 2,048-state wave. This is a new training/challenge asset, not an enlargement of DEV-512. Train three-seed action ranker + calibrated outcome head; scale only if untouched regret and paired games improve. |
 | **S2 self-play RL** | Run faithful role-conditioned synchronous microbaselines | Unit-test attacker/defender signs, separately version reward targets, and bind immutable actors. Then run Suphx-style feature removal and DouZero-style direct-Q baselines for 20–30 minutes; stable spread plus held-out improvement earns fleet scale. |
 | **S3 structured search** | Attack decisions outside ordinary play selection | In parallel, screen structured MC bury sourcing and sampled exact solving for the final ~4 tricks. Each changes a different once-per-round/tactical bottleneck and must duel the production champion directly. |
 | **Frontend ship gate** | Run one bounded multi-tab soak | Cover join, simultaneous seat claim, disconnect-to-bot, reconnect/takeover, stale/displaced sockets, second absence, private-hand visibility, chat before initial state and >50 messages, and saved-room invite precedence. |
@@ -103,10 +103,12 @@ policy disagreement. Include a small incident tranche from real human games.
 For every state store the exact replay and `BallotSpec`, every candidate, 512
 common strict worlds, per-world terminal attacker points and signed level
 bracket, paired deltas/SE, sampler/continuation identities and all counters. A
-gold subset should use champion or exact-late continuation to test whether the
-cheap continuation preserves candidate ranking before scaling it. This single
-tensor supports allocation research, uncertainty calibration and supervised
-learning without rerunning rollouts.
+stratified gold subset should use champion continuation and exact-late solving
+where tractable to test whether the cheap continuation preserves candidate
+ranking. If the cheap-selected action's gold-regret 95% upper bound exceeds
+0.10 signed levels, do not train or scale that cheap target; redirect labels to
+the stronger continuation. This tensor supports allocation research,
+uncertainty calibration and supervised learning without rerunning rollouts.
 
 Train three seeds at increasing state counts with:
 

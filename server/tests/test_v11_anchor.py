@@ -133,19 +133,57 @@ def test_anchor_decision_record_names_model_mc_and_actual_choices():
     assert rec["reason"] == "below_fixed_margin"
 
 
-def test_anchor_contract_is_equal_n30_work_and_current_ballot():
-    anchor = make_bot("mc-v11anchor", seed=7)
-    random_control = make_bot("mc-v11anchor-random", seed=7)
-    current = make_bot("mc-strong", seed=7)
+@pytest.mark.parametrize(("anchor_name", "random_name", "base_name"), [
+    ("mc-v11anchor", "mc-v11anchor-random", "mc-strong"),
+    ("mc-v11anchor-s0-report-lcb",
+     "mc-v11anchor-s0-report-lcb-random", "mc-s0-report-lcb"),
+    ("mc-v11anchor-s0-adaptive",
+     "mc-v11anchor-s0-adaptive-random", "mc-s0-adaptive"),
+])
+def test_anchor_contract_exactly_matches_named_search_base(
+        anchor_name, random_name, base_name):
+    anchor = make_bot(anchor_name, seed=7)
+    random_control = make_bot(random_name, seed=7)
+    base = make_bot(base_name, seed=7)
+    excluded = {"ANCHOR_MODE", "V11_NPZ_SHA256", "V11_THRESHOLD"}
+    expected = {
+        name: getattr(base, name) for name in dir(base)
+        if name.isupper() and name not in excluded
+    }
     for bot in (anchor, random_control):
-        assert bot.N_DETERMINIZATIONS == current.N_DETERMINIZATIONS == 30
-        assert bot.MARGIN == current.MARGIN == 5.0
-        assert bot.TRACTOR_LOCK is current.TRACTOR_LOCK is True
-        assert bot.REQUIRE_EXACT_WORK is current.REQUIRE_EXACT_WORK is False
-    assert ballot_for_policy("mc-v11anchor").digest == \
-        ballot_for_policy("mc-strong").digest
-    assert ballot_for_policy("mc-v11anchor-random").digest == \
-        ballot_for_policy("mc-strong").digest
+        assert bot.anchor_search_base_policy == base_name
+        assert {name: getattr(bot, name) for name in expected} == expected
+        assert type(bot.rollout_policy) is type(base.rollout_policy)
+        assert ballot_for_policy(bot.policy_name).digest == \
+            ballot_for_policy(base_name).digest
+
+
+def test_s0_anchor_preserves_report_and_adaptive_mechanisms():
+    report = make_bot("mc-v11anchor-s0-report-lcb", seed=7)
+    adaptive = make_bot("mc-v11anchor-s0-adaptive", seed=7)
+    assert report.N_DETERMINIZATIONS == adaptive.N_DETERMINIZATIONS == 30
+    assert report.MARGIN == adaptive.MARGIN == 5.0
+    assert report.REPORT_RULE == adaptive.REPORT_RULE == "lcb"
+    assert report.REPORT_FOLD_WORLDS == adaptive.REPORT_FOLD_WORLDS == 300
+    assert report.ADAPTIVE_ALLOCATION is False
+    assert adaptive.ADAPTIVE_ALLOCATION is True
+    assert report.REQUIRE_EXACT_WORK is adaptive.REQUIRE_EXACT_WORK is True
+
+
+def test_anchor_refuses_a_misnamed_or_s3_enabled_search_base():
+    from shengji.rl.torch_policy import MCV11ProtectedAnchor
+
+    adaptive = make_bot("mc-s0-adaptive", seed=7)
+    with pytest.raises(RuntimeError, match="object/name identity"):
+        MCV11ProtectedAnchor(
+            seed=7, search_base=adaptive,
+            search_base_policy="mc-s0-report-lcb")
+
+    unsafe = make_bot("mc-strong", seed=7)
+    unsafe.EXACT_ENDGAME = True
+    with pytest.raises(RuntimeError, match="every S3 feature off"):
+        MCV11ProtectedAnchor(
+            seed=7, search_base=unsafe, search_base_policy="mc-strong")
 
 
 def test_override_manifest_binds_the_mc_ballot_the_net_actually_scores():

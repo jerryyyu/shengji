@@ -370,13 +370,20 @@ REGISTRY["rl-override-v11pair"] = _make_override_thr(
     "snapshots_v11pair/ep07.pt", 0.02)
 
 
-def _make_v11_anchor(*, random_control: bool = False):
-    """Frozen v11pair proposal inside an otherwise ordinary N=30 search."""
+def _make_v11_anchor(*, random_control: bool = False,
+                     search_base_policy: str = "mc-strong"):
+    """Frozen v11pair proposal inside one literal MC search contract."""
     def make(**kw):
         from ..rl.torch_policy import (MCV11ProtectedAnchor,
                                        MCV11RandomAnchor)
         cls = MCV11RandomAnchor if random_control else MCV11ProtectedAnchor
-        return cls("snapshots_v11pair/ep07.npz", seed=kw.get("seed"))
+        seed = kw.get("seed")
+        search_base = make_bot(search_base_policy, seed=seed)
+        return cls(
+            "snapshots_v11pair/ep07.npz", seed=seed,
+            search_base=search_base,
+            search_base_policy=search_base_policy,
+        )
     return make
 
 
@@ -386,6 +393,17 @@ def _make_v11_anchor(*, random_control: bool = False):
 # proposal quality from the generic effect of changing candidate 0.
 REGISTRY["mc-v11anchor"] = _make_v11_anchor()
 REGISTRY["mc-v11anchor-random"] = _make_v11_anchor(random_control=True)
+# S0 can terminate with either the report-LCB mechanism or its deterministic
+# adaptive allocator.  These variants compose v11 with that exact survivor;
+# the original two entries above remain the SELECT-NONE/current-N=30 lane.
+for _suffix, _base in (
+    ("s0-report-lcb", "mc-s0-report-lcb"),
+    ("s0-adaptive", "mc-s0-adaptive"),
+):
+    REGISTRY[f"mc-v11anchor-{_suffix}"] = _make_v11_anchor(
+        search_base_policy=_base)
+    REGISTRY[f"mc-v11anchor-{_suffix}-random"] = _make_v11_anchor(
+        random_control=True, search_base_policy=_base)
 
 
 def _make_gate(path: str, gate: float):

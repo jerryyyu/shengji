@@ -314,8 +314,43 @@ class MCV11ProtectedAnchor(MCBotBase):
     )
     ANCHOR_MODE = "v11"
 
-    def __init__(self, ckpt: str | None = None, seed: int | None = None):
+    def __init__(self, ckpt: str | None = None, seed: int | None = None,
+                 *, search_base: MCBotBase | None = None,
+                 search_base_policy: str = "mc-strong"):
         super().__init__(seed=seed)
+        contract_fields = sorted(
+            name for name in dir(search_base or MCBotBase)
+            if name.isupper() and name not in {
+                "ANCHOR_MODE", "V11_NPZ_SHA256", "V11_THRESHOLD",
+            })
+        if search_base is not None:
+            if not isinstance(search_base, MCBotBase):
+                raise TypeError("protected-anchor search base must be an MCBot")
+            if getattr(search_base, "policy_name", None) != search_base_policy:
+                raise RuntimeError(
+                    "protected-anchor base object/name identity mismatch")
+            # S0 policies are deliberately configuration-only MCBot subclasses.
+            # Copy the *whole* executable policy surface rather than curating a
+            # few familiar knobs: a newly added uppercase Smart/MC switch must
+            # not make the anchor silently differ from the terminal champion.
+            # The three anchor-only fields are owned by this composition.
+            for name in contract_fields:
+                setattr(self, name, getattr(search_base, name))
+            if any(getattr(self, name, None) is not False for name in
+                   ("MC_BURY", "STRUCTURED_BURY", "EXACT_ENDGAME")):
+                raise RuntimeError(
+                    "protected-anchor base must keep every S3 feature off")
+            # The frozen S0 survivor uses HeuristicBot today.  Preserve the
+            # literal continuation object and fail if a future base changes
+            # that contract without a separately reviewed composition.
+            if type(search_base.rollout_policy) is not type(self.rollout_policy):
+                raise RuntimeError(
+                    "protected-anchor base changed rollout-policy class")
+            self.rollout_policy = search_base.rollout_policy
+        self.anchor_search_base_policy = search_base_policy
+        self.anchor_search_contract = {
+            name: getattr(self, name) for name in contract_fields
+        }
         requested = ckpt or "snapshots_v11pair/ep07.npz"
         path = Path(requested)
         if not path.is_file():
@@ -405,6 +440,10 @@ class MCV11ProtectedAnchor(MCBotBase):
         self._pending_anchor_record = {
             "schema": "v11-protected-anchor-v1",
             "mode": self.ANCHOR_MODE,
+            "search_base_policy": self.anchor_search_base_policy,
+            "search_contract_sha256": hashlib.sha256(
+                repr(sorted(self.anchor_search_contract.items())).encode()
+            ).hexdigest(),
             "checkpoint_sha256": self.checkpoint_sha256,
             "threshold": self.V11_THRESHOLD,
             "candidate_count": len(full),

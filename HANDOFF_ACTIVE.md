@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 10:58 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 11:44 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -19,8 +19,9 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   `0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49`.
   S0b-LCB launched 8/8 exact parent-bound Mini shards at 06:58 EDT. Air remains
   duplicate fallback only; never pool its records or launch a child from Air.
-  At 09:18 all eight shards completed the adaptive label and entered
-  uniform-report; stderr remains empty. Do not inspect partial effects.
+  At 11:44 all eight shards had completed adaptive and uniform-report and were
+  running the third/final random-allocation arm; stderr remains empty. Do not
+  inspect partial effects.
 - Teacher-v1 mechanics/gold gates, the v11 protected-anchor compatibility block
   and the role-conditioned RL microgates remain independent parallel strength
   work; none should be folded into S0 before each wins alone. V11 code is ready.

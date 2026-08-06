@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-06 10:58 EDT.
+Last re-derived: 2026-08-06 11:44 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -34,9 +34,10 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   `0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49`.
   This is a mechanism-screen survivor, not a deployment result. Its exact
   parent-bound `s0b-lcb` block launched 8/8 Mini shards at 06:58 EDT. Air's
-  duplicate records may never be pooled. At 09:18 all eight shards completed
-  the adaptive label and entered the uniform-report label together; stderr is
-  empty, but no partial effects are admissible.
+  duplicate records may never be pooled. By 11:44 all eight shards had
+  completed adaptive and uniform-report and entered the third/final random-
+  allocation arm together; stderr is empty, but no partial effects are
+  admissible.
 - The roadmap has three parallel strength lanes: S0 search, clean teacher/model
   iteration, and faithful role-conditioned self-play. They do not share
   evidence, and each must respect its own launch hold. Teacher capture is
@@ -47,7 +48,7 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 | priority | work | exit gate |
 |---|---|---|
 | **S0a search strength — COMPLETE** | Frozen decision-rule screen accepted on authoritative Mini | Eight clean 256-cluster shards selected report-LCB. Independent recomputation matched the registered aggregate; this block cannot promote. |
-| **S0b allocation — RUNNING** | Test allocation separately under the selected LCB report rule | Eight exact parent-bound `s0b-lcb` shards cover seeds 134,000,000–134,002,047 on Mini. The adaptive label is complete on every shard and uniform-report is running; random allocation follows. Deterministic adaptive must beat both controls by paired point estimate; otherwise report-LCB survives. Do not score partials. |
+| **S0b allocation — RUNNING** | Test allocation separately under the selected LCB report rule | Eight exact parent-bound `s0b-lcb` shards cover seeds 134,000,000–134,002,047 on Mini. Adaptive and uniform-report are complete on every shard; all eight are running the third/final random-allocation arm. Deterministic adaptive must beat both controls by paired point estimate; otherwise report-LCB survives. Do not score partials. |
 | **S0c confirmation** | Independently confirm exactly the S0b survivor | Eight 1,024-cluster shards on seeds 135,000,000–135,008,191 compare survivor, `mc-strong-null`, and current. Promote only if survivor-current and survivor-null paired 95% lower bounds are >0 and the null does not clear; otherwise close S0 SELECT NONE. |
 | **V11 protected-anchor lane — CODE READY, SEPARATE FROM S0** | Use the one confirmed learned improvement as MC's protected root anchor | The frozen 2,048-cluster direct-current revalidation runner and equal-work `mc-v11anchor`/same-trigger-random policies are implemented and focused tests pass. Actual loaded absolute checkpoint path/SHA must equal the manifest NPZ. Do not launch evidence from a dirty tree. The later anchor-strength seed block and promotion rule wait for S0's terminal champion so the reference cannot move underneath the estimand. |
 | **S1 teacher/model — CAPTURE HOLD** | Bind the predeclared packet before spending evidence compute | `teacher-v1-entry-120m-v1` names 1,024 fresh deals at seeds 120000000–120001023 in 8 shards, but the current diagnose/freeze artifacts do not yet prove that exact shard/range population. Carry packet id, shard identity and exact coverage through diagnostic, state-set and gate artifacts; add wrong-range, missing-shard and repeated-shard falsification tests. Only then run 64-state Stage A and disjoint 128-state Stage B. |

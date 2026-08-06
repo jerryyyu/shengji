@@ -76,29 +76,53 @@ class CheckpointRef:
 
 def save_immutable_snapshot(net, directory: str | os.PathLike, *,
                             label: str, sequence: int) -> CheckpointRef:
-    """Atomically publish one never-overwritten torch actor snapshot."""
+    """Atomically publish one never-overwritten torch actor snapshot.
+
+    The persistent fixed lock is an exclusive sequence owner.  The final uses
+    a hard link rather than replacement, so a coordinator that lost a race can
+    never overwrite the winner's supposedly immutable bytes.
+    """
     import torch
 
     root = Path(directory)
     root.mkdir(parents=True, exist_ok=True)
     stem = f"{label}_{sequence:06d}"
+    lock = root / f".{stem}.lock"
     partial = root / f".{stem}.partial"
     existing = sorted(root.glob(f"{stem}_*.pt"))
     if existing:
         raise FileExistsError(
             f"refusing reused snapshot sequence {stem}: {existing}")
-    if partial.exists():
-        raise FileExistsError(f"refusing stale snapshot partial {partial}")
-    torch.save(net.state_dict(), partial)
     try:
-        with partial.open("rb") as fh:
+        with lock.open("xb") as fh:
+            fh.write(b"shengji-immutable-snapshot-owner-v1\n")
+            fh.flush()
             os.fsync(fh.fileno())
+    except FileExistsError as exc:
+        raise FileExistsError(
+            f"refusing stale or concurrently owned snapshot sequence "
+            f"{lock}") from exc
+    try:
+        with partial.open("xb") as fh:
+            torch.save(net.state_dict(), fh)
+            fh.flush()
+            os.fsync(fh.fileno())
+    except FileExistsError as exc:
+        raise FileExistsError(
+            f"refusing stale or concurrently owned snapshot partial "
+            f"{partial}") from exc
+    try:
         digest = sha256_file(partial)
         final = root / f"{stem}_{digest[:12]}.pt"
         if final.exists():
             raise FileExistsError(f"refusing to overwrite actor snapshot {final}")
-        os.replace(partial, final)
-    except Exception:
+        try:
+            os.link(partial, final)
+        except FileExistsError as exc:
+            raise FileExistsError(
+                f"refusing to overwrite actor snapshot {final}") from exc
+        partial.unlink()
+    except BaseException:
         # Leave the partial in place as a loud failed publication marker.  A
         # later run must choose a new directory or explicitly investigate it.
         raise

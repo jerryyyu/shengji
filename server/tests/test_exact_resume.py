@@ -418,6 +418,136 @@ def test_resume_refuses_learner_schema_and_optimizer_topology_drift(tmp_path):
                        match="learner or optimizer schema mismatch"):
         _load_into(wrong_mode, resume_ref, actor_ref, candidate_ref)
 
+    wrong_activation_type = _new_bundle(rng_seed=999)
+    wrong_activation_type.learner = torch.nn.Sequential(
+        torch.nn.Linear(2, 3),
+        torch.nn.LeakyReLU(negative_slope=0.2),
+        torch.nn.Linear(3, 1),
+    )
+    wrong_activation_type.optimizer = torch.optim.Adam(
+        wrong_activation_type.learner.parameters(), lr=0.007)
+    with pytest.raises(ResumeContractError,
+                       match="learner or optimizer schema mismatch"):
+        _load_into(
+            wrong_activation_type, resume_ref, actor_ref, candidate_ref)
+
+
+@pytest.mark.parametrize("recurrent_type", [torch.nn.LSTM, torch.nn.GRU])
+def test_resume_supports_recurrent_derived_caches_and_binds_config(
+        tmp_path, recurrent_type):
+    actor_ref, candidate_ref = _artifact_refs(tmp_path)
+    learner = recurrent_type(2, 3, batch_first=True)
+    optimizer = torch.optim.Adam(learner.parameters(), lr=0.004)
+    replay = ReplayRing(4)
+    rng = ResumeRNGStreams.seeded(51)
+    resume_ref = save_exact_resume(
+        tmp_path / f"{recurrent_type.__name__.lower()}.pt",
+        learner=learner,
+        optimizer=optimizer,
+        replay=replay,
+        rng=rng,
+        progress=ResumeProgress(0, 0),
+        actor_ref=actor_ref,
+        candidate_ref=candidate_ref,
+        experiment=EXPERIMENT,
+        contract_sha256=CONTRACT_SHA256,
+    )
+
+    wrong_config = recurrent_type(2, 3, batch_first=False)
+    wrong_optimizer = torch.optim.Adam(wrong_config.parameters(), lr=0.004)
+    with pytest.raises(ResumeContractError,
+                       match="learner or optimizer schema mismatch"):
+        load_exact_resume(
+            resume_ref,
+            learner=wrong_config,
+            optimizer=wrong_optimizer,
+            replay=ReplayRing(4),
+            rng=ResumeRNGStreams.seeded(999),
+            expected_actor_ref=actor_ref,
+            expected_candidate_ref=candidate_ref,
+            expected_experiment=EXPERIMENT,
+            expected_contract_sha256=CONTRACT_SHA256,
+        )
+
+    restored = recurrent_type(2, 3, batch_first=True)
+    restored_optimizer = torch.optim.Adam(restored.parameters(), lr=0.004)
+    load_exact_resume(
+        resume_ref,
+        learner=restored,
+        optimizer=restored_optimizer,
+        replay=ReplayRing(4),
+        rng=ResumeRNGStreams.seeded(999),
+        expected_actor_ref=actor_ref,
+        expected_candidate_ref=candidate_ref,
+        expected_experiment=EXPERIMENT,
+        expected_contract_sha256=CONTRACT_SHA256,
+    )
+    assert state_digest(restored.state_dict()) == \
+        state_digest(learner.state_dict())
+    inputs = torch.arange(8, dtype=torch.float32).reshape(2, 2, 2) / 10
+    with torch.no_grad():
+        assert torch.equal(restored(inputs)[0], learner(inputs)[0])
+
+
+def test_resume_refuses_nested_unregistered_tensor_state(tmp_path):
+    actor_ref, candidate_ref = _artifact_refs(tmp_path)
+    learner = torch.nn.Linear(2, 1)
+    learner.hidden_cache = [torch.ones(1)]
+    optimizer = torch.optim.SGD(learner.parameters(), lr=0.01)
+    with pytest.raises(ResumeContractError,
+                       match="unregistered nested tensor/module/reference"):
+        save_exact_resume(
+            tmp_path / "hidden-tensor.pt",
+            learner=learner,
+            optimizer=optimizer,
+            replay=ReplayRing(4),
+            rng=ResumeRNGStreams.seeded(1),
+            progress=ResumeProgress(0, 0),
+            actor_ref=actor_ref,
+            candidate_ref=candidate_ref,
+            experiment=EXPERIMENT,
+            contract_sha256=CONTRACT_SHA256,
+        )
+
+
+def test_resume_refuses_unpersisted_optimizer_python_state(tmp_path):
+    class CounterSGD(torch.optim.SGD):
+        def __init__(self, params, *, hidden_steps):
+            super().__init__(params, lr=0.01)
+            self.hidden_steps = hidden_steps
+
+    actor_ref, candidate_ref = _artifact_refs(tmp_path)
+    learner = torch.nn.Linear(2, 1)
+    optimizer = CounterSGD(learner.parameters(), hidden_steps=3)
+    resume_ref = save_exact_resume(
+        tmp_path / "optimizer-counter.pt",
+        learner=learner,
+        optimizer=optimizer,
+        replay=ReplayRing(4),
+        rng=ResumeRNGStreams.seeded(1),
+        progress=ResumeProgress(0, 0),
+        actor_ref=actor_ref,
+        candidate_ref=candidate_ref,
+        experiment=EXPERIMENT,
+        contract_sha256=CONTRACT_SHA256,
+    )
+    fresh_learner = torch.nn.Linear(2, 1)
+    fresh_optimizer = CounterSGD(
+        fresh_learner.parameters(), hidden_steps=0)
+    with pytest.raises(ResumeContractError,
+                       match="learner or optimizer schema mismatch"):
+        load_exact_resume(
+            resume_ref,
+            learner=fresh_learner,
+            optimizer=fresh_optimizer,
+            replay=ReplayRing(4),
+            rng=ResumeRNGStreams.seeded(1),
+            expected_actor_ref=actor_ref,
+            expected_candidate_ref=candidate_ref,
+            expected_experiment=EXPERIMENT,
+            expected_contract_sha256=CONTRACT_SHA256,
+        )
+
 
 def test_resume_refuses_mid_update_gradient_state(tmp_path):
     actor_ref, candidate_ref = _artifact_refs(tmp_path)
@@ -456,6 +586,27 @@ def test_late_restore_failure_rolls_back_every_mutable_component(tmp_path):
     bundle.rng.load_state_dict = fail_first_rng_restore
     with pytest.raises(ResumeContractError,
                        match="original state restored"):
+        _load_into(bundle, resume_ref, actor_ref, candidate_ref)
+    assert calls == 2
+    assert _bundle_digests(bundle) == before
+
+
+def test_interrupt_during_restore_rolls_back_every_mutable_component(tmp_path):
+    resume_ref, actor_ref, candidate_ref, _ = _save_case(tmp_path)
+    bundle = _new_bundle(rng_seed=999)
+    before = _bundle_digests(bundle)
+    real_load_replay = bundle.replay.load_state_dict
+    calls = 0
+
+    def interrupt_first_replay_restore(state):
+        nonlocal calls
+        calls += 1
+        real_load_replay(state)
+        if calls == 1:
+            raise KeyboardInterrupt("injected restore interrupt")
+
+    bundle.replay.load_state_dict = interrupt_first_replay_restore
+    with pytest.raises(KeyboardInterrupt, match="injected restore interrupt"):
         _load_into(bundle, resume_ref, actor_ref, candidate_ref)
     assert calls == 2
     assert _bundle_digests(bundle) == before

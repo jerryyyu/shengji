@@ -14,6 +14,7 @@ import platform
 import random
 import struct
 import sys
+import weakref
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -271,8 +272,206 @@ def _tensor_schema(name: str, tensor: torch.Tensor, *,
     }
 
 
-def _learner_schema(learner: torch.nn.Module,
-                    optimizer: torch.optim.Optimizer) -> dict[str, Any]:
+_MODULE_CONTAINER_ATTRIBUTES = {
+    "training",
+    "_parameters",
+    "_buffers",
+    "_non_persistent_buffers_set",
+    "_modules",
+}
+_MODULE_HOOK_ATTRIBUTES = {
+    "_backward_pre_hooks",
+    "_backward_hooks",
+    "_forward_hooks",
+    "_forward_hooks_with_kwargs",
+    "_forward_hooks_always_called",
+    "_forward_pre_hooks",
+    "_forward_pre_hooks_with_kwargs",
+    "_state_dict_hooks",
+    "_state_dict_pre_hooks",
+    "_load_state_dict_pre_hooks",
+    "_load_state_dict_post_hooks",
+}
+_RNN_DERIVED_CACHE_ATTRIBUTES = {
+    "_flat_weight_refs",
+    "_flat_weights",
+}
+_OPTIMIZER_CONTAINER_ATTRIBUTES = {
+    "state",
+    "param_groups",
+}
+_OPTIMIZER_HOOK_ATTRIBUTES = {
+    "_optimizer_step_pre_hooks",
+    "_optimizer_step_post_hooks",
+    "_optimizer_state_dict_pre_hooks",
+    "_optimizer_state_dict_post_hooks",
+    "_optimizer_load_state_dict_pre_hooks",
+    "_optimizer_load_state_dict_post_hooks",
+}
+_OPTIMIZER_DERIVED_CACHE_ATTRIBUTES = {
+    "_warned_capturable_if_run_uncaptured",
+}
+
+
+def _reject_nested_module_references(value: Any, *, label: str,
+                                     seen: set[int] | None = None) -> None:
+    """Refuse hidden state that belongs in a registered module/state_dict."""
+    if isinstance(value, (torch.Tensor, torch.nn.Module,
+                          weakref.ReferenceType, *weakref.ProxyTypes)):
+        raise ResumeContractError(
+            f"unregistered nested tensor/module/reference in {label}")
+    if not isinstance(value, (Mapping, list, tuple)):
+        return
+    if seen is None:
+        seen = set()
+    identity = id(value)
+    if identity in seen:
+        raise ResumeContractError(f"cyclic Python module attribute in {label}")
+    seen.add(identity)
+    try:
+        if isinstance(value, Mapping):
+            for key, item in value.items():
+                _reject_nested_module_references(
+                    key, label=label, seen=seen)
+                _reject_nested_module_references(
+                    item, label=label, seen=seen)
+        else:
+            for item in value:
+                _reject_nested_module_references(
+                    item, label=label, seen=seen)
+    finally:
+        seen.remove(identity)
+
+
+def _is_proven_derived_module_cache(module: torch.nn.Module,
+                                    attribute: str) -> bool:
+    # RNNBase rebuilds these references from its registered parameters.  They
+    # must not be value-bound before tensor restore, but the constructor fields,
+    # `_flat_weights_names`, and `_all_weights` remain in the config schema.
+    return isinstance(module, torch.nn.modules.rnn.RNNBase) \
+        and attribute in _RNN_DERIVED_CACHE_ATTRIBUTES
+
+
+def optimizer_config_schema(
+        optimizer: torch.optim.Optimizer) -> dict[str, Any]:
+    """Bind optimizer Python configuration outside ``state_dict()``.
+
+    Parameter groups and per-parameter state are persisted by PyTorch.  Hooks
+    are refused, the warning-only capturable cache is explicitly ignored, and
+    every other instance attribute must be deterministic configuration without
+    hidden tensors, modules, or object references.
+    """
+    active_hooks = sorted(
+        attribute for attribute in _OPTIMIZER_HOOK_ATTRIBUTES
+        if optimizer.__dict__.get(attribute))
+    if active_hooks:
+        raise ResumeContractError(
+            f"optimizer hooks are unsupported for exact resume: {active_hooks}")
+    config = {}
+    for attribute, value in sorted(optimizer.__dict__.items()):
+        if attribute in _OPTIMIZER_CONTAINER_ATTRIBUTES \
+                or attribute in _OPTIMIZER_HOOK_ATTRIBUTES \
+                or attribute in _OPTIMIZER_DERIVED_CACHE_ATTRIBUTES:
+            continue
+        try:
+            label = f"optimizer attribute {attribute!r}"
+            _reject_nested_module_references(value, label=label)
+            copied = copy.deepcopy(value)
+            state_digest(copied)
+        except ResumeContractError:
+            raise
+        except Exception as exc:
+            raise ResumeContractError(
+                f"unsupported Python optimizer attribute {attribute!r}: "
+                f"{_type_name(value)}") from exc
+        config[attribute] = copied
+    schema = {
+        "schema": "shengji-optimizer-config-v1",
+        "type": _type_name(optimizer),
+        "config": config,
+    }
+    state_digest(schema)
+    return schema
+
+
+def learner_module_config_schema(learner: torch.nn.Module) -> dict[str, Any]:
+    """Bind Python-side module topology and configuration by value.
+
+    ``state_dict()`` covers registered parameters and persistent buffers, but
+    not stateless submodule types, constructor options, or arbitrary mutable
+    attributes.  Those values can change the very next forward/update.  Exact
+    resume therefore records every remaining supported instance attribute and
+    refuses hooks, non-persistent buffers, and values that cannot be hashed by
+    the checkpoint's deterministic state codec.
+
+    The schema is a validation contract, not a second serializer.  A resumed
+    learner must be constructed with the same Python-side configuration before
+    its tensor state is restored.
+    """
+    modules_by_identity: dict[int, dict[str, Any]] = {}
+    for name, module in learner.named_modules(remove_duplicate=False):
+        identity = id(module)
+        if identity not in modules_by_identity:
+            modules_by_identity[identity] = {
+                "module": module,
+                "names": [],
+            }
+        modules_by_identity[identity]["names"].append(name)
+
+    modules = []
+    for entry in modules_by_identity.values():
+        module = entry["module"]
+        names = entry["names"]
+        non_persistent = module.__dict__.get(
+            "_non_persistent_buffers_set", set())
+        if non_persistent:
+            raise ResumeContractError(
+                f"non-persistent buffers are unsupported for module {names}")
+        active_hooks = sorted(
+            attribute for attribute in _MODULE_HOOK_ATTRIBUTES
+            if module.__dict__.get(attribute))
+        if active_hooks:
+            raise ResumeContractError(
+                f"module hooks are unsupported for exact resume at {names}: "
+                f"{active_hooks}")
+
+        config = {}
+        for attribute, value in sorted(module.__dict__.items()):
+            if attribute in _MODULE_CONTAINER_ATTRIBUTES \
+                    or attribute in _MODULE_HOOK_ATTRIBUTES:
+                continue
+            if _is_proven_derived_module_cache(module, attribute):
+                continue
+            try:
+                label = f"attribute {attribute!r} for module {names}"
+                _reject_nested_module_references(value, label=label)
+                copied = copy.deepcopy(value)
+                state_digest(copied)
+            except ResumeContractError:
+                raise
+            except Exception as exc:
+                raise ResumeContractError(
+                    f"unsupported Python module attribute {attribute!r} for "
+                    f"module {names}: {_type_name(value)}") from exc
+            config[attribute] = copied
+        modules.append({
+            "names": names,
+            "type": _type_name(module),
+            "training": module.training,
+            "config": config,
+        })
+    schema = {
+        "schema": "shengji-learner-module-config-v1",
+        "modules": modules,
+    }
+    # Keep this public helper fail-closed if a future edit adds an unsupported
+    # value to the schema itself.
+    state_digest(schema)
+    return schema
+
+
+def learner_resume_schema(learner: torch.nn.Module,
+                          optimizer: torch.optim.Optimizer) -> dict[str, Any]:
     """Bind tensor schema and optimizer-to-parameter topology by name."""
     parameters = list(learner.named_parameters(remove_duplicate=False))
     buffers = list(learner.named_buffers(remove_duplicate=False))
@@ -322,7 +521,7 @@ def _learner_schema(learner: torch.nn.Module,
         })
 
     return {
-        "schema": "shengji-learner-tensor-schema-v1",
+        "schema": "shengji-learner-schema-v3",
         "parameters": [
             _tensor_schema(name, parameter,
                            requires_grad=parameter.requires_grad)
@@ -342,6 +541,8 @@ def _learner_schema(learner: torch.nn.Module,
             {"name": name, "training": module.training}
             for name, module in learner.named_modules()
         ],
+        "module_config": learner_module_config_schema(learner),
+        "optimizer_config": optimizer_config_schema(optimizer),
         "optimizer_groups": optimizer_groups,
     }
 
@@ -658,16 +859,13 @@ def save_exact_resume(
     candidate_ref.verify()
     runtime = _runtime_identity()
     _validate_deterministic_runtime(runtime)
-    learner_schema = _learner_schema(learner, optimizer)
+    learner_schema = learner_resume_schema(learner, optimizer)
 
     target = Path(path).resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_name(f".{target.name}.partial")
     if target.exists():
         raise FileExistsError(f"refusing to overwrite resume checkpoint {target}")
-    if partial.exists():
-        raise FileExistsError(f"refusing stale resume partial {partial}")
-
     payload: dict[str, Any] = {
         "schema": EXACT_RESUME_SCHEMA,
         "complete": True,
@@ -696,16 +894,22 @@ def save_exact_resume(
     }
     _validate_payload(payload)
 
-    torch.save(payload, partial)
     try:
-        with partial.open("rb") as handle:
+        with partial.open("xb") as handle:
+            torch.save(payload, handle)
+            handle.flush()
             os.fsync(handle.fileno())
+    except FileExistsError as exc:
+        raise FileExistsError(
+            f"refusing stale or concurrently owned resume partial "
+            f"{partial}") from exc
+    try:
         _validate_payload(_load_torch_payload(partial))
         actor_ref.verify()
         candidate_ref.verify()
         os.link(partial, target)
         partial.unlink()
-    except Exception:
+    except BaseException:
         # A remaining partial is a loud signal that publication did not
         # finish.  Never silently reuse it on the next attempt.
         raise
@@ -745,7 +949,7 @@ def load_exact_resume(
     _validate_deterministic_runtime(current_runtime)
     if state_digest(payload["runtime"]) != state_digest(current_runtime):
         raise ResumeContractError("numerical runtime identity mismatch")
-    current_learner_schema = _learner_schema(learner, optimizer)
+    current_learner_schema = learner_resume_schema(learner, optimizer)
     if state_digest(payload["learner_schema"]) != state_digest(
             current_learner_schema):
         raise ResumeContractError("learner or optimizer schema mismatch")
@@ -795,7 +999,7 @@ def load_exact_resume(
         ref.verify()
         for artifact in (stored_actor, stored_candidate):
             artifact.verify()
-    except Exception as exc:
+    except BaseException as exc:
         try:
             learner.load_state_dict(original["learner"], strict=True)
             optimizer.load_state_dict(original["optimizer"])
@@ -810,10 +1014,16 @@ def load_exact_resume(
             for name, value in rolled_back.items():
                 if state_digest(value) != original_digests[name]:
                     raise RuntimeError(f"{name} rollback digest mismatch")
-        except Exception as rollback_exc:
+        except BaseException as rollback_exc:
             raise ResumeRollbackError(
                 "resume restore and rollback both failed; caller must "
                 "terminate before another learner transition") from rollback_exc
+        if not isinstance(exc, Exception):
+            # Interrupts and process-exit requests still propagate, but only
+            # after the caller's original mutable state has been proven back
+            # in place.  Otherwise a caught KeyboardInterrupt could expose a
+            # half-restored learner/optimizer/replay/RNG bundle.
+            raise
         if isinstance(exc, ResumeContractError):
             raise
         raise ResumeContractError(

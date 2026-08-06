@@ -17,13 +17,15 @@ sys.path.insert(0, str(SCRIPTS))
 
 import teacher_v1_gate as gate  # noqa: E402
 import teacher_v1_label as label  # noqa: E402
+import teacher_v1_receipt as receipt  # noqa: E402
 import teacher_v1_states as states  # noqa: E402
 from shengji.ai.registry import make_bot  # noqa: E402
 from shengji.engine.game import Game  # noqa: E402
 from shengji.teacher_v1 import (CAPTURE_MAX_DEALS, CAPTURE_PACKET_ID,  # noqa: E402
                                 CAPTURE_SHARDS, EXPERIMENT, GOLD_FOLDS,
                                 PRODUCER_RECEIPT_SCHEMA,
-                                SEED_START, STATE_SCHEMA, TARGET_SCHEMA,
+                                SEED_START, STATE_SCHEMA, STATE_SET_SCHEMA,
+                                TARGET_SCHEMA,
                                 canonical_state_partition,
                                 capture_coverage, capture_packet,
                                 capture_shard_seeds, derive_stream,
@@ -196,6 +198,34 @@ def test_real_state_runtime_refuses_experimental_sampler_and_ballot_flags(
         states.runtime(False)
 
 
+@pytest.mark.parametrize("runtime_name", ["label", "gate"])
+@pytest.mark.parametrize("flag", states.EXPERIMENTAL_SAMPLER_BALLOT_FLAGS)
+@pytest.mark.parametrize("value", ["1", ""])
+def test_late_teacher_runtime_refuses_present_experimental_flags(
+        monkeypatch, runtime_name, flag, value):
+    monkeypatch.setenv("SHENGJI_FAST", "1")
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    monkeypatch.setenv(flag, value)
+    runtime = label.runtime_contract if runtime_name == "label" else \
+        gate.gate_runtime
+    args = (False,) if runtime_name == "label" else ()
+    with pytest.raises(states.TeacherProtocolError, match="must be unset"):
+        runtime(*args)
+
+
+@pytest.mark.parametrize("runtime_name", ["label", "gate"])
+def test_late_teacher_runtime_pins_exact_python(monkeypatch, runtime_name):
+    monkeypatch.setenv("SHENGJI_FAST", "1")
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    module = label if runtime_name == "label" else gate
+    monkeypatch.setattr(module.sys, "version", "3.14.5 test-runtime")
+    runtime = label.runtime_contract if runtime_name == "label" else \
+        gate.gate_runtime
+    args = (False,) if runtime_name == "label" else ()
+    with pytest.raises(states.TeacherProtocolError, match="requires Python 3.14.6"):
+        runtime(*args)
+
+
 def test_state_artifact_publication_is_exclusive_and_removes_partial(tmp_path):
     output = tmp_path / "artifact.json"
     states.write_exclusive(str(output), {"winner": "producer"})
@@ -242,6 +272,142 @@ def test_state_artifact_existing_partial_is_never_reused(tmp_path):
         states.write_exclusive(str(output), {"winner": "candidate"})
     assert json.loads(partial.read_text()) == {"winner": "old-attempt"}
     assert not output.exists()
+
+
+def _late_artifact_writer(name):
+    if name == "receipt":
+        return receipt.write_exclusive, receipt
+    if name == "gate":
+        return gate.write_gate, gate
+    return label.write_complete, label
+
+
+@pytest.mark.parametrize("writer_name", ["receipt", "label", "gate"])
+def test_receipt_and_label_publication_is_exclusive(tmp_path, writer_name):
+    writer, _ = _late_artifact_writer(writer_name)
+    output = tmp_path / f"{writer_name}.json"
+    writer(str(output), {"winner": "producer"})
+    assert json.loads(output.read_text()) == {"winner": "producer"}
+    assert not Path(str(output) + ".partial").exists()
+
+
+@pytest.mark.parametrize("writer_name", ["receipt", "label", "gate"])
+def test_receipt_and_label_collision_cannot_overwrite_winner(
+        tmp_path, monkeypatch, writer_name):
+    writer, module = _late_artifact_writer(writer_name)
+    output = tmp_path / f"{writer_name}.json"
+    partial = Path(str(output) + ".partial")
+    real_link = module.os.link
+
+    def competing_publish(source, destination):
+        Path(destination).write_text('{"winner":"competitor"}\n')
+        return real_link(source, destination)
+
+    monkeypatch.setattr(module.os, "link", competing_publish)
+    with pytest.raises(module.TeacherProtocolError, match="partial remains"):
+        writer(str(output), {"winner": "candidate"})
+    assert json.loads(output.read_text()) == {"winner": "competitor"}
+    assert json.loads(partial.read_text()) == {"winner": "candidate"}
+
+
+@pytest.mark.parametrize("writer_name", ["receipt", "label", "gate"])
+def test_receipt_and_label_verification_failure_keeps_partial_marker(
+        tmp_path, writer_name):
+    writer, module = _late_artifact_writer(writer_name)
+    output = tmp_path / f"{writer_name}.json"
+    partial = Path(str(output) + ".partial")
+
+    def refuse():
+        raise module.TeacherProtocolError("injected verification refusal")
+
+    with pytest.raises(module.TeacherProtocolError,
+                       match="injected verification refusal"):
+        writer(str(output), {"winner": "candidate"}, verify=refuse)
+    assert json.loads(output.read_text()) == {"winner": "candidate"}
+    assert json.loads(partial.read_text()) == {"winner": "candidate"}
+    with pytest.raises(gate.TeacherProtocolError, match="partial artifact remains"):
+        gate.load_json_artifact(str(output))
+
+
+@pytest.mark.parametrize("writer_name", ["receipt", "label", "gate"])
+def test_receipt_and_label_dangling_final_refuses_and_keeps_partial(
+        tmp_path, writer_name):
+    writer, module = _late_artifact_writer(writer_name)
+    output = tmp_path / f"{writer_name}.json"
+    output.symlink_to(tmp_path / "missing-final-target.json")
+    partial = Path(str(output) + ".partial")
+    with pytest.raises(module.TeacherProtocolError, match="partial remains"):
+        writer(str(output), {"winner": "candidate"})
+    assert output.is_symlink()
+    assert json.loads(partial.read_text()) == {"winner": "candidate"}
+
+
+@pytest.mark.parametrize("writer_name", ["receipt", "label", "gate"])
+def test_receipt_and_label_dangling_partial_is_never_followed(
+        tmp_path, writer_name):
+    writer, module = _late_artifact_writer(writer_name)
+    output = tmp_path / f"{writer_name}.json"
+    target = tmp_path / "missing-partial-target.json"
+    partial = Path(str(output) + ".partial")
+    partial.symlink_to(target)
+    with pytest.raises(module.TeacherProtocolError, match="existing partial"):
+        writer(str(output), {"winner": "candidate"})
+    assert partial.is_symlink()
+    assert not target.exists()
+    assert not output.exists()
+
+
+def test_receipt_label_and_gate_verification_refuse_dangling_partial(tmp_path):
+    artifact = tmp_path / "artifact.json"
+    payload = {"complete": True}
+    artifact.write_text(json.dumps(payload) + "\n")
+    digest = label.sha256_file(artifact)
+    partial = Path(str(artifact) + ".partial")
+    partial.symlink_to(tmp_path / "missing-partial-target.json")
+
+    with pytest.raises(label.TeacherProtocolError, match="partial artifact remains"):
+        label.load_pinned(str(artifact), digest)
+    with pytest.raises(gate.TeacherProtocolError, match="partial artifact remains"):
+        gate.load_json_artifact(str(artifact))
+    with pytest.raises(receipt.TeacherProtocolError,
+                       match="partial artifact remains"):
+        receipt.verify_published_receipt(
+            str(artifact), payload, runtime={}, sources={}, stage="a",
+            mode="cheap", state_set_sha256=stable_digest("state-set"),
+        )
+    _, _, problems = gate.load_shards(
+        [str(artifact)], schema="schema", stage="a", mode="cheap")
+    assert any("partial artifact remains" in problem for problem in problems)
+
+
+def test_gate_final_drift_refuses_and_keeps_forensic_partial(tmp_path):
+    output = tmp_path / "stage-a-gate.json"
+    state_set = {"stage": "a"}
+    payload = {
+        "schema": states.GATE_SCHEMA, "experiment_id": EXPERIMENT,
+        "complete": True, "stage": "A", "verdict": "FAIL",
+        "stage_b_authorized": False, "stage_c_authorized": False,
+        "problems": ["expected mechanics failure"],
+    }
+
+    def mutate_then_verify():
+        output.write_text(json.dumps({**payload, "verdict": "PASS"}) + "\n")
+        gate.verify_published_gate(
+            str(output), payload, state_set=state_set,
+            state_set_path=str(tmp_path / "states.json"),
+            expected_state_set_sha256=stable_digest("state-set"),
+            runtime={}, allow_partial=True,
+        )
+
+    with pytest.raises(gate.TeacherProtocolError,
+                       match="published gate differs"):
+        gate.write_gate(str(output), payload, verify=mutate_then_verify)
+    partial = Path(str(output) + ".partial")
+    assert output.exists() and partial.exists()
+    assert json.loads(output.read_text())["verdict"] == "PASS"
+    assert json.loads(partial.read_text())["verdict"] == "PASS"
+    with pytest.raises(gate.TeacherProtocolError, match="partial artifact remains"):
+        gate.load_json_artifact(str(output))
 
 
 def test_registered_capture_refuses_wrong_packet_range():
@@ -779,11 +945,23 @@ def test_gold_shards_may_have_distinct_cheap_parent_hashes(tmp_path):
         path = tmp_path / f"gold-{index}.json"
         path.write_text(json.dumps(payload))
         paths.append(str(path))
+    artifact_sha256s = []
     _, records, problems = gate.load_shards(
-        paths, schema=gate.GOLD_SHARD_SCHEMA, stage="b", mode="gold"
+        paths, schema=gate.GOLD_SHARD_SCHEMA, stage="b", mode="gold",
+        artifact_sha256s=artifact_sha256s,
     )
     assert problems == []
     assert len(records) == 128
+    assert artifact_sha256s == [gate.sha256_file(path) for path in paths]
+    assert gate.artifact_drift_problems(
+        paths, artifact_sha256s, population="gold label") == []
+
+    original_last = Path(paths[-1]).read_bytes()
+    Path(paths[-1]).write_bytes(original_last + b" ")
+    assert "gold label artifact changed during gate validation" in \
+        gate.artifact_drift_problems(
+            paths, artifact_sha256s, population="gold label")
+    Path(paths[-1]).write_bytes(original_last)
 
     mixed = json.loads(Path(paths[3]).read_text())
     original = copy.deepcopy(mixed)
@@ -1038,8 +1216,9 @@ def test_producer_receipt_is_bound_before_work_and_reopened_by_gate(tmp_path):
         )
     }
     runtime = {
-        "git": "abc", "python": "3.14", "tree_dirty": False,
+        "git": "abc", "python": "3.14.6", "tree_dirty": False,
         "promotable": True, "fast_engine": True, "require_voids": True,
+        "host": "producer-host", "experimental_sampler_ballot_flags": [],
     }
     receipt = {
         "schema": PRODUCER_RECEIPT_SCHEMA,
@@ -1080,6 +1259,18 @@ def test_producer_receipt_is_bound_before_work_and_reopened_by_gate(tmp_path):
     assert "producer receipt executable source drift" in \
         label.producer_receipt_problems(
             stale_sources, runtime=runtime, digests=source_digests,
+            stage="a", mode="cheap", state_set_sha256=state_sha,
+        )
+    stale_runtime = {**receipt, "host": "different-host"}
+    assert "producer receipt/runtime host drift" in \
+        label.producer_receipt_problems(
+            stale_runtime, runtime=runtime, digests=source_digests,
+            stage="a", mode="cheap", state_set_sha256=state_sha,
+        )
+    flagged = {**receipt, "experimental_sampler_ballot_flags": ["flag"]}
+    assert "producer receipt/runtime experimental_sampler_ballot_flags drift" in \
+        label.producer_receipt_problems(
+            flagged, runtime=runtime, digests=source_digests,
             stage="a", mode="cheap", state_set_sha256=state_sha,
         )
 
@@ -1133,6 +1324,391 @@ def test_producer_receipt_is_bound_before_work_and_reopened_by_gate(tmp_path):
     receipt_path.write_text(json.dumps({**receipt, "creator_pid": 456}) + "\n")
     assert "producer receipt exact byte hash" in \
         gate.producer_receipt_problems(manifest)
+
+
+def test_label_publication_reopens_parent_receipt_runtime_and_sources(
+        tmp_path, monkeypatch):
+    runtime = {
+        "git": "abc", "tree_dirty": False, "promotable": True,
+        "host": "producer-host", "python": "3.14.6",
+        "fast_engine": True, "require_voids": True,
+        "experimental_sampler_ballot_flags": [],
+    }
+    digests = {"source": stable_digest("source")}
+    parent_path = tmp_path / "stage-a-states.json"
+    parent = {"complete": True, "states": [{"state_id": "state-1"}]}
+    parent_path.write_text(json.dumps(parent, sort_keys=True) + "\n")
+    parent_sha = label.sha256_file(parent_path)
+    receipt_payload = {
+        "schema": PRODUCER_RECEIPT_SCHEMA,
+        "experiment_id": EXPERIMENT,
+        "packet_id": CAPTURE_PACKET_ID,
+        "capture_packet": capture_packet(),
+        "complete": True,
+        "run_id": "stage-a-primary-0001",
+        "role": "stage-a-primary", "stage": "a", "mode": "cheap",
+        "state_set": {"path": str(parent_path), "sha256": parent_sha},
+        "nonce": stable_digest("nonce"), "created_time_ns": 1,
+        "creator_pid": 1, **runtime, "source_digests": digests,
+    }
+    receipt_path = tmp_path / "stage-a-primary-receipt.json"
+    receipt_path.write_text(json.dumps(receipt_payload, sort_keys=True) + "\n")
+    receipt_sha = label.sha256_file(receipt_path)
+    receipt_binding = {
+        "path": str(receipt_path), "sha256": receipt_sha,
+        "run_id": receipt_payload["run_id"], "role": receipt_payload["role"],
+        "nonce": receipt_payload["nonce"],
+    }
+    monkeypatch.setattr(label, "runtime_contract", lambda _smoke: runtime)
+    monkeypatch.setattr(label, "source_digests", lambda: digests)
+
+    kwargs = {
+        "parent_path": str(parent_path), "parent_sha256": parent_sha,
+        "expected_parent": parent,
+        "receipt_path": str(receipt_path), "receipt_sha256": receipt_sha,
+        "expected_receipt": receipt_payload,
+        "expected_receipt_binding": receipt_binding,
+        "smoke": False, "runtime": runtime, "digests": digests,
+        "stage": "a", "mode": "cheap", "state_set_sha256": parent_sha,
+    }
+    label.revalidate_publication_inputs(**kwargs)
+    receipt.revalidate_receipt_inputs(
+        state_set_path=str(parent_path), state_set_sha256=parent_sha,
+        expected_state_set=parent, runtime=runtime, sources=digests,
+    )
+
+    parent_path.write_text(json.dumps({**parent, "complete": False}) + "\n")
+    with pytest.raises(label.TeacherProtocolError, match="input digest mismatch"):
+        label.revalidate_publication_inputs(**kwargs)
+    with pytest.raises(receipt.TeacherProtocolError, match="input digest mismatch"):
+        receipt.revalidate_receipt_inputs(
+            state_set_path=str(parent_path), state_set_sha256=parent_sha,
+            expected_state_set=parent, runtime=runtime, sources=digests,
+        )
+    parent_path.write_text(json.dumps(parent, sort_keys=True) + "\n")
+
+    receipt_path.write_text(json.dumps(
+        {**receipt_payload, "creator_pid": 2}, sort_keys=True) + "\n")
+    with pytest.raises(label.TeacherProtocolError, match="input digest mismatch"):
+        label.revalidate_publication_inputs(**kwargs)
+    receipt_path.write_text(json.dumps(receipt_payload, sort_keys=True) + "\n")
+
+    monkeypatch.setattr(
+        label, "runtime_contract",
+        lambda _smoke: {**runtime, "host": "different-host"},
+    )
+    with pytest.raises(label.TeacherProtocolError, match="runtime changed"):
+        label.revalidate_publication_inputs(**kwargs)
+    with pytest.raises(receipt.TeacherProtocolError, match="runtime changed"):
+        receipt.revalidate_receipt_inputs(
+            state_set_path=str(parent_path), state_set_sha256=parent_sha,
+            expected_state_set=parent, runtime=runtime, sources=digests,
+        )
+
+    monkeypatch.setattr(label, "runtime_contract", lambda _smoke: runtime)
+    monkeypatch.setattr(label, "source_digests", lambda: {"source": "drift"})
+    with pytest.raises(label.TeacherProtocolError, match="digests changed"):
+        label.revalidate_publication_inputs(**kwargs)
+    with pytest.raises(receipt.TeacherProtocolError, match="digests changed"):
+        receipt.revalidate_receipt_inputs(
+            state_set_path=str(parent_path), state_set_sha256=parent_sha,
+            expected_state_set=parent, runtime=runtime, sources=digests,
+        )
+
+
+def test_receipt_main_wires_pre_and_post_publication_verification(
+        tmp_path, monkeypatch):
+    runtime = {
+        "git": "abc", "tree_dirty": False, "promotable": True,
+        "host": "producer-host", "python": "3.14.6",
+        "fast_engine": True, "require_voids": True,
+        "experimental_sampler_ballot_flags": [],
+    }
+    digests = {"source": stable_digest("source")}
+    state_set = {
+        "schema": STATE_SET_SCHEMA, "experiment_id": EXPERIMENT,
+        "packet_id": CAPTURE_PACKET_ID, "capture_packet": capture_packet(),
+        "stage": "a", "complete": True, "states": [],
+        "states_digest": stable_digest([]),
+    }
+    state_path = tmp_path / "stage-a-states.json"
+    state_path.write_text(json.dumps(state_set, sort_keys=True) + "\n")
+    output = tmp_path / "primary-receipt.json"
+    args = SimpleNamespace(
+        run_id="stage-a-primary-0001", role="stage-a-primary",
+        state_set=str(state_path),
+        expected_state_set_sha256=label.sha256_file(state_path),
+        out=str(output),
+    )
+    monkeypatch.setattr(
+        receipt, "parser",
+        lambda: SimpleNamespace(parse_args=lambda: args),
+    )
+    monkeypatch.setattr(label, "runtime_contract", lambda _smoke: runtime)
+    monkeypatch.setattr(label, "source_digests", lambda: digests)
+    calls = []
+    real_revalidate = receipt.revalidate_receipt_inputs
+
+    def tracked_revalidate(**kwargs):
+        calls.append(kwargs)
+        return real_revalidate(**kwargs)
+
+    monkeypatch.setattr(receipt, "revalidate_receipt_inputs", tracked_revalidate)
+    receipt.main()
+    assert len(calls) == 2
+    assert output.exists()
+    assert not Path(str(output) + ".partial").exists()
+    payload = json.loads(output.read_text())
+    assert payload["state_set"]["sha256"] == args.expected_state_set_sha256
+    assert payload["source_digests"] == digests
+    assert payload["host"] == runtime["host"]
+
+
+def test_label_main_wires_pre_and_post_publication_verification(
+        tmp_path, monkeypatch):
+    runtime = {
+        "git": "abc", "tree_dirty": True, "promotable": False,
+        "host": "smoke-host", "python": "3.14.3",
+        "fast_engine": True, "require_voids": True,
+        "experimental_sampler_ballot_flags": [],
+    }
+    digests = {"source": stable_digest("source")}
+    source = {
+        "experiment_id": EXPERIMENT,
+        "packet_id": CAPTURE_PACKET_ID,
+        "capture_packet": capture_packet(),
+        "capture_coverage": {},
+        "states": [{"state_id": "state-1"}],
+    }
+    source_path = tmp_path / "smoke-states.json"
+    source_path.write_text(json.dumps(source, sort_keys=True) + "\n")
+    output = tmp_path / "smoke-label.json"
+    args = SimpleNamespace(
+        mode="cheap", input=str(source_path),
+        expected_input_sha256=label.sha256_file(source_path), stage="a",
+        shard_index=0, shard_count=1, producer_receipt=None,
+        expected_producer_receipt_sha256=None, out=str(output), smoke=True,
+        selection_worlds=1, report_worlds=1,
+        gold_selection_worlds=1, gold_report_worlds=1,
+    )
+    monkeypatch.setattr(
+        label, "parser", lambda: SimpleNamespace(parse_args=lambda: args))
+    monkeypatch.setattr(label, "runtime_contract", lambda _smoke: runtime)
+    monkeypatch.setattr(label, "source_digests", lambda: digests)
+    monkeypatch.setattr(label, "state_set_problems", lambda *_args, **_kw: [])
+    monkeypatch.setattr(label, "state_source_problems", lambda *_args: [])
+    monkeypatch.setattr(label, "make_bot", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(
+        label, "cheap_record",
+        lambda state, _bot, _counts: {
+            "state_id": state["state_id"], "elapsed_seconds": 0.0,
+            "candidate_world_work": 2,
+        },
+    )
+    calls = []
+    real_revalidate = label.revalidate_publication_inputs
+
+    def tracked_revalidate(**kwargs):
+        calls.append(kwargs)
+        return real_revalidate(**kwargs)
+
+    monkeypatch.setattr(label, "revalidate_publication_inputs", tracked_revalidate)
+    label.main()
+    assert len(calls) == 2
+    assert output.exists()
+    assert not Path(str(output) + ".partial").exists()
+    payload = json.loads(output.read_text())
+    assert payload["input_sha256"] == args.expected_input_sha256
+    assert payload["source_digests"] == digests
+    assert payload["host"] == runtime["host"]
+
+
+def test_gate_final_verifier_reopens_and_recomputes_passing_stage_a(
+        tmp_path, monkeypatch):
+    runtime = {
+        "git": "abc", "python": "3.14.6", "fast_engine": True,
+        "require_voids": True,
+        "gate_source_digests": {
+            "compiled_engine": stable_digest("compiled"),
+            "fast_router": stable_digest("router"),
+            "state_script": stable_digest("states"),
+        },
+    }
+    state_set = {"stage": "a", "states": []}
+    state_sha = stable_digest("state-set")
+    payload = {
+        "schema": states.GATE_SCHEMA, "experiment_id": EXPERIMENT,
+        "complete": True, "stage": "A", "verdict": "PASS",
+        "stage_b_authorized": True, "stage_c_authorized": False,
+        "problems": [],
+    }
+    output = tmp_path / "stage-a-gate.json"
+    gate.write_gate(str(output), payload)
+    monkeypatch.setattr(gate, "gate_runtime", lambda: runtime)
+    monkeypatch.setattr(
+        gate, "load_state_set",
+        lambda *_args: (state_set, []),
+    )
+    calls = []
+
+    def recompute(actual, actual_sha, actual_state_set, **kwargs):
+        calls.append((actual, actual_sha, actual_state_set, kwargs))
+        return []
+
+    monkeypatch.setattr(states, "stage_a_gate_problems", recompute)
+    digest = gate.verify_published_gate(
+        str(output), payload, state_set=state_set,
+        state_set_path=str(tmp_path / "stage-a-states.json"),
+        expected_state_set_sha256=state_sha, runtime=runtime,
+    )
+    assert digest == gate.sha256_file(str(output))
+    assert len(calls) == 1
+    assert calls[0][1:3] == (state_sha, state_set)
+    assert calls[0][3] == {
+        "runtime_identity": {
+            "git": "abc", "python": "3.14.6", "fast_engine": True,
+            "require_voids": True,
+            "fast_binary_sha256": stable_digest("compiled"),
+            "fast_router_sha256": stable_digest("router"),
+            "state_script_sha256": stable_digest("states"),
+        },
+        "verify_artifacts": True,
+    }
+
+
+def test_gate_final_verifier_reopens_and_recomputes_passing_stage_b(
+        tmp_path, monkeypatch):
+    runtime = {"git": "abc", "python": "3.14.6"}
+    state_set = {"stage": "b", "states": []}
+    state_sha = stable_digest("stage-b-state-set")
+    state_path = str(tmp_path / "stage-b-states.json")
+    payload = {
+        "schema": states.GATE_SCHEMA, "experiment_id": EXPERIMENT,
+        "complete": True, "stage": "B", "verdict": "PASS",
+        "stage_c_authorized": True, "problems": [],
+        "regret": {"passed": True, "inconclusive": False},
+        "cheap_inputs": [], "gold_inputs": [],
+    }
+    output = tmp_path / "stage-b-gate.json"
+    gate.write_gate(str(output), payload)
+    monkeypatch.setattr(gate, "gate_runtime", lambda: runtime)
+    monkeypatch.setattr(gate, "load_state_set", lambda *_args: (state_set, []))
+    calls = []
+
+    def recompute(actual, actual_state_set, actual_path, actual_sha,
+                  actual_runtime):
+        calls.append((actual, actual_state_set, actual_path, actual_sha,
+                      actual_runtime))
+
+    monkeypatch.setattr(gate, "verify_published_stage_b_pass", recompute)
+    gate.verify_published_gate(
+        str(output), payload, state_set=state_set,
+        state_set_path=state_path, expected_state_set_sha256=state_sha,
+        runtime=runtime,
+    )
+    assert calls == [(payload, state_set, state_path, state_sha, runtime)]
+
+
+def test_stage_b_final_recomputation_refuses_regret_drift(monkeypatch):
+    state_sha = stable_digest("stage-b-state-set")
+    cheap_hash = stable_digest("cheap-label")
+    gold_hash = stable_digest("gold-label")
+    shared = {
+        "git": "abc", "source_digests": {}, "state_contract": {},
+        "state_input_sha256": state_sha, "target_schema": TARGET_SCHEMA,
+        "packet_id": CAPTURE_PACKET_ID, "capture_packet": capture_packet(),
+        "capture_coverage": packet_lineage()[0], "shard_index": 0,
+    }
+    cheap_manifest = dict(shared)
+    gold_manifest = {**shared, "input_sha256": cheap_hash}
+    cheap = [{"state_id": f"state-{index}"} for index in range(128)]
+    gold = [{"state_id": f"state-{index}"} for index in range(128)]
+    calls = []
+
+    def load(paths, *, mode, artifact_sha256s, **kwargs):
+        calls.append((paths, mode, kwargs))
+        if mode == "cheap":
+            artifact_sha256s.append(cheap_hash)
+            return [cheap_manifest], cheap, []
+        artifact_sha256s.append(gold_hash)
+        return [gold_manifest], gold, []
+
+    regret = {"passed": True, "inconclusive": False, "problems": [],
+              "mean_regret": 0.01}
+    monkeypatch.setattr(gate, "load_shards", load)
+    monkeypatch.setattr(gate, "gate_input_runtime_problems", lambda *_args: [])
+    monkeypatch.setattr(gate, "cheap_record_problems", lambda *_args: [])
+    monkeypatch.setattr(gate, "stage_contract_problems", lambda *_args: [])
+    monkeypatch.setattr(gate, "gold_record_problems", lambda *_args: [])
+    monkeypatch.setattr(gate, "stage_b_regret", lambda _records: regret)
+    monkeypatch.setattr(gate, "artifact_drift_problems", lambda *_a, **_k: [])
+    payload = {
+        "n_states": 128, "regret": regret,
+        "packet_id": shared["packet_id"],
+        "capture_packet": shared["capture_packet"],
+        "capture_coverage": shared["capture_coverage"],
+        "state_input_sha256": state_sha,
+        "state_set": {"path": "states.json", "sha256": state_sha},
+        "cheap_inputs": [
+            {"path": "cheap.json", "sha256": cheap_hash,
+             "shard_index": 0},
+        ],
+        "gold_inputs": [
+            {"path": "gold.json", "sha256": gold_hash,
+             "shard_index": 0},
+        ],
+    }
+    gate.verify_published_stage_b_pass(
+        payload, {"states": []}, "states.json", state_sha, {})
+    assert [call[1] for call in calls] == ["cheap", "gold"]
+    assert all(call[2]["verify_receipts"] is True for call in calls)
+
+    payload["regret"] = {**regret, "mean_regret": 0.0}
+    with pytest.raises(gate.TeacherProtocolError,
+                       match="regret recomputation drift"):
+        gate.verify_published_stage_b_pass(
+            payload, {"states": []}, "states.json", state_sha, {})
+
+
+def test_gate_main_keeps_partial_until_final_verification(
+        tmp_path, monkeypatch):
+    output = tmp_path / "stage-a-gate.json"
+    args = SimpleNamespace(
+        stage="stage-a", input=["primary.json"], rerun=["rerun.json"],
+        state_set="stage-a-states.json",
+        expected_state_set_sha256=stable_digest("state-set"),
+        out=str(output),
+    )
+    runtime = {"git": "abc", "python": "3.14.6"}
+    state_set = {"stage": "a", "states": []}
+    monkeypatch.setattr(
+        gate, "parser", lambda: SimpleNamespace(parse_args=lambda: args))
+    monkeypatch.setattr(gate, "gate_runtime", lambda: runtime)
+    monkeypatch.setattr(
+        gate, "load_state_set", lambda *_args: (state_set, []))
+
+    def refuse_shards(_paths, *, artifact_sha256s=None, **_kwargs):
+        if artifact_sha256s is not None:
+            artifact_sha256s.append(stable_digest(_paths[0]))
+        return [], [], ["expected mechanics failure"]
+
+    monkeypatch.setattr(gate, "load_shards", refuse_shards)
+    monkeypatch.setattr(gate, "artifact_drift_problems", lambda *_a, **_k: [])
+    calls = []
+
+    def verify(path, expected, **kwargs):
+        assert os.path.lexists(path + ".partial")
+        assert json.loads(Path(path).read_text()) == expected
+        calls.append(kwargs)
+        return stable_digest(expected)
+
+    monkeypatch.setattr(gate, "verify_published_gate", verify)
+    with pytest.raises(SystemExit) as exc:
+        gate.main()
+    assert exc.value.code == 4
+    assert len(calls) == 1
+    assert output.exists()
+    assert not Path(str(output) + ".partial").exists()
 
 
 def test_stage_a_receipts_must_have_independent_nonces():

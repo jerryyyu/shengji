@@ -26,6 +26,7 @@ import subprocess
 import sys
 import time
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 
@@ -35,10 +36,11 @@ from shengji.ai.memory import Memory                              # noqa: E402
 from shengji.ai.registry import make_bot                          # noqa: E402
 from shengji.engine.ballot import mc_ballot                       # noqa: E402
 from shengji.engine.round import Round, Trick, TrickPlay          # noqa: E402
-from shengji.teacher_v1 import (CAPTURE_PACKET_ID, CAPTURE_SEED_END, # noqa: E402
-                                CAPTURE_SHARDS,
+from shengji.teacher_v1 import (CAPTURE_PACKET_ID, CAPTURE_PYTHON,   # noqa: E402
+                                CAPTURE_SEED_END, CAPTURE_SHARDS,
                                 CHEAP_FOLDS, CHEAP_SHARD_SCHEMA,
-                                EXPERIMENT, GOLD_FOLDS,
+                                EXPERIMENT, EXPERIMENTAL_SAMPLER_BALLOT_FLAGS,
+                                GOLD_FOLDS,
                                 GOLD_SHARD_SCHEMA,
                                 PRODUCER_RECEIPT_SCHEMA,
                                 REPRESENTATIVE_CELLS, SEED_START,
@@ -58,6 +60,12 @@ from shengji.teacher_v1 import (CAPTURE_PACKET_ID, CAPTURE_SEED_END, # noqa: E40
                                 paired_moments, replay_state,
                                 sampler_delta, sampler_snapshot,
                                 stable_digest, targets, tensor_problems)
+
+
+RUNTIME_BINDING_FIELDS = (
+    "git", "tree_dirty", "promotable", "host", "python", "fast_engine",
+    "require_voids", "experimental_sampler_ballot_flags",
+)
 
 
 def sha256_file(path: str | os.PathLike) -> str:
@@ -116,6 +124,17 @@ def runtime_contract(smoke: bool) -> dict:
         raise TeacherProtocolError("set SHENGJI_REQUIRE_VOIDS=1")
     if os.environ.get("SHENGJI_FAST") != "1":
         raise TeacherProtocolError("set SHENGJI_FAST=1")
+    enabled = [name for name in EXPERIMENTAL_SAMPLER_BALLOT_FLAGS
+               if name in os.environ]
+    if enabled:
+        raise TeacherProtocolError(
+            f"experimental sampler/ballot flags must be unset: {enabled}"
+        )
+    python = sys.version.split()[0]
+    if not smoke and python != CAPTURE_PYTHON:
+        raise TeacherProtocolError(
+            f"real teacher work requires Python {CAPTURE_PYTHON}, got {python}"
+        )
     from shengji.engine import combos, fast
     if not fast.HAVE_FAST or combos.decompose is not fast.decompose:
         raise TeacherProtocolError("compiled engine requested but not active")
@@ -127,9 +146,10 @@ def runtime_contract(smoke: bool) -> dict:
         "tree_dirty": bool(dirty),
         "promotable": not smoke,
         "host": os.uname().nodename,
-        "python": sys.version.split()[0],
+        "python": python,
         "fast_engine": True,
         "require_voids": True,
+        "experimental_sampler_ballot_flags": [],
     }
 
 
@@ -569,6 +589,10 @@ def state_set_problems(payload: dict, stage: str, *, smoke: bool) -> list[str]:
             bad.append("state set is dirty or non-promotable")
         if not payload.get("fast_engine") or not payload.get("require_voids"):
             bad.append("state set lacks compiled/strict provenance")
+        if payload.get("python") != CAPTURE_PYTHON:
+            bad.append(f"state set Python is not {CAPTURE_PYTHON}")
+        if payload.get("experimental_sampler_ballot_flags") != []:
+            bad.append("state set has experimental sampler/ballot flags")
         if payload.get("seed_start") != SEED_START:
             bad.append(f"fresh-deal seed start is not {SEED_START}")
         if any(not isinstance(seed, int)
@@ -633,8 +657,12 @@ def state_source_problems(payload: dict, runtime: dict,
                           digests: dict[str, str]) -> list[str]:
     """Bind capture/freezing to the exact executable used for labelling."""
     bad = []
-    if payload.get("git") != runtime.get("git"):
-        bad.append("state-set git differs from labeller")
+    for key in (
+        "git", "python", "fast_engine", "require_voids",
+        "experimental_sampler_ballot_flags",
+    ):
+        if payload.get(key) != runtime.get(key):
+            bad.append(f"state-set {key} differs from labeller")
     if payload.get("state_script_sha256") != digests.get("state_freezer"):
         bad.append("state freezer source drift")
     if payload.get("fast_router_sha256") != digests.get("fast_router"):
@@ -771,16 +799,28 @@ def cheap_parent_problems(payload: dict, runtime: dict,
     return bad
 
 
+def _load_json_bytes(path: str, *, allow_partial: bool = False
+                     ) -> tuple[dict, str]:
+    """Parse and hash the same opened bytes, avoiding a hash/open race."""
+    partial = str(path) + ".partial"
+    if not allow_partial and os.path.lexists(partial):
+        raise TeacherProtocolError(f"partial artifact remains at {partial}")
+    if os.path.islink(path) or not os.path.isfile(path):
+        raise TeacherProtocolError(f"missing or non-regular artifact {path}")
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    return json.loads(raw), hashlib.sha256(raw).hexdigest()
+
+
 def load_pinned(path: str, expected: str) -> dict:
-    if not expected:
+    if not is_sha256(expected):
         raise TeacherProtocolError("--expected-input-sha256 is required")
-    actual = sha256_file(path)
+    payload, actual = _load_json_bytes(path)
     if actual != expected:
         raise TeacherProtocolError(
             f"input digest mismatch: expected {expected}, got {actual}"
         )
-    with open(path) as fh:
-        return json.load(fh)
+    return payload
 
 
 def producer_receipt_problems(receipt: dict, *, runtime: dict,
@@ -816,11 +856,15 @@ def producer_receipt_problems(receipt: dict, *, runtime: dict,
         bad.append("producer receipt nonce")
     if not isinstance(receipt.get("created_time_ns"), int):
         bad.append("producer receipt creation time")
-    for key in ("git", "python", "fast_engine", "require_voids"):
+    for key in RUNTIME_BINDING_FIELDS:
         if receipt.get(key) != runtime.get(key):
             bad.append(f"producer receipt/runtime {key} drift")
     if receipt.get("tree_dirty") or receipt.get("promotable") is not True:
         bad.append("producer receipt runtime is dirty/non-promotable")
+    if receipt.get("python") != CAPTURE_PYTHON:
+        bad.append(f"producer receipt Python is not {CAPTURE_PYTHON}")
+    if receipt.get("experimental_sampler_ballot_flags") != []:
+        bad.append("producer receipt has experimental sampler/ballot flags")
     if receipt.get("source_digests") != digests:
         bad.append("producer receipt executable source drift")
     return sorted(set(bad))
@@ -858,22 +902,78 @@ def load_producer_receipt(*, path: str | None, expected: str | None,
     }
 
 
-def write_complete(path: str, payload: dict) -> None:
+def revalidate_publication_inputs(
+        *, parent_path: str, parent_sha256: str, expected_parent: dict,
+        receipt_path: str | None, receipt_sha256: str | None,
+        expected_receipt: dict, expected_receipt_binding: dict,
+        smoke: bool, runtime: dict, digests: dict[str, str],
+        stage: str, mode: str, state_set_sha256: str) -> None:
+    """Reopen every long-run parent and runtime immediately around publish."""
+    if load_pinned(parent_path, parent_sha256) != expected_parent:
+        raise TeacherProtocolError("label parent changed after initial load")
+    current_runtime = runtime_contract(smoke)
+    if current_runtime != runtime:
+        raise TeacherProtocolError("teacher runtime changed during labelling")
+    if source_digests() != digests:
+        raise TeacherProtocolError(
+            "teacher executable digests changed during labelling")
+    receipt, binding = load_producer_receipt(
+        path=receipt_path, expected=receipt_sha256, smoke=smoke,
+        runtime=current_runtime, digests=digests, stage=stage, mode=mode,
+        state_set_sha256=state_set_sha256,
+    )
+    if receipt != expected_receipt or binding != expected_receipt_binding:
+        raise TeacherProtocolError(
+            "producer receipt changed after initial admission")
+
+
+def write_complete(path: str, payload: dict,
+                   *, verify: Callable[[], None] | None = None) -> None:
     partial = path + ".partial"
-    if os.path.exists(path) or os.path.exists(partial):
-        raise TeacherProtocolError(f"refusing to overwrite {path}")
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     try:
-        with open(partial, "x") as fh:
+        with open(partial, "x", encoding="utf-8") as fh:
             json.dump(payload, fh, sort_keys=True, separators=(",", ":"))
             fh.write("\n")
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(partial, path)
-    except Exception:
-        if os.path.exists(partial):
-            os.remove(partial)
-        raise
+    except FileExistsError as exc:
+        raise TeacherProtocolError(
+            f"refusing existing partial artifact {partial}; no resume or "
+            "replacement"
+        ) from exc
+    try:
+        os.link(partial, path)
+    except FileExistsError as exc:
+        raise TeacherProtocolError(
+            f"refusing to overwrite {path}; completed partial remains at "
+            f"{partial}"
+        ) from exc
+    if verify is not None:
+        # Keep the completed partial as a refusal marker until the final hard
+        # link and every parent/runtime check have been reopened successfully.
+        verify()
+    try:
+        os.unlink(partial)
+    except OSError as exc:
+        raise TeacherProtocolError(
+            f"published {path} but could not remove partial {partial}"
+        ) from exc
+
+
+def verify_published_label(path: str, expected_payload: dict,
+                           *, smoke: bool,
+                           allow_partial: bool = False) -> str:
+    """Reopen the final name and rerun its local contract before success."""
+    payload, digest = _load_json_bytes(path, allow_partial=allow_partial)
+    if payload != expected_payload:
+        raise TeacherProtocolError("published label differs from candidate bytes")
+    if not smoke:
+        bad = label_packet_problems(payload)
+        if bad:
+            raise TeacherProtocolError(
+                "published label packet contract: " + "; ".join(bad))
+    return digest
 
 
 def deterministic_records_digest(records: list[dict]) -> str:
@@ -937,6 +1037,7 @@ def main() -> None:
                 smoke=args.smoke, runtime=runtime,
                 digests=frozen_source_digests, stage=args.stage, mode=args.mode,
                 state_set_sha256=args.expected_input_sha256)
+            state_set_sha256 = args.expected_input_sha256
             all_records = source["states"]
             selected = canonical_state_partition(
                 all_records, args.shard_index, args.shard_count)
@@ -986,6 +1087,7 @@ def main() -> None:
                 smoke=args.smoke, runtime=runtime,
                 digests=frozen_source_digests, stage=args.stage, mode=args.mode,
                 state_set_sha256=source.get("state_input_sha256"))
+            state_set_sha256 = source.get("state_input_sha256")
             cheap_records = source.get("records", [])
             # A gold shard is the one-to-one continuation of its cheap shard.
             # Re-sharding an already-sharded input would keep only 1/N of it,
@@ -1017,9 +1119,21 @@ def main() -> None:
                 f"input experiment {input_experiment!r}, expected {EXPERIMENT!r}"
             )
         elapsed = sum(record["elapsed_seconds"] for record in records)
-        if source_digests() != frozen_source_digests:
-            raise TeacherProtocolError(
-                "teacher executable digests changed during labelling")
+        revalidate_publication_inputs(
+            parent_path=args.input,
+            parent_sha256=args.expected_input_sha256,
+            expected_parent=source,
+            receipt_path=args.producer_receipt,
+            receipt_sha256=args.expected_producer_receipt_sha256,
+            expected_receipt=receipt,
+            expected_receipt_binding=receipt_binding,
+            smoke=args.smoke,
+            runtime=runtime,
+            digests=frozen_source_digests,
+            stage=args.stage,
+            mode=args.mode,
+            state_set_sha256=state_set_sha256,
+        )
         payload = {
             "schema": schema, "experiment_id": EXPERIMENT,
             "packet_id": source.get("packet_id"),
@@ -1071,7 +1185,27 @@ def main() -> None:
             if bad:
                 raise TeacherProtocolError(
                     "label packet contract: " + "; ".join(bad))
-        write_complete(args.out, payload)
+        def verify_publication() -> None:
+            verify_published_label(
+                args.out, payload, smoke=args.smoke, allow_partial=True)
+            # The partial remains until this post-link provenance check passes.
+            revalidate_publication_inputs(
+                parent_path=args.input,
+                parent_sha256=args.expected_input_sha256,
+                expected_parent=source,
+                receipt_path=args.producer_receipt,
+                receipt_sha256=args.expected_producer_receipt_sha256,
+                expected_receipt=receipt,
+                expected_receipt_binding=receipt_binding,
+                smoke=args.smoke,
+                runtime=runtime,
+                digests=frozen_source_digests,
+                stage=args.stage,
+                mode=args.mode,
+                state_set_sha256=state_set_sha256,
+            )
+
+        write_complete(args.out, payload, verify=verify_publication)
         print(
             f"wrote {args.out}: {len(records)} records, "
             f"digest {payload['records_digest']}, {elapsed:.1f}s",

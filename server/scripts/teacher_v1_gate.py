@@ -16,15 +16,18 @@ import os
 import subprocess
 import sys
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from shengji.ai.registry import make_bot                           # noqa: E402
 from shengji.engine.ballot import mc_ballot                        # noqa: E402
-from shengji.teacher_v1 import (CAPTURE_PACKET_ID, CAPTURE_SHARDS, # noqa: E402
+from shengji.teacher_v1 import (CAPTURE_PACKET_ID, CAPTURE_PYTHON, # noqa: E402
+                                CAPTURE_SHARDS,
                                 CHEAP_FOLDS, CHEAP_SHARD_SCHEMA,
-                                EXPERIMENT, GATE_SCHEMA, GOLD_FOLDS,
+                                EXPERIMENT, EXPERIMENTAL_SAMPLER_BALLOT_FLAGS,
+                                GATE_SCHEMA, GOLD_FOLDS,
                                 GOLD_SHARD_SCHEMA, REPRESENTATIVE_CELLS,
                                 PRODUCER_RECEIPT_SCHEMA,
                                 SAMPLER_COUNTERS, STAGE_A_OTHER_STATES,
@@ -44,12 +47,31 @@ from shengji.teacher_v1 import (CAPTURE_PACKET_ID, CAPTURE_SHARDS, # noqa: E402
                                 stage_b_regret, tensor_problems)
 
 
+RECEIPT_RUNTIME_FIELDS = (
+    "git", "tree_dirty", "promotable", "host", "python", "fast_engine",
+    "require_voids", "experimental_sampler_ballot_flags",
+)
+
+
 def sha256_file(path: str) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def load_json_artifact(path: str, *, allow_partial: bool = False
+                       ) -> tuple[dict, str]:
+    """Parse and hash one opened artifact byte stream."""
+    partial = path + ".partial"
+    if not allow_partial and os.path.lexists(partial):
+        raise TeacherProtocolError(f"partial artifact remains at {partial}")
+    if os.path.islink(path) or not os.path.isfile(path):
+        raise TeacherProtocolError(f"missing or non-regular artifact {path}")
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    return json.loads(raw), hashlib.sha256(raw).hexdigest()
 
 
 def git_output(*args: str) -> str:
@@ -81,6 +103,17 @@ def gate_runtime() -> dict:
         raise TeacherProtocolError("set SHENGJI_REQUIRE_VOIDS=1")
     if os.environ.get("SHENGJI_FAST") != "1":
         raise TeacherProtocolError("set SHENGJI_FAST=1")
+    enabled = [name for name in EXPERIMENTAL_SAMPLER_BALLOT_FLAGS
+               if name in os.environ]
+    if enabled:
+        raise TeacherProtocolError(
+            f"experimental sampler/ballot flags must be unset: {enabled}"
+        )
+    python = sys.version.split()[0]
+    if python != CAPTURE_PYTHON:
+        raise TeacherProtocolError(
+            f"real teacher gate requires Python {CAPTURE_PYTHON}, got {python}"
+        )
     from shengji.engine import combos, fast
     if not fast.HAVE_FAST or combos.decompose is not fast.decompose:
         raise TeacherProtocolError("compiled engine requested but not active")
@@ -92,9 +125,10 @@ def gate_runtime() -> dict:
         "tree_dirty": False,
         "promotable": True,
         "host": os.uname().nodename,
-        "python": sys.version.split()[0],
+        "python": python,
         "fast_engine": True,
         "require_voids": True,
+        "experimental_sampler_ballot_flags": [],
         "gate_source_digests": gate_source_digests(),
     }
 
@@ -102,7 +136,10 @@ def gate_runtime() -> dict:
 def gate_input_runtime_problems(manifest: dict, runtime: dict) -> list[str]:
     """Require the gate and label evidence to share one executable identity."""
     bad = []
-    for key in ("git", "python", "fast_engine", "require_voids"):
+    for key in (
+        "git", "python", "fast_engine", "require_voids",
+        "experimental_sampler_ballot_flags",
+    ):
         if manifest.get(key) != runtime.get(key):
             bad.append(f"gate/label {key} drift")
     label_sources = manifest.get("source_digests", {})
@@ -218,9 +255,7 @@ def producer_receipt_problems(manifest: dict) -> list[str]:
     if not isinstance(path, str) or not is_sha256(expected):
         return ["producer receipt path/hash binding"]
     try:
-        actual = sha256_file(path)
-        with open(path) as fh:
-            receipt = json.load(fh)
+        receipt, actual = load_json_artifact(path)
     except Exception as exc:
         return [f"producer receipt unreadable: {type(exc).__name__}: {exc}"]
     bad = []
@@ -250,12 +285,16 @@ def producer_receipt_problems(manifest: dict) -> list[str]:
     if ((receipt.get("state_set") or {}).get("sha256")
             != manifest.get("state_input_sha256")):
         bad.append("producer receipt exact state-set binding")
-    for key in ("git", "python", "fast_engine", "require_voids"):
+    for key in RECEIPT_RUNTIME_FIELDS:
         if receipt.get(key) != manifest.get(key):
             bad.append(f"producer receipt/label {key} drift")
     if (receipt.get("tree_dirty") or receipt.get("promotable") is not True
             or receipt.get("source_digests") != manifest.get("source_digests")):
         bad.append("producer receipt/label executable provenance")
+    if receipt.get("python") != CAPTURE_PYTHON:
+        bad.append(f"producer receipt Python is not {CAPTURE_PYTHON}")
+    if receipt.get("experimental_sampler_ballot_flags") != []:
+        bad.append("producer receipt has experimental sampler/ballot flags")
     return sorted(set(bad))
 
 
@@ -283,16 +322,18 @@ def load_shards(paths: list[str], *, schema: str, stage: str,
                 mode: str, expected_states: list[dict] | None = None,
                 expected_state_sha256: str | None = None,
                 verify_receipts: bool = False,
+                artifact_sha256s: list[str] | None = None,
                 ) -> tuple[list[dict], list[dict], list[str]]:
     manifests, problems = [], []
     for path in paths:
         try:
-            with open(path) as fh:
-                manifest = json.load(fh)
+            manifest, artifact_sha256 = load_json_artifact(path)
         except Exception as exc:
             problems.append(f"{path}: unreadable: {type(exc).__name__}: {exc}")
             continue
         manifests.append(manifest)
+        if artifact_sha256s is not None:
+            artifact_sha256s.append(artifact_sha256)
         if manifest.get("schema") != schema:
             problems.append(f"{path}: schema")
         if manifest.get("experiment_id") != EXPERIMENT:
@@ -317,7 +358,8 @@ def load_shards(paths: list[str], *, schema: str, stage: str,
     first = manifests[0]
     shared = (
         "experiment_id", "stage", "mode", "git", "tree_dirty",
-        "promotable", "fast_engine", "require_voids", "source_digests",
+        "promotable", "host", "python", "fast_engine", "require_voids",
+        "experimental_sampler_ballot_flags", "source_digests",
         "target_schema", "packet_id", "capture_packet", "capture_coverage",
         "state_input_sha256", "producer_run_id", "producer_receipt",
         "shard_count", "continuation", "counts", "state_contract",
@@ -399,6 +441,33 @@ def load_shards(paths: list[str], *, schema: str, stage: str,
     return manifests, records, problems
 
 
+def artifact_drift_problems(paths: list[str], expected_sha256s: list[str],
+                            *, population: str) -> list[str]:
+    """Ensure validated label names still expose the exact opened bytes."""
+    if len(paths) != len(expected_sha256s):
+        return [f"{population} artifact population could not be hashed exactly"]
+    bad = []
+    for path, expected in zip(paths, expected_sha256s):
+        partial = path + ".partial"
+        if os.path.lexists(partial):
+            bad.append(f"{population} partial artifact remains at {partial}")
+            continue
+        if os.path.islink(path) or not os.path.isfile(path):
+            bad.append(f"{population} missing or non-regular artifact {path}")
+            continue
+        try:
+            actual = sha256_file(path)
+        except Exception as exc:
+            bad.append(
+                f"{population} artifact unreadable after validation: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            continue
+        if actual != expected:
+            bad.append(f"{population} artifact changed during gate validation")
+    return bad
+
+
 def load_state_set(path: str, expected_sha256: str, stage: str
                    ) -> tuple[dict, list[str]]:
     """Open the exact state-set bytes the label shards claim to partition."""
@@ -406,9 +475,7 @@ def load_state_set(path: str, expected_sha256: str, stage: str
     if not is_sha256(expected_sha256):
         return {}, ["state-set expected SHA-256 syntax"]
     try:
-        actual = sha256_file(path)
-        with open(path) as fh:
-            payload = json.load(fh)
+        payload, actual = load_json_artifact(path)
     except Exception as exc:
         return {}, [f"state set unreadable: {type(exc).__name__}: {exc}"]
     if actual != expected_sha256:
@@ -680,22 +747,240 @@ def gold_record_problems(gold: dict, cheap: dict,
     return bad
 
 
-def write_gate(path: str, payload: dict) -> None:
+def write_gate(path: str, payload: dict,
+               *, verify: Callable[[], None] | None = None) -> None:
     partial = path + ".partial"
-    if os.path.exists(path) or os.path.exists(partial):
-        raise TeacherProtocolError(f"refusing to overwrite {path}")
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     try:
-        with open(partial, "x") as fh:
+        with open(partial, "x", encoding="utf-8") as fh:
             json.dump(payload, fh, sort_keys=True, indent=2)
             fh.write("\n")
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(partial, path)
-    except Exception:
-        if os.path.exists(partial):
-            os.remove(partial)
-        raise
+    except FileExistsError as exc:
+        raise TeacherProtocolError(
+            f"refusing existing partial artifact {partial}; no resume or "
+            "replacement"
+        ) from exc
+    try:
+        os.link(partial, path)
+    except FileExistsError as exc:
+        raise TeacherProtocolError(
+            f"refusing to overwrite {path}; completed partial remains at "
+            f"{partial}"
+        ) from exc
+    if verify is not None:
+        verify()
+    try:
+        os.unlink(partial)
+    except OSError as exc:
+        raise TeacherProtocolError(
+            f"published {path} but could not remove partial {partial}"
+        ) from exc
+
+
+def verify_published_stage_b_pass(
+        payload: dict, state_set: dict, state_set_path: str,
+        state_set_sha256: str, runtime: dict) -> None:
+    """Reopen and recompute every input capable of authorizing Stage C."""
+    cheap_items = payload.get("cheap_inputs", [])
+    gold_items = payload.get("gold_inputs", [])
+    cheap_paths = [item["path"] for item in cheap_items]
+    gold_paths = [item["path"] for item in gold_items]
+    expected_states = state_set.get("states", [])
+
+    cheap_sha256s: list[str] = []
+    cheap_manifests, cheap, cheap_bad = load_shards(
+        cheap_paths, schema=CHEAP_SHARD_SCHEMA, stage="b", mode="cheap",
+        expected_states=expected_states,
+        expected_state_sha256=state_set_sha256,
+        verify_receipts=True, artifact_sha256s=cheap_sha256s,
+    )
+    gold_sha256s: list[str] = []
+    gold_manifests, gold, gold_bad = load_shards(
+        gold_paths, schema=GOLD_SHARD_SCHEMA, stage="b", mode="gold",
+        expected_states=expected_states,
+        expected_state_sha256=state_set_sha256,
+        verify_receipts=True, artifact_sha256s=gold_sha256s,
+    )
+    bad = list(cheap_bad) + [f"gold: {problem}" for problem in gold_bad]
+    if cheap_manifests:
+        bad += gate_input_runtime_problems(cheap_manifests[0], runtime)
+    if gold_manifests:
+        bad += [f"gold: {problem}" for problem in
+                gate_input_runtime_problems(gold_manifests[0], runtime)]
+    for record in cheap:
+        bad += cheap_record_problems(record, CHEAP_FOLDS)
+    cheap_by = {record.get("state_id"): record for record in cheap}
+    if len(cheap) != STAGE_B_STATES:
+        bad.append(
+            f"Stage B cheap states {len(cheap)}, required {STAGE_B_STATES}")
+    if len(gold) != STAGE_B_STATES:
+        bad.append(
+            f"Stage B gold states {len(gold)}, required {STAGE_B_STATES}")
+    bad += stage_contract_problems(cheap, "b")
+    for record in gold:
+        match = cheap_by.get(record.get("state_id"))
+        if match is None:
+            bad.append(f"{record.get('state_id')}: no cheap record")
+        else:
+            bad += gold_record_problems(record, match, GOLD_FOLDS)
+    if set(cheap_by) != {record.get("state_id") for record in gold}:
+        bad.append("cheap/gold state-set mismatch")
+
+    if cheap_manifests and gold_manifests:
+        for key in (
+            "git", "source_digests", "state_contract",
+            "state_input_sha256", "target_schema", "packet_id",
+            "capture_packet", "capture_coverage",
+        ):
+            if cheap_manifests[0].get(key) != gold_manifests[0].get(key):
+                bad.append(f"cheap/gold {key} drift")
+        cheap_parent_by_shard = {
+            manifest.get("shard_index"): digest
+            for manifest, digest in zip(cheap_manifests, cheap_sha256s)
+        }
+        for manifest in gold_manifests:
+            index = manifest.get("shard_index")
+            if manifest.get("input_sha256") != cheap_parent_by_shard.get(index):
+                bad.append(
+                    f"gold shard {index} is not bound to its exact cheap parent")
+
+    expected_cheap_items = [
+        {"path": path, "sha256": digest,
+         "shard_index": manifest.get("shard_index")}
+        for path, manifest, digest in zip(
+            cheap_paths, cheap_manifests, cheap_sha256s)
+    ]
+    expected_gold_items = [
+        {"path": path, "sha256": digest,
+         "shard_index": manifest.get("shard_index")}
+        for path, manifest, digest in zip(
+            gold_paths, gold_manifests, gold_sha256s)
+    ]
+    if cheap_items != expected_cheap_items:
+        bad.append("published Stage-B cheap artifact binding drift")
+    if gold_items != expected_gold_items:
+        bad.append("published Stage-B gold artifact binding drift")
+    if payload.get("n_states") != len(gold):
+        bad.append("published Stage-B state count drift")
+    if payload.get("state_set") != {
+        "path": state_set_path,
+        "sha256": state_set_sha256,
+    }:
+        bad.append("published Stage-B state-set binding drift")
+    if cheap_manifests:
+        first = cheap_manifests[0]
+        expected_metadata = {
+            "packet_id": first.get("packet_id"),
+            "capture_packet": first.get("capture_packet"),
+            "capture_coverage": first.get("capture_coverage"),
+            "state_input_sha256": first.get("state_input_sha256"),
+        }
+        for key, expected in expected_metadata.items():
+            if payload.get(key) != expected:
+                bad.append(f"published Stage-B {key} drift")
+
+    regret = stage_b_regret(gold)
+    bad += regret["problems"]
+    if payload.get("regret") != regret:
+        bad.append("published Stage-B regret recomputation drift")
+    bad += artifact_drift_problems(
+        cheap_paths, cheap_sha256s, population="published Stage-B cheap label")
+    bad += artifact_drift_problems(
+        gold_paths, gold_sha256s, population="published Stage-B gold label")
+    if bad:
+        raise TeacherProtocolError(
+            "published Stage-B recomputation: " + "; ".join(bad))
+
+
+def verify_published_gate(
+        path: str, expected_payload: dict, *, state_set: dict,
+        state_set_path: str, expected_state_set_sha256: str,
+        runtime: dict, allow_partial: bool = False) -> str:
+    """Reopen the final gate and independently replay a passing Stage A."""
+    payload, digest = load_json_artifact(path, allow_partial=allow_partial)
+    if payload != expected_payload:
+        raise TeacherProtocolError("published gate differs from candidate bytes")
+    current_runtime = gate_runtime()
+    if current_runtime != runtime:
+        raise TeacherProtocolError("teacher gate runtime changed during publication")
+    reopened_state_set, state_bad = load_state_set(
+        state_set_path, expected_state_set_sha256,
+        "a" if payload.get("stage") == "A" else "b",
+    )
+    if state_bad or reopened_state_set != state_set:
+        raise TeacherProtocolError(
+            "published gate state-set revalidation: " + "; ".join(
+                state_bad or ["state-set payload drift"])
+        )
+    problems = payload.get("problems")
+    if not isinstance(problems, list):
+        raise TeacherProtocolError("published gate problems are not a list")
+    artifact_fields = (
+        ("inputs", "reruns") if payload.get("stage") == "A"
+        else ("cheap_inputs", "gold_inputs")
+    )
+    for field in artifact_fields:
+        artifacts = payload.get(field, [])
+        if not isinstance(artifacts, list):
+            raise TeacherProtocolError(
+                f"published gate {field} is not an artifact list")
+        paths = [item.get("path") for item in artifacts
+                 if isinstance(item, dict)]
+        hashes = [item.get("sha256") for item in artifacts
+                  if isinstance(item, dict)]
+        if len(paths) != len(artifacts) or len(hashes) != len(artifacts):
+            raise TeacherProtocolError(
+                f"published gate {field} artifact binding")
+        drift = artifact_drift_problems(
+            paths, hashes, population=f"published gate {field}")
+        if drift:
+            raise TeacherProtocolError("; ".join(drift))
+    if payload.get("stage") == "A":
+        expected_verdict = "PASS" if not problems else "FAIL"
+        authorized = expected_verdict == "PASS"
+        if (payload.get("verdict") != expected_verdict
+                or payload.get("stage_b_authorized") is not authorized
+                or payload.get("stage_c_authorized") is not False):
+            raise TeacherProtocolError(
+                "published Stage-A verdict/authorization drift")
+        if expected_verdict == "PASS":
+            import teacher_v1_states as states
+            source_digests = runtime.get("gate_source_digests", {})
+            stage_a_runtime = {
+                "git": runtime.get("git"),
+                "python": runtime.get("python"),
+                "fast_engine": runtime.get("fast_engine"),
+                "require_voids": runtime.get("require_voids"),
+                "fast_binary_sha256": source_digests.get("compiled_engine"),
+                "fast_router_sha256": source_digests.get("fast_router"),
+                "state_script_sha256": source_digests.get("state_script"),
+            }
+            bad = states.stage_a_gate_problems(
+                payload, expected_state_set_sha256, state_set,
+                runtime_identity=stage_a_runtime, verify_artifacts=True,
+            )
+            if bad:
+                raise TeacherProtocolError(
+                    "published Stage-A recomputation: " + "; ".join(bad))
+    elif payload.get("stage") == "B":
+        regret = payload.get("regret", {})
+        passed = not problems and regret.get("passed") is True
+        expected_verdict = "PASS" if passed else (
+            "INCONCLUSIVE" if problems or regret.get("inconclusive") else "FAIL"
+        )
+        if (payload.get("verdict") != expected_verdict
+                or payload.get("stage_c_authorized") is not passed):
+            raise TeacherProtocolError(
+                "published Stage-B verdict/authorization drift")
+        if passed:
+            verify_published_stage_b_pass(
+                payload, state_set, state_set_path,
+                expected_state_set_sha256, runtime)
+    else:
+        raise TeacherProtocolError("published gate stage identity")
+    return digest
 
 
 def parser() -> argparse.ArgumentParser:
@@ -726,17 +1011,21 @@ def main() -> None:
     problems += state_bad
     expected_states = state_set.get("states", [])
     if args.stage == "stage-a":
+        primary_sha256s: list[str] = []
         manifests, records, bad = load_shards(
             args.input, schema=CHEAP_SHARD_SCHEMA, stage="a", mode="cheap",
             expected_states=expected_states,
             expected_state_sha256=args.expected_state_set_sha256,
             verify_receipts=True,
+            artifact_sha256s=primary_sha256s,
         )
+        rerun_sha256s: list[str] = []
         rerun_manifests, rerun, rerun_bad = load_shards(
             args.rerun, schema=CHEAP_SHARD_SCHEMA, stage="a", mode="cheap",
             expected_states=expected_states,
             expected_state_sha256=args.expected_state_set_sha256,
             verify_receipts=True,
+            artifact_sha256s=rerun_sha256s,
         )
         problems += bad + [f"rerun: {p}" for p in rerun_bad]
         if manifests:
@@ -763,15 +1052,24 @@ def main() -> None:
                     problems.append(f"primary/rerun {key} drift")
             problems += stage_a_receipt_independence_problems(
                 manifests[0], rerun_manifests[0])
+        problems += artifact_drift_problems(
+            args.input, primary_sha256s, population="primary label")
+        problems += artifact_drift_problems(
+            args.rerun, rerun_sha256s, population="rerun label")
+        problems += artifact_drift_problems(
+            [args.state_set], [args.expected_state_set_sha256],
+            population="Stage-A state set")
         primary_inputs = [
-            {"path": path, "sha256": sha256_file(path),
+            {"path": path, "sha256": digest,
              "shard_index": manifest.get("shard_index")}
-            for path, manifest in zip(args.input, manifests)
+            for path, manifest, digest in zip(
+                args.input, manifests, primary_sha256s)
         ]
         rerun_inputs = [
-            {"path": path, "sha256": sha256_file(path),
+            {"path": path, "sha256": digest,
              "shard_index": manifest.get("shard_index")}
-            for path, manifest in zip(args.rerun, rerun_manifests)
+            for path, manifest, digest in zip(
+                args.rerun, rerun_manifests, rerun_sha256s)
         ]
         if ({item["sha256"] for item in primary_inputs}
                 & {item["sha256"] for item in rerun_inputs}):
@@ -814,17 +1112,21 @@ def main() -> None:
             "reruns": rerun_inputs,
         }
     else:
+        cheap_sha256s: list[str] = []
         cheap_manifests, cheap, cheap_bad = load_shards(
             args.cheap, schema=CHEAP_SHARD_SCHEMA, stage="b", mode="cheap",
             expected_states=expected_states,
             expected_state_sha256=args.expected_state_set_sha256,
             verify_receipts=True,
+            artifact_sha256s=cheap_sha256s,
         )
+        gold_sha256s: list[str] = []
         gold_manifests, gold, gold_bad = load_shards(
             args.gold, schema=GOLD_SHARD_SCHEMA, stage="b", mode="gold",
             expected_states=expected_states,
             expected_state_sha256=args.expected_state_set_sha256,
             verify_receipts=True,
+            artifact_sha256s=gold_sha256s,
         )
         problems += cheap_bad + [f"gold: {p}" for p in gold_bad]
         if cheap_manifests:
@@ -861,14 +1163,21 @@ def main() -> None:
                 if cheap_manifests[0].get(key) != gold_manifests[0].get(key):
                     problems.append(f"cheap/gold {key} drift")
             cheap_parent_by_shard = {
-                manifest.get("shard_index"): sha256_file(path)
-                for path, manifest in zip(args.cheap, cheap_manifests)
+                manifest.get("shard_index"): digest
+                for manifest, digest in zip(cheap_manifests, cheap_sha256s)
             }
-            for path, manifest in zip(args.gold, gold_manifests):
+            for manifest in gold_manifests:
                 index = manifest.get("shard_index")
                 if manifest.get("input_sha256") != cheap_parent_by_shard.get(index):
                     problems.append(
                         f"gold shard {index} is not bound to its exact cheap parent")
+        problems += artifact_drift_problems(
+            args.cheap, cheap_sha256s, population="cheap label")
+        problems += artifact_drift_problems(
+            args.gold, gold_sha256s, population="gold label")
+        problems += artifact_drift_problems(
+            [args.state_set], [args.expected_state_set_sha256],
+            population="Stage-B state set")
         regret = stage_b_regret(gold)
         problems += regret["problems"]
         passed = not problems and regret["passed"]
@@ -898,18 +1207,28 @@ def main() -> None:
             "state_set": {"path": args.state_set,
                           "sha256": args.expected_state_set_sha256},
             "cheap_inputs": [
-                {"path": path, "sha256": sha256_file(path),
+                {"path": path, "sha256": digest,
                  "shard_index": manifest.get("shard_index")}
-                for path, manifest in zip(args.cheap, cheap_manifests)
+                for path, manifest, digest in zip(
+                    args.cheap, cheap_manifests, cheap_sha256s)
             ],
             "gold_inputs": [
-                {"path": path, "sha256": sha256_file(path),
+                {"path": path, "sha256": digest,
                  "shard_index": manifest.get("shard_index")}
-                for path, manifest in zip(args.gold, gold_manifests)
+                for path, manifest, digest in zip(
+                    args.gold, gold_manifests, gold_sha256s)
             ],
         }
     try:
-        write_gate(args.out, result)
+        def verify_publication() -> None:
+            verify_published_gate(
+                args.out, result, state_set=state_set,
+                state_set_path=args.state_set,
+                expected_state_set_sha256=args.expected_state_set_sha256,
+                runtime=runtime, allow_partial=True,
+            )
+
+        write_gate(args.out, result, verify=verify_publication)
     except (OSError, TeacherProtocolError) as exc:
         print(f"REFUSING: {exc}", file=sys.stderr)
         raise SystemExit(3)

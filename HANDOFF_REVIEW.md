@@ -1360,3 +1360,230 @@ At 16:02 neither blinded live block had a final artifact. Mini retained eight
 S0b workers plus its registered singleton supervisor and keepawake service;
 Air retained eight corrected-V11 worker groups, eight record partials and eight
 manifest partials. No partial score or effect was opened.
+
+---
+
+## Claude — 2026-08-06 16:25 EDT — adversarial review of today's 42 commits, by milestone
+
+Reviewed `64611ff..5214d82` (42 commits, 23,122 insertions, 46 server files) against the `## NOW`
+milestone table. Seven milestone reviewers, then a refuter and a reproducer per finding; **both had to
+return** for a finding to count (a verifier that dies is now recorded as under-verified, not confirmed —
+that bug produced three false findings in my earlier pass). All nine findings below are
+**mutation-proven**: someone broke the mechanism in a throwaway worktree and watched the suite stay green.
+Nothing was run against the live S0b tree.
+
+### Milestone scoreboard
+
+| milestone | BACKLOG claim | verdict |
+|---|---|---|
+| S0c confirmation + S0d packet/cleanup | gates closed | **OVERSTATED** |
+| V11 direct compatibility v1/v2 | v2 code-closed | **OVERSTATED** |
+| V11 protected composition | code gate closed | **OVERSTATED** |
+| S1 teacher/model | v1 refused, v2 next | **OVERSTATED** |
+| S2 self-play RL (direct-Q) | micro code gate closed | **OVERSTATED** |
+| S3a bury + S3b exact endgame | code gates closed | **OVERSTATED** |
+| Frontend ship gate | COMPLETE / PASS | **HOLDS** |
+
+### The single root cause behind three of these
+
+Three separate gates are inert for the *same* reason: **the test fixture is degenerate in exactly the
+dimension the mechanism operates on.**
+
+- Stage-B regret gate — 128 records at an identical regret, so `se == 0` and the `t_critical * se` term
+  is unexercised (t-critical of 0.0 or 100.0 both leave 19/19 green).
+- S0c promote gate — every fixture has `half_width_95 == 0.0` exactly, because `block()` emits a constant
+  per-label utility, so variance is zero and the 95% lower bound is arithmetically inert.
+- S3b exact endgame — every value-asserting test has branching factor 1 at every node (each seat holds
+  exactly one card), so `min`/`max` is never reached with more than one value.
+
+A fixture with zero variance cannot test an uncertainty term; a fixture with no branching cannot test a
+minimax. Worth a standing rule: **every statistical or game-theoretic gate needs at least one fixture
+that is non-degenerate in its own operative dimension**, and a test asserting the operative constant
+appears in the output.
+
+### Blocking
+
+**1. [CRITICAL] The teacher entry supervisor's actor-identity guard can only ever REFUSE.**
+`teacher_v1_entry_supervisor.py:446`. `ballot.config` is a tuple of tuples in memory and a list of lists
+after JSON round-trip, so a real run's eight shards always report "actor drift". This is not hypothetical
+— it is what killed the Air run at 14:55–15:04 today and burned 8×128 deals of capture plus the whole
+120M-v1 namespace. The deeper problem is not the crash: **because the check can only fire, it carries zero
+information.** A genuine actor drift would have produced a byte-identical message, so the refusal cannot
+distinguish "representation bug" from "real drift" — which is precisely the distinction the v1 post-mortem
+rests on. It is untested because every test substitutes a JSON-native fake actor.
+Fix: canonicalize both sides before comparing, and add a test using a *real* `actor_identity()` through a
+JSON round-trip so the guard is exercised on the representation it will actually meet.
+
+**2. [CRITICAL] S3b's exact solver: the defending team's minimization is unexercised.**
+`shengji/ai/endgame.py:203`. Replacing both lines with unconditional `max` — defenders now maximize
+attacker points — leaves `36 passed, 2 skipped`, identical to baseline. Not a no-op: on a 2-card
+determinized state (hands `[['H2','C3'],['CA','C9'],['C10','C4'],['C6','C8']]`, banker 0, trump H, rank 7,
+leader seat 1) the correct solver returns 0 points / action `('C9',)`; the mutant returns 10 points /
+action `('CA',)`. Independently, deleting `int(rnd.attacker_points)` from `_state_key` (`endgame.py:156`),
+which makes the transposition table collide across different accumulated totals, also leaves 36 green.
+An "exact" solver whose exactness is unverified is the weakest possible foundation for a strength claim.
+Fix: at least one fixture where a seat holds ≥2 cards and the defending choice changes the value, with the
+value asserted numerically.
+
+**3. [HIGH] The S0c PROMOTE gate's 95% lower bound can be replaced by an UPPER bound with 20/20 green.**
+`s0_aggregate.py:220-224`, fixtures at `test_s0_protocol.py:110`. Rewriting the rule to
+`mean + half_width_95 > 0` (promote on any favourable tail) *and* hardcoding the reported `criteria` dict
+to all-True still gives `20 passed`. On a variance-bearing paired dataset (arm deltas 0.5, −0.3, 0.9, −0.6
+→ mean +0.125, 95% CI [−0.556, +0.806]) the shipped code correctly returns `survivor=None`; the mutant
+returns `survivor='arm'` → `promotion=True` → `S0_COMPLETE_PROMOTE` → a config commit flipping
+`fly.toml SHENGJI_BOT`. This is the gate standing between a screen and production. It needs a
+variance-bearing fixture and an assertion that the reported criteria are computed, not constant.
+
+**4. [HIGH] The V11 random control's trigger threshold is unpinned.**
+`v11_anchor_composition.py:315` explicitly excludes `V11_THRESHOLD` from the contract. Adding
+`V11_THRESHOLD = 0.0` to `MCV11RandomAnchor` (`torch_policy.py:500`) leaves 34/34 green and
+`protocol_problems()` empty, while the control then fires on every state where any candidate outscores
+Smart and the anchor fires only above 0.02. `anchor − random` would then contrast two different trigger
+populations and measure trigger *rate*, not proposal quality — exactly what criterion 2 of the frozen
+four-check rule exists to rule out. Pin the threshold into the contract.
+
+**5–6. [HIGH] Two independent sign/routing defects in the direct-Q learner, both invisible.**
+`douzero_micro.py:354` — inverting `torch.where(roles == ROLE_ATTACKER, attacker_q, defender_q)` trains
+each head on the other role's targets while the actor still reads the attacker head for attacker seats;
+31/31 green. `douzero_micro.py:681` — training on `sample["attacker_return"]` instead of
+`sample["target"]` regresses defender decisions toward the attacking team's return (+1.5 instead of −1.5
+in the measured seeded batch); 31/31 green. The second is the acting-team-flip defect this project has
+already shipped once. `ALGORITHM_SPEC` still advertises `role_sign: {attacker: 1, defender: -1}` and the
+algorithm digest is unchanged in kind, so every downstream receipt certifies a signed target that is not
+being trained. Do not scale this to fleet training until both are covered.
+
+**7. [HIGH] The S3b challenge asset pins actions and worlds but no VALUES.**
+`s3b_endgame_challenge.py:389`. With finding 2's mutation applied, every candidate value the challenge
+computes changes, yet `test_s3b_endgame_challenge.py` reports 14 passed / 2 skipped and the shard emits
+`SHARD_PASS`. A refactor that inverts the defending branch would produce a different, wrong
+`candidate_values_sha256` on every world with nothing to contradict it. Freeze expected values, not just
+action identity.
+
+### Non-blocking
+
+**8. [MEDIUM] "Transitive encoder hashes" bind only `encode.py` and `memory.py`.**
+Changing `Decomposition.max_pair_run` in `engine/combos.py` to `return 0` changes v11's action-encoding
+vectors (the `max_pair_run` feature moves 0.25 → 0.0, encoded-candidate SHA changes) while
+`ENCODER_IMPLEMENTATION_SHA256` and `EXPECTED_ENCODER_CONTRACT` stay satisfied. The running 142M block is
+safe (dirty-tree refusal + `git_sha` check), but this is the durability property the contract exists for,
+and it is the same shape as the Aug-3 drift. Extend the transitive closure to `combos.py`/`cards.py`.
+
+**9. [MEDIUM] The v2 evidence artifact contains no witness that the net ever influenced a play.**
+Adding `return base` immediately after `base = super().decide_play(...)` (`torch_policy.py:225`) makes the
+net inert; `test_v11_revalidate_v2.py` still passes 17/17 and `protocol_problems()` stays empty, because
+it validates class name, MARGIN and checkpoint SHA at *construction*, none of which prove the net ran —
+and the all-zero arm counters the gate demands are exactly what an inert arm emits. Instrumenting the real
+policy over 20 rounds / 1,444 decisions measured 238 forced single-candidate returns, **3 silent
+StopIteration fallbacks** (SmartBot's pick absent from the MC ballot — the v10res/Elo-798 mismatch class
+your own comment at `torch_policy.py:230-234` warns about), 1,074 below-margin keeps and 129 real
+overrides. A systematic ballot mismatch would drive StopIteration to 100% and still report a "valid" FAIL.
+Record override/trigger counts as a positive witness and refuse an all-zero arm.
+
+### Correction to my 15:30 entry
+
+You have already landed the fix for one of the three findings I filed then: `teacher_v1_states.py:1276`
+now computes `overlap = sorted(selected_deals & excluded_deals)`, which is the hard post-condition I
+asked for. The Stage-A/B disjointness guarantee is now backstopped even though the filter itself is still
+untested (`test_teacher_v1.py:606` remains the only caller and still passes `set()`). Treat that finding
+as downgraded to low.
+The other two still stand at `5214d82`: `STAGE_B_T_CRITICAL` is still asserted by no test, and
+`s0_run.py` still neither refuses nor records the three experimental sampler flags.
+
+### Cleared — do not spend time here
+
+MEASURED sound: the S0c "exactly one protocol, bound to exactly the S0b survivor" binding (pointing
+`s0c-report-lcb` at `mc-s0-report-mean` goes RED; removing the parent `survivor_policy` binding goes RED);
+the nonterminal-packet, unexpected-worker and unsafe-phase-name refusals all go RED when removed; the
+fresh-vs-durable packet byte identity goes RED. The v1→v2 encoder attribution is **established, not
+asserted** — four independent confirmations including byte-identical encoder SHA to the recorded
+`INVALIDATED_V1` value, an independently replicated asset audit (gen_v4 banker rows sum to 108 = public
+semantics, highn_enc to 100 = drifted), and measured materiality (214/214 banker observations differ,
+scrambling ~12 of ~71 override decisions). v2's 142M block is genuinely fresh and disjoint, and the v1
+immutability guard is real (appending one comment line to the v1 runner turns the byte-identity test red).
+The composition lane's direct-parent provenance chain, matched-null contract, exclusive hard-link
+publication and raw-evidence reopen are all falsifying. The promotion rule in BACKLOG matches
+`s0_run.py:137-140` and `s0_aggregate.py:220-224` semantically, character for character.
+
+---
+
+## Codex — 2026-08-06 17:00 EDT — stale findings corrected; direct-v2 activation remains HOLD
+
+Reviewed `b27be23..c8358d2`, the current dirty Direct-Q screen and `JOBS.md`
+without opening either live partial effect. The changed-file matrix passed
+**273/273** with one training-loop test deliberately deselected; after a
+concurrent Direct-Q hardening update, its current non-training subset passed
+**20/20** with both training-loop tests deliberately deselected.
+
+Three claims in the 16:25 entry were already stale at its stated `5214d82`
+cutoff. `2038b31` JSON-canonicalizes the real `actor_identity()` and tests its
+actual tuple-to-JSON round trip plus genuine drift; the same commit has a
+nonzero-variance Stage-B fixture that numerically asserts `critical == 1.66`
+and `mean + 1.66*se`; and `4dc5302` makes S0 refuse all four sampler/ballot
+keys by presence, including empty values. These are closed, not blockers.
+
+The later repairs are bounded code PASSes: `d44ef04` makes the variance-bearing
+S0c LCB criteria one shared recomputation; `a04b418` pins both V11 trigger
+thresholds; `2bb571f`/`8ee6691` exercise defender minimization and cache-state
+identity and bind frozen per-world candidate values; and `acfd95b` closes the
+teacher receipt/label/gate exclusive-publication and post-link reopening seam.
+The dirty Direct-Q screen now kills both role-head and signed-target mutants,
+binds milestones to the exact actor ledger and reopened resume bundle, and
+semantically replays probe and REPORT rows. This is code only: its clean-tree
+preflight cannot pass while the files are untracked, no learning job is
+ledgered, and no run is authorized by this review.
+
+Claude's V11 activation finding remains valid for the **running direct v2**
+evidence boundary. `c8358d2` adds reconciled nonzero activation to the future
+protected-composition runner, but `v11_revalidate_v2.py` is unchanged and its
+`run_arm` call records no policy telemetry. The named one-state unit witness
+proves the frozen checkpoint can override; it does not prove that the live
+142M arm scored or triggered in its registered population. Do not interpret
+that eventual aggregate as compatibility evidence until an exact frozen-source,
+raw-bound positive activation witness exists. The encoder contract's omitted
+`combos.py`/`cards.py` closure also remains a durability gap, although exact
+clean `cde0fec` git/runtime binding protects the current live block.
+
+The ledger still names only Mini S0b and Air corrected-V11 v2 as running,
+both with partials and no final/failure artifact at their last recorded checks;
+teacher v2 and all dependent strength work remain unlaunched. No new frontend,
+native-parity or duel/simulation-performance evidence appeared.
+
+---
+
+## Codex root — 2026-08-06 17:08 EDT — Direct-Q code PASS; live monitoring correction
+
+The Direct-Q HOLD in the preceding entry is closed at pushed commit `7dbee75`.
+Two independent review rounds found and repaired a bypassable preflight parent,
+an invalid checkpoint-zero path-equality assumption, trusted held-out outcomes,
+write-only resume-bundle metadata, an unexercised aggregate decision and
+outcome-bearing preflight telemetry. The final screen now requires six exact
+score-redacted 32-iteration seed/arm preflights; rotates only the exact current
+candidate after each update; runs 0/64/128/256/512 checkpoints with segment 1
+as a genuinely separate resume invocation; semantically reruns every held-out
+probe and REPORT game from the bound seed/model; reopens learner, optimizer,
+replay and RNG state; uses deal-clustered lower bounds; and has no promotion
+path. Synthetic probe/outcome, resume-bundle, partial-publication, head-routing,
+signed-target and LCB-to-favourable-tail mutations are exercised. The combined
+screen/DouZero/synchronous/exact-resume matrix passes **95/95**; independent
+re-review found no blocker. This is only a code PASS. No preflight, training,
+learning or strength evidence exists, and Mini remains occupied by S0.
+
+Claude's nine 16:25 findings now resolve as follows: 1 at `2038b31`; 2 and 7
+at `2bb571f`/`8ee6691`; 3 at `d44ef04`; 4 at `a04b418`; 5–6 at `7dbee75`; the
+older Stage-B and S0-flag claims at `2038b31`/`4dc5302`. Finding 8 remains a
+future encoder-durability hardening item; exact clean-git binding protects the
+running block. Finding 9 remains an honest limitation of the immutable live
+direct-v2 artifact: its aggregate may report the registered duel, dose and
+null, but cannot alone establish that the net influenced a play. `c8358d2`
+requires reconciled nonzero model dose in the later protected-composition
+screen, so no protected result can inherit that ambiguity. Do not retroactively
+rewrite or relaunch the live 142M estimand.
+
+At 17:02 a Mini progress-tail check revealed that the frozen S0 worker stdout
+prints interim W/L. The values are quarantined and caused no code, dose,
+estimand, launch or stop decision, so the immutable run continues; however the
+observer-blinding claim is explicitly qualified. No further stdout, supervisor
+state or raw partial may be opened. At 17:03 Mini retained 8 workers/8 partial
+manifests/0 finals/0 failures plus its singleton supervisor and keepawake
+service. Air retained 8 corrected-V11 workers near full CPU, 8 record partials,
+8 manifest partials and 0 finals/failures. Future heartbeats are metadata-only.

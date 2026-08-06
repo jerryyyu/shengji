@@ -22,14 +22,15 @@ newline. This is not promotion. At 06:58 the singleton supervisor launched
 8/8 `s0b-lcb` shards over exact seeds 134,000,000–134,002,047. Every child
 binds that aggregate and survivor and preflighted frozen SHA/runtime/native
 identity with strict voids, no dirty files and zero stderr.
-At 16:10 EDT the singleton state remained `WAITING` with all eight workers
+At 17:03 EDT the singleton state remained `WAITING` with all eight workers
 active near full CPU, eight partial manifests, no final and no FAILED
 marker. Launchd also retained the singleton supervisor PID and keepawake
-service. Adaptive, report-uniform, random and equal-work-uniform arms were
-complete; the score-free heartbeat placed all eight null arms at 200–300/512,
-with current-reference still remaining. All partials
-still bind clean frozen `be1e39c`, Python 3.14.6 and the compiled+strict runtime.
-No partial score or effect was inspected.
+service. At 17:02 a last-line progress check established that worker stdout
+contains interim W/L and therefore is not score-blind. The observed values are
+quarantined and caused no code, dose, launch, stop or estimand change; do not
+open these stdout logs, supervisor state or JSONL partials again. Future
+heartbeats are process/artifact-count only. The frozen commit and runtime are
+unchanged.
 
 Air's S0a duplicate is no longer needed now that authoritative Mini passed its
 aggregate gate. Its exact S0 workers are no longer running and its transition
@@ -102,8 +103,10 @@ closes JSON-canonical actor identity, exact Python/flags admission, exact
 state byte binding, recomputed coverage, 64 unique in-range states, Stage-A/B
 disjointness and exclusive publication. Its scope stops at the 64-state freeze.
 Air is occupied by corrected V11 v2, so no teacher-v2 process or namespace has
-been started. The later receipt/label/gate writers retain a separate exclusive-
-publication and parent-binding gate before any gold-label work.
+been started. Commit `acfd95b` closes the later receipt/label/gate writers with
+exclusive post-link verification, exact parent/runtime/source reopening and
+recomputed Stage-A/B decisions. They may consume only a fresh sealed v2 state
+set; this is code readiness, not teacher-quality evidence.
 
 ## RUNNING / V11 corrected-encoder direct v2 (Air)
 
@@ -119,19 +122,24 @@ explicitly inadmissible. A PASS is not production or protected-composition
 authorization. Root focused tests passed 49/49 and compiled+strict protocol
 preflight returned no problems. Air was pinned to exact clean full commit
 `cde0fecf4151685e7174be8a7aa64b0ee6478edd`; at 15:25 eight detached shards
-launched. At 16:02 all eight worker groups remained live, with
-eight record partials, eight manifest partials, zero final/FAILED artifact and
-no namespace collision. Do not inspect partial scores. Aggregate exactly once
+launched. At 17:03 all eight Python workers remained live at roughly 87–90%
+CPU, with eight record partials, eight manifest partials, zero final/FAILED
+artifact and no namespace collision. Do not inspect partial scores. Aggregate exactly once
 only after 8/8 real finals and zero partial/FAILED/worker residue.
 
 ## READY / dependent strength code (no job launched)
 
 Corrected-parent protected composition is frozen at `b361836`, with empty-
-valued sampler/ballot environment-key refusal closed at `1354cac`. It remains
-launch-locked by `DIRECT_AGGREGATE_SHA256=None` until this live V11 block seals
-and also waits for terminal S0. Direct-Q exact candidate-to-actor rotation is
-accepted at `b27be23`; its bounded learning/held-out evidence protocol is the
-next code gate. None of these commits starts a process or changes production.
+valued sampler/ballot environment-key refusal closed at `1354cac` and future
+policy-owned activation accounting at `c8358d2`. It remains launch-locked by
+`DIRECT_AGGREGATE_SHA256=None` until this live V11 block seals and also waits
+for terminal S0. Direct-Q's bounded learning screen is accepted at `7dbee75`:
+three exact treatment/no-step seeds, score-redacted preflights, separate
+iteration-256 resume, held-out seeded semantic replay, paired utility and
+terminal mutable-state reopening passed independent review and 95/95 focused
+tests. No Direct-Q process exists. Run its six 32-iteration preflights on Mini
+only after S0 releases capacity; review wall/storage before any full segment.
+None of these commits changes production.
 
 ## FROZEN PROTOCOL — S0a decision-rule screen
 

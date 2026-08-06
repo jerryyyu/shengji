@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 16:14 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 17:08 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -20,13 +20,15 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   S0b-LCB launched 8/8 exact parent-bound Mini shards at 06:58 EDT. For S0,
   Air remains duplicate fallback only; never pool its records or launch an S0
   child from Air.
-  At 16:10 all eight workers were live near full CPU with eight partial
+  At 17:03 all eight workers were live near full CPU with eight partial
   manifests, no final or FAILED marker, and matching clean frozen
   compiled+strict provenance. The registered singleton supervisor and
-  keepawake service are also live. Adaptive, report-uniform, random and equal-
-  work-uniform arms are complete; all shards were 200–300/512 through the null
-  arm, with current-reference still remaining. This is score-free progress;
-  do not inspect partial effects.
+  keepawake service are also live. A 17:02 attempt to read only the last
+  progress line established that the frozen worker stdout itself includes
+  interim W/L. Those numbers are quarantined and caused no code, dose,
+  estimand, launch or stop decision; this is now an explicit observer-blinding
+  deviation, not “score-free progress.” Do not open worker stdout, supervisor
+  state or JSONL partials again. Monitor only processes and artifact counts.
 - Teacher-v1 mechanics/gold gates, the V11 protected-anchor lane
   and the role-conditioned RL microgates remain independent parallel strength
   work; none should be folded into S0 before each wins alone. The frozen V11
@@ -65,9 +67,13 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   `highn_enc`; regeneration alone cannot rehabilitate that checkpoint.
 - Corrected V11 v2 is **RUNNING 8/8 ON AIR** from exact clean commit
   `cde0fecf4151685e7174be8a7aa64b0ee6478edd`. At 15:25 eight detached shards
-  launched over fresh seeds 142,000,000–142,002,047; immediate verification
-  found eight workers, eight record partials, eight manifest partials and zero
-  final/FAILED artifact. Do not inspect partial scores or combine it with v1.
+  launched over fresh seeds 142,000,000–142,002,047. At 17:03 all eight Python
+  workers remained live at roughly 87–90% CPU with eight record partials,
+  eight manifest partials and zero final/FAILED artifact. Do not inspect
+  partial scores or combine it with v1. The immutable runner predates policy
+  activation counters, so its eventual aggregate cannot alone prove the net
+  influenced play. `c8358d2` makes reconciled nonzero activation mandatory in
+  the later protected-composition screen; do not retrofit the live estimand.
 - Teacher 143M-v2 entry is **CODE GATE CLOSED / WAITS FOR AIR** at `2038b31`.
   It JSON-canonicalizes actor identity, pins Python 3.14.6, refuses all four
   posterior-changing flags by key presence, requires exact 8-shard/1,024-deal
@@ -77,8 +83,10 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   freeze. Nonzero-SE and collision/invented/reordered-state falsifications are
   included; the broader teacher matrix passed 204/204. This authorizes only a
   clean fresh 143M-v2 capture -> diagnose -> 64-state freeze after Air is free.
-  Receipt/label/gate publication remains a separate post-freeze code gate; no
-  teacher label or strength evidence exists.
+  Commit `acfd95b` separately closes the later receipt/label/gate publication
+  chain: exclusive post-link verification, exact parent/runtime/source
+  reopening and recomputed Stage-A/B evidence are mandatory. No teacher job,
+  label or strength evidence exists.
 - Claude independently revalidated the live S0 chain: S0a hash/statistics,
   cluster additivity, exact 4,096-record coverage, null identity, work parity,
   source isolation and the live flags-off environment all hold. The result and
@@ -118,8 +126,14 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   DMC2 evidence remains invalid. Commit `b27be23` closes Direct-Q's explicit
   exact candidate-to-actor refresh boundary: only the already-published current
   candidate can rotate, exact resume is preserved and integrity drift poisons
-  until checkpoint restore. The bounded learning/held-out evaluation spec is
-  now the next S2 gate; actor rotation itself is not strength evidence.
+  until checkpoint restore. Commit `7dbee75` now closes the bounded Direct-Q
+  learning-screen code gate: three fixed treatment/no-step-control seeds,
+  per-iteration exact actor refresh, a hard score-redacted 32-iteration
+  preflight parent, a real separate iteration-256 resume, held-out seeded
+  semantic replay, paired two-flip utility, variance-bearing LCB gates, exact
+  learner/optimizer/replay/RNG reopening and no promotion path. Independent
+  review and the combined exact-resume matrix pass 95/95. No preflight,
+  training or strength result exists; Mini is occupied by S0.
 - The frontend ship gate is **COMPLETE / PASS**. The real multi-socket server
   suite passes 33/33 and browser connection/intent tests pass 14/14, including
   the newly exercised >50-message history rollover. Lint reports only the
@@ -399,7 +413,7 @@ authorize that external mutation.
    an independently receipted deterministic rerun; only PASS authorizes the
    disjoint 128-state Stage B. Only Stage-B gold regret U95 <=0.10 authorizes
    implementing Stage C. Never append capture or mix executable identities.
-4. **S2 self-play RL — concrete direct-Q code gate CLOSED / evidence next:**
+4. **S2 self-play RL — learning-screen code CLOSED / preflight next:**
    `e49cf60` now transactionally binds and replays learner, optimizer, replay,
    named RNG, runtime, progress and immutable actor/candidate identity; poisons
    every `BaseException`; forbids process-global RNG consumption; binds hidden
@@ -414,11 +428,18 @@ authorize that external mutation.
    bounded one-round code gate, not paper faithfulness or strength. Review found
    its algorithm digest omitted three execution-contract modules. Commit
    `f5ff2f9` binds those plus heuristic/MC-ballot/legal transitive dependencies;
-   every one of the 16 source identities is mutation-falsified and the root
-   contract matrix passes 77/77. Next freeze a small learning/evaluation spec
-   before using fleet compute. Separately, legacy DMC2 still needs one exact-
-   candidate promotion seam test: PASS must publish the evaluated candidate,
-   never whatever newer learner generation exists when the gate returns.
+   every one of the 16 source identities is mutation-falsified. `b27be23`
+   supplies exact-current-candidate actor refresh. `7dbee75` freezes the actual
+   three-seed treatment/no-step screen, score-redacted preflight, 0/64/128/256/
+   512 checkpoints, separate resume invocation, fixed held-out probes and
+   paired report games. Terminal verification reruns seeded game semantics and
+   reopens every mutable resume component; mutation tests reject synthetic
+   outcomes, resume drift and favourable-tail/UCB substitution. The combined
+   matrix passes 95/95. A PASS means only “learning signal worth a next bounded
+   pilot,” never strength or promotion. Run the 32-iteration preflights after
+   Mini is free; do not launch the full screen until their wall/storage receipt
+   is reviewed. Legacy DMC2's exact-promotion seam is separately closed at
+   `d5d71d2`; historical DMC2 evidence remains invalid.
 5. **S3a structured bury search — code gate closed / waits for S0:** the pure source sees
    only the banker's 33-card hand, public ordering and incumbent; it emits a
    deterministic, deduplicated, capped point/trump/pair/void ballot with the
@@ -463,16 +484,18 @@ authorize that external mutation.
 ## Live execution queue for Claude/Codex
 
 1. **Do not score either live partial.** Mini S0b and Air corrected-V11 v2 are
-   the two live evidence blocks. Monitor only worker count, process health,
-   final/partial/failure counts, frozen identity and score-free progress.
+   the two live evidence blocks. Mini stdout was proved outcome-bearing at
+   17:02, so neither stdout nor supervisor state is an admissible progress
+   source. Monitor only worker count, process health, final/partial/failure
+   counts and frozen identity. Do not adapt anything to the quarantined peek.
 2. **Keep Air's refused teacher v1 namespace immutable.** The supervisor
    stopped after eight captures and before every diagnostic/label path. The
    independently reviewed JSON-canonical, flags-off, Python-pinned 143M-v2
    entry packet is pushed at `2038b31`; it closes diagnostic->state provenance
    and exclusive publication through the 64-state freeze. Never resume or
    reinterpret `teacher-v1-entry-120m-v1`. Air is occupied by V11 v2; do not
-   launch teacher v2 concurrently. Before later receipts/labels, close their
-   separate exclusive-publication/parent-binding gate.
+   launch teacher v2 concurrently. The later receipt/label/gate code is closed
+   at `acfd95b`, but it may consume only the exact fresh v2 state-set parent.
 3. **Leave Mini's singleton S0 supervisor in control.** It aggregates S0b,
    selects the registered survivor and launches exact S0c automatically. Only
    inspect a phase effect after 8/8 finals and the supervisor transition. At a
@@ -480,12 +503,14 @@ authorize that external mutation.
    cleanup only the packet-proved services.
 4. **Local code while compute runs:** corrected-encoder V11 v2 is frozen and
    pushed at `cde0fec` on disjoint 142M seeds. Teacher entry v2 is closed at
-   `2038b31`; Direct-Q exact actor refresh is closed at `b27be23`; corrected-
-   parent protected composition is code-frozen at `b361836`/`1354cac` with its
-   aggregate-SHA launch lock still engaged. Implement and independently review
-   the bounded Direct-Q learning/held-out evidence protocol plus the teacher
-   receipt/label publication gate. Do not weaken or rewrite sealed v1 evidence.
-   S3 evidence remains subordinate to terminal S0.
+   `2038b31`, with its later publication gate at `acfd95b`; corrected-parent
+   protected composition is code-frozen at `b361836`/`1354cac` and prospective
+   activation telemetry at `c8358d2`, with the aggregate-SHA launch lock still
+   engaged. Direct-Q's bounded learning screen is code-closed at `7dbee75`.
+   Its next action is the six score-redacted 32-iteration seed/arm preflights
+   on Mini after S0 frees capacity, followed only on acceptable measured
+   wall/storage by the frozen 512-iteration screen. Do not weaken or rewrite
+   sealed v1 evidence. S3 evidence remains subordinate to terminal S0.
 5. **Production stays `mc-strong`.** No evidence completion authorizes a Fly
    restart or policy change; that remains a separately reviewed quiet-room
    action.

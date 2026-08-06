@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-06 17:08 EDT.
+Last re-derived: 2026-08-06 17:56 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -33,11 +33,19 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   `+0.008 +/- 0.070`). Aggregate SHA-256 is
   `0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49`.
   This is a mechanism-screen survivor, not a deployment result. Its exact
-  parent-bound `s0b-lcb` block launched 8/8 Mini shards at 06:58 EDT. Air's
-  duplicate records may never be pooled. At 17:03 all eight workers were live
-  near full CPU with eight partial manifests, no final or FAILED marker, and
-  clean frozen compiled+strict provenance; the singleton supervisor and
-  keepawake service were also live. At 17:02 the worker stdout was discovered
+  parent-bound `s0b-lcb` block is **COMPLETE / ACCEPTED**: all eight Mini shards
+  sealed, and the 2,048-cluster aggregate selected `mc-s0-adaptive` with
+  adaptive-minus-report-uniform `+0.037 +/- 0.060`, adaptive-minus-random
+  `+0.433 +/- 0.065`, adaptive-minus-current `+0.395 +/- 0.067` and null
+  `+0.008 +/- 0.067`. SHA-256 is
+  `25c0177e27c0e185e96701ad788313a7ea14b892e24586186df02466bf144803`.
+  Uniform report-LCB itself replicated S0a almost exactly at
+  `+0.357 +/- 0.066` versus current. The point-estimate allocation rule selected
+  adaptive, but its incremental interval crosses zero and report-uniform also
+  beats random by about 0.396; allocation is not measurably better. This is
+  still not deployment evidence. At 17:30 the singleton
+  launched 8/8 `s0c-adaptive-lcb` workers over the untouched 8,192-cluster
+  135M block. Air's duplicate records may never be pooled. At 17:02 the worker stdout was discovered
   to contain interim W/L beside progress. The accidental observation is
   quarantined and drove no adaptive action, but the observer-blindness claim is
   now qualified. Never open live stdout/state/JSONL again; use process and
@@ -47,8 +55,13 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   Commit `4dc5302` closes the main-only durability gap: every future chain
   refuses and records all four posterior-changing sampler/ballot flags, and
   aggregation rejects missing/nonempty/cross-phase identities. The frozen live
-  chain remains byte-unchanged; independently recheck flags OFF if its old
-  supervisor launches S0c. No partial effects are admissible.
+  chain remains byte-unchanged. S0c launchd/static-wrapper inspection confirmed
+  the four experimental keys absent and only compiled+strict flags added.
+  Commit `7314cdf` makes future main shard progress score-blind, but does not
+  rewrite this live block. The transition briefly refused because the audit-
+  tool root defaulted to moving main; repointing only `S0_AUDIT_ROOT` to clean
+  detached exact `6fe5f44` restored its three pinned hashes before aggregation.
+  No partial effects are admissible.
 - The separate V11 direct-current compatibility v1 block is **TERMINAL FAIL AS
   RUN**: eight clean compiled+strict 256-cluster shards at `e66b90b` produced
   v11-current `-0.132 +/- 0.070`, v11-null `-0.159 +/- 0.069`, and a sane null
@@ -61,15 +74,20 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   contract. Preserve v1, quarantine the contaminated encoded corpus, and run a
   fresh versioned corrected-encoder block on disjoint seeds. That v2 protocol
   is frozen and pushed at `cde0fec` over exact 142M seeds. Eight Air shards
-  launched at 15:25; immediate verification found 8/8 workers and partials,
-  zero finals/failures. Partial outcomes remain sealed.
+  launched at 15:25; the 17:32 metadata-only check found 8/8 workers and
+  partials, zero finals/failures. Partial outcomes remain sealed.
 - Before opening any V11 result, commit `7ecffd5` separately predeclared the
   protected-composition estimand. Standalone v11 superiority is not logically
   required for a search-protected proposal to help: a protocol-valid direct
   block with a sane null may admit the non-promotable 2,048-cluster screen on
   seeds 137M, after terminal S0. A PASS alone admits an independent
   8,192-cluster confirmation on seeds 138M. The frozen direct verdict is never
-  rewritten; details are in
+  rewritten. Bind the exact corrected aggregate hash unconditionally whether
+  the verdict PASSes or FAILs; this freezes identity rather than selecting a
+  favourable result. Preserve `protected_composition_authorized=false`; the
+  loader separately enforces sane-null and exact-dose admission. The 142M
+  artifact has no activation witness, so only the later `c8358d2` composition
+  telemetry can establish model influence. Details are in
   `docs_archive/v11-protected-composition-protocol-2026-08-06.md`.
 - The roadmap has three parallel strength lanes: S0 search, clean teacher/model
   iteration, and faithful role-conditioned self-play. They do not share
@@ -77,8 +95,10 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   **REFUSED / CLOSED BEFORE DIAGNOSTICS**: eight captures completed, then a
   tuple-versus-JSON-list actor comparison falsely reported drift. Preserve the
   failed namespace. The disjoint JSON-canonical 143M-v2 entry gate is accepted
-  and pushed at `2038b31`, through exact 64-state freeze only; Air is occupied
-  and `acfd95b` closes the separate receipt/label/gate publication chain. S2's
+  at `2038b31`, through exact 64-state freeze only. The actual fresh supervisor
+  and every consumer must run at full `acfd95b`, whose accepted entry bytes are
+  unchanged and whose receipt/label/gate publication chain is also closed;
+  generating at `2038b31` and switching later is invalid. Air is occupied. S2's
   exact synchronous infrastructure is code-closed at `e49cf60`; `868b6d8`
   adds the bounded role-conditioned direct-Q learner. Review found and
   `f5ff2f9` repaired its omitted execution-contract/transitive source hashes;
@@ -93,12 +113,13 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 | priority | work | exit gate |
 |---|---|---|
 | **S0a search strength — COMPLETE** | Frozen decision-rule screen accepted on authoritative Mini | Eight clean 256-cluster shards selected report-LCB. Independent recomputation matched the registered aggregate; this block cannot promote. |
-| **S0b allocation — RUNNING** | Test allocation separately under the selected LCB report rule | Eight exact parent-bound `s0b-lcb` shards cover seeds 134,000,000–134,002,047 on Mini. At 17:03 all eight workers were live near full CPU with 8 partial manifests, 0 finals and 0 failures. Worker stdout is outcome-bearing; a 17:02 accidental tail is quarantined and caused no adaptive action. From here inspect only process/artifact counts. Deterministic adaptive must beat report-uniform and random by paired point estimate; otherwise report-LCB survives. |
-| **S0c confirmation** | Independently confirm exactly the S0b survivor | Eight 1,024-cluster shards on seeds 135,000,000–135,008,191 compare survivor, `mc-strong-null`, and current. Promote only if survivor-current and survivor-null paired 95% lower bounds are >0 and the null does not clear; otherwise close S0 SELECT NONE. |
+| **S0b allocation — COMPLETE / ACCEPTED** | Test allocation separately under the selected LCB report rule | Eight exact parent-bound shards on 134M selected `mc-s0-adaptive`: +0.037 +/- 0.060 versus report-uniform and +0.433 +/- 0.065 versus random, with uniform report-LCB almost exactly replicating S0a. The adaptive increment is unresolved; report-uniform also beats random by ~0.396, so S0b did not measure an allocation benefit. The registered point-estimate gate—not an LCB—selected adaptive. Aggregate SHA `25c0177…4803`; this block cannot promote. |
+| **S0c confirmation — RUNNING 8/8** | Independently confirm exactly `mc-s0-adaptive` | Eight 1,024-cluster shards on seeds 135,000,000–135,008,191 compare adaptive survivor, `mc-s0-adaptive-null`, and current. At 17:31 all eight workers were live near 95% CPU with 8 partial pairs and 0 finals/failures. Promote only if survivor-current and survivor-null paired 95% lower bounds are >0 and the null does not clear; otherwise close S0 SELECT NONE. |
 | **S0d terminal packet + cleanup** | Turn the terminal S0 result into one auditable decision | Independently regenerate and byte-compare the return packet, verify every artifact/hash/counter/seed/runtime field, refuse unexpected S0 workers, then remove only the packet-proved services. Apply a production policy change only on PROMOTE; SELECT NONE leaves `mc-strong` unchanged. A Fly restart remains a separately authorized quiet-room action. |
-| **V11 direct compatibility v1 — TERMINAL FAIL / CORRECTED v2 RUNNING ON AIR** | Separate model quality from an encoder-contract mismatch | The exact 121M v1 block failed as run and remains immutable. `66aad44` restores the trained public/no-private-kitty contract; `cde0fec` freezes a fresh 8x256 corrected v2 gate on exact 142M seeds with accepted-dose/raw-reopen checks. At 17:03 all 8 Air workers remained live at 87–90% CPU with 8 record partials, 8 manifest partials and 0 finals/failures. Do not score partials or reinterpret v1. The as-run v2 artifact lacks an activation counter, so it cannot alone prove the net influenced play. |
-| **V11 protected composition — CODE GATE CLOSED / WAITS FOR CORRECTED DIRECT + S0** | Test whether search can retain good v11 proposals while rejecting its bad tail | `7ecffd5` blind-froze the estimand. Corrected-parent v2 is frozen at `b361836`; `1354cac` closes empty-valued sampler-key refusal. `c8358d2` adds future policy-owned activation accounting and refuses zero/nonreconciling model dose, closing the direct artifact's prospective limitation inside composition. `DIRECT_AGGREGATE_SHA256=None` remains locked until corrected v2 seals; only that exact hash plus terminal S0 may admit the 2,048-cluster 137M screen. Require anchor-minus-champion/random/null LCBs >0 and a sane null; PASS alone admits disjoint 8,192-cluster confirmation. Never use v11 as a scalar leaf. |
-| **S1 teacher/model — V1 REFUSED / 143M-V2 FULL CODE CHAIN CLOSED, WAITS FOR AIR** | Test whether a clean counterfactual teacher is worth scaling | Preserve refused `teacher-v1-entry-120m-v1`. `2038b31` closes fresh v2 capture->diagnostic->64-state freeze. `acfd95b` separately closes exclusive receipt/label/gate publication and full raw/parent/runtime/source reopening. When Air is free, run only clean 143M-v2 through the exact 64-state freeze first; later stages may consume only that sealed parent. No teacher-quality result exists. |
+| **S0e deployment choice — DESIGN ACCEPTED / CODE FREEZE NEXT / NO JOB** | Decide whether adaptive's unresolved complexity is worth carrying after a valid bundle win | Before opening S0c, freeze a fresh 147M block of 16,384 mirrored clusters, 8x2,048, with adaptive/report-LCB/current/current-null on identical keys. It may run only if the exact terminal packet says `PROMOTE mc-s0-adaptive`; SELECT NONE closes S0 with no report-LCB fallback. A candidate is eligible only if its fresh LCBs versus current and its null are both positive. Neither eligible keeps current; one eligible sends that candidate to review; if both qualify, choose adaptive only when `LCB(A-R)>0`, otherwise the simpler report-LCB. No auto-deploy, retries, extension or S0 reinterpretation. No code or job exists yet. |
+| **V11 direct compatibility v1 — TERMINAL FAIL / CORRECTED v2 RUNNING ON AIR** | Separate model quality from an encoder-contract mismatch | The exact 121M v1 block failed as run and remains immutable. `66aad44` restores the trained public/no-private-kitty contract; `cde0fec` freezes a fresh 8x256 corrected v2 gate on exact 142M seeds with accepted-dose/raw-reopen checks. At the 17:32 metadata-only check all 8 Air workers remained live at 83–87% CPU with 8 record partials, 8 manifest partials and 0 finals/failures. Do not score partials or reinterpret v1. The as-run v2 artifact lacks an activation counter, so it cannot alone prove the net influenced play. |
+| **V11 protected composition — CODE GATE CLOSED / WAITS FOR CORRECTED DIRECT + S0** | Test whether search can retain good v11 proposals while rejecting its bad tail | `7ecffd5` blind-froze the estimand. Corrected-parent v2 is frozen at `b361836`; `1354cac` closes empty-valued sampler-key refusal. `c8358d2` adds future policy-owned activation accounting and refuses zero/nonreconciling model dose. `e026ed0` pins the future four-source encoder identity end to end while preserving the old live parent. `DIRECT_AGGREGATE_SHA256=None` remains locked until corrected v2 seals; bind the exact hash regardless of PASS/FAIL while preserving the verdict and authorization false. Only that exact sane-null/exact-dose parent plus terminal S0 may admit the 2,048-cluster 137M screen. Require anchor-minus-champion/random/null LCBs >0 and a sane null; PASS alone admits disjoint 8,192-cluster confirmation. Never use v11 as a scalar leaf. |
+| **S1 teacher/model — V1 REFUSED / 143M-V2 FULL CODE CHAIN CLOSED, WAITS FOR AIR** | Test whether a clean counterfactual teacher is worth scaling | Preserve refused `teacher-v1-entry-120m-v1`. `2038b31` accepted fresh v2 entry bytes; run the actual supervisor and all consumers at full `acfd95b`, which preserves those bytes and closes receipt/label/gate publication plus raw/parent/runtime/source reopening. When a whole host is free, run clean 143M-v2 only through the exact 64-state freeze first and stop; never switch Git/runtime identity between phases. No teacher-quality result exists. |
 | **S2 self-play RL — LEARNING-SCREEN CODE CLOSED / PREFLIGHT NEXT** | Test a real role-conditioned direct terminal-return learner | `7dbee75` freezes three treatment/no-step seeds, exact per-iteration actor refresh, score-redacted 32-iteration preflights, a real separate iteration-256 resume, checkpoints 0/64/128/256/512, fixed held-out semantic replay and paired utility versus each seed's own A0. Terminal consumers reopen learner/optimizer/replay/RNG and reject synthetic outcomes, UCB substitution and partial artifacts; 95/95 focused tests pass. After Mini frees, run six preflights and review only projected wall/storage. Full 512 training starts only if admitted; PASS authorizes another bounded pilot, not strength or production. |
 | **S3a structured bury search — CODE GATE CLOSED / WAITS FOR TERMINAL S0** | Improve the once-per-round decision that ordinary play search never touches | `2bb571f` makes candidate 0 the literal named S0 champion bury, adds cumulative dose/trigger/override telemetry and a real underfill witness. The 512-state 136M screen retains banker-only sources, exact equal candidate-world work, disjoint folds and legacy/trigger-matched controls. After terminal S0, a PASS may authorize only a fresh full-game duel design, never promotion. |
 | **S3b sampled exact endgame — STRENGTH CODE GATE CLOSED / WAITS FOR S0** | Replace heuristic continuation where only about four cards per hand remain | `2bb571f` adds a real two-card defender-min witness, attacker-points transposition-key falsification and byte-pinned numeric challenge values; `8ee6691` pins the mechanics parent. `79985a2` retains champion-matched throughput, 2,048-cluster screen and disjoint 8,192-cluster confirmation. Both efficacy LCBs, sane null, nonzero exact use and zero refusal/overflow remain mandatory. Run only after terminal S0 and throughput admission. |
@@ -294,8 +315,10 @@ valid replay contract, not a substitute for fixing its target.
 The bounded P0 certificate passed at `aea3774`; keep compute occupied with
 staged strength work rather than one speculative monolith:
 
-1. Mini remains authoritative for the live S0b/S0c chain; do not displace or
-   pool those eight workers. All current S0 capacity is productively occupied.
+1. Mini remains authoritative. S0b is sealed at aggregate SHA `25c0177…4803`;
+   exact S0c-adaptive-LCB is running 8/8. Do not displace or pool those workers.
+   The singleton now uses clean pinned audit root `6fe5f44`; all current S0
+   capacity is productively occupied.
 2. Air completed and sealed the immutable V11 v1 block, whose exact as-run
    verdict is FAIL and whose banker encoder was contract-drifted. Teacher v1
    then refused safely before diagnostics. Air is now running all eight
@@ -305,19 +328,25 @@ staged strength work rather than one speculative monolith:
    S3a's replay gate is closed at `e946696`; direct-Q is concrete at `868b6d8`
    with provenance repaired at `f5ff2f9`; and S3b's champion-matched strength
    protocol is closed at `79985a2`. Corrected V11 v2 is frozen at `cde0fec`.
-   Teacher entry v2 is accepted at `2038b31`, its later publication gate at
-   `acfd95b`, and Direct-Q's bounded screen at `7dbee75`. No further evidence-
-   protocol work is required before their preflights. Do not launch an S3
-   strength block before S0 supplies the terminal champion and each reference
+   Teacher entry bytes were accepted at `2038b31`, but its supervisor and all
+   later consumers must execute at full `acfd95b`; Direct-Q's bounded screen is
+   at `7dbee75`. Commit `e026ed0` closes the future composition's transitive
+   cards/combos/encode/Memory identity without rewriting the frozen parent. No
+   further evidence-protocol work is required before the named preflights. Do
+   not launch an S3 strength block before S0 supplies the terminal champion and each reference
    is frozen.
 4. Preserve the original direct-V11 verdict and aggregate hash. The fresh
-   corrected-encoder direct block is running on disjoint 142M seeds; aggregate
-   exactly once only after 8/8 clean finals, then freeze its exact aggregate SHA
-   into corrected-parent v2 (`b361836`/`1354cac`) without weakening raw-evidence
-   checks. Only a composition screen PASS admits independent confirmation.
+   corrected-encoder direct block is running on disjoint 142M seeds. Aggregate
+   exactly once from clean frozen `cde0fec` only after 8/8 finals and zero
+   partial/FAILED/worker residue. Freeze its exact aggregate SHA into corrected-
+   parent v2 unconditionally, PASS or FAIL, without changing the stored verdict
+   or authorization and without weakening raw-evidence checks. Only a sane-
+   null/exact-dose parent plus terminal S0 admits the screen; only a composition
+   PASS admits independent confirmation.
 5. Teacher v2 waits while V11 occupies Air. Once Air is free, exact clean
-   preflight may run its supervisor through the 64-state freeze; the already-
-   closed `acfd95b` publication gate may then consume only that exact parent.
+   preflight may run the exact `acfd95b` supervisor through the 64-state freeze
+   on one host and stop; the same commit's publication gate may then consume
+   only that exact parent. Never capture at `2038b31` and switch identities.
    A Stage-A pass authorizes only the 128-state gold gate; a Stage-B pass
    authorizes implementing and sharding Stage C, never silently launching
    millions of labels.
@@ -362,9 +391,16 @@ authorize adding more data to a target that failed.
       four posterior-changing sampler/ballot flags even when present with an
       empty value, records an explicit empty list, and rejects missing,
       nonempty, within-phase or cross-phase drift. Focused S0 acceptance is
-      39/39. The frozen live Mini chain was not touched; recheck its inherited
-      flags-off environment when S0c launches and include that external receipt
-      in closeout.
+      39/39. The frozen live Mini chain was not touched. S0c launchd metadata
+      plus the static wrapper supplied the external receipt: none of the four
+      keys was inherited and only compiled+strict flags were added. Include it
+      in closeout; do not misattribute it to the newer runner guard.
+- [ ] **Durable supervisor phase cleanup.** The live operator supervisor left
+      sealed S0b keepalive labels spawn-scheduled; they repeatedly restarted
+      only to hit exclusive-output refusal. Exact manual removal left S0c,
+      singleton and keepawake intact. After terminal S0, version the supervisor
+      and mutation-test automatic retirement of only the sealed prior-phase
+      labels. Do not patch the live singleton during S0c.
 - [ ] **Dataset contract.** New training records must bind exact state replay,
       role/perspective, legal action multiset, `BallotSpec`, sampler, continuation
       policy, utility target, actor checkpoint and source/split digests. The

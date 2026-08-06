@@ -21,7 +21,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-06 16:14 EDT
+## Current synthesis — 2026-08-06 17:56 EDT
 
 This section is the current decision layer. The lineage table below owns model
 history; **Data and evaluation contract** owns dataset/evaluation provenance;
@@ -45,11 +45,35 @@ day-by-day detail. A historical result below does not reopen a closed lane.
   then selected report-LCB over 2,048 fresh clusters (`+0.353 +/- 0.069`
   versus current; direct `+0.293 +/- 0.066` versus equal-work uniform; null
   `+0.008 +/- 0.070`). That is a positive mechanism screen, not promotion.
-  The exact parent-bound S0b allocation block is running; only its registered
-  survivor may enter the independent 8,192-cluster survivor/current/null S0c.
+  The exact parent-bound S0b allocation block is complete and selected
+  `mc-s0-adaptive`: adaptive-minus-report-uniform was `+0.037 +/- 0.060`,
+  adaptive-minus-random `+0.433 +/- 0.065`, adaptive-minus-current
+  `+0.395 +/- 0.067`, and the null was flat. Uniform report-LCB itself was
+  `+0.357 +/- 0.066` versus current, almost exactly replicating S0a. The
+  adaptive increment does not clear zero, and the random contrast does not
+  isolate allocation because report-uniform also beats random by about 0.396.
+  The registered point-estimate allocation rule selected adaptive; the
+  substantive S0b finding is “report-LCB replicates, allocation unresolved,”
+  not an adaptive win. Exact 8,192-cluster S0c-adaptive-LCB is now running 8/8.
   Survivor-current and survivor-null paired 95% lower bounds must both exceed
   zero while the null does not clear. No terminal S0 strength result or
-  deployment exists yet.
+  deployment exists yet. The frozen worker stdout was discovered to include
+  interim W/L; one accidental progress-tail observation is quarantined and
+  caused no adaptive action. Future monitoring is process/artifact-count only,
+  so the run remains predeclared but is no longer described as observer-blind.
+  Commit `7314cdf` suppresses both running and shard-end effects in future main
+  stdout; it does not alter the frozen live block. The S0b transition initially
+  refused because the audit-tool root pointed at moving main; repointing only
+  that root to clean exact `6fe5f44` restored all three pinned hashes before
+  aggregation. S0c launch metadata confirmed the experimental keys absent.
+  A conditional deployment-choice design is separate from S0: only an exact
+  terminal `PROMOTE mc-s0-adaptive` may admit a fresh 147M four-arm block. A
+  candidate is eligible only if its LCBs versus current and its null are both
+  positive. Neither eligible keeps current; one eligible sends that candidate
+  to review; if both qualify, adaptive displaces the simpler bot only if its
+  paired 95% lower bound versus report-LCB is positive, otherwise report-LCB
+  enters review. SELECT NONE closes S0 with no fallback. This design is
+  accepted but not yet code-frozen; no 147M job exists.
 - **The six-arm DEV-512 ballot screen is closed with `SELECT NONE`.** The
   primary `quota - random_fill` contrast was `+0.110 +/- 0.337`; at equal work
   the shipped ballot had the lowest mean regret (current 0.135, quota 0.229,
@@ -73,8 +97,11 @@ day-by-day detail. A historical result below does not reopen a closed lane.
   transitive source hashes. Commit `cde0fec` now freezes that fresh corrected-
   encoder direct gate as 8x256 exact 142M clusters, with combined encoder/source
   hashes, exact accepted N=30 dose and raw-record reopening. It has no evidence
-  yet: eight Air shards launched at 15:25 and partial outcomes remain sealed.
-  It cannot authorize production or protected composition by itself.
+  yet: at 17:32 all eight Air workers remained live and partial outcomes remain
+  sealed. The immutable v2 runner has no policy-activation counter, so its
+  aggregate may report the registered duel/dose/null but cannot alone establish
+  that the network influenced play. It cannot authorize production or
+  protected composition by itself.
   Commit `7ecffd5` therefore blind-froze the separate composition estimand:
   standalone v11 need not be superior for the terminal search champion to
   retain its good proposals and reject its bad tail. Preserve the direct
@@ -86,22 +113,33 @@ day-by-day detail. A historical result below does not reopen a closed lane.
   forces confirmation to reopen/recompute raw screen evidence. Corrected-parent
   v2 is now frozen at `b361836`; `1354cac` closes empty-valued environment-key
   refusal. Its deliberate `DIRECT_AGGREGATE_SHA256=None` lock can be replaced
-  only with the exact sealed corrected-v2 aggregate, and terminal S0 remains an
-  independent prerequisite. v11's
-  within-state deltas remain valid for ranking, not as scalar leaf values.
+  only with the exact sealed corrected-v2 aggregate. Bind that hash regardless
+  of PASS/FAIL, preserving the verdict and authorization false; this freezes
+  identity rather than selecting evidence. Sane null/exact dose and terminal
+  S0 remain independent prerequisites. v11's within-state deltas remain valid for
+  ranking, not as scalar leaf values. Commit `c8358d2` makes reconciled nonzero
+  model scoring/triggers mandatory in the later protected-composition screen,
+  closing the live artifact's activation ambiguity prospectively without
+  rewriting its estimand. Commit `e026ed0` separately versions the future
+  encoder identity across cards/combos/encode/Memory and carries it through
+  composition shard, aggregate, reopening and confirmation, while preserving
+  the immutable live runner and its exact historical two-source receipt.
 - **Two independent learning lanes remain open.** Teacher-v1 began with the
   fail-closed `0183cdd` supervisor, which completed all eight corrected-encoder
   captures on Air, then refused before diagnostics: JSON converted the ballot
   config tuple to an equivalent list and a direct dict comparison falsely
   called that actor drift. No state set or label exists. Preserve the refused
-  v1 namespace. The disjoint JSON-canonical 143M-v2 entry is accepted at
-  `2038b31`: it pins Python/flags, exact 8-shard/1,024-deal admission, full
+  v1 namespace. The disjoint JSON-canonical 143M-v2 entry bytes are accepted at
+  `2038b31`: they pin Python/flags, exact 8-shard/1,024-deal admission, full
   capture -> diagnostic -> selected-state semantics, recomputed coverage,
   exclusive publication, 64 unique in-range states, nonzero uncertainty and
   Stage-A/B disjointness. Its authorization stops at fresh capture -> diagnose
-  -> 64-state freeze when Air is free. Receipt/label/gate writers retain a
-  separate no-overwrite and parent-binding gate; after that, the asset must
-  still pass its 64-state mechanics and 128-state gold-continuation gates
+  -> 64-state freeze when a whole host is free. The actual supervisor and every
+  consumer must execute at full `acfd95b`, whose accepted entry bytes are
+  unchanged and which also closes receipt/label/gate no-overwrite, post-link
+  verification and exact parent/raw reopening. Capturing at `2038b31` and
+  switching commits later is invalid. The asset
+  must still pass its 64-state mechanics and 128-state gold-continuation gates
   before producing 2,048 clean counterfactual states. Faithful Suphx-style
   privileged-feature removal and DouZero-style role-conditioned direct-Q
   microbaselines have
@@ -120,19 +158,23 @@ day-by-day detail. A historical result below does not reopen a closed lane.
   and transitive sources and mutation-falsifies each. Commit `b27be23` closes
   the missing actor-refresh boundary: only the runner's already-published exact
   current candidate may become the next actor, exact resume is preserved and
-  artifact/learner drift poisons until checkpoint restore. The next step is a
-  preregistered three-seed, fixed-dose learning/held-out evaluation against the
-  initial actor with a matched null and exact narrow ballot—not an unbounded
-  fleet run or a claim against MC.
+  artifact/learner drift poisons until checkpoint restore. Commit `7dbee75`
+  freezes the actual three-seed treatment/no-step screen: score-redacted
+  32-iteration preflights, per-iteration actor refresh, a separate iteration-
+  256 resume, 0/64/128/256/512 checkpoints, fixed seeded probes, paired report
+  utility and terminal semantic/raw/mutable-state reopening. Synthetic outcomes,
+  signed-target/head routing, resume drift and favourable-tail gates are
+  mutation-tested; the independent matrix passes 95/95. No run or learning
+  result exists. After Mini frees, review the six preflight wall/storage
+  receipts before any full 512-iteration screen. A PASS authorizes only another
+  bounded pilot—not a claim against MC.
 - **Structured search remains independent and feature-off.** Commit `e946696`
   closes the broader bury source's 512-state disjoint-report/equal-work code
   gate. Its verifier reconstructs named deals, redraws both folds and replays
-  every raw score; digest and wholesale-score falsifications fail. The evidence
-  run still waits for terminal S0 and cannot itself promote a policy. Audit
-  found that the current runtime path canonicalizes the base bury before
-  search, while the screen preserves the terminal champion's literal bury as
-  candidate zero. That downstream treatment mismatch and missing structured-
-  bury dose telemetry must close before any screen PASS can authorize a duel.
+  every raw score; digest and wholesale-score falsifications fail. `2bb571f`
+  aligns runtime candidate zero with the literal named terminal-S0 bury and
+  records cumulative opportunity/trigger/override/work/sampler dose. The
+  evidence run still waits for terminal S0 and cannot itself promote a policy.
   The <=4-card sampled exact-endgame seam shares a context-safe solver session
   across candidate roots inside each determinized world and passes independent
   mechanics/parity review. Its frozen challenge at `2370a27` completed 140/140
@@ -145,7 +187,10 @@ day-by-day detail. A historical result below does not reopen a closed lane.
   with raw-screen reopening and zero-refusal/exact-use gates. It waits for
   terminal S0 and remains one-round evidence; each mechanism must later duel
   the terminal champion and any deployment candidate needs multi-round
-  progression. Of the two S3 lanes, S3b is the shortest credible post-S0 path
+  progression. `2bb571f` additionally adds a genuine two-card defender-min
+  witness, attacker-points transposition-key falsification and byte-pinned
+  numeric candidate values; `8ee6691` pins those mechanics into the strength
+  protocol. Of the two S3 lanes, S3b is the shortest credible post-S0 path
   to a clean win because its terminal-champion-matched treatment, screen and
   confirmation already exist. S3a may have greater upside because burial is a
   once-per-round high-leverage decision and sourcing has historically helped,
@@ -627,6 +672,8 @@ new teacher or strength audit receives a separately versioned split.
 | `rl_data/pilot_dev512.v6.json` | 512 unique deals; hash `af78748586034f6f`; bands 170/171/171; size 0/72/98, 11/131/29, 152/19/0; roles 85/85, 86/85, 86/85; source 129/41/0, 17/154/0, 0/1/170 | DEV worksheet for the lead-ballot design screen. Frozen from clean `53d9b67` by a fail-closed freezer: size drives deal selection, and a shortage or replay error publishes nothing instead of a short file. | **512/512 SCORED; SELECT NONE.** Eight clean shards at `884030f`, strict aggregate reproduced; no design advanced and this asset may not train a model. Supersedes v5 (`097ea3851cd3bb9c`), whose marginal-cell dedup moved 52/512 exact DEV states under row reversal. v3/v4/v5 remain named negative controls. |
 | `rl_data/pilot_calib512.v6.json` | 512 unique deals, disjoint from DEV; hash `3872350f57a4dd60`; identical band/size/role allocation | Untouched holdout to judge exactly one frozen DEV-selected design. No action labels or scores. | **UNTOUCHED.** Do not tune, train, or score. Supersedes v5 (`00ca4de1915d8c4f`). |
 | `tests/data/s0_override_audit.v1.json` | 150 frozen DEV decisions; first 20 actual N=30 overrides each carry all 300 fresh signed paired deltas; SHA-256 `9703b50817fb03622c3739e44f73e19083b1e8337300be7054774e2308e13ef5` | Reproducible calibration/challenge asset for report-fold dose and both-role override semantics. It selected R=300 by a committed rule. | **INSPECTED DEV DIAGNOSTIC.** May regression-test S0 mechanics and dose identity; never a strength result, promotion set, generic teacher or training corpus. |
+| Mini `runs/logs/s0a-v1.aggregate.json` | 2,048 mirrored clusters, seeds 132,000,000–132,002,047; SHA-256 `0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49` | Fresh decision-rule mechanism screen: report-LCB +0.353 +/- 0.069 versus current and +0.293 +/- 0.066 versus equal-work uniform; null flat. | **SEALED / REPORT-LCB SELECTED.** Non-promotable parent for S0b only; not training data or deployment evidence. |
+| Mini `runs/logs/s0b-lcb-v1.aggregate.json` | 2,048 mirrored clusters, seeds 134,000,000–134,002,047; SHA-256 `25c0177e27c0e185e96701ad788313a7ea14b892e24586186df02466bf144803` | Fresh allocation screen under report-LCB: report-uniform replicated at +0.357 +/- 0.066 versus current; adaptive added unresolved +0.037 +/- 0.060. | **SEALED / ADAPTIVE SELECTED BY REGISTERED POINT ESTIMATE.** Parent for exact S0c-adaptive-LCB only. Shows report-rule replication, not measurable allocation benefit; never training data. |
 
 The completed screen's primary 95% half-width was 0.337. Holding that
 variance fixed, 2,048 comparable states would narrow it only to about 0.169,

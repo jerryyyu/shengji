@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 17:08 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 17:56 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -17,18 +17,37 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   `+0.293 +/- 0.066` versus equal-work uniform; null `+0.008 +/- 0.070`).
   Registered aggregate SHA-256:
   `0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49`.
-  S0b-LCB launched 8/8 exact parent-bound Mini shards at 06:58 EDT. For S0,
-  Air remains duplicate fallback only; never pool its records or launch an S0
-  child from Air.
-  At 17:03 all eight workers were live near full CPU with eight partial
-  manifests, no final or FAILED marker, and matching clean frozen
-  compiled+strict provenance. The registered singleton supervisor and
-  keepawake service are also live. A 17:02 attempt to read only the last
-  progress line established that the frozen worker stdout itself includes
-  interim W/L. Those numbers are quarantined and caused no code, dose,
+  S0b-LCB is **COMPLETE / ACCEPTED**: 8/8 exact parent-bound shards and 2,048
+  clusters selected `mc-s0-adaptive`. Adaptive was `+0.037 +/- 0.060` versus
+  report-uniform, `+0.433 +/- 0.065` versus random and `+0.395 +/- 0.067`
+  versus current; the true null was `+0.008 +/- 0.067`. The registered S0b
+  aggregate SHA-256 is
+  `25c0177e27c0e185e96701ad788313a7ea14b892e24586186df02466bf144803`.
+  Its point-estimate allocation gate selected adaptive; the incremental
+  interval crosses zero, and report-uniform also beats random by about 0.396.
+  Thus report-LCB replicated while allocation did not measurably help. This is
+  not promotion.
+  At 17:30 the singleton launched all eight exact `s0c-adaptive-lcb` shards on
+  untouched seeds 135,000,000–135,008,191; at 17:31 all eight workers were live
+  near 95% CPU with eight partial manifest pairs and zero final/failure. Air
+  remains duplicate fallback only; never pool its S0 records.
+  A 17:02 attempt to read only the last progress line established that the
+  frozen worker stdout includes interim W/L. Those numbers are quarantined and
+  caused no code, dose,
   estimand, launch or stop decision; this is now an explicit observer-blinding
   deviation, not “score-free progress.” Do not open worker stdout, supervisor
   state or JSONL partials again. Monitor only processes and artifact counts.
+  Commit `7314cdf` suppresses both running W/L and shard-end paired estimates
+  for future main runs; it does not retroactively change the frozen live block.
+  At the S0b transition, the supervisor correctly refused because moving main
+  no longer matched its three pinned audit-tool hashes. No aggregate existed.
+  Codex created clean detached audit checkout `6fe5f44` (all three hashes exact)
+  and resubmitted the same singleton with only `S0_AUDIT_ROOT` repointed. It
+  then sealed S0b and launched S0c without changing data, code, dose or rule.
+  Independent review found the eight completed S0b keepalive jobs repeatedly
+  restarting into exclusive-output refusal; Codex removed exactly those eight
+  labels after verifying finals/aggregate. The remaining service set is only
+  8 S0c workers, singleton and keepawake.
 - Teacher-v1 mechanics/gold gates, the V11 protected-anchor lane
   and the role-conditioned RL microgates remain independent parallel strength
   work; none should be folded into S0 before each wins alone. The frozen V11
@@ -67,14 +86,19 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   `highn_enc`; regeneration alone cannot rehabilitate that checkpoint.
 - Corrected V11 v2 is **RUNNING 8/8 ON AIR** from exact clean commit
   `cde0fecf4151685e7174be8a7aa64b0ee6478edd`. At 15:25 eight detached shards
-  launched over fresh seeds 142,000,000–142,002,047. At 17:03 all eight Python
-  workers remained live at roughly 87–90% CPU with eight record partials,
-  eight manifest partials and zero final/FAILED artifact. Do not inspect
+  launched over fresh seeds 142,000,000–142,002,047. At the 17:32 metadata-only
+  check all eight Python workers remained live at roughly 83–87% CPU with
+  eight record partials, eight manifest partials and zero final/FAILED
+  artifact. Do not inspect
   partial scores or combine it with v1. The immutable runner predates policy
   activation counters, so its eventual aggregate cannot alone prove the net
   influenced play. `c8358d2` makes reconciled nonzero activation mandatory in
   the later protected-composition screen; do not retrofit the live estimand.
-- Teacher 143M-v2 entry is **CODE GATE CLOSED / WAITS FOR AIR** at `2038b31`.
+- Teacher 143M-v2 entry is **CODE GATE CLOSED / WAITS FOR AIR**. Commit
+  `2038b31` accepted the entry bytes; the actual supervisor and every later
+  consumer must run at exact full commit
+  `acfd95b3088d73b53abda987a12e6be552da0b2b`, whose entry/state/contract bytes
+  are identical and which also contains the closed receipt/label/gate writers.
   It JSON-canonicalizes actor identity, pins Python 3.14.6, refuses all four
   posterior-changing flags by key presence, requires exact 8-shard/1,024-deal
   capture admission, byte-binds capture -> diagnostics -> selected states,
@@ -82,22 +106,23 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   disjointness, publishes exclusively and reopens the full parent chain after
   freeze. Nonzero-SE and collision/invented/reordered-state falsifications are
   included; the broader teacher matrix passed 204/204. This authorizes only a
-  clean fresh 143M-v2 capture -> diagnose -> 64-state freeze after Air is free.
-  Commit `acfd95b` separately closes the later receipt/label/gate publication
-  chain: exclusive post-link verification, exact parent/runtime/source
-  reopening and recomputed Stage-A/B evidence are mandatory. No teacher job,
-  label or strength evidence exists.
+  clean fresh 143M-v2 capture -> diagnose -> 64-state freeze after a whole host
+  is free. Never generate at `2038b31` and switch commits: downstream writers
+  reject that Git/runtime mismatch. `acfd95b` closes exclusive post-link
+  verification, exact parent/runtime/source reopening and recomputed Stage-A/B
+  evidence. No teacher job, label or strength evidence exists.
 - Claude independently revalidated the live S0 chain: S0a hash/statistics,
   cluster additivity, exact 4,096-record coverage, null identity, work parity,
-  source isolation and the live flags-off environment all hold. The result and
-  live S0b remain admissible. Commit `4dc5302` closes the **main-only durability
-  gap**: future smoke/full runs refuse all four posterior-changing
+  source isolation and the live flags-off environment all hold. S0a and the
+  now-sealed S0b remain admissible. Commit `4dc5302` closes the **main-only
+  durability gap**: future smoke/full runs refuse all four posterior-changing
   sampler/ballot flags by environment-key presence, manifests record an exact
   empty list, and aggregation rejects missing/nonempty/cross-phase drift. The
   focused S0 matrix passes 39/39. The frozen Mini worktree and live chain were
-  not changed, so at live S0c launch independently verify its inherited
-  environment is still clean and record that external receipt in terminal
-  review.
+  not changed. At the live S0c launch, launchd metadata and the static wrapper
+  independently established that none of the four experimental keys was
+  inherited and only `SHENGJI_FAST=1`/`SHENGJI_REQUIRE_VOIDS=1` were added;
+  retain that external receipt for terminal review.
 - Commit `7ecffd5` blind-froze a *separate* protected-composition question
   before any direct-V11 effect was opened. It preserves the original direct
   verdict but recognizes that standalone superiority is not necessary for an
@@ -106,8 +131,18 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   admits the independent 138M confirmation. Corrected-parent v2 is now frozen
   at `b361836`, with empty-valued environment-key refusal repaired at `1354cac`.
   Its deliberate `DIRECT_AGGREGATE_SHA256=None` launch lock may be replaced
-  only by the exact sealed corrected-V11 v2 aggregate hash; terminal S0 is the
-  other prerequisite.
+  only by the exact sealed corrected-V11 v2 aggregate hash. Bind that identity
+  unconditionally whether the direct verdict is PASS or FAIL, preserve the
+  stored verdict and `protected_composition_authorized=false`, and let the
+  loader enforce the sane-null/exact-dose criteria. Standalone superiority is
+  not required; terminal S0 is the independent other prerequisite.
+- Commit `e026ed0` closes Claude finding 8 prospectively without rewriting the
+  live parent. The exact `cde0fec` runner and `encode.py` bytes retain their
+  historical encode+Memory receipt; future protected composition separately
+  enforces and records a versioned cards+combos+encode+Memory identity through
+  shards, aggregate reopening and confirmation. Root passed 164/164 and
+  independent adversarial review passed 67 focused tests, including the literal
+  `max_pair_run -> 0` semantic mutant.
 - Six parallel code gates are now closed and pushed. `e946696` independently
   redraws/re-scores the S3a evidence; `d2229d0` binds the exact direct-V11
   parent and reopens raw screen evidence before confirmation; and `e49cf60`
@@ -146,7 +181,7 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   evaluator are unchanged. Focused independent verification passes 25/25;
   the author also passed the broader game/invariant/evaluator set 46/46.
 
-## S0 implementation packet — S0a accepted, S0b-LCB running
+## S0 implementation packet — S0a/S0b accepted, S0c-adaptive-LCB running
 
 Base implementation commit: `df0a7b9`; calibration/freeze commit: `316542a`
 (both pushed). End-to-end parent-bound S0a/S0b/S0c protocol commit: `476e400`.
@@ -239,7 +274,7 @@ completed all five S0a arms: 20 mirrored records, zero short/zero-world searches
 reconciled sampler counters and no manifest problems. It is deliberately marked
 `promotable:false`; its game scores are not evidence.
 
-## Authoritative current job — S0b-LCB
+## Authoritative current job — S0c-adaptive-LCB
 
 S0a sealed all eight final manifests at 06:58 EDT. Independent frozen-source
 recomputation matched the stored aggregate byte-for-byte except for its missing
@@ -248,14 +283,34 @@ terminal newline. All labels contain 4,096 mirrored records over the exact
 counter is zero, and all eight manifests agree on Mini host, Python 3.14.6,
 strict voids, frozen SHA `be1e39c` and native digest `9c9e77fb...e4c1`.
 
-The supervisor then launched exactly one `s0b-lcb` block. Its eight child
+The supervisor launched exactly one `s0b-lcb` block. Its eight child
 manifests cover contiguous seeds 134,000,000–134,002,047, bind the exact S0a
 aggregate hash and survivor, and repeat the frozen runtime identity with no
 dirty files. S0b compares deterministic adaptive allocation, the surviving
 uniform report-LCB rule and matched random allocation. It retains adaptive only
 if adaptive-minus-uniform and adaptive-minus-random are both positive by the
 registered paired point-estimate rule; otherwise report-LCB remains the sole
-S0c candidate. Do not inspect partial effects, relaunch workers or pool Air.
+S0c candidate. All eight shards sealed without failure. Stored aggregate
+`s0b-lcb-v1.aggregate.json` has SHA-256
+`25c0177e27c0e185e96701ad788313a7ea14b892e24586186df02466bf144803`.
+The fresh block nearly exactly replicated S0a: uniform report-LCB was
+`+0.357 +/- 0.066` versus current, while adaptive was `+0.395 +/- 0.067`.
+Adaptive-minus-report-uniform was positive but unresolved at
+`+0.037 +/- 0.060`; adaptive-minus-random was `+0.433 +/- 0.065`, and the null
+was flat at `+0.008 +/- 0.067`. The predeclared point-estimate rule therefore
+selected `mc-s0-adaptive`.
+
+Before aggregation, the singleton refused because its audit tools were pinned
+to exact `6fe5f44` hashes but `S0_AUDIT_ROOT` still defaulted to moving main.
+No aggregate existed and no evidence changed. A clean detached
+`/Users/jerryyu/Projects/shengji-s0-audit` at exact `6fe5f44` reproduced all
+three expected hashes; resubmitting the same supervisor with only that audit
+root repaired the operational path. At 17:30 it sealed S0b and launched 8/8
+`s0c-adaptive-lcb` workers over exact seeds 135,000,000–135,008,191. The
+launchd environment contains none of the four experimental keys; the wrapper
+sets only compiled+strict flags. At 17:31 all workers were live near 95% CPU,
+with eight partial pairs and zero final/failure. Do not inspect partial effects,
+relaunch workers or pool Air.
 
 ### Completed S0a launch and aggregation reference
 
@@ -388,31 +443,21 @@ authorize that external mutation.
    server suite was 552 passed, 2 skipped. Those frozen source checks correctly
    refuse main after `66aad44`; version the direct parent and composition gate
    rather than weakening them.
-3. **S1 teacher/model — v1 entry REFUSED; fresh v2 repair required:** pushed commit
-   `23a9e0b` carries packet id, exact 120000000–120001023 range, eight-shard
-   coverage and parent hashes through capture, diagnostic, frozen state,
-   label and gate artifacts. Labels are the independently reconstructed
-   `sorted(state_id)[shard::8]` partition of the exact state-set bytes. Before
-   each label population, create one exclusive producer receipt: primary and
-   rerun have different roles, run ids, SHA values and nonces; every shard in
-   one population binds the same receipt. Real gates reopen receipts and exact
-   state/label bytes, repeat source/runtime checks, and fail stale, smoke,
-   copied, swapped, missing or repeated artifacts. Independent review is PASS;
-   py-compile plus teacher/pilot acceptance reports **134 passed, 23 skipped**.
-   Commit `0183cdd` added the fail-closed singleton transition supervisor. At
-   14:55 its clean corrected-encoder worktree admitted exact packet
-   `teacher-v1-entry-120m-v1`; all eight 128-deal captures completed. The
-   supervisor then correctly stopped the chain, but for a validator defect:
-   JSON serialization converted ballot config tuples to lists, so direct dict
-   comparison falsely labelled every otherwise identical actor as drifted.
-   There are zero diagnostics and no frozen state set, receipts or labels.
-   Preserve the refused v1 directory. The replacement must be a newly frozen
-   `143m-v2` packet on disjoint seeds with JSON-canonical actor identity, exact
-   Python 3.14.6 and experimental flags OFF enforced and falsified in tests.
-   Stage A is 64 states plus
-   an independently receipted deterministic rerun; only PASS authorizes the
-   disjoint 128-state Stage B. Only Stage-B gold regret U95 <=0.10 authorizes
-   implementing Stage C. Never append capture or mix executable identities.
+3. **S1 teacher/model — v1 REFUSED; 143M-v2 full code chain CLOSED / waits for
+   one free host:** preserve `teacher-v1-entry-120m-v1`; it stopped after eight
+   captures and before diagnostics because tuple/list JSON identity was
+   compared incorrectly. The replacement is exact packet
+   `teacher-v1-entry-143m-v2` at full commit
+   `acfd95b3088d73b53abda987a12e6be552da0b2b`. Its accepted entry bytes are
+   unchanged from `2038b31`, while the same executable identity also contains
+   the independently closed receipt/label/gate writers. Run capture ->
+   diagnostics -> exact 64-state freeze on one Python-3.14.6 compiled+strict
+   host with all four experimental keys absent, then stop before receipts or
+   labels. Do not generate states at `2038b31` and later switch commits: the
+   consumers correctly reject that mismatch. Only a reviewed Stage-A pass may
+   admit the disjoint 128-state Stage B; only Stage-B gold-regret U95 <=0.10
+   may authorize implementing Stage C. Never append capture, migrate phases
+   between hosts, or mix executable identities.
 4. **S2 self-play RL — learning-screen code CLOSED / preflight next:**
    `e49cf60` now transactionally binds and replays learner, optimizer, replay,
    named RNG, runtime, progress and immutable actor/candidate identity; poisons
@@ -483,38 +528,94 @@ authorize that external mutation.
 
 ## Live execution queue for Claude/Codex
 
-1. **Do not score either live partial.** Mini S0b and Air corrected-V11 v2 are
-   the two live evidence blocks. Mini stdout was proved outcome-bearing at
+1. **Do not score either live partial.** Mini S0c-adaptive-LCB and Air
+   corrected-V11 v2 are the two live evidence blocks. Mini stdout was proved outcome-bearing at
    17:02, so neither stdout nor supervisor state is an admissible progress
    source. Monitor only worker count, process health, final/partial/failure
    counts and frozen identity. Do not adapt anything to the quarantined peek.
-2. **Keep Air's refused teacher v1 namespace immutable.** The supervisor
-   stopped after eight captures and before every diagnostic/label path. The
-   independently reviewed JSON-canonical, flags-off, Python-pinned 143M-v2
-   entry packet is pushed at `2038b31`; it closes diagnostic->state provenance
-   and exclusive publication through the 64-state freeze. Never resume or
+2. **Seal Air's V11 parent exactly once.** Wait for exactly eight final JSONLs
+   plus eight final manifests and zero partial/FAILED/worker/screen residue.
+   Aggregate only in Air's clean detached
+   `cde0fecf4151685e7174be8a7aa64b0ee6478edd` checkout with
+   `/opt/homebrew/bin/python3.14` == 3.14.6 and all four experimental keys
+   absent. Exact input is
+   `runs/logs/v11-current-revalidation-v2_shard0[0-7]_cde0fecf41.jsonl.manifest.json`;
+   exact output is `runs/logs/v11-current-v2.aggregate.json`. Use the frozen
+   runner's `aggregate` command once, with stdout suppressed, then compute
+   `shasum -a 256`. Never aggregate from moving main. Freeze that hash into the
+   protected-composition identity whether the verdict PASSes or FAILs; do not
+   alter the stored verdict or infer policy activation.
+
+   ```bash
+   env -u SHENGJI_WEIGHTED_SPLITS -u SHENGJI_UNIFORM_DEAL \
+     -u SHENGJI_PHYSICAL_FILLS -u SHENGJI_ALLOW_BALLOT_MISMATCH \
+     SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 PYTHONDONTWRITEBYTECODE=1 \
+     /opt/homebrew/bin/python3.14 scripts/v11_revalidate_v2.py aggregate \
+     --pattern 'runs/logs/v11-current-revalidation-v2_shard0[0-7]_cde0fecf41.jsonl.manifest.json' \
+     --out runs/logs/v11-current-v2.aggregate.json >/dev/null
+   /usr/bin/shasum -a 256 runs/logs/v11-current-v2.aggregate.json
+   ```
+
+3. **Keep Air's refused teacher v1 namespace immutable.** Never resume or
    reinterpret `teacher-v1-entry-120m-v1`. Air is occupied by V11 v2; do not
-   launch teacher v2 concurrently. The later receipt/label/gate code is closed
-   at `acfd95b`, but it may consume only the exact fresh v2 state-set parent.
-3. **Leave Mini's singleton S0 supervisor in control.** It aggregates S0b,
-   selects the registered survivor and launches exact S0c automatically. Only
-   inspect a phase effect after 8/8 finals and the supervisor transition. At a
-   terminal state, run the independent closeout and packet byte comparison;
-   cleanup only the packet-proved services.
-4. **Local code while compute runs:** corrected-encoder V11 v2 is frozen and
-   pushed at `cde0fec` on disjoint 142M seeds. Teacher entry v2 is closed at
-   `2038b31`, with its later publication gate at `acfd95b`; corrected-parent
-   protected composition is code-frozen at `b361836`/`1354cac` and prospective
-   activation telemetry at `c8358d2`, with the aggregate-SHA launch lock still
+   launch teacher v2 concurrently. Once a whole host is free, use exact clean
+   `acfd95b3088d73b53abda987a12e6be552da0b2b` for the fresh
+   `teacher-v1-entry-143m-v2` singleton. Require Python 3.14.6,
+   compiled+strict runtime, all four experimental keys absent and a nonexistent
+   output directory. Keep capture -> diagnostics -> exact 64-state freeze on
+   one host, emit only the registered heartbeat, then stop before every
+   receipt/label path. Air owns this successor immediately after V11; Mini is
+   reserved for Direct-Q after terminal S0. Never migrate phases after launch.
+
+   ```bash
+   env -u SHENGJI_WEIGHTED_SPLITS -u SHENGJI_UNIFORM_DEAL \
+     -u SHENGJI_PHYSICAL_FILLS -u SHENGJI_ALLOW_BALLOT_MISMATCH \
+     SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 PYTHONDONTWRITEBYTECODE=1 \
+     /opt/homebrew/bin/python3.14 -c \
+     'import sys; sys.path.insert(0,"scripts"); import teacher_v1_entry_supervisor as s; s.preflight("teacher-v1-entry-143m-v2","acfd95b3088d73b53abda987a12e6be552da0b2b"); print("TEACHER_PREFLIGHT_PASS")'
+   screen -dmS teacher_v1_entry_143m_v2 \
+     /usr/bin/env -u SHENGJI_WEIGHTED_SPLITS -u SHENGJI_UNIFORM_DEAL \
+     -u SHENGJI_PHYSICAL_FILLS -u SHENGJI_ALLOW_BALLOT_MISMATCH \
+     SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 PYTHONDONTWRITEBYTECODE=1 \
+     /opt/homebrew/bin/python3.14 scripts/teacher_v1_entry_supervisor.py \
+     --packet-id teacher-v1-entry-143m-v2 \
+     --expected-git acfd95b3088d73b53abda987a12e6be552da0b2b \
+     --out-dir runs/logs/teacher-v1-entry-143m-v2
+   ```
+
+   Run both commands from Air's exact `acfd95b` `server/` directory. The second
+   command is the durable singleton; never replace it with bare `nohup`.
+4. **Leave Mini's singleton S0 supervisor in control.** S0b is sealed and exact
+   S0c-adaptive-LCB is running 8/8. The supervisor now owns terminal aggregation
+   and packet generation from its clean `6fe5f44` audit-tool root. Inspect no
+   S0c effect before 8/8 finals and terminal transition. Then run independent
+   closeout and packet byte comparison; cleanup only packet-proved services.
+5. **Freeze the conditional deployment-choice code before any S0c result is
+   opened; launch nothing.** The accepted design is a fresh 16,384-cluster,
+   8x2,048 four-arm block on currently unused 147M seeds. It is admissible only
+   after an exact terminal `PROMOTE mc-s0-adaptive`; SELECT NONE closes S0.
+   Test each candidate independently: it is eligible only when its fresh LCBs
+   versus both current and its null are positive. Neither eligible keeps
+   current; exactly one eligible sends that candidate to deployment review. If
+   both are eligible, adaptive enters review only when
+   `LCB(adaptive-report)>0`; otherwise the simpler report-LCB enters review.
+   Freeze code, raw reopening, exact dose, null, no-retry and parent gates now,
+   but do not launch or inspect S0c.
+6. **Local code while compute runs:** corrected-encoder V11 v2 is frozen and
+   pushed at `cde0fec` on disjoint 142M seeds. Teacher entry v2 is closed for
+   execution at `acfd95b`; corrected-parent protected composition is code-
+   frozen at `b361836`/`1354cac`, with prospective activation telemetry at
+   `c8358d2` and transitive encoder identity at `e026ed0`. The aggregate-SHA
+   launch lock remains
    engaged. Direct-Q's bounded learning screen is code-closed at `7dbee75`.
    Its next action is the six score-redacted 32-iteration seed/arm preflights
    on Mini after S0 frees capacity, followed only on acceptable measured
    wall/storage by the frozen 512-iteration screen. Do not weaken or rewrite
    sealed v1 evidence. S3 evidence remains subordinate to terminal S0.
-5. **Production stays `mc-strong`.** No evidence completion authorizes a Fly
+7. **Production stays `mc-strong`.** No evidence completion authorizes a Fly
    restart or policy change; that remains a separately reviewed quiet-room
    action.
-6. **Six-hour autonomous owner window (requested 14:29 EDT):** Codex owns the
+8. **Six-hour autonomous owner window (requested 14:29 EDT):** Codex owns the
    transitions above, keeps accepted code/doc commits small and pushed, and
    updates `BACKLOG.md`, `JOBS.md`, today's daily log and this packet after each
    real gate. Claude should intervene only with a concrete blocker/review

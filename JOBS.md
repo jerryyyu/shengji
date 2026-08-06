@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / exact-runtime S0b-LCB (Mini)
+## RUNNING / exact-runtime S0c-adaptive-LCB (Mini)
 
 Mini is the authoritative S0 pipeline. At 22:55 EDT all eight S0a shards began
 from fresh exclusive outputs in detached clean worktree
@@ -22,15 +22,42 @@ newline. This is not promotion. At 06:58 the singleton supervisor launched
 8/8 `s0b-lcb` shards over exact seeds 134,000,000–134,002,047. Every child
 binds that aggregate and survivor and preflighted frozen SHA/runtime/native
 identity with strict voids, no dirty files and zero stderr.
-At 17:03 EDT the singleton state remained `WAITING` with all eight workers
-active near full CPU, eight partial manifests, no final and no FAILED
-marker. Launchd also retained the singleton supervisor PID and keepawake
-service. At 17:02 a last-line progress check established that worker stdout
+S0b-LCB then completed all eight clean shards. The exact registered aggregate
+selected `mc-s0-adaptive`: adaptive-minus-report-uniform
+`+0.037109 +/- 0.060294`, adaptive-minus-random `+0.433105 +/- 0.064534`,
+adaptive-minus-current `+0.394531 +/- 0.067480`, and null-current
+`+0.008301 +/- 0.067274`. Uniform report-LCB itself was
+`+0.357422 +/- 0.065866` versus current, nearly exactly replicating S0a.
+Aggregate SHA-256 is
+`25c0177e27c0e185e96701ad788313a7ea14b892e24586186df02466bf144803`.
+The point-estimate allocation gate selected adaptive; this block cannot
+promote. Its incremental interval crosses zero, and report-uniform also beats
+random by about 0.396, so the substantive result is report-LCB replication with
+no measurable adaptive-allocation gain.
+
+At the transition, the supervisor refused before aggregation because its exact
+audit-tool hashes were from `6fe5f44` while `S0_AUDIT_ROOT` still defaulted to
+moving main. No aggregate existed and no evidence changed. Codex created clean
+detached `/Users/jerryyu/Projects/shengji-s0-audit` at full
+`6fe5f444983bd43d10e081c92acd62c8f7403b74`, verified all three expected
+hashes and resubmitted the same singleton with only that root repointed. At
+17:30 it sealed S0b and launched all eight `s0c-adaptive-lcb` shards over exact
+seeds 135,000,000–135,008,191. Launchd/static-wrapper inspection confirmed all
+four experimental keys absent and only compiled+strict flags added. At 17:31
+the supervisor and keepawake service were live, all eight S0c workers ran near
+95% CPU, eight partial pairs existed and there were zero final/FAILED artifacts.
+Independent review then found all eight sealed S0b keepalive labels repeatedly
+restarting only to hit exclusive-output refusal. Codex removed exactly those
+eight completed labels after verifying finals and aggregate; the loaded service
+set is now exactly eight S0c workers plus singleton and keepawake.
+
+At 17:02 a last-line progress check established that worker stdout
 contains interim W/L and therefore is not score-blind. The observed values are
 quarantined and caused no code, dose, launch, stop or estimand change; do not
 open these stdout logs, supervisor state or JSONL partials again. Future
-heartbeats are process/artifact-count only. The frozen commit and runtime are
-unchanged.
+heartbeats are process/artifact-count only. The frozen worker commit/runtime
+are unchanged. Commit `7314cdf` suppresses both interim W/L and shard-end paired
+effects for future main runs; it does not alter this frozen live block.
 
 Air's S0a duplicate is no longer needed now that authoritative Mini passed its
 aggregate gate. Its exact S0 workers are no longer running and its transition
@@ -103,10 +130,45 @@ closes JSON-canonical actor identity, exact Python/flags admission, exact
 state byte binding, recomputed coverage, 64 unique in-range states, Stage-A/B
 disjointness and exclusive publication. Its scope stops at the 64-state freeze.
 Air is occupied by corrected V11 v2, so no teacher-v2 process or namespace has
-been started. Commit `acfd95b` closes the later receipt/label/gate writers with
-exclusive post-link verification, exact parent/runtime/source reopening and
-recomputed Stage-A/B decisions. They may consume only a fresh sealed v2 state
-set; this is code readiness, not teacher-quality evidence.
+been started. The actual supervisor and every later consumer must execute at
+exact full commit `acfd95b3088d73b53abda987a12e6be552da0b2b`: its accepted
+entry/state/contract bytes are unchanged from `2038b31`, and it also closes the
+receipt/label/gate writers with exclusive post-link verification, exact parent/
+runtime/source reopening and recomputed Stage-A/B decisions. Capturing at
+`2038b31` and switching later would be rejected as Git/runtime drift. Run the
+fresh singleton on one Python-3.14.6 compiled+strict host through exact 64-state
+freeze, then stop before receipts or labels; never migrate phases between hosts.
+
+After V11 releases Air, move only the clean detached Air worktree to full
+`acfd95b3088d73b53abda987a12e6be552da0b2b`; require the exact output namespace
+to be absent and no older supervisor live. From its `server/` directory, run:
+
+```bash
+env -u SHENGJI_WEIGHTED_SPLITS -u SHENGJI_UNIFORM_DEAL \
+  -u SHENGJI_PHYSICAL_FILLS -u SHENGJI_ALLOW_BALLOT_MISMATCH \
+  SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 PYTHONDONTWRITEBYTECODE=1 \
+  /opt/homebrew/bin/python3.14 -c \
+  'import sys; sys.path.insert(0,"scripts"); import teacher_v1_entry_supervisor as s; s.preflight("teacher-v1-entry-143m-v2","acfd95b3088d73b53abda987a12e6be552da0b2b"); print("TEACHER_PREFLIGHT_PASS")'
+```
+
+Only after that exact PASS, start one durable Air singleton with the complete
+cleaned environment (never bare `nohup`):
+
+```bash
+screen -dmS teacher_v1_entry_143m_v2 \
+  /usr/bin/env -u SHENGJI_WEIGHTED_SPLITS -u SHENGJI_UNIFORM_DEAL \
+  -u SHENGJI_PHYSICAL_FILLS -u SHENGJI_ALLOW_BALLOT_MISMATCH \
+  SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 PYTHONDONTWRITEBYTECODE=1 \
+  /opt/homebrew/bin/python3.14 scripts/teacher_v1_entry_supervisor.py \
+  --packet-id teacher-v1-entry-143m-v2 \
+  --expected-git acfd95b3088d73b53abda987a12e6be552da0b2b \
+  --out-dir runs/logs/teacher-v1-entry-143m-v2
+```
+
+Air owns this successor after V11; Mini remains reserved for Direct-Q after
+terminal S0. The supervisor emits a 30-second heartbeat and owns 8x128 interleaved 143M
+capture -> eight diagnostics -> exact 64-state freeze. Its required terminal
+is `STAGE_A_STATES_FROZEN`; review that parent before any receipt/label work.
 
 ## RUNNING / V11 corrected-encoder direct v2 (Air)
 
@@ -122,16 +184,42 @@ explicitly inadmissible. A PASS is not production or protected-composition
 authorization. Root focused tests passed 49/49 and compiled+strict protocol
 preflight returned no problems. Air was pinned to exact clean full commit
 `cde0fecf4151685e7174be8a7aa64b0ee6478edd`; at 15:25 eight detached shards
-launched. At 17:03 all eight Python workers remained live at roughly 87–90%
-CPU, with eight record partials, eight manifest partials, zero final/FAILED
-artifact and no namespace collision. Do not inspect partial scores. Aggregate exactly once
-only after 8/8 real finals and zero partial/FAILED/worker residue.
+launched. At the 17:32 metadata-only check all eight Python workers remained
+live at roughly 83–87% CPU, with eight record partials, eight manifest
+partials, zero final/FAILED artifact and no namespace collision. Do not inspect
+partial scores. Aggregate
+exactly once only after 8/8 real finals, 8 matching final JSONLs, zero
+partial/FAILED artifact and zero worker/screen residue. The operator terminal
+guard is required because the frozen loader does not reject unrelated residue
+names. Use only clean detached
+`cde0fecf4151685e7174be8a7aa64b0ee6478edd`, runner SHA-256
+`9bc265ad3be7e7de40bd70b8c8446c4d2d163918d342ffd56f50173d22d23da2`,
+`/opt/homebrew/bin/python3.14` == 3.14.6 and all four experimental keys absent:
+
+```bash
+env -u SHENGJI_WEIGHTED_SPLITS -u SHENGJI_UNIFORM_DEAL \
+  -u SHENGJI_PHYSICAL_FILLS -u SHENGJI_ALLOW_BALLOT_MISMATCH \
+  SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 PYTHONDONTWRITEBYTECODE=1 \
+  /opt/homebrew/bin/python3.14 scripts/v11_revalidate_v2.py aggregate \
+  --pattern 'runs/logs/v11-current-revalidation-v2_shard0[0-7]_cde0fecf41.jsonl.manifest.json' \
+  --out runs/logs/v11-current-v2.aggregate.json >/dev/null
+/usr/bin/shasum -a 256 runs/logs/v11-current-v2.aggregate.json
+```
+
+Run from `/Users/jerryyu/Projects/shengji-v11-air/server`, never moving main.
+Bind the resulting hash into protected composition regardless of PASS/FAIL;
+preserve the direct verdict and `protected_composition_authorized=false`.
+The loader separately requires a sane null and exact dose. This artifact has
+no activation counter and cannot prove that the network influenced a play.
 
 ## READY / dependent strength code (no job launched)
 
 Corrected-parent protected composition is frozen at `b361836`, with empty-
 valued sampler/ballot environment-key refusal closed at `1354cac` and future
-policy-owned activation accounting at `c8358d2`. It remains launch-locked by
+policy-owned activation accounting at `c8358d2`. Commit `e026ed0` adds the
+future four-source cards/combos/encode/Memory identity through composition
+shard, aggregation and confirmation while leaving the frozen live parent bytes
+and two-source receipt exact. It remains launch-locked by
 `DIRECT_AGGREGATE_SHA256=None` until this live V11 block seals and also waits
 for terminal S0. Direct-Q's bounded learning screen is accepted at `7dbee75`:
 three exact treatment/no-step seeds, score-redacted preflights, separate

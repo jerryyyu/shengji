@@ -21,7 +21,7 @@ evidence changes a synthesized conclusion. Append run reports below the fold,
 and when a run changes a conclusion, EDIT the synthesis rather than letting the
 newest entry sit on top and speak for the file.
 
-## Current synthesis — 2026-08-06 15:32
+## Current synthesis — 2026-08-06 17:56
 
 - **More search width is not the next lever.** N=5->N=10 was large,
   N=10->N=30 was +0.262 +/- 0.154 confirmed, and N=30->N=60 was
@@ -53,7 +53,9 @@ newest entry sit on top and speak for the file.
   a clean model ablation. `66aad44` restores and hashes the trained public/no-
   private-kitty v1 contract. `cde0fec` freezes the fresh disjoint corrected-
   encoder v2 gate over 2,048 exact 142M clusters. Eight Air shards launched at
-  15:25; partial outcomes remain sealed.
+  15:25; at 17:32 all eight workers remained live and partial outcomes remain
+  sealed. The immutable direct-v2 artifact has no activation counter, so it
+  cannot alone prove that the model influenced a play after aggregation.
 - **The v11 protected-anchor composition is code-closed but unmeasured.** Prior racing
   hard-pruned actions, the gate chose whether to search, and the leaf use was
   invalid; none asked v11's confirmed improvement over SmartBot to replace the
@@ -68,7 +70,13 @@ newest entry sit on top and speak for the file.
   the old source lock correctly refuses corrected inference. Version a fresh
   direct parent first; the 137M composition screen also waits for S0's terminal
   champion, and only its PASS admits the disjoint
-  138M confirmation. Only an independent win may reach production review.
+  138M confirmation. `c8358d2` makes reconciled nonzero model dose mandatory in
+  that later protected screen. Bind the corrected direct aggregate hash whether
+  PASS or FAIL while preserving its verdict and authorization false; hash
+  binding is identity, not result selection. `e026ed0` versions a four-source
+  cards/combos/encode/Memory contract for the future composition and preserves
+  the frozen live runner's historical two-source receipt. Only an independent
+  win may reach production review.
 - **Registered DEV-512 lead-ballot designs — SELECT NONE (2026-08-05).** The
   hypothesis was that improving lead-ballot SELECTION, then letting MC evaluate,
   would buy strength. The DEV-512 screen ran all six registered arms on 512
@@ -230,8 +238,30 @@ newest entry sit on top and speak for the file.
   Mini S0a selected `mc-s0-report-lcb` over 2,048 clusters: `+0.353 +/- 0.069`
   versus current and direct `+0.293 +/- 0.066` versus equal-work uniform, with
   a flat null. That proves the registered report rule worth confirming, not a
-  deployable bot. Its separate allocation block is running; only the untouched
-  8,192-cluster S0c comparison may establish strength.
+  deployable bot. Its separate 2,048-cluster allocation block then selected
+  `mc-s0-adaptive`: uniform report-LCB replicated at `+0.357 +/- 0.066` versus
+  current; adaptive added `+0.037 +/- 0.060` versus report-uniform and beat
+  random by `+0.433 +/- 0.065`. The adaptive increment is unresolved, and the
+  random contrast does not isolate allocation because report-uniform also beats
+  random by about 0.396. The registered point-estimate gate selected adaptive,
+  not promotion; the substantive result is that report-LCB replicated while
+  allocation did not measurably help. Exact 8,192-cluster
+  S0c-adaptive-LCB is running 8/8;
+  only that untouched comparison may establish strength. The frozen worker stdout
+  was discovered to contain interim W/L; one accidental tail is quarantined
+  and caused no adaptive action. Future monitoring is metadata-only, and
+  future-main commit `7314cdf` suppresses both running and shard-end effects.
+  The transition used detached exact `6fe5f44` for the already-pinned audit
+  tools after moving main correctly caused a pre-aggregate refusal; the frozen
+  worker bytes and evidence are unchanged.
+  If and only if terminal S0 promotes adaptive, freeze a separate deployment-
+  choice question before opening its outcomes. Fresh 147M data tests each
+  candidate independently: positive LCBs versus current and its null make it
+  eligible. Neither eligible keeps current; one eligible sends that candidate
+  to review; if both qualify, adaptive displaces the simpler bot only with
+  `LCB(adaptive-report)>0`, otherwise report-LCB enters review. SELECT NONE
+  closes S0 and cannot use report-LCB as a fallback. The design is accepted;
+  its code is not frozen and no job exists yet.
 - **The reproducible override diagnostic is smaller than the first prose
   estimate.** In the immutable first-150-DEV / first-20-override asset, 12/20
   N=300 gaps are positive, mean signed gap is `+0.570`, and median absolute gap
@@ -258,14 +288,18 @@ newest entry sit on top and speak for the file.
   states or budget exhaustion. Neither changes a registered production policy.
   `e946696` closes S3a's 512-state disjoint-report/equal-work code gate and
   independently redraws/re-scores every named world/value before acceptance;
-  its evidence run waits for terminal S0. S3b now shares one context-safe exact
+  `2bb571f` aligns literal terminal-champion candidate zero and records complete
+  opportunity/trigger/override/work/sampler dose. Its evidence run waits for
+  terminal S0. S3b now shares one context-safe exact
   session across candidate frontiers inside each common determinization and its
   frozen mechanics challenge completed 140/140 frontiers with zero refusal or
   overflow under the cumulative node cap. `79985a2` closes its champion-matched
   one-round strength protocol with score-free throughput admission, a 2,048-
   cluster screen and disjoint 8,192-cluster confirmation that reopens raw
-  screen bytes. It waits for terminal S0 and still needs later multi-round
-  progression. Neither mechanism has duel evidence or may
+  screen bytes. `2bb571f` adds a real two-card defender-min witness,
+  attacker-points cache-key falsification and byte-pinned numeric values;
+  `8ee6691` pins those mechanics. It waits for terminal S0 and still needs
+  later multi-round progression. Neither mechanism has duel evidence or may
   choose its reference before terminal S0 names the champion.
 - **The generic synchronous RL boundary and concrete microbaseline are
   code-closed; strength is not.**
@@ -277,9 +311,13 @@ newest entry sit on top and speak for the file.
   and exact resumed-output identity on a bounded one-round Shengji-specific
   DouZero-style collector. Review found its algorithm digest omitted imported
   execution-contract sources; `f5ff2f9` now binds all 16 material direct and
-  transitive dependencies and mutation-falsifies each. The 77-test root
-  contract matrix passes. It is not paper faithfulness or self-play strength;
-  next freeze a small learning/held-out evaluation gate before scaling.
+  transitive dependencies and mutation-falsifies each. `b27be23` supplies
+  exact-current-candidate actor refresh. `7dbee75` freezes the three-seed
+  treatment/no-step learning screen with score-redacted preflight, separate
+  iteration-256 resume, fixed held-out semantic replay, paired utility and
+  exact mutable-state reopening; 95/95 focused tests pass. It is not paper
+  faithfulness or self-play strength. Run six short preflights after Mini frees,
+  and scale only if the frozen screen finds a real learning signal.
 - **Teacher-v1 entry v1 refused safely; no teacher evidence exists.** Pushed
   commit `23a9e0b` binds the exact 1,024-deal/8-shard 120M packet through every
   artifact and requires independent pre-label producer receipts for Stage-A
@@ -289,12 +327,13 @@ newest entry sit on top and speak for the file.
   before diagnostics because JSON changed a ballot config tuple into an
   equivalent list and direct dict equality called that actor drift. This is a
   validator representation bug, not policy drift. The refused namespace is
-  immutable; a disjoint 143M-v2 packet must canonicalize JSON identity, pin
-  Python 3.14.6 and reject experimental flags. Its first repair remains HOLD:
-  independent review found the freeze could accept invented states unrelated
-  to diagnostics and artifact publication could overwrite a raced final. No
-  diagnostic, state set or teacher label exists, so this changes execution
-  confidence, not bot strength or the training-data inventory.
+  immutable. `2038b31` accepts the disjoint 143M-v2 JSON/runtime/flags and exact
+  capture->diagnostic->64-state entry bytes. The actual supervisor and every
+  consumer must execute at full `acfd95b`, which preserves those bytes and
+  closes receipt/label/gate exclusive publication and semantic reopening;
+  switching commits after capture would be rejected. Air remains occupied, so
+  no v2 diagnostic, state set or teacher label exists. These are code gates,
+  not bot strength or additions to the training-data inventory.
 
 ## Policy status details
 

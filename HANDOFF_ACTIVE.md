@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 15:47 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 16:04 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -20,9 +20,10 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   S0b-LCB launched 8/8 exact parent-bound Mini shards at 06:58 EDT. For S0,
   Air remains duplicate fallback only; never pool its records or launch an S0
   child from Air.
-  At 15:43 all eight workers were live at roughly 82–85% CPU with eight partial
+  At 16:02 all eight workers were live at roughly 86–96% CPU with eight partial
   manifests, no final or FAILED marker, and matching clean frozen
-  compiled+strict provenance. Do not inspect partial effects.
+  compiled+strict provenance. The registered singleton supervisor and
+  keepawake service are also live. Do not inspect partial effects.
 - Teacher-v1 mechanics/gold gates, the V11 protected-anchor lane
   and the role-conditioned RL microgates remain independent parallel strength
   work; none should be folded into S0 before each wins alone. The frozen V11
@@ -64,15 +65,17 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   launched over fresh seeds 142,000,000–142,002,047; immediate verification
   found eight workers, eight record partials, eight manifest partials and zero
   final/FAILED artifact. Do not inspect partial scores or combine it with v1.
-- Teacher 143M-v2 remains **HOLD BEFORE COMMIT/LAUNCH** despite passing tests.
-  Independent review found the freeze validator could accept 64 invented states
-  unrelated to diagnostic rows, the state artifact writer used overwrite-
-  capable `os.replace`, and `TEACHER_V1_SPEC.md` still named refused 120M-v1.
-  Claude also proved the Stage-B confidence test had zero SE and therefore did
-  not test its 1.66 multiplier, Stage-A/B exclusion lacked a nonempty test/hard
-  postcondition, and generic freeze could accept fewer than eight shards. Close
-  all of these with non-vacuous parent-chain/collision/uncertainty/disjointness
-  falsifications before considering the replacement packet admitted.
+- Teacher 143M-v2 entry is **CODE GATE CLOSED / WAITS FOR AIR** at `2038b31`.
+  It JSON-canonicalizes actor identity, pins Python 3.14.6, refuses all four
+  posterior-changing flags by key presence, requires exact 8-shard/1,024-deal
+  capture admission, byte-binds capture -> diagnostics -> selected states,
+  recomputes coverage, enforces 64 unique in-range states and Stage-A/B
+  disjointness, publishes exclusively and reopens the full parent chain after
+  freeze. Nonzero-SE and collision/invented/reordered-state falsifications are
+  included; the broader teacher matrix passed 204/204. This authorizes only a
+  clean fresh 143M-v2 capture -> diagnose -> 64-state freeze after Air is free.
+  Receipt/label/gate publication remains a separate post-freeze code gate; no
+  teacher label or strength evidence exists.
 - Claude independently revalidated the live S0 chain: S0a hash/statistics,
   cluster additivity, exact 4,096-record coverage, null identity, work parity,
   source isolation and the live flags-off environment all hold. The result and
@@ -89,7 +92,11 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   verdict but recognizes that standalone superiority is not necessary for an
   MC-protected proposal to help. A protocol-valid direct block with a sane null
   plus terminal S0 may admit the non-promotable 137M screen; only a screen PASS
-  admits the independent 138M confirmation.
+  admits the independent 138M confirmation. Corrected-parent v2 is now frozen
+  at `b361836`, with empty-valued environment-key refusal repaired at `1354cac`.
+  Its deliberate `DIRECT_AGGREGATE_SHA256=None` launch lock may be replaced
+  only by the exact sealed corrected-V11 v2 aggregate hash; terminal S0 is the
+  other prerequisite.
 - Six parallel code gates are now closed and pushed. `e946696` independently
   redraws/re-scores the S3a evidence; `d2229d0` binds the exact direct-V11
   parent and reopens raw screen evidence before confirmation; and `e49cf60`
@@ -105,8 +112,11 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   dependencies. Commit `d5d71d2` also closes legacy DMC2's exact-promotion
   seam: PASS returns the immutable candidate actually evaluated, FAIL keeps the
   incumbent and generator drift refuses; 32/32 focused tests pass. Historical
-  DMC2 evidence remains invalid. Direct-Q still needs an explicit candidate-to-
-  actor refresh boundary plus its bounded learning/evaluation spec.
+  DMC2 evidence remains invalid. Commit `b27be23` closes Direct-Q's explicit
+  exact candidate-to-actor refresh boundary: only the already-published current
+  candidate can rotate, exact resume is preserved and integrity drift poisons
+  until checkpoint restore. The bounded learning/held-out evaluation spec is
+  now the next S2 gate; actor rotation itself is not strength evidence.
 - The frontend ship gate is **COMPLETE / PASS**. The real multi-socket server
   suite passes 33/33 and browser connection/intent tests pass 14/14, including
   the newly exercised >50-message history rollover. Lint reports only the
@@ -453,26 +463,26 @@ authorize that external mutation.
    the two live evidence blocks. Monitor only worker count, process health,
    final/partial/failure counts, frozen identity and score-free progress.
 2. **Keep Air's refused teacher v1 namespace immutable.** The supervisor
-   stopped after eight captures and before every diagnostic/label path. Land and
-   independently review the JSON-canonical, flags-off, Python-pinned 143M-v2
-   packet, then close the diagnostic->state provenance and exclusive-publication
-   blockers found in review. Never resume or reinterpret
-   `teacher-v1-entry-120m-v1`. Air is occupied by V11 v2; do not launch teacher
-   v2 concurrently even after its code gate passes.
+   stopped after eight captures and before every diagnostic/label path. The
+   independently reviewed JSON-canonical, flags-off, Python-pinned 143M-v2
+   entry packet is pushed at `2038b31`; it closes diagnostic->state provenance
+   and exclusive publication through the 64-state freeze. Never resume or
+   reinterpret `teacher-v1-entry-120m-v1`. Air is occupied by V11 v2; do not
+   launch teacher v2 concurrently. Before later receipts/labels, close their
+   separate exclusive-publication/parent-binding gate.
 3. **Leave Mini's singleton S0 supervisor in control.** It aggregates S0b,
    selects the registered survivor and launches exact S0c automatically. Only
    inspect a phase effect after 8/8 finals and the supervisor transition. At a
    terminal state, run the independent closeout and packet byte comparison;
    cleanup only the packet-proved services.
 4. **Local code while compute runs:** corrected-encoder V11 v2 is frozen and
-   pushed at `cde0fec` on disjoint 142M seeds. Finish and independently review
-   teacher-entry v2 while both hosts run. S0 main-only flag provenance is
-   closed at `4dc5302`; DMC2 exact promotion is closed at `d5d71d2`. Direct-Q
-   provenance is closed at `f5ff2f9`; its explicit exact actor-refresh seam and
-   bounded evidence spec are next. A corrected-parent version of the already-
-   blind V11 protected-composition protocol may be prepared without opening
-   live v2 outcomes. Do not weaken or rewrite sealed v1 evidence. S3 evidence
-   remains subordinate to terminal S0.
+   pushed at `cde0fec` on disjoint 142M seeds. Teacher entry v2 is closed at
+   `2038b31`; Direct-Q exact actor refresh is closed at `b27be23`; corrected-
+   parent protected composition is code-frozen at `b361836`/`1354cac` with its
+   aggregate-SHA launch lock still engaged. Implement and independently review
+   the bounded Direct-Q learning/held-out evidence protocol plus the teacher
+   receipt/label publication gate. Do not weaken or rewrite sealed v1 evidence.
+   S3 evidence remains subordinate to terminal S0.
 5. **Production stays `mc-strong`.** No evidence completion authorizes a Fly
    restart or policy change; that remains a separately reviewed quiet-room
    action.

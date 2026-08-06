@@ -22,9 +22,10 @@ newline. This is not promotion. At 06:58 the singleton supervisor launched
 8/8 `s0b-lcb` shards over exact seeds 134,000,000–134,002,047. Every child
 binds that aggregate and survivor and preflighted frozen SHA/runtime/native
 identity with strict voids, no dirty files and zero stderr.
-At 15:43 EDT the singleton state remained `WAITING` with all eight workers
-active at roughly 82–85% CPU, eight partial manifests, no final and no FAILED
-marker. All partials
+At 16:02 EDT the singleton state remained `WAITING` with all eight workers
+active at roughly 86–96% CPU, eight partial manifests, no final and no FAILED
+marker. Launchd also retained the singleton supervisor PID and keepawake
+service. All partials
 still bind clean frozen `be1e39c`, Python 3.14.6 and the compiled+strict runtime.
 No partial score or effect was inspected.
 
@@ -91,6 +92,17 @@ reuse it. A replacement must use a fresh versioned 143M namespace and disjoint
 seeds, canonicalize actor identity through JSON, enforce Python 3.14.6 and
 reject every experimental sampler/ballot flag before launch.
 
+## READY / teacher-v1 supervised entry packet v2 (no job launched)
+
+Commit `2038b31` is the independently accepted fresh 143M-v2 entry gate. It
+closes JSON-canonical actor identity, exact Python/flags admission, exact
+8-shard/1,024-deal capture admission, full capture -> diagnostic -> selected-
+state byte binding, recomputed coverage, 64 unique in-range states, Stage-A/B
+disjointness and exclusive publication. Its scope stops at the 64-state freeze.
+Air is occupied by corrected V11 v2, so no teacher-v2 process or namespace has
+been started. The later receipt/label/gate writers retain a separate exclusive-
+publication and parent-binding gate before any gold-label work.
+
 ## RUNNING / V11 corrected-encoder direct v2 (Air)
 
 Commit `cde0fec` freezes eight 256-cluster shards over exact fresh seeds
@@ -105,10 +117,19 @@ explicitly inadmissible. A PASS is not production or protected-composition
 authorization. Root focused tests passed 49/49 and compiled+strict protocol
 preflight returned no problems. Air was pinned to exact clean full commit
 `cde0fecf4151685e7174be8a7aa64b0ee6478edd`; at 15:25 eight detached shards
-launched. At 15:45 all eight workers and detached sessions remained live, with
+launched. At 16:02 all eight worker groups remained live, with
 eight record partials, eight manifest partials, zero final/FAILED artifact and
 no namespace collision. Do not inspect partial scores. Aggregate exactly once
 only after 8/8 real finals and zero partial/FAILED/worker residue.
+
+## READY / dependent strength code (no job launched)
+
+Corrected-parent protected composition is frozen at `b361836`, with empty-
+valued sampler/ballot environment-key refusal closed at `1354cac`. It remains
+launch-locked by `DIRECT_AGGREGATE_SHA256=None` until this live V11 block seals
+and also waits for terminal S0. Direct-Q exact candidate-to-actor rotation is
+accepted at `b27be23`; its bounded learning/held-out evidence protocol is the
+next code gate. None of these commits starts a process or changes production.
 
 ## FROZEN PROTOCOL — S0a decision-rule screen
 

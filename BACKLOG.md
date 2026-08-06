@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-06 15:47 EDT.
+Last re-derived: 2026-08-06 16:04 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -34,9 +34,10 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   `0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49`.
   This is a mechanism-screen survivor, not a deployment result. Its exact
   parent-bound `s0b-lcb` block launched 8/8 Mini shards at 06:58 EDT. Air's
-  duplicate records may never be pooled. At 15:43 all eight workers were live
-  near 82–85% CPU with eight partial manifests, no final or FAILED marker, and
-  clean frozen compiled+strict provenance. Independent review rechecked S0a's
+  duplicate records may never be pooled. At 16:02 all eight workers were live
+  near 86–96% CPU with eight partial manifests, no final or FAILED marker, and
+  clean frozen compiled+strict provenance; the singleton supervisor and
+  keepawake service were also live. Independent review rechecked S0a's
   hash/statistics, additive shared-cluster pairing, null and work parity and
   measured the live flags-off environment; no live invalidation was found.
   Commit `4dc5302` closes the main-only durability gap: every future chain
@@ -71,14 +72,15 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   evidence, and each must respect its own launch gate. Teacher entry v1 is
   **REFUSED / CLOSED BEFORE DIAGNOSTICS**: eight captures completed, then a
   tuple-versus-JSON-list actor comparison falsely reported drift. Preserve the
-  failed namespace. The disjoint JSON-canonical 143M-v2 repair remains HOLD:
-  review found missing capture->diagnostic->selected-state semantic binding,
-  overwrite-capable artifact publication and a stale live 120M spec. S2's
-  exact synchronous infrastructure is code-closed at `e49cf60`; `868b6d8`
+  failed namespace. The disjoint JSON-canonical 143M-v2 entry gate is accepted
+  and pushed at `2038b31`, through exact 64-state freeze only; Air is occupied
+  and receipt/label publication remains a separate gate. S2's exact synchronous
+  infrastructure is code-closed at `e49cf60`; `868b6d8`
   adds the bounded role-conditioned direct-Q learner. Review found and
   `f5ff2f9` repaired its omitted execution-contract/transitive source hashes;
-  all 16 dependencies are mutation-falsified. Its next gate is the bounded
-  learning/evaluation spec.
+  all 16 dependencies are mutation-falsified. `b27be23` adds the explicit,
+  fail-closed exact-current-candidate actor rotation and exact-resume proof.
+  Its next gate is the bounded learning/evaluation spec.
 
 ## NOW — ordered by value
 
@@ -89,9 +91,9 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 | **S0c confirmation** | Independently confirm exactly the S0b survivor | Eight 1,024-cluster shards on seeds 135,000,000–135,008,191 compare survivor, `mc-strong-null`, and current. Promote only if survivor-current and survivor-null paired 95% lower bounds are >0 and the null does not clear; otherwise close S0 SELECT NONE. |
 | **S0d terminal packet + cleanup** | Turn the terminal S0 result into one auditable decision | Independently regenerate and byte-compare the return packet, verify every artifact/hash/counter/seed/runtime field, refuse unexpected S0 workers, then remove only the packet-proved services. Apply a production policy change only on PROMOTE; SELECT NONE leaves `mc-strong` unchanged. A Fly restart remains a separately authorized quiet-room action. |
 | **V11 direct compatibility v1 — TERMINAL FAIL / CORRECTED v2 RUNNING ON AIR** | Separate model quality from an encoder-contract mismatch | The exact 121M v1 block failed as run and remains immutable. `66aad44` restores the trained public/no-private-kitty contract; `cde0fec` freezes a fresh 8x256 corrected v2 gate on exact 142M seeds with transitive encoder hashes and accepted-dose/raw-reopen checks. Eight clean Air shards launched at 15:25 and immediately showed 8 workers/8 partials/0 failures. Do not score partials or reinterpret v1. |
-| **V11 protected composition — CODE GATE CLOSED / WAITS FOR CORRECTED DIRECT + S0** | Test whether search can retain good v11 proposals while rejecting its bad tail | `7ecffd5` blind-froze the estimand; `d2229d0` implements the old-source gate and correctly refuses source drift. Version it only after a fresh corrected-encoder direct block is sealed. Then a sane direct null plus terminal S0 may admit the 2,048-cluster 137M screen even if standalone v11 is not superior. Require anchor-minus-champion/random/null LCBs >0 and a sane null; PASS alone admits disjoint 8,192-cluster confirmation. Never use v11 as a scalar leaf. |
-| **S1 teacher/model — V1 REFUSED / 143M-V2 CODE HOLD** | Test whether a clean counterfactual teacher is worth scaling | `teacher-v1-entry-120m-v1` completed 8/8 captures, then refused before diagnostics on a tuple/list validator bug; preserve it. V2 correctly separates 143M seeds, JSON identity, Python 3.14.6 and flags OFF, but review found invented-state acceptance, overwrite-capable publication, stale v1 instructions, a zero-SE confidence-bound test, no nonempty Stage-A/B exclusion test/postcondition and a sub-8-shard freeze path. Close all with mutation-sensitive parent-chain/collision/uncertainty/disjointness tests before commit or launch. |
-| **S2 self-play RL — DIRECT-Q MICRO CODE GATE CLOSED / TRAIN LOOP + EVIDENCE SPEC NEXT** | Test a real role-conditioned direct terminal-return learner | `868b6d8` adds separate attacker/defender GRU action-Q networks, public chronological history, narrow ordinary-play ballot, direct signed terminal bracket return, immutable actor and explicit Smart setup controls. `f5ff2f9` binds all 16 material implementation dependencies and mutation-falsifies each; the root contract matrix passes 77/77. `d5d71d2` separately proves legacy DMC2 PASS promotes the exact evaluated candidate. Before a direct-Q micro-run, add an explicit exact-candidate actor-refresh boundary, then predeclare a small learning/held-out evaluation; do not fill the fleet from a fixed initial actor. |
+| **V11 protected composition — CODE GATE CLOSED / WAITS FOR CORRECTED DIRECT + S0** | Test whether search can retain good v11 proposals while rejecting its bad tail | `7ecffd5` blind-froze the estimand. Corrected-parent v2 is frozen at `b361836`; `1354cac` closes empty-valued sampler-key refusal. It deliberately retains `DIRECT_AGGREGATE_SHA256=None` until corrected v2 seals, then only that exact aggregate hash plus terminal S0 may admit the 2,048-cluster 137M screen. Require anchor-minus-champion/random/null LCBs >0 and a sane null; PASS alone admits disjoint 8,192-cluster confirmation. Never use v11 as a scalar leaf. |
+| **S1 teacher/model — V1 REFUSED / 143M-V2 ENTRY CODE CLOSED, WAITS FOR AIR** | Test whether a clean counterfactual teacher is worth scaling | Preserve refused `teacher-v1-entry-120m-v1`. Commit `2038b31` closes fresh v2 JSON identity, Python/flags admission, exact 8-shard/1,024-deal population, capture->diagnostic->64-state semantic binding, recomputed coverage, exclusive publication, nonzero uncertainty and Stage-A/B disjointness. It authorizes only clean 143M-v2 capture -> diagnose -> 64-state freeze when Air is free. Receipt/label/gate writers still need their own no-overwrite/parent-binding gate before gold labels. |
+| **S2 self-play RL — ACTOR REFRESH CLOSED / BOUNDED EVIDENCE SPEC NEXT** | Test a real role-conditioned direct terminal-return learner | `868b6d8` adds separate attacker/defender GRU action-Q networks, public chronological history, narrow ordinary-play ballot, direct signed terminal bracket return, immutable actor and explicit Smart setup controls. `f5ff2f9` binds all 16 material implementation dependencies. `b27be23` permits only explicit rotation to the already-published exact candidate, proves adopted and fixed-actor resume, and poisons on artifact/learner drift; root's broad matrix passes 84/84 and independent focused review 57/57. Now predeclare a small three-seed learning/held-out evaluation with a fixed actor-refresh cadence, frozen controls and a strength-relevant metric; do not fill the fleet on training loss or from a fixed initial actor. |
 | **S3a structured bury search — CODE GATE CLOSED / WAITS FOR TERMINAL S0** | Improve the once-per-round decision that ordinary play search never touches | `e946696` registers the 512-state 136M screen with banker-only sources, literal terminal-champion candidate zero, exact equal candidate-world work, disjoint named folds and legacy-four/trigger-matched-random controls. Its consumer reconstructs each named deal, redraws both folds and replays every raw scorer value; tampered digest and wholesale-score falsifications fail. Focused acceptance is 27/27. After terminal S0, a PASS may authorize only a fresh full-game duel design, never promotion. |
 | **S3b sampled exact endgame — STRENGTH CODE GATE CLOSED / WAITS FOR S0** | Replace heuristic continuation where only about four cards per hand remain | `b807ad1`/`2370a27` close mechanics; `79985a2` registers exact-only clones for every reachable S0 champion, a score-free same-host throughput receipt, a non-promotable 2,048-cluster 139M complete-round screen and disjoint 8,192-cluster 140M confirmation. Both efficacy LCBs, sane matched null, nonzero exact use and zero refusal/overflow are mandatory; confirmation reopens raw screen bytes. It remains sampled perfect-information continuation and needs a later multi-round progression deployment gate. Run only after terminal S0 and throughput admission. |
 | **Frontend ship gate — COMPLETE / PASS** | Keep the multiplayer ownership state machine shippable | The real multi-socket server suite passes 33/33, including join, simultaneous claim, disconnect/bot cover, reconnect/takeover, stale/displaced sockets, repeated absence, token rotation and private-hand visibility. Browser connection/intent tests pass 14/14, including pre-state chat, >50-message rollover and invite-over-saved-room precedence; lint has only existing fast-refresh warnings and the production build passes. |
@@ -297,21 +299,22 @@ staged strength work rather than one speculative monolith:
    S3a's replay gate is closed at `e946696`; direct-Q is concrete at `868b6d8`
    with provenance repaired at `f5ff2f9`; and S3b's champion-matched strength
    protocol is closed at `79985a2`. Corrected V11 v2 is frozen at `cde0fec`.
-   Finish teacher-entry v2 and the direct-Q evidence spec while S0 runs. Do not
-   launch an S3 strength block before S0 supplies the terminal champion and
-   each reference is frozen.
+   Teacher entry v2 is accepted at `2038b31`, and exact Direct-Q actor refresh
+   at `b27be23`; finish the Direct-Q evidence spec and the separate teacher
+   receipt/label publication gate while S0 runs. Do not launch an S3 strength
+   block before S0 supplies the terminal champion and each reference is frozen.
 4. Preserve the original direct-V11 verdict and aggregate hash. The fresh
    corrected-encoder direct block is running on disjoint 142M seeds; aggregate
-   exactly once only after 8/8 clean finals, then version the separately blind-
-   frozen `7ecffd5` composition rule without weakening its raw-evidence checks.
-   Only a composition screen PASS admits independent confirmation.
-5. Teacher v2 is code-HOLD while V11 occupies Air. Close the exact capture ->
-   diagnostic -> selected-state chain, exclusive artifact publication and live
-   spec; rerun independent review before commit. Once admitted and a host is
-   free, its supervisor must freeze exactly 64 states and stop before receipts
-   or labels. A later Stage-A pass authorizes only the 128-state gold gate. A Stage-B
-   pass authorizes implementing and sharding Stage C; it does not silently
-   launch millions of labels.
+   exactly once only after 8/8 clean finals, then freeze its exact aggregate SHA
+   into corrected-parent v2 (`b361836`/`1354cac`) without weakening raw-evidence
+   checks. Only a composition screen PASS admits independent confirmation.
+5. Teacher v2 entry is code-closed but waits while V11 occupies Air. Once a
+   host is free, exact clean preflight may run its supervisor through 64-state
+   freeze and stop before receipts or labels. First close and review the later
+   receipt/label writers' exclusive-publication and parent-binding gate. A
+   Stage-A pass authorizes only the 128-state gold gate; a Stage-B pass
+   authorizes implementing and sharding Stage C, never silently launching
+   millions of labels.
 6. Training hardware receives three-seed scaling runs only after a valid frozen
    teacher asset exists. Full-game fleet evaluation is reserved for candidates
    that pass their local data/model gate.

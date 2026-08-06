@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 14:37 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 15:32 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -20,36 +20,86 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   S0b-LCB launched 8/8 exact parent-bound Mini shards at 06:58 EDT. For S0,
   Air remains duplicate fallback only; never pool its records or launch an S0
   child from Air.
-  At 14:36 all eight workers were live near 98–99% CPU with eight partial
-  manifests, no final or FAILED marker, and matching clean frozen
+  At 15:04 all eight workers were live with eight partial manifests, no final
+  or FAILED marker, and matching clean frozen
   compiled+strict provenance. Do not inspect partial effects.
 - Teacher-v1 mechanics/gold gates, the V11 protected-anchor lane
   and the role-conditioned RL microgates remain independent parallel strength
-  work; none should be folded into S0 before each wins alone. The V11 direct-
-  current prerequisite is now running as one clean immutable block on Air.
-  Teacher-v1's entry code gate is **CLOSED / CAPTURE NEXT** at pushed commit
-  `23a9e0b`: exact packet/range/shards, canonical state partitions, pre-label
-  producer receipts and upstream artifact reopening passed independent review.
-  Teacher evidence has not started; its Air worktree/preflight is
-  **READY_AFTER_V11** and the exact capture -> diagnostic -> 64-state freeze
-  packet is staged. Both compute machines remain occupied by sealed registered
-  work. At 14:36 all eight V11 workers were live near 88–90% CPU with eight
-  partial manifests, no real final or FAILED marker, and exactly 1,260/1,536
-  durable rows (82.0%) flushed per shard. The one final artifact in the
-  namespace is the predeclared two-cluster `_SMOKE`, not evidence. No record,
-  partial score or effect was opened.
+  work; none should be folded into S0 before each wins alone. The frozen V11
+  direct-current block completed 8/8 and was aggregated exactly once. As run it
+  **FAILED**: v11-current was `-0.132 +/- 0.070` paired level utility per seed,
+  v11-null was `-0.159 +/- 0.069`, and the true null was sane at
+  `+0.027 +/- 0.068`; `anchor_test_authorized=false`. Aggregate SHA-256 is
+  `112f2c756235d69ac60efbd0f263ef096d311145d0151931ce2a2b8b0099eaec`.
+  That cleanly rejects the exact `e66b90b` implementation, but not the learned
+  hypothesis: it used the now-proved drifted banker encoder described below.
+  Air was immediately repointed to minimal clean commit `0183cdd`. Its exact
+  teacher entry attempt is now **REFUSED / CLOSED BEFORE DIAGNOSTICS**: all
+  eight captures finished, then validation compared the in-memory ballot's
+  tuple config to the semantically identical JSON list config and falsely
+  reported actor drift. No diagnostic, state-set, receipt, label or gate was
+  launched. Preserve that namespace and its refusal; do not resume, overwrite
+  or reuse it. A fresh versioned 143M packet must canonicalize JSON identity,
+  reject every experimental flag, pin Python 3.14.6 and use disjoint seeds.
+- **Encoder incident closed at code level, follow-up evidence required.**
+  `encode_obs` inherited `Memory(..., own_kitty=True)` after the Memory default
+  changed while `ENC_VERSION` stayed 1. Banker inference therefore received a
+  private-kitty-dependent unseen plane that historical v11 training never saw.
+  Commit `66aad44` restores explicit `own_kitty=False` for version 1, names the
+  public/no-private-kitty schema, binds encode+Memory source hashes, and adds a
+  real counterfactual banker test. Any post-default encoded asset must prove its
+  producer semantics before use. The protected-anchor lane may not mix the old
+  drifted direct block with corrected-encoder inference; a fresh versioned
+  direct block on disjoint seeds is now the prerequisite. Full byte replay
+  proves `rl_data/highn_enc` contaminated: all 5,923 banker rows match only
+  drifted semantics, while 14,922 nonbanker rows are invariant. The same audit
+  found 509/551/551 private-only banker rows in `human_v4/v5/v6`; their other
+  rows are nonbanker-invariant. Quarantine those four derived assets and rebuild
+  from retained raw JSONL. `gen_v4_all`, v11pair's actual training corpus, is
+  definitively clean (503,354 public-v1 banker rows and zero private-only).
+  `ckpt_v13abs.pt` is incompatible because it trained from contaminated
+  `highn_enc`; regeneration alone cannot rehabilitate that checkpoint.
+- Corrected V11 v2 is **RUNNING 8/8 ON AIR** from exact clean commit
+  `cde0fecf4151685e7174be8a7aa64b0ee6478edd`. At 15:25 eight detached shards
+  launched over fresh seeds 142,000,000–142,002,047; immediate verification
+  found eight workers, eight record partials, eight manifest partials and zero
+  final/FAILED artifact. Do not inspect partial scores or combine it with v1.
+- Teacher 143M-v2 remains **HOLD BEFORE COMMIT/LAUNCH** despite passing tests.
+  Independent review found the freeze validator could accept 64 invented states
+  unrelated to diagnostic rows, the state artifact writer used overwrite-
+  capable `os.replace`, and `TEACHER_V1_SPEC.md` still named refused 120M-v1.
+  Claude also proved the Stage-B confidence test had zero SE and therefore did
+  not test its 1.66 multiplier, Stage-A/B exclusion lacked a nonempty test/hard
+  postcondition, and generic freeze could accept fewer than eight shards. Close
+  all of these with non-vacuous parent-chain/collision/uncertainty/disjointness
+  falsifications before considering the replacement packet admitted.
+- Claude independently revalidated the live S0 chain: S0a hash/statistics,
+  cluster additivity, exact 4,096-record coverage, null identity, work parity,
+  source isolation and the live flags-off environment all hold. The result and
+  live S0b remain admissible. A **durability gap** remains on main:
+  `s0_run.py` neither records nor refuses three posterior-changing sampler
+  flags (and ballot-mismatch escape). Patch/test main only; never edit the
+  frozen Mini worktree. At live S0c launch, independently verify the inherited
+  environment is still clean and record that in terminal review.
 - Commit `7ecffd5` blind-froze a *separate* protected-composition question
   before any direct-V11 effect was opened. It preserves the original direct
   verdict but recognizes that standalone superiority is not necessary for an
   MC-protected proposal to help. A protocol-valid direct block with a sane null
   plus terminal S0 may admit the non-promotable 137M screen; only a screen PASS
   admits the independent 138M confirmation.
-- Three parallel code gates are now closed and pushed. `e946696` independently
+- Six parallel code gates are now closed and pushed. `e946696` independently
   redraws/re-scores the S3a evidence; `d2229d0` binds the exact direct-V11
   parent and reopens raw screen evidence before confirmation; and `e49cf60`
-  closes S2's interruption/RNG/hidden-state/publication boundaries. None is a
-  strength result. S3a and V11 still wait for terminal S0, and S2 still needs a
-  concrete faithful algorithm with its own exact resumed-output test.
+  closes S2's interruption/RNG/hidden-state/publication boundaries. `868b6d8`
+  adds the concrete two-role, from-scratch direct-Q microbaseline and proves
+  exact resumed batch/action/model/optimizer/replay/RNG identity. `79985a2`
+  adds the terminal-champion-matched S3b screen/confirmation protocol and its
+  score-free throughput gate. `cde0fec` freezes the corrected-encoder V11 v2
+  direct gate at 8x256 fresh 142M clusters with exact accepted-dose and raw
+  reopening checks. None is a strength result. S3a/S3b still wait for terminal
+  S0; V11 v2 is now running 8/8 on Air. `f5ff2f9` closes Claude's direct-Q
+  provenance HOLD by binding and falsifying all 16 material implementation
+  dependencies; its learning/evaluation spec remains open.
 - The frontend ship gate is **COMPLETE / PASS**. The real multi-socket server
   suite passes 33/33 and browser connection/intent tests pass 14/14, including
   the newly exercised >50-message history rollover. Lint reports only the
@@ -269,26 +319,20 @@ authorize that external mutation.
 
 ## Other active strength lanes
 
-1. **V11 direct compatibility (running on Air; separate from S0):**
-   `server/scripts/v11_revalidate.py` and policies `mc-v11anchor` /
-   `mc-v11anchor-random` are code-ready; a two-cluster compiled+strict smoke
-   completed cleanly and is non-promotable. Registry construction is now cwd-
-   independent and the runner verifies that the policy's actual absolute
-   loaded path/SHA are the same NPZ bytes named by its manifest. The frozen
-   direct `rl-override-v11pair` versus current N=30 block launched 8/8 shards
-   on Air at 11:56 EDT from detached clean worktree
-   `/Users/jerryyu/Projects/shengji-v11-air`, exact commit
-   `e66b90bc3a50d514472670ea99909add5ea30d19`. Its 8x256 manifests cover
-   contiguous seeds 121,000,000–121,002,047 and agree on host/Python,
-   compiled+strict flags, policy/ballot/digest contracts and checkpoint SHA
-   `cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003`.
-   At 14:36 all eight workers were healthy with eight partial manifests, no
-   real finals/failures and exactly 1,260/1,536 durable rows (82.0%) flushed per
-   shard. The only final-named artifact is the non-evidence `_SMOKE`. No record,
-   partial score or effect was opened.
-   Aggregate only after 8/8 final manifests. This result can authorize
-   only the protected-anchor experiment.
-2. **V11 protected composition (code gate closed; waits for direct + S0):**
+1. **V11 direct compatibility v1 (terminal FAIL as run; historical):**
+   The immutable `e66b90bc3a50d514472670ea99909add5ea30d19` block completed
+   all 2,048 clusters / 8 shards on exact 121M seeds with zero sampler failure,
+   rejection or short search. Frozen aggregation produced v11-current
+   `-0.1323 +/- 0.0697`, v11-null `-0.1592 +/- 0.0693`, and null-current
+   `+0.0269 +/- 0.0679`; neither efficacy LCB cleared and the null interval did.
+   Artifact: Air
+   `server/runs/logs/v11-current-v1.aggregate.json`, SHA-256
+   `112f2c756235d69ac60efbd0f263ef096d311145d0151931ce2a2b8b0099eaec`.
+   Preserve `anchor_test_authorized=false`. Because its encoder digest
+   `a2022b...` contains the silent banker-private-kitty drift, this is a valid
+   verdict only for that exact implementation, not a clean v11pair-model
+   verdict. A fresh corrected-encoder v2 direct block must use disjoint seeds.
+2. **V11 protected composition (code gate closed; waits for corrected direct + S0):**
    `7ecffd5` preserves the direct gate's original verdict and separately
    predeclares the missing composition estimand. A protocol-valid direct block
    with a null interval containing zero plus S0's terminal champion admits a
@@ -307,8 +351,10 @@ authorize that external mutation.
    standalone verdict, uses exact champion-matched nulls, publishes exclusively
    and forces confirmation to reopen/recompute all raw screen evidence. Root
    acceptance is 44/44; the broader independent gate is 78/78 and the full
-   server suite was 552 passed, 2 skipped.
-3. **S1 teacher/model — entry code gate CLOSED / capture next:** pushed commit
+   server suite was 552 passed, 2 skipped. Those frozen source checks correctly
+   refuse main after `66aad44`; version the direct parent and composition gate
+   rather than weakening them.
+3. **S1 teacher/model — v1 entry REFUSED; fresh v2 repair required:** pushed commit
    `23a9e0b` carries packet id, exact 120000000–120001023 range, eight-shard
    coverage and parent hashes through capture, diagnostic, frozen state,
    label and gate artifacts. Labels are the independently reconstructed
@@ -319,21 +365,40 @@ authorize that external mutation.
    state/label bytes, repeat source/runtime checks, and fail stale, smoke,
    copied, swapped, missing or repeated artifacts. Independent review is PASS;
    py-compile plus teacher/pilot acceptance reports **134 passed, 23 skipped**.
-   This is code evidence only. When a whole machine is free, execute the
-   exact 8x128 capture and diagnosis packet from `TEACHER_V1_SPEC.md`, then
-   freeze Stage A before inspecting label outcomes. Stage A is 64 states plus
+   Commit `0183cdd` added the fail-closed singleton transition supervisor. At
+   14:55 its clean corrected-encoder worktree admitted exact packet
+   `teacher-v1-entry-120m-v1`; all eight 128-deal captures completed. The
+   supervisor then correctly stopped the chain, but for a validator defect:
+   JSON serialization converted ballot config tuples to lists, so direct dict
+   comparison falsely labelled every otherwise identical actor as drifted.
+   There are zero diagnostics and no frozen state set, receipts or labels.
+   Preserve the refused v1 directory. The replacement must be a newly frozen
+   `143m-v2` packet on disjoint seeds with JSON-canonical actor identity, exact
+   Python 3.14.6 and experimental flags OFF enforced and falsified in tests.
+   Stage A is 64 states plus
    an independently receipted deterministic rerun; only PASS authorizes the
    disjoint 128-state Stage B. Only Stage-B gold regret U95 <=0.10 authorizes
    implementing Stage C. Never append capture or mix executable identities.
-4. **S2 self-play RL — synchronous infrastructure PASS / algorithm next:**
+4. **S2 self-play RL — concrete direct-Q code gate CLOSED / evidence next:**
    `e49cf60` now transactionally binds and replays learner, optimizer, replay,
    named RNG, runtime, progress and immutable actor/candidate identity; poisons
    every `BaseException`; forbids process-global RNG consumption; binds hidden
    learner/optimizer configuration; freezes collector-visible state; and uses
    exclusive persistent candidate ownership/publication. Root acceptance is
-   46/46. This is not a faithful Suphx/DouZero implementation. The next bounded
-   gate is one concrete reviewed collector/model/loss that loads the verified
-   actor and proves uninterrupted-vs-resumed output identity.
+   46/46. Commit `868b6d8` then adds one concrete Shengji-specific DouZero-style
+   microbaseline: independent attacker/defender action-Q networks, chronological
+   public history, direct signed terminal bracket return, immutable actor,
+   narrow ordinary-play ballot and explicit Smart declaration/bury controls.
+   Its exact interruption test matches canonical actor-batch bytes, ordered
+   actions, candidate SHA and all mutable state; root matrix is 73/73. It is a
+   bounded one-round code gate, not paper faithfulness or strength. Review found
+   its algorithm digest omitted three execution-contract modules. Commit
+   `f5ff2f9` binds those plus heuristic/MC-ballot/legal transitive dependencies;
+   every one of the 16 source identities is mutation-falsified and the root
+   contract matrix passes 77/77. Next freeze a small learning/evaluation spec
+   before using fleet compute. Separately, legacy DMC2 still needs one exact-
+   candidate promotion seam test: PASS must publish the evaluated candidate,
+   never whatever newer learner generation exists when the gate returns.
 5. **S3a structured bury search — code gate closed / waits for S0:** the pure source sees
    only the banker's 33-card hand, public ordering and incumbent; it emits a
    deterministic, deduplicated, capped point/trump/pair/void ballot with the
@@ -348,7 +413,7 @@ authorize that external mutation.
    transcripts and replays every raw score in frozen call order. Digest and
    wholesale-score falsifications fail; focused acceptance is 27/27. Its
    evidence run and any duel reference still wait for terminal S0.
-6. **S3b sampled exact endgame — mechanics challenge PASS:** all
+6. **S3b sampled exact endgame — strength code gate CLOSED / waits for S0:** all
    distinct submitted legal actions are enumerated inside the <=4-card bound,
    including attempted throws; the engine resolves failures and partnership
    minimax optimizes final attacker points. MC may call it only on a marked
@@ -363,29 +428,41 @@ authorize that external mutation.
    froze and passed the bounded challenge: four real states x four named worlds,
    140/140 exact candidate-frontier evaluations, 16 sessions, 130,989 nodes,
    97,834 hits and zero refusal/overflow under the cumulative 250k-node/session
-   cap. Next register a terminal-champion-matched feature-on policy and fresh
-   paired full-game screen. The precise claim remains an exact perfect-
+   cap. Commit `79985a2` now registers feature-on clones for all three reachable
+   S0 champions plus a score-free two-cluster throughput receipt, a
+   non-promotable 2,048-cluster 139M complete-round screen, and an independent
+   8,192-cluster 140M confirmation. Both efficacy LCBs must clear, the
+   champion-matched null must stay sane, exact use must be nonzero and
+   refusal/overflow must be zero. Confirmation reopens raw screen bytes. Root
+   acceptance is 82 tests across the protocol/mechanics/evaluator matrix. Run
+   only after terminal S0 names the champion and a same-host throughput receipt
+   clears the predeclared operational caps. The precise claim remains an exact perfect-
    information oracle inside each sampled world, not exact imperfect-
    information Shengji; no S3 strength evidence exists.
 
 ## Live execution queue for Claude/Codex
 
-1. **Do not score either live partial.** Monitor only worker count, process
-   health, final/partial/failure counts, frozen identity and score-free progress.
-2. **When Air V11 reaches 8/8 finals and every worker exits,** run exactly one
-   aggregate from the frozen `e66b90b` worktree. Validate the aggregate and
-   preserve its original verdict. Then immediately launch the already-staged
-   teacher-v1 8x128 capture on Air; do not wait for terminal S0 and do not
-   launch the 137M V11 composition screen yet.
+1. **Do not score either live partial.** Mini S0b and Air corrected-V11 v2 are
+   the two live evidence blocks. Monitor only worker count, process health,
+   final/partial/failure counts, frozen identity and score-free progress.
+2. **Keep Air's refused teacher v1 namespace immutable.** The supervisor
+   stopped after eight captures and before every diagnostic/label path. Land and
+   independently review the JSON-canonical, flags-off, Python-pinned 143M-v2
+   packet, then close the diagnostic->state provenance and exclusive-publication
+   blockers found in review. Never resume or reinterpret
+   `teacher-v1-entry-120m-v1`. Air is occupied by V11 v2; do not launch teacher
+   v2 concurrently even after its code gate passes.
 3. **Leave Mini's singleton S0 supervisor in control.** It aggregates S0b,
    selects the registered survivor and launches exact S0c automatically. Only
    inspect a phase effect after 8/8 finals and the supervisor transition. At a
    terminal state, run the independent closeout and packet byte comparison;
    cleanup only the packet-proved services.
-4. **Local code while compute runs:** S3b's terminal-champion-matched full-game
-   strength protocol is in review. S2's next work is a concrete algorithm
-   contract, not more generic resume plumbing. S3a/V11 evidence cannot launch
-   before terminal S0.
+4. **Local code while compute runs:** corrected-encoder V11 v2 is frozen and
+   pushed at `cde0fec` on disjoint 142M seeds. Finish teacher-entry v2 and the
+   S0 main-only flag provenance and DMC2 exact-promotion tests while both hosts
+   run. Direct-Q provenance is closed at `f5ff2f9`; its next bounded work is the
+   evidence spec. Do not weaken or rewrite sealed v1 evidence. S3 evidence
+   remains subordinate to terminal S0.
 5. **Production stays `mc-strong`.** No evidence completion authorizes a Fly
    restart or policy change; that remains a separately reviewed quiet-room
    action.

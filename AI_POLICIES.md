@@ -21,7 +21,7 @@ evidence changes a synthesized conclusion. Append run reports below the fold,
 and when a run changes a conclusion, EDIT the synthesis rather than letting the
 newest entry sit on top and speak for the file.
 
-## Current synthesis — 2026-08-06 14:17
+## Current synthesis — 2026-08-06 15:32
 
 - **More search width is not the next lever.** N=5->N=10 was large,
   N=10->N=30 was +0.262 +/- 0.154 confirmed, and N=30->N=60 was
@@ -45,8 +45,15 @@ newest entry sit on top and speak for the file.
   No learned policy, value leaf, learned search prior or ballot variant has a
   verified edge over it.
 - **Best learned result:** `rl-override-v11pair` beats SmartBot 57.7% (n=480)
-  and is very fast, but its MC comparison is unseeded screen evidence. It is a
-  deployment-cost candidate, not the strongest verified bot.
+  and is very fast, but it has not beaten MC. Its first fully seeded current
+  N=30 block was strongly negative (`-0.132 +/- 0.070` paired level utility;
+  matched-null contrast `-0.159 +/- 0.069`, sane true null). That terminal
+  verdict rejects exact commit `e66b90b`; source audit then proved the run used
+  a banker-private-kitty encoder the checkpoint was never trained on. It is not
+  a clean model ablation. `66aad44` restores and hashes the trained public/no-
+  private-kitty v1 contract. `cde0fec` freezes the fresh disjoint corrected-
+  encoder v2 gate over 2,048 exact 142M clusters. Eight Air shards launched at
+  15:25; partial outcomes remain sealed.
 - **The v11 protected-anchor composition is code-closed but unmeasured.** Prior racing
   hard-pruned actions, the gate chose whether to search, and the leaf use was
   invalid; none asked v11's confirmed improvement over SmartBot to replace the
@@ -57,8 +64,10 @@ newest entry sit on top and speak for the file.
   `d2229d0` binds the exact frozen direct prerequisite and its source hashes,
   preserves that aggregate's original standalone verdict, adds exact
   champion-matched nulls and requires confirmation to reopen/recompute all raw
-  screen evidence. First finish the direct block; the 137M composition screen
-  also waits for S0's terminal champion, and only its PASS admits the disjoint
+  screen evidence. The old direct block is sealed with authorization false and
+  the old source lock correctly refuses corrected inference. Version a fresh
+  direct parent first; the 137M composition screen also waits for S0's terminal
+  champion, and only its PASS admits the disjoint
   138M confirmation. Only an independent win may reach production review.
 - **Registered DEV-512 lead-ballot designs — SELECT NONE (2026-08-05).** The
   hypothesis was that improving lead-ballot SELECTION, then letting MC evaluate,
@@ -90,6 +99,22 @@ newest entry sit on top and speak for the file.
   reservoir, not an oracle. Its old-ballot/non-strict/same-world-selected labels
   have produced no online gain. The 12,000-state late supplement is raw-state
   distribution correction and has not yet been cleanly relabelled or trained.
+- **Encoder contract is policy/data identity.** Encoder v1 is explicitly
+  `rl-observation-v1-public-no-private-kitty`, including for the banker, and
+  its implementation identity binds both `rl/encode.py` and `ai/memory.py`.
+  Vector dimension or `ENC_VERSION` alone is insufficient. Encoded assets from
+  the August 3 Memory-default drift window are quarantined until producer
+  provenance proves semantics; historical v11 training predates the drift and
+  matches restored v1. A byte replay of all 20,845 `highn_enc` rows found all
+  5,923 banker rows match only the drifted encoding (14,922 nonbanker rows are
+  invariant), so that derived directory is quarantined and must be rebuilt
+  from the raw high-N JSONL before training. Byte classification also
+  quarantines `human_v4/v5/v6`: respectively 509/551/551 banker rows use the
+  private-kitty encoding, while their remaining rows are nonbanker-invariant.
+  `gen_v4_all` is independently byte-proved clean—503,354 public-v1 banker rows,
+  zero private-only—and therefore supports v11pair's restored-v1 compatibility
+  hypothesis. `ckpt_v13abs.pt` trained from contaminated `highn_enc`; rebuilding
+  the cache does not fix the already-trained checkpoint.
 - **A fixed-pair v11 audit extracts a safer diagnostic from those old labels.**
   On all 12,340 original DEV rows (3,085 deals; zero replay/inference errors;
   current Smart matched stored candidate 0 exactly), frozen v11@0.02 overrides
@@ -236,24 +261,40 @@ newest entry sit on top and speak for the file.
   its evidence run waits for terminal S0. S3b now shares one context-safe exact
   session across candidate frontiers inside each common determinization and its
   frozen mechanics challenge completed 140/140 frontiers with zero refusal or
-  overflow under the cumulative node cap. It still needs a champion-matched
-  full-game strength protocol. Neither mechanism has duel evidence or may
+  overflow under the cumulative node cap. `79985a2` closes its champion-matched
+  one-round strength protocol with score-free throughput admission, a 2,048-
+  cluster screen and disjoint 8,192-cluster confirmation that reopens raw
+  screen bytes. It waits for terminal S0 and still needs later multi-round
+  progression. Neither mechanism has duel evidence or may
   choose its reference before terminal S0 names the champion.
-- **The generic synchronous RL boundary is code-closed; algorithms are not.**
+- **The generic synchronous RL boundary and concrete microbaseline are
+  code-closed; strength is not.**
   `e49cf60` binds exact learner/optimizer/replay/RNG/runtime/progress state,
   poisons interrupted transitions, rejects global RNG/hidden mutable config,
   freezes collector-visible state and publishes candidate generations
-  exclusively. This is shared infrastructure only. A Suphx- or DouZero-style
-  lane becomes runnable only after its concrete collector loads the verified
-  actor and the bounded algorithm passes uninterrupted-versus-resumed output
-  identity; there is still no self-play strength evidence.
-- **Teacher-v1 entry integrity is code-closed, not evidence-complete.** Pushed
+  exclusively. `868b6d8` adds separate attacker/defender action-Q networks,
+  chronological public history, direct signed terminal return, immutable actor
+  and exact resumed-output identity on a bounded one-round Shengji-specific
+  DouZero-style collector. Review found its algorithm digest omitted imported
+  execution-contract sources; `f5ff2f9` now binds all 16 material direct and
+  transitive dependencies and mutation-falsifies each. The 77-test root
+  contract matrix passes. It is not paper faithfulness or self-play strength;
+  next freeze a small learning/held-out evaluation gate before scaling.
+- **Teacher-v1 entry v1 refused safely; no teacher evidence exists.** Pushed
   commit `23a9e0b` binds the exact 1,024-deal/8-shard 120M packet through every
   artifact and requires independent pre-label producer receipts for Stage-A
   primary/rerun populations. Independent review found no malformed/stale/copied
-  artifact advancement path under the stated threat model. No teacher state has
-  yet been captured or labelled, so this changes confidence in the experiment,
-  not bot strength or the training-data inventory.
+  artifact advancement path under the stated threat model. All eight corrected-
+  encoder captures completed on Air, then the `0183cdd` supervisor refused
+  before diagnostics because JSON changed a ballot config tuple into an
+  equivalent list and direct dict equality called that actor drift. This is a
+  validator representation bug, not policy drift. The refused namespace is
+  immutable; a disjoint 143M-v2 packet must canonicalize JSON identity, pin
+  Python 3.14.6 and reject experimental flags. Its first repair remains HOLD:
+  independent review found the freeze could accept invented states unrelated
+  to diagnostics and artifact publication could overwrite a raced final. No
+  diagnostic, state set or teacher label exists, so this changes execution
+  confidence, not bot strength or the training-data inventory.
 
 ## Policy status details
 
@@ -261,7 +302,10 @@ newest entry sit on top and speak for the file.
   (n=480) and runs at p50 0.25ms / p95 0.52ms on the production numpy path.
   Its 51.1% against MC over 4,880 rounds is **SCREEN** evidence only because
   every MC factory in those blocks was OS-seeded. It is plausibly near MC, not
-  formally confirmed equal and not superior.
+  formally confirmed equal and not superior. The later seeded/current v1 block
+  failed strongly but used a drifted banker encoder; preserve that as-run FAIL
+  and require a fresh corrected-encoder direct block before changing the model
+  conclusion.
 - **Strength incumbent:** deployed `mc-strong` is N=30 search over the current
   MC policy. Its count-first sampler now
   consumes declaration, void, remaining-pair and remaining-tractor-run
@@ -279,6 +323,13 @@ newest entry sit on top and speak for the file.
   evidence-directed allocation. S0a is a 2,048-cluster mechanism screen;
   production still requires an independent 8,192-cluster superiority interval
   above zero.
+- **Experimental sampled-exact family, not deployed:** `mc-exact-endgame`,
+  `mc-s0-report-lcb-exact-endgame`, and `mc-s0-adaptive-exact-endgame` clone the
+  corresponding possible terminal S0 champion and change only
+  `EXACT_ENDGAME=True` at the proved <=4-card/250k-node boundary. The named
+  champion-matched nulls shift only RNG. They exist solely for the `79985a2`
+  score-free-throughput -> 139M screen -> 140M confirmation protocol and have
+  no strength or production authorization yet.
 - **Retired strength arm:** `mc-vleaf-v7w-ep02` has no verified edge over MC.
   Its historical 50.4% at n=1,200 predated the leaf factory's seed-forwarding
   repair. In the current hardened screen it scored 52.8% and
@@ -287,7 +338,10 @@ newest entry sit on top and speak for the file.
   v7 at 52.8%; the direct paired v13-minus-v7 contrast was
   `-0.028 +/- 0.185`. Its training states were much earlier than its deployed
   leaves, and its high-N `MCBot._candidates()` training ballot did not match
-  the pinned-v1 `enumerate_actions()` ballot maximized at the leaf.
+  the pinned-v1 `enumerate_actions()` ballot maximized at the leaf. It is also
+  encoder-incompatible: training consumed the now-proved contaminated
+  `highn_enc` cache. Rebuilding that cache requires retraining and fresh
+  evaluation; never reuse the existing v13 checkpoint as corrected evidence.
 - **Closed strength arm:** `mc-gate-v11pair` had one encouraging n=300 screen,
   but its offline gate failed and its attempted multi-arm run was invalid.
   Learned root-prior racing was independently refuted by a random-prune
@@ -1104,8 +1158,8 @@ three times. It may reject an obviously bad arm; it may not promote one.
 
 | policy | what it is | measured | verdict |
 |---|---|---|---|
-| `rl-override-v11pair` | SmartBot + learned pairwise override on `(q_i - q_0)`, threshold 0.02 fitted on calibration A and read on report B, matched train/play ballot | **CONFIRM vs Smart:** 57.7% (277-203, n=480). **SCREEN vs MC:** 51.1% over n=4,880, but every MC opponent was unseeded; no superiority and no formal non-inferiority claim | current deployment-cost candidate; no search, numpy p50 0.25ms / p95 0.52ms |
-| `mc-v11anchor` | complete current MC ballot and ordinary N=30 common-world search, with frozen v11pair's thresholded action moved to protected candidate 0; Smart remains in the ballot | **NOT RUN**; implementation/provenance tests only | experimental code ready; direct v11/current compatibility and then a fresh anchor-strength gate are required |
+| `rl-override-v11pair` | SmartBot + learned pairwise override on `(q_i - q_0)`, threshold 0.02 fitted on calibration A and read on report B, matched train/play ballot | **CONFIRM vs Smart:** 57.7% (277-203, n=480). Historical MC screen 51.1% was unseeded. Clean current v1 block: `-0.132 +/- 0.070` vs N=30 and `-0.159 +/- 0.069` vs matched null, but inference used a banker-private-kitty encoder absent from training. | as-run `e66b90b` FAIL; model verdict still unresolved under restored v1. No search, numpy p50 0.25ms / p95 0.52ms. |
+| `mc-v11anchor` | complete current MC ballot and ordinary N=30 common-world search, with frozen v11pair's thresholded action moved to protected candidate 0; Smart remains in the ballot | **NOT RUN**; implementation/provenance tests only | old-source gate is closed and correctly refuses corrected inference; require a fresh corrected direct parent and terminal S0 before a versioned anchor screen |
 | `mc-v11anchor-random` | same v11 trigger and equal N=30 work, but a separately seeded random non-Smart action becomes candidate 0 | **NOT RUN**; implementation/provenance tests only | attribution control, never a production candidate by itself |
 | `mc-vleaf-v11pair` | attempted to use v11pair's pairwise head as a leaf | 32.5% vs MC (39-81, n=120) | **INVALID configuration**, not a leaf-learning result: cross-state scale is unidentified; quarantined and unregistered |
 | `mc-gate-v11pair` | v11 delta detects states on which the registered policy escalates from SmartBot to full MC | online **SCREEN** 53.3% vs MC (n=300); 55% timing was extrapolated. T2 missed its declared bar, but noisy max-Q/candidate-count bias prevents the stronger “cheap gate explains it” conclusion | not adopted; the attempted equal-budget T3 was invalid/terminated. Its repaired runner has no valid replayed result yet |
@@ -1133,9 +1187,12 @@ three times. It may reject an obviously bad arm; it may not promote one.
 
 ## Human-play validation set
 
-The current artifact is `rl_data/human_v5`: **2,061 decisions from 77 rounds**,
-with current v2 ballots. Older v1-v4 statistics are historical and live in the
-archive; do not mix their denominators into current claims.
+There is currently **no compatible encoded human artifact**. Byte audit found
+509/551/551 private-kitty banker rows in `rl_data/human_v4/v5/v6`; quarantine
+all three. The raw game logs remain the source of truth and can rebuild v5/v6
+under the restored public-v1 encoder. Historical agreement numbers remain
+diagnostics of the policies as run, but do not admit those tensors for training
+or a new validation claim.
 
 Human agreement is a style/regression tripwire, not a strength metric—the
 policy ordering has previously inverted the Elo ordering. Its durable uses are

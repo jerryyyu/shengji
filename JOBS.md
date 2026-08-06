@@ -22,11 +22,10 @@ newline. This is not promotion. At 06:58 the singleton supervisor launched
 8/8 `s0b-lcb` shards over exact seeds 134,000,000–134,002,047. Every child
 binds that aggregate and survivor and preflighted frozen SHA/runtime/native
 identity with strict voids, no dirty files and zero stderr.
-At 14:36 EDT all eight workers remained live near 98–99% CPU, with eight partial
-manifests, no final and no FAILED marker. All partials still bind clean frozen
-`be1e39c`, Python 3.14.6 and the compiled+strict runtime. Sanitized flushed-row
-counts were 11,760/24,576; these are liveness only and may lag live work. No
-partial score or effect was inspected.
+At 15:19 EDT the singleton state remained `WAITING` with all eight workers
+active, eight partial manifests, no final and no FAILED marker. All partials
+still bind clean frozen `be1e39c`, Python 3.14.6 and the compiled+strict runtime.
+No partial score or effect was inspected.
 
 Air's S0a duplicate is no longer needed now that authoritative Mini passed its
 aggregate gate. Its exact S0 workers are no longer running and its transition
@@ -36,7 +35,7 @@ The initial Python-3.14.3 Mini
 shard 7 was stopped after preflight exposed the mismatch and remains quarantined
 and unscored under `runs/logs/quarantine_s0a_python_mismatch/`.
 
-## RUNNING / V11 direct-current compatibility (Air)
+## COMPLETE / V11 direct-current compatibility v1 (Air; FAIL as run)
 
 At 11:56 EDT eight full shards launched in detached screens `v11_current_0`…`.7`
 from clean detached worktree `/Users/jerryyu/Projects/shengji-v11-air` at exact
@@ -45,38 +44,70 @@ clusters over contiguous seeds 121,000,000–121,002,047. All eight provenance
 manifests agree on Python 3.14.6, compiled+strict execution, policy/ballot/digest
 contracts and checkpoint SHA-256
 `cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003`;
-the worktree remains clean. At 14:36 all eight workers were live near 88–90%
-CPU, with eight partial manifests, no real final and no FAILED marker.
-Sanitized flushed-row counts were exactly 1,260/1,536 per shard, or
-10,080/12,288 (82.0%). The final-named `_SMOKE` manifest is the earlier
-two-cluster non-evidence preflight and must not be counted. No record, partial
-score or effect was opened.
+the worktree remained clean. All eight real shards completed with no partial,
+FAILED, sampler rejection/failure, short-search or zero-world residue. The
+frozen aggregate ran once with the `_SMOKE` artifact excluded. Results per
+paired seed were:
 
-This is only a direct-compatibility prerequisite. After 8/8 final manifests,
-aggregate the frozen block once. It authorizes the later protected-anchor
-experiment only if V11-current and V11-null paired 95% lower bounds are both
-positive while the true-null interval contains zero. It can never promote
-production. Do not inspect partial effects, extend the block or pool it with S0.
-The original direct verdict remains exactly as frozen. Before opening any
-effect, pushed commit `7ecffd5` separately froze the protected-composition
-question: after a protocol-valid direct aggregate with a sane null and terminal
-S0, screen exactly 2,048 fresh 137M clusters; only PASS may confirm on 8,192
-fresh 138M clusters. This does not alter the direct aggregate's stored
-authorization bit. Commit `d2229d0` closes the executable screen/confirmation
-gate and binds the exact frozen direct commit/source identities. Launch still
-waits for both terminal parents.
+- v11-current: `-0.132324 +/- 0.069737`;
+- v11-null: `-0.159180 +/- 0.069282`;
+- true null-current: `+0.026855 +/- 0.067875`.
 
-## READY_AFTER_V11 / teacher-v1 entry capture (Air)
+Both efficacy LCB criteria failed, the null interval contained zero, and the
+stored verdict is `anchor_test_authorized=false`. Aggregate:
+`runs/logs/v11-current-v1.aggregate.json`, SHA-256
+`112f2c756235d69ac60efbd0f263ef096d311145d0151931ce2a2b8b0099eaec`.
+This is terminal evidence for exact commit `e66b90b`; never overwrite or
+reinterpret it. Its recorded encoder digest contains the silent banker-private-
+kitty drift fixed by `66aad44`, so it does not isolate the intended historical
+v11 model/encoder contract. A corrected, versioned direct block must use fresh
+disjoint seeds before corrected protected composition can launch.
 
-Air preflight passed from clean detached worktree
-`/Users/jerryyu/Projects/shengji-teacher-air` at exact commit
-`dc6dc2f85bbf7275a6453b844886d573fd4feadd`. Python 3.14.6, compiled engine,
-all three exam-split hashes and frozen v11 checkpoint bytes match; the proposed
-output namespace is absent. After every V11 process exits and its singleton
-aggregate seals, launch the staged eight-way `teacher-v1-entry-120m-v1`
-capture over exact seeds 120,000,000–120,001,023, then eight diagnostics and
-one Stage-A freeze. Freeze must emit exactly 64 states. Do not append or replace
-seeds on any refusal.
+## REFUSED / teacher-v1 supervised entry packet v1 (Air; closed before diagnostics)
+
+After the V11 aggregate sealed, Air's clean detached teacher worktree was
+repointed to minimal commit
+`0183cdd105ca6074d3824fe294f39a2986b15bb8`, which includes the explicit
+public/no-private-kitty encoder fix and fail-closed entry supervisor. Exact
+compiled+strict preflight passed under Python 3.14.6 with checkpoint SHA
+`cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003`
+and no output collision. At 14:55 the supervisor admitted packet
+`teacher-v1-entry-120m-v1` and launched all eight capture workers over exact
+seeds 120,000,000–120,001,023 (8x128).
+
+All eight captures completed with zero child failure. Before launching any
+diagnostic, the supervisor re-opened them and refused all eight as "actor
+drift." Metadata-only diagnosis proved the executable actor did not drift:
+source hashes, ballot values and semantic identity are identical; the worker's
+JSON artifact represents `BallotSpec.config` as lists while the supervisor's
+in-memory object retained tuples, and direct dict equality rejected the
+round-trip. The fail-closed boundary therefore prevented downstream work.
+
+The directory `runs/logs/teacher-v1-entry-120m-v1` is a terminal refused
+attempt: eight capture finals, zero diagnostics, zero state set, zero receipts,
+zero labels, and a `REFUSED` supervisor progress tail. Do not resume, replace or
+reuse it. A replacement must use a fresh versioned 143M namespace and disjoint
+seeds, canonicalize actor identity through JSON, enforce Python 3.14.6 and
+reject every experimental sampler/ballot flag before launch.
+
+## RUNNING / V11 corrected-encoder direct v2 (Air)
+
+Commit `cde0fec` freezes eight 256-cluster shards over exact fresh seeds
+142,000,000–142,002,047. The claim is only whether the unchanged `ep07.npz`
+direct override is compatible with restored public/no-private-kitty encoder v1
+against current compiled `mc-strong`. It binds combined encoder identity plus
+encode/Memory source hashes, exact checkpoint and policy/ballot/runtime bytes,
+requires every N=30 cell to consume exactly `30 * searches` accepted worlds
+with zero failures/refusals/short/zero-world/exact-feature use, keeps shard
+progress score-blind and reopens raw records at aggregation. Historical v1 is
+explicitly inadmissible. A PASS is not production or protected-composition
+authorization. Root focused tests passed 49/49 and compiled+strict protocol
+preflight returned no problems. Air was pinned to exact clean full commit
+`cde0fecf4151685e7174be8a7aa64b0ee6478edd`; at 15:25 eight detached shards
+launched. Immediate verification found eight live workers, eight record
+partials, eight manifest partials, zero final/FAILED artifact and no namespace
+collision. Do not inspect partial scores. Aggregate exactly once only after 8/8
+real finals and zero partial/FAILED/worker residue.
 
 ## FROZEN PROTOCOL — S0a decision-rule screen
 

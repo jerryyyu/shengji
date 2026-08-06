@@ -21,7 +21,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-06 14:17 EDT
+## Current synthesis — 2026-08-06 15:32 EDT
 
 This section is the current decision layer. The lineage table below owns model
 history; **Data and evaluation contract** owns dataset/evaluation provenance;
@@ -57,12 +57,24 @@ day-by-day detail. A historical result below does not reopen a closed lane.
   more MC over brute-force widening (`-0.495 +/- 0.477`). This rejects only the
   registered designs at this resolution, not all future action-selection work.
   CALIB-512 and REPORT remain sealed; do not append arms or train from DEV.
-- **v11pair is the learned line's one confirmed online gain:** its direct
+- **v11pair is the learned line's one confirmed online gain against SmartBot,
+  but its first clean current-MC revalidation failed under a mismatched
+  encoder:** its direct
   SmartBot override won 57.7% (277-203, n=480, two disjoint blocks). The 51.1%
   result versus MC used factories that discarded seeds and remains a SCREEN.
-  Its clean eight-shard direct-current revalidation is running on Air; at 14:16
-  all eight workers were healthy with partials/no finals and no record, score
-  or effect had been opened.
+  The exact 2,048-cluster direct-current v1 block then measured
+  `-0.132 +/- 0.070` paired level utility versus current and
+  `-0.159 +/- 0.069` versus its matched null; the true null was sane at
+  `+0.027 +/- 0.068`, so the stored direct verdict is FAIL. That result is
+  valid for exact commit `e66b90b`, but it does not isolate the learned idea:
+  `encode_obs` had silently inherited banker's private kitty into the unseen
+  plane after a Memory default changed while encoder version stayed 1. Commit
+  `66aad44` restores the public/no-private-kitty v1 contract and binds its
+  transitive source hashes. Commit `cde0fec` now freezes that fresh corrected-
+  encoder direct gate as 8x256 exact 142M clusters, with combined encoder/source
+  hashes, exact accepted N=30 dose and raw-record reopening. It has no evidence
+  yet: eight Air shards launched at 15:25 and partial outcomes remain sealed.
+  It cannot authorize production or protected composition by itself.
   Commit `7ecffd5` therefore blind-froze the separate composition estimand:
   standalone v11 need not be superior for the terminal search champion to
   retain its good proposals and reject its bad tail. Preserve the direct
@@ -71,14 +83,22 @@ day-by-day detail. A historical result below does not reopen a closed lane.
   only PASS reach an independent 138M confirmation. Commit `d2229d0` now makes
   that protocol executable: it hard-binds the exact direct commit/source,
   preserves the original direct verdict, uses champion-matched nulls and
-  forces confirmation to reopen/recompute raw screen evidence. v11's
+  forces confirmation to reopen/recompute raw screen evidence. Its old source
+  lock now correctly refuses corrected inference; version the parent/gate only
+  after the fresh direct block rather than weakening provenance. v11's
   within-state deltas remain valid for ranking, not as scalar leaf values.
 - **Two independent learning lanes remain open.** Teacher-v1's entry code gate
   is closed at `23a9e0b`: the exact 1,024-deal packet, canonical shards and
   independent producer receipts now fail closed through Stage-B authorization.
-  No teacher evidence asset exists yet. Air preflight is `READY_AFTER_V11` and
-  the exact capture/diagnostic/freeze packet will start when the direct-V11
-  workers exit. It must still pass its 64-state
+  The fail-closed `0183cdd` supervisor completed all eight corrected-encoder
+  captures on Air, then refused before diagnostics: JSON converted the ballot
+  config tuple to an equivalent list and a direct dict comparison falsely
+  called that actor drift. No state set or label exists. Preserve the refused
+  v1 namespace; the replacement is a disjoint JSON-canonical 143M-v2 packet
+  that must enforce Python 3.14.6 and flags OFF. It is still in code re-review:
+  the initial repair did not prove selected states came from diagnostics and
+  used overwrite-capable artifact publication. After those are closed, it must
+  pass its 64-state
   mechanics and 128-state gold-continuation gates before producing 2,048 clean
   counterfactual states. Faithful Suphx-style privileged-feature
   removal and DouZero-style role-conditioned direct-Q microbaselines have
@@ -87,9 +107,16 @@ day-by-day detail. A historical result below does not reopen a closed lane.
   resume, interruption poisoning, process-global RNG exclusion, hidden
   learner/optimizer state, collector mutability, algorithm batch identity and
   exclusive candidate publication pass 46 focused tests. This removes a shared
-  infrastructure blocker; no concrete Suphx/DouZero model, collector, loss or
-  strength evidence exists. Each implementation still needs verified actor
-  loading and its own uninterrupted-versus-resumed output match.
+  infrastructure blocker. Commit `868b6d8` supplies the first concrete bounded
+  lane: separate attacker/defender GRU action-Q networks, chronological public
+  history, direct signed terminal return, immutable actor, narrow ordinary-play
+  ballot and exact resumed-output identity. It is a Shengji-specific
+  DouZero-style one-round implementation—not a faithful reproduction or
+  strength result. Review found the algorithm digest omitted imported
+  execution-contract dependencies; `f5ff2f9` now binds all 16 material direct
+  and transitive sources and mutation-falsifies each. The code gate is closed;
+  its next step is a preregistered small learning/held-out evaluation, not an
+  unbounded fleet run.
 - **Structured search remains independent and feature-off.** Commit `e946696`
   closes the broader bury source's 512-state disjoint-report/equal-work code
   gate. Its verifier reconstructs named deals, redraws both folds and replays
@@ -101,7 +128,13 @@ day-by-day detail. A historical result below does not reopen a closed lane.
   frontier evaluations in 16 sessions with zero refusal/overflow under the
   cumulative 250k-node cap (130,989 nodes; 97,834 hits). It is a perfect-
   information oracle inside sampled worlds, not an exact imperfect-information
-  solver. Each mechanism must later duel the terminal champion directly.
+  solver. Commit `79985a2` now closes S3b's terminal-champion-matched
+  complete-round strength protocol: score-free throughput admission,
+  non-promotable 2,048-cluster screen and disjoint 8,192-cluster confirmation,
+  with raw-screen reopening and zero-refusal/exact-use gates. It waits for
+  terminal S0 and remains one-round evidence; each mechanism must later duel
+  the terminal champion and any deployment candidate needs multi-round
+  progression.
 - **Sampler hard-validity/support P0 is closed at clean `aea3774`.** The v3
   certificate covers exactly 500 original + 500 late + 500 deep states,
   accepts 36,000/36,000 worlds with zero rejected/invalid/named skips, and
@@ -305,9 +338,9 @@ small-n or unseeded results below are labelled as such.
 | **v8 family** (`v8a`, `v8b`, `v8along`) | Moved to the larger `gen_v3` corpus and fixed the trainer so choice-only TRACTOR_LOCK rows were no longer discarded. A was the raw-value soft-target control; B added the acting policy's +5 candidate-0 margin to the policy target while leaving the value head absolute; A-long tested 12 epochs. | Margin-aware B raised held-out teacher-choice agreement from roughly 43% to 62.5%, proving the loss/metric mismatch was real. The strength anchors were run before the stochastic-opponent seeding repair and did not show a reliable gain; longer A training and the v8 value-head screen also showed no detected benefit. | Important data-contract and target-alignment fix, but no promotable strength result. Better imitation alone did not imply a better bot. |
 | **v9 warm / scratch** | Trained on `gen_v4`, whose teacher was the v7 value-leaf hybrid; directly tested warm versus random initialization and then extended both arms to 16 epochs. This was the first flywheel attempt: train on the hybrid teacher, then reuse the new value head in the hybrid. | Warm and scratch had no detected difference after six epochs. In later n=120 screens both peaked near epoch 8 and then weakened; the logged warm arm was 56% vs Smart / 37% vs MC and scratch 47% / 33%. A v9-leaf head did not improve on the v7 head in the same small screen. | No evidence that warm start, more epochs, or one expert-iteration turn improved strength. The negative result is about this pipeline, not proof that expert iteration cannot work. |
 | **v10res** | First residual override attempt: regress `Q(s,a_i)-Q(s,a_0)` and let SmartBot's candidate 0 stand unless predicted gain clears a threshold. | It overrode only about 1.3-1.5% of states where the teacher overrode about 15%; pairwise RMSE was 6.1995 versus 6.2112 for predicting zero, and it scored 47% vs Smart in its screen. The model still scored rows independently without a pairwise loss, train/play ballots differed, training and deployment read different heads, and the registered epoch initially differed from the evaluated one. | **Invalid test of the residual-learning hypothesis.** The checkpoint was a near no-op; do not count it as evidence that residual learning failed. |
-| **v11pair** | Corrected v10 around the deployed decision: optimize `(q_i-q_0)` against `(Q_i-Q_0)` with Huber loss and boundary weighting, use the exact valued ballot at inference, and fit the 0.02 threshold on one split before reporting another. | `rl-override-v11pair` **CONFIRMED** 57.7% vs SmartBot (277-203, n=480, two disjoint blocks). Its 51.1% vs MC over 4,880 rounds used MC factories that silently discarded their seeds, so it is a SCREEN of approximate parity, not superiority or non-inferiority. Gating and root racing were not confirmed; using pairwise deltas as a leaf is invalid because cross-state scale is unidentified. | The only confirmed online gain in v7-v13, and the key lesson is exact objective/ballot alignment. Keep it as a direct override or root proposal/ranking candidate; it has not beaten MC. |
+| **v11pair** | Corrected v10 around the deployed decision: optimize `(q_i-q_0)` against `(Q_i-Q_0)` with Huber loss and boundary weighting, use the exact valued ballot at inference, and fit the 0.02 threshold on one split before reporting another. | `rl-override-v11pair` **CONFIRMED** 57.7% vs SmartBot (277-203, n=480, two disjoint blocks). Its 51.1% vs MC over 4,880 rounds used MC factories that silently discarded seeds. The later clean 2,048-cluster current-MC block was strongly negative (`-0.132 +/- 0.070`), but exact source audit showed it inferred with a banker-private-kitty encoder never seen in training; it validly rejects that implementation and is not a clean model ablation. Gating/root racing were not confirmed; pairwise deltas are invalid as scalar leaves. | The only confirmed online gain in v7-v13, and the key lesson is exact objective/ballot/encoder alignment. Keep it as a direct override or root proposal/ranking candidate; it has not beaten MC. A corrected-encoder direct rerun is required before the learned hypothesis receives a current-contract verdict. |
 | **v12** | No model, checkpoint, or experiment used this number. | — | Skipped; do not infer a missing failure. |
-| **v13abs** | Warm-started v7w and fit the value output to absolute 240-world means from 20,845 high-N states, using inverse-variance weighting. The actual target is raw-point action value under heuristic continuation, `Q^H(s,a)`, not a generic state value. The trainer updated the whole network, not only a detached head. | Offline SCREEN: unweighted RMSE improved `0.1052 -> 0.0699` and stored-ballot regret `1.478 -> 1.293`. Online leaf SCREEN: v13 and v7 each won 52.8%; v13 was `-0.004 +/- 0.206` versus the MC reference and v7 `+0.024 +/- 0.215`. The direct paired v13-minus-v7 contrast, computed from the shared JSONL, is **`-0.028 +/- 0.185`** (250 seed clusters; win-rate difference 0). There were two train/deploy shifts: 90% of training states were at ply <=15 while deployment followed four simulated tricks, and high-N labels covered `MCBot._candidates()` while the leaf maximized over `enumerate_actions()`'s pinned v1 ballot. | **NOT CONFIRMED.** It learned its offline labels better but did not improve the bot. This tested a doubly misaligned leaf deployment, not whether correctly targeted absolute value learning can help. |
+| **v13abs** | Warm-started v7w and fit the value output to absolute 240-world means from 20,845 high-N states, using inverse-variance weighting. The actual target is raw-point action value under heuristic continuation, `Q^H(s,a)`, not a generic state value. The trainer updated the whole network, not only a detached head. | Offline SCREEN: unweighted RMSE improved `0.1052 -> 0.0699` and stored-ballot regret `1.478 -> 1.293`. Online leaf SCREEN: v13 and v7 each won 52.8%; v13 was `-0.004 +/- 0.206` versus the MC reference and v7 `+0.024 +/- 0.215`. The direct paired v13-minus-v7 contrast is **`-0.028 +/- 0.185`** (250 clusters). There were two train/deploy shifts: early-state and ballot mismatch. A later byte audit adds a third, terminal defect: `highn_train.py` consumed `rl_data/highn_enc`, whose 5,923 banker rows all use the private-kitty drift. | **INCOMPATIBLE / NOT CONFIRMED.** It learned contaminated offline tensors better but did not improve the bot. Rebuild `highn_enc`, retrain and freshly evaluate any successor; the existing checkpoint cannot become valid merely by regenerating the cache. This does not rule out a correctly targeted absolute-value model. |
 
 The progression is therefore not “each version got stronger.” v7 reduced
 teacher noise; v8 repaired the data and behavior-target contract; v9 tested
@@ -405,27 +438,32 @@ This differs from the closed arms:
 
 Execute in this order:
 
-1. Revalidate the frozen NPZ (`cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003`)
-   against current compiled `mc-strong` on 2,048 fresh 121M deal clusters with
-   a true mc-vs-mc null. Apply its original direct-superiority verdict exactly;
-   latency is not the objective and an interval containing zero is not
-   equivalence.
-2. Keep that direct verdict separate from the blind composition protocol in
-   `7ecffd5`. If the direct block is protocol-valid and its null interval
-   contains zero, wait for terminal S0 and screen the exact champion-matched
+1. Preserve the completed v1 aggregate exactly. On 2,048 fresh 121M clusters,
+   the frozen NPZ (`cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003`)
+   failed against current compiled `mc-strong`: `-0.132 +/- 0.070`; its matched
+   null contrast was `-0.159 +/- 0.069` and the true null was sane. The block's
+   source used the drifted banker encoder, so the verdict rejects that exact
+   deployed composition and cannot adjudicate corrected checkpoint semantics.
+2. Run one fresh versioned direct block under `OBS_SCHEMA=rl-observation-v1-public-no-private-kitty`
+   and the `66aad44` transitive source digest, on disjoint seeds with the same
+   true-null and accepted-dose contract. Do not pool it with v1 or overwrite
+   v1's stored authorization bit.
+3. Keep both direct verdicts separate from the blind composition protocol in
+   `7ecffd5`. After a corrected direct block is protocol-valid with a sane null,
+   wait for terminal S0 and screen the exact champion-matched
    anchor on 2,048 fresh 137M clusters even when standalone v11 is neutral.
    This asks whether search filters v11's costly tail; it does not reinterpret
    standalone evidence.
-3. In that screen, preserve the terminal champion's complete ballot/world/work,
+4. In that screen, preserve the terminal champion's complete ballot/world/work,
    report and allocation contract. Compare v11 anchor, same-trigger random,
    literal champion and champion-matched null. Require all three anchor LCBs
    >0 and a null interval containing zero. Only PASS admits the independent
    8,192-cluster 138M confirmation; only confirmation can reach deployment
    review.
-4. Once the adaptive estimator is valid, test a soft v11 priority after a
+5. Once the adaptive estimator is valid, test a soft v11 priority after a
    common-world floor against uncertainty-only and random priorities. Do not
    revive top-k pruning.
-5. In teacher-v1, retain frozen v11 as a baseline/disagreement miner and train
+6. In teacher-v1, retain frozen v11 as a baseline/disagreement miner and train
    a `v11.1` pairwise/listwise successor with a separate bracket head. Compare
    warm-start and scratch; deploy first as anchor/ranker/allocator.
 
@@ -443,6 +481,18 @@ bought trajectory coverage, but close choices stayed noisy, early play was
 overrepresented, and the targets were locked to the collection ballot and
 sampler. New compute must instead buy deeper common-world comparisons on a
 frozen deployment contract, followed by untouched and online tests.
+
+**Encoder identity is data identity.** Encoder v1 is now explicitly
+`rl-observation-v1-public-no-private-kitty`: even a banker observation must be
+invariant to which legally hidden cards occupy the kitty. Its implementation
+identity combines both `rl/encode.py` and `ai/memory.py`. The August 3 Memory
+default change silently violated that contract without changing `ENC_VERSION`;
+`66aad44` restores it and adds a counterfactual banker test. Never admit an
+encoded shard or inference result merely because its vector dimension/version
+matches. Require the combined implementation digest or producer git/source
+provenance that proves equivalent semantics. Assets generated in the drift
+window are quarantined until that audit is explicit; historical v11 training
+metadata predates the change and is compatible with restored v1.
 
 `highn_corpus` spent compute **vertically** instead. It rebuilt 20,845 fixed
 states, evaluated every offered action over 240 shared hidden worlds, and
@@ -577,6 +627,7 @@ and full-game confirmation, as required by `BALLOT_PLAN.md`.
 | dataset | size | what it is | teacher | used by |
 |---|---|---|---|---|
 | `rl_data/highn_corpus_all.jsonl` | 20,845 states / 31 MB / **37.1M candidate evaluations** | each old-ballot candidate scored over 240 shared worlds, with marginal and candidate-0 paired SEs; raw states rebuild exactly. Non-strict sampler, same-world max selection, overwhelmingly early states, and raw-point labels | MCBot N=240, heuristic continuation | rebuildable state reservoir; provisional `Q^Heuristic(s,a)` labels for fixed-pair diagnostics, **not** an unbiased oracle, bracket target, or generic state value |
+| `rl_data/highn_enc` | 20,845 encoded rows; 5,923 banker / 14,922 nonbanker | **ENCODER-CONTAMINATED.** Byte replay against the raw high-N JSONL found every banker row matches only the August-3 drifted private-kitty semantics; nonbanker rows are unchanged. `enc_version=1` did not detect the semantic change. | derived encoding only | **QUARANTINED; regenerate from raw under the `66aad44` public/no-private-kitty schema before any training.** Raw high-N labels/states are unaffected. |
 | `rl_data/highn_late_air.jsonl` | 12,000 states | same historical N=240 label contract, captured after a minimum-play threshold. The DEV audit is mostly teacher-v1 mid-game: only 8/7,292 rows reach trick >=12 | MCBot N=240, heuristic continuation | distribution-shift/fixed-pair diagnostic and raw reservoir; does **not** supply clean true-late labels |
 | `rl_data/gen_v4_all` | 205 shards / 245 MB / **~2.05M decisions** | the current corpus: hybrid-teacher values, wide v2 ballot, TRACTOR_LOCK rows recorded as choice-only. Provenance in META (`teacher_git` 367a822) | `mc-vleaf-v7w-ep02` | v9warm/v9scratch, v10res, **v11pair** |
 | `rl_data/gen_v3_all` | 162 shards / 276 MB / ~1.62M | first fast-engine generation; superseded by gen-v4 | upgraded MCBot | v8a/v8b |
@@ -585,7 +636,7 @@ and full-game confirmation, as required by `BALLOT_PLAN.md`.
 | `rl_data/distill` | 36 shards / 158 MB / ~1.8M | original N=10 distillation | MCBot (pre-CONTROL_LEADS) | v4, v5, v6, v6.1 |
 | `rl_data/bc` | 35 shards / 160 MB / ~1.75M | SmartBot behaviour cloning, no values | SmartBot | ckpt_bc |
 | `rl_data/oracle` | 1 shard / 10 MB / ~322k | full-information states + outcomes | self-play | oracle value study (43-47%) |
-| `rl_data/human_v6` | 1 shard / **2,169 decisions** from 81 completed rounds | live human play, current v2 ballots (v1-v5 superseded) | live humans | blends, agreement audits |
+| `rl_data/human_v4/v5/v6` | 1,850 / 2,061 / 2,169 decisions | **ENCODER-CONTAMINATED.** Byte classification found 509 / 551 / 551 banker rows with private-kitty semantics; all remaining rows are nonbanker-invariant. Raw replay is currently available for 1,592/1,850 v4 rows and all v5/v6 rows. | live humans | **QUARANTINED; rebuild from raw under restored v1 before training or new agreement claims.** Historical policy-as-run diagnostics remain historical. |
 | `../logs/*.jsonl` | 26 games | raw human corpus source, rebuildable in seconds. Local test games live in `logs/local/` (17) and are NEVER mined | live play | audits, miner |
 
 Two asymmetries still hold: the quality ladder bc < distill < n30 < gen-v4

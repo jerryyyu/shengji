@@ -7,8 +7,12 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+SOURCE_SERVER = os.environ.get(
+    "S0_SOURCE_SERVER",
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+)
+sys.path.insert(0, SOURCE_SERVER)
+sys.path.insert(0, os.path.join(SOURCE_SERVER, "scripts"))
 
 import s0_run as S0  # noqa: E402
 from shengji.evaluation import paired_by_seed  # noqa: E402

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -62,10 +63,12 @@ def verify_aggregate(server: Path, logs: Path, phase: str,
     if not path.exists():
         raise RuntimeError(f"missing aggregate: {path}")
     pattern = f"runs/logs/s0-protocol-v2_{phase}_shard0?_{SHORT}.jsonl.manifest.json"
+    env = dict(os.environ)
+    env["S0_SOURCE_SERVER"] = str(server)
     completed = subprocess.run(
         [str(python), str(Path(__file__).with_name("s0_aggregate.py")), phase,
          "--pattern", pattern],
-        cwd=server, text=True, check=True, capture_output=True,
+        cwd=server, text=True, check=True, capture_output=True, env=env,
     )
     fresh = json.loads(completed.stdout)
     stored = json.loads(path.read_text())

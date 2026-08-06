@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-06 12:00 EDT.
+Last re-derived: 2026-08-06 12:10 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -61,7 +61,7 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 | **S2 self-play RL — CORRECTNESS BOUNDARY PARTIAL** | Run faithful role-conditioned synchronous microbaselines | Attacker/defender residual antisymmetry, separately named legacy reward, digest-bound immutable actors, exact-candidate promotion and named actor-batch seeds are implemented and tested. Exact learner/optimizer/replay resume remains open; no faithful Suphx/DouZero baseline or evidence run exists. Close resume, then run independent 20–30 minute microbaselines. |
 | **S3a structured bury search — CODE NEXT** | Improve the once-per-round decision that ordinary play search never touches | Enumerate a bounded broad ballot of point-preserving, void-forming and trump-preserving legal buries; score every candidate on common worlds with exact matched work. First pass replay/invariants and a fixed-state challenge, then require a fresh paired full-round duel against the terminal production champion. |
 | **S3b sampled exact endgame — DESIGN NEXT** | Replace heuristic continuation where only about four tricks remain | Within each information-set-legal determinization, solve the remaining perfect-information world exactly or with a proved bound, then aggregate across common worlds. Refuse hidden-information leakage and budget mismatch; pass an endgame challenge before a fresh paired full-game gate. This is separate evidence from S3a. |
-| **Frontend ship gate** | Run one bounded multi-tab soak | Cover join, simultaneous seat claim, disconnect-to-bot, reconnect/takeover, stale/displaced sockets, second absence, private-hand visibility, chat before initial state and >50 messages, and saved-room invite precedence. |
+| **Frontend ship gate — COMPLETE / PASS** | Keep the multiplayer ownership state machine shippable | The real multi-socket server suite passes 33/33, including join, simultaneous claim, disconnect/bot cover, reconnect/takeover, stale/displaced sockets, repeated absence, token rotation and private-hand visibility. Browser connection/intent tests pass 14/14, including pre-state chat, >50-message rollover and invite-over-saved-room precedence; lint has only existing fast-refresh warnings and the production build passes. |
 | **Evaluator boundary** | Repair legacy full-game cutoff semantics | A cutoff must return an explicit tie/refusal, never silently award team 0. Keep the engine's uncapped house-rule progression; the `+3` clip remains a separately versioned RL target. |
 
 ## AI-strength program

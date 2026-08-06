@@ -189,6 +189,31 @@ def test_seat_claim_chat_names_the_bot(client):
     assert line["seat"] == -1
 
 
+def test_chat_snapshot_rolls_over_after_more_than_fifty_messages(client):
+    """A late/rejoining socket gets one bounded, contiguous snapshot.
+
+    This crosses the real wire and the queue used by production.  A unit test
+    of ``room.chat[-50:]`` would miss an attach path that sent stale history,
+    duplicated the live boundary, or blocked after enough fan-out messages.
+    """
+    with client.websocket_connect("/ws") as host:
+        host.send_json({"type": "create_room", "name": "host"})
+        code = _drain(host, "room")["room"]
+        for i in range(60):
+            host.send_json({"type": "chat", "text": f"line-{i:02d}"})
+
+        with client.websocket_connect("/ws") as late:
+            late.send_json({"type": "join_room", "room": code,
+                            "name": "late"})
+            history = _drain(late, "chat_history")
+
+    assert history["through_id"] == 60
+    assert len(history["messages"]) == 50
+    assert [m["id"] for m in history["messages"]] == list(range(11, 61))
+    assert history["messages"][0]["text"] == "line-10"
+    assert history["messages"][-1]["text"] == "line-59"
+
+
 def test_two_clients_race_for_same_bot_seat(client):
     """The loser of a seat race must be refused, never silently reseated."""
     with client.websocket_connect("/ws") as a:

@@ -90,6 +90,26 @@ describe("chat: snapshot + identified live events", () => {
     expect(conn.chatHistory()).toHaveLength(2);          // not lost, not doubled
   });
 
+  it("handles server scrollback rollover beyond fifty messages", async () => {
+    const { conn } = await load();
+    conn.start();
+    FakeWS.last!.onopen?.();
+    const sixty = Array.from({ length: 60 }, (_, i) =>
+      line("AAAA", i + 1, `line-${i + 1}`));
+    FakeWS.last!.deliver(hist("AAAA", sixty));
+    expect(conn.chatHistory()).toHaveLength(60);
+
+    // Reattach snapshot: the server retains its most recent 50. Replacing the
+    // local snapshot must neither keep stale prefix lines nor duplicate the
+    // live message immediately after the snapshot boundary.
+    FakeWS.last!.deliver(hist("AAAA", sixty.slice(-50)));
+    FakeWS.last!.deliver(line("AAAA", 61, "line-61"));
+    FakeWS.last!.deliver(line("AAAA", 61, "line-61"));
+    expect(conn.chatHistory().map((m: any) => m.id)).toEqual(
+      Array.from({ length: 51 }, (_, i) => i + 11),
+    );
+  });
+
   it("leaks nothing from room A after joining room B", async () => {
     const { conn } = await load();
     conn.start();

@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 12:00 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 12:10 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -31,6 +31,11 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   and seeds 120000000–120001023 are bound through diagnostic/state/gate
   artifacts. Teacher evidence has not started; the V11 block is live but has
   not completed or authorized its follow-on experiment.
+- The frontend ship gate is **COMPLETE / PASS**. The real multi-socket server
+  suite passes 33/33 and browser connection/intent tests pass 14/14, including
+  the newly exercised >50-message history rollover. Lint reports only the
+  existing fast-refresh warnings and the production build passes. No frontend
+  behavior change was needed by this final gate.
 
 ## S0 implementation packet — S0a accepted, S0b-LCB running
 

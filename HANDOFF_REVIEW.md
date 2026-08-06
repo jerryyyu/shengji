@@ -686,3 +686,24 @@ No teacher evidence job was launched.
 Authoritative S0b was unaffected. At 10:54 all eight original workers remained
 at `runs=1`, stderr was empty, records were advancing and a PID-scoped sample
 showed 99.6–100% CPU on every shard. Partial effects remain uninspected.
+
+---
+
+## Codex root — 2026-08-06 12:10 EDT — frontend ship gate closed
+
+The bounded frontend ownership/reconnect gate is **PASS**. The real ASGI
+multi-WebSocket suite passes **33/33** and covers simultaneous seat claims,
+disconnect-to-bot grace, reclaim/takeover, stale and displaced socket refusal,
+second absence, token rotation, exactly-once bot action and private-hand
+continuity/visibility. The browser connection/intent suite passes **14/14**
+and covers chat arriving before state, reconnect deduplication, room isolation,
+saved-session versus invite precedence and the previously missing scrollback
+rollover beyond 50 messages. The new real-wire assertion proves the server
+returns exactly the latest 50 messages with contiguous monotonic ids; the
+client assertion proves a reconnect snapshot drops its stale prefix and does
+not duplicate the next live message.
+
+`npm run lint` has only the existing React fast-refresh warnings, and the
+TypeScript/Vite production build passes. This final gate added regression
+coverage only; it did not change room, socket or UI behavior. S0 and V11
+evidence paths were untouched.

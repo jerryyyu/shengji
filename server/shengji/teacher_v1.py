@@ -25,9 +25,15 @@ STATE_SET_SCHEMA = "teacher-v1-state-set-v1"
 CHEAP_SHARD_SCHEMA = "teacher-v1-cheap-shard-v1"
 GOLD_SHARD_SCHEMA = "teacher-v1-gold-shard-v1"
 GATE_SCHEMA = "teacher-v1-gate-v1"
+PRODUCER_RECEIPT_SCHEMA = "teacher-v1-producer-receipt-v1"
 TARGET_SCHEMA = "teacher-v1-uncapped-possession-utility-v1"
 
 SEED_START = 120_000_000
+CAPTURE_PACKET_ID = "teacher-v1-entry-120m-v1"
+CAPTURE_MAX_DEALS = 1_024
+CAPTURE_SEED_END = SEED_START + CAPTURE_MAX_DEALS - 1
+CAPTURE_SHARDS = 8
+CAPTURE_DEALS_PER_SHARD = CAPTURE_MAX_DEALS // CAPTURE_SHARDS
 PHASES = ("early", "mid", "late")
 ROLES = ("attacker", "defender")
 DECISIONS = ("lead", "follow")
@@ -68,6 +74,42 @@ class TeacherProtocolError(RuntimeError):
     """A condition that makes a teacher artifact unusable."""
 
 
+def capture_packet() -> dict:
+    """Literal identity of the first frozen teacher entry population."""
+    return {
+        "packet_id": CAPTURE_PACKET_ID,
+        "seed0": SEED_START,
+        "seed_end_inclusive": CAPTURE_SEED_END,
+        "max_deals": CAPTURE_MAX_DEALS,
+        "shard_count": CAPTURE_SHARDS,
+        "sharding": "interleaved_seed_offset_mod_8",
+        "deals_per_shard": CAPTURE_DEALS_PER_SHARD,
+    }
+
+
+def capture_shard_seeds(shard_index: int) -> list[int]:
+    if not 0 <= shard_index < CAPTURE_SHARDS:
+        raise ValueError(f"capture shard must be 0..{CAPTURE_SHARDS - 1}")
+    return list(range(
+        SEED_START + shard_index,
+        SEED_START + CAPTURE_MAX_DEALS,
+        CAPTURE_SHARDS,
+    ))
+
+
+def capture_coverage() -> dict:
+    seeds = list(range(SEED_START, CAPTURE_SEED_END + 1))
+    return {
+        **capture_packet(),
+        "seed_count": len(seeds),
+        "seeds_sha256": stable_digest(seeds),
+        "shard_seed_sha256": {
+            str(index): stable_digest(capture_shard_seeds(index))
+            for index in range(CAPTURE_SHARDS)
+        },
+    }
+
+
 def stable_json(value) -> bytes:
     return json.dumps(
         value, sort_keys=True, separators=(",", ":"), default=list
@@ -76,6 +118,36 @@ def stable_json(value) -> bytes:
 
 def stable_digest(value) -> str:
     return hashlib.sha256(stable_json(value)).hexdigest()
+
+
+def is_sha256(value) -> bool:
+    """Return whether ``value`` is a canonical lowercase SHA-256 digest."""
+    return (isinstance(value, str) and len(value) == 64
+            and all(char in "0123456789abcdef" for char in value))
+
+
+def is_run_id(value) -> bool:
+    """Bounded, shell-safe identity shared by one eight-shard producer run."""
+    allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.:"
+    return (isinstance(value, str) and 8 <= len(value) <= 128
+            and all(char in allowed for char in value))
+
+
+def canonical_state_partition(records: list[dict], shard_index: int,
+                              shard_count: int) -> list[dict]:
+    """Return the registered order-independent state partition.
+
+    A manifest's claimed shard number must determine which state identities it
+    contains.  Sorting globally by ``state_id`` and then interleaving makes that
+    relation independently reconstructable from the state set and prevents a
+    shard-index field swap from remaining plausible.
+    """
+    if not 0 <= shard_index < shard_count:
+        raise ValueError("invalid state partition shard index/count")
+    if any(not isinstance(record.get("state_id"), str) for record in records):
+        raise ValueError("state partition requires string state_id values")
+    ordered = sorted(records, key=lambda record: record["state_id"])
+    return ordered[shard_index::shard_count]
 
 
 def derive_stream(**identity) -> dict:

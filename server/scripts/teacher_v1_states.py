@@ -35,8 +35,10 @@ from shengji.ai.memory import Memory                              # noqa: E402
 from shengji.ai.registry import make_bot                          # noqa: E402
 from shengji.engine.ballot import mc_ballot                       # noqa: E402
 from shengji.engine.game import Game                              # noqa: E402
-from shengji.teacher_v1 import (EXPERIMENT, REPRESENTATIVE_CELLS, # noqa: E402
-                                GATE_SCHEMA,
+from shengji.teacher_v1 import (CAPTURE_DEALS_PER_SHARD,           # noqa: E402
+                                CAPTURE_MAX_DEALS, CAPTURE_PACKET_ID,
+                                CAPTURE_SEED_END, CAPTURE_SHARDS, EXPERIMENT,
+                                GATE_SCHEMA, REPRESENTATIVE_CELLS,
                                 SAMPLER_COUNTERS, SEED_START,
                                 STAGE_A_OTHER_STATES,
                                 STAGE_A_REPRESENTATIVE_PER_CELL,
@@ -47,6 +49,9 @@ from shengji.teacher_v1 import (EXPERIMENT, REPRESENTATIVE_CELLS, # noqa: E402
                                 STATE_SCHEMA, STATE_SET_SCHEMA,
                                 TeacherProtocolError, action_key,
                                 ballot_problems, derive_stream,
+                                capture_coverage, capture_packet,
+                                capture_shard_seeds,
+                                is_run_id, is_sha256,
                                 phase_for_trick, replay_state,
                                 sampler_delta, sampler_snapshot,
                                 split_for_deal, stable_digest, state_id)
@@ -212,6 +217,240 @@ def load_exam_exclusion(paths: list[str]) -> tuple[set[int], dict]:
                    "excluded_deals": len(seeds)}
 
 
+def _actual_packet(args) -> dict:
+    return {
+        "packet_id": args.packet_id,
+        "seed0": args.seed0,
+        "seed_end_inclusive": args.seed0 + args.max_deals - 1,
+        "max_deals": args.max_deals,
+        "shard_count": args.shard_count,
+        "sharding": f"interleaved_seed_offset_mod_{args.shard_count}",
+        "deals_per_shard": len(range(
+            args.seed0 + args.shard_index,
+            args.seed0 + args.max_deals,
+            args.shard_count,
+        )),
+    }
+
+
+def registered_capture_problems(payload: dict) -> list[str]:
+    """Prove one capture artifact is one exact shard of the frozen packet."""
+    bad = []
+    if payload.get("schema") != CAPTURE_SCHEMA or not payload.get("complete"):
+        bad.append("capture schema/completion")
+    if payload.get("packet_id") != CAPTURE_PACKET_ID:
+        bad.append("capture packet id")
+    if payload.get("capture_packet") != capture_packet():
+        bad.append("capture packet identity/range")
+    if (payload.get("seed_start") != SEED_START
+            or payload.get("seed0") != SEED_START
+            or payload.get("max_deals") != CAPTURE_MAX_DEALS
+            or payload.get("shard_count") != CAPTURE_SHARDS):
+        bad.append("capture top-level packet identity/range")
+    shard = payload.get("shard_index")
+    if not isinstance(shard, int) or not 0 <= shard < CAPTURE_SHARDS:
+        bad.append("capture shard index")
+        return bad
+    expected = capture_shard_seeds(shard)
+    scanned = payload.get("scanned_seeds")
+    if scanned != expected:
+        bad.append(f"capture shard {shard} seed coverage")
+    if payload.get("scanned_seeds_sha256") != stable_digest(expected):
+        bad.append(f"capture shard {shard} seed digest")
+    if payload.get("scanned_deals") != CAPTURE_DEALS_PER_SHARD:
+        bad.append(f"capture shard {shard} deal count")
+    records = payload.get("records", [])
+    if payload.get("records_digest") != stable_digest(records):
+        bad.append(f"capture shard {shard} record digest")
+    if payload.get("n_records") != len(records):
+        bad.append(f"capture shard {shard} record count")
+    reached = [row.get("seed") for row in records]
+    unreachable = payload.get("unreachable_seeds")
+    if not isinstance(unreachable, list):
+        bad.append(f"capture shard {shard} unreachable identities")
+        unreachable = []
+    if payload.get("unreachable_targets") != len(unreachable):
+        bad.append(f"capture shard {shard} unreachable count")
+    if (len(reached) != len(set(reached))
+            or set(reached) & set(unreachable)
+            or sorted(reached + unreachable) != expected):
+        bad.append(f"capture shard {shard} processed-seed partition")
+    for row in records:
+        if row.get("packet_id") != CAPTURE_PACKET_ID:
+            bad.append(f"capture shard {shard} row packet id")
+            break
+    if (payload.get("promotable") is not True or payload.get("tree_dirty")
+            or not payload.get("fast_engine")
+            or not payload.get("require_voids")):
+        bad.append(f"capture shard {shard} runtime is not evidence-grade")
+    exclusion = payload.get("exam_exclusion", {})
+    if (not exclusion.get("verified") or exclusion.get("overlap") != 0
+            or len(exclusion.get("sources", [])) != len(DEFAULT_EXAM_SPLITS)):
+        bad.append(f"capture shard {shard} exam exclusion")
+    actor = payload.get("actor", {})
+    if actor.get("policy") != ACTOR or not actor.get("identity"):
+        bad.append(f"capture shard {shard} actor identity")
+    return sorted(set(bad))
+
+
+def registered_diagnostic_problems(payload: dict) -> list[str]:
+    """Prove a selector artifact is the exact child of one capture shard."""
+    bad = []
+    if payload.get("schema") != DIAGNOSTIC_SCHEMA or not payload.get("complete"):
+        bad.append("diagnostic schema/completion")
+    if payload.get("packet_id") != CAPTURE_PACKET_ID:
+        bad.append("diagnostic packet id")
+    if payload.get("capture_packet") != capture_packet():
+        bad.append("diagnostic packet identity/range")
+    shard = payload.get("capture_shard_index")
+    if not isinstance(shard, int) or not 0 <= shard < CAPTURE_SHARDS:
+        bad.append("diagnostic capture shard index")
+        return bad
+    expected = capture_shard_seeds(shard)
+    if payload.get("capture_scanned_seeds") != expected:
+        bad.append(f"diagnostic shard {shard} capture coverage")
+    if payload.get("capture_scanned_seeds_sha256") != stable_digest(expected):
+        bad.append(f"diagnostic shard {shard} capture coverage digest")
+    parent_sha = payload.get("capture_input_sha256")
+    if (not is_sha256(parent_sha)
+            or payload.get("input_sha256") != parent_sha):
+        bad.append(f"diagnostic shard {shard} exact parent hash")
+    records = payload.get("records", [])
+    if payload.get("records_digest") != stable_digest(records):
+        bad.append(f"diagnostic shard {shard} record digest")
+    if payload.get("n_records") != len(records):
+        bad.append(f"diagnostic shard {shard} record count")
+    state_ids = [row.get("state_id") for row in records]
+    if (payload.get("diagnosed_state_ids") != state_ids
+            or payload.get("diagnosed_state_ids_sha256")
+            != stable_digest(state_ids)):
+        bad.append(f"diagnostic shard {shard} state coverage")
+    reached = [row.get("state", {}).get("seed") for row in records]
+    unreachable = payload.get("capture_unreachable_seeds", [])
+    if (len(reached) != len(set(reached))
+            or set(reached) & set(unreachable)
+            or sorted(reached + unreachable) != expected):
+        bad.append(f"diagnostic shard {shard} processed-seed partition")
+    if any(row.get("state", {}).get("packet_id") != CAPTURE_PACKET_ID
+           for row in records):
+        bad.append(f"diagnostic shard {shard} row packet id")
+    if (payload.get("promotable") is not True or payload.get("tree_dirty")
+            or not payload.get("fast_engine")
+            or not payload.get("require_voids")):
+        bad.append(f"diagnostic shard {shard} runtime is not evidence-grade")
+    exclusion = payload.get("exam_exclusion", {})
+    if (not exclusion.get("verified") or exclusion.get("overlap") != 0
+            or len(exclusion.get("sources", [])) != len(DEFAULT_EXAM_SPLITS)):
+        bad.append(f"diagnostic shard {shard} exam exclusion")
+    actor = payload.get("actor", {})
+    if actor.get("policy") != ACTOR or not actor.get("identity"):
+        bad.append(f"diagnostic shard {shard} actor identity")
+    if payload.get("selector_worlds") != SELECTOR_WORLDS:
+        bad.append(f"diagnostic shard {shard} selector dose")
+    return sorted(set(bad))
+
+
+def diagnostic_population_problems(manifests: list[dict]) -> tuple[list[str], dict]:
+    """Validate all and only the eight children of the entry capture packet."""
+    bad = []
+    if len(manifests) != CAPTURE_SHARDS:
+        bad.append(f"diagnostic shard count {len(manifests)}, required {CAPTURE_SHARDS}")
+    for index, payload in enumerate(manifests):
+        bad += [f"input {index}: {problem}"
+                for problem in registered_diagnostic_problems(payload)]
+    indices = [payload.get("capture_shard_index") for payload in manifests]
+    if (not all(isinstance(value, int) for value in indices)
+            or sorted(indices) != list(range(CAPTURE_SHARDS))):
+        bad.append(f"diagnostic shard identities {indices}")
+    parent_hashes = [payload.get("capture_input_sha256") for payload in manifests]
+    if len(parent_hashes) != len(set(parent_hashes)):
+        bad.append("repeated capture parent artifact")
+    if manifests:
+        first = manifests[0]
+        for index, payload in enumerate(manifests[1:], 1):
+            for key in (
+                "packet_id", "capture_packet", "git", "actor",
+                "exam_exclusion", "selector_worlds", "selector_policy",
+                "v11_checkpoint_sha256", "python", "fast_binary_sha256",
+                "fast_router_sha256", "state_script_sha256",
+            ):
+                if payload.get(key) != first.get(key):
+                    bad.append(f"diagnostic {index}: conflicting {key}")
+    scanned = [seed for payload in manifests
+               for seed in payload.get("capture_scanned_seeds", [])]
+    expected = list(range(SEED_START, CAPTURE_SEED_END + 1))
+    if len(scanned) != len(set(scanned)) or sorted(scanned) != expected:
+        bad.append("diagnostic population is not exact/nonoverlapping 120M coverage")
+    coverage = {
+        **capture_coverage(),
+        "capture_parent_sha256": {
+            str(payload.get("capture_shard_index")): payload.get("capture_input_sha256")
+            for payload in manifests
+        },
+        "diagnostic_records_sha256": {
+            str(payload.get("capture_shard_index")): payload.get("records_digest")
+            for payload in manifests
+        },
+    }
+    return sorted(set(bad)), coverage
+
+
+def state_set_packet_problems(payload: dict) -> list[str]:
+    """Reject a state set whose provenance is only plausible-looking metadata."""
+    bad = []
+    if payload.get("packet_id") != CAPTURE_PACKET_ID:
+        bad.append("state-set capture packet id")
+    if payload.get("capture_packet") != capture_packet():
+        bad.append("state-set capture packet identity/range")
+    coverage = payload.get("capture_coverage", {})
+    registered = capture_coverage()
+    for key, value in registered.items():
+        if coverage.get(key) != value:
+            bad.append(f"state-set capture coverage {key}")
+    inputs = payload.get("diagnostic_inputs", [])
+    if len(inputs) != CAPTURE_SHARDS:
+        bad.append(f"state-set diagnostic inputs {len(inputs)}, required 8")
+    indices = [item.get("capture_shard_index") for item in inputs
+               if isinstance(item, dict)]
+    if (len(indices) != CAPTURE_SHARDS
+            or not all(isinstance(index, int) for index in indices)
+            or sorted(indices) != list(range(CAPTURE_SHARDS))):
+        bad.append("state-set diagnostic shard identities")
+    diagnostic_hashes = [item.get("sha256") for item in inputs
+                         if isinstance(item, dict)]
+    if (len(diagnostic_hashes) != CAPTURE_SHARDS
+            or len(set(diagnostic_hashes)) != CAPTURE_SHARDS
+            or any(not is_sha256(value) for value in diagnostic_hashes)):
+        bad.append("state-set diagnostic artifact hashes")
+    parent_map = coverage.get("capture_parent_sha256", {})
+    diagnostic_map = coverage.get("diagnostic_records_sha256", {})
+    expected_keys = {str(index) for index in range(CAPTURE_SHARDS)}
+    for name, values in (
+        ("capture-parent", parent_map),
+        ("diagnostic-record", diagnostic_map),
+    ):
+        if (not isinstance(values, dict) or set(values) != expected_keys
+                or any(not is_sha256(value) for value in values.values())):
+            bad.append(f"state-set {name} coverage map")
+    for item in inputs:
+        if not isinstance(item, dict):
+            continue
+        index = item.get("capture_shard_index")
+        if parent_map.get(str(index)) != item.get("capture_parent_sha256"):
+            bad.append("state-set capture-parent binding")
+        if diagnostic_map.get(str(index)) != item.get(
+                "diagnostic_records_sha256"):
+            bad.append("state-set diagnostic-record binding")
+    if (payload.get("promotable") is not True or payload.get("tree_dirty")
+            or not payload.get("fast_engine")
+            or not payload.get("require_voids")):
+        bad.append("state-set runtime is not evidence-grade")
+    states = payload.get("states", [])
+    if payload.get("states_digest") != stable_digest(states):
+        bad.append("state-set states digest")
+    return sorted(set(bad))
+
+
 def _all_bot_counters(policies) -> dict[str, int]:
     return {name: sum(int(getattr(bot, name, 0)) for bot in policies)
             for name in SAMPLER_COUNTERS}
@@ -232,7 +471,8 @@ def _clean_actor_counters(counters: dict) -> list[str]:
     return bad
 
 
-def capture_deal(seed: int, target: dict, actor: dict) -> dict | None:
+def capture_deal(seed: int, target: dict, actor: dict,
+                 packet_id: str = CAPTURE_PACKET_ID) -> dict | None:
     game = Game(random.Random(seed))
     rnd = game.start_round()
     policies = []
@@ -291,6 +531,7 @@ def capture_deal(seed: int, target: dict, actor: dict) -> dict | None:
             role = "attacker" if rnd.is_attacker(seat) else "defender"
             row = {
                 "schema": STATE_SCHEMA, "experiment_id": EXPERIMENT,
+                "packet_id": packet_id,
                 "seed": seed, "seat": seat, "ply": len(plays),
                 "trick": len(rnd.history), "phase": phase_for_trick(len(rnd.history)),
                 "decision": "lead" if not rnd.trick.plays else "follow",
@@ -325,11 +566,21 @@ def capture(args) -> None:
     live = runtime(args.smoke)
     actor = actor_identity()
     exam, exclusion = load_exam_exclusion(args.exam_split)
+    if not args.smoke and (
+        args.packet_id != CAPTURE_PACKET_ID or args.seed0 != SEED_START
+        or args.max_deals != CAPTURE_MAX_DEALS
+        or args.shard_count != CAPTURE_SHARDS
+    ):
+        raise TeacherProtocolError(
+            f"real capture requires packet {CAPTURE_PACKET_ID}, seed0 "
+            f"{SEED_START}, max_deals {CAPTURE_MAX_DEALS}, "
+            f"shard_count {CAPTURE_SHARDS}"
+        )
     if args.seed0 < SEED_START:
         raise TeacherProtocolError(f"seed0 must be at least {SEED_START}")
     if not 0 <= args.shard_index < args.shard_count:
         raise TeacherProtocolError("invalid shard index/count")
-    records, unreachable = [], 0
+    records, unreachable_seeds = [], []
     scanned = list(range(
         args.seed0 + args.shard_index,
         args.seed0 + args.max_deals,
@@ -339,24 +590,37 @@ def capture(args) -> None:
         if seed in exam:
             exclusion["overlap"] += 1
             raise TeacherProtocolError(f"fresh seed {seed} overlaps an exam deal")
-        row = capture_deal(seed, target_for_deal(EXPERIMENT, seed), actor)
+        row = capture_deal(
+            seed, target_for_deal(EXPERIMENT, seed), actor, args.packet_id
+        )
         if row is None:
-            unreachable += 1
+            unreachable_seeds.append(seed)
         else:
             records.append(row)
         if index % 25 == 0:
             print(f"  {index}/{len(scanned)} deals, {len(records)} states", flush=True)
     payload = {
         "schema": CAPTURE_SCHEMA, "experiment_id": EXPERIMENT, **live,
+        "packet_id": args.packet_id, "capture_packet": _actual_packet(args),
         "seed_start": SEED_START, "seed0": args.seed0,
         "max_deals": args.max_deals, "shard_index": args.shard_index,
         "shard_count": args.shard_count, "actor": actor,
         "exam_exclusion": exclusion, "one_state_per_deal": True,
         "target_rule": "named hash -> phase/trick/position/pool before play",
         "complete": True, "scanned_deals": len(scanned),
-        "unreachable_targets": unreachable, "n_records": len(records),
+        "scanned_seeds": scanned,
+        "scanned_seeds_sha256": stable_digest(scanned),
+        "unreachable_targets": len(unreachable_seeds),
+        "unreachable_seeds": unreachable_seeds,
+        "n_records": len(records),
         "records": records, "records_digest": stable_digest(records),
     }
+    if not args.smoke:
+        violations = registered_capture_problems(payload)
+        if violations:
+            raise TeacherProtocolError(
+                "capture completion contract: " + "; ".join(violations)
+            )
     write_exclusive(args.out, payload)
     print(f"wrote {args.out}: {len(records)} fresh replay states", flush=True)
 
@@ -451,6 +715,12 @@ def diagnose(args) -> None:
     if capture_payload.get("schema") != CAPTURE_SCHEMA \
             or not capture_payload.get("complete"):
         raise TeacherProtocolError("input is not a complete capture shard")
+    if not args.smoke:
+        violations = registered_capture_problems(capture_payload)
+        if violations:
+            raise TeacherProtocolError(
+                "capture packet contract: " + "; ".join(violations)
+            )
     if (not args.smoke and (capture_payload.get("tree_dirty")
                             or not capture_payload.get("promotable"))):
         raise TeacherProtocolError(
@@ -481,6 +751,15 @@ def diagnose(args) -> None:
             f"{V11_CHECKPOINT_SHA256}")
     payload = {
         "schema": DIAGNOSTIC_SCHEMA, "experiment_id": EXPERIMENT, **live,
+        "packet_id": capture_payload.get("packet_id"),
+        "capture_packet": capture_payload.get("capture_packet"),
+        "capture_shard_index": capture_payload.get("shard_index"),
+        "capture_scanned_seeds": capture_payload.get("scanned_seeds"),
+        "capture_scanned_seeds_sha256": capture_payload.get(
+            "scanned_seeds_sha256"),
+        "capture_unreachable_seeds": capture_payload.get(
+            "unreachable_seeds", []),
+        "capture_input_sha256": args.expected_input_sha256,
         "input": args.input, "input_sha256": args.expected_input_sha256,
         "actor": capture_payload["actor"],
         "exam_exclusion": capture_payload["exam_exclusion"],
@@ -490,8 +769,17 @@ def diagnose(args) -> None:
         "v11_checkpoint": v11_path,
         "v11_checkpoint_sha256": v11_digest,
         "complete": True, "n_records": len(diagnostics),
+        "diagnosed_state_ids": [row["state_id"] for row in diagnostics],
+        "diagnosed_state_ids_sha256": stable_digest(
+            [row["state_id"] for row in diagnostics]),
         "records": diagnostics, "records_digest": stable_digest(diagnostics),
     }
+    if not args.smoke:
+        violations = registered_diagnostic_problems(payload)
+        if violations:
+            raise TeacherProtocolError(
+                "diagnostic completion contract: " + "; ".join(violations)
+            )
     write_exclusive(args.out, payload)
     print(f"wrote {args.out}: {len(diagnostics)} selector diagnostics", flush=True)
 
@@ -595,6 +883,7 @@ def stage_a_exclusion_problems(payload: dict, diagnostic: dict,
                                diagnostic_sha256s: set[str]) -> list[str]:
     """Validate the exact Stage-A asset whose deals Stage B will exclude."""
     bad = []
+    bad += state_set_packet_problems(payload)
     if payload.get("schema") != STATE_SET_SCHEMA:
         bad.append("excluded Stage-A set schema")
     if payload.get("experiment_id") != EXPERIMENT:
@@ -646,19 +935,194 @@ def stage_a_exclusion_problems(payload: dict, diagnostic: dict,
     return sorted(set(bad))
 
 
-def stage_a_gate_problems(payload: dict, state_set_sha256: str) -> list[str]:
-    """Stage B requires the exact excluded set to have passed mechanics."""
+def stage_a_gate_problems(payload: dict, state_set_sha256: str,
+                          state_set: dict | None = None, *,
+                          runtime_identity: dict | None = None,
+                          verify_artifacts: bool = False) -> list[str]:
+    """Recompute enough of Stage A that a plausible PASS JSON is insufficient."""
     bad = []
     if payload.get("schema") != GATE_SCHEMA:
         bad.append("Stage-A gate schema")
+    if payload.get("complete") is not True:
+        bad.append("Stage-A gate is incomplete")
     if payload.get("experiment_id") != EXPERIMENT or payload.get("stage") != "A":
         bad.append("Stage-A gate identity")
     if (payload.get("verdict") != "PASS"
             or payload.get("stage_b_authorized") is not True
             or payload.get("problems")):
         bad.append("Stage-A mechanics gate did not pass")
-    if payload.get("state_input_sha256") != state_set_sha256:
+    if (not is_sha256(state_set_sha256)
+            or payload.get("state_input_sha256") != state_set_sha256):
         bad.append("Stage-A gate is not bound to the excluded state set")
+    if ((payload.get("state_set") or {}).get("sha256") != state_set_sha256):
+        bad.append("Stage-A gate exact state-set artifact binding")
+    if payload.get("n_states") != STAGE_A_STATES:
+        bad.append(f"Stage-A gate states {payload.get('n_states')}, required 64")
+    artifact_sets = {}
+    for field in ("inputs", "reruns"):
+        artifacts = payload.get(field, [])
+        indices = [item.get("shard_index") for item in artifacts
+                   if isinstance(item, dict)]
+        hashes = [item.get("sha256") for item in artifacts
+                  if isinstance(item, dict)]
+        if (len(artifacts) != CAPTURE_SHARDS
+                or len(indices) != CAPTURE_SHARDS
+                or not all(isinstance(index, int) for index in indices)
+                or sorted(indices) != list(range(CAPTURE_SHARDS))):
+            bad.append(f"Stage-A gate {field} shard population")
+        if (len(hashes) != CAPTURE_SHARDS
+                or len(set(hashes)) != CAPTURE_SHARDS
+                or any(not is_sha256(value) for value in hashes)):
+            bad.append(f"Stage-A gate {field} artifact hashes")
+        artifact_sets[field] = set(hashes)
+    if artifact_sets.get("inputs", set()) & artifact_sets.get("reruns", set()):
+        bad.append("Stage-A gate primary/rerun artifact identity overlap")
+    primary_run = payload.get("primary_producer_run_id")
+    rerun_run = payload.get("rerun_producer_run_id")
+    if not is_run_id(primary_run) or not is_run_id(rerun_run):
+        bad.append("Stage-A gate producer run identities")
+    elif primary_run == rerun_run:
+        bad.append("Stage-A gate primary/rerun producer identity reused")
+    primary_receipt = payload.get("primary_producer_receipt", {})
+    rerun_receipt = payload.get("rerun_producer_receipt", {})
+    if (not isinstance(primary_receipt, dict)
+            or primary_receipt.get("role") != "stage-a-primary"
+            or primary_receipt.get("run_id") != primary_run
+            or not is_sha256(primary_receipt.get("sha256"))
+            or not is_sha256(primary_receipt.get("nonce"))):
+        bad.append("Stage-A gate primary producer receipt")
+    if (not isinstance(rerun_receipt, dict)
+            or rerun_receipt.get("role") != "stage-a-rerun"
+            or rerun_receipt.get("run_id") != rerun_run
+            or not is_sha256(rerun_receipt.get("sha256"))
+            or not is_sha256(rerun_receipt.get("nonce"))):
+        bad.append("Stage-A gate rerun producer receipt")
+    if (primary_receipt.get("sha256") == rerun_receipt.get("sha256")
+            or primary_receipt.get("nonce") == rerun_receipt.get("nonce")):
+        bad.append("Stage-A gate primary/rerun producer receipt reused")
+    if payload.get("packet_id") != CAPTURE_PACKET_ID:
+        bad.append("Stage-A gate capture packet id")
+    if payload.get("capture_packet") != capture_packet():
+        bad.append("Stage-A gate capture packet identity/range")
+    coverage = payload.get("capture_coverage", {})
+    for key, value in capture_coverage().items():
+        if coverage.get(key) != value:
+            bad.append(f"Stage-A gate capture coverage {key}")
+    for key in ("capture_parent_sha256", "diagnostic_records_sha256"):
+        values = coverage.get(key, {})
+        if (not isinstance(values, dict)
+                or set(values) != {str(index) for index in range(CAPTURE_SHARDS)}
+                or any(not is_sha256(value) for value in values.values())):
+            bad.append(f"Stage-A gate capture coverage {key}")
+    if state_set is not None and coverage != state_set.get("capture_coverage"):
+        bad.append("Stage-A gate capture coverage differs from excluded state set")
+
+    sources = payload.get("gate_source_digests", {})
+    source_names = {
+        "compiled_engine", "fast_router", "gate_script", "label_script",
+        "producer_receipt_script", "state_script", "teacher_contract",
+    }
+    if (not isinstance(sources, dict) or set(sources) != source_names
+            or any(not is_sha256(value) for value in sources.values())):
+        bad.append("Stage-A gate executable source provenance")
+    if (payload.get("tree_dirty") or payload.get("promotable") is not True
+            or not payload.get("fast_engine")
+            or not payload.get("require_voids")
+            or not isinstance(payload.get("git"), str)
+            or not isinstance(payload.get("python"), str)):
+        bad.append("Stage-A gate runtime is not clean/compiled/strict")
+
+    if runtime_identity is not None:
+        for key in ("git", "python", "fast_engine", "require_voids"):
+            if payload.get(key) != runtime_identity.get(key):
+                bad.append(f"Stage-A gate/current {key} drift")
+        expected_sources = {
+            "compiled_engine": runtime_identity.get("fast_binary_sha256"),
+            "fast_router": runtime_identity.get("fast_router_sha256"),
+            "state_script": runtime_identity.get("state_script_sha256"),
+            "gate_script": sha256_file(
+                os.path.join(os.path.dirname(__file__), "teacher_v1_gate.py")),
+            "label_script": sha256_file(
+                os.path.join(os.path.dirname(__file__), "teacher_v1_label.py")),
+            "producer_receipt_script": sha256_file(
+                os.path.join(os.path.dirname(__file__),
+                             "teacher_v1_receipt.py")),
+            "teacher_contract": sha256_file(
+                os.path.join(os.path.dirname(__file__), "../shengji/teacher_v1.py")),
+        }
+        if sources != expected_sources:
+            bad.append("Stage-A gate/current executable source drift")
+
+    if verify_artifacts:
+        if state_set is None:
+            bad.append("Stage-A artifact verification requires the exact state set")
+        else:
+            try:
+                import teacher_v1_gate as gate_validator
+            except ImportError as exc:
+                bad.append(f"Stage-A gate validator import: {exc}")
+            else:
+                loaded = {}
+                for field in ("inputs", "reruns"):
+                    artifacts = payload.get(field, [])
+                    paths = [item.get("path") for item in artifacts
+                             if isinstance(item, dict)]
+                    if (len(paths) != CAPTURE_SHARDS
+                            or any(not isinstance(path, str) for path in paths)):
+                        bad.append(f"Stage-A gate {field} artifact paths")
+                        continue
+                    for item in artifacts:
+                        path = item["path"]
+                        try:
+                            actual = sha256_file(path)
+                        except OSError as exc:
+                            bad.append(
+                                f"Stage-A gate {field} artifact unreadable: {exc}")
+                            continue
+                        if actual != item.get("sha256"):
+                            bad.append(
+                                f"Stage-A gate {field} artifact byte-hash drift")
+                    manifests, records, problems = gate_validator.load_shards(
+                        paths, schema=gate_validator.CHEAP_SHARD_SCHEMA,
+                        stage="a", mode="cheap",
+                        expected_states=state_set.get("states", []),
+                        expected_state_sha256=state_set_sha256,
+                        verify_receipts=True,
+                    )
+                    bad += [f"Stage-A gate {field}: {problem}"
+                            for problem in problems]
+                    if manifests:
+                        bad += [f"Stage-A gate {field}: {problem}"
+                                for problem in
+                                gate_validator.gate_input_runtime_problems(
+                                    manifests[0], payload)]
+                    for record in records:
+                        bad += [f"Stage-A gate {field}: {problem}"
+                                for problem in gate_validator.cheap_record_problems(
+                                    record, gate_validator.CHEAP_FOLDS)]
+                    bad += [f"Stage-A gate {field}: {problem}" for problem in
+                            gate_validator.stage_contract_problems(records, "a")]
+                    loaded[field] = (manifests, records)
+                if "inputs" in loaded and "reruns" in loaded:
+                    primary_manifests, primary_records = loaded["inputs"]
+                    rerun_manifests, rerun_records = loaded["reruns"]
+                    bad += [f"Stage-A gate rerun: {problem}" for problem in
+                            gate_validator.deterministic_rerun_problems(
+                                primary_records, rerun_records)]
+                    actual_primary_run = (primary_manifests[0].get(
+                        "producer_run_id") if primary_manifests else None)
+                    actual_rerun_run = (rerun_manifests[0].get(
+                        "producer_run_id") if rerun_manifests else None)
+                    if (primary_run != actual_primary_run
+                            or rerun_run != actual_rerun_run):
+                        bad.append("Stage-A gate declared/actual producer run drift")
+                    if (primary_receipt != (primary_manifests[0].get(
+                            "producer_receipt") if primary_manifests else None)
+                            or rerun_receipt != (rerun_manifests[0].get(
+                                "producer_receipt")
+                                if rerun_manifests else None)):
+                        bad.append(
+                            "Stage-A gate declared/actual producer receipt drift")
     return bad
 
 
@@ -678,6 +1142,7 @@ def freeze(args) -> None:
             problems.append(f"{path}: diagnostic record digest")
         diagnostics.extend(payload.get("records", []))
     first = manifests[0] if manifests else {}
+    packet_coverage = {}
     if not manifests:
         problems.append("no diagnostic inputs")
     else:
@@ -688,6 +1153,17 @@ def freeze(args) -> None:
                         "state_script_sha256"):
                 if payload.get(key) != first.get(key):
                     problems.append(f"diagnostic {index}: {key} drift")
+        if not args.smoke:
+            packet_problems, packet_coverage = diagnostic_population_problems(
+                manifests
+            )
+            problems += packet_problems
+        for key in ("git", "python", "fast_binary_sha256",
+                    "fast_router_sha256", "state_script_sha256"):
+            if first.get(key) != live.get(key):
+                problems.append(f"diagnostic/freeze {key} drift")
+        if first.get("actor") != actor_identity():
+            problems.append("diagnostic/freeze actor identity drift")
     ids = [diag.get("state_id") for diag in diagnostics]
     deals = [diag.get("state", {}).get("seed") for diag in diagnostics]
     if len(ids) != len(set(ids)) or len(deals) != len(set(deals)):
@@ -721,7 +1197,9 @@ def freeze(args) -> None:
                 with open(args.stage_a_gate) as fh:
                     stage_a_gate = json.load(fh)
                 problems += stage_a_gate_problems(
-                    stage_a_gate, state_set_sha256)
+                    stage_a_gate, state_set_sha256, previous,
+                    runtime_identity=(None if args.smoke else live),
+                    verify_artifacts=not args.smoke)
                 stage_a_gate_binding = {
                     "path": args.stage_a_gate,
                     "sha256": sha256_file(args.stage_a_gate),
@@ -749,6 +1227,9 @@ def freeze(args) -> None:
     first = manifests[0]
     payload = {
         "schema": STATE_SET_SCHEMA, "experiment_id": EXPERIMENT,
+        "packet_id": first.get("packet_id"),
+        "capture_packet": first.get("capture_packet"),
+        "capture_coverage": packet_coverage,
         "stage": args.stage, **live, "seed_start": SEED_START,
         "actor": first["actor"], "exam_exclusion": first["exam_exclusion"],
         "one_state_per_deal": True,
@@ -770,7 +1251,11 @@ def freeze(args) -> None:
             ),
         },
         "diagnostic_inputs": [
-            {"path": path, "sha256": sha256_file(path)} for path in args.input
+            {"path": path, "sha256": sha256_file(path),
+             "capture_shard_index": manifest.get("capture_shard_index"),
+             "capture_parent_sha256": manifest.get("capture_input_sha256"),
+             "diagnostic_records_sha256": manifest.get("records_digest")}
+            for path, manifest in zip(args.input, manifests)
         ],
         "excluded_stage_a": (
             None if not args.exclude_state_set else {
@@ -783,6 +1268,12 @@ def freeze(args) -> None:
         "complete": True, "requested": required, "selected": len(states),
         "states": states, "states_digest": stable_digest(states),
     }
+    if not args.smoke:
+        violations = state_set_packet_problems(payload)
+        if violations:
+            raise TeacherProtocolError(
+                "state-set packet contract: " + "; ".join(violations)
+            )
     write_exclusive(args.out, payload)
     print(f"wrote frozen Stage {args.stage.upper()} set {args.out}: {len(states)} states")
 
@@ -791,10 +1282,11 @@ def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="mode", required=True)
     cap = sub.add_parser("capture")
+    cap.add_argument("--packet-id", default=CAPTURE_PACKET_ID)
     cap.add_argument("--seed0", type=int, default=SEED_START)
-    cap.add_argument("--max-deals", type=int, default=2048)
+    cap.add_argument("--max-deals", type=int, default=CAPTURE_MAX_DEALS)
     cap.add_argument("--shard-index", type=int, default=0)
-    cap.add_argument("--shard-count", type=int, default=1)
+    cap.add_argument("--shard-count", type=int, default=CAPTURE_SHARDS)
     cap.add_argument("--exam-split", action="append",
                      default=list(DEFAULT_EXAM_SPLITS))
     cap.add_argument("--out", required=True)

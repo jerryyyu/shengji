@@ -35,10 +35,13 @@ from shengji.ai.memory import Memory                              # noqa: E402
 from shengji.ai.registry import make_bot                          # noqa: E402
 from shengji.engine.ballot import mc_ballot                       # noqa: E402
 from shengji.engine.round import Round, Trick, TrickPlay          # noqa: E402
-from shengji.teacher_v1 import (CHEAP_FOLDS, CHEAP_SHARD_SCHEMA,  # noqa: E402
+from shengji.teacher_v1 import (CAPTURE_PACKET_ID, CAPTURE_SEED_END, # noqa: E402
+                                CAPTURE_SHARDS,
+                                CHEAP_FOLDS, CHEAP_SHARD_SCHEMA,
                                 EXPERIMENT, GOLD_FOLDS,
                                 GOLD_SHARD_SCHEMA,
-                                REPRESENTATIVE_CELLS,
+                                PRODUCER_RECEIPT_SCHEMA,
+                                REPRESENTATIVE_CELLS, SEED_START,
                                 SAMPLER_COUNTERS, STAGE_A_OTHER_STATES,
                                 STAGE_A_REPRESENTATIVE_PER_CELL,
                                 STAGE_A_STATES, STAGE_B_STATES,
@@ -48,7 +51,10 @@ from shengji.teacher_v1 import (CHEAP_FOLDS, CHEAP_SHARD_SCHEMA,  # noqa: E402
                                 STATE_SET_SCHEMA, TeacherProtocolError,
                                 TARGET_SCHEMA,
                                 action_key, ballot_problems,
+                                canonical_state_partition,
+                                capture_coverage, capture_packet,
                                 counter_problems, derive_stream,
+                                is_run_id, is_sha256,
                                 paired_moments, replay_state,
                                 sampler_delta, sampler_snapshot,
                                 stable_digest, targets, tensor_problems)
@@ -84,6 +90,8 @@ def source_digests() -> dict[str, str]:
 
     paths = {
         "label_script": __file__,
+        "producer_receipt_script": Path(__file__).with_name(
+            "teacher_v1_receipt.py"),
         "teacher_contract": teacher.__file__,
         "mcbot_sampler": mcbot.__file__,
         "memory": memory.__file__,
@@ -516,13 +524,56 @@ def state_set_problems(payload: dict, stage: str, *, smoke: bool) -> list[str]:
     if len(deals) != len(set(deals)):
         bad.append("more than one state per deal")
     if not smoke:
+        if payload.get("packet_id") != CAPTURE_PACKET_ID:
+            bad.append("state-set capture packet id")
+        if payload.get("capture_packet") != capture_packet():
+            bad.append("state-set capture packet identity/range")
+        coverage = payload.get("capture_coverage", {})
+        for key, value in capture_coverage().items():
+            if coverage.get(key) != value:
+                bad.append(f"state-set capture coverage {key}")
+        diagnostic_inputs = payload.get("diagnostic_inputs", [])
+        shard_indices = [item.get("capture_shard_index")
+                         for item in diagnostic_inputs
+                         if isinstance(item, dict)]
+        diagnostic_hashes = [item.get("sha256") for item in diagnostic_inputs
+                             if isinstance(item, dict)]
+        if (len(diagnostic_inputs) != CAPTURE_SHARDS
+                or not all(isinstance(index, int) for index in shard_indices)
+                or sorted(shard_indices) != list(range(CAPTURE_SHARDS))):
+            bad.append("state-set exact diagnostic shard population")
+        if (len(diagnostic_hashes) != CAPTURE_SHARDS
+                or len(set(diagnostic_hashes)) != CAPTURE_SHARDS
+                or any(not is_sha256(value) for value in diagnostic_hashes)):
+            bad.append("state-set diagnostic artifact hashes")
+        parent_map = coverage.get("capture_parent_sha256", {})
+        diagnostic_map = coverage.get("diagnostic_records_sha256", {})
+        expected_keys = {str(index) for index in range(CAPTURE_SHARDS)}
+        for name, values in (
+            ("capture-parent", parent_map),
+            ("diagnostic-record", diagnostic_map),
+        ):
+            if (not isinstance(values, dict) or set(values) != expected_keys
+                    or any(not is_sha256(value) for value in values.values())):
+                bad.append(f"state-set {name} coverage map")
+        for item in diagnostic_inputs:
+            if not isinstance(item, dict):
+                continue
+            index = item.get("capture_shard_index")
+            if parent_map.get(str(index)) != item.get("capture_parent_sha256"):
+                bad.append("state-set capture-parent binding")
+            if diagnostic_map.get(str(index)) != item.get(
+                    "diagnostic_records_sha256"):
+                bad.append("state-set diagnostic-record binding")
         if payload.get("tree_dirty") or not payload.get("promotable"):
             bad.append("state set is dirty or non-promotable")
         if not payload.get("fast_engine") or not payload.get("require_voids"):
             bad.append("state set lacks compiled/strict provenance")
-        if payload.get("seed_start") != 120_000_000:
+        if payload.get("seed_start") != SEED_START:
             bad.append("fresh-deal seed start is not 120000000")
-        if any(not isinstance(seed, int) or seed < 120_000_000 for seed in deals):
+        if any(not isinstance(seed, int)
+               or not SEED_START <= seed <= CAPTURE_SEED_END
+               for seed in deals):
             bad.append("state outside the fresh teacher seed range")
         exclusion = payload.get("exam_exclusion", {})
         if (not exclusion.get("verified") or exclusion.get("overlap") != 0
@@ -613,6 +664,85 @@ def state_source_problems(payload: dict, runtime: dict,
     return bad
 
 
+def label_packet_problems(payload: dict) -> list[str]:
+    """Validate the immutable capture/state-set lineage on one label shard."""
+    bad = []
+    contract = payload.get("state_contract", {})
+    if not is_run_id(payload.get("producer_run_id")):
+        bad.append("label producer run identity")
+    receipt = payload.get("producer_receipt", {})
+    if (not isinstance(receipt, dict)
+            or receipt.get("run_id") != payload.get("producer_run_id")
+            or not is_sha256(receipt.get("sha256"))
+            or not is_sha256(receipt.get("nonce"))
+            or receipt.get("role") not in {
+                "stage-a-primary", "stage-a-rerun",
+                "stage-b-cheap", "stage-b-gold"}
+            or not isinstance(receipt.get("path"), str)):
+        bad.append("label producer receipt binding")
+    if (payload.get("packet_id") != CAPTURE_PACKET_ID
+            or contract.get("packet_id") != CAPTURE_PACKET_ID):
+        bad.append("label capture packet id")
+    if (payload.get("capture_packet") != capture_packet()
+            or contract.get("capture_packet") != capture_packet()):
+        bad.append("label capture packet identity/range")
+    manifest_coverage = payload.get("capture_coverage", {})
+    contract_coverage = contract.get("capture_coverage", {})
+    for key, value in capture_coverage().items():
+        if (manifest_coverage.get(key) != value
+                or contract_coverage.get(key) != value):
+            bad.append(f"label capture coverage {key}")
+    if manifest_coverage != contract_coverage:
+        bad.append("label top-level/state-contract coverage drift")
+    inputs = contract.get("diagnostic_inputs", [])
+    indices = [item.get("capture_shard_index") for item in inputs
+               if isinstance(item, dict)]
+    hashes = [item.get("sha256") for item in inputs
+              if isinstance(item, dict)]
+    if (len(inputs) != CAPTURE_SHARDS
+            or not all(isinstance(index, int) for index in indices)
+            or sorted(indices) != list(range(CAPTURE_SHARDS))):
+        bad.append("label diagnostic shard population")
+    if (len(hashes) != CAPTURE_SHARDS or len(set(hashes)) != CAPTURE_SHARDS
+            or any(not is_sha256(value) for value in hashes)):
+        bad.append("label diagnostic artifact hashes")
+    parent_map = contract_coverage.get("capture_parent_sha256", {})
+    diagnostic_map = contract_coverage.get("diagnostic_records_sha256", {})
+    expected_keys = {str(index) for index in range(CAPTURE_SHARDS)}
+    for name, values in (
+        ("capture-parent", parent_map),
+        ("diagnostic-record", diagnostic_map),
+    ):
+        if (not isinstance(values, dict) or set(values) != expected_keys
+                or any(not is_sha256(value) for value in values.values())):
+            bad.append(f"label {name} coverage map")
+    for item in inputs:
+        if not isinstance(item, dict):
+            continue
+        index = item.get("capture_shard_index")
+        if parent_map.get(str(index)) != item.get("capture_parent_sha256"):
+            bad.append("label capture-parent binding")
+        if diagnostic_map.get(str(index)) != item.get(
+                "diagnostic_records_sha256"):
+            bad.append("label diagnostic-record binding")
+    state_sha = contract.get("state_set_sha256")
+    if (not is_sha256(state_sha)
+            or payload.get("state_input_sha256") != state_sha):
+        bad.append("label exact state-set binding")
+    partition = payload.get("state_partition", {})
+    records = payload.get("records", [])
+    record_ids = [record.get("state_id") for record in records]
+    if (partition.get("schema") != "teacher-v1-state-partition-v1"
+            or partition.get("shard_index") != payload.get("shard_index")
+            or partition.get("shard_count") != payload.get("shard_count")
+            or partition.get("state_ids") != record_ids
+            or partition.get("state_ids_sha256") != stable_digest(record_ids)
+            or partition.get("assignment")
+            != "sorted_state_id_then_interleaved_position"):
+        bad.append("label state partition identity")
+    return sorted(set(bad))
+
+
 def cheap_parent_problems(payload: dict, runtime: dict,
                           digests: dict[str, str], *, smoke: bool) -> list[str]:
     """Reject a corrupt or executable-mismatched cheap parent before gold work."""
@@ -636,6 +766,8 @@ def cheap_parent_problems(payload: dict, runtime: dict,
         int(record.get("candidate_world_work", -1)) for record in records
     ):
         bad.append("cheap-parent work total")
+    if not smoke:
+        bad += label_packet_problems(payload)
     return bad
 
 
@@ -649,6 +781,81 @@ def load_pinned(path: str, expected: str) -> dict:
         )
     with open(path) as fh:
         return json.load(fh)
+
+
+def producer_receipt_problems(receipt: dict, *, runtime: dict,
+                              digests: dict[str, str], stage: str, mode: str,
+                              state_set_sha256: str) -> list[str]:
+    """Validate the pre-existing population receipt before expensive work."""
+    bad = []
+    roles = {
+        "stage-a-primary": ("a", "cheap"),
+        "stage-a-rerun": ("a", "cheap"),
+        "stage-b-cheap": ("b", "cheap"),
+        "stage-b-gold": ("b", "gold"),
+    }
+    if (receipt.get("schema") != PRODUCER_RECEIPT_SCHEMA
+            or receipt.get("complete") is not True
+            or receipt.get("experiment_id") != EXPERIMENT):
+        bad.append("producer receipt identity/completion")
+    if (receipt.get("packet_id") != CAPTURE_PACKET_ID
+            or receipt.get("capture_packet") != capture_packet()):
+        bad.append("producer receipt capture packet")
+    if not is_run_id(receipt.get("run_id")):
+        bad.append("producer receipt run identity")
+    role = receipt.get("role")
+    if (roles.get(role) != (stage, mode)
+            or receipt.get("stage") != stage
+            or receipt.get("mode") != mode):
+        bad.append("producer receipt role/stage/mode")
+    if ((receipt.get("state_set") or {}).get("sha256")
+            != state_set_sha256):
+        bad.append("producer receipt exact state-set binding")
+    nonce = receipt.get("nonce")
+    if not is_sha256(nonce):
+        bad.append("producer receipt nonce")
+    if not isinstance(receipt.get("created_time_ns"), int):
+        bad.append("producer receipt creation time")
+    for key in ("git", "python", "fast_engine", "require_voids"):
+        if receipt.get(key) != runtime.get(key):
+            bad.append(f"producer receipt/runtime {key} drift")
+    if receipt.get("tree_dirty") or receipt.get("promotable") is not True:
+        bad.append("producer receipt runtime is dirty/non-promotable")
+    if receipt.get("source_digests") != digests:
+        bad.append("producer receipt executable source drift")
+    return sorted(set(bad))
+
+
+def load_producer_receipt(*, path: str | None, expected: str | None,
+                          smoke: bool, runtime: dict,
+                          digests: dict[str, str], stage: str, mode: str,
+                          state_set_sha256: str) -> tuple[dict, dict]:
+    if smoke:
+        role = ("stage-a-primary" if stage == "a" else
+                "stage-b-cheap" if mode == "cheap" else "stage-b-gold")
+        receipt = {
+            "schema": PRODUCER_RECEIPT_SCHEMA, "run_id": "smoke-run",
+            "role": role, "nonce": stable_digest("smoke-receipt"),
+        }
+        return receipt, {
+            "path": None, "sha256": stable_digest(receipt),
+            "run_id": receipt["run_id"], "role": role,
+            "nonce": receipt["nonce"],
+        }
+    if not path or not expected or not is_sha256(expected):
+        raise TeacherProtocolError(
+            "real labels require --producer-receipt and its exact SHA-256")
+    receipt = load_pinned(path, expected)
+    bad = producer_receipt_problems(
+        receipt, runtime=runtime, digests=digests, stage=stage, mode=mode,
+        state_set_sha256=state_set_sha256)
+    if bad:
+        raise TeacherProtocolError("invalid producer receipt: " + "; ".join(bad))
+    return receipt, {
+        "path": path, "sha256": expected,
+        "run_id": receipt["run_id"], "role": receipt["role"],
+        "nonce": receipt["nonce"],
+    }
 
 
 def write_complete(path: str, payload: dict) -> None:
@@ -686,7 +893,9 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--expected-input-sha256", required=True)
     ap.add_argument("--stage", choices=("a", "b"), required=True)
     ap.add_argument("--shard-index", type=int, default=0)
-    ap.add_argument("--shard-count", type=int, default=1)
+    ap.add_argument("--shard-count", type=int, default=CAPTURE_SHARDS)
+    ap.add_argument("--producer-receipt")
+    ap.add_argument("--expected-producer-receipt-sha256")
     ap.add_argument("--out", required=True)
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--selection-worlds", type=int, default=CHEAP_FOLDS["selection"])
@@ -705,6 +914,10 @@ def main() -> None:
         frozen_source_digests = source_digests()
         if not 0 <= args.shard_index < args.shard_count:
             raise TeacherProtocolError("invalid shard index/count")
+        if not args.smoke and args.shard_count != CAPTURE_SHARDS:
+            raise TeacherProtocolError(
+                f"real teacher gates require exactly {CAPTURE_SHARDS} shards"
+            )
         if args.mode == "cheap":
             if not args.smoke and (args.selection_worlds, args.report_worlds) != (
                 CHEAP_FOLDS["selection"], CHEAP_FOLDS["report"]
@@ -718,8 +931,23 @@ def main() -> None:
                 raise TeacherProtocolError("invalid state set: " + "; ".join(bad))
             if source.get("experiment_id") != EXPERIMENT:
                 raise TeacherProtocolError("input experiment identity drift")
+            receipt, receipt_binding = load_producer_receipt(
+                path=args.producer_receipt,
+                expected=args.expected_producer_receipt_sha256,
+                smoke=args.smoke, runtime=runtime,
+                digests=frozen_source_digests, stage=args.stage, mode=args.mode,
+                state_set_sha256=args.expected_input_sha256)
             all_records = source["states"]
-            selected = all_records[args.shard_index::args.shard_count]
+            selected = canonical_state_partition(
+                all_records, args.shard_index, args.shard_count)
+            expected_per_shard = (
+                STAGE_A_STATES if args.stage == "a" else STAGE_B_STATES
+            ) // CAPTURE_SHARDS
+            if not args.smoke and len(selected) != expected_per_shard:
+                raise TeacherProtocolError(
+                    f"state shard {args.shard_index} has {len(selected)} rows, "
+                    f"expected {expected_per_shard}"
+                )
             if not selected:
                 raise TeacherProtocolError("empty shard")
             bot = make_bot("mc-strong", seed=1)
@@ -752,6 +980,12 @@ def main() -> None:
             if bad:
                 raise TeacherProtocolError(
                     "invalid cheap parent: " + "; ".join(bad))
+            receipt, receipt_binding = load_producer_receipt(
+                path=args.producer_receipt,
+                expected=args.expected_producer_receipt_sha256,
+                smoke=args.smoke, runtime=runtime,
+                digests=frozen_source_digests, stage=args.stage, mode=args.mode,
+                state_set_sha256=source.get("state_input_sha256"))
             cheap_records = source.get("records", [])
             # A gold shard is the one-to-one continuation of its cheap shard.
             # Re-sharding an already-sharded input would keep only 1/N of it,
@@ -765,6 +999,11 @@ def main() -> None:
             selected = cheap_records
             if not selected:
                 raise TeacherProtocolError("empty shard")
+            if not args.smoke and len(selected) != STAGE_B_STATES // CAPTURE_SHARDS:
+                raise TeacherProtocolError(
+                    f"gold parent shard has {len(selected)} rows, expected "
+                    f"{STAGE_B_STATES // CAPTURE_SHARDS}"
+                )
             bot = make_bot("mc-strong", seed=1)
             counts = {"gold_selection": args.gold_selection_worlds,
                       "gold_report": args.gold_report_worlds}
@@ -783,8 +1022,17 @@ def main() -> None:
                 "teacher executable digests changed during labelling")
         payload = {
             "schema": schema, "experiment_id": EXPERIMENT,
+            "packet_id": source.get("packet_id"),
+            "capture_packet": source.get(
+                "capture_packet",
+                (source.get("state_contract") or {}).get("capture_packet")),
+            "capture_coverage": source.get(
+                "capture_coverage",
+                (source.get("state_contract") or {}).get("capture_coverage")),
             "target_schema": TARGET_SCHEMA,
             "stage": args.stage, "mode": args.mode,
+            "producer_run_id": receipt["run_id"],
+            "producer_receipt": receipt_binding,
             **runtime, "source_digests": frozen_source_digests,
             "input": args.input, "input_sha256": args.expected_input_sha256,
             "state_input_sha256": (
@@ -792,11 +1040,25 @@ def main() -> None:
                 else source.get("input_sha256")
             ),
             "shard_index": args.shard_index, "shard_count": args.shard_count,
+            "state_partition": {
+                "schema": "teacher-v1-state-partition-v1",
+                "assignment": "sorted_state_id_then_interleaved_position",
+                "shard_index": args.shard_index,
+                "shard_count": args.shard_count,
+                "state_ids": [record["state_id"] for record in records],
+                "state_ids_sha256": stable_digest(
+                    [record["state_id"] for record in records]),
+            },
             "continuation": continuation, "counts": counts,
             "state_contract": source.get("state_contract", {
                 "one_state_per_deal": source.get("one_state_per_deal"),
                 "exam_exclusion": source.get("exam_exclusion"),
                 "actor": source.get("actor"),
+                "packet_id": source.get("packet_id"),
+                "capture_packet": source.get("capture_packet"),
+                "capture_coverage": source.get("capture_coverage"),
+                "diagnostic_inputs": source.get("diagnostic_inputs"),
+                "state_set_sha256": args.expected_input_sha256,
             }),
             "complete": True, "n_records": len(records), "records": records,
             "records_digest": deterministic_records_digest(records),
@@ -804,6 +1066,11 @@ def main() -> None:
             "measured_record_seconds": elapsed,
             "projected_2048_seconds": elapsed / len(records) * 2048,
         }
+        if not args.smoke:
+            bad = label_packet_problems(payload)
+            if bad:
+                raise TeacherProtocolError(
+                    "label packet contract: " + "; ".join(bad))
         write_complete(args.out, payload)
         print(
             f"wrote {args.out}: {len(records)} records, "

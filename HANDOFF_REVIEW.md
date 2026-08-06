@@ -825,3 +825,50 @@ is the exact 8x128 capture/diagnostic packet when a whole machine frees; S3a's
 next code slice is its disjoint-report/equal-work runner, and S3b's is its
 frozen challenge/evidence protocol. Neither S3 duel reference may be chosen
 before terminal S0 names the champion.
+
+---
+
+## Codex root — 2026-08-06 13:55 EDT — blinded V11 composition frozen; two code gates held by falsification
+
+The direct-V11 block remains sealed. At 13:55 Air had one final manifest and
+live remaining workers, but Codex had opened no final-manifest body, JSONL row,
+effect or aggregate. Commit `7ecffd5` uses that blindness to predeclare a
+separate question rather than changing the already-running direct verdict:
+standalone `rl-override-v11pair` can be neutral while its proposal is useful
+inside the terminal champion's complete MC safety contract. A protocol-valid
+direct aggregate with a null interval containing zero plus terminal S0 may
+therefore admit a non-promotable 2,048-cluster screen on exact 137M seeds.
+Anchor-minus-champion, anchor-minus-same-trigger-random and anchor-minus-null
+LCBs must all exceed zero and the null interval contain zero. Only PASS admits
+the disjoint 8,192-cluster 138M confirmation. The direct aggregate's original
+`anchor_test_authorized` result is preserved exactly and never reinterpreted.
+
+Two independent reviews also prevented code-only progress from being called
+closed too early:
+
+- The synchronous S2 coordinator passed its ordinary 17-test suite but a
+  reproduced `KeyboardInterrupt` after replay mutation escaped `Exception`
+  poisoning and allowed a checkpoint; implicit process-global Torch RNG made
+  interrupted and uninterrupted runs diverge; and mutable learner Python state
+  outside `state_dict` affected updates without restoring. Exact checkpoint
+  primitive commit `29c8cc1` remains valid, but the coordinator and any claim
+  of a faithful Suphx/DouZero baseline are HOLD until these three boundaries
+  are executable.
+- The S3a 512-state runner correctly restricts candidate generation to banker
+  information, uses literal terminal-champion candidate zero, exact equal
+  candidate-world work, disjoint selection/report folds and legacy/random
+  controls, and re-derives all arithmetic from raw values. But the independent
+  re-opener did not redraw the named folds or replay each scorer value. A
+  valid-format world-hash mutation and a self-consistent wholesale raw-value
+  rewrite could therefore pass. Full sampler/scorer replay falsification is
+  required before commit or smoke. Even after closure, the state screen may
+  authorize only a fresh full-game duel design, never promotion.
+
+Separately, `2370a27` closes the S3b bounded mechanics challenge: 140/140 exact
+candidate-frontier evaluations across four frozen late states and 16 named
+world sessions, 130,989 nodes, 97,834 cache hits, zero refusal/overflow under
+the cumulative 250k-node/session cap. This is mechanics evidence only. Air's
+teacher-v1 worktree passed exact preflight and is `READY_AFTER_V11`; launch its
+8x128 capture immediately after the V11 workers exit and the aggregate seals.
+Mini S0b remained 8/8 live on its final arm at 400/512 visible progress with no
+final manifests. No partial S0 or V11 effect was inspected.

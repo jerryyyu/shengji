@@ -22,10 +22,10 @@ newline. This is not promotion. At 06:58 the singleton supervisor launched
 8/8 `s0b-lcb` shards over exact seeds 134,000,000–134,002,047. Every child
 binds that aggregate and survivor and preflighted frozen SHA/runtime/native
 identity with strict voids, no dirty files and zero stderr.
-At 12:59 EDT all eight shards remained live on the third/final random-allocation
-arm, with eight partial manifests and no final. Visible progress tails were at
-200–300/512 rounds where present and record bytes continued advancing; no
-partial effect was inspected.
+At 13:44 EDT all eight shards remained live on the third/final random-allocation
+arm, with eight partial manifests and no final. Every visible progress tail had
+reached 400/512 rounds and record bytes continued advancing; no partial effect
+was inspected.
 
 Air's S0a duplicate is no longer needed now that authoritative Mini passed its
 aggregate gate. Its exact S0 workers are no longer running and its transition
@@ -44,16 +44,34 @@ clusters over contiguous seeds 121,000,000–121,002,047. All eight provenance
 manifests agree on Python 3.14.6, compiled+strict execution, policy/ballot/digest
 contracts and checkpoint SHA-256
 `cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003`;
-the worktree remains clean. At 13:02 all eight process trees and growing JSONL
-partials remained present, with eight partial manifests and no final.
+the worktree remains clean. At 13:55 one final manifest existed and the
+remaining process trees/growing JSONL partials were present. No final manifest
+body, record or effect was opened.
 
 This is only a direct-compatibility prerequisite. After 8/8 final manifests,
 aggregate the frozen block once. It authorizes the later protected-anchor
 experiment only if V11-current and V11-null paired 95% lower bounds are both
 positive while the true-null interval contains zero. It can never promote
 production. Do not inspect partial effects, extend the block or pool it with S0.
-The protected-anchor reference and fresh seed block remain unfrozen until both
-this gate passes and S0 names its terminal champion.
+The original direct verdict remains exactly as frozen. Before opening any
+effect, pushed commit `7ecffd5` separately froze the protected-composition
+question: after a protocol-valid direct aggregate with a sane null and terminal
+S0, screen exactly 2,048 fresh 137M clusters; only PASS may confirm on 8,192
+fresh 138M clusters. This does not alter the direct aggregate's stored
+authorization bit. The exact screen code/reference still waits for review and
+the terminal S0 parent.
+
+## READY_AFTER_V11 / teacher-v1 entry capture (Air)
+
+Air preflight passed from clean detached worktree
+`/Users/jerryyu/Projects/shengji-teacher-air` at exact commit
+`dc6dc2f85bbf7275a6453b844886d573fd4feadd`. Python 3.14.6, compiled engine,
+all three exam-split hashes and frozen v11 checkpoint bytes match; the proposed
+output namespace is absent. After every V11 process exits and its singleton
+aggregate seals, launch the staged eight-way `teacher-v1-entry-120m-v1`
+capture over exact seeds 120,000,000–120,001,023, then eight diagnostics and
+one Stage-A freeze. Freeze must emit exactly 64 states. Do not append or replace
+seeds on any refusal.
 
 ## FROZEN PROTOCOL — S0a decision-rule screen
 

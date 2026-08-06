@@ -22,6 +22,9 @@ PHASE_RE = re.compile(
     r"^(s0a|s0b-[a-z0-9-]+|s0c-[a-z0-9-]+) manifests \(8/8\):",
     re.MULTILINE,
 )
+WORKER_LABEL_RE = re.compile(
+    r"^com\.shengji\.s0mini\.s0[abc](?:_[a-z0-9_]+)?\.\d+$"
+)
 RunCommand = Callable[..., subprocess.CompletedProcess]
 
 
@@ -248,6 +251,20 @@ def cleanup_launchctl(
         raise RuntimeError(
             f"refusing cleanup while terminal S0 services are active: {active}")
 
+    # The terminal packet proves only one exact phase chain. Scan the complete
+    # S0 worker namespace before removing anything so an unreached branch
+    # cannot survive an apparently successful closeout. Do not remove an
+    # unexpected job automatically: its presence needs explicit investigation.
+    unexpected_workers = sorted(
+        label for label in before
+        if WORKER_LABEL_RE.fullmatch(label)
+        and label not in set(terminal_workers)
+    )
+    if unexpected_workers:
+        raise RuntimeError(
+            "refusing cleanup with unexpected S0 worker services: "
+            f"{unexpected_workers}")
+
     # Workers first, keepawake next, supervisor last.  Unknown services are
     # intentionally untouched, even when they share the s0mini namespace.
     loaded = [label for label in labels if label in before]
@@ -269,7 +286,8 @@ def cleanup_launchctl(
     }
 
 
-def main() -> None:
+def main(argv: list[str] | None = None, *,
+         run_command: RunCommand = subprocess.run) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--server", type=Path, default=Path.cwd())
     parser.add_argument("--python", type=Path)
@@ -277,7 +295,7 @@ def main() -> None:
     parser.add_argument("--packet-script", type=Path)
     parser.add_argument("--cleanup-launchctl", action="store_true")
     parser.add_argument("--out", type=Path)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     server = args.server.resolve()
     python = (args.python or server / ".venv/bin/python").resolve()
@@ -287,7 +305,9 @@ def main() -> None:
                      Path(__file__).with_name("s0_packet.py")).resolve()
     result = {
         "schema": "s0-terminal-closeout-v1",
-        **verify_terminal_packet(server, python, packet, packet_script),
+        **verify_terminal_packet(
+            server, python, packet, packet_script,
+            run_command=run_command),
     }
     labels = expected_launchctl_labels(result["phases"])
     terminal_workers = expected_worker_labels(result["phases"])
@@ -296,7 +316,8 @@ def main() -> None:
     result["cleanup_requested"] = args.cleanup_launchctl
     if args.cleanup_launchctl:
         result["launchctl_cleanup"] = cleanup_launchctl(
-            labels, terminal_workers=terminal_workers)
+            labels, terminal_workers=terminal_workers,
+            run_command=run_command)
 
     text = json.dumps(result, indent=2, sort_keys=True) + "\n"
     print(text, end="")

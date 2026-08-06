@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-06 10:09 EDT.
+Last re-derived: 2026-08-06 10:58 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -38,8 +38,9 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   the adaptive label and entered the uniform-report label together; stderr is
   empty, but no partial effects are admissible.
 - The roadmap has three parallel strength lanes: S0 search, clean teacher/model
-  iteration, and faithful role-conditioned self-play. Do not wait for S0a to run
-  the bounded teacher/RL entry gates on other workers.
+  iteration, and faithful role-conditioned self-play. They do not share
+  evidence, and each must respect its own launch hold. Teacher capture is
+  currently held on exact packet-coverage binding; S2 remains held on resume.
 
 ## NOW — ordered by value
 
@@ -49,7 +50,7 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 | **S0b allocation — RUNNING** | Test allocation separately under the selected LCB report rule | Eight exact parent-bound `s0b-lcb` shards cover seeds 134,000,000–134,002,047 on Mini. The adaptive label is complete on every shard and uniform-report is running; random allocation follows. Deterministic adaptive must beat both controls by paired point estimate; otherwise report-LCB survives. Do not score partials. |
 | **S0c confirmation** | Independently confirm exactly the S0b survivor | Eight 1,024-cluster shards on seeds 135,000,000–135,008,191 compare survivor, `mc-strong-null`, and current. Promote only if survivor-current and survivor-null paired 95% lower bounds are >0 and the null does not clear; otherwise close S0 SELECT NONE. |
 | **V11 protected-anchor lane — CODE READY, SEPARATE FROM S0** | Use the one confirmed learned improvement as MC's protected root anchor | The frozen 2,048-cluster direct-current revalidation runner and equal-work `mc-v11anchor`/same-trigger-random policies are implemented and focused tests pass. Actual loaded absolute checkpoint path/SHA must equal the manifest NPZ. Do not launch evidence from a dirty tree. The later anchor-strength seed block and promotion rule wait for S0's terminal champion so the reference cannot move underneath the estimand. |
-| **S1 teacher/model — ENTRY PACKET READY** | Execute `TEACHER_V1_SPEC.md`, then earn scale | Code and first packet are frozen: 1,024 fresh deals at seeds 120000000–120001023 in 8 shards feed 64-state Stage A and disjoint 128-state Stage B. Stage B requires both the exact valid Stage-A exclusion set and its bound mechanics PASS. No evidence run has started. Pass both gates before implementing/launching the 2,048-state wave; this is not an enlargement of DEV-512. |
+| **S1 teacher/model — CAPTURE HOLD** | Bind the predeclared packet before spending evidence compute | `teacher-v1-entry-120m-v1` names 1,024 fresh deals at seeds 120000000–120001023 in 8 shards, but the current diagnose/freeze artifacts do not yet prove that exact shard/range population. Carry packet id, shard identity and exact coverage through diagnostic, state-set and gate artifacts; add wrong-range, missing-shard and repeated-shard falsification tests. Only then run 64-state Stage A and disjoint 128-state Stage B. |
 | **S2 self-play RL — CORRECTNESS BOUNDARY PARTIAL** | Run faithful role-conditioned synchronous microbaselines | Attacker/defender residual antisymmetry, separately named legacy reward, digest-bound immutable actors, exact-candidate promotion and named actor-batch seeds are implemented and tested. Exact learner/optimizer/replay resume remains open; no faithful Suphx/DouZero baseline or evidence run exists. Close resume, then run independent 20–30 minute microbaselines. |
 | **S3 structured search** | Attack decisions outside ordinary play selection | In parallel, screen structured MC bury sourcing and sampled exact solving for the final ~4 tricks. Each changes a different once-per-round/tactical bottleneck and must duel the production champion directly. |
 | **Frontend ship gate** | Run one bounded multi-tab soak | Cover join, simultaneous seat claim, disconnect-to-bot, reconnect/takeover, stale/displaced sockets, second absence, private-hand visibility, chat before initial state and >50 messages, and saved-room invite precedence. |

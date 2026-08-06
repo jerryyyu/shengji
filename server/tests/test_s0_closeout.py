@@ -196,6 +196,38 @@ def test_launchctl_cleanup_refuses_a_live_worker():
         CLOSEOUT.cleanup_launchctl(labels, run_command=fake_run)
 
 
+def test_cli_cleanup_refuses_unreached_s0_worker(tmp_path):
+    """The actual main() path scans beyond packet-derived cleanup labels."""
+    server = tmp_path / "server"
+    logs = server / "runs/logs"
+    logs.mkdir(parents=True)
+    (logs / "s0_pipeline_supervisor.state.json").write_text(
+        json.dumps({"status": "S0_COMPLETE_SELECT_NONE"}))
+    packet = logs / "s0-final-packet.txt"
+    packet.write_text(packet_text())
+    python = server / ".venv/bin/python"
+    packet_script = tmp_path / "s0_packet.py"
+    unexpected = "com.shengji.s0mini.s0c_adaptive_lcb.0"
+
+    def fake_run(command, **_kwargs):
+        if command and command[0] == str(python):
+            return SimpleNamespace(stdout=packet.read_bytes())
+        if command == ["launchctl", "list"]:
+            return SimpleNamespace(
+                stdout=("PID\tStatus\tLabel\n"
+                        f"456\t0\t{unexpected}\n"))
+        raise AssertionError(f"cleanup must refuse before mutation: {command}")
+
+    with pytest.raises(RuntimeError, match="unexpected S0 worker services"):
+        CLOSEOUT.main([
+            "--server", str(server),
+            "--python", str(python),
+            "--packet", str(packet),
+            "--packet-script", str(packet_script),
+            "--cleanup-launchctl",
+        ], run_command=fake_run)
+
+
 def test_terminal_worker_authorization_cannot_escape_cleanup_scope():
     labels = CLOSEOUT.expected_launchctl_labels(["s0a"])
     with pytest.raises(ValueError, match="outside cleanup scope"):

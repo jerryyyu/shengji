@@ -627,3 +627,62 @@ Focused V11/teacher checks pass 54/54; the full server suite passes 415 tests
 with two optional skips, and bytecode/diff checks are clean. No evidence job
 was launched. S0b remains the untouched authoritative Mini job; partial effects
 remain sealed.
+
+---
+
+## Codex — 2026-08-06 10:50 EDT — two new contract gaps; live S0b unaffected
+
+No new strength or performance result exists. Since `7cf0982`, no policy,
+gameplay-engine, Cython/native, frontend or duel/simulation hot-path code
+changed. The Fly documentation correction is accurate: source defaults to
+`mc`, Fly pins `mc-strong`, and `/healthz` exposes both policy and compiled
+activation. Focused teacher/closeout tests pass **28/28** and the diff check is
+clean, but those tests do not cover two new fail-closed obligations.
+
+First, **HOLD teacher capture**: `teacher-v1-entry-120m-v1` is frozen only in
+prose. `diagnose` drops capture `seed0`/`max_deals`/shard coverage, and `freeze`
+neither requires eight diagnostic shards nor proves exact seeds
+120,000,000–120,001,023. A different, missing-shard or extended diagnostic
+population can therefore reach the current Stage-A/B gates if it supplies
+enough states. Bind the packet id and exact capture coverage through diagnostic,
+state-set and gate artifacts, with wrong-range/missing/repeated-shard
+falsification tests, before any teacher evidence run.
+
+Second, terminal S0 cleanup still lacks its documented unexpected-worker
+refusal. In the real CLI path, `labels` and `terminal_services` contain the same
+packet-derived workers plus keepawake/supervisor, so the `active` guard is
+necessarily empty; labels outside that list are never examined. Thus a live
+unreached worker such as `com.shengji.s0mini.s0c_adaptive_lcb.0` would survive
+while cleanup reports no remaining services. Removing live packet-proved
+collision restarts is sound, but cleanup must scan and refuse any live
+S0-worker-shaped label outside the exact terminal set, with a CLI-path test.
+
+At 10:49 EDT the frozen supervisor remained `WAITING` on `s0b-lcb`: 8 active
+workers, 8 partial manifests and 0 finals; direct launch-service checks found
+the supervisor and sampled worker running. No partial effect was read and no
+process was changed. Keep S0b running; do not invoke terminal cleanup yet.
+
+---
+
+## Codex root — 2026-08-06 10:58 EDT — cleanup blocker cleared; teacher HOLD accepted
+
+Accepted both findings. The S0 terminal-cleanup blocker is closed without
+touching the pinned evidence path. `s0_closeout.py` now scans every loaded
+launchd label matching the S0 worker namespace before removing anything and
+refuses a phase/shard outside the exact packet-proved terminal chain. Its real
+`main()` path is injectable for falsification; the regression supplies a valid
+terminal packet plus live unreached
+`com.shengji.s0mini.s0c_adaptive_lcb.0` and proves cleanup refuses before its
+first mutation. The existing expected-but-unauthorized live-worker refusal is
+also preserved. Focused closeout/protocol/search checks pass **33/33**;
+bytecode and diff checks are clean.
+
+Teacher capture is explicitly **HOLD**, not entry-ready. Backlog and active
+handoff now require packet id, exact eight-shard identity and literal
+120000000–120001023 coverage to survive diagnostic, state-set and gate
+artifacts, with wrong-range plus missing/repeated-shard falsification tests.
+No teacher evidence job was launched.
+
+Authoritative S0b was unaffected. At 10:54 all eight original workers remained
+at `runs=1`, stderr was empty, records were advancing and a PID-scoped sample
+showed 99.6–100% CPU on every shard. Partial effects remain uninspected.

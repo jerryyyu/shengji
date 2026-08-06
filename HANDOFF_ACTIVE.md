@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 10:09 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 10:58 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -23,9 +23,10 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   uniform-report; stderr remains empty. Do not inspect partial effects.
 - Teacher-v1 mechanics/gold gates, the v11 protected-anchor compatibility block
   and the role-conditioned RL microgates remain independent parallel strength
-  work; none should be folded into S0 before each wins alone. V11 and
-  teacher-v1 entry-gate code is ready and tested, but neither has run a
-  promotable evidence block.
+  work; none should be folded into S0 before each wins alone. V11 code is ready.
+  Teacher capture is **HOLD** until its exact packet id, eight-shard identity
+  and seeds 120000000–120001023 are bound through diagnostic/state/gate
+  artifacts. Neither lane has run a promotable evidence block.
 
 ## S0 implementation packet — S0a accepted, S0b-LCB running
 
@@ -244,10 +245,13 @@ authorize that external mutation.
    can authorize only a later anchor experiment. Do not freeze that later
    experiment's reference/seeds until S0 names the terminal champion; never
    use the pairwise head as a scalar leaf.
-2. **S1 teacher/model:** capture/diagnose/freeze and Stage-A/B producer/gates
-   are code-ready at `server/scripts/teacher_v1_*.py`; the full server suite
-   passed 405 tests (two optional skips) and a one-deal smoke passed. No
-   evidence run exists. Execute
+2. **S1 teacher/model — CAPTURE HOLD:** capture/diagnose/freeze and Stage-A/B
+   producer/gates exist at `server/scripts/teacher_v1_*.py`, but no evidence
+   run is authorized. Diagnostic output currently drops the capture packet's
+   `seed0`, `max_deals` and shard coverage, so freeze cannot prove the exact
+   eight-shard 120M population. Bind packet id plus exact range/shards through
+   diagnostic, state-set and gate artifacts, and falsify wrong ranges plus
+   missing/repeated shards before capture. Then execute
    Stage A (64 mechanics plus deterministic rerun), then disjoint Stage B (128
    production-N30 gold continuation). Stage-B freezing now requires both a
    complete/digest-valid exact Stage-A exclusion set and the PASS gate bound to
@@ -297,6 +301,8 @@ a nonterminal supervisor state or packet drift before removing the exact
 reached Mini services. Both submitted workers and the supervisor are keep-alive:
 after final artifacts seal they may restart into immutable-output collisions.
 Only the exact worker labels whose 8/8 phase artifacts the verified terminal
-packet proves complete are authorized; any other live worker refuses. Keepawake
-and the terminal supervisor are removed last. Do not run cleanup while S0b/S0c
-is active.
+packet proves complete are authorized. Cleanup scans the full loaded S0-worker
+namespace first and refuses an unreached phase/shard instead of silently
+leaving it behind; the CLI-path regression injects an unexpected S0c worker.
+Keepawake and the terminal supervisor are removed last. Do not run cleanup
+while S0b/S0c is active.

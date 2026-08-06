@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 13:55 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 14:17 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -20,10 +20,9 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   S0b-LCB launched 8/8 exact parent-bound Mini shards at 06:58 EDT. For S0,
   Air remains duplicate fallback only; never pool its records or launch an S0
   child from Air.
-  At 13:44 all eight shards were still running the third/final random-
-  allocation arm, with eight active workers, eight partial manifests and no
-  final. All visible progress tails had reached 400/512 rounds and record bytes
-  continued advancing. Do not inspect partial effects.
+  At 14:16 all eight workers were live near 100% CPU with eight partial
+  manifests, no final or FAILED marker, and matching clean frozen
+  compiled+strict provenance. Do not inspect partial effects.
 - Teacher-v1 mechanics/gold gates, the V11 protected-anchor lane
   and the role-conditioned RL microgates remain independent parallel strength
   work; none should be folded into S0 before each wins alone. The V11 direct-
@@ -34,20 +33,21 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   Teacher evidence has not started; its Air worktree/preflight is
   **READY_AFTER_V11** and the exact capture -> diagnostic -> 64-state freeze
   packet is staged. Both compute machines remain occupied by sealed registered
-  work. At 13:55 V11 had one final manifest and live remaining workers; no
-  manifest contents or effect was opened.
+  work. At 14:16 all eight V11 workers were live near 91–93% CPU with eight
+  partial manifests, no final or FAILED marker, and about 78.6% of durable rows
+  flushed. No record, partial score or effect was opened.
 - Commit `7ecffd5` blind-froze a *separate* protected-composition question
   before any direct-V11 effect was opened. It preserves the original direct
   verdict but recognizes that standalone superiority is not necessary for an
   MC-protected proposal to help. A protocol-valid direct block with a sane null
   plus terminal S0 may admit the non-promotable 137M screen; only a screen PASS
   admits the independent 138M confirmation.
-- Two code reviews are deliberately **HOLD**, not stalled compute. The S2
-  synchronous coordinator must poison interruptions, reject implicit global
-  RNG use and bind learner state outside `state_dict`. The S3a runner must
-  independently redraw named folds and replay raw scorer outputs rather than
-  trusting self-consistent artifact bytes. Both repairs are in progress; no
-  evidence run is authorized.
+- Three parallel code gates are now closed and pushed. `e946696` independently
+  redraws/re-scores the S3a evidence; `d2229d0` binds the exact direct-V11
+  parent and reopens raw screen evidence before confirmation; and `e49cf60`
+  closes S2's interruption/RNG/hidden-state/publication boundaries. None is a
+  strength result. S3a and V11 still wait for terminal S0, and S2 still needs a
+  concrete faithful algorithm with its own exact resumed-output test.
 - The frontend ship gate is **COMPLETE / PASS**. The real multi-socket server
   suite passes 33/33 and browser connection/intent tests pass 14/14, including
   the newly exercised >50-message history rollover. Lint reports only the
@@ -280,11 +280,12 @@ authorize that external mutation.
    contiguous seeds 121,000,000–121,002,047 and agree on host/Python,
    compiled+strict flags, policy/ballot/digest contracts and checkpoint SHA
    `cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003`.
-   At 13:55 one final manifest existed and the other process trees/growing
-   partials were present. No final manifest body, record or effect was opened.
+   At 14:16 all eight workers were healthy with eight partial manifests, no
+   finals/failures and about 78.6% of durable rows flushed. No record, partial
+   score or effect was opened.
    Aggregate only after 8/8 final manifests. This result can authorize
    only the protected-anchor experiment.
-2. **V11 protected composition (blind protocol frozen; waits for S0):**
+2. **V11 protected composition (code gate closed; waits for direct + S0):**
    `7ecffd5` preserves the direct gate's original verdict and separately
    predeclares the missing composition estimand. A protocol-valid direct block
    with a null interval containing zero plus S0's terminal champion admits a
@@ -296,9 +297,14 @@ authorize that external mutation.
    containing zero. Only PASS admits the independent 8,192-cluster confirmation
    on seeds 138,000,000–138,008,191. Never use the pairwise head as a scalar
    leaf or rewrite the direct aggregate's stored authorization bit. Commit
-   `5d0c5a1` already makes the anchor copy the literal reachable S0 champion
+   `5d0c5a1` makes the anchor copy the literal reachable S0 champion
    (`mc-strong`, report-LCB or adaptive), including all uppercase search
-   settings; champion-matched null/runner hardening is under review.
+   settings. `d2229d0` closes the runner: it hard-binds the exact direct commit
+   and source hashes, requires a sane direct null without rewriting the stored
+   standalone verdict, uses exact champion-matched nulls, publishes exclusively
+   and forces confirmation to reopen/recompute all raw screen evidence. Root
+   acceptance is 44/44; the broader independent gate is 78/78 and the full
+   server suite was 552 passed, 2 skipped.
 3. **S1 teacher/model — entry code gate CLOSED / capture next:** pushed commit
    `23a9e0b` carries packet id, exact 120000000–120001023 range, eight-shard
    coverage and parent hashes through capture, diagnostic, frozen state,
@@ -316,30 +322,29 @@ authorize that external mutation.
    an independently receipted deterministic rerun; only PASS authorizes the
    disjoint 128-state Stage B. Only Stage-B gold regret U95 <=0.10 authorizes
    implementing Stage C. Never append capture or mix executable identities.
-4. **S2 self-play RL — primitive PASS / coordinator HOLD:** role-sign
-   antisymmetry and immutable actor/candidate boundaries remain code-ready.
-   `29c8cc1` adds transactional exact learner/optimizer/replay/RNG/runtime
-   resume and matching uninterrupted/interrupted primitive tests. Independent
-   coordinator falsification then found three missing boundaries: a
-   `KeyboardInterrupt` after mutation evades `Exception` poisoning; implicit
-   process-global RNG is neither bound nor forbidden; and mutable learner
-   Python state outside `state_dict` can affect the next update without
-   restoring. Repairs/tests are in progress. Do not run a Suphx/DouZero
-   microbaseline or call the algorithm faithful until all three close.
-5. **S3a structured bury search — runner authored / independent HOLD:** the pure source sees
+4. **S2 self-play RL — synchronous infrastructure PASS / algorithm next:**
+   `e49cf60` now transactionally binds and replays learner, optimizer, replay,
+   named RNG, runtime, progress and immutable actor/candidate identity; poisons
+   every `BaseException`; forbids process-global RNG consumption; binds hidden
+   learner/optimizer configuration; freezes collector-visible state; and uses
+   exclusive persistent candidate ownership/publication. Root acceptance is
+   46/46. This is not a faithful Suphx/DouZero implementation. The next bounded
+   gate is one concrete reviewed collector/model/loss that loads the verified
+   actor and proves uninterrupted-vs-resumed output identity.
+5. **S3a structured bury search — code gate closed / waits for S0:** the pure source sees
    only the banker's 33-card hand, public ordering and incumbent; it emits a
    deterministic, deduplicated, capped point/trump/pair/void ballot with the
    incumbent at index zero. The scorer uses common sampled worlds, an explicit
    candidate-world cap, replayable RNG/work telemetry and loud incumbent
    fallback on underfill. Production and the ordinary lead/follow ballot are
-   unchanged while flags are off. An uncommitted 512-state runner now adds a
+   unchanged while flags are off. `e946696` registers a 512-state runner with a
    disjoint 120-world report fold, exact equal candidate-world work and
    legacy-four plus trigger/K-matched random controls, storing raw values and
-   limiting a PASS to fresh-duel design. Independent review held it because
-   the re-opener checked hash syntax and arithmetic but did not yet redraw the
-   named worlds or replay every raw score; self-consistent rewritten values
-   could pass. Close that exact replay gap before commit or smoke. Its duel
-   reference still waits for terminal S0.
+   limiting a PASS to fresh-duel design. Its independent consumer reconstructs
+   each named deal, redraws selection/report worlds, verifies full sampler
+   transcripts and replays every raw score in frozen call order. Digest and
+   wholesale-score falsifications fail; focused acceptance is 27/27. Its
+   evidence run and any duel reference still wait for terminal S0.
 6. **S3b sampled exact endgame — mechanics challenge PASS:** all
    distinct submitted legal actions are enumerated inside the <=4-card bound,
    including attempted throws; the engine resolves failures and partnership
@@ -359,6 +364,28 @@ authorize that external mutation.
    paired full-game screen. The precise claim remains an exact perfect-
    information oracle inside each sampled world, not exact imperfect-
    information Shengji; no S3 strength evidence exists.
+
+## Live execution queue for Claude/Codex
+
+1. **Do not score either live partial.** Monitor only worker count, process
+   health, final/partial/failure counts, frozen identity and score-free progress.
+2. **When Air V11 reaches 8/8 finals and every worker exits,** run exactly one
+   aggregate from the frozen `e66b90b` worktree. Validate the aggregate and
+   preserve its original verdict. Then immediately launch the already-staged
+   teacher-v1 8x128 capture on Air; do not wait for terminal S0 and do not
+   launch the 137M V11 composition screen yet.
+3. **Leave Mini's singleton S0 supervisor in control.** It aggregates S0b,
+   selects the registered survivor and launches exact S0c automatically. Only
+   inspect a phase effect after 8/8 finals and the supervisor transition. At a
+   terminal state, run the independent closeout and packet byte comparison;
+   cleanup only the packet-proved services.
+4. **Local code while compute runs:** S3b's terminal-champion-matched full-game
+   strength protocol is in review. S2's next work is a concrete algorithm
+   contract, not more generic resume plumbing. S3a/V11 evidence cannot launch
+   before terminal S0.
+5. **Production stays `mc-strong`.** No evidence completion authorizes a Fly
+   restart or policy change; that remains a separately reviewed quiet-room
+   action.
 
 ## Return packet for Claude
 

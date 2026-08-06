@@ -21,7 +21,7 @@ evidence changes a synthesized conclusion. Append run reports below the fold,
 and when a run changes a conclusion, EDIT the synthesis rather than letting the
 newest entry sit on top and speak for the file.
 
-## Current synthesis — 2026-08-06 13:02
+## Current synthesis — 2026-08-06 14:17
 
 - **More search width is not the next lever.** N=5->N=10 was large,
   N=10->N=30 was +0.262 +/- 0.154 confirmed, and N=30->N=60 was
@@ -47,17 +47,19 @@ newest entry sit on top and speak for the file.
 - **Best learned result:** `rl-override-v11pair` beats SmartBot 57.7% (n=480)
   and is very fast, but its MC comparison is unseeded screen evidence. It is a
   deployment-cost candidate, not the strongest verified bot.
-- **The v11 protected-anchor composition is implemented but unmeasured.** Prior racing
+- **The v11 protected-anchor composition is code-closed but unmeasured.** Prior racing
   hard-pruned actions, the gate chose whether to search, and the leaf use was
   invalid; none asked v11's confirmed improvement over SmartBot to replace the
   candidate-0 prior that N=30 protects with a five-point margin while retaining
   every candidate and rollout. `mc-v11anchor` now does exactly that and
   `mc-v11anchor-random` is its same-trigger attribution control; both preserve
   the current ballot, N=30 and tractor lock, and neither has strength evidence.
-  First run the frozen direct-current compatibility block. Freeze the later
-  anchor comparison only after S0 names the terminal champion. Only an
-  independent win may combine it with adaptive allocation. `RL_PLAN.md` owns
-  the exact sequence.
+  `d2229d0` binds the exact frozen direct prerequisite and its source hashes,
+  preserves that aggregate's original standalone verdict, adds exact
+  champion-matched nulls and requires confirmation to reopen/recompute all raw
+  screen evidence. First finish the direct block; the 137M composition screen
+  also waits for S0's terminal champion, and only its PASS admits the disjoint
+  138M confirmation. Only an independent win may reach production review.
 - **Registered DEV-512 lead-ballot designs — SELECT NONE (2026-08-05).** The
   hypothesis was that improving lead-ballot SELECTION, then letting MC evaluate,
   would buy strength. The DEV-512 screen ran all six registered arms on 512
@@ -229,12 +231,22 @@ newest entry sit on top and speak for the file.
   hard work cap. The exact-endgame seam exhaustively solves <=4-card
   determinized continuations by partnership minimax and refuses unmarked live
   states or budget exhaustion. Neither changes a registered production policy.
-  S3a still needs disjoint reporting/equal-work controls. S3b now shares one
-  context-safe exact session across candidate frontiers inside each common
-  determinization and passed independent full-suite/parity review; it needs a
-  frozen cumulative-node challenge with zero refusals and explicit node/hit
-  accounting. Neither receives a paired duel against a reference chosen before
-  terminal S0 names the champion.
+  `e946696` closes S3a's 512-state disjoint-report/equal-work code gate and
+  independently redraws/re-scores every named world/value before acceptance;
+  its evidence run waits for terminal S0. S3b now shares one context-safe exact
+  session across candidate frontiers inside each common determinization and its
+  frozen mechanics challenge completed 140/140 frontiers with zero refusal or
+  overflow under the cumulative node cap. It still needs a champion-matched
+  full-game strength protocol. Neither mechanism has duel evidence or may
+  choose its reference before terminal S0 names the champion.
+- **The generic synchronous RL boundary is code-closed; algorithms are not.**
+  `e49cf60` binds exact learner/optimizer/replay/RNG/runtime/progress state,
+  poisons interrupted transitions, rejects global RNG/hidden mutable config,
+  freezes collector-visible state and publishes candidate generations
+  exclusively. This is shared infrastructure only. A Suphx- or DouZero-style
+  lane becomes runnable only after its concrete collector loads the verified
+  actor and the bounded algorithm passes uninterrupted-versus-resumed output
+  identity; there is still no self-play strength evidence.
 - **Teacher-v1 entry integrity is code-closed, not evidence-complete.** Pushed
   commit `23a9e0b` binds the exact 1,024-deal/8-shard 120M packet through every
   artifact and requires independent pre-label producer receipts for Stage-A

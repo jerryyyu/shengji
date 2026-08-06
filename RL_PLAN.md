@@ -21,7 +21,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-06 13:55 EDT
+## Current synthesis — 2026-08-06 14:17 EDT
 
 This section is the current decision layer. The lineage table below owns model
 history; **Data and evaluation contract** owns dataset/evaluation provenance;
@@ -60,15 +60,19 @@ day-by-day detail. A historical result below does not reopen a closed lane.
 - **v11pair is the learned line's one confirmed online gain:** its direct
   SmartBot override won 57.7% (277-203, n=480, two disjoint blocks). The 51.1%
   result versus MC used factories that discarded seeds and remains a SCREEN.
-  Its clean eight-shard direct-current revalidation is running on Air; at 13:55
-  one final manifest existed but no manifest body/effect had been opened.
+  Its clean eight-shard direct-current revalidation is running on Air; at 14:16
+  all eight workers were healthy with partials/no finals and no record, score
+  or effect had been opened.
   Commit `7ecffd5` therefore blind-froze the separate composition estimand:
   standalone v11 need not be superior for the terminal search champion to
   retain its good proposals and reject its bad tail. Preserve the direct
   verdict exactly; after a protocol-valid direct block with a sane null and
   terminal S0, screen the champion-matched anchor on fresh 137M seeds, and let
-  only PASS reach an independent 138M confirmation. v11's within-state deltas
-  remain valid for ranking, not as scalar leaf values.
+  only PASS reach an independent 138M confirmation. Commit `d2229d0` now makes
+  that protocol executable: it hard-binds the exact direct commit/source,
+  preserves the original direct verdict, uses champion-matched nulls and
+  forces confirmation to reopen/recompute raw screen evidence. v11's
+  within-state deltas remain valid for ranking, not as scalar leaf values.
 - **Two independent learning lanes remain open.** Teacher-v1's entry code gate
   is closed at `23a9e0b`: the exact 1,024-deal packet, canonical shards and
   independent producer receipts now fail closed through Stage-B authorization.
@@ -79,14 +83,18 @@ day-by-day detail. A historical result below does not reopen a closed lane.
   counterfactual states. Faithful Suphx-style privileged-feature
   removal and DouZero-style role-conditioned direct-Q microbaselines have
   passed the shared attacker/defender-sign and immutable-actor boundary. The
-  transactional exact-resume primitive landed at `29c8cc1`, but independent
-  coordinator falsification found interruption poisoning, implicit global-RNG
-  and learner-Python-state gaps. Those remain launch blockers.
-- **Structured search remains independent and feature-off.** The broader bury
-  source now has an authored 512-state disjoint-report/equal-work protocol,
-  but independent review held its artifact re-opener until it redraws every
-  named world and replays every raw score rather than trusting self-consistent
-  bytes.
+  exact synchronous chassis is now code-closed at `e49cf60`: transactional
+  resume, interruption poisoning, process-global RNG exclusion, hidden
+  learner/optimizer state, collector mutability, algorithm batch identity and
+  exclusive candidate publication pass 46 focused tests. This removes a shared
+  infrastructure blocker; no concrete Suphx/DouZero model, collector, loss or
+  strength evidence exists. Each implementation still needs verified actor
+  loading and its own uninterrupted-versus-resumed output match.
+- **Structured search remains independent and feature-off.** Commit `e946696`
+  closes the broader bury source's 512-state disjoint-report/equal-work code
+  gate. Its verifier reconstructs named deals, redraws both folds and replays
+  every raw score; digest and wholesale-score falsifications fail. The evidence
+  run still waits for terminal S0 and cannot itself promote a policy.
   The <=4-card sampled exact-endgame seam shares a context-safe solver session
   across candidate roots inside each determinized world and passes independent
   mechanics/parity review. Its frozen challenge at `2370a27` completed 140/140

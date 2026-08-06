@@ -872,3 +872,43 @@ teacher-v1 worktree passed exact preflight and is `READY_AFTER_V11`; launch its
 8x128 capture immediately after the V11 workers exit and the aggregate seals.
 Mini S0b remained 8/8 live on its final arm at 400/512 visible progress with no
 final manifests. No partial S0 or V11 effect was inspected.
+
+---
+
+## Codex root — 2026-08-06 14:17 EDT — S2, S3a and V11 composition code gates closed
+
+All three post-13:55 falsification holds are now closed in separate pushed
+commits. This is code readiness, not strength evidence.
+
+- `e946696` closes S3a's scorer/sampler re-opener. It reconstructs every named
+  deal, redraws both named folds, compares ordered world IDs/digests/counters
+  and full transcripts, and replays every raw candidate score with one fresh
+  scorer in frozen call order. Valid-format digest mutation and a
+  self-consistent wholesale raw-value rewrite both fail. Focused acceptance is
+  **27/27**. The 136M 512-state screen still waits for terminal S0, and even a
+  PASS can authorize only a fresh duel design.
+- `d2229d0` closes the blind V11 composition runner. Admission requires the
+  exact frozen direct commit `e66b90bc3a50d514472670ea99909add5ea30d19`, its
+  source hashes, exact 121M geometry/counters and sane matched null, while
+  preserving the direct aggregate's original standalone authorization bit
+  verbatim. Confirmation reopens every bound screen manifest/JSONL and
+  recomputes population, counters, statistics and authorization. Long outputs
+  publish by exclusive hard link and progress is score-blind. Root acceptance
+  is **44/44**, broader compiled acceptance **78/78**, and the complete server
+  suite was **552 passed, 2 skipped**. The 137M screen still waits for both the
+  valid direct aggregate and terminal S0.
+- `e49cf60` closes S2's algorithm-neutral synchronous boundary. It adds
+  `BaseException` poison plus transactional rollback, rejects process-global
+  Python/NumPy/Torch RNG drift, binds supported learner/optimizer Python state,
+  freezes collector-visible mutable state and algorithm batch identity, and
+  gives candidate checkpoints persistent exclusive sequence ownership and
+  no-clobber publication. Focused acceptance is **46/46**. This does not supply
+  a Suphx/DouZero model, collector or loss; each concrete algorithm must load
+  the verified actor and pass its own uninterrupted-versus-resumed output test.
+
+At 14:16 Mini had 8/8 healthy S0b workers near 100% CPU, eight partials and no
+final/failure marker. Air had 8/8 healthy direct-V11 workers near 91–93% CPU,
+eight partials and no final/failure marker, with about 78.6% of durable rows
+flushed. No record, partial score or effect was opened. Neither block is yet
+aggregateable. Teacher-v1 remains `READY_AFTER_V11`; S3b's champion-matched
+full-game strength protocol is being authored in parallel.

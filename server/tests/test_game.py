@@ -2,7 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from shengji.ai.env import play_game, play_round
+import shengji.ai.env as ai_env
+from shengji.ai.env import FullGameCutoff, evaluate, play_game, play_round
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.cards import total_points
 from shengji.engine.game import Game
@@ -97,6 +98,61 @@ def test_full_games_complete():
     bots = [HeuristicBot() for _ in range(4)]
     for seed in range(3):
         winner, game, logs = play_game(bots, seed=seed)
-        assert game.game_over or game.round_no >= 200
+        assert game.game_over
         assert winner in (0, 1)
         assert len(logs) >= 1
+
+
+def _force_cutoff_levels(monkeypatch, levels):
+    def fake_play_round(game, policies):
+        game.round_no += 1
+        game.level_idx[:] = levels
+        return SimpleNamespace()
+
+    monkeypatch.setattr(ai_env, "play_round", fake_play_round)
+
+
+def test_full_game_exact_level_cutoff_is_an_explicit_refusal(monkeypatch):
+    _force_cutoff_levels(monkeypatch, [5, 5])
+
+    with pytest.raises(FullGameCutoff, match="refusing to score cutoff") as exc:
+        play_game([object()] * 4, seed=17, max_rounds=1)
+
+    cutoff = exc.value
+    assert cutoff.seed == 17
+    assert cutoff.rounds == cutoff.max_rounds == 1
+    assert cutoff.level_idx == (5, 5)
+    assert not hasattr(cutoff, "winner")
+
+
+def test_full_game_unequal_level_cutoff_does_not_award_the_leader(monkeypatch):
+    _force_cutoff_levels(monkeypatch, [2, 8])
+
+    with pytest.raises(FullGameCutoff) as exc:
+        play_game([object()] * 4, seed=23, max_rounds=1)
+
+    assert exc.value.level_idx == (2, 8)
+    assert not exc.value.game.game_over
+    assert not hasattr(exc.value, "winner")
+
+
+def test_mirrored_evaluation_returns_no_partial_score_on_cutoff(monkeypatch):
+    calls = []
+
+    def one_complete_then_cutoff(policies, seed=None, max_rounds=200):
+        calls.append((seed, max_rounds))
+        game = Game()
+        if len(calls) == 1:
+            game.game_over = True
+            return 0, game, []
+        game.round_no = max_rounds
+        game.level_idx[:] = [7, 7]
+        return None, game, []  # alternate explicit-tie API must also fail closed
+
+    monkeypatch.setattr(ai_env, "play_game", one_complete_then_cutoff)
+
+    with pytest.raises(FullGameCutoff):
+        evaluate(object(), object(), n_games=2, seed=91,
+                 mirrored=True, max_rounds=3)
+
+    assert calls == [(91, 3), (91, 3)]

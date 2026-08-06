@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 12:10 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 12:13 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -36,6 +36,12 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   the newly exercised >50-message history rollover. Lint reports only the
   existing fast-refresh warnings and the production build passes. No frontend
   behavior change was needed by this final gate.
+- The legacy full-game evaluator cutoff boundary is **COMPLETE / PASS**.
+  `play_game` raises typed `FullGameCutoff` on any unfinished max-round
+  exhaustion, even with unequal partial levels, and legacy mirrored `evaluate`
+  returns no partial score. Completed games and the registered one-round
+  evaluator are unchanged. Focused independent verification passes 25/25;
+  the author also passed the broader game/invariant/evaluator set 46/46.
 
 ## S0 implementation packet — S0a accepted, S0b-LCB running
 

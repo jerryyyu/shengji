@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-06 12:10 EDT.
+Last re-derived: 2026-08-06 12:13 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -62,7 +62,7 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 | **S3a structured bury search — CODE NEXT** | Improve the once-per-round decision that ordinary play search never touches | Enumerate a bounded broad ballot of point-preserving, void-forming and trump-preserving legal buries; score every candidate on common worlds with exact matched work. First pass replay/invariants and a fixed-state challenge, then require a fresh paired full-round duel against the terminal production champion. |
 | **S3b sampled exact endgame — DESIGN NEXT** | Replace heuristic continuation where only about four tricks remain | Within each information-set-legal determinization, solve the remaining perfect-information world exactly or with a proved bound, then aggregate across common worlds. Refuse hidden-information leakage and budget mismatch; pass an endgame challenge before a fresh paired full-game gate. This is separate evidence from S3a. |
 | **Frontend ship gate — COMPLETE / PASS** | Keep the multiplayer ownership state machine shippable | The real multi-socket server suite passes 33/33, including join, simultaneous claim, disconnect/bot cover, reconnect/takeover, stale/displaced sockets, repeated absence, token rotation and private-hand visibility. Browser connection/intent tests pass 14/14, including pre-state chat, >50-message rollover and invite-over-saved-room precedence; lint has only existing fast-refresh warnings and the production build passes. |
-| **Evaluator boundary** | Repair legacy full-game cutoff semantics | A cutoff must return an explicit tie/refusal, never silently award team 0. Keep the engine's uncapped house-rule progression; the `+3` clip remains a separately versioned RL target. |
+| **Evaluator boundary — COMPLETE / PASS** | Keep arbitrary full-game cutoffs out of strength claims | `play_game` now raises typed `FullGameCutoff` for every unfinished max-round exhaustion, tied or unequal, while retaining the partial state only for diagnosis. Legacy mirrored `evaluate` propagates the refusal and returns no partial score. Completed-game results are unchanged; the one-round registered evaluator, uncapped engine progression and separately versioned `+3` RL target are untouched. |
 
 ## AI-strength program
 
@@ -258,10 +258,10 @@ staged strength work rather than one speculative monolith:
 2. Air is running the whole immutable V11 direct-compatibility block: 8x256
    clusters at clean `e66b90b`, seeds 121,000,000–121,002,047. Aggregate only
    after 8/8 final manifests; never pool it into S0.
-3. While both machines compute, keep local work bounded and non-competing:
-   close the evaluator cutoff boundary, run the frontend soak, then implement
-   S3a structured bury search. S3b exact-endgame design follows as a separate
-   mechanism.
+3. While both machines compute, keep local work bounded and non-competing.
+   Evaluator cutoff semantics and the frontend soak are now closed; integrate
+   and test S3a structured bury search next. S3b exact-endgame design follows
+   as a separate mechanism.
 4. A direct-V11 pass does not launch anchor evidence immediately. Wait for
    S0's terminal champion, then freeze the protected-anchor reference, fresh
    seeds and promotion rule before spending that block.

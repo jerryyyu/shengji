@@ -38,6 +38,30 @@ class RoundLog:
     history: list = field(default_factory=list)  # (seat, cards) in play order
 
 
+class FullGameCutoff(RuntimeError):
+    """A full game exhausted its round budget without a rules winner.
+
+    A level leader at an arbitrary cutoff is not a game winner.  Carry the
+    partial state for diagnostics, but refuse to expose a score that a caller
+    could accidentally charge to either policy.
+    """
+
+    def __init__(self, *, seed: int | None, max_rounds: int,
+                 game: Game, logs: list[RoundLog]):
+        self.seed = seed
+        self.max_rounds = max_rounds
+        self.rounds = game.round_no
+        self.level_idx = tuple(game.level_idx)
+        self.levels = game.levels
+        self.game = game
+        self.logs = tuple(logs)
+        super().__init__(
+            "full game reached "
+            f"max_rounds={max_rounds} without a rules-complete winner "
+            f"(seed={seed!r}, rounds={game.round_no}, "
+            f"level_idx={self.level_idx}); refusing to score cutoff")
+
+
 def play_round(game: Game, policies: list, record: bool = False) -> RoundLog:
     """Drive one round to completion with the given 4 policies."""
     rnd = game.start_round()
@@ -66,23 +90,37 @@ def play_round(game: Game, policies: list, record: bool = False) -> RoundLog:
                     result.winner_team, result.level_change, history=history)
 
 
-def play_game(policies: list, seed: int | None = None, max_rounds: int = 200):
+def play_game(policies: list, seed: int | None = None,
+              max_rounds: int = 200) -> tuple[int, Game, list[RoundLog]]:
+    """Play until the engine declares a winner; refuse an arbitrary cutoff.
+
+    Completed games retain the historical ``(winner, game, logs)`` return.
+    ``FullGameCutoff`` is raised for every unfinished game, including exact
+    level ties and unequal partial levels.
+    """
+    if (isinstance(max_rounds, bool) or not isinstance(max_rounds, int)
+            or max_rounds < 1):
+        raise ValueError("max_rounds must be a positive integer")
     game = Game(random.Random(seed))
     logs = []
     while not game.game_over and game.round_no < max_rounds:
         logs.append(play_round(game, policies))
-    if game.game_over and game.result is not None:
-        winner = game.result.winner_team
-    else:  # hit max_rounds: fall back to level comparison
-        winner = 0 if game.level_idx[0] >= game.level_idx[1] else 1
-    return winner, game, logs
+    if not game.game_over:
+        raise FullGameCutoff(seed=seed, max_rounds=max_rounds,
+                             game=game, logs=logs)
+    if game.result is None:  # impossible under Game.finish_round(); fail closed
+        raise RuntimeError("game_over is true but the engine has no result")
+    return game.result.winner_team, game, logs
 
 
 def evaluate(policy_a, policy_b, n_games: int = 100, seed: int = 0,
-             mirrored: bool = True) -> dict:
+             mirrored: bool = True, max_rounds: int = 200) -> dict:
     """Head-to-head win rates. With ``mirrored`` (default), games run in
     pairs on the SAME shuffle sequence with the teams swapped, so card luck
     cancels and variance drops sharply. n_games is total games (2 per pair).
+
+    A cutoff in either flip raises ``FullGameCutoff`` and invalidates the whole
+    evaluation; no partial win count is returned.
     """
     wins = [0, 0]
     rounds = 0
@@ -94,7 +132,16 @@ def evaluate(policy_a, policy_b, n_games: int = 100, seed: int = 0,
                 policies = [policy_a, policy_b, policy_a, policy_b]
             else:
                 policies = [policy_b, policy_a, policy_b, policy_a]
-            winner, game, logs = play_game(policies, seed=seed + g)
+            winner, game, logs = play_game(
+                policies, seed=seed + g, max_rounds=max_rounds)
+            # Defense in depth: if a future play_game API represents a cutoff
+            # as an explicit tie, it must not fall through `winner == flip`
+            # and silently charge policy B.
+            if winner is None:
+                raise FullGameCutoff(seed=seed + g, max_rounds=max_rounds,
+                                     game=game, logs=logs)
+            if winner not in (0, 1):
+                raise RuntimeError(f"invalid full-game winner {winner!r}")
             a_won = winner == flip  # a is team 0 unflipped, team 1 flipped
             wins[0 if a_won else 1] += 1
             rounds += len(logs)

@@ -1120,7 +1120,9 @@ reward: that would change gameplay. Old labels stay valid under the named
 clipped objective; if training must ever match game levels, add a NEW reward
 version rather than relabelling history.
 
-Separately, `ai.env.play_game`'s max-round cutoff awards team 0 on a tie. The
-registered evaluator never reaches it (`evaluation.run_arm` uses one
-`play_round`), and that legacy full-game path stays OUT of evidence until the
-cutoff returns an explicit tie or refusal.
+Separately, `ai.env.play_game` historically awarded team 0 when its max-round
+cutoff found equal partial levels (and treated an unequal partial leader as a
+winner). It now raises typed `FullGameCutoff` for every unfinished exhaustion;
+legacy mirrored evaluation propagates the refusal and emits no partial score.
+The registered evaluator remains unaffected because `evaluation.run_arm` uses
+one `play_round`. A cutoff is diagnostic state, never strength evidence.

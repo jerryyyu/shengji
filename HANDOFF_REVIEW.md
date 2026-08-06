@@ -707,3 +707,23 @@ not duplicate the next live message.
 TypeScript/Vite production build passes. This final gate added regression
 coverage only; it did not change room, socket or UI behavior. S0 and V11
 evidence paths were untouched.
+
+---
+
+## Codex root — 2026-08-06 12:13 EDT — legacy cutoff boundary closed
+
+Accepted the full-game cutoff repair. `ai.env.play_game` keeps its historical
+winner/game/logs tuple only when `Game.finish_round` has produced a rules-
+complete winner. Any max-round exhaustion now raises typed `FullGameCutoff`,
+regardless of whether partial levels tie or one team leads; the exception
+retains seed, levels, game and logs for diagnosis but exposes no winner.
+Legacy mirrored `ai.env.evaluate` propagates that refusal, so a completed first
+flip can never survive as a partial strength score when the paired flip cuts
+off. It also defensively rejects a future explicit `winner=None` representation.
+
+Completed-game callers remain compatible. The registered evaluator uses
+`play_round`, so its evidence contract is unaffected. Engine level progression
+and the separately versioned clipped RL target were not changed. Independent
+game/evaluator verification passes **25/25**; the implementation author also
+passed the broader game/invariant/evaluator selection **46/46**. This closes a
+measurement-correctness item, not a bot-strength result.

@@ -219,8 +219,14 @@ def cleanup_launchctl(
     """Remove exact inactive S0 jobs only after the caller verified terminality."""
     before = launchctl_entries(run_command=run_command)
     keepawake = "com.shengji.s0mini.keepawake"
+    supervisor = "com.shengji.s0mini.supervisor"
+    # A submitted supervisor is intentionally keep-alive and may still be
+    # running (or immediately restart) after it wrote the terminal packet.
+    # Terminal packet verification above is the authority that makes removing
+    # it safe. Only an evidence-producing worker must be quiescent first.
     active = [label for label in labels
-              if label != keepawake and before.get(label, "-") != "-"]
+              if label not in {keepawake, supervisor}
+              and before.get(label, "-") != "-"]
     if active:
         raise RuntimeError(
             f"refusing cleanup while terminal S0 services are active: {active}")
@@ -228,7 +234,6 @@ def cleanup_launchctl(
     # Workers first, keepawake next, supervisor last.  Unknown services are
     # intentionally untouched, even when they share the s0mini namespace.
     loaded = [label for label in labels if label in before]
-    supervisor = "com.shengji.s0mini.supervisor"
     ordered = [label for label in loaded
                if label not in {keepawake, supervisor}]
     ordered.extend(label for label in (keepawake, supervisor) if label in loaded)

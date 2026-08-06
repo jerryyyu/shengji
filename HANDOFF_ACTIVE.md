@@ -294,5 +294,7 @@ changing the pinned evidence path. Its default mode independently regenerates
 the final packet and requires byte identity plus every field above. Only its
 explicit `--cleanup-launchctl` mode mutates process state, and that mode refuses
 a nonterminal supervisor state, packet drift or any still-live S0 worker before
-removing the exact reached Mini services. Do not run cleanup while S0b/S0c is
-active.
+removing the exact reached Mini services. The submitted supervisor is
+keep-alive, so after terminal packet verification it may be running and is
+explicitly removed last; it is not misclassified as an evidence worker. Do not
+run cleanup while S0b/S0c is active.

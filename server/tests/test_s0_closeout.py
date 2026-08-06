@@ -153,7 +153,9 @@ def test_launchctl_cleanup_is_exact_and_ordered():
         labels[0]: "-",
         labels[8]: "-",
         "com.shengji.s0mini.keepawake": "999",
-        "com.shengji.s0mini.supervisor": "-",
+        # The submitted supervisor is keep-alive. A terminal closeout must be
+        # able to remove it even while it is running; only live workers block.
+        "com.shengji.s0mini.supervisor": "888",
         unknown: "123",
     }
 

@@ -207,3 +207,70 @@ def test_dmc_gate_loads_each_immutable_generation_once(tmp_path, monkeypatch):
     monkeypatch.setattr(dmc2, "play_round", fake_play)
     dmc2.duel((paths[0], paths[1], 3, 123))
     assert loads == [paths[0].sha256, paths[1].sha256]
+
+
+def test_dmc_gate_pass_promotes_exact_evaluated_candidate_not_newer_learner(
+        tmp_path, monkeypatch):
+    refs = {}
+    for name, content in (
+        ("incumbent", b"incumbent generation"),
+        ("evaluated_candidate", b"bytes that passed the gate"),
+        ("newer_learner", b"learner bytes produced while gate was pending"),
+    ):
+        path = tmp_path / f"{name}.pt"
+        path.write_bytes(content)
+        refs[name] = CheckpointRef.capture(path)
+
+    def forbid_republication(*_args, **_kwargs):
+        pytest.fail("gate resolution must not snapshot the current learner")
+
+    monkeypatch.setattr(dmc2, "save_immutable_snapshot", forbid_republication)
+    promoted, pool_addition, event = dmc2.resolve_gate(
+        win_rate=0.55,
+        candidate_ref=refs["evaluated_candidate"],
+        incumbent_ref=refs["incumbent"],
+        generator_ref=refs["incumbent"],
+        gate_seed=12345,
+    )
+
+    assert promoted == refs["evaluated_candidate"]
+    assert promoted != refs["newer_learner"]
+    assert pool_addition == refs["incumbent"]
+    assert event == {
+        "event": "promote", "win_rate": 0.55, "seed": 12345,
+        "incumbent": refs["incumbent"].as_dict(),
+        "actor": refs["evaluated_candidate"].as_dict(),
+    }
+    promoted.verify()
+
+
+def test_dmc_gate_hold_keeps_incumbent_and_refuses_generator_drift(tmp_path):
+    refs = {}
+    for name in ("incumbent", "candidate", "other_generator"):
+        path = tmp_path / f"{name}.pt"
+        path.write_bytes(name.encode())
+        refs[name] = CheckpointRef.capture(path)
+
+    held, pool_addition, event = dmc2.resolve_gate(
+        win_rate=0.549,
+        candidate_ref=refs["candidate"],
+        incumbent_ref=refs["incumbent"],
+        generator_ref=refs["incumbent"],
+        gate_seed=67890,
+    )
+    assert held == refs["incumbent"]
+    assert pool_addition is None
+    assert event == {
+        "event": "hold", "win_rate": 0.549, "seed": 67890,
+        "incumbent": refs["incumbent"].as_dict(),
+        "candidate": refs["candidate"].as_dict(),
+    }
+
+    with pytest.raises(RuntimeError, match="generator changed"):
+        dmc2.resolve_gate(
+            win_rate=0.60,
+            candidate_ref=refs["candidate"],
+            incumbent_ref=refs["incumbent"],
+            generator_ref=refs["other_generator"],
+            gate_seed=67891,
+        )

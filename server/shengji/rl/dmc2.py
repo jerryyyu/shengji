@@ -178,6 +178,43 @@ def eval_vs_smart(args):
     return wins[0] / (2 * n_pairs)
 
 
+def resolve_gate(*, win_rate: float, candidate_ref: CheckpointRef,
+                 incumbent_ref: CheckpointRef,
+                 generator_ref: CheckpointRef,
+                 gate_seed: int) -> tuple[
+                     CheckpointRef, CheckpointRef | None, dict]:
+    """Resolve one completed gate without access to the mutable learner.
+
+    ``candidate_ref`` is the immutable snapshot passed to ``duel``.  Returning
+    that same reference is the promotion operation: taking a new snapshot here
+    would publish learner bytes that the completed gate never evaluated.
+
+    The optional second return value is the displaced incumbent to add to the
+    opponent pool.  A held gate returns no pool addition and keeps the exact
+    incumbent as generator.
+    """
+    if generator_ref != incumbent_ref:
+        raise RuntimeError("generator changed while its gate was outstanding")
+    # Re-open both identities at the decision boundary.  The duel verified
+    # them in its worker, but promotion must also fail if either supposedly
+    # immutable artifact changed before its result was consumed.
+    candidate_ref.verify()
+    incumbent_ref.verify()
+    if win_rate >= 0.55:
+        return candidate_ref, incumbent_ref, {
+            "event": "promote", "win_rate": win_rate,
+            "seed": gate_seed,
+            "incumbent": incumbent_ref.as_dict(),
+            "actor": candidate_ref.as_dict(),
+        }
+    return incumbent_ref, None, {
+        "event": "hold", "win_rate": win_rate,
+        "seed": gate_seed,
+        "incumbent": incumbent_ref.as_dict(),
+        "candidate": candidate_ref.as_dict(),
+    }
+
+
 # ----------------------------------------------------------------- learner
 def main() -> None:
     import multiprocessing as mp
@@ -340,32 +377,19 @@ def main() -> None:
             gate_job, candidate_ref, incumbent_ref, gate_seed = gate_pending
             wr = gate_job.get()
             gate_pending = None
-            if wr >= 0.55:
-                if gen_ref != incumbent_ref:
-                    raise RuntimeError(
-                        "generator changed while its gate was outstanding")
-                # Promote the exact bytes that were evaluated.  The old code
-                # overwrote generator.pt with the *current* learner after the
-                # duel, which could differ from the candidate that passed.
-                pool_refs.append(incumbent_ref)
+            gen_ref, pool_addition, gate_event = resolve_gate(
+                win_rate=wr, candidate_ref=candidate_ref,
+                incumbent_ref=incumbent_ref, generator_ref=gen_ref,
+                gate_seed=gate_seed,
+            )
+            promotion_ledger.append(gate_event)
+            if pool_addition is not None:
+                pool_refs.append(pool_addition)
                 pool_refs[:] = pool_refs[-5:]
-                gen_ref = candidate_ref
-                promotion_ledger.append({
-                    "event": "promote", "win_rate": wr,
-                    "seed": gate_seed,
-                    "incumbent": incumbent_ref.as_dict(),
-                    "actor": gen_ref.as_dict(),
-                })
                 print(f"[{time.strftime('%H:%M:%S')}] GATE PASS {wr:.0%} — "
                       f"generator promoted ({len(pool_refs)} in pool)",
                       flush=True)
             else:
-                promotion_ledger.append({
-                    "event": "hold", "win_rate": wr,
-                    "seed": gate_seed,
-                    "incumbent": incumbent_ref.as_dict(),
-                    "candidate": candidate_ref.as_dict(),
-                })
                 print(f"[{time.strftime('%H:%M:%S')}] gate held {wr:.0%} "
                       f"(<55%), generator unchanged", flush=True)
         if gate_pending is None and now >= next_gate:

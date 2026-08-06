@@ -21,7 +21,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-06 13:02 EDT
+## Current synthesis — 2026-08-06 13:55 EDT
 
 This section is the current decision layer. The lineage table below owns model
 history; **Data and evaluation contract** owns dataset/evaluation provenance;
@@ -60,28 +60,40 @@ day-by-day detail. A historical result below does not reopen a closed lane.
 - **v11pair is the learned line's one confirmed online gain:** its direct
   SmartBot override won 57.7% (277-203, n=480, two disjoint blocks). The 51.1%
   result versus MC used factories that discarded seeds and remains a SCREEN.
-  Its clean eight-shard direct-current revalidation is running on Air; no
-  partial effect is admissible. Revalidate frozen v11 against current N=30
-  before testing the still-untried protected-anchor composition; its within-
-  state deltas are valid for ranking,
-  not as scalar leaf values.
+  Its clean eight-shard direct-current revalidation is running on Air; at 13:55
+  one final manifest existed but no manifest body/effect had been opened.
+  Commit `7ecffd5` therefore blind-froze the separate composition estimand:
+  standalone v11 need not be superior for the terminal search champion to
+  retain its good proposals and reject its bad tail. Preserve the direct
+  verdict exactly; after a protocol-valid direct block with a sane null and
+  terminal S0, screen the champion-matched anchor on fresh 137M seeds, and let
+  only PASS reach an independent 138M confirmation. v11's within-state deltas
+  remain valid for ranking, not as scalar leaf values.
 - **Two independent learning lanes remain open.** Teacher-v1's entry code gate
   is closed at `23a9e0b`: the exact 1,024-deal packet, canonical shards and
   independent producer receipts now fail closed through Stage-B authorization.
-  No teacher evidence asset exists yet. It must still pass its 64-state
+  No teacher evidence asset exists yet. Air preflight is `READY_AFTER_V11` and
+  the exact capture/diagnostic/freeze packet will start when the direct-V11
+  workers exit. It must still pass its 64-state
   mechanics and 128-state gold-continuation gates before producing 2,048 clean
   counterfactual states. Faithful Suphx-style privileged-feature
   removal and DouZero-style role-conditioned direct-Q microbaselines have
-  passed the shared attacker/defender-sign and immutable-actor boundary; exact
-  learner/replay resume remains their launch blocker.
+  passed the shared attacker/defender-sign and immutable-actor boundary. The
+  transactional exact-resume primitive landed at `29c8cc1`, but independent
+  coordinator falsification found interruption poisoning, implicit global-RNG
+  and learner-Python-state gaps. Those remain launch blockers.
 - **Structured search remains independent and feature-off.** The broader bury
-  source is code-ready but needs disjoint reporting and equal-work controls.
+  source now has an authored 512-state disjoint-report/equal-work protocol,
+  but independent review held its artifact re-opener until it redraws every
+  named world and replays every raw score rather than trusting self-consistent
+  bytes.
   The <=4-card sampled exact-endgame seam shares a context-safe solver session
   across candidate roots inside each determinized world and passes independent
-  mechanics/parity review; it next needs a frozen cumulative-node challenge,
-  zero refusals and explicit work reporting. It is a perfect-information oracle
-  inside sampled worlds, not an exact imperfect-information solver. Each
-  mechanism must later duel the terminal champion directly.
+  mechanics/parity review. Its frozen challenge at `2370a27` completed 140/140
+  frontier evaluations in 16 sessions with zero refusal/overflow under the
+  cumulative 250k-node cap (130,989 nodes; 97,834 hits). It is a perfect-
+  information oracle inside sampled worlds, not an exact imperfect-information
+  solver. Each mechanism must later duel the terminal champion directly.
 - **Sampler hard-validity/support P0 is closed at clean `aea3774`.** The v3
   certificate covers exactly 500 original + 500 late + 500 deep states,
   accepts 36,000/36,000 worlds with zero rejected/invalid/named skips, and
@@ -95,8 +107,10 @@ day-by-day detail. A historical result below does not reopen a closed lane.
   residual sign, mutable actor path and promote-different-bytes defects are now
   repaired and covered by bounded tests, but no result has been rerun. The
   recipe is still neither Suphx's privileged-policy curriculum nor DouZero's
-  role-specific direct-return method, and exact learner/replay resume remains
-  open. Preserve its useful alarms; do not scale the legacy target path.
+  role-specific direct-return method. Exact checkpoint storage is now a tested
+  primitive, but the synchronous coordinator still has three reproduced
+  fail-closed gaps. Preserve DMC2's useful alarms; do not scale the legacy
+  target path.
 
 ### Settled experiment evidence
 
@@ -233,14 +247,16 @@ against the underlying RL families:
   Workers now receive path+SHA identities, snapshots are atomic and never
   overwritten, promotions use the evaluated bytes, and every actor batch has a
   named seed and ledger entry. The 20-pair/55% legacy gate is still not a
-  strength gate, and exact learner/optimizer/replay resume is still absent.
+  strength gate. Transactional learner/optimizer/replay resume exists at
+  `29c8cc1`, but interrupted transitions, implicit global RNG and Python-side
+  learner state must fail closed before the coordinator is exact.
 
 Verdict: target symmetry and immutable actor/candidate boundaries are now
 closed, and a bounded smoke records itself as non-promotable. Preserve the
 spread alarm, replay cap, opponent-pool idea and bookkeeping, but do not resume
-AWAC or scale DMC2. Next close exact resume/replay behavior, then compare the two
-faithful microbaselines independently so a recipe bundle cannot hide which idea
-worked.
+AWAC or scale DMC2. Next close those coordinator falsifications, then compare
+the two faithful microbaselines independently so a recipe bundle cannot hide
+which idea worked.
 
 ---
 
@@ -334,22 +350,24 @@ result.
    curves. First test the model as an MC ranker/pruner/allocator; only an
    untouched teacher gain and fresh paired win earns direct override or a 10k/50k
    relabelling wave.
-4. **Run faithful self-play that is not bounded by MC imitation.** Role-sign and
-   immutable-actor tests now pass; close exact learner/replay resume next, then
+4. **Run faithful self-play that is not bounded by MC imitation.** Role-sign,
+   immutable actors and the checkpoint primitive pass; close interruption,
+   global-RNG and Python-side learner-state behavior next, then
    run short synchronous Suphx-style privileged-feature-removal and DouZero-
    style role-conditioned direct-Q baselines. Stable
    action spread plus held-out improvement earns fleet scale and opponent-pool
    iteration. AWAC may optimize the valid replay later; it cannot repair a bad
    target.
 5. **Attack two orthogonal game decisions.** The feature-off structured-bury
-   core now prices a deterministic capped banker-visible ballot on common
-   worlds; it still needs disjoint reporting and equal-work controls because a
-   noisy maximum over roughly 30 candidates is winner-biased. The feature-off
+   core and authored 512-state runner use disjoint reporting plus exact equal-
+   work legacy/random controls; accept the runner only after its verifier
+   redraws named worlds and replays every raw score. The feature-off
    exact-endgame core now exhaustively solves <=4-card determinized worlds,
    refuses hidden-state/budget boundary violations and shares one context-safe
-   solver/cache per common world. It next needs a frozen cumulative 250k-node
-   challenge, zero refusals and exact node/cache-hit reporting. Freeze targeted
-   challenges only after those gates, then duel the
+   solver/cache per common world. Its frozen cumulative 250k-node challenge
+   completed 140/140 frontiers with zero refusal/overflow; next register the
+   terminal-champion-matched feature-on policy and full-game screen. Freeze
+   targeted strength references only after those gates, then duel the
    terminal production champion directly. No S3 strength result exists.
 6. **Keep the closed sampler P0 out of the critical path.** The clean current
    original/late/deep certificate passed with zero accepted-path loss.
@@ -382,15 +400,21 @@ Execute in this order:
 
 1. Revalidate the frozen NPZ (`cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003`)
    against current compiled `mc-strong` on 2,048 fresh 121M deal clusters with
-   a true mc-vs-mc null. This establishes current compatibility, not permission
-   to deploy on non-inferiority; latency is not the objective.
-2. Register `mc-v11anchor`: exact current ballot and N=30 worlds/work; frozen
-   v11 threshold 0.02 chooses candidate 0 when it overrides, Smart remains a
-   candidate, and the first arm retains `TRACTOR_LOCK`. Compare with ordinary
-   Smart-anchor MC and a same-trigger random-action anchor.
-3. Require a fresh paired signed-level win before combining the learned anchor
-   with confidence/adaptive allocation. Factorial combinations come only after
-   each mechanism wins alone.
+   a true mc-vs-mc null. Apply its original direct-superiority verdict exactly;
+   latency is not the objective and an interval containing zero is not
+   equivalence.
+2. Keep that direct verdict separate from the blind composition protocol in
+   `7ecffd5`. If the direct block is protocol-valid and its null interval
+   contains zero, wait for terminal S0 and screen the exact champion-matched
+   anchor on 2,048 fresh 137M clusters even when standalone v11 is neutral.
+   This asks whether search filters v11's costly tail; it does not reinterpret
+   standalone evidence.
+3. In that screen, preserve the terminal champion's complete ballot/world/work,
+   report and allocation contract. Compare v11 anchor, same-trigger random,
+   literal champion and champion-matched null. Require all three anchor LCBs
+   >0 and a null interval containing zero. Only PASS admits the independent
+   8,192-cluster 138M confirmation; only confirmation can reach deployment
+   review.
 4. Once the adaptive estimator is valid, test a soft v11 priority after a
    common-world floor against uncertainty-only and random priorities. Do not
    revive top-k pruning.

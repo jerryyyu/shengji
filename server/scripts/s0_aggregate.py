@@ -28,6 +28,8 @@ def manifest_runtime(manifest: dict) -> dict:
         "python": manifest.get("python"),
         "fast_engine": manifest.get("fast_engine"),
         "require_voids": manifest.get("require_voids"),
+        "experimental_sampler_flags": manifest.get(
+            "experimental_sampler_flags"),
         "digests": manifest.get("digests"),
     }
 
@@ -38,10 +40,17 @@ def runtime_identity(manifests) -> dict:
         raise AggregationRefused("cannot derive runtime identity without manifests")
     runtimes = [manifest_runtime(manifest) for _, manifest in manifests]
     first = runtimes[0]
-    required = ("host", "python", "fast_engine", "require_voids", "digests")
+    required = (
+        "host", "python", "fast_engine", "require_voids",
+        "experimental_sampler_flags", "digests",
+    )
     missing = [key for key in required if first.get(key) in (None, "", {})]
     if missing:
         raise AggregationRefused(f"runtime identity missing {missing}")
+    if first["experimental_sampler_flags"] != []:
+        raise AggregationRefused(
+            "runtime identity experimental sampler/ballot flags are not "
+            "an explicit empty list")
     if any(runtime != first for runtime in runtimes[1:]):
         raise AggregationRefused("shards disagree on exact runtime identity")
     digests = first["digests"]
@@ -104,7 +113,8 @@ def validate(phase: str, manifests, records) -> list[str]:
         problems.append(f"shard indices are {sorted(indices)}")
     for key in ("git_sha", "host", "labels", "digests", "policy_contracts", "ballots",
                 "report_worlds", "selection_rule", "kind", "parent",
-                "shard_count", "total_clusters", "python"):
+                "shard_count", "total_clusters", "python",
+                "experimental_sampler_flags"):
         values = {json.dumps(m.get(key), sort_keys=True) for _, m in manifests}
         if len(values) > 1:
             problems.append(f"shards disagree on {key}")

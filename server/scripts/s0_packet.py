@@ -114,13 +114,21 @@ def load_manifests(logs: Path, phase: str) -> list[tuple[Path, dict]]:
 
 
 def manifest_runtime(manifest: dict) -> dict:
-    return {
+    runtime = {
         "host": manifest.get("host"),
         "python": manifest.get("python"),
         "fast_engine": manifest.get("fast_engine"),
         "require_voids": manifest.get("require_voids"),
         "digests": manifest.get("digests"),
     }
+    # The currently running frozen Mini chain predates this field and is
+    # verified against its exact historical identity above.  Future MAIN
+    # manifests must contain it (the aggregator refuses otherwise); once
+    # present, it participates in the same exact cross-phase comparison.
+    if "experimental_sampler_flags" in manifest:
+        runtime["experimental_sampler_flags"] = \
+            manifest["experimental_sampler_flags"]
+    return runtime
 
 
 def verify_runtime_chain(phase_values: dict[str, tuple[Path, dict]],

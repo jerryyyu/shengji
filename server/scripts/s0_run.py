@@ -39,6 +39,12 @@ TOTAL_CLUSTERS = 2048
 CLUSTERS_PER_SHARD = TOTAL_CLUSTERS // SHARD_COUNT
 CONFIRM_CLUSTERS = 8192
 OPPONENT = "mc-strong"
+SAMPLER_BALLOT_FLAGS = (
+    "SHENGJI_WEIGHTED_SPLITS",
+    "SHENGJI_UNIFORM_DEAL",
+    "SHENGJI_PHYSICAL_FILLS",
+    "SHENGJI_ALLOW_BALLOT_MISMATCH",
+)
 
 PROTOCOLS = {
     "s0a": {
@@ -205,6 +211,7 @@ def runtime_identity(fast) -> dict:
         "python": platform.python_version(),
         "fast_engine": True,
         "require_voids": True,
+        "experimental_sampler_flags": [],
         "digests": {
             "runner": digest(__file__),
             "evaluation": digest(root / "shengji" / "evaluation.py"),
@@ -214,6 +221,17 @@ def runtime_identity(fast) -> dict:
             "fast_binary": digest(fast._fast.__file__),
         },
     }
+
+
+def require_runtime_environment() -> None:
+    """Refuse every unregistered sampler/ballot mode, including in smoke."""
+    if os.environ.get("SHENGJI_FAST") != "1" or \
+            os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
+        raise SystemExit("set SHENGJI_FAST=1 and SHENGJI_REQUIRE_VOIDS=1")
+    enabled = [name for name in SAMPLER_BALLOT_FLAGS if name in os.environ]
+    if enabled:
+        raise SystemExit(
+            f"experimental sampler/ballot flags must be unset: {enabled}")
 
 
 def git(*args) -> str:
@@ -348,9 +366,7 @@ def main() -> None:
     clusters_per_shard = phase_clusters_per_shard(args.phase)
     if not 0 <= args.shard_index < shard_count:
         raise SystemExit(f"shard-index must satisfy 0 <= i < {shard_count}")
-    if os.environ.get("SHENGJI_FAST") != "1" or \
-            os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
-        raise SystemExit("set SHENGJI_FAST=1 and SHENGJI_REQUIRE_VOIDS=1")
+    require_runtime_environment()
     from shengji.engine import combos, fast
     if not fast.HAVE_FAST or combos.decompose is not fast.decompose:
         raise SystemExit("compiled engine requested but not active")
@@ -386,6 +402,7 @@ def main() -> None:
         "host": runtime["host"], "python": runtime["python"],
         "fast_engine": runtime["fast_engine"],
         "require_voids": runtime["require_voids"],
+        "experimental_sampler_flags": runtime["experimental_sampler_flags"],
         "kind": spec["kind"], "parent": parent,
         "shard_index": args.shard_index, "shard_count": shard_count,
         "total_clusters": phase_total_clusters(args.phase),

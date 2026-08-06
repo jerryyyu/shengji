@@ -1,6 +1,7 @@
 """The S0 fleet packet is executable protocol, not prose."""
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import statistics
@@ -43,8 +44,28 @@ def runtime_identity(binary="binary-a"):
     return {
         "host": "mini", "python": "3.14.6",
         "fast_engine": True, "require_voids": True,
+        "experimental_sampler_flags": [],
         "digests": {"fast_binary": binary, "runner": "runner-a"},
     }
+
+
+@pytest.mark.parametrize("flag", S0.SAMPLER_BALLOT_FLAGS)
+def test_even_smoke_preflight_requires_each_experimental_flag_unset(
+        flag, monkeypatch, tmp_path):
+    for name in S0.SAMPLER_BALLOT_FLAGS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("SHENGJI_FAST", "1")
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    # An empty value is still set and therefore must refuse, not silently
+    # inherit the experimental module-level default.
+    monkeypatch.setenv(flag, "")
+    monkeypatch.setattr(S0.sys, "argv", [
+        "s0_run.py", "s0a", "--smoke", "--out", str(tmp_path / "smoke"),
+    ])
+    with pytest.raises(SystemExit, match="must be unset") as exc:
+        S0.main()
+    assert flag in str(exc.value)
+    assert not (tmp_path / "smoke.partial").exists()
 
 
 def test_all_frozen_s0_policy_contracts_are_live():
@@ -218,6 +239,39 @@ def test_runtime_identity_is_parent_bound_and_cross_phase_drift_refuses(tmp_path
     phase_manifests["s0b-mean"] = [(phase_b, drift)]
     with pytest.raises(RuntimeError, match="cross-phase runtime identity drift"):
         PACKET.verify_runtime_chain(values, phase_manifests, expected=runtime)
+
+    flag_drift = runtime_identity()
+    flag_drift["experimental_sampler_flags"] = [
+        "SHENGJI_WEIGHTED_SPLITS"]
+    values["s0b-mean"][1]["runtime_identity"] = flag_drift
+    phase_manifests["s0b-mean"] = [(phase_b, flag_drift)]
+    with pytest.raises(RuntimeError, match="cross-phase runtime identity drift"):
+        PACKET.verify_runtime_chain(values, phase_manifests, expected=runtime)
+
+
+def test_aggregate_refuses_missing_or_drifted_sampler_flag_identity():
+    clean = runtime_identity()
+    missing = copy.deepcopy(clean)
+    missing.pop("experimental_sampler_flags")
+    with pytest.raises(AGG.AggregationRefused, match="missing"):
+        AGG.runtime_identity([("missing.manifest.json", missing)])
+
+    drifted = copy.deepcopy(clean)
+    drifted["experimental_sampler_flags"] = ["SHENGJI_UNIFORM_DEAL"]
+    with pytest.raises(AGG.AggregationRefused, match="disagree"):
+        AGG.runtime_identity([
+            ("clean.manifest.json", clean),
+            ("drifted.manifest.json", drifted),
+        ])
+    with pytest.raises(AGG.AggregationRefused, match="explicit empty list"):
+        AGG.runtime_identity([("drifted.manifest.json", drifted)])
+
+
+def test_packet_preserves_frozen_legacy_runtime_shape():
+    legacy = runtime_identity()
+    legacy.pop("experimental_sampler_flags")
+    assert PACKET.manifest_runtime(legacy) == legacy
+    assert PACKET.manifest_runtime(runtime_identity()) == runtime_identity()
 
 
 def test_report_dose_is_chosen_by_the_frozen_rule_not_by_prose():

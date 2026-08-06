@@ -119,7 +119,7 @@ def counters(bots) -> dict:
 
 
 def run_arm(label, policy, opponent, clusters, seed0, fh, run_id,
-            progress=True) -> list:
+            progress=True, progress_scores=True) -> list:
     """Play `clusters` mirrored pairs of `policy` against `opponent`.
 
     Both flips of a seed use the same deal, and every arm in a comparison is
@@ -144,9 +144,11 @@ def run_arm(label, policy, opponent, clusters, seed0, fh, run_id,
             recs.append(rec)
             fh.write(json.dumps(rec) + "\n")
         if progress and c and c % 50 == 0:
-            w = sum(r["won"] for r in recs)
-            print(f"    {label}: {2*c}/{2*clusters} rounds, {w}-{len(recs)-w}",
-                  flush=True)
+            suffix = ""
+            if progress_scores:
+                w = sum(r["won"] for r in recs)
+                suffix = f", {w}-{len(recs)-w}"
+            print(f"    {label}: {2*c}/{2*clusters} rounds{suffix}", flush=True)
     return recs
 
 

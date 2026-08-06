@@ -169,6 +169,30 @@ REGISTRY.update({
 })
 
 
+def _make_policy_null(base_policy: str):
+    """Return an exact policy clone whose only treatment is its RNG stream.
+
+    Constructing the named base first avoids copying a hand-maintained subset
+    of its search knobs.  That matters for the post-S0 composition screen: its
+    null must inherit the terminal champion's report/allocation contract, not
+    silently fall back to ordinary N=30 search.
+    """
+    def make(**kw):
+        seed = kw.get("seed")
+        shifted = None if seed is None else seed + 999_983
+        forwarded = dict(kw)
+        forwarded["seed"] = shifted
+        return make_bot(base_policy, **forwarded)
+    return make
+
+
+# Champion-matched nulls for the two reachable LCB S0 survivors.  The existing
+# `mc-strong-null` remains the SELECT-NONE/current champion control and is not
+# changed because it is part of the already-running direct-v11 protocol.
+REGISTRY["mc-s0-report-lcb-null"] = _make_policy_null("mc-s0-report-lcb")
+REGISTRY["mc-s0-adaptive-null"] = _make_policy_null("mc-s0-adaptive")
+
+
 def _make_rl():
     from ..rl.torch_policy import RLBot  # lazy: needs torch + a checkpoint
     return RLBot()

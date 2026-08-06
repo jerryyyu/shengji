@@ -708,3 +708,69 @@ def test_QHKR_override_variance_regression():
         picks.add(tuple(bot.decide_play(rnd, seat)))
     assert picks == {("SA", "SA", "SK")}, (
         f"LCB override deviated from candidate 0 on this state: {picks}")
+
+
+def test_acting_team_sign_is_correct_for_both_roles():
+    """The sign error I made analysing the live incident, pinned as a test.
+
+    `_decide` stores `val if i_attack else -val`, so `means` are in ACTING-TEAM
+    perspective: higher is better for whoever is moving. For an ATTACKER that
+    means more attacker points; for a DEFENDER it means FEWER. I read these as
+    attacker-positive while analysing the QHKR report and concluded the exact
+    opposite of the truth, so this asserts the convention directly rather than
+    relying on remembering it.
+    """
+    import json
+    import os
+    import statistics
+    import sys
+    import pytest
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.join(root, "scripts"))
+    art = os.path.join(root, "rl_data", "pilot_dev512.v6.json")
+    if not os.path.exists(art):
+        pytest.skip("gate artifact absent")
+    import pilot_states as PS
+    from shengji.ai.registry import make_bot
+    from shengji.ai.memory import Memory
+
+    src = {n: c for n, c, _ in PS.SOURCES}
+    rows = {}
+    for name, path in src.items():
+        for line in open(path):
+            r = json.loads(line)
+            rows[(name, r["seed"], r["ply"])] = r
+    states = json.load(open(art))["states"]
+    for role in ("attacker", "defender"):
+        st = next(s for s in states if s["role"] == role)
+        rnd = PS.replay(rows[(st["source"], st["seed"], st["ply"])])
+        seat = st["seat"]
+        bot = make_bot("mc-strong", seed=9)
+        bot.decide_play(rnd, seat)
+        rec = bot.last_decision_record
+        if rec is None or len(rec["candidates"]) < 2:
+            continue
+        means, cands = rec["means"], rec["candidates"]
+        hi = max(range(len(cands)), key=lambda i: means[i])
+        lo = min(range(len(cands)), key=lambda i: means[i])
+
+        probe = make_bot("mc-strong", seed=9)
+        mem = Memory(rnd, seat)
+        raw = {hi: [], lo: []}
+        for _ in range(30):
+            s = probe._sample_hands(rnd, seat, mem)
+            if s is None:
+                continue
+            hands, buried = s
+            for i in (hi, lo):
+                raw[i].append(probe._rollout(rnd, seat, hands, buried,
+                                             list(cands[i])))
+        a_hi, a_lo = statistics.fmean(raw[hi]), statistics.fmean(raw[lo])
+        if rnd.is_attacker(seat):
+            assert a_hi > a_lo, (
+                "attacker: the best acting-team mean must have MORE attacker "
+                f"points ({a_hi:.1f} vs {a_lo:.1f})")
+        else:
+            assert a_hi < a_lo, (
+                "defender: the best acting-team mean must have FEWER attacker "
+                f"points ({a_hi:.1f} vs {a_lo:.1f})")

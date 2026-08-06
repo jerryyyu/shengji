@@ -6,7 +6,6 @@ import glob
 import json
 import os
 import sys
-from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -45,29 +44,49 @@ def load(phase: str, pattern: str):
 def validate(phase: str, manifests, records) -> list[str]:
     spec = S0.PROTOCOLS[phase]
     problems = []
-    if len(manifests) != S0.SHARD_COUNT:
-        problems.append(f"found {len(manifests)} shards, expected {S0.SHARD_COUNT}")
+    shard_count = S0.phase_shard_count(phase)
+    total_clusters = S0.phase_total_clusters(phase)
+    clusters_per_shard = S0.phase_clusters_per_shard(phase)
+    if len(manifests) != shard_count:
+        problems.append(f"found {len(manifests)} shards, expected {shard_count}")
     indices = [m["shard_index"] for _, m in manifests]
-    if sorted(indices) != list(range(S0.SHARD_COUNT)):
+    if sorted(indices) != list(range(shard_count)):
         problems.append(f"shard indices are {sorted(indices)}")
     for key in ("git_sha", "labels", "digests", "policy_contracts", "ballots",
-                "report_worlds", "selection_rule"):
+                "report_worlds", "selection_rule", "kind", "parent",
+                "shard_count", "total_clusters", "python"):
         values = {json.dumps(m.get(key), sort_keys=True) for _, m in manifests}
         if len(values) > 1:
             problems.append(f"shards disagree on {key}")
     for path, manifest in manifests:
         if not manifest.get("complete") or manifest.get("problems"):
             problems.append(f"incomplete/failed manifest {path}")
+        if manifest.get("tree_dirty") or not manifest.get("promotable"):
+            problems.append(f"non-promotable/dirty manifest {path}")
+        if manifest.get("fast_engine") is not True or \
+                manifest.get("require_voids") is not True:
+            problems.append(f"wrong engine/sampler mode in {path}")
         i = manifest["shard_index"]
-        want_lo = spec["seed0"] + i * S0.CLUSTERS_PER_SHARD
+        want_lo = spec["seed0"] + i * clusters_per_shard
         if manifest.get("seed0") != want_lo or \
-                manifest.get("seed_hi") != want_lo + S0.CLUSTERS_PER_SHARD - 1:
+                manifest.get("seed_hi") != want_lo + clusters_per_shard - 1:
             problems.append(f"shard {i}: seed block drift")
+        if manifest.get("clusters") != clusters_per_shard:
+            problems.append(f"shard {i}: cluster count drift")
 
     expected_labels = set(spec["labels"])
     if set(records) != expected_labels:
         problems.append(f"labels {sorted(records)} != {sorted(expected_labels)}")
-    expected_n = 2 * S0.TOTAL_CLUSTERS
+    expected_keys = {
+        (seed, flip)
+        for seed in range(spec["seed0"], spec["seed0"] + total_clusters)
+        for flip in (0, 1)
+    }
+    expected_n = len(expected_keys)
+    run_by_source = {
+        path.removesuffix(".manifest.json"): manifest.get("run_id")
+        for path, manifest in manifests
+    }
     for label, recs in records.items():
         if len(recs) != expected_n:
             problems.append(f"{label}: {len(recs)} records, expected {expected_n}")
@@ -75,9 +94,14 @@ def validate(phase: str, manifests, records) -> list[str]:
         dupes = len(keys) - len(set(keys))
         if dupes:
             problems.append(f"{label}: {dupes} duplicate seed/flip keys")
+        if set(keys) != expected_keys:
+            problems.append(f"{label}: exact seed/flip coverage differs")
         want_policy = spec["labels"].get(label)
         if any(r.get("policy") != want_policy for r in recs):
             problems.append(f"{label}: policy identity drift")
+        if any(r.get("run") != run_by_source.get(r.get("_source")) for r in recs):
+            problems.append(f"{label}: record/run manifest identity drift")
+    problems += S0.protocol_problems(phase)
     problems += S0.record_problems(records)
     return sorted(set(problems))
 
@@ -88,20 +112,39 @@ def contrast(records, a: str, b: str) -> dict:
             "half_width_95": half, "clusters": n}
 
 
+def counter_totals(records) -> dict:
+    fields = (
+        "rollouts", "searches", "sample_attempts", "accepted_worlds",
+        "failed_worlds", "rejected_worlds", "short_searches", "zero_world",
+        "void_fallbacks",
+    )
+    return {
+        label: {
+            side: {field: sum(int(row[side].get(field, 0)) for row in recs)
+                   for field in fields}
+            for side in ("arm", "opp")
+        }
+        for label, recs in records.items()
+    }
+
+
 def choose_survivor(phase: str, records) -> tuple[str | None, dict]:
     stats = {}
     if phase == "s0a":
         for label in ("report_mean", "report_lcb", "uniform_work", "null"):
             stats[f"{label}-reference"] = contrast(records, label, "reference")
+        for label in ("report_mean", "report_lcb"):
+            stats[f"{label}-uniform_work"] = contrast(
+                records, label, "uniform_work")
         ranked = sorted(
             ("report_mean", "report_lcb"),
             key=lambda label: (stats[f"{label}-reference"]["mean"],
                                label == "report_mean"), reverse=True)
         winner = ranked[0]
         effect = stats[f"{winner}-reference"]["mean"]
-        compute = stats["uniform_work-reference"]["mean"]
-        survivor = winner if effect > 0 and effect > compute else None
-    else:
+        direct = stats[f"{winner}-uniform_work"]["mean"]
+        survivor = winner if effect > 0 and direct > 0 else None
+    elif phase.startswith("s0b-"):
         for label in ("adaptive", "report_uniform", "random", "uniform_work",
                       "null"):
             stats[f"{label}-reference"] = contrast(records, label, "reference")
@@ -112,6 +155,19 @@ def choose_survivor(phase: str, records) -> tuple[str | None, dict]:
                     if stats["adaptive-report_uniform"]["mean"] > 0 and
                     stats["adaptive-random"]["mean"] > 0
                     else "report_uniform")
+    else:
+        stats["arm-reference"] = contrast(records, "arm", "reference")
+        stats["null-reference"] = contrast(records, "null", "reference")
+        stats["arm-null"] = contrast(records, "arm", "null")
+        arm_ref = stats["arm-reference"]
+        null_ref = stats["null-reference"]
+        arm_null = stats["arm-null"]
+        confirmed = (
+            arm_ref["mean"] - arm_ref["half_width_95"] > 0 and
+            arm_null["mean"] - arm_null["half_width_95"] > 0 and
+            null_ref["mean"] - null_ref["half_width_95"] <= 0
+        )
+        survivor = "arm" if confirmed else None
     return survivor, stats
 
 
@@ -129,17 +185,41 @@ def main() -> None:
                                  "\n  - ".join(problems))
     survivor, stats = choose_survivor(args.phase, records)
     labels = S0.PROTOCOLS[args.phase]["labels"]
+    confirmation = S0.PROTOCOLS[args.phase]["kind"] == "confirmation"
+    criteria = None
+    if confirmation:
+        criteria = {
+            "arm_reference_lcb_gt_0": (
+                stats["arm-reference"]["mean"] -
+                stats["arm-reference"]["half_width_95"] > 0),
+            "arm_null_lcb_gt_0": (
+                stats["arm-null"]["mean"] -
+                stats["arm-null"]["half_width_95"] > 0),
+            "null_reference_lcb_not_gt_0": (
+                stats["null-reference"]["mean"] -
+                stats["null-reference"]["half_width_95"] <= 0),
+        }
+        criteria["all"] = all(criteria.values())
     result = {
         "schema": "s0-mechanism-aggregate-v1", "phase": args.phase,
-        "promotion": False,
-        "note": "Mechanism-screen survivor only; production requires the "
-                "independent 8,192-cluster confirmation.",
+        "promotion": bool(confirmation and survivor),
+        "note": ("PROMOTE only when every frozen confirmation criterion "
+                 "passes; otherwise S0 is SELECT NONE."
+                 if confirmation else
+                 "Mechanism-screen survivor only; production requires the "
+                 "independent 8,192-cluster confirmation."),
         "shards": [path for path, _ in manifests],
         "git_sha": manifests[0][1]["git_sha"],
-        "clusters": S0.TOTAL_CLUSTERS,
-        "stats": stats, "survivor_label": survivor,
+        "parent": manifests[0][1].get("parent"),
+        "clusters": S0.phase_total_clusters(args.phase),
+        "seed0": S0.PROTOCOLS[args.phase]["seed0"],
+        "seed_hi": (S0.PROTOCOLS[args.phase]["seed0"] +
+                    S0.phase_total_clusters(args.phase) - 1),
+        "hosts": sorted({manifest.get("host") for _, manifest in manifests}),
+        "stats": stats, "criteria": criteria, "survivor_label": survivor,
         "survivor_policy": labels.get(survivor) if survivor else None,
-        "record_counts": dict(Counter({k: len(v) for k, v in records.items()})),
+        "record_counts": {key: len(value) for key, value in records.items()},
+        "counter_totals": counter_totals(records),
     }
     print(json.dumps(result, indent=2, sort_keys=True))
     if args.out:

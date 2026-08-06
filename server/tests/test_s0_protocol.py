@@ -7,6 +7,8 @@ import statistics
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPTS = Path(__file__).parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
@@ -42,6 +44,15 @@ def test_all_frozen_s0_policy_contracts_are_live():
     assert S0.TOTAL_CLUSTERS == 2048
     assert S0.SHARD_COUNT == 8
     assert S0.CLUSTERS_PER_SHARD == 256
+    for phase in ("s0a", "s0b-mean", "s0b-lcb"):
+        assert S0.phase_total_clusters(phase) == 2048
+        assert S0.phase_clusters_per_shard(phase) == 256
+    for phase in ("s0c-report-mean", "s0c-report-lcb",
+                  "s0c-adaptive-mean", "s0c-adaptive-lcb"):
+        assert S0.PROTOCOLS[phase]["kind"] == "confirmation"
+        assert S0.phase_total_clusters(phase) == 8192
+        assert S0.phase_clusters_per_shard(phase) == 1024
+        assert S0.PROTOCOLS[phase]["seed0"] == 135_000_000
 
 
 def test_record_gate_requires_paired_coverage_and_reconciled_exact_work():
@@ -50,6 +61,9 @@ def test_record_gate_requires_paired_coverage_and_reconciled_exact_work():
     rows["a"][0]["arm"]["short_searches"] = 1
     assert "a: short registered search dose" in S0.record_problems(rows)
     rows["a"][0]["arm"]["short_searches"] = 0
+    rows["a"][0]["arm"]["void_fallbacks"] = 1
+    assert "a: void-relaxed sampled world" in S0.record_problems(rows)
+    rows["a"][0]["arm"]["void_fallbacks"] = 0
     rows["a"].pop()
     assert any("deal coverage differs" in p for p in S0.record_problems(rows))
 
@@ -62,6 +76,7 @@ def test_s0a_survivor_rule_is_frozen_and_not_a_promotion():
     assert survivor == "report_mean"
     assert stats["report_mean-reference"]["mean"] > \
         stats["uniform_work-reference"]["mean"]
+    assert stats["report_mean-uniform_work"]["mean"] > 0
 
     rows = by_label(block({"report_mean": 0.2, "report_lcb": 0.1,
                            "uniform_work": 0.5, "null": 0.0,
@@ -81,6 +96,80 @@ def test_s0b_adaptive_must_beat_both_uniform_and_random_allocation():
                            "null": 0.0, "reference": 0.0}))
     survivor, _ = AGG.choose_survivor("s0b-lcb", rows)
     assert survivor == "report_uniform"
+
+
+def test_s0_confirmation_requires_superiority_and_a_clean_null():
+    rows = by_label(block({"arm": 2.0, "null": 0.0, "reference": 0.0}))
+    survivor, stats = AGG.choose_survivor("s0c-report-lcb", rows)
+    assert survivor == "arm"
+    assert stats["arm-reference"]["mean"] > 0
+    assert stats["arm-null"]["mean"] > 0
+
+    # Beating current is not attributable when the arm cannot beat the null.
+    rows = by_label(block({"arm": 2.0, "null": 2.0, "reference": 0.0}))
+    survivor, _ = AGG.choose_survivor("s0c-report-lcb", rows)
+    assert survivor is None
+
+    # A null that independently clears the bar invalidates confirmation.
+    rows = by_label(block({"arm": 3.0, "null": 2.0, "reference": 0.0}))
+    survivor, _ = AGG.choose_survivor("s0c-report-lcb", rows)
+    assert survivor is None
+
+
+def test_child_phases_are_bound_to_the_exact_parent_aggregate(tmp_path):
+    parent = {
+        "schema": "s0-mechanism-aggregate-v1",
+        "phase": "s0a", "promotion": False, "git_sha": "abc",
+        "clusters": 2048, "survivor_label": "report_mean",
+        "survivor_policy": "mc-s0-report-mean",
+    }
+    path = tmp_path / "s0a.aggregate.json"
+    path.write_text(json.dumps(parent))
+    identity = S0.parent_identity(
+        str(path), S0.PROTOCOLS["s0b-mean"], "abc")
+    assert identity["phase"] == "s0a"
+    assert identity["survivor_policy"] == "mc-s0-report-mean"
+    assert len(identity["sha256"]) == 64
+
+    with pytest.raises(SystemExit, match="does not admit"):
+        S0.parent_identity(str(path), S0.PROTOCOLS["s0b-lcb"], "abc")
+    with pytest.raises(SystemExit, match="required via --parent"):
+        S0.parent_identity(None, S0.PROTOCOLS["s0b-mean"], "abc")
+    with pytest.raises(SystemExit, match="has no parent"):
+        S0.parent_identity(str(path), S0.PROTOCOLS["s0a"], "abc")
+
+
+def test_aggregate_requires_the_literal_frozen_seed_flip_set(
+        tmp_path, monkeypatch):
+    phase = "tiny-confirm"
+    labels = {"arm": "mc-s0-report-mean", "null": "mc-strong-null",
+              "reference": "mc-strong"}
+    monkeypatch.setitem(S0.PROTOCOLS, phase, {
+        "kind": "confirmation", "seed0": 1, "total_clusters": 2,
+        "shard_count": 1, "parent_phase": "tiny-parent",
+        "parent_policy": "mc-s0-report-mean", "labels": labels,
+        "selection": "test-only frozen confirmation",
+    })
+    record_path = str(tmp_path / "tiny.jsonl")
+    manifest = {
+        "complete": True, "problems": [], "promotable": True,
+        "tree_dirty": False, "fast_engine": True, "require_voids": True,
+        "shard_index": 0, "shard_count": 1, "total_clusters": 2,
+        "clusters": 2, "seed0": 1, "seed_hi": 2, "run_id": "tiny-run",
+        "labels": labels,
+    }
+    manifests = [(record_path + ".manifest.json", manifest)]
+    records = by_label(block({"arm": 2.0, "null": 0.0,
+                              "reference": 0.0}))
+    for label, recs in records.items():
+        for row in recs:
+            row["run"] = "tiny-run"
+            row["policy"] = labels[label]
+            row["_source"] = record_path
+    assert AGG.validate(phase, manifests, records) == []
+    records["arm"][0]["seed"] = 99
+    assert "arm: exact seed/flip coverage differs" in \
+        AGG.validate(phase, manifests, records)
 
 
 def test_report_dose_is_chosen_by_the_frozen_rule_not_by_prose():

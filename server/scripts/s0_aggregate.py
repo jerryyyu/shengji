@@ -193,6 +193,23 @@ def counter_totals(records) -> dict:
     }
 
 
+def confirmation_criteria(stats: dict) -> dict[str, bool]:
+    """Derive the registered S0c lower-bound gate from recomputed statistics."""
+    criteria = {
+        "arm_reference_lcb_gt_0": (
+            stats["arm-reference"]["mean"] -
+            stats["arm-reference"]["half_width_95"] > 0),
+        "arm_null_lcb_gt_0": (
+            stats["arm-null"]["mean"] -
+            stats["arm-null"]["half_width_95"] > 0),
+        "null_reference_lcb_not_gt_0": (
+            stats["null-reference"]["mean"] -
+            stats["null-reference"]["half_width_95"] <= 0),
+    }
+    criteria["all"] = all(criteria.values())
+    return criteria
+
+
 def choose_survivor(phase: str, records) -> tuple[str | None, dict]:
     stats = {}
     if phase == "s0a":
@@ -224,15 +241,7 @@ def choose_survivor(phase: str, records) -> tuple[str | None, dict]:
         stats["arm-reference"] = contrast(records, "arm", "reference")
         stats["null-reference"] = contrast(records, "null", "reference")
         stats["arm-null"] = contrast(records, "arm", "null")
-        arm_ref = stats["arm-reference"]
-        null_ref = stats["null-reference"]
-        arm_null = stats["arm-null"]
-        confirmed = (
-            arm_ref["mean"] - arm_ref["half_width_95"] > 0 and
-            arm_null["mean"] - arm_null["half_width_95"] > 0 and
-            null_ref["mean"] - null_ref["half_width_95"] <= 0
-        )
-        survivor = "arm" if confirmed else None
+        survivor = "arm" if confirmation_criteria(stats)["all"] else None
     return survivor, stats
 
 
@@ -254,18 +263,7 @@ def main() -> None:
     confirmation = S0.PROTOCOLS[args.phase]["kind"] == "confirmation"
     criteria = None
     if confirmation:
-        criteria = {
-            "arm_reference_lcb_gt_0": (
-                stats["arm-reference"]["mean"] -
-                stats["arm-reference"]["half_width_95"] > 0),
-            "arm_null_lcb_gt_0": (
-                stats["arm-null"]["mean"] -
-                stats["arm-null"]["half_width_95"] > 0),
-            "null_reference_lcb_not_gt_0": (
-                stats["null-reference"]["mean"] -
-                stats["null-reference"]["half_width_95"] <= 0),
-        }
-        criteria["all"] = all(criteria.values())
+        criteria = confirmation_criteria(stats)
     result = {
         "schema": "s0-mechanism-aggregate-v1", "phase": args.phase,
         "promotion": bool(confirmation and survivor),

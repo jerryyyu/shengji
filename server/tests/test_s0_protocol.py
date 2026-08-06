@@ -146,6 +146,41 @@ def test_s0_confirmation_requires_superiority_and_a_clean_null():
     assert survivor is None
 
 
+def test_s0_confirmation_uses_variance_bearing_lower_bounds():
+    # The arm has a positive point estimate but an interval spanning zero.
+    # This fixture is deliberately nonconstant so replacing either LCB with an
+    # upper bound, deleting the uncertainty term, or hard-coding criteria true
+    # cannot pass.
+    arm_deltas = (0.5, -0.3, 0.9, -0.6)
+    rows = []
+    for seed, delta in enumerate(arm_deltas, start=1):
+        rows.extend((
+            rec("arm", seed, 0, delta),
+            rec("arm", seed, 1, 0.0),
+            rec("null", seed, 0, 0.0),
+            rec("null", seed, 1, 0.0),
+            rec("reference", seed, 0, 0.0),
+            rec("reference", seed, 1, 0.0),
+        ))
+    records = by_label(rows)
+
+    survivor, stats = AGG.choose_survivor("s0c-report-lcb", records)
+    criteria = AGG.confirmation_criteria(stats)
+
+    arm_ref = stats["arm-reference"]
+    assert arm_ref["clusters"] == 4
+    assert arm_ref["mean"] == pytest.approx(0.125)
+    assert arm_ref["mean"] - arm_ref["half_width_95"] < 0
+    assert arm_ref["mean"] + arm_ref["half_width_95"] > 0
+    assert criteria == {
+        "arm_reference_lcb_gt_0": False,
+        "arm_null_lcb_gt_0": False,
+        "null_reference_lcb_not_gt_0": True,
+        "all": False,
+    }
+    assert survivor is None
+
+
 def test_child_phases_are_bound_to_the_exact_parent_aggregate(tmp_path):
     parent = {
         "schema": "s0-mechanism-aggregate-v1",

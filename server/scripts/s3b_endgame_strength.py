@@ -51,7 +51,7 @@ BUDGET_ROLE = (
     "not change policies, seeds, sample sizes, contrasts or strength bars, "
     "and the score-free preflight exposes no strength effect"
 )
-MECHANICS_COMMIT = "2370a277fe694d952c3b6fb80e31f319d7dfad36"
+MECHANICS_COMMIT = "2bb571fd5183436b4bc24f40d25877acf65190ae"
 MECHANICS_ASSET = SERVER / "tests" / "data" / \
     "s3b_endgame_challenge.v2.json"
 MECHANICS_ASSET_SHA256 = (

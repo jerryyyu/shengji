@@ -193,6 +193,43 @@ REGISTRY["mc-s0-report-lcb-null"] = _make_policy_null("mc-s0-report-lcb")
 REGISTRY["mc-s0-adaptive-null"] = _make_policy_null("mc-s0-adaptive")
 
 
+def _make_exact_endgame_policy(base_policy: str):
+    """Enable only the bounded S3b continuation on a named search policy.
+
+    The terminal S0 result can leave any of three policies in production.
+    Constructing that exact named policy first keeps its ballot, sampling dose,
+    report fold and allocation rule intact.  The treatment then changes one
+    switch only: heuristic rollouts become exact partnership-minimax once the
+    fully determinized world reaches the proved four-card boundary.
+    """
+    def make(**kw):
+        bot = make_bot(base_policy, **kw)
+        if any(getattr(bot, field, False) for field in
+               ("MC_BURY", "STRUCTURED_BURY", "EXACT_ENDGAME")):
+            raise RuntimeError(
+                f"S3b base policy {base_policy!r} enables another S3 feature")
+        bot.EXACT_ENDGAME = True
+        bot.EXACT_ENDGAME_MAX_CARDS = 4
+        bot.EXACT_ENDGAME_MAX_NODES = 250_000
+        # Lower-case provenance is deliberately outside the policy's uppercase
+        # behavioural contract.  Runners can still prove which terminal policy
+        # was cloned without introducing another gameplay knob.
+        bot.exact_endgame_base_policy = base_policy
+        return bot
+    return make
+
+
+# Reachable terminal-S0 champions, each with exactly one feature-on S3b clone.
+# These registrations authorize experiments only; production remains unchanged.
+REGISTRY.update({
+    "mc-exact-endgame": _make_exact_endgame_policy("mc-strong"),
+    "mc-s0-report-lcb-exact-endgame": _make_exact_endgame_policy(
+        "mc-s0-report-lcb"),
+    "mc-s0-adaptive-exact-endgame": _make_exact_endgame_policy(
+        "mc-s0-adaptive"),
+})
+
+
 def _make_rl():
     from ..rl.torch_policy import RLBot  # lazy: needs torch + a checkpoint
     return RLBot()

@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-05 21:59 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 00:00 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -12,16 +12,20 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   `e31e67f9aeb4739aa598faa66051ec4004fd47751b297457242dc95a30cc224c`.
 - The DEV-512 ballot screen is **SELECT NONE / CLOSED**. CALIB-512 and REPORT
   remain sealed and unscored; do not revive that lane by adding DEV arms.
-- The S0 implementation/code gate is complete. The next fleet job is the
-  bounded S0a mechanism screen below, not more generic correctness review.
+- The S0 implementation/code gate is complete. The bounded S0a mechanism
+  screen is **RUNNING** authoritatively on Mini: 8/8 clean shards reached
+  300/512 rounds of the first arm by 23:58 EDT with zero stderr. Air is an
+  S0a-only fallback; never pool the duplicate hosts or launch a child from Air.
 - Teacher-v1 mechanics/gold gates, the v11 protected-anchor compatibility block
   and the role-conditioned RL microgates remain independent parallel strength
   work; none should be folded into S0 before each wins alone.
 
-## S0 implementation packet — ready for bounded S0a
+## S0 implementation packet — bounded S0a running
 
 Base implementation commit: `df0a7b9`; calibration/freeze commit: `316542a`
 (both pushed). End-to-end parent-bound S0a/S0b/S0c protocol commit: `476e400`.
+The independent terminal return-packet verifier is durable at `751ef50`
+(`server/scripts/s0_packet.py`); its live frozen copy is byte-identical.
 The calibration commit adds the immutable audit artifact and freezes its
 selected report dose; the protocol commit freezes exact coverage, controls and
 the independent confirmation before any S0a result is inspected.
@@ -100,7 +104,7 @@ completed all five S0a arms: 20 mirrored records, zero short/zero-world searches
 reconciled sampler counters and no manifest problems. It is deliberately marked
 `promotable:false`; its game scores are not evidence.
 
-## Authorized next job — S0a only
+## Authoritative current job — S0a only
 
 S0a separates the report decision rule from extra compute. It is a diagnostic
 screen, not promotion: 2,048 fresh mirrored deal clusters, eight shards of 256,
@@ -109,7 +113,8 @@ equal-work uniform, the true N=30 null and the current reference on the same
 deals. The runner refuses dirty trees, wrong flags, policy/dose drift, duplicate
 coverage, short work or unreconciled counters and writes only complete shards.
 
-On each of eight workers, substitute I=0..7:
+The already-running shards were launched with the following frozen command
+shape (reference only; do not launch duplicates), substituting I=0..7:
 
 ```bash
 cd server

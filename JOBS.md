@@ -15,7 +15,10 @@ voids and compiled binary SHA-256
 All eight partial manifests preflighted exact disjoint seed blocks and a clean
 tree. `com.shengji.s0mini.supervisor` is the singleton fail-closed owner of
 aggregation and conditional child launch; `com.shengji.s0mini.keepawake` holds
-the power assertion.
+the power assertion. By 23:58 EDT all eight reached 300/512 rounds on the first
+heavy arm with zero stderr; process-level inspection showed every worker
+runnable at 97-98% CPU. The durable independent terminal packet verifier is
+pushed at `751ef50`; the live frozen copy is byte-identical.
 
 Air's eight clean Python-3.14.6 S0a shards, started at 22:08–22:09, continue as
 compute-only fallback. All crossed 50 clusters. Their transition supervisor is

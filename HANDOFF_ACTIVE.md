@@ -221,7 +221,7 @@ any drift.
 
 ## Other active strength lanes
 
-1. **S0b v11 anchor:** first revalidate frozen `rl-override-v11pair` against
+1. **V11 protected-anchor lane (separate from S0):** first revalidate frozen `rl-override-v11pair` against
    current N=30 on the registered fresh 2,048-cluster block. Only then implement
    the protected-anchor hybrid; never use the pairwise head as a scalar leaf.
 2. **S1 teacher/model:** execute `TEACHER_V1_SPEC.md` Stage A (64 mechanics) and

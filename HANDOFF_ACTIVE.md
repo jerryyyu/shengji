@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 10:03 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 10:09 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -244,6 +244,10 @@ any drift.
    complete/digest-valid exact Stage-A exclusion set and the PASS gate bound to
    that set; schema-only exclusion cannot advance. Only a Stage-B regret upper bound <=0.10
    signed levels authorizes implementing/launching its 2,048-state wave.
+   The first packet is now predeclared in `TEACHER_V1_SPEC.md`: exact seeds
+   120000000–120001023, eight capture/diagnostic shards, eight Stage-A primary
+   plus rerun shards, then eight exact-parent Stage-B cheap/gold shards. Do not
+   append capture after diagnostics or labels are inspected.
 3. **S2 self-play RL:** role-sign antisymmetry and immutable actor/candidate
    boundaries are code-ready and tested. The audit also fixed promotion of
    different learner bytes than the candidate actually gated. A bounded

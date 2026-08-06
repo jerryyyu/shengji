@@ -14,6 +14,46 @@ Produce action-ranking and scoring-bracket targets that can improve compiled
 Stop a stage when its gate fails. A clean mechanics check alone does not prove
 teacher usefulness; a held-out teacher gain alone does not prove bot strength.
 
+## First execution packet — frozen before capture
+
+Packet id: `teacher-v1-entry-120m-v1`.
+
+- Capture exactly 1,024 fresh deals, seeds `120000000..120001023`, as eight
+  interleaved 128-deal shards (`seed0=120000000`, `max_deals=1024`, shard
+  indices `0..7`). All eight use the same clean commit, compiled engine, strict
+  void mode, production `mc-strong` actor and three digest-pinned exam splits.
+- Diagnose those exact eight capture artifacts in shard order. Stage A and
+  Stage B use this same immutable diagnostic population; no extra capture may
+  be appended after any selector diagnostic or label outcome is inspected.
+- Freeze 64 Stage-A states once, then label eight 8-state shards with exact
+  256/256 folds. Run the same eight shards a second time under new output names;
+  the Stage-A gate requires deterministic evidence equality excluding wall
+  time.
+- Only a Stage-A PASS bound to that exact state-set SHA authorizes freezing the
+  128 disjoint Stage-B states. Label eight 16-state cheap shards, then one exact
+  gold child for each cheap shard with 64/64 folds. Only the registered regret
+  gate may authorize Stage C.
+- No short shard, replacement seed, partial merge, world-count change or
+  extension is admissible. A pre-label supply deficit closes this packet
+  **INCONCLUSIVE**; predeclare a new larger fresh capture packet rather than
+  appending deals.
+- Prefer Mini for capture, diagnosis and Stage A because each bounded phase is
+  expected to fit the sub-hour policy. Before Stage-B gold, use Stage-A/cheap
+  timing to choose whole-shard placement; never pool partial artifacts from
+  different executable identities.
+
+The canonical artifact order is:
+
+1. `capture_shard00..07.json` -> `diagnostic_shard00..07.json`;
+2. `stage_a_states.json` -> `stage_a_primary_shard00..07.json` plus
+   `stage_a_rerun_shard00..07.json` -> `stage_a_gate.json`; and
+3. `stage_b_states.json` -> `stage_b_cheap_shard00..07.json` -> exact-parent
+   `stage_b_gold_shard00..07.json` -> `stage_b_gate.json`.
+
+Every consumer receives the literal SHA-256 of its input via
+`--expected-input-sha256`. Stage-B freeze additionally receives
+`--exclude-state-set stage_a_states.json --stage-a-gate stage_a_gate.json`.
+
 ## Immutable identity
 
 - Fresh self-play deal seeds start at `120000000`; one selected state per deal.

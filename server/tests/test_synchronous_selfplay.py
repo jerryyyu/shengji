@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import random
 from dataclasses import dataclass
+from pathlib import Path
 
 import pytest
 
@@ -207,6 +208,8 @@ def test_resumed_runner_restores_before_same_named_next_update(tmp_path):
     assert [batch.sequence for batch in interrupted_batches] == [0, 1, 2]
     assert [batch.seed for batch in interrupted_batches] == [
         batch.seed for batch in uninterrupted_batches]
+    assert all(batch.actor_ref is actor_ref
+               for batch in uninterrupted_batches + interrupted_batches)
 
 
 def test_checkpoint_is_refused_inside_synchronous_batch(tmp_path):
@@ -218,6 +221,9 @@ def test_checkpoint_is_refused_inside_synchronous_batch(tmp_path):
     def collect(identity):
         with pytest.raises(SynchronousRunnerError, match="work in flight"):
             runner.save_checkpoint(attempted)
+        with pytest.raises(SynchronousRunnerError, match="work in flight"):
+            runner.adopt_current_candidate_as_actor()
+        assert runner.actor_ref is actor_ref
         return _collector([])(identity)
 
     runner.run_iteration(collect, _update)
@@ -330,6 +336,97 @@ def test_actor_batch_identity_binds_runner_and_algorithm_contract(tmp_path):
     identity = runner.next_batch_identity()
     assert identity.contract_sha256 == runner.contract_sha256
     assert identity.as_dict()["contract_sha256"] == runner.contract_sha256
+
+
+def test_explicit_candidate_adoption_rotates_only_the_next_actor(tmp_path):
+    actor_ref = _actor_ref(tmp_path)
+    bundle = _new_bundle()
+    runner = _new_runner(tmp_path, "snapshots", bundle, actor_ref)
+    first = runner.run_iteration(_collector([]), _update)
+    candidate_files = sorted(
+        (tmp_path / "snapshots").glob("candidate_*.pt"))
+
+    adopted = runner.adopt_current_candidate_as_actor()
+
+    assert adopted is first.candidate_ref
+    assert runner.actor_ref is first.candidate_ref
+    assert runner.candidate_ref is first.candidate_ref
+    assert sorted((tmp_path / "snapshots").glob("candidate_*.pt")) == \
+        candidate_files
+    identity = runner.next_batch_identity()
+    assert identity.actor_ref is adopted
+    assert identity.seed == derive_job_seed(
+        experiment=EXPERIMENT,
+        root_seed=ROOT_SEED,
+        purpose="actor",
+        sequence=1,
+        actor_sha256=adopted.sha256,
+    )
+
+
+@pytest.mark.parametrize("mutation", ["candidate_bytes", "learner_state"])
+def test_candidate_adoption_integrity_failure_poisons_until_exact_restore(
+        tmp_path, mutation):
+    actor_ref = _actor_ref(tmp_path)
+    bundle = _new_bundle()
+    runner = _new_runner(tmp_path, f"snapshots-{mutation}", bundle, actor_ref)
+    candidate = runner.run_iteration(_collector([]), _update).candidate_ref
+    if mutation == "candidate_bytes":
+        with open(candidate.path, "ab") as handle:
+            handle.write(b"drift")
+        error = "checkpoint digest drift"
+    else:
+        with torch.no_grad():
+            next(bundle.learner.parameters()).add_(1)
+        error = "candidate snapshot does not match learner boundary"
+    before = (
+        runner.actor_ref,
+        runner.candidate_ref,
+        runner.progress,
+        _bundle_digest(bundle),
+    )
+
+    with pytest.raises((RuntimeError, SynchronousRunnerError), match=error):
+        runner.adopt_current_candidate_as_actor()
+
+    assert (
+        runner.actor_ref,
+        runner.candidate_ref,
+        runner.progress,
+        _bundle_digest(bundle),
+    ) == before
+    for operation in (
+        runner.next_batch_identity,
+        lambda: runner.run_iteration(_collector([]), _update),
+        lambda: runner.save_checkpoint(tmp_path / f"{mutation}-after.pt"),
+    ):
+        with pytest.raises(SynchronousRunnerError, match="poisoned"):
+            operation()
+
+
+def test_adopted_shared_artifact_drift_poisons_even_after_bytes_restored(
+        tmp_path):
+    actor_ref = _actor_ref(tmp_path)
+    bundle = _new_bundle()
+    runner = _new_runner(tmp_path, "snapshots-adopted-drift", bundle, actor_ref)
+    candidate = runner.run_iteration(_collector([]), _update).candidate_ref
+    runner.adopt_current_candidate_as_actor()
+    candidate_path = Path(candidate.path)
+    original = candidate_path.read_bytes()
+    with open(candidate_path, "ab") as handle:
+        handle.write(b"drift")
+
+    with pytest.raises(RuntimeError, match="checkpoint digest drift"):
+        runner.adopt_current_candidate_as_actor()
+
+    candidate_path.write_bytes(original)
+    for operation in (
+        runner.next_batch_identity,
+        lambda: runner.run_iteration(_collector([]), _update),
+        lambda: runner.save_checkpoint(tmp_path / "adopted-drift-after.pt"),
+    ):
+        with pytest.raises(SynchronousRunnerError, match="poisoned"):
+            operation()
 
 
 def test_keyboard_interrupt_after_partial_mutation_poisons_runner(tmp_path):

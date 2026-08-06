@@ -368,6 +368,44 @@ class SynchronousSelfPlayRunner:
             sequence=sequence,
         )
 
+    def adopt_current_candidate_as_actor(self) -> CheckpointRef:
+        """Explicitly rotate the frozen actor to the current candidate.
+
+        The operation names no mutable learner and accepts no caller-selected
+        artifact: it adopts only ``self.candidate_ref``, the immutable snapshot
+        already published by the preceding completed iteration.  It never
+        creates or copies a checkpoint implicitly.
+        """
+        # Check the currently frozen actor inside the fail-closed portion of
+        # adoption.  Once an actor has already been adopted it aliases the
+        # current candidate, so a corrupt shared artifact would otherwise fail
+        # in _assert_boundary() before this operation poisoned the runner.
+        # Work-in-flight remains an ordinary refusal: do not turn a caller's
+        # attempt to rotate during a transition into a permanently poisoned
+        # coordinator.
+        if self._in_transition:
+            self._assert_boundary()
+        try:
+            self.actor_ref.verify()
+        except BaseException:
+            self._poisoned = True
+            raise
+        self._assert_boundary()
+        # load_verified checks the candidate bytes on both sides of the load;
+        # comparing the loaded state with the live learner binds both sides of
+        # this completed boundary before actor_ref is the only field mutated.
+        try:
+            self._assert_candidate_matches_learner()
+        except BaseException:
+            # A current candidate that no longer verifies against its recorded
+            # bytes or live learner is a broken synchronous boundary, not a
+            # recoverable caller typo.  Only exact checkpoint restore may
+            # continue this runner.
+            self._poisoned = True
+            raise
+        self.actor_ref = self.candidate_ref
+        return self.actor_ref
+
     def next_batch_identity(self) -> ActorBatchIdentity:
         """Describe the only actor batch authorized for the next iteration."""
         self._assert_boundary()

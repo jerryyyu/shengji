@@ -383,6 +383,51 @@ def test_interrupted_resume_matches_batch_bytes_candidate_and_all_state(tmp_path
     assert restored.progress == uninterrupted.progress
 
 
+def test_adopted_actor_resume_matches_next_batch_candidate_and_all_state(
+        tmp_path):
+    actor_source = new_bundle(model_seed=101, learner_rng_seed=17)
+    actor_ref = publish_initial_actor(
+        actor_source.learner, tmp_path / "adopt-shared-actor")
+
+    live_bundle, _, live = _runner_case(
+        tmp_path, "adopt-live", model_seed=101, rng_seed=23,
+        actor_ref=actor_ref)
+    live_collector = _CaptureCollector(
+        DouZeroMicroCollector(live.contract_sha256))
+    first = live.run_iteration(live_collector, DouZeroMicroUpdate())
+    adopted_actor = live.adopt_current_candidate_as_actor()
+    checkpoint_ref = live.save_checkpoint(tmp_path / "adopt-after-one.pt")
+    expected_identity = live.next_batch_identity()
+    expected_receipt = live.run_iteration(
+        live_collector, DouZeroMicroUpdate())
+
+    restored_bundle = new_bundle(model_seed=999, learner_rng_seed=999)
+    restored = resume_runner(
+        checkpoint_ref,
+        bundle=restored_bundle,
+        actor_ref=adopted_actor,
+        candidate_ref=first.candidate_ref,
+        snapshot_dir=tmp_path / "adopt-restored-candidates",
+        root_seed=ROOT_SEED,
+    )
+    assert restored.next_batch_identity() == expected_identity
+    assert restored.actor_ref == restored.candidate_ref == adopted_actor
+    restored_collector = _CaptureCollector(
+        DouZeroMicroCollector(restored.contract_sha256))
+    restored_receipt = restored.run_iteration(
+        restored_collector, DouZeroMicroUpdate())
+
+    assert live_collector.wire_batches[1] == restored_collector.wire_batches[0]
+    assert live_collector.action_choices[1] == \
+        restored_collector.action_choices[0]
+    assert restored_receipt.batch == expected_receipt.batch
+    assert restored_receipt.candidate_ref.path != expected_receipt.candidate_ref.path
+    assert restored_receipt.candidate_ref.sha256 == \
+        expected_receipt.candidate_ref.sha256
+    assert bundle_digest(restored_bundle) == bundle_digest(live_bundle)
+    assert restored.progress == live.progress
+
+
 def test_collector_refuses_wrong_runner_contract_before_loading_actor(tmp_path):
     _, _, runner = _runner_case(tmp_path)
     identity = runner.next_batch_identity()

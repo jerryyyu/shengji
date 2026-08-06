@@ -252,7 +252,14 @@ class MCBot(SmartBot):
             },
         }
         if best != 0:
-            gap = means[best] - means[0]
+            # PAIRED gap, from the same worlds the SE is computed on.
+            # `means[best] - means[0]` mixes subsets: under adaptive allocation
+            # a pruned-then-revived candidate covers fewer worlds than the
+            # never-pruned candidate 0, so that difference is biased while its
+            # SE uses only the overlap — comparing two different quantities
+            # (Codex). `d_sum[best]/n_by[best]` is the mean of per-world
+            # differences on worlds where BOTH were evaluated.
+            gap = (d_sum[best] / n_by[best]) if n_by[best] else 0.0
             if self.CONFIDENCE_OVERRIDE:
                 # Require the paired LOWER CONFIDENCE BOUND to clear the
                 # margin, not the point estimate. This is what the fixed

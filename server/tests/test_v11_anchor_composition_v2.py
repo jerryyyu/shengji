@@ -5,6 +5,7 @@ import inspect
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -136,7 +137,7 @@ def direct_aggregate(*, compatible: bool = False,
         "fast_engine": True,
         "require_voids": True,
         "experimental_sampler_flags": [],
-        "encoder_contract": DIRECT.EXPECTED_ENCODER_CONTRACT,
+        "encoder_contract": COMP.FROZEN_DIRECT_ENCODER_CONTRACT,
         "digests": {**DIRECT_SOURCES, "fast_binary": "f" * 64},
     }
     return {
@@ -145,7 +146,7 @@ def direct_aggregate(*, compatible: bool = False,
         "complete": True,
         "git_sha": COMP.DIRECT_GIT_SHA,
         "runtime_identity": runtime,
-        "encoder_contract": DIRECT.EXPECTED_ENCODER_CONTRACT,
+        "encoder_contract": COMP.FROZEN_DIRECT_ENCODER_CONTRACT,
         "invalidated_v1": DIRECT.INVALIDATED_V1,
         "clusters": DIRECT.TOTAL_CLUSTERS,
         "seed0": DIRECT.SEED0,
@@ -192,10 +193,16 @@ def test_v2_binds_exact_cde0fec_direct_protocol_and_preserves_estimand():
     assert DIRECT.SEED0 == 142_000_000
     assert DIRECT.SEED_HI == 142_002_047
     assert DIRECT.AGGREGATE_SCHEMA == "v11-current-revalidation-aggregate-v2"
-    assert DIRECT.EXPECTED_ENCODER_CONTRACT["source_sha256s"] == {
+    assert COMP.FROZEN_DIRECT_ENCODER_CONTRACT["source_sha256s"] == {
         "encode": DIRECT_SOURCES["encoder"],
         "memory": DIRECT_SOURCES["memory"],
     }
+    assert DIRECT.EXPECTED_ENCODER_CONTRACT == \
+        COMP.FROZEN_DIRECT_ENCODER_CONTRACT
+    assert set(COMP.EXPECTED_CURRENT_ENCODER_CONTRACT["source_sha256s"]) == {
+        "cards", "combos", "encode", "memory"}
+    assert COMP.EXPECTED_CURRENT_ENCODER_CONTRACT != \
+        COMP.FROZEN_DIRECT_ENCODER_CONTRACT
 
     assert COMP.PROTOCOLS == V1.PROTOCOLS
     assert COMP.CHAMPION_LANES == V1.CHAMPION_LANES
@@ -209,6 +216,29 @@ def test_v2_binds_exact_cde0fec_direct_protocol_and_preserves_estimand():
     for champion in COMP.CHAMPION_LANES:
         assert COMP.labels_for(champion) == V1.labels_for(champion)
         assert COMP.protocol_problems(champion) == []
+
+
+@pytest.mark.parametrize("dependency", ["cards", "combos"])
+def test_current_composition_refuses_transitive_encoder_drift(
+        monkeypatch, dependency):
+    changed = json.loads(json.dumps(COMP.EXPECTED_CURRENT_ENCODER_CONTRACT))
+    changed["source_sha256s"][dependency] = "0" * 64
+    monkeypatch.setattr(COMP, "current_encoder_contract", lambda: changed)
+    assert "current transitive encoder contract drifted" in \
+        COMP.protocol_problems("mc-strong")
+
+
+def test_current_composition_runtime_receipt_includes_transitive_identity():
+    fake_fast = SimpleNamespace(
+        __file__=COMP.SERVER / "shengji" / "engine" / "fast.py",
+        _fast=SimpleNamespace(
+            __file__=COMP.SERVER / "shengji" / "engine" / "combos.py"),
+    )
+    runtime = COMP.runtime_identity(fake_fast)
+    assert runtime["encoder_contract"] == \
+        COMP.EXPECTED_CURRENT_ENCODER_CONTRACT
+    assert runtime["digests"]["encoder_identity"] == COMP.sha256(
+        COMP.SERVER / "shengji" / "rl" / "encoder_identity.py")
 
 
 def test_random_control_uses_the_exact_same_v11_trigger_population(

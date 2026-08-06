@@ -36,6 +36,8 @@ import s0_closeout as S0_CLOSEOUT  # noqa: E402
 import v11_revalidate_v2 as DIRECT  # noqa: E402
 from shengji.ai.registry import make_bot  # noqa: E402
 from shengji.evaluation import arm_ballots, paired_by_seed, run_arm  # noqa: E402
+from shengji.rl.encoder_identity import (                         # noqa: E402
+    encoder_contract as current_encoder_contract)
 from shengji.rl.torch_policy import V11_INFLUENCE_FIELDS  # noqa: E402
 
 
@@ -73,6 +75,44 @@ DIRECT_SOURCE_SHA256 = {
     "parity_fixture": "10af64758fd0a4afb2d647a2a648ca6109195ca47480403a52ba8b5903203a97",
     "fast_router": "f2506d5c51b8ad37303f04dce59899de0d7c1179633b08ce61f48eb86cec1a3e",
     "checkpoint": CHECKPOINT_SHA256,
+}
+# The sealed cde0fec parent predates the transitive cards/combos durability
+# repair.  Preserve what those immutable bytes actually claimed; its exact git
+# and complete runtime/source digest set remain the admission boundary.  Main's
+# future protected-composition runtime separately records and enforces the
+# expanded current contract below.
+FROZEN_DIRECT_ENCODER_CONTRACT = {
+    "schema": "rl-observation-v1-public-no-private-kitty",
+    "layout_version": 1,
+    "implementation_sha256": (
+        "a55cba182152fa51f2d304fb1b9adb02b6e23f4073f7bad37fe2d6ca1ab31afa"
+    ),
+    "source_sha256s": {
+        "encode": DIRECT_SOURCE_SHA256["encoder"],
+        "memory": DIRECT_SOURCE_SHA256["memory"],
+    },
+}
+EXPECTED_CURRENT_ENCODER_CONTRACT = {
+    "identity_schema": "rl-encoder-transitive-source-contract-v1",
+    "schema": "rl-observation-v1-public-no-private-kitty",
+    "layout_version": 1,
+    "implementation_sha256": (
+        "56b8f92435b22a57712a4e59b1d3d9fc6639fd613ec2a54da5ec730e171d1d25"
+    ),
+    "source_sha256s": {
+        "cards": (
+            "42452b157818da1792f4490c3a50c10060eda1a02bb6b2c91544a62fbc0d000a"
+        ),
+        "combos": (
+            "2b0b0acceb0786b4ce781475c0f3e3d656ebe349fdf00bfffd668d6847885486"
+        ),
+        "encode": (
+            "819fe2b2fc3cb9f0dd18cfd1c916b2387e92d97345f6dda212b2f149c7e7408b"
+        ),
+        "memory": (
+            "905873b332fd54471070b25ce24f100b813c9a9f234c1b50254d00895140cf51"
+        ),
+    },
 }
 SAMPLER_FLAGS = (
     "SHENGJI_WEIGHTED_SPLITS",
@@ -208,6 +248,7 @@ def runtime_identity(fast) -> dict:
         "fast_engine": True,
         "require_voids": True,
         "experimental_sampler_flags": [],
+        "encoder_contract": current_encoder_contract(),
         "digests": {
             "runner": sha256(__file__),
             "evaluation": sha256(SERVER / "shengji" / "evaluation.py"),
@@ -217,6 +258,8 @@ def runtime_identity(fast) -> dict:
             "torch_policy": sha256(
                 SERVER / "shengji" / "rl" / "torch_policy.py"),
             "encoder": sha256(SERVER / "shengji" / "rl" / "encode.py"),
+            "encoder_identity": sha256(
+                SERVER / "shengji" / "rl" / "encoder_identity.py"),
             "npnet": sha256(SERVER / "shengji" / "rl" / "npnet.py"),
             "s0_closeout": sha256(SERVER / "scripts" / "s0_closeout.py"),
             "v11_direct_runner": sha256(
@@ -299,6 +342,8 @@ def protocol_problems(champion: str) -> list[str]:
     }
     if SHARD_COUNT != 8 or PROTOCOLS != exact_protocols:
         problems.append("registered phase geometry/seed blocks drifted")
+    if current_encoder_contract() != EXPECTED_CURRENT_ENCODER_CONTRACT:
+        problems.append("current transitive encoder contract drifted")
     exact_lanes = {
         "mc-strong": {
             "anchor": "mc-v11anchor", "random": "mc-v11anchor-random",
@@ -495,7 +540,7 @@ def direct_aggregate_problems(payload: dict) -> list[str]:
             or payload.get("labels") != DIRECT.LABELS
             or payload.get("selection_rule") != DIRECT.SELECTION_RULE):
         problems.append("direct aggregate corrected-v2 protocol identity")
-    if (payload.get("encoder_contract") != DIRECT.EXPECTED_ENCODER_CONTRACT
+    if (payload.get("encoder_contract") != FROZEN_DIRECT_ENCODER_CONTRACT
             or payload.get("invalidated_v1") != DIRECT.INVALIDATED_V1):
         problems.append("direct aggregate corrected encoder/v1 refusal identity")
     if payload.get("checkpoint_sha256") != CHECKPOINT_SHA256:
@@ -509,7 +554,7 @@ def direct_aggregate_problems(payload: dict) -> list[str]:
             or runtime.get("require_voids") is not True
             or runtime.get("experimental_sampler_flags") != []
             or runtime.get("encoder_contract") !=
-            DIRECT.EXPECTED_ENCODER_CONTRACT
+            FROZEN_DIRECT_ENCODER_CONTRACT
             or not isinstance(runtime.get("host"), str)
             or not runtime.get("host")
             or not isinstance(runtime.get("python"), str)
@@ -744,7 +789,7 @@ def load_screen_parent(path: os.PathLike | str, expected_sha256: str,
             or direct_parent.get("matched_null_sanity_required") is not True
             or direct_parent.get("exact_accepted_dose_required") is not True
             or direct_parent.get("encoder_contract") !=
-            DIRECT.EXPECTED_ENCODER_CONTRACT
+            FROZEN_DIRECT_ENCODER_CONTRACT
             or direct_parent.get("invalidated_v1") != DIRECT.INVALIDATED_V1
             or direct_parent.get("protected_composition_authorized") is not False
             or not _is_sha256(direct_parent.get("accepted_dose_sha256"))

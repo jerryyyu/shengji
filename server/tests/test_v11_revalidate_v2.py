@@ -90,6 +90,15 @@ def test_encoder_contract_is_literal_transitive_and_drift_refuses(monkeypatch):
     assert "restored encoder-v1 contract drifted" in V2.protocol_problems()
 
 
+def test_live_v2_runner_and_encoder_parent_bytes_remain_immutable():
+    """Main hardening must not retroactively rewrite the cde0fec protocol."""
+    assert V2.sha256(V2.__file__) == \
+        "9bc265ad3be7e7de40bd70b8c8446c4d2d163918d342ffd56f50173d22d23da2"
+    encoder = V2.SERVER / "shengji" / "rl" / "encode.py"
+    assert V2.sha256(encoder) == \
+        "819fe2b2fc3cb9f0dd18cfd1c916b2387e92d97345f6dda212b2f149c7e7408b"
+
+
 def test_true_null_matches_current_except_registered_rng_shift():
     current = make_bot("mc-strong", seed=7)
     null = make_bot("mc-strong-null", seed=7)

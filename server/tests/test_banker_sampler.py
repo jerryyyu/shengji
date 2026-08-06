@@ -8,6 +8,7 @@ search at all while every duel still reported a plausible-looking number.
 """
 from __future__ import annotations
 
+import copy
 import random
 from collections import Counter
 
@@ -100,13 +101,47 @@ def test_encoder_kitty_contract_unchanged():
     Changing what encode_obs() sees while ENC_VERSION stays 1 would make
     existing shards and checkpoints silently mismatched (Codex).
     """
-    from shengji.rl.encode import ENC_VERSION, OBS_DIM, encode_obs
+    from shengji.rl.encode import (CARD_INDEX, ENCODER_IMPLEMENTATION_SHA256,
+                                   ENCODER_SOURCE_SHA256S, ENC_VERSION,
+                                   N_CARDS, OBS_DIM, OBS_SCHEMA, encode_obs)
 
     rnd = _round_in_play(5)
     b = rnd.banker
     assert ENC_VERSION == 1 and OBS_DIM == 531
+    assert OBS_SCHEMA == "rl-observation-v1-public-no-private-kitty"
+    assert len(ENCODER_IMPLEMENTATION_SHA256) == 64
+    assert set(ENCODER_SOURCE_SHA256S) == {"encode", "memory"}
     vec = encode_obs(rnd, b)
     assert len(vec) == OBS_DIM
-    # The banker's own burial must stay OUT of the v1 observation even though
-    # Memory now knows it: same deal, same vector, bit for bit.
-    assert encode_obs(_round_in_play(5), b) == vec
+
+    # Change only information encoder-v1 deliberately does not expose: swap a
+    # buried card with one hidden in an opponent's hand.  The previous test
+    # rebuilt the identical deal and therefore passed even after Memory's new
+    # own-kitty default silently changed the banker vector.
+    altered = copy.copy(rnd)
+    altered.hands = [list(hand) for hand in rnd.hands]
+    altered.buried = list(rnd.buried)
+    opponent = next(seat for seat in range(4) if seat != b)
+    swap = next(
+        (bury_i, hand_i)
+        for bury_i, buried in enumerate(altered.buried)
+        for hand_i, hidden in enumerate(altered.hands[opponent])
+        if buried != hidden
+    )
+    bury_i, hand_i = swap
+    altered.buried[bury_i], altered.hands[opponent][hand_i] = (
+        altered.hands[opponent][hand_i], altered.buried[bury_i])
+    assert altered.buried != rnd.buried
+    assert altered.hands[b] == rnd.hands[b]
+    assert encode_obs(altered, b) == vec
+
+    unseen_offset = 8 * N_CARDS
+    expected = [0.0] * N_CARDS
+    for card, count in Memory(rnd, b, own_kitty=False).unseen.items():
+        expected[CARD_INDEX[card]] = count * 0.5
+    assert vec[unseen_offset:unseen_offset + N_CARDS] == expected
+    # This is a real witness: the new bot-memory semantics do distinguish the
+    # two legal private burials, so relying on Memory's default would fail the
+    # encoder-v1 invariance above.
+    assert (Memory(rnd, b, own_kitty=True).unseen !=
+            Memory(altered, b, own_kitty=True).unseen)

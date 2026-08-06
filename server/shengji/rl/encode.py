@@ -7,7 +7,9 @@ checkpoints and datasets are only valid within one version.
 
 from __future__ import annotations
 
+import hashlib
 from collections import Counter
+from pathlib import Path
 
 from ..engine.cards import RANKS, SUITS, TRUMP, make_deck
 from ..engine.combos import decompose
@@ -15,6 +17,29 @@ from ..engine.round import Round
 from ..ai.memory import Memory
 
 ENC_VERSION = 1
+OBS_SCHEMA = "rl-observation-v1-public-no-private-kitty"
+
+
+def _source_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+# Version integers catch deliberate layout changes; source digests also bind
+# behavioural dependencies that can drift without changing vector length.  The
+# Aug-3 Memory default change demonstrated why both are necessary.
+ENCODER_SOURCE_SHA256S = {
+    "encode": _source_sha256(Path(__file__).resolve()),
+    "memory": _source_sha256(
+        Path(__file__).resolve().parents[1] / "ai" / "memory.py"),
+}
+ENCODER_IMPLEMENTATION_SHA256 = hashlib.sha256(
+    "|".join(f"{name}:{digest}" for name, digest in
+             sorted(ENCODER_SOURCE_SHA256S.items())).encode("ascii")
+).hexdigest()
 
 # Canonical card index: S2..SA, H2..HA, D2..DA, C2..CA, LJ, BJ  (54)
 CARD_INDEX: dict[str, int] = {}
@@ -40,7 +65,14 @@ def encode_obs(rnd: Round, seat: int) -> list[float]:
     """Fixed-size observation for the acting seat. Public info + own hand."""
     assert rnd.ordering is not None
     o = rnd.ordering
-    mem = Memory(rnd, seat)
+    # Encoder v1 predates the banker's private-kitty Memory feature.  Its
+    # checkpoints and stored shards therefore encode `unseen` without removing
+    # the burial, even for the banker.  Memory's default changed on 2026-08-03;
+    # relying on that default silently changed banker inputs while
+    # ENC_VERSION stayed 1.  Keep the historical v1 bytes explicit here.  A
+    # future encoder may expose the legal private kitty only behind a version
+    # bump and freshly generated data/checkpoints.
+    mem = Memory(rnd, seat, own_kitty=False)
 
     played_by = [[] for _ in range(4)]
     for t in rnd.history:

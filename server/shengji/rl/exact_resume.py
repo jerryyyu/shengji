@@ -836,6 +836,38 @@ def _load_torch_payload(path: str | os.PathLike) -> Any:
     return torch.load(path, weights_only=False)
 
 
+def exact_resume_boundary_identity(ref: CheckpointRef) -> dict[str, Any]:
+    """Reopen one checkpoint without restoring it and bind all mutable state."""
+    ref.verify()
+    payload = _load_torch_payload(ref.path)
+    ref.verify()
+    _validate_payload(payload)
+    assert isinstance(payload, Mapping)
+    actor_ref = _artifact_ref(payload["artifacts"]["actor"], "actor")
+    candidate_ref = _artifact_ref(
+        payload["artifacts"]["candidate"], "candidate")
+    actor_ref.verify()
+    candidate_ref.verify()
+    mutable = {
+        name: payload[name] for name in ("learner", "optimizer", "replay", "rng")}
+    component_sha256s = {
+        name: str(payload["component_sha256"][name]) for name in mutable}
+    if any(state_digest(mutable[name]) != component_sha256s[name]
+           for name in mutable):
+        raise ResumeContractError(
+            "resume mutable-state digest mismatch during inspection")
+    return {
+        "schema": EXACT_RESUME_SCHEMA,
+        "experiment": payload["experiment"],
+        "contract_sha256": payload["contract_sha256"],
+        "progress": dict(payload["progress"]),
+        "actor_ref": actor_ref.as_dict(),
+        "candidate_ref": candidate_ref.as_dict(),
+        "component_sha256s": component_sha256s,
+        "bundle_sha256": state_digest(mutable),
+    }
+
+
 def save_exact_resume(
         path: str | os.PathLike, *, learner: torch.nn.Module,
         optimizer: torch.optim.Optimizer, replay: ReplayRing,

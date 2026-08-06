@@ -727,3 +727,101 @@ and the separately versioned clipped RL target were not changed. Independent
 game/evaluator verification passes **25/25**; the implementation author also
 passed the broader game/invariant/evaluator selection **46/46**. This closes a
 measurement-correctness item, not a bot-strength result.
+
+---
+
+## Codex root — 2026-08-06 12:27 EDT — S3 feature-off cores accepted; runs remain gated
+
+Accepted the bounded implementation slice for both independent S3 mechanisms.
+Structured bury now builds a deterministic, deduplicated ballot from only the
+banker's visible pre-bury hand, public ordering and incumbent. Candidate zero
+is the literal incumbent; point-, trump-, pair- and void-oriented candidates
+share sampled worlds, a hard candidate-world cap and replay/work telemetry.
+Underfill is loud and falls back. The feature flag is off, and ordinary play
+ballot identity is unchanged.
+
+The exact-endgame core enumerates every distinct submitted action inside its
+<=4-card boundary, lets the real engine resolve failed throws, and performs
+partnership minimax over final attacker points. Its MC seam accepts only marked
+fully determinized rollout clones; a live room state, an over-cap position or
+node-budget exhaustion refuses. Five real four-card mechanics states completed
+in 0.26–0.69 seconds each with 9,008–23,596 nodes. The combined focused
+teacher/pilot/S3/evaluator selection passes **124/124**.
+
+Neither core is strength evidence. S3a must separate selection and reporting
+and include equal-work legacy-four/random controls before comparing a broad
+ballot; eight-world argmax is winner-biased. S3b must share a solver/cache
+across candidate roots for each common determinization before a run is
+practical. Both then need frozen challenge assets and fresh paired evidence
+against the terminal S0 champion. No policy was registered or deployed and no
+compute job was launched.
+
+---
+
+## Codex — 2026-08-06 12:52 EDT — teacher lineage cleared; exact-session integration HOLD
+
+The post-12:27 teacher changes close the capture-lineage blocker at the code
+contract level. Real capture/diagnose/freeze now require the exact packet, all
+eight disjoint shards and literal 120000000–120001023 coverage; parent,
+diagnostic and state-set bytes survive through label/gate artifacts; and
+pre-existing role-separated receipts distinguish Stage-A primary from rerun.
+The wrong-range, missing/repeated-shard and schema-only refusals are executable.
+No teacher evidence was launched; a real run still requires a clean frozen
+commit/worktree.
+
+S3b now shares one exact session across candidate roots in each common world,
+but its integration introduced a feature-off compatibility regression. Every
+`MCBot` search path unconditionally calls `_rollout(..., exact_session=...)`,
+while registered `MCValueLeaf._rollout` still has the old signature. The three
+registered `mc-vleaf-*` policies therefore raise `TypeError` on their first
+searched decision even with `EXACT_ENDGAME=False`. A direct signature check
+confirmed the mismatch; add a compatible keyword/forwarding seam and a
+falsifying override test before accepting this integration. Current S0b and
+direct-V11 workers do not use that override and are unaffected.
+
+Focused teacher/endgame checks pass **38/38**, pilot/V11 checks pass **30/30**,
+and `git diff --check` is clean. These are mechanics results only: there is no
+new strength or performance evidence, no engine/native or frontend delta, and
+no partial live effect was inspected.
+
+---
+
+## Codex root — 2026-08-06 12:59 EDT — S3 core and S1 entry gate terminal PASS
+
+The two 12:52 holds are closed in pushed commits. `b807ad1` gives every
+registered leaf override a compatible exact-session seam while leaving both S3
+flags off. A single `ExactWorldSession` is shared across candidate frontiers
+only within one accepted ordinary-play determinization; different sampled
+worlds and bury candidates never share it. Hidden-hand sizes, card conservation
+and banker/trump/kitty context fail closed. Independent review ran the full
+server suite (**428 passed, 25 skipped**), compiled-rules checks (**30 passed**),
+58 candidate-frontier parity comparisons on five real late states, and a
+shared-versus-fresh benchmark showing roughly 1.9–6.1x less work and 1.9–5.7x
+less time. S3b is now protocol-gated, not code/performance-blocked: freeze a
+cumulative 250k-node challenge, require zero refusals, and report exact nodes
+and hits. This remains an exact perfect-information oracle inside a sampled
+world, not exact imperfect-information Shengji.
+
+`23a9e0b` closes teacher-v1's pre-compute lineage gate. Exact packet/range,
+eight-shard coverage, canonical state partitions and parent hashes survive
+capture -> diagnostic -> state set -> label -> gate. Each real label population
+must first create an exclusive clean-tree receipt binding role, run id, nonce,
+exact state-set bytes and executable digests. Stage A directly rejects reused
+run ids, receipt SHA values or nonces before emitting PASS; Stage-B freeze
+reopens and rehashes all 16 Stage-A label artifacts and their receipts and
+reruns partition, record, determinism and runtime/source checks. Adversarial
+tests cover wrong range/hash, missing/repeated/swapped shards, copied metadata,
+mixed receipts, contradictory stage/mode, state/source drift and receipt-byte
+mutation. Independent review is **PASS** under the explicit accidental or
+malformed artifact threat model; this is not cryptographic attestation against
+a malicious repository owner. Py-compile plus the teacher/pilot acceptance
+selection passes **134 passed, 23 skipped**.
+
+No S1 or S3 evidence run was launched. At 12:54 Mini's eight S0b workers were
+still on the final random-allocation arm with eight partial manifests and no
+final. At 12:57 Air's eight V11 direct process trees and growing JSONL partials
+were present, also with no final. No partial effect was opened. S1's next action
+is the exact 8x128 capture/diagnostic packet when a whole machine frees; S3a's
+next code slice is its disjoint-report/equal-work runner, and S3b's is its
+frozen challenge/evidence protocol. Neither S3 duel reference may be chosen
+before terminal S0 names the champion.

@@ -21,7 +21,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-05 21:59 EDT
+## Current synthesis — 2026-08-06 13:02 EDT
 
 This section is the current decision layer. The lineage table below owns model
 history; **Data and evaluation contract** owns dataset/evaluation provenance;
@@ -38,14 +38,17 @@ day-by-day detail. A historical result below does not reopen a closed lane.
   `-0.002 +/- 0.119`, so uniform search width beyond N=30 has no confirmed
   increment. No learned policy, value leaf, learned search prior or ballot
   variant has a verified edge over the deployed champion.
-- **S0 confidence-aware search is the next bounded online lane.** Its mechanics,
+- **S0 confidence-aware search is the active bounded online lane.** Its mechanics,
   disjoint report folds, exact-work controls, replay records and fail-closed
   sharded runner are complete. The immutable 150-state DEV diagnostic selected
-  report dose R=300; it is calibration, not strength. S0a is the authorized
-  2,048-cluster decision-rule screen; only its registered survivor may enter
-  S0b allocation, then an independent 8,192-cluster survivor/current/null
-  confirmation. Its survivor-current and survivor-null paired 95% lower bounds
-  must both exceed zero while the null does not clear. No S0 strength result or
+  report dose R=300; it is calibration, not strength. Authoritative Mini S0a
+  then selected report-LCB over 2,048 fresh clusters (`+0.353 +/- 0.069`
+  versus current; direct `+0.293 +/- 0.066` versus equal-work uniform; null
+  `+0.008 +/- 0.070`). That is a positive mechanism screen, not promotion.
+  The exact parent-bound S0b allocation block is running; only its registered
+  survivor may enter the independent 8,192-cluster survivor/current/null S0c.
+  Survivor-current and survivor-null paired 95% lower bounds must both exceed
+  zero while the null does not clear. No terminal S0 strength result or
   deployment exists yet.
 - **The six-arm DEV-512 ballot screen is closed with `SELECT NONE`.** The
   primary `quota - random_fill` contrast was `+0.110 +/- 0.337`; at equal work
@@ -57,18 +60,28 @@ day-by-day detail. A historical result below does not reopen a closed lane.
 - **v11pair is the learned line's one confirmed online gain:** its direct
   SmartBot override won 57.7% (277-203, n=480, two disjoint blocks). The 51.1%
   result versus MC used factories that discarded seeds and remains a SCREEN.
-  Revalidate frozen v11 against current N=30 before testing the still-untried
-  protected-anchor composition; its within-state deltas are valid for ranking,
+  Its clean eight-shard direct-current revalidation is running on Air; no
+  partial effect is admissible. Revalidate frozen v11 against current N=30
+  before testing the still-untried protected-anchor composition; its within-
+  state deltas are valid for ranking,
   not as scalar leaf values.
-- **Two independent learning lanes remain open.** Teacher-v1 must pass its
-  64-state mechanics and 128-state gold-continuation gates before producing
-  2,048 clean counterfactual states. Faithful Suphx-style privileged-feature
+- **Two independent learning lanes remain open.** Teacher-v1's entry code gate
+  is closed at `23a9e0b`: the exact 1,024-deal packet, canonical shards and
+  independent producer receipts now fail closed through Stage-B authorization.
+  No teacher evidence asset exists yet. It must still pass its 64-state
+  mechanics and 128-state gold-continuation gates before producing 2,048 clean
+  counterfactual states. Faithful Suphx-style privileged-feature
   removal and DouZero-style role-conditioned direct-Q microbaselines have
   passed the shared attacker/defender-sign and immutable-actor boundary; exact
   learner/replay resume remains their launch blocker.
-- **Structured search remains independent.** Broader burial sourcing and an
-  information-set-legal sampled exact solver for the final roughly four tricks
-  attack different bottlenecks and must each duel the champion directly.
+- **Structured search remains independent and feature-off.** The broader bury
+  source is code-ready but needs disjoint reporting and equal-work controls.
+  The <=4-card sampled exact-endgame seam shares a context-safe solver session
+  across candidate roots inside each determinized world and passes independent
+  mechanics/parity review; it next needs a frozen cumulative-node challenge,
+  zero refusals and explicit work reporting. It is a perfect-information oracle
+  inside sampled worlds, not an exact imperfect-information solver. Each
+  mechanism must later duel the terminal champion directly.
 - **Sampler hard-validity/support P0 is closed at clean `aea3774`.** The v3
   certificate covers exactly 500 original + 500 late + 500 deep states,
   accepts 36,000/36,000 worlds with zero rejected/invalid/named skips, and
@@ -328,10 +341,16 @@ result.
    action spread plus held-out improvement earns fleet scale and opponent-pool
    iteration. AWAC may optimize the valid replay later; it cannot repair a bad
    target.
-5. **Attack two orthogonal game decisions.** Price 20–50 structured bury
-   candidates with common worlds—the old four-variant `MC_BURY` tie did not test
-   this—and build sampled exact/minimax solving for the final ~4 tricks. Screen
-   on targeted states, then duel the production champion directly.
+5. **Attack two orthogonal game decisions.** The feature-off structured-bury
+   core now prices a deterministic capped banker-visible ballot on common
+   worlds; it still needs disjoint reporting and equal-work controls because a
+   noisy maximum over roughly 30 candidates is winner-biased. The feature-off
+   exact-endgame core now exhaustively solves <=4-card determinized worlds,
+   refuses hidden-state/budget boundary violations and shares one context-safe
+   solver/cache per common world. It next needs a frozen cumulative 250k-node
+   challenge, zero refusals and exact node/cache-hit reporting. Freeze targeted
+   challenges only after those gates, then duel the
+   terminal production champion directly. No S3 strength result exists.
 6. **Keep the closed sampler P0 out of the critical path.** The clean current
    original/late/deep certificate passed with zero accepted-path loss.
    Posterior research remains separately versioned; it must not consume the

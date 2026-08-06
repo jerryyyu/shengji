@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 12:13 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 13:02 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -20,17 +20,20 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   S0b-LCB launched 8/8 exact parent-bound Mini shards at 06:58 EDT. For S0,
   Air remains duplicate fallback only; never pool its records or launch an S0
   child from Air.
-  At 11:59 all eight shards had completed adaptive and uniform-report and were
-  running the third/final random-allocation arm; workers remained live and
-  record bytes advanced. Do not inspect partial effects.
+  At 12:59 all eight shards were still running the third/final random-
+  allocation arm, with eight active workers, eight partial manifests and no
+  final. Reporting tails were at 200–300/512 rounds where present and record
+  bytes continued advancing. Do not inspect partial effects.
 - Teacher-v1 mechanics/gold gates, the V11 protected-anchor lane
   and the role-conditioned RL microgates remain independent parallel strength
   work; none should be folded into S0 before each wins alone. The V11 direct-
   current prerequisite is now running as one clean immutable block on Air.
-  Teacher capture is **HOLD** until its exact packet id, eight-shard identity
-  and seeds 120000000–120001023 are bound through diagnostic/state/gate
-  artifacts. Teacher evidence has not started; the V11 block is live but has
-  not completed or authorized its follow-on experiment.
+  Teacher-v1's entry code gate is **CLOSED / CAPTURE NEXT** at pushed commit
+  `23a9e0b`: exact packet/range/shards, canonical state partitions, pre-label
+  producer receipts and upstream artifact reopening passed independent review.
+  Teacher evidence has not started, and both compute machines are currently
+  occupied by sealed registered work. The V11 block is live but has not
+  completed or authorized its follow-on experiment.
 - The frontend ship gate is **COMPLETE / PASS**. The real multi-socket server
   suite passes 33/33 and browser connection/intent tests pass 14/14, including
   the newly exercised >50-message history rollover. Lint reports only the
@@ -263,30 +266,32 @@ authorize that external mutation.
    contiguous seeds 121,000,000–121,002,047 and agree on host/Python,
    compiled+strict flags, policy/ballot/digest contracts and checkpoint SHA
    `cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003`.
-   Eight workers are live at roughly one core each. Do not inspect partial
-   effects. Aggregate only after 8/8 final manifests. This result can authorize
+   At 13:02 all eight process trees and growing JSONL partials were present,
+   with eight partial manifests and no final. Do not inspect partial effects.
+   Aggregate only after 8/8 final manifests. This result can authorize
    only the protected-anchor experiment.
 2. **V11 protected-anchor strength (waits for two parents):** require both the
    clean direct-compatibility PASS and S0's terminal champion. Only then freeze
    disjoint seeds/reference and compare equal-work `mc-v11anchor`, its same-
    trigger random control, champion and true null. Never use the pairwise head
    as a scalar leaf.
-3. **S1 teacher/model — CAPTURE HOLD:** capture/diagnose/freeze and Stage-A/B
-   producer/gates exist at `server/scripts/teacher_v1_*.py`, but no evidence
-   run is authorized. Diagnostic output currently drops the capture packet's
-   `seed0`, `max_deals` and shard coverage, so freeze cannot prove the exact
-   eight-shard 120M population. Bind packet id plus exact range/shards through
-   diagnostic, state-set and gate artifacts, and falsify wrong ranges plus
-   missing/repeated shards before capture. Then execute
-   Stage A (64 mechanics plus deterministic rerun), then disjoint Stage B (128
-   production-N30 gold continuation). Stage-B freezing now requires both a
-   complete/digest-valid exact Stage-A exclusion set and the PASS gate bound to
-   that set; schema-only exclusion cannot advance. Only a Stage-B regret upper bound <=0.10
-   signed levels authorizes implementing/launching its 2,048-state wave.
-   The first packet is now predeclared in `TEACHER_V1_SPEC.md`: exact seeds
-   120000000–120001023, eight capture/diagnostic shards, eight Stage-A primary
-   plus rerun shards, then eight exact-parent Stage-B cheap/gold shards. Do not
-   append capture after diagnostics or labels are inspected.
+3. **S1 teacher/model — entry code gate CLOSED / capture next:** pushed commit
+   `23a9e0b` carries packet id, exact 120000000–120001023 range, eight-shard
+   coverage and parent hashes through capture, diagnostic, frozen state,
+   label and gate artifacts. Labels are the independently reconstructed
+   `sorted(state_id)[shard::8]` partition of the exact state-set bytes. Before
+   each label population, create one exclusive producer receipt: primary and
+   rerun have different roles, run ids, SHA values and nonces; every shard in
+   one population binds the same receipt. Real gates reopen receipts and exact
+   state/label bytes, repeat source/runtime checks, and fail stale, smoke,
+   copied, swapped, missing or repeated artifacts. Independent review is PASS;
+   py-compile plus teacher/pilot acceptance reports **134 passed, 23 skipped**.
+   This is code evidence only. When a whole machine is free, execute the
+   exact 8x128 capture and diagnosis packet from `TEACHER_V1_SPEC.md`, then
+   freeze Stage A before inspecting label outcomes. Stage A is 64 states plus
+   an independently receipted deterministic rerun; only PASS authorizes the
+   disjoint 128-state Stage B. Only Stage-B gold regret U95 <=0.10 authorizes
+   implementing Stage C. Never append capture or mix executable identities.
 4. **S2 self-play RL:** role-sign antisymmetry and immutable actor/candidate
    boundaries are code-ready and tested. The audit also fixed promotion of
    different learner bytes than the candidate actually gated. A bounded
@@ -295,12 +300,35 @@ authorize that external mutation.
    resume remains open; do not run faithful Suphx-style feature-removal or
    DouZero-style role-Q microbaselines until interrupted/resumed output matches
    uninterrupted output.
-5. **S3a structured bury search:** independently screen broad legal bury
-   sourcing with common worlds and exact matched work, then require a fresh
-   paired full-round duel against the terminal champion.
-6. **S3b sampled exact endgame:** independently solve each sampled world for
-   the final ~4 tricks without hidden-information leakage, pass a bounded
-   challenge set and then require a fresh paired full-game gate.
+5. **S3a structured bury search — feature-off core ready:** the pure source sees
+   only the banker's 33-card hand, public ordering and incumbent; it emits a
+   deterministic, deduplicated, capped point/trump/pair/void ballot with the
+   incumbent at index zero. The scorer uses common sampled worlds, an explicit
+   candidate-world cap, replayable RNG/work telemetry and loud incumbent
+   fallback on underfill. Production and the ordinary lead/follow ballot are
+   unchanged while flags are off. The focused S3 selection passes 33/33 and
+   the independent full server review passes 428 tests with 25 optional skips.
+   Do not treat an eight-world maximum over about 30 candidates as evidence.
+   Next add a
+   dedicated runner with a disjoint report fold plus equal-work legacy-four and
+   random controls; its duel reference waits for the terminal S0 champion.
+6. **S3b sampled exact endgame — feature-off core and MC seam ready:** all
+   distinct submitted legal actions are enumerated inside the <=4-card bound,
+   including attempted throws; the engine resolves failures and partnership
+   minimax optimizes final attacker points. MC may call it only on a marked
+   fully determinized rollout clone. Live-room calls, over-cap states and node-
+   budget exhaustion refuse rather than silently mix exact and heuristic work.
+   One `ExactWorldSession` now spans all candidate frontiers in one sampled
+   ordinary-play world, never different sampled worlds or bury candidates; its
+   key binds banker/trump/kitty context and invalid hidden-hand sizes or card
+   conservation refuse. Independent parity checks matched 58 candidate
+   frontiers across five real four-card states, and sharing reduced measured
+   repeated work/time by roughly 1.9–6.1x / 1.9–5.7x. Next freeze a challenge
+   policy with a cumulative 250k-node cap, require zero refusals, and report
+   exact nodes/cache hits in addition to candidate-world rollouts. State the
+   claim precisely: this is an exact perfect-information oracle inside each
+   sampled world, not exact imperfect-information Shengji. No S3 strength
+   evidence exists.
 
 ## Return packet for Claude
 

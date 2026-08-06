@@ -21,7 +21,7 @@ evidence changes a synthesized conclusion. Append run reports below the fold,
 and when a run changes a conclusion, EDIT the synthesis rather than letting the
 newest entry sit on top and speak for the file.
 
-## Current synthesis — 2026-08-05 19:50
+## Current synthesis — 2026-08-06 13:02
 
 - **More search width is not the next lever.** N=5->N=10 was large,
   N=10->N=30 was +0.262 +/- 0.154 confirmed, and N=30->N=60 was
@@ -58,7 +58,7 @@ newest entry sit on top and speak for the file.
   anchor comparison only after S0 names the terminal champion. Only an
   independent win may combine it with adaptive allocation. `RL_PLAN.md` owns
   the exact sequence.
-- **Main strength hypothesis — TESTED AND NOT SUPPORTED (2026-08-05).** The
+- **Registered DEV-512 lead-ballot designs — SELECT NONE (2026-08-05).** The
   hypothesis was that improving lead-ballot SELECTION, then letting MC evaluate,
   would buy strength. The DEV-512 screen ran all six registered arms on 512
   frozen lead states and **selected no design**: primary `quota - random_fill`
@@ -191,15 +191,20 @@ newest entry sit on top and speak for the file.
   enough (5.8/6.3 points) to clear the fixed five-point override margin. The
   immediate mechanism is paired uncertainty/confidence-aware allocation and a
   candidate-0 fallback—not another ballot rule.
-- **S0 is implemented but has no strength result yet.** Incumbent point-margin
+- **S0a produced a positive mechanism screen; S0 has no terminal promotion
+  result yet.** Incumbent point-margin
   5 and report minimum-gain 0 are separate semantics. Registered report arms
   nominate on N=30 selection worlds, then score the fixed pair on 300 fresh
   named worlds; a short fold refuses. Deterministic/random adaptive and uniform
   high-work controls consume exact matched `30K+600` candidate rollouts. Live
   records now bind policy/git/code/ballot, restore JSON RNG state exactly, name
   raw and final choices, and reconcile per-decision work/counters. The
-  per-decision Student-t LCB is a conservative decision heuristic; only fresh
-  paired full games establish strength.
+  per-decision Student-t LCB is a conservative decision heuristic. Authoritative
+  Mini S0a selected `mc-s0-report-lcb` over 2,048 clusters: `+0.353 +/- 0.069`
+  versus current and direct `+0.293 +/- 0.066` versus equal-work uniform, with
+  a flat null. That proves the registered report rule worth confirming, not a
+  deployable bot. Its separate allocation block is running; only the untouched
+  8,192-cluster S0c comparison may establish strength.
 - **The reproducible override diagnostic is smaller than the first prose
   estimate.** In the immutable first-150-DEV / first-20-override asset, 12/20
   N=300 gaps are positive, mean signed gap is `+0.570`, and median absolute gap
@@ -218,6 +223,25 @@ newest entry sit on top and speak for the file.
   self-play after target-sign and immutable-actor tests. More old-contract rows
   are not progress: they only imitate old-ballot `Q^Heuristic` more precisely.
   `BACKLOG.md` owns the staged gates and fleet queue.
+- **S3 search cores are implemented but remain feature-off and unmeasured.**
+  Structured bury now sources up to 32 deterministic banker-visible
+  point/trump/pair/void candidates and evaluates them on common worlds with a
+  hard work cap. The exact-endgame seam exhaustively solves <=4-card
+  determinized continuations by partnership minimax and refuses unmarked live
+  states or budget exhaustion. Neither changes a registered production policy.
+  S3a still needs disjoint reporting/equal-work controls. S3b now shares one
+  context-safe exact session across candidate frontiers inside each common
+  determinization and passed independent full-suite/parity review; it needs a
+  frozen cumulative-node challenge with zero refusals and explicit node/hit
+  accounting. Neither receives a paired duel against a reference chosen before
+  terminal S0 names the champion.
+- **Teacher-v1 entry integrity is code-closed, not evidence-complete.** Pushed
+  commit `23a9e0b` binds the exact 1,024-deal/8-shard 120M packet through every
+  artifact and requires independent pre-label producer receipts for Stage-A
+  primary/rerun populations. Independent review found no malformed/stale/copied
+  artifact advancement path under the stated threat model. No teacher state has
+  yet been captured or labelled, so this changes confidence in the experiment,
+  not bot strength or the training-data inventory.
 
 ## Policy status details
 

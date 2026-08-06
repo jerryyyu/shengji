@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-06 12:13 EDT.
+Last re-derived: 2026-08-06 13:02 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -34,18 +34,22 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   `0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49`.
   This is a mechanism-screen survivor, not a deployment result. Its exact
   parent-bound `s0b-lcb` block launched 8/8 Mini shards at 06:58 EDT. Air's
-  duplicate records may never be pooled. By 11:59 all eight shards had
-  completed adaptive and uniform-report and entered the third/final random-
-  allocation arm together; all workers remained live and record bytes were
-  advancing, but no partial effects are admissible.
+  duplicate records may never be pooled. At 12:59 all eight shards remained on
+  the third/final random-allocation arm, with eight active workers, eight
+  partial manifests and no final; reporting tails were at 200–300/512 rounds
+  where present and record bytes continued advancing. No partial effects are
+  admissible.
 - The separate V11 direct-current compatibility block is **RUNNING ON AIR**:
   eight clean compiled+strict 256-cluster shards at `e66b90b`, exact seeds
-  121,000,000–121,002,047 and the SHA-pinned `ep07.npz`. This block can only
-  authorize the later protected-anchor experiment; it cannot promote a policy.
+  121,000,000–121,002,047 and the SHA-pinned `ep07.npz`. At 13:02 all eight
+  process trees and growing JSONL partials remained present, with eight partial
+  manifests and no final. This block can only authorize the later protected-
+  anchor experiment; it cannot promote a policy.
 - The roadmap has three parallel strength lanes: S0 search, clean teacher/model
   iteration, and faithful role-conditioned self-play. They do not share
-  evidence, and each must respect its own launch hold. Teacher capture is
-  currently held on exact packet-coverage binding; S2 remains held on resume.
+  evidence, and each must respect its own launch gate. Teacher entry code is
+  now closed and capture is next when a whole machine is free; S2 remains held
+  on exact resume.
 
 ## NOW — ordered by value
 
@@ -57,10 +61,10 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 | **S0d terminal packet + cleanup** | Turn the terminal S0 result into one auditable decision | Independently regenerate and byte-compare the return packet, verify every artifact/hash/counter/seed/runtime field, refuse unexpected S0 workers, then remove only the packet-proved services. Apply a production policy change only on PROMOTE; SELECT NONE leaves `mc-strong` unchanged. A Fly restart remains a separately authorized quiet-room action. |
 | **V11 direct compatibility — RUNNING ON AIR, SEPARATE FROM S0** | Establish whether frozen v11pair still improves on today's N=30 contract | Eight live 256-cluster shards at clean `e66b90b` cover exact seeds 121,000,000–121,002,047. All manifests agree on compiled+strict runtime, checkpoint SHA `cd89d6ed…c003`, ballots, labels and policy contracts. Authorize the next row only if V11-current and V11-null paired 95% lower bounds are both >0 while the true-null interval contains zero. Never promote from this block. |
 | **V11 protected-anchor strength — CODE READY / WAITS FOR TWO PARENTS** | Put the learned proposal inside production MC without letting it bypass MC's safety contract | Requires both a passing direct-compatibility aggregate and S0's terminal champion. Then freeze one disjoint seed block and compare equal-work `mc-v11anchor`, same-trigger-random, champion and true-null. The anchor must beat champion and null and beat the trigger-matched random control before any production consideration. Never use the pairwise head as a scalar leaf. |
-| **S1 teacher/model — CAPTURE HOLD** | Bind the predeclared packet before spending evidence compute | `teacher-v1-entry-120m-v1` names 1,024 fresh deals at seeds 120000000–120001023 in 8 shards, but the current diagnose/freeze artifacts do not yet prove that exact shard/range population. Carry packet id, shard identity and exact coverage through diagnostic, state-set and gate artifacts; add wrong-range, missing-shard and repeated-shard falsification tests. Only then run 64-state Stage A and disjoint 128-state Stage B. |
+| **S1 teacher/model — ENTRY CODE GATE CLOSED / CAPTURE NEXT** | Test whether a clean counterfactual teacher is worth scaling | Commit `23a9e0b` binds the exact `teacher-v1-entry-120m-v1` packet (1,024 deals, seeds 120000000–120001023, 8 shards) through capture, diagnostics, state sets, canonical label partitions and gates. Exclusive pre-label receipts bind role, run, nonce, exact state-set bytes and executable identity; Stage A reopens primary/rerun receipts and Stage-B freeze reopens all 16 Stage-A artifacts. Independent review is PASS; teacher/pilot acceptance is 134 passed, 23 skipped. No evidence exists. When a whole machine is free, run 8/8 capture then diagnose/freeze; Stage A is 64 states with an independent receipt-bound rerun, Stage B is 128 disjoint states and passes only if gold regret U95 <=0.10. |
 | **S2 self-play RL — CORRECTNESS BOUNDARY PARTIAL** | Run faithful role-conditioned synchronous microbaselines | Attacker/defender residual antisymmetry, separately named legacy reward, digest-bound immutable actors, exact-candidate promotion and named actor-batch seeds are implemented and tested. Exact learner/optimizer/replay resume remains open; no faithful Suphx/DouZero baseline or evidence run exists. Close resume, then run independent 20–30 minute microbaselines. |
-| **S3a structured bury search — CODE NEXT** | Improve the once-per-round decision that ordinary play search never touches | Enumerate a bounded broad ballot of point-preserving, void-forming and trump-preserving legal buries; score every candidate on common worlds with exact matched work. First pass replay/invariants and a fixed-state challenge, then require a fresh paired full-round duel against the terminal production champion. |
-| **S3b sampled exact endgame — DESIGN NEXT** | Replace heuristic continuation where only about four tricks remain | Within each information-set-legal determinization, solve the remaining perfect-information world exactly or with a proved bound, then aggregate across common worlds. Refuse hidden-information leakage and budget mismatch; pass an endgame challenge before a fresh paired full-game gate. This is separate evidence from S3a. |
+| **S3a structured bury search — CORE READY / EVIDENCE WAITS FOR S0** | Improve the once-per-round decision that ordinary play search never touches | Feature-off code deterministically sources up to 32 legal banker-visible point/trump/pair/void candidates, keeps the incumbent at index 0, scores all candidates on common worlds, caps exact candidate-world work and falls back loudly on underfill. It passes source, legality, replay, work and production-off tests. Before a run, add a dedicated artifact runner with a disjoint report fold and equal-work legacy-four/random control; selecting the noisy maximum of roughly 30 candidates on eight worlds is not evidence. Freeze the duel reference only after S0 names the terminal champion. |
+| **S3b sampled exact endgame — FEATURE-OFF CORE PASS / PROTOCOL NEXT** | Replace heuristic continuation where only about four cards per hand remain | Commit `b807ad1` exhaustively enumerates submitted legal actions, resolves failed throws through the engine and runs partnership minimax only inside marked determinized rollout worlds. One `ExactWorldSession` is shared across all candidate frontiers in one sampled world and nowhere else; hidden-hand sizes/conservation and context keys fail closed. Independent full-suite review passed 428 tests with 25 optional skips. Next freeze a challenge protocol with a cumulative 250k-node cap, require zero refusals, and report exact nodes/cache hits as well as rollouts before a fresh paired full-game gate. It is a sampled perfect-information oracle, not exact imperfect-information Shengji, and remains separate from S3a. |
 | **Frontend ship gate — COMPLETE / PASS** | Keep the multiplayer ownership state machine shippable | The real multi-socket server suite passes 33/33, including join, simultaneous claim, disconnect/bot cover, reconnect/takeover, stale/displaced sockets, repeated absence, token rotation and private-hand visibility. Browser connection/intent tests pass 14/14, including pre-state chat, >50-message rollover and invite-over-saved-room precedence; lint has only existing fast-refresh warnings and the production build passes. |
 | **Evaluator boundary — COMPLETE / PASS** | Keep arbitrary full-game cutoffs out of strength claims | `play_game` now raises typed `FullGameCutoff` for every unfinished max-round exhaustion, tied or unequal, while retaining the partial state only for diagnosis. Legacy mirrored `evaluate` propagates the refusal and returns no partial score. Completed-game results are unchanged; the one-round registered evaluator, uncapped engine progression and separately versioned `+3` RL target are untouched. |
 
@@ -259,13 +263,18 @@ staged strength work rather than one speculative monolith:
    clusters at clean `e66b90b`, seeds 121,000,000–121,002,047. Aggregate only
    after 8/8 final manifests; never pool it into S0.
 3. While both machines compute, keep local work bounded and non-competing.
-   Evaluator cutoff semantics and the frontend soak are now closed; integrate
-   and test S3a structured bury search next. S3b exact-endgame design follows
-   as a separate mechanism.
+   Evaluator/frontend gates and the feature-off S3a/S3b cores are closed. Next
+   build S3a's disjoint-report/equal-work runner and freeze S3b's bounded
+   challenge/evidence protocol; its common-world cache is already integrated.
+   Do not launch either strength block before S0 supplies the terminal champion
+   and each mechanism's reference is frozen.
 4. A direct-V11 pass does not launch anchor evidence immediately. Wait for
    S0's terminal champion, then freeze the protected-anchor reference, fresh
    seeds and promotion rule before spending that block.
-5. A Stage-A pass authorizes only the 128-state teacher gold gate. A Stage-B
+5. Teacher entry code is closed, but Mini and Air are currently full. When one
+   whole machine is free, run the exact 8x128 capture/diagnostic packet before
+   inspecting any selector outcome. A Stage-A pass authorizes only the
+   128-state teacher gold gate. A Stage-B
    pass authorizes implementing and sharding Stage C; it does not silently
    launch millions of labels.
 6. Training hardware receives three-seed scaling runs only after a valid frozen

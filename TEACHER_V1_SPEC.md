@@ -1,9 +1,10 @@
 # Teacher-v1 staged experiment spec
 
-Status: Stage-A/Stage-B entry-gate code ready and focused tests passing,
-2026-08-06; **no promotable teacher evidence has run**. The executable boundary
-is `server/shengji/teacher_v1.py` plus
-`server/scripts/teacher_v1_{states,label,gate}.py`. This is the operational
+Status: entry code gate **CLOSED / CAPTURE NEXT** at pushed commit `23a9e0b`,
+2026-08-06; independent review passed and the teacher/pilot acceptance selection
+reported 134 passed, 23 optional skips. **No promotable teacher evidence has
+run.** The executable boundary is `server/shengji/teacher_v1.py` plus
+`server/scripts/teacher_v1_{states,receipt,label,gate}.py`. This is the operational
 contract for a new counterfactual training/challenge asset. It is not an
 extension of DEV-512 and may not read or score CALIB-512 or REPORT.
 
@@ -25,14 +26,17 @@ Packet id: `teacher-v1-entry-120m-v1`.
 - Diagnose those exact eight capture artifacts in shard order. Stage A and
   Stage B use this same immutable diagnostic population; no extra capture may
   be appended after any selector diagnostic or label outcome is inspected.
-- Freeze 64 Stage-A states once, then label eight 8-state shards with exact
-  256/256 folds. Run the same eight shards a second time under new output names;
-  the Stage-A gate requires deterministic evidence equality excluding wall
-  time.
+- Freeze 64 Stage-A states once. Before labelling, create one exclusive
+  `stage-a-primary` producer receipt, then bind all eight 8-state 256/256 shards
+  to its exact bytes. Create a separate `stage-a-rerun` receipt with a distinct
+  run id, SHA and nonce before running the same eight partitions a second time.
+  The Stage-A gate requires deterministic evidence equality excluding wall
+  time and refuses reused receipt identity before it can emit PASS.
 - Only a Stage-A PASS bound to that exact state-set SHA authorizes freezing the
-  128 disjoint Stage-B states. Label eight 16-state cheap shards, then one exact
-  gold child for each cheap shard with 64/64 folds. Only the registered regret
-  gate may authorize Stage C.
+  128 disjoint Stage-B states. Create distinct `stage-b-cheap` and
+  `stage-b-gold` receipts; label eight 16-state cheap shards, then one exact gold
+  child for each cheap shard with 64/64 folds. Only the registered regret gate
+  may authorize Stage C.
 - No short shard, replacement seed, partial merge, world-count change or
   extension is admissible. A pre-label supply deficit closes this packet
   **INCONCLUSIVE**; predeclare a new larger fresh capture packet rather than
@@ -45,14 +49,20 @@ Packet id: `teacher-v1-entry-120m-v1`.
 The canonical artifact order is:
 
 1. `capture_shard00..07.json` -> `diagnostic_shard00..07.json`;
-2. `stage_a_states.json` -> `stage_a_primary_shard00..07.json` plus
+2. `stage_a_states.json` -> primary/rerun receipt JSON ->
+   `stage_a_primary_shard00..07.json` plus
    `stage_a_rerun_shard00..07.json` -> `stage_a_gate.json`; and
-3. `stage_b_states.json` -> `stage_b_cheap_shard00..07.json` -> exact-parent
+3. `stage_b_states.json` -> cheap/gold receipt JSON ->
+   `stage_b_cheap_shard00..07.json` -> exact-parent
    `stage_b_gold_shard00..07.json` -> `stage_b_gate.json`.
 
 Every consumer receives the literal SHA-256 of its input via
 `--expected-input-sha256`. Stage-B freeze additionally receives
 `--exclude-state-set stage_a_states.json --stage-a-gate stage_a_gate.json`.
+Every real label invocation also receives `--producer-receipt` and
+`--expected-producer-receipt-sha256`; every real gate receives `--state-set`
+and `--expected-state-set-sha256`. Receipt creation happens before expensive
+labelling and refuses to overwrite either a final or partial path.
 
 ## Immutable identity
 
@@ -69,6 +79,17 @@ Every consumer receives the literal SHA-256 of its input via
   inspected. Train/tune/holdout are deal-disjoint 70/15/15 hashes. Existing
   original, late and deep-lead DEV/CALIB/REPORT deal identities are all
   digest-pinned and excluded from all three.
+- Canonical label sharding is independently reconstructible:
+  `sorted(states, key=state_id)[shard_index::8]`. A label's claimed shard index
+  and local metadata are not trusted; the gate reopens the exact state-set bytes
+  and reconstructs all eight assignments.
+- A producer receipt binds clean commit/runtime, full executable digests, role,
+  run id, random nonce and exact state-set SHA before work. All shards in one
+  population share its exact bytes; Stage-A primary/rerun must differ in role,
+  run id, SHA and nonce. Gates reopen and rehash receipts and label artifacts.
+  This is a fail-closed orchestration boundary against accidental, stale,
+  malformed or copied artifacts—not cryptographic attestation against a
+  malicious repository owner.
 
 ## State population
 
@@ -118,9 +139,13 @@ worlds per state, exact tensor shapes, fold disjointness, deterministic rerun
 hashes, all counters zero and a measured runtime/work projection. Failure stops
 and repairs the producer. Passing authorizes Stage B, not the 2,048-state wave.
 The implemented gate requires two full executions whose evidence is identical
-after excluding wall time. Stage B cannot freeze from the Stage-A state list
-alone: it requires the complete/digest-valid 64-state asset and the exact
-Stage-A PASS artifact whose `state_input_sha256` binds that asset.
+after excluding wall time, plus distinct predeclared primary/rerun receipts.
+Stage B cannot freeze from the Stage-A state list alone: it requires the
+complete/digest-valid 64-state asset and the exact Stage-A PASS artifact whose
+`state_input_sha256` binds that asset. It reopens and rehashes all 16 Stage-A
+label artifacts and their receipts, reconstructs their canonical partitions,
+and reruns record, deterministic-rerun and runtime/source checks before
+authorizing a Stage-B state set.
 
 ## Stage B — continuation-quality gate
 

@@ -164,6 +164,17 @@ def test_v2_refuses_any_caller_chosen_parent_until_sealed_hash_is_frozen(
         COMP.load_direct_parent(path, COMP.sha256(path))
 
 
+@pytest.mark.parametrize("flag", COMP.SAMPLER_FLAGS)
+def test_v2_runtime_requires_experimental_keys_absent_even_when_empty(
+        monkeypatch, flag):
+    monkeypatch.setenv("SHENGJI_FAST", "1")
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    monkeypatch.setenv(flag, "")
+    with pytest.raises(COMP.ProtocolRefused, match="must be unset") as exc:
+        COMP.require_runtime()
+    assert flag in str(exc.value)
+
+
 @pytest.mark.parametrize("compatible", [False, True])
 def test_v2_parent_preserves_but_does_not_use_standalone_verdict(
         tmp_path, monkeypatch, compatible):

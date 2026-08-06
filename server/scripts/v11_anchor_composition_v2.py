@@ -228,7 +228,7 @@ def require_runtime() -> tuple[object, dict]:
             or os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1"):
         raise ProtocolRefused(
             "set SHENGJI_FAST=1 and SHENGJI_REQUIRE_VOIDS=1")
-    enabled = [name for name in SAMPLER_FLAGS if os.environ.get(name)]
+    enabled = [name for name in SAMPLER_FLAGS if name in os.environ]
     if enabled:
         raise ProtocolRefused(
             f"experimental sampler/ballot flags must be unset: {enabled}")

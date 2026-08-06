@@ -44,6 +44,10 @@ from ..engine.legal import IllegalPlay, suit_cards, uniform_suit, validate_follo
 from ..engine.round import Round, Trick, TrickPlay
 
 
+class DeterminizationContractError(RuntimeError):
+    """A sampled world is incomplete or inconsistent with the round cards."""
+
+
 def random_state_from_json(value):
     """Restore the tuple tree that ``json`` turns into lists.
 
@@ -175,6 +179,13 @@ class MCBot(SmartBot):
     #                          raw points. Scaled so MARGIN keeps meaning.
     MC_BURY = False          # search the banker's bury over sampled worlds
     N_BURY_WORLDS = 8
+    STRUCTURED_BURY = False  # S3a: bounded point/void/trump candidate source
+    BURY_MAX_CANDIDATES = 32
+    BURY_MAX_ROLLOUTS = 256  # hard candidate-world cap; once per round
+    BURY_REQUIRE_EXACT_WORK = True
+    EXACT_ENDGAME = False    # S3b: solve determinized continuation exactly
+    EXACT_ENDGAME_MAX_CARDS = 4
+    EXACT_ENDGAME_MAX_NODES = 250_000
     RISKY_THROWS = False     # put near-boss throws (A+QQ) on the ballot and
     #                          let determinization price them (user idea)
     TRUMP_BALLOT = False     # trump pair / top-trump lead candidates (钓主):
@@ -216,6 +227,18 @@ class MCBot(SmartBot):
         self.last_override_stats = None
         self.last_alloc = None
         self.last_decision_record = None
+        self.last_bury_record = None
+        self.bury_search_calls = 0
+        self.bury_rollouts = 0
+        self.bury_search_secs = 0.0
+        self.bury_short_searches = 0
+        self.exact_endgame_calls = 0
+        self.exact_endgame_attempts = 0
+        self.exact_endgame_refusals = 0
+        self.exact_endgame_budget_exceeded = 0
+        self.exact_endgame_sessions = 0
+        self.exact_endgame_nodes = 0
+        self.exact_endgame_cache_hits = 0
         self.reject_cause = Counter()
         # Decisions that fell back to candidate 0 with NO world sampled.
         self.zero_world_decisions = 0
@@ -292,10 +315,13 @@ class MCBot(SmartBot):
                     continue
                 n_worlds += 1
                 hands, buried = sampled
+                exact_session = self._new_exact_world_session(rnd, buried)
                 world_vals = []
                 for i, cand in enumerate(candidates):
                     val = self._score(
-                        self._rollout(rnd, seat, hands, buried, cand))
+                        self._rollout(
+                            rnd, seat, hands, buried, cand,
+                            exact_session=exact_session))
                     val = val if i_attack else -val
                     totals[i] += val
                     world_vals.append(val)
@@ -317,8 +343,11 @@ class MCBot(SmartBot):
                 if sampled is None:
                     continue
                 hands, buried = sampled
+                exact_session = self._new_exact_world_session(rnd, buried)
                 for cand in candidates[:residual]:
-                    self._score(self._rollout(rnd, seat, hands, buried, cand))
+                    self._score(self._rollout(
+                        rnd, seat, hands, buried, cand,
+                        exact_session=exact_session))
                     dummy_rollouts += 1
 
             selection_rollouts = n_worlds * K + dummy_rollouts
@@ -564,10 +593,13 @@ class MCBot(SmartBot):
                 if sampled is None:
                     continue
                 hands, buried = sampled
+                exact_session = self._new_exact_world_session(rnd, buried)
                 va = self._score(self._rollout(rnd, seat, hands, buried,
-                                               list(cand_a)))
+                                               list(cand_a),
+                                               exact_session=exact_session))
                 vb = self._score(self._rollout(rnd, seat, hands, buried,
-                                               list(cand_b)))
+                                               list(cand_b),
+                                               exact_session=exact_session))
                 if not i_attack:
                     va, vb = -va, -vb
                 delta = va - vb
@@ -638,11 +670,13 @@ class MCBot(SmartBot):
             if sampled is None:
                 continue
             hands, buried = sampled
+            exact_session = self._new_exact_world_session(rnd, buried)
             worlds += 1
             vals = {}
             for i in alive:
                 v = self._score(self._rollout(rnd, seat, hands, buried,
-                                              candidates[i]))
+                                              candidates[i],
+                                              exact_session=exact_session))
                 v = v if i_attack else -v
                 vals[i] = v
                 totals[i] += v
@@ -708,9 +742,11 @@ class MCBot(SmartBot):
             if sampled is None:
                 continue
             hands, buried = sampled
+            exact_session = self._new_exact_world_session(rnd, buried)
             for i in alive[:residual]:
                 self._score(self._rollout(rnd, seat, hands, buried,
-                                          candidates[i]))
+                                          candidates[i],
+                                          exact_session=exact_session))
                 dummy_rollouts += 1
             rollouts += dummy_rollouts
             residual = 0
@@ -759,20 +795,73 @@ class MCBot(SmartBot):
 
     # ------------------------------------------------------------------- bury
     def decide_bury(self, rnd: Round, seat: int) -> list[str]:
+        self.last_bury_record = None
         base = super().decide_bury(rnd, seat)
         if not self.MC_BURY:
             return base
-        cands: list[list[str]] = [base]
-        for variant in (_BuryLoose(), _BuryStrict(), _BuryNoVoid()):
-            c = variant.decide_bury(rnd, seat)
-            if not any(sorted(c) == sorted(x) for x in cands):
-                cands.append(c)
+        ballot_record = None
+        if self.STRUCTURED_BURY:
+            # Candidate zero must itself be permutation-stable. Production
+            # Smart bury is unchanged; only this experimental source
+            # canonicalises the hand before asking for its incumbent.
+            base = self._canonical_bury(rnd, seat)
+            ballot = self._structured_bury_ballot(rnd, seat, base)
+            cands = [list(candidate.cards) for candidate in ballot.candidates]
+            ballot_record = ballot.record()
+            if len(cands) > self.BURY_MAX_CANDIDATES:
+                raise AssertionError("structured bury source exceeded candidate cap")
+        else:
+            cands = [base]
+            for variant in (_BuryLoose(), _BuryStrict(), _BuryNoVoid()):
+                c = variant.decide_bury(rnd, seat)
+                if not any(sorted(c) == sorted(x) for x in cands):
+                    cands.append(c)
         if len(cands) == 1:
+            if self.STRUCTURED_BURY:
+                self.last_bury_record = {
+                    "schema": "structured-bury-search-v1",
+                    "ballot": ballot_record,
+                    "candidate_count": 1,
+                    "incumbent_index": 0,
+                    "raw_winner_index": 0,
+                    "played_index": 0,
+                    "reason": "only_incumbent",
+                    "common_worlds": True,
+                    "work": {"cap": self.BURY_MAX_ROLLOUTS,
+                             "worlds_requested": 0, "worlds_used": 0,
+                             "candidate_rollouts": 0, "complete": True},
+                }
             return base
+
+        if self.STRUCTURED_BURY:
+            if self.N_BURY_WORLDS <= 0:
+                raise ValueError("N_BURY_WORLDS must be positive")
+            if self.BURY_MAX_ROLLOUTS < len(cands):
+                raise ValueError(
+                    "BURY_MAX_ROLLOUTS must fund at least one common world "
+                    "for every structured candidate")
+            worlds_requested = min(
+                self.N_BURY_WORLDS,
+                self.BURY_MAX_ROLLOUTS // len(cands),
+            )
+            attempt_cap = (worlds_requested * self.SAMPLE_ATTEMPT_FACTOR
+                           if self.BURY_REQUIRE_EXACT_WORK else
+                           worlds_requested)
+        else:
+            worlds_requested = self.N_BURY_WORLDS
+            attempt_cap = worlds_requested
+
+        self.search_calls += 1
+        self.bury_search_calls += 1
+        started = time.perf_counter()
+        pre_rng_state = self.rng.getstate()
+        sampler_before = self._sampler_snapshot()
         mem = Memory(rnd, seat, own_kitty=getattr(self, 'BANKER_KITTY', True))
         totals = [0.0] * len(cands)
         n_worlds = 0
-        for _ in range(self.N_BURY_WORLDS):
+        attempts = 0
+        while n_worlds < worlds_requested and attempts < attempt_cap:
+            attempts += 1
             sampled = self._sample_hands(rnd, seat, mem)
             if sampled is None:
                 continue
@@ -782,12 +871,104 @@ class MCBot(SmartBot):
                 # banker's perspective: minimize the attackers' value
                 totals[i] -= self._score(
                     self._rollout_from_bury(rnd, seat, hands, cand))
-        if n_worlds == 0:
-            return base
-        best = max(range(len(cands)), key=lambda i: totals[i])
-        if best != 0 and (totals[best] - totals[0]) / n_worlds < self.MARGIN:
-            return base
-        return cands[best]
+        rollouts = n_worlds * len(cands)
+        if self.STRUCTURED_BURY and rollouts > self.BURY_MAX_ROLLOUTS:
+            raise AssertionError("structured bury scorer exceeded work cap")
+        elapsed = time.perf_counter() - started
+        self.rollouts += rollouts
+        self.bury_rollouts += rollouts
+        self.search_secs += elapsed
+        self.bury_search_secs += elapsed
+        complete = n_worlds == worlds_requested
+        means = ([value / n_worlds for value in totals]
+                 if n_worlds else [None] * len(cands))
+        raw_best = (max(range(len(cands)), key=lambda i: totals[i])
+                    if n_worlds else 0)
+        played_index = raw_best
+        reason = "bury_search_best"
+        gap = (means[raw_best] - means[0]) if n_worlds else None
+        if not complete:
+            self.short_search_decisions += 1
+            self.bury_short_searches += 1
+            if n_worlds == 0:
+                self.zero_world_decisions += 1
+            played_index = 0
+            reason = "bury_search_underfilled"
+        elif raw_best != 0 and gap < self.MARGIN:
+            played_index = 0
+            reason = "bury_below_fixed_margin"
+        elif raw_best == 0:
+            reason = "bury_incumbent_best"
+
+        candidates_record = []
+        source_candidates = (ballot_record["candidates"]
+                             if ballot_record is not None else
+                             [{"cards": list(candidate),
+                               "sources": ["legacy"]}
+                              for candidate in cands])
+        for i, candidate in enumerate(source_candidates):
+            candidates_record.append({
+                **candidate,
+                "index": i,
+                "mean_banker_value": means[i],
+                "worlds": n_worlds,
+            })
+        self.last_bury_record = {
+            "schema": ("structured-bury-search-v1" if self.STRUCTURED_BURY
+                       else "legacy-bury-search-v1"),
+            "policy": getattr(self, "policy_name", type(self).__name__),
+            "mode": "structured" if self.STRUCTURED_BURY else "legacy",
+            "rng_state": pre_rng_state,
+            "candidate_count": len(cands),
+            "incumbent_index": 0,
+            "candidates": candidates_record,
+            "ballot": ballot_record,
+            "common_worlds": True,
+            "n_by_candidate": [n_worlds] * len(cands),
+            "raw_winner_index": raw_best,
+            "played_index": played_index,
+            "played": list(cands[played_index]),
+            "reason": reason,
+            "margin": self.MARGIN,
+            "gap_vs_incumbent": gap,
+            "search_secs": elapsed,
+            "work": {
+                "cap": (self.BURY_MAX_ROLLOUTS if self.STRUCTURED_BURY else
+                        self.N_BURY_WORLDS * len(cands)),
+                "worlds_requested": worlds_requested,
+                "worlds_used": n_worlds,
+                "attempts": attempts,
+                "attempt_cap": attempt_cap,
+                "candidate_rollouts": rollouts,
+                "complete": complete,
+            },
+            "sampler_counters": {
+                "before": sampler_before,
+                "after": self._sampler_snapshot(),
+                "delta": self._sampler_delta(sampler_before),
+            },
+        }
+        return cands[played_index]
+
+    def _canonical_bury(self, rnd: Round, seat: int) -> list[str]:
+        saved = rnd.hands[seat]
+        rnd.hands[seat] = sorted(saved)
+        try:
+            return sorted(super().decide_bury(rnd, seat))
+        finally:
+            rnd.hands[seat] = saved
+
+    def _structured_bury_ballot(self, rnd: Round, seat: int, incumbent):
+        """Pure source boundary: own hand + public ordering, no hidden hands."""
+        from .bury import structured_bury_ballot
+
+        assert rnd.ordering is not None
+        if rnd.phase != "bury" or seat != rnd.banker:
+            raise ValueError("structured bury may run only for the banker in bury phase")
+        return structured_bury_ballot(
+            rnd.hands[seat], rnd.ordering, incumbent,
+            max_candidates=self.BURY_MAX_CANDIDATES,
+        )
 
     def _rollout_from_bury(self, rnd: Round, seat: int,
                            sampled: dict[int, list[str]],
@@ -799,20 +980,123 @@ class MCBot(SmartBot):
         # after nothing more than a hand permutation, and one changed value
         # was enough to flip MC's argmax.  Canonicalise at the rollout-policy
         # boundary so every continuation sees one representation of a world.
-        clone.hands = [sorted(sampled.get(s, rnd.hands[s])) for s in range(4)]
-        clone.hands[seat] = sorted(rnd.hands[seat])
+        clone.hands = self._complete_determinized_hands(
+            rnd, seat, sampled, buried=[])
         clone.buried = []
         clone.trick = None
         clone.last_trick = None
         clone.history = []
         clone.message = None
         clone.bury(seat, list(bury_cards))
+        clone._determinized_world = True
         policy = self.rollout_policy
         while clone.phase == "play":
+            # A bury candidate changes the terminal kitty context, so it may
+            # not share an exact cache with another bury candidate.
+            exact = self._exact_endgame_value(clone)
+            if exact is not None:
+                return exact
             s = clone.turn
             assert s is not None
             clone.play(s, policy.decide_play(clone, s))
         return float(clone.attacker_points)
+
+    def _complete_determinized_hands(self, rnd: Round, seat: int,
+                                     sampled: dict[int, list[str]], *,
+                                     buried: list[str]) -> list[list[str]]:
+        """Validate a sampled world without ever falling back to live hands."""
+        expected = {other for other in range(4) if other != seat}
+        if set(sampled) != expected:
+            raise DeterminizationContractError(
+                f"sampled hand keys {sorted(sampled)} != opponents "
+                f"{sorted(expected)}")
+        for other in expected:
+            if len(sampled[other]) != len(rnd.hands[other]):
+                raise DeterminizationContractError(
+                    f"sampled seat {other} has {len(sampled[other])} cards, "
+                    f"expected {len(rnd.hands[other])}")
+        hands = [sorted(rnd.hands[seat]) if current == seat
+                 else sorted(sampled[current]) for current in range(4)]
+        played = []
+        for trick in rnd.history:
+            for play in trick.plays:
+                played.extend(play.cards)
+        if rnd.trick is not None:
+            for play in rnd.trick.plays:
+                played.extend(play.cards)
+        observed = Counter(played)
+        observed.update(buried)
+        for hand in hands:
+            observed.update(hand)
+        deck = Counter(rnd.deck)
+        if observed != deck:
+            missing = deck - observed
+            extra = observed - deck
+            raise DeterminizationContractError(
+                "sampled world violates card conservation: "
+                f"missing={dict(sorted(missing.items()))}, "
+                f"extra={dict(sorted(extra.items()))}")
+        return hands
+
+    def _new_exact_world_session(self, rnd: Round, buried: list[str]):
+        """Create one cache for one accepted ordinary-play determinization."""
+        if not self.EXACT_ENDGAME:
+            return None
+        from .endgame import ExactWorldSession
+
+        context = copy.copy(rnd)
+        context.buried = sorted(buried)
+        session = ExactWorldSession(
+            context,
+            max_hand_cards=self.EXACT_ENDGAME_MAX_CARDS,
+            max_nodes=self.EXACT_ENDGAME_MAX_NODES,
+        )
+        self.exact_endgame_sessions += 1
+        return session
+
+    def _exact_endgame_value(self, clone: Round, session=None) -> float | None:
+        """Solve one determinized continuation inside the proved S3b bound.
+
+        This is called only on rollout clones whose four hands are known.  It
+        must never be called on the live room state: doing so would let a bot
+        inspect hidden hands.  A budget refusal propagates and invalidates an
+        experimental run instead of silently mixing exact and heuristic work.
+        """
+        if not self.EXACT_ENDGAME or clone.phase != "play":
+            return None
+        if not getattr(clone, "_determinized_world", False):
+            from .endgame import ExactEndgameRefusal
+            raise ExactEndgameRefusal(
+                "exact MC continuation requires a marked determinized world")
+        if max((len(hand) for hand in clone.hands), default=0) > \
+                self.EXACT_ENDGAME_MAX_CARDS:
+            return None
+        from .endgame import (ExactEndgameBudgetExceeded,
+                              ExactEndgameRefusal, ExactWorldSession)
+
+        if session is None:
+            session = ExactWorldSession(
+                clone,
+                max_hand_cards=self.EXACT_ENDGAME_MAX_CARDS,
+                max_nodes=self.EXACT_ENDGAME_MAX_NODES,
+            )
+            self.exact_endgame_sessions += 1
+        self.exact_endgame_attempts += 1
+        try:
+            result = session.solve(clone)
+        except ExactEndgameBudgetExceeded as exc:
+            self.exact_endgame_refusals += 1
+            self.exact_endgame_budget_exceeded += 1
+            self.exact_endgame_nodes += exc.nodes
+            self.exact_endgame_cache_hits += exc.cache_hits
+            raise
+        except ExactEndgameRefusal:
+            self.exact_endgame_refusals += 1
+            raise
+        self.exact_endgame_calls += 1
+        self.exact_endgame_nodes += result.nodes
+        self.exact_endgame_cache_hits += result.cache_hits
+        return float(result.attacker_points)
 
     # ------------------------------------------------------------- candidates
     def canonical_lead(self, rnd: Round, seat: int) -> list[str]:
@@ -1393,14 +1677,15 @@ class MCBot(SmartBot):
 
     # -------------------------------------------------------------- rollout
     def _rollout(self, rnd: Round, seat: int, sampled: dict[int, list[str]],
-                 buried: list[str], candidate: list[str]) -> float:
+                 buried: list[str], candidate: list[str], *,
+                 exact_session=None) -> float:
         clone: Round = copy.copy(rnd)
         # Sampled hands represent multisets, not sequences.  HeuristicBot's
         # continuation policy is intentionally simple and walks a list, so it
         # must receive a canonical representation or `_rollout` is a function
         # of sampler insertion order rather than of the game state.
-        clone.hands = [sorted(sampled.get(s, rnd.hands[s])) for s in range(4)]
-        clone.hands[seat] = sorted(rnd.hands[seat])
+        clone.hands = self._complete_determinized_hands(
+            rnd, seat, sampled, buried=buried)
         clone.buried = sorted(buried)
         assert rnd.trick is not None
         clone.trick = Trick(
@@ -1410,9 +1695,13 @@ class MCBot(SmartBot):
         clone.last_trick = rnd.last_trick
         clone.message = None
         clone._trusted_rollout = True  # skip follow re-validation (audit)
+        clone._determinized_world = True
         clone.play(seat, list(candidate))
         policy = self.rollout_policy
         while clone.phase == "play":
+            exact = self._exact_endgame_value(clone, exact_session)
+            if exact is not None:
+                return exact
             s = clone.turn
             assert s is not None
             clone.play(s, policy.decide_play(clone, s))

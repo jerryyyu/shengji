@@ -101,7 +101,21 @@ def counters(bots) -> dict:
             "short_searches": sum(getattr(b, "short_search_decisions", 0)
                                   for b in bots),
             "zero_world": sum(getattr(b, "zero_world_decisions", 0)
-                              for b in bots)}
+                              for b in bots),
+            "exact_endgames": sum(getattr(b, "exact_endgame_calls", 0)
+                                  for b in bots),
+            "exact_endgame_attempts": sum(
+                getattr(b, "exact_endgame_attempts", 0) for b in bots),
+            "exact_endgame_refusals": sum(
+                getattr(b, "exact_endgame_refusals", 0) for b in bots),
+            "exact_endgame_budget_exceeded": sum(
+                getattr(b, "exact_endgame_budget_exceeded", 0) for b in bots),
+            "exact_endgame_sessions": sum(
+                getattr(b, "exact_endgame_sessions", 0) for b in bots),
+            "exact_endgame_nodes": sum(
+                getattr(b, "exact_endgame_nodes", 0) for b in bots),
+            "exact_endgame_cache_hits": sum(
+                getattr(b, "exact_endgame_cache_hits", 0) for b in bots)}
 
 
 def run_arm(label, policy, opponent, clusters, seed0, fh, run_id,

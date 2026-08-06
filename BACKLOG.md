@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-06 00:01 EDT.
+Last re-derived: 2026-08-06 07:02 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -26,12 +26,15 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   5,800 states. Do not append to the inspected DEV set or try more arms on it.
 - S0's code gate is complete: exact disjoint report folds, deterministic/random
   adaptive allocation, equal-work controls, replayable decision records and a
-  fail-closed sharded runner are registered. The clean DEV audit selected
-  R=300; **no S0 strength result exists yet**. The bounded S0a 2,048-cluster
-  screen is running authoritatively on Mini: both report arms are complete and
-  all eight clean shards reached 200/512 rounds of the equal-work arm by 04:02
-  EDT. Cross-phase runtime/source provenance is fail-closed at `6fe5f44`. Air
-  is fallback-only and its duplicate records may never be pooled.
+  fail-closed sharded runner are registered. S0a is **COMPLETE / ACCEPTED** on
+  authoritative Mini: 8/8 clean shards and 2,048 clusters selected
+  `mc-s0-report-lcb` (`+0.353 +/- 0.069` versus current; direct
+  `+0.293 +/- 0.066` versus equal-work uniform; true null
+  `+0.008 +/- 0.070`). Aggregate SHA-256 is
+  `0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49`.
+  This is a mechanism-screen survivor, not a deployment result. Its exact
+  parent-bound `s0b-lcb` block launched 8/8 Mini shards at 06:58 EDT. Air's
+  duplicate records may never be pooled.
 - The roadmap has three parallel strength lanes: S0 search, clean teacher/model
   iteration, and faithful role-conditioned self-play. Do not wait for S0a to run
   the bounded teacher/RL entry gates on other workers.
@@ -40,8 +43,8 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 
 | priority | work | exit gate |
 |---|---|---|
-| **S0a search strength** | Finish the running frozen decision-rule screen on authoritative Mini | Eight 256-cluster shards (seeds 132M) compare report-mean, report-LCB, equal-work uniform, null and current. Aggregate only with the pinned `6fe5f44` verifier routed through frozen `S0_SOURCE_SERVER`; carry one rule by the registered screen criterion, never promote from this block. |
-| **S0b allocation** | If S0a selects a report rule, test allocation separately | Run exactly one parent-bound `s0b-mean` / `s0b-lcb`: deterministic adaptive must beat both uniform-report and random allocation by paired point estimate. Freeze one survivor; every child refuses a wrong aggregate/SHA. |
+| **S0a search strength — COMPLETE** | Frozen decision-rule screen accepted on authoritative Mini | Eight clean 256-cluster shards selected report-LCB. Independent recomputation matched the registered aggregate; this block cannot promote. |
+| **S0b allocation — RUNNING** | Test allocation separately under the selected LCB report rule | Eight exact parent-bound `s0b-lcb` shards cover seeds 134,000,000–134,002,047 on Mini. Deterministic adaptive must beat both uniform-report and random allocation by paired point estimate; otherwise report-LCB survives. |
 | **S0c confirmation** | Independently confirm exactly the S0b survivor | Eight 1,024-cluster shards on seeds 135,000,000–135,008,191 compare survivor, `mc-strong-null`, and current. Promote only if survivor-current and survivor-null paired 95% lower bounds are >0 and the null does not clear; otherwise close S0 SELECT NONE. |
 | **S0b v11pair utilization** | Use the one confirmed learned improvement as MC's protected root anchor | First revalidate frozen `rl-override-v11pair` directly against current compiled N=30 on one fresh 2,048-cluster paired block. Then test an equal-work hybrid that preserves the full current ballot and N=30 worlds but protects v11's thresholded choice instead of SmartBot's. Hard pruning, pairwise-as-leaf and search/no-search gating are not this experiment. |
 | **S1 teacher/model** | Execute `TEACHER_V1_SPEC.md`, then earn scale | Pass the 64-state mechanics and 128-state gold-continuation gates before the 2,048-state wave. This is a new training/challenge asset, not an enlargement of DEV-512. Train three-seed action ranker + calibrated outcome head; scale only if untouched regret and paired games improve. |

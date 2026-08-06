@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / exact-runtime S0a rebalance
+## RUNNING / exact-runtime S0b-LCB
 
 Mini is the authoritative S0 pipeline. At 22:55 EDT all eight S0a shards began
 from fresh exclusive outputs in detached clean worktree
@@ -12,23 +12,22 @@ from fresh exclusive outputs in detached clean worktree
 `com.shengji.s0mini.s0a.0`…`.7` launch services under Python 3.14.6 with strict
 voids and compiled binary SHA-256
 `9c9e77fbdc4c6caceec195465155f37ec6369e409462fd838bc142bf8a0be4c1`.
-All eight partial manifests preflighted exact disjoint seed blocks and a clean
-tree. `com.shengji.s0mini.supervisor` is the singleton fail-closed owner of
-aggregation and conditional child launch; `com.shengji.s0mini.keepawake` holds
-the power assertion. Both report arms are complete; by 04:02 EDT all eight
-reached 200/512 rounds on the equal-work arm with zero stderr. Process-level
-inspection showed every worker runnable at 97-98% CPU. The durable independent
-terminal packet verifier is pushed at `751ef50`; cross-phase runtime binding is
-at `a114716` and frozen-source routing at `6fe5f44`. At 04:15 the singleton
-supervisor was cleanly restarted without restarting any worker; it now pins the
-audit-tool hashes, probes the exact Mini runtime before a child launch and
-rejects within-phase, parent-chain or cross-phase provenance drift.
+S0a completed 8/8 clean shards at 06:58 EDT. The registered frozen-source
+aggregate selected `mc-s0-report-lcb`: `+0.353 +/- 0.069` versus current,
+`+0.293 +/- 0.066` directly versus equal-work uniform, with the true null flat
+at `+0.008 +/- 0.070`. Aggregate SHA-256 is
+`0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49`;
+independent recomputation matched except for the stored file's absent terminal
+newline. This is not promotion. At 06:58 the singleton supervisor launched
+8/8 `s0b-lcb` shards over exact seeds 134,000,000–134,002,047. Every child
+binds that aggregate and survivor and preflighted frozen SHA/runtime/native
+identity with strict voids, no dirty files and zero stderr.
 
-Air's eight clean Python-3.14.6 S0a shards, started at 22:08–22:09, continue as
-compute-only fallback. All crossed 50 clusters. Their transition supervisor is
-stopped, so they cannot independently launch S0b. Never pool or double-count
-Mini and Air duplicates: use the first complete verifier-accepted authoritative
-set, with Air recoverable only if Mini fails. The initial Python-3.14.3 Mini
+Air's S0a duplicate is no longer needed now that authoritative Mini passed its
+aggregate gate. Air's hostname was unresolved at 06:59, so its exact workers
+could not yet be stopped; stop them when the host returns. Its transition
+supervisor remains stopped, so it cannot independently launch S0b. Never pool
+or double-count Mini and Air duplicates. The initial Python-3.14.3 Mini
 shard 7 was stopped after preflight exposed the mismatch and remains quarantined
 and unscored under `runs/logs/quarantine_s0a_python_mismatch/`.
 

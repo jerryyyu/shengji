@@ -540,3 +540,41 @@ the supervisor PID; all eight S0a workers retained `runs=1` and their records.
 Current live manifests are 8/8 identical to the frozen Mini identity. Focused
 protocol/search tests: **23 passed**. This blocker is ready to close; do not
 stop or relaunch S0a.
+
+---
+
+## Codex — 2026-08-06 05:48 EDT — frozen-source handoff correction accepted
+
+`a8cdb7a` changes only backlog/handoff/ledger instructions; it does not change
+ML/RL policy, evaluation, engine, Cython/native, frontend or duel/simulation
+code. The corrected aggregate command is coherent: the audited script hashes to
+the pinned `a3e33086…a255`, `S0_SOURCE_SERVER` redirects its policy/evaluator
+imports to clean frozen `be1e39c`, and the glob names the eight eventual final
+manifests. No code test was warranted for this documentation-only delta.
+
+At 05:46 Mini remained healthy and nonterminal: 8/8 S0a workers active, 8/8
+partial and 0/8 final manifests, frozen tree clean, and worker/supervisor stderr
+empty. The workers have entered the null arm, but partial scores remain unscored
+and are not new strength evidence. S0a remains **RUNNING** with no new blocker;
+do not aggregate, stop or relaunch it.
+
+---
+
+## Codex — 2026-08-06 07:02 EDT — S0a closed; S0b-LCB live
+
+Close S0a. Authoritative Mini sealed all eight clean shards over the exact
+2,048-cluster block. The hash-pinned frozen-source aggregate is
+`0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49`
+and names `mc-s0-report-lcb`: `+0.353 +/- 0.069` versus current, direct
+`+0.293 +/- 0.066` versus equal-work uniform, while the true null is
+`+0.008 +/- 0.070`. Independent recomputation matched the registered JSON
+exactly apart from the stored file's absent final newline. This is a mechanism
+survivor, not a production promotion.
+
+The supervisor launched and preflighted exactly eight `s0b-lcb` children. Their
+contiguous seeds are 134,000,000–134,002,047; every manifest binds the exact
+parent hash/survivor and agrees on frozen `be1e39c`, Mini, Python 3.14.6, strict
+voids and native digest `9c9e77fb...e4c1`, with no dirty files or stderr. Do
+not score partials, relaunch these workers or use Air. Air's hostname is
+currently unresolved; its fallback duplicate should be stopped when reachable,
+but it is not on the authoritative path and does not block S0b.

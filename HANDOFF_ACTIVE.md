@@ -1,27 +1,29 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 04:16 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 07:02 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
 
-- Production remains compiled `mc-strong` (N=30). No S0 policy is deployed and
-  no S0 strength result exists yet.
+- Production remains compiled `mc-strong` (N=30). No S0 policy is deployed.
 - Sampler package H is **ACCEPTED / CLOSED** at `aea3774`; the strict v3
   certificate hash is
   `e31e67f9aeb4739aa598faa66051ec4004fd47751b297457242dc95a30cc224c`.
 - The DEV-512 ballot screen is **SELECT NONE / CLOSED**. CALIB-512 and REPORT
   remain sealed and unscored; do not revive that lane by adding DEV arms.
-- The S0 implementation/code gate is complete. The bounded S0a mechanism
-  screen is **RUNNING** authoritatively on Mini: both report arms are complete
-  and 8/8 clean shards reached 200/512 rounds of the equal-work arm by 04:02
-  EDT with zero stderr. Air is an
-  S0a-only fallback; never pool the duplicate hosts or launch a child from Air.
+- The S0 implementation/code gate is complete. S0a is **COMPLETE / ACCEPTED**
+  on authoritative Mini: 8/8 clean shards and 2,048 clusters selected
+  `mc-s0-report-lcb` (`+0.353 +/- 0.069` versus current and direct
+  `+0.293 +/- 0.066` versus equal-work uniform; null `+0.008 +/- 0.070`).
+  Registered aggregate SHA-256:
+  `0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49`.
+  S0b-LCB launched 8/8 exact parent-bound Mini shards at 06:58 EDT. Air remains
+  duplicate fallback only; never pool its records or launch a child from Air.
 - Teacher-v1 mechanics/gold gates, the v11 protected-anchor compatibility block
   and the role-conditioned RL microgates remain independent parallel strength
   work; none should be folded into S0 before each wins alone.
 
-## S0 implementation packet — bounded S0a running
+## S0 implementation packet — S0a accepted, S0b-LCB running
 
 Base implementation commit: `df0a7b9`; calibration/freeze commit: `316542a`
 (both pushed). End-to-end parent-bound S0a/S0b/S0c protocol commit: `476e400`.
@@ -114,7 +116,25 @@ completed all five S0a arms: 20 mirrored records, zero short/zero-world searches
 reconciled sampler counters and no manifest problems. It is deliberately marked
 `promotable:false`; its game scores are not evidence.
 
-## Authoritative current job — S0a only
+## Authoritative current job — S0b-LCB
+
+S0a sealed all eight final manifests at 06:58 EDT. Independent frozen-source
+recomputation matched the stored aggregate byte-for-byte except for its missing
+terminal newline. All labels contain 4,096 mirrored records over the exact
+2,048-cluster seed block; every sampler failure/short/zero-world/void-fallback
+counter is zero, and all eight manifests agree on Mini host, Python 3.14.6,
+strict voids, frozen SHA `be1e39c` and native digest `9c9e77fb...e4c1`.
+
+The supervisor then launched exactly one `s0b-lcb` block. Its eight child
+manifests cover contiguous seeds 134,000,000–134,002,047, bind the exact S0a
+aggregate hash and survivor, and repeat the frozen runtime identity with no
+dirty files. S0b compares deterministic adaptive allocation, the surviving
+uniform report-LCB rule and matched random allocation. It retains adaptive only
+if adaptive-minus-uniform and adaptive-minus-random are both positive by the
+registered paired point-estimate rule; otherwise report-LCB remains the sole
+S0c candidate. Do not inspect partial effects, relaunch workers or pool Air.
+
+### Completed S0a launch and aggregation reference
 
 S0a separates the report decision rule from extra compute. It is a diagnostic
 screen, not promotion: 2,048 fresh mirrored deal clusters, eight shards of 256,

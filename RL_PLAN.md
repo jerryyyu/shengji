@@ -115,10 +115,9 @@ day-by-day detail. A historical result below does not reopen a closed lane.
   residual sign, mutable actor path and promote-different-bytes defects are now
   repaired and covered by bounded tests, but no result has been rerun. The
   recipe is still neither Suphx's privileged-policy curriculum nor DouZero's
-  role-specific direct-return method. Exact checkpoint storage is now a tested
-  primitive, but the synchronous coordinator still has three reproduced
-  fail-closed gaps. Preserve DMC2's useful alarms; do not scale the legacy
-  target path.
+  role-specific direct-return method. Commit `e49cf60` closes the generic exact
+  synchronous coordinator, but it does not rehabilitate the legacy algorithm
+  or evidence. Preserve DMC2's useful alarms; do not scale its target path.
 
 ### Settled experiment evidence
 
@@ -255,16 +254,16 @@ against the underlying RL families:
   Workers now receive path+SHA identities, snapshots are atomic and never
   overwritten, promotions use the evaluated bytes, and every actor batch has a
   named seed and ledger entry. The 20-pair/55% legacy gate is still not a
-  strength gate. Transactional learner/optimizer/replay resume exists at
-  `29c8cc1`, but interrupted transitions, implicit global RNG and Python-side
-  learner state must fail closed before the coordinator is exact.
+  strength gate. `e49cf60` now closes transactional learner/optimizer/replay
+  resume, interruption poison, implicit-global-RNG exclusion, Python-side
+  learner/optimizer state and exclusive generation publication.
 
 Verdict: target symmetry and immutable actor/candidate boundaries are now
 closed, and a bounded smoke records itself as non-promotable. Preserve the
 spread alarm, replay cap, opponent-pool idea and bookkeeping, but do not resume
-AWAC or scale DMC2. Next close those coordinator falsifications, then compare
-the two faithful microbaselines independently so a recipe bundle cannot hide
-which idea worked.
+AWAC or scale DMC2. The next gate is now the concrete Suphx/DouZero algorithm
+and its own exact resumed-output test, so a recipe bundle cannot hide which
+idea worked.
 
 ---
 

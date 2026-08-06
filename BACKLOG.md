@@ -334,10 +334,12 @@ authorize adding more data to a target that failed.
       bug was also fixed: a passing gate now promotes the exact evaluated
       candidate, not whatever newer learner weights exist when the duel ends.
       Historical DMC2 results remain invalid and no new run is strength evidence.
-- [ ] **Exact self-play resume.** Persist learner, optimizer, replay ring,
-      counters, RNGs, pending batch identities and actor/opponent generations;
-      interrupted+resumed output must byte-match an uninterrupted bounded run
-      before either faithful microbaseline may launch.
+- [x] **Exact synchronous self-play infrastructure.** `29c8cc1` and `e49cf60`
+      bind learner, optimizer, replay ring, progress, named RNGs, runtime and
+      immutable actor/candidate generations; interruptions poison and rollback,
+      hidden/global mutable state refuses, and bounded resumed execution matches
+      uninterrupted execution. Each concrete algorithm still owes its own
+      verified-actor collector and exact resumed-output test.
 - [ ] **Faithful synchronous microbaselines.** Separately test a Suphx-style
       privileged-feature-removal policy curriculum and a DouZero-style
       from-scratch role-conditioned direct-Q learner. Do not describe the old

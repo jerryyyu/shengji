@@ -48,9 +48,9 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 | **S0a search strength — COMPLETE** | Frozen decision-rule screen accepted on authoritative Mini | Eight clean 256-cluster shards selected report-LCB. Independent recomputation matched the registered aggregate; this block cannot promote. |
 | **S0b allocation — RUNNING** | Test allocation separately under the selected LCB report rule | Eight exact parent-bound `s0b-lcb` shards cover seeds 134,000,000–134,002,047 on Mini. The adaptive label is complete on every shard and uniform-report is running; random allocation follows. Deterministic adaptive must beat both controls by paired point estimate; otherwise report-LCB survives. Do not score partials. |
 | **S0c confirmation** | Independently confirm exactly the S0b survivor | Eight 1,024-cluster shards on seeds 135,000,000–135,008,191 compare survivor, `mc-strong-null`, and current. Promote only if survivor-current and survivor-null paired 95% lower bounds are >0 and the null does not clear; otherwise close S0 SELECT NONE. |
-| **V11 protected-anchor lane — CODE READY, SEPARATE FROM S0** | Use the one confirmed learned improvement as MC's protected root anchor | The frozen 2,048-cluster direct-current revalidation runner and equal-work `mc-v11anchor`/same-trigger-random policies are implemented and focused tests pass. Do not launch evidence from a dirty tree. The later anchor-strength seed block and promotion rule wait for S0's terminal champion so the reference cannot move underneath the estimand. |
-| **S1 teacher/model — ENTRY GATES CODE READY** | Execute `TEACHER_V1_SPEC.md`, then earn scale | Fresh replay-state capture/diagnosis, Stage-A 64-state deterministic mechanics, and Stage-B 128-state N=30 gold-continuation/regret gates are implemented and tested. No evidence run has started. Pass both gates before implementing/launching the 2,048-state wave; this is not an enlargement of DEV-512. |
-| **S2 self-play RL** | Run faithful role-conditioned synchronous microbaselines | Unit-test attacker/defender signs, separately version reward targets, and bind immutable actors. Then run Suphx-style feature removal and DouZero-style direct-Q baselines for 20–30 minutes; stable spread plus held-out improvement earns fleet scale. |
+| **V11 protected-anchor lane — CODE READY, SEPARATE FROM S0** | Use the one confirmed learned improvement as MC's protected root anchor | The frozen 2,048-cluster direct-current revalidation runner and equal-work `mc-v11anchor`/same-trigger-random policies are implemented and focused tests pass. Actual loaded absolute checkpoint path/SHA must equal the manifest NPZ. Do not launch evidence from a dirty tree. The later anchor-strength seed block and promotion rule wait for S0's terminal champion so the reference cannot move underneath the estimand. |
+| **S1 teacher/model — ENTRY GATES CODE READY** | Execute `TEACHER_V1_SPEC.md`, then earn scale | Fresh replay-state capture/diagnosis, Stage-A 64-state deterministic mechanics, and Stage-B 128-state N=30 gold-continuation/regret gates are implemented and tested. Stage B requires both the exact valid Stage-A exclusion set and its bound mechanics PASS. No evidence run has started. Pass both gates before implementing/launching the 2,048-state wave; this is not an enlargement of DEV-512. |
+| **S2 self-play RL — CORRECTNESS BOUNDARY PARTIAL** | Run faithful role-conditioned synchronous microbaselines | Attacker/defender residual antisymmetry, separately named legacy reward, digest-bound immutable actors, exact-candidate promotion and named actor-batch seeds are implemented and tested. Exact learner/optimizer/replay resume remains open; no faithful Suphx/DouZero baseline or evidence run exists. Close resume, then run independent 20–30 minute microbaselines. |
 | **S3 structured search** | Attack decisions outside ordinary play selection | In parallel, screen structured MC bury sourcing and sampled exact solving for the final ~4 tricks. Each changes a different once-per-round/tactical bottleneck and must duel the production champion directly. |
 | **Frontend ship gate** | Run one bounded multi-tab soak | Cover join, simultaneous seat claim, disconnect-to-bot, reconnect/takeover, stale/displaced sockets, second absence, private-hand visibility, chat before initial state and >50 messages, and saved-room invite precedence. |
 | **Evaluator boundary** | Repair legacy full-game cutoff semantics | A cutoff must return an explicit tie/refusal, never silently award team 0. Keep the engine's uncapped house-rule progression; the `+3` clip remains a separately versioned RL target. |
@@ -289,10 +289,17 @@ authorize adding more data to a target that failed.
 
 ## ML / RL
 
-- [ ] **Role-correct target test.** DMC2 signs terminal returns by acting team
-      but subtracts an attacker-perspective oracle from defenders without
-      flipping it. Fix and falsify with attacker/defender antisymmetry before
-      interpreting any AWAC/DMC result.
+- [x] **Role-correct target and immutable actor tests.** The legacy DMC2 path
+      now applies the same acting-team sign to terminal return and attacker-
+      perspective oracle, versions its clipped reward, and gives every worker a
+      digest-bound immutable checkpoint plus named batch seed. A second audit
+      bug was also fixed: a passing gate now promotes the exact evaluated
+      candidate, not whatever newer learner weights exist when the duel ends.
+      Historical DMC2 results remain invalid and no new run is strength evidence.
+- [ ] **Exact self-play resume.** Persist learner, optimizer, replay ring,
+      counters, RNGs, pending batch identities and actor/opponent generations;
+      interrupted+resumed output must byte-match an uninterrupted bounded run
+      before either faithful microbaseline may launch.
 - [ ] **Faithful synchronous microbaselines.** Separately test a Suphx-style
       privileged-feature-removal policy curriculum and a DouZero-style
       from-scratch role-conditioned direct-Q learner. Do not describe the old

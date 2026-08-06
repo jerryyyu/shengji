@@ -111,6 +111,8 @@ def policy_contract(name: str) -> dict:
         "margin": getattr(bot, "MARGIN", None),
         "tractor_lock": getattr(bot, "TRACTOR_LOCK", None),
         "require_exact_work": getattr(bot, "REQUIRE_EXACT_WORK", None),
+        "checkpoint_path": getattr(bot, "checkpoint_path", None),
+        "checkpoint_sha256": getattr(bot, "checkpoint_sha256", None),
     }
 
 
@@ -137,6 +139,11 @@ def protocol_problems() -> list[str]:
     arm = contracts.get("rl-override-v11pair", {})
     if arm.get("margin") != 0.02:
         problems.append(f"v11 override threshold is {arm.get('margin')!r}, not 0.02")
+    if arm.get("checkpoint_path") != str(CHECKPOINT.resolve()):
+        problems.append(
+            f"v11 policy loaded {arm.get('checkpoint_path')!r}, not {CHECKPOINT}")
+    if arm.get("checkpoint_sha256") != CHECKPOINT_SHA256:
+        problems.append("v11 policy checkpoint bytes differ from manifest bytes")
     for name in ("mc-strong", "mc-strong-null"):
         cfg = contracts.get(name, {})
         if cfg.get("n_determinizations") != 30:

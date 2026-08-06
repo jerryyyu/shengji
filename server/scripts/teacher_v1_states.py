@@ -36,6 +36,7 @@ from shengji.ai.registry import make_bot                          # noqa: E402
 from shengji.engine.ballot import mc_ballot                       # noqa: E402
 from shengji.engine.game import Game                              # noqa: E402
 from shengji.teacher_v1 import (EXPERIMENT, REPRESENTATIVE_CELLS, # noqa: E402
+                                GATE_SCHEMA,
                                 SAMPLER_COUNTERS, SEED_START,
                                 STAGE_A_OTHER_STATES,
                                 STAGE_A_REPRESENTATIVE_PER_CELL,
@@ -590,6 +591,77 @@ def select_gate_states(diagnostics: list[dict], stage: str,
     return selected, problems
 
 
+def stage_a_exclusion_problems(payload: dict, diagnostic: dict,
+                               diagnostic_sha256s: set[str]) -> list[str]:
+    """Validate the exact Stage-A asset whose deals Stage B will exclude."""
+    bad = []
+    if payload.get("schema") != STATE_SET_SCHEMA:
+        bad.append("excluded Stage-A set schema")
+    if payload.get("experiment_id") != EXPERIMENT:
+        bad.append("excluded Stage-A experiment")
+    if payload.get("stage") != "a":
+        bad.append("excluded state set is not Stage A")
+    if not payload.get("complete"):
+        bad.append("excluded Stage-A set is incomplete")
+    states = payload.get("states", [])
+    if payload.get("states_digest") != stable_digest(states):
+        bad.append("excluded Stage-A states digest")
+    if (payload.get("requested") != STAGE_A_STATES
+            or payload.get("selected") != STAGE_A_STATES
+            or len(states) != STAGE_A_STATES):
+        bad.append(
+            f"excluded Stage-A count {len(states)}, required {STAGE_A_STATES}")
+    ids = [state.get("state_id") for state in states]
+    deals = [state.get("seed") for state in states]
+    if len(ids) != len(set(ids)) or len(deals) != len(set(deals)):
+        bad.append("excluded Stage-A set duplicates a state/deal")
+
+    for key in ("git", "actor", "exam_exclusion", "python",
+                "fast_binary_sha256", "fast_router_sha256",
+                "state_script_sha256"):
+        if payload.get(key) != diagnostic.get(key):
+            bad.append(f"excluded Stage-A {key} drift")
+    if (payload.get("tree_dirty") or not payload.get("promotable")
+            or not payload.get("fast_engine")
+            or not payload.get("require_voids")):
+        bad.append("excluded Stage-A runtime is not clean/compiled/strict")
+    stored_inputs = {
+        item.get("sha256") for item in payload.get("diagnostic_inputs", [])
+        if isinstance(item, dict)
+    }
+    if stored_inputs != diagnostic_sha256s:
+        bad.append("excluded Stage-A diagnostic population drift")
+
+    representative = Counter(
+        (state.get("phase"), state.get("role"), state.get("decision"))
+        for state in states if state.get("kind") == "representative"
+    )
+    for cell in REPRESENTATIVE_CELLS:
+        if representative[cell] != STAGE_A_REPRESENTATIVE_PER_CELL:
+            bad.append(f"excluded Stage-A representative {cell}")
+    for kind in ("boundary", "uncertainty"):
+        if sum(state.get("kind") == kind for state in states) != \
+                STAGE_A_OTHER_STATES // 2:
+            bad.append(f"excluded Stage-A {kind} composition")
+    return sorted(set(bad))
+
+
+def stage_a_gate_problems(payload: dict, state_set_sha256: str) -> list[str]:
+    """Stage B requires the exact excluded set to have passed mechanics."""
+    bad = []
+    if payload.get("schema") != GATE_SCHEMA:
+        bad.append("Stage-A gate schema")
+    if payload.get("experiment_id") != EXPERIMENT or payload.get("stage") != "A":
+        bad.append("Stage-A gate identity")
+    if (payload.get("verdict") != "PASS"
+            or payload.get("stage_b_authorized") is not True
+            or payload.get("problems")):
+        bad.append("Stage-A mechanics gate did not pass")
+    if payload.get("state_input_sha256") != state_set_sha256:
+        bad.append("Stage-A gate is not bound to the excluded state set")
+    return bad
+
+
 def freeze(args) -> None:
     live = runtime(args.smoke)
     diagnostics, manifests, problems = [], [], []
@@ -605,10 +677,10 @@ def freeze(args) -> None:
         if payload.get("records_digest") != stable_digest(payload.get("records", [])):
             problems.append(f"{path}: diagnostic record digest")
         diagnostics.extend(payload.get("records", []))
+    first = manifests[0] if manifests else {}
     if not manifests:
         problems.append("no diagnostic inputs")
     else:
-        first = manifests[0]
         for index, payload in enumerate(manifests[1:], 1):
             for key in ("git", "actor", "exam_exclusion", "selector_worlds",
                         "selector_policy", "v11_checkpoint_sha256", "python",
@@ -621,15 +693,41 @@ def freeze(args) -> None:
     if len(ids) != len(set(ids)) or len(deals) != len(set(deals)):
         problems.append("diagnostic inputs duplicate a state/deal")
     excluded_deals: set[int] = set()
+    stage_a_gate_binding = None
     if args.stage == "b":
         if not args.exclude_state_set and not args.smoke:
             problems.append("Stage B requires --exclude-state-set Stage-A.json")
         elif args.exclude_state_set:
             with open(args.exclude_state_set) as fh:
                 previous = json.load(fh)
-            if previous.get("schema") != STATE_SET_SCHEMA:
-                problems.append("excluded Stage-A set schema")
-            excluded_deals = {state["seed"] for state in previous.get("states", [])}
+            input_sha256s = {sha256_file(path) for path in args.input}
+            problems += stage_a_exclusion_problems(
+                previous, first, input_sha256s)
+            previous_states = previous.get("states", [])
+            excluded_deals = {
+                state.get("seed") for state in previous_states
+                if isinstance(state.get("seed"), int)
+            }
+            for state in previous_states:
+                try:
+                    replay_state(state)
+                except Exception as exc:
+                    problems.append(
+                        f"excluded Stage-A {state.get('state_id')}: replay {exc}")
+            state_set_sha256 = sha256_file(args.exclude_state_set)
+            if not args.stage_a_gate and not args.smoke:
+                problems.append("Stage B requires --stage-a-gate PASS.json")
+            elif args.stage_a_gate:
+                with open(args.stage_a_gate) as fh:
+                    stage_a_gate = json.load(fh)
+                problems += stage_a_gate_problems(
+                    stage_a_gate, state_set_sha256)
+                stage_a_gate_binding = {
+                    "path": args.stage_a_gate,
+                    "sha256": sha256_file(args.stage_a_gate),
+                    "state_set_sha256": state_set_sha256,
+                    "verdict": stage_a_gate.get("verdict"),
+                }
     if problems:
         raise TeacherProtocolError("freeze preflight: " + "; ".join(problems))
     states, selection_problems = select_gate_states(
@@ -681,6 +779,7 @@ def freeze(args) -> None:
                 "deals": len(excluded_deals),
             }
         ),
+        "stage_a_gate": stage_a_gate_binding,
         "complete": True, "requested": required, "selected": len(states),
         "states": states, "states_digest": stable_digest(states),
     }
@@ -709,6 +808,7 @@ def parser() -> argparse.ArgumentParser:
     freeze_.add_argument("--stage", choices=("a", "b"), required=True)
     freeze_.add_argument("--input", action="append", required=True)
     freeze_.add_argument("--exclude-state-set")
+    freeze_.add_argument("--stage-a-gate")
     freeze_.add_argument("--out", required=True)
     freeze_.add_argument("--smoke", action="store_true")
     return ap

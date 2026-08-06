@@ -287,19 +287,28 @@ def _make_override(ckpt: str):
 # ep05, so anyone playing this bot got a DIFFERENT net than the one measured
 # (Codex 2026-08-03). Kept registered only for the offline residual
 # post-mortem — this arm is a near no-op, not a candidate for play.
+_V11PAIR_NPZ_SHA256 = (
+    "cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003"
+)
+
+
 def _make_override_thr(path: str, margin: float):
     def make(**kw):
         from pathlib import Path
         from ..rl.torch_policy import RLOverrideBot
-        resolved = Path(path)
-        server_relative = Path(__file__).resolve().parents[2] / resolved
-        # The numpy production artifact is what the v11 registry entry loads;
-        # accept construction from repo root as well as server/ without ever
-        # choosing a different checkpoint.
-        if not resolved.exists() and (server_relative.exists() or
-                                      server_relative.with_suffix(".npz").exists()):
-            resolved = server_relative
+        # Registry identity must not depend on the caller's cwd.  In particular,
+        # the revalidation runner hashes server/snapshots_v11pair/ep07.npz, so
+        # the policy must load those same absolute bytes even if another cwd
+        # happens to contain a lookalike relative path.
+        resolved = (Path(__file__).resolve().parents[2] / path).resolve()
         b = RLOverrideBot(str(resolved))
+        expected_path = resolved.with_suffix(".npz")
+        if (Path(b.checkpoint_path) != expected_path
+                or b.checkpoint_sha256 != _V11PAIR_NPZ_SHA256):
+            raise RuntimeError(
+                "frozen v11pair registry checkpoint identity drift: "
+                f"loaded {b.checkpoint_path} {b.checkpoint_sha256}, expected "
+                f"{expected_path} {_V11PAIR_NPZ_SHA256}")
         b.MARGIN = margin          # fitted on a DISJOINT half of the holdout
         return b
     return make

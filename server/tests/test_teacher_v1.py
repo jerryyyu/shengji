@@ -241,6 +241,43 @@ def test_stage_b_contract_requires_exact_stratified_composition():
     assert "uncertainty states 15, required 16" in problems
 
 
+def test_stage_b_exclusion_refuses_schema_only_or_digest_drift():
+    diagnostic = {
+        "git": "g", "actor": {"policy": "mc-strong"},
+        "exam_exclusion": {"verified": True}, "python": "3",
+        "fast_binary_sha256": "b", "fast_router_sha256": "r",
+        "state_script_sha256": "s",
+    }
+    schema_only = {
+        "schema": states.STATE_SET_SCHEMA, "experiment_id": EXPERIMENT,
+        "stage": "a", "complete": True, "states": [],
+        "states_digest": stable_digest([]),
+    }
+    problems = states.stage_a_exclusion_problems(
+        schema_only, diagnostic, {"diagnostic"})
+    assert "excluded Stage-A count 0, required 64" in problems
+    assert "excluded Stage-A diagnostic population drift" in problems
+    schema_only["states_digest"] = "corrupt"
+    assert "excluded Stage-A states digest" in \
+        states.stage_a_exclusion_problems(
+            schema_only, diagnostic, {"diagnostic"})
+
+
+def test_stage_b_requires_pass_gate_bound_to_exact_stage_a_set():
+    gate_payload = {
+        "schema": states.GATE_SCHEMA, "experiment_id": EXPERIMENT,
+        "stage": "A", "verdict": "PASS", "stage_b_authorized": True,
+        "problems": [], "state_input_sha256": "stage-a-sha",
+    }
+    assert states.stage_a_gate_problems(
+        gate_payload, "stage-a-sha") == []
+    assert "Stage-A gate is not bound to the excluded state set" in \
+        states.stage_a_gate_problems(gate_payload, "different")
+    gate_payload["verdict"] = "FAIL"
+    assert "Stage-A mechanics gate did not pass" in \
+        states.stage_a_gate_problems(gate_payload, "stage-a-sha")
+
+
 def test_target_assignment_is_fixed_before_play_and_covers_cells():
     targets_ = [states.target_for_deal(EXPERIMENT, SEED)
                 for SEED in range(120_000_000, 120_001_000)]

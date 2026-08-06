@@ -63,8 +63,9 @@ day-by-day detail. A historical result below does not reopen a closed lane.
 - **Two independent learning lanes remain open.** Teacher-v1 must pass its
   64-state mechanics and 128-state gold-continuation gates before producing
   2,048 clean counterfactual states. Faithful Suphx-style privileged-feature
-  removal and DouZero-style role-conditioned direct-Q microbaselines must first
-  pass attacker/defender-sign, immutable-actor and replay/resume invariants.
+  removal and DouZero-style role-conditioned direct-Q microbaselines have
+  passed the shared attacker/defender-sign and immutable-actor boundary; exact
+  learner/replay resume remains their launch blocker.
 - **Structured search remains independent.** Broader burial sourcing and an
   information-set-legal sampled exact solver for the final roughly four tricks
   attack different bottlenecks and must each duel the champion directly.
@@ -77,11 +78,12 @@ day-by-day detail. A historical result below does not reopen a closed lane.
   separately versioned; the old
   non-strict, capped-ballot, same-world-selected high-N labels are diagnostic,
   not an oracle.
-- **DMC2 is implementation-invalid, not an RL rejection.** Its defender
-  residual uses an attacker-perspective oracle with the wrong sign; it is also
-  neither Suphx's privileged-policy curriculum nor DouZero's role-specific
-  direct-return method. Preserve its spread/replay alarms, but do not resume
-  that target path.
+- **Historical DMC2 evidence is invalid, not an RL rejection.** The defender
+  residual sign, mutable actor path and promote-different-bytes defects are now
+  repaired and covered by bounded tests, but no result has been rerun. The
+  recipe is still neither Suphx's privileged-policy curriculum nor DouZero's
+  role-specific direct-return method, and exact learner/replay resume remains
+  open. Preserve its useful alarms; do not scale the legacy target path.
 
 ### Settled experiment evidence
 
@@ -189,17 +191,19 @@ states what the external evidence changes now.
    continuation-policy portfolio. ReBeL's convergence result is two-player
    zero-sum; Shengji should borrow the representation, not claim the theorem.
 
-### Current DMC2 is not a valid Suphx or DouZero test
+### Historical DMC2 was not a valid Suphx or DouZero test
 
 The negative result remains useful as a pipeline alarm, but it is not evidence
 against the underlying RL families:
 
-- **There is a defender-perspective sign defect.** `round_value()` and the
+- **There was a defender-perspective sign defect.** `round_value()` and the
   oracle are attacker-perspective. `actor_batch()` signs terminal return by the
   acting seat, but ingestion computes `adv = signed_return - V_attacker` for
   every seat. A defender needs `-return - (-V_attacker)`, not
   `-return - V_attacker`. The unused `seat_l` list is consistent with a missing
-  intended sign transform. This alone invalidates the dmc2 learning verdict.
+  intended sign transform. The executable now records raw attacker return plus
+  role sign and computes `sign * (return - oracle)`; antisymmetry is tested.
+  This repair cannot rehabilitate the historical learning verdict.
 - **The “Suphx oracle baseline” is a different method.** Suphx trained a
   full-information policy and gradually removed privileged inputs. Here a
   scalar value trained on heuristic trick-start states is subtracted from a
@@ -210,17 +214,20 @@ against the underlying RL families:
   compresses history into aggregate card planes, and fits oracle-residual
   targets. DouZero trained role-specific action-value networks from scratch on
   direct episodic returns with sequential history and massive actor throughput.
-- **Run integrity is not immutable.** Actor tasks receive the mutable
-  `generator.pt` pathname while promotion overwrites it; candidate/generator
-  gates use only 20 mirrored deals at a 55% threshold. Snapshot identity and a
-  clustered evaluator must be fixed before interpreting another curve.
+- **Run integrity was not immutable.** Actor tasks received mutable
+  `generator.pt`/`candidate.pt` paths, and a passing gate overwrote the generator
+  with the learner's later state rather than the exact candidate it evaluated.
+  Workers now receive path+SHA identities, snapshots are atomic and never
+  overwritten, promotions use the evaluated bytes, and every actor batch has a
+  named seed and ledger entry. The 20-pair/55% legacy gate is still not a
+  strength gate, and exact learner/optimizer/replay resume is still absent.
 
-Verdict: preserve the spread alarm, replay cap, opponent-pool idea and run
-bookkeeping, but do not resume AWAC or DMC on top of the current target path.
-First add unit tests for attacker/defender target symmetry, role symmetry,
-immutable actor snapshots and exact resume/replay behavior. Then compare the
-two faithful microbaselines independently so a recipe bundle cannot hide which
-idea worked.
+Verdict: target symmetry and immutable actor/candidate boundaries are now
+closed, and a bounded smoke records itself as non-promotable. Preserve the
+spread alarm, replay cap, opponent-pool idea and bookkeeping, but do not resume
+AWAC or scale DMC2. Next close exact resume/replay behavior, then compare the two
+faithful microbaselines independently so a recipe bundle cannot hide which idea
+worked.
 
 ---
 
@@ -314,9 +321,10 @@ result.
    curves. First test the model as an MC ranker/pruner/allocator; only an
    untouched teacher gain and fresh paired win earns direct override or a 10k/50k
    relabelling wave.
-4. **Run faithful self-play that is not bounded by MC imitation.** After role-
-   sign and immutable-actor tests, run short synchronous Suphx-style privileged-
-   feature-removal and DouZero-style role-conditioned direct-Q baselines. Stable
+4. **Run faithful self-play that is not bounded by MC imitation.** Role-sign and
+   immutable-actor tests now pass; close exact learner/replay resume next, then
+   run short synchronous Suphx-style privileged-feature-removal and DouZero-
+   style role-conditioned direct-Q baselines. Stable
    action spread plus held-out improvement earns fleet scale and opponent-pool
    iteration. AWAC may optimize the valid replay later; it cannot repair a bad
    target.

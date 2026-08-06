@@ -531,6 +531,13 @@ def state_set_problems(payload: dict, stage: str, *, smoke: bool) -> list[str]:
         actor = payload.get("actor", {})
         if actor.get("policy") != "mc-strong" or not actor.get("identity"):
             bad.append("production-champion actor identity is not pinned")
+        if stage == "b":
+            stage_a_gate = payload.get("stage_a_gate") or {}
+            if (stage_a_gate.get("verdict") != "PASS"
+                    or not stage_a_gate.get("sha256")
+                    or stage_a_gate.get("state_set_sha256")
+                    != (payload.get("excluded_stage_a") or {}).get("sha256")):
+                bad.append("Stage B lacks an exact passing Stage-A gate binding")
     if not smoke:
         representative_per_cell = (
             STAGE_A_REPRESENTATIVE_PER_CELL if stage == "a"

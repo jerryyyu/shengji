@@ -78,7 +78,9 @@ worlds per state, exact tensor shapes, fold disjointness, deterministic rerun
 hashes, all counters zero and a measured runtime/work projection. Failure stops
 and repairs the producer. Passing authorizes Stage B, not the 2,048-state wave.
 The implemented gate requires two full executions whose evidence is identical
-after excluding wall time.
+after excluding wall time. Stage B cannot freeze from the Stage-A state list
+alone: it requires the complete/digest-valid 64-state asset and the exact
+Stage-A PASS artifact whose `state_input_sha256` binds that asset.
 
 ## Stage B — continuation-quality gate
 

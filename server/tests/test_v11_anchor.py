@@ -157,6 +157,20 @@ def test_override_manifest_binds_the_mc_ballot_the_net_actually_scores():
         ballot_for_policy("mc-strong").digest
 
 
+def test_v11_override_checkpoint_identity_is_absolute_and_cwd_independent(
+        tmp_path, monkeypatch):
+    fake = tmp_path / "snapshots_v11pair"
+    fake.mkdir()
+    (fake / "ep07.npz").write_bytes(b"cwd lookalike must never be loaded")
+    monkeypatch.chdir(tmp_path)
+    bot = make_bot("rl-override-v11pair", seed=7)
+    assert Path(bot.checkpoint_path) == V11.CHECKPOINT.resolve()
+    assert bot.checkpoint_sha256 == V11.CHECKPOINT_SHA256
+    contract = V11.policy_contract("rl-override-v11pair")
+    assert contract["checkpoint_path"] == str(V11.CHECKPOINT.resolve())
+    assert contract["checkpoint_sha256"] == V11.CHECKPOINT_SHA256
+
+
 def test_frozen_checkpoint_is_required_not_a_silent_fallback(tmp_path):
     from shengji.rl.torch_policy import MCV11ProtectedAnchor
 

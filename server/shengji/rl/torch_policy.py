@@ -205,9 +205,13 @@ class RLOverrideBot(SmartBot):
         npz = path[:-3] + ".npz" if path.endswith(".pt") else ""
         if npz and os.path.exists(npz):
             self.net = _load_npnet(npz)
+            loaded_path = Path(npz)
         else:
             from .model import load_any_net
             self.net = load_any_net(path)
+            loaded_path = Path(path)
+        self.checkpoint_path = str(loaded_path.resolve())
+        self.checkpoint_sha256 = _file_sha256(loaded_path)
         # A real MCBot supplies the candidate ballot — the SAME one the teacher
         # valued. Borrowing the unbound method with `self` misses MCBot's class
         # attributes (WIDE_FOLLOW_BALLOT et al).

@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 09:34 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 10:03 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -228,7 +228,9 @@ any drift.
 1. **V11 protected-anchor lane (separate from S0):**
    `server/scripts/v11_revalidate.py` and policies `mc-v11anchor` /
    `mc-v11anchor-random` are code-ready; a two-cluster compiled+strict smoke
-   completed cleanly and is non-promotable. First run the frozen direct
+   completed cleanly and is non-promotable. Registry construction is now cwd-
+   independent and the runner verifies that the policy's actual absolute
+   loaded path/SHA are the same NPZ bytes named by its manifest. First run the frozen direct
    `rl-override-v11pair` versus current N=30 block at seeds 121M. That result
    can authorize only a later anchor experiment. Do not freeze that later
    experiment's reference/seeds until S0 names the terminal champion; never
@@ -238,10 +240,18 @@ any drift.
    passed 405 tests (two optional skips) and a one-deal smoke passed. No
    evidence run exists. Execute
    Stage A (64 mechanics plus deterministic rerun), then disjoint Stage B (128
-   production-N30 gold continuation). Only a Stage-B regret upper bound <=0.10
+   production-N30 gold continuation). Stage-B freezing now requires both a
+   complete/digest-valid exact Stage-A exclusion set and the PASS gate bound to
+   that set; schema-only exclusion cannot advance. Only a Stage-B regret upper bound <=0.10
    signed levels authorizes implementing/launching its 2,048-state wave.
-3. **S2 self-play RL:** close role-sign and immutable-actor tests, then run short
-   faithful Suphx-style feature-removal and DouZero-style role-Q microbaselines.
+3. **S2 self-play RL:** role-sign antisymmetry and immutable actor/candidate
+   boundaries are code-ready and tested. The audit also fixed promotion of
+   different learner bytes than the candidate actually gated. A bounded
+   18-round smoke is explicitly non-promotable; the full server suite passes
+   415 tests with two optional skips. Exact learner/optimizer/replay
+   resume remains open; do not run faithful Suphx-style feature-removal or
+   DouZero-style role-Q microbaselines until interrupted/resumed output matches
+   uninterrupted output.
 4. **S3 structured search:** independently screen broad bury search and
    information-set-legal sampled exact solving for the final ~4 tricks.
 

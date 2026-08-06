@@ -439,6 +439,8 @@ def main() -> None:
             "stage_c_authorized": False,
             "problems": problems,
             "n_states": len(records), "candidate_world_work": work,
+            "state_input_sha256": (
+                manifests[0].get("state_input_sha256") if manifests else None),
             "measured_seconds": elapsed,
             "projected_2048_seconds": projection,
             "inputs": [{"path": path, "sha256": sha256_file(path)}

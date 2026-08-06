@@ -90,8 +90,10 @@ def test_algorithm_contract_binds_every_required_choice():
     assert ALGORITHM_SPEC["implementation_source_sha256s"] == \
         ALGORITHM_SOURCE_SHA256S
     assert set(ALGORITHM_SOURCE_SHA256S) == {
-        "douzero_micro", "actions", "encode", "memory", "smart_controls",
-        "round_driver", "cards", "combos", "game", "round",
+        "douzero_micro", "actions", "encode", "memory", "exact_resume",
+        "selfplay_contract", "synchronous_selfplay", "smart_controls",
+        "heuristic", "mcbot", "round_driver", "cards", "combos", "legal",
+        "game", "round",
     }
     observation = ALGORITHM_SPEC["encoder"]["observation"]
     assert observation["schema"] == \
@@ -132,8 +134,14 @@ def test_algorithm_contract_binds_every_required_choice():
     changed = copy.deepcopy(ALGORITHM_SPEC)
     changed["encoder"]["observation"]["implementation_sha256"] = "0" * 64
     assert contract_digest(changed) != ALGORITHM_SHA256
+
+
+@pytest.mark.parametrize("dependency", sorted(ALGORITHM_SOURCE_SHA256S))
+def test_each_implementation_dependency_changes_algorithm_contract(dependency):
     changed = copy.deepcopy(ALGORITHM_SPEC)
-    changed["implementation_source_sha256s"]["actions"] = "0" * 64
+    replacement = "0" * 64
+    assert changed["implementation_source_sha256s"][dependency] != replacement
+    changed["implementation_source_sha256s"][dependency] = replacement
     assert contract_digest(changed) != ALGORITHM_SHA256
 
 

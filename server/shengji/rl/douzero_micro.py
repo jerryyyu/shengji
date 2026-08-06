@@ -88,10 +88,19 @@ ALGORITHM_SOURCE_SHA256S = {
     "actions": sha256_file(Path(__file__).resolve().with_name("actions.py")),
     "encode": ENCODER_SOURCE_SHA256S["encode"],
     "memory": ENCODER_SOURCE_SHA256S["memory"],
+    "exact_resume": sha256_file(
+        Path(__file__).resolve().with_name("exact_resume.py")),
+    "selfplay_contract": sha256_file(
+        Path(__file__).resolve().with_name("selfplay_contract.py")),
+    "synchronous_selfplay": sha256_file(
+        Path(__file__).resolve().with_name("synchronous_selfplay.py")),
     "smart_controls": sha256_file(_SOURCE_ROOT / "ai" / "smart.py"),
+    "heuristic": sha256_file(_SOURCE_ROOT / "ai" / "heuristic.py"),
+    "mcbot": sha256_file(_SOURCE_ROOT / "ai" / "mcbot.py"),
     "round_driver": sha256_file(_SOURCE_ROOT / "ai" / "env.py"),
     "cards": sha256_file(_SOURCE_ROOT / "engine" / "cards.py"),
     "combos": sha256_file(_SOURCE_ROOT / "engine" / "combos.py"),
+    "legal": sha256_file(_SOURCE_ROOT / "engine" / "legal.py"),
     "game": sha256_file(_SOURCE_ROOT / "engine" / "game.py"),
     "round": sha256_file(_SOURCE_ROOT / "engine" / "round.py"),
 }

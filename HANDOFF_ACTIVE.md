@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-05 19:55 EDT. Historical discussion and superseded gate
+Last update: 2026-08-05 20:31 EDT. Historical discussion and superseded gate
 packets live in `HANDOFF_REVIEW.md`.
 
 ## Current status
@@ -171,6 +171,110 @@ restore it. Production room bots are constructed unseeded (`seed=None`), so an
 exact live draw still cannot be replayed byte-for-byte. Closing that needs the
 server to seed room bots deterministically — a production behaviour change I
 have NOT made.
+
+## Codex S0 gate — BLOCKED; do not launch a duel
+
+The return at `7a57166` is useful progress, but it is not
+`READY_FOR_CODEX_GATE`. The packet itself says two of five arms are not
+implemented, and current code still violates the registered inference,
+fixed-work and replay contracts. The uncommitted paired-gap edit is directionally
+right but closes only one symptom; preserve it while fixing the items below.
+
+### 1. The confidence decision is not yet statistically valid
+
+- `confidence-only` first selects the empirical winner among as many as 14
+  candidates, then applies a one-candidate normal `z=1.64` bound on the same 30
+  worlds. That is not one-sided 95% coverage for the selected maximum. Pin a
+  simultaneous finite-sample rule, or use disjoint fixed selection/report
+  worlds. Do not merely change the constant without naming the family and
+  alpha allocation.
+- Adaptive pruning takes repeated looks at the same stream. It needs a valid
+  time-uniform confidence sequence/frozen alpha-spending schedule, or a
+  disjoint report fold after allocation. A fixed-look bound does not become
+  valid because it is recomputed often.
+- Pruning compares two candidate-vs-zero SEs and calls their sum a
+  candidate-vs-leader bound. Store direct paired moments on the candidates'
+  overlapping worlds (or select only on a disjoint report fold) and test the
+  stated estimand.
+- Final `best` is still chosen from **all original candidates**, including a
+  candidate previously pruned with a frozen noisy mean. Select only among
+  survivors, then evaluate them on a common/disjoint report fold. Changing the
+  final gap to `d_sum[best] / n_by[best]` does not prevent this re-entry.
+
+### 2. Equal-work and control arms do not exist yet
+
+- `random-allocation` and `equal-work-high-budget` are explicitly **NOT
+  IMPLEMENTED**. They need named registry policies, deterministic factories,
+  tests, a runner and immutable manifests before the five-arm table is a
+  runnable preregistration.
+- `spent <= N*K` is not the declared invariant. The current arms spend only
+  96.2-96.8%, and `while rollouts + len(alive) <= budget` strands a residual
+  whenever it is smaller than the survivor count. Either consume exactly the
+  registered candidate-world work or freeze/match the same explicit residual
+  rule in every arm. Tests must assert equality/refusal, not bless any
+  under-spend.
+- Cap sampling attempts. A repeated `None` advances neither `rollouts` nor the
+  adaptive loop and can hang indefinitely. Record attempts, accepted and
+  rejected worlds per decision and fail the run on unreconciled work.
+- As written, “all arms have N*K work” makes `equal-work-high-budget` with
+  fixed-margin uniform allocation identical to `current` N=30. Define the
+  distinct intervention: either a separately registered larger cap with an
+  exact matched-work adaptive arm, or remove the duplicate arm. Do not name a
+  high-budget control that spends incumbent work.
+
+### 3. The QHKR and sign tests do not yet falsify the mechanisms
+
+- The committed QHKR test exercises seeds `500..519`; it does not include the
+  known fixed-margin `DJ` draws `238` and `344`. Pin same-seed A/B assertions:
+  current overrides on those witnesses and the proposed rule refuses. The
+  reported 200-seed counts exist only in prose; return the immutable seed list,
+  script and artifact with exact card counts.
+- Add attacker and defender witnesses where a large, low-uncertainty gain **must
+  override**. “Never makes the reported bad move” can otherwise be satisfied by
+  degenerating to SmartBot, which would discard the source of MC's strength.
+- The acting-team sign test may `continue` before asserting a role, so it can
+  pass without testing both. Require an explicit
+  `tested_roles == {"attacker", "defender"}` and pin hand-computed signed
+  deltas. Selecting high/low
+  from the same samples later used to verify high/low is not an independent
+  falsification.
+- Minimise the regression fixture: remove live room ID/timestamps and describe
+  `SAAK` as the current high-N reference, not an objectively proven action.
+
+### 4. Live decision records can currently explain the wrong move
+
+- Reset `last_decision_record`, `last_override_stats` and `last_alloc` at the
+  start of every decision. Tractor-lock, one-candidate and zero-world exits can
+  otherwise attach the previous search record to a new play.
+- `chosen_index` is written **before** the confidence/fixed-margin fallback, so
+  the log can name an alternative even when candidate 0 was returned. Record
+  raw winner, final played index/card and a final reason after all fallbacks;
+  assert they equal the server's actual multiset.
+- The digest is computed after sampling and is not replayable. Store the full
+  pre-decision `random.Random.getstate()` (which also works when construction
+  used OS entropy) or a derived per-decision child seed; deterministic room
+  construction is not the only repair. Add exact replay as a test.
+- Bind the record to registry policy name, git/code identity and `BallotSpec`.
+  Convert cumulative sampler counters to per-decision deltas so accepted,
+  rejected and attempted work reconcile for the logged move.
+
+### 5. Frozen launch protocol after the code gate
+
+Use two independent blocks so compute is informative without pretending the
+multi-arm selection block is a promotion test:
+
+1. **MECHANISM SCREEN:** 2,048 fresh clusters across the complete control
+   matrix; no production promotion from this block. Freeze all arms and one
+   primary contrast before opening it.
+2. **STRENGTH CONFIRM:** if one mechanism survives, freeze that one arm and run
+   an independent 8,192-cluster arm-vs-current block plus mc-vs-mc null. This is
+   powered near the observed SD 1.60 for a `+0.05` level/deal effect. Promotion
+   still requires a positive paired superiority interval, not merely a point
+   estimate above 0.05.
+
+There is no sample-size blocker to implementing and falsifying the mechanism.
+The fleet launch remains blocked until sections 1-4 return with a clean tree,
+named policies and replayable artifacts.
 
 ## Decisions that should not be reopened
 

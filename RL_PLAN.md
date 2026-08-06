@@ -21,7 +21,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-06 15:32 EDT
+## Current synthesis — 2026-08-06 16:14 EDT
 
 This section is the current decision layer. The lineage table below owns model
 history; **Data and evaluation contract** owns dataset/evaluation provenance;
@@ -83,25 +83,28 @@ day-by-day detail. A historical result below does not reopen a closed lane.
   only PASS reach an independent 138M confirmation. Commit `d2229d0` now makes
   that protocol executable: it hard-binds the exact direct commit/source,
   preserves the original direct verdict, uses champion-matched nulls and
-  forces confirmation to reopen/recompute raw screen evidence. Its old source
-  lock now correctly refuses corrected inference; version the parent/gate only
-  after the fresh direct block rather than weakening provenance. v11's
+  forces confirmation to reopen/recompute raw screen evidence. Corrected-parent
+  v2 is now frozen at `b361836`; `1354cac` closes empty-valued environment-key
+  refusal. Its deliberate `DIRECT_AGGREGATE_SHA256=None` lock can be replaced
+  only with the exact sealed corrected-v2 aggregate, and terminal S0 remains an
+  independent prerequisite. v11's
   within-state deltas remain valid for ranking, not as scalar leaf values.
-- **Two independent learning lanes remain open.** Teacher-v1's entry code gate
-  is closed at `23a9e0b`: the exact 1,024-deal packet, canonical shards and
-  independent producer receipts now fail closed through Stage-B authorization.
-  The fail-closed `0183cdd` supervisor completed all eight corrected-encoder
+- **Two independent learning lanes remain open.** Teacher-v1 began with the
+  fail-closed `0183cdd` supervisor, which completed all eight corrected-encoder
   captures on Air, then refused before diagnostics: JSON converted the ballot
   config tuple to an equivalent list and a direct dict comparison falsely
   called that actor drift. No state set or label exists. Preserve the refused
-  v1 namespace; the replacement is a disjoint JSON-canonical 143M-v2 packet
-  that must enforce Python 3.14.6 and flags OFF. It is still in code re-review:
-  the initial repair did not prove selected states came from diagnostics and
-  used overwrite-capable artifact publication. After those are closed, it must
-  pass its 64-state
-  mechanics and 128-state gold-continuation gates before producing 2,048 clean
-  counterfactual states. Faithful Suphx-style privileged-feature
-  removal and DouZero-style role-conditioned direct-Q microbaselines have
+  v1 namespace. The disjoint JSON-canonical 143M-v2 entry is accepted at
+  `2038b31`: it pins Python/flags, exact 8-shard/1,024-deal admission, full
+  capture -> diagnostic -> selected-state semantics, recomputed coverage,
+  exclusive publication, 64 unique in-range states, nonzero uncertainty and
+  Stage-A/B disjointness. Its authorization stops at fresh capture -> diagnose
+  -> 64-state freeze when Air is free. Receipt/label/gate writers retain a
+  separate no-overwrite and parent-binding gate; after that, the asset must
+  still pass its 64-state mechanics and 128-state gold-continuation gates
+  before producing 2,048 clean counterfactual states. Faithful Suphx-style
+  privileged-feature removal and DouZero-style role-conditioned direct-Q
+  microbaselines have
   passed the shared attacker/defender-sign and immutable-actor boundary. The
   exact synchronous chassis is now code-closed at `e49cf60`: transactional
   resume, interruption poisoning, process-global RNG exclusion, hidden
@@ -114,14 +117,22 @@ day-by-day detail. A historical result below does not reopen a closed lane.
   DouZero-style one-round implementation—not a faithful reproduction or
   strength result. Review found the algorithm digest omitted imported
   execution-contract dependencies; `f5ff2f9` now binds all 16 material direct
-  and transitive sources and mutation-falsifies each. The code gate is closed;
-  its next step is a preregistered small learning/held-out evaluation, not an
-  unbounded fleet run.
+  and transitive sources and mutation-falsifies each. Commit `b27be23` closes
+  the missing actor-refresh boundary: only the runner's already-published exact
+  current candidate may become the next actor, exact resume is preserved and
+  artifact/learner drift poisons until checkpoint restore. The next step is a
+  preregistered three-seed, fixed-dose learning/held-out evaluation against the
+  initial actor with a matched null and exact narrow ballot—not an unbounded
+  fleet run or a claim against MC.
 - **Structured search remains independent and feature-off.** Commit `e946696`
   closes the broader bury source's 512-state disjoint-report/equal-work code
   gate. Its verifier reconstructs named deals, redraws both folds and replays
   every raw score; digest and wholesale-score falsifications fail. The evidence
-  run still waits for terminal S0 and cannot itself promote a policy.
+  run still waits for terminal S0 and cannot itself promote a policy. Audit
+  found that the current runtime path canonicalizes the base bury before
+  search, while the screen preserves the terminal champion's literal bury as
+  candidate zero. That downstream treatment mismatch and missing structured-
+  bury dose telemetry must close before any screen PASS can authorize a duel.
   The <=4-card sampled exact-endgame seam shares a context-safe solver session
   across candidate roots inside each determinized world and passes independent
   mechanics/parity review. Its frozen challenge at `2370a27` completed 140/140
@@ -134,7 +145,12 @@ day-by-day detail. A historical result below does not reopen a closed lane.
   with raw-screen reopening and zero-refusal/exact-use gates. It waits for
   terminal S0 and remains one-round evidence; each mechanism must later duel
   the terminal champion and any deployment candidate needs multi-round
-  progression.
+  progression. Of the two S3 lanes, S3b is the shortest credible post-S0 path
+  to a clean win because its terminal-champion-matched treatment, screen and
+  confirmation already exist. S3a may have greater upside because burial is a
+  once-per-round high-leverage decision and sourcing has historically helped,
+  but it first needs exact screen/runtime parity and then a separately frozen
+  full-game duel.
 - **Sampler hard-validity/support P0 is closed at clean `aea3774`.** The v3
   certificate covers exactly 500 original + 500 late + 500 deep states,
   accepts 36,000/36,000 worlds with zero rejected/invalid/named skips, and
@@ -146,7 +162,9 @@ day-by-day detail. A historical result below does not reopen a closed lane.
   not an oracle.
 - **Historical DMC2 evidence is invalid, not an RL rejection.** The defender
   residual sign, mutable actor path and promote-different-bytes defects are now
-  repaired and covered by bounded tests, but no result has been rerun. The
+  repaired and covered by bounded tests; `d5d71d2` proves PASS returns the exact
+  immutable evaluated candidate, FAIL retains the incumbent and generator
+  drift refuses. No result has been rerun. The
   recipe is still neither Suphx's privileged-policy curriculum nor DouZero's
   role-specific direct-return method. Commit `e49cf60` closes the generic exact
   synchronous coordinator, but it does not rehabilitate the legacy algorithm

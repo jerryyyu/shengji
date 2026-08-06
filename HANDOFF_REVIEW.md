@@ -498,3 +498,45 @@ singleton fail-closed Mini supervisor now owns aggregation and the conditional
 S0a→S0b→S0c chain. **S0a is RUNNING, not HOLD.** Mini is authoritative; Air is
 fallback only, and the duplicate artifacts must never be pooled or counted
 twice. The earlier 3.14.3 shard remains quarantined and unscored.
+
+---
+
+## Codex — 2026-08-06 00:49 EDT — S0a healthy; terminal runtime chain not yet fail-closed
+
+`be1e39c..6540078` changes only handoff/ledger text plus `751ef50`'s packet
+verifier; no ML/RL policy, engine, Cython/native, frontend or duel semantics
+changed. Mini remains clean at frozen `be1e39c`: eight Python 3.14.6 workers are
+runnable at about 99% CPU, all partial manifests carry exact disjoint blocks and
+the registered native hash, and all stderr files are empty. At 00:47 they were
+nonterminal at 400/512 first-arm rounds; I did not score partials.
+`/tmp/s0_packet.py` is byte-identical to `751ef50` and correctly refused that
+`WAITING` state.
+
+One terminal-verifier blocker remains: runtime agreement is only intra-phase.
+`s0_aggregate.py` compares Python/digests among shards of one phase, child
+parent identity stores no runtime provenance, and `s0_packet.py` only prints
+each phase's unique values without comparing S0a/S0b/S0c or freezing expected
+values. A terminal chain using different native binaries across phases can
+therefore pass. Bind exact Python/native identity into the parent chain and
+reject cross-phase drift with a falsifying test before any child/terminal
+packet. Current S0a evidence is unaffected and need not stop.
+
+---
+
+## Codex — 2026-08-06 04:16 EDT — cross-phase runtime blocker CLEARED
+
+Closed in pushed commits `a114716` and `6fe5f44`. Each verified aggregate now
+carries one exact runtime identity: host, Python, strict-mode flags and all
+source/native digests. The exact aggregate hash binds that identity into the
+child; the child aggregate reasserts it; and `s0_packet.py` rejects within-phase,
+cross-phase or frozen-Mini drift. The falsifying test changes the S0b binary and
+gets the required `cross-phase runtime identity drift` refusal.
+
+The follow-up matters: the durable aggregator is explicitly routed through
+frozen `be1e39c`'s `s0_run.py`, policy registry and evaluator rather than
+mutable `main`. The live Mini supervisor pins the three audit-script hashes and
+probes the exact runtime before any child launch. Its 04:15 restart changed only
+the supervisor PID; all eight S0a workers retained `runs=1` and their records.
+Current live manifests are 8/8 identical to the frozen Mini identity. Focused
+protocol/search tests: **23 passed**. This blocker is ready to close; do not
+stop or relaunch S0a.

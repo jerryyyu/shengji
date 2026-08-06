@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 00:00 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 04:16 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -13,8 +13,9 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 - The DEV-512 ballot screen is **SELECT NONE / CLOSED**. CALIB-512 and REPORT
   remain sealed and unscored; do not revive that lane by adding DEV arms.
 - The S0 implementation/code gate is complete. The bounded S0a mechanism
-  screen is **RUNNING** authoritatively on Mini: 8/8 clean shards reached
-  300/512 rounds of the first arm by 23:58 EDT with zero stderr. Air is an
+  screen is **RUNNING** authoritatively on Mini: both report arms are complete
+  and 8/8 clean shards reached 200/512 rounds of the equal-work arm by 04:02
+  EDT with zero stderr. Air is an
   S0a-only fallback; never pool the duplicate hosts or launch a child from Air.
 - Teacher-v1 mechanics/gold gates, the v11 protected-anchor compatibility block
   and the role-conditioned RL microgates remain independent parallel strength
@@ -24,8 +25,10 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 Base implementation commit: `df0a7b9`; calibration/freeze commit: `316542a`
 (both pushed). End-to-end parent-bound S0a/S0b/S0c protocol commit: `476e400`.
-The independent terminal return-packet verifier is durable at `751ef50`
-(`server/scripts/s0_packet.py`); its live frozen copy is byte-identical.
+The independent terminal return-packet verifier is durable at `751ef50`, with
+cross-phase runtime binding at `a114716` and frozen-source routing at `6fe5f44`
+(`server/scripts/s0_packet.py` and `server/scripts/s0_aggregate.py`). The live
+supervisor pins those audit-tool hashes and refuses drift.
 The calibration commit adds the immutable audit artifact and freezes its
 selected report dose; the protocol commit freezes exact coverage, controls and
 the independent confirmation before any S0a result is inspected.
@@ -59,6 +62,13 @@ the independent confirmation before any S0a result is inspected.
    and negative paired-delta tests force both branches, and the frozen audit has
    genuine LCB-positive attacker and defender witnesses so a never-override
    implementation cannot pass.
+7. Runtime provenance is fail-closed across the whole chain. Every aggregate
+   carries the exact host, Python, strict-mode flags and all source/native
+   digests; the parent aggregate hash binds that identity into its child. The
+   Mini supervisor probes the runtime before child launch, and the terminal
+   verifier rejects within-phase, cross-phase or frozen-identity drift. A
+   changed child binary is a tested refusal. The durable aggregator explicitly
+   imports policy/evaluator code from frozen `be1e39c`, never mutable `main`.
 
 The per-move LCB is deliberately a named, conservative one-sided Student-t
 decision heuristic (`1.70`, valid for the registered R>=30 normal approximation),

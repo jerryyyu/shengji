@@ -28,9 +28,10 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   adaptive allocation, equal-work controls, replayable decision records and a
   fail-closed sharded runner are registered. The clean DEV audit selected
   R=300; **no S0 strength result exists yet**. The bounded S0a 2,048-cluster
-  screen is running authoritatively on Mini: all eight clean shards reached
-  300/512 rounds of the first arm by 23:58 EDT. Air is fallback-only and its
-  duplicate records may never be pooled.
+  screen is running authoritatively on Mini: both report arms are complete and
+  all eight clean shards reached 200/512 rounds of the equal-work arm by 04:02
+  EDT. Cross-phase runtime/source provenance is fail-closed at `6fe5f44`. Air
+  is fallback-only and its duplicate records may never be pooled.
 - The roadmap has three parallel strength lanes: S0 search, clean teacher/model
   iteration, and faithful role-conditioned self-play. Do not wait for S0a to run
   the bounded teacher/RL entry gates on other workers.

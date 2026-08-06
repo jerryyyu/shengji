@@ -1,0 +1,83 @@
+{
+  "asset_id": "s3b-exact-endgame-mechanics-v1",
+  "protocol": {
+    "assignment": "sorted_state_id_then_interleaved_position",
+    "candidate_source": "exhaustive_submitted_legal_actions_inside_bound",
+    "claim": "exact perfect-information oracle inside a sampled determinization; not exact imperfect-information Shengji",
+    "full_game_reference": null,
+    "max_hand_cards": 4,
+    "max_nodes_per_world_session": 250000,
+    "node_cap_kind": "cumulative_uncached_nonterminal_expansions_per_world_session",
+    "promotion": false,
+    "purpose": "bounded_mechanics_challenge",
+    "required_budget_overflows": 0,
+    "required_exact_refusals": 0,
+    "sampler": "production_MCBot_information_set_sampler",
+    "shard_count": 4,
+    "strength_evidence": false,
+    "worlds_per_state": 4
+  },
+  "schema": "s3b-exact-endgame-challenge-states-v1",
+  "states": [
+    {
+      "deal_seed": 136010000,
+      "expected_candidate_count": 15,
+      "expected_candidates_sha256": "80bb5c93242cb9c8a43ccbf3d340a76ac80d679a9693a1822ed40ab2b52b0984",
+      "expected_state_sha256": "c6c520607afb1fc75ae0bfe61e56f7e8483b0a8cd8148f64541707d26e3c8d1d",
+      "late_offset": 0,
+      "state_id": "s3b-00-defender-lead-trump-multisets",
+      "tags": ["defender", "lead", "multi-card-submissions", "trump-rank-collision"],
+      "worlds": [
+        {"expected_world_sha256": "ba2b4b38b3d026fd928dba2e06951c94bb96751cc919f1ce768802dae2df1edb", "world_seed": 136020000},
+        {"expected_world_sha256": "a70570d354e897c7c1d233f02ff0349bdd4293b52c71635dd8902e923501f33d", "world_seed": 136020001},
+        {"expected_world_sha256": "99b3d4bc5a560e64c9042822240aedc637f045e02cb4b218fa2f967117b6403a", "world_seed": 136020002},
+        {"expected_world_sha256": "0e8cf9fb20f4264fb5087b84aa7ff916fc9442598bcb482ee4e1ed10ff95123b", "world_seed": 136020003}
+      ]
+    },
+    {
+      "deal_seed": 136010001,
+      "expected_candidate_count": 11,
+      "expected_candidates_sha256": "8c210cd323ece2be92b86ca72a090e35073f08cae547a46a6615a6945b9dc66e",
+      "expected_state_sha256": "eebeaa66517e87e20e8ff24a258391a853d74baa1c3ee8a2303e5b6b2b228adc",
+      "late_offset": 0,
+      "state_id": "s3b-01-attacker-lead-pair-throw",
+      "tags": ["attacker", "lead", "pair", "attempted-throws", "duplicate-cards"],
+      "worlds": [
+        {"expected_world_sha256": "7824e7430f916c0e4f5d2d32d019a889f85cd9d1200e1de6d462a8b0a31b8d47", "world_seed": 136020100},
+        {"expected_world_sha256": "e549c0cef8a0590343a4c5e4f080bea31c20a83ecc03a73f54038f80553bb27f", "world_seed": 136020101},
+        {"expected_world_sha256": "537085dde6dec3e3765f98db925d20472da7da797c7583276a1f8fd2f8f31b46", "world_seed": 136020102},
+        {"expected_world_sha256": "827dc09e7bc07de5aaa91231970b0e167df0ee15193966de03d39dff393fabcd", "world_seed": 136020103}
+      ]
+    },
+    {
+      "deal_seed": 136010008,
+      "expected_candidate_count": 3,
+      "expected_candidates_sha256": "f07efbd56370a25c983046989331f72df60bf251c570a9e25f4f2f43d253ddf7",
+      "expected_state_sha256": "1bd3a0a66b0c895e2ebf375bfc811d2fb8373cccde24785d77d99551044c1137",
+      "late_offset": 1,
+      "state_id": "s3b-02-attacker-follow-duplicate-trump",
+      "tags": ["attacker", "follow", "duplicate-cards", "trump"],
+      "worlds": [
+        {"expected_world_sha256": "f7588c466870a2bd02375d16a674a305bfce70cbb75eb93740e9d9e705d64a90", "world_seed": 136020200},
+        {"expected_world_sha256": "b98ad3ebaf0b2b0c1d31f08b81c2e0e1d4b7e3fe36a8bcf1b622e1548274f9dd", "world_seed": 136020201},
+        {"expected_world_sha256": "2b50f291daa40093b0a67a819a21dbefb22bc038afa8a3cd8a039374606379c0", "world_seed": 136020202},
+        {"expected_world_sha256": "dc9eb824fed441a97a3f33672122ae73a8c8bae6cc5445d9ac3a8ef5d4cae6f5", "world_seed": 136020203}
+      ]
+    },
+    {
+      "deal_seed": 136010148,
+      "expected_candidate_count": 6,
+      "expected_candidates_sha256": "af5c6b36cfd02451f7579d1812373b9855d1642d241b4a8a6231c2da9da2ef42",
+      "expected_state_sha256": "cfa6d865006668bf6b361867ac94476f2b2fa5e0772c949dbbe9714c1b7469ca",
+      "late_offset": 1,
+      "state_id": "s3b-03-defender-follow-pair-lead",
+      "tags": ["defender", "follow", "pair-lead", "shape-obligation", "void-fill"],
+      "worlds": [
+        {"expected_world_sha256": "e31c5d3a7ee0cb7c4441a8e258b2d9fc63d88a527adb2511e838d288707937b3", "world_seed": 136020300},
+        {"expected_world_sha256": "1511c5970785cffbbbb542070e785d2e4fe073919f0dac9725b4b006fceb70ff", "world_seed": 136020301},
+        {"expected_world_sha256": "362b2b2bfe91256998e25604f167e4eafb44e04ccc90c4ca50488222210fb630", "world_seed": 136020302},
+        {"expected_world_sha256": "8938bb0794fcfe0101bce10d588774fe0d56d03245dcef554aa5cebb861275c6", "world_seed": 136020303}
+      ]
+    }
+  ]
+}

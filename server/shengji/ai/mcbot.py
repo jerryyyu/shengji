@@ -218,7 +218,7 @@ class MCBot(SmartBot):
         self.last_decision_record = None
         self.reject_cause = Counter()
         # Decisions that fell back to candidate 0 with NO world sampled.
-        self.zero_world_decisions = 0     # kept at 0; readers still reference it
+        self.zero_world_decisions = 0
 
     # ------------------------------------------------------------------- play
     def decide_play(self, rnd: Round, seat: int) -> list[str]:
@@ -261,7 +261,7 @@ class MCBot(SmartBot):
         totals = [0.0] * len(candidates)
         # Paired running moments of (candidate_i - candidate_0) on the SAME
         # world. The fixed-margin override compares point estimates only, so a
-        # noisy draw can clear it: in the QHKR incident `DJ` beat candidate 0 by
+        # noisy draw can clear it: in the sanitised incident `DJ` beat candidate 0 by
         # 5.8-6.3 against a 5.0 margin in 2 of 500 N=30 replicas, while the
         # correct card won the other 479. Pairing on shared worlds removes the
         # world-to-world variance that dominates the raw spread.
@@ -357,7 +357,7 @@ class MCBot(SmartBot):
             margin = self.LEAD_MARGIN
         # S0 item 3: persist enough to REPLAY this exact decision. The live
         # logs retained neither the RNG position nor the candidate values, so
-        # the reported QHKR draw could not be reproduced — the diagnosis had to
+        # the reported incident draw could not be reproduced — the diagnosis had to
         # be inferred from replicas. Recorded for every contested decision, not
         # only overrides, because "why did it NOT override" is the same
         # question.
@@ -599,7 +599,7 @@ class MCBot(SmartBot):
         Uniform search spends `N x K` candidate-worlds evenly, so every
         candidate — including obvious losers — gets the same precision, and the
         contenders that actually decide the move stay noisy. That noise is what
-        the fixed margin mistook for evidence in the QHKR incident.
+        the fixed margin mistook for evidence in the sanitised incident.
 
         Same total work, spent differently: evaluate everyone on a common
         prefix, drop candidates whose UPPER bound is already below the leader's

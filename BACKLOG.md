@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-05 19:50 EDT.
+Last re-derived: 2026-08-05 21:39 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -24,15 +24,21 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   Its primary half-width was 0.337; at the same variance 2,048 states would
   still be about 0.169, and resolving a 0.10 offline effect would take roughly
   5,800 states. Do not append to the inspected DEV set or try more arms on it.
-- No blind bulk run is authorized, but the roadmap now has three parallel
-  strength lanes ready for bounded gates: adaptive search, clean teacher/model
-  iteration, and faithful role-conditioned self-play.
+- S0's code gate is complete: exact disjoint report folds, deterministic/random
+  adaptive allocation, equal-work controls, replayable decision records and a
+  fail-closed sharded runner are registered. The clean DEV audit selected
+  R=300; **no S0 strength result exists yet**. The bounded S0a 2,048-cluster
+  screen is the next authorized fleet job.
+- The roadmap has three parallel strength lanes: S0 search, clean teacher/model
+  iteration, and faithful role-conditioned self-play. Do not wait for S0a to run
+  the bounded teacher/RL entry gates on other workers.
 
 ## NOW — ordered by value
 
 | priority | work | exit gate |
 |---|---|---|
-| **S0 search strength** | Build confidence-gated adaptive MC on the incumbent ballot | Reproduce the live `QHKR` round-4 `DJ` over `SAAK` variance failure; persist paired per-world deltas/SE; compare current uniform N=30, confidence fallback, deterministic adaptive allocation, random allocation and equal-work uniform controls. Promote only on fresh paired full games. |
+| **S0a search strength** | Run the frozen decision-rule screen now that the code gate is closed | Eight 256-cluster shards (seeds 132M) compare report-mean, report-LCB, equal-work uniform, null and current. Aggregate only with `s0_aggregate.py`; carry one rule by the registered screen criterion, never promote from this block. |
+| **S0b allocation** | If S0a selects a report rule, test allocation separately | Run exactly one of `s0b-mean` / `s0b-lcb`: deterministic adaptive must beat both uniform-report and random allocation by paired point estimate. Freeze one survivor for an independent 8,192-cluster superiority confirmation. |
 | **S0b v11pair utilization** | Use the one confirmed learned improvement as MC's protected root anchor | First revalidate frozen `rl-override-v11pair` directly against current compiled N=30 on one fresh 2,048-cluster paired block. Then test an equal-work hybrid that preserves the full current ballot and N=30 worlds but protects v11's thresholded choice instead of SmartBot's. Hard pruning, pairwise-as-leaf and search/no-search gating are not this experiment. |
 | **S1 teacher/model** | Execute `TEACHER_V1_SPEC.md`, then earn scale | Pass the 64-state mechanics and 128-state gold-continuation gates before the 2,048-state wave. This is a new training/challenge asset, not an enlargement of DEV-512. Train three-seed action ranker + calibrated outcome head; scale only if untouched regret and paired games improve. |
 | **S2 self-play RL** | Run faithful role-conditioned synchronous microbaselines | Unit-test attacker/defender signs, separately version reward targets, and bind immutable actors. Then run Suphx-style feature removal and DouZero-style direct-Q baselines for 20–30 minutes; stable spread plus held-out improvement earns fleet scale. |
@@ -50,30 +56,40 @@ improvement.
 
 ### Lane A — make the production search stronger now
 
-The live `QHKR` round-4 opener is the motivating regression. Banker-team Bot 2
-held `SAAK`; that play was in the ballot and was SmartBot's candidate 0, yet one
-N=30 draw let `DJ` clear the fixed five-point override margin. With current code:
+The sanitised live-incident challenge is the motivating regression. Defender
+seat 2 held `SAAK`; that play was in the ballot and was SmartBot's candidate 0,
+yet one N=30 draw let `DJ` clear the fixed five-point override margin. With
+current code:
 
 - 240 worlds prefer `SAAK` by about 5.4 attacker points;
 - 500 independent N=30 replicas choose `SAAK` 479 times and `DJ` twice;
 - the two `DJ` replicas overestimated it by 5.8 and 6.3 points, just enough to
   clear the fixed margin.
 
-So the first mechanism is **paired uncertainty**, not another ballot. Start all
-candidates on common worlds, compute paired deltas and SE versus candidate 0,
-eliminate clear losers, and spend remaining rollout work only on unresolved
-leaders. If no alternative proves it clears the policy margin, retain candidate
-0. Persist policy name/git, candidates, per-world or sufficient paired moments,
-SE, accepted/rejected counts and an RNG stream identity so the next live anomaly
-is exactly reproducible.
+The mechanism is now implemented. Uniform N=30 nominates one challenger; a
+fresh named R=300 paired report fold chooses it only when report mean or a
+conservative one-sided LCB exceeds the separate `REPORT_MIN_GAIN=0`. Adaptive
+selection uses direct overlapping-world candidate-vs-leader moments and exact
+N*K work; random allocation and equal-total-work uniform controls are registered.
+Short folds refuse, all work/counters reconcile, and live JSON records replay.
 
-The attribution matrix is:
+The clean immutable diagnostic (`s0_override_audit.v1.json`, SHA-256
+`9703b50817fb03622c3739e44f73e19083b1e8337300be7054774e2308e13ef5`)
+found 48 overrides in 150 frozen DEV states. Among the first 20, 12 N=300 gaps
+were positive, mean gap was only +0.570 and median absolute gap 2.775. The
+predeclared grid retained 2/3/5/6 positive references at R=30/60/120/300 under
+LCB>0 with zero negative supports, selecting R=300. This is calibration, not
+strength; it corrects the unsupported blanket claim that MC overrides are worth
+1.4-1.7 points.
 
-1. current uniform N=30;
-2. confidence-gated N=30 with no adaptive reallocation;
-3. deterministic adaptive allocation at the same candidate-world work;
-4. matched random allocation at that work; and
-5. uniform and adaptive high-budget arms at the same larger cap.
+The executable sequence is:
+
+1. S0a: current, true null, uniform+report-mean, uniform+report-LCB and uniform
+   high-work control over 2,048 fresh clusters (8x256, seeds 132M);
+2. S0b: only the selected report rule, comparing uniform, deterministic adaptive
+   and matched random allocation at exact `30K+600` work; and
+3. independent 8,192-cluster survivor-vs-current confirmation. Its paired 95%
+   interval must be above zero to promote.
 
 Primary deployment estimand is paired signed level utility per fresh deal
 cluster with seat/team flips. Using conservative observed cluster SD ~1.60,

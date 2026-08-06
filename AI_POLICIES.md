@@ -180,16 +180,31 @@ newest entry sit on top and speak for the file.
   not DouZero's from-scratch role-specific direct-Q baseline. Preserve the
   alarms/scaffolding; do not interpret the two halted runs as testing either
   paper's hypothesis.
-- **A live blunder report isolates finite-N override noise, not sourcing.** In
-  `QHKR` round 4 trick 1, banker-team Bot 2 led `DJ` while holding `SAAK`.
+- **A sanitised live-incident challenge isolates finite-N override noise, not
+  sourcing.** Defender seat 2 led `DJ` while holding `SAAK`.
   `SAAK` was present and was SmartBot's candidate 0. A 240-world replay prefers
   it by about 5.4 attacker points; across 500 independent N=30 replicas it is
   selected 479 times and `DJ` twice. Both `DJ` draws overestimated it by just
   enough (5.8/6.3 points) to clear the fixed five-point override margin. The
   immediate mechanism is paired uncertainty/confidence-aware allocation and a
-  candidate-0 fallback—not another ballot rule. Live decision logs must retain
-  policy/git, candidate values/paired SE and RNG-stream identity for exact
-  reproduction.
+  candidate-0 fallback—not another ballot rule.
+- **S0 is implemented but has no strength result yet.** Incumbent point-margin
+  5 and report minimum-gain 0 are separate semantics. Registered report arms
+  nominate on N=30 selection worlds, then score the fixed pair on 300 fresh
+  named worlds; a short fold refuses. Deterministic/random adaptive and uniform
+  high-work controls consume exact matched `30K+600` candidate rollouts. Live
+  records now bind policy/git/code/ballot, restore JSON RNG state exactly, name
+  raw and final choices, and reconcile per-decision work/counters. The
+  per-decision Student-t LCB is a conservative decision heuristic; only fresh
+  paired full games establish strength.
+- **The reproducible override diagnostic is smaller than the first prose
+  estimate.** In the immutable first-150-DEV / first-20-override asset, 12/20
+  N=300 gaps are positive, mean signed gap is `+0.570`, and median absolute gap
+  is `2.775`. LCB>0 retains 2/3/5/6 of the 12 positive references at
+  R=30/60/120/300, with zero negative supports, so the predeclared rule selected
+  R=300. This selected DEV sample calibrates S0; it does not prove an average MC
+  effect or a stronger bot. Artifact SHA-256 is
+  `9703b50817fb03622c3739e44f73e19083b1e8337300be7054774e2308e13ef5`.
 - **Next strength work has three parallel lanes, not one defensive gate.** The
   ballot lane ended at SELECT NONE and CALIB/REPORT remain sealed, but compute
   can pursue: (A) confidence-gated/adaptive MC plus structured bury and sampled
@@ -219,6 +234,12 @@ newest entry sit on top and speak for the file.
   own counters. See
   `CORRECTNESS.md` for the certified boundary rather than inferring it from a
   policy result.
+- **Experimental S0 family, not deployed:** `mc-s0-report-mean` and
+  `mc-s0-report-lcb` isolate the report rule; `mc-s0-uniform-work` isolates
+  extra compute; `mc-s0-adaptive[-mean]` and `mc-s0-random[-mean]` isolate
+  evidence-directed allocation. S0a is a 2,048-cluster mechanism screen;
+  production still requires an independent 8,192-cluster superiority interval
+  above zero.
 - **Retired strength arm:** `mc-vleaf-v7w-ep02` has no verified edge over MC.
   Its historical 50.4% at n=1,200 predated the leaf factory's seed-forwarding
   repair. In the current hardened screen it scored 52.8% and

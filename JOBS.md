@@ -5,9 +5,30 @@ the inter-agent mailbox. Keep one authoritative running section here.
 
 ## RUNNING
 
-Nothing at this snapshot. Package H is closed; the fleet should move to the
-bounded S0 confidence-search implementation and teacher-v1 preflight in
-`HANDOFF_ACTIVE.md`, not wait on further generic certification work.
+Nothing at this snapshot. Package H is closed and the S0 implementation packet
+is runnable. The next authorized fleet launch is S0a: eight shards x256 clusters
+on seeds 132,000,000-132,002,047 using `scripts/s0_run.py s0a`. Teacher-v1 Stage
+A/B and the RL role-sign/immutable-actor microgate can use otherwise idle workers
+in parallel; do not wait on more generic certification work.
+
+## READY / NOT STARTED — S0a decision-rule screen
+
+- Policies: `mc-s0-report-mean`, `mc-s0-report-lcb`,
+  `mc-s0-uniform-work`, `mc-strong-null`, `mc-strong`, all paired on the same
+  deals against current `mc-strong`.
+- Dose: uniform N=30 selection; report R=300; report/equal-work arms consume
+  exact `30K+600` candidate rollouts per contested decision. Eight shards of
+  256 clusters; aggregate only with `scripts/s0_aggregate.py s0a`.
+- Calibration asset: `server/tests/data/s0_override_audit.v1.json`, SHA-256
+  `9703b50817fb03622c3739e44f73e19083b1e8337300be7054774e2308e13ef5`.
+  Clean producer `df0a7b9`; 150 states, 48 incumbent overrides, first 20
+  detailed, 12 positive N=300 gaps, mean +0.570, R=300 selected by the committed
+  rule.
+- One dirty two-cluster local smoke at the frozen R=300 dose completed all five
+  arms (20 mirrored records) with zero short/zero-world or unreconciled
+  searches and no manifest problems. It is marked `promotable:false` and is
+  mechanics only; its game scores are not evidence.
+- No S0a shard or strength duel has started at this snapshot.
 
 **SAMPLER CERTIFICATE — CURRENT.** `server/runs/logs/certify_sampler_v3.json`,
 git `aea3774`, clean tree, compiled ACTIVE, strict voids ON. 1,500 states at

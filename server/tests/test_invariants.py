@@ -665,11 +665,12 @@ def test_a_tampered_deep_lead_row_is_REJECTED():
         replay_deep_lead(row)
 
 
-def test_QHKR_override_variance_regression():
+def test_mc_override_variance_regression():
     """S0 item 4: the live incident Jerry reported, as a challenge case.
 
-    Round 4 trick 0, banker seat 2 holds `SA SA SK`; candidate 0 IS the
-    `SA SA SK` throw, so this was never a ballot omission. Production led `DJ`.
+    The sanitised incident state has defender seat 2 holding `SA SA SK`;
+    candidate 0 IS the `SA SA SK` throw, so this was never a ballot omission.
+    One production-equivalent N=30 draw led `DJ`.
     Measured: over N=30 replicas the fixed-margin override picks a non-candidate-0
     card a few percent of the time, because it compares POINT ESTIMATES against a
     5.0 margin and a lucky draw clears it. The paired lower-confidence-bound
@@ -684,7 +685,7 @@ def test_QHKR_override_variance_regression():
     from shengji.ai.registry import make_bot
     here = os.path.dirname(os.path.abspath(__file__))
     fx = json.load(open(os.path.join(here, "data",
-                                     "qhkr_round4_override.json")))
+                                     "mc_override_variance.json")))
     evs = fx["events"]
     seat = fx["seat"]
     rnd = rebuild_round(evs)
@@ -723,7 +724,7 @@ def test_acting_team_sign_is_correct_for_both_roles():
     `_decide` stores `val if i_attack else -val`, so `means` are in ACTING-TEAM
     perspective: higher is better for whoever is moving. For an ATTACKER that
     means more attacker points; for a DEFENDER it means FEWER. I read these as
-    attacker-positive while analysing the QHKR report and concluded the exact
+    attacker-positive while analysing the incident report and concluded the exact
     opposite of the truth, so this asserts the convention directly rather than
     relying on remembering it.
     """

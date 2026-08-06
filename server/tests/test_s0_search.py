@@ -15,10 +15,10 @@ from shengji.api.server import _log_play
 from shengji.rl.replay_log import rebuild_round
 
 
-FIXTURE = Path(__file__).with_name("data") / "qhkr_round4_override.json"
+FIXTURE = Path(__file__).with_name("data") / "mc_override_variance.json"
 
 
-def qhkr_state():
+def incident_state():
     fx = json.loads(FIXTURE.read_text())
     events, seat = fx["events"], fx["seat"]
     rnd = rebuild_round(events)
@@ -47,7 +47,7 @@ def fixed_report(gap):
 
 
 def test_every_early_exit_clears_all_previous_decision_state(monkeypatch):
-    rnd, seat = qhkr_state()
+    rnd, seat = incident_state()
     bot = make_bot("mc-strong", seed=1)
 
     for name in ("last_decision_record", "last_override_stats", "last_alloc"):
@@ -73,7 +73,7 @@ def test_every_early_exit_clears_all_previous_decision_state(monkeypatch):
 
 
 def test_json_logged_rng_state_replays_the_exact_decision():
-    rnd, seat = qhkr_state()
+    rnd, seat = incident_state()
     first = make_bot("mc-strong", seed=238)
     play1 = first.decide_play(rnd, seat)
     record = json.loads(json.dumps(first.last_decision_record))
@@ -89,7 +89,7 @@ def test_json_logged_rng_state_replays_the_exact_decision():
 
 
 def test_live_record_binds_policy_code_ballot_and_actual_play():
-    rnd, seat = qhkr_state()
+    rnd, seat = incident_state()
     bot = make_bot("mc-strong", seed=238)
     played = bot.decide_play(rnd, seat)
     rec = bot.last_decision_record
@@ -112,8 +112,8 @@ def test_server_refuses_a_record_that_names_a_different_play():
         _log_play(room, 0, ["DJ"], True, None)
 
 
-def test_qhkr_report_fold_is_complete_disjoint_and_fully_accounted():
-    rnd, seat = qhkr_state()
+def test_incident_report_fold_is_complete_disjoint_and_fully_accounted():
+    rnd, seat = incident_state()
     bot = make_bot("mc-s0-report-lcb", seed=238)
     played = bot.decide_play(rnd, seat)
     rec = bot.last_decision_record
@@ -132,7 +132,7 @@ def test_qhkr_report_fold_is_complete_disjoint_and_fully_accounted():
 
 
 def test_an_underfilled_report_fold_can_never_override(monkeypatch):
-    rnd, seat = qhkr_state()
+    rnd, seat = incident_state()
     bot = make_bot("mc-s0-report-lcb", seed=238)
     monkeypatch.setattr(bot, "_report_fold_gap", partial_report)
     played = bot.decide_play(rnd, seat)
@@ -146,7 +146,7 @@ def test_an_underfilled_report_fold_can_never_override(monkeypatch):
 @pytest.mark.parametrize("gap,overrides", [(2.0, True), (-2.0, False)])
 def test_report_lcb_must_override_a_certain_gain_and_refuse_a_loss(
         monkeypatch, gap, overrides):
-    rnd, seat = qhkr_state()
+    rnd, seat = incident_state()
     bot = make_bot("mc-s0-report-lcb", seed=238)
     monkeypatch.setattr(bot, "_report_fold_gap", fixed_report(gap))
     played = bot.decide_play(rnd, seat)
@@ -161,7 +161,7 @@ def test_report_lcb_must_override_a_certain_gain_and_refuse_a_loss(
 
 
 def test_adaptive_random_and_uniform_controls_have_exact_matched_work():
-    rnd, seat = qhkr_state()
+    rnd, seat = incident_state()
     records = {}
     for name in ("mc-s0-report-lcb", "mc-s0-adaptive", "mc-s0-random",
                  "mc-s0-uniform-work"):
@@ -180,7 +180,7 @@ def test_adaptive_random_and_uniform_controls_have_exact_matched_work():
 
 @pytest.mark.parametrize("name", ["mc-s0-adaptive", "mc-s0-random"])
 def test_s0_allocation_and_report_streams_reproduce(name):
-    rnd, seat = qhkr_state()
+    rnd, seat = incident_state()
     a, b = make_bot(name, seed=44), make_bot(name, seed=44)
     pa, pb = a.decide_play(rnd, seat), b.decide_play(rnd, seat)
     assert pa == pb
@@ -190,7 +190,7 @@ def test_s0_allocation_and_report_streams_reproduce(name):
 
 
 def test_report_helper_refuses_a_completely_failed_sampler(monkeypatch):
-    rnd, seat = qhkr_state()
+    rnd, seat = incident_state()
     bot = make_bot("mc-s0-report-lcb", seed=1)
     mem = Memory(rnd, seat, own_kitty=True)
     monkeypatch.setattr(bot, "_sample_hands", lambda *args: None)

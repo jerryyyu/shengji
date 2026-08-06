@@ -33,7 +33,7 @@ helps for processes launched after it existed.
 cd server && uv run python -m pytest tests/ -q
 ```
 
-Layers (all must pass; current `main` collects **253 tests**, with both the
+Layers (all must pass; current S0 packet collects **365 tests**, with both the
 plain and `SHENGJI_FAST=1` routes required):
 1. **Unit tests** — test_engine.py, test_game.py, test_memory.py,
    test_rl.py: rules primitives, game flow, memory inference, RL codec.
@@ -76,6 +76,31 @@ plain and `SHENGJI_FAST=1` routes required):
   two representations of one world different values and flip MC's argmax.
 - **Compiled ports (Cython/Rust)**: may not merge until the full suite
   passes byte-identical WITH the fast path active, goldens untouched.
+
+## Search-decision provenance and exact-work boundary
+
+A legal sampled world is necessary but not sufficient for a trustworthy MC
+decision. Every contested current/S0 search now records the registry policy,
+git/dirty/code and derived ballot identity, restorable pre-selection RNG state,
+named child-stream seeds, all candidates/means/paired SEs, raw winner, final
+played card/reason, elapsed time, exact selection/report work and per-decision
+sampler deltas. The server refuses to attach a decision record whose played
+multiset differs from the move it received. Tractor-lock and one-candidate paths
+clear prior state before returning, so a later play cannot inherit an earlier
+search's explanation.
+
+Sampler counters obey `attempts = accepted + failed`. A registered exact search
+or report fold that cannot fill its dose returns candidate 0, increments
+`short_search_decisions`, and makes an evidence run fail closed. Retrying a
+failed draw is not itself a protocol failure when the final accepted dose is
+exact and counters reconcile; silently searching fewer worlds is. Report folds
+run on a named stream disjoint from selection, and partial folds never decide.
+
+The immutable S0 challenge/calibration asset is
+`server/tests/data/s0_override_audit.v1.json` (SHA-256
+`9703b50817fb03622c3739e44f73e19083b1e8337300be7054774e2308e13ef5`).
+It is an inspected DEV diagnostic, not a sampler certificate, strength result or
+training set.
 
 ## Hidden-world sampler correctness boundary
 
@@ -217,6 +242,9 @@ safely refused.
 | 08-04 | `_seeded()` TypeError repair introduced a no-`rng` fallthrough returning `None`; direct deterministic tournament factories break | boundary fallback / missing return | direct boundary probe |
 | 08-04 | ~~`v11_extend.py` and `gate_duel.py` accept seed kwargs but drop them~~ **RESOLVED 08-04**: both scripts deleted; the one evaluator is `shengji/evaluation.py` and `test_evaluation_lib.py` asserts all four seats get distinct seeds | evaluation provenance / false test coverage | partial m0 duel audit |
 | 08-04 | sampled/acting hands with the same card multiset but different list order changed HeuristicBot rollout continuations and could flip MC's action | actor-distribution nondeterminism | layer probe plus preserved seeds 772006/772045 |
+| 08-05 | tractor-lock / one-candidate plays could retain the preceding search record; raw winner could be logged as the played move after a fallback | live observability could explain the wrong action | direct stale-sentinel and server-seam regressions |
+| 08-05 | adaptive search could re-admit a pruned candidate on its frozen noisy mean, strand residual work, and omit disjoint-report work/time from counters | search/action and equal-work correctness | exact-work S0 controls and sanitised incident accounting witness |
+| 08-05 | JSON preserved RNG bytes but decoded tuples as lists that `Random.setstate()` rejects; partial report folds with >=2 worlds could still decide | claimed replay/refusal contract was not executable | exact JSON replay and underfilled-fold regressions |
 
 Update this table whenever a correctness incident occurs — the log is
 the argument for the rules.

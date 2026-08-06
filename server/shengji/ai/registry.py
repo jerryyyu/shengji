@@ -108,7 +108,10 @@ REGISTRY: dict[str, type] = {
 # `mc-strong` is unchanged. Every report arm spends N*K selection rollouts plus
 # exactly 2R paired report rollouts on each contested decision; the uniform-work
 # control spends the same N*K+2R total entirely on uniform selection.
-S0_REPORT_WORLDS = 120
+# Chosen by the predeclared DEV calibration in s0_override_audit.py: 30/60/120
+# retained only 2/3/5 of 12 N=300-positive incumbent overrides under LCB>0;
+# 300 was the first dose to retain half with zero N=300-negative supports.
+S0_REPORT_WORLDS = 300
 REGISTRY.update({
     "mc-s0-report-mean": type("MCS0ReportMean", (MCBot,), {
         "N_DETERMINIZATIONS": 30,

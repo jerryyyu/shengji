@@ -404,15 +404,17 @@ they change what gets built, not just what gets said.
 
 ## ROADMAP FROM HERE — strength first, correctness as a gate
 
-1. **Fix the measured N=30 decision failure with confidence-aware search.** In
-   live `QHKR` round 4, `SAAK` was candidate 0, yet one N=30 sample let `DJ`
-   clear the fixed five-point margin. A 240-world replay prefers `SAAK`; 500
-   N=30 replicas select it 479 times and `DJ` twice. Record paired per-world
-   deltas/SE, retain candidate 0 unless an alternative clears a confidence
-   bound, and adaptively spend common-world rollouts on unresolved candidates.
-   Compare current uniform N=30, confidence-only, deterministic adaptive,
-   random-allocation and equal-work high-budget controls before a fresh paired
-   full-game gate.
+1. **Test the implemented S0 confidence-aware search.** The sanitised incident
+   keeps `SAAK` as candidate 0 while two named N=30 streams choose `DJ`. S0 now
+   separates incumbent point-margin 5 from report minimum-gain 0, nominates on
+   N=30 worlds, and tests the fixed pair on an exact independent R=300 fold.
+   It includes deterministic/random adaptive selection, an equal-total-work
+   uniform control, exact counters and replayable decision logs. The clean
+   first-150-DEV / first-20-override calibration found 12 positive N=300 gaps,
+   mean +0.570; its predeclared grid selected R=300. Run S0a (report mean vs
+   report LCB vs extra uniform compute), then S0b allocation only for the
+   selected rule, then an independent 8,192-cluster full-game confirmation.
+   No S0 policy is strong or deployable before the last interval clears zero.
 2. **Build a teacher that can exceed the old teacher.** Follow
    `TEACHER_V1_SPEC.md`: mechanics first, then a gold continuation-quality gate,
    then generate a 2,048-state pilot outside every evaluation split, balanced
@@ -631,6 +633,7 @@ unscored until a separately preregistered audit.
 | `rl_data/deep_leads.v1.jsonl` + `deep_lead_split.v1.json` | 768 raw lead states; 256 each DEV/CALIB/REPORT; 48 split/trick/role cells x16; data hash `ffccfde64932eb3a` | Reconstructable state reservoir captured before ballot scoring. It supplies the late/deep coverage missing from the older corpora. | **FROZEN reservoir.** May build registered evaluation sets; never train from split identity or inspect REPORT outcomes. |
 | `rl_data/pilot_dev512.v6.json` | 512 unique deals; hash `af78748586034f6f`; bands 170/171/171; size 0/72/98, 11/131/29, 152/19/0; roles 85/85, 86/85, 86/85; source 129/41/0, 17/154/0, 0/1/170 | DEV worksheet for the lead-ballot design screen. Frozen from clean `53d9b67` by a fail-closed freezer: size drives deal selection, and a shortage or replay error publishes nothing instead of a short file. | **512/512 SCORED; SELECT NONE.** Eight clean shards at `884030f`, strict aggregate reproduced; no design advanced and this asset may not train a model. Supersedes v5 (`097ea3851cd3bb9c`), whose marginal-cell dedup moved 52/512 exact DEV states under row reversal. v3/v4/v5 remain named negative controls. |
 | `rl_data/pilot_calib512.v6.json` | 512 unique deals, disjoint from DEV; hash `3872350f57a4dd60`; identical band/size/role allocation | Untouched holdout to judge exactly one frozen DEV-selected design. No action labels or scores. | **UNTOUCHED.** Do not tune, train, or score. Supersedes v5 (`00ca4de1915d8c4f`). |
+| `tests/data/s0_override_audit.v1.json` | 150 frozen DEV decisions; first 20 actual N=30 overrides each carry all 300 fresh signed paired deltas; SHA-256 `9703b50817fb03622c3739e44f73e19083b1e8337300be7054774e2308e13ef5` | Reproducible calibration/challenge asset for report-fold dose and both-role override semantics. It selected R=300 by a committed rule. | **INSPECTED DEV DIAGNOSTIC.** May regression-test S0 mechanics and dose identity; never a strength result, promotion set, generic teacher or training corpus. |
 
 The 512+512 design is sized for **selection followed by an independent
 holdout**, not for a final strength claim. It should resolve a practically

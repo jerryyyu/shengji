@@ -1,12 +1,8 @@
 {
- "note": "QHKR round 4 trick 0: banker seat 2 holds SA SA SK; production led DJ. Finite-N override variance, not a ballot omission.",
+ "note": "Sanitised variance challenge: defender seat 2 holds SA SA SK; one finite-N search seed leads DJ. SAAK is the N=300 reference, not an objectively solved action.",
  "seat": 2,
- "round": 4,
  "events": [
   {
-   "t": 1785970822.033,
-   "room": "QHKR",
-   "round": 4,
    "e": "round_start",
    "deck": [
     "C4",
@@ -119,71 +115,28 @@
     "S10"
    ],
    "banker": 2,
-   "trump_rank": "4",
-   "levels": [
-    "4",
-    "2"
-   ],
-   "players": [
-    {
-     "seat": 0,
-     "name": "srig",
-     "is_bot": false
-    },
-    {
-     "seat": 1,
-     "name": "Bot 1",
-     "is_bot": true
-    },
-    {
-     "seat": 2,
-     "name": "Bot 2",
-     "is_bot": true
-    },
-    {
-     "seat": 3,
-     "name": "Bot 3",
-     "is_bot": true
-    }
-   ]
+   "trump_rank": "4"
   },
   {
-   "t": 1785970825.485,
-   "room": "QHKR",
-   "round": 4,
    "e": "declare",
    "seat": 0,
    "cards": [
     "C4"
-   ],
-   "bot": false
+   ]
   },
   {
-   "t": 1785970843.865,
-   "room": "QHKR",
-   "round": 4,
    "e": "declare",
    "seat": 3,
    "cards": [
     "H4",
     "H4"
-   ],
-   "bot": true
+   ]
   },
   {
-   "t": 1785970849.09,
-   "room": "QHKR",
-   "round": 4,
    "e": "trump",
-   "suit": "H",
-   "rank": "4",
-   "banker": 2,
-   "declared": true
+   "banker": 2
   },
   {
-   "t": 1785970849.791,
-   "room": "QHKR",
-   "round": 4,
    "e": "bury",
    "seat": 2,
    "cards": [
@@ -195,19 +148,14 @@
     "C8",
     "D9",
     "S9"
-   ],
-   "bot": true
+   ]
   },
   {
-   "t": 1785970851.173,
-   "room": "QHKR",
-   "round": 4,
    "e": "play",
    "seat": 2,
    "cards": [
     "DJ"
-   ],
-   "bot": true
+   ]
   }
  ]
 }

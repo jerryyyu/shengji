@@ -39,7 +39,9 @@ and unscored under `runs/logs/quarantine_s0a_python_mismatch/`.
   deals against current `mc-strong`.
 - Dose: uniform N=30 selection; report R=300; report/equal-work arms consume
   exact `30K+600` candidate rollouts per contested decision. Eight shards of
-  256 clusters; aggregate only with `scripts/s0_aggregate.py s0a`.
+  256 clusters; aggregate only with the hash-pinned `6fe5f44` verifier and set
+  `S0_SOURCE_SERVER` to the frozen Mini server. The singleton supervisor owns
+  this invocation; do not launch a competing manual aggregate.
 - Calibration asset: `server/tests/data/s0_override_audit.v1.json`, SHA-256
   `9703b50817fb03622c3739e44f73e19083b1e8337300be7054774e2308e13ef5`.
   Clean producer `df0a7b9`; 150 states, 48 incumbent overrides, first 20

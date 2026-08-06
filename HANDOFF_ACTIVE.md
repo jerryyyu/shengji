@@ -132,13 +132,21 @@ SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 .venv/bin/python \
   scripts/s0_run.py s0a --shard-index I
 ```
 
-After all eight manifests return:
+After all eight manifests return, the singleton supervisor owns aggregation.
+For independent reproduction only (do not race the supervisor), invoke the
+pushed verifier while routing all policy/evaluator imports to the frozen source:
 
 ```bash
-cd server
-.venv/bin/python scripts/s0_aggregate.py s0a \
-  --out runs/logs/s0a-v1.aggregate.json
+cd /Users/jerryyu/Projects/shengji-s0-mini/server
+S0_SOURCE_SERVER="$PWD" /opt/homebrew/bin/python3.14 \
+  /Users/jerryyu/Projects/shengji/server/scripts/s0_aggregate.py s0a \
+  --pattern 'runs/logs/s0-protocol-v2_s0a_shard0?_be1e39cd92.jsonl.manifest.json'
 ```
+
+The live supervisor pins SHA-256
+`a3e33086019c2a140963d06851591f3cea3ed2b23ffb9e1dd7bc0f6c58d7a255`
+for that aggregator. A different script or missing `S0_SOURCE_SERVER` is not an
+authoritative aggregate.
 
 The frozen screen rule carries forward the larger of report-mean/report-LCB only
 if its paired point estimate is positive versus current and its direct paired

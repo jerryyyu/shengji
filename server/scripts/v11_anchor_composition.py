@@ -40,6 +40,7 @@ from shengji.evaluation import arm_ballots, paired_by_seed, run_arm  # noqa: E40
 SCHEMA = "v11-anchor-composition-shard-v1"
 AGGREGATE_SCHEMA = "v11-anchor-composition-aggregate-v1"
 SHARD_COUNT = 8
+EXPECTED_V11_THRESHOLD = 0.02
 CHECKPOINT = SERVER / "snapshots_v11pair" / "ep07.npz"
 CHECKPOINT_SHA256 = (
     "cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003"
@@ -329,6 +330,12 @@ def protocol_problems(champion: str) -> list[str]:
     if getattr(bots["random"], "ANCHOR_MODE", None) != \
             "same_trigger_random":
         problems.append("random control is not same-trigger random")
+    if getattr(bots["anchor"], "V11_THRESHOLD", None) != \
+            EXPECTED_V11_THRESHOLD:
+        problems.append("anchor v11 trigger threshold drifted")
+    if getattr(bots["random"], "V11_THRESHOLD", None) != \
+            EXPECTED_V11_THRESHOLD:
+        problems.append("random control v11 trigger threshold drifted")
     if contracts["null"] != base:
         problems.append("champion-matched null contract differs from champion")
     if type(bots["null"].rollout_policy) is not \

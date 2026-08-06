@@ -15,6 +15,7 @@ sys.path.insert(0, str(SCRIPTS))
 import v11_anchor_composition as V1  # noqa: E402
 import v11_anchor_composition_v2 as COMP  # noqa: E402
 import v11_revalidate_v2 as DIRECT  # noqa: E402
+from shengji.rl.torch_policy import MCV11RandomAnchor  # noqa: E402
 
 
 DIRECT_SOURCES = {
@@ -153,6 +154,17 @@ def test_v2_binds_exact_cde0fec_direct_protocol_and_preserves_estimand():
     for champion in COMP.CHAMPION_LANES:
         assert COMP.labels_for(champion) == V1.labels_for(champion)
         assert COMP.protocol_problems(champion) == []
+
+
+def test_random_control_uses_the_exact_same_v11_trigger_population(
+        monkeypatch):
+    assert V1.EXPECTED_V11_THRESHOLD == COMP.EXPECTED_V11_THRESHOLD == 0.02
+    assert COMP.protocol_problems("mc-strong") == []
+
+    monkeypatch.setattr(MCV11RandomAnchor, "V11_THRESHOLD", 0.0)
+
+    assert "random control v11 trigger threshold drifted" in \
+        COMP.protocol_problems("mc-strong")
 
 
 def test_v2_refuses_any_caller_chosen_parent_until_sealed_hash_is_frozen(

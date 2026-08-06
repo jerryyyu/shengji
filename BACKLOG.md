@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-06 15:32 EDT.
+Last re-derived: 2026-08-06 15:47 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -34,14 +34,16 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   `0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49`.
   This is a mechanism-screen survivor, not a deployment result. Its exact
   parent-bound `s0b-lcb` block launched 8/8 Mini shards at 06:58 EDT. Air's
-  duplicate records may never be pooled. At 15:04 all eight workers were live
-  near 98–99% CPU with eight partial manifests, no final or FAILED marker, and
+  duplicate records may never be pooled. At 15:43 all eight workers were live
+  near 82–85% CPU with eight partial manifests, no final or FAILED marker, and
   clean frozen compiled+strict provenance. Independent review rechecked S0a's
   hash/statistics, additive shared-cluster pairing, null and work parity and
-  measured the live flags-off environment; no live invalidation was found. A
-  main-only durability repair must record/refuse posterior-changing env flags
-  before any future chain. Never edit the frozen live worktree. No partial
-  effects are admissible.
+  measured the live flags-off environment; no live invalidation was found.
+  Commit `4dc5302` closes the main-only durability gap: every future chain
+  refuses and records all four posterior-changing sampler/ballot flags, and
+  aggregation rejects missing/nonempty/cross-phase identities. The frozen live
+  chain remains byte-unchanged; independently recheck flags OFF if its old
+  supervisor launches S0c. No partial effects are admissible.
 - The separate V11 direct-current compatibility v1 block is **TERMINAL FAIL AS
   RUN**: eight clean compiled+strict 256-cluster shards at `e66b90b` produced
   v11-current `-0.132 +/- 0.070`, v11-null `-0.159 +/- 0.069`, and a sane null
@@ -89,7 +91,7 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 | **V11 direct compatibility v1 — TERMINAL FAIL / CORRECTED v2 RUNNING ON AIR** | Separate model quality from an encoder-contract mismatch | The exact 121M v1 block failed as run and remains immutable. `66aad44` restores the trained public/no-private-kitty contract; `cde0fec` freezes a fresh 8x256 corrected v2 gate on exact 142M seeds with transitive encoder hashes and accepted-dose/raw-reopen checks. Eight clean Air shards launched at 15:25 and immediately showed 8 workers/8 partials/0 failures. Do not score partials or reinterpret v1. |
 | **V11 protected composition — CODE GATE CLOSED / WAITS FOR CORRECTED DIRECT + S0** | Test whether search can retain good v11 proposals while rejecting its bad tail | `7ecffd5` blind-froze the estimand; `d2229d0` implements the old-source gate and correctly refuses source drift. Version it only after a fresh corrected-encoder direct block is sealed. Then a sane direct null plus terminal S0 may admit the 2,048-cluster 137M screen even if standalone v11 is not superior. Require anchor-minus-champion/random/null LCBs >0 and a sane null; PASS alone admits disjoint 8,192-cluster confirmation. Never use v11 as a scalar leaf. |
 | **S1 teacher/model — V1 REFUSED / 143M-V2 CODE HOLD** | Test whether a clean counterfactual teacher is worth scaling | `teacher-v1-entry-120m-v1` completed 8/8 captures, then refused before diagnostics on a tuple/list validator bug; preserve it. V2 correctly separates 143M seeds, JSON identity, Python 3.14.6 and flags OFF, but review found invented-state acceptance, overwrite-capable publication, stale v1 instructions, a zero-SE confidence-bound test, no nonempty Stage-A/B exclusion test/postcondition and a sub-8-shard freeze path. Close all with mutation-sensitive parent-chain/collision/uncertainty/disjointness tests before commit or launch. |
-| **S2 self-play RL — DIRECT-Q MICRO CODE GATE CLOSED / EVIDENCE SPEC NEXT** | Test a real role-conditioned direct terminal-return learner | `868b6d8` adds separate attacker/defender GRU action-Q networks, public chronological history, narrow ordinary-play ballot, direct signed terminal bracket return, immutable actor and explicit Smart setup controls. `f5ff2f9` binds all 16 material implementation dependencies and mutation-falsifies each; the root contract matrix passes 77/77. Predeclare a small learning/held-out evaluation before fleet training. |
+| **S2 self-play RL — DIRECT-Q MICRO CODE GATE CLOSED / TRAIN LOOP + EVIDENCE SPEC NEXT** | Test a real role-conditioned direct terminal-return learner | `868b6d8` adds separate attacker/defender GRU action-Q networks, public chronological history, narrow ordinary-play ballot, direct signed terminal bracket return, immutable actor and explicit Smart setup controls. `f5ff2f9` binds all 16 material implementation dependencies and mutation-falsifies each; the root contract matrix passes 77/77. `d5d71d2` separately proves legacy DMC2 PASS promotes the exact evaluated candidate. Before a direct-Q micro-run, add an explicit exact-candidate actor-refresh boundary, then predeclare a small learning/held-out evaluation; do not fill the fleet from a fixed initial actor. |
 | **S3a structured bury search — CODE GATE CLOSED / WAITS FOR TERMINAL S0** | Improve the once-per-round decision that ordinary play search never touches | `e946696` registers the 512-state 136M screen with banker-only sources, literal terminal-champion candidate zero, exact equal candidate-world work, disjoint named folds and legacy-four/trigger-matched-random controls. Its consumer reconstructs each named deal, redraws both folds and replays every raw scorer value; tampered digest and wholesale-score falsifications fail. Focused acceptance is 27/27. After terminal S0, a PASS may authorize only a fresh full-game duel design, never promotion. |
 | **S3b sampled exact endgame — STRENGTH CODE GATE CLOSED / WAITS FOR S0** | Replace heuristic continuation where only about four cards per hand remain | `b807ad1`/`2370a27` close mechanics; `79985a2` registers exact-only clones for every reachable S0 champion, a score-free same-host throughput receipt, a non-promotable 2,048-cluster 139M complete-round screen and disjoint 8,192-cluster 140M confirmation. Both efficacy LCBs, sane matched null, nonzero exact use and zero refusal/overflow are mandatory; confirmation reopens raw screen bytes. It remains sampled perfect-information continuation and needs a later multi-round progression deployment gate. Run only after terminal S0 and throughput admission. |
 | **Frontend ship gate — COMPLETE / PASS** | Keep the multiplayer ownership state machine shippable | The real multi-socket server suite passes 33/33, including join, simultaneous claim, disconnect/bot cover, reconnect/takeover, stale/displaced sockets, repeated absence, token rotation and private-hand visibility. Browser connection/intent tests pass 14/14, including pre-state chat, >50-message rollover and invite-over-saved-room precedence; lint has only existing fast-refresh warnings and the production build passes. |
@@ -342,12 +344,13 @@ authorize adding more data to a target that failed.
       contributed essentially nothing. All experimental sampler flags remain
       OFF. Any repair needs exact-toy calibration, runtime measurement and new
       policy revalidation.
-- [ ] **S0 runtime-flag durability (main only).** Independent review measured
-      the live S0 environment clean and found no evidence invalidation, but the
-      frozen runner does not record/refuse posterior-changing sampler flags.
-      Add flags-off preflight/runtime identity and cross-phase falsifications on
-      main; never dirty the live Mini worktree. Recheck the inherited environment
-      when live S0c launches and include that external receipt in closeout.
+- [x] **S0 runtime-flag durability (main only).** Commit `4dc5302` refuses all
+      four posterior-changing sampler/ballot flags even when present with an
+      empty value, records an explicit empty list, and rejects missing,
+      nonempty, within-phase or cross-phase drift. Focused S0 acceptance is
+      39/39. The frozen live Mini chain was not touched; recheck its inherited
+      flags-off environment when S0c launches and include that external receipt
+      in closeout.
 - [ ] **Dataset contract.** New training records must bind exact state replay,
       role/perspective, legal action multiset, `BallotSpec`, sampler, continuation
       policy, utility target, actor checkpoint and source/split digests. The
@@ -373,10 +376,12 @@ authorize adding more data to a target that failed.
       bug was also fixed: a passing gate now promotes the exact evaluated
       candidate, not whatever newer learner weights exist when the duel ends.
       Historical DMC2 results remain invalid and no new run is strength evidence.
-- [ ] **Exact DMC2 candidate promotion seam.** Independent review found the
-      exact promotion statement is not exercised
-      through `main()`; add a narrow PASS/FAIL resolution seam proving PASS
-      publishes the evaluated candidate digest even if the learner advances.
+- [x] **Exact DMC2 candidate promotion seam.** Commit `d5d71d2` adds a pure
+      PASS/FAIL resolution boundary. PASS re-verifies and returns the exact
+      immutable candidate given to the duel even when a distinct newer learner
+      exists; FAIL retains the exact incumbent, and generator drift refuses.
+      Focused DMC2/self-play acceptance is 32/32. This repairs code provenance,
+      not the invalid historical DMC2 strength result.
 - [x] **Exact synchronous self-play infrastructure.** `29c8cc1` and `e49cf60`
       bind learner, optimizer, replay ring, progress, named RNGs, runtime and
       immutable actor/candidate generations; interruptions poison and rollback,

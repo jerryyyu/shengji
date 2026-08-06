@@ -22,8 +22,9 @@ newline. This is not promotion. At 06:58 the singleton supervisor launched
 8/8 `s0b-lcb` shards over exact seeds 134,000,000–134,002,047. Every child
 binds that aggregate and survivor and preflighted frozen SHA/runtime/native
 identity with strict voids, no dirty files and zero stderr.
-At 15:19 EDT the singleton state remained `WAITING` with all eight workers
-active, eight partial manifests, no final and no FAILED marker. All partials
+At 15:43 EDT the singleton state remained `WAITING` with all eight workers
+active at roughly 82–85% CPU, eight partial manifests, no final and no FAILED
+marker. All partials
 still bind clean frozen `be1e39c`, Python 3.14.6 and the compiled+strict runtime.
 No partial score or effect was inspected.
 
@@ -104,10 +105,10 @@ explicitly inadmissible. A PASS is not production or protected-composition
 authorization. Root focused tests passed 49/49 and compiled+strict protocol
 preflight returned no problems. Air was pinned to exact clean full commit
 `cde0fecf4151685e7174be8a7aa64b0ee6478edd`; at 15:25 eight detached shards
-launched. Immediate verification found eight live workers, eight record
-partials, eight manifest partials, zero final/FAILED artifact and no namespace
-collision. Do not inspect partial scores. Aggregate exactly once only after 8/8
-real finals and zero partial/FAILED/worker residue.
+launched. At 15:45 all eight workers and detached sessions remained live, with
+eight record partials, eight manifest partials, zero final/FAILED artifact and
+no namespace collision. Do not inspect partial scores. Aggregate exactly once
+only after 8/8 real finals and zero partial/FAILED/worker residue.
 
 ## FROZEN PROTOCOL — S0a decision-rule screen
 

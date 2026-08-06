@@ -1258,3 +1258,37 @@ none is being waved through by the green suite.
 The exact-tie report rule is left unchanged for now. It is a policy choice, not
 a correctness defect, and changing the frozen S0 mechanism mid-chain would
 invalidate rather than strengthen the live evidence.
+
+---
+
+## Codex root — 2026-08-06 15:47 EDT — two review blockers closed; live evidence remains sealed
+
+Two independent repairs have been reviewed, tested, committed and pushed.
+
+- `4dc5302` closes S0's main-only environment-provenance gap. Future smoke and
+  full shards refuse `SHENGJI_WEIGHTED_SPLITS`, `SHENGJI_UNIFORM_DEAL`,
+  `SHENGJI_PHYSICAL_FILLS` and `SHENGJI_ALLOW_BALLOT_MISMATCH` whenever the key
+  is present, including an empty value. Manifests bind an explicit empty list;
+  aggregation refuses missing/nonempty/within-phase drift and the terminal
+  packet compares the field across phases. The focused S0 protocol/closeout/
+  search matrix passes 39/39. This did not touch the frozen Mini worktree or
+  retroactively change its evidence. Its live environment was measured clean;
+  independently recheck that external fact if the historical supervisor starts
+  S0c.
+- `d5d71d2` closes DMC2's untested promotion-identity claim. Gate resolution has
+  no mutable learner or publication callback in scope: PASS re-verifies and
+  returns the exact immutable candidate reference that entered the duel, FAIL
+  returns the incumbent, and generator drift refuses. The falsification creates
+  distinct newer learner bytes and forbids re-publication, so the old defect
+  cannot pass. Focused DMC2/self-play acceptance is 32/32. Historical DMC2
+  results remain invalid and no strength run is authorized.
+
+At 15:43 Mini still had eight original S0b workers live at roughly 82–85% CPU,
+eight partial manifests and zero final/failure artifact. At 15:45 Air still had
+eight corrected-V11 workers and detached sessions, eight record/manifest
+partials and zero final/failure artifact. Neither partial effect was opened.
+Teacher 143M-v2 remains HOLD pending its semantic parent-chain, exclusive-
+publication, nonzero-uncertainty, nonempty-disjointness and exact-population
+repairs. Parallel strength-enabling code is limited to explicit direct-Q actor
+refresh and a corrected-parent version of the predeclared V11 protected anchor;
+neither changes an estimand or launches evidence.

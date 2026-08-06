@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 15:32 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 15:47 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -20,8 +20,8 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   S0b-LCB launched 8/8 exact parent-bound Mini shards at 06:58 EDT. For S0,
   Air remains duplicate fallback only; never pool its records or launch an S0
   child from Air.
-  At 15:04 all eight workers were live with eight partial manifests, no final
-  or FAILED marker, and matching clean frozen
+  At 15:43 all eight workers were live at roughly 82–85% CPU with eight partial
+  manifests, no final or FAILED marker, and matching clean frozen
   compiled+strict provenance. Do not inspect partial effects.
 - Teacher-v1 mechanics/gold gates, the V11 protected-anchor lane
   and the role-conditioned RL microgates remain independent parallel strength
@@ -76,11 +76,14 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 - Claude independently revalidated the live S0 chain: S0a hash/statistics,
   cluster additivity, exact 4,096-record coverage, null identity, work parity,
   source isolation and the live flags-off environment all hold. The result and
-  live S0b remain admissible. A **durability gap** remains on main:
-  `s0_run.py` neither records nor refuses three posterior-changing sampler
-  flags (and ballot-mismatch escape). Patch/test main only; never edit the
-  frozen Mini worktree. At live S0c launch, independently verify the inherited
-  environment is still clean and record that in terminal review.
+  live S0b remain admissible. Commit `4dc5302` closes the **main-only durability
+  gap**: future smoke/full runs refuse all four posterior-changing
+  sampler/ballot flags by environment-key presence, manifests record an exact
+  empty list, and aggregation rejects missing/nonempty/cross-phase drift. The
+  focused S0 matrix passes 39/39. The frozen Mini worktree and live chain were
+  not changed, so at live S0c launch independently verify its inherited
+  environment is still clean and record that external receipt in terminal
+  review.
 - Commit `7ecffd5` blind-froze a *separate* protected-composition question
   before any direct-V11 effect was opened. It preserves the original direct
   verdict but recognizes that standalone superiority is not necessary for an
@@ -99,7 +102,11 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   reopening checks. None is a strength result. S3a/S3b still wait for terminal
   S0; V11 v2 is now running 8/8 on Air. `f5ff2f9` closes Claude's direct-Q
   provenance HOLD by binding and falsifying all 16 material implementation
-  dependencies; its learning/evaluation spec remains open.
+  dependencies. Commit `d5d71d2` also closes legacy DMC2's exact-promotion
+  seam: PASS returns the immutable candidate actually evaluated, FAIL keeps the
+  incumbent and generator drift refuses; 32/32 focused tests pass. Historical
+  DMC2 evidence remains invalid. Direct-Q still needs an explicit candidate-to-
+  actor refresh boundary plus its bounded learning/evaluation spec.
 - The frontend ship gate is **COMPLETE / PASS**. The real multi-socket server
   suite passes 33/33 and browser connection/intent tests pass 14/14, including
   the newly exercised >50-message history rollover. Lint reports only the
@@ -458,10 +465,13 @@ authorize that external mutation.
    terminal state, run the independent closeout and packet byte comparison;
    cleanup only the packet-proved services.
 4. **Local code while compute runs:** corrected-encoder V11 v2 is frozen and
-   pushed at `cde0fec` on disjoint 142M seeds. Finish teacher-entry v2 and the
-   S0 main-only flag provenance and DMC2 exact-promotion tests while both hosts
-   run. Direct-Q provenance is closed at `f5ff2f9`; its next bounded work is the
-   evidence spec. Do not weaken or rewrite sealed v1 evidence. S3 evidence
+   pushed at `cde0fec` on disjoint 142M seeds. Finish and independently review
+   teacher-entry v2 while both hosts run. S0 main-only flag provenance is
+   closed at `4dc5302`; DMC2 exact promotion is closed at `d5d71d2`. Direct-Q
+   provenance is closed at `f5ff2f9`; its explicit exact actor-refresh seam and
+   bounded evidence spec are next. A corrected-parent version of the already-
+   blind V11 protected-composition protocol may be prepared without opening
+   live v2 outcomes. Do not weaken or rewrite sealed v1 evidence. S3 evidence
    remains subordinate to terminal S0.
 5. **Production stays `mc-strong`.** No evidence completion authorizes a Fly
    restart or policy change; that remains a separately reviewed quiet-room

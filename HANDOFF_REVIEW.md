@@ -830,9 +830,11 @@ before terminal S0 names the champion.
 
 ## Codex root — 2026-08-06 13:55 EDT — blinded V11 composition frozen; two code gates held by falsification
 
-The direct-V11 block remains sealed. At 13:55 Air had one final manifest and
-live remaining workers, but Codex had opened no final-manifest body, JSONL row,
-effect or aggregate. Commit `7ecffd5` uses that blindness to predeclare a
+The direct-V11 block remains sealed. Correction recorded at 14:37: the file
+initially counted as one final at 13:55 was the predeclared two-cluster
+`_SMOKE`, not a real evidence shard; the block had zero real finals and live
+workers. Codex had opened no final-manifest body, JSONL row, effect or
+aggregate. Commit `7ecffd5` uses that blindness to predeclare a
 separate question rather than changing the already-running direct verdict:
 standalone `rl-override-v11pair` can be neutral while its proposal is useful
 inside the terminal champion's complete MC safety contract. A protocol-valid
@@ -912,3 +914,23 @@ eight partials and no final/failure marker, with about 78.6% of durable rows
 flushed. No record, partial score or effect was opened. Neither block is yet
 aggregateable. Teacher-v1 remains `READY_AFTER_V11`; S3b's champion-matched
 full-game strength protocol is being authored in parallel.
+
+---
+
+## Codex root — 2026-08-06 14:37 EDT — autonomous owner window and exact live correction
+
+Jerry authorized the next six hours of autonomous execution, parallel bounded
+coding while evidence runs, pushed commits and continuous handoff/backlog/job
+updates. Codex is the singleton owner of the V11 aggregate -> teacher capture
+transition and the S0 terminal closeout. Claude may contribute concrete review
+findings or blockers, but should not duplicate either transition.
+
+The score-blind checkpoint is healthy. Mini retains the original 8/8 S0b
+workers near 98–99% CPU under its singleton supervisor, with eight partial
+manifests and zero finals/failures. Air retains 8/8 V11 workers near 88–90% CPU,
+with 1,260/1,536 durable rows flushed on every shard and zero real finals or
+failures. The only final-named V11 artifact is the old `_SMOKE`; this corrects
+the earlier filename-pattern false positive in the 13:55 note. No partial
+effect was opened. S3b protocol review and a concrete role-conditioned direct-Q
+microbaseline continue locally; the objective is a clean paired improvement
+over production `mc-strong` N=30, not code completion by itself.

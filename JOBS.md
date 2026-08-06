@@ -22,7 +22,7 @@ newline. This is not promotion. At 06:58 the singleton supervisor launched
 8/8 `s0b-lcb` shards over exact seeds 134,000,000–134,002,047. Every child
 binds that aggregate and survivor and preflighted frozen SHA/runtime/native
 identity with strict voids, no dirty files and zero stderr.
-At 14:16 EDT all eight workers remained live near 100% CPU, with eight partial
+At 14:36 EDT all eight workers remained live near 98–99% CPU, with eight partial
 manifests, no final and no FAILED marker. All partials still bind clean frozen
 `be1e39c`, Python 3.14.6 and the compiled+strict runtime. Sanitized flushed-row
 counts were 11,760/24,576; these are liveness only and may lag live work. No
@@ -45,10 +45,12 @@ clusters over contiguous seeds 121,000,000–121,002,047. All eight provenance
 manifests agree on Python 3.14.6, compiled+strict execution, policy/ballot/digest
 contracts and checkpoint SHA-256
 `cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003`;
-the worktree remains clean. At 14:16 all eight workers were live near 91–93%
-CPU, with eight partial manifests, no final and no FAILED marker. Sanitized
-flushed-row counts were 9,660/12,288 (~78.6%). No record, partial score or
-effect was opened.
+the worktree remains clean. At 14:36 all eight workers were live near 88–90%
+CPU, with eight partial manifests, no real final and no FAILED marker.
+Sanitized flushed-row counts were exactly 1,260/1,536 per shard, or
+10,080/12,288 (82.0%). The final-named `_SMOKE` manifest is the earlier
+two-cluster non-evidence preflight and must not be counted. No record, partial
+score or effect was opened.
 
 This is only a direct-compatibility prerequisite. After 8/8 final manifests,
 aggregate the frozen block once. It authorizes the later protected-anchor

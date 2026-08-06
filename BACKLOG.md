@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-06 14:17 EDT.
+Last re-derived: 2026-08-06 14:37 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -34,15 +34,16 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   `0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49`.
   This is a mechanism-screen survivor, not a deployment result. Its exact
   parent-bound `s0b-lcb` block launched 8/8 Mini shards at 06:58 EDT. Air's
-  duplicate records may never be pooled. At 14:16 all eight workers were live
-  near 100% CPU with eight partial manifests, no final or FAILED marker, and
+  duplicate records may never be pooled. At 14:36 all eight workers were live
+  near 98–99% CPU with eight partial manifests, no final or FAILED marker, and
   clean frozen compiled+strict provenance. No partial effects are admissible.
 - The separate V11 direct-current compatibility block is **RUNNING ON AIR**:
   eight clean compiled+strict 256-cluster shards at `e66b90b`, exact seeds
-  121,000,000–121,002,047 and the SHA-pinned `ep07.npz`. At 14:16 all eight
-  workers were live near 91–93% CPU with eight partial manifests, no final or
-  FAILED marker, and about 78.6% of durable rows flushed. No record, partial
-  score or effect has been opened. This block retains its original
+  121,000,000–121,002,047 and the SHA-pinned `ep07.npz`. At 14:36 all eight
+  workers were live near 88–90% CPU with eight partial manifests, no real final
+  or FAILED marker, and exactly 1,260/1,536 durable rows (82.0%) flushed per
+  shard. The only final-named file is the non-evidence `_SMOKE`. No record,
+  partial score or effect has been opened. This block retains its original
   direct-superiority verdict and cannot promote a policy.
 - Before opening any V11 result, commit `7ecffd5` separately predeclared the
   protected-composition estimand. Standalone v11 superiority is not logically
@@ -68,7 +69,7 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 | **S0b allocation — RUNNING** | Test allocation separately under the selected LCB report rule | Eight exact parent-bound `s0b-lcb` shards cover seeds 134,000,000–134,002,047 on Mini. Adaptive and uniform-report are complete on every shard; all eight are running the third/final random-allocation arm. Deterministic adaptive must beat both controls by paired point estimate; otherwise report-LCB survives. Do not score partials. |
 | **S0c confirmation** | Independently confirm exactly the S0b survivor | Eight 1,024-cluster shards on seeds 135,000,000–135,008,191 compare survivor, `mc-strong-null`, and current. Promote only if survivor-current and survivor-null paired 95% lower bounds are >0 and the null does not clear; otherwise close S0 SELECT NONE. |
 | **S0d terminal packet + cleanup** | Turn the terminal S0 result into one auditable decision | Independently regenerate and byte-compare the return packet, verify every artifact/hash/counter/seed/runtime field, refuse unexpected S0 workers, then remove only the packet-proved services. Apply a production policy change only on PROMOTE; SELECT NONE leaves `mc-strong` unchanged. A Fly restart remains a separately authorized quiet-room action. |
-| **V11 direct compatibility — RUNNING ON AIR, SEPARATE FROM S0** | Establish whether frozen v11pair still improves on today's N=30 contract | Eight 256-cluster shards at clean `e66b90b` cover exact seeds 121,000,000–121,002,047. At 14:16 all eight were healthy with eight partials/no finals; about 78.6% of durable rows were flushed and no effect was opened. Apply the original rule exactly: V11-current and V11-null LCBs >0 and true-null interval contains zero. Never promote from this block. |
+| **V11 direct compatibility — RUNNING ON AIR, SEPARATE FROM S0** | Establish whether frozen v11pair still improves on today's N=30 contract | Eight 256-cluster shards at clean `e66b90b` cover exact seeds 121,000,000–121,002,047. At 14:36 all eight were healthy with eight partials/no real finals; every shard had flushed exactly 1,260/1,536 rows (82.0%) and no effect was opened. The final-named `_SMOKE` is non-evidence. Apply the original rule exactly: V11-current and V11-null LCBs >0 and true-null interval contains zero. Never promote from this block. |
 | **V11 protected composition — CODE GATE CLOSED / WAITS FOR DIRECT + S0** | Test whether search can retain good v11 proposals while rejecting its bad tail | `7ecffd5` blind-froze the estimand; `d2229d0` implements it. The runner binds the exact `e66b90b` direct source/hash contract, preserves its original verdict, reopens every screen shard/record for confirmation, uses champion-matched nulls and exclusive publication, and reports score-blind progress. A sane direct null plus terminal S0 admit the 2,048-cluster 137M screen even if standalone v11 is neutral. All three anchor LCBs must exceed zero and the null interval contain zero; PASS alone admits the disjoint 8,192-cluster 138M confirmation. Never use v11 as a scalar leaf. |
 | **S1 teacher/model — ENTRY CODE GATE CLOSED / CAPTURE NEXT** | Test whether a clean counterfactual teacher is worth scaling | Commit `23a9e0b` binds the exact `teacher-v1-entry-120m-v1` packet (1,024 deals, seeds 120000000–120001023, 8 shards) through capture, diagnostics, state sets, canonical label partitions and gates. Exclusive pre-label receipts bind role, run, nonce, exact state-set bytes and executable identity; Stage A reopens primary/rerun receipts and Stage-B freeze reopens all 16 Stage-A artifacts. Independent review is PASS; teacher/pilot acceptance is 134 passed, 23 skipped. No evidence exists. When a whole machine is free, run 8/8 capture then diagnose/freeze; Stage A is 64 states with an independent receipt-bound rerun, Stage B is 128 disjoint states and passes only if gold regret U95 <=0.10. |
 | **S2 self-play RL — SYNCHRONOUS INFRASTRUCTURE PASS / ALGORITHM NEXT** | Implement faithful role-conditioned synchronous microbaselines | `e49cf60` closes exact interrupted/resumed state, BaseException poisoning/rollback, named-vs-global RNG enforcement, learner/optimizer hidden configuration, frozen collector state, algorithm-contract batch identity and exclusive candidate publication. The focused acceptance is 46/46. This is an algorithm-neutral chassis only: implement one reviewed Suphx/DouZero collector/loss that loads the verified actor and passes its own bounded uninterrupted-vs-resumed output match before any training claim. |
@@ -293,6 +294,11 @@ staged strength work rather than one speculative monolith:
 6. Training hardware receives three-seed scaling runs only after a valid frozen
    teacher asset exists. Full-game fleet evaluation is reserved for candidates
    that pass their local data/model gate.
+7. During the user-authorized six-hour autonomous window, Codex owns singleton
+   transitions and pushed documentation. Claude may post a concrete review or
+   blocker, but must not duplicate V11 aggregation, teacher capture, or any S0
+   phase. Local coding continues on bounded S3b and concrete direct-Q gates
+   while both evidence hosts are occupied.
 
 At each stage, failure frees the queue for the next mechanism; it does not
 authorize adding more data to a target that failed.

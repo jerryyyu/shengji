@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 14:17 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 14:37 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -20,7 +20,7 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   S0b-LCB launched 8/8 exact parent-bound Mini shards at 06:58 EDT. For S0,
   Air remains duplicate fallback only; never pool its records or launch an S0
   child from Air.
-  At 14:16 all eight workers were live near 100% CPU with eight partial
+  At 14:36 all eight workers were live near 98–99% CPU with eight partial
   manifests, no final or FAILED marker, and matching clean frozen
   compiled+strict provenance. Do not inspect partial effects.
 - Teacher-v1 mechanics/gold gates, the V11 protected-anchor lane
@@ -33,9 +33,11 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   Teacher evidence has not started; its Air worktree/preflight is
   **READY_AFTER_V11** and the exact capture -> diagnostic -> 64-state freeze
   packet is staged. Both compute machines remain occupied by sealed registered
-  work. At 14:16 all eight V11 workers were live near 91–93% CPU with eight
-  partial manifests, no final or FAILED marker, and about 78.6% of durable rows
-  flushed. No record, partial score or effect was opened.
+  work. At 14:36 all eight V11 workers were live near 88–90% CPU with eight
+  partial manifests, no real final or FAILED marker, and exactly 1,260/1,536
+  durable rows (82.0%) flushed per shard. The one final artifact in the
+  namespace is the predeclared two-cluster `_SMOKE`, not evidence. No record,
+  partial score or effect was opened.
 - Commit `7ecffd5` blind-froze a *separate* protected-composition question
   before any direct-V11 effect was opened. It preserves the original direct
   verdict but recognizes that standalone superiority is not necessary for an
@@ -280,9 +282,10 @@ authorize that external mutation.
    contiguous seeds 121,000,000–121,002,047 and agree on host/Python,
    compiled+strict flags, policy/ballot/digest contracts and checkpoint SHA
    `cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003`.
-   At 14:16 all eight workers were healthy with eight partial manifests, no
-   finals/failures and about 78.6% of durable rows flushed. No record, partial
-   score or effect was opened.
+   At 14:36 all eight workers were healthy with eight partial manifests, no
+   real finals/failures and exactly 1,260/1,536 durable rows (82.0%) flushed per
+   shard. The only final-named artifact is the non-evidence `_SMOKE`. No record,
+   partial score or effect was opened.
    Aggregate only after 8/8 final manifests. This result can authorize
    only the protected-anchor experiment.
 2. **V11 protected composition (code gate closed; waits for direct + S0):**
@@ -386,6 +389,13 @@ authorize that external mutation.
 5. **Production stays `mc-strong`.** No evidence completion authorizes a Fly
    restart or policy change; that remains a separately reviewed quiet-room
    action.
+6. **Six-hour autonomous owner window (requested 14:29 EDT):** Codex owns the
+   transitions above, keeps accepted code/doc commits small and pushed, and
+   updates `BACKLOG.md`, `JOBS.md`, today's daily log and this packet after each
+   real gate. Claude should intervene only with a concrete blocker/review
+   finding; never duplicate a singleton aggregate, worker block or teacher
+   capture. The strength target remains a clean paired win over production
+   `mc-strong` N=30, not merely more generated rows or closed code gates.
 
 ## Return packet for Claude
 

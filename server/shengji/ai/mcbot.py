@@ -85,6 +85,7 @@ class MCBot(SmartBot):
     CONFIDENCE_OVERRIDE = False   # S0: require a paired LCB, not a point gap
     ADAPTIVE_ALLOCATION = False   # S0: fixed budget, spent on contenders
     SAMPLE_ATTEMPT_FACTOR = 40    # cap draws per decision; None-loops hung
+    REPORT_FOLD_WORLDS = 0        # >0: bound the winner on DISJOINT worlds
     CONFIDENCE_Z = 1.64           # one-sided 95%
     MARGIN = 5.0  # points/round a candidate must beat SmartBot's pick by;
     #               keeps the heuristic prior unless the search is confident.
@@ -279,6 +280,25 @@ class MCBot(SmartBot):
             # (Codex). `d_sum[best]/n_by[best]` is the mean of per-world
             # differences on worlds where BOTH were evaluated.
             gap = (d_sum[best] / n_by[best]) if n_by[best] else 0.0
+            if self.CONFIDENCE_OVERRIDE and self.REPORT_FOLD_WORLDS:
+                # Bound the SELECTED candidate on worlds that had no part in
+                # selecting it.
+                r_gap, r_se, r_used, r_att = self._report_fold_gap(
+                    rnd, seat, mem, i_attack, candidates[best], candidates[0],
+                    self.REPORT_FOLD_WORLDS)
+                self.last_override_stats = {
+                    "fold": "report", "gap": r_gap, "se": r_se,
+                    "worlds": r_used, "attempts": r_att,
+                    "lcb": r_gap - self.CONFIDENCE_Z * r_se, "margin": margin,
+                }
+                if self.last_decision_record is not None:
+                    self.last_decision_record["report_fold"] = \
+                        self.last_override_stats
+                if r_gap - self.CONFIDENCE_Z * r_se < margin:
+                    self._finalise_record(candidates, 0, "report_lcb_below_margin")
+                    return candidates[0]
+                self._finalise_record(candidates, best, "report_lcb_override")
+                return candidates[best]
             if self.CONFIDENCE_OVERRIDE:
                 # Require the paired LOWER CONFIDENCE BOUND to clear the
                 # margin, not the point estimate. This is what the fixed
@@ -314,6 +334,41 @@ class MCBot(SmartBot):
         rec["played_index"] = played_index
         rec["played"] = list(candidates[played_index])
         rec["reason"] = reason
+
+    def _report_fold_gap(self, rnd, seat, mem, i_attack, cand_a, cand_b, n):
+        """Paired gap and SE for A vs B on FRESH worlds, on the same draws.
+
+        Selecting the empirical winner among K candidates and then bounding it
+        on the SAME worlds is not 95% coverage for the selected maximum — the
+        winner's curse (Codex). Evaluating the chosen pair on a DISJOINT report
+        fold makes the bound valid without inventing a simultaneous family: the
+        report worlds took no part in selection. Both candidates see identical
+        worlds, so the pairing is exact rather than an overlap approximation.
+        """
+        d_sum = d_sq = 0.0
+        used = 0
+        attempts = 0
+        cap = n * self.SAMPLE_ATTEMPT_FACTOR
+        while used < n and attempts < cap:
+            attempts += 1
+            sampled = self._sample_hands(rnd, seat, mem)
+            if sampled is None:
+                continue
+            hands, buried = sampled
+            va = self._score(self._rollout(rnd, seat, hands, buried,
+                                           list(cand_a)))
+            vb = self._score(self._rollout(rnd, seat, hands, buried,
+                                           list(cand_b)))
+            if not i_attack:
+                va, vb = -va, -vb
+            d = va - vb
+            d_sum += d
+            d_sq += d * d
+            used += 1
+        if used < 2:
+            return 0.0, float("inf"), used, attempts
+        mean = d_sum / used
+        return mean, self._paired_se(d_sum, d_sq, used), used, attempts
 
     def _decide_adaptive(self, rnd, seat, candidates, mem, i_attack):
         """Fixed-budget adaptive allocation (S0 item 2).

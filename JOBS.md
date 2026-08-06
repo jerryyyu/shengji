@@ -22,10 +22,12 @@ newline. This is not promotion. At 06:58 the singleton supervisor launched
 8/8 `s0b-lcb` shards over exact seeds 134,000,000–134,002,047. Every child
 binds that aggregate and survivor and preflighted frozen SHA/runtime/native
 identity with strict voids, no dirty files and zero stderr.
-At 16:02 EDT the singleton state remained `WAITING` with all eight workers
-active at roughly 86–96% CPU, eight partial manifests, no final and no FAILED
+At 16:10 EDT the singleton state remained `WAITING` with all eight workers
+active near full CPU, eight partial manifests, no final and no FAILED
 marker. Launchd also retained the singleton supervisor PID and keepawake
-service. All partials
+service. Adaptive, report-uniform, random and equal-work-uniform arms were
+complete; the score-free heartbeat placed all eight null arms at 200–300/512,
+with current-reference still remaining. All partials
 still bind clean frozen `be1e39c`, Python 3.14.6 and the compiled+strict runtime.
 No partial score or effect was inspected.
 

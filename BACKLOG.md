@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-06 16:04 EDT.
+Last re-derived: 2026-08-06 16:14 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -34,10 +34,12 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   `0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49`.
   This is a mechanism-screen survivor, not a deployment result. Its exact
   parent-bound `s0b-lcb` block launched 8/8 Mini shards at 06:58 EDT. Air's
-  duplicate records may never be pooled. At 16:02 all eight workers were live
-  near 86–96% CPU with eight partial manifests, no final or FAILED marker, and
+  duplicate records may never be pooled. At 16:10 all eight workers were live
+  near full CPU with eight partial manifests, no final or FAILED marker, and
   clean frozen compiled+strict provenance; the singleton supervisor and
-  keepawake service were also live. Independent review rechecked S0a's
+  keepawake service were also live. The four mechanism/work arms were complete,
+  all shards were 200–300/512 through the null arm, and the current-reference
+  arm still remained; this is score-free progress only. Independent review rechecked S0a's
   hash/statistics, additive shared-cluster pairing, null and work parity and
   measured the live flags-off environment; no live invalidation was found.
   Commit `4dc5302` closes the main-only durability gap: every future chain
@@ -87,7 +89,7 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 | priority | work | exit gate |
 |---|---|---|
 | **S0a search strength — COMPLETE** | Frozen decision-rule screen accepted on authoritative Mini | Eight clean 256-cluster shards selected report-LCB. Independent recomputation matched the registered aggregate; this block cannot promote. |
-| **S0b allocation — RUNNING** | Test allocation separately under the selected LCB report rule | Eight exact parent-bound `s0b-lcb` shards cover seeds 134,000,000–134,002,047 on Mini. Adaptive and uniform-report are complete on every shard; all eight are running the third/final random-allocation arm. Deterministic adaptive must beat both controls by paired point estimate; otherwise report-LCB survives. Do not score partials. |
+| **S0b allocation — RUNNING** | Test allocation separately under the selected LCB report rule | Eight exact parent-bound `s0b-lcb` shards cover seeds 134,000,000–134,002,047 on Mini. Adaptive, report-uniform, random-allocation and equal-work-uniform arms are complete on every shard. At 16:10 all eight were 200–300/512 through the matched null; the current-reference arm remains before publication. Deterministic adaptive must beat report-uniform and random by paired point estimate; otherwise report-LCB survives. Do not score partials. |
 | **S0c confirmation** | Independently confirm exactly the S0b survivor | Eight 1,024-cluster shards on seeds 135,000,000–135,008,191 compare survivor, `mc-strong-null`, and current. Promote only if survivor-current and survivor-null paired 95% lower bounds are >0 and the null does not clear; otherwise close S0 SELECT NONE. |
 | **S0d terminal packet + cleanup** | Turn the terminal S0 result into one auditable decision | Independently regenerate and byte-compare the return packet, verify every artifact/hash/counter/seed/runtime field, refuse unexpected S0 workers, then remove only the packet-proved services. Apply a production policy change only on PROMOTE; SELECT NONE leaves `mc-strong` unchanged. A Fly restart remains a separately authorized quiet-room action. |
 | **V11 direct compatibility v1 — TERMINAL FAIL / CORRECTED v2 RUNNING ON AIR** | Separate model quality from an encoder-contract mismatch | The exact 121M v1 block failed as run and remains immutable. `66aad44` restores the trained public/no-private-kitty contract; `cde0fec` freezes a fresh 8x256 corrected v2 gate on exact 142M seeds with transitive encoder hashes and accepted-dose/raw-reopen checks. Eight clean Air shards launched at 15:25 and immediately showed 8 workers/8 partials/0 failures. Do not score partials or reinterpret v1. |

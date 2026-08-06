@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 16:04 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 16:14 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -20,10 +20,13 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   S0b-LCB launched 8/8 exact parent-bound Mini shards at 06:58 EDT. For S0,
   Air remains duplicate fallback only; never pool its records or launch an S0
   child from Air.
-  At 16:02 all eight workers were live at roughly 86–96% CPU with eight partial
+  At 16:10 all eight workers were live near full CPU with eight partial
   manifests, no final or FAILED marker, and matching clean frozen
   compiled+strict provenance. The registered singleton supervisor and
-  keepawake service are also live. Do not inspect partial effects.
+  keepawake service are also live. Adaptive, report-uniform, random and equal-
+  work-uniform arms are complete; all shards were 200–300/512 through the null
+  arm, with current-reference still remaining. This is score-free progress;
+  do not inspect partial effects.
 - Teacher-v1 mechanics/gold gates, the V11 protected-anchor lane
   and the role-conditioned RL microgates remain independent parallel strength
   work; none should be folded into S0 before each wins alone. The frozen V11

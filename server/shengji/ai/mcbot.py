@@ -82,6 +82,7 @@ class MCBot(SmartBot):
     #                       declared rank pair was sampled split, making a
     #                       beatable K-pair lead look boss)
     CONFIDENCE_OVERRIDE = False   # S0: require a paired LCB, not a point gap
+    ADAPTIVE_ALLOCATION = False   # S0: fixed budget, spent on contenders
     CONFIDENCE_Z = 1.64           # one-sided 95%
     MARGIN = 5.0  # points/round a candidate must beat SmartBot's pick by;
     #               keeps the heuristic prior unless the search is confident.
@@ -125,6 +126,7 @@ class MCBot(SmartBot):
         self.impossible_worlds = 0
         self.rejected_worlds = 0
         self.last_override_stats = None
+        self.last_alloc = None
         self.reject_cause = Counter()
         # Decisions that fell back to candidate 0 with NO world sampled.
         self.zero_world_decisions = 0     # kept at 0; readers still reference it
@@ -156,7 +158,12 @@ class MCBot(SmartBot):
         d_sum = [0.0] * len(candidates)
         d_sq = [0.0] * len(candidates)
         n_worlds = 0
-        for _ in range(self.N_DETERMINIZATIONS):
+        n_by = [0] * len(candidates)
+        if self.ADAPTIVE_ALLOCATION:
+            totals, d_sum, d_sq, n_by, n_worlds, _rk = self._decide_adaptive(
+                rnd, seat, candidates, mem, i_attack)
+        for _ in range(0 if self.ADAPTIVE_ALLOCATION
+                       else self.N_DETERMINIZATIONS):
             sampled = self._sample_hands(rnd, seat, mem)
             if sampled is None:
                 continue
@@ -173,11 +180,18 @@ class MCBot(SmartBot):
                 d = v - base
                 d_sum[i] += d
                 d_sq[i] += d * d
+                n_by[i] += 1
         self.last_n_worlds = n_worlds
         # Batched, not incremented inside the candidate/world loop: an
         # attribute write in MC's hottest path taxes every production search
         # for the sake of instrumentation (Codex).
-        self.rollouts += n_worlds * len(candidates)
+        # Adaptive prunes, so the true spend is the allocator's own count.
+        # `n_worlds * K` would charge every world to every candidate and report
+        # 144% of budget for a run that never exceeded it — an accounting
+        # artifact that would make the fixed-budget comparison meaningless.
+        self.rollouts += (self.last_alloc["rollouts"]
+                          if self.ADAPTIVE_ALLOCATION and self.last_alloc
+                          else n_worlds * len(candidates))
         self.search_secs += time.perf_counter() - _t0
         if n_worlds == 0:
             # Sampling produced nothing. This once meant banker search was
@@ -189,27 +203,29 @@ class MCBot(SmartBot):
             self.zero_world_decisions += 1
             return candidates[0]
         # acting-team perspective values, exposed for search distillation
-        self.last_eval = (candidates, [t / n_worlds for t in totals])
-        best = max(range(len(candidates)), key=lambda i: totals[i])
+        means = [totals[i] / n_by[i] if n_by[i] else float("-inf")
+                 for i in range(len(candidates))]
+        self.last_eval = (candidates, means)
+        best = max(range(len(candidates)), key=lambda i: means[i])
         # Among near-tied candidates, risk the fewest points.
         from ..engine.cards import points as _pts
         close = [i for i in range(len(candidates))
-                 if (totals[best] - totals[i]) / n_worlds <= self.POINT_SHY_EPS]
+                 if n_by[i] and means[best] - means[i] <= self.POINT_SHY_EPS]
         best = min(close, key=lambda i: (sum(_pts(c) for c in candidates[i]),
-                                         -totals[i]))
+                                         -means[i]))
         # candidates[0] is SmartBot's own choice: prefer it unless the search
         # clears the confidence margin (rollouts are noisiest early on).
         margin = self.MARGIN
         if self.LEAD_MARGIN is not None and not rnd.trick.plays:
             margin = self.LEAD_MARGIN
         if best != 0:
-            gap = (totals[best] - totals[0]) / n_worlds
+            gap = means[best] - means[0]
             if self.CONFIDENCE_OVERRIDE:
                 # Require the paired LOWER CONFIDENCE BOUND to clear the
                 # margin, not the point estimate. This is what the fixed
                 # margin could not do: distinguish "genuinely better" from
                 # "ahead on a lucky draw".
-                se = self._paired_se(d_sum[best], d_sq[best], n_worlds)
+                se = self._paired_se(d_sum[best], d_sq[best], n_by[best])
                 self.last_override_stats = {
                     "gap": gap, "se": se, "n_worlds": n_worlds,
                     "lcb": gap - self.CONFIDENCE_Z * se, "margin": margin,
@@ -221,6 +237,74 @@ class MCBot(SmartBot):
             elif gap < margin:
                 return candidates[0]
         return candidates[best]
+
+    def _decide_adaptive(self, rnd, seat, candidates, mem, i_attack):
+        """Fixed-budget adaptive allocation (S0 item 2).
+
+        Uniform search spends `N x K` candidate-worlds evenly, so every
+        candidate — including obvious losers — gets the same precision, and the
+        contenders that actually decide the move stay noisy. That noise is what
+        the fixed margin mistook for evidence in the QHKR incident.
+
+        Same total work, spent differently: evaluate everyone on a common
+        prefix, drop candidates whose UPPER bound is already below the leader's
+        LOWER bound, then buy more shared worlds for whoever is left. Candidate
+        0 is never pruned — it is the pairing baseline and the incumbent.
+
+        Returns (totals, d_sum, d_sq, n_by_cand, worlds_used, rollouts).
+        """
+        K = len(candidates)
+        budget = self.N_DETERMINIZATIONS * K        # identical to uniform cost
+        totals = [0.0] * K
+        d_sum = [0.0] * K
+        d_sq = [0.0] * K
+        n_by = [0] * K
+        alive = list(range(K))
+        rollouts = 0
+        worlds = 0
+        seed_batch = max(4, self.N_DETERMINIZATIONS // 4)
+
+        while rollouts + len(alive) <= budget:
+            sampled = self._sample_hands(rnd, seat, mem)
+            if sampled is None:
+                continue
+            hands, buried = sampled
+            worlds += 1
+            vals = {}
+            for i in alive:
+                v = self._score(self._rollout(rnd, seat, hands, buried,
+                                              candidates[i]))
+                v = v if i_attack else -v
+                vals[i] = v
+                totals[i] += v
+                n_by[i] += 1
+            rollouts += len(alive)
+            base = vals.get(0)
+            if base is not None:
+                for i, v in vals.items():
+                    d = v - base
+                    d_sum[i] += d
+                    d_sq[i] += d * d
+            # prune only after a stable prefix, and never candidate 0
+            if worlds >= seed_batch and len(alive) > 2:
+                means = {i: totals[i] / n_by[i] for i in alive}
+                lead = max(means, key=lambda i: means[i])
+                keep = []
+                for i in alive:
+                    if i in (0, lead):
+                        keep.append(i)
+                        continue
+                    se = self._paired_se(d_sum[i], d_sq[i], n_by[i])
+                    se_l = self._paired_se(d_sum[lead], d_sq[lead], n_by[lead])
+                    spread = self.CONFIDENCE_Z * (se + se_l)
+                    if means[i] + spread < means[lead]:
+                        continue        # upper bound below the leader's lower
+                    keep.append(i)
+                alive = keep
+        self.last_alloc = {"worlds": worlds, "rollouts": rollouts,
+                           "budget": budget, "survivors": len(alive),
+                           "n_by_candidate": list(n_by)}
+        return totals, d_sum, d_sq, n_by, worlds, rollouts
 
     @staticmethod
     def _paired_se(d_sum: float, d_sq: float, n: int) -> float:

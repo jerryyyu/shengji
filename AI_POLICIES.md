@@ -47,6 +47,14 @@ newest entry sit on top and speak for the file.
 - **Best learned result:** `rl-override-v11pair` beats SmartBot 57.7% (n=480)
   and is very fast, but its MC comparison is unseeded screen evidence. It is a
   deployment-cost candidate, not the strongest verified bot.
+- **The untested v11 composition is a protected MC anchor.** Prior racing
+  hard-pruned actions, the gate chose whether to search, and the leaf use was
+  invalid; none asked v11's confirmed improvement over SmartBot to replace the
+  candidate-0 prior that N=30 protects with a five-point margin while retaining
+  every candidate and rollout. Revalidate frozen v11 directly on current code,
+  then test this anchor at equal N=30 work with Smart-anchor and same-trigger
+  random-anchor controls. Only after an independent win may it combine with
+  adaptive allocation. `RL_PLAN.md` owns the exact sequence.
 - **Main strength hypothesis — TESTED AND NOT SUPPORTED (2026-08-05).** The
   hypothesis was that improving lead-ballot SELECTION, then letting MC evaluate,
   would buy strength. The DEV-512 screen ran all six registered arms on 512

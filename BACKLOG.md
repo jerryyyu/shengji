@@ -33,6 +33,7 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 | priority | work | exit gate |
 |---|---|---|
 | **S0 search strength** | Build confidence-gated adaptive MC on the incumbent ballot | Reproduce the live `QHKR` round-4 `DJ` over `SAAK` variance failure; persist paired per-world deltas/SE; compare current uniform N=30, confidence fallback, deterministic adaptive allocation, random allocation and equal-work uniform controls. Promote only on fresh paired full games. |
+| **S0b v11pair utilization** | Use the one confirmed learned improvement as MC's protected root anchor | First revalidate frozen `rl-override-v11pair` directly against current compiled N=30 on one fresh 2,048-cluster paired block. Then test an equal-work hybrid that preserves the full current ballot and N=30 worlds but protects v11's thresholded choice instead of SmartBot's. Hard pruning, pairwise-as-leaf and search/no-search gating are not this experiment. |
 | **S1 teacher/model** | Execute `TEACHER_V1_SPEC.md`, then earn scale | Pass the 64-state mechanics and 128-state gold-continuation gates before the 2,048-state wave. This is a new training/challenge asset, not an enlargement of DEV-512. Train three-seed action ranker + calibrated outcome head; scale only if untouched regret and paired games improve. |
 | **S2 self-play RL** | Run faithful role-conditioned synchronous microbaselines | Unit-test attacker/defender signs, separately version reward targets, and bind immutable actors. Then run Suphx-style feature removal and DouZero-style direct-Q baselines for 20–30 minutes; stable spread plus held-out improvement earns fleet scale. |
 | **S3 structured search** | Attack decisions outside ordinary play selection | In parallel, screen structured MC bury sourcing and sampled exact solving for the final ~4 tricks. Each changes a different once-per-round/tactical bottleneck and must duel the production champion directly. |
@@ -92,6 +93,53 @@ Two independent search improvements can run beside it:
   world exactly or with bounded minimax instead of heuristic continuation, then
   aggregate under the acting seat's belief. Gate on endgame challenge states,
   then fresh paired games.
+
+### Lane A.1 — spend the v11pair milestone instead of shelving it
+
+`rl-override-v11pair` is frozen and confirmed at 57.7% versus SmartBot, but its
+51.1% versus MC was unseeded SCREEN evidence. The rejected hybrids do not close
+the best use of that fact:
+
+- root-prior racing hard-pruned actions and lost to its random-prune control;
+- `mc-gate-v11pair` used the net only to decide whether to invoke MC, and its
+  equal-budget follow-up never produced a valid result; and
+- pairwise deltas are not an absolute leaf value.
+
+The new minimal hybrid keeps every current candidate and the full N=30 common-
+world budget. On states where the frozen 0.02 v11 rule overrides SmartBot,
+reorder that action to candidate 0 so the existing five-point MC margin protects
+the demonstrably stronger learned prior; keep Smart's action in the ballot and
+leave `TRACTOR_LOCK` unchanged for the first attribution arm. This tests anchor
+quality, not sourcing, pruning, latency or leaf evaluation.
+
+Required sequence:
+
+1. **Current compatibility:** one immutable 2,048-cluster paired block from
+   fresh 121M deal seeds: frozen v11pair versus compiled `mc-strong`, with an
+   mc-vs-mc null, strict counters and checkpoint NPZ SHA-256
+   `cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003`.
+   Direct v11 promotes only on superiority; an interval containing zero is not
+   equivalence.
+2. **Anchor implementation:** exact same action set/worlds/candidate-world work
+   as N=30; only candidate order/protected anchor changes. Record Smart and v11
+   choices, predicted delta, MC paired delta and final reason. A same-trigger
+   random-action anchor is the attribution control.
+3. **Anchor strength:** primary contrast v11-anchor minus Smart-anchor on fresh
+   paired signed level utility. Do not combine it with adaptive/confidence
+   changes until each wins separately.
+4. **Soft allocation, later:** after S0 has valid simultaneous/time-uniform
+   inference, allow v11 only to prioritize unresolved candidates after a common-
+   world floor. Compare it with uncertainty-only and random priorities at exact
+   work. Never revive hard top-k pruning.
+5. **Continuation probe:** teacher-v1 Stage B may compare v11pair-as-policy
+   continuation with heuristic/champion continuation. This is a valid policy
+   use, unlike a v11 leaf, but earlier stronger-rollout ties make it lower
+   priority than the anchor.
+
+Teacher-v1 should also train a `v11.1` successor: preserve the pairwise/listwise
+objective that worked, add the calibrated bracket head, and compare warm-start
+with scratch on clean current-ballot labels. First uses remain anchor/ranker/
+allocator; no cross-state leaf.
 
 ### Lane B — generate data that can exceed the old teacher
 

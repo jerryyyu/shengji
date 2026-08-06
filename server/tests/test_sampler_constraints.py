@@ -654,3 +654,47 @@ def test_the_immutable_certificate_meets_every_registered_condition():
     assert d["accepted"] == d["requested"] == r["requested_worlds"]
     assert d["rejected"] == 0 and d["invalid"] == 0
     assert not any(d["certification_skips"].values())
+
+
+def test_adaptive_allocation_respects_the_fixed_budget():
+    """S0 item 2: same total candidate-world work as uniform, spent differently.
+
+    Also guards the accounting: `self.rollouts` originally charged every world
+    to every candidate, reporting 144% of budget for a run that never exceeded
+    it — which would have made the fixed-budget comparison meaningless.
+    """
+    import json
+    import os
+    import sys
+    import pytest
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.join(root, "scripts"))
+    art = os.path.join(root, "rl_data", "pilot_dev512.v6.json")
+    if not os.path.exists(art):
+        pytest.skip("gate artifact absent")
+    import pilot_states as PS
+    from shengji.ai.registry import make_bot
+    src = {n: c for n, c, _ in PS.SOURCES}
+    want = json.load(open(art))["states"][:6]
+    rows = {}
+    for name, path in src.items():
+        for line in open(path):
+            r = json.loads(line)
+            rows[(name, r["seed"], r["ply"])] = r
+    for st in want:
+        rnd = PS.replay(rows[(st["source"], st["seed"], st["ply"])])
+        seat = st["seat"]
+        bot = make_bot("mc-strong", seed=3)
+        bot.CONFIDENCE_OVERRIDE = True
+        bot.ADAPTIVE_ALLOCATION = True
+        cands = bot._candidates(rnd, seat)
+        if len(cands) < 2:
+            continue
+        before = bot.rollouts
+        bot.decide_play(rnd, seat)
+        spent = bot.rollouts - before
+        budget = bot.N_DETERMINIZATIONS * len(cands)
+        assert spent <= budget, f"adaptive spent {spent} > budget {budget}"
+        assert bot.last_alloc["rollouts"] == spent, "accounting disagrees"
+        assert bot.last_alloc["worlds"] >= bot.N_DETERMINIZATIONS, (
+            "pruning should buy MORE shared worlds, not fewer")

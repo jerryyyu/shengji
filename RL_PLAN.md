@@ -47,7 +47,8 @@ states what the external evidence changes now.
    allocation. That directly attacks the measured sourcing gap without taking
    on hidden-information tree-search semantics.
 2. **Use learned models first where the target is identifiable.** v11pair can
-   rank/propose actions on its exact ballot. The next learned proposer should be
+   rank/propose actions on its exact ballot and is the natural alternative to
+   SmartBot as MC's protected root anchor. The next learned proposer should be
    trained on the winning ballot and split lead from follow. A value model must
    name its perspective, belief, continuation policy and horizon; otherwise it
    is not a leaf contract.
@@ -449,6 +450,48 @@ they change what gets built, not just what gets said.
    synchronous until replay/resume is exact; only then let a dispatcher fill
    the fleet from a preregistered queue. Promotion remains a separate human-
    visible paired gate.
+
+## v11pair utilization plan — preserve the milestone, test the missing role
+
+The project did not literally leave v11 unused: direct override, search gating,
+hard root-prior pruning and an invalid leaf configuration were exercised. But
+none tested the composition most directly licensed by its confirmed 57.7%
+result versus SmartBot. Production MC treats SmartBot's action as candidate 0
+and protects it with a five-point margin. A thresholded v11 action can replace
+that **anchor** while keeping the entire ballot and every N=30 rollout.
+
+This differs from the closed arms:
+
+- racing deleted actions before MC; the anchor hybrid deletes none;
+- gating decided whether to search; the anchor hybrid always runs equal N=30;
+- a leaf needs comparable values across states; an anchor needs only v11's
+  valid within-state ranking.
+
+Execute in this order:
+
+1. Revalidate the frozen NPZ (`cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003`)
+   against current compiled `mc-strong` on 2,048 fresh 121M deal clusters with
+   a true mc-vs-mc null. This establishes current compatibility, not permission
+   to deploy on non-inferiority; latency is not the objective.
+2. Register `mc-v11anchor`: exact current ballot and N=30 worlds/work; frozen
+   v11 threshold 0.02 chooses candidate 0 when it overrides, Smart remains a
+   candidate, and the first arm retains `TRACTOR_LOCK`. Compare with ordinary
+   Smart-anchor MC and a same-trigger random-action anchor.
+3. Require a fresh paired signed-level win before combining the learned anchor
+   with confidence/adaptive allocation. Factorial combinations come only after
+   each mechanism wins alone.
+4. Once the adaptive estimator is valid, test a soft v11 priority after a
+   common-world floor against uncertainty-only and random priorities. Do not
+   revive top-k pruning.
+5. In teacher-v1, retain frozen v11 as a baseline/disagreement miner and train
+   a `v11.1` pairwise/listwise successor with a separate bracket head. Compare
+   warm-start and scratch; deploy first as anchor/ranker/allocator.
+
+Using v11pair as a rollout **policy** is semantically valid because it chooses
+from each acting seat's observation; using its relative score as a leaf is not.
+Teacher-v1 Stage B should first measure whether v11 continuation changes gold
+rankings usefully. Earlier Smart/v5 rollout-policy ties make this a bounded
+secondary test rather than the first fleet bet.
 
 For online selection, paired signed level utility is primary because it is the
 actual game objective; round win-rate remains the higher-power secondary

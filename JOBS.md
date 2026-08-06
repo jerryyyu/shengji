@@ -22,9 +22,10 @@ newline. This is not promotion. At 06:58 the singleton supervisor launched
 8/8 `s0b-lcb` shards over exact seeds 134,000,000–134,002,047. Every child
 binds that aggregate and survivor and preflighted frozen SHA/runtime/native
 identity with strict voids, no dirty files and zero stderr.
-By 11:59 EDT all eight shards had completed adaptive and uniform-report and
-were live on the third/final random-allocation arm. Partial record bytes were
-advancing; no final manifest existed and no partial effects were inspected.
+At 12:59 EDT all eight shards remained live on the third/final random-allocation
+arm, with eight partial manifests and no final. Visible progress tails were at
+200–300/512 rounds where present and record bytes continued advancing; no
+partial effect was inspected.
 
 Air's S0a duplicate is no longer needed now that authoritative Mini passed its
 aggregate gate. Its exact S0 workers are no longer running and its transition
@@ -43,8 +44,8 @@ clusters over contiguous seeds 121,000,000–121,002,047. All eight provenance
 manifests agree on Python 3.14.6, compiled+strict execution, policy/ballot/digest
 contracts and checkpoint SHA-256
 `cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003`;
-the worktree remains clean. Eight workers were observed live at roughly one
-core each.
+the worktree remains clean. At 13:02 all eight process trees and growing JSONL
+partials remained present, with eight partial manifests and no final.
 
 This is only a direct-compatibility prerequisite. After 8/8 final manifests,
 aggregate the frozen block once. It authorizes the later protected-anchor

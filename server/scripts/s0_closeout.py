@@ -183,14 +183,20 @@ def verify_terminal_packet(
     }
 
 
-def expected_launchctl_labels(phases: list[str]) -> list[str]:
-    """Enumerate only services owned by the reached authoritative Mini chain."""
+def expected_worker_labels(phases: list[str]) -> list[str]:
+    """Enumerate evidence workers proved complete by the terminal packet."""
     labels: list[str] = []
     for phase in phases:
         if not re.fullmatch(r"s0a|s0b-[a-z0-9-]+|s0c-[a-z0-9-]+", phase):
             raise ValueError(f"unsafe S0 phase for service cleanup: {phase!r}")
         prefix = phase.replace("-", "_")
         labels.extend(f"com.shengji.s0mini.{prefix}.{i}" for i in range(8))
+    return labels
+
+
+def expected_launchctl_labels(phases: list[str]) -> list[str]:
+    """Enumerate only services owned by the reached authoritative Mini chain."""
+    labels = expected_worker_labels(phases)
     labels.extend((
         "com.shengji.s0mini.keepawake",
         "com.shengji.s0mini.supervisor",
@@ -215,17 +221,28 @@ def launchctl_entries(
 
 
 def cleanup_launchctl(
-        labels: list[str], *, run_command: RunCommand = subprocess.run) -> dict:
-    """Remove exact inactive S0 jobs only after the caller verified terminality."""
+        labels: list[str], *, terminal_workers: list[str] = (),
+        run_command: RunCommand = subprocess.run) -> dict:
+    """Remove exact S0 jobs authorized by an independently terminal packet."""
     before = launchctl_entries(run_command=run_command)
     keepawake = "com.shengji.s0mini.keepawake"
     supervisor = "com.shengji.s0mini.supervisor"
+    terminal_workers = list(terminal_workers)
+    unknown_terminal = sorted(set(terminal_workers) - set(labels))
+    if unknown_terminal:
+        raise ValueError(
+            f"terminal worker authorization is outside cleanup scope: "
+            f"{unknown_terminal}")
     # A submitted supervisor is intentionally keep-alive and may still be
     # running (or immediately restart) after it wrote the terminal packet.
     # Terminal packet verification above is the authority that makes removing
-    # it safe. Only an evidence-producing worker must be quiescent first.
+    # it safe. Submitted workers are keep-alive too: after sealing their final
+    # immutable outputs they can restart into an output-collision failure loop.
+    # Only labels whose exact phase/shards the verified packet proved complete
+    # are authorized here; every other live evidence worker still refuses.
+    terminal_services = {keepawake, supervisor, *terminal_workers}
     active = [label for label in labels
-              if label not in {keepawake, supervisor}
+              if label not in terminal_services
               and before.get(label, "-") != "-"]
     if active:
         raise RuntimeError(
@@ -273,10 +290,13 @@ def main() -> None:
         **verify_terminal_packet(server, python, packet, packet_script),
     }
     labels = expected_launchctl_labels(result["phases"])
+    terminal_workers = expected_worker_labels(result["phases"])
     result["expected_launchctl_labels"] = labels
+    result["terminal_worker_labels"] = terminal_workers
     result["cleanup_requested"] = args.cleanup_launchctl
     if args.cleanup_launchctl:
-        result["launchctl_cleanup"] = cleanup_launchctl(labels)
+        result["launchctl_cleanup"] = cleanup_launchctl(
+            labels, terminal_workers=terminal_workers)
 
     text = json.dumps(result, indent=2, sort_keys=True) + "\n"
     print(text, end="")

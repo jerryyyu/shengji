@@ -293,8 +293,10 @@ Terminal closeout is prepared in `server/scripts/s0_closeout.py` without
 changing the pinned evidence path. Its default mode independently regenerates
 the final packet and requires byte identity plus every field above. Only its
 explicit `--cleanup-launchctl` mode mutates process state, and that mode refuses
-a nonterminal supervisor state, packet drift or any still-live S0 worker before
-removing the exact reached Mini services. The submitted supervisor is
-keep-alive, so after terminal packet verification it may be running and is
-explicitly removed last; it is not misclassified as an evidence worker. Do not
-run cleanup while S0b/S0c is active.
+a nonterminal supervisor state or packet drift before removing the exact
+reached Mini services. Both submitted workers and the supervisor are keep-alive:
+after final artifacts seal they may restart into immutable-output collisions.
+Only the exact worker labels whose 8/8 phase artifacts the verified terminal
+packet proves complete are authorized; any other live worker refuses. Keepawake
+and the terminal supervisor are removed last. Do not run cleanup while S0b/S0c
+is active.

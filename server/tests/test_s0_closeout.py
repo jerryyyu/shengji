@@ -150,7 +150,10 @@ def test_launchctl_cleanup_is_exact_and_ordered():
     assert "com.shengji.s0mini.s0b_lcb.7" in labels
     unknown = "com.shengji.s0mini.unrelated"
     loaded = {
-        labels[0]: "-",
+        # Submitted workers are keep-alive too. The terminal packet has proved
+        # this exact reached-phase label complete, so cleanup may kill a
+        # collision-restart process rather than waiting for an idle-PID race.
+        labels[0]: "777",
         labels[8]: "-",
         "com.shengji.s0mini.keepawake": "999",
         # The submitted supervisor is keep-alive. A terminal closeout must be
@@ -168,7 +171,10 @@ def test_launchctl_cleanup_is_exact_and_ordered():
         loaded.pop(command[2])
         return SimpleNamespace(stdout="")
 
-    result = CLOSEOUT.cleanup_launchctl(labels, run_command=fake_run)
+    result = CLOSEOUT.cleanup_launchctl(
+        labels,
+        terminal_workers=CLOSEOUT.expected_worker_labels(phases),
+        run_command=fake_run)
     assert result["removed"][-2:] == [
         "com.shengji.s0mini.keepawake",
         "com.shengji.s0mini.supervisor",
@@ -188,6 +194,15 @@ def test_launchctl_cleanup_refuses_a_live_worker():
 
     with pytest.raises(RuntimeError, match="services are active"):
         CLOSEOUT.cleanup_launchctl(labels, run_command=fake_run)
+
+
+def test_terminal_worker_authorization_cannot_escape_cleanup_scope():
+    labels = CLOSEOUT.expected_launchctl_labels(["s0a"])
+    with pytest.raises(ValueError, match="outside cleanup scope"):
+        CLOSEOUT.cleanup_launchctl(
+            labels, terminal_workers=["com.shengji.s0mini.s0c_unknown.0"],
+            run_command=lambda *_args, **_kwargs: SimpleNamespace(
+                stdout="PID\tStatus\tLabel\n"))
 
 
 def test_service_phase_name_is_validated_before_cleanup():

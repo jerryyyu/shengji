@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-05 21:59 EDT.
+Last re-derived: 2026-08-06 00:01 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -28,7 +28,9 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   adaptive allocation, equal-work controls, replayable decision records and a
   fail-closed sharded runner are registered. The clean DEV audit selected
   R=300; **no S0 strength result exists yet**. The bounded S0a 2,048-cluster
-  screen is the next authorized fleet job.
+  screen is running authoritatively on Mini: all eight clean shards reached
+  300/512 rounds of the first arm by 23:58 EDT. Air is fallback-only and its
+  duplicate records may never be pooled.
 - The roadmap has three parallel strength lanes: S0 search, clean teacher/model
   iteration, and faithful role-conditioned self-play. Do not wait for S0a to run
   the bounded teacher/RL entry gates on other workers.
@@ -37,7 +39,7 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 
 | priority | work | exit gate |
 |---|---|---|
-| **S0a search strength** | Run the frozen decision-rule screen now that the code gate is closed | Eight 256-cluster shards (seeds 132M) compare report-mean, report-LCB, equal-work uniform, null and current. Aggregate only with `s0_aggregate.py`; carry one rule by the registered screen criterion, never promote from this block. |
+| **S0a search strength** | Finish the running frozen decision-rule screen on authoritative Mini | Eight 256-cluster shards (seeds 132M) compare report-mean, report-LCB, equal-work uniform, null and current. Aggregate only with `s0_aggregate.py`; carry one rule by the registered screen criterion, never promote from this block. |
 | **S0b allocation** | If S0a selects a report rule, test allocation separately | Run exactly one parent-bound `s0b-mean` / `s0b-lcb`: deterministic adaptive must beat both uniform-report and random allocation by paired point estimate. Freeze one survivor; every child refuses a wrong aggregate/SHA. |
 | **S0c confirmation** | Independently confirm exactly the S0b survivor | Eight 1,024-cluster shards on seeds 135,000,000–135,008,191 compare survivor, `mc-strong-null`, and current. Promote only if survivor-current and survivor-null paired 95% lower bounds are >0 and the null does not clear; otherwise close S0 SELECT NONE. |
 | **S0b v11pair utilization** | Use the one confirmed learned improvement as MC's protected root anchor | First revalidate frozen `rl-override-v11pair` directly against current compiled N=30 on one fresh 2,048-cluster paired block. Then test an equal-work hybrid that preserves the full current ballot and N=30 worlds but protects v11's thresholded choice instead of SmartBot's. Hard pruning, pairwise-as-leaf and search/no-search gating are not this experiment. |

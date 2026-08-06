@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / exact-runtime S0b-LCB
+## RUNNING / exact-runtime S0b-LCB (Mini)
 
 Mini is the authoritative S0 pipeline. At 22:55 EDT all eight S0a shards began
 from fresh exclusive outputs in detached clean worktree
@@ -22,14 +22,37 @@ newline. This is not promotion. At 06:58 the singleton supervisor launched
 8/8 `s0b-lcb` shards over exact seeds 134,000,000–134,002,047. Every child
 binds that aggregate and survivor and preflighted frozen SHA/runtime/native
 identity with strict voids, no dirty files and zero stderr.
+By 11:59 EDT all eight shards had completed adaptive and uniform-report and
+were live on the third/final random-allocation arm. Partial record bytes were
+advancing; no final manifest existed and no partial effects were inspected.
 
 Air's S0a duplicate is no longer needed now that authoritative Mini passed its
-aggregate gate. Air's hostname was unresolved at 06:59, so its exact workers
-could not yet be stopped; stop them when the host returns. Its transition
-supervisor remains stopped, so it cannot independently launch S0b. Never pool
-or double-count Mini and Air duplicates. The initial Python-3.14.3 Mini
+aggregate gate. Its exact S0 workers are no longer running and its transition
+supervisor remains stopped, so it cannot independently launch S0b. Historical
+duplicate records remain inadmissible; never pool or double-count Mini and Air.
+The initial Python-3.14.3 Mini
 shard 7 was stopped after preflight exposed the mismatch and remains quarantined
 and unscored under `runs/logs/quarantine_s0a_python_mismatch/`.
+
+## RUNNING / V11 direct-current compatibility (Air)
+
+At 11:56 EDT eight full shards launched in detached screens `v11_current_0`…`.7`
+from clean detached worktree `/Users/jerryyu/Projects/shengji-v11-air` at exact
+commit `e66b90bc3a50d514472670ea99909add5ea30d19`. The block is 8x256 fresh deal
+clusters over contiguous seeds 121,000,000–121,002,047. All eight provenance
+manifests agree on Python 3.14.6, compiled+strict execution, policy/ballot/digest
+contracts and checkpoint SHA-256
+`cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003`;
+the worktree remains clean. Eight workers were observed live at roughly one
+core each.
+
+This is only a direct-compatibility prerequisite. After 8/8 final manifests,
+aggregate the frozen block once. It authorizes the later protected-anchor
+experiment only if V11-current and V11-null paired 95% lower bounds are both
+positive while the true-null interval contains zero. It can never promote
+production. Do not inspect partial effects, extend the block or pool it with S0.
+The protected-anchor reference and fresh seed block remain unfrozen until both
+this gate passes and S0 names its terminal champion.
 
 ## FROZEN PROTOCOL — S0a decision-rule screen
 

@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-06 11:44 EDT.
+Last re-derived: 2026-08-06 12:00 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -34,10 +34,14 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   `0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49`.
   This is a mechanism-screen survivor, not a deployment result. Its exact
   parent-bound `s0b-lcb` block launched 8/8 Mini shards at 06:58 EDT. Air's
-  duplicate records may never be pooled. By 11:44 all eight shards had
+  duplicate records may never be pooled. By 11:59 all eight shards had
   completed adaptive and uniform-report and entered the third/final random-
-  allocation arm together; stderr is empty, but no partial effects are
-  admissible.
+  allocation arm together; all workers remained live and record bytes were
+  advancing, but no partial effects are admissible.
+- The separate V11 direct-current compatibility block is **RUNNING ON AIR**:
+  eight clean compiled+strict 256-cluster shards at `e66b90b`, exact seeds
+  121,000,000–121,002,047 and the SHA-pinned `ep07.npz`. This block can only
+  authorize the later protected-anchor experiment; it cannot promote a policy.
 - The roadmap has three parallel strength lanes: S0 search, clean teacher/model
   iteration, and faithful role-conditioned self-play. They do not share
   evidence, and each must respect its own launch hold. Teacher capture is
@@ -50,10 +54,13 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 | **S0a search strength — COMPLETE** | Frozen decision-rule screen accepted on authoritative Mini | Eight clean 256-cluster shards selected report-LCB. Independent recomputation matched the registered aggregate; this block cannot promote. |
 | **S0b allocation — RUNNING** | Test allocation separately under the selected LCB report rule | Eight exact parent-bound `s0b-lcb` shards cover seeds 134,000,000–134,002,047 on Mini. Adaptive and uniform-report are complete on every shard; all eight are running the third/final random-allocation arm. Deterministic adaptive must beat both controls by paired point estimate; otherwise report-LCB survives. Do not score partials. |
 | **S0c confirmation** | Independently confirm exactly the S0b survivor | Eight 1,024-cluster shards on seeds 135,000,000–135,008,191 compare survivor, `mc-strong-null`, and current. Promote only if survivor-current and survivor-null paired 95% lower bounds are >0 and the null does not clear; otherwise close S0 SELECT NONE. |
-| **V11 protected-anchor lane — CODE READY, SEPARATE FROM S0** | Use the one confirmed learned improvement as MC's protected root anchor | The frozen 2,048-cluster direct-current revalidation runner and equal-work `mc-v11anchor`/same-trigger-random policies are implemented and focused tests pass. Actual loaded absolute checkpoint path/SHA must equal the manifest NPZ. Do not launch evidence from a dirty tree. The later anchor-strength seed block and promotion rule wait for S0's terminal champion so the reference cannot move underneath the estimand. |
+| **S0d terminal packet + cleanup** | Turn the terminal S0 result into one auditable decision | Independently regenerate and byte-compare the return packet, verify every artifact/hash/counter/seed/runtime field, refuse unexpected S0 workers, then remove only the packet-proved services. Apply a production policy change only on PROMOTE; SELECT NONE leaves `mc-strong` unchanged. A Fly restart remains a separately authorized quiet-room action. |
+| **V11 direct compatibility — RUNNING ON AIR, SEPARATE FROM S0** | Establish whether frozen v11pair still improves on today's N=30 contract | Eight live 256-cluster shards at clean `e66b90b` cover exact seeds 121,000,000–121,002,047. All manifests agree on compiled+strict runtime, checkpoint SHA `cd89d6ed…c003`, ballots, labels and policy contracts. Authorize the next row only if V11-current and V11-null paired 95% lower bounds are both >0 while the true-null interval contains zero. Never promote from this block. |
+| **V11 protected-anchor strength — CODE READY / WAITS FOR TWO PARENTS** | Put the learned proposal inside production MC without letting it bypass MC's safety contract | Requires both a passing direct-compatibility aggregate and S0's terminal champion. Then freeze one disjoint seed block and compare equal-work `mc-v11anchor`, same-trigger-random, champion and true-null. The anchor must beat champion and null and beat the trigger-matched random control before any production consideration. Never use the pairwise head as a scalar leaf. |
 | **S1 teacher/model — CAPTURE HOLD** | Bind the predeclared packet before spending evidence compute | `teacher-v1-entry-120m-v1` names 1,024 fresh deals at seeds 120000000–120001023 in 8 shards, but the current diagnose/freeze artifacts do not yet prove that exact shard/range population. Carry packet id, shard identity and exact coverage through diagnostic, state-set and gate artifacts; add wrong-range, missing-shard and repeated-shard falsification tests. Only then run 64-state Stage A and disjoint 128-state Stage B. |
 | **S2 self-play RL — CORRECTNESS BOUNDARY PARTIAL** | Run faithful role-conditioned synchronous microbaselines | Attacker/defender residual antisymmetry, separately named legacy reward, digest-bound immutable actors, exact-candidate promotion and named actor-batch seeds are implemented and tested. Exact learner/optimizer/replay resume remains open; no faithful Suphx/DouZero baseline or evidence run exists. Close resume, then run independent 20–30 minute microbaselines. |
-| **S3 structured search** | Attack decisions outside ordinary play selection | In parallel, screen structured MC bury sourcing and sampled exact solving for the final ~4 tricks. Each changes a different once-per-round/tactical bottleneck and must duel the production champion directly. |
+| **S3a structured bury search — CODE NEXT** | Improve the once-per-round decision that ordinary play search never touches | Enumerate a bounded broad ballot of point-preserving, void-forming and trump-preserving legal buries; score every candidate on common worlds with exact matched work. First pass replay/invariants and a fixed-state challenge, then require a fresh paired full-round duel against the terminal production champion. |
+| **S3b sampled exact endgame — DESIGN NEXT** | Replace heuristic continuation where only about four tricks remain | Within each information-set-legal determinization, solve the remaining perfect-information world exactly or with a proved bound, then aggregate across common worlds. Refuse hidden-information leakage and budget mismatch; pass an endgame challenge before a fresh paired full-game gate. This is separate evidence from S3a. |
 | **Frontend ship gate** | Run one bounded multi-tab soak | Cover join, simultaneous seat claim, disconnect-to-bot, reconnect/takeover, stale/displaced sockets, second absence, private-hand visibility, chat before initial state and >50 messages, and saved-room invite precedence. |
 | **Evaluator boundary** | Repair legacy full-game cutoff semantics | A cutoff must return an explicit tie/refusal, never silently award team 0. Keep the engine's uncapped house-rule progression; the `+3` clip remains a separately versioned RL target. |
 
@@ -248,13 +255,20 @@ staged strength work rather than one speculative monolith:
 
 1. Mini remains authoritative for the live S0b/S0c chain; do not displace or
    pool those eight workers. All current S0 capacity is productively occupied.
-2. When Mini has a free sub-hour window, run the clean bounded V11 direct-
-   compatibility block or teacher Stage-A mechanics. Air is fallback for a
-   whole immutable block only, never a source to pool into Mini evidence.
-3. A Stage-A pass authorizes only the 128-state teacher gold gate. A Stage-B
+2. Air is running the whole immutable V11 direct-compatibility block: 8x256
+   clusters at clean `e66b90b`, seeds 121,000,000–121,002,047. Aggregate only
+   after 8/8 final manifests; never pool it into S0.
+3. While both machines compute, keep local work bounded and non-competing:
+   close the evaluator cutoff boundary, run the frontend soak, then implement
+   S3a structured bury search. S3b exact-endgame design follows as a separate
+   mechanism.
+4. A direct-V11 pass does not launch anchor evidence immediately. Wait for
+   S0's terminal champion, then freeze the protected-anchor reference, fresh
+   seeds and promotion rule before spending that block.
+5. A Stage-A pass authorizes only the 128-state teacher gold gate. A Stage-B
    pass authorizes implementing and sharding Stage C; it does not silently
    launch millions of labels.
-4. Training hardware receives three-seed scaling runs only after a valid frozen
+6. Training hardware receives three-seed scaling runs only after a valid frozen
    teacher asset exists. Full-game fleet evaluation is reserved for candidates
    that pass their local data/model gate.
 

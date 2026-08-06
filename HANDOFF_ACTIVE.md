@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 11:44 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 12:00 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -17,17 +17,20 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   `+0.293 +/- 0.066` versus equal-work uniform; null `+0.008 +/- 0.070`).
   Registered aggregate SHA-256:
   `0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49`.
-  S0b-LCB launched 8/8 exact parent-bound Mini shards at 06:58 EDT. Air remains
-  duplicate fallback only; never pool its records or launch a child from Air.
-  At 11:44 all eight shards had completed adaptive and uniform-report and were
-  running the third/final random-allocation arm; stderr remains empty. Do not
-  inspect partial effects.
-- Teacher-v1 mechanics/gold gates, the v11 protected-anchor compatibility block
+  S0b-LCB launched 8/8 exact parent-bound Mini shards at 06:58 EDT. For S0,
+  Air remains duplicate fallback only; never pool its records or launch an S0
+  child from Air.
+  At 11:59 all eight shards had completed adaptive and uniform-report and were
+  running the third/final random-allocation arm; workers remained live and
+  record bytes advanced. Do not inspect partial effects.
+- Teacher-v1 mechanics/gold gates, the V11 protected-anchor lane
   and the role-conditioned RL microgates remain independent parallel strength
-  work; none should be folded into S0 before each wins alone. V11 code is ready.
+  work; none should be folded into S0 before each wins alone. The V11 direct-
+  current prerequisite is now running as one clean immutable block on Air.
   Teacher capture is **HOLD** until its exact packet id, eight-shard identity
   and seeds 120000000–120001023 are bound through diagnostic/state/gate
-  artifacts. Neither lane has run a promotable evidence block.
+  artifacts. Teacher evidence has not started; the V11 block is live but has
+  not completed or authorized its follow-on experiment.
 
 ## S0 implementation packet — S0a accepted, S0b-LCB running
 
@@ -236,17 +239,28 @@ authorize that external mutation.
 
 ## Other active strength lanes
 
-1. **V11 protected-anchor lane (separate from S0):**
+1. **V11 direct compatibility (running on Air; separate from S0):**
    `server/scripts/v11_revalidate.py` and policies `mc-v11anchor` /
    `mc-v11anchor-random` are code-ready; a two-cluster compiled+strict smoke
    completed cleanly and is non-promotable. Registry construction is now cwd-
    independent and the runner verifies that the policy's actual absolute
-   loaded path/SHA are the same NPZ bytes named by its manifest. First run the frozen direct
-   `rl-override-v11pair` versus current N=30 block at seeds 121M. That result
-   can authorize only a later anchor experiment. Do not freeze that later
-   experiment's reference/seeds until S0 names the terminal champion; never
-   use the pairwise head as a scalar leaf.
-2. **S1 teacher/model — CAPTURE HOLD:** capture/diagnose/freeze and Stage-A/B
+   loaded path/SHA are the same NPZ bytes named by its manifest. The frozen
+   direct `rl-override-v11pair` versus current N=30 block launched 8/8 shards
+   on Air at 11:56 EDT from detached clean worktree
+   `/Users/jerryyu/Projects/shengji-v11-air`, exact commit
+   `e66b90bc3a50d514472670ea99909add5ea30d19`. Its 8x256 manifests cover
+   contiguous seeds 121,000,000–121,002,047 and agree on host/Python,
+   compiled+strict flags, policy/ballot/digest contracts and checkpoint SHA
+   `cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003`.
+   Eight workers are live at roughly one core each. Do not inspect partial
+   effects. Aggregate only after 8/8 final manifests. This result can authorize
+   only the protected-anchor experiment.
+2. **V11 protected-anchor strength (waits for two parents):** require both the
+   clean direct-compatibility PASS and S0's terminal champion. Only then freeze
+   disjoint seeds/reference and compare equal-work `mc-v11anchor`, its same-
+   trigger random control, champion and true null. Never use the pairwise head
+   as a scalar leaf.
+3. **S1 teacher/model — CAPTURE HOLD:** capture/diagnose/freeze and Stage-A/B
    producer/gates exist at `server/scripts/teacher_v1_*.py`, but no evidence
    run is authorized. Diagnostic output currently drops the capture packet's
    `seed0`, `max_deals` and shard coverage, so freeze cannot prove the exact
@@ -262,7 +276,7 @@ authorize that external mutation.
    120000000–120001023, eight capture/diagnostic shards, eight Stage-A primary
    plus rerun shards, then eight exact-parent Stage-B cheap/gold shards. Do not
    append capture after diagnostics or labels are inspected.
-3. **S2 self-play RL:** role-sign antisymmetry and immutable actor/candidate
+4. **S2 self-play RL:** role-sign antisymmetry and immutable actor/candidate
    boundaries are code-ready and tested. The audit also fixed promotion of
    different learner bytes than the candidate actually gated. A bounded
    18-round smoke is explicitly non-promotable; the full server suite passes
@@ -270,8 +284,12 @@ authorize that external mutation.
    resume remains open; do not run faithful Suphx-style feature-removal or
    DouZero-style role-Q microbaselines until interrupted/resumed output matches
    uninterrupted output.
-4. **S3 structured search:** independently screen broad bury search and
-   information-set-legal sampled exact solving for the final ~4 tricks.
+5. **S3a structured bury search:** independently screen broad legal bury
+   sourcing with common worlds and exact matched work, then require a fresh
+   paired full-round duel against the terminal champion.
+6. **S3b sampled exact endgame:** independently solve each sampled world for
+   the final ~4 tricks without hidden-information leakage, pass a bounded
+   challenge set and then require a fresh paired full-game gate.
 
 ## Return packet for Claude
 

@@ -1,0 +1,41 @@
+{
+  "execution_host": "Jerrys-Mac-mini.local",
+  "execution_root": "/Users/jerryyu/Projects/shengji/server",
+  "fast_binary_sha256": "9c9e77fbdc4c6caceec195465155f37ec6369e409462fd838bc142bf8a0be4c1",
+  "frozen_policy_contract_sha256s": {
+    "mc-s0-adaptive": "63024d95b1d535607c5b70ac12383b6d6da6336b16bdb0fd01395cb57e3022e1",
+    "mc-s0-report-lcb": "59fa033dc22d8a055b5d7f3fbcbaf9d7fb0b71993b74c4d9bb7587e3d90dc72b",
+    "mc-strong": "64aa5d0a21dfc5608675c30adf2089f8da2668d528a8985be3fdd7f32e98a35d",
+    "mc-strong-null": "393892d7fa64b816b6c3d26bfa44104ef86cb26718e12d8137cd3207f9220baa"
+  },
+  "frozen_protocol_sha256": "c1ba23ca5e565b9aea06a7ba621e32bc490c37474849a3cd26f4d97a385544d3",
+  "frozen_source_sha256s": {
+    "ai_bury": "2fd2ca71ed7594b99e907d5dbcb65bb95302a7b8c16660769115ed4ddfafe610",
+    "ai_endgame": "f01d8f937fabf5a1a736ec238b0d0add23ab11b31369518848238eb63ed3799e",
+    "ai_env": "04b1d18e2ad4783c5160913b66c2adf568625de1aaf6bdf300c6a4b00c2f0d8b",
+    "ai_heuristic": "a99dfb089fd17e7c17ddcc4d76542552d317598fbe233269c3e7c0501b9b15ef",
+    "ai_init": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "ai_legacy_init": "12e1ade9a44fbcbeca08f1dfea442e60c4eacb3b4067f32e66282dc2dc3d2214",
+    "ai_legacy_mcbot": "5a0c0d9afe5f535e4af4cc56af8c533bf598926fa157a7c401164b97e6c39ab1",
+    "ai_legacy_memory": "e53ba1af63f1934e0e95a8679048f2d04370174a43f8e79dcdf7643a4abc0333",
+    "ai_mcbot": "45a82f44b95d1bce5126c63b1a5af6baaed54270aca9d55677b2e0bbb9c9d957",
+    "ai_memory": "905873b332fd54471070b25ce24f100b813c9a9f234c1b50254d00895140cf51",
+    "ai_registry": "3c9868cd134a387966cb2378adcffccaa696a42c685998a552b5ff4bb4c9f5a2",
+    "ai_smart": "facfb6a9bb67f82d1bddb855f01ce49adf5f0caaca92bfb5da09ba343c29512c",
+    "engine_ballot": "63e2e94ca12f9ebf8dce30c1a1bdbe3fe9cf6223603677173d4eb75e334845d5",
+    "engine_cards": "42452b157818da1792f4490c3a50c10060eda1a02bb6b2c91544a62fbc0d000a",
+    "engine_combos": "2b0b0acceb0786b4ce781475c0f3e3d656ebe349fdf00bfffd668d6847885486",
+    "engine_fast": "f2506d5c51b8ad37303f04dce59899de0d7c1179633b08ce61f48eb86cec1a3e",
+    "engine_game": "613c5dd72a1cbd3b50a96eef6e0b84746052dc2b0b28fb08005ff34455359e43",
+    "engine_init": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "engine_legal": "12256869a3d3d01b070be04d2a2821b021b6932ad95e66dc54b0e0111192079b",
+    "engine_round": "7a91b3573ecb34c488e3960008d21ebfda283e01003f6454a1ffd62c41b9b679",
+    "evaluation": "ae4739a19767391cb9734a59f7b6cf5f4143d44d8de4beb00dcc3c2c96fcbb4c",
+    "package_init": "41e9be4cf2d1d1319bd49eab822bb1f361373e858ccfbdebaf247eceaba9fcaa",
+    "runner": "c1ba23ca5e565b9aea06a7ba621e32bc490c37474849a3cd26f4d97a385544d3",
+    "s0_closeout": "50752b681fbf9944e0752f8cf60a65973ae8c7679471a11dcffc85012fd071c0"
+  },
+  "python": "3.14.6",
+  "schema": "s0-deployment-choice-freeze-v1",
+  "selection_digest": "02f07f1c190368c109f7f02cdcf62e45b1367e7e92383a9ff8f4ca4ec2dfa81a"
+}

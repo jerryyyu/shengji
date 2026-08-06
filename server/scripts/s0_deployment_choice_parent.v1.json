@@ -1,0 +1,11 @@
+{
+  "authorized": false,
+  "binding_rule": "Bind exact terminal hashes regardless of PASS/FAIL; authorize only exact PROMOTE mc-s0-adaptive; SELECT NONE remains locked",
+  "closeout_sha256": null,
+  "decision": null,
+  "freeze_receipt_sha256": "6329d57192b71c2d8fb8b687402df89c06d25e660d3cf510f75275d475ac4b45",
+  "packet_sha256": null,
+  "s0c_aggregate_sha256": null,
+  "schema": "s0-deployment-choice-parent-lock-v1",
+  "terminal_state": null
+}

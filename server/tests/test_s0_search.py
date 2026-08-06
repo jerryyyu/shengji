@@ -128,6 +128,8 @@ def test_incident_report_fold_is_complete_disjoint_and_fully_accounted():
     delta = rec["sampler_counters"]["delta"]
     assert delta["sample_attempts"] == \
         delta["accepted_worlds"] + delta["failed_worlds"]
+    assert delta["accepted_worlds"] == \
+        bot.N_DETERMINIZATIONS + S0_REPORT_WORLDS
     assert rec["search_secs"] <= bot.search_secs
 
 
@@ -176,6 +178,8 @@ def test_adaptive_random_and_uniform_controls_have_exact_matched_work():
     assert records["mc-s0-adaptive"]["alloc"]["mode"] == \
         "deterministic_adaptive"
     assert records["mc-s0-random"]["alloc"]["mode"] == "random_adaptive"
+    assert records["mc-s0-adaptive"]["sampler_counters"]["delta"][
+        "accepted_worlds"] >= 30 + S0_REPORT_WORLDS
 
 
 @pytest.mark.parametrize("name", ["mc-s0-adaptive", "mc-s0-random"])

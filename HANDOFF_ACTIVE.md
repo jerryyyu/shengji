@@ -83,6 +83,35 @@ common-world basis, but do not commit the policy as finished yet:
 - keep production `mc-strong` behavior unchanged under a separately registered
   policy until the QHKR challenge, fixed-work controls and paired game gate pass.
 
+The draft QHKR test passes, but it is not yet falsifying: its seeds 500..519 do
+not include the known fixed-margin `DJ` reproductions (238 and 344), and 20
+candidate-0 outcomes do not establish the confidence mechanism. Pin a seed
+where the old rule overrides and the new rule refuses, plus an attacker and a
+defender state where a large certain gain must still override. Describe `SAAK`
+as the high-N/current-code reference, not the objectively correct action. Strip
+the human name, room id and timestamps from the committed minimal fixture.
+
+The subsequent adaptive draft also needs redesign before integration:
+
+- once candidates are pruned, their means use different adaptively selected
+  world subsets; comparing those raw means is no longer a common-world paired
+  estimand and is selection-biased. Reserve a disjoint fixed report fold for
+  survivors, or use a valid time-uniform adaptive estimator;
+- compute candidate-vs-current-leader moments directly on their overlapping
+  worlds. Adding two candidate-vs-zero SEs ignores covariance and is not the
+  claimed leader-difference bound;
+- cap sampling attempts. A repeated `None` currently advances neither work nor
+  the loop and can hang forever; and
+- require exact fixed work or explicitly record/refuse the residual budget.
+  `while rollouts + len(alive) <= budget` can stop short after pruning.
+- do not select from all original candidates after pruning: a frozen noisy loser
+  can currently re-enter as final `best`. Return the survivor set or, preferably,
+  select only on a disjoint report fold; and
+- wire the returned candidate-world count into `self.rollouts`. Using
+  `n_worlds * len(candidates)` after pruning misreports the very equal-work
+  invariant this experiment is supposed to test. The final gap also currently
+  subtracts means from different world subsets while its SE uses only overlap.
+
 In parallel, execute `TEACHER_V1_SPEC.md`: a 64-state mechanics preflight, then
 a 128-state continuation-quality gate. Only the second gate—gold-report regret
 upper bound at most 0.10 signed levels—automatically launches the 2,048-state

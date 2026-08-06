@@ -22,6 +22,57 @@ from .actions import enumerate_actions
 from .encode import encode_action, encode_obs
 
 
+V11_INFLUENCE_FIELDS = (
+    "decision_entries",
+    "single_candidate_returns",
+    "smart_absent_returns",
+    "model_scored",
+    "model_triggers",
+    "model_selected_non_smart",
+    "model_kept_smart",
+    "search_proposals",
+    "direct_overrides",
+)
+
+
+def _empty_v11_influence() -> dict[str, int]:
+    return {field: 0 for field in V11_INFLUENCE_FIELDS}
+
+
+def _v11_influence_receipt(totals: dict[str, int], *, mode: str) -> dict:
+    """Return cumulative, score-free proof that a V11 policy actually ran."""
+    if (set(totals) != set(V11_INFLUENCE_FIELDS)
+            or any(isinstance(value, bool) or not isinstance(value, int)
+                   or value < 0 for value in totals.values())):
+        raise RuntimeError("malformed V11 influence telemetry")
+    values = dict(totals)
+    if values["decision_entries"] != (
+            values["single_candidate_returns"]
+            + values["smart_absent_returns"] + values["model_scored"]):
+        raise RuntimeError("V11 decision-path counters do not reconcile")
+    if values["model_scored"] != (
+            values["model_triggers"] + values["model_kept_smart"]):
+        raise RuntimeError("V11 scored-decision counters do not reconcile")
+    if values["model_selected_non_smart"] != values["model_triggers"]:
+        raise RuntimeError("V11 trigger/selection counters do not reconcile")
+    if mode == "direct":
+        if (values["direct_overrides"] != values["model_triggers"]
+                or values["search_proposals"] != 0):
+            raise RuntimeError("direct V11 influence counters do not reconcile")
+    elif mode in {"protected_anchor", "same_trigger_random"}:
+        if (values["search_proposals"] != values["model_triggers"]
+                or values["direct_overrides"] != 0
+                or values["smart_absent_returns"] != 0):
+            raise RuntimeError("protected V11 influence counters do not reconcile")
+    else:
+        raise RuntimeError(f"unknown V11 influence telemetry mode {mode!r}")
+    return {
+        "schema": "v11-influence-telemetry-v1",
+        "mode": mode,
+        "totals": values,
+    }
+
+
 @lru_cache(maxsize=16)
 def _cached_npnet(path: str, mtime_ns: int, ctime_ns: int, size: int):
     """Load immutable numpy weights once per process and file generation.
@@ -221,8 +272,15 @@ class RLOverrideBot(SmartBot):
         # executable generator so experiment manifests can bind the right
         # action set instead of repeating the v10res mismatch in provenance.
         self._net_ballot = self._ballot
+        self._v11_influence_totals = _empty_v11_influence()
+
+    def v11_influence_telemetry(self) -> dict:
+        return _v11_influence_receipt(
+            self._v11_influence_totals, mode="direct")
 
     def decide_play(self, rnd: Round, seat: int) -> list[str]:
+        totals = self._v11_influence_totals
+        totals["decision_entries"] += 1
         base = super().decide_play(rnd, seat)          # SmartBot's pick = a_0
         # MUST match the ballot the teacher VALUED. gen-v4 valued
         # MCBot._candidates() rows while this inferred over
@@ -231,11 +289,13 @@ class RLOverrideBot(SmartBot):
         # never saw valued. Same class as the Elo-798 mismatch.
         actions = self._ballot._candidates(rnd, seat)
         if len(actions) <= 1:
+            totals["single_candidate_returns"] += 1
             return base
         key = sorted(base)
         try:                                # a_0 must be row 0, as in training
             i0 = next(i for i, a in enumerate(actions) if sorted(a) == key)
         except StopIteration:
+            totals["smart_absent_returns"] += 1
             return base
         actions = [actions[i0]] + actions[:i0] + actions[i0 + 1:]
         obs = encode_obs(rnd, seat)
@@ -243,7 +303,14 @@ class RLOverrideBot(SmartBot):
         d = self.net.value_candidates(obs, enc)
         d = [float(x) - float(d[0]) for x in d]        # deltas vs the baseline
         j = max(range(len(d)), key=lambda k: d[k])
-        return actions[j] if d[j] > self.MARGIN else base
+        totals["model_scored"] += 1
+        if j != 0 and d[j] > self.MARGIN:
+            totals["model_triggers"] += 1
+            totals["model_selected_non_smart"] += 1
+            totals["direct_overrides"] += 1
+            return actions[j]
+        totals["model_kept_smart"] += 1
+        return base
 
 
 class MCGatedOverride(RLOverrideBot):
@@ -380,6 +447,14 @@ class MCV11ProtectedAnchor(MCBotBase):
             None if seed is None else seed ^ 0x563131414E43484F52)
         self._pending_anchor_record = None
         self.last_anchor_record = None
+        self._v11_influence_totals = _empty_v11_influence()
+
+    def v11_influence_telemetry(self) -> dict:
+        mode = ("same_trigger_random" if
+                self.ANCHOR_MODE == "same_trigger_random" else
+                "protected_anchor")
+        return _v11_influence_receipt(
+            self._v11_influence_totals, mode=mode)
 
     @staticmethod
     def _action_key(action) -> tuple[str, ...]:
@@ -403,6 +478,8 @@ class MCV11ProtectedAnchor(MCBotBase):
 
     def _candidates(self, rnd: Round, seat: int):
         full = super()._candidates(rnd, seat)
+        totals = self._v11_influence_totals
+        totals["decision_entries"] += 1
         keys = [self._action_key(action) for action in full]
         if len(keys) != len(set(keys)):
             raise RuntimeError("protected-anchor ballot contains duplicate actions")
@@ -414,6 +491,7 @@ class MCV11ProtectedAnchor(MCBotBase):
         predicted_delta = 0.0
         triggered = False
         if len(full) > 1:
+            totals["model_scored"] += 1
             obs = encode_obs(rnd, seat)
             encoded = [encode_action(action, rnd) for action in full]
             values = [float(x) for x in self.net.value_candidates(obs, encoded)]
@@ -425,6 +503,14 @@ class MCV11ProtectedAnchor(MCBotBase):
             predicted_delta = deltas[v11_idx]
             triggered = (v11_idx != smart_idx and
                          predicted_delta > self.V11_THRESHOLD)
+            if triggered:
+                totals["model_triggers"] += 1
+                totals["model_selected_non_smart"] += 1
+                totals["search_proposals"] += 1
+            else:
+                totals["model_kept_smart"] += 1
+        else:
+            totals["single_candidate_returns"] += 1
 
         protected_idx = smart_idx
         if triggered:

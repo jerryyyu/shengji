@@ -119,7 +119,8 @@ def counters(bots) -> dict:
 
 
 def run_arm(label, policy, opponent, clusters, seed0, fh, run_id,
-            progress=True, progress_scores=True) -> list:
+            progress=True, progress_scores=True,
+            policy_telemetry_fn=None) -> list:
     """Play `clusters` mirrored pairs of `policy` against `opponent`.
 
     Both flips of a seed use the same deal, and every arm in a comparison is
@@ -137,10 +138,21 @@ def run_arm(label, policy, opponent, clusters, seed0, fh, run_id,
             pol = [a1, b1, a2, b2] if flip == 0 else [b1, a1, b2, a2]
             log = play_round(Game(random.Random(seed)), pol)
             won = int(log.winner_team == (0 if flip == 0 else 1))
+            arm_counters = counters([a1, a2])
+            opp_counters = counters([b1, b2])
+            if policy_telemetry_fn is not None:
+                # Opt-in only: frozen protocols that require the historical
+                # exact counter shape keep it by using the default.  New
+                # protocols can carry policy-specific activation witnesses
+                # without teaching this shared evaluator their semantics.
+                arm_counters["policy_telemetry"] = policy_telemetry_fn(
+                    [a1, a2])
+                opp_counters["policy_telemetry"] = policy_telemetry_fn(
+                    [b1, b2])
             rec = {"run": run_id, "label": label, "policy": policy,
                    "seed": seed, "flip": flip, "won": won,
                    "level_utility": (1 if won else -1) * max(1, int(log.level_change)),
-                   "arm": counters([a1, a2]), "opp": counters([b1, b2])}
+                   "arm": arm_counters, "opp": opp_counters}
             recs.append(rec)
             fh.write(json.dumps(rec) + "\n")
         if progress and c and c % 50 == 0:

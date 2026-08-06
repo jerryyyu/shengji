@@ -68,6 +68,56 @@ def _contrast(a: str, b: str, mean: float, half: float) -> dict:
     }
 
 
+def _activation(*, all_active: bool = True) -> dict:
+    arms = {}
+    for label in ("anchor", "random"):
+        arms[label] = {
+            "model_scored": 100,
+            "model_triggers": 10 if all_active else 0,
+            "search_proposals": 10 if all_active else 0,
+            "nonzero_scored": True,
+            "nonzero_triggered": all_active,
+            "reconciled": True,
+        }
+    return {
+        "schema": "v11-composition-activation-v1",
+        "arms": arms,
+        "all": all_active,
+    }
+
+
+def _policy_telemetry(label: str, side: str, *, active: bool = True) -> dict:
+    modes = COMP._expected_influence_modes(label, side)
+    totals = {field: 0 for field in COMP.V11_INFLUENCE_FIELDS}
+    if modes:
+        totals.update({
+            "decision_entries": 3,
+            "single_candidate_returns": 1,
+            "model_scored": 2,
+            "model_triggers": 1 if active else 0,
+            "model_selected_non_smart": 1 if active else 0,
+            "model_kept_smart": 1 if active else 2,
+            "search_proposals": 1 if active else 0,
+        })
+    return {
+        "schema": "v11-influence-telemetry-v1",
+        "modes": modes,
+        "totals": totals,
+    }
+
+
+def _composition_records(*, active: bool = True) -> dict:
+    records = {}
+    for label in ("anchor", "random", "champion", "null"):
+        sides = {}
+        for side in ("arm", "opp"):
+            sides[side] = _counter(True)
+            sides[side]["policy_telemetry"] = _policy_telemetry(
+                label, side, active=active)
+        records[label] = [{"seed": 1, "flip": 0, **sides}]
+    return records
+
+
 def direct_aggregate(*, compatible: bool = False,
                      null_sane: bool = True) -> dict:
     effect = 0.30 if compatible else 0.10
@@ -149,7 +199,12 @@ def test_v2_binds_exact_cde0fec_direct_protocol_and_preserves_estimand():
 
     assert COMP.PROTOCOLS == V1.PROTOCOLS
     assert COMP.CHAMPION_LANES == V1.CHAMPION_LANES
-    assert COMP.SELECTION_RULE == V1.SELECTION_RULE
+    assert V1.SELECTION_RULE in COMP.SELECTION_RULE.replace(
+        " Both V11 treatment arms must also prove nonzero model-scored "
+        "multi-candidate decisions and nonzero threshold triggers through "
+        "internally reconciled score-free telemetry; an inert/all-zero model "
+        "arm refuses.", "")
+    assert "inert/all-zero model arm refuses" in COMP.SELECTION_RULE
     assert COMP.DIRECT_USAGE == V1.DIRECT_USAGE
     for champion in COMP.CHAMPION_LANES:
         assert COMP.labels_for(champion) == V1.labels_for(champion)
@@ -279,7 +334,8 @@ def test_v2_screen_reopens_exact_direct_parent_and_carries_it_to_confirmation(
             "a": "null", "b": "champion", "mean": 0.01,
             "half_width_95": 0.10, "clusters": 2_048},
     }
-    criteria = COMP.gate_criteria(stats)
+    activation = _activation()
+    criteria = COMP.gate_criteria(stats, activation)
     screen = {
         "schema": COMP.AGGREGATE_SCHEMA,
         "phase": "screen",
@@ -311,6 +367,7 @@ def test_v2_screen_reopens_exact_direct_parent_and_carries_it_to_confirmation(
             for index in range(COMP.SHARD_COUNT)
         ],
         "stats": stats,
+        "activation": activation,
         "criteria": criteria,
         "direct_v11_parent": direct_parent,
         "direct_v11_usage": COMP.DIRECT_USAGE,
@@ -330,16 +387,43 @@ def test_v2_screen_reopens_exact_direct_parent_and_carries_it_to_confirmation(
         COMP.load_screen_parent(screen_path, COMP.sha256(screen_path), s0_parent)
 
 
-def test_v2_keeps_s0_raw_reopening_and_champion_validation_code_exact():
+def test_v2_keeps_unmodified_s0_and_execution_identity_code_exact():
     for name in (
         "load_s0_parent",
         "load_bound_screen_inputs",
-        "revalidate_screen_evidence",
         "require_screen_execution_identity",
-        "record_problems",
         "validate_population",
-        "gate_criteria",
         "_parent_args",
     ):
         assert inspect.getsource(getattr(COMP, name)) == \
             inspect.getsource(getattr(V1, name))
+
+
+def test_v2_activation_gate_refuses_an_inert_model_arm():
+    stats = {
+        "anchor-champion": _contrast("anchor", "champion", 0.30, 0.20),
+        "anchor-random": _contrast("anchor", "random", 0.31, 0.20),
+        "anchor-null": _contrast("anchor", "null", 0.29, 0.20),
+        "null-champion": _contrast("null", "champion", 0.01, 0.10),
+    }
+    assert COMP.gate_criteria(stats, _activation())["all"] is True
+    criteria = COMP.gate_criteria(stats, _activation(all_active=False))
+    assert criteria["v11_activation_nonzero_and_reconciled"] is False
+    assert criteria["all"] is False
+
+
+def test_v2_raw_record_gate_requires_nonzero_reconciled_v11_activation():
+    records = _composition_records()
+    assert COMP.record_problems(records) == []
+    assert COMP.activation_summary(records)["all"] is True
+
+    inert = _composition_records(active=False)
+    assert "V11 treatment activation is zero or unreconciled" in \
+        COMP.record_problems(inert)
+
+    broken = _composition_records()
+    broken["anchor"][0]["arm"]["policy_telemetry"]["totals"][
+        "decision_entries"] += 1
+    assert any("decision paths do not reconcile" in problem
+               for problem in COMP.record_problems(broken))
+    assert COMP.activation_summary(broken)["all"] is False

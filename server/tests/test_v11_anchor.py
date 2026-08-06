@@ -195,6 +195,42 @@ def test_override_manifest_binds_the_mc_ballot_the_net_actually_scores():
         ballot_for_policy("mc-strong").digest
 
 
+def test_real_corrected_encoder_checkpoint_has_named_non_inert_witness():
+    """An implementation that returns Smart before scoring must fail here."""
+    rnd, seat = _play_state(seed=2)
+    smart = SmartBot().decide_play(rnd, seat)
+    bot = make_bot("rl-override-v11pair", seed=2)
+    played = bot.decide_play(rnd, seat)
+
+    assert smart == ["DA"]
+    assert played == ["S10", "S10"]
+    assert sorted(played) != sorted(smart)
+    assert bot.v11_influence_telemetry() == {
+        "schema": "v11-influence-telemetry-v1",
+        "mode": "direct",
+        "totals": {
+            "decision_entries": 1,
+            "single_candidate_returns": 0,
+            "smart_absent_returns": 0,
+            "model_scored": 1,
+            "model_triggers": 1,
+            "model_selected_non_smart": 1,
+            "model_kept_smart": 0,
+            "search_proposals": 0,
+            "direct_overrides": 1,
+        },
+    }
+
+
+@pytest.mark.parametrize("bad_value", [True, 1.0, 1.9, -1])
+def test_v11_influence_receipt_refuses_non_integer_or_negative_counters(
+        bad_value):
+    bot = make_bot("rl-override-v11pair", seed=2)
+    bot._v11_influence_totals["decision_entries"] = bad_value
+    with pytest.raises(RuntimeError, match="malformed V11 influence"):
+        bot.v11_influence_telemetry()
+
+
 def test_v11_override_checkpoint_identity_is_absolute_and_cwd_independent(
         tmp_path, monkeypatch):
     fake = tmp_path / "snapshots_v11pair"

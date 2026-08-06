@@ -36,6 +36,7 @@ import s0_closeout as S0_CLOSEOUT  # noqa: E402
 import v11_revalidate_v2 as DIRECT  # noqa: E402
 from shengji.ai.registry import make_bot  # noqa: E402
 from shengji.evaluation import arm_ballots, paired_by_seed, run_arm  # noqa: E402
+from shengji.rl.torch_policy import V11_INFLUENCE_FIELDS  # noqa: E402
 
 
 SCHEMA = "v11-anchor-composition-shard-v2"
@@ -115,8 +116,11 @@ SELECTION_RULE = (
     "two-sided 95% lower bounds for anchor-minus-champion, anchor-minus-"
     "same-trigger-random and anchor-minus-champion-matched-null are all >0, "
     "and the champion-matched-null minus champion interval contains zero, "
-    "over exactly 2,048 fresh screen clusters. Apply the identical rule to "
-    "the 8,192-cluster confirmation. The screen is non-promotable and neither "
+    "over exactly 2,048 fresh screen clusters. Both V11 treatment arms must "
+    "also prove nonzero model-scored multi-candidate decisions and nonzero "
+    "threshold triggers through internally reconciled score-free telemetry; "
+    "an inert/all-zero model arm refuses. Apply the identical rule to the "
+    "8,192-cluster confirmation. The screen is non-promotable and neither "
     "phase changes production automatically."
 )
 DIRECT_USAGE = {
@@ -718,7 +722,8 @@ def load_screen_parent(path: os.PathLike | str, expected_sha256: str,
                    for item in inputs if isinstance(item, dict))):
         raise ProtocolRefused("screen aggregate input-shard identity")
     try:
-        derived_criteria = gate_criteria(payload["stats"])
+        derived_criteria = gate_criteria(
+            payload["stats"], payload["activation"])
     except (KeyError, TypeError, ValueError) as exc:
         raise ProtocolRefused(f"screen aggregate criteria malformed: {exc}") from exc
     if payload.get("criteria") != derived_criteria or not derived_criteria["all"]:
@@ -886,12 +891,16 @@ def revalidate_screen_evidence(aggregate_path: os.PathLike | str,
     if problems:
         return problems
     recomputed_stats = all_contrasts(records)
-    recomputed_criteria = gate_criteria(recomputed_stats)
+    recomputed_activation = activation_summary(records)
+    recomputed_criteria = gate_criteria(
+        recomputed_stats, recomputed_activation)
     if payload.get("record_counts") != {
             label: len(rows) for label, rows in records.items()}:
         problems.append("screen aggregate/raw record counts differ")
     if payload.get("counter_totals") != counter_totals(records):
         problems.append("screen aggregate/raw counter totals differ")
+    if payload.get("activation") != recomputed_activation:
+        problems.append("screen aggregate/raw V11 activation differs")
     if payload.get("stats") != recomputed_stats:
         problems.append("screen aggregate/raw paired statistics differ")
     if payload.get("criteria") != recomputed_criteria:
@@ -915,6 +924,78 @@ def require_screen_execution_identity(screen_parent: dict | None,
             _runtime_without_host(current_runtime)):
         raise ProtocolRefused(
             "confirmation executable runtime/source differs from frozen screen")
+
+
+def collect_v11_influence(bots) -> dict:
+    """Collect policy-owned activation counters without changing shared MC counters."""
+    totals = {field: 0 for field in V11_INFLUENCE_FIELDS}
+    modes = []
+    for bot in bots:
+        getter = getattr(bot, "v11_influence_telemetry", None)
+        if getter is None:
+            continue
+        receipt = getter()
+        if (not isinstance(receipt, dict)
+                or receipt.get("schema") != "v11-influence-telemetry-v1"
+                or receipt.get("mode") not in {
+                    "protected_anchor", "same_trigger_random"}
+                or not isinstance(receipt.get("totals"), dict)
+                or set(receipt["totals"]) != set(V11_INFLUENCE_FIELDS)):
+            raise ProtocolRefused("malformed V11 policy activation receipt")
+        modes.append(receipt["mode"])
+        for field in V11_INFLUENCE_FIELDS:
+            value = receipt["totals"][field]
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ProtocolRefused(
+                    f"malformed V11 policy activation counter {field}")
+            totals[field] += value
+    return {
+        "schema": "v11-influence-telemetry-v1",
+        "modes": sorted(modes),
+        "totals": totals,
+    }
+
+
+def _expected_influence_modes(label: str, side: str) -> list[str]:
+    if label == "anchor" and side == "arm":
+        return ["protected_anchor", "protected_anchor"]
+    if label == "random" and side == "arm":
+        return ["same_trigger_random", "same_trigger_random"]
+    return []
+
+
+def _influence_problems(label: str, side: str, payload: object) -> list[str]:
+    prefix = f"{label}/{side}"
+    if (not isinstance(payload, dict)
+            or payload.get("schema") != "v11-influence-telemetry-v1"
+            or payload.get("modes") != _expected_influence_modes(label, side)
+            or not isinstance(payload.get("totals"), dict)
+            or set(payload.get("totals", {})) != set(V11_INFLUENCE_FIELDS)):
+        return [f"{prefix}: malformed V11 influence telemetry"]
+    values = payload["totals"]
+    if any(isinstance(values[field], bool)
+           or not isinstance(values[field], int) or values[field] < 0
+           for field in V11_INFLUENCE_FIELDS):
+        return [f"{prefix}: malformed V11 influence counter"]
+    problems = []
+    if values["decision_entries"] != (
+            values["single_candidate_returns"]
+            + values["smart_absent_returns"] + values["model_scored"]):
+        problems.append(f"{prefix}: V11 decision paths do not reconcile")
+    if values["model_scored"] != (
+            values["model_triggers"] + values["model_kept_smart"]):
+        problems.append(f"{prefix}: V11 scored paths do not reconcile")
+    if values["model_selected_non_smart"] != values["model_triggers"]:
+        problems.append(f"{prefix}: V11 trigger/selection mismatch")
+    expected_active = bool(_expected_influence_modes(label, side))
+    if expected_active:
+        if (values["search_proposals"] != values["model_triggers"]
+                or values["direct_overrides"] != 0
+                or values["smart_absent_returns"] != 0):
+            problems.append(f"{prefix}: protected V11 paths do not reconcile")
+    elif any(values.values()):
+        problems.append(f"{prefix}: control unexpectedly has V11 influence")
+    return problems
 
 
 def record_problems(records: dict[str, list]) -> list[str]:
@@ -947,6 +1028,11 @@ def record_problems(records: dict[str, list]) -> list[str]:
                 for field in forbidden:
                     if int(counters.get(field, 0)):
                         problems.append(f"{label}/{side}: nonzero {field}")
+                problems.extend(_influence_problems(
+                    label, side, counters.get("policy_telemetry")))
+    activation = activation_summary(records)
+    if not activation["all"]:
+        problems.append("V11 treatment activation is zero or unreconciled")
     return sorted(set(problems))
 
 
@@ -965,7 +1051,45 @@ def all_contrasts(records: dict[str, list]) -> dict:
     }
 
 
-def gate_criteria(stats: dict) -> dict[str, bool]:
+def activation_summary(records: dict[str, list]) -> dict:
+    by_arm = {}
+    for label in ("anchor", "random"):
+        totals = {field: 0 for field in V11_INFLUENCE_FIELDS}
+        for row in records.get(label, []):
+            payload = row.get("arm", {}).get("policy_telemetry", {})
+            values = payload.get("totals", {}) if isinstance(payload, dict) else {}
+            for field in V11_INFLUENCE_FIELDS:
+                value = values.get(field, 0)
+                if isinstance(value, int) and not isinstance(value, bool):
+                    totals[field] += value
+        by_arm[label] = {
+            "model_scored": totals["model_scored"],
+            "model_triggers": totals["model_triggers"],
+            "search_proposals": totals["search_proposals"],
+            "nonzero_scored": totals["model_scored"] > 0,
+            "nonzero_triggered": totals["model_triggers"] > 0,
+            "reconciled": (
+                totals["decision_entries"] ==
+                totals["single_candidate_returns"]
+                + totals["smart_absent_returns"] + totals["model_scored"]
+                and totals["model_scored"] ==
+                totals["model_triggers"] + totals["model_kept_smart"]
+                and totals["search_proposals"] == totals["model_triggers"]
+                and totals["model_selected_non_smart"] ==
+                totals["model_triggers"]
+                and totals["direct_overrides"] == 0
+                and totals["smart_absent_returns"] == 0),
+        }
+    return {
+        "schema": "v11-composition-activation-v1",
+        "arms": by_arm,
+        "all": all(
+            arm["nonzero_scored"] and arm["nonzero_triggered"]
+            and arm["reconciled"] for arm in by_arm.values()),
+    }
+
+
+def gate_criteria(stats: dict, activation: dict) -> dict[str, bool]:
     criteria = {
         "anchor_champion_lcb_gt_0": (
             stats["anchor-champion"]["mean"] -
@@ -979,6 +1103,11 @@ def gate_criteria(stats: dict) -> dict[str, bool]:
         "null_champion_interval_contains_0": (
             abs(stats["null-champion"]["mean"]) <=
             stats["null-champion"]["half_width_95"]),
+        "v11_activation_nonzero_and_reconciled": (
+            isinstance(activation, dict)
+            and activation.get("schema") ==
+            "v11-composition-activation-v1"
+            and activation.get("all") is True),
     }
     criteria["all"] = all(criteria.values())
     return criteria
@@ -993,14 +1122,27 @@ def counter_totals(records: dict[str, list]) -> dict:
         "exact_endgame_sessions", "exact_endgame_nodes",
         "exact_endgame_cache_hits",
     )
-    return {
-        label: {
-            side: {field: sum(int(row[side].get(field, 0)) for row in rows)
-                   for field in fields}
-            for side in ("arm", "opp")
-        }
-        for label, rows in records.items()
-    }
+    result = {}
+    for label, rows in records.items():
+        result[label] = {}
+        for side in ("arm", "opp"):
+            values = {
+                field: sum(int(row[side].get(field, 0)) for row in rows)
+                for field in fields
+            }
+            telemetry = {
+                field: sum(int(row[side].get("policy_telemetry", {})
+                                   .get("totals", {}).get(field, 0))
+                           for row in rows)
+                for field in V11_INFLUENCE_FIELDS
+            }
+            values["policy_telemetry"] = {
+                "schema": "v11-influence-telemetry-v1",
+                "modes": _expected_influence_modes(label, side),
+                "totals": telemetry,
+            }
+            result[label][side] = values
+    return result
 
 
 def _parent_args(args) -> tuple[dict, dict, dict | None]:
@@ -1105,7 +1247,8 @@ def run_shard(args) -> None:
             print(f"\n{label}: {policy} vs {champion}", flush=True)
             records[label] = run_arm(
                 label, policy, champion, clusters, seed0, fh, run_id,
-                progress_scores=False)
+                progress_scores=False,
+                policy_telemetry_fn=collect_v11_influence)
 
     problems = record_problems(records)
     manifest["records_sha256"] = sha256(records_partial)
@@ -1296,7 +1439,8 @@ def aggregate(args) -> None:
             "\n  - ".join(problems))
 
     stats = all_contrasts(records)
-    criteria = gate_criteria(stats)
+    activation = activation_summary(records)
+    criteria = gate_criteria(stats, activation)
     spec = PROTOCOLS[args.phase]
     champion = s0_parent["champion_policy"]
     labels = labels_for(champion)
@@ -1339,6 +1483,7 @@ def aggregate(args) -> None:
         ],
         "record_counts": {label: len(rows) for label, rows in records.items()},
         "counter_totals": counter_totals(records),
+        "activation": activation,
         "stats": stats,
         "criteria": criteria,
         "confirmation_authorized": (

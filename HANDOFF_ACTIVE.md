@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 07:02 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 08:59 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -252,3 +252,11 @@ CALIB / REPORT confirmation: sealed and unscored
 
 Do not start a child phase from an incomplete shard set, a hand-computed
 aggregate, a different git SHA or a parent that does not name its exact policy.
+
+Terminal closeout is prepared in `server/scripts/s0_closeout.py` without
+changing the pinned evidence path. Its default mode independently regenerates
+the final packet and requires byte identity plus every field above. Only its
+explicit `--cleanup-launchctl` mode mutates process state, and that mode refuses
+a nonterminal supervisor state, packet drift or any still-live S0 worker before
+removing the exact reached Mini services. Do not run cleanup while S0b/S0c is
+active.

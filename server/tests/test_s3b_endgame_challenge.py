@@ -18,7 +18,7 @@ from shengji.engine import combos, fast                          # noqa: E402
 
 
 ASSET = os.path.join(ROOT, "tests", "data",
-                     "s3b_endgame_challenge.v1.json")
+                     "s3b_endgame_challenge.v2.json")
 
 
 def _runtime():
@@ -66,6 +66,8 @@ def test_frozen_asset_replays_exact_states_and_candidates(frozen_asset):
     assert asset["protocol"]["full_game_reference"] is None
     assert asset["protocol"]["strength_evidence"] is False
     assert asset["protocol"]["promotion"] is False
+    assert asset["protocol"]["candidate_value_oracle"] == \
+        "byte_pinned_final_attacker_points_per_candidate_and_world"
     assert S3B.CLAIM == (
         "exact perfect-information oracle inside a sampled determinization; "
         "not exact imperfect-information Shengji")
@@ -81,6 +83,10 @@ def test_frozen_asset_replays_exact_states_and_candidates(frozen_asset):
         assert len(candidates) == state["expected_candidate_count"]
         assert S3B.stable_digest(candidates) == \
             state["expected_candidates_sha256"]
+        for world in state["worlds"]:
+            assert len(world["expected_attacker_points"]) == len(candidates)
+            assert S3B.stable_digest(world["expected_attacker_points"]) == \
+                world["expected_attacker_points_sha256"]
         seen_tags.update(state["tags"])
     assert {"attacker", "defender", "lead", "follow", "pair-lead",
             "attempted-throws"} <= seen_tags
@@ -113,6 +119,18 @@ def test_real_challenge_records_close_exact_work_contract(
         assert record["problems"] == []
         for world in record["worlds"]:
             assert world["problems"] == []
+            expected = next(
+                item for item in next(
+                    state for state in asset["states"]
+                    if state["state_id"] == record["state_id"])["worlds"]
+                if item["world_seed"] == world["world_seed"])
+            assert [value["attacker_points"]
+                    for value in world["candidate_values"]] == \
+                expected["expected_attacker_points"]
+            assert world["expected_attacker_points"] == \
+                expected["expected_attacker_points"]
+            assert world["expected_attacker_points_sha256"] == \
+                expected["expected_attacker_points_sha256"]
             assert world["session"]["frontiers"] == \
                 world["candidate_count"]
             assert world["session"]["max_hand_cards"] == 4
@@ -207,6 +225,43 @@ def test_aggregate_reopens_frozen_world_bindings_after_summary_rewrite(
     assert aggregate["status"] == "HOLD"
     assert aggregate["challenge_pass"] is False
     assert any("resolved digest" in problem
+               for problem in aggregate["problems"])
+
+
+def test_aggregate_reopens_frozen_candidate_values_after_receipt_rewrite(
+        frozen_asset, passing_shards):
+    """A self-consistent but wrong solver value cannot certify itself."""
+    asset, digest = frozen_asset
+    broken = copy.deepcopy(passing_shards)
+    records = broken[0]["records"]
+    world = records[0]["worlds"][0]
+    world["candidate_values"][0]["attacker_points"] += 10
+    world["candidate_values_sha256"] = S3B.stable_digest(
+        world["candidate_values"])
+
+    # Model a malicious/self-consistent receipt rewrite: the shard updates its
+    # claimed expectation, digest, problem derivation, totals and PASS bit to
+    # agree with the mutated solver output. The aggregate must independently
+    # reopen the byte-pinned asset instead of trusting those derived fields.
+    world["expected_attacker_points"] = [
+        value["attacker_points"] for value in world["candidate_values"]]
+    world["expected_attacker_points_sha256"] = S3B.stable_digest(
+        world["expected_attacker_points"])
+    world["problems"] = []
+    world["problems"] = S3B.world_problems(world)
+    records[0]["problems"] = []
+    broken[0] = S3B.build_shard_payload(
+        asset, digest, _runtime(), 0, records)
+    assert broken[0]["status"] == "SHARD_PASS"
+    assert broken[0]["problems"] == []
+
+    aggregate = S3B.build_aggregate_payload(
+        broken, [S3B.stable_digest(shard) for shard in broken],
+        asset, digest, _runtime())
+    assert aggregate["status"] == "HOLD"
+    assert aggregate["challenge_pass"] is False
+    assert any("expected candidate values" in problem
+               or "candidate oracle values" in problem
                for problem in aggregate["problems"])
 
 

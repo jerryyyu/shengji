@@ -8,6 +8,7 @@ import os
 import random
 import sys
 from pathlib import Path
+from types import MethodType
 
 import pytest
 
@@ -16,6 +17,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import s3a_bury_pilot as S3A  # noqa: E402
 from shengji.ai.mcbot import MCBot  # noqa: E402
+from shengji.ai.registry import make_bot  # noqa: E402
 from shengji.engine.game import Game  # noqa: E402
 
 
@@ -335,6 +337,81 @@ def test_every_source_is_banker_visible_and_controls_match_trigger_and_k():
         len(first["structured"].candidates)
     assert first["random_widening"].triggered == first["structured"].triggered
     assert len(first["legacy_four"].candidates) <= 4
+
+
+def test_named_runtime_treatment_matches_pilot_selection_on_common_worlds():
+    """Bridge the offline screen to the executable treatment it may admit."""
+    rnd, seat = _bury_round(37)
+    literal = S3A.literal_incumbent(
+        make_bot("mc-strong", seed=17), rnd.hands[seat], rnd.ordering, seat)
+    stream = S3A.named_stream(
+        deal_seed=37, state_id="bury:37", purpose="candidate_source",
+        fold="random", seat=seat, policy="mc-strong")
+    ballots = S3A.build_ballots(
+        rnd.hands[seat], rnd.ordering, literal, seat, stream)
+    plan = S3A.exact_work_plan({
+        arm: len(ballot.candidates) for arm, ballot in ballots.items()})
+    structured = ballots["structured"]
+    candidate_index = {
+        tuple(candidate.cards): index
+        for index, candidate in enumerate(structured.candidates)}
+    assert len(structured.candidates) > 1
+    worlds = plan["selection"]["common_worlds_by_arm"]["structured"]
+    assert worlds == 8
+
+    def banker_value(world, cards):
+        index = candidate_index[tuple(sorted(cards))]
+        # Candidate 1 clears the fixed five-point margin on every world;
+        # all later candidates are mutation-sensitive losers.
+        return (10.0 + world["world"] * 0.01 if index == 1 else
+                world["world"] * 0.01 if index == 0 else
+                -float(index))
+
+    pilot = S3A.evaluate_arm(
+        structured,
+        [{"world": index} for index in range(worlds)],
+        [{"world": index} for index in range(S3A.REPORT_WORLDS)],
+        plan, 5.0, banker_value,
+        selection_ids=[f"selection:{index}" for index in range(worlds)],
+        report_ids=[f"report:{index}" for index in range(S3A.REPORT_WORLDS)],
+    )
+
+    treatment = make_bot("mc-structured-bury", seed=17)
+    next_world = 0
+
+    def fake_sample(self, _rnd, _seat, _mem):
+        nonlocal next_world
+        self.sample_attempts += 1
+        self.accepted_worlds += 1
+        result = {"world": next_world}, []
+        next_world += 1
+        return result
+
+    def fake_rollout(self, _rnd, _seat, sampled, cards):
+        # Runtime negates attacker value to obtain the pilot's banker value.
+        return -banker_value(sampled, cards)
+
+    treatment._sample_hands = MethodType(fake_sample, treatment)
+    treatment._rollout_from_bury = MethodType(fake_rollout, treatment)
+    played = treatment.decide_bury(rnd, seat)
+    runtime = treatment.last_bury_record
+
+    assert [candidate["cards"] for candidate in runtime["candidates"]] == [
+        list(candidate.cards) for candidate in structured.candidates]
+    assert runtime["raw_winner_index"] == \
+        pilot["selection"]["raw_winner_index"] == 1
+    assert runtime["played_index"] == pilot["selection"]["chosen_index"] == 1
+    assert sorted(played) == list(structured.candidates[1].cards)
+    assert runtime["work"]["candidate_rollouts"] == \
+        pilot["work"]["selection_candidate_worlds"] == \
+        worlds * len(structured.candidates)
+    telemetry = treatment.structured_bury_telemetry()
+    assert telemetry["opportunities"] == telemetry["triggers"] == 1
+    assert telemetry["overrides"] == telemetry["complete_searches"] == 1
+    assert telemetry["short_searches"] == telemetry["failed_worlds"] == 0
+    assert telemetry["candidate_rollouts"] == \
+        telemetry["candidate_world_budget"]
+    assert telemetry["exact_work_complete"] is True
 
 
 def test_capability_view_raises_if_a_source_reaches_for_an_opponent():

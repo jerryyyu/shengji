@@ -48,6 +48,16 @@ class DeterminizationContractError(RuntimeError):
     """A sampled world is incomplete or inconsistent with the round cards."""
 
 
+STRUCTURED_BURY_TELEMETRY_FIELDS = (
+    "opportunities", "triggers", "overrides", "candidate_count_sum",
+    "searches", "complete_searches", "short_searches",
+    "zero_world_searches", "worlds_requested", "worlds_used",
+    "candidate_world_budget", "candidate_rollouts", "sample_attempts",
+    "accepted_worlds", "failed_worlds", "rejected_worlds",
+    "impossible_worlds",
+)
+
+
 def random_state_from_json(value):
     """Restore the tuple tree that ``json`` turns into lists.
 
@@ -232,6 +242,13 @@ class MCBot(SmartBot):
         self.bury_rollouts = 0
         self.bury_search_secs = 0.0
         self.bury_short_searches = 0
+        # S3a is feature-off in production, but a future strength gate must be
+        # able to prove that its treatment actually fired and consumed the
+        # registered common-world work.  Keep this telemetry private to MCBot so
+        # adding it cannot change the shared evaluator record schema used by
+        # already-frozen S0/S3b evidence.
+        self._structured_bury_totals = {
+            name: 0 for name in STRUCTURED_BURY_TELEMETRY_FIELDS}
         self.exact_endgame_calls = 0
         self.exact_endgame_attempts = 0
         self.exact_endgame_refusals = 0
@@ -561,6 +578,130 @@ class MCBot(SmartBot):
         after = self._sampler_snapshot()
         return {name: after[name] - before[name] for name in after}
 
+    def structured_bury_telemetry(self) -> dict[str, int | str | bool]:
+        """Return fail-closed cumulative S3a dose and exact-work telemetry.
+
+        This is deliberately separate from :func:`evaluation.counters`: frozen
+        evidence protocols require that shared counter object to retain its
+        exact schema.  A future S3a duel can explicitly opt into this record.
+        """
+        totals = dict(self._structured_bury_totals)
+        problems = []
+        if set(totals) != set(STRUCTURED_BURY_TELEMETRY_FIELDS):
+            problems.append("field population")
+        elif any(isinstance(value, bool) or not isinstance(value, int)
+                 or value < 0 for value in totals.values()):
+            problems.append("non-negative integer fields")
+        else:
+            if totals["triggers"] != totals["searches"]:
+                problems.append("triggers != searches")
+            if totals["searches"] != (totals["complete_searches"] +
+                                      totals["short_searches"]):
+                problems.append("search completion accounting")
+            if totals["triggers"] > totals["opportunities"]:
+                problems.append("triggers exceed opportunities")
+            if not (totals["opportunities"] <=
+                    totals["candidate_count_sum"] <=
+                    totals["opportunities"] * self.BURY_MAX_CANDIDATES):
+                problems.append("candidate-count accounting")
+            if totals["overrides"] > totals["complete_searches"]:
+                problems.append("overrides exceed complete searches")
+            if totals["zero_world_searches"] > totals["short_searches"]:
+                problems.append("zero-world searches exceed short searches")
+            if totals["worlds_used"] > totals["worlds_requested"]:
+                problems.append("used worlds exceed requested worlds")
+            if totals["candidate_rollouts"] > \
+                    totals["candidate_world_budget"]:
+                problems.append("candidate rollouts exceed requested work")
+            if totals["sample_attempts"] != (totals["accepted_worlds"] +
+                                              totals["failed_worlds"]):
+                problems.append("sampler attempts do not reconcile")
+            if totals["accepted_worlds"] != totals["worlds_used"]:
+                problems.append("accepted worlds != scored worlds")
+            if totals["rejected_worlds"] > totals["failed_worlds"]:
+                problems.append("rejected worlds exceed failed worlds")
+            if (totals["short_searches"] == 0 and
+                    totals["candidate_rollouts"] !=
+                    totals["candidate_world_budget"]):
+                problems.append("complete treatment underfilled exact work")
+        if problems:
+            raise AssertionError(
+                "structured bury telemetry failed closed: " +
+                "; ".join(problems))
+        return {
+            "schema": "structured-bury-cumulative-telemetry-v1",
+            **totals,
+            "exact_work_complete": (
+                totals["short_searches"] == 0 and
+                totals["candidate_rollouts"] ==
+                totals["candidate_world_budget"]),
+        }
+
+    def _record_structured_bury_telemetry(self, record: dict) -> None:
+        """Validate and add one completed structured-bury opportunity."""
+        if record.get("schema") != "structured-bury-search-v1":
+            raise AssertionError("structured bury telemetry received wrong schema")
+        candidate_count = record.get("candidate_count")
+        played_index = record.get("played_index")
+        work = record.get("work", {})
+        sampler = record.get("sampler_counters", {}).get("delta", {})
+        required_work = {
+            "worlds_requested", "worlds_used", "candidate_rollouts", "complete"}
+        if (isinstance(candidate_count, bool) or
+                not isinstance(candidate_count, int) or
+                not 1 <= candidate_count <= self.BURY_MAX_CANDIDATES or
+                isinstance(played_index, bool) or
+                not isinstance(played_index, int) or
+                not 0 <= played_index < candidate_count or
+                not required_work.issubset(work) or
+                set(sampler) != {"sample_attempts", "accepted_worlds",
+                                 "failed_worlds", "rejected_worlds",
+                                 "impossible_worlds"}):
+            raise AssertionError("structured bury telemetry record shape")
+        numeric_work = (
+            work["worlds_requested"], work["worlds_used"],
+            work["candidate_rollouts"],
+        )
+        if any(isinstance(value, bool) or not isinstance(value, int) or value < 0
+               for value in (*numeric_work, *sampler.values())):
+            raise AssertionError("structured bury telemetry non-integer work")
+        requested, used, rollouts = numeric_work
+        complete = work["complete"]
+        triggered = candidate_count > 1
+        expected_budget = requested * candidate_count
+        if (complete is not (used == requested) or used > requested or
+                rollouts != used * candidate_count or
+                sampler["sample_attempts"] !=
+                sampler["accepted_worlds"] + sampler["failed_worlds"] or
+                sampler["accepted_worlds"] != used or
+                sampler["rejected_worlds"] > sampler["failed_worlds"] or
+                (not triggered and (requested or used or rollouts or
+                                    sampler["sample_attempts"])) or
+                (triggered and requested <= 0)):
+            raise AssertionError("structured bury telemetry work does not reconcile")
+        short = triggered and not complete
+        if short != (record.get("reason") == "bury_search_underfilled"):
+            raise AssertionError("structured bury telemetry fallback reason drift")
+
+        delta = {
+            "opportunities": 1,
+            "triggers": int(triggered),
+            "overrides": int(played_index != 0),
+            "candidate_count_sum": candidate_count,
+            "searches": int(triggered),
+            "complete_searches": int(triggered and complete),
+            "short_searches": int(short),
+            "zero_world_searches": int(short and used == 0),
+            "worlds_requested": requested,
+            "worlds_used": used,
+            "candidate_world_budget": expected_budget,
+            "candidate_rollouts": rollouts,
+            **sampler,
+        }
+        for name in STRUCTURED_BURY_TELEMETRY_FIELDS:
+            self._structured_bury_totals[name] += delta[name]
+        record["cumulative_telemetry"] = self.structured_bury_telemetry()
+
     def _report_critical(self, n: int) -> float:
         if self.REPORT_ALPHA != 0.05:
             raise ValueError("S0 v1 registers only one-sided alpha=0.05")
@@ -801,10 +942,11 @@ class MCBot(SmartBot):
             return base
         ballot_record = None
         if self.STRUCTURED_BURY:
-            # Candidate zero must itself be permutation-stable. Production
-            # Smart bury is unchanged; only this experimental source
-            # canonicalises the hand before asking for its incumbent.
-            base = self._canonical_bury(rnd, seat)
+            # Candidate zero is the literal action of the named base policy on
+            # this exact engine state.  Canonicalising the hand here silently
+            # changed SmartBot's bury on permutation-sensitive states, so the
+            # old feature-on path bundled a second treatment that the S3a screen
+            # never evaluated.
             ballot = self._structured_bury_ballot(rnd, seat, base)
             cands = [list(candidate.cards) for candidate in ballot.candidates]
             ballot_record = ballot.record()
@@ -818,19 +960,39 @@ class MCBot(SmartBot):
                     cands.append(c)
         if len(cands) == 1:
             if self.STRUCTURED_BURY:
+                sampler = self._sampler_snapshot()
                 self.last_bury_record = {
                     "schema": "structured-bury-search-v1",
+                    "policy": getattr(self, "policy_name", type(self).__name__),
+                    "mode": "structured",
                     "ballot": ballot_record,
                     "candidate_count": 1,
                     "incumbent_index": 0,
+                    "candidates": [{
+                        **ballot_record["candidates"][0],
+                        "index": 0,
+                        "mean_banker_value": None,
+                        "worlds": 0,
+                    }],
                     "raw_winner_index": 0,
                     "played_index": 0,
+                    "played": list(cands[0]),
                     "reason": "only_incumbent",
                     "common_worlds": True,
+                    "n_by_candidate": [0],
+                    "margin": self.MARGIN,
+                    "gap_vs_incumbent": None,
+                    "search_secs": 0.0,
                     "work": {"cap": self.BURY_MAX_ROLLOUTS,
                              "worlds_requested": 0, "worlds_used": 0,
+                             "attempts": 0, "attempt_cap": 0,
                              "candidate_rollouts": 0, "complete": True},
+                    "sampler_counters": {
+                        "before": sampler, "after": sampler,
+                        "delta": {name: 0 for name in sampler},
+                    },
                 }
+                self._record_structured_bury_telemetry(self.last_bury_record)
             return base
 
         if self.STRUCTURED_BURY:
@@ -948,6 +1110,8 @@ class MCBot(SmartBot):
                 "delta": self._sampler_delta(sampler_before),
             },
         }
+        if self.STRUCTURED_BURY:
+            self._record_structured_bury_telemetry(self.last_bury_record)
         return cands[played_index]
 
     def _canonical_bury(self, rnd: Round, seat: int) -> list[str]:

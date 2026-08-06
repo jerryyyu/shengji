@@ -37,9 +37,9 @@ from shengji.engine.game import Game                                    # noqa: 
 from shengji.engine.combos import decompose                             # noqa: E402
 
 
-RUN_SCHEMA = "s3b-exact-endgame-challenge-shard-v1"
-AGGREGATE_SCHEMA = "s3b-exact-endgame-challenge-aggregate-v1"
-STATE_SCHEMA = "s3b-exact-endgame-challenge-states-v1"
+RUN_SCHEMA = "s3b-exact-endgame-challenge-shard-v2"
+AGGREGATE_SCHEMA = "s3b-exact-endgame-challenge-aggregate-v2"
+STATE_SCHEMA = "s3b-exact-endgame-challenge-states-v2"
 CLAIM = ("exact perfect-information oracle inside a sampled "
          "determinization; not exact imperfect-information Shengji")
 MAX_HAND_CARDS = 4
@@ -49,10 +49,11 @@ WORLDS_PER_STATE = 4
 ASSIGNMENT = "sorted_state_id_then_interleaved_position"
 DEFAULT_STATE_ASSET = str(
     Path(__file__).parents[1] / "tests" / "data" /
-    "s3b_endgame_challenge.v1.json")
-# Filled only after the tracked asset's exact bytes are frozen.
+    "s3b_endgame_challenge.v2.json")
+# Byte identity of the tracked v2 asset, including the independently frozen
+# candidate-value oracle for every named world.
 EXPECTED_STATE_ASSET_SHA256 = (
-    "03f54de951528821a0f726fd23515cf6945fac87fdbf12f7847b43699bbbf8e2")
+    "02beac0534f84b3b4a43e7dfca83398c7073659cf0cda419ad9974af80153301")
 SAMPLER_FLAGS = ("SHENGJI_WEIGHTED_SPLITS", "SHENGJI_UNIFORM_DEAL",
                  "SHENGJI_PHYSICAL_FILLS")
 EXACT_FIELDS = ("attempts", "successes", "refusals", "budget_overflows",
@@ -108,6 +109,8 @@ def protocol_contract() -> dict:
         "assignment": ASSIGNMENT,
         "sampler": "production_MCBot_information_set_sampler",
         "candidate_source": "exhaustive_submitted_legal_actions_inside_bound",
+        "candidate_value_oracle": (
+            "byte_pinned_final_attacker_points_per_candidate_and_world"),
     }
 
 
@@ -229,7 +232,7 @@ def load_state_asset(path: str, expected_sha256: str) -> tuple[dict, str]:
 
 def asset_problems(asset: dict) -> list[str]:
     problems = []
-    if asset.get("asset_id") != "s3b-exact-endgame-mechanics-v1":
+    if asset.get("asset_id") != "s3b-exact-endgame-mechanics-v2":
         problems.append("state asset id")
     if asset.get("schema") != STATE_SCHEMA:
         problems.append("state schema")
@@ -269,6 +272,17 @@ def asset_problems(asset: dict) -> list[str]:
         for world in worlds:
             if not _is_sha256(world.get("expected_world_sha256")):
                 problems.append(f"{sid}: expected world digest")
+            points = world.get("expected_attacker_points")
+            if (not isinstance(points, list)
+                    or len(points) != state.get("expected_candidate_count")
+                    or any(isinstance(value, bool) or not isinstance(value, int)
+                           or value < 0 for value in points)):
+                problems.append(f"{sid}: expected candidate values")
+            elif (not _is_sha256(
+                    world.get("expected_attacker_points_sha256"))
+                  or stable_digest(points) !=
+                    world.get("expected_attacker_points_sha256")):
+                problems.append(f"{sid}: expected candidate-value digest")
     if len(set(all_world_seeds)) != len(all_world_seeds):
         problems.append("world seeds must be globally unique")
     return sorted(set(problems))
@@ -389,6 +403,9 @@ def sampler_snapshot(bot: MCBot) -> dict[str, int]:
 def world_problems(record: dict) -> list[str]:
     problems = list(record.get("problems", []))
     candidate_count = record.get("candidate_count", 0)
+    expected_points = record.get("expected_attacker_points")
+    expected_points_sha = record.get("expected_attacker_points_sha256")
+    values = record.get("candidate_values", [])
     exact = record.get("exact", {})
     sampler = record.get("sampler", {})
     session = record.get("session", {})
@@ -396,8 +413,19 @@ def world_problems(record: dict) -> list[str]:
                    "failed_worlds": 0, "rejected_worlds": 0,
                    "impossible_worlds": 0}:
         problems.append("sampler did not produce one strict accepted world")
-    if len(record.get("candidate_values", [])) != candidate_count:
+    if len(values) != candidate_count:
         problems.append("candidate-world work incomplete")
+    actual_points = [value.get("attacker_points") for value in values
+                     if isinstance(value, dict)]
+    if (not isinstance(expected_points, list)
+            or len(expected_points) != candidate_count
+            or any(isinstance(value, bool) or not isinstance(value, int)
+                   for value in expected_points)
+            or not _is_sha256(expected_points_sha)
+            or stable_digest(expected_points) != expected_points_sha):
+        problems.append("frozen candidate-value expectation malformed")
+    elif actual_points != expected_points:
+        problems.append("candidate attacker-points differ from frozen oracle")
     if exact.get("attempts") != candidate_count:
         problems.append("exact attempts differ from candidate-world work")
     if exact.get("successes") != candidate_count:
@@ -433,6 +461,9 @@ def run_world(rnd, state: dict, world: dict,
     record = {
         "world_seed": world["world_seed"],
         "expected_world_sha256": world["expected_world_sha256"],
+        "expected_attacker_points": list(world["expected_attacker_points"]),
+        "expected_attacker_points_sha256":
+            world["expected_attacker_points_sha256"],
         "candidate_count": len(candidates),
         "candidate_values": [],
         "problems": [],
@@ -674,6 +705,12 @@ def state_record_problems(record: dict, spec: dict) -> list[str]:
         if world.get("expected_world_sha256") != \
                 expected["expected_world_sha256"]:
             problems.append(f"{prefix} expected digest")
+        if world.get("expected_attacker_points") != \
+                expected["expected_attacker_points"]:
+            problems.append(f"{prefix} expected candidate values")
+        if world.get("expected_attacker_points_sha256") != \
+                expected["expected_attacker_points_sha256"]:
+            problems.append(f"{prefix} expected candidate-value digest")
         if world.get("world_sha256") != expected["expected_world_sha256"]:
             problems.append(f"{prefix} resolved digest")
         if world.get("candidate_count") != spec["expected_candidate_count"]:
@@ -690,6 +727,10 @@ def state_record_problems(record: dict, spec: dict) -> list[str]:
             if any(not isinstance(value.get("attacker_points"), int)
                    for value in values if isinstance(value, dict)):
                 problems.append(f"{prefix} candidate value type")
+            actual_points = [value.get("attacker_points") for value in values
+                             if isinstance(value, dict)]
+            if actual_points != expected["expected_attacker_points"]:
+                problems.append(f"{prefix} candidate oracle values")
         if world.get("candidate_values_sha256") != stable_digest(values):
             problems.append(f"{prefix} candidate value digest")
         exact = world.get("exact", {})

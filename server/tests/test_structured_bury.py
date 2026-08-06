@@ -14,6 +14,7 @@ import pytest
 
 from shengji.ai.bury import structured_bury_ballot
 from shengji.ai.mcbot import MCBot
+from shengji.ai.registry import STRUCTURED_BURY_POLICIES, make_bot
 from shengji.ai.smart import SmartBot
 from shengji.engine.ballot import mc_ballot
 from shengji.engine.cards import points
@@ -106,6 +107,105 @@ def test_structured_bury_is_not_part_of_the_lead_follow_ballot_identity():
         "MC_BURY": True, "STRUCTURED_BURY": True,
     })(seed=1)
     assert mc_ballot(ordinary).digest == mc_ballot(structured).digest
+
+
+def _uppercase_contract(bot):
+    return {
+        name: getattr(bot, name)
+        for name in dir(bot)
+        if name.isupper() and isinstance(
+            getattr(bot, name), (bool, int, float, str, type(None)))
+    }
+
+
+def test_named_terminal_lane_clones_change_only_the_two_s3a_switches():
+    assert STRUCTURED_BURY_POLICIES == {
+        "mc-strong": "mc-structured-bury",
+        "mc-s0-report-lcb": "mc-s0-report-lcb-structured-bury",
+        "mc-s0-adaptive": "mc-s0-adaptive-structured-bury",
+    }
+    for base_name, treatment_name in STRUCTURED_BURY_POLICIES.items():
+        base = make_bot(base_name, seed=73)
+        treatment = make_bot(treatment_name, seed=73)
+        observed = _uppercase_contract(treatment)
+        assert observed["MC_BURY"] is True
+        assert observed["STRUCTURED_BURY"] is True
+        observed["MC_BURY"] = False
+        observed["STRUCTURED_BURY"] = False
+        assert observed == _uppercase_contract(base)
+        assert treatment.EXACT_ENDGAME is False
+        assert treatment.structured_bury_base_policy == base_name
+        assert treatment.rng.getstate() == base.rng.getstate()
+        assert type(treatment.rollout_policy) is type(base.rollout_policy)
+        assert mc_ballot(treatment).digest == mc_ballot(base).digest
+
+        telemetry = treatment.structured_bury_telemetry()
+        assert telemetry["schema"] == "structured-bury-cumulative-telemetry-v1"
+        assert telemetry["exact_work_complete"] is True
+        assert all(value == 0 for name, value in telemetry.items()
+                   if name not in {"schema", "exact_work_complete"})
+
+
+def test_literal_candidate_zero_and_underfill_fallback_on_named_witness_37():
+    rnd, seat = _bury_round(37)
+    base = make_bot("mc-strong", seed=9)
+    treatment = make_bot("mc-structured-bury", seed=9)
+    literal = base.decide_bury(rnd, seat)
+    canonical = treatment._canonical_bury(rnd, seat)
+    assert _key(literal) != _key(canonical), \
+        "seed 37 must remain a mutation-sensitive literal/canonical witness"
+
+    def fail_sample(self, _rnd, _seat, _mem):
+        self.sample_attempts += 1
+        self.failed_worlds += 1
+        return None
+
+    treatment._sample_hands = MethodType(fail_sample, treatment)
+    played = treatment.decide_bury(rnd, seat)
+    rec = treatment.last_bury_record
+    assert _key(rec["candidates"][0]["cards"]) == _key(literal)
+    assert _key(played) == _key(literal)
+    assert _key(played) != _key(canonical)
+    assert rec["reason"] == "bury_search_underfilled"
+    telemetry = treatment.structured_bury_telemetry()
+    assert telemetry["opportunities"] == telemetry["triggers"] == 1
+    assert telemetry["searches"] == telemetry["short_searches"] == 1
+    assert telemetry["zero_world_searches"] == 1
+    assert telemetry["overrides"] == telemetry["candidate_rollouts"] == 0
+    assert telemetry["failed_worlds"] == telemetry["sample_attempts"] > 0
+    assert telemetry["exact_work_complete"] is False
+
+
+def test_structured_bury_telemetry_refuses_incoherent_sampler_counters():
+    rnd, seat = _bury_round(0)
+    bot = make_bot("mc-structured-bury", seed=9)
+
+    def malformed_sample(self, _rnd, _seat, _mem):
+        # Accepted without an attempt is precisely the plausible-looking
+        # counter mutation the cumulative evidence boundary must reject.
+        self.accepted_worlds += 1
+        return {"world": self.accepted_worlds}, []
+
+    def cheap_rollout(self, _rnd, _seat, _hands, _candidate):
+        return 80.0
+
+    bot._sample_hands = MethodType(malformed_sample, bot)
+    bot._rollout_from_bury = MethodType(cheap_rollout, bot)
+    with pytest.raises(AssertionError, match="work does not reconcile"):
+        bot.decide_bury(rnd, seat)
+    assert bot.structured_bury_telemetry()["opportunities"] == 0
+
+
+@pytest.mark.parametrize("control", (
+    "mc-strong", "mc-strong-null", "mc-s0-report-lcb",
+    "mc-s0-report-lcb-null", "mc-s0-adaptive", "mc-s0-adaptive-null",
+))
+def test_feature_off_controls_expose_zero_structured_bury_dose(control):
+    bot = make_bot(control, seed=11)
+    telemetry = bot.structured_bury_telemetry()
+    assert bot.MC_BURY is bot.STRUCTURED_BURY is False
+    assert telemetry["opportunities"] == telemetry["triggers"] == 0
+    assert telemetry["candidate_rollouts"] == telemetry["failed_worlds"] == 0
 
 
 def test_common_world_scoring_is_matched_and_respects_hard_work_cap():

@@ -53,9 +53,9 @@ BUDGET_ROLE = (
 )
 MECHANICS_COMMIT = "2370a277fe694d952c3b6fb80e31f319d7dfad36"
 MECHANICS_ASSET = SERVER / "tests" / "data" / \
-    "s3b_endgame_challenge.v1.json"
+    "s3b_endgame_challenge.v2.json"
 MECHANICS_ASSET_SHA256 = (
-    "03f54de951528821a0f726fd23515cf6945fac87fdbf12f7847b43699bbbf8e2"
+    "02beac0534f84b3b4a43e7dfca83398c7073659cf0cda419ad9974af80153301"
 )
 SAMPLER_FLAGS = (
     "SHENGJI_WEIGHTED_SPLITS",

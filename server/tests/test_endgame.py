@@ -74,6 +74,41 @@ def test_one_trick_value_includes_points_and_kitty_multiplier():
         "the exact solver mutated its caller's information set"
 
 
+def test_two_card_tree_uses_defender_min_at_internal_nodes():
+    """Mutation witness: replacing the recursive min with max changes value."""
+    rnd = _round([
+        ["H2", "C3"],
+        ["CA", "C9"],
+        ["C10", "C4"],
+        ["C6", "C8"],
+    ], leader=1)
+    assert rnd.banker == 0 and rnd.trump_rank == "7"
+    result = solve_exact_endgame(rnd, max_hand_cards=2)
+    # The root attacker must anticipate the defenders minimizing points on the
+    # following moves. An unconditional recursive max returns 10/CA here.
+    assert result.attacker_points == 0
+    assert result.action == ("C9",)
+
+
+def test_shared_session_state_key_separates_accumulated_attacker_points():
+    """Two otherwise-identical frontiers must not collide in the exact cache."""
+    hands = [
+        ["H2", "C3"],
+        ["CA", "C9"],
+        ["C10", "C4"],
+        ["C6", "C8"],
+    ]
+    zero = _round(hands, leader=1, attacker_points=0)
+    twenty = _round(hands, leader=1, attacker_points=20)
+    session = ExactWorldSession(zero, max_hand_cards=2)
+    first = session.solve(zero)
+    second = session.solve(twenty)
+    assert (first.attacker_points, first.action) == (0, ("C9",))
+    assert (second.attacker_points, second.action) == (20, ("C9",))
+    assert second.nodes > 0, \
+        "a zero-node second solve indicates an attacker-points cache collision"
+
+
 def test_real_three_card_endgame_completes_and_returns_a_legal_action():
     game = Game(random.Random(19))
     bots = [HeuristicBot() for _ in range(4)]

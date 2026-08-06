@@ -193,6 +193,41 @@ REGISTRY["mc-s0-report-lcb-null"] = _make_policy_null("mc-s0-report-lcb")
 REGISTRY["mc-s0-adaptive-null"] = _make_policy_null("mc-s0-adaptive")
 
 
+def _make_structured_bury_policy(base_policy: str):
+    """Enable only the screened S3a structured-bury treatment.
+
+    Construct the exact named terminal S0 policy first so its ordinary-play
+    search/report/allocation contract is inherited rather than copied.  The
+    MCBot bury path keeps that base policy's literal bury as candidate zero;
+    these are the only two behavioural switches changed by this factory.
+    """
+    def make(**kw):
+        bot = make_bot(base_policy, **kw)
+        if any(getattr(bot, field, False) for field in
+               ("MC_BURY", "STRUCTURED_BURY", "EXACT_ENDGAME")):
+            raise RuntimeError(
+                f"S3a base policy {base_policy!r} enables another S3 feature")
+        bot.MC_BURY = True
+        bot.STRUCTURED_BURY = True
+        # Lower-case provenance is deliberately outside the uppercase gameplay
+        # contract, just like the S3b base-policy binding below.
+        bot.structured_bury_base_policy = base_policy
+        return bot
+    return make
+
+
+# The current S0a result leaves exactly these three terminal possibilities:
+# SELECT NONE/current, report-LCB, or adaptive-LCB.  Registrations authorize
+# experiments only; production remains feature-off.
+STRUCTURED_BURY_POLICIES = {
+    "mc-strong": "mc-structured-bury",
+    "mc-s0-report-lcb": "mc-s0-report-lcb-structured-bury",
+    "mc-s0-adaptive": "mc-s0-adaptive-structured-bury",
+}
+for _base_policy, _treatment_policy in STRUCTURED_BURY_POLICIES.items():
+    REGISTRY[_treatment_policy] = _make_structured_bury_policy(_base_policy)
+
+
 def _make_exact_endgame_policy(base_policy: str):
     """Enable only the bounded S3b continuation on a named search policy.
 

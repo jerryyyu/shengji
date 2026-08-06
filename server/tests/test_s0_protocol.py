@@ -14,6 +14,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import s0_aggregate as AGG  # noqa: E402
 import s0_override_audit as AUDIT  # noqa: E402
+import s0_packet as PACKET  # noqa: E402
 import s0_run as S0  # noqa: E402
 
 
@@ -36,6 +37,14 @@ def by_label(rows):
     for row in rows:
         out.setdefault(row["label"], []).append(row)
     return out
+
+
+def runtime_identity(binary="binary-a"):
+    return {
+        "host": "mini", "python": "3.14.6",
+        "fast_engine": True, "require_voids": True,
+        "digests": {"fast_binary": binary, "runner": "runner-a"},
+    }
 
 
 def test_all_frozen_s0_policy_contracts_are_live():
@@ -122,21 +131,28 @@ def test_child_phases_are_bound_to_the_exact_parent_aggregate(tmp_path):
         "phase": "s0a", "promotion": False, "git_sha": "abc",
         "clusters": 2048, "survivor_label": "report_mean",
         "survivor_policy": "mc-s0-report-mean",
+        "runtime_identity": runtime_identity(),
     }
     path = tmp_path / "s0a.aggregate.json"
     path.write_text(json.dumps(parent))
     identity = S0.parent_identity(
-        str(path), S0.PROTOCOLS["s0b-mean"], "abc")
+        str(path), S0.PROTOCOLS["s0b-mean"], "abc", runtime_identity())
     assert identity["phase"] == "s0a"
     assert identity["survivor_policy"] == "mc-s0-report-mean"
     assert len(identity["sha256"]) == 64
 
     with pytest.raises(SystemExit, match="does not admit"):
-        S0.parent_identity(str(path), S0.PROTOCOLS["s0b-lcb"], "abc")
+        S0.parent_identity(str(path), S0.PROTOCOLS["s0b-lcb"], "abc",
+                           runtime_identity())
     with pytest.raises(SystemExit, match="required via --parent"):
-        S0.parent_identity(None, S0.PROTOCOLS["s0b-mean"], "abc")
+        S0.parent_identity(None, S0.PROTOCOLS["s0b-mean"], "abc",
+                           runtime_identity())
     with pytest.raises(SystemExit, match="has no parent"):
-        S0.parent_identity(str(path), S0.PROTOCOLS["s0a"], "abc")
+        S0.parent_identity(str(path), S0.PROTOCOLS["s0a"], "abc",
+                           runtime_identity())
+    with pytest.raises(SystemExit, match="runtime identity"):
+        S0.parent_identity(str(path), S0.PROTOCOLS["s0b-mean"], "abc",
+                           runtime_identity("binary-b"))
 
 
 def test_aggregate_requires_the_literal_frozen_seed_flip_set(
@@ -157,6 +173,7 @@ def test_aggregate_requires_the_literal_frozen_seed_flip_set(
         "shard_index": 0, "shard_count": 1, "total_clusters": 2,
         "clusters": 2, "seed0": 1, "seed_hi": 2, "run_id": "tiny-run",
         "labels": labels,
+        **runtime_identity(),
     }
     manifests = [(record_path + ".manifest.json", manifest)]
     records = by_label(block({"arm": 2.0, "null": 0.0,
@@ -170,6 +187,37 @@ def test_aggregate_requires_the_literal_frozen_seed_flip_set(
     records["arm"][0]["seed"] = 99
     assert "arm: exact seed/flip coverage differs" in \
         AGG.validate(phase, manifests, records)
+
+
+def test_runtime_identity_is_parent_bound_and_cross_phase_drift_refuses(tmp_path):
+    runtime = runtime_identity()
+    parent = {"sha256": "a" * 64, "phase": "s0a"}
+    manifests = [("child.manifest.json", {
+        "parent": parent, **runtime,
+    })]
+    assert AGG.runtime_identity(manifests) == runtime
+    bound = AGG.aggregate_parent_identity(manifests, runtime)
+    assert bound["sha256"] == parent["sha256"]
+    assert bound["runtime_identity"] == runtime
+
+    phase_a = tmp_path / "a.json"
+    phase_b = tmp_path / "b.json"
+    values = {
+        "s0a": (phase_a, {"runtime_identity": runtime}),
+        "s0b-mean": (phase_b, {"runtime_identity": runtime}),
+    }
+    phase_manifests = {
+        "s0a": [(phase_a, runtime)],
+        "s0b-mean": [(phase_b, runtime)],
+    }
+    assert PACKET.verify_runtime_chain(
+        values, phase_manifests, expected=runtime) == runtime
+
+    drift = runtime_identity("binary-b")
+    values["s0b-mean"][1]["runtime_identity"] = drift
+    phase_manifests["s0b-mean"] = [(phase_b, drift)]
+    with pytest.raises(RuntimeError, match="cross-phase runtime identity drift"):
+        PACKET.verify_runtime_chain(values, phase_manifests, expected=runtime)
 
 
 def test_report_dose_is_chosen_by_the_frozen_rule_not_by_prose():

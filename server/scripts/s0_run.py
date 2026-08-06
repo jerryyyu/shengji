@@ -197,6 +197,25 @@ def digest(path) -> str:
         return hashlib.sha256(fh.read()).hexdigest()
 
 
+def runtime_identity(fast) -> dict:
+    """Return the exact execution identity that must survive every S0 phase."""
+    root = Path(__file__).parents[1]
+    return {
+        "host": os.uname().nodename,
+        "python": platform.python_version(),
+        "fast_engine": True,
+        "require_voids": True,
+        "digests": {
+            "runner": digest(__file__),
+            "evaluation": digest(root / "shengji" / "evaluation.py"),
+            "mcbot": digest(root / "shengji" / "ai" / "mcbot.py"),
+            "registry": digest(root / "shengji" / "ai" / "registry.py"),
+            "fast_router": digest(fast.__file__),
+            "fast_binary": digest(fast._fast.__file__),
+        },
+    }
+
+
 def git(*args) -> str:
     return subprocess.run(["git", *args], check=True, capture_output=True,
                           text=True).stdout.strip()
@@ -243,7 +262,8 @@ def protocol_problems(phase: str) -> list[str]:
     return problems
 
 
-def parent_identity(path: str | None, spec: dict, sha: str) -> dict | None:
+def parent_identity(path: str | None, spec: dict, sha: str,
+                    runtime: dict | None = None) -> dict | None:
     """Bind a child phase to the machine-readable aggregate that admitted it."""
     want_phase = spec.get("parent_phase")
     if want_phase is None:
@@ -268,6 +288,8 @@ def parent_identity(path: str | None, spec: dict, sha: str) -> dict | None:
              for key, value in expected.items() if parent.get(key) != value]
     if parent.get("promotion") is not False:
         drift.append("parent mechanism screen must have promotion=false")
+    if parent.get("runtime_identity") != runtime:
+        drift.append("parent runtime identity does not match this child")
     if drift:
         raise SystemExit("parent aggregate does not admit this phase:\n  - " +
                          "\n  - ".join(drift))
@@ -277,6 +299,7 @@ def parent_identity(path: str | None, spec: dict, sha: str) -> dict | None:
         "clusters": parent.get("clusters"),
         "survivor_label": parent.get("survivor_label"),
         "survivor_policy": parent["survivor_policy"],
+        "runtime_identity": parent["runtime_identity"],
     }
 
 
@@ -339,7 +362,8 @@ def main() -> None:
     dirty_text = git("status", "--porcelain")
     if dirty_text and not args.smoke:
         raise SystemExit("full S0 shard refuses a dirty tree")
-    parent = parent_identity(args.parent, spec, sha)
+    runtime = runtime_identity(fast)
+    parent = parent_identity(args.parent, spec, sha, runtime)
     clusters = 2 if args.smoke else clusters_per_shard
     seed0 = spec["seed0"] + args.shard_index * clusters_per_shard
     run_id = (f"{SCHEMA}_{args.phase}_shard{args.shard_index:02d}_"
@@ -359,8 +383,9 @@ def main() -> None:
         "promotable": not args.smoke, "git_sha": sha,
         "tree_dirty": bool(dirty_text),
         "dirty_files": dirty_text.splitlines() if dirty_text else [],
-        "host": os.uname().nodename, "python": platform.python_version(),
-        "fast_engine": True, "require_voids": True,
+        "host": runtime["host"], "python": runtime["python"],
+        "fast_engine": runtime["fast_engine"],
+        "require_voids": runtime["require_voids"],
         "kind": spec["kind"], "parent": parent,
         "shard_index": args.shard_index, "shard_count": shard_count,
         "total_clusters": phase_total_clusters(args.phase),
@@ -372,17 +397,7 @@ def main() -> None:
         "policy_contracts": {name: policy_contract(name)
                              for name in sorted(set(policies))},
         "ballots": arm_ballots(sorted(set(policies))),
-        "digests": {
-            "runner": digest(__file__),
-            "evaluation": digest(Path(__file__).parents[1] / "shengji" /
-                                 "evaluation.py"),
-            "mcbot": digest(Path(__file__).parents[1] / "shengji" / "ai" /
-                             "mcbot.py"),
-            "registry": digest(Path(__file__).parents[1] / "shengji" / "ai" /
-                                "registry.py"),
-            "fast_router": digest(fast.__file__),
-            "fast_binary": digest(fast._fast.__file__),
-        },
+        "digests": runtime["digests"],
         "started": time.strftime("%Y-%m-%d %H:%M:%S %Z"),
     }
     with open(manifest_path + ".partial", "x") as fh:

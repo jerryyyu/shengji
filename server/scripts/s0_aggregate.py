@@ -18,6 +18,52 @@ class AggregationRefused(RuntimeError):
     pass
 
 
+def manifest_runtime(manifest: dict) -> dict:
+    return {
+        "host": manifest.get("host"),
+        "python": manifest.get("python"),
+        "fast_engine": manifest.get("fast_engine"),
+        "require_voids": manifest.get("require_voids"),
+        "digests": manifest.get("digests"),
+    }
+
+
+def runtime_identity(manifests) -> dict:
+    """Require and return one exact runtime identity for a complete phase."""
+    if not manifests:
+        raise AggregationRefused("cannot derive runtime identity without manifests")
+    runtimes = [manifest_runtime(manifest) for _, manifest in manifests]
+    first = runtimes[0]
+    required = ("host", "python", "fast_engine", "require_voids", "digests")
+    missing = [key for key in required if first.get(key) in (None, "", {})]
+    if missing:
+        raise AggregationRefused(f"runtime identity missing {missing}")
+    if any(runtime != first for runtime in runtimes[1:]):
+        raise AggregationRefused("shards disagree on exact runtime identity")
+    digests = first["digests"]
+    if not isinstance(digests, dict) or not digests.get("fast_binary"):
+        raise AggregationRefused("runtime identity lacks compiled binary digest")
+    return first
+
+
+def aggregate_parent_identity(manifests, runtime: dict) -> dict | None:
+    """Bind the phase runtime into the exact parent aggregate hash chain."""
+    parent = manifests[0][1].get("parent")
+    if parent is None:
+        return None
+    if not isinstance(parent, dict) or not parent.get("sha256"):
+        raise AggregationRefused("child phase lacks an exact parent hash")
+    bound = parent.get("runtime_identity")
+    if bound is not None and bound != runtime:
+        raise AggregationRefused("child manifest parent runtime identity drift")
+    result = dict(parent)
+    # Older frozen runners bind the whole parent aggregate by SHA but do not
+    # duplicate its runtime fields.  The independently verified aggregate adds
+    # the exact child runtime here; s0_packet proves it equals the hashed parent.
+    result["runtime_identity"] = runtime
+    return result
+
+
 def load(phase: str, pattern: str):
     manifests = []
     records = {}
@@ -52,7 +98,7 @@ def validate(phase: str, manifests, records) -> list[str]:
     indices = [m["shard_index"] for _, m in manifests]
     if sorted(indices) != list(range(shard_count)):
         problems.append(f"shard indices are {sorted(indices)}")
-    for key in ("git_sha", "labels", "digests", "policy_contracts", "ballots",
+    for key in ("git_sha", "host", "labels", "digests", "policy_contracts", "ballots",
                 "report_worlds", "selection_rule", "kind", "parent",
                 "shard_count", "total_clusters", "python"):
         values = {json.dumps(m.get(key), sort_keys=True) for _, m in manifests}
@@ -73,6 +119,11 @@ def validate(phase: str, manifests, records) -> list[str]:
             problems.append(f"shard {i}: seed block drift")
         if manifest.get("clusters") != clusters_per_shard:
             problems.append(f"shard {i}: cluster count drift")
+    if manifests:
+        try:
+            runtime_identity(manifests)
+        except AggregationRefused as exc:
+            problems.append(str(exc))
 
     expected_labels = set(spec["labels"])
     if set(records) != expected_labels:
@@ -184,6 +235,7 @@ def main() -> None:
         raise AggregationRefused("S0 aggregation refused:\n  - " +
                                  "\n  - ".join(problems))
     survivor, stats = choose_survivor(args.phase, records)
+    runtime = runtime_identity(manifests)
     labels = S0.PROTOCOLS[args.phase]["labels"]
     confirmation = S0.PROTOCOLS[args.phase]["kind"] == "confirmation"
     criteria = None
@@ -210,7 +262,8 @@ def main() -> None:
                  "independent 8,192-cluster confirmation."),
         "shards": [path for path, _ in manifests],
         "git_sha": manifests[0][1]["git_sha"],
-        "parent": manifests[0][1].get("parent"),
+        "parent": aggregate_parent_identity(manifests, runtime),
+        "runtime_identity": runtime,
         "clusters": S0.phase_total_clusters(args.phase),
         "seed0": S0.PROTOCOLS[args.phase]["seed0"],
         "seed_hi": (S0.PROTOCOLS[args.phase]["seed0"] +

@@ -570,7 +570,7 @@ def state_set_problems(payload: dict, stage: str, *, smoke: bool) -> list[str]:
         if not payload.get("fast_engine") or not payload.get("require_voids"):
             bad.append("state set lacks compiled/strict provenance")
         if payload.get("seed_start") != SEED_START:
-            bad.append("fresh-deal seed start is not 120000000")
+            bad.append(f"fresh-deal seed start is not {SEED_START}")
         if any(not isinstance(seed, int)
                or not SEED_START <= seed <= CAPTURE_SEED_END
                for seed in deals):

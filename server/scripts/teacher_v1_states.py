@@ -37,7 +37,9 @@ from shengji.engine.ballot import mc_ballot                       # noqa: E402
 from shengji.engine.game import Game                              # noqa: E402
 from shengji.teacher_v1 import (CAPTURE_DEALS_PER_SHARD,           # noqa: E402
                                 CAPTURE_MAX_DEALS, CAPTURE_PACKET_ID,
-                                CAPTURE_SEED_END, CAPTURE_SHARDS, EXPERIMENT,
+                                CAPTURE_PYTHON, CAPTURE_SEED_END,
+                                CAPTURE_SHARDS, EXPERIMENT,
+                                EXPERIMENTAL_SAMPLER_BALLOT_FLAGS,
                                 GATE_SCHEMA, REPRESENTATIVE_CELLS,
                                 SAMPLER_COUNTERS, SEED_START,
                                 STAGE_A_OTHER_STATES,
@@ -52,6 +54,7 @@ from shengji.teacher_v1 import (CAPTURE_DEALS_PER_SHARD,           # noqa: E402
                                 capture_coverage, capture_packet,
                                 capture_shard_seeds,
                                 is_run_id, is_sha256,
+                                json_canonical,
                                 phase_for_trick, replay_state,
                                 sampler_delta, sampler_snapshot,
                                 split_for_deal, stable_digest, state_id)
@@ -94,20 +97,35 @@ def git_output(*args: str) -> str:
 
 def write_exclusive(path: str, payload: dict) -> None:
     partial = path + ".partial"
-    if os.path.exists(path) or os.path.exists(partial):
-        raise TeacherProtocolError(f"refusing to overwrite {path}")
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     try:
-        with open(partial, "x") as fh:
+        with open(partial, "x", encoding="utf-8") as fh:
             json.dump(payload, fh, sort_keys=True, separators=(",", ":"))
             fh.write("\n")
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(partial, path)
-    except Exception:
-        if os.path.exists(partial):
-            os.remove(partial)
-        raise
+    except FileExistsError as exc:
+        raise TeacherProtocolError(
+            f"refusing existing partial artifact {partial}; no resume or "
+            "replacement"
+        ) from exc
+    try:
+        # A hard link is the publication compare-and-swap: it succeeds only
+        # when the final name does not exist, including when that name is a
+        # dangling symlink.  Unlike os.replace, a competitor that wins after
+        # the partial is opened can never have its bytes overwritten.
+        os.link(partial, path)
+    except FileExistsError as exc:
+        raise TeacherProtocolError(
+            f"refusing to overwrite {path}; completed partial remains at "
+            f"{partial}"
+        ) from exc
+    try:
+        os.unlink(partial)
+    except OSError as exc:
+        raise TeacherProtocolError(
+            f"published {path} but could not remove partial {partial}"
+        ) from exc
 
 
 def runtime(smoke: bool) -> dict:
@@ -115,6 +133,17 @@ def runtime(smoke: bool) -> dict:
         raise TeacherProtocolError("set SHENGJI_REQUIRE_VOIDS=1")
     if os.environ.get("SHENGJI_FAST") != "1":
         raise TeacherProtocolError("set SHENGJI_FAST=1")
+    enabled = [name for name in EXPERIMENTAL_SAMPLER_BALLOT_FLAGS
+               if name in os.environ]
+    if enabled:
+        raise TeacherProtocolError(
+            f"experimental sampler/ballot flags must be unset: {enabled}"
+        )
+    python = sys.version.split()[0]
+    if not smoke and python != CAPTURE_PYTHON:
+        raise TeacherProtocolError(
+            f"real teacher work requires Python {CAPTURE_PYTHON}, got {python}"
+        )
     from shengji.engine import combos, fast
     if not fast.HAVE_FAST or combos.decompose is not fast.decompose:
         raise TeacherProtocolError("compiled engine requested but not active")
@@ -124,8 +153,9 @@ def runtime(smoke: bool) -> dict:
     return {
         "git": git_output("rev-parse", "HEAD"), "tree_dirty": bool(dirty),
         "promotable": not smoke,
-        "host": os.uname().nodename, "python": sys.version.split()[0],
+        "host": os.uname().nodename, "python": python,
         "fast_engine": True, "require_voids": True,
+        "experimental_sampler_ballot_flags": [],
         "fast_router_sha256": sha256_file(fast.__file__),
         "fast_binary_sha256": sha256_file(fast._fast.__file__),
         "state_script_sha256": sha256_file(__file__),
@@ -145,17 +175,22 @@ def actor_identity() -> dict:
         "registry": registry.__file__, "engine_round": round_mod.__file__,
         "teacher_replay": teacher.__file__,
     }
-    return {
+    source_digests = json_canonical({
+        name: sha256_file(path) for name, path in sorted(paths.items())
+    })
+    ballot_identity = json_canonical({
+        **asdict(ballot), "digest": ballot.digest,
+    })
+    return json_canonical({
         "policy": ACTOR,
         "identity": stable_digest({
-            "files": {name: sha256_file(path) for name, path in sorted(paths.items())},
-            "ballot": asdict(ballot),
+            "files": source_digests,
+            "ballot": ballot_identity,
         }),
-        "source_digests": {name: sha256_file(path)
-                           for name, path in sorted(paths.items())},
-        "ballot": {**asdict(ballot), "digest": ballot.digest},
+        "source_digests": source_digests,
+        "ballot": ballot_identity,
         "checkpoint": None,
-    }
+    })
 
 
 def target_for_deal(experiment_id: str, seed: int) -> dict:
@@ -380,7 +415,9 @@ def diagnostic_population_problems(manifests: list[dict]) -> tuple[list[str], di
                for seed in payload.get("capture_scanned_seeds", [])]
     expected = list(range(SEED_START, CAPTURE_SEED_END + 1))
     if len(scanned) != len(set(scanned)) or sorted(scanned) != expected:
-        bad.append("diagnostic population is not exact/nonoverlapping 120M coverage")
+        bad.append(
+            "diagnostic population is not exact/nonoverlapping entry coverage"
+        )
     coverage = {
         **capture_coverage(),
         "capture_parent_sha256": {
@@ -731,10 +768,7 @@ def diagnose(args) -> None:
             raise TeacherProtocolError(f"capture/diagnostic {key} drift")
     stored_actor = capture_payload.get("actor", {})
     live_actor = actor_identity()
-    if (stored_actor.get("identity") != live_actor["identity"]
-            or stored_actor.get("source_digests") != live_actor["source_digests"]
-            or stored_actor.get("ballot", {}).get("digest")
-            != live_actor["ballot"]["digest"]):
+    if stored_actor != live_actor:
         raise TeacherProtocolError("capture actor identity drift")
     bot = make_bot("mc-strong", seed=1)
     rows = capture_payload.get("records", [])
@@ -1127,6 +1161,11 @@ def stage_a_gate_problems(payload: dict, state_set_sha256: str,
 
 
 def freeze(args) -> None:
+    if not args.smoke and len(args.input) != CAPTURE_SHARDS:
+        raise TeacherProtocolError(
+            f"real freeze requires exactly {CAPTURE_SHARDS} diagnostic shards, "
+            f"got {len(args.input)}"
+        )
     live = runtime(args.smoke)
     diagnostics, manifests, problems = [], [], []
     for path in args.input:
@@ -1158,6 +1197,18 @@ def freeze(args) -> None:
                 manifests
             )
             problems += packet_problems
+            scanned_deals = [
+                seed for manifest in manifests
+                for seed in manifest.get("capture_scanned_seeds", [])
+            ]
+            if (len(scanned_deals) != CAPTURE_MAX_DEALS
+                    or len(set(scanned_deals)) != CAPTURE_MAX_DEALS
+                    or sorted(scanned_deals)
+                    != list(range(SEED_START, CAPTURE_SEED_END + 1))):
+                problems.append(
+                    "freeze requires the exact 1,024-deal v2 diagnostic "
+                    "population"
+                )
         for key in ("git", "python", "fast_binary_sha256",
                     "fast_router_sha256", "state_script_sha256"):
             if first.get(key) != live.get(key):
@@ -1217,6 +1268,17 @@ def freeze(args) -> None:
         problems.append(f"selected {len(states)}, required {required}")
     if len({state["seed"] for state in states}) != len(states):
         problems.append("selected more than one state per deal")
+    if args.stage == "b":
+        selected_deals = {
+            state.get("seed") for state in states
+            if isinstance(state, dict) and isinstance(state.get("seed"), int)
+        }
+        overlap = sorted(selected_deals & excluded_deals)
+        if overlap:
+            problems.append(
+                f"Stage B selected deals overlap Stage A exclusions: "
+                f"{overlap[:8]}"
+            )
     for state in states:
         try:
             replay_state(state)

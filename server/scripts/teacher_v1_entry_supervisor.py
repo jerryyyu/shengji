@@ -36,16 +36,28 @@ sys.path.insert(0, str(SCRIPTS_ROOT))
 import teacher_v1_states as states  # noqa: E402
 from shengji.teacher_v1 import (CAPTURE_DEALS_PER_SHARD,  # noqa: E402
                                 CAPTURE_MAX_DEALS, CAPTURE_PACKET_ID,
-                                CAPTURE_SEED_END, CAPTURE_SHARDS,
+                                CAPTURE_PYTHON, CAPTURE_SEED_END,
+                                CAPTURE_SHARDS,
+                                EXPERIMENTAL_SAMPLER_BALLOT_FLAGS,
                                 REPRESENTATIVE_CELLS, SEED_START,
                                 STAGE_A_OTHER_STATES,
                                 STAGE_A_REPRESENTATIVE_PER_CELL,
                                 STAGE_A_STATES, STATE_SET_SCHEMA,
-                                capture_packet, capture_shard_seeds,
-                                is_sha256)
+                                capture_coverage, capture_packet,
+                                capture_shard_seeds,
+                                is_sha256, REFUSED_CAPTURE_PACKET)
 
 
 EXPECTED_PACKET = {
+    "packet_id": "teacher-v1-entry-143m-v2",
+    "seed0": 143_000_000,
+    "seed_end_inclusive": 143_001_023,
+    "max_deals": 1_024,
+    "shard_count": 8,
+    "sharding": "interleaved_seed_offset_mod_8",
+    "deals_per_shard": 128,
+}
+EXPECTED_REFUSED_PACKET = {
     "packet_id": "teacher-v1-entry-120m-v1",
     "seed0": 120_000_000,
     "seed_end_inclusive": 120_001_023,
@@ -53,7 +65,16 @@ EXPECTED_PACKET = {
     "shard_count": 8,
     "sharding": "interleaved_seed_offset_mod_8",
     "deals_per_shard": 128,
+    "status": "REFUSED",
+    "refusal": "noncanonical_actor_identity_comparison",
 }
+EXPECTED_PYTHON = "3.14.6"
+EXPECTED_EXPERIMENTAL_SAMPLER_BALLOT_FLAGS = (
+    "SHENGJI_WEIGHTED_SPLITS",
+    "SHENGJI_UNIFORM_DEAL",
+    "SHENGJI_PHYSICAL_FILLS",
+    "SHENGJI_ALLOW_BALLOT_MISMATCH",
+)
 EXPECTED_EXAM_SPLITS = (
     "rl_data/corpus_split.v1.json",
     "rl_data/corpus_split_late.v1.json",
@@ -73,7 +94,7 @@ EXPECTED_V11_SHA256 = (
 RUNTIME_FIELDS = (
     "git", "tree_dirty", "promotable", "host", "python", "fast_engine",
     "require_voids", "fast_router_sha256", "fast_binary_sha256",
-    "state_script_sha256",
+    "state_script_sha256", "experimental_sampler_ballot_flags",
 )
 
 
@@ -136,6 +157,17 @@ def static_contract_problems() -> list[str]:
             )
     if capture_packet() != EXPECTED_PACKET:
         problems.append("executable capture packet differs from literal packet")
+    if REFUSED_CAPTURE_PACKET != EXPECTED_REFUSED_PACKET:
+        problems.append("historical refused packet identity drift")
+    if (REFUSED_CAPTURE_PACKET["packet_id"] == CAPTURE_PACKET_ID
+            or not (REFUSED_CAPTURE_PACKET["seed_end_inclusive"]
+                    < SEED_START)):
+        problems.append("fresh entry packet reuses refused v1 identity or seeds")
+    if CAPTURE_PYTHON != EXPECTED_PYTHON:
+        problems.append("teacher capture Python contract drift")
+    if (tuple(EXPERIMENTAL_SAMPLER_BALLOT_FLAGS)
+            != EXPECTED_EXPERIMENTAL_SAMPLER_BALLOT_FLAGS):
+        problems.append("experimental sampler/ballot flag inventory drift")
     if STAGE_A_STATES != 64:
         problems.append(f"Stage-A size {STAGE_A_STATES}, required 64")
     if (STAGE_A_REPRESENTATIVE_PER_CELL != 4
@@ -154,7 +186,7 @@ def static_contract_problems() -> list[str]:
     shards = []
     if CAPTURE_SHARDS == 8:
         for index in range(8):
-            expected = list(range(120_000_000 + index, 120_001_024, 8))
+            expected = list(range(143_000_000 + index, 143_001_024, 8))
             try:
                 actual = capture_shard_seeds(index)
             except Exception as exc:  # fail closed on a changed helper
@@ -164,7 +196,7 @@ def static_contract_problems() -> list[str]:
                 problems.append(f"capture shard {index} literal seed coverage drift")
             shards.extend(actual)
     if (len(shards) != 1_024 or len(set(shards)) != 1_024
-            or sorted(shards) != list(range(120_000_000, 120_001_024))):
+            or sorted(shards) != list(range(143_000_000, 143_001_024))):
         problems.append("capture shards do not partition the exact 1,024 seeds")
     return problems
 
@@ -188,6 +220,12 @@ def runtime_problems(runtime: dict, expected_git: str) -> list[str]:
         problems.append("compiled engine is not active")
     if runtime.get("require_voids") is not True:
         problems.append("strict void mode is not active")
+    if runtime.get("python") != EXPECTED_PYTHON:
+        problems.append(
+            f"runtime Python {runtime.get('python')!r}, required {EXPECTED_PYTHON}"
+        )
+    if runtime.get("experimental_sampler_ballot_flags") != []:
+        problems.append("experimental sampler/ballot flags are active")
     for key in (
         "fast_router_sha256", "fast_binary_sha256", "state_script_sha256"
     ):
@@ -488,6 +526,72 @@ def validate_diagnostic_population(
             problems.append(f"diagnostic shard {index} exam exclusion drift")
         if payload.get("v11_checkpoint_sha256") != states.V11_CHECKPOINT_SHA256:
             problems.append(f"diagnostic shard {index} v11 checkpoint drift")
+
+        capture_records = capture_manifests[index].get("records", [])
+        diagnostic_records = payload.get("records", [])
+        if not isinstance(capture_records, list):
+            problems.append(f"capture shard {index} records are not a list")
+            capture_records = []
+        if not isinstance(diagnostic_records, list):
+            problems.append(f"diagnostic shard {index} records are not a list")
+            diagnostic_records = []
+        capture_ids = [
+            row.get("state_id") if isinstance(row, dict) else None
+            for row in capture_records
+        ]
+        diagnostic_ids = [
+            row.get("state_id") if isinstance(row, dict) else None
+            for row in diagnostic_records
+        ]
+        if (any(not isinstance(value, str) for value in capture_ids)
+                or len(capture_ids) != len(set(capture_ids))):
+            problems.append(f"capture shard {index} state identities invalid")
+        if (any(not isinstance(value, str) for value in diagnostic_ids)
+                or len(diagnostic_ids) != len(set(diagnostic_ids))):
+            problems.append(f"diagnostic shard {index} state identities invalid")
+        if diagnostic_ids != capture_ids:
+            problems.append(
+                f"diagnostic shard {index} capture state order/coverage drift"
+            )
+        capture_by_id = {
+            row["state_id"]: row for row in capture_records
+            if isinstance(row, dict) and isinstance(row.get("state_id"), str)
+        }
+        for position, diagnostic in enumerate(diagnostic_records):
+            if not isinstance(diagnostic, dict):
+                problems.append(
+                    f"diagnostic shard {index} row {position} is not an object"
+                )
+                continue
+            identity = diagnostic.get("state_id")
+            embedded = diagnostic.get("state")
+            if not isinstance(embedded, dict):
+                problems.append(
+                    f"diagnostic shard {index} row {position} embedded state "
+                    "is not an object"
+                )
+                continue
+            if embedded.get("state_id") != identity:
+                problems.append(
+                    f"diagnostic shard {index} row {position} embedded state_id "
+                    "drift"
+                )
+            parent = capture_by_id.get(identity)
+            if parent is None:
+                problems.append(
+                    f"diagnostic shard {index} row {position} has no exact "
+                    "capture parent"
+                )
+                continue
+            if embedded.get("seed") != parent.get("seed"):
+                problems.append(
+                    f"diagnostic shard {index} row {position} capture seed drift"
+                )
+            if embedded != parent:
+                problems.append(
+                    f"diagnostic shard {index} row {position} full capture "
+                    "state drift"
+                )
     population_bad, _ = states.diagnostic_population_problems(manifests)
     problems += population_bad
     if len(set(hashes)) != 8:
@@ -510,13 +614,22 @@ def validate_stage_a_state_set(
     if len(diagnostics) != 8 or len(diagnostic_sha256s) != 8:
         raise EntryRefusal("Stage-A freeze requires all eight diagnostics")
     problems = []
+    reopened_diagnostics = []
+    actual_diagnostic_sha256s = []
     for index, path in enumerate(paths.diagnostics):
-        if states.sha256_file(str(path)) != diagnostic_sha256s[index]:
+        reopened, actual_digest = _load_artifact(path)
+        reopened_diagnostics.append(reopened)
+        actual_diagnostic_sha256s.append(actual_digest)
+        if actual_digest != diagnostic_sha256s[index]:
             problems.append(f"diagnostic shard {index} changed during freeze")
+        if reopened != diagnostics[index]:
+            problems.append(
+                f"diagnostic shard {index} differs from validated manifest"
+            )
     payload, digest = _load_artifact(paths.state_set)
     problems += states.state_set_packet_problems(payload)
     problems += states.stage_a_exclusion_problems(
-        payload, diagnostics[0], set(diagnostic_sha256s)
+        payload, reopened_diagnostics[0], set(actual_diagnostic_sha256s)
     )
     if (payload.get("schema") != STATE_SET_SCHEMA
             or payload.get("stage") != "a"
@@ -539,14 +652,40 @@ def validate_stage_a_state_set(
     if payload.get("stage_a_gate") is not None:
         problems.append("Stage-A freeze unexpectedly carries a Stage-A gate")
 
+    actual_parent_map = {}
+    actual_record_map = {}
+    for index, manifest in enumerate(reopened_diagnostics):
+        actual_parent_map[str(index)] = manifest.get("capture_input_sha256")
+        actual_records_digest = states.stable_digest(
+            manifest.get("records", [])
+        )
+        actual_record_map[str(index)] = actual_records_digest
+        if manifest.get("records_digest") != actual_records_digest:
+            problems.append(
+                f"diagnostic shard {index} reopened record digest drift"
+            )
+    expected_coverage = {
+        **capture_coverage(),
+        "capture_parent_sha256": actual_parent_map,
+        "diagnostic_records_sha256": actual_record_map,
+    }
+    if payload.get("capture_coverage") != expected_coverage:
+        problems.append(
+            "frozen capture coverage differs from reopened diagnostics"
+        )
+
     inputs = payload.get("diagnostic_inputs", [])
     if len(inputs) == 8:
         for index, item in enumerate(inputs):
             if not isinstance(item, dict):
                 problems.append(f"frozen diagnostic input {index} is not an object")
             elif (item.get("path") != str(paths.diagnostics[index])
-                    or item.get("sha256") != diagnostic_sha256s[index]
-                    or item.get("capture_shard_index") != index):
+                    or item.get("sha256") != actual_diagnostic_sha256s[index]
+                    or item.get("capture_shard_index") != index
+                    or item.get("capture_parent_sha256")
+                    != actual_parent_map[str(index)]
+                    or item.get("diagnostic_records_sha256")
+                    != actual_record_map[str(index)]):
                 problems.append(f"frozen diagnostic input {index} binding drift")
 
     valid_states = [state for state in selected if isinstance(state, dict)]
@@ -557,6 +696,60 @@ def validate_stage_a_state_set(
     if (len(state_ids) != len(set(state_ids))
             or len(seeds) != len(set(seeds))):
         problems.append("frozen Stage-A states/deals are not unique")
+    if any(type(seed) is not int or not SEED_START <= seed <= CAPTURE_SEED_END
+           for seed in seeds):
+        problems.append("frozen Stage-A state lies outside the v2 seed range")
+
+    diagnostic_rows = [
+        row for manifest in reopened_diagnostics
+        for row in manifest.get("records", []) if isinstance(row, dict)
+    ]
+    source_states = {}
+    duplicate_source_ids = set()
+    for row in diagnostic_rows:
+        identity = row.get("state_id")
+        source = row.get("state")
+        if not isinstance(identity, str) or not isinstance(source, dict):
+            problems.append("reopened diagnostic row lacks an exact state")
+            continue
+        if identity in source_states:
+            duplicate_source_ids.add(identity)
+        source_states[identity] = source
+    if duplicate_source_ids:
+        problems.append("reopened diagnostics duplicate selected-state identities")
+    for state in valid_states:
+        identity = state.get("state_id")
+        source = source_states.get(identity)
+        if source is None:
+            problems.append(
+                f"frozen Stage-A state {identity!r} has no diagnostic parent"
+            )
+            continue
+        raw_state = dict(state)
+        for key in ("kind", "selection_probability", "selection_metadata"):
+            raw_state.pop(key, None)
+        if raw_state != source:
+            problems.append(
+                f"frozen Stage-A state {identity!r} canonical source drift"
+            )
+
+    try:
+        recomputed_states, selection_problems = states.select_gate_states(
+            diagnostic_rows, "a", set()
+        )
+    except Exception as exc:
+        problems.append(
+            f"Stage-A selection recomputation failed: {type(exc).__name__}: {exc}"
+        )
+        recomputed_states, selection_problems = [], []
+    problems += [
+        f"Stage-A selection recomputation: {problem}"
+        for problem in selection_problems
+    ]
+    if selected != recomputed_states:
+        problems.append(
+            "frozen Stage-A selection differs from exact diagnostic recomputation"
+        )
     representative = Counter(
         (state.get("phase"), state.get("role"), state.get("decision"))
         for state in valid_states if state.get("kind") == "representative"
@@ -613,6 +806,12 @@ def preflight(packet_id: str, expected_git: str) -> dict:
         problems.append("set SHENGJI_FAST=1 exactly")
     if os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
         problems.append("set SHENGJI_REQUIRE_VOIDS=1 exactly")
+    enabled = [name for name in EXPECTED_EXPERIMENTAL_SAMPLER_BALLOT_FLAGS
+               if name in os.environ]
+    if enabled:
+        problems.append(
+            f"experimental sampler/ballot flags must be unset: {enabled}"
+        )
     if problems:
         raise EntryRefusal("static preflight: " + "; ".join(problems))
 
@@ -634,7 +833,10 @@ def preflight(packet_id: str, expected_git: str) -> dict:
                 (path, EXPECTED_EXAM_SHA256[path])
                 for path in EXPECTED_EXAM_SPLITS
             ]
-            or exam_seeds & set(range(120_000_000, 120_001_024))):
+            or exam_seeds & set(range(
+                EXPECTED_PACKET["seed0"],
+                EXPECTED_PACKET["seed_end_inclusive"] + 1,
+            ))):
         problems.append("exam exclusion preflight")
     checkpoint = SERVER_ROOT / "snapshots_v11pair" / "ep07.npz"
     if (not checkpoint.is_file()
@@ -673,7 +875,8 @@ def supervise(packet_id: str, expected_git: str, output_dir: Path) -> str:
     try:
         progress.event(
             "supervisor", "ADMITTED", packet_id=packet_id,
-            git=expected_git, seed0=120_000_000, seed_end=120_001_023,
+            git=expected_git, seed0=EXPECTED_PACKET["seed0"],
+            seed_end=EXPECTED_PACKET["seed_end_inclusive"],
             shards=8, deals_per_shard=128, python=sys.executable,
             supervisor_sha256=states.sha256_file(str(SCRIPT_PATH)),
         )
@@ -703,6 +906,18 @@ def supervise(packet_id: str, expected_git: str, output_dir: Path) -> str:
         recheck(admitted, expected_git)
         run_jobs("freeze", [freeze_job(paths)], progress)
         recheck(admitted, expected_git)
+        # Reopen the complete parent chain after the freeze worker returns.
+        # The earlier validation admitted diagnostics, but capture or
+        # diagnostic bytes changing while freeze ran must make the terminal
+        # state set inadmissible rather than leave a broken on-disk lineage.
+        captures, capture_hashes = validate_capture_population(
+            paths, admitted["runtime"], admitted["actor"],
+            admitted["exam_exclusion"],
+        )
+        diagnostics, diagnostic_hashes = validate_diagnostic_population(
+            paths, captures, capture_hashes, admitted["runtime"],
+            admitted["actor"], admitted["exam_exclusion"],
+        )
         _, state_set_sha256 = validate_stage_a_state_set(
             paths, diagnostics, diagnostic_hashes, admitted["runtime"],
             admitted["actor"], admitted["exam_exclusion"],
@@ -739,7 +954,7 @@ def parser() -> argparse.ArgumentParser:
     )
     ap.add_argument(
         "--out-dir", required=True,
-        help=("must resolve to runs/logs/teacher-v1-entry-120m-v1; the "
+        help=(f"must resolve to runs/logs/{EXPECTED_PACKET['packet_id']}; the "
               "directory must not already exist"),
     )
     return ap

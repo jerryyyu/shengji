@@ -1,12 +1,22 @@
 # Teacher-v1 staged experiment spec
 
-Status: entry code gate **CLOSED / CAPTURE NEXT** at pushed commit `23a9e0b`,
-2026-08-06; independent review passed and the teacher/pilot acceptance selection
-reported 134 passed, 23 optional skips. **No promotable teacher evidence has
-run.** The executable boundary is `server/shengji/teacher_v1.py` plus
-`server/scripts/teacher_v1_{states,receipt,label,gate}.py`. This is the operational
-contract for a new counterfactual training/challenge asset. It is not an
-extension of DEV-512 and may not read or score CALIB-512 or REPORT.
+Status: the historical packet `teacher-v1-entry-120m-v1` is **REFUSED** after
+all eight captures and before diagnostics, state selection or labels. Its
+in-memory actor ballot used tuples while its JSON artifact used lists, so the
+supervisor falsely reported actor drift. Those artifacts remain historical and
+may never be resumed, relabelled or reinterpreted. The fresh repaired packet
+`teacher-v1-entry-143m-v2` is **ENTRY CODE GATE CLOSED / CAPTURE NEXT FROM A
+CLEAN COMMITTED WORKTREE**. Independent root re-review traced the complete
+capture -> diagnostic -> selected-state chain, added a terminal parent re-open
+and strict unset-key falsifications, and passed 76 focused plus 204 broader
+teacher/pilot tests on 2026-08-06. No promotable teacher evidence has run.
+
+The executable entry boundary is `server/shengji/teacher_v1.py`,
+`server/scripts/teacher_v1_states.py` and the singleton
+`server/scripts/teacher_v1_entry_supervisor.py`; later receipts, labels and
+gates remain in `server/scripts/teacher_v1_{receipt,label,gate}.py`. This is the
+operational contract for a new counterfactual training/challenge asset. It is
+not an extension of DEV-512 and may not read or score CALIB-512 or REPORT.
 
 ## Objective and stop rule
 
@@ -17,15 +27,29 @@ teacher usefulness; a held-out teacher gain alone does not prove bot strength.
 
 ## First execution packet — frozen before capture
 
-Packet id: `teacher-v1-entry-120m-v1`.
+Historical refused packet: `teacher-v1-entry-120m-v1`, exact seeds
+`120000000..120001023`. Preserve its completed captures in place. It produced
+no admissible diagnostic, frozen-state or label population.
 
-- Capture exactly 1,024 fresh deals, seeds `120000000..120001023`, as eight
-  interleaved 128-deal shards (`seed0=120000000`, `max_deals=1024`, shard
+Fresh packet id: `teacher-v1-entry-143m-v2`.
+
+- Capture exactly 1,024 fresh deals, seeds `143000000..143001023`, as eight
+  interleaved 128-deal shards (`seed0=143000000`, `max_deals=1024`, shard
   indices `0..7`). All eight use the same clean commit, compiled engine, strict
-  void mode, production `mc-strong` actor and three digest-pinned exam splits.
+  void mode, exact Python `3.14.6`, production `mc-strong` actor and three
+  digest-pinned exam splits. The experimental flags
+  `SHENGJI_WEIGHTED_SPLITS`, `SHENGJI_UNIFORM_DEAL`,
+  `SHENGJI_PHYSICAL_FILLS` and `SHENGJI_ALLOW_BALLOT_MISMATCH` must all be
+  unset at producer and supervisor admission.
 - Diagnose those exact eight capture artifacts in shard order. Stage A and
   Stage B use this same immutable diagnostic population; no extra capture may
   be appended after any selector diagnostic or label outcome is inspected.
+- The supervisor reopens every parent. Each diagnostic row's complete embedded
+  state must be canonically identical to its exact capture row. The frozen
+  64-state set must equal a fresh recomputation of `select_gate_states` over all
+  eight diagnostics, and its coverage parent/record maps must be recomputed
+  from those actual manifests. Invented, altered, reordered or out-of-range
+  states refuse the packet.
 - Freeze 64 Stage-A states once. Before labelling, create one exclusive
   `stage-a-primary` producer receipt, then bind all eight 8-state 256/256 shards
   to its exact bytes. Create a separate `stage-a-rerun` receipt with a distinct
@@ -41,6 +65,12 @@ Packet id: `teacher-v1-entry-120m-v1`.
   extension is admissible. A pre-label supply deficit closes this packet
   **INCONCLUSIVE**; predeclare a new larger fresh capture packet rather than
   appending deals.
+- Every v2 entry artifact through the 64-state freeze is first written to an
+  exclusive `.partial` and published by a no-overwrite hard link. A concurrent
+  final, existing partial or dangling final symlink refuses and leaves the
+  losing partial for diagnosis; no overwrite-capable rename is allowed on this
+  entry path. Later receipt/label/gate publication must pass the same boundary
+  before Stage-A labels are authorized.
 - Prefer Mini for capture, diagnosis and Stage A because each bounded phase is
   expected to fit the sub-hour policy. Before Stage-B gold, use Stage-A/cheap
   timing to choose whole-shard placement; never pool partial artifacts from
@@ -66,10 +96,12 @@ labelling and refuses to overwrite either a final or partial path.
 
 ## Immutable identity
 
-- Fresh self-play deal seeds start at `120000000`; one selected state per deal.
+- Fresh self-play deal seeds start at `143000000`; one selected state per deal.
 - State actor is the version-pinned production champion. Store its checkpoint/
   policy identity, git tree, engine, sampler, Memory, action encoder and exact
-  `BallotSpec` digests.
+  `BallotSpec` digests. Actor identity is converted to the JSON domain before
+  hashing or comparison, so a write/read round trip is identical while a real
+  ballot or source change still refuses.
 - Derive independent RNG streams from experiment id + deal + state + candidate
   + fold for state selection, belief worlds, continuation and evaluation. Store
   the derivation inputs, not only a mutable RNG-state digest.

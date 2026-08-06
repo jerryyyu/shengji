@@ -4,9 +4,11 @@ from __future__ import annotations
 import copy
 import json
 import math
+import os
 import random
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -110,7 +112,7 @@ def valid_diagnostic_manifest(shard: int) -> dict:
     }
 
 
-def raw_state(seed=120_000_123, *, follow=False):
+def raw_state(seed=SEED_START + 123, *, follow=False):
     rnd = Game(random.Random(seed)).start_round()
     bots = [make_bot("smart", seed=seed + seat) for seat in range(4)]
     declarations = []
@@ -163,7 +165,7 @@ def raw_state(seed=120_000_123, *, follow=False):
 
 
 def test_named_streams_are_replayable_and_domain_separated():
-    identity = dict(experiment_id=EXPERIMENT, deal_seed=120_000_001,
+    identity = dict(experiment_id=EXPERIMENT, deal_seed=SEED_START + 1,
                     state_id="s", purpose="belief", fold="selection")
     assert derive_stream(**identity) == derive_stream(**identity)
     assert derive_stream(**identity)["seed"] != derive_stream(
@@ -173,10 +175,73 @@ def test_named_streams_are_replayable_and_domain_separated():
 
 
 def test_split_is_deal_disjoint_and_approximately_70_15_15():
-    got = [split_for_deal(EXPERIMENT, 120_000_000 + i) for i in range(2000)]
+    got = [split_for_deal(EXPERIMENT, SEED_START + i) for i in range(2000)]
     assert 1300 < got.count("train") < 1500
     assert 240 < got.count("tune") < 360
     assert 240 < got.count("holdout") < 360
+
+
+@pytest.mark.parametrize("flag", states.EXPERIMENTAL_SAMPLER_BALLOT_FLAGS)
+@pytest.mark.parametrize("value", ["1", ""])
+def test_real_state_runtime_refuses_experimental_sampler_and_ballot_flags(
+    monkeypatch, flag, value,
+):
+    monkeypatch.setenv("SHENGJI_FAST", "1")
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    # Presence is refused even when the shell value is empty: artifacts claim
+    # the keys were unset, and import-time flag semantics must not be inferred
+    # from a later or differently parsed representation.
+    monkeypatch.setenv(flag, value)
+    with pytest.raises(states.TeacherProtocolError, match="must be unset"):
+        states.runtime(False)
+
+
+def test_state_artifact_publication_is_exclusive_and_removes_partial(tmp_path):
+    output = tmp_path / "artifact.json"
+    states.write_exclusive(str(output), {"winner": "producer"})
+    assert json.loads(output.read_text()) == {"winner": "producer"}
+    assert not Path(str(output) + ".partial").exists()
+
+
+def test_state_artifact_concurrent_winner_cannot_be_overwritten(
+    tmp_path, monkeypatch,
+):
+    output = tmp_path / "artifact.json"
+    partial = Path(str(output) + ".partial")
+    real_link = states.os.link
+
+    def competing_publish(source, destination):
+        Path(destination).write_text('{"winner":"competitor"}\n')
+        return real_link(source, destination)
+
+    monkeypatch.setattr(states.os, "link", competing_publish)
+    with pytest.raises(states.TeacherProtocolError, match="partial remains"):
+        states.write_exclusive(str(output), {"winner": "candidate"})
+    assert json.loads(output.read_text()) == {"winner": "competitor"}
+    assert json.loads(partial.read_text()) == {"winner": "candidate"}
+
+
+def test_state_artifact_dangling_final_symlink_refuses_and_keeps_partial(
+    tmp_path,
+):
+    output = tmp_path / "artifact.json"
+    output.symlink_to(tmp_path / "missing-target.json")
+    partial = Path(str(output) + ".partial")
+    with pytest.raises(states.TeacherProtocolError, match="partial remains"):
+        states.write_exclusive(str(output), {"winner": "candidate"})
+    assert output.is_symlink()
+    assert os.readlink(output).endswith("missing-target.json")
+    assert json.loads(partial.read_text()) == {"winner": "candidate"}
+
+
+def test_state_artifact_existing_partial_is_never_reused(tmp_path):
+    output = tmp_path / "artifact.json"
+    partial = Path(str(output) + ".partial")
+    partial.write_text('{"winner":"old-attempt"}\n')
+    with pytest.raises(states.TeacherProtocolError, match="existing partial"):
+        states.write_exclusive(str(output), {"winner": "candidate"})
+    assert json.loads(partial.read_text()) == {"winner": "old-attempt"}
+    assert not output.exists()
 
 
 def test_registered_capture_refuses_wrong_packet_range():
@@ -217,6 +282,90 @@ def test_diagnostic_population_refuses_missing_or_repeated_shard():
     assert "repeated capture parent artifact" in problems
     assert any("not exact/nonoverlapping" in problem for problem in problems)
 
+
+def test_real_freeze_refuses_a_seven_shard_subset_before_runtime():
+    with pytest.raises(states.TeacherProtocolError, match="exactly 8"):
+        states.freeze(SimpleNamespace(smoke=False, input=["diag"] * 7))
+
+
+def test_real_freeze_refuses_eight_shards_with_less_than_1024_deals(
+    tmp_path, monkeypatch,
+):
+    manifests = [valid_diagnostic_manifest(index)
+                 for index in range(CAPTURE_SHARDS)]
+    manifests[0]["capture_scanned_seeds"].pop()
+    manifests[0]["capture_scanned_seeds_sha256"] = stable_digest(
+        manifests[0]["capture_scanned_seeds"]
+    )
+    paths = []
+    for index, manifest in enumerate(manifests):
+        path = tmp_path / f"diagnostic-{index}.json"
+        path.write_text(json.dumps(manifest) + "\n")
+        paths.append(str(path))
+    live = {
+        key: manifests[0][key] for key in (
+            "git", "python", "tree_dirty", "promotable", "fast_engine",
+            "require_voids", "fast_binary_sha256", "fast_router_sha256",
+            "state_script_sha256",
+        )
+    }
+    monkeypatch.setattr(states, "runtime", lambda _smoke: live)
+    monkeypatch.setattr(
+        states, "actor_identity", lambda: manifests[0]["actor"],
+    )
+    args = SimpleNamespace(
+        smoke=False, input=paths, stage="a", exclude_state_set=None,
+        stage_a_gate=None, out=str(tmp_path / "stage-a.json"),
+    )
+    with pytest.raises(states.TeacherProtocolError, match="exact 1,024-deal"):
+        states.freeze(args)
+
+
+def test_stage_b_freeze_postcondition_refuses_excluded_deal_reentry(
+    tmp_path, monkeypatch,
+):
+    actor = {"policy": "mc-strong", "identity": stable_digest("actor")}
+    live = {
+        "git": "abc", "python": "3.14.6", "tree_dirty": False,
+        "promotable": False, "fast_engine": True, "require_voids": True,
+        "fast_binary_sha256": stable_digest("binary"),
+        "fast_router_sha256": stable_digest("router"),
+        "state_script_sha256": stable_digest("states"),
+    }
+    diagnostic = {
+        "schema": states.DIAGNOSTIC_SCHEMA, "complete": True,
+        "records": [], "records_digest": stable_digest([]),
+        "actor": actor, "exam_exclusion": {"verified": True},
+        **live,
+    }
+    diagnostic_path = tmp_path / "diagnostic.json"
+    diagnostic_path.write_text(json.dumps(diagnostic) + "\n")
+    excluded_seed = SEED_START + 17
+    prior_path = tmp_path / "stage-a.json"
+    prior_path.write_text(json.dumps({
+        "states": [{"state_id": "excluded", "seed": excluded_seed}],
+    }) + "\n")
+    selected = [
+        {"state_id": f"selected-{index}",
+         "seed": excluded_seed if index == 0 else SEED_START + 100 + index}
+        for index in range(states.STAGE_B_STATES)
+    ]
+    monkeypatch.setattr(states, "runtime", lambda _smoke: live)
+    monkeypatch.setattr(states, "actor_identity", lambda: actor)
+    monkeypatch.setattr(states, "stage_a_exclusion_problems", lambda *_args: [])
+    monkeypatch.setattr(states, "replay_state", lambda _state: None)
+    monkeypatch.setattr(
+        states, "select_gate_states", lambda *_args: (selected, []),
+    )
+    args = SimpleNamespace(
+        smoke=True, input=[str(diagnostic_path)], stage="b",
+        exclude_state_set=str(prior_path), stage_a_gate=None,
+        out=str(tmp_path / "stage-b.json"),
+    )
+    with pytest.raises(
+        states.TeacherProtocolError, match="overlap Stage A exclusions",
+    ):
+        states.freeze(args)
 
 def test_diagnostic_population_refuses_conflicting_packet_or_source_identity():
     manifests = [valid_diagnostic_manifest(index)
@@ -304,19 +453,38 @@ def gold_record(regret: float, seed: int) -> dict:
 
 
 def test_stage_b_gate_uses_one_state_mean_and_one_sided_upper_bound():
-    records = [gold_record(0.05, 120_001_000 + i) for i in range(128)]
+    records = [gold_record(0.05, SEED_START + i) for i in range(128)]
     result = stage_b_regret(records)
     assert result["passed"] is True
     assert result["n_states"] == 128
     assert result["upper_95"] == pytest.approx(0.05)
-    records[-1] = gold_record(8.0, 120_002_000)
+    records[-1] = gold_record(8.0, SEED_START + 1_000)
     result = stage_b_regret(records)
     assert result["passed"] is False
     assert result["upper_95"] > 0.10
 
 
+def test_stage_b_nonzero_state_variance_can_fail_above_a_sub_limit_mean():
+    regrets = [0.0] * 64 + [0.18] * 64
+    records = [
+        gold_record(regret, SEED_START + 2_000 + index)
+        for index, regret in enumerate(regrets)
+    ]
+    result = stage_b_regret(records)
+    mean = sum(regrets) / len(regrets)
+    variance = sum((value - mean) ** 2 for value in regrets) / 127
+    se = math.sqrt(variance / 128)
+    assert mean < result["limit"]
+    assert result["critical"] == pytest.approx(1.66)
+    assert result["mean_regret"] == pytest.approx(mean)
+    assert result["se"] == pytest.approx(se)
+    assert result["upper_95"] == pytest.approx(mean + 1.66 * se)
+    assert result["upper_95"] > result["limit"]
+    assert result["passed"] is False
+
+
 def test_stage_b_short_artifact_is_inconclusive_not_pass():
-    result = stage_b_regret([gold_record(0.0, 120_003_000 + i)
+    result = stage_b_regret([gold_record(0.0, SEED_START + 3_000 + i)
                              for i in range(127)])
     assert result["passed"] is False
     assert result["inconclusive"] is True
@@ -524,8 +692,8 @@ def test_stage_b_rehashes_every_stage_a_artifact_before_authorizing(tmp_path):
 
 def test_target_assignment_is_fixed_before_play_and_covers_cells():
     targets_ = [states.target_for_deal(EXPERIMENT, SEED)
-                for SEED in range(120_000_000, 120_001_000)]
-    assert all(t == states.target_for_deal(EXPERIMENT, 120_000_000 + i)
+                for SEED in range(SEED_START, SEED_START + 1_000)]
+    assert all(t == states.target_for_deal(EXPERIMENT, SEED_START + i)
                for i, t in enumerate(targets_))
     assert {t["phase"] for t in targets_} == {"early", "mid", "late"}
     assert {t["decision"] for t in targets_} == {"lead", "follow"}
@@ -643,7 +811,7 @@ def test_gold_shards_may_have_distinct_cheap_parent_hashes(tmp_path):
 
 def test_real_state_set_requires_exam_exclusion_and_actor_identity():
     payload = {"schema": states.STATE_SET_SCHEMA, "experiment_id": EXPERIMENT,
-               "seed_start": 120_000_000, "states": []}
+               "seed_start": SEED_START, "states": []}
     problems = label.state_set_problems(payload, "a", smoke=False)
     assert any("exclusion" in p for p in problems)
     assert any("actor identity" in p for p in problems)
@@ -717,6 +885,115 @@ def test_state_and_cheap_parent_refuse_executable_generation_drift():
     cheap_payload["source_digests"] = {**digests, "mcbot_sampler": "stale"}
     assert "cheap-parent executable source drift" in label.cheap_parent_problems(
         cheap_payload, runtime, digests, smoke=False)
+
+
+def valid_cheap_record_for_gate(counts=None):
+    counts = counts or {"selection": 2, "report": 2}
+    state = raw_state()
+    rnd = replay_state(state)
+    bot = make_bot("mc-strong", seed=1)
+    candidates = [
+        list(gate.action_key(action))
+        for action in bot._candidates(rnd, state["seat"])
+    ]
+    assert len(candidates) > 1
+    folds = {}
+    for fold_name, worlds in counts.items():
+        stream = derive_stream(
+            experiment_id=state["experiment_id"], deal_seed=state["seed"],
+            state_id=state["state_id"], purpose="belief", fold=fold_name,
+        )
+        utility = [
+            [float(-candidate) for candidate in range(len(candidates))]
+            for _ in range(worlds)
+        ]
+        tensor = {
+            target: copy.deepcopy(utility) for target in (
+                "attacker_points", "signed_points", "bracket",
+                "signed_level_utility",
+            )
+        }
+        counters = {name: 0 for name in gate.SAMPLER_COUNTERS}
+        counters["sample_attempts"] = worlds
+        counters["accepted_worlds"] = worlds
+        folds[fold_name] = {
+            "requested_worlds": worlds,
+            "stream": stream,
+            "draw_ids": [
+                stable_digest({"stream": stream, "index": index})
+                for index in range(worlds)
+            ],
+            "world_digests": [
+                stable_digest({"fold": fold_name, "world": index})
+                for index in range(worlds)
+            ],
+            "tensor": tensor,
+            "sampler_counters": counters,
+            "continuation_seeds": [
+                [index * 100 + candidate for candidate in range(len(candidates))]
+                for index in range(worlds)
+            ],
+            "evaluation_seeds": [
+                [index * 1_000 + candidate
+                 for candidate in range(len(candidates))]
+                for index in range(worlds)
+            ],
+        }
+    totals = {
+        name: sum(fold["sampler_counters"][name] for fold in folds.values())
+        for name in gate.SAMPLER_COUNTERS
+    }
+    paired = {}
+    for fold_name, fold in folds.items():
+        matrix = fold["tensor"]["signed_level_utility"]
+        paired[fold_name] = [
+            gate.paired_moments([row[index] - row[0] for row in matrix])
+            for index in range(len(candidates))
+        ]
+    return {
+        "state_id": state["state_id"],
+        "deal_seed": state["seed"],
+        "state": state,
+        "replay_digest": stable_digest(state),
+        "candidates": candidates,
+        "candidate_count": len(candidates),
+        "ballot_spec": {"digest": gate.mc_ballot(bot).digest},
+        "folds": folds,
+        "sampler_counters": totals,
+        "candidate_world_work": len(candidates) * sum(counts.values()),
+        "cheap_selected_index": 0,
+        "cheap_selection_means": [
+            float(-candidate) for candidate in range(len(candidates))
+        ],
+        "paired_vs_candidate0": paired,
+    }
+
+
+def test_cheap_record_gate_falsifies_target_action_and_counter_drift():
+    counts = {"selection": 2, "report": 2}
+    record = valid_cheap_record_for_gate(counts)
+    assert gate.cheap_record_problems(record, counts) == []
+
+    malformed_target = copy.deepcopy(record)
+    del malformed_target["folds"]["selection"]["tensor"]["bracket"]
+    assert any("bracket tensor shape" in problem for problem in
+               gate.cheap_record_problems(malformed_target, counts))
+
+    altered_action = copy.deepcopy(record)
+    altered_action["candidates"][0], altered_action["candidates"][1] = (
+        altered_action["candidates"][1], altered_action["candidates"][0]
+    )
+    assert any("not the complete current ballot in order" in problem
+               for problem in gate.cheap_record_problems(
+                   altered_action, counts))
+
+    bad_counters = copy.deepcopy(record)
+    bad_counters["folds"]["report"]["sampler_counters"][
+        "accepted_worlds"
+    ] -= 1
+    assert any("accepted 1 worlds, expected 2" in problem
+               for problem in gate.cheap_record_problems(
+                   bad_counters, counts))
 
 
 def test_gate_runtime_must_match_label_executable_identity():
@@ -822,6 +1099,12 @@ def test_producer_receipt_is_bound_before_work_and_reopened_by_gate(tmp_path):
         "source_digests": source_digests,
     }
     assert gate.producer_receipt_problems(manifest) == []
+    missing_receipt = copy.deepcopy(manifest)
+    missing_receipt["producer_receipt"]["path"] = str(
+        tmp_path / "missing-receipt.json"
+    )
+    assert any("producer receipt unreadable" in problem for problem in
+               gate.producer_receipt_problems(missing_receipt))
     with pytest.raises(label.TeacherProtocolError, match="input digest mismatch"):
         label.load_producer_receipt(
             path=str(receipt_path), expected=stable_digest("wrong-hash"),

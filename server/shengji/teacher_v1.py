@@ -27,9 +27,32 @@ GOLD_SHARD_SCHEMA = "teacher-v1-gold-shard-v1"
 GATE_SCHEMA = "teacher-v1-gate-v1"
 PRODUCER_RECEIPT_SCHEMA = "teacher-v1-producer-receipt-v1"
 TARGET_SCHEMA = "teacher-v1-uncapped-possession-utility-v1"
+CAPTURE_PYTHON = "3.14.6"
+EXPERIMENTAL_SAMPLER_BALLOT_FLAGS = (
+    "SHENGJI_WEIGHTED_SPLITS",
+    "SHENGJI_UNIFORM_DEAL",
+    "SHENGJI_PHYSICAL_FILLS",
+    "SHENGJI_ALLOW_BALLOT_MISMATCH",
+)
 
-SEED_START = 120_000_000
-CAPTURE_PACKET_ID = "teacher-v1-entry-120m-v1"
+REFUSED_CAPTURE_PACKET = {
+    "packet_id": "teacher-v1-entry-120m-v1",
+    "seed0": 120_000_000,
+    "seed_end_inclusive": 120_001_023,
+    "max_deals": 1_024,
+    "shard_count": 8,
+    "sharding": "interleaved_seed_offset_mod_8",
+    "deals_per_shard": 128,
+    "status": "REFUSED",
+    "refusal": "noncanonical_actor_identity_comparison",
+}
+
+# The 120M v1 packet reached capture completion but was refused before any
+# diagnostics, state freeze or labels.  Evidence namespaces are immutable, so
+# the repaired entry population starts from a disjoint seed block and packet
+# identity rather than reinterpreting or resuming those artifacts.
+SEED_START = 143_000_000
+CAPTURE_PACKET_ID = "teacher-v1-entry-143m-v2"
 CAPTURE_MAX_DEALS = 1_024
 CAPTURE_SEED_END = SEED_START + CAPTURE_MAX_DEALS - 1
 CAPTURE_SHARDS = 8
@@ -114,6 +137,11 @@ def stable_json(value) -> bytes:
     return json.dumps(
         value, sort_keys=True, separators=(",", ":"), default=list
     ).encode()
+
+
+def json_canonical(value):
+    """Return the exact JSON-domain value that will survive artifact I/O."""
+    return json.loads(stable_json(value))
 
 
 def stable_digest(value) -> str:

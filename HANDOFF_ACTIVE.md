@@ -223,6 +223,15 @@ pooled. The v2 runner records host, Python, compiled binary digest, strict mode,
 literal seed coverage, parent digest and exact counters; the aggregator refuses
 any drift.
 
+The production control point is `fly.toml`'s explicit
+`SHENGJI_BOT='mc-strong'`, not the source fallback (`mc`). A terminal
+**SELECT NONE** leaves that setting unchanged. A terminal **PROMOTE** requires a
+separate reviewed commit changing it to the exact confirmed survivor and a
+post-deploy `/healthz` check for both policy name and compiled-engine activation.
+The live Fly deploy itself remains an explicit quiet-room operation because a
+restart disconnects in-progress games; evidence completion does not silently
+authorize that external mutation.
+
 ## Other active strength lanes
 
 1. **V11 protected-anchor lane (separate from S0):**

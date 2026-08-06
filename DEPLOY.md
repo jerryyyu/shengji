@@ -12,9 +12,10 @@ clients hold WebSockets to it. That drives every deployment rule below.
 - TLS is handled by the platform/proxy; the frontend auto-selects `wss://`
   on https pages (same-origin), no config needed.
 - Health check: `GET /healthz`.
-- Pick the bot with `SHENGJI_BOT` (`mc` is the current default/search
-  incumbent; `smart` is much cheaper; `heuristic` is easiest — see
-  AI_POLICIES.md). `rl-override-v11pair` is a promising cost candidate, not a
+- Pick the bot with `SHENGJI_BOT`. The source fallback is `mc` (N=10), while
+  the Fly configuration explicitly pins the verified production incumbent
+  `mc-strong` (N=30); `smart` is much cheaper and `heuristic` is easiest — see
+  `AI_POLICIES.md`. `rl-override-v11pair` is a promising cost candidate, not a
   confirmed replacement, and requires its checkpoint/dependencies.
 
 ## Option A: Fly.io (recommended)

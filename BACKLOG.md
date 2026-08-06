@@ -148,6 +148,24 @@ DEV/CALIB/REPORT. The first gate is 2,048 states balanced across lead/follow,
 early/mid/late, banker/attacker/defender, candidate count, close margins and
 policy disagreement. Include a small incident tranche from real human games.
 
+Use the historical high-N corpora to decide **where**, not **what**, to label.
+The fixed-pair audit at `ab3c652` found that frozen v11 has real old-surrogate
+signal plus a costly tail: original DEV `+0.397 +/- 0.037` acting-team raw
+points/decision with 18.0% harmful overrides; later-ply DEV
+`+0.334 +/- 0.047` with 25.7% harmful. It also found zero true-late original
+DEV rows and only eight in the supplement, so neither artifact answers late
+play. Next:
+
+1. mine DEV only, one state/deal, into clear v11 wins, clear losses, threshold-
+   boundary disagreements, high-SE rows and lead action-type transitions;
+2. freeze the resulting selector and apply it to fresh non-evaluation deals;
+3. feed those fresh states into teacher-v1's strict, disjoint-world, bracket-
+   outcome labeller, including the union of Smart/v11/current/proposed actions;
+4. keep mined old losses as regression cases, not training or promotion data;
+   and
+5. do not rerun 37.1M old evaluations or fit another deployable threshold to
+   their historical `Q^Heuristic` target.
+
 For every state store the exact replay and `BallotSpec`, every candidate, 512
 common strict worlds, per-world terminal attacker points and signed level
 bracket, paired deltas/SE, sampler/continuation identities and all counters. A

@@ -510,13 +510,13 @@ action comparison was noisy, the natural deal stream overrepresented early
 play, and the available targets were irrevocably restricted to the ballot and
 sampler used during collection.
 
-`highn_corpus` spent compute **vertically** instead. It rebuilt 20,000 fixed
+`highn_corpus` spent compute **vertically** instead. It rebuilt 20,845 fixed
 states, evaluated every offered action over 240 shared hidden worlds, and
 stored action means, candidate-0 paired differences, uncertainty estimates and
 the raw state needed for replay. Common worlds make close actions much easier
 to compare than independently sampled labels. This was a useful diagnostic
-shift: it exposed the early-ply skew, quantified a low-N label ceiling and
-localized much of the actionable forfeit to lead decisions.
+shift: it exposed the early-ply skew and selected-maximum problem, and
+localized a promising diagnostic surface to lead decisions.
 
 It did **not** create a final oracle. Those labels use the pre-repair non-strict
 sampler, the old finite ballot, raw points, heuristic continuation and
@@ -527,6 +527,60 @@ labels substantially better offline without improving online is the durable
 warning: **higher precision cannot repair the wrong estimand, action set or
 state distribution.** Keep high-N as a replayable reservoir and provisional
 diagnostic set, not the foundation for an unqualified bulk retrain.
+
+### High-N workbench — diagnose fixed choices, then relabel fresh states
+
+There is one comparison the old labels support more cleanly than “regret to
+the selected high-N best.” A policy trained independently of this artifact can
+choose one stored action, then be compared directly with stored candidate 0 on
+their 240 common worlds. The action pair is fixed before these labels are read,
+so this avoids selected-maximum winner's curse. It still measures only
+historical acting-team raw-point `Q^Heuristic`, not game strength.
+
+`scripts/highn_v11_audit.py` applies that contract to frozen v11pair:
+
+| DEV reservoir | rows / deals | override rate | v11 minus Smart, raw `Q^H` points per decision | harmful / >2 paired-SE harmful overrides |
+|---|---:|---:|---:|---:|
+| original high-N | 12,340 / 3,085 | 12.4% | `+0.397 +/- 0.037` | 18.0% / 8.9% |
+| later-ply supplement | 7,292 / 1,823 | 13.4% | `+0.334 +/- 0.047` | 25.7% / 12.9% |
+
+Both runs rebuilt with zero errors and current Smart matched stored candidate 0
+on every row. The apparent v11 signal survives the shift into mostly mid-game
+states, but the loss tail gets worse. That is consistent with its confirmed
+win over Smart and with the earlier observation that v11 hits often but misses
+expensively. It strengthens the case for an MC anchor that can correct the
+tail; it does not prove the anchor works, because stored means cannot simulate
+a stochastic N=30 decision. It also explains why blindly lowering the v11
+threshold was the wrong use of this corpus.
+
+The lead diagnosis is now more specific. The old selected-best table and the
+independent human coverage audit both pointed to leads, but DEV-512 showed that
+naive widening did not improve selection. In the fixed-pair audit v11's
+original-corpus lead overrides are positive on average (`+0.515 +/- 0.065`),
+yet their action-type tails differ sharply: non-point-single to pair is strong
+in this surrogate, while point-single to pair and single to tractor are noisy.
+Those post-hoc archetypes are hypothesis strata, **not deployable filters**.
+
+Use the workbench in this order:
+
+1. Mine DEV only, at most one state per deal, into named strata: clear v11
+   wins, clear v11 losses, threshold-boundary disagreements, high paired-SE
+   decisions and lead action-type transitions. Preserve every denominator and
+   do not inspect the old CALIB/REPORT assignments.
+2. Freeze a state-selection rule from those patterns, then apply the rule to
+   **fresh non-evaluation deals** for teacher-v1. Do not train a successor or
+   fit a production safety filter on the mined old rows.
+3. Relabel the fresh union of current ballot, Smart choice, v11 choice and any
+   new proposal action using today's strict sampler, disjoint selection/report
+   worlds and signed scoring-bracket outcomes. Deep-lead raw states identify
+   missing strata, but the original corpus has zero true-late DEV decisions and
+   the supplement only eight, so it cannot answer late strategy by itself.
+4. Keep a small set of old clear-loss rows as regression/challenge fixtures.
+   They may falsify a model or allocator; they are not a held-out promotion
+   set after being mined.
+5. Promote only from fresh paired games. Do not rerun all 37.1M historical
+   evaluations, refit another threshold to their surrogate, or train a generic
+   leaf from them.
 
 Three artifacts must remain separate:
 
@@ -600,7 +654,8 @@ champion.
 
 | dataset | size | what it is | teacher | used by |
 |---|---|---|---|---|
-| `rl_data/highn_corpus` | 20,000 states / 31 MB / **37.1M candidate evaluations** | each old-ballot candidate scored over 240 shared worlds, with marginal and candidate-0 paired SEs; raw states rebuild exactly. Non-strict sampler, same-world max selection, overwhelmingly early states, and raw-point labels | MCBot N=240, heuristic continuation | rebuildable state reservoir; provisional `Q^Heuristic(s,a)` labels for representation/calibration diagnostics, **not** an unbiased oracle, bracket target, or generic state value |
+| `rl_data/highn_corpus_all.jsonl` | 20,845 states / 31 MB / **37.1M candidate evaluations** | each old-ballot candidate scored over 240 shared worlds, with marginal and candidate-0 paired SEs; raw states rebuild exactly. Non-strict sampler, same-world max selection, overwhelmingly early states, and raw-point labels | MCBot N=240, heuristic continuation | rebuildable state reservoir; provisional `Q^Heuristic(s,a)` labels for fixed-pair diagnostics, **not** an unbiased oracle, bracket target, or generic state value |
+| `rl_data/highn_late_air.jsonl` | 12,000 states | same historical N=240 label contract, captured after a minimum-play threshold. The DEV audit is mostly teacher-v1 mid-game: only 8/7,292 rows reach trick >=12 | MCBot N=240, heuristic continuation | distribution-shift/fixed-pair diagnostic and raw reservoir; does **not** supply clean true-late labels |
 | `rl_data/gen_v4_all` | 205 shards / 245 MB / **~2.05M decisions** | the current corpus: hybrid-teacher values, wide v2 ballot, TRACTOR_LOCK rows recorded as choice-only. Provenance in META (`teacher_git` 367a822) | `mc-vleaf-v7w-ep02` | v9warm/v9scratch, v10res, **v11pair** |
 | `rl_data/gen_v3_all` | 162 shards / 276 MB / ~1.62M | first fast-engine generation; superseded by gen-v4 | upgraded MCBot | v8a/v8b |
 | `rl_data/gen_v3_quarantine` | 4 shards / 24 MB | **CONTAMINATED — never merge.** Written by orphaned workers running buggy code for 10h | — | nothing, deliberately |

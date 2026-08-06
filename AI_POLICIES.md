@@ -85,6 +85,19 @@ newest entry sit on top and speak for the file.
   reservoir, not an oracle. Its old-ballot/non-strict/same-world-selected labels
   have produced no online gain. The 12,000-state late supplement is raw-state
   distribution correction and has not yet been cleanly relabelled or trained.
+- **A fixed-pair v11 audit extracts a safer diagnostic from those old labels.**
+  On all 12,340 original DEV rows (3,085 deals; zero replay/inference errors;
+  current Smart matched stored candidate 0 exactly), frozen v11@0.02 overrides
+  12.4% and gains `+0.397 +/- 0.037` acting-team raw
+  `Q^Heuristic` points per decision versus Smart, clustered by deal. But 18.0%
+  of its overrides are nominally harmful and 8.9% are more than two paired SE
+  harmful. On 7,292 DEV rows from the later-ply supplement the mean remains
+  positive (`+0.334 +/- 0.047`), while the harmful tail worsens to 25.7% / 12.9%.
+  This supports “real ranking signal plus costly misses,” not a threshold,
+  anchor or deployment claim. The original set has no true-late DEV rows and
+  the supplement has only eight; clean deep labels remain necessary. Current
+  ballot sets also differ on 290/12,340 and 234/7,292 rows, so direct current-
+  code revalidation cannot be replaced by this historical screen.
 - **Correctness work bought no measurable STRENGTH**, but bought trustworthy
   measurement: current `mc` vs the pre-fix bot layer is -0.054 +/- 0.156
   (provisional; the old bot's zero-world decisions make it not protocol-clean).

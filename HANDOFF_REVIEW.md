@@ -206,3 +206,93 @@ For current priorities use `BACKLOG.md`; for policy conclusions use
 `AI_POLICIES.md`; for model chronology use `RL_PLAN.md`; for compute artifacts
 use `JOBS.md`; for today's full synthesis use
 `docs_archive/daily-log-2026-08-05.md`.
+
+---
+
+## Claude — 2026-08-05 21:05 EDT — S0 implementation return packet
+
+```text
+STATE: READY_FOR_CODEX_GATE for the S0 MECHANISM ONLY.
+       Two packet fields are NOT STARTED (teacher preflight, RL microgate) and
+       the duel is BLOCKED on a threshold that is not mine to set.
+HEAD / origin / dirty state: c5dace3 / c5dace3 / clean
+
+confidence rule and why its bound has the correct acting-team sign:
+  `_decide` accumulates `val if i_attack else -val`, so `means` are in
+  ACTING-TEAM perspective — higher is better for whoever is moving, which for a
+  DEFENDER means FEWER attacker points. The bound is
+  `gap = means[best] - means[0]`, override iff `gap - z*SE >= margin` with
+  z=1.64 one-sided, SE from PAIRED per-world differences against candidate 0 on
+  shared worlds.
+  Verified empirically for BOTH roles, not asserted: the highest acting-team
+  mean carries MORE raw attacker points for an attacker (67.5 vs 61.5) and
+  FEWER for a defender (79.6 vs 87.6). Pinned as a test, because I read these
+  as attacker-positive while analysing the live incident and reported the
+  opposite conclusion.
+
+candidate-0 / common-world / fixed-work invariants and falsifying tests:
+  candidate 0 is never pruned (incumbent AND pairing baseline); every paired
+  difference is computed on a world where BOTH were evaluated; adaptive spends
+  <= N*K. Tests: spent <= budget, allocator accounting agrees with
+  `self.rollouts`, and pruning must buy MORE shared worlds than uniform.
+  Accounting defect found and fixed first: `self.rollouts` charged every world
+  to every candidate and reported 144% of budget for a run that never exceeded
+  it, which would have made the fixed-work comparison meaningless.
+
+QHKR challenge result across registered seeds (200 seeds/arm):
+  current (fixed margin)   SAAK 186/200   deviations 14   DJ 2
+  confidence-only          SAAK 200/200   deviations  0   DJ 0
+  adaptive+confidence      SAAK 192/200   deviations  8   DJ 0
+  Adaptive retains override capability while never producing the reported bad
+  card. Fixture committed at tests/data/qhkr_round4_override.json so the
+  regression does not depend on gitignored logs.
+
+control matrix and exact candidate-world work per arm (120 DEV states):
+  current                fixed margin, uniform N=30        96.8% of N*K budget
+  confidence-only        LCB z=1.64, uniform N=30          96.8%
+  adaptive-deterministic LCB z=1.64, prune+reallocate      96.2%, 43 worlds/state
+  random-allocation      LCB, reallocate at RANDOM         NOT IMPLEMENTED
+  equal-work-high-budget fixed margin, budget = adaptive   NOT IMPLEMENTED
+  Override rates 25.8% / 2.5% / 7.5%. These are MECHANISM diagnostics, not
+  strength: fewer overrides is better only if the suppressed ones were noise.
+
+decision-log schema including reproducible RNG identity:
+  policy, N, both flags, margin, z, seed, rng_state_digest, candidates,
+  per-candidate means, per-candidate world counts, paired SEs, chosen index,
+  worlds, allocation record, sampler counters. Attached to the server's play
+  event via `_log_play` for bot moves; verified end-to-end through `bot_step`
+  and JSON-serialisable.
+  LIMIT, stated: the digest IDENTIFIES a stream position but cannot RESTORE it,
+  and production room bots are constructed unseeded. An exact live draw is
+  still not replayable byte-for-byte. Closing that requires the server to seed
+  room bots — a production behaviour change I have NOT made.
+
+teacher 64-state preflight manifest, replay result and label tensor shape:
+  NOT STARTED.
+
+RL role-sign / immutable-actor microgate status:
+  NOT STARTED. The role-sign half now has a committed regression (above), which
+  is a fragment of that gate, not the gate.
+
+CALIB / REPORT confirmation: sealed and unscored
+```
+
+Suite 346 passed, 2 skipped. Both S0 flags default OFF; production behaviour is
+unchanged. No duel, no fleet launch.
+
+**What blocks the duel is not code.** The smallest worthwhile effect is
+undeclared, and the block size follows from it — ~2,048 clusters at `+0.10`,
+~8,040 at `+0.05` on your SD~1.60 arithmetic. `+0.10` is a stakeholder
+threshold, not evidence-derived, so Jerry or you sets it and I will not pick it
+by default.
+
+**What I am unsure about.** Whether suppressing overrides from 25.8% to 7.5% is
+a gain at all. It provably removes the reported failure, but MC's edge over
+SmartBot comes FROM overriding, and I have no offline evidence that the removed
+overrides were mostly noise rather than mostly signal. The duel is the only
+thing that answers it, which is an argument for running it rather than for
+trusting the mechanism.
+
+**One flaky failure, unresolved.** A single test failed immediately after the
+means-refactor and did not reproduce across four subsequent full runs; I did not
+capture its name. Recorded rather than called green.

@@ -425,7 +425,8 @@ def main() -> None:
         for label, policy in labels.items():
             print(f"\n{label}: {policy} vs {OPPONENT}", flush=True)
             records[label] = run_arm(
-                label, policy, OPPONENT, clusters, seed0, fh, run_id)
+                label, policy, OPPONENT, clusters, seed0, fh, run_id,
+                progress_scores=False)
 
     problems = record_problems(records)
     manifest["completed"] = time.strftime("%Y-%m-%d %H:%M:%S %Z")
@@ -436,7 +437,7 @@ def main() -> None:
         mean, half, n = paired_by_seed(recs, records["reference"])
         manifest["paired_vs_reference"][label] = {
             "mean": mean, "half_width_95": half, "clusters": n}
-        print(f"{label:16} {mean:+.3f} +/- {half:.3f} vs reference n={n}")
+        print(f"{label:16} complete {n}/{clusters} clusters", flush=True)
     with open(manifest_path + ".partial", "w") as fh:
         json.dump(manifest, fh, indent=2, sort_keys=True)
 

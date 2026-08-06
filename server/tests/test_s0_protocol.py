@@ -68,6 +68,60 @@ def test_even_smoke_preflight_requires_each_experimental_flag_unset(
     assert not (tmp_path / "smoke.partial").exists()
 
 
+def test_s0_shard_progress_stdout_is_strictly_dose_only(
+        monkeypatch, tmp_path, capsys):
+    """An in-flight shard must not expose a running W/L result."""
+    from shengji.engine import combos, fast
+
+    monkeypatch.setattr(S0, "require_runtime_environment", lambda: None)
+    monkeypatch.setattr(fast, "HAVE_FAST", True)
+    monkeypatch.setattr(combos, "decompose", fast.decompose)
+    monkeypatch.setattr(S0, "protocol_problems", lambda phase: [])
+    monkeypatch.setattr(
+        S0, "git",
+        lambda *args: "f" * 40 if args == ("rev-parse", "HEAD") else "")
+    monkeypatch.setattr(S0, "runtime_identity", lambda _fast: {
+        "host": "test", "python": "test", "fast_engine": True,
+        "require_voids": True, "experimental_sampler_flags": [],
+        "digests": {"runner": "a" * 64},
+    })
+    monkeypatch.setattr(
+        S0, "policy_contract", lambda name: {"policy": name})
+    monkeypatch.setattr(
+        S0, "arm_ballots", lambda names: {name: "same" for name in names})
+    progress_score_arguments = []
+
+    def fake_run_arm(label, policy, opponent, clusters, seed0, fh, run_id,
+                     progress_scores=True):
+        progress_score_arguments.append(progress_scores)
+        rows = [
+            rec(label, seed0 + offset, flip, 0.0, policy=policy)
+            for offset in range(clusters) for flip in (0, 1)
+        ]
+        for row in rows:
+            row["run"] = run_id
+            fh.write(json.dumps(row) + "\n")
+        suffix = f", {len(rows)}-0" if progress_scores else ""
+        print(f"    {label}: {len(rows)}/{len(rows)} rounds{suffix}")
+        return rows
+
+    monkeypatch.setattr(S0, "run_arm", fake_run_arm)
+    out = tmp_path / "s0-smoke.jsonl"
+    monkeypatch.setattr(S0.sys, "argv", [
+        "s0_run.py", "s0a", "--smoke", "--out", str(out),
+    ])
+    S0.main()
+
+    stdout = capsys.readouterr().out
+    assert progress_score_arguments == [False] * len(
+        S0.PROTOCOLS["s0a"]["labels"])
+    assert "rounds," not in stdout
+    assert "+/-" not in stdout
+    assert " vs reference " not in stdout
+    assert f"{2 * 2}/{2 * 2} rounds" in stdout
+    assert "complete 2/2 clusters" in stdout
+
+
 def test_all_frozen_s0_policy_contracts_are_live():
     for phase in S0.PROTOCOLS:
         assert S0.protocol_problems(phase) == []

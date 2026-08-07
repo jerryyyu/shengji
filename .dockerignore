@@ -2,6 +2,9 @@
 web/node_modules
 web/dist
 server/.venv
+# Never let a host build cache supply a Darwin object/shared library to the
+# remote Linux build. The container must compile the extension from source.
+server/build
 server/shengji/engine/_fast*.so
 **/__pycache__
 **/.pytest_cache

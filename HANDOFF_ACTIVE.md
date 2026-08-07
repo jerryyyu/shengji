@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-07 19:34 EDT. This is the executable mailbox only.
+Last update: 2026-08-07 19:45 EDT. This is the executable mailbox only.
 Durable discussion and retractions remain in `HANDOFF_REVIEW.md`; policy
 synthesis belongs in `AI_POLICIES.md`.
 
@@ -48,11 +48,11 @@ from its original clean `b365120` runtime returned
 ## Running compute
 
 Air owns eight live compiled+strict Teacher-v3 Stage-B gold workers at exact
-`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 19:34 all eight real
-Python workers remained healthy at 88--93% CPU after about 4h48m, with zero
+`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 19:45 all eight real
+Python workers remained healthy after about 4h59m, with zero
 final gold shards; outcome-blind fold progress by shard was
-`708/924/244/700/320/804/632/608`, or 30.2% aggregate
-(`4,940/16,384`). This proves
+`756/948/512/716/328/808/676/624`, or 32.8% aggregate
+(`5,368/16,384`). This proves
 liveness but is not a compute-weighted ETA because ballot sizes and
 continuation costs vary. Stage B is attribution-only; do not inspect or use
 its outcomes to alter the independently frozen champion audit.
@@ -81,6 +81,15 @@ Air passes 19/19 focused tests and a brand-new interpreter reports empty
 transition/predeclaration/execution/state problem lists. No audit label exists.
 Launch labels only after all eight Stage-B gold shards validate and the
 producer gate passes.
+
+A separate score-blind capacity probe on Mini used one fresh
+`timing_probe_v1` world per already-frozen audit state, candidate zero only,
+and printed no utility or choice. It measured mean/max ballot sizes 6.09/14
+and projects about 37.1 CPU-hours for the literal 32/32 audit. The frozen
+eight-way partition projects approximately
+`2.27/6.09/2.03/4.01/5.49/6.78/4.61/5.87` hours by shard on Mini, so the rough
+critical path is 6.8 hours after a Stage-B PASS. This is a one-world sizing
+estimate, not evidence or an Air ETA; it changes no state, fold, shard or gate.
 
 Local verification at 19:24 is 955 passed / 27 skipped in the ordinary suite;
 the focused C1/S0 historical-boundary matrix is 31/31 in both ordinary and

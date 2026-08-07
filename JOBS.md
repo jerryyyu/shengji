@@ -14,8 +14,10 @@ cannot change the independently frozen 64-state report-LCB continuation audit.
 
 All eight output finals remain absent and all eight Python workers plus their
 caffeinate parents remain live after about 2h40 at roughly 79--86% CPU. An
-outcome-blind parse of progress events showed 5.5--32.6% completion by shard
-and 17.5% aggregate candidate-world work. No outcome file was opened.
+outcome-blind parse of progress events showed 5.9--33.0% of fold worlds by
+shard and 18.3% aggregate. This is a liveness counter, not a compute-weighted
+ETA: ballot sizes and continuation costs differ by state. No outcome file was
+opened.
 
 The separately pinned audit worktree now exists on Air at exact pushed commit
 `f4f3dc0`. It carries frozen state SHA `d04d1c0f...f7a34` and compiled-engine

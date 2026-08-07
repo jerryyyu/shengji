@@ -49,9 +49,10 @@ from its original clean `b365120` runtime returned
 Air owns eight live compiled+strict Teacher-v3 Stage-B gold workers at exact
 `1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 17:23 all remained near
 one CPU after about 2h40, with zero final gold shards; outcome-blind progress
-was 5.5--32.6% by shard and 17.5% aggregate work. Stage B is
-attribution-only; do not inspect or use its outcomes to alter the independently
-frozen champion audit.
+was 5.9--33.0% of fold worlds by shard and 18.3% aggregate. This proves
+liveness but is not a compute-weighted ETA because ballot sizes and
+continuation costs vary. Stage B is attribution-only; do not inspect or use
+its outcomes to alter the independently frozen champion audit.
 
 The exact 64-state audit is already frozen at
 `champion_audit_states.json` SHA

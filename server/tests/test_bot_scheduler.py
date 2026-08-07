@@ -48,6 +48,28 @@ def test_bot_step_is_offloaded_and_other_coroutines_run(monkeypatch):
     asyncio.run(scenario())
 
 
+def test_cpu_bound_bot_still_yields_the_event_loop(monkeypatch):
+    def cpu_step(room, seat):
+        deadline = time.perf_counter() + 0.08
+        value = 1
+        while time.perf_counter() < deadline:
+            value = (value * 33 + 17) & 0xFFFFFFFF
+        return value >= 0
+
+    monkeypatch.setattr(srv, "bot_step", cpu_step)
+
+    async def scenario():
+        task = asyncio.create_task(srv._bot_step_off_loop(_room(), 0))
+        heartbeats = 0
+        while not task.done():
+            await asyncio.sleep(0.005)
+            heartbeats += 1
+        assert await task is True
+        return heartbeats
+
+    assert asyncio.run(scenario()) >= 3
+
+
 def test_cancellation_waits_for_worker_before_releasing_room_lock(monkeypatch):
     started = threading.Event()
     release = threading.Event()

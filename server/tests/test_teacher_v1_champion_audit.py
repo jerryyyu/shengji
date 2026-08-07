@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import random
 import sys
 from collections import Counter
 from pathlib import Path
@@ -14,6 +15,9 @@ SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import teacher_v1_champion_audit as audit  # noqa: E402
+from shengji.ai.registry import make_bot  # noqa: E402
+from shengji.ai.smart import SmartBot  # noqa: E402
+from shengji.engine.game import Game  # noqa: E402
 from shengji.teacher_v1 import REPRESENTATIVE_CELLS, stable_digest  # noqa: E402
 
 
@@ -229,6 +233,39 @@ def test_champion_decision_requires_complete_selection_report_and_counters():
                 changed_policy, changed_sampler)
 
 
+def test_live_report_lcb_decision_satisfies_champion_telemetry_contract():
+    """The verifier must describe the real registered policy, not a mock.
+
+    This is deliberately one decision rather than a duel.  It catches renamed
+    record fields, changed dose/accounting, sampler fallbacks, and registry
+    drift before an eight-shard audit spends hours only to refuse its first
+    state at publication.
+    """
+    game = Game(random.Random(73))
+    rnd = game.start_round()
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    smart = SmartBot()
+    for seat in range(4):
+        declaration = smart.decide_declare(rnd, seat, final=True)
+        if declaration:
+            rnd.declare(seat, declaration)
+    rnd.finalize_declare()
+    rnd.bury(rnd.banker, smart.decide_bury(rnd, rnd.banker))
+
+    bot = make_bot(audit.CONTINUATION_POLICY, seed=9182)
+    before = audit.teacher_label.sampler_snapshot(bot)
+    bot.decide_play(rnd, rnd.turn)
+    counters = audit.teacher_label.sampler_delta(before, bot)
+    telemetry = audit.champion_decision_telemetry(bot, counters)
+
+    assert telemetry["searched_decisions"] == 1
+    assert telemetry["selection_worlds"] == 30
+    assert telemetry["report_worlds"] == 300
+    assert telemetry["accepted_worlds"] == 330
+    assert telemetry["report_candidate_rollouts"] == 600
+
+
 def test_champion_unsearched_decision_must_have_zero_work():
     zero = {name: 0 for name in audit.teacher_label.SAMPLER_COUNTERS}
     policy = SimpleNamespace(
@@ -289,6 +326,302 @@ def test_champion_trace_digest_excludes_only_wall_time():
     changed["played"] = ["K"]
     assert audit._decision_record_digest(record) != \
         audit._decision_record_digest(changed)
+
+
+def test_continuation_telemetry_reconciles_exact_report_lcb_dose():
+    telemetry = {name: 0 for name in audit.CHAMPION_TELEMETRY_FIELDS}
+    telemetry.update({
+        "decisions": 5,
+        "searched_decisions": 2,
+        "unsearched_decisions": 3,
+        "selection_worlds": 60,
+        "report_worlds": 600,
+        "selection_candidate_rollouts": 180,
+        "report_candidate_rollouts": 1200,
+        "total_candidate_rollouts": 1380,
+        "sample_attempts": 660,
+        "accepted_worlds": 660,
+    })
+    fold = {
+        "continuation_telemetry": telemetry,
+        "inner_sampler_counters": {
+            name: telemetry[name]
+            for name in audit.teacher_label.SAMPLER_COUNTERS},
+    }
+    assert audit.continuation_telemetry_problems(fold) == []
+
+    changed = copy.deepcopy(fold)
+    changed["continuation_telemetry"]["report_worlds"] -= 1
+    assert "champion report-world dose" in \
+        audit.continuation_telemetry_problems(changed)
+    changed = copy.deepcopy(fold)
+    changed["inner_sampler_counters"]["accepted_worlds"] -= 1
+    assert "champion telemetry/inner-counter drift" in \
+        audit.continuation_telemetry_problems(changed)
+
+
+def test_selected_parent_join_binds_state_candidates_and_frozen_indices():
+    states, problems = audit.select_states(parent_states())
+    assert problems == []
+    cheap = [{
+        "state_id": state["state_id"], "state": state,
+        "candidates": [["A"], ["K"]], "cheap_selected_index": 0,
+    } for state in states]
+    gold = [{
+        "state_id": state["state_id"], "state": state,
+        "candidates": [["A"], ["K"]], "gold_reference_index": 1,
+    } for state in states]
+    joined = audit.selected_parent_records(states, cheap, gold)
+    assert len(joined) == audit.AUDIT_STATES
+
+    changed = copy.deepcopy(gold)
+    changed[0]["candidates"].reverse()
+    with pytest.raises(audit.TeacherProtocolError, match="candidate order"):
+        audit.selected_parent_records(states, cheap, changed)
+    changed = copy.deepcopy(gold)
+    changed[0]["gold_reference_index"] = 2
+    with pytest.raises(audit.TeacherProtocolError, match="action index"):
+        audit.selected_parent_records(states, cheap, changed)
+
+
+def test_audit_record_uses_audit_domain_and_disjoint_reference_fold(
+        monkeypatch):
+    state = {
+        "experiment_id": "teacher-v1",
+        "state_id": "149000001:1:0",
+        "seed": 149000001,
+        "seat": 0,
+        "split": "train",
+        "kind": "representative",
+        "phase": "early",
+        "role": "attacker",
+        "decision": "lead",
+    }
+    cheap = {
+        "state_id": state["state_id"], "deal_seed": state["seed"],
+        "split": state["split"], "kind": state["kind"],
+        "stratum": {"phase": "early", "role": "attacker",
+                    "decision": "lead"},
+        "state": state, "replay_digest": stable_digest(state),
+        "ballot_spec": {"digest": "ballot"},
+        "candidates": [["A"], ["K"]], "candidate_count": 2,
+        "cheap_selected_index": 0,
+    }
+    gold = {
+        "state_id": state["state_id"], "state": state,
+        "candidates": [["A"], ["K"]], "gold_reference_index": 1,
+    }
+    seen = []
+
+    def fake_draw(_sampler, _rnd, _seat, count, **identity):
+        seen.append(identity)
+        return [(None, None)] * count, {
+            "requested_worlds": count,
+            "stream": {"seed": len(seen)},
+            "draw_ids": [f"{identity['fold']}-{i}" for i in range(count)],
+            "world_digests": [f"world-{i}" for i in range(count)],
+            "sampler_counters": {
+                "sample_attempts": count, "accepted_worlds": count,
+                "failed_worlds": 0, "rejected_worlds": 0,
+                "impossible_worlds": 0, "short_search_decisions": 0,
+                "zero_world_decisions": 0,
+            },
+        }
+
+    def fake_score(_rnd, _seat, _candidates, _worlds, meta, *, fold,
+                   **_kwargs):
+        utility = [[0.0, 1.0], [0.0, 1.0]]
+        return {
+            **meta,
+            "tensor": {"signed_level_utility": utility},
+            "inner_sampler_counters": {
+                name: 0 for name in audit.teacher_label.SAMPLER_COUNTERS},
+            "continuation_telemetry": {
+                name: 0 for name in audit.CHAMPION_TELEMETRY_FIELDS},
+            "fold": fold,
+        }
+
+    monkeypatch.setattr(audit.teacher_label, "replay_state", lambda _state: object())
+    monkeypatch.setattr(audit.teacher_label, "ballot_problems", lambda *_args: [])
+    monkeypatch.setattr(audit.teacher_label, "draw_common_worlds", fake_draw)
+    monkeypatch.setattr(audit, "score_champion_fold", fake_score)
+    record = audit.audit_record(
+        cheap, gold, object(), {
+            "champion_selection": 2, "champion_report": 2})
+    assert [identity["experiment_id"] for identity in seen] == [
+        audit.AUDIT_ID, audit.AUDIT_ID]
+    assert [identity["fold"] for identity in seen] == [
+        "champion_selection", "champion_report"]
+    assert record["champion_reference_index"] == 1
+    assert record["champion_report_regret"]["cheap"]["mean"] == 1.0
+    assert record["champion_report_regret"]["n30"]["mean"] == 0.0
+
+
+def audit_gate_records(cheap_regret: float, n30_regret: float) -> list[dict]:
+    selected, problems = audit.select_states(parent_states())
+    assert problems == []
+    return [{
+        "state_id": state["state_id"],
+        "deal_seed": state["seed"],
+        "kind": state["kind"],
+        "stratum": {
+            "phase": state["phase"], "role": state["role"],
+            "decision": state["decision"],
+        },
+        "champion_report_regret": {
+            "cheap": {"mean": cheap_regret},
+            "n30": {"mean": n30_regret},
+        },
+    } for state in selected]
+
+
+def test_champion_gate_requires_both_choices_on_all_and_representative(
+        monkeypatch):
+    monkeypatch.setattr(audit, "audit_record_problems", lambda *_args: [])
+    records = audit_gate_records(0.05, 0.02)
+    cheap_by = {record["state_id"]: {} for record in records}
+    gold_by = {record["state_id"]: {} for record in records}
+    result = audit.champion_regret(records, cheap_by, gold_by)
+    assert result["passed"] is True
+    assert result["choices"]["cheap"]["all_64"]["upper_95"] == 0.05
+    assert result["choices"]["n30"]["representative_48"]["passed"] is True
+
+    changed = copy.deepcopy(records)
+    for record in changed:
+        if record["kind"] == "representative":
+            record["champion_report_regret"]["n30"]["mean"] = 0.20
+    result = audit.champion_regret(changed, cheap_by, gold_by)
+    assert result["passed"] is False
+    assert result["choices"]["n30"]["representative_48"]["passed"] is False
+
+
+def test_receipt_contract_binds_runtime_sources_and_exact_parents():
+    runtime = {
+        "git": "a" * 40, "tree_dirty": False, "promotable": True,
+        "host": "air", "python": "3.14.6", "fast_engine": True,
+        "require_voids": True, "experimental_sampler_ballot_flags": [],
+    }
+    items = [{
+        "path": f"shard-{index}.json",
+        "sha256": stable_digest({"shard": index}),
+        "shard_index": index,
+    } for index in range(audit.AUDIT_SHARDS)]
+    payload = {
+        "schema": audit.AUDIT_RECEIPT_SCHEMA,
+        "audit_id": audit.AUDIT_ID,
+        "complete": True,
+        "run_id": "audit-run-0001",
+        "nonce": "b" * 64,
+        "shard_count": audit.AUDIT_SHARDS,
+        "folds": audit.AUDIT_FOLDS,
+        "continuation_contract": audit.CONTINUATION_CONTRACT,
+        "state_selection_read_label_outcomes": False,
+        **runtime,
+        "source_digests": {"audit": "source"},
+        "stage_b_state_set": {
+            "path": "stage-b.json", "sha256": audit.STAGE_B_STATE_SHA256},
+        "audit_state_set": {
+            "path": "audit-states.json", "sha256": "c" * 64},
+        "stage_b_gate": {"path": "stage-b-gate.json", "sha256": "d" * 64},
+        "cheap_inputs": items,
+        "n30_inputs": copy.deepcopy(items),
+    }
+    assert audit.audit_receipt_problems(
+        payload, runtime=runtime, sources={"audit": "source"}) == []
+    changed = copy.deepcopy(payload)
+    changed["n30_inputs"][0]["sha256"] = "not-a-hash"
+    assert "audit receipt n30_inputs" in audit.audit_receipt_problems(
+        changed, runtime=runtime, sources={"audit": "source"})
+    changed = copy.deepcopy(payload)
+    changed["state_selection_read_label_outcomes"] = True
+    assert "audit receipt outcome-blind state-selection claim" in \
+        audit.audit_receipt_problems(
+            changed, runtime=runtime, sources={"audit": "source"})
+
+
+def test_audit_shard_recomputes_partition_and_totals(monkeypatch):
+    monkeypatch.setattr(audit, "audit_record_problems", lambda *_args: [])
+    selected, problems = audit.select_states(parent_states())
+    assert problems == []
+    shard_states = audit.teacher_label.canonical_state_partition(
+        selected, 0, audit.AUDIT_SHARDS)
+    zero_counters = {
+        name: 0 for name in audit.teacher_label.SAMPLER_COUNTERS}
+    zero_telemetry = {
+        name: 0 for name in audit.CHAMPION_TELEMETRY_FIELDS}
+    records = [{
+        "state_id": state["state_id"],
+        "outer_sampler_counters": zero_counters,
+        "inner_sampler_counters": zero_counters,
+        "continuation_telemetry": zero_telemetry,
+        "outer_candidate_world_work": 0,
+        "continuation_candidate_rollouts": 0,
+        "total_rollout_work": 0,
+    } for state in shard_states]
+    runtime = {
+        "git": "a" * 40, "tree_dirty": False, "promotable": True,
+        "host": "air", "python": "3.14.6", "fast_engine": True,
+        "require_voids": True, "experimental_sampler_ballot_flags": [],
+    }
+    receipt_binding = {
+        "path": "receipt.json", "sha256": "e" * 64,
+        "run_id": "audit-run-0001", "nonce": "f" * 64,
+    }
+    receipt = {
+        "run_id": receipt_binding["run_id"],
+        "audit_state_set": {"path": "states.json", "sha256": "b" * 64},
+    }
+    parents = {
+        "stage_b_gate_item": {"path": "gate.json", "sha256": "c" * 64},
+        "cheap_items": [], "gold_items": [],
+        "cheap_by": {state["state_id"]: {} for state in selected},
+        "gold_by": {state["state_id"]: {} for state in selected},
+    }
+    context = {
+        "audit_state_set": {"states": selected}, "parents": parents}
+    ids = [record["state_id"] for record in records]
+    payload = {
+        "schema": audit.AUDIT_SHARD_SCHEMA,
+        "audit_id": audit.AUDIT_ID,
+        "complete": True,
+        **runtime,
+        "source_digests": {"audit": "source"},
+        "target_schema": audit.teacher_label.TARGET_SCHEMA,
+        "producer_run_id": receipt["run_id"],
+        "producer_receipt": receipt_binding,
+        "audit_state_set": receipt["audit_state_set"],
+        "stage_b_gate": parents["stage_b_gate_item"],
+        "cheap_inputs": [], "n30_inputs": [],
+        "folds_contract": audit.AUDIT_FOLDS,
+        "continuation_contract": audit.CONTINUATION_CONTRACT,
+        "shard_index": 0, "shard_count": audit.AUDIT_SHARDS,
+        "state_partition": {
+            "assignment": "sorted_state_id_then_interleaved_position",
+            "shard_index": 0, "shard_count": audit.AUDIT_SHARDS,
+            "state_ids": ids, "state_ids_sha256": stable_digest(ids),
+        },
+        "n_records": len(records), "records": records,
+        "records_digest": audit.audit_records_digest(records),
+        "outer_sampler_counters": zero_counters,
+        "inner_sampler_counters": zero_counters,
+        "continuation_telemetry": zero_telemetry,
+        "outer_candidate_world_work": 0,
+        "continuation_candidate_rollouts": 0,
+        "total_rollout_work": 0,
+    }
+    assert audit.audit_shard_problems(
+        payload, receipt=receipt, receipt_binding=receipt_binding,
+        context=context, runtime=runtime, sources={"audit": "source"},
+        smoke=False) == []
+
+    changed = copy.deepcopy(payload)
+    changed["records"][0], changed["records"][1] = (
+        changed["records"][1], changed["records"][0])
+    changed["records_digest"] = audit.audit_records_digest(changed["records"])
+    assert "audit shard exact state partition" in audit.audit_shard_problems(
+        changed, receipt=receipt, receipt_binding=receipt_binding,
+        context=context, runtime=runtime, sources={"audit": "source"},
+        smoke=False)
 
 
 def test_audit_freeze_publishes_and_reopens_exact_bytes(tmp_path, monkeypatch):

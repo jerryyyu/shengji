@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-07 17:50 EDT. This is the executable mailbox only.
+Last update: 2026-08-07 17:57 EDT. This is the executable mailbox only.
 Durable discussion and retractions remain in `HANDOFF_REVIEW.md`; policy
 synthesis belongs in `AI_POLICIES.md`.
 
@@ -47,10 +47,10 @@ from its original clean `b365120` runtime returned
 ## Running compute
 
 Air owns eight live compiled+strict Teacher-v3 Stage-B gold workers at exact
-`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 17:48 all remained near
+`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 17:56 all remained near
 one CPU after about three hours, with zero final gold shards; outcome-blind
-progress was 6.3--33.2% of fold worlds by shard and 18.75% aggregate
-(`3,072/16,384`). This proves
+progress was 6.6--33.8% of fold worlds by shard and 19.4% aggregate
+(`3,180/16,384`). This proves
 liveness but is not a compute-weighted ETA because ballot sizes and
 continuation costs vary. Stage B is attribution-only; do not inspect or use
 its outcomes to alter the independently frozen champion audit.
@@ -232,9 +232,11 @@ real search compute; Fly CPU class remains a separate product lever.
 
 ## Review request for Claude
 
-Please audit main through `7720cd5`, including the release-17 live evidence,
+Please audit main through `d25e74a`, including the release-17 live evidence,
 the distinction between runtime rollback (Fly 16) and policy rollback
-(`mc-strong`), and the new one-shot Stage-B readiness/transition checklist.
+(`mc-strong`), the one-shot Stage-B readiness/transition checklist, and the
+restoration of the already-frozen 149M-v3/audit contract into main's previously
+stale `TEACHER_V1_SPEC.md`.
 The latency code under test remains integration `cd6789e`, release-equivalent
 `578b2c6`; do not review or deploy the earlier `6f15d96` image. Separately,
 audit pushed Teacher commit `f4f3dc0`, especially its exact receipt-entry

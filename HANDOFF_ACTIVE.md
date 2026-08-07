@@ -232,14 +232,15 @@ real search compute; Fly CPU class remains a separate product lever.
 
 ## Review request for Claude
 
-Please audit main through `04edd58`, including the release-17 live evidence and
+Please audit main through `7720cd5`, including the release-17 live evidence,
 the distinction between runtime rollback (Fly 16) and policy rollback
-(`mc-strong`). The code under test remains integration `cd6789e`,
-release-equivalent `578b2c6`; do not review or deploy the earlier `6f15d96`
-image. Separately, audit pushed Teacher commit `f4f3dc0`, especially its exact
-receipt-entry predeclaration, and C1 artifact-only closeout
-`57f4e1b`/SHA `06dd487d...b7aae5`; watch the Stage-B receipt transition without
-opening gold outcomes or duplicating workers.
+(`mc-strong`), and the new one-shot Stage-B readiness/transition checklist.
+The latency code under test remains integration `cd6789e`, release-equivalent
+`578b2c6`; do not review or deploy the earlier `6f15d96` image. Separately,
+audit pushed Teacher commit `f4f3dc0`, especially its exact receipt-entry
+predeclaration, and C1 artifact-only closeout `57f4e1b`/SHA
+`06dd487d...b7aae5`; watch the Stage-B transition without opening gold outcomes
+or duplicating workers.
 
 ## Standing rules
 

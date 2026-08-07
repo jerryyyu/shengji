@@ -2,6 +2,7 @@
 web/node_modules
 web/dist
 server/.venv
+server/shengji/engine/_fast*.so
 **/__pycache__
 **/.pytest_cache
 .DS_Store

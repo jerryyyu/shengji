@@ -13,11 +13,18 @@ from scripts import report_lcb_replay_benchmark as bench
 ASSET = (
     bench.SERVER / "tests" / "data" / "report_lcb_caxi_replay.v1.b85"
 )
+AIR_RESULT = (
+    bench.SERVER / "tests" / "data" /
+    "report_lcb_caxi_replay.air-9acafb1.result.json"
+)
 EXPECTED_PAYLOAD_SHA256 = (
     "91354e3391a1ccbd65d758d011416f135ba8b212aacec40195c7a03fc3e70a40"
 )
 EXPECTED_SOURCE_SHA256 = (
     "3ed2d1fbb80733671663aef4dd81acdb34bb9a40042a84474422a5575c63af3a"
+)
+EXPECTED_AIR_RESULT_SHA256 = (
+    "2623def50a91d96a9dc97bd63139ef28532c2ee389c1a0cc9b4631842c6dcd57"
 )
 
 
@@ -52,6 +59,34 @@ def test_frozen_asset_identity_inventory_and_sanitization():
     }
     assert [item["round"] for item in asset["rounds"]] == [1, 2, 3]
     assert not (bench.BANNED_ASSET_KEYS & set(bench._walk_keys(asset)))
+
+
+def test_frozen_air_result_passes_the_full_exact_latency_gate():
+    result = bench._load(AIR_RESULT)
+    assert bench.sha256(AIR_RESULT) == EXPECTED_AIR_RESULT_SHA256
+    assert result["schema"] == bench.RESULT_SCHEMA
+    assert result["asset_payload_sha256"] == EXPECTED_PAYLOAD_SHA256
+    assert result["decisions"] == 100
+    assert result["semantic_mismatches"] == []
+    assert result["exact_semantic_replay"] is True
+    assert result["gate"] == {
+        "all": True,
+        "compiled_fast_active": True,
+        "decisions_at_least_100": True,
+        "identical_replay": True,
+        "max_le_8_0": True,
+        "p50_le_1_5": True,
+        "p95_le_4_0": True,
+    }
+    assert result["runtime"]["git_head"] \
+        == "9acafb1bdcf69c99fa1ff455b0e881e65fd09977"
+    assert result["runtime"]["git_dirty"] is False
+    assert result["runtime"]["python"] == "3.14.6"
+    assert result["runtime"]["fast_active"] is True
+    assert result["timing"]["search"]["p50"] < 0.18
+    assert result["timing"]["search"]["p95"] < 0.36
+    assert result["timing"]["search"]["max"] < 0.43
+    assert len(result["decisions_detail"]) == 100
 
 
 def test_rng_state_encoding_is_lossless_and_digest_addressed():

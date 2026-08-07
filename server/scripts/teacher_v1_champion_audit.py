@@ -14,6 +14,8 @@ import json
 import os
 import subprocess
 import sys
+from collections import Counter
+from collections.abc import Callable
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -53,6 +55,18 @@ CONTINUATION_CONTRACT = {
 REGRET_LIMIT = 0.10
 T_CRITICAL_ALL_64 = 1.67
 T_CRITICAL_REPRESENTATIVE_48 = 1.68
+AUDIT_PROGRESS_WORLD_INTERVAL = 1
+CHAMPION_TELEMETRY_FIELDS = (
+    "decisions",
+    "searched_decisions",
+    "unsearched_decisions",
+    "selection_worlds",
+    "report_worlds",
+    "selection_candidate_rollouts",
+    "report_candidate_rollouts",
+    "total_candidate_rollouts",
+    *teacher_label.SAMPLER_COUNTERS,
+)
 
 
 def sha256_file(path: str | os.PathLike) -> str:
@@ -145,6 +159,284 @@ def live_continuation_contract() -> dict:
         "adaptive_allocation": bot.ADAPTIVE_ALLOCATION,
         "random_allocation": bot.RANDOM_ALLOCATION,
     }
+
+
+def _zero_champion_telemetry() -> Counter:
+    return Counter({name: 0 for name in CHAMPION_TELEMETRY_FIELDS})
+
+
+def champion_decision_telemetry(policy, sampler_counters: dict) -> dict:
+    """Validate one downstream report-LCB decision and return exact work.
+
+    A legal single-action or tractor-lock decision performs no search and has
+    no decision record.  Every contested decision must consume the complete
+    registered N=30 selection and R=300 report folds.  Checking both the live
+    cumulative delta and the decision record prevents a short/fallback search
+    from being accepted merely because one of those observability paths was
+    stale or incomplete.
+    """
+    telemetry = _zero_champion_telemetry()
+    telemetry["decisions"] = 1
+    if set(sampler_counters) != set(teacher_label.SAMPLER_COUNTERS):
+        raise TeacherProtocolError("champion sampler counter schema mismatch")
+    if any(isinstance(value, bool) or not isinstance(value, int) or value < 0
+           for value in sampler_counters.values()):
+        raise TeacherProtocolError("champion sampler counters are not integers")
+
+    record = getattr(policy, "last_decision_record", None)
+    searches = int(getattr(policy, "search_calls", 0))
+    rollouts = int(getattr(policy, "rollouts", 0))
+    if record is None:
+        if searches or rollouts or any(sampler_counters.values()):
+            raise TeacherProtocolError(
+                "unsearched champion decision consumed or recorded work")
+        telemetry["unsearched_decisions"] = 1
+        return dict(telemetry)
+
+    telemetry["searched_decisions"] = 1
+    if searches != 1:
+        raise TeacherProtocolError(
+            f"champion decision search count {searches}, expected 1")
+    if (record.get("policy") != CONTINUATION_POLICY
+            or record.get("n_determinizations")
+            != CONTINUATION_CONTRACT["selection_worlds"]
+            or record.get("report_worlds_requested")
+            != CONTINUATION_CONTRACT["report_worlds"]
+            or record.get("report_rule")
+            != CONTINUATION_CONTRACT["report_rule"]
+            or record.get("report_alpha")
+            != CONTINUATION_CONTRACT["report_alpha"]
+            or record.get("report_min_gain")
+            != CONTINUATION_CONTRACT["report_min_gain"]
+            or record.get("adaptive_allocation") is not False
+            or record.get("random_allocation") is not False):
+        raise TeacherProtocolError("champion decision policy contract drift")
+
+    candidates = record.get("candidates")
+    n_by = record.get("n_by_candidate")
+    candidate_count = len(candidates) if isinstance(candidates, list) else 0
+    selection_worlds = CONTINUATION_CONTRACT["selection_worlds"]
+    report_worlds = CONTINUATION_CONTRACT["report_worlds"]
+    selection_rollouts = candidate_count * selection_worlds
+    report_rollouts = 2 * report_worlds
+    if (candidate_count < 2
+            or n_by != [selection_worlds] * candidate_count
+            or record.get("worlds") != selection_worlds):
+        raise TeacherProtocolError("champion selection dose is incomplete")
+
+    alloc = record.get("alloc", {})
+    if (alloc.get("mode") != "uniform"
+            or alloc.get("short") is not False
+            or alloc.get("worlds") != selection_worlds
+            or alloc.get("budget") != selection_rollouts
+            or alloc.get("rollouts") != selection_rollouts
+            or alloc.get("decision_rollouts") != selection_rollouts
+            or alloc.get("dummy_rollouts") != 0
+            or alloc.get("n_by_candidate") != n_by):
+        raise TeacherProtocolError("champion selection work does not reconcile")
+
+    report = record.get("report_fold", {})
+    if (report.get("fold") != "report"
+            or report.get("rule") != "lcb"
+            or report.get("worlds") != report_worlds
+            or report.get("attempts") != report_worlds
+            or report.get("rejected") != 0
+            or report.get("complete") is not True
+            or report.get("critical")
+            != CONTINUATION_CONTRACT["report_t_critical"]
+            or report.get("min_gain")
+            != CONTINUATION_CONTRACT["report_min_gain"]):
+        raise TeacherProtocolError("champion report fold is incomplete")
+
+    work = record.get("work", {})
+    total_rollouts = selection_rollouts + report_rollouts
+    if (work.get("selection_budget") != selection_rollouts
+            or work.get("selection_rollouts") != selection_rollouts
+            or work.get("report_budget") != report_rollouts
+            or work.get("report_rollouts") != report_rollouts
+            or work.get("total_budget") != total_rollouts
+            or work.get("total_rollouts") != total_rollouts
+            or work.get("complete") is not True
+            or rollouts != total_rollouts):
+        raise TeacherProtocolError("champion total work does not reconcile")
+
+    if record.get("reason") not in {
+            "report_lcb_override", "report_lcb_below_min_gain"}:
+        raise TeacherProtocolError("champion decision ended outside report-LCB")
+    played_index = record.get("played_index")
+    if (isinstance(played_index, bool) or not isinstance(played_index, int)
+            or not 0 <= played_index < candidate_count
+            or record.get("played") != candidates[played_index]):
+        raise TeacherProtocolError("champion played-action telemetry drift")
+
+    expected_sampler = {
+        "sample_attempts": selection_worlds + report_worlds,
+        "accepted_worlds": selection_worlds + report_worlds,
+        "failed_worlds": 0,
+        "rejected_worlds": 0,
+        "impossible_worlds": 0,
+        "short_search_decisions": 0,
+        "zero_world_decisions": 0,
+    }
+    if sampler_counters != expected_sampler:
+        raise TeacherProtocolError(
+            "champion live sampler dose is not exact: "
+            f"{sampler_counters!r}")
+    record_sampler = record.get("sampler_counters", {}).get("delta")
+    if record_sampler != {
+            name: expected_sampler[name] for name in (
+                "sample_attempts", "accepted_worlds", "failed_worlds",
+                "rejected_worlds", "impossible_worlds") }:
+        raise TeacherProtocolError("champion record/live sampler delta drift")
+
+    telemetry.update(expected_sampler)
+    telemetry["selection_worlds"] = selection_worlds
+    telemetry["report_worlds"] = report_worlds
+    telemetry["selection_candidate_rollouts"] = selection_rollouts
+    telemetry["report_candidate_rollouts"] = report_rollouts
+    telemetry["total_candidate_rollouts"] = total_rollouts
+    return dict(telemetry)
+
+
+def _decision_record_digest(record: dict | None) -> str | None:
+    if record is None:
+        return None
+    semantic = dict(record)
+    # Wall time is observability, not experiment semantics.  Excluding it makes
+    # an exact replay produce the same trace digest on a different host.
+    semantic.pop("search_secs", None)
+    return stable_digest(semantic)
+
+
+def rollout_champion(rnd, seat: int, hands, buried, candidate, *,
+                     experiment_id: str, state_id: str, deal_seed: int,
+                     fold: str, candidate_index: int, world_index: int):
+    """Roll one action to terminal under fresh report-LCB information sets."""
+    clone = teacher_label._clone_world(
+        rnd, seat, hands, buried, candidate)
+    counters = Counter({name: 0 for name in teacher_label.SAMPLER_COUNTERS})
+    telemetry = _zero_champion_telemetry()
+    trace = []
+    decision_index = 0
+    while clone.phase == "play":
+        actor_seat = clone.turn
+        if actor_seat is None:
+            raise TeacherProtocolError("champion continuation has no actor")
+        stream = teacher_label.derive_stream(
+            experiment_id=experiment_id,
+            deal_seed=deal_seed,
+            state_id=state_id,
+            purpose="continuation",
+            fold=fold,
+            candidate=candidate_index,
+            world=world_index,
+            decision=decision_index,
+            seat=actor_seat,
+            policy=CONTINUATION_POLICY,
+        )
+        policy = make_bot(CONTINUATION_POLICY, seed=stream["seed"])
+        before = teacher_label.sampler_snapshot(policy)
+        try:
+            action = policy.decide_play(clone, actor_seat)
+            delta = teacher_label.sampler_delta(before, policy)
+            decision_work = champion_decision_telemetry(policy, delta)
+        except Exception as exc:
+            raise TeacherProtocolError(
+                f"{state_id}/{fold}/c{candidate_index}/w{world_index}/"
+                f"d{decision_index}: invalid champion continuation: "
+                f"{type(exc).__name__}: {exc}") from exc
+        counters.update(delta)
+        telemetry.update(decision_work)
+        trace.append({
+            "decision": decision_index,
+            "seat": actor_seat,
+            "seed": stream["seed"],
+            "action": list(action),
+            "decision_record_digest": _decision_record_digest(
+                policy.last_decision_record),
+        })
+        try:
+            clone.play(actor_seat, list(action))
+        except Exception as exc:
+            raise TeacherProtocolError(
+                f"{state_id}/{fold}/c{candidate_index}/w{world_index}/"
+                f"d{decision_index}: illegal champion action: "
+                f"{type(exc).__name__}: {exc}") from exc
+        decision_index += 1
+    return (
+        float(clone.attacker_points),
+        dict(counters),
+        stable_digest(trace),
+        len(trace),
+        dict(telemetry),
+    )
+
+
+def score_champion_fold(rnd, seat: int, candidates, worlds, fold_meta: dict,
+                        *, state: dict, fold: str,
+                        progress: Callable[[dict], None] | None = None) -> dict:
+    """Score every candidate on common outer worlds under report-LCB."""
+    tensor = teacher_label._empty_tensor()
+    trace_digests, continuation_decisions = [], []
+    inner_counters = Counter({
+        name: 0 for name in teacher_label.SAMPLER_COUNTERS})
+    continuation_telemetry = _zero_champion_telemetry()
+    acting_is_attacker = rnd.is_attacker(seat)
+    for world_index, (hands, buried) in enumerate(worlds):
+        rows = {name: [] for name in tensor}
+        digest_row, decisions_row = [], []
+        for candidate_index, candidate in enumerate(candidates):
+            (points, counters, trace_digest, n_decisions,
+             telemetry) = rollout_champion(
+                rnd, seat, hands, buried, candidate,
+                experiment_id=state["experiment_id"],
+                state_id=state["state_id"],
+                deal_seed=state["seed"],
+                fold=fold,
+                candidate_index=candidate_index,
+                world_index=world_index,
+            )
+            inner_counters.update(counters)
+            continuation_telemetry.update(telemetry)
+            outcome = teacher_label.targets(points, acting_is_attacker)
+            for name in rows:
+                rows[name].append(outcome[name])
+            digest_row.append(trace_digest)
+            decisions_row.append(n_decisions)
+        for name in tensor:
+            tensor[name].append(rows[name])
+        trace_digests.append(digest_row)
+        continuation_decisions.append(decisions_row)
+        worlds_complete = world_index + 1
+        if (progress is not None
+                and (worlds_complete % AUDIT_PROGRESS_WORLD_INTERVAL == 0
+                     or worlds_complete == len(worlds))):
+            progress({
+                "kind": "champion-fold",
+                "state_id": state["state_id"],
+                "fold": fold,
+                "worlds_complete": worlds_complete,
+                "worlds_total": len(worlds),
+            })
+    result = {
+        **fold_meta,
+        "continuation_policy": CONTINUATION_POLICY,
+        "continuation_contract": CONTINUATION_CONTRACT,
+        "continuation_seed_derivation": (
+            "sha256(canonical JSON of experiment_id,deal_seed,state_id,"
+            "purpose,fold,candidate,world,decision,seat,policy)[:16]"),
+        "continuation_trace_digests": trace_digests,
+        "continuation_decisions": continuation_decisions,
+        "inner_sampler_counters": dict(inner_counters),
+        "continuation_telemetry": dict(continuation_telemetry),
+        "tensor": tensor,
+    }
+    bad = teacher_label.tensor_problems(
+        result, len(worlds), len(candidates))
+    if bad:
+        raise TeacherProtocolError(
+            f"{state['state_id']}/{fold}: {'; '.join(bad)}")
+    return result
 
 
 def select_states(states: list[dict]) -> tuple[list[dict], list[str]]:

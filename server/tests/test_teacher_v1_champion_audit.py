@@ -8,6 +8,8 @@ from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
@@ -142,6 +144,151 @@ def test_champion_contract_is_literal_deployed_report_lcb():
         "champion_selection": 32,
         "champion_report": 32,
     }
+
+
+def valid_champion_decision():
+    candidates = [["A"], ["K"], ["Q"]]
+    selection_rollouts = 30 * len(candidates)
+    total_rollouts = selection_rollouts + 600
+    sampler = {
+        "sample_attempts": 330,
+        "accepted_worlds": 330,
+        "failed_worlds": 0,
+        "rejected_worlds": 0,
+        "impossible_worlds": 0,
+        "short_search_decisions": 0,
+        "zero_world_decisions": 0,
+    }
+    record = {
+        "policy": audit.CONTINUATION_POLICY,
+        "n_determinizations": 30,
+        "report_worlds_requested": 300,
+        "report_rule": "lcb",
+        "report_alpha": 0.05,
+        "report_min_gain": 0.0,
+        "adaptive_allocation": False,
+        "random_allocation": False,
+        "candidates": candidates,
+        "n_by_candidate": [30, 30, 30],
+        "worlds": 30,
+        "alloc": {
+            "mode": "uniform", "short": False, "worlds": 30,
+            "budget": selection_rollouts,
+            "rollouts": selection_rollouts,
+            "decision_rollouts": selection_rollouts,
+            "dummy_rollouts": 0,
+            "n_by_candidate": [30, 30, 30],
+        },
+        "report_fold": {
+            "fold": "report", "rule": "lcb", "worlds": 300,
+            "attempts": 300, "rejected": 0, "complete": True,
+            "critical": 1.70, "min_gain": 0.0,
+        },
+        "work": {
+            "selection_budget": selection_rollouts,
+            "selection_rollouts": selection_rollouts,
+            "report_budget": 600, "report_rollouts": 600,
+            "total_budget": total_rollouts,
+            "total_rollouts": total_rollouts, "complete": True,
+        },
+        "reason": "report_lcb_below_min_gain",
+        "played_index": 0,
+        "played": candidates[0],
+        "sampler_counters": {
+            "delta": {name: sampler[name] for name in (
+                "sample_attempts", "accepted_worlds", "failed_worlds",
+                "rejected_worlds", "impossible_worlds")},
+        },
+    }
+    policy = SimpleNamespace(
+        last_decision_record=record, search_calls=1, rollouts=total_rollouts)
+    return policy, sampler
+
+
+def test_champion_decision_requires_complete_selection_report_and_counters():
+    policy, sampler = valid_champion_decision()
+    telemetry = audit.champion_decision_telemetry(policy, sampler)
+    assert telemetry["decisions"] == 1
+    assert telemetry["searched_decisions"] == 1
+    assert telemetry["selection_candidate_rollouts"] == 90
+    assert telemetry["report_candidate_rollouts"] == 600
+    assert telemetry["accepted_worlds"] == 330
+
+    for mutate in (
+        lambda p, _s: p.last_decision_record["report_fold"].update(
+            worlds=299),
+        lambda p, _s: p.last_decision_record["work"].update(complete=False),
+        lambda _p, s: s.update(accepted_worlds=329),
+        lambda p, _s: p.last_decision_record.update(
+            reason="selection_underfilled"),
+    ):
+        changed_policy, changed_sampler = valid_champion_decision()
+        mutate(changed_policy, changed_sampler)
+        with pytest.raises(audit.TeacherProtocolError):
+            audit.champion_decision_telemetry(
+                changed_policy, changed_sampler)
+
+
+def test_champion_unsearched_decision_must_have_zero_work():
+    zero = {name: 0 for name in audit.teacher_label.SAMPLER_COUNTERS}
+    policy = SimpleNamespace(
+        last_decision_record=None, search_calls=0, rollouts=0)
+    telemetry = audit.champion_decision_telemetry(policy, zero)
+    assert telemetry["decisions"] == 1
+    assert telemetry["unsearched_decisions"] == 1
+    assert telemetry["searched_decisions"] == 0
+
+    policy.rollouts = 1
+    with pytest.raises(audit.TeacherProtocolError):
+        audit.champion_decision_telemetry(policy, zero)
+
+
+def test_champion_fold_progress_is_periodic_and_artifact_neutral(monkeypatch):
+    zero_counters = {
+        name: 0 for name in audit.teacher_label.SAMPLER_COUNTERS}
+    zero_telemetry = {name: 0 for name in audit.CHAMPION_TELEMETRY_FIELDS}
+    zero_telemetry.update(decisions=1, unsearched_decisions=1)
+
+    def fake_rollout(*_args, **kwargs):
+        return (
+            80.0 + 40.0 * kwargs["candidate_index"],
+            zero_counters,
+            stable_digest({"trace": kwargs["candidate_index"]}),
+            1,
+            zero_telemetry,
+        )
+
+    monkeypatch.setattr(audit, "rollout_champion", fake_rollout)
+    rnd = SimpleNamespace(is_attacker=lambda _seat: True)
+    state = {"experiment_id": "teacher-v1", "state_id": "audit-state",
+             "seed": 149000000}
+    worlds = [(None, None), (None, None)]
+    candidates = [["A"], ["K"]]
+    meta = {
+        "requested_worlds": 2,
+        "draw_ids": ["draw-0", "draw-1"],
+        "world_digests": ["world-0", "world-1"],
+    }
+    events = []
+    with_progress = audit.score_champion_fold(
+        rnd, 0, candidates, worlds, meta, state=state,
+        fold="champion_selection", progress=events.append)
+    without_progress = audit.score_champion_fold(
+        rnd, 0, candidates, worlds, meta, state=state,
+        fold="champion_selection")
+    assert with_progress == without_progress
+    assert [event["worlds_complete"] for event in events] == [1, 2]
+    assert all(event["state_id"] == "audit-state" for event in events)
+
+
+def test_champion_trace_digest_excludes_only_wall_time():
+    record = {"played": ["A"], "search_secs": 1.0}
+    changed = {"played": ["A"], "search_secs": 99.0}
+    assert audit._decision_record_digest(record) == \
+        audit._decision_record_digest(changed)
+    changed["played"] = ["K"]
+    assert audit._decision_record_digest(record) != \
+        audit._decision_record_digest(changed)
 
 
 def test_audit_freeze_publishes_and_reopens_exact_bytes(tmp_path, monkeypatch):

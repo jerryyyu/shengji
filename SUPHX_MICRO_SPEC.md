@@ -1,10 +1,19 @@
 # Suphx-style privileged-feature-removal microbaseline
 
-Status (2026-08-07): **DESIGN GATE / NO TRAINING AUTHORITY.** This document
-defines the next Lane-C mechanism after terminal Direct-Q SELECT NONE. It may
-authorize implementation and score-blind runtime benchmarking only. A later
-version must bind exact code, runtime, seeds, doses, state assets and artifact
-destinations before any learning result is produced.
+Status (2026-08-07): **FEATURE-PARTITION CODE GATE PASS / NO TRAINING
+AUTHORITY.** This document defines the next Lane-C mechanism after terminal
+Direct-Q SELECT NONE. It may authorize implementation and score-blind runtime
+benchmarking only. A later version must bind exact code, runtime, seeds, doses,
+state assets and artifact destinations before any learning result is produced.
+
+Implementation step 1 now lives in `server/shengji/rl/suphx_micro.py` with
+feature-contract SHA-256
+`dfbdf9d679f87999344864554d01f493995beade99c5b275266d8de37fd4b97f`.
+The feature module itself hashes to
+`5636a137dedbfe593d26d5a18e606ee4a0b59e42092e13d12907ce077d111b85`.
+Its 12 focused falsification tests pass; the adjacent encoder/Direct-Q matrix
+is 48/48. No policy, learner, CLI, registry entry, run artifact or training
+result exists yet.
 
 ## Claim boundary
 

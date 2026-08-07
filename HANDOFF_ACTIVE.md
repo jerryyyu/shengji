@@ -260,9 +260,11 @@ regression and new exact receipt predeclaration; the superseded `f4f3dc0`
 identity must never create a receipt. Also audit C1 artifact-only closeout
 `57f4e1b`/SHA `06dd487d...b7aae5`; watch the Stage-B transition without opening
 gold outcomes or duplicating workers. Separately review the new no-run
-`SUPHX_MICRO_SPEC.md`: in particular, challenge whether its legal/private
-feature boundary, O0 prerequisite, three O1 arms and public-endpoint invariance
-form the smallest honest test of oracle guiding. It authorizes no training.
+`SUPHX_MICRO_SPEC.md` plus `server/shengji/rl/suphx_micro.py` and its tests: in
+particular, challenge whether its legal/private feature boundary, O0
+prerequisite, three O1 arms and public-endpoint invariance form the smallest
+honest test of oracle guiding. The feature gate is 12/12 and adjacent tests are
+48/48; it authorizes no training.
 
 ## Standing rules
 

@@ -89,10 +89,10 @@ CONTINUATION_EXECUTION_LOCK = {
             ["WIDE_FOLLOW_BALLOT", True],
             ["WIDE_LEAD_BALLOT", True],
         ],
-        "source_digest": "11be8504cfad5de3",
+        "source_digest": "3710a9113a2bcfbc",
         "note": "",
-        "digest": "568848979a2d",
-        "display": "mc_candidates@v1[568848979a2d]",
+        "digest": "c008dd47b0b7",
+        "display": "mc_candidates@v1[c008dd47b0b7]",
     },
     "source_sha256s": {
         "ai_bury": "2fd2ca71ed7594b99e907d5dbcb65bb95302a7b8c16660769115ed4ddfafe610",

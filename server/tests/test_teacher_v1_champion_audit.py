@@ -168,6 +168,11 @@ def test_champion_contract_is_literal_deployed_report_lcb():
 def test_continuation_execution_lock_is_literal_and_mutation_falsifiable(
         monkeypatch):
     expected = copy.deepcopy(audit.CONTINUATION_EXECUTION_LOCK)
+    # Bind the literal ballot to the real generator rather than proving only
+    # that a mocked value agrees with itself.  This caught an incorrectly
+    # transcribed source digest before the first audit label was generated.
+    assert audit.live_continuation_execution_lock()["ballot"] == \
+        expected["ballot"]
     monkeypatch.setattr(
         audit, "live_continuation_execution_lock", lambda: expected)
     assert audit.continuation_execution_lock_problems() == []

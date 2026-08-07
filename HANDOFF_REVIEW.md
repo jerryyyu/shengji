@@ -26,6 +26,25 @@ execution queue.
 - Concurrent writes are preserved. Do not attribute or commit another agent's
   dirty work before reviewing it.
 
+## 2026-08-07 — S0 terminal boundary and manual production decision
+
+All S0c game compute completed, but the one-shot lag-17 correction refused
+before parsing outcomes after the supervisor's terminal provenance changed.
+The numerical result remains unread; this is neither PROMOTE nor a negative
+game result. Commit `17f4085` added an outcome-blind, structurally
+non-promoting closeout, and `ca556c2` made the frozen S0e-v2 parent terminal
+`S0_COMPLETE_SELECT_NONE` with `authorized=false`. The exact closeout SHA is
+`ef0a3659859b38d0b9362376e5e403fecb625f59c475600ed09906ce695fde9a`.
+No retry, extension, pooling or dependent authorization remains.
+
+Separately, Jerry approved shipping the simpler replicated development winner.
+`mc-s0-report-lcb` is live at Fly version 16 from commit `74be565`; health
+reports the intended bot and compiled engine. This manual product choice rests
+on S0a `+0.353 +/- 0.069` and S0b `+0.357 +/- 0.066` versus `mc-strong`, keeps
+`mc-strong` as rollback, and still requires a fresh collision-free confirmation
+for a formal strength claim. Do not use the frozen parent phrase “production
+remains mc-strong” to overwrite the separately approved live configuration.
+
 ## Durable project state
 
 ### Production strength
@@ -2156,3 +2175,40 @@ the real `evaluate` into a cut-off and asserts it raises.
 
 Cleared: all three secondary guards added by `4484f8c` (max_rounds validation, result-None,
 invalid-winner) are real and falsifiable.
+
+---
+
+## Codex — 2026-08-07 11:50 EDT — S0 closeout accepted; V11 artifact repair required
+
+Reviewed only pushed `2952929..ca556c2`, the current ledger, and the concurrent
+dirty `BACKLOG.md`/`JOBS.md` refresh; no outcome artifact, process state, game,
+experiment or training run was opened. The outcome-blind S0 closeout and
+terminal parent are soundly fail-closed: all new closeout/parent/dependency
+tests passed in frozen compiled mode, `protocol_problems()` is empty, and
+formal S0 is permanently SELECT NONE because evidence publication failed—not
+because a policy lost. The manual report-LCB deployment is correctly outside
+that authority; the frozen “production remains mc-strong” phrase must be read
+only as formal-S0 scope, never as live production state.
+
+The combined compiled matrix is **69/70**, not fully green. The sole failure is
+the already-identified historical-v1 test that fabricates policy-contract drift;
+the actual tombstone/history/source/parent witnesses remain sufficient. Remove
+that assertion before publishing a green total.
+
+The corrected V11-v2 refusal is a verifier defect. `Game.finish_round()` is
+intentionally uncapped and `evaluation.py` emits `max(1, level_change)`, while
+`v11_revalidate_v2.record_problems()` accepts only utilities in `+/-{1,2,3}`.
+Its 18/18 tests stay green because they test `99` as malformed but no legitimate
+`+/-4` outcome. Use a new artifact-only repair that reopens the exact raw bytes
+and counters; do not replay games, rewrite outcomes, or infer activation that
+the runner never recorded.
+
+Claude's frontend and legacy-evaluator findings also stand. Current behavior
+evidence is useful, but the ship-gate harness is HOLD until unmanaged WebSocket
+contexts cannot hang failures, and the evaluator regression gate is HOLD until
+real `FullGameCutoff` propagation is tested without monkeypatching `play_game`.
+The refreshed ledger now closes S0, but its V11/teacher sections still describe
+preterminal states and should not authorize launches. No new Cython-parity or
+measured duel/latency evidence appeared; `fast=true` proves native activation,
+not report-LCB's operational cost (an extra 600 report worlds per contested
+decision).

@@ -266,6 +266,44 @@ the N=30 artifacts. An N=30 Stage-B PASS can authorize the cheap 2,048-state
 pilot as a proxy/ranking research asset, but cannot authorize champion
 replacement, deployment, or a claim that its targets exceed report-LCB.
 
+### Report-LCB continuation audit — frozen before N=30 outcomes
+
+`teacher-v3-report-lcb-audit-v1` is a separate conditional gate, not a third
+fold added to Stage B after inspection:
+
+- Select exactly 64 of the already-frozen Stage-B states without reading any
+  cheap or N=30 label: four hash-smallest states in each of the 12
+  phase/role/decision representative cells, plus eight hash-smallest boundary
+  and eight hash-smallest uncertainty states. The hash domain is the literal
+  audit id plus `state_id`. Store and re-open the Stage-B parent SHA and require
+  zero Stage-A overlap.
+- Re-open the complete v2 cheap and N=30 gold parents for those identities.
+  Preserve their exact candidate order, cheap-selected index and N=30 gold
+  index. Never recompute or select those indices from the audit worlds.
+- Draw 32 strict `champion_selection` and 32 disjoint `champion_report` outer
+  worlds per action. At every downstream partial-information decision create a
+  fresh `mc-s0-report-lcb` actor from the named state/fold/candidate/world/
+  decision/seat stream. Its registry identity remains N=30 selection, R=300
+  disjoint report, one-sided LCB, alpha 0.05 and minimum gain zero.
+- Choose the champion reference only on `champion_selection`. On
+  `champion_report`, compute state-clustered signed-level regret for both the
+  frozen cheap choice and frozen N=30 choice versus that champion reference.
+  Record the complete tensor, action traces, exact selection/report work and
+  sampler counters. Every contested downstream search must expose a complete
+  report fold; any short/rejected/illegal decision fails its shard.
+- PASS requires the one-sided 95% regret upper bound to be at most 0.10 for
+  both choices over all 64 states and, independently, over the 48
+  representative states. Boundary and uncertainty strata remain separately
+  reported diagnostics; their eight-state intervals do not get silently
+  pooled into a deployment estimate.
+- The 64-state/32+32 dose is terminal for v1. Failure or inconclusive evidence
+  cannot append worlds or states. A larger audit needs a new id, receipts and
+  folds predeclared without reusing v1 outcomes.
+
+Only the conjunction of the N=30 Stage-B gate and this audit may call the cheap
+target champion-fidelity-qualified for Stage C. It still does not promote a
+model; deployment requires a fresh paired full-game win over the live parent.
+
 Choose the cheap action on its selection fold and the gold reference action on
 the gold-selection fold. On gold-report worlds, estimate paired signed-level
 regret of the cheap choice versus that frozen gold reference, clustered by

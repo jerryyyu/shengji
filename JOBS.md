@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 19:45 EDT
+## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 19:51 EDT
 
 Air has eight live compiled+strict `teacher_v1_label.py gold` workers in clean
 detached worktree `~/Projects/shengji-teacher-air` at exact commit
@@ -13,9 +13,9 @@ and remain near one CPU each. This block is attribution-only. Its outcomes
 cannot change the independently frozen 64-state report-LCB continuation audit.
 
 All eight output finals remain absent and all eight Python workers plus their
-caffeinate children remain live after about 4h59m. An outcome-blind parse of
-progress events showed `756/948/512/716/328/808/676/624` fold worlds by shard
-and `5,368/16,384` (32.8%) aggregate. This is a liveness
+caffeinate children remain live after about 5h05m. An outcome-blind parse of
+progress events showed `768/956/528/724/332/812/700/632` fold worlds by shard
+and `5,452/16,384` (33.3%) aggregate. This is a liveness
 counter, not a compute-weighted ETA: ballot sizes and continuation costs differ
 by state. No outcome file was opened. The exact one-shot readiness and gate
 command now live in `HANDOFF_ACTIVE.md`; in particular, filename appearance is
@@ -54,6 +54,13 @@ those timings by each live ballot size and the literal 64 outer worlds projects
 path only as launch sizing: one timing world is noisy and Mini is not Air. It
 does establish that the conditional audit belongs eight-way on Air, not in the
 sub-hour Mini queue, without changing the frozen partition.
+
+The exact native scorer also completed a two-fold runtime probe on a frozen
+14-candidate early state using distinct `runtime_probe_v1_*` streams. Across
+1,604 downstream decisions, 1,271 full report-LCB searches and 1,009,950 inner
+candidate rollouts, both tensor and continuation-telemetry validators returned
+no problems in 201 seconds. No future champion fold, Stage-B outcome or parent
+action choice was read, and no artifact was created.
 
 Mini has no long strength worker. RLCB-C1, V11-v2 and Direct-Q are terminal;
 Mini is available for bounded compiled latency checks or the next separately

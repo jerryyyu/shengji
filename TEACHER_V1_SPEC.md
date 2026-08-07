@@ -248,6 +248,16 @@ inner rollouts on Air, projecting about four hours for eight parallel 16-state
 64/64 shards. This measurement fixes placement only; none of its action
 outcomes may enter the gate.
 
+The first attribution receipts at commit `85b9047` and their eight completed
+cheap shards are preserved but closed before gold. The gold worker emitted no
+bounded progress until shard completion, which would make a projected
+four-hour run operationally opaque. Commit `a952b3d` adds JSON progress events
+after every four outer gold worlds (roughly 30 seconds in the timing smoke) and
+at every completed state; a test proves callbacks are periodic/final and do not
+change artifact bytes. Fresh v2 cheap/gold receipts and a fresh cheap population
+are required under that exact source. Never chain gold from the `85b9047`
+population or pool the two attempts.
+
 Before a Stage-C dataset is described as champion-quality, a separately named
 `teacher-v3-report-lcb-audit-v1` must compare the N=30 proxy choice with the
 live report-LCB continuation on a selector-frozen subset. That audit will use

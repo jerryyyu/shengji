@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-07 12:00 EDT.
+Last re-derived: 2026-08-07 12:12 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -15,6 +15,12 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   two independent 2,048-cluster development blocks: S0a
   `+0.353 +/- 0.069` and S0b `+0.357 +/- 0.066` versus `mc-strong`.
   `mc-strong` remains the immediate rollback.
+- **The production latency complaint is confirmed, not subjective.** Room CAXI
+  recorded 138 bot plays after the deployment, 109 of which searched. Search
+  alone was p50 1.143s, p95 16.413s and max 20.499s on Fly's one-vCPU
+  `shared-cpu-1x`; the server then adds a fixed 0.7s delay before every bot
+  turn. Early searched moves averaged 5.13s. Preserve the report-LCB decision
+  rule while treating responsiveness as a P0 product issue.
 - **Formal S0 is COMPLETE / SELECT NONE, for an evidence failure—not a measured
   loss.** All eight 1,024-cluster S0c shards and the aggregate completed, but
   the historical null had a lag-17 cross-cluster RNG collision. The exact
@@ -54,15 +60,50 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 
 | priority | work | exit gate |
 |---|---|---|
-| **Production report-LCB — SHIPPED / MONITOR** | Operate the strongest currently supported product policy | Live health must stay `bot=mc-s0-report-lcb, fast=true`; monitor decision time, short/zero-world fallbacks and bot errors. Roll back only on an operational or correctness regression—not because formal S0 was administratively SELECT NONE. |
-| **Formal S0 — COMPLETE / SELECT NONE** | Preserve the burned S0c evidence boundary | Closeout `ef0a365…fde9a`, terminal parent commit `ca556c2`, no parsed outcomes, no retry/extension, and an empty S0 launch-service namespace. This closes the old adaptive-confirmation lane without claiming adaptive/report-LCB lost. |
-| **Fresh report-LCB confirmation — DESIGN NEXT** | Put the manual production choice on clean formal footing | Freeze a collision-free null and fresh deal block, compare exactly report-LCB/current/null, bind accepted dose and runtime, and use one immutable superiority gate. Do not include adaptive allocation unless a separate experiment first resolves its `+0.037 +/- 0.060` incremental effect. |
-| **V11 corrected direct v2 — COMPUTE DONE / ARTIFACT REPAIR** | Recover the already-spent clean-encoder evidence | Fix the uncapped-utility validator in a new artifact-only repair path, reopen exact raw bytes/counters, and bind the aggregate hash regardless of PASS/FAIL. No game replay and no activation claim. |
-| **Teacher actor/gate v3 — CODE FIX THEN 64-STATE ENTRY** | Build a stronger counterfactual teacher without repeating the refused packet | Canonicalize v11 actions to the actor ballot, return the sole action directly, add off-ballot falsification, then version fresh disjoint capture -> diagnostics -> exact 64-state freeze. Stop before labels until reviewed. |
-| **Direct-Q — PREFLIGHT NEXT ON MINI** | Test whether the bounded role-conditioned learner has a real learning signal | Run six exact 32-iteration treatment/no-step preflights; inspect only wall/storage and semantic receipts. Full 512-iteration screen starts only if the frozen preflight admits it. |
-| **Dependent search lanes — REPARENT BEFORE RUN** | Spend the report-LCB and v11 milestones coherently | Protected V11, structured bury and sampled-exact code gates are closed, but their frozen parent semantics predate the manual production change. Version an explicit reference decision before spending compute; then run bounded screen -> fresh confirmation. |
-| **Frontend ship gate — COMPLETE / PASS** | Keep multiplayer ownership state shippable | Real multi-socket and browser tests cover join/rejoin, simultaneous claim, bot takeover, stale sockets, private hands and chat. |
-| **Evaluator boundary — COMPLETE / PASS** | Keep partial games out of strength claims | Full-game cutoff raises a typed refusal; registered one-round and versioned RL targets remain separate. |
+| **T1 / Lane A production latency — P0** | Keep the first stronger-than-MC production policy enjoyable to play | Freeze the live replay benchmark; preserve exact cards/RNG/counters/report statistics; remove the additive pacing tax, keep the event loop responsive, profile the remaining rollout leaves, and meet the production-class latency gate below. Changing N=30, R=300, the ballot or LCB is a strength experiment—not a perf patch. |
+| **T1 / Lane A.1 V11pair — ARTIFACT REPAIR** | Spend the learned milestone instead of shelving it | Publish the corrected direct-v2 aggregate from existing bytes only and obey its frozen decision rule. A PASS may unlock a versioned protected-anchor screen against live report-LCB; a FAIL closes that launch and retains v11 only as a teacher/diagnostic proposal. |
+| **T1 / Lane B teacher — ACTOR V3 -> 64 STATES** | Generate counterfactual data capable of exceeding the old heuristic continuation | Prove canonical in-ballot actions including the named failure, run a fresh disjoint entry packet through diagnostics and an exact 64-state freeze, then stop for review before labels. |
+| **T1 / Lane C Direct-Q — MINI PREFLIGHT** | Learn beyond MC imitation with a repaired role-conditioned target | Complete the six frozen 32-iteration treatment/no-step preflights. Start the 512-iteration screen only if their score-blind wall/storage/semantic receipt admits it; otherwise close without extension and move to the Suphx microbaseline code gate. |
+| **RLCB-C1 fresh confirmation — FREEZE TODAY** | Put the manually shipped report-LCB policy on clean formal footing | Register 2,048 fresh deal clusters, a collision-free null and exactly report-LCB/current/null with immutable provenance. Launch on the first fleet capacity not needed by the three learned-strength lanes. This is a new experiment, never a continuation of S0c. |
+| **Formal S0 — COMPLETE / SELECT NONE** | Preserve the burned S0c evidence boundary | Closeout `ef0a365…fde9a`, terminal parent `ca556c2`, no parsed outcomes, no retry/extension, and an empty S0 service namespace. There is no remaining S0c work. |
+
+## TODAY — T1 champion flywheel launch
+
+**Milestone objective:** make the deployed search operationally sound while all
+three non-MC strength lanes advance to their next honest run/stop gate. T1 does
+not require every long run to finish today; it requires no lane to remain idle
+behind code or protocol work we could have completed.
+
+| lane | deliverable today | hard gate |
+|---|---|---|
+| **Lane A / production guardrail** | Build a sanitized performance replay from CAXI's 109 searched moves, stratified early/mid/late and by candidate count; record search-only and human-action-to-broadcast timing. First test exact-semantic scheduling/hot-path changes, then benchmark the same image on the current shared CPU and a faster CPU class. | At least 100 identical replay decisions: same played cards, candidate order, RNG advance, report gap/SE/reason, sampler counters and work. On production-class hardware, end-to-end searched turns have p50 <=1.5s, p95 <=4.0s and max <=8.0s, with no unconditional 0.7s added after computation and no WebSocket starvation. A billable Fly resize requires Jerry's approval and an empty room set. |
+| **Lane A.1 / V11pair** | Replace the broken capped-utility consumer with a tested artifact-only repair, reopen all seven normal shards plus shard-5 `.FAILED`, and seal one new aggregate binding the original failure. Then write the exact report-LCB parent/null contract for the protected anchor if and only if the frozen decision rule admits it. | Never replay or rewrite a game and never invent missing activation. The frozen rule applied to retained bytes determines PASS/FAIL. Only PASS plus sane null/provenance can admit protected-anchor compute; that screen must retain the full report-LCB ballot and work. |
+| **Lane B / stronger teacher** | Commit actor canonicalization and single-action handling with the seed 143000001/ply 44/seat 0 witness, both roles and a broader falsification scan; create a new namespace and run capture -> diagnostics -> exact 64-state freeze. | Zero off-ballot actions, exact actor/ballot/encoder/sampler identities, disjoint non-evaluation states and reconciled counters. Review the freeze before producing any label; only an accepted 64-state packet may enter cheap-vs-gold teacher diagnostics. |
+| **Lane C / beyond imitation** | Run the six accepted Direct-Q 32-iteration preflights on Mini. If the predeclared score-blind receipt passes, immediately start the bounded 512-iteration treatment/control screen; if it fails, record the stop and free Mini. | No outcome-tail selection, recipe mutation or extension. Immutable actors, role-sign symmetry, action-spread/held-out semantics and exact resume must remain valid. Scaling requires the frozen admission result, not an encouraging partial score. |
+| **Fresh search confirmation** | Freeze `RLCB-C1` over 8x256 new clusters and exactly three arms: live report-LCB, current `mc-strong`, and a collision-free current null. | New seeds/namespace/supervisor; exact accepted dose and runtime; one paired superiority gate. Never read, reuse, pool or repair the burned 135M S0c outcomes. |
+
+### Fleet order for T1
+
+1. **Local + production diagnostics:** own the latency benchmark and
+   exact-semantic server optimization; do not consume Mini/Air training slots.
+2. **Mini:** Direct-Q preflights first, then its admitted 512-iteration screen.
+   If preflight refuses, use the released host for `RLCB-C1` or an admitted
+   protected-anchor screen—never an improvised Direct-Q extension.
+3. **Air:** V11 artifact recovery is first because it reuses spent compute;
+   teacher actor-v3 and the fresh 64-state entry packet follow. If either gate
+   refuses, Air becomes available for the frozen search confirmation.
+4. **No idle gap:** the next bounded job may start as soon as its exact parent,
+   namespace, tests and stop rule are committed. A failed lane releases compute
+   to another lane; it does not weaken its own gate.
+
+### Explicit non-goals today
+
+- Do not reopen, score or “complete” S0c. It is terminal and burned.
+- Do not lower R=300, N=30 or the LCB threshold under the label of performance;
+  any such policy change needs a matched strength screen and fresh confirmation.
+- Do not scale teacher or Direct-Q data because a pipeline merely runs.
+- Do not let formal confirmation crowd out Lane A.1, B or C compute; it uses
+  capacity after the learned-strength gates are moving.
 
 ## AI-strength program
 

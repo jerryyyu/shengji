@@ -136,6 +136,26 @@ def test_full_game_unequal_level_cutoff_does_not_award_the_leader(monkeypatch):
     assert not hasattr(exc.value, "winner")
 
 
+def test_real_evaluate_propagates_full_game_cutoff(monkeypatch):
+    """Drive evaluate -> real play_game -> cutoff; no mocked boundary.
+
+    The earlier evaluator test replaced ``play_game`` itself, so an edit that
+    caught ``FullGameCutoff`` and scored the partial level leader could leave
+    that test green.  Only the round transition is shortened here; the exact
+    production evaluator/cutoff call boundary remains live.
+    """
+    _force_cutoff_levels(monkeypatch, [2, 8])
+
+    with pytest.raises(FullGameCutoff) as exc:
+        evaluate(object(), object(), n_games=2, seed=37,
+                 mirrored=True, max_rounds=1)
+
+    assert exc.value.seed == 37
+    assert exc.value.rounds == 1
+    assert exc.value.level_idx == (2, 8)
+    assert not exc.value.game.game_over
+
+
 def test_mirrored_evaluation_returns_no_partial_score_on_cutoff(monkeypatch):
     calls = []
 

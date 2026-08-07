@@ -43,8 +43,9 @@ Jerry explicitly authorized interrupting the remaining live game for this
 fix. Fly release 17 now runs exact image
 `registry.fly.io/shengji:latency-cd6789e`, digest
 `047bcfe4d4573961734a5536ad549605fd0df5e1477d7480cdf322282955b300`.
-Health passes with `rooms=0`, `bot=mc-s0-report-lcb`, and `fast=true`; release
-16 remains the immediate rollback.
+Health passes with `rooms=0`, `bot=mc-s0-report-lcb`, and `fast=true`. Release
+16 is the immediate scheduler/runtime rollback; `mc-strong` is the separate
+policy rollback.
 
 The release came from reviewed head `578b2c6` (runtime `b315e91`, scheduler
 `ff784a8`) integrated onto authoritative main through `cd6789e`. The final

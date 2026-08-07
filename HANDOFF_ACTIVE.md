@@ -9,7 +9,8 @@ synthesis belongs in `AI_POLICIES.md`.
 - **Production latency: COMPLETE / LIVE.** With Jerry's explicit authorization
   to interrupt HIEJ, Fly release 17 now runs exact image
   `latency-cd6789e`, digest `047bcfe4...5b300`. Health passes with compiled
-  `mc-s0-report-lcb`; release 16 / `mc-strong` remains the immediate rollback.
+  `mc-s0-report-lcb`. Release 16 is the scheduler/runtime rollback;
+  `mc-strong` is the separate policy rollback.
 - **Report-LCB confirmation: COMPLETE / CONFIRM.** Fresh RLCB-C1 used 2,048
   new paired clusters and a collision-free current-policy null:
   report-LCB-current `+0.338379 +/- 0.067706`, null-current
@@ -34,6 +35,14 @@ synthesis belongs in `AI_POLICIES.md`.
   `+0.162760 +/- 0.058755`, but seed 1 and both pooled role held-out MSE gates
   failed. Aggregate SHA `1fa6789e…ce791`; it authorizes nothing.
 - **DEV-512:** SELECT NONE / closed. CALIB and REPORT remain sealed.
+
+Fresh executable reopening at 17:35 independently reproduced all three closed
+chains: strict C1 verification returned aggregate `83f5a9df...f5ea` and
+closeout `06dd487d...aae5`; Air at exact `d1d2019` verified V11 aggregate
+`b7c90ba4...d21ad` with protected composition false; and Direct-Q recomputed
+from its original clean `b365120` runtime returned
+`passed_learning_screen=false`, `production_promotion=false`, and
+`verified=true`. These checks generated no games and performed no training.
 
 ## Running compute
 
@@ -138,7 +147,8 @@ the displaced worker as `acted=false`, `stale_discarded=true`, and every timing
 record as offloaded and snapshot-isolated. A real eight-candidate X-ray search
 took 1.53s while 25 concurrent WebSocket peeks stayed at p50 12ms/max 19ms.
 After 42 bot timings, search p50/p95/max were 1.136/1.857/3.104s and full-turn
-p50/p95/max were 1.138/1.858/3.106s. Release 16 is retained for rollback.
+p50/p95/max were 1.138/1.858/3.106s. Release 16 is retained for runtime
+rollback; `mc-strong` remains the policy rollback.
 
 Live Fly evidence explains the complaint: room HIEJ's 40 searched bot turns
 had search p50 1.133s, p95 1.858s, max 2.174s; visible inter-play delay was
@@ -156,9 +166,10 @@ real search compute; Fly CPU class remains a separate product lever.
    predeclaration above, run eight frozen audit shards, and publish one gate.
    No outcome-conditioned state, policy, fold, threshold or execution-lock
    change.
-3. Monitor release-17 timing in ordinary human rooms. Roll back to release 16
-   only for a correctness, responsiveness or availability regression; CPU
-   resize remains a separate product decision.
+3. Monitor release-17 timing in ordinary human rooms. Roll back the runtime to
+   release 16 only for a correctness, responsiveness or availability
+   regression; policy rollback to `mc-strong` and CPU resize remain separate
+   decisions.
 
 ## Review request for Claude
 

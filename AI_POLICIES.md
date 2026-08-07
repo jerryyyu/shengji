@@ -101,8 +101,9 @@ and put exact run detail in `JOBS.md` or the dated archive.
 
 ### Immediate strength queue
 
-1. Monitor release-17 timing in ordinary human rooms and retain release 16 as
-   rollback; scheduling hardening is shipped without changing report-LCB's
+1. Monitor release-17 timing in ordinary human rooms; retain release 16 as the
+   scheduler/runtime rollback and `mc-strong` as the policy rollback.
+   Scheduling hardening is shipped without changing report-LCB's
    N=30/R=300/ballot/LCB semantics.
 2. Close Teacher-v3 Stage-B attribution and run the already-frozen independent
    64-state champion-continuation audit; use that evidence to choose the next

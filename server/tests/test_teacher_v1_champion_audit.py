@@ -167,10 +167,24 @@ def test_champion_contract_is_literal_deployed_report_lcb():
 
 def test_continuation_execution_lock_is_literal_and_mutation_falsifiable(
         monkeypatch):
+    from shengji.ai import mcbot
+    from shengji.engine import ballot
+
     expected = copy.deepcopy(audit.CONTINUATION_EXECUTION_LOCK)
+    # Poison the ordinary process-local cache, then prove the audit boundary
+    # derives the real identity from current source/native bytes.  A prior
+    # preflight accidentally froze the stale value after replacing the native
+    # binary in an already-imported interpreter.
+    mcbot._cached_ballot_identity.cache_clear()
+    with monkeypatch.context() as cache_patch:
+        cache_patch.setattr(
+            ballot, "source_digest", lambda *_args, **_kwargs: "f" * 16)
+        poisoned = mcbot._ballot_identity(
+            audit.make_bot(audit.CONTINUATION_POLICY, seed=1))
+    assert poisoned["source_digest"] == "f" * 16
+
     # Bind the literal ballot to the real generator rather than proving only
-    # that a mocked value agrees with itself.  This caught an incorrectly
-    # transcribed source digest before the first audit label was generated.
+    # that a mocked value agrees with itself.
     assert audit.live_continuation_execution_lock()["ballot"] == \
         expected["ballot"]
     monkeypatch.setattr(

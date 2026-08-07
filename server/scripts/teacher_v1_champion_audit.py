@@ -89,10 +89,10 @@ CONTINUATION_EXECUTION_LOCK = {
             ["WIDE_FOLLOW_BALLOT", True],
             ["WIDE_LEAD_BALLOT", True],
         ],
-        "source_digest": "3710a9113a2bcfbc",
+        "source_digest": "11be8504cfad5de3",
         "note": "",
-        "digest": "c008dd47b0b7",
-        "display": "mc_candidates@v1[c008dd47b0b7]",
+        "digest": "568848979a2d",
+        "display": "mc_candidates@v1[568848979a2d]",
     },
     "source_sha256s": {
         "ai_bury": "2fd2ca71ed7594b99e907d5dbcb65bb95302a7b8c16660769115ed4ddfafe610",
@@ -213,8 +213,16 @@ def continuation_source_digests() -> dict[str, str]:
 
 
 def live_continuation_execution_lock() -> dict:
-    from shengji.ai.mcbot import _ballot_identity
+    from shengji.ai.mcbot import (_ballot_identity,
+                                  _cached_ballot_identity)
 
+    # Ballot source identity includes the compiled engine bytes, but the
+    # ordinary move path caches it by class/config for speed.  Audit setup can
+    # install the exact compiled artifact after an earlier import in the same
+    # interpreter; accepting that stale cache once produced a literal that a
+    # fresh receipt process could never satisfy.  The publication boundary is
+    # intentionally cold and must re-derive identity from current bytes.
+    _cached_ballot_identity.cache_clear()
     bot = make_bot(CONTINUATION_POLICY, seed=1)
     return teacher_label.json_canonical({
         "schema": CONTINUATION_EXECUTION_LOCK["schema"],

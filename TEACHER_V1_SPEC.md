@@ -1,15 +1,39 @@
 # Teacher-v1 staged experiment spec
 
-Status: the historical packet `teacher-v1-entry-120m-v1` is **REFUSED** after
-all eight captures and before diagnostics, state selection or labels. Its
-in-memory actor ballot used tuples while its JSON artifact used lists, so the
-supervisor falsely reported actor drift. Those artifacts remain historical and
-may never be resumed, relabelled or reinterpreted. The fresh repaired packet
-`teacher-v1-entry-143m-v2` is **ENTRY CODE GATE CLOSED / CAPTURE NEXT FROM A
-CLEAN COMMITTED WORKTREE**. Independent root re-review traced the complete
-capture -> diagnostic -> selected-state chain, added a terminal parent re-open
-and strict unset-key falsifications, and passed 76 focused plus 204 broader
-teacher/pilot tests on 2026-08-06. No promotable teacher evidence has run.
+Status (2026-08-07): historical packets `teacher-v1-entry-120m-v1` and
+`teacher-v1-entry-143m-v2` are **REFUSED** and immutable. V1 stopped after all
+eight captures because its in-memory ballot used tuples while JSON used lists.
+V2 also completed capture but stopped before diagnostics because the V11
+diagnostic actor could return a legal action outside its canonical ballot.
+
+The versioned repair `teacher-v1-entry-149m-v3` is now **STAGE A PASS / STAGE B
+N=30 ATTRIBUTION RUNNING**. At clean pushed commit `be25b4d`, Air produced eight
+128-deal captures and eight exact-parent diagnostics over seeds
+`149000000..149001023`, then froze 64 Stage-A states at SHA-256
+`e016373e8ecb9b6c7b6f3c14f8f4b14d9845f76478137f7a2c07249628cb4648`.
+The first primary producer failed closed on a tuple/list JSON publication
+defect and remains immutable. Exact-parent repair `b41d8b3` then completed
+fresh primary-v2/rerun-v2 populations. Stage-A gate SHA-256
+`731dfa936b6f572866538ead701cdf48d231ef3d1d3a6a0034c2debb1517635b`
+records PASS, zero problems, 64 deterministic matches and 218,112
+candidate-world rollouts.
+
+Bounded freezer transition `d6adbe6` permits only the exact `be25b4d ->
+b41d8b3 -> d6adbe6` ancestry and changed-path scopes while keeping every game,
+sampler, replay, actor, label and gate source exact. Air passed 123 focused
+tests and froze 128 disjoint Stage-B states at SHA-256
+`90956da86f4f03074a1b4dc2d7198a3da5958470b733eacd104e066c523b4dc6`;
+an independent recomputation matched all states with 96 representative, 16
+boundary, 16 uncertainty and zero Stage-A overlap.
+
+The first Stage-B attribution attempt at `85b9047` stopped before gold so its
+long workers could gain outcome-neutral progress observability. Fresh v2
+receipts and all eight cheap shards were regenerated at exact `1a2a713`; eight
+compiled+strict 64/64 N=30 gold workers are now running from that unchanged
+worktree. No final gold outcome has been opened. Separately, the 64-state
+report-LCB continuation audit was selected without label outcomes and is
+preflight-clean at exact `f4f3dc0`; it launches only after a terminal Stage-B
+PASS. None of this is yet teacher-quality, model or production evidence.
 
 The executable entry boundary is `server/shengji/teacher_v1.py`,
 `server/scripts/teacher_v1_states.py` and the singleton
@@ -27,14 +51,19 @@ teacher usefulness; a held-out teacher gain alone does not prove bot strength.
 
 ## First execution packet — frozen before capture
 
-Historical refused packet: `teacher-v1-entry-120m-v1`, exact seeds
-`120000000..120001023`. Preserve its completed captures in place. It produced
-no admissible diagnostic, frozen-state or label population.
+Historical refused packets:
 
-Fresh packet id: `teacher-v1-entry-143m-v2`.
+- `teacher-v1-entry-120m-v1`, seeds `120000000..120001023`: preserve its
+  completed captures in place; it produced no admissible diagnostic,
+  frozen-state or label population.
+- `teacher-v1-entry-143m-v2`, seeds `143000000..143001023`: preserve its
+  completed captures and off-ballot witness `143000001:44:0`; it produced no
+  admissible diagnostic, frozen-state or label population.
 
-- Capture exactly 1,024 fresh deals, seeds `143000000..143001023`, as eight
-  interleaved 128-deal shards (`seed0=143000000`, `max_deals=1024`, shard
+Accepted entry packet id: `teacher-v1-entry-149m-v3`.
+
+- Capture exactly 1,024 fresh deals, seeds `149000000..149001023`, as eight
+  interleaved 128-deal shards (`seed0=149000000`, `max_deals=1024`, shard
   indices `0..7`). All eight use the same clean commit, compiled engine, strict
   void mode, exact Python `3.14.6`, production `mc-strong` actor and three
   digest-pinned exam splits. The experimental flags
@@ -65,7 +94,7 @@ Fresh packet id: `teacher-v1-entry-143m-v2`.
   extension is admissible. A pre-label supply deficit closes this packet
   **INCONCLUSIVE**; predeclare a new larger fresh capture packet rather than
   appending deals.
-- Every v2 entry artifact through the 64-state freeze is first written to an
+- Every v3 entry artifact through the 64-state freeze is first written to an
   exclusive `.partial` and published by a no-overwrite hard link. A concurrent
   final, existing partial or dangling final symlink refuses and leaves the
   losing partial for diagnosis; no overwrite-capable rename is allowed on this
@@ -96,9 +125,11 @@ labelling and refuses to overwrite either a final or partial path.
 
 ## Immutable identity
 
-- Fresh self-play deal seeds start at `143000000`; one selected state per deal.
-- State actor is the version-pinned production champion. Store its checkpoint/
-  policy identity, git tree, engine, sampler, Memory, action encoder and exact
+- Fresh self-play deal seeds start at `149000000`; one selected state per deal.
+- State actor is the version-pinned `mc-strong` policy frozen by this packet;
+  it is not silently renamed to the subsequently deployed report-LCB policy.
+  Store its checkpoint/policy identity, git tree, engine, sampler, Memory,
+  action encoder and exact
   `BallotSpec` digests. Actor identity is converted to the JSON domain before
   hashing or comparison, so a write/read round trip is identical while a real
   ballot or source change still refuses.
@@ -166,6 +197,16 @@ is cheap. It is not presumed to be a valid teacher.
 Use 48 representative states (four per phase/role/decision cell) plus 16
 boundary/uncertainty states. Run the full 512-world label schema.
 
+Stage A is complete. The original primary namespace is a preserved refusal:
+post-link verification found `BallotSpec.config` tuple/list drift, so all eight
+finals retained `.partial` markers and none entered the gate. Repair `b41d8b3`
+canonicalizes each ballot and the complete payload into the JSON domain before
+validation. Primary-v2 and rerun-v2 used distinct receipt SHA/nonces/run ids
+and completed the same eight canonical 8-state partitions at exact 256/256
+work. Gate SHA-256 `731dfa936b6f572866538ead701cdf48d231ef3d1d3a6a0034c2debb1517635b`
+reopened every byte and records `PASS`, `problems:[]`, 64 states,
+`stage_b_authorized:true` and `stage_c_authorized:false`.
+
 Pass requires 64/64 exact replays, complete legal held ballots, 512/512 accepted
 worlds per state, exact tensor shapes, fold disjointness, deterministic rerun
 hashes, all counters zero and a measured runtime/work projection. Failure stops
@@ -178,6 +219,15 @@ complete/digest-valid 64-state asset and the exact Stage-A PASS artifact whose
 label artifacts and their receipts, reconstructs their canonical partitions,
 and reruns record, deterministic-rerun and runtime/source checks before
 authorizing a Stage-B state set.
+
+Stage-B freezer transition `teacher-v3-stage-b-freeze-after-json-repair-v1`
+is complete. It binds the exact Stage-A state/gate hashes, verifies both commit
+ancestry edges and allows only `teacher_v1_label.py` plus its tests in the
+historical repair and `teacher_v1_states.py` plus its tests in the freezer
+repair. Removing the transition, changing either path scope, changing any
+semantic source or breaking ancestry is mutation-tested to refuse. The final
+128-state asset SHA-256 is
+`90956da86f4f03074a1b4dc2d7198a3da5958470b733eacd104e066c523b4dc6`.
 
 ## Stage B — continuation-quality gate
 
@@ -194,6 +244,79 @@ silently mixed into this gate. It may become a separately named teacher only
 after a registered solver is proved **information-set legal**; a solver that
 lets a player act on opponents' hidden hands is an oracle diagnostic, not a
 deployable gold continuation.
+
+The Stage-B continuation decision is frozen as
+`teacher-v3-stage-b-n30-attribution-v1`: run the implemented
+`mc-strong@N=30` 64/64 gate unchanged. This asks whether the cheap heuristic
+preserves candidate ranking under the old production MC continuation. It does
+**not** estimate fidelity to, or strength beyond, the live report-LCB champion.
+A 16-state, 1/1 non-evidence timing smoke measured 225 seconds and 1,007,700
+inner rollouts on Air. This measurement fixed whole-shard placement only; none
+of its action outcomes may enter the gate.
+
+The first attribution receipts at commit `85b9047` and their eight completed
+cheap shards are preserved but closed before gold. The gold worker emitted no
+bounded progress until shard completion, making the longer run operationally
+opaque. Commit `a952b3d` added JSON progress events after every four outer gold
+worlds and at every completed state; a test proves callbacks are periodic/final
+and do not change artifact bytes. Fresh v2 cheap/gold receipts and a fresh cheap
+population were therefore created at exact `1a2a713`. Never chain gold from
+the `85b9047` population or pool the two attempts.
+
+Before a Stage-C dataset is described as champion-quality, a separately named
+`teacher-v3-report-lcb-audit-v1` must compare the N=30 proxy choice with the
+live report-LCB continuation on a selector-frozen subset. That audit uses its
+own receipts, folds, namespace and gate; it may not be substituted into the
+N=30 artifacts. An N=30 Stage-B PASS can authorize the cheap 2,048-state pilot
+as a proxy/ranking research asset, but cannot authorize champion replacement,
+deployment, or a claim that its targets exceed report-LCB.
+
+### Report-LCB continuation audit — frozen before N=30 outcomes
+
+`teacher-v3-report-lcb-audit-v1` is a separate conditional gate, not a third
+fold added to Stage B after inspection:
+
+- Select exactly 64 of the already-frozen Stage-B states without reading any
+  cheap or N=30 label: four hash-smallest states in each of the 12
+  phase/role/decision representative cells, plus eight hash-smallest boundary
+  and eight hash-smallest uncertainty states. The hash domain is the literal
+  audit id plus `state_id`. Store and reopen the Stage-B parent SHA and require
+  zero Stage-A overlap.
+- Reopen the complete v2 cheap and N=30 gold parents for those identities.
+  Preserve their exact candidate order, cheap-selected index and N=30 gold
+  index. Never recompute or select those indices from the audit worlds.
+- Draw 32 strict `champion_selection` and 32 disjoint `champion_report` outer
+  worlds per action. At every downstream partial-information decision create a
+  fresh `mc-s0-report-lcb` actor from the named state/fold/candidate/world/
+  decision/seat stream. Its registry identity remains N=30 selection, R=300
+  disjoint report, one-sided LCB, alpha 0.05 and minimum gain zero.
+- Choose the champion reference only on `champion_selection`. On
+  `champion_report`, compute state-clustered signed-level regret for both the
+  frozen cheap choice and frozen N=30 choice versus that champion reference.
+  Record the complete tensor, action traces, exact selection/report work and
+  sampler counters. Every contested downstream search must expose a complete
+  report fold; any short/rejected/illegal decision fails its shard.
+- PASS requires the one-sided 95% regret upper bound to be at most 0.10 for
+  both choices over all 64 states and, independently, over the 48
+  representative states. Boundary and uncertainty strata remain separately
+  reported diagnostics; their eight-state intervals do not get silently
+  pooled into a deployment estimate.
+- The 64-state/32+32 dose is terminal for v1. Failure or inconclusive evidence
+  cannot append worlds or states. A larger audit needs a new id, receipts and
+  folds predeclared without reusing v1 outcomes.
+
+The audit state is already frozen at SHA-256
+`d04d1c0fa507bab680da4d53eeb72325a97c8ca058aac0d01c16dfdcf44f7a34`.
+Receipt creation requires exact audit git
+`f4f3dc0d360f78ce2f6460eae5a50d39bb5c5349` and exact audit-script SHA-256
+`32a31bf7a64b5c44987e0268a0a46035394c7801a986d9a8c5201429d73c7bd9`.
+The continuation execution lock pins the literal report-LCB class, heuristic
+rollout class, full ballot, material AI/engine sources and compiled binary.
+Only a terminal Stage-B PASS may create its receipt or labels.
+
+Only the conjunction of the N=30 Stage-B gate and this audit may call the cheap
+target champion-fidelity-qualified for Stage C. It still does not promote a
+model; deployment requires a fresh paired full-game win over the live parent.
 
 Choose the cheap action on its selection fold and the gold reference action on
 the gold-selection fold. On gold-report worlds, estimate paired signed-level
@@ -231,8 +354,11 @@ paired report-fold teacher regret versus candidate 0 and v11pair without a
 calibration regression. First integrate it as an MC ranker/pruner/allocator;
 do not force pairwise deltas into a cross-state leaf.
 
-Only a fresh paired full-game win over compiled `mc-strong` N=30 authorizes a
-10k/50k state wave or champion replacement. Use signed level utility as the
-primary metric, seat/team flips inside deal clusters, an explicit null and a
-single predeclared block. Failed data/model gates free the fleet for structured
-bury, exact-late or faithful self-play work; they do not authorize blind scale.
+A fresh paired full-game win over compiled `mc-strong` N=30 is the minimum
+research gate. Champion replacement additionally requires beating the live
+report-LCB parent (or its formally confirmed successor) under a versioned
+paired gate. Only that stronger result may authorize a 10k/50k state wave or
+deployment. Use signed level utility as the primary metric, seat/team flips
+inside deal clusters, an explicit null and a single predeclared block. Failed
+data/model gates free the fleet for structured bury, exact-late or faithful
+self-play work; they do not authorize blind scale.

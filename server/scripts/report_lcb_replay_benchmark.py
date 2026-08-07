@@ -197,6 +197,43 @@ def semantic_record(record: dict) -> dict:
     return json.loads(json.dumps(projected))
 
 
+def semantic_differences(expected, actual, path: str = "$") -> list[str]:
+    """Return semantic drift paths, allowing only cross-platform float ULPs.
+
+    The production log was generated on x86 while the replay fleet is ARM.
+    IEEE operations can differ in the final bit (observed in one report-fold
+    standard error) without changing the represented statistic or decision.
+    Everything except finite floats remains exact; floats receive at most
+    eight ULPs at their numerical scale, never a policy-level tolerance.
+    """
+    if isinstance(expected, bool) or isinstance(actual, bool):
+        return [] if type(expected) is type(actual) and expected == actual \
+            else [path]
+    if isinstance(expected, float) and isinstance(actual, float):
+        if not math.isfinite(expected) or not math.isfinite(actual):
+            return [] if expected == actual else [path]
+        scale = max(1.0, abs(expected), abs(actual))
+        return [] if abs(expected - actual) <= 8 * math.ulp(scale) else [path]
+    if type(expected) is not type(actual):
+        return [path]
+    if isinstance(expected, dict):
+        if set(expected) != set(actual):
+            return [f"{path}.__keys__"]
+        out = []
+        for key in sorted(expected):
+            out += semantic_differences(
+                expected[key], actual[key], f"{path}.{key}")
+        return out
+    if isinstance(expected, list):
+        if len(expected) != len(actual):
+            return [f"{path}.__len__"]
+        out = []
+        for index, (left, right) in enumerate(zip(expected, actual, strict=True)):
+            out += semantic_differences(left, right, f"{path}[{index}]")
+        return out
+    return [] if expected == actual else [path]
+
+
 def _safe_setup(events: list[dict]) -> list[dict]:
     keep = []
     for event in events:
@@ -277,11 +314,9 @@ def _decision_inventory(rounds: dict[int, list[dict]]) -> list[dict]:
 
 
 def _sample_ordinals(inventory: list[dict]) -> set[int]:
-    eligible = [item for item in inventory
-                if item["expected_post_rng_state"] is not None]
+    eligible = list(inventory)
     if len(eligible) < TARGET_DECISIONS:
-        raise ReplayRefused(
-            f"only {len(eligible)} decisions have a logged next-RNG witness")
+        raise ReplayRefused(f"only {len(eligible)} searched decisions exist")
     by_stratum: dict[str, list[dict]] = defaultdict(list)
     for item in eligible:
         by_stratum[item["stratum"]].append(item)
@@ -326,6 +361,58 @@ def _counts(items: Iterable[dict]) -> dict:
             _candidate_bin(item["candidate_count"]) for item in items).items())),
         "stratum": dict(sorted(Counter(item["stratum"] for item in items).items())),
     }
+
+
+def _derive_post_rng_witnesses(safe_rounds: list[dict], rng_states: dict[str, str],
+                               intern_rng) -> Counter:
+    """Freeze post-RNG states from the exact logged pre-state and source.
+
+    Live v2 receipts retained the pre-state but not the post-state.  The next
+    searched receipt is an independent post witness only when no intervening
+    bot action consumes the shared room RNG.  We retain that comparison, then
+    derive the authoritative post-state by exact replay under the source hash
+    already embedded in every receipt.  This is an explicit golden-master
+    derivation, not falsely presented as a live-logged field.
+    """
+    methods = Counter()
+    for round_asset in safe_rounds:
+        rnd = rebuild_round(round_asset["setup"])
+        if rnd is None:
+            raise ReplayRefused("cannot derive RNG witness from incomplete round")
+        for play in round_asset["plays"]:
+            benchmark = play.get("benchmark")
+            if benchmark is not None:
+                expected = benchmark["record"]
+                bot = make_bot(POLICY)
+                restore_random_state(
+                    bot.rng, decode_rng_state(rng_states[expected["rng_state"]]))
+                played = bot.decide_play(rnd, play["seat"])
+                actual = semantic_record(bot.last_decision_record)
+                actual["rng_state"] = rng_state_ref(
+                    encode_rng_state(actual["rng_state"]))
+                drift = semantic_differences(expected, actual)
+                if sorted(played) != sorted(play["cards"]) or drift:
+                    raise ReplayRefused(
+                        "cannot derive post-RNG witness for "
+                        f"{benchmark['round']}:{benchmark['ply']}: "
+                        f"cards={sorted(played) != sorted(play['cards'])}, "
+                        f"semantic={drift[:8]}"
+                    )
+                post_ref = intern_rng(bot.rng.getstate())
+                next_ref = benchmark.pop("next_logged_pre_rng_state")
+                method = (
+                    "logged-next-pre" if next_ref == post_ref
+                    else "source-replay-derived"
+                )
+                benchmark["expected_post_rng_state"] = post_ref
+                benchmark["post_rng_witness"] = {
+                    "method": method,
+                    "source_mcbot_sha256": EXPECTED_MCBOT_SHA256,
+                    "next_logged_pre_rng_state": next_ref,
+                }
+                methods[method] += 1
+            rnd.play(play["seat"], list(play["cards"]))
+    return methods
 
 
 def capture_asset(log_path: str | os.PathLike) -> dict:
@@ -375,8 +462,10 @@ def capture_asset(log_path: str | os.PathLike) -> dict:
                         "source_search_secs",
                     )},
                     "record": stored_record,
-                    "expected_post_rng_state": intern_rng(
-                        decision["expected_post_rng_state"]),
+                    "next_logged_pre_rng_state": (
+                        None if decision["expected_post_rng_state"] is None
+                        else intern_rng(decision["expected_post_rng_state"])
+                    ),
                 }
             plays.append(play)
             ply += 1
@@ -385,6 +474,8 @@ def capture_asset(log_path: str | os.PathLike) -> dict:
             "setup": _safe_setup(events),
             "plays": plays,
         })
+    witness_counts = _derive_post_rng_witnesses(
+        safe_rounds, rng_states, intern_rng)
     chosen = [item for item in inventory if item["ordinal"] in selected]
     asset = {
         "schema": ASSET_SCHEMA,
@@ -396,12 +487,11 @@ def capture_asset(log_path: str | os.PathLike) -> dict:
         "selection": {
             "method": (
                 "proportional largest-remainder allocation over phase/lead-"
-                "follow/candidate-bin, then stable SHA-256 rank; final source "
-                "decision excluded because it has no next-RNG witness"
+                "follow/candidate-bin, then stable SHA-256 rank"
             ),
             "target": TARGET_DECISIONS,
             "population": _counts(inventory),
-            "eligible": _counts(inventory[:-1]),
+            "eligible": _counts(inventory),
             "selected": _counts(chosen),
             "selected_ordinals": sorted(selected),
         },
@@ -412,6 +502,7 @@ def capture_asset(log_path: str | os.PathLike) -> dict:
             "sha256-reference to base85(network-order uint32 version,length,"
             "internal words); gaussian cache must be null"
         ),
+        "post_rng_witness_counts": dict(sorted(witness_counts.items())),
         "rng_states": dict(sorted(rng_states.items())),
         "rounds": safe_rounds,
     }
@@ -472,6 +563,7 @@ def asset_problems(asset: object) -> list[str]:
             or len(set(selected)) != TARGET_DECISIONS):
         problems.append("asset does not contain 100 unique selections")
     benchmarks = []
+    witness_methods = Counter()
     rounds = asset.get("rounds")
     if not isinstance(rounds, list) or not rounds:
         problems.append("asset rounds are missing")
@@ -530,6 +622,31 @@ def asset_problems(asset: object) -> list[str]:
                         or bench.get("expected_post_rng_state") not in rng_states):
                     problems.append(
                         "selected decision lacks a pooled pre/post RNG witness")
+                witness = bench.get("post_rng_witness")
+                if not isinstance(witness, dict) or set(witness) != {
+                    "method", "source_mcbot_sha256",
+                    "next_logged_pre_rng_state",
+                }:
+                    problems.append("selected decision RNG witness contract drift")
+                else:
+                    method = witness.get("method")
+                    next_ref = witness.get("next_logged_pre_rng_state")
+                    post_ref = bench.get("expected_post_rng_state")
+                    if method not in {
+                            "logged-next-pre", "source-replay-derived"}:
+                        problems.append("selected decision RNG witness method drift")
+                    else:
+                        witness_methods[method] += 1
+                    if witness.get("source_mcbot_sha256") != \
+                            EXPECTED_MCBOT_SHA256:
+                        problems.append("selected decision RNG witness source drift")
+                    if next_ref is not None and next_ref not in rng_states:
+                        problems.append("next logged RNG witness is not pooled")
+                    if method == "logged-next-pre" and (
+                            next_ref is None or next_ref != post_ref):
+                        problems.append("logged next-pre RNG witness is not exact")
+                    if method == "source-replay-derived" and next_ref == post_ref:
+                        problems.append("derived RNG witness mislabels a logged match")
             try:
                 rnd.play(play["seat"], list(play["cards"]))
             except Exception as exc:
@@ -545,6 +662,9 @@ def asset_problems(asset: object) -> list[str]:
         problems.append("selected ordinal inventory differs from embedded rows")
     if selection.get("selected") != _counts(benchmarks):
         problems.append("selected stratum counts differ from embedded rows")
+    if asset.get("post_rng_witness_counts") != dict(sorted(
+            witness_methods.items())):
+        problems.append("post-RNG witness counts differ from embedded rows")
     banned = sorted(BANNED_ASSET_KEYS & set(_walk_keys(asset)))
     if banned:
         problems.append(f"asset contains identity/sensitive keys {banned}")
@@ -601,7 +721,11 @@ def replay_asset(asset: dict, *, limit: int | None = None,
                 differences = []
                 if sorted(played) != sorted(play["cards"]):
                     differences.append("played_cards")
-                if actual != record:
+                record_drift = (
+                    [] if actual is None
+                    else semantic_differences(record, actual)
+                )
+                if record_drift:
                     differences.append("semantic_record")
                 if rng_state_ref(encode_rng_state(bot.rng.getstate())) != \
                         benchmark["expected_post_rng_state"]:
@@ -611,6 +735,8 @@ def replay_asset(asset: dict, *, limit: int | None = None,
                         "round": round_asset["round"], "ply": ply,
                         "ordinal": benchmark["ordinal"],
                         "differences": differences,
+                        **({"semantic_paths": record_drift[:16]}
+                           if record_drift else {}),
                     })
                 timings.append({
                     "ordinal": benchmark["ordinal"],

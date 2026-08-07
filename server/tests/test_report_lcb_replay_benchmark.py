@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import math
 import random
 
 import pytest
@@ -13,7 +14,7 @@ ASSET = (
     bench.SERVER / "tests" / "data" / "report_lcb_caxi_replay.v1.b85"
 )
 EXPECTED_PAYLOAD_SHA256 = (
-    "1adf81658712ae1c3a0c3677cb8735b9981abfc359bbc5b5598c42d9abdc7ec4"
+    "91354e3391a1ccbd65d758d011416f135ba8b212aacec40195c7a03fc3e70a40"
 )
 EXPECTED_SOURCE_SHA256 = (
     "3ed2d1fbb80733671663aef4dd81acdb34bb9a40042a84474422a5575c63af3a"
@@ -45,6 +46,10 @@ def test_frozen_asset_identity_inventory_and_sanitization():
     assert asset["selection"]["target"] == 100
     assert asset["selection"]["selected"]["decisions"] == 100
     assert len(asset["selection"]["selected_ordinals"]) == 100
+    assert asset["post_rng_witness_counts"] == {
+        "logged-next-pre": 81,
+        "source-replay-derived": 19,
+    }
     assert [item["round"] for item in asset["rounds"]] == [1, 2, 3]
     assert not (bench.BANNED_ASSET_KEYS & set(bench._walk_keys(asset)))
 
@@ -82,6 +87,17 @@ def test_semantic_projection_normalizes_only_known_volatile_fields():
     cumulative["unclassified_new_field"] = True
     with pytest.raises(bench.ReplayRefused, match="unclassified"):
         bench.semantic_record(cumulative)
+
+
+def test_semantic_comparison_allows_only_tiny_float_roundoff():
+    expected = {"x": 1.0, "nested": [0.25, "same"]}
+    one_ulp = {"x": math.nextafter(1.0, 2.0),
+               "nested": [math.nextafter(0.25, 1.0), "same"]}
+    assert bench.semantic_differences(expected, one_ulp) == []
+    assert bench.semantic_differences(expected, {**one_ulp, "x": 1.000001}) \
+        == ["$.x"]
+    assert bench.semantic_differences(expected, {**one_ulp, "extra": 1}) \
+        == ["$.__keys__"]
 
 
 def test_asset_validator_rejects_identity_and_play_mutations():

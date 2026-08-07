@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import random
 import string
@@ -34,11 +35,6 @@ def _fast_active() -> bool:
         return False
 
 BOT_DELAY = 0.7
-# Preserve a small, explicit window for a player to claim the on-turn bot seat
-# after receiving the first playable state.  Historically the whole 0.7s delay
-# served this purpose accidentally.  Search now overlaps the remaining visual
-# pacing, while this bounded grace retains the join/claim race contract.
-BOT_CLAIM_GRACE = 0.05
 CHAT_KEEP = 50        # scrollback kept per room (in memory, like game state)
 CHAT_MAX_LEN = 300    # per-message cap
 DEAL_DELAY = 0.22          # seconds between dealt cards (~22s full deal)
@@ -451,9 +447,19 @@ def _log_play(room: Room, seat: int, cards: list[str], bot: bool,
         rec = getattr(room.bot, "last_decision_record", None)
         if rec is not None:
             if sorted(rec.get("played", [])) != sorted(cards):
-                raise RuntimeError(
-                    "bot decision record/play mismatch: record says "
-                    f"{rec.get('played')}, server received {cards}")
+                # A lead throw is an attempted action: the engine may replace
+                # it with the lowest beatable component.  Preserve the policy
+                # record as the attempted choice and put the engine resolution
+                # beside it in the play event.  Any other mismatch is still a
+                # hard observability bug rather than something to paper over.
+                rnd = room.round
+                if not (rnd is not None and isinstance(rnd.message, str)
+                        and rnd.message.startswith("Throw failed")):
+                    raise RuntimeError(
+                        "bot decision record/play mismatch: record says "
+                        f"{rec.get('played')}, server received {cards}")
+                extra["attempted_cards"] = list(rec.get("played", []))
+                extra["engine_resolution"] = "failed_throw_forced"
             extra["decision"] = rec
     room.log_event("play", seat=seat, cards=cards, bot=bot, **extra)
     rnd = room.round
@@ -544,18 +550,98 @@ def bot_step(room: Room, seat: int) -> bool:
         return False
 
 
-async def _bot_step_off_loop(room: Room, seat: int) -> bool:
-    """Run one CPU-bound bot turn without starving every WebSocket room.
+@dataclass(frozen=True)
+class _BotTurnSnapshot:
+    """Immutable ownership token plus isolated state used by one search."""
 
-    ``bot_step`` mutates the room and therefore its caller must continue to
-    hold ``room.lock``.  Cancellation is deliberately deferred until the
-    worker has stopped: releasing that lock while ``to_thread`` was still
-    mutating the round would permit a human/watchdog action to race it.  A
-    second cancellation request is handled by the same loop.
+    game_token: Game
+    round_token: Round
+    round_copy: Round
+    bot_copy: Any
+    seat: int
+    phase: str
+    mode: str
+    owner_left_at: float | None
+
+
+@dataclass(frozen=True)
+class _BotTurnDecision:
+    snapshot: _BotTurnSnapshot
+    cards: list[str]
+
+
+@dataclass(frozen=True)
+class _PreparedBotTurn:
+    decision: _BotTurnDecision
+    compute_seconds: float
+    pacing_seconds: float
+    turn_seconds: float
+
+
+def _turn_eligible(room: Room, seat: int, mode: str, *,
+                   owner_left_at: float | None = None) -> bool:
+    if current_actor(room) != seat or not 0 <= seat < len(room.seats):
+        return False
+    owner = room.seats[seat]
+    if mode == "bot":
+        return owner.is_bot
+    if mode == "takeover":
+        return (
+            not owner.is_bot
+            and not owner.connected
+            and owner.left_at is not None
+            and (owner_left_at is None or owner.left_at == owner_left_at)
+            and now() - owner.left_at >= TAKEOVER_AFTER
+        )
+    raise ValueError(f"unknown bot-turn mode {mode!r}")
+
+
+def _snapshot_bot_turn(room: Room, seat: int, mode: str
+                       ) -> _BotTurnSnapshot | None:
+    """Copy a currently eligible turn while the caller holds ``room.lock``.
+
+    Search must not read the live round after the lock is released.  The bot is
+    copied too: if a player claims the seat while search is running, discarding
+    the result must also discard its RNG/counter advance.
+    """
+    game, rnd = room.game, room.round
+    if (game is None or rnd is None or game.game_over
+            or not _turn_eligible(room, seat, mode)):
+        return None
+    return _BotTurnSnapshot(
+        game_token=game,
+        round_token=rnd,
+        round_copy=copy.deepcopy(rnd),
+        bot_copy=copy.deepcopy(room.bot),
+        seat=seat,
+        phase=rnd.phase,
+        mode=mode,
+        owner_left_at=room.seats[seat].left_at,
+    )
+
+
+def _compute_bot_turn(snapshot: _BotTurnSnapshot) -> _BotTurnDecision:
+    rnd, bot, seat = snapshot.round_copy, snapshot.bot_copy, snapshot.seat
+    if snapshot.phase == "bury":
+        cards = bot.decide_bury(rnd, seat)
+    elif snapshot.phase == "play":
+        cards = bot.decide_play(rnd, seat)
+    else:
+        raise IllegalPlay(f"Bot cannot act during {snapshot.phase}.")
+    return _BotTurnDecision(snapshot=snapshot, cards=list(cards))
+
+
+async def _compute_bot_turn_off_loop(
+        snapshot: _BotTurnSnapshot) -> _BotTurnDecision:
+    """Run isolated CPU search without starving every WebSocket room.
+
+    Cancellation is deferred until the worker exits so a cancelled room cannot
+    accumulate orphaned report-LCB searches.  This no longer protects live
+    mutation—the worker has none—but it keeps CPU ownership bounded.
     """
     worker = asyncio.create_task(
-        asyncio.to_thread(bot_step, room, seat),
-        name=f"bot-step-{room.code}-{seat}",
+        asyncio.to_thread(_compute_bot_turn, snapshot),
+        name=f"bot-search-{snapshot.seat}",
     )
     cancelled: asyncio.CancelledError | None = None
     while not worker.done():
@@ -563,53 +649,119 @@ async def _bot_step_off_loop(room: Room, seat: int) -> bool:
             await asyncio.shield(worker)
         except asyncio.CancelledError as exc:
             cancelled = exc
-    result = worker.result()  # retrieve/propagate a genuine bot exception
+    result = worker.result()
     if cancelled is not None:
         raise cancelled
     return result
 
 
 async def _paced_bot_step(room: Room, seat: int, *,
-                          turn_started: float | None = None) -> bool:
-    """Perform a bot turn with a minimum *total* think time of ``BOT_DELAY``."""
-    phase = room.round.phase if room.round is not None else None
-    compute_started = time.perf_counter()
+                          turn_started: float | None = None,
+                          mode: str = "bot",
+                          minimum_turn_seconds: float | None = None,
+                          ) -> _PreparedBotTurn | None:
+    """Search an isolated snapshot while the live room remains claimable."""
     if turn_started is None:
-        turn_started = compute_started
-    acted = await _bot_step_off_loop(room, seat)
+        turn_started = time.perf_counter()
+    if minimum_turn_seconds is None:
+        minimum_turn_seconds = BOT_DELAY
+    async with room.lock:
+        snapshot = _snapshot_bot_turn(room, seat, mode)
+    if snapshot is None:
+        return None
+    compute_started = time.perf_counter()
+    decision = await _compute_bot_turn_off_loop(snapshot)
     compute_seconds = time.perf_counter() - compute_started
-    if not acted:
-        return False
-    pre_compute_seconds = compute_started - turn_started
     pacing_seconds = max(
-        0.0, BOT_DELAY - (time.perf_counter() - turn_started))
+        0.0, minimum_turn_seconds - (time.perf_counter() - turn_started))
     if pacing_seconds:
         await asyncio.sleep(pacing_seconds)
     turn_seconds = time.perf_counter() - turn_started
-    room.log_event(
-        "bot_timing", seat=seat, phase=phase,
-        policy=getattr(room.bot, "policy_name", type(room.bot).__name__),
-        pre_compute_seconds=round(pre_compute_seconds, 6),
-        compute_seconds=round(compute_seconds, 6),
-        pacing_seconds=round(pacing_seconds, 6),
-        turn_seconds=round(turn_seconds, 6),
-        event_loop_offloaded=True,
+    return _PreparedBotTurn(
+        decision=decision,
+        compute_seconds=compute_seconds,
+        pacing_seconds=pacing_seconds,
+        turn_seconds=turn_seconds,
     )
+
+
+def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
+    """Commit only if snapshot ownership and the live turn are unchanged.
+
+    The caller holds ``room.lock``.  A claim, reconnect, human play, new round,
+    or takeover-state change makes the speculative result stale.  In that case
+    both the action and the cloned bot RNG/counters are discarded.
+    """
+    decision = prepared.decision
+    snapshot = decision.snapshot
+    if (room.game is not snapshot.game_token
+            or room.round is not snapshot.round_token
+            or room.round is None
+            or room.round.phase != snapshot.phase
+            or not _turn_eligible(
+                room, snapshot.seat, snapshot.mode,
+                owner_left_at=snapshot.owner_left_at)):
+        return False
+    room.bot = snapshot.bot_copy
+    rnd = room.round
+    seat = snapshot.seat
+    try:
+        if snapshot.phase == "bury":
+            room.sync_kitty()
+            rnd.bury(seat, decision.cards)
+            room.remove_codes(seat, decision.cards)
+            room.log_event("bury", seat=seat, cards=decision.cards, bot=True)
+        elif snapshot.phase == "play":
+            prev_last = rnd.last_trick
+            rnd.play(seat, decision.cards)
+            played = actual_play_after(rnd, seat, prev_last)
+            room.remove_codes(seat, played)
+            _log_play(room, seat, played, True, prev_last)
+        else:  # guarded by snapshot construction; fail closed on corruption
+            return False
+        if rnd.phase == "round_end" and room.game.result is None:
+            room.game.finish_round()
+            _log_round_end(room)
+    except IllegalPlay as exc:
+        rnd.message = f"Bot error at seat {seat}: {exc}"
+        return False
     return True
+
+
+def _log_bot_timing(room: Room, prepared: _PreparedBotTurn, *,
+                    acted: bool) -> None:
+    snapshot = prepared.decision.snapshot
+    room.log_event(
+        "bot_timing", seat=snapshot.seat, phase=snapshot.phase,
+        policy=getattr(
+            snapshot.bot_copy, "policy_name",
+            type(snapshot.bot_copy).__name__),
+        mode=snapshot.mode,
+        compute_seconds=round(prepared.compute_seconds, 6),
+        pacing_seconds=round(prepared.pacing_seconds, 6),
+        turn_seconds=round(prepared.turn_seconds, 6),
+        event_loop_offloaded=True,
+        snapshot_isolated=True,
+        acted=acted,
+        stale_discarded=not acted,
+    )
 
 
 async def pump_bots(room: Room) -> None:
     while True:
         turn_started = time.perf_counter()
-        await asyncio.sleep(BOT_CLAIM_GRACE)
         async with room.lock:
             seat = current_actor(room)
             if seat is None or not room.seats[seat].is_bot:
                 return
-            # Search time now counts toward the visible think delay instead of
-            # paying an unconditional extra 0.7 seconds after/before it.
-            if not await _paced_bot_step(
-                    room, seat, turn_started=turn_started):
+        prepared = await _paced_bot_step(
+            room, seat, turn_started=turn_started, mode="bot")
+        if prepared is None:
+            return
+        async with room.lock:
+            acted = _commit_bot_turn(room, prepared)
+            _log_bot_timing(room, prepared, acted=acted)
+            if not acted:
                 return
             await broadcast(room)
 
@@ -620,30 +772,39 @@ async def watchdog_tick(room: Room) -> bool:
     Split out of the loop so tests can drive it with an injected clock rather
     than sleeping through TAKEOVER_AFTER (Codex ship gate P0-3).
     """
-    async with room.lock:
-        return await _watchdog_body(room)
+    return await _watchdog_body(room)
 
 
 async def _watchdog_body(room: Room) -> bool:
-    """Caller holds the room lock."""
+    """Cover one expired disconnected turn without blocking reconnection."""
     if rooms.get(room.code) is not room:
         return False
-    seat = current_actor(room)
-    if seat is None:
+    async with room.lock:
+        if rooms.get(room.code) is not room:
+            return False
+        seat = current_actor(room)
+        if (seat is None
+                or not _turn_eligible(room, seat, "takeover")):
+            return False
+    prepared = await _paced_bot_step(
+        room, seat, mode="takeover", minimum_turn_seconds=0.0)
+    if prepared is None:
         return False
-    s = room.seats[seat]
-    if s.is_bot or s.connected or s.left_at is None:
-        return False
-    if now() - s.left_at >= TAKEOVER_AFTER:
-        if await _bot_step_off_loop(room, seat):
-            if not s.bot_announced:
-                s.bot_announced = True
-                chat_system(room, f"bot is playing for {s.name} "
-                                  f"(disconnected)")
-            await broadcast(room)
-            kick_bots(room)
-            return True
-    return False
+    async with room.lock:
+        if rooms.get(room.code) is not room:
+            return False
+        acted = _commit_bot_turn(room, prepared)
+        _log_bot_timing(room, prepared, acted=acted)
+        if not acted:
+            return False
+        owner = room.seats[seat]
+        if not owner.bot_announced:
+            owner.bot_announced = True
+            chat_system(room, f"bot is playing for {owner.name} "
+                              f"(disconnected)")
+        await broadcast(room)
+        kick_bots(room)
+        return True
 
 
 async def watchdog(room: Room) -> None:
@@ -653,8 +814,7 @@ async def watchdog(room: Room) -> None:
         await asyncio.sleep(5.0)
         if rooms.get(room.code) is not room:
             return
-        async with room.lock:
-            await _watchdog_body(room)
+        await _watchdog_body(room)
 
 
 async def cleanup_room(room: Room) -> None:

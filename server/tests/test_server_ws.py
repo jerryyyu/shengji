@@ -8,6 +8,8 @@ the wire protocol (2026-08-03).
 from __future__ import annotations
 
 import os
+import random
+import threading
 
 import pytest
 from fastapi.testclient import TestClient
@@ -311,6 +313,103 @@ def test_claim_during_bot_delay_is_atomic(client):
             assert room.round.turn == turn, "bot moved for a claimed seat"
             assert list(room.round.hands[turn]) == hand_before
     del asyncio, srv
+
+
+def test_claim_during_blocked_search_is_prompt_and_discards_snapshot(
+        client, monkeypatch):
+    """A real socket claim wins while an on-turn bot search is still blocked.
+
+    This is intentionally stronger than ``test_claim_during_bot_delay...``:
+    the worker has already started and cannot finish until after the claimant
+    receives its private state.  The stale result must discard both the move
+    and the speculative bot's RNG/counter advance.
+    """
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.api import server as srv
+
+    started = threading.Event()
+    release = threading.Event()
+    timing_logged = threading.Event()
+    blocked = {}
+    timing_records = []
+    real_compute = srv._compute_bot_turn
+
+    class StatefulBot(HeuristicBot):
+        policy_name = "stateful-claim-witness"
+
+        def __init__(self):
+            self.rng = random.Random(918_273)
+            self.play_calls = 0
+
+        def decide_declare(self, rnd, seat, final=False):
+            # Force the first-round banker to be a bot, so the first playable
+            # turn reaches the blocking worker without a human setup action.
+            options = rnd.declare_options(seat)
+            return list(options[-1]) if options else None
+
+        def decide_play(self, rnd, seat):
+            self.play_calls += 1
+            self.rng.random()
+            return super().decide_play(rnd, seat)
+
+    def blocking_compute(snapshot):
+        if snapshot.phase == "play" and not started.is_set():
+            blocked["seat"] = snapshot.seat
+            started.set()
+            assert release.wait(timeout=10), "test never released bot search"
+        return real_compute(snapshot)
+
+    monkeypatch.setattr(srv, "_compute_bot_turn", blocking_compute)
+
+    with client.websocket_connect("/ws") as host:
+        code = _room_with_bots(host)
+        room = srv.rooms[code]
+        room.bot = StatefulBot()
+        original_log = room.log_event
+
+        def capture_log(kind, **data):
+            original_log(kind, **data)
+            if kind == "bot_timing" and data.get("phase") == "play":
+                timing_records.append(data)
+                timing_logged.set()
+
+        room.log_event = capture_log
+        host.send_json({"type": "start_game"})
+        state = _drain(host, "state", tries=500)
+        while state.get("phase") != "play":
+            state = _drain(host, "state", tries=500)
+        assert started.wait(timeout=5), "on-turn bot search never started"
+        seat = blocked["seat"]
+        assert room.round.turn == seat and room.seats[seat].is_bot
+        live_bot = room.bot
+        live_rng = live_bot.rng.getstate()
+        hand_before = list(room.round.hands[seat])
+
+        try:
+            with client.websocket_connect("/ws") as claimant:
+                claimant.send_json({"type": "join_room", "room": code,
+                                    "name": "claimant", "seat": seat})
+                claimed = _drain(claimant, "state", tries=60)
+                # Receiving this before releasing the worker proves that the
+                # search neither holds the room lock nor starves WebSockets.
+                assert not release.is_set()
+                assert claimed["you"] == seat
+                assert not room.seats[seat].is_bot
+                assert room.round.turn == seat
+                assert list(room.round.hands[seat]) == hand_before
+
+                release.set()
+                assert timing_logged.wait(timeout=5), \
+                    "stale search never reached its guarded commit"
+                assert timing_records[-1]["stale_discarded"] is True
+                assert timing_records[-1]["acted"] is False
+                assert room.round.turn == seat
+                assert list(room.round.hands[seat]) == hand_before
+                assert room.bot is live_bot
+                assert live_bot.play_calls == 0
+                assert live_bot.rng.getstate() == live_rng
+        finally:
+            release.set()
 
 
 def test_disconnect_takeover_and_reconnect_resets_each_absence(client):

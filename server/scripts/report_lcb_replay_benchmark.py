@@ -232,8 +232,7 @@ def semantic_differences(expected, actual, path: str = "$") -> list[str]:
     if isinstance(expected, float) and isinstance(actual, float):
         if not math.isfinite(expected) or not math.isfinite(actual):
             return [] if expected == actual else [path]
-        scale = max(1.0, abs(expected), abs(actual))
-        return [] if abs(expected - actual) <= 8 * math.ulp(scale) else [path]
+        return [] if _float_ulp_distance(expected, actual) <= 8 else [path]
     if type(expected) is not type(actual):
         return [path]
     if isinstance(expected, dict):
@@ -252,6 +251,21 @@ def semantic_differences(expected, actual, path: str = "$") -> list[str]:
             out += semantic_differences(left, right, f"{path}[{index}]")
         return out
     return [] if expected == actual else [path]
+
+
+def _float_order(value: float) -> int:
+    """Map an IEEE-754 binary64 to a monotone integer, merging signed zero."""
+    bits = struct.unpack(">Q", struct.pack(">d", value))[0]
+    sign = 1 << 63
+    magnitude = bits & (sign - 1)
+    return sign - magnitude if bits & sign else sign + magnitude
+
+
+def _float_ulp_distance(left: float, right: float) -> int:
+    """Exact count of representable binary64 steps between finite values."""
+    if left == right:  # Includes +0.0 versus -0.0.
+        return 0
+    return abs(_float_order(left) - _float_order(right))
 
 
 def _safe_setup(events: list[dict]) -> list[dict]:

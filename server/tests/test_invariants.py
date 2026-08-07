@@ -477,6 +477,50 @@ def test_failed_throw_does_not_desync_the_room_at_the_SERVER_boundary():
                 "exercising the regression")
 
 
+def test_failed_throw_stays_in_sync_through_speculative_commit_boundary():
+    """The production off-loop path must mirror the same forced component."""
+    from shengji.api import server
+
+    for seed in range(40):
+        room, rnd = _room_at_play(seed)
+        seat = rnd.turn
+        cand, played = _find_failing_throw(rnd, seat)
+        if cand is None:
+            continue
+        room.seats = [server.Seat(name=f"Bot {i}", is_bot=True)
+                      for i in range(4)]
+        room.bot = HeuristicBot()
+        room.bot.decide_play = lambda r, s, _c=cand: list(_c)
+        events = []
+        room.log_event = lambda kind, **data: events.append((kind, data))
+        snapshot = server._snapshot_bot_turn(room, seat, "bot")
+        assert snapshot is not None
+        decision = server._compute_bot_turn(snapshot)
+        # Search receipts name the attempted throw.  The play event must retain
+        # that explanation while recording the smaller component the engine
+        # actually forced, without crashing after the state mutation.
+        snapshot.bot_copy.last_decision_record = {"played": list(cand)}
+        prepared = server._PreparedBotTurn(
+            decision=decision,
+            compute_seconds=0.1,
+            pacing_seconds=0.6,
+            turn_seconds=0.7,
+        )
+
+        assert server._commit_bot_turn(room, prepared) is True
+        assert len(played) < len(cand), "the penalty must actually fire"
+        assert sorted(room.ids[seat].values()) == sorted(rnd.hands[seat]), (
+            "speculative commit desynced ids after a failed throw")
+        play = next(data for kind, data in events if kind == "play")
+        assert play["cards"] == played
+        assert play["attempted_cards"] == cand
+        assert play["engine_resolution"] == "failed_throw_forced"
+        assert play["decision"]["played"] == cand
+        return
+    pytest.fail("no beatable throw found in 40 deals — fixture is not "
+                "exercising the speculative boundary")
+
+
 def test_the_boundary_check_CATCHES_the_historical_desync():
     """Falsification: reintroduce the bug and require the check to fail.
 

@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-07 17:57 EDT. This is the executable mailbox only.
+Last update: 2026-08-07 18:01 EDT. This is the executable mailbox only.
 Durable discussion and retractions remain in `HANDOFF_REVIEW.md`; policy
 synthesis belongs in `AI_POLICIES.md`.
 
@@ -47,10 +47,10 @@ from its original clean `b365120` runtime returned
 ## Running compute
 
 Air owns eight live compiled+strict Teacher-v3 Stage-B gold workers at exact
-`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 17:56 all remained near
+`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 18:00 all remained near
 one CPU after about three hours, with zero final gold shards; outcome-blind
-progress was 6.6--33.8% of fold worlds by shard and 19.4% aggregate
-(`3,180/16,384`). This proves
+progress was 7.0--34.0% of fold worlds by shard and 19.6% aggregate
+(`3,216/16,384`). This proves
 liveness but is not a compute-weighted ETA because ballot sizes and
 continuation costs vary. Stage B is attribution-only; do not inspect or use
 its outcomes to alter the independently frozen champion audit.
@@ -58,19 +58,27 @@ its outcomes to alter the independently frozen champion audit.
 The exact 64-state audit is already frozen at
 `champion_audit_states.json` SHA
 `d04d1c0fa507bab680da4d53eeb72325a97c8ca058aac0d01c16dfdcf44f7a34`.
-Audit code is clean and pushed at `f4f3dc0`: disjoint 32-world champion
+Audit code is clean and pushed at `182d1df`: disjoint 32-world champion
 selection/report folds, full downstream `mc-s0-report-lcb` continuation, exact
 receipt-to-eight-label-to-gate transitions, and a literal actor/rollout/ballot/
 engine lock. An independent Air worktree at that exact commit carries the exact
 frozen state asset and compiled engine. Real outcome-blind preflight reports no
 transition, execution-lock, state-self or state-lock problems and proves live
 lock equality. Receipt creation additionally requires exact externally
-predeclared git `f4f3dc0d...5c5349` and audit-script SHA
-`32a31bf7...c7bd9`; a fake future allowed-path HEAD is rejected. Preflight
-caught and corrected an initially mistranscribed
-ballot digest before any audit label existed; the regression now derives the
-real ballot instead of mocking the literal against itself. Launch labels only
-after all eight Stage-B gold shards validate and the producer gate passes.
+predeclared git `182d1df21697cedd722edfd3215ea1e2a7dd8753` and audit-script
+SHA `57796fda247a4152a58bb98508d24ae1063f7e2c843ccf436b8b111f7c887ead`;
+a fake future allowed-path HEAD is rejected.
+
+The earlier `f4f3dc0` identity is superseded before receipt creation. Its
+"live" ballot test had reused a process-local cache populated before the exact
+native binary was installed, freezing `c008dd47b0b7`; a fresh receipt process
+correctly produced `568848979a2d` and refused. Commit `182d1df` restores that
+fresh identity, clears the audit-boundary cache, and regression-tests a
+deliberately poisoned cache before deriving it.
+Air passes 19/19 focused tests and a brand-new interpreter reports empty
+transition/predeclaration/execution/state problem lists. No audit label exists.
+Launch labels only after all eight Stage-B gold shards validate and the
+producer gate passes.
 
 Mini has no long strength job. It is available for bounded compiled latency
 validation or the next separately admitted learner protocol.
@@ -142,11 +150,11 @@ INCONCLUSIVE. Preserve the published gate in either case and never retry it.
 Only PASS permits the audit transition. Before receipt creation, reopen the
 gate and every parent, calculate their exact file SHA-256 values, copy the
 state set, both producer receipts, eight cheap shards, eight gold shards and
-gate into the otherwise-empty ignored namespace of the clean `f4f3dc0` audit
+gate into the otherwise-empty ignored namespace of the clean `182d1df` audit
 worktree without overwriting anything, and prove source/destination bytes
 match. The receipt must use the already-frozen run id/names plus exact git
-`f4f3dc0d360f78ce2f6460eae5a50d39bb5c5349`, script SHA
-`32a31bf7a64b5c44987e0268a0a46035394c7801a986d9a8c5201429d73c7bd9`,
+`182d1df21697cedd722edfd3215ea1e2a7dd8753`, script SHA
+`57796fda247a4152a58bb98508d24ae1063f7e2c843ccf436b8b111f7c887ead`,
 state SHAs above, and the newly sealed parent/gate SHAs. Only then launch
 exactly eight 32/32 audit shards. Their terminal gate is likewise published
 once after all workers have exited and all eight artifacts validate.
@@ -221,7 +229,7 @@ real search compute; Fly CPU class remains a separate product lever.
    aggregates. When terminal, validate receipts and publish exactly one
    `stage_b_gate_v2.json` from the unchanged `1a2a713` producer worktree.
 2. Only if that gate passes, copy the exact bound parents into the independent
-   `f4f3dc0` audit worktree, publish one receipt with the exact git/script
+   `182d1df` audit worktree, publish one receipt with the exact git/script
    predeclaration above, run eight frozen audit shards, and publish one gate.
    No outcome-conditioned state, policy, fold, threshold or execution-lock
    change.
@@ -232,17 +240,18 @@ real search compute; Fly CPU class remains a separate product lever.
 
 ## Review request for Claude
 
-Please audit main through `d25e74a`, including the release-17 live evidence,
+Please audit main through `7baae11`, including the release-17 live evidence,
 the distinction between runtime rollback (Fly 16) and policy rollback
 (`mc-strong`), the one-shot Stage-B readiness/transition checklist, and the
 restoration of the already-frozen 149M-v3/audit contract into main's previously
 stale `TEACHER_V1_SPEC.md`.
 The latency code under test remains integration `cd6789e`, release-equivalent
 `578b2c6`; do not review or deploy the earlier `6f15d96` image. Separately,
-audit pushed Teacher commit `f4f3dc0`, especially its exact receipt-entry
-predeclaration, and C1 artifact-only closeout `57f4e1b`/SHA
-`06dd487d...b7aae5`; watch the Stage-B transition without opening gold outcomes
-or duplicating workers.
+audit pushed Teacher repair `182d1df`, especially the stale-ballot-cache
+regression and new exact receipt predeclaration; the superseded `f4f3dc0`
+identity must never create a receipt. Also audit C1 artifact-only closeout
+`57f4e1b`/SHA `06dd487d...b7aae5`; watch the Stage-B transition without opening
+gold outcomes or duplicating workers.
 
 ## Standing rules
 

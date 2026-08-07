@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 17:50 EDT
+## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 18:01 EDT
 
 Air has eight live compiled+strict `teacher_v1_label.py gold` workers in clean
 detached worktree `~/Projects/shengji-teacher-air` at exact commit
@@ -14,21 +14,26 @@ cannot change the independently frozen 64-state report-LCB continuation audit.
 
 All eight output finals remain absent and all eight Python workers plus their
 caffeinate children remain live after about three hours at roughly 76--81%
-CPU. An outcome-blind parse of progress events showed 6.3--33.2% of fold
-worlds by shard and `3,072/16,384` (18.75%) aggregate. This is a liveness
+CPU. An outcome-blind parse of progress events showed 7.0--34.0% of fold
+worlds by shard and `3,216/16,384` (19.6%) aggregate. This is a liveness
 counter, not a compute-weighted ETA: ballot sizes and continuation costs differ
 by state. No outcome file was opened. The exact one-shot readiness and gate
 command now live in `HANDOFF_ACTIVE.md`; in particular, filename appearance is
 not enough because publication precedes each worker's final provenance check.
 
 The separately pinned audit worktree now exists on Air at exact pushed commit
-`f4f3dc0`. It carries frozen state SHA `d04d1c0f...f7a34` and compiled-engine
-SHA `ef7c1618...66b4d`; its 19 focused tests pass. Real outcome-blind preflight
-returns empty transition/execution/state problem lists and exact live-lock
-equality. That preflight caught a wrongly transcribed ballot digest, repaired
-before any audit label was generated. Receipt creation also requires exact git
-`f4f3dc0d...5c5349` and script SHA `32a31bf7...c7bd9`; a fake future HEAD
-fails. Stage-B's running worktree was not modified.
+`182d1df21697cedd722edfd3215ea1e2a7dd8753`. It carries frozen state SHA
+`d04d1c0f...f7a34` and compiled-engine SHA `ef7c1618...66b4d`; its 19 focused
+tests pass. A fresh interpreter reports empty transition, exact-predeclaration,
+execution-lock, state-self and state-lock problem lists. Receipt creation also
+requires exact script SHA `57796fda...887ead`; a fake future HEAD fails.
+
+Superseded `f4f3dc0` must not create a receipt. Its apparent live-ballot pass
+reused an identity cached before the exact native binary was installed;
+restarting produced `568848979a2d`, not cached `c008dd47b0b7`, and correctly
+refused. `182d1df` restores the fresh identity and explicitly clears plus
+falsifies that cache at the audit publication boundary. This was repaired with
+zero audit labels and without modifying Stage B's running worktree.
 
 Operational names were frozen before any gold final existed: producer gate
 `stage_b_gate_v2.json`, audit run id

@@ -32,8 +32,10 @@ receipts and all eight cheap shards were regenerated at exact `1a2a713`; eight
 compiled+strict 64/64 N=30 gold workers are now running from that unchanged
 worktree. No final gold outcome has been opened. Separately, the 64-state
 report-LCB continuation audit was selected without label outcomes and is
-preflight-clean at exact `f4f3dc0`; it launches only after a terminal Stage-B
-PASS. None of this is yet teacher-quality, model or production evidence.
+preflight-clean at exact `182d1df`; it launches only after a terminal Stage-B
+PASS. Superseded `f4f3dc0` used a stale process-local ballot cache and may not
+create a receipt. None of this is yet teacher-quality, model or production
+evidence.
 
 The executable entry boundary is `server/shengji/teacher_v1.py`,
 `server/scripts/teacher_v1_states.py` and the singleton
@@ -308,11 +310,15 @@ fold added to Stage B after inspection:
 The audit state is already frozen at SHA-256
 `d04d1c0fa507bab680da4d53eeb72325a97c8ca058aac0d01c16dfdcf44f7a34`.
 Receipt creation requires exact audit git
-`f4f3dc0d360f78ce2f6460eae5a50d39bb5c5349` and exact audit-script SHA-256
-`32a31bf7a64b5c44987e0268a0a46035394c7801a986d9a8c5201429d73c7bd9`.
+`182d1df21697cedd722edfd3215ea1e2a7dd8753` and exact audit-script SHA-256
+`57796fda247a4152a58bb98508d24ae1063f7e2c843ccf436b8b111f7c887ead`.
 The continuation execution lock pins the literal report-LCB class, heuristic
-rollout class, full ballot, material AI/engine sources and compiled binary.
-Only a terminal Stage-B PASS may create its receipt or labels.
+rollout class, full ballot `mc_candidates@v1[568848979a2d]`, material AI/engine
+sources and compiled binary. The audit boundary clears the normal
+class/config ballot cache before deriving that identity; its regression first
+poisons the cache and proves a fresh derivation. Only a terminal Stage-B PASS
+may create its receipt or labels. Superseded `f4f3dc0` expected cached ballot
+`c008dd47b0b7` and is not an allowed receipt identity.
 
 Only the conjunction of the N=30 Stage-B gate and this audit may call the cheap
 target champion-fidelity-qualified for Stage C. It still does not promote a

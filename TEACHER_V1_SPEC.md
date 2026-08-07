@@ -1,15 +1,20 @@
 # Teacher-v1 staged experiment spec
 
-Status: the historical packet `teacher-v1-entry-120m-v1` is **REFUSED** after
-all eight captures and before diagnostics, state selection or labels. Its
-in-memory actor ballot used tuples while its JSON artifact used lists, so the
-supervisor falsely reported actor drift. Those artifacts remain historical and
-may never be resumed, relabelled or reinterpreted. The fresh repaired packet
-`teacher-v1-entry-143m-v2` is **ENTRY CODE GATE CLOSED / CAPTURE NEXT FROM A
-CLEAN COMMITTED WORKTREE**. Independent root re-review traced the complete
-capture -> diagnostic -> selected-state chain, added a terminal parent re-open
-and strict unset-key falsifications, and passed 76 focused plus 204 broader
-teacher/pilot tests on 2026-08-06. No promotable teacher evidence has run.
+Status (2026-08-07): historical packets `teacher-v1-entry-120m-v1` and
+`teacher-v1-entry-143m-v2` are **REFUSED** and immutable. V1 stopped after all
+eight captures because its in-memory ballot used tuples while JSON used lists.
+V2 also completed capture but stopped before diagnostics because the V11
+diagnostic actor could return a legal action outside its canonical ballot.
+
+The versioned repair `teacher-v1-entry-149m-v3` is
+**STAGE-A STATES FROZEN / STOPPED BEFORE RECEIPTS OR LABELS**. At clean pushed
+commit `be25b4d`, Air produced eight 128-deal captures and eight exact-parent
+diagnostics over seeds `149000000..149001023`, then froze 64 states at
+`server/runs/logs/teacher-v1-entry-149m-v3/stage_a_states.json`, SHA-256
+`e016373e8ecb9b6c7b6f3c14f8f4b14d9845f76478137f7a2c07249628cb4648`.
+The terminal supervisor record says `STAGE_A_STATES_FROZEN`,
+`labels_launched:false` and `stage_a_launched:false`. This is an accepted entry
+asset, not a teacher-quality result and not model or production evidence.
 
 The executable entry boundary is `server/shengji/teacher_v1.py`,
 `server/scripts/teacher_v1_states.py` and the singleton
@@ -27,14 +32,19 @@ teacher usefulness; a held-out teacher gain alone does not prove bot strength.
 
 ## First execution packet — frozen before capture
 
-Historical refused packet: `teacher-v1-entry-120m-v1`, exact seeds
-`120000000..120001023`. Preserve its completed captures in place. It produced
-no admissible diagnostic, frozen-state or label population.
+Historical refused packets:
 
-Fresh packet id: `teacher-v1-entry-143m-v2`.
+- `teacher-v1-entry-120m-v1`, seeds `120000000..120001023`: preserve its
+  completed captures in place; it produced no admissible diagnostic,
+  frozen-state or label population.
+- `teacher-v1-entry-143m-v2`, seeds `143000000..143001023`: preserve its
+  completed captures and off-ballot witness `143000001:44:0`; it produced no
+  admissible diagnostic, frozen-state or label population.
 
-- Capture exactly 1,024 fresh deals, seeds `143000000..143001023`, as eight
-  interleaved 128-deal shards (`seed0=143000000`, `max_deals=1024`, shard
+Accepted entry packet id: `teacher-v1-entry-149m-v3`.
+
+- Capture exactly 1,024 fresh deals, seeds `149000000..149001023`, as eight
+  interleaved 128-deal shards (`seed0=149000000`, `max_deals=1024`, shard
   indices `0..7`). All eight use the same clean commit, compiled engine, strict
   void mode, exact Python `3.14.6`, production `mc-strong` actor and three
   digest-pinned exam splits. The experimental flags
@@ -65,7 +75,7 @@ Fresh packet id: `teacher-v1-entry-143m-v2`.
   extension is admissible. A pre-label supply deficit closes this packet
   **INCONCLUSIVE**; predeclare a new larger fresh capture packet rather than
   appending deals.
-- Every v2 entry artifact through the 64-state freeze is first written to an
+- Every v3 entry artifact through the 64-state freeze is first written to an
   exclusive `.partial` and published by a no-overwrite hard link. A concurrent
   final, existing partial or dangling final symlink refuses and leaves the
   losing partial for diagnosis; no overwrite-capable rename is allowed on this
@@ -96,9 +106,11 @@ labelling and refuses to overwrite either a final or partial path.
 
 ## Immutable identity
 
-- Fresh self-play deal seeds start at `143000000`; one selected state per deal.
-- State actor is the version-pinned production champion. Store its checkpoint/
-  policy identity, git tree, engine, sampler, Memory, action encoder and exact
+- Fresh self-play deal seeds start at `149000000`; one selected state per deal.
+- State actor is the version-pinned `mc-strong` policy frozen by this packet;
+  it is not silently renamed to the subsequently deployed report-LCB policy.
+  Store its checkpoint/policy identity, git tree, engine, sampler, Memory,
+  action encoder and exact
   `BallotSpec` digests. Actor identity is converted to the JSON domain before
   hashing or comparison, so a write/read round trip is identical while a real
   ballot or source change still refuses.
@@ -166,6 +178,13 @@ is cheap. It is not presumed to be a valid teacher.
 Use 48 representative states (four per phase/role/decision cell) plus 16
 boundary/uncertainty states. Run the full 512-world label schema.
 
+The state-selection half of this stage is complete. The next authorized action
+is deliberately narrower than “run the teacher”: independently reopen the
+frozen SHA above, create one exclusive `stage-a-primary` receipt, run its eight
+canonical 8-state label shards, create a distinct `stage-a-rerun` receipt, run
+the same eight partitions again, then invoke the Stage-A gate. Do not launch
+Stage-B cheap/gold work on the 64-state set and do not append capture states.
+
 Pass requires 64/64 exact replays, complete legal held ballots, 512/512 accepted
 worlds per state, exact tensor shapes, fold disjointness, deterministic rerun
 hashes, all counters zero and a measured runtime/work projection. Failure stops
@@ -194,6 +213,16 @@ silently mixed into this gate. It may become a separately named teacher only
 after a registered solver is proved **information-set legal**; a solver that
 lets a player act on opponents' hidden hands is an oracle diagnostic, not a
 deployable gold continuation.
+
+The live champion changed after this estimand was written: report-LCB has two
+replicated development wins over `mc-strong` and is deployed pending RLCB-C1.
+Therefore, before any Stage-B receipt is created, make one explicit versioning
+decision. Either run the existing `mc-strong@N=30` gate unchanged as an
+attribution experiment, which cannot claim to exceed the live champion, or
+freeze a new gold-continuation schema using report-LCB (or another named
+stronger continuation) and update label/gate code and tests together. Never
+substitute the new policy under an old receipt. Stage A is unaffected because
+its cheap deterministic mechanics rerun contains no gold continuation.
 
 Choose the cheap action on its selection fold and the gold reference action on
 the gold-selection fold. On gold-report worlds, estimate paired signed-level
@@ -231,8 +260,11 @@ paired report-fold teacher regret versus candidate 0 and v11pair without a
 calibration regression. First integrate it as an MC ranker/pruner/allocator;
 do not force pairwise deltas into a cross-state leaf.
 
-Only a fresh paired full-game win over compiled `mc-strong` N=30 authorizes a
-10k/50k state wave or champion replacement. Use signed level utility as the
-primary metric, seat/team flips inside deal clusters, an explicit null and a
-single predeclared block. Failed data/model gates free the fleet for structured
-bury, exact-late or faithful self-play work; they do not authorize blind scale.
+A fresh paired full-game win over compiled `mc-strong` N=30 is the minimum
+research gate. Champion replacement additionally requires beating the live
+report-LCB parent (or its formally confirmed successor) under a versioned
+paired gate. Only that stronger result may authorize a 10k/50k state wave or
+deployment. Use signed level utility as the primary metric, seat/team flips
+inside deal clusters, an explicit null and a single predeclared block. Failed
+data/model gates free the fleet for structured bury, exact-late or faithful
+self-play work; they do not authorize blind scale.

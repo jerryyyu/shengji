@@ -3,12 +3,47 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / none at 2026-08-07 12:00 EDT
+## RUNNING / RLCB-C1 on Mini at 2026-08-07 13:42 EDT
 
-Formal S0 cleanup freed Mini. The next admitted compute is Direct-Q's six
-score-redacted 32-iteration preflights; no full learning screen is authorized
-until their wall/storage receipt passes. Air's next evidence job must wait for
-the V11-v2 artifact repair and versioned teacher actor gate.
+The clean pushed `ced1033` supervisor owns
+`server/runs/logs/rlcb-c1-150m-v1`: eight concurrent 256-cluster shards over
+fresh seeds `150000000..150002047`. Arms are exactly `mc-s0-report-lcb`,
+`mc-strong` and collision-free `mc-strong-null-rlcb-c1`; receipt SHA-256 is
+`02c286ed6e431ec807c4fe4040244e11c790c4a5b0ac5dd8f2ba186d275d39d0`.
+All eight processes and score-blind 30-second supervisor heartbeats are live.
+At this ledger update, every report-LCB worker had crossed 200/512 mirrored
+rounds; no shard was terminal and no score was opened. Do not share Mini with
+another heavy job, edit the bound checkout, or inspect partial outcomes.
+
+Air has no strength process after completing V11-v2 and Teacher-v3 entry. Its
+latest bounded job was the uncontended exact latency replay at pushed
+`9acafb1`: 100/100 semantic matches, compiled p50 0.172s, p95 0.357s, max
+0.422s, terminal gate PASS. Frozen result SHA-256 is
+`2623def50a91d96a9dc97bd63139ef28532c2ee389c1a0cc9b4631842c6dcd57`.
+The next admitted Air strength work is Teacher-v3 Stage-A primary/rerun
+mechanics after the 64-state parent reopen and receipt freeze.
+
+## COMPLETE / T1 learned-lane gates
+
+- **V11-v2 artifact repair / FAIL:** no games replayed; aggregate
+  `v11-current-revalidation-v2-repaired-d1d2019.aggregate.json`, SHA-256
+  `b7c90ba4c1a9bb421a4cfcc788dbf1eb44365868f65ee0eb58257b38205d21ad`.
+  V11-current `-0.141113 +/- 0.069823`, V11-null
+  `-0.109863 +/- 0.070111`, null-current `-0.031250 +/- 0.067878`.
+  Exact dose and null calibration passed; both superiority gates failed;
+  `protected_composition_authorized=false`.
+- **Teacher-v3 entry / FROZEN:** clean Air `be25b4d`, packet
+  `teacher-v1-entry-149m-v3`, 8x128 captures, eight diagnostics and exactly 64
+  Stage-A states. State-set SHA-256
+  `e016373e8ecb9b6c7b6f3c14f8f4b14d9845f76478137f7a2c07249628cb4648`;
+  terminal `STAGE_A_STATES_FROZEN`; no receipt or label launched.
+- **Direct-Q / SELECT NONE:** full admitted 512-iteration screen completed at
+  `server/runs/logs/direct-q-144m-v1`; aggregate SHA-256
+  `1fa6789eded784e03778f5ede841e45039579625477dbaa249d63c5ccc8ce791`.
+  Treatment-control gameplay `+0.162760 +/- 0.058755`, LCB `+0.104005`, with
+  all three seeds positive. Held-out Q learning failed all-seed consistency and
+  both pooled role LCBs, so `passed_learning_screen=false`,
+  `production_promotion=false`, `authorizes="nothing"` and no extension.
 
 ## COMPLETE / formal S0 closed outcome-blind (Mini)
 
@@ -51,7 +86,8 @@ Commit `ca556c2` made the S0e-v2 parent lock terminal and
 After verification, the loaded service namespace was required to equal exactly
 the eight inert `s0c_adaptive_lcb` labels with no live PID. Those eight labels
 were booted out and the full `com.shengji.s0mini.*` namespace rechecked empty.
-No run artifact or refusal receipt was deleted. Mini is free.
+No run artifact or refusal receipt was deleted. This freed Mini for the fresh
+RLCB-C1 confirmation now recorded at the top of this ledger.
 
 Separately, Jerry manually shipped `mc-s0-report-lcb` to production on the
 replicated S0a/b development evidence. That product decision does not rewrite
@@ -83,8 +119,9 @@ stored verdict is `anchor_test_authorized=false`. Aggregate:
 This is terminal evidence for exact commit `e66b90b`; never overwrite or
 reinterpret it. Its recorded encoder digest contains the silent banker-private-
 kitty drift fixed by `66aad44`, so it does not isolate the intended historical
-v11 model/encoder contract. A corrected, versioned direct block must use fresh
-disjoint seeds before corrected protected composition can launch.
+v11 model/encoder contract. The corrected, versioned direct block requested at
+that time is the terminal repaired-v2 FAIL recorded below; it did not authorize
+protected composition.
 
 ## REFUSED / teacher-v1 supervised entry packet v1 (Air; closed before diagnostics)
 
@@ -129,51 +166,46 @@ exists, and prove zero off-ballot outputs on the named capture/witness
 population. Claude's scratch fix measured 0/872 off-ballot decisions; that is
 diagnostic evidence, not yet an accepted code gate.
 
-## COMPUTE COMPLETE / V11 corrected-encoder direct v2 (artifact repair required)
+## COMPLETE / teacher supervised entry packet v3 (Air; 64 states frozen)
 
-The exact `cde0fec` 142M block spent its game compute under the restored
-public/no-private-kitty encoder contract. Seven shards published normally;
-shard 5 ended in its immutable `.FAILED` path after the consumer rejected an
-uncapped level utility outside `+/-1..3`. That bound belongs to the historical
-clipped RL target, not the uncapped house engine, so this is a validator defect
-rather than a reason to replay games.
+Pushed `be25b4d` made the v2 requirements executable: canonical ballot leads,
+sorted follows, literal one-candidate return and in-ballot fallback. The exact
+v2 refusal witness now plays the ballot action, and a broader 20-round scan
+covered 1,452 attacker/defender lead/follow decisions with zero off-ballot
+outputs. Packet `teacher-v1-entry-149m-v3` then ran from clean exact `be25b4d`
+under Python 3.14.6, compiled+strict execution and fresh 149M seeds.
 
-Preserve every raw/final/FAILED byte. The repair must be a new artifact-only
-consumer that:
+All eight 128-deal captures, eight exact-parent diagnostics and the one 64-state
+freeze completed. The state set contains 48 representative, eight boundary and
+eight uncertainty rows; SHA-256 is
+`e016373e8ecb9b6c7b6f3c14f8f4b14d9845f76478137f7a2c07249628cb4648`.
+Supervisor progress SHA-256 is
+`b7e3995e64012819e1df0b5024d13e30d5c5c1943ed801cba0898c975fc4511e`.
+The terminal record explicitly stops before Stage-A receipts/labels. Next work
+must create separate primary/rerun receipts and run the same eight canonical
+8-state label partitions twice; Stage-B cheap/gold is not yet authorized.
 
-- accepts the engine's uncapped integer utility while recomputing it from the
-  retained round record;
-- reopens exact source, checkpoint, encoder, ballot, runtime, seed/flip,
-  accepted-dose and sampler-counter identities;
-- publishes to a new exclusive namespace and binds the original terminal
-  failure;
-- never changes the stored direct verdict, never fabricates an activation
-  counter, and never reruns a game.
+## COMPLETE / V11 corrected-encoder direct v2 (artifact repaired / FAIL)
 
-The draft worktree at `/private/tmp/shengji-v11-v2-repair` is not accepted:
-its untracked repair script has a recursion defect and no committed tests.
-Review/fix it or replace it cleanly before publication.
+The original 142M bytes, including shard-5 `.FAILED`, remain immutable. Pushed
+repair `fe1ef1b` corrected only the consumer's false capped-utility assumption,
+recomputed uncapped signed utility from retained round records, reopened all
+source/runtime/seed/dose/counter contracts and published the aggregate named in
+the authoritative T1 section above. No game or source artifact was rewritten.
+The frozen decision rule failed, so current protected-anchor code remains
+launch-locked by the negative parent. Retain it for a future checkpoint and new
+parent; do not fill its digest with this failed aggregate.
 
-## READY / dependent strength code (no job launched)
+## COMPLETE / dependent Direct-Q gate; protected V11 held
 
-Corrected-parent protected composition is frozen at `b361836`, with empty-
-valued sampler/ballot environment-key refusal closed at `1354cac` and future
-policy-owned activation accounting at `c8358d2`. Commit `e026ed0` adds the
-future four-source cards/combos/encode/Memory identity through composition
-shard, aggregation and confirmation while leaving the frozen live parent bytes
-and two-source receipt exact. It remains launch-locked by
-`DIRECT_AGGREGATE_SHA256=None` until this live V11 block seals and also waits
-for terminal S0. Direct-Q's bounded learning screen is accepted at `7dbee75`:
-three exact treatment/no-step seeds, score-redacted preflights, separate
-iteration-256 resume, held-out seeded semantic replay, paired utility and
-terminal mutable-state reopening passed independent review and 95/95 focused
-tests. No Direct-Q process exists. Run its six 32-iteration preflights on Mini
-only after S0 releases capacity; review wall/storage before any full segment.
-Formal S0 is now terminal SELECT NONE and production separately runs
-report-LCB. Before launching any dependent screen, version which policy is the
-reference; the old parent code must not silently equate formal `mc-strong` with
-the live product candidate. Mini is free for Direct-Q's six preflights. None of
-these code gates by itself changes production.
+Direct-Q's six score-redacted preflights admitted the bounded full screen, and
+that screen completed with the terminal SELECT NONE recorded above. No
+additional iteration, favorable-seed retry or gate relaxation is authorized.
+The next implementation is the Suphx-style supervised microbaseline plus a
+larger predeclared held-out probe. Corrected-parent protected composition code
+is mechanically ready but this exact V11 parent failed, so no protected process
+exists. Structured bury and sampled-exact endgame remain separate, unlaunched
+strength hypotheses that must name report-LCB if their goal is champion gain.
 
 ## FROZEN PROTOCOL — S0a decision-rule screen
 

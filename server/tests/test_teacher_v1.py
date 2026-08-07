@@ -1020,6 +1020,36 @@ def test_live_cheap_record_is_json_domain_before_publication():
     assert json.loads(json.dumps(record, sort_keys=True)) == record
 
 
+def test_gold_fold_progress_is_periodic_final_and_artifact_neutral(monkeypatch):
+    monkeypatch.setattr(
+        label, "rollout_gold",
+        lambda *_args, **_kwargs: (
+            80.0,
+            {name: 0 for name in label.SAMPLER_COUNTERS},
+            stable_digest("trace"), 1, 30, 1,
+        ),
+    )
+    monkeypatch.setattr(label, "tensor_problems", lambda *_args: [])
+    rnd = SimpleNamespace(is_attacker=lambda _seat: True)
+    state = {"experiment_id": EXPERIMENT, "state_id": "progress-state",
+             "seed": SEED_START}
+    worlds = [(None, None)] * 5
+    candidates = [[1], [2]]
+    events = []
+    with_progress = label.score_gold_fold(
+        object(), rnd, 0, candidates, worlds, {}, state=state,
+        fold="gold_selection", progress=events.append,
+    )
+    without_progress = label.score_gold_fold(
+        object(), rnd, 0, candidates, worlds, {}, state=state,
+        fold="gold_selection",
+    )
+    assert with_progress == without_progress
+    assert [(event["worlds_complete"], event["worlds_total"])
+            for event in events] == [(4, 5), (5, 5)]
+    assert all(event["state_id"] == "progress-state" for event in events)
+
+
 def test_state_and_cheap_parent_refuse_executable_generation_drift():
     digests = label.source_digests()
     runtime = {"git": label.git_output("rev-parse", "HEAD")}

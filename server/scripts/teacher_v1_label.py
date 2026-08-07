@@ -67,6 +67,7 @@ RUNTIME_BINDING_FIELDS = (
     "git", "tree_dirty", "promotable", "host", "python", "fast_engine",
     "require_voids", "experimental_sampler_ballot_flags",
 )
+GOLD_PROGRESS_WORLD_INTERVAL = 4
 
 
 def sha256_file(path: str | os.PathLike) -> str:
@@ -398,7 +399,8 @@ def rollout_gold(rnd, seat: int, hands, buried, candidate, *,
 
 
 def score_gold_fold(sampler, rnd, seat: int, candidates, worlds, fold_meta: dict,
-                    *, state: dict, fold: str) -> dict:
+                    *, state: dict, fold: str,
+                    progress: Callable[[dict], None] | None = None) -> dict:
     tensor = _empty_tensor()
     continuation_trace_digests, continuation_decisions = [], []
     inner_counters = Counter({name: 0 for name in SAMPLER_COUNTERS})
@@ -429,6 +431,17 @@ def score_gold_fold(sampler, rnd, seat: int, candidates, worlds, fold_meta: dict
             tensor[name].append(rows[name])
         continuation_trace_digests.append(digest_row)
         continuation_decisions.append(decisions_row)
+        worlds_complete = world_index + 1
+        if (progress is not None
+                and (worlds_complete % GOLD_PROGRESS_WORLD_INTERVAL == 0
+                     or worlds_complete == len(worlds))):
+            progress({
+                "kind": "gold-fold",
+                "state_id": state["state_id"],
+                "fold": fold,
+                "worlds_complete": worlds_complete,
+                "worlds_total": len(worlds),
+            })
     result = {
         **fold_meta,
         "continuation_policy": "mc-strong",
@@ -452,7 +465,8 @@ def score_gold_fold(sampler, rnd, seat: int, candidates, worlds, fold_meta: dict
     return result
 
 
-def gold_record(cheap: dict, sampler, counts: dict[str, int]) -> dict:
+def gold_record(cheap: dict, sampler, counts: dict[str, int], *,
+                progress: Callable[[dict], None] | None = None) -> dict:
     state = cheap["state"]
     rnd = replay_state(state)
     seat = state["seat"]
@@ -488,7 +502,8 @@ def gold_record(cheap: dict, sampler, counts: dict[str, int]) -> dict:
         )
         outer_totals.update(meta["sampler_counters"])
         folds[fold] = score_gold_fold(
-            sampler, rnd, seat, candidates, worlds, meta, state=state, fold=fold
+            sampler, rnd, seat, candidates, worlds, meta, state=state,
+            fold=fold, progress=progress,
         )
         inner_totals.update(folds[fold]["inner_sampler_counters"])
     gold_selection = folds["gold_selection"]["tensor"]["signed_level_utility"]
@@ -1020,6 +1035,17 @@ def main() -> None:
     try:
         runtime = runtime_contract(args.smoke)
         frozen_source_digests = source_digests()
+
+        def emit_progress(fields: dict) -> None:
+            print(json.dumps({
+                "event": "teacher-v1-progress",
+                "stage": args.stage,
+                "mode": args.mode,
+                "shard_index": args.shard_index,
+                "shard_count": args.shard_count,
+                **fields,
+            }, sort_keys=True), flush=True)
+
         if not 0 <= args.shard_index < args.shard_count:
             raise TeacherProtocolError("invalid shard index/count")
         if not args.smoke and args.shard_count != CAPTURE_SHARDS:
@@ -1062,7 +1088,15 @@ def main() -> None:
             bot = make_bot("mc-strong", seed=1)
             counts = {"selection": args.selection_worlds,
                       "report": args.report_worlds}
-            records = [cheap_record(state, bot, counts) for state in selected]
+            records = []
+            for state_index, state in enumerate(selected, 1):
+                records.append(cheap_record(state, bot, counts))
+                emit_progress({
+                    "kind": "state",
+                    "state_id": state["state_id"],
+                    "states_complete": state_index,
+                    "states_total": len(selected),
+                })
             schema = CHEAP_SHARD_SCHEMA
             continuation = "heuristic"
             input_experiment = source.get("experiment_id")
@@ -1117,7 +1151,17 @@ def main() -> None:
             bot = make_bot("mc-strong", seed=1)
             counts = {"gold_selection": args.gold_selection_worlds,
                       "gold_report": args.gold_report_worlds}
-            records = [gold_record(record, bot, counts) for record in selected]
+            records = []
+            for state_index, record in enumerate(selected, 1):
+                records.append(gold_record(
+                    record, bot, counts, progress=emit_progress,
+                ))
+                emit_progress({
+                    "kind": "state",
+                    "state_id": record["state_id"],
+                    "states_complete": state_index,
+                    "states_total": len(selected),
+                })
             schema = GOLD_SHARD_SCHEMA
             continuation = "mc-strong@N=30"
             input_experiment = source.get("experiment_id")

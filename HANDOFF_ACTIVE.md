@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-07 17:31 EDT. This is the executable mailbox only.
+Last update: 2026-08-07 17:50 EDT. This is the executable mailbox only.
 Durable discussion and retractions remain in `HANDOFF_REVIEW.md`; policy
 synthesis belongs in `AI_POLICIES.md`.
 
@@ -47,9 +47,10 @@ from its original clean `b365120` runtime returned
 ## Running compute
 
 Air owns eight live compiled+strict Teacher-v3 Stage-B gold workers at exact
-`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 17:23 all remained near
-one CPU after about 2h40, with zero final gold shards; outcome-blind progress
-was 5.9--33.0% of fold worlds by shard and 18.3% aggregate. This proves
+`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 17:48 all remained near
+one CPU after about three hours, with zero final gold shards; outcome-blind
+progress was 6.3--33.2% of fold worlds by shard and 18.75% aggregate
+(`3,072/16,384`). This proves
 liveness but is not a compute-weighted ETA because ballot sizes and
 continuation costs vary. Stage B is attribution-only; do not inspect or use
 its outcomes to alter the independently frozen champion audit.
@@ -92,6 +93,63 @@ The audit dose is exactly eight shards and disjoint 32/32 outer
 selection/report worlds; its downstream continuation remains literal deployed
 report-LCB N=30/R=300. A non-PASS Stage-B gate ends this packet without an
 audit receipt or labels.
+
+### One-shot Stage-B transition checklist
+
+Do not run the terminal gate merely because eight filenames appear. Readiness
+requires all eight `stage_b_gold_v2_shard00..07.json` files to be regular
+files, zero matching `.partial` files, zero live `teacher_v1_label.py gold`
+workers, an unchanged clean producer at exact
+`1a2a71333ea283784b19855e67e1ae231379ec79`, exact
+`stage_b_states.json` SHA `90956da8...dc6`, and no existing
+`stage_b_gate_v2.json` or partial. The final hard link appears before each
+worker's last provenance recheck, which is why process exit and partial
+absence are both required.
+
+Once those conditions hold, run exactly one producer gate from
+`~/Projects/shengji-teacher-air/server` with compiled+strict flags and all
+eight inputs in shard order:
+
+```sh
+env -u SHENGJI_WEIGHTED_SPLITS -u SHENGJI_UNIFORM_DEAL \
+  -u SHENGJI_PHYSICAL_FILLS -u SHENGJI_ALLOW_BALLOT_MISMATCH \
+  SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 \
+  .venv/bin/python scripts/teacher_v1_gate.py stage-b \
+  --cheap runs/logs/teacher-v1-entry-149m-v3/stage_b_cheap_v2_shard00.json \
+  --cheap runs/logs/teacher-v1-entry-149m-v3/stage_b_cheap_v2_shard01.json \
+  --cheap runs/logs/teacher-v1-entry-149m-v3/stage_b_cheap_v2_shard02.json \
+  --cheap runs/logs/teacher-v1-entry-149m-v3/stage_b_cheap_v2_shard03.json \
+  --cheap runs/logs/teacher-v1-entry-149m-v3/stage_b_cheap_v2_shard04.json \
+  --cheap runs/logs/teacher-v1-entry-149m-v3/stage_b_cheap_v2_shard05.json \
+  --cheap runs/logs/teacher-v1-entry-149m-v3/stage_b_cheap_v2_shard06.json \
+  --cheap runs/logs/teacher-v1-entry-149m-v3/stage_b_cheap_v2_shard07.json \
+  --gold runs/logs/teacher-v1-entry-149m-v3/stage_b_gold_v2_shard00.json \
+  --gold runs/logs/teacher-v1-entry-149m-v3/stage_b_gold_v2_shard01.json \
+  --gold runs/logs/teacher-v1-entry-149m-v3/stage_b_gold_v2_shard02.json \
+  --gold runs/logs/teacher-v1-entry-149m-v3/stage_b_gold_v2_shard03.json \
+  --gold runs/logs/teacher-v1-entry-149m-v3/stage_b_gold_v2_shard04.json \
+  --gold runs/logs/teacher-v1-entry-149m-v3/stage_b_gold_v2_shard05.json \
+  --gold runs/logs/teacher-v1-entry-149m-v3/stage_b_gold_v2_shard06.json \
+  --gold runs/logs/teacher-v1-entry-149m-v3/stage_b_gold_v2_shard07.json \
+  --state-set runs/logs/teacher-v1-entry-149m-v3/stage_b_states.json \
+  --expected-state-set-sha256 \
+  90956da86f4f03074a1b4dc2d7198a3da5958470b733eacd104e066c523b4dc6 \
+  --out runs/logs/teacher-v1-entry-149m-v3/stage_b_gate_v2.json
+```
+
+Exit 0 means terminal PASS; exit 4 means a valid terminal FAIL or
+INCONCLUSIVE. Preserve the published gate in either case and never retry it.
+Only PASS permits the audit transition. Before receipt creation, reopen the
+gate and every parent, calculate their exact file SHA-256 values, copy the
+state set, both producer receipts, eight cheap shards, eight gold shards and
+gate into the otherwise-empty ignored namespace of the clean `f4f3dc0` audit
+worktree without overwriting anything, and prove source/destination bytes
+match. The receipt must use the already-frozen run id/names plus exact git
+`f4f3dc0d360f78ce2f6460eae5a50d39bb5c5349`, script SHA
+`32a31bf7a64b5c44987e0268a0a46035394c7801a986d9a8c5201429d73c7bd9`,
+state SHAs above, and the newly sealed parent/gate SHAs. Only then launch
+exactly eight 32/32 audit shards. Their terminal gate is likewise published
+once after all workers have exited and all eight artifacts validate.
 
 ## Production latency hardening
 

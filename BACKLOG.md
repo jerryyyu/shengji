@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-07 17:31 EDT.
+Last re-derived: 2026-08-07 17:50 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -74,7 +74,7 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 |---|---|---|
 | **T1 / Lane A production latency — COMPLETE / LIVE MONITOR** | Keep the first stronger-than-MC production policy enjoyable to play | Fly release 17 runs exact `latency-cd6789e` / `047bcfe4...5b300`. Health, native activation, claim, reconnect, stale-discard, X-ray isolation and concurrent WebSocket responsiveness passed live. Keep release 16 as the runtime rollback and `mc-strong` as the separate policy rollback; collect ordinary human-room timing before considering a CPU resize. |
 | **T1 / Lane A.1 V11pair — COMPLETE / SELECT NONE** | Preserve the learned milestone without forcing it into the champion | Artifact repair passed; the frozen rule rejected protected composition. Keep v11 as a bounded proposer/ranker and teacher diagnostic only. No protected-anchor run is authorized. |
-| **T1 / Lane B teacher — STAGE-B RUNNING; AUDIT PREFLIGHT PASS** | Generate counterfactual data capable of exceeding the old heuristic continuation | Complete and validate all eight attribution-only gold shards, seal the Stage-B gate, then label the separately frozen 64-state champion-continuation audit at exact `f4f3dc0`/script SHA `32a31bf7...c7bd9`. Its real Air preflight binds the literal report-LCB actor, rollout, ballot, engine and frozen state; its receipt rejects any other HEAD/script and no Stage-B outcome may tune it. |
+| **T1 / Lane B teacher — STAGE-B RUNNING; AUDIT PREFLIGHT PASS** | Generate counterfactual data capable of exceeding the old heuristic continuation | Eight Air workers remain healthy; the outcome-blind fold counter was 18.75% at 17:48, not an ETA. Complete and validate all eight attribution-only gold shards, seal the Stage-B gate exactly once under the readiness checklist in `HANDOFF_ACTIVE.md`, then—and only on PASS—label the separately frozen 64-state champion-continuation audit at exact `f4f3dc0`/script SHA `32a31bf7...c7bd9`. Its real Air preflight binds the literal report-LCB actor, rollout, ballot, engine and frozen state; its receipt rejects any other HEAD/script and no Stage-B outcome may tune it. |
 | **T1 / Lane C Direct-Q — COMPLETE / SELECT NONE** | Learn from the failure without selecting its positive gameplay tail | Preserve aggregate SHA `1fa6789e…791`; do not deploy, extend or mutate the 144M recipe. The next learner requires a separately frozen Suphx-style or other role-correct microbaseline gate. |
 | **RLCB-C1 fresh confirmation — COMPLETE / ARTIFACT-ONLY CONFIRM** | Close formal report-LCB superiority | 2,048/2,048 fresh clusters, exact doses, zero stream collisions, sane null and positive superiority LCB. The late dirty-doc supervisor refusal is bound by non-replay closeout SHA `06dd487d…b7aae5`; preserve aggregate SHA `83f5a9df…f5ef5ea`. No extension or S0c reinterpretation remains. |
 | **Formal S0 — COMPLETE / SELECT NONE** | Preserve the burned S0c evidence boundary | Closeout `ef0a365…fde9a`, terminal parent `ca556c2`, no parsed outcomes, no retry/extension, and an empty S0 service namespace. There is no remaining S0c work. |

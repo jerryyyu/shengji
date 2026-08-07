@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 17:31 EDT
+## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 17:50 EDT
 
 Air has eight live compiled+strict `teacher_v1_label.py gold` workers in clean
 detached worktree `~/Projects/shengji-teacher-air` at exact commit
@@ -13,11 +13,13 @@ and remain near one CPU each. This block is attribution-only. Its outcomes
 cannot change the independently frozen 64-state report-LCB continuation audit.
 
 All eight output finals remain absent and all eight Python workers plus their
-caffeinate parents remain live after about 2h40 at roughly 79--86% CPU. An
-outcome-blind parse of progress events showed 5.9--33.0% of fold worlds by
-shard and 18.3% aggregate. This is a liveness counter, not a compute-weighted
-ETA: ballot sizes and continuation costs differ by state. No outcome file was
-opened.
+caffeinate children remain live after about three hours at roughly 76--81%
+CPU. An outcome-blind parse of progress events showed 6.3--33.2% of fold
+worlds by shard and `3,072/16,384` (18.75%) aggregate. This is a liveness
+counter, not a compute-weighted ETA: ballot sizes and continuation costs differ
+by state. No outcome file was opened. The exact one-shot readiness and gate
+command now live in `HANDOFF_ACTIVE.md`; in particular, filename appearance is
+not enough because publication precedes each worker's final provenance check.
 
 The separately pinned audit worktree now exists on Air at exact pushed commit
 `f4f3dc0`. It carries frozen state SHA `d04d1c0f...f7a34` and compiled-engine

@@ -57,6 +57,7 @@ def _case(tmp_path, name="case", *, model_seed=11, rng_seed=13,
             segment_id="test-segment",
             keep_probabilities=(1.0, 0.0),
             learning_rate=LEARNING_RATE,
+            deal_stream_root_seed=ROOT_SEED,
         )
     bundle = new_bundle(
         model_seed=model_seed,
@@ -79,6 +80,7 @@ def _case(tmp_path, name="case", *, model_seed=11, rng_seed=13,
 def test_learning_contract_and_schedule_bind_every_material_choice():
     assert LEARNING_SPEC_SHA256 == contract_digest(LEARNING_SPEC)
     assert LEARNING_SPEC["source_sha256s"] == LEARNING_SOURCE_SHA256S
+    assert "actor digest" in LEARNING_SPEC["causal_deals"]
     assert LEARNING_SPEC["objective"]["value_coefficient"] == \
         VALUE_COEFFICIENT
     assert LEARNING_SPEC["objective"][
@@ -94,27 +96,35 @@ def test_learning_contract_and_schedule_bind_every_material_choice():
 
     schedule = SuphxSchedule(
         segment_id="curriculum", keep_probabilities=(1.0, 0.5, 0.0),
-        learning_rate=LEARNING_RATE)
+        learning_rate=LEARNING_RATE, deal_stream_root_seed=ROOT_SEED)
     assert algorithm_sha256(schedule) == state_digest(algorithm_spec(schedule))
     for changed in (
-        SuphxSchedule("other", schedule.keep_probabilities, LEARNING_RATE),
-        SuphxSchedule("curriculum", (1.0, 0.4, 0.0), LEARNING_RATE),
-        SuphxSchedule("curriculum", schedule.keep_probabilities, 1e-4),
+        SuphxSchedule(
+            "other", schedule.keep_probabilities, LEARNING_RATE, ROOT_SEED),
+        SuphxSchedule(
+            "curriculum", (1.0, 0.4, 0.0), LEARNING_RATE, ROOT_SEED),
+        SuphxSchedule(
+            "curriculum", schedule.keep_probabilities, 1e-4, ROOT_SEED),
+        SuphxSchedule(
+            "curriculum", schedule.keep_probabilities, LEARNING_RATE,
+            ROOT_SEED + 1),
     ):
         assert algorithm_sha256(changed) != algorithm_sha256(schedule)
 
 
 @pytest.mark.parametrize("kwargs", [
     {"segment_id": "", "keep_probabilities": (1.0,),
-     "learning_rate": LEARNING_RATE},
+     "learning_rate": LEARNING_RATE, "deal_stream_root_seed": ROOT_SEED},
     {"segment_id": "bad segment", "keep_probabilities": (1.0,),
-     "learning_rate": LEARNING_RATE},
+     "learning_rate": LEARNING_RATE, "deal_stream_root_seed": ROOT_SEED},
     {"segment_id": "x", "keep_probabilities": (),
-     "learning_rate": LEARNING_RATE},
+     "learning_rate": LEARNING_RATE, "deal_stream_root_seed": ROOT_SEED},
     {"segment_id": "x", "keep_probabilities": (1.1,),
-     "learning_rate": LEARNING_RATE},
+     "learning_rate": LEARNING_RATE, "deal_stream_root_seed": ROOT_SEED},
     {"segment_id": "x", "keep_probabilities": (1.0,),
-     "learning_rate": 0.0},
+     "learning_rate": 0.0, "deal_stream_root_seed": ROOT_SEED},
+    {"segment_id": "x", "keep_probabilities": (1.0,),
+     "learning_rate": LEARNING_RATE, "deal_stream_root_seed": -1},
 ])
 def test_schedule_refuses_invalid_identity_probability_and_rate(kwargs):
     with pytest.raises(SuphxLearningError):
@@ -171,6 +181,7 @@ def test_interrupted_resume_matches_across_privilege_boundary(tmp_path):
         segment_id="one-to-zero",
         keep_probabilities=(1.0, 0.0),
         learning_rate=LEARNING_RATE,
+        deal_stream_root_seed=ROOT_SEED,
     )
     live_bundle, _, live, _ = _case(
         tmp_path, "live", model_seed=101, rng_seed=23, schedule=schedule)
@@ -222,12 +233,29 @@ def test_update_refuses_sample_schedule_drift(tmp_path):
     class _ChangedCollector:
         def __call__(self, identity):
             batch = SuphxMicroCollector(
-                identity.contract_sha256, 0.5)(identity)
+                identity.contract_sha256, 0.5,
+                schedule.deal_stream_root_seed)(identity)
             return batch
 
     with pytest.raises(SuphxLearningError, match="frozen schedule"):
         runner.run_iteration(
             _ChangedCollector(), SuphxPolicyGradientUpdate(schedule))
+
+
+def test_update_refuses_actor_independent_deal_stream_drift(tmp_path):
+    _, _, runner, schedule = _case(tmp_path)
+
+    class _ChangedDealCollector:
+        def __call__(self, identity):
+            return SuphxMicroCollector(
+                identity.contract_sha256,
+                schedule.keep_probability(identity.sequence),
+                schedule.deal_stream_root_seed + 1,
+            )(identity)
+
+    with pytest.raises(SuphxLearningError, match="deal stream"):
+        runner.run_iteration(
+            _ChangedDealCollector(), SuphxPolicyGradientUpdate(schedule))
 
 
 def test_schedule_exhaustion_refuses_third_batch(tmp_path):
@@ -245,7 +273,7 @@ def test_resume_refuses_schedule_drift(tmp_path):
     checkpoint = runner.save_checkpoint(tmp_path / "resume.pt")
     changed = SuphxSchedule(
         segment_id="changed", keep_probabilities=(1.0, 0.0),
-        learning_rate=LEARNING_RATE)
+        learning_rate=LEARNING_RATE, deal_stream_root_seed=ROOT_SEED)
     restored_bundle = new_bundle(
         model_seed=999, learner_rng_seed=999,
         learning_rate=changed.learning_rate)

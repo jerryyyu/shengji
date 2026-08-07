@@ -22,6 +22,7 @@ from shengji.rl.suphx_actor import (  # noqa: E402
     SuphxOrdinaryActor,
     _sample_index,
     actor_batch_bytes,
+    clipped_attacker_bracket_return,
     load_actor,
     publish_initial_actor,
     validate_sample,
@@ -73,8 +74,14 @@ def test_actor_contract_binds_sources_ballot_sampling_and_direct_reward():
     assert ACTOR_SPEC["ballot"]["ordered_complete_ballot_stored"] is True
     assert ACTOR_SPEC["sampling"]["one_uniform_draw_per_decision"] is True
     assert ACTOR_SPEC["sampling"]["mask_rng_separate_from_action_rng"] is True
+    assert ACTOR_SPEC["sampling"][
+        "deal_rng_separate_from_mask_and_action_rngs"] is True
+    assert ACTOR_SPEC["sampling"][
+        "deal_seed_excludes_actor_and_arm_identity"] is True
+    assert ACTOR_SPEC["reward"]["not_uncapped_engine_level_change"] is True
     assert ACTOR_SPEC["reward"]["oracle_scalar"] is False
     assert ACTOR_SPEC["controls"]["ordinary_play_fallback"] is False
+    assert clipped_attacker_bracket_return(240) == 3.5
 
 
 def test_actor_requires_separate_local_rngs_and_refuses_other_surfaces():
@@ -117,7 +124,7 @@ def test_real_actor_batch_is_exactly_replayable_and_complete(
         tmp_path, keep_probability):
     identity = _identity(tmp_path, model_seed=int(keep_probability * 8) + 11)
     collector = SuphxMicroCollector(
-        identity.contract_sha256, keep_probability)
+        identity.contract_sha256, keep_probability, ROOT_SEED)
     python_state = random.getstate()
     numpy_state = np.random.get_state()
     torch_state = torch.get_rng_state().clone()
@@ -136,7 +143,8 @@ def test_real_actor_batch_is_exactly_replayable_and_complete(
         assert sample["action_cards"] == \
             sample["candidate_cards"][sample["chosen_index"]]
         assert sample["target"] == (-1 if sample["role"] else 1) * \
-            sample["attacker_return"]
+            sample["attacker_bracket_return"]
+        assert sample["deal_stream_root_seed"] == ROOT_SEED
         if keep_probability == 0.0:
             assert np.count_nonzero(sample["mask"]) == 0
         elif keep_probability == 1.0:
@@ -166,7 +174,8 @@ def test_actor_checkpoint_is_digest_verified(tmp_path):
 def test_sample_validation_refuses_contract_action_probability_and_target_drift(
         tmp_path, mutation):
     identity = _identity(tmp_path, model_seed=29)
-    batch = SuphxMicroCollector(identity.contract_sha256, 0.5)(identity)
+    batch = SuphxMicroCollector(
+        identity.contract_sha256, 0.5, ROOT_SEED)(identity)
     sample = copy.deepcopy(batch.samples[0])
     sample.update(mutation)
     with pytest.raises(SuphxActorError):
@@ -176,7 +185,34 @@ def test_sample_validation_refuses_contract_action_probability_and_target_drift(
 def test_collector_refuses_contract_and_round_count_drift(tmp_path):
     identity = _identity(tmp_path)
     with pytest.raises(SuphxActorError, match="round count"):
-        SuphxMicroCollector(identity.contract_sha256, 0.5, rounds_per_batch=2)
-    collector = SuphxMicroCollector("b" * 64, 0.5)
+        SuphxMicroCollector(
+            identity.contract_sha256, 0.5, ROOT_SEED,
+            rounds_per_batch=2)
+    with pytest.raises(SuphxActorError, match="deal stream root"):
+        SuphxMicroCollector(identity.contract_sha256, 0.5, -1)
+    collector = SuphxMicroCollector("b" * 64, 0.5, ROOT_SEED)
     with pytest.raises(SuphxActorError, match="identity/contract"):
         collector(identity)
+
+
+def test_causal_arms_share_deal_but_not_actor_mask_or_action_streams(tmp_path):
+    left_identity = _identity(tmp_path, seed=111, model_seed=41)
+    right_identity = _identity(tmp_path, seed=222, model_seed=43)
+    collector = SuphxMicroCollector(
+        left_identity.contract_sha256, 0.5, ROOT_SEED)
+
+    left = collector(left_identity)
+    right = collector(right_identity)
+    left_first = left.samples[0]
+    right_first = right.samples[0]
+
+    assert left_identity.actor_ref.sha256 != right_identity.actor_ref.sha256
+    assert left_first["game_seed"] == right_first["game_seed"]
+    assert left_first["deal_stream_root_seed"] == \
+        right_first["deal_stream_root_seed"] == ROOT_SEED
+    assert np.array_equal(
+        left_first["observation"], right_first["observation"])
+    assert np.array_equal(left_first["perfect"], right_first["perfect"])
+    assert left_first["candidate_cards"] == right_first["candidate_cards"]
+    assert left_first["action_draw"] != right_first["action_draw"]
+    assert not np.array_equal(left_first["mask"], right_first["mask"])

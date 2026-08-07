@@ -1,10 +1,11 @@
 """Immutable ordinary-play actor boundary for the Suphx microbaseline.
 
 The actor uses separate named RNG streams for Bernoulli privilege masks and
-policy sampling, records the complete ordered ballot and behavior probability,
-and emits direct role-signed terminal-return samples.  This module deliberately
-contains no learner update, curriculum schedule, CLI, registry entry, evidence
-gate, or production policy.
+policy sampling, plus an externally frozen actor-independent deal stream.  It
+records the complete ordered ballot and behavior probability and emits clipped
+role-signed attacker-point-bracket samples.  This module deliberately contains
+no learner update, curriculum schedule, CLI, registry entry, evidence gate, or
+production policy.
 """
 from __future__ import annotations
 
@@ -25,9 +26,15 @@ from ..ai.smart import SmartBot
 from ..engine.game import Game
 from ..engine.round import Round
 from .actions import enumerate_actions
-from .douzero_micro import (BALLOT_SCHEMA, HISTORY_EVENT_DIM,
-                            HISTORY_MAX_EVENTS, ROLE_ATTACKER, ROLE_DEFENDER,
-                            acting_team_return, terminal_attacker_return)
+from .douzero_micro import (
+    BALLOT_SCHEMA,
+    HISTORY_EVENT_DIM,
+    HISTORY_MAX_EVENTS,
+    ROLE_ATTACKER,
+    ROLE_DEFENDER,
+    acting_team_return,
+    terminal_attacker_return as _legacy_clipped_attacker_bracket,
+)
 from .encode import ACT_DIM, CARD_INDEX, OBS_DIM, encode_action
 from .exact_resume import state_digest
 from .selfplay_contract import (CheckpointRef, load_verified,
@@ -42,10 +49,10 @@ from .suphx_policy import (POLICY_SPEC_SHA256, SURFACE_NAMES,
 from .synchronous_selfplay import (ActorBatchIdentity, SynchronousActorBatch)
 
 
-ACTOR_SCHEMA = "suphx-micro-immutable-ordinary-actor-v1"
-SAMPLE_SCHEMA = "suphx-micro-policy-gradient-sample-v1"
-REWARD_SCHEMA = "direct-acting-team-level-bracket-v1"
-EXPLORATION_SCHEMA = "categorical-named-python-stream-v1"
+ACTOR_SCHEMA = "suphx-micro-immutable-ordinary-actor-v2"
+SAMPLE_SCHEMA = "suphx-micro-policy-gradient-sample-v2"
+REWARD_SCHEMA = "clipped-acting-team-attacker-point-bracket-v2"
+EXPLORATION_SCHEMA = "categorical-and-causal-deal-named-streams-v2"
 ROUNDS_PER_BATCH = 1
 
 _SOURCE_ROOT = Path(__file__).resolve().parents[1]
@@ -82,11 +89,18 @@ ACTOR_SPEC: dict[str, Any] = {
         "distribution": "softmax_policy_logits",
         "one_uniform_draw_per_decision": True,
         "mask_rng_separate_from_action_rng": True,
+        "deal_rng_separate_from_mask_and_action_rngs": True,
+        "deal_stream_root_externally_frozen": True,
+        "deal_seed_excludes_actor_and_arm_identity": True,
         "mask_schema": MASK_SCHEMA,
     },
     "reward": {
         "schema": REWARD_SCHEMA,
-        "target": "role_sign * direct terminal level-bracket return",
+        "target": (
+            "role_sign * clipped attacker-point terminal bracket in "
+            "{-3.5,-2.5,-1.5,0.5,1.5,2.5,3.5}"
+        ),
+        "not_uncapped_engine_level_change": True,
         "oracle_scalar": False,
     },
     "controls": {
@@ -101,6 +115,17 @@ ACTOR_SPEC_SHA256 = state_digest(ACTOR_SPEC)
 
 class SuphxActorError(SuphxMicroError):
     """The immutable actor/sample contract was violated."""
+
+
+def clipped_attacker_bracket_return(attacker_points: int) -> float:
+    """Legacy bounded attacker-point bracket, named without overclaiming.
+
+    This is intentionally not ``RoundResult.level_change``: attacker results
+    above the third 40-point step remain capped at ``+3.5``.  The bounded O0/O1
+    launch packet may compare this target, but may not describe it as uncapped
+    engine progression utility.
+    """
+    return _legacy_clipped_attacker_bracket(attacker_points)
 
 
 def _child_seed(parent: int, domain: str, sequence: int) -> int:
@@ -268,7 +293,8 @@ class _ExplicitSurfaceComposite:
 def _sample_from_record(
         record: _DecisionRecord, *, identity: ActorBatchIdentity,
         round_index: int, decision_index: int, game_seed: int,
-        attacker_return: float, keep_probability: float) -> dict[str, Any]:
+        deal_stream_root_seed: int, attacker_bracket_return: float,
+        keep_probability: float) -> dict[str, Any]:
     history_length = len(record.history)
     history = np.zeros(
         (HISTORY_MAX_EVENTS, HISTORY_EVENT_DIM), dtype=np.float32)
@@ -298,12 +324,13 @@ def _sample_from_record(
         "action_draw": record.action_draw,
         "behavior_log_probability": record.behavior_log_probability,
         "behavior_value": record.behavior_value,
-        "attacker_return": float(attacker_return),
-        "target": acting_team_return(attacker_return, record.role),
+        "attacker_bracket_return": float(attacker_bracket_return),
+        "target": acting_team_return(attacker_bracket_return, record.role),
         "seat": record.seat,
         "round_index": round_index,
         "decision_index": decision_index,
         "game_seed": game_seed,
+        "deal_stream_root_seed": deal_stream_root_seed,
         "actor_sha256": identity.actor_ref.sha256,
         "batch_sequence": identity.sequence,
         "runner_contract_sha256": identity.contract_sha256,
@@ -314,6 +341,7 @@ def _sample_from_record(
 class SuphxMicroCollector:
     expected_runner_contract_sha256: str
     keep_probability: float
+    deal_stream_root_seed: int
     rounds_per_batch: int = ROUNDS_PER_BATCH
 
     def __post_init__(self) -> None:
@@ -322,6 +350,11 @@ class SuphxMicroCollector:
             raise SuphxActorError("expected runner contract must be SHA-256")
         if self.rounds_per_batch != ROUNDS_PER_BATCH:
             raise SuphxActorError("round count is fixed by actor contract")
+        if isinstance(self.deal_stream_root_seed, bool) \
+                or not isinstance(self.deal_stream_root_seed, int) \
+                or self.deal_stream_root_seed < 0:
+            raise SuphxActorError(
+                "deal stream root seed must be a nonnegative integer")
         draw_privilege_mask(self.keep_probability, random.Random(0))
 
     def __call__(self, identity: ActorBatchIdentity) -> SynchronousActorBatch:
@@ -338,13 +371,16 @@ class SuphxMicroCollector:
         policies = [_ExplicitSurfaceComposite(actor) for _ in range(4)]
         samples: list[dict[str, Any]] = []
         for round_index in range(self.rounds_per_batch):
-            game_seed = _child_seed(identity.seed, "game", round_index)
+            deal_sequence = (
+                identity.sequence * self.rounds_per_batch + round_index)
+            game_seed = _child_seed(
+                self.deal_stream_root_seed, "shared-deal", deal_sequence)
             actor.records = []
             game = Game(random.Random(game_seed))
             play_round(game, policies)
             if game.round is None or game.result is None:
                 raise SuphxActorError("round collection ended without result")
-            attacker_return = terminal_attacker_return(
+            attacker_bracket_return = clipped_attacker_bracket_return(
                 game.result.attacker_points)
             for decision_index, record in enumerate(actor.records):
                 sample = _sample_from_record(
@@ -353,7 +389,8 @@ class SuphxMicroCollector:
                     round_index=round_index,
                     decision_index=decision_index,
                     game_seed=game_seed,
-                    attacker_return=attacker_return,
+                    deal_stream_root_seed=self.deal_stream_root_seed,
+                    attacker_bracket_return=attacker_bracket_return,
                     keep_probability=self.keep_probability,
                 )
                 validate_sample(sample, identity=identity)
@@ -370,9 +407,10 @@ _SAMPLE_FIELDS = {
     "role", "decision_surface", "observation", "legal_private", "history",
     "history_length", "perfect", "mask", "keep_probability", "candidates",
     "candidate_cards", "chosen_index", "action_cards", "action_draw",
-    "behavior_log_probability", "behavior_value", "attacker_return", "target",
-    "seat", "round_index", "decision_index", "game_seed", "actor_sha256",
-    "batch_sequence", "runner_contract_sha256",
+    "behavior_log_probability", "behavior_value", "attacker_bracket_return",
+    "target", "seat", "round_index", "decision_index", "game_seed",
+    "deal_stream_root_seed", "actor_sha256", "batch_sequence",
+    "runner_contract_sha256",
 }
 
 
@@ -449,20 +487,20 @@ def validate_sample(
             or sample["action_cards"] != candidate_cards[chosen]:
         raise SuphxActorError("sample chosen action drift")
     for name in ("action_draw", "behavior_log_probability", "behavior_value",
-                 "attacker_return", "target"):
+                 "attacker_bracket_return", "target"):
         if not isinstance(sample[name], float) or not math.isfinite(sample[name]):
             raise SuphxActorError(f"sample {name} is non-finite or non-float")
     if not 0.0 <= sample["action_draw"] < 1.0:
         raise SuphxActorError("sample action draw is outside [0, 1)")
     if sample["behavior_log_probability"] > 1e-7:
         raise SuphxActorError("sample behavior log probability is positive")
-    if sample["attacker_return"] not in {
+    if sample["attacker_bracket_return"] not in {
             -3.5, -2.5, -1.5, 0.5, 1.5, 2.5, 3.5} \
             or sample["target"] != acting_team_return(
-                sample["attacker_return"], sample["role"]):
-        raise SuphxActorError("sample direct role-signed return drift")
+                sample["attacker_bracket_return"], sample["role"]):
+        raise SuphxActorError("sample clipped role-signed bracket drift")
     for name in ("seat", "round_index", "decision_index", "game_seed",
-                 "batch_sequence"):
+                 "deal_stream_root_seed", "batch_sequence"):
         value = sample[name]
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise SuphxActorError(f"sample {name} is invalid")

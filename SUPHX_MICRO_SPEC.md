@@ -1,7 +1,7 @@
 # Suphx-style privileged-feature-removal microbaseline
 
-Status (2026-08-07): **SYNCHRONOUS MECHANICS CODE GATE PASS / NO TRAINING
-AUTHORITY.** This document defines the next Lane-C mechanism after terminal
+Status (2026-08-07): **CAUSAL-DEAL + SYNCHRONOUS MECHANICS CODE GATE PASS / NO
+TRAINING AUTHORITY.** This document defines the next Lane-C mechanism after terminal
 Direct-Q SELECT NONE. It may authorize implementation and score-blind runtime
 benchmarking only. A later version must bind exact code, runtime, seeds, doses,
 state assets and artifact destinations before any learning result is produced.
@@ -23,17 +23,20 @@ Direct-Q and synchronous-resume matrix is 80/80.
 Implementation step 3 adds an immutable categorical actor and synchronous
 on-policy actor-critic transition in `suphx_actor.py` and `suphx_learning.py`.
 Actor contract/module SHA-256s are
-`2835649be74f32fedb289056fee39da184ec54b099722f84c1617c4579326ccc` /
-`cc52a5980338d13b283d378fba8acaeafd92f23e952b75b3a1b39ae8e046ba74`;
+`d9c9a80efc6d479d3f8fbc41a9616f422170ec88e130a9e3a63cc1a35be9938a` /
+`245a6b0f830e4e6b76a741cbdc2382a02bd3648880fbb342bbeb1df55391562a`;
 learning contract/module SHA-256s are
-`186c05e6f49304a638839608116a77e4678a76ca6c1911b09f2506149641dc1c` /
-`8ee538777ed138a146d8fadc4b80524e33b269b23c0c8133705e03de1e9d1911`.
-Separate named mask/action streams, complete ballots, exact behavior
-log-probabilities, direct role-signed returns, scheduled gamma, per-surface
-entropy buffers and exact candidate adoption are executable. An interrupted
+`1edc7609b77f95af530a90feb60d67f87190740f38599c2cd26f3aca4683a9bb` /
+`2f42cccf1a13a4d1eca1ff9987b67f2e08b3c97c8bc68746a5c8dc144af369d5`.
+Separate named deal/mask/action streams, complete ballots, exact behavior
+log-probabilities, explicitly clipped role-signed attacker-point brackets,
+scheduled gamma, per-surface entropy buffers and exact candidate adoption are
+executable. An interrupted
 `gamma=1` to `gamma=0` transition reproduces the next batch bytes, candidate,
-learner, optimizer, replay, RNG and controller state. Focused mechanics are
-45/45 and the broader adjacent matrix is 122/122. No lower-rate segment gate,
+learner, optimizer, replay, RNG and controller state. Different actor digests
+now reproduce the same initial deal and ballot under a shared schedule-bound
+deal root while consuming distinct mask/action streams. Focused mechanics are
+48/48 and the broader adjacent matrix is 132/132. No lower-rate segment gate,
 CLI, frozen diagnostic/report asset, registry entry, run artifact or training
 result exists yet.
 
@@ -77,6 +80,11 @@ One encoder must make legal and privileged information structurally distinct:
   element per decision. Endpoints still consume the same mask stream. Action
   sampling uses a separate named RNG so changing `gamma_t` cannot silently
   change the action-randomness stream.
+- **Causal deals:** each schedule binds an explicit nonnegative deal-stream
+  root. Deal seeds depend only on that root plus batch/round sequence, never on
+  actor checkpoint, arm identity, mask stream or action stream. Equal-work
+  arms must bind the same root; after policies diverge they still receive the
+  same deals but generate their own trajectories.
 - **Public endpoint invariant:** with `gamma_t = 0`, logits, values and chosen
   actions must be bit-identical after any legal permutation of hidden hands
   and hidden burial that preserves the actor's information set and ordered
@@ -107,8 +115,10 @@ Reopening must reconstruct every tensor and action probability exactly.
   publish the exact candidate before adoption. The existing exact-resume
   boundary must bind learner, optimizer, entropy controller, progress, replay,
   actor, candidate and all named RNGs.
-- Use on-policy action probabilities with direct acting-team terminal
-  level-bracket returns and a learned value baseline. A stored behavior
+- Use on-policy action probabilities with the explicitly bounded acting-team
+  attacker-point bracket (`-3.5` through `+3.5`) and a learned value baseline.
+  This is not uncapped `RoundResult.level_change` and must never be reported as
+  such. A stored behavior
   probability must equal the recomputed pre-update probability. Replay from an
   older actor requires an explicit importance ratio and cap; the first
   microbaseline instead uses only its current immutable batch.
@@ -153,9 +163,11 @@ arms:
    never terminal values; its total simulator trajectories and optimizer steps
    must match the treatment.
 
-The arms share initial bytes and named deal identities but use
-domain-separated exploration/mask streams. No arm may inherit another arm's
-sampled action or trajectory after its policy diverges.
+The arms share initial bytes and the same schedule-bound deal-stream root but
+use domain-separated exploration/mask streams. An executable witness requires
+different actor digests to reopen the same initial deal/ballot tensors. No arm
+may inherit another arm's sampled action or trajectory after its policy
+diverges.
 
 ## Frozen diagnostics and gates
 

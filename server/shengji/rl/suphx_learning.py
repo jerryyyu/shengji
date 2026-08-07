@@ -28,8 +28,8 @@ from .synchronous_selfplay import (LearnerUpdateContext,
                                    SynchronousSelfPlayRunner)
 
 
-LEARNING_SCHEMA = "suphx-micro-onpolicy-actor-critic-v1"
-SCHEDULE_SCHEMA = "suphx-micro-privilege-schedule-v1"
+LEARNING_SCHEMA = "suphx-micro-onpolicy-actor-critic-v2"
+SCHEDULE_SCHEMA = "suphx-micro-privilege-schedule-v2"
 VALUE_COEFFICIENT = 0.5
 TARGET_ENTROPY_FRACTION = 0.60
 ENTROPY_CONTROLLER_STEP = 0.001
@@ -58,9 +58,12 @@ LEARNING_SPEC: dict[str, Any] = {
     "actor_spec_sha256": ACTOR_SPEC_SHA256,
     "source_sha256s": LEARNING_SOURCE_SHA256S,
     "batch": "current immutable actor batch only",
+    "causal_deals": (
+        "schedule-bound root shared across arms; independent of actor digest"
+    ),
     "objective": {
         "policy": "negative chosen log probability times detached advantage",
-        "value": "mean squared direct terminal-return baseline",
+        "value": "mean squared clipped attacker-point-bracket baseline",
         "value_coefficient": VALUE_COEFFICIENT,
         "entropy": "per-role-surface adaptive coefficient",
         "target_entropy_fraction_of_log_ballot": TARGET_ENTROPY_FRACTION,
@@ -101,6 +104,7 @@ class SuphxSchedule:
     segment_id: str
     keep_probabilities: tuple[float, ...]
     learning_rate: float
+    deal_stream_root_seed: int
 
     def __post_init__(self) -> None:
         if not isinstance(self.segment_id, str) or not self.segment_id \
@@ -119,6 +123,11 @@ class SuphxSchedule:
                 or not math.isfinite(float(self.learning_rate)) \
                 or not 0.0 < float(self.learning_rate) <= 0.1:
             raise SuphxLearningError("schedule learning rate is invalid")
+        if isinstance(self.deal_stream_root_seed, bool) \
+                or not isinstance(self.deal_stream_root_seed, int) \
+                or self.deal_stream_root_seed < 0:
+            raise SuphxLearningError(
+                "schedule deal stream root must be a nonnegative integer")
 
     def keep_probability(self, sequence: int) -> float:
         if isinstance(sequence, bool) or not isinstance(sequence, int) \
@@ -134,6 +143,7 @@ class SuphxSchedule:
             "keep_probabilities": [float(value)
                                    for value in self.keep_probabilities],
             "learning_rate": float(self.learning_rate),
+            "deal_stream_root_seed": self.deal_stream_root_seed,
             "iterations": len(self.keep_probabilities),
         }
 
@@ -142,7 +152,7 @@ def algorithm_spec(schedule: SuphxSchedule) -> dict[str, Any]:
     if not isinstance(schedule, SuphxSchedule):
         raise SuphxLearningError("algorithm schedule has the wrong type")
     return {
-        "schema": "suphx-micro-segment-algorithm-v1",
+        "schema": "suphx-micro-segment-algorithm-v2",
         "learning_spec_sha256": LEARNING_SPEC_SHA256,
         "schedule": schedule.as_dict(),
     }
@@ -162,6 +172,7 @@ class SuphxScheduledCollector:
         return SuphxMicroCollector(
             self.expected_runner_contract_sha256,
             keep_probability,
+            self.schedule.deal_stream_root_seed,
         )(identity)
 
 
@@ -226,6 +237,10 @@ class SuphxPolicyGradientUpdate:
             if sample["keep_probability"] != expected_keep:
                 raise SuphxLearningError(
                     "sample keep probability differs from frozen schedule")
+            if sample["deal_stream_root_seed"] != \
+                    self.schedule.deal_stream_root_seed:
+                raise SuphxLearningError(
+                    "sample deal stream differs from frozen schedule")
             log_probability, value, entropy, target_entropy, key = \
                 _preupdate_terms(context.learner, sample)
             target = torch.tensor(sample["target"], dtype=torch.float32)
@@ -281,6 +296,7 @@ def new_bundle(
         segment_id="bundle-validation",
         keep_probabilities=(0.0,),
         learning_rate=learning_rate,
+        deal_stream_root_seed=0,
     )
     learner = new_from_scratch_model(model_seed)
     return SuphxMicroBundle(

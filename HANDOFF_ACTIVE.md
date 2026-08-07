@@ -47,11 +47,11 @@ from its original clean `b365120` runtime returned
 ## Running compute
 
 Air owns eight live compiled+strict Teacher-v3 Stage-B gold workers at exact
-`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 18:08 all eight real
-Python workers remained healthy at 86--89% CPU after about 3h24m, with zero
+`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 19:08 all eight real
+Python workers remained healthy at 86--89% CPU after about 4h24m, with zero
 final gold shards; outcome-blind fold progress by shard was
-`372/704/152/432/268/508/356/500`, or 20.1% aggregate
-(`3,292/16,384`). This proves
+`492/756/220/664/304/788/580/576`, or 26.7% aggregate
+(`4,380/16,384`). This proves
 liveness but is not a compute-weighted ETA because ballot sizes and
 continuation costs vary. Stage B is attribution-only; do not inspect or use
 its outcomes to alter the independently frozen champion audit.
@@ -80,6 +80,14 @@ Air passes 19/19 focused tests and a brand-new interpreter reports empty
 transition/predeclaration/execution/state problem lists. No audit label exists.
 Launch labels only after all eight Stage-B gold shards validate and the
 producer gate passes.
+
+Local verification at 19:07 is 951 passed / 27 skipped in the ordinary suite;
+the focused C1/S0 historical-boundary matrix is 31/31 in both ordinary and
+compiled-strict modes. This does **not** turn the retired S0 parent into a
+current verifier PASS: its immutable SELECT-NONE authority intentionally
+reports the one exact descendant `registry_sha256` drift after C1 added a
+policy. The test now proves the frozen introduction blob and this fail-closed
+condition explicitly rather than misreporting a regression.
 
 Mini has no long strength job. It is available for bounded compiled latency
 validation or the next separately admitted learner protocol.
@@ -264,9 +272,12 @@ gold outcomes or duplicating workers. Separately review the new no-run
 modules/tests: in particular, challenge whether the legal/private boundary,
 four independent role/surface heads, on-policy objective/entropy controller,
 O0 prerequisite, three O1 arms and public-endpoint invariance form the smallest
-honest test of oracle guiding. Focused mechanics are 45/45 and the adjacent
-matrix is 122/122, including exact interrupted gamma-one-to-zero resume; this
-authorizes no training.
+honest test of oracle guiding. Focused mechanics are 48/48 and the adjacent
+matrix is 132/132, including exact interrupted gamma-one-to-zero resume. Also
+challenge the repaired schedule-bound deal stream: different actor digests
+must share the same deal/initial ballot while mask/action streams remain
+separate; the +/-3.5 attacker-point bracket is explicitly not uncapped engine
+level progression. This authorizes no training.
 
 ## Standing rules
 
@@ -276,5 +287,6 @@ authorizes no training.
 - Partial/live outcomes do not drive code, stopping or sample-size changes.
 - House progression is uncapped; clipped `+/-3` is a named legacy RL target.
 - Production changes are separate reviewed actions and require either an empty
-  room or explicit authorization to interrupt live games. Jerry supplied that
-  authorization for release 17 only.
+  room or explicit authorization to interrupt live games. Jerry supplied
+  scoped authorization to clear live games if a validated fix needs a deploy;
+  check occupancy first and do not clear rooms preemptively.

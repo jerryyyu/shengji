@@ -18,6 +18,7 @@ import os
 import platform
 import statistics
 import struct
+import subprocess
 import sys
 import time
 from collections import Counter, defaultdict
@@ -84,12 +85,31 @@ def fast_active() -> bool:
 
 def runtime_receipt() -> dict:
     extension = getattr(getattr(fast, "_fast", None), "__file__", None)
+    repo = SERVER.parent
+    try:
+        git_head = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=repo, check=True,
+            capture_output=True, text=True,
+        ).stdout.strip()
+        git_dirty = bool(subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=repo, check=True, capture_output=True, text=True,
+        ).stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        git_head, git_dirty = None, None
     return {
         "python": platform.python_version(),
         "implementation": platform.python_implementation(),
         "platform": platform.platform(),
         "machine": platform.machine(),
         "logical_cpus": os.cpu_count(),
+        "git_head": git_head,
+        "git_dirty": git_dirty,
+        "benchmark_source_sha256": sha256(SCRIPT),
+        "scheduler_source_sha256": sha256(
+            SERVER / "shengji" / "api" / "server.py"),
+        "mcbot_source_sha256": sha256(
+            SERVER / "shengji" / "ai" / "mcbot.py"),
         "fast_active": fast_active(),
         "fast_extension_sha256": (
             sha256(extension) if extension and Path(extension).is_file()

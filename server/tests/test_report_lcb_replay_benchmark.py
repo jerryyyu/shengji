@@ -126,6 +126,12 @@ def test_first_frozen_decision_replays_cards_record_and_rng_exactly():
     assert result["semantic_mismatches"] == []
     assert result["exact_semantic_replay"] is True
     assert result["runtime"]["fast_active"] is bench.fast_active()
+    assert result["runtime"]["mcbot_source_sha256"] \
+        == bench.EXPECTED_MCBOT_SHA256
+    assert all(len(result["runtime"][key]) == 64 for key in (
+        "benchmark_source_sha256", "scheduler_source_sha256",
+        "mcbot_source_sha256",
+    ))
     # A limited smoke replay is intentionally not allowed to satisfy the
     # production timing gate.
     assert result["gate"]["decisions_at_least_100"] is False

@@ -150,8 +150,23 @@ def original_source_problems(freeze: dict) -> list[str]:
     return problems
 
 
-def closeout_executable_identity() -> dict:
-    head = git("rev-parse", "HEAD")
+def closeout_executable_identity(expected: dict | None = None) -> dict:
+    """Validate either the live creator or a receipt's historical creator.
+
+    Verification must remain stable after unrelated descendant commits.  The
+    receipt therefore reopens its exact committed script from git rather than
+    replacing the creator identity with whichever HEAD happens to verify it.
+    """
+    if expected is None:
+        head = git("rev-parse", "HEAD")
+        expected_sha = sha256(SCRIPT)
+    else:
+        head = expected.get("git")
+        expected_sha = expected.get("script_sha256")
+        if (not isinstance(head, str) or len(head) != 40
+                or any(char not in "0123456789abcdef" for char in head)
+                or not C1.is_sha256(expected_sha)):
+            raise CloseoutRefused("closeout executable receipt identity")
     if subprocess.run(
             ["git", "merge-base", "--is-ancestor", head, "origin/main"],
             cwd=REPO, capture_output=True).returncode:
@@ -161,10 +176,11 @@ def closeout_executable_identity() -> dict:
         committed = git("show", f"{head}:{relative}", binary=True)
     except subprocess.CalledProcessError as exc:
         raise CloseoutRefused("closeout executable is not committed") from exc
-    live_sha = sha256(SCRIPT)
-    if sha256_bytes(committed) != live_sha:
+    if sha256_bytes(committed) != expected_sha:
+        raise CloseoutRefused("closeout executable committed digest mismatch")
+    if expected is None and sha256(SCRIPT) != expected_sha:
         raise CloseoutRefused("closeout executable differs from committed HEAD")
-    return {"git": head, "script_sha256": live_sha}
+    return {"git": head, "script_sha256": expected_sha}
 
 
 def _regular_exact(path: Path, expected_sha256: str, label: str,
@@ -175,7 +191,7 @@ def _regular_exact(path: Path, expected_sha256: str, label: str,
         problems.append(f"{label} SHA-256")
 
 
-def build_payload(root: Path) -> dict:
+def build_payload(root: Path, *, closeout_executable: dict | None = None) -> dict:
     root = root.resolve()
     if root != C1.run_root().resolve() or root.is_symlink():
         raise CloseoutRefused("closeout requires the canonical RLCB-C1 root")
@@ -229,7 +245,7 @@ def build_payload(root: Path) -> dict:
     if problems:
         raise CloseoutRefused("; ".join(sorted(set(problems))))
 
-    executable = closeout_executable_identity()
+    executable = closeout_executable_identity(closeout_executable)
     return {
         "schema": SCHEMA,
         "complete": True,
@@ -285,7 +301,8 @@ def closeout(root: Path) -> dict:
     payload = build_payload(root)
     path = root.resolve() / CLOSEOUT_NAME
     write_exclusive(path, payload)
-    if _json(path) != build_payload(root):
+    if _json(path) != build_payload(
+            root, closeout_executable=payload["closeout_executable"]):
         raise CloseoutRefused("published closeout differs from recomputation")
     return payload
 
@@ -295,7 +312,8 @@ def verify(root: Path) -> dict:
     if path.is_symlink() or not path.is_file():
         raise CloseoutRefused("closeout receipt missing/non-regular")
     stored = _json(path)
-    expected = build_payload(root)
+    expected = build_payload(
+        root, closeout_executable=stored.get("closeout_executable"))
     if stored != expected:
         raise CloseoutRefused("closeout receipt differs from recomputation")
     return stored

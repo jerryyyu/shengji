@@ -89,3 +89,28 @@ def test_closeout_constants_bind_the_existing_terminal_bytes():
         "d3bb6aa9c2385cb57c84a5f65bd04d66bd99849570c5e913458228a6f5c1df8a"
     assert CLOSE.AGGREGATE_SHA256 == \
         "83f5a9df2f1db1fa45d50fb005b941b776d9ecc2c9f8703d3d62efff8f5ef5ea"
+
+
+def test_verification_uses_receipt_creator_not_current_head(monkeypatch):
+    creator = {"git": "a" * 40, "script_sha256": "b" * 64}
+    calls = []
+
+    def fake_git(*args, binary=False):
+        calls.append(args)
+        assert args == ("show", f"{creator['git']}:server/scripts/"
+                        "rlcb_c1_artifact_closeout.py")
+        assert binary is True
+        return b"historical closeout"
+
+    class Result:
+        returncode = 0
+
+    monkeypatch.setattr(CLOSE, "git", fake_git)
+    monkeypatch.setattr(CLOSE.subprocess, "run", lambda *_a, **_k: Result())
+    monkeypatch.setattr(
+        CLOSE, "sha256_bytes",
+        lambda value: creator["script_sha256"]
+        if value == b"historical closeout" else "c" * 64)
+
+    assert CLOSE.closeout_executable_identity(creator) == creator
+    assert len(calls) == 1

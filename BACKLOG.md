@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-07 16:15 EDT.
+Last re-derived: 2026-08-07 17:31 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -10,7 +10,8 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 ## Current state
 
 - **Production now runs compiled, formally confirmed `mc-s0-report-lcb`.** The
-  strength-first deployment is live at commit `74be565`; Fly version 16
+  strength-first policy now runs in latency-hardened Fly release 17 from exact
+  image `latency-cd6789e` / digest `047bcfe4...5b300`; health
   reports `{"bot":"mc-s0-report-lcb","fast":true}`. S0a and S0b first measured
   `+0.353 +/- 0.069` and `+0.357 +/- 0.066` versus `mc-strong`. Fresh RLCB-C1
   then confirmed `+0.338 +/- 0.068` on 2,048 new clusters while its
@@ -18,12 +19,17 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   gate passed. Aggregate SHA-256 is
   `83f5a9df2f1db1fa45d50fb005b941b776d9ecc2c9f8703d3d62efff8f5ef5ea`.
   `mc-strong` remains the immediate operational rollback.
-- **The production latency complaint is confirmed, not subjective.** Room CAXI
+- **The production latency complaint was real and its scheduler fix is now
+  shipped.** Room CAXI
   recorded 138 bot plays after the deployment, 109 of which searched. Search
   alone was p50 1.143s, p95 16.413s and max 20.499s on Fly's one-vCPU
   `shared-cpu-1x`; the server then adds a fixed 0.7s delay before every bot
-  turn. Early searched moves averaged 5.13s. Preserve the report-LCB decision
-  rule while treating responsiveness as a P0 product issue.
+  turn. Early searched moves averaged 5.13s. Release 17 preserves the exact
+  report-LCB policy but searches an isolated snapshot off-loop and overlaps
+  that pacing delay. Its live ship-gate room recorded 42 bot turns at
+  search p50/p95/max 1.136/1.857/3.104s and turn p50/p95/max
+  1.138/1.858/3.106s, plus responsive claim/reconnect/X-ray checks. Continue
+  monitoring real human rooms; a faster Fly CPU remains a separate lever.
 - **Formal S0 is COMPLETE / SELECT NONE, for an evidence failure—not a measured
   loss.** All eight 1,024-cluster S0c shards and the aggregate completed, but
   the historical null had a lag-17 cross-cluster RNG collision. The exact
@@ -66,7 +72,7 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 
 | priority | work | exit gate |
 |---|---|---|
-| **T1 / Lane A production latency — EMPTY-ROOM SHIP HOLD** | Keep the first stronger-than-MC production policy enjoyable to play | Release `578b2c6` is integrated onto authoritative main through `cd6789e`; it closes failure-safe WebSocket cleanup and the real evaluator-cutoff witness on top of proven runtime `b315e91`. Preferred image `latency-cd6789e` is built/pushed at manifest `047bcfe4...5b300`. Deploy only after a fresh peek proves zero connected humans, then verify live timing and rollback readiness. |
+| **T1 / Lane A production latency — COMPLETE / LIVE MONITOR** | Keep the first stronger-than-MC production policy enjoyable to play | Fly release 17 runs exact `latency-cd6789e` / `047bcfe4...5b300`. Health, native activation, claim, reconnect, stale-discard, X-ray isolation and concurrent WebSocket responsiveness passed live. Keep release 16 as rollback and collect ordinary human-room timing before considering a CPU resize. |
 | **T1 / Lane A.1 V11pair — COMPLETE / SELECT NONE** | Preserve the learned milestone without forcing it into the champion | Artifact repair passed; the frozen rule rejected protected composition. Keep v11 as a bounded proposer/ranker and teacher diagnostic only. No protected-anchor run is authorized. |
 | **T1 / Lane B teacher — STAGE-B RUNNING; AUDIT PREFLIGHT PASS** | Generate counterfactual data capable of exceeding the old heuristic continuation | Complete and validate all eight attribution-only gold shards, seal the Stage-B gate, then label the separately frozen 64-state champion-continuation audit at exact `f4f3dc0`/script SHA `32a31bf7...c7bd9`. Its real Air preflight binds the literal report-LCB actor, rollout, ballot, engine and frozen state; its receipt rejects any other HEAD/script and no Stage-B outcome may tune it. |
 | **T1 / Lane C Direct-Q — COMPLETE / SELECT NONE** | Learn from the failure without selecting its positive gameplay tail | Preserve aggregate SHA `1fa6789e…791`; do not deploy, extend or mutate the 144M recipe. The next learner requires a separately frozen Suphx-style or other role-correct microbaseline gate. |
@@ -82,7 +88,7 @@ behind code or protocol work we could have completed.
 
 | lane | deliverable today | hard gate |
 |---|---|---|
-| **Lane A / production guardrail** | Build a sanitized performance replay from CAXI's 109 searched moves, stratified early/mid/late and by candidate count; record search-only and human-action-to-broadcast timing. First test exact-semantic scheduling/hot-path changes, then benchmark the same image on the current shared CPU and a faster CPU class. | At least 100 identical replay decisions: same played cards, candidate order, RNG advance, report gap/SE/reason, sampler counters and work. On production-class hardware, end-to-end searched turns have p50 <=1.5s, p95 <=4.0s and max <=8.0s, with no unconditional 0.7s added after computation and no WebSocket starvation. A billable Fly resize requires Jerry's approval and an empty room set. |
+| **Lane A / production guardrail** | **Shipped:** exact-semantic speculative scheduling and off-loop X-ray are live in release 17. Continue passive timing collection from ordinary rooms. | The 100-decision replay was exact; the live smoke met p50 <=1.5s, p95 <=4.0s and max <=8.0s, showed no additive 0.7s after long searches, and kept WebSockets responsive during X-ray. A billable Fly resize still requires Jerry's approval. |
 | **Lane A.1 / V11pair** | **Closed:** artifact-only repair published from unchanged bytes and selected none. | No protected composition. Reuse v11 only in a new explicitly diagnostic/proposal contract. |
 | **Lane B / stronger teacher** | Finish the running Stage-B gold labels, validate their exact gate, then execute the frozen 64-state report-LCB continuation audit. | All eight shards and receipts exact; no outcome-conditioned audit change; disjoint 32-world selection/report folds and full downstream report-LCB continuation at every information set. |
 | **Lane C / beyond imitation** | **Closed:** Direct-Q finished but failed its conjunctive learning screen. Specify a fresh microbaseline before more learning compute. | The 144M report result cannot choose seeds, recipes, stopping or continuation. |

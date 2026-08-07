@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 16:55 EDT
+## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 17:31 EDT
 
 Air has eight live compiled+strict `teacher_v1_label.py gold` workers in clean
 detached worktree `~/Projects/shengji-teacher-air` at exact commit
@@ -13,8 +13,9 @@ and remain near one CPU each. This block is attribution-only. Its outcomes
 cannot change the independently frozen 64-state report-LCB continuation audit.
 
 All eight output finals remain absent and all eight Python workers plus their
-caffeinate parents remain live after about 2h10 at roughly 82--87% CPU. No
-outcome file was opened.
+caffeinate parents remain live after about 2h40 at roughly 79--86% CPU. An
+outcome-blind parse of progress events showed 5.5--32.6% completion by shard
+and 17.5% aggregate candidate-world work. No outcome file was opened.
 
 The separately pinned audit worktree now exists on Air at exact pushed commit
 `f4f3dc0`. It carries frozen state SHA `d04d1c0f...f7a34` and compiled-engine
@@ -36,32 +37,31 @@ Mini has no long strength worker. RLCB-C1, V11-v2 and Direct-Q are terminal;
 Mini is available for bounded compiled latency checks or the next separately
 admitted learner protocol.
 
-Latency branch `codex/t1-latency` is clean and pushed at release head
-`578b2c6` (runtime `b315e91`, scheduler `ff784a8`). Its final native
-100-decision replay was exact
-with p50 0.164s, p95 0.339s and max 0.379s; the focused
-concurrency/correctness matrix passed 61/61. Remote build-only produced and
-pushed both runtime-identical tags `latency-b315e91` and
-`latency-578b2c6`, manifest SHA-256
-`dbc978028de1b9bd84dad00bb59e83f9ba6feac46e5d1ecc95ef3c2150c2426a`.
-Production deployment waits only for an empty room set; at 16:50 HIEJ was the
-only room and srig its only connected human.
+## COMPLETE / production report-LCB latency release 17
 
-Release `578b2c6` replaced all manual WebSocket `__enter__`/`__exit__` usage
-with failure-safe context ownership and added a real
-`evaluate -> play_game -> FullGameCutoff` witness. WebSocket+game is 49/49;
-the expanded focused matrix has 92 passes, two optional skips and one expected
-missing historical corpus asset. Remote build-only pushed
-`latency-578b2c6`; its manifest remains exactly `dbc97802...c2426a`, so these
-test-only ship-gate repairs did not change runtime bytes. At 17:15 production
-still had srig connected in the sole room HIEJ, so no restart occurred.
+Jerry explicitly authorized interrupting the remaining live game for this
+fix. Fly release 17 now runs exact image
+`registry.fly.io/shengji:latency-cd6789e`, digest
+`047bcfe4d4573961734a5536ad549605fd0df5e1477d7480cdf322282955b300`.
+Health passes with `rooms=0`, `bot=mc-s0-report-lcb`, and `fast=true`; release
+16 remains the immediate rollback.
 
-The exact release series is now integrated onto authoritative `main` through
-`cd6789e`. A clean main worktree reproduced the same 92-pass focused result
-(plus two optional skips and one absent corpus asset) and remote build-only
-pushed `latency-cd6789e`, manifest `047bcfe4...5b300`; its runtime source is
-byte-identical to release `578b2c6`. This main-derived tag is the preferred
-empty-room deployment image.
+The release came from reviewed head `578b2c6` (runtime `b315e91`, scheduler
+`ff784a8`) integrated onto authoritative main through `cd6789e`. The final
+native replay reproduced 100/100 decisions exactly at search p50 0.164s, p95
+0.339s and max 0.379s. WebSocket+game passed 49/49; the expanded scheduler,
+X-ray, replay and evaluator matrix recorded 92 passes, two optional skips and
+one expected absent historical asset, with no behavior failure.
+
+An isolated live release-17 room then exercised the real scheduler boundary.
+An on-turn bot seat was claimed in 20ms and resumed with its new token in 17ms.
+The log records the in-flight search as `acted=false` and
+`stale_discarded=true`; every timing record says `event_loop_offloaded=true`
+and `snapshot_isolated=true`. A real eight-candidate X-ray search took 1.53s
+while 25 concurrent WebSocket peeks remained responsive at p50 12ms and max
+19ms. After 42 bot timing records, search p50/p95/max were
+1.136/1.857/3.104s and full turn p50/p95/max were 1.138/1.858/3.106s: the old
+additive 0.7s delay is absent when computation exceeds the pacing floor.
 
 ## COMPLETE / RLCB-C1 formally confirms report-LCB (Mini)
 

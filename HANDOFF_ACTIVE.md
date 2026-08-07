@@ -1,13 +1,15 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-07 17:21 EDT. This is the executable mailbox only.
+Last update: 2026-08-07 17:31 EDT. This is the executable mailbox only.
 Durable discussion and retractions remain in `HANDOFF_REVIEW.md`; policy
 synthesis belongs in `AI_POLICIES.md`.
 
 ## Current truth
 
-- **Production:** Fly version 16 runs compiled `mc-s0-report-lcb`; health is
-  passing and `mc-strong` is the immediate rollback.
+- **Production latency: COMPLETE / LIVE.** With Jerry's explicit authorization
+  to interrupt HIEJ, Fly release 17 now runs exact image
+  `latency-cd6789e`, digest `047bcfe4...5b300`. Health passes with compiled
+  `mc-s0-report-lcb`; release 16 / `mc-strong` remains the immediate rollback.
 - **Report-LCB confirmation: COMPLETE / CONFIRM.** Fresh RLCB-C1 used 2,048
   new paired clusters and a collision-free current-policy null:
   report-LCB-current `+0.338379 +/- 0.067706`, null-current
@@ -36,10 +38,11 @@ synthesis belongs in `AI_POLICIES.md`.
 ## Running compute
 
 Air owns eight live compiled+strict Teacher-v3 Stage-B gold workers at exact
-`1a2a713`, namespace `teacher-v1-entry-149m-v3`. All remained near one CPU
-after about 2h10, with zero final gold shards. Stage B is attribution-only; do
-not inspect or use its outcomes to alter the independently frozen champion
-audit.
+`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 17:23 all remained near
+one CPU after about 2h40, with zero final gold shards; outcome-blind progress
+was 5.5--32.6% by shard and 17.5% aggregate work. Stage B is
+attribution-only; do not inspect or use its outcomes to alter the independently
+frozen champion audit.
 
 The exact 64-state audit is already frozen at
 `champion_audit_states.json` SHA
@@ -123,13 +126,19 @@ runtime bytes. A fresh build from integrated main `cd6789e` is pushed as
 `latency-cd6789e`, manifest `047bcfe4...5b300`; its runtime source tree is
 byte-identical to release branch `578b2c6` and it is the preferred deploy tag.
 
-Deployment is **EMPTY-ROOM HOLD**, not a code hold. At 16:50 production had
-one room and one connected human: srig in HIEJ. The exact release
-image is already built and pushed as
+Deployment is complete as Fly release 17. The exact running image is
 `registry.fly.io/shengji:latency-cd6789e`, manifest SHA-256
-`047bcfe4d4573961734a5536ad549605fd0df5e1477d7480cdf322282955b300`.
-Never deploy the older `6f15d96` image; restart only after a new peek proves
-zero connected humans.
+`047bcfe4d4573961734a5536ad549605fd0df5e1477d7480cdf322282955b300`;
+Fly status and the health check independently report it. Never deploy the
+older `6f15d96` image.
+
+The live ship gate exercised an actual on-turn search. A claimant received the
+bot seat in 20ms and resumed that same seat/token in 17ms; semantic logs show
+the displaced worker as `acted=false`, `stale_discarded=true`, and every timing
+record as offloaded and snapshot-isolated. A real eight-candidate X-ray search
+took 1.53s while 25 concurrent WebSocket peeks stayed at p50 12ms/max 19ms.
+After 42 bot timings, search p50/p95/max were 1.136/1.857/3.104s and full-turn
+p50/p95/max were 1.138/1.858/3.106s. Release 16 is retained for rollback.
 
 Live Fly evidence explains the complaint: room HIEJ's 40 searched bot turns
 had search p50 1.133s, p95 1.858s, max 2.174s; visible inter-play delay was
@@ -139,20 +148,17 @@ real search compute; Fly CPU class remains a separate product lever.
 
 ## Exact next actions
 
-1. Deploy image `latency-cd6789e` only when a fresh production peek has zero
-   human connections; never deploy the old `6f15d96` image.
-2. Verify live policy, native engine, semantic timing logs, seat claim,
-   reconnect and X-ray; keep version 16 as the immediate rollback.
-3. Monitor all eight Teacher-v3 Stage-B workers without opening outcome
+1. Monitor all eight Teacher-v3 Stage-B workers without opening outcome
    aggregates. When terminal, validate receipts and publish exactly one
    `stage_b_gate_v2.json` from the unchanged `1a2a713` producer worktree.
-4. Only if that gate passes, copy the exact bound parents into the independent
+2. Only if that gate passes, copy the exact bound parents into the independent
    `f4f3dc0` audit worktree, publish one receipt with the exact git/script
    predeclaration above, run eight frozen audit shards, and publish one gate.
    No outcome-conditioned state, policy, fold, threshold or execution-lock
    change.
-5. Reconcile terminal Teacher/latency evidence into `JOBS.md`, `BACKLOG.md`,
-   `AI_POLICIES.md`, and the 2026-08-07 daily log.
+3. Monitor release-17 timing in ordinary human rooms. Roll back to release 16
+   only for a correctness, responsiveness or availability regression; CPU
+   resize remains a separate product decision.
 
 ## Review request for Claude
 
@@ -171,5 +177,6 @@ receipt transition without opening gold outcomes or duplicating workers.
 - Screens select; only fresh paired confirmations establish strength.
 - Partial/live outcomes do not drive code, stopping or sample-size changes.
 - House progression is uncapped; clipped `+/-3` is a named legacy RL target.
-- Production changes are separate reviewed actions and require an empty room
-  when they restart the server.
+- Production changes are separate reviewed actions and require either an empty
+  room or explicit authorization to interrupt live games. Jerry supplied that
+  authorization for release 17 only.

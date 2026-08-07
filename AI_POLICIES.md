@@ -15,15 +15,23 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-07 16:15 EDT
+## Current synthesis — 2026-08-07 17:31 EDT
 
 ### Production search
 
-- **Live policy:** compiled `mc-s0-report-lcb` at Fly version 16; health reports
+- **Live policy:** compiled `mc-s0-report-lcb` at Fly version 17 from exact
+  image `latency-cd6789e`, digest `047bcfe4...5b300`; health reports
   `{"bot":"mc-s0-report-lcb","fast":true}`. It runs ordinary N=30 selection,
   then compares the fixed challenger/incumbent pair on 300 disjoint worlds and
   overrides only when the one-sided paired Student-t LCB is positive.
   `mc-strong` is the immediate rollback.
+- **Operational boundary:** release 17 preserves N=30/R=300, the ballot, RNG
+  advance and LCB decision semantics while moving isolated search off the event
+  loop and overlapping the 0.7s pacing floor. A live claim/resume completed in
+  20/17ms and caused the expected stale-search discard. During a real X-ray
+  search, 25 WebSocket probes stayed responsive at p50 12ms/max 19ms. The
+  first 42 ship-gate bot timings had search p50/p95/max
+  1.136/1.857/3.104s and turn p50/p95/max 1.138/1.858/3.106s.
 - **Evidence:** S0a measured `+0.353 +/- 0.069` versus `mc-strong`; S0b
   independently replicated `+0.357 +/- 0.066`. Fresh RLCB-C1 then formally
   confirmed the same policy on 2,048 new paired clusters at
@@ -93,8 +101,9 @@ and put exact run detail in `JOBS.md` or the dated archive.
 
 ### Immediate strength queue
 
-1. Finish production scheduling hardening without changing report-LCB's
-   N=30/R=300/ballot/LCB semantics, then verify on production-class hardware.
+1. Monitor release-17 timing in ordinary human rooms and retain release 16 as
+   rollback; scheduling hardening is shipped without changing report-LCB's
+   N=30/R=300/ballot/LCB semantics.
 2. Close Teacher-v3 Stage-B attribution and run the already-frozen independent
    64-state champion-continuation audit; use that evidence to choose the next
    teacher upgrade rather than merely scaling labels.

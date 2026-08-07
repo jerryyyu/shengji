@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-07 16:35 EDT. This is the executable mailbox only.
+Last update: 2026-08-07 16:55 EDT. This is the executable mailbox only.
 Durable discussion and retractions remain in `HANDOFF_REVIEW.md`; policy
 synthesis belongs in `AI_POLICIES.md`.
 
@@ -31,17 +31,24 @@ synthesis belongs in `AI_POLICIES.md`.
 ## Running compute
 
 Air owns eight live compiled+strict Teacher-v3 Stage-B gold workers at exact
-`1a2a713`, namespace `teacher-v1-entry-149m-v3`. All emit fold progress and
-remain near one CPU each. Stage B is attribution-only; do not inspect or use
-its outcomes to alter the independently frozen champion audit.
+`1a2a713`, namespace `teacher-v1-entry-149m-v3`. All remained near one CPU
+after about 2h10, with zero final gold shards. Stage B is attribution-only; do
+not inspect or use its outcomes to alter the independently frozen champion
+audit.
 
 The exact 64-state audit is already frozen at
 `champion_audit_states.json` SHA
 `d04d1c0fa507bab680da4d53eeb72325a97c8ca058aac0d01c16dfdcf44f7a34`.
-Audit code is clean and pushed at `c40a31c`: disjoint 32-world champion
+Audit code is clean and pushed at `9b2c8ab`: disjoint 32-world champion
 selection/report folds, full downstream `mc-s0-report-lcb` continuation, exact
-receipt-to-eight-label-to-gate transitions. Launch labels only after all eight
-Stage-B gold shards validate and the producer receipt passes.
+receipt-to-eight-label-to-gate transitions, and a literal actor/rollout/ballot/
+engine lock. An independent Air worktree at that exact commit carries the exact
+frozen state asset and compiled engine. Real outcome-blind preflight reports no
+transition, execution-lock, state-self or state-lock problems and proves live
+lock equality. Preflight caught and corrected an initially mistranscribed
+ballot digest before any audit label existed; the regression now derives the
+real ballot instead of mocking the literal against itself. Launch labels only
+after all eight Stage-B gold shards validate and the producer gate passes.
 
 Mini has no long strength job. It is available for bounded compiled latency
 validation or the next separately admitted learner protocol.
@@ -73,8 +80,8 @@ p95 0.339s and max 0.379s; every gate passed and projected uncontended turns
 were 0.7s. The broad branch suite was 915 passed, 3 skipped and 6 expected
 worktree/provenance refusals; no behavior test failed.
 
-Deployment is **EMPTY-ROOM HOLD**, not a code hold. At 16:34 production still
-had two connected humans: srig in HIEJ and Sarah Kim in ZTYH. The exact release
+Deployment is **EMPTY-ROOM HOLD**, not a code hold. At 16:50 production had
+one room and one connected human: srig in HIEJ. The exact release
 image is already built and pushed as
 `registry.fly.io/shengji:latency-b315e91`, manifest SHA-256
 `dbc978028de1b9bd84dad00bb59e83f9ba6feac46e5d1ecc95ef3c2150c2426a`.
@@ -94,9 +101,12 @@ real search compute; Fly CPU class remains a separate product lever.
 2. Verify live policy, native engine, semantic timing logs, seat claim,
    reconnect and X-ray; keep version 16 as the immediate rollback.
 3. Monitor all eight Teacher-v3 Stage-B workers without opening outcome
-   aggregates. When terminal, validate receipts and run the frozen gate once.
-4. If Stage B passes, launch the frozen 64-state audit labels exactly as
-   registered. No outcome-conditioned state, policy, fold or threshold change.
+   aggregates. When terminal, validate receipts and publish exactly one
+   `stage_b_gate_v2.json` from the unchanged `1a2a713` producer worktree.
+4. Only if that gate passes, copy the exact bound parents into the independent
+   `9b2c8ab` audit worktree, publish one receipt, run eight frozen audit shards,
+   and publish one gate. No outcome-conditioned state, policy, fold, threshold
+   or execution-lock change.
 5. Reconcile terminal Teacher/latency evidence into `JOBS.md`, `BACKLOG.md`,
    `AI_POLICIES.md`, and the 2026-08-07 daily log.
 
@@ -105,8 +115,10 @@ real search compute; Fly CPU class remains a separate product lever.
 Please audit pushed latency commit `ff784a8` specifically for snapshot/commit
 atomicity, cancellation, failed-throw bookkeeping, bot-task ownership and the
 real WebSocket claim witness, including X-ray's round+bot snapshot. Do not
-review or deploy the earlier `6f15d96` image. Separately, watch the Teacher
-Stage-B receipt transition; do not open gold outcomes or duplicate workers.
+review or deploy the earlier `6f15d96` image. Separately, audit pushed Teacher
+commit `9b2c8ab`, especially the real-ballot regression and bounded transition;
+watch the Stage-B receipt transition without opening gold outcomes or
+duplicating workers.
 
 ## Standing rules
 

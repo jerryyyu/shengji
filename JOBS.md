@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 16:35 EDT
+## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 16:55 EDT
 
 Air has eight live compiled+strict `teacher_v1_label.py gold` workers in clean
 detached worktree `~/Projects/shengji-teacher-air` at exact commit
@@ -13,7 +13,16 @@ and remain near one CPU each. This block is attribution-only. Its outcomes
 cannot change the independently frozen 64-state report-LCB continuation audit.
 
 All eight output finals remain absent and all eight Python workers plus their
-caffeinate parents remain live after about 1h50. No outcome file was opened.
+caffeinate parents remain live after about 2h10 at roughly 82--87% CPU. No
+outcome file was opened.
+
+The separately pinned audit worktree now exists on Air at exact pushed commit
+`9b2c8ab`. It carries frozen state SHA `d04d1c0f...f7a34` and compiled-engine
+SHA `ef7c1618...66b4d`; its 18 focused tests pass. Real outcome-blind preflight
+returns empty transition/execution/state problem lists and exact live-lock
+equality. That preflight caught a wrongly transcribed ballot digest, repaired
+before any audit label was generated. Stage-B's running worktree was not
+modified.
 
 Mini has no long strength worker. RLCB-C1, V11-v2 and Direct-Q are terminal;
 Mini is available for bounded compiled latency checks or the next separately
@@ -25,8 +34,8 @@ with p50 0.164s, p95 0.339s and max 0.379s; the focused
 concurrency/correctness matrix passed 61/61. Remote build-only produced and
 pushed `registry.fly.io/shengji:latency-b315e91`, manifest SHA-256
 `dbc978028de1b9bd84dad00bb59e83f9ba6feac46e5d1ecc95ef3c2150c2426a`.
-Production deployment waits only for an empty room set; HIEJ and ZTYH each
-still had one connected human at 16:34.
+Production deployment waits only for an empty room set; at 16:50 HIEJ was the
+only room and srig its only connected human.
 
 ## COMPLETE / RLCB-C1 formally confirms report-LCB (Mini)
 

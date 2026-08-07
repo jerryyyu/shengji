@@ -47,11 +47,11 @@ from its original clean `b365120` runtime returned
 ## Running compute
 
 Air owns eight live compiled+strict Teacher-v3 Stage-B gold workers at exact
-`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 19:08 all eight real
-Python workers remained healthy at 86--89% CPU after about 4h24m, with zero
+`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 19:25 all eight real
+Python workers remained healthy at 86--89% CPU after about 4h41m, with zero
 final gold shards; outcome-blind fold progress by shard was
-`492/756/220/664/304/788/580/576`, or 26.7% aggregate
-(`4,380/16,384`). This proves
+`672/908/236/688/316/796/616/600`, or 29.5% aggregate
+(`4,832/16,384`). This proves
 liveness but is not a compute-weighted ETA because ballot sizes and
 continuation costs vary. Stage B is attribution-only; do not inspect or use
 its outcomes to alter the independently frozen champion audit.
@@ -81,7 +81,7 @@ transition/predeclaration/execution/state problem lists. No audit label exists.
 Launch labels only after all eight Stage-B gold shards validate and the
 producer gate passes.
 
-Local verification at 19:07 is 951 passed / 27 skipped in the ordinary suite;
+Local verification at 19:24 is 955 passed / 27 skipped in the ordinary suite;
 the focused C1/S0 historical-boundary matrix is 31/31 in both ordinary and
 compiled-strict modes. This does **not** turn the retired S0 parent into a
 current verifier PASS: its immutable SELECT-NONE authority intentionally
@@ -272,12 +272,15 @@ gold outcomes or duplicating workers. Separately review the new no-run
 modules/tests: in particular, challenge whether the legal/private boundary,
 four independent role/surface heads, on-policy objective/entropy controller,
 O0 prerequisite, three O1 arms and public-endpoint invariance form the smallest
-honest test of oracle guiding. Focused mechanics are 48/48 and the adjacent
-matrix is 132/132, including exact interrupted gamma-one-to-zero resume. Also
+honest test of oracle guiding. Focused mechanics are 52/52 and the adjacent
+matrix is 136/136, including exact interrupted gamma-one-to-zero resume and an
+exhausted-parent transition into the all-public one-tenth-LR segment. Also
 challenge the repaired schedule-bound deal stream: different actor digests
 must share the same deal/initial ballot while mask/action streams remain
-separate; the +/-3.5 attacker-point bracket is explicitly not uncapped engine
-level progression. This authorizes no training.
+separate. Challenge that the child preserves model/controller bytes, resets
+optimizer/replay/RNG, uses disjoint fresh deals, and creates zero games/updates;
+the +/-3.5 attacker-point bracket is explicitly not uncapped engine level
+progression. This authorizes no training.
 
 ## Standing rules
 

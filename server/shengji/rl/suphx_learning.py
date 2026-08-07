@@ -16,16 +16,19 @@ from typing import Any, Mapping
 
 import torch
 
-from .exact_resume import ReplayRing, ResumeRNGStreams, state_digest
+from .exact_resume import (ReplayRing, ResumeRNGStreams,
+                           exact_resume_boundary_identity, state_digest)
 from .selfplay_contract import CheckpointRef, load_verified, sha256_file
 from .suphx_actor import (ACTOR_SPEC_SHA256, SuphxActorError,
-                          SuphxMicroCollector, load_actor, validate_sample)
+                          SuphxMicroCollector, derive_deal_seed, load_actor,
+                          validate_sample)
 from .suphx_micro import EXPERIMENT, apply_privilege_mask
 from .suphx_policy import (POLICY_SPEC_SHA256, SURFACE_NAMES,
                            SuphxPolicyValue, new_from_scratch_model,
                            surface_key)
 from .synchronous_selfplay import (LearnerUpdateContext,
-                                   SynchronousSelfPlayRunner)
+                                   SynchronousSelfPlayRunner,
+                                   _runner_contract_sha256)
 
 
 LEARNING_SCHEMA = "suphx-micro-onpolicy-actor-critic-v2"
@@ -36,6 +39,8 @@ ENTROPY_CONTROLLER_STEP = 0.001
 MAX_ENTROPY_ALPHA = 0.10
 GRADIENT_NORM_CAP = 1.0
 REPLAY_CAPACITY = 256
+LOWER_RATE_FACTOR = 0.1
+LOWER_RATE_TRANSITION_SCHEMA = "suphx-micro-lower-rate-public-transition-v1"
 
 LEARNING_SOURCE_SHA256S = {
     "suphx_learning": sha256_file(Path(__file__).resolve()),
@@ -84,6 +89,20 @@ LEARNING_SPEC: dict[str, Any] = {
         "capacity": REPLAY_CAPACITY,
         "older_samples_used_for_update": False,
     },
+    "lower_rate_public_transition": {
+        "schema": LOWER_RATE_TRANSITION_SCHEMA,
+        "requires_exhausted_parent_checkpoint": True,
+        "requires_adopted_terminal_actor": True,
+        "requires_privileged_to_zero_parent": True,
+        "keep_probability": 0.0,
+        "learning_rate_factor": LOWER_RATE_FACTOR,
+        "model_and_entropy_controller": "preserve exact parent actor state",
+        "optimizer": "fresh Adam with empty state",
+        "replay": "fresh empty ring",
+        "learner_rng": "fresh explicitly seeded streams",
+        "deal_stream": "fresh root with finite parent/child disjointness proof",
+        "automatic_training": False,
+    },
 }
 LEARNING_SPEC_SHA256 = state_digest(LEARNING_SPEC)
 
@@ -118,6 +137,10 @@ class SuphxSchedule:
                        for value in self.keep_probabilities):
             raise SuphxLearningError(
                 "schedule keep probabilities must be a nonempty tuple in [0,1]")
+        if any(float(after) > float(before) for before, after in zip(
+                self.keep_probabilities, self.keep_probabilities[1:])):
+            raise SuphxLearningError(
+                "schedule privilege keep probability cannot increase")
         if isinstance(self.learning_rate, bool) \
                 or not isinstance(self.learning_rate, (int, float)) \
                 or not math.isfinite(float(self.learning_rate)) \
@@ -289,6 +312,52 @@ class SuphxMicroBundle:
     rng: ResumeRNGStreams
 
 
+@dataclass
+class SuphxLowerRateStart:
+    """In-memory child segment plus its deterministic transition receipt."""
+
+    parent_checkpoint_ref: CheckpointRef
+    schedule: SuphxSchedule
+    bundle: SuphxMicroBundle
+    runner: SynchronousSelfPlayRunner
+    transition: dict[str, Any]
+    transition_sha256: str
+
+
+def lower_rate_public_schedule(
+        parent: SuphxSchedule, *, segment_id: str, iterations: int,
+        deal_stream_root_seed: int) -> SuphxSchedule:
+    """Derive the only admitted post-curriculum public-only schedule."""
+    if not isinstance(parent, SuphxSchedule):
+        raise SuphxLearningError("lower-rate parent schedule has wrong type")
+    if (parent.keep_probabilities[0] != 1.0
+            or parent.keep_probabilities[-1] != 0.0):
+        raise SuphxLearningError(
+            "lower-rate parent must transition from full privilege to zero")
+    if isinstance(iterations, bool) or not isinstance(iterations, int) \
+            or iterations <= 0:
+        raise SuphxLearningError(
+            "lower-rate public segment needs a positive iteration count")
+    child = SuphxSchedule(
+        segment_id=segment_id,
+        keep_probabilities=(0.0,) * iterations,
+        learning_rate=float(parent.learning_rate) * LOWER_RATE_FACTOR,
+        deal_stream_root_seed=deal_stream_root_seed,
+    )
+    parent_deals = {
+        derive_deal_seed(parent.deal_stream_root_seed, sequence, 0)
+        for sequence in range(len(parent.keep_probabilities))
+    }
+    child_deals = {
+        derive_deal_seed(child.deal_stream_root_seed, sequence, 0)
+        for sequence in range(len(child.keep_probabilities))
+    }
+    if parent_deals & child_deals:
+        raise SuphxLearningError(
+            "lower-rate public deal stream overlaps its parent segment")
+    return child
+
+
 def new_bundle(
         *, model_seed: int, learner_rng_seed: int,
         learning_rate: float) -> SuphxMicroBundle:
@@ -306,6 +375,28 @@ def new_bundle(
         replay=ReplayRing(REPLAY_CAPACITY),
         rng=ResumeRNGStreams.seeded(learner_rng_seed),
     )
+
+
+def _fresh_bundle_from_actor(
+        actor_ref: CheckpointRef, *, learner_rng_seed: int,
+        learning_rate: float) -> SuphxMicroBundle:
+    if isinstance(learner_rng_seed, bool) \
+            or not isinstance(learner_rng_seed, int) \
+            or learner_rng_seed < 0:
+        raise SuphxLearningError(
+            "child learner RNG seed must be a nonnegative integer")
+    learner = load_verified(actor_ref, load_actor)
+    learner.train()
+    bundle = SuphxMicroBundle(
+        learner=learner,
+        optimizer=torch.optim.Adam(learner.parameters(), lr=learning_rate),
+        replay=ReplayRing(REPLAY_CAPACITY),
+        rng=ResumeRNGStreams.seeded(learner_rng_seed),
+    )
+    if bundle.optimizer.state_dict()["state"] or len(bundle.replay):
+        raise SuphxLearningError(
+            "lower-rate optimizer/replay did not start empty")
+    return bundle
 
 
 def _require_bundle_schedule(
@@ -362,6 +453,159 @@ def resume_runner(
         actor_ref=actor_ref,
         candidate_ref=candidate_ref,
         snapshot_dir=snapshot_dir,
+    )
+
+
+def start_lower_rate_public_segment(
+        parent_checkpoint_ref: CheckpointRef, *,
+        parent_schedule: SuphxSchedule, parent_runner_root_seed: int,
+        child_segment_id: str, child_iterations: int,
+        child_deal_stream_root_seed: int, child_runner_root_seed: int,
+        child_learner_rng_seed: int,
+        child_snapshot_dir: str | Path) -> SuphxLowerRateStart:
+    """Reopen one exhausted parent and create a zero-update child boundary.
+
+    The returned runner has published only its initial candidate snapshot.  It
+    has generated no game and performed no learner update; a later launch gate
+    must bind and authorize any call to ``run_iteration``.
+    """
+    if not isinstance(parent_checkpoint_ref, CheckpointRef):
+        raise SuphxLearningError("parent checkpoint reference has wrong type")
+    for name, value in (
+        ("parent runner root", parent_runner_root_seed),
+        ("child runner root", child_runner_root_seed),
+    ):
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise SuphxLearningError(
+                f"{name} seed must be a nonnegative integer")
+    parent_checkpoint_ref.verify()
+    parent_boundary = exact_resume_boundary_identity(parent_checkpoint_ref)
+    parent_algorithm = algorithm_sha256(parent_schedule)
+    expected_parent_contract = _runner_contract_sha256(
+        experiment=EXPERIMENT,
+        root_seed=parent_runner_root_seed,
+        algorithm_sha256=parent_algorithm,
+    )
+    if (parent_boundary.get("experiment") != EXPERIMENT
+            or parent_boundary.get("contract_sha256") !=
+            expected_parent_contract):
+        raise SuphxLearningError(
+            "lower-rate parent checkpoint contract differs")
+    expected_progress = {
+        "next_iteration": len(parent_schedule.keep_probabilities),
+        "next_batch": len(parent_schedule.keep_probabilities),
+    }
+    if parent_boundary.get("progress") != expected_progress:
+        raise SuphxLearningError(
+            "lower-rate parent schedule is not exactly exhausted")
+    if parent_boundary.get("actor_ref") != \
+            parent_boundary.get("candidate_ref"):
+        raise SuphxLearningError(
+            "lower-rate parent terminal candidate was not adopted")
+    actor_dict = parent_boundary["actor_ref"]
+    parent_actor_ref = CheckpointRef(
+        path=actor_dict["path"], sha256=actor_dict["sha256"])
+    parent_actor = load_verified(parent_actor_ref, load_actor)
+    parent_model_sha256 = state_digest(parent_actor.state_dict())
+    if parent_model_sha256 != \
+            parent_boundary["component_sha256s"]["learner"]:
+        raise SuphxLearningError(
+            "lower-rate parent actor differs from checkpoint learner")
+
+    child_schedule = lower_rate_public_schedule(
+        parent_schedule,
+        segment_id=child_segment_id,
+        iterations=child_iterations,
+        deal_stream_root_seed=child_deal_stream_root_seed,
+    )
+    child_bundle = _fresh_bundle_from_actor(
+        parent_actor_ref,
+        learner_rng_seed=child_learner_rng_seed,
+        learning_rate=child_schedule.learning_rate,
+    )
+    child_model_sha256 = state_digest(child_bundle.learner.state_dict())
+    if child_model_sha256 != parent_model_sha256:
+        raise SuphxLearningError(
+            "lower-rate child did not preserve exact parent model state")
+    parent_entropy = {
+        key: float(head.entropy_alpha.item())
+        for key, head in parent_actor.surfaces.items()
+    }
+    child_entropy = {
+        key: float(head.entropy_alpha.item())
+        for key, head in child_bundle.learner.surfaces.items()
+    }
+    if child_entropy != parent_entropy:
+        raise SuphxLearningError(
+            "lower-rate child did not preserve entropy-controller state")
+
+    child_runner = new_runner(
+        bundle=child_bundle,
+        actor_ref=parent_actor_ref,
+        snapshot_dir=child_snapshot_dir,
+        root_seed=child_runner_root_seed,
+        schedule=child_schedule,
+    )
+    child_candidate = load_verified(
+        child_runner.candidate_ref, load_actor)
+    child_candidate_model_sha256 = state_digest(
+        child_candidate.state_dict())
+    if child_candidate_model_sha256 != parent_model_sha256:
+        raise SuphxLearningError(
+            "lower-rate initial candidate differs from parent model")
+    if (child_runner.progress.next_iteration != 0
+            or child_runner.progress.next_batch != 0
+            or child_bundle.optimizer.state_dict()["state"]
+            or len(child_bundle.replay)):
+        raise SuphxLearningError(
+            "lower-rate child boundary performed hidden work")
+
+    parent_deals = [
+        derive_deal_seed(
+            parent_schedule.deal_stream_root_seed, sequence, 0)
+        for sequence in range(len(parent_schedule.keep_probabilities))
+    ]
+    child_deals = [
+        derive_deal_seed(
+            child_schedule.deal_stream_root_seed, sequence, 0)
+        for sequence in range(len(child_schedule.keep_probabilities))
+    ]
+    transition = {
+        "schema": LOWER_RATE_TRANSITION_SCHEMA,
+        "parent_checkpoint_ref": parent_checkpoint_ref.as_dict(),
+        "parent_boundary": parent_boundary,
+        "parent_schedule": parent_schedule.as_dict(),
+        "parent_algorithm_sha256": parent_algorithm,
+        "parent_runner_root_seed": parent_runner_root_seed,
+        "parent_deal_seed_digest": state_digest(parent_deals),
+        "child_schedule": child_schedule.as_dict(),
+        "child_algorithm_sha256": algorithm_sha256(child_schedule),
+        "child_runner_contract_sha256": child_runner.contract_sha256,
+        "child_runner_root_seed": child_runner_root_seed,
+        "child_learner_rng_seed": child_learner_rng_seed,
+        "child_deal_seed_digest": state_digest(child_deals),
+        "child_actor_ref": child_runner.actor_ref.as_dict(),
+        "child_initial_candidate_ref": child_runner.candidate_ref.as_dict(),
+        "model_state_sha256": parent_model_sha256,
+        "entropy_controller": child_entropy,
+        "optimizer_reset": True,
+        "replay_reset": True,
+        "learner_rng_reset": True,
+        "games_generated": 0,
+        "training_updates": 0,
+        "automatic_training": False,
+    }
+    parent_checkpoint_ref.verify()
+    if exact_resume_boundary_identity(parent_checkpoint_ref) != parent_boundary:
+        raise SuphxLearningError(
+            "lower-rate parent checkpoint changed during transition")
+    return SuphxLowerRateStart(
+        parent_checkpoint_ref=parent_checkpoint_ref,
+        schedule=child_schedule,
+        bundle=child_bundle,
+        runner=child_runner,
+        transition=transition,
+        transition_sha256=state_digest(transition),
     )
 
 

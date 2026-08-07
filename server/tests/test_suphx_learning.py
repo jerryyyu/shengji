@@ -1,10 +1,12 @@
 """Falsification tests for synchronous Suphx policy-gradient mechanics."""
 from __future__ import annotations
 
+import random
+
 import pytest
 
 
-pytest.importorskip("numpy")
+np = pytest.importorskip("numpy")
 torch = pytest.importorskip("torch")
 
 from shengji.rl.exact_resume import state_digest  # noqa: E402
@@ -19,6 +21,8 @@ from shengji.rl.suphx_learning import (  # noqa: E402
     LEARNING_SOURCE_SHA256S,
     LEARNING_SPEC,
     LEARNING_SPEC_SHA256,
+    LOWER_RATE_FACTOR,
+    LOWER_RATE_TRANSITION_SCHEMA,
     MAX_ENTROPY_ALPHA,
     REPLAY_CAPACITY,
     TARGET_ENTROPY_FRACTION,
@@ -31,9 +35,11 @@ from shengji.rl.suphx_learning import (  # noqa: E402
     algorithm_spec,
     bundle_digest,
     contract_digest,
+    lower_rate_public_schedule,
     new_bundle,
     new_runner,
     resume_runner,
+    start_lower_rate_public_segment,
 )
 ROOT_SEED = 20260807
 LEARNING_RATE = 1e-3
@@ -93,6 +99,11 @@ def test_learning_contract_and_schedule_bind_every_material_choice():
         GRADIENT_NORM_CAP
     assert LEARNING_SPEC["replay"]["capacity"] == REPLAY_CAPACITY
     assert LEARNING_SPEC["replay"]["older_samples_used_for_update"] is False
+    transition = LEARNING_SPEC["lower_rate_public_transition"]
+    assert transition["schema"] == LOWER_RATE_TRANSITION_SCHEMA
+    assert transition["learning_rate_factor"] == LOWER_RATE_FACTOR
+    assert transition["optimizer"] == "fresh Adam with empty state"
+    assert transition["automatic_training"] is False
 
     schedule = SuphxSchedule(
         segment_id="curriculum", keep_probabilities=(1.0, 0.5, 0.0),
@@ -120,6 +131,8 @@ def test_learning_contract_and_schedule_bind_every_material_choice():
     {"segment_id": "x", "keep_probabilities": (),
      "learning_rate": LEARNING_RATE, "deal_stream_root_seed": ROOT_SEED},
     {"segment_id": "x", "keep_probabilities": (1.1,),
+     "learning_rate": LEARNING_RATE, "deal_stream_root_seed": ROOT_SEED},
+    {"segment_id": "x", "keep_probabilities": (0.0, 1.0),
      "learning_rate": LEARNING_RATE, "deal_stream_root_seed": ROOT_SEED},
     {"segment_id": "x", "keep_probabilities": (1.0,),
      "learning_rate": 0.0, "deal_stream_root_seed": ROOT_SEED},
@@ -176,6 +189,21 @@ def _run_and_adopt(runner, schedule, collector=None):
     return receipt
 
 
+def _completed_parent(tmp_path, name="parent"):
+    schedule = SuphxSchedule(
+        segment_id=f"{name}-curriculum",
+        keep_probabilities=(1.0, 0.0),
+        learning_rate=LEARNING_RATE,
+        deal_stream_root_seed=ROOT_SEED,
+    )
+    bundle, _, runner, _ = _case(
+        tmp_path, name, model_seed=151, rng_seed=157, schedule=schedule)
+    for _ in schedule.keep_probabilities:
+        _run_and_adopt(runner, schedule)
+    checkpoint = runner.save_checkpoint(tmp_path / f"{name}-complete.pt")
+    return bundle, runner, schedule, checkpoint
+
+
 def test_interrupted_resume_matches_across_privilege_boundary(tmp_path):
     schedule = SuphxSchedule(
         segment_id="one-to-zero",
@@ -212,6 +240,181 @@ def test_interrupted_resume_matches_across_privilege_boundary(tmp_path):
     assert resumed.candidate_ref.path != expected.candidate_ref.path
     assert resumed.candidate_ref.sha256 == expected.candidate_ref.sha256
     assert bundle_digest(restored_bundle) == bundle_digest(live_bundle)
+
+
+def test_lower_rate_public_transition_reopens_parent_and_starts_zero_work(
+        tmp_path):
+    parent_bundle, parent, parent_schedule, checkpoint = \
+        _completed_parent(tmp_path)
+    python_state = random.getstate()
+    numpy_state = state_digest(np.random.get_state())
+    torch_state = torch.get_rng_state().clone()
+
+    started = start_lower_rate_public_segment(
+        checkpoint,
+        parent_schedule=parent_schedule,
+        parent_runner_root_seed=ROOT_SEED,
+        child_segment_id="public-low-rate",
+        child_iterations=2,
+        child_deal_stream_root_seed=ROOT_SEED + 10_000,
+        child_runner_root_seed=ROOT_SEED + 20_000,
+        child_learner_rng_seed=163,
+        child_snapshot_dir=tmp_path / "public-low-rate-candidates",
+    )
+
+    assert started.schedule.keep_probabilities == (0.0, 0.0)
+    assert started.schedule.learning_rate == \
+        parent_schedule.learning_rate * LOWER_RATE_FACTOR
+    assert started.runner.progress.next_iteration == 0
+    assert started.runner.progress.next_batch == 0
+    assert started.runner.actor_ref == parent.actor_ref
+    assert not started.bundle.optimizer.state_dict()["state"]
+    assert len(started.bundle.replay) == 0
+    assert state_digest(started.bundle.learner.state_dict()) == \
+        state_digest(parent_bundle.learner.state_dict())
+    assert started.transition["schema"] == LOWER_RATE_TRANSITION_SCHEMA
+    assert started.transition["parent_checkpoint_ref"] == checkpoint.as_dict()
+    assert started.transition["optimizer_reset"] is True
+    assert started.transition["replay_reset"] is True
+    assert started.transition["games_generated"] == 0
+    assert started.transition["training_updates"] == 0
+    assert started.transition["automatic_training"] is False
+    assert started.transition_sha256 == state_digest(started.transition)
+    assert random.getstate() == python_state
+    assert state_digest(np.random.get_state()) == numpy_state
+    assert torch.equal(torch.get_rng_state(), torch_state)
+
+    captured = []
+
+    def collect(identity):
+        batch = SuphxScheduledCollector(
+            started.runner.contract_sha256, started.schedule)(identity)
+        captured.append(batch)
+        return batch
+
+    started.runner.run_iteration(
+        collect, SuphxPolicyGradientUpdate(started.schedule))
+    assert captured and all(
+        sample["keep_probability"] == 0.0
+        and sample["deal_stream_root_seed"] ==
+        started.schedule.deal_stream_root_seed
+        and not np.count_nonzero(sample["mask"])
+        for sample in captured[0].samples
+    )
+
+
+def test_lower_rate_public_segment_resumes_exactly_after_transition(tmp_path):
+    _, _, parent_schedule, checkpoint = _completed_parent(
+        tmp_path, "resume-parent")
+    started = start_lower_rate_public_segment(
+        checkpoint,
+        parent_schedule=parent_schedule,
+        parent_runner_root_seed=ROOT_SEED,
+        child_segment_id="public-resume",
+        child_iterations=2,
+        child_deal_stream_root_seed=ROOT_SEED + 30_000,
+        child_runner_root_seed=ROOT_SEED + 40_000,
+        child_learner_rng_seed=167,
+        child_snapshot_dir=tmp_path / "public-resume-live",
+    )
+    live_collector = _CaptureCollector(SuphxScheduledCollector(
+        started.runner.contract_sha256, started.schedule))
+    first = _run_and_adopt(
+        started.runner, started.schedule, live_collector)
+    child_checkpoint = started.runner.save_checkpoint(
+        tmp_path / "public-after-one.pt")
+    expected = _run_and_adopt(
+        started.runner, started.schedule, live_collector)
+
+    restored_bundle = new_bundle(
+        model_seed=999,
+        learner_rng_seed=999,
+        learning_rate=started.schedule.learning_rate,
+    )
+    restored = resume_runner(
+        child_checkpoint,
+        bundle=restored_bundle,
+        actor_ref=first.candidate_ref,
+        candidate_ref=first.candidate_ref,
+        snapshot_dir=tmp_path / "public-resume-restored",
+        root_seed=ROOT_SEED + 40_000,
+        schedule=started.schedule,
+    )
+    resumed_collector = _CaptureCollector(SuphxScheduledCollector(
+        restored.contract_sha256, started.schedule))
+    resumed = _run_and_adopt(
+        restored, started.schedule, resumed_collector)
+
+    assert live_collector.batches[1] == resumed_collector.batches[0]
+    assert resumed.batch == expected.batch
+    assert resumed.candidate_ref.sha256 == expected.candidate_ref.sha256
+    assert bundle_digest(restored_bundle) == bundle_digest(started.bundle)
+
+
+def test_lower_rate_transition_refuses_unfinished_unadopted_or_reused_deals(
+        tmp_path):
+    schedule = SuphxSchedule(
+        segment_id="refusal-parent",
+        keep_probabilities=(1.0, 0.0),
+        learning_rate=LEARNING_RATE,
+        deal_stream_root_seed=ROOT_SEED,
+    )
+    _, _, runner, _ = _case(tmp_path, "refusal", schedule=schedule)
+    first = _run_and_adopt(runner, schedule)
+    unfinished = runner.save_checkpoint(tmp_path / "unfinished.pt")
+    with pytest.raises(SuphxLearningError, match="not exactly exhausted"):
+        start_lower_rate_public_segment(
+            unfinished,
+            parent_schedule=schedule,
+            parent_runner_root_seed=ROOT_SEED,
+            child_segment_id="refused-unfinished",
+            child_iterations=1,
+            child_deal_stream_root_seed=ROOT_SEED + 50_000,
+            child_runner_root_seed=ROOT_SEED + 60_000,
+            child_learner_rng_seed=173,
+            child_snapshot_dir=tmp_path / "refused-unfinished",
+        )
+
+    runner.run_iteration(
+        SuphxScheduledCollector(runner.contract_sha256, schedule),
+        SuphxPolicyGradientUpdate(schedule),
+    )
+    unadopted = runner.save_checkpoint(tmp_path / "unadopted.pt")
+    assert runner.actor_ref == first.candidate_ref
+    assert runner.actor_ref != runner.candidate_ref
+    with pytest.raises(SuphxLearningError, match="was not adopted"):
+        start_lower_rate_public_segment(
+            unadopted,
+            parent_schedule=schedule,
+            parent_runner_root_seed=ROOT_SEED,
+            child_segment_id="refused-unadopted",
+            child_iterations=1,
+            child_deal_stream_root_seed=ROOT_SEED + 50_000,
+            child_runner_root_seed=ROOT_SEED + 60_000,
+            child_learner_rng_seed=173,
+            child_snapshot_dir=tmp_path / "refused-unadopted",
+        )
+
+    with pytest.raises(SuphxLearningError, match="overlaps"):
+        lower_rate_public_schedule(
+            schedule,
+            segment_id="refused-overlap",
+            iterations=1,
+            deal_stream_root_seed=schedule.deal_stream_root_seed,
+        )
+    public_parent = SuphxSchedule(
+        segment_id="already-public",
+        keep_probabilities=(0.0,),
+        learning_rate=LEARNING_RATE,
+        deal_stream_root_seed=ROOT_SEED + 1,
+    )
+    with pytest.raises(SuphxLearningError, match="full privilege to zero"):
+        lower_rate_public_schedule(
+            public_parent,
+            segment_id="refused-public",
+            iterations=1,
+            deal_stream_root_seed=ROOT_SEED + 2,
+        )
 
 
 def test_stale_learner_refuses_behavior_probability_and_poisons_runner(tmp_path):

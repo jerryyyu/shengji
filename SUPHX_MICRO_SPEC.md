@@ -1,7 +1,7 @@
 # Suphx-style privileged-feature-removal microbaseline
 
-Status (2026-08-07): **CAUSAL-DEAL + SYNCHRONOUS MECHANICS CODE GATE PASS / NO
-TRAINING AUTHORITY.** This document defines the next Lane-C mechanism after terminal
+Status (2026-08-07): **CAUSAL-DEAL + LOWER-RATE + SYNCHRONOUS MECHANICS CODE
+GATE PASS / NO TRAINING AUTHORITY.** This document defines the next Lane-C mechanism after terminal
 Direct-Q SELECT NONE. It may authorize implementation and score-blind runtime
 benchmarking only. A later version must bind exact code, runtime, seeds, doses,
 state assets and artifact destinations before any learning result is produced.
@@ -23,11 +23,11 @@ Direct-Q and synchronous-resume matrix is 80/80.
 Implementation step 3 adds an immutable categorical actor and synchronous
 on-policy actor-critic transition in `suphx_actor.py` and `suphx_learning.py`.
 Actor contract/module SHA-256s are
-`d9c9a80efc6d479d3f8fbc41a9616f422170ec88e130a9e3a63cc1a35be9938a` /
-`245a6b0f830e4e6b76a741cbdc2382a02bd3648880fbb342bbeb1df55391562a`;
+`2592696365a16c8aebf10fa20c7554b69a177cbe63ab2500e652b332b4bcc7f0` /
+`70c992155c280ab927af40875be5b12bdbf3865ccf5d41abdc19d2c07308a6e0`;
 learning contract/module SHA-256s are
-`1edc7609b77f95af530a90feb60d67f87190740f38599c2cd26f3aca4683a9bb` /
-`2f42cccf1a13a4d1eca1ff9987b67f2e08b3c97c8bc68746a5c8dc144af369d5`.
+`8683e36488e7bf942114722bb240e91b83ec5e073bc43292542e6f5df0adff29` /
+`3c6b76600626b753ec3eb0f18c24bb9f0464d3edeabf81f26ea087c43d06df85`.
 Separate named deal/mask/action streams, complete ballots, exact behavior
 log-probabilities, explicitly clipped role-signed attacker-point brackets,
 scheduled gamma, per-surface entropy buffers and exact candidate adoption are
@@ -35,10 +35,14 @@ executable. An interrupted
 `gamma=1` to `gamma=0` transition reproduces the next batch bytes, candidate,
 learner, optimizer, replay, RNG and controller state. Different actor digests
 now reproduce the same initial deal and ballot under a shared schedule-bound
-deal root while consuming distinct mask/action streams. Focused mechanics are
-48/48 and the broader adjacent matrix is 132/132. No lower-rate segment gate,
-CLI, frozen diagnostic/report asset, registry entry, run artifact or training
-result exists yet.
+deal root while consuming distinct mask/action streams. The lower-rate child
+transition reopens only an exhausted, adopted exact parent; preserves model and
+entropy-controller state; resets Adam, replay and learner RNG; binds all-zero
+masks at one-tenth LR; proves finite deal-stream disjointness; and publishes
+zero games or updates. Focused mechanics are 52/52 and the broader adjacent
+matrix is 136/136. No score-redacted O0 runtime gate, CLI, frozen
+diagnostic/report asset, registry entry, run artifact or training result exists
+yet.
 
 ## Claim boundary
 
@@ -129,7 +133,10 @@ Reopening must reconstruct every tensor and action probability exactly.
 - After the curriculum reaches `gamma_t = 0`, continue public-only with a
   learning rate fixed at one tenth of the curriculum rate. This is a new exact
   synchronous segment rooted at the prior checkpoint, never an in-place
-  unrecorded optimizer mutation.
+  unrecorded optimizer mutation. Its parent must be exactly exhausted with the
+  terminal candidate adopted; the child preserves model/controller bytes but
+  explicitly resets Adam, replay and learner RNG and starts a fresh disjoint
+  causal deal stream. Constructing this boundary creates no game or update.
 
 ## Causal arms
 

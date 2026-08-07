@@ -140,6 +140,25 @@ def _child_seed(parent: int, domain: str, sequence: int) -> int:
     return int.from_bytes(hashlib.sha256(payload).digest()[:8], "big")
 
 
+def derive_deal_seed(
+        deal_stream_root_seed: int, batch_sequence: int,
+        round_index: int) -> int:
+    """Derive one actor-independent causal deal identity."""
+    if isinstance(deal_stream_root_seed, bool) \
+            or not isinstance(deal_stream_root_seed, int) \
+            or deal_stream_root_seed < 0:
+        raise SuphxActorError(
+            "deal stream root seed must be a nonnegative integer")
+    if isinstance(batch_sequence, bool) \
+            or not isinstance(batch_sequence, int) or batch_sequence < 0:
+        raise SuphxActorError("batch sequence must be a nonnegative integer")
+    if isinstance(round_index, bool) or not isinstance(round_index, int) \
+            or not 0 <= round_index < ROUNDS_PER_BATCH:
+        raise SuphxActorError("round index is outside the frozen batch dose")
+    sequence = batch_sequence * ROUNDS_PER_BATCH + round_index
+    return _child_seed(deal_stream_root_seed, "shared-deal", sequence)
+
+
 def load_actor(path: str) -> SuphxPolicyValue:
     model = new_from_scratch_model(0)
     state = torch.load(path, map_location="cpu", weights_only=True)
@@ -371,10 +390,8 @@ class SuphxMicroCollector:
         policies = [_ExplicitSurfaceComposite(actor) for _ in range(4)]
         samples: list[dict[str, Any]] = []
         for round_index in range(self.rounds_per_batch):
-            deal_sequence = (
-                identity.sequence * self.rounds_per_batch + round_index)
-            game_seed = _child_seed(
-                self.deal_stream_root_seed, "shared-deal", deal_sequence)
+            game_seed = derive_deal_seed(
+                self.deal_stream_root_seed, identity.sequence, round_index)
             actor.records = []
             game = Game(random.Random(game_seed))
             play_round(game, policies)

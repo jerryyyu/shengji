@@ -74,7 +74,7 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 |---|---|---|
 | **T1 / Lane A production latency — COMPLETE / LIVE MONITOR** | Keep the first stronger-than-MC production policy enjoyable to play | Fly release 17 runs exact `latency-cd6789e` / `047bcfe4...5b300`. Health, native activation, claim, reconnect, stale-discard, X-ray isolation and concurrent WebSocket responsiveness passed live. Keep release 16 as the runtime rollback and `mc-strong` as the separate policy rollback; collect ordinary human-room timing before considering a CPU resize. |
 | **T1 / Lane A.1 V11pair — COMPLETE / SELECT NONE** | Preserve the learned milestone without forcing it into the champion | Artifact repair passed; the frozen rule rejected protected composition. Keep v11 as a bounded proposer/ranker and teacher diagnostic only. No protected-anchor run is authorized. |
-| **T1 / Lane B teacher — STAGE-B RUNNING; AUDIT PREFLIGHT PASS** | Generate counterfactual data capable of exceeding the old heuristic continuation | Eight Air workers remain healthy; the outcome-blind fold counter was 26.7% at 19:08, not an ETA. Complete and validate all eight attribution-only gold shards, seal the Stage-B gate exactly once under the readiness checklist in `HANDOFF_ACTIVE.md`, then—and only on PASS—label the separately frozen 64-state champion-continuation audit at exact `182d1df`/script SHA `57796fda...887ead`. Fresh-process Air preflight binds the literal report-LCB actor, rollout, ballot, engine and frozen state; superseded `f4f3dc0` is cache-tainted and may never create a receipt. Receipt/label/gate filenames authorize nothing until their creator exits `0`, the partial disappears and exact bytes reopen. No Stage-B outcome may tune the audit. |
+| **T1 / Lane B teacher — STAGE-B RUNNING; AUDIT PREFLIGHT PASS** | Generate counterfactual data capable of exceeding the old heuristic continuation | Eight Air workers remain healthy; the outcome-blind fold counter was 29.5% at 19:25, not an ETA. Complete and validate all eight attribution-only gold shards, seal the Stage-B gate exactly once under the readiness checklist in `HANDOFF_ACTIVE.md`, then—and only on PASS—label the separately frozen 64-state champion-continuation audit at exact `182d1df`/script SHA `57796fda...887ead`. Fresh-process Air preflight binds the literal report-LCB actor, rollout, ballot, engine and frozen state; superseded `f4f3dc0` is cache-tainted and may never create a receipt. Receipt/label/gate filenames authorize nothing until their creator exits `0`, the partial disappears and exact bytes reopen. No Stage-B outcome may tune the audit. |
 | **T1 / Lane C Direct-Q — COMPLETE / SELECT NONE** | Learn from the failure without selecting its positive gameplay tail | Preserve aggregate SHA `1fa6789e…791`; do not deploy, extend or mutate the 144M recipe. The next learner requires a separately frozen Suphx-style or other role-correct microbaseline gate. |
 | **RLCB-C1 fresh confirmation — COMPLETE / ARTIFACT-ONLY CONFIRM** | Close formal report-LCB superiority | 2,048/2,048 fresh clusters, exact doses, zero stream collisions, sane null and positive superiority LCB. The late dirty-doc supervisor refusal is bound by non-replay closeout SHA `06dd487d…b7aae5`; preserve aggregate SHA `83f5a9df…f5ef5ea`. No extension or S0c reinterpretation remains. |
 | **Formal S0 — COMPLETE / SELECT NONE** | Preserve the burned S0c evidence boundary | Closeout `ef0a365…fde9a`, terminal parent `ca556c2`, no parsed outcomes, no retry/extension, and an empty S0 service namespace. There is no remaining S0c work. |
@@ -314,12 +314,14 @@ teacher and production boundaries, not extensions of closed runs:
    removal, and requires equal-work immediate-removal plus distillation
    controls and frozen held-out diagnostics before allocating training
    compute. The feature partition plus four independent role/surface
-   policy/value heads plus immutable actor/on-policy learner pass 48/48 focused
-   and 132/132 adjacent tests, including exact interrupted resume across a
+   policy/value heads plus immutable actor/on-policy learner pass 52/52 focused
+   and 136/136 adjacent tests, including exact interrupted resume across a
    `gamma=1` to zero boundary. A schedule-bound deal root now gives divergent
    arms identical deals without coupling their mask/action streams, and the
    bounded +/-3.5 reward is explicitly distinguished from uncapped engine
-   progression. The lower-rate segment, frozen O0 diagnostics,
+   progression. The one-tenth-LR public continuation now has an exact
+   exhausted-parent transition with explicit optimizer/replay/RNG reset and
+   zero hidden work. Frozen O0 diagnostics, the score-redacted runtime gate,
    exact launch packet and independent review remain; no training is
    authorized. The terminal 144M report cannot choose its recipe.
 5. **Other search lanes:** structured bury or sampled exact endgame must be

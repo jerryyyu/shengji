@@ -35,24 +35,54 @@ EXPERIMENTAL_SAMPLER_BALLOT_FLAGS = (
     "SHENGJI_ALLOW_BALLOT_MISMATCH",
 )
 
-REFUSED_CAPTURE_PACKET = {
-    "packet_id": "teacher-v1-entry-120m-v1",
-    "seed0": 120_000_000,
-    "seed_end_inclusive": 120_001_023,
-    "max_deals": 1_024,
-    "shard_count": 8,
-    "sharding": "interleaved_seed_offset_mod_8",
-    "deals_per_shard": 128,
-    "status": "REFUSED",
-    "refusal": "noncanonical_actor_identity_comparison",
-}
+REFUSED_CAPTURE_PACKETS = (
+    {
+        "packet_id": "teacher-v1-entry-120m-v1",
+        "seed0": 120_000_000,
+        "seed_end_inclusive": 120_001_023,
+        "max_deals": 1_024,
+        "shard_count": 8,
+        "sharding": "interleaved_seed_offset_mod_8",
+        "deals_per_shard": 128,
+        "status": "REFUSED",
+        "refusal": "noncanonical_actor_identity_comparison",
+        "capture_complete": True,
+        "diagnostics_complete": False,
+        "stage_a_frozen": False,
+        "labels_launched": False,
+    },
+    {
+        "packet_id": "teacher-v1-entry-143m-v2",
+        "seed0": 143_000_000,
+        "seed_end_inclusive": 143_001_023,
+        "max_deals": 1_024,
+        "shard_count": 8,
+        "sharding": "interleaved_seed_offset_mod_8",
+        "deals_per_shard": 128,
+        "status": "REFUSED",
+        "refusal": "v11_actor_outside_canonical_ballot",
+        "capture_complete": True,
+        "diagnostics_complete": False,
+        "stage_a_frozen": False,
+        "labels_launched": False,
+        "witness": {
+            "state_id": "143000001:44:0",
+            "seed": 143_000_001,
+            "ply": 44,
+            "seat": 0,
+            "role": "defender",
+            "decision": "lead",
+        },
+    },
+)
+# Backward-compatible name for the immediately preceding refused generation.
+REFUSED_CAPTURE_PACKET = REFUSED_CAPTURE_PACKETS[-1]
 
-# The 120M v1 packet reached capture completion but was refused before any
-# diagnostics, state freeze or labels.  Evidence namespaces are immutable, so
-# the repaired entry population starts from a disjoint seed block and packet
-# identity rather than reinterpreting or resuming those artifacts.
-SEED_START = 143_000_000
-CAPTURE_PACKET_ID = "teacher-v1-entry-143m-v2"
+# Both prior namespaces are immutable and remain refused.  V3 starts from a
+# disjoint block only after the actor itself was made ballot-canonical and its
+# exact v2 witness plus a 20-round two-role scan were turned into tests.
+SEED_START = 149_000_000
+CAPTURE_PACKET_ID = "teacher-v1-entry-149m-v3"
 CAPTURE_MAX_DEALS = 1_024
 CAPTURE_SEED_END = SEED_START + CAPTURE_MAX_DEALS - 1
 CAPTURE_SHARDS = 8

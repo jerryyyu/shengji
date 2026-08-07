@@ -45,29 +45,60 @@ from shengji.teacher_v1 import (CAPTURE_DEALS_PER_SHARD,  # noqa: E402
                                 STAGE_A_STATES, STATE_SET_SCHEMA,
                                 capture_coverage, capture_packet,
                                 capture_shard_seeds,
-                                is_sha256, REFUSED_CAPTURE_PACKET)
+                                is_sha256, REFUSED_CAPTURE_PACKET,
+                                REFUSED_CAPTURE_PACKETS)
 
 
 EXPECTED_PACKET = {
-    "packet_id": "teacher-v1-entry-143m-v2",
-    "seed0": 143_000_000,
-    "seed_end_inclusive": 143_001_023,
+    "packet_id": "teacher-v1-entry-149m-v3",
+    "seed0": 149_000_000,
+    "seed_end_inclusive": 149_001_023,
     "max_deals": 1_024,
     "shard_count": 8,
     "sharding": "interleaved_seed_offset_mod_8",
     "deals_per_shard": 128,
 }
-EXPECTED_REFUSED_PACKET = {
-    "packet_id": "teacher-v1-entry-120m-v1",
-    "seed0": 120_000_000,
-    "seed_end_inclusive": 120_001_023,
-    "max_deals": 1_024,
-    "shard_count": 8,
-    "sharding": "interleaved_seed_offset_mod_8",
-    "deals_per_shard": 128,
-    "status": "REFUSED",
-    "refusal": "noncanonical_actor_identity_comparison",
-}
+EXPECTED_REFUSED_PACKETS = (
+    {
+        "packet_id": "teacher-v1-entry-120m-v1",
+        "seed0": 120_000_000,
+        "seed_end_inclusive": 120_001_023,
+        "max_deals": 1_024,
+        "shard_count": 8,
+        "sharding": "interleaved_seed_offset_mod_8",
+        "deals_per_shard": 128,
+        "status": "REFUSED",
+        "refusal": "noncanonical_actor_identity_comparison",
+        "capture_complete": True,
+        "diagnostics_complete": False,
+        "stage_a_frozen": False,
+        "labels_launched": False,
+    },
+    {
+        "packet_id": "teacher-v1-entry-143m-v2",
+        "seed0": 143_000_000,
+        "seed_end_inclusive": 143_001_023,
+        "max_deals": 1_024,
+        "shard_count": 8,
+        "sharding": "interleaved_seed_offset_mod_8",
+        "deals_per_shard": 128,
+        "status": "REFUSED",
+        "refusal": "v11_actor_outside_canonical_ballot",
+        "capture_complete": True,
+        "diagnostics_complete": False,
+        "stage_a_frozen": False,
+        "labels_launched": False,
+        "witness": {
+            "state_id": "143000001:44:0",
+            "seed": 143_000_001,
+            "ply": 44,
+            "seat": 0,
+            "role": "defender",
+            "decision": "lead",
+        },
+    },
+)
+EXPECTED_REFUSED_PACKET = EXPECTED_REFUSED_PACKETS[-1]
 EXPECTED_PYTHON = "3.14.6"
 EXPECTED_EXPERIMENTAL_SAMPLER_BALLOT_FLAGS = (
     "SHENGJI_WEIGHTED_SPLITS",
@@ -157,12 +188,21 @@ def static_contract_problems() -> list[str]:
             )
     if capture_packet() != EXPECTED_PACKET:
         problems.append("executable capture packet differs from literal packet")
+    if tuple(REFUSED_CAPTURE_PACKETS) != EXPECTED_REFUSED_PACKETS:
+        problems.append("historical refused packet ledger drift")
     if REFUSED_CAPTURE_PACKET != EXPECTED_REFUSED_PACKET:
-        problems.append("historical refused packet identity drift")
-    if (REFUSED_CAPTURE_PACKET["packet_id"] == CAPTURE_PACKET_ID
-            or not (REFUSED_CAPTURE_PACKET["seed_end_inclusive"]
-                    < SEED_START)):
-        problems.append("fresh entry packet reuses refused v1 identity or seeds")
+        problems.append("immediately preceding refused packet identity drift")
+    refused_ids = [packet.get("packet_id")
+                   for packet in REFUSED_CAPTURE_PACKETS]
+    refused_ranges = [
+        set(range(packet["seed0"], packet["seed_end_inclusive"] + 1))
+        for packet in REFUSED_CAPTURE_PACKETS
+    ]
+    fresh_range = set(range(SEED_START, CAPTURE_SEED_END + 1))
+    if (len(refused_ids) != len(set(refused_ids))
+            or CAPTURE_PACKET_ID in refused_ids
+            or any(fresh_range & previous for previous in refused_ranges)):
+        problems.append("fresh entry packet reuses a refused identity or seed")
     if CAPTURE_PYTHON != EXPECTED_PYTHON:
         problems.append("teacher capture Python contract drift")
     if (tuple(EXPERIMENTAL_SAMPLER_BALLOT_FLAGS)
@@ -186,7 +226,7 @@ def static_contract_problems() -> list[str]:
     shards = []
     if CAPTURE_SHARDS == 8:
         for index in range(8):
-            expected = list(range(143_000_000 + index, 143_001_024, 8))
+            expected = list(range(149_000_000 + index, 149_001_024, 8))
             try:
                 actual = capture_shard_seeds(index)
             except Exception as exc:  # fail closed on a changed helper
@@ -196,7 +236,7 @@ def static_contract_problems() -> list[str]:
                 problems.append(f"capture shard {index} literal seed coverage drift")
             shards.extend(actual)
     if (len(shards) != 1_024 or len(set(shards)) != 1_024
-            or sorted(shards) != list(range(143_000_000, 143_001_024))):
+            or sorted(shards) != list(range(149_000_000, 149_001_024))):
         problems.append("capture shards do not partition the exact 1,024 seeds")
     return problems
 
@@ -698,7 +738,7 @@ def validate_stage_a_state_set(
         problems.append("frozen Stage-A states/deals are not unique")
     if any(type(seed) is not int or not SEED_START <= seed <= CAPTURE_SEED_END
            for seed in seeds):
-        problems.append("frozen Stage-A state lies outside the v2 seed range")
+        problems.append("frozen Stage-A state lies outside the v3 seed range")
 
     diagnostic_rows = [
         row for manifest in reopened_diagnostics

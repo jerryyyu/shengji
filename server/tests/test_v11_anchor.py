@@ -222,6 +222,95 @@ def test_real_corrected_encoder_checkpoint_has_named_non_inert_witness():
     }
 
 
+def test_v11_actor_repairs_named_teacher_v2_off_ballot_witness():
+    """The exact v2 refusal must remain a falsifying regression witness."""
+    import teacher_v1_states as teacher_states
+    from shengji.teacher_v1 import action_key, replay_state
+
+    seed = 143_000_001
+    row = teacher_states.capture_deal(
+        seed,
+        teacher_states.target_for_deal(teacher_states.EXPERIMENT, seed),
+        teacher_states.actor_identity(),
+    )
+    assert row is not None
+    assert (row["state_id"], row["ply"], row["seat"], row["role"],
+            row["decision"]) == (
+                "143000001:44:0", 44, 0, "defender", "lead")
+    rnd = replay_state({
+        **row, "selection_probability": 1.0, "kind": "raw",
+    })
+    original_hand = list(rnd.hands[0])
+    ballot = make_bot("mc-strong", seed=1)._candidates(rnd, 0)
+    bot = make_bot("rl-override-v11pair", seed=1)
+    played = bot.decide_play(rnd, 0)
+
+    assert list(rnd.hands[0]) == original_hand
+    assert action_key(played) == action_key(ballot[0]) == ("C2",)
+    assert action_key(played) in {action_key(action) for action in ballot}
+
+
+def test_v11_actor_stays_in_exact_mc_ballot_across_both_roles():
+    """Broad actor scan catches canonical lead/follow regressions."""
+    from shengji.teacher_v1 import action_key
+
+    roles, decisions = set(), set()
+    checked = 0
+    for seed in range(20):
+        game = Game(random.Random(seed))
+        rnd = game.start_round()
+        bots = [make_bot("rl-override-v11pair", seed=seed * 4 + seat)
+                for seat in range(4)]
+        while rnd.phase == "deal":
+            seat, _, _ = rnd.deal_next()
+            cards = bots[seat].decide_declare(rnd, seat)
+            if cards:
+                rnd.declare(seat, cards)
+        for seat in range(4):
+            cards = bots[seat].decide_declare(rnd, seat, final=True)
+            if cards:
+                rnd.declare(seat, cards)
+        rnd.finalize_declare()
+        assert rnd.banker is not None
+        rnd.bury(
+            rnd.banker,
+            bots[rnd.banker].decide_bury(rnd, rnd.banker),
+        )
+        ballot = MCBot(seed=1)
+        while rnd.phase == "play":
+            seat = rnd.turn
+            assert seat is not None and rnd.trick is not None
+            roles.add("attacker" if rnd.is_attacker(seat) else "defender")
+            decisions.add("lead" if not rnd.trick.plays else "follow")
+            offered = {
+                action_key(action)
+                for action in ballot._candidates(rnd, seat)
+            }
+            played = bots[seat].decide_play(rnd, seat)
+            assert action_key(played) in offered, (
+                f"seed {seed}, seat {seat}: {played} outside {sorted(offered)}"
+            )
+            rnd.play(seat, played)
+            checked += 1
+
+    assert checked >= 1_400
+    assert roles == {"attacker", "defender"}
+    assert decisions == {"lead", "follow"}
+
+
+def test_v11_single_candidate_returns_literal_ballot_row(monkeypatch):
+    rnd, seat = _play_state()
+    bot = make_bot("rl-override-v11pair", seed=3)
+    monkeypatch.setattr(
+        bot, "_canonical_smart_action", lambda _rnd, _seat: ["off-ballot"])
+    monkeypatch.setattr(
+        bot._ballot, "_candidates", lambda _rnd, _seat: [["literal-row"]])
+
+    assert bot.decide_play(rnd, seat) == ["literal-row"]
+    assert bot.v11_influence_telemetry()["totals"][
+        "single_candidate_returns"] == 1
+
+
 @pytest.mark.parametrize("bad_value", [True, 1.0, 1.9, -1])
 def test_v11_influence_receipt_refuses_non_integer_or_negative_counters(
         bad_value):

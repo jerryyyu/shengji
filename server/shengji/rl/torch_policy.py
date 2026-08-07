@@ -278,25 +278,58 @@ class RLOverrideBot(SmartBot):
         return _v11_influence_receipt(
             self._v11_influence_totals, mode="direct")
 
+    def _canonical_smart_action(self, rnd: Round, seat: int) -> list[str]:
+        """Evaluate the protected Smart action under the ballot's hand order.
+
+        Both ``SmartBot`` and the MC candidate generator walk the acting hand.
+        The ballot canonicalises that hand before walking it, while the old
+        V11 actor evaluated Smart on the incidental live order.  That allowed
+        the protected action to sit outside the exact ballot the network then
+        scored (the teacher-v2 witness is seed 143000001, ply 44, seat 0).
+
+        Leads can use the ballot's shared canonical boundary directly.  For a
+        follow, preserve the live round and run Smart with the same temporary
+        sorted hand that ``MCBot._candidates`` uses.
+        """
+        if not rnd.trick.plays:
+            return self._ballot.canonical_lead(rnd, seat)
+        saved = rnd.hands[seat]
+        rnd.hands[seat] = sorted(saved)
+        try:
+            return sorted(SmartBot.decide_play(self, rnd, seat))
+        finally:
+            rnd.hands[seat] = saved
+
     def decide_play(self, rnd: Round, seat: int) -> list[str]:
         totals = self._v11_influence_totals
         totals["decision_entries"] += 1
-        base = super().decide_play(rnd, seat)          # SmartBot's pick = a_0
+        base = self._canonical_smart_action(rnd, seat)  # protected a_0
         # MUST match the ballot the teacher VALUED. gen-v4 valued
         # MCBot._candidates() rows while this inferred over
         # enumerate_actions() — 11 of 12 decisions enumerate differently
         # (13 vs 26 candidates on seed 5), so the net was scoring actions it
         # never saw valued. Same class as the Elo-798 mismatch.
         actions = self._ballot._candidates(rnd, seat)
-        if len(actions) <= 1:
+        if not actions:
+            raise RuntimeError("V11 actor ballot is empty")
+        if len(actions) == 1:
             totals["single_candidate_returns"] += 1
-            return base
+            # Return the literal ballot row, not an independently constructed
+            # equivalent.  Besides making actor membership executable, this
+            # protects against a future generator change that makes ``base``
+            # semantically different in a one-action state.
+            return actions[0]
         key = sorted(base)
         try:                                # a_0 must be row 0, as in training
             i0 = next(i for i, a in enumerate(actions) if sorted(a) == key)
         except StopIteration:
             totals["smart_absent_returns"] += 1
-            return base
+            # Candidate 0 is the ballot generator's own canonical Smart
+            # action.  Falling back to the out-of-ballot ``base`` caused three
+            # silent departures in 1,444 audited decisions and killed the
+            # teacher-v2 diagnostic.  Stay inside the actor's declared action
+            # surface and make the exceptional path visible in telemetry.
+            return actions[0]
         actions = [actions[i0]] + actions[:i0] + actions[i0 + 1:]
         obs = encode_obs(rnd, seat)
         enc = [encode_action(a, rnd) for a in actions]
@@ -336,15 +369,17 @@ class MCGatedOverride(RLOverrideBot):
     _mc = None
 
     def decide_play(self, rnd: Round, seat: int) -> list[str]:
-        base = SmartBot.decide_play(self, rnd, seat)
+        base = self._canonical_smart_action(rnd, seat)
         actions = self._ballot._candidates(rnd, seat)
-        if len(actions) <= 1:
-            return base
+        if not actions:
+            raise RuntimeError("V11 gated actor ballot is empty")
+        if len(actions) == 1:
+            return actions[0]
         key = sorted(base)
         try:
             i0 = next(i for i, a in enumerate(actions) if sorted(a) == key)
         except StopIteration:
-            return base
+            return actions[0]
         actions = [actions[i0]] + actions[:i0] + actions[i0 + 1:]
         obs = encode_obs(rnd, seat)
         enc = [encode_action(a, rnd) for a in actions]

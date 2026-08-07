@@ -13,7 +13,8 @@ sys.path.insert(0, str(SCRIPTS))
 
 import teacher_v1_entry_supervisor as supervisor  # noqa: E402
 from shengji.teacher_v1 import (CAPTURE_PACKET_ID, REPRESENTATIVE_CELLS,  # noqa: E402
-                                REFUSED_CAPTURE_PACKET, SEED_START,
+                                REFUSED_CAPTURE_PACKET,
+                                REFUSED_CAPTURE_PACKETS, SEED_START,
                                 capture_coverage, capture_packet,
                                 capture_shard_seeds, stable_digest)
 
@@ -36,18 +37,21 @@ def runtime() -> dict:
 def test_literal_entry_contract_is_exact():
     assert supervisor.static_contract_problems() == []
     assert supervisor.EXPECTED_PACKET == {
-        "packet_id": "teacher-v1-entry-143m-v2",
-        "seed0": 143_000_000,
-        "seed_end_inclusive": 143_001_023,
+        "packet_id": "teacher-v1-entry-149m-v3",
+        "seed0": 149_000_000,
+        "seed_end_inclusive": 149_001_023,
         "max_deals": 1_024,
         "shard_count": 8,
         "sharding": "interleaved_seed_offset_mod_8",
         "deals_per_shard": 128,
     }
+    assert REFUSED_CAPTURE_PACKETS == supervisor.EXPECTED_REFUSED_PACKETS
     assert REFUSED_CAPTURE_PACKET == supervisor.EXPECTED_REFUSED_PACKET
     assert REFUSED_CAPTURE_PACKET["packet_id"] == \
-        "teacher-v1-entry-120m-v1"
+        "teacher-v1-entry-143m-v2"
     assert REFUSED_CAPTURE_PACKET["status"] == "REFUSED"
+    assert REFUSED_CAPTURE_PACKET["witness"]["state_id"] == \
+        "143000001:44:0"
     assert supervisor.EXPECTED_PYTHON == "3.14.6"
     assert supervisor.EXPECTED_EXPERIMENTAL_SAMPLER_BALLOT_FLAGS == (
         "SHENGJI_WEIGHTED_SPLITS",
@@ -143,11 +147,12 @@ def test_one_directory_is_one_attempt_even_when_existing_directory_is_empty(
         supervisor.prepare_output_dir(attempt)
 
 
-def test_refused_v1_namespace_cannot_be_reused():
+@pytest.mark.parametrize(
+    "packet_id", ["teacher-v1-entry-120m-v1", "teacher-v1-entry-143m-v2"],
+)
+def test_refused_namespace_cannot_be_reused(packet_id):
     with pytest.raises(supervisor.EntryRefusal, match=CAPTURE_PACKET_ID):
-        supervisor.resolve_output_dir(
-            "runs/logs/teacher-v1-entry-120m-v1"
-        )
+        supervisor.resolve_output_dir(f"runs/logs/{packet_id}")
 
 
 def test_command_graph_is_exact_and_stops_before_receipts_or_labels(tmp_path):
@@ -158,7 +163,7 @@ def test_command_graph_is_exact_and_stops_before_receipts_or_labels(tmp_path):
         argv = list(job.argv)
         assert argv[2] == "capture"
         assert argv[argv.index("--packet-id") + 1] == CAPTURE_PACKET_ID
-        assert argv[argv.index("--seed0") + 1] == "143000000"
+        assert argv[argv.index("--seed0") + 1] == "149000000"
         assert argv[argv.index("--max-deals") + 1] == "1024"
         assert argv[argv.index("--shard-index") + 1] == str(index)
         assert argv[argv.index("--shard-count") + 1] == "8"
@@ -667,7 +672,7 @@ def test_frozen_output_refuses_out_of_range_seed_and_forged_coverage(
     out_of_range["states"][0]["seed"] = SEED_START - 1
     out_of_range["states_digest"] = stable_digest(out_of_range["states"])
     paths.state_set.write_text(json.dumps(out_of_range, sort_keys=True) + "\n")
-    with pytest.raises(supervisor.EntryRefusal, match="outside the v2 seed range"):
+    with pytest.raises(supervisor.EntryRefusal, match="outside the v3 seed range"):
         supervisor.validate_stage_a_state_set(
             paths, diagnostics, diagnostic_hashes, runtime(), actor, exclusion,
         )

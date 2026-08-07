@@ -34,6 +34,52 @@ def _round_in_play(seed: int):
     return rnd
 
 
+class _TinyInformationMC(MCBot):
+    """Small real sampler used only to test the information boundary."""
+
+    N_DETERMINIZATIONS = 3
+    TRACTOR_LOCK = False
+    REQUIRE_EXACT_WORK = True
+
+
+def _non_banker_search_round():
+    """Find an early real decision with a non-trivial MC ballot."""
+    heuristic = HeuristicBot()
+    for seed in range(1, 50):
+        rnd = _round_in_play(seed)
+        for _ in range(12):
+            assert rnd.turn is not None
+            seat = rnd.turn
+            if (seat != rnd.banker
+                    and len(_TinyInformationMC(seed=1)._candidates(
+                        rnd, seat)) > 1):
+                return rnd, seat
+            rnd.play(seat, heuristic.decide_play(rnd, seat))
+            if rnd.phase != "play":
+                break
+    raise AssertionError("no bounded non-banker MC search witness")
+
+
+def _semantic_decision_record(bot: MCBot):
+    record = copy.deepcopy(bot.last_decision_record)
+    assert record is not None, "information-boundary witness did not search"
+    record.pop("search_secs", None)
+    return record
+
+
+def _assert_same_information_set_decision(first_round, second_round, seat):
+    first = _TinyInformationMC(seed=987_654_321)
+    second = _TinyInformationMC(seed=987_654_321)
+    first_action = first.decide_play(first_round, seat)
+    second_action = second.decide_play(second_round, seat)
+
+    assert first_action == second_action
+    assert _semantic_decision_record(first) == \
+        _semantic_decision_record(second)
+    assert first.last_n_worlds == second.last_n_worlds
+    assert first._sampler_snapshot() == second._sampler_snapshot()
+
+
 @pytest.mark.parametrize("seed", [5, 7, 11, 13])
 def test_banker_sampler_counts_kitty_once(seed):
     rnd = _round_in_play(seed)
@@ -93,6 +139,59 @@ def test_non_banker_sampling_unaffected():
     assert sampled is not None
     _, kitty = sampled
     assert len(kitty) == len(rnd.buried)
+
+
+def test_mc_decision_cannot_read_other_players_hidden_ownership():
+    """Changing only non-actor hands cannot change an MC decision.
+
+    Teacher champion continuations construct a full outer world, then create
+    a fresh MC actor at every downstream information set.  This witness makes
+    sure that actor uses only its own hand plus public history rather than the
+    true ownership already present on the Round object.
+    """
+    rnd, seat = _non_banker_search_round()
+    altered = copy.deepcopy(rnd)
+    hidden_seats = [other for other in range(4) if other != seat]
+    left_seat, right_seat, left_i, right_i = next(
+        (left_seat, right_seat, left_i, right_i)
+        for offset, left_seat in enumerate(hidden_seats)
+        for right_seat in hidden_seats[offset + 1:]
+        for left_i, left in enumerate(altered.hands[left_seat])
+        for right_i, right in enumerate(altered.hands[right_seat])
+        if left != right
+    )
+    altered.hands[left_seat][left_i], altered.hands[right_seat][right_i] = (
+        altered.hands[right_seat][right_i],
+        altered.hands[left_seat][left_i],
+    )
+    altered.hands[left_seat].sort()
+    altered.hands[right_seat].sort()
+
+    assert altered.hands[seat] == rnd.hands[seat]
+    assert altered.history == rnd.history and altered.trick == rnd.trick
+    _assert_same_information_set_decision(rnd, altered, seat)
+
+
+def test_non_banker_mc_decision_cannot_read_hidden_kitty_ownership():
+    """The buried cards are private only to the banker, never a follower."""
+    rnd, seat = _non_banker_search_round()
+    assert seat != rnd.banker and rnd.buried
+    altered = copy.deepcopy(rnd)
+    hidden_seat = next(other for other in range(4) if other != seat)
+    bury_i, hand_i = next(
+        (bury_i, hand_i)
+        for bury_i, buried in enumerate(altered.buried)
+        for hand_i, hidden in enumerate(altered.hands[hidden_seat])
+        if buried != hidden
+    )
+    altered.buried[bury_i], altered.hands[hidden_seat][hand_i] = (
+        altered.hands[hidden_seat][hand_i], altered.buried[bury_i])
+    altered.buried.sort()
+    altered.hands[hidden_seat].sort()
+
+    assert altered.hands[seat] == rnd.hands[seat]
+    assert altered.history == rnd.history and altered.trick == rnd.trick
+    _assert_same_information_set_decision(rnd, altered, seat)
 
 
 def test_encoder_kitty_contract_unchanged():

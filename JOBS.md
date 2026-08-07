@@ -62,6 +62,16 @@ candidate rollouts, both tensor and continuation-telemetry validators returned
 no problems in 201 seconds. No future champion fold, Stage-B outcome or parent
 action choice was read, and no artifact was created.
 
+The continuation information boundary was then checked directly on the exact
+locked actor bytes. Swapping only cards between non-acting hidden hands across
+all 64 audit states left actions, semantic decision records, world counts and
+counters identical in all 12 cells; 56 cases searched. For non-banker actors,
+swapping an unseen kitty card with another hidden hand passed in all 47 states,
+including 41 searches. Current main has the same locked `mcbot.py`/`memory.py`
+hashes and now carries two bounded non-vacuous regressions. The focused file is
+10/10 and the adjacent sampler/memory/invariant matrix is 63/63 in both normal
+and compiled-strict modes.
+
 Mini has no long strength worker. RLCB-C1, V11-v2 and Direct-Q are terminal;
 Mini is available for bounded compiled latency checks or the next separately
 admitted learner protocol.

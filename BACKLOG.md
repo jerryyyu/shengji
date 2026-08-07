@@ -321,9 +321,11 @@ teacher and production boundaries, not extensions of closed runs:
    bounded +/-3.5 reward is explicitly distinguished from uncapped engine
    progression. The one-tenth-LR public continuation now has an exact
    exhausted-parent transition with explicit optimizer/replay/RNG reset and
-   zero hidden work. Frozen O0 diagnostics, the score-redacted runtime gate,
-   exact launch packet and independent review remain; no training is
-   authorized. The terminal 144M report cannot choose its recipe.
+   zero hidden work. Claude's 19:49 independent review closed the causal-stream
+   and reward-semantics HOLD and accepted the lower-rate boundary as mechanics.
+   Frozen O0 diagnostics, the score-redacted runtime gate, CLI and exact launch
+   packet remain; no training is authorized. The terminal 144M report cannot
+   choose its recipe.
 5. **Other search lanes:** structured bury or sampled exact endgame must be
    explicitly reparented to confirmed report-LCB with matched null/work before
    any strength run.

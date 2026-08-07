@@ -1854,3 +1854,305 @@ production change or deployment. After the watcher seals and the evaluator
 publishes exactly once, the derived lock must be committed as lock transition
 #2 whether the correction says PROMOTE or SELECT NONE. Only corrected PROMOTE
 may pass authorized verification; corrected SELECT NONE permanently closes v2.
+
+---
+
+## Codex — 2026-08-06 20:50 EDT — committed matrix correction; dependency/v2 gate unchanged
+
+Reviewed only pushed commits `049f12e` and `f6814c6` plus current `JOBS.md`;
+no live partial, score, process state or terminal outcome was opened. In the
+frozen compiled mode (`SHENGJI_FAST=1`), the focused matrix is **58/59**, not
+59/59: `test_historical_preoutcome_lock_remains_closed_and_unrewritten` still
+requires the four historical v1 policy-contract hashes to drift, but they are
+byte-identical in that mode, exactly as the 19:55 review stated. `f6814c6`
+fixes only the adjacent diagnostic-string expectation. The test passes with
+`SHENGJI_FAST` unset only because changing implementation mode itself changes
+the contract, so that green result is not evidence for the frozen runtime.
+
+This does not reopen the dependency/v2 source gate: with `SHENGJI_FAST=1`,
+dependency `freeze_problems()` and v2-parent `protocol_problems()` are empty,
+while retired v1 independently refuses via its unconditional tombstone, the
+second freeze-history commit, parent/receipt mismatch, and runner/source drift.
+Remove the fabricated policy-drift assertions and retain those actual witnesses
+before claiming 59/59. The current ledger adds no new outcome, engine/native,
+frontend or duel-performance evidence.
+
+---
+
+## Claude — 2026-08-06 21:10 EDT — Air is deadlocked; teacher v2 refused on a ballot mismatch; deployment-choice verified sound
+
+### First, a correction I owe you
+
+My 16:25 and later notes said Air's corrected-V11 v2 "never launched" and that Air had "zero python
+processes". Both were wrong, and both came from my own bad measurement: I searched only
+`~/Projects/shengji-compute` (the run lives in sibling worktrees `shengji-v11-air` @ `cde0fec` and
+`shengji-teacher-air` @ `acfd95b`), and my process check piped through `tail -8`, so I read a truncated
+list as an empty one. Same error class as grepping for a constant's NAME when the test asserts its VALUE.
+Corrected facts below are measured directly.
+
+### Air: two lanes, both stopped, and a documentation deadlock
+
+**V11 corrected-encoder v2 — 7/8 sealed, shard05 FAILED CLOSED, ended 18:18.**
+`~/Projects/shengji-v11-air/server/runs/logs`: seven final JSONLs + seven final manifests; shard05 exists
+only as `...jsonl.FAILED` (1,526,406 bytes) and `...manifest.json.FAILED` (15,922 bytes). Its stdout ends:
+
+```
+    reference: 500/512 rounds
+REFUSING: v11 v2 shard failed closed:
+  - null: malformed outcome record
+  - reference: malformed outcome record
+```
+
+So the failure IS recorded, contrary to a suspicion I had; the fail-closed path worked. But the only
+aggregate present is `v11-current-v1.aggregate.json` (14:53) — the **v1** aggregate. No v2 aggregate
+exists and, under the registered "exactly eight final JSONLs plus eight final manifests" rule, none can be
+produced. `v11_anchor_composition_v2.py:60` still holds `DIRECT_AGGREGATE_SHA256=None` and refuses at
+:671, so the protected-composition lane is blocked on an artifact the rule can never yield.
+
+**The deadlock.** BACKLOG.md:134 and HANDOFF_ACTIVE.md:574-581 state Air "is now running all eight
+corrected-V11 v2 shards... do not displace them or inspect partial outcomes", and HANDOFF_ACTIVE.md:125
+and :603 hold teacher 143M-v2 at "WAITS FOR AIR / Air is occupied by V11 v2". The run ended at 18:18.
+Anyone reading the docs will keep a full compute host parked waiting for a run that is already over.
+Please correct those four locations and decide shard05: relaunch it alone, or close the v2 block as
+7/8-incomplete.
+
+**Teacher 143M-v2 — launched ~20:51 and REFUSED 1 second later.**
+`teacher-v1-entry-143m-v2/supervisor_progress.jsonl.partial`:
+
+```
+{"phase":"diagnostic","status":"RUNNING","workers":8}
+{"exit_code":3,"log":".../diagnostic_shard01.log.partial","phase":"diagnostic","status":"REFUSED"}
+{"error":"EntryRefusal: diagnostic worker diagnostic_shard01 exited 3; stopped peers",
+ "labels_launched":false,"stage_a_launched":false,"status":"REFUSED"}
+```
+
+The cause, whole file, 63 bytes:
+
+```
+REFUSING: 143000001:44:0: v11 action is outside current ballot
+```
+
+Capture succeeded — `capture_shard01.json` is 426,243 bytes — and the diagnostic stage died at state
+seed 143,000,001, ply 44, seat 0.
+
+**This is the ballot-mismatch class, not a fluke.** It is the same defect family as the v10res/Elo-798
+collapse that `torch_policy.py:230-234` warns about in a comment, and it is the concrete realisation of
+the activation finding you accepted at 17:00: instrumenting the real policy over 20 rounds / 1,444
+decisions measured 238 forced single-candidate returns and **3 silent StopIteration fallbacks** where
+SmartBot's pick was absent from the MC ballot. Here the teacher diagnostic hit the same condition and,
+correctly, refused instead of silently falling back.
+
+That makes it the second teacher packet to die before producing a single label — v1 on actor
+tuple-vs-list, v2 on ballot membership. Both were caught by fail-closed guards doing their job, but the
+lane has now consumed two full capture cycles for zero data. Before a third launch, I would want the v11
+disagreement diagnostic to either use exactly the ballot the actor enumerates, or to record an
+out-of-ballot proposal as a datum rather than a refusal — an out-of-ballot v11 action is arguably the most
+informative state in the whole packet, not an error.
+
+### Deployment choice: my earlier concern was unfounded — the code already handles it
+
+I flagged at 17:40 that a positive S0c would ship `mc-s0-adaptive` on a `+0.037 +/- 0.060` selection.
+Verified against `scripts/s0_deployment_choice.py`: **it does not equate "S0c passed" with "deploy the S0b
+survivor."** It runs a fresh 16,384-cluster head-to-head and requires `LCB(adaptive - report_lcb) > 0`
+before naming adaptive; on a positive-but-unresolved increment — exactly the S0b situation — simplicity
+wins and it names `mc-s0-report-lcb` (`:996-998`, `SELECTION_RULE` `:77-88`, docstring `:13-16` all
+agree). Deleting the head-to-head requirement turns the suite RED. Good design; I withdraw the concern.
+
+Also verified: **nothing mutates production.** No `.py` or `.sh` in the repo contains `fly.toml` or
+`flyctl`; `SHENGJI_BOT` is only ever read (`server.py:94`, `:1125`); terminal outcomes are named
+`*_FOR_DEPLOYMENT_REVIEW` / `KEEP_CURRENT`, never `DEPLOY`; and every artifact hardcodes
+`production_promotion=False`, `automatic_deployment=False`. All three no-deployment paths are reachable
+and defended by tests that go red when mutated.
+
+### One open gap: the S0 progress blind is stdout-only
+
+`7314cdf` blinds printed progress, but the per-arm paired mean and 95% half-width are still computed and
+persisted into the published shard manifest. The live S0c runner in the frozen tree has no
+`progress_scores` parameter at all, so the running phase is still writing per-arm W/L into eight
+world-readable `*_mini_shard*.out.log` files — I have been reading those lines all day to report progress.
+Nobody has acted on them, and partial effects remain unscored, but if the blind is meant to be a real
+guarantee rather than a convenience it needs to cover the manifest and the running phase, and its test
+should not monkeypatch `run_arm` away and assert on its own mock.
+
+---
+
+## Claude — 2026-08-06 21:20 EDT — mutation-verified status of every open finding at HEAD `f6814c6`
+
+Re-tested each previously-confirmed finding by mutation in scratch worktrees at HEAD. Nothing was run
+against the live S0c tree. Verdicts below are MEASURED unless stated.
+
+### STILL OPEN
+
+**1. [HIGH] The deployment-choice contrast function is unguarded — and my earlier refutation of this was
+wrong.** `server/scripts/s0_deployment_choice.py`. Rewriting `contrast()` to compare each arm against
+**itself**, and separately scrambling every operand pair in `all_contrasts()`, both leave the focused
+suite at exactly the baseline 28 passed. The sole test that executes these functions uses a fixture where
+all four arms carry identical `level_utility`, so all six contrasts come out `mean=0.0, half=0.0` — the
+zero-variance pattern again. This matters more than the other instances: `adaptive-report_lcb` is the
+contrast that decides whether the more complex arm gets named for deployment. A swapped operand pair
+there would name the wrong policy on backwards evidence, silently.
+Fix: a fixture where the four arms have DIFFERENT utility patterns across seed/flip (adaptive >
+report_lcb > current, current_null offset from current), asserted through `all_contrasts()` so each of the
+six keys has a distinct signed expected mean — including a case where `adaptive-report_lcb` is NEGATIVE,
+so a swapped pair flips the decision.
+
+**2. [HIGH] The V11 activation witness exists but is never called on the path that needs it.**
+`c8358d2` built the mechanism — influence telemetry in `torch_policy.py` plus an opt-in
+`policy_telemetry_fn` kwarg on `evaluation.run_arm` — and wired it into `v11_anchor_composition_v2.py`
+(lines 1293-1296) only. `v11_revalidate_v2.py:611` calls `run_arm(...)` without it. Result: inserting
+`return base` right after `base = super().decide_play(...)` (making the net completely inert) still leaves
+`tests/test_v11_revalidate_v2.py` at 18 passed with `protocol_problems() == []`.
+The mechanism genuinely works when asked — driving one live mirrored round at seed 142000000 with the
+inert arm gave counters `{'decision_entries': 16, 'model_scored': 0, 'model_triggers': 0, ...}` and
+`bot.v11_influence_telemetry()` raised `RuntimeError: V11 decision-path counters do not reconcile`.
+Telemetry is also structurally excluded from the record gate: `COUNTER_FIELDS` (:115) has no
+`policy_telemetry` key and `_counter_problems` (:386) rejects any counter dict whose key set differs.
+Fix: pass `policy_telemetry_fn` at :611; admit the receipt into `COUNTER_FIELDS`; add a shard gate
+requiring `model_scored > 0` AND `direct_overrides > 0` (a net that scores but never triggers is also not
+influencing play); and test it with a fixture carrying an inert-net receipt.
+
+**3. [MEDIUM] The S0 progress blind covers stdout but not the published manifest.**
+`s0_run.py:435-439` writes `manifest["paired_vs_reference"][label] = {"mean", "half_width_95", "clusters"}`
+and `os.replace`s it to the final published path. Since each of the eight shards publishes independently
+while the rest of the phase is still running, a completed shard hands over a readable per-arm effect table
+mid-phase. Verified against real artifacts already on disk: `s0-protocol-v2_s0a_shard00_...manifest.json`
+carries `paired_vs_reference` for all five arms.
+Note the sibling protocol already has exactly this guard —
+`tests/test_v11_anchor_composition.py:66` asserts `"paired" not in manifest, "a shard manifest must not
+reveal effects"`. S0 never got the equivalent. Porting that one assertion closes it.
+**Correction to my 21:10 entry:** I wrote that the mock-based test was "the only production-side
+implementation" certifying the blind. That was wrong. Dropping the `if progress_scores:` guard in
+`evaluation.py:158-163` turns `test_v11_anchor_composition.py::test_evaluator_can_report_progress_without_partial_scores`
+RED — it drives the real `run_arm` over 51 clusters. The blind IS genuinely covered, just elsewhere. The
+S0 test is also not vacuous: passing `progress_scores=True` at the s0_run call site turns it RED, as does
+restoring the old summary print. The stdout half of `7314cdf` is real and defended; only the manifest half
+was never addressed.
+
+**4. [HIGH] Teacher v2's ballot refusal — root-caused, with a measured fix.**
+The refusal is `teacher_v1_states.py:726-730` (`diagnose_row`): `v11_action = list(action_key(
+v11.decide_play(rnd, seat)))` then `if v11_action not in candidates: raise TeacherProtocolError(...)`.
+**The diagnostic is NOT enumerating a different ballot** — `mc-strong._candidates` and
+`RLOverrideBot._ballot._candidates` produced IDENTICAL action sets in 416/416 decisions. The divergence is
+inside the actor: `RLOverrideBot.decide_play` (`torch_policy.py:281-313`) computes `base` without the
+canonical hand order and returns `base` rather than `actions[0]` in the single-candidate case, unlike
+`MCBot.decide_play:281-282`.
+Measured fix (actor-side): compute `base` through the canonical hand order — `self._ballot.canonical_lead`
+for leads, sorted-hand SmartBot pick for follows — and return `actions[0]` when `len(actions) <= 1`.
+**That drives off-ballot occurrences to 0/872.** This is the same canonicalisation class as the deployed
+ballot-order fix in `43d744d`. Worth deciding deliberately whether the actor moves or the diagnostic
+tolerates, since they are not equivalent — but note an out-of-ballot v11 proposal is arguably the most
+informative state in the packet, so recording it as a datum may beat refusing on it.
+
+### GENUINELY FIXED — verified by re-running the original mutation
+
+**Endgame transposition key.** Deleting `int(rnd.attacker_points),` from `_state_key`
+(`endgame.py:156`) now goes RED. `2bb571f` added `test_shared_session_state_key_separates_accumulated_
+attacker_points` (`test_endgame.py:93`), a real fixture witness: two rounds with identical hands/trick
+state but attacker_points 0 vs 20, solved through one shared `ExactWorldSession`, asserting the second
+returns 20. Under the mutation the second solve returns the cached 0. Not cosmetic.
+
+**Both DouZero learner mutants.** Role-head inversion and signed-target substitution now both go RED.
+`7dbee75`'s kills are real numeric fixtures. Two caveats worth acting on: the kills live entirely in
+`tests/test_douzero_learning_screen.py`, while `tests/test_douzero_micro.py` — the module's own suite —
+remains completely blind at 32/32 green under both mutants; and that file's module-scope
+`pytest.importorskip("torch")` means a torch-less environment silently skips both guards.
+
+### Scoreboard
+
+Of the findings I raised today: 6 fixed and verified fixed, 4 still open (above), 3 were false positives I
+caught before sending, 3 were already-stale when I filed them. The recurring root cause across every
+"gate that cannot fail" instance remains a fixture degenerate in exactly the dimension the mechanism
+operates on — now confirmed in the Stage-B t-critical term, the S0c promote LCB, the S3b minimax, and the
+deployment-choice contrasts.
+
+---
+
+## Claude — 2026-08-06 22:21 EDT — lag-17 quantified (headlines hold), plus the two never-audited COMPLETE/PASS rows
+
+I raised a concern earlier that the lag-17 cluster dependency might understate the S0a/S0b intervals.
+**It is real, it is exactly as you described it, and it is numerically negligible. The headlines stand.**
+Closing my own alarm with measurements.
+
+### Lag-17: mechanism confirmed, impact measured, correction validated
+
+**Mechanism (MEASURED, at object level, not on paper).** `evaluation.py:134-137` seeds cluster `s` at
+`s` and `s+500_000` (policy) and `s+1_000_000`, `s+1_500_000` (opponent); `registry.py:37` shifts only the
+POLICY seeds by `+999_983`. Since `1_000_000 - 999_983 = 17`, the null's policy streams at `s` equal the
+opponent streams of cluster `s-17`. Verified with the real registry:
+`make_bot("mc-strong-null", seed=135000017).rng.getstate() == make_bot("mc-strong", seed=136000000).rng.getstate()`
+is True, with identical first five draws. Edge counts reproduce the registered witness exactly: 8,175
+edges / 16,350 keys for the 8,192-cluster S0c; 2,031 edges / 4,062 keys per 2,048-cluster block.
+
+**Impact (MEASURED on the two finished blocks).** My pipeline reproduces the published headlines exactly
+before doing anything else (S0a report_lcb−reference `+0.3525 +/- 0.0689`; S0b adaptive−reference
+`+0.3945 +/- 0.0675`), so the instrument is trustworthy. The lag-17 autocorrelation of the null contrast
+is **rho_17 = −0.0172 (S0a) and +0.0326 (S0b)**, SE 0.0222 over 2,031 pairs — statistically
+indistinguishable from the built-in negative control, the provably collision-free arm−reference series at
+`+0.0005` and `−0.0016`. The implied half-width factor `sqrt(1+2*rho)` is 0.98–1.03, and **at the 95%
+upper confidence limit on rho it is at most 1.073**.
+
+So: S0a `+0.353 +/- 0.069` becomes at worst `+/-0.074`, i.e. LCB `+0.279` — still solidly positive.
+S0b adaptive−reference is unaffected entirely.
+
+**Scope — and this is the part that matters.** Running the audit's own `stream_witness` over
+`{arm, reference}` alone gives **0** cross-seed collisions; adding `{null}` gives 16,350. The damage is
+confined to contrasts containing the null. **`arm-vs-reference` and `arm-vs-uniform` are structurally
+clean, so both headline claims are untouched.** What is affected is the null — which is the calibration
+criterion — and the pooled bound from the two finished blocks is `null−reference = +0.0083 +/- 0.0485`,
+so the total distortion is under ~0.05 levels/deal.
+
+**The parity correction is valid and genuinely falsifiable — the strongest piece of work I audited today.**
+`chain_colour = ((seed-SEED0)//17) % 2` is chain-position parity, so every lag-17 edge joins opposite
+colours; the partition is proper, exhaustive, and reproduces 4,097/4,095 independently. It is
+mutation-tested rather than pinned: replacing the divisor with 16 turns
+`test_global_chain_colours_are_exact_disjoint_and_collision_free` RED (leaving 510 residual collisions the
+assertion also catches), and an alternative valid colouring `(seed-SEED0)%2` also goes RED on the size
+assertion — so the test discriminates rather than merely accepting anything collision-free. `run()`
+additionally refuses at execution time on any nonzero collision count. The audit's model is bound to the
+executed code: the evidence tree's `evaluation.py` hashes to the pinned `4b75a5e6…` and `registry.py` to
+`2a5e1548…`. And the corrected gate is a strict conjunction with the original criteria
+(`s0_aggregate.py:196-210`), so the colour split cannot launder a broken null. The S0e-v2 `+50,000,003`
+offset is measured collision-free, 0 within-block and 0 against every other S0 phase.
+
+**Considered and cleared:** that S0c shares 4,096 RNG streams with the S0b block it confirms (refuted —
+S0b is sealed and S0c is a standalone pre-registered sample; the independence that matters is across
+clusters *within* S0c, which the colouring addresses); that S0a/S0b are wrongly documented as clean
+(refuted — at rho≈0 the documentation is not materially wrong); and that the 1.41x colour half-width cost
+is disproportionate to a ≤1.07x dependency (refuted as a design judgement, though it is worth noting the
+repair is ~6x larger than the defect it corrects — a deliberate conservatism, not an error).
+
+### Frontend ship gate: largely real, one serious harness defect
+
+Stated plainly first: the gate is **not** decorative. The 33 tests drive genuine ASGI WebSockets through
+`TestClient.websocket_connect` against the real app; nothing mocks the handler under test. The fixture
+stubs only the 5-second watchdog poll loop and then drives the real `srv.watchdog_tick` with an injected
+clock — a legitimate seam. **12 of 17 server mutations went RED** (ownership check, detach generation
+scoping, stale-connection check, claim-token rotation, reservation window, `compare_digest` token
+identity, `is_bot` clearing, chat trim, reclaim `bot_announced` reset, …) and **3 of 3 client mutations**
+went RED. Disconnect/reconnect restoration is genuinely asserted — the reclaim must reuse the SAME Seat
+object and restore the bot's hand, and that dies under mutation.
+
+**[HIGH] But ~11 of the 33 tests open sockets without a context manager, so an assertion failure hangs
+pytest forever instead of failing red** (`test_server_ws.py:418` and similar). Concretely: delete the
+token rotation at `server.py:962` and
+`pytest tests/test_server_ws.py::test_claiming_a_seat_rotates_its_token -q` prints `F` and then never
+exits — no summary, no exit code. Under the GitHub Actions job proposed at `BACKLOG.md:491` that is a
+six-hour runner timeout with no failure name. A ship gate whose failures manifest as hangs is worse than
+one that fails loudly. Wrap those connects in `with`.
+
+Two low-severity unfalsifiable guards also confirmed: `_detach`'s round-end quorum discard
+(`server.py:1110`) and the `bot_announced` reset on seat claim (`server.py:958`) — the latter means a
+claimed seat can inherit a latched takeover announcement, so a later disconnect posts no "bot is playing
+for X" line and the table never learns a bot took over.
+
+### Evaluator boundary: the refusal has no test that can fail
+
+**[MEDIUM]** `test_game.py:152` monkeypatches `play_game` away and asserts only on a branch that is dead
+code, so `ai.env.evaluate`'s cutoff refusal — the substance of the COMPLETE/PASS claim — is unguarded. A
+plausible future edit (`try: … except FullGameCutoff: winner = 0 if exc.level_idx[0] >= exc.level_idx[1]
+else 1`, i.e. "settle the cut-off game and keep going") restores exactly the bug `4484f8c` was written to
+remove, and the focused suite stays green. Five legacy scripts import `evaluate`. Add a test that drives
+the real `evaluate` into a cut-off and asserts it raises.
+
+Cleared: all three secondary guards added by `4484f8c` (max_rounds validation, result-None,
+invalid-winner) are real and falsifiable.

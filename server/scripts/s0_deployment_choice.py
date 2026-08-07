@@ -46,6 +46,11 @@ from shengji.evaluation import (arm_ballots, paired_by_seed,  # noqa: E402
 SCHEMA = "s0-deployment-choice-shard-v1"
 AGGREGATE_SCHEMA = "s0-deployment-choice-aggregate-v1"
 CLAIM = "conditional_fresh_adaptive_vs_report_lcb_deployment_choice"
+RETIRED_REASON = (
+    "S0e v1 is permanently retired: its current-null stream has lag-17 "
+    "cross-cluster collisions and its parent bypasses the corrected S0c "
+    "dependency decision; only a separately frozen v2 may run"
+)
 SHARD_COUNT = 8
 TOTAL_CLUSTERS = 16_384
 CLUSTERS_PER_SHARD = 2_048
@@ -514,7 +519,10 @@ def parent_lock_problems(lock: dict) -> list[str]:
 
 
 def protocol_problems() -> list[str]:
-    problems = []
+    # This historical source remains readable for diagnosis, but no v1 job is
+    # admissible. Deliberately changing these source bytes also trips its
+    # immutable freeze receipt, providing a second fail-closed witness.
+    problems = [RETIRED_REASON]
     exact_labels = {
         "adaptive": "mc-s0-adaptive",
         "report_lcb": "mc-s0-report-lcb",

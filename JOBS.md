@@ -49,7 +49,22 @@ the supervisor and keepawake service were live, all eight S0c workers ran near
 Independent review then found all eight sealed S0b keepalive labels repeatedly
 restarting only to hit exclusive-output refusal. Codex removed exactly those
 eight completed labels after verifying finals and aggregate; the loaded service
-set is now exactly eight S0c workers plus singleton and keepawake.
+set is now exactly eight S0c workers plus singleton and keepawake. At 19:54 all
+eight S0c launch services were still `running`, `runs=1`, with a live PID and
+`last exit code=(never exited)`. Eight record/manifest partial pairs and zero
+final/aggregate artifact existed; no outcome-bearing file was opened.
+
+The original S0c iid analysis is **provisional**. The historical null's
++999,983 arm/team stream shift collides with evaluator opponent streams 17
+clusters earlier, giving 8,175 dependency edges and 16,350 collided stream
+keys. Frozen workers remain untouched. A separately frozen one-shot audit will
+observe only terminal filename presence, seal exactly 18 inputs before parsing,
+then reopen raw coverage/dose/counters/stats and analyze two globally
+collision-free lag-17 parity populations of 4,097 and 4,095 seeds. Both must
+independently pass all three original promotion criteria or corrected S0 is
+SELECT NONE. No retry, extension, pooling or fallback is allowed. The obsolete
+147M S0e-v1 path is irreversibly retired; its collision-free v2 replacement is
+only a preterminal 148M parent authority seam, not a runner or job.
 
 At 17:02 a last-line progress check established that worker stdout
 contains interim W/L and therefore is not score-blind. The observed values are

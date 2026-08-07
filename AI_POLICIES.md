@@ -254,14 +254,20 @@ newest entry sit on top and speak for the file.
   The transition used detached exact `6fe5f44` for the already-pinned audit
   tools after moving main correctly caused a pre-aggregate refusal; the frozen
   worker bytes and evidence are unchanged.
-  If and only if terminal S0 promotes adaptive, freeze a separate deployment-
-  choice question before opening its outcomes. Fresh 147M data tests each
-  candidate independently: positive LCBs versus current and its null make it
-  eligible. Neither eligible keeps current; one eligible sends that candidate
-  to review; if both qualify, adaptive displaces the simpler bot only with
-  `LCB(adaptive-report)>0`, otherwise report-LCB enters review. SELECT NONE
-  closes S0 and cannot use report-LCB as a fallback. The design is accepted;
-  its code is not frozen and no job exists yet.
+  The historical null's +999,983 shift also collides with evaluator opponent
+  streams at lag 17 across clusters. S0c's original iid interval is therefore
+  provisional. Before outcome decoding, a one-shot audit must seal exactly the
+  packet, aggregate, eight manifests and eight raw files; recompute all dose,
+  coverage, counters and statistics; and require both exact collision-free
+  lag-chain parity populations (4,097/4,095 seeds) independently to pass all
+  three gates. Any failure is SELECT NONE; no pooling, retry, extension or
+  fallback is admissible.
+  The old 147M deployment-choice runner is irreversibly retired because it
+  shares the unsafe null and bypasses corrected authority. Future S0e-v2 has
+  only a preterminal parent seam on fresh 148M geometry with a collision-free
+  +50,000,003 null offset. One clean pushed transition may bind the exact
+  corrected audit+seal; only corrected PROMOTE can authorize later runner
+  design, while SELECT NONE permanently closes the lane. No v2 job exists.
 - **The reproducible override diagnostic is smaller than the first prose
   estimate.** In the immutable first-150-DEV / first-20-override asset, 12/20
   N=300 gaps are positive, mean signed gap is `+0.570`, and median absolute gap

@@ -1,0 +1,11 @@
+{
+  "audit_root": "/Users/jerryyu/Projects/shengji-s0-audit/server",
+  "evidence_root": "/Users/jerryyu/Projects/shengji-s0-mini/server",
+  "execution_host": "Jerrys-Mac-mini.local",
+  "execution_root": "/Users/jerryyu/Projects/shengji/server",
+  "python": "3.14.6",
+  "s0_closeout_sha256": "50752b681fbf9944e0752f8cf60a65973ae8c7679471a11dcffc85012fd071c0",
+  "schema": "s0-dependency-audit-freeze-v1",
+  "script_sha256": "375fb5e0b0d53395e2ba40ee1bcf735e2e376e89227e23ce8c83f8b2015e2036",
+  "selection_digest": "258d1de7f7166702ee1406506792ef053fb0a283cd71a523576e9bc2cf3ac821"
+}

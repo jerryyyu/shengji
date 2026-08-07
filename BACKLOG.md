@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-06 17:56 EDT.
+Last re-derived: 2026-08-06 19:55 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -61,7 +61,21 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   rewrite this live block. The transition briefly refused because the audit-
   tool root defaulted to moving main; repointing only `S0_AUDIT_ROOT` to clean
   detached exact `6fe5f44` restored its three pinned hashes before aggregation.
-  No partial effects are admissible.
+  No partial effects are admissible. At 19:54 all eight S0c services remained
+  on their first never-exited run, with eight partial pairs and zero final or
+  aggregate artifact.
+- S0c's ordinary iid inference is now **PROVISIONAL**. The frozen
+  `mc-strong-null` +999,983 shift collides with evaluator opponent streams at
+  lag 17, producing 8,175 dependency edges / 16,350 collided stream keys in
+  the 8,192-seed block. Before any outcome is opened, a one-shot score-blind
+  audit must seal the exact terminal packet, aggregate, eight manifests and
+  eight raw JSONLs. It then recomputes every input and requires both exact
+  collision-free lag-17 parity populations (4,097/4,095 seeds) independently
+  to clear arm-current, arm-null and null-current gates. Any failure is SELECT
+  NONE; no pooling, retry, extension or fallback is allowed. Historical S0e-v1
+  on 147M is irreversibly retired. A new preterminal v2 authority seam reserves
+  148M and uses a collision-free +50,000,003 null stream; no v2 runner/job is
+  authorized.
 - The separate V11 direct-current compatibility v1 block is **TERMINAL FAIL AS
   RUN**: eight clean compiled+strict 256-cluster shards at `e66b90b` produced
   v11-current `-0.132 +/- 0.070`, v11-null `-0.159 +/- 0.069`, and a sane null
@@ -114,9 +128,9 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 |---|---|---|
 | **S0a search strength — COMPLETE** | Frozen decision-rule screen accepted on authoritative Mini | Eight clean 256-cluster shards selected report-LCB. Independent recomputation matched the registered aggregate; this block cannot promote. |
 | **S0b allocation — COMPLETE / ACCEPTED** | Test allocation separately under the selected LCB report rule | Eight exact parent-bound shards on 134M selected `mc-s0-adaptive`: +0.037 +/- 0.060 versus report-uniform and +0.433 +/- 0.065 versus random, with uniform report-LCB almost exactly replicating S0a. The adaptive increment is unresolved; report-uniform also beats random by ~0.396, so S0b did not measure an allocation benefit. The registered point-estimate gate—not an LCB—selected adaptive. Aggregate SHA `25c0177…4803`; this block cannot promote. |
-| **S0c confirmation — RUNNING 8/8** | Independently confirm exactly `mc-s0-adaptive` | Eight 1,024-cluster shards on seeds 135,000,000–135,008,191 compare adaptive survivor, `mc-s0-adaptive-null`, and current. At 17:31 all eight workers were live near 95% CPU with 8 partial pairs and 0 finals/failures. Promote only if survivor-current and survivor-null paired 95% lower bounds are >0 and the null does not clear; otherwise close S0 SELECT NONE. |
-| **S0d terminal packet + cleanup** | Turn the terminal S0 result into one auditable decision | Independently regenerate and byte-compare the return packet, verify every artifact/hash/counter/seed/runtime field, refuse unexpected S0 workers, then remove only the packet-proved services. Apply a production policy change only on PROMOTE; SELECT NONE leaves `mc-strong` unchanged. A Fly restart remains a separately authorized quiet-room action. |
-| **S0e deployment choice — DESIGN ACCEPTED / CODE FREEZE NEXT / NO JOB** | Decide whether adaptive's unresolved complexity is worth carrying after a valid bundle win | Before opening S0c, freeze a fresh 147M block of 16,384 mirrored clusters, 8x2,048, with adaptive/report-LCB/current/current-null on identical keys. It may run only if the exact terminal packet says `PROMOTE mc-s0-adaptive`; SELECT NONE closes S0 with no report-LCB fallback. A candidate is eligible only if its fresh LCBs versus current and its null are both positive. Neither eligible keeps current; one eligible sends that candidate to review; if both qualify, choose adaptive only when `LCB(A-R)>0`, otherwise the simpler report-LCB. No auto-deploy, retries, extension or S0 reinterpretation. No code or job exists yet. |
+| **S0c confirmation — RUNNING 8/8 / IID VERDICT PROVISIONAL** | Independently confirm exactly `mc-s0-adaptive`, then correct the lag-17 dependency | Eight 1,024-cluster shards on seeds 135,000,000–135,008,191 compare adaptive survivor, its historical null and current. At 19:54 all eight services were on their first run with 8 partial pairs and 0 finals/aggregate. The null shares two streams with cluster `s-17`; do not treat the original iid interval as terminal. Score-blind-seal the exact 18 terminal files and require both collision-free 4,097/4,095-seed color populations independently to pass all three gates. Any failure closes S0 SELECT NONE. |
+| **S0d corrected terminal packet + cleanup** | Turn the frozen run into one dependency-safe auditable decision | Independently regenerate and byte-compare the original packet, verify every artifact/hash/counter/seed/runtime field, then bind seal-attempt, input seal, evaluation attempt, exact 18-input set, per-color recomputation and corrected output. Commit the one v2 parent-lock transition regardless of PROMOTE/SELECT NONE. Refuse unexpected S0 workers, then remove only packet-proved services. No production change or Fly restart is implicit. |
+| **S0e deployment choice — V1 RETIRED / V2 PARENT SEAM FROZEN / NO RUNNER OR JOB** | Preserve a future way to decide whether adaptive complexity is worth carrying | The unsafe 147M v1 runner is irreversibly dead: its null has lag-17 collisions and its parent bypasses corrected S0. The v2 parent seam reserves fresh 148M geometry and a collision-free +50,000,003 null stream, but launches nothing. It accepts exactly one clean pushed terminal transition bound to the corrected audit+seal; only corrected PROMOTE can authorize later runner design, while corrected SELECT NONE permanently closes the lane. |
 | **V11 direct compatibility v1 — TERMINAL FAIL / CORRECTED v2 RUNNING ON AIR** | Separate model quality from an encoder-contract mismatch | The exact 121M v1 block failed as run and remains immutable. `66aad44` restores the trained public/no-private-kitty contract; `cde0fec` freezes a fresh 8x256 corrected v2 gate on exact 142M seeds with accepted-dose/raw-reopen checks. At the 17:32 metadata-only check all 8 Air workers remained live at 83–87% CPU with 8 record partials, 8 manifest partials and 0 finals/failures. Do not score partials or reinterpret v1. The as-run v2 artifact lacks an activation counter, so it cannot alone prove the net influenced play. |
 | **V11 protected composition — CODE GATE CLOSED / WAITS FOR CORRECTED DIRECT + S0** | Test whether search can retain good v11 proposals while rejecting its bad tail | `7ecffd5` blind-froze the estimand. Corrected-parent v2 is frozen at `b361836`; `1354cac` closes empty-valued sampler-key refusal. `c8358d2` adds future policy-owned activation accounting and refuses zero/nonreconciling model dose. `e026ed0` pins the future four-source encoder identity end to end while preserving the old live parent. `DIRECT_AGGREGATE_SHA256=None` remains locked until corrected v2 seals; bind the exact hash regardless of PASS/FAIL while preserving the verdict and authorization false. Only that exact sane-null/exact-dose parent plus terminal S0 may admit the 2,048-cluster 137M screen. Require anchor-minus-champion/random/null LCBs >0 and a sane null; PASS alone admits disjoint 8,192-cluster confirmation. Never use v11 as a scalar leaf. |
 | **S1 teacher/model — V1 REFUSED / 143M-V2 FULL CODE CHAIN CLOSED, WAITS FOR AIR** | Test whether a clean counterfactual teacher is worth scaling | Preserve refused `teacher-v1-entry-120m-v1`. `2038b31` accepted fresh v2 entry bytes; run the actual supervisor and all consumers at full `acfd95b`, which preserves those bytes and closes receipt/label/gate publication plus raw/parent/runtime/source reopening. When a whole host is free, run clean 143M-v2 only through the exact 64-state freeze first and stop; never switch Git/runtime identity between phases. No teacher-quality result exists. |
@@ -318,7 +332,10 @@ staged strength work rather than one speculative monolith:
 1. Mini remains authoritative. S0b is sealed at aggregate SHA `25c0177…4803`;
    exact S0c-adaptive-LCB is running 8/8. Do not displace or pool those workers.
    The singleton now uses clean pinned audit root `6fe5f44`; all current S0
-   capacity is productively occupied.
+   capacity is productively occupied. The original terminal packet is not
+   sufficient authority: keep the score-blind dependency watcher on clean
+   pushed main, seal exactly 18 canonical inputs, evaluate once, and require
+   both collision-free lag-17 color gates before final S0 interpretation.
 2. Air completed and sealed the immutable V11 v1 block, whose exact as-run
    verdict is FAIL and whose banker encoder was contract-drifted. Teacher v1
    then refused safely before diagnostics. Air is now running all eight

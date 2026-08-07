@@ -63,16 +63,19 @@ def decision_stats(*, adaptive=0.05, adaptive_null=0.05,
     }
 
 
-def test_registered_geometry_and_live_policy_contracts_are_exact():
+def test_registered_geometry_is_preserved_but_v1_is_permanently_retired():
     assert S0E.SHARD_COUNT == 8
     assert S0E.TOTAL_CLUSTERS == 16_384
     assert S0E.CLUSTERS_PER_SHARD == 2_048
     assert S0E.SEED0 == 147_000_000
     assert S0E.SEED_HI == 147_016_383
-    assert S0E.protocol_problems() == []
+    problems = S0E.protocol_problems()
+    assert S0E.RETIRED_REASON in problems
+    assert "pre-outcome runner identity drifted" in problems
+    assert "pre-outcome transitive source identity drifted" in problems
 
 
-def test_preoutcome_lock_freezes_full_runner_source_policy_and_runtime():
+def test_historical_preoutcome_lock_remains_closed_and_unrewritten():
     lock = S0E.load_parent_lock()
     receipt = S0E.load_freeze_receipt()
     assert lock["authorized"] is False
@@ -81,17 +84,36 @@ def test_preoutcome_lock_freezes_full_runner_source_policy_and_runtime():
     assert lock["packet_sha256"] is None
     assert lock["closeout_sha256"] is None
     assert lock["s0c_aggregate_sha256"] is None
-    assert lock["freeze_receipt_sha256"] == \
+    assert lock["freeze_receipt_sha256"] != \
         S0E.sha256(S0E.FREEZE_RECEIPT_PATH)
-    assert receipt["frozen_protocol_sha256"] == S0E.sha256(S0E.__file__)
-    assert receipt["frozen_source_sha256s"] == S0E.current_source_sha256s()
-    assert receipt["frozen_policy_contract_sha256s"] == \
+    assert receipt["frozen_protocol_sha256"] != S0E.sha256(S0E.__file__)
+    assert receipt["frozen_source_sha256s"] != S0E.current_source_sha256s()
+    assert receipt["frozen_policy_contract_sha256s"] != \
         S0E.policy_contract_sha256s()
+    assert "full frozen policy-contract digests drifted" in \
+        S0E.protocol_problems()
     assert receipt["selection_digest"] == S0E.selection_digest()
     assert receipt["python"] == "3.14.6"
     assert receipt["execution_host"] == "Jerrys-Mac-mini.local"
     assert receipt["execution_root"] == str(S0E.SERVER.resolve())
     assert S0E.is_sha256(receipt["fast_binary_sha256"])
+    assert any(
+        marker in problem
+        for problem in S0E.immutable_freeze_problems()
+        for marker in (
+            "bytes differ from Git introduction",
+            "changed after its pre-outcome Git introduction",
+        )
+    )
+
+
+def test_retired_v1_freeze_history_cannot_be_restored(monkeypatch):
+    monkeypatch.setattr(
+        S0E, "git_file_commits", lambda _path: ["retirement", "intro"])
+    assert S0E.immutable_freeze_problems() == [
+        "immutable freeze receipt changed after its pre-outcome "
+        "introduction: 2 commits"
+    ]
 
 
 @pytest.mark.parametrize(

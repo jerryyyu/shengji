@@ -37,6 +37,17 @@ class MCStrongNull(MCBot):
         super().__init__(None if seed is None else seed + 999_983)
 
 
+class MCStrongS0EV2Null(MCBot):
+    """S0e-v2 null with no cross-cluster overlap in the frozen 148M block."""
+
+    N_DETERMINIZATIONS = 30
+    NULL_SEED_OFFSET = 50_000_003
+
+    def __init__(self, seed: int | None = None):
+        shifted = None if seed is None else seed + self.NULL_SEED_OFFSET
+        super().__init__(shifted)
+
+
 class MCNull(MCBot):
     """NULL CONTROL: identical to `mc` in every way except its random draws.
 
@@ -71,6 +82,7 @@ REGISTRY: dict[str, type] = {
     # stream. The N=10 `mc-null` cannot serve here — a null must match the
     # OPPONENT, or it measures a dose step instead of the noise floor.
     "mc-strong-null": MCStrongNull,
+    "mc-strong-null-s0e-v2": MCStrongS0EV2Null,
     "mc-null": MCNull,  # null control: same policy, different RNG stream
     "mc-argmax": type("MCArgmax", (MCBot,), {"MARGIN": 0.0}),
     "mc-smartroll": MCSmartRoll,  # SmartBot rollouts, ~5x slower/decision

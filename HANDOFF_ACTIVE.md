@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-06 17:56 EDT. Historical discussion and superseded gates
+Last update: 2026-08-06 19:55 EDT. Historical discussion and superseded gates
 are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
 
 ## Status
@@ -47,7 +47,35 @@ are in `HANDOFF_REVIEW.md`; this file contains only executable current work.
   Independent review found the eight completed S0b keepalive jobs repeatedly
   restarting into exclusive-output refusal; Codex removed exactly those eight
   labels after verifying finals/aggregate. The remaining service set is only
-  8 S0c workers, singleton and keepawake.
+  8 S0c workers, singleton and keepawake. At the 19:54 metadata-only check all
+  eight S0c services were still on their first run and had never exited; eight
+  record/manifest partial pairs and zero final/aggregate artifact existed. No
+  partial outcome was opened.
+- **S0c's original iid interval is provisional, not terminal authority.** The
+  historical `mc-strong-null` shifts its two arm/team streams by 999,983 while
+  evaluator opponent streams use +1,000,000/+1,500,000. Cluster `s` therefore
+  shares two RNG streams with cluster `s-17`: the 8,192-cluster block has 8,175
+  lag-17 dependency edges and 16,350 collided stream keys. This changes no
+  frozen worker or paired point estimate, but the ordinary independent-cluster
+  standard error is unjustified.
+  A one-shot score-blind dependency audit passed final independent source
+  review (59/59 focused; 826 passed/27 skipped repository-wide). It seals
+  exactly the terminal packet, aggregate, eight
+  manifests and eight raw JSONLs before decoding outcomes. Global lag-17-chain
+  parity creates exact collision-free populations of 4,097 and 4,095 seeds.
+  **Both** populations must independently clear arm-current LCB>0, arm-null
+  LCB>0 and a two-sided null-current interval containing zero; any failure
+  yields final SELECT NONE. There is no pooling, retry, extension, seed
+  substitution or fallback. The audit recomputes raw coverage, dose, counters,
+  aggregate statistics and its published corrected result from the sealed
+  18-file set.
+- Historical S0e-v1 on 147M is permanently retired: it shares the unsafe null
+  and bypasses corrected S0 authority. Its freeze history is deliberately
+  burned so restoring old source cannot revive its preterminal lock. Future
+  S0e-v2 has no runner or job. Its sole preterminal authority seam uses a
+  collision-free named null offset of 50,000,003 and reserves fresh 148M
+  seeds; only an exact committed corrected PROMOTE may authorize later design.
+  Corrected SELECT NONE permanently closes it.
 - Teacher-v1 mechanics/gold gates, the V11 protected-anchor lane
   and the role-conditioned RL microgates remain independent parallel strength
   work; none should be folded into S0 before each wins alone. The frozen V11
@@ -312,6 +340,17 @@ sets only compiled+strict flags. At 17:31 all workers were live near 95% CPU,
 with eight partial pairs and zero final/failure. Do not inspect partial effects,
 relaunch workers or pool Air.
 
+The worker population is not statistically independent under the original
+null implementation: its +999,983 arm/team shift collides with opponent streams
+17 clusters earlier. The original aggregate and packet may still be generated
+unchanged by the frozen supervisor, but their iid intervals and PROMOTE verdict
+are provisional. Before any outcome is opened, the corrected protocol must
+score-blind-seal the exact 18 terminal files, reopen all raw evidence and apply
+the two predeclared collision-free lag-17 color gates described above. Original
+SELECT NONE remains SELECT NONE; original PROMOTE survives only if both colors
+pass every registered criterion. That one-shot corrected output—not the
+original packet alone—is terminal S0 authority.
+
 ### Completed S0a launch and aggregation reference
 
 S0a separates the report decision rule from extra compute. It is a diagnostic
@@ -377,7 +416,7 @@ corresponding confirmation protocol may then run:
 | `mc-s0-report-lcb` | `s0c-report-lcb` |
 | `mc-s0-adaptive` | `s0c-adaptive-lcb` |
 
-S0c is frozen at 8,192 independent clusters, seeds
+S0c is frozen at 8,192 deal clusters, seeds
 135,000,000–135,008,191, eight shards of 1,024. Each shard runs the survivor,
 `mc-strong-null`, and current `mc-strong` on identical mirrored deals and binds
 the S0b aggregate by SHA-256. Example:
@@ -389,13 +428,17 @@ SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 .venv/bin/python \
   --parent runs/logs/s0b-mean-v1.aggregate.json --shard-index I
 ```
 
-Production promotion requires all three machine-checked criteria: the paired
+The frozen supervisor's original promotion rule requires all three
+machine-checked criteria: the paired
 two-sided 95% lower bounds for survivor-minus-current and survivor-minus-null
 are both above zero, and the null-minus-current lower bound is not above zero.
+That original result is now provisional because of the cross-cluster null RNG
+dependency. Final promotion additionally requires the same three checks to pass
+independently in each of the two frozen collision-free color populations.
 Otherwise S0 closes **SELECT NONE**. S0a/S0b/S0c are disjoint and may never be
 pooled. The v2 runner records host, Python, compiled binary digest, strict mode,
 literal seed coverage, parent digest and exact counters; the aggregator refuses
-any drift.
+any drift, and the dependency audit reopens those exact bytes.
 
 The production control point is `fly.toml`'s explicit
 `SHENGJI_BOT='mc-strong'`, not the source fallback (`mc`). A terminal
@@ -588,19 +631,21 @@ authorize that external mutation.
 4. **Leave Mini's singleton S0 supervisor in control.** S0b is sealed and exact
    S0c-adaptive-LCB is running 8/8. The supervisor now owns terminal aggregation
    and packet generation from its clean `6fe5f44` audit-tool root. Inspect no
-   S0c effect before 8/8 finals and terminal transition. Then run independent
-   closeout and packet byte comparison; cleanup only packet-proved services.
-5. **Freeze the conditional deployment-choice code before any S0c result is
-   opened; launch nothing.** The accepted design is a fresh 16,384-cluster,
-   8x2,048 four-arm block on currently unused 147M seeds. It is admissible only
-   after an exact terminal `PROMOTE mc-s0-adaptive`; SELECT NONE closes S0.
-   Test each candidate independently: it is eligible only when its fresh LCBs
-   versus both current and its null are positive. Neither eligible keeps
-   current; exactly one eligible sends that candidate to deployment review. If
-   both are eligible, adaptive enters review only when
-   `LCB(adaptive-report)>0`; otherwise the simpler report-LCB enters review.
-   Freeze code, raw reopening, exact dose, null, no-retry and parent gates now,
-   but do not launch or inspect S0c.
+   S0c effect before 8/8 finals and terminal transition. Keep the score-blind
+   dependency watcher on clean pushed main; it may observe only canonical file
+   presence until it atomically seals the exact 18 inputs. Evaluate that seal
+   exactly once, publish the corrected result, commit the derived v2 parent
+   transition regardless of PROMOTE/SELECT NONE, then independently regenerate
+   and byte-compare the original packet plus corrected authority. Cleanup only
+   packet-proved services after every authority artifact is durable.
+5. **Keep obsolete S0e-v1 dead and launch no deployment-choice job.** The 147M
+   runner is irreversibly retired because its null has lag-17 collisions and
+   its parent bypasses the corrected result. The new code is only an exclusive
+   v2 parent seam on fresh 148M geometry with a collision-free +50,000,003 null
+   stream. It starts preterminal/unauthorized, accepts one clean pushed Git
+   transition bound to the exact corrected audit+seal hashes, and authorizes
+   future work only on corrected PROMOTE. No v2 runner, dose, deployment-choice
+   experiment or production change is authorized by this freeze.
 6. **Local code while compute runs:** corrected-encoder V11 v2 is frozen and
    pushed at `cde0fec` on disjoint 142M seeds. Teacher entry v2 is closed for
    execution at `acfd95b`; corrected-parent protected composition is code-
@@ -637,7 +682,13 @@ sampler attempt = accepted + failed; short/zero counts:
 S0a paired effects and direct report-rule vs uniform-work contrasts:
 S0b adaptive-minus-uniform and adaptive-minus-random contrasts:
 S0c arm-current, arm-null and null-current effects/95% intervals + criteria:
-final production decision from the registered rule:
+original production decision from the registered rule:
+dependency seal-attempt, input-seal and evaluation-attempt paths/hashes:
+exact canonical 18-input set SHA and packet/aggregate/8 manifest/8 raw hashes:
+lag-17 graph witness and exact color-0/color-1 seed counts/hashes:
+per-color recomputed effects/95% intervals + all three criteria:
+corrected audit output path/hash and corrected final production decision:
+v2 parent-lock transition commit/hash/authorization (SELECT NONE stays false):
 CALIB / REPORT confirmation: sealed and unscored
 ```
 
@@ -646,7 +697,10 @@ aggregate, a different git SHA or a parent that does not name its exact policy.
 
 Terminal closeout is prepared in `server/scripts/s0_closeout.py` without
 changing the pinned evidence path. Its default mode independently regenerates
-the final packet and requires byte identity plus every field above. Only its
+the original final packet and requires byte identity plus its registered
+fields. It is necessary but no longer sufficient: the one-shot dependency seal,
+evaluation, corrected output and committed v2 parent transition must also match
+the expanded return packet above. Only its
 explicit `--cleanup-launchctl` mode mutates process state, and that mode refuses
 a nonterminal supervisor state or packet drift before removing the exact
 reached Mini services. Both submitted workers and the supervisor are keep-alive:

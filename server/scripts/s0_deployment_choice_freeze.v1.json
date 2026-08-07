@@ -1,4 +1,5 @@
 {
+  "schema": "s0-deployment-choice-freeze-v1",
   "execution_host": "Jerrys-Mac-mini.local",
   "execution_root": "/Users/jerryyu/Projects/shengji/server",
   "fast_binary_sha256": "9c9e77fbdc4c6caceec195465155f37ec6369e409462fd838bc142bf8a0be4c1",
@@ -36,6 +37,5 @@
     "s0_closeout": "50752b681fbf9944e0752f8cf60a65973ae8c7679471a11dcffc85012fd071c0"
   },
   "python": "3.14.6",
-  "schema": "s0-deployment-choice-freeze-v1",
   "selection_digest": "02f07f1c190368c109f7f02cdcf62e45b1367e7e92383a9ff8f4ca4ec2dfa81a"
 }

@@ -1,0 +1,12 @@
+{
+  "authorized": false,
+  "binding_rule": "Bind exactly one corrected S0 dependency-audit output SHA and its exact score-blind input-seal SHA. Authorize only complete=true, promotion_admissible=true, final_state=S0_COMPLETE_PROMOTE and decision PROMOTE mc-s0-adaptive. Corrected SELECT NONE, missing output, refusal or any identity drift permanently leaves S0e-v2 closed.",
+  "dependency_audit_sha256": null,
+  "final_production_decision": null,
+  "final_state": null,
+  "freeze_sha256": "90924113a0dad5d5fa4db31063900c9ec56d06d12c57f7b8ac17b7df6b7720b6",
+  "input_seal_sha256": null,
+  "input_set_sha256": null,
+  "schema": "s0-deployment-choice-v2-parent-lock-v1",
+  "transition": "PRETERMINAL"
+}

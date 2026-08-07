@@ -66,14 +66,19 @@ day-by-day detail. A historical result below does not reopen a closed lane.
   refused because the audit-tool root pointed at moving main; repointing only
   that root to clean exact `6fe5f44` restored all three pinned hashes before
   aggregation. S0c launch metadata confirmed the experimental keys absent.
-  A conditional deployment-choice design is separate from S0: only an exact
-  terminal `PROMOTE mc-s0-adaptive` may admit a fresh 147M four-arm block. A
-  candidate is eligible only if its LCBs versus current and its null are both
-  positive. Neither eligible keeps current; one eligible sends that candidate
-  to review; if both qualify, adaptive displaces the simpler bot only if its
-  paired 95% lower bound versus report-LCB is positive, otherwise report-LCB
-  enters review. SELECT NONE closes S0 with no fallback. This design is
-  accepted but not yet code-frozen; no 147M job exists.
+  The historical null nevertheless creates a cross-cluster dependency: its
+  +999,983 arm/team shift collides with evaluator opponent streams at lag 17,
+  producing 8,175 dependency edges in the 8,192-seed S0c block. The ordinary
+  iid interval is therefore provisional. A one-shot score-blind audit freezes
+  the exact terminal packet/aggregate/8 manifests/8 raw files and recomputes
+  all evidence in two exact collision-free lag-chain parity populations of
+  4,097/4,095 seeds. Both must independently pass all three original criteria;
+  any failure is SELECT NONE, with no pooling/retry/extension/fallback.
+  Historical 147M S0e-v1 is irreversibly retired because it reused that null
+  and bypassed corrected authority. A future v2 lane has only a frozen
+  preterminal parent seam: fresh 148M geometry, collision-free +50,000,003 null
+  offset and exactly one corrected-output-bound Git transition. It has no
+  runner or job; corrected SELECT NONE closes it.
 - **The six-arm DEV-512 ballot screen is closed with `SELECT NONE`.** The
   primary `quota - random_fill` contrast was `+0.110 +/- 0.337`; at equal work
   the shipped ballot had the lowest mean regret (current 0.135, quota 0.229,
@@ -433,7 +438,11 @@ result.
    mean +0.570; its predeclared grid selected R=300. Run S0a (report mean vs
    report LCB vs extra uniform compute), then S0b allocation only for the
    selected rule, then an independent 8,192-cluster paired current/null
-   confirmation. That closes the S0 research milestone. A confirmed candidate
+   confirmation. Because the historical null has a lag-17 cross-cluster RNG
+   dependency, terminal interpretation additionally requires the pre-outcome
+   frozen score-blind 18-input seal and two collision-free 4,097/4,095-seed
+   color gates; the original iid aggregate cannot close S0 alone. That closes
+   the S0 research milestone. A confirmed candidate
    still receives a separately registered full-game progression/stress check
    before product deployment; do not pool that product check into S0 evidence.
 2. **Build a teacher that can exceed the old teacher.** Follow

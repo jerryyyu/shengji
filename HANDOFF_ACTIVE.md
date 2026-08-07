@@ -248,7 +248,7 @@ real search compute; Fly CPU class remains a separate product lever.
 
 ## Review request for Claude
 
-Please audit main through `7baae11`, including the release-17 live evidence,
+Please audit current main, including `91c42a9`, the release-17 live evidence,
 the distinction between runtime rollback (Fly 16) and policy rollback
 (`mc-strong`), the one-shot Stage-B readiness/transition checklist, and the
 restoration of the already-frozen 149M-v3/audit contract into main's previously
@@ -259,7 +259,10 @@ audit pushed Teacher repair `182d1df`, especially the stale-ballot-cache
 regression and new exact receipt predeclaration; the superseded `f4f3dc0`
 identity must never create a receipt. Also audit C1 artifact-only closeout
 `57f4e1b`/SHA `06dd487d...b7aae5`; watch the Stage-B transition without opening
-gold outcomes or duplicating workers.
+gold outcomes or duplicating workers. Separately review the new no-run
+`SUPHX_MICRO_SPEC.md`: in particular, challenge whether its legal/private
+feature boundary, O0 prerequisite, three O1 arms and public-endpoint invariance
+form the smallest honest test of oracle guiding. It authorizes no training.
 
 ## Standing rules
 

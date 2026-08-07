@@ -307,9 +307,12 @@ teacher and production boundaries, not extensions of closed runs:
    strata to specify the smallest teacher improvement that can beat the live
    champion, then collect/train/gate that version. Do not scale labels merely
    because generation works.
-4. **Next learner:** write a fresh Suphx-style or other role-correct
-   microbaseline contract with frozen held-out diagnostics before allocating
-   training compute. The terminal 144M report cannot choose its recipe.
+4. **Next learner:** review and implement `SUPHX_MICRO_SPEC.md`, the fresh
+   Suphx-style privileged-feature-removal contract. It separates legal banker
+   burial from simulator-only ownership, tests oracle acquisition before
+   removal, and requires equal-work immediate-removal plus distillation
+   controls and frozen held-out diagnostics before allocating training
+   compute. The terminal 144M report cannot choose its recipe.
 5. **Other search lanes:** structured bury or sampled exact endgame must be
    explicitly reparented to confirmed report-LCB with matched null/work before
    any strength run.

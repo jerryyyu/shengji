@@ -41,6 +41,15 @@ AUDIT_GATE_SCHEMA = "teacher-v1-champion-audit-gate-v1"
 STAGE_B_STATE_SHA256 = (
     "90956da86f4f03074a1b4dc2d7198a3da5958470b733eacd104e066c523b4dc6"
 )
+AUDIT_STATE_SHA256 = (
+    "d04d1c0fa507bab680da4d53eeb72325a97c8ca058aac0d01c16dfdcf44f7a34"
+)
+AUDIT_STATE_FREEZE_GIT = "7040489b458db86a68576b146a280fd4598bbac0"
+AUDIT_TRANSITION_PARENT = "c40a31c2d58c171f2172496d928f719932247730"
+AUDIT_TRANSITION_PATHS = {
+    "server/scripts/teacher_v1_champion_audit.py",
+    "server/tests/test_teacher_v1_champion_audit.py",
+}
 AUDIT_STATES = 64
 REPRESENTATIVE_PER_CELL = 4
 BOUNDARY_STATES = 8
@@ -59,6 +68,62 @@ CONTINUATION_CONTRACT = {
     "require_exact_work": True,
     "adaptive_allocation": False,
     "random_allocation": False,
+}
+CONTINUATION_EXECUTION_LOCK = {
+    "schema": "teacher-v1-champion-continuation-lock-v1",
+    "policy": CONTINUATION_POLICY,
+    "policy_class": "MCS0ReportLCB",
+    "rollout_policy_class": "HeuristicBot",
+    "ballot": {
+        "name": "mc_candidates",
+        "version": 1,
+        "source": "MCBot._candidates",
+        "config": [
+            ["FOLLOW_MAX_CANDIDATES", 12],
+            ["LEAD_MAX_CANDIDATES", 14],
+            ["MAX_CANDIDATES", 8],
+            ["RISKY_THROWS", False],
+            ["TRUMP_BALLOT", False],
+            ["V3_LEAD_RANDOM", False],
+            ["V3_LEAD_SINGLES", False],
+            ["WIDE_FOLLOW_BALLOT", True],
+            ["WIDE_LEAD_BALLOT", True],
+        ],
+        "source_digest": "11be8504cfad5de3",
+        "note": "",
+        "digest": "568848979a2d",
+        "display": "mc_candidates@v1[568848979a2d]",
+    },
+    "source_sha256s": {
+        "ai_bury": "2fd2ca71ed7594b99e907d5dbcb65bb95302a7b8c16660769115ed4ddfafe610",
+        "ai_endgame": "f01d8f937fabf5a1a736ec238b0d0add23ab11b31369518848238eb63ed3799e",
+        "ai_env": "04b1d18e2ad4783c5160913b66c2adf568625de1aaf6bdf300c6a4b00c2f0d8b",
+        "ai_heuristic": "a99dfb089fd17e7c17ddcc4d76542552d317598fbe233269c3e7c0501b9b15ef",
+        "ai_mcbot": "45a82f44b95d1bce5126c63b1a5af6baaed54270aca9d55677b2e0bbb9c9d957",
+        "ai_memory": "905873b332fd54471070b25ce24f100b813c9a9f234c1b50254d00895140cf51",
+        "ai_registry": "3e2831616645f74b025e09b3663e73001b6798e94eafaebc0353665bdc8ceea3",
+        "ai_smart": "facfb6a9bb67f82d1bddb855f01ce49adf5f0caaca92bfb5da09ba343c29512c",
+        "engine_ballot": "63e2e94ca12f9ebf8dce30c1a1bdbe3fe9cf6223603677173d4eb75e334845d5",
+        "engine_cards": "42452b157818da1792f4490c3a50c10060eda1a02bb6b2c91544a62fbc0d000a",
+        "engine_combos": "2b0b0acceb0786b4ce781475c0f3e3d656ebe349fdf00bfffd668d6847885486",
+        "engine_fast": "f2506d5c51b8ad37303f04dce59899de0d7c1179633b08ce61f48eb86cec1a3e",
+        "engine_fast_pyx": "a7525f756c654ab19aae6aaa9b09df30e9120553ab77d45c8312efbb9fefebc0",
+        "engine_game": "613c5dd72a1cbd3b50a96eef6e0b84746052dc2b0b28fb08005ff34455359e43",
+        "engine_legal": "12256869a3d3d01b070be04d2a2821b021b6932ad95e66dc54b0e0111192079b",
+        "engine_round": "7a91b3573ecb34c488e3960008d21ebfda283e01003f6454a1ffd62c41b9b679",
+        "compiled_engine": "ef7c161829c607aad790e949e0a0bae7e04d8a3be7aea51b80d5108a1f566b4d",
+    },
+}
+AUDIT_STATE_SOURCE_DIGESTS = {
+    "audit_script": "8c29c74605de2fa1887530b15cfd3e5da661751d3650f28c2b7936ee2f40c9ba",
+    "compiled_engine": "ef7c161829c607aad790e949e0a0bae7e04d8a3be7aea51b80d5108a1f566b4d",
+    "fast_router": "f2506d5c51b8ad37303f04dce59899de0d7c1179633b08ce61f48eb86cec1a3e",
+    "label_script": "58c833fd3707a3ce5403cf7d0e8a23aa518c332976aa7ab4dd3ceb98010386dc",
+    "mcbot": "45a82f44b95d1bce5126c63b1a5af6baaed54270aca9d55677b2e0bbb9c9d957",
+    "memory": "905873b332fd54471070b25ce24f100b813c9a9f234c1b50254d00895140cf51",
+    "registry": "3e2831616645f74b025e09b3663e73001b6798e94eafaebc0353665bdc8ceea3",
+    "state_script": "c967d2b610820c03432317ab1b4491a2c4cb7ba8d20b2b4fc009ddfd97e87c2b",
+    "teacher_contract": "99848ffbf1f41bcd6aa699c2f17b1031eafee651289bbdae33e9853b5e13a250",
 }
 REGRET_LIMIT = 0.10
 T_CRITICAL_ALL_64 = 1.67
@@ -118,6 +183,79 @@ def source_digests() -> dict[str, str]:
     }
 
 
+def continuation_source_digests() -> dict[str, str]:
+    """Hash every material actor/rollout/engine source named by the lock."""
+    from shengji.ai import (bury, endgame, env, heuristic, mcbot, memory,
+                            registry, smart)
+    from shengji.engine import ballot, cards, combos, fast, game, legal, round
+
+    paths = {
+        "ai_bury": bury.__file__,
+        "ai_endgame": endgame.__file__,
+        "ai_env": env.__file__,
+        "ai_heuristic": heuristic.__file__,
+        "ai_mcbot": mcbot.__file__,
+        "ai_memory": memory.__file__,
+        "ai_registry": registry.__file__,
+        "ai_smart": smart.__file__,
+        "engine_ballot": ballot.__file__,
+        "engine_cards": cards.__file__,
+        "engine_combos": combos.__file__,
+        "engine_fast": fast.__file__,
+        "engine_fast_pyx": os.path.join(
+            os.path.dirname(fast.__file__), "_fast.pyx"),
+        "engine_game": game.__file__,
+        "engine_legal": legal.__file__,
+        "engine_round": round.__file__,
+        "compiled_engine": fast._fast.__file__,
+    }
+    return {name: sha256_file(path) for name, path in sorted(paths.items())}
+
+
+def live_continuation_execution_lock() -> dict:
+    from shengji.ai.mcbot import _ballot_identity
+
+    bot = make_bot(CONTINUATION_POLICY, seed=1)
+    return teacher_label.json_canonical({
+        "schema": CONTINUATION_EXECUTION_LOCK["schema"],
+        "policy": CONTINUATION_POLICY,
+        "policy_class": type(bot).__name__,
+        "rollout_policy_class": type(bot.rollout_policy).__name__,
+        "ballot": _ballot_identity(bot),
+        "source_sha256s": continuation_source_digests(),
+    })
+
+
+def continuation_execution_lock_problems() -> list[str]:
+    actual = live_continuation_execution_lock()
+    expected = CONTINUATION_EXECUTION_LOCK
+    bad = []
+    for key in ("schema", "policy", "policy_class", "rollout_policy_class"):
+        if actual.get(key) != expected.get(key):
+            bad.append(f"continuation execution {key} drift")
+    if actual.get("ballot") != expected.get("ballot"):
+        bad.append("continuation execution ballot drift")
+    expected_sources = expected["source_sha256s"]
+    actual_sources = actual.get("source_sha256s", {})
+    for name in sorted(set(expected_sources) | set(actual_sources)):
+        if actual_sources.get(name) != expected_sources.get(name):
+            bad.append(f"continuation execution source {name} drift")
+    return bad
+
+
+def audit_transition_problems() -> list[str]:
+    head = git_output("rev-parse", "HEAD")
+    if subprocess.run(
+            ["git", "merge-base", "--is-ancestor",
+             AUDIT_TRANSITION_PARENT, head], capture_output=True).returncode:
+        return ["audit execution is not descended from frozen transition parent"]
+    changed = set(filter(None, git_output(
+        "diff", "--name-only", f"{AUDIT_TRANSITION_PARENT}..{head}").splitlines()))
+    extra = sorted(changed - AUDIT_TRANSITION_PATHS)
+    return ([f"audit transition changed unregistered paths {extra}"]
+            if extra else [])
+
+
 def runtime_contract(*, smoke: bool) -> dict:
     if os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
         raise TeacherProtocolError("set SHENGJI_REQUIRE_VOIDS=1")
@@ -138,6 +276,12 @@ def runtime_contract(*, smoke: bool) -> dict:
     dirty = git_output("status", "--porcelain")
     if dirty and not smoke:
         raise TeacherProtocolError("real champion audit refuses a dirty tree")
+    if not smoke:
+        problems = audit_transition_problems()
+        problems += continuation_execution_lock_problems()
+        if problems:
+            raise TeacherProtocolError(
+                "champion audit execution lock: " + "; ".join(problems))
     return {
         "git": git_output("rev-parse", "HEAD"),
         "tree_dirty": bool(dirty),
@@ -173,6 +317,15 @@ def live_continuation_contract() -> dict:
         "adaptive_allocation": bot.ADAPTIVE_ALLOCATION,
         "random_allocation": bot.RANDOM_ALLOCATION,
     }
+
+
+def _ballot_action_contract(value) -> dict | None:
+    if not isinstance(value, dict):
+        return None
+    required = ("name", "version", "source", "config")
+    if not all(key in value for key in required):
+        return None
+    return teacher_label.json_canonical({key: value[key] for key in required})
 
 
 def _zero_champion_telemetry() -> Counter:
@@ -211,7 +364,15 @@ def champion_decision_telemetry(policy, sampler_counters: dict) -> dict:
     if searches != 1:
         raise TeacherProtocolError(
             f"champion decision search count {searches}, expected 1")
+    code = record.get("code", {})
+    expected_ballot = CONTINUATION_EXECUTION_LOCK["ballot"]
     if (record.get("policy") != CONTINUATION_POLICY
+            or record.get("policy_class")
+            != CONTINUATION_EXECUTION_LOCK["policy_class"]
+            or code.get("mcbot_sha256")
+            != CONTINUATION_EXECUTION_LOCK["source_sha256s"]["ai_mcbot"]
+            or _ballot_action_contract(record.get("ballot"))
+            != _ballot_action_contract(expected_ballot)
             or record.get("n_determinizations")
             != CONTINUATION_CONTRACT["selection_worlds"]
             or record.get("report_worlds_requested")
@@ -436,6 +597,7 @@ def score_champion_fold(rnd, seat: int, candidates, worlds, fold_meta: dict,
         **fold_meta,
         "continuation_policy": CONTINUATION_POLICY,
         "continuation_contract": CONTINUATION_CONTRACT,
+        "continuation_execution_lock": CONTINUATION_EXECUTION_LOCK,
         "continuation_seed_derivation": (
             "sha256(canonical JSON of experiment_id,deal_seed,state_id,"
             "purpose,fold,candidate,world,decision,seat,policy)[:16]"),
@@ -460,6 +622,9 @@ def _matrix_means(matrix: list[list[float]]) -> list[float]:
 
 def continuation_telemetry_problems(fold: dict) -> list[str]:
     bad = []
+    if fold.get("continuation_execution_lock") != \
+            CONTINUATION_EXECUTION_LOCK:
+        bad.append("champion continuation execution lock")
     telemetry = fold.get("continuation_telemetry", {})
     if set(telemetry) != set(CHAMPION_TELEMETRY_FIELDS):
         return ["champion telemetry schema"]
@@ -983,6 +1148,20 @@ def audit_state_set_self_problems(payload: dict) -> list[str]:
     return sorted(set(bad))
 
 
+def audit_state_execution_lock_problems(payload: dict) -> list[str]:
+    """Prove the outcome-blind state freeze used the registered actor bytes."""
+    bad = []
+    if payload.get("git") != AUDIT_STATE_FREEZE_GIT:
+        bad.append("audit state-set freeze git drift")
+    if payload.get("tree_dirty") is not False:
+        bad.append("audit state-set freeze was dirty")
+    if payload.get("source_digests") != AUDIT_STATE_SOURCE_DIGESTS:
+        bad.append("audit state-set frozen source identity drift")
+    if payload.get("continuation_contract") != CONTINUATION_CONTRACT:
+        bad.append("audit state-set frozen continuation contract drift")
+    return bad
+
+
 def _ordered_items(paths: list[str], expected_sha256s: list[str],
                    manifests: list[dict], actual_sha256s: list[str],
                    *, population: str) -> tuple[list[dict], list[str]]:
@@ -1151,6 +1330,10 @@ def load_audit_context(*, stage_b_state_set_path: str,
     bad += audit_state_set_problems(
         audit_states, stage_b, stage_b_state_set_sha256)
     bad += audit_state_set_self_problems(audit_states)
+    if not smoke:
+        if audit_state_set_sha256 != AUDIT_STATE_SHA256:
+            bad.append("audit state set is not the registered frozen asset")
+        bad += audit_state_execution_lock_problems(audit_states)
     if bad:
         raise TeacherProtocolError(
             "audit state lineage: " + "; ".join(sorted(set(bad))))
@@ -1191,6 +1374,9 @@ def audit_receipt_problems(payload: dict, *, runtime: dict,
         bad.append("audit receipt fold dose")
     if payload.get("continuation_contract") != CONTINUATION_CONTRACT:
         bad.append("audit receipt continuation contract")
+    if payload.get("continuation_execution_lock") != \
+            CONTINUATION_EXECUTION_LOCK:
+        bad.append("audit receipt continuation execution lock")
     if payload.get("state_selection_read_label_outcomes") is not False:
         bad.append("audit receipt outcome-blind state-selection claim")
     for key in RUNTIME_BINDING_FIELDS:
@@ -1288,6 +1474,7 @@ def create_receipt(args) -> None:
         "shard_count": AUDIT_SHARDS,
         "folds": AUDIT_FOLDS,
         "continuation_contract": CONTINUATION_CONTRACT,
+        "continuation_execution_lock": CONTINUATION_EXECUTION_LOCK,
         "state_selection_read_label_outcomes": False,
         **runtime,
         "source_digests": sources,
@@ -1376,6 +1563,9 @@ def audit_shard_problems(payload: dict, *, receipt: dict,
         fold_counts = AUDIT_FOLDS
     if payload.get("continuation_contract") != CONTINUATION_CONTRACT:
         bad.append("audit shard continuation contract")
+    if payload.get("continuation_execution_lock") != \
+            CONTINUATION_EXECUTION_LOCK:
+        bad.append("audit shard continuation execution lock")
     if payload.get("target_schema") != teacher_label.TARGET_SCHEMA:
         bad.append("audit shard target schema")
     for key in RUNTIME_BINDING_FIELDS:
@@ -1529,6 +1719,7 @@ def label_shard(args) -> None:
         "n30_inputs": context["parents"]["gold_items"],
         "folds_contract": counts,
         "continuation_contract": CONTINUATION_CONTRACT,
+        "continuation_execution_lock": CONTINUATION_EXECUTION_LOCK,
         "shard_index": args.shard_index,
         "shard_count": args.shard_count,
         "state_partition": {
@@ -1654,7 +1845,7 @@ def load_audit_shards(paths: list[str], expected_sha256s: list[str], *,
                 "target_schema", "producer_run_id", "producer_receipt",
                 "audit_state_set", "stage_b_gate", "cheap_inputs",
                 "n30_inputs", "folds_contract", "continuation_contract",
-                "shard_count",
+                "continuation_execution_lock", "shard_count",
             ):
                 if manifest.get(key) != first.get(key):
                     problems.append(f"audit shard {key} drift")
@@ -1708,6 +1899,7 @@ def build_gate_payload(*, receipt: dict, receipt_binding: dict,
         "inputs": shard_items,
         "folds_contract": AUDIT_FOLDS,
         "continuation_contract": CONTINUATION_CONTRACT,
+        "continuation_execution_lock": CONTINUATION_EXECUTION_LOCK,
         "outer_candidate_world_work": sum(
             manifest.get("outer_candidate_world_work", 0)
             for manifest in manifests),

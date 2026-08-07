@@ -84,6 +84,21 @@ def test_audit_selector_refuses_duplicate_state_or_deal():
     assert "Stage-B parent has duplicate deal identities" in problems
 
 
+def test_frozen_audit_state_actor_identity_is_exact_and_falsifiable():
+    payload = {
+        "git": audit.AUDIT_STATE_FREEZE_GIT,
+        "tree_dirty": False,
+        "source_digests": copy.deepcopy(audit.AUDIT_STATE_SOURCE_DIGESTS),
+        "continuation_contract": audit.CONTINUATION_CONTRACT,
+    }
+    assert audit.audit_state_execution_lock_problems(payload) == []
+
+    changed = copy.deepcopy(payload)
+    changed["source_digests"]["compiled_engine"] = "0" * 64
+    assert "audit state-set frozen source identity drift" in \
+        audit.audit_state_execution_lock_problems(changed)
+
+
 def test_audit_packet_recomputes_selection_and_exact_parent():
     parent = {
         "states": parent_states(),
@@ -150,6 +165,28 @@ def test_champion_contract_is_literal_deployed_report_lcb():
     }
 
 
+def test_continuation_execution_lock_is_literal_and_mutation_falsifiable(
+        monkeypatch):
+    expected = copy.deepcopy(audit.CONTINUATION_EXECUTION_LOCK)
+    monkeypatch.setattr(
+        audit, "live_continuation_execution_lock", lambda: expected)
+    assert audit.continuation_execution_lock_problems() == []
+
+    changed = copy.deepcopy(expected)
+    changed["ballot"]["config"][0][1] += 1
+    monkeypatch.setattr(
+        audit, "live_continuation_execution_lock", lambda: changed)
+    assert "continuation execution ballot drift" in \
+        audit.continuation_execution_lock_problems()
+
+    changed = copy.deepcopy(expected)
+    changed["source_sha256s"]["engine_round"] = "0" * 64
+    monkeypatch.setattr(
+        audit, "live_continuation_execution_lock", lambda: changed)
+    assert "continuation execution source engine_round drift" in \
+        audit.continuation_execution_lock_problems()
+
+
 def valid_champion_decision():
     candidates = [["A"], ["K"], ["Q"]]
     selection_rollouts = 30 * len(candidates)
@@ -165,6 +202,11 @@ def valid_champion_decision():
     }
     record = {
         "policy": audit.CONTINUATION_POLICY,
+        "policy_class": audit.CONTINUATION_EXECUTION_LOCK["policy_class"],
+        "code": {"mcbot_sha256": audit.CONTINUATION_EXECUTION_LOCK[
+            "source_sha256s"]["ai_mcbot"]},
+        "ballot": copy.deepcopy(
+            audit.CONTINUATION_EXECUTION_LOCK["ballot"]),
         "n_determinizations": 30,
         "report_worlds_requested": 300,
         "report_rule": "lcb",
@@ -228,6 +270,13 @@ def test_champion_decision_requires_complete_selection_report_and_counters():
     ):
         changed_policy, changed_sampler = valid_champion_decision()
         mutate(changed_policy, changed_sampler)
+        with pytest.raises(audit.TeacherProtocolError):
+            audit.champion_decision_telemetry(
+                changed_policy, changed_sampler)
+
+    for field in ("ballot", "code"):
+        changed_policy, changed_sampler = valid_champion_decision()
+        changed_policy.last_decision_record.pop(field)
         with pytest.raises(audit.TeacherProtocolError):
             audit.champion_decision_telemetry(
                 changed_policy, changed_sampler)
@@ -343,6 +392,7 @@ def test_continuation_telemetry_reconciles_exact_report_lcb_dose():
         "accepted_worlds": 660,
     })
     fold = {
+        "continuation_execution_lock": audit.CONTINUATION_EXECUTION_LOCK,
         "continuation_telemetry": telemetry,
         "inner_sampler_counters": {
             name: telemetry[name]
@@ -515,6 +565,7 @@ def test_receipt_contract_binds_runtime_sources_and_exact_parents():
         "shard_count": audit.AUDIT_SHARDS,
         "folds": audit.AUDIT_FOLDS,
         "continuation_contract": audit.CONTINUATION_CONTRACT,
+        "continuation_execution_lock": audit.CONTINUATION_EXECUTION_LOCK,
         "state_selection_read_label_outcomes": False,
         **runtime,
         "source_digests": {"audit": "source"},
@@ -594,6 +645,7 @@ def test_audit_shard_recomputes_partition_and_totals(monkeypatch):
         "cheap_inputs": [], "n30_inputs": [],
         "folds_contract": audit.AUDIT_FOLDS,
         "continuation_contract": audit.CONTINUATION_CONTRACT,
+        "continuation_execution_lock": audit.CONTINUATION_EXECUTION_LOCK,
         "shard_index": 0, "shard_count": audit.AUDIT_SHARDS,
         "state_partition": {
             "assignment": "sorted_state_id_then_interleaved_position",

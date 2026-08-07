@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-07 16:55 EDT. This is the executable mailbox only.
+Last update: 2026-08-07 17:04 EDT. This is the executable mailbox only.
 Durable discussion and retractions remain in `HANDOFF_REVIEW.md`; policy
 synthesis belongs in `AI_POLICIES.md`.
 
@@ -13,6 +13,11 @@ synthesis belongs in `AI_POLICIES.md`.
   report-LCB-current `+0.338379 +/- 0.067706`, null-current
   `-0.019043 +/- 0.068270`. Every predeclared criterion passed. Aggregate SHA:
   `83f5a9df2f1db1fa45d50fb005b941b776d9ecc2c9f8703d3d62efff8f5ef5ea`.
+  The admitted supervisor completed all eight shards but terminally refused
+  before aggregation because unrelated `HANDOFF_REVIEW.md` was dirty. Pushed
+  artifact-only closeout `57f4e1b` binds that exact transcript, all original
+  shards, the frozen runtime/source identity and the unchanged aggregate
+  without replay. Closeout SHA `06dd487d...b7aae5` independently verifies.
   This closes only one-round superiority; it does not reopen S0c, prove
   adaptive allocation, or itself authorize deployment.
 - **Formal S0:** terminal `S0_COMPLETE_SELECT_NONE`; numerical S0c outcomes
@@ -39,13 +44,16 @@ audit.
 The exact 64-state audit is already frozen at
 `champion_audit_states.json` SHA
 `d04d1c0fa507bab680da4d53eeb72325a97c8ca058aac0d01c16dfdcf44f7a34`.
-Audit code is clean and pushed at `9b2c8ab`: disjoint 32-world champion
+Audit code is clean and pushed at `f4f3dc0`: disjoint 32-world champion
 selection/report folds, full downstream `mc-s0-report-lcb` continuation, exact
 receipt-to-eight-label-to-gate transitions, and a literal actor/rollout/ballot/
 engine lock. An independent Air worktree at that exact commit carries the exact
 frozen state asset and compiled engine. Real outcome-blind preflight reports no
 transition, execution-lock, state-self or state-lock problems and proves live
-lock equality. Preflight caught and corrected an initially mistranscribed
+lock equality. Receipt creation additionally requires exact externally
+predeclared git `f4f3dc0d...5c5349` and audit-script SHA
+`32a31bf7...c7bd9`; a fake future allowed-path HEAD is rejected. Preflight
+caught and corrected an initially mistranscribed
 ballot digest before any audit label existed; the regression now derives the
 real ballot instead of mocking the literal against itself. Launch labels only
 after all eight Stage-B gold shards validate and the producer gate passes.
@@ -123,9 +131,10 @@ real search compute; Fly CPU class remains a separate product lever.
    aggregates. When terminal, validate receipts and publish exactly one
    `stage_b_gate_v2.json` from the unchanged `1a2a713` producer worktree.
 4. Only if that gate passes, copy the exact bound parents into the independent
-   `9b2c8ab` audit worktree, publish one receipt, run eight frozen audit shards,
-   and publish one gate. No outcome-conditioned state, policy, fold, threshold
-   or execution-lock change.
+   `f4f3dc0` audit worktree, publish one receipt with the exact git/script
+   predeclaration above, run eight frozen audit shards, and publish one gate.
+   No outcome-conditioned state, policy, fold, threshold or execution-lock
+   change.
 5. Reconcile terminal Teacher/latency evidence into `JOBS.md`, `BACKLOG.md`,
    `AI_POLICIES.md`, and the 2026-08-07 daily log.
 
@@ -135,9 +144,9 @@ Please audit pushed latency commit `ff784a8` specifically for snapshot/commit
 atomicity, cancellation, failed-throw bookkeeping, bot-task ownership and the
 real WebSocket claim witness, including X-ray's round+bot snapshot. Do not
 review or deploy the earlier `6f15d96` image. Separately, audit pushed Teacher
-commit `9b2c8ab`, especially the real-ballot regression and bounded transition;
-watch the Stage-B receipt transition without opening gold outcomes or
-duplicating workers.
+commit `f4f3dc0`, especially its exact receipt-entry predeclaration, and C1
+artifact-only closeout `57f4e1b`/SHA `06dd487d...b7aae5`; watch the Stage-B
+receipt transition without opening gold outcomes or duplicating workers.
 
 ## Standing rules
 

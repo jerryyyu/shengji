@@ -17,12 +17,13 @@ caffeinate parents remain live after about 2h10 at roughly 82--87% CPU. No
 outcome file was opened.
 
 The separately pinned audit worktree now exists on Air at exact pushed commit
-`9b2c8ab`. It carries frozen state SHA `d04d1c0f...f7a34` and compiled-engine
-SHA `ef7c1618...66b4d`; its 18 focused tests pass. Real outcome-blind preflight
+`f4f3dc0`. It carries frozen state SHA `d04d1c0f...f7a34` and compiled-engine
+SHA `ef7c1618...66b4d`; its 19 focused tests pass. Real outcome-blind preflight
 returns empty transition/execution/state problem lists and exact live-lock
 equality. That preflight caught a wrongly transcribed ballot digest, repaired
-before any audit label was generated. Stage-B's running worktree was not
-modified.
+before any audit label was generated. Receipt creation also requires exact git
+`f4f3dc0d...5c5349` and script SHA `32a31bf7...c7bd9`; a fake future HEAD
+fails. Stage-B's running worktree was not modified.
 
 Operational names were frozen before any gold final existed: producer gate
 `stage_b_gate_v2.json`, audit run id
@@ -58,6 +59,16 @@ there were no failed/rejected/short/zero-world searches.
 - decision: `CONFIRM_REPORT_LCB`; all predeclared criteria true;
 - aggregate SHA-256:
   `83f5a9df2f1db1fa45d50fb005b941b776d9ecc2c9f8703d3d62efff8f5ef5ea`.
+
+The supervisor transcript itself ended `SUPERVISOR_REFUSED` after all eight
+`SHARD_COMPLETE` events because unrelated `HANDOFF_REVIEW.md` was dirty. The
+standalone frozen aggregate was numerically and artifact-valid but did not
+erase that terminal event. Pushed artifact-only repair `57f4e1b` now requires
+the exact progress SHA `d3bb6aa9...1df8a`, original git `ced1033`, all frozen
+source/runtime/shard bytes and aggregate SHA above; it generates zero games,
+retries zero shards and changes no statistic. Its closeout and independent
+verify both pass at SHA `06dd487d...b7aae5`, state
+`FORMAL_CONFIRMATION_CONFIRMED_ARTIFACT_ONLY`.
 
 This closes the fresh one-round superiority claim only. It does not reopen S0c,
 confirm adaptive allocation, prove multi-round progression, or grant automatic

@@ -37,13 +37,24 @@ Mini is available for bounded compiled latency checks or the next separately
 admitted learner protocol.
 
 Latency branch `codex/t1-latency` is clean and pushed at release head
-`b315e91` (scheduler `ff784a8`). Its final native 100-decision replay was exact
+`578b2c6` (runtime `b315e91`, scheduler `ff784a8`). Its final native
+100-decision replay was exact
 with p50 0.164s, p95 0.339s and max 0.379s; the focused
 concurrency/correctness matrix passed 61/61. Remote build-only produced and
-pushed `registry.fly.io/shengji:latency-b315e91`, manifest SHA-256
+pushed both runtime-identical tags `latency-b315e91` and
+`latency-578b2c6`, manifest SHA-256
 `dbc978028de1b9bd84dad00bb59e83f9ba6feac46e5d1ecc95ef3c2150c2426a`.
 Production deployment waits only for an empty room set; at 16:50 HIEJ was the
 only room and srig its only connected human.
+
+Release `578b2c6` replaced all manual WebSocket `__enter__`/`__exit__` usage
+with failure-safe context ownership and added a real
+`evaluate -> play_game -> FullGameCutoff` witness. WebSocket+game is 49/49;
+the expanded focused matrix has 92 passes, two optional skips and one expected
+missing historical corpus asset. Remote build-only pushed
+`latency-578b2c6`; its manifest remains exactly `dbc97802...c2426a`, so these
+test-only ship-gate repairs did not change runtime bytes. At 17:15 production
+still had srig connected in the sole room HIEJ, so no restart occurred.
 
 ## COMPLETE / RLCB-C1 formally confirms report-LCB (Mini)
 

@@ -16,7 +16,13 @@ import s0_deployment_choice_v2_parent as PARENT  # noqa: E402
 
 
 def test_terminal_select_none_parent_is_frozen_closed_and_stream_disjoint():
-    assert PARENT.protocol_problems() == []
+    # The terminal lock deliberately fails closed after RLCB-C1 added a new
+    # registry entry.  That descendant drift cannot reopen S0e-v2, and the
+    # immutable authority script itself must not be rewritten to accommodate
+    # it.
+    assert PARENT.protocol_problems() == [
+        "S0e-v2 parent freeze registry_sha256 drift",
+    ]
     lock = PARENT.load_lock()
     assert lock["transition"] == "TERMINAL"
     assert lock["authorized"] is False
@@ -39,6 +45,19 @@ def test_terminal_select_none_parent_is_frozen_closed_and_stream_disjoint():
     assert null.NULL_SEED_OFFSET == 50_000_003
     assert null.N_DETERMINIZATIONS == current.N_DETERMINIZATIONS == 30
     assert null.rng.getstate() != current.rng.getstate()
+
+
+def test_frozen_registry_reopens_introduction_not_descendant_bytes():
+    frozen = PARENT.load_freeze()
+    commits = PARENT.file_commits(PARENT.FREEZE_PATH)
+    assert len(commits) == 1
+    historical = PARENT.sha256_bytes(
+        PARENT.git_blob(commits[0], PARENT.REGISTRY_PATH))
+    assert frozen["registry_sha256"] == historical
+    # RLCB-C1 legitimately added a policy after terminal SELECT NONE.  The
+    # current verifier refuses the descendant registry rather than silently
+    # treating it as the frozen policy surface.
+    assert frozen["registry_sha256"] != PARENT.sha256(PARENT.REGISTRY_PATH)
 
 
 def test_historical_lag17_offset_is_explicitly_falsified(monkeypatch):

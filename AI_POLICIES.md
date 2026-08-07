@@ -21,7 +21,7 @@ evidence changes a synthesized conclusion. Append run reports below the fold,
 and when a run changes a conclusion, EDIT the synthesis rather than letting the
 newest entry sit on top and speak for the file.
 
-## Current synthesis — 2026-08-06 17:56
+## Current synthesis — 2026-08-07
 
 - **More search width is not the next lever.** N=5->N=10 was large,
   N=10->N=30 was +0.262 +/- 0.154 confirmed, and N=30->N=60 was
@@ -36,14 +36,17 @@ newest entry sit on top and speak for the file.
   in between. Caveat: these shards predate the `rejected_worlds` counter, so
   like the N=60 lane this is a policy-as-run comparison rather than proof of an
   exact accepted dose.
-- **DEPLOYED STRENGTH INCUMBENT:** prod runs compiled `mc-strong` (N=30),
-  exposed as `{"bot":"mc-strong","fast":true}`. The production image builds
-  the Cython extension, taking the measured path from about 45ms/decision
-  (N=10 pure Python) to 36ms (N=30 compiled). A fresh current-main block over
-  504 preregistered clusters confirmed `+0.222 +/- 0.140` versus N=10;
-  arm-minus-null was `+0.230 +/- 0.139` and null was `-0.008 +/- 0.154`.
-  No learned policy, value leaf, learned search prior or ballot variant has a
-  verified edge over it.
+- **DEPLOYED MANUAL STRENGTH CANDIDATE:** prod runs compiled
+  `mc-s0-report-lcb`: ordinary N=30 selection nominates a challenger, then a
+  disjoint 300-world paired report fold overrides candidate 0 only when its
+  one-sided Student-t LCB is positive. S0a measured `+0.353 +/- 0.069` versus
+  `mc-strong`; the separate S0b block replicated at `+0.357 +/- 0.066`.
+  This 2026-08-07 deployment is an explicit strength-first product decision,
+  **not** a terminal S0 promotion. S0c did not produce admissible promotion
+  evidence, so fresh collision-free confirmation is still required for the
+  formal claim; `mc-strong` remains the documented rollback and evidence
+  parent. No learned policy, value leaf or learned search prior has a verified
+  edge over that base policy.
 - **Best learned result:** `rl-override-v11pair` beats SmartBot 57.7% (n=480)
   and is very fast, but it has not beaten MC. Its first fully seeded current
   N=30 block was strongly negative (`-0.132 +/- 0.070` paired level utility;
@@ -226,8 +229,8 @@ newest entry sit on top and speak for the file.
   enough (5.8/6.3 points) to clear the fixed five-point override margin. The
   immediate mechanism is paired uncertainty/confidence-aware allocation and a
   candidate-0 fallback—not another ballot rule.
-- **S0a produced a positive mechanism screen; S0 has no terminal promotion
-  result yet.** Incumbent point-margin
+- **S0a/b produced a replicated positive report-LCB result; S0c produced no
+  admissible terminal decision.** Incumbent point-margin
   5 and report minimum-gain 0 are separate semantics. Registered report arms
   nominate on N=30 selection worlds, then score the fixed pair on 300 fresh
   named worlds; a short fold refuses. Deterministic/random adaptive and uniform
@@ -245,29 +248,22 @@ newest entry sit on top and speak for the file.
   random contrast does not isolate allocation because report-uniform also beats
   random by about 0.396. The registered point-estimate gate selected adaptive,
   not promotion; the substantive result is that report-LCB replicated while
-  allocation did not measurably help. Exact 8,192-cluster
-  S0c-adaptive-LCB is running 8/8;
-  only that untouched comparison may establish strength. The frozen worker stdout
-  was discovered to contain interim W/L; one accidental tail is quarantined
-  and caused no adaptive action. Future monitoring is metadata-only, and
-  future-main commit `7314cdf` suppresses both running and shard-end effects.
-  The transition used detached exact `6fe5f44` for the already-pinned audit
-  tools after moving main correctly caused a pre-aggregate refusal; the frozen
-  worker bytes and evidence are unchanged.
-  The historical null's +999,983 shift also collides with evaluator opponent
-  streams at lag 17 across clusters. S0c's original iid interval is therefore
-  provisional. Before outcome decoding, a one-shot audit must seal exactly the
-  packet, aggregate, eight manifests and eight raw files; recompute all dose,
-  coverage, counters and statistics; and require both exact collision-free
-  lag-chain parity populations (4,097/4,095 seeds) independently to pass all
-  three gates. Any failure is SELECT NONE; no pooling, retry, extension or
-  fallback is admissible.
+  allocation did not measurably help. All eight S0c shards and the frozen
+  aggregate completed, but the historical null's +999,983 shift collides with
+  evaluator opponent streams at lag 17 across clusters. A score-blind seal was
+  completed, then the one-shot corrected evaluator refused before parsing
+  outcomes because the terminal supervisor state had changed to `BLOCKED`.
+  The numerical S0c outcome remains unread and cannot authorize a formal
+  promotion or any dependent gate. Do not reinterpret that evidence failure as
+  a negative game result, and do not retry or inspect the sealed lane.
   The old 147M deployment-choice runner is irreversibly retired because it
   shares the unsafe null and bypasses corrected authority. Future S0e-v2 has
   only a preterminal parent seam on fresh 148M geometry with a collision-free
   +50,000,003 null offset. One clean pushed transition may bind the exact
-  corrected audit+seal; only corrected PROMOTE can authorize later runner
-  design, while SELECT NONE permanently closes the lane. No v2 job exists.
+  corrected audit+seal; only a fresh, valid confirmation can support the formal
+  strength claim. The manual report-LCB production decision is deliberately
+  separate from that evidence authority and does not authorize dependent S0
+  research gates. No v2 job exists.
 - **The reproducible override diagnostic is smaller than the first prose
   estimate.** In the immutable first-150-DEV / first-20-override asset, 12/20
   N=300 gaps are positive, mean signed gap is `+0.570`, and median absolute gap
@@ -351,8 +347,9 @@ newest entry sit on top and speak for the file.
   failed strongly but used a drifted banker encoder; preserve that as-run FAIL
   and require a fresh corrected-encoder direct block before changing the model
   conclusion.
-- **Strength incumbent:** deployed `mc-strong` is N=30 search over the current
-  MC policy. Its count-first sampler now
+- **Production candidate and rollback:** deployed `mc-s0-report-lcb` adds a
+  disjoint R=300 report fold to the current N=30 MC policy. `mc-strong` remains
+  its evidence parent and immediate rollback. Their count-first sampler
   consumes declaration, void, remaining-pair and remaining-tractor-run
   constraints. Normal mode can still use the final void-relaxing retry, while
   evidence-producing evaluation requires `SHENGJI_REQUIRE_VOIDS=1` and clean
@@ -362,12 +359,11 @@ newest entry sit on top and speak for the file.
   own counters. See
   `CORRECTNESS.md` for the certified boundary rather than inferring it from a
   policy result.
-- **Experimental S0 family, not deployed:** `mc-s0-report-mean` and
-  `mc-s0-report-lcb` isolate the report rule; `mc-s0-uniform-work` isolates
+- **S0 family:** `mc-s0-report-lcb` is manually deployed on the replicated S0a/b
+  development evidence while a fresh formal confirmation remains open.
+  `mc-s0-report-mean` isolates the report rule; `mc-s0-uniform-work` isolates
   extra compute; `mc-s0-adaptive[-mean]` and `mc-s0-random[-mean]` isolate
-  evidence-directed allocation. S0a is a 2,048-cluster mechanism screen;
-  production still requires an independent 8,192-cluster superiority interval
-  above zero.
+  evidence-directed allocation. None of those other S0 arms is deployed.
 - **Experimental sampled-exact family, not deployed:** `mc-exact-endgame`,
   `mc-s0-report-lcb-exact-endgame`, and `mc-s0-adaptive-exact-endgame` clone the
   corresponding possible terminal S0 champion and change only

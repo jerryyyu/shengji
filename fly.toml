@@ -10,11 +10,11 @@ primary_region = 'ewr'
   dockerfile = 'Dockerfile'
 
 [env]
-  # Current production strength incumbent. S0 may change this exact setting
-  # only after its independent confirmation returns PROMOTE; SELECT NONE leaves
-  # it untouched. The image builds the Cython extension below and /healthz
-  # exposes both this policy name and whether the compiled engine activated.
-  SHENGJI_BOT = 'mc-strong'
+  # Manual strength-first deployment (2026-08-07): report-LCB replicated its
+  # gain over mc-strong in S0a and S0b. This is not a terminal S0 promotion;
+  # fresh collision-free confirmation remains required for the formal claim.
+  # Roll back this exact setting to 'mc-strong' if production health regresses.
+  SHENGJI_BOT = 'mc-s0-report-lcb'
   # Compiled engine, built in the fastbuild stage. fast.py falls back to pure
   # Python if the .so is missing, so this is safe to set unconditionally.
   SHENGJI_FAST = '1'

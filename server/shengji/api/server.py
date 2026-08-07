@@ -34,6 +34,11 @@ def _fast_active() -> bool:
         return False
 
 BOT_DELAY = 0.7
+# Preserve a small, explicit window for a player to claim the on-turn bot seat
+# after receiving the first playable state.  Historically the whole 0.7s delay
+# served this purpose accidentally.  Search now overlaps the remaining visual
+# pacing, while this bounded grace retains the join/claim race contract.
+BOT_CLAIM_GRACE = 0.05
 CHAT_KEEP = 50        # scrollback kept per room (in memory, like game state)
 CHAT_MAX_LEN = 300    # per-message cap
 DEAL_DELAY = 0.22          # seconds between dealt cards (~22s full deal)
@@ -539,14 +544,72 @@ def bot_step(room: Room, seat: int) -> bool:
         return False
 
 
+async def _bot_step_off_loop(room: Room, seat: int) -> bool:
+    """Run one CPU-bound bot turn without starving every WebSocket room.
+
+    ``bot_step`` mutates the room and therefore its caller must continue to
+    hold ``room.lock``.  Cancellation is deliberately deferred until the
+    worker has stopped: releasing that lock while ``to_thread`` was still
+    mutating the round would permit a human/watchdog action to race it.  A
+    second cancellation request is handled by the same loop.
+    """
+    worker = asyncio.create_task(
+        asyncio.to_thread(bot_step, room, seat),
+        name=f"bot-step-{room.code}-{seat}",
+    )
+    cancelled: asyncio.CancelledError | None = None
+    while not worker.done():
+        try:
+            await asyncio.shield(worker)
+        except asyncio.CancelledError as exc:
+            cancelled = exc
+    result = worker.result()  # retrieve/propagate a genuine bot exception
+    if cancelled is not None:
+        raise cancelled
+    return result
+
+
+async def _paced_bot_step(room: Room, seat: int, *,
+                          turn_started: float | None = None) -> bool:
+    """Perform a bot turn with a minimum *total* think time of ``BOT_DELAY``."""
+    phase = room.round.phase if room.round is not None else None
+    compute_started = time.perf_counter()
+    if turn_started is None:
+        turn_started = compute_started
+    acted = await _bot_step_off_loop(room, seat)
+    compute_seconds = time.perf_counter() - compute_started
+    if not acted:
+        return False
+    pre_compute_seconds = compute_started - turn_started
+    pacing_seconds = max(
+        0.0, BOT_DELAY - (time.perf_counter() - turn_started))
+    if pacing_seconds:
+        await asyncio.sleep(pacing_seconds)
+    turn_seconds = time.perf_counter() - turn_started
+    room.log_event(
+        "bot_timing", seat=seat, phase=phase,
+        policy=getattr(room.bot, "policy_name", type(room.bot).__name__),
+        pre_compute_seconds=round(pre_compute_seconds, 6),
+        compute_seconds=round(compute_seconds, 6),
+        pacing_seconds=round(pacing_seconds, 6),
+        turn_seconds=round(turn_seconds, 6),
+        event_loop_offloaded=True,
+    )
+    return True
+
+
 async def pump_bots(room: Room) -> None:
     while True:
-        await asyncio.sleep(BOT_DELAY)
+        turn_started = time.perf_counter()
+        await asyncio.sleep(BOT_CLAIM_GRACE)
         async with room.lock:
             seat = current_actor(room)
             if seat is None or not room.seats[seat].is_bot:
                 return
-            if not bot_step(room, seat):
+            # Search time now counts toward the visible think delay instead of
+            # paying an unconditional extra 0.7 seconds after/before it.
+            if not await _paced_bot_step(
+                    room, seat, turn_started=turn_started):
                 return
             await broadcast(room)
 
@@ -572,7 +635,7 @@ async def _watchdog_body(room: Room) -> bool:
     if s.is_bot or s.connected or s.left_at is None:
         return False
     if now() - s.left_at >= TAKEOVER_AFTER:
-        if bot_step(room, seat):
+        if await _bot_step_off_loop(room, seat):
             if not s.bot_announced:
                 s.bot_announced = True
                 chat_system(room, f"bot is playing for {s.name} "

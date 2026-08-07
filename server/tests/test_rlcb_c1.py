@@ -61,6 +61,7 @@ def _records(seed0=C1.SEED0, clusters=2):
 
 def test_literal_protocol_is_one_fresh_three_arm_confirmation():
     assert C1.protocol_problems(require_receipt=False) == []
+    assert C1.protocol_problems() == []
     assert C1.selection_identity() == {
         "schema": "rlcb-c1-shard-v1",
         "aggregate_schema": "rlcb-c1-aggregate-v1",
@@ -83,6 +84,16 @@ def test_literal_protocol_is_one_fresh_three_arm_confirmation():
     }
     assert "single superiority gate" in C1.SELECTION_RULE
     assert "S0c read" in C1.SELECTION_RULE
+
+
+def test_immutable_freeze_reopens_exact_sources_contracts_and_stream_proof():
+    receipt = C1.load_freeze_receipt()
+    assert receipt["selection_identity"] == C1.selection_identity()
+    assert receipt["selection_digest"] == C1.selection_digest()
+    assert receipt["source_sha256s"] == C1.source_sha256s()
+    assert receipt["policy_contract_sha256s"] == \
+        C1.policy_contract_sha256s()
+    assert receipt["stream_proof"] == C1.stream_proof()
 
 
 def test_fresh_null_stream_proof_kills_the_historical_lag17_offset():

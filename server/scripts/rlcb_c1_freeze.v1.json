@@ -1,0 +1,58 @@
+{
+  "execution_host": "Jerrys-Mac-mini.local",
+  "execution_root": "/Users/jerryyu/Projects/shengji/server",
+  "fast_binary_sha256": "9c9e77fbdc4c6caceec195465155f37ec6369e409462fd838bc142bf8a0be4c1",
+  "policy_contract_sha256s": {
+    "mc-s0-report-lcb": "59fa033dc22d8a055b5d7f3fbcbaf9d7fb0b71993b74c4d9bb7587e3d90dc72b",
+    "mc-strong": "64aa5d0a21dfc5608675c30adf2089f8da2668d528a8985be3fdd7f32e98a35d",
+    "mc-strong-null-rlcb-c1": "5629a69390be122149c8e6809c0869e35288067948f315bde8415541d524b968"
+  },
+  "python": "3.14.3",
+  "schema": "rlcb-c1-freeze-v1",
+  "selection_digest": "e0f758bba627860225debc9a43493f5c7e51ded90256c15961435c6376a33d31",
+  "selection_identity": {
+    "aggregate_schema": "rlcb-c1-aggregate-v1",
+    "claim": "fresh_report_lcb_superiority_over_current_mc",
+    "claim_boundary": "Fresh one-round paired formal confirmation of the already-manually-shipped report-LCB policy only; not adaptive-allocation evidence, an S0c repair, multi-round progression, or automatic deployment authority.",
+    "clusters_per_shard": 256,
+    "labels": {
+      "current": "mc-strong",
+      "current_null": "mc-strong-null-rlcb-c1",
+      "report_lcb": "mc-s0-report-lcb"
+    },
+    "null_offset": 60000011,
+    "opponent": "mc-strong",
+    "run_namespace": "rlcb-c1-150m-v1",
+    "schema": "rlcb-c1-shard-v1",
+    "seed0": 150000000,
+    "seed_hi": 150002047,
+    "selection_rule": "CONFIRM report-LCB only if all 2,048 fresh mirrored clusters and exact registered search doses verify, the current-null minus current paired two-sided 95% interval contains zero, and the single superiority gate LCB95(report_lcb-current)>0. The null check is calibration, not a second superiority contrast. No retry, extension, seed substitution, S0c read, automatic deployment, or production mutation is authorized.",
+    "shard_count": 8,
+    "total_clusters": 2048
+  },
+  "source_sha256s": {
+    "ballot": "63e2e94ca12f9ebf8dce30c1a1bdbe3fe9cf6223603677173d4eb75e334845d5",
+    "env": "04b1d18e2ad4783c5160913b66c2adf568625de1aaf6bdf300c6a4b00c2f0d8b",
+    "evaluation": "ae4739a19767391cb9734a59f7b6cf5f4143d44d8de4beb00dcc3c2c96fcbb4c",
+    "game": "613c5dd72a1cbd3b50a96eef6e0b84746052dc2b0b28fb08005ff34455359e43",
+    "mcbot": "45a82f44b95d1bce5126c63b1a5af6baaed54270aca9d55677b2e0bbb9c9d957",
+    "memory": "905873b332fd54471070b25ce24f100b813c9a9f234c1b50254d00895140cf51",
+    "registry": "dbb2848535eda766df737cda8decffe56e00d514b12ba5fa5c9386ff9d86fd1a",
+    "round": "7a91b3573ecb34c488e3960008d21ebfda283e01003f6454a1ffd62c41b9b679",
+    "runner": "8525afab8be23cc3064d9550b4961a2111b7b28eaa39dc0f5c8ff238f08b6ac9",
+    "smart": "facfb6a9bb67f82d1bddb855f01ce49adf5f0caaca92bfb5da09ba343c29512c"
+  },
+  "stream_proof": {
+    "collisions": 0,
+    "distinct_null_streams": 4096,
+    "null_offset": 60000011,
+    "null_stream_digest": "6b22deaaa679a3ce0cfed014bdd47f0d7bb7850178cc3415f29103a1162a4968",
+    "null_streams": 4096,
+    "problems": [],
+    "prohibited_stream_digest": "36afaca3df19da9d4e7571d45e6fac7fcb17716a9f71e05d40491bfafb6786e0",
+    "prohibited_stream_keys": 8192,
+    "schema": "rlcb-c1-stream-proof-v1",
+    "seed0": 150000000,
+    "seed_hi": 150002047
+  }
+}

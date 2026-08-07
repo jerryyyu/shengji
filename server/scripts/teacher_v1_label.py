@@ -57,6 +57,7 @@ from shengji.teacher_v1 import (CAPTURE_PACKET_ID, CAPTURE_PYTHON,   # noqa: E40
                                 capture_coverage, capture_packet,
                                 counter_problems, derive_stream,
                                 is_run_id, is_sha256,
+                                json_canonical,
                                 paired_moments, replay_state,
                                 sampler_delta, sampler_snapshot,
                                 stable_digest, targets, tensor_problems)
@@ -276,7 +277,10 @@ def cheap_record(state: dict, bot, counts: dict[str, int]) -> dict:
     bad = ballot_problems(rnd, seat, candidates)
     if bad:
         raise TeacherProtocolError(f"{state['state_id']}: {'; '.join(bad)}")
-    ballot = asdict(mc_ballot(bot))
+    # ``BallotSpec.config`` is a tuple in memory.  Artifacts live in the JSON
+    # domain, so canonicalize before this record can participate in an
+    # in-memory-vs-reopened equality check.
+    ballot = json_canonical(asdict(mc_ballot(bot)))
     ballot["digest"] = mc_ballot(bot).digest
     folds = {}
     sampler_total = Counter()
@@ -657,8 +661,12 @@ def state_source_problems(payload: dict, runtime: dict,
                           digests: dict[str, str]) -> list[str]:
     """Bind capture/freezing to the exact executable used for labelling."""
     bad = []
+    # The immutable state-set hash already binds its producer git.  A later
+    # labeller-only repair must not force state reselection when every source
+    # that can affect state/replay/actor semantics still matches below.  The
+    # label receipt and output bind the new clean labeller git independently.
     for key in (
-        "git", "python", "fast_engine", "require_voids",
+        "python", "fast_engine", "require_voids",
         "experimental_sampler_ballot_flags",
     ):
         if payload.get(key) != runtime.get(key):
@@ -1134,7 +1142,7 @@ def main() -> None:
             mode=args.mode,
             state_set_sha256=state_set_sha256,
         )
-        payload = {
+        payload = json_canonical({
             "schema": schema, "experiment_id": EXPERIMENT,
             "packet_id": source.get("packet_id"),
             "capture_packet": source.get(
@@ -1179,7 +1187,7 @@ def main() -> None:
             "candidate_world_work": sum(r["candidate_world_work"] for r in records),
             "measured_record_seconds": elapsed,
             "projected_2048_seconds": elapsed / len(records) * 2048,
-        }
+        })
         if not args.smoke:
             bad = label_packet_problems(payload)
             if bad:

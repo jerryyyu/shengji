@@ -1011,6 +1011,15 @@ def test_state_set_binds_stage_completion_and_internal_digest():
         payload, "a", smoke=True)
 
 
+def test_live_cheap_record_is_json_domain_before_publication():
+    record = label.cheap_record(
+        raw_state(), label.make_bot("mc-strong", seed=1),
+        {"selection": 1, "report": 1},
+    )
+    assert isinstance(record["ballot_spec"]["config"], list)
+    assert json.loads(json.dumps(record, sort_keys=True)) == record
+
+
 def test_state_and_cheap_parent_refuse_executable_generation_drift():
     digests = label.source_digests()
     runtime = {"git": label.git_output("rev-parse", "HEAD")}
@@ -1022,6 +1031,9 @@ def test_state_and_cheap_parent_refuse_executable_generation_drift():
         "fast_binary_sha256": digests["compiled_engine"],
     }
     assert label.state_source_problems(state_payload, runtime, digests) == []
+    repaired_runtime = dict(runtime, git="f" * 40)
+    assert label.state_source_problems(
+        state_payload, repaired_runtime, digests) == []
     state_payload["fast_binary_sha256"] = "stale"
     assert "state-set compiled engine drift" in label.state_source_problems(
         state_payload, runtime, digests)
@@ -1503,6 +1515,10 @@ def test_label_main_wires_pre_and_post_publication_verification(
         lambda state, _bot, _counts: {
             "state_id": state["state_id"], "elapsed_seconds": 0.0,
             "candidate_world_work": 2,
+            # Regression for the real Stage-A refusal: BallotSpec.config was
+            # tuple-valued before serialization, so post-link verification
+            # rejected the labeller's own JSON bytes.
+            "json_domain_witness": (("MAX_CANDIDATES", 8),),
         },
     )
     calls = []
@@ -1521,6 +1537,9 @@ def test_label_main_wires_pre_and_post_publication_verification(
     assert payload["input_sha256"] == args.expected_input_sha256
     assert payload["source_digests"] == digests
     assert payload["host"] == runtime["host"]
+    assert payload["records"][0]["json_domain_witness"] == [
+        ["MAX_CANDIDATES", 8]
+    ]
 
 
 def test_gate_final_verifier_reopens_and_recomputes_passing_stage_a(

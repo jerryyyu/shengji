@@ -15,12 +15,16 @@ sys.path.insert(0, str(SCRIPTS))
 import s0_deployment_choice_v2_parent as PARENT  # noqa: E402
 
 
-def test_preterminal_parent_is_frozen_closed_and_stream_disjoint():
+def test_terminal_select_none_parent_is_frozen_closed_and_stream_disjoint():
     assert PARENT.protocol_problems() == []
     lock = PARENT.load_lock()
-    assert lock["transition"] == "PRETERMINAL"
+    assert lock["transition"] == "TERMINAL"
     assert lock["authorized"] is False
-    assert lock["dependency_audit_sha256"] is None
+    assert lock["dependency_audit_sha256"] == \
+        "ef0a3659859b38d0b9362376e5e403fecb625f59c475600ed09906ce695fde9a"
+    assert lock["input_seal_sha256"] == \
+        "b6a48e9dbabad008a15e3ace0b19fecff9304849435b5d9c4f69da30ddc29d10"
+    assert lock["final_state"] == "S0_COMPLETE_SELECT_NONE"
     witness = PARENT.stream_witness()
     assert witness == {
         "seed0": 148_000_000,
@@ -208,7 +212,9 @@ def test_terminal_lock_reopens_bytes_and_select_none_stays_closed(
 
 def test_parent_lock_allows_only_one_committed_terminal_transition(
         tmp_path, monkeypatch):
-    initial = PARENT.load_lock()
+    commits = PARENT.file_commits(PARENT.LOCK_PATH)
+    initial = json.loads(PARENT.git_blob(commits[-1], PARENT.LOCK_PATH))
+    assert initial["transition"] == "PRETERMINAL"
     terminal = copy.deepcopy(initial)
     terminal.update({
         "transition": "TERMINAL",

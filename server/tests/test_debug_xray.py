@@ -58,7 +58,8 @@ def test_xray_uses_exact_rng_copy_without_mutating_live_bot():
     rng_before = live.rng.getstate()
     sentinel = live.last_eval
 
-    result = debug._xray(rnd, seat, live)
+    rnd_copy, bot_copy = debug._snapshot_xray(rnd, live)
+    result = debug._xray(rnd_copy, seat, bot_copy)
 
     assert live.calls == 0
     assert live.samples == []
@@ -68,6 +69,23 @@ def test_xray_uses_exact_rng_copy_without_mutating_live_bot():
     picked = next(item["play"] for item in result["candidates"]
                   if item["bot_plays"])
     assert picked == expected_pick
+
+
+def test_xray_snapshot_detaches_round_and_bot_before_worker_runs():
+    rnd, seat = _lead_state()
+    live = _RecordingBot()
+
+    rnd_copy, bot_copy = debug._snapshot_xray(rnd, live)
+    original_hand = rnd_copy.sorted_hand(seat)
+
+    # Mutations after the room lock is released cannot alter the worker view.
+    rnd.hands[seat].clear()
+    live.calls = 99
+
+    assert rnd_copy.sorted_hand(seat) == original_hand
+    assert bot_copy.calls == 0
+    result = debug._xray(rnd_copy, seat, bot_copy)
+    assert result["hand"] == original_hand
 
 
 def test_deployed_report_lcb_bot_can_be_isolated_by_deepcopy():
@@ -101,6 +119,39 @@ def test_cpu_bound_xray_yields_event_loop(monkeypatch):
         return heartbeats
 
     assert asyncio.run(scenario()) >= 3
+
+
+def test_xray_releases_live_room_lock_before_search(monkeypatch):
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocking_xray(rnd, seat, isolated_bot):
+        started.set()
+        assert release.wait(timeout=2)
+        return {"done": True}
+
+    monkeypatch.setattr(debug, "_xray", blocking_xray)
+    rnd, seat = _lead_state()
+
+    class Room:
+        lock = asyncio.Lock()
+        round = rnd
+        bot = _RecordingBot()
+
+    async def scenario():
+        task = asyncio.create_task(debug._xray_room(Room(), seat, None))
+        while not started.is_set():
+            await asyncio.sleep(0)
+
+        # Chat, reconnect and seat claims use this same lock.  They must not
+        # wait for the CPU-heavy debug search.
+        await asyncio.wait_for(Room.lock.acquire(), timeout=0.2)
+        Room.lock.release()
+
+        release.set()
+        assert await task == {"done": True}
+
+    asyncio.run(scenario())
 
 
 def test_xray_cancellation_waits_for_worker_before_room_unlock(monkeypatch):

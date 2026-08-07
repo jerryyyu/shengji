@@ -134,6 +134,17 @@ def test_semantic_comparison_allows_only_tiny_float_roundoff():
     assert bench.semantic_differences(expected, {**one_ulp, "extra": 1}) \
         == ["$.__keys__"]
 
+    def step(value: float, toward: float, count: int) -> float:
+        for _ in range(count):
+            value = math.nextafter(value, toward)
+        return value
+
+    for value, toward in ((0.25, 1.0), (-0.25, -1.0)):
+        assert bench.semantic_differences(
+            {"x": value}, {"x": step(value, toward, 8)}) == []
+        assert bench.semantic_differences(
+            {"x": value}, {"x": step(value, toward, 9)}) == ["$.x"]
+
 
 def test_asset_validator_rejects_identity_and_play_mutations():
     asset = _asset()

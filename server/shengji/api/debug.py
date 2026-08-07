@@ -11,14 +11,18 @@ import copy
 import os
 
 
-def _xray(rnd, seat: int, source_bot) -> dict:
-    """Build one read-only X-ray from an isolated copy of the room bot.
+def _snapshot_xray(rnd, source_bot):
+    """Detach every object the worker may read or mutate.
 
-    Calling ``decide_play`` on the live room bot advances its RNG and cumulative
-    counters, so merely opening the debug panel used to change a later
-    production decision.  A deep copy preserves the exact policy/config/RNG
-    position while keeping every mutation private to this request.
+    The caller holds the room lock.  Copying both values here means the worker
+    neither advances the live bot nor reads a round that can change underneath
+    it after the lock is released.
     """
+    return copy.deepcopy(rnd), copy.deepcopy(source_bot)
+
+
+def _xray(rnd, seat: int, isolated_bot) -> dict:
+    """Build one X-ray from an already-isolated round and bot snapshot."""
     from ..ai.memory import Memory
     from ..engine.cards import SUITS, TRUMP
     from ..engine.legal import suit_cards
@@ -44,13 +48,11 @@ def _xray(rnd, seat: int, source_bot) -> dict:
         "candidates": None,
     }
     if rnd.phase == "play" and rnd.turn == seat:
-        # Show what the room bot would see at its exact current RNG position,
-        # without consuming that position on the real bot.  The pick and values
-        # come from the SAME evaluation via last_eval.
-        mc = copy.deepcopy(source_bot)
-        pick = mc.decide_play(rnd, seat)
-        if getattr(mc, "last_eval", None) is not None:
-            cands, means = mc.last_eval
+        # The snapshot starts at the live bot's exact RNG position.  The pick
+        # and displayed values come from the same isolated evaluation.
+        pick = isolated_bot.decide_play(rnd, seat)
+        if getattr(isolated_bot, "last_eval", None) is not None:
+            cands, means = isolated_bot.last_eval
             # last_eval is acting-team perspective; report attacker points.
             sign = 1.0 if rnd.is_attacker(seat) else -1.0
             vals = [[sign * m] for m in means]
@@ -76,15 +78,15 @@ def _xray(rnd, seat: int, source_bot) -> dict:
     return out
 
 
-async def _xray_off_loop(rnd, seat: int, source_bot) -> dict:
+async def _xray_off_loop(rnd, seat: int, isolated_bot) -> dict:
     """Run CPU-heavy X-ray search without blocking WebSockets.
 
-    The route holds the room lock around this call.  As with production bot
-    turns, cancellation is delayed until the worker exits so the lock cannot
-    be released while a background thread is still reading the round.
+    Both inputs are detached before this call.  Cancellation is delayed until
+    the worker exits so cancelled debug requests cannot accumulate orphaned
+    report-LCB searches.
     """
     worker = asyncio.create_task(
-        asyncio.to_thread(_xray, rnd, seat, source_bot),
+        asyncio.to_thread(_xray, rnd, seat, isolated_bot),
         name=f"xray-{seat}",
     )
     cancelled: asyncio.CancelledError | None = None
@@ -99,6 +101,16 @@ async def _xray_off_loop(rnd, seat: int, source_bot) -> dict:
     return result
 
 
+async def _xray_room(room, seat: int, fallback_bot) -> dict:
+    """Snapshot one room under its lock, then search after releasing it."""
+    async with room.lock:
+        if room.round is None or room.round.ordering is None:
+            return {"error": "no active round"}
+        source_bot = getattr(room, "bot", None) or fallback_bot
+        rnd_copy, bot_copy = _snapshot_xray(room.round, source_bot)
+    return await _xray_off_loop(rnd_copy, seat, bot_copy)
+
+
 def register_debug(app, rooms) -> None:
     # ------------------------------------------------------------------- debug
     DEBUG_TOKEN = os.environ.get("SHENGJI_DEBUG_TOKEN", "")
@@ -111,9 +123,6 @@ def register_debug(app, rooms) -> None:
         if not DEBUG_TOKEN or token != DEBUG_TOKEN:
             return {"error": "not found"}
         r = rooms.get(room.upper())
-        if r is None or r.round is None or r.round.ordering is None:
+        if r is None:
             return {"error": "no active round"}
-        async with r.lock:
-            source_bot = getattr(r, "bot", None) or room_bot_for_xray
-            return await _xray_off_loop(r.round, seat, source_bot)
-
+        return await _xray_room(r, seat, room_bot_for_xray)

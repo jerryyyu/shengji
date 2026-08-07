@@ -48,6 +48,17 @@ class MCStrongS0EV2Null(MCBot):
         super().__init__(shifted)
 
 
+class MCStrongRLCBC1Null(MCBot):
+    """Fresh RLCB-C1 null with no overlap with any matched role stream."""
+
+    N_DETERMINIZATIONS = 30
+    NULL_SEED_OFFSET = 60_000_011
+
+    def __init__(self, seed: int | None = None):
+        shifted = None if seed is None else seed + self.NULL_SEED_OFFSET
+        super().__init__(shifted)
+
+
 class MCNull(MCBot):
     """NULL CONTROL: identical to `mc` in every way except its random draws.
 
@@ -83,6 +94,7 @@ REGISTRY: dict[str, type] = {
     # OPPONENT, or it measures a dose step instead of the noise floor.
     "mc-strong-null": MCStrongNull,
     "mc-strong-null-s0e-v2": MCStrongS0EV2Null,
+    "mc-strong-null-rlcb-c1": MCStrongRLCBC1Null,
     "mc-null": MCNull,  # null control: same policy, different RNG stream
     "mc-argmax": type("MCArgmax", (MCBot,), {"MARGIN": 0.0}),
     "mc-smartroll": MCSmartRoll,  # SmartBot rollouts, ~5x slower/decision

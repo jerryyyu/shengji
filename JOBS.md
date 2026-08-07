@@ -24,6 +24,13 @@ equality. That preflight caught a wrongly transcribed ballot digest, repaired
 before any audit label was generated. Stage-B's running worktree was not
 modified.
 
+Operational names were frozen before any gold final existed: producer gate
+`stage_b_gate_v2.json`, audit run id
+`teacher-v3-report-lcb-audit-v1-149m`, receipt
+`champion_audit_receipt_v1.json`, eight
+`champion_audit_v1_shard00..07.json` outputs and terminal
+`champion_audit_gate_v1.json`. A non-PASS Stage-B gate launches none of them.
+
 Mini has no long strength worker. RLCB-C1, V11-v2 and Direct-Q are terminal;
 Mini is available for bounded compiled latency checks or the next separately
 admitted learner protocol.

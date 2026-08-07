@@ -53,6 +53,25 @@ after all eight Stage-B gold shards validate and the producer gate passes.
 Mini has no long strength job. It is available for bounded compiled latency
 validation or the next separately admitted learner protocol.
 
+### Frozen Teacher transition names
+
+These names were fixed while Stage-B had zero final gold shards; do not rename
+or version them from observed outcomes:
+
+- producer gate: `stage_b_gate_v2.json` in the unchanged `1a2a713` namespace;
+- Stage-B state parent: `stage_b_states.json`, SHA
+  `90956da86f4f03074a1b4dc2d7198a3da5958470b733eacd104e066c523b4dc6`;
+- audit run id: `teacher-v3-report-lcb-audit-v1-149m`;
+- audit receipt: `champion_audit_receipt_v1.json`;
+- eight outputs: `champion_audit_v1_shard00.json` through
+  `champion_audit_v1_shard07.json`;
+- terminal output: `champion_audit_gate_v1.json`.
+
+The audit dose is exactly eight shards and disjoint 32/32 outer
+selection/report worlds; its downstream continuation remains literal deployed
+report-LCB N=30/R=300. A non-PASS Stage-B gate ends this packet without an
+audit receipt or labels.
+
 ## Production latency hardening
 
 Worktree `/private/tmp/shengji-t1-latency`, branch `codex/t1-latency`, clean

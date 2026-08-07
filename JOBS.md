@@ -19,11 +19,14 @@ Mini has no long strength worker. RLCB-C1, V11-v2 and Direct-Q are terminal;
 Mini is available for bounded compiled latency checks or the next separately
 admitted learner protocol.
 
-Latency branch `codex/t1-latency` is clean and pushed at `ff784a8`. Its final
-native 100-decision replay was exact with p50 0.164s, p95 0.339s and max
-0.379s; the focused concurrency/correctness matrix passed 61/61. Production
-deployment waits only for an empty room set; HIEJ and ZTYH each still had one
-connected human at 16:34.
+Latency branch `codex/t1-latency` is clean and pushed at release head
+`b315e91` (scheduler `ff784a8`). Its final native 100-decision replay was exact
+with p50 0.164s, p95 0.339s and max 0.379s; the focused
+concurrency/correctness matrix passed 61/61. Remote build-only produced and
+pushed `registry.fly.io/shengji:latency-b315e91`, manifest SHA-256
+`dbc978028de1b9bd84dad00bb59e83f9ba6feac46e5d1ecc95ef3c2150c2426a`.
+Production deployment waits only for an empty room set; HIEJ and ZTYH each
+still had one connected human at 16:34.
 
 ## COMPLETE / RLCB-C1 formally confirms report-LCB (Mini)
 

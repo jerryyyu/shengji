@@ -56,6 +56,13 @@ missing historical corpus asset. Remote build-only pushed
 test-only ship-gate repairs did not change runtime bytes. At 17:15 production
 still had srig connected in the sole room HIEJ, so no restart occurred.
 
+The exact release series is now integrated onto authoritative `main` through
+`cd6789e`. A clean main worktree reproduced the same 92-pass focused result
+(plus two optional skips and one absent corpus asset) and remote build-only
+pushed `latency-cd6789e`, manifest `047bcfe4...5b300`; its runtime source is
+byte-identical to release `578b2c6`. This main-derived tag is the preferred
+empty-room deployment image.
+
 ## COMPLETE / RLCB-C1 formally confirms report-LCB (Mini)
 
 All eight fresh 256-cluster shards completed on exact seeds
@@ -80,6 +87,11 @@ source/runtime/shard bytes and aggregate SHA above; it generates zero games,
 retries zero shards and changes no statistic. Its closeout and independent
 verify both pass at SHA `06dd487d...b7aae5`, state
 `FORMAL_CONFIRMATION_CONFIRMED_ARTIFACT_ONLY`.
+
+Commit `76afab2` also makes verification stable across later main descendants:
+it reopens the exact historical closeout creator named by the receipt instead
+of substituting the verifier's current HEAD. The unchanged closeout SHA still
+passes after latency integration; 19/19 focused C1 tests pass.
 
 This closes the fresh one-round superiority claim only. It does not reopen S0c,
 confirm adaptive allocation, prove multi-round progression, or grant automatic

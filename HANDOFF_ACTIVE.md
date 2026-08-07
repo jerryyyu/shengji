@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-07 17:16 EDT. This is the executable mailbox only.
+Last update: 2026-08-07 17:21 EDT. This is the executable mailbox only.
 Durable discussion and retractions remain in `HANDOFF_REVIEW.md`; policy
 synthesis belongs in `AI_POLICIES.md`.
 
@@ -84,7 +84,9 @@ audit receipt or labels.
 
 Worktree `/private/tmp/shengji-t1-latency`, branch `codex/t1-latency`, clean
 and pushed at release head `578b2c6` (runtime release `b315e91`, scheduler
-`ff784a8`). The completed
+`ff784a8`). The reviewed commits are also integrated onto authoritative `main`
+through `cd6789e`; later main commit `76afab2` changes only the C1 verifier.
+The completed
 scheduler redesign:
 
 - snapshots the round and bot under the room lock;
@@ -117,13 +119,15 @@ optional skips and one expected absent historical corpus asset, with no
 behavioral failure. The new remote image tag
 `registry.fly.io/shengji:latency-578b2c6` has the same runtime manifest
 `dbc97802...c2426a` as `b315e91`, proving the test-only hardening did not alter
-runtime bytes.
+runtime bytes. A fresh build from integrated main `cd6789e` is pushed as
+`latency-cd6789e`, manifest `047bcfe4...5b300`; its runtime source tree is
+byte-identical to release branch `578b2c6` and it is the preferred deploy tag.
 
 Deployment is **EMPTY-ROOM HOLD**, not a code hold. At 16:50 production had
 one room and one connected human: srig in HIEJ. The exact release
 image is already built and pushed as
-`registry.fly.io/shengji:latency-578b2c6`, manifest SHA-256
-`dbc978028de1b9bd84dad00bb59e83f9ba6feac46e5d1ecc95ef3c2150c2426a`.
+`registry.fly.io/shengji:latency-cd6789e`, manifest SHA-256
+`047bcfe4d4573961734a5536ad549605fd0df5e1477d7480cdf322282955b300`.
 Never deploy the older `6f15d96` image; restart only after a new peek proves
 zero connected humans.
 
@@ -135,7 +139,7 @@ real search compute; Fly CPU class remains a separate product lever.
 
 ## Exact next actions
 
-1. Deploy image `latency-578b2c6` only when a fresh production peek has zero
+1. Deploy image `latency-cd6789e` only when a fresh production peek has zero
    human connections; never deploy the old `6f15d96` image.
 2. Verify live policy, native engine, semantic timing logs, seat claim,
    reconnect and X-ray; keep version 16 as the immediate rollback.
@@ -152,9 +156,9 @@ real search compute; Fly CPU class remains a separate product lever.
 
 ## Review request for Claude
 
-Please audit pushed latency release `578b2c6`, especially failure-safe socket
-ownership and the real evaluator-cutoff witness; runtime scheduling remains
-`ff784a8` with the same manifest as `b315e91`. Do not review or deploy the
+Please audit main integration through `cd6789e` (release-equivalent
+`578b2c6`), especially failure-safe socket ownership and the real
+evaluator-cutoff witness. Do not review or deploy the
 earlier `6f15d96` image. Separately, audit pushed Teacher
 commit `f4f3dc0`, especially its exact receipt-entry predeclaration, and C1
 artifact-only closeout `57f4e1b`/SHA `06dd487d...b7aae5`; watch the Stage-B

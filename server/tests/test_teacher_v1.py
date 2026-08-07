@@ -1077,6 +1077,204 @@ def test_state_and_cheap_parent_refuse_executable_generation_drift():
         cheap_payload, runtime, digests, smoke=False)
 
 
+def test_stage_b_source_transition_is_exact_and_mutation_falsifiable(
+        monkeypatch):
+    current_git = "c" * 40
+    old_state_source = stable_digest("old-state-freezer")
+    live = {
+        "git": current_git,
+        "fast_binary_sha256": stable_digest("compiled"),
+        "fast_router_sha256": stable_digest("router"),
+        "state_script_sha256": states.sha256_file(states.__file__),
+    }
+    diagnostic = {
+        "git": states.STAGE_B_TRANSITION_DIAGNOSTIC_GIT,
+        "fast_binary_sha256": live["fast_binary_sha256"],
+        "fast_router_sha256": live["fast_router_sha256"],
+        "state_script_sha256": old_state_source,
+    }
+    state_set = {
+        "git": states.STAGE_B_TRANSITION_DIAGNOSTIC_GIT,
+        "state_script_sha256": old_state_source,
+    }
+    gate_sources = {
+        "compiled_engine": live["fast_binary_sha256"],
+        "fast_router": live["fast_router_sha256"],
+        "state_script": old_state_source,
+        "gate_script": states.sha256_file(SCRIPTS / "teacher_v1_gate.py"),
+        "label_script": states.sha256_file(SCRIPTS / "teacher_v1_label.py"),
+        "producer_receipt_script": states.sha256_file(
+            SCRIPTS / "teacher_v1_receipt.py"),
+        "teacher_contract": states.sha256_file(
+            SCRIPTS.parent / "shengji" / "teacher_v1.py"),
+    }
+    gate_payload = {
+        "git": states.STAGE_B_TRANSITION_GATE_GIT,
+        "gate_source_digests": gate_sources,
+    }
+
+    def exact_diff(parent, child):
+        if (parent, child) == (
+                states.STAGE_B_TRANSITION_DIAGNOSTIC_GIT,
+                states.STAGE_B_TRANSITION_GATE_GIT):
+            return states.STAGE_B_TRANSITION_DIAGNOSTIC_TO_GATE_PATHS
+        assert (parent, child) == (
+            states.STAGE_B_TRANSITION_GATE_GIT, current_git)
+        return states.STAGE_B_TRANSITION_GATE_TO_FREEZER_PATHS
+
+    monkeypatch.setattr(states, "git_is_ancestor", lambda _parent, _child: True)
+    monkeypatch.setattr(states, "git_changed_paths", exact_diff)
+    problems, binding = states.stage_b_source_transition_problems(
+        diagnostic, state_set, states.STAGE_B_TRANSITION_STATE_SHA256,
+        gate_payload, states.STAGE_B_TRANSITION_GATE_SHA256, live,
+        states.STAGE_B_SOURCE_TRANSITION_ID,
+    )
+    assert problems == []
+    assert binding["freezer_git"] == current_git
+    assert binding["frozen_state_script_sha256"] == old_state_source
+    assert binding["freezer_script_sha256"] == live["state_script_sha256"]
+    assert binding["historical_ancestry"] is True
+    assert binding["freezer_ancestry"] is True
+
+    problems, no_binding = states.stage_b_source_transition_problems(
+        diagnostic, state_set, states.STAGE_B_TRANSITION_STATE_SHA256,
+        gate_payload, states.STAGE_B_TRANSITION_GATE_SHA256, live, None,
+    )
+    assert problems == ["Stage-B source transition id missing or unknown"]
+    assert no_binding is None
+
+    problems, _ = states.stage_b_source_transition_problems(
+        diagnostic, state_set, stable_digest("wrong-state-set"),
+        gate_payload, states.STAGE_B_TRANSITION_GATE_SHA256, live,
+        states.STAGE_B_SOURCE_TRANSITION_ID,
+    )
+    assert "Stage-B transition state-set SHA-256 drift" in problems
+
+    mutated = copy.deepcopy(gate_payload)
+    mutated["gate_source_digests"]["label_script"] = stable_digest("drift")
+    problems, _ = states.stage_b_source_transition_problems(
+        diagnostic, state_set, states.STAGE_B_TRANSITION_STATE_SHA256,
+        mutated, states.STAGE_B_TRANSITION_GATE_SHA256, live,
+        states.STAGE_B_SOURCE_TRANSITION_ID,
+    )
+    assert "Stage-B transition label_script source drift" in problems
+
+    monkeypatch.setattr(
+        states, "git_changed_paths",
+        lambda parent, child: (
+            states.STAGE_B_TRANSITION_DIAGNOSTIC_TO_GATE_PATHS
+            if parent == states.STAGE_B_TRANSITION_DIAGNOSTIC_GIT else
+            (*states.STAGE_B_TRANSITION_GATE_TO_FREEZER_PATHS,
+             "server/shengji/engine/round.py")
+        ),
+    )
+    problems, _ = states.stage_b_source_transition_problems(
+        diagnostic, state_set, states.STAGE_B_TRANSITION_STATE_SHA256,
+        gate_payload, states.STAGE_B_TRANSITION_GATE_SHA256, live,
+        states.STAGE_B_SOURCE_TRANSITION_ID,
+    )
+    assert "Stage-B transition freezer diff scope" in problems
+
+    monkeypatch.setattr(
+        states, "git_changed_paths", exact_diff,
+    )
+    monkeypatch.setattr(
+        states, "git_is_ancestor",
+        lambda parent, _child: parent != states.STAGE_B_TRANSITION_GATE_GIT,
+    )
+    problems, _ = states.stage_b_source_transition_problems(
+        diagnostic, state_set, states.STAGE_B_TRANSITION_STATE_SHA256,
+        gate_payload, states.STAGE_B_TRANSITION_GATE_SHA256, live,
+        states.STAGE_B_SOURCE_TRANSITION_ID,
+    )
+    assert "Stage-B transition freezer ancestry" in problems
+
+
+def test_stage_a_gate_transition_skips_only_validated_git_and_freezer_source():
+    old_state_source = stable_digest("old-state-freezer")
+    live = {
+        "git": "c" * 40, "python": "3.14.6",
+        "fast_engine": True, "require_voids": True,
+        "fast_binary_sha256": stable_digest("compiled"),
+        "fast_router_sha256": stable_digest("router"),
+        "state_script_sha256": stable_digest("new-state-freezer"),
+    }
+    sources = {
+        "compiled_engine": live["fast_binary_sha256"],
+        "fast_router": live["fast_router_sha256"],
+        "state_script": old_state_source,
+        "gate_script": states.sha256_file(SCRIPTS / "teacher_v1_gate.py"),
+        "label_script": states.sha256_file(SCRIPTS / "teacher_v1_label.py"),
+        "producer_receipt_script": states.sha256_file(
+            SCRIPTS / "teacher_v1_receipt.py"),
+        "teacher_contract": states.sha256_file(
+            SCRIPTS.parent / "shengji" / "teacher_v1.py"),
+    }
+    payload = {
+        "git": states.STAGE_B_TRANSITION_GATE_GIT,
+        "python": live["python"], "fast_engine": True,
+        "require_voids": True, "gate_source_digests": sources,
+    }
+    binding = {"transition_id": states.STAGE_B_SOURCE_TRANSITION_ID}
+    problems = states.stage_a_gate_problems(
+        payload, stable_digest("state-set"), runtime_identity=live,
+        source_transition=binding,
+    )
+    assert "Stage-A gate/current git drift" not in problems
+    assert "Stage-A gate/current executable source drift" not in problems
+    assert not any("state_script source drift" in problem
+                   for problem in problems)
+
+    mutated = copy.deepcopy(payload)
+    mutated["gate_source_digests"]["label_script"] = stable_digest("drift")
+    assert "Stage-A gate/current label_script source drift" in \
+        states.stage_a_gate_problems(
+            mutated, stable_digest("state-set"), runtime_identity=live,
+            source_transition=binding,
+        )
+
+
+def test_stage_b_packet_requires_and_binds_registered_source_transition():
+    payload = {
+        "stage": "b",
+        "excluded_stage_a": {
+            "sha256": states.STAGE_B_TRANSITION_STATE_SHA256,
+        },
+        "stage_a_gate": {"sha256": states.STAGE_B_TRANSITION_GATE_SHA256},
+    }
+    assert "state-set Stage-B source transition missing" in \
+        states.state_set_packet_problems(payload)
+
+    payload["source_transition"] = {
+        "schema": "teacher-v1-stage-b-source-transition-v1",
+        "transition_id": states.STAGE_B_SOURCE_TRANSITION_ID,
+        "diagnostic_git": states.STAGE_B_TRANSITION_DIAGNOSTIC_GIT,
+        "stage_a_gate_git": states.STAGE_B_TRANSITION_GATE_GIT,
+        "freezer_git": "c" * 40,
+        "state_set_sha256": states.STAGE_B_TRANSITION_STATE_SHA256,
+        "stage_a_gate_sha256": states.STAGE_B_TRANSITION_GATE_SHA256,
+        "diagnostic_to_gate_paths": list(
+            states.STAGE_B_TRANSITION_DIAGNOSTIC_TO_GATE_PATHS),
+        "gate_to_freezer_paths": list(
+            states.STAGE_B_TRANSITION_GATE_TO_FREEZER_PATHS),
+        "historical_ancestry": True,
+        "freezer_ancestry": True,
+        "frozen_state_script_sha256": stable_digest("old-state-freezer"),
+        "freezer_script_sha256": stable_digest("new-state-freezer"),
+    }
+    payload.update({
+        "git": payload["source_transition"]["freezer_git"],
+        "state_script_sha256": payload["source_transition"][
+            "freezer_script_sha256"],
+    })
+    assert "state-set Stage-B source transition binding" not in \
+        states.state_set_packet_problems(payload)
+
+    payload["source_transition"]["transition_id"] = "unregistered"
+    assert "state-set Stage-B source transition binding" in \
+        states.state_set_packet_problems(payload)
+
+
 def valid_cheap_record_for_gate(counts=None):
     counts = counts or {"selection": 2, "report": 2}
     state = raw_state()

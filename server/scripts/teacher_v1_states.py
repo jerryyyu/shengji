@@ -80,6 +80,35 @@ DEFAULT_EXAM_SPLIT_SHA256 = {
         "9d72dcafffc1d8ac983be81f0f33275236f21f850aed019f9d081e0291812df6",
 }
 
+# Packet-specific bridge after Stage A exposed a JSON-domain-only labeller
+# defect.  The 64 selected states and every source that produced/replays them
+# remain frozen at the entry commit; Stage-A labels/gate live at the exact
+# two-file repair commit.  Stage B may cross that history only through this
+# named transition and a clean freezer-only descendant.
+STAGE_B_SOURCE_TRANSITION_ID = (
+    "teacher-v3-stage-b-freeze-after-json-repair-v1"
+)
+STAGE_B_TRANSITION_DIAGNOSTIC_GIT = (
+    "be25b4d64a85025f8d728f11359bf66bedf5d21a"
+)
+STAGE_B_TRANSITION_GATE_GIT = (
+    "b41d8b3e193cbaefd6ccc5ee757ea7b2c502b618"
+)
+STAGE_B_TRANSITION_STATE_SHA256 = (
+    "e016373e8ecb9b6c7b6f3c14f8f4b14d9845f76478137f7a2c07249628cb4648"
+)
+STAGE_B_TRANSITION_GATE_SHA256 = (
+    "731dfa936b6f572866538ead701cdf48d231ef3d1d3a6a0034c2debb1517635b"
+)
+STAGE_B_TRANSITION_DIAGNOSTIC_TO_GATE_PATHS = (
+    "server/scripts/teacher_v1_label.py",
+    "server/tests/test_teacher_v1.py",
+)
+STAGE_B_TRANSITION_GATE_TO_FREEZER_PATHS = (
+    "server/scripts/teacher_v1_states.py",
+    "server/tests/test_teacher_v1.py",
+)
+
 
 def sha256_file(path: str) -> str:
     h = hashlib.sha256()
@@ -93,6 +122,120 @@ def git_output(*args: str) -> str:
     return subprocess.run(
         ["git", *args], check=True, capture_output=True, text=True
     ).stdout.strip()
+
+
+def git_changed_paths(parent: str, child: str) -> tuple[str, ...]:
+    output = git_output("diff", "--name-only", f"{parent}..{child}")
+    return tuple(sorted(line for line in output.splitlines() if line))
+
+
+def git_is_ancestor(parent: str, child: str) -> bool:
+    result = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", parent, child],
+        check=False, capture_output=True, text=True,
+    )
+    if result.returncode not in (0, 1):
+        raise subprocess.CalledProcessError(
+            result.returncode, result.args, result.stdout, result.stderr,
+        )
+    return result.returncode == 0
+
+
+def stage_b_source_transition_problems(
+        diagnostic: dict, state_set: dict, state_set_sha256: str,
+        gate: dict, gate_sha256: str, live: dict,
+        transition_id: str | None) -> tuple[list[str], dict | None]:
+    """Authorize only the exact label-only Stage-A -> freezer repair bridge."""
+    if transition_id != STAGE_B_SOURCE_TRANSITION_ID:
+        return ["Stage-B source transition id missing or unknown"], None
+
+    bad = []
+    if state_set_sha256 != STAGE_B_TRANSITION_STATE_SHA256:
+        bad.append("Stage-B transition state-set SHA-256 drift")
+    if gate_sha256 != STAGE_B_TRANSITION_GATE_SHA256:
+        bad.append("Stage-B transition Stage-A gate SHA-256 drift")
+    if diagnostic.get("git") != STAGE_B_TRANSITION_DIAGNOSTIC_GIT:
+        bad.append("Stage-B transition diagnostic git drift")
+    if state_set.get("git") != STAGE_B_TRANSITION_DIAGNOSTIC_GIT:
+        bad.append("Stage-B transition state-set git drift")
+    if gate.get("git") != STAGE_B_TRANSITION_GATE_GIT:
+        bad.append("Stage-B transition gate git drift")
+    current_git = live.get("git")
+    if (not isinstance(current_git, str) or len(current_git) != 40
+            or any(char not in "0123456789abcdef" for char in current_git)):
+        bad.append("Stage-B transition current git syntax")
+
+    try:
+        historical_ancestry = git_is_ancestor(
+            STAGE_B_TRANSITION_DIAGNOSTIC_GIT,
+            STAGE_B_TRANSITION_GATE_GIT,
+        )
+        freezer_ancestry = git_is_ancestor(
+            STAGE_B_TRANSITION_GATE_GIT, current_git)
+        historical_paths = git_changed_paths(
+            STAGE_B_TRANSITION_DIAGNOSTIC_GIT,
+            STAGE_B_TRANSITION_GATE_GIT,
+        )
+        freezer_paths = git_changed_paths(
+            STAGE_B_TRANSITION_GATE_GIT, current_git)
+    except (OSError, subprocess.SubprocessError, TypeError) as exc:
+        bad.append(f"Stage-B transition git diff failed: {type(exc).__name__}")
+        historical_ancestry, freezer_ancestry = False, False
+        historical_paths, freezer_paths = (), ()
+    if not historical_ancestry:
+        bad.append("Stage-B transition historical ancestry")
+    if not freezer_ancestry:
+        bad.append("Stage-B transition freezer ancestry")
+    if historical_paths != STAGE_B_TRANSITION_DIAGNOSTIC_TO_GATE_PATHS:
+        bad.append("Stage-B transition historical diff scope")
+    if freezer_paths != STAGE_B_TRANSITION_GATE_TO_FREEZER_PATHS:
+        bad.append("Stage-B transition freezer diff scope")
+
+    gate_sources = gate.get("gate_source_digests", {})
+    old_state_source = diagnostic.get("state_script_sha256")
+    if (state_set.get("state_script_sha256") != old_state_source
+            or gate_sources.get("state_script") != old_state_source):
+        bad.append("Stage-B transition frozen state-source chain drift")
+    if live.get("state_script_sha256") == old_state_source:
+        bad.append("Stage-B transition did not version the freezer")
+
+    current_unchanged_sources = {
+        "compiled_engine": live.get("fast_binary_sha256"),
+        "fast_router": live.get("fast_router_sha256"),
+        "gate_script": sha256_file(
+            os.path.join(os.path.dirname(__file__), "teacher_v1_gate.py")),
+        "label_script": sha256_file(
+            os.path.join(os.path.dirname(__file__), "teacher_v1_label.py")),
+        "producer_receipt_script": sha256_file(
+            os.path.join(os.path.dirname(__file__), "teacher_v1_receipt.py")),
+        "teacher_contract": sha256_file(os.path.join(
+            os.path.dirname(__file__), "../shengji/teacher_v1.py")),
+    }
+    for name, expected in current_unchanged_sources.items():
+        if gate_sources.get(name) != expected:
+            bad.append(f"Stage-B transition {name} source drift")
+    if (diagnostic.get("fast_binary_sha256")
+            != live.get("fast_binary_sha256")):
+        bad.append("Stage-B transition compiled engine drift")
+    if diagnostic.get("fast_router_sha256") != live.get("fast_router_sha256"):
+        bad.append("Stage-B transition fast router drift")
+
+    binding = None if bad else {
+        "schema": "teacher-v1-stage-b-source-transition-v1",
+        "transition_id": STAGE_B_SOURCE_TRANSITION_ID,
+        "diagnostic_git": STAGE_B_TRANSITION_DIAGNOSTIC_GIT,
+        "stage_a_gate_git": STAGE_B_TRANSITION_GATE_GIT,
+        "freezer_git": current_git,
+        "state_set_sha256": state_set_sha256,
+        "stage_a_gate_sha256": gate_sha256,
+        "diagnostic_to_gate_paths": list(historical_paths),
+        "gate_to_freezer_paths": list(freezer_paths),
+        "historical_ancestry": historical_ancestry,
+        "freezer_ancestry": freezer_ancestry,
+        "frozen_state_script_sha256": old_state_source,
+        "freezer_script_sha256": live.get("state_script_sha256"),
+    }
+    return sorted(set(bad)), binding
 
 
 def write_exclusive(path: str, payload: dict) -> None:
@@ -485,6 +628,44 @@ def state_set_packet_problems(payload: dict) -> list[str]:
     states = payload.get("states", [])
     if payload.get("states_digest") != stable_digest(states):
         bad.append("state-set states digest")
+    transition = payload.get("source_transition")
+    transition_required = (
+        payload.get("stage") == "b"
+        and (payload.get("excluded_stage_a") or {}).get("sha256")
+        == STAGE_B_TRANSITION_STATE_SHA256
+        and (payload.get("stage_a_gate") or {}).get("sha256")
+        == STAGE_B_TRANSITION_GATE_SHA256
+    )
+    if transition_required and not isinstance(transition, dict):
+        bad.append("state-set Stage-B source transition missing")
+    if transition is not None:
+        expected = {
+            "schema": "teacher-v1-stage-b-source-transition-v1",
+            "transition_id": STAGE_B_SOURCE_TRANSITION_ID,
+            "diagnostic_git": STAGE_B_TRANSITION_DIAGNOSTIC_GIT,
+            "stage_a_gate_git": STAGE_B_TRANSITION_GATE_GIT,
+            "state_set_sha256": STAGE_B_TRANSITION_STATE_SHA256,
+            "stage_a_gate_sha256": STAGE_B_TRANSITION_GATE_SHA256,
+            "diagnostic_to_gate_paths": list(
+                STAGE_B_TRANSITION_DIAGNOSTIC_TO_GATE_PATHS),
+            "gate_to_freezer_paths": list(
+                STAGE_B_TRANSITION_GATE_TO_FREEZER_PATHS),
+            "historical_ancestry": True,
+            "freezer_ancestry": True,
+        }
+        if (not isinstance(transition, dict)
+                or any(transition.get(key) != value
+                       for key, value in expected.items())
+                or transition.get("freezer_git") != payload.get("git")
+                or transition.get("freezer_script_sha256")
+                != payload.get("state_script_sha256")
+                or transition.get("state_set_sha256")
+                != (payload.get("excluded_stage_a") or {}).get("sha256")
+                or transition.get("stage_a_gate_sha256")
+                != (payload.get("stage_a_gate") or {}).get("sha256")
+                or not is_sha256(
+                    transition.get("frozen_state_script_sha256"))):
+            bad.append("state-set Stage-B source transition binding")
     return sorted(set(bad))
 
 
@@ -972,7 +1153,8 @@ def stage_a_exclusion_problems(payload: dict, diagnostic: dict,
 def stage_a_gate_problems(payload: dict, state_set_sha256: str,
                           state_set: dict | None = None, *,
                           runtime_identity: dict | None = None,
-                          verify_artifacts: bool = False) -> list[str]:
+                          verify_artifacts: bool = False,
+                          source_transition: dict | None = None) -> list[str]:
     """Recompute enough of Stage A that a plausible PASS JSON is insufficient."""
     bad = []
     if payload.get("schema") != GATE_SCHEMA:
@@ -1067,7 +1249,10 @@ def stage_a_gate_problems(payload: dict, state_set_sha256: str,
         bad.append("Stage-A gate runtime is not clean/compiled/strict")
 
     if runtime_identity is not None:
-        for key in ("git", "python", "fast_engine", "require_voids"):
+        runtime_keys = ("python", "fast_engine", "require_voids") \
+            if source_transition is not None else \
+            ("git", "python", "fast_engine", "require_voids")
+        for key in runtime_keys:
             if payload.get(key) != runtime_identity.get(key):
                 bad.append(f"Stage-A gate/current {key} drift")
         expected_sources = {
@@ -1084,7 +1269,12 @@ def stage_a_gate_problems(payload: dict, state_set_sha256: str,
             "teacher_contract": sha256_file(
                 os.path.join(os.path.dirname(__file__), "../shengji/teacher_v1.py")),
         }
-        if sources != expected_sources:
+        if source_transition is not None:
+            for name, expected in expected_sources.items():
+                if name != "state_script" and sources.get(name) != expected:
+                    bad.append(
+                        f"Stage-A gate/current {name} source drift")
+        elif sources != expected_sources:
             bad.append("Stage-A gate/current executable source drift")
 
     if verify_artifacts:
@@ -1167,6 +1357,13 @@ def freeze(args) -> None:
             f"got {len(args.input)}"
         )
     live = runtime(args.smoke)
+    transition_id = getattr(args, "source_transition", None)
+    use_source_transition = (
+        args.stage == "b"
+        and transition_id == STAGE_B_SOURCE_TRANSITION_ID
+        and not args.smoke
+    )
+    transition_binding = None
     diagnostics, manifests, problems = [], [], []
     for path in args.input:
         with open(path) as fh:
@@ -1209,8 +1406,11 @@ def freeze(args) -> None:
                     "freeze requires the exact 1,024-deal v2 diagnostic "
                     "population"
                 )
-        for key in ("git", "python", "fast_binary_sha256",
-                    "fast_router_sha256", "state_script_sha256"):
+        live_keys = ("python", "fast_binary_sha256", "fast_router_sha256") \
+            if use_source_transition else \
+            ("git", "python", "fast_binary_sha256",
+             "fast_router_sha256", "state_script_sha256")
+        for key in live_keys:
             if first.get(key) != live.get(key):
                 problems.append(f"diagnostic/freeze {key} drift")
         if first.get("actor") != actor_identity():
@@ -1222,6 +1422,8 @@ def freeze(args) -> None:
     excluded_deals: set[int] = set()
     stage_a_gate_binding = None
     if args.stage == "b":
+        if transition_id and transition_id != STAGE_B_SOURCE_TRANSITION_ID:
+            problems.append("Stage-B source transition id missing or unknown")
         if not args.exclude_state_set and not args.smoke:
             problems.append("Stage B requires --exclude-state-set Stage-A.json")
         elif args.exclude_state_set:
@@ -1247,13 +1449,22 @@ def freeze(args) -> None:
             elif args.stage_a_gate:
                 with open(args.stage_a_gate) as fh:
                     stage_a_gate = json.load(fh)
+                gate_sha256 = sha256_file(args.stage_a_gate)
+                if use_source_transition:
+                    transition_bad, transition_binding = \
+                        stage_b_source_transition_problems(
+                            first, previous, state_set_sha256,
+                            stage_a_gate, gate_sha256, live, transition_id,
+                        )
+                    problems += transition_bad
                 problems += stage_a_gate_problems(
                     stage_a_gate, state_set_sha256, previous,
                     runtime_identity=(None if args.smoke else live),
-                    verify_artifacts=not args.smoke)
+                    verify_artifacts=not args.smoke,
+                    source_transition=transition_binding)
                 stage_a_gate_binding = {
                     "path": args.stage_a_gate,
-                    "sha256": sha256_file(args.stage_a_gate),
+                    "sha256": gate_sha256,
                     "state_set_sha256": state_set_sha256,
                     "verdict": stage_a_gate.get("verdict"),
                 }
@@ -1327,6 +1538,7 @@ def freeze(args) -> None:
             }
         ),
         "stage_a_gate": stage_a_gate_binding,
+        "source_transition": transition_binding,
         "complete": True, "requested": required, "selected": len(states),
         "states": states, "states_digest": stable_digest(states),
     }
@@ -1363,6 +1575,11 @@ def parser() -> argparse.ArgumentParser:
     freeze_.add_argument("--input", action="append", required=True)
     freeze_.add_argument("--exclude-state-set")
     freeze_.add_argument("--stage-a-gate")
+    freeze_.add_argument(
+        "--source-transition",
+        choices=(STAGE_B_SOURCE_TRANSITION_ID,),
+        help="packet-specific clean source bridge for an authorized Stage B",
+    )
     freeze_.add_argument("--out", required=True)
     freeze_.add_argument("--smoke", action="store_true")
     return ap

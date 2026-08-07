@@ -11,9 +11,15 @@ feature-contract SHA-256
 `dfbdf9d679f87999344864554d01f493995beade99c5b275266d8de37fd4b97f`.
 The feature module itself hashes to
 `5636a137dedbfe593d26d5a18e606ee4a0b59e42092e13d12907ce077d111b85`.
-Its 12 focused falsification tests pass; the adjacent encoder/Direct-Q matrix
-is 48/48. No policy, learner, CLI, registry entry, run artifact or training
-result exists yet.
+Its 12 focused falsification tests pass. Implementation step 2 adds four
+independent attacker/defender x lead/follow policy/value heads in
+`server/shengji/rl/suphx_policy.py`, policy-contract SHA-256
+`34d12e09f0f46bf1794b8480aa6abcecc9ed080666fad7cd99d11acab5d46735`
+and module SHA-256
+`ed799bbe40320dda5468633c37cabdc908ea61c8cbb1d59024927df862c503a5`.
+The combined Suphx mechanics gate is 19/19 and the adjacent encoder,
+Direct-Q and synchronous-resume matrix is 80/80. No actor, learner, CLI,
+registry entry, run artifact or training result exists yet.
 
 ## Claim boundary
 

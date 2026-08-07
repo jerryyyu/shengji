@@ -313,9 +313,10 @@ teacher and production boundaries, not extensions of closed runs:
    burial from simulator-only ownership, tests oracle acquisition before
    removal, and requires equal-work immediate-removal plus distillation
    controls and frozen held-out diagnostics before allocating training
-   compute. The information-partition code gate is 12/12 and the adjacent
-   encoder/Direct-Q matrix is 48/48; policy/learner/resume code remains. The
-   terminal 144M report cannot choose its recipe.
+   compute. The feature partition plus four independent role/surface
+   policy/value heads pass 19/19 focused and 80/80 adjacent tests; actor,
+   learner and curriculum-resume code remain. The terminal 144M report cannot
+   choose its recipe.
 5. **Other search lanes:** structured bury or sampled exact endgame must be
    explicitly reparented to confirmed report-LCB with matched null/work before
    any strength run.

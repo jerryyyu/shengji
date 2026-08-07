@@ -3,12 +3,38 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / none at 2026-08-07 12:00 EDT
+## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 16:15 EDT
 
-Formal S0 cleanup freed Mini. The next admitted compute is Direct-Q's six
-score-redacted 32-iteration preflights; no full learning screen is authorized
-until their wall/storage receipt passes. Air's next evidence job must wait for
-the V11-v2 artifact repair and versioned teacher actor gate.
+Air has eight live compiled+strict `teacher_v1_label.py gold` workers in clean
+detached worktree `~/Projects/shengji-teacher-air` at exact commit
+`1a2a71333ea283784b19855e67e1ae231379ec79`. Each owns one of eight Stage-B
+N=30 shards under `teacher-v1-entry-149m-v3`; all are emitting fold progress
+and remain near one CPU each. This block is attribution-only. Its outcomes
+cannot change the independently frozen 64-state report-LCB continuation audit.
+
+Mini has no long strength worker. RLCB-C1, V11-v2 and Direct-Q are terminal;
+Mini is available for bounded compiled latency checks or the next separately
+admitted learner protocol.
+
+## COMPLETE / RLCB-C1 formally confirms report-LCB (Mini)
+
+All eight fresh 256-cluster shards completed on exact seeds
+150,000,000–150,002,047: 2,048 paired clusters and 4,096 mirrored records per
+arm for exactly `mc-s0-report-lcb`, `mc-strong`, and collision-free
+`mc-strong-null-rlcb-c1`. The registered null offset 60,000,011 produced zero
+collisions with all 8,192 prohibited streams. Exact accepted doses reconciled;
+there were no failed/rejected/short/zero-world searches.
+
+- report-LCB minus current: `+0.33837890625 +/- 0.06770579952`;
+- current-null minus current: `-0.01904296875 +/- 0.06827022560`;
+- decision: `CONFIRM_REPORT_LCB`; all predeclared criteria true;
+- aggregate SHA-256:
+  `83f5a9df2f1db1fa45d50fb005b941b776d9ecc2c9f8703d3d62efff8f5ef5ea`.
+
+This closes the fresh one-round superiority claim only. It does not reopen S0c,
+confirm adaptive allocation, prove multi-round progression, or grant automatic
+deployment authority. The policy was already manually live; `mc-strong`
+remains its operational rollback.
 
 ## COMPLETE / formal S0 closed outcome-blind (Mini)
 
@@ -54,9 +80,9 @@ were booted out and the full `com.shengji.s0mini.*` namespace rechecked empty.
 No run artifact or refusal receipt was deleted. Mini is free.
 
 Separately, Jerry manually shipped `mc-s0-report-lcb` to production on the
-replicated S0a/b development evidence. That product decision does not rewrite
-formal S0, authorize adaptive allocation, or turn the burned S0c population
-into evidence.
+replicated S0a/b development evidence. RLCB-C1 has since formally confirmed
+its fresh one-round superiority without rewriting formal S0, authorizing
+adaptive allocation, or turning the burned S0c population into evidence.
 
 ## COMPLETE / V11 direct-current compatibility v1 (Air; FAIL as run)
 
@@ -129,7 +155,7 @@ exists, and prove zero off-ballot outputs on the named capture/witness
 population. Claude's scratch fix measured 0/872 off-ballot decisions; that is
 diagnostic evidence, not yet an accepted code gate.
 
-## COMPUTE COMPLETE / V11 corrected-encoder direct v2 (artifact repair required)
+## COMPLETE / V11 corrected-encoder direct v2 repaired; SELECT NONE
 
 The exact `cde0fec` 142M block spent its game compute under the restored
 public/no-private-kitty encoder contract. Seven shards published normally;
@@ -138,42 +164,35 @@ uncapped level utility outside `+/-1..3`. That bound belongs to the historical
 clipped RL target, not the uncapped house engine, so this is a validator defect
 rather than a reason to replay games.
 
-Preserve every raw/final/FAILED byte. The repair must be a new artifact-only
-consumer that:
+The pushed artifact-only repair at `d1d2019` reopened every immutable source
+record, including shard 5's `.FAILED` bytes, and normalized only the invalid
+capped-utility consumer in memory. No game was replayed, source byte rewritten,
+or activation fabricated. Over 2,048 clusters:
 
-- accepts the engine's uncapped integer utility while recomputing it from the
-  retained round record;
-- reopens exact source, checkpoint, encoder, ballot, runtime, seed/flip,
-  accepted-dose and sampler-counter identities;
-- publishes to a new exclusive namespace and binds the original terminal
-  failure;
-- never changes the stored direct verdict, never fabricates an activation
-  counter, and never reruns a game.
+- v11 minus current: `-0.141113 +/- 0.069823`;
+- v11 minus its matched null: `-0.109863 +/- 0.070111`;
+- null minus current: `-0.031250 +/- 0.067878`.
 
-The draft worktree at `/private/tmp/shengji-v11-v2-repair` is not accepted:
-its untracked repair script has a recursion defect and no committed tests.
-Review/fix it or replace it cleanly before publication.
+Both efficacy gates failed; exact dose and the null gate passed.
+`protected_composition_authorized=false`. Aggregate SHA-256:
+`b7c90ba4c1a9bb421a4cfcc788dbf1eb44365868f65ee0eb58257b38205d21ad`.
+The protected-anchor launch is closed. Frozen v11 may remain a teacher or
+bounded root-proposal/ranking diagnostic, not a champion anchor.
 
-## READY / dependent strength code (no job launched)
+## COMPLETE / Direct-Q 144M learning screen; SELECT NONE
 
-Corrected-parent protected composition is frozen at `b361836`, with empty-
-valued sampler/ballot environment-key refusal closed at `1354cac` and future
-policy-owned activation accounting at `c8358d2`. Commit `e026ed0` adds the
-future four-source cards/combos/encode/Memory identity through composition
-shard, aggregation and confirmation while leaving the frozen live parent bytes
-and two-source receipt exact. It remains launch-locked by
-`DIRECT_AGGREGATE_SHA256=None` until this live V11 block seals and also waits
-for terminal S0. Direct-Q's bounded learning screen is accepted at `7dbee75`:
-three exact treatment/no-step seeds, score-redacted preflights, separate
-iteration-256 resume, held-out seeded semantic replay, paired utility and
-terminal mutable-state reopening passed independent review and 95/95 focused
-tests. No Direct-Q process exists. Run its six 32-iteration preflights on Mini
-only after S0 releases capacity; review wall/storage before any full segment.
-Formal S0 is now terminal SELECT NONE and production separately runs
-report-LCB. Before launching any dependent screen, version which policy is the
-reference; the old parent code must not silently equate formal `mc-strong` with
-the live product candidate. Mini is free for Direct-Q's six preflights. None of
-these code gates by itself changes production.
+The full predeclared treatment/no-step screen completed for all three learner
+seeds with exact resume and terminal-state reopening. Its paired gameplay
+report was positive at `+0.162760 +/- 0.058755` over 256 report clusters and
+the control was exactly zero. The conjunctive learning gate nevertheless
+failed: seed 1's probe mean and both pooled attacker/defender held-out MSE LCBs
+failed. `passed_learning_screen=false`, `strength_claim=false`,
+`production_promotion=false`, and `authorizes="nothing"`.
+
+Aggregate SHA-256:
+`1fa6789eded784e03778f5ede841e45039579625477dbaa249d63c5ccc8ce791`.
+Do not select the attractive gameplay tail, extend 144M, or tune this recipe
+from its terminal report. A future learner needs a separately frozen gate.
 
 ## FROZEN PROTOCOL — S0a decision-rule screen
 

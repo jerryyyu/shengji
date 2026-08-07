@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-07 12:12 EDT.
+Last re-derived: 2026-08-07 16:15 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -9,12 +9,15 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 
 ## Current state
 
-- **Production now runs compiled `mc-s0-report-lcb`.** The manual
+- **Production now runs compiled, formally confirmed `mc-s0-report-lcb`.** The
   strength-first deployment is live at commit `74be565`; Fly version 16
-  reports `{"bot":"mc-s0-report-lcb","fast":true}`. This decision rests on
-  two independent 2,048-cluster development blocks: S0a
-  `+0.353 +/- 0.069` and S0b `+0.357 +/- 0.066` versus `mc-strong`.
-  `mc-strong` remains the immediate rollback.
+  reports `{"bot":"mc-s0-report-lcb","fast":true}`. S0a and S0b first measured
+  `+0.353 +/- 0.069` and `+0.357 +/- 0.066` versus `mc-strong`. Fresh RLCB-C1
+  then confirmed `+0.338 +/- 0.068` on 2,048 new clusters while its
+  collision-free current null measured `-0.019 +/- 0.068`; every predeclared
+  gate passed. Aggregate SHA-256 is
+  `83f5a9df2f1db1fa45d50fb005b941b776d9ecc2c9f8703d3d62efff8f5ef5ea`.
+  `mc-strong` remains the immediate operational rollback.
 - **The production latency complaint is confirmed, not subjective.** Room CAXI
   recorded 138 bot plays after the deployment, 109 of which searched. Search
   alone was p50 1.143s, p95 16.413s and max 20.499s on Fly's one-vCPU
@@ -35,36 +38,39 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   commit `ca556c2` made the S0e-v2 parent lock terminal and
   `authorized=false`. All eight inert S0c launch services are unloaded; Mini
   is free.
-- The frozen formal phrase “production remains mc-strong” describes what S0 was
-  allowed to authorize. It does not undo Jerry's separate manual report-LCB
-  deployment. A clean, newly versioned collision-free report-LCB confirmation
-  is still required for a formal strength claim.
+- The frozen formal phrase “production remains mc-strong” describes only what
+  S0 was allowed to authorize. It does not undo the separate deployment or the
+  later RLCB-C1 confirmation. RLCB-C1 closes the one-round superiority claim;
+  it does not repair S0c, prove adaptive allocation, or establish multi-round
+  progression.
 - The DEV-512 lead-ballot screen remains **SELECT NONE / CLOSED**. The current
   ballot had the lowest equal-work regret; CALIB-512 and REPORT remain sealed.
   Do not append arms to inspected DEV.
-- Corrected V11 direct-v2 compute finished, but publication falsely failed
-  because its validator hard-coded capped `+/-1..3` utility while the house
-  engine is uncapped. Repair and verify the existing artifact without replaying
-  games; do not rewrite its stored result or infer activation that was never
-  recorded.
-- Teacher-v2 capture finished but the gate refused before diagnostics because
-  the v11 actor could emit a semantically legal action outside its canonical
-  ballot. Version a fresh actor/gate packet with canonical lead/follow actions
-  and a single-action fast path; preserve the refused namespace.
-- Mini's next compute is the six score-redacted Direct-Q preflights. Before
-  launching protected-V11, structured-bury or sampled-exact strength work,
-  explicitly rebind each lane to either the formal `mc-strong` parent or the
-  manually deployed report-LCB policy. Do not silently call one the other.
+- **V11 direct-v2 is repaired and terminal SELECT NONE.** The artifact-only
+  consumer reopened the immutable 2,048-cluster population without replaying
+  games: v11-current `-0.141 +/- 0.070`, v11-minus-null
+  `-0.110 +/- 0.070`, null-current `-0.031 +/- 0.068`.
+  `protected_composition_authorized=false`; retain v11 only as a proposal,
+  ranking and teacher diagnostic.
+- **Direct-Q 144M is terminal SELECT NONE.** Gameplay was encouraging at
+  `+0.163 +/- 0.059`, but seed 1 and both pooled role-specific held-out MSE
+  gates failed. Its attractive report tail cannot authorize deployment,
+  extension or recipe tuning.
+- **Teacher-v3 is the live strength job.** Actor canonicalization, capture,
+  diagnostics, exact 64-state freeze and the independent champion-audit
+  protocol are code-complete. Air is running eight Stage-B N=30 gold shards;
+  do not inspect outcomes or launch audit labels until all eight validate and
+  the receipt-to-gate transition passes.
 
 ## NOW — ordered by value
 
 | priority | work | exit gate |
 |---|---|---|
 | **T1 / Lane A production latency — P0** | Keep the first stronger-than-MC production policy enjoyable to play | Freeze the live replay benchmark; preserve exact cards/RNG/counters/report statistics; remove the additive pacing tax, keep the event loop responsive, profile the remaining rollout leaves, and meet the production-class latency gate below. Changing N=30, R=300, the ballot or LCB is a strength experiment—not a perf patch. |
-| **T1 / Lane A.1 V11pair — ARTIFACT REPAIR** | Spend the learned milestone instead of shelving it | Publish the corrected direct-v2 aggregate from existing bytes only and obey its frozen decision rule. A PASS may unlock a versioned protected-anchor screen against live report-LCB; a FAIL closes that launch and retains v11 only as a teacher/diagnostic proposal. |
-| **T1 / Lane B teacher — ACTOR V3 -> 64 STATES** | Generate counterfactual data capable of exceeding the old heuristic continuation | Prove canonical in-ballot actions including the named failure, run a fresh disjoint entry packet through diagnostics and an exact 64-state freeze, then stop for review before labels. |
-| **T1 / Lane C Direct-Q — MINI PREFLIGHT** | Learn beyond MC imitation with a repaired role-conditioned target | Complete the six frozen 32-iteration treatment/no-step preflights. Start the 512-iteration screen only if their score-blind wall/storage/semantic receipt admits it; otherwise close without extension and move to the Suphx microbaseline code gate. |
-| **RLCB-C1 fresh confirmation — FREEZE TODAY** | Put the manually shipped report-LCB policy on clean formal footing | Register 2,048 fresh deal clusters, a collision-free null and exactly report-LCB/current/null with immutable provenance. Launch on the first fleet capacity not needed by the three learned-strength lanes. This is a new experiment, never a continuation of S0c. |
+| **T1 / Lane A.1 V11pair — COMPLETE / SELECT NONE** | Preserve the learned milestone without forcing it into the champion | Artifact repair passed; the frozen rule rejected protected composition. Keep v11 as a bounded proposer/ranker and teacher diagnostic only. No protected-anchor run is authorized. |
+| **T1 / Lane B teacher — STAGE-B RUNNING** | Generate counterfactual data capable of exceeding the old heuristic continuation | Complete and validate all eight attribution-only gold shards, seal the Stage-B gate, then label the separately frozen 64-state champion-continuation audit. No Stage-B outcome may tune that audit. |
+| **T1 / Lane C Direct-Q — COMPLETE / SELECT NONE** | Learn from the failure without selecting its positive gameplay tail | Preserve aggregate SHA `1fa6789e…791`; do not deploy, extend or mutate the 144M recipe. The next learner requires a separately frozen Suphx-style or other role-correct microbaseline gate. |
+| **RLCB-C1 fresh confirmation — COMPLETE / CONFIRM** | Close formal report-LCB superiority | 2,048/2,048 fresh clusters, exact doses, zero stream collisions, sane null and positive superiority LCB. Preserve aggregate SHA `83f5a9df…f5ef5ea`; no extension or S0c reinterpretation remains. |
 | **Formal S0 — COMPLETE / SELECT NONE** | Preserve the burned S0c evidence boundary | Closeout `ef0a365…fde9a`, terminal parent `ca556c2`, no parsed outcomes, no retry/extension, and an empty S0 service namespace. There is no remaining S0c work. |
 
 ## TODAY — T1 champion flywheel launch
@@ -77,21 +83,21 @@ behind code or protocol work we could have completed.
 | lane | deliverable today | hard gate |
 |---|---|---|
 | **Lane A / production guardrail** | Build a sanitized performance replay from CAXI's 109 searched moves, stratified early/mid/late and by candidate count; record search-only and human-action-to-broadcast timing. First test exact-semantic scheduling/hot-path changes, then benchmark the same image on the current shared CPU and a faster CPU class. | At least 100 identical replay decisions: same played cards, candidate order, RNG advance, report gap/SE/reason, sampler counters and work. On production-class hardware, end-to-end searched turns have p50 <=1.5s, p95 <=4.0s and max <=8.0s, with no unconditional 0.7s added after computation and no WebSocket starvation. A billable Fly resize requires Jerry's approval and an empty room set. |
-| **Lane A.1 / V11pair** | Replace the broken capped-utility consumer with a tested artifact-only repair, reopen all seven normal shards plus shard-5 `.FAILED`, and seal one new aggregate binding the original failure. Then write the exact report-LCB parent/null contract for the protected anchor if and only if the frozen decision rule admits it. | Never replay or rewrite a game and never invent missing activation. The frozen rule applied to retained bytes determines PASS/FAIL. Only PASS plus sane null/provenance can admit protected-anchor compute; that screen must retain the full report-LCB ballot and work. |
-| **Lane B / stronger teacher** | Commit actor canonicalization and single-action handling with the seed 143000001/ply 44/seat 0 witness, both roles and a broader falsification scan; create a new namespace and run capture -> diagnostics -> exact 64-state freeze. | Zero off-ballot actions, exact actor/ballot/encoder/sampler identities, disjoint non-evaluation states and reconciled counters. Review the freeze before producing any label; only an accepted 64-state packet may enter cheap-vs-gold teacher diagnostics. |
-| **Lane C / beyond imitation** | Run the six accepted Direct-Q 32-iteration preflights on Mini. If the predeclared score-blind receipt passes, immediately start the bounded 512-iteration treatment/control screen; if it fails, record the stop and free Mini. | No outcome-tail selection, recipe mutation or extension. Immutable actors, role-sign symmetry, action-spread/held-out semantics and exact resume must remain valid. Scaling requires the frozen admission result, not an encouraging partial score. |
-| **Fresh search confirmation** | Freeze `RLCB-C1` over 8x256 new clusters and exactly three arms: live report-LCB, current `mc-strong`, and a collision-free current null. | New seeds/namespace/supervisor; exact accepted dose and runtime; one paired superiority gate. Never read, reuse, pool or repair the burned 135M S0c outcomes. |
+| **Lane A.1 / V11pair** | **Closed:** artifact-only repair published from unchanged bytes and selected none. | No protected composition. Reuse v11 only in a new explicitly diagnostic/proposal contract. |
+| **Lane B / stronger teacher** | Finish the running Stage-B gold labels, validate their exact gate, then execute the frozen 64-state report-LCB continuation audit. | All eight shards and receipts exact; no outcome-conditioned audit change; disjoint 32-world selection/report folds and full downstream report-LCB continuation at every information set. |
+| **Lane C / beyond imitation** | **Closed:** Direct-Q finished but failed its conjunctive learning screen. Specify a fresh microbaseline before more learning compute. | The 144M report result cannot choose seeds, recipes, stopping or continuation. |
+| **Fresh search confirmation** | **Closed:** RLCB-C1 formally confirmed report-LCB. | Preserve the exact aggregate and claim boundary; no additional confirmation compute is needed now. |
 
 ### Fleet order for T1
 
 1. **Local + production diagnostics:** own the latency benchmark and
    exact-semantic server optimization; do not consume Mini/Air training slots.
-2. **Mini:** Direct-Q preflights first, then its admitted 512-iteration screen.
-   If preflight refuses, use the released host for `RLCB-C1` or an admitted
-   protected-anchor screen—never an improvised Direct-Q extension.
-3. **Air:** V11 artifact recovery is first because it reuses spent compute;
-   teacher actor-v3 and the fresh 64-state entry packet follow. If either gate
-   refuses, Air becomes available for the frozen search confirmation.
+2. **Mini:** RLCB-C1 and Direct-Q are terminal, so Mini is free for bounded
+   compiled latency profiling or the next separately admitted learner gate.
+   Never improvise a Direct-Q extension or protected-anchor run.
+3. **Air:** keep all eight Stage-B gold workers owned by the frozen Teacher-v3
+   transition. After validation, run only the already-frozen 64-state audit;
+   do not redesign it from Stage-B outcomes.
 4. **No idle gap:** the next bounded job may start as soon as its exact parent,
    namespace, tests and stop rule are committed. A failed lane releases compute
    to another lane; it does not weaken its own gate.
@@ -282,28 +288,27 @@ valid replay contract, not a substitute for fixing its target.
 
 ### Compute queue
 
-Mini is free after formal S0 cleanup. Spend hosts on staged strength evidence,
-not more protocol scaffolding:
+RLCB-C1, V11-v2 and Direct-Q have terminal decisions. Spend hosts on the open
+teacher and production boundaries, not extensions of closed runs:
 
-1. **Mini first:** run the six frozen Direct-Q 32-iteration preflights. They are
-   short, score-redacted and answer whether the full bounded learner fits the
-   host budget. Launch the 512-iteration screen only on an admitted receipt.
-2. **Artifact repair before replay:** finish corrected V11-v2 validation from
-   its existing exact raw outputs. The hard-coded capped-utility check is a
-   consumer bug under uncapped house rules; no fresh games are justified.
-3. **Air next:** version the teacher actor/gate repair, prove zero off-ballot
-   actions on the named witness population, then run only fresh capture ->
-   diagnostics -> exact 64-state freeze. Stop for review before labels.
-4. **Formalize the shipped search:** register one fresh collision-free
-   report-LCB/current/null confirmation. Do not reuse 135M, inspect the burned
-   S0c outcomes, or fold adaptive allocation into this question.
-5. **Reparent dependent screens:** protected V11, structured bury and sampled
-   exact endgame must name whether they compare against formal `mc-strong` or
-   live report-LCB. Prefer live report-LCB for product strength, but change the
-   protocol explicitly and retain matched null/work controls.
-6. **Scale only winners:** training hardware gets larger teacher/RL waves only
-   after a valid teacher-quality or learning-screen PASS; full-game fleet
-   confirmation is reserved for candidates that first clear their local gate.
+1. **Air now:** finish all eight frozen Teacher-v3 Stage-B gold shards and run
+   their exact receipt/gate once. If valid, launch only the separately frozen
+   64-state report-LCB continuation audit.
+2. **Mini/local now:** finish compiled exact-semantic latency validation. Mini
+   may run bounded sub-hour production-class profiles while Air owns teacher
+   evidence; it must not improvise Direct-Q or protected-V11 extensions.
+3. **After the teacher audit:** use cheap-vs-champion regret and disagreement
+   strata to specify the smallest teacher improvement that can beat the live
+   champion, then collect/train/gate that version. Do not scale labels merely
+   because generation works.
+4. **Next learner:** write a fresh Suphx-style or other role-correct
+   microbaseline contract with frozen held-out diagnostics before allocating
+   training compute. The terminal 144M report cannot choose its recipe.
+5. **Other search lanes:** structured bury or sampled exact endgame must be
+   explicitly reparented to confirmed report-LCB with matched null/work before
+   any strength run.
+6. **Scale only winners:** larger teacher/RL waves and full-game confirmation
+   are reserved for candidates that first clear their independent local gate.
 
 At each stage, failure frees the queue for the next mechanism; it does not
 authorize adding more data to a target that failed.

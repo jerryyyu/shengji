@@ -7,9 +7,10 @@ engine and a reproducible evaluator. Deployment latency is not a meaningful
 tradeoff for the champion policy; compute is still recorded to attribute
 experiments and understand operational cost. “Put RL inside search” is a
 hypothesis, not the goal.
-The research-superiority milestone is beating the deployed `mc-strong` policy
-in a preregistered paired direct comparison; pool Elo is useful for screening
-but cannot establish that claim.
+The first research-superiority milestone—beating deployed `mc-strong` in a
+preregistered paired direct comparison—is closed by report-LCB. The next
+challenger must beat the confirmed report-LCB champion; pool Elo remains useful
+for screening but cannot establish that claim.
 
 Primary promotion metric: paired signed level utility by deal seed. Round
 win-rate is secondary; a final deployment candidate gets a mirrored full-game
@@ -21,204 +22,94 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-06 17:56 EDT
+## Current synthesis — 2026-08-07 16:15 EDT
 
-This section is the current decision layer. The lineage table below owns model
-history; **Data and evaluation contract** owns dataset/evaluation provenance;
-`AI_POLICIES.md` owns callable policy conclusions; `BACKLOG.md` owns the live
-queue; `JOBS.md` owns run artifacts; and the chronology archive owns superseded
-day-by-day detail. A historical result below does not reopen a closed lane.
+This is the current decision layer. The lineage table below owns model history;
+**Data and evaluation contract** owns dataset provenance; `AI_POLICIES.md`
+owns callable policy conclusions; `BACKLOG.md` owns the live queue; and
+`JOBS.md` owns exact run artifacts. Historical evidence does not reopen a
+closed lane.
 
-### Operational state and active lanes
+### Champion and search lane
 
-- **Production strength incumbent:** compiled `mc-strong` (N=30). A
-  frozen-current 504-cluster confirmation measured `+0.222 +/- 0.140` paired
-  signed level utility versus N=10; arm-minus-null was `+0.230 +/- 0.139` and
-  the null was `-0.008 +/- 0.154`. N=60 versus N=30 was
-  `-0.002 +/- 0.119`, so uniform search width beyond N=30 has no confirmed
-  increment. No learned policy, value leaf, learned search prior or ballot
-  variant has a verified edge over the deployed champion.
-- **S0 confidence-aware search is the active bounded online lane.** Its mechanics,
-  disjoint report folds, exact-work controls, replay records and fail-closed
-  sharded runner are complete. The immutable 150-state DEV diagnostic selected
-  report dose R=300; it is calibration, not strength. Authoritative Mini S0a
-  then selected report-LCB over 2,048 fresh clusters (`+0.353 +/- 0.069`
-  versus current; direct `+0.293 +/- 0.066` versus equal-work uniform; null
-  `+0.008 +/- 0.070`). That is a positive mechanism screen, not promotion.
-  The exact parent-bound S0b allocation block is complete and selected
-  `mc-s0-adaptive`: adaptive-minus-report-uniform was `+0.037 +/- 0.060`,
-  adaptive-minus-random `+0.433 +/- 0.065`, adaptive-minus-current
-  `+0.395 +/- 0.067`, and the null was flat. Uniform report-LCB itself was
-  `+0.357 +/- 0.066` versus current, almost exactly replicating S0a. The
-  adaptive increment does not clear zero, and the random contrast does not
-  isolate allocation because report-uniform also beats random by about 0.396.
-  The registered point-estimate allocation rule selected adaptive; the
-  substantive S0b finding is “report-LCB replicates, allocation unresolved,”
-  not an adaptive win. Exact 8,192-cluster S0c-adaptive-LCB is now running 8/8.
-  Survivor-current and survivor-null paired 95% lower bounds must both exceed
-  zero while the null does not clear. No terminal S0 strength result or
-  deployment exists yet. The frozen worker stdout was discovered to include
-  interim W/L; one accidental progress-tail observation is quarantined and
-  caused no adaptive action. Future monitoring is process/artifact-count only,
-  so the run remains predeclared but is no longer described as observer-blind.
-  Commit `7314cdf` suppresses both running and shard-end effects in future main
-  stdout; it does not alter the frozen live block. The S0b transition initially
-  refused because the audit-tool root pointed at moving main; repointing only
-  that root to clean exact `6fe5f44` restored all three pinned hashes before
-  aggregation. S0c launch metadata confirmed the experimental keys absent.
-  The historical null nevertheless creates a cross-cluster dependency: its
-  +999,983 arm/team shift collides with evaluator opponent streams at lag 17,
-  producing 8,175 dependency edges in the 8,192-seed S0c block. The ordinary
-  iid interval is therefore provisional. A one-shot score-blind audit freezes
-  the exact terminal packet/aggregate/8 manifests/8 raw files and recomputes
-  all evidence in two exact collision-free lag-chain parity populations of
-  4,097/4,095 seeds. Both must independently pass all three original criteria;
-  any failure is SELECT NONE, with no pooling/retry/extension/fallback.
-  Historical 147M S0e-v1 is irreversibly retired because it reused that null
-  and bypassed corrected authority. A future v2 lane has only a frozen
-  preterminal parent seam: fresh 148M geometry, collision-free +50,000,003 null
-  offset and exactly one corrected-output-bound Git transition. It has no
-  runner or job; corrected SELECT NONE closes it.
-- **The six-arm DEV-512 ballot screen is closed with `SELECT NONE`.** The
-  primary `quota - random_fill` contrast was `+0.110 +/- 0.337`; at equal work
-  the shipped ballot had the lowest mean regret (current 0.135, quota 0.229,
-  v3 0.281, random-fill 0.339), and the resolved high-work contrast favoured
-  more MC over brute-force widening (`-0.495 +/- 0.477`). This rejects only the
-  registered designs at this resolution, not all future action-selection work.
-  CALIB-512 and REPORT remain sealed; do not append arms or train from DEV.
-- **v11pair is the learned line's one confirmed online gain against SmartBot,
-  but its first clean current-MC revalidation failed under a mismatched
-  encoder:** its direct
-  SmartBot override won 57.7% (277-203, n=480, two disjoint blocks). The 51.1%
-  result versus MC used factories that discarded seeds and remains a SCREEN.
-  The exact 2,048-cluster direct-current v1 block then measured
-  `-0.132 +/- 0.070` paired level utility versus current and
-  `-0.159 +/- 0.069` versus its matched null; the true null was sane at
-  `+0.027 +/- 0.068`, so the stored direct verdict is FAIL. That result is
-  valid for exact commit `e66b90b`, but it does not isolate the learned idea:
-  `encode_obs` had silently inherited banker's private kitty into the unseen
-  plane after a Memory default changed while encoder version stayed 1. Commit
-  `66aad44` restores the public/no-private-kitty v1 contract and binds its
-  transitive source hashes. Commit `cde0fec` now freezes that fresh corrected-
-  encoder direct gate as 8x256 exact 142M clusters, with combined encoder/source
-  hashes, exact accepted N=30 dose and raw-record reopening. It has no evidence
-  yet: at 17:32 all eight Air workers remained live and partial outcomes remain
-  sealed. The immutable v2 runner has no policy-activation counter, so its
-  aggregate may report the registered duel/dose/null but cannot alone establish
-  that the network influenced play. It cannot authorize production or
-  protected composition by itself.
-  Commit `7ecffd5` therefore blind-froze the separate composition estimand:
-  standalone v11 need not be superior for the terminal search champion to
-  retain its good proposals and reject its bad tail. Preserve the direct
-  verdict exactly; after a protocol-valid direct block with a sane null and
-  terminal S0, screen the champion-matched anchor on fresh 137M seeds, and let
-  only PASS reach an independent 138M confirmation. Commit `d2229d0` now makes
-  that protocol executable: it hard-binds the exact direct commit/source,
-  preserves the original direct verdict, uses champion-matched nulls and
-  forces confirmation to reopen/recompute raw screen evidence. Corrected-parent
-  v2 is now frozen at `b361836`; `1354cac` closes empty-valued environment-key
-  refusal. Its deliberate `DIRECT_AGGREGATE_SHA256=None` lock can be replaced
-  only with the exact sealed corrected-v2 aggregate. Bind that hash regardless
-  of PASS/FAIL, preserving the verdict and authorization false; this freezes
-  identity rather than selecting evidence. Sane null/exact dose and terminal
-  S0 remain independent prerequisites. v11's within-state deltas remain valid for
-  ranking, not as scalar leaf values. Commit `c8358d2` makes reconciled nonzero
-  model scoring/triggers mandatory in the later protected-composition screen,
-  closing the live artifact's activation ambiguity prospectively without
-  rewriting its estimand. Commit `e026ed0` separately versions the future
-  encoder identity across cards/combos/encode/Memory and carries it through
-  composition shard, aggregate, reopening and confirmation, while preserving
-  the immutable live runner and its exact historical two-source receipt.
-- **Two independent learning lanes remain open.** Teacher-v1 began with the
-  fail-closed `0183cdd` supervisor, which completed all eight corrected-encoder
-  captures on Air, then refused before diagnostics: JSON converted the ballot
-  config tuple to an equivalent list and a direct dict comparison falsely
-  called that actor drift. No state set or label exists. Preserve the refused
-  v1 namespace. The disjoint JSON-canonical 143M-v2 entry bytes are accepted at
-  `2038b31`: they pin Python/flags, exact 8-shard/1,024-deal admission, full
-  capture -> diagnostic -> selected-state semantics, recomputed coverage,
-  exclusive publication, 64 unique in-range states, nonzero uncertainty and
-  Stage-A/B disjointness. Its authorization stops at fresh capture -> diagnose
-  -> 64-state freeze when a whole host is free. The actual supervisor and every
-  consumer must execute at full `acfd95b`, whose accepted entry bytes are
-  unchanged and which also closes receipt/label/gate no-overwrite, post-link
-  verification and exact parent/raw reopening. Capturing at `2038b31` and
-  switching commits later is invalid. The asset
-  must still pass its 64-state mechanics and 128-state gold-continuation gates
-  before producing 2,048 clean counterfactual states. Faithful Suphx-style
-  privileged-feature removal and DouZero-style role-conditioned direct-Q
-  microbaselines have
-  passed the shared attacker/defender-sign and immutable-actor boundary. The
-  exact synchronous chassis is now code-closed at `e49cf60`: transactional
-  resume, interruption poisoning, process-global RNG exclusion, hidden
-  learner/optimizer state, collector mutability, algorithm batch identity and
-  exclusive candidate publication pass 46 focused tests. This removes a shared
-  infrastructure blocker. Commit `868b6d8` supplies the first concrete bounded
-  lane: separate attacker/defender GRU action-Q networks, chronological public
-  history, direct signed terminal return, immutable actor, narrow ordinary-play
-  ballot and exact resumed-output identity. It is a Shengji-specific
-  DouZero-style one-round implementation—not a faithful reproduction or
-  strength result. Review found the algorithm digest omitted imported
-  execution-contract dependencies; `f5ff2f9` now binds all 16 material direct
-  and transitive sources and mutation-falsifies each. Commit `b27be23` closes
-  the missing actor-refresh boundary: only the runner's already-published exact
-  current candidate may become the next actor, exact resume is preserved and
-  artifact/learner drift poisons until checkpoint restore. Commit `7dbee75`
-  freezes the actual three-seed treatment/no-step screen: score-redacted
-  32-iteration preflights, per-iteration actor refresh, a separate iteration-
-  256 resume, 0/64/128/256/512 checkpoints, fixed seeded probes, paired report
-  utility and terminal semantic/raw/mutable-state reopening. Synthetic outcomes,
-  signed-target/head routing, resume drift and favourable-tail gates are
-  mutation-tested; the independent matrix passes 95/95. No run or learning
-  result exists. After Mini frees, review the six preflight wall/storage
-  receipts before any full 512-iteration screen. A PASS authorizes only another
-  bounded pilot—not a claim against MC.
-- **Structured search remains independent and feature-off.** Commit `e946696`
-  closes the broader bury source's 512-state disjoint-report/equal-work code
-  gate. Its verifier reconstructs named deals, redraws both folds and replays
-  every raw score; digest and wholesale-score falsifications fail. `2bb571f`
-  aligns runtime candidate zero with the literal named terminal-S0 bury and
-  records cumulative opportunity/trigger/override/work/sampler dose. The
-  evidence run still waits for terminal S0 and cannot itself promote a policy.
-  The <=4-card sampled exact-endgame seam shares a context-safe solver session
-  across candidate roots inside each determinized world and passes independent
-  mechanics/parity review. Its frozen challenge at `2370a27` completed 140/140
-  frontier evaluations in 16 sessions with zero refusal/overflow under the
-  cumulative 250k-node cap (130,989 nodes; 97,834 hits). It is a perfect-
-  information oracle inside sampled worlds, not an exact imperfect-information
-  solver. Commit `79985a2` now closes S3b's terminal-champion-matched
-  complete-round strength protocol: score-free throughput admission,
-  non-promotable 2,048-cluster screen and disjoint 8,192-cluster confirmation,
-  with raw-screen reopening and zero-refusal/exact-use gates. It waits for
-  terminal S0 and remains one-round evidence; each mechanism must later duel
-  the terminal champion and any deployment candidate needs multi-round
-  progression. `2bb571f` additionally adds a genuine two-card defender-min
-  witness, attacker-points transposition-key falsification and byte-pinned
-  numeric candidate values; `8ee6691` pins those mechanics into the strength
-  protocol. Of the two S3 lanes, S3b is the shortest credible post-S0 path
-  to a clean win because its terminal-champion-matched treatment, screen and
-  confirmation already exist. S3a may have greater upside because burial is a
-  once-per-round high-leverage decision and sourcing has historically helped,
-  but it first needs exact screen/runtime parity and then a separately frozen
-  full-game duel.
-- **Sampler hard-validity/support P0 is closed at clean `aea3774`.** The v3
-  certificate covers exactly 500 original + 500 late + 500 deep states,
-  accepts 36,000/36,000 worlds with zero rejected/invalid/named skips, and
-  reaches every legal world plus the real witness in 120/120 exhaustive toys.
-  It supersedes `eea78d2`, whose global cap starved the late reservoir despite
-  an original+late population claim. Posterior fidelity remains biased and
-  separately versioned; the old
-  non-strict, capped-ballot, same-world-selected high-N labels are diagnostic,
-  not an oracle.
-- **Historical DMC2 evidence is invalid, not an RL rejection.** The defender
-  residual sign, mutable actor path and promote-different-bytes defects are now
-  repaired and covered by bounded tests; `d5d71d2` proves PASS returns the exact
-  immutable evaluated candidate, FAIL retains the incumbent and generator
-  drift refuses. No result has been rerun. The
-  recipe is still neither Suphx's privileged-policy curriculum nor DouZero's
-  role-specific direct-return method. Commit `e49cf60` closes the generic exact
-  synchronous coordinator, but it does not rehabilitate the legacy algorithm
-  or evidence. Preserve DMC2's useful alarms; do not scale its target path.
+- **Production champion: compiled `mc-s0-report-lcb` (N=30, R=300).** It keeps
+  the incumbent MC ballot and selection fold, evaluates the empirical winner
+  on a disjoint report fold, and overrides the heuristic only when the
+  one-sided paired Student-t lower confidence bound is positive. `mc-strong`
+  is the immediate operational rollback.
+- **Formal evidence:** S0a measured `+0.353 +/- 0.069` versus `mc-strong`;
+  S0b independently measured `+0.357 +/- 0.066`. Fresh RLCB-C1 then confirmed
+  the exact production rule over 2,048 new mirrored clusters at
+  `+0.338 +/- 0.068`, with a collision-free current-policy null of
+  `-0.019 +/- 0.068`. Every registered dose, finite-statistic,
+  stream-independence and superiority criterion passed. Canonical aggregate
+  SHA-256:
+  `83f5a9df2f1db1fa45d50fb005b941b776d9ecc2c9f8703d3d62efff8f5ef5ea`.
+- **Claim boundary:** this proves one-round paired level-utility superiority
+  over `mc-strong`. It does not prove adaptive allocation, multi-round
+  progression, or arbitrary changes to N, R, ballot, sampler or confidence
+  rule. Equal-work controls showed that extra compute alone did not explain the
+  earlier gain. Adaptive allocation added only `+0.037 +/- 0.060` versus
+  uniform report-LCB, so the simpler confirmed policy remains preferred.
+- **Formal S0 is separately closed SELECT NONE.** S0c provenance refused before
+  outcomes could be parsed; its result is unread and nonretryable. Closeout SHA
+  `ef0a365…fde9a` and terminal parent `ca556c2` authorize no S0 repair,
+  extension or reinterpretation. RLCB-C1 is a fresh experiment, not a
+  retroactive repair.
+- **More uniform width is not the next lever.** Current-code N=30 beat N=10 at
+  `+0.222 +/- 0.140`; N=60 versus N=30 was `-0.002 +/- 0.119`.
+
+### Learned-policy and teacher lanes
+
+- **V11pair remains a useful learned milestone, not a deployable policy.** It
+  beat SmartBot 57.7% (277-203, n=480), but corrected direct-v2 failed against
+  current search on 2,048 clusters: v11-current `-0.141 +/- 0.070`,
+  v11-minus-null `-0.110 +/- 0.070`, and null-current
+  `-0.031 +/- 0.068`. The artifact-only repair replayed no games and set
+  `protected_composition_authorized=false`. Retain v11 only as a root
+  proposal/ranker and teacher diagnostic.
+- **Direct-Q 144M is terminal SELECT NONE.** Its gameplay treatment-control
+  tail was encouraging (`+0.163 +/- 0.059`, n=256), but seed 1 and both pooled
+  role-specific held-out MSE lower-bound gates failed. The registered learning
+  screen therefore failed; do not deploy, extend or tune this recipe from the
+  inspected positive tail. A future Suphx-style or other role-correct learner
+  needs a separately frozen contract.
+- **Teacher-v3 is the live strength job.** Canonical action handling, fresh
+  capture, diagnostics, exact 64-state freeze and an independent champion-
+  continuation audit are code-complete. Air is running eight attribution-only
+  Stage-B N=30 gold shards. After all eight validate, seal the Stage-B gate and
+  label only the separately frozen 64-state audit. Stage-B outcomes may not
+  move the audit population or rule.
+- **Historical DMC2 is invalid evidence, not an RL rejection.** Its defender
+  sign, actor immutability and promotion contracts were defective, and it was
+  not a faithful AWAC, Suphx or DouZero implementation. Preserve its useful
+  alarms, but do not scale or cite its old target path.
+
+### Structured search, data and next decision
+
+- The six-arm DEV-512 ballot screen is closed SELECT NONE. The shipped ballot
+  had the lowest equal-work mean regret; CALIB-512 and REPORT remain sealed.
+  This rejects the registered designs at that resolution, not all sourcing or
+  action-selection improvements.
+- Structured bury and sampled exact-endgame code are feature-off. Before either
+  spends strength compute, reparent its screen and confirmation to the
+  confirmed report-LCB champion. Each mechanism must beat that exact parent;
+  any deployment candidate still needs a mirrored multi-round progression
+  check.
+- Sampler hard validity/support P0 is closed at `aea3774`: 36,000/36,000
+  worlds accepted across original, late and deep states, plus exhaustive toy
+  support. Posterior fidelity is still a separate, versioned question. Old
+  capped-ballot, same-world-selected high-N rows are diagnostics, not oracles.
+- High-N and late-ply corpora are replayable state reservoirs. Use them to find
+  failure strata and freeze fresh challenges, then generate new strict
+  counterfactual labels under a named ballot, sampler, continuation and utility.
+  Do not treat corpus size or private-information search as proof of label
+  quality.
+- **Immediate order:** (1) finish production scheduling hardening without
+  changing report-LCB semantics; (2) finish Teacher-v3 Stage-B and the frozen
+  64-state audit; (3) choose the next teacher/learner upgrade from that evidence;
+  (4) reparent the best structured-search candidate to report-LCB. The next
+  strength promotion must beat report-LCB, not the retired MC baseline.
 
 ### Settled experiment evidence
 

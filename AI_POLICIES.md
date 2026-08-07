@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-07 12:00 EDT
+## Current synthesis — 2026-08-07 16:15 EDT
 
 ### Production search
 
@@ -25,16 +25,21 @@ and put exact run detail in `JOBS.md` or the dated archive.
   overrides only when the one-sided paired Student-t LCB is positive.
   `mc-strong` is the immediate rollback.
 - **Evidence:** S0a measured `+0.353 +/- 0.069` versus `mc-strong`; S0b
-  independently replicated `+0.357 +/- 0.066`. Equal-work uniform search did
-  not explain the gain. Adaptive allocation added only
-  `+0.037 +/- 0.060` versus uniform report-LCB, so its extra complexity is not
-  justified yet.
-- **Formal boundary:** this is a manual strength-first product decision, not a
-  terminal S0 promotion. S0c compute completed, but the lag-17 dependency
-  correction refused before parsing outcomes after supervisor provenance
-  changed. The numerical result remains unread and nonretryable. Outcome-blind
-  closeout SHA `ef0a365…fde9a` records `S0_COMPLETE_SELECT_NONE`; parent
-  commit `ca556c2` is terminal and `authorized=false`.
+  independently replicated `+0.357 +/- 0.066`. Fresh RLCB-C1 then formally
+  confirmed the same policy on 2,048 new paired clusters at
+  `+0.338 +/- 0.068`; its collision-free current-policy null was
+  `-0.019 +/- 0.068`. All exact-dose, finite-statistic, stream-independence and
+  predeclared superiority criteria passed. Aggregate SHA-256:
+  `83f5a9df2f1db1fa45d50fb005b941b776d9ecc2c9f8703d3d62efff8f5ef5ea`.
+  Equal-work uniform search did not explain the earlier gain. Adaptive
+  allocation added only `+0.037 +/- 0.060` versus uniform report-LCB, so its
+  extra complexity is not justified yet.
+- **Formal boundary:** report-LCB is now a formally confirmed one-round search
+  improvement over `mc-strong`; RLCB-C1 authorizes that claim only. It does
+  not retroactively repair or promote S0, prove adaptive allocation, establish
+  multi-round progression, or itself authorize deployment. S0 remains
+  terminal `S0_COMPLETE_SELECT_NONE`; its numerical S0c result is unread and
+  nonretryable under closeout SHA `ef0a365…fde9a` and parent `ca556c2`.
 - **Search width:** N=30 over N=10 reproduced on current code
   (`+0.222 +/- 0.140`); N=60 over N=30 was
   `-0.002 +/- 0.119`. More uniform width is not the next lever.
@@ -68,33 +73,38 @@ and put exact run detail in `JOBS.md` or the dated archive.
 - **Best learned milestone:** `rl-override-v11pair` beat SmartBot 57.7% on
   n=480, but has no valid superiority result over MC. Its pairwise head is a
   root action ranker/proposal on its exact ballot, not a scalar leaf.
-- The first seeded v11/current block failed as run, but used a drifted banker
-  encoder. Corrected direct-v2 game compute is complete; its consumer falsely
-  rejected uncapped utility outside `+/-1..3`. Repair the existing artifact
-  without replaying games or inventing missing activation telemetry.
-- The protected-v11 composition keeps the complete search ballot/work and
-  changes only candidate 0, with a same-trigger random anchor control. Its code
-  gate is closed, but its reference must be versioned because formal S0 names
-  `mc-strong` while production now runs report-LCB.
+- The corrected V11 direct-v2 artifact-only repair is terminal. From the
+  immutable 2,048-cluster 142M population, v11-current was
+  `-0.141 +/- 0.070`, v11-minus-null was `-0.110 +/- 0.070`, and
+  null-current was `-0.031 +/- 0.068`. Exact dose and provenance passed, but both efficacy
+  criteria failed; `protected_composition_authorized=false`. No game was
+  replayed and no missing activation was invented. Frozen v11 remains useful
+  only as a proposal/ranking and teacher diagnostic, not a protected anchor.
 - v13 fit its offline target better without improving play. Existing value-leaf
   and learned-rollout hybrids did not establish gains; a private observation
   has no generic strategy-independent scalar value in this game.
 - Historical DMC2 does not reject AWAC, Suphx or DouZero. Its role target and
   actor/promotion contracts were wrong, and it was not faithful to those
-  algorithms. The repaired role-conditioned Direct-Q path now needs six short
-  score-redacted preflights before any full learning screen.
+  algorithms. The repaired role-conditioned Direct-Q screen completed and
+  produced encouraging paired gameplay (`+0.163 +/- 0.059`), but failed its
+  predeclared learning gate: seed 1 and both pooled role-specific held-out MSE
+  LCBs failed. Terminal result is SELECT NONE; do not deploy or extend this
+  recipe from its attractive gameplay tail.
 
 ### Immediate strength queue
 
-1. Run Direct-Q's six 32-iteration preflights on free Mini.
-2. Repair and bind corrected V11-v2 from existing raw artifacts.
-3. Version the teacher actor so every v11 action is canonical/in-ballot, then
-   rerun fresh capture only through the exact 64-state freeze.
-4. Register a fresh collision-free report-LCB/current/null confirmation; never
-   reuse or inspect burned S0c.
-5. Explicitly reparent protected V11, structured bury and sampled-exact endgame
-   to the policy they are meant to beat—preferably live report-LCB—before
-   spending strength compute.
+1. Finish production scheduling hardening without changing report-LCB's
+   N=30/R=300/ballot/LCB semantics, then verify on production-class hardware.
+2. Close Teacher-v3 Stage-B attribution and run the already-frozen independent
+   64-state champion-continuation audit; use that evidence to choose the next
+   teacher upgrade rather than merely scaling labels.
+3. Keep v11pair as a root proposal/ranking feature and teacher diagnostic;
+   the protected-anchor lane is closed by direct-v2.
+4. Replace the failed Direct-Q recipe with the separately gated Suphx-style
+   microbaseline or another role-correct learner; do not tune on the terminal
+   144M report result.
+5. Reparent any structured-bury or sampled-exact contender to confirmed live
+   report-LCB before spending strength compute.
 
 ## Policy status details
 
@@ -118,8 +128,8 @@ and put exact run detail in `JOBS.md` or the dated archive.
   own counters. See
   `CORRECTNESS.md` for the certified boundary rather than inferring it from a
   policy result.
-- **S0 family:** `mc-s0-report-lcb` is manually deployed on the replicated S0a/b
-  development evidence while a fresh formal confirmation remains open.
+- **S0 family:** `mc-s0-report-lcb` was manually deployed on replicated S0a/b
+  development evidence and is now independently confirmed by fresh RLCB-C1.
   `mc-s0-report-mean` isolates the report rule; `mc-s0-uniform-work` isolates
   extra compute; `mc-s0-adaptive[-mean]` and `mc-s0-random[-mean]` isolate
   evidence-directed allocation. None of those other S0 arms is deployed.
@@ -265,11 +275,14 @@ are:
   dimensions stay constant. Every consumer must bind semantic identity and
   rerun its direct gate.
 - Replacing the rollout policy and the tested value-leaf hybrids did not
-  establish gains. Preserve the complete root ballot and test learned signals
-  first as protected anchors or soft allocation features.
+  establish gains. Preserve the complete root ballot; corrected direct-v2
+  rejected v11 protected anchoring, so learned signals remain bounded
+  proposal/ranking or teacher diagnostics until a new contract passes.
 - Historical DMC/DMC2 runs exposed action-spread collapse, a role-sign defect
   and incomplete algorithm fidelity; they do not reject AWAC, Suphx or
-  DouZero. Direct-Q's bounded role-conditioned preflight is the current repair.
+  DouZero. The repaired Direct-Q screen produced positive gameplay but failed
+  its held-out learning gate and selected none; the next learner must use a
+  separately frozen recipe rather than extend 144M.
 
 The authoritative model-by-model chronology, including v1-v13, lives in
 `RL_PLAN.md`; exact old run narratives live in `server/runs/` and the dated
@@ -411,9 +424,10 @@ lessons needed to find old evidence.
   six-arm DEV-512 redesign screen selected none; more brute-force widening was
   not better than spending work on the incumbent ballot.
 - The fixed five-point point-estimate margin occasionally admits noisy bad
-  overrides. A disjoint R=300 report fold fixed that mechanism and beat
-  `mc-strong` in two independent development blocks. Extra work alone did not
-  explain the gain.
+  overrides. A disjoint R=300 report fold fixed that mechanism, beat
+  `mc-strong` in two independent development blocks, and then formally
+  confirmed at `+0.338 +/- 0.068` on fresh RLCB-C1 with a sane null. Extra
+  work alone did not explain the gain.
 - Adaptive allocation was not measurably better than uniform report-LCB
   (`+0.037 +/- 0.060`). Keep the simpler policy unless new evidence isolates
   the increment.
@@ -445,12 +459,14 @@ lessons needed to find old evidence.
 - v13 improved offline fit without improving play. Better imitation of
   `Q^Heuristic` is not automatically a stronger teacher or policy.
 - Root-prior hard pruning, learned rollout replacement and existing value-leaf
-  hybrids did not establish gains. Preserve all candidates and use learned
-  signals first for protected anchoring or soft allocation.
+  hybrids did not establish gains. Corrected direct-v2 also rejected v11
+  protected anchoring. Preserve all candidates and use learned signals only as
+  proposal/ranking or teacher diagnostics until a fresh mechanism passes.
 - Historical DMC2 runs do not reject AWAC, Suphx or DouZero: the role-sign,
   actor immutability and promotion contracts were wrong, and the algorithms
-  were not faithful implementations. The repaired Direct-Q path still needs
-  its bounded learning screen.
+  were not faithful implementations. Repaired Direct-Q completed its bounded
+  screen and selected none despite positive gameplay because its independent
+  learning diagnostics failed.
 - The high-N and late-ply corpora are replayable state reservoirs, not oracles.
   Use them to choose fresh challenge strata; generate new strict
   counterfactual labels under a named ballot, sampler, continuation and utility.

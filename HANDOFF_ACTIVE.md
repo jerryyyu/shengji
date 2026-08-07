@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-07 16:15 EDT. This is the executable mailbox only.
+Last update: 2026-08-07 16:35 EDT. This is the executable mailbox only.
 Durable discussion and retractions remain in `HANDOFF_REVIEW.md`; policy
 synthesis belongs in `AI_POLICIES.md`.
 
@@ -48,9 +48,8 @@ validation or the next separately admitted learner protocol.
 
 ## Production latency hardening
 
-Worktree `/private/tmp/shengji-t1-latency`, branch `codex/t1-latency`.
-Pushed base `6f15d96` makes live X-ray read-only and off-loop. The current
-uncommitted scheduler redesign:
+Worktree `/private/tmp/shengji-t1-latency`, branch `codex/t1-latency`, clean
+and pushed at `ff784a8`. The completed scheduler redesign:
 
 - snapshots the round and bot under the room lock;
 - searches only the isolated copies in a worker while claims/chat/reconnects
@@ -64,11 +63,19 @@ Claude's three deploy blockers now have direct coverage: literal eight-ULP
 float comparison (including exact 8-pass/9-fail at `+/-0.25`), portable
 synchronization-based scheduler tests, and a real WebSocket claim while a
 started search remains blocked. The claimant receives private state before the
-worker is released; the stale move/RNG/counters are then discarded. The
-focused WebSocket/scheduler/X-ray/replay/failed-throw matrix is 58/58, and the
-100-decision replay remains semantically exact. Deployment is still HOLD until
-the final full suite, compiled replay, commit/push/image build, and an empty
-production room set.
+worker is released; the stale move/RNG/counters are then discarded. X-ray now
+copies both round and bot under the room lock and releases it before search.
+A legitimate failed throw records both the attempted cards and engine-forced
+component without crashing after state mutation. The focused matrix is 61/61.
+The final native replay passed 100/100 exact decisions with search p50 0.164s,
+p95 0.339s and max 0.379s; every gate passed and projected uncontended turns
+were 0.7s. The broad branch suite was 915 passed, 3 skipped and 6 expected
+worktree/provenance refusals; no behavior test failed.
+
+Deployment is **EMPTY-ROOM HOLD**, not a code hold. At 16:34 production still
+had two connected humans: srig in HIEJ and Sarah Kim in ZTYH. Never deploy the
+older `6f15d96` image; build from exact `ff784a8` and restart only after a new
+peek proves zero connected humans.
 
 Live Fly evidence explains the complaint: room HIEJ's 40 searched bot turns
 had search p50 1.133s, p95 1.858s, max 2.174s; visible inter-play delay was
@@ -78,10 +85,10 @@ real search compute; Fly CPU class remains a separate product lever.
 
 ## Exact next actions
 
-1. Finish latency branch review, run full relevant suite plus compiled exact
-   replay, commit and push. Build a new image; never deploy old `6f15d96` image.
-2. Deploy only when production has zero human connections; verify policy,
-   compiled engine, semantic timing logs, seat claim, reconnect and X-ray.
+1. Build the exact `ff784a8` image; never deploy the old `6f15d96` image.
+2. Deploy only when a fresh production peek has zero human connections;
+   verify policy, compiled engine, semantic timing logs, seat claim, reconnect
+   and X-ray.
 3. Monitor all eight Teacher-v3 Stage-B workers without opening outcome
    aggregates. When terminal, validate receipts and run the frozen gate once.
 4. If Stage B passes, launch the frozen 64-state audit labels exactly as
@@ -91,11 +98,11 @@ real search compute; Fly CPU class remains a separate product lever.
 
 ## Review request for Claude
 
-Please audit the next pushed latency commit specifically for snapshot/commit
+Please audit pushed latency commit `ff784a8` specifically for snapshot/commit
 atomicity, cancellation, failed-throw bookkeeping, bot-task ownership and the
-real WebSocket claim witness. Do not review or deploy the earlier `6f15d96`
-image. Separately, watch the Teacher Stage-B receipt transition; do not open
-gold outcomes or duplicate workers.
+real WebSocket claim witness, including X-ray's round+bot snapshot. Do not
+review or deploy the earlier `6f15d96` image. Separately, watch the Teacher
+Stage-B receipt transition; do not open gold outcomes or duplicate workers.
 
 ## Standing rules
 

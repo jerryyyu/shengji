@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 16:15 EDT
+## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 16:35 EDT
 
 Air has eight live compiled+strict `teacher_v1_label.py gold` workers in clean
 detached worktree `~/Projects/shengji-teacher-air` at exact commit
@@ -12,9 +12,18 @@ N=30 shards under `teacher-v1-entry-149m-v3`; all are emitting fold progress
 and remain near one CPU each. This block is attribution-only. Its outcomes
 cannot change the independently frozen 64-state report-LCB continuation audit.
 
+All eight output finals remain absent and all eight Python workers plus their
+caffeinate parents remain live after about 1h50. No outcome file was opened.
+
 Mini has no long strength worker. RLCB-C1, V11-v2 and Direct-Q are terminal;
 Mini is available for bounded compiled latency checks or the next separately
 admitted learner protocol.
+
+Latency branch `codex/t1-latency` is clean and pushed at `ff784a8`. Its final
+native 100-decision replay was exact with p50 0.164s, p95 0.339s and max
+0.379s; the focused concurrency/correctness matrix passed 61/61. Production
+deployment waits only for an empty room set; HIEJ and ZTYH each still had one
+connected human at 16:34.
 
 ## COMPLETE / RLCB-C1 formally confirms report-LCB (Mini)
 

@@ -314,9 +314,11 @@ teacher and production boundaries, not extensions of closed runs:
    removal, and requires equal-work immediate-removal plus distillation
    controls and frozen held-out diagnostics before allocating training
    compute. The feature partition plus four independent role/surface
-   policy/value heads pass 19/19 focused and 80/80 adjacent tests; actor,
-   learner and curriculum-resume code remain. The terminal 144M report cannot
-   choose its recipe.
+   policy/value heads plus immutable actor/on-policy learner pass 45/45 focused
+   and 122/122 adjacent tests, including exact interrupted resume across a
+   `gamma=1` to zero boundary. The lower-rate segment, frozen O0 diagnostics,
+   exact launch packet and independent review remain; no training is
+   authorized. The terminal 144M report cannot choose its recipe.
 5. **Other search lanes:** structured bury or sampled exact endgame must be
    explicitly reparented to confirmed report-LCB with matched null/work before
    any strength run.

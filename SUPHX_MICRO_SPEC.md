@@ -1,6 +1,6 @@
 # Suphx-style privileged-feature-removal microbaseline
 
-Status (2026-08-07): **FEATURE-PARTITION CODE GATE PASS / NO TRAINING
+Status (2026-08-07): **SYNCHRONOUS MECHANICS CODE GATE PASS / NO TRAINING
 AUTHORITY.** This document defines the next Lane-C mechanism after terminal
 Direct-Q SELECT NONE. It may authorize implementation and score-blind runtime
 benchmarking only. A later version must bind exact code, runtime, seeds, doses,
@@ -18,8 +18,24 @@ independent attacker/defender x lead/follow policy/value heads in
 and module SHA-256
 `ed799bbe40320dda5468633c37cabdc908ea61c8cbb1d59024927df862c503a5`.
 The combined Suphx mechanics gate is 19/19 and the adjacent encoder,
-Direct-Q and synchronous-resume matrix is 80/80. No actor, learner, CLI,
-registry entry, run artifact or training result exists yet.
+Direct-Q and synchronous-resume matrix is 80/80.
+
+Implementation step 3 adds an immutable categorical actor and synchronous
+on-policy actor-critic transition in `suphx_actor.py` and `suphx_learning.py`.
+Actor contract/module SHA-256s are
+`2835649be74f32fedb289056fee39da184ec54b099722f84c1617c4579326ccc` /
+`cc52a5980338d13b283d378fba8acaeafd92f23e952b75b3a1b39ae8e046ba74`;
+learning contract/module SHA-256s are
+`186c05e6f49304a638839608116a77e4678a76ca6c1911b09f2506149641dc1c` /
+`8ee538777ed138a146d8fadc4b80524e33b269b23c0c8133705e03de1e9d1911`.
+Separate named mask/action streams, complete ballots, exact behavior
+log-probabilities, direct role-signed returns, scheduled gamma, per-surface
+entropy buffers and exact candidate adoption are executable. An interrupted
+`gamma=1` to `gamma=0` transition reproduces the next batch bytes, candidate,
+learner, optimizer, replay, RNG and controller state. Focused mechanics are
+45/45 and the broader adjacent matrix is 122/122. No lower-rate segment gate,
+CLI, frozen diagnostic/report asset, registry entry, run artifact or training
+result exists yet.
 
 ## Claim boundary
 

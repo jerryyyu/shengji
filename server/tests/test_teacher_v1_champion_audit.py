@@ -192,6 +192,22 @@ def test_continuation_execution_lock_is_literal_and_mutation_falsifiable(
         audit.continuation_execution_lock_problems()
 
 
+def test_receipt_entry_requires_exact_external_execution_predeclaration(
+        monkeypatch):
+    head = "a" * 40
+    script_sha = "b" * 64
+    monkeypatch.setattr(audit, "audit_transition_problems", lambda: [])
+    monkeypatch.setattr(audit, "git_output", lambda *_args: head)
+    monkeypatch.setattr(audit, "sha256_file", lambda _path: script_sha)
+
+    assert audit.exact_execution_predeclaration_problems(
+        head, script_sha) == []
+    assert "audit execution exact git predeclaration" in \
+        audit.exact_execution_predeclaration_problems("c" * 40, script_sha)
+    assert "audit execution exact script predeclaration" in \
+        audit.exact_execution_predeclaration_problems(head, "d" * 64)
+
+
 def valid_champion_decision():
     candidates = [["A"], ["K"], ["Q"]]
     selection_rollouts = 30 * len(candidates)
@@ -561,6 +577,7 @@ def test_receipt_contract_binds_runtime_sources_and_exact_parents():
         "sha256": stable_digest({"shard": index}),
         "shard_index": index,
     } for index in range(audit.AUDIT_SHARDS)]
+    sources = {"audit_script": "1" * 64}
     payload = {
         "schema": audit.AUDIT_RECEIPT_SCHEMA,
         "audit_id": audit.AUDIT_ID,
@@ -573,7 +590,11 @@ def test_receipt_contract_binds_runtime_sources_and_exact_parents():
         "continuation_execution_lock": audit.CONTINUATION_EXECUTION_LOCK,
         "state_selection_read_label_outcomes": False,
         **runtime,
-        "source_digests": {"audit": "source"},
+        "source_digests": sources,
+        "execution_predeclaration": {
+            "git": runtime["git"],
+            "audit_script_sha256": sources["audit_script"],
+        },
         "stage_b_state_set": {
             "path": "stage-b.json", "sha256": audit.STAGE_B_STATE_SHA256},
         "audit_state_set": {
@@ -583,16 +604,21 @@ def test_receipt_contract_binds_runtime_sources_and_exact_parents():
         "n30_inputs": copy.deepcopy(items),
     }
     assert audit.audit_receipt_problems(
-        payload, runtime=runtime, sources={"audit": "source"}) == []
+        payload, runtime=runtime, sources=sources) == []
     changed = copy.deepcopy(payload)
     changed["n30_inputs"][0]["sha256"] = "not-a-hash"
     assert "audit receipt n30_inputs" in audit.audit_receipt_problems(
-        changed, runtime=runtime, sources={"audit": "source"})
+        changed, runtime=runtime, sources=sources)
     changed = copy.deepcopy(payload)
     changed["state_selection_read_label_outcomes"] = True
     assert "audit receipt outcome-blind state-selection claim" in \
         audit.audit_receipt_problems(
-            changed, runtime=runtime, sources={"audit": "source"})
+            changed, runtime=runtime, sources=sources)
+    changed = copy.deepcopy(payload)
+    changed["execution_predeclaration"]["git"] = "f" * 40
+    assert "audit receipt exact execution predeclaration" in \
+        audit.audit_receipt_problems(
+            changed, runtime=runtime, sources=sources)
 
 
 def test_audit_shard_recomputes_partition_and_totals(monkeypatch):

@@ -256,6 +256,31 @@ def audit_transition_problems() -> list[str]:
             if extra else [])
 
 
+def exact_execution_predeclaration_problems(
+        expected_git: str, expected_audit_script_sha256: str) -> list[str]:
+    """Bind receipt creation to the externally frozen executable identity.
+
+    A bounded path transition is useful review evidence, but is not a terminal
+    identity: another future commit touching only an allowed path would also
+    satisfy it.  Receipt creation therefore requires the caller to supply the
+    exact HEAD and audit-script digest predeclared outside this file.  Every
+    downstream shard/gate is already bound to the receipt's runtime and source
+    digests, so this closes the only point at which a new identity can enter.
+    """
+    problems = audit_transition_problems()
+    head = git_output("rev-parse", "HEAD")
+    valid_git = (isinstance(expected_git, str) and len(expected_git) == 40
+                 and all(char in "0123456789abcdef"
+                         for char in expected_git))
+    if not valid_git or head != expected_git:
+        problems.append("audit execution exact git predeclaration")
+    actual_script_sha256 = sha256_file(__file__)
+    if (not teacher_label.is_sha256(expected_audit_script_sha256)
+            or actual_script_sha256 != expected_audit_script_sha256):
+        problems.append("audit execution exact script predeclaration")
+    return sorted(set(problems))
+
+
 def runtime_contract(*, smoke: bool) -> dict:
     if os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
         raise TeacherProtocolError("set SHENGJI_REQUIRE_VOIDS=1")
@@ -1384,6 +1409,11 @@ def audit_receipt_problems(payload: dict, *, runtime: dict,
             bad.append(f"audit receipt/runtime {key} drift")
     if payload.get("source_digests") != sources:
         bad.append("audit receipt executable source drift")
+    if payload.get("execution_predeclaration") != {
+            "git": runtime.get("git"),
+            "audit_script_sha256": sources.get("audit_script"),
+    }:
+        bad.append("audit receipt exact execution predeclaration")
     stage_b = payload.get("stage_b_state_set", {})
     audit_states = payload.get("audit_state_set", {})
     stage_b_gate = payload.get("stage_b_gate", {})
@@ -1447,6 +1477,15 @@ def load_audit_receipt(path: str, expected_sha256: str, *, runtime: dict,
 def create_receipt(args) -> None:
     runtime = runtime_contract(smoke=args.smoke)
     sources = source_digests()
+    if not args.smoke:
+        execution_bad = exact_execution_predeclaration_problems(
+            args.expected_audit_git,
+            args.expected_audit_script_sha256,
+        )
+        if execution_bad:
+            raise TeacherProtocolError(
+                "audit receipt execution predeclaration: "
+                + "; ".join(execution_bad))
     if not teacher_label.is_run_id(args.run_id):
         raise TeacherProtocolError("audit receipt run id must be 8-128 safe chars")
     context = load_audit_context(
@@ -1478,6 +1517,10 @@ def create_receipt(args) -> None:
         "state_selection_read_label_outcomes": False,
         **runtime,
         "source_digests": sources,
+        "execution_predeclaration": {
+            "git": runtime["git"],
+            "audit_script_sha256": sources["audit_script"],
+        },
         "stage_b_state_set": {
             "path": args.stage_b_state_set,
             "sha256": args.expected_stage_b_state_set_sha256,
@@ -2093,6 +2136,9 @@ def parser() -> argparse.ArgumentParser:
     freeze_.add_argument("--smoke", action="store_true")
     receipt = sub.add_parser("receipt")
     receipt.add_argument("--run-id", required=True)
+    receipt.add_argument("--expected-audit-git", required=True)
+    receipt.add_argument(
+        "--expected-audit-script-sha256", required=True)
     receipt.add_argument("--stage-b-state-set", required=True)
     receipt.add_argument(
         "--expected-stage-b-state-set-sha256", required=True)

@@ -102,7 +102,7 @@ def test_historical_preoutcome_lock_remains_closed_and_unrewritten():
         for problem in S0E.immutable_freeze_problems()
         for marker in (
             "bytes differ from Git introduction",
-            "changed after its pre-outcome Git introduction",
+            "changed after its pre-outcome introduction",
         )
     )
 

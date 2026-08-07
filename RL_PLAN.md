@@ -23,7 +23,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-07 13:42 EDT
+## Current synthesis — 2026-08-07 13:58 EDT
 
 This is the decision layer, not a run ledger. Model lineage remains below;
 `AI_POLICIES.md` owns callable policy conclusions, `BACKLOG.md` owns the
@@ -59,13 +59,14 @@ chronology.
   closed. V11pair's surviving value is within-state exact-ballot
   proposal/ranking and disagreement sourcing; its pairwise output has no
   identified cross-state scalar-leaf meaning.
-- **Teacher-v3 has an accepted 64-state parent, not labels.** Fresh packet
+- **Teacher-v3 Stage A is PASS.** Fresh packet
   `teacher-v1-entry-149m-v3` captured 1,024 deals, passed eight diagnostics,
   and froze 48 representative plus 8 boundary plus 8 uncertainty states at
-  SHA-256 `e01637…b4648`. Next is a separately receipted Stage-A
-  primary/rerun mechanics test over the same canonical eight 8-state shards.
-  Only exact deterministic PASS may freeze the disjoint 128-state Stage-B
-  continuation-quality population.
+  SHA-256 `e01637…b4648`. The first primary attempt correctly refused its own
+  tuple/list-noncanonical JSON; exact-parent repair `b41d8b3` preserved that
+  namespace, then primary-v2/rerun-v2 matched all 64 states. Gate
+  `731dfa…35b` has zero problems and authorizes Stage B. The 128-state set and
+  gold/cheap receipts do not exist yet.
 - **Direct-Q completed and selected none.** Its bounded 512-iteration screen
   improved paired gameplay `+0.1628 +/- 0.0588`, with all three gameplay
   seeds positive, but seed 1 regressed on the frozen held-out Q probe and the
@@ -96,8 +97,8 @@ chronology.
 
 1. Finish the semantics-preserving production scheduler deployment and keep
    RLCB-C1 score-blind through terminal aggregation.
-2. Run Teacher-v3 Stage A on the frozen 64 states. Before any Stage-B receipt,
-   explicitly retain `mc-strong@N=30` as an attribution-only gold continuation
+2. Close Teacher-v3's source-compatible Stage-B freezer transition. Before any
+   Stage-B receipt, explicitly retain `mc-strong@N=30` as attribution-only gold
    or version the schema to the live report-LCB teacher; never substitute one
    under the other's identity.
 3. On fresh Stage-B gold labels, measure V11 proposal hit rate, paired regret
@@ -324,10 +325,10 @@ result.
    decision semantics. Let fresh RLCB-C1 reach its one registered superiority
    gate without partial-score inspection. Formal S0 is closed; no S0c repair,
    extension or adaptive fallback remains.
-2. **Make the teacher pipeline earn scale.** Run Teacher-v3 Stage-A
-   primary/rerun mechanics on the frozen 64-state parent. A deterministic PASS
-   permits the disjoint 128-state Stage-B continuation-quality gate. Before
-   Stage B, explicitly version whether gold is the original
+2. **Make the teacher pipeline earn scale.** Teacher-v3 Stage A now passes on
+   its frozen 64-state parent and permits the disjoint 128-state Stage-B gate.
+   First close the source-compatible freezer transition; then explicitly
+   version whether gold is the original
    `mc-strong@N=30` attribution target or the live report-LCB champion.
 3. **Spend V11 as a proposal signal, not a failed policy.** The corrected direct
    gate and protected-anchor path are closed. On fresh teacher gold labels,
@@ -534,7 +535,7 @@ new teacher or strength audit receives a separately versioned split.
 | Mini `runs/logs/s0a-v1.aggregate.json` | 2,048 mirrored clusters, seeds 132,000,000–132,002,047; SHA-256 `0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49` | Fresh decision-rule mechanism screen: report-LCB +0.353 +/- 0.069 versus current and +0.293 +/- 0.066 versus equal-work uniform; null flat. | **SEALED / REPORT-LCB SELECTED.** Non-promotable parent for S0b only; not training data or deployment evidence. |
 | Mini `runs/logs/s0b-lcb-v1.aggregate.json` | 2,048 mirrored clusters, seeds 134,000,000–134,002,047; SHA-256 `25c0177e27c0e185e96701ad788313a7ea14b892e24586186df02466bf144803` | Fresh allocation screen under report-LCB: report-uniform replicated at +0.357 +/- 0.066 versus current; adaptive added unresolved +0.037 +/- 0.060. | **SEALED / ADAPTIVE SELECTED BY REGISTERED POINT ESTIMATE.** Parent for exact S0c-adaptive-LCB only. Shows report-rule replication, not measurable allocation benefit; never training data. |
 | Air `runs/logs/v11-current-revalidation-v2-repaired-d1d2019.aggregate.json` | 2,048 mirrored clusters; SHA-256 `b7c90ba4c1a9bb421a4cfcc788dbf1eb44365868f65ee0eb58257b38205d21ad` | Existing-byte corrected-encoder direct V11/current/null gate, repaired without replaying games. | **SEALED / FAIL.** Closes the current direct and protected-anchor paths; may inform proposal hypotheses, never train from duel outcomes. |
-| Air `runs/logs/teacher-v1-entry-149m-v3/stage_a_states.json` | 64 unique fresh states from 1,024 captures; SHA-256 `e016373e8ecb9b6c7b6f3c14f8f4b14d9845f76478137f7a2c07249628cb4648` | Exact Teacher-v3 Stage-A mechanics parent: 48 representative, 8 boundary and 8 uncertainty states. | **FROZEN / UNLABELLED.** Only separately receipted Stage-A primary/rerun work may consume it; it is not yet a teacher or training set. |
+| Air `runs/logs/teacher-v1-entry-149m-v3/stage_a_states.json` + `stage_a_gate.json` | 64 unique fresh states from 1,024 captures; state SHA `e016373e8ecb9b6c7b6f3c14f8f4b14d9845f76478137f7a2c07249628cb4648`; gate SHA `731dfa936b6f572866538ead701cdf48d231ef3d1d3a6a0034c2debb1517635b` | Teacher-v3 mechanics parent plus two distinct exact 256/256 label executions; 218,112 candidate-world work. | **STAGE A PASS / STAGE B AUTHORIZED.** Mechanics evidence only, not teacher-quality or training authority; freeze/version Stage B before any gold work. |
 | Mini `runs/logs/direct-q-144m-v1/aggregate.json` | Three-seed bounded 512-iteration screen; SHA-256 `1fa6789eded784e03778f5ede841e45039579625477dbaa249d63c5ccc8ce791` | Immutable-actor Direct-Q treatment/no-step gameplay and fixed held-out Q probes. | **SEALED / SELECT NONE.** Gameplay was positive, held-out learning failed; diagnosis input only, no extension or production authority. |
 | `scripts/rlcb_c1_freeze.v1.json` | Fresh 8x256 report-LCB/current/null protocol; SHA-256 `02c286ed6e431ec807c4fe4040244e11c790c4a5b0ac5dd8f2ba186d275d39d0` | Collision-free confirmation receipt with selection digest `e0f758…3d31`. | **FROZEN / RUNNING.** Outcomes remain sealed until all exact shards finish; superiority and null calibration are separate gates. |
 

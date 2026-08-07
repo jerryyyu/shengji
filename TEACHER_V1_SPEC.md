@@ -6,15 +6,22 @@ eight captures because its in-memory ballot used tuples while JSON used lists.
 V2 also completed capture but stopped before diagnostics because the V11
 diagnostic actor could return a legal action outside its canonical ballot.
 
-The versioned repair `teacher-v1-entry-149m-v3` is
-**STAGE-A STATES FROZEN / STOPPED BEFORE RECEIPTS OR LABELS**. At clean pushed
-commit `be25b4d`, Air produced eight 128-deal captures and eight exact-parent
-diagnostics over seeds `149000000..149001023`, then froze 64 states at
+The versioned repair `teacher-v1-entry-149m-v3` is now
+**STAGE A PASS / STAGE B AUTHORIZED**. At clean pushed commit `be25b4d`, Air
+produced eight 128-deal captures and eight exact-parent diagnostics over seeds
+`149000000..149001023`, then froze 64 states at
 `server/runs/logs/teacher-v1-entry-149m-v3/stage_a_states.json`, SHA-256
 `e016373e8ecb9b6c7b6f3c14f8f4b14d9845f76478137f7a2c07249628cb4648`.
-The terminal supervisor record says `STAGE_A_STATES_FROZEN`,
-`labels_launched:false` and `stage_a_launched:false`. This is an accepted entry
-asset, not a teacher-quality result and not model or production evidence.
+The entry supervisor stopped before labels exactly as frozen. The first primary
+producer then failed closed on a tuple/list JSON round-trip defect; its receipt,
+eight finals and eight `.partial` refusal markers remain immutable. Exact-parent
+labeller repair `b41d8b3` passed 120 tests and a live publication smoke, then
+fresh primary-v2/rerun-v2 receipts produced all 16 canonical shards. Gate
+`stage_a_gate.json`, SHA-256
+`731dfa936b6f572866538ead701cdf48d231ef3d1d3a6a0034c2debb1517635b`,
+records PASS, zero problems, 64 deterministic matches and 218,112
+candidate-world rollouts. This is mechanics evidence, not a teacher-quality,
+model or production result.
 
 The executable entry boundary is `server/shengji/teacher_v1.py`,
 `server/scripts/teacher_v1_states.py` and the singleton
@@ -178,12 +185,21 @@ is cheap. It is not presumed to be a valid teacher.
 Use 48 representative states (four per phase/role/decision cell) plus 16
 boundary/uncertainty states. Run the full 512-world label schema.
 
-The state-selection half of this stage is complete. The next authorized action
-is deliberately narrower than “run the teacher”: independently reopen the
-frozen SHA above, create one exclusive `stage-a-primary` receipt, run its eight
-canonical 8-state label shards, create a distinct `stage-a-rerun` receipt, run
-the same eight partitions again, then invoke the Stage-A gate. Do not launch
-Stage-B cheap/gold work on the 64-state set and do not append capture states.
+Stage A is complete. The original primary namespace is a preserved refusal:
+post-link verification found `BallotSpec.config` tuple/list drift, so all eight
+finals retained `.partial` markers and none entered the gate. Repair `b41d8b3`
+canonicalizes each ballot and the complete payload into the JSON domain before
+validation. It deliberately permits a label-only git transition only when the
+immutable state hash and every state-freezer, compiled engine, replay and actor
+source digest remain exact; the new receipts/output bind the repaired git and
+label source independently.
+
+Primary-v2 and rerun-v2 used distinct receipt SHA/nonces/run ids and completed
+the same eight canonical 8-state partitions at exact 256/256 work. Gate SHA
+`731dfa936b6f572866538ead701cdf48d231ef3d1d3a6a0034c2debb1517635b`
+reopened every byte and records `PASS`, `problems:[]`, 64 states, 218,112
+candidate-world rollouts, `stage_b_authorized:true` and
+`stage_c_authorized:false`.
 
 Pass requires 64/64 exact replays, complete legal held ballots, 512/512 accepted
 worlds per state, exact tensor shapes, fold disjointness, deterministic rerun
@@ -197,6 +213,14 @@ complete/digest-valid 64-state asset and the exact Stage-A PASS artifact whose
 label artifacts and their receipts, reconstructs their canonical partitions,
 and reruns record, deterministic-rerun and runtime/source checks before
 authorizing a Stage-B state set.
+
+The current Stage-B freezer still compares whole diagnostic/freeze git even
+when its state-freezer and all semantic source hashes match. Because Stage A
+legitimately ran under the label-only repair commit, that check now blocks the
+authorized transition. Version a bounded source-compatible freezer rule (and
+mutation-test semantic source drift) before writing `stage_b_states.json`.
+This is separate from the gold-continuation choice below. No Stage-B receipt
+exists yet.
 
 ## Stage B — continuation-quality gate
 

@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-07 13:30 EDT
+## Current synthesis — 2026-08-07 13:58 EDT
 
 ### Production search
 
@@ -88,16 +88,18 @@ and put exact run detail in `JOBS.md` or the dated archive.
   cannot be extended. Diagnose seed 1/target calibration, then use a bounded
   Suphx-style supervised microbaseline before Direct-Q v2.
 - Teacher-v3 fixed canonical actor actions and froze 64 fresh disjoint states
-  after 1,024 captures and eight diagnostics. No label exists yet. Next is two
-  separately receipted Stage-A mechanics runs; only their exact PASS admits the
-  128-state Stage-B continuation-quality gate.
+  after 1,024 captures and eight diagnostics. Stage A exposed one JSON-domain
+  publication defect, preserved that refused namespace, then passed under
+  exact-parent repair `b41d8b3`: 16 independent shards, 64/64 deterministic
+  equality, zero gate problems. Stage B is authorized but not yet frozen or
+  receipted; its source transition and gold continuation must be versioned.
 
 ### Immediate strength queue
 
 1. Finish running RLCB-C1 without opening partial scores.
 2. Complete and deploy the semantics-preserving report-LCB scheduler/CPU fix.
-3. Run Teacher-v3 Stage-A primary/rerun mechanics on the frozen 64-state parent;
-   do not jump to Stage B.
+3. Close the Teacher-v3 Stage-B freezer transition and explicitly version its
+   gold continuation; then freeze the disjoint 128-state quality gate.
 4. Diagnose Direct-Q's failed held-out target and freeze the Suphx supervised
    microbaseline.
 5. Use V11 only to source/rank teacher disagreements until fresh gold labels

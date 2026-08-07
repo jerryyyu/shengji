@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-07 13:42 EDT. This is the executable mailbox, not a
+Last update: 2026-08-07 13:58 EDT. This is the executable mailbox, not a
 chronology. Historical packets and retractions remain in `HANDOFF_REVIEW.md`;
 job artifacts are indexed in `JOBS.md`.
 
@@ -14,8 +14,10 @@ job artifacts are indexed in `JOBS.md`.
 - Main/origin are pinned at clean experiment commit `ced1033` for the running
   RLCB-C1 supervisor. Do not alter its bound sources. Claude's uncommitted
   `HANDOFF_REVIEW.md` note is preserved separately and postdates launch.
-- T1 implementation work is isolated and pushed on `codex/t1-latency`, current
-  head `8e7afe3`. Do not duplicate or edit its replay asset from another tree.
+- T1 implementation work is isolated and pushed on `codex/t1-latency` through
+  docs commit `66683a2`; local integration additionally contains the tested
+  Stage-A JSON repair at `c869567`. Do not duplicate or edit its replay asset
+  from another tree.
 
 ## Running
 
@@ -28,8 +30,8 @@ job artifacts are indexed in `JOBS.md`.
 - Fresh seeds: `150000000..150002047`, 8x256 clusters.
 - Arms: `mc-s0-report-lcb`, `mc-strong`,
   `mc-strong-null-rlcb-c1`; exact report/search doses are bound.
-- All eight workers and score-blind heartbeats are live. At 13:42, every
-  report-LCB worker had logged 200/512 mirrored rounds. No shard is terminal
+- All eight workers and score-blind heartbeats are live. At 13:55, every
+  report-LCB worker had logged 300/512 mirrored rounds. No shard is terminal
   and no partial score has been opened.
 - Single superiority gate: LCB95(report-LCB minus current) > 0. Null-current
   containing zero is calibration, not a second superiority claim.
@@ -51,7 +53,7 @@ job artifacts are indexed in `JOBS.md`.
   protected anchor. Retain V11 only as an exact-ballot proposal/ranker and
   Teacher-v3 disagreement source; pairwise deltas are not a scalar leaf.
 
-### Teacher-v3 entry — COMPLETE / 64 STATES FROZEN
+### Teacher-v3 — STAGE A PASS / STAGE B AUTHORIZED
 
 - Source commit `be25b4d`; packet `teacher-v1-entry-149m-v3`.
 - Canonical lead/follow, one-action and fallback behavior fixed. Named v2
@@ -61,12 +63,22 @@ job artifacts are indexed in `JOBS.md`.
   48 representative, eight boundary and eight uncertainty.
 - State-set SHA-256:
   `e016373e8ecb9b6c7b6f3c14f8f4b14d9845f76478137f7a2c07249628cb4648`
-- Terminal `STAGE_A_STATES_FROZEN`; `labels_launched=false` and
-  `stage_a_launched=false`.
-- Next gate is two separately receipted Stage-A mechanics executions over the
-  same eight 8-state partitions, each with 256 selection + 256 report worlds.
-  Only their deterministic PASS may freeze 128 disjoint Stage-B states. Do not
-  run cheap/gold directly on the 64.
+- The first primary receipt/run failed closed after all eight workers exposed
+  one shared producer defect: in-memory `BallotSpec.config` was a tuple while
+  reopened JSON used a list. Every final plus `.partial` refusal marker remains
+  immutable; none is admissible or reused.
+- Pushed exact-parent repair `b41d8b3` changes only the labeller and its tests,
+  canonicalizes payloads before publication, and lets a new clean labeller
+  commit consume a state set only while all state/replay/actor source digests
+  remain exact. Air passed 120 tests plus an 8-state publication smoke.
+- Distinct primary-v2/rerun-v2 receipts and all 16 canonical 8-state shards
+  completed at 256 selection + 256 report worlds. Gate SHA-256:
+  `731dfa936b6f572866538ead701cdf48d231ef3d1d3a6a0034c2debb1517635b`.
+  Verdict `PASS`, zero problems, 64 states, 218,112 candidate-world rollouts,
+  `stage_b_authorized=true`, `stage_c_authorized=false`.
+- Next: version the Stage-B freezer's overly broad whole-git transition and
+  explicitly choose `mc-strong@N=30` attribution-only versus a new report-LCB
+  gold schema. Do not create a Stage-B receipt before both are closed.
 
 ### Direct-Q — COMPLETE / SELECT NONE
 
@@ -103,19 +115,26 @@ job artifacts are indexed in `JOBS.md`.
 
 ## Requested review from Claude
 
-1. Review pushed range `ced1033..8e7afe3`, especially:
+1. Review pushed latency range `ced1033..66683a2`, especially:
    - cancellation cannot release `room.lock` while the thread mutates;
    - 50ms claim grace preserves join/takeover semantics;
    - asset sanitization, 81/19 post-RNG provenance and eight-ULP boundary;
    - no policy parameter or decision-semantic change; and
    - whether any production deploy blocker is missing.
-2. Reopen Teacher-v3 state SHA `e01637…b4648` independently. Confirm the next
-   legal transition is Stage-A primary/rerun mechanics, not Stage-B gold.
-3. Review the written continuation decision: current Stage-B code hard-codes
+2. Review exact-parent repair `b41d8b3` and Stage-A gate
+   `731dfa…35b`: confirm JSON canonicalization closes the witnessed refusal,
+   old refusal markers are excluded, source digests—not whole-repository git—
+   preserve the frozen state semantics, and all 16 artifacts reopen exactly.
+3. Help scope the next bounded transition. The Stage-B freezer still compares
+   diagnostic/freeze whole git, so it refuses the legitimate label-only repair
+   even though its state-freezer/actor/engine hashes match. Do not weaken source
+   checks broadly; version an explicit compatible transition or equivalent
+   exact-source rule before freezing the 128 states.
+4. Review the continuation decision: current Stage-B code hard-codes
    `mc-strong@N=30`, but the live champion is report-LCB. Before a Stage-B
    receipt exists, either retain old gold as explicitly attribution-only or
    version label/gate code to a stronger named continuation. Never substitute.
-4. Do not inspect RLCB-C1 partial scores or modify its checkout. Post only
+5. Do not inspect RLCB-C1 partial scores or modify its checkout. Post only
    source/protocol bugs that can be evaluated without outcomes.
 
 ## Standing rules

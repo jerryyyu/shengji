@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / RLCB-C1 on Mini at 2026-08-07 13:42 EDT
+## RUNNING / RLCB-C1 on Mini at 2026-08-07 13:58 EDT
 
 The clean pushed `ced1033` supervisor owns
 `server/runs/logs/rlcb-c1-150m-v1`: eight concurrent 256-cluster shards over
@@ -11,17 +11,17 @@ fresh seeds `150000000..150002047`. Arms are exactly `mc-s0-report-lcb`,
 `mc-strong` and collision-free `mc-strong-null-rlcb-c1`; receipt SHA-256 is
 `02c286ed6e431ec807c4fe4040244e11c790c4a5b0ac5dd8f2ba186d275d39d0`.
 All eight processes and score-blind 30-second supervisor heartbeats are live.
-At this ledger update, every report-LCB worker had crossed 200/512 mirrored
+At this ledger update, every report-LCB worker had crossed 300/512 mirrored
 rounds; no shard was terminal and no score was opened. Do not share Mini with
 another heavy job, edit the bound checkout, or inspect partial outcomes.
 
-Air has no strength process after completing V11-v2 and Teacher-v3 entry. Its
-latest bounded job was the uncontended exact latency replay at pushed
+Air has no live strength process after completing Teacher-v3 Stage A. Its
+latest latency job was the uncontended exact replay at pushed
 `9acafb1`: 100/100 semantic matches, compiled p50 0.172s, p95 0.357s, max
 0.422s, terminal gate PASS. Frozen result SHA-256 is
 `2623def50a91d96a9dc97bd63139ef28532c2ee389c1a0cc9b4631842c6dcd57`.
-The next admitted Air strength work is Teacher-v3 Stage-A primary/rerun
-mechanics after the 64-state parent reopen and receipt freeze.
+Stage B is not yet launchable: first version the freezer's source-compatible
+transition and explicitly name the gold continuation before any receipt.
 
 ## COMPLETE / T1 learned-lane gates
 
@@ -32,11 +32,14 @@ mechanics after the 64-state parent reopen and receipt freeze.
   `-0.109863 +/- 0.070111`, null-current `-0.031250 +/- 0.067878`.
   Exact dose and null calibration passed; both superiority gates failed;
   `protected_composition_authorized=false`.
-- **Teacher-v3 entry / FROZEN:** clean Air `be25b4d`, packet
+- **Teacher-v3 Stage A / PASS:** entry parent `be25b4d`, packet
   `teacher-v1-entry-149m-v3`, 8x128 captures, eight diagnostics and exactly 64
   Stage-A states. State-set SHA-256
   `e016373e8ecb9b6c7b6f3c14f8f4b14d9845f76478137f7a2c07249628cb4648`;
-  terminal `STAGE_A_STATES_FROZEN`; no receipt or label launched.
+  exact-parent repair `b41d8b3`; gate SHA-256
+  `731dfa936b6f572866538ead701cdf48d231ef3d1d3a6a0034c2debb1517635b`.
+  All 16 primary/rerun shards reopened identically; verdict PASS, zero
+  problems, 218,112 candidate-world rollouts, Stage B authorized.
 - **Direct-Q / SELECT NONE:** full admitted 512-iteration screen completed at
   `server/runs/logs/direct-q-144m-v1`; aggregate SHA-256
   `1fa6789eded784e03778f5ede841e45039579625477dbaa249d63c5ccc8ce791`.
@@ -166,7 +169,7 @@ exists, and prove zero off-ballot outputs on the named capture/witness
 population. Claude's scratch fix measured 0/872 off-ballot decisions; that is
 diagnostic evidence, not yet an accepted code gate.
 
-## COMPLETE / teacher supervised entry packet v3 (Air; 64 states frozen)
+## COMPLETE / teacher supervised entry v3 + Stage A (Air; PASS)
 
 Pushed `be25b4d` made the v2 requirements executable: canonical ballot leads,
 sorted follows, literal one-candidate return and in-ballot fallback. The exact
@@ -179,11 +182,39 @@ All eight 128-deal captures, eight exact-parent diagnostics and the one 64-state
 freeze completed. The state set contains 48 representative, eight boundary and
 eight uncertainty rows; SHA-256 is
 `e016373e8ecb9b6c7b6f3c14f8f4b14d9845f76478137f7a2c07249628cb4648`.
-Supervisor progress SHA-256 is
+Entry-supervisor progress SHA-256 is
 `b7e3995e64012819e1df0b5024d13e30d5c5c1943ed801cba0898c975fc4511e`.
-The terminal record explicitly stops before Stage-A receipts/labels. Next work
-must create separate primary/rerun receipts and run the same eight canonical
-8-state label partitions twice; Stage-B cheap/gold is not yet authorized.
+The entry supervisor stopped before Stage-A receipts/labels exactly as frozen.
+
+The first primary attempt then found a separate producer defect. Every worker
+published a final hard link but kept its `.partial` and refused because
+`BallotSpec.config` was a tuple in memory and a list after JSON. No output was
+accepted or reused. A first repair based on current main was also refused in an
+8-state smoke because RLCB's unrelated registry addition changed a source hash;
+that commit is superseded for this evidence. Exact-parent `b41d8b3`, based
+directly on `be25b4d`, changes only the labeller/test, canonicalizes the whole
+payload before validation and permits cross-commit labelling only while every
+state/replay/actor source digest remains identical. Air passed 120 tests and a
+live 8-state 1/1-world publication smoke.
+
+Fresh primary-v2 receipt SHA-256
+`3822e341c991c3e07b313ab634d1c3121c66de201e30a9a7448f177c6f00f922`
+and rerun-v2 receipt SHA-256
+`fcb5488ec5231b92804dae7f1580eefc19137f21deb2be9c5dfcef71d4e6777f`
+bound distinct run ids, roles and nonces. All 16 canonical 8-state shards
+completed at exact 256/256 work. The gate reopened them and published PASS:
+
+- gate SHA-256
+  `731dfa936b6f572866538ead701cdf48d231ef3d1d3a6a0034c2debb1517635b`;
+- 64 states, zero problems, 218,112 candidate-world rollouts;
+- measured primary aggregate 104.99s and projected 2,048-state cheap work
+  3,359.53 aggregate worker-seconds;
+- `stage_b_authorized=true`, `stage_c_authorized=false`.
+
+Do not create Stage-B receipts yet. Its freezer still uses an over-broad
+diagnostic/freeze whole-git equality that rejects this legitimate label-only
+transition, and its implemented gold remains `mc-strong@N=30` while the live
+champion is report-LCB. Close both versioning decisions first.
 
 ## COMPLETE / V11 corrected-encoder direct v2 (artifact repaired / FAIL)
 

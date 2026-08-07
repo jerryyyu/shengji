@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-07 18:01 EDT. This is the executable mailbox only.
+Last update: 2026-08-07 18:12 EDT. This is the executable mailbox only.
 Durable discussion and retractions remain in `HANDOFF_REVIEW.md`; policy
 synthesis belongs in `AI_POLICIES.md`.
 
@@ -47,10 +47,11 @@ from its original clean `b365120` runtime returned
 ## Running compute
 
 Air owns eight live compiled+strict Teacher-v3 Stage-B gold workers at exact
-`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 18:00 all remained near
-one CPU after about three hours, with zero final gold shards; outcome-blind
-progress was 7.0--34.0% of fold worlds by shard and 19.6% aggregate
-(`3,216/16,384`). This proves
+`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 18:08 all eight real
+Python workers remained healthy at 86--89% CPU after about 3h24m, with zero
+final gold shards; outcome-blind fold progress by shard was
+`372/704/152/432/268/508/356/500`, or 20.1% aggregate
+(`3,292/16,384`). This proves
 liveness but is not a compute-weighted ETA because ballot sizes and
 continuation costs vary. Stage B is attribution-only; do not inspect or use
 its outcomes to alter the independently frozen champion audit.
@@ -156,8 +157,15 @@ match. The receipt must use the already-frozen run id/names plus exact git
 `182d1df21697cedd722edfd3215ea1e2a7dd8753`, script SHA
 `57796fda247a4152a58bb98508d24ae1063f7e2c843ccf436b8b111f7c887ead`,
 state SHAs above, and the newly sealed parent/gate SHAs. Only then launch
-exactly eight 32/32 audit shards. Their terminal gate is likewise published
-once after all workers have exited and all eight artifacts validate.
+exactly eight 32/32 audit shards. **Do not infer success from the receipt's
+final filename:** publication hard-links that name before the last provenance
+recheck. Require the receipt creator to exit `0`, require a regular final and
+no `champion_audit_receipt_v1.json.partial`, recompute its SHA-256, and reopen
+it under that exact SHA before starting labels. Apply the same rule to every
+audit label: worker exit `0`, regular final, no matching `.partial`, exact
+SHA/reopen. Their terminal gate is likewise published once, only after all
+eight workers have exited and all eight artifacts validate; preserve a
+non-PASS gate and never retry it.
 
 ## Production latency hardening
 

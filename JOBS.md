@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 18:01 EDT
+## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 18:12 EDT
 
 Air has eight live compiled+strict `teacher_v1_label.py gold` workers in clean
 detached worktree `~/Projects/shengji-teacher-air` at exact commit
@@ -13,9 +13,10 @@ and remain near one CPU each. This block is attribution-only. Its outcomes
 cannot change the independently frozen 64-state report-LCB continuation audit.
 
 All eight output finals remain absent and all eight Python workers plus their
-caffeinate children remain live after about three hours at roughly 76--81%
-CPU. An outcome-blind parse of progress events showed 7.0--34.0% of fold
-worlds by shard and `3,216/16,384` (19.6%) aggregate. This is a liveness
+caffeinate children remain live after about 3h24m; the real workers use
+roughly 86--89% CPU. An outcome-blind parse of progress events showed
+`372/704/152/432/268/508/356/500` fold worlds by shard and
+`3,292/16,384` (20.1%) aggregate. This is a liveness
 counter, not a compute-weighted ETA: ballot sizes and continuation costs differ
 by state. No outcome file was opened. The exact one-shot readiness and gate
 command now live in `HANDOFF_ACTIVE.md`; in particular, filename appearance is
@@ -41,6 +42,9 @@ Operational names were frozen before any gold final existed: producer gate
 `champion_audit_receipt_v1.json`, eight
 `champion_audit_v1_shard00..07.json` outputs and terminal
 `champion_audit_gate_v1.json`. A non-PASS Stage-B gate launches none of them.
+Final filenames are not completion signals for this pipeline: each receipt,
+label and gate must also have an exit-0 creator, no surviving `.partial`, an
+exact SHA-256 and a successful reopen before its child stage.
 
 Mini has no long strength worker. RLCB-C1, V11-v2 and Direct-Q are terminal;
 Mini is available for bounded compiled latency checks or the next separately

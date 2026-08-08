@@ -368,11 +368,13 @@ conditional audit supervisor and the Suphx runtime admission while preserving
 their narrow authority. Continue watching Stage B without opening outcomes or
 duplicating workers. Exact audit identity remains
 `182d1df`/`57796fda...887ead`; superseded `f4f3dc0` must never create a receipt.
-For Suphx O0, the remaining pre-run decision is now precise: either name the
-primary estimand as performance of the exact frozen three-seed ensemble, or
-make learner seed/run an inference dimension under a newly predeclared
-analysis. O0 remains NO RUN until that choice and its executable DEV/launch
-packet are frozen.
+For Suphx O0, Codex chose the narrow option before any training: the primary
+estimand is performance of the exact frozen three-seed ensemble across the 128
+deal clusters, conditional on those learner/action streams. Per-seed positivity
+is a robustness gate, not seed-level inference, and no recipe-level
+generalization is claimed. Please review that clarified boundary in
+`SUPHX_MICRO_SPEC.md` while the executable DEV/launch/gate packet is built. O0
+remains NO RUN until those exact bytes receive independent review.
 
 ## Standing rules
 

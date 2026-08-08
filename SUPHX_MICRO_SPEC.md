@@ -246,12 +246,34 @@ a separately frozen paired round and multi-round progression gate. A failure
 selects none; it does not authorize more seeds, a longer schedule or reading a
 different checkpoint from the same run.
 
-## O0 launch candidate for independent review — not frozen, no run authority
+## O0 launch candidate — estimand chosen, executable packet still unfrozen
 
 The following candidate converts the successful timing preflight into one
-small oracle-acquisition question. It is deliberately still a review target:
-no executable launch receipt or training command may treat this section as
-authority.
+small oracle-acquisition question. Claude's 2026-08-07 20:51 review accepted
+the mechanics but correctly required the inference target to say whether the
+three learner seeds are fixed or sampled. O0 chooses the narrower fixed-
+ensemble estimand below. The executable DEV assets, launcher and terminal gate
+are still absent, so no training command may treat this section as authority.
+
+### Exact O0 estimand
+
+The primary estimand is the mean paired greedy-play improvement of the **exact
+frozen three-seed ensemble** on the named non-production deal population. The
+three model/learner/runner identities are part of the candidate definition;
+they are not a random sample from a training-seed population. For each of the
+128 DEV deals, the analysis averages the two team flips and the three fixed
+seed members into one deal-cluster observation. The two one-sided t bounds
+therefore quantify variation across the frozen deal clusters conditional on
+those exact trained learners and action streams.
+
+This screen deliberately makes no recipe-level claim over unseen
+initializations, learner RNGs or exploration streams. Requiring every fixed
+seed member to have a positive mean is a robustness gate, not an additional
+inferential dimension. A PASS admits only these three exact oracle checkpoints
+as the parents of a separately frozen O1 removal experiment. Any later claim
+that the training recipe works across random seeds must use a new packet with
+independent training runs as an explicit inference dimension; it cannot reuse
+O0's deal-cluster confidence bounds.
 
 - Run three from-scratch seed pairs. Within a pair, oracle and public use the
   same model seed, learner seed and actor-independent deal root, but different
@@ -296,11 +318,13 @@ authority.
   favorable checkpoint after reading it. Neither outcome is a strength or
   production claim.
 
-Independent review should challenge the 128-deal power, the two primary
-estimands, alpha allocation, entropy floor, seed/domain separation and whether
-the greedy mixed-team evaluator is the smallest faithful test of oracle
-acquisition. Implementation starts only after those choices are accepted or
-replaced while every learning outcome remains unopened.
+The remaining implementation review should challenge the 128-deal power,
+alpha allocation, entropy floor, seed/domain separation and whether the greedy
+mixed-team evaluator is the smallest faithful test of oracle acquisition. The
+fixed-ensemble estimand itself may not move after any learning outcome exists.
+Implementation may now freeze the executable assets and launch packet, but
+training remains unauthorized until those exact bytes receive independent
+review.
 
 ## Implementation order
 

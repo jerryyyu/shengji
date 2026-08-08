@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-07 22:55 EDT.
+Last re-derived: 2026-08-07 23:21 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -28,8 +28,12 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   report-LCB policy but searches an isolated snapshot off-loop and overlaps
   that pacing delay. Its live ship-gate room recorded 42 bot turns at
   search p50/p95/max 1.136/1.857/3.104s and turn p50/p95/max
-  1.138/1.858/3.106s, plus responsive claim/reconnect/X-ray checks. Continue
-  monitoring real human rooms; a faster Fly CPU remains a separate lever.
+  1.138/1.858/3.106s, plus responsive claim/reconnect/X-ray checks. The first
+  ordinary post-fix human room then completed five rounds with 195 search-like
+  bot turns (`compute_seconds >= 0.05`): search p50/p95/max
+  0.896/1.714/1.906s and full-turn
+  0.904/1.716/1.907s. All 249 bot turns were offloaded and isolated. Continue
+  monitoring concurrent rooms; a faster Fly CPU remains a separate lever.
 - **Formal S0 is COMPLETE / SELECT NONE, for an evidence failure—not a measured
   loss.** All eight 1,024-cluster S0c shards and the aggregate completed, but
   the historical null had a lag-17 cross-cluster RNG collision. The exact
@@ -67,11 +71,14 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   `b22ee8e` adds a score-redacted compiled+strict preflight. Its exact Mini
   artifact `4f0c3dd5...434` completed six disposable endpoint updates in
   2.665s, reconciled causal deals/work/surfaces, retained no candidate and
-  recommends the capped 64 iterations per arm. Exact `dd83182` now implements
-  the fixed-ensemble freezer, legal hidden-hand/burial DEV challenges, six-arm
-  train/resume path, deterministic evaluator, terminal gate and the sole
-  `server/runs/logs/suphx-o0-fixed-ensemble-v1` artifact root. Its focused,
-  adjacent and broad suites pass. Independent re-review must pass before the
+  recommends the capped 64 iterations per arm. Exact `7b15338` implements
+  the fixed-ensemble freezer, chronological legal hidden-hand/burial DEV
+  challenges, six-arm train/resume path, deterministic evaluator, terminal
+  gate and the sole `server/runs/logs/suphx-o0-fixed-ensemble-v1` artifact
+  root. The 22:57 review caught 13 snapshot-plausible but historically illegal
+  worlds before freeze; all public plays now replay through real `Round.play`.
+  Focused 25/25, adjacent 196/196 in both routes and broad ordinary
+  1,030 passed / 27 skipped. Independent re-review must pass before the
   packet is frozen; those packet bytes then need a second hash-bound review
   admission before any learning run.
 - **Teacher-v3 is the live strength job.** Actor canonicalization, capture,
@@ -86,9 +93,9 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 |---|---|---|
 | **T1 / Lane A production latency — COMPLETE / LIVE MONITOR** | Keep the first stronger-than-MC production policy enjoyable to play | Fly release 17 runs exact `latency-cd6789e` / `047bcfe4...5b300`. Health, native activation, claim, reconnect, stale-discard, X-ray isolation and concurrent WebSocket responsiveness passed live. Keep release 16 as the runtime rollback and `mc-strong` as the separate policy rollback; collect ordinary human-room timing before considering a CPU resize. |
 | **T1 / Lane A.1 V11pair — COMPLETE / SELECT NONE** | Preserve the learned milestone without forcing it into the champion | Artifact repair passed; the frozen rule rejected protected composition. Keep v11 as a bounded proposer/ranker and teacher diagnostic only. No protected-anchor run is authorized. |
-| **T1 / Lane B teacher — STAGE-B RUNNING; CONTROLLER REVIEW PASS** | Generate counterfactual data capable of exceeding the old heuristic continuation | Eight Air workers remain healthy; the outcome-blind fold counter was 50.3% at 22:55, not an ETA. The 20:51 review accepted the predeclared detached completion substitute, and the 21:57 independent review passed exact controller `1c97928`. Complete and validate all eight attribution-only gold shards and seal the Stage-B gate exactly once. Only PASS enters preparer `5ffb6773...6baa57`, which exclusively copies/reopens the exact 20 parents, verifies supervisor bytes before copying and owns receipt exit zero; supervisor `44025386...f682d5` then owns all eight frozen 32/32 audit workers and one exact terminal verdict. Frozen evaluator remains exact `182d1df`/`57796fda...887ead`; superseded `f4f3dc0`, old controller `07b2a9f`, filenames alone and any non-PASS authorize nothing. No Stage-B outcome may tune the audit. |
+| **T1 / Lane B teacher — STAGE-B RUNNING; CONTROLLER REVIEW PASS** | Generate counterfactual data capable of exceeding the old heuristic continuation | Eight Air workers remain healthy; the outcome-blind fold counter was 54.9% (`9,000/16,384`) at 23:21, not an ETA. The 20:51 review accepted the predeclared detached completion substitute, and the 21:57 independent review passed exact controller `1c97928`. Complete and validate all eight attribution-only gold shards and seal the Stage-B gate exactly once. Only PASS enters preparer `5ffb6773...6baa57`, which exclusively copies/reopens the exact 20 parents, verifies supervisor bytes before copying and owns receipt exit zero; supervisor `44025386...f682d5` then owns all eight frozen 32/32 audit workers and one exact terminal verdict. Frozen evaluator remains exact `182d1df`/`57796fda...887ead`; superseded `f4f3dc0`, old controller `07b2a9f`, filenames alone and any non-PASS authorize nothing. No Stage-B outcome may tune the audit. |
 | **T1 / Lane C Direct-Q — COMPLETE / SELECT NONE** | Learn from the failure without selecting its positive gameplay tail | Preserve aggregate SHA `1fa6789e…791`; do not deploy, extend or mutate the 144M recipe. The next learner requires a separately frozen Suphx-style or other role-correct microbaseline gate. |
-| **T1 / Lane C Suphx O0 — IMPLEMENTED / RE-REVIEW REQUIRED / NO RUN** | Test whether a full-information policy can learn before spending compute on feature removal | Preserve preflight SHA `4f0c3dd5…434` and exact O0 material commit `dd83182`; dose is 64 iterations per arm for the exact fixed three-seed ensemble across 128 deal clusters. The repair enforces legal hidden-world witnesses, one exact root and a machine-readable PASS bound to the packet SHA. Routine reopen no longer regenerates 128 DEV games; freeze/review/gate retain semantic replay and all long phases report progress. Focused 22/22, adjacent 193/193 in both routes; broad ordinary 1,026 passed / 27 skipped before the focused O0 deltas. Re-review `dd83182`; on PASS freeze only, then independently hash-admit the packet before Mini training. |
+| **T1 / Lane C Suphx O0 — IMPLEMENTED / RE-REVIEW REQUIRED / NO RUN** | Test whether a full-information policy can learn before spending compute on feature removal | Preserve preflight SHA `4f0c3dd5…434` and exact O0 material commit `7b15338`; dose is 64 iterations per arm for the exact fixed three-seed ensemble across 128 deal clusters. Every witness now clears snapshot constraints and a full chronological engine replay, including successful-throw legality. Exact-root and machine-readable packet-PASS boundaries remain. Focused 25/25, adjacent 196/196 in both routes, broad ordinary 1,030 passed / 27 skipped. Re-review `7b15338`; on PASS freeze only, then independently hash-admit the packet before Mini training. |
 | **RLCB-C1 fresh confirmation — COMPLETE / ARTIFACT-ONLY CONFIRM** | Close formal report-LCB superiority | 2,048/2,048 fresh clusters, exact doses, zero stream collisions, sane null and positive superiority LCB. The late dirty-doc supervisor refusal is bound by non-replay closeout SHA `06dd487d…b7aae5`; preserve aggregate SHA `83f5a9df…f5ef5ea`. No extension or S0c reinterpretation remains. |
 | **Formal S0 — COMPLETE / SELECT NONE** | Preserve the burned S0c evidence boundary | Closeout `ef0a365…fde9a`, terminal parent `ca556c2`, no parsed outcomes, no retry/extension, and an empty S0 service namespace. There is no remaining S0c work. |
 
@@ -104,7 +111,7 @@ behind code or protocol work we could have completed.
 | **Lane A / production guardrail** | **Shipped:** exact-semantic speculative scheduling and off-loop X-ray are live in release 17. Continue passive timing collection from ordinary rooms. | The 100-decision replay was exact; the live smoke met p50 <=1.5s, p95 <=4.0s and max <=8.0s, showed no additive 0.7s after long searches, and kept WebSockets responsive during X-ray. A billable Fly resize still requires Jerry's approval. |
 | **Lane A.1 / V11pair** | **Closed:** artifact-only repair published from unchanged bytes and selected none. | No protected composition. Reuse v11 only in a new explicitly diagnostic/proposal contract. |
 | **Lane B / stronger teacher** | Finish the running Stage-B gold labels, validate their exact gate, then execute the frozen 64-state report-LCB continuation audit. | All eight shards and receipts exact; no outcome-conditioned audit change; disjoint 32-world selection/report folds and full downstream report-LCB continuation at every information set. |
-| **Lane C / beyond imitation** | **Advanced:** Direct-Q selected none; Suphx O0's complete executable boundary is pushed at `dd83182` after repairing legal-world, exact-root, review-admission and redundant-replay defects. Obtain re-review, freeze the exact packet, review/admit its hash, then run on Mini without waiting for Teacher. | Exact Mini artifact `4f0c3dd5…434` recommends 64 iterations/arm but grants no run authority. O0 must prove noncollapsed oracle acquisition on frozen DEV before any feature-removal O1 work. |
+| **Lane C / beyond imitation** | **Advanced:** Direct-Q selected none; Suphx O0's complete executable boundary is pushed at `7b15338` after repairing snapshot and chronological legal-world, exact-root, review-admission and redundant-replay defects. Obtain re-review, freeze the exact packet, review/admit its hash, then run on Mini without waiting for Teacher. | Exact Mini artifact `4f0c3dd5…434` recommends 64 iterations/arm but grants no run authority. O0 must prove noncollapsed oracle acquisition on frozen DEV before any feature-removal O1 work. |
 | **Fresh search confirmation** | **Closed:** RLCB-C1 formally confirmed report-LCB. | Preserve the exact aggregate and claim boundary; no additional confirmation compute is needed now. |
 
 ### Fleet order for T1
@@ -112,7 +119,7 @@ behind code or protocol work we could have completed.
 1. **Local + production diagnostics:** own the latency benchmark and
    exact-semantic server optimization; do not consume Mini/Air training slots.
 2. **Mini:** RLCB-C1 and Direct-Q are terminal. Exact Suphx O0 implementation
-   `dd83182` awaits re-review; Mini stays free until code review, packet freeze
+   `7b15338` awaits re-review; Mini stays free until code review, packet freeze
    and hash-bound packet admission all pass. Never turn the timing
    recommendation into an unreviewed training run or improvise a Direct-Q/
    protected-anchor extension.

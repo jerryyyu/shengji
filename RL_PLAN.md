@@ -81,9 +81,13 @@ closed lane.
   label only the separately frozen 64-state audit. Stage-B outcomes may not
   move the audit population or rule.
 - **Suphx O0 is the independent parallel RL gate.** Exact material commit
-  `dd83182` freezes the fixed three-seed oracle-acquisition question, legal
-  hidden-hand/burial witnesses, 128 DEV deals, six 64-update arms, inference,
-  stop rule and sole artifact root. It still has no packet or run authority:
+  `7b15338` freezes the fixed three-seed oracle-acquisition question,
+  chronologically legal hidden-hand/burial witnesses, 128 DEV deals, six
+  64-update arms, inference, stop rule and sole artifact root. The legal-world
+  gate reconstructs post-burial hands and replays every public trick through
+  the real engine; this repaired 13 snapshot-plausible alternatives that
+  contradicted an earlier pair obligation or successful throw. It still has no
+  packet or run authority:
   implementation re-review must pass, then the frozen packet hash needs a
   second admission review. Once admitted, O0 belongs on Mini while Teacher-v3
   continues on Air. O1 depends on O0 proving oracle acquisition, not on the

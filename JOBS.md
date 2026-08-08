@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 22:55 EDT
+## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 23:21 EDT
 
 Air has eight live compiled+strict `teacher_v1_label.py gold` workers in clean
 detached worktree `~/Projects/shengji-teacher-air` at exact commit
@@ -13,8 +13,8 @@ and remain near one CPU each. This block is attribution-only. Its outcomes
 cannot change the independently frozen 64-state report-LCB continuation audit.
 
 All eight output finals remain absent and all eight Python workers plus their
-caffeinate children remain live. At 22:55 the outcome-blind fold counters were
-`888/1564/856/972/508/1012/1216/1232`, or `8,248/16,384` (50.3%). No outcome
+caffeinate children remain live. At 23:21 the outcome-blind fold counters were
+`1168/1744/880/996/624/1052/1232/1304`, or `9,000/16,384` (54.9%). No outcome
 file was opened. This is a liveness counter, not a compute-weighted ETA:
 ballot sizes and continuation costs differ by state. The exact one-shot
 readiness and gate
@@ -110,45 +110,49 @@ and compiled-strict modes.
 
 Mini has no long strength worker. RLCB-C1, V11-v2 and Direct-Q are terminal;
 the bounded Suphx O0 timing preflight below completed in seconds. Mini is
-available while exact O0 implementation `dd83182` receives independent
+available while exact O0 implementation `7b15338` receives independent
 re-review. No O0 packet has been frozen and no learning job has started.
 
 ## READY FOR RE-REVIEW / Suphx O0 executable implementation (no packet/run)
 
-Pushed exact O0 material commit `dd83182` implements the fixed-three-seed O0
+Pushed exact O0 material commit `7b15338` implements the fixed-three-seed O0
 freezer, 128 one-state-per-deal DEV asset, six 64-update arms with real midpoint
 teardown/resume, deterministic greedy two-flip evaluator, exact same-model null
 and terminal conjunctive gate. The freezer itself grants no training authority;
 training requires a separate immutable `review_admission.json` binding the
 exact packet SHA and an independently supplied review-record copy.
 
-The 21:57 review correctly held the draft because a first-differing-card swap
-could violate public void evidence while still changing oracle tensors. The
-pushed repair admits a hidden allocation only after card conservation, hand/
-burial sizes, actor-visible state, demonstrated voids, pair caps, tractor-run
-caps and remaining declaration evidence all pass. Every role/surface has both
-a legal hidden-hand witness and at least one non-banker hidden-burial witness;
-a forced void-breaking mutation must fail. Every executable entry point is
-also pinned to the one predeclared root
+The 21:57 review correctly held the first draft because a card swap could
+violate public void evidence. The 22:57 review then caught a deeper gap in
+`dd83182`: snapshot caps admitted 10 selected hidden-hand and three selected
+burial neighbors that violated an earlier pair obligation or successful throw.
+`7b15338` now reconstructs all post-burial hands and replays every public play
+through real `Round.play`, with the rollout-only follow-validation bypass
+forced off. It requires exact recorded cards, trick resolution/leader, turn,
+remaining hands and attacker points. Named pair, throw and burial mutations at
+deals `160100011`, `160100083` and `160100029` fail for their expected engine
+reason. Every executable entry point remains
+pinned to the one predeclared root
 `server/runs/logs/suphx-o0-fixed-ensemble-v1`. Packet admission additionally
 requires one external machine-readable PASS claim for the exact packet SHA and
 rejects plain prose, HOLD, wrong-packet or run-internal records. Focused tests
-pass 22/22; the Suphx/Direct-Q/synchronous-resume matrix passes 193/193 in
-ordinary and compiled-strict routing. The broad ordinary suite passed 1,026
-with 27 skips at `56a0efc` before this focused admission delta. The original
+pass 25/25; the Suphx/Direct-Q/synchronous-resume matrix passes 196/196 in
+ordinary and compiled-strict routing; the exact-current broad ordinary suite
+passes 1,030 with 27 skips. The original
 preflight artifact still reopens at exact
 `4f0c3dd5...434`, and all authority fields remain false.
 
-Routine packet/admission reopen now validates exact bytes, structure, runtime
+Routine packet/admission reopen validates exact bytes, structure, runtime
 and source identity without regenerating the 128 DEV games. A local no-artifact
-probe measured 10.040s for full semantic generation and 3.1 microseconds for
-the structural reopen. Freeze and independent `verify-packet` still regenerate
+probe measured 3.1 microseconds for the structural reopen; full generation
+with chronological validation now takes 12.63s. Freeze and independent
+`verify-packet` still regenerate
 the exact DEV asset; the terminal gate still recomputes every diagnostic and
 semantically replays every raw comparison round. Freeze, diagnostics,
 evaluation and replay now print bounded progress.
 
 Do not invoke `freeze`, `admit`, `train`, `evaluate` or `gate` yet. First obtain
-independent review of exact `dd83182`; on PASS, freeze only at the exact root
+independent review of exact `7b15338`; on PASS, freeze only at the exact root
 above. The resulting packet bytes then require a second hash-bound independent
 review admission before Mini may run the six arms.
 
@@ -199,6 +203,14 @@ while 25 concurrent WebSocket peeks remained responsive at p50 12ms and max
 19ms. After 42 bot timing records, search p50/p95/max were
 1.136/1.857/3.104s and full turn p50/p95/max were 1.138/1.858/3.106s: the old
 additive 0.7s delay is absent when computation exceeds the pacing floor.
+
+The first ordinary post-fix human room then completed five rounds. MYWR
+recorded 249 bot play timings, including 195 search-like turns under the
+explicit `compute_seconds >= 0.05` analysis threshold. Search
+p50/p95/max was 0.896/1.714/1.906s and full-turn p50/p95/max was
+0.904/1.716/1.907s; all 249 records were offloaded and snapshot-isolated, with
+zero stale action. This is substantive one-room product evidence, not a
+concurrent multi-room tail test. Production was healthy and empty at 23:21.
 
 ## COMPLETE / RLCB-C1 formally confirms report-LCB (Mini)
 

@@ -246,6 +246,62 @@ a separately frozen paired round and multi-round progression gate. A failure
 selects none; it does not authorize more seeds, a longer schedule or reading a
 different checkpoint from the same run.
 
+## O0 launch candidate for independent review — not frozen, no run authority
+
+The following candidate converts the successful timing preflight into one
+small oracle-acquisition question. It is deliberately still a review target:
+no executable launch receipt or training command may treat this section as
+authority.
+
+- Run three from-scratch seed pairs. Within a pair, oracle and public use the
+  same model seed, learner seed and actor-independent deal root, but different
+  runner roots. The different runner roots domain-separate mask/action draws;
+  the shared deal root keeps all 64 training deals causal and equal-work.
+- Candidate seed identities are:
+  `model=160000001..160000003`,
+  `learner=160010001..160010003`,
+  oracle runner `160020001..160020003`, public runner
+  `160021001..160021003`, and shared per-pair deal roots
+  `160030001..160030003`. The packet must enumerate all derived deal seeds and
+  prove no within/between-pair collision.
+- Each arm runs exactly 64 one-round/one-update iterations at learning rate
+  `1e-3`, with `gamma=1` throughout oracle and `gamma=0` throughout public.
+  This is 384 rounds and 384 updates total. Both arms start from byte-identical
+  weights within each seed pair; every terminal candidate must be explicitly
+  adopted and exact-resume verified.
+- O0 DEV is 128 untouched non-production deals
+  `160100000..160100127`. These deals are disjoint from all derived training
+  deals and every current DEV/CALIB/REPORT/Teacher/C1 range. They may decide
+  only PASS/SELECT NONE for this O0 recipe and may never choose O1 schedules,
+  architecture, checkpoints or dose.
+- The evaluator uses deterministic greedy ordinary play with the exact narrow
+  training ballot and SmartBot declaration/burial controls. Every comparison
+  uses both team flips on every deal. A same-model two-flip null must be exactly
+  zero before any efficacy statistic is accepted.
+- The two primary deal-clustered comparisons are oracle terminal minus its
+  exact `gamma=1` initial model, and oracle terminal minus the equal-seed public
+  terminal model. Average the two flips and three seeds within deal, allocate
+  a one-sided Student-t deal-cluster LCB at alpha `0.05` to each comparison
+  (Bonferroni family alpha at most `0.10`), and require both bounds to exceed
+  zero. Every individual seed mean must also be positive on both comparisons.
+- Hard health gates are exact work/provenance/reopen; finite model/controller
+  state; all four role/surface cells in every arm; median normalized policy
+  entropy at least `0.35` on multi-action DEV rows for every seed, arm and
+  surface; a nonzero hidden-ownership logit witness in every oracle surface;
+  and bit-identical public logits/actions under the corresponding hidden-world
+  permutations. Initial-to-terminal value-MSE, greedy-action changes and
+  entropy curves are diagnosis only, not alternate pass routes.
+- A PASS authorizes only freezing and reviewing O1. A non-PASS selects none for
+  this exact O0 recipe: do not append iterations, seeds, DEV deals or a more
+  favorable checkpoint after reading it. Neither outcome is a strength or
+  production claim.
+
+Independent review should challenge the 128-deal power, the two primary
+estimands, alpha allocation, entropy floor, seed/domain separation and whether
+the greedy mixed-team evaluator is the smallest faithful test of oracle
+acquisition. Implementation starts only after those choices are accepted or
+replaced while every learning outcome remains unopened.
+
 ## Implementation order
 
 1. Implement and falsify the normal/perfect encoder and endpoint permutation

@@ -301,7 +301,15 @@ Please review post-19:49 commit `b22ee8e` and exact preflight artifact
 causal endpoint dose, structural result redaction, exact-work arithmetic,
 exclusive publication and descendant verification support only the stated
 64-iteration recommendation. It must not authorize training. Also review the
-two permanent MC information-boundary regressions above, especially whether
+new explicitly non-authorizing O0 candidate in `SUPHX_MICRO_SPEC.md`: three
+equal-model/learner/shared-deal seed pairs with arm-separated runner roots,
+64 updates per arm, 128 disjoint DEV deals, two flipped greedy comparisons
+with one-sided alpha `0.05` each, and per-surface entropy/hidden-information
+health gates. In particular, say whether oracle-vs-initial plus
+oracle-vs-public is the right minimal acquisition test or whether a named
+estimand must change before implementation. No O0 code or run is authorized
+by that draft. Also review the two permanent MC information-boundary
+regressions above, especially whether
 each forces a real search and changes only hidden ownership. Continue watching
 Stage B without opening outcomes or duplicating workers. Exact audit identity
 remains `182d1df`/`57796fda...887ead`; superseded `f4f3dc0` must never create a

@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-08 18:56 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-08 19:34 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,7 +10,7 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shard 2 exited zero and published 1/8 label triplets; seven workers remain CPU-bound. At 18:56, score-free progress was 1,313/4,096 outer worlds (32.1%) and 18/64 states. The label JSON remains sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
+| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shard 2 exited zero and published 1/8 label triplets; seven workers remain CPU-bound. At 19:34, score-free progress was 1,482/4,096 outer worlds (36.2%) and 20/64 states. The label JSON remains sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
 | Air | none | Physically idle but not admissible for the current S3a parent. A no-write probe with exact copied RLCB-C1 evidence/native bytes still refused the historical Mini `execution_host`/Python lock. Do not launch S3a on Air without a separately reviewed portable-parent design. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
@@ -42,11 +42,12 @@ preflighted before launch.
 
 ### T2 S3a
 
-The state-level screen has already passed. Claude's narrow HOLD on the old
-exacts is repaired by core `b5dee2e` and Mini-only score-free controller
-`0085409`; 61/61 combined tests pass and bounded rereview is requested. The
-next possible compute is the separately reviewed
-score-free sizing preflight on Mini after Teacher releases it—not a rerun,
+The state-level screen has already passed. Claude passed repaired core
+`b5dee2e` and Mini-only controller `0085409`; exact integration `fcad972`
+preserves all reviewed bytes and the current battery passes 76/76. Literal
+four-cluster packet `492a1390…4086` is in external review with frozen `192/24`
+screen and `768/96` confirmation caps. The next possible compute is that exact
+score-free preflight on Mini only after Teacher releases it—not a rerun,
 enlarged state screen, Air launch, or strength duel.
 
 ### T2 learner

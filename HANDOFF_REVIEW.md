@@ -1547,3 +1547,30 @@ launch is authorized by these reviews — the literal host/budget launch packet 
 
 S3A_FULL_GAME_DUEL_CORE_V1_REVIEW {"git":"b5dee2e002b0d955534bfb9d2a2f7246e3a55f93","material_sha256":"5d8d7e3f96514d84525f62c194f43445281c4fb825c5035c3a9ff03083f44267","consumed_sizing_seeds_excluded":true,"fresh_screen_seed0":153000003,"paired_complete_round":true,"global_stream_separation":true,"score_free_preflight":true,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS"}
 S3A_DUEL_PREFLIGHT_CONTROLLER_V1_REVIEW {"git":"00854092104cd5dd0c765404bf198871fb523e31","core_git":"b5dee2e002b0d955534bfb9d2a2f7246e3a55f93","material_sha256":"dbd9a79754347f36956d3390ff1d4fd18abbd6f765c1e9404edc6d2f2981382c","mini_only":true,"exact_python":"3.14.3","homebrew_3_14_6_refuses":true,"air_refuses":true,"one_shot":true,"score_free":true,"screen_packet_review_only":true,"preflight_launch_authorized":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS"}
+
+---
+
+## Codex — 2026-08-08 19:29 EDT — READY literal S3a Mini preflight launch review
+
+Accepted both PASSes. Reviewed bytes are now explicitly integrated at exact
+`fcad972a088724c7f24cbfb9759f8355857928ae`: it descends from `0085409` and
+main `804782a`; all four reviewed file hashes are unchanged. The full current
+S3a/parent/progress battery passes 76/76 under Mini Python 3.14.3.
+
+At canonical root `/Users/jerryyu/Projects/shengji`, exact `fcad972`, a
+score-free no-write probe reopened RLCB-C1/live `mc-s0-report-lcb`, matched
+native SHA `9c9e77fb…e4c1`, proved all streams disjoint and found no collision in
+fresh namespace `s3a-bury-duel-preflight-18b-v1`. Exact packet-contract SHA is
+`492a1390f25f681e78c2102764e677625daac9f4f606d43c9b95e6092aab4086`.
+
+Please review the literal command/caps in `HANDOFF_ACTIVE.md`. Recompute the
+contract under a clean canonical root detached at `fcad972`; verify seed
+18,000,000,000, four clusters, screen caps `192/24`, confirmation caps
+`768/96`, heartbeat 30, and strongest status
+`AUTHORIZE_SCREEN_PACKET_REVIEW`. The live Teacher must terminate before this
+preflight can run. PASS authorizes only the exact score-free preflight; no
+screen, confirmation, retry, strength claim, promotion or production change.
+
+Append exactly:
+
+`S3A_DUEL_PREFLIGHT_LAUNCH_V1_REVIEW {"git":"fcad972a088724c7f24cbfb9759f8355857928ae","runner_sha256":"d04fd162a959986c0b0170df5f6f0a3f543c8a50fa90c7f776a2ecc5cd3bfb38","controller_sha256":"92c057145ed2049922a403d50f4bacc02afc8b9910b1d7720ea1e1b2f45ffeeb","contract_sha256":"492a1390f25f681e78c2102764e677625daac9f4f606d43c9b95e6092aab4086","run_id":"s3a-bury-duel-preflight-18b-v1","seed0":18000000000,"clusters":4,"host":"Jerrys-Mac-mini.local","python":"3.14.3","screen_fleet_hours":192.0,"screen_max_shard_hours":24.0,"confirm_fleet_hours":768.0,"confirm_max_shard_hours":96.0,"heartbeat_seconds":30.0,"teacher_exclusive":true,"score_free":true,"preflight_launch_authorized":true,"screen_launch_authorized":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`

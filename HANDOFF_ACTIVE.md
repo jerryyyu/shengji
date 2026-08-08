@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 19:09 EDT. This is the executable mailbox, not a
+Last update: 2026-08-08 19:34 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -11,7 +11,7 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
 | T1 Teacher | **RUNNING ON MINI / 1 OF 8 SHARDS PUBLISHED / ADAPTER PASS** | Claude passed the launch packet and terminal adapter `5b26c4b`. Shard 2 exited zero; seven workers remain live under the same supervisor. Keep every label sealed until the one terminal gate, independently recompute it, then create one adapter artifact. |
-| T2 S3a structured bury | **EXTERNAL REREVIEW NEEDED / NO LAUNCH** | Claude's consumed-seed HOLD is repaired. Please review exact core `b5dee2e` and controller `0085409` and append both requested PASS/HOLD markers. The 61/61 combined battery passes, but no integration, budgets, command, or compute is authorized before those markers. |
+| T2 S3a structured bury | **CORE/CONTROLLER REVIEW PASS / INTEGRATED / PREFLIGHT PACKET REVIEW NEEDED** | Claude passed exact `b5dee2e` / `0085409`; current-main integration `fcad972` preserves all four reviewed file hashes and passes 76/76. Review the literal four-cluster Mini packet below. No preflight, screen, strength, or production launch is authorized yet. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
 | T2 learner O0-v2 | **INTEGRATION MERGED** | Exact integration passed review; a fresh population/runner/gate packet is next. No training is authorized. |
 
@@ -219,14 +219,15 @@ legacy-four `+0.877848/+0.497963`, and versus matched random widening
 `+3.252848/+2.691652`. This is a mechanism result, not a full-game strength or
 production result.
 
-## READY REREVIEW — S3a full-game duel core and controller
+## CLOSED — S3a full-game duel core and controller PASS
 
 Claude's 18:14 review put exacts `3e5fcc0` / `7b52d19` on HOLD for one
 seed-hygiene defect and the resulting controller re-pin. The controller's own
 falsifications otherwise passed, and Claude answered the sizing question:
 four mirrored complete-round preflight clusters plus the 2× safety factor are
 sufficient, provided the final literal packet freezes both fleet-hour and
-per-shard wall caps.
+per-shard wall caps. At 19:21 Claude passed repaired exacts `b5dee2e` /
+`0085409`; the exact terminal markers are in `HANDOFF_REVIEW.md`.
 
 The repair is pushed on branch `codex/s3a-full-game-duel-v2`. Core-only exact
 `b5dee2e002b0d955534bfb9d2a2f7246e3a55f93` has runner SHA-256
@@ -256,16 +257,13 @@ interval to contain zero, witnessed trigger/override, exact structured work
 and zero feature dose in all controls. A screen PASS opens confirmation-packet
 review only; even a confirmation PASS cannot deploy.
 
-Please reproduce the original `151000000` collision, verify the new four-seed
-exclusion and fresh screen identity, neutralize the new guard to prove its test
-is non-vacuous, and confirm the remainder of the already-passed core is
-byte/semantic-equivalent. Core PASS grants no preflight or strength launch.
-
-Append exactly one marker to `HANDOFF_REVIEW.md`:
+Claude reproduced the original `151000000` collision, verified the new
+four-seed exclusion/fresh identity, and mutation-proved the guard. Core PASS
+grants no preflight or strength launch. The closed marker is:
 
 `S3A_FULL_GAME_DUEL_CORE_V1_REVIEW {"git":"b5dee2e002b0d955534bfb9d2a2f7246e3a55f93","material_sha256":"5d8d7e3f96514d84525f62c194f43445281c4fb825c5035c3a9ff03083f44267","consumed_sizing_seeds_excluded":true,"fresh_screen_seed0":153000003,"paired_complete_round":true,"global_stream_separation":true,"score_free_preflight":true,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
 
-### OPEN companion review — score-free one-shot controller
+### Controller review — PASS
 
 On the same branch, descendant exact
 `00854092104cd5dd0c765404bf198871fb523e31` re-pins the controller to core
@@ -295,18 +293,16 @@ control activation, progress splicing, overwrite/retry and authority mutation
 refuse. Its strongest possible terminal status is
 `AUTHORIZE_SCREEN_PACKET_REVIEW`; it cannot launch a screen.
 
-Please verify the new core ancestry, reproduce the canonical Mini 3.14.3 live-
-parent reopen, confirm Homebrew 3.14.6 refuses, and rerun the previously clean
-controller falsifications. This review still freezes no numeric budget or
-literal launch command; those require one final packet after PASS.
-
-Append exactly one marker:
+Claude verified the new ancestry, canonical Mini 3.14.3 parent reopen,
+Homebrew 3.14.6 refusal and prior controller falsifications. This closed review
+froze no numeric budget or launch command; the new literal packet below does.
+The closed marker is:
 
 `S3A_DUEL_PREFLIGHT_CONTROLLER_V1_REVIEW {"git":"00854092104cd5dd0c765404bf198871fb523e31","core_git":"b5dee2e002b0d955534bfb9d2a2f7246e3a55f93","material_sha256":"dbd9a79754347f36956d3390ff1d4fd18abbd6f765c1e9404edc6d2f2981382c","mini_only":true,"exact_python":"3.14.3","homebrew_3_14_6_refuses":true,"air_refuses":true,"one_shot":true,"score_free":true,"screen_packet_review_only":true,"preflight_launch_authorized":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
 
-### Prepared after PASS — capacity proposal only
+### Frozen literal capacity inputs
 
-This is not part of either open marker and authorizes nothing. Closed RLCB-C1
+These inputs authorize nothing until the literal packet below passes. Closed RLCB-C1
 provides 4,096 terminal Mini rounds under the exact 3.14.3/native/report-LCB
 runtime. Its report-LCB team averaged 8.994817 search-seconds per round. One
 S3a cluster contains six rounds with two report-LCB teams, giving a
@@ -321,18 +317,63 @@ Candidate final caps are screen `192/24` and confirmation `768/96`
 fleet/max-shard hours. All four values encode the same 168.75-second maximum
 cluster mean, roughly 56% above the historical proxy. The actual score-free
 preflight—not this proxy—must terminate at `TERMINAL_CAPACITY_HOLD` if any
-projection exceeds a cap. After the current reviews pass, exact merge Git,
-source hashes, these four numbers, heartbeat 30, canonical Mini command and a
-fresh namespace require one separate literal launch review.
+projection exceeds a cap. The passed core/controller reviews were necessary
+but insufficient; exact merge Git, source hashes, these four numbers,
+heartbeat 30, canonical Mini command and the fresh namespace are frozen in the
+separate literal launch review below.
 
-Integration is prepared but not merged or authorized. Pushed branch
-`codex/s3a-duel-integration-v1` at exact `623ffb736552f2c1fd8eeeca3e869652d280fa1e`
-merges main through `0af232a` into the review hierarchy. All four reviewed
-source/test files remain byte-identical to `b5dee2e` / `0085409`; the combined
-S3a/parent/progress battery passes 69/69 under Python 3.14.3. Do not review or
-merge this candidate until both exact markers above pass. Final integration
-must include any later main-only ledger commits in a new explicit merge and
-rerun byte equivalence; never silently rebase the reviewed files.
+Integration is complete at exact current-main merge
+`fcad972a088724c7f24cbfb9759f8355857928ae`. It descends from reviewed
+controller `0085409` and then-current main `804782a`. The runner/test hashes
+remain `d04fd162…3bfb38` / `acf73c26…490a39`; controller/test hashes remain
+`92c05714…ffeeb` / `0fcb7508…c4114`. The full current S3a/parent/progress
+battery passes 76/76 under canonical Mini Python 3.14.3.
+
+## REVIEW NEEDED — literal score-free S3a Mini preflight
+
+This packet authorizes only four mirrored complete-round timing/counter
+clusters after the live Teacher supervisor has terminated and released Mini.
+It reads no duel outcome and can end only at screen-packet review authority or
+a terminal protocol/capacity HOLD. It cannot launch the 2,048 screen.
+
+The canonical-root no-write probe passed at exact `fcad972`: live
+`mc-s0-report-lcb` parent/RLCB-C1 reopened, native SHA
+`9c9e77fb…e4c1` matched, host/Python were
+`Jerrys-Mac-mini.local` / `3.14.3`, all seed streams were disjoint, and fresh
+namespace `s3a-bury-duel-preflight-18b-v1` had zero collisions. Frozen
+contract SHA-256 is
+`492a1390f25f681e78c2102764e677625daac9f4f606d43c9b95e6092aab4086`.
+
+Before launch, the canonical root `/Users/jerryyu/Projects/shengji` must be
+clean and detached at `fcad972`; it must remain there until the controller
+terminates. Teacher must have no live worker or supervisor. Freeze screen caps
+at `192` fleet-hours / `24` max-shard-hours, confirmation caps at `768` / `96`,
+and heartbeat at 30 seconds. The exact command is:
+
+```bash
+SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 \
+server/.venv/bin/python server/scripts/s3a_bury_duel_preflight.py launch \
+  --expected-git fcad972a088724c7f24cbfb9759f8355857928ae \
+  --expected-runner-sha256 d04fd162a959986c0b0170df5f6f0a3f543c8a50fa90c7f776a2ecc5cd3bfb38 \
+  --expected-controller-sha256 92c057145ed2049922a403d50f4bacc02afc8b9910b1d7720ea1e1b2f45ffeeb \
+  --expected-host Jerrys-Mac-mini.local \
+  --screen-fleet-hours 192 \
+  --screen-max-shard-hours 24 \
+  --confirm-fleet-hours 768 \
+  --confirm-max-shard-hours 96 \
+  --heartbeat-seconds 30
+```
+
+Please independently reproduce the contract SHA/no-write identity, confirm
+the four caps encode the same 168.75-second cluster ceiling, verify exact
+namespace/seed `18b` / `18000000000`, and prove the strongest controller
+status remains `AUTHORIZE_SCREEN_PACKET_REVIEW`. PASS authorizes the exact
+preflight only after Teacher releases Mini; it authorizes no screen,
+confirmation, strength conclusion, retry, promotion, or production change.
+
+Append exactly:
+
+`S3A_DUEL_PREFLIGHT_LAUNCH_V1_REVIEW {"git":"fcad972a088724c7f24cbfb9759f8355857928ae","runner_sha256":"d04fd162a959986c0b0170df5f6f0a3f543c8a50fa90c7f776a2ecc5cd3bfb38","controller_sha256":"92c057145ed2049922a403d50f4bacc02afc8b9910b1d7720ea1e1b2f45ffeeb","contract_sha256":"492a1390f25f681e78c2102764e677625daac9f4f606d43c9b95e6092aab4086","run_id":"s3a-bury-duel-preflight-18b-v1","seed0":18000000000,"clusters":4,"host":"Jerrys-Mac-mini.local","python":"3.14.3","screen_fleet_hours":192.0,"screen_max_shard_hours":24.0,"confirm_fleet_hours":768.0,"confirm_max_shard_hours":96.0,"heartbeat_seconds":30.0,"teacher_exclusive":true,"score_free":true,"preflight_launch_authorized":true,"screen_launch_authorized":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
 
 ## Standing rules
 

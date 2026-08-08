@@ -169,6 +169,8 @@ def test_packet_freezes_score_free_geometry_command_and_authority(tmp_path):
         config, paths, parent=_parent(), runtime=_runtime())
     assert contract["run_id"] == SUP.DUEL.PREFLIGHT_RUN_ID
     assert contract["host"] == "Jerrys-Mac-mini.local"
+    assert contract["python_version"] == "3.14.3"
+    assert contract["runtime"]["python"] == "3.14.3"
     assert contract["population"]["clusters"] == 4
     assert contract["population"]["global_stream_separation"] is True
     assert contract["capacity"]["screen"]["clusters"] == 2_048
@@ -192,6 +194,18 @@ def test_config_refuses_malformed_host_hash_budget_and_heartbeat():
     for config, fragment in cases:
         assert any(fragment in problem
                    for problem in SUP._config_problems(config))
+
+
+def test_identity_refuses_homebrew_python_on_registered_mini(
+        tmp_path, monkeypatch):
+    assert SUP.EXPECTED_PYTHON == "3.14.3"
+    monkeypatch.setattr(
+        SUP.os, "uname",
+        lambda: SimpleNamespace(nodename="Jerrys-Mac-mini.local"))
+    monkeypatch.setattr(SUP.platform, "python_version", lambda: "3.14.6")
+    with pytest.raises(SUP.ControllerRefusal,
+                       match="preflight requires Python 3.14.3"):
+        SUP._identity_context(_config(), _paths(tmp_path))
 
 
 def test_preflight_artifact_recomputes_capacity_and_rejects_scores():

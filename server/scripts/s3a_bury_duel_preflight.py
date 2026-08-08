@@ -44,7 +44,10 @@ RUN_ID = DUEL.PREFLIGHT_RUN_ID
 # historical runtime, which is pinned to Mini.  Registering Air here would be
 # false portability: copied evidence still refuses on execution_host/Python.
 SUPPORTED_HOSTS = ("Jerrys-Mac-mini.local",)
-EXPECTED_PYTHON = "3.14.6"
+# The canonical Mini venv is the only interpreter that reopens the historical
+# live-parent runtime exactly.  Homebrew's newer 3.14.6 interpreter is present
+# on the same host but correctly fails that parent attestation.
+EXPECTED_PYTHON = "3.14.3"
 NAMESPACE = Path("server/runs/logs") / RUN_ID
 RUNNER = Path("server/scripts/s3a_bury_duel.py")
 RECEIPT_NAME = "receipt.json"

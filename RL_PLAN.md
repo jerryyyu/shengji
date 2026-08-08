@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-08 14:42 EDT
+## Current synthesis — 2026-08-08 15:45 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -47,19 +47,21 @@ what those results change in the research plan.
 - **Teacher:** Stage B passed on sampled ordinary states. The sealed 64-state
   continuation audit then refused operationally before publishing any label or
   gate: one exact champion report fold was incomplete. This is no ML verdict
-  and the consumed attempt cannot be retried. Score-free diagnostics passed;
-  the next gate is a synthetic, separately versioned retry/underfill contract,
-  not a 2,048-state wave.
+  and the consumed attempt cannot be retried. Score-free diagnostics and an
+  unchanged-estimand retry contract passed: failed draws may be retried but
+  never scored, and all counters must reconcile. The next gate is independent
+  review and freeze of the exact untouched 64-state complement, followed by a
+  separately reviewed fresh controller—not a 2,048-state wave.
 - **Search challengers:** the independently reviewed live-parent contract now
   binds S3a and S3b to exact report-LCB and makes formal-S0/`mc-strong`
   re-entry unreachable. S3b v2 then failed its operational preflight: its
   first exact-treatment cluster exceeded the frozen cumulative 250k-node cap,
-  so no receipt or strength screen is authorized. S3a remains only a
-  512-state mechanism screen. After two fail-closed receipt repairs, its fresh
-  two-state Mini sizing receipt passed exact review and projects only 0.142
-  fleet-hours / 0.0178 max-shard hours. Capacity is no longer the blocker; its
-  command, 136M population, estimand, stop rule and controller must be frozen
-  and independently reviewed before the state-level strength screen.
+  so no receipt or strength screen is authorized. S3a's separately reviewed
+  512-state mechanism screen is now terminal PASS: structured bury beat the
+  live incumbent, legacy-four and trigger-matched random widening with every
+  frozen state-level LCB above zero. This is proposal-generation evidence, not
+  bot strength. The next gate is a fresh mirrored full-game duel against exact
+  report-LCB with a champion-matched null.
 - **Data/sampler:** the bounded strict sampler certificate passed, but posterior
   fidelity and global constructive completeness remain open. High-N and
   late-ply data are replayable state reservoirs under old named targets, not
@@ -84,6 +86,9 @@ what those results change in the research plan.
 7. Screens choose one candidate; only a fresh paired confirmation against the
    named champion establishes strength. Correctness repairs, green pipelines,
    faster simulation and larger corpora are enabling work, not AI wins.
+8. S3a is the first positive structured-search mechanism: preserve its frozen
+   proposal recipe and move to fresh full-game evidence. Do not tune from the
+   inspected 512 states or treat per-state bury gain as signed-level utility.
 
 ## Literature-derived design constraints — 2026-08-04
 

@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-08 08:50 EDT.
+Last re-derived: 2026-08-08 15:45 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -90,9 +90,12 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   receipt `ce51b826...71d0` and preparation `7f89a86c...6605` were valid, but
   shard 6 stopped on an incomplete champion report fold and the supervisor
   terminated its siblings. No label final or gate exists. This is no ML
-  verdict. Exact score-free diagnostics now independently pass; T1 is blocked
-  on a separately versioned synthetic retry/underfill contract and explicit
-  fresh-run/closeout authority, not on discovering the old failure boundary.
+  verdict. Exact score-free diagnostics and the retry/underfill semantics now
+  independently pass: the intended 30+300 accepted-world estimator is
+  unchanged, failed draws may retry only inside fixed caps, and all counters
+  must reconcile. The next gate is review of an outcome-blind exact complement
+  freezer for the untouched 64 of the frozen Stage-B 128. No fresh Teacher job
+  is running and no label attempt is yet authorized.
 
 ## NOW — ordered by value
 
@@ -100,9 +103,9 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 |---|---|---|
 | **T1 / Lane A production latency — COMPLETE / LIVE MONITOR** | Keep the first stronger-than-MC production policy enjoyable to play | Fly release 17 runs exact `latency-cd6789e` / `047bcfe4...5b300`. Health, native activation, claim, reconnect, stale-discard, X-ray isolation and concurrent WebSocket responsiveness passed live. Keep release 16 as the runtime rollback and `mc-strong` as the separate policy rollback; collect ordinary human-room timing before considering a CPU resize. |
 | **T1 / Lane A.1 V11pair — COMPLETE / SELECT NONE** | Preserve the learned milestone without forcing it into the champion | Artifact repair passed; the frozen rule rejected protected composition. Keep v11 as a bounded proposer/ranker and teacher diagnostic only. No protected-anchor run is authorized. |
-| **T1 / Lane B teacher — RETRY CONTRACT PUSHED / REVIEW REQUIRED** | Determine whether cheap N=30 choices remain good under the full champion continuation | Exact `1589fb4` preserves 30+300 accepted worlds, counts only fully reconciled failed-determinization retries, refuses true underfill/cap hits, and propagates retry counts through the terminal gate. Review material `15d0d9ec…5ebdd`; PASS can authorize namespace/controller packet design only, not a fresh audit or evidence-state replay. |
+| **T1 / Lane B teacher — RETRY PASS / FRESH-ASSET REVIEW OPEN** | Determine whether cheap N=30 choices remain good under the full champion continuation | Claude passed exact `1589fb4`: 30+300 accepted worlds remain the estimand, failed draws are unscored retries inside fixed caps, and all counters reconcile. Review exact complement freezer `ec62179` / material `e153ef4d…0de9`; PASS may freeze only the untouched 64-state asset. Controller/receipt review must still precede labels. |
 | **T2 / live parent + S3 reparenting — COMPLETE / REVIEW PASS** | Make every new search mechanism challenge the bot people actually play | Claude independently passed exact `05ea1d1` / material `66be133c…e17c`, reproduced parent output `5f9ddbfb…8402`, reopened RLCB-C1 and falsified stale-S0 re-entry. S3a/S3b retain their narrow v2 boundaries. This authorizes only the predeclared score-free S3b Mini preflight, not strength compute. |
-| **T2 / S3a structured bury — CAPACITY PASS / SCREEN PACKET NEXT** | Test whether a much wider, strategy-aware kitty ballot finds better once-per-round decisions | Exact Mini receipt `cf770277…5c431` verified: 0.999s for two fresh states; frozen 2× projection 0.142 fleet-hours and 0.0178 max-shard hours, far below 400/60 caps; exact work with zero failed/rejected/impossible worlds and no scores/raw records. Next gate: freeze and independently review the 512-state mechanism-screen launch packet. Do not launch it from the sizing PASS alone. |
+| **T2 / S3a structured bury — MECHANISM PASS / DUEL DESIGN NEXT** | Test whether a much wider, strategy-aware kitty ballot finds better once-per-round decisions | The reviewed 512-state Mini screen completed and separately verified: structured-minus-live-incumbent `+0.997 +/- 0.401` (LCB `+0.597`), minus legacy-four `+0.878 +/- 0.380` (LCB `+0.498`), and minus trigger-matched random widening `+3.253 +/- 0.561` (LCB `+2.692`). Design and review a fresh mirrored full-game duel plus champion-matched null. This screen cannot promote or deploy. |
 | **T2 / S3b sampled exact endgame — PREFLIGHT TERMINAL HOLD / NO SCREEN** | Replace heuristic continuation with bounded exact solving when every hand has at most four cards | The exact predeclared Mini attempt reached the frozen cumulative `250,000`-node ceiling in its first treatment cluster and failed before publishing a receipt. No score/raw record survived and the 2,048 screen is unauthorized. Never rerun or raise the cap in v2; a future v3 must separately review a narrower threshold, a solver optimization, or a different bound. |
 | **T1 / Lane C Direct-Q — COMPLETE / SELECT NONE** | Learn from the failure without selecting its positive gameplay tail | Preserve aggregate SHA `1fa6789e…791`; do not deploy, extend or mutate the 144M recipe. The next learner requires a separately frozen Suphx-style or other role-correct microbaseline gate. |
 | **T1 / Lane C Suphx O0 — COMPLETE / SELECT NONE** | Test whether a full-information policy can learn before spending compute on feature removal | Preserve gate SHA `592a009a…bd407c`. Both ensemble LCBs passed, but seed 1 lost to its equal-seed public arm (`-0.207`), failing the registered robustness conjunction. O1 is closed for this exact recipe; the next learner needs a fresh packet, not an O0 extension. |
@@ -144,25 +147,26 @@ into one learner-mechanism battery. Tighten execution in four places:
   O0-v2 conclusion. Use CRN and at least eight training seeds as the common
   evaluation design, then factorially isolate sharpening/dose mechanisms.
 
-The current S3a 136M/512-state asset is a **non-promotable state-level
-mechanism screen** whose PASS only authorizes designing a full-game duel. The
-reviewed v2 parent now binds both S3 lanes to exact `mc-s0-report-lcb` and
-blocks formal-S0/`mc-strong` re-entry. S3b v2 nevertheless stopped at its
-operational preflight after a first-cluster exact-budget overflow; its
-2,048/8,192 strength path is closed. S3a still lacks a full-game runner. Its
-exact score-free sizing preflight now passes capacity by a wide margin; a
-separate reviewed 512-state launch packet is the next gate.
+The S3a 136M/512-state asset is a **non-promotable state-level mechanism
+screen** and is now terminal PASS: all three frozen clustered LCBs are
+positive. That authorizes design of a fresh full-game duel, not a strength
+claim. The reviewed v2 parent binds both S3 lanes to exact
+`mc-s0-report-lcb` and blocks formal-S0/`mc-strong` re-entry. S3b v2 stopped at
+its operational preflight after a first-cluster exact-budget overflow; its
+2,048/8,192 path is closed. S3a now needs a new mirrored full-game runner and
+champion-matched null on fresh deal clusters.
 
 ## Milestones
 
-### T1 — Champion flywheel launch: blocked on Teacher audit infrastructure
+### T1 — Champion flywheel launch: fresh Teacher asset/controller gate
 
 T1 is complete in four of five lanes: production report-LCB/release 17 is
 live, RLCB-C1 confirmed it, V11 direct-v2 selected none, and Direct-Q/O0 each
-reached an honest stop. Teacher audit-v2 produced no valid terminal verdict;
-it failed operationally before any label final or gate. T1 is therefore not
-complete. Preserve v2 and require reviewed diagnosis plus explicit authority
-before either a fresh audit attempt or a milestone-contract closeout.
+reached an honest stop. Teacher audit-v2 produced no valid terminal verdict.
+Its diagnosis and retry semantics have now passed review, but T1 is still not
+complete. Review/freeze the untouched 64-state complement, register and review
+a fresh controller, run one valid audit, then route its terminal verdict
+through the passed adapter to Stage-C design or redesign/stop.
 
 ### T2 — First live-champion challenger: active in parallel
 
@@ -174,25 +178,26 @@ bot rather than imitate it.
 | order | deliverable | completion gate |
 |---|---|---|
 | **T2.0 — COMPLETE / REVIEW PASS** | Version one reusable live-champion parent contract for S3 evidence | Exact `05ea1d1` / material `66be133c…e17c` independently passed at 09:54. Review reproduced the real parent output and falsified anchor drift, formal-S0 re-entry and consumer-boundary widening. No strength or production authority was conveyed. |
-| **T2.1 / S3a — CAPACITY PASS / SCREEN PACKET NEXT** | Run the 512-state structured-bury mechanism screen under its fresh v2 namespace | Exact review passed and receipt `cf770277…5c431` projects only 0.142 fleet-hours / 0.0178 max-shard hours with exact work and no outcome fields. Freeze command, outputs, registered 136M population, estimand, gate, stop rule, and controller; independent review must PASS before launch. |
+| **T2.1 / S3a — COMPLETE / MECHANISM PASS** | Run the 512-state structured-bury mechanism screen under its fresh v2 namespace | Eight shards and the aggregate completed; separate verification passed. All three state-level LCBs exceed zero. Aggregate `74aa5a39…396cd`, final `d3f2b1ab…69a6b`. This authorizes only the next deliverable: a separately preregistered full-game duel. |
 | **T2.2 / S3b — COMPLETE / TERMINAL HOLD** | Run the score-free two-cluster throughput preflight for the report-LCB sampled-exact lane on Mini | At exact head `cd44ea8`, the first treatment cluster raised `ExactEndgameBudgetExceeded: max_nodes=250000`; exit 1, no `1/2` completion, receipt or partial. This falsifies the v2 zero-overflow feasibility condition. Same-recipe retry/cap change/fallback is unauthorized. |
 | **T2.3 / S3b v2 — CLOSED / UNAUTHORIZED** | Launch the 2,048-cluster complete-round sampled-exact screen when capacity and preflight permit | The required preflight did not pass and the zero-overflow invariant failed before a cluster completed. Preserve the seed and failure. A fresh v3 design/review—not a mutation of this attempt—is required before more sampled-exact compute. |
-| **T2.4 / Teacher — BLOCKED / NO TERMINAL GATE** | Convert a valid terminal audit into a Stage-C contract | The adapter itself passed at `2de0824`, but audit-v2 produced neither required regular final. It cannot consume an operational refusal. Diagnose/review first; any fresh audit needs a new namespace and explicit authority. Both Stage-C branches remain unreachable and no-compute. |
+| **T2.4 / Teacher — RETRY SEMANTICS PASS / ASSET REVIEW OPEN** | Convert a valid terminal audit into a Stage-C contract | The adapter passed at `2de0824` and retry semantics passed at `1589fb4`, but audit-v2 has no consumable finals. Review `ec62179`, freeze the untouched complement, then implement/review a fresh namespace/controller before one audit attempt. Both adapter branches remain unreachable until a valid terminal gate exists. |
 | **T2.5 / learner — INTEGRATION MERGED / RUNNER PACKET NEXT** | Write, but do not yet bundle-run, a fresh O0-v2 mechanism battery | Claude passed exact `dd730a8` / material `639c259b…a0494b`; equivalent merge `59a23c7` passes 22/22 focused and 112/112 Suphx. Freeze a fresh population/runner/gate packet without changing dose, target, feature schedule, optimizer, or margin cell. No training is authorized yet. |
+| **T2.6 / S3a duel — DESIGN / REVIEW NEXT** | Test whether the state-level structured-bury gain survives full games against production | Freeze fresh mirrored deal clusters, exact report-LCB parent, structured treatment, champion-matched null, equal work, clustered utility gate, terminal stop rule and one-shot controller. Independent review precedes compute; no tuning from the inspected 512 states. |
 
-T2 is successful today if T2.0 is reviewed and at least one bounded Mini
-preflight/screen is ready to launch without an unresolved parent or evidence
-boundary. It does not require manufacturing a positive result in one day.
+T2 launch readiness is achieved: T2.0 passed and S3a produced a valid positive
+mechanism screen. The next milestone is stronger: get S3a into one honest
+fresh full-game duel while advancing the Teacher and O0 implementation gates
+in parallel. It does not require manufacturing a positive duel result.
 
 ### Fleet order today
 
-1. **Mini:** default host for every newly authorized long or short run. S3b v2
-   is terminal HOLD after a first-cluster exact-budget
-   overflow. Do not rerun, increase its cap or add a heuristic fallback.
-2. **Air:** preserve the failed Teacher audit-v2 root; all audit processes are
-   dead. Use Air only as overflow or with a recorded placement reason. S3a's
-   Mini sizing receipt passed its frozen operational caps; do not place the
-   512-state screen until its separate launch packet passes review.
+1. **Mini:** currently idle. S3a's reviewed screen is complete; use Mini for
+   the next short reviewed preflight or its future duel only after the duel
+   packet passes. S3b v2 remains terminal HOLD; do not rerun or relax it.
+2. **Air:** currently idle. Preserve both failed Teacher roots. The long fresh
+   Teacher audit belongs here after asset and controller review; no job is
+   authorized yet.
 3. **Local/product:** continue passive release-17 timing collection; no policy
    or production change is part of T2.0.
 
@@ -203,19 +208,23 @@ ready for each free host, but continue the first unblocked implementation item
 whenever a review or run is live:
 
 1. **COMPLETE:** exact `05ea1d1` T2.0 live-parent review passed;
-2. **CAPACITY PASS:** S3a's outcome-free, out-of-population timing receipt
-   passes the frozen placement caps; freeze/review the 512-state packet next;
-3. **REPAIR REVIEW PASS at `2de0824`:** the terminal Teacher adapter
+2. **MECHANISM PASS:** S3a's reviewed 512-state screen passed every frozen
+   LCB; design/review a fresh full-game duel and champion-matched null next;
+3. **RETRY REVIEW PASS at `1589fb4`:** exact 30+300 accepted-world semantics
+   and reconciled failed-draw retries are frozen. Review `ec62179`'s untouched
+   complement freezer, then freeze/register the asset and build the fresh
+   controller;
+4. **REPAIR REVIEW PASS at `2de0824`:** the terminal Teacher adapter
    precommits PASS to a hard-tail Stage-C design and FAIL/INCONCLUSIVE to the
    existing-evidence diagnostic only, and now binds the gate's ordered eight
    label digests to the terminal supervisor population; neither branch
    authorizes compute;
-4. **INTEGRATION MERGED at `59a23c7`:** keyed common-random-number streams, a
+5. **INTEGRATION MERGED at `59a23c7`:** keyed common-random-number streams, a
    shared public projection and the two-sided logit-margin cell are bounded;
    freeze a fresh runner/population/gate packet;
-5. version the shared `ExperimentSpec`/progress receipt so reviewed jobs are
+6. version the shared `ExperimentSpec`/progress receipt so reviewed jobs are
    launch-ready without making promotion or evidence decisions automatic;
-6. if all strength work is review-blocked, use the slot for encoder-provenance,
+7. if all strength work is review-blocked, use the slot for encoder-provenance,
    native parity/performance or frontend correctness tests—not an unregistered
    strength run.
 

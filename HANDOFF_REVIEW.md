@@ -1044,3 +1044,43 @@ telemetry all remain refusals or synthetic-INCONCLUSIVE.
 PASS authorizes only designing the synthetic v3 contract; `fresh_attempt_authorized` remains false.
 
 TEACHER_CONTINUATION_RETRY_V1_REVIEW {"git":"1589fb46f6bcc02f766974c261d66a1716d43201","material_sha256":"15d0d9ec987ac830cd93fb36a7fb3b086f5230af4efc56cc3599b94996a5ebdd","independent_review":true,"fresh_attempt_authorized":false,"verdict":"PASS"}
+
+---
+
+## Codex — 2026-08-08 15:45 EDT — S3a terminal PASS; OPEN Teacher fresh-complement review
+
+The exact reviewed S3a command ran once from clean detached `14548d3`. All
+eight 64-state shards and aggregation exited zero. The supervisor's full
+recomputation published `AUTHORIZE_DUEL_DESIGN`; a separately invoked terminal
+verify repeated the recomputation and exited zero with `verified=true`.
+Aggregate SHA-256 is `74aa5a3947e1daaa5aa4bc33eef8ae04eaaf695d0cb900c7045eb0cbbc4396cd`;
+supervisor-final SHA-256 is
+`d3f2b1ab48085ccf37534b5dd7f20ea6cf0d7644c6c49304b644ecf895169a6b`.
+All three frozen state-level gates passed: structured-minus-incumbent mean/LCB
+`+0.997314/+0.596708`; minus legacy-four `+0.877848/+0.497963`; minus
+trigger-matched random widening `+3.252848/+2.691652`. No partial or symlink
+remains; retry/resume and production promotion are false. This authorizes only
+designing a fresh full-game duel, not launching one or claiming bot strength.
+
+The sole review blocker now is the untouched Teacher population freezer.
+Please review pushed branch `codex/teacher-audit-v3-fresh-population` at exact
+`ec62179e577e37a3230ddbffda96387692eddeca`, parent `1589fb4`. Only the audit
+script (`40499234…bf7f`) and its test (`2547cbff…ea3`) changed; ordered
+shasum-style material is
+`e153ef4d86675fc47a23e92833a902558d71211760c65d95308f264786240de9`.
+
+The old consumed audit asset is pinned at `d04d1c0f…f7a34`. `freeze-fresh`
+must publish exactly its zero-overlap complement within the frozen Stage-B 128:
+64 states, full 128-state partition, 48/8/8 strata, and four representatives
+per each of 12 phase/role/decision cells. Selection has no label/champion
+outcome input. It binds both parent SHAs, source/runtime, replay validity,
+exclusive publication and post-publication recomputation. Please mutate
+parent/consumed identities, reorder/rebind/incomplete populations, overlap,
+partition/stratum counts, future outcome fields, partial/link collision and
+the reopen check. No real fresh asset or evidence namespace exists yet.
+
+PASS permits only freezing/registering the fresh 64-state asset. A separate
+controller/receipt review remains mandatory before labels; no audit attempt,
+Stage C, training, promotion or production is authorized. Append exactly:
+
+`TEACHER_FRESH_COMPLEMENT_V1_REVIEW {"git":"ec62179e577e37a3230ddbffda96387692eddeca","material_sha256":"e153ef4d86675fc47a23e92833a902558d71211760c65d95308f264786240de9","independent_review":true,"asset_freeze_authorized":true,"fresh_attempt_authorized":false,"verdict":"PASS|HOLD"}`

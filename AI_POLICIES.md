@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-08 14:42 EDT
+## Current synthesis — 2026-08-08 15:45 EDT
 
 ### Canonical terminal-results table
 
@@ -34,7 +34,8 @@ results table.
 | 08-08 | Suphx O0 | **SELECT NONE** | oracle-minus-public `+0.073`, LCB `+0.0025`; seed means `+0.344/-0.207/+0.082` | Full information produced an aggregate signal but not robust seedwise benefit. O1 is unauthorized. |
 | 08-08 | Teacher-v3 Stage B / audit-v2 | **STAGE B PASS / AUDIT OPERATIONAL REFUSAL** | cheap-minus-gold regret upper bound `0.0195 < 0.10`; audit shard 6 stopped on an incomplete champion-report continuation and published no labels/gate | Cheap labels agreed on sampled ordinary states. The continuation audit produced no ML verdict and is nonretryable; reviewed score-free diagnostics now gate a fresh versioned synthetic contract. |
 | 08-08 | S3b v2 throughput | **HOLD / NO SCREEN** | first exact-treatment cluster exceeded the frozen cumulative `250,000`-node cap; no receipt published | The registered four-card sampled-exact recipe is not operationally admissible under its zero-overflow rule. No strength conclusion; no retry or 2,048 screen. |
-| 08-08 | S3a v2 sizing | **CAPACITY PASS / NO STRENGTH VERDICT** | frozen projection `0.142` fleet-hours / `0.0178` max-shard hours, exact work and zero failed worlds | The 512-state mechanism screen fits easily on Mini. It still requires a separately reviewed launch packet and cannot promote a bot by itself. |
+| 08-08 | S3a v2 sizing | **CAPACITY PASS / NO STRENGTH VERDICT** | frozen projection `0.142` fleet-hours / `0.0178` max-shard hours, exact work and zero failed worlds | This cleared placement for the subsequently reviewed and completed 512-state screen; sizing itself made no strength claim. |
+| 08-08 | S3a structured-bury screen | **MECHANISM PASS / AUTHORIZE DUEL DESIGN** | structured-minus-live-incumbent `+0.997 +/- 0.401` (LCB `+0.597`); minus legacy-four `+0.878 +/- 0.380`; minus matched random widening `+3.253 +/- 0.561` | Structured proposal generation improved the frozen state-level bury objective against every preregistered control. This is the first positive S3 mechanism signal, but only a fresh full-game duel can establish bot strength. |
 
 Evidence anchors, in the same order:
 
@@ -49,6 +50,8 @@ Evidence anchors, in the same order:
   runner SHA `ed4252b2f957e2855446ca63858e7da973949934850684e8f92e5950ca74050d`;
   final and partial receipts absent by fail-closed design.
 - S3a v2 sizing receipt `cf7702770e2dd416b0ecfcdcc2ba6a5c32ab262aef0319d87346d05bcdf5c431`.
+- S3a screen aggregate `74aa5a3947e1daaa5aa4bc33eef8ae04eaaf695d0cb900c7045eb0cbbc4396cd`;
+  supervisor final `d3f2b1ab48085ccf37534b5dd7f20ea6cf0d7644c6c49304b644ecf895169a6b`.
 
 ### Production search
 
@@ -75,6 +78,11 @@ Evidence anchors, in the same order:
 - DEV-512 selected none: the shipped ballot had the lowest equal-work regret and
   CALIB/REPORT remain sealed. This rejects its registered designs, not every
   future proposal-search hypothesis.
+- S3a now supplies that missing positive proposal-search signal specifically
+  for bury decisions: structured widening beat the incumbent, legacy-four and
+  trigger-matched random widening on 512 frozen states. Its per-state evidence
+  is inspected and non-promotable; the mechanism must move to fresh full-game
+  clusters before any policy claim.
 - High-N and late assets are replayable state reservoirs, not oracles; their
   labels use old ballots, non-strict sampling, raw points and heuristic
   continuation. Relabel fresh named strata under the current contract.

@@ -476,6 +476,21 @@ DEV-512, V11-v2, Direct-Q and O0 evidence plus the still-running Teacher-v3
 boundary. Do not open live Teacher outcomes, change code, launch compute or
 turn this strategy review into a new execution gate.
 
+One post-terminal O0 clue deserves explicit review. Reopening every candidate
+checkpoint shows that all 24 entropy-controller paths reached alpha zero: lead
+heads at iterations 10–12 and follow heads at 48–53. Terminal normalized DEV
+entropy nevertheless stayed `0.999997–1.000000`. This was not a no-op:
+oracle perfect encoders moved about 25–29% in relative L2, the other major
+parameter groups moved roughly 18–39%, and terminal greedy-action change rates
+were 53–60% for oracle and 52–62% for public. The current nonnegative entropy
+bonus can stop encouraging excess entropy but cannot actively penalize it.
+Please decide whether this is the intended minimum-entropy controller plus an
+underpowered/high-variance dose, or an objective/gate implementation flaw.
+Also assess whether three fixed pairs with arm-separated action RNG streams
+can cleanly attribute oracle benefit, or whether a fresh crossed/common-random-
+number design and training seeds as an inference dimension are required. These
+are diagnostic questions only; they do not reopen O0.
+
 Please append a concise entry to `HANDOFF_REVIEW.md` answering:
 
 1. What are the five most decision-relevant findings from the last four days,

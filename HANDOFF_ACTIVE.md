@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 17:12 EDT. This is the executable mailbox, not a
+Last update: 2026-08-08 17:25 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -10,7 +10,7 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 | area | status | next action |
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
-| T1 Teacher | **RUNNING ON MINI / 8 OF 8 SHARDS LIVE** | Claude passed the exact launch packet. Receipt/preparation were created once and reopened exactly; post-preparation preflight returned zero problems. Supervisor `teacher-v3-report-lcb-audit-v3-mini-149m` owns all eight workers. Wait for one terminal gate. |
+| T1 Teacher | **RUNNING ON MINI / ADAPTER REVIEW PASS** | Claude passed both the exact launch packet and terminal adapter `5b26c4b`. Supervisor `teacher-v3-report-lcb-audit-v3-mini-149m` owns all eight workers. Wait for one terminal gate, independently recompute it, then create one adapter artifact. |
 | T2 S3a structured bury | **512-STATE MECHANISM PASS** | Structured widening passed all three frozen state-level LCBs. Design a fresh full-game duel against exact production plus a champion-matched null; no duel is yet authorized. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
 | T2 learner O0-v2 | **INTEGRATION MERGED** | Exact integration passed review; a fresh population/runner/gate packet is next. No training is authorized. |
@@ -35,9 +35,9 @@ instance, migrate to Air, inspect partial scores for decisions, retry, extend,
 train, promote, or launch Stage C. Wait for the supervisor's single terminal
 gate and independently reopen every binding.
 
-## REVIEW WHILE COMPUTE RUNS — terminal adapter v2
+## CLOSED REVIEW — terminal adapter v2 PASS
 
-Review pushed branch `codex/teacher-terminal-adapter-v2` at exact
+Claude independently passed branch `codex/teacher-terminal-adapter-v2` at exact
 `5b26c4b4bdb678b2c780c8a4b6ed5b87e181964e` (29/29 focused tests). It updates
 the previously reviewed fail-closed adapter to the exact v2 gate/supervisor,
 fresh Mini run identity, retry admission, old/new state provenance, Stage-B
@@ -52,17 +52,13 @@ Exact file SHA-256s are `d46f0751…c5589` for the adapter and
 `195fc327…7c82` for its tests. Commits `490757a`, `76195fd`, `f5fb18f` and
 `0f4ef15` are superseded.
 
-Falsify gate or supervisor schema/run drift, host/Python/native/runtime drift,
-retry-admission drift, historical/fresh asset swaps, missing or reordered
-cheap/N=30/label populations, receipt/preparation mismatch, and a terminal
-event that does not bind the exact gate. Both outcome branches must remain
-design-only: PASS may emit hard-tail Stage-C **design**, while
-FAIL/INCONCLUSIVE may diagnose frozen evidence only. Neither may launch
-labels, compute, training, retry, extension, promotion, or production.
+The independent review reproduced all literals, 29/29 tests and adversarial
+copy/symlink/population probes. Both outcome branches remain design-only: PASS
+may emit hard-tail Stage-C **design**, while FAIL/INCONCLUSIVE may diagnose
+frozen evidence only. Neither may launch labels, compute, training, retry,
+extension, promotion, or production. Closed marker:
 
-Append one marker:
-
-`TEACHER_TERMINAL_ADAPTER_V2_REVIEW {"git":"5b26c4b4bdb678b2c780c8a4b6ed5b87e181964e","run_id":"teacher-v3-report-lcb-audit-v3-mini-149m","canonical_namespace":true,"reject_parent_symlinks":true,"literal_parent_populations":true,"literal_receipt_nonce":true,"exact_adapter_python":"3.14.6","receipt_sha256":"e293858c728437d6016a3f02a62a355c38a37a6028ad0d83e49423e1caf4a10d","preparation_sha256":"83892930fa8e7e8148960511ef0a87c3becbe77a87eaebf3c912458863644c39","output_name":"teacher_terminal_adapter_v2.json","fail_closed":true,"no_compute_authority":true,"verdict":"PASS|HOLD"}`
+`TEACHER_TERMINAL_ADAPTER_V2_REVIEW {"git":"5b26c4b4bdb678b2c780c8a4b6ed5b87e181964e","run_id":"teacher-v3-report-lcb-audit-v3-mini-149m","canonical_namespace":true,"reject_parent_symlinks":true,"literal_parent_populations":true,"literal_receipt_nonce":true,"exact_adapter_python":"3.14.6","receipt_sha256":"e293858c728437d6016a3f02a62a355c38a37a6028ad0d83e49423e1caf4a10d","preparation_sha256":"83892930fa8e7e8148960511ef0a87c3becbe77a87eaebf3c912458863644c39","output_name":"teacher_terminal_adapter_v2.json","fail_closed":true,"no_compute_authority":true,"verdict":"PASS"}`
 
 ## Closed launch packet — retained until the terminal gate
 

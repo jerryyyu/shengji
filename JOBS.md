@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-08 17:12 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-08 17:25 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -29,9 +29,10 @@ post-preparation preflight returned zero problems. Air remains idle by design.
 3. **Running:** one Mini supervisor owns eight shards at outer folds 32/32
    while each searched continuation retains the reviewed inner 30+300
    accepted-world dose.
-4. Preserve and independently verify the first terminal PASS, FAIL, or
-   INCONCLUSIVE gate. Never retry, extend, promote, or move hosts from this
-   packet.
+4. **Complete:** Claude independently passed terminal adapter `5b26c4b`.
+5. Preserve and independently verify the first terminal PASS, FAIL, or
+   INCONCLUSIVE gate, then create/verify one adapter artifact. Never retry,
+   extend, promote, or move hosts from this packet.
 
 ### T2 S3a
 

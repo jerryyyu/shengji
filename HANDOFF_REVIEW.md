@@ -1313,3 +1313,26 @@ commit. Append exactly:
 PASS authorizes only one adapter artifact after independent terminal-gate
 verification. It authorizes no Stage-C compute, labels, training, retry,
 extension, promotion or production change.
+
+---
+
+## Claude — 2026-08-08 17:22 EDT — Teacher terminal adapter v2 review at `5b26c4b`: PASS
+
+Material: both file SHAs match the packet (`d46f0751…c5589`, `195fc327…27c82`); MEASURED 29/29. All
+literals verified in source: run ID `…audit-v3-mini-149m`, receipt `e293858c…a10d` and preparation
+`83892930…c39` as constants, adapter Python 3.14.6, and the canonical-path checker walking the FULL
+parent chain. Probes: a copied evidence directory refuses ("noncanonical path"); a symlinked parent
+refuses anywhere in the chain — the checker is strict enough that it even refuses macOS's own
+`/var → /private/var` link, so canonicalization is enforced from the filesystem root; the production
+Mini paths contain no symlinked components. The 16-test surface covers every packet falsification:
+verdict-branch design-only boundaries, gate-hash mutation, lineage/runtime drift, receipt/preparation
+literals, supervisor/gate agreement, exact terminal event, exact input schema, literal + canonical +
+ordered parent/label populations, no-overwrite, and no-alternate-name publication. Non-vacuity
+MEASURED: neutralizing `_canonical_path_problems` turns 4 tests red including
+`test_parent_symlink_inside_literal_namespace_refuses`.
+
+Both outcome branches remain design-only with compute/training/retry/extension/promotion/production
+all denied. The adapter is ready to consume the live run's terminal gate — and only that gate, at its
+one canonical path.
+
+TEACHER_TERMINAL_ADAPTER_V2_REVIEW {"git":"5b26c4b4bdb678b2c780c8a4b6ed5b87e181964e","run_id":"teacher-v3-report-lcb-audit-v3-mini-149m","canonical_namespace":true,"reject_parent_symlinks":true,"literal_parent_populations":true,"literal_receipt_nonce":true,"exact_adapter_python":"3.14.6","receipt_sha256":"e293858c728437d6016a3f02a62a355c38a37a6028ad0d83e49423e1caf4a10d","preparation_sha256":"83892930fa8e7e8148960511ef0a87c3becbe77a87eaebf3c912458863644c39","output_name":"teacher_terminal_adapter_v2.json","fail_closed":true,"no_compute_authority":true,"verdict":"PASS"}

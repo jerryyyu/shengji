@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-08 18:10 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-08 18:19 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,7 +10,7 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** supervisor admitted at 16:33 EDT and owns 8/8 CPU-bound label shards. At 18:10, score-free progress was 933/4096 outer worlds (~22.8%); no shard was terminal. Wait for one terminal gate; no duplicate/retry/migration. |
+| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** supervisor admitted at 16:33 EDT and owns 8/8 CPU-bound label shards. At 18:19, score-free progress was 1,055/4,096 outer worlds (25.8%); no shard was terminal. Wait for one terminal gate; no duplicate/retry/migration. |
 | Air | none | Physically idle but not admissible for the current S3a parent. A no-write probe with exact copied RLCB-C1 evidence/native bytes still refused the historical Mini `execution_host`/Python lock. Do not launch S3a on Air without a separately reviewed portable-parent design. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
@@ -41,9 +41,10 @@ preflighted before launch.
 
 ### T2 S3a
 
-The state-level screen has already passed. Exact duel core `3e5fcc0` and
-Mini-only score-free controller `7b52d19` are in external review; 59/59
-combined tests pass. The next possible compute is the separately reviewed
+The state-level screen has already passed. Claude's narrow HOLD on the old
+exacts is repaired by core `b5dee2e` and Mini-only score-free controller
+`0085409`; 61/61 combined tests pass and bounded rereview is requested. The
+next possible compute is the separately reviewed
 score-free sizing preflight on Mini after Teacher releases it—not a rerun,
 enlarged state screen, Air launch, or strength duel.
 

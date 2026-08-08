@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 19:34 EDT. This is the executable mailbox, not a
+Last update: 2026-08-08 19:46 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -11,7 +11,7 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
 | T1 Teacher | **RUNNING ON MINI / 1 OF 8 SHARDS PUBLISHED / ADAPTER PASS** | Claude passed the launch packet and terminal adapter `5b26c4b`. Shard 2 exited zero; seven workers remain live under the same supervisor. Keep every label sealed until the one terminal gate, independently recompute it, then create one adapter artifact. |
-| T2 S3a structured bury | **CORE/CONTROLLER REVIEW PASS / INTEGRATED / PREFLIGHT PACKET REVIEW NEEDED** | Claude passed exact `b5dee2e` / `0085409`; current-main integration `fcad972` preserves all four reviewed file hashes and passes 76/76. Review the literal four-cluster Mini packet below. No preflight, screen, strength, or production launch is authorized yet. |
+| T2 S3a structured bury | **CORE REVIEW PASS / TEACHER-GUARDED PREFLIGHT REREVIEW NEEDED** | Claude passed exact `b5dee2e` / `0085409`; integration `fcad972` preserved the reviewed bytes. Self-audit found the first literal packet stated Teacher exclusivity without enforcing it. Exact `28afa2b` now refuses until the canonical Teacher supervisor final exists, its partial is absent, and all Teacher workers are gone. Review the superseding packet below; no launch is authorized yet. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
 | T2 learner O0-v2 | **INTEGRATION MERGED** | Exact integration passed review; a fresh population/runner/gate packet is next. No training is authorized. |
 
@@ -322,40 +322,49 @@ but insufficient; exact merge Git, source hashes, these four numbers,
 heartbeat 30, canonical Mini command and the fresh namespace are frozen in the
 separate literal launch review below.
 
-Integration is complete at exact current-main merge
-`fcad972a088724c7f24cbfb9759f8355857928ae`. It descends from reviewed
-controller `0085409` and then-current main `804782a`. The runner/test hashes
-remain `d04fd162…3bfb38` / `acf73c26…490a39`; controller/test hashes remain
-`92c05714…ffeeb` / `0fcb7508…c4114`. The full current S3a/parent/progress
-battery passes 76/76 under canonical Mini Python 3.14.3.
+Integration `fcad972a088724c7f24cbfb9759f8355857928ae` descends from reviewed
+controller `0085409` and then-current main `804782a`; its full
+S3a/parent/progress battery passed 76/76 under canonical Mini Python 3.14.3.
+The duel runner remains byte-identical at `d04fd162…3bfb38`.
 
-## REVIEW NEEDED — literal score-free S3a Mini preflight
+The first literal packet is **superseded**: its marker said
+`teacher_exclusive=true`, but exact `fcad972` neither hashed that prerequisite
+nor refused a concurrent Teacher. Exact current-main merge
+`28afa2b7f4032051a513c2b5115b7cb5884f54e8` adds only that missing launch
+boundary plus tests. New controller/test SHA-256s are
+`5ca78416…09434` / `adc1df0f…13e1d`; ordered material is
+`d646bc09…21f0e`; focused tests pass 15/15.
+
+## REVIEW NEEDED — superseding Teacher-guarded S3a Mini preflight
 
 This packet authorizes only four mirrored complete-round timing/counter
 clusters after the live Teacher supervisor has terminated and released Mini.
 It reads no duel outcome and can end only at screen-packet review authority or
 a terminal protocol/capacity HOLD. It cannot launch the 2,048 screen.
 
-The canonical-root no-write probe passed at exact `fcad972`: live
-`mc-s0-report-lcb` parent/RLCB-C1 reopened, native SHA
-`9c9e77fb…e4c1` matched, host/Python were
-`Jerrys-Mac-mini.local` / `3.14.3`, all seed streams were disjoint, and fresh
-namespace `s3a-bury-duel-preflight-18b-v1` had zero collisions. Frozen
-contract SHA-256 is
-`492a1390f25f681e78c2102764e677625daac9f4f606d43c9b95e6092aab4086`.
+At exact `28afa2b`, authentic live `mc-s0-report-lcb`/RLCB-C1 and Mini Python
+3.14.3 recomputed frozen contract SHA-256
+`6185141c5227d9aa161815351d6e4a84f0dd9346be2454203b2c8fed91abc19c`.
+The contract now hashes the canonical Teacher final/partial paths and all three
+release predicates. A real launch probe while Teacher was live refused at
+exit 3, named supervisor plus seven worker PIDs, and left the `18b` namespace
+absent. The previously verified stream separation, seed, native binary and
+four capacity caps are unchanged.
 
 Before launch, the canonical root `/Users/jerryyu/Projects/shengji` must be
-clean and detached at `fcad972`; it must remain there until the controller
-terminates. Teacher must have no live worker or supervisor. Freeze screen caps
-at `192` fleet-hours / `24` max-shard-hours, confirmation caps at `768` / `96`,
-and heartbeat at 30 seconds. The exact command is:
+clean and detached at `28afa2b`; it must remain there until the controller
+terminates. The controller itself now requires the canonical Teacher
+supervisor final to be regular/unlinked, its `.partial` to be absent, and no
+matching Teacher supervisor/worker process. Freeze screen caps at `192`
+fleet-hours / `24` max-shard-hours, confirmation caps at `768` / `96`, and
+heartbeat at 30 seconds. The exact command is:
 
 ```bash
 SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 \
 server/.venv/bin/python server/scripts/s3a_bury_duel_preflight.py launch \
-  --expected-git fcad972a088724c7f24cbfb9759f8355857928ae \
+  --expected-git 28afa2b7f4032051a513c2b5115b7cb5884f54e8 \
   --expected-runner-sha256 d04fd162a959986c0b0170df5f6f0a3f543c8a50fa90c7f776a2ecc5cd3bfb38 \
-  --expected-controller-sha256 92c057145ed2049922a403d50f4bacc02afc8b9910b1d7720ea1e1b2f45ffeeb \
+  --expected-controller-sha256 5ca78416db7194a2fe5dca07936240785f32643d7348d692096a92cb1c609434 \
   --expected-host Jerrys-Mac-mini.local \
   --screen-fleet-hours 192 \
   --screen-max-shard-hours 24 \
@@ -364,16 +373,19 @@ server/.venv/bin/python server/scripts/s3a_bury_duel_preflight.py launch \
   --heartbeat-seconds 30
 ```
 
-Please independently reproduce the contract SHA/no-write identity, confirm
-the four caps encode the same 168.75-second cluster ceiling, verify exact
-namespace/seed `18b` / `18000000000`, and prove the strongest controller
-status remains `AUTHORIZE_SCREEN_PACKET_REVIEW`. PASS authorizes the exact
-preflight only after Teacher releases Mini; it authorizes no screen,
+Please reproduce the new source/material/contract hashes and 15/15 tests.
+Mutation-prove that removing any regular-final, partial-absence, process-table
+failure, or live-process predicate turns a test red. While Teacher remains
+live, the literal command must refuse at exit 3 before namespace creation.
+Confirm the four caps still encode the same 168.75-second cluster ceiling,
+exact namespace/seed `18b` / `18000000000`, and strongest status
+`AUTHORIZE_SCREEN_PACKET_REVIEW`. PASS authorizes this exact preflight only
+after the executable Teacher guard clears; it authorizes no screen,
 confirmation, strength conclusion, retry, promotion, or production change.
 
 Append exactly:
 
-`S3A_DUEL_PREFLIGHT_LAUNCH_V1_REVIEW {"git":"fcad972a088724c7f24cbfb9759f8355857928ae","runner_sha256":"d04fd162a959986c0b0170df5f6f0a3f543c8a50fa90c7f776a2ecc5cd3bfb38","controller_sha256":"92c057145ed2049922a403d50f4bacc02afc8b9910b1d7720ea1e1b2f45ffeeb","contract_sha256":"492a1390f25f681e78c2102764e677625daac9f4f606d43c9b95e6092aab4086","run_id":"s3a-bury-duel-preflight-18b-v1","seed0":18000000000,"clusters":4,"host":"Jerrys-Mac-mini.local","python":"3.14.3","screen_fleet_hours":192.0,"screen_max_shard_hours":24.0,"confirm_fleet_hours":768.0,"confirm_max_shard_hours":96.0,"heartbeat_seconds":30.0,"teacher_exclusive":true,"score_free":true,"preflight_launch_authorized":true,"screen_launch_authorized":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
+`S3A_DUEL_PREFLIGHT_LAUNCH_V2_REVIEW {"git":"28afa2b7f4032051a513c2b5115b7cb5884f54e8","runner_sha256":"d04fd162a959986c0b0170df5f6f0a3f543c8a50fa90c7f776a2ecc5cd3bfb38","controller_sha256":"5ca78416db7194a2fe5dca07936240785f32643d7348d692096a92cb1c609434","controller_test_sha256":"adc1df0f30591856459a9cee8df3dc8b3d0dcf37e74c09ecd18bf351ed613e1d","material_sha256":"d646bc09ac3cf24607a0f45d1c7df111c6041705d4adc5d221bffc6247321f0e","contract_sha256":"6185141c5227d9aa161815351d6e4a84f0dd9346be2454203b2c8fed91abc19c","run_id":"s3a-bury-duel-preflight-18b-v1","seed0":18000000000,"clusters":4,"host":"Jerrys-Mac-mini.local","python":"3.14.3","screen_fleet_hours":192.0,"screen_max_shard_hours":24.0,"confirm_fleet_hours":768.0,"confirm_max_shard_hours":96.0,"heartbeat_seconds":30.0,"teacher_terminal_guarded":true,"live_teacher_refusal_proven":true,"namespace_absent_after_refusal":true,"score_free":true,"preflight_launch_authorized":true,"screen_launch_authorized":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
 
 ## Standing rules
 

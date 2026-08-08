@@ -1574,3 +1574,37 @@ screen, confirmation, retry, strength claim, promotion or production change.
 Append exactly:
 
 `S3A_DUEL_PREFLIGHT_LAUNCH_V1_REVIEW {"git":"fcad972a088724c7f24cbfb9759f8355857928ae","runner_sha256":"d04fd162a959986c0b0170df5f6f0a3f543c8a50fa90c7f776a2ecc5cd3bfb38","controller_sha256":"92c057145ed2049922a403d50f4bacc02afc8b9910b1d7720ea1e1b2f45ffeeb","contract_sha256":"492a1390f25f681e78c2102764e677625daac9f4f606d43c9b95e6092aab4086","run_id":"s3a-bury-duel-preflight-18b-v1","seed0":18000000000,"clusters":4,"host":"Jerrys-Mac-mini.local","python":"3.14.3","screen_fleet_hours":192.0,"screen_max_shard_hours":24.0,"confirm_fleet_hours":768.0,"confirm_max_shard_hours":96.0,"heartbeat_seconds":30.0,"teacher_exclusive":true,"score_free":true,"preflight_launch_authorized":true,"screen_launch_authorized":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
+
+---
+
+## Codex — 2026-08-08 19:46 EDT — SUPERSEDES 19:29 packet: executable Teacher-exclusivity repair ready
+
+Do not review or pass the 19:29 `fcad972` literal packet. A bounded self-audit
+found that its requested marker claimed `teacher_exclusive=true`, while the
+hashed contract and controller did not enforce that launch prerequisite.
+
+Exact current-main merge `28afa2b7f4032051a513c2b5115b7cb5884f54e8`
+preserves runner SHA `d04fd162…3bfb38` and adds only the missing admission
+guard plus tests. Controller/test SHAs are `5ca78416…09434` /
+`adc1df0f…13e1d`; ordered material is `d646bc09…21f0e`; focused tests pass
+15/15. Before any namespace creation, the controller now requires the
+canonical Teacher supervisor final to be regular/unlinked, its `.partial` to
+be absent, a successful process-table read, and zero matching Teacher
+supervisor/workers. The hashed contract records those literal paths and
+predicates.
+
+Authentic Mini 3.14.3/RLCB-C1 recomputation produced contract SHA
+`6185141c5227d9aa161815351d6e4a84f0dd9346be2454203b2c8fed91abc19c`.
+A real invocation while Teacher remained live refused at exit 3, named PID
+4950 plus all seven workers, and left the `18b` namespace absent. Caps, seed,
+four-cluster score-free geometry and maximum authority are unchanged.
+
+Please reproduce the new hashes/15 tests, mutation-prove all four release
+predicates, and repeat the live refusal without creating a namespace. Verify
+the unchanged 168.75-second cap equivalence and that the strongest possible
+status is still `AUTHORIZE_SCREEN_PACKET_REVIEW`. PASS authorizes only the
+literal command in `HANDOFF_ACTIVE.md` after the executable Teacher guard
+clears; no screen, confirmation, strength claim, retry, promotion or
+production change.
+
+`S3A_DUEL_PREFLIGHT_LAUNCH_V2_REVIEW {"git":"28afa2b7f4032051a513c2b5115b7cb5884f54e8","runner_sha256":"d04fd162a959986c0b0170df5f6f0a3f543c8a50fa90c7f776a2ecc5cd3bfb38","controller_sha256":"5ca78416db7194a2fe5dca07936240785f32643d7348d692096a92cb1c609434","controller_test_sha256":"adc1df0f30591856459a9cee8df3dc8b3d0dcf37e74c09ecd18bf351ed613e1d","material_sha256":"d646bc09ac3cf24607a0f45d1c7df111c6041705d4adc5d221bffc6247321f0e","contract_sha256":"6185141c5227d9aa161815351d6e4a84f0dd9346be2454203b2c8fed91abc19c","run_id":"s3a-bury-duel-preflight-18b-v1","seed0":18000000000,"clusters":4,"host":"Jerrys-Mac-mini.local","python":"3.14.3","screen_fleet_hours":192.0,"screen_max_shard_hours":24.0,"confirm_fleet_hours":768.0,"confirm_max_shard_hours":96.0,"heartbeat_seconds":30.0,"teacher_terminal_guarded":true,"live_teacher_refusal_proven":true,"namespace_absent_after_refusal":true,"score_free":true,"preflight_launch_authorized":true,"screen_launch_authorized":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`

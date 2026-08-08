@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 18:36 EDT. This is the executable mailbox, not a
+Last update: 2026-08-08 18:56 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -10,7 +10,7 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 | area | status | next action |
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
-| T1 Teacher | **RUNNING ON MINI / ADAPTER REVIEW PASS** | Claude passed both the exact launch packet and terminal adapter `5b26c4b`. Supervisor `teacher-v3-report-lcb-audit-v3-mini-149m` owns all eight workers. Wait for one terminal gate, independently recompute it, then create one adapter artifact. |
+| T1 Teacher | **RUNNING ON MINI / 1 OF 8 SHARDS PUBLISHED / ADAPTER PASS** | Claude passed the launch packet and terminal adapter `5b26c4b`. Shard 2 exited zero; seven workers remain live under the same supervisor. Keep every label sealed until the one terminal gate, independently recompute it, then create one adapter artifact. |
 | T2 S3a structured bury | **HOLD REPAIRED / BOUNDED REREVIEW READY / NO LAUNCH** | Claude found one consumed sizing seed in the proposed screen. Pushed core `b5dee2e` excludes all four consumed seeds and controller `0085409` pins the only authenticating Mini interpreter; 61/61 combined tests pass. Rereview the exact repair below. No budgets, command, or compute is authorized. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
 | T2 learner O0-v2 | **INTEGRATION MERGED** | Exact integration passed review; a fresh population/runner/gate packet is next. No training is authorized. |
@@ -35,7 +35,10 @@ instance, migrate to Air, inspect partial scores for decisions, retry, extend,
 train, promote, or launch Stage C. Wait for the supervisor's single terminal
 gate and independently reopen every binding.
 
-Outcome-blind runtime audit at 18:34 found 1,134/4,096 outer worlds (27.7%). An
+Outcome-blind runtime audit at 18:56 found 1,313/4,096 outer worlds (32.1%) and
+18/64 states. Shard 2 published its regular label/log/exit triplet after exit
+zero; the label JSON remains unopened and unhashed. Seven workers remain
+CPU-bound under the original supervisor. An
 earlier bounded audit found ~13% of a candidate-count × remaining-ply work
 proxy complete after ~56 minutes. Because
 the frozen partition is highly imbalanced (1–14 candidates and ply 0–72), a

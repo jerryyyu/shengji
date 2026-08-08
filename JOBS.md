@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-08 18:34 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-08 18:56 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,7 +10,7 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** supervisor admitted at 16:33 EDT and owns 8/8 CPU-bound label shards. At 18:34, score-free progress was 1,134/4,096 outer worlds (27.7%); no shard was terminal. Exact read-only monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
+| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shard 2 exited zero and published 1/8 label triplets; seven workers remain CPU-bound. At 18:56, score-free progress was 1,313/4,096 outer worlds (32.1%) and 18/64 states. The label JSON remains sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
 | Air | none | Physically idle but not admissible for the current S3a parent. A no-write probe with exact copied RLCB-C1 evidence/native bytes still refused the historical Mini `execution_host`/Python lock. Do not launch S3a on Air without a separately reviewed portable-parent design. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
@@ -31,9 +31,10 @@ preflighted before launch.
    controller `0399591`, and material `645b8f54…b894d`.
 2. **Complete:** the one-shot preparer emitted exact receipt
    `e293858c…a10d` and preparation `83892930…c39`; both reopened cleanly.
-3. **Running:** one Mini supervisor owns eight shards at outer folds 32/32
-   while each searched continuation retains the reviewed inner 30+300
-   accepted-world dose.
+3. **Running:** one Mini supervisor owns the population; shard 2 exited zero
+   and seven workers remain live. Outer folds are 32/32 while each searched
+   continuation retains the reviewed inner 30+300 accepted-world dose. Do not
+   open the published label before the terminal gate.
 4. **Complete:** Claude independently passed terminal adapter `5b26c4b`.
 5. Preserve and independently verify the first terminal PASS, FAIL, or
    INCONCLUSIVE gate, then create/verify one adapter artifact. Never retry,

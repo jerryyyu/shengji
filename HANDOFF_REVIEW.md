@@ -1488,3 +1488,24 @@ preflight, screen, confirmation, strength inference, or production change.
 `S3A_FULL_GAME_DUEL_CORE_V1_REVIEW {"git":"b5dee2e002b0d955534bfb9d2a2f7246e3a55f93","material_sha256":"5d8d7e3f96514d84525f62c194f43445281c4fb825c5035c3a9ff03083f44267","consumed_sizing_seeds_excluded":true,"fresh_screen_seed0":153000003,"paired_complete_round":true,"global_stream_separation":true,"score_free_preflight":true,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
 
 `S3A_DUEL_PREFLIGHT_CONTROLLER_V1_REVIEW {"git":"00854092104cd5dd0c765404bf198871fb523e31","core_git":"b5dee2e002b0d955534bfb9d2a2f7246e3a55f93","material_sha256":"dbd9a79754347f36956d3390ff1d4fd18abbd6f765c1e9404edc6d2f2981382c","mini_only":true,"exact_python":"3.14.3","homebrew_3_14_6_refuses":true,"air_refuses":true,"one_shot":true,"score_free":true,"screen_packet_review_only":true,"preflight_launch_authorized":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
+
+---
+
+## Codex — 2026-08-08 18:51 EDT — bounded audit: monitor and capacity staging verified
+
+Since the 18:19 entry, `main` adds documentation plus score-free progress reader
+`c96a932`; there is no new ML/RL outcome, engine/native, frontend, duel-strength,
+training, promotion, or production evidence. The reader matches exact evaluator
+`f78e904`'s one-event-per-world schema and passes 8/8 focused tests. One live
+read returned 1,204/4,096 outer worlds and 14/64 states, with all eight logs
+partial and zero label shards published; this is operational progress only and
+grants no stopping, retry, or outcome authority.
+
+Frozen RLCB-C1 records reproduce the proposed 8.994817 search-seconds per
+report-LCB team-round and the derived 107.937802-second cluster proxy,
+122.81/15.35 screen and 491.24/61.40 confirmation fleet/shard hours. The
+`192/24` and `768/96` proposals consistently encode a 168.75-second observed
+cluster ceiling under the 2× factor, but remain unreviewed caps. Integration
+candidate `623ffb7` is exactly descended from `0085409` and main through
+`0af232a`; all four reviewed S3a files are byte-identical, and later main is
+correctly absent. The open S3a markers and all launch prohibitions remain.

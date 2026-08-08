@@ -58,13 +58,17 @@ if args.mode == "label":
     }))
     raise SystemExit(0)
 verdict = os.environ.get("FAKE_GATE_VERDICT", "PASS")
+passed = verdict == "PASS"
 Path(args.out).write_text(json.dumps({
     "schema": "teacher-v1-champion-audit-gate-v1",
     "complete": True,
     "terminal": True,
+    "extension_authorized": False,
     "verdict": verdict,
+    "champion_fidelity_qualified": passed,
+    "stage_c_authorized": passed,
 }))
-raise SystemExit(0 if verdict == "PASS" else 4)
+raise SystemExit(0 if passed else 4)
 '''
 
 
@@ -190,6 +194,17 @@ def test_terminal_nonpass_is_preserved_without_retry(tmp_path, monkeypatch):
     assert summary["retry_authorized"] is False
     assert paths.gate.is_file()
     assert paths.progress_final.is_file()
+
+
+def test_unknown_terminal_verdict_is_not_accepted(tmp_path, monkeypatch):
+    config, paths = _fixture(tmp_path, monkeypatch)
+    monkeypatch.setenv("FAKE_GATE_VERDICT", "BOGUS")
+    with pytest.raises(S.SupervisorRefusal,
+                       match="terminal gate exit/verdict contract drift"):
+        S.run(config)
+    assert paths.gate.is_file()
+    assert paths.progress_partial.is_file()
+    assert not paths.progress_final.exists()
 
 
 def test_zero_exit_with_malformed_label_never_reaches_gate(

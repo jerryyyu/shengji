@@ -142,13 +142,15 @@ def _fixture(tmp_path: Path, monkeypatch):
         (P.PRODUCER_GIT if root == producer else P.AUDIT_GIT)
         if args == ("rev-parse", "HEAD") else "")
     preparer_sha = P.sha256_file(Path(P.__file__))
+    supervisor_sha = P.sha256_file(
+        Path(P.__file__).with_name(P.SUPERVISOR_SCRIPT_NAME))
     config = P.Config(
         producer_root=producer,
         audit_root=audit,
         python=Path(sys.executable),
         expected_gate_sha256=gate_sha,
         expected_preparer_sha256=preparer_sha,
-        expected_supervisor_sha256="c" * 64,
+        expected_supervisor_sha256=supervisor_sha,
     )
     monkeypatch.setattr(P, "EXPECTED_PYTHON_VERSION",
                         f"Python {sys.version.split()[0]}")
@@ -213,6 +215,21 @@ def test_output_collision_refuses_preflight(tmp_path, monkeypatch):
     paths.receipt.write_text("collision")
     problems = P.preflight_problems(config, paths)
     assert any("one-shot output collision" in problem for problem in problems)
+
+
+def test_supervisor_drift_refuses_before_copy_or_receipt(tmp_path, monkeypatch):
+    config, paths = _fixture(tmp_path, monkeypatch)
+    changed = P.Config(
+        **{**config.__dict__, "expected_supervisor_sha256": "c" * 64})
+    problems = P.preflight_problems(changed, paths)
+    assert "supervisor SHA predeclaration drift" in problems
+
+    with pytest.raises(P.PreparationRefusal,
+                       match="supervisor SHA predeclaration drift"):
+        P.prepare(changed)
+    assert not paths.receipt.exists()
+    assert not (config.audit_root / P.NAMESPACE /
+                P.STAGE_B_STATE_NAME).exists()
 
 
 def test_copy_publication_never_overwrites(tmp_path):

@@ -581,7 +581,11 @@ def _run_gate(config: Config, paths: Paths, progress: Progress,
     if (payload.get("schema") != "teacher-v1-champion-audit-gate-v1"
             or payload.get("complete") is not True
             or payload.get("terminal") is not True
-            or (verdict == "PASS") is not expected_pass):
+            or payload.get("extension_authorized") is not False
+            or verdict not in {"PASS", "FAIL", "INCONCLUSIVE"}
+            or (verdict == "PASS") is not expected_pass
+            or payload.get("champion_fidelity_qualified") is not expected_pass
+            or payload.get("stage_c_authorized") is not expected_pass):
         raise SupervisorRefusal("terminal gate exit/verdict contract drift")
     digest = sha256_file(paths.gate)
     return code, str(verdict), digest

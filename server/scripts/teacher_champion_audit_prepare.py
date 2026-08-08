@@ -43,6 +43,7 @@ EXPECTED_PYTHON_VERSION = "Python 3.14.6"
 RUN_ID = "teacher-v3-report-lcb-audit-v1-149m"
 NAMESPACE = Path("runs/logs/teacher-v1-entry-149m-v3")
 AUDIT_SCRIPT = Path("scripts/teacher_v1_champion_audit.py")
+SUPERVISOR_SCRIPT_NAME = "teacher_champion_audit_supervisor.py"
 STAGE_B_STATE_NAME = "stage_b_states.json"
 AUDIT_STATE_NAME = "champion_audit_states.json"
 STAGE_B_GATE_NAME = "stage_b_gate_v2.json"
@@ -309,8 +310,14 @@ def preflight_problems(config: Config, paths: PreparationPaths) -> list[str]:
             or sha256_file(Path(__file__).resolve())
             != config.expected_preparer_sha256):
         problems.append("preparer SHA predeclaration drift")
+    supervisor_script = Path(__file__).resolve().with_name(
+        SUPERVISOR_SCRIPT_NAME)
     if not is_sha256(config.expected_supervisor_sha256):
         problems.append("supervisor SHA predeclaration is malformed")
+    elif (not is_regular_unlinked(supervisor_script)
+          or sha256_file(supervisor_script)
+          != config.expected_supervisor_sha256):
+        problems.append("supervisor SHA predeclaration drift")
     owned = [paths.receipt, paths.receipt_log, paths.receipt_exit,
              paths.preparation]
     owned.extend(paths.audit_namespace / name for name in DESCENDANT_NAMES)

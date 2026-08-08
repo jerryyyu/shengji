@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## REVIEW HOLD / Teacher-v3 Stage-B PASS, audit-v2 controller repaired at 08:03 EDT
+## RUNNING / Teacher-v3 champion audit-v2 on Air at 08:16 EDT
 
 All eight Stage-B gold workers are terminal. The outcome-blind readiness
 checker returned exit 0 with 8/8 finals, zero workers, exact clean producer and
@@ -27,8 +27,20 @@ completion, v2 run ID and execution predeclaration, and binds that identity in
 the preparation manifest. Its four coherent wrong-identity mutations refuse
 before children. Air controller tests pass 27/27; local Teacher-adjacent tests
 pass 161/161. Read-only preflight reports zero problems, 20 parents and
-`artifact_created=false`. Air has no live strength worker while the revised
-independent audit-v2 review is pending.
+`artifact_created=false`. The revised exact review then passed for controller
+`edc923f`.
+
+The single v2 preparation exited zero and published receipt SHA
+`ce51b826d4f04549b961f795868cc4c6c5f90124a8552ce76fe2d3ab0bd471d0`
+and preparation SHA
+`7f89a86c2e0803d83473d8ccca978dd99dd010e467761d0d4429a3598c166605`.
+Independent reopen found exact v2 receipt/preparation identity, receipt exit
+zero, 20 copied parents, no partial, no descendant and an empty supervisor
+preflight. Air supervisor PID 95339 launched label PIDs 95345--95352 at 08:16.
+All eight were healthy at roughly 82--85% CPU and initial score-free fold
+progress was visible. Operator log:
+`~/teacher-v3-audit-v2-supervisor.log`. Do not retry, resume or inspect partial
+outcome values; the supervisor owns the only terminal gate transition.
 
 ## HISTORICAL / Teacher-v3 Stage-B gold at 2026-08-08 01:18 EDT
 

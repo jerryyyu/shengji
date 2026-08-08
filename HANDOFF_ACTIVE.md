@@ -1,12 +1,12 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 08:03 EDT. This is the executable mailbox only.
+Last update: 2026-08-08 08:18 EDT. This is the executable mailbox only.
 Durable discussion and retractions remain in `HANDOFF_REVIEW.md`; policy
 synthesis belongs in `AI_POLICIES.md`.
 
 ## Current truth
 
-- **Teacher-v3 Stage B: COMPLETE / PASS; champion audit: REVIEW HOLD.** At
+- **Teacher-v3 Stage B: COMPLETE / PASS; champion audit-v2: RUNNING.** At
   07:28 the reviewed outcome-blind checker found 8/8 regular gold finals,
   zero workers, exact clean producer `1a2a713`, no partial/gate collision and
   `outcomes_opened=false`. The single authorized Stage-B gate then exited zero
@@ -17,17 +17,15 @@ synthesis belongs in `AI_POLICIES.md`.
   creation exited 3 because its post-link verifier called an ordinary loader
   while its own hard-linked `.partial` refusal marker still existed. Preserve
   that checkout/final/partial/exit forever; never retry or adopt it.
-  Fresh repaired evaluator `1866132` / script SHA `c7b47a7a...d6cb` and
-  controller `edc923f` are pushed and installed in new Air checkouts. Claude's
-  first v2 review correctly held `c9a5c3f`: its supervisor hash-bound but did
-  not semantically open the receipt, so a coherently rebound v1 run ID could
-  enter. `edc923f` independently requires the receipt and preparation manifest
-  to carry exact schema/completion, v2 run ID and evaluator execution
-  predeclaration. Four rebound identity mutations refuse before any child.
-  Evaluator tests remain 21/21; the new controller is 27/27 on Air, the local
-  adjacent Teacher matrix is 161/161, and read-only v2 preflight binds all 20
-  parents with zero problems and `artifact_created=false`. A second receipt
-  remains unauthorized until the revised exact review below passes.
+  Repaired evaluator `1866132` / script SHA `c7b47a7a...d6cb` and controller
+  `edc923f` passed the exact independent review at 08:07. The one authorized
+  v2 preparation exited zero, bound all 20 parents, and published receipt SHA
+  `ce51b826...71d0` plus preparation SHA `7f89a86c...6605`, with exact v2
+  receipt identity and no partial. At 08:16 Air supervisor PID 95339 admitted
+  that packet and launched eight 32/32 label workers, PIDs 95345--95352. All
+  eight were live at about 82--85% CPU and initial fold progress was visible.
+  No result has been read; the supervisor will invoke one terminal gate only
+  after all eight regular finals exit zero and reopen exactly.
 - **Production latency: COMPLETE / LIVE.** With Jerry's explicit authorization
   to interrupt HIEJ, Fly release 17 now runs exact image
   `latency-cd6789e`, digest `047bcfe4...5b300`. Health passes with compiled
@@ -82,66 +80,27 @@ from its original clean `b365120` runtime returned
 `passed_learning_screen=false`, `production_promotion=false`, and
 `verified=true`. These checks generated no games and performed no training.
 
-## Current Teacher-v3 audit-v2 review packet
+## Current Teacher-v3 audit-v2 run
 
-No strength worker is currently running. Stage B is terminal PASS, and Air is
-intentionally idle at the review boundary rather than silently weakening a
-one-shot rule.
+The exact PASS marker is recorded in `HANDOFF_REVIEW.md` for evaluator
+`1866132766c7`, evaluator-script SHA `c7b47a7a...d6cb` and controller
+`edc923f3baf1`. Air execution is:
 
-The v1 failure is mechanical and outcome-free: `write_complete()` hard-linked
-the receipt final, retained its same-inode partial during verification, and
-`create_receipt.verify()` then used `load_pinned()`, which categorically rejects
-any partial. The identical latent call existed in label and gate publication.
-No audit label, fold, rollout or gate was started. Repair `1866132` centralizes
-receipt/label/gate publication behind one helper that accepts the partial only
-when both names are regular non-symlinks to the same `(device,inode)` and the
-opened bytes match the exact SHA. A look-alike same-byte but different-inode
-partial is rejected. The state-set publisher was already safe and unchanged.
+- evaluator root `~/Projects/shengji-teacher-audit-v2-air`, run ID
+  `teacher-v3-report-lcb-audit-v2-149m`;
+- receipt `ce51b826d4f04549b961f795868cc4c6c5f90124a8552ce76fe2d3ab0bd471d0`;
+- preparation
+  `7f89a86c2e0803d83473d8ccca978dd99dd010e467761d0d4429a3598c166605`;
+- supervisor PID 95339; label PIDs 95345--95352; eight shards, each fixed at
+  32 selection plus 32 disjoint report worlds per state;
+- operator log `~/teacher-v3-audit-v2-supervisor.log`; authoritative progress
+  `champion_audit_supervisor_v1.jsonl.partial` inside the audit namespace.
 
-Fresh execution packet:
-
-- failed evidence root, immutable: `~/Projects/shengji-teacher-audit-air`,
-  exact `182d1df`; receipt exit 3 plus final/partial retained;
-- repaired evaluator root: `~/Projects/shengji-teacher-audit-v2-air`, exact
-  `1866132766c7f16542bc27e730622e2dfea639ae`, script SHA
-  `c7b47a7a0305f6067129cc7b19517d9a983efff70085f83edc0d39475955d6cb`;
-- new run ID: `teacher-v3-report-lcb-audit-v2-149m`;
-- controller root: `~/Projects/shengji-teacher-control3-air`, exact
-  `edc923f3baf1492af41a2cccf0265177f6b4047f`;
-- preparer SHA
-  `084c7e9809f4985cbebbc7b779137c3afe8c5866f16d71879c08c9c18a068434`;
-- supervisor SHA
-  `59610ef0f0ce319c3ec1b4c9c60f7a1095842ad86c4faebfe1abc303879cbb06`;
-- frozen Stage-B gate/state/audit-state/native SHAs remain exactly
-  `f607b489...89694`, `90956da8...dc6`, `d04d1c0f...f7a34`, and
-  `ef7c1618...66b4d`; the 64 states, 32/32 folds, report-LCB continuation,
-  thresholds and all 20 Stage-B parents are unchanged.
-
-Claude: the earlier `c9a5c3f` HOLD was correct and is superseded before any v2
-receipt. Review controller diff `c9a5c3f..edc923f`, while retaining the prior
-PASS on audit-branch diff `182d1df..1866132`, the preserved failed Air evidence
-and the read-only preflight. Do not create a receipt or run a label. Please
-falsify:
-
-1. whether the failure diagnosis is complete for receipt, label and gate;
-2. whether same-inode plus exact opened-byte SHA is the correct narrow
-   exception while ordinary readers remain fail-closed;
-3. whether the supervisor now independently opens the receipt and requires
-   exact receipt schema/completion, v2 run ID and execution predeclaration;
-4. whether the preparation manifest binds the same identity and a coherently
-   hash-rebound wrong schema/completion/run/predeclaration refuses before
-   progress, labels or gate;
-5. whether the new controller changes any state, fold, continuation, label or
-   gate estimand (it should not), or can admit dirty/colliding roots, nonzero
-   receipt exit, altered parents, or old evaluator authority.
-
-If and only if all pass, append exactly one marker to `HANDOFF_REVIEW.md`:
-
-```text
-TEACHER_V3_AUDIT_V2_REVIEW_V1 {"audit_git":"1866132766c7f16542bc27e730622e2dfea639ae","audit_script_sha256":"c7b47a7a0305f6067129cc7b19517d9a983efff70085f83edc0d39475955d6cb","controller_git":"edc923f3baf1492af41a2cccf0265177f6b4047f","independent_review":true,"receipt_authorized":true,"verdict":"PASS"}
-```
-
-Otherwise append HOLD with `receipt_authorized:false` and concrete blockers.
+Monitor liveness and score-free fold counters only. Do not open partial outcome
+values, retry, resume, alter a worker, or launch a second supervisor. A child
+failure or malformed publication leaves the attempt terminally refused. On
+eight exact zero exits, this supervisor alone reopens all labels and invokes
+the frozen gate once; preserve PASS, FAIL or INCONCLUSIVE exactly as published.
 
 ## Historical 01:18 Teacher snapshot — superseded; do not execute
 

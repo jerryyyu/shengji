@@ -78,16 +78,18 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   criterion passed. O1 is not authorized. Do not extend iterations, add seeds,
   reopen DEV for tuning or reinterpret this as a strength result; diagnose the
   near-uniform policy/weak oracle-use mechanism and preregister a fresh learner.
-- **Teacher-v3 Stage B passed; the champion audit is at a repaired review
-  hold.** All 8/8 gold shards validated and the one-shot gate passed with
+- **Teacher-v3 Stage B passed; champion audit-v2 is running.** All 8/8 gold
+  shards validated and the one-shot gate passed with
   upper regret bound `0.0195 < 0.10`. Audit v1 then exposed a deterministic
   publication bug before any label launched: its verifier rejected its own
   still-owned hard-linked partial. Preserve v1 as failed evidence. Exact
   evaluator repair `1866132` and controller `edc923f` use a fresh v2 run/root,
   keep states/folds/continuation unchanged and pass live Air preflight. The
   first controller review found an opaque-receipt bypass; `edc923f` now parses
-  and pins exact receipt plus preparation identity. Launch only after the
-  revised independent review.
+  and pins exact receipt plus preparation identity. The revised review passed;
+  receipt `ce51b826...71d0`, preparation `7f89a86c...6605` and eight Air label
+  workers are live under supervisor PID 95339. Do not retry or inspect partial
+  outcome values.
 
 ## NOW — ordered by value
 
@@ -95,7 +97,7 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 |---|---|---|
 | **T1 / Lane A production latency — COMPLETE / LIVE MONITOR** | Keep the first stronger-than-MC production policy enjoyable to play | Fly release 17 runs exact `latency-cd6789e` / `047bcfe4...5b300`. Health, native activation, claim, reconnect, stale-discard, X-ray isolation and concurrent WebSocket responsiveness passed live. Keep release 16 as the runtime rollback and `mc-strong` as the separate policy rollback; collect ordinary human-room timing before considering a CPU resize. |
 | **T1 / Lane A.1 V11pair — COMPLETE / SELECT NONE** | Preserve the learned milestone without forcing it into the champion | Artifact repair passed; the frozen rule rejected protected composition. Keep v11 as a bounded proposer/ranker and teacher diagnostic only. No protected-anchor run is authorized. |
-| **T1 / Lane B teacher — STAGE-B PASS; AUDIT-V2 REVIEW HOLD** | Determine whether N=30 teacher choices remain good under the full champion continuation | Stage-B gate SHA `f607b489…89694` passed. Audit-v1 receipt creation refused mechanically before labels; preserve exact `182d1df` final/partial/exit and never retry it. Fresh evaluator `1866132` / `c7b47a7a…d6cb`, controller `edc923f`, run ID `teacher-v3-report-lcb-audit-v2-149m`, exact 20-parent preflight and all focused/adjacent tests are green. `edc923f` closes the reviewed opaque-receipt bypass with independent receipt/preparation identity checks. Require the revised exact PASS marker in `HANDOFF_ACTIVE.md`, then run one v2 receipt, eight unchanged 32/32 shards and one terminal gate. |
+| **T1 / Lane B teacher — AUDIT-V2 RUNNING** | Determine whether cheap N=30 choices remain good under the full champion continuation | Exact review passed. Receipt `ce51b826…71d0` and preparation `7f89a86c…6605` bind evaluator `1866132`, controller `edc923f`, the v2 run ID and all 20 parents. Air supervisor PID 95339 owns eight unchanged 32/32 shards and will gate once after exact zero exits. Preserve any terminal result; never retry. |
 | **T1 / Lane C Direct-Q — COMPLETE / SELECT NONE** | Learn from the failure without selecting its positive gameplay tail | Preserve aggregate SHA `1fa6789e…791`; do not deploy, extend or mutate the 144M recipe. The next learner requires a separately frozen Suphx-style or other role-correct microbaseline gate. |
 | **T1 / Lane C Suphx O0 — COMPLETE / SELECT NONE** | Test whether a full-information policy can learn before spending compute on feature removal | Preserve gate SHA `592a009a…bd407c`. Both ensemble LCBs passed, but seed 1 lost to its equal-seed public arm (`-0.207`), failing the registered robustness conjunction. O1 is closed for this exact recipe; the next learner needs a fresh packet, not an O0 extension. |
 | **RLCB-C1 fresh confirmation — COMPLETE / ARTIFACT-ONLY CONFIRM** | Close formal report-LCB superiority | 2,048/2,048 fresh clusters, exact doses, zero stream collisions, sane null and positive superiority LCB. The late dirty-doc supervisor refusal is bound by non-replay closeout SHA `06dd487d…b7aae5`; preserve aggregate SHA `83f5a9df…f5ef5ea`. No extension or S0c reinterpretation remains. |
@@ -117,6 +119,32 @@ do not reopen terminal outcomes; they gate reuse of the named machinery:
 - before reusing RLCB-C1 or Stage-B readiness, pin record `run` to manifest
   run ID and make worker discovery accept absolute script paths by basename.
 
+### Strategy-audit decision
+
+Accept the audit's spine: report-LCB is the only current champion, stop V11 as
+a direct lane, prioritize counterfactual Teacher data, and merge Direct-Q/O0
+into one learner-mechanism battery. Tighten execution in four places:
+
+- the proven mechanism is not merely “more search” or even merely a split; it
+  is fixed-challenger paired re-evaluation on disjoint worlds plus a positive
+  conservative LCB;
+- Stage B established cheap-versus-gold agreement on its sampled states, not
+  on the mined high-SE/disagreement tail. Stage C must escalate uncertain
+  states to gold/exact-late labels and separately gate hard-tail regret;
+- v11pair is an admissible proposal diversifier, not a confirmed strength
+  mechanism. Compare its proposal recall/regret with same-budget random
+  diversification; never use its relative deltas as scalar leaves;
+- do not bundle CRN repair, entropy control, dose and target changes into one
+  O0-v2 conclusion. Use CRN and at least eight training seeds as the common
+  evaluation design, then factorially isolate sharpening/dose mechanisms.
+
+The current S3a 136M/512-state asset is a **non-promotable state-level
+mechanism screen** whose PASS only authorizes designing a full-game duel. Both
+S3a and S3b still derive `mc-strong` from formal S0 SELECT NONE, so neither may
+spend live-champion strength compute until a new versioned parent binds exact
+`mc-s0-report-lcb`. S3b already has a separate 2,048-screen/8,192-confirm
+shape; S3a does not yet have that full-game runner.
+
 ## TODAY — T1 champion flywheel launch
 
 **Milestone objective:** make the deployed search operationally sound while all
@@ -128,7 +156,7 @@ behind code or protocol work we could have completed.
 |---|---|---|
 | **Lane A / production guardrail** | **Shipped:** exact-semantic speculative scheduling and off-loop X-ray are live in release 17. Continue passive timing collection from ordinary rooms. | The 100-decision replay was exact; the live smoke met p50 <=1.5s, p95 <=4.0s and max <=8.0s, showed no additive 0.7s after long searches, and kept WebSockets responsive during X-ray. A billable Fly resize still requires Jerry's approval. |
 | **Lane A.1 / V11pair** | **Closed:** artifact-only repair published from unchanged bytes and selected none. | No protected composition. Reuse v11 only in a new explicitly diagnostic/proposal contract. |
-| **Lane B / stronger teacher** | Finish the running Stage-B gold labels, validate their exact gate, then execute the frozen 64-state report-LCB continuation audit. | All eight shards and receipts exact; no outcome-conditioned audit change; disjoint 32-world selection/report folds and full downstream report-LCB continuation at every information set. |
+| **Lane B / stronger teacher** | **Running:** execute the frozen 64-state report-LCB continuation audit on Air. | Receipt/preparation exact; eight supervisor-owned shards; no outcome-conditioned audit change; disjoint 32-world selection/report folds and full downstream report-LCB continuation at every information set. |
 | **Lane C / beyond imitation** | **Two bounded screens are terminal SELECT NONE:** Direct-Q had encouraging gameplay but failed held-out learning; Suphx O0 showed a positive aggregate oracle signal but failed seed robustness. Diagnose those orthogonal failures, then freeze one fresh role-correct learner question. | O0 gate `592a009a…bd407c` authorizes neither O1 nor extension. A successor must explain how it will strengthen oracle feature use/action spread and include independent training seeds as an inference dimension if making a recipe-level claim. |
 | **Fresh search confirmation** | **Closed:** RLCB-C1 formally confirmed report-LCB. | Preserve the exact aggregate and claim boundary; no additional confirmation compute is needed now. |
 
@@ -140,9 +168,9 @@ behind code or protocol work we could have completed.
    next independently frozen strength screen. Do not extend an inspected run;
    first use the Direct-Q and O0 diagnostics plus Claude's strategy review to
    name the smallest fresh mechanism that can plausibly beat report-LCB.
-3. **Air:** Stage B is complete and no worker is live. Hold the repaired
-   Teacher-v3 audit-v2 packet for independent review; on PASS run only its
-   unchanged frozen 64-state audit. Never reuse the failed v1 checkout.
+3. **Air:** Stage B is complete and the reviewed Teacher-v3 audit-v2 is live
+   under supervisor PID 95339. Monitor only; never reuse the failed v1 checkout
+   or interfere with the eight owned workers.
 4. **No idle gap:** the next bounded job may start as soon as its exact parent,
    namespace, tests and stop rule are committed. A failed lane releases compute
    to another lane; it does not weaken its own gate.

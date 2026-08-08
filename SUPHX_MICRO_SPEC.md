@@ -1,10 +1,10 @@
 # Suphx-style privileged-feature-removal microbaseline
 
-Status (2026-08-07): **SCORE-REDACTED O0 RUNTIME PREFLIGHT PASS / NO
-TRAINING AUTHORITY.** This document defines the next Lane-C mechanism after terminal
-Direct-Q SELECT NONE. It may authorize implementation and score-blind runtime
-benchmarking only. A later version must bind exact code, runtime, seeds, doses,
-state assets and artifact destinations before any learning result is produced.
+Status (2026-08-07): **O0 EXECUTABLE PACKET IMPLEMENTED / INDEPENDENT
+RE-REVIEW REQUIRED / NO TRAINING AUTHORITY.** This document defines the next
+Lane-C mechanism after terminal Direct-Q SELECT NONE. The runtime preflight
+passed, and the exact DEV/freezer/trainer/evaluator/gate implementation now
+exists, but no launch packet has been frozen and no learning run is authorized.
 
 Implementation step 1 now lives in `server/shengji/rl/suphx_micro.py` with
 feature-contract SHA-256
@@ -63,6 +63,30 @@ arm. Every authority field remains false: this result sizes a later packet but
 does not launch O0, select a model, authorize O1, or support production.
 Frozen O0 DEV diagnostics and the exact reviewed launch packet still do not
 exist.
+
+Implementation step 5 now lives in
+`server/shengji/rl/suphx_o0_screen.py` behind the stdlib-only
+`server/scripts/suphx_o0_screen.py` launcher. The freezer creates the exact
+three initial checkpoints, 192 collision-free causal training deals, and 128
+one-state-per-deal DEV rows stratified 32/32/32/32 across the four policy
+surfaces. A DEV hidden-world witness must satisfy card conservation, hand and
+burial sizes, actor-visible state, demonstrated voids, pair/run caps and
+remaining declaration evidence before it can test oracle sensitivity. Every
+surface also carries a non-banker hidden-burial witness; an impossible
+void-breaking swap is an explicit negative test. The deterministic greedy
+evaluator uses both team flips and an exact same-model zero null. The terminal
+gate applies the two fixed one-sided Student-t bounds and every conjunctive
+health criterion below.
+
+The code intentionally cannot train from the freezer alone. A separate
+`review_admission.json` must bind the exact launch-packet SHA-256 and an
+immutable byte copy of an independently supplied review record. Training then
+exercises a real 32-update midpoint teardown/reopen before completing the
+fixed 64-update arm. A PASS can authorize only freezing and independently
+reviewing O1; neither PASS nor failure creates strength or production
+authority. The focused suite currently passes 17/17, including a reduced real
+train/resume/evaluate/reopen path. These candidate bytes still require
+independent re-review before `freeze`, `admit` or `train` is invoked.
 
 ## Claim boundary
 
@@ -246,14 +270,15 @@ a separately frozen paired round and multi-round progression gate. A failure
 selects none; it does not authorize more seeds, a longer schedule or reading a
 different checkpoint from the same run.
 
-## O0 launch candidate — estimand chosen, executable packet still unfrozen
+## O0 launch candidate — executable implementation ready, packet still unfrozen
 
 The following candidate converts the successful timing preflight into one
-small oracle-acquisition question. Claude's 2026-08-07 20:51 review accepted
-the mechanics but correctly required the inference target to say whether the
-three learner seeds are fixed or sampled. O0 chooses the narrower fixed-
-ensemble estimand below. The executable DEV assets, launcher and terminal gate
-are still absent, so no training command may treat this section as authority.
+small oracle-acquisition question. The 2026-08-07 20:51 independent review
+accepted the mechanics but correctly required the inference target to say
+whether the three learner seeds are fixed or sampled. O0 chooses the narrower
+fixed-ensemble estimand below. The executable implementation now exists, but
+its immutable launch packet and review admission are absent, so no training
+command may treat this section as authority.
 
 ### Exact O0 estimand
 
@@ -319,12 +344,13 @@ O0's deal-cluster confidence bounds.
   production claim.
 
 The remaining implementation review should challenge the 128-deal power,
-alpha allocation, entropy floor, seed/domain separation and whether the greedy
-mixed-team evaluator is the smallest faithful test of oracle acquisition. The
-fixed-ensemble estimand itself may not move after any learning outcome exists.
-Implementation may now freeze the executable assets and launch packet, but
-training remains unauthorized until those exact bytes receive independent
-review.
+alpha allocation, entropy floor, seed/domain separation, legal hidden-world
+validator and whether the greedy mixed-team evaluator is the smallest faithful
+test of oracle acquisition. The fixed-ensemble estimand itself may not move
+after any learning outcome exists. Once the implementation commit passes
+independent review, it may freeze the executable assets and launch packet;
+training remains unauthorized until those exact packet bytes receive a second
+hash-bound independent review admission.
 
 ## Implementation order
 

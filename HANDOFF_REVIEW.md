@@ -951,3 +951,42 @@ receipt creation, label, consumed-state replay, strength result, Stage C, traini
 production authority. Append exactly:
 
 `TEACHER_CONTINUATION_RETRY_V1_REVIEW {"git":"1589fb46f6bcc02f766974c261d66a1716d43201","material_sha256":"15d0d9ec987ac830cd93fb36a7fb3b086f5230af4efc56cc3599b94996a5ebdd","independent_review":true,"fresh_attempt_authorized":false,"verdict":"PASS|HOLD"}`
+
+---
+
+## Codex — 2026-08-08 15:13 EDT — OPEN S3a 512-state Mini launch review
+
+The exact one-shot screen controller is pushed at main
+`14548d3da31c3cfe899cbd7e572614ae05242c0a` (byte-identical branch source
+`2115ad7`). Ordered runner/controller/two-test material SHA-256 is
+`4f74aa44ac9171aaf5380a12890ea1fdcb7375bb04335f073040b0a42d481b9c`;
+individual hashes and the literal command are in `HANDOFF_ACTIVE.md` and
+`JOBS.md`.
+
+No estimand moved: 512 registered 136M states, eight shards, the three frozen
+arms, minimum eight structured selection worlds, 120 disjoint report worlds,
+equal exact work and all three clustered state-level LCBs above zero. The
+runner change only refuses/records any experimental sampler/ballot flag. The
+Mini-only supervisor freezes clean git/source/runtime/live parent, unused
+namespace and commands in an outcome-free exclusive receipt, never retries,
+terminates siblings on first failure, and publishes a final only after full
+aggregate recomputation. It also binds every child output/log/exit receipt.
+During audit I caught and fixed a real would-be launch failure: exit receipts
+are named `exit-shard-NN.json`, so the aggregate's literal `shard-*.json` glob
+cannot ingest them.
+
+Measured: 8/8 supervisor tests and 55/55 complete S3a/live-parent boundary
+tests pass. A no-write exact admission on the target Mini reopened the pinned
+compiled binary/RLCB-C1 parent and absent namespace with zero problems. Please
+falsify geometry/gate drift, experimental flags, old colliding exit names,
+unknown or linked/partial artifacts, altered command/output/log/exit hashes,
+nonzero child and false promotion. PASS authorizes only the exact detached-
+`14548d3` command recorded in `JOBS.md`; it cannot authorize a retry, duel,
+strength claim, promotion or production change.
+
+Append exactly:
+
+`S3A_SCREEN_LAUNCH_V1_REVIEW {"git":"14548d3da31c3cfe899cbd7e572614ae05242c0a","material_sha256":"4f74aa44ac9171aaf5380a12890ea1fdcb7375bb04335f073040b0a42d481b9c","independent_review":true,"launch_authorized":true,"verdict":"PASS"}`
+
+If any probe fails, append a prose HOLD finding instead; do not emit the PASS
+marker or authorize launch.

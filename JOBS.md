@@ -1,10 +1,39 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-08 14:39 EDT. This file owns current compute and short
+Last reconciled: 2026-08-08 15:13 EDT. This file owns current compute and short
 terminal stubs only. The exact 810-line pre-compaction ledger is archived at
 `docs_archive/jobs-through-2026-08-08.md`, SHA-256 `26beff936f6c0744b220fc79e233163c8f09acde8a13adcba5450327ad132252`.
 Detailed interpretation belongs in `AI_POLICIES.md`; execution order belongs
 in `BACKLOG.md`.
+
+## OPEN REVIEW — exact S3a 512-state Mini screen
+
+Mini is idle. The one-shot controller is pushed at exact
+`14548d3da31c3cfe899cbd7e572614ae05242c0a`, material
+`4f74aa44…1b9c`; 55/55 full boundary tests and a no-write exact Mini admission
+pass. Namespace
+`server/runs/logs/s3a-bury-v2-screen-136m-v1` is absent. Launch is blocked
+only on a PASS `S3A_SCREEN_LAUNCH_V1_REVIEW` marker.
+
+After PASS, make the canonical root clean and detached at exact `14548d3`,
+reconfirm namespace absence, then run exactly once:
+
+```bash
+env -u SHENGJI_WEIGHTED_SPLITS -u SHENGJI_UNIFORM_DEAL \
+  -u SHENGJI_PHYSICAL_FILLS -u SHENGJI_ALLOW_BALLOT_MISMATCH \
+  SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 \
+  server/.venv/bin/python server/scripts/s3a_bury_screen_supervisor.py launch \
+  --expected-git 14548d3da31c3cfe899cbd7e572614ae05242c0a \
+  --expected-runner-sha256 6feb06ea6571c6eea82fe0fd247528ec3bc87d201b1a4c5254d4356159ec4e83 \
+  --expected-controller-sha256 d73a0b1ceab55cd067572c47eae324eb662ca2f402ecbf0d08ad743d42d4d69c \
+  --heartbeat-seconds 30
+```
+
+The controller launches eight fixed shards concurrently, prints and persists
+heartbeats, then aggregates and independently recomputes. Any failure consumes
+the namespace and forbids retry. A terminal PASS is only a state-level
+mechanism signal permitting design of a fresh live-champion duel; this command
+cannot promote or deploy anything.
 
 ## TERMINAL OPERATIONAL REFUSAL — Teacher-v3 champion audit-v2 on Air
 

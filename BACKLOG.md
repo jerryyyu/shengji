@@ -173,7 +173,7 @@ bot rather than imitate it.
 | **T2.2 / S3b** | Run the score-free two-cluster throughput preflight for the report-LCB sampled-exact lane on Mini | No strength outcome is retained. Frozen operator ceilings are screen `200` fleet-hours / `30` max shard-hours and confirmation `800` / `120`; all four must pass before any 2,048-cluster launch. These are hard capacity stops, not expected spend or evidence thresholds. |
 | **T2.3 / S3b conditional** | Launch the 2,048-cluster complete-round sampled-exact screen when capacity and preflight permit | Both treatment-minus-champion and treatment-minus-matched-null LCBs >0, null contains zero, exact solver activates, and refusal/overflow/fallback counters are zero. Only PASS admits the untouched 8,192 confirmation. |
 | **T2.4 / Teacher — ADAPTER CODED / REVIEW REQUIRED** | Convert the terminal audit into a Stage-C contract | Pushed `c961c14` precommits both branches without reading the live outcome. PASS emits only a review-required hard-tail design with gold/exact-late escalation and separate hard-tail regret; FAIL/INCONCLUSIVE permits only diagnosis of existing frozen evidence. Both branches forbid compute, bulk labels, training, promotion and retry. |
-| **T2.5 / learner** | Write, but do not yet bundle-run, a fresh O0-v2 mechanism battery | Common-random-number evaluation and at least eight training seeds are common infrastructure; sharpening/dose/target changes are factorially isolated. No O1 or inspected-DEV extension. |
+| **T2.5 / learner — MECHANICS CODED** | Write, but do not yet bundle-run, a fresh O0-v2 mechanism battery | Pushed `8f3cca4` adds keyed arm-independent CRN draws, requires at least eight training-seed inference units, and isolates optional two-sided top-two margin control from the CRN control. It preserves the old 64-iteration dose/reward target and has no runner, population, gate or launch authority. Next: integrate the two cells under one fresh packet without changing dose/target/features/optimizer. |
 
 T2 is successful today if T2.0 is reviewed and at least one bounded Mini
 preflight/screen is ready to launch without an unresolved parent or evidence
@@ -204,8 +204,9 @@ whenever a review or run is live:
 3. **DONE / REVIEW REQUIRED at `c961c14`:** the terminal Teacher adapter
    precommits PASS to a hard-tail Stage-C design and FAIL/INCONCLUSIVE to the
    existing-evidence diagnostic only; neither branch authorizes compute;
-4. implement common-random-number evaluation and the two-sided logit-margin
-   controller as separable O0-v2 infrastructure; keep dose/target changes out;
+4. **MECHANICS DONE at `8f3cca4`:** keyed common-random-number streams and the
+   two-sided logit-margin loss are separable, require at least eight seed
+   units and preserve dose/target; fresh runner/packet/gate integration remains;
 5. version the shared `ExperimentSpec`/progress receipt so reviewed jobs are
    launch-ready without making promotion or evidence decisions automatic;
 6. if all strength work is review-blocked, use the slot for encoder-provenance,

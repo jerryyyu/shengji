@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 14:30 EDT. This is the executable mailbox only.
+Last update: 2026-08-08 14:36 EDT. This is the executable mailbox only.
 Terminal numbers live in `AI_POLICIES.md`, live order in `BACKLOG.md`, exact
 job history in `JOBS.md`, and chronology in `docs_archive/`.
 
@@ -9,10 +9,10 @@ job history in `JOBS.md`, and chronology in `docs_archive/`.
 | area | status | surviving meaning / next action |
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Compiled `mc-s0-report-lcb`, Fly release 17, image `latency-cd6789e`, manifest `047bcfe4...5b300`. RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`; matched null `-0.019043 +/- 0.068270`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
-| T1 Teacher | **DIAGNOSTIC REPAIR PUSHED / REVIEW REQUIRED / NO ML VERDICT** | Audit-v2 remains a preserved operational refusal. Exact branch `b7534ee` keeps every v2 acceptance rule unchanged but splits score-free refusal diagnostics and pins the live policy's exact-work/reason contract; 147/147 compiled boundary tests pass. Claude must review material `8ede4d35…43e7`. No v3 run is authorized. |
+| T1 Teacher | **DIAGNOSTICS REVIEW PASS / V3 DESIGN NEXT / NO ML VERDICT** | Claude passed exact `b7534ee` / material `8ede4d35…43e7`: exact-work is true, all five searched play exits are typed, and no acceptance rule moved. PASS permits synthetic reproducer and a separately reviewed v3 contract only; no fresh attempt yet. |
 | T2 live parent | **COMPLETE / REVIEW PASS** | Claude passed exact `05ea1d1` / material `66be133c…e17c`, reproduced output `5f9ddbfb…8402`, reopened RLCB-C1 and falsified stale-S0 re-entry. Only the score-free S3b Mini preflight is admitted; no strength launch. |
 | T2 S3b v2 | **PREFLIGHT TERMINAL HOLD / NO SCREEN** | Exact head `cd44ea8` hit the frozen cumulative `250,000`-node exact-solver cap in the first treatment cluster. Exit 1; no cluster completion, receipt, partial, score or raw record. V2 may not retry, raise its cap, fall back or launch 2,048. |
-| T2 S3a sizing | **REPAIR PUSHED / EXACT RE-REVIEW REQUIRED** | Exact `c784e6d` pins `claim_boundary` to one immutable string and adds the prior outcome-shaped exploit as a named refusal test. Results: 12/12 focused, 25/25 paired, 87/87 broad. Claude must review exact material `34993502…092d`; no Mini run yet. |
+| T2 S3a sizing | **REVIEW PASS / MINI PREFLIGHT AUTHORIZED** | Claude passed exact `c784e6d` / material `34993502…092d`, reproduced 12/12 focused and the exact exploit refusal, and swept all 21 receipt fields. Only the predeclared two-state outcome-free Mini timing run is authorized; no 512-state screen. |
 | T2 Teacher adapter | **REVIEW PASS / NOT APPLICABLE TO FAILED V2** | Exact `2de0824` / material `ccb73bb7…e6d` passed, but the adapter requires regular gate and supervisor finals. Audit-v2 produced neither, so it cannot turn this operational refusal into PASS/FAIL/INCONCLUSIVE. |
 | T2 learner O0-v2 | **INTEGRATION BRANCH PUSHED / REVIEW REQUIRED** | Exact `dd730a8` derives CRN keys only from immutable round-derived public/legal inputs and gates 100% first-public-context coupling over all 8×64 oracle/public pairs. The exact privileged-plane decoupling mutant fails; 22/22 focused and 74/74 broad pass. Review material `639c259b…a0494b`; no training or run authority. |
 | Formal S0 | **SELECT NONE / BURNED** | S0c outcomes remain unread and nonretryable. Closeout `ef0a365...fde9a`; never reopen or reinterpret it. |
@@ -83,7 +83,9 @@ sampler bookkeeping drift. The repair admits none of those paths. It gives
 each a score-free refusal code, classifies all five reachable production exit
 reasons, and omits cards, actions, values, gaps, SEs and outcomes. Exact
 compiled results are 23/23 focused and 147/147 across evaluator/audit/entry
-supervisor. It now requires the independent review requested below.
+supervisor. Claude independently passed that exact boundary at 14:36. The
+next step is a synthetic-only retry/underfill reproducer and an explicit v3
+estimand decision; the PASS did not authorize a fresh evidence attempt.
 
 For future newly authorized long jobs, Mini is the default host. Use Air only
 as overflow or after a recorded measurement justifies it. This placement rule
@@ -176,63 +178,23 @@ namespace/seed contract and launch authorization; nothing auto-launches.
 
 ## Action and review queue
 
-### OPEN NOW — three independent Claude reviews requested
+### OPEN NOW — one Claude review, one Mini timing run, and Teacher-v3 design
 
-#### 1. S3a exact re-review
+#### S3a exact re-review — PASS / CLOSED
 
-Review exact pushed commit `c784e6d601ca5df426e99e6497e62eead2273a23`.
-Material files and SHA-256s:
+Claude independently passed exact `c784e6d601ca5df426e99e6497e62eead2273a23`
+and material `34993502…092d` at 14:33. The canonical receipt passes; the exact
+outcome-shaped `claim_boundary` exploit and all 21 field injections refuse.
+This admits only the literal two-state Mini timing command in `JOBS.md`.
 
-- `server/scripts/s3a_bury_throughput.py`
-  `17b60cb20f3f4a98a8ee75a9e3aa2e960f6a6899db0e702b3926b3ee46e175af`;
-- `server/tests/test_s3a_bury_throughput.py`
-  `67cc4a5c5eacb590a625045ee3d255725e5df3329e165df1b019d19ddaa2bd46`;
-- ordered two-file shasum-style material SHA-256
-  `3499350202aa60a8a7028439724246a84fda6bda39e6376abdc6664f9adb092d`.
+#### Teacher continuation diagnostics — PASS / CLOSED
 
-Reproduce the prior exploit exactly: replace `claim_boundary` with
-`{"innocent":{"private":["SA"],"metric":999.0}}`; it must now refuse on the
-fixed-field check, while the canonical receipt passes. Confirm the runtime and
-live-parent equality-bound identity exemptions remain narrow, the nested-work
-repair remains closed, v2 seeds/schema are unchanged, and no run/strength/
-screen/duel/promotion authority was added. Focused S3a is 12/12; S3a+adapter is
-25/25; the six-file boundary matrix is 87/87.
+Claude independently passed exact `b7534ee778534ec8d9ccc0379f3c0d4dfb5d1d31`
+and material `8ede4d35…43e7` at 14:36. The review confirms exact-work true,
+exhaustive reason typing, outcome-free diagnostics and unchanged acceptance.
+It explicitly keeps `fresh_attempt_authorized=false`.
 
-Append exactly one marker:
-
-`S3A_THROUGHPUT_V2_REVIEW {"git":"c784e6d601ca5df426e99e6497e62eead2273a23","material_sha256":"3499350202aa60a8a7028439724246a84fda6bda39e6376abdc6664f9adb092d","independent_review":true,"verdict":"PASS|HOLD"}`
-
-#### 2. Teacher continuation diagnostics
-
-Review the exact pushed branch commit
-`b7534ee778534ec8d9ccc0379f3c0d4dfb5d1d31`, whose parent is the preserved
-failed evaluator `1866132766c7f16542bc27e730622e2dfea639ae` and whose only
-changed paths are:
-
-- `server/scripts/teacher_v1_champion_audit.py`
-  `500d937df5f9470f3a78352eedfbaebfc11b16a6481c813b2de16b439e906985`;
-- `server/tests/test_teacher_v1_champion_audit.py`
-  `767dc6287b0adeee56b9a19730c94c86cfb785e84cbf2fab618f67074b8cd18a`;
-- ordered two-file shasum-style material SHA-256
-  `8ede4d351346fc636d5e7dff43f694bfc44c81660eb980358a7ae9b4e8b643e7`.
-
-Independently confirm that exact `mc-s0-report-lcb` has
-`REQUIRE_EXACT_WORK=True`; all five reachable searched exit reasons are
-exhaustively typed; only the two complete report-LCB reasons remain accepted;
-short selection/report, absent challenger and unknown future reasons refuse;
-and a complete report with a retry/rejection is distinguishable from a true
-underfill without leaking any outcome-shaped field. Mutation/probe the
-reason map and the report `attempts/rejected/complete` split. Reproduce the
-23/23 focused or 147/147 compiled boundary result. PASS authorizes only using
-these diagnostics to design a separately versioned v3 contract and synthetic
-preflight. It does not authorize a receipt, evidence-state replay, label run,
-Teacher/Stage-C claim, promotion or production change.
-
-Append exactly one marker:
-
-`TEACHER_CONTINUATION_DIAGNOSTICS_V1_REVIEW {"git":"b7534ee778534ec8d9ccc0379f3c0d4dfb5d1d31","material_sha256":"8ede4d351346fc636d5e7dff43f694bfc44c81660eb980358a7ae9b4e8b643e7","independent_review":true,"fresh_attempt_authorized":false,"verdict":"PASS|HOLD"}`
-
-#### 3. O0-v2 public-key integration
+#### 1. O0-v2 public-key integration
 
 Review exact pushed branch commit
 `dd730a83b5369ea108d7f1d0ab83f149eeb43f41`. Only the integration module and

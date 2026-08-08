@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-08 14:30 EDT. This file owns current compute and short
+Last reconciled: 2026-08-08 14:36 EDT. This file owns current compute and short
 terminal stubs only. The exact 810-line pre-compaction ledger is archived at
 `docs_archive/jobs-through-2026-08-08.md`, SHA-256 `26beff936f6c0744b220fc79e233163c8f09acde8a13adcba5450327ad132252`.
 Detailed interpretation belongs in `AI_POLICIES.md`; execution order belongs
@@ -45,12 +45,14 @@ result and no PASS/FAIL/INCONCLUSIVE gate. Preserve the entire Air root. Never
 resume, retry, migrate, duplicate, delete or adopt audit-v2. T1 remains open
 pending a reviewed diagnosis and an explicit fresh-run/closeout decision.
 
-Diagnostic-only branch `b7534ee` is pushed and awaiting independent review.
+Diagnostic-only branch `b7534ee` independently passed review at 14:36.
 It changes no acceptance rule and authorizes no compute; its purpose is to
 make a future synthetic preflight distinguish short work, rejected retries,
 contract drift and telemetry drift without reading outcomes. Exact compiled
 Teacher boundary tests pass 147/147. Material SHA-256 is
 `8ede4d351346fc636d5e7dff43f694bfc44c81660eb980358a7ae9b4e8b643e7`.
+The PASS authorizes synthetic reproduction and v3 contract design only; a
+fresh Teacher receipt or label attempt remains unauthorized.
 
 ## Fleet availability
 
@@ -89,7 +91,8 @@ Pushed `66d6836` adds S3a's outcome-free timing receipt on exact reserved
 nested-work-field probe passed. The repaired exact nested schema and counter
 equalities were pushed at `2de0824` and independently passed review. The
 subsequent v1 run exposed a separate publication-only false positive described
-below; exact v2 repair `c784e6d` / material `34993502…092d` now awaits review.
+below; exact v2 repair `c784e6d` / material `34993502…092d` passed review at
+14:33 and admits only the predeclared two-state Mini sizing run.
 
 The live-parent PASS admitted the first score-free S3b timing job on Mini.
 That exact attempt is now terminal HOLD after the exact solver exceeded its
@@ -108,7 +111,8 @@ Neither preflight retains strength outcomes or authorizes its corresponding
 screen. Neither lane may inherit stale formal-S0 `mc-strong` authority. While
 review or timing is live, implementation continues off-host. The Teacher
 terminal adapter repair passed at `2de0824` but is inapplicable to failed v2;
-diagnostic-only branch `b7534ee` now awaits review and authorizes no compute.
+diagnostic-only branch `b7534ee` passed review but authorizes only synthetic
+reproduction and v3 contract design, not evidence compute.
 O0-v2 mechanics remain unchanged; exact public-key integration branch
 `dd730a8` / material `639c259b…a0494b` also awaits review and has no training
 authority, so it does not compete for the measured host.
@@ -188,8 +192,10 @@ every other receipt surface. Top-level and nested exact schemas plus fixed-
 identity equality remain mandatory. A realistic `digests.cards` fixture now
 passes; identity drift and actual `caps.cards` outcome injection refuse.
 The final `claim_boundary` repair is pushed at `c784e6d`; focused tests pass
-12/12 and the broad boundary matrix passes 87/87. No v2 run is authorized
-before independent review of exact material `34993502…092d`.
+12/12 and the broad boundary matrix passes 87/87. Claude independently passed
+exact material `34993502…092d` at 14:33. This authorizes only the two-state
+outcome-free Mini sizing command below; no registered 136M state or 512-state
+strength screen is authorized.
 
 The fresh v2 output is predeclared as
 `server/runs/logs/s3a-bury-v2-throughput-mini-v2.json`; its `.partial` and

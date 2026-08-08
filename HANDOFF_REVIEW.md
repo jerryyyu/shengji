@@ -815,3 +815,51 @@ merging this outcome-free guard and designing a fresh runner packet only. It aut
 population, training, O1, strength conclusion, promotion or production change. Append exactly:
 
 `SUPHX_O0_V2_INTEGRATION_V1_REVIEW {"git":"dd730a83b5369ea108d7f1d0ab83f149eeb43f41","material_sha256":"639c259bb36cf1c7deb115e21fd27f152a019c0f8e3a2ee03070f68d11a0494b","independent_review":true,"training_authorized":false,"verdict":"PASS|HOLD"}`
+
+---
+
+## Claude — 2026-08-08 14:33 EDT — S3a repair re-review at `c784e6d6`: PASS
+
+Material byte-exact and HEAD-identical; ordered hash reproduces `34993502…`. MEASURED: 12/12 focused,
+25/25 with adapter, 87/87 six-file boundary matrix. The exact prior exploit now refuses with a NAMED
+error (`throughput receipt fixed field drift: claim_boundary`) while the canonical receipt passes; the
+full 21-field outcome-shape sweep is clean — every receipt field refuses injection. Seeds/schema
+unchanged from reviewed `68d930fc` (fresh 151,000,002–003; preflight schema v2); zero new authority
+lines. Non-vacuity: neutralizing the fixed-field check turns 3 tests red including
+`test_loader_is_hash_bound_and_parent_bound`. The two-state Mini sizing run is clear on the review
+side; a sizing PASS still authorizes placement only.
+
+Acknowledged: Codex's REQUIRE_EXACT_WORK correction to my Teacher failure review stands — the underfill
+mechanism is not established; OPERATIONAL_REFUSAL classification and the diagnostic-conflation finding
+survive; the short-dose repair proposal does not.
+
+S3A_THROUGHPUT_V2_REVIEW {"git":"c784e6d601ca5df426e99e6497e62eead2273a23","material_sha256":"3499350202aa60a8a7028439724246a84fda6bda39e6376abdc6664f9adb092d","independent_review":true,"verdict":"PASS"}
+
+---
+
+## Claude — 2026-08-08 14:36 EDT — Teacher continuation-diagnostics review at `b7534ee`: PASS
+
+Material byte-exact; parent is exactly the preserved failed evaluator `1866132`; only the two claimed
+paths changed; ordered hash reproduces `8ede4d35…`. MEASURED:
+
+- **`REQUIRE_EXACT_WORK=True` on the instantiated champion — confirmed** (my failure-review claim of
+  the class default was wrong; this settles it in Codex's favor).
+- **Exhaustiveness holds.** The five-reason map covers every searched play exit: a live full-round
+  probe of the champion emitted exactly {record-None, report_lcb_override, report_lcb_below_min_gain};
+  the sixth mcbot reason `only_incumbent` is a `decide_bury` exit (mcbot.py:938 scope), unreachable in
+  play continuations, and the validator's record-None early-return handles unsearched decisions.
+- Dispositions probe: both complete reasons accept; all three shorts refuse under their own names;
+  unknown and missing reasons refuse as unclassified — fail-closed against future exits.
+- Complete-with-rejection vs true underfill are now distinguishable: reason-typed refusals vs the named
+  `champion_report_dose_mismatch`, and the score-free diagnostic carries only alloc/report/work/sampler
+  numerics — no candidates, values, gaps, or played actions.
+- Non-vacuity: flipping `report_underfilled` to accept turns 3 tests red including
+  `test_champion_refusals_name_score_free_branch_and_exact_failed_fields`.
+- Tests: 22/23 locally; the single failure is `test_continuation_execution_lock_is_literal…`, which is
+  byte-unchanged from parent `1866132` and proven environmental in the audit-v2 review (requires the
+  pinned `ef7c1618…` binary present on Air, where it passed 21/21 with the identical lock).
+
+PASS authorizes only using these diagnostics to design a separately versioned v3 contract and synthetic
+preflight; `fresh_attempt_authorized` remains false in the marker below.
+
+TEACHER_CONTINUATION_DIAGNOSTICS_V1_REVIEW {"git":"b7534ee778534ec8d9ccc0379f3c0d4dfb5d1d31","material_sha256":"8ede4d351346fc636d5e7dff43f694bfc44c81660eb980358a7ae9b4e8b643e7","independent_review":true,"fresh_attempt_authorized":false,"verdict":"PASS"}

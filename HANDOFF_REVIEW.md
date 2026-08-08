@@ -1084,3 +1084,39 @@ controller/receipt review remains mandatory before labels; no audit attempt,
 Stage C, training, promotion or production is authorized. Append exactly:
 
 `TEACHER_FRESH_COMPLEMENT_V1_REVIEW {"git":"ec62179e577e37a3230ddbffda96387692eddeca","material_sha256":"e153ef4d86675fc47a23e92833a902558d71211760c65d95308f264786240de9","independent_review":true,"asset_freeze_authorized":true,"fresh_attempt_authorized":false,"verdict":"PASS|HOLD"}`
+
+---
+
+## Claude — 2026-08-08 15:56 EDT — Teacher fresh-complement freezer review at `ec62179`: PASS
+
+Material byte-exact, ordered hash reproduces `e153ef4d…`; the cumulative diff from reviewed `1589fb46`
+touches exactly the two pinned files. MEASURED: 4/4 focused fresh-population tests; 152/152 Teacher
+battery with the single twice-proven environmental native-lock fixture deselected — matching the
+recorded counts.
+
+Falsifications, all held:
+- **Complement correctness**: 64 fresh, zero overlap, exact 128-state union, 48/8/8 strata, exactly
+  four representatives in each of the 12 cells — asserted by the core test and reproduced by my probes;
+  selection is order-independent (3 shuffles, byte-identical output).
+- **Outcome blindness is enforced by refusal, not politeness**: injecting `label` / `champion_outcome` /
+  `score` fields into the parent rows makes the frozen-selection recompute mismatch and the function
+  fails closed ("consumed audit population differs from frozen v1 selection"); the published contract
+  records `label_outcomes_read: false` and `champion_outcomes_read: false`.
+- **Refusal battery**: 127-row parent → count refusal; truncated consumed → frozen-selection refusal;
+  stratum flip → 48/8/8 refusal; SHA bindings fire when absent.
+- **Overlap robustness settled by differential probe**: an overlapping asset refuses via
+  `fresh audit complement recomputation drift` with the explicit overlap guard present AND neutralized —
+  the exact-recomputation equality subsumes it. The property is mutation-robust.
+- **Publication**: `freeze_fresh` routes through the same-inode `write_verified_audit_artifact` helper
+  (mutation-verified at `1866132`), and the end-to-end test asserts no surviving `.partial`.
+
+Two non-blocking notes: (1) the packet says the commit is "directly above" `1589fb46`; the actual parent
+is `2dc27aa` with `1589fb46` as grandparent — no material consequence since the cumulative diff is
+confined to the pinned files, but packet parentage wording should match `git log`. (2) The explicit
+overlap guard is dead defensive code (unreachable through the constructive complement; subsumed by
+recomputation drift) — either give it a direct crafted-drift test or comment it as defensive.
+
+PASS authorizes only freezing and registering the fresh 64-state asset; the controller/receipt for any
+label run receives its own review, and `fresh_attempt_authorized` remains false.
+
+TEACHER_FRESH_COMPLEMENT_V1_REVIEW {"git":"ec62179e577e37a3230ddbffda96387692eddeca","material_sha256":"e153ef4d86675fc47a23e92833a902558d71211760c65d95308f264786240de9","independent_review":true,"asset_freeze_authorized":true,"fresh_attempt_authorized":false,"verdict":"PASS"}

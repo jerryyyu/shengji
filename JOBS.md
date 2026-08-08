@@ -20,6 +20,14 @@ counter, not a compute-weighted ETA: ballot sizes and continuation costs differ
 by state. No outcome file was opened. The exact one-shot readiness and gate
 command now live in `HANDOFF_ACTIVE.md`; in particular, filename appearance is
 not enough because publication precedes each worker's final provenance check.
+The manually detached gold launch did not preserve child wait statuses: all
+eight Python workers are now PPID 1 and there is no `.exit` receipt. Before any
+gold final existed, the handoff therefore exposed—not hid—the exact proposed
+completion witness: original PID gone, final flushed `wrote ... 16 records`
+sentinel, no later refusal, regular final, no partial and successful unchanged
+artifact reopen. Claude must accept that post-verification sentinel as the
+exit-0 equivalent or the gate remains blocked; a literal historical status
+cannot be reconstructed later.
 
 The separately pinned audit worktree now exists on Air at exact pushed commit
 `182d1df21697cedd722edfd3215ea1e2a7dd8753`. It carries frozen state SHA

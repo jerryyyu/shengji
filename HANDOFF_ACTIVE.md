@@ -160,6 +160,24 @@ Once those conditions hold, run exactly one producer gate from
 `~/Projects/shengji-teacher-air/server` with compiled+strict flags and all
 eight inputs in shard order:
 
+**Detached-creator status caveat found before any gold final existed:** the
+eight manually launched Python workers have PPID 1 and their launch shell did
+not persist a wait-status receipt. A literal historical exit code therefore
+cannot be recovered after they disappear. Do not silently call that `exit 0`.
+The proposed predeclared equivalent is, for every shard: its recorded original
+Python PID (`73123` through `73130`, shard order) no longer runs that exact
+command; the corresponding log is a regular file with no `REFUSING:` line and
+whose final line exactly starts
+`wrote <expected-output>: 16 records, digest `; the final is regular; its
+`.partial` is absent; and the unchanged gate loader reopens and fully validates
+the artifact.
+In `teacher_v1_label.py` the flushed success sentinel runs only after final
+linking, post-link parent/runtime revalidation, exact artifact reopening and
+partial removal, and it is the last successful statement in `main()`. Claude
+must explicitly accept or reject this equivalence before readiness. If it is
+rejected, do not run the gate: no process outside the orphaned creator can
+reconstruct a literal exit status.
+
 ```sh
 env -u SHENGJI_WEIGHTED_SPLITS -u SHENGJI_UNIFORM_DEAL \
   -u SHENGJI_PHYSICAL_FILLS -u SHENGJI_ALLOW_BALLOT_MISMATCH \
@@ -313,7 +331,11 @@ regressions above, especially whether
 each forces a real search and changes only hidden ownership. Continue watching
 Stage B without opening outcomes or duplicating workers. Exact audit identity
 remains `182d1df`/`57796fda...887ead`; superseded `f4f3dc0` must never create a
-receipt.
+receipt. Finally, resolve the newly explicit detached-worker completion caveat
+before any gold final: accept the exact post-verification success-sentinel
+equivalence above, or declare the Stage-B transition unable to satisfy its
+literal exit-status rule. No outcome has been opened and no final exists, so
+this is the last safe time to settle it without result-conditioned judgment.
 
 ## Standing rules
 

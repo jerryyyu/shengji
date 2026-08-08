@@ -105,14 +105,16 @@ and put exact run detail in `JOBS.md` or the dated archive.
   LCBs failed. Terminal result is SELECT NONE; do not deploy or extend this
   recipe from its attractive gameplay tail.
 - Suphx O0 is now the next bounded learner, independently of Teacher-v3. Exact
-  material commit `7b15338` asks only whether the fixed three-seed full-
-  information ensemble acquires a noncollapsed policy advantage over its
+  chronology repair `7b15338` and corrected material snapshot `9aabf0b` ask
+  only whether the fixed three-seed full-information ensemble acquires a
+  noncollapsed policy advantage over its
   initialization and equal-work public learner. Its alternative hidden worlds
   now clear both snapshot constraints and full chronological engine replay;
   this matters because 13 apparently plausible witnesses contradicted an
   earlier pair obligation or successful throw. It is not a strength claim.
-  After implementation review, packet freeze and separate packet-hash
-  admission, run it on Mini while Teacher continues on Air. O1 feature removal
+  The chronology mechanics passed review; after final material-snapshot PASS,
+  packet freeze and separate packet-hash admission, run it on Mini while
+  Teacher continues on Air. O1 feature removal
   exists only after O0 PASS; Teacher-label consumers wait for the Teacher
   audit, but O0/O1 do not inherit that dependency.
 
@@ -125,7 +127,8 @@ and put exact run detail in `JOBS.md` or the dated archive.
 2. Close Teacher-v3 Stage-B attribution and run the already-frozen independent
    64-state champion-continuation audit on Air; use that evidence to choose the
    next teacher upgrade rather than merely scaling labels.
-3. In parallel, re-review exact Suphx O0 `7b15338`, freeze and separately
+3. In parallel, obtain final review PASS for exact Suphx O0 material
+   `9aabf0b`, freeze and separately
    hash-admit its packet, then run the bounded six-arm screen on Mini. Do not
    wait for Teacher unless the proposed learner consumes Teacher labels.
 4. Keep v11pair as a root proposal/ranking feature and teacher diagnostic;

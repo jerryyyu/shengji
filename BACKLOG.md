@@ -114,16 +114,16 @@ behind code or protocol work we could have completed.
 | **Lane A / production guardrail** | **Shipped:** exact-semantic speculative scheduling and off-loop X-ray are live in release 17. Continue passive timing collection from ordinary rooms. | The 100-decision replay was exact; the live smoke met p50 <=1.5s, p95 <=4.0s and max <=8.0s, showed no additive 0.7s after long searches, and kept WebSockets responsive during X-ray. A billable Fly resize still requires Jerry's approval. |
 | **Lane A.1 / V11pair** | **Closed:** artifact-only repair published from unchanged bytes and selected none. | No protected composition. Reuse v11 only in a new explicitly diagnostic/proposal contract. |
 | **Lane B / stronger teacher** | Finish the running Stage-B gold labels, validate their exact gate, then execute the frozen 64-state report-LCB continuation audit. | All eight shards and receipts exact; no outcome-conditioned audit change; disjoint 32-world selection/report folds and full downstream report-LCB continuation at every information set. |
-| **Lane C / beyond imitation** | **Advanced:** Direct-Q selected none; Suphx O0's complete executable boundary is pushed at `7b15338` after repairing snapshot and chronological legal-world, exact-root, review-admission and redundant-replay defects. Obtain re-review, freeze the exact packet, review/admit its hash, then run on Mini without waiting for Teacher. | Exact Mini artifact `4f0c3dd5…434` recommends 64 iterations/arm but grants no run authority. O0 must prove noncollapsed oracle acquisition on frozen DEV before any feature-removal O1 work. |
+| **Lane C / beyond imitation** | **Advanced:** Direct-Q selected none; Suphx O0's chronology mechanics passed review, and material snapshot `9aabf0b` corrects the sole stale test count. Obtain its explicit final PASS, freeze the exact packet, review/admit its hash, then run on Mini without waiting for Teacher. | Exact Mini artifact `4f0c3dd5…434` recommends 64 iterations/arm but grants no run authority. O0 must prove noncollapsed oracle acquisition on frozen DEV before any feature-removal O1 work. |
 | **Fresh search confirmation** | **Closed:** RLCB-C1 formally confirmed report-LCB. | Preserve the exact aggregate and claim boundary; no additional confirmation compute is needed now. |
 
 ### Fleet order for T1
 
 1. **Local + production diagnostics:** own the latency benchmark and
    exact-semantic server optimization; do not consume Mini/Air training slots.
-2. **Mini:** RLCB-C1 and Direct-Q are terminal. Exact Suphx O0 implementation
-   `7b15338` awaits re-review; Mini stays free until code review, packet freeze
-   and hash-bound packet admission all pass. Never turn the timing
+2. **Mini:** RLCB-C1 and Direct-Q are terminal. Exact Suphx O0 material
+   snapshot `9aabf0b` awaits final review; Mini stays free until that PASS,
+   packet freeze and hash-bound packet admission all pass. Never turn the timing
    recommendation into an unreviewed training run or improvise a Direct-Q/
    protected-anchor extension.
 3. **Air:** keep all eight Stage-B gold workers owned by the frozen Teacher-v3

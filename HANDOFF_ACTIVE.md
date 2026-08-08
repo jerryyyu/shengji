@@ -161,9 +161,9 @@ policy. The test now proves the frozen introduction blob and this fail-closed
 condition explicitly rather than misreporting a regression.
 
 Mini has no long strength job. Its bounded Suphx timing preflight is complete;
-it is available while exact O0 implementation `7b15338` receives independent
-re-review. The timing artifact and executable code alone must not be treated
-as freeze, admission or training authority.
+it is available while exact O0 material snapshot `9aabf0b` receives final
+independent review. The timing artifact and executable code alone must not be
+treated as freeze, admission or training authority.
 
 ### Frozen Teacher transition names
 

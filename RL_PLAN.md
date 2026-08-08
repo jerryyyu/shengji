@@ -80,15 +80,16 @@ closed lane.
   Stage-B N=30 gold shards. After all eight validate, seal the Stage-B gate and
   label only the separately frozen 64-state audit. Stage-B outcomes may not
   move the audit population or rule.
-- **Suphx O0 is the independent parallel RL gate.** Exact material commit
-  `7b15338` freezes the fixed three-seed oracle-acquisition question,
+- **Suphx O0 is the independent parallel RL gate.** Exact repair `7b15338` and
+  corrected material snapshot `9aabf0b` freeze the fixed three-seed
+  oracle-acquisition question,
   chronologically legal hidden-hand/burial witnesses, 128 DEV deals, six
   64-update arms, inference, stop rule and sole artifact root. The legal-world
   gate reconstructs post-burial hands and replays every public trick through
   the real engine; this repaired 13 snapshot-plausible alternatives that
   contradicted an earlier pair obligation or successful throw. It still has no
-  packet or run authority:
-  implementation re-review must pass, then the frozen packet hash needs a
+  packet or run authority. The chronology mechanics passed review; the final
+  material-snapshot review must pass, then the frozen packet hash needs a
   second admission review. Once admitted, O0 belongs on Mini while Teacher-v3
   continues on Air. O1 depends on O0 proving oracle acquisition, not on the
   Teacher result; only training that consumes Teacher-v3 labels waits for the

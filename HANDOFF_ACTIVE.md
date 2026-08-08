@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 18:27 EDT. This is the executable mailbox, not a
+Last update: 2026-08-08 18:29 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -288,6 +288,27 @@ literal launch command; those require one final packet after PASS.
 Append exactly one marker:
 
 `S3A_DUEL_PREFLIGHT_CONTROLLER_V1_REVIEW {"git":"00854092104cd5dd0c765404bf198871fb523e31","core_git":"b5dee2e002b0d955534bfb9d2a2f7246e3a55f93","material_sha256":"dbd9a79754347f36956d3390ff1d4fd18abbd6f765c1e9404edc6d2f2981382c","mini_only":true,"exact_python":"3.14.3","homebrew_3_14_6_refuses":true,"air_refuses":true,"one_shot":true,"score_free":true,"screen_packet_review_only":true,"preflight_launch_authorized":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
+
+### Prepared after PASS — capacity proposal only
+
+This is not part of either open marker and authorizes nothing. Closed RLCB-C1
+provides 4,096 terminal Mini rounds under the exact 3.14.3/native/report-LCB
+runtime. Its report-LCB team averaged 8.994817 search-seconds per round. One
+S3a cluster contains six rounds with two report-LCB teams, giving a
+107.937802-second outcome-blind cost proxy before the structured-bury
+increment. Under the protocol's 2× factor, that projects to:
+
+- screen: 122.81 fleet-hours / 15.35 max-shard hours;
+- confirmation: 491.24 fleet-hours / 61.40 max-shard hours;
+- four-cluster score-free preflight: about 7.20 minutes.
+
+Candidate final caps are screen `192/24` and confirmation `768/96`
+fleet/max-shard hours. All four values encode the same 168.75-second maximum
+cluster mean, roughly 56% above the historical proxy. The actual score-free
+preflight—not this proxy—must terminate at `TERMINAL_CAPACITY_HOLD` if any
+projection exceeds a cap. After the current reviews pass, exact merge Git,
+source hashes, these four numbers, heartbeat 30, canonical Mini command and a
+fresh namespace require one separate literal launch review.
 
 ## Standing rules
 

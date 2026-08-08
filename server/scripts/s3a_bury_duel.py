@@ -68,10 +68,14 @@ PREFLIGHT_SEED0 = 18_000_000_000
 PREFLIGHT_CLUSTERS = 4
 PREFLIGHT_RUN_ID = "s3a-bury-duel-preflight-18b-v1"
 THROUGHPUT_SAFETY_FACTOR = 2.0
+# The outcome-free S3a throughput probes consumed these deal seeds before this
+# protocol existed.  Their outcomes were never published or used for
+# selection, but a population advertised as fresh must still exclude them.
+CONSUMED_SIZING_DEAL_SEEDS = tuple(range(151_000_000, 151_000_004))
 PHASES = {
     "screen": {
-        "run_id": "s3a-bury-duel-screen-151m-v1",
-        "seed0": 151_000_000,
+        "run_id": "s3a-bury-duel-screen-153m-v1",
+        "seed0": 153_000_003,
         "clusters": 2_048,
         "clusters_per_shard": 256,
         "claim": "non_promotable_s3a_complete_round_screen",
@@ -302,8 +306,12 @@ def preflight_stream_problems() -> list[str]:
 
 
 def global_stream_problems() -> list[str]:
-    """Refuse reuse between preflight, screen and confirmation populations."""
+    """Refuse reuse with sizing or across all registered duel populations."""
     populations = {
+        "consumed-sizing": [
+            (seed, index, "consumed-sizing-deal")
+            for index, seed in enumerate(CONSUMED_SIZING_DEAL_SEEDS)
+        ],
         "preflight": _preflight_stream_uses(),
         **{phase: _stream_uses(phase) for phase in PHASES},
     }

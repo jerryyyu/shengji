@@ -125,11 +125,27 @@ def test_real_policy_contract_changes_only_structured_bury_switches():
 
 
 def test_sparse_streams_are_globally_unique_within_each_phase():
+    assert A.CONSUMED_SIZING_DEAL_SEEDS == tuple(
+        range(151_000_000, 151_000_004))
+    assert A.PHASES["screen"]["seed0"] == 153_000_003
     for phase in A.PHASES:
         assert A.stream_problems(phase) == []
         assert len(A.stream_digest(phase)) == 64
     assert A.preflight_stream_problems() == []
     assert A.global_stream_problems() == []
+
+
+def test_consumed_sizing_deal_seed_collision_refuses(monkeypatch):
+    monkeypatch.setitem(A.PHASES, "screen", {
+        "run_id": "s3a-bury-duel-screen-consumed-mutant-v1",
+        "seed0": A.CONSUMED_SIZING_DEAL_SEEDS[0],
+        "clusters": 1,
+        "clusters_per_shard": 1,
+        "claim": "mutant",
+    })
+    problems = A.global_stream_problems()
+    assert any("consumed-sizing" in problem and "screen" in problem
+               for problem in problems)
 
 
 def test_consecutive_seed_mutant_recreates_historical_null_collision(

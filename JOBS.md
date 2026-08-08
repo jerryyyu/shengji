@@ -3,23 +3,29 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 23:21 EDT
+## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 23:57 EDT
 
-Air has eight live compiled+strict `teacher_v1_label.py gold` workers in clean
+Air launched eight compiled+strict `teacher_v1_label.py gold` workers in clean
 detached worktree `~/Projects/shengji-teacher-air` at exact commit
 `1a2a71333ea283784b19855e67e1ae231379ec79`. Each owns one of eight Stage-B
 N=30 shards under `teacher-v1-entry-149m-v3`; all are emitting fold progress
 and remain near one CPU each. This block is attribution-only. Its outcomes
 cannot change the independently frozen 64-state report-LCB continuation audit.
 
-All eight output finals remain absent and all eight Python workers plus their
-caffeinate children remain live. At 23:21 the outcome-blind fold counters were
-`1168/1744/880/996/624/1052/1232/1304`, or `9,000/16,384` (54.9%). No outcome
-file was opened. This is a liveness counter, not a compute-weighted ETA:
+Shard 1 completed cleanly after 33,126.2 seconds: its original Python process
+exited, its regular final and terminal success sentinel exist, and no partial
+remains. Seven Python workers remain live. At 23:57 the outcome-blind fold
+counters were `1248/2048/1156/1076/824/1104/1260/1352`, or
+`10,068/16,384` (61.5%). No outcome file was opened. This is a liveness
+counter, not a compute-weighted ETA:
 ballot sizes and continuation costs differ by state. The exact one-shot
 readiness and gate
 command now live in `HANDOFF_ACTIVE.md`; in particular, filename appearance is
 not enough because publication precedes each worker's final provenance check.
+The reviewed outcome-blind readiness checker recognized exactly one regular
+final and seven live workers, returned exit `4`, reported
+`outcomes_opened=false` / `artifact_created=false`, and granted no gate or
+audit authority.
 The manually detached gold launch did not preserve child wait statuses: all
 eight Python workers are now PPID 1 and there is no `.exit` receipt. Before any
 gold final existed, the handoff therefore exposed—not hid—the exact proposed

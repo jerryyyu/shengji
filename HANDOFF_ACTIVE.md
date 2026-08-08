@@ -82,12 +82,14 @@ from its original clean `b365120` runtime returned
 
 ## Running compute
 
-Air owns eight live compiled+strict Teacher-v3 Stage-B gold workers at exact
-`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 23:21 all eight real
-Python workers remained healthy, with zero
-final gold shards; outcome-blind fold progress by shard was
-`1168/1744/880/996/624/1052/1232/1304`, or 54.9% aggregate
-(`9,000/16,384`). This proves
+Air launched eight compiled+strict Teacher-v3 Stage-B gold workers at exact
+`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 23:57 shard 1 had completed
+cleanly with its process gone, terminal success sentinel present, one regular
+final and no partial; seven Python workers remained healthy. Outcome-blind
+fold progress by shard was `1248/2048/1156/1076/824/1104/1260/1352`, or
+61.5% aggregate (`10,068/16,384`). The reviewed readiness checker recognized
+that exact one-final/seven-worker state and correctly returned not ready with
+no opened outcome or created artifact. This proves
 liveness but is not a compute-weighted ETA because ballot sizes and
 continuation costs vary. Stage B is attribution-only; do not inspect or use
 its outcomes to alter the independently frozen champion audit.

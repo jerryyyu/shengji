@@ -33,23 +33,29 @@ from shengji.teacher_v1 import (CAPTURE_PACKET_ID, CAPTURE_PYTHON,  # noqa: E402
                                 stable_digest)
 
 
-AUDIT_ID = "teacher-v3-report-lcb-audit-v1"
-FRESH_AUDIT_ID = "teacher-v3-report-lcb-audit-v2"
-AUDIT_STATE_SCHEMA = "teacher-v1-champion-audit-state-set-v1"
-FRESH_AUDIT_STATE_SCHEMA = "teacher-v1-champion-audit-state-set-v2"
-AUDIT_RECEIPT_SCHEMA = "teacher-v1-champion-audit-receipt-v1"
-AUDIT_SHARD_SCHEMA = "teacher-v1-champion-audit-shard-v1"
-AUDIT_GATE_SCHEMA = "teacher-v1-champion-audit-gate-v1"
+# Audit-v1/v2 consumed the original frozen half.  Audit-v3 evaluates only the
+# independently reviewed, outcome-blind complement.  Keep the historical
+# identity explicit because recomputing the complement must continue to prove
+# exactly which half was consumed; all receipt/label/gate outputs use AUDIT_ID.
+CONSUMED_AUDIT_ID = "teacher-v3-report-lcb-audit-v1"
+CONSUMED_AUDIT_STATE_SCHEMA = "teacher-v1-champion-audit-state-set-v1"
+AUDIT_ID = "teacher-v3-report-lcb-audit-v2"
+AUDIT_STATE_SCHEMA = "teacher-v1-champion-audit-state-set-v2"
+FRESH_AUDIT_ID = AUDIT_ID
+FRESH_AUDIT_STATE_SCHEMA = AUDIT_STATE_SCHEMA
+AUDIT_RECEIPT_SCHEMA = "teacher-v1-champion-audit-receipt-v2"
+AUDIT_SHARD_SCHEMA = "teacher-v1-champion-audit-shard-v2"
+AUDIT_GATE_SCHEMA = "teacher-v1-champion-audit-gate-v2"
 STAGE_B_STATE_SHA256 = (
     "90956da86f4f03074a1b4dc2d7198a3da5958470b733eacd104e066c523b4dc6"
 )
 AUDIT_STATE_SHA256 = (
-    "d04d1c0fa507bab680da4d53eeb72325a97c8ca058aac0d01c16dfdcf44f7a34"
+    "82da0fd8a2f362dd2a8340847ccb7caaba1c2d58840cd0809d2353751999d94c"
 )
 CONSUMED_AUDIT_STATE_SHA256 = (
     "d04d1c0fa507bab680da4d53eeb72325a97c8ca058aac0d01c16dfdcf44f7a34"
 )
-AUDIT_STATE_FREEZE_GIT = "7040489b458db86a68576b146a280fd4598bbac0"
+AUDIT_STATE_FREEZE_GIT = "ec62179e577e37a3230ddbffda96387692eddeca"
 AUDIT_TRANSITION_PARENT = "c40a31c2d58c171f2172496d928f719932247730"
 AUDIT_TRANSITION_PATHS = {
     "server/scripts/teacher_v1_champion_audit.py",
@@ -136,9 +142,10 @@ CONTINUATION_EXECUTION_LOCK = {
     },
 }
 AUDIT_STATE_SOURCE_DIGESTS = {
-    "audit_script": "8c29c74605de2fa1887530b15cfd3e5da661751d3650f28c2b7936ee2f40c9ba",
+    "audit_script": "40499234dace48175a6808ca0b3fe51acfc3502bf48ccea4e4b0f5e33fa5bf7f",
     "compiled_engine": "ef7c161829c607aad790e949e0a0bae7e04d8a3be7aea51b80d5108a1f566b4d",
     "fast_router": "f2506d5c51b8ad37303f04dce59899de0d7c1179633b08ce61f48eb86cec1a3e",
+    "gate_script": "0dbfd020ca323374a6eaacf07481f6951d7f51d05c87b7ff505d0fb939be1a09",
     "label_script": "58c833fd3707a3ce5403cf7d0e8a23aa518c332976aa7ab4dd3ceb98010386dc",
     "mcbot": "45a82f44b95d1bce5126c63b1a5af6baaed54270aca9d55677b2e0bbb9c9d957",
     "memory": "905873b332fd54471070b25ce24f100b813c9a9f234c1b50254d00895140cf51",
@@ -368,7 +375,7 @@ def runtime_contract(*, smoke: bool) -> dict:
 def selection_key(state: dict) -> tuple[str, str]:
     state_id = state.get("state_id")
     return stable_digest({
-        "audit_id": AUDIT_ID,
+        "audit_id": CONSUMED_AUDIT_ID,
         "purpose": "state_selection",
         "state_id": state_id,
     }), str(state_id)
@@ -1375,8 +1382,8 @@ def fresh_audit_state_set_problems(
                 "states_digest": consumed.get("states_digest"),
             }):
         bad.append("fresh audit exact consumed-parent binding")
-    if (consumed.get("schema") != AUDIT_STATE_SCHEMA
-            or consumed.get("audit_id") != AUDIT_ID
+    if (consumed.get("schema") != CONSUMED_AUDIT_STATE_SCHEMA
+            or consumed.get("audit_id") != CONSUMED_AUDIT_ID
             or consumed.get("complete") is not True
             or consumed.get("selected") != AUDIT_STATES
             or consumed.get("stage_b_parent") != {
@@ -1417,9 +1424,10 @@ def fresh_audit_state_set_problems(
 
 def audit_state_set_problems(payload: dict, parent: dict,
                              parent_sha256: str) -> list[str]:
+    """Recompute the historical consumed-v1 state asset."""
     bad = []
-    if (payload.get("schema") != AUDIT_STATE_SCHEMA
-            or payload.get("audit_id") != AUDIT_ID
+    if (payload.get("schema") != CONSUMED_AUDIT_STATE_SCHEMA
+            or payload.get("audit_id") != CONSUMED_AUDIT_ID
             or payload.get("complete") is not True):
         bad.append("audit state-set identity/completion")
     if payload.get("stage_b_parent") != {
@@ -1455,8 +1463,12 @@ def audit_state_set_problems(payload: dict, parent: dict,
 
 
 def audit_state_set_self_problems(payload: dict) -> list[str]:
+    """Validate the registered fresh complement without trusting its rows."""
     bad = []
     states = payload.get("states", [])
+    if (not isinstance(states, list)
+            or not all(isinstance(state, dict) for state in states)):
+        return ["audit state population is malformed"]
     if (payload.get("schema") != AUDIT_STATE_SCHEMA
             or payload.get("audit_id") != AUDIT_ID
             or payload.get("complete") is not True):
@@ -1468,6 +1480,22 @@ def audit_state_set_self_problems(payload: dict) -> list[str]:
     if ((payload.get("stage_b_parent") or {}).get("sha256")
             != STAGE_B_STATE_SHA256):
         bad.append("audit Stage-B parent SHA-256")
+    if ((payload.get("consumed_audit_parent") or {}).get("sha256")
+            != CONSUMED_AUDIT_STATE_SHA256):
+        bad.append("audit consumed state-set SHA-256")
+    expected_contract = {
+        "method": "exact_complement_of_consumed_v1_within_frozen_strata",
+        "parent_states": 128,
+        "consumed_states": 64,
+        "selected_states": 64,
+        "representative_per_cell": REPRESENTATIVE_PER_CELL,
+        "boundary": BOUNDARY_STATES,
+        "uncertainty": UNCERTAINTY_STATES,
+        "label_outcomes_read": False,
+        "champion_outcomes_read": False,
+    }
+    if payload.get("selection_contract") != expected_contract:
+        bad.append("audit fresh selection contract")
     if payload.get("continuation_contract") != CONTINUATION_CONTRACT:
         bad.append("audit continuation contract")
     if payload.get("folds") != AUDIT_FOLDS:
@@ -1481,6 +1509,40 @@ def audit_state_set_self_problems(payload: dict) -> list[str]:
             isinstance(deal, int) and not isinstance(deal, bool)
             for deal in deals)):
         bad.append("audit deal identities")
+    return sorted(set(bad))
+
+
+def consumed_audit_state_set_self_problems(payload: dict) -> list[str]:
+    """Validate the exact historical half used to derive the complement."""
+    bad = []
+    states = payload.get("states", [])
+    if (not isinstance(states, list)
+            or not all(isinstance(state, dict) for state in states)):
+        return ["consumed audit state population is malformed"]
+    if (payload.get("schema") != CONSUMED_AUDIT_STATE_SCHEMA
+            or payload.get("audit_id") != CONSUMED_AUDIT_ID
+            or payload.get("complete") is not True):
+        bad.append("consumed audit state-set identity/completion")
+    if payload.get("selected") != AUDIT_STATES or len(states) != AUDIT_STATES:
+        bad.append("consumed audit state count")
+    if payload.get("states_digest") != stable_digest(states):
+        bad.append("consumed audit state digest")
+    if ((payload.get("stage_b_parent") or {}).get("sha256")
+            != STAGE_B_STATE_SHA256):
+        bad.append("consumed audit Stage-B parent SHA-256")
+    if payload.get("continuation_contract") != CONTINUATION_CONTRACT:
+        bad.append("consumed audit continuation contract")
+    if payload.get("folds") != AUDIT_FOLDS:
+        bad.append("consumed audit fold contract")
+    ids = [state.get("state_id") for state in states]
+    deals = [state.get("seed") for state in states]
+    if (len(ids) != len(set(ids)) or not all(
+            isinstance(state_id, str) and state_id for state_id in ids)):
+        bad.append("consumed audit state identities")
+    if (len(deals) != len(set(deals)) or not all(
+            isinstance(deal, int) and not isinstance(deal, bool)
+            for deal in deals)):
+        bad.append("consumed audit deal identities")
     return sorted(set(bad))
 
 
@@ -1647,6 +1709,8 @@ def load_parent_population(*, cheap_paths: list[str],
 
 def load_audit_context(*, stage_b_state_set_path: str,
                        stage_b_state_set_sha256: str,
+                       consumed_audit_state_set_path: str,
+                       consumed_audit_state_set_sha256: str,
                        audit_state_set_path: str,
                        audit_state_set_sha256: str,
                        cheap_paths: list[str], cheap_sha256s: list[str],
@@ -1661,12 +1725,20 @@ def load_audit_context(*, stage_b_state_set_path: str,
     bad = teacher_label.state_set_problems(stage_b, "b", smoke=smoke)
     if not smoke:
         bad += teacher_states.state_set_packet_problems(stage_b)
+    consumed_states = teacher_label.load_pinned(
+        consumed_audit_state_set_path, consumed_audit_state_set_sha256)
+    bad += audit_state_set_problems(
+        consumed_states, stage_b, stage_b_state_set_sha256)
+    bad += consumed_audit_state_set_self_problems(consumed_states)
     audit_states = teacher_label.load_pinned(
         audit_state_set_path, audit_state_set_sha256)
-    bad += audit_state_set_problems(
-        audit_states, stage_b, stage_b_state_set_sha256)
+    bad += fresh_audit_state_set_problems(
+        audit_states, stage_b, stage_b_state_set_sha256,
+        consumed_states, consumed_audit_state_set_sha256)
     bad += audit_state_set_self_problems(audit_states)
     if not smoke:
+        if consumed_audit_state_set_sha256 != CONSUMED_AUDIT_STATE_SHA256:
+            bad.append("consumed audit state set is not the registered asset")
         if audit_state_set_sha256 != AUDIT_STATE_SHA256:
             bad.append("audit state set is not the registered frozen asset")
         bad += audit_state_execution_lock_problems(audit_states)
@@ -1687,6 +1759,7 @@ def load_audit_context(*, stage_b_state_set_path: str,
         parents["gold_records"])
     return {
         "stage_b_state_set": stage_b,
+        "consumed_audit_state_set": consumed_states,
         "audit_state_set": audit_states,
         "parents": parents,
         "joined": joined,
@@ -1726,11 +1799,17 @@ def audit_receipt_problems(payload: dict, *, runtime: dict,
     }:
         bad.append("audit receipt exact execution predeclaration")
     stage_b = payload.get("stage_b_state_set", {})
+    consumed_states = payload.get("consumed_audit_state_set", {})
     audit_states = payload.get("audit_state_set", {})
     stage_b_gate = payload.get("stage_b_gate", {})
     if stage_b.get("sha256") != STAGE_B_STATE_SHA256:
         bad.append("audit receipt Stage-B state set")
+    if consumed_states.get("sha256") != CONSUMED_AUDIT_STATE_SHA256:
+        bad.append("audit receipt consumed state set")
+    if audit_states.get("sha256") != AUDIT_STATE_SHA256:
+        bad.append("audit receipt fresh state set")
     for name, binding in (
+        ("consumed audit state set", consumed_states),
         ("audit state set", audit_states),
         ("Stage-B gate", stage_b_gate),
     ):
@@ -1755,6 +1834,10 @@ def context_from_receipt(receipt: dict, *, smoke: bool) -> dict:
     return load_audit_context(
         stage_b_state_set_path=receipt["stage_b_state_set"]["path"],
         stage_b_state_set_sha256=receipt["stage_b_state_set"]["sha256"],
+        consumed_audit_state_set_path=(
+            receipt["consumed_audit_state_set"]["path"]),
+        consumed_audit_state_set_sha256=(
+            receipt["consumed_audit_state_set"]["sha256"]),
         audit_state_set_path=receipt["audit_state_set"]["path"],
         audit_state_set_sha256=receipt["audit_state_set"]["sha256"],
         cheap_paths=[item["path"] for item in cheap_items],
@@ -1847,6 +1930,9 @@ def create_receipt(args) -> None:
     context = load_audit_context(
         stage_b_state_set_path=args.stage_b_state_set,
         stage_b_state_set_sha256=args.expected_stage_b_state_set_sha256,
+        consumed_audit_state_set_path=args.consumed_audit_state_set,
+        consumed_audit_state_set_sha256=(
+            args.expected_consumed_audit_state_set_sha256),
         audit_state_set_path=args.audit_state_set,
         audit_state_set_sha256=args.expected_audit_state_set_sha256,
         cheap_paths=args.cheap,
@@ -1881,6 +1967,10 @@ def create_receipt(args) -> None:
             "path": args.stage_b_state_set,
             "sha256": args.expected_stage_b_state_set_sha256,
         },
+        "consumed_audit_state_set": {
+            "path": args.consumed_audit_state_set,
+            "sha256": args.expected_consumed_audit_state_set_sha256,
+        },
         "audit_state_set": {
             "path": args.audit_state_set,
             "sha256": args.expected_audit_state_set_sha256,
@@ -1894,6 +1984,7 @@ def create_receipt(args) -> None:
         raise TeacherProtocolError(
             "audit receipt candidate: " + "; ".join(bad))
     frozen_context_digest = stable_digest({
+        "consumed_audit_states": context["consumed_audit_state_set"],
         "audit_states": context["audit_state_set"],
         "cheap_items": parents["cheap_items"],
         "n30_items": parents["gold_items"],
@@ -1907,6 +1998,7 @@ def create_receipt(args) -> None:
             raise TeacherProtocolError("audit receipt sources changed")
         current = context_from_receipt(reopened, smoke=args.smoke)
         current_digest = stable_digest({
+            "consumed_audit_states": current["consumed_audit_state_set"],
             "audit_states": current["audit_state_set"],
             "cheap_items": current["parents"]["cheap_items"],
             "n30_items": current["parents"]["gold_items"],
@@ -1969,6 +2061,9 @@ def audit_shard_problems(payload: dict, *, receipt: dict,
     if payload.get("source_digests") != sources:
         bad.append("audit shard executable source drift")
     parents = context["parents"]
+    if payload.get("consumed_audit_state_set") != \
+            receipt.get("consumed_audit_state_set"):
+        bad.append("audit shard consumed-state binding")
     if payload.get("audit_state_set") != receipt.get("audit_state_set"):
         bad.append("audit shard state-set binding")
     if payload.get("stage_b_gate") != parents["stage_b_gate_item"]:
@@ -2108,6 +2203,7 @@ def label_shard(args) -> None:
         "target_schema": teacher_label.TARGET_SCHEMA,
         "producer_run_id": receipt["run_id"],
         "producer_receipt": binding,
+        "consumed_audit_state_set": receipt["consumed_audit_state_set"],
         "audit_state_set": receipt["audit_state_set"],
         "stage_b_gate": context["parents"]["stage_b_gate_item"],
         "cheap_inputs": context["parents"]["cheap_items"],
@@ -2148,6 +2244,7 @@ def label_shard(args) -> None:
             "audit shard candidate: " + "; ".join(bad))
     frozen_context_digest = stable_digest({
         "receipt": receipt,
+        "consumed_audit_states": context["consumed_audit_state_set"],
         "audit_states": context["audit_state_set"],
         "parents": {
             "cheap": context["parents"]["cheap_items"],
@@ -2163,6 +2260,8 @@ def label_shard(args) -> None:
             sources=source_digests(), smoke=args.smoke)
         current_digest = stable_digest({
             "receipt": current_receipt,
+            "consumed_audit_states": (
+                current_context["consumed_audit_state_set"]),
             "audit_states": current_context["audit_state_set"],
             "parents": {
                 "cheap": current_context["parents"]["cheap_items"],
@@ -2234,7 +2333,8 @@ def load_audit_shards(paths: list[str], expected_sha256s: list[str], *,
                 "python", "fast_engine", "require_voids",
                 "experimental_sampler_ballot_flags", "source_digests",
                 "target_schema", "producer_run_id", "producer_receipt",
-                "audit_state_set", "stage_b_gate", "cheap_inputs",
+                "consumed_audit_state_set", "audit_state_set",
+                "stage_b_gate", "cheap_inputs",
                 "n30_inputs", "folds_contract", "continuation_contract",
                 "continuation_execution_lock", "shard_count",
             ):
@@ -2294,6 +2394,7 @@ def build_gate_payload(*, receipt: dict, receipt_binding: dict,
         "n_states": len(records),
         "producer_run_id": receipt["run_id"],
         "producer_receipt": receipt_binding,
+        "consumed_audit_state_set": receipt["consumed_audit_state_set"],
         "audit_state_set": receipt["audit_state_set"],
         "stage_b_state_set": receipt["stage_b_state_set"],
         "stage_b_gate": parents["stage_b_gate_item"],
@@ -2407,8 +2508,8 @@ def freeze(args) -> None:
         raise TeacherProtocolError("audit freeze preflight: " + "; ".join(bad))
 
     payload = {
-        "schema": AUDIT_STATE_SCHEMA,
-        "audit_id": AUDIT_ID,
+        "schema": CONSUMED_AUDIT_STATE_SCHEMA,
+        "audit_id": CONSUMED_AUDIT_ID,
         "complete": True,
         **runtime,
         "source_digests": source_digests(),
@@ -2473,7 +2574,7 @@ def freeze(args) -> None:
 
     teacher_label.write_complete(args.out, payload, verify=verify)
     print(json.dumps({
-        "audit_id": AUDIT_ID,
+        "audit_id": CONSUMED_AUDIT_ID,
         "out": args.out,
         "selected": len(selected),
         "states_digest": payload["states_digest"],
@@ -2628,6 +2729,9 @@ def parser() -> argparse.ArgumentParser:
     receipt.add_argument("--stage-b-state-set", required=True)
     receipt.add_argument(
         "--expected-stage-b-state-set-sha256", required=True)
+    receipt.add_argument("--consumed-audit-state-set", required=True)
+    receipt.add_argument(
+        "--expected-consumed-audit-state-set-sha256", required=True)
     receipt.add_argument("--audit-state-set", required=True)
     receipt.add_argument(
         "--expected-audit-state-set-sha256", required=True)

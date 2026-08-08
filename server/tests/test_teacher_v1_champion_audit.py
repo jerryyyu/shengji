@@ -174,8 +174,8 @@ def test_audit_packet_recomputes_selection_and_exact_parent():
     selected, problems = audit.select_states(parent["states"])
     assert problems == []
     payload = {
-        "schema": audit.AUDIT_STATE_SCHEMA,
-        "audit_id": audit.AUDIT_ID,
+        "schema": audit.CONSUMED_AUDIT_STATE_SCHEMA,
+        "audit_id": audit.CONSUMED_AUDIT_ID,
         "complete": True,
         "stage_b_parent": {
             "sha256": audit.STAGE_B_STATE_SHA256,
@@ -210,6 +210,14 @@ def test_audit_packet_recomputes_selection_and_exact_parent():
     assert "audit Stage-B parent SHA-256 drift" in \
         audit.audit_state_set_problems(
             payload, parent, stable_digest("different-parent"))
+
+
+def test_registered_state_assets_refuse_malformed_populations():
+    assert audit.audit_state_set_self_problems({"states": [None]}) == [
+        "audit state population is malformed"]
+    assert audit.consumed_audit_state_set_self_problems(
+        {"states": [None]}) == [
+            "consumed audit state population is malformed"]
 
 
 def test_champion_contract_is_literal_deployed_report_lcb():
@@ -714,6 +722,7 @@ def test_retry_count_survives_synthetic_fold_shard_and_gate(monkeypatch):
         "passed": True, "inconclusive": False, "problems": []})
     receipt = {
         "run_id": "synthetic-v3",
+        "consumed_audit_state_set": {"sha256": "f" * 64},
         "audit_state_set": {"sha256": "a" * 64},
         "stage_b_state_set": {"sha256": "b" * 64},
     }
@@ -931,14 +940,30 @@ def test_receipt_contract_binds_runtime_sources_and_exact_parents():
         },
         "stage_b_state_set": {
             "path": "stage-b.json", "sha256": audit.STAGE_B_STATE_SHA256},
+        "consumed_audit_state_set": {
+            "path": "consumed-audit-states.json",
+            "sha256": audit.CONSUMED_AUDIT_STATE_SHA256,
+        },
         "audit_state_set": {
-            "path": "audit-states.json", "sha256": "c" * 64},
+            "path": "audit-states.json", "sha256": audit.AUDIT_STATE_SHA256},
         "stage_b_gate": {"path": "stage-b-gate.json", "sha256": "d" * 64},
         "cheap_inputs": items,
         "n30_inputs": copy.deepcopy(items),
     }
     assert audit.audit_receipt_problems(
         payload, runtime=runtime, sources=sources) == []
+    changed = copy.deepcopy(payload)
+    changed["consumed_audit_state_set"]["sha256"] = \
+        audit.AUDIT_STATE_SHA256
+    assert "audit receipt consumed state set" in \
+        audit.audit_receipt_problems(
+            changed, runtime=runtime, sources=sources)
+    changed = copy.deepcopy(payload)
+    changed["audit_state_set"]["sha256"] = \
+        audit.CONSUMED_AUDIT_STATE_SHA256
+    assert "audit receipt fresh state set" in \
+        audit.audit_receipt_problems(
+            changed, runtime=runtime, sources=sources)
     changed = copy.deepcopy(payload)
     changed["n30_inputs"][0]["sha256"] = "not-a-hash"
     assert "audit receipt n30_inputs" in audit.audit_receipt_problems(
@@ -968,6 +993,7 @@ def test_receipt_creator_reopens_its_own_post_link_partial(
         "cheap_items": [], "gold_items": [],
     }
     context = {
+        "consumed_audit_state_set": {"states": []},
         "audit_state_set": {"states": []},
         "parents": parents,
     }
@@ -985,6 +1011,8 @@ def test_receipt_creator_reopens_its_own_post_link_partial(
         run_id="audit-publication-smoke",
         stage_b_state_set="stage-b-states.json",
         expected_stage_b_state_set_sha256="d" * 64,
+        consumed_audit_state_set="consumed-audit-states.json",
+        expected_consumed_audit_state_set_sha256="c" * 64,
         audit_state_set="audit-states.json",
         expected_audit_state_set_sha256="e" * 64,
         cheap=[], expected_cheap_sha256=[],
@@ -1044,6 +1072,8 @@ def test_audit_shard_recomputes_partition_and_totals(monkeypatch):
     }
     receipt = {
         "run_id": receipt_binding["run_id"],
+        "consumed_audit_state_set": {
+            "path": "consumed-states.json", "sha256": "a" * 64},
         "audit_state_set": {"path": "states.json", "sha256": "b" * 64},
     }
     parents = {
@@ -1064,6 +1094,7 @@ def test_audit_shard_recomputes_partition_and_totals(monkeypatch):
         "target_schema": audit.teacher_label.TARGET_SCHEMA,
         "producer_run_id": receipt["run_id"],
         "producer_receipt": receipt_binding,
+        "consumed_audit_state_set": receipt["consumed_audit_state_set"],
         "audit_state_set": receipt["audit_state_set"],
         "stage_b_gate": parents["stage_b_gate_item"],
         "cheap_inputs": [], "n30_inputs": [],
@@ -1089,6 +1120,14 @@ def test_audit_shard_recomputes_partition_and_totals(monkeypatch):
         payload, receipt=receipt, receipt_binding=receipt_binding,
         context=context, runtime=runtime, sources={"audit": "source"},
         smoke=False) == []
+
+    changed = copy.deepcopy(payload)
+    changed.pop("consumed_audit_state_set")
+    assert "audit shard consumed-state binding" in \
+        audit.audit_shard_problems(
+            changed, receipt=receipt, receipt_binding=receipt_binding,
+            context=context, runtime=runtime, sources={"audit": "source"},
+            smoke=False)
 
     changed = copy.deepcopy(payload)
     changed["records"][0], changed["records"][1] = (
@@ -1149,8 +1188,8 @@ def test_fresh_audit_freeze_publishes_only_exact_complement(
     consumed_states, problems = audit.select_states(rows)
     assert problems == []
     consumed = {
-        "schema": audit.AUDIT_STATE_SCHEMA,
-        "audit_id": audit.AUDIT_ID,
+        "schema": audit.CONSUMED_AUDIT_STATE_SCHEMA,
+        "audit_id": audit.CONSUMED_AUDIT_ID,
         "complete": True,
         "selected": audit.AUDIT_STATES,
         "stage_b_parent": {

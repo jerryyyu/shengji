@@ -142,6 +142,14 @@ passes 1,030 with 27 skips. The original
 preflight artifact still reopens at exact
 `4f0c3dd5...434`, and all authority fields remain false.
 
+A separate no-artifact replay at 23:45 did not call the repaired chronological
+helper or `Round.play`: it reconstructed post-burial hands, applied
+`validate_lead`/`validate_follow` directly, recomputed trick winners and
+checked the remaining hands. All 128 selected hidden-hand witnesses and all
+126 selected hidden-burial witnesses passed with zero failures. This is
+supplementary local evidence only; independent implementation review remains
+the freeze gate.
+
 Routine packet/admission reopen validates exact bytes, structure, runtime
 and source identity without regenerating the 128 DEV games. A local no-artifact
 probe measured 3.1 microseconds for the structural reopen; full generation

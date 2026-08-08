@@ -141,6 +141,13 @@ both ordinary and compiled-strict routing.
 Local verification at exact current O0 material `7b15338` is 1,030 passed / 27
 skipped in the broad ordinary suite, 25/25 focused, and 196/196 adjacent in
 both ordinary and compiled-strict routes.
+At 23:45 a separate no-artifact validator that does not call
+`_chronological_world_problems()` or `Round.play` reconstructed the initial
+hands, applied `validate_lead`/`validate_follow` directly, independently
+recomputed trick winners, and recovered every remaining hand. All 128 selected
+hidden-hand witnesses and all 126 selected hidden-burial witnesses passed with
+zero failures. This corroborates the repair but does not replace the required
+external implementation review.
 The focused C1/S0 historical-boundary matrix is 31/31 in both ordinary and
 compiled-strict modes. This does **not** turn the retired S0 parent into a
 current verifier PASS: its immutable SELECT-NONE authority intentionally
@@ -483,9 +490,11 @@ reason. The regenerated 128-state population remains 32/32/32/32 by surface
 and has burial witnesses in every surface. Tests are 25/25 focused, 196/196
 adjacent in each route and 1,030 passed / 27 skipped broad ordinary. Packet
 admission, exact-root enforcement and the optimized reopen boundary are
-unchanged. O0 remains NO
-FREEZE / NO RUN until that review passes; even then, training needs a second
-hash-bound review admission of the frozen packet.
+unchanged. A separate direct-legal-validator sweep then replayed all 128 hand
+and 126 burial witnesses with zero failures without calling the repaired
+chronological helper or `Round.play`; treat that only as corroboration. O0
+remains NO FREEZE / NO RUN until the external review passes; even then,
+training needs a second hash-bound review admission of the frozen packet.
 
 ## Standing rules
 

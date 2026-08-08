@@ -34,7 +34,9 @@ from shengji.teacher_v1 import (CAPTURE_PACKET_ID, CAPTURE_PYTHON,  # noqa: E402
 
 
 AUDIT_ID = "teacher-v3-report-lcb-audit-v1"
+FRESH_AUDIT_ID = "teacher-v3-report-lcb-audit-v2"
 AUDIT_STATE_SCHEMA = "teacher-v1-champion-audit-state-set-v1"
+FRESH_AUDIT_STATE_SCHEMA = "teacher-v1-champion-audit-state-set-v2"
 AUDIT_RECEIPT_SCHEMA = "teacher-v1-champion-audit-receipt-v1"
 AUDIT_SHARD_SCHEMA = "teacher-v1-champion-audit-shard-v1"
 AUDIT_GATE_SCHEMA = "teacher-v1-champion-audit-gate-v1"
@@ -44,6 +46,7 @@ STAGE_B_STATE_SHA256 = (
 AUDIT_STATE_SHA256 = (
     "d04d1c0fa507bab680da4d53eeb72325a97c8ca058aac0d01c16dfdcf44f7a34"
 )
+CONSUMED_AUDIT_STATE_SHA256 = AUDIT_STATE_SHA256
 AUDIT_STATE_FREEZE_GIT = "7040489b458db86a68576b146a280fd4598bbac0"
 AUDIT_TRANSITION_PARENT = "c40a31c2d58c171f2172496d928f719932247730"
 AUDIT_TRANSITION_PATHS = {
@@ -1284,6 +1287,126 @@ def select_states(states: list[dict]) -> tuple[list[dict], list[str]]:
     return selected, sorted(set(bad))
 
 
+def select_fresh_complement(
+        states: list[dict], consumed_states: list[dict]
+        ) -> tuple[list[dict], list[str]]:
+    """Select the untouched, stratum-matched half of the frozen 128 states.
+
+    The first audit deterministically consumed one half of every registered
+    stratum.  Its exact state asset is itself frozen by SHA.  The only fresh
+    no-replay population available without generating a new capture is the
+    set complement.  This function deliberately accepts state metadata only;
+    no cheap/gold/champion label is an input.
+    """
+    expected_consumed, bad = select_states(states)
+    if consumed_states != expected_consumed:
+        bad.append("consumed audit population differs from frozen v1 selection")
+
+    parent_ids = [state.get("state_id") for state in states]
+    consumed_ids = [state.get("state_id") for state in consumed_states]
+    if (any(not isinstance(state_id, str) or not state_id
+            for state_id in parent_ids + consumed_ids)):
+        bad.append("fresh complement has invalid state identities")
+        return [], sorted(set(bad))
+    parent_set = set(parent_ids)
+    consumed_set = set(consumed_ids)
+    if (len(consumed_ids) != AUDIT_STATES
+            or len(consumed_ids) != len(consumed_set)):
+        bad.append("consumed audit population identity/count")
+    if any(state_id not in parent_set for state_id in consumed_ids):
+        bad.append("consumed audit population is not a parent subset")
+
+    selected = sorted(
+        [state for state in states if state.get("state_id") not in consumed_set],
+        key=lambda state: str(state.get("state_id")),
+    )
+    selected_ids = [state.get("state_id") for state in selected]
+    if len(selected) != AUDIT_STATES:
+        bad.append(f"fresh complement {len(selected)}, required {AUDIT_STATES}")
+    if len(selected_ids) != len(set(selected_ids)):
+        bad.append("fresh complement has duplicate state identities")
+    if set(selected_ids) & consumed_set:
+        bad.append("fresh complement overlaps consumed audit population")
+    if set(selected_ids) | consumed_set != parent_set:
+        bad.append("fresh and consumed populations do not partition parent")
+
+    kinds = Counter(state.get("kind") for state in selected)
+    if kinds != Counter({
+            "representative": 48, "boundary": 8, "uncertainty": 8}):
+        bad.append("fresh complement stratum counts are not 48/8/8")
+    representative = Counter(
+        (state.get("phase"), state.get("role"), state.get("decision"))
+        for state in selected if state.get("kind") == "representative"
+    )
+    for cell in REPRESENTATIVE_CELLS:
+        if representative[cell] != REPRESENTATIVE_PER_CELL:
+            bad.append(
+                f"fresh complement representative cell {cell}: "
+                f"{representative[cell]}")
+    return selected, sorted(set(bad))
+
+
+def fresh_audit_state_set_problems(
+        payload: dict, parent: dict, parent_sha256: str,
+        consumed: dict, consumed_sha256: str) -> list[str]:
+    """Recompute a fresh state asset from its two outcome-free parents."""
+    bad = []
+    if (payload.get("schema") != FRESH_AUDIT_STATE_SCHEMA
+            or payload.get("audit_id") != FRESH_AUDIT_ID
+            or payload.get("complete") is not True):
+        bad.append("fresh audit state-set identity/completion")
+    if (parent_sha256 != STAGE_B_STATE_SHA256
+            or payload.get("stage_b_parent") != {
+                "sha256": parent_sha256,
+                "states_digest": parent.get("states_digest"),
+            }):
+        bad.append("fresh audit exact Stage-B parent binding")
+    if (consumed_sha256 != CONSUMED_AUDIT_STATE_SHA256
+            or payload.get("consumed_audit_parent") != {
+                "sha256": consumed_sha256,
+                "states_digest": consumed.get("states_digest"),
+            }):
+        bad.append("fresh audit exact consumed-parent binding")
+    if (consumed.get("schema") != AUDIT_STATE_SCHEMA
+            or consumed.get("audit_id") != AUDIT_ID
+            or consumed.get("complete") is not True
+            or consumed.get("selected") != AUDIT_STATES
+            or consumed.get("stage_b_parent") != {
+                "sha256": parent_sha256,
+                "states_digest": parent.get("states_digest"),
+            }
+            or consumed.get("states_digest")
+            != stable_digest(consumed.get("states", []))):
+        bad.append("consumed audit state-set identity/completion")
+    expected, selection_bad = select_fresh_complement(
+        parent.get("states", []), consumed.get("states", []))
+    bad += selection_bad
+    if payload.get("states") != expected:
+        bad.append("fresh audit complement recomputation drift")
+    if payload.get("states_digest") != stable_digest(expected):
+        bad.append("fresh audit state digest")
+    if payload.get("selected") != len(expected):
+        bad.append("fresh audit selected count")
+    expected_contract = {
+        "method": "exact_complement_of_consumed_v1_within_frozen_strata",
+        "parent_states": 128,
+        "consumed_states": 64,
+        "selected_states": 64,
+        "representative_per_cell": REPRESENTATIVE_PER_CELL,
+        "boundary": BOUNDARY_STATES,
+        "uncertainty": UNCERTAINTY_STATES,
+        "label_outcomes_read": False,
+        "champion_outcomes_read": False,
+    }
+    if payload.get("selection_contract") != expected_contract:
+        bad.append("fresh audit selection contract")
+    if payload.get("continuation_contract") != CONTINUATION_CONTRACT:
+        bad.append("fresh audit continuation contract")
+    if payload.get("folds") != AUDIT_FOLDS:
+        bad.append("fresh audit fold contract")
+    return sorted(set(bad))
+
+
 def audit_state_set_problems(payload: dict, parent: dict,
                              parent_sha256: str) -> list[str]:
     bad = []
@@ -2349,6 +2472,128 @@ def freeze(args) -> None:
     }, sort_keys=True), flush=True)
 
 
+def freeze_fresh(args) -> None:
+    """Publish only the untouched complement; never read a label artifact."""
+    runtime = runtime_contract(smoke=args.smoke)
+    parent = teacher_label.load_pinned(
+        args.stage_b_state_set, args.expected_stage_b_state_set_sha256)
+    consumed = teacher_label.load_pinned(
+        args.consumed_audit_state_set,
+        args.expected_consumed_audit_state_set_sha256)
+    bad = teacher_label.state_set_problems(parent, "b", smoke=args.smoke)
+    if not args.smoke:
+        bad += teacher_states.state_set_packet_problems(parent)
+    if (parent.get("schema") != STATE_SET_SCHEMA
+            or parent.get("packet_id") != CAPTURE_PACKET_ID):
+        bad.append("fresh audit parent packet identity")
+    if args.expected_stage_b_state_set_sha256 != STAGE_B_STATE_SHA256:
+        bad.append("fresh audit parent is not registered Stage-B state set")
+    if (args.expected_consumed_audit_state_set_sha256
+            != CONSUMED_AUDIT_STATE_SHA256):
+        bad.append("fresh audit consumed parent is not registered v1 asset")
+    if live_continuation_contract() != CONTINUATION_CONTRACT:
+        bad.append("deployed report-LCB continuation contract drift")
+    selected, selection_bad = select_fresh_complement(
+        parent.get("states", []), consumed.get("states", []))
+    bad += selection_bad
+    for state in selected:
+        try:
+            teacher_label.replay_state(state)
+        except Exception as exc:
+            bad.append(
+                f"{state.get('state_id')}: replay {type(exc).__name__}: {exc}")
+    if bad:
+        raise TeacherProtocolError(
+            "fresh audit freeze preflight: " + "; ".join(sorted(set(bad))))
+
+    selection_contract = {
+        "method": "exact_complement_of_consumed_v1_within_frozen_strata",
+        "parent_states": 128,
+        "consumed_states": 64,
+        "selected_states": 64,
+        "representative_per_cell": REPRESENTATIVE_PER_CELL,
+        "boundary": BOUNDARY_STATES,
+        "uncertainty": UNCERTAINTY_STATES,
+        "label_outcomes_read": False,
+        "champion_outcomes_read": False,
+    }
+    payload = {
+        "schema": FRESH_AUDIT_STATE_SCHEMA,
+        "audit_id": FRESH_AUDIT_ID,
+        "complete": True,
+        **runtime,
+        "source_digests": source_digests(),
+        "stage_b_parent": {
+            "sha256": args.expected_stage_b_state_set_sha256,
+            "states_digest": parent.get("states_digest"),
+        },
+        "consumed_audit_parent": {
+            "sha256": args.expected_consumed_audit_state_set_sha256,
+            "states_digest": consumed.get("states_digest"),
+        },
+        "selection_contract": selection_contract,
+        "continuation_contract": CONTINUATION_CONTRACT,
+        "folds": AUDIT_FOLDS,
+        "selected": len(selected),
+        "states": selected,
+        "states_digest": stable_digest(selected),
+    }
+    violations = fresh_audit_state_set_problems(
+        payload, parent, args.expected_stage_b_state_set_sha256,
+        consumed, args.expected_consumed_audit_state_set_sha256)
+    if violations:
+        raise TeacherProtocolError(
+            "fresh audit state-set contract: " + "; ".join(violations))
+
+    frozen_runtime = dict(runtime)
+    frozen_sources = dict(payload["source_digests"])
+
+    def verify() -> None:
+        if os.path.islink(args.out) or not os.path.isfile(args.out):
+            raise TeacherProtocolError(
+                "published fresh audit state set is missing/non-regular")
+        with open(args.out, "rb") as fh:
+            raw = fh.read()
+        reopened = json.loads(raw)
+        if hashlib.sha256(raw).hexdigest() != sha256_file(
+                args.out + ".partial"):
+            raise TeacherProtocolError(
+                "published fresh audit state set differs from partial bytes")
+        if reopened != payload:
+            raise TeacherProtocolError(
+                "published fresh audit state set differs from candidate bytes")
+        if runtime_contract(smoke=args.smoke) != frozen_runtime:
+            raise TeacherProtocolError(
+                "fresh audit runtime changed during publication")
+        if source_digests() != frozen_sources:
+            raise TeacherProtocolError(
+                "fresh audit sources changed during publication")
+        current_parent = teacher_label.load_pinned(
+            args.stage_b_state_set,
+            args.expected_stage_b_state_set_sha256)
+        current_consumed = teacher_label.load_pinned(
+            args.consumed_audit_state_set,
+            args.expected_consumed_audit_state_set_sha256)
+        current_bad = fresh_audit_state_set_problems(
+            reopened, current_parent,
+            args.expected_stage_b_state_set_sha256,
+            current_consumed,
+            args.expected_consumed_audit_state_set_sha256)
+        if current_bad:
+            raise TeacherProtocolError(
+                "published fresh audit state-set contract: "
+                + "; ".join(current_bad))
+
+    teacher_label.write_complete(args.out, payload, verify=verify)
+    print(json.dumps({
+        "audit_id": FRESH_AUDIT_ID,
+        "out": args.out,
+        "selected": len(selected),
+        "states_digest": payload["states_digest"],
+        "consumed_overlap": 0,
+    }, sort_keys=True), flush=True)
+
+
 def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="mode", required=True)
@@ -2358,6 +2603,15 @@ def parser() -> argparse.ArgumentParser:
         "--expected-stage-b-state-set-sha256", required=True)
     freeze_.add_argument("--out", required=True)
     freeze_.add_argument("--smoke", action="store_true")
+    fresh = sub.add_parser("freeze-fresh")
+    fresh.add_argument("--stage-b-state-set", required=True)
+    fresh.add_argument(
+        "--expected-stage-b-state-set-sha256", required=True)
+    fresh.add_argument("--consumed-audit-state-set", required=True)
+    fresh.add_argument(
+        "--expected-consumed-audit-state-set-sha256", required=True)
+    fresh.add_argument("--out", required=True)
+    fresh.add_argument("--smoke", action="store_true")
     receipt = sub.add_parser("receipt")
     receipt.add_argument("--run-id", required=True)
     receipt.add_argument("--expected-audit-git", required=True)
@@ -2408,6 +2662,8 @@ def main() -> None:
     try:
         if args.mode == "freeze":
             freeze(args)
+        elif args.mode == "freeze-fresh":
+            freeze_fresh(args)
         elif args.mode == "receipt":
             create_receipt(args)
         elif args.mode == "label":

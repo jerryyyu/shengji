@@ -84,6 +84,64 @@ def test_audit_selector_refuses_duplicate_state_or_deal():
     assert "Stage-B parent has duplicate deal identities" in problems
 
 
+def test_fresh_audit_is_exact_zero_overlap_stratified_complement():
+    rows = parent_states()
+    consumed, problems = audit.select_states(rows)
+    assert problems == []
+    fresh, problems = audit.select_fresh_complement(rows, consumed)
+    assert problems == []
+    assert len(fresh) == audit.AUDIT_STATES == 64
+    assert {row["state_id"] for row in fresh}.isdisjoint(
+        row["state_id"] for row in consumed)
+    assert {row["state_id"] for row in fresh + consumed} == {
+        row["state_id"] for row in rows}
+    assert Counter(row["kind"] for row in fresh) == {
+        "representative": 48,
+        "boundary": 8,
+        "uncertainty": 8,
+    }
+    cells = Counter(
+        (row["phase"], row["role"], row["decision"])
+        for row in fresh if row["kind"] == "representative")
+    assert all(cells[cell] == 4 for cell in REPRESENTATIVE_CELLS)
+
+
+def test_fresh_audit_refuses_rebound_or_incomplete_consumed_population():
+    rows = parent_states()
+    consumed, problems = audit.select_states(rows)
+    assert problems == []
+    consumed_ids = {row["state_id"] for row in consumed}
+    replacement = next(
+        row for row in rows if row["state_id"] not in consumed_ids)
+
+    rebound = copy.deepcopy(consumed)
+    rebound[0] = copy.deepcopy(replacement)
+    _, problems = audit.select_fresh_complement(rows, rebound)
+    assert "consumed audit population differs from frozen v1 selection" in problems
+
+    _, problems = audit.select_fresh_complement(rows, consumed[:-1])
+    assert "consumed audit population identity/count" in problems
+    assert "fresh complement 65, required 64" in problems
+
+
+def test_fresh_audit_selection_is_outcome_blind():
+    rows = parent_states()
+    consumed, problems = audit.select_states(rows)
+    assert problems == []
+    baseline, problems = audit.select_fresh_complement(rows, consumed)
+    assert problems == []
+
+    changed = copy.deepcopy(rows)
+    for index, row in enumerate(changed):
+        row["future_label_outcome"] = 10_000 - index
+    changed_consumed, problems = audit.select_states(changed)
+    assert problems == []
+    fresh, problems = audit.select_fresh_complement(changed, changed_consumed)
+    assert problems == []
+    assert [row["state_id"] for row in fresh] == [
+        row["state_id"] for row in baseline]
+
+
 def test_frozen_audit_state_actor_identity_is_exact_and_falsifiable():
     payload = {
         "git": audit.AUDIT_STATE_FREEZE_GIT,
@@ -1068,3 +1126,72 @@ def test_audit_freeze_publishes_and_reopens_exact_bytes(tmp_path, monkeypatch):
     assert payload["selected"] == 64
     assert payload["stage_b_parent"]["sha256"] == parent_sha
     assert audit.audit_state_set_problems(payload, parent, parent_sha) == []
+
+
+def test_fresh_audit_freeze_publishes_only_exact_complement(
+        tmp_path, monkeypatch):
+    rows = parent_states()
+    parent = {
+        "schema": audit.STATE_SET_SCHEMA,
+        "packet_id": audit.CAPTURE_PACKET_ID,
+        "stage": "b", "complete": True,
+        "states": rows, "states_digest": stable_digest(rows),
+    }
+    consumed_states, problems = audit.select_states(rows)
+    assert problems == []
+    consumed = {
+        "schema": audit.AUDIT_STATE_SCHEMA,
+        "audit_id": audit.AUDIT_ID,
+        "complete": True,
+        "selected": audit.AUDIT_STATES,
+        "stage_b_parent": {
+            "sha256": "placeholder",
+            "states_digest": parent["states_digest"],
+        },
+        "states": consumed_states,
+        "states_digest": stable_digest(consumed_states),
+    }
+    parent_path = tmp_path / "stage-b.json"
+    consumed_path = tmp_path / "consumed-audit.json"
+    parent_path.write_text(json.dumps(parent, sort_keys=True) + "\n")
+    parent_sha = audit.sha256_file(parent_path)
+    consumed["stage_b_parent"]["sha256"] = parent_sha
+    consumed_path.write_text(json.dumps(consumed, sort_keys=True) + "\n")
+    consumed_sha = audit.sha256_file(consumed_path)
+    output = tmp_path / "fresh-audit-states.json"
+    runtime = {
+        "git": "a" * 40, "tree_dirty": True, "promotable": False,
+        "host": "smoke", "python": "3.14.6", "fast_engine": True,
+        "require_voids": True, "experimental_sampler_ballot_flags": [],
+    }
+    monkeypatch.setattr(audit, "STAGE_B_STATE_SHA256", parent_sha)
+    monkeypatch.setattr(
+        audit, "CONSUMED_AUDIT_STATE_SHA256", consumed_sha)
+    monkeypatch.setattr(audit, "runtime_contract", lambda **_kwargs: runtime)
+    monkeypatch.setattr(audit, "source_digests", lambda: {"audit": "source"})
+    monkeypatch.setattr(
+        audit.teacher_label, "state_set_problems", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(audit.teacher_label, "replay_state", lambda _state: None)
+
+    audit.freeze_fresh(SimpleNamespace(
+        smoke=True,
+        stage_b_state_set=str(parent_path),
+        expected_stage_b_state_set_sha256=parent_sha,
+        consumed_audit_state_set=str(consumed_path),
+        expected_consumed_audit_state_set_sha256=consumed_sha,
+        out=str(output),
+    ))
+    assert output.exists()
+    assert not Path(str(output) + ".partial").exists()
+    payload = json.loads(output.read_text())
+    assert payload["schema"] == audit.FRESH_AUDIT_STATE_SCHEMA
+    assert payload["audit_id"] == audit.FRESH_AUDIT_ID
+    assert payload["selected"] == 64
+    assert payload["selection_contract"]["label_outcomes_read"] is False
+    assert payload["selection_contract"]["champion_outcomes_read"] is False
+    fresh_ids = {row["state_id"] for row in payload["states"]}
+    consumed_ids = {row["state_id"] for row in consumed_states}
+    assert fresh_ids.isdisjoint(consumed_ids)
+    assert fresh_ids | consumed_ids == {row["state_id"] for row in rows}
+    assert audit.fresh_audit_state_set_problems(
+        payload, parent, parent_sha, consumed, consumed_sha) == []

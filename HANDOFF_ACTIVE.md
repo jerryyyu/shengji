@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 18:29 EDT. This is the executable mailbox, not a
+Last update: 2026-08-08 18:34 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -35,7 +35,7 @@ instance, migrate to Air, inspect partial scores for decisions, retry, extend,
 train, promote, or launch Stage C. Wait for the supervisor's single terminal
 gate and independently reopen every binding.
 
-Outcome-blind runtime audit at 18:19 found 1,055/4,096 outer worlds (25.8%). An
+Outcome-blind runtime audit at 18:34 found 1,134/4,096 outer worlds (27.7%). An
 earlier bounded audit found ~13% of a candidate-count × remaining-ply work
 proxy complete after ~56 minutes. Because
 the frozen partition is highly imbalanced (1–14 candidates and ply 0–72), a
@@ -44,6 +44,18 @@ all eight workers remain CPU-bound and every log advances. It does mean a
 same-evening terminal gate is unlikely. Never use this operational forecast to
 read or stop on outcomes; do not repartition, duplicate, migrate or mutate the
 reviewed one-shot chain.
+
+Use pushed read-only monitor `c96a932` while the run is partial:
+
+```bash
+server/.venv/bin/python server/scripts/teacher_audit_progress.py \
+  --run-root /Users/jerryyu/Projects/shengji-teacher-audit-v3-mini/server/runs/logs/teacher-v1-entry-149m-v5
+```
+
+It accepts only the exact progress/publication-receipt key sets and monotone
+32/32 fold ordering; an outcome or unknown field, duplicate state, malformed
+number, log collision, or incomplete final refuses. Its 8/8 falsification
+tests pass. It never reads a label JSON or grants stopping/retry authority.
 
 ## CLOSED REVIEW — terminal adapter v2 PASS
 

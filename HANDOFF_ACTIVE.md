@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 14:42 EDT. This is the executable mailbox only.
+Last update: 2026-08-08 14:45 EDT. This is the executable mailbox only.
 Terminal numbers live in `AI_POLICIES.md`, live order in `BACKLOG.md`, exact
 job history in `JOBS.md`, and chronology in `docs_archive/`.
 
@@ -14,7 +14,7 @@ job history in `JOBS.md`, and chronology in `docs_archive/`.
 | T2 S3b v2 | **PREFLIGHT TERMINAL HOLD / NO SCREEN** | Exact head `cd44ea8` hit the frozen cumulative `250,000`-node exact-solver cap in the first treatment cluster. Exit 1; no cluster completion, receipt, partial, score or raw record. V2 may not retry, raise its cap, fall back or launch 2,048. |
 | T2 S3a sizing | **COMPLETE / CAPACITY PASS / SCREEN PACKET NEXT** | Exact two-state Mini receipt `cf770277…5c431` reopened cleanly: 0.999s total, frozen 2× projection 0.142 fleet-hours / 0.0178 max-shard hours, both under 400/60 caps; exact work, no failures, scores or raw records. This permits screen-packet design only, not the 512-state run. |
 | T2 Teacher adapter | **REVIEW PASS / NOT APPLICABLE TO FAILED V2** | Exact `2de0824` / material `ccb73bb7…e6d` passed, but the adapter requires regular gate and supervisor finals. Audit-v2 produced neither, so it cannot turn this operational refusal into PASS/FAIL/INCONCLUSIVE. |
-| T2 learner O0-v2 | **INTEGRATION REVIEW PASS / MERGE NEXT** | Claude passed exact `dd730a8` / material `639c259b…a0494b`, reproduced 22/22 focused and a 112-test Suphx superset, and proved the privileged-plane mutant/non-vacuity boundary. PASS permits merging the outcome-free guard and designing a fresh runner packet only; no training or run authority. |
+| T2 learner O0-v2 | **INTEGRATION MERGED / RUNNER PACKET NEXT** | Claude passed exact `dd730a8` / material `639c259b…a0494b`; equivalent merge `59a23c7` passes 22/22 focused and 112/112 Suphx. The privileged-plane mutant/non-vacuity boundary is closed. Design a fresh runner packet next; no training or run authority. |
 | Formal S0 | **SELECT NONE / BURNED** | S0c outcomes remain unread and nonretryable. Closeout `ef0a365...fde9a`; never reopen or reinterpret it. |
 | V11 direct-v2 | **SELECT NONE** | `-0.141 +/- 0.070` versus current; protected composition false. V11 survives only as a bounded proposal/ranking/teacher diagnostic hypothesis. |
 | Direct-Q | **SELECT NONE** | Gameplay was positive, but seed 1 and both pooled role held-out gates failed. No extension. |
@@ -197,7 +197,7 @@ and material `8ede4d35…43e7` at 14:36. The review confirms exact-work true,
 exhaustive reason typing, outcome-free diagnostics and unchanged acceptance.
 It explicitly keeps `fresh_attempt_authorized=false`.
 
-#### O0-v2 public-key integration — PASS / MERGE AUTHORIZED
+#### O0-v2 public-key integration — PASS / MERGED
 
 Claude independently passed exact pushed branch commit
 `dd730a83b5369ea108d7f1d0ab83f149eeb43f41`. Only the integration module and
@@ -220,19 +220,19 @@ digest: the rate gate must fail. Missing, duplicate and outcome-shaped
 receipts must fail. A different second key after a shared first decision must
 remain diagnostic rather than false-failing a legitimate policy fork.
 Measured results: 22/22 focused and 112/112 across the full Suphx superset.
-The 14:39 marker is PASS with `training_authorized=false`. This authorizes
-merging the outcome-free guard and designing a separately reviewed runner
-packet only—no collector population, training, O1, strength, promotion or
-production action.
+The 14:39 marker is PASS with `training_authorized=false`. Equivalent merge
+`59a23c7` passes 22/22 focused and 112/112 Suphx tests on current `main`.
+Designing a separately reviewed runner packet is next—no collector population,
+training, O1, strength, promotion or production action.
 
 ### CODEX owns now
 
 - after diagnostic PASS, design a synthetic-only reproducer and explicit v3
   estimand decision. Do not infer underfill or admit short/rejected work from
   the old generic message, and do not touch the consumed audit-v2 state;
-- merge the passed O0-v2 outcome-free guard and specify a
-  fresh runner/population/gate packet without changing dose, target, features
-  or optimizer. Do not launch training from the integration review.
+- specify a fresh O0-v2 runner/population/gate packet without changing dose,
+  target, features or optimizer. Do not launch training from the integration
+  review.
 
 The Teacher operational classification review is received PASS, but its
 specific underfill diagnosis and proposed repair are not accepted as final for

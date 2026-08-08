@@ -178,7 +178,7 @@ bot rather than imitate it.
 | **T2.2 / S3b — COMPLETE / TERMINAL HOLD** | Run the score-free two-cluster throughput preflight for the report-LCB sampled-exact lane on Mini | At exact head `cd44ea8`, the first treatment cluster raised `ExactEndgameBudgetExceeded: max_nodes=250000`; exit 1, no `1/2` completion, receipt or partial. This falsifies the v2 zero-overflow feasibility condition. Same-recipe retry/cap change/fallback is unauthorized. |
 | **T2.3 / S3b v2 — CLOSED / UNAUTHORIZED** | Launch the 2,048-cluster complete-round sampled-exact screen when capacity and preflight permit | The required preflight did not pass and the zero-overflow invariant failed before a cluster completed. Preserve the seed and failure. A fresh v3 design/review—not a mutation of this attempt—is required before more sampled-exact compute. |
 | **T2.4 / Teacher — BLOCKED / NO TERMINAL GATE** | Convert a valid terminal audit into a Stage-C contract | The adapter itself passed at `2de0824`, but audit-v2 produced neither required regular final. It cannot consume an operational refusal. Diagnose/review first; any fresh audit needs a new namespace and explicit authority. Both Stage-C branches remain unreachable and no-compute. |
-| **T2.5 / learner — INTEGRATION REVIEW PASS / RUNNER PACKET NEXT** | Write, but do not yet bundle-run, a fresh O0-v2 mechanism battery | Claude passed exact `dd730a8` / material `639c259b…a0494b`, including the public-key coupling and privileged-plane non-vacuity probes. Merge the guard, then freeze a fresh population/runner/gate packet without changing dose, target, feature schedule, optimizer, or margin cell. No training is authorized yet. |
+| **T2.5 / learner — INTEGRATION MERGED / RUNNER PACKET NEXT** | Write, but do not yet bundle-run, a fresh O0-v2 mechanism battery | Claude passed exact `dd730a8` / material `639c259b…a0494b`; equivalent merge `59a23c7` passes 22/22 focused and 112/112 Suphx. Freeze a fresh population/runner/gate packet without changing dose, target, feature schedule, optimizer, or margin cell. No training is authorized yet. |
 
 T2 is successful today if T2.0 is reviewed and at least one bounded Mini
 preflight/screen is ready to launch without an unresolved parent or evidence
@@ -210,9 +210,9 @@ whenever a review or run is live:
    existing-evidence diagnostic only, and now binds the gate's ordered eight
    label digests to the terminal supervisor population; neither branch
    authorizes compute;
-4. **INTEGRATION REVIEW PASS at `dd730a8`:** keyed common-random-number streams,
-   a shared public projection and the two-sided logit-margin cell are bounded;
-   merge, then freeze a fresh runner/population/gate packet;
+4. **INTEGRATION MERGED at `59a23c7`:** keyed common-random-number streams, a
+   shared public projection and the two-sided logit-margin cell are bounded;
+   freeze a fresh runner/population/gate packet;
 5. version the shared `ExperimentSpec`/progress receipt so reviewed jobs are
    launch-ready without making promotion or evidence decisions automatic;
 6. if all strength work is review-blocked, use the slot for encoder-provenance,

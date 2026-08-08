@@ -40,6 +40,10 @@ SAFETY_FACTOR = 2.0
 FULL_STATES = S3A.TOTAL_STATES
 STATES_PER_SHARD = S3A.STATES_PER_SHARD
 CAP_KEYS = ("screen_fleet_hours", "screen_max_shard_wall_hours")
+CLAIM_BOUNDARY = (
+    "Outcome-free operational sizing on fresh 151M states only; no "
+    "registered 136M state, strength claim, duel, promotion or deploy."
+)
 WORK_TOTAL_KEYS = ("states", "candidate_worlds_by_arm", "folds")
 WORK_FOLD_KEYS = (
     "requested_worlds", "sample_attempts", "accepted_worlds",
@@ -295,6 +299,7 @@ def receipt_problems(payload: object, *, parent: dict, runtime: dict,
         "states": STATE_COUNT,
         "seed0": SEED0,
         "seed_hi": SEED_HI,
+        "claim_boundary": CLAIM_BOUNDARY,
     }
     for key, value in fixed.items():
         if payload.get(key) != value:
@@ -407,10 +412,7 @@ def run_preflight(args) -> dict:
         "projections": projected,
         "criteria": decided,
         "sizing_admitted": decided["all"],
-        "claim_boundary": (
-            "Outcome-free operational sizing on fresh 151M states only; no "
-            "registered 136M state, strength claim, duel, promotion or deploy."
-        ),
+        "claim_boundary": CLAIM_BOUNDARY,
     }
     problems = receipt_problems(
         receipt, parent=parent, runtime=runtime, head=head)

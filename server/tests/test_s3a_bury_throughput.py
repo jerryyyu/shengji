@@ -91,10 +91,7 @@ def _payload(*, wall: float = 10.0) -> dict:
         "projections": projected,
         "criteria": decided,
         "sizing_admitted": decided["all"],
-        "claim_boundary": (
-            "Outcome-free operational sizing on fresh 151M states only; no "
-            "registered 136M state, strength claim, duel, promotion or deploy."
-        ),
+        "claim_boundary": TIMING.CLAIM_BOUNDARY,
     }
 
 
@@ -173,6 +170,28 @@ def test_receipt_rederives_arithmetic_and_rejects_outcome_fields():
     broken = copy.deepcopy(payload)
     broken["runtime_identity"]["unexpected"] = "identity drift"
     assert any("fixed field drift: runtime_identity" in problem
+               for problem in TIMING.receipt_problems(broken, **kwargs))
+
+
+
+def test_receipt_rejects_outcome_shaped_claim_boundary():
+    payload = _payload()
+    kwargs = {
+        "parent": payload["live_champion_parent"],
+        "runtime": payload["runtime_identity"],
+        "head": payload["git_sha"],
+        "ancestry_checker": lambda _ancestor, _head: True,
+    }
+    assert TIMING.receipt_problems(payload, **kwargs) == []
+
+    # This field is an authority boundary, not an unrestricted prose bucket.
+    # The previous verifier accepted this outcome-shaped replacement because
+    # its keys happened not to appear in the defense-in-depth blacklist.
+    broken = copy.deepcopy(payload)
+    broken["claim_boundary"] = {
+        "innocent": {"private": ["SA"], "metric": 999.0},
+    }
+    assert any("fixed field drift: claim_boundary" in problem
                for problem in TIMING.receipt_problems(broken, **kwargs))
 
 

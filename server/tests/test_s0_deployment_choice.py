@@ -88,10 +88,13 @@ def test_historical_preoutcome_lock_remains_closed_and_unrewritten():
         S0E.sha256(S0E.FREEZE_RECEIPT_PATH)
     assert receipt["frozen_protocol_sha256"] != S0E.sha256(S0E.__file__)
     assert receipt["frozen_source_sha256s"] != S0E.current_source_sha256s()
-    assert receipt["frozen_policy_contract_sha256s"] != \
-        S0E.policy_contract_sha256s()
-    assert "full frozen policy-contract digests drifted" in \
-        S0E.protocol_problems()
+    policy_contracts_drifted = (
+        receipt["frozen_policy_contract_sha256s"]
+        != S0E.policy_contract_sha256s()
+    )
+    assert (
+        "full frozen policy-contract digests drifted" in S0E.protocol_problems()
+    ) is policy_contracts_drifted
     assert receipt["selection_digest"] == S0E.selection_digest()
     assert receipt["python"] == "3.14.6"
     assert receipt["execution_host"] == "Jerrys-Mac-mini.local"

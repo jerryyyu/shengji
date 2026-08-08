@@ -175,11 +175,70 @@ def test_packet_freezes_score_free_geometry_command_and_authority(tmp_path):
     assert contract["population"]["global_stream_separation"] is True
     assert contract["capacity"]["screen"]["clusters"] == 2_048
     assert contract["capacity"]["confirm"]["clusters"] == 8_192
+    assert contract["teacher_release"] == {
+        "required_before_namespace_creation": True,
+        "supervisor_final": str(SUP.TEACHER_PROGRESS_FINAL),
+        "supervisor_partial": str(SUP.TEACHER_PROGRESS_PARTIAL),
+        "terminal_regular_final_required": True,
+        "partial_absent_required": True,
+        "live_supervisor_and_workers_absent_required": True,
+    }
     assert contract["command"] == list(
         SUP.preflight_argv(config, paths.preflight))
     assert contract["gate"]["strength_launch_authorized"] is False
     assert contract["gate"]["production_promotion"] is False
     assert not (_keys(contract) & SUP.FORBIDDEN_OUTCOME_KEYS)
+
+
+def test_teacher_exclusivity_requires_terminal_final_and_no_live_process(
+        tmp_path, monkeypatch):
+    final = tmp_path / "champion_audit_supervisor_v2.jsonl"
+    partial = Path(str(final) + ".partial")
+    monkeypatch.setattr(SUP, "TEACHER_PROGRESS_FINAL", final)
+    monkeypatch.setattr(SUP, "TEACHER_PROGRESS_PARTIAL", partial)
+    monkeypatch.setattr(SUP, "TEACHER_AUDIT_ROOT", tmp_path)
+    monkeypatch.setattr(SUP, "_process_table", lambda: "")
+
+    assert SUP.teacher_exclusivity_problems() == [
+        "Teacher supervisor final is not terminal/regular"]
+
+    final.write_text("terminal\n")
+    partial.write_text("partial\n")
+    assert SUP.teacher_exclusivity_problems() == [
+        "Teacher supervisor partial still exists"]
+
+    partial.unlink()
+    monkeypatch.setattr(
+        SUP, "_process_table",
+        lambda: (
+            f"123 /opt/python {tmp_path}/scripts/"
+            "teacher_v1_champion_audit.py label --receipt evidence\n"
+            f"124 /opt/python {tmp_path}/scripts/"
+            "teacher_champion_audit_supervisor.py --audit-root "
+            f"{tmp_path}\n"
+            "125 /opt/python unrelated.py\n"),
+    )
+    assert SUP.teacher_exclusivity_problems() == [
+        "live Teacher supervisor/worker processes remain: 123,124"]
+
+    monkeypatch.setattr(SUP, "_process_table", lambda: "125 unrelated.py\n")
+    assert SUP.teacher_exclusivity_problems() == []
+
+
+def test_teacher_exclusivity_fails_closed_when_process_table_unavailable(
+        tmp_path, monkeypatch):
+    final = tmp_path / "champion_audit_supervisor_v2.jsonl"
+    final.write_text("terminal\n")
+    monkeypatch.setattr(SUP, "TEACHER_PROGRESS_FINAL", final)
+    monkeypatch.setattr(
+        SUP, "TEACHER_PROGRESS_PARTIAL", Path(str(final) + ".partial"))
+
+    def fail():
+        raise OSError("ps unavailable")
+
+    monkeypatch.setattr(SUP, "_process_table", fail)
+    assert SUP.teacher_exclusivity_problems() == [
+        "cannot prove Teacher process absence"]
 
 
 def test_config_refuses_malformed_host_hash_budget_and_heartbeat():

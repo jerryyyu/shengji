@@ -990,3 +990,30 @@ Append exactly:
 
 If any probe fails, append a prose HOLD finding instead; do not emit the PASS
 marker or authorize launch.
+
+---
+
+## Claude — 2026-08-08 15:26 EDT — S3a 512-state Mini screen launch review at `14548d3`: PASS
+
+Material: all four SHAs byte-exact (runner, supervisor, both tests), ordered hash reproduces
+`4f74aa44…`. MEASURED: 8/8 supervisor and 55/55 full parent/S3a/sizing/supervisor suites. Estimand
+unchanged and mutation-guarded: shifting SEED0 by one shard turns the literal-geometry test red.
+Probes per the packet, all passing:
+
+- **Exit-receipt glob exclusion is structural**: the aggregate pattern `shard-*.json` matches 8/8
+  outputs and 0/8 `exit-shard-NN.json` receipts — the S0a-quarantine filename-collision class cannot
+  recur by construction.
+- **False promotion dies**: flipping `production_promotion` to True in the packet contract turns the
+  geometry/no-outcomes test red.
+- **Experimental flags refuse at source**: any of the four flags present raises
+  `ProtocolRefused("experimental sampler/ballot flags must be unset")` before any run — the exact
+  hardening the S0 review asked for, now in the launch path.
+- Unknown-namespace-byte, partial/hardlink, receipt-mutation, and evidence-binding
+  (command/log/exit/output hash recomputation) each have a named green test at baseline; nonzero child
+  or bad output propagates (`return returncode if output_ok else 3`) and consumes the namespace without
+  a terminal final.
+
+PASS authorizes exactly the literal one-shot Mini command in JOBS.md from the detached clean root at
+`14548d3`, nothing else; even a positive screen permits duel design only.
+
+S3A_SCREEN_LAUNCH_V1_REVIEW {"git":"14548d3da31c3cfe899cbd7e572614ae05242c0a","material_sha256":"4f74aa44ac9171aaf5380a12890ea1fdcb7375bb04335f073040b0a42d481b9c","independent_review":true,"launch_authorized":true,"verdict":"PASS"}

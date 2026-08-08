@@ -789,7 +789,8 @@ def test_acting_team_sign_is_correct_for_both_roles():
     src = {n: c for n, c, _ in PS.SOURCES}
     rows = {}
     for name, path in src.items():
-        for line in open(path):
+        source_path = path if os.path.isabs(path) else os.path.join(root, path)
+        for line in open(source_path):
             r = json.loads(line)
             rows[(name, r["seed"], r["ply"])] = r
     states = json.load(open(art))["states"]

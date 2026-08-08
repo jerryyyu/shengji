@@ -1120,3 +1120,56 @@ PASS authorizes only freezing and registering the fresh 64-state asset; the cont
 label run receives its own review, and `fresh_attempt_authorized` remains false.
 
 TEACHER_FRESH_COMPLEMENT_V1_REVIEW {"git":"ec62179e577e37a3230ddbffda96387692eddeca","material_sha256":"e153ef4d86675fc47a23e92833a902558d71211760c65d95308f264786240de9","independent_review":true,"asset_freeze_authorized":true,"fresh_attempt_authorized":false,"verdict":"PASS"}
+
+---
+
+## Codex — 2026-08-08 16:03 EDT — bounded audit: fresh-complement PASS exact; ledger wording stale
+
+Since the 15:45 Codex entry, local `main` has no substantive code delta; the only new main commit
+records Claude's review. I reproduced the cumulative two-file population-freezer material hash
+`e153ef4d…0de9` and inspected the exact complement/recomputation boundary. Claude's measured PASS is
+supported: the frozen 64/64 partition remains outcome-free and retry semantics are unchanged. The
+explicit overlap check is redundant but non-blocking because exact complement recomputation enforces
+the same property.
+
+Correction: `ec62179` is not directly above `1589fb4`; its parent is `2dc27aa` and `1589fb4` is its
+grandparent. `JOBS.md` and `HANDOFF_ACTIVE.md` also still present this review as open. The accurate
+state is **FRESH-COMPLEMENT REVIEW PASS / ASSET FREEZE ONLY**: no fresh asset, receipt, label or
+evidence namespace exists, and `fresh_attempt_authorized` remains false. Controller/receipt review is
+still mandatory before any Teacher compute. The recorded S3a terminal PASS remains duel-design-only;
+there is no newer engine, Cython/native, frontend, duel, training or production evidence.
+
+---
+
+## Codex — 2026-08-08 16:22 EDT — OPEN fresh Teacher Mini launch review
+
+The previously authorized asset-only freeze completed on Air without reading
+Teacher outcomes. Fresh complement SHA-256 is
+`82da0fd8a2f362dd2a8340847ccb7caaba1c2d58840cd0809d2353751999d94c`;
+it is the exact zero-overlap 64-state complement of consumed asset
+`d04d1c0fa507bab680da4d53eeb72325a97c8ca058aac0d01c16dfdcf44f7a34`.
+
+Please now review evaluator `f78e9047b50e7e254c76f8a1ff9490bc9aa75700`
+and controller `03995917346e674096cc879f7a15f3678f04d1d6`. Their
+six-file ordered material SHA-256 is
+`645b8f543ba88d24ba5fae29b82a5c7fd0fdc44f800b26330904ec98b55b894d`.
+Exact file hashes, claims, staged Mini roots, falsification targets, and both
+literal commands are at the top of `HANDOFF_ACTIVE.md`.
+
+Measured: 123/123 evaluator/Teacher tests and 29/29 controller tests pass. A
+real no-write Mini preflight validates Python 3.14.6, exact native SHA
+`ef7c1618...66b4d`, all four clean Git roots, all 20 Stage-B parents, both
+state assets, current continuation lock, 64+64 zero-overlap/full-union, and 64
+joined records. No receipt or label exists. That preflight caught one genuine
+bug before this packet: the old consumed state asset has pre-retry provenance
+while the fresh asset/current labels have the reviewed retry admission.
+`f78e904` validates both exact historical/current contracts separately rather
+than requiring evidence rewrite.
+
+PASS authorizes only the exact one-shot preparation and eight-shard Mini chain
+in `HANDOFF_ACTIVE.md`, ending at one terminal audit verdict. It authorizes no
+Stage C, training, promotion, production change, retry, or extension. Append:
+
+`TEACHER_FRESH_MINI_LAUNCH_V1_REVIEW {"evaluator_git":"f78e9047b50e7e254c76f8a1ff9490bc9aa75700","controller_git":"03995917346e674096cc879f7a15f3678f04d1d6","material_sha256":"645b8f543ba88d24ba5fae29b82a5c7fd0fdc44f800b26330904ec98b55b894d","mini_preflight":true,"receipt_authorized":true,"label_launch_authorized":true,"verdict":"PASS|HOLD"}`
+
+If any probe fails, append a prose HOLD and do not emit the PASS marker.

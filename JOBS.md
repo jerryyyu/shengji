@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-08 15:45 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-08 16:22 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,28 +10,29 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | none | S3a's reviewed 512-state screen completed and verified. Keep available for short reviewed preflights or the future S3a full-game duel after its separate packet passes. |
-| Air | none | Preserve failed Teacher audit-v1/v2 roots. The next long job is the fresh Teacher audit, but only after complement asset freeze plus controller/receipt review. |
+| Mini | none | Fresh Teacher evaluator/controller and all 22 inputs pass exact no-write preflight. Await `TEACHER_FRESH_MINI_LAUNCH_V1_REVIEW`; after PASS, run the one-shot receipt plus eight shards here. |
+| Air | none | Preserve failed Teacher audit-v1/v2 roots and the frozen source assets. Air is evidence source/fallback, not the selected execution host. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
-There is **no T1 Teacher job running now**. Retry semantics passed review, but
-fresh evidence compute is correctly blocked before the asset/controller gates.
+There is **no T1 Teacher job running now**. The only blocker is independent
+review of exact evaluator `f78e904`, controller `0399591`, and material
+`645b8f54…b894d`; no receipt or label has been created.
 
 ## Next admitted execution
 
 ### T1 Teacher
 
-1. Review exact complement-freezer commit `ec62179` / material
-   `e153ef4d…0de9` from `HANDOFF_ACTIVE.md`.
-2. A PASS authorizes only an exclusive 64-state fresh-asset freeze from the
-   immutable Stage-B 128 and consumed audit-v2 64. It does not authorize
-   labels.
-3. Register the resulting asset SHA in a new audit ID, namespace, receipt,
-   evaluator/controller and terminal supervisor; independently review that
+1. Independently review the exact Mini packet in `HANDOFF_ACTIVE.md`:
+   evaluator `f78e904`, controller `0399591`, material
+   `645b8f54…b894d`.
+2. PASS authorizes the literal one-shot preparer. Reopen its exact zero-exit
+   receipt and preparation SHAs; the preparer itself launches no label.
+3. Feed only those printed SHAs to the literal Mini supervisor command. It
+   owns eight shards at outer folds 32/32 while every searched continuation
+   retains the reviewed inner 30+300 accepted-world dose.
+4. Preserve and independently verify the first terminal PASS, FAIL, or
+   INCONCLUSIVE gate. Never retry, extend, promote, or move hosts from this
    packet.
-4. Only that second PASS can start the one fresh audit attempt. The expected
-   long label workload belongs on Air unless a recorded benchmark changes the
-   placement decision.
 
 ### T2 S3a
 

@@ -1389,3 +1389,25 @@ score-free command.
 Required marker:
 
 `S3A_DUEL_PREFLIGHT_CONTROLLER_V1_REVIEW {"git":"34154f93f2f6b7631f27f5f1fd93675f91766ec5","core_git":"3e5fcc07d5bc64efa09d6eb7e9e07bc19d367c82","material_sha256":"38b5f52fa2ff39559d8a88f33c47cbd1b7dc7521b8298eb2165f27c840df5370","one_shot":true,"score_free":true,"screen_packet_review_only":true,"preflight_launch_authorized":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
+
+---
+
+## Codex — 2026-08-08 18:10 EDT — controller request superseded: Air false-portability repaired
+
+Do not review controller `34154f9`. A real no-write Air staging probe found
+that the current live-parent reopener is intentionally nonportable: even after
+copying the exact RLCB-C1 closeout/aggregate/full 15 MB namespace and exact
+confirmed native binary, historical recomputation refuses Air's
+`execution_host` and Python. Weakening that boundary would invalidate the
+parent claim.
+
+Pushed descendant `7b52d19d5d5eccf36a070c4814238b2ceadd6269`
+therefore registers only `Jerrys-Mac-mini.local` and adds an explicit Air
+refusal mutation. Core `3e5fcc0` is byte-unchanged. Controller/test hashes are
+`9d5048e6…9efa98` / `9fc6d4c1…c96c9f`; ordered material SHA-256 is
+`e213922380c595f4e1ef5ca3d1aa525a51a024084b8cb407f2e5d99dc4f5c1c5`.
+Controller 12/12 and combined 59/59 pass. No preflight namespace was created.
+
+Review the corrected packet in `HANDOFF_ACTIVE.md` and append:
+
+`S3A_DUEL_PREFLIGHT_CONTROLLER_V1_REVIEW {"git":"7b52d19d5d5eccf36a070c4814238b2ceadd6269","core_git":"3e5fcc07d5bc64efa09d6eb7e9e07bc19d367c82","material_sha256":"e213922380c595f4e1ef5ca3d1aa525a51a024084b8cb407f2e5d99dc4f5c1c5","mini_only":true,"air_refuses":true,"one_shot":true,"score_free":true,"screen_packet_review_only":true,"preflight_launch_authorized":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`

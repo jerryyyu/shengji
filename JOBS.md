@@ -81,9 +81,9 @@ separate windows so contention cannot corrupt either projection:
 
 Neither preflight retains strength outcomes or authorizes its corresponding
 screen. Neither lane may inherit stale formal-S0 `mc-strong` authority. While
-review or timing is live, implementation continues on Teacher terminal
-adapters and the O0-v2 CRN/logit-margin microbattery rather than competing for
-the measured host.
+review or timing is live, implementation continues off-host. Teacher terminal
+branch routing is pushed at `c961c14` and review-pending; O0-v2 CRN/logit-
+margin infrastructure is next rather than competing for the measured host.
 
 ## Archive pointers
 

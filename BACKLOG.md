@@ -172,7 +172,7 @@ bot rather than imitate it.
 | **T2.1 / S3a** | Size, then conditionally run the 512-state structured-bury mechanism screen under its fresh v2 namespace | `66d6836` implements the review-required-before-run timing path on exact 151,000,000–151,000,001 with safety factor 2 and hard ceilings `400` fleet-hours / `60` max shard-hours; 5/5 focused tests pass. If admitted: exact 512 states, three frozen arms, disjoint selection/report worlds, R=120, exact work and zero forbidden fallbacks. PASS means only `AUTHORIZE_DUEL_DESIGN`; SELECT NONE retires this ballot design. |
 | **T2.2 / S3b** | Run the score-free two-cluster throughput preflight for the report-LCB sampled-exact lane on Mini | No strength outcome is retained. Frozen operator ceilings are screen `200` fleet-hours / `30` max shard-hours and confirmation `800` / `120`; all four must pass before any 2,048-cluster launch. These are hard capacity stops, not expected spend or evidence thresholds. |
 | **T2.3 / S3b conditional** | Launch the 2,048-cluster complete-round sampled-exact screen when capacity and preflight permit | Both treatment-minus-champion and treatment-minus-matched-null LCBs >0, null contains zero, exact solver activates, and refusal/overflow/fallback counters are zero. Only PASS admits the untouched 8,192 confirmation. |
-| **T2.4 / Teacher** | Convert the terminal audit into a Stage-C contract | On audit PASS, freeze a hard-tail pilot that mines uncertainty/disagreement but escalates uncertain labels to gold/exact-late and separately gates hard-tail regret. On FAIL/INCONCLUSIVE, freeze the smallest diagnostic/redesign; do not scale the current cheap labeler. |
+| **T2.4 / Teacher — ADAPTER CODED / REVIEW REQUIRED** | Convert the terminal audit into a Stage-C contract | Pushed `c961c14` precommits both branches without reading the live outcome. PASS emits only a review-required hard-tail design with gold/exact-late escalation and separate hard-tail regret; FAIL/INCONCLUSIVE permits only diagnosis of existing frozen evidence. Both branches forbid compute, bulk labels, training, promotion and retry. |
 | **T2.5 / learner** | Write, but do not yet bundle-run, a fresh O0-v2 mechanism battery | Common-random-number evaluation and at least eight training seeds are common infrastructure; sharpening/dose/target changes are factorially isolated. No O1 or inspected-DEV extension. |
 
 T2 is successful today if T2.0 is reviewed and at least one bounded Mini
@@ -201,9 +201,9 @@ whenever a review or run is live:
 1. post and clear the independent `05ea1d1` T2.0 review;
 2. **DONE / REVIEW REQUIRED at `66d6836`:** add S3a's outcome-free,
    out-of-population timing receipt; do not inspect 136M outcomes for sizing;
-3. write the two terminal Teacher adapters now—PASS produces the hard-tail
-   Stage-C contract, while FAIL/INCONCLUSIVE produces only the minimal
-   diagnostic—without selecting either branch before the sealed verdict;
+3. **DONE / REVIEW REQUIRED at `c961c14`:** the terminal Teacher adapter
+   precommits PASS to a hard-tail Stage-C design and FAIL/INCONCLUSIVE to the
+   existing-evidence diagnostic only; neither branch authorizes compute;
 4. implement common-random-number evaluation and the two-sided logit-margin
    controller as separable O0-v2 infrastructure; keep dose/target changes out;
 5. version the shared `ExperimentSpec`/progress receipt so reviewed jobs are

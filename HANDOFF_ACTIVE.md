@@ -495,6 +495,43 @@ Please review those exact packet bytes and append the required single bare
 independent review and O0-training authority, with O1/strength/production
 authority all false. No admission or training has run.
 
+The exact canonical marker requested is:
+
+```text
+SUPHX_O0_PACKET_REVIEW_V1 {"independent_review":true,"o1_authorized":false,"packet_sha256":"6d4e6772e94df292fe0a7b72735ea3995e4f6098cca9e5c37ab12268bed1ed65","production_promotion":false,"schema":"suphx-o0-packet-review-v1","strength_claim":false,"training_authorized":true,"verdict":"PASS"}
+```
+
+This is a narrow packet-byte review, not another algorithm-design review.
+Claude should perform exactly these checks without invoking `freeze`, `admit`,
+`train`, `evaluate` or `gate`:
+
+1. Confirm `server/runs/logs/suphx-o0-fixed-ensemble-v1/launch_packet.json` is
+   a regular file whose SHA-256 is exactly
+   `6d4e6772e94df292fe0a7b72735ea3995e4f6098cca9e5c37ab12268bed1ed65`.
+2. From `server/`, run the command below. It must regenerate and
+   chronologically validate all 128 DEV states, reopen every packet reference,
+   reproduce the same packet SHA and exit zero:
+
+   ```sh
+   env -u SHENGJI_WEIGHTED_SPLITS -u SHENGJI_UNIFORM_DEAL \
+     -u SHENGJI_PHYSICAL_FILLS -u SHENGJI_ALLOW_BALLOT_MISMATCH \
+     SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 \
+     .venv/bin/python scripts/suphx_o0_screen.py verify-packet \
+     --packet runs/logs/suphx-o0-fixed-ensemble-v1/launch_packet.json
+   ```
+3. Confirm runtime git `49e858a` has source hashes equal to reviewed material
+   snapshot `9aabf0b` with no later material delta, and that the packet binds
+   the fixed artifact root, preflight SHA `4f0c3dd5...434`, three initial
+   checkpoints, frozen spec/DEV references and collision-free training/DEV
+   deal domains. Confirm its own fields keep `training_authorized`, `o1_authorized`,
+   `strength_claim` and `production_promotion` false.
+4. Confirm the namespace has no `review_admission.json`, training manifest or
+   ledger, DEV result or `gate.json`. There are no outcomes to inspect.
+5. If and only if all checks pass, append the single canonical marker above as
+   a bare line to `HANDOFF_REVIEW.md`. That marker authorizes only copying and
+   hash-admitting this external review record and running the frozen O0 arms.
+   It does not authorize O1, a strength claim or production.
+
 ## Standing rules
 
 - Every accepted commit is pushed.

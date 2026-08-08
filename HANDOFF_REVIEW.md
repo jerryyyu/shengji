@@ -636,3 +636,98 @@ modify evidence, or authorize a fresh audit.
 End the response with exactly one marker:
 
 `TEACHER_AUDIT_V2_FAILURE_REVIEW {"audit_git":"1866132766c7f16542bc27e730622e2dfea639ae","controller_git":"edc923f3baf1492af41a2cccf0265177f6b4047f","independent_review":true,"classification":"OPERATIONAL_REFUSAL","t1_closed":false,"fresh_attempt_authorized":false,"verdict":"PASS|HOLD"}`
+
+---
+
+## Claude — 2026-08-08 13:54 EDT — Teacher audit-v2 failure review: OPERATIONAL_REFUSAL confirmed; root cause is a designed production behavior the audit contract never admitted
+
+**1. Air state — MEASURED, read-only.** All nine processes (95339, 95345–95352) dead. Exit records:
+shard06 `3`, all seven siblings `-15`. The namespace holds only logs, exit records, the preparation
+manifest, and `champion_audit_supervisor_v1.jsonl.partial` — no label final, no
+`champion_audit_gate_v1.json`, no regular supervisor JSONL. Shard 6's terminal line matches the packet
+byte-for-byte: `149000349:4:0/champion_report/c9/w13/d6: invalid champion continuation:
+TeacherProtocolError: champion report fold is incomplete`. No partial outcome was opened; the consumed
+state was not replayed.
+
+**2. Root cause — code-read chain (INFERRED), with measured negative space.**
+- `mcbot.py:371`: the sampler can return a SHORT dose (`n_worlds < full_target`) when the attempt cap
+  (`SAMPLE_ATTEMPT_FACTOR × target`) exhausts — reachable only under severe posterior constraints
+  (deep, void-heavy sampled states).
+- `mcbot.py:173, 450–485`: the production champion runs `REQUIRE_EXACT_WORK=False` and treats a short
+  dose as BENIGN, BY DESIGN: it increments `short_search_decisions`, keeps the incumbent, and publishes
+  the early-return stats as `report_fold` (:483). This is the honest, fail-safe production behavior —
+  no silent fallback, the record says exactly what happened.
+- Audit `teacher_v1_champion_audit.py:369–373, 449–457`: the contract demands, at EVERY contested
+  downstream decision, `worlds == attempts == R`, `rejected == 0`, `complete == True` — an invariant
+  production never promised. A designed production behavior therefore fails the audit's stricter
+  contract, and the evaluator correctly refused rather than reinterpret.
+- **Classification: sampler underfill (physical trigger) + audit-contract mismatch (proximate cause).**
+  NOT telemetry drift — the record honestly reporting its short dose is precisely how it was caught.
+  NOT a silent production fallback.
+- Rarity, MEASURED: I probed for the short path synthetically — 126 contested decisions across full
+  champion self-play rounds, a 30-round hunt at ≤3 cards remaining, and 20 further rounds with the
+  attempt cap forced to 1× — zero short folds anywhere. S0c's 245M sampled worlds also recorded zero
+  `short_searches`. The event requires constraint structures essentially unreachable in organic play
+  but reachable inside deep continuations (w13/d6) of deliberately hard boundary audit states. I could
+  not produce a synthetic witness within bounded compute; the causal chain above is from source, and
+  the exact deviating field in shard 6's record is unknowable without opening the partial (forbidden).
+
+**3. Interpretation — CONFIRMED on all five points.** Operational refusal, not a Teacher
+strength/fidelity result; the reviewed terminal adapter cannot run (its mandatory finals do not exist —
+verified above); T1 remains open; audit-v2 is consumed and non-resumable; no fresh audit is authorized
+by this review.
+
+**4. Repair specification.**
+- **Code:** admit the designed short-dose path explicitly. Preferred: treat `alloc.short == True`
+  decisions like tractor-lock/single-candidate — skip-with-record, logging a named `short_dose` event
+  bound to state/world/decision/candidate and continuing the playout; the label and gate must COUNT
+  these events so the estimand discloses excluded decisions. Alternative (stricter): a predeclared
+  per-label short-dose budget with refusal only above it. Silent tolerance is not acceptable.
+- **Also repair the diagnostic conflation:** :449–457 folds five distinct conditions (worlds, attempts,
+  rejected, complete, critical/min_gain drift) into one message. Split into named errors — this review
+  spent its bounded compute distinguishing them from outside.
+- **Regression tests (each must be shown able to fail):** (i) a synthetic continuation record with
+  `alloc.short=True` and an underfilled `report_fold` is accepted-and-counted post-repair, and deleting
+  the counting turns a test red; (ii) a non-short incomplete fold (e.g. `rejected > 0`, or
+  critical/min_gain drift) still refuses, under its own named error; (iii) an end-to-end label fixture
+  with one short-dose decision publishes a final whose short-count field survives into the gate.
+- **Fresh-run contract:** audit-v3 under a new run ID with the repaired evaluator commit and new script
+  SHA pinned in an updated controller (the `edc923f` receipt-identity machinery re-pinned to v3), the
+  64-state/32/32/threshold estimand UNCHANGED (the repair alters telemetry admission, not
+  selection/report semantics), Mini as default host per the new placement rule, and an independent
+  packet review before any receipt. Whether v3 replays state 149000349:4:0 fresh under its own run ID
+  is a contract question for that packet — this review takes no position and authorizes nothing.
+
+TEACHER_AUDIT_V2_FAILURE_REVIEW {"audit_git":"1866132766c7f16542bc27e730622e2dfea639ae","controller_git":"edc923f3baf1492af41a2cccf0265177f6b4047f","independent_review":true,"classification":"OPERATIONAL_REFUSAL","t1_closed":false,"fresh_attempt_authorized":false,"verdict":"PASS"}
+
+---
+
+## Claude — 2026-08-08 14:05 EDT — substantive-code review since `5b3255f`: O0-v2 CRN mechanics sound with one named integration risk; S3a v2 delta clean
+
+Scope: the 2,817-insertion code delta since my last broad base, minus pieces already packet-reviewed
+(live parent, throughput, adapter, controllers, F1 test). Deep pass on `suphx_o0_v2_mechanics.py`
+(`8f3cca4`) and the `s3a_bury_pilot.py` v2 delta.
+
+**O0-v2 mechanics — SOUND (all MEASURED).** Same public context → same key → identical draw across
+arms; 7 seed indices refuse; any dose change refuses; forced single-action decisions produce exact zero
+margin loss; the margin controller is numerically two-sided in both directions (margin 0.1 vs target
+0.5 → sharpens; 2.0 → relaxes) — precisely the repair the O0 alpha-floor diagnosis called for. Best
+property: arm-keyed draws are STRUCTURALLY impossible — no draw method accepts an arm parameter, and
+`mechanics_spec()` self-checks that via `inspect`. Factorial cells and the forbidden-bundle list keep
+attribution clean.
+
+**One risk for the future runner packet (measured, not hypothetical):** a single-element difference in
+the `observation` passed to `public_decision_key` silently decouples the arms — different key,
+independent draws, no error, no counter. The oracle arm's observation carries extra privileged planes
+BY DESIGN, so a runner that keys each arm with its own observation gets zero coupling while reporting
+success — the "cannot fail visibly" class. Runner-packet requirements: (1) both arms key through one
+shared public-view projection; (2) the gate includes a MEASURED cross-arm key-coupling-rate criterion
+with a floor — the iteration receipt already records `public_decision_keys`, so this is nearly free.
+Without (2) the CRN claim is unfalsifiable at run time.
+
+**S3a v2 delta — SOUND.** Clean authority swap: the v1 terminal-S0 receipt chain deleted, replaced by
+`live_parent()` → `require_live_champion_parent()` (already mutation-proven), fresh v2 schemas,
+geometry untouched. Trigger matching for the random-widening control is structural — the same
+`triggered = len(candidates) > 1` predicate governs treatment and control, so the V11-class
+trigger-population confound cannot arise. S3b's v2 delta was boundary-reviewed in the T2 packet; its
+lane is closed pending v3.

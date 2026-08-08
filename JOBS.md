@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-08 14:12 EDT. This file owns current compute and short
+Last reconciled: 2026-08-08 14:18 EDT. This file owns current compute and short
 terminal stubs only. The exact 810-line pre-compaction ledger is archived at
 `docs_archive/jobs-through-2026-08-08.md`, SHA-256 `26beff936f6c0744b220fc79e233163c8f09acde8a13adcba5450327ad132252`.
 Detailed interpretation belongs in `AI_POLICIES.md`; execution order belongs
@@ -44,6 +44,13 @@ run without those regular finals, so this is no Teacher strength/fidelity
 result and no PASS/FAIL/INCONCLUSIVE gate. Preserve the entire Air root. Never
 resume, retry, migrate, duplicate, delete or adopt audit-v2. T1 remains open
 pending a reviewed diagnosis and an explicit fresh-run/closeout decision.
+
+Diagnostic-only branch `b7534ee` is pushed and awaiting independent review.
+It changes no acceptance rule and authorizes no compute; its purpose is to
+make a future synthetic preflight distinguish short work, rejected retries,
+contract drift and telemetry drift without reading outcomes. Exact compiled
+Teacher boundary tests pass 147/147. Material SHA-256 is
+`8ede4d351346fc636d5e7dff43f694bfc44c81660eb980358a7ae9b4e8b643e7`.
 
 ## Fleet availability
 

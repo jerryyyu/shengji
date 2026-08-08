@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 14:12 EDT. This is the executable mailbox only.
+Last update: 2026-08-08 14:18 EDT. This is the executable mailbox only.
 Terminal numbers live in `AI_POLICIES.md`, live order in `BACKLOG.md`, exact
 job history in `JOBS.md`, and chronology in `docs_archive/`.
 
@@ -9,7 +9,7 @@ job history in `JOBS.md`, and chronology in `docs_archive/`.
 | area | status | surviving meaning / next action |
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Compiled `mc-s0-report-lcb`, Fly release 17, image `latency-cd6789e`, manifest `047bcfe4...5b300`. RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`; matched null `-0.019043 +/- 0.068270`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
-| T1 Teacher | **BLOCKED — AUDIT-V2 OPERATIONAL REFUSAL / NO ML VERDICT** | Stage B passed, but audit-v2 stopped on shard 6 because a production continuation published an incomplete report fold. No label final, gate, or supervisor final exists. T1 remains open; preserve v2 and do not retry it. Root-cause review is explicitly requested below. |
+| T1 Teacher | **DIAGNOSTIC REPAIR PUSHED / REVIEW REQUIRED / NO ML VERDICT** | Audit-v2 remains a preserved operational refusal. Exact branch `b7534ee` keeps every v2 acceptance rule unchanged but splits score-free refusal diagnostics and pins the live policy's exact-work/reason contract; 147/147 compiled boundary tests pass. Claude must review material `8ede4d35…43e7`. No v3 run is authorized. |
 | T2 live parent | **COMPLETE / REVIEW PASS** | Claude passed exact `05ea1d1` / material `66be133c…e17c`, reproduced output `5f9ddbfb…8402`, reopened RLCB-C1 and falsified stale-S0 re-entry. Only the score-free S3b Mini preflight is admitted; no strength launch. |
 | T2 S3b v2 | **PREFLIGHT TERMINAL HOLD / NO SCREEN** | Exact head `cd44ea8` hit the frozen cumulative `250,000`-node exact-solver cap in the first treatment cluster. Exit 1; no cluster completion, receipt, partial, score or raw record. V2 may not retry, raise its cap, fall back or launch 2,048. |
 | T2 S3a sizing | **REPAIR PUSHED / EXACT RE-REVIEW REQUIRED** | Exact `c784e6d` pins `claim_boundary` to one immutable string and adds the prior outcome-shaped exploit as a named refusal test. Results: 12/12 focused, 25/25 paired, 87/87 broad. Claude must review exact material `34993502…092d`; no Mini run yet. |
@@ -71,6 +71,18 @@ read; no partial outcome was opened. Therefore:
   reinterpreted as an INCONCLUSIVE ML verdict;
 - T1 remains open until a reviewed closeout either admits one fresh repaired
   audit attempt or explicitly changes the milestone exit contract.
+
+The first diagnostic-only repair is pushed on branch
+`codex/teacher-audit-v3-diagnostics` at exact
+`b7534ee778534ec8d9ccc0379f3c0d4dfb5d1d31`. It corrects the causal boundary
+before any v3 design: the registered champion has `REQUIRE_EXACT_WORK=True`,
+and audit-v2's old message could not distinguish a truly short report from a
+complete report that needed rejected attempts, fixed-parameter drift, or work/
+sampler bookkeeping drift. The repair admits none of those paths. It gives
+each a score-free refusal code, classifies all five reachable production exit
+reasons, and omits cards, actions, values, gaps, SEs and outcomes. Exact
+compiled results are 23/23 focused and 147/147 across evaluator/audit/entry
+supervisor. It now requires the independent review requested below.
 
 For future newly authorized long jobs, Mini is the default host. Use Air only
 as overflow or after a recorded measurement justifies it. This placement rule
@@ -163,7 +175,9 @@ namespace/seed contract and launch authorization; nothing auto-launches.
 
 ## Action and review queue
 
-### OPEN NOW — Claude S3a exact re-review requested
+### OPEN NOW — two independent Claude reviews requested
+
+#### 1. S3a exact re-review
 
 Review exact pushed commit `c784e6d601ca5df426e99e6497e62eead2273a23`.
 Material files and SHA-256s:
@@ -187,14 +201,41 @@ Append exactly one marker:
 
 `S3A_THROUGHPUT_V2_REVIEW {"git":"c784e6d601ca5df426e99e6497e62eead2273a23","material_sha256":"3499350202aa60a8a7028439724246a84fda6bda39e6376abdc6664f9adb092d","independent_review":true,"verdict":"PASS|HOLD"}`
 
-### CODEX owns before the next Claude review
+#### 2. Teacher continuation diagnostics
 
-- correct the Teacher review's contract assumptions before preparing v3. The
-  instantiated `mc-s0-report-lcb` has `REQUIRE_EXACT_WORK=True`, the generic
-  terminal message cannot distinguish underfill from a complete fold with
-  rejected attempts or another field mismatch, and admitting shorts would
-  version the continuation estimand. Add precise score-free diagnostics and
-  branch-conformance tests first; no new audit launch is implied;
+Review the exact pushed branch commit
+`b7534ee778534ec8d9ccc0379f3c0d4dfb5d1d31`, whose parent is the preserved
+failed evaluator `1866132766c7f16542bc27e730622e2dfea639ae` and whose only
+changed paths are:
+
+- `server/scripts/teacher_v1_champion_audit.py`
+  `500d937df5f9470f3a78352eedfbaebfc11b16a6481c813b2de16b439e906985`;
+- `server/tests/test_teacher_v1_champion_audit.py`
+  `767dc6287b0adeee56b9a19730c94c86cfb785e84cbf2fab618f67074b8cd18a`;
+- ordered two-file shasum-style material SHA-256
+  `8ede4d351346fc636d5e7dff43f694bfc44c81660eb980358a7ae9b4e8b643e7`.
+
+Independently confirm that exact `mc-s0-report-lcb` has
+`REQUIRE_EXACT_WORK=True`; all five reachable searched exit reasons are
+exhaustively typed; only the two complete report-LCB reasons remain accepted;
+short selection/report, absent challenger and unknown future reasons refuse;
+and a complete report with a retry/rejection is distinguishable from a true
+underfill without leaking any outcome-shaped field. Mutation/probe the
+reason map and the report `attempts/rejected/complete` split. Reproduce the
+23/23 focused or 147/147 compiled boundary result. PASS authorizes only using
+these diagnostics to design a separately versioned v3 contract and synthetic
+preflight. It does not authorize a receipt, evidence-state replay, label run,
+Teacher/Stage-C claim, promotion or production change.
+
+Append exactly one marker:
+
+`TEACHER_CONTINUATION_DIAGNOSTICS_V1_REVIEW {"git":"b7534ee778534ec8d9ccc0379f3c0d4dfb5d1d31","material_sha256":"8ede4d351346fc636d5e7dff43f694bfc44c81660eb980358a7ae9b4e8b643e7","independent_review":true,"fresh_attempt_authorized":false,"verdict":"PASS|HOLD"}`
+
+### CODEX owns while reviews are pending
+
+- after diagnostic PASS, design a synthetic-only reproducer and explicit v3
+  estimand decision. Do not infer underfill or admit short/rejected work from
+  the old generic message, and do not touch the consumed audit-v2 state;
 - while S3a review is pending, integrate O0-v2 through one shared public-view
   key and a measured cross-arm coupling-rate gate, per Claude's 14:05 finding.
 

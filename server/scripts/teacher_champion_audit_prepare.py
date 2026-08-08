@@ -29,9 +29,9 @@ from typing import Mapping
 SCHEMA = "teacher-v1-champion-audit-preparation-v1"
 EXIT_SCHEMA = "teacher-v1-champion-audit-receipt-exit-v1"
 PRODUCER_GIT = "1a2a71333ea283784b19855e67e1ae231379ec79"
-AUDIT_GIT = "182d1df21697cedd722edfd3215ea1e2a7dd8753"
+AUDIT_GIT = "1866132766c7f16542bc27e730622e2dfea639ae"
 AUDIT_SCRIPT_SHA256 = (
-    "57796fda247a4152a58bb98508d24ae1063f7e2c843ccf436b8b111f7c887ead"
+    "c7b47a7a0305f6067129cc7b19517d9a983efff70085f83edc0d39475955d6cb"
 )
 STAGE_B_STATE_SHA256 = (
     "90956da86f4f03074a1b4dc2d7198a3da5958470b733eacd104e066c523b4dc6"
@@ -40,7 +40,10 @@ AUDIT_STATE_SHA256 = (
     "d04d1c0fa507bab680da4d53eeb72325a97c8ca058aac0d01c16dfdcf44f7a34"
 )
 EXPECTED_PYTHON_VERSION = "Python 3.14.6"
-RUN_ID = "teacher-v3-report-lcb-audit-v1-149m"
+# The v1 checkout remains an immutable failed publication attempt.  This new
+# run identity is mandatory even though the estimand, states and schema stay
+# frozen: no artifact from the failed checkout may be resumed or overwritten.
+RUN_ID = "teacher-v3-report-lcb-audit-v2-149m"
 NAMESPACE = Path("runs/logs/teacher-v1-entry-149m-v3")
 AUDIT_SCRIPT = Path("scripts/teacher_v1_champion_audit.py")
 SUPERVISOR_SCRIPT_NAME = "teacher_champion_audit_supervisor.py"

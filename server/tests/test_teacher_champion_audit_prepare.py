@@ -22,6 +22,7 @@ def _module():
 
 
 P = _module()
+FAILED_V1_AUDIT_GIT = "182d1df21697cedd722edfd3215ea1e2a7dd8753"
 
 
 def _supervisor_module():
@@ -167,6 +168,22 @@ def test_exact_twenty_parent_population_and_receipt_command(
     assert command.count("--cheap") == 8
     assert command.count("--n30") == 8
     assert command[command.index("--run-id") + 1] == P.RUN_ID
+
+
+def test_repaired_attempt_has_new_run_and_refuses_failed_v1_checkout(
+        tmp_path, monkeypatch):
+    assert P.RUN_ID == "teacher-v3-report-lcb-audit-v2-149m"
+    assert P.AUDIT_GIT != FAILED_V1_AUDIT_GIT
+    config, paths = _fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        P, "_git", lambda root, *args:
+        (P.PRODUCER_GIT if root == config.producer_root
+         else FAILED_V1_AUDIT_GIT)
+        if args == ("rev-parse", "HEAD") else "")
+    problems = P.preflight_problems(config, paths)
+    assert any(
+        FAILED_V1_AUDIT_GIT in problem and P.AUDIT_GIT in problem
+        for problem in problems)
 
 
 def test_prepare_copies_exact_parents_and_persists_real_receipt_exit(

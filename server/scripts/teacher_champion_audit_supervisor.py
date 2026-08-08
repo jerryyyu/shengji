@@ -32,9 +32,9 @@ from typing import IO, Iterable
 SCHEMA = "teacher-v1-champion-audit-supervisor-v1"
 PREPARATION_SCHEMA = "teacher-v1-champion-audit-preparation-v1"
 RECEIPT_EXIT_SCHEMA = "teacher-v1-champion-audit-receipt-exit-v1"
-AUDIT_GIT = "182d1df21697cedd722edfd3215ea1e2a7dd8753"
+AUDIT_GIT = "1866132766c7f16542bc27e730622e2dfea639ae"
 AUDIT_SCRIPT_SHA256 = (
-    "57796fda247a4152a58bb98508d24ae1063f7e2c843ccf436b8b111f7c887ead"
+    "c7b47a7a0305f6067129cc7b19517d9a983efff70085f83edc0d39475955d6cb"
 )
 EXPECTED_PYTHON_VERSION = "Python 3.14.6"
 NAMESPACE = Path("runs/logs/teacher-v1-entry-149m-v3")

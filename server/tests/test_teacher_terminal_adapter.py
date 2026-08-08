@@ -57,14 +57,17 @@ def _gate(verdict: str) -> dict:
         "fast_engine": True,
         "require_voids": True,
         "experimental_sampler_ballot_flags": [],
-        "source_digests": {"audit_script": A.AUDIT_SCRIPT_SHA256},
+        "source_digests": {
+            "audit_script": A.AUDIT_SCRIPT_SHA256,
+            "compiled_engine": A.COMPILED_ENGINE_SHA256,
+        },
         "folds_contract": A.EXPECTED_FOLDS,
         "continuation_contract": A.EXPECTED_CONTINUATION,
         "n_states": 64,
         "problems": [] if passed else ["registered terminal miss"],
         "producer_receipt": {
-            "path": "/sealed/champion_audit_receipt_v2.json",
-            "sha256": "9" * 64,
+            "path": A.RECEIPT_PATH,
+            "sha256": A.RECEIPT_SHA256,
             "run_id": A.RUN_ID,
             "nonce": "8" * 64,
         },
@@ -116,9 +119,9 @@ def _events(verdict: str, gate_sha: str) -> list[dict]:
             "audit_git": A.AUDIT_GIT,
             "audit_script_sha256": A.AUDIT_SCRIPT_SHA256,
             "supervisor_sha256": A.SUPERVISOR_SCRIPT_SHA256,
-            "receipt_sha256": "9" * 64,
-            "preparation_sha256": "7" * 64,
-            "preparer_sha256": "6" * 64,
+            "receipt_sha256": A.RECEIPT_SHA256,
+            "preparation_sha256": A.PREPARATION_SHA256,
+            "preparer_sha256": A.PREPARER_SCRIPT_SHA256,
             "execution_predeclaration": {
                 "git": A.AUDIT_GIT,
                 "audit_script_sha256": A.AUDIT_SCRIPT_SHA256,
@@ -136,9 +139,9 @@ def _events(verdict: str, gate_sha: str) -> list[dict]:
             "audit_git": A.AUDIT_GIT,
             "audit_script_sha256": A.AUDIT_SCRIPT_SHA256,
             "supervisor_sha256": A.SUPERVISOR_SCRIPT_SHA256,
-            "receipt_sha256": "9" * 64,
-            "preparation_sha256": "7" * 64,
-            "preparer_sha256": "6" * 64,
+            "receipt_sha256": A.RECEIPT_SHA256,
+            "preparation_sha256": A.PREPARATION_SHA256,
+            "preparer_sha256": A.PREPARER_SCRIPT_SHA256,
             "gate_sha256": gate_sha,
             "gate_verdict": verdict,
             "gate_returncode": code,
@@ -232,6 +235,7 @@ def test_gate_hash_mutation_refuses(tmp_path, monkeypatch):
         ("swap_consumed", "consumed_audit_state_set binding"),
         ("drop_retry_admission", "continuation contract"),
         ("wrong_host", "execution identity"),
+        ("wrong_engine", "script identity"),
     ),
 )
 def test_gate_refuses_fresh_lineage_or_runtime_drift(
@@ -242,8 +246,10 @@ def test_gate_refuses_fresh_lineage_or_runtime_drift(
         gate["consumed_audit_state_set"] = dict(gate["audit_state_set"])
     elif mutation == "drop_retry_admission":
         gate["continuation_contract"].pop("admission")
-    else:
+    elif mutation == "wrong_host":
         gate["host"] = "jerrys-macbook-air"
+    else:
+        gate["source_digests"]["compiled_engine"] = "3" * 64
     config.gate.write_text(json.dumps(gate, sort_keys=True))
     changed = A.Config(
         gate=config.gate,
@@ -271,6 +277,45 @@ def test_supervisor_receipt_must_match_gate(tmp_path, monkeypatch):
         expected_git=config.expected_git,
     )
     with pytest.raises(A.AdapterRefusal, match="terminal binding"):
+        A.create(changed, tmp_path / "adapter.json")
+
+
+@pytest.mark.parametrize(
+    ("target", "field", "message"),
+    (
+        ("gate", "sha256", "receipt binding"),
+        ("admitted", "preparation_sha256", "admitted identity"),
+        ("terminal", "preparer_sha256", "terminal binding"),
+    ),
+)
+def test_exact_launch_receipt_and_preparation_are_literal(
+        tmp_path, monkeypatch, target, field, message):
+    config = _fixture(tmp_path, monkeypatch)
+    if target == "gate":
+        gate = json.loads(config.gate.read_text())
+        gate["producer_receipt"][field] = "4" * 64
+        config.gate.write_text(json.dumps(gate, sort_keys=True))
+        changed = A.Config(
+            gate=config.gate,
+            expected_gate_sha256=_sha(config.gate),
+            supervisor_progress=config.supervisor_progress,
+            expected_supervisor_sha256=config.expected_supervisor_sha256,
+            expected_git=config.expected_git,
+        )
+    else:
+        events = [json.loads(line) for line in
+                  config.supervisor_progress.read_text().splitlines()]
+        events[0 if target == "admitted" else -1][field] = "4" * 64
+        config.supervisor_progress.write_text(
+            "".join(json.dumps(event) + "\n" for event in events))
+        changed = A.Config(
+            gate=config.gate,
+            expected_gate_sha256=config.expected_gate_sha256,
+            supervisor_progress=config.supervisor_progress,
+            expected_supervisor_sha256=_sha(config.supervisor_progress),
+            expected_git=config.expected_git,
+        )
+    with pytest.raises(A.AdapterRefusal, match=message):
         A.create(changed, tmp_path / "adapter.json")
 
 

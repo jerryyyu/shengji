@@ -40,6 +40,22 @@ AUDIT_SCRIPT_SHA256 = (
 SUPERVISOR_SCRIPT_SHA256 = (
     "07284fc0c99e678df0a1d02f8aabc06d7fa8d38837aa46099110ff908ae2f47f"
 )
+PREPARER_SCRIPT_SHA256 = (
+    "c6f24b58eabe0ffaccb1ce38f6724100133075f4ebda0851e5615adba2bc4346"
+)
+RECEIPT_SHA256 = (
+    "e293858c728437d6016a3f02a62a355c38a37a6028ad0d83e49423e1caf4a10d"
+)
+PREPARATION_SHA256 = (
+    "83892930fa8e7e8148960511ef0a87c3becbe77a87eaebf3c912458863644c39"
+)
+RECEIPT_PATH = (
+    "/Users/jerryyu/Projects/shengji-teacher-audit-v3-mini/server/"
+    "runs/logs/teacher-v1-entry-149m-v5/champion_audit_receipt_v2.json"
+)
+COMPILED_ENGINE_SHA256 = (
+    "ef7c161829c607aad790e949e0a0bae7e04d8a3be7aea51b80d5108a1f566b4d"
+)
 EXPECTED_HOST = "Jerrys-Mac-mini.local"
 EXPECTED_PYTHON = "3.14.6"
 STAGE_B_STATE_SHA256 = (
@@ -255,7 +271,9 @@ def _gate_problems(gate: dict) -> list[str]:
         problems.append("audit gate execution identity")
     source_digests = gate.get("source_digests")
     if (not isinstance(source_digests, dict)
-            or source_digests.get("audit_script") != AUDIT_SCRIPT_SHA256):
+            or source_digests.get("audit_script") != AUDIT_SCRIPT_SHA256
+            or source_digests.get("compiled_engine")
+            != COMPILED_ENGINE_SHA256):
         problems.append("audit gate script identity")
     if gate.get("folds_contract") != EXPECTED_FOLDS:
         problems.append("audit gate fold contract")
@@ -287,9 +305,8 @@ def _gate_problems(gate: dict) -> list[str]:
     receipt = gate.get("producer_receipt")
     if (not isinstance(receipt, dict)
             or set(receipt) != {"path", "sha256", "run_id", "nonce"}
-            or not isinstance(receipt.get("path"), str)
-            or not receipt.get("path")
-            or not is_sha256(receipt.get("sha256"))
+            or receipt.get("path") != RECEIPT_PATH
+            or receipt.get("sha256") != RECEIPT_SHA256
             or receipt.get("run_id") != RUN_ID
             or not is_sha256(receipt.get("nonce"))):
         problems.append("audit gate receipt binding")
@@ -355,9 +372,11 @@ def _supervisor_problems(events: list[dict], gate: dict,
                 != AUDIT_SCRIPT_SHA256
                 or admitted_event.get("supervisor_sha256")
                 != SUPERVISOR_SCRIPT_SHA256
-                or not is_sha256(admitted_event.get("receipt_sha256"))
-                or not is_sha256(admitted_event.get("preparation_sha256"))
-                or not is_sha256(admitted_event.get("preparer_sha256"))
+                or admitted_event.get("receipt_sha256") != RECEIPT_SHA256
+                or admitted_event.get("preparation_sha256")
+                != PREPARATION_SHA256
+                or admitted_event.get("preparer_sha256")
+                != PREPARER_SCRIPT_SHA256
                 or admitted_event.get("shard_count") != 8
                 or admitted_event.get("selection_worlds") != 32
                 or admitted_event.get("report_worlds") != 32
@@ -380,6 +399,9 @@ def _supervisor_problems(events: list[dict], gate: dict,
                 or event.get("audit_script_sha256") != AUDIT_SCRIPT_SHA256
                 or event.get("supervisor_sha256")
                 != SUPERVISOR_SCRIPT_SHA256
+                or event.get("receipt_sha256") != RECEIPT_SHA256
+                or event.get("preparation_sha256") != PREPARATION_SHA256
+                or event.get("preparer_sha256") != PREPARER_SCRIPT_SHA256
                 or event.get("receipt_sha256")
                 != admitted_event.get("receipt_sha256")
                 or event.get("preparation_sha256")
@@ -467,6 +489,10 @@ def build_payload(config: Config, gate: dict, events: list[dict],
             "audit_git": AUDIT_GIT,
             "audit_script_sha256": AUDIT_SCRIPT_SHA256,
             "supervisor_script_sha256": SUPERVISOR_SCRIPT_SHA256,
+            "preparer_script_sha256": PREPARER_SCRIPT_SHA256,
+            "receipt_sha256": RECEIPT_SHA256,
+            "preparation_sha256": PREPARATION_SHA256,
+            "compiled_engine_sha256": COMPILED_ENGINE_SHA256,
             "stage_b_state_sha256": STAGE_B_STATE_SHA256,
             "consumed_audit_state_sha256": CONSUMED_AUDIT_STATE_SHA256,
             "fresh_audit_state_sha256": AUDIT_STATE_SHA256,

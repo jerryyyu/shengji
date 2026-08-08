@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 18:34 EDT. This is the executable mailbox, not a
+Last update: 2026-08-08 18:36 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -321,6 +321,14 @@ preflight—not this proxy—must terminate at `TERMINAL_CAPACITY_HOLD` if any
 projection exceeds a cap. After the current reviews pass, exact merge Git,
 source hashes, these four numbers, heartbeat 30, canonical Mini command and a
 fresh namespace require one separate literal launch review.
+
+Integration is prepared but not merged or authorized. Pushed branch
+`codex/s3a-duel-integration-v1` at exact `623ffb736552f2c1fd8eeeca3e869652d280fa1e`
+merges current main into the review hierarchy. All four reviewed source/test
+files remain byte-identical to `b5dee2e` / `0085409`; the combined
+S3a/parent/progress battery passes 69/69 under Python 3.14.3. Do not review or
+merge this candidate until both exact markers above pass. If main advances,
+the integration Git must be regenerated rather than silently rebased.
 
 ## Standing rules
 

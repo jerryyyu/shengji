@@ -34,8 +34,8 @@ synthesis belongs in `AI_POLICIES.md`.
 - **Direct-Q: COMPLETE / SELECT NONE.** Gameplay was
   `+0.162760 +/- 0.058755`, but seed 1 and both pooled role held-out MSE gates
   failed. Aggregate SHA `1fa6789e…ce791`; it authorizes nothing.
-- **Suphx O0: MECHANICS REVIEW PASS / FINAL MATERIAL RE-REVIEW REQUIRED / NO
-  TRAINING.** Exact
+- **Suphx O0: MATERIAL PASS / PACKET FROZEN AND VERIFIED / HASH REVIEW
+  REQUIRED / NO TRAINING.** Exact
   pushed commit `b22ee8e` produced and reopened Mini artifact
   `4f0c3dd542634b66fd0826a8caef5dc21c7a8b083f96804d1f2f9bbe653ee434`.
   Six disposable endpoint updates took 2.665s and support the capped
@@ -56,8 +56,7 @@ synthesis belongs in `AI_POLICIES.md`.
   plain-prose, HOLD or wrong-packet review and requires one explicit PASS marker
   bound to the exact packet SHA and narrow authority. Focused tests pass 25/25,
   the adjacent matrix passes 196/196 in both routes, and the broad ordinary
-  suite passes 1,030 with 27 skips at exact current code. No packet was frozen
-  and no training ran.
+  suite passes 1,030 with 27 skips at exact current code.
   Routine packet reopening no longer regenerates 128 DEV games: a local probe
   measured 10.04s for semantic generation versus 3.1 microseconds for the
   hash/structure check. Full semantic regeneration remains at freeze/review,
@@ -67,8 +66,14 @@ synthesis belongs in `AI_POLICIES.md`.
   witnesses in every surface. The 23:52 review passed the repaired chronology
   mechanics and held only because material `SUPHX_MICRO_SPEC.md` still said
   22/22 instead of 25/25. Exact pushed material commit `9aabf0b` corrects that
-  one count; a final explicit review PASS for that material snapshot is still
-  required.
+  one count. The 00:49 review explicitly passed that exact material snapshot
+  for one packet freeze. The one allowed freeze then published and
+  semantically reopened `launch_packet.json` at SHA-256
+  `6d4e6772e94df292fe0a7b72735ea3995e4f6098cca9e5c37ab12268bed1ed65`.
+  The namespace contains only the frozen spec, 128-state DEV asset, three
+  initial checkpoints and launch packet; no admission, training, evaluation
+  or gate artifact exists. A separate packet-hash review is now the sole O0
+  launch blocker.
 - **DEV-512:** SELECT NONE / closed. CALIB and REPORT remain sealed.
 
 Fresh executable reopening at 00:06 on August 8 independently reproduced
@@ -160,10 +165,10 @@ reports the one exact descendant `registry_sha256` drift after C1 added a
 policy. The test now proves the frozen introduction blob and this fail-closed
 condition explicitly rather than misreporting a regression.
 
-Mini has no long strength job. Its bounded Suphx timing preflight is complete;
-it is available while exact O0 material snapshot `9aabf0b` receives final
-independent review. The timing artifact and executable code alone must not be
-treated as freeze, admission or training authority.
+Mini has no long strength job. The exact O0 packet is frozen and verified at
+SHA `6d4e6772...1ed65`; Mini remains available while those exact packet bytes
+receive their separate hash-bound review. The material PASS and frozen packet
+alone are not admission or training authority.
 
 ### Frozen Teacher transition names
 
@@ -440,32 +445,12 @@ at 23:21.
    release 16 only for a correctness, responsiveness or availability
    regression; policy rollback to `mc-strong` and CPU resize remain separate
    decisions.
-4. Final-review exact Suphx O0 material commit `9aabf0b`. The 23:52 review
-   passed the chronology mechanics and requested only the material spec's
-   22/22-to-25/25 correction; verify that one-line delta and issue an explicit
-   PASS. On PASS only,
-   freeze—but do not train—the exact packet at
-   `server/runs/logs/suphx-o0-fixed-ensemble-v1`. Then independently review
-   and hash-admit those packet bytes. O1 remains outside this packet until O0
-   proves oracle acquisition.
-
-After—and only after—an explicit implementation PASS for `9aabf0b`, run this
-one freeze command from `server/`; the exact root is currently absent:
-
-```sh
-env -u SHENGJI_WEIGHTED_SPLITS -u SHENGJI_UNIFORM_DEAL \
-  -u SHENGJI_PHYSICAL_FILLS -u SHENGJI_ALLOW_BALLOT_MISMATCH \
-  SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 \
-  .venv/bin/python scripts/suphx_o0_screen.py freeze \
-  --root runs/logs/suphx-o0-fixed-ensemble-v1
-```
-
-Do not admit or train after freeze. First run the launcher's `verify-packet`
-command on the published `launch_packet.json`, record its exact SHA, and ask
-for a second independent review. That reviewer must append exactly one bare
-line beginning `SUPHX_O0_PACKET_REVIEW_V1 ` whose JSON binds that exact packet
-SHA, literal PASS/independent review/O0-training authority, and false
-O1/strength/production authority. Plain prose cannot admit the packet.
+4. Independently review exact frozen Suphx O0 packet SHA
+   `6d4e6772e94df292fe0a7b72735ea3995e4f6098cca9e5c37ab12268bed1ed65`.
+   Do not admit or train until the external record contains the required
+   machine-readable PASS marker bound to those bytes. On PASS, hash-admit that
+   record and run only the six frozen Mini arms. O1 remains outside this packet
+   until O0 proves oracle acquisition.
 
 ## Review request for Claude
 
@@ -501,10 +486,14 @@ and 126 burial witnesses with zero failures without calling the repaired
 chronological helper or `Round.play`; treat that only as corroboration. O0
 material commit `9aabf0b` changes the reviewer's sole remaining blocker:
 `SUPHX_MICRO_SPEC.md` now says the actual 25/25 focused count instead of 22/22,
-and compiled+strict focused tests pass 25/25. Please verify that exact material
-snapshot and provide an explicit final PASS. O0 remains NO FREEZE / NO RUN
-until that external review passes; even then,
-training needs a second hash-bound review admission of the frozen packet.
+and compiled+strict focused tests pass 25/25. The 00:49 review explicitly
+passed exact material snapshot `9aabf0b`; the one allowed freeze and independent
+semantic reopen then produced exact packet SHA
+`6d4e6772e94df292fe0a7b72735ea3995e4f6098cca9e5c37ab12268bed1ed65`.
+Please review those exact packet bytes and append the required single bare
+`SUPHX_O0_PACKET_REVIEW_V1 {json}` line binding that SHA, literal PASS,
+independent review and O0-training authority, with O1/strength/production
+authority all false. No admission or training has run.
 
 ## Standing rules
 

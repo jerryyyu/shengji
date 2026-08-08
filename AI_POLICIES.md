@@ -112,8 +112,9 @@ and put exact run detail in `JOBS.md` or the dated archive.
   now clear both snapshot constraints and full chronological engine replay;
   this matters because 13 apparently plausible witnesses contradicted an
   earlier pair obligation or successful throw. It is not a strength claim.
-  The chronology mechanics passed review; after final material-snapshot PASS,
-  packet freeze and separate packet-hash admission, run it on Mini while
+  The chronology mechanics and exact material snapshot passed review; the one
+  allowed freeze produced verified packet SHA `6d4e6772…1ed65`. After its
+  separate packet-hash admission, run it on Mini while
   Teacher continues on Air. O1 feature removal
   exists only after O0 PASS; Teacher-label consumers wait for the Teacher
   audit, but O0/O1 do not inherit that dependency.
@@ -127,9 +128,8 @@ and put exact run detail in `JOBS.md` or the dated archive.
 2. Close Teacher-v3 Stage-B attribution and run the already-frozen independent
    64-state champion-continuation audit on Air; use that evidence to choose the
    next teacher upgrade rather than merely scaling labels.
-3. In parallel, obtain final review PASS for exact Suphx O0 material
-   `9aabf0b`, freeze and separately
-   hash-admit its packet, then run the bounded six-arm screen on Mini. Do not
+3. In parallel, independently review and hash-admit frozen Suphx O0 packet
+   `6d4e6772…1ed65`, then run the bounded six-arm screen on Mini. Do not
    wait for Teacher unless the proposed learner consumes Teacher labels.
 4. Keep v11pair as a root proposal/ranking feature and teacher diagnostic;
    the protected-anchor lane is closed by direct-v2.

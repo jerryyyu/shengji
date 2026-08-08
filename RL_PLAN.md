@@ -88,9 +88,10 @@ closed lane.
   gate reconstructs post-burial hands and replays every public trick through
   the real engine; this repaired 13 snapshot-plausible alternatives that
   contradicted an earlier pair obligation or successful throw. It still has no
-  packet or run authority. The chronology mechanics passed review; the final
-  material-snapshot review must pass, then the frozen packet hash needs a
-  second admission review. Once admitted, O0 belongs on Mini while Teacher-v3
+  training authority. The chronology mechanics and exact material snapshot
+  passed review; the one allowed freeze produced verified packet SHA
+  `6d4e6772…1ed65`, which now needs its separate admission review. Once
+  admitted, O0 belongs on Mini while Teacher-v3
   continues on Air. O1 depends on O0 proving oracle acquisition, not on the
   Teacher result; only training that consumes Teacher-v3 labels waits for the
   Teacher audit.

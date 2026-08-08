@@ -116,10 +116,10 @@ and compiled-strict modes.
 
 Mini has no long strength worker. RLCB-C1, V11-v2 and Direct-Q are terminal;
 the bounded Suphx O0 timing preflight below completed in seconds. Mini is
-available while exact O0 material snapshot `9aabf0b` receives independent
-final review. No O0 packet has been frozen and no learning job has started.
+available while frozen O0 packet SHA `6d4e6772...1ed65` receives its separate
+independent hash review. No learning job has started.
 
-## READY FOR FINAL RE-REVIEW / Suphx O0 executable implementation (no packet/run)
+## FROZEN / AWAITING PACKET-HASH REVIEW / Suphx O0 (no training)
 
 Pushed exact O0 material commit `7b15338` implements the fixed-three-seed O0
 freezer, 128 one-state-per-deal DEV asset, six 64-update arms with real midpoint
@@ -159,8 +159,10 @@ the freeze gate.
 The 23:52 review passed the chronology mechanics and held freeze only because
 material `SUPHX_MICRO_SPEC.md` retained the pre-repair 22/22 count. Exact
 pushed material commit `9aabf0b` changes that count to 25/25; the compiled+
-strict focused suite independently remains 25/25. Freeze still waits for the
-explicit final review PASS on that snapshot.
+strict focused suite independently remains 25/25. The 00:49 review explicitly
+passed that exact material snapshot for one freeze. The one allowed freeze and
+independent semantic reopen published `launch_packet.json` SHA-256
+`6d4e6772e94df292fe0a7b72735ea3995e4f6098cca9e5c37ab12268bed1ed65`.
 
 Routine packet/admission reopen validates exact bytes, structure, runtime
 and source identity without regenerating the 128 DEV games. A local no-artifact
@@ -171,11 +173,11 @@ the exact DEV asset; the terminal gate still recomputes every diagnostic and
 semantically replays every raw comparison round. Freeze, diagnostics,
 evaluation and replay now print bounded progress.
 
-Do not invoke `freeze`, `admit`, `train`, `evaluate` or `gate` yet. First obtain
-the final independent PASS for exact material `9aabf0b`; on PASS, freeze only
-at the exact root above. The resulting packet bytes then require a second
-hash-bound independent
-review admission before Mini may run the six arms.
+The exact namespace contains only `spec.json`, `dev.json`, three initial
+checkpoints and `launch_packet.json`; no admission, training, evaluation or
+gate artifact exists. Do not invoke `freeze` again or invoke `admit`, `train`,
+`evaluate` or `gate` yet. The exact packet bytes now require a second
+hash-bound independent review before Mini may run the six arms.
 
 ## COMPLETE / Suphx O0 score-redacted runtime preflight (Mini)
 

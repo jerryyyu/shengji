@@ -48,6 +48,8 @@ if args.mode == "label":
           flush=True)
     if os.environ.get("FAKE_FAIL_SHARD") == args.shard_index:
         raise SystemExit(3)
+    if os.environ.get("FAKE_MISSING_FINAL_SHARD") == args.shard_index:
+        raise SystemExit(0)
     schema = ("wrong" if os.environ.get("FAKE_BAD_SHARD") == args.shard_index
               else "teacher-v1-champion-audit-shard-v1")
     Path(args.out).write_text(json.dumps({
@@ -56,6 +58,8 @@ if args.mode == "label":
         "shard_index": int(args.shard_index),
         "shard_count": int(args.shard_count),
     }))
+    if os.environ.get("FAKE_PARTIAL_SHARD") == args.shard_index:
+        Path(args.out + ".partial").write_text("surviving partial")
     raise SystemExit(0)
 verdict = os.environ.get("FAKE_GATE_VERDICT", "PASS")
 passed = verdict == "PASS"
@@ -84,7 +88,7 @@ def _fixture(tmp_path: Path, monkeypatch):
     script.parent.mkdir(parents=True)
     script.write_text(FAKE_AUDIT)
     receipt = namespace / S.RECEIPT_NAME
-    receipt.write_text("opaque receipt bytes\n")
+    receipt.write_text(json.dumps(S.expected_receipt_identity()))
     receipt_log = namespace / S.RECEIPT_LOG_NAME
     receipt_log.write_text("receipt complete\n")
     receipt_exit = namespace / S.RECEIPT_EXIT_NAME
@@ -117,6 +121,7 @@ def _fixture(tmp_path: Path, monkeypatch):
         "python": S.EXPECTED_PYTHON_VERSION,
         "preparer_sha256": "d" * 64,
         "expected_supervisor_sha256": supervisor_sha,
+        "receipt_identity": S.expected_receipt_identity(),
         "receipt": {"path": str(S.NAMESPACE / S.RECEIPT_NAME),
                     "sha256": _sha(receipt)},
         "receipt_log": {"path": str(S.NAMESPACE / S.RECEIPT_LOG_NAME),
@@ -183,6 +188,35 @@ def test_one_label_failure_preserves_evidence_and_never_runs_gate(
     assert not paths.progress_final.exists()
     failed = paths.labels[3].with_suffix(".exit.json")
     assert json.loads(failed.read_text())["returncode"] == 3
+
+
+def test_zero_exit_without_final_preserves_evidence_and_never_runs_gate(
+        tmp_path, monkeypatch):
+    config, paths = _fixture(tmp_path, monkeypatch)
+    monkeypatch.setenv("FAKE_MISSING_FINAL_SHARD", "3")
+    with pytest.raises(
+            S.SupervisorRefusal,
+            match="label-03 exited zero without regular final"):
+        S.run(config)
+    assert not paths.gate.exists()
+    assert paths.progress_partial.is_file()
+    assert not paths.progress_final.exists()
+    assert json.loads(paths.labels[3].with_suffix(
+        ".exit.json").read_text())["returncode"] == 0
+
+
+def test_zero_exit_with_surviving_partial_never_runs_gate(
+        tmp_path, monkeypatch):
+    config, paths = _fixture(tmp_path, monkeypatch)
+    monkeypatch.setenv("FAKE_PARTIAL_SHARD", "4")
+    with pytest.raises(
+            S.SupervisorRefusal,
+            match="label-04 exited zero with surviving partial"):
+        S.run(config)
+    assert not paths.gate.exists()
+    assert paths.progress_partial.is_file()
+    assert not paths.progress_final.exists()
+    assert S.artifact_partial(paths.labels[4]).is_file()
 
 
 def test_terminal_nonpass_is_preserved_without_retry(tmp_path, monkeypatch):
@@ -274,3 +308,45 @@ def test_preflight_requires_zero_exit_bound_preparation(
     problems = S.preflight_problems(config, paths)
     assert any("receipt exit" in problem or "zero exit" in problem
                for problem in problems)
+
+
+@pytest.mark.parametrize(
+    ("field", "bad_value"),
+    (
+        ("schema", "teacher-v1-champion-audit-receipt-v0"),
+        ("complete", False),
+        ("run_id", "teacher-v3-report-lcb-audit-v1-149m"),
+        ("execution_predeclaration", {
+            "git": "182d1df21697cedd722edfd3215ea1e2a7dd8753",
+            "audit_script_sha256": "0" * 64,
+        }),
+    ),
+)
+def test_preflight_rejects_hash_bound_wrong_receipt_identity(
+        tmp_path, monkeypatch, field, bad_value):
+    config, paths = _fixture(tmp_path, monkeypatch)
+    monkeypatch.undo()
+    monkeypatch.setattr(S, "AUDIT_SCRIPT_SHA256", _sha(paths.audit_script))
+    monkeypatch.setattr(
+        S, "_git", lambda _root, *args:
+        S.AUDIT_GIT if args == ("rev-parse", "HEAD") else "")
+
+    wrong_identity = S.expected_receipt_identity()
+    wrong_identity[field] = bad_value
+    paths.receipt.write_text(json.dumps(wrong_identity))
+    preparation = json.loads(paths.preparation.read_text())
+    preparation["receipt"]["sha256"] = _sha(paths.receipt)
+    preparation["receipt_identity"] = wrong_identity
+    paths.preparation.write_text(json.dumps(preparation))
+    changed = S.Config(
+        **{**config.__dict__,
+           "expected_receipt_sha256": _sha(paths.receipt),
+           "expected_preparation_sha256": _sha(paths.preparation)})
+
+    problems = S.preflight_problems(changed, paths)
+    assert "audit receipt authority/identity drift" in problems
+    assert "audit preparation authority/identity drift" in problems
+    with pytest.raises(S.SupervisorRefusal, match="preflight"):
+        S.run(changed)
+    assert not any(path.exists() for path in paths.labels)
+    assert not paths.gate.exists()

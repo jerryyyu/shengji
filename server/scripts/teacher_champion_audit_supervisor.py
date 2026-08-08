@@ -32,11 +32,13 @@ from typing import IO, Iterable
 SCHEMA = "teacher-v1-champion-audit-supervisor-v1"
 PREPARATION_SCHEMA = "teacher-v1-champion-audit-preparation-v1"
 RECEIPT_EXIT_SCHEMA = "teacher-v1-champion-audit-receipt-exit-v1"
+RECEIPT_SCHEMA = "teacher-v1-champion-audit-receipt-v1"
 AUDIT_GIT = "1866132766c7f16542bc27e730622e2dfea639ae"
 AUDIT_SCRIPT_SHA256 = (
     "c7b47a7a0305f6067129cc7b19517d9a983efff70085f83edc0d39475955d6cb"
 )
 EXPECTED_PYTHON_VERSION = "Python 3.14.6"
+RUN_ID = "teacher-v3-report-lcb-audit-v2-149m"
 NAMESPACE = Path("runs/logs/teacher-v1-entry-149m-v3")
 AUDIT_SCRIPT = Path("scripts/teacher_v1_champion_audit.py")
 RECEIPT_NAME = "champion_audit_receipt_v1.json"
@@ -68,6 +70,19 @@ EXPERIMENTAL_FLAGS = (
     "SHENGJI_PHYSICAL_FILLS",
     "SHENGJI_ALLOW_BALLOT_MISMATCH",
 )
+
+
+def expected_receipt_identity() -> dict[str, object]:
+    """Return the receipt authority independently enforced at launch."""
+    return {
+        "schema": RECEIPT_SCHEMA,
+        "complete": True,
+        "run_id": RUN_ID,
+        "execution_predeclaration": {
+            "git": AUDIT_GIT,
+            "audit_script_sha256": AUDIT_SCRIPT_SHA256,
+        },
+    }
 
 
 class SupervisorRefusal(RuntimeError):
@@ -272,6 +287,8 @@ def _preparation_problems(config: Config, paths: Paths) -> list[str]:
             != config.expected_preparer_sha256
             or preparation.get("expected_supervisor_sha256")
             != config.expected_supervisor_sha256
+            or preparation.get("receipt_identity")
+            != expected_receipt_identity()
             or preparation.get("receipt") != expected_receipt
             or preparation.get("audit_labels_authorized") is not True
             or preparation.get("retry_authorized") is not False
@@ -312,6 +329,17 @@ def _preparation_problems(config: Config, paths: Paths) -> list[str]:
                 or receipt_exit.get("returncode") != 0):
             problems.append("audit receipt creator did not have exact zero exit")
     return sorted(set(problems))
+
+
+def _receipt_identity_problems(paths: Paths) -> list[str]:
+    try:
+        receipt = _load_json(paths.receipt)
+    except SupervisorRefusal as exc:
+        return [str(exc)]
+    expected = expected_receipt_identity()
+    if any(receipt.get(key) != value for key, value in expected.items()):
+        return ["audit receipt authority/identity drift"]
+    return []
 
 
 def _owned_names(paths: Paths) -> Iterable[Path]:
@@ -367,8 +395,11 @@ def preflight_problems(config: Config, paths: Paths) -> list[str]:
     if not is_sha256(config.expected_receipt_sha256):
         problems.append("expected receipt SHA is malformed")
     else:
-        problems += _artifact_problems(
+        receipt_problems = _artifact_problems(
             paths.receipt, config.expected_receipt_sha256)
+        problems += receipt_problems
+        if not receipt_problems:
+            problems += _receipt_identity_problems(paths)
     problems += _preparation_problems(config, paths)
     for path in _owned_names(paths):
         if lexists(path) or lexists(artifact_partial(path)):
@@ -602,6 +633,9 @@ def run(config: Config) -> tuple[int, dict]:
     try:
         progress.event(
             "supervisor", "admitted", audit_git=AUDIT_GIT,
+            run_id=RUN_ID,
+            execution_predeclaration=expected_receipt_identity()[
+                "execution_predeclaration"],
             audit_script_sha256=AUDIT_SCRIPT_SHA256,
             supervisor_sha256=config.expected_supervisor_sha256,
             receipt_sha256=config.expected_receipt_sha256,
@@ -630,6 +664,9 @@ def run(config: Config) -> tuple[int, dict]:
         summary = {
             "schema": SCHEMA,
             "complete": True,
+            "run_id": RUN_ID,
+            "execution_predeclaration": expected_receipt_identity()[
+                "execution_predeclaration"],
             "audit_git": AUDIT_GIT,
             "audit_script_sha256": AUDIT_SCRIPT_SHA256,
             "supervisor_sha256": config.expected_supervisor_sha256,

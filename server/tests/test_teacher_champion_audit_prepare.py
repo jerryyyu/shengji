@@ -193,6 +193,7 @@ def test_prepare_copies_exact_parents_and_persists_real_receipt_exit(
     assert P.sha256_file(paths.receipt) == receipt_sha
     assert P.sha256_file(paths.preparation) == preparation_sha
     summary = json.loads(paths.preparation.read_text())
+    assert summary["receipt_identity"] == P.expected_receipt_identity()
     assert summary["audit_labels_authorized"] is True
     assert summary["retry_authorized"] is False
     assert len(summary["copied_parents"]) == 20

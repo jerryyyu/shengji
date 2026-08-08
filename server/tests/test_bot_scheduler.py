@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import random
 import threading
 from types import SimpleNamespace
@@ -10,6 +11,7 @@ import pytest
 
 from shengji.api import server as srv
 from shengji.ai.heuristic import HeuristicBot
+from shengji.ai.registry import make_bot
 from shengji.engine.game import Game
 
 
@@ -89,6 +91,36 @@ def _prepare_real(room: srv.Room, *, mode: str = "bot") \
         pacing_seconds=0.6,
         turn_seconds=0.7,
     )
+
+
+@pytest.mark.parametrize(
+    ("policy_name", "bot_seed"),
+    (("mc", 1), ("mc-s0-report-lcb", 3)),
+)
+def test_speculative_decision_matches_direct_path(policy_name, bot_seed):
+    """Snapshot isolation must not change the policy's chosen action.
+
+    Both named seeds are mutation witnesses: advancing only the snapshot RNG by
+    one draw changes the selected play.  The test therefore fails if snapshot,
+    compute, or future isolation code silently perturbs production RNG state.
+    """
+    room = _real_room()
+    room.bot = make_bot(policy_name, seed=bot_seed)
+    seat = room.round.turn
+    direct_bot = copy.deepcopy(room.bot)
+    direct_cards = list(
+        direct_bot.decide_play(copy.deepcopy(room.round), seat))
+
+    snapshot = srv._snapshot_bot_turn(room, seat, "bot")
+    assert snapshot is not None
+    speculative_cards = srv._compute_bot_turn(snapshot).cards
+
+    assert speculative_cards == direct_cards
+
+    perturbed = srv._snapshot_bot_turn(room, seat, "bot")
+    assert perturbed is not None
+    perturbed.bot_copy.rng.random()
+    assert srv._compute_bot_turn(perturbed).cards != direct_cards
 
 
 def test_bot_search_is_offloaded_and_event_loop_runs(monkeypatch):

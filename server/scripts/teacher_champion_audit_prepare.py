@@ -28,6 +28,7 @@ from typing import Mapping
 
 SCHEMA = "teacher-v1-champion-audit-preparation-v1"
 EXIT_SCHEMA = "teacher-v1-champion-audit-receipt-exit-v1"
+RECEIPT_SCHEMA = "teacher-v1-champion-audit-receipt-v1"
 PRODUCER_GIT = "1a2a71333ea283784b19855e67e1ae231379ec79"
 AUDIT_GIT = "1866132766c7f16542bc27e730622e2dfea639ae"
 AUDIT_SCRIPT_SHA256 = (
@@ -62,6 +63,19 @@ DESCENDANT_NAMES = (
     "champion_audit_gate_v1.json",
     "champion_audit_supervisor_v1.jsonl",
 )
+
+
+def expected_receipt_identity() -> dict[str, object]:
+    """Return the exact authority fields every v2 receipt must carry."""
+    return {
+        "schema": RECEIPT_SCHEMA,
+        "complete": True,
+        "run_id": RUN_ID,
+        "execution_predeclaration": {
+            "git": AUDIT_GIT,
+            "audit_script_sha256": AUDIT_SCRIPT_SHA256,
+        },
+    }
 
 
 class PreparationRefusal(RuntimeError):
@@ -496,13 +510,9 @@ def prepare(config: Config) -> tuple[str, str]:
         raise PreparationRefusal(f"audit receipt creator exited {code}")
     receipt = _load_json(paths.receipt)
     receipt_sha256 = sha256_file(paths.receipt)
-    if (receipt.get("schema") != "teacher-v1-champion-audit-receipt-v1"
-            or receipt.get("complete") is not True
-            or receipt.get("run_id") != RUN_ID
-            or receipt.get("execution_predeclaration") != {
-                "git": AUDIT_GIT,
-                "audit_script_sha256": AUDIT_SCRIPT_SHA256,
-            }):
+    receipt_identity = expected_receipt_identity()
+    if any(receipt.get(key) != value
+           for key, value in receipt_identity.items()):
         raise PreparationRefusal("audit receipt publication identity drift")
     receipt_exit_sha256 = sha256_file(paths.receipt_exit)
     receipt_log_sha256 = sha256_file(paths.receipt_log)
@@ -515,6 +525,7 @@ def prepare(config: Config) -> tuple[str, str]:
         "python": EXPECTED_PYTHON_VERSION,
         "preparer_sha256": config.expected_preparer_sha256,
         "expected_supervisor_sha256": config.expected_supervisor_sha256,
+        "receipt_identity": receipt_identity,
         "stage_b_gate": parents["gate_ref"],
         "copied_parents": copied,
         "receipt": {"path": str(NAMESPACE / AUDIT_RECEIPT_NAME),

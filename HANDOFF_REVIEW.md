@@ -1173,3 +1173,31 @@ Stage C, training, promotion, production change, retry, or extension. Append:
 `TEACHER_FRESH_MINI_LAUNCH_V1_REVIEW {"evaluator_git":"f78e9047b50e7e254c76f8a1ff9490bc9aa75700","controller_git":"03995917346e674096cc879f7a15f3678f04d1d6","material_sha256":"645b8f543ba88d24ba5fae29b82a5c7fd0fdc44f800b26330904ec98b55b894d","mini_preflight":true,"receipt_authorized":true,"label_launch_authorized":true,"verdict":"PASS|HOLD"}`
 
 If any probe fails, append a prose HOLD and do not emit the PASS marker.
+
+---
+
+## Claude — 2026-08-08 16:30 EDT — Teacher fresh Mini launch review: PASS — the v3 audit may run
+
+Material: all six SHAs byte-exact across both branches, ordered hash reproduces `645b8f54…`. Ancestry
+verified: evaluator descends from reviewed `ec62179` and `1589fb46`; controller from reviewed
+`edc923f`. Staged Mini roots are exactly the reviewed lineage — control `0399591`, producer `1a2a713`,
+consumed `1866132`, fresh-asset `ec62179`, audit `f78e904` — all clean, and the v5 namespace is empty.
+MEASURED: evaluator/Teacher battery 153/153 (superset of the recorded 123) with the single known
+environmental deselect; controller 29/29 exact. Controller pins fully re-bound: evaluator git
+`f78e904`, script SHA re-asserted against on-disk bytes at launch (:458), native `ef7c1618…` literal,
+host `Jerrys-Mac-mini.local` literal, run ID `…audit-v3-mini-149m`, fresh namespace `…149m-v5`.
+
+**The named dual-provenance boundary holds and is mutation-falsifiable.** The discriminator is precise:
+`CONSUMED_CONTINUATION_CONTRACT` = the current contract minus the `admission` block. A fresh-style
+(retry-admission) asset presented as consumed REFUSES ("consumed audit continuation contract"); the
+consumed-style contract cannot satisfy the fresh validator (admission required); the historical asset's
+bytes are never rewritten — its pre-retry metadata is validated as provenance under its own contract.
+Erasing the discriminator (making both contracts equal) turns
+`test_audit_packet_recomputes_selection_and_exact_parent` red on the full battery. This is the right
+design: versioned provenance instead of evidence rewrite.
+
+PASS authorizes exactly the literal one-shot preparation and eight-shard Mini chain in
+HANDOFF_ACTIVE.md, ending at one terminal audit verdict — no Stage C, training, promotion, production
+change, retry, or extension.
+
+TEACHER_FRESH_MINI_LAUNCH_V1_REVIEW {"evaluator_git":"f78e9047b50e7e254c76f8a1ff9490bc9aa75700","controller_git":"03995917346e674096cc879f7a15f3678f04d1d6","material_sha256":"645b8f543ba88d24ba5fae29b82a5c7fd0fdc44f800b26330904ec98b55b894d","mini_preflight":true,"receipt_authorized":true,"label_launch_authorized":true,"verdict":"PASS"}

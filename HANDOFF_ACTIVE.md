@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 16:22 EDT. This is the executable mailbox, not a
+Last update: 2026-08-08 16:34 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -10,12 +10,52 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 | area | status | next action |
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
-| T1 Teacher | **MINI LAUNCH REVIEW OPEN / NO RECEIPT OR LABEL** | The untouched 64-state complement is reviewed and frozen. Exact evaluator/controller, four immutable Mini roots, Python 3.14.6, native engine, and all 22 input assets pass no-write preflight. Review the packet below; PASS authorizes its one-shot receipt plus eight Mini shards. |
+| T1 Teacher | **RUNNING ON MINI / 8 OF 8 SHARDS LIVE** | Claude passed the exact launch packet. Receipt/preparation were created once and reopened exactly; post-preparation preflight returned zero problems. Supervisor `teacher-v3-report-lcb-audit-v3-mini-149m` owns all eight workers. Wait for one terminal gate. |
 | T2 S3a structured bury | **512-STATE MECHANISM PASS** | Structured widening passed all three frozen state-level LCBs. Design a fresh full-game duel against exact production plus a champion-matched null; no duel is yet authorized. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
 | T2 learner O0-v2 | **INTEGRATION MERGED** | Exact integration passed review; a fresh population/runner/gate packet is next. No training is authorized. |
 
-## OPEN NOW — fresh Teacher audit launch review on Mini
+## LIVE NOW — fresh Teacher audit on Mini
+
+Claude independently passed evaluator `f78e904`, controller `0399591`, and
+ordered material `645b8f54…b894d`; the exact marker is preserved in
+`HANDOFF_REVIEW.md`. The one authorized preparation completed at zero exit:
+
+- receipt SHA-256 `e293858c728437d6016a3f02a62a355c38a37a6028ad0d83e49423e1caf4a10d`;
+- preparation SHA-256 `83892930fa8e7e8148960511ef0a87c3becbe77a87eaebf3c912458863644c39`;
+- independent post-preparation supervisor preflight: zero problems.
+
+The one-shot supervisor admitted run
+`teacher-v3-report-lcb-audit-v3-mini-149m` on literal host
+`Jerrys-Mac-mini.local` and launched all eight shards at 16:33 EDT. Output is
+owned under `runs/logs/teacher-v1-entry-149m-v5`. Outer audit folds are 32/32;
+each searched continuation retains 30 accepted selection plus 300 accepted
+disjoint report worlds with bounded unscored retries. Do not start another
+instance, migrate to Air, inspect partial scores for decisions, retry, extend,
+train, promote, or launch Stage C. Wait for the supervisor's single terminal
+gate and independently reopen every binding.
+
+## REVIEW WHILE COMPUTE RUNS — terminal adapter v2
+
+Review pushed branch `codex/teacher-terminal-adapter-v2` at exact
+`490757aa1cd5b566625a2492a6de17c9f3d22222` (17/17 focused tests). It updates
+the previously reviewed fail-closed adapter to the exact v2 gate/supervisor,
+fresh Mini run identity, retry admission, old/new state provenance, Stage-B
+assets, receipt/preparation chain, host/runtime and ordered shard population.
+
+Falsify gate or supervisor schema/run drift, host/Python/native/runtime drift,
+retry-admission drift, historical/fresh asset swaps, missing or reordered
+cheap/N=30/label populations, receipt/preparation mismatch, and a terminal
+event that does not bind the exact gate. Both outcome branches must remain
+design-only: PASS may emit hard-tail Stage-C **design**, while
+FAIL/INCONCLUSIVE may diagnose frozen evidence only. Neither may launch
+labels, compute, training, retry, extension, promotion, or production.
+
+Append one marker:
+
+`TEACHER_TERMINAL_ADAPTER_V2_REVIEW {"git":"490757aa1cd5b566625a2492a6de17c9f3d22222","run_id":"teacher-v3-report-lcb-audit-v3-mini-149m","fail_closed":true,"no_compute_authority":true,"verdict":"PASS|HOLD"}`
+
+## Closed launch packet — retained until the terminal gate
 
 Review these two pushed branches together:
 
@@ -118,14 +158,16 @@ If any probe fails, append a prose HOLD and do not emit a PASS marker.
 
 ## T1 finish path
 
-1. Obtain the exact launch marker above.
-2. Run the preparer once, record/reopen its receipt and preparation SHAs, then
-   run the supervisor once on Mini.
+1. **Complete:** exact launch review passed; the one-shot receipt and
+   preparation were created and independently reopened.
+2. **Running:** eight Mini label shards are owned by one supervisor. Do not
+   launch a duplicate, retry, extension, or host migration.
 3. Preserve the terminal PASS/FAIL/INCONCLUSIVE gate and independently verify
    all child/aggregate bindings.
-4. Route the terminal verdict through the already-reviewed adapter: PASS opens
-   Stage-C/hard-tail **design**; FAIL/INCONCLUSIVE records redesign/stop. That
-   closes T1. No branch automatically launches training.
+4. After adapter-v2 review passes, route the terminal verdict through exact
+   `490757a`: PASS opens Stage-C/hard-tail **design**;
+   FAIL/INCONCLUSIVE records redesign/stop. That closes T1. No branch
+   automatically launches training.
 
 ## S3a terminal packet
 

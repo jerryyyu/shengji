@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-08 16:22 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-08 16:34 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,26 +10,25 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | none | Fresh Teacher evaluator/controller and all 22 inputs pass exact no-write preflight. Await `TEACHER_FRESH_MINI_LAUNCH_V1_REVIEW`; after PASS, run the one-shot receipt plus eight shards here. |
+| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING:** exact launch review passed; one-shot preparation and zero-problem post-preflight completed. Supervisor admitted at 16:33 EDT and owns 8/8 live label shards at outer 32/32 folds. Wait for one terminal gate; no duplicate/retry/migration. |
 | Air | none | Preserve failed Teacher audit-v1/v2 roots and the frozen source assets. Air is evidence source/fallback, not the selected execution host. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
-There is **no T1 Teacher job running now**. The only blocker is independent
-review of exact evaluator `f78e904`, controller `0399591`, and material
-`645b8f54…b894d`; no receipt or label has been created.
+The T1 Teacher audit is **running on Mini**. Receipt
+`e293858c…a10d` and preparation `83892930…c39` are exact, and the supervisor
+post-preparation preflight returned zero problems. Air remains idle by design.
 
 ## Next admitted execution
 
 ### T1 Teacher
 
-1. Independently review the exact Mini packet in `HANDOFF_ACTIVE.md`:
-   evaluator `f78e904`, controller `0399591`, material
-   `645b8f54…b894d`.
-2. PASS authorizes the literal one-shot preparer. Reopen its exact zero-exit
-   receipt and preparation SHAs; the preparer itself launches no label.
-3. Feed only those printed SHAs to the literal Mini supervisor command. It
-   owns eight shards at outer folds 32/32 while every searched continuation
-   retains the reviewed inner 30+300 accepted-world dose.
+1. **Complete:** exact Mini launch review passed for evaluator `f78e904`,
+   controller `0399591`, and material `645b8f54…b894d`.
+2. **Complete:** the one-shot preparer emitted exact receipt
+   `e293858c…a10d` and preparation `83892930…c39`; both reopened cleanly.
+3. **Running:** one Mini supervisor owns eight shards at outer folds 32/32
+   while each searched continuation retains the reviewed inner 30+300
+   accepted-world dose.
 4. Preserve and independently verify the first terminal PASS, FAIL, or
    INCONCLUSIVE gate. Never retry, extend, promote, or move hosts from this
    packet.

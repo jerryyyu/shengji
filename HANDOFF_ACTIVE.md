@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 18:19 EDT. This is the executable mailbox, not a
+Last update: 2026-08-08 18:27 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -177,12 +177,21 @@ If any probe fails, append a prose HOLD and do not emit a PASS marker.
    preparation were created and independently reopened.
 2. **Running:** eight Mini label shards are owned by one supervisor. Do not
    launch a duplicate, retry, extension, or host migration.
-3. Preserve the terminal PASS/FAIL/INCONCLUSIVE gate and independently verify
-   all child/aggregate bindings.
-4. After adapter-v2 review passes, route the terminal verdict through exact
-   `5b26c4b`: PASS opens Stage-C/hard-tail **design**;
-   FAIL/INCONCLUSIVE records redesign/stop. That closes T1. No branch
-   automatically launches training.
+3. After the supervisor publishes the finalized JSONL, reopen its ordered
+   eight `label_sha256s`, gate SHA, gate return code, and verdict. Require
+   return code 0 exactly for PASS and 4 exactly for FAIL/INCONCLUSIVE.
+4. In a new `mktemp -d` namespace, rerun exact evaluator `f78e904` `gate`
+   under `/opt/homebrew/bin/python3.14` with receipt `e293858c…a10d`, the
+   literal eight label paths, and those eight terminal hashes. Accept its 0/4
+   return-code contract, then require the recomputed gate bytes and SHA to
+   match the supervisor gate exactly. This is aggregation only: no worlds.
+5. Compute the finalized supervisor-JSONL SHA. Run reviewed adapter `5b26c4b`
+   `create` once with the exact gate/progress paths and hashes into the sole
+   canonical `teacher_terminal_adapter_v2.json`, then run `verify` with that
+   adapter's exact SHA.
+6. Record both terminal artifacts. PASS opens Stage-C/hard-tail **design**;
+   FAIL/INCONCLUSIVE records frozen-evidence diagnosis/redesign. That closes
+   T1. Neither branch automatically launches labels, training, or production.
 
 ## S3a terminal packet
 

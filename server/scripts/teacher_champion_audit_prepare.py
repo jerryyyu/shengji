@@ -18,6 +18,7 @@ import json
 import os
 import shutil
 import signal
+import socket
 import stat
 import subprocess
 import sys
@@ -26,42 +27,57 @@ from pathlib import Path
 from typing import Mapping
 
 
-SCHEMA = "teacher-v1-champion-audit-preparation-v1"
-EXIT_SCHEMA = "teacher-v1-champion-audit-receipt-exit-v1"
-RECEIPT_SCHEMA = "teacher-v1-champion-audit-receipt-v1"
+SCHEMA = "teacher-v1-champion-audit-preparation-v2"
+EXIT_SCHEMA = "teacher-v1-champion-audit-receipt-exit-v2"
+RECEIPT_SCHEMA = "teacher-v1-champion-audit-receipt-v2"
+AUDIT_ID = "teacher-v3-report-lcb-audit-v2"
 PRODUCER_GIT = "1a2a71333ea283784b19855e67e1ae231379ec79"
-AUDIT_GIT = "1866132766c7f16542bc27e730622e2dfea639ae"
+CONSUMED_GIT = "1866132766c7f16542bc27e730622e2dfea639ae"
+FRESH_ASSET_GIT = "ec62179e577e37a3230ddbffda96387692eddeca"
+AUDIT_GIT = "4a437c2b8daaa3e3528ae88b08e06c92694e149a"
 AUDIT_SCRIPT_SHA256 = (
-    "c7b47a7a0305f6067129cc7b19517d9a983efff70085f83edc0d39475955d6cb"
+    "cf9e1d45e0bf2f4b89510e591355f2db706ed4ff3dd0072c3577a99b83a1ee9e"
 )
 STAGE_B_STATE_SHA256 = (
     "90956da86f4f03074a1b4dc2d7198a3da5958470b733eacd104e066c523b4dc6"
 )
 AUDIT_STATE_SHA256 = (
+    "82da0fd8a2f362dd2a8340847ccb7caaba1c2d58840cd0809d2353751999d94c"
+)
+CONSUMED_AUDIT_STATE_SHA256 = (
     "d04d1c0fa507bab680da4d53eeb72325a97c8ca058aac0d01c16dfdcf44f7a34"
 )
+COMPILED_ENGINE_SHA256 = (
+    "ef7c161829c607aad790e949e0a0bae7e04d8a3be7aea51b80d5108a1f566b4d"
+)
 EXPECTED_PYTHON_VERSION = "Python 3.14.6"
-# The v1 checkout remains an immutable failed publication attempt.  This new
-# run identity is mandatory even though the estimand, states and schema stay
-# frozen: no artifact from the failed checkout may be resumed or overwritten.
-RUN_ID = "teacher-v3-report-lcb-audit-v2-149m"
-NAMESPACE = Path("runs/logs/teacher-v1-entry-149m-v3")
+EXPECTED_HOST = "Jerrys-Mac-mini.local"
+# Every earlier attempt remains immutable.  This run consumes only the
+# independently reviewed complement and has a new Mini-only namespace.
+RUN_ID = "teacher-v3-report-lcb-audit-v3-mini-149m"
+PARENT_NAMESPACE = Path("runs/logs/teacher-v1-entry-149m-v3")
+FRESH_ASSET_NAMESPACE = Path("runs/logs/teacher-v1-entry-149m-v4")
+NAMESPACE = Path("runs/logs/teacher-v1-entry-149m-v5")
 AUDIT_SCRIPT = Path("scripts/teacher_v1_champion_audit.py")
+COMPILED_ENGINE = Path("shengji/engine/_fast.cpython-314-darwin.so")
 SUPERVISOR_SCRIPT_NAME = "teacher_champion_audit_supervisor.py"
 STAGE_B_STATE_NAME = "stage_b_states.json"
-AUDIT_STATE_NAME = "champion_audit_states.json"
+CONSUMED_SOURCE_NAME = "champion_audit_states.json"
+FRESH_SOURCE_NAME = "champion_audit_states_v2.json"
+CONSUMED_AUDIT_STATE_NAME = "champion_audit_consumed_states_v1.json"
+AUDIT_STATE_NAME = "champion_audit_states_v2.json"
 STAGE_B_GATE_NAME = "stage_b_gate_v2.json"
 CHEAP_RECEIPT_NAME = "stage_b_cheap_v2_receipt.json"
 GOLD_RECEIPT_NAME = "stage_b_gold_v2_receipt.json"
-AUDIT_RECEIPT_NAME = "champion_audit_receipt_v1.json"
-PREPARATION_NAME = "champion_audit_preparation_v1.json"
+AUDIT_RECEIPT_NAME = "champion_audit_receipt_v2.json"
+PREPARATION_NAME = "champion_audit_preparation_v2.json"
 SHARDS = 8
 LABEL_NAMES = tuple(
-    f"champion_audit_v1_shard{index:02d}.json" for index in range(SHARDS))
+    f"champion_audit_v2_shard{index:02d}.json" for index in range(SHARDS))
 DESCENDANT_NAMES = (
     *LABEL_NAMES,
-    "champion_audit_gate_v1.json",
-    "champion_audit_supervisor_v1.jsonl",
+    "champion_audit_gate_v2.json",
+    "champion_audit_supervisor_v2.jsonl",
 )
 
 
@@ -69,8 +85,31 @@ def expected_receipt_identity() -> dict[str, object]:
     """Return the exact authority fields every v2 receipt must carry."""
     return {
         "schema": RECEIPT_SCHEMA,
+        "audit_id": AUDIT_ID,
         "complete": True,
         "run_id": RUN_ID,
+        "git": AUDIT_GIT,
+        "tree_dirty": False,
+        "promotable": True,
+        "host": EXPECTED_HOST,
+        "python": EXPECTED_PYTHON_VERSION.removeprefix("Python "),
+        "fast_engine": True,
+        "require_voids": True,
+        "experimental_sampler_ballot_flags": [],
+        "shard_count": SHARDS,
+        "folds": {"champion_selection": 32, "champion_report": 32},
+        "stage_b_state_set": {
+            "path": str(PARENT_NAMESPACE / STAGE_B_STATE_NAME),
+            "sha256": STAGE_B_STATE_SHA256,
+        },
+        "consumed_audit_state_set": {
+            "path": str(NAMESPACE / CONSUMED_AUDIT_STATE_NAME),
+            "sha256": CONSUMED_AUDIT_STATE_SHA256,
+        },
+        "audit_state_set": {
+            "path": str(NAMESPACE / AUDIT_STATE_NAME),
+            "sha256": AUDIT_STATE_SHA256,
+        },
         "execution_predeclaration": {
             "git": AUDIT_GIT,
             "audit_script_sha256": AUDIT_SCRIPT_SHA256,
@@ -85,6 +124,8 @@ class PreparationRefusal(RuntimeError):
 @dataclass(frozen=True)
 class Config:
     producer_root: Path
+    consumed_root: Path
+    fresh_asset_root: Path
     audit_root: Path
     python: Path
     expected_gate_sha256: str
@@ -95,8 +136,14 @@ class Config:
 @dataclass(frozen=True)
 class PreparationPaths:
     producer_namespace: Path
+    consumed_namespace: Path
+    fresh_asset_namespace: Path
     audit_namespace: Path
     audit_script: Path
+    compiled_engine: Path
+    consumed_source: Path
+    fresh_source: Path
+    consumed_audit_state: Path
     audit_state: Path
     receipt: Path
     receipt_log: Path
@@ -133,16 +180,26 @@ def adjacent_partial(path: Path) -> Path:
 
 
 def paths_for(config: Config) -> PreparationPaths:
-    producer_namespace = config.producer_root.resolve() / NAMESPACE
+    producer_namespace = config.producer_root.resolve() / PARENT_NAMESPACE
+    consumed_namespace = config.consumed_root.resolve() / PARENT_NAMESPACE
+    fresh_asset_namespace = (
+        config.fresh_asset_root.resolve() / FRESH_ASSET_NAMESPACE)
     audit_namespace = config.audit_root.resolve() / NAMESPACE
     return PreparationPaths(
         producer_namespace=producer_namespace,
+        consumed_namespace=consumed_namespace,
+        fresh_asset_namespace=fresh_asset_namespace,
         audit_namespace=audit_namespace,
         audit_script=config.audit_root.resolve() / AUDIT_SCRIPT,
+        compiled_engine=config.audit_root.resolve() / COMPILED_ENGINE,
+        consumed_source=consumed_namespace / CONSUMED_SOURCE_NAME,
+        fresh_source=fresh_asset_namespace / FRESH_SOURCE_NAME,
+        consumed_audit_state=(
+            audit_namespace / CONSUMED_AUDIT_STATE_NAME),
         audit_state=audit_namespace / AUDIT_STATE_NAME,
         receipt=audit_namespace / AUDIT_RECEIPT_NAME,
-        receipt_log=audit_namespace / "champion_audit_receipt_v1.log",
-        receipt_exit=audit_namespace / "champion_audit_receipt_v1.exit.json",
+        receipt_log=audit_namespace / "champion_audit_receipt_v2.log",
+        receipt_exit=audit_namespace / "champion_audit_receipt_v2.exit.json",
         preparation=audit_namespace / PREPARATION_NAME,
     )
 
@@ -185,7 +242,7 @@ def _relative_item(item: object, *, expected_name: str,
         raise PreparationRefusal(f"gate item {expected_name} is malformed")
     path = item.get("path")
     digest = item.get("sha256")
-    expected = NAMESPACE / expected_name
+    expected = PARENT_NAMESPACE / expected_name
     if path != str(expected) or not is_sha256(digest):
         raise PreparationRefusal(f"gate item {expected_name} binding drift")
     if expected_shard is not None and item.get("shard_index") != expected_shard:
@@ -221,7 +278,7 @@ def gate_parents(config: Config, paths: PreparationPaths) -> dict[str, object]:
         populations[field] = population
     return {
         "gate": gate,
-        "gate_ref": {"path": str(NAMESPACE / STAGE_B_GATE_NAME),
+        "gate_ref": {"path": str(PARENT_NAMESPACE / STAGE_B_GATE_NAME),
                      "sha256": config.expected_gate_sha256},
         "state": (state_path, state_sha),
         **populations,
@@ -242,7 +299,7 @@ def _receipt_binding(
     first = bindings[0]
     if any(binding != first for binding in bindings[1:]):
         raise PreparationRefusal(f"{role} receipt binding differs by shard")
-    relative = NAMESPACE / expected_name
+    relative = PARENT_NAMESPACE / expected_name
     if (first.get("path") != str(relative)
             or first.get("role") != role
             or not is_sha256(first.get("sha256"))
@@ -274,7 +331,8 @@ def parent_population(config: Config, paths: PreparationPaths) -> dict[str, obje
     ordered = [
         parents["state"], cheap_receipt, gold_receipt,
         *cheap, *gold,
-        (NAMESPACE / STAGE_B_GATE_NAME, config.expected_gate_sha256),
+        (PARENT_NAMESPACE / STAGE_B_GATE_NAME,
+         config.expected_gate_sha256),
     ]
     if len(ordered) != 20 or len({item[0] for item in ordered}) != 20:
         raise PreparationRefusal("audit parent population is not exact 20")
@@ -286,10 +344,21 @@ def parent_population(config: Config, paths: PreparationPaths) -> dict[str, obje
 
 def preflight_problems(config: Config, paths: PreparationPaths) -> list[str]:
     problems = []
-    if config.producer_root.resolve() == config.audit_root.resolve():
-        problems.append("producer and audit roots must be distinct")
+    roots = {
+        config.producer_root.resolve(),
+        config.consumed_root.resolve(),
+        config.fresh_asset_root.resolve(),
+        config.audit_root.resolve(),
+    }
+    if len(roots) != 4:
+        problems.append("producer, consumed, fresh, and audit roots must differ")
+    if socket.gethostname() != EXPECTED_HOST:
+        problems.append(
+            f"execution host {socket.gethostname()}, expected {EXPECTED_HOST}")
     for label, root, expected in (
             ("producer", config.producer_root, PRODUCER_GIT),
+            ("consumed", config.consumed_root, CONSUMED_GIT),
+            ("fresh asset", config.fresh_asset_root, FRESH_ASSET_GIT),
             ("audit", config.audit_root, AUDIT_GIT)):
         try:
             head = _git(root, "rev-parse", "HEAD")
@@ -304,10 +373,23 @@ def preflight_problems(config: Config, paths: PreparationPaths) -> list[str]:
     if not is_regular_unlinked(paths.audit_script) \
             or sha256_file(paths.audit_script) != AUDIT_SCRIPT_SHA256:
         problems.append("frozen audit script identity drift")
-    if not is_regular_unlinked(paths.audit_state) \
-            or sha256_file(paths.audit_state) != AUDIT_STATE_SHA256 \
-            or lexists(adjacent_partial(paths.audit_state)):
-        problems.append("frozen audit state identity drift")
+    if not is_regular_unlinked(paths.compiled_engine) \
+            or sha256_file(paths.compiled_engine) != COMPILED_ENGINE_SHA256:
+        problems.append("frozen compiled engine identity drift")
+    for label, path, digest in (
+            ("consumed audit state", paths.consumed_source,
+             CONSUMED_AUDIT_STATE_SHA256),
+            ("fresh audit state", paths.fresh_source,
+             AUDIT_STATE_SHA256)):
+        if (not is_regular_unlinked(path)
+                or sha256_file(path) != digest
+                or lexists(adjacent_partial(path))):
+            problems.append(f"{label} source identity drift")
+    for label, namespace in (
+            ("parent destination", config.audit_root / PARENT_NAMESPACE),
+            ("audit destination", paths.audit_namespace)):
+        if not namespace.is_dir():
+            problems.append(f"{label} namespace missing {namespace}")
     if not config.python.is_file() or not os.access(config.python, os.X_OK):
         problems.append(f"audit Python is not executable {config.python}")
     else:
@@ -335,8 +417,8 @@ def preflight_problems(config: Config, paths: PreparationPaths) -> list[str]:
           or sha256_file(supervisor_script)
           != config.expected_supervisor_sha256):
         problems.append("supervisor SHA predeclaration drift")
-    owned = [paths.receipt, paths.receipt_log, paths.receipt_exit,
-             paths.preparation]
+    owned = [paths.consumed_audit_state, paths.audit_state, paths.receipt,
+             paths.receipt_log, paths.receipt_exit, paths.preparation]
     owned.extend(paths.audit_namespace / name for name in DESCENDANT_NAMES)
     for path in owned:
         if lexists(path) or lexists(adjacent_partial(path)):
@@ -411,11 +493,15 @@ def _receipt_command(config: Config, paths: PreparationPaths,
         "--run-id", RUN_ID,
         "--expected-audit-git", AUDIT_GIT,
         "--expected-audit-script-sha256", AUDIT_SCRIPT_SHA256,
-        "--stage-b-state-set", str(NAMESPACE / STAGE_B_STATE_NAME),
+        "--stage-b-state-set", str(PARENT_NAMESPACE / STAGE_B_STATE_NAME),
         "--expected-stage-b-state-set-sha256", STAGE_B_STATE_SHA256,
+        "--consumed-audit-state-set",
+        str(NAMESPACE / CONSUMED_AUDIT_STATE_NAME),
+        "--expected-consumed-audit-state-set-sha256",
+        CONSUMED_AUDIT_STATE_SHA256,
         "--audit-state-set", str(NAMESPACE / AUDIT_STATE_NAME),
         "--expected-audit-state-set-sha256", AUDIT_STATE_SHA256,
-        "--stage-b-gate", str(NAMESPACE / STAGE_B_GATE_NAME),
+        "--stage-b-gate", str(PARENT_NAMESPACE / STAGE_B_GATE_NAME),
         "--expected-stage-b-gate-sha256", config.expected_gate_sha256,
     ]
     for relative, digest in cheap:
@@ -490,12 +576,17 @@ def prepare(config: Config) -> tuple[str, str]:
     parents = parent_population(config, paths)
     ordered = parents["ordered"]
     assert isinstance(ordered, list)
-    collisions = [
-        config.audit_root / relative
-        for relative, _digest in ordered
-        if (lexists(config.audit_root / relative)
-            or lexists(adjacent_partial(config.audit_root / relative)))
-    ]
+    state_assets = (
+        (paths.consumed_source, paths.consumed_audit_state,
+         CONSUMED_AUDIT_STATE_SHA256, CONSUMED_GIT),
+        (paths.fresh_source, paths.audit_state,
+         AUDIT_STATE_SHA256, FRESH_ASSET_GIT),
+    )
+    destinations = [config.audit_root / relative
+                    for relative, _digest in ordered]
+    destinations.extend(item[1] for item in state_assets)
+    collisions = [path for path in destinations
+                  if lexists(path) or lexists(adjacent_partial(path))]
     if collisions:
         raise PreparationRefusal(
             f"parent destination collisions before copy: {collisions}")
@@ -505,6 +596,15 @@ def prepare(config: Config) -> tuple[str, str]:
         destination = config.audit_root / relative
         _copy_exclusive(source, destination, digest)
         copied.append({"path": str(relative), "sha256": digest})
+    copied_state_assets = []
+    for source, destination, digest, source_git in state_assets:
+        _copy_exclusive(source, destination, digest)
+        copied_state_assets.append({
+            "source_git": source_git,
+            "source_path": str(source),
+            "path": str(destination.relative_to(config.audit_root)),
+            "sha256": digest,
+        })
     code, _argv = _run_receipt(config, paths, parents)
     if code != 0:
         raise PreparationRefusal(f"audit receipt creator exited {code}")
@@ -519,7 +619,10 @@ def prepare(config: Config) -> tuple[str, str]:
     summary = {
         "schema": SCHEMA,
         "complete": True,
+        "host": EXPECTED_HOST,
         "producer_git": PRODUCER_GIT,
+        "consumed_git": CONSUMED_GIT,
+        "fresh_asset_git": FRESH_ASSET_GIT,
         "audit_git": AUDIT_GIT,
         "audit_script_sha256": AUDIT_SCRIPT_SHA256,
         "python": EXPECTED_PYTHON_VERSION,
@@ -528,6 +631,7 @@ def prepare(config: Config) -> tuple[str, str]:
         "receipt_identity": receipt_identity,
         "stage_b_gate": parents["gate_ref"],
         "copied_parents": copied,
+        "copied_state_assets": copied_state_assets,
         "receipt": {"path": str(NAMESPACE / AUDIT_RECEIPT_NAME),
                     "sha256": receipt_sha256},
         "receipt_log": {"path": str(NAMESPACE / paths.receipt_log.name),
@@ -546,6 +650,8 @@ def prepare(config: Config) -> tuple[str, str]:
 def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser()
     ap.add_argument("--producer-root", required=True)
+    ap.add_argument("--consumed-root", required=True)
+    ap.add_argument("--fresh-asset-root", required=True)
     ap.add_argument("--audit-root", required=True)
     ap.add_argument("--python", required=True)
     ap.add_argument("--expected-stage-b-gate-sha256", required=True)
@@ -563,6 +669,8 @@ def main() -> None:
     args = parser().parse_args()
     config = Config(
         producer_root=Path(args.producer_root).resolve(),
+        consumed_root=Path(args.consumed_root).resolve(),
+        fresh_asset_root=Path(args.fresh_asset_root).resolve(),
         audit_root=Path(args.audit_root).resolve(),
         python=_absolute_unresolved(args.python),
         expected_gate_sha256=args.expected_stage_b_gate_sha256,

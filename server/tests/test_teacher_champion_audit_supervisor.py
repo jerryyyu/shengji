@@ -51,7 +51,7 @@ if args.mode == "label":
     if os.environ.get("FAKE_MISSING_FINAL_SHARD") == args.shard_index:
         raise SystemExit(0)
     schema = ("wrong" if os.environ.get("FAKE_BAD_SHARD") == args.shard_index
-              else "teacher-v1-champion-audit-shard-v1")
+              else "teacher-v1-champion-audit-shard-v2")
     Path(args.out).write_text(json.dumps({
         "schema": schema,
         "complete": True,
@@ -64,7 +64,7 @@ if args.mode == "label":
 verdict = os.environ.get("FAKE_GATE_VERDICT", "PASS")
 passed = verdict == "PASS"
 Path(args.out).write_text(json.dumps({
-    "schema": "teacher-v1-champion-audit-gate-v1",
+    "schema": "teacher-v1-champion-audit-gate-v2",
     "complete": True,
     "terminal": True,
     "extension_authorized": False,
@@ -87,6 +87,9 @@ def _fixture(tmp_path: Path, monkeypatch):
     script = root / S.AUDIT_SCRIPT
     script.parent.mkdir(parents=True)
     script.write_text(FAKE_AUDIT)
+    compiled_engine = root / S.COMPILED_ENGINE
+    compiled_engine.parent.mkdir(parents=True)
+    compiled_engine.write_bytes(b"compiled-engine")
     receipt = namespace / S.RECEIPT_NAME
     receipt.write_text(json.dumps(S.expected_receipt_identity()))
     receipt_log = namespace / S.RECEIPT_LOG_NAME
@@ -99,11 +102,28 @@ def _fixture(tmp_path: Path, monkeypatch):
     }))
     copied = []
     for name in S.PARENT_NAMES:
-        parent = namespace / name
+        parent = root / S.PARENT_NAMESPACE / name
+        parent.parent.mkdir(parents=True, exist_ok=True)
         parent.write_text(f"parent {name}\n")
-        copied.append({"path": str(S.NAMESPACE / name),
+        copied.append({"path": str(S.PARENT_NAMESPACE / name),
                        "sha256": _sha(parent)})
+    copied_state_assets = []
+    for name, digest, source_git in S.STATE_ASSET_BINDINGS:
+        state_asset = namespace / name
+        state_asset.write_text(f"state asset {name}\n")
+        digest = _sha(state_asset)
+        copied_state_assets.append({
+            "source_git": source_git,
+            "source_path": f"/source/{name}",
+            "path": str(S.NAMESPACE / name),
+            "sha256": digest,
+        })
+    monkeypatch.setattr(S, "STATE_ASSET_BINDINGS", tuple(
+        (name, item["sha256"], source_git)
+        for (name, _digest, source_git), item in zip(
+            S.STATE_ASSET_BINDINGS, copied_state_assets, strict=True)))
     monkeypatch.setattr(S, "AUDIT_SCRIPT_SHA256", _sha(script))
+    monkeypatch.setattr(S, "COMPILED_ENGINE_SHA256", _sha(compiled_engine))
     monkeypatch.setattr(
         S, "_git", lambda _root, *args:
         S.AUDIT_GIT if args == ("rev-parse", "HEAD") else "")
@@ -116,6 +136,10 @@ def _fixture(tmp_path: Path, monkeypatch):
     preparation.write_text(json.dumps({
         "schema": S.PREPARATION_SCHEMA,
         "complete": True,
+        "host": S.EXPECTED_HOST,
+        "producer_git": S.PRODUCER_GIT,
+        "consumed_git": S.CONSUMED_GIT,
+        "fresh_asset_git": S.FRESH_ASSET_GIT,
         "audit_git": S.AUDIT_GIT,
         "audit_script_sha256": S.AUDIT_SCRIPT_SHA256,
         "python": S.EXPECTED_PYTHON_VERSION,
@@ -129,6 +153,7 @@ def _fixture(tmp_path: Path, monkeypatch):
         "receipt_exit": {"path": str(S.NAMESPACE / S.RECEIPT_EXIT_NAME),
                          "sha256": _sha(receipt_exit), "returncode": 0},
         "copied_parents": copied,
+        "copied_state_assets": copied_state_assets,
         "audit_labels_authorized": True,
         "retry_authorized": False,
         "production_promotion": False,
@@ -143,6 +168,18 @@ def _fixture(tmp_path: Path, monkeypatch):
         heartbeat_seconds=0.05,
     )
     return config, S.paths_for(root)
+
+
+def _restore_real_preflight(monkeypatch, paths):
+    monkeypatch.setattr(S, "AUDIT_SCRIPT_SHA256", _sha(paths.audit_script))
+    monkeypatch.setattr(
+        S, "COMPILED_ENGINE_SHA256", _sha(paths.compiled_engine))
+    monkeypatch.setattr(S, "STATE_ASSET_BINDINGS", tuple(
+        (name, _sha(paths.namespace / name), source_git)
+        for name, _digest, source_git in S.STATE_ASSET_BINDINGS))
+    monkeypatch.setattr(
+        S, "_git", lambda _root, *args:
+        S.AUDIT_GIT if args == ("rev-parse", "HEAD") else "")
 
 
 def test_commands_pin_exact_eight_by_32_by_32_packet(tmp_path, monkeypatch):
@@ -259,10 +296,7 @@ def test_preexisting_output_refuses_before_any_child(tmp_path, monkeypatch):
     paths.labels[0].write_text("collision")
     # Restore the real preflight around the fixture's fake Git identity.
     monkeypatch.undo()
-    monkeypatch.setattr(S, "AUDIT_SCRIPT_SHA256", _sha(paths.audit_script))
-    monkeypatch.setattr(
-        S, "_git", lambda _root, *args:
-        S.AUDIT_GIT if args == ("rev-parse", "HEAD") else "")
+    _restore_real_preflight(monkeypatch, paths)
     problems = S.preflight_problems(config, paths)
     assert any("one-shot output collision" in problem for problem in problems)
 
@@ -276,21 +310,27 @@ def test_child_environment_removes_experimental_flags(monkeypatch):
     assert env["SHENGJI_REQUIRE_VOIDS"] == "1"
 
 
+def test_real_preflight_is_pinned_to_mini(tmp_path, monkeypatch):
+    config, paths = _fixture(tmp_path, monkeypatch)
+    monkeypatch.undo()
+    _restore_real_preflight(monkeypatch, paths)
+    monkeypatch.setattr(S.socket, "gethostname", lambda: "not-the-mini")
+    assert "execution host not-the-mini, expected Jerrys-Mac-mini.local" in \
+        S.preflight_problems(config, paths)
+
+
 def test_preflight_rejects_receipt_partial_and_supervisor_drift(
         tmp_path, monkeypatch):
     config, paths = _fixture(tmp_path, monkeypatch)
     # Restore and exercise the real preflight rather than the run fixture's
     # narrow identity substitute.
     monkeypatch.undo()
-    monkeypatch.setattr(S, "AUDIT_SCRIPT_SHA256", _sha(paths.audit_script))
-    monkeypatch.setattr(
-        S, "_git", lambda _root, *args:
-        S.AUDIT_GIT if args == ("rev-parse", "HEAD") else "")
+    _restore_real_preflight(monkeypatch, paths)
     S.artifact_partial(paths.receipt).write_text("incomplete")
     changed = S.Config(
         **{**config.__dict__, "expected_supervisor_sha256": "0" * 64})
     problems = S.preflight_problems(changed, paths)
-    assert any("receipt_v1.json.partial" in problem for problem in problems)
+    assert any("receipt_v2.json.partial" in problem for problem in problems)
     assert "external supervisor SHA predeclaration drift" in problems
 
 
@@ -298,10 +338,7 @@ def test_preflight_requires_zero_exit_bound_preparation(
         tmp_path, monkeypatch):
     config, paths = _fixture(tmp_path, monkeypatch)
     monkeypatch.undo()
-    monkeypatch.setattr(S, "AUDIT_SCRIPT_SHA256", _sha(paths.audit_script))
-    monkeypatch.setattr(
-        S, "_git", lambda _root, *args:
-        S.AUDIT_GIT if args == ("rev-parse", "HEAD") else "")
+    _restore_real_preflight(monkeypatch, paths)
     exit_payload = json.loads(paths.receipt_exit.read_text())
     exit_payload["returncode"] = 3
     paths.receipt_exit.write_text(json.dumps(exit_payload))
@@ -316,6 +353,10 @@ def test_preflight_requires_zero_exit_bound_preparation(
         ("schema", "teacher-v1-champion-audit-receipt-v0"),
         ("complete", False),
         ("run_id", "teacher-v3-report-lcb-audit-v1-149m"),
+        ("consumed_audit_state_set", {
+            "path": str(S.NAMESPACE / "champion_audit_states_v2.json"),
+            "sha256": S.AUDIT_STATE_SHA256,
+        }),
         ("execution_predeclaration", {
             "git": "182d1df21697cedd722edfd3215ea1e2a7dd8753",
             "audit_script_sha256": "0" * 64,
@@ -326,10 +367,7 @@ def test_preflight_rejects_hash_bound_wrong_receipt_identity(
         tmp_path, monkeypatch, field, bad_value):
     config, paths = _fixture(tmp_path, monkeypatch)
     monkeypatch.undo()
-    monkeypatch.setattr(S, "AUDIT_SCRIPT_SHA256", _sha(paths.audit_script))
-    monkeypatch.setattr(
-        S, "_git", lambda _root, *args:
-        S.AUDIT_GIT if args == ("rev-parse", "HEAD") else "")
+    _restore_real_preflight(monkeypatch, paths)
 
     wrong_identity = S.expected_receipt_identity()
     wrong_identity[field] = bad_value

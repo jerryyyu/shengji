@@ -20,6 +20,7 @@ import hashlib
 import json
 import os
 import signal
+import socket
 import stat
 import subprocess
 import sys
@@ -29,22 +30,41 @@ from pathlib import Path
 from typing import IO, Iterable
 
 
-SCHEMA = "teacher-v1-champion-audit-supervisor-v1"
-PREPARATION_SCHEMA = "teacher-v1-champion-audit-preparation-v1"
-RECEIPT_EXIT_SCHEMA = "teacher-v1-champion-audit-receipt-exit-v1"
-RECEIPT_SCHEMA = "teacher-v1-champion-audit-receipt-v1"
-AUDIT_GIT = "1866132766c7f16542bc27e730622e2dfea639ae"
+SCHEMA = "teacher-v1-champion-audit-supervisor-v2"
+PREPARATION_SCHEMA = "teacher-v1-champion-audit-preparation-v2"
+RECEIPT_EXIT_SCHEMA = "teacher-v1-champion-audit-receipt-exit-v2"
+RECEIPT_SCHEMA = "teacher-v1-champion-audit-receipt-v2"
+AUDIT_ID = "teacher-v3-report-lcb-audit-v2"
+PRODUCER_GIT = "1a2a71333ea283784b19855e67e1ae231379ec79"
+CONSUMED_GIT = "1866132766c7f16542bc27e730622e2dfea639ae"
+FRESH_ASSET_GIT = "ec62179e577e37a3230ddbffda96387692eddeca"
+AUDIT_GIT = "4a437c2b8daaa3e3528ae88b08e06c92694e149a"
 AUDIT_SCRIPT_SHA256 = (
-    "c7b47a7a0305f6067129cc7b19517d9a983efff70085f83edc0d39475955d6cb"
+    "cf9e1d45e0bf2f4b89510e591355f2db706ed4ff3dd0072c3577a99b83a1ee9e"
+)
+COMPILED_ENGINE_SHA256 = (
+    "ef7c161829c607aad790e949e0a0bae7e04d8a3be7aea51b80d5108a1f566b4d"
+)
+STAGE_B_STATE_SHA256 = (
+    "90956da86f4f03074a1b4dc2d7198a3da5958470b733eacd104e066c523b4dc6"
+)
+CONSUMED_AUDIT_STATE_SHA256 = (
+    "d04d1c0fa507bab680da4d53eeb72325a97c8ca058aac0d01c16dfdcf44f7a34"
+)
+AUDIT_STATE_SHA256 = (
+    "82da0fd8a2f362dd2a8340847ccb7caaba1c2d58840cd0809d2353751999d94c"
 )
 EXPECTED_PYTHON_VERSION = "Python 3.14.6"
-RUN_ID = "teacher-v3-report-lcb-audit-v2-149m"
-NAMESPACE = Path("runs/logs/teacher-v1-entry-149m-v3")
+EXPECTED_HOST = "Jerrys-Mac-mini.local"
+RUN_ID = "teacher-v3-report-lcb-audit-v3-mini-149m"
+PARENT_NAMESPACE = Path("runs/logs/teacher-v1-entry-149m-v3")
+NAMESPACE = Path("runs/logs/teacher-v1-entry-149m-v5")
 AUDIT_SCRIPT = Path("scripts/teacher_v1_champion_audit.py")
-RECEIPT_NAME = "champion_audit_receipt_v1.json"
-RECEIPT_LOG_NAME = "champion_audit_receipt_v1.log"
-RECEIPT_EXIT_NAME = "champion_audit_receipt_v1.exit.json"
-PREPARATION_NAME = "champion_audit_preparation_v1.json"
+COMPILED_ENGINE = Path("shengji/engine/_fast.cpython-314-darwin.so")
+RECEIPT_NAME = "champion_audit_receipt_v2.json"
+RECEIPT_LOG_NAME = "champion_audit_receipt_v2.log"
+RECEIPT_EXIT_NAME = "champion_audit_receipt_v2.exit.json"
+PREPARATION_NAME = "champion_audit_preparation_v2.json"
 PARENT_NAMES = (
     "stage_b_states.json",
     "stage_b_cheap_v2_receipt.json",
@@ -55,15 +75,21 @@ PARENT_NAMES = (
       for index in range(8)),
     "stage_b_gate_v2.json",
 )
+STATE_ASSET_BINDINGS = (
+    ("champion_audit_consumed_states_v1.json",
+     CONSUMED_AUDIT_STATE_SHA256, CONSUMED_GIT),
+    ("champion_audit_states_v2.json",
+     AUDIT_STATE_SHA256, FRESH_ASSET_GIT),
+)
 SHARD_COUNT = 8
 SELECTION_WORLDS = 32
 REPORT_WORLDS = 32
 LABEL_NAMES = tuple(
-    f"champion_audit_v1_shard{index:02d}.json"
+    f"champion_audit_v2_shard{index:02d}.json"
     for index in range(SHARD_COUNT)
 )
-GATE_NAME = "champion_audit_gate_v1.json"
-PROGRESS_NAME = "champion_audit_supervisor_v1.jsonl"
+GATE_NAME = "champion_audit_gate_v2.json"
+PROGRESS_NAME = "champion_audit_supervisor_v2.jsonl"
 EXPERIMENTAL_FLAGS = (
     "SHENGJI_WEIGHTED_SPLITS",
     "SHENGJI_UNIFORM_DEAL",
@@ -76,8 +102,35 @@ def expected_receipt_identity() -> dict[str, object]:
     """Return the receipt authority independently enforced at launch."""
     return {
         "schema": RECEIPT_SCHEMA,
+        "audit_id": AUDIT_ID,
         "complete": True,
         "run_id": RUN_ID,
+        "git": AUDIT_GIT,
+        "tree_dirty": False,
+        "promotable": True,
+        "host": EXPECTED_HOST,
+        "python": EXPECTED_PYTHON_VERSION.removeprefix("Python "),
+        "fast_engine": True,
+        "require_voids": True,
+        "experimental_sampler_ballot_flags": [],
+        "shard_count": SHARD_COUNT,
+        "folds": {
+            "champion_selection": SELECTION_WORLDS,
+            "champion_report": REPORT_WORLDS,
+        },
+        "stage_b_state_set": {
+            "path": str(PARENT_NAMESPACE / "stage_b_states.json"),
+            "sha256": STAGE_B_STATE_SHA256,
+        },
+        "consumed_audit_state_set": {
+            "path": str(
+                NAMESPACE / "champion_audit_consumed_states_v1.json"),
+            "sha256": CONSUMED_AUDIT_STATE_SHA256,
+        },
+        "audit_state_set": {
+            "path": str(NAMESPACE / "champion_audit_states_v2.json"),
+            "sha256": AUDIT_STATE_SHA256,
+        },
         "execution_predeclaration": {
             "git": AUDIT_GIT,
             "audit_script_sha256": AUDIT_SCRIPT_SHA256,
@@ -105,6 +158,7 @@ class Paths:
     root: Path
     namespace: Path
     audit_script: Path
+    compiled_engine: Path
     receipt: Path
     receipt_log: Path
     receipt_exit: Path
@@ -163,6 +217,7 @@ def paths_for(root: Path) -> Paths:
         root=root,
         namespace=namespace,
         audit_script=root / AUDIT_SCRIPT,
+        compiled_engine=root / COMPILED_ENGINE,
         receipt=namespace / RECEIPT_NAME,
         receipt_log=namespace / RECEIPT_LOG_NAME,
         receipt_exit=namespace / RECEIPT_EXIT_NAME,
@@ -279,6 +334,10 @@ def _preparation_problems(config: Config, paths: Paths) -> list[str]:
     }
     if (preparation.get("schema") != PREPARATION_SCHEMA
             or preparation.get("complete") is not True
+            or preparation.get("host") != EXPECTED_HOST
+            or preparation.get("producer_git") != PRODUCER_GIT
+            or preparation.get("consumed_git") != CONSUMED_GIT
+            or preparation.get("fresh_asset_git") != FRESH_ASSET_GIT
             or preparation.get("audit_git") != AUDIT_GIT
             or preparation.get("audit_script_sha256")
             != AUDIT_SCRIPT_SHA256
@@ -294,7 +353,8 @@ def _preparation_problems(config: Config, paths: Paths) -> list[str]:
             or preparation.get("retry_authorized") is not False
             or preparation.get("production_promotion") is not False):
         problems.append("audit preparation authority/identity drift")
-    expected_parents = {str(NAMESPACE / name) for name in PARENT_NAMES}
+    expected_parents = {
+        str(PARENT_NAMESPACE / name) for name in PARENT_NAMES}
     copied = preparation.get("copied_parents")
     if (not isinstance(copied, list) or len(copied) != len(PARENT_NAMES)
             or {item.get("path") for item in copied
@@ -304,6 +364,28 @@ def _preparation_problems(config: Config, paths: Paths) -> list[str]:
         problems.append("audit preparation copied-parent population drift")
     else:
         for item in copied:
+            problems += _artifact_problems(
+                paths.root / str(item["path"]), str(item["sha256"]))
+    copied_assets = preparation.get("copied_state_assets")
+    expected_assets = {
+        str(NAMESPACE / name): (digest, source_git)
+        for name, digest, source_git in STATE_ASSET_BINDINGS
+    }
+    if (not isinstance(copied_assets, list)
+            or len(copied_assets) != len(STATE_ASSET_BINDINGS)
+            or {item.get("path") for item in copied_assets
+                if isinstance(item, dict)} != set(expected_assets)
+            or any(not isinstance(item, dict)
+                   or not isinstance(item.get("source_path"), str)
+                   or not item.get("source_path")
+                   or item.get("sha256")
+                   != expected_assets.get(item.get("path"), (None, None))[0]
+                   or item.get("source_git")
+                   != expected_assets.get(item.get("path"), (None, None))[1]
+                   for item in copied_assets)):
+        problems.append("audit preparation state-asset population drift")
+    else:
+        for item in copied_assets:
             problems += _artifact_problems(
                 paths.root / str(item["path"]), str(item["sha256"]))
     for label, path, field in (
@@ -356,6 +438,9 @@ def _owned_names(paths: Paths) -> Iterable[Path]:
 
 def preflight_problems(config: Config, paths: Paths) -> list[str]:
     problems = []
+    if socket.gethostname() != EXPECTED_HOST:
+        problems.append(
+            f"execution host {socket.gethostname()}, expected {EXPECTED_HOST}")
     try:
         head = _git(paths.root, "rev-parse", "HEAD")
         dirty = _git(
@@ -372,6 +457,10 @@ def preflight_problems(config: Config, paths: Paths) -> list[str]:
         problems.append("frozen audit script is missing/nonregular")
     elif sha256_file(paths.audit_script) != AUDIT_SCRIPT_SHA256:
         problems.append("frozen audit script SHA drift")
+    if not is_regular_unlinked(paths.compiled_engine):
+        problems.append("frozen compiled engine is missing/nonregular")
+    elif sha256_file(paths.compiled_engine) != COMPILED_ENGINE_SHA256:
+        problems.append("frozen compiled engine SHA drift")
     if not config.python.is_file() or not os.access(config.python, os.X_OK):
         problems.append(f"audit Python is not executable {config.python}")
     else:
@@ -563,7 +652,7 @@ def _reopen_label(path: Path, shard_index: int) -> str:
     except (OSError, ValueError) as exc:
         raise SupervisorRefusal(
             f"label {shard_index} cannot reopen: {exc}") from exc
-    if (payload.get("schema") != "teacher-v1-champion-audit-shard-v1"
+    if (payload.get("schema") != "teacher-v1-champion-audit-shard-v2"
             or payload.get("complete") is not True
             or payload.get("shard_index") != shard_index
             or payload.get("shard_count") != SHARD_COUNT):
@@ -609,7 +698,7 @@ def _run_gate(config: Config, paths: Paths, progress: Progress,
         raise SupervisorRefusal(f"terminal gate cannot reopen: {exc}") from exc
     verdict = payload.get("verdict")
     expected_pass = code == 0
-    if (payload.get("schema") != "teacher-v1-champion-audit-gate-v1"
+    if (payload.get("schema") != "teacher-v1-champion-audit-gate-v2"
             or payload.get("complete") is not True
             or payload.get("terminal") is not True
             or payload.get("extension_authorized") is not False
@@ -633,7 +722,7 @@ def run(config: Config) -> tuple[int, dict]:
     try:
         progress.event(
             "supervisor", "admitted", audit_git=AUDIT_GIT,
-            run_id=RUN_ID,
+            run_id=RUN_ID, host=EXPECTED_HOST,
             execution_predeclaration=expected_receipt_identity()[
                 "execution_predeclaration"],
             audit_script_sha256=AUDIT_SCRIPT_SHA256,
@@ -665,6 +754,7 @@ def run(config: Config) -> tuple[int, dict]:
             "schema": SCHEMA,
             "complete": True,
             "run_id": RUN_ID,
+            "host": EXPECTED_HOST,
             "execution_predeclaration": expected_receipt_identity()[
                 "execution_predeclaration"],
             "audit_git": AUDIT_GIT,

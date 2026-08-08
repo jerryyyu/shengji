@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-08 13:36 EDT. This file owns current compute and short
+Last reconciled: 2026-08-08 14:12 EDT. This file owns current compute and short
 terminal stubs only. The exact 810-line pre-compaction ledger is archived at
 `docs_archive/jobs-through-2026-08-08.md`, SHA-256 `26beff936f6c0744b220fc79e233163c8f09acde8a13adcba5450327ad132252`.
 Detailed interpretation belongs in `AI_POLICIES.md`; execution order belongs
@@ -82,7 +82,7 @@ Pushed `66d6836` adds S3a's outcome-free timing receipt on exact reserved
 nested-work-field probe passed. The repaired exact nested schema and counter
 equalities were pushed at `2de0824` and independently passed review. The
 subsequent v1 run exposed a separate publication-only false positive described
-below; a fresh v2 repair now requires review.
+below; exact v2 repair `c784e6d` / material `34993502…092d` now awaits review.
 
 The live-parent PASS admitted the first score-free S3b timing job on Mini.
 That exact attempt is now terminal HOLD after the exact solver exceeded its
@@ -180,8 +180,9 @@ validation: schema `s3a-bury-throughput-preflight-v2`, fresh seeds
 every other receipt surface. Top-level and nested exact schemas plus fixed-
 identity equality remain mandatory. A realistic `digests.cards` fixture now
 passes; identity drift and actual `caps.cards` outcome injection refuse.
-Focused tests pass 11/11 and the broad boundary matrix passes 86/86. No v2 run
-is authorized before independent review.
+The final `claim_boundary` repair is pushed at `c784e6d`; focused tests pass
+12/12 and the broad boundary matrix passes 87/87. No v2 run is authorized
+before independent review of exact material `34993502…092d`.
 
 The fresh v2 output is predeclared as
 `server/runs/logs/s3a-bury-v2-throughput-mini-v2.json`; its `.partial` and

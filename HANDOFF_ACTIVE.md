@@ -34,7 +34,7 @@ synthesis belongs in `AI_POLICIES.md`.
 - **Direct-Q: COMPLETE / SELECT NONE.** Gameplay was
   `+0.162760 +/- 0.058755`, but seed 1 and both pooled role held-out MSE gates
   failed. Aggregate SHA `1fa6789e…ce791`; it authorizes nothing.
-- **Suphx O0: EXECUTABLE IMPLEMENTATION PUSHED / RE-REVIEW REQUIRED / NO
+- **Suphx O0: MECHANICS REVIEW PASS / FINAL MATERIAL RE-REVIEW REQUIRED / NO
   TRAINING.** Exact
   pushed commit `b22ee8e` produced and reopened Mini artifact
   `4f0c3dd542634b66fd0826a8caef5dc21c7a8b083f96804d1f2f9bbe653ee434`.
@@ -64,8 +64,11 @@ synthesis belongs in `AI_POLICIES.md`.
   and diagnostics plus every raw round replay remain in the terminal gate;
   all long phases now emit progress. The repaired full 128-state generation
   takes 12.63s and remains exactly 32/32/32/32 by surface, with hidden-burial
-  witnesses in every surface. Independent re-review of exact O0 material
-  commit `7b15338` is required.
+  witnesses in every surface. The 23:52 review passed the repaired chronology
+  mechanics and held only because material `SUPHX_MICRO_SPEC.md` still said
+  22/22 instead of 25/25. Exact pushed material commit `9aabf0b` corrects that
+  one count; a final explicit review PASS for that material snapshot is still
+  required.
 - **DEV-512:** SELECT NONE / closed. CALIB and REPORT remain sealed.
 
 Fresh executable reopening, repeated through 19:34, independently reproduced
@@ -435,15 +438,16 @@ at 23:21.
    release 16 only for a correctness, responsiveness or availability
    regression; policy rollback to `mc-strong` and CPU resize remain separate
    decisions.
-4. Independently re-review exact Suphx O0 material commit `7b15338`, especially
-   legal hidden-hand/burial reachability, fixed-ensemble inference, exact-root
-   enforcement, admission boundary and gate recomputation. On PASS only,
+4. Final-review exact Suphx O0 material commit `9aabf0b`. The 23:52 review
+   passed the chronology mechanics and requested only the material spec's
+   22/22-to-25/25 correction; verify that one-line delta and issue an explicit
+   PASS. On PASS only,
    freeze—but do not train—the exact packet at
    `server/runs/logs/suphx-o0-fixed-ensemble-v1`. Then independently review
    and hash-admit those packet bytes. O1 remains outside this packet until O0
    proves oracle acquisition.
 
-After—and only after—an explicit implementation PASS for `7b15338`, run this
+After—and only after—an explicit implementation PASS for `9aabf0b`, run this
 one freeze command from `server/`; the exact root is currently absent:
 
 ```sh
@@ -478,7 +482,7 @@ selected witness worlds whose current snapshot was plausible but whose earlier
 public history was not: 10 hidden-hand swaps and three burial swaps violated a
 past pair obligation or changed a recorded successful throw into a failed one.
 
-Please re-review exact pushed repair
+The 23:52 review passed the chronology mechanics at exact repair
 `7b153388096e1b8970794ef80fb750f38cae19ad`. It reconstructs all four
 post-burial 25-card hands, forces real follow validation on, and replays every
 resolved plus current public play through `Round.play`. It requires the replay
@@ -493,7 +497,11 @@ admission, exact-root enforcement and the optimized reopen boundary are
 unchanged. A separate direct-legal-validator sweep then replayed all 128 hand
 and 126 burial witnesses with zero failures without calling the repaired
 chronological helper or `Round.play`; treat that only as corroboration. O0
-remains NO FREEZE / NO RUN until the external review passes; even then,
+material commit `9aabf0b` changes the reviewer's sole remaining blocker:
+`SUPHX_MICRO_SPEC.md` now says the actual 25/25 focused count instead of 22/22,
+and compiled+strict focused tests pass 25/25. Please verify that exact material
+snapshot and provide an explicit final PASS. O0 remains NO FREEZE / NO RUN
+until that external review passes; even then,
 training needs a second hash-bound review admission of the frozen packet.
 
 ## Standing rules

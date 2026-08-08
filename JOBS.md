@@ -110,10 +110,10 @@ and compiled-strict modes.
 
 Mini has no long strength worker. RLCB-C1, V11-v2 and Direct-Q are terminal;
 the bounded Suphx O0 timing preflight below completed in seconds. Mini is
-available while exact O0 implementation `7b15338` receives independent
-re-review. No O0 packet has been frozen and no learning job has started.
+available while exact O0 material snapshot `9aabf0b` receives independent
+final review. No O0 packet has been frozen and no learning job has started.
 
-## READY FOR RE-REVIEW / Suphx O0 executable implementation (no packet/run)
+## READY FOR FINAL RE-REVIEW / Suphx O0 executable implementation (no packet/run)
 
 Pushed exact O0 material commit `7b15338` implements the fixed-three-seed O0
 freezer, 128 one-state-per-deal DEV asset, six 64-update arms with real midpoint
@@ -150,6 +150,12 @@ checked the remaining hands. All 128 selected hidden-hand witnesses and all
 supplementary local evidence only; independent implementation review remains
 the freeze gate.
 
+The 23:52 review passed the chronology mechanics and held freeze only because
+material `SUPHX_MICRO_SPEC.md` retained the pre-repair 22/22 count. Exact
+pushed material commit `9aabf0b` changes that count to 25/25; the compiled+
+strict focused suite independently remains 25/25. Freeze still waits for the
+explicit final review PASS on that snapshot.
+
 Routine packet/admission reopen validates exact bytes, structure, runtime
 and source identity without regenerating the 128 DEV games. A local no-artifact
 probe measured 3.1 microseconds for the structural reopen; full generation
@@ -160,8 +166,9 @@ semantically replays every raw comparison round. Freeze, diagnostics,
 evaluation and replay now print bounded progress.
 
 Do not invoke `freeze`, `admit`, `train`, `evaluate` or `gate` yet. First obtain
-independent review of exact `7b15338`; on PASS, freeze only at the exact root
-above. The resulting packet bytes then require a second hash-bound independent
+the final independent PASS for exact material `9aabf0b`; on PASS, freeze only
+at the exact root above. The resulting packet bytes then require a second
+hash-bound independent
 review admission before Mini may run the six arms.
 
 ## COMPLETE / Suphx O0 score-redacted runtime preflight (Mini)

@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-07 17:50 EDT.
+Last re-derived: 2026-08-07 20:15 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -62,6 +62,13 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   `+0.163 +/- 0.059`, but seed 1 and both pooled role-specific held-out MSE
   gates failed. Its attractive report tail cannot authorize deployment,
   extension or recipe tuning.
+- **Suphx O0 runtime admission now passes, without training authority.** Pushed
+  `b22ee8e` adds a score-redacted compiled+strict preflight. Its exact Mini
+  artifact `4f0c3dd5...434` completed six disposable endpoint updates in
+  2.665s, reconciled causal deals/work/surfaces, retained no candidate and
+  recommends the capped 64 iterations per arm. Frozen O0 DEV diagnostics, an
+  exact launch packet and independent review are still required before any
+  learning run.
 - **Teacher-v3 is the live strength job.** Actor canonicalization, capture,
   diagnostics, exact 64-state freeze and the independent champion-audit
   protocol are code-complete. Air is running eight Stage-B N=30 gold shards;
@@ -74,8 +81,9 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 |---|---|---|
 | **T1 / Lane A production latency — COMPLETE / LIVE MONITOR** | Keep the first stronger-than-MC production policy enjoyable to play | Fly release 17 runs exact `latency-cd6789e` / `047bcfe4...5b300`. Health, native activation, claim, reconnect, stale-discard, X-ray isolation and concurrent WebSocket responsiveness passed live. Keep release 16 as the runtime rollback and `mc-strong` as the separate policy rollback; collect ordinary human-room timing before considering a CPU resize. |
 | **T1 / Lane A.1 V11pair — COMPLETE / SELECT NONE** | Preserve the learned milestone without forcing it into the champion | Artifact repair passed; the frozen rule rejected protected composition. Keep v11 as a bounded proposer/ranker and teacher diagnostic only. No protected-anchor run is authorized. |
-| **T1 / Lane B teacher — STAGE-B RUNNING; AUDIT PREFLIGHT PASS** | Generate counterfactual data capable of exceeding the old heuristic continuation | Eight Air workers remain healthy; the outcome-blind fold counter was 29.5% at 19:25, not an ETA. Complete and validate all eight attribution-only gold shards, seal the Stage-B gate exactly once under the readiness checklist in `HANDOFF_ACTIVE.md`, then—and only on PASS—label the separately frozen 64-state champion-continuation audit at exact `182d1df`/script SHA `57796fda...887ead`. Fresh-process Air preflight binds the literal report-LCB actor, rollout, ballot, engine and frozen state; superseded `f4f3dc0` is cache-tainted and may never create a receipt. Receipt/label/gate filenames authorize nothing until their creator exits `0`, the partial disappears and exact bytes reopen. No Stage-B outcome may tune the audit. |
+| **T1 / Lane B teacher — STAGE-B RUNNING; AUDIT PREFLIGHT PASS** | Generate counterfactual data capable of exceeding the old heuristic continuation | Eight Air workers remain healthy; the outcome-blind fold counter was 36.1% at 20:15, not an ETA. Complete and validate all eight attribution-only gold shards, seal the Stage-B gate exactly once under the readiness checklist in `HANDOFF_ACTIVE.md`, then—and only on PASS—label the separately frozen 64-state champion-continuation audit at exact `182d1df`/script SHA `57796fda...887ead`. Fresh-process Air preflight binds the literal report-LCB actor, rollout, ballot, engine and frozen state; superseded `f4f3dc0` is cache-tainted and may never create a receipt. Receipt/label/gate filenames authorize nothing until their creator exits `0`, the partial disappears and exact bytes reopen. No Stage-B outcome may tune the audit. |
 | **T1 / Lane C Direct-Q — COMPLETE / SELECT NONE** | Learn from the failure without selecting its positive gameplay tail | Preserve aggregate SHA `1fa6789e…791`; do not deploy, extend or mutate the 144M recipe. The next learner requires a separately frozen Suphx-style or other role-correct microbaseline gate. |
+| **T1 / Lane C Suphx O0 — RUNTIME PREFLIGHT PASS / NO RUN** | Test whether a full-information policy can learn before spending compute on feature removal | Preserve preflight SHA `4f0c3dd5…434` from exact `b22ee8e`; dose is capped at 64 iterations per arm. Freeze disjoint O0 DEV diagnostics, exact three-seed/arm identities, stop rules and artifact names, then obtain independent review. The preflight itself authorizes no training. |
 | **RLCB-C1 fresh confirmation — COMPLETE / ARTIFACT-ONLY CONFIRM** | Close formal report-LCB superiority | 2,048/2,048 fresh clusters, exact doses, zero stream collisions, sane null and positive superiority LCB. The late dirty-doc supervisor refusal is bound by non-replay closeout SHA `06dd487d…b7aae5`; preserve aggregate SHA `83f5a9df…f5ef5ea`. No extension or S0c reinterpretation remains. |
 | **Formal S0 — COMPLETE / SELECT NONE** | Preserve the burned S0c evidence boundary | Closeout `ef0a365…fde9a`, terminal parent `ca556c2`, no parsed outcomes, no retry/extension, and an empty S0 service namespace. There is no remaining S0c work. |
 
@@ -91,16 +99,17 @@ behind code or protocol work we could have completed.
 | **Lane A / production guardrail** | **Shipped:** exact-semantic speculative scheduling and off-loop X-ray are live in release 17. Continue passive timing collection from ordinary rooms. | The 100-decision replay was exact; the live smoke met p50 <=1.5s, p95 <=4.0s and max <=8.0s, showed no additive 0.7s after long searches, and kept WebSockets responsive during X-ray. A billable Fly resize still requires Jerry's approval. |
 | **Lane A.1 / V11pair** | **Closed:** artifact-only repair published from unchanged bytes and selected none. | No protected composition. Reuse v11 only in a new explicitly diagnostic/proposal contract. |
 | **Lane B / stronger teacher** | Finish the running Stage-B gold labels, validate their exact gate, then execute the frozen 64-state report-LCB continuation audit. | All eight shards and receipts exact; no outcome-conditioned audit change; disjoint 32-world selection/report folds and full downstream report-LCB continuation at every information set. |
-| **Lane C / beyond imitation** | **Closed:** Direct-Q finished but failed its conjunctive learning screen. Specify a fresh microbaseline before more learning compute. | The 144M report result cannot choose seeds, recipes, stopping or continuation. |
+| **Lane C / beyond imitation** | **Advanced:** Direct-Q selected none; the fresh Suphx-style four-surface actor/learner and lower-rate transition are executable, and its score-redacted O0 runtime preflight passed. Freeze O0 diagnostics and launch packet next. | Exact Mini artifact `4f0c3dd5…434` recommends 64 iterations/arm but grants no run authority. O0 must prove noncollapsed oracle acquisition on frozen DEV before any feature-removal O1 work. |
 | **Fresh search confirmation** | **Closed:** RLCB-C1 formally confirmed report-LCB. | Preserve the exact aggregate and claim boundary; no additional confirmation compute is needed now. |
 
 ### Fleet order for T1
 
 1. **Local + production diagnostics:** own the latency benchmark and
    exact-semantic server optimization; do not consume Mini/Air training slots.
-2. **Mini:** RLCB-C1 and Direct-Q are terminal, so Mini is free for bounded
-   compiled latency profiling or the next separately admitted learner gate.
-   Never improvise a Direct-Q extension or protected-anchor run.
+2. **Mini:** RLCB-C1 and Direct-Q are terminal. The bounded Suphx O0 runtime
+   preflight passed; Mini is free while its frozen DEV/launch packet receives
+   review. Never turn the timing recommendation into an unreviewed training
+   run or improvise a Direct-Q/protected-anchor extension.
 3. **Air:** keep all eight Stage-B gold workers owned by the frozen Teacher-v3
    transition. After validation, run only the already-frozen 64-state audit;
    do not redesign it from Stage-B outcomes.
@@ -323,9 +332,12 @@ teacher and production boundaries, not extensions of closed runs:
    exhausted-parent transition with explicit optimizer/replay/RNG reset and
    zero hidden work. Claude's 19:49 independent review closed the causal-stream
    and reward-semantics HOLD and accepted the lower-rate boundary as mechanics.
-   Frozen O0 diagnostics, the score-redacted runtime gate, CLI and exact launch
-   packet remain; no training is authorized. The terminal 144M report cannot
-   choose its recipe.
+   Pushed `b22ee8e` now supplies a score-redacted compiled+strict runtime gate
+   and CLI. Exact Mini artifact `4f0c3dd5...434` passed in 2.665s and recommends
+   the capped 64 iterations per arm while retaining no learned candidate.
+   Frozen O0 DEV diagnostics, exact seed/arm/artifact identities, terminal gate
+   and independent launch review remain; no training is authorized. The
+   terminal 144M report cannot choose this recipe.
 5. **Other search lanes:** structured bury or sampled exact endgame must be
    explicitly reparented to confirmed report-LCB with matched null/work before
    any strength run.

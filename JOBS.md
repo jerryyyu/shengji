@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 19:51 EDT
+## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 20:15 EDT
 
 Air has eight live compiled+strict `teacher_v1_label.py gold` workers in clean
 detached worktree `~/Projects/shengji-teacher-air` at exact commit
@@ -13,9 +13,9 @@ and remain near one CPU each. This block is attribution-only. Its outcomes
 cannot change the independently frozen 64-state report-LCB continuation audit.
 
 All eight output finals remain absent and all eight Python workers plus their
-caffeinate children remain live after about 5h05m. An outcome-blind parse of
-progress events showed `768/956/528/724/332/812/700/632` fold worlds by shard
-and `5,452/16,384` (33.3%) aggregate. This is a liveness
+caffeinate children remain live after about 5h31m. An outcome-blind parse of
+progress events showed `784/1004/584/760/344/828/920/684` fold worlds by shard
+and `5,908/16,384` (36.1%) aggregate. This is a liveness
 counter, not a compute-weighted ETA: ballot sizes and continuation costs differ
 by state. No outcome file was opened. The exact one-shot readiness and gate
 command now live in `HANDOFF_ACTIVE.md`; in particular, filename appearance is
@@ -73,8 +73,29 @@ hashes and now carries two bounded non-vacuous regressions. The focused file is
 and compiled-strict modes.
 
 Mini has no long strength worker. RLCB-C1, V11-v2 and Direct-Q are terminal;
-Mini is available for bounded compiled latency checks or the next separately
-admitted learner protocol.
+the bounded Suphx O0 timing preflight below completed in seconds. Mini is
+available while the next learner packet receives independent review.
+
+## COMPLETE / Suphx O0 score-redacted runtime preflight (Mini)
+
+Pushed commit `b22ee8e31c56371ca9d2d8aa685501503fed7063` added the
+stdlib-only pre-import guard and exact runtime/artifact verifier. The focused
+gate passes 13/13; the combined Suphx, Direct-Q and synchronous-resume matrix
+passes 158/158 in both ordinary and compiled-strict modes. Material source
+identity includes the actual ballot/control dependencies and native binary,
+not merely the new launcher.
+
+The exact clean compiled+strict run published
+`runs/logs/suphx-o0-runtime-preflight-v1.json`, SHA-256
+`4f0c3dd542634b66fd0826a8caef5dc21c7a8b083f96804d1f2f9bbe653ee434`.
+It executed three disposable rounds/updates for each of `gamma=1` and
+`gamma=0`, used one exact causal-deal digest, reconciled 508 total samples and
+all four role/surface cells, retained no terminal candidate, and reopened
+successfully. Total elapsed time was 2.665s; the fixed conservative formula
+recommends the capped 64 iterations per arm. The artifact contains no reward,
+loss, chosen action, value, entropy, gradient or terminal model identity, and
+all launch/training/O1/production authority flags are false. No O0 learning
+job has started.
 
 ## COMPLETE / production report-LCB latency release 17
 

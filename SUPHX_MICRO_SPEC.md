@@ -1,7 +1,7 @@
 # Suphx-style privileged-feature-removal microbaseline
 
-Status (2026-08-07): **CAUSAL-DEAL + LOWER-RATE + SYNCHRONOUS MECHANICS CODE
-GATE PASS / NO TRAINING AUTHORITY.** This document defines the next Lane-C mechanism after terminal
+Status (2026-08-07): **SCORE-REDACTED O0 RUNTIME PREFLIGHT PASS / NO
+TRAINING AUTHORITY.** This document defines the next Lane-C mechanism after terminal
 Direct-Q SELECT NONE. It may authorize implementation and score-blind runtime
 benchmarking only. A later version must bind exact code, runtime, seeds, doses,
 state assets and artifact destinations before any learning result is produced.
@@ -40,9 +40,29 @@ transition reopens only an exhausted, adopted exact parent; preserves model and
 entropy-controller state; resets Adam, replay and learner RNG; binds all-zero
 masks at one-tenth LR; proves finite deal-stream disjointness; and publishes
 zero games or updates. Focused mechanics are 52/52 and the broader adjacent
-matrix is 136/136. No score-redacted O0 runtime gate, CLI, frozen
-diagnostic/report asset, registry entry, run artifact or training result exists
-yet.
+matrix is 136/136.
+
+Implementation step 4 is pushed at `b22ee8e`. The stdlib-only launcher refuses
+experimental sampler/ballot keys before importing behavior code; the runner
+then requires compiled+strict routing and a clean hash of every material
+policy, ballot, engine and native-binary dependency. It executes exactly three
+disposable one-round updates at each endpoint (`gamma=1` and `gamma=0`) on the
+same actor-independent deal stream, retains no learned candidate, and permits
+only timing and exact work counts across the artifact boundary. Its 13
+falsification tests pass; the full Suphx/Direct-Q/resume-adjacent matrix is
+158/158 in both ordinary and compiled-strict routing.
+
+The exact Mini artifact
+`server/runs/logs/suphx-o0-runtime-preflight-v1.json` passed and reopened at
+SHA-256 `4f0c3dd542634b66fd0826a8caef5dc21c7a8b083f96804d1f2f9bbe653ee434`.
+Six temporary updates took 2.665 seconds, all work and four role/surface counts
+reconciled, and both endpoints used causal-deal digest
+`ef63549f6f344db0b29a55a1b40cc807d6dcf360a79a383ce84f3f4895688f48`.
+The conservative sub-hour formula recommends the capped 64 iterations per
+arm. Every authority field remains false: this result sizes a later packet but
+does not launch O0, select a model, authorize O1, or support production.
+Frozen O0 DEV diagnostics and the exact reviewed launch packet still do not
+exist.
 
 ## Claim boundary
 
@@ -234,8 +254,10 @@ different checkpoint from the same run.
    exact sample reconstruction and immutable synchronous update.
 3. Prove uninterrupted versus resumed equality across a curriculum boundary,
    including entropy-controller and optimizer segment state.
-4. Add a score-redacted O0 runtime preflight on Mini and measure enough only to
-   predeclare a sub-hour launch dose; no reward, loss or action outcome may be
-   opened during timing.
-5. Freeze the exact O0/O1 launch packet and request independent review before
-   any learning job.
+4. **Complete:** run the score-redacted O0 runtime preflight on Mini and use it
+   only to predeclare a sub-hour launch dose; no reward, loss or action outcome
+   was opened during timing.
+5. Freeze the exact O0 DEV diagnostic population and O0 launch packet at the
+   preflight's 64 iterations per arm, then request independent review before
+   any learning job. O1 assets and schedule remain a later boundary reached
+   only if O0 passes its oracle-acquisition gate.

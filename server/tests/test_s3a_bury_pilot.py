@@ -167,6 +167,7 @@ def _artifact(shard, *, parent, runtime, head="frozen", gains=None):
         "python": runtime["python"],
         "fast_engine": True,
         "require_voids": True,
+        "experimental_sampler_ballot_flags": [],
         "digests": runtime["digests"],
         "runtime_identity": runtime,
         "parent": parent,
@@ -196,6 +197,7 @@ def _runtime():
     return {
         "host": "mini", "python": "3.14.6", "fast_engine": True,
         "require_voids": True,
+        "experimental_sampler_ballot_flags": [],
         "digests": {"fast_binary": "d" * 64},
     }
 
@@ -794,4 +796,10 @@ def test_aggregate_replays_deal_and_holds_a_copied_state_renamed_to_fresh_seed(
 def test_real_context_requires_compiled_strict_environment(monkeypatch):
     monkeypatch.delenv("SHENGJI_REQUIRE_VOIDS", raising=False)
     with pytest.raises(S3A.ProtocolRefused, match="SHENGJI_FAST=1"):
+        S3A.require_real_context()
+
+    monkeypatch.setenv("SHENGJI_FAST", "1")
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    monkeypatch.setenv("SHENGJI_WEIGHTED_SPLITS", "1")
+    with pytest.raises(S3A.ProtocolRefused, match="experimental sampler"):
         S3A.require_real_context()

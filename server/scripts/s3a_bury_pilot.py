@@ -85,6 +85,12 @@ SELECTION_RULE = (
     "structured-minus-equal-work-legacy-four, and structured-minus-trigger-"
     "matched-random are all greater than zero. This screen never promotes."
 )
+EXPERIMENTAL_FLAGS = (
+    "SHENGJI_WEIGHTED_SPLITS",
+    "SHENGJI_UNIFORM_DEAL",
+    "SHENGJI_PHYSICAL_FILLS",
+    "SHENGJI_ALLOW_BALLOT_MISMATCH",
+)
 
 
 class ProtocolRefused(RuntimeError):
@@ -1451,6 +1457,7 @@ def runtime_identity(fast) -> dict:
         "python": platform.python_version(),
         "fast_engine": True,
         "require_voids": True,
+        "experimental_sampler_ballot_flags": [],
         "digests": {name: sha256(path) for name, path in files.items()},
     }
 
@@ -1488,6 +1495,10 @@ def require_real_context() -> tuple[dict, dict, str]:
     if os.environ.get("SHENGJI_FAST") != "1" or \
             os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
         raise ProtocolRefused("set SHENGJI_FAST=1 and SHENGJI_REQUIRE_VOIDS=1")
+    enabled = [name for name in EXPERIMENTAL_FLAGS if name in os.environ]
+    if enabled:
+        raise ProtocolRefused(
+            f"experimental sampler/ballot flags must be unset: {enabled}")
     from shengji.engine import combos, fast
     if not fast.HAVE_FAST or combos.decompose is not fast.decompose:
         raise ProtocolRefused("compiled engine requested but not active")
@@ -1588,6 +1599,8 @@ def artifact_problems(artifact: dict, *,
         "python": manifest.get("python"),
         "fast_engine": manifest.get("fast_engine"),
         "require_voids": manifest.get("require_voids"),
+        "experimental_sampler_ballot_flags": manifest.get(
+            "experimental_sampler_ballot_flags"),
         "digests": manifest.get("digests"),
     }:
         problems.append("manifest runtime identity does not reconcile")
@@ -1680,6 +1693,8 @@ def run_shard(args) -> None:
         "python": runtime["python"],
         "fast_engine": runtime["fast_engine"],
         "require_voids": runtime["require_voids"],
+        "experimental_sampler_ballot_flags": runtime[
+            "experimental_sampler_ballot_flags"],
         "digests": runtime["digests"],
         "runtime_identity": runtime,
         "parent": parent,

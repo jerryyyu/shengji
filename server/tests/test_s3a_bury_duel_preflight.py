@@ -241,6 +241,47 @@ def test_teacher_exclusivity_fails_closed_when_process_table_unavailable(
         "cannot prove Teacher process absence"]
 
 
+def test_identity_context_wires_teacher_guard_before_runtime(
+        tmp_path, monkeypatch):
+    config = _config()
+    paths = _paths(tmp_path)
+    monkeypatch.setattr(
+        SUP.os, "uname",
+        lambda: SimpleNamespace(nodename=config.expected_host))
+    monkeypatch.setattr(
+        SUP.platform, "python_version", lambda: SUP.EXPECTED_PYTHON)
+
+    def fake_git(*args):
+        if args == ("rev-parse", "HEAD"):
+            return config.expected_git
+        if args == ("status", "--porcelain"):
+            return ""
+        raise AssertionError(args)
+
+    monkeypatch.setattr(SUP, "_git", fake_git)
+    monkeypatch.setattr(
+        SUP, "sha256_file",
+        lambda path: (
+            config.expected_runner_sha256
+            if path == paths.runner else config.expected_controller_sha256))
+    monkeypatch.setenv("SHENGJI_FAST", "1")
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    for name in SUP.DUEL.REFUSED_ENV_KEYS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(
+        SUP, "teacher_exclusivity_problems",
+        lambda: ["synthetic live Teacher witness"])
+
+    def runtime_must_not_run(_expected_git):
+        raise AssertionError("runtime reached before Teacher release guard")
+
+    monkeypatch.setattr(SUP.DUEL, "require_runtime", runtime_must_not_run)
+    with pytest.raises(
+            SUP.ControllerRefusal,
+            match="Teacher-exclusive launch refused: synthetic live Teacher"):
+        SUP._identity_context(config, paths)
+
+
 def test_config_refuses_malformed_host_hash_budget_and_heartbeat():
     assert SUP._config_problems(_config()) == []
     cases = (

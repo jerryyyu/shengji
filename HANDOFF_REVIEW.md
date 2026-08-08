@@ -1608,3 +1608,20 @@ clears; no screen, confirmation, strength claim, retry, promotion or
 production change.
 
 `S3A_DUEL_PREFLIGHT_LAUNCH_V2_REVIEW {"git":"28afa2b7f4032051a513c2b5115b7cb5884f54e8","runner_sha256":"d04fd162a959986c0b0170df5f6f0a3f543c8a50fa90c7f776a2ecc5cd3bfb38","controller_sha256":"5ca78416db7194a2fe5dca07936240785f32643d7348d692096a92cb1c609434","controller_test_sha256":"adc1df0f30591856459a9cee8df3dc8b3d0dcf37e74c09ecd18bf351ed613e1d","material_sha256":"d646bc09ac3cf24607a0f45d1c7df111c6041705d4adc5d221bffc6247321f0e","contract_sha256":"6185141c5227d9aa161815351d6e4a84f0dd9346be2454203b2c8fed91abc19c","run_id":"s3a-bury-duel-preflight-18b-v1","seed0":18000000000,"clusters":4,"host":"Jerrys-Mac-mini.local","python":"3.14.3","screen_fleet_hours":192.0,"screen_max_shard_hours":24.0,"confirm_fleet_hours":768.0,"confirm_max_shard_hours":96.0,"heartbeat_seconds":30.0,"teacher_terminal_guarded":true,"live_teacher_refusal_proven":true,"namespace_absent_after_refusal":true,"score_free":true,"preflight_launch_authorized":true,"screen_launch_authorized":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
+
+---
+
+## Codex — 2026-08-08 19:51 EDT — V3 exact supersedes V2: guard wiring is now non-vacuous
+
+Do not review/pass the V2 marker above. The controller bytes are unchanged,
+but its first two new tests exercised `teacher_exclusivity_problems()` only;
+deleting the call from `_identity_context` would have left them green. Exact
+`e6f2493943d5ec2b826d852ec62a782bef10e412` adds a direct wiring witness that
+requires the guard refusal and proves runtime attestation is not reached first.
+Focused tests now pass 16/16; test SHA is `a40ed76b…51d22`, ordered material is
+`02255a7a…f741c`. The authentic Git-bound contract is now
+`5e0f6ade690f308b812cdb8ff73e87df7f3619514f6a89c27c9b1cbb15b44653`.
+The real live-Teacher exit-3/no-namespace probe was repeated at this exact.
+All other review scope and prohibitions in the 19:46 entry are unchanged.
+
+`S3A_DUEL_PREFLIGHT_LAUNCH_V3_REVIEW {"git":"e6f2493943d5ec2b826d852ec62a782bef10e412","runner_sha256":"d04fd162a959986c0b0170df5f6f0a3f543c8a50fa90c7f776a2ecc5cd3bfb38","controller_sha256":"5ca78416db7194a2fe5dca07936240785f32643d7348d692096a92cb1c609434","controller_test_sha256":"a40ed76bffc3e845c13a16b974430c0ada31e1f46fa814a3c9e692609cd51d22","material_sha256":"02255a7afe0ecab8fa2e7119378b25aafd1c38b3b163334a769e47f360ef741c","contract_sha256":"5e0f6ade690f308b812cdb8ff73e87df7f3619514f6a89c27c9b1cbb15b44653","run_id":"s3a-bury-duel-preflight-18b-v1","seed0":18000000000,"clusters":4,"host":"Jerrys-Mac-mini.local","python":"3.14.3","screen_fleet_hours":192.0,"screen_max_shard_hours":24.0,"confirm_fleet_hours":768.0,"confirm_max_shard_hours":96.0,"heartbeat_seconds":30.0,"teacher_terminal_guarded":true,"teacher_guard_wiring_proven":true,"live_teacher_refusal_proven":true,"namespace_absent_after_refusal":true,"score_free":true,"preflight_launch_authorized":true,"screen_launch_authorized":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`

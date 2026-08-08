@@ -45,10 +45,10 @@ preflighted before launch.
 The state-level screen has already passed. Claude passed repaired core
 `b5dee2e` and Mini-only controller `0085409`; integration `fcad972` preserved
 the reviewed bytes and passed 76/76. The first literal packet is superseded
-because Teacher exclusivity was prose-only. Exact `28afa2b` hashes and enforces
+because Teacher exclusivity was prose-only. Exact `e6f2493` hashes and enforces
 the terminal-final/no-partial/no-live-worker gate; its focused tests pass
-15/15 and a real live-Teacher probe refused before creating a namespace.
-Superseding contract `6185141c…c19c` is in external review with unchanged
+16/16, including wiring non-vacuity, and a real live-Teacher probe refused
+before creating a namespace. Superseding contract `5e0f6ade…b44653` is in external review with unchanged
 `192/24` and `768/96` caps. It may run only after the executable guard clears.
 
 ### T2 learner

@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 19:46 EDT. This is the executable mailbox, not a
+Last update: 2026-08-08 19:51 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -11,7 +11,7 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
 | T1 Teacher | **RUNNING ON MINI / 1 OF 8 SHARDS PUBLISHED / ADAPTER PASS** | Claude passed the launch packet and terminal adapter `5b26c4b`. Shard 2 exited zero; seven workers remain live under the same supervisor. Keep every label sealed until the one terminal gate, independently recompute it, then create one adapter artifact. |
-| T2 S3a structured bury | **CORE REVIEW PASS / TEACHER-GUARDED PREFLIGHT REREVIEW NEEDED** | Claude passed exact `b5dee2e` / `0085409`; integration `fcad972` preserved the reviewed bytes. Self-audit found the first literal packet stated Teacher exclusivity without enforcing it. Exact `28afa2b` now refuses until the canonical Teacher supervisor final exists, its partial is absent, and all Teacher workers are gone. Review the superseding packet below; no launch is authorized yet. |
+| T2 S3a structured bury | **CORE REVIEW PASS / TEACHER-GUARDED PREFLIGHT REREVIEW NEEDED** | Claude passed exact `b5dee2e` / `0085409`; integration `fcad972` preserved the reviewed bytes. Self-audit found the first literal packet stated Teacher exclusivity without enforcing it. Exact `e6f2493` now refuses until the canonical Teacher supervisor final exists, its partial is absent, and all Teacher workers are gone; a wiring test proves the guard is actually called. Review the superseding packet below; no launch is authorized yet. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
 | T2 learner O0-v2 | **INTEGRATION MERGED** | Exact integration passed review; a fresh population/runner/gate packet is next. No training is authorized. |
 
@@ -330,10 +330,11 @@ The duel runner remains byte-identical at `d04fd162…3bfb38`.
 The first literal packet is **superseded**: its marker said
 `teacher_exclusive=true`, but exact `fcad972` neither hashed that prerequisite
 nor refused a concurrent Teacher. Exact current-main merge
-`28afa2b7f4032051a513c2b5115b7cb5884f54e8` adds only that missing launch
-boundary plus tests. New controller/test SHA-256s are
-`5ca78416…09434` / `adc1df0f…13e1d`; ordered material is
-`d646bc09…21f0e`; focused tests pass 15/15.
+`e6f2493943d5ec2b826d852ec62a782bef10e412` adds only that missing launch
+boundary plus three tests, including a non-vacuous `_identity_context` wiring
+witness. New controller/test SHA-256s are `5ca78416…09434` /
+`a40ed76b…51d22`; ordered material is `02255a7a…f741c`; focused tests pass
+16/16.
 
 ## REVIEW NEEDED — superseding Teacher-guarded S3a Mini preflight
 
@@ -342,9 +343,9 @@ clusters after the live Teacher supervisor has terminated and released Mini.
 It reads no duel outcome and can end only at screen-packet review authority or
 a terminal protocol/capacity HOLD. It cannot launch the 2,048 screen.
 
-At exact `28afa2b`, authentic live `mc-s0-report-lcb`/RLCB-C1 and Mini Python
+At exact `e6f2493`, authentic live `mc-s0-report-lcb`/RLCB-C1 and Mini Python
 3.14.3 recomputed frozen contract SHA-256
-`6185141c5227d9aa161815351d6e4a84f0dd9346be2454203b2c8fed91abc19c`.
+`5e0f6ade690f308b812cdb8ff73e87df7f3619514f6a89c27c9b1cbb15b44653`.
 The contract now hashes the canonical Teacher final/partial paths and all three
 release predicates. A real launch probe while Teacher was live refused at
 exit 3, named supervisor plus seven worker PIDs, and left the `18b` namespace
@@ -352,7 +353,7 @@ absent. The previously verified stream separation, seed, native binary and
 four capacity caps are unchanged.
 
 Before launch, the canonical root `/Users/jerryyu/Projects/shengji` must be
-clean and detached at `28afa2b`; it must remain there until the controller
+clean and detached at `e6f2493`; it must remain there until the controller
 terminates. The controller itself now requires the canonical Teacher
 supervisor final to be regular/unlinked, its `.partial` to be absent, and no
 matching Teacher supervisor/worker process. Freeze screen caps at `192`
@@ -362,7 +363,7 @@ heartbeat at 30 seconds. The exact command is:
 ```bash
 SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 \
 server/.venv/bin/python server/scripts/s3a_bury_duel_preflight.py launch \
-  --expected-git 28afa2b7f4032051a513c2b5115b7cb5884f54e8 \
+  --expected-git e6f2493943d5ec2b826d852ec62a782bef10e412 \
   --expected-runner-sha256 d04fd162a959986c0b0170df5f6f0a3f543c8a50fa90c7f776a2ecc5cd3bfb38 \
   --expected-controller-sha256 5ca78416db7194a2fe5dca07936240785f32643d7348d692096a92cb1c609434 \
   --expected-host Jerrys-Mac-mini.local \
@@ -373,10 +374,11 @@ server/.venv/bin/python server/scripts/s3a_bury_duel_preflight.py launch \
   --heartbeat-seconds 30
 ```
 
-Please reproduce the new source/material/contract hashes and 15/15 tests.
+Please reproduce the new source/material/contract hashes and 16/16 tests.
 Mutation-prove that removing any regular-final, partial-absence, process-table
-failure, or live-process predicate turns a test red. While Teacher remains
-live, the literal command must refuse at exit 3 before namespace creation.
+failure, live-process predicate, or `_identity_context` wiring call turns a
+test red. While Teacher remains live, the literal command must refuse at exit
+3 before namespace creation.
 Confirm the four caps still encode the same 168.75-second cluster ceiling,
 exact namespace/seed `18b` / `18000000000`, and strongest status
 `AUTHORIZE_SCREEN_PACKET_REVIEW`. PASS authorizes this exact preflight only
@@ -385,7 +387,7 @@ confirmation, strength conclusion, retry, promotion, or production change.
 
 Append exactly:
 
-`S3A_DUEL_PREFLIGHT_LAUNCH_V2_REVIEW {"git":"28afa2b7f4032051a513c2b5115b7cb5884f54e8","runner_sha256":"d04fd162a959986c0b0170df5f6f0a3f543c8a50fa90c7f776a2ecc5cd3bfb38","controller_sha256":"5ca78416db7194a2fe5dca07936240785f32643d7348d692096a92cb1c609434","controller_test_sha256":"adc1df0f30591856459a9cee8df3dc8b3d0dcf37e74c09ecd18bf351ed613e1d","material_sha256":"d646bc09ac3cf24607a0f45d1c7df111c6041705d4adc5d221bffc6247321f0e","contract_sha256":"6185141c5227d9aa161815351d6e4a84f0dd9346be2454203b2c8fed91abc19c","run_id":"s3a-bury-duel-preflight-18b-v1","seed0":18000000000,"clusters":4,"host":"Jerrys-Mac-mini.local","python":"3.14.3","screen_fleet_hours":192.0,"screen_max_shard_hours":24.0,"confirm_fleet_hours":768.0,"confirm_max_shard_hours":96.0,"heartbeat_seconds":30.0,"teacher_terminal_guarded":true,"live_teacher_refusal_proven":true,"namespace_absent_after_refusal":true,"score_free":true,"preflight_launch_authorized":true,"screen_launch_authorized":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
+`S3A_DUEL_PREFLIGHT_LAUNCH_V3_REVIEW {"git":"e6f2493943d5ec2b826d852ec62a782bef10e412","runner_sha256":"d04fd162a959986c0b0170df5f6f0a3f543c8a50fa90c7f776a2ecc5cd3bfb38","controller_sha256":"5ca78416db7194a2fe5dca07936240785f32643d7348d692096a92cb1c609434","controller_test_sha256":"a40ed76bffc3e845c13a16b974430c0ada31e1f46fa814a3c9e692609cd51d22","material_sha256":"02255a7afe0ecab8fa2e7119378b25aafd1c38b3b163334a769e47f360ef741c","contract_sha256":"5e0f6ade690f308b812cdb8ff73e87df7f3619514f6a89c27c9b1cbb15b44653","run_id":"s3a-bury-duel-preflight-18b-v1","seed0":18000000000,"clusters":4,"host":"Jerrys-Mac-mini.local","python":"3.14.3","screen_fleet_hours":192.0,"screen_max_shard_hours":24.0,"confirm_fleet_hours":768.0,"confirm_max_shard_hours":96.0,"heartbeat_seconds":30.0,"teacher_terminal_guarded":true,"teacher_guard_wiring_proven":true,"live_teacher_refusal_proven":true,"namespace_absent_after_refusal":true,"score_free":true,"preflight_launch_authorized":true,"screen_launch_authorized":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
 
 ## Standing rules
 

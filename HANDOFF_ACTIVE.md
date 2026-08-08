@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-07 21:07 EDT. This is the executable mailbox only.
+Last update: 2026-08-07 21:31 EDT. This is the executable mailbox only.
 Durable discussion and retractions remain in `HANDOFF_REVIEW.md`; policy
 synthesis belongs in `AI_POLICIES.md`.
 
@@ -55,11 +55,11 @@ from its original clean `b365120` runtime returned
 ## Running compute
 
 Air owns eight live compiled+strict Teacher-v3 Stage-B gold workers at exact
-`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 21:07 all eight real
-Python workers remained healthy after about 6h23m, with zero
+`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 21:31 all eight real
+Python workers remained healthy after about 6h47m, with zero
 final gold shards; outcome-blind fold progress by shard was
-`820/1328/720/836/376/856/1068/784`, or 41.4% aggregate
-(`6,788/16,384`). This proves
+`836/1368/772/868/400/872/1136/812`, or 43.1% aggregate
+(`7,064/16,384`). This proves
 liveness but is not a compute-weighted ETA because ballot sizes and
 continuation costs vary. Stage B is attribution-only; do not inspect or use
 its outcomes to alter the independently frozen champion audit.
@@ -242,11 +242,12 @@ eight workers have exited and all eight artifacts validate; preserve a
 non-PASS gate and never retry it.
 
 The PASS-to-audit launch is no longer a manual copy or background-process
-boundary. Pushed commit `ca62557` adds the external, stdlib-only
+boundary. Pushed commits `ca62557` and `1c97928` add and harden the external,
+stdlib-only
 `teacher_champion_audit_prepare.py`, SHA-256
-`4f8b97947a668bc4a87d61795dbfd74629e318b2e1c7a28aa8ae30163d4bbba0`,
+`5ffb6773057e021b4a66f6075dfd9d224513771a5c1bf3ab877eb921206baa57`,
 and tightens `teacher_champion_audit_supervisor.py`, SHA-256
-`3c26d7e9ffa215ba69d86456f76a702f8286fb102d9415289ad821770eb6e5c2`.
+`44025386cf6d0b3d797a45ba65507f0d5f0a84d10c6ffca59eb85f8b88f682d5`.
 The preparer accepts only the exact producer/audit identities and a caller-
 bound terminal Stage-B PASS; validates the exact 20-parent population; copies
 every parent exclusively with matching SHA; runs receipt creation synchronously;
@@ -256,17 +257,21 @@ preparer identity, copied parents and receipt exit zero before admitting work.
 It leaves frozen audit code `182d1df` untouched, owns all eight label children,
 records every wait status, emits 60-second heartbeats, directly reopens each
 regular 32/32 label and invokes the terminal gate exactly once only after all
-eight exit zero. A child failure, malformed basic identity, collision, signal
-or identity drift terminates siblings, preserves partial evidence and never
-gates or retries. Deeper semantic corruption is deliberately left to the
+eight exit zero. The preparer verifies the actual adjacent supervisor bytes
+before its first irreversible copy, so a well-formed mistyped hash cannot burn
+the receipt. A child failure, malformed basic identity, collision, signal or
+identity drift terminates siblings, preserves partial evidence and never gates
+or retries. Terminal output is accepted only for exact PASS/FAIL/INCONCLUSIVE
+verdicts whose authorization fields agree with the real exit status. Deeper
+semantic corruption is deliberately left to the
 frozen evaluator, which publishes terminal INCONCLUSIVE rather than promotion;
 a valid terminal non-PASS gate is preserved with exit `4`. The chained focused
-suite is 18/18; the adjacent Teacher matrix is 152/152 in both ordinary and
-compiled-strict routing. The prior broad ordinary server suite is 993 passed,
+suite is 20/20; the adjacent Teacher matrix is 154/154 in both ordinary and
+compiled-strict routing. The fresh broad ordinary server suite is 1,005 passed,
 27 skipped.
 
 Air now has a clean detached controller worktree at exact
-`~/Projects/shengji-teacher-control2-air` / `ca62557`. The older `07b2a9f`
+`~/Projects/shengji-teacher-control2-air` / `1c97928`. The older `07b2a9f`
 controller is superseded before any receipt/label/gate and must not run. The
 new live preflight binds both evidence checkouts, both controller hashes, the
 audit-script hash and exact producer-venv Python 3.14.6, then refuses solely
@@ -281,9 +286,9 @@ python3 ~/Projects/shengji-teacher-control2-air/server/scripts/teacher_champion_
   --python ~/Projects/shengji-teacher-air/server/.venv/bin/python \
   --expected-stage-b-gate-sha256 <exact-stage-b-gate-sha256> \
   --expected-preparer-sha256 \
-  4f8b97947a668bc4a87d61795dbfd74629e318b2e1c7a28aa8ae30163d4bbba0 \
+  5ffb6773057e021b4a66f6075dfd9d224513771a5c1bf3ab877eb921206baa57 \
   --expected-supervisor-sha256 \
-  3c26d7e9ffa215ba69d86456f76a702f8286fb102d9415289ad821770eb6e5c2
+  44025386cf6d0b3d797a45ba65507f0d5f0a84d10c6ffca59eb85f8b88f682d5
 ```
 
 Only if that exits zero, record the printed receipt and preparation SHAs and
@@ -296,15 +301,17 @@ python3 ~/Projects/shengji-teacher-control2-air/server/scripts/teacher_champion_
   --expected-receipt-sha256 <exact-receipt-sha256> \
   --expected-preparation-sha256 <exact-preparation-sha256> \
   --expected-preparer-sha256 \
-  4f8b97947a668bc4a87d61795dbfd74629e318b2e1c7a28aa8ae30163d4bbba0 \
+  5ffb6773057e021b4a66f6075dfd9d224513771a5c1bf3ab877eb921206baa57 \
   --expected-supervisor-sha256 \
-  3c26d7e9ffa215ba69d86456f76a702f8286fb102d9415289ad821770eb6e5c2
+  44025386cf6d0b3d797a45ba65507f0d5f0a84d10c6ffca59eb85f8b88f682d5
 ```
 
 These controllers grant no Stage-B or production authority. Claude's 20:51
-review accepted the prior real wait-status ownership; please review the new
-PASS-parent-copy/receipt chain and strengthened supervisor before Stage B can
-finish. The semantic-INCONCLUSIVE boundary above remains unchanged.
+review accepted the prior real wait-status ownership; please review exact
+`1c97928`, especially the supervisor-byte preflight and terminal-verdict
+contract, before Stage B can finish. Its live Air invocation refused solely on
+the correctly absent Stage-B gate and created no audit artifact. The semantic-
+INCONCLUSIVE boundary above remains unchanged.
 
 ## Production latency hardening
 

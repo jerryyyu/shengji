@@ -34,6 +34,7 @@ AUDIT_GIT = "182d1df21697cedd722edfd3215ea1e2a7dd8753"
 AUDIT_SCRIPT_SHA256 = (
     "57796fda247a4152a58bb98508d24ae1063f7e2c843ccf436b8b111f7c887ead"
 )
+EXPECTED_PYTHON_VERSION = "Python 3.14.6"
 NAMESPACE = Path("runs/logs/teacher-v1-entry-149m-v3")
 AUDIT_SCRIPT = Path("scripts/teacher_v1_champion_audit.py")
 RECEIPT_NAME = "champion_audit_receipt_v1.json"
@@ -244,6 +245,20 @@ def preflight_problems(config: Config, paths: Paths) -> list[str]:
         problems.append("frozen audit script SHA drift")
     if not config.python.is_file() or not os.access(config.python, os.X_OK):
         problems.append(f"audit Python is not executable {config.python}")
+    else:
+        try:
+            version_run = subprocess.run(
+                [str(config.python), "--version"], check=False,
+                capture_output=True, text=True)
+            version = (version_run.stdout or version_run.stderr).strip()
+        except OSError as exc:
+            problems.append(f"audit Python version check failed: {exc}")
+        else:
+            if (version_run.returncode != 0
+                    or version != EXPECTED_PYTHON_VERSION):
+                problems.append(
+                    f"audit Python {version!r}, expected "
+                    f"{EXPECTED_PYTHON_VERSION!r}")
     if (not is_sha256(config.expected_supervisor_sha256)
             or sha256_file(Path(__file__).resolve())
             != config.expected_supervisor_sha256):
@@ -529,6 +544,7 @@ def run(config: Config) -> tuple[int, dict]:
 def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser()
     ap.add_argument("--audit-root", required=True)
+    ap.add_argument("--python", required=True)
     ap.add_argument("--expected-receipt-sha256", required=True)
     ap.add_argument("--expected-supervisor-sha256", required=True)
     ap.add_argument("--heartbeat-seconds", type=float, default=60.0)
@@ -538,9 +554,14 @@ def parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = parser().parse_args()
     root = Path(args.audit_root).resolve()
+    python = Path(args.python).expanduser()
+    if not python.is_absolute():
+        python = (Path.cwd() / python).absolute()
     config = Config(
         audit_root=root,
-        python=root / ".venv" / "bin" / "python",
+        # Keep the venv path itself rather than resolving its interpreter
+        # symlink; CPython uses that path to locate the venv's site packages.
+        python=python,
         expected_receipt_sha256=args.expected_receipt_sha256,
         expected_supervisor_sha256=args.expected_supervisor_sha256,
         heartbeat_seconds=args.heartbeat_seconds,

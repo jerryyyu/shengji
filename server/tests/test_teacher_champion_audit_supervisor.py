@@ -81,6 +81,20 @@ def _fixture(tmp_path: Path, monkeypatch):
     script.write_text(FAKE_AUDIT)
     receipt = namespace / S.RECEIPT_NAME
     receipt.write_text("opaque receipt bytes\n")
+    receipt_log = namespace / S.RECEIPT_LOG_NAME
+    receipt_log.write_text("receipt complete\n")
+    receipt_exit = namespace / S.RECEIPT_EXIT_NAME
+    receipt_exit.write_text(json.dumps({
+        "schema": S.RECEIPT_EXIT_SCHEMA,
+        "complete": True,
+        "returncode": 0,
+    }))
+    copied = []
+    for name in S.PARENT_NAMES:
+        parent = namespace / name
+        parent.write_text(f"parent {name}\n")
+        copied.append({"path": str(S.NAMESPACE / name),
+                       "sha256": _sha(parent)})
     monkeypatch.setattr(S, "AUDIT_SCRIPT_SHA256", _sha(script))
     monkeypatch.setattr(
         S, "_git", lambda _root, *args:
@@ -89,11 +103,34 @@ def _fixture(tmp_path: Path, monkeypatch):
         S, "preflight_problems",
         lambda config, paths: S._artifact_problems(
             paths.receipt, config.expected_receipt_sha256))
+    supervisor_sha = _sha(Path(S.__file__))
+    preparation = namespace / S.PREPARATION_NAME
+    preparation.write_text(json.dumps({
+        "schema": S.PREPARATION_SCHEMA,
+        "complete": True,
+        "audit_git": S.AUDIT_GIT,
+        "audit_script_sha256": S.AUDIT_SCRIPT_SHA256,
+        "python": S.EXPECTED_PYTHON_VERSION,
+        "preparer_sha256": "d" * 64,
+        "expected_supervisor_sha256": supervisor_sha,
+        "receipt": {"path": str(S.NAMESPACE / S.RECEIPT_NAME),
+                    "sha256": _sha(receipt)},
+        "receipt_log": {"path": str(S.NAMESPACE / S.RECEIPT_LOG_NAME),
+                        "sha256": _sha(receipt_log)},
+        "receipt_exit": {"path": str(S.NAMESPACE / S.RECEIPT_EXIT_NAME),
+                         "sha256": _sha(receipt_exit), "returncode": 0},
+        "copied_parents": copied,
+        "audit_labels_authorized": True,
+        "retry_authorized": False,
+        "production_promotion": False,
+    }))
     config = S.Config(
         audit_root=root,
         python=Path(sys.executable),
         expected_receipt_sha256=_sha(receipt),
-        expected_supervisor_sha256=_sha(Path(S.__file__)),
+        expected_preparation_sha256=_sha(preparation),
+        expected_preparer_sha256="d" * 64,
+        expected_supervisor_sha256=supervisor_sha,
         heartbeat_seconds=0.05,
     )
     return config, S.paths_for(root)
@@ -206,3 +243,19 @@ def test_preflight_rejects_receipt_partial_and_supervisor_drift(
     problems = S.preflight_problems(changed, paths)
     assert any("receipt_v1.json.partial" in problem for problem in problems)
     assert "external supervisor SHA predeclaration drift" in problems
+
+
+def test_preflight_requires_zero_exit_bound_preparation(
+        tmp_path, monkeypatch):
+    config, paths = _fixture(tmp_path, monkeypatch)
+    monkeypatch.undo()
+    monkeypatch.setattr(S, "AUDIT_SCRIPT_SHA256", _sha(paths.audit_script))
+    monkeypatch.setattr(
+        S, "_git", lambda _root, *args:
+        S.AUDIT_GIT if args == ("rev-parse", "HEAD") else "")
+    exit_payload = json.loads(paths.receipt_exit.read_text())
+    exit_payload["returncode"] = 3
+    paths.receipt_exit.write_text(json.dumps(exit_payload))
+    problems = S.preflight_problems(config, paths)
+    assert any("receipt exit" in problem or "zero exit" in problem
+               for problem in problems)

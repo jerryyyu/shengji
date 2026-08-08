@@ -30,6 +30,8 @@ from typing import IO, Iterable
 
 
 SCHEMA = "teacher-v1-champion-audit-supervisor-v1"
+PREPARATION_SCHEMA = "teacher-v1-champion-audit-preparation-v1"
+RECEIPT_EXIT_SCHEMA = "teacher-v1-champion-audit-receipt-exit-v1"
 AUDIT_GIT = "182d1df21697cedd722edfd3215ea1e2a7dd8753"
 AUDIT_SCRIPT_SHA256 = (
     "57796fda247a4152a58bb98508d24ae1063f7e2c843ccf436b8b111f7c887ead"
@@ -38,6 +40,19 @@ EXPECTED_PYTHON_VERSION = "Python 3.14.6"
 NAMESPACE = Path("runs/logs/teacher-v1-entry-149m-v3")
 AUDIT_SCRIPT = Path("scripts/teacher_v1_champion_audit.py")
 RECEIPT_NAME = "champion_audit_receipt_v1.json"
+RECEIPT_LOG_NAME = "champion_audit_receipt_v1.log"
+RECEIPT_EXIT_NAME = "champion_audit_receipt_v1.exit.json"
+PREPARATION_NAME = "champion_audit_preparation_v1.json"
+PARENT_NAMES = (
+    "stage_b_states.json",
+    "stage_b_cheap_v2_receipt.json",
+    "stage_b_gold_v2_receipt.json",
+    *(f"stage_b_cheap_v2_shard{index:02d}.json"
+      for index in range(8)),
+    *(f"stage_b_gold_v2_shard{index:02d}.json"
+      for index in range(8)),
+    "stage_b_gate_v2.json",
+)
 SHARD_COUNT = 8
 SELECTION_WORLDS = 32
 REPORT_WORLDS = 32
@@ -64,6 +79,8 @@ class Config:
     audit_root: Path
     python: Path
     expected_receipt_sha256: str
+    expected_preparation_sha256: str
+    expected_preparer_sha256: str
     expected_supervisor_sha256: str
     heartbeat_seconds: float = 60.0
 
@@ -74,6 +91,9 @@ class Paths:
     namespace: Path
     audit_script: Path
     receipt: Path
+    receipt_log: Path
+    receipt_exit: Path
+    preparation: Path
     labels: tuple[Path, ...]
     gate: Path
     progress_partial: Path
@@ -101,8 +121,8 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def is_sha256(value: str) -> bool:
-    return (len(value) == 64
+def is_sha256(value: object) -> bool:
+    return (isinstance(value, str) and len(value) == 64
             and all(character in "0123456789abcdef" for character in value))
 
 
@@ -129,6 +149,9 @@ def paths_for(root: Path) -> Paths:
         namespace=namespace,
         audit_script=root / AUDIT_SCRIPT,
         receipt=namespace / RECEIPT_NAME,
+        receipt_log=namespace / RECEIPT_LOG_NAME,
+        receipt_exit=namespace / RECEIPT_EXIT_NAME,
+        preparation=namespace / PREPARATION_NAME,
         labels=tuple(namespace / name for name in LABEL_NAMES),
         gate=namespace / GATE_NAME,
         progress_partial=namespace / f"{PROGRESS_NAME}.partial",
@@ -213,6 +236,84 @@ def _artifact_problems(path: Path, expected_sha256: str) -> list[str]:
     return problems
 
 
+def _load_json(path: Path) -> dict:
+    try:
+        payload = json.loads(path.read_bytes())
+    except (OSError, ValueError) as exc:
+        raise SupervisorRefusal(f"artifact cannot reopen {path}: {exc}") \
+            from exc
+    if not isinstance(payload, dict):
+        raise SupervisorRefusal(f"artifact is not an object {path}")
+    return payload
+
+
+def _preparation_problems(config: Config, paths: Paths) -> list[str]:
+    if not is_sha256(config.expected_preparation_sha256):
+        return ["expected preparation SHA is malformed"]
+    problems = _artifact_problems(
+        paths.preparation, config.expected_preparation_sha256)
+    if problems:
+        return problems
+    try:
+        preparation = _load_json(paths.preparation)
+    except SupervisorRefusal as exc:
+        return [str(exc)]
+    expected_receipt = {
+        "path": str(NAMESPACE / RECEIPT_NAME),
+        "sha256": config.expected_receipt_sha256,
+    }
+    if (preparation.get("schema") != PREPARATION_SCHEMA
+            or preparation.get("complete") is not True
+            or preparation.get("audit_git") != AUDIT_GIT
+            or preparation.get("audit_script_sha256")
+            != AUDIT_SCRIPT_SHA256
+            or preparation.get("python") != EXPECTED_PYTHON_VERSION
+            or preparation.get("preparer_sha256")
+            != config.expected_preparer_sha256
+            or preparation.get("expected_supervisor_sha256")
+            != config.expected_supervisor_sha256
+            or preparation.get("receipt") != expected_receipt
+            or preparation.get("audit_labels_authorized") is not True
+            or preparation.get("retry_authorized") is not False
+            or preparation.get("production_promotion") is not False):
+        problems.append("audit preparation authority/identity drift")
+    expected_parents = {str(NAMESPACE / name) for name in PARENT_NAMES}
+    copied = preparation.get("copied_parents")
+    if (not isinstance(copied, list) or len(copied) != len(PARENT_NAMES)
+            or {item.get("path") for item in copied
+                if isinstance(item, dict)} != expected_parents
+            or any(not isinstance(item, dict)
+                   or not is_sha256(item.get("sha256")) for item in copied)):
+        problems.append("audit preparation copied-parent population drift")
+    else:
+        for item in copied:
+            problems += _artifact_problems(
+                paths.root / str(item["path"]), str(item["sha256"]))
+    for label, path, field in (
+            ("receipt log", paths.receipt_log, "receipt_log"),
+            ("receipt exit", paths.receipt_exit, "receipt_exit")):
+        binding = preparation.get(field)
+        if (not isinstance(binding, dict)
+                or binding.get("path") != str(NAMESPACE / path.name)
+                or not is_sha256(binding.get("sha256"))):
+            problems.append(f"audit preparation {label} binding drift")
+            continue
+        problems += _artifact_problems(path, str(binding["sha256"]))
+    try:
+        exit_payload = _load_json(paths.receipt_exit)
+    except SupervisorRefusal as exc:
+        problems.append(str(exc))
+    else:
+        receipt_exit = preparation.get("receipt_exit")
+        if (exit_payload.get("schema") != RECEIPT_EXIT_SCHEMA
+                or exit_payload.get("complete") is not True
+                or exit_payload.get("returncode") != 0
+                or not isinstance(receipt_exit, dict)
+                or receipt_exit.get("returncode") != 0):
+            problems.append("audit receipt creator did not have exact zero exit")
+    return sorted(set(problems))
+
+
 def _owned_names(paths: Paths) -> Iterable[Path]:
     yield paths.gate
     yield paths.progress_final
@@ -268,6 +369,7 @@ def preflight_problems(config: Config, paths: Paths) -> list[str]:
     else:
         problems += _artifact_problems(
             paths.receipt, config.expected_receipt_sha256)
+    problems += _preparation_problems(config, paths)
     for path in _owned_names(paths):
         if lexists(path) or lexists(artifact_partial(path)):
             problems.append(f"one-shot output collision {path}")
@@ -499,6 +601,8 @@ def run(config: Config) -> tuple[int, dict]:
             audit_script_sha256=AUDIT_SCRIPT_SHA256,
             supervisor_sha256=config.expected_supervisor_sha256,
             receipt_sha256=config.expected_receipt_sha256,
+            preparation_sha256=config.expected_preparation_sha256,
+            preparer_sha256=config.expected_preparer_sha256,
             shard_count=SHARD_COUNT, selection_worlds=SELECTION_WORLDS,
             report_worlds=REPORT_WORLDS,
         )
@@ -526,6 +630,8 @@ def run(config: Config) -> tuple[int, dict]:
             "audit_script_sha256": AUDIT_SCRIPT_SHA256,
             "supervisor_sha256": config.expected_supervisor_sha256,
             "receipt_sha256": config.expected_receipt_sha256,
+            "preparation_sha256": config.expected_preparation_sha256,
+            "preparer_sha256": config.expected_preparer_sha256,
             "label_sha256s": list(label_sha256s),
             "gate_sha256": gate_sha256,
             "gate_verdict": verdict,
@@ -546,6 +652,8 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--audit-root", required=True)
     ap.add_argument("--python", required=True)
     ap.add_argument("--expected-receipt-sha256", required=True)
+    ap.add_argument("--expected-preparation-sha256", required=True)
+    ap.add_argument("--expected-preparer-sha256", required=True)
     ap.add_argument("--expected-supervisor-sha256", required=True)
     ap.add_argument("--heartbeat-seconds", type=float, default=60.0)
     return ap
@@ -563,6 +671,8 @@ def main() -> None:
         # symlink; CPython uses that path to locate the venv's site packages.
         python=python,
         expected_receipt_sha256=args.expected_receipt_sha256,
+        expected_preparation_sha256=args.expected_preparation_sha256,
+        expected_preparer_sha256=args.expected_preparer_sha256,
         expected_supervisor_sha256=args.expected_supervisor_sha256,
         heartbeat_seconds=args.heartbeat_seconds,
     )

@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-08 17:32 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-08 18:34 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,8 +10,8 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** supervisor admitted at 16:33 EDT and owns 8/8 CPU-bound label shards. At 17:30, outcome-blind progress was ~17% of outer worlds and ~13% of a candidate×remaining-ply work proxy. Slowest-shard linear projection is roughly 10–16 hours, not a same-evening finish. Wait for one terminal gate; no duplicate/retry/migration. |
-| Air | none | Preserve failed Teacher audit-v1/v2 roots and the frozen source assets. Air is evidence source/fallback, not the selected execution host. |
+| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** supervisor admitted at 16:33 EDT and owns 8/8 CPU-bound label shards. At 18:34, score-free progress was 1,134/4,096 outer worlds (27.7%); no shard was terminal. Exact read-only monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
+| Air | none | Physically idle but not admissible for the current S3a parent. A no-write probe with exact copied RLCB-C1 evidence/native bytes still refused the historical Mini `execution_host`/Python lock. Do not launch S3a on Air without a separately reviewed portable-parent design. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
 The T1 Teacher audit is **running on Mini**. Receipt
@@ -41,11 +41,12 @@ preflighted before launch.
 
 ### T2 S3a
 
-The state-level screen has already passed. The next compute is **not** a rerun
-or an enlarged state screen. First preregister and review a fresh mirrored
-full-game duel of structured bury versus exact `mc-s0-report-lcb`, with a
-champion-matched null, fresh deal clusters, exact work/runtime/source binding,
-clustered uncertainty, and a terminal stop rule. Only then assign a host.
+The state-level screen has already passed. Claude's narrow HOLD on the old
+exacts is repaired by core `b5dee2e` and Mini-only score-free controller
+`0085409`; 61/61 combined tests pass and bounded rereview is requested. The
+next possible compute is the separately reviewed
+score-free sizing preflight on Mini after Teacher releases it—not a rerun,
+enlarged state screen, Air launch, or strength duel.
 
 ### T2 learner
 

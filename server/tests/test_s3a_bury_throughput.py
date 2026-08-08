@@ -55,7 +55,10 @@ def _records() -> list[dict]:
 
 
 def _runtime() -> dict:
-    return {"host": "mini", "digests": {"runner": "a" * 64}}
+    return {
+        "host": "mini",
+        "digests": {"runner": "a" * 64, "cards": "b" * 64},
+    }
 
 
 def _payload(*, wall: float = 10.0) -> dict:
@@ -113,6 +116,12 @@ def test_projection_is_exact_and_capacity_only():
     })["all"] is False
 
 
+def test_v2_uses_fresh_states_after_v1_publication_refusal():
+    assert TIMING.SCHEMA == "s3a-bury-throughput-preflight-v2"
+    assert TIMING.SEED0 == 151_000_002
+    assert TIMING.SEED_HI == 151_000_003
+
+
 def test_work_extractor_discards_actions_and_outcomes():
     work = TIMING.score_free_work(_records())
     encoded = json.dumps(work, sort_keys=True)
@@ -139,6 +148,11 @@ def test_receipt_rederives_arithmetic_and_rejects_outcome_fields():
     }
     assert TIMING.receipt_problems(payload, **kwargs) == []
 
+    # ``cards`` is a legitimate equality-bound runtime source digest. The v1
+    # verifier scanned this identity subtree as if it were persisted gameplay
+    # and refused only after both timing states had run.
+    assert "cards" in payload["runtime_identity"]["digests"]
+
     broken = copy.deepcopy(payload)
     broken["projections"]["screen_fleet_hours"] += 1
     assert any("arithmetic" in problem
@@ -149,6 +163,17 @@ def test_receipt_rederives_arithmetic_and_rejects_outcome_fields():
     problems = TIMING.receipt_problems(broken, **kwargs)
     assert any("field set" in problem for problem in problems)
     assert any("forbidden outcome" in problem for problem in problems)
+
+    broken = copy.deepcopy(payload)
+    broken["caps"]["cards"] = ["SA"]
+    problems = TIMING.receipt_problems(broken, **kwargs)
+    assert any("cap schema" in problem for problem in problems)
+    assert any("forbidden outcome" in problem for problem in problems)
+
+    broken = copy.deepcopy(payload)
+    broken["runtime_identity"]["unexpected"] = "identity drift"
+    assert any("fixed field drift: runtime_identity" in problem
+               for problem in TIMING.receipt_problems(broken, **kwargs))
 
 
 @pytest.mark.parametrize("mutate, expected", [
@@ -202,7 +227,10 @@ def test_run_persists_only_score_free_receipt(monkeypatch, tmp_path):
     assert receipt["strength_scores_persisted"] is False
     assert receipt["raw_records_persisted"] is False
     assert receipt["registered_screen_states_consumed"] is False
-    assert TIMING._forbidden_receipt_keys(receipt) == []
+    assert TIMING._forbidden_receipt_keys(
+        TIMING._outcome_surface(receipt)) == []
+    assert TIMING._forbidden_receipt_keys(receipt) == [
+        "runtime_identity.digests.cards"]
 
 
 def test_loader_is_hash_bound_and_parent_bound(monkeypatch, tmp_path):

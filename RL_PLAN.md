@@ -53,8 +53,11 @@ what those results change in the research plan.
   re-entry unreachable. S3b v2 then failed its operational preflight: its
   first exact-treatment cluster exceeded the frozen cumulative 250k-node cap,
   so no receipt or strength screen is authorized. S3a remains only a
-  512-state mechanism screen; its repaired score-free sizing verifier passed
-  independent review and its two-state Mini run is next.
+  512-state mechanism screen. Its first reviewed sizing attempt completed two
+  hidden states but the publication verifier confused the authenticated
+  runtime source digest named `cards` with an outcome and emitted no receipt.
+  Those states are retired; a fresh-schema/fresh-seed verifier repair awaits
+  independent review before another Mini run.
 - **Data/sampler:** the bounded strict sampler certificate passed, but posterior
   fidelity and global constructive completeness remain open. High-N and
   late-ply data are replayable state reservoirs under old named targets, not

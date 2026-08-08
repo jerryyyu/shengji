@@ -12,6 +12,7 @@ job history in `JOBS.md`, and chronology in `docs_archive/`.
 | T1 Teacher | **AUDIT-V2 RUNNING** | Stage B passed. One sealed 64-state audit attempt is live on Air. A valid terminal PASS/FAIL/INCONCLUSIVE closes the last T1 gate; no favorable score is required. |
 | T2 live parent | **COMPLETE / REVIEW PASS** | Claude passed exact `05ea1d1` / material `66be133c…e17c`, reproduced output `5f9ddbfb…8402`, reopened RLCB-C1 and falsified stale-S0 re-entry. Only the score-free S3b Mini preflight is admitted; no strength launch. |
 | T2 S3b v2 | **PREFLIGHT TERMINAL HOLD / NO SCREEN** | Exact head `cd44ea8` hit the frozen cumulative `250,000`-node exact-solver cap in the first treatment cluster. Exit 1; no cluster completion, receipt, partial, score or raw record. V2 may not retry, raise its cap, fall back or launch 2,048. |
+| T2 S3a sizing | **V1 VERIFIER REFUSAL / V2 REPAIR REVIEW REQUIRED** | V1 completed both hidden 151,000,000–001 states, then its recursive scanner mistook authenticated `runtime_identity.digests.cards` for an outcome. No receipt/partial survived. Fresh v2 seeds 151,000,002–003 are coded and tested; no rerun before review. |
 | T2 Teacher adapter | **REPAIR REVIEW PASS / WAITING TERMINAL** | Claude independently passed exact `2de0824` / material `ccb73bb7…e6d`, including the prior mismatched-label exploit. The exact eight-item gate schema and ordered supervisor equality are enforced; both branches still deny compute and scale. |
 | Formal S0 | **SELECT NONE / BURNED** | S0c outcomes remain unread and nonretryable. Closeout `ef0a365...fde9a`; never reopen or reinterpret it. |
 | V11 direct-v2 | **SELECT NONE** | `-0.141 +/- 0.070` versus current; protected composition false. V11 survives only as a bounded proposal/ranking/teacher diagnostic hypothesis. |
@@ -90,8 +91,11 @@ comparison with the report-LCB bot people play today.
   receipt accepted arbitrary nested `work_totals`. The repair requires the
   exact nested field population, integer types and exact-work equalities;
   Claude passed exact `2de0824` / material `fb0fa7ba…6e16` at 10:24 with the
-  exploit and neutralization probes. Its predeclared two-state Mini sizing run
-  is next and must not inspect 136M outcomes.
+  exploit and neutralization probes. The resulting v1 run completed both
+  hidden timing states but then hit a different publication-only defect:
+  `runtime_identity.digests.cards` was recursively treated as an outcome key.
+  No receipt or partial survived. Seeds 151,000,000–001 are retired. V2 uses
+  fresh 151,000,002–003 and awaits a new independent repair review.
 
 ### S3b — sampled exact endgame
 
@@ -134,8 +138,9 @@ comparison with the report-LCB bot people play today.
    consumer boundaries; marker is preserved in `HANDOFF_REVIEW.md`.
 5. **DONE / TERMINAL HOLD:** S3b's score-free Mini preflight hit the frozen
    exact-node cap in treatment cluster 1 and published nothing. V2 is closed
-   to screen compute. **RUN NEXT:** S3a's repair review passed; run its
-   predeclared score-free sizing preflight in a separate clean Mini window. In parallel, continue
+   to screen compute. S3a v1 then completed two hidden timing states but its
+   verifier falsely rejected an authenticated source digest; its fresh v2
+   repair must pass review before a clean Mini run. In parallel, continue
    O0-v2 CRN/margin infrastructure. A strength screen remains a separate
    authorization.
 

@@ -94,15 +94,17 @@ exact `mc-s0-report-lcb`; Claude independently passed exact material
 Pushed `66d6836` adds S3a's outcome-free timing receipt on exact reserved
 151M states. Its initial 09:56 PASS was superseded by HOLD after an arbitrary
 nested-work-field probe passed. The repaired exact nested schema and counter
-equalities are pushed at `2de0824` and pass the broader boundary matrix but
-require independent re-review.
+equalities were pushed at `2de0824` and independently passed review. The
+subsequent v1 run exposed a separate publication-only false positive described
+below; a fresh v2 repair now requires review.
 
 The live-parent PASS admitted the first score-free S3b timing job on Mini.
 That exact attempt is now terminal HOLD after the exact solver exceeded its
 frozen cumulative node bound before treatment cluster 1 completed. S3a's
 separate repaired sizing packet independently passed review at exact
-`2de0824` / material `fb0fa7ba…6e16`; its two-state timing is next and no two
-timing jobs may overlap.
+`2de0824` / material `fb0fa7ba…6e16`, but its v1 publication refused after
+both hidden states completed. A fresh-schema/fresh-seed v2 is next only after
+review, and no two timing jobs may overlap.
 
 1. S3b two-cluster throughput preflight under hard caps screen `200`
    fleet-hours / `30` max shard-hours and confirmation `800` / `120`;
@@ -176,6 +178,24 @@ env -u SHENGJI_WEIGHTED_SPLITS -u SHENGJI_UNIFORM_DEAL \
 It may persist only timing, exact work counters, frozen caps and their derived
 placement decision. It may not retain actions, scores or raw records and may
 not start the 512-state mechanism screen.
+
+That exact v1 command ran once from clean head `b3ac6fd`. Both hidden states
+151,000,000–151,000,001 completed, then receipt validation exited 3 with
+`throughput receipt persists forbidden outcome fields:
+runtime_identity.digests.cards`. This is an authenticated source-code digest
+name produced by `require_real_context`, not a gameplay card field. Both final
+and `.partial` paths remain absent. No score/action/raw record printed or
+survived, but the two states are consumed and must never be replayed.
+
+The bounded v2 repair changes only the receipt namespace/seeds and publication
+validation: schema `s3a-bury-throughput-preflight-v2`, fresh seeds
+151,000,002–151,000,003, and an outcome scan that exempts the equality-bound
+`runtime_identity` and `live_champion_parent` trees while recursively scanning
+every other receipt surface. Top-level and nested exact schemas plus fixed-
+identity equality remain mandatory. A realistic `digests.cards` fixture now
+passes; identity drift and actual `caps.cards` outcome injection refuse.
+Focused tests pass 11/11 and the broad boundary matrix passes 86/86. No v2 run
+is authorized before independent review and a newly predeclared output path.
 
 ## Archive pointers
 

@@ -29,8 +29,11 @@ import live_champion_parent as LIVE_PARENT  # noqa: E402
 import s3a_bury_pilot as S3A  # noqa: E402
 
 
-SCHEMA = "s3a-bury-throughput-preflight-v1"
-SEED0 = 151_000_000
+SCHEMA = "s3a-bury-throughput-preflight-v2"
+# V1 consumed 151,000,000--151,000,001 in memory, then its publication
+# verifier mistook the authenticated runtime digest key ``cards`` for an
+# outcome field.  No receipt survived, but those states are never replayed.
+SEED0 = 151_000_002
 STATE_COUNT = 2
 SEED_HI = SEED0 + STATE_COUNT - 1
 SAFETY_FACTOR = 2.0
@@ -55,6 +58,9 @@ FORBIDDEN_OUTCOME_KEYS = {
     "incumbent_values", "level_utility", "mean_gain_vs_incumbent",
     "raw_winner_index", "records", "selected_values", "stats",
     "values_by_world", "winner", "won",
+}
+OUTCOME_SCAN_IDENTITY_EXEMPTIONS = {
+    "runtime_identity", "live_champion_parent",
 }
 
 
@@ -199,6 +205,13 @@ def _forbidden_receipt_keys(value, path: str = "") -> list[str]:
     return problems
 
 
+def _outcome_surface(payload: dict) -> dict:
+    return {
+        key: value for key, value in payload.items()
+        if key not in OUTCOME_SCAN_IDENTITY_EXEMPTIONS
+    }
+
+
 def _work_totals_problems(value: object) -> list[str]:
     """Require the complete score-free work schema and its equalities.
 
@@ -327,7 +340,13 @@ def receipt_problems(payload: object, *, parent: dict, runtime: dict,
                     problems.append("throughput capacity decision drifted")
                 if payload.get("sizing_admitted") is not decided["all"]:
                     problems.append("throughput admission bit drifted")
-    forbidden = _forbidden_receipt_keys(payload)
+    # Runtime/source digests and the live-parent object are equality-bound to
+    # values recomputed by the real CLI.  They are identity, not a persistence
+    # surface, and legitimate digest names include ``cards``.  Scan every
+    # other receipt field recursively; exact top-level and nested work schemas
+    # plus the fixed-field comparisons prevent an exemption from admitting an
+    # arbitrary subtree.
+    forbidden = _forbidden_receipt_keys(_outcome_surface(payload))
     if forbidden:
         problems.append(
             "throughput receipt persists forbidden outcome fields: " +

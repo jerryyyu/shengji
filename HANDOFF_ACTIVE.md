@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 14:18 EDT. This is the executable mailbox only.
+Last update: 2026-08-08 14:30 EDT. This is the executable mailbox only.
 Terminal numbers live in `AI_POLICIES.md`, live order in `BACKLOG.md`, exact
 job history in `JOBS.md`, and chronology in `docs_archive/`.
 
@@ -14,6 +14,7 @@ job history in `JOBS.md`, and chronology in `docs_archive/`.
 | T2 S3b v2 | **PREFLIGHT TERMINAL HOLD / NO SCREEN** | Exact head `cd44ea8` hit the frozen cumulative `250,000`-node exact-solver cap in the first treatment cluster. Exit 1; no cluster completion, receipt, partial, score or raw record. V2 may not retry, raise its cap, fall back or launch 2,048. |
 | T2 S3a sizing | **REPAIR PUSHED / EXACT RE-REVIEW REQUIRED** | Exact `c784e6d` pins `claim_boundary` to one immutable string and adds the prior outcome-shaped exploit as a named refusal test. Results: 12/12 focused, 25/25 paired, 87/87 broad. Claude must review exact material `34993502…092d`; no Mini run yet. |
 | T2 Teacher adapter | **REVIEW PASS / NOT APPLICABLE TO FAILED V2** | Exact `2de0824` / material `ccb73bb7…e6d` passed, but the adapter requires regular gate and supervisor finals. Audit-v2 produced neither, so it cannot turn this operational refusal into PASS/FAIL/INCONCLUSIVE. |
+| T2 learner O0-v2 | **INTEGRATION BRANCH PUSHED / REVIEW REQUIRED** | Exact `dd730a8` derives CRN keys only from immutable round-derived public/legal inputs and gates 100% first-public-context coupling over all 8×64 oracle/public pairs. The exact privileged-plane decoupling mutant fails; 22/22 focused and 74/74 broad pass. Review material `639c259b…a0494b`; no training or run authority. |
 | Formal S0 | **SELECT NONE / BURNED** | S0c outcomes remain unread and nonretryable. Closeout `ef0a365...fde9a`; never reopen or reinterpret it. |
 | V11 direct-v2 | **SELECT NONE** | `-0.141 +/- 0.070` versus current; protected composition false. V11 survives only as a bounded proposal/ranking/teacher diagnostic hypothesis. |
 | Direct-Q | **SELECT NONE** | Gameplay was positive, but seed 1 and both pooled role held-out gates failed. No extension. |
@@ -175,7 +176,7 @@ namespace/seed contract and launch authorization; nothing auto-launches.
 
 ## Action and review queue
 
-### OPEN NOW — two independent Claude reviews requested
+### OPEN NOW — three independent Claude reviews requested
 
 #### 1. S3a exact re-review
 
@@ -231,13 +232,45 @@ Append exactly one marker:
 
 `TEACHER_CONTINUATION_DIAGNOSTICS_V1_REVIEW {"git":"b7534ee778534ec8d9ccc0379f3c0d4dfb5d1d31","material_sha256":"8ede4d351346fc636d5e7dff43f694bfc44c81660eb980358a7ae9b4e8b643e7","independent_review":true,"fresh_attempt_authorized":false,"verdict":"PASS|HOLD"}`
 
+#### 3. O0-v2 public-key integration
+
+Review exact pushed branch commit
+`dd730a83b5369ea108d7f1d0ab83f149eeb43f41`. Only the integration module and
+its test are new; the already-reviewed mechanics dependency is unchanged.
+Ordered four-file material SHA-256 is
+`639c259bb36cf1c7deb115e21fd27f152a019c0f8e3a2ee03070f68d11a0494b`:
+
+- mechanics `540553ba955676f40f4652eb50913d044e2f634a4bb70a46abb369da114fa9e9`;
+- integration `10c8887f59e34f2cef8f49c194762c4a2e4fff134ff9f4bfc59b7f8f277da4ac`;
+- mechanics test `49c97298b1a7eca6f713b5a1bf7f3ab37dfb5e3f138e64cb3d5d2034b48fd57e`;
+- integration test `1675d98cd8ce2ba227dc7a444fca94ccfe8aa42a03e3193b7f3d81e110d3728e`.
+
+Reproduce that the runner-facing endpoint accepts only `Round`, seat and the
+crossed stream; it directly calls the three public/legal encoders, never
+constructs `perfect`, returns read-only keyed model inputs, and has no arm,
+model, checkpoint, logits, mask or observation parameter. The complete 8×64
+crossed receipt grid must pass at exactly `1.0` first-public-context coupling.
+Inject one oracle-only privileged-plane key while repairing its internal
+digest: the rate gate must fail. Missing, duplicate and outcome-shaped
+receipts must fail. A different second key after a shared first decision must
+remain diagnostic rather than false-failing a legitimate policy fork.
+Measured results: 22/22 focused and 74/74 across features/policy/actor/learner/
+mechanics/integration. PASS authorizes merging the outcome-free guard and
+designing a separately reviewed runner packet only—no collector population,
+training, O1, strength, promotion or production action.
+
+Append exactly one marker:
+
+`SUPHX_O0_V2_INTEGRATION_V1_REVIEW {"git":"dd730a83b5369ea108d7f1d0ab83f149eeb43f41","material_sha256":"639c259bb36cf1c7deb115e21fd27f152a019c0f8e3a2ee03070f68d11a0494b","independent_review":true,"training_authorized":false,"verdict":"PASS|HOLD"}`
+
 ### CODEX owns while reviews are pending
 
 - after diagnostic PASS, design a synthetic-only reproducer and explicit v3
   estimand decision. Do not infer underfill or admit short/rejected work from
   the old generic message, and do not touch the consumed audit-v2 state;
-- while S3a review is pending, integrate O0-v2 through one shared public-view
-  key and a measured cross-arm coupling-rate gate, per Claude's 14:05 finding.
+- after O0-v2 integration PASS, merge the outcome-free guard and specify a
+  fresh runner/population/gate packet without changing dose, target, features
+  or optimizer. Do not launch training from the integration review.
 
 The Teacher operational classification review is received PASS, but its
 specific underfill diagnosis and proposed repair are not accepted as final for

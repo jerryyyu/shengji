@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 22:34 EDT
+## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 22:41 EDT
 
 Air has eight live compiled+strict `teacher_v1_label.py gold` workers in clean
 detached worktree `~/Projects/shengji-teacher-air` at exact commit
@@ -13,8 +13,8 @@ and remain near one CPU each. This block is attribution-only. Its outcomes
 cannot change the independently frozen 64-state report-LCB continuation audit.
 
 All eight output finals remain absent and all eight Python workers plus their
-caffeinate children remain live. At 22:34 the outcome-blind fold counters were
-`876/1508/840/948/484/964/1200/1028`, or `7,848/16,384` (47.9%). No outcome
+caffeinate children remain live. At 22:41 the outcome-blind fold counters were
+`880/1520/848/956/496/980/1204/1084`, or `7,968/16,384` (48.6%). No outcome
 file was opened. This is a liveness counter, not a compute-weighted ETA:
 ballot sizes and continuation costs differ by state. The exact one-shot
 readiness and gate
@@ -110,12 +110,12 @@ and compiled-strict modes.
 
 Mini has no long strength worker. RLCB-C1, V11-v2 and Direct-Q are terminal;
 the bounded Suphx O0 timing preflight below completed in seconds. Mini is
-available while exact O0 implementation `a6421b5` receives independent
+available while exact O0 implementation `b5e046c` receives independent
 re-review. No O0 packet has been frozen and no learning job has started.
 
 ## READY FOR RE-REVIEW / Suphx O0 executable implementation (no packet/run)
 
-Pushed exact O0 material commit `a6421b5` implements the fixed-three-seed O0
+Pushed exact O0 material commit `b5e046c` implements the fixed-three-seed O0
 freezer, 128 one-state-per-deal DEV asset, six 64-update arms with real midpoint
 teardown/resume, deterministic greedy two-flip evaluator, exact same-model null
 and terminal conjunctive gate. The freezer itself grants no training authority;
@@ -130,15 +130,17 @@ caps and remaining declaration evidence all pass. Every role/surface has both
 a legal hidden-hand witness and at least one non-banker hidden-burial witness;
 a forced void-breaking mutation must fail. Every executable entry point is
 also pinned to the one predeclared root
-`server/runs/logs/suphx-o0-fixed-ensemble-v1`. Focused tests pass 21/21. The
-Suphx/Direct-Q/synchronous-resume matrix passes 189/189 in ordinary and
-compiled-strict routing. The broad ordinary suite passed 1,026 with 27 skips
-at `56a0efc`; final `a6421b5` changes only the material spec's count and reruns
-the focused file 21/21. The original preflight artifact still reopens at exact
+`server/runs/logs/suphx-o0-fixed-ensemble-v1`. Packet admission additionally
+requires one external machine-readable PASS claim for the exact packet SHA and
+rejects plain prose, HOLD, wrong-packet or run-internal records. Focused tests
+pass 22/22; the Suphx/Direct-Q/synchronous-resume matrix passes 193/193 in
+ordinary and compiled-strict routing. The broad ordinary suite passed 1,026
+with 27 skips at `56a0efc` before this focused admission delta. The original
+preflight artifact still reopens at exact
 `4f0c3dd5...434`, and all authority fields remain false.
 
 Do not invoke `freeze`, `admit`, `train`, `evaluate` or `gate` yet. First obtain
-independent review of exact `a6421b5`; on PASS, freeze only at the exact root
+independent review of exact `b5e046c`; on PASS, freeze only at the exact root
 above. The resulting packet bytes then require a second hash-bound independent
 review admission before Mini may run the six arms.
 

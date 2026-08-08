@@ -80,6 +80,15 @@ closed lane.
   Stage-B N=30 gold shards. After all eight validate, seal the Stage-B gate and
   label only the separately frozen 64-state audit. Stage-B outcomes may not
   move the audit population or rule.
+- **Suphx O0 is the independent parallel RL gate.** Exact material commit
+  `a6421b5` freezes the fixed three-seed oracle-acquisition question, legal
+  hidden-hand/burial witnesses, 128 DEV deals, six 64-update arms, inference,
+  stop rule and sole artifact root. It still has no packet or run authority:
+  implementation re-review must pass, then the frozen packet hash needs a
+  second admission review. Once admitted, O0 belongs on Mini while Teacher-v3
+  continues on Air. O1 depends on O0 proving oracle acquisition, not on the
+  Teacher result; only training that consumes Teacher-v3 labels waits for the
+  Teacher audit.
 - **Historical DMC2 is invalid evidence, not an RL rejection.** Its defender
   sign, actor immutability and promotion contracts were defective, and it was
   not a faithful AWAC, Suphx or DouZero implementation. Preserve its useful
@@ -105,10 +114,12 @@ closed lane.
   counterfactual labels under a named ballot, sampler, continuation and utility.
   Do not treat corpus size or private-information search as proof of label
   quality.
-- **Immediate order:** (1) finish production scheduling hardening without
-  changing report-LCB semantics; (2) finish Teacher-v3 Stage-B and the frozen
-  64-state audit; (3) choose the next teacher/learner upgrade from that evidence;
-  (4) reparent the best structured-search candidate to report-LCB. The next
+- **Immediate order:** (1) monitor the shipped production scheduler without
+  changing report-LCB semantics; (2) finish Teacher-v3 Stage-B and its frozen
+  64-state audit on Air; (3) in parallel, re-review, freeze, hash-admit and run
+  Suphx O0 on Mini; (4) let Teacher evidence choose the next teacher-derived
+  learner and let O0 independently decide whether O1 feature removal exists;
+  and (5) reparent the best structured-search candidate to report-LCB. The next
   strength promotion must beat report-LCB, not the retired MC baseline.
 
 ### Settled experiment evidence

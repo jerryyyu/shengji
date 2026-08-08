@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 21:31 EDT
+## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 22:34 EDT
 
 Air has eight live compiled+strict `teacher_v1_label.py gold` workers in clean
 detached worktree `~/Projects/shengji-teacher-air` at exact commit
@@ -13,11 +13,11 @@ and remain near one CPU each. This block is attribution-only. Its outcomes
 cannot change the independently frozen 64-state report-LCB continuation audit.
 
 All eight output finals remain absent and all eight Python workers plus their
-caffeinate children remain live after about 6h47m. An outcome-blind parse of
-progress events showed `836/1368/772/868/400/872/1136/812` fold worlds by shard
-and `7,064/16,384` (43.1%) aggregate. This is a liveness
-counter, not a compute-weighted ETA: ballot sizes and continuation costs differ
-by state. No outcome file was opened. The exact one-shot readiness and gate
+caffeinate children remain live. At 22:34 the outcome-blind fold counters were
+`876/1508/840/948/484/964/1200/1028`, or `7,848/16,384` (47.9%). No outcome
+file was opened. This is a liveness counter, not a compute-weighted ETA:
+ballot sizes and continuation costs differ by state. The exact one-shot
+readiness and gate
 command now live in `HANDOFF_ACTIVE.md`; in particular, filename appearance is
 not enough because publication precedes each worker's final provenance check.
 The manually detached gold launch did not preserve child wait statuses: all
@@ -25,7 +25,7 @@ eight Python workers are now PPID 1 and there is no `.exit` receipt. Before any
 gold final existed, the handoff therefore exposed—not hid—the exact proposed
 completion witness: original PID gone, final flushed `wrote ... 16 records`
 sentinel, no later refusal, regular final, no partial and successful unchanged
-artifact reopen. Claude's 20:51 outcome-blind review accepted that exact
+artifact reopen. The 20:51 outcome-blind review accepted that exact
 predeclared artifact-completion substitute while explicitly not calling it a
 reconstructed exit code. The future ready result may now admit one gate.
 
@@ -36,8 +36,9 @@ success logs, but creates no artifact and grants no gate or audit authority.
 The adjacent Teacher matrix passes 134/134 in ordinary and compiled-strict
 routing. Streamed against Air at 20:34 it correctly returned exit `4`, eight
 live Python workers, zero regular finals, `outcomes_opened=false` and
-`artifact_created=false`. Claude accepted the detached-success equivalence and
-checker at 20:51; completion of the eight workers is now the remaining hold.
+`artifact_created=false`. The 20:51 review accepted the detached-success
+equivalence and checker; completion of the eight workers is now the remaining
+hold.
 
 The complete PASS-to-audit transition now has external one-shot ownership at
 clean Air controller worktree `~/Projects/shengji-teacher-control2-air`, exact
@@ -53,8 +54,8 @@ live Air preflight bound both evidence checkouts, both controller hashes, audit
 script and Python 3.14.6, then refused solely
 because the Stage-B gate is correctly absent; the audit namespace still holds
 only its frozen state asset. Old controller `07b2a9f` is superseded without a
-run. Claude's 20:51 review accepted the prior worker ownership; `1c97928` needs
-review before use.
+run. The 21:57 independent review passed exact `1c97928`, including the real
+supervisor-byte preflight and terminal verdict/authorization contract.
 
 The separately pinned audit worktree now exists on Air at exact pushed commit
 `182d1df21697cedd722edfd3215ea1e2a7dd8753`. It carries frozen state SHA
@@ -109,7 +110,37 @@ and compiled-strict modes.
 
 Mini has no long strength worker. RLCB-C1, V11-v2 and Direct-Q are terminal;
 the bounded Suphx O0 timing preflight below completed in seconds. Mini is
-available while the next learner packet receives independent review.
+available while exact O0 implementation `a6421b5` receives independent
+re-review. No O0 packet has been frozen and no learning job has started.
+
+## READY FOR RE-REVIEW / Suphx O0 executable implementation (no packet/run)
+
+Pushed exact O0 material commit `a6421b5` implements the fixed-three-seed O0
+freezer, 128 one-state-per-deal DEV asset, six 64-update arms with real midpoint
+teardown/resume, deterministic greedy two-flip evaluator, exact same-model null
+and terminal conjunctive gate. The freezer itself grants no training authority;
+training requires a separate immutable `review_admission.json` binding the
+exact packet SHA and an independently supplied review-record copy.
+
+The 21:57 review correctly held the draft because a first-differing-card swap
+could violate public void evidence while still changing oracle tensors. The
+pushed repair admits a hidden allocation only after card conservation, hand/
+burial sizes, actor-visible state, demonstrated voids, pair caps, tractor-run
+caps and remaining declaration evidence all pass. Every role/surface has both
+a legal hidden-hand witness and at least one non-banker hidden-burial witness;
+a forced void-breaking mutation must fail. Every executable entry point is
+also pinned to the one predeclared root
+`server/runs/logs/suphx-o0-fixed-ensemble-v1`. Focused tests pass 21/21. The
+Suphx/Direct-Q/synchronous-resume matrix passes 189/189 in ordinary and
+compiled-strict routing. The broad ordinary suite passed 1,026 with 27 skips
+at `56a0efc`; final `a6421b5` changes only the material spec's count and reruns
+the focused file 21/21. The original preflight artifact still reopens at exact
+`4f0c3dd5...434`, and all authority fields remain false.
+
+Do not invoke `freeze`, `admit`, `train`, `evaluate` or `gate` yet. First obtain
+independent review of exact `a6421b5`; on PASS, freeze only at the exact root
+above. The resulting packet bytes then require a second hash-bound independent
+review admission before Mini may run the six arms.
 
 ## COMPLETE / Suphx O0 score-redacted runtime preflight (Mini)
 

@@ -98,6 +98,14 @@ and put exact run detail in `JOBS.md` or the dated archive.
   predeclared learning gate: seed 1 and both pooled role-specific held-out MSE
   LCBs failed. Terminal result is SELECT NONE; do not deploy or extend this
   recipe from its attractive gameplay tail.
+- Suphx O0 is now the next bounded learner, independently of Teacher-v3. Exact
+  material commit `a6421b5` asks only whether the fixed three-seed full-
+  information ensemble acquires a noncollapsed policy advantage over its
+  initialization and equal-work public learner. It is not a strength claim.
+  After implementation review, packet freeze and separate packet-hash
+  admission, run it on Mini while Teacher continues on Air. O1 feature removal
+  exists only after O0 PASS; Teacher-label consumers wait for the Teacher
+  audit, but O0/O1 do not inherit that dependency.
 
 ### Immediate strength queue
 
@@ -106,14 +114,18 @@ and put exact run detail in `JOBS.md` or the dated archive.
    Scheduling hardening is shipped without changing report-LCB's
    N=30/R=300/ballot/LCB semantics.
 2. Close Teacher-v3 Stage-B attribution and run the already-frozen independent
-   64-state champion-continuation audit; use that evidence to choose the next
-   teacher upgrade rather than merely scaling labels.
-3. Keep v11pair as a root proposal/ranking feature and teacher diagnostic;
+   64-state champion-continuation audit on Air; use that evidence to choose the
+   next teacher upgrade rather than merely scaling labels.
+3. In parallel, re-review exact Suphx O0 `a6421b5`, freeze and separately
+   hash-admit its packet, then run the bounded six-arm screen on Mini. Do not
+   wait for Teacher unless the proposed learner consumes Teacher labels.
+4. Keep v11pair as a root proposal/ranking feature and teacher diagnostic;
    the protected-anchor lane is closed by direct-v2.
-4. Replace the failed Direct-Q recipe with the separately gated Suphx-style
-   microbaseline or another role-correct learner; do not tune on the terminal
-   144M report result.
-5. Reparent any structured-bury or sampled-exact contender to confirmed live
+5. Let the frozen O0 verdict decide the next learner boundary: PASS may freeze
+   and review O1 feature removal; SELECT NONE retires this exact recipe and
+   moves to another role-correct learner without tuning on either O0 DEV or the
+   terminal 144M Direct-Q report.
+6. Reparent any structured-bury or sampled-exact contender to confirmed live
    report-LCB before spending strength compute.
 
 ## Policy status details

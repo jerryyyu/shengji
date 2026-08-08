@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 09:20 EDT. This is the executable mailbox only.
+Last update: 2026-08-08 09:32 EDT. This is the executable mailbox only.
 Terminal numbers live in `AI_POLICIES.md`, live order in `BACKLOG.md`, exact
 job history in `JOBS.md`, and chronology in `docs_archive/`.
 
@@ -47,7 +47,7 @@ The only authorized audit-v2 attempt:
 - eight fixed shards, each 32 selection plus 32 disjoint report worlds;
 - operator log `~/teacher-v3-audit-v2-supervisor.log`.
 
-At 09:12 all eight workers and the supervisor were alive, zero finals had
+At 09:32 all eight workers and the supervisor were alive, zero finals had
 published and the supervisor emitted regular 60-second
 heartbeats. Monitor only liveness and score-free counters. Do not inspect
 partial outcomes, retry, resume, alter workers, or launch another supervisor.
@@ -75,8 +75,11 @@ comparison with the report-LCB bot people play today.
   full-game duel; S3a currently has no such strength runner.
 - Parent repair: exact live report-LCB only; v1 artifacts and formal-S0
   `mc-strong` authority cannot enter the v2 namespace.
-- Remaining pre-launch work: external review plus an outcome-free timing
-  receipt on fresh non-136M states. Do not inspect registered outcomes to size.
+- Sizing code: pushed `66d6836` uses exactly two reserved 151M states, discards
+  full records in memory and persists timing/work only. Safety factor 2; hard
+  caps `400` fleet-hours / `60` max shard-hours; 5/5 tests pass.
+- Remaining pre-launch work: external review of both packets. Do not inspect
+  registered outcomes to size.
 
 ### S3b — sampled exact endgame
 
@@ -103,9 +106,10 @@ comparison with the report-LCB bot people play today.
    confirmation, policy drift and fallback to the S0 parent.
 4. **POSTED BELOW:** independently review the exact pushed packet.
 5. On review PASS, run only S3b's score-free Mini throughput preflight. In
-   parallel, code S3a's score-free sizing receipt, the two Teacher terminal
-   adapters and O0-v2 CRN/margin infrastructure. A strength screen remains a
-   separate authorization.
+   a separate, non-overlapping timing window run S3a's score-free sizing
+   preflight, so host contention cannot bias either projection. In parallel,
+   code the two Teacher terminal adapters and O0-v2 CRN/margin infrastructure.
+   A strength screen remains a separate authorization.
 
 Teacher-v3 Stage C is conditional on the live audit. PASS freezes a fresh
 hard-tail contract with uncertainty/disagreement mining, gold/exact-late
@@ -152,6 +156,24 @@ minimal redesign. Neither result auto-launches 2,048 labels.
    authorized by a PASS. Please append exactly one marker:
 
    `T2_LIVE_PARENT_V1_REVIEW {"git":"05ea1d10f8386b4e8826fbf51e2895ff3c9ba554","material_sha256":"66be133c4e4caab127fd68efbb0ed91952ad9047762ca331215cad5ee535e17c","independent_review":true,"verdict":"PASS|HOLD"}`
+3. **S3a outcome-free sizing packet — REVIEW NOW / NO RUN:** exact pushed
+   commit `66d68363ebeca134061d59807a81dd2d9aec6413`. Script SHA-256
+   `941bfc6e894b9f62e41b5df1565b5fa6c37e2f8c50eb22dbc15623faadd0e8bc`;
+   test SHA-256
+   `e2ed820e26cb951f59b3ff29bc1a5d29d8738ffedb2e9c67b1d2d977da9ae4c8`;
+   ordered material SHA-256
+   `7da092d744fcd294dd068e78f320eef60b8e77e72481b7bf983ba0cbdadd4bfd`;
+   focused result 5/5.
+
+   Falsify that it consumes no 136M state; exact seeds are
+   151,000,000--151,000,001; full action/outcome records never reach disk or
+   stdout; the receipt admits only exact timing/work/cap fields; projection is
+   `2 * observed_seconds_per_state * {512,64}`; caps `400` fleet-hours / `60`
+   max shard-hours were frozen before timing; hash/parent/runtime/ancestry and
+   arithmetic mutations refuse; and a sizing PASS authorizes only placement,
+   never the 512-state run. Please append exactly one marker:
+
+   `S3A_THROUGHPUT_V1_REVIEW {"git":"66d68363ebeca134061d59807a81dd2d9aec6413","material_sha256":"7da092d744fcd294dd068e78f320eef60b8e77e72481b7bf983ba0cbdadd4bfd","independent_review":true,"verdict":"PASS|HOLD"}`
 
 The broad code/evidence audit and strategy synthesis are already received.
 They reproduced every closed result and require no rollback. Their surviving

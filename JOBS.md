@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last compacted: 2026-08-08 08:43 EDT. This file owns current compute and short
+Last compacted: 2026-08-08 09:32 EDT. This file owns current compute and short
 terminal stubs only. The exact 810-line pre-compaction ledger is archived at
 `docs_archive/jobs-through-2026-08-08.md`, SHA-256 `26beff936f6c0744b220fc79e233163c8f09acde8a13adcba5450327ad132252`.
 Detailed interpretation belongs in `AI_POLICIES.md`; execution order belongs
@@ -30,7 +30,7 @@ The single authorized v2 attempt launched at 08:16 EDT:
 - label PIDs 95345--95352; eight fixed 32-selection/32-report shards;
 - operator log `~/teacher-v3-audit-v2-supervisor.log`.
 
-At 09:12 all eight workers plus the supervisor were live, zero finals had
+At 09:32 all eight workers plus the supervisor were live, zero finals had
 published, and heartbeats were regular. Inspect only liveness
 and score-free counters. Do not open partial outcomes, retry, resume, migrate,
 duplicate or alter workers. This supervisor alone may invoke one terminal gate
@@ -68,10 +68,22 @@ Screens remain screens; failed and partial namespaces are preserved in place.
 
 The live order is in `BACKLOG.md`. Pushed `05ea1d1` versions S3a/S3b against
 exact `mc-s0-report-lcb`; 72 focused tests pass and external review is pending.
-After review run only S3b's two-cluster score-free throughput preflight on Mini
-under hard caps screen `200` fleet-hours / `30` max shard-hours and confirmation
-`800` / `120`. S3a first needs an outcome-free sizing receipt on fresh states.
-Neither lane may inherit stale formal-S0 `mc-strong` authority.
+Pushed `66d6836` adds S3a's outcome-free timing receipt on exact reserved
+151M states; 5/5 focused tests pass and external review is pending.
+
+After both packets pass review, run the two score-free timing jobs on Mini in
+separate windows so contention cannot corrupt either projection:
+
+1. S3b two-cluster throughput preflight under hard caps screen `200`
+   fleet-hours / `30` max shard-hours and confirmation `800` / `120`;
+2. S3a two-state timing preflight under hard caps `400` fleet-hours / `60`
+   max shard-hours.
+
+Neither preflight retains strength outcomes or authorizes its corresponding
+screen. Neither lane may inherit stale formal-S0 `mc-strong` authority. While
+review or timing is live, implementation continues on Teacher terminal
+adapters and the O0-v2 CRN/logit-margin microbattery rather than competing for
+the measured host.
 
 ## Archive pointers
 

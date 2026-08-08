@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 16:34 EDT. This is the executable mailbox, not a
+Last update: 2026-08-08 17:12 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -38,16 +38,19 @@ gate and independently reopen every binding.
 ## REVIEW WHILE COMPUTE RUNS — terminal adapter v2
 
 Review pushed branch `codex/teacher-terminal-adapter-v2` at exact
-`0f4ef153ac5d1eecb502e8352740da57ec497b18` (25/25 focused tests). It updates
+`5b26c4b4bdb678b2c780c8a4b6ed5b87e181964e` (29/29 focused tests). It updates
 the previously reviewed fail-closed adapter to the exact v2 gate/supervisor,
 fresh Mini run identity, retry admission, old/new state provenance, Stage-B
 assets, literal receipt `e293858c…a10d`, literal preparation
 `83892930…c39`, preparer/supervisor/native bytes, host/runtime and ordered
-shard population. After Claude's bounded HOLD, it now pins the literal
+shard population. After Claude's bounded HOLD, it pins the literal
 canonical Mini paths for the gate, supervisor final and adapter output and
 rejects copied evidence directories or any symlinked parent component. Exact
-file SHA-256s are `c16bbb47…4909` for the adapter and `bd81cf7b…f163` for its
-tests. Commits `490757a`, `76195fd` and `f5fb18f` are superseded.
+receipt nonce, all eight cheap parents, all eight N=30 parents, all eight label
+paths and adapter Python 3.14.6 are also literal rather than merely shape-valid.
+Exact file SHA-256s are `d46f0751…c5589` for the adapter and
+`195fc327…7c82` for its tests. Commits `490757a`, `76195fd`, `f5fb18f` and
+`0f4ef15` are superseded.
 
 Falsify gate or supervisor schema/run drift, host/Python/native/runtime drift,
 retry-admission drift, historical/fresh asset swaps, missing or reordered
@@ -59,7 +62,7 @@ labels, compute, training, retry, extension, promotion, or production.
 
 Append one marker:
 
-`TEACHER_TERMINAL_ADAPTER_V2_REVIEW {"git":"0f4ef153ac5d1eecb502e8352740da57ec497b18","run_id":"teacher-v3-report-lcb-audit-v3-mini-149m","canonical_namespace":true,"reject_parent_symlinks":true,"receipt_sha256":"e293858c728437d6016a3f02a62a355c38a37a6028ad0d83e49423e1caf4a10d","preparation_sha256":"83892930fa8e7e8148960511ef0a87c3becbe77a87eaebf3c912458863644c39","output_name":"teacher_terminal_adapter_v2.json","fail_closed":true,"no_compute_authority":true,"verdict":"PASS|HOLD"}`
+`TEACHER_TERMINAL_ADAPTER_V2_REVIEW {"git":"5b26c4b4bdb678b2c780c8a4b6ed5b87e181964e","run_id":"teacher-v3-report-lcb-audit-v3-mini-149m","canonical_namespace":true,"reject_parent_symlinks":true,"literal_parent_populations":true,"literal_receipt_nonce":true,"exact_adapter_python":"3.14.6","receipt_sha256":"e293858c728437d6016a3f02a62a355c38a37a6028ad0d83e49423e1caf4a10d","preparation_sha256":"83892930fa8e7e8148960511ef0a87c3becbe77a87eaebf3c912458863644c39","output_name":"teacher_terminal_adapter_v2.json","fail_closed":true,"no_compute_authority":true,"verdict":"PASS|HOLD"}`
 
 ## Closed launch packet — retained until the terminal gate
 
@@ -171,7 +174,7 @@ If any probe fails, append a prose HOLD and do not emit a PASS marker.
 3. Preserve the terminal PASS/FAIL/INCONCLUSIVE gate and independently verify
    all child/aggregate bindings.
 4. After adapter-v2 review passes, route the terminal verdict through exact
-   `0f4ef15`: PASS opens Stage-C/hard-tail **design**;
+   `5b26c4b`: PASS opens Stage-C/hard-tail **design**;
    FAIL/INCONCLUSIVE records redesign/stop. That closes T1. No branch
    automatically launches training.
 

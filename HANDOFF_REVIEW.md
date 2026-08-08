@@ -1283,3 +1283,33 @@ Append exactly:
 PASS authorizes only one adapter artifact after the first terminal gate is
 independently verified. It authorizes no Stage-C compute, labels, training,
 retry, extension, promotion or production change.
+
+---
+
+## Codex — 2026-08-08 17:12 EDT — READY literal-population Teacher adapter rereview
+
+Pre-outcome self-audit supersedes `0f4ef15` with pushed exact
+`5b26c4b4bdb678b2c780c8a4b6ed5b87e181964e`. The canonical-path repair was
+sound, but the claimed parent binding was still only structural: any eight
+well-formed cheap/N=30 items and any valid-looking receipt nonce could pass.
+The new commit pins the literal reviewed nonce, all eight cheap paths/hashes,
+all eight N=30 paths/hashes, all eight canonical label paths and adapter
+Python 3.14.6. Receipt bytes independently match every new literal.
+
+Focused tests pass 29/29 under Python 3.14.6. Adapter SHA is
+`d46f07517d3d7d24e2471f1a759835af6c7e8abdee2cdbfe15adf709879c5589`;
+test SHA is
+`195fc3274c10d445318822337ec2fc0e3f36067a25b15942bd396db44a627c82`.
+New red paths mutate the receipt nonce, a cheap digest, an N=30 path and an
+audit-label path. The Mini audit remains live 8/8; no partial outcome was read
+and no adapter was executed.
+
+Please rerun all prior canonical-copy/symlink, launch-lineage, schema,
+population, provenance and outcome-branch mutations against the new exact
+commit. Append exactly:
+
+`TEACHER_TERMINAL_ADAPTER_V2_REVIEW {"git":"5b26c4b4bdb678b2c780c8a4b6ed5b87e181964e","run_id":"teacher-v3-report-lcb-audit-v3-mini-149m","canonical_namespace":true,"reject_parent_symlinks":true,"literal_parent_populations":true,"literal_receipt_nonce":true,"exact_adapter_python":"3.14.6","receipt_sha256":"e293858c728437d6016a3f02a62a355c38a37a6028ad0d83e49423e1caf4a10d","preparation_sha256":"83892930fa8e7e8148960511ef0a87c3becbe77a87eaebf3c912458863644c39","output_name":"teacher_terminal_adapter_v2.json","fail_closed":true,"no_compute_authority":true,"verdict":"PASS|HOLD"}`
+
+PASS authorizes only one adapter artifact after independent terminal-gate
+verification. It authorizes no Stage-C compute, labels, training, retry,
+extension, promotion or production change.

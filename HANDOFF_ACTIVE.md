@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 09:40 EDT. This is the executable mailbox only.
+Last update: 2026-08-08 09:54 EDT. This is the executable mailbox only.
 Terminal numbers live in `AI_POLICIES.md`, live order in `BACKLOG.md`, exact
 job history in `JOBS.md`, and chronology in `docs_archive/`.
 
@@ -95,6 +95,11 @@ comparison with the report-LCB bot people play today.
 - First compute after review: a two-cluster score-free Mini throughput
   preflight. It retains no strength scores or raw outcomes. Frozen hard caps:
   screen `200` fleet-hours / `30` max shard-hours; confirmation `800` / `120`.
+- Exact predeclared output:
+  `server/runs/logs/s3b-report-lcb-v2-throughput-mini-v1.json`, seeds
+  141,000,000--141,000,001. A score-free dry admission at `ec2b886` reopened
+  the live parent and compiled/strict runtime with zero protocol problems; no
+  round ran. `JOBS.md` owns the literal command.
 
 ### Exact implementation order
 

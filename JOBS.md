@@ -85,6 +85,28 @@ review or timing is live, implementation continues off-host. Teacher terminal
 branch routing is pushed at `c961c14` and review-pending; O0-v2 CRN/logit-
 margin infrastructure is next rather than competing for the measured host.
 
+The exact first launch is predeclared as
+`s3b-report-lcb-v2-throughput-mini-v1`, output
+`server/runs/logs/s3b-report-lcb-v2-throughput-mini-v1.json`, seeds
+141,000,000--141,000,001. It runs only after a PASS marker for
+`T2_LIVE_PARENT_V1_REVIEW` and uses the literal command:
+
+```bash
+env -u SHENGJI_WEIGHTED_SPLITS -u SHENGJI_UNIFORM_DEAL \
+  -u SHENGJI_PHYSICAL_FILLS -u SHENGJI_ALLOW_BALLOT_MISMATCH \
+  SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 \
+  server/.venv/bin/python server/scripts/s3b_endgame_strength.py preflight \
+  --out server/runs/logs/s3b-report-lcb-v2-throughput-mini-v1.json \
+  --screen-fleet-hour-cap 200 --screen-shard-wall-hour-cap 30 \
+  --confirm-fleet-hour-cap 800 --confirm-shard-wall-hour-cap 120
+```
+
+At `ec2b886`, the score-free admission dry check reopened exact
+`mc-s0-report-lcb` on `Jerrys-Mac-mini.local`, required the compiled/strict
+runtime and returned zero protocol problems. It executed no round. The output
+path was absent. A review PASS admits this preflight only, not a strength
+screen.
+
 ## Archive pointers
 
 - Exact pre-compaction ledger:

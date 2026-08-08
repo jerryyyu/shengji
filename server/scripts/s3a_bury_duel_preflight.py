@@ -40,10 +40,10 @@ RECEIPT_SCHEMA = "s3a-bury-duel-preflight-receipt-v1"
 EXIT_SCHEMA = "s3a-bury-duel-preflight-exit-v1"
 FINAL_SCHEMA = "s3a-bury-duel-preflight-final-v1"
 RUN_ID = DUEL.PREFLIGHT_RUN_ID
-SUPPORTED_HOSTS = (
-    "Jerrys-Mac-mini.local",
-    "Jerrys-MacBook-Air.local",
-)
+# The exact live-parent reopener authenticates RLCB-C1 by recomputing its
+# historical runtime, which is pinned to Mini.  Registering Air here would be
+# false portability: copied evidence still refuses on execution_host/Python.
+SUPPORTED_HOSTS = ("Jerrys-Mac-mini.local",)
 EXPECTED_PYTHON = "3.14.6"
 NAMESPACE = Path("server/runs/logs") / RUN_ID
 RUNNER = Path("server/scripts/s3a_bury_duel.py")

@@ -21,7 +21,7 @@ def _config(**changes) -> SUP.Config:
         "expected_git": "a" * 40,
         "expected_runner_sha256": "b" * 64,
         "expected_controller_sha256": "c" * 64,
-        "expected_host": "Jerrys-MacBook-Air.local",
+        "expected_host": "Jerrys-Mac-mini.local",
         "screen_fleet_hours": 1_000.0,
         "screen_max_shard_hours": 1_000.0,
         "confirm_fleet_hours": 1_000.0,
@@ -57,7 +57,7 @@ def _runtime() -> dict:
     return {
         "git": "a" * 40,
         "tree_dirty": False,
-        "host": "Jerrys-MacBook-Air.local",
+        "host": "Jerrys-Mac-mini.local",
         "python": SUP.EXPECTED_PYTHON,
         "fast_engine": True,
         "require_voids": True,
@@ -168,7 +168,7 @@ def test_packet_freezes_score_free_geometry_command_and_authority(tmp_path):
     contract = SUP.packet_contract(
         config, paths, parent=_parent(), runtime=_runtime())
     assert contract["run_id"] == SUP.DUEL.PREFLIGHT_RUN_ID
-    assert contract["host"] == "Jerrys-MacBook-Air.local"
+    assert contract["host"] == "Jerrys-Mac-mini.local"
     assert contract["population"]["clusters"] == 4
     assert contract["population"]["global_stream_separation"] is True
     assert contract["capacity"]["screen"]["clusters"] == 2_048
@@ -183,6 +183,7 @@ def test_packet_freezes_score_free_geometry_command_and_authority(tmp_path):
 def test_config_refuses_malformed_host_hash_budget_and_heartbeat():
     assert SUP._config_problems(_config()) == []
     cases = (
+        (_config(expected_host="Jerrys-MacBook-Air.local"), "host"),
         (_config(expected_host="somewhere"), "host"),
         (_config(expected_runner_sha256="bad"), "runner"),
         (_config(screen_fleet_hours=float("nan")), "budget"),
@@ -462,7 +463,7 @@ def test_cli_refuses_invalid_values_before_launch():
         "launch", "--expected-git", "a" * 40,
         "--expected-runner-sha256", "b" * 64,
         "--expected-controller-sha256", "c" * 64,
-        "--expected-host", "Jerrys-MacBook-Air.local",
+        "--expected-host", "Jerrys-Mac-mini.local",
         "--screen-fleet-hours", "1",
         "--screen-max-shard-hours", "1",
         "--confirm-fleet-hours", "1",

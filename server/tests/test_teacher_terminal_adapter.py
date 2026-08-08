@@ -157,6 +157,9 @@ def _fixture(tmp_path: Path, monkeypatch, verdict: str = "PASS"):
     progress = tmp_path / "supervisor.jsonl"
     events = _events(verdict, _sha(gate))
     progress.write_text("".join(json.dumps(event) + "\n" for event in events))
+    monkeypatch.setattr(A, "GATE_PATH", str(gate))
+    monkeypatch.setattr(A, "SUPERVISOR_PROGRESS_PATH", str(progress))
+    monkeypatch.setattr(A, "OUTPUT_PATH", str(tmp_path / A.OUTPUT_NAME))
     monkeypatch.setattr(A, "runtime_contract", lambda _expected: _runtime())
     config = A.Config(
         gate=gate,
@@ -428,8 +431,58 @@ def test_existing_output_is_never_overwritten(tmp_path, monkeypatch):
 def test_adapter_cannot_publish_under_an_alternate_name(
         tmp_path, monkeypatch):
     config = _fixture(tmp_path, monkeypatch)
-    with pytest.raises(A.AdapterRefusal, match="exact sibling"):
+    with pytest.raises(A.AdapterRefusal, match="noncanonical path"):
         A.create(config, tmp_path / "alternate-adapter.json")
+
+
+@pytest.mark.parametrize("target", ["gate", "supervisor"])
+def test_copied_evidence_namespace_refuses(
+        tmp_path, monkeypatch, target):
+    config = _fixture(tmp_path, monkeypatch)
+    copied = tmp_path / "copied"
+    copied.mkdir()
+    copied_gate = copied / config.gate.name
+    copied_progress = copied / config.supervisor_progress.name
+    copied_gate.write_bytes(config.gate.read_bytes())
+    copied_progress.write_bytes(config.supervisor_progress.read_bytes())
+    changed = A.Config(
+        gate=copied_gate if target == "gate" else config.gate,
+        expected_gate_sha256=config.expected_gate_sha256,
+        supervisor_progress=(
+            copied_progress if target == "supervisor"
+            else config.supervisor_progress),
+        expected_supervisor_sha256=config.expected_supervisor_sha256,
+        expected_git=config.expected_git,
+    )
+    with pytest.raises(A.AdapterRefusal, match="noncanonical path"):
+        A.create(changed, tmp_path / A.OUTPUT_NAME)
+
+
+def test_parent_symlink_inside_literal_namespace_refuses(
+        tmp_path, monkeypatch):
+    real = tmp_path / "real"
+    real.mkdir()
+    alias = tmp_path / "canonical"
+    alias.symlink_to(real, target_is_directory=True)
+    gate = alias / "gate.json"
+    progress = alias / "supervisor.jsonl"
+    gate.write_text(json.dumps(_gate("PASS"), sort_keys=True))
+    progress.write_text("".join(
+        json.dumps(event) + "\n"
+        for event in _events("PASS", _sha(gate))))
+    monkeypatch.setattr(A, "GATE_PATH", str(gate))
+    monkeypatch.setattr(A, "SUPERVISOR_PROGRESS_PATH", str(progress))
+    monkeypatch.setattr(A, "OUTPUT_PATH", str(alias / A.OUTPUT_NAME))
+    monkeypatch.setattr(A, "runtime_contract", lambda _expected: _runtime())
+    config = A.Config(
+        gate=gate,
+        expected_gate_sha256=_sha(gate),
+        supervisor_progress=progress,
+        expected_supervisor_sha256=_sha(progress),
+        expected_git="a" * 40,
+    )
+    with pytest.raises(A.AdapterRefusal, match="symlinked canonical parent"):
+        A.create(config, alias / A.OUTPUT_NAME)
 
 
 def test_adapter_mutation_fails_independent_reopen(tmp_path, monkeypatch):

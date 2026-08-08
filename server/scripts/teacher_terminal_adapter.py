@@ -53,6 +53,19 @@ RECEIPT_PATH = (
     "/Users/jerryyu/Projects/shengji-teacher-audit-v3-mini/server/"
     "runs/logs/teacher-v1-entry-149m-v5/champion_audit_receipt_v2.json"
 )
+GATE_PATH = (
+    "/Users/jerryyu/Projects/shengji-teacher-audit-v3-mini/server/"
+    "runs/logs/teacher-v1-entry-149m-v5/champion_audit_gate_v2.json"
+)
+SUPERVISOR_PROGRESS_PATH = (
+    "/Users/jerryyu/Projects/shengji-teacher-audit-v3-mini/server/"
+    "runs/logs/teacher-v1-entry-149m-v5/"
+    "champion_audit_supervisor_v2.jsonl"
+)
+OUTPUT_PATH = (
+    "/Users/jerryyu/Projects/shengji-teacher-audit-v3-mini/server/"
+    "runs/logs/teacher-v1-entry-149m-v5/teacher_terminal_adapter_v2.json"
+)
 COMPILED_ENGINE_SHA256 = (
     "ef7c161829c607aad790e949e0a0bae7e04d8a3be7aea51b80d5108a1f566b4d"
 )
@@ -209,6 +222,31 @@ def is_regular_unlinked(path: Path) -> bool:
         return stat.S_ISREG(path.lstat().st_mode)
     except FileNotFoundError:
         return False
+
+
+def _canonical_path_problems(path: Path, expected: str, *,
+                             allow_missing_leaf: bool = False) -> list[str]:
+    """Require one lexical path whose complete parent chain has no symlink."""
+    problems: list[str] = []
+    expected_path = Path(expected)
+    if path != expected_path:
+        return [f"noncanonical path {path}; expected {expected_path}"]
+    for component in reversed(expected_path.parents):
+        try:
+            mode = component.lstat().st_mode
+        except FileNotFoundError:
+            problems.append(f"missing canonical parent {component}")
+            continue
+        if stat.S_ISLNK(mode):
+            problems.append(f"symlinked canonical parent {component}")
+        elif not stat.S_ISDIR(mode):
+            problems.append(f"non-directory canonical parent {component}")
+    if os.path.lexists(expected_path):
+        if stat.S_ISLNK(expected_path.lstat().st_mode):
+            problems.append(f"symlinked canonical artifact {expected_path}")
+    elif not allow_missing_leaf:
+        problems.append(f"missing canonical artifact {expected_path}")
+    return problems
 
 
 def _artifact_problems(path: Path, expected_sha256: str) -> list[str]:
@@ -459,7 +497,10 @@ def runtime_contract(expected_git: str) -> dict:
 
 
 def reopen_inputs(config: Config) -> tuple[dict, list[dict]]:
-    problems = _artifact_problems(config.gate, config.expected_gate_sha256)
+    problems = _canonical_path_problems(config.gate, GATE_PATH)
+    problems += _canonical_path_problems(
+        config.supervisor_progress, SUPERVISOR_PROGRESS_PATH)
+    problems += _artifact_problems(config.gate, config.expected_gate_sha256)
     problems += _artifact_problems(
         config.supervisor_progress, config.expected_supervisor_sha256)
     if problems:
@@ -549,10 +590,10 @@ def write_verified(path: Path, payload: dict, verify) -> None:
 
 
 def create(config: Config, out: Path) -> dict:
-    expected_out = config.gate.parent / OUTPUT_NAME
-    if out.resolve() != expected_out.resolve():
-        raise AdapterRefusal(
-            f"adapter output must be exact sibling {expected_out}")
+    output_problems = _canonical_path_problems(
+        out, OUTPUT_PATH, allow_missing_leaf=True)
+    if output_problems:
+        raise AdapterRefusal("; ".join(output_problems))
     runtime = runtime_contract(config.expected_git)
     gate, events = reopen_inputs(config)
     payload = build_payload(config, gate, events, runtime)
@@ -570,10 +611,9 @@ def create(config: Config, out: Path) -> dict:
 
 
 def verify(config: Config, path: Path, expected_sha256: str) -> dict:
-    expected_path = config.gate.parent / OUTPUT_NAME
-    if path.resolve() != expected_path.resolve():
-        raise AdapterRefusal(
-            f"adapter path must be exact sibling {expected_path}")
+    path_problems = _canonical_path_problems(path, OUTPUT_PATH)
+    if path_problems:
+        raise AdapterRefusal("; ".join(path_problems))
     problems = _artifact_problems(path, expected_sha256)
     if problems:
         raise AdapterRefusal("; ".join(problems))

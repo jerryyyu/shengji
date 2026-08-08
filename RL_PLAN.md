@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-08 10:25 EDT
+## Current synthesis — 2026-08-08 14:42 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -44,20 +44,22 @@ what those results change in the research plan.
   positive but held-out role learning failed; O0 learned an aggregate
   oracle-public edge but failed seed robustness and stayed nearly uniform.
   V11 survives only as a bounded proposal/ranking/teacher diagnostic.
-- **Teacher:** Stage B passed on sampled ordinary states. A sealed 64-state Air
-  audit now tests whether cheap choices remain good under full report-LCB
-  continuation. It does not yet establish hard-tail fidelity or authorize a
-  2,048-state wave.
+- **Teacher:** Stage B passed on sampled ordinary states. The sealed 64-state
+  continuation audit then refused operationally before publishing any label or
+  gate: one exact champion report fold was incomplete. This is no ML verdict
+  and the consumed attempt cannot be retried. Score-free diagnostics passed;
+  the next gate is a synthetic, separately versioned retry/underfill contract,
+  not a 2,048-state wave.
 - **Search challengers:** the independently reviewed live-parent contract now
   binds S3a and S3b to exact report-LCB and makes formal-S0/`mc-strong`
   re-entry unreachable. S3b v2 then failed its operational preflight: its
   first exact-treatment cluster exceeded the frozen cumulative 250k-node cap,
   so no receipt or strength screen is authorized. S3a remains only a
-  512-state mechanism screen. Its first reviewed sizing attempt completed two
-  hidden states but the publication verifier confused the authenticated
-  runtime source digest named `cards` with an outcome and emitted no receipt.
-  Those states are retired; a fresh-schema/fresh-seed verifier repair awaits
-  independent review before another Mini run.
+  512-state mechanism screen. After two fail-closed receipt repairs, its fresh
+  two-state Mini sizing receipt passed exact review and projects only 0.142
+  fleet-hours / 0.0178 max-shard hours. Capacity is no longer the blocker; its
+  command, 136M population, estimand, stop rule and controller must be frozen
+  and independently reviewed before the state-level strength screen.
 - **Data/sampler:** the bounded strict sampler certificate passed, but posterior
   fidelity and global constructive completeness remain open. High-N and
   late-ply data are replayable state reservoirs under old named targets, not

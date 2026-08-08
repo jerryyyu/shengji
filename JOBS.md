@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-08 14:36 EDT. This file owns current compute and short
+Last reconciled: 2026-08-08 14:39 EDT. This file owns current compute and short
 terminal stubs only. The exact 810-line pre-compaction ledger is archived at
 `docs_archive/jobs-through-2026-08-08.md`, SHA-256 `26beff936f6c0744b220fc79e233163c8f09acde8a13adcba5450327ad132252`.
 Detailed interpretation belongs in `AI_POLICIES.md`; execution order belongs
@@ -68,6 +68,7 @@ fresh Teacher receipt or label attempt remains unauthorized.
 
 | date | job | verdict / headline | evidence anchor |
 |---|---|---|---|
+| 08-08 | S3a v2 sizing | **CAPACITY PASS**; 0.142 fleet-hours / 0.0178 max-shard hours under frozen 400/60 caps | receipt `cf770277...5c431` |
 | 08-08 | Teacher Stage B | **PASS**; regret upper bound `0.019548 < 0.10` | gate `f607b489...89694` |
 | 08-08 | Suphx O0 | **SELECT NONE**; aggregate oracle signal, seed-1 reversal | gate `592a009a...bd407c` |
 | 08-07 | RLCB-C1 | **CONFIRM**; report-LCB `+0.338379 +/- 0.067706`, null flat | aggregate `83f5a9df...f5ef5ea`; closeout `06dd487d...b7aae5` |
@@ -197,10 +198,9 @@ exact material `34993502…092d` at 14:33. This authorizes only the two-state
 outcome-free Mini sizing command below; no registered 136M state or 512-state
 strength screen is authorized.
 
-The fresh v2 output is predeclared as
-`server/runs/logs/s3a-bury-v2-throughput-mini-v2.json`; its `.partial` and
-final are absent. After, and only after,
-`S3A_THROUGHPUT_V2_REVIEW` PASS, run this literal command once:
+The fresh v2 output was predeclared as
+`server/runs/logs/s3a-bury-v2-throughput-mini-v2.json`. After exact review
+PASS, this literal command ran once from clean `79ab7d2`:
 
 ```bash
 env -u SHENGJI_WEIGHTED_SPLITS -u SHENGJI_UNIFORM_DEAL \
@@ -211,9 +211,20 @@ env -u SHENGJI_WEIGHTED_SPLITS -u SHENGJI_UNIFORM_DEAL \
   --screen-fleet-hour-cap 400 --screen-shard-wall-hour-cap 60
 ```
 
-The script hardcodes fresh seeds 151,000,002–151,000,003 and refuses a dirty
-or unauthenticated runtime through `S3A.require_real_context()`. A receipt PASS
-still authorizes placement only; the 512-state screen remains a separate gate.
+It completed both states in `0.998834s` and published a regular unlinked final;
+the `.partial` is absent. SHA-256 is
+`cf7702770e2dd416b0ecfcdcc2ba6a5c32ab262aef0319d87346d05bcdf5c431`,
+and the exact CLI verifier reopened it. Selection accepted 220/220 requested
+worlds and report accepted 240/240, with zero failed/rejected/impossible
+worlds; each of structured, legacy-four and trigger-matched random widening
+consumed 792 candidate-worlds. No score, action or raw record persisted and no
+registered 136M screen state was consumed.
+
+With the frozen 2× safety factor, the receipt projects `0.142056` fleet-hours
+and `0.017757` max-shard wall-hours, passing the predeclared `400/60` capacity
+caps. This is placement evidence only. The next admitted action is to design
+and independently review a 512-state screen packet; the strength run itself is
+not authorized by this receipt.
 
 ## Archive pointers
 

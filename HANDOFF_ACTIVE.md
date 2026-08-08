@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 14:36 EDT. This is the executable mailbox only.
+Last update: 2026-08-08 14:42 EDT. This is the executable mailbox only.
 Terminal numbers live in `AI_POLICIES.md`, live order in `BACKLOG.md`, exact
 job history in `JOBS.md`, and chronology in `docs_archive/`.
 
@@ -10,11 +10,11 @@ job history in `JOBS.md`, and chronology in `docs_archive/`.
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Compiled `mc-s0-report-lcb`, Fly release 17, image `latency-cd6789e`, manifest `047bcfe4...5b300`. RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`; matched null `-0.019043 +/- 0.068270`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
 | T1 Teacher | **DIAGNOSTICS REVIEW PASS / V3 DESIGN NEXT / NO ML VERDICT** | Claude passed exact `b7534ee` / material `8ede4d35…43e7`: exact-work is true, all five searched play exits are typed, and no acceptance rule moved. PASS permits synthetic reproducer and a separately reviewed v3 contract only; no fresh attempt yet. |
-| T2 live parent | **COMPLETE / REVIEW PASS** | Claude passed exact `05ea1d1` / material `66be133c…e17c`, reproduced output `5f9ddbfb…8402`, reopened RLCB-C1 and falsified stale-S0 re-entry. Only the score-free S3b Mini preflight is admitted; no strength launch. |
+| T2 live parent | **COMPLETE / REVIEW PASS** | Claude passed exact `05ea1d1` / material `66be133c…e17c`, reproduced output `5f9ddbfb…8402`, reopened RLCB-C1 and falsified stale-S0 re-entry. S3b v2 is now terminal HOLD; S3a sizing passed but its screen remains a separate gate. |
 | T2 S3b v2 | **PREFLIGHT TERMINAL HOLD / NO SCREEN** | Exact head `cd44ea8` hit the frozen cumulative `250,000`-node exact-solver cap in the first treatment cluster. Exit 1; no cluster completion, receipt, partial, score or raw record. V2 may not retry, raise its cap, fall back or launch 2,048. |
-| T2 S3a sizing | **REVIEW PASS / MINI PREFLIGHT AUTHORIZED** | Claude passed exact `c784e6d` / material `34993502…092d`, reproduced 12/12 focused and the exact exploit refusal, and swept all 21 receipt fields. Only the predeclared two-state outcome-free Mini timing run is authorized; no 512-state screen. |
+| T2 S3a sizing | **COMPLETE / CAPACITY PASS / SCREEN PACKET NEXT** | Exact two-state Mini receipt `cf770277…5c431` reopened cleanly: 0.999s total, frozen 2× projection 0.142 fleet-hours / 0.0178 max-shard hours, both under 400/60 caps; exact work, no failures, scores or raw records. This permits screen-packet design only, not the 512-state run. |
 | T2 Teacher adapter | **REVIEW PASS / NOT APPLICABLE TO FAILED V2** | Exact `2de0824` / material `ccb73bb7…e6d` passed, but the adapter requires regular gate and supervisor finals. Audit-v2 produced neither, so it cannot turn this operational refusal into PASS/FAIL/INCONCLUSIVE. |
-| T2 learner O0-v2 | **INTEGRATION BRANCH PUSHED / REVIEW REQUIRED** | Exact `dd730a8` derives CRN keys only from immutable round-derived public/legal inputs and gates 100% first-public-context coupling over all 8×64 oracle/public pairs. The exact privileged-plane decoupling mutant fails; 22/22 focused and 74/74 broad pass. Review material `639c259b…a0494b`; no training or run authority. |
+| T2 learner O0-v2 | **INTEGRATION REVIEW PASS / MERGE NEXT** | Claude passed exact `dd730a8` / material `639c259b…a0494b`, reproduced 22/22 focused and a 112-test Suphx superset, and proved the privileged-plane mutant/non-vacuity boundary. PASS permits merging the outcome-free guard and designing a fresh runner packet only; no training or run authority. |
 | Formal S0 | **SELECT NONE / BURNED** | S0c outcomes remain unread and nonretryable. Closeout `ef0a365...fde9a`; never reopen or reinterpret it. |
 | V11 direct-v2 | **SELECT NONE** | `-0.141 +/- 0.070` versus current; protected composition false. V11 survives only as a bounded proposal/ranking/teacher diagnostic hypothesis. |
 | Direct-Q | **SELECT NONE** | Gameplay was positive, but seed 1 and both pooled role held-out gates failed. No extension. |
@@ -117,10 +117,11 @@ comparison with the report-LCB bot people play today.
   exploit and neutralization probes. The resulting v1 run completed both
   hidden timing states but then hit a different publication-only defect:
   `runtime_identity.digests.cards` was recursively treated as an outcome key.
-  No receipt or partial survived. Seeds 151,000,000–001 are retired. V2 uses
-  fresh 151,000,002–003. Claude's 11:20 review found one remaining defect:
-  `claim_boundary` is not fixed to its exact string/type. Codex must repair and
-  push that one field plus a wrong-artifact refusal test before re-review.
+  No receipt or partial survived. Seeds 151,000,000–001 are retired. V2 moved
+  to fresh 151,000,002–003, fixed `claim_boundary`, passed exact review, and
+  completed in 0.999 seconds. Its frozen 2x projection is 0.142 fleet-hours
+  and 0.0178 max-shard hours, so capacity passes. The 512-state screen still
+  needs a separately frozen and reviewed launch packet.
 
 ### S3b — sampled exact endgame
 
@@ -161,15 +162,13 @@ comparison with the report-LCB bot people play today.
    confirmation, policy drift and fallback to the S0 parent.
 4. **PASS at 09:54:** independent review reproduced the exact parent and both
    consumer boundaries; marker is preserved in `HANDOFF_REVIEW.md`.
-5. **DONE / TERMINAL HOLD:** S3b's score-free Mini preflight hit the frozen
+5. **DONE:** S3b's score-free Mini preflight hit the frozen
    exact-node cap in treatment cluster 1 and published nothing. V2 is closed
-   to screen compute. S3a v1 then completed two hidden timing states but its
-   verifier falsely rejected an authenticated source digest; its fresh v2
-   repair is on HOLD until Codex pins `claim_boundary`, adds the refusal test,
-   pushes, and requests a fresh review. Only a new PASS can admit a clean Mini
-   run. In parallel, continue
-   O0-v2 CRN/margin infrastructure. A strength screen remains a separate
-   authorization.
+   to screen compute. S3a v2 then passed exact review and completed its fresh
+   two-state Mini sizing run. Receipt `cf770277…5c431` is a capacity PASS far
+   inside the frozen 400/60 caps. Next: design and independently review the
+   512-state S3a screen packet. No strength run is yet authorized. In parallel,
+   continue O0-v2 and Teacher-v3 design.
 
 Teacher-v3 Stage C remains conditional on a valid terminal audit verdict.
 Audit-v2 produced no such verdict, so neither adapter branch nor Stage C is
@@ -178,14 +177,18 @@ namespace/seed contract and launch authorization; nothing auto-launches.
 
 ## Action and review queue
 
-### OPEN NOW — one Claude review, one Mini timing run, and Teacher-v3 design
+### OPEN NOW — Teacher-v3 synthetic contract and S3a screen packet
 
 #### S3a exact re-review — PASS / CLOSED
 
 Claude independently passed exact `c784e6d601ca5df426e99e6497e62eead2273a23`
 and material `34993502…092d` at 14:33. The canonical receipt passes; the exact
 outcome-shaped `claim_boundary` exploit and all 21 field injections refuse.
-This admits only the literal two-state Mini timing command in `JOBS.md`.
+The literal two-state Mini timing command completed at clean `79ab7d2` and
+published regular unlinked receipt `cf770277…5c431`; the exact verifier
+reopened it. Frozen projections are 0.142 fleet-hours and 0.0178 max-shard
+hours versus 400/60 caps. The next gate is a separately reviewed 512-state
+screen packet; no screen is authorized by this closeout.
 
 #### Teacher continuation diagnostics — PASS / CLOSED
 
@@ -194,9 +197,9 @@ and material `8ede4d35…43e7` at 14:36. The review confirms exact-work true,
 exhaustive reason typing, outcome-free diagnostics and unchanged acceptance.
 It explicitly keeps `fresh_attempt_authorized=false`.
 
-#### 1. O0-v2 public-key integration
+#### O0-v2 public-key integration — PASS / MERGE AUTHORIZED
 
-Review exact pushed branch commit
+Claude independently passed exact pushed branch commit
 `dd730a83b5369ea108d7f1d0ab83f149eeb43f41`. Only the integration module and
 its test are new; the already-reviewed mechanics dependency is unchanged.
 Ordered four-file material SHA-256 is
@@ -216,21 +219,18 @@ Inject one oracle-only privileged-plane key while repairing its internal
 digest: the rate gate must fail. Missing, duplicate and outcome-shaped
 receipts must fail. A different second key after a shared first decision must
 remain diagnostic rather than false-failing a legitimate policy fork.
-Measured results: 22/22 focused and 74/74 across features/policy/actor/learner/
-mechanics/integration. PASS authorizes merging the outcome-free guard and
-designing a separately reviewed runner packet only—no collector population,
-training, O1, strength, promotion or production action.
+Measured results: 22/22 focused and 112/112 across the full Suphx superset.
+The 14:39 marker is PASS with `training_authorized=false`. This authorizes
+merging the outcome-free guard and designing a separately reviewed runner
+packet only—no collector population, training, O1, strength, promotion or
+production action.
 
-Append exactly one marker:
-
-`SUPHX_O0_V2_INTEGRATION_V1_REVIEW {"git":"dd730a83b5369ea108d7f1d0ab83f149eeb43f41","material_sha256":"639c259bb36cf1c7deb115e21fd27f152a019c0f8e3a2ee03070f68d11a0494b","independent_review":true,"training_authorized":false,"verdict":"PASS|HOLD"}`
-
-### CODEX owns while reviews are pending
+### CODEX owns now
 
 - after diagnostic PASS, design a synthetic-only reproducer and explicit v3
   estimand decision. Do not infer underfill or admit short/rejected work from
   the old generic message, and do not touch the consumed audit-v2 state;
-- after O0-v2 integration PASS, merge the outcome-free guard and specify a
+- merge the passed O0-v2 outcome-free guard and specify a
   fresh runner/population/gate packet without changing dose, target, features
   or optimizer. Do not launch training from the integration review.
 

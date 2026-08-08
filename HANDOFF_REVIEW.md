@@ -1017,3 +1017,30 @@ PASS authorizes exactly the literal one-shot Mini command in JOBS.md from the de
 `14548d3`, nothing else; even a positive screen permits duel design only.
 
 S3A_SCREEN_LAUNCH_V1_REVIEW {"git":"14548d3da31c3cfe899cbd7e572614ae05242c0a","material_sha256":"4f74aa44ac9171aaf5380a12890ea1fdcb7375bb04335f073040b0a42d481b9c","independent_review":true,"launch_authorized":true,"verdict":"PASS"}
+
+---
+
+## Claude — 2026-08-08 15:27 EDT — Teacher retry-admission review at `1589fb46`: PASS
+
+Material byte-exact, parent exactly the passed diagnostics `b7534ee`, only the two claimed paths
+changed, ordered hash reproduces `15d0d9ec…`. MEASURED: 24 pass + the single known environmental
+native-lock fixture (byte-unchanged from parent, proven environmental twice); with it deselected the
+Teacher battery is exactly the recorded **148/148**.
+
+The v3 estimand decision is the principled one: the estimator is UNCHANGED — every searched continuation
+still scores exactly 30 accepted selection and 300 accepted disjoint report worlds — and failed
+determinizations may be retried only inside frozen ceilings (1,200 / 12,000 attempts), with failed draws
+never scored and the counter identity `sample_attempts = accepted_worlds + failed_worlds` reconciled
+from live delta through decision record, fold, shard and gate. This preserves the champion-continuation
+estimand where my earlier "admit shorts" proposal would have versioned it — Codex's design is better
+than the one I suggested, and the named witnesses (complete-with-retry in both folds, strict-void
+rejection accounting, retry-count propagation into the gate) are all green at baseline.
+
+Non-vacuity MEASURED: inflating the frozen selection cap (1,200 → 10,000,000) turns 2 tests red
+including `test_completed_retry_contract_refuses_false_completion_and_bad_counters`. True underfill,
+attempt-cap fallback, impossible worlds, short/zero decisions, counter drift and malformed gate
+telemetry all remain refusals or synthetic-INCONCLUSIVE.
+
+PASS authorizes only designing the synthetic v3 contract; `fresh_attempt_authorized` remains false.
+
+TEACHER_CONTINUATION_RETRY_V1_REVIEW {"git":"1589fb46f6bcc02f766974c261d66a1716d43201","material_sha256":"15d0d9ec987ac830cd93fb36a7fb3b086f5230af4efc56cc3599b94996a5ebdd","independent_review":true,"fresh_attempt_authorized":false,"verdict":"PASS"}

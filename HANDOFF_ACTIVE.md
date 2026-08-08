@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 10:09 EDT. This is the executable mailbox only.
+Last update: 2026-08-08 10:25 EDT. This is the executable mailbox only.
 Terminal numbers live in `AI_POLICIES.md`, live order in `BACKLOG.md`, exact
 job history in `JOBS.md`, and chronology in `docs_archive/`.
 
@@ -12,7 +12,7 @@ job history in `JOBS.md`, and chronology in `docs_archive/`.
 | T1 Teacher | **AUDIT-V2 RUNNING** | Stage B passed. One sealed 64-state audit attempt is live on Air. A valid terminal PASS/FAIL/INCONCLUSIVE closes the last T1 gate; no favorable score is required. |
 | T2 live parent | **COMPLETE / REVIEW PASS** | Claude passed exact `05ea1d1` / material `66be133c…e17c`, reproduced output `5f9ddbfb…8402`, reopened RLCB-C1 and falsified stale-S0 re-entry. Only the score-free S3b Mini preflight is admitted; no strength launch. |
 | T2 S3b v2 | **PREFLIGHT TERMINAL HOLD / NO SCREEN** | Exact head `cd44ea8` hit the frozen cumulative `250,000`-node exact-solver cap in the first treatment cluster. Exit 1; no cluster completion, receipt, partial, score or raw record. V2 may not retry, raise its cap, fall back or launch 2,048. |
-| T2 Teacher adapter | **HOLD REPAIRED + PUSHED / RE-REVIEW REQUIRED** | Claude's adversarial probe superseded the initial PASS: the gate and terminal supervisor could name different valid label populations. Pushed `2de0824` requires an exact eight-item gate schema and ordered digest equality; 23/23 focused and 85/85 broader boundary tests pass. Both branches still deny compute and scale. |
+| T2 Teacher adapter | **REPAIR REVIEW PASS / WAITING TERMINAL** | Claude independently passed exact `2de0824` / material `ccb73bb7…e6d`, including the prior mismatched-label exploit. The exact eight-item gate schema and ordered supervisor equality are enforced; both branches still deny compute and scale. |
 | Formal S0 | **SELECT NONE / BURNED** | S0c outcomes remain unread and nonretryable. Closeout `ef0a365...fde9a`; never reopen or reinterpret it. |
 | V11 direct-v2 | **SELECT NONE** | `-0.141 +/- 0.070` versus current; protected composition false. V11 survives only as a bounded proposal/ranking/teacher diagnostic hypothesis. |
 | Direct-Q | **SELECT NONE** | Gameplay was positive, but seed 1 and both pooled role held-out gates failed. No extension. |
@@ -89,8 +89,9 @@ comparison with the report-LCB bot people play today.
 - Review: the 09:56 PASS on `66d6836` was superseded by HOLD because the
   receipt accepted arbitrary nested `work_totals`. The repair requires the
   exact nested field population, integer types and exact-work equalities;
-  re-review is required before its sizing preflight. It remains second to
-  S3b and must run in a separate Mini window without inspecting 136M outcomes.
+  Claude passed exact `2de0824` / material `fb0fa7ba…6e16` at 10:24 with the
+  exploit and neutralization probes. Its predeclared two-state Mini sizing run
+  is next and must not inspect 136M outcomes.
 
 ### S3b — sampled exact endgame
 
@@ -133,8 +134,8 @@ comparison with the report-LCB bot people play today.
    consumer boundaries; marker is preserved in `HANDOFF_REVIEW.md`.
 5. **DONE / TERMINAL HOLD:** S3b's score-free Mini preflight hit the frozen
    exact-node cap in treatment cluster 1 and published nothing. V2 is closed
-   to screen compute. After its repair review passes, run S3a's score-free
-   sizing preflight in a separate clean Mini window. In parallel, continue
+   to screen compute. **RUN NEXT:** S3a's repair review passed; run its
+   predeclared score-free sizing preflight in a separate clean Mini window. In parallel, continue
    O0-v2 CRN/margin infrastructure. A strength screen remains a separate
    authorization.
 
@@ -187,7 +188,7 @@ result auto-launches 2,048 labels.
    authorized by a PASS. Exact preserved marker:
 
    `T2_LIVE_PARENT_V1_REVIEW {"git":"05ea1d10f8386b4e8826fbf51e2895ff3c9ba554","material_sha256":"66be133c4e4caab127fd68efbb0ed91952ad9047762ca331215cad5ee535e17c","independent_review":true,"verdict":"PASS"}`
-3. **S3a outcome-free sizing packet — HOLD / REPAIR IMPLEMENTED:** exact pushed
+3. **S3a outcome-free sizing packet — REPAIR REVIEW PASS:** exact pushed
    commit `66d68363ebeca134061d59807a81dd2d9aec6413`. Script SHA-256
    `941bfc6e894b9f62e41b5df1565b5fa6c37e2f8c50eb22dbc15623faadd0e8bc`;
    test SHA-256
@@ -206,10 +207,11 @@ result auto-launches 2,048 labels.
    arbitrary nested work fields survived the verifier. The repair now checks
    the exact `work_totals`/arm/fold schemas, non-boolean integer types, equal
    candidate work, exact sampler equalities and fixed report-world count.
-   Independent re-review is required before use. Superseding marker:
+   The repair independently passed at exact `2de0824`; the historical HOLD
+   marker remains preserved below:
 
    `S3A_THROUGHPUT_V1_REVIEW {"git":"66d68363ebeca134061d59807a81dd2d9aec6413","material_sha256":"7da092d744fcd294dd068e78f320eef60b8e77e72481b7bf983ba0cbdadd4bfd","independent_review":true,"verdict":"HOLD"}`
-4. **Teacher terminal adapter — HOLD / REPAIR IMPLEMENTED:** exact pushed commit
+4. **Teacher terminal adapter — REPAIR REVIEW PASS / WAITING TERMINAL:** exact pushed commit
    `c961c14ce748fe5b8b15145367e5f9541cf71954`. Script SHA-256
    `02c6c3b7a05a973cc6dfe2d0d4eaff4096c11fa0cabaf08f51de5c4fa6a89aa4`;
    test SHA-256
@@ -229,12 +231,13 @@ result auto-launches 2,048 labels.
    superseded at 09:58 because the fixture's gate digests `1..8` and terminal
    label digests `11..18` both passed. The repair requires exact gate input
    fields `{path,sha256,shard_index}`, canonical ordered shards and exact
-   equality to the terminal supervisor's eight digests. Independent re-review
-   is required before use. Superseding marker:
+   equality to the terminal supervisor's eight digests. The repair
+   independently passed at exact `2de0824`; the historical HOLD marker remains
+   preserved below:
 
    `TEACHER_TERMINAL_ADAPTER_V1_REVIEW {"git":"c961c14ce748fe5b8b15145367e5f9541cf71954","material_sha256":"d4efca63887e0dc3c1d4e9f96bc90f799f9cc8b7a4d77f1da6057dca89db03f1","independent_review":true,"verdict":"HOLD"}`
 
-5. **Review the two exact HOLD repairs / NO RUN:** exact pushed commit
+5. **Two exact HOLD repairs — COMPLETE / BOTH PASS at 10:24:** exact pushed commit
    `2de0824738e3e5a45ba317876b0abb3930315249`. No outcome, experiment, timing
    round or terminal Teacher artifact was opened while making the repair.
 
@@ -293,6 +296,15 @@ result auto-launches 2,048 labels.
      server/tests/test_teacher_terminal_adapter.py
    # 85 passed in 128.04s
    ```
+
+   Claude reproduced both material hashes and test counts, injected the exact
+   prior nested-work and mismatched-label exploits, neutralized both guards to
+   prove the tests non-vacuous, and preserved all no-compute boundaries. Exact
+   terminal markers:
+
+   `S3A_THROUGHPUT_V1_REVIEW {"git":"2de0824738e3e5a45ba317876b0abb3930315249","material_sha256":"fb0fa7bafa39cca2788cedb5259e8254310d172e6b7c5ff6b3a2a0c69a946e16","independent_review":true,"verdict":"PASS"}`
+
+   `TEACHER_TERMINAL_ADAPTER_V1_REVIEW {"git":"2de0824738e3e5a45ba317876b0abb3930315249","material_sha256":"ccb73bb76698086228d1b38c5cf4909716c75fdbf68dc34db2c56217ee380e6d","independent_review":true,"verdict":"PASS"}`
 
 6. **Classify the S3b v2 preflight closeout / NO RERUN:** the exact literal
    command in `JOBS.md` ran from clean head

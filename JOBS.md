@@ -100,8 +100,9 @@ require independent re-review.
 The live-parent PASS admitted the first score-free S3b timing job on Mini.
 That exact attempt is now terminal HOLD after the exact solver exceeded its
 frozen cumulative node bound before treatment cluster 1 completed. S3a's
-separate sizing packet remains next and cannot run until its repair passes
-re-review; no two timing jobs may overlap.
+separate repaired sizing packet independently passed review at exact
+`2de0824` / material `fb0fa7ba…6e16`; its two-state timing is next and no two
+timing jobs may overlap.
 
 1. S3b two-cluster throughput preflight under hard caps screen `200`
    fleet-hours / `30` max shard-hours and confirmation `800` / `120`;
@@ -157,6 +158,24 @@ receipt paths were verified absent. Therefore no timing projection or
 strength outcome exists, the required zero-overflow gate is false, and the
 2,048 screen is unauthorized. Do not rerun seed 141,000,000, raise the v2 cap,
 add fallback semantics or reinterpret this as a numerical strength result.
+
+The exact S3a launch is now predeclared as
+`s3a-bury-v2-throughput-mini-v1`, output
+`server/runs/logs/s3a-bury-v2-throughput-mini-v1.json`, hardcoded seeds
+151,000,000--151,000,001. The literal command is:
+
+```bash
+env -u SHENGJI_WEIGHTED_SPLITS -u SHENGJI_UNIFORM_DEAL \
+  -u SHENGJI_PHYSICAL_FILLS -u SHENGJI_ALLOW_BALLOT_MISMATCH \
+  SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 \
+  server/.venv/bin/python server/scripts/s3a_bury_throughput.py run \
+  --out server/runs/logs/s3a-bury-v2-throughput-mini-v1.json \
+  --screen-fleet-hour-cap 400 --screen-shard-wall-hour-cap 60
+```
+
+It may persist only timing, exact work counters, frozen caps and their derived
+placement decision. It may not retain actions, scores or raw records and may
+not start the 512-state mechanism screen.
 
 ## Archive pointers
 

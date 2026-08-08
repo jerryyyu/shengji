@@ -99,7 +99,7 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 | **T1 / Lane A.1 V11pair — COMPLETE / SELECT NONE** | Preserve the learned milestone without forcing it into the champion | Artifact repair passed; the frozen rule rejected protected composition. Keep v11 as a bounded proposer/ranker and teacher diagnostic only. No protected-anchor run is authorized. |
 | **T1 / Lane B teacher — AUDIT-V2 RUNNING** | Determine whether cheap N=30 choices remain good under the full champion continuation | Exact review passed. Receipt `ce51b826…71d0` and preparation `7f89a86c…6605` bind evaluator `1866132`, controller `edc923f`, the v2 run ID and all 20 parents. Air supervisor PID 95339 owns eight unchanged 32/32 shards and will gate once after exact zero exits. Preserve any terminal result; never retry. |
 | **T2 / live parent + S3 reparenting — COMPLETE / REVIEW PASS** | Make every new search mechanism challenge the bot people actually play | Claude independently passed exact `05ea1d1` / material `66be133c…e17c`, reproduced parent output `5f9ddbfb…8402`, reopened RLCB-C1 and falsified stale-S0 re-entry. S3a/S3b retain their narrow v2 boundaries. This authorizes only the predeclared score-free S3b Mini preflight, not strength compute. |
-| **T2 / S3a structured bury — HOLD REPAIRED / RE-REVIEW REQUIRED** | Test whether a much wider, strategy-aware kitty ballot finds better once-per-round decisions | Adversarial review superseded the initial PASS because arbitrary nested `work_totals` fields were accepted. Pushed repair `2de0824` requires the exact nested score-free schema, integer types and sampler/candidate-work equalities; 85/85 broader boundary tests pass. Re-review is required before its separate Mini sizing run. |
+| **T2 / S3a structured bury — REPAIR REVIEW PASS / PREFLIGHT READY** | Test whether a much wider, strategy-aware kitty ballot finds better once-per-round decisions | Claude independently passed repaired material `fb0fa7ba…6e16` at exact `2de0824`, including the prior nested-field exploit and 23/23 focused plus 85/85 broad tests. Run only the predeclared two-state score-free Mini sizing receipt next; the 512-state screen remains separately unauthorized. |
 | **T2 / S3b sampled exact endgame — PREFLIGHT TERMINAL HOLD / NO SCREEN** | Replace heuristic continuation with bounded exact solving when every hand has at most four cards | The exact predeclared Mini attempt reached the frozen cumulative `250,000`-node ceiling in its first treatment cluster and failed before publishing a receipt. No score/raw record survived and the 2,048 screen is unauthorized. Never rerun or raise the cap in v2; a future v3 must separately review a narrower threshold, a solver optimization, or a different bound. |
 | **T1 / Lane C Direct-Q — COMPLETE / SELECT NONE** | Learn from the failure without selecting its positive gameplay tail | Preserve aggregate SHA `1fa6789e…791`; do not deploy, extend or mutate the 144M recipe. The next learner requires a separately frozen Suphx-style or other role-correct microbaseline gate. |
 | **T1 / Lane C Suphx O0 — COMPLETE / SELECT NONE** | Test whether a full-information policy can learn before spending compute on feature removal | Preserve gate SHA `592a009a…bd407c`. Both ensemble LCBs passed, but seed 1 lost to its equal-seed public arm (`-0.207`), failing the registered robustness conjunction. O1 is closed for this exact recipe; the next learner needs a fresh packet, not an O0 extension. |
@@ -142,11 +142,12 @@ into one learner-mechanism battery. Tighten execution in four places:
   evaluation design, then factorially isolate sharpening/dose mechanisms.
 
 The current S3a 136M/512-state asset is a **non-promotable state-level
-mechanism screen** whose PASS only authorizes designing a full-game duel. Both
-S3a and S3b still derive `mc-strong` from formal S0 SELECT NONE, so neither may
-spend live-champion strength compute until a new versioned parent binds exact
-`mc-s0-report-lcb`. S3b already has a separate 2,048-screen/8,192-confirm
-shape; S3a does not yet have that full-game runner.
+mechanism screen** whose PASS only authorizes designing a full-game duel. The
+reviewed v2 parent now binds both S3 lanes to exact `mc-s0-report-lcb` and
+blocks formal-S0/`mc-strong` re-entry. S3b v2 nevertheless stopped at its
+operational preflight after a first-cluster exact-budget overflow; its
+2,048/8,192 strength path is closed. S3a still lacks a full-game runner and
+awaits repair review before its score-free sizing preflight.
 
 ## Milestones
 
@@ -169,10 +170,10 @@ bot rather than imitate it.
 | order | deliverable | completion gate |
 |---|---|---|
 | **T2.0 — COMPLETE / REVIEW PASS** | Version one reusable live-champion parent contract for S3 evidence | Exact `05ea1d1` / material `66be133c…e17c` independently passed at 09:54. Review reproduced the real parent output and falsified anchor drift, formal-S0 re-entry and consumer-boundary widening. No strength or production authority was conveyed. |
-| **T2.1 / S3a — HOLD REPAIRED / RE-REVIEW** | Size, then conditionally run the 512-state structured-bury mechanism screen under its fresh v2 namespace | The initial `66d6836` PASS is superseded by HOLD. The repaired loader accepts only exact `states` / three-arm candidate work / two-fold counters, enforces types and exact-work equalities, and rejects unknown nested fields. Run only after an independent repair PASS, then only after S3b in a separate Mini window. |
+| **T2.1 / S3a — REPAIR REVIEW PASS / RUN NEXT** | Size, then conditionally run the 512-state structured-bury mechanism screen under its fresh v2 namespace | Exact repair `2de0824` / material `fb0fa7ba…6e16` independently passed. Run the predeclared two-state 151M timing receipt alone on Mini with safety factor 2 and caps `400` fleet-hours / `60` max shard-hours. Its result authorizes placement only; the 512-state screen remains a separate decision. |
 | **T2.2 / S3b — COMPLETE / TERMINAL HOLD** | Run the score-free two-cluster throughput preflight for the report-LCB sampled-exact lane on Mini | At exact head `cd44ea8`, the first treatment cluster raised `ExactEndgameBudgetExceeded: max_nodes=250000`; exit 1, no `1/2` completion, receipt or partial. This falsifies the v2 zero-overflow feasibility condition. Same-recipe retry/cap change/fallback is unauthorized. |
 | **T2.3 / S3b v2 — CLOSED / UNAUTHORIZED** | Launch the 2,048-cluster complete-round sampled-exact screen when capacity and preflight permit | The required preflight did not pass and the zero-overflow invariant failed before a cluster completed. Preserve the seed and failure. A fresh v3 design/review—not a mutation of this attempt—is required before more sampled-exact compute. |
-| **T2.4 / Teacher — HOLD REPAIRED / RE-REVIEW** | Convert the terminal audit into a Stage-C contract | The initial `c961c14` PASS is superseded by HOLD: its fixture proved the gate and terminal supervisor could name different label populations. Pushed repair `2de0824` requires the exact ordered gate-input schema and exact equality to all eight terminal label digests. Apply only after independent repair PASS and the terminal gate. |
+| **T2.4 / Teacher — REPAIR REVIEW PASS / WAITING TERMINAL** | Convert the terminal audit into a Stage-C contract | Claude independently passed exact `2de0824` / material `ccb73bb7…e6d`, including the prior `1..8` vs `11..18` population exploit. Apply from a clean detached `2de0824` worktree only after the Air supervisor publishes its terminal gate; both branches remain no-compute. |
 | **T2.5 / learner — MECHANICS CODED** | Write, but do not yet bundle-run, a fresh O0-v2 mechanism battery | Pushed `8f3cca4` adds keyed arm-independent CRN draws, requires at least eight training-seed inference units, and isolates optional two-sided top-two margin control from the CRN control. It preserves the old 64-iteration dose/reward target and has no runner, population, gate or launch authority. Next: integrate the two cells under one fresh packet without changing dose/target/features/optimizer. |
 
 T2 is successful today if T2.0 is reviewed and at least one bounded Mini
@@ -200,10 +201,10 @@ ready for each free host, but continue the first unblocked implementation item
 whenever a review or run is live:
 
 1. post and clear the independent `05ea1d1` T2.0 review;
-2. **HOLD REPAIRED / RE-REVIEW:** S3a's outcome-free, out-of-population
+2. **REPAIR REVIEW PASS at `2de0824`:** S3a's outcome-free, out-of-population
    timing receipt now closes the exact nested-work-schema defect; do not
    inspect 136M outcomes for sizing;
-3. **HOLD REPAIRED / RE-REVIEW:** the terminal Teacher adapter
+3. **REPAIR REVIEW PASS at `2de0824`:** the terminal Teacher adapter
    precommits PASS to a hard-tail Stage-C design and FAIL/INCONCLUSIVE to the
    existing-evidence diagnostic only, and now binds the gate's ordered eight
    label digests to the terminal supervisor population; neither branch

@@ -528,3 +528,32 @@ used.
 S3A_THROUGHPUT_V1_REVIEW {"git":"66d68363ebeca134061d59807a81dd2d9aec6413","material_sha256":"7da092d744fcd294dd068e78f320eef60b8e77e72481b7bf983ba0cbdadd4bfd","independent_review":true,"verdict":"HOLD"}
 
 TEACHER_TERMINAL_ADAPTER_V1_REVIEW {"git":"c961c14ce748fe5b8b15145367e5f9541cf71954","material_sha256":"d4efca63887e0dc3c1d4e9f96bc90f799f9cc8b7a4d77f1da6057dca89db03f1","independent_review":true,"verdict":"HOLD"}
+
+---
+
+## Claude — 2026-08-08 10:24 EDT — T2 repair re-reviews: both PASS (and both prior defects were mine to catch)
+
+Reviewed exact `2de0824`; all four material SHAs byte-exact and HEAD-identical; both ordered
+material hashes reproduce. MEASURED: 23/23 focused and 85/85 wide, matching the recorded counts.
+
+**S3a sizing repair — PASS.** The exact prior defect now refuses: injecting
+`"innocent": {"strength_score": 123.0}` into `work_totals` yields "throughput receipt work-total
+schema" while the untouched payload still passes `receipt_problems` cleanly. The parameterized suite
+covers nested schema, boolean-as-int types, candidate-work inequality, counter equalities and counter
+schema; neutralizing `_work_totals_problems` in a scratch worktree turns those cases red. Claim
+boundary remains timing/placement only.
+
+**Teacher adapter repair — PASS.** The exact prior defect now refuses: individually-valid unique label
+digests `11..18` against gate inputs `1..8` yield "supervisor/gate label digest binding"; an extra
+field in a gate input refuses; reordered shards refuse; the matched population still passes.
+Neutralizing the equality guard turns `test_gate_inputs_and_supervisor_labels_must_match_exactly` red
+(6 red total with both guards out). All no-compute/no-retry branch restrictions re-verified intact.
+
+Accounting: both repaired defects existed in the packets I marked PASS at 09:54–09:56. My probes
+covered the adjacent surfaces (top-level receipt whitelist; verdict/returncode/gate-SHA binding) and
+missed the nested-schema laxity and the label-population equality. Codex's supersession at 09:58 was
+correct on both. The pattern to carry forward: when a review claim says "only exact fields X", the
+probe must inject a foreign field at EVERY nesting level the schema admits, not just the top.
+
+S3A_THROUGHPUT_V1_REVIEW {"git":"2de0824738e3e5a45ba317876b0abb3930315249","material_sha256":"fb0fa7bafa39cca2788cedb5259e8254310d172e6b7c5ff6b3a2a0c69a946e16","independent_review":true,"verdict":"PASS"}
+TEACHER_TERMINAL_ADAPTER_V1_REVIEW {"git":"2de0824738e3e5a45ba317876b0abb3930315249","material_sha256":"ccb73bb76698086228d1b38c5cf4909716c75fdbf68dc34db2c56217ee380e6d","independent_review":true,"verdict":"PASS"}

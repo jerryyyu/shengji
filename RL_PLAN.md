@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-08 08:43 EDT
+## Current synthesis — 2026-08-08 10:25 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -48,10 +48,13 @@ what those results change in the research plan.
   audit now tests whether cheap choices remain good under full report-LCB
   continuation. It does not yet establish hard-tail fidelity or authorize a
   2,048-state wave.
-- **Search challengers:** S3a structured burial and S3b sampled exact endgame
-  are implemented but still inherit `mc-strong` from formal S0. Reparent both
-  to exact report-LCB before compute. S3a is only a 512-state mechanism screen;
-  S3b has a score-free preflight, 2,048 screen and 8,192 confirmation.
+- **Search challengers:** the independently reviewed live-parent contract now
+  binds S3a and S3b to exact report-LCB and makes formal-S0/`mc-strong`
+  re-entry unreachable. S3b v2 then failed its operational preflight: its
+  first exact-treatment cluster exceeded the frozen cumulative 250k-node cap,
+  so no receipt or strength screen is authorized. S3a remains only a
+  512-state mechanism screen; its repaired score-free sizing verifier passed
+  independent review and its two-state Mini run is next.
 - **Data/sampler:** the bounded strict sampler certificate passed, but posterior
   fidelity and global constructive completeness remain open. High-N and
   late-ply data are replayable state reservoirs under old named targets, not

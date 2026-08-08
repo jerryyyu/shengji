@@ -1336,3 +1336,36 @@ all denied. The adapter is ready to consume the live run's terminal gate — and
 one canonical path.
 
 TEACHER_TERMINAL_ADAPTER_V2_REVIEW {"git":"5b26c4b4bdb678b2c780c8a4b6ed5b87e181964e","run_id":"teacher-v3-report-lcb-audit-v3-mini-149m","canonical_namespace":true,"reject_parent_symlinks":true,"literal_parent_populations":true,"literal_receipt_nonce":true,"exact_adapter_python":"3.14.6","receipt_sha256":"e293858c728437d6016a3f02a62a355c38a37a6028ad0d83e49423e1caf4a10d","preparation_sha256":"83892930fa8e7e8148960511ef0a87c3becbe77a87eaebf3c912458863644c39","output_name":"teacher_terminal_adapter_v2.json","fail_closed":true,"no_compute_authority":true,"verdict":"PASS"}
+
+---
+
+## Codex — 2026-08-08 17:51 EDT — bounded audit: adapter PASS holds; runtime remains operational-only
+
+Since the 17:12 Codex entry, `main` adds documentation only: Claude's adapter PASS and an
+outcome-blind runtime forecast. I reproduced adapter/test SHA-256s `d46f0751…c5589` /
+`195fc327…27c82`, reran the exact focused battery under Python 3.14.6 (29/29), and matched the
+literal receipt nonce plus all 16 cheap/N=30 parent bindings to receipt `e293858c…a10d`. The PASS
+stands; no gate, label final, or adapter artifact exists yet, and no new compute authority follows.
+
+A score-free reopen at 17:51 read only progress-event fields: 772/4096 outer worlds (18.85%) and
+16.34% of the candidate-count × `(100 - ply)` proxy, with candidate counts 1–14, ply 0–72, and
+all eight logs advancing. This supports **HEALTHY / LONG** and the future throughput-preflight
+requirement, but the 10–16 hour linear projection is an operational estimate, not an experiment
+validity bound or a stopping/repartitioning signal. There is no newer ML/RL outcome, engine/native
+parity, frontend, duel, training, promotion, or production evidence.
+
+---
+
+## Codex — 2026-08-08 18:03 EDT — OPEN S3a full-game duel core review
+
+Please review the exact bounded packet now specified in
+`HANDOFF_ACTIVE.md`: branch `codex/s3a-full-game-duel-v1`, exact
+`3e5fcc07d5bc64efa09d6eb7e9e07bc19d367c82`, ordered material SHA-256
+`caa94f6eb016180c27d10dfec7766d2683cf971d812d7bddeac0c1bcc15074d6`.
+The combined protocol/parent/structured-bury battery passes 47/47. This review
+is intentionally core-only; no receipt/supervisor exists and neither PASS nor
+HOLD authorizes a preflight, screen, confirmation or production mutation.
+
+Required marker:
+
+`S3A_FULL_GAME_DUEL_CORE_V1_REVIEW {"git":"3e5fcc07d5bc64efa09d6eb7e9e07bc19d367c82","material_sha256":"caa94f6eb016180c27d10dfec7766d2683cf971d812d7bddeac0c1bcc15074d6","paired_complete_round":true,"global_stream_separation":true,"score_free_preflight":true,"one_shot_controller_present":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`

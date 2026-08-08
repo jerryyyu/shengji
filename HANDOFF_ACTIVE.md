@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 17:32 EDT. This is the executable mailbox, not a
+Last update: 2026-08-08 18:03 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -11,7 +11,7 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
 | T1 Teacher | **RUNNING ON MINI / ADAPTER REVIEW PASS** | Claude passed both the exact launch packet and terminal adapter `5b26c4b`. Supervisor `teacher-v3-report-lcb-audit-v3-mini-149m` owns all eight workers. Wait for one terminal gate, independently recompute it, then create one adapter artifact. |
-| T2 S3a structured bury | **512-STATE MECHANISM PASS** | Structured widening passed all three frozen state-level LCBs. Design a fresh full-game duel against exact production plus a champion-matched null; no duel is yet authorized. |
+| T2 S3a structured bury | **DUEL CORE READY FOR REVIEW / NO LAUNCH** | Pushed exact `3e5fcc0` adds the fresh full-game protocol, score-free sizing preflight and 19-test falsification surface. Review the core while its separate one-shot launch controller is built; this commit alone grants no compute. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
 | T2 learner O0-v2 | **INTEGRATION MERGED** | Exact integration passed review; a fresh population/runner/gate packet is next. No training is authorized. |
 
@@ -193,6 +193,40 @@ Structured-minus-production mean/LCB was `+0.997314/+0.596708`, versus
 legacy-four `+0.877848/+0.497963`, and versus matched random widening
 `+3.252848/+2.691652`. This is a mechanism result, not a full-game strength or
 production result.
+
+## OPEN REVIEW — S3a full-game duel protocol core
+
+Review pushed branch `codex/s3a-full-game-duel-v1` at exact
+`3e5fcc07d5bc64efa09d6eb7e9e07bc19d367c82`. Material SHA-256 is
+`caa94f6eb016180c27d10dfec7766d2683cf971d812d7bddeac0c1bcc15074d6`;
+runner SHA-256 is `e47870c8…a5482b2`, test SHA-256
+`1de61d20…edcdf4`. Focused plus exact-parent/structured-bury battery passes
+47/47.
+
+This freezes a 2,048-cluster screen and independent 8,192-cluster
+confirmation over mirrored complete-round signed level utility. Treatment is
+exact live `mc-s0-report-lcb` with only structured bury enabled; controls are
+the exact champion and its registered RNG-shifted matched null; the exact
+champion is the common opponent. Preflight, screen and confirmation seed/role
+streams use sparse populations proven globally disjoint. The score-free
+preflight publishes timing/counters only with a 2× capacity projection. The
+gate requires treatment LCBs above both controls, the two-sided null/champion
+interval to contain zero, witnessed trigger/override, exact structured work
+and zero feature dose in all controls. A screen PASS opens confirmation-packet
+review only; even a confirmation PASS cannot deploy.
+
+Please mutate parent identity, either S3a switch, candidate cap, rollout or
+ballot identity, null shift, cross-population seed reuse, run/phase identity,
+paired contrast sign, exact-work/sampler reconciliation, a control feature
+counter, preflight score leakage, capacity bounds, shard population/hash, and
+screen-parent authority/runtime. Also assess whether four score-free preflight
+clusters plus the 2× safety factor are enough for this tail-heavy full-game
+cost. This is a **core-only** review: the one-shot receipt/supervisor is not yet
+present, so PASS grants no preflight or strength launch.
+
+Append exactly one marker to `HANDOFF_REVIEW.md`:
+
+`S3A_FULL_GAME_DUEL_CORE_V1_REVIEW {"git":"3e5fcc07d5bc64efa09d6eb7e9e07bc19d367c82","material_sha256":"caa94f6eb016180c27d10dfec7766d2683cf971d812d7bddeac0c1bcc15074d6","paired_complete_round":true,"global_stream_separation":true,"score_free_preflight":true,"one_shot_controller_present":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
 
 ## Standing rules
 

@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 18:03 EDT. This is the executable mailbox, not a
+Last update: 2026-08-08 18:04 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -11,7 +11,7 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
 | T1 Teacher | **RUNNING ON MINI / ADAPTER REVIEW PASS** | Claude passed both the exact launch packet and terminal adapter `5b26c4b`. Supervisor `teacher-v3-report-lcb-audit-v3-mini-149m` owns all eight workers. Wait for one terminal gate, independently recompute it, then create one adapter artifact. |
-| T2 S3a structured bury | **DUEL CORE READY FOR REVIEW / NO LAUNCH** | Pushed exact `3e5fcc0` adds the fresh full-game protocol, score-free sizing preflight and 19-test falsification surface. Review the core while its separate one-shot launch controller is built; this commit alone grants no compute. |
+| T2 S3a structured bury | **CORE + PREFLIGHT CONTROLLER REVIEW OPEN / NO LAUNCH** | Exact core `3e5fcc0` and descendant one-shot controller `34154f9` are pushed; combined battery 59/59. Review both. No host/budgets command is frozen and no preflight or strength compute is authorized. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
 | T2 learner O0-v2 | **INTEGRATION MERGED** | Exact integration passed review; a fresh population/runner/gate packet is next. No training is authorized. |
 
@@ -227,6 +227,35 @@ present, so PASS grants no preflight or strength launch.
 Append exactly one marker to `HANDOFF_REVIEW.md`:
 
 `S3A_FULL_GAME_DUEL_CORE_V1_REVIEW {"git":"3e5fcc07d5bc64efa09d6eb7e9e07bc19d367c82","material_sha256":"caa94f6eb016180c27d10dfec7766d2683cf971d812d7bddeac0c1bcc15074d6","paired_complete_round":true,"global_stream_separation":true,"score_free_preflight":true,"one_shot_controller_present":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
+
+### OPEN companion review — score-free one-shot controller
+
+On the same branch, descendant exact
+`34154f93f2f6b7631f27f5f1fd93675f91766ec5` adds only the controller and its
+tests; the reviewed core bytes remain unchanged. Controller SHA-256 is
+`546d264a…ec3209`, test SHA-256 `12d871cf…68cc6`, ordered material SHA-256
+`38b5f52fa2ff39559d8a88f33c47cbd1b7dc7521b8298eb2165f27c840df5370`.
+Controller-focused tests pass 12/12; the combined battery passes 59/59.
+
+The controller binds exact Git/source bytes, Python 3.14.6, one registered
+host, live-parent/runtime bytes, capacity budgets, sparse population, exact
+command and a fresh namespace. It owns one score-free child, receipt,
+heartbeats, exit/log/output hashes and a fully recomputed terminal final.
+Outcome fields, run mixing, projection/capacity lies, telemetry/counter drift,
+control activation, progress splicing, overwrite/retry and authority mutation
+refuse. Its strongest possible terminal status is
+`AUTHORIZE_SCREEN_PACKET_REVIEW`; it cannot launch a screen.
+
+Please falsify the controller and specifically assess canonical-path/symlink
+handling, the supported-host boundary, child/process cleanup, score-free
+coverage, terminal recomputation, and whether a malformed/HOLD artifact can
+acquire review authority. This review still freezes no host or numeric budget;
+those belong to a final literal launch packet after the core review resolves
+the four-cluster/2× sizing question.
+
+Append exactly one marker:
+
+`S3A_DUEL_PREFLIGHT_CONTROLLER_V1_REVIEW {"git":"34154f93f2f6b7631f27f5f1fd93675f91766ec5","core_git":"3e5fcc07d5bc64efa09d6eb7e9e07bc19d367c82","material_sha256":"38b5f52fa2ff39559d8a88f33c47cbd1b7dc7521b8298eb2165f27c840df5370","one_shot":true,"score_free":true,"screen_packet_review_only":true,"preflight_launch_authorized":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
 
 ## Standing rules
 

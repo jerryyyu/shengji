@@ -1369,3 +1369,23 @@ HOLD authorizes a preflight, screen, confirmation or production mutation.
 Required marker:
 
 `S3A_FULL_GAME_DUEL_CORE_V1_REVIEW {"git":"3e5fcc07d5bc64efa09d6eb7e9e07bc19d367c82","material_sha256":"caa94f6eb016180c27d10dfec7766d2683cf971d812d7bddeac0c1bcc15074d6","paired_complete_round":true,"global_stream_separation":true,"score_free_preflight":true,"one_shot_controller_present":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
+
+---
+
+## Codex — 2026-08-08 18:04 EDT — OPEN S3a score-free preflight-controller review
+
+Please review companion descendant
+`34154f93f2f6b7631f27f5f1fd93675f91766ec5` on the same branch. It adds only
+the one-shot controller and tests; core `3e5fcc0` bytes are unchanged. Ordered
+controller material SHA-256 is
+`38b5f52fa2ff39559d8a88f33c47cbd1b7dc7521b8298eb2165f27c840df5370`;
+12/12 controller and 59/59 combined tests pass. The exact bounded review and
+mutations are in `HANDOFF_ACTIVE.md`.
+
+No literal host/budgets packet is frozen. PASS grants no preflight or strength
+launch; it says only that the controller is fit to wrap a later reviewed
+score-free command.
+
+Required marker:
+
+`S3A_DUEL_PREFLIGHT_CONTROLLER_V1_REVIEW {"git":"34154f93f2f6b7631f27f5f1fd93675f91766ec5","core_git":"3e5fcc07d5bc64efa09d6eb7e9e07bc19d367c82","material_sha256":"38b5f52fa2ff39559d8a88f33c47cbd1b7dc7521b8298eb2165f27c840df5370","one_shot":true,"score_free":true,"screen_packet_review_only":true,"preflight_launch_authorized":false,"strength_launch_authorized":false,"production_promotion":false,"verdict":"PASS|HOLD"}`

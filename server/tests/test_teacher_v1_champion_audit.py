@@ -190,7 +190,7 @@ def test_audit_packet_recomputes_selection_and_exact_parent():
             "uncertainty": 8,
             "label_outcomes_read": False,
         },
-        "continuation_contract": audit.CONTINUATION_CONTRACT,
+        "continuation_contract": audit.CONSUMED_CONTINUATION_CONTRACT,
         "folds": audit.AUDIT_FOLDS,
         "selected": len(selected),
         "states": selected,
@@ -210,6 +210,11 @@ def test_audit_packet_recomputes_selection_and_exact_parent():
     assert "audit Stage-B parent SHA-256 drift" in \
         audit.audit_state_set_problems(
             payload, parent, stable_digest("different-parent"))
+
+    mutated = copy.deepcopy(payload)
+    mutated["continuation_contract"] = audit.CONTINUATION_CONTRACT
+    assert "audit continuation contract" in audit.audit_state_set_problems(
+        mutated, parent, audit.STAGE_B_STATE_SHA256)
 
 
 def test_registered_state_assets_refuse_malformed_populations():
@@ -1196,6 +1201,8 @@ def test_fresh_audit_freeze_publishes_only_exact_complement(
             "sha256": "placeholder",
             "states_digest": parent["states_digest"],
         },
+        "continuation_contract": audit.CONSUMED_CONTINUATION_CONTRACT,
+        "folds": audit.AUDIT_FOLDS,
         "states": consumed_states,
         "states_digest": stable_digest(consumed_states),
     }

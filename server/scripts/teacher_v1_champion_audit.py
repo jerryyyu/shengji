@@ -96,6 +96,17 @@ CONTINUATION_CONTRACT = {
     "random_allocation": False,
     "admission": CONTINUATION_ADMISSION_CONTRACT,
 }
+# The consumed-v1 state asset predates retry admission.  Its continuation
+# metadata is immutable provenance for how that asset was frozen, not the
+# contract used by this fresh audit's labels.  Requiring the newer contract
+# here would make the reviewed historical asset impossible to reopen and
+# tempt an evidence rewrite.  Validate its exact historical value separately;
+# the fresh asset, receipt, shards, and gate continue to require the current
+# retry-aware CONTINUATION_CONTRACT above.
+CONSUMED_CONTINUATION_CONTRACT = {
+    key: value for key, value in CONTINUATION_CONTRACT.items()
+    if key != "admission"
+}
 CONTINUATION_EXECUTION_LOCK = {
     "schema": "teacher-v1-champion-continuation-lock-v1",
     "policy": CONTINUATION_POLICY,
@@ -1455,7 +1466,8 @@ def audit_state_set_problems(payload: dict, parent: dict,
     }
     if payload.get("selection_contract") != expected_contract:
         bad.append("audit selection contract")
-    if payload.get("continuation_contract") != CONTINUATION_CONTRACT:
+    if payload.get("continuation_contract") != \
+            CONSUMED_CONTINUATION_CONTRACT:
         bad.append("audit continuation contract")
     if payload.get("folds") != AUDIT_FOLDS:
         bad.append("audit fold contract")
@@ -1530,7 +1542,8 @@ def consumed_audit_state_set_self_problems(payload: dict) -> list[str]:
     if ((payload.get("stage_b_parent") or {}).get("sha256")
             != STAGE_B_STATE_SHA256):
         bad.append("consumed audit Stage-B parent SHA-256")
-    if payload.get("continuation_contract") != CONTINUATION_CONTRACT:
+    if payload.get("continuation_contract") != \
+            CONSUMED_CONTINUATION_CONTRACT:
         bad.append("consumed audit continuation contract")
     if payload.get("folds") != AUDIT_FOLDS:
         bad.append("consumed audit fold contract")
@@ -2526,7 +2539,7 @@ def freeze(args) -> None:
             "uncertainty": UNCERTAINTY_STATES,
             "label_outcomes_read": False,
         },
-        "continuation_contract": CONTINUATION_CONTRACT,
+        "continuation_contract": CONSUMED_CONTINUATION_CONTRACT,
         "folds": AUDIT_FOLDS,
         "selected": len(selected),
         "states": selected,

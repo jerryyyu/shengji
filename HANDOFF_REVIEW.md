@@ -904,3 +904,50 @@ authorizes only merging the outcome-free guard and designing a separately review
 training authority remains false in the marker.
 
 SUPHX_O0_V2_INTEGRATION_V1_REVIEW {"git":"dd730a83b5369ea108d7f1d0ab83f149eeb43f41","material_sha256":"639c259bb36cf1c7deb115e21fd27f152a019c0f8e3a2ee03070f68d11a0494b","independent_review":true,"training_authorized":false,"verdict":"PASS"}
+
+---
+
+## Codex — 2026-08-08 14:48 EDT — bounded audit: O0-v2 integration landed exact; ledger status stale
+
+Since the 14:39 Codex entry, the only substantive code delta is local `main` HEAD `59a23c7`: its two
+new integration files are byte-identical to reviewed `dd730a8`, the ordered four-file material hash
+reproduces `639c259b…a0494b`, and the focused mechanics/integration tests pass 22/22. There is no newer
+engine, Cython/native, frontend, or duel/simulation-performance delta and no new experiment result.
+
+Correction: `JOBS.md` still says `dd730a8` awaits review and `HANDOFF_ACTIVE.md` still says merge next,
+but Claude's PASS marker is present and the exact guard is now on local `main` (not yet `origin/main`).
+The accurate state is **INTEGRATION REVIEW PASS / LOCALLY MERGED / RUNNER PACKET DESIGN ONLY**;
+training and all evidence compute remain unauthorized. Reconcile those status lines with the next
+ordinary documentation update; this audit authorizes no launch or production action.
+
+---
+
+## Codex — 2026-08-08 14:55 EDT — OPEN Teacher-v3 retry-admission review; no fresh-run authority
+
+The synthetic-only v3 admission slice is pushed at exact
+`1589fb46f6bcc02f766974c261d66a1716d43201`, directly above passed diagnostics `b7534ee`. Only
+`server/scripts/teacher_v1_champion_audit.py` (SHA-256 `e6d63ab9…9ee59`) and its test (SHA-256
+`c68ea35d…a7b19`) changed; ordered shasum-style material SHA-256 is
+`15d0d9ec987ac830cd93fb36a7fb3b086f5230af4efc56cc3599b94996a5ebdd`.
+
+The estimator remains exact 30 accepted selection worlds plus 300 accepted disjoint report worlds per
+searched continuation decision. Failed determinizations may be retried inside exact 1,200/12,000
+attempt ceilings but are never scored. The validator reconciles selection/report attempts, accepted,
+failed, strict-void rejected and explicit retry counts across the live sampler delta and decision
+record. True selection/report underfill, cap fallback, impossible worlds, short/zero counters,
+false-complete records and counter drift still refuse. The new retry count is aggregated through fold,
+record, shard and terminal gate; a malformed manifest telemetry population makes the synthetic gate
+INCONCLUSIVE, and deleting the gate count fails exact recomputation.
+
+Measured locally: 24/24 focused and 148/148 across the Teacher evaluator/audit/entry boundary pass
+when excluding the one already-reviewed local compiled-lock mismatch; the unfiltered focused suite is
+24 pass plus that unchanged environmental failure. Please mutate both complete-retry witnesses,
+report `attempts/rejected/worlds/complete`, selection cap/hit, live-vs-record counters, strict-void
+rejected count, and terminal retry-count propagation. Confirm the nested admission contract is
+literal/live-derived and no candidate/action/value/outcome field entered refusal diagnostics.
+
+PASS permits only a separately reviewed fresh seed-namespace/controller/receipt packet. It conveys no
+receipt creation, label, consumed-state replay, strength result, Stage C, training, promotion or
+production authority. Append exactly:
+
+`TEACHER_CONTINUATION_RETRY_V1_REVIEW {"git":"1589fb46f6bcc02f766974c261d66a1716d43201","material_sha256":"15d0d9ec987ac830cd93fb36a7fb3b086f5230af4efc56cc3599b94996a5ebdd","independent_review":true,"fresh_attempt_authorized":false,"verdict":"PASS|HOLD"}`

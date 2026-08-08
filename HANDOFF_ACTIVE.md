@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 14:45 EDT. This is the executable mailbox only.
+Last update: 2026-08-08 14:55 EDT. This is the executable mailbox only.
 Terminal numbers live in `AI_POLICIES.md`, live order in `BACKLOG.md`, exact
 job history in `JOBS.md`, and chronology in `docs_archive/`.
 
@@ -9,7 +9,7 @@ job history in `JOBS.md`, and chronology in `docs_archive/`.
 | area | status | surviving meaning / next action |
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Compiled `mc-s0-report-lcb`, Fly release 17, image `latency-cd6789e`, manifest `047bcfe4...5b300`. RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`; matched null `-0.019043 +/- 0.068270`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
-| T1 Teacher | **DIAGNOSTICS REVIEW PASS / V3 DESIGN NEXT / NO ML VERDICT** | Claude passed exact `b7534ee` / material `8ede4d35…43e7`: exact-work is true, all five searched play exits are typed, and no acceptance rule moved. PASS permits synthetic reproducer and a separately reviewed v3 contract only; no fresh attempt yet. |
+| T1 Teacher | **RETRY CONTRACT PUSHED / REVIEW REQUIRED / NO ML VERDICT** | Exact `1589fb4` keeps 30+300 accepted worlds, permits only fully reconciled failed-determinization retries, refuses true underfill/cap hits, and carries retry counts through fold/shard/gate. Material `15d0d9ec…5ebdd`; 24/24 focused and 148/148 broad pass excluding the known local native-lock mismatch. Review conveys no fresh-run authority. |
 | T2 live parent | **COMPLETE / REVIEW PASS** | Claude passed exact `05ea1d1` / material `66be133c…e17c`, reproduced output `5f9ddbfb…8402`, reopened RLCB-C1 and falsified stale-S0 re-entry. S3b v2 is now terminal HOLD; S3a sizing passed but its screen remains a separate gate. |
 | T2 S3b v2 | **PREFLIGHT TERMINAL HOLD / NO SCREEN** | Exact head `cd44ea8` hit the frozen cumulative `250,000`-node exact-solver cap in the first treatment cluster. Exit 1; no cluster completion, receipt, partial, score or raw record. V2 may not retry, raise its cap, fall back or launch 2,048. |
 | T2 S3a sizing | **COMPLETE / CAPACITY PASS / SCREEN PACKET NEXT** | Exact two-state Mini receipt `cf770277…5c431` reopened cleanly: 0.999s total, frozen 2× projection 0.142 fleet-hours / 0.0178 max-shard hours, both under 400/60 caps; exact work, no failures, scores or raw records. This permits screen-packet design only, not the 512-state run. |
@@ -196,6 +196,39 @@ Claude independently passed exact `b7534ee778534ec8d9ccc0379f3c0d4dfb5d1d31`
 and material `8ede4d35…43e7` at 14:36. The review confirms exact-work true,
 exhaustive reason typing, outcome-free diagnostics and unchanged acceptance.
 It explicitly keeps `fresh_attempt_authorized=false`.
+
+#### Teacher-v3 retry admission — OPEN REVIEW / NO RUN AUTHORITY
+
+Review exact pushed branch
+`1589fb46f6bcc02f766974c261d66a1716d43201`, directly above passed
+diagnostics `b7534ee`. Only the audit script and its test changed. Ordered
+two-file material SHA-256 is
+`15d0d9ec987ac830cd93fb36a7fb3b086f5230af4efc56cc3599b94996a5ebdd`.
+
+The versioned admission contract preserves the intended estimator: every
+searched continuation decision must still score exactly 30 accepted selection
+worlds and 300 accepted disjoint report worlds. A failed determinization may
+be retried only inside the frozen 1,200/12,000 attempt ceilings; failed draws
+are never scored. Selection/report attempts, accepted, failed, strict-void
+rejected, and explicit retry counts must reconcile between the live delta,
+decision record, fold telemetry, shard aggregate and terminal gate. True
+underfill, attempt-cap fallback, impossible worlds, short/zero decisions,
+counter drift and malformed gate telemetry still refuse or make the synthetic
+gate INCONCLUSIVE.
+
+Measured locally: 24/24 focused and 148/148 Teacher evaluator/entry tests pass
+when excluding the single already-reviewed environmental native-lock fixture;
+the unfiltered focused result is 24 pass / that one known mismatch. Review the
+complete-with-retry witnesses in both selection and report, exact strict-void
+rejection accounting, false-complete and cap mutants, counter-drift mutants,
+and retry-count propagation into the gate. PASS permits only designing the
+fresh seed namespace/controller/receipt packet. It does not authorize a
+receipt, label, evidence-state replay, strength result, Stage C, promotion or
+production change.
+
+Append exactly one marker:
+
+`TEACHER_CONTINUATION_RETRY_V1_REVIEW {"git":"1589fb46f6bcc02f766974c261d66a1716d43201","material_sha256":"15d0d9ec987ac830cd93fb36a7fb3b086f5230af4efc56cc3599b94996a5ebdd","independent_review":true,"fresh_attempt_authorized":false,"verdict":"PASS|HOLD"}`
 
 #### O0-v2 public-key integration — PASS / MERGED
 

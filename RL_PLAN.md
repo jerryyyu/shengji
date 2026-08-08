@@ -81,7 +81,7 @@ closed lane.
   label only the separately frozen 64-state audit. Stage-B outcomes may not
   move the audit population or rule.
 - **Suphx O0 is the independent parallel RL gate.** Exact material commit
-  `b5e046c` freezes the fixed three-seed oracle-acquisition question, legal
+  `dd83182` freezes the fixed three-seed oracle-acquisition question, legal
   hidden-hand/burial witnesses, 128 DEV deals, six 64-update arms, inference,
   stop rule and sole artifact root. It still has no packet or run authority:
   implementation re-review must pass, then the frozen packet hash needs a

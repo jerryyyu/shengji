@@ -99,7 +99,7 @@ and put exact run detail in `JOBS.md` or the dated archive.
   LCBs failed. Terminal result is SELECT NONE; do not deploy or extend this
   recipe from its attractive gameplay tail.
 - Suphx O0 is now the next bounded learner, independently of Teacher-v3. Exact
-  material commit `b5e046c` asks only whether the fixed three-seed full-
+  material commit `dd83182` asks only whether the fixed three-seed full-
   information ensemble acquires a noncollapsed policy advantage over its
   initialization and equal-work public learner. It is not a strength claim.
   After implementation review, packet freeze and separate packet-hash
@@ -116,7 +116,7 @@ and put exact run detail in `JOBS.md` or the dated archive.
 2. Close Teacher-v3 Stage-B attribution and run the already-frozen independent
    64-state champion-continuation audit on Air; use that evidence to choose the
    next teacher upgrade rather than merely scaling labels.
-3. In parallel, re-review exact Suphx O0 `b5e046c`, freeze and separately
+3. In parallel, re-review exact Suphx O0 `dd83182`, freeze and separately
    hash-admit its packet, then run the bounded six-arm screen on Mini. Do not
    wait for Teacher unless the proposed learner consumes Teacher labels.
 4. Keep v11pair as a root proposal/ranking feature and teacher diagnostic;

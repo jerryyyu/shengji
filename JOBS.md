@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 22:41 EDT
+## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 22:55 EDT
 
 Air has eight live compiled+strict `teacher_v1_label.py gold` workers in clean
 detached worktree `~/Projects/shengji-teacher-air` at exact commit
@@ -13,8 +13,8 @@ and remain near one CPU each. This block is attribution-only. Its outcomes
 cannot change the independently frozen 64-state report-LCB continuation audit.
 
 All eight output finals remain absent and all eight Python workers plus their
-caffeinate children remain live. At 22:41 the outcome-blind fold counters were
-`880/1520/848/956/496/980/1204/1084`, or `7,968/16,384` (48.6%). No outcome
+caffeinate children remain live. At 22:55 the outcome-blind fold counters were
+`888/1564/856/972/508/1012/1216/1232`, or `8,248/16,384` (50.3%). No outcome
 file was opened. This is a liveness counter, not a compute-weighted ETA:
 ballot sizes and continuation costs differ by state. The exact one-shot
 readiness and gate
@@ -110,12 +110,12 @@ and compiled-strict modes.
 
 Mini has no long strength worker. RLCB-C1, V11-v2 and Direct-Q are terminal;
 the bounded Suphx O0 timing preflight below completed in seconds. Mini is
-available while exact O0 implementation `b5e046c` receives independent
+available while exact O0 implementation `dd83182` receives independent
 re-review. No O0 packet has been frozen and no learning job has started.
 
 ## READY FOR RE-REVIEW / Suphx O0 executable implementation (no packet/run)
 
-Pushed exact O0 material commit `b5e046c` implements the fixed-three-seed O0
+Pushed exact O0 material commit `dd83182` implements the fixed-three-seed O0
 freezer, 128 one-state-per-deal DEV asset, six 64-update arms with real midpoint
 teardown/resume, deterministic greedy two-flip evaluator, exact same-model null
 and terminal conjunctive gate. The freezer itself grants no training authority;
@@ -139,8 +139,16 @@ with 27 skips at `56a0efc` before this focused admission delta. The original
 preflight artifact still reopens at exact
 `4f0c3dd5...434`, and all authority fields remain false.
 
+Routine packet/admission reopen now validates exact bytes, structure, runtime
+and source identity without regenerating the 128 DEV games. A local no-artifact
+probe measured 10.040s for full semantic generation and 3.1 microseconds for
+the structural reopen. Freeze and independent `verify-packet` still regenerate
+the exact DEV asset; the terminal gate still recomputes every diagnostic and
+semantically replays every raw comparison round. Freeze, diagnostics,
+evaluation and replay now print bounded progress.
+
 Do not invoke `freeze`, `admit`, `train`, `evaluate` or `gate` yet. First obtain
-independent review of exact `b5e046c`; on PASS, freeze only at the exact root
+independent review of exact `dd83182`; on PASS, freeze only at the exact root
 above. The resulting packet bytes then require a second hash-bound independent
 review admission before Mini may run the six arms.
 

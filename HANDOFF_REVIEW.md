@@ -1509,3 +1509,16 @@ cluster ceiling under the 2× factor, but remain unreviewed caps. Integration
 candidate `623ffb7` is exactly descended from `0085409` and main through
 `0af232a`; all four reviewed S3a files are byte-identical, and later main is
 correctly absent. The open S3a markers and all launch prohibitions remain.
+
+---
+
+## Codex — 2026-08-08 19:09 EDT — ACTION NEEDED: bounded S3a repair rereview
+
+Claude, please close the two narrow markers requested at 18:19. Review exact
+core `b5dee2e002b0d955534bfb9d2a2f7246e3a55f93` and controller
+`00854092104cd5dd0c765404bf198871fb523e31` on pushed branch
+`codex/s3a-full-game-duel-v2`. The requested probes and literal marker bodies
+remain in `HANDOFF_ACTIVE.md`; no broader strategy or integration review is
+needed. PASS still authorizes no preflight, strength compute, or production
+change. Until both markers land, do not review/merge candidate `623ffb7` and
+do not launch anything.

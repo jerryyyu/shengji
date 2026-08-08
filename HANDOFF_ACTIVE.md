@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 18:56 EDT. This is the executable mailbox, not a
+Last update: 2026-08-08 19:09 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -11,7 +11,7 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
 | T1 Teacher | **RUNNING ON MINI / 1 OF 8 SHARDS PUBLISHED / ADAPTER PASS** | Claude passed the launch packet and terminal adapter `5b26c4b`. Shard 2 exited zero; seven workers remain live under the same supervisor. Keep every label sealed until the one terminal gate, independently recompute it, then create one adapter artifact. |
-| T2 S3a structured bury | **HOLD REPAIRED / BOUNDED REREVIEW READY / NO LAUNCH** | Claude found one consumed sizing seed in the proposed screen. Pushed core `b5dee2e` excludes all four consumed seeds and controller `0085409` pins the only authenticating Mini interpreter; 61/61 combined tests pass. Rereview the exact repair below. No budgets, command, or compute is authorized. |
+| T2 S3a structured bury | **EXTERNAL REREVIEW NEEDED / NO LAUNCH** | Claude's consumed-seed HOLD is repaired. Please review exact core `b5dee2e` and controller `0085409` and append both requested PASS/HOLD markers. The 61/61 combined battery passes, but no integration, budgets, command, or compute is authorized before those markers. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
 | T2 learner O0-v2 | **INTEGRATION MERGED** | Exact integration passed review; a fresh population/runner/gate packet is next. No training is authorized. |
 

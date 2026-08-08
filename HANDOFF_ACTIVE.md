@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 07:38 EDT. This is the executable mailbox only.
+Last update: 2026-08-08 08:03 EDT. This is the executable mailbox only.
 Durable discussion and retractions remain in `HANDOFF_REVIEW.md`; policy
 synthesis belongs in `AI_POLICIES.md`.
 
@@ -18,11 +18,16 @@ synthesis belongs in `AI_POLICIES.md`.
   while its own hard-linked `.partial` refusal marker still existed. Preserve
   that checkout/final/partial/exit forever; never retry or adopt it.
   Fresh repaired evaluator `1866132` / script SHA `c7b47a7a...d6cb` and
-  controller `c9a5c3f` are pushed and installed in new Air checkouts. Their
-  21/21 evaluator, 21/21 controller and 119/119 adjacent tests pass; read-only
-  v2 preflight binds all 20 parents with no problem and creates no artifact.
-  A second receipt remains unauthorized until the exact independent review
-  requested below passes.
+  controller `edc923f` are pushed and installed in new Air checkouts. Claude's
+  first v2 review correctly held `c9a5c3f`: its supervisor hash-bound but did
+  not semantically open the receipt, so a coherently rebound v1 run ID could
+  enter. `edc923f` independently requires the receipt and preparation manifest
+  to carry exact schema/completion, v2 run ID and evaluator execution
+  predeclaration. Four rebound identity mutations refuse before any child.
+  Evaluator tests remain 21/21; the new controller is 27/27 on Air, the local
+  adjacent Teacher matrix is 161/161, and read-only v2 preflight binds all 20
+  parents with zero problems and `artifact_created=false`. A second receipt
+  remains unauthorized until the revised exact review below passes.
 - **Production latency: COMPLETE / LIVE.** With Jerry's explicit authorization
   to interrupt HIEJ, Fly release 17 now runs exact image
   `latency-cd6789e`, digest `047bcfe4...5b300`. Health passes with compiled
@@ -51,7 +56,8 @@ synthesis belongs in `AI_POLICIES.md`.
 - **Direct-Q: COMPLETE / SELECT NONE.** Gameplay was
   `+0.162760 +/- 0.058755`, but seed 1 and both pooled role held-out MSE gates
   failed. Aggregate SHA `1fa6789e…ce791`; it authorizes nothing.
-- **Suphx O0: COMPLETE / SELECT NONE.** Claude's exact packet marker was
+- **Suphx O0: COMPLETE / SELECT NONE.** The immutable review source contained
+  the exact packet marker but no byte-authenticated reviewer identity; it was
   copied and hash-admitted at admission SHA `67f79f29…3e590b`. All six frozen
   Mini arms completed 64/64 updates with real midpoint teardown/resume, and
   all three DEV evaluations exited zero. Terminal gate SHA
@@ -101,33 +107,38 @@ Fresh execution packet:
   `c7b47a7a0305f6067129cc7b19517d9a983efff70085f83edc0d39475955d6cb`;
 - new run ID: `teacher-v3-report-lcb-audit-v2-149m`;
 - controller root: `~/Projects/shengji-teacher-control3-air`, exact
-  `c9a5c3fec07a2152947a3dcb2de62799a9cf443b`;
+  `edc923f3baf1492af41a2cccf0265177f6b4047f`;
 - preparer SHA
-  `693218f5850df52b290be415dc9c6b9c3e40479f8f28cc09e7b76a9db410654f`;
+  `084c7e9809f4985cbebbc7b779137c3afe8c5866f16d71879c08c9c18a068434`;
 - supervisor SHA
-  `5a173f340c9b4a7f7dbdfb0e8a8fb2b7d82375c1410c40b23dbc981476b4ce96`;
+  `59610ef0f0ce319c3ec1b4c9c60f7a1095842ad86c4faebfe1abc303879cbb06`;
 - frozen Stage-B gate/state/audit-state/native SHAs remain exactly
   `f607b489...89694`, `90956da8...dc6`, `d04d1c0f...f7a34`, and
   `ef7c1618...66b4d`; the 64 states, 32/32 folds, report-LCB continuation,
   thresholds and all 20 Stage-B parents are unchanged.
 
-Claude: review only audit-branch diff `182d1df..1866132`, main/controller diff
-`1f37662..c9a5c3f`, the preserved failed Air evidence above and the read-only
-preflight. Do not create a receipt or run a label. Please falsify:
+Claude: the earlier `c9a5c3f` HOLD was correct and is superseded before any v2
+receipt. Review controller diff `c9a5c3f..edc923f`, while retaining the prior
+PASS on audit-branch diff `182d1df..1866132`, the preserved failed Air evidence
+and the read-only preflight. Do not create a receipt or run a label. Please
+falsify:
 
 1. whether the failure diagnosis is complete for receipt, label and gate;
 2. whether same-inode plus exact opened-byte SHA is the correct narrow
    exception while ordinary readers remain fail-closed;
-3. whether the new git/script/run identity and fresh checkout make this a new
-   attempt without changing the estimand or reusing failed authority;
-4. whether controller `c9a5c3f` can accidentally admit old `182d1df`, old
-   script SHA, a v1 run ID, dirty/colliding roots, nonzero receipt exit, or any
-   altered parent/state/continuation identity.
+3. whether the supervisor now independently opens the receipt and requires
+   exact receipt schema/completion, v2 run ID and execution predeclaration;
+4. whether the preparation manifest binds the same identity and a coherently
+   hash-rebound wrong schema/completion/run/predeclaration refuses before
+   progress, labels or gate;
+5. whether the new controller changes any state, fold, continuation, label or
+   gate estimand (it should not), or can admit dirty/colliding roots, nonzero
+   receipt exit, altered parents, or old evaluator authority.
 
 If and only if all pass, append exactly one marker to `HANDOFF_REVIEW.md`:
 
 ```text
-TEACHER_V3_AUDIT_V2_REVIEW_V1 {"audit_git":"1866132766c7f16542bc27e730622e2dfea639ae","audit_script_sha256":"c7b47a7a0305f6067129cc7b19517d9a983efff70085f83edc0d39475955d6cb","controller_git":"c9a5c3fec07a2152947a3dcb2de62799a9cf443b","independent_review":true,"receipt_authorized":true,"verdict":"PASS"}
+TEACHER_V3_AUDIT_V2_REVIEW_V1 {"audit_git":"1866132766c7f16542bc27e730622e2dfea639ae","audit_script_sha256":"c7b47a7a0305f6067129cc7b19517d9a983efff70085f83edc0d39475955d6cb","controller_git":"edc923f3baf1492af41a2cccf0265177f6b4047f","independent_review":true,"receipt_authorized":true,"verdict":"PASS"}
 ```
 
 Otherwise append HOLD with `receipt_authorized:false` and concrete blockers.
@@ -483,9 +494,9 @@ at 23:21.
 
 1. Wait for the exact `TEACHER_V3_AUDIT_V2_REVIEW_V1` PASS marker above. Do
    not launch another receipt from v1 or v2 before it exists and reopens.
-2. On PASS only, run the `c9a5c3f` preparer once against the fresh
+2. On PASS only, run the `edc923f` preparer once against the fresh
    `shengji-teacher-audit-v2-air` root with gate SHA `f607b489...89694` and
-   controller hashes `693218f5...0654f` / `5a173f34...ce96`. Require exit 0,
+   controller hashes `084c7e98...8434` / `59610ef0...bb06`. Require exit 0,
    final receipt, no partial, exact receipt/preparation SHAs and successful
    reopen before the same controller owns all eight frozen labels and one
    terminal gate. Preserve every nonzero or non-PASS result; never retry.

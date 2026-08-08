@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-08 07:38 EDT
+## Current synthesis — 2026-08-08 08:03 EDT
 
 This is the current decision layer. The lineage table below owns model history;
 **Data and evaluation contract** owns dataset provenance; `AI_POLICIES.md`
@@ -79,9 +79,11 @@ closed lane.
   frozen gate upper regret bound was `0.0195 < 0.10`. The first audit receipt
   creator exposed a post-link partial-handling bug before any label ran.
   Preserve that attempt. Repaired evaluator `1866132` and controller
-  `c9a5c3f` keep the same 64 states, 32/32 folds, report-LCB continuation and
-  parent data under a fresh v2 run identity; launch only after independent
-  review of the narrow publication repair.
+  `edc923f` keep the same 64 states, 32/32 folds, report-LCB continuation and
+  parent data under a fresh v2 run identity. The first controller review found
+  that a hash-bound but semantically old receipt could enter; `edc923f` now
+  independently pins receipt and preparation identity. Launch only after the
+  revised independent review.
 - **Suphx O0 is terminal SELECT NONE.** Independent packet admission led to
   six exact 64-update Mini arms and verified terminal gate SHA
   `592a009a…bd407c`. The full-information ensemble learned something:

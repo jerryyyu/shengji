@@ -277,7 +277,11 @@ recorded. S0a measured `+0.353 +/- 0.069` and S0b independently measured
 `+0.357 +/- 0.066` versus `mc-strong`. A compiled preflight on the named hard
 lead state measured 0.390s median versus 0.127s for `mc-strong`. It was manually
 deployed for strength on 2026-08-07, with `mc-strong` as rollback. Formal fresh
-collision-free confirmation remains open.
+RLCB-C1 confirmation is complete: on 2,048 new paired clusters the exact
+production rule measured `+0.338379 +/- 0.067706` versus `mc-strong`, while the
+collision-free current-policy null was `-0.019043 +/- 0.068270`. This confirms
+one-round paired level-utility superiority only; it does not prove multi-round
+progression or authorize changes to N, R, ballot, sampler or confidence rule.
 
 ### `smart` — SmartBot v3
 `ai/smart.py` + `ai/memory.py`: heuristic layered with public-information

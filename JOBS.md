@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## REVIEW HOLD / Teacher-v3 Stage-B PASS, repaired audit-v2 ready at 07:38 EDT
+## REVIEW HOLD / Teacher-v3 Stage-B PASS, audit-v2 controller repaired at 08:03 EDT
 
 All eight Stage-B gold workers are terminal. The outcome-blind readiness
 checker returned exit 0 with 8/8 finals, zero workers, exact clean producer and
@@ -20,11 +20,14 @@ all partials. Preserve exact failed root `shengji-teacher-audit-air` at
 
 Repair `1866132` fixes receipt, label and gate publication through one
 same-inode/exact-byte verifier. Fresh Air evaluator root
-`shengji-teacher-audit-v2-air` and controller root
-`shengji-teacher-control3-air` bind exact script/controller hashes recorded in
-`HANDOFF_ACTIVE.md`. Live tests pass 21/21 evaluator, 21/21 controller and
-119/119 adjacent. Read-only preflight reports zero problems and 20 parents,
-with no artifact created. Air has no live strength worker while the exact
+`shengji-teacher-audit-v2-air` binds the unchanged evaluator. Claude correctly
+held the first controller because it treated the receipt as opaque hash-bound
+bytes. Controller `edc923f` now independently validates exact receipt schema,
+completion, v2 run ID and execution predeclaration, and binds that identity in
+the preparation manifest. Its four coherent wrong-identity mutations refuse
+before children. Air controller tests pass 27/27; local Teacher-adjacent tests
+pass 161/161. Read-only preflight reports zero problems, 20 parents and
+`artifact_created=false`. Air has no live strength worker while the revised
 independent audit-v2 review is pending.
 
 ## HISTORICAL / Teacher-v3 Stage-B gold at 2026-08-08 01:18 EDT
@@ -145,8 +148,9 @@ for the next freshly reviewed strength screen.
 
 ## COMPLETE / SELECT NONE / Suphx O0
 
-Claude appended the one exact machine-readable review marker for packet SHA
-`6d4e6772...1ed65`. The operator copied and hash-bound those external bytes;
+The immutable review source contained one exact machine-readable marker for
+packet SHA `6d4e6772...1ed65`, but its bytes did not name a reviewer. The
+operator copied and hash-bound those external bytes;
 admission SHA is `67f79f29bfec4428485800875fe62d842ee25b2f03f95a41b0e99664c23e590b`.
 All six Mini arms then completed exactly 64 rounds/updates, each with a real
 32-update runner/learner teardown and exact resume. All six manifests, 384-row total

@@ -83,9 +83,11 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   upper regret bound `0.0195 < 0.10`. Audit v1 then exposed a deterministic
   publication bug before any label launched: its verifier rejected its own
   still-owned hard-linked partial. Preserve v1 as failed evidence. Exact
-  evaluator repair `1866132` and controller `c9a5c3f` use a fresh v2 run/root,
-  keep states/folds/continuation unchanged and pass live Air preflight; launch
-  only after the requested independent review.
+  evaluator repair `1866132` and controller `edc923f` use a fresh v2 run/root,
+  keep states/folds/continuation unchanged and pass live Air preflight. The
+  first controller review found an opaque-receipt bypass; `edc923f` now parses
+  and pins exact receipt plus preparation identity. Launch only after the
+  revised independent review.
 
 ## NOW — ordered by value
 
@@ -93,11 +95,27 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 |---|---|---|
 | **T1 / Lane A production latency — COMPLETE / LIVE MONITOR** | Keep the first stronger-than-MC production policy enjoyable to play | Fly release 17 runs exact `latency-cd6789e` / `047bcfe4...5b300`. Health, native activation, claim, reconnect, stale-discard, X-ray isolation and concurrent WebSocket responsiveness passed live. Keep release 16 as the runtime rollback and `mc-strong` as the separate policy rollback; collect ordinary human-room timing before considering a CPU resize. |
 | **T1 / Lane A.1 V11pair — COMPLETE / SELECT NONE** | Preserve the learned milestone without forcing it into the champion | Artifact repair passed; the frozen rule rejected protected composition. Keep v11 as a bounded proposer/ranker and teacher diagnostic only. No protected-anchor run is authorized. |
-| **T1 / Lane B teacher — STAGE-B PASS; AUDIT-V2 REVIEW HOLD** | Determine whether N=30 teacher choices remain good under the full champion continuation | Stage-B gate SHA `f607b489…89694` passed. Audit-v1 receipt creation refused mechanically before labels; preserve exact `182d1df` final/partial/exit and never retry it. Fresh evaluator `1866132` / `c7b47a7a…d6cb`, controller `c9a5c3f`, run ID `teacher-v3-report-lcb-audit-v2-149m`, exact 20-parent preflight and all focused/adjacent tests are green. Require the exact independent PASS marker in `HANDOFF_ACTIVE.md`, then run one v2 receipt, eight unchanged 32/32 shards and one terminal gate. |
+| **T1 / Lane B teacher — STAGE-B PASS; AUDIT-V2 REVIEW HOLD** | Determine whether N=30 teacher choices remain good under the full champion continuation | Stage-B gate SHA `f607b489…89694` passed. Audit-v1 receipt creation refused mechanically before labels; preserve exact `182d1df` final/partial/exit and never retry it. Fresh evaluator `1866132` / `c7b47a7a…d6cb`, controller `edc923f`, run ID `teacher-v3-report-lcb-audit-v2-149m`, exact 20-parent preflight and all focused/adjacent tests are green. `edc923f` closes the reviewed opaque-receipt bypass with independent receipt/preparation identity checks. Require the revised exact PASS marker in `HANDOFF_ACTIVE.md`, then run one v2 receipt, eight unchanged 32/32 shards and one terminal gate. |
 | **T1 / Lane C Direct-Q — COMPLETE / SELECT NONE** | Learn from the failure without selecting its positive gameplay tail | Preserve aggregate SHA `1fa6789e…791`; do not deploy, extend or mutate the 144M recipe. The next learner requires a separately frozen Suphx-style or other role-correct microbaseline gate. |
 | **T1 / Lane C Suphx O0 — COMPLETE / SELECT NONE** | Test whether a full-information policy can learn before spending compute on feature removal | Preserve gate SHA `592a009a…bd407c`. Both ensemble LCBs passed, but seed 1 lost to its equal-seed public arm (`-0.207`), failing the registered robustness conjunction. O1 is closed for this exact recipe; the next learner needs a fresh packet, not an O0 extension. |
 | **RLCB-C1 fresh confirmation — COMPLETE / ARTIFACT-ONLY CONFIRM** | Close formal report-LCB superiority | 2,048/2,048 fresh clusters, exact doses, zero stream collisions, sane null and positive superiority LCB. The late dirty-doc supervisor refusal is bound by non-replay closeout SHA `06dd487d…b7aae5`; preserve aggregate SHA `83f5a9df…f5ef5ea`. No extension or S0c reinterpretation remains. |
 | **Formal S0 — COMPLETE / SELECT NONE** | Preserve the burned S0c evidence boundary | Closeout `ef0a365…fde9a`, terminal parent `ca556c2`, no parsed outcomes, no retry/extension, and an empty S0 service namespace. There is no remaining S0c work. |
+
+### Adversarial-review hardening before reuse
+
+Claude's 2026-08-08 broad review reproduced every closed result and required
+no rollback. Scheduler direct/speculative equivalence and the Teacher
+zero-exit guards are now mutation-covered in `edc923f`. The remaining findings
+do not reopen terminal outcomes; they gate reuse of the named machinery:
+
+- before another V11 repair/revalidation, add real-loader record-digest and
+  evidence-grade fixtures plus an asymmetric contrast-sign fixture;
+- before another Direct-Q screen, pin treatment-minus-control and
+  start-minus-final signs with asymmetric fixtures;
+- before an O0 successor, add semantic-replay and payload-identity red-path
+  tests, then require kitty-to-banker card flow or explicitly legal relabeling;
+- before reusing RLCB-C1 or Stage-B readiness, pin record `run` to manifest
+  run ID and make worker discovery accept absolute script paths by basename.
 
 ## TODAY — T1 champion flywheel launch
 

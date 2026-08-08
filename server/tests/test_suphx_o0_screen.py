@@ -93,6 +93,7 @@ def test_first_four_dev_deals_target_every_surface_and_replay():
 
 def test_full_dev_asset_is_exactly_stratified_one_state_per_deal():
     payload = screen._dev_payload()
+    assert screen._validate_dev_payload_identity(payload) == payload
     assert payload["deals"] == 128
     assert len(payload["entries"]) == 128
     assert payload["surface_counts"] == {
@@ -251,7 +252,8 @@ def _packet_review_record(packet_sha256: str) -> str:
 def test_admission_binds_exact_packet_and_review_bytes(tmp_path, monkeypatch):
     packet_ref = screen._publish_json(tmp_path / "launch_packet.json", {})
     monkeypatch.setattr(
-        screen, "verify_packet", lambda ref: {"runtime": {"frozen": True}})
+        screen, "verify_packet",
+        lambda ref, **_: {"runtime": {"frozen": True}})
     review = tmp_path.parent / f"{tmp_path.name}-independent-review.txt"
     review.write_text(_packet_review_record(packet_ref.sha256))
     review_sha = hashlib.sha256(review.read_bytes()).hexdigest()
@@ -274,7 +276,8 @@ def test_admission_binds_exact_packet_and_review_bytes(tmp_path, monkeypatch):
 def test_admission_rejects_wrong_packet_or_review_hash(tmp_path, monkeypatch):
     packet_ref = screen._publish_json(tmp_path / "launch_packet.json", {})
     monkeypatch.setattr(
-        screen, "verify_packet", lambda ref: {"runtime": {"frozen": True}})
+        screen, "verify_packet",
+        lambda ref, **_: {"runtime": {"frozen": True}})
     review = tmp_path.parent / f"{tmp_path.name}-review.txt"
     review.write_text(_packet_review_record(packet_ref.sha256))
     review_sha = hashlib.sha256(review.read_bytes()).hexdigest()
@@ -292,7 +295,8 @@ def test_admission_rejects_internal_or_nonpassing_review_record(
         tmp_path, monkeypatch):
     packet_ref = screen._publish_json(tmp_path / "launch_packet.json", {})
     monkeypatch.setattr(
-        screen, "verify_packet", lambda ref: {"runtime": {"frozen": True}})
+        screen, "verify_packet",
+        lambda ref, **_: {"runtime": {"frozen": True}})
     internal = tmp_path / "self-authored-review.txt"
     internal.write_text(_packet_review_record(packet_ref.sha256))
     internal_sha = hashlib.sha256(internal.read_bytes()).hexdigest()
@@ -357,7 +361,8 @@ def test_reduced_real_training_and_dev_evaluation_reopen_end_to_end(
         screen._packet_path(tmp_path), {"dev_ref": dev_ref.as_dict()})
     admission_ref = screen._publish_json(tmp_path / "admission-parent.json", {})
     packet_payload = {"dev_ref": dev_ref.as_dict()}
-    monkeypatch.setattr(screen, "verify_packet", lambda ref: packet_payload)
+    monkeypatch.setattr(
+        screen, "verify_packet", lambda ref, **_: packet_payload)
     monkeypatch.setattr(
         screen, "_require_admission",
         lambda root: (packet_ref, admission_ref, {}),
@@ -371,6 +376,16 @@ def test_reduced_real_training_and_dev_evaluation_reopen_end_to_end(
         lambda root, index: (
             initial_manifest, initial_actor, initial_payload),
     )
+    diagnostic_calls = 0
+    compute_diagnostics = screen._compute_dev_diagnostics
+
+    def counted_diagnostics(**kwargs):
+        nonlocal diagnostic_calls
+        diagnostic_calls += 1
+        return compute_diagnostics(**kwargs)
+
+    monkeypatch.setattr(
+        screen, "_compute_dev_diagnostics", counted_diagnostics)
     screen.train_arm(tmp_path, 0, "oracle")
     screen.train_arm(tmp_path, 0, "public")
     result_ref = screen.evaluate_seed(tmp_path, 0)
@@ -384,6 +399,7 @@ def test_reduced_real_training_and_dev_evaluation_reopen_end_to_end(
     assert set(comparisons) == set(screen.COMPARISONS)
     assert all(value == 0.0 for value in comparisons[
         "same_model_null"].values())
+    assert diagnostic_calls == 2
 
 
 def _fake_ref(tmp_path: Path, name: str) -> CheckpointRef:

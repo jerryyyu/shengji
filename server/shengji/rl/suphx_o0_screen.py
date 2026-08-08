@@ -662,7 +662,7 @@ def _capture_dev_state(deal_seed: int, deal_index: int) \
     return entry, selected
 
 
-def _dev_payload() -> dict[str, Any]:
+def _dev_payload(*, progress: bool = False) -> dict[str, Any]:
     entries = []
     counts: Counter[str] = Counter()
     burial_counts: Counter[str] = Counter()
@@ -672,6 +672,10 @@ def _dev_payload() -> dict[str, Any]:
         counts[entry["surface"]] += 1
         if entry["legal_hidden_burial_neighbor_sha256"] is not None:
             burial_counts[entry["surface"]] += 1
+        if progress and ((index + 1) % 16 == 0 or index + 1 == DEV_DEALS):
+            print(
+                f"PROGRESS O0 DEV asset {index + 1}/{DEV_DEALS}",
+                flush=True)
     expected_counts = {
         surface: DEV_DEALS // len(EXPECTED_SURFACES)
         for surface in EXPECTED_SURFACES
@@ -702,6 +706,39 @@ def _dev_payload() -> dict[str, Any]:
         "o1_schedule_selection": False,
         "production_use": False,
     }
+
+
+def _validate_dev_payload_identity(payload: object) -> dict[str, Any]:
+    expected_fields = {
+        "schema", "claim", "seed0", "deals", "deal_seeds", "selector",
+        "surface_counts", "hidden_burial_witness_surface_counts", "entries",
+        "training_use", "o1_schedule_selection", "production_use",
+    }
+    expected_counts = {
+        surface: DEV_DEALS // len(EXPECTED_SURFACES)
+        for surface in EXPECTED_SURFACES
+    }
+    if not isinstance(payload, Mapping) or set(payload) != expected_fields \
+            or payload.get("schema") != DEV_SCHEMA \
+            or payload.get("seed0") != DEV_SEED0 \
+            or payload.get("deals") != DEV_DEALS \
+            or payload.get("deal_seeds") \
+            != list(range(DEV_SEED0, DEV_SEED0 + DEV_DEALS)) \
+            or payload.get("surface_counts") != expected_counts \
+            or not isinstance(payload.get("entries"), list) \
+            or len(payload["entries"]) != DEV_DEALS \
+            or any(payload.get(name) is not False for name in (
+                "training_use", "o1_schedule_selection", "production_use")):
+        raise SuphxO0ScreenError("frozen O0 DEV identity drift")
+    burial_counts = payload.get("hidden_burial_witness_surface_counts")
+    if not isinstance(burial_counts, Mapping) \
+            or set(burial_counts) != set(EXPECTED_SURFACES) \
+            or any(isinstance(burial_counts[surface], bool)
+                   or not isinstance(burial_counts[surface], int)
+                   or burial_counts[surface] <= 0
+                   for surface in EXPECTED_SURFACES):
+        raise SuphxO0ScreenError("frozen O0 DEV burial coverage drift")
+    return dict(payload)
 
 
 def _deal_collision_proof() -> dict[str, Any]:
@@ -918,7 +955,7 @@ def freeze_packet(root: str | Path) -> CheckpointRef:
     runtime = runtime_identity()
     preflight_ref = _preflight_ref()
     spec = _spec_payload()
-    dev = _dev_payload()
+    dev = _dev_payload(progress=True)
     collision = _deal_collision_proof()
     spec_ref = _publish_json(root / "spec.json", spec)
     dev_ref = _publish_json(root / "dev.json", dev)
@@ -961,7 +998,7 @@ def freeze_packet(root: str | Path) -> CheckpointRef:
         "production_promotion": False,
     }
     packet_ref = _publish_json(_packet_path(root), packet)
-    verify_packet(packet_ref)
+    verify_packet(packet_ref, semantic_replay=True)
     return packet_ref
 
 
@@ -1000,7 +1037,9 @@ def _verify_initial(root: Path, index: int) \
     return manifest_ref, actor_ref, dict(payload)
 
 
-def verify_packet(ref: CheckpointRef) -> dict[str, Any]:
+def verify_packet(
+        ref: CheckpointRef, *, semantic_replay: bool = True) \
+        -> dict[str, Any]:
     packet = _load_json(ref)
     expected_fields = {
         "schema", "screen_schema", "artifact_root", "spec_ref", "dev_ref",
@@ -1028,7 +1067,8 @@ def verify_packet(ref: CheckpointRef) -> dict[str, Any]:
     _same_ref(packet["dev_ref"], dev_ref, "DEV")
     if _load_json(spec_ref) != _spec_payload():
         raise SuphxO0ScreenError("frozen O0 spec drift")
-    if _load_json(dev_ref) != _dev_payload():
+    dev = _validate_dev_payload_identity(_load_json(dev_ref))
+    if semantic_replay and dev != _dev_payload(progress=True):
         raise SuphxO0ScreenError("frozen O0 DEV population drift")
     preflight = _preflight_ref()
     _same_ref(packet["preflight_ref"], preflight, "runtime preflight")
@@ -1063,7 +1103,7 @@ def admit_packet(
     """
     if packet_ref.sha256 != expected_packet_sha256:
         raise SuphxO0ScreenError("expected launch-packet SHA-256 mismatch")
-    packet = verify_packet(packet_ref)
+    packet = verify_packet(packet_ref, semantic_replay=False)
     root = _require_run_root(Path(packet_ref.path).resolve().parent)
     review_path = _require_regular_final(review_record)
     if review_path.resolve().is_relative_to(root):
@@ -1101,7 +1141,7 @@ def _require_admission(root: str | Path) \
     root = _require_run_root(root)
     packet_ref = CheckpointRef.capture(
         _require_regular_final(_packet_path(root)))
-    packet = verify_packet(packet_ref)
+    packet = verify_packet(packet_ref, semantic_replay=False)
     admission_ref = CheckpointRef.capture(
         _require_regular_final(root / "review_admission.json"))
     admission = _load_json(admission_ref)
@@ -1696,7 +1736,7 @@ def _compute_dev_diagnostics(
         public_model: SuphxPolicyValue, initial_model: SuphxPolicyValue) \
         -> dict[str, Any]:
     packet_ref = CheckpointRef.capture(_require_regular_final(_packet_path(root)))
-    packet = verify_packet(packet_ref)
+    packet = verify_packet(packet_ref, semantic_replay=False)
     dev_ref = _ref(packet["dev_ref"], label="diagnostic DEV")
     dev = _load_json(dev_ref)
     entries = dev.get("entries") if isinstance(dev, Mapping) else None
@@ -1801,6 +1841,11 @@ def _compute_dev_diagnostics(
             oracle["greedy"] != initial["greedy"])
         greedy_changes["public"] += int(
             public["greedy"] != initial["greedy"])
+        if (deal_index + 1) % 16 == 0 or deal_index + 1 == DEV_DEALS:
+            print(
+                f"PROGRESS O0 DEV diagnostics seed={index} "
+                f"{deal_index + 1}/{DEV_DEALS}",
+                flush=True)
     entropy_summary = {
         arm: {
             surface: {
@@ -1872,7 +1917,8 @@ def evaluate_seed(root: str | Path, index: int) -> CheckpointRef:
         for comparison in COMPARISONS:
             candidate_model, reference_model, candidate_ref, reference_ref, \
                 candidate_gamma, reference_gamma = definitions[comparison]
-            for deal_seed in range(DEV_SEED0, DEV_SEED0 + DEV_DEALS):
+            for deal_offset, deal_seed in enumerate(
+                    range(DEV_SEED0, DEV_SEED0 + DEV_DEALS)):
                 for flip in (0, 1):
                     row = _comparison_round(
                         comparison=comparison,
@@ -1888,9 +1934,13 @@ def evaluate_seed(root: str | Path, index: int) -> CheckpointRef:
                     )
                     counts[comparison] += 1
                     writer.write(row)
-            print(
-                f"PROGRESS O0 DEV seed={index} comparison={comparison} "
-                f"{counts[comparison]}/{2 * DEV_DEALS}", flush=True)
+                if (deal_offset + 1) % 16 == 0 \
+                        or deal_offset + 1 == DEV_DEALS:
+                    print(
+                        f"PROGRESS O0 DEV seed={index} "
+                        f"comparison={comparison} "
+                        f"{counts[comparison]}/{2 * DEV_DEALS}",
+                        flush=True)
         raw_ref = writer.publish()
     except BaseException:
         writer.abandon()
@@ -2012,15 +2062,19 @@ def _load_dev_result(root: str | Path, index: int, *, semantic_replay: bool) \
         "oracle": load_verified(oracle_ref, load_actor),
         "public": load_verified(public_ref, load_actor),
     }
-    expected_diagnostics = _compute_dev_diagnostics(
-        root=root,
-        index=index,
-        oracle_model=models["oracle"],
-        public_model=models["public"],
-        initial_model=models["initial"],
-    )
-    if payload.get("diagnostics") != expected_diagnostics:
-        raise SuphxO0ScreenError("DEV diagnostic recomputation drift")
+    diagnostics = payload.get("diagnostics")
+    if not isinstance(diagnostics, Mapping):
+        raise SuphxO0ScreenError("DEV diagnostics are not an object")
+    if semantic_replay:
+        expected_diagnostics = _compute_dev_diagnostics(
+            root=root,
+            index=index,
+            oracle_model=models["oracle"],
+            public_model=models["public"],
+            initial_model=models["initial"],
+        )
+        if diagnostics != expected_diagnostics:
+            raise SuphxO0ScreenError("DEV diagnostic recomputation drift")
     definitions = {
         "oracle_minus_initial": (
             models["oracle"], models["initial"], oracle_ref, initial_ref,
@@ -2035,6 +2089,8 @@ def _load_dev_result(root: str | Path, index: int, *, semantic_replay: bool) \
     rows = _load_jsonl(_ref(payload["raw_ref"], label="DEV raw rows"))
     grouped: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
     seen = set()
+    replayed = 0
+    replay_total = 2 * DEV_DEALS * len(COMPARISONS)
     for row in rows:
         if not isinstance(row, Mapping) \
                 or row.get("schema") != DEV_ROW_SCHEMA \
@@ -2086,6 +2142,12 @@ def _load_dev_result(root: str | Path, index: int, *, semantic_replay: bool) \
             if _canonical_json(dict(row)) != _canonical_json(expected_row):
                 raise SuphxO0ScreenError(
                     f"DEV semantic replay mismatch for {key}")
+            replayed += 1
+            if replayed % 64 == 0 or replayed == replay_total:
+                print(
+                    f"PROGRESS O0 DEV replay seed={index} "
+                    f"{replayed}/{replay_total}",
+                    flush=True)
         grouped[str(row["comparison"])].append(row)
     expected_keys = {
         (comparison, deal, flip)
@@ -2347,7 +2409,7 @@ def cli_main(argv: list[str] | None = None) -> int:
         if args.command == "verify-packet":
             packet_ref = CheckpointRef.capture(
                 _require_regular_final(args.packet))
-            verify_packet(packet_ref)
+            verify_packet(packet_ref, semantic_replay=True)
             _print_ref("verified_packet", packet_ref)
             return 0
         if args.command == "admit":

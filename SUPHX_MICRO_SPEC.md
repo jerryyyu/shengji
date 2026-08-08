@@ -100,6 +100,16 @@ other root, and the launch packet binds both that relative root and every
 artifact name. The operator may not redirect reviewed bytes into a new run
 identity.
 
+Packet reopening has two explicit costs. Routine admitted train/evaluate calls
+verify immutable hashes, structure, runtime and source identity without
+regenerating the 128 DEV games. Freeze and the independent `verify-packet`
+review path regenerate the complete DEV asset, while the terminal gate
+recomputes every diagnostic and semantically replays every raw comparison
+round. This removes redundant simulation from ordinary reopen without moving
+semantic replay away from an authority boundary. Freeze, diagnostics,
+evaluation and terminal replay emit progress at least every 16 DEV deals or 64
+replayed rows.
+
 ## Claim boundary
 
 The hypothesis is narrow:

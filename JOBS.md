@@ -72,7 +72,8 @@ exact `mc-s0-report-lcb`; Claude independently passed exact material
 Pushed `66d6836` adds S3a's outcome-free timing receipt on exact reserved
 151M states. Its initial 09:56 PASS was superseded by HOLD after an arbitrary
 nested-work-field probe passed. The repaired exact nested schema and counter
-equalities pass the broader boundary matrix but require independent re-review.
+equalities are pushed at `2de0824` and pass the broader boundary matrix but
+require independent re-review.
 
 The live-parent PASS now admits the first score-free S3b timing job on Mini.
 S3a's separate sizing packet remains second and cannot run until its repair
@@ -89,7 +90,8 @@ Neither preflight retains strength outcomes or authorizes its corresponding
 screen. Neither lane may inherit stale formal-S0 `mc-strong` authority. While
 review or timing is live, implementation continues off-host. Teacher terminal
 branch routing's initial PASS was also superseded by HOLD; its repaired
-gate-to-supervisor label-population binding awaits re-review. O0-v2
+gate-to-supervisor label-population binding is pushed at `2de0824` and awaits
+re-review. O0-v2
 CRN/logit-margin mechanics are pushed rather than competing for the measured
 host.
 

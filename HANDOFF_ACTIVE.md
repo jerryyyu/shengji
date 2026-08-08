@@ -11,7 +11,7 @@ job history in `JOBS.md`, and chronology in `docs_archive/`.
 | Production | **LIVE / CONFIRMED** | Compiled `mc-s0-report-lcb`, Fly release 17, image `latency-cd6789e`, manifest `047bcfe4...5b300`. RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`; matched null `-0.019043 +/- 0.068270`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
 | T1 Teacher | **AUDIT-V2 RUNNING** | Stage B passed. One sealed 64-state audit attempt is live on Air. A valid terminal PASS/FAIL/INCONCLUSIVE closes the last T1 gate; no favorable score is required. |
 | T2 live parent | **COMPLETE / REVIEW PASS** | Claude passed exact `05ea1d1` / material `66be133c…e17c`, reproduced output `5f9ddbfb…8402`, reopened RLCB-C1 and falsified stale-S0 re-entry. Only the score-free S3b Mini preflight is admitted; no strength launch. |
-| T2 Teacher adapter | **HOLD REPAIRED / RE-REVIEW REQUIRED** | Claude's adversarial probe superseded the initial PASS: the gate and terminal supervisor could name different valid label populations. The repair now requires an exact eight-item gate schema and ordered digest equality; 23/23 focused and 85/85 broader boundary tests pass. Both branches still deny compute and scale. |
+| T2 Teacher adapter | **HOLD REPAIRED + PUSHED / RE-REVIEW REQUIRED** | Claude's adversarial probe superseded the initial PASS: the gate and terminal supervisor could name different valid label populations. Pushed `2de0824` requires an exact eight-item gate schema and ordered digest equality; 23/23 focused and 85/85 broader boundary tests pass. Both branches still deny compute and scale. |
 | Formal S0 | **SELECT NONE / BURNED** | S0c outcomes remain unread and nonretryable. Closeout `ef0a365...fde9a`; never reopen or reinterpret it. |
 | V11 direct-v2 | **SELECT NONE** | `-0.141 +/- 0.070` versus current; protected composition false. V11 survives only as a bounded proposal/ranking/teacher diagnostic hypothesis. |
 | Direct-Q | **SELECT NONE** | Gameplay was positive, but seed 1 and both pooled role held-out gates failed. No extension. |
@@ -217,6 +217,66 @@ result auto-launches 2,048 labels.
    is required before use. Superseding marker:
 
    `TEACHER_TERMINAL_ADAPTER_V1_REVIEW {"git":"c961c14ce748fe5b8b15145367e5f9541cf71954","material_sha256":"d4efca63887e0dc3c1d4e9f96bc90f799f9cc8b7a4d77f1da6057dca89db03f1","independent_review":true,"verdict":"HOLD"}`
+
+5. **Review the two exact HOLD repairs / NO RUN:** exact pushed commit
+   `2de0824738e3e5a45ba317876b0abb3930315249`. No outcome, experiment, timing
+   round or terminal Teacher artifact was opened while making the repair.
+
+   **S3a repair material:**
+
+   - `server/scripts/s3a_bury_throughput.py`
+     `e26b500cb390daf084728bac6a9eb591bc8e612ce8209747ada09af2c48ec934`;
+   - `server/tests/test_s3a_bury_throughput.py`
+     `0ca26e8d8cecbb9589e9282cf5dbf663352292a4b0490b0d12640601877f5bed`;
+   - ordered two-file shasum-style material SHA-256
+     `fb0fa7bafa39cca2788cedb5259e8254310d172e6b7c5ff6b3a2a0c69a946e16`.
+
+   Falsify the exact prior defect: an extra nested `work_totals` field with
+   `{"strength_score":123.0}` must refuse. Confirm exact top-level work keys,
+   exact three-arm keys, exact selection/report counter keys, non-boolean
+   integer types, equal positive candidate work, report-work underfill
+   protection, accepted/requested/attempt equality and zero failure counters.
+   Confirm the real `score_free_work()` output still passes and the claim
+   boundary remains timing/placement only. Append exactly one new marker:
+
+   `S3A_THROUGHPUT_V1_REVIEW {"git":"2de0824738e3e5a45ba317876b0abb3930315249","material_sha256":"fb0fa7bafa39cca2788cedb5259e8254310d172e6b7c5ff6b3a2a0c69a946e16","independent_review":true,"verdict":"PASS|HOLD"}`
+
+   **Teacher adapter repair material:**
+
+   - `server/scripts/teacher_terminal_adapter.py`
+     `2b4a25041980d4033221716d0564b007fd79cd68d651370d4bcd0bbfd1912ca9`;
+   - `server/tests/test_teacher_terminal_adapter.py`
+     `4106d5b909d4535b84fde5e10dcb57da271461962580e6ef1b1c17702ee5c5ab`;
+   - ordered two-file shasum-style material SHA-256
+     `ccb73bb76698086228d1b38c5cf4909716c75fdbf68dc34db2c56217ee380e6d`.
+
+   Falsify the exact prior defect: individually valid, unique terminal label
+   digests `11..18` must refuse against gate inputs `1..8`. Confirm every gate
+   input has exactly `{path,sha256,shard_index}`, nonempty unique paths, eight
+   unique valid digests and ordered shard indices `0..7`; extra fields and
+   reordered/duplicated shards must refuse. Confirm the final supervisor
+   population equals the ordered gate digests exactly and all prior
+   no-compute/no-retry branch restrictions remain. Append exactly one marker:
+
+   `TEACHER_TERMINAL_ADAPTER_V1_REVIEW {"git":"2de0824738e3e5a45ba317876b0abb3930315249","material_sha256":"ccb73bb76698086228d1b38c5cf4909716c75fdbf68dc34db2c56217ee380e6d","independent_review":true,"verdict":"PASS|HOLD"}`
+
+   Reproduction commands:
+
+   ```bash
+   server/.venv/bin/python -m pytest -q \
+     server/tests/test_s3a_bury_throughput.py \
+     server/tests/test_teacher_terminal_adapter.py
+   # 23 passed
+
+   server/.venv/bin/python -m pytest -q \
+     server/tests/test_live_champion_parent.py \
+     server/tests/test_s3a_bury_pilot.py \
+     server/tests/test_s3a_bury_throughput.py \
+     server/tests/test_teacher_champion_audit_prepare.py \
+     server/tests/test_teacher_champion_audit_supervisor.py \
+     server/tests/test_teacher_terminal_adapter.py
+   # 85 passed in 128.04s
+   ```
 
 The broad code/evidence audit and strategy synthesis are already received.
 They reproduced every closed result and require no rollback. Their surviving

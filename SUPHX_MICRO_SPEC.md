@@ -88,6 +88,13 @@ authority. The focused suite currently passes 17/17, including a reduced real
 train/resume/evaluate/reopen path. These candidate bytes still require
 independent re-review before `freeze`, `admit` or `train` is invoked.
 
+The complete O0 namespace is fixed before freeze at
+`server/runs/logs/suphx-o0-fixed-ensemble-v1`. Every freezer, verifier,
+admission, training, evaluation and terminal-gate entry point rejects any
+other root, and the launch packet binds both that relative root and every
+artifact name. The operator may not redirect reviewed bytes into a new run
+identity.
+
 ## Claim boundary
 
 The hypothesis is narrow:

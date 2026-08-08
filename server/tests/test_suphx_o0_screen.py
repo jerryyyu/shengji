@@ -29,9 +29,15 @@ def _strict_determinism():
         torch.use_deterministic_algorithms(before, warn_only=warn_only)
 
 
+@pytest.fixture(autouse=True)
+def _bind_exact_test_run_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(screen, "EXPECTED_RUN_ROOT", tmp_path.resolve())
+
+
 def test_spec_names_fixed_ensemble_estimand_and_no_strength_authority():
     spec = screen._spec_payload()
     assert spec["screen_schema"] == screen.SCREEN_SCHEMA
+    assert spec["artifact_root"] == screen.RUN_RELATIVE_ROOT
     assert spec["training"]["iterations_per_arm"] == 64
     assert spec["training"]["resume_boundary"] == 32
     assert spec["inference"] == {
@@ -206,6 +212,24 @@ def test_artifact_reopen_refuses_symlink_even_when_target_is_regular(tmp_path):
     linked.symlink_to(target)
     with pytest.raises(screen.SuphxO0ScreenError, match="linked"):
         screen._require_regular_final(linked)
+
+
+def test_freezer_refuses_a_nonpredeclared_artifact_root(tmp_path):
+    wrong = tmp_path / "operator-chosen-alias"
+    with pytest.raises(screen.SuphxO0ScreenError, match="artifact root"):
+        screen.freeze_packet(wrong)
+    assert not wrong.exists()
+
+
+@pytest.mark.parametrize("command", (
+    lambda root: screen.train_arm(root, 0, "oracle"),
+    lambda root: screen.evaluate_seed(root, 0),
+    lambda root: screen.run_gate(root),
+))
+def test_execution_commands_refuse_a_nonpredeclared_artifact_root(
+        tmp_path, command):
+    with pytest.raises(screen.SuphxO0ScreenError, match="artifact root"):
+        command(tmp_path / "operator-chosen-alias")
 
 
 def test_admission_binds_exact_packet_and_review_bytes(tmp_path, monkeypatch):

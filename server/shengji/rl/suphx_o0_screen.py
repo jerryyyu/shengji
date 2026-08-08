@@ -82,6 +82,7 @@ PREFLIGHT_SHA256 = (
     "4f0c3dd542634b66fd0826a8caef5dc21c7a8b083f96804d1f2f9bbe653ee434"
 )
 PREFLIGHT_RELATIVE_PATH = "server/runs/logs/suphx-o0-runtime-preflight-v1.json"
+RUN_RELATIVE_ROOT = "server/runs/logs/suphx-o0-fixed-ensemble-v1"
 # Current sequential evaluation namespaces (historical through C1/Teacher-v3,
 # including sealed DEV/CALIB/REPORT assets) are all at or below this bound.
 # O0's own DEV range ends exactly here.  Derived training deals must sit above
@@ -116,6 +117,10 @@ SEED_IDENTITIES = (
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SERVER_ROOT = _REPO_ROOT / "server"
+# Mutable only as a test seam. Every executable artifact boundary below calls
+# _require_run_root(), so reviewed production bytes have one namespace rather
+# than an operator-selected directory that could alias another experiment.
+EXPECTED_RUN_ROOT = (_REPO_ROOT / RUN_RELATIVE_ROOT).resolve()
 _MATERIAL_RELATIVE_PATHS = (
     "SUPHX_MICRO_SPEC.md",
     "server/scripts/suphx_o0_screen.py",
@@ -753,6 +758,7 @@ def _spec_payload() -> dict[str, Any]:
     return {
         "schema": SPEC_SCHEMA,
         "screen_schema": SCREEN_SCHEMA,
+        "artifact_root": RUN_RELATIVE_ROOT,
         "claim": (
             "oracle acquisition for one exact fixed three-seed ensemble; "
             "not recipe-level, strength, O1, or production evidence"
@@ -842,8 +848,30 @@ def _packet_path(root: Path) -> Path:
     return root / "launch_packet.json"
 
 
+def _require_run_root(root: str | Path) -> Path:
+    resolved = Path(root).resolve()
+    expected = Path(EXPECTED_RUN_ROOT).resolve()
+    if resolved != expected:
+        raise SuphxO0ScreenError(
+            "O0 artifact root is not the exact predeclared namespace: "
+            f"expected {expected}, got {resolved}")
+    return resolved
+
+
+def _artifact_names_payload() -> dict[str, str]:
+    return {
+        "admission": "review_admission.json",
+        "review_copy": "review_record.txt",
+        "training": "train/seed_{index}_{arm}.json",
+        "training_ledger": "train/seed_{index}_{arm}.jsonl",
+        "dev_result": "dev/seed_{index}.json",
+        "dev_rows": "dev/seed_{index}.jsonl",
+        "gate": "gate.json",
+    }
+
+
 def freeze_packet(root: str | Path) -> CheckpointRef:
-    root = Path(root).resolve()
+    root = _require_run_root(root)
     if root.exists() and any(root.iterdir()):
         raise SuphxO0ScreenError("O0 freeze root must be absent or empty")
     root.mkdir(parents=True, exist_ok=True)
@@ -878,21 +906,14 @@ def freeze_packet(root: str | Path) -> CheckpointRef:
     packet = {
         "schema": PACKET_SCHEMA,
         "screen_schema": SCREEN_SCHEMA,
+        "artifact_root": RUN_RELATIVE_ROOT,
         "spec_ref": spec_ref.as_dict(),
         "dev_ref": dev_ref.as_dict(),
         "preflight_ref": preflight_ref.as_dict(),
         "initial_manifest_refs": initial_refs,
         "deal_collision_proof": collision,
         "runtime": runtime,
-        "artifact_names": {
-            "admission": "review_admission.json",
-            "review_copy": "review_record.txt",
-            "training": "train/seed_{index}_{arm}.json",
-            "training_ledger": "train/seed_{index}_{arm}.jsonl",
-            "dev_result": "dev/seed_{index}.json",
-            "dev_rows": "dev/seed_{index}.jsonl",
-            "gate": "gate.json",
-        },
+        "artifact_names": _artifact_names_payload(),
         "review_required": True,
         "training_authorized": False,
         "o1_authorized": False,
@@ -942,20 +963,25 @@ def _verify_initial(root: Path, index: int) \
 def verify_packet(ref: CheckpointRef) -> dict[str, Any]:
     packet = _load_json(ref)
     expected_fields = {
-        "schema", "screen_schema", "spec_ref", "dev_ref", "preflight_ref",
-        "initial_manifest_refs", "deal_collision_proof", "runtime",
-        "artifact_names", "review_required", "training_authorized",
-        "o1_authorized", "strength_claim", "production_promotion",
+        "schema", "screen_schema", "artifact_root", "spec_ref", "dev_ref",
+        "preflight_ref", "initial_manifest_refs", "deal_collision_proof",
+        "runtime", "artifact_names", "review_required",
+        "training_authorized", "o1_authorized", "strength_claim",
+        "production_promotion",
     }
     if not isinstance(packet, Mapping) or set(packet) != expected_fields \
             or packet.get("schema") != PACKET_SCHEMA \
             or packet.get("screen_schema") != SCREEN_SCHEMA \
+            or packet.get("artifact_root") != RUN_RELATIVE_ROOT \
+            or packet.get("artifact_names") != _artifact_names_payload() \
             or packet.get("review_required") is not True \
             or any(packet.get(name) is not False for name in (
                 "training_authorized", "o1_authorized", "strength_claim",
                 "production_promotion")):
         raise SuphxO0ScreenError("launch packet fields/authority drift")
-    root = Path(ref.path).resolve().parent
+    root = _require_run_root(Path(ref.path).resolve().parent)
+    if Path(ref.path).resolve() != _packet_path(root):
+        raise SuphxO0ScreenError("launch packet is outside its exact path")
     spec_ref = CheckpointRef.capture(_require_regular_final(root / "spec.json"))
     dev_ref = CheckpointRef.capture(_require_regular_final(root / "dev.json"))
     _same_ref(packet["spec_ref"], spec_ref, "spec")
@@ -998,7 +1024,7 @@ def admit_packet(
     if packet_ref.sha256 != expected_packet_sha256:
         raise SuphxO0ScreenError("expected launch-packet SHA-256 mismatch")
     packet = verify_packet(packet_ref)
-    root = Path(packet_ref.path).resolve().parent
+    root = _require_run_root(Path(packet_ref.path).resolve().parent)
     review_path = _require_regular_final(review_record)
     review_bytes = review_path.read_bytes()
     review_sha256 = hashlib.sha256(review_bytes).hexdigest()
@@ -1027,7 +1053,7 @@ def admit_packet(
 
 def _require_admission(root: str | Path) \
         -> tuple[CheckpointRef, CheckpointRef, dict[str, Any]]:
-    root = Path(root).resolve()
+    root = _require_run_root(root)
     packet_ref = CheckpointRef.capture(
         _require_regular_final(_packet_path(root)))
     packet = verify_packet(packet_ref)
@@ -1169,7 +1195,7 @@ def _run_iteration_block(
 
 
 def train_arm(root: str | Path, index: int, arm: str) -> CheckpointRef:
-    root = Path(root).resolve()
+    root = _require_run_root(root)
     if arm not in ARMS:
         raise SuphxO0ScreenError(f"unsupported O0 arm {arm!r}")
     packet_ref, admission_ref, _ = _require_admission(root)
@@ -1312,7 +1338,7 @@ def train_arm(root: str | Path, index: int, arm: str) -> CheckpointRef:
 
 def _load_training(root: str | Path, index: int, arm: str) \
         -> tuple[CheckpointRef, CheckpointRef, dict[str, Any]]:
-    root = Path(root).resolve()
+    root = _require_run_root(root)
     if arm not in ARMS:
         raise SuphxO0ScreenError(f"unsupported O0 arm {arm!r}")
     packet_ref, admission_ref, _ = _require_admission(root)
@@ -1763,7 +1789,7 @@ def _dev_result_path(root: Path, index: int) -> Path:
 
 
 def evaluate_seed(root: str | Path, index: int) -> CheckpointRef:
-    root = Path(root).resolve()
+    root = _require_run_root(root)
     packet_ref, admission_ref, _ = _require_admission(root)
     initial_manifest_ref, initial_ref, _ = _verify_initial(root, index)
     oracle_train_ref, oracle_ref, _ = _load_training(root, index, "oracle")
@@ -1884,7 +1910,7 @@ def _exact_two_flip_means(rows: Sequence[Mapping[str, Any]]) \
 
 def _load_dev_result(root: str | Path, index: int, *, semantic_replay: bool) \
         -> tuple[CheckpointRef, dict[str, dict[int, float]], dict[str, Any]]:
-    root = Path(root).resolve()
+    root = _require_run_root(root)
     packet_ref, admission_ref, _ = _require_admission(root)
     initial_manifest_ref, initial_ref, _ = _verify_initial(root, index)
     oracle_train_ref, oracle_ref, _ = _load_training(root, index, "oracle")
@@ -2048,7 +2074,7 @@ def _student_t_summary(values: Sequence[float]) -> dict[str, float | int]:
 
 
 def _compute_gate(root: str | Path, *, semantic_replay: bool) -> dict[str, Any]:
-    root = Path(root).resolve()
+    root = _require_run_root(root)
     packet_ref, admission_ref, _ = _require_admission(root)
     inputs: dict[str, Any] = {
         "packet": packet_ref.as_dict(),
@@ -2173,7 +2199,7 @@ def _compute_gate(root: str | Path, *, semantic_replay: bool) -> dict[str, Any]:
 
 
 def run_gate(root: str | Path) -> CheckpointRef:
-    root = Path(root).resolve()
+    root = _require_run_root(root)
     payload = _compute_gate(root, semantic_replay=True)
     ref = _publish_json(root / "gate.json", payload)
     verify_gate(ref, semantic_replay=False)
@@ -2212,10 +2238,13 @@ def verify_gate(
             or payload.get("strength_claim") is not False \
             or payload.get("production_promotion") is not False:
         raise SuphxO0ScreenError("terminal O0 gate identity/authority drift")
+    root = _require_run_root(str(payload.get("root")))
+    if Path(ref.path).resolve() != root / "gate.json":
+        raise SuphxO0ScreenError("terminal O0 gate is outside its exact path")
     for artifact in _walk_refs(payload.get("inputs")):
         artifact.verify()
     recomputed = _compute_gate(
-        str(payload.get("root")), semantic_replay=semantic_replay)
+        root, semantic_replay=semantic_replay)
     if payload != recomputed:
         raise SuphxO0ScreenError("terminal O0 gate recomputation drift")
     passed = payload["verdict"] == "PASS"

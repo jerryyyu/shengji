@@ -57,6 +57,21 @@ UNCERTAINTY_STATES = 8
 AUDIT_FOLDS = {"champion_selection": 32, "champion_report": 32}
 AUDIT_SHARDS = 8
 CONTINUATION_POLICY = "mc-s0-report-lcb"
+CONTINUATION_ADMISSION_SCHEMA = (
+    "teacher-v3-champion-continuation-admission-v1"
+)
+CONTINUATION_ADMISSION_CONTRACT = {
+    "schema": CONTINUATION_ADMISSION_SCHEMA,
+    "accepted_worlds": {"selection": 30, "report": 300},
+    "selection_attempt_cap": 1_200,
+    "report_attempt_cap": 12_000,
+    "allow_failed_determinization_retries": True,
+    "require_full_accepted_dose": True,
+    "refuse_attempt_cap_hit": True,
+    "require_strict_voids": True,
+    "score_failed_attempts": False,
+    "counter_identity": "sample_attempts=accepted_worlds+failed_worlds",
+}
 CONTINUATION_CONTRACT = {
     "policy": CONTINUATION_POLICY,
     "selection_worlds": 30,
@@ -68,6 +83,7 @@ CONTINUATION_CONTRACT = {
     "require_exact_work": True,
     "adaptive_allocation": False,
     "random_allocation": False,
+    "admission": CONTINUATION_ADMISSION_CONTRACT,
 }
 CONTINUATION_EXECUTION_LOCK = {
     "schema": "teacher-v1-champion-continuation-lock-v1",
@@ -139,6 +155,9 @@ CHAMPION_TELEMETRY_FIELDS = (
     "selection_candidate_rollouts",
     "report_candidate_rollouts",
     "total_candidate_rollouts",
+    "selection_sample_attempts",
+    "report_sample_attempts",
+    "retry_attempts",
     *teacher_label.SAMPLER_COUNTERS,
 )
 CHAMPION_DECISION_DIAGNOSTIC_SCHEMA = (
@@ -352,10 +371,12 @@ def selection_key(state: dict) -> tuple[str, str]:
 
 def live_continuation_contract() -> dict:
     bot = make_bot(CONTINUATION_POLICY, seed=1)
+    selection_worlds = bot.N_DETERMINIZATIONS
+    report_worlds = bot.REPORT_FOLD_WORLDS
     return {
         "policy": CONTINUATION_POLICY,
-        "selection_worlds": bot.N_DETERMINIZATIONS,
-        "report_worlds": bot.REPORT_FOLD_WORLDS,
+        "selection_worlds": selection_worlds,
+        "report_worlds": report_worlds,
         "report_rule": bot.REPORT_RULE,
         "report_alpha": bot.REPORT_ALPHA,
         "report_min_gain": bot.REPORT_MIN_GAIN,
@@ -363,6 +384,24 @@ def live_continuation_contract() -> dict:
         "require_exact_work": bot.REQUIRE_EXACT_WORK,
         "adaptive_allocation": bot.ADAPTIVE_ALLOCATION,
         "random_allocation": bot.RANDOM_ALLOCATION,
+        "admission": {
+            "schema": CONTINUATION_ADMISSION_SCHEMA,
+            "accepted_worlds": {
+                "selection": selection_worlds,
+                "report": report_worlds,
+            },
+            "selection_attempt_cap": (
+                selection_worlds * bot.SAMPLE_ATTEMPT_FACTOR),
+            "report_attempt_cap": (
+                report_worlds * bot.SAMPLE_ATTEMPT_FACTOR),
+            "allow_failed_determinization_retries": True,
+            "require_full_accepted_dose": bot.REQUIRE_EXACT_WORK,
+            "refuse_attempt_cap_hit": True,
+            "require_strict_voids": True,
+            "score_failed_attempts": False,
+            "counter_identity": (
+                "sample_attempts=accepted_worlds+failed_worlds"),
+        },
     }
 
 
@@ -447,6 +486,11 @@ def champion_decision_disposition(record: dict) -> str:
     return disposition
 
 
+def _nonnegative_int(value) -> bool:
+    return (not isinstance(value, bool)
+            and isinstance(value, int) and value >= 0)
+
+
 def champion_decision_telemetry(policy, sampler_counters: dict) -> dict:
     """Validate one downstream report-LCB decision and return exact work.
 
@@ -521,6 +565,8 @@ def champion_decision_telemetry(policy, sampler_counters: dict) -> dict:
             "champion_selection_dose_mismatch", policy, sampler_counters)
 
     alloc = record.get("alloc", {})
+    selection_attempts = alloc.get("attempts")
+    selection_attempt_cap = alloc.get("attempt_cap")
     if (alloc.get("mode") != "uniform"
             or alloc.get("short") is not False
             or alloc.get("worlds") != selection_worlds
@@ -531,6 +577,14 @@ def champion_decision_telemetry(policy, sampler_counters: dict) -> dict:
             or alloc.get("n_by_candidate") != n_by):
         _refuse_champion_decision(
             "champion_selection_work_mismatch", policy, sampler_counters)
+    if (not _nonnegative_int(selection_attempts)
+            or selection_attempts < selection_worlds
+            or selection_attempt_cap
+            != CONTINUATION_ADMISSION_CONTRACT["selection_attempt_cap"]
+            or selection_attempts > selection_attempt_cap
+            or alloc.get("attempt_cap_hit") is not False):
+        _refuse_champion_decision(
+            "champion_selection_attempt_mismatch", policy, sampler_counters)
 
     report = record.get("report_fold", {})
     if (report.get("fold") != "report"
@@ -542,11 +596,19 @@ def champion_decision_telemetry(policy, sampler_counters: dict) -> dict:
         _refuse_champion_decision(
             "champion_report_contract_drift", policy, sampler_counters)
     if (report.get("worlds") != report_worlds
-            or report.get("attempts") != report_worlds
-            or report.get("rejected") != 0
             or report.get("complete") is not True):
         _refuse_champion_decision(
             "champion_report_dose_mismatch", policy, sampler_counters)
+    report_attempts = report.get("attempts")
+    report_rejected = report.get("rejected")
+    if (not _nonnegative_int(report_attempts)
+            or not _nonnegative_int(report_rejected)
+            or report_attempts < report_worlds
+            or report_attempts
+            > CONTINUATION_ADMISSION_CONTRACT["report_attempt_cap"]
+            or report_rejected != report_attempts - report_worlds):
+        _refuse_champion_decision(
+            "champion_report_attempt_mismatch", policy, sampler_counters)
 
     work = record.get("work", {})
     total_rollouts = selection_rollouts + report_rollouts
@@ -567,16 +629,20 @@ def champion_decision_telemetry(policy, sampler_counters: dict) -> dict:
         _refuse_champion_decision(
             "champion_played_action_drift", policy, sampler_counters)
 
+    accepted_worlds = selection_worlds + report_worlds
+    sample_attempts = selection_attempts + report_attempts
+    retry_attempts = sample_attempts - accepted_worlds
     expected_sampler = {
-        "sample_attempts": selection_worlds + report_worlds,
+        "sample_attempts": sample_attempts,
         "accepted_worlds": selection_worlds + report_worlds,
-        "failed_worlds": 0,
-        "rejected_worlds": 0,
+        "failed_worlds": retry_attempts,
+        "rejected_worlds": sampler_counters["rejected_worlds"],
         "impossible_worlds": 0,
         "short_search_decisions": 0,
         "zero_world_decisions": 0,
     }
-    if sampler_counters != expected_sampler:
+    if (sampler_counters["rejected_worlds"] > retry_attempts
+            or sampler_counters != expected_sampler):
         _refuse_champion_decision(
             "champion_sampler_dose_mismatch", policy, sampler_counters)
     record_sampler = record.get("sampler_counters", {}).get("delta")
@@ -588,6 +654,9 @@ def champion_decision_telemetry(policy, sampler_counters: dict) -> dict:
             "champion_record_sampler_drift", policy, sampler_counters)
 
     telemetry.update(expected_sampler)
+    telemetry["selection_sample_attempts"] = selection_attempts
+    telemetry["report_sample_attempts"] = report_attempts
+    telemetry["retry_attempts"] = retry_attempts
     telemetry["selection_worlds"] = selection_worlds
     telemetry["report_worlds"] = report_worlds
     telemetry["selection_candidate_rollouts"] = selection_rollouts
@@ -772,12 +841,25 @@ def continuation_telemetry_problems(fold: dict) -> list[str]:
     if telemetry["total_candidate_rollouts"] != (
             selection_rollouts + telemetry["report_candidate_rollouts"]):
         bad.append("champion total candidate-rollout dose")
-    if (telemetry["sample_attempts"] != 330 * searched
-            or telemetry["accepted_worlds"] != 330 * searched):
+    if telemetry["accepted_worlds"] != 330 * searched:
         bad.append("champion accepted sampler dose")
+    if (telemetry["selection_sample_attempts"] < 30 * searched
+            or telemetry["selection_sample_attempts"] > 1_200 * searched):
+        bad.append("champion selection-attempt dose")
+    if (telemetry["report_sample_attempts"] < 300 * searched
+            or telemetry["report_sample_attempts"] > 12_000 * searched):
+        bad.append("champion report-attempt dose")
+    if (telemetry["sample_attempts"] !=
+            telemetry["selection_sample_attempts"]
+            + telemetry["report_sample_attempts"]):
+        bad.append("champion attempt fold accounting")
+    if (telemetry["sample_attempts"] != telemetry["accepted_worlds"]
+            + telemetry["failed_worlds"]
+            or telemetry["retry_attempts"] != telemetry["failed_worlds"]
+            or telemetry["rejected_worlds"] > telemetry["failed_worlds"]):
+        bad.append("champion retry accounting")
     forbidden = {name: telemetry[name] for name in (
-        "failed_worlds", "rejected_worlds", "impossible_worlds",
-        "short_search_decisions", "zero_world_decisions",
+        "impossible_worlds", "short_search_decisions", "zero_world_decisions",
     ) if telemetry[name]}
     if forbidden:
         bad.append(f"champion forbidden counters {forbidden}")
@@ -2049,7 +2131,19 @@ def build_gate_payload(*, receipt: dict, receipt_binding: dict,
     parents = context["parents"]
     regret = champion_regret(
         records, parents["cheap_by"], parents["gold_by"])
-    problems = sorted(set(input_problems + regret.get("problems", [])))
+    continuation_telemetry = _zero_champion_telemetry()
+    telemetry_problems = []
+    for manifest in manifests:
+        manifest_telemetry = manifest.get("continuation_telemetry", {})
+        if (set(manifest_telemetry) == set(CHAMPION_TELEMETRY_FIELDS)
+                and all(_nonnegative_int(value)
+                        for value in manifest_telemetry.values())):
+            continuation_telemetry.update(manifest_telemetry)
+        else:
+            telemetry_problems.append(
+                "audit gate continuation telemetry schema")
+    problems = sorted(set(input_problems + regret.get("problems", [])
+                          + telemetry_problems))
     passed = not problems and regret.get("passed") is True
     verdict = "PASS" if passed else (
         "INCONCLUSIVE" if problems or regret.get("inconclusive") else "FAIL")
@@ -2078,6 +2172,7 @@ def build_gate_payload(*, receipt: dict, receipt_binding: dict,
         "folds_contract": AUDIT_FOLDS,
         "continuation_contract": CONTINUATION_CONTRACT,
         "continuation_execution_lock": CONTINUATION_EXECUTION_LOCK,
+        "continuation_telemetry": dict(continuation_telemetry),
         "outer_candidate_world_work": sum(
             manifest.get("outer_candidate_world_work", 0)
             for manifest in manifests),

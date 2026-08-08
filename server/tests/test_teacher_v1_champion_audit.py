@@ -157,6 +157,19 @@ def test_champion_contract_is_literal_deployed_report_lcb():
         "require_exact_work": True,
         "adaptive_allocation": False,
         "random_allocation": False,
+        "admission": {
+            "schema": "teacher-v3-champion-continuation-admission-v1",
+            "accepted_worlds": {"selection": 30, "report": 300},
+            "selection_attempt_cap": 1_200,
+            "report_attempt_cap": 12_000,
+            "allow_failed_determinization_retries": True,
+            "require_full_accepted_dose": True,
+            "refuse_attempt_cap_hit": True,
+            "require_strict_voids": True,
+            "score_failed_attempts": False,
+            "counter_identity": (
+                "sample_attempts=accepted_worlds+failed_worlds"),
+        },
     }
     assert audit.live_continuation_contract() == audit.CONTINUATION_CONTRACT
     assert audit.AUDIT_FOLDS == {
@@ -254,6 +267,8 @@ def valid_champion_decision():
         "worlds": 30,
         "alloc": {
             "mode": "uniform", "short": False, "worlds": 30,
+            "attempts": 30, "attempt_cap": 1_200,
+            "attempt_cap_hit": False,
             "budget": selection_rollouts,
             "rollouts": selection_rollouts,
             "decision_rollouts": selection_rollouts,
@@ -350,16 +365,34 @@ def test_champion_refusals_name_score_free_branch_and_exact_failed_fields():
     assert '"gap"' not in encoded
     assert '"winner"' not in encoded
 
-    # A completed report that needed one retry is distinct from underfill.
+    # A completed report that needed one failed determinization retry preserves
+    # the exact 300 accepted-world estimand and is counted rather than refused.
     policy, sampler = valid_champion_decision()
     policy.last_decision_record["report_fold"].update(
         attempts=301, rejected=1)
+    sampler.update(
+        sample_attempts=331, failed_worlds=1, rejected_worlds=1)
+    policy.last_decision_record["sampler_counters"]["delta"].update({
+        "sample_attempts": 331, "failed_worlds": 1,
+        "rejected_worlds": 1})
+    telemetry = audit.champion_decision_telemetry(policy, sampler)
+    assert telemetry["accepted_worlds"] == 330
+    assert telemetry["selection_sample_attempts"] == 30
+    assert telemetry["report_sample_attempts"] == 301
+    assert telemetry["retry_attempts"] == 1
+    assert telemetry["failed_worlds"] == 1
+    assert telemetry["rejected_worlds"] == 1
+
+    # The same accounting applies when the retry occurs in selection.
+    policy, sampler = valid_champion_decision()
+    policy.last_decision_record["alloc"]["attempts"] = 31
     sampler.update(sample_attempts=331, failed_worlds=1)
-    with pytest.raises(
-            audit.TeacherProtocolError,
-            match=r"champion_report_dose_mismatch: .*\"complete\":true.*"
-                  r"\"rejected\":1.*\"worlds\":300"):
-        audit.champion_decision_telemetry(policy, sampler)
+    policy.last_decision_record["sampler_counters"]["delta"].update({
+        "sample_attempts": 331, "failed_worlds": 1})
+    telemetry = audit.champion_decision_telemetry(policy, sampler)
+    assert telemetry["selection_sample_attempts"] == 31
+    assert telemetry["report_sample_attempts"] == 300
+    assert telemetry["retry_attempts"] == 1
 
     # A genuine short report has its own production reason and refusal code.
     policy, sampler = valid_champion_decision()
@@ -378,6 +411,55 @@ def test_champion_refusals_name_score_free_branch_and_exact_failed_fields():
     with pytest.raises(
             audit.TeacherProtocolError,
             match="champion_report_contract_drift"):
+        audit.champion_decision_telemetry(policy, sampler)
+
+
+def test_completed_retry_contract_refuses_false_completion_and_bad_counters():
+    # A short report cannot masquerade as complete merely by retaining the
+    # production success reason.
+    policy, sampler = valid_champion_decision()
+    policy.last_decision_record["report_fold"].update(
+        worlds=299, attempts=300, rejected=1, complete=True)
+    with pytest.raises(
+            audit.TeacherProtocolError,
+            match="champion_report_dose_mismatch"):
+        audit.champion_decision_telemetry(policy, sampler)
+
+    # Complete accepted dose still refuses an impossible attempt count or an
+    # internally inconsistent report retry count.
+    policy, sampler = valid_champion_decision()
+    policy.last_decision_record["report_fold"].update(
+        attempts=12_001, rejected=11_701)
+    with pytest.raises(
+            audit.TeacherProtocolError,
+            match="champion_report_attempt_mismatch"):
+        audit.champion_decision_telemetry(policy, sampler)
+
+    policy, sampler = valid_champion_decision()
+    policy.last_decision_record["report_fold"].update(
+        attempts=301, rejected=0)
+    with pytest.raises(
+            audit.TeacherProtocolError,
+            match="champion_report_attempt_mismatch"):
+        audit.champion_decision_telemetry(policy, sampler)
+
+    # Live and record counters must reconcile with both fold attempt counts;
+    # admitting retry semantics does not admit telemetry guessing.
+    policy, sampler = valid_champion_decision()
+    policy.last_decision_record["report_fold"].update(
+        attempts=301, rejected=1)
+    sampler.update(sample_attempts=330, failed_worlds=0)
+    with pytest.raises(
+            audit.TeacherProtocolError,
+            match="champion_sampler_dose_mismatch"):
+        audit.champion_decision_telemetry(policy, sampler)
+
+    policy, sampler = valid_champion_decision()
+    policy.last_decision_record["alloc"].update(
+        attempts=1_201, attempt_cap_hit=False)
+    with pytest.raises(
+            audit.TeacherProtocolError,
+            match="champion_selection_attempt_mismatch"):
         audit.champion_decision_telemetry(policy, sampler)
 
 
@@ -487,6 +569,9 @@ def test_continuation_telemetry_reconciles_exact_report_lcb_dose():
         "selection_candidate_rollouts": 180,
         "report_candidate_rollouts": 1200,
         "total_candidate_rollouts": 1380,
+        "selection_sample_attempts": 60,
+        "report_sample_attempts": 600,
+        "retry_attempts": 0,
         "sample_attempts": 660,
         "accepted_worlds": 660,
     })
@@ -507,6 +592,110 @@ def test_continuation_telemetry_reconciles_exact_report_lcb_dose():
     changed["inner_sampler_counters"]["accepted_worlds"] -= 1
     assert "champion telemetry/inner-counter drift" in \
         audit.continuation_telemetry_problems(changed)
+
+    # Retries survive fold aggregation without changing accepted-world dose.
+    retried = copy.deepcopy(fold)
+    retried["continuation_telemetry"].update({
+        "report_sample_attempts": 602,
+        "retry_attempts": 2,
+        "sample_attempts": 662,
+        "failed_worlds": 2,
+        "rejected_worlds": 1,
+    })
+    retried["inner_sampler_counters"].update({
+        "sample_attempts": 662,
+        "failed_worlds": 2,
+        "rejected_worlds": 1,
+    })
+    assert audit.continuation_telemetry_problems(retried) == []
+
+    changed = copy.deepcopy(retried)
+    changed["continuation_telemetry"]["retry_attempts"] = 1
+    assert "champion retry accounting" in \
+        audit.continuation_telemetry_problems(changed)
+
+
+def test_retry_count_survives_synthetic_fold_shard_and_gate(monkeypatch):
+    telemetry = {
+        name: 0 for name in audit.CHAMPION_TELEMETRY_FIELDS}
+    telemetry.update({
+        "decisions": 1,
+        "searched_decisions": 1,
+        "selection_worlds": 30,
+        "report_worlds": 300,
+        "selection_candidate_rollouts": 90,
+        "report_candidate_rollouts": 600,
+        "total_candidate_rollouts": 690,
+        "selection_sample_attempts": 30,
+        "report_sample_attempts": 301,
+        "retry_attempts": 1,
+        "sample_attempts": 331,
+        "accepted_worlds": 330,
+        "failed_worlds": 1,
+    })
+    inner = {
+        name: telemetry[name]
+        for name in audit.teacher_label.SAMPLER_COUNTERS}
+    fold = {
+        "continuation_execution_lock": audit.CONTINUATION_EXECUTION_LOCK,
+        "continuation_telemetry": telemetry,
+        "inner_sampler_counters": inner,
+    }
+    assert audit.continuation_telemetry_problems(fold) == []
+
+    monkeypatch.setattr(audit, "champion_regret", lambda *_args: {
+        "passed": True, "inconclusive": False, "problems": []})
+    receipt = {
+        "run_id": "synthetic-v3",
+        "audit_state_set": {"sha256": "a" * 64},
+        "stage_b_state_set": {"sha256": "b" * 64},
+    }
+    receipt_binding = {"sha256": "c" * 64}
+    context = {"parents": {
+        "cheap_by": {}, "gold_by": {},
+        "stage_b_gate_item": {"sha256": "d" * 64},
+        "cheap_items": [], "gold_items": [],
+    }}
+    payload = audit.build_gate_payload(
+        receipt=receipt,
+        receipt_binding=receipt_binding,
+        context=context,
+        shard_items=[{"sha256": "e" * 64}],
+        manifests=[{
+            "continuation_telemetry": telemetry,
+            "outer_candidate_world_work": 0,
+            "continuation_candidate_rollouts": 690,
+            "total_rollout_work": 690,
+        }],
+        records=[], input_problems=[], runtime={"tree_dirty": False},
+        sources={"audit": "source"},
+    )
+    assert payload["continuation_telemetry"]["accepted_worlds"] == 330
+    assert payload["continuation_telemetry"]["retry_attempts"] == 1
+    assert payload["continuation_telemetry"]["failed_worlds"] == 1
+
+    malformed = audit.build_gate_payload(
+        receipt=receipt,
+        receipt_binding=receipt_binding,
+        context=context,
+        shard_items=[{"sha256": "e" * 64}],
+        manifests=[{
+            "continuation_telemetry": {},
+            "outer_candidate_world_work": 0,
+            "continuation_candidate_rollouts": 690,
+            "total_rollout_work": 690,
+        }],
+        records=[], input_problems=[], runtime={"tree_dirty": False},
+        sources={"audit": "source"},
+    )
+    assert malformed["verdict"] == "INCONCLUSIVE"
+    assert "audit gate continuation telemetry schema" in \
+        malformed["problems"]
+
+    missing_count = copy.deepcopy(payload)
+    missing_count.pop("continuation_telemetry")
+    assert "audit gate full recomputation drift" in \
+        audit.gate_payload_problems(missing_count, payload)
 
 
 def test_selected_parent_join_binds_state_candidates_and_frozen_indices():

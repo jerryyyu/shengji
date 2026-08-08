@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-08 01:18 EDT.
+Last re-derived: 2026-08-08 07:38 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -78,11 +78,14 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   criterion passed. O1 is not authorized. Do not extend iterations, add seeds,
   reopen DEV for tuning or reinterpret this as a strength result; diagnose the
   near-uniform policy/weak oracle-use mechanism and preregister a fresh learner.
-- **Teacher-v3 is the live strength job.** Actor canonicalization, capture,
-  diagnostics, exact 64-state freeze and the independent champion-audit
-  protocol are code-complete. Air is running eight Stage-B N=30 gold shards;
-  do not inspect outcomes or launch audit labels until all eight validate and
-  the receipt-to-gate transition passes.
+- **Teacher-v3 Stage B passed; the champion audit is at a repaired review
+  hold.** All 8/8 gold shards validated and the one-shot gate passed with
+  upper regret bound `0.0195 < 0.10`. Audit v1 then exposed a deterministic
+  publication bug before any label launched: its verifier rejected its own
+  still-owned hard-linked partial. Preserve v1 as failed evidence. Exact
+  evaluator repair `1866132` and controller `c9a5c3f` use a fresh v2 run/root,
+  keep states/folds/continuation unchanged and pass live Air preflight; launch
+  only after the requested independent review.
 
 ## NOW — ordered by value
 
@@ -90,7 +93,7 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 |---|---|---|
 | **T1 / Lane A production latency — COMPLETE / LIVE MONITOR** | Keep the first stronger-than-MC production policy enjoyable to play | Fly release 17 runs exact `latency-cd6789e` / `047bcfe4...5b300`. Health, native activation, claim, reconnect, stale-discard, X-ray isolation and concurrent WebSocket responsiveness passed live. Keep release 16 as the runtime rollback and `mc-strong` as the separate policy rollback; collect ordinary human-room timing before considering a CPU resize. |
 | **T1 / Lane A.1 V11pair — COMPLETE / SELECT NONE** | Preserve the learned milestone without forcing it into the champion | Artifact repair passed; the frozen rule rejected protected composition. Keep v11 as a bounded proposer/ranker and teacher diagnostic only. No protected-anchor run is authorized. |
-| **T1 / Lane B teacher — STAGE-B RUNNING; CONTROLLER REVIEW PASS** | Generate counterfactual data capable of exceeding the old heuristic continuation | At 01:18 shard 1 was final and seven Air workers remained healthy; corrected outcome-blind fold progress was 72.9% (`11,940/16,384`), not an ETA. The readiness checker recognized the one-final/seven-worker state and correctly granted no authority. The 20:51 review accepted the predeclared detached completion substitute, and the 21:57 independent review passed exact controller `1c97928`. Complete and validate all eight attribution-only gold shards and seal the Stage-B gate exactly once. Only PASS enters preparer `5ffb6773...6baa57`, which exclusively copies/reopens the exact 20 parents, verifies supervisor bytes before copying and owns receipt exit zero; supervisor `44025386...f682d5` then owns all eight frozen 32/32 audit workers and one exact terminal verdict. Frozen evaluator remains exact `182d1df`/`57796fda...887ead`; superseded `f4f3dc0`, old controller `07b2a9f`, filenames alone and any non-PASS authorize nothing. No Stage-B outcome may tune the audit. |
+| **T1 / Lane B teacher — STAGE-B PASS; AUDIT-V2 REVIEW HOLD** | Determine whether N=30 teacher choices remain good under the full champion continuation | Stage-B gate SHA `f607b489…89694` passed. Audit-v1 receipt creation refused mechanically before labels; preserve exact `182d1df` final/partial/exit and never retry it. Fresh evaluator `1866132` / `c7b47a7a…d6cb`, controller `c9a5c3f`, run ID `teacher-v3-report-lcb-audit-v2-149m`, exact 20-parent preflight and all focused/adjacent tests are green. Require the exact independent PASS marker in `HANDOFF_ACTIVE.md`, then run one v2 receipt, eight unchanged 32/32 shards and one terminal gate. |
 | **T1 / Lane C Direct-Q — COMPLETE / SELECT NONE** | Learn from the failure without selecting its positive gameplay tail | Preserve aggregate SHA `1fa6789e…791`; do not deploy, extend or mutate the 144M recipe. The next learner requires a separately frozen Suphx-style or other role-correct microbaseline gate. |
 | **T1 / Lane C Suphx O0 — COMPLETE / SELECT NONE** | Test whether a full-information policy can learn before spending compute on feature removal | Preserve gate SHA `592a009a…bd407c`. Both ensemble LCBs passed, but seed 1 lost to its equal-seed public arm (`-0.207`), failing the registered robustness conjunction. O1 is closed for this exact recipe; the next learner needs a fresh packet, not an O0 extension. |
 | **RLCB-C1 fresh confirmation — COMPLETE / ARTIFACT-ONLY CONFIRM** | Close formal report-LCB superiority | 2,048/2,048 fresh clusters, exact doses, zero stream collisions, sane null and positive superiority LCB. The late dirty-doc supervisor refusal is bound by non-replay closeout SHA `06dd487d…b7aae5`; preserve aggregate SHA `83f5a9df…f5ef5ea`. No extension or S0c reinterpretation remains. |
@@ -119,9 +122,9 @@ behind code or protocol work we could have completed.
    next independently frozen strength screen. Do not extend an inspected run;
    first use the Direct-Q and O0 diagnostics plus Claude's strategy review to
    name the smallest fresh mechanism that can plausibly beat report-LCB.
-3. **Air:** keep all eight Stage-B gold workers owned by the frozen Teacher-v3
-   transition. After validation, run only the already-frozen 64-state audit;
-   do not redesign it from Stage-B outcomes.
+3. **Air:** Stage B is complete and no worker is live. Hold the repaired
+   Teacher-v3 audit-v2 packet for independent review; on PASS run only its
+   unchanged frozen 64-state audit. Never reuse the failed v1 checkout.
 4. **No idle gap:** the next bounded job may start as soon as its exact parent,
    namespace, tests and stop rule are committed. A failed lane releases compute
    to another lane; it does not weaken its own gate.

@@ -1,11 +1,28 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 01:18 EDT. This is the executable mailbox only.
+Last update: 2026-08-08 07:38 EDT. This is the executable mailbox only.
 Durable discussion and retractions remain in `HANDOFF_REVIEW.md`; policy
 synthesis belongs in `AI_POLICIES.md`.
 
 ## Current truth
 
+- **Teacher-v3 Stage B: COMPLETE / PASS; champion audit: REVIEW HOLD.** At
+  07:28 the reviewed outcome-blind checker found 8/8 regular gold finals,
+  zero workers, exact clean producer `1a2a713`, no partial/gate collision and
+  `outcomes_opened=false`. The single authorized Stage-B gate then exited zero
+  with terminal PASS: mean cheap-minus-gold regret `-0.002686`, upper 95%
+  `0.019548 < 0.10`, gate SHA
+  `f607b48986aaa8b05194f88e8638540bc5c9360f09f3c28a7565d8d8cac89694`.
+  The first audit preparation launched no labels: exact `182d1df` receipt
+  creation exited 3 because its post-link verifier called an ordinary loader
+  while its own hard-linked `.partial` refusal marker still existed. Preserve
+  that checkout/final/partial/exit forever; never retry or adopt it.
+  Fresh repaired evaluator `1866132` / script SHA `c7b47a7a...d6cb` and
+  controller `c9a5c3f` are pushed and installed in new Air checkouts. Their
+  21/21 evaluator, 21/21 controller and 119/119 adjacent tests pass; read-only
+  v2 preflight binds all 20 parents with no problem and creates no artifact.
+  A second receipt remains unauthorized until the exact independent review
+  requested below passes.
 - **Production latency: COMPLETE / LIVE.** With Jerry's explicit authorization
   to interrupt HIEJ, Fly release 17 now runs exact image
   `latency-cd6789e`, digest `047bcfe4...5b300`. Health passes with compiled
@@ -59,7 +76,63 @@ from its original clean `b365120` runtime returned
 `passed_learning_screen=false`, `production_promotion=false`, and
 `verified=true`. These checks generated no games and performed no training.
 
-## Running compute
+## Current Teacher-v3 audit-v2 review packet
+
+No strength worker is currently running. Stage B is terminal PASS, and Air is
+intentionally idle at the review boundary rather than silently weakening a
+one-shot rule.
+
+The v1 failure is mechanical and outcome-free: `write_complete()` hard-linked
+the receipt final, retained its same-inode partial during verification, and
+`create_receipt.verify()` then used `load_pinned()`, which categorically rejects
+any partial. The identical latent call existed in label and gate publication.
+No audit label, fold, rollout or gate was started. Repair `1866132` centralizes
+receipt/label/gate publication behind one helper that accepts the partial only
+when both names are regular non-symlinks to the same `(device,inode)` and the
+opened bytes match the exact SHA. A look-alike same-byte but different-inode
+partial is rejected. The state-set publisher was already safe and unchanged.
+
+Fresh execution packet:
+
+- failed evidence root, immutable: `~/Projects/shengji-teacher-audit-air`,
+  exact `182d1df`; receipt exit 3 plus final/partial retained;
+- repaired evaluator root: `~/Projects/shengji-teacher-audit-v2-air`, exact
+  `1866132766c7f16542bc27e730622e2dfea639ae`, script SHA
+  `c7b47a7a0305f6067129cc7b19517d9a983efff70085f83edc0d39475955d6cb`;
+- new run ID: `teacher-v3-report-lcb-audit-v2-149m`;
+- controller root: `~/Projects/shengji-teacher-control3-air`, exact
+  `c9a5c3fec07a2152947a3dcb2de62799a9cf443b`;
+- preparer SHA
+  `693218f5850df52b290be415dc9c6b9c3e40479f8f28cc09e7b76a9db410654f`;
+- supervisor SHA
+  `5a173f340c9b4a7f7dbdfb0e8a8fb2b7d82375c1410c40b23dbc981476b4ce96`;
+- frozen Stage-B gate/state/audit-state/native SHAs remain exactly
+  `f607b489...89694`, `90956da8...dc6`, `d04d1c0f...f7a34`, and
+  `ef7c1618...66b4d`; the 64 states, 32/32 folds, report-LCB continuation,
+  thresholds and all 20 Stage-B parents are unchanged.
+
+Claude: review only audit-branch diff `182d1df..1866132`, main/controller diff
+`1f37662..c9a5c3f`, the preserved failed Air evidence above and the read-only
+preflight. Do not create a receipt or run a label. Please falsify:
+
+1. whether the failure diagnosis is complete for receipt, label and gate;
+2. whether same-inode plus exact opened-byte SHA is the correct narrow
+   exception while ordinary readers remain fail-closed;
+3. whether the new git/script/run identity and fresh checkout make this a new
+   attempt without changing the estimand or reusing failed authority;
+4. whether controller `c9a5c3f` can accidentally admit old `182d1df`, old
+   script SHA, a v1 run ID, dirty/colliding roots, nonzero receipt exit, or any
+   altered parent/state/continuation identity.
+
+If and only if all pass, append exactly one marker to `HANDOFF_REVIEW.md`:
+
+```text
+TEACHER_V3_AUDIT_V2_REVIEW_V1 {"audit_git":"1866132766c7f16542bc27e730622e2dfea639ae","audit_script_sha256":"c7b47a7a0305f6067129cc7b19517d9a983efff70085f83edc0d39475955d6cb","controller_git":"c9a5c3fec07a2152947a3dcb2de62799a9cf443b","independent_review":true,"receipt_authorized":true,"verdict":"PASS"}
+```
+
+Otherwise append HOLD with `receipt_authorized:false` and concrete blockers.
+
+## Historical 01:18 Teacher snapshot — superseded; do not execute
 
 Air launched eight compiled+strict Teacher-v3 Stage-B gold workers at exact
 `1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 01:18 shard 1 remained the
@@ -408,14 +481,14 @@ at 23:21.
 
 ## Exact next actions
 
-1. Monitor all eight Teacher-v3 Stage-B workers without opening outcome
-   aggregates. When terminal, validate receipts and publish exactly one
-   `stage_b_gate_v2.json` from the unchanged `1a2a713` producer worktree.
-2. Only if that gate passes, copy the exact bound parents into the independent
-   `182d1df` audit worktree, publish one receipt with the exact git/script
-   predeclaration above, run eight frozen audit shards, and publish one gate.
-   No outcome-conditioned state, policy, fold, threshold or execution-lock
-   change.
+1. Wait for the exact `TEACHER_V3_AUDIT_V2_REVIEW_V1` PASS marker above. Do
+   not launch another receipt from v1 or v2 before it exists and reopens.
+2. On PASS only, run the `c9a5c3f` preparer once against the fresh
+   `shengji-teacher-audit-v2-air` root with gate SHA `f607b489...89694` and
+   controller hashes `693218f5...0654f` / `5a173f34...ce96`. Require exit 0,
+   final receipt, no partial, exact receipt/preparation SHAs and successful
+   reopen before the same controller owns all eight frozen labels and one
+   terminal gate. Preserve every nonzero or non-PASS result; never retry.
 3. Monitor release-17 timing in ordinary human rooms. Roll back the runtime to
    release 16 only for a correctness, responsiveness or availability
    regression; policy rollback to `mc-strong` and CPU resize remain separate

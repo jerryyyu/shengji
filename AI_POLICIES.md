@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-08 01:18 EDT
+## Current synthesis — 2026-08-08 07:38 EDT
 
 ### Production search
 
@@ -124,9 +124,11 @@ and put exact run detail in `JOBS.md` or the dated archive.
    scheduler/runtime rollback and `mc-strong` as the policy rollback.
    Scheduling hardening is shipped without changing report-LCB's
    N=30/R=300/ballot/LCB semantics.
-2. Close Teacher-v3 Stage-B attribution and run the already-frozen independent
-   64-state champion-continuation audit on Air; use that evidence to choose the
-   next teacher upgrade rather than merely scaling labels.
+2. Preserve Teacher-v3 Stage-B's terminal PASS and obtain independent review
+   of the mechanics-only audit publication repair. Then run the unchanged
+   frozen 64-state champion-continuation audit under its fresh v2 identity;
+   use that evidence to choose the next teacher upgrade rather than scaling
+   labels.
 3. Treat terminal Suphx O0 and Direct-Q as complementary diagnostics: O0 found
    aggregate oracle acquisition but seed instability; Direct-Q found positive
    gameplay but failed held-out learning. Request an independent strategy

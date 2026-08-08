@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-08 01:18 EDT
+## Current synthesis — 2026-08-08 07:38 EDT
 
 This is the current decision layer. The lineage table below owns model history;
 **Data and evaluation contract** owns dataset provenance; `AI_POLICIES.md`
@@ -74,12 +74,14 @@ closed lane.
   screen therefore failed; do not deploy, extend or tune this recipe from the
   inspected positive tail. A future Suphx-style or other role-correct learner
   needs a separately frozen contract.
-- **Teacher-v3 is the live strength job.** Canonical action handling, fresh
-  capture, diagnostics, exact 64-state freeze and an independent champion-
-  continuation audit are code-complete. Air is running eight attribution-only
-  Stage-B N=30 gold shards. After all eight validate, seal the Stage-B gate and
-  label only the separately frozen 64-state audit. Stage-B outcomes may not
-  move the audit population or rule.
+- **Teacher-v3 Stage B passed; its champion audit is review-held after a
+  mechanics-only v1 refusal.** All eight attribution shards validated and the
+  frozen gate upper regret bound was `0.0195 < 0.10`. The first audit receipt
+  creator exposed a post-link partial-handling bug before any label ran.
+  Preserve that attempt. Repaired evaluator `1866132` and controller
+  `c9a5c3f` keep the same 64 states, 32/32 folds, report-LCB continuation and
+  parent data under a fresh v2 run identity; launch only after independent
+  review of the narrow publication repair.
 - **Suphx O0 is terminal SELECT NONE.** Independent packet admission led to
   six exact 64-update Mini arms and verified terminal gate SHA
   `592a009a…bd407c`. The full-information ensemble learned something:
@@ -118,8 +120,9 @@ closed lane.
   Do not treat corpus size or private-information search as proof of label
   quality.
 - **Immediate order:** (1) monitor the shipped production scheduler without
-  changing report-LCB semantics; (2) finish Teacher-v3 Stage-B and its frozen
-  64-state audit on Air; (3) synthesize the terminal Direct-Q and O0 diagnostics
+  changing report-LCB semantics; (2) obtain the exact Teacher audit-v2 repair
+  review, then run its unchanged frozen 64-state audit on Air; (3) synthesize
+  the terminal Direct-Q and O0 diagnostics
   into one freshly preregistered learner question; (4) let Teacher evidence
   choose the next teacher-derived learner; and (5) reparent the best
   structured-search candidate to report-LCB. The next strength promotion must

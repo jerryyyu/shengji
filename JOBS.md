@@ -3,7 +3,31 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-08 01:18 EDT
+## REVIEW HOLD / Teacher-v3 Stage-B PASS, repaired audit-v2 ready at 07:38 EDT
+
+All eight Stage-B gold workers are terminal. The outcome-blind readiness
+checker returned exit 0 with 8/8 finals, zero workers, exact clean producer and
+no problems. The one-shot gate then exited 0/PASS; its SHA is
+`f607b48986aaa8b05194f88e8638540bc5c9360f09f3c28a7565d8d8cac89694`,
+and cheap-minus-gold regret was `-0.002686` with upper 95% `0.019548` against
+the frozen `0.10` limit.
+
+Audit-v1 preparation copied all 20 parents but receipt creation exited 3
+before any label launched. Its own final and partial were the same hard link;
+the post-link verifier incorrectly used the ordinary loader that must reject
+all partials. Preserve exact failed root `shengji-teacher-audit-air` at
+`182d1df`, including receipt final/partial/log/exit; no retry or adoption.
+
+Repair `1866132` fixes receipt, label and gate publication through one
+same-inode/exact-byte verifier. Fresh Air evaluator root
+`shengji-teacher-audit-v2-air` and controller root
+`shengji-teacher-control3-air` bind exact script/controller hashes recorded in
+`HANDOFF_ACTIVE.md`. Live tests pass 21/21 evaluator, 21/21 controller and
+119/119 adjacent. Read-only preflight reports zero problems and 20 parents,
+with no artifact created. Air has no live strength worker while the exact
+independent audit-v2 review is pending.
+
+## HISTORICAL / Teacher-v3 Stage-B gold at 2026-08-08 01:18 EDT
 
 Air launched eight compiled+strict `teacher_v1_label.py gold` workers in clean
 detached worktree `~/Projects/shengji-teacher-air` at exact commit

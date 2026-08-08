@@ -1,13 +1,19 @@
 # Teacher-v1 staged experiment spec
 
-Status (2026-08-07): historical packets `teacher-v1-entry-120m-v1` and
+> **Naming/lifecycle note.** `Teacher-v1` is the pipeline family; the active
+> repaired experiment is the v3 packet below. This evidence-bound filename
+> remains stable while its champion audit is live. After a terminal audit, move
+> the frozen specification to an experiment/archive path rather than leaving a
+> misleading top-level “v1” plan.
+
+Status (2026-08-08 08:34 EDT): historical packets `teacher-v1-entry-120m-v1` and
 `teacher-v1-entry-143m-v2` are **REFUSED** and immutable. V1 stopped after all
 eight captures because its in-memory ballot used tuples while JSON used lists.
 V2 also completed capture but stopped before diagnostics because the V11
 diagnostic actor could return a legal action outside its canonical ballot.
 
 The versioned repair `teacher-v1-entry-149m-v3` is now **STAGE A PASS / STAGE B
-N=30 ATTRIBUTION RUNNING**. At clean pushed commit `be25b4d`, Air produced eight
+PASS / 64-STATE CHAMPION AUDIT-V2 RUNNING**. At clean pushed commit `be25b4d`, Air produced eight
 128-deal captures and eight exact-parent diagnostics over seeds
 `149000000..149001023`, then froze 64 Stage-A states at SHA-256
 `e016373e8ecb9b6c7b6f3c14f8f4b14d9845f76478137f7a2c07249628cb4648`.
@@ -28,14 +34,20 @@ boundary, 16 uncertainty and zero Stage-A overlap.
 
 The first Stage-B attribution attempt at `85b9047` stopped before gold so its
 long workers could gain outcome-neutral progress observability. Fresh v2
-receipts and all eight cheap shards were regenerated at exact `1a2a713`; eight
-compiled+strict 64/64 N=30 gold workers are now running from that unchanged
-worktree. No final gold outcome has been opened. Separately, the 64-state
-report-LCB continuation audit was selected without label outcomes and is
-preflight-clean at exact `182d1df`; it launches only after a terminal Stage-B
-PASS. Superseded `f4f3dc0` used a stale process-local ballot cache and may not
-create a receipt. None of this is yet teacher-quality, model or production
-evidence.
+receipts and all eight cheap shards were regenerated at exact `1a2a713`; all
+eight compiled+strict gold shards completed. The one-shot Stage-B gate passed:
+mean cheap-minus-gold regret was `-0.002686` and its one-sided upper 95% bound
+was `0.019548 < 0.10`; gate SHA-256 is
+`f607b48986aaa8b05194f88e8638540bc5c9360f09f3c28a7565d8d8cac89694`.
+
+Audit-v1 at exact `182d1df` failed closed before launching a label because its
+publication verifier rejected its own still-owned hard-linked partial. Preserve
+that namespace. Repaired evaluator `1866132` and controller `edc923f` passed
+independent review without changing the frozen states, 32/32 folds or
+continuation. Air supervisor PID 95339 now owns the single audit-v2 attempt and
+eight workers. Do not inspect partial outcomes, retry, resume or duplicate it.
+Stage B is attribution evidence only; the audit is not yet teacher-quality,
+model or production evidence.
 
 The executable entry boundary is `server/shengji/teacher_v1.py`,
 `server/scripts/teacher_v1_states.py` and the singleton
@@ -46,8 +58,9 @@ not an extension of DEV-512 and may not read or score CALIB-512 or REPORT.
 
 ## Objective and stop rule
 
-Produce action-ranking and scoring-bracket targets that can improve compiled
-`mc-strong` N=30, rather than more precise labels for the old heuristic ceiling.
+Produce action-ranking and scoring-bracket targets that can improve the named
+live champion—currently compiled `mc-s0-report-lcb`—rather than more precise
+labels for the old heuristic ceiling.
 Stop a stage when its gate fails. A clean mechanics check alone does not prove
 teacher usefulness; a held-out teacher gain alone does not prove bot strength.
 
@@ -67,7 +80,7 @@ Accepted entry packet id: `teacher-v1-entry-149m-v3`.
 - Capture exactly 1,024 fresh deals, seeds `149000000..149001023`, as eight
   interleaved 128-deal shards (`seed0=149000000`, `max_deals=1024`, shard
   indices `0..7`). All eight use the same clean commit, compiled engine, strict
-  void mode, exact Python `3.14.6`, production `mc-strong` actor and three
+  void mode, exact Python `3.14.6`, then-production `mc-strong` actor and three
   digest-pinned exam splits. The experimental flags
   `SHENGJI_WEIGHTED_SPLITS`, `SHENGJI_UNIFORM_DEAL`,
   `SHENGJI_PHYSICAL_FILLS` and `SHENGJI_ALLOW_BALLOT_MISMATCH` must all be
@@ -236,11 +249,12 @@ semantic source or breaking ancestry is mutation-tested to refuse. The final
 Freeze 128 stratified states, disjoint from Stage A, from the fresh population.
 On the same candidates, add a gold continuation:
 
-- production `mc-strong` N=30 for downstream partial-information decisions;
+- frozen then-production `mc-strong` N=30 for downstream partial-information
+  decisions;
 - 64 gold-selection plus 64 disjoint gold-report common worlds per action,
   with deterministic inner policy seeds.
 
-Teacher-v1's first executable Stage-B estimand is exactly the production N=30
+Teacher-v1's first executable Stage-B estimand is exactly that frozen N=30
 continuation above. An exact/minimax late continuation is not implemented or
 silently mixed into this gate. It may become a separately named teacher only
 after a registered solver is proved **information-set legal**; a solver that
@@ -340,7 +354,11 @@ not substitutes for regret.
 
 ## Stage C — 2,048-state pilot
 
-Status: not implemented and not authorized until Stage B passes.
+Status: not implemented. Stage B passed, but Stage C remains blocked on the
+terminal 64-state champion audit and a fresh hard-tail contract. A PASS must
+not be generalized from ordinary sampled states to high-uncertainty states:
+mine uncertainty/disagreement strata, escalate uncertain labels to gold or
+exact-late continuation, and gate hard-tail regret separately before scale.
 
 Shard the frozen state list across the fleet. Expected scale is roughly 7-8M
 candidate-world heuristic rollouts if candidate counts resemble current assets.
@@ -360,11 +378,11 @@ paired report-fold teacher regret versus candidate 0 and v11pair without a
 calibration regression. First integrate it as an MC ranker/pruner/allocator;
 do not force pairwise deltas into a cross-state leaf.
 
-A fresh paired full-game win over compiled `mc-strong` N=30 is the minimum
-research gate. Champion replacement additionally requires beating the live
-report-LCB parent (or its formally confirmed successor) under a versioned
-paired gate. Only that stronger result may authorize a 10k/50k state wave or
-deployment. Use signed level utility as the primary metric, seat/team flips
+A fresh paired full-game win over the named live champion (currently
+`mc-s0-report-lcb`) under a versioned gate is the minimum research gate. A win
+over the obsolete `mc-strong` parent alone is no longer sufficient. Only the
+live-champion result may authorize a 10k/50k state wave or deployment. Use
+signed level utility as the primary metric, seat/team flips
 inside deal clusters, an explicit null and a single predeclared block. Failed
 data/model gates free the fleet for structured bury, exact-late or faithful
 self-play work; they do not authorize blind scale.

@@ -15,199 +15,93 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-08 07:38 EDT
+## Current synthesis — 2026-08-08 08:34 EDT
+
+### Canonical terminal-results table
+
+This is the one compact index of decision-changing AI evidence. Detailed
+mechanics remain below and exact job chronology remains in `JOBS.md` and the
+dated archive. Other documents should link here instead of copying a second
+results table.
+
+| date | lane | terminal verdict | headline result | what it means |
+|---|---|---|---|---|
+| 08-07 | report-LCB / RLCB-C1 | **CONFIRM** | `+0.338 +/- 0.068` signed levels versus `mc-strong`; matched null `-0.019 +/- 0.068` | The deployed one-round decision rule is stronger than its named N=30 parent. It does not prove adaptive allocation or multi-round progression. |
+| 08-07 | formal S0 | **SELECT NONE** | S0c outcomes remain unread | The evidence chain failed before the corrected evaluator parsed scores. Never retry, pool or infer a numerical result. This does not undo independent RLCB-C1. |
+| 08-05 | DEV-512 lead ballot | **SELECT NONE** | quota-minus-random `+0.110 +/- 0.337`; incumbent had the lowest equal-work regret | The registered widening/selectors did not earn CALIB or a duel. It does not reject all proposal search. |
+| 08-07 | V11 direct-v2 | **SELECT NONE** | v11-minus-current `-0.141 +/- 0.070`; v11-minus-null `-0.110 +/- 0.070` | No direct or protected-anchor composition. V11 survives only as a proposal/ranking and teacher diagnostic hypothesis. |
+| 08-07 | Direct-Q 144M | **SELECT NONE** | gameplay `+0.163 +/- 0.059`, but seed 1 and both pooled role held-out MSE gates failed | The attractive gameplay tail cannot override the registered learning failure. Redesign rather than extend. |
+| 08-08 | Suphx O0 | **SELECT NONE** | oracle-minus-public `+0.073`, LCB `+0.0025`; seed means `+0.344/-0.207/+0.082` | Full information produced an aggregate signal but not robust seedwise benefit. O1 is unauthorized. |
+| 08-08 | Teacher-v3 Stage B | **PASS** | cheap-minus-gold regret upper bound `0.0195 < 0.10` | Cheap labels agreed on the sampled ordinary states. This does not establish fidelity on hard/high-uncertainty states or champion strength; the 64-state continuation audit is running. |
+
+Evidence anchors, in the same order:
+
+- RLCB-C1 aggregate `83f5a9df2f1db1fa45d50fb005b941b776d9ecc2c9f8703d3d62efff8f5ef5ea`.
+- Formal S0 closeout `ef0a3659859b38d0b9362376e5e403fecb625f59c475600ed09906ce695fde9a`.
+- DEV-512 state asset `af78748586034f6f97e96a167008b2c540c0e4b1670a683ef6b5f05ec85d3e7b`.
+- V11 direct-v2 aggregate `b7c90ba4c1a9bb421a4cfcc788dbf1eb44365868f65ee0eb58257b38205d21ad`.
+- Direct-Q aggregate `1fa6789eded784e03778f5ede841e45039579625477dbaa249d63c5ccc8ce791`.
+- Suphx O0 gate `592a009aaf6fbd6680b6d9bab5e9738832050d1654b71dc6f2e19612d0bd407c`.
+- Teacher-v3 Stage-B gate `f607b48986aaa8b05194f88e8638540bc5c9360f09f3c28a7565d8d8cac89694`.
 
 ### Production search
 
-- **Live policy:** compiled `mc-s0-report-lcb` at Fly version 17 from exact
-  image `latency-cd6789e`, digest `047bcfe4...5b300`; health reports
-  `{"bot":"mc-s0-report-lcb","fast":true}`. It runs ordinary N=30 selection,
-  then compares the fixed challenger/incumbent pair on 300 disjoint worlds and
-  overrides only when the one-sided paired Student-t LCB is positive.
-  `mc-strong` is the immediate rollback.
-- **Operational boundary:** release 17 preserves N=30/R=300, the ballot, RNG
-  advance and LCB decision semantics while moving isolated search off the event
-  loop and overlapping the 0.7s pacing floor. A live claim/resume completed in
-  20/17ms and caused the expected stale-search discard. During a real X-ray
-  search, 25 WebSocket probes stayed responsive at p50 12ms/max 19ms. The
-  first 42 ship-gate bot timings had search p50/p95/max
-  1.136/1.857/3.104s and turn p50/p95/max 1.138/1.858/3.106s.
-  The first ordinary post-fix room then completed five human-versus-three-bot
-  rounds: 195 search-like turns (`compute_seconds >= 0.05`) measured
-  0.896/1.714/1.906s and their full turns 0.904/1.716/1.907s at p50/p95/max.
-  All 249 bot turns were offloaded and
-  snapshot-isolated. This confirms the intended one-room product effect; it
-  does not yet close concurrent multi-room tail performance.
-- **Evidence:** S0a measured `+0.353 +/- 0.069` versus `mc-strong`; S0b
-  independently replicated `+0.357 +/- 0.066`. Fresh RLCB-C1 then formally
-  confirmed the same policy on 2,048 new paired clusters at
-  `+0.338 +/- 0.068`; its collision-free current-policy null was
-  `-0.019 +/- 0.068`. All exact-dose, finite-statistic, stream-independence and
-  predeclared superiority criteria passed. Aggregate SHA-256:
-  `83f5a9df2f1db1fa45d50fb005b941b776d9ecc2c9f8703d3d62efff8f5ef5ea`.
-  Equal-work uniform search did not explain the earlier gain. Adaptive
-  allocation added only `+0.037 +/- 0.060` versus uniform report-LCB, so its
-  extra complexity is not justified yet.
-- **Formal boundary:** report-LCB is now a formally confirmed one-round search
-  improvement over `mc-strong`; RLCB-C1 authorizes that claim only. It does
-  not retroactively repair or promote S0, prove adaptive allocation, establish
-  multi-round progression, or itself authorize deployment. S0 remains
-  terminal `S0_COMPLETE_SELECT_NONE`; its numerical S0c result is unread and
-  nonretryable under closeout SHA `ef0a365…fde9a` and parent `ca556c2`.
-- **Search width:** N=30 over N=10 reproduced on current code
-  (`+0.222 +/- 0.140`); N=60 over N=30 was
-  `-0.002 +/- 0.119`. More uniform width is not the next lever.
+- **Live policy:** compiled `mc-s0-report-lcb`, Fly release 17, image
+  `latency-cd6789e`, digest `047bcfe4...5b300`; `mc-strong` is the
+  policy rollback. N=30 nominates a challenger, a disjoint R=300 common-world
+  fold rechecks the fixed pair, and only a positive one-sided paired LCB
+  overrides the incumbent.
+- **Evidence boundary:** S0a/S0b and fresh RLCB-C1 were independently positive;
+  the canonical table carries the confirmation. Equal work did not explain the
+  gain, adaptive allocation added no resolved increment, and N=60 did not beat
+  N=30. Formal S0 remains a separate unread/nonretryable SELECT NONE.
+- **Runtime boundary:** release 17 preserves decision semantics while moving an
+  isolated snapshot off the event loop, overlapping pacing and discarding stale
+  work before commit. Live claim/reconnect/X-ray and ordinary-room timing passed;
+  concurrent multi-room tails remain open. See `PERF.md` and `DEPLOY.md`.
 
 ### Correctness, sampler and data
 
-- The count-first sampler consumes declarations, voids, remaining pairs and
-  tractor-run caps. Package H passed bounded hard validity/support on original,
-  late and deep reservoirs under compiled strict execution. This does **not**
-  prove posterior calibration or a globally complete constructive dealer.
-- Physical-deal posterior bias is material. Weighted count splits reduced but
-  did not remove it and were too slow; all posterior-changing sampler flags
-  remain off. Strict evaluation must report accepted/rejected/failed worlds and
-  refuse short or zero-world searches.
-- The six-arm DEV-512 lead-ballot screen selected none. At equal work the
-  shipped ballot had the lowest regret; brute-force widening lost to more search
-  on the incumbent ballot. CALIB/REPORT remain sealed. This rejects only the
-  registered designs at that resolution.
-- The 20,845-state high-N asset and 12,000-state late supplement are state
-  reservoirs, not oracles: their labels use old ballots, non-strict sampling,
-  raw points and heuristic continuation. Use them to choose fresh challenge
-  strata, then relabel under a current named contract.
-- Encoder identity includes semantics and transitive source bytes. Post-drift
-  banker-private-kitty assets (`highn_enc`, `human_v4/v5/v6`) are
-  quarantined; `gen_v4_all`, which trained v11pair, is clean.
-- House level progression is uncapped. A `+/-3` range is valid only for a
-  versioned legacy RL target, never for engine/evaluation validation.
+- Package H passed bounded hard validity/support on original, late and deep
+  reservoirs under compiled strict execution. It does **not** prove posterior
+  calibration or a globally complete constructive dealer. Physical-deal bias
+  remains material; posterior-changing sampler flags stay off.
+- DEV-512 selected none: the shipped ballot had the lowest equal-work regret and
+  CALIB/REPORT remain sealed. This rejects its registered designs, not every
+  future proposal-search hypothesis.
+- High-N and late assets are replayable state reservoirs, not oracles; their
+  labels use old ballots, non-strict sampling, raw points and heuristic
+  continuation. Relabel fresh named strata under the current contract.
+- Encoder identity includes semantics and transitive bytes. Drifted banker-
+  private-kitty assets remain quarantined; `gen_v4_all`, which trained
+  v11pair, is clean. House progression is uncapped; `+/-3` is only a named
+  legacy RL target.
 
 ### Learned policies and RL
 
-- **Best learned milestone:** `rl-override-v11pair` beat SmartBot 57.7% on
-  n=480, but has no valid superiority result over MC. Its pairwise head is a
-  root action ranker/proposal on its exact ballot, not a scalar leaf.
-- The corrected V11 direct-v2 artifact-only repair is terminal. From the
-  immutable 2,048-cluster 142M population, v11-current was
-  `-0.141 +/- 0.070`, v11-minus-null was `-0.110 +/- 0.070`, and
-  null-current was `-0.031 +/- 0.068`. Exact dose and provenance passed, but both efficacy
-  criteria failed; `protected_composition_authorized=false`. No game was
-  replayed and no missing activation was invented. Frozen v11 remains useful
-  only as a proposal/ranking and teacher diagnostic, not a protected anchor.
-- v13 fit its offline target better without improving play. Existing value-leaf
-  and learned-rollout hybrids did not establish gains; a private observation
-  has no generic strategy-independent scalar value in this game.
-- Historical DMC2 does not reject AWAC, Suphx or DouZero. Its role target and
-  actor/promotion contracts were wrong, and it was not faithful to those
-  algorithms. The repaired role-conditioned Direct-Q screen completed and
-  produced encouraging paired gameplay (`+0.163 +/- 0.059`), but failed its
-  predeclared learning gate: seed 1 and both pooled role-specific held-out MSE
-  LCBs failed. Terminal result is SELECT NONE; do not deploy or extend this
-  recipe from its attractive gameplay tail.
-- **Suphx O0 is terminal SELECT NONE, without rejecting the whole algorithm
-  family.** The exact six-arm Mini screen completed 384 updates with real
-  midpoint resume and independently verified gate SHA `592a009a…bd407c`.
-  Oracle-minus-initial cleared its deal-cluster LCB (`+0.336`, LCB `+0.274`),
-  and the fixed ensemble barely cleared oracle-minus-public (`+0.073`, LCB
-  `+0.0025`). But per-seed oracle-minus-public means were
-  `+0.344/-0.207/+0.082`; seed 1 violated the preregistered all-seeds
-  robustness gate. All legal-world, information-boundary, exact-work, finite-
-  model, surface-coverage, entropy and same-model-null checks passed. O1 is
-  therefore unauthorized. Preserve the positive oracle-learning signal as a
-  diagnostic, but do not extend this inspected recipe or tune on its DEV set;
-  a successor must freshly test why policies remained nearly uniform and why
-  privileged information did not help robustly across seeds.
+- V11pair's confirmed 57.7% result over SmartBot shows within-ballot ranking
+  signal, but direct-v2 selected none against current search and rejected
+  protected composition. Use it only as a bounded proposal/ranking and teacher
+  diagnostic, never a scalar leaf.
+- v13 fit its offline target better without improving play; existing value-leaf
+  and learned-rollout hybrids have no verified gain. A private observation has
+  no strategy-independent scalar value without a named belief/continuation.
+- Direct-Q's positive gameplay tail failed held-out role learning. Suphx O0's
+  aggregate oracle-public signal failed seed robustness and stayed nearly
+  uniform. Both select none; together they motivate a fresh CRN/eight-seed
+  mechanism battery, not extensions of inspected runs or O1.
+- Historical DMC2 had role-target, actor and promotion defects and was not a
+  faithful AWAC/Suphx/DouZero implementation. Preserve its alarms, not its
+  algorithmic verdict.
 
-### Immediate strength queue
+### Execution ownership
 
-1. Monitor release-17 timing in ordinary human rooms; retain release 16 as the
-   scheduler/runtime rollback and `mc-strong` as the policy rollback.
-   Scheduling hardening is shipped without changing report-LCB's
-   N=30/R=300/ballot/LCB semantics.
-2. Preserve Teacher-v3 Stage-B's terminal PASS and obtain independent review
-   of the mechanics-only audit publication repair. Then run the unchanged
-   frozen 64-state champion-continuation audit under its fresh v2 identity;
-   use that evidence to choose the next teacher upgrade rather than scaling
-   labels.
-3. Treat terminal Suphx O0 and Direct-Q as complementary diagnostics: O0 found
-   aggregate oracle acquisition but seed instability; Direct-Q found positive
-   gameplay but failed held-out learning. Request an independent strategy
-   review, then freeze one fresh mechanism-level learner screen rather than
-   extending either inspected run.
-4. Keep v11pair as a root proposal/ranking feature and teacher diagnostic;
-   the protected-anchor lane is closed by direct-v2.
-5. O0's SELECT NONE retires this exact recipe and blocks O1. A successor may
-   reuse the tested mechanics, but it needs fresh seeds/data and a predeclared
-   explanation of how reward credit, feature scaling, update dose or policy
-   learning will produce a robust oracle-public separation.
-6. Reparent any structured-bury or sampled-exact contender to confirmed live
-   report-LCB before spending strength compute.
-
-## Policy status details
-
-- **Deployment-cost candidate:** `rl-override-v11pair` beats SmartBot 57.7%
-  (n=480) and runs at p50 0.25ms / p95 0.52ms on the production numpy path.
-  Its 51.1% against MC over 4,880 rounds is **SCREEN** evidence only because
-  every MC factory in those blocks was OS-seeded. It is plausibly near MC, not
-  formally confirmed equal and not superior. The later seeded/current v1 block
-  failed strongly but used a drifted banker encoder; preserve that as-run FAIL
-  and require a fresh corrected-encoder direct block before changing the model
-  conclusion.
-- **Production candidate and rollback:** deployed `mc-s0-report-lcb` adds a
-  disjoint R=300 report fold to the current N=30 MC policy. `mc-strong` remains
-  its evidence parent and immediate rollback. Their count-first sampler
-  consumes declaration, void, remaining-pair and remaining-tractor-run
-  constraints. Normal mode can still use the final void-relaxing retry, while
-  evidence-producing evaluation requires `SHENGJI_REQUIRE_VOIDS=1` and clean
-  sampler counters. The current three-reservoir bounded P0 certificate passed;
-  posterior fidelity is still open. Old non-strict labels therefore remain
-  provisional even though strict policy evaluations can fail closed on their
-  own counters. See
-  `CORRECTNESS.md` for the certified boundary rather than inferring it from a
-  policy result.
-- **S0 family:** `mc-s0-report-lcb` was manually deployed on replicated S0a/b
-  development evidence and is now independently confirmed by fresh RLCB-C1.
-  `mc-s0-report-mean` isolates the report rule; `mc-s0-uniform-work` isolates
-  extra compute; `mc-s0-adaptive[-mean]` and `mc-s0-random[-mean]` isolate
-  evidence-directed allocation. None of those other S0 arms is deployed.
-- **Experimental sampled-exact family, not deployed:** `mc-exact-endgame`,
-  `mc-s0-report-lcb-exact-endgame`, and `mc-s0-adaptive-exact-endgame` clone the
-  corresponding possible terminal S0 champion and change only
-  `EXACT_ENDGAME=True` at the proved <=4-card/250k-node boundary. The named
-  champion-matched nulls shift only RNG. They exist solely for the `79985a2`
-  score-free-throughput -> 139M screen -> 140M confirmation protocol and have
-  no strength or production authorization yet.
-- **Retired strength arm:** `mc-vleaf-v7w-ep02` has no verified edge over MC.
-  Its historical 50.4% at n=1,200 predated the leaf factory's seed-forwarding
-  repair. In the current hardened screen it scored 52.8% and
-  `+0.024 +/- 0.215` paired utility versus the MC reference: not confirmed.
-- **v13abs is not promotable:** it improved offline `Q^H(s,a)` fit, then tied
-  v7 at 52.8%; the direct paired v13-minus-v7 contrast was
-  `-0.028 +/- 0.185`. Its training states were much earlier than its deployed
-  leaves, and its high-N `MCBot._candidates()` training ballot did not match
-  the pinned-v1 `enumerate_actions()` ballot maximized at the leaf. It is also
-  encoder-incompatible: training consumed the now-proved contaminated
-  `highn_enc` cache. Rebuilding that cache requires retraining and fresh
-  evaluation; never reuse the existing v13 checkpoint as corrected evidence.
-- **Closed strength arm:** `mc-gate-v11pair` had one encouraging n=300 screen,
-  but its offline gate failed and its attempted multi-arm run was invalid.
-  Learned root-prior racing was independently refuted by a random-prune
-  control. Neither is on the current champion path.
-- **The high-N corpus is diagnostic, not an oracle.** The completed artifact
-  has 20,000 Air states plus an accidentally merged 845-state mini partial,
-  but uses non-strict worlds, the old capped ballot, raw-point heuristic
-  continuation labels, and an overwhelmingly early-state distribution. Its
-  selected-maximum “regret” analyses and the unseeded m0 duel are SCREEN
-  artifacts, not promotion evidence.
-- **No valid v11 leaf exists.** v11pair predicts relative action deltas; its
-  cross-state scale is unidentified. Root reranking/allocation is a valid use;
-  MC/MCTS leaf evaluation requires a separately trained absolute value model
-  whose state, action-ballot, perspective, and return contracts match the leaf.
-
-Policy objective: maximize verified strength. Latency is not a tradeoff for
-the champion policy; measured compute and matched-work controls remain useful
-for attribution. The immediate contender is structured lead proposal plus MC,
-not another broad standalone-RL or value-leaf run.
+This ledger intentionally carries no live queue. Current order, blockers,
+machine assignment and milestone gates live only in `BACKLOG.md`. The durable
+conclusion is that new S3 mechanisms must bind exact report-LCB, Teacher scale
+waits on its champion/hard-tail gates, V11 is proposal/diagnostic only, and a
+fresh Direct-Q/O0 successor must isolate one learner mechanism on new
+seeds/data.
 
 ## Using policies
 
@@ -412,119 +306,45 @@ decompositions, defend-at-A, format-scaled kitty multiplier, throw
 penalty forces the beaten component, exhaustive-follow enumeration
 (analysis-side).
 
-## Lessons
+## Durable decision rules
 
-- **Measure everything; adopt nothing on intuition.** Feature toggles +
-  mirrored evals found every real gain and killed every plausible-but-wrong
-  idea. Small pools and single point estimates both mislead: use pools for
-  selection and preregistered paired direct anchors for strength.
-- **Hoarding loses, tempo wins** — every measured failure withheld strength
-  (reserve, draining); every win spent it sooner (in-suit contesting, safe
-  throws +17pt, eager declaration). The expert refinement that survived:
-  contest everything in the endgame, not "save the big one for last".
-- **Search beats heuristics; guarded search beats raw search.** MCBot's
-  margin (heuristic prior unless the search is confident) out-rated pure
-  argmax by 45 Elo — early-lead rollouts are noise-dominated.
-- **Learned-policy pitfalls are measurable**: BC clones inherit skill but
-  not robustness (29% vs the search); naive value regression destroys a
-  pretrained policy's ordering before it can rebuild (audit: candidate
-  score spread 22.5 → 0.26). Dense per-candidate targets (distillation)
-  and anchored objectives are the countermeasures.
-- **Distillation works; the expert-iteration flywheel did not close.** Soft
-  per-candidate search values improved standalone students over behavior
-  cloning, and the correctly implemented v11 pairwise objective produced a
-  strong direct override. But the early 55% rollout-policy preview reversed,
-  a second stronger-rollout test tied, and training on hybrid-generated data
-  did not produce a better value leaf. Current lesson: optimize the exact
-  deployed root decision, preserve ballot identity, and do not infer
-  “better net → better search” without a direct equal-budget result.
+- **Name the reference.** “Current” and “champion” are not identities.
+  Strength work freezes the exact live policy and a matched null; today that is
+  `mc-s0-report-lcb`, not formal S0's `mc-strong`.
+- **Guarded paired reevaluation is the proven search mechanism.** Ordinary
+  N=30 nominates; a disjoint R=300 common-world report fold overrides only on a
+  positive conservative LCB. More uniform width and adaptive allocation have
+  not shown an additional gain.
+- **Screens reject/select designs; confirmations establish strength.** Elo,
+  human agreement, offline regret and small blocks may prioritize work, but
+  promotion requires deterministic factories, paired deal clusters, an
+  explicit null, exact work/counters, immutable manifests and fresh evidence.
+- **Correct data is a named estimand.** Ballot, sampler, continuation, role,
+  perspective, utility, encoder semantics and transitive bytes are part of a
+  target. High-N/late assets are replayable reservoirs, not generic oracles;
+  drifted banker-private-kitty encodings remain quarantined.
+- **A legal sampler is not automatically calibrated.** Package H proves bounded
+  strict validity/support on its registered reservoirs. Posterior fidelity and
+  global constructive completeness remain separate questions.
+- **Learned models need an identifiable role.** Pairwise V11 scores may
+  propose/rank within a ballot but are not scalar leaves. Better offline fit
+  did not imply better play. Direct-Q and O0 failures require a fresh,
+  mechanism-isolating learner experiment, not more compute on inspected runs.
+- **Correctness and throughput are gates, not strength.** A fixed engine bug,
+  green code gate, faster simulator or larger corpus enables an experiment; it
+  does not count as an AI win.
+- **House progression is uncapped.** A clipped `+/-3` value is legal only as
+  an explicitly versioned legacy RL target, never as an engine/evaluator
+  validator.
 
----
+## Archive boundary
 
-# Archived evidence map
-
-The former dated working notes were compacted on 2026-08-07. Their exact
-pre-compaction bytes remain recoverable at commit `ca556c2`:
-
-```bash
-git show ca556c2:AI_POLICIES.md
-```
-
-Use `docs_archive/daily-log-2026-08-04.md`,
-`docs_archive/daily-log-2026-08-05.md` and
-`docs_archive/daily-log-2026-08-06.md` for chronological detail. The current
-day is `docs_archive/daily-log-2026-08-07.md`. The synthesis and policy
-definitions above are authoritative; this map preserves only the durable
-lessons needed to find old evidence.
-
-## Search and decision rules
-
-- N=30 over N=10 reproduced on current code; N=60 did not establish an
-  advantage over N=30. Width alone is not the next lever.
-- Wide lead and follow ballots fixed real sourcing omissions. The later
-  six-arm DEV-512 redesign screen selected none; more brute-force widening was
-  not better than spending work on the incumbent ballot.
-- The fixed five-point point-estimate margin occasionally admits noisy bad
-  overrides. A disjoint R=300 report fold fixed that mechanism, beat
-  `mc-strong` in two independent development blocks, and then formally
-  confirmed at `+0.338 +/- 0.068` on fresh RLCB-C1 with a sane null. Extra
-  work alone did not explain the gain.
-- Adaptive allocation was not measurably better than uniform report-LCB
-  (`+0.037 +/- 0.060`). Keep the simpler policy unless new evidence isolates
-  the increment.
-- The S0c numerical outcome is not evidence: the lag-17 dependency repair
-  refused before parsing, formal S0 closed SELECT NONE, and the sealed
-  population is nonretryable.
-
-## Sampler and correctness
-
-- Package H certifies bounded hard validity/support on original, late and deep
-  reservoirs under compiled strict execution. It does not prove posterior
-  calibration or global constructive-dealer completeness.
-- Physical-deal posterior bias is material. Weighted count splits reduced but
-  did not remove excess total variation and were too slow; all experimental
-  posterior flags remain off.
-- Important fixed defects include banker-kitty double subtraction, greedy
-  allocation dead ends, declaration-pin pair completion, pair/run caps,
-  zero-world fallbacks, failed-throw component choice, pair boss logic and
-  tied-code tractor enumeration.
-- Encoder/data identity must bind semantics and transitive source bytes, not
-  only vector size or a version integer. Drifted banker-private-kitty assets are
-  quarantined; historical v11 training data is clean.
-
-## Learned policies and teachers
-
-- v11pair's pairwise/listwise action objective is the strongest learned
-  milestone: it beat SmartBot, but not MC under a valid seeded proof. It is a
-  root proposal/ranker on its exact ballot, not a cross-state scalar leaf.
-- v13 improved offline fit without improving play. Better imitation of
-  `Q^Heuristic` is not automatically a stronger teacher or policy.
-- Root-prior hard pruning, learned rollout replacement and existing value-leaf
-  hybrids did not establish gains. Corrected direct-v2 also rejected v11
-  protected anchoring. Preserve all candidates and use learned signals only as
-  proposal/ranking or teacher diagnostics until a fresh mechanism passes.
-- Historical DMC2 runs do not reject AWAC, Suphx or DouZero: the role-sign,
-  actor immutability and promotion contracts were wrong, and the algorithms
-  were not faithful implementations. Repaired Direct-Q completed its bounded
-  screen and selected none despite positive gameplay because its independent
-  learning diagnostics failed.
-- The high-N and late-ply corpora are replayable state reservoirs, not oracles.
-  Use them to choose fresh challenge strata; generate new strict
-  counterfactual labels under a named ballot, sampler, continuation and utility.
-
-## Evaluation and experiment discipline
-
-- Strength claims require deterministic seeded factories, paired deal clusters,
-  explicit nulls, exact work/counters, immutable manifests and a fresh
-  confirmation. Elo pools, human agreement and offline regret are screens.
-- DEV may select one design; CALIB/REPORT remain sealed if DEV selects none.
-  Never append arms after inspecting a split.
-- Full-game cutoff now refuses instead of scoring unfinished games. House level
-  progression is uncapped; `+/-3` belongs only to a versioned legacy RL
-  target.
-- Code-gate completion, correctness repairs and more generated rows are not
-  strength gains. Compute should buy a stronger decision rule, a stronger
-  target, or genuine policy improvement.
+The former dated working notes are recoverable at
+`git show ca556c2:AI_POLICIES.md`. Day-by-day evidence lives in
+`docs_archive/daily-log-2026-08-04.md` through the current daily log.
+`RL_PLAN.md` owns model lineage and design rationale; this file keeps only
+callable policy/toggle contracts, canonical terminal results and conclusions
+that still govern decisions.
 
 ## Reproduction pointers
 

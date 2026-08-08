@@ -7,6 +7,25 @@ Full-stack implementation of the classic Chinese partnership trick-taking game:
 Python rules engine + Monte Carlo AI + FastAPI multiplayer server + React web
 UI with Mandarin voice announcements.
 
+## Project state — 2026-08-08
+
+The production bot is **`mc-s0-report-lcb`**, the first policy in this project
+to earn a fresh, preregistered superiority result over the previous N=30 MC
+bot. In plain English, it lets ordinary MC nominate a possible override, then
+rechecks that exact pair on 300 fresh shared simulations and changes its mind
+only when a conservative lower bound is positive. On 2,048 new paired deals it
+improved signed level utility by `+0.338 +/- 0.068` per round; a matched null
+was flat. Fly release 17 runs the same decision rule off the WebSocket event
+loop so search no longer freezes room interaction.
+
+The only unfinished T1 gate is a sealed 64-state Teacher-v3 audit running on
+the Air. It asks whether the cheap labels we can generate at scale still pick
+good actions when judged under the full production continuation. Mini is free
+for the next search challenger. The next milestone is to test structured kitty
+buries and sampled exact endgames against the bot actually in production, not
+against its obsolete `mc-strong` parent. See [BACKLOG.md](BACKLOG.md) for the
+ordered queue and [AI_POLICIES.md](AI_POLICIES.md) for the canonical results.
+
 ## Quick start
 
 ```bash
@@ -57,7 +76,8 @@ use the pair-count rule.
 server/shengji/engine/   cards, combos (tractor decomposition), legality, round, game
 server/shengji/ai/       policies: heuristic.py (baseline), smart.py +
                          memory.py (card-counting heuristic), mcbot.py
-                         (Monte Carlo search, server default),
+                         (Monte Carlo search; source fallback, while Fly pins
+                         mc-s0-report-lcb),
                          registry.py + env.py + tournament.py (evaluation;
                          ladder and all measurements in AI_POLICIES.md)
 server/shengji/rl/       learned-policy pipeline: encoder, action
@@ -79,32 +99,46 @@ A policy is anything implementing three methods (`decide_declare`,
 (`curl /healthz` reports the active one). Current evidence, with provenance
 and promotion caveats in `AI_POLICIES.md`:
 
-- **`mc` (default)** — determinized Monte Carlo search over a
-  card-counting heuristic. It remains the search/strength incumbent, but its
-  production sampler may still relax suit voids and does not enforce pair-
-  voids. Strict audit mode rejects/counts the suit relaxation but is not yet a
-  complete belief contract.
-- **`rl`** — a neural policy trained by distilling the search's own
-  evaluations. As a STANDALONE
-  policy it plateaus around 38-48% vs `mc`. The same distillation used as
-  a learned OVERRIDE on SmartBot (`rl-override-v11pair`) beats SmartBot
-  57.7% over n=480 and runs at p50 0.25ms / p95 0.52ms on the numpy path.
-  Its 51.1% over 4,880 rounds against `mc` is encouraging SCREEN evidence,
-  not a seeded confirmation; the duel factories accidentally dropped seeds.
-  Needs `uv sync --group rl` + a local checkpoint (`SHENGJI_RL_CKPT`).
-- `smart`, `heuristic` — the hand-written baselines.
+- **`mc-s0-report-lcb` (production)** — N=30 determinized MC plus the fresh
+  paired report check described above. `mc-strong` is its policy rollback.
+- **`mc` (source fallback, not production)** — the older N=10 determinized
+  search policy.
+- **`rl-override-v11pair` (experimental)** — the best learned milestone beat
+  SmartBot 57.7%, but the corrected direct-v2 screen lost to current search and
+  selected none. Keep it only as a bounded proposal/ranking and teacher
+  diagnostic; it is not a scalar leaf or production candidate.
+- **Direct-Q and Suphx O0 (experimental, closed)** — both learned something,
+  but each failed its own preregistered robustness/held-out gate. They inform a
+  fresh learner-mechanism experiment; neither is deployable or extendable from
+  its inspected result.
+- **`smart`, `heuristic`** — the hand-written baselines.
 
-The project objective is verified strength per unit of latency and training
-compute, not RL-guided search for its own sake. v11pair is valid as a direct
-root reranker/proposer; it is not an absolute state-value leaf. New search
-experiments are blocked on strict belief sampling and a reproducible paired
-evaluator; see `RL_PLAN.md` for the ordered roadmap.
+The objective is verified bot strength, not RL or search complexity for its
+own sake. Screens choose what deserves confirmation; only fresh paired games
+against the named live champion establish a new strength claim.
 
 Training pipeline (`server/shengji/rl/`, roadmap and full experiment
 log in `RL_PLAN.md`): observation/action encoders, legal-play
 enumeration, BC + search-distillation + DMC self-play trainers, an
 oracle value baseline, and an Elo tournament + human-agreement
 validation battery.
+
+## Evaluation glossary
+
+- **Paired cluster:** the same deal is played with fixed seat/team flips so
+  policy differences are compared on shared luck rather than unrelated games.
+- **Signed level utility:** round outcome measured in levels from one named
+  team's perspective; it is not the same as game win rate.
+- **Report fold:** fresh simulations used only to re-evaluate a decision chosen
+  on a separate selection fold.
+- **LCB:** lower confidence bound. A positive LCB means the conservative edge,
+  not merely the noisy point estimate, is above zero.
+- **Screen:** a bounded design-selection experiment. It cannot by itself
+  promote a policy.
+- **Confirmation:** a fresh, preregistered paired evaluation of one frozen
+  candidate against a named champion and controls.
+- **SELECT NONE:** the registered gate did not authorize a candidate. It does
+  not necessarily mean every observed point estimate was negative.
 
 ## Debugging & analysis tools
 
@@ -123,13 +157,20 @@ validation battery.
 | file | what it holds |
 |---|---|
 | `RL_PLAN.md` | state of play, key learnings, roadmap, measurement rules |
-| `AI_POLICIES.md` | every bot policy + toggle with its measured record |
+| `AI_POLICIES.md` | canonical AI results + every policy/toggle and durable conclusion |
 | `CORRECTNESS.md` | validation suite, house rules, incident index |
 | `incidents/` | postmortems (what happened, why detection was slow) |
 | `PERF.md` | profiling, shipped optimisations, ranked gaps |
-| `BACKLOG.md` | open work, roughly by value |
+| `BACKLOG.md` | current milestone, ordered work, blockers and exit gates |
+| `JOBS.md` | live fleet job plus compact terminal-job index |
 | `MAINTENANCE.md` | daily routine (any session can execute it) |
-| `HANDOFF_REVIEW.md` | external-review thread (Codex <-> Claude) |
+| `HANDOFF_ACTIVE.md` | compact executable Codex/Claude mailbox |
+| `HANDOFF_REVIEW.md` | append-only external-review evidence ledger |
 | `DEPLOY.md` / `PROTOCOL.md` | hosting + wire protocol |
 | `web/README.md` | client architecture, protocol contract, UI invariants |
 | `docs_archive/` | compacted history (RL chronology, resolved backlog, old review rounds) |
+
+Top-level documents are reserved for current project, operational, or durable
+contract surfaces. A completed one-off experiment spec should be summarized in
+its canonical owner and moved to `docs_archive/`; evidence-bound specs remain
+in place only while their experiment is live.

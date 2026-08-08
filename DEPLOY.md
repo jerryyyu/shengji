@@ -13,10 +13,37 @@ clients hold WebSockets to it. That drives every deployment rule below.
   on https pages (same-origin), no config needed.
 - Health check: `GET /healthz`.
 - Pick the bot with `SHENGJI_BOT`. The source fallback is `mc` (N=10), while
-  the Fly configuration explicitly pins the verified production incumbent
-  `mc-strong` (N=30); `smart` is much cheaper and `heuristic` is easiest — see
-  `AI_POLICIES.md`. `rl-override-v11pair` is a promising cost candidate, not a
-  confirmed replacement, and requires its checkpoint/dependencies.
+  Fly explicitly pins the confirmed production champion
+  `mc-s0-report-lcb` (N=30 selection plus an R=300 disjoint report check).
+  `mc-strong` is the policy rollback; `smart` and `heuristic` are cheaper
+  difficulty choices, not strength-equivalent replacements. No learned policy
+  is currently authorized for production. See `AI_POLICIES.md`.
+
+## Current production and rollback boundary
+
+Fly release 17 runs
+`registry.fly.io/shengji:latency-cd6789e`, manifest SHA-256
+`047bcfe4d4573961734a5536ad549605fd0df5e1477d7480cdf322282955b300`.
+Health must report `{"bot":"mc-s0-report-lcb","fast":true}`. The release
+moves an isolated bot/round snapshot into a worker, overlaps the existing
+0.7-second pacing floor, and commits the action only if the live room, round,
+phase, turn and controller still match. Claims, reconnects and X-ray therefore
+remain responsive; a stale search is discarded with its cloned RNG/counters.
+
+There are two independent rollback decisions:
+
+1. **Runtime/scheduler rollback:** Fly release 16. Use this for availability,
+   responsiveness, stale-commit or scheduler correctness regressions while
+   keeping the report-LCB policy decision separate.
+2. **Policy rollback:** `SHENGJI_BOT=mc-strong`. Use this for a report-LCB
+   decision-semantics/correctness problem; it gives up the confirmed strength
+   gain and is not the response to a generic server/runtime issue.
+
+The project owner (Jerry) is the production deploy and rollback decider.
+Before a planned deploy or policy change, inspect room occupancy and obtain
+scoped authorization before interrupting games. Record the old release, exact
+image/manifest, health response, reason and rollback target. Do not treat an
+empty room as permission to change the production policy.
 
 ## Option A: Fly.io (recommended)
 
@@ -60,10 +87,13 @@ Cloudflare Tunnel. No code or config changes needed.
 
 Policy cost, not the rules engine, sets CPU capacity. On the measured mini,
 SmartBot is p50 0.05ms / p95 0.13ms, direct v11pair is 0.25ms / 0.52ms on the
-numpy path, and the default MCBot is 77ms / 150ms per decision at N=10. The
-0.7s bot pacing delay hides response latency from a player but does not remove
-CPU work, so do not infer “dozens of concurrent MC rooms” from the pacing
-alone. Load-test the chosen policy and expected mix before advertising a room
-limit. Memory per room is small; scaling a single-process deployment beyond
-its measured CPU envelope would require external state and room-affinity
-routing, deliberately out of scope for now.
+numpy path, base N=10 MC is 77ms / 150ms, and an earlier matched benchmark put
+the production report-LCB decision at 0.390s versus 0.127s for `mc-strong`.
+Live Fly time is workload-dependent: after release 17, the first ordinary
+human room's 195 searched turns measured p50/p95/max
+0.896/1.714/1.906s. Off-loop execution hides event-loop blocking and overlaps
+the 0.7s pacing floor; it does **not** make search free or let a worker react
+before the latest play. Each turn snapshots only after that play, computes,
+then revalidates before commit. Load-test the chosen policy and concurrent room
+mix before advertising capacity. Memory per room is small; scaling beyond one
+process would require external state and room-affinity routing.

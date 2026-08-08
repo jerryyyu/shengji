@@ -1,5 +1,13 @@
 # Ballot Generation Plan
 
+> **Archived experiment history.** The DEV-512 lane selected none on
+> 2026-08-05. Current execution lives in `BACKLOG.md`; durable data/search
+> design lives in `RL_PLAN.md`. The next sourcing experiment is S3a structured
+> bury, not another append to DEV-512. Historical `mc-strong` promotion
+> references below are preserved as the bar at that experiment's freeze; every
+> new gate must instead bind the named live champion, currently
+> `mc-s0-report-lcb`.
+
 ## Objective
 
 Build the strongest verified Shengji bot. Deployment latency is not an

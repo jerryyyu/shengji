@@ -9,7 +9,30 @@ teacher data (gen-v3: ~28h fleet-wide), duels, tournaments, and MC's
 live latency all sit on the same rollout loop. Rough math: 10x here =
 overnight gens become 3h, and every gate duel runs in minutes.
 
-## Deployment Pareto table (measured 2026-08-04)
+## Current production performance — release 17
+
+Production runs compiled `mc-s0-report-lcb`, not the older policies in the
+historical table below. A matched Mini benchmark measured 0.390s per decision
+for report-LCB versus 0.127s for `mc-strong`; that extra work buys the confirmed
+`+0.338 +/- 0.068` signed-level gain. On Fly before the scheduler change,
+searched turns could block room interaction and then pay a separate fixed 0.7s
+pacing delay.
+
+Release 17 preserves the exact N=30/R=300 decision semantics while searching an
+isolated snapshot off the event loop and overlapping the pacing window. It
+revalidates room/round/phase/turn/controller before commit, discarding stale
+actions and cloned RNG/counters. The live ship gate kept 25 concurrent
+WebSocket probes at p50 12ms/max 19ms during a real 1.53s X-ray. The first
+ordinary post-fix human room produced 195 search-like turns with
+search p50/p95/max `0.896/1.714/1.906s` and full-turn
+`0.904/1.716/1.907s`; all 249 bot turns were offloaded and isolated.
+
+This fixes event-loop blocking and removes an additive wait. It does not make
+search free, precompute a response before the latest play, or prove concurrent
+multi-room capacity. Release 16 is the runtime rollback; `mc-strong` is the
+separate policy rollback. See `DEPLOY.md`.
+
+## Historical deployment Pareto table (measured 2026-08-04)
 
 What could actually be shipped, strength against cost. Latency is per decision
 on the mini, torch-free numpy path where a net is involved; strength is the
@@ -26,24 +49,19 @@ so they are exploratory evidence of a tie, not a reproducible seeded result
 | **`rl-override-v11pair`** | **0.25 ms** | **0.52 ms** | **57.7% vs smart** (n=480); **51.1% vs mc** (n=4880, CI includes 50) | SmartBot + learned override, NO search |
 | `mc-vleaf-v7w-ep02` | 32 ms | 67 ms | 50.4% vs mc (n=1200) | truncated rollouts + net value leaf |
 | `mc-gate-v11pair` | 0.25 ms | 30 ms | 53.3% vs MC (n=300, SCREEN only) | 55% timing was extrapolated; T2 did not earn confirmation; later T3 runner was INVALID/terminated with no result |
-| `mc` (current default) | 77 ms | 150 ms | pool ~1119 | determinized search, N_DETERMINIZATIONS=10 |
+| `mc` (source fallback, not production) | 77 ms | 150 ms | pool ~1119 | determinized search, N_DETERMINIZATIONS=10 |
 
-**The provisional deployment frontier is two policies wide.** `smart` is the
-floor at ~0.05ms. `rl-override-v11pair` is plausibly near MC on 4,880
-exploratory rounds at **~300x lower p50 and ~290x lower p95**. Because those MC
-opponents were unseeded, do not call this confirmed non-inferiority. The v7
-value-leaf is confirmed equal to MC but slower than direct v11; the gated arm
-has no valid equal-budget result.
+This table is retained as a historical cost comparison, not current deployment
+advice. `rl-override-v11pair` was plausibly near the old MC reference at
+roughly 300x lower p50, but those opponents were unseeded. Its later corrected
+direct-v2 comparison selected none, and no learned policy is production-
+authorized. The v7 value-leaf and gated arms likewise have no verified edge
+over the live champion.
 
-Practical reading for a deploy decision:
-- Switching prod from `mc` to `rl-override-v11pair` buys ~300x headroom per
-  decision and removes the 150ms p95 stalls, with no strength cost detected in
-  exploratory evidence. That is not yet a seeded non-inferiority claim.
-  It is a COST and RESPONSIVENESS decision, not an AI upgrade.
-- `mc`'s p95 of 150 ms is per decision; a four-bot table compounds that, which
-  is what makes the tail visible during play.
-- The override's own max (3.3 ms) is a first-call artefact — the numpy weights
-  load lazily.
+Practical reading: cheap policies remain useful difficulty/capacity choices,
+but switching away from report-LCB gives up confirmed strength. Any such policy
+change requires a fresh product decision, not a latency-only inference from
+this 08-04 table.
 
 ---
 
@@ -71,6 +89,7 @@ Practical reading for a deploy decision:
 | 08-03 | Cython quarantine fix: caller-order memo keys (tuple(cards)) shared with pure `_dcache`/`_trcache` | **1.10x** round (pure 5.83s / fast 5.29s, seed-7 best-of-3 interleaved) | de-quarantined; 3 red contract tests now green; hashes identical |
 | 08-03 | Cython rules port: beats / decompose_matching / validate_follow / pair_count / uniform_suit / check_in_hand | **2.36x** round (pure 6.02s / fast 2.55s) | micro: beats 11.3x, decompose_matching 6.9x, validate_follow 4.0x; 10k+ randomized parity cases per function; hashes identical |
 | 08-03 | Cython policy leaves: points/total_points tables + HeuristicBot._lowest/_forced_follow (class-patched at activate) | **3.42x** round (pure 5.74s / fast 1.68s) | partial of the int-native goal (see gap #2/#3); 10k+ randomized parity; goldens byte-identical both modes |
+| 08-07 | release-17 speculative scheduler + off-loop X-ray | live searched-turn p95 `1.714s`; WebSockets responsive during search | Decision semantics unchanged; overlaps pacing, validates before commit, discards stale snapshot state. This is responsiveness isolation, not rollout-throughput speedup. |
 
 ## Gaps (ranked by ROI)
 

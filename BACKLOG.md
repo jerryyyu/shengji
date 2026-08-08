@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-08 07:38 EDT.
+Last re-derived: 2026-08-08 08:50 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -98,6 +98,8 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 | **T1 / Lane A production latency — COMPLETE / LIVE MONITOR** | Keep the first stronger-than-MC production policy enjoyable to play | Fly release 17 runs exact `latency-cd6789e` / `047bcfe4...5b300`. Health, native activation, claim, reconnect, stale-discard, X-ray isolation and concurrent WebSocket responsiveness passed live. Keep release 16 as the runtime rollback and `mc-strong` as the separate policy rollback; collect ordinary human-room timing before considering a CPU resize. |
 | **T1 / Lane A.1 V11pair — COMPLETE / SELECT NONE** | Preserve the learned milestone without forcing it into the champion | Artifact repair passed; the frozen rule rejected protected composition. Keep v11 as a bounded proposer/ranker and teacher diagnostic only. No protected-anchor run is authorized. |
 | **T1 / Lane B teacher — AUDIT-V2 RUNNING** | Determine whether cheap N=30 choices remain good under the full champion continuation | Exact review passed. Receipt `ce51b826…71d0` and preparation `7f89a86c…6605` bind evaluator `1866132`, controller `edc923f`, the v2 run ID and all 20 parents. Air supervisor PID 95339 owns eight unchanged 32/32 shards and will gate once after exact zero exits. Preserve any terminal result; never retry. |
+| **T2 / S3a structured bury — PARENT REPAIR REQUIRED** | Test whether a much wider, strategy-aware kitty ballot finds better once-per-round decisions | The 512-state v1 mechanism screen already exists at `e946696`: structured versus legacy-four versus trigger-matched random widening, with a disjoint 120-world report fold and exact work accounting. It is non-promotable and currently derives `mc-strong` from formal S0. Freeze a v2 parent that binds exact live `mc-s0-report-lcb`; a PASS may authorize designing a fresh full-game duel, nothing more. |
+| **T2 / S3b sampled exact endgame — PARENT REPAIR + PREFLIGHT REQUIRED** | Replace heuristic continuation with bounded exact solving when every hand has at most four cards | Mechanics challenge `2370a27`/`2bb571f` and the blinded 2,048-screen/8,192-confirm runner `79985a2`/`8ee6691` exist. The registry has report-LCB variants, but the runner's formal-S0 loader still resolves to `mc-strong`, making the live lane unreachable. Bind a fresh live-champion parent, rerun focused tests/review, then run only the two-cluster score-free Mini throughput preflight before strength compute. |
 | **T1 / Lane C Direct-Q — COMPLETE / SELECT NONE** | Learn from the failure without selecting its positive gameplay tail | Preserve aggregate SHA `1fa6789e…791`; do not deploy, extend or mutate the 144M recipe. The next learner requires a separately frozen Suphx-style or other role-correct microbaseline gate. |
 | **T1 / Lane C Suphx O0 — COMPLETE / SELECT NONE** | Test whether a full-information policy can learn before spending compute on feature removal | Preserve gate SHA `592a009a…bd407c`. Both ensemble LCBs passed, but seed 1 lost to its equal-seed public arm (`-0.207`), failing the registered robustness conjunction. O1 is closed for this exact recipe; the next learner needs a fresh packet, not an O0 extension. |
 | **RLCB-C1 fresh confirmation — COMPLETE / ARTIFACT-ONLY CONFIRM** | Close formal report-LCB superiority | 2,048/2,048 fresh clusters, exact doses, zero stream collisions, sane null and positive superiority LCB. The late dirty-doc supervisor refusal is bound by non-replay closeout SHA `06dd487d…b7aae5`; preserve aggregate SHA `83f5a9df…f5ef5ea`. No extension or S0c reinterpretation remains. |
@@ -145,254 +147,80 @@ spend live-champion strength compute until a new versioned parent binds exact
 `mc-s0-report-lcb`. S3b already has a separate 2,048-screen/8,192-confirm
 shape; S3a does not yet have that full-game runner.
 
-## TODAY — T1 champion flywheel launch
+## Milestones
 
-**Milestone objective:** make the deployed search operationally sound while all
-three non-MC strength lanes advance to their next honest run/stop gate. T1 does
-not require every long run to finish today; it requires no lane to remain idle
-behind code or protocol work we could have completed.
+### T1 — Champion flywheel launch: closing
 
-| lane | deliverable today | hard gate |
+T1 is complete in four of five lanes: production report-LCB/release 17 is
+live, RLCB-C1 confirmed it, V11 direct-v2 selected none, and Direct-Q/O0 each
+reached an honest stop. The sole remaining exit gate is a terminal
+PASS/FAIL/INCONCLUSIVE from the already-running Teacher-v3 audit-v2. Any valid
+terminal verdict closes T1; no favorable score is required and no retry is
+allowed.
+
+### T2 — First live-champion challenger: active in parallel
+
+**Plain-English objective:** get one genuinely new search mechanism into an
+honest comparison with the report-LCB bot people are playing today, while
+turning the Teacher result into a data plan that can eventually exceed that
+bot rather than imitate it.
+
+| order | deliverable | completion gate |
 |---|---|---|
-| **Lane A / production guardrail** | **Shipped:** exact-semantic speculative scheduling and off-loop X-ray are live in release 17. Continue passive timing collection from ordinary rooms. | The 100-decision replay was exact; the live smoke met p50 <=1.5s, p95 <=4.0s and max <=8.0s, showed no additive 0.7s after long searches, and kept WebSockets responsive during X-ray. A billable Fly resize still requires Jerry's approval. |
-| **Lane A.1 / V11pair** | **Closed:** artifact-only repair published from unchanged bytes and selected none. | No protected composition. Reuse v11 only in a new explicitly diagnostic/proposal contract. |
-| **Lane B / stronger teacher** | **Running:** execute the frozen 64-state report-LCB continuation audit on Air. | Receipt/preparation exact; eight supervisor-owned shards; no outcome-conditioned audit change; disjoint 32-world selection/report folds and full downstream report-LCB continuation at every information set. |
-| **Lane C / beyond imitation** | **Two bounded screens are terminal SELECT NONE:** Direct-Q had encouraging gameplay but failed held-out learning; Suphx O0 showed a positive aggregate oracle signal but failed seed robustness. Diagnose those orthogonal failures, then freeze one fresh role-correct learner question. | O0 gate `592a009a…bd407c` authorizes neither O1 nor extension. A successor must explain how it will strengthen oracle feature use/action spread and include independent training seeds as an inference dimension if making a recipe-level claim. |
-| **Fresh search confirmation** | **Closed:** RLCB-C1 formally confirmed report-LCB. | Preserve the exact aggregate and claim boundary; no additional confirmation compute is needed now. |
+| **T2.0** | Version one reusable live-champion parent contract for S3 evidence | It binds exact `mc-s0-report-lcb` registry/source/decision semantics and the independent RLCB-C1 confirmation, cannot silently fall back to formal S0's `mc-strong`, fails closed on identity drift, and passes focused mutation tests plus external review. |
+| **T2.1 / S3a** | Run the existing 512-state structured-bury mechanism screen on Mini under a fresh v2 namespace | Exact 512 states, three frozen arms, disjoint selection/report worlds, R=120, exact work and zero forbidden fallbacks. PASS means only `AUTHORIZE_DUEL_DESIGN`; SELECT NONE retires this ballot design. |
+| **T2.2 / S3b** | Run the score-free two-cluster throughput preflight for the report-LCB sampled-exact lane on Mini | No strength outcome is retained. The predeclared screen/confirmation fleet-hour and shard-wall caps must all pass before any 2,048-cluster launch. |
+| **T2.3 / S3b conditional** | Launch the 2,048-cluster complete-round sampled-exact screen when capacity and preflight permit | Both treatment-minus-champion and treatment-minus-matched-null LCBs >0, null contains zero, exact solver activates, and refusal/overflow/fallback counters are zero. Only PASS admits the untouched 8,192 confirmation. |
+| **T2.4 / Teacher** | Convert the terminal audit into a Stage-C contract | On audit PASS, freeze a hard-tail pilot that mines uncertainty/disagreement but escalates uncertain labels to gold/exact-late and separately gates hard-tail regret. On FAIL/INCONCLUSIVE, freeze the smallest diagnostic/redesign; do not scale the current cheap labeler. |
+| **T2.5 / learner** | Write, but do not yet bundle-run, a fresh O0-v2 mechanism battery | Common-random-number evaluation and at least eight training seeds are common infrastructure; sharpening/dose/target changes are factorially isolated. No O1 or inspected-DEV extension. |
 
-### Fleet order for T1
+T2 is successful today if T2.0 is reviewed and at least one bounded Mini
+preflight/screen is ready to launch without an unresolved parent or evidence
+boundary. It does not require manufacturing a positive result in one day.
 
-1. **Local + production diagnostics:** own the latency benchmark and
-   exact-semantic server optimization; do not consume Mini/Air training slots.
-2. **Mini:** RLCB-C1, Direct-Q and Suphx O0 are terminal. Mini is free for the
-   next independently frozen strength screen. Do not extend an inspected run;
-   first use the Direct-Q and O0 diagnostics plus Claude's strategy review to
-   name the smallest fresh mechanism that can plausibly beat report-LCB.
-3. **Air:** Stage B is complete and the reviewed Teacher-v3 audit-v2 is live
-   under supervisor PID 95339. Monitor only; never reuse the failed v1 checkout
-   or interfere with the eight owned workers.
-4. **No idle gap:** the next bounded job may start as soon as its exact parent,
-   namespace, tests and stop rule are committed. A failed lane releases compute
-   to another lane; it does not weaken its own gate.
+### Fleet order today
 
-### Explicit non-goals today
+1. **Air:** leave the single sealed Teacher audit untouched. Eight workers are
+   healthy on the same 10-core Apple M4 class as Mini; moving or duplicating it
+   would burn completed work and violate its one-shot boundary without a
+   measured speed advantage.
+2. **Mini:** implement and test T2.0, then prefer the short S3b score-free
+   throughput preflight and/or the bounded S3a screen. Do not launch strength
+   work until the exact live parent, namespace and stop rule are committed.
+3. **Local/product:** continue passive release-17 timing collection; no policy
+   or production change is part of T2.0.
+
+### Explicit non-goals
 
 - Do not reopen, score or “complete” S0c. It is terminal and burned.
-- Do not lower R=300, N=30 or the LCB threshold under the label of performance;
-  any such policy change needs a matched strength screen and fresh confirmation.
-- Do not scale teacher or Direct-Q data because a pipeline merely runs.
-- Do not let formal confirmation crowd out Lane A.1, B or C compute; it uses
-  capacity after the learned-strength gates are moving.
+- Do not rerun or extend V11 direct-v2, Direct-Q or Suphx O0.
+- Do not call an S3a state-screen PASS a bot-strength result.
+- Do not scale Teacher data simply because Stage B passed; the live audit and
+  hard-tail contract decide what labeler deserves scale.
 
-## AI-strength program
+## Strength design ownership
 
-More rows from the old pipeline are not the answer. Existing nets mostly learn
-old-ballot `Q^Heuristic(s,a)` under a non-strict biased sampler; scaling those
-labels makes the model imitate that ceiling more precisely. Compute must buy
-either a stronger search decision, a stronger target, or genuine policy
-improvement.
+`BACKLOG.md` deliberately does not repeat the full AI program. The current
+design rationale, literature constraints, model lineage, data contract and
+three-lane flywheel live in `RL_PLAN.md`; durable policy conclusions and exact
+terminal numbers live in `AI_POLICIES.md`.
 
-### Lane A — make the production search stronger now
+The queue above implements that design:
 
-The sanitised live-incident challenge is the motivating regression. Defender
-seat 2 held `SAAK`; that play was in the ballot and was SmartBot's candidate 0,
-yet one N=30 draw let `DJ` clear the fixed five-point override margin. With
-current code:
+- **Lane A:** S3a structured bury and S3b sampled exact endgame challenge the
+  live report-LCB policy directly.
+- **Lane B:** Teacher-v3 decides whether the cheap counterfactual labeler is
+  trustworthy, especially after a separate hard-tail gate, before training or
+  scaling.
+- **Lane C:** a fresh mechanism battery uses Direct-Q/O0 failures to isolate
+  robust oracle use beyond MC imitation; it does not extend either closed run.
+- **V11:** bounded proposal/ranking/diagnostic hypothesis only, always against
+  a same-budget random diversifier; no direct, protected-anchor or scalar-leaf
+  revival.
 
-- 240 worlds prefer `SAAK` by about 5.4 attacker points;
-- 500 independent N=30 replicas choose `SAAK` 479 times and `DJ` twice;
-- the two `DJ` replicas overestimated it by 5.8 and 6.3 points, just enough to
-  clear the fixed margin.
-
-The mechanism is now implemented. Uniform N=30 nominates one challenger; a
-fresh named R=300 paired report fold chooses it only when report mean or a
-conservative one-sided LCB exceeds the separate `REPORT_MIN_GAIN=0`. Adaptive
-selection uses direct overlapping-world candidate-vs-leader moments and exact
-N*K work; random allocation and equal-total-work uniform controls are registered.
-Short folds refuse, all work/counters reconcile, and live JSON records replay.
-
-The clean immutable diagnostic (`s0_override_audit.v1.json`, SHA-256
-`9703b50817fb03622c3739e44f73e19083b1e8337300be7054774e2308e13ef5`)
-found 48 overrides in 150 frozen DEV states. Among the first 20, 12 N=300 gaps
-were positive, mean gap was only +0.570 and median absolute gap 2.775. The
-predeclared grid retained 2/3/5/6 positive references at R=30/60/120/300 under
-LCB>0 with zero negative supports, selecting R=300. This is calibration, not
-strength; it corrects the unsupported blanket claim that MC overrides are worth
-1.4-1.7 points.
-
-What survived the completed S0 program:
-
-1. S0a and S0b independently found a large report-LCB improvement over
-   `mc-strong`; equal extra work alone did not explain it.
-2. Adaptive allocation's incremental effect was unresolved, so report-LCB is
-   the simpler product choice.
-3. S0c cannot answer the formal confirmation question because its one-shot
-   evidence chain failed before the corrected evaluator parsed outcomes.
-
-The next formal experiment is therefore a fresh report-LCB/current/null
-confirmation—not a replay of S0c and not another allocation sweep. Use paired
-signed level utility per fresh deal cluster with seat/team flips, a
-collision-free null, exact accepted-dose accounting and one immutable gate.
-Recompute sample size from the frozen estimand; random game seeds are not
-limited by the corpus deal count.
-
-Two independent search improvements can run beside it:
-
-- **Structured bury search:** the old `MC_BURY` test priced four hand-built
-  variants and tied. Enumerate ~20–50 point-preserving, void-forming and trump-
-  preserving buries, price them with common worlds and evaluate full rounds.
-  Once per round makes this a cheap place to spend much more compute.
-- **Sampled exact endgame:** for the final ~4 tricks, solve each determinized
-  world exactly or with bounded minimax instead of heuristic continuation, then
-  aggregate under the acting seat's belief. Gate on endgame challenge states,
-  then fresh paired games.
-
-### Lane A.1 — spend the v11pair milestone instead of shelving it
-
-`rl-override-v11pair` is frozen and confirmed at 57.7% versus SmartBot, but its
-51.1% versus MC was unseeded SCREEN evidence. The rejected hybrids do not close
-the best use of that fact:
-
-- root-prior racing hard-pruned actions and lost to its random-prune control;
-- `mc-gate-v11pair` used the net only to decide whether to invoke MC, and its
-  equal-budget follow-up never produced a valid result; and
-- pairwise deltas are not an absolute leaf value.
-
-The implemented minimal hybrid keeps every current candidate and the full N=30 common-
-world budget. On states where the frozen 0.02 v11 rule overrides SmartBot,
-reorder that action to candidate 0 so the existing five-point MC margin protects
-the demonstrably stronger learned prior; keep Smart's action in the ballot and
-leave `TRACTOR_LOCK` unchanged for the first attribution arm. This tests anchor
-quality, not sourcing, pruning, latency or leaf evaluation. The checkpoint is
-digest-pinned and fail-closed; the cached numpy weights are immutable.
-
-Current sequence:
-
-1. **Recover corrected direct-v2 evidence:** the clean-encoder games finished;
-   repair only the validator's invalid capped-utility assumption, then reopen
-   and bind the exact artifact. Preserve the stored verdict and admit no
-   activation claim because that runner did not record one.
-2. **Choose the anchor reference explicitly:** formal S0 closed on
-   `mc-strong`, while production manually moved to report-LCB. Version the
-   protected-composition parent against the policy we actually want to beat;
-   do not silently inherit the obsolete meaning of “champion.”
-3. **Run the protected screen:** exact same action set/worlds/candidate-world
-   work as its named search reference; only candidate order/protected anchor
-   changes. Compare v11 anchor with reference, same-trigger random anchor and a
-   matched null. Nonzero activation and reconciled dose are mandatory.
-4. **Confirm only a screen winner:** a positive screen may admit one fresh
-   paired full-game confirmation. Never revive hard top-k pruning or use the
-   pairwise head as a scalar leaf.
-5. **Continuation probe, later:** teacher Stage B may compare v11pair as a
-   policy continuation. Earlier stronger-rollout ties keep this below the root
-   anchor test.
-
-Teacher-v1 should also train a `v11.1` successor: preserve the pairwise/listwise
-objective that worked, add the calibrated bracket head, and compare warm-start
-with scratch on clean current-ballot labels. First uses remain anchor/ranker/
-allocator; no cross-state leaf.
-
-### Lane B — generate data that can exceed the old teacher
-
-Build `teacher-v1` as a vertically labelled counterfactual dataset, never from
-DEV/CALIB/REPORT. First prove mechanics on 64 states and continuation quality
-on 128 disjoint states; only then freeze the 2,048-state pilot balanced across
-lead/follow, early/mid/late, attacker/defender, close margins and policy
-disagreement. Keep real-human incidents as separate regression cases.
-
-Use the historical high-N corpora to decide **where**, not **what**, to label.
-The fixed-pair audit at `ab3c652` found that frozen v11 has real old-surrogate
-signal plus a costly tail: original DEV `+0.397 +/- 0.037` acting-team raw
-points/decision with 18.0% harmful overrides; later-ply DEV
-`+0.334 +/- 0.047` with 25.7% harmful. It also found zero true-late original
-DEV rows and only eight in the supplement, so neither artifact answers late
-play. Next:
-
-1. mine DEV only, one state/deal, into clear v11 wins, clear losses, threshold-
-   boundary disagreements, high-SE rows and lead action-type transitions;
-2. freeze the resulting selector and apply it to fresh non-evaluation deals;
-3. feed those fresh states into teacher-v1's strict, disjoint-world, bracket-
-   outcome labeller over the complete ordered current MC ballot; assert that
-   Smart, N=30 and v11 choices are present rather than inventing a new ballot;
-4. keep mined old losses as regression cases, not training or promotion data;
-   and
-5. do not rerun 37.1M old evaluations or fit another deployable threshold to
-   their historical `Q^Heuristic` target.
-
-For every state store the exact replay and `BallotSpec`, every candidate, 512
-common strict worlds, per-world terminal attacker points and signed level
-bracket, paired deltas/SE, sampler/continuation identities and all counters. A
-stratified gold subset should use champion continuation and exact-late solving
-where tractable to test whether the cheap continuation preserves candidate
-ranking. If the cheap-selected action's gold-regret 95% upper bound exceeds
-0.10 signed levels, do not train or scale that cheap target; redirect labels to
-the stronger continuation. This tensor supports allocation research,
-uncertainty calibration and supervised learning without rerunning rollouts.
-
-Train three seeds at increasing state counts with:
-
-- a listwise/pairwise action-ranking head aligned to the deployed choice—the
-  useful `v11pair` insight;
-- a separate calibrated scoring-bracket distribution head for absolute outcome
-  and uncertainty, never treating pairwise deltas as a cross-state leaf; and
-- role, public history, candidate/action and suit-symmetry aware encoding.
-
-First use the model to rank/prune/allocate inside MC. Only a held-out teacher
-gain plus a fresh paired win over `mc-strong` earns a direct override or a
-larger 10k/50k-state generation wave. A promoted policy becomes the next
-continuation teacher: collect -> train -> paired gate -> replace champion ->
-relabel, rather than generating millions of labels once from a fixed teacher.
-
-### Lane C — learn beyond MC imitation
-
-In parallel with teacher work, repair the DMC2 role-sign target and snapshot
-contract, then run two faithful synchronous baselines:
-
-- Suphx-style policy learning with scheduled privileged-feature removal and
-  partial-only/distillation controls;
-- DouZero-style from-scratch role-conditioned direct Q from signed episodic
-  returns and sequential action history.
-
-Keep actors immutable within an iteration, train against a frozen opponent
-pool, and gate every candidate against the production champion on paired deal
-clusters. A short micro-run must preserve action spread and improve a frozen
-held-out metric before filling the fleet. AWAC is a later optimizer on the same
-valid replay contract, not a substitute for fixing its target.
-
-### Compute queue
-
-RLCB-C1, V11-v2 and Direct-Q have terminal decisions. Spend hosts on the open
-teacher and production boundaries, not extensions of closed runs:
-
-1. **Air now:** finish all eight frozen Teacher-v3 Stage-B gold shards and run
-   their exact receipt/gate once. If valid, launch only the separately frozen
-   64-state report-LCB continuation audit.
-2. **Mini/local now, independently of Teacher:** Suphx O0 is closed SELECT
-   NONE. Preserve its exact namespace and use only its terminal diagnostics to
-   design a fresh preregistered learner screen; do not add iterations, seeds or
-   favorable checkpoints to the inspected O0 run, and do not improvise
-   Direct-Q or protected-V11 extensions.
-3. **After the teacher audit:** use cheap-vs-champion regret and disagreement
-   strata to specify the smallest teacher improvement that can beat the live
-   champion, then collect/train/gate that version. Do not scale labels merely
-   because generation works.
-4. **Next learner:** treat O0 as a mechanism result, not a generic Suphx
-   rejection. Its full-information arm beat initialization robustly and the
-   fixed ensemble barely cleared public (`LCB +0.0025`), while one seed was
-   `-0.207` and policy entropies remained essentially uniform. Before another
-   run, identify whether reward credit, update dose, feature scale, policy
-   objective or evaluator sensitivity prevented stronger oracle use. Freeze a
-   new DEV/REPORT population and independent training-seed inference; do not
-   reuse O0 DEV to select a dose or architecture. O1 privileged-feature removal
-   remains unavailable because its exact prerequisite failed.
-5. **Other search lanes:** structured bury or sampled exact endgame must be
-   explicitly reparented to confirmed report-LCB with matched null/work before
-   any strength run.
-6. **Scale only winners:** larger teacher/RL waves and full-game confirmation
-   are reserved for candidates that first clear their independent local gate.
-
-At each stage, failure frees the queue for the next mechanism; it does not
-authorize adding more data to a target that failed.
+Adding a new strength task here requires a named champion parent, one falsifiable
+mechanism, a minimum control/null, fresh population, screen metric, terminal
+stop gate and the result that would justify larger compute.
 
 ## Correctness and data
 
@@ -465,16 +293,19 @@ authorize adding more data to a target that failed.
       hidden/global mutable state refuses, and bounded resumed execution matches
       uninterrupted execution. Each concrete algorithm still owes its own
       verified-actor collector and exact resumed-output test.
-- [ ] **Faithful synchronous microbaselines.** `868b6d8` closes a bounded
-      Shengji-specific DouZero-style two-role direct-Q code gate with exact
-      resume, but not paper faithfulness or learning evidence. Predeclare and
-      run its small held-out learning gate before scaling. Separately implement
-      and test a Suphx-style privileged-feature-removal policy curriculum. Do
-      not describe the old scalar residual recipe as either paper's algorithm.
+- [x] **Faithful synchronous microbaselines reached terminal evidence.**
+      Direct-Q completed and selected none after held-out role-MSE failures;
+      Suphx O0 completed and selected none after seed robustness failed. The
+      results diagnose different mechanisms and authorize no extension/O1.
+- [ ] **Fresh learner-mechanism battery.** Use a new population, common-random-
+      number evaluation and at least eight independent training seeds. Hold
+      those constant while isolating sharpening, dose, feature-use and
+      target/credit hypotheses; do not bundle every change or tune on O0 DEV.
 - [ ] **Absolute value contract.** If a leaf is revisited, predict a calibrated
       scoring-bracket distribution or expected signed level utility under a
-      named belief, role and continuation policy. `v11pair` is a useful direct
-      override/ranker on its exact ballot, not a cross-state scalar leaf.
+      named belief, role and continuation policy. `v11pair` is only a bounded
+      proposal/ranking diagnostic on its exact ballot, not a cross-state scalar
+      leaf or direct/protected candidate.
 - [ ] **Belief model only after the hard sampler boundary is current.** Learned
       ownership weights may reweight valid worlds; they must not hide invalid
       or already-biased base sampling. Report exact-toy calibration and effective

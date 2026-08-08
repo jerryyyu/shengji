@@ -56,6 +56,12 @@ partial outcomes, retry, resume, alter workers, or launch another supervisor.
 On eight exact zero exits, this supervisor alone reopens the labels and invokes
 one terminal gate. Preserve every terminal verdict exactly.
 
+Terminal handling is predeclared in `JOBS.md`: after both regular finals and
+the repaired adapter review PASS, hash and mirror the exact Air gate/supervisor
+bytes, then create and verify one adapter output from a clean detached
+`2de0824` worktree. The verdict is not read until identity reopening succeeds,
+and neither adapter branch authorizes compute or retry.
+
 Do **not** move the run to Mini. Both hosts are 10-core Apple M4s, Air is
 sustaining near one core per worker, and Mini's earlier 6.8-hour critical-path
 number was a one-world sizing projection rather than a measured speed edge.

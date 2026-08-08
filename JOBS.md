@@ -36,6 +36,28 @@ and score-free counters. Do not open partial outcomes, retry, resume, migrate,
 duplicate or alter workers. This supervisor alone may invoke one terminal gate
 after eight exact zero exits.
 
+Terminal handling is outcome-independent and predeclared now. Do nothing until
+the Air supervisor publishes both regular finals with no surviving partials
+and the repaired adapter receives its independent PASS marker. Then:
+
+1. hash the Air gate and supervisor final in place and copy those exact bytes
+   without opening the gate payload to
+   `server/runs/logs/teacher-v3-audit-v2-terminal/` on Mini;
+2. verify the local hashes equal the Air hashes;
+3. use a clean detached worktree at exact reviewed repair commit
+   `2de0824738e3e5a45ba317876b0abb3930315249` to run
+   `teacher_terminal_adapter.py create`, passing the two exact hashes and
+   `--expected-git 2de0824738e3e5a45ba317876b0abb3930315249`;
+4. publish only
+   `server/runs/logs/teacher-v3-audit-v2-terminal/teacher_terminal_adapter_v1.json`,
+   then reopen it with the adapter's `verify` mode and its exact SHA-256.
+
+The adapter's output branch may be read only after those identity checks.
+PASS can emit only a review-required hard-tail Stage-C design;
+FAIL/INCONCLUSIVE can emit only an existing-evidence diagnostic. Neither
+branch authorizes compute, labels, training, promotion, retry or same-recipe
+extension. Never overwrite any terminal mirror or adapter output.
+
 ## Fleet availability
 
 - **Air:** occupied by the eight-way Teacher audit; do not add load that changes

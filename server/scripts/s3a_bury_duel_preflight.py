@@ -61,6 +61,17 @@ FORBIDDEN_OUTCOME_KEYS = {
     "ucb_95", "winner", "outcome", "played", "selected_index",
     "duel_result",
 }
+TEACHER_AUDIT_ROOT = Path(
+    "/Users/jerryyu/Projects/shengji-teacher-audit-v3-mini/server")
+TEACHER_RUN_ROOT = (
+    TEACHER_AUDIT_ROOT / "runs/logs/teacher-v1-entry-149m-v5")
+TEACHER_PROGRESS_FINAL = (
+    TEACHER_RUN_ROOT / "champion_audit_supervisor_v2.jsonl")
+TEACHER_PROGRESS_PARTIAL = Path(str(TEACHER_PROGRESS_FINAL) + ".partial")
+TEACHER_PROCESS_KINDS = (
+    "teacher_champion_audit_supervisor.py",
+    "teacher_v1_champion_audit.py label",
+)
 
 
 class ControllerRefusal(RuntimeError):
@@ -180,6 +191,42 @@ def _git(*args: str) -> str:
     ).stdout.strip()
 
 
+def _process_table() -> str:
+    return subprocess.run(
+        ["ps", "-Ao", "pid=,command="], check=True,
+        capture_output=True, text=True,
+    ).stdout
+
+
+def teacher_exclusivity_problems() -> list[str]:
+    """Require the one-shot Teacher audit to be terminal before S3 compute."""
+    problems = []
+    if not is_regular_unlinked(TEACHER_PROGRESS_FINAL):
+        problems.append("Teacher supervisor final is not terminal/regular")
+    if lexists(TEACHER_PROGRESS_PARTIAL):
+        problems.append("Teacher supervisor partial still exists")
+    try:
+        process_table = _process_table()
+    except (OSError, subprocess.SubprocessError):
+        problems.append("cannot prove Teacher process absence")
+        process_table = ""
+    live = []
+    audit_root = str(TEACHER_AUDIT_ROOT)
+    for line in process_table.splitlines():
+        fields = line.strip().split(maxsplit=1)
+        if len(fields) != 2 or not fields[0].isdigit():
+            continue
+        pid, command = fields
+        if (audit_root in command
+                and any(kind in command for kind in TEACHER_PROCESS_KINDS)):
+            live.append(pid)
+    if live:
+        problems.append(
+            "live Teacher supervisor/worker processes remain: "
+            + ",".join(sorted(live, key=int)))
+    return sorted(set(problems))
+
+
 def _write_json_exclusive(path: Path, payload: dict) -> None:
     try:
         DUEL.write_exclusive(path, payload)
@@ -230,6 +277,14 @@ def packet_contract(config: Config, paths: Paths, *, parent: dict,
             "git": config.expected_git,
             "runner_sha256": config.expected_runner_sha256,
             "controller_sha256": config.expected_controller_sha256,
+        },
+        "teacher_release": {
+            "required_before_namespace_creation": True,
+            "supervisor_final": str(TEACHER_PROGRESS_FINAL),
+            "supervisor_partial": str(TEACHER_PROGRESS_PARTIAL),
+            "terminal_regular_final_required": True,
+            "partial_absent_required": True,
+            "live_supervisor_and_workers_absent_required": True,
         },
         "parent": parent,
         "runtime": runtime,
@@ -313,6 +368,11 @@ def _identity_context(config: Config, paths: Paths) -> tuple[dict, dict]:
     if enabled:
         raise ControllerRefusal(
             f"experimental sampler/ballot flags must be unset: {enabled}")
+    teacher_problems = teacher_exclusivity_problems()
+    if teacher_problems:
+        raise ControllerRefusal(
+            "Teacher-exclusive launch refused: "
+            + "; ".join(teacher_problems))
     try:
         _, parent, runtime = DUEL.require_runtime(config.expected_git)
     except Exception as exc:

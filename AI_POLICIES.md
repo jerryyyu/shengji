@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-08 08:34 EDT
+## Current synthesis — 2026-08-08 10:18 EDT
 
 ### Canonical terminal-results table
 
@@ -33,6 +33,7 @@ results table.
 | 08-07 | Direct-Q 144M | **SELECT NONE** | gameplay `+0.163 +/- 0.059`, but seed 1 and both pooled role held-out MSE gates failed | The attractive gameplay tail cannot override the registered learning failure. Redesign rather than extend. |
 | 08-08 | Suphx O0 | **SELECT NONE** | oracle-minus-public `+0.073`, LCB `+0.0025`; seed means `+0.344/-0.207/+0.082` | Full information produced an aggregate signal but not robust seedwise benefit. O1 is unauthorized. |
 | 08-08 | Teacher-v3 Stage B | **PASS** | cheap-minus-gold regret upper bound `0.0195 < 0.10` | Cheap labels agreed on the sampled ordinary states. This does not establish fidelity on hard/high-uncertainty states or champion strength; the 64-state continuation audit is running. |
+| 08-08 | S3b v2 throughput | **HOLD / NO SCREEN** | first exact-treatment cluster exceeded the frozen cumulative `250,000`-node cap; no receipt published | The registered four-card sampled-exact recipe is not operationally admissible under its zero-overflow rule. No strength conclusion; no retry or 2,048 screen. |
 
 Evidence anchors, in the same order:
 
@@ -43,6 +44,9 @@ Evidence anchors, in the same order:
 - Direct-Q aggregate `1fa6789eded784e03778f5ede841e45039579625477dbaa249d63c5ccc8ce791`.
 - Suphx O0 gate `592a009aaf6fbd6680b6d9bab5e9738832050d1654b71dc6f2e19612d0bd407c`.
 - Teacher-v3 Stage-B gate `f607b48986aaa8b05194f88e8638540bc5c9360f09f3c28a7565d8d8cac89694`.
+- S3b v2 closeout: clean head `cd44ea8a6fefb8fba258d01bcca4bed98169a217`,
+  runner SHA `ed4252b2f957e2855446ca63858e7da973949934850684e8f92e5950ca74050d`;
+  final and partial receipts absent by fail-closed design.
 
 ### Production search
 

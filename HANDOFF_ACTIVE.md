@@ -11,6 +11,7 @@ job history in `JOBS.md`, and chronology in `docs_archive/`.
 | Production | **LIVE / CONFIRMED** | Compiled `mc-s0-report-lcb`, Fly release 17, image `latency-cd6789e`, manifest `047bcfe4...5b300`. RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`; matched null `-0.019043 +/- 0.068270`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
 | T1 Teacher | **AUDIT-V2 RUNNING** | Stage B passed. One sealed 64-state audit attempt is live on Air. A valid terminal PASS/FAIL/INCONCLUSIVE closes the last T1 gate; no favorable score is required. |
 | T2 live parent | **COMPLETE / REVIEW PASS** | Claude passed exact `05ea1d1` / material `66be133c…e17c`, reproduced output `5f9ddbfb…8402`, reopened RLCB-C1 and falsified stale-S0 re-entry. Only the score-free S3b Mini preflight is admitted; no strength launch. |
+| T2 S3b v2 | **PREFLIGHT TERMINAL HOLD / NO SCREEN** | Exact head `cd44ea8` hit the frozen cumulative `250,000`-node exact-solver cap in the first treatment cluster. Exit 1; no cluster completion, receipt, partial, score or raw record. V2 may not retry, raise its cap, fall back or launch 2,048. |
 | T2 Teacher adapter | **HOLD REPAIRED + PUSHED / RE-REVIEW REQUIRED** | Claude's adversarial probe superseded the initial PASS: the gate and terminal supervisor could name different valid label populations. Pushed `2de0824` requires an exact eight-item gate schema and ordered digest equality; 23/23 focused and 85/85 broader boundary tests pass. Both branches still deny compute and scale. |
 | Formal S0 | **SELECT NONE / BURNED** | S0c outcomes remain unread and nonretryable. Closeout `ef0a365...fde9a`; never reopen or reinterpret it. |
 | V11 direct-v2 | **SELECT NONE** | `-0.141 +/- 0.070` versus current; protected composition false. V11 survives only as a bounded proposal/ranking/teacher diagnostic hypothesis. |
@@ -103,6 +104,15 @@ comparison with the report-LCB bot people play today.
   141,000,000--141,000,001. A score-free dry admission at `ec2b886` reopened
   the live parent and compiled/strict runtime with zero protocol problems; no
   round ran. `JOBS.md` owns the literal command.
+- Terminal attempt: at exact clean head `cd44ea8`, the unchanged command
+  started on Mini and entered treatment cluster 1. Before `1/2` could publish,
+  the cumulative per-world exact session raised
+  `ExactEndgameBudgetExceeded: exact endgame exceeded max_nodes=250000`.
+  Process exit was 1. The unlinked temporary sink died with the process; both
+  final and `.partial` receipt paths remain absent. This is no strength result
+  and no capacity receipt, but it conclusively fails v2's required zero-
+  overflow operational gate. Preserve seed 141,000,000; no same-recipe rerun,
+  cap increase, heuristic fallback or 2,048 launch.
 
 ### Exact implementation order
 
@@ -115,12 +125,12 @@ comparison with the report-LCB bot people play today.
    confirmation, policy drift and fallback to the S0 parent.
 4. **PASS at 09:54:** independent review reproduced the exact parent and both
    consumer boundaries; marker is preserved in `HANDOFF_REVIEW.md`.
-5. **RUN NEXT:** run only S3b's score-free Mini throughput preflight. In
-   a separate, non-overlapping timing window run S3a's score-free sizing
-   preflight, so host contention cannot bias either projection. In parallel,
-   continue O0-v2 CRN/margin infrastructure. S3a sizing and the Teacher
-   terminal adapter are repaired after adversarial HOLD and await bounded
-   re-review. A strength screen remains a separate authorization.
+5. **DONE / TERMINAL HOLD:** S3b's score-free Mini preflight hit the frozen
+   exact-node cap in treatment cluster 1 and published nothing. V2 is closed
+   to screen compute. After its repair review passes, run S3a's score-free
+   sizing preflight in a separate clean Mini window. In parallel, continue
+   O0-v2 CRN/margin infrastructure. A strength screen remains a separate
+   authorization.
 
 Teacher-v3 Stage C is conditional on the live audit. PASS freezes a fresh
 hard-tail contract with uncertainty/disagreement mining, gold/exact-late
@@ -277,6 +287,22 @@ result auto-launches 2,048 labels.
      server/tests/test_teacher_terminal_adapter.py
    # 85 passed in 128.04s
    ```
+
+6. **Classify the S3b v2 preflight closeout / NO RERUN:** the exact literal
+   command in `JOBS.md` ran from clean head
+   `cd44ea8a6fefb8fba258d01bcca4bed98169a217`. Runner SHA is
+   `ed4252b2f957e2855446ca63858e7da973949934850684e8f92e5950ca74050d`;
+   MCBot SHA is `45a82f44b95d1bce5126c63b1a5af6baaed54270aca9d55677b2e0bbb9c9d957`;
+   exact solver SHA is
+   `f01d8f937fabf5a1a736ec238b0d0add23ab11b31369518848238eb63ed3799e`.
+   It printed the treatment start line, no `1/2` completion, then exited 1 on
+   `ExactEndgameBudgetExceeded: exact endgame exceeded max_nodes=250000`.
+   Final and partial receipt paths are absent. Please confirm the conservative
+   interpretation: v2 is terminal operational HOLD, its 2,048 screen is
+   unauthorized, and any threshold/cap/fallback/solver change requires a fresh
+   v3 packet. Also say whether a future preflight runner should publish a
+   score-free refusal receipt for this expected failure class; that tooling
+   question must not authorize replay of the consumed v2 attempt.
 
 The broad code/evidence audit and strategy synthesis are already received.
 They reproduced every closed result and require no rollback. Their surviving

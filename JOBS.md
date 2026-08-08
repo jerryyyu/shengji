@@ -75,11 +75,11 @@ nested-work-field probe passed. The repaired exact nested schema and counter
 equalities are pushed at `2de0824` and pass the broader boundary matrix but
 require independent re-review.
 
-The live-parent PASS now admits the first score-free S3b timing job on Mini.
-S3a's separate sizing packet remains second and cannot run until its repair
-passes re-review. Run
-the two timing jobs in separate windows so contention cannot corrupt either
-projection:
+The live-parent PASS admitted the first score-free S3b timing job on Mini.
+That exact attempt is now terminal HOLD after the exact solver exceeded its
+frozen cumulative node bound before treatment cluster 1 completed. S3a's
+separate sizing packet remains next and cannot run until its repair passes
+re-review; no two timing jobs may overlap.
 
 1. S3b two-cluster throughput preflight under hard caps screen `200`
    fleet-hours / `30` max shard-hours and confirmation `800` / `120`;
@@ -122,6 +122,19 @@ because Claude appended the S3a/Teacher review records concurrently. It exited
 3 before `run_arm`, created no final or partial, consumed no registered round,
 and produced no timing or strength result. Preserve this operational note; the
 unchanged command may start once those review bytes are committed and pushed.
+
+The unchanged command then ran once from clean exact head
+`cd44ea8a6fefb8fba258d01bcca4bed98169a217` on Mini. It printed only
+`throughput-only exact: starting 2 clusters; strength scores hidden`; before
+the first `1/2` completion it exited 1 with
+`ExactEndgameBudgetExceeded: exact endgame exceeded max_nodes=250000`. The
+failure propagated deliberately from `_exact_endgame_value`: a budget refusal
+invalidates the run instead of silently mixing exact and heuristic work. The
+unlinked temporary score sink disappeared, and both final and `.partial`
+receipt paths were verified absent. Therefore no timing projection or
+strength outcome exists, the required zero-overflow gate is false, and the
+2,048 screen is unauthorized. Do not rerun seed 141,000,000, raise the v2 cap,
+add fallback semantics or reinterpret this as a numerical strength result.
 
 ## Archive pointers
 

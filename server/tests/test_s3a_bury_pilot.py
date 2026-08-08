@@ -84,58 +84,6 @@ def _bury_round(seed=0):
     return rnd, rnd.banker
 
 
-def _packet_text(state="S0_COMPLETE_SELECT_NONE",
-                 champion="mc-s0-report-lcb"):
-    decision = (f"PROMOTE {champion}" if state == "S0_COMPLETE_PROMOTE"
-                else "SELECT NONE; production remains mc-strong")
-    lines = [
-        f"STATE: {state}",
-        "HEAD / origin / dirty: HEAD=frozen; origin/main=main; dirty=''",
-    ]
-    for phase in ("s0a", "s0b-lcb", "s0c-report-lcb"):
-        manifests = "; ".join(
-            f"path{i} sha256=digest{i}" for i in range(8))
-        lines.extend((
-            f"{phase} manifests (8/8): {manifests}",
-            f"{phase} aggregate: path sha256=digest survivor='policy' promotion=False",
-            f"{phase} coverage: records={{}}; seeds=1..2; flips=[0,1]; exact=true",
-            (f"{phase} provenance: host=mini; python=3.14.6; "
-             "compiled_binary_sha256=digest; within_phase=true; "
-             "cross_phase=true; frozen_identity=true"),
-            f"{phase} sampler counters: {{}}",
-        ))
-    lines.extend((
-        "S0a effects:",
-        "S0b allocation contrasts:",
-        "  adaptive-report_uniform: +0.1 +/- 0.1 95%=[0, 0.2]",
-        "  adaptive-random: +0.1 +/- 0.1 95%=[0, 0.2]",
-        "S0c confirmation contrasts:",
-        "  arm-reference: +0.1 +/- 0.1 95%=[0, 0.2]",
-        "  arm-null: +0.1 +/- 0.1 95%=[0, 0.2]",
-        "  null-reference: +0.0 +/- 0.1 95%=[-0.1, 0.1]",
-        "S0c criteria: {}",
-        f"Final production decision from registered rule: {decision}",
-        "CALIB / REPORT: sealed and unscored; never consumed",
-    ))
-    return "\n".join(lines) + "\n"
-
-
-def _write_receipt(tmp_path, *, state="S0_COMPLETE_SELECT_NONE",
-                   champion="mc-s0-report-lcb"):
-    tmp_path.mkdir(parents=True, exist_ok=True)
-    packet = tmp_path / "s0-final-packet.txt"
-    packet.write_text(_packet_text(state, champion))
-    receipt = tmp_path / "s0-closeout.json"
-    receipt.write_text(json.dumps({
-        "schema": "s0-terminal-closeout-v1",
-        "state": state,
-        "packet": str(packet),
-        "packet_sha256": hashlib.sha256(packet.read_bytes()).hexdigest(),
-        "phases": ["s0a", "s0b-lcb", "s0c-report-lcb"],
-    }))
-    return receipt, packet
-
-
 def _fold_record(stream, count):
     return {
         "schema": "s3a-world-fold-v1",
@@ -164,7 +112,7 @@ _STATE_CACHE = {}
 def _valid_state(seed=0):
     if seed not in _STATE_CACHE:
         _STATE_CACHE[seed] = S3A.run_state(
-            seed, "mc-strong", bot_factory=_fast_bot_factory)
+            seed, "mc-s0-report-lcb", bot_factory=_fast_bot_factory)
     return copy.deepcopy(_STATE_CACHE[seed])
 
 
@@ -222,8 +170,8 @@ def _artifact(shard, *, parent, runtime, head="frozen", gains=None):
         "digests": runtime["digests"],
         "runtime_identity": runtime,
         "parent": parent,
-        "champion": parent["champion"],
-        "policy_contract": S3A.policy_contract(parent["champion"]),
+        "champion": parent["champion_policy"],
+        "policy_contract": S3A.policy_contract(parent["champion_policy"]),
         "selection_rule": S3A.SELECTION_RULE,
         "arms": list(S3A.ARMS),
         "structured_max_candidates": 32,
@@ -253,17 +201,7 @@ def _runtime():
 
 
 def _parent():
-    return {
-        "schema": "s3a-terminal-s0-parent-v1",
-        "receipt": "/frozen/s0-closeout.json",
-        "receipt_sha256": "a" * 64,
-        "state": "S0_COMPLETE_SELECT_NONE",
-        "packet": "/frozen/s0-final-packet.txt",
-        "packet_sha256": "b" * 64,
-        "phases": ["s0a", "s0b-lcb", "s0c-report-lcb"],
-        "decision": "SELECT NONE; production remains mc-strong",
-        "champion": "mc-strong",
-    }
+    return S3A.LIVE_PARENT.expected_parent()
 
 
 def test_protocol_keeps_all_s3_features_off_and_registers_real_controls():
@@ -271,44 +209,29 @@ def test_protocol_keeps_all_s3_features_off_and_registers_real_controls():
     assert S3A.feature_off_problems(bot) == []
     assert S3A.ARMS == ("structured", "legacy_four", "random_widening")
     assert S3A.REPORT_WORLDS >= 30
-    assert S3A.protocol_problems("mc-strong") == []
+    assert S3A.protocol_problems("mc-s0-report-lcb") == []
+    assert any("not exact live" in problem
+               for problem in S3A.protocol_problems("mc-strong"))
     assert "AUTHORIZE_DUEL_DESIGN" in S3A.SELECTION_RULE
     assert "never promotes" in S3A.SELECTION_RULE
 
 
-def test_terminal_parent_is_required_hash_bound_and_names_champion(tmp_path):
-    receipt, packet = _write_receipt(tmp_path)
-    parent = S3A.terminal_parent(receipt)
-    assert parent["state"] == "S0_COMPLETE_SELECT_NONE"
-    assert parent["champion"] == "mc-strong"
-    assert parent["packet_sha256"] == hashlib.sha256(packet.read_bytes()).hexdigest()
+def test_live_parent_is_required_and_formal_s0_fallback_is_unreachable(
+        monkeypatch):
+    expected = _parent()
+    monkeypatch.setattr(
+        S3A.LIVE_PARENT, "require_live_champion_parent", lambda: expected)
+    assert S3A.live_parent() == expected
+    assert expected["champion_policy"] == "mc-s0-report-lcb"
 
-    promoted, _ = _write_receipt(
-        tmp_path / "promoted", state="S0_COMPLETE_PROMOTE",
-        champion="mc-s0-report-lcb")
-    assert S3A.terminal_parent(promoted)["champion"] == "mc-s0-report-lcb"
+    def stale_parent():
+        raise S3A.LIVE_PARENT.ProtocolRefused(
+            "stale formal-S0 mc-strong fallback is forbidden")
 
-    packet.write_text(packet.read_text() + "drift\n")
-    with pytest.raises(S3A.ProtocolRefused, match="SHA-256"):
-        S3A.terminal_parent(receipt)
-    with pytest.raises(S3A.ProtocolRefused, match="missing terminal"):
-        S3A.terminal_parent(tmp_path / "missing.json")
-
-
-def test_terminal_parent_rejects_nonterminal_or_schema_only_receipts(tmp_path):
-    packet = tmp_path / "packet.txt"
-    packet.write_text(_packet_text())
-    receipt = tmp_path / "receipt.json"
-    receipt.write_text(json.dumps({
-        "schema": "s0-terminal-closeout-v1", "state": "S0B_RUNNING",
-        "packet": str(packet),
-        "packet_sha256": hashlib.sha256(packet.read_bytes()).hexdigest(),
-    }))
-    with pytest.raises(S3A.ProtocolRefused, match="not terminal"):
-        S3A.terminal_parent(receipt)
-    receipt.write_text(json.dumps({"schema": "lookalike"}))
-    with pytest.raises(S3A.ProtocolRefused, match="schema"):
-        S3A.terminal_parent(receipt)
+    monkeypatch.setattr(
+        S3A.LIVE_PARENT, "require_live_champion_parent", stale_parent)
+    with pytest.raises(S3A.ProtocolRefused, match="mc-strong fallback"):
+        S3A.live_parent()
 
 
 def test_every_source_is_banker_visible_and_controls_match_trigger_and_k():
@@ -343,10 +266,11 @@ def test_named_runtime_treatment_matches_pilot_selection_on_common_worlds():
     """Bridge the offline screen to the executable treatment it may admit."""
     rnd, seat = _bury_round(37)
     literal = S3A.literal_incumbent(
-        make_bot("mc-strong", seed=17), rnd.hands[seat], rnd.ordering, seat)
+        make_bot("mc-s0-report-lcb", seed=17),
+        rnd.hands[seat], rnd.ordering, seat)
     stream = S3A.named_stream(
         deal_seed=37, state_id="bury:37", purpose="candidate_source",
-        fold="random", seat=seat, policy="mc-strong")
+        fold="random", seat=seat, policy="mc-s0-report-lcb")
     ballots = S3A.build_ballots(
         rnd.hands[seat], rnd.ordering, literal, seat, stream)
     plan = S3A.exact_work_plan({
@@ -376,7 +300,7 @@ def test_named_runtime_treatment_matches_pilot_selection_on_common_worlds():
         report_ids=[f"report:{index}" for index in range(S3A.REPORT_WORLDS)],
     )
 
-    treatment = make_bot("mc-structured-bury", seed=17)
+    treatment = make_bot("mc-s0-report-lcb-structured-bury", seed=17)
     next_world = 0
 
     def fake_sample(self, _rnd, _seat, _mem):
@@ -736,8 +660,8 @@ def test_shard_validator_requires_exact_512_parent_runtime_and_coverage():
      "claims production promotion"),
     (lambda manifest: manifest["policy_contract"].__setitem__("margin", 99),
      "policy contract differs"),
-    (lambda manifest: manifest["parent"].__setitem__("phases", ["s0c-only"]),
-     "parent phases"),
+    (lambda manifest: manifest["parent"].__setitem__(
+        "champion_policy", "mc-strong"), "stale formal-S0"),
 ])
 def test_manifest_reopener_binds_constants_bits_contract_and_parent(
         mutation, needle):
@@ -867,9 +791,7 @@ def test_aggregate_replays_deal_and_holds_a_copied_state_renamed_to_fresh_seed(
                for problem in aggregate["problems"])
 
 
-def test_real_context_requires_compiled_strict_environment(monkeypatch,
-                                                            tmp_path):
-    receipt, _ = _write_receipt(tmp_path)
+def test_real_context_requires_compiled_strict_environment(monkeypatch):
     monkeypatch.delenv("SHENGJI_REQUIRE_VOIDS", raising=False)
     with pytest.raises(S3A.ProtocolRefused, match="SHENGJI_FAST=1"):
-        S3A.require_real_context(receipt)
+        S3A.require_real_context()

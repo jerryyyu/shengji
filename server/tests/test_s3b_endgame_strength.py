@@ -23,11 +23,8 @@ def _upper(bot):
 
 
 @pytest.mark.parametrize(("champion", "exact", "null"), [
-    ("mc-strong", "mc-exact-endgame", "mc-strong-null"),
     ("mc-s0-report-lcb", "mc-s0-report-lcb-exact-endgame",
      "mc-s0-report-lcb-null"),
-    ("mc-s0-adaptive", "mc-s0-adaptive-exact-endgame",
-     "mc-s0-adaptive-null"),
 ])
 def test_registered_treatment_changes_only_exact_continuation(
         champion, exact, null):
@@ -94,7 +91,7 @@ def _counters(*, exact=False):
 
 def _records(clusters=2, seed0=139_000_000, run="run"):
     rows = {}
-    policies = S3B.labels_for("mc-strong")
+    policies = S3B.labels_for("mc-s0-report-lcb")
     for label, policy in policies.items():
         rows[label] = []
         for seed in range(seed0, seed0 + clusters):
@@ -181,19 +178,12 @@ def _runtime():
     }
 
 
-def _s0_parent():
-    return {
-        "terminal_state": "S0_COMPLETE_SELECT_NONE",
-        "champion_policy": "mc-strong",
-        "packet_sha256": "1" * 64,
-        "closeout_sha256": "2" * 64,
-        "phases": ["s0a", "s0b-lcb", "s0c-report-lcb"],
-        "verification_boundary": "test",
-    }
+def _champion_parent():
+    return S3B.LIVE_PARENT.expected_parent()
 
 
 def _throughput_payload(*, wall_seconds=3_600, caps=10_000):
-    parent = _s0_parent()
+    parent = _champion_parent()
     budgets = {
         "screen_fleet_hours": float(caps),
         "screen_max_shard_wall_hours": float(caps),
@@ -217,9 +207,9 @@ def _throughput_payload(*, wall_seconds=3_600, caps=10_000):
         "runtime_identity": _runtime(),
         "mechanics_commit": S3B.MECHANICS_COMMIT,
         "mechanics_asset_sha256": S3B.MECHANICS_ASSET_SHA256,
-        "s0_parent": parent,
-        "champion_policy": "mc-strong",
-        "labels": S3B.labels_for("mc-strong"),
+        "champion_parent": parent,
+        "champion_policy": "mc-s0-report-lcb",
+        "labels": S3B.labels_for("mc-s0-report-lcb"),
         "clusters": 2,
         "seed0": 141_000_000,
         "seed_hi": 141_000_001,
@@ -242,7 +232,7 @@ def test_throughput_receipt_is_score_free_rederived_and_budget_gated(tmp_path):
     payload = _throughput_payload()
     path.write_text(json.dumps(payload))
     parent = S3B.load_throughput_parent(
-        path, S3B.sha256(path), _s0_parent())
+        path, S3B.sha256(path), _champion_parent())
     assert parent["launch_authorized"] is True
     assert "stats" not in payload and "records" not in payload
     different_host = copy.deepcopy(_runtime())
@@ -255,18 +245,18 @@ def test_throughput_receipt_is_score_free_rederived_and_budget_gated(tmp_path):
     tampered["projections"]["screen"]["fleet_hours"] += 1
     path.write_text(json.dumps(tampered))
     with pytest.raises(S3B.ProtocolRefused, match="arithmetic"):
-        S3B.load_throughput_parent(path, S3B.sha256(path), _s0_parent())
+        S3B.load_throughput_parent(path, S3B.sha256(path), _champion_parent())
 
     too_slow = _throughput_payload(caps=0.01)
     path.write_text(json.dumps(too_slow))
     with pytest.raises(S3B.ProtocolRefused, match="exceeds declared"):
-        S3B.load_throughput_parent(path, S3B.sha256(path), _s0_parent())
+        S3B.load_throughput_parent(path, S3B.sha256(path), _champion_parent())
 
     leaked = _throughput_payload()
     leaked["strength_scores_persisted"] = True
     path.write_text(json.dumps(leaked))
     with pytest.raises(S3B.ProtocolRefused, match="protocol identity"):
-        S3B.load_throughput_parent(path, S3B.sha256(path), _s0_parent())
+        S3B.load_throughput_parent(path, S3B.sha256(path), _champion_parent())
 
 
 def test_compiled_preflight_discards_outcomes_and_emits_only_work_receipt(
@@ -274,7 +264,7 @@ def test_compiled_preflight_discards_outcomes_and_emits_only_work_receipt(
     head = "f" * 40
     runtime = _runtime()
     monkeypatch.setattr(S3B, "require_runtime", lambda: (object(), runtime))
-    monkeypatch.setattr(S3B, "load_s0_parent", lambda *args: _s0_parent())
+    monkeypatch.setattr(S3B, "load_champion_parent", lambda: _champion_parent())
     monkeypatch.setattr(S3B, "protocol_problems", lambda _champion: [])
     monkeypatch.setattr(
         S3B, "git", lambda *args: head if args == ("rev-parse", "HEAD") else "")
@@ -298,8 +288,6 @@ def test_compiled_preflight_discards_outcomes_and_emits_only_work_receipt(
         screen_shard_wall_hour_cap=1e9,
         confirm_fleet_hour_cap=1e9,
         confirm_shard_wall_hour_cap=1e9,
-        s0_packet="packet", expected_s0_packet_sha256="1" * 64,
-        s0_closeout="closeout", expected_s0_closeout_sha256="2" * 64,
     )
     S3B.run_throughput_preflight(args)
     receipt = json.loads(out.read_text())
@@ -360,13 +348,13 @@ def test_self_consistent_all_shard_claim_rewrite_is_not_stable_enough(
     monkeypatch.setattr(S3B, "PROTOCOLS", small_protocols)
     runtime = _runtime()
     head = "f" * 40
-    s0_parent = _s0_parent()
+    champion_parent = _champion_parent()
     throughput = {
         "git_sha": head,
         "runtime_identity": runtime,
         "budgets": _throughput_payload()["budgets"],
     }
-    labels = S3B.labels_for("mc-strong")
+    labels = S3B.labels_for("mc-s0-report-lcb")
     contracts = {name: S3B.policy_contract(name) for name in labels.values()}
     ballots = S3B.arm_ballots(labels.values())
     manifests = []
@@ -404,11 +392,11 @@ def test_self_consistent_all_shard_claim_rewrite_is_not_stable_enough(
             "clusters": 1,
             "seed0": seed0,
             "seed_hi": seed0,
-            "opponent": "mc-strong",
-            "champion_policy": "mc-strong",
+            "opponent": "mc-s0-report-lcb",
+            "champion_policy": "mc-s0-report-lcb",
             "labels": labels,
             "selection_rule": S3B.SELECTION_RULE,
-            "s0_parent": s0_parent,
+            "champion_parent": champion_parent,
             "screen_parent": None,
             "throughput_parent": throughput,
             "policy_contracts": contracts,
@@ -426,7 +414,7 @@ def test_self_consistent_all_shard_claim_rewrite_is_not_stable_enough(
 
     assert S3B.validate_population(
         "screen", manifests, all_records, runtime, head,
-        s0_parent, None, throughput, check_current_protocol=False) == []
+        champion_parent, None, throughput, check_current_protocol=False) == []
 
     rewritten = copy.deepcopy(manifests)
     for _, manifest in rewritten:
@@ -436,7 +424,7 @@ def test_self_consistent_all_shard_claim_rewrite_is_not_stable_enough(
         manifest["claim"] = "self_consistent_rewritten_claim"
     problems = S3B.validate_population(
         "screen", rewritten, all_records, runtime, head,
-        s0_parent, None, throughput, check_current_protocol=False)
+        champion_parent, None, throughput, check_current_protocol=False)
     assert any("frozen policy/claim contract drift" in problem
                for problem in problems)
 
@@ -452,7 +440,7 @@ def test_smoke_runner_hides_scores_and_names_one_round_boundary(
     }
     monkeypatch.setattr(S3B, "require_runtime", lambda: (object(), runtime))
     monkeypatch.setattr(
-        S3B, "parent_args", lambda _args: (_s0_parent(), None, throughput))
+        S3B, "parent_args", lambda _args: (_champion_parent(), None, throughput))
     monkeypatch.setattr(S3B, "protocol_problems", lambda _champion: [])
     monkeypatch.setattr(
         S3B, "git", lambda *args: head if args == ("rev-parse", "HEAD") else
@@ -487,24 +475,27 @@ def test_smoke_runner_hides_scores_and_names_one_round_boundary(
     overclaim["multi_round_progression_tested"] = True
     problems = S3B.validate_population(
         "screen", [(Path(str(out) + ".manifest.json"), overclaim)], {},
-        runtime, head, _s0_parent(), None, throughput,
+        runtime, head, _champion_parent(), None, throughput,
         check_current_protocol=False)
     assert any("overclaims its evaluation unit" in problem
                for problem in problems)
 
 
-def test_terminal_decision_reaches_only_frozen_champion_lanes():
-    select_none = (
-        "Final production decision from registered rule: "
-        "SELECT NONE; production remains mc-strong\n")
-    assert S3B._terminal_decision(
-        select_none, "S0_COMPLETE_SELECT_NONE") == "mc-strong"
-    promote = (
-        "Final production decision from registered rule: "
-        "PROMOTE mc-s0-report-lcb\n")
-    assert S3B._terminal_decision(
-        promote, "S0_COMPLETE_PROMOTE") == "mc-s0-report-lcb"
-    unknown = (
-        "Final production decision from registered rule: PROMOTE mc-unknown\n")
-    with pytest.raises(S3B.ProtocolRefused, match="unregistered promoted"):
-        S3B._terminal_decision(unknown, "S0_COMPLETE_PROMOTE")
+def test_only_live_report_lcb_has_a_frozen_v2_lane():
+    assert S3B.labels_for("mc-s0-report-lcb") == {
+        "exact": "mc-s0-report-lcb-exact-endgame",
+        "champion": "mc-s0-report-lcb",
+        "null": "mc-s0-report-lcb-null",
+    }
+    for stale in ("mc-strong", "mc-s0-adaptive", "mc-unknown"):
+        with pytest.raises(S3B.ProtocolRefused, match="no frozen S3b-v2 lane"):
+            S3B.labels_for(stale)
+
+
+def test_population_reopener_refuses_self_consistent_parent_rewrite():
+    parent = _champion_parent()
+    parent["source_sha256s"]["registry"] = "0" * 64
+    problems = S3B.validate_population(
+        "screen", [], {}, _runtime(), "f" * 40,
+        parent, None, {}, check_current_protocol=False)
+    assert any("live champion parent" in problem for problem in problems)

@@ -1,6 +1,7 @@
 """Blinded complete-round strength gate for sampled exact endgame search.
 
-The treatment changes one thing on the terminal S0 champion: inside each
+The treatment changes one thing on the independently confirmed live champion:
+inside each
 accepted, fully determinized MC world, heuristic continuation is replaced by
 partnership-minimax once every hand has at most four cards.  It is therefore a
 sampled perfect-information continuation, not exact imperfect-information
@@ -12,6 +13,7 @@ utility; this is not a multi-round progression match.  A PASS may
 authorize only the frozen ``confirm`` population: 8x1024 disjoint clusters on
 seeds 140M.  Confirmation reopens and independently recomputes every raw
 screen record before it can start.  Neither phase changes production.
+Formal S0's stale ``mc-strong`` fallback is intentionally unreachable.
 """
 from __future__ import annotations
 
@@ -33,14 +35,14 @@ SERVER = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SERVER))
 sys.path.insert(0, str(SERVER / "scripts"))
 
-import s0_closeout as S0_CLOSEOUT  # noqa: E402
+import live_champion_parent as LIVE_PARENT  # noqa: E402
 from shengji.ai.registry import make_bot  # noqa: E402
 from shengji.evaluation import arm_ballots, paired_by_seed, run_arm  # noqa: E402
 
 
-SCHEMA = "s3b-endgame-strength-shard-v1"
-AGGREGATE_SCHEMA = "s3b-endgame-strength-aggregate-v1"
-PREFLIGHT_SCHEMA = "s3b-endgame-throughput-preflight-v1"
+SCHEMA = "s3b-endgame-strength-shard-v2"
+AGGREGATE_SCHEMA = "s3b-endgame-strength-aggregate-v2"
+PREFLIGHT_SCHEMA = "s3b-endgame-throughput-preflight-v2"
 SHARD_COUNT = 8
 PREFLIGHT_CLUSTERS = 2
 PREFLIGHT_SEED0 = 141_000_000
@@ -78,23 +80,15 @@ PROTOCOLS = {
     },
 }
 CHAMPION_LANES = {
-    "mc-strong": {
-        "exact": "mc-exact-endgame",
-        "null": "mc-strong-null",
-    },
     "mc-s0-report-lcb": {
         "exact": "mc-s0-report-lcb-exact-endgame",
         "null": "mc-s0-report-lcb-null",
-    },
-    "mc-s0-adaptive": {
-        "exact": "mc-s0-adaptive-exact-endgame",
-        "null": "mc-s0-adaptive-null",
     },
 }
 SELECTION_RULE = (
     "AUTHORIZE the disjoint 8x1024 confirmation only if, over exactly 2,048 "
     "fresh seed clusters, the paired two-sided 95% lower bounds for sampled-"
-    "exact minus terminal champion and sampled-exact minus champion-matched "
+    "exact minus live champion and sampled-exact minus champion-matched "
     "null are both >0; the champion-matched-null minus champion interval "
     "contains zero; sampled-exact use is >0; and exact refusal and budget-"
     "overflow counters are zero. Apply the identical rule to the 8,192-"
@@ -206,7 +200,10 @@ def runtime_identity(fast) -> dict:
             "mcbot": sha256(SERVER / "shengji" / "ai" / "mcbot.py"),
             "endgame": sha256(SERVER / "shengji" / "ai" / "endgame.py"),
             "ballot": sha256(SERVER / "shengji" / "engine" / "ballot.py"),
-            "s0_closeout": sha256(SERVER / "scripts" / "s0_closeout.py"),
+            "live_champion_parent": sha256(
+                SERVER / "scripts" / "live_champion_parent.py"),
+            "rlcb_closeout": sha256(
+                SERVER / "scripts" / "rlcb_c1_artifact_closeout.py"),
             "mechanics_asset": sha256(MECHANICS_ASSET),
             "fast_router": sha256(fast.__file__),
             "fast_binary": sha256(fast._fast.__file__),
@@ -259,7 +256,7 @@ def labels_for(champion: str) -> dict[str, str]:
         lane = CHAMPION_LANES[champion]
     except KeyError as exc:
         raise ProtocolRefused(
-            f"terminal S0 policy {champion!r} has no frozen S3b lane") from exc
+            f"live policy {champion!r} has no frozen S3b-v2 lane") from exc
     return {
         "exact": lane["exact"],
         "champion": champion,
@@ -269,6 +266,8 @@ def labels_for(champion: str) -> dict[str, str]:
 
 def protocol_problems(champion: str) -> list[str]:
     problems = []
+    if champion != LIVE_PARENT.CHAMPION_POLICY:
+        problems.append("S3b v2 reference is not exact live report-LCB")
     exact_protocols = {
         "screen": {
             "seed0": 139_000_000, "clusters": 2_048,
@@ -282,14 +281,9 @@ def protocol_problems(champion: str) -> list[str]:
         },
     }
     exact_lanes = {
-        "mc-strong": {
-            "exact": "mc-exact-endgame", "null": "mc-strong-null"},
         "mc-s0-report-lcb": {
             "exact": "mc-s0-report-lcb-exact-endgame",
             "null": "mc-s0-report-lcb-null"},
-        "mc-s0-adaptive": {
-            "exact": "mc-s0-adaptive-exact-endgame",
-            "null": "mc-s0-adaptive-null"},
     }
     if SHARD_COUNT != 8 or PROTOCOLS != exact_protocols:
         problems.append("registered phase geometry/seed blocks drifted")
@@ -350,68 +344,19 @@ def protocol_problems(champion: str) -> list[str]:
     return sorted(set(problems))
 
 
-def _terminal_decision(packet_text: str, status: str) -> str:
-    prefix = "Final production decision from registered rule: "
-    decisions = [line.removeprefix(prefix) for line in packet_text.splitlines()
-                 if line.startswith(prefix)]
-    if len(decisions) != 1:
-        raise ProtocolRefused(
-            f"terminal S0 packet has {len(decisions)} production decisions")
-    decision = decisions[0]
-    if status == "S0_COMPLETE_SELECT_NONE":
-        if decision != "SELECT NONE; production remains mc-strong":
-            raise ProtocolRefused(
-                f"SELECT-NONE packet names a different decision: {decision!r}")
-        return "mc-strong"
-    if status != "S0_COMPLETE_PROMOTE" or not decision.startswith("PROMOTE "):
-        raise ProtocolRefused(
-            f"terminal S0 state/decision mismatch: {status!r}, {decision!r}")
-    champion = decision.removeprefix("PROMOTE ")
-    if champion not in CHAMPION_LANES or champion == "mc-strong":
-        raise ProtocolRefused(f"unregistered promoted S0 champion {champion!r}")
-    return champion
-
-
-def load_s0_parent(packet_path: os.PathLike | str, packet_sha256: str,
-                   closeout_path: os.PathLike | str,
-                   closeout_sha256: str) -> dict:
-    packet_path = Path(packet_path)
-    closeout_path = Path(closeout_path)
-    if not is_sha256(packet_sha256) or not is_sha256(closeout_sha256):
-        raise ProtocolRefused("terminal S0 expected hashes must be SHA-256")
-    if not packet_path.is_file() or sha256(packet_path) != packet_sha256:
-        raise ProtocolRefused("terminal S0 packet digest mismatch")
-    if not closeout_path.is_file() or sha256(closeout_path) != closeout_sha256:
-        raise ProtocolRefused("terminal S0 closeout digest mismatch")
+def load_champion_parent() -> dict:
     try:
-        packet_text = packet_path.read_text()
-        closeout = json.loads(closeout_path.read_text())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ProtocolRefused(f"terminal S0 parent unreadable: {exc}") from exc
-    if closeout.get("schema") != "s0-terminal-closeout-v1":
-        raise ProtocolRefused("terminal S0 closeout schema")
-    status = closeout.get("state")
-    if status not in S0_CLOSEOUT.TERMINAL_STATES:
-        raise ProtocolRefused(f"S0 closeout is not terminal: {status!r}")
-    if closeout.get("packet_sha256") != packet_sha256:
-        raise ProtocolRefused("S0 closeout is not bound to the supplied packet")
-    phases = S0_CLOSEOUT.packet_phases(packet_text)
-    if closeout.get("phases") != phases:
-        raise ProtocolRefused("S0 closeout/packet phase coverage differs")
-    problems = S0_CLOSEOUT.packet_problems(packet_text, status)
-    if problems:
-        raise ProtocolRefused(
-            "terminal S0 packet contract: " + "; ".join(problems))
-    return {
-        "terminal_state": status,
-        "champion_policy": _terminal_decision(packet_text, status),
-        "packet_sha256": packet_sha256,
-        "closeout_sha256": closeout_sha256,
-        "phases": phases,
-        "verification_boundary": (
-            "exact bytes from independently regenerated terminal S0 closeout"
-        ),
-    }
+        return LIVE_PARENT.require_live_champion_parent()
+    except LIVE_PARENT.ProtocolRefused as exc:
+        raise ProtocolRefused(f"live champion parent refused: {exc}") from exc
+
+
+def require_champion_parent_payload(parent: object) -> dict:
+    try:
+        return LIVE_PARENT.require_parent_payload(parent)
+    except LIVE_PARENT.ProtocolRefused as exc:
+        raise ProtocolRefused(f"live champion parent payload refused: {exc}") \
+            from exc
 
 
 def _positive_finite(value, name: str) -> float:
@@ -477,11 +422,8 @@ def run_throughput_preflight(args) -> None:
     dirty = git("status", "--porcelain")
     if dirty:
         raise ProtocolRefused("throughput preflight refuses a dirty tree")
-    s0_parent = load_s0_parent(
-        args.s0_packet, args.expected_s0_packet_sha256,
-        args.s0_closeout, args.expected_s0_closeout_sha256,
-    )
-    champion = s0_parent["champion_policy"]
+    champion_parent = load_champion_parent()
+    champion = champion_parent["champion_policy"]
     problems = protocol_problems(champion)
     if problems:
         raise ProtocolRefused(
@@ -546,7 +488,7 @@ def run_throughput_preflight(args) -> None:
         "runtime_identity": runtime,
         "mechanics_commit": MECHANICS_COMMIT,
         "mechanics_asset_sha256": MECHANICS_ASSET_SHA256,
-        "s0_parent": s0_parent,
+        "champion_parent": champion_parent,
         "champion_policy": champion,
         "labels": labels,
         "clusters": PREFLIGHT_CLUSTERS,
@@ -572,8 +514,9 @@ def run_throughput_preflight(args) -> None:
 
 
 def load_throughput_parent(path: os.PathLike | str, expected_sha256: str,
-                           s0_parent: dict) -> dict:
+                           champion_parent: dict) -> dict:
     """Recompute the score-free preflight's projections and budget decision."""
+    require_champion_parent_payload(champion_parent)
     path = Path(path).resolve()
     if (not is_sha256(expected_sha256) or not path.is_file()
             or sha256(path) != expected_sha256):
@@ -584,7 +527,7 @@ def load_throughput_parent(path: os.PathLike | str, expected_sha256: str,
         raise ProtocolRefused(f"throughput receipt unreadable: {exc}") from exc
     if not isinstance(payload, dict):
         raise ProtocolRefused("throughput receipt is not an object")
-    champion = s0_parent["champion_policy"]
+    champion = champion_parent["champion_policy"]
     labels = labels_for(champion)
     fixed = (
         payload.get("schema") == PREFLIGHT_SCHEMA
@@ -599,7 +542,7 @@ def load_throughput_parent(path: os.PathLike | str, expected_sha256: str,
         and payload.get("strength_estimand_locked") is True
         and payload.get("mechanics_commit") == MECHANICS_COMMIT
         and payload.get("mechanics_asset_sha256") == MECHANICS_ASSET_SHA256
-        and payload.get("s0_parent") == s0_parent
+        and payload.get("champion_parent") == champion_parent
         and payload.get("champion_policy") == champion
         and payload.get("labels") == labels
         and payload.get("clusters") == PREFLIGHT_CLUSTERS
@@ -653,7 +596,7 @@ def load_throughput_parent(path: os.PathLike | str, expected_sha256: str,
         "schema": PREFLIGHT_SCHEMA,
         "git_sha": head,
         "runtime_identity": runtime,
-        "s0_parent": s0_parent,
+        "champion_parent": champion_parent,
         "champion_policy": champion,
         "budgets": budgets,
         "budget_role": BUDGET_ROLE,
@@ -981,7 +924,8 @@ def load_bound_screen_inputs(aggregate_path: os.PathLike | str,
 
 
 def load_screen_parent(path: os.PathLike | str, expected_sha256: str,
-                       s0_parent: dict) -> dict:
+                       champion_parent: dict) -> dict:
+    require_champion_parent_payload(champion_parent)
     """Require a passing screen and reproduce it from bound raw records."""
     path = Path(path).resolve()
     if (not is_sha256(expected_sha256) or not path.is_file()
@@ -993,7 +937,7 @@ def load_screen_parent(path: os.PathLike | str, expected_sha256: str,
         raise ProtocolRefused(f"screen parent unreadable: {exc}") from exc
     if not isinstance(payload, dict):
         raise ProtocolRefused("screen parent is not an object")
-    champion = s0_parent["champion_policy"]
+    champion = champion_parent["champion_policy"]
     labels = labels_for(champion)
     expected_contracts = {
         name: policy_contract(name) for name in labels.values()}
@@ -1009,7 +953,7 @@ def load_screen_parent(path: os.PathLike | str, expected_sha256: str,
             or payload.get("clusters") != 2_048
             or payload.get("seed0") != 139_000_000
             or payload.get("seed_hi") != 139_002_047
-            or payload.get("s0_parent") != s0_parent
+            or payload.get("champion_parent") != champion_parent
             or payload.get("champion_policy") != champion
             or payload.get("labels") != labels
             or payload.get("selection_rule") != SELECTION_RULE
@@ -1031,7 +975,7 @@ def load_screen_parent(path: os.PathLike | str, expected_sha256: str,
     manifests, records = load_bound_screen_inputs(
         path, payload.get("input_shards"))
     problems = validate_population(
-        "screen", manifests, records, runtime, head, s0_parent, None,
+        "screen", manifests, records, runtime, head, champion_parent, None,
         payload.get("throughput_parent"),
         check_current_protocol=False,
     )
@@ -1091,16 +1035,13 @@ def require_screen_execution_identity(screen_parent: dict | None,
 
 
 def parent_args(args) -> tuple[dict, dict | None, dict]:
-    s0_parent = load_s0_parent(
-        args.s0_packet, args.expected_s0_packet_sha256,
-        args.s0_closeout, args.expected_s0_closeout_sha256,
-    )
+    champion_parent = load_champion_parent()
     if args.phase == "confirm":
         if not args.screen_parent or not args.expected_screen_parent_sha256:
             raise ProtocolRefused(
                 "confirmation requires the exact authorizing screen parent")
         screen_parent = load_screen_parent(
-            args.screen_parent, args.expected_screen_parent_sha256, s0_parent)
+            args.screen_parent, args.expected_screen_parent_sha256, champion_parent)
     else:
         if args.screen_parent or args.expected_screen_parent_sha256:
             raise ProtocolRefused("screen may not accept a screen-result parent")
@@ -1112,13 +1053,13 @@ def parent_args(args) -> tuple[dict, dict | None, dict]:
     throughput_parent = load_throughput_parent(
         args.throughput_receipt,
         args.expected_throughput_receipt_sha256,
-        s0_parent,
+        champion_parent,
     )
     if (screen_parent is not None
             and screen_parent.get("throughput_parent") != throughput_parent):
         raise ProtocolRefused(
             "confirmation throughput receipt differs from frozen screen")
-    return s0_parent, screen_parent, throughput_parent
+    return champion_parent, screen_parent, throughput_parent
 
 
 def run_shard(args) -> None:
@@ -1126,8 +1067,8 @@ def run_shard(args) -> None:
     spec = PROTOCOLS[args.phase]
     if not 0 <= args.shard_index < SHARD_COUNT:
         raise ProtocolRefused(f"shard-index must satisfy 0 <= i < {SHARD_COUNT}")
-    s0_parent, screen_parent, throughput_parent = parent_args(args)
-    champion = s0_parent["champion_policy"]
+    champion_parent, screen_parent, throughput_parent = parent_args(args)
+    champion = champion_parent["champion_policy"]
     problems = protocol_problems(champion)
     if problems:
         raise ProtocolRefused(
@@ -1182,7 +1123,7 @@ def run_shard(args) -> None:
         "champion_policy": champion,
         "labels": labels,
         "selection_rule": SELECTION_RULE,
-        "s0_parent": s0_parent,
+        "champion_parent": champion_parent,
         "screen_parent": screen_parent,
         "throughput_parent": throughput_parent,
         "policy_contracts": {
@@ -1291,11 +1232,15 @@ def _record_shape_problem(row: dict) -> bool:
 
 def validate_population(phase: str, manifests, records,
                         current_runtime: dict, current_head: str,
-                        s0_parent: dict, screen_parent: dict | None,
+                        champion_parent: dict, screen_parent: dict | None,
                         throughput_parent: dict,
                         *, check_current_protocol: bool = True) -> list[str]:
+    parent_issues = LIVE_PARENT.parent_problems(champion_parent)
+    if parent_issues:
+        return [f"live champion parent: {problem}"
+                for problem in parent_issues]
     spec = PROTOCOLS[phase]
-    champion = s0_parent["champion_policy"]
+    champion = champion_parent["champion_policy"]
     labels = labels_for(champion)
     expected_contracts = {
         name: policy_contract(name) for name in labels.values()}
@@ -1314,7 +1259,7 @@ def validate_population(phase: str, manifests, records,
         "git_sha", "python", "fast_engine", "require_voids",
         "experimental_sampler_flags", "digests", "labels", "ballots",
         "policy_contracts", "selection_rule", "claim", "shard_count",
-        "total_clusters", "champion_policy", "opponent", "s0_parent",
+        "total_clusters", "champion_policy", "opponent", "champion_parent",
         "screen_parent", "throughput_parent", "mechanics_commit",
         "mechanics_asset_sha256", "production_promotion", "evaluation_unit",
         "primary_outcome", "multi_round_progression_tested",
@@ -1367,8 +1312,8 @@ def validate_population(phase: str, manifests, records,
         if runtime_without_host(observed_runtime) != \
                 runtime_without_host(current_runtime):
             problems.append(f"{path}: executable runtime differs from verifier")
-        if manifest.get("s0_parent") != s0_parent:
-            problems.append(f"{path}: terminal S0 parent drift")
+        if manifest.get("champion_parent") != champion_parent:
+            problems.append(f"{path}: live champion parent drift")
         if manifest.get("screen_parent") != screen_parent:
             problems.append(f"{path}: screen parent drift")
         if manifest.get("throughput_parent") != throughput_parent:
@@ -1474,13 +1419,13 @@ def aggregate(args) -> None:
     if git("status", "--porcelain"):
         raise ProtocolRefused("S3b aggregate refuses a dirty tree")
     head = git("rev-parse", "HEAD")
-    s0_parent, screen_parent, throughput_parent = parent_args(args)
+    champion_parent, screen_parent, throughput_parent = parent_args(args)
     require_screen_execution_identity(screen_parent, head, runtime)
     require_throughput_execution_identity(throughput_parent, head, runtime)
     manifests, records = load_population(args.pattern, args.phase)
     problems = validate_population(
         args.phase, manifests, records, runtime, head,
-        s0_parent, screen_parent, throughput_parent)
+        champion_parent, screen_parent, throughput_parent)
     if problems:
         raise ProtocolRefused(
             "S3b aggregation refused:\n  - " + "\n  - ".join(problems))
@@ -1490,7 +1435,7 @@ def aggregate(args) -> None:
     throughput = observed_throughput(
         args.phase, manifests, throughput_parent)
     spec = PROTOCOLS[args.phase]
-    champion = s0_parent["champion_policy"]
+    champion = champion_parent["champion_policy"]
     labels = labels_for(champion)
     aggregate_dir = Path(args.out).resolve().parent
 
@@ -1515,7 +1460,7 @@ def aggregate(args) -> None:
         "champion_policy": champion,
         "labels": labels,
         "selection_rule": SELECTION_RULE,
-        "s0_parent": s0_parent,
+        "champion_parent": champion_parent,
         "screen_parent": screen_parent,
         "throughput_parent": throughput_parent,
         "policy_contracts": {
@@ -1558,22 +1503,10 @@ def aggregate(args) -> None:
 
 
 def add_parent_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--s0-packet", required=True)
-    parser.add_argument("--expected-s0-packet-sha256", required=True)
-    parser.add_argument("--s0-closeout", required=True)
-    parser.add_argument("--expected-s0-closeout-sha256", required=True)
     parser.add_argument("--screen-parent")
     parser.add_argument("--expected-screen-parent-sha256")
     parser.add_argument("--throughput-receipt", required=True)
     parser.add_argument("--expected-throughput-receipt-sha256", required=True)
-
-
-def add_s0_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--s0-packet", required=True)
-    parser.add_argument("--expected-s0-packet-sha256", required=True)
-    parser.add_argument("--s0-closeout", required=True)
-    parser.add_argument("--expected-s0-closeout-sha256", required=True)
-
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -1586,7 +1519,6 @@ def main() -> None:
     preflight.add_argument("--confirm-fleet-hour-cap", type=float, required=True)
     preflight.add_argument("--confirm-shard-wall-hour-cap", type=float,
                            required=True)
-    add_s0_arguments(preflight)
     run = sub.add_parser("run")
     run.add_argument("phase", choices=tuple(PROTOCOLS))
     run.add_argument("--shard-index", type=int, required=True)

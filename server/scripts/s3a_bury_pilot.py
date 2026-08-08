@@ -8,11 +8,13 @@ compares three bury candidate sources at exact equal candidate-world work:
 * the historical incumbent-plus-three (``legacy_four``) source; and
 * a trigger- and candidate-count-matched random widening control.
 
-Candidate zero is the terminal S0 champion's literal banker-visible bury.  A
+Candidate zero is the independently confirmed live champion's literal
+banker-visible bury.  A
 named selection fold chooses each arm's action, and a disjoint named report
 fold estimates its paired gain over candidate zero.  A real shard cannot start
-without a valid terminal S0 closeout receipt, a clean tree, the compiled
-engine, and strict void sampling.  Even a successful aggregate only authorizes
+without reopening the exact RLCB-C1 live-parent authority, a clean tree, the
+compiled engine, and strict void sampling.  Formal S0's stale ``mc-strong``
+fallback is unreachable.  Even a successful aggregate only authorizes
 designing a fresh full-game duel; it cannot promote anything itself.
 """
 from __future__ import annotations
@@ -25,7 +27,6 @@ import math
 import os
 import platform
 import random
-import re
 import statistics
 import subprocess
 import sys
@@ -41,7 +42,7 @@ SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SERVER))
 sys.path.insert(0, str(SCRIPTS))
 
-import s0_closeout as S0_CLOSEOUT  # noqa: E402
+import live_champion_parent as LIVE_PARENT  # noqa: E402
 from shengji.ai.bury import (DEFAULT_MAX_CANDIDATES,  # noqa: E402
                              structured_bury_ballot)
 from shengji.ai.memory import Memory  # noqa: E402
@@ -53,15 +54,16 @@ from shengji.engine.game import Game  # noqa: E402
 from shengji.engine.round import HAND_SIZE, KITTY_SIZE  # noqa: E402
 
 
-SCHEMA = "s3a-bury-pilot-v1"
-AGGREGATE_SCHEMA = "s3a-bury-pilot-aggregate-v1"
+SCHEMA = "s3a-bury-pilot-v2"
+AGGREGATE_SCHEMA = "s3a-bury-pilot-aggregate-v2"
 STREAM_SCHEMA = "s3a-named-stream-v1"
 WORK_SCHEMA = "s3a-exact-work-v1"
 SHARD_COUNT = 8
 TOTAL_STATES = 512
 STATES_PER_SHARD = TOTAL_STATES // SHARD_COUNT
 # This is a state-level mechanism screen, not a duel seed/reference freeze.
-# No state in this block may be generated before a terminal S0 receipt exists.
+# V2 preserves the frozen v1 state geometry but authenticates the actual live
+# champion.  V1 artifacts cannot enter this namespace.
 SEED0 = 136_000_000
 SEED_HI = SEED0 + TOTAL_STATES - 1
 STRUCTURED_MAX_CANDIDATES = DEFAULT_MAX_CANDIDATES
@@ -77,7 +79,7 @@ SCORER_CALL_ORDER = (
 SELECTION_RULE = (
     "On a named selection fold, choose the empirical banker-value argmax only "
     "when its paired mean gain over literal candidate zero is at least the "
-    "terminal champion's fixed MARGIN. Score the selected action and candidate "
+    "live champion's fixed MARGIN. Score the selected action and candidate "
     "zero on 120 disjoint common report worlds. AUTHORIZE_DUEL_DESIGN only if "
     "the clustered paired 95% lower bounds for structured-minus-incumbent, "
     "structured-minus-equal-work-legacy-four, and structured-minus-trigger-"
@@ -216,9 +218,9 @@ def literal_incumbent(bot, hand: Iterable[str], ordering,
     view = _BankerVisibleBuryState(banker, hand, ordering)
     incumbent = canonical_cards(bot.decide_bury(view, banker))
     if len(incumbent) != KITTY_SIZE:
-        raise ProtocolRefused("terminal champion did not return an eight-card bury")
+        raise ProtocolRefused("live champion did not return an eight-card bury")
     if Counter(incumbent) - Counter(hand):
-        raise ProtocolRefused("terminal champion returned cards outside its own hand")
+        raise ProtocolRefused("live champion returned cards outside its own hand")
     return incumbent
 
 
@@ -1278,7 +1280,7 @@ def build_bury_state(deal_seed: int, champion: str):
         bot = make_bot(champion, seed=stream["seed"])
         off = feature_off_problems(bot)
         if off:
-            raise ProtocolRefused("terminal champion activates S3: " + "; ".join(off))
+            raise ProtocolRefused("live champion activates S3: " + "; ".join(off))
         actors.append(bot)
     while rnd.phase == "deal":
         seat, _, _ = rnd.deal_next()
@@ -1403,77 +1405,11 @@ def run_state(deal_seed: int, champion: str, *,
     return record
 
 
-def terminal_parent(receipt_path: os.PathLike | str) -> dict:
-    path = Path(receipt_path).resolve()
-    if not path.is_file():
-        raise ProtocolRefused(f"missing terminal S0 receipt: {path}")
+def live_parent() -> dict:
     try:
-        receipt = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ProtocolRefused(f"invalid terminal S0 receipt: {exc}") from exc
-    if receipt.get("schema") != "s0-terminal-closeout-v1":
-        raise ProtocolRefused("S0 receipt schema is not terminal closeout v1")
-    state = receipt.get("state")
-    if state not in S0_CLOSEOUT.TERMINAL_STATES:
-        raise ProtocolRefused(f"S0 receipt is not terminal: {state!r}")
-    packet_value = receipt.get("packet")
-    if not packet_value:
-        raise ProtocolRefused("S0 receipt does not name its durable packet")
-    packet_path = Path(packet_value)
-    if not packet_path.is_absolute():
-        packet_path = (path.parent / packet_path).resolve()
-    if not packet_path.is_file():
-        raise ProtocolRefused(f"S0 terminal packet is missing: {packet_path}")
-    packet_bytes = packet_path.read_bytes()
-    packet_sha = sha256_bytes(packet_bytes)
-    if receipt.get("packet_sha256") != packet_sha:
-        raise ProtocolRefused("S0 terminal packet SHA-256 differs from receipt")
-    try:
-        packet_text = packet_bytes.decode()
-    except UnicodeDecodeError as exc:
-        raise ProtocolRefused("S0 terminal packet is not UTF-8") from exc
-    problems = S0_CLOSEOUT.packet_problems(packet_text, state)
-    if problems:
-        raise ProtocolRefused(
-            "S0 terminal packet fails independent validation: " +
-            "; ".join(problems))
-    packet_phases = S0_CLOSEOUT.packet_phases(packet_text)
-    if receipt.get("phases") != packet_phases:
-        raise ProtocolRefused("S0 receipt phases differ from its terminal packet")
-    prefix = "Final production decision from registered rule: "
-    decisions = [line.removeprefix(prefix) for line in packet_text.splitlines()
-                 if line.startswith(prefix)]
-    if len(decisions) != 1:
-        raise ProtocolRefused("S0 terminal packet has no unique final decision")
-    decision = decisions[0]
-    if state == "S0_COMPLETE_SELECT_NONE":
-        if decision != "SELECT NONE; production remains mc-strong":
-            raise ProtocolRefused("SELECT NONE receipt has a different decision")
-        champion = "mc-strong"
-    else:
-        match = re.match(r"PROMOTE ([a-z0-9][a-z0-9_.-]*)\b", decision)
-        if match is None:
-            raise ProtocolRefused("PROMOTE receipt does not name a policy")
-        champion = match.group(1)
-    try:
-        bot = make_bot(champion, seed=7)
-    except Exception as exc:
-        raise ProtocolRefused(
-            f"terminal champion {champion!r} cannot be constructed: {exc}") from exc
-    off = feature_off_problems(bot)
-    if off:
-        raise ProtocolRefused("terminal champion activates S3: " + "; ".join(off))
-    return {
-        "schema": "s3a-terminal-s0-parent-v1",
-        "receipt": str(path),
-        "receipt_sha256": sha256(path),
-        "state": state,
-        "packet": str(packet_path),
-        "packet_sha256": packet_sha,
-        "phases": packet_phases,
-        "decision": decision,
-        "champion": champion,
-    }
+        return LIVE_PARENT.require_live_champion_parent()
+    except LIVE_PARENT.ProtocolRefused as exc:
+        raise ProtocolRefused(f"live champion parent refused: {exc}") from exc
 
 
 def policy_contract(champion: str) -> dict:
@@ -1494,7 +1430,8 @@ def policy_contract(champion: str) -> dict:
 def runtime_identity(fast) -> dict:
     files = {
         "runner": Path(__file__),
-        "s0_closeout": SCRIPTS / "s0_closeout.py",
+        "live_champion_parent": SCRIPTS / "live_champion_parent.py",
+        "rlcb_closeout": SCRIPTS / "rlcb_c1_artifact_closeout.py",
         "bury_source": SERVER / "shengji/ai/bury.py",
         "mcbot": SERVER / "shengji/ai/mcbot.py",
         "registry": SERVER / "shengji/ai/registry.py",
@@ -1520,6 +1457,8 @@ def runtime_identity(fast) -> dict:
 
 def protocol_problems(champion: str) -> list[str]:
     problems = []
+    if champion != LIVE_PARENT.CHAMPION_POLICY:
+        problems.append("S3a v2 reference is not exact live report-LCB")
     if TOTAL_STATES != 512 or SHARD_COUNT != 8 or STATES_PER_SHARD != 64:
         problems.append("registered state/shard geometry drifted")
     if SEED0 != 136_000_000 or SEED_HI != 136_000_511:
@@ -1539,13 +1478,13 @@ def protocol_problems(champion: str) -> list[str]:
                ("mc_bury", "structured_bury", "exact_endgame")):
             problems.append("production S3 flags are not all OFF")
         if contract["rollout_policy_class"] != "HeuristicBot":
-            problems.append("S3a v1 requires the frozen heuristic continuation")
+            problems.append("S3a v2 requires the frozen heuristic continuation")
         if not isinstance(contract["margin"], (int, float)):
-            problems.append("terminal champion has no numeric fixed margin")
+            problems.append("live champion has no numeric fixed margin")
     return sorted(set(problems))
 
 
-def require_real_context(receipt_path: os.PathLike | str) -> tuple[dict, dict, str]:
+def require_real_context() -> tuple[dict, dict, str]:
     if os.environ.get("SHENGJI_FAST") != "1" or \
             os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
         raise ProtocolRefused("set SHENGJI_FAST=1 and SHENGJI_REQUIRE_VOIDS=1")
@@ -1556,8 +1495,8 @@ def require_real_context(receipt_path: os.PathLike | str) -> tuple[dict, dict, s
     if dirty:
         raise ProtocolRefused("S3a refuses a dirty real-run/verifier tree")
     head = git("rev-parse", "HEAD")
-    parent = terminal_parent(receipt_path)
-    problems = protocol_problems(parent["champion"])
+    parent = live_parent()
+    problems = protocol_problems(parent["champion_policy"])
     if problems:
         raise ProtocolRefused("S3a protocol drift: " + "; ".join(problems))
     return parent, runtime_identity(fast), head
@@ -1569,36 +1508,7 @@ def _sha_field(value) -> bool:
 
 
 def parent_problems(parent: dict) -> list[str]:
-    problems = []
-    if parent.get("schema") != "s3a-terminal-s0-parent-v1":
-        problems.append("terminal parent schema drift")
-    state = parent.get("state")
-    if state not in S0_CLOSEOUT.TERMINAL_STATES:
-        problems.append("terminal parent state is not terminal")
-    phases = parent.get("phases")
-    families = ([phase.split("-", 1)[0] for phase in phases]
-                if isinstance(phases, list) and
-                all(isinstance(phase, str) for phase in phases) else [])
-    if families not in (["s0a"], ["s0a", "s0b", "s0c"]):
-        problems.append("terminal parent phases are incomplete/out of order")
-    if state == "S0_COMPLETE_PROMOTE" and families != ["s0a", "s0b", "s0c"]:
-        problems.append("promoted parent did not reach S0c")
-    for name in ("receipt_sha256", "packet_sha256"):
-        if not _sha_field(parent.get(name)):
-            problems.append(f"terminal parent {name} is malformed")
-    if not parent.get("receipt") or not parent.get("packet"):
-        problems.append("terminal parent paths are missing")
-    decision = parent.get("decision", "")
-    champion = parent.get("champion")
-    if state == "S0_COMPLETE_SELECT_NONE":
-        if decision != "SELECT NONE; production remains mc-strong" or \
-                champion != "mc-strong":
-            problems.append("SELECT NONE parent decision/champion drift")
-    elif state == "S0_COMPLETE_PROMOTE":
-        match = re.match(r"PROMOTE ([a-z0-9][a-z0-9_.-]*)\b", decision)
-        if match is None or champion != match.group(1):
-            problems.append("PROMOTE parent decision/champion drift")
-    return sorted(set(problems))
+    return LIVE_PARENT.parent_problems(parent)
 
 
 def records_digest(records: list[dict]) -> str:
@@ -1701,7 +1611,7 @@ def artifact_problems(artifact: dict, *,
         problems.append("artifact seed coverage is not exact contiguous")
     parent = manifest.get("parent", {})
     problems.extend(parent_problems(parent))
-    champion = parent.get("champion")
+    champion = parent.get("champion_policy")
     if manifest.get("champion") != champion:
         problems.append("manifest champion differs from terminal parent")
     contract = manifest.get("policy_contract", {})
@@ -1738,7 +1648,7 @@ def artifact_problems(artifact: dict, *,
 
 
 def run_shard(args) -> None:
-    parent, runtime, head = require_real_context(args.s0_receipt)
+    parent, runtime, head = require_real_context()
     if not 0 <= args.shard_index < SHARD_COUNT:
         raise ProtocolRefused(f"shard-index must satisfy 0 <= i < {SHARD_COUNT}")
     states = 2 if args.smoke else STATES_PER_SHARD
@@ -1753,7 +1663,7 @@ def run_shard(args) -> None:
     records = []
     t0 = time.perf_counter()
     for offset, seed in enumerate(range(seed0, seed0 + states), start=1):
-        records.append(run_state(seed, parent["champion"]))
+        records.append(run_state(seed, parent["champion_policy"]))
         if offset == 1 or offset == states or offset % args.progress_every == 0:
             elapsed = time.perf_counter() - t0
             print(
@@ -1773,8 +1683,8 @@ def run_shard(args) -> None:
         "digests": runtime["digests"],
         "runtime_identity": runtime,
         "parent": parent,
-        "champion": parent["champion"],
-        "policy_contract": policy_contract(parent["champion"]),
+        "champion": parent["champion_policy"],
+        "policy_contract": policy_contract(parent["champion_policy"]),
         "selection_rule": SELECTION_RULE,
         "arms": list(ARMS),
         "structured_max_candidates": STRUCTURED_MAX_CANDIDATES,
@@ -1846,7 +1756,7 @@ def validate_artifacts(artifacts: list[tuple[Path, dict]], *,
         if current_head is not None and manifest.get("git_sha") != current_head:
             problems.append(f"git identity differs in {path}")
         if parent is not None and manifest.get("parent") != parent:
-            problems.append(f"terminal S0 parent differs in {path}")
+            problems.append(f"live champion parent differs in {path}")
         subproblems = artifact_problems(
             artifact, bot_factory=bot_factory, progress=progress)
         problems.extend(f"{path}: {problem}" for problem in subproblems)
@@ -1885,7 +1795,7 @@ def aggregate_result(artifacts: list[tuple[Path, dict]], *,
             "git_sha": head,
             "runtime_identity": runtime,
             "parent": parent,
-            "champion": parent.get("champion"),
+            "champion": parent.get("champion_policy"),
             "states": 0,
             "seed0": SEED0,
             "seed_hi": SEED_HI,
@@ -1926,7 +1836,7 @@ def aggregate_result(artifacts: list[tuple[Path, dict]], *,
         "git_sha": head,
         "runtime_identity": runtime,
         "parent": parent,
-        "champion": parent["champion"],
+        "champion": parent["champion_policy"],
         "states": TOTAL_STATES,
         "seed0": SEED0,
         "seed_hi": SEED_HI,
@@ -1963,7 +1873,7 @@ def load_artifacts(pattern: str) -> list[tuple[Path, dict]]:
 
 
 def aggregate(args) -> None:
-    parent, runtime, head = require_real_context(args.s0_receipt)
+    parent, runtime, head = require_real_context()
     artifacts = load_artifacts(args.pattern)
     result = aggregate_result(
         artifacts, runtime=runtime, head=head, parent=parent,
@@ -1982,13 +1892,11 @@ def main(argv: list[str] | None = None) -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run")
     run.add_argument("--shard-index", type=int, required=True)
-    run.add_argument("--s0-receipt", type=Path, required=True)
     run.add_argument("--smoke", action="store_true")
     run.add_argument("--progress-every", type=int, default=1)
     run.add_argument("--out", type=Path)
     agg = sub.add_parser("aggregate")
-    agg.add_argument("--s0-receipt", type=Path, required=True)
-    agg.add_argument("--pattern", default="runs/logs/s3a-bury-pilot-v1_shard*.json")
+    agg.add_argument("--pattern", default="runs/logs/s3a-bury-pilot-v2_shard*.json")
     agg.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
     if getattr(args, "progress_every", 1) <= 0:

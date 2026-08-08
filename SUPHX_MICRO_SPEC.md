@@ -71,9 +71,12 @@ three initial checkpoints, 192 collision-free causal training deals, and 128
 one-state-per-deal DEV rows stratified 32/32/32/32 across the four policy
 surfaces. A DEV hidden-world witness must satisfy card conservation, hand and
 burial sizes, actor-visible state, demonstrated voids, pair/run caps and
-remaining declaration evidence before it can test oracle sensitivity. Every
-surface also carries a non-banker hidden-burial witness; an impossible
-void-breaking swap is an explicit negative test. The deterministic greedy
+remaining declaration evidence, then replay the complete public trick history
+through the real engine. That chronological replay rechecks pair/tractor follow
+obligations and whether every recorded successful throw would still succeed in
+the alternative world. Every surface also carries a non-banker hidden-burial
+witness; explicit void, historical-pair, successful-throw and burial mutations
+must fail. The deterministic greedy
 evaluator uses both team flips and an exact same-model zero null. The terminal
 gate applies the two fixed one-sided Student-t bounds and every conjunctive
 health criterion below.

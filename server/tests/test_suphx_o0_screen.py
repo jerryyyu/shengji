@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import random
 from pathlib import Path
 
 import pytest
@@ -159,6 +160,64 @@ def test_void_incompatible_hidden_swap_is_rejected():
         changed.hands[donor][donor_i], changed.hands[target][target_i])
     problems = screen.information_set_world_problems(rnd, changed, seat)
     assert f"seat {target} holds demonstrated-void suit {suit}" in problems
+
+
+def _captured_ordinal(deal_seed: int, ordinal: int):
+    records = []
+    game = screen.Game(random.Random(deal_seed))
+    screen.play_round(
+        game, [screen._CaptureSmart(records) for _ in range(4)])
+    return next(record for record in records if record.ordinal == ordinal)
+
+
+def _swap_cards(changed, left: int, left_card: str,
+                right: int, right_card: str):
+    left_i = changed.hands[left].index(left_card)
+    right_i = changed.hands[right].index(right_card)
+    changed.hands[left][left_i], changed.hands[right][right_i] = (
+        changed.hands[right][right_i], changed.hands[left][left_i])
+
+
+def test_historical_pair_obligation_rejects_snapshot_legal_swap():
+    captured = _captured_ordinal(160_100_011, 42)
+    assert captured.seat == 0
+    changed = copy.deepcopy(captured.rnd)
+    _swap_cards(changed, 1, "DA", 2, "DK")
+    problems = screen.information_set_world_problems(
+        captured.rnd, changed, captured.seat)
+    assert any(
+        "chronological trick 11 play 3 seat 1 is illegal" in problem
+        and "pairs" in problem
+        for problem in problems)
+
+
+def test_historical_successful_throw_rejects_new_beating_component():
+    captured = _captured_ordinal(160_100_083, 37)
+    assert captured.seat == 2
+    changed = copy.deepcopy(captured.rnd)
+    _swap_cards(changed, 0, "H10", 1, "SQ")
+    problems = screen.information_set_world_problems(
+        captured.rnd, changed, captured.seat)
+    assert any(
+        "chronological trick 5 play 0 seat 1 changed" in problem
+        and "Throw failed" in problem
+        for problem in problems)
+
+
+def test_hidden_burial_swap_replays_historical_pair_obligation():
+    captured = _captured_ordinal(160_100_029, 39)
+    assert captured.seat == 2
+    changed = copy.deepcopy(captured.rnd)
+    hand_i = changed.hands[0].index("D10")
+    bury_i = changed.buried.index("C3")
+    changed.hands[0][hand_i], changed.buried[bury_i] = (
+        changed.buried[bury_i], changed.hands[0][hand_i])
+    problems = screen.information_set_world_problems(
+        captured.rnd, changed, captured.seat)
+    assert any(
+        "chronological trick 0 play 1 seat 0 is illegal" in problem
+        and "pairs" in problem
+        for problem in problems)
 
 
 def test_same_model_two_flip_null_is_exact_zero(tmp_path):

@@ -35,7 +35,8 @@ from ..ai.memory import Memory
 from ..ai.smart import SmartBot
 from ..engine.combos import decompose, pair_count
 from ..engine.game import Game
-from ..engine.round import Round, Trick
+from ..engine.legal import IllegalPlay
+from ..engine.round import Round, Trick, actual_play_after
 from .actions import enumerate_actions
 from .douzero_micro import (BALLOT_SCHEMA, ROLE_NAMES, acting_team_return)
 from .encode import ACT_DIM, encode_action
@@ -427,6 +428,110 @@ def _remaining_multiset(rnd: Round) -> Counter[str]:
     return Counter(cards)
 
 
+def _chronological_world_problems(
+        original: Round, changed: Round) -> list[str]:
+    """Replay every public play against an alternative hidden allocation.
+
+    Snapshot-only void/pair/run caps are necessary but insufficient. Moving a
+    remaining card can give a player a pair or throw-beating component that
+    they would already have been obliged to expose earlier in the round.
+    Rebuild each post-burial hand, then drive the real ``Round.play`` boundary
+    at every historical information set.
+    """
+    if original.phase != "play" or changed.phase != "play" \
+            or original.banker not in range(4) \
+            or original.ordering is None or changed.ordering is None \
+            or original.trick is None or changed.trick is None:
+        return ["chronological replay requires a live play state"]
+
+    public_tricks = list(original.history)
+    if any(len(trick.plays) != 4 for trick in public_tricks):
+        return ["chronological replay found an incomplete resolved trick"]
+    current = original.trick
+    if len(current.plays) >= 4:
+        return ["chronological replay found a resolved current trick"]
+
+    played_by: list[list[str]] = [[] for _ in range(4)]
+    for trick in (*public_tricks, current):
+        for play in trick.plays:
+            if play.seat not in range(4):
+                return ["chronological replay found an invalid public seat"]
+            played_by[play.seat].extend(play.cards)
+
+    replay = copy.deepcopy(changed)
+    replay.hands = [
+        list(changed.hands[seat]) + played_by[seat]
+        for seat in range(4)
+    ]
+    if any(len(hand) != 25 for hand in replay.hands):
+        return ["chronological replay did not reconstruct four 25-card hands"]
+    reconstructed = Counter(
+        card for hand in replay.hands for card in hand)
+    reconstructed.update(changed.buried)
+    if reconstructed != Counter(original.deck):
+        return ["chronological replay does not conserve the dealt deck"]
+
+    replay.phase = "play"
+    replay.turn = original.banker
+    replay.trick = Trick(leader=original.banker)
+    replay.last_trick = None
+    replay.history = []
+    replay.attacker_points = 0
+    replay.kitty_bonus = 0
+    replay.last_trick_winner = None
+    replay.message = None
+    # Never inherit the rollout-only validation bypass into an evidence gate.
+    replay._trusted_rollout = False
+
+    for trick_index, expected in enumerate((*public_tricks, current)):
+        if replay.trick is None or replay.trick.leader != expected.leader:
+            actual_leader = None if replay.trick is None \
+                else replay.trick.leader
+            return [
+                f"chronological trick {trick_index} leader drift: "
+                f"expected {expected.leader}, got {actual_leader}"
+            ]
+        for play_index, public_play in enumerate(expected.plays):
+            previous_last = replay.last_trick
+            try:
+                replay.play(public_play.seat, list(public_play.cards))
+            except (IllegalPlay, AssertionError, ValueError) as exc:
+                return [
+                    f"chronological trick {trick_index} play {play_index} "
+                    f"seat {public_play.seat} is illegal: {exc}"
+                ]
+            actual = actual_play_after(
+                replay, public_play.seat, previous_last)
+            if actual != public_play.cards:
+                detail = f": {replay.message}" if replay.message else ""
+                return [
+                    f"chronological trick {trick_index} play {play_index} "
+                    f"seat {public_play.seat} changed from "
+                    f"{public_play.cards!r} to {actual!r}{detail}"
+                ]
+        if trick_index < len(public_tricks):
+            if replay.last_trick is None \
+                    or _trick_payload(replay.last_trick) \
+                    != _trick_payload(expected):
+                return [
+                    f"chronological trick {trick_index} resolution drift"
+                ]
+
+    if _trick_payload(replay.trick) != _trick_payload(current):
+        return ["chronological current-trick replay drift"]
+    if replay.turn != original.turn:
+        return [
+            f"chronological turn drift: expected {original.turn}, "
+            f"got {replay.turn}"
+        ]
+    if any(Counter(replay.hands[seat]) != Counter(changed.hands[seat])
+           for seat in range(4)):
+        return ["chronological replay did not recover remaining hands"]
+    if replay.attacker_points != original.attacker_points:
+        return ["chronological attacker-points drift"]
+    return []
+
+
 def information_set_world_problems(
         original: Round, changed: Round, seat: int) -> list[str]:
     """Validate a reachable hidden allocation against public obligations.
@@ -509,6 +614,8 @@ def information_set_world_problems(
             if possible[card] < remaining:
                 problems.append(
                     f"unplayed declaration card {card} left declarer/burial")
+    if not problems:
+        problems.extend(_chronological_world_problems(original, changed))
     return sorted(set(problems))
 
 
@@ -828,6 +935,10 @@ def _spec_payload() -> dict[str, Any]:
             "ballot_schema": BALLOT_SCHEMA,
             "declaration": "SmartBot",
             "burial": "SmartBot",
+            "hidden_world_validation": (
+                "full chronological Round.play replay including follow-shape "
+                "and successful-throw legality"
+            ),
         },
         "primary_comparisons": [
             "oracle terminal minus exact gamma=1 initial",

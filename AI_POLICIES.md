@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-07 17:31 EDT
+## Current synthesis — 2026-08-08 01:18 EDT
 
 ### Production search
 
@@ -104,20 +104,19 @@ and put exact run detail in `JOBS.md` or the dated archive.
   predeclared learning gate: seed 1 and both pooled role-specific held-out MSE
   LCBs failed. Terminal result is SELECT NONE; do not deploy or extend this
   recipe from its attractive gameplay tail.
-- Suphx O0 is now the next bounded learner, independently of Teacher-v3. Exact
-  chronology repair `7b15338` and corrected material snapshot `9aabf0b` ask
-  only whether the fixed three-seed full-information ensemble acquires a
-  noncollapsed policy advantage over its
-  initialization and equal-work public learner. Its alternative hidden worlds
-  now clear both snapshot constraints and full chronological engine replay;
-  this matters because 13 apparently plausible witnesses contradicted an
-  earlier pair obligation or successful throw. It is not a strength claim.
-  The chronology mechanics and exact material snapshot passed review; the one
-  allowed freeze produced verified packet SHA `6d4e6772…1ed65`. After its
-  separate packet-hash admission, run it on Mini while
-  Teacher continues on Air. O1 feature removal
-  exists only after O0 PASS; Teacher-label consumers wait for the Teacher
-  audit, but O0/O1 do not inherit that dependency.
+- **Suphx O0 is terminal SELECT NONE, without rejecting the whole algorithm
+  family.** The exact six-arm Mini screen completed 384 updates with real
+  midpoint resume and independently verified gate SHA `592a009a…bd407c`.
+  Oracle-minus-initial cleared its deal-cluster LCB (`+0.336`, LCB `+0.274`),
+  and the fixed ensemble barely cleared oracle-minus-public (`+0.073`, LCB
+  `+0.0025`). But per-seed oracle-minus-public means were
+  `+0.344/-0.207/+0.082`; seed 1 violated the preregistered all-seeds
+  robustness gate. All legal-world, information-boundary, exact-work, finite-
+  model, surface-coverage, entropy and same-model-null checks passed. O1 is
+  therefore unauthorized. Preserve the positive oracle-learning signal as a
+  diagnostic, but do not extend this inspected recipe or tune on its DEV set;
+  a successor must freshly test why policies remained nearly uniform and why
+  privileged information did not help robustly across seeds.
 
 ### Immediate strength queue
 
@@ -128,15 +127,17 @@ and put exact run detail in `JOBS.md` or the dated archive.
 2. Close Teacher-v3 Stage-B attribution and run the already-frozen independent
    64-state champion-continuation audit on Air; use that evidence to choose the
    next teacher upgrade rather than merely scaling labels.
-3. In parallel, independently review and hash-admit frozen Suphx O0 packet
-   `6d4e6772…1ed65`, then run the bounded six-arm screen on Mini. Do not
-   wait for Teacher unless the proposed learner consumes Teacher labels.
+3. Treat terminal Suphx O0 and Direct-Q as complementary diagnostics: O0 found
+   aggregate oracle acquisition but seed instability; Direct-Q found positive
+   gameplay but failed held-out learning. Request an independent strategy
+   review, then freeze one fresh mechanism-level learner screen rather than
+   extending either inspected run.
 4. Keep v11pair as a root proposal/ranking feature and teacher diagnostic;
    the protected-anchor lane is closed by direct-v2.
-5. Let the frozen O0 verdict decide the next learner boundary: PASS may freeze
-   and review O1 feature removal; SELECT NONE retires this exact recipe and
-   moves to another role-correct learner without tuning on either O0 DEV or the
-   terminal 144M Direct-Q report.
+5. O0's SELECT NONE retires this exact recipe and blocks O1. A successor may
+   reuse the tested mechanics, but it needs fresh seeds/data and a predeclared
+   explanation of how reward credit, feature scaling, update dose or policy
+   learning will produce a robust oracle-public separation.
 6. Reparent any structured-bury or sampled-exact contender to confirmed live
    report-LCB before spending strength compute.
 

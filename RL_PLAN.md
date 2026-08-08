@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-07 16:15 EDT
+## Current synthesis — 2026-08-08 01:18 EDT
 
 This is the current decision layer. The lineage table below owns model history;
 **Data and evaluation contract** owns dataset provenance; `AI_POLICIES.md`
@@ -80,21 +80,18 @@ closed lane.
   Stage-B N=30 gold shards. After all eight validate, seal the Stage-B gate and
   label only the separately frozen 64-state audit. Stage-B outcomes may not
   move the audit population or rule.
-- **Suphx O0 is the independent parallel RL gate.** Exact repair `7b15338` and
-  corrected material snapshot `9aabf0b` freeze the fixed three-seed
-  oracle-acquisition question,
-  chronologically legal hidden-hand/burial witnesses, 128 DEV deals, six
-  64-update arms, inference, stop rule and sole artifact root. The legal-world
-  gate reconstructs post-burial hands and replays every public trick through
-  the real engine; this repaired 13 snapshot-plausible alternatives that
-  contradicted an earlier pair obligation or successful throw. It still has no
-  training authority. The chronology mechanics and exact material snapshot
-  passed review; the one allowed freeze produced verified packet SHA
-  `6d4e6772…1ed65`, which now needs its separate admission review. Once
-  admitted, O0 belongs on Mini while Teacher-v3
-  continues on Air. O1 depends on O0 proving oracle acquisition, not on the
-  Teacher result; only training that consumes Teacher-v3 labels waits for the
-  Teacher audit.
+- **Suphx O0 is terminal SELECT NONE.** Independent packet admission led to
+  six exact 64-update Mini arms and verified terminal gate SHA
+  `592a009a…bd407c`. The full-information ensemble learned something:
+  oracle-minus-initial was `+0.336` with LCB `+0.274`. Its advantage over the
+  equal-seed public learners was much weaker (`+0.073`, LCB `+0.0025`) and not
+  seed-robust: per-seed means were `+0.344/-0.207/+0.082`. That single failed
+  conjunct correctly blocks O1 despite every legal-world, hidden-information,
+  work, resume, surface, entropy, finite-model and null gate passing. This is
+  evidence against the exact 64-update/fixed-seed O0 recipe, not against all
+  Suphx-style learning. Do not add iterations or tune from O0 DEV. The next
+  packet must use fresh data/seeds and name the mechanism expected to turn
+  privileged information into a stable policy advantage.
 - **Historical DMC2 is invalid evidence, not an RL rejection.** Its defender
   sign, actor immutability and promotion contracts were defective, and it was
   not a faithful AWAC, Suphx or DouZero implementation. Preserve its useful
@@ -122,11 +119,11 @@ closed lane.
   quality.
 - **Immediate order:** (1) monitor the shipped production scheduler without
   changing report-LCB semantics; (2) finish Teacher-v3 Stage-B and its frozen
-  64-state audit on Air; (3) in parallel, re-review, freeze, hash-admit and run
-  Suphx O0 on Mini; (4) let Teacher evidence choose the next teacher-derived
-  learner and let O0 independently decide whether O1 feature removal exists;
-  and (5) reparent the best structured-search candidate to report-LCB. The next
-  strength promotion must beat report-LCB, not the retired MC baseline.
+  64-state audit on Air; (3) synthesize the terminal Direct-Q and O0 diagnostics
+  into one freshly preregistered learner question; (4) let Teacher evidence
+  choose the next teacher-derived learner; and (5) reparent the best
+  structured-search candidate to report-LCB. The next strength promotion must
+  beat report-LCB, not the retired MC baseline.
 
 ### Settled experiment evidence
 
@@ -136,6 +133,7 @@ closed lane.
 | v7 value leaf | Historical 605-595 (50.4%, n=1,200) used a leaf factory that discarded seeds. The hardened screen was 52.8%, `+0.024 +/- 0.215` versus the MC reference. | No verified edge; retain only as historical initializer/control. Numpy inference remains useful engineering (about 14 ms/decision and torch-identical play). |
 | v13 absolute-value leaf | Offline fit improved, but direct paired v13-minus-v7 was `-0.028 +/- 0.185`; train/deploy shifted both ply distribution and ballot. | **NOT CONFIRMED.** Better fit to `Q^Heuristic` did not improve the bot. |
 | Standalone learned policy | Across more data, better labels, epochs, margin-aware targets and warm/scratch starts, standalone nets remained roughly 38-48% versus MC. | Pause as a strength-development line; keep as a cheap diagnostic/deployment baseline. |
+| Suphx O0 oracle acquisition | Three fixed oracle/public seed pairs, 64 updates each, 128 untouched DEV deals and verified gate `592a009a…bd407c`. Oracle-initial `+0.336` (LCB `+0.274`); oracle-public `+0.073` (LCB `+0.0025`); seed means `+0.344/-0.207/+0.082`. | **SELECT NONE for this recipe.** Full information produced aggregate learning signal but not robust seedwise advantage, so O1 is unauthorized. Diagnose and preregister fresh rather than extending inspected DEV. |
 | gen-v4 flywheel | About two million decisions from 36,360 rounds, teacher `mc-vleaf-v7w-ep02`, fast engine, choice-only `TRACTOR_LOCK` rows retained; recorded `teacher_git` `367a822` predates the banker-search defect. v9 did not produce a stronger leaf or standalone policy. | Clean enough for the historical v9-v11 questions, but not a reason to scale the same teacher contract. Pool-Elo gaps under about 40 are not direct evidence. |
 | Rollout-policy replacement | Two superiority tests tied, including one with a roller rated 93 Elo stronger; neither was an equivalence test. | No continuation has been shown stronger. This is not evidence that continuation strength cannot matter. |
 | Banker knows its burial | Corrected duel 149-151 = 49.7%, CI [44.0, 55.3]. | No measurable strength effect; retain the information because it is correct. Incident: `incidents/2026-08-03-banker-search-disabled.md`. |

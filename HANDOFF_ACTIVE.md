@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-07 23:21 EDT. This is the executable mailbox only.
+Last update: 2026-08-08 01:18 EDT. This is the executable mailbox only.
 Durable discussion and retractions remain in `HANDOFF_REVIEW.md`; policy
 synthesis belongs in `AI_POLICIES.md`.
 
@@ -34,46 +34,20 @@ synthesis belongs in `AI_POLICIES.md`.
 - **Direct-Q: COMPLETE / SELECT NONE.** Gameplay was
   `+0.162760 +/- 0.058755`, but seed 1 and both pooled role held-out MSE gates
   failed. Aggregate SHA `1fa6789e…ce791`; it authorizes nothing.
-- **Suphx O0: MATERIAL PASS / PACKET FROZEN AND VERIFIED / HASH REVIEW
-  REQUIRED / NO TRAINING.** Exact
-  pushed commit `b22ee8e` produced and reopened Mini artifact
-  `4f0c3dd542634b66fd0826a8caef5dc21c7a8b083f96804d1f2f9bbe653ee434`.
-  Six disposable endpoint updates took 2.665s and support the capped
-  64-iteration-per-arm recommendation. No learned candidate survived and all
-  O0/O1/training/production authority fields are false. `dd83182` supplied the
-  exact fixed-ensemble freezer, 128-state DEV asset, six-arm train/resume path,
-  deterministic two-flip evaluator and terminal gate. The 22:57 review then
-  proved that 10 selected hidden-hand witnesses and three hidden-burial
-  witnesses could satisfy the final snapshot caps while violating an earlier
-  pair obligation or successful throw. Exact pushed repair `7b15338` now
-  reconstructs every post-burial hand and replays the complete public trick
-  sequence through real `Round.play`, with the rollout validation bypass forced
-  off. It compares the engine's actual play, trick resolution, leader, turn,
-  remaining hands and points against the public state. It also pins every
-  command to exact root
-  `server/runs/logs/suphx-o0-fixed-ensemble-v1`; an operator-selected root is
-  refused before publication. Packet admission now also rejects a run-internal,
-  plain-prose, HOLD or wrong-packet review and requires one explicit PASS marker
-  bound to the exact packet SHA and narrow authority. Focused tests pass 25/25,
-  the adjacent matrix passes 196/196 in both routes, and the broad ordinary
-  suite passes 1,030 with 27 skips at exact current code.
-  Routine packet reopening no longer regenerates 128 DEV games: a local probe
-  measured 10.04s for semantic generation versus 3.1 microseconds for the
-  hash/structure check. Full semantic regeneration remains at freeze/review,
-  and diagnostics plus every raw round replay remain in the terminal gate;
-  all long phases now emit progress. The repaired full 128-state generation
-  takes 12.63s and remains exactly 32/32/32/32 by surface, with hidden-burial
-  witnesses in every surface. The 23:52 review passed the repaired chronology
-  mechanics and held only because material `SUPHX_MICRO_SPEC.md` still said
-  22/22 instead of 25/25. Exact pushed material commit `9aabf0b` corrects that
-  one count. The 00:49 review explicitly passed that exact material snapshot
-  for one packet freeze. The one allowed freeze then published and
-  semantically reopened `launch_packet.json` at SHA-256
-  `6d4e6772e94df292fe0a7b72735ea3995e4f6098cca9e5c37ab12268bed1ed65`.
-  The namespace contains only the frozen spec, 128-state DEV asset, three
-  initial checkpoints and launch packet; no admission, training, evaluation
-  or gate artifact exists. A separate packet-hash review is now the sole O0
-  launch blocker.
+- **Suphx O0: COMPLETE / SELECT NONE.** Claude's exact packet marker was
+  copied and hash-admitted at admission SHA `67f79f29…3e590b`. All six frozen
+  Mini arms completed 64/64 updates with real midpoint teardown/resume, and
+  all three DEV evaluations exited zero. Terminal gate SHA
+  `592a009aaf6fbd6680b6d9bab5e9738832050d1654b71dc6f2e19612d0bd407c`
+  independently replays with `verified=true`. Oracle-minus-initial was
+  `+0.335938`, LCB `+0.273991`; oracle-minus-public was `+0.072917`, LCB
+  `+0.002548`. Per-seed oracle-minus-public means were
+  `+0.343750/-0.207031/+0.082031`, so the registered all-seeds robustness
+  criterion failed. Every other exact-work, resume, legal-world,
+  hidden-information, entropy, finite-model, surface and same-model-null gate
+  passed. O1/strength/production authority are all false. Do not extend or
+  retune this inspected recipe; preserve it as evidence that oracle learning
+  was aggregate-positive but weak and seed-unstable.
 - **DEV-512:** SELECT NONE / closed. CALIB and REPORT remain sealed.
 
 Fresh executable reopening at 00:06 on August 8 independently reproduced
@@ -88,11 +62,12 @@ from its original clean `b365120` runtime returned
 ## Running compute
 
 Air launched eight compiled+strict Teacher-v3 Stage-B gold workers at exact
-`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 23:57 shard 1 had completed
-cleanly with its process gone, terminal success sentinel present, one regular
-final and no partial; seven Python workers remained healthy. Outcome-blind
-fold progress by shard was `1248/2048/1156/1076/824/1104/1260/1352`, or
-61.5% aggregate (`10,068/16,384`). The reviewed readiness checker recognized
+`1a2a713`, namespace `teacher-v1-entry-149m-v3`. At 01:18 shard 1 remained the
+only clean terminal publication, with its process gone, terminal success
+sentinel present, one regular final and no partial; seven Python workers were
+healthy. Corrected sequential outcome-blind fold progress by shard was
+`1636/2048/1396/1464/1004/1304/1564/1524`, or 72.9% aggregate
+(`11,940/16,384`). The reviewed readiness checker recognized
 that exact one-final/seven-worker state and correctly returned not ready with
 no opened outcome or created artifact. This proves
 liveness but is not a compute-weighted ETA because ballot sizes and
@@ -165,10 +140,10 @@ reports the one exact descendant `registry_sha256` drift after C1 added a
 policy. The test now proves the frozen introduction blob and this fail-closed
 condition explicitly rather than misreporting a regression.
 
-Mini has no long strength job. The exact O0 packet is frozen and verified at
-SHA `6d4e6772...1ed65`; Mini remains available while those exact packet bytes
-receive their separate hash-bound review. The material PASS and frozen packet
-alone are not admission or training authority.
+Mini has no long strength job. Suphx O0 is terminal SELECT NONE and all six
+training/evaluation services are unloaded. Mini is available for the next
+fresh, independently frozen strength screen; it must not extend Direct-Q, O0
+or protected V11 from their inspected outcomes.
 
 ### Frozen Teacher transition names
 
@@ -445,14 +420,12 @@ at 23:21.
    release 16 only for a correctness, responsiveness or availability
    regression; policy rollback to `mc-strong` and CPU resize remain separate
    decisions.
-4. Independently review exact frozen Suphx O0 packet SHA
-   `6d4e6772e94df292fe0a7b72735ea3995e4f6098cca9e5c37ab12268bed1ed65`.
-   Do not admit or train until the external record contains the required
-   machine-readable PASS marker bound to those bytes. On PASS, hash-admit that
-   record and run only the six frozen Mini arms. O1 remains outside this packet
-   until O0 proves oracle acquisition.
+4. Preserve Suphx O0 gate SHA `592a009a…bd407c` as terminal SELECT NONE.
+   Do not extend it or enter O1. Use its weak aggregate oracle-public edge,
+   seed-1 reversal and near-uniform policy diagnostics only to preregister a
+   fresh learner question on new seeds/data.
 
-## Review request for Claude
+## Review context and next Claude request
 
 The 20:51 review accepted the Stage-B artifact-completion substitute and Suphx
 runtime admission while preserving their narrow authority; the heading in
@@ -490,47 +463,42 @@ and compiled+strict focused tests pass 25/25. The 00:49 review explicitly
 passed exact material snapshot `9aabf0b`; the one allowed freeze and independent
 semantic reopen then produced exact packet SHA
 `6d4e6772e94df292fe0a7b72735ea3995e4f6098cca9e5c37ab12268bed1ed65`.
-Please review those exact packet bytes and append the required single bare
-`SUPHX_O0_PACKET_REVIEW_V1 {json}` line binding that SHA, literal PASS,
-independent review and O0-training authority, with O1/strength/production
-authority all false. No admission or training has run.
+That packet review is now complete. Its exact external marker was admitted,
+all six arms and three DEV evaluations completed, and terminal gate
+`592a009a…bd407c` independently verified SELECT NONE. Do not repeat any O0
+entry point.
 
-The exact canonical marker requested is:
+After the current broad adversarial code/evidence audit, please provide a
+separate **strategy synthesis**. Read `docs_archive/daily-log-2026-08-05.md`
+through `daily-log-2026-08-08.md`, then current `BACKLOG.md`, `RL_PLAN.md` and
+`AI_POLICIES.md`. Reconcile those documents with the terminal report-LCB,
+DEV-512, V11-v2, Direct-Q and O0 evidence plus the still-running Teacher-v3
+boundary. Do not open live Teacher outcomes, change code, launch compute or
+turn this strategy review into a new execution gate.
 
-```text
-SUPHX_O0_PACKET_REVIEW_V1 {"independent_review":true,"o1_authorized":false,"packet_sha256":"6d4e6772e94df292fe0a7b72735ea3995e4f6098cca9e5c37ab12268bed1ed65","production_promotion":false,"schema":"suphx-o0-packet-review-v1","strength_claim":false,"training_authorized":true,"verdict":"PASS"}
-```
+Please append a concise entry to `HANDOFF_REVIEW.md` answering:
 
-This is a narrow packet-byte review, not another algorithm-design review.
-Claude should perform exactly these checks without invoking `freeze`, `admit`,
-`train`, `evaluate` or `gate`:
+1. What are the five most decision-relevant findings from the last four days,
+   and which common interpretation of each would be wrong?
+2. Does the current three-lane strength plan still target the shortest credible
+   path to beating `mc-s0-report-lcb`? Identify any lane that should be stopped,
+   merged, reordered or added.
+3. What do Direct-Q's positive gameplay/failed held-out gate and O0's positive
+   aggregate oracle signal/failed seed robustness jointly imply about the next
+   learner mechanism? Separate implementation-risk hypotheses from genuine
+   algorithmic negatives.
+4. How should Teacher-v3, the high-N/late-ply reservoirs, v11pair proposals and
+   search/oracle labels feed one flywheel without merely imitating the current
+   champion?
+5. Give the next three preregistered experiments in order, with hypothesis,
+   parent policy, data source, minimum control, screen metric, stop gate,
+   approximate Mini/Air cost and the result that would justify scaling.
+6. Name the highest-value analysis or code work that can proceed while Air is
+   occupied, and explicitly list runs that would waste compute now.
 
-1. Confirm `server/runs/logs/suphx-o0-fixed-ensemble-v1/launch_packet.json` is
-   a regular file whose SHA-256 is exactly
-   `6d4e6772e94df292fe0a7b72735ea3995e4f6098cca9e5c37ab12268bed1ed65`.
-2. From `server/`, run the command below. It must regenerate and
-   chronologically validate all 128 DEV states, reopen every packet reference,
-   reproduce the same packet SHA and exit zero:
-
-   ```sh
-   env -u SHENGJI_WEIGHTED_SPLITS -u SHENGJI_UNIFORM_DEAL \
-     -u SHENGJI_PHYSICAL_FILLS -u SHENGJI_ALLOW_BALLOT_MISMATCH \
-     SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 \
-     .venv/bin/python scripts/suphx_o0_screen.py verify-packet \
-     --packet runs/logs/suphx-o0-fixed-ensemble-v1/launch_packet.json
-   ```
-3. Confirm runtime git `49e858a` has source hashes equal to reviewed material
-   snapshot `9aabf0b` with no later material delta, and that the packet binds
-   the fixed artifact root, preflight SHA `4f0c3dd5...434`, three initial
-   checkpoints, frozen spec/DEV references and collision-free training/DEV
-   deal domains. Confirm its own fields keep `training_authorized`, `o1_authorized`,
-   `strength_claim` and `production_promotion` false.
-4. Confirm the namespace has no `review_admission.json`, training manifest or
-   ledger, DEV result or `gate.json`. There are no outcomes to inspect.
-5. If and only if all checks pass, append the single canonical marker above as
-   a bare line to `HANDOFF_REVIEW.md`. That marker authorizes only copying and
-   hash-admitting this external review record and running the frozen O0 arms.
-   It does not authorize O1, a strength claim or production.
+Distinguish established evidence, inference and recommendation. Optimize for
+verified bot strength rather than novelty or low latency, and make the plan
+specific enough to copy into the ordered backlog without another design round.
 
 ## Standing rules
 

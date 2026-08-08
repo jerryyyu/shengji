@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 23:57 EDT
+## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-08 01:18 EDT
 
 Air launched eight compiled+strict `teacher_v1_label.py gold` workers in clean
 detached worktree `~/Projects/shengji-teacher-air` at exact commit
@@ -14,9 +14,10 @@ cannot change the independently frozen 64-state report-LCB continuation audit.
 
 Shard 1 completed cleanly after 33,126.2 seconds: its original Python process
 exited, its regular final and terminal success sentinel exist, and no partial
-remains. Seven Python workers remain live. At 23:57 the outcome-blind fold
-counters were `1248/2048/1156/1076/824/1104/1260/1352`, or
-`10,068/16,384` (61.5%). No outcome file was opened. This is a liveness
+remains. Seven Python workers remain live. At 01:18 the corrected sequential
+outcome-blind fold counters were
+`1636/2048/1396/1464/1004/1304/1564/1524`, or `11,940/16,384` (72.9%). No
+outcome file was opened. This is a liveness
 counter, not a compute-weighted ETA:
 ballot sizes and continuation costs differ by state. The exact one-shot
 readiness and gate
@@ -114,12 +115,39 @@ hashes and now carries two bounded non-vacuous regressions. The focused file is
 10/10 and the adjacent sampler/memory/invariant matrix is 63/63 in both normal
 and compiled-strict modes.
 
-Mini has no long strength worker. RLCB-C1, V11-v2 and Direct-Q are terminal;
-the bounded Suphx O0 timing preflight below completed in seconds. Mini is
-available while frozen O0 packet SHA `6d4e6772...1ed65` receives its separate
-independent hash review. No learning job has started.
+Mini has no long strength worker. RLCB-C1, V11-v2, Direct-Q and Suphx O0 are
+terminal. All O0 launch/evaluation services are unloaded; Mini is available
+for the next freshly reviewed strength screen.
 
-## FROZEN / AWAITING PACKET-HASH REVIEW / Suphx O0 (no training)
+## COMPLETE / SELECT NONE / Suphx O0
+
+Claude appended the one exact machine-readable review marker for packet SHA
+`6d4e6772...1ed65`. The operator copied and hash-bound those external bytes;
+admission SHA is `67f79f29bfec4428485800875fe62d842ee25b2f03f95a41b0e99664c23e590b`.
+All six Mini arms then completed exactly 64 rounds/updates, each with a real
+32-update runner/learner teardown and exact resume. All six manifests, 384-row total
+ledgers, checkpoints, adopted actors, causal deal streams, finite models and
+four role/surface totals reopened successfully. Three frozen DEV evaluations
+completed with exit zero and no stderr.
+
+Terminal gate SHA-256 is
+`592a009aaf6fbd6680b6d9bab5e9738832050d1654b71dc6f2e19612d0bd407c`.
+An independent `verify-gate` reran every diagnostic and all 2,304 raw
+comparison rounds and returned `verified=true`, `verdict=SELECT_NONE`.
+Oracle-minus-initial was `+0.335938`, one-sided LCB `+0.273991`;
+oracle-minus-public was `+0.072917`, LCB `+0.002548`. Per-seed
+oracle-minus-public means were `+0.343750/-0.207031/+0.082031`, so seed 1
+failed the preregistered all-seeds robustness conjunction. Every other gate
+passed: exact packet/admission/work/resume, all four surfaces, finite models
+and controllers, entropy floor, legal hidden-hand and burial oracle witnesses,
+exact public invariance, positive oracle-initial means for every seed, both
+aggregate LCBs and the exact-zero same-model null.
+
+The terminal result authorizes neither O1 freeze/review, O1 training, a
+strength claim nor production. Do not extend iterations, add seeds or tune on
+the inspected DEV population. Near-unit normalized policy entropy and the
+small oracle-public margin are diagnostics for a fresh mechanism-level design,
+not alternate pass routes.
 
 Pushed exact O0 material commit `7b15338` implements the fixed-three-seed O0
 freezer, 128 one-state-per-deal DEV asset, six 64-update arms with real midpoint
@@ -173,11 +201,9 @@ the exact DEV asset; the terminal gate still recomputes every diagnostic and
 semantically replays every raw comparison round. Freeze, diagnostics,
 evaluation and replay now print bounded progress.
 
-The exact namespace contains only `spec.json`, `dev.json`, three initial
-checkpoints and `launch_packet.json`; no admission, training, evaluation or
-gate artifact exists. Do not invoke `freeze` again or invoke `admit`, `train`,
-`evaluate` or `gate` yet. The exact packet bytes now require a second
-hash-bound independent review before Mini may run the six arms.
+The exact namespace is now terminal and immutable: frozen inputs, copied review
+and admission, six training manifests/ledgers, three DEV results and one gate.
+Do not invoke any O0 entry point again.
 
 ## COMPLETE / Suphx O0 score-redacted runtime preflight (Mini)
 

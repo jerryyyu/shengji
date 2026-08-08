@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-08 17:25 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-08 17:32 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,13 +10,18 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING:** exact launch review passed; one-shot preparation and zero-problem post-preflight completed. Supervisor admitted at 16:33 EDT and owns 8/8 live label shards at outer 32/32 folds. Wait for one terminal gate; no duplicate/retry/migration. |
+| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** supervisor admitted at 16:33 EDT and owns 8/8 CPU-bound label shards. At 17:30, outcome-blind progress was ~17% of outer worlds and ~13% of a candidate×remaining-ply work proxy. Slowest-shard linear projection is roughly 10–16 hours, not a same-evening finish. Wait for one terminal gate; no duplicate/retry/migration. |
 | Air | none | Preserve failed Teacher audit-v1/v2 roots and the frozen source assets. Air is evidence source/fallback, not the selected execution host. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
 The T1 Teacher audit is **running on Mini**. Receipt
 `e293858c…a10d` and preparation `83892930…c39` are exact, and the supervisor
 post-preparation preflight returned zero problems. Air remains idle by design.
+The runtime forecast uses only score-free progress events emitted after each
+outer world plus frozen candidate counts/ply; it reads no utility, regret,
+choice or gate outcome. It is operational sizing, not evidence. The job is
+healthy but the nested report-LCB continuation geometry was not throughput-
+preflighted before launch.
 
 ## Next admitted execution
 

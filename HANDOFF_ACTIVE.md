@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 17:25 EDT. This is the executable mailbox, not a
+Last update: 2026-08-08 17:32 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -34,6 +34,15 @@ disjoint report worlds with bounded unscored retries. Do not start another
 instance, migrate to Air, inspect partial scores for decisions, retry, extend,
 train, promote, or launch Stage C. Wait for the supervisor's single terminal
 gate and independently reopen every binding.
+
+Outcome-blind runtime audit at 17:30 found ~17% of outer worlds and ~13% of a
+candidate-count × remaining-ply work proxy complete after ~56 minutes. Because
+the frozen partition is highly imbalanced (1–14 candidates and ply 0–72), a
+simple slowest-shard projection is roughly 10–16 hours. This is not a stall:
+all eight workers remain CPU-bound and every log advances. It does mean a
+same-evening terminal gate is unlikely. Never use this operational forecast to
+read or stop on outcomes; do not repartition, duplicate, migrate or mutate the
+reviewed one-shot chain.
 
 ## CLOSED REVIEW — terminal adapter v2 PASS
 

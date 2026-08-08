@@ -129,6 +129,11 @@ do not reopen terminal outcomes; they gate reuse of the named machinery:
   tests, then require kitty-to-banker card flow or explicitly legal relabeling;
 - before reusing RLCB-C1 or Stage-B readiness, pin record `run` to manifest
   run ID and make worker discovery accept absolute script paths by basename.
+- before any future nested-policy Teacher audit, require a score-free
+  candidate×ply throughput preflight and frozen slowest-shard wall budget.
+  Audit-v3 is healthy but exposed this missing operational gate only after its
+  one-shot launch; never resize or reinterpret the live evidence because of
+  the post-launch forecast.
 
 ### Strategy-audit decision
 

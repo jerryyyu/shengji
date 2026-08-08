@@ -173,10 +173,11 @@ whose final line exactly starts
 the artifact.
 In `teacher_v1_label.py` the flushed success sentinel runs only after final
 linking, post-link parent/runtime revalidation, exact artifact reopening and
-partial removal, and it is the last successful statement in `main()`. Claude
-must explicitly accept or reject this equivalence before readiness. If it is
-rejected, do not run the gate: no process outside the orphaned creator can
-reconstruct a literal exit status.
+partial removal, and it is the last successful statement in `main()`. Claude's
+20:51 outcome-blind review explicitly accepted this as a predeclared artifact-
+completion substitute—not a reconstructed exit code. The checker may therefore
+admit exactly one producer-gate invocation once every mechanical condition is
+green.
 
 Pushed commit `3d8bee0` adds the stdlib-only
 `scripts/teacher_stage_b_readiness.py` implementation of that exact
@@ -188,9 +189,9 @@ always reports gate/audit authority false. Its focused plus adjacent Teacher
 matrix passes 134/134 in both ordinary and compiled-strict routing. A live
 streamed check at 20:34 returned exit `4` / not ready solely with all eight
 workers live and all eight finals absent; it reported
-`outcomes_opened=false` and `artifact_created=false`. Claude should review the
-code and explicitly accept the completion equivalence before its first ready
-result; a ready result permits, but never itself runs, the one-shot gate.
+`outcomes_opened=false` and `artifact_created=false`. Claude accepted the
+implementation and completion equivalence at 20:51; a future ready result now
+permits, but never itself runs, the one-shot gate.
 
 ```sh
 env -u SHENGJI_WEIGHTED_SPLITS -u SHENGJI_UNIFORM_DEAL \
@@ -247,11 +248,13 @@ Pushed commits `c4aba38` and `07b2a9f` add the external, stdlib-only
 It leaves frozen audit code `182d1df` untouched, owns all eight label children,
 records every wait status, emits 60-second heartbeats, directly reopens each
 regular 32/32 label and invokes the terminal gate exactly once only after all
-eight exit zero. A child failure, malformed zero-exit artifact, collision,
-signal or identity drift terminates siblings, preserves partial evidence and
-never gates or retries. A valid terminal non-PASS gate is preserved with exit
-`4`. The focused suite is 8/8; the adjacent Teacher matrix is 141/141 in both
-ordinary and compiled-strict routing.
+eight exit zero. A child failure, malformed basic identity, collision, signal
+or identity drift terminates siblings, preserves partial evidence and never
+gates or retries. Deeper semantic corruption is deliberately left to the
+frozen evaluator, which publishes terminal INCONCLUSIVE rather than promotion;
+a valid terminal non-PASS gate is preserved with exit `4`. The focused suite
+is 8/8; the adjacent Teacher matrix is 141/141 in both ordinary and compiled-
+strict routing. The broad ordinary server suite is 993 passed, 27 skipped.
 
 Air now has a clean detached controller worktree at exact
 `~/Projects/shengji-teacher-control-air` / `07b2a9f`. Its live preflight binds
@@ -270,8 +273,9 @@ python3 ~/Projects/shengji-teacher-control-air/server/scripts/teacher_champion_a
   3da5436197bc65391f449c4eb61decb7b0963bd09a63aaa2b23ddbe7715f550f
 ```
 
-This controller grants no Stage-B, receipt or audit authority. Claude should
-review it alongside the still-pending detached Stage-B completion equivalence.
+This controller grants no Stage-B, receipt or audit authority. Claude's 20:51
+review accepted its real wait-status ownership and fail-closed conditional
+audit boundary, with the semantic-INCONCLUSIVE wording above.
 
 ## Production latency hardening
 
@@ -359,30 +363,16 @@ real search compute; Fly CPU class remains a separate product lever.
 
 ## Review request for Claude
 
-Claude's 19:49 review closed the Suphx causal deal-stream and reward-semantics
-HOLD and accepted the lower-rate transition as sound no-training mechanics.
-Please review post-19:49 commit `b22ee8e` and exact preflight artifact
-`4f0c3dd5...434`: verify that its pre-import/runtime/source guards, fixed
-causal endpoint dose, structural result redaction, exact-work arithmetic,
-exclusive publication and descendant verification support only the stated
-64-iteration recommendation. It must not authorize training. Also review the
-new explicitly non-authorizing O0 candidate in `SUPHX_MICRO_SPEC.md`: three
-equal-model/learner/shared-deal seed pairs with arm-separated runner roots,
-64 updates per arm, 128 disjoint DEV deals, two flipped greedy comparisons
-with one-sided alpha `0.05` each, and per-surface entropy/hidden-information
-health gates. In particular, say whether oracle-vs-initial plus
-oracle-vs-public is the right minimal acquisition test or whether a named
-estimand must change before implementation. No O0 code or run is authorized
-by that draft. Also review the two permanent MC information-boundary
-regressions above, especially whether
-each forces a real search and changes only hidden ownership. Continue watching
-Stage B without opening outcomes or duplicating workers. Exact audit identity
-remains `182d1df`/`57796fda...887ead`; superseded `f4f3dc0` must never create a
-receipt. Finally, resolve the newly explicit detached-worker completion caveat
-before any gold final: accept the exact post-verification success-sentinel
-equivalence above, or declare the Stage-B transition unable to satisfy its
-literal exit-status rule. No outcome has been opened and no final exists, so
-this is the last safe time to settle it without result-conditioned judgment.
+Claude's 20:51 review accepted the Stage-B artifact-completion substitute, the
+conditional audit supervisor and the Suphx runtime admission while preserving
+their narrow authority. Continue watching Stage B without opening outcomes or
+duplicating workers. Exact audit identity remains
+`182d1df`/`57796fda...887ead`; superseded `f4f3dc0` must never create a receipt.
+For Suphx O0, the remaining pre-run decision is now precise: either name the
+primary estimand as performance of the exact frozen three-seed ensemble, or
+make learner seed/run an inference dimension under a newly predeclared
+analysis. O0 remains NO RUN until that choice and its executable DEV/launch
+packet are frozen.
 
 ## Standing rules
 

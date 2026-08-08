@@ -25,9 +25,9 @@ eight Python workers are now PPID 1 and there is no `.exit` receipt. Before any
 gold final existed, the handoff therefore exposed—not hid—the exact proposed
 completion witness: original PID gone, final flushed `wrote ... 16 records`
 sentinel, no later refusal, regular final, no partial and successful unchanged
-artifact reopen. Claude must accept that post-verification sentinel as the
-exit-0 equivalent or the gate remains blocked; a literal historical status
-cannot be reconstructed later.
+artifact reopen. Claude's 20:51 outcome-blind review accepted that exact
+predeclared artifact-completion substitute while explicitly not calling it a
+reconstructed exit code. The future ready result may now admit one gate.
 
 Pushed commit `3d8bee0` now makes this readiness boundary executable without
 opening any outcome: the stdlib-only checker validates exact producer/source/
@@ -36,8 +36,8 @@ success logs, but creates no artifact and grants no gate or audit authority.
 The adjacent Teacher matrix passes 134/134 in ordinary and compiled-strict
 routing. Streamed against Air at 20:34 it correctly returned exit `4`, eight
 live Python workers, zero regular finals, `outcomes_opened=false` and
-`artifact_created=false`. Claude still must accept the detached-success
-equivalence before a future ready result may authorize the one-shot gate.
+`artifact_created=false`. Claude accepted the detached-success equivalence and
+checker at 20:51; completion of the eight workers is now the remaining hold.
 
 The later champion-audit launch now has an external one-shot supervisor rather
 than manual detached workers. Exact controller worktree
@@ -45,10 +45,14 @@ than manual detached workers. Exact controller worktree
 is `3da54361...15f550f`. It owns all eight 32/32 labels, persists child exit
 codes, heartbeats, reopens final artifacts and invokes one terminal gate only
 after eight zero exits. Its focused suite passes 8/8 and the adjacent Teacher
-matrix 141/141 in ordinary and compiled-strict routing. A live Air preflight
+matrix 141/141 in ordinary and compiled-strict routing; the broad ordinary
+server suite passes 993 with 27 skips. Basic shard identity is checked before
+gating; deeper semantic failure becomes a frozen terminal INCONCLUSIVE, not a
+promotion. A live Air preflight
 bound exact audit `182d1df`, audit-script SHA `57796fda...887ead` and the
 producer venv's Python 3.14.6, then refused solely because the receipt is
 correctly absent before Stage-B PASS; no audit artifact was created.
+Claude's 20:51 review accepted this conditional wait-status boundary.
 
 The separately pinned audit worktree now exists on Air at exact pushed commit
 `182d1df21697cedd722edfd3215ea1e2a7dd8753`. It carries frozen state SHA

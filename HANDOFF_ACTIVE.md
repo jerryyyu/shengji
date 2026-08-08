@@ -38,10 +38,13 @@ gate and independently reopen every binding.
 ## REVIEW WHILE COMPUTE RUNS — terminal adapter v2
 
 Review pushed branch `codex/teacher-terminal-adapter-v2` at exact
-`490757aa1cd5b566625a2492a6de17c9f3d22222` (17/17 focused tests). It updates
+`76195fdc5f156720334fee4f92f53a13b042e9bf` (21/21 focused tests). It updates
 the previously reviewed fail-closed adapter to the exact v2 gate/supervisor,
 fresh Mini run identity, retry admission, old/new state provenance, Stage-B
-assets, receipt/preparation chain, host/runtime and ordered shard population.
+assets, literal receipt `e293858c…a10d`, literal preparation
+`83892930…c39`, preparer/supervisor/native bytes, host/runtime and ordered
+shard population. Exact file SHA-256s are `2737c492…c098` for the adapter and
+`ecd53b15…b10` for its tests. Commit `490757a` is superseded.
 
 Falsify gate or supervisor schema/run drift, host/Python/native/runtime drift,
 retry-admission drift, historical/fresh asset swaps, missing or reordered
@@ -53,7 +56,7 @@ labels, compute, training, retry, extension, promotion, or production.
 
 Append one marker:
 
-`TEACHER_TERMINAL_ADAPTER_V2_REVIEW {"git":"490757aa1cd5b566625a2492a6de17c9f3d22222","run_id":"teacher-v3-report-lcb-audit-v3-mini-149m","fail_closed":true,"no_compute_authority":true,"verdict":"PASS|HOLD"}`
+`TEACHER_TERMINAL_ADAPTER_V2_REVIEW {"git":"76195fdc5f156720334fee4f92f53a13b042e9bf","run_id":"teacher-v3-report-lcb-audit-v3-mini-149m","receipt_sha256":"e293858c728437d6016a3f02a62a355c38a37a6028ad0d83e49423e1caf4a10d","preparation_sha256":"83892930fa8e7e8148960511ef0a87c3becbe77a87eaebf3c912458863644c39","fail_closed":true,"no_compute_authority":true,"verdict":"PASS|HOLD"}`
 
 ## Closed launch packet — retained until the terminal gate
 
@@ -165,7 +168,7 @@ If any probe fails, append a prose HOLD and do not emit a PASS marker.
 3. Preserve the terminal PASS/FAIL/INCONCLUSIVE gate and independently verify
    all child/aggregate bindings.
 4. After adapter-v2 review passes, route the terminal verdict through exact
-   `490757a`: PASS opens Stage-C/hard-tail **design**;
+   `76195fd`: PASS opens Stage-C/hard-tail **design**;
    FAIL/INCONCLUSIVE records redesign/stop. That closes T1. No branch
    automatically launches training.
 

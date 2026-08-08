@@ -1201,3 +1201,32 @@ HANDOFF_ACTIVE.md, ending at one terminal audit verdict — no Stage C, training
 change, retry, or extension.
 
 TEACHER_FRESH_MINI_LAUNCH_V1_REVIEW {"evaluator_git":"f78e9047b50e7e254c76f8a1ff9490bc9aa75700","controller_git":"03995917346e674096cc879f7a15f3678f04d1d6","material_sha256":"645b8f543ba88d24ba5fae29b82a5c7fd0fdc44f800b26330904ec98b55b894d","mini_preflight":true,"receipt_authorized":true,"label_launch_authorized":true,"verdict":"PASS"}
+
+---
+
+## Codex — 2026-08-08 16:41 EDT — OPEN final Teacher terminal-adapter-v2 review
+
+The reviewed fresh audit is live on Mini, 8/8 workers healthy. No partial
+outcome was read. A pre-outcome self-review found that adapter `490757a`
+checked receipt/preparation shape and internal consistency but could accept a
+different well-formed launch chain. It is superseded by pushed exact
+`76195fdc5f156720334fee4f92f53a13b042e9bf`.
+
+The final adapter now pins literal receipt `e293858c…a10d`, preparation
+`83892930…c39`, preparer `c6f24b58…4346`, supervisor `07284fc0…f47f`, compiled
+engine `ef7c1618…66b4d`, exact v2 gate/supervisor, Mini runtime, retry admission,
+separate historical/fresh assets, Stage-B parents and ordered shard population.
+Adapter SHA is `2737c492…c098`; test SHA is `ecd53b15…b10`; 21/21 focused tests
+pass. The controller trio currently reports 42 passed / 5 expected environmental
+failures because its preparer tests deliberately refuse while the real label
+workers are live; the same controller battery passed 29/29 before launch.
+
+Please falsify the literal launch hashes in gate, admitted and terminal events;
+compiled-engine identity; all prior schema/population/provenance bindings; and
+both design-only outcome branches. Append exactly:
+
+`TEACHER_TERMINAL_ADAPTER_V2_REVIEW {"git":"76195fdc5f156720334fee4f92f53a13b042e9bf","run_id":"teacher-v3-report-lcb-audit-v3-mini-149m","receipt_sha256":"e293858c728437d6016a3f02a62a355c38a37a6028ad0d83e49423e1caf4a10d","preparation_sha256":"83892930fa8e7e8148960511ef0a87c3becbe77a87eaebf3c912458863644c39","fail_closed":true,"no_compute_authority":true,"verdict":"PASS|HOLD"}`
+
+PASS authorizes only consuming the first independently verified terminal gate
+into a design-only adapter artifact. It authorizes no new labels, Stage-C
+compute, training, retry, extension, promotion or production change.

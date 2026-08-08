@@ -46,7 +46,9 @@ STAGE_B_STATE_SHA256 = (
 AUDIT_STATE_SHA256 = (
     "d04d1c0fa507bab680da4d53eeb72325a97c8ca058aac0d01c16dfdcf44f7a34"
 )
-CONSUMED_AUDIT_STATE_SHA256 = AUDIT_STATE_SHA256
+CONSUMED_AUDIT_STATE_SHA256 = (
+    "d04d1c0fa507bab680da4d53eeb72325a97c8ca058aac0d01c16dfdcf44f7a34"
+)
 AUDIT_STATE_FREEZE_GIT = "7040489b458db86a68576b146a280fd4598bbac0"
 AUDIT_TRANSITION_PARENT = "c40a31c2d58c171f2172496d928f719932247730"
 AUDIT_TRANSITION_PATHS = {
@@ -1298,6 +1300,12 @@ def select_fresh_complement(
     set complement.  This function deliberately accepts state metadata only;
     no cheap/gold/champion label is an input.
     """
+    if (not isinstance(states, list)
+            or not all(isinstance(state, dict) for state in states)):
+        return [], ["fresh complement parent population is malformed"]
+    if (not isinstance(consumed_states, list)
+            or not all(isinstance(state, dict) for state in consumed_states)):
+        return [], ["consumed audit population is malformed"]
     expected_consumed, bad = select_states(states)
     if consumed_states != expected_consumed:
         bad.append("consumed audit population differs from frozen v1 selection")

@@ -123,6 +123,15 @@ def test_fresh_audit_refuses_rebound_or_incomplete_consumed_population():
     assert "consumed audit population identity/count" in problems
     assert "fresh complement 65, required 64" in problems
 
+    _, problems = audit.select_fresh_complement(rows, [None])
+    assert problems == ["consumed audit population is malformed"]
+
+    _, problems = audit.select_fresh_complement(rows, [{"state_id": []}])
+    assert "fresh complement has invalid state identities" in problems
+
+    _, problems = audit.select_fresh_complement(["not-a-state"], consumed)
+    assert problems == ["fresh complement parent population is malformed"]
+
 
 def test_fresh_audit_selection_is_outcome_blind():
     rows = parent_states()

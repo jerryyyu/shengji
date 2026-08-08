@@ -324,11 +324,12 @@ fresh namespace require one separate literal launch review.
 
 Integration is prepared but not merged or authorized. Pushed branch
 `codex/s3a-duel-integration-v1` at exact `623ffb736552f2c1fd8eeeca3e869652d280fa1e`
-merges current main into the review hierarchy. All four reviewed source/test
-files remain byte-identical to `b5dee2e` / `0085409`; the combined
+merges main through `0af232a` into the review hierarchy. All four reviewed
+source/test files remain byte-identical to `b5dee2e` / `0085409`; the combined
 S3a/parent/progress battery passes 69/69 under Python 3.14.3. Do not review or
-merge this candidate until both exact markers above pass. If main advances,
-the integration Git must be regenerated rather than silently rebased.
+merge this candidate until both exact markers above pass. Final integration
+must include any later main-only ledger commits in a new explicit merge and
+rerun byte equivalence; never silently rebase the reviewed files.
 
 ## Standing rules
 

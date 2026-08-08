@@ -98,8 +98,9 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 | **T1 / Lane A production latency — COMPLETE / LIVE MONITOR** | Keep the first stronger-than-MC production policy enjoyable to play | Fly release 17 runs exact `latency-cd6789e` / `047bcfe4...5b300`. Health, native activation, claim, reconnect, stale-discard, X-ray isolation and concurrent WebSocket responsiveness passed live. Keep release 16 as the runtime rollback and `mc-strong` as the separate policy rollback; collect ordinary human-room timing before considering a CPU resize. |
 | **T1 / Lane A.1 V11pair — COMPLETE / SELECT NONE** | Preserve the learned milestone without forcing it into the champion | Artifact repair passed; the frozen rule rejected protected composition. Keep v11 as a bounded proposer/ranker and teacher diagnostic only. No protected-anchor run is authorized. |
 | **T1 / Lane B teacher — AUDIT-V2 RUNNING** | Determine whether cheap N=30 choices remain good under the full champion continuation | Exact review passed. Receipt `ce51b826…71d0` and preparation `7f89a86c…6605` bind evaluator `1866132`, controller `edc923f`, the v2 run ID and all 20 parents. Air supervisor PID 95339 owns eight unchanged 32/32 shards and will gate once after exact zero exits. Preserve any terminal result; never retry. |
-| **T2 / S3a structured bury — PARENT REPAIR REQUIRED** | Test whether a much wider, strategy-aware kitty ballot finds better once-per-round decisions | The 512-state v1 mechanism screen already exists at `e946696`: structured versus legacy-four versus trigger-matched random widening, with a disjoint 120-world report fold and exact work accounting. It is non-promotable and currently derives `mc-strong` from formal S0. Freeze a v2 parent that binds exact live `mc-s0-report-lcb`; a PASS may authorize designing a fresh full-game duel, nothing more. |
-| **T2 / S3b sampled exact endgame — PARENT REPAIR + PREFLIGHT REQUIRED** | Replace heuristic continuation with bounded exact solving when every hand has at most four cards | Mechanics challenge `2370a27`/`2bb571f` and the blinded 2,048-screen/8,192-confirm runner `79985a2`/`8ee6691` exist. The registry has report-LCB variants, but the runner's formal-S0 loader still resolves to `mc-strong`, making the live lane unreachable. Bind a fresh live-champion parent, rerun focused tests/review, then run only the two-cluster score-free Mini throughput preflight before strength compute. |
+| **T2 / live parent + S3 reparenting — IMPLEMENTED / REVIEW REQUIRED** | Make every new search mechanism challenge the bot people actually play | Pushed `05ea1d1` adds `live-champion-parent-v1`, independently reopens exact RLCB-C1 closeout `06dd487d…b7aae5` / aggregate `83f5a9df…f5ef5ea`, binds source/registry/compiled-ballot semantics, and forbids formal-S0 `mc-strong`. S3a/S3b use fresh v2 schemas and only the report-LCB lane. 27/27 replay-heavy S3a plus 45/45 parent/S3b/support tests pass; no compute until external review. |
+| **T2 / S3a structured bury — V2 CODED / SIZING + REVIEW REQUIRED** | Test whether a much wider, strategy-aware kitty ballot finds better once-per-round decisions | V2 preserves exact 512 states, three arms, R=120 disjoint report worlds and exact work while changing only the authenticated reference to live report-LCB. It remains a state-level, non-promotable mechanism screen: PASS may authorize designing a fresh full-game duel only. Add an outcome-free out-of-population timing receipt before deciding its longer Mini/Air placement. |
+| **T2 / S3b sampled exact endgame — V2 CODED / REVIEW + PREFLIGHT REQUIRED** | Replace heuristic continuation with bounded exact solving when every hand has at most four cards | V2 preserves mechanics `2370a27`/`2bb571f`, the blinded 2,048-screen/8,192-confirm geometry and the champion-matched null, but only exact live report-LCB is reachable. After review, run the two-cluster score-free Mini throughput preflight; no strength scores or raw outcomes survive it. |
 | **T1 / Lane C Direct-Q — COMPLETE / SELECT NONE** | Learn from the failure without selecting its positive gameplay tail | Preserve aggregate SHA `1fa6789e…791`; do not deploy, extend or mutate the 144M recipe. The next learner requires a separately frozen Suphx-style or other role-correct microbaseline gate. |
 | **T1 / Lane C Suphx O0 — COMPLETE / SELECT NONE** | Test whether a full-information policy can learn before spending compute on feature removal | Preserve gate SHA `592a009a…bd407c`. Both ensemble LCBs passed, but seed 1 lost to its equal-seed public arm (`-0.207`), failing the registered robustness conjunction. O1 is closed for this exact recipe; the next learner needs a fresh packet, not an O0 extension. |
 | **RLCB-C1 fresh confirmation — COMPLETE / ARTIFACT-ONLY CONFIRM** | Close formal report-LCB superiority | 2,048/2,048 fresh clusters, exact doses, zero stream collisions, sane null and positive superiority LCB. The late dirty-doc supervisor refusal is bound by non-replay closeout SHA `06dd487d…b7aae5`; preserve aggregate SHA `83f5a9df…f5ef5ea`. No extension or S0c reinterpretation remains. |
@@ -167,9 +168,9 @@ bot rather than imitate it.
 
 | order | deliverable | completion gate |
 |---|---|---|
-| **T2.0** | Version one reusable live-champion parent contract for S3 evidence | It binds exact `mc-s0-report-lcb` registry/source/decision semantics and the independent RLCB-C1 confirmation, cannot silently fall back to formal S0's `mc-strong`, fails closed on identity drift, and passes focused mutation tests plus external review. |
-| **T2.1 / S3a** | Run the existing 512-state structured-bury mechanism screen on Mini under a fresh v2 namespace | Exact 512 states, three frozen arms, disjoint selection/report worlds, R=120, exact work and zero forbidden fallbacks. PASS means only `AUTHORIZE_DUEL_DESIGN`; SELECT NONE retires this ballot design. |
-| **T2.2 / S3b** | Run the score-free two-cluster throughput preflight for the report-LCB sampled-exact lane on Mini | No strength outcome is retained. The predeclared screen/confirmation fleet-hour and shard-wall caps must all pass before any 2,048-cluster launch. |
+| **T2.0 — IMPLEMENTED / REVIEW REQUIRED** | Version one reusable live-champion parent contract for S3 evidence | Pushed `05ea1d1`; exact parent verification and 72 focused tests pass. External review must still falsify the evidence/source binding, stale-S0 unreachability and both consumer boundaries before closure. |
+| **T2.1 / S3a** | Size, then conditionally run the 512-state structured-bury mechanism screen under its fresh v2 namespace | First add a score-free timing receipt on fresh non-136M states. If admitted: exact 512 states, three frozen arms, disjoint selection/report worlds, R=120, exact work and zero forbidden fallbacks. PASS means only `AUTHORIZE_DUEL_DESIGN`; SELECT NONE retires this ballot design. |
+| **T2.2 / S3b** | Run the score-free two-cluster throughput preflight for the report-LCB sampled-exact lane on Mini | No strength outcome is retained. Frozen operator ceilings are screen `200` fleet-hours / `30` max shard-hours and confirmation `800` / `120`; all four must pass before any 2,048-cluster launch. These are hard capacity stops, not expected spend or evidence thresholds. |
 | **T2.3 / S3b conditional** | Launch the 2,048-cluster complete-round sampled-exact screen when capacity and preflight permit | Both treatment-minus-champion and treatment-minus-matched-null LCBs >0, null contains zero, exact solver activates, and refusal/overflow/fallback counters are zero. Only PASS admits the untouched 8,192 confirmation. |
 | **T2.4 / Teacher** | Convert the terminal audit into a Stage-C contract | On audit PASS, freeze a hard-tail pilot that mines uncertainty/disagreement but escalates uncertain labels to gold/exact-late and separately gates hard-tail regret. On FAIL/INCONCLUSIVE, freeze the smallest diagnostic/redesign; do not scale the current cheap labeler. |
 | **T2.5 / learner** | Write, but do not yet bundle-run, a fresh O0-v2 mechanism battery | Common-random-number evaluation and at least eight training seeds are common infrastructure; sharpening/dose/target changes are factorially isolated. No O1 or inspected-DEV extension. |
@@ -185,10 +186,35 @@ boundary. It does not require manufacturing a positive result in one day.
    would burn completed work and violate its one-shot boundary without a
    measured speed advantage.
 2. **Mini:** implement and test T2.0, then prefer the short S3b score-free
-   throughput preflight and/or the bounded S3a screen. Do not launch strength
-   work until the exact live parent, namespace and stop rule are committed.
+   throughput preflight. Do not launch strength work until the exact live
+   parent, namespace, operational caps and stop rule are committed and reviewed.
+   Size S3a without retaining registered-screen outcomes before placing it.
 3. **Local/product:** continue passive release-17 timing collection; no policy
    or production change is part of T2.0.
+
+### Parallel implementation queue — never wait idly for a run
+
+Compute and coding are separate queues. Keep at most one reviewed next job
+ready for each free host, but continue the first unblocked implementation item
+whenever a review or run is live:
+
+1. post and clear the independent `05ea1d1` T2.0 review;
+2. add S3a's outcome-free, out-of-population timing receipt and a progress-
+   reporting launcher; do not inspect registered 136M outcomes for sizing;
+3. write the two terminal Teacher adapters now—PASS produces the hard-tail
+   Stage-C contract, while FAIL/INCONCLUSIVE produces only the minimal
+   diagnostic—without selecting either branch before the sealed verdict;
+4. implement common-random-number evaluation and the two-sided logit-margin
+   controller as separable O0-v2 infrastructure; keep dose/target changes out;
+5. version the shared `ExperimentSpec`/progress receipt so reviewed jobs are
+   launch-ready without making promotion or evidence decisions automatic;
+6. if all strength work is review-blocked, use the slot for encoder-provenance,
+   native parity/performance or frontend correctness tests—not an unregistered
+   strength run.
+
+Utilization means useful admitted work, not filling every core. Never duplicate
+a sealed attempt, peek at a live score, weaken a cap after seeing strength, or
+run a stale-parent job just to avoid an idle machine.
 
 ### Explicit non-goals
 

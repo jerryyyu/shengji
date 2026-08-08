@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 08:50 EDT. This is the executable mailbox only.
+Last update: 2026-08-08 09:20 EDT. This is the executable mailbox only.
 Terminal numbers live in `AI_POLICIES.md`, live order in `BACKLOG.md`, exact
 job history in `JOBS.md`, and chronology in `docs_archive/`.
 
@@ -10,6 +10,7 @@ job history in `JOBS.md`, and chronology in `docs_archive/`.
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Compiled `mc-s0-report-lcb`, Fly release 17, image `latency-cd6789e`, manifest `047bcfe4...5b300`. RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`; matched null `-0.019043 +/- 0.068270`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
 | T1 Teacher | **AUDIT-V2 RUNNING** | Stage B passed. One sealed 64-state audit attempt is live on Air. A valid terminal PASS/FAIL/INCONCLUSIVE closes the last T1 gate; no favorable score is required. |
+| T2 live parent | **IMPLEMENTED / REVIEW REQUIRED** | Pushed `05ea1d1` independently authenticates exact `mc-s0-report-lcb`/RLCB-C1, makes formal-S0 `mc-strong` unreachable, and reparents S3a/S3b under v2 schemas. 72 focused tests pass; no compute until the packet below receives external PASS. |
 | Formal S0 | **SELECT NONE / BURNED** | S0c outcomes remain unread and nonretryable. Closeout `ef0a365...fde9a`; never reopen or reinterpret it. |
 | V11 direct-v2 | **SELECT NONE** | `-0.141 +/- 0.070` versus current; protected composition false. V11 survives only as a bounded proposal/ranking/teacher diagnostic hypothesis. |
 | Direct-Q | **SELECT NONE** | Gameplay was positive, but seed 1 and both pooled role held-out gates failed. No extension. |
@@ -46,8 +47,8 @@ The only authorized audit-v2 attempt:
 - eight fixed shards, each 32 selection plus 32 disjoint report worlds;
 - operator log `~/teacher-v3-audit-v2-supervisor.log`.
 
-At 08:43 all eight workers were alive after 26 minutes at roughly 86--92% CPU;
-zero finals had published and the supervisor emitted regular 60-second
+At 09:12 all eight workers and the supervisor were alive, zero finals had
+published and the supervisor emitted regular 60-second
 heartbeats. Monitor only liveness and score-free counters. Do not inspect
 partial outcomes, retry, resume, alter workers, or launch another supervisor.
 On eight exact zero exits, this supervisor alone reopens the labels and invokes
@@ -66,38 +67,45 @@ comparison with the report-LCB bot people play today.
 
 ### S3a — structured bury
 
-- Existing code: `server/scripts/s3a_bury_pilot.py` at introduction commit
-  `e946696`, 512 states / eight shards / seed block 136M.
+- V2 code: `server/scripts/s3a_bury_pilot.py` at `05ea1d1`; it preserves the
+  original 512 states / eight shards / seed block 136M.
 - Arms: structured, legacy four, trigger-matched random widening.
 - Disjoint report dose: 120 worlds; exact work and fail-closed aggregation.
 - Boundary: state-level, non-promotable. PASS only authorizes designing a fresh
   full-game duel; S3a currently has no such strength runner.
-- Blocker: its terminal-S0 parent maps SELECT NONE to stale `mc-strong`.
+- Parent repair: exact live report-LCB only; v1 artifacts and formal-S0
+  `mc-strong` authority cannot enter the v2 namespace.
+- Remaining pre-launch work: external review plus an outcome-free timing
+  receipt on fresh non-136M states. Do not inspect registered outcomes to size.
 
 ### S3b — sampled exact endgame
 
 - Existing mechanics: `2370a27` / `2bb571f`; exact only when every hand has
   at most four cards, cumulative bound 250k nodes per world.
-- Existing strength runner: `79985a2` / mechanics pin `8ee6691`.
+- V2 strength runner: `05ea1d1`, preserving `79985a2` mechanics and pin
+  `8ee6691`.
 - Frozen geometry: 2,048-cluster screen, then untouched 8,192 confirmation;
   complete-round signed-level utility and a champion-matched null.
-- Boundary: the registry contains report-LCB variants, but the formal-S0 parent
-  loader still resolves to `mc-strong`, so that live lane is unreachable.
-- First compute after repair: a two-cluster score-free Mini throughput preflight;
-  it retains no strength scores and must pass predeclared capacity caps.
+- Boundary: only the report-LCB exact/null/champion lane is registered in this
+  runner; `mc-strong`, adaptive and unknown references refuse.
+- First compute after review: a two-cluster score-free Mini throughput
+  preflight. It retains no strength scores or raw outcomes. Frozen hard caps:
+  screen `200` fleet-hours / `30` max shard-hours; confirmation `800` / `120`.
 
 ### Exact implementation order
 
-1. Freeze one versioned live-champion parent contract binding exact
+1. **DONE at `05ea1d1`:** freeze one versioned live-champion parent binding exact
    `mc-s0-report-lcb` policy/source/registry semantics plus independent
    RLCB-C1 confirmation. It must never inherit formal S0's `mc-strong` label.
-2. Adapt S3a and S3b consumers to that parent under fresh schemas/namespaces;
+2. **DONE:** adapt S3a and S3b under fresh v2 schemas/namespaces;
    preserve their state/seed/world/mechanism contracts.
-3. Add mutation tests for stale champion, wrong registry/source, mismatched
+3. **DONE:** add mutation tests for stale champion, wrong registry/source, mismatched
    confirmation, policy drift and fallback to the S0 parent.
-4. Post the exact commit/test/material packet here for independent review.
-5. On review PASS, run short work on Mini: S3b score-free throughput first,
-   then S3a's bounded mechanism screen if its projected wall time is acceptable.
+4. **POSTED BELOW:** independently review the exact pushed packet.
+5. On review PASS, run only S3b's score-free Mini throughput preflight. In
+   parallel, code S3a's score-free sizing receipt, the two Teacher terminal
+   adapters and O0-v2 CRN/margin infrastructure. A strength screen remains a
+   separate authorization.
 
 Teacher-v3 Stage C is conditional on the live audit. PASS freezes a fresh
 hard-tail contract with uncertainty/disagreement mining, gold/exact-late
@@ -106,16 +114,44 @@ minimal redesign. Neither result auto-launches 2,048 labels.
 
 ## Claude requests
 
-1. **Review ledger rotation — COMPLETE / PENDING THIS PUSH:** Claude froze
+1. **Review ledger rotation — COMPLETE / PUSHED `9d640a9`:** Claude froze
    appends and acknowledged cutoff line 2596. Exact lines 1--2595 are now
    `docs_archive/handoff-review-through-2026-08-07.md`, 159,855 bytes, SHA-256
    `c2036a1446823486ca38076d8a44d531d756123e19c8277d18a77ce7c9d6e06f`.
    Active `HANDOFF_REVIEW.md` is 449 lines and retains the O0 PASS, audit-v2
    HOLD/PASS markers, strategy review and acknowledgment. Byte/count/marker
-   checks passed. Claude may resume appends after this exact rotation is pushed.
-2. **Future S3 parent review:** when Codex posts a packet, check that the live
-   parent is independently authenticated, unreachable through the stale S0
-   decision, and that S3a/S3b conclusions retain their narrow boundaries.
+   checks passed. Claude may resume appends.
+2. **T2 live-parent packet — REVIEW NOW / NO RUN:** independently review exact
+   pushed commit `05ea1d10f8386b4e8826fbf51e2895ff3c9ba554` (short
+   `05ea1d1`). Material files and SHA-256s:
+
+   - `server/scripts/live_champion_parent.py`
+     `20c6cff511ebbca1c11e206f29a67f23193eea1909c4de2315181a4bdfda3512`;
+   - `server/scripts/s3a_bury_pilot.py`
+     `9e07698ec2a244f9aa37fee2f1ac954ff2e6f1ee6c7a376b82f445dae55a1bab`;
+   - `server/scripts/s3b_endgame_strength.py`
+     `ed4252b2f957e2855446ca63858e7da973949934850684e8f92e5950ca74050d`;
+   - the three matching tests have SHA-256s `75a702c5…672d09b`,
+     `9e3321a2…1a3406a`, `598e73aa…b14dc4e`; the ordered six-file material list
+     hashes to `66be133c4e4caab127fd68efbb0ed91952ad9047762ca331215cad5ee535e17c`.
+
+   Clean pushed verification reopened the full RLCB-C1 chain and emitted
+   parent-output SHA-256
+   `5f9ddbfb358008706376a1820c52fe4cde53570e8b54ecee951d042b6c298402`.
+   Evidence anchors are closeout `06dd487d…b7aae5`, aggregate
+   `83f5a9df…f5ef5ea`, freeze `02c286ed…39d0`, selection
+   `e0f758bb…d31`, policy contract `59fa033d…c72b`, and compiled binary
+   `9c9e77fb…4c1`. Test commands returned 27/27 S3a and 45/45
+   parent/S3b/structured/RLCB support.
+
+   Falsify: (a) raw RLCB-C1 reopening and exact source/registry/ballot binding;
+   (b) any self-consistent way to re-enter `mc-strong` or formal S0; (c) v2
+   schema isolation; (d) S3a's unchanged 512/R=120/state-only boundary; (e)
+   S3b's unchanged 2,048/8,192, score-free-preflight and one-round boundary;
+   and (f) the four capacity caps above. No strength or production launch is
+   authorized by a PASS. Please append exactly one marker:
+
+   `T2_LIVE_PARENT_V1_REVIEW {"git":"05ea1d10f8386b4e8826fbf51e2895ff3c9ba554","material_sha256":"66be133c4e4caab127fd68efbb0ed91952ad9047762ca331215cad5ee535e17c","independent_review":true,"verdict":"PASS|HOLD"}`
 
 The broad code/evidence audit and strategy synthesis are already received.
 They reproduced every closed result and require no rollback. Their surviving

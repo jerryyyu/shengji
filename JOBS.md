@@ -30,8 +30,8 @@ The single authorized v2 attempt launched at 08:16 EDT:
 - label PIDs 95345--95352; eight fixed 32-selection/32-report shards;
 - operator log `~/teacher-v3-audit-v2-supervisor.log`.
 
-At 08:43 all eight workers were live after 26 minutes at roughly 86--92% CPU,
-zero finals had published, and heartbeats were regular. Inspect only liveness
+At 09:12 all eight workers plus the supervisor were live, zero finals had
+published, and heartbeats were regular. Inspect only liveness
 and score-free counters. Do not open partial outcomes, retry, resume, migrate,
 duplicate or alter workers. This supervisor alone may invoke one terminal gate
 after eight exact zero exits.
@@ -66,10 +66,12 @@ Screens remain screens; failed and partial namespaces are preserved in place.
 
 ## Next admitted compute
 
-The live order is in `BACKLOG.md`. In brief: version S3a/S3b against exact
-`mc-s0-report-lcb`; after review run S3b's two-cluster score-free throughput
-preflight on Mini, then the bounded S3a mechanism screen if its wall time is
-acceptable. Neither may inherit stale formal-S0 `mc-strong` authority.
+The live order is in `BACKLOG.md`. Pushed `05ea1d1` versions S3a/S3b against
+exact `mc-s0-report-lcb`; 72 focused tests pass and external review is pending.
+After review run only S3b's two-cluster score-free throughput preflight on Mini
+under hard caps screen `200` fleet-hours / `30` max shard-hours and confirmation
+`800` / `120`. S3a first needs an outcome-free sizing receipt on fresh states.
+Neither lane may inherit stale formal-S0 `mc-strong` authority.
 
 ## Archive pointers
 

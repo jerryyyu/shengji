@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-07 20:15 EDT. This is the executable mailbox only.
+Last update: 2026-08-07 20:28 EDT. This is the executable mailbox only.
 Durable discussion and retractions remain in `HANDOFF_REVIEW.md`; policy
 synthesis belongs in `AI_POLICIES.md`.
 

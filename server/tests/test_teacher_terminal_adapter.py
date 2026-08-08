@@ -170,7 +170,7 @@ def _fixture(tmp_path: Path, monkeypatch, verdict: str = "PASS"):
 
 def test_pass_emits_design_only_hard_tail_packet(tmp_path, monkeypatch):
     config = _fixture(tmp_path, monkeypatch, "PASS")
-    out = tmp_path / "adapter.json"
+    out = tmp_path / A.OUTPUT_NAME
     payload = A.create(config, out)
     assert payload["branch"] == "PASS"
     assert payload["contract"]["decision"] == "DESIGN_HARD_TAIL_STAGE_C"
@@ -195,7 +195,7 @@ def test_pass_emits_design_only_hard_tail_packet(tmp_path, monkeypatch):
 def test_nonpass_emits_existing_evidence_diagnostic_only(
         tmp_path, monkeypatch, verdict):
     config = _fixture(tmp_path, monkeypatch, verdict)
-    payload = A.create(config, tmp_path / "adapter.json")
+    payload = A.create(config, tmp_path / A.OUTPUT_NAME)
     assert payload["branch"] == "NONPASS"
     contract = payload["contract"]
     assert contract["decision"] == "DIAGNOSE_EXISTING_AUDIT_ONLY"
@@ -226,7 +226,7 @@ def test_gate_hash_mutation_refuses(tmp_path, monkeypatch):
     config = _fixture(tmp_path, monkeypatch)
     config.gate.write_text(config.gate.read_text() + "\n")
     with pytest.raises(A.AdapterRefusal, match="artifact SHA drift"):
-        A.create(config, tmp_path / "adapter.json")
+        A.create(config, tmp_path / A.OUTPUT_NAME)
 
 
 @pytest.mark.parametrize(
@@ -259,7 +259,7 @@ def test_gate_refuses_fresh_lineage_or_runtime_drift(
         expected_git=config.expected_git,
     )
     with pytest.raises(A.AdapterRefusal, match=message):
-        A.create(changed, tmp_path / "adapter.json")
+        A.create(changed, tmp_path / A.OUTPUT_NAME)
 
 
 def test_supervisor_receipt_must_match_gate(tmp_path, monkeypatch):
@@ -277,7 +277,7 @@ def test_supervisor_receipt_must_match_gate(tmp_path, monkeypatch):
         expected_git=config.expected_git,
     )
     with pytest.raises(A.AdapterRefusal, match="terminal binding"):
-        A.create(changed, tmp_path / "adapter.json")
+        A.create(changed, tmp_path / A.OUTPUT_NAME)
 
 
 @pytest.mark.parametrize(
@@ -316,14 +316,14 @@ def test_exact_launch_receipt_and_preparation_are_literal(
             expected_git=config.expected_git,
         )
     with pytest.raises(A.AdapterRefusal, match=message):
-        A.create(changed, tmp_path / "adapter.json")
+        A.create(changed, tmp_path / A.OUTPUT_NAME)
 
 
 def test_surviving_input_partial_refuses(tmp_path, monkeypatch):
     config = _fixture(tmp_path, monkeypatch)
     A.artifact_partial(config.gate).write_text("partial")
     with pytest.raises(A.AdapterRefusal, match="artifact partial exists"):
-        A.create(config, tmp_path / "adapter.json")
+        A.create(config, tmp_path / A.OUTPUT_NAME)
 
 
 def test_supervisor_must_end_in_exact_terminal_event(tmp_path, monkeypatch):
@@ -342,7 +342,7 @@ def test_supervisor_must_end_in_exact_terminal_event(tmp_path, monkeypatch):
         expected_git=config.expected_git,
     )
     with pytest.raises(A.AdapterRefusal, match="final terminal event"):
-        A.create(config, tmp_path / "adapter.json")
+        A.create(config, tmp_path / A.OUTPUT_NAME)
 
 
 def test_gate_and_supervisor_verdict_must_match(tmp_path, monkeypatch):
@@ -360,7 +360,7 @@ def test_gate_and_supervisor_verdict_must_match(tmp_path, monkeypatch):
         expected_git=config.expected_git,
     )
     with pytest.raises(A.AdapterRefusal, match="terminal binding"):
-        A.create(config, tmp_path / "adapter.json")
+        A.create(config, tmp_path / A.OUTPUT_NAME)
 
 
 def test_gate_input_item_schema_is_exact(tmp_path, monkeypatch):
@@ -376,7 +376,7 @@ def test_gate_input_item_schema_is_exact(tmp_path, monkeypatch):
         expected_git=config.expected_git,
     )
     with pytest.raises(A.AdapterRefusal, match="input item schema"):
-        A.create(config, tmp_path / "adapter.json")
+        A.create(config, tmp_path / A.OUTPUT_NAME)
 
 
 def test_gate_inputs_and_supervisor_labels_must_match_exactly(
@@ -396,7 +396,7 @@ def test_gate_inputs_and_supervisor_labels_must_match_exactly(
         expected_git=config.expected_git,
     )
     with pytest.raises(A.AdapterRefusal, match="label digest binding"):
-        A.create(config, tmp_path / "adapter.json")
+        A.create(config, tmp_path / A.OUTPUT_NAME)
 
 
 def test_gate_input_shards_must_be_canonical_and_ordered(
@@ -413,21 +413,28 @@ def test_gate_input_shards_must_be_canonical_and_ordered(
         expected_git=config.expected_git,
     )
     with pytest.raises(A.AdapterRefusal, match="ordered shard population"):
-        A.create(config, tmp_path / "adapter.json")
+        A.create(config, tmp_path / A.OUTPUT_NAME)
 
 
 def test_existing_output_is_never_overwritten(tmp_path, monkeypatch):
     config = _fixture(tmp_path, monkeypatch)
-    out = tmp_path / "adapter.json"
+    out = tmp_path / A.OUTPUT_NAME
     out.write_text("owned")
     with pytest.raises(A.AdapterRefusal, match="existing output"):
         A.create(config, out)
     assert out.read_text() == "owned"
 
 
+def test_adapter_cannot_publish_under_an_alternate_name(
+        tmp_path, monkeypatch):
+    config = _fixture(tmp_path, monkeypatch)
+    with pytest.raises(A.AdapterRefusal, match="exact sibling"):
+        A.create(config, tmp_path / "alternate-adapter.json")
+
+
 def test_adapter_mutation_fails_independent_reopen(tmp_path, monkeypatch):
     config = _fixture(tmp_path, monkeypatch)
-    out = tmp_path / "adapter.json"
+    out = tmp_path / A.OUTPUT_NAME
     A.create(config, out)
     payload = json.loads(out.read_text())
     payload["compute_authorized"] = True

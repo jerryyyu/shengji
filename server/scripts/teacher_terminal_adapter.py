@@ -72,6 +72,7 @@ AUDIT_STATE_SHA256 = (
 )
 PARENT_NAMESPACE = "runs/logs/teacher-v1-entry-149m-v3"
 AUDIT_NAMESPACE = "runs/logs/teacher-v1-entry-149m-v5"
+OUTPUT_NAME = "teacher_terminal_adapter_v2.json"
 EXPECTED_FOLDS = {"champion_selection": 32, "champion_report": 32}
 EXPECTED_ADMISSION = {
     "schema": "teacher-v3-champion-continuation-admission-v1",
@@ -548,6 +549,10 @@ def write_verified(path: Path, payload: dict, verify) -> None:
 
 
 def create(config: Config, out: Path) -> dict:
+    expected_out = config.gate.parent / OUTPUT_NAME
+    if out.resolve() != expected_out.resolve():
+        raise AdapterRefusal(
+            f"adapter output must be exact sibling {expected_out}")
     runtime = runtime_contract(config.expected_git)
     gate, events = reopen_inputs(config)
     payload = build_payload(config, gate, events, runtime)
@@ -565,6 +570,10 @@ def create(config: Config, out: Path) -> dict:
 
 
 def verify(config: Config, path: Path, expected_sha256: str) -> dict:
+    expected_path = config.gate.parent / OUTPUT_NAME
+    if path.resolve() != expected_path.resolve():
+        raise AdapterRefusal(
+            f"adapter path must be exact sibling {expected_path}")
     problems = _artifact_problems(path, expected_sha256)
     if problems:
         raise AdapterRefusal("; ".join(problems))

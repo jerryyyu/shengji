@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 20:15 EDT
+## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 20:36 EDT
 
 Air has eight live compiled+strict `teacher_v1_label.py gold` workers in clean
 detached worktree `~/Projects/shengji-teacher-air` at exact commit
@@ -13,9 +13,9 @@ and remain near one CPU each. This block is attribution-only. Its outcomes
 cannot change the independently frozen 64-state report-LCB continuation audit.
 
 All eight output finals remain absent and all eight Python workers plus their
-caffeinate children remain live after about 5h31m. An outcome-blind parse of
-progress events showed `784/1004/584/760/344/828/920/684` fold worlds by shard
-and `5,908/16,384` (36.1%) aggregate. This is a liveness
+caffeinate children remain live after about 5h52m. An outcome-blind parse of
+progress events showed `796/1228/628/788/356/840/972/728` fold worlds by shard
+and `6,336/16,384` (38.7%) aggregate. This is a liveness
 counter, not a compute-weighted ETA: ballot sizes and continuation costs differ
 by state. No outcome file was opened. The exact one-shot readiness and gate
 command now live in `HANDOFF_ACTIVE.md`; in particular, filename appearance is
@@ -28,6 +28,16 @@ sentinel, no later refusal, regular final, no partial and successful unchanged
 artifact reopen. Claude must accept that post-verification sentinel as the
 exit-0 equivalent or the gate remains blocked; a literal historical status
 cannot be reconstructed later.
+
+Pushed commit `3d8bee0` now makes this readiness boundary executable without
+opening any outcome: the stdlib-only checker validates exact producer/source/
+parent identity, clean tree, worker/final/partial/gate mechanics and terminal
+success logs, but creates no artifact and grants no gate or audit authority.
+The adjacent Teacher matrix passes 134/134 in ordinary and compiled-strict
+routing. Streamed against Air at 20:34 it correctly returned exit `4`, eight
+live Python workers, zero regular finals, `outcomes_opened=false` and
+`artifact_created=false`. Claude still must accept the detached-success
+equivalence before a future ready result may authorize the one-shot gate.
 
 The separately pinned audit worktree now exists on Air at exact pushed commit
 `182d1df21697cedd722edfd3215ea1e2a7dd8753`. It carries frozen state SHA

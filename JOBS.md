@@ -1,12 +1,12 @@
 # Fleet job ledger
 
-Last compacted: 2026-08-08 09:32 EDT. This file owns current compute and short
+Last reconciled: 2026-08-08 13:36 EDT. This file owns current compute and short
 terminal stubs only. The exact 810-line pre-compaction ledger is archived at
 `docs_archive/jobs-through-2026-08-08.md`, SHA-256 `26beff936f6c0744b220fc79e233163c8f09acde8a13adcba5450327ad132252`.
 Detailed interpretation belongs in `AI_POLICIES.md`; execution order belongs
 in `BACKLOG.md`.
 
-## RUNNING — Teacher-v3 champion audit-v2 on Air
+## TERMINAL OPERATIONAL REFUSAL — Teacher-v3 champion audit-v2 on Air
 
 Stage B is terminal PASS. Its gate SHA is
 `f607b48986aaa8b05194f88e8638540bc5c9360f09f3c28a7565d8d8cac89694`;
@@ -23,49 +23,35 @@ The single authorized v2 attempt launched at 08:16 EDT:
   `1866132766c7f16542bc27e730622e2dfea639ae`;
 - evaluator script SHA
   `c7b47a7a0305f6067129cc7b19517d9a983efff70085f83edc0d39475955d6cb`;
-- controller `edc923f`, supervisor PID 95339;
+- controller `edc923f`, former supervisor PID 95339;
 - receipt `ce51b826d4f04549b961f795868cc4c6c5f90124a8552ce76fe2d3ab0bd471d0`;
 - preparation
   `7f89a86c2e0803d83473d8ccca978dd99dd010e467761d0d4429a3598c166605`;
-- label PIDs 95345--95352; eight fixed 32-selection/32-report shards;
+- former label PIDs 95345--95352; eight fixed 32-selection/32-report shards;
 - operator log `~/teacher-v3-audit-v2-supervisor.log`.
 
-At 09:32 all eight workers plus the supervisor were live, zero finals had
-published, and heartbeats were regular. Inspect only liveness
-and score-free counters. Do not open partial outcomes, retry, resume, migrate,
-duplicate or alter workers. This supervisor alone may invoke one terminal gate
-after eight exact zero exits.
+At 13:36 all nine processes were dead. Shard 6 returned `3`; the supervisor
+then terminated the other seven workers, whose exit records are `-15`. Its
+terminal log ended at state `149000349:4:0`, after 32/32 selection worlds and
+13/32 report worlds, with `invalid champion continuation:
+TeacherProtocolError: champion report fold is incomplete` at candidate 9,
+world 13, downstream decision 6.
 
-Terminal handling is outcome-independent and predeclared now. Do nothing until
-the Air supervisor publishes both regular finals with no surviving partials
-and the repaired adapter receives its independent PASS marker. Then:
-
-1. hash the Air gate and supervisor final in place and copy those exact bytes
-   without opening the gate payload to
-   `server/runs/logs/teacher-v3-audit-v2-terminal/` on Mini;
-2. verify the local hashes equal the Air hashes;
-3. use a clean detached worktree at exact reviewed repair commit
-   `2de0824738e3e5a45ba317876b0abb3930315249` to run
-   `teacher_terminal_adapter.py create`, passing the two exact hashes and
-   `--expected-git 2de0824738e3e5a45ba317876b0abb3930315249`;
-4. publish only
-   `server/runs/logs/teacher-v3-audit-v2-terminal/teacher_terminal_adapter_v1.json`,
-   then reopen it with the adapter's `verify` mode and its exact SHA-256.
-
-The adapter's output branch may be read only after those identity checks.
-PASS can emit only a review-required hard-tail Stage-C design;
-FAIL/INCONCLUSIVE can emit only an existing-evidence diagnostic. Neither
-branch authorizes compute, labels, training, promotion, retry or same-recipe
-extension. Never overwrite any terminal mirror or adapter output.
+There are zero label finals. `champion_audit_gate_v1.json` and regular
+`champion_audit_supervisor_v1.jsonl` are absent; only the supervisor `.partial`
+remains. No partial outcome was opened. The reviewed terminal adapter cannot
+run without those regular finals, so this is no Teacher strength/fidelity
+result and no PASS/FAIL/INCONCLUSIVE gate. Preserve the entire Air root. Never
+resume, retry, migrate, duplicate, delete or adopt audit-v2. T1 remains open
+pending a reviewed diagnosis and an explicit fresh-run/closeout decision.
 
 ## Fleet availability
 
-- **Air:** occupied by the eight-way Teacher audit; do not add load that changes
-  its wall time or one-shot evidence boundary.
-- **Mini:** no long strength job. Both hosts are 10-core Apple M4s; the earlier
-  6.8-hour Teacher number was a Mini sizing projection, not evidence Mini is
-  faster. Use Mini for reviewed short preflights/screens, preferably under one
-  hour.
+- **Mini:** currently has no strength job and is the default placement for all
+  newly authorized long or short compute. This is an owner preference even
+  when Air has similar nominal cores.
+- **Air:** Teacher audit processes are dead; preserve its failed v2 root. Use
+  Air as overflow only, or when a recorded benchmark/constraint justifies it.
 - **Local dev server:** one idle SmartBot server may appear on port 8899; it is
   not a strength job.
 

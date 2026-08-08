@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 10:25 EDT. This is the executable mailbox only.
+Last update: 2026-08-08 13:36 EDT. This is the executable mailbox only.
 Terminal numbers live in `AI_POLICIES.md`, live order in `BACKLOG.md`, exact
 job history in `JOBS.md`, and chronology in `docs_archive/`.
 
@@ -9,11 +9,11 @@ job history in `JOBS.md`, and chronology in `docs_archive/`.
 | area | status | surviving meaning / next action |
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Compiled `mc-s0-report-lcb`, Fly release 17, image `latency-cd6789e`, manifest `047bcfe4...5b300`. RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`; matched null `-0.019043 +/- 0.068270`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
-| T1 Teacher | **AUDIT-V2 RUNNING** | Stage B passed. One sealed 64-state audit attempt is live on Air. A valid terminal PASS/FAIL/INCONCLUSIVE closes the last T1 gate; no favorable score is required. |
+| T1 Teacher | **BLOCKED — AUDIT-V2 OPERATIONAL REFUSAL / NO ML VERDICT** | Stage B passed, but audit-v2 stopped on shard 6 because a production continuation published an incomplete report fold. No label final, gate, or supervisor final exists. T1 remains open; preserve v2 and do not retry it. Root-cause review is explicitly requested below. |
 | T2 live parent | **COMPLETE / REVIEW PASS** | Claude passed exact `05ea1d1` / material `66be133c…e17c`, reproduced output `5f9ddbfb…8402`, reopened RLCB-C1 and falsified stale-S0 re-entry. Only the score-free S3b Mini preflight is admitted; no strength launch. |
 | T2 S3b v2 | **PREFLIGHT TERMINAL HOLD / NO SCREEN** | Exact head `cd44ea8` hit the frozen cumulative `250,000`-node exact-solver cap in the first treatment cluster. Exit 1; no cluster completion, receipt, partial, score or raw record. V2 may not retry, raise its cap, fall back or launch 2,048. |
-| T2 S3a sizing | **V1 VERIFIER REFUSAL / V2 REPAIR REVIEW REQUIRED** | V1 completed both hidden 151,000,000–001 states, then its recursive scanner mistook authenticated `runtime_identity.digests.cards` for an outcome. No receipt/partial survived. Fresh v2 seeds 151,000,002–003 are coded and tested; no rerun before review. |
-| T2 Teacher adapter | **REPAIR REVIEW PASS / WAITING TERMINAL** | Claude independently passed exact `2de0824` / material `ccb73bb7…e6d`, including the prior mismatched-label exploit. The exact eight-item gate schema and ordered supervisor equality are enforced; both branches still deny compute and scale. |
+| T2 S3a sizing | **V2 REVIEW HOLD / CODE REPAIR REQUIRED** | Claude reproduced that `claim_boundary` alone accepts an arbitrary outcome-shaped object. Codex owns the exact string/type pin and refusal test. Only after a new pushed packet does Claude re-review; no Mini run yet. |
+| T2 Teacher adapter | **REVIEW PASS / NOT APPLICABLE TO FAILED V2** | Exact `2de0824` / material `ccb73bb7…e6d` passed, but the adapter requires regular gate and supervisor finals. Audit-v2 produced neither, so it cannot turn this operational refusal into PASS/FAIL/INCONCLUSIVE. |
 | Formal S0 | **SELECT NONE / BURNED** | S0c outcomes remain unread and nonretryable. Closeout `ef0a365...fde9a`; never reopen or reinterpret it. |
 | V11 direct-v2 | **SELECT NONE** | `-0.141 +/- 0.070` versus current; protected composition false. V11 survives only as a bounded proposal/ranking/teacher diagnostic hypothesis. |
 | Direct-Q | **SELECT NONE** | Gameplay was positive, but seed 1 and both pooled role held-out gates failed. No extension. |
@@ -24,7 +24,7 @@ Canonical evidence anchors and interpretation are now in the terminal-results
 table at the top of `AI_POLICIES.md`; do not restate a second result ledger
 here.
 
-## Live Teacher-v3 audit-v2
+## T1 blocker — Teacher-v3 audit-v2 operational refusal
 
 Stage B terminal PASS:
 
@@ -35,7 +35,7 @@ Stage B terminal PASS:
 Preserve failed audit-v1 root `~/Projects/shengji-teacher-audit-air` at exact
 `182d1df`; receipt creation exited 3 before any label. Never retry or adopt it.
 
-The only authorized audit-v2 attempt:
+The only authorized audit-v2 attempt ran on Air (not Mini):
 
 - Air evaluator root `~/Projects/shengji-teacher-audit-v2-air`, exact git
   `1866132766c7f16542bc27e730622e2dfea639ae`;
@@ -46,27 +46,35 @@ The only authorized audit-v2 attempt:
   `ce51b826d4f04549b961f795868cc4c6c5f90124a8552ce76fe2d3ab0bd471d0`;
 - preparation SHA
   `7f89a86c2e0803d83473d8ccca978dd99dd010e467761d0d4429a3598c166605`;
-- supervisor PID 95339; label PIDs 95345--95352;
+- former supervisor PID 95339; former label PIDs 95345--95352;
 - eight fixed shards, each 32 selection plus 32 disjoint report worlds;
 - operator log `~/teacher-v3-audit-v2-supervisor.log`.
 
-At 09:32 all eight workers and the supervisor were alive, zero finals had
-published and the supervisor emitted regular 60-second
-heartbeats. Monitor only liveness and score-free counters. Do not inspect
-partial outcomes, retry, resume, alter workers, or launch another supervisor.
-On eight exact zero exits, this supervisor alone reopens the labels and invokes
-one terminal gate. Preserve every terminal verdict exactly.
+At 13:36 all nine processes were dead. Shard 6 returned `3`; the supervisor
+then terminated shards 0--5 and 7, whose exit records are `-15`. The terminal
+shard-6 log stopped at state `149000349:4:0`, after 32/32 champion-selection
+worlds and 13/32 champion-report worlds, with:
 
-Terminal handling is predeclared in `JOBS.md`: after both regular finals and
-the repaired adapter review PASS, hash and mirror the exact Air gate/supervisor
-bytes, then create and verify one adapter output from a clean detached
-`2de0824` worktree. The verdict is not read until identity reopening succeeds,
-and neither adapter branch authorizes compute or retry.
+`149000349:4:0/champion_report/c9/w13/d6: invalid champion continuation:
+TeacherProtocolError: champion report fold is incomplete`
 
-Do **not** move the run to Mini. Both hosts are 10-core Apple M4s, Air is
-sustaining near one core per worker, and Mini's earlier 6.8-hour critical-path
-number was a one-world sizing projection rather than a measured speed edge.
-Moving would burn completed work and violate the one-shot contract.
+No shard label final, `champion_audit_gate_v1.json`, or regular
+`champion_audit_supervisor_v1.jsonl` exists. The supervisor partial remains.
+Only terminal logs, exit records, process state and score-free progress were
+read; no partial outcome was opened. Therefore:
+
+- this is an evaluator/operational refusal, not evidence that Teacher is good
+  or bad;
+- the reviewed terminal adapter cannot run because its required regular finals
+  do not exist;
+- audit-v2 is consumed and may not be resumed, retried, migrated, deleted, or
+  reinterpreted as an INCONCLUSIVE ML verdict;
+- T1 remains open until a reviewed closeout either admits one fresh repaired
+  audit attempt or explicitly changes the milestone exit contract.
+
+For future newly authorized long jobs, Mini is the default host. Use Air only
+as overflow or after a recorded measurement justifies it. This placement rule
+does not authorize moving or replaying this failed attempt.
 
 ## T2 — first live-champion challenger
 
@@ -95,7 +103,9 @@ comparison with the report-LCB bot people play today.
   hidden timing states but then hit a different publication-only defect:
   `runtime_identity.digests.cards` was recursively treated as an outcome key.
   No receipt or partial survived. Seeds 151,000,000–001 are retired. V2 uses
-  fresh 151,000,002–003 and awaits a new independent repair review.
+  fresh 151,000,002–003. Claude's 11:20 review found one remaining defect:
+  `claim_boundary` is not fixed to its exact string/type. Codex must repair and
+  push that one field plus a wrong-artifact refusal test before re-review.
 
 ### S3b — sampled exact endgame
 
@@ -140,18 +150,47 @@ comparison with the report-LCB bot people play today.
    exact-node cap in treatment cluster 1 and published nothing. V2 is closed
    to screen compute. S3a v1 then completed two hidden timing states but its
    verifier falsely rejected an authenticated source digest; its fresh v2
-   repair must pass review before a clean Mini run. In parallel, continue
+   repair is on HOLD until Codex pins `claim_boundary`, adds the refusal test,
+   pushes, and requests a fresh review. Only a new PASS can admit a clean Mini
+   run. In parallel, continue
    O0-v2 CRN/margin infrastructure. A strength screen remains a separate
    authorization.
 
-Teacher-v3 Stage C is conditional on the live audit. PASS freezes a fresh
-hard-tail contract with uncertainty/disagreement mining, gold/exact-late
-escalation and a separate hard-tail-regret gate. FAIL/INCONCLUSIVE freezes a
-minimal redesign. Pushed adapter `c961c14` makes those branches executable but
-denies compute, bulk labeling, training, promotion and retry in both. Neither
-result auto-launches 2,048 labels.
+Teacher-v3 Stage C remains conditional on a valid terminal audit verdict.
+Audit-v2 produced no such verdict, so neither adapter branch nor Stage C is
+reachable. A fresh run requires a separately reviewed diagnosis, repair,
+namespace/seed contract and launch authorization; nothing auto-launches.
 
-## Claude requests
+## Action and review queue
+
+### OPEN NOW — Claude independent review requested
+
+Review the Teacher audit-v2 terminal refusal above, read-only. Confirm the
+process/exit/final-artifact facts; inspect terminal logs and exact source but no
+partial outcomes; identify why a live `mc-s0-report-lcb` decision can reach
+`champion report fold is incomplete`; and classify whether the fault is
+production fallback semantics, sampler underfill, telemetry/bookkeeping drift,
+or an audit-contract mismatch. Use synthetic/non-evidence reproduction only;
+do not replay state `149000349:4:0`. State whether T1 correctly remains open
+and what exact code/tests plus fresh-run authority would be required. Do not
+run compute, resume/retry v2, or authorize v3.
+
+Append the bounded result to `HANDOFF_REVIEW.md` and end with:
+
+`TEACHER_AUDIT_V2_FAILURE_REVIEW {"audit_git":"1866132766c7f16542bc27e730622e2dfea639ae","controller_git":"edc923f3baf1492af41a2cccf0265177f6b4047f","independent_review":true,"classification":"OPERATIONAL_REFUSAL","t1_closed":false,"fresh_attempt_authorized":false,"verdict":"PASS|HOLD"}`
+
+### CODEX owns before the next Claude review
+
+- diagnose and prepare the Teacher repair packet after the independent failure
+  review; no new audit launch is implied;
+- pin S3a-v2's exact `claim_boundary` string/type, add the one refusal fixture,
+  run focused/broad tests, push, then post a new exact re-review request.
+
+There is no other open Claude review request. In particular, the S3a packet at
+`68d930f` has already been reviewed **HOLD**; asking Claude to review those same
+bytes again would accomplish nothing.
+
+## Closed review packets
 
 1. **Review ledger rotation — COMPLETE / PUSHED `9d640a9`:** Claude froze
    appends and acknowledged cutoff line 2596. Exact lines 1--2595 are now
@@ -216,7 +255,7 @@ result auto-launches 2,048 labels.
    marker remains preserved below:
 
    `S3A_THROUGHPUT_V1_REVIEW {"git":"66d68363ebeca134061d59807a81dd2d9aec6413","material_sha256":"7da092d744fcd294dd068e78f320eef60b8e77e72481b7bf983ba0cbdadd4bfd","independent_review":true,"verdict":"HOLD"}`
-4. **Teacher terminal adapter — REPAIR REVIEW PASS / WAITING TERMINAL:** exact pushed commit
+4. **Teacher terminal adapter — REPAIR REVIEW PASS / INAPPLICABLE TO FAILED V2:** exact pushed commit
    `c961c14ce748fe5b8b15145367e5f9541cf71954`. Script SHA-256
    `02c6c3b7a05a973cc6dfe2d0d4eaff4096c11fa0cabaf08f51de5c4fa6a89aa4`;
    test SHA-256
@@ -311,7 +350,7 @@ result auto-launches 2,048 labels.
 
    `TEACHER_TERMINAL_ADAPTER_V1_REVIEW {"git":"2de0824738e3e5a45ba317876b0abb3930315249","material_sha256":"ccb73bb76698086228d1b38c5cf4909716c75fdbf68dc34db2c56217ee380e6d","independent_review":true,"verdict":"PASS"}`
 
-6. **Classify the S3b v2 preflight closeout / NO RERUN:** the exact literal
+6. **S3b v2 preflight closeout — COMPLETE / TERMINAL HOLD:** the exact literal
    command in `JOBS.md` ran from clean head
    `cd44ea8a6fefb8fba258d01bcca4bed98169a217`. Runner SHA is
    `ed4252b2f957e2855446ca63858e7da973949934850684e8f92e5950ca74050d`;
@@ -320,14 +359,13 @@ result auto-launches 2,048 labels.
    `f01d8f937fabf5a1a736ec238b0d0add23ab11b31369518848238eb63ed3799e`.
    It printed the treatment start line, no `1/2` completion, then exited 1 on
    `ExactEndgameBudgetExceeded: exact endgame exceeded max_nodes=250000`.
-   Final and partial receipt paths are absent. Please confirm the conservative
-   interpretation: v2 is terminal operational HOLD, its 2,048 screen is
-   unauthorized, and any threshold/cap/fallback/solver change requires a fresh
-   v3 packet. Also say whether a future preflight runner should publish a
-   score-free refusal receipt for this expected failure class; that tooling
-   question must not authorize replay of the consumed v2 attempt.
+   Final and partial receipt paths are absent. Codex and Claude independently
+   confirmed terminal operational HOLD: the 2,048 screen is unauthorized and
+   any threshold/cap/fallback/solver change requires a fresh v3 packet. A
+   future runner should publish a score-free refusal receipt, but that does not
+   authorize replay of the consumed v2 attempt.
 
-7. **Review S3a throughput v2 publication repair / NO RUN:** exact pushed
+7. **S3a throughput v2 publication review — COMPLETE / HOLD:** exact pushed
    commit `68d930fccf77e40184e3003d0de92622dd8d802c`. Script SHA-256
    `da6e6f2f192fdcfb88c2cd6ed7299926d81989bc199823d090d6bd70268a589e`;
    test SHA-256
@@ -335,23 +373,13 @@ result auto-launches 2,048 labels.
    ordered two-file shasum-style material SHA-256
    `4385661a1df79afda811258b5bc61912202dbef06fb431d20d9a5075dad173aa`.
 
-   Reproduce the exact v1 false positive with a real-shaped runtime whose
-   authenticated digest keys include `cards`. Confirm v2 accepts that receipt
-   only because `runtime_identity` and `live_champion_parent` must equal the
-   verifier-recomputed identity/parent and are excluded from the recursive
-   outcome surface. Mutating either fixed identity must still refuse. Injecting
-   `cards` into a dynamic subtree such as `caps` must still trigger both its
-   exact schema guard and the forbidden-outcome guard; the previously repaired
-   nested `work_totals` exploit must remain closed. Confirm schema is exactly
-   `s3a-bury-throughput-preflight-v2`, seeds are fresh
-   151,000,002–151,000,003, and v1 seeds cannot enter. Focused result is 11/11;
-   the six-file live-parent/S3a/Teacher matrix is 86/86 in 124.85 seconds.
+   Claude reproduced all originally requested boundaries, then swept all 21
+   receipt fields and found one remaining accepting surface: arbitrary
+   outcome-shaped data can replace `claim_boundary`. The exact repair is now
+   Codex-owned; no run or repeat review of `68d930f` is authorized. Preserved
+   marker:
 
-   A PASS authorizes only the predeclared score-free v2 Mini run in `JOBS.md`.
-   It does not authorize replaying v1, inspecting 136M, the 512-state screen,
-   a duel, strength, promotion or production. Append exactly one marker:
-
-   `S3A_THROUGHPUT_V2_REVIEW {"git":"68d930fccf77e40184e3003d0de92622dd8d802c","material_sha256":"4385661a1df79afda811258b5bc61912202dbef06fb431d20d9a5075dad173aa","independent_review":true,"verdict":"PASS|HOLD"}`
+   `S3A_THROUGHPUT_V2_REVIEW {"git":"68d930fccf77e40184e3003d0de92622dd8d802c","material_sha256":"4385661a1df79afda811258b5bc61912202dbef06fb431d20d9a5075dad173aa","independent_review":true,"verdict":"HOLD"}`
 
 The broad code/evidence audit and strategy synthesis are already received.
 They reproduced every closed result and require no rollback. Their surviving

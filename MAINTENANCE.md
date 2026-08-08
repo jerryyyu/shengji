@@ -29,9 +29,10 @@ For every live job record:
 
 Never open a partial outcome, change a stopping rule from live scores, duplicate
 a one-shot run, or infer success from a filename that may be published before a
-worker's final provenance check. Prefer Mini for work expected under one hour;
-do not migrate a healthy sealed run between equal machines without measured
-benefit and a protocol that permits it.
+worker's final provenance check. Mini is the default host for newly authorized
+long and short compute; use Air as overflow or with a recorded placement reason.
+Do not migrate a healthy sealed run between machines without measured benefit
+and a protocol that permits it.
 
 ## 2. Reconcile results and review markers
 

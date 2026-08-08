@@ -71,7 +71,7 @@ synthesis belongs in `AI_POLICIES.md`.
   required.
 - **DEV-512:** SELECT NONE / closed. CALIB and REPORT remain sealed.
 
-Fresh executable reopening, repeated through 19:34, independently reproduced
+Fresh executable reopening at 00:06 on August 8 independently reproduced
 all three closed chains: strict C1 verification returned aggregate
 `83f5a9df...f5ea` and
 closeout `06dd487d...aae5`; Air at exact `d1d2019` verified V11 aggregate

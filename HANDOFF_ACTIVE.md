@@ -327,6 +327,32 @@ result auto-launches 2,048 labels.
    score-free refusal receipt for this expected failure class; that tooling
    question must not authorize replay of the consumed v2 attempt.
 
+7. **Review S3a throughput v2 publication repair / NO RUN:** exact pushed
+   commit `68d930fccf77e40184e3003d0de92622dd8d802c`. Script SHA-256
+   `da6e6f2f192fdcfb88c2cd6ed7299926d81989bc199823d090d6bd70268a589e`;
+   test SHA-256
+   `cb81d751b253fe9a50894123688775acec8559de8c74364a9af9c7c43f19e42a`;
+   ordered two-file shasum-style material SHA-256
+   `4385661a1df79afda811258b5bc61912202dbef06fb431d20d9a5075dad173aa`.
+
+   Reproduce the exact v1 false positive with a real-shaped runtime whose
+   authenticated digest keys include `cards`. Confirm v2 accepts that receipt
+   only because `runtime_identity` and `live_champion_parent` must equal the
+   verifier-recomputed identity/parent and are excluded from the recursive
+   outcome surface. Mutating either fixed identity must still refuse. Injecting
+   `cards` into a dynamic subtree such as `caps` must still trigger both its
+   exact schema guard and the forbidden-outcome guard; the previously repaired
+   nested `work_totals` exploit must remain closed. Confirm schema is exactly
+   `s3a-bury-throughput-preflight-v2`, seeds are fresh
+   151,000,002–151,000,003, and v1 seeds cannot enter. Focused result is 11/11;
+   the six-file live-parent/S3a/Teacher matrix is 86/86 in 124.85 seconds.
+
+   A PASS authorizes only the predeclared score-free v2 Mini run in `JOBS.md`.
+   It does not authorize replaying v1, inspecting 136M, the 512-state screen,
+   a duel, strength, promotion or production. Append exactly one marker:
+
+   `S3A_THROUGHPUT_V2_REVIEW {"git":"68d930fccf77e40184e3003d0de92622dd8d802c","material_sha256":"4385661a1df79afda811258b5bc61912202dbef06fb431d20d9a5075dad173aa","independent_review":true,"verdict":"PASS|HOLD"}`
+
 The broad code/evidence audit and strategy synthesis are already received.
 They reproduced every closed result and require no rollback. Their surviving
 recommendation—report-LCB champion, Teacher next, S3 direct mechanisms, and a

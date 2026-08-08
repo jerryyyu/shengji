@@ -195,7 +195,25 @@ every other receipt surface. Top-level and nested exact schemas plus fixed-
 identity equality remain mandatory. A realistic `digests.cards` fixture now
 passes; identity drift and actual `caps.cards` outcome injection refuse.
 Focused tests pass 11/11 and the broad boundary matrix passes 86/86. No v2 run
-is authorized before independent review and a newly predeclared output path.
+is authorized before independent review.
+
+The fresh v2 output is predeclared as
+`server/runs/logs/s3a-bury-v2-throughput-mini-v2.json`; its `.partial` and
+final are absent. After, and only after,
+`S3A_THROUGHPUT_V2_REVIEW` PASS, run this literal command once:
+
+```bash
+env -u SHENGJI_WEIGHTED_SPLITS -u SHENGJI_UNIFORM_DEAL \
+  -u SHENGJI_PHYSICAL_FILLS -u SHENGJI_ALLOW_BALLOT_MISMATCH \
+  SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 \
+  server/.venv/bin/python server/scripts/s3a_bury_throughput.py run \
+  --out server/runs/logs/s3a-bury-v2-throughput-mini-v2.json \
+  --screen-fleet-hour-cap 400 --screen-shard-wall-hour-cap 60
+```
+
+The script hardcodes fresh seeds 151,000,002–151,000,003 and refuses a dirty
+or unauthenticated runtime through `S3A.require_real_context()`. A receipt PASS
+still authorizes placement only; the 512-state screen remains a separate gate.
 
 ## Archive pointers
 

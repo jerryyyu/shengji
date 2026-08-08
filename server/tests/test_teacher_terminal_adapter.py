@@ -57,7 +57,11 @@ def _gate(verdict: str) -> dict:
         "continuation_contract": A.EXPECTED_CONTINUATION,
         "n_states": 64,
         "problems": [] if passed else ["registered terminal miss"],
-        "inputs": [{"sha256": f"{index + 1:064x}"} for index in range(8)],
+        "inputs": [{
+            "path": f"/sealed/champion_audit_v1_shard{index:02d}.json",
+            "sha256": f"{index + 1:064x}",
+            "shard_index": index,
+        } for index in range(8)],
     }
 
 
@@ -90,7 +94,7 @@ def _events(verdict: str, gate_sha: str) -> list[dict]:
             "gate_verdict": verdict,
             "gate_returncode": code,
             "retry_authorized": False,
-            "label_sha256s": [f"{index + 11:064x}" for index in range(8)],
+            "label_sha256s": [f"{index + 1:064x}" for index in range(8)],
         },
     ]
 
@@ -210,6 +214,59 @@ def test_gate_and_supervisor_verdict_must_match(tmp_path, monkeypatch):
         expected_git=config.expected_git,
     )
     with pytest.raises(A.AdapterRefusal, match="terminal binding"):
+        A.create(config, tmp_path / "adapter.json")
+
+
+def test_gate_input_item_schema_is_exact(tmp_path, monkeypatch):
+    config = _fixture(tmp_path, monkeypatch)
+    gate = json.loads(config.gate.read_text())
+    gate["inputs"][0]["innocent"] = "outcome-carrying-extension"
+    config.gate.write_text(json.dumps(gate, sort_keys=True))
+    config = A.Config(
+        gate=config.gate,
+        expected_gate_sha256=_sha(config.gate),
+        supervisor_progress=config.supervisor_progress,
+        expected_supervisor_sha256=config.expected_supervisor_sha256,
+        expected_git=config.expected_git,
+    )
+    with pytest.raises(A.AdapterRefusal, match="input item schema"):
+        A.create(config, tmp_path / "adapter.json")
+
+
+def test_gate_inputs_and_supervisor_labels_must_match_exactly(
+        tmp_path, monkeypatch):
+    config = _fixture(tmp_path, monkeypatch)
+    events = [json.loads(line)
+              for line in config.supervisor_progress.read_text().splitlines()]
+    events[-1]["label_sha256s"] = [
+        f"{index + 11:064x}" for index in range(8)]
+    config.supervisor_progress.write_text(
+        "".join(json.dumps(event) + "\n" for event in events))
+    config = A.Config(
+        gate=config.gate,
+        expected_gate_sha256=config.expected_gate_sha256,
+        supervisor_progress=config.supervisor_progress,
+        expected_supervisor_sha256=_sha(config.supervisor_progress),
+        expected_git=config.expected_git,
+    )
+    with pytest.raises(A.AdapterRefusal, match="label digest binding"):
+        A.create(config, tmp_path / "adapter.json")
+
+
+def test_gate_input_shards_must_be_canonical_and_ordered(
+        tmp_path, monkeypatch):
+    config = _fixture(tmp_path, monkeypatch)
+    gate = json.loads(config.gate.read_text())
+    gate["inputs"][0]["shard_index"] = 7
+    config.gate.write_text(json.dumps(gate, sort_keys=True))
+    config = A.Config(
+        gate=config.gate,
+        expected_gate_sha256=_sha(config.gate),
+        supervisor_progress=config.supervisor_progress,
+        expected_supervisor_sha256=config.expected_supervisor_sha256,
+        expected_git=config.expected_git,
+    )
+    with pytest.raises(A.AdapterRefusal, match="ordered shard population"):
         A.create(config, tmp_path / "adapter.json")
 
 

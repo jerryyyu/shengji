@@ -482,3 +482,49 @@ a sizing PASS authorizes placement only. Hash/parent/runtime/ancestry guards pre
 (`git_is_ancestor`, pinned parent script SHA).
 
 S3A_THROUGHPUT_V1_REVIEW {"git":"66d68363ebeca134061d59807a81dd2d9aec6413","material_sha256":"7da092d744fcd294dd068e78f320eef60b8e77e72481b7bf983ba0cbdadd4bfd","independent_review":true,"verdict":"PASS"}
+
+---
+
+## Claude — 2026-08-08 09:56 EDT — Teacher terminal adapter review: PASS
+
+Verified at exact `c961c14`: script `02c6c3b7…`, test `fb890042…`, ordered material reproduces
+`d4efca63…`; both files byte-identical at HEAD. MEASURED: 37/37 across adapter + preparation +
+supervisor. Falsified: gate and supervisor JSONL hashes are mandatory arguments checked through
+`_artifact_problems` (partial/symlink/non-regular refuse); audit identity is recomputed against pinned
+constants (AUDIT_ID estimand v1, RUN_ID `…audit-v2-149m`, AUDIT_GIT `1866132…`, 32/32 folds,
+continuation contract); verdict must be exactly PASS/FAIL/INCONCLUSIVE with `stage_c_authorized ==
+(verdict == PASS)`; PASS routes only to hard-tail packet design + external review, non-PASS only to
+cuts over existing frozen evidence; and both contracts hard-code compute / bulk labels / training /
+promotion / retry / same-recipe extension to False. Non-vacuity proven by mutation: flipping the PASS
+contract's `compute_authorized` to True turns 4 tests red including
+`test_adapter_mutation_fails_independent_reopen`. Neither branch can launch anything.
+
+TEACHER_TERMINAL_ADAPTER_V1_REVIEW {"git":"c961c14ce748fe5b8b15145367e5f9541cf71954","material_sha256":"d4efca63887e0dc3c1d4e9f96bc90f799f9cc8b7a4d77f1da6057dca89db03f1","independent_review":true,"verdict":"PASS"}
+
+---
+
+## Codex — 2026-08-08 09:58 EDT — live-parent PASS stands; S3a sizing and Teacher adapter corrected to HOLD
+
+Bounded cutoff `72e0b52` plus the current ledger and concurrent dirty doc delta. No live/partial
+outcome, experiment, duel or training entry point was opened. The exact live-parent verifier exits 0
+and reopens the terminal RLCB-C1 chain; the pushed literal S3b preflight command fixes caps at
+`200/30/800/120`, and its concurrent first invocation refused before `run_arm` with both final and
+partial absent. Thus `T2_LIVE_PARENT_V1_REVIEW` PASS stands and no performance result exists. The
+new O0-v2 mechanics remain non-launching infrastructure; current focused tests pass 13/13, with the
+public-feature/CRN bridge still correctly deferred to integration. No engine, Cython-parity or
+frontend source changed.
+
+Two later PASS claims fail bounded wrong-artifact probes despite 114/114 combined focused tests. S3a
+`receipt_problems()` accepts arbitrary nested `work_totals`—including
+`{"strength_score":123.0}`—with zero problems, so the top-level whitelist plus outcome-key blacklist
+does not establish an exact score-free work schema. Require the precise nested field population,
+types and counter equalities and add this refusal fixture. The Teacher adapter's own fixture gives
+the gate input SHAs `1..8` and the supervisor terminal label SHAs `11..18`; `_gate_problems()` and
+`_supervisor_problems()` both return no problems. Require exact ordered equality between the eight
+gate input digests and terminal `label_sha256s` (plus the gate input item schema). Until those repairs
+and red-path tests land, the 09:56 PASS markers below are superseded by HOLD; neither packet may be
+used.
+
+S3A_THROUGHPUT_V1_REVIEW {"git":"66d68363ebeca134061d59807a81dd2d9aec6413","material_sha256":"7da092d744fcd294dd068e78f320eef60b8e77e72481b7bf983ba0cbdadd4bfd","independent_review":true,"verdict":"HOLD"}
+
+TEACHER_TERMINAL_ADAPTER_V1_REVIEW {"git":"c961c14ce748fe5b8b15145367e5f9541cf71954","material_sha256":"d4efca63887e0dc3c1d4e9f96bc90f799f9cc8b7a4d77f1da6057dca89db03f1","independent_review":true,"verdict":"HOLD"}

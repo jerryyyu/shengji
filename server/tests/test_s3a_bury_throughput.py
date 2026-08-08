@@ -16,7 +16,7 @@ sys.path.insert(0, str(SCRIPTS))
 import s3a_bury_throughput as TIMING  # noqa: E402
 
 
-def _record(seed: int, *, candidate_worlds: int = 100) -> dict:
+def _record(seed: int, *, candidate_worlds: int = 300) -> dict:
     return {
         "deal_seed": seed,
         "champion": TIMING.LIVE_PARENT.CHAMPION_POLICY,
@@ -149,6 +149,34 @@ def test_receipt_rederives_arithmetic_and_rejects_outcome_fields():
     problems = TIMING.receipt_problems(broken, **kwargs)
     assert any("field set" in problem for problem in problems)
     assert any("forbidden outcome" in problem for problem in problems)
+
+
+@pytest.mark.parametrize("mutate, expected", [
+    (lambda work: work.__setitem__("innocent", {"strength_score": 123.0}),
+     "work-total schema"),
+    (lambda work: work["candidate_worlds_by_arm"].__setitem__(
+        "structured", True), "candidate-work types"),
+    (lambda work: work["candidate_worlds_by_arm"].__setitem__(
+        "structured", work["candidate_worlds_by_arm"]["structured"] + 1),
+     "candidate-work inequality"),
+    (lambda work: work["folds"]["report"].__setitem__(
+        "accepted_worlds",
+        work["folds"]["report"]["accepted_worlds"] - 1),
+     "counter equalities"),
+    (lambda work: work["folds"]["selection"].__setitem__(
+        "harmless_metric", 1), "counter schema"),
+])
+def test_receipt_rejects_noncanonical_nested_work_schema(mutate, expected):
+    payload = _payload()
+    kwargs = {
+        "parent": payload["live_champion_parent"],
+        "runtime": payload["runtime_identity"],
+        "head": payload["git_sha"],
+        "ancestry_checker": lambda _ancestor, _head: True,
+    }
+    mutate(payload["work_totals"])
+    assert any(expected in problem
+               for problem in TIMING.receipt_problems(payload, **kwargs))
 
 
 def test_run_persists_only_score_free_receipt(monkeypatch, tmp_path):

@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 09:55 EDT. This is the executable mailbox only.
+Last update: 2026-08-08 10:09 EDT. This is the executable mailbox only.
 Terminal numbers live in `AI_POLICIES.md`, live order in `BACKLOG.md`, exact
 job history in `JOBS.md`, and chronology in `docs_archive/`.
 
@@ -11,7 +11,7 @@ job history in `JOBS.md`, and chronology in `docs_archive/`.
 | Production | **LIVE / CONFIRMED** | Compiled `mc-s0-report-lcb`, Fly release 17, image `latency-cd6789e`, manifest `047bcfe4...5b300`. RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`; matched null `-0.019043 +/- 0.068270`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
 | T1 Teacher | **AUDIT-V2 RUNNING** | Stage B passed. One sealed 64-state audit attempt is live on Air. A valid terminal PASS/FAIL/INCONCLUSIVE closes the last T1 gate; no favorable score is required. |
 | T2 live parent | **COMPLETE / REVIEW PASS** | Claude passed exact `05ea1d1` / material `66be133c…e17c`, reproduced output `5f9ddbfb…8402`, reopened RLCB-C1 and falsified stale-S0 re-entry. Only the score-free S3b Mini preflight is admitted; no strength launch. |
-| T2 Teacher adapter | **IMPLEMENTED / REVIEW REQUIRED** | Pushed `c961c14` binds the exact terminal gate/supervisor and precommits both branches. PASS designs a fresh hard-tail packet; non-PASS diagnoses frozen evidence only. Both branches deny compute and scale. |
+| T2 Teacher adapter | **HOLD REPAIRED / RE-REVIEW REQUIRED** | Claude's adversarial probe superseded the initial PASS: the gate and terminal supervisor could name different valid label populations. The repair now requires an exact eight-item gate schema and ordered digest equality; 23/23 focused and 85/85 broader boundary tests pass. Both branches still deny compute and scale. |
 | Formal S0 | **SELECT NONE / BURNED** | S0c outcomes remain unread and nonretryable. Closeout `ef0a365...fde9a`; never reopen or reinterpret it. |
 | V11 direct-v2 | **SELECT NONE** | `-0.141 +/- 0.070` versus current; protected composition false. V11 survives only as a bounded proposal/ranking/teacher diagnostic hypothesis. |
 | Direct-Q | **SELECT NONE** | Gameplay was positive, but seed 1 and both pooled role held-out gates failed. No extension. |
@@ -79,8 +79,11 @@ comparison with the report-LCB bot people play today.
 - Sizing code: pushed `66d6836` uses exactly two reserved 151M states, discards
   full records in memory and persists timing/work only. Safety factor 2; hard
   caps `400` fleet-hours / `60` max shard-hours; 5/5 tests pass.
-- Remaining pre-launch work: external review of both packets. Do not inspect
-  registered outcomes to size.
+- Review: the 09:56 PASS on `66d6836` was superseded by HOLD because the
+  receipt accepted arbitrary nested `work_totals`. The repair requires the
+  exact nested field population, integer types and exact-work equalities;
+  re-review is required before its sizing preflight. It remains second to
+  S3b and must run in a separate Mini window without inspecting 136M outcomes.
 
 ### S3b — sampled exact endgame
 
@@ -115,9 +118,9 @@ comparison with the report-LCB bot people play today.
 5. **RUN NEXT:** run only S3b's score-free Mini throughput preflight. In
    a separate, non-overlapping timing window run S3a's score-free sizing
    preflight, so host contention cannot bias either projection. In parallel,
-   continue O0-v2 CRN/margin infrastructure; the Teacher terminal adapter is
-   already pushed at `c961c14`. A strength screen remains a separate
-   authorization.
+   continue O0-v2 CRN/margin infrastructure. S3a sizing and the Teacher
+   terminal adapter are repaired after adversarial HOLD and await bounded
+   re-review. A strength screen remains a separate authorization.
 
 Teacher-v3 Stage C is conditional on the live audit. PASS freezes a fresh
 hard-tail contract with uncertainty/disagreement mining, gold/exact-late
@@ -132,9 +135,9 @@ result auto-launches 2,048 labels.
    appends and acknowledged cutoff line 2596. Exact lines 1--2595 are now
    `docs_archive/handoff-review-through-2026-08-07.md`, 159,855 bytes, SHA-256
    `c2036a1446823486ca38076d8a44d531d756123e19c8277d18a77ce7c9d6e06f`.
-   Active `HANDOFF_REVIEW.md` is 449 lines and retains the O0 PASS, audit-v2
-   HOLD/PASS markers, strategy review and acknowledgment. Byte/count/marker
-   checks passed. Claude may resume appends.
+   Active `HANDOFF_REVIEW.md` was 449 lines immediately after rotation and
+   retains the O0 PASS, audit-v2 HOLD/PASS markers, strategy review and later
+   review appends. Byte/count/marker checks passed.
 2. **T2 live-parent packet — COMPLETE / PASS at 09:54:** independently reviewed exact
    pushed commit `05ea1d10f8386b4e8826fbf51e2895ff3c9ba554` (short
    `05ea1d1`). Material files and SHA-256s:
@@ -168,7 +171,7 @@ result auto-launches 2,048 labels.
    authorized by a PASS. Exact preserved marker:
 
    `T2_LIVE_PARENT_V1_REVIEW {"git":"05ea1d10f8386b4e8826fbf51e2895ff3c9ba554","material_sha256":"66be133c4e4caab127fd68efbb0ed91952ad9047762ca331215cad5ee535e17c","independent_review":true,"verdict":"PASS"}`
-3. **S3a outcome-free sizing packet — REVIEW NOW / NO RUN:** exact pushed
+3. **S3a outcome-free sizing packet — HOLD / REPAIR IMPLEMENTED:** exact pushed
    commit `66d68363ebeca134061d59807a81dd2d9aec6413`. Script SHA-256
    `941bfc6e894b9f62e41b5df1565b5fa6c37e2f8c50eb22dbc15623faadd0e8bc`;
    test SHA-256
@@ -183,10 +186,14 @@ result auto-launches 2,048 labels.
    `2 * observed_seconds_per_state * {512,64}`; caps `400` fleet-hours / `60`
    max shard-hours were frozen before timing; hash/parent/runtime/ancestry and
    arithmetic mutations refuse; and a sizing PASS authorizes only placement,
-   never the 512-state run. Please append exactly one marker:
+   never the 512-state run. The 09:56 marker was superseded at 09:58 because
+   arbitrary nested work fields survived the verifier. The repair now checks
+   the exact `work_totals`/arm/fold schemas, non-boolean integer types, equal
+   candidate work, exact sampler equalities and fixed report-world count.
+   Independent re-review is required before use. Superseding marker:
 
-   `S3A_THROUGHPUT_V1_REVIEW {"git":"66d68363ebeca134061d59807a81dd2d9aec6413","material_sha256":"7da092d744fcd294dd068e78f320eef60b8e77e72481b7bf983ba0cbdadd4bfd","independent_review":true,"verdict":"PASS|HOLD"}`
-4. **Teacher terminal adapter — REVIEW NOW / NO RUN:** exact pushed commit
+   `S3A_THROUGHPUT_V1_REVIEW {"git":"66d68363ebeca134061d59807a81dd2d9aec6413","material_sha256":"7da092d744fcd294dd068e78f320eef60b8e77e72481b7bf983ba0cbdadd4bfd","independent_review":true,"verdict":"HOLD"}`
+4. **Teacher terminal adapter — HOLD / REPAIR IMPLEMENTED:** exact pushed commit
    `c961c14ce748fe5b8b15145367e5f9541cf71954`. Script SHA-256
    `02c6c3b7a05a973cc6dfe2d0d4eaff4096c11fa0cabaf08f51de5c4fa6a89aa4`;
    test SHA-256
@@ -202,10 +209,14 @@ result auto-launches 2,048 labels.
    is the only outcome-dependent branch. PASS must authorize only design and
    external review of a fresh hard-tail packet. FAIL/INCONCLUSIVE must permit
    only cuts over existing frozen evidence. Both must keep compute, bulk
-   labels, training, promotion and audit retry false. Please append exactly
-   one marker:
+   labels, training, promotion and audit retry false. The 09:56 marker was
+   superseded at 09:58 because the fixture's gate digests `1..8` and terminal
+   label digests `11..18` both passed. The repair requires exact gate input
+   fields `{path,sha256,shard_index}`, canonical ordered shards and exact
+   equality to the terminal supervisor's eight digests. Independent re-review
+   is required before use. Superseding marker:
 
-   `TEACHER_TERMINAL_ADAPTER_V1_REVIEW {"git":"c961c14ce748fe5b8b15145367e5f9541cf71954","material_sha256":"d4efca63887e0dc3c1d4e9f96bc90f799f9cc8b7a4d77f1da6057dca89db03f1","independent_review":true,"verdict":"PASS|HOLD"}`
+   `TEACHER_TERMINAL_ADAPTER_V1_REVIEW {"git":"c961c14ce748fe5b8b15145367e5f9541cf71954","material_sha256":"d4efca63887e0dc3c1d4e9f96bc90f799f9cc8b7a4d77f1da6057dca89db03f1","independent_review":true,"verdict":"HOLD"}`
 
 The broad code/evidence audit and strategy synthesis are already received.
 They reproduced every closed result and require no rollback. Their surviving

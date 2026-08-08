@@ -70,11 +70,15 @@ The live order is in `BACKLOG.md`. Pushed `05ea1d1` versions S3a/S3b against
 exact `mc-s0-report-lcb`; Claude independently passed exact material
 `66be133c…e17c` at 09:54 and conveyed no strength or production authority.
 Pushed `66d6836` adds S3a's outcome-free timing receipt on exact reserved
-151M states; 5/5 focused tests pass and external review is pending.
+151M states. Its initial 09:56 PASS was superseded by HOLD after an arbitrary
+nested-work-field probe passed. The repaired exact nested schema and counter
+equalities pass the broader boundary matrix but require independent re-review.
 
-The live-parent PASS now admits the first score-free timing job on Mini. Run
+The live-parent PASS now admits the first score-free S3b timing job on Mini.
+S3a's separate sizing packet remains second and cannot run until its repair
+passes re-review. Run
 the two timing jobs in separate windows so contention cannot corrupt either
-projection; S3a still waits on its own review:
+projection:
 
 1. S3b two-cluster throughput preflight under hard caps screen `200`
    fleet-hours / `30` max shard-hours and confirmation `800` / `120`;
@@ -84,8 +88,10 @@ projection; S3a still waits on its own review:
 Neither preflight retains strength outcomes or authorizes its corresponding
 screen. Neither lane may inherit stale formal-S0 `mc-strong` authority. While
 review or timing is live, implementation continues off-host. Teacher terminal
-branch routing is pushed at `c961c14` and review-pending; O0-v2 CRN/logit-
-margin infrastructure is next rather than competing for the measured host.
+branch routing's initial PASS was also superseded by HOLD; its repaired
+gate-to-supervisor label-population binding awaits re-review. O0-v2
+CRN/logit-margin mechanics are pushed rather than competing for the measured
+host.
 
 The exact first launch is predeclared as
 `s3b-report-lcb-v2-throughput-mini-v1`, output
@@ -108,6 +114,12 @@ At `ec2b886`, the score-free admission dry check reopened exact
 runtime and returned zero protocol problems. It executed no round. The output
 path was absent. A review PASS admits this preflight only, not a strength
 screen.
+
+The first S3b invocation at 09:56 refused at the initial clean-tree check
+because Claude appended the S3a/Teacher review records concurrently. It exited
+3 before `run_arm`, created no final or partial, consumed no registered round,
+and produced no timing or strength result. Preserve this operational note; the
+unchanged command may start once those review bytes are committed and pushed.
 
 ## Archive pointers
 

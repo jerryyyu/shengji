@@ -233,6 +233,23 @@ def _gate_problems(gate: dict) -> list[str]:
     inputs = gate.get("inputs")
     if not isinstance(inputs, list) or len(inputs) != 8:
         problems.append("audit gate exact eight inputs")
+    else:
+        expected_fields = {"path", "sha256", "shard_index"}
+        if any(not isinstance(item, dict)
+               or set(item) != expected_fields for item in inputs):
+            problems.append("audit gate input item schema")
+        else:
+            paths = [item["path"] for item in inputs]
+            digests = [item["sha256"] for item in inputs]
+            indices = [item["shard_index"] for item in inputs]
+            if (any(not isinstance(path, str) or not path for path in paths)
+                    or len(set(paths)) != 8):
+                problems.append("audit gate input path population")
+            if (any(not is_sha256(digest) for digest in digests)
+                    or len(set(digests)) != 8):
+                problems.append("audit gate input digest population")
+            if indices != list(range(8)):
+                problems.append("audit gate ordered shard population")
     return sorted(set(problems))
 
 
@@ -281,6 +298,14 @@ def _supervisor_problems(events: list[dict], gate: dict,
                 or any(not is_sha256(value) for value in labels)
                 or len(set(labels)) != 8):
             problems.append("supervisor exact label population")
+        else:
+            inputs = gate.get("inputs")
+            if (not isinstance(inputs, list) or len(inputs) != 8
+                    or any(not isinstance(item, dict)
+                           or set(item) != {"path", "sha256", "shard_index"}
+                           for item in inputs)
+                    or labels != [item["sha256"] for item in inputs]):
+                problems.append("supervisor/gate label digest binding")
     return sorted(set(problems))
 
 

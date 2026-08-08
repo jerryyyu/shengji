@@ -37,6 +37,11 @@ SAFETY_FACTOR = 2.0
 FULL_STATES = S3A.TOTAL_STATES
 STATES_PER_SHARD = S3A.STATES_PER_SHARD
 CAP_KEYS = ("screen_fleet_hours", "screen_max_shard_wall_hours")
+WORK_TOTAL_KEYS = ("states", "candidate_worlds_by_arm", "folds")
+WORK_FOLD_KEYS = (
+    "requested_worlds", "sample_attempts", "accepted_worlds",
+    "failed_worlds", "rejected_worlds", "impossible_worlds",
+)
 RECEIPT_KEYS = {
     "schema", "complete", "evidence_grade", "strength_scores_persisted",
     "raw_records_persisted", "registered_screen_states_consumed",
@@ -194,6 +199,67 @@ def _forbidden_receipt_keys(value, path: str = "") -> list[str]:
     return problems
 
 
+def _work_totals_problems(value: object) -> list[str]:
+    """Require the complete score-free work schema and its equalities.
+
+    The recursive outcome-key blacklist is defense in depth, not a schema: an
+    unknown nested field could otherwise carry an outcome under an innocent
+    name.  The compact receipt therefore accepts only the fields emitted by
+    ``score_free_work`` and rechecks its exact-work invariants.
+    """
+    if not isinstance(value, dict) or set(value) != set(WORK_TOTAL_KEYS):
+        return ["throughput receipt work-total schema"]
+    problems = []
+    if value.get("states") != STATE_COUNT:
+        problems.append("throughput receipt work-total state count")
+
+    candidate_worlds = value.get("candidate_worlds_by_arm")
+    if (not isinstance(candidate_worlds, dict)
+            or set(candidate_worlds) != set(S3A.ARMS)):
+        problems.append("throughput receipt candidate-work arm schema")
+    else:
+        totals = list(candidate_worlds.values())
+        if any(isinstance(total, bool) or not isinstance(total, int)
+               or total <= 0 for total in totals):
+            problems.append("throughput receipt candidate-work types")
+        elif len(set(totals)) != 1:
+            problems.append("throughput receipt candidate-work inequality")
+        elif totals[0] < STATE_COUNT * 2 * S3A.REPORT_WORLDS:
+            problems.append("throughput receipt candidate-work underfill")
+
+    folds = value.get("folds")
+    if (not isinstance(folds, dict)
+            or set(folds) != {"selection", "report"}):
+        problems.append("throughput receipt work-fold schema")
+    else:
+        for fold_name in ("selection", "report"):
+            fold = folds.get(fold_name)
+            if not isinstance(fold, dict) or set(fold) != set(WORK_FOLD_KEYS):
+                problems.append(
+                    f"throughput receipt {fold_name} counter schema")
+                continue
+            if any(isinstance(fold[field], bool)
+                   or not isinstance(fold[field], int)
+                   or fold[field] < 0 for field in WORK_FOLD_KEYS):
+                problems.append(
+                    f"throughput receipt {fold_name} counter types")
+                continue
+            requested = fold["requested_worlds"]
+            if (requested <= 0
+                    or fold["accepted_worlds"] != requested
+                    or fold["sample_attempts"] != requested
+                    or any(fold[field] != 0 for field in (
+                        "failed_worlds", "rejected_worlds",
+                        "impossible_worlds"))):
+                problems.append(
+                    f"throughput receipt {fold_name} counter equalities")
+            if (fold_name == "report"
+                    and requested != STATE_COUNT * S3A.REPORT_WORLDS):
+                problems.append(
+                    "throughput receipt report requested-world count")
+    return sorted(set(problems))
+
+
 def receipt_problems(payload: object, *, parent: dict, runtime: dict,
                      head: str, ancestry_checker=None) -> list[str]:
     if not isinstance(payload, dict):
@@ -238,6 +304,7 @@ def receipt_problems(payload: object, *, parent: dict, runtime: dict,
                    for value in by_state)
             or sum(by_state) > wall * 1.001):
         problems.append("throughput receipt wall-time accounting")
+    problems += _work_totals_problems(payload.get("work_totals"))
     caps = payload.get("caps")
     if not isinstance(caps, dict) or tuple(sorted(caps)) != tuple(sorted(CAP_KEYS)):
         problems.append("throughput receipt cap schema")

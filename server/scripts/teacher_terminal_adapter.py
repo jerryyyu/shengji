@@ -28,16 +28,47 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-SCHEMA = "teacher-v3-terminal-adapter-v1"
-AUDIT_GATE_SCHEMA = "teacher-v1-champion-audit-gate-v1"
-SUPERVISOR_SCHEMA = "teacher-v1-champion-audit-supervisor-v1"
-AUDIT_ID = "teacher-v3-report-lcb-audit-v1"
-RUN_ID = "teacher-v3-report-lcb-audit-v2-149m"
-AUDIT_GIT = "1866132766c7f16542bc27e730622e2dfea639ae"
+SCHEMA = "teacher-v3-terminal-adapter-v2"
+AUDIT_GATE_SCHEMA = "teacher-v1-champion-audit-gate-v2"
+SUPERVISOR_SCHEMA = "teacher-v1-champion-audit-supervisor-v2"
+AUDIT_ID = "teacher-v3-report-lcb-audit-v2"
+RUN_ID = "teacher-v3-report-lcb-audit-v3-mini-149m"
+AUDIT_GIT = "f78e9047b50e7e254c76f8a1ff9490bc9aa75700"
 AUDIT_SCRIPT_SHA256 = (
-    "c7b47a7a0305f6067129cc7b19517d9a983efff70085f83edc0d39475955d6cb"
+    "0a79aa6c3dc2f2bfef81e035bead8ac22974c0c27561908a60a38cd1edbf413a"
 )
+SUPERVISOR_SCRIPT_SHA256 = (
+    "07284fc0c99e678df0a1d02f8aabc06d7fa8d38837aa46099110ff908ae2f47f"
+)
+EXPECTED_HOST = "Jerrys-Mac-mini.local"
+EXPECTED_PYTHON = "3.14.6"
+STAGE_B_STATE_SHA256 = (
+    "90956da86f4f03074a1b4dc2d7198a3da5958470b733eacd104e066c523b4dc6"
+)
+STAGE_B_GATE_SHA256 = (
+    "f607b48986aaa8b05194f88e8638540bc5c9360f09f3c28a7565d8d8cac89694"
+)
+CONSUMED_AUDIT_STATE_SHA256 = (
+    "d04d1c0fa507bab680da4d53eeb72325a97c8ca058aac0d01c16dfdcf44f7a34"
+)
+AUDIT_STATE_SHA256 = (
+    "82da0fd8a2f362dd2a8340847ccb7caaba1c2d58840cd0809d2353751999d94c"
+)
+PARENT_NAMESPACE = "runs/logs/teacher-v1-entry-149m-v3"
+AUDIT_NAMESPACE = "runs/logs/teacher-v1-entry-149m-v5"
 EXPECTED_FOLDS = {"champion_selection": 32, "champion_report": 32}
+EXPECTED_ADMISSION = {
+    "schema": "teacher-v3-champion-continuation-admission-v1",
+    "accepted_worlds": {"selection": 30, "report": 300},
+    "selection_attempt_cap": 1_200,
+    "report_attempt_cap": 12_000,
+    "allow_failed_determinization_retries": True,
+    "require_full_accepted_dose": True,
+    "refuse_attempt_cap_hit": True,
+    "require_strict_voids": True,
+    "score_failed_attempts": False,
+    "counter_identity": "sample_attempts=accepted_worlds+failed_worlds",
+}
 EXPECTED_CONTINUATION = {
     "policy": "mc-s0-report-lcb",
     "selection_worlds": 30,
@@ -49,6 +80,7 @@ EXPECTED_CONTINUATION = {
     "require_exact_work": True,
     "adaptive_allocation": False,
     "random_allocation": False,
+    "admission": EXPECTED_ADMISSION,
 }
 
 
@@ -214,7 +246,12 @@ def _gate_problems(gate: dict) -> list[str]:
     if (gate.get("producer_run_id") != RUN_ID
             or gate.get("git") != AUDIT_GIT
             or gate.get("tree_dirty") is not False
-            or gate.get("promotable") is not True):
+            or gate.get("promotable") is not True
+            or gate.get("host") != EXPECTED_HOST
+            or gate.get("python") != EXPECTED_PYTHON
+            or gate.get("fast_engine") is not True
+            or gate.get("require_voids") is not True
+            or gate.get("experimental_sampler_ballot_flags") != []):
         problems.append("audit gate execution identity")
     source_digests = gate.get("source_digests")
     if (not isinstance(source_digests, dict)
@@ -224,6 +261,38 @@ def _gate_problems(gate: dict) -> list[str]:
         problems.append("audit gate fold contract")
     if gate.get("continuation_contract") != EXPECTED_CONTINUATION:
         problems.append("audit gate continuation contract")
+    expected_bindings = {
+        "stage_b_state_set": {
+            "path": f"{PARENT_NAMESPACE}/stage_b_states.json",
+            "sha256": STAGE_B_STATE_SHA256,
+        },
+        "stage_b_gate": {
+            "path": f"{PARENT_NAMESPACE}/stage_b_gate_v2.json",
+            "sha256": STAGE_B_GATE_SHA256,
+        },
+        "consumed_audit_state_set": {
+            "path": (
+                f"{AUDIT_NAMESPACE}/"
+                "champion_audit_consumed_states_v1.json"),
+            "sha256": CONSUMED_AUDIT_STATE_SHA256,
+        },
+        "audit_state_set": {
+            "path": f"{AUDIT_NAMESPACE}/champion_audit_states_v2.json",
+            "sha256": AUDIT_STATE_SHA256,
+        },
+    }
+    for name, binding in expected_bindings.items():
+        if gate.get(name) != binding:
+            problems.append(f"audit gate {name} binding")
+    receipt = gate.get("producer_receipt")
+    if (not isinstance(receipt, dict)
+            or set(receipt) != {"path", "sha256", "run_id", "nonce"}
+            or not isinstance(receipt.get("path"), str)
+            or not receipt.get("path")
+            or not is_sha256(receipt.get("sha256"))
+            or receipt.get("run_id") != RUN_ID
+            or not is_sha256(receipt.get("nonce"))):
+        problems.append("audit gate receipt binding")
     if gate.get("n_states") != 64:
         problems.append("audit gate state count")
     if not isinstance(gate.get("problems"), list):
@@ -250,6 +319,16 @@ def _gate_problems(gate: dict) -> list[str]:
                 problems.append("audit gate input digest population")
             if indices != list(range(8)):
                 problems.append("audit gate ordered shard population")
+    for name in ("cheap_inputs", "n30_inputs"):
+        items = gate.get(name)
+        if (not isinstance(items, list) or len(items) != 8
+                or [item.get("shard_index") for item in items
+                    if isinstance(item, dict)] != list(range(8))
+                or any(not isinstance(item, dict)
+                       or not isinstance(item.get("path"), str)
+                       or not is_sha256(item.get("sha256"))
+                       for item in items)):
+            problems.append(f"audit gate {name} population")
     return sorted(set(problems))
 
 
@@ -267,14 +346,21 @@ def _supervisor_problems(events: list[dict], gate: dict,
     if len(admitted) != 1:
         problems.append("supervisor exact admitted event")
     else:
-        execution = admitted[0].get("execution_predeclaration")
-        if (admitted[0].get("run_id") != RUN_ID
-                or admitted[0].get("audit_git") != AUDIT_GIT
-                or admitted[0].get("audit_script_sha256")
+        admitted_event = admitted[0]
+        execution = admitted_event.get("execution_predeclaration")
+        if (admitted_event.get("run_id") != RUN_ID
+                or admitted_event.get("host") != EXPECTED_HOST
+                or admitted_event.get("audit_git") != AUDIT_GIT
+                or admitted_event.get("audit_script_sha256")
                 != AUDIT_SCRIPT_SHA256
-                or admitted[0].get("shard_count") != 8
-                or admitted[0].get("selection_worlds") != 32
-                or admitted[0].get("report_worlds") != 32
+                or admitted_event.get("supervisor_sha256")
+                != SUPERVISOR_SCRIPT_SHA256
+                or not is_sha256(admitted_event.get("receipt_sha256"))
+                or not is_sha256(admitted_event.get("preparation_sha256"))
+                or not is_sha256(admitted_event.get("preparer_sha256"))
+                or admitted_event.get("shard_count") != 8
+                or admitted_event.get("selection_worlds") != 32
+                or admitted_event.get("report_worlds") != 32
                 or not isinstance(execution, dict)
                 or execution.get("git") != AUDIT_GIT
                 or execution.get("audit_script_sha256")
@@ -286,9 +372,22 @@ def _supervisor_problems(events: list[dict], gate: dict,
         event = terminal[0]
         expected_code = 0 if gate.get("verdict") == "PASS" else 4
         labels = event.get("label_sha256s")
+        admitted_event = admitted[0] if len(admitted) == 1 else {}
+        receipt = gate.get("producer_receipt")
         if (event.get("run_id") != RUN_ID
+                or event.get("host") != EXPECTED_HOST
                 or event.get("audit_git") != AUDIT_GIT
                 or event.get("audit_script_sha256") != AUDIT_SCRIPT_SHA256
+                or event.get("supervisor_sha256")
+                != SUPERVISOR_SCRIPT_SHA256
+                or event.get("receipt_sha256")
+                != admitted_event.get("receipt_sha256")
+                or event.get("preparation_sha256")
+                != admitted_event.get("preparation_sha256")
+                or event.get("preparer_sha256")
+                != admitted_event.get("preparer_sha256")
+                or not isinstance(receipt, dict)
+                or event.get("receipt_sha256") != receipt.get("sha256")
                 or event.get("gate_sha256") != gate_sha256
                 or event.get("gate_verdict") != gate.get("verdict")
                 or event.get("gate_returncode") != expected_code
@@ -367,6 +466,10 @@ def build_payload(config: Config, gate: dict, events: list[dict],
             "run_id": RUN_ID,
             "audit_git": AUDIT_GIT,
             "audit_script_sha256": AUDIT_SCRIPT_SHA256,
+            "supervisor_script_sha256": SUPERVISOR_SCRIPT_SHA256,
+            "stage_b_state_sha256": STAGE_B_STATE_SHA256,
+            "consumed_audit_state_sha256": CONSUMED_AUDIT_STATE_SHA256,
+            "fresh_audit_state_sha256": AUDIT_STATE_SHA256,
             "gate": {
                 "path": str(config.gate),
                 "sha256": config.expected_gate_sha256,

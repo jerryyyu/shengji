@@ -52,13 +52,52 @@ def _gate(verdict: str) -> dict:
         "git": A.AUDIT_GIT,
         "tree_dirty": False,
         "promotable": True,
+        "host": A.EXPECTED_HOST,
+        "python": A.EXPECTED_PYTHON,
+        "fast_engine": True,
+        "require_voids": True,
+        "experimental_sampler_ballot_flags": [],
         "source_digests": {"audit_script": A.AUDIT_SCRIPT_SHA256},
         "folds_contract": A.EXPECTED_FOLDS,
         "continuation_contract": A.EXPECTED_CONTINUATION,
         "n_states": 64,
         "problems": [] if passed else ["registered terminal miss"],
+        "producer_receipt": {
+            "path": "/sealed/champion_audit_receipt_v2.json",
+            "sha256": "9" * 64,
+            "run_id": A.RUN_ID,
+            "nonce": "8" * 64,
+        },
+        "stage_b_state_set": {
+            "path": f"{A.PARENT_NAMESPACE}/stage_b_states.json",
+            "sha256": A.STAGE_B_STATE_SHA256,
+        },
+        "stage_b_gate": {
+            "path": f"{A.PARENT_NAMESPACE}/stage_b_gate_v2.json",
+            "sha256": A.STAGE_B_GATE_SHA256,
+        },
+        "consumed_audit_state_set": {
+            "path": (
+                f"{A.AUDIT_NAMESPACE}/"
+                "champion_audit_consumed_states_v1.json"),
+            "sha256": A.CONSUMED_AUDIT_STATE_SHA256,
+        },
+        "audit_state_set": {
+            "path": f"{A.AUDIT_NAMESPACE}/champion_audit_states_v2.json",
+            "sha256": A.AUDIT_STATE_SHA256,
+        },
+        "cheap_inputs": [{
+            "path": f"/sealed/cheap-{index}.json",
+            "sha256": f"{index + 21:064x}",
+            "shard_index": index,
+        } for index in range(8)],
+        "n30_inputs": [{
+            "path": f"/sealed/n30-{index}.json",
+            "sha256": f"{index + 31:064x}",
+            "shard_index": index,
+        } for index in range(8)],
         "inputs": [{
-            "path": f"/sealed/champion_audit_v1_shard{index:02d}.json",
+            "path": f"/sealed/champion_audit_v2_shard{index:02d}.json",
             "sha256": f"{index + 1:064x}",
             "shard_index": index,
         } for index in range(8)],
@@ -73,8 +112,13 @@ def _events(verdict: str, gate_sha: str) -> list[dict]:
             "phase": "supervisor",
             "status": "admitted",
             "run_id": A.RUN_ID,
+            "host": A.EXPECTED_HOST,
             "audit_git": A.AUDIT_GIT,
             "audit_script_sha256": A.AUDIT_SCRIPT_SHA256,
+            "supervisor_sha256": A.SUPERVISOR_SCRIPT_SHA256,
+            "receipt_sha256": "9" * 64,
+            "preparation_sha256": "7" * 64,
+            "preparer_sha256": "6" * 64,
             "execution_predeclaration": {
                 "git": A.AUDIT_GIT,
                 "audit_script_sha256": A.AUDIT_SCRIPT_SHA256,
@@ -88,8 +132,13 @@ def _events(verdict: str, gate_sha: str) -> list[dict]:
             "phase": "supervisor",
             "status": "terminal",
             "run_id": A.RUN_ID,
+            "host": A.EXPECTED_HOST,
             "audit_git": A.AUDIT_GIT,
             "audit_script_sha256": A.AUDIT_SCRIPT_SHA256,
+            "supervisor_sha256": A.SUPERVISOR_SCRIPT_SHA256,
+            "receipt_sha256": "9" * 64,
+            "preparation_sha256": "7" * 64,
+            "preparer_sha256": "6" * 64,
             "gate_sha256": gate_sha,
             "gate_verdict": verdict,
             "gate_returncode": code,
@@ -131,6 +180,10 @@ def test_pass_emits_design_only_hard_tail_packet(tmp_path, monkeypatch):
     assert payload["training_authorized"] is False
     assert payload["production_promotion"] is False
     assert payload["audit_retry_authorized"] is False
+    assert payload["evidence"]["consumed_audit_state_sha256"] == \
+        A.CONSUMED_AUDIT_STATE_SHA256
+    assert payload["evidence"]["fresh_audit_state_sha256"] == \
+        A.AUDIT_STATE_SHA256
     assert not A.artifact_partial(out).exists()
     assert A.verify(config, out, _sha(out)) == payload
 
@@ -171,6 +224,54 @@ def test_gate_hash_mutation_refuses(tmp_path, monkeypatch):
     config.gate.write_text(config.gate.read_text() + "\n")
     with pytest.raises(A.AdapterRefusal, match="artifact SHA drift"):
         A.create(config, tmp_path / "adapter.json")
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    (
+        ("swap_consumed", "consumed_audit_state_set binding"),
+        ("drop_retry_admission", "continuation contract"),
+        ("wrong_host", "execution identity"),
+    ),
+)
+def test_gate_refuses_fresh_lineage_or_runtime_drift(
+        tmp_path, monkeypatch, mutation, message):
+    config = _fixture(tmp_path, monkeypatch)
+    gate = json.loads(config.gate.read_text())
+    if mutation == "swap_consumed":
+        gate["consumed_audit_state_set"] = dict(gate["audit_state_set"])
+    elif mutation == "drop_retry_admission":
+        gate["continuation_contract"].pop("admission")
+    else:
+        gate["host"] = "jerrys-macbook-air"
+    config.gate.write_text(json.dumps(gate, sort_keys=True))
+    changed = A.Config(
+        gate=config.gate,
+        expected_gate_sha256=_sha(config.gate),
+        supervisor_progress=config.supervisor_progress,
+        expected_supervisor_sha256=config.expected_supervisor_sha256,
+        expected_git=config.expected_git,
+    )
+    with pytest.raises(A.AdapterRefusal, match=message):
+        A.create(changed, tmp_path / "adapter.json")
+
+
+def test_supervisor_receipt_must_match_gate(tmp_path, monkeypatch):
+    config = _fixture(tmp_path, monkeypatch)
+    events = [json.loads(line)
+              for line in config.supervisor_progress.read_text().splitlines()]
+    events[-1]["receipt_sha256"] = "5" * 64
+    config.supervisor_progress.write_text(
+        "".join(json.dumps(event) + "\n" for event in events))
+    changed = A.Config(
+        gate=config.gate,
+        expected_gate_sha256=config.expected_gate_sha256,
+        supervisor_progress=config.supervisor_progress,
+        expected_supervisor_sha256=_sha(config.supervisor_progress),
+        expected_git=config.expected_git,
+    )
+    with pytest.raises(A.AdapterRefusal, match="terminal binding"):
+        A.create(changed, tmp_path / "adapter.json")
 
 
 def test_surviving_input_partial_refuses(tmp_path, monkeypatch):

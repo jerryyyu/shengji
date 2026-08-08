@@ -92,7 +92,7 @@ cannot admit training. Training then
 exercises a real 32-update midpoint teardown/reopen before completing the
 fixed 64-update arm. A PASS can authorize only freezing and independently
 reviewing O1; neither PASS nor failure creates strength or production
-authority. The focused suite currently passes 22/22, including a reduced real
+authority. The focused suite currently passes 25/25, including a reduced real
 train/resume/evaluate/reopen path. These candidate bytes still require
 independent re-review before `freeze`, `admit` or `train` is invoked.
 

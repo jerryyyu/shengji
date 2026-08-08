@@ -3,7 +3,7 @@
 The Air keeps its own at `~/Projects/shengji-compute/JOBS.md`, which is also
 the inter-agent mailbox. Keep one authoritative running section here.
 
-## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 20:36 EDT
+## RUNNING / Teacher-v3 Stage-B gold on Air at 2026-08-07 20:45 EDT
 
 Air has eight live compiled+strict `teacher_v1_label.py gold` workers in clean
 detached worktree `~/Projects/shengji-teacher-air` at exact commit
@@ -13,9 +13,9 @@ and remain near one CPU each. This block is attribution-only. Its outcomes
 cannot change the independently frozen 64-state report-LCB continuation audit.
 
 All eight output finals remain absent and all eight Python workers plus their
-caffeinate children remain live after about 5h52m. An outcome-blind parse of
-progress events showed `796/1228/628/788/356/840/972/728` fold worlds by shard
-and `6,336/16,384` (38.7%) aggregate. This is a liveness
+caffeinate children remain live after about 6h01m. An outcome-blind parse of
+progress events showed `804/1288/652/804/364/844/1004/752` fold worlds by shard
+and `6,512/16,384` (39.7%) aggregate. This is a liveness
 counter, not a compute-weighted ETA: ballot sizes and continuation costs differ
 by state. No outcome file was opened. The exact one-shot readiness and gate
 command now live in `HANDOFF_ACTIVE.md`; in particular, filename appearance is
@@ -38,6 +38,17 @@ routing. Streamed against Air at 20:34 it correctly returned exit `4`, eight
 live Python workers, zero regular finals, `outcomes_opened=false` and
 `artifact_created=false`. Claude still must accept the detached-success
 equivalence before a future ready result may authorize the one-shot gate.
+
+The later champion-audit launch now has an external one-shot supervisor rather
+than manual detached workers. Exact controller worktree
+`~/Projects/shengji-teacher-control-air` is clean at `07b2a9f`; supervisor SHA
+is `3da54361...15f550f`. It owns all eight 32/32 labels, persists child exit
+codes, heartbeats, reopens final artifacts and invokes one terminal gate only
+after eight zero exits. Its focused suite passes 8/8 and the adjacent Teacher
+matrix 141/141 in ordinary and compiled-strict routing. A live Air preflight
+bound exact audit `182d1df`, audit-script SHA `57796fda...887ead` and the
+producer venv's Python 3.14.6, then refused solely because the receipt is
+correctly absent before Stage-B PASS; no audit artifact was created.
 
 The separately pinned audit worktree now exists on Air at exact pushed commit
 `182d1df21697cedd722edfd3215ea1e2a7dd8753`. It carries frozen state SHA

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -232,12 +233,27 @@ def test_execution_commands_refuse_a_nonpredeclared_artifact_root(
         command(tmp_path / "operator-chosen-alias")
 
 
+def _packet_review_record(packet_sha256: str) -> str:
+    claim = {
+        "schema": screen.PACKET_REVIEW_SCHEMA,
+        "verdict": "PASS",
+        "packet_sha256": packet_sha256,
+        "independent_review": True,
+        "training_authorized": True,
+        "o1_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+    }
+    return screen.PACKET_REVIEW_MARKER + json.dumps(
+        claim, sort_keys=True, separators=(",", ":")) + "\n"
+
+
 def test_admission_binds_exact_packet_and_review_bytes(tmp_path, monkeypatch):
     packet_ref = screen._publish_json(tmp_path / "launch_packet.json", {})
     monkeypatch.setattr(
         screen, "verify_packet", lambda ref: {"runtime": {"frozen": True}})
-    review = tmp_path / "claude-review.txt"
-    review.write_text("Independent review: exact packet accepted.\n")
+    review = tmp_path.parent / f"{tmp_path.name}-independent-review.txt"
+    review.write_text(_packet_review_record(packet_ref.sha256))
     review_sha = hashlib.sha256(review.read_bytes()).hexdigest()
     admission_ref = screen.admit_packet(
         packet_ref,
@@ -259,8 +275,8 @@ def test_admission_rejects_wrong_packet_or_review_hash(tmp_path, monkeypatch):
     packet_ref = screen._publish_json(tmp_path / "launch_packet.json", {})
     monkeypatch.setattr(
         screen, "verify_packet", lambda ref: {"runtime": {"frozen": True}})
-    review = tmp_path / "review.txt"
-    review.write_text("accepted\n")
+    review = tmp_path.parent / f"{tmp_path.name}-review.txt"
+    review.write_text(_packet_review_record(packet_ref.sha256))
     review_sha = hashlib.sha256(review.read_bytes()).hexdigest()
     with pytest.raises(screen.SuphxO0ScreenError, match="packet"):
         screen.admit_packet(
@@ -270,6 +286,28 @@ def test_admission_rejects_wrong_packet_or_review_hash(tmp_path, monkeypatch):
         screen.admit_packet(
             packet_ref, expected_packet_sha256=packet_ref.sha256,
             review_record=review, expected_review_sha256="0" * 64)
+
+
+def test_admission_rejects_internal_or_nonpassing_review_record(
+        tmp_path, monkeypatch):
+    packet_ref = screen._publish_json(tmp_path / "launch_packet.json", {})
+    monkeypatch.setattr(
+        screen, "verify_packet", lambda ref: {"runtime": {"frozen": True}})
+    internal = tmp_path / "self-authored-review.txt"
+    internal.write_text(_packet_review_record(packet_ref.sha256))
+    internal_sha = hashlib.sha256(internal.read_bytes()).hexdigest()
+    with pytest.raises(screen.SuphxO0ScreenError, match="outside"):
+        screen.admit_packet(
+            packet_ref, expected_packet_sha256=packet_ref.sha256,
+            review_record=internal, expected_review_sha256=internal_sha)
+
+    hold = tmp_path.parent / f"{tmp_path.name}-hold-review.txt"
+    hold.write_text("Independent review verdict: HOLD\n")
+    hold_sha = hashlib.sha256(hold.read_bytes()).hexdigest()
+    with pytest.raises(screen.SuphxO0ScreenError, match="review marker"):
+        screen.admit_packet(
+            packet_ref, expected_packet_sha256=packet_ref.sha256,
+            review_record=hold, expected_review_sha256=hold_sha)
 
 
 def test_training_refuses_without_packet_and_review_admission(tmp_path):

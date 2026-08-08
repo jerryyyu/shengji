@@ -64,6 +64,8 @@ TRAIN_LEDGER_SCHEMA = "suphx-o0-training-ledger-v1"
 DEV_RESULT_SCHEMA = "suphx-o0-dev-result-v1"
 DEV_ROW_SCHEMA = "suphx-o0-dev-round-v1"
 GATE_SCHEMA = "suphx-o0-terminal-gate-v1"
+PACKET_REVIEW_SCHEMA = "suphx-o0-packet-review-v1"
+PACKET_REVIEW_MARKER = "SUPHX_O0_PACKET_REVIEW_V1 "
 
 ARMS = ("oracle", "public")
 KEEP_PROBABILITIES = {"oracle": 1.0, "public": 0.0}
@@ -870,6 +872,44 @@ def _artifact_names_payload() -> dict[str, str]:
     }
 
 
+def _packet_review_claim(
+        review_bytes: bytes, packet_ref: CheckpointRef) -> dict[str, Any]:
+    try:
+        review_text = review_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise SuphxO0ScreenError(
+            "independent-review record is not UTF-8") from exc
+    matches = [
+        line[len(PACKET_REVIEW_MARKER):]
+        for line in review_text.splitlines()
+        if line.startswith(PACKET_REVIEW_MARKER)
+    ]
+    if len(matches) != 1:
+        raise SuphxO0ScreenError(
+            "independent-review record must contain exactly one O0 packet "
+            "review marker")
+    try:
+        claim = json.loads(matches[0])
+    except json.JSONDecodeError as exc:
+        raise SuphxO0ScreenError(
+            "independent-review marker payload is invalid JSON") from exc
+    expected = {
+        "schema": PACKET_REVIEW_SCHEMA,
+        "verdict": "PASS",
+        "packet_sha256": packet_ref.sha256,
+        "independent_review": True,
+        "training_authorized": True,
+        "o1_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+    }
+    if claim != expected:
+        raise SuphxO0ScreenError(
+            "independent-review marker does not grant the exact narrow "
+            "packet authority")
+    return expected
+
+
 def freeze_packet(root: str | Path) -> CheckpointRef:
     root = _require_run_root(root)
     if root.exists() and any(root.iterdir()):
@@ -1026,12 +1066,16 @@ def admit_packet(
     packet = verify_packet(packet_ref)
     root = _require_run_root(Path(packet_ref.path).resolve().parent)
     review_path = _require_regular_final(review_record)
+    if review_path.resolve().is_relative_to(root):
+        raise SuphxO0ScreenError(
+            "independent-review source must be outside the O0 run namespace")
     review_bytes = review_path.read_bytes()
     review_sha256 = hashlib.sha256(review_bytes).hexdigest()
     if review_sha256 != expected_review_sha256:
         raise SuphxO0ScreenError("expected independent-review SHA-256 mismatch")
     if not review_bytes.strip():
         raise SuphxO0ScreenError("independent-review record is empty")
+    review_claim = _packet_review_claim(review_bytes, packet_ref)
     review_ref = _publish_bytes(root / "review_record.txt", review_bytes)
     if review_ref.sha256 != expected_review_sha256:
         raise SuphxO0ScreenError("copied review bytes changed")
@@ -1041,6 +1085,7 @@ def admit_packet(
         "packet_ref": packet_ref.as_dict(),
         "review_record_ref": review_ref.as_dict(),
         "review_record_source_sha256": expected_review_sha256,
+        "review_claim": review_claim,
         "operator_asserted_independent_review": True,
         "runtime_sha256": state_digest(packet["runtime"]),
         "training_authorized": True,
@@ -1062,9 +1107,10 @@ def _require_admission(root: str | Path) \
     admission = _load_json(admission_ref)
     expected_fields = {
         "schema", "screen_schema", "packet_ref", "review_record_ref",
-        "review_record_source_sha256", "operator_asserted_independent_review",
-        "runtime_sha256", "training_authorized", "o1_authorized",
-        "strength_claim", "production_promotion",
+        "review_record_source_sha256", "review_claim",
+        "operator_asserted_independent_review", "runtime_sha256",
+        "training_authorized", "o1_authorized", "strength_claim",
+        "production_promotion",
     }
     if not isinstance(admission, Mapping) or set(admission) != expected_fields \
             or admission.get("schema") != ADMISSION_SCHEMA \
@@ -1078,8 +1124,11 @@ def _require_admission(root: str | Path) \
     _same_ref(admission["packet_ref"], packet_ref, "admitted packet")
     review_ref = _ref(
         admission["review_record_ref"], label="independent review copy")
+    review_bytes = Path(review_ref.path).read_bytes()
     if review_ref.sha256 != admission.get("review_record_source_sha256") \
-            or not Path(review_ref.path).read_bytes().strip():
+            or not review_bytes.strip() \
+            or admission.get("review_claim") != _packet_review_claim(
+                review_bytes, packet_ref):
         raise SuphxO0ScreenError("independent review copy drift")
     admission_ref.verify()
     return packet_ref, admission_ref, dict(admission)

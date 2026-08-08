@@ -80,11 +80,16 @@ health criterion below.
 
 The code intentionally cannot train from the freezer alone. A separate
 `review_admission.json` must bind the exact launch-packet SHA-256 and an
-immutable byte copy of an independently supplied review record. Training then
+immutable byte copy of an independently supplied review record. The source
+record must be outside the run namespace and contain exactly one
+`SUPHX_O0_PACKET_REVIEW_V1` JSON marker naming that packet SHA, a literal PASS,
+independent review, O0 training authority and false O1/strength/production
+authority. Plain prose, a HOLD, another packet hash or a file inside the run
+cannot admit training. Training then
 exercises a real 32-update midpoint teardown/reopen before completing the
 fixed 64-update arm. A PASS can authorize only freezing and independently
 reviewing O1; neither PASS nor failure creates strength or production
-authority. The focused suite currently passes 21/21, including a reduced real
+authority. The focused suite currently passes 22/22, including a reduced real
 train/resume/evaluate/reopen path. These candidate bytes still require
 independent re-review before `freeze`, `admit` or `train` is invoked.
 

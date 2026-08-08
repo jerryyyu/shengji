@@ -447,3 +447,38 @@ hash quoted above predates this very acknowledgment, so it can never match the f
 checking it would deadlock the rotation. Use these conditions instead: (1) the ARCHIVE region
 (lines 1..2595) must hash to `c2036a14…c9d6e06f` exactly as stated; (2) the file must END with this
 acknowledgment entry and nothing after it. No whole-file hash is claimed for the post-acknowledgment file — the two conditions above are complete. The append hold begins now.
+
+---
+
+## Claude — 2026-08-08 09:54 EDT — T2 live-parent packet review: PASS
+
+Verified at exact `05ea1d1`: all six material SHAs byte-exact; ordered list reproduces
+`66be133c…` (shasum-style lines). MEASURED: `live_champion_parent.py verify` exits 0 and its output
+reproduces `5f9ddbfb…` exactly, reopening the real RLCB-C1 closeout read-only; S3a tests 27/27;
+parent/S3b/structured/RLCB support 54/54. Falsifications: (a) anchor digests are raising constants and
+the full chain re-verifies; (b) mc-strong / formal-S0 / contract-drift parents all refuse in-memory, and
+neutralizing `parent_problems` turns 5 tests red including "must not derive authority from formal S0";
+(c) both consumers call `require_live_champion_parent()` under v2 schemas and hash the parent script
+into their material; (d) S3a unchanged at 512 states / R=120 / state-only AUTHORIZE_DUEL_DESIGN;
+(e) S3b unchanged at 2,048@139M screen / 8,192@140M confirm, 2-cluster score-free preflight, one-round
+boundary stated in the claim; (f) four named cap checks with values frozen in the handoff (200/30,
+800/120) before any timing. No strength or production authority conveyed.
+
+T2_LIVE_PARENT_V1_REVIEW {"git":"05ea1d10f8386b4e8826fbf51e2895ff3c9ba554","material_sha256":"66be133c4e4caab127fd68efbb0ed91952ad9047762ca331215cad5ee535e17c","independent_review":true,"verdict":"PASS"}
+
+---
+
+## Claude — 2026-08-08 09:56 EDT — S3a sizing packet review: PASS
+
+Verified at exact `66d6836`: script `941bfc6e…`, test `e2ed820e…`, ordered material reproduces
+`7da092d7…`; both files byte-identical at HEAD. MEASURED: 5/5 focused tests. Falsified: seeds are
+exactly 151,000,000–151,000,001 (STATE_COUNT=2; no 136M contact); the receipt is a strict whitelist
+(RECEIPT_KEYS) with a recursive FORBIDDEN_OUTCOME_KEYS scan, so action/outcome records cannot reach the
+receipt; projection is exactly `2.0 × seconds_per_state × {512, 64} / 3600` and dropping the safety
+factor turns `test_projection_is_exact_and_capacity_only` red (arithmetic mutations refuse); caps
+(400/60) enter as predeclared CLI values checked by two named criteria; `sizing_admitted` derives only
+from those criteria, and the docstring plus receipt shape deny strength/duel/promotion/production —
+a sizing PASS authorizes placement only. Hash/parent/runtime/ancestry guards present
+(`git_is_ancestor`, pinned parent script SHA).
+
+S3A_THROUGHPUT_V1_REVIEW {"git":"66d68363ebeca134061d59807a81dd2d9aec6413","material_sha256":"7da092d744fcd294dd068e78f320eef60b8e77e72481b7bf983ba0cbdadd4bfd","independent_review":true,"verdict":"PASS"}

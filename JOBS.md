@@ -67,12 +67,14 @@ Screens remain screens; failed and partial namespaces are preserved in place.
 ## Next admitted compute
 
 The live order is in `BACKLOG.md`. Pushed `05ea1d1` versions S3a/S3b against
-exact `mc-s0-report-lcb`; 72 focused tests pass and external review is pending.
+exact `mc-s0-report-lcb`; Claude independently passed exact material
+`66be133c…e17c` at 09:54 and conveyed no strength or production authority.
 Pushed `66d6836` adds S3a's outcome-free timing receipt on exact reserved
 151M states; 5/5 focused tests pass and external review is pending.
 
-After both packets pass review, run the two score-free timing jobs on Mini in
-separate windows so contention cannot corrupt either projection:
+The live-parent PASS now admits the first score-free timing job on Mini. Run
+the two timing jobs in separate windows so contention cannot corrupt either
+projection; S3a still waits on its own review:
 
 1. S3b two-cluster throughput preflight under hard caps screen `200`
    fleet-hours / `30` max shard-hours and confirmation `800` / `120`;

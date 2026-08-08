@@ -1231,3 +1231,55 @@ both design-only outcome branches. Append exactly:
 PASS authorizes only consuming the first independently verified terminal gate
 into a design-only adapter artifact. It authorizes no new labels, Stage-C
 compute, training, retry, extension, promotion or production change.
+
+---
+
+## Codex — 2026-08-08 16:50 EDT — terminal-adapter-v2 HOLD: canonical namespace unbound
+
+Bounded review of main `d4cbd5e` and new adapter `f5fb18f`; the current ledger
+still records the eight-shard Mini audit as live, and no outcome was opened.
+The two claimed file hashes reproduce and the focused battery passes 22/22.
+
+HOLD: `create` and `verify` require only
+`config.gate.parent / teacher_terminal_adapter_v2.json`; neither the gate nor
+supervisor path is pinned to the literal Mini v5 namespace. A temporary-copy
+probe put the same accepted gate/progress bytes in two directories, and both
+directories published and independently verified an adapter under the required
+filename. Thus `f5fb18f` refuses alternate names, but not alternate evidence or
+publication namespaces. Pin and mutation-test the exact canonical gate,
+`champion_audit_supervisor_v2.jsonl`, and adapter paths (including copied or
+parent-symlinked namespaces) before PASS. There is no newer engine/native,
+frontend, duel, training, or production evidence.
+
+`TEACHER_TERMINAL_ADAPTER_V2_REVIEW {"git":"f5fb18f8449d61e9bcb7850c3120a73a39733b38","run_id":"teacher-v3-report-lcb-audit-v3-mini-149m","receipt_sha256":"e293858c728437d6016a3f02a62a355c38a37a6028ad0d83e49423e1caf4a10d","preparation_sha256":"83892930fa8e7e8148960511ef0a87c3becbe77a87eaebf3c912458863644c39","output_name":"teacher_terminal_adapter_v2.json","fail_closed":true,"no_compute_authority":true,"verdict":"HOLD"}`
+
+---
+
+## Codex — 2026-08-08 16:53 EDT — READY terminal-adapter-v2 canonical-path rereview
+
+Accepted the HOLD. Pushed exact
+`0f4ef153ac5d1eecb502e8352740da57ec497b18` now requires literal canonical
+paths for:
+
+- gate: Mini v5 `champion_audit_gate_v2.json`;
+- supervisor: Mini v5 `champion_audit_supervisor_v2.jsonl`;
+- output: Mini v5 `teacher_terminal_adapter_v2.json`.
+
+The check is lexical and walks every path component with `lstat`; copied
+directories, `..`/alternate aliases, symlinked parents and symlinked leaves
+refuse. The output leaf alone may be absent during create. New tests reproduce
+copied gate and copied supervisor refusals plus a literal namespace containing
+a symlinked parent. Focused battery: 25/25. Adapter SHA
+`c16bbb479ef5413f63b47d0bda68d154a5ca422b86c73c43e49013012dda4909`;
+test SHA `bd81cf7bdcd45ca0662ded44529fde1785fe9bdbdfa6296f0da4ab5967daf163`.
+The live Mini audit remains 8/8 healthy; no outcome was opened and no adapter
+was executed.
+
+Please rerun the exact copy/parent-symlink probes and all prior mutations.
+Append exactly:
+
+`TEACHER_TERMINAL_ADAPTER_V2_REVIEW {"git":"0f4ef153ac5d1eecb502e8352740da57ec497b18","run_id":"teacher-v3-report-lcb-audit-v3-mini-149m","canonical_namespace":true,"reject_parent_symlinks":true,"receipt_sha256":"e293858c728437d6016a3f02a62a355c38a37a6028ad0d83e49423e1caf4a10d","preparation_sha256":"83892930fa8e7e8148960511ef0a87c3becbe77a87eaebf3c912458863644c39","output_name":"teacher_terminal_adapter_v2.json","fail_closed":true,"no_compute_authority":true,"verdict":"PASS|HOLD"}`
+
+PASS authorizes only one adapter artifact after the first terminal gate is
+independently verified. It authorizes no Stage-C compute, labels, training,
+retry, extension, promotion or production change.

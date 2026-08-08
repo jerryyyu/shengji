@@ -635,6 +635,65 @@ def test_receipt_contract_binds_runtime_sources_and_exact_parents():
             changed, runtime=runtime, sources=sources)
 
 
+def test_receipt_creator_reopens_its_own_post_link_partial(
+        tmp_path, monkeypatch):
+    runtime = {
+        "git": "a" * 40, "tree_dirty": True, "promotable": False,
+        "host": "smoke", "python": "3.14.6", "fast_engine": True,
+        "require_voids": True, "experimental_sampler_ballot_flags": [],
+    }
+    sources = {"audit_script": "b" * 64}
+    parents = {
+        "stage_b_gate_item": {"path": "gate.json", "sha256": "c" * 64},
+        "cheap_items": [], "gold_items": [],
+    }
+    context = {
+        "audit_state_set": {"states": []},
+        "parents": parents,
+    }
+    monkeypatch.setattr(audit, "runtime_contract", lambda **_kwargs: runtime)
+    monkeypatch.setattr(audit, "source_digests", lambda: sources)
+    monkeypatch.setattr(audit, "load_audit_context", lambda **_kwargs: context)
+    monkeypatch.setattr(
+        audit, "context_from_receipt", lambda *_args, **_kwargs: context)
+    monkeypatch.setattr(
+        audit, "audit_receipt_problems", lambda *_args, **_kwargs: [])
+
+    output = tmp_path / "receipt.json"
+    audit.create_receipt(SimpleNamespace(
+        smoke=True,
+        run_id="audit-publication-smoke",
+        stage_b_state_set="stage-b-states.json",
+        expected_stage_b_state_set_sha256="d" * 64,
+        audit_state_set="audit-states.json",
+        expected_audit_state_set_sha256="e" * 64,
+        cheap=[], expected_cheap_sha256=[],
+        n30=[], expected_n30_sha256=[],
+        stage_b_gate="stage-b-gate.json",
+        expected_stage_b_gate_sha256="f" * 64,
+        expected_audit_git=None,
+        expected_audit_script_sha256=None,
+        out=str(output),
+    ))
+
+    assert output.is_file()
+    assert not Path(str(output) + ".partial").exists()
+
+
+def test_receipt_publication_reopen_rejects_unrelated_partial(tmp_path):
+    output = tmp_path / "receipt.json"
+    partial = tmp_path / "receipt.json.partial"
+    raw = b'{"complete":true}\n'
+    output.write_bytes(raw)
+    partial.write_bytes(raw)
+
+    with pytest.raises(
+            audit.TeacherProtocolError,
+            match="artifact final/partial are not one hard-link pair"):
+        audit.load_pinned_publication_pair(
+            str(output), audit.sha256_file(output))
+
+
 def test_audit_shard_recomputes_partition_and_totals(monkeypatch):
     monkeypatch.setattr(audit, "audit_record_problems", lambda *_args: [])
     selected, problems = audit.select_states(parent_states())

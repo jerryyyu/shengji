@@ -1482,6 +1482,51 @@ def load_audit_receipt(path: str, expected_sha256: str, *, runtime: dict,
     return receipt, binding, context
 
 
+def load_pinned_publication_pair(path: str, expected_sha256: str) -> dict:
+    """Reopen the final/partial hard-link pair owned by ``write_complete``.
+
+    Ordinary readers must reject every adjacent partial.  The publisher's
+    post-link verifier is the one deliberate exception: ``write_complete``
+    keeps its completed partial as a refusal marker until verification ends.
+    Require both names to be regular, non-symlink hard links to the same inode
+    before using the label helper's race-safe reader with partial tolerance.
+    """
+    if not teacher_label.is_sha256(expected_sha256):
+        raise TeacherProtocolError("published audit artifact SHA is malformed")
+    partial = path + ".partial"
+    for label, candidate in (("final", path), ("partial", partial)):
+        if os.path.islink(candidate) or not os.path.isfile(candidate):
+            raise TeacherProtocolError(
+                f"published audit artifact {label} is missing/non-regular")
+    final_stat = os.stat(path, follow_symlinks=False)
+    partial_stat = os.stat(partial, follow_symlinks=False)
+    if (final_stat.st_dev, final_stat.st_ino) != (
+            partial_stat.st_dev, partial_stat.st_ino):
+        raise TeacherProtocolError(
+            "published audit artifact final/partial are not one hard-link pair")
+    payload, actual_sha256 = teacher_label._load_json_bytes(
+        path, allow_partial=True)
+    if actual_sha256 != expected_sha256:
+        raise TeacherProtocolError(
+            "published audit artifact digest mismatch: "
+            f"expected {expected_sha256}, got {actual_sha256}")
+    return payload
+
+
+def write_verified_audit_artifact(
+        path: str, payload: dict,
+        verify: Callable[[dict], None]) -> None:
+    """Publish once, reopen the owned hard-link pair, then verify parents."""
+    def verify_publication() -> None:
+        reopened = load_pinned_publication_pair(
+            path, sha256_file(path + ".partial"))
+        if reopened != payload:
+            raise TeacherProtocolError("published audit artifact bytes drift")
+        verify(reopened)
+
+    teacher_label.write_complete(path, payload, verify=verify_publication)
+
+
 def create_receipt(args) -> None:
     runtime = runtime_contract(smoke=args.smoke)
     sources = source_digests()
@@ -1552,11 +1597,7 @@ def create_receipt(args) -> None:
         "stage_b_gate": parents["stage_b_gate_item"],
     })
 
-    def verify() -> None:
-        reopened = teacher_label.load_pinned(args.out, sha256_file(
-            args.out + ".partial"))
-        if reopened != payload:
-            raise TeacherProtocolError("published audit receipt bytes drift")
+    def verify(reopened: dict) -> None:
         if runtime_contract(smoke=args.smoke) != runtime:
             raise TeacherProtocolError("audit receipt runtime changed")
         if source_digests() != sources:
@@ -1571,7 +1612,7 @@ def create_receipt(args) -> None:
         if current_digest != frozen_context_digest:
             raise TeacherProtocolError("audit receipt inputs changed")
 
-    teacher_label.write_complete(args.out, payload, verify=verify)
+    write_verified_audit_artifact(args.out, payload, verify)
     print(json.dumps({
         "audit_id": AUDIT_ID,
         "mode": "receipt",
@@ -1812,11 +1853,7 @@ def label_shard(args) -> None:
         },
     })
 
-    def verify() -> None:
-        reopened = teacher_label.load_pinned(
-            args.out, sha256_file(args.out + ".partial"))
-        if reopened != payload:
-            raise TeacherProtocolError("published audit shard bytes drift")
+    def verify(reopened: dict) -> None:
         current_receipt, current_binding, current_context = load_audit_receipt(
             args.receipt, args.expected_receipt_sha256,
             runtime=runtime_contract(smoke=args.smoke),
@@ -1840,7 +1877,7 @@ def label_shard(args) -> None:
             raise TeacherProtocolError(
                 "published audit shard: " + "; ".join(published_bad))
 
-    teacher_label.write_complete(args.out, payload, verify=verify)
+    write_verified_audit_artifact(args.out, payload, verify)
     print(json.dumps({
         "audit_id": AUDIT_ID,
         "mode": "label",
@@ -1999,11 +2036,7 @@ def run_gate(args) -> str:
         receipt=receipt, receipt_binding=binding, context=context,
         shard_items=items, manifests=manifests, records=records,
         input_problems=problems, runtime=runtime, sources=sources)
-    frozen_payload = payload
-
-    def verify() -> None:
-        reopened = teacher_label.load_pinned(
-            args.out, sha256_file(args.out + ".partial"))
+    def verify(reopened: dict) -> None:
         current_runtime = runtime_contract(smoke=args.smoke)
         current_sources = source_digests()
         current_receipt, current_binding, current_context = load_audit_receipt(
@@ -2023,13 +2056,11 @@ def run_gate(args) -> str:
             input_problems=current_problems, runtime=current_runtime,
             sources=current_sources)
         bad = gate_payload_problems(reopened, expected)
-        if reopened != frozen_payload:
-            bad.append("audit gate changed during publication")
         if bad:
             raise TeacherProtocolError(
                 "published audit gate: " + "; ".join(sorted(set(bad))))
 
-    teacher_label.write_complete(args.out, payload, verify=verify)
+    write_verified_audit_artifact(args.out, payload, verify)
     print(json.dumps(payload, indent=2, sort_keys=True), flush=True)
     return payload["verdict"]
 

@@ -46,6 +46,9 @@ PREPARER_SCRIPT_SHA256 = (
 RECEIPT_SHA256 = (
     "e293858c728437d6016a3f02a62a355c38a37a6028ad0d83e49423e1caf4a10d"
 )
+RECEIPT_NONCE = (
+    "2a4271786218da5ee1a35041ca67f54a0a902130fff5197c15b25d26fe2b3d8f"
+)
 PREPARATION_SHA256 = (
     "83892930fa8e7e8148960511ef0a87c3becbe77a87eaebf3c912458863644c39"
 )
@@ -71,6 +74,7 @@ COMPILED_ENGINE_SHA256 = (
 )
 EXPECTED_HOST = "Jerrys-Mac-mini.local"
 EXPECTED_PYTHON = "3.14.6"
+EXPECTED_ADAPTER_PYTHON = "3.14.6"
 STAGE_B_STATE_SHA256 = (
     "90956da86f4f03074a1b4dc2d7198a3da5958470b733eacd104e066c523b4dc6"
 )
@@ -86,6 +90,26 @@ AUDIT_STATE_SHA256 = (
 PARENT_NAMESPACE = "runs/logs/teacher-v1-entry-149m-v3"
 AUDIT_NAMESPACE = "runs/logs/teacher-v1-entry-149m-v5"
 OUTPUT_NAME = "teacher_terminal_adapter_v2.json"
+CHEAP_INPUT_SHA256S = (
+    "4b0bf96d130a50d1d3f72e88cc739c6ea2a967552804c4d50b57f104e3654953",
+    "7e90e3e6e2f161f7c1e3502b98634c1aba87304c9e4095c720ac76457e23b3a4",
+    "11804592572ed60febe7994ac39a18d785806134af4280a568996c64c2b2d8fa",
+    "28ae7dc565b012b748494fbfe90dfc9e6f1ebc9a1b1ef14031e34e4140ab6d00",
+    "1bb4c74ea41ac9057e6d151244b052d7edb04bd571d326721899a7229a8a93ab",
+    "22bab2af73516c55fd9141d6a9d3ecefd4511577ed8e99adfbfd26a92ce672dd",
+    "7501655501988bbab5c43339f81a2536b10b371c82f69b7b0f235335b762fd25",
+    "ad4ef720f5a97875b2b07d65c7f9fadebf0c200beaf0cd170ebaf2a2fc319030",
+)
+N30_INPUT_SHA256S = (
+    "3c41b1071934acafeea6d144bf1b327e2c70b4e7ea9dd87ae0079490b042b5fa",
+    "5e56ac254599d0a95760d90dfc8d384276af285aeefd1843b48d92d6dca186fe",
+    "77a33ed2880d2e02847fe3d986b2204a0718969b8a6c8e6073c12cfc8ce22f74",
+    "8465fff32ec3e122b2d2655f2b143b4dacd3f2bad6ed3aa1c81a8c351e9dd890",
+    "c7f9019bb7e9189e4038224f9c16f5d9027ee4b9e9162f700529e7059e1723ba",
+    "b7e9389ee31b59f88d9e77f13f4a9f01591a98a771172a60c1f891d1cd18e214",
+    "4b81a28295ca3172166e5f85ed417f936c3a040f162c8cb31bfc2c8c8c2e983c",
+    "12c18904e49cce194725aed698d4bc6d7286e162dc7ce181f678d2cef391fd4e",
+)
 EXPECTED_FOLDS = {"champion_selection": 32, "champion_report": 32}
 EXPECTED_ADMISSION = {
     "schema": "teacher-v3-champion-continuation-admission-v1",
@@ -211,6 +235,21 @@ def sha256_file(path: Path) -> str:
 def is_sha256(value: object) -> bool:
     return (isinstance(value, str) and len(value) == 64
             and all(character in "0123456789abcdef" for character in value))
+
+
+def expected_parent_inputs(name: str) -> list[dict]:
+    """Return the literal reviewed Stage-B shard population."""
+    if name == "cheap_inputs":
+        stem, digests = "stage_b_cheap_v2_shard", CHEAP_INPUT_SHA256S
+    elif name == "n30_inputs":
+        stem, digests = "stage_b_gold_v2_shard", N30_INPUT_SHA256S
+    else:  # Internal programmer error, never an evidence-driven branch.
+        raise ValueError(f"unknown parent input population {name}")
+    return [{
+        "path": f"{PARENT_NAMESPACE}/{stem}{index:02d}.json",
+        "sha256": digest,
+        "shard_index": index,
+    } for index, digest in enumerate(digests)]
 
 
 def artifact_partial(path: Path) -> Path:
@@ -347,7 +386,7 @@ def _gate_problems(gate: dict) -> list[str]:
             or receipt.get("path") != RECEIPT_PATH
             or receipt.get("sha256") != RECEIPT_SHA256
             or receipt.get("run_id") != RUN_ID
-            or not is_sha256(receipt.get("nonce"))):
+            or receipt.get("nonce") != RECEIPT_NONCE):
         problems.append("audit gate receipt binding")
     if gate.get("n_states") != 64:
         problems.append("audit gate state count")
@@ -367,8 +406,11 @@ def _gate_problems(gate: dict) -> list[str]:
             paths = [item["path"] for item in inputs]
             digests = [item["sha256"] for item in inputs]
             indices = [item["shard_index"] for item in inputs]
-            if (any(not isinstance(path, str) or not path for path in paths)
-                    or len(set(paths)) != 8):
+            expected_paths = [
+                f"{AUDIT_NAMESPACE}/champion_audit_v2_shard{index:02d}.json"
+                for index in range(8)
+            ]
+            if paths != expected_paths:
                 problems.append("audit gate input path population")
             if (any(not is_sha256(digest) for digest in digests)
                     or len(set(digests)) != 8):
@@ -377,13 +419,7 @@ def _gate_problems(gate: dict) -> list[str]:
                 problems.append("audit gate ordered shard population")
     for name in ("cheap_inputs", "n30_inputs"):
         items = gate.get(name)
-        if (not isinstance(items, list) or len(items) != 8
-                or [item.get("shard_index") for item in items
-                    if isinstance(item, dict)] != list(range(8))
-                or any(not isinstance(item, dict)
-                       or not isinstance(item.get("path"), str)
-                       or not is_sha256(item.get("sha256"))
-                       for item in items)):
+        if items != expected_parent_inputs(name):
             problems.append(f"audit gate {name} population")
     return sorted(set(problems))
 
@@ -488,6 +524,8 @@ def runtime_contract(expected_git: str) -> dict:
         raise AdapterRefusal("adapter exact git predeclaration")
     if dirty:
         raise AdapterRefusal("adapter refuses a dirty tree")
+    if sys.version.split()[0] != EXPECTED_ADAPTER_PYTHON:
+        raise AdapterRefusal("adapter exact Python predeclaration")
     return {
         "git": head,
         "tree_dirty": False,

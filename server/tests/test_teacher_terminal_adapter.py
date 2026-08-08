@@ -69,7 +69,7 @@ def _gate(verdict: str) -> dict:
             "path": A.RECEIPT_PATH,
             "sha256": A.RECEIPT_SHA256,
             "run_id": A.RUN_ID,
-            "nonce": "8" * 64,
+            "nonce": A.RECEIPT_NONCE,
         },
         "stage_b_state_set": {
             "path": f"{A.PARENT_NAMESPACE}/stage_b_states.json",
@@ -89,18 +89,12 @@ def _gate(verdict: str) -> dict:
             "path": f"{A.AUDIT_NAMESPACE}/champion_audit_states_v2.json",
             "sha256": A.AUDIT_STATE_SHA256,
         },
-        "cheap_inputs": [{
-            "path": f"/sealed/cheap-{index}.json",
-            "sha256": f"{index + 21:064x}",
-            "shard_index": index,
-        } for index in range(8)],
-        "n30_inputs": [{
-            "path": f"/sealed/n30-{index}.json",
-            "sha256": f"{index + 31:064x}",
-            "shard_index": index,
-        } for index in range(8)],
+        "cheap_inputs": A.expected_parent_inputs("cheap_inputs"),
+        "n30_inputs": A.expected_parent_inputs("n30_inputs"),
         "inputs": [{
-            "path": f"/sealed/champion_audit_v2_shard{index:02d}.json",
+            "path": (
+                f"{A.AUDIT_NAMESPACE}/"
+                f"champion_audit_v2_shard{index:02d}.json"),
             "sha256": f"{index + 1:064x}",
             "shard_index": index,
         } for index in range(8)],
@@ -417,6 +411,39 @@ def test_gate_input_shards_must_be_canonical_and_ordered(
     )
     with pytest.raises(A.AdapterRefusal, match="ordered shard population"):
         A.create(config, tmp_path / A.OUTPUT_NAME)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    (
+        ("receipt_nonce", "receipt binding"),
+        ("cheap_digest", "cheap_inputs population"),
+        ("n30_path", "n30_inputs population"),
+        ("audit_path", "input path population"),
+    ),
+)
+def test_gate_refuses_nonliteral_parent_or_label_population(
+        tmp_path, monkeypatch, mutation, message):
+    config = _fixture(tmp_path, monkeypatch)
+    gate = json.loads(config.gate.read_text())
+    if mutation == "receipt_nonce":
+        gate["producer_receipt"]["nonce"] = "9" * 64
+    elif mutation == "cheap_digest":
+        gate["cheap_inputs"][0]["sha256"] = "9" * 64
+    elif mutation == "n30_path":
+        gate["n30_inputs"][0]["path"] = "runs/logs/alternate.json"
+    else:
+        gate["inputs"][0]["path"] = "runs/logs/alternate.json"
+    config.gate.write_text(json.dumps(gate, sort_keys=True))
+    changed = A.Config(
+        gate=config.gate,
+        expected_gate_sha256=_sha(config.gate),
+        supervisor_progress=config.supervisor_progress,
+        expected_supervisor_sha256=config.expected_supervisor_sha256,
+        expected_git=config.expected_git,
+    )
+    with pytest.raises(A.AdapterRefusal, match=message):
+        A.create(changed, tmp_path / A.OUTPUT_NAME)
 
 
 def test_existing_output_is_never_overwritten(tmp_path, monkeypatch):

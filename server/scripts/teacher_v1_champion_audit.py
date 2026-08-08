@@ -141,6 +141,20 @@ CHAMPION_TELEMETRY_FIELDS = (
     "total_candidate_rollouts",
     *teacher_label.SAMPLER_COUNTERS,
 )
+CHAMPION_DECISION_DIAGNOSTIC_SCHEMA = (
+    "teacher-v1-champion-decision-refusal-v1"
+)
+# This is deliberately exhaustive for every searched exit reachable by the
+# registered report-LCB policy.  A legal production fallback is not silently
+# accepted by the v2 estimand, but it receives its own score-free refusal code
+# instead of being conflated with corrupt telemetry or parameter drift.
+CHAMPION_DECISION_DISPOSITIONS = {
+    "report_lcb_override": "accept_complete",
+    "report_lcb_below_min_gain": "accept_complete",
+    "selection_underfilled": "refuse_selection_underfilled",
+    "no_report_challenger": "refuse_no_report_challenger",
+    "report_underfilled": "refuse_report_underfilled",
+}
 RUNTIME_BINDING_FIELDS = (
     "git", "tree_dirty", "promotable", "host", "python", "fast_engine",
     "require_voids", "experimental_sampler_ballot_flags",
@@ -365,6 +379,74 @@ def _zero_champion_telemetry() -> Counter:
     return Counter({name: 0 for name in CHAMPION_TELEMETRY_FIELDS})
 
 
+def champion_decision_diagnostic(policy, sampler_counters: dict) -> dict:
+    """Return only outcome-free fields needed to diagnose a refusal.
+
+    Candidate identities, cards, values, gaps, uncertainty estimates and the
+    played action are intentionally absent.  A sealed worker can therefore
+    print this object before refusing without exposing the audit outcome.
+    """
+    record = getattr(policy, "last_decision_record", None)
+    record = record if isinstance(record, dict) else {}
+    alloc = record.get("alloc")
+    alloc = alloc if isinstance(alloc, dict) else {}
+    report = record.get("report_fold")
+    report = report if isinstance(report, dict) else {}
+    work = record.get("work")
+    work = work if isinstance(work, dict) else {}
+    candidates = record.get("candidates")
+    return {
+        "schema": CHAMPION_DECISION_DIAGNOSTIC_SCHEMA,
+        "reason": record.get("reason") if isinstance(
+            record.get("reason"), str) else None,
+        "candidate_count": len(candidates) if isinstance(candidates, list)
+        else None,
+        "search_calls": getattr(policy, "search_calls", None),
+        "rollouts": getattr(policy, "rollouts", None),
+        "selection": {
+            key: alloc.get(key) for key in (
+                "mode", "short", "worlds", "attempts", "attempt_cap",
+                "attempt_cap_hit", "budget", "rollouts",
+                "decision_rollouts", "dummy_rollouts",
+            )
+        },
+        "report": {
+            key: report.get(key) for key in (
+                "fold", "rule", "worlds", "attempts", "rejected",
+                "complete", "critical", "min_gain",
+            )
+        },
+        "work": {
+            key: work.get(key) for key in (
+                "selection_budget", "selection_rollouts", "report_budget",
+                "report_rollouts", "total_budget", "total_rollouts",
+                "complete",
+            )
+        },
+        "sampler_counters": {
+            key: sampler_counters.get(key)
+            for key in teacher_label.SAMPLER_COUNTERS
+        },
+    }
+
+
+def _refuse_champion_decision(code: str, policy,
+                              sampler_counters: dict) -> None:
+    diagnostic = champion_decision_diagnostic(policy, sampler_counters)
+    raise TeacherProtocolError(
+        f"{code}: " + json.dumps(
+            diagnostic, sort_keys=True, separators=(",", ":")))
+
+
+def champion_decision_disposition(record: dict) -> str:
+    reason = record.get("reason") if isinstance(record, dict) else None
+    disposition = CHAMPION_DECISION_DISPOSITIONS.get(reason)
+    if disposition is None:
+        raise TeacherProtocolError(
+            f"champion decision reason is unclassified: {reason!r}")
+    return disposition
+
+
 def champion_decision_telemetry(policy, sampler_counters: dict) -> dict:
     """Validate one downstream report-LCB decision and return exact work.
 
@@ -395,8 +477,8 @@ def champion_decision_telemetry(policy, sampler_counters: dict) -> dict:
 
     telemetry["searched_decisions"] = 1
     if searches != 1:
-        raise TeacherProtocolError(
-            f"champion decision search count {searches}, expected 1")
+        _refuse_champion_decision(
+            "champion_search_count_mismatch", policy, sampler_counters)
     code = record.get("code", {})
     expected_ballot = CONTINUATION_EXECUTION_LOCK["ballot"]
     if (record.get("policy") != CONTINUATION_POLICY
@@ -418,7 +500,12 @@ def champion_decision_telemetry(policy, sampler_counters: dict) -> dict:
             != CONTINUATION_CONTRACT["report_min_gain"]
             or record.get("adaptive_allocation") is not False
             or record.get("random_allocation") is not False):
-        raise TeacherProtocolError("champion decision policy contract drift")
+        _refuse_champion_decision(
+            "champion_policy_contract_drift", policy, sampler_counters)
+
+    disposition = champion_decision_disposition(record)
+    if disposition != "accept_complete":
+        _refuse_champion_decision(disposition, policy, sampler_counters)
 
     candidates = record.get("candidates")
     n_by = record.get("n_by_candidate")
@@ -430,7 +517,8 @@ def champion_decision_telemetry(policy, sampler_counters: dict) -> dict:
     if (candidate_count < 2
             or n_by != [selection_worlds] * candidate_count
             or record.get("worlds") != selection_worlds):
-        raise TeacherProtocolError("champion selection dose is incomplete")
+        _refuse_champion_decision(
+            "champion_selection_dose_mismatch", policy, sampler_counters)
 
     alloc = record.get("alloc", {})
     if (alloc.get("mode") != "uniform"
@@ -441,20 +529,24 @@ def champion_decision_telemetry(policy, sampler_counters: dict) -> dict:
             or alloc.get("decision_rollouts") != selection_rollouts
             or alloc.get("dummy_rollouts") != 0
             or alloc.get("n_by_candidate") != n_by):
-        raise TeacherProtocolError("champion selection work does not reconcile")
+        _refuse_champion_decision(
+            "champion_selection_work_mismatch", policy, sampler_counters)
 
     report = record.get("report_fold", {})
     if (report.get("fold") != "report"
             or report.get("rule") != "lcb"
-            or report.get("worlds") != report_worlds
-            or report.get("attempts") != report_worlds
-            or report.get("rejected") != 0
-            or report.get("complete") is not True
             or report.get("critical")
             != CONTINUATION_CONTRACT["report_t_critical"]
             or report.get("min_gain")
             != CONTINUATION_CONTRACT["report_min_gain"]):
-        raise TeacherProtocolError("champion report fold is incomplete")
+        _refuse_champion_decision(
+            "champion_report_contract_drift", policy, sampler_counters)
+    if (report.get("worlds") != report_worlds
+            or report.get("attempts") != report_worlds
+            or report.get("rejected") != 0
+            or report.get("complete") is not True):
+        _refuse_champion_decision(
+            "champion_report_dose_mismatch", policy, sampler_counters)
 
     work = record.get("work", {})
     total_rollouts = selection_rollouts + report_rollouts
@@ -466,16 +558,14 @@ def champion_decision_telemetry(policy, sampler_counters: dict) -> dict:
             or work.get("total_rollouts") != total_rollouts
             or work.get("complete") is not True
             or rollouts != total_rollouts):
-        raise TeacherProtocolError("champion total work does not reconcile")
-
-    if record.get("reason") not in {
-            "report_lcb_override", "report_lcb_below_min_gain"}:
-        raise TeacherProtocolError("champion decision ended outside report-LCB")
+        _refuse_champion_decision(
+            "champion_total_work_mismatch", policy, sampler_counters)
     played_index = record.get("played_index")
     if (isinstance(played_index, bool) or not isinstance(played_index, int)
             or not 0 <= played_index < candidate_count
             or record.get("played") != candidates[played_index]):
-        raise TeacherProtocolError("champion played-action telemetry drift")
+        _refuse_champion_decision(
+            "champion_played_action_drift", policy, sampler_counters)
 
     expected_sampler = {
         "sample_attempts": selection_worlds + report_worlds,
@@ -487,15 +577,15 @@ def champion_decision_telemetry(policy, sampler_counters: dict) -> dict:
         "zero_world_decisions": 0,
     }
     if sampler_counters != expected_sampler:
-        raise TeacherProtocolError(
-            "champion live sampler dose is not exact: "
-            f"{sampler_counters!r}")
+        _refuse_champion_decision(
+            "champion_sampler_dose_mismatch", policy, sampler_counters)
     record_sampler = record.get("sampler_counters", {}).get("delta")
     if record_sampler != {
             name: expected_sampler[name] for name in (
                 "sample_attempts", "accepted_worlds", "failed_worlds",
                 "rejected_worlds", "impossible_worlds") }:
-        raise TeacherProtocolError("champion record/live sampler delta drift")
+        _refuse_champion_decision(
+            "champion_record_sampler_drift", policy, sampler_counters)
 
     telemetry.update(expected_sampler)
     telemetry["selection_worlds"] = selection_worlds

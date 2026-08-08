@@ -317,6 +317,70 @@ def test_champion_decision_requires_complete_selection_report_and_counters():
                 changed_policy, changed_sampler)
 
 
+def test_registered_champion_contract_uses_exact_work_and_all_reasons_are_typed():
+    bot = make_bot(audit.CONTINUATION_POLICY, seed=1)
+    assert bot.REQUIRE_EXACT_WORK is True
+    assert audit.live_continuation_contract() == audit.CONTINUATION_CONTRACT
+    assert audit.CHAMPION_DECISION_DISPOSITIONS == {
+        "report_lcb_override": "accept_complete",
+        "report_lcb_below_min_gain": "accept_complete",
+        "selection_underfilled": "refuse_selection_underfilled",
+        "no_report_challenger": "refuse_no_report_challenger",
+        "report_underfilled": "refuse_report_underfilled",
+    }
+    for reason, expected in audit.CHAMPION_DECISION_DISPOSITIONS.items():
+        assert audit.champion_decision_disposition({"reason": reason}) == expected
+    with pytest.raises(audit.TeacherProtocolError, match="unclassified"):
+        audit.champion_decision_disposition({"reason": "future_silent_path"})
+
+
+def test_champion_refusals_name_score_free_branch_and_exact_failed_fields():
+    policy, sampler = valid_champion_decision()
+    policy.last_decision_record.update({
+        "gap": 999.0,
+        "played": ["SECRET-CARD"],
+        "private_outcome": {"winner": 3},
+    })
+    diagnostic = audit.champion_decision_diagnostic(policy, sampler)
+    encoded = json.dumps(diagnostic, sort_keys=True)
+    assert diagnostic["schema"] == \
+        "teacher-v1-champion-decision-refusal-v1"
+    assert "SECRET-CARD" not in encoded
+    assert "private_outcome" not in encoded
+    assert '"gap"' not in encoded
+    assert '"winner"' not in encoded
+
+    # A completed report that needed one retry is distinct from underfill.
+    policy, sampler = valid_champion_decision()
+    policy.last_decision_record["report_fold"].update(
+        attempts=301, rejected=1)
+    sampler.update(sample_attempts=331, failed_worlds=1)
+    with pytest.raises(
+            audit.TeacherProtocolError,
+            match=r"champion_report_dose_mismatch: .*\"complete\":true.*"
+                  r"\"rejected\":1.*\"worlds\":300"):
+        audit.champion_decision_telemetry(policy, sampler)
+
+    # A genuine short report has its own production reason and refusal code.
+    policy, sampler = valid_champion_decision()
+    policy.last_decision_record.update(reason="report_underfilled")
+    policy.last_decision_record["report_fold"].update(
+        worlds=299, attempts=12_000, rejected=11_701, complete=False)
+    with pytest.raises(
+            audit.TeacherProtocolError,
+            match=r"refuse_report_underfilled: .*\"reason\":"
+                  r"\"report_underfilled\""):
+        audit.champion_decision_telemetry(policy, sampler)
+
+    # Fixed statistical-policy parameters are contract drift, not underfill.
+    policy, sampler = valid_champion_decision()
+    policy.last_decision_record["report_fold"]["critical"] = 1.69
+    with pytest.raises(
+            audit.TeacherProtocolError,
+            match="champion_report_contract_drift"):
+        audit.champion_decision_telemetry(policy, sampler)
+
+
 def test_live_report_lcb_decision_satisfies_champion_telemetry_contract():
     """The verifier must describe the real registered policy, not a mock.
 

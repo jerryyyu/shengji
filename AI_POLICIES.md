@@ -178,8 +178,14 @@ Evidence anchors, in the same order:
   session ID are complementary, deterministic and design-domain-separated.
   Clients still cannot reach this path or choose an arm/session. Its expanded
   focused battery passes 88/88 locally and on exact Air. Durable one-use
-  issuance, authenticated consent ingress, runtime artifact reopening,
-  synthetic C0 and the terminal analyzer remain launch blockers. The earlier
+  issuance and authenticated consent ingress remain closed. Exact `fff688b`
+  adds fail-closed runtime reopening: the assigned arm must match the runtime
+  Git and image, its named policy is reconstructed from the registry, and all
+  executable ballot stages are independently rederived and compared with the
+  reviewed identity. No caller may inject a lookalike bot. The expanded suite
+  passes 94/94 locally and on exact Air. A reviewed immutable deployment
+  receipt source, synthetic C0 and the terminal analyzer remain launch
+  blockers. The earlier
   repair scans tags
   before malformed-round rejection and terminally invalidates an evaluation
   room after any log-write failure, so neither path can manufacture a partial

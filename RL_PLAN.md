@@ -454,8 +454,13 @@ cohort and consent version, and derives the complementary arm and opaque
 session ID from a server secret. The caller cannot provide either output, and
 the session domain includes the design identity. Its expanded focused battery
 passes 88/88 locally and in an exact Air worktree. External review, durable
-one-use issuance, authenticated consent/token ingress, runtime artifact
-reopening, synthetic C0 and a terminal estimator are still required.
+one-use issuance and authenticated consent/token ingress remain required.
+Exact `fff688b` independently reopens the active registry policy under exact
+runtime Git/image identity and rederives every executable ballot stage before
+returning the bot; caller-injected policy objects are not accepted. Its
+expanded focused battery passes 94/94 locally and on exact Air. A reviewed
+immutable deployment-receipt source, synthetic C0 and a terminal estimator are
+still required.
 
 Use human data in three bounded stages:
 

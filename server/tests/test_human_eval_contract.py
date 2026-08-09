@@ -3,7 +3,9 @@ import hashlib
 import json
 import os
 import random
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -18,6 +20,7 @@ from shengji.api.human_eval import (
     construct_reviewed_assignment,
     derive_participant_pair_id,
     registered_policy_ballot_id,
+    reserve_assignment_once,
     reopen_assigned_policy,
     reopen_assigned_policy_from_receipt,
 )
@@ -309,6 +312,62 @@ def test_runtime_receipt_refuses_wrong_digest_symlink_and_hardlink(tmp_path):
         reopen_assigned_policy_from_receipt(
             context, receipt_path=hardlink,
             expected_receipt_sha256=digest)
+
+
+def test_assignment_reservation_is_identity_only_and_secret_independent(
+        tmp_path):
+    context = _registered_context()
+    reservation = reserve_assignment_once(context, ledger_root=tmp_path)
+    record = json.loads(Path(reservation["path"]).read_text())
+
+    assert record["assignment_slot_id"] == \
+        reservation["assignment_slot_id"]
+    assert record["session_id"] == context.session_id
+    assert record["participant_pair_id"] == context.participant_pair_id
+    assert record["human_traffic_authorized"] is False
+    assert record["training_authorized"] is False
+    assert record["production_promotion"] is False
+    assert "participant_ids_by_human_seat" not in record
+
+
+def test_assignment_reservation_refuses_reissue_even_if_session_changes(
+        tmp_path):
+    context = _registered_context()
+    reserve_assignment_once(context, ledger_root=tmp_path)
+    changed_session = replace(context, session_id="session-different")
+
+    with pytest.raises(HumanEvaluationError, match="already reserved"):
+        reserve_assignment_once(changed_session, ledger_root=tmp_path)
+
+
+def test_assignment_reservation_is_atomic_under_concurrent_issuance(tmp_path):
+    context = _registered_context()
+
+    def attempt():
+        try:
+            return reserve_assignment_once(context, ledger_root=tmp_path)
+        except HumanEvaluationError as exc:
+            return exc
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: attempt(), range(2)))
+
+    assert sum(isinstance(result, dict) for result in results) == 1
+    failures = [result for result in results
+                if isinstance(result, HumanEvaluationError)]
+    assert len(failures) == 1
+    assert "already reserved" in str(failures[0])
+
+
+def test_assignment_reservation_refuses_symlink_ledger_root(tmp_path):
+    context = _registered_context()
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(real, target_is_directory=True)
+
+    with pytest.raises(HumanEvaluationError, match="real existing directory"):
+        reserve_assignment_once(context, ledger_root=link)
 
 
 def test_room_writes_evaluation_only_to_separate_root(tmp_path, monkeypatch):

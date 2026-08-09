@@ -21,6 +21,7 @@ from typing import Literal
 
 SCHEMA = "human-vs-bot-evaluation-v1"
 RUNTIME_RECEIPT_SCHEMA = "human-evaluation-runtime-identity-receipt-v1"
+ASSIGNMENT_RESERVATION_SCHEMA = "human-evaluation-assignment-reservation-v1"
 ARMS = ("candidate", "champion")
 HUMAN_SEATS = (0, 2)
 BOT_SEATS = (1, 3)
@@ -477,3 +478,111 @@ def reopen_assigned_policy_from_receipt(
     return reopen_assigned_policy(
         context, runtime_git=policy["git"],
         runtime_image_sha256=policy["image_sha256"])
+
+
+def assignment_slot_id(context: HumanEvaluationContext) -> str:
+    """Public, secret-independent identity for one pair/block slot."""
+    if not isinstance(context, HumanEvaluationContext):
+        raise HumanEvaluationError("invalid evaluation context")
+    raw = "\0".join((
+        SCHEMA,
+        context.assignment_design_sha256,
+        context.participant_pair_id,
+        context.block_id,
+        str(context.block_slot),
+    )).encode()
+    return hashlib.sha256(raw).hexdigest()
+
+
+def reserve_assignment_once(
+        context: HumanEvaluationContext, *, ledger_root: str | Path) -> dict:
+    """Durably consume one reviewed pair/block slot without traffic authority.
+
+    The slot identity excludes the assignment secret and derived session ID,
+    so rotating the secret cannot reissue the same reviewed block slot.  An
+    interrupted write remains consumed in place; callers may never delete or
+    retry it into apparently complete evidence.
+    """
+    slot_id = assignment_slot_id(context)
+    root = Path(ledger_root)
+    try:
+        listed = root.lstat()
+        resolved = root.resolve(strict=True)
+    except OSError as exc:
+        raise HumanEvaluationError("assignment ledger root is unavailable") from exc
+    if (not stat.S_ISDIR(listed.st_mode)
+            or resolved != root.absolute()):
+        raise HumanEvaluationError(
+            "assignment ledger root must be a real existing directory")
+    receipt = {
+        "schema": ASSIGNMENT_RESERVATION_SCHEMA,
+        "assignment_design_sha256": context.assignment_design_sha256,
+        "assignment_slot_id": slot_id,
+        "session_id": context.session_id,
+        "participant_pair_id": context.participant_pair_id,
+        "block_id": context.block_id,
+        "block_slot": context.block_slot,
+        "arm": context.arm,
+        "active_policy": asdict(context.active_policy_identity),
+        "identity_only": True,
+        "human_traffic_authorized": False,
+        "training_authorized": False,
+        "production_promotion": False,
+    }
+    raw = json.dumps(
+        receipt, sort_keys=True, separators=(",", ":"),
+    ).encode() + b"\n"
+    name = f"slot-{slot_id}.json"
+    directory_flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        directory_flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        directory_flags |= os.O_NOFOLLOW
+    try:
+        root_descriptor = os.open(root, directory_flags)
+    except OSError as exc:
+        raise HumanEvaluationError("cannot open assignment ledger root") from exc
+    descriptor = None
+    try:
+        opened_root = os.fstat(root_descriptor)
+        if (not stat.S_ISDIR(opened_root.st_mode)
+                or (opened_root.st_dev, opened_root.st_ino)
+                != (listed.st_dev, listed.st_ino)):
+            raise HumanEvaluationError(
+                "assignment ledger root changed before open")
+        file_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            file_flags |= os.O_NOFOLLOW
+        try:
+            descriptor = os.open(
+                name, file_flags, 0o600, dir_fd=root_descriptor)
+        except FileExistsError as exc:
+            raise HumanEvaluationError(
+                "assignment block slot was already reserved") from exc
+        view = memoryview(raw)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise OSError("short assignment reservation write")
+            view = view[written:]
+        os.fsync(descriptor)
+        info = os.fstat(descriptor)
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                or info.st_size != len(raw)):
+            raise HumanEvaluationError(
+                "assignment reservation publication is not stable")
+        os.fsync(root_descriptor)
+    except HumanEvaluationError:
+        raise
+    except OSError as exc:
+        raise HumanEvaluationError(
+            "cannot publish assignment reservation") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        os.close(root_descriptor)
+    return {
+        "path": str(root / name),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "assignment_slot_id": slot_id,
+    }

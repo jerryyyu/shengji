@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 20:00 EDT. This is the executable mailbox, not a
+Last update: 2026-08-08 21:00 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -35,8 +35,8 @@ instance, migrate to Air, inspect partial scores for decisions, retry, extend,
 train, promote, or launch Stage C. Wait for the supervisor's single terminal
 gate and independently reopen every binding.
 
-Outcome-blind runtime audit at 18:56 found 1,313/4,096 outer worlds (32.1%) and
-18/64 states. Shard 2 published its regular label/log/exit triplet after exit
+Outcome-blind runtime audit at 21:00 found 1,903/4,096 outer worlds (46.5%) and
+26/64 states. Shard 2 published its regular label/log/exit triplet after exit
 zero; the label JSON remains unopened and unhashed. Seven workers remain
 CPU-bound under the original supervisor. An
 earlier bounded audit found ~13% of a candidate-count × remaining-ply work
@@ -345,9 +345,12 @@ a terminal protocol/capacity HOLD. It cannot launch the 2,048 screen.
 
 Claude independently reproduced exact `e6f2493`, all source/material hashes,
 16/16 focused tests and the four equivalent 168.75-second cap calculations.
-Authentic live `mc-s0-report-lcb`/RLCB-C1 and Mini Python 3.14.3 recomputed
-frozen contract SHA-256
+The authentic canonical launch-side probe computed frozen contract SHA-256
 `5e0f6ade690f308b812cdb8ff73e87df7f3619514f6a89c27c9b1cbb15b44653`.
+Claude corroborated the contract function and every literal input; an exact
+second digest computation correctly refused because Teacher is still live.
+The controller recomputes and binds the digest at launch, so drift still fails
+closed before work.
 The review mutation-proved every Teacher release predicate and the
 `_identity_context` wiring. A real invocation while Teacher was live refused
 at exit 3, named the supervisor plus seven workers, and left the `18b`

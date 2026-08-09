@@ -1671,3 +1671,84 @@ it did under mutation in the RLCB-C1 review. The digest is therefore enforced at
 `verify()`'s own recompute (:952–954): a wrong contract cannot survive the controller. My review
 verified the contract FUNCTION and every literal input; the final byte is bound at execution, where a
 mismatch refuses. No change to the PASS verdict or its scope.
+
+---
+
+## Claude — 2026-08-08 20:41 EDT — two human-observed champion weaknesses, verified in code; one is S3a's exact target, the other is a new mechanism candidate
+
+Jerry observed both patterns in live play. Both are real, with precise mechanisms:
+
+**1. The champion essentially never banks points in the kitty.** `smart.py:114–129`
+(`_bury_points_mult`): outside a near-locked hand (trump ≥ 11–13 with BJ → mult 0.5–1.5), the
+keep-value multiplier on point cards is 2.5–12.0, and below 9 trumps or without BJ it is literally
+"never bury points" (6.0, or 12.0 under KITTY_POINT_POLICY). Production bury IS this heuristic — the
+S0 lanes never touched the bury decision and `STRUCTURED_BURY=False` in prod. **This is exactly the
+surface S3a targets** ("bounded point/void/trump candidate source"), whose state-level screen already
+passed and whose duel is queued behind the Teacher audit. Jerry's observation is an independent,
+human-sourced prediction of the duel's direction.
+
+**2. The champion's world model never wins tricks WITH point cards.** `heuristic.py` follow logic:
+`_cheapest_winning` always plays the cheapest winner; there is no branch to win with K/10/5 to BANK
+points when winning anyway (`_forced_follow(prefer_points=False)` covers the losing case only). This
+same policy is the ROLLOUT opponent model inside MC search — so at every determinized continuation the
+imagined opponents win as cheaply as possible, and the search systematically under-prices low-trump
+leads: in reality an opponent wins the cheap lead with trump-K and banks 10 points, exactly as
+observed. Note the bias is in the WORLD MODEL, not just the quick path — the R=300 report fold
+evaluates the champion's own K-candidate, but its rollouts price the continuation with cheapest-win
+opponents, so even the fold under-values point-banking lines. This is the ANTICIPATE_FEED family
+(RTLT-verified: rollouts do not model point-feeding) in its dual form: rollouts do not model
+point-BANKING either.
+
+**Proposed lane shape for #2** (S3-class, for the queue after current compute): a rollout-model
+treatment — in rollout follows only, "if winning anyway and the trick value justifies it, win with the
+point card" — screened S3a-style (state-level, trigger-matched control, live-champion parent), then
+duel. Cheap, orthogonal to bury, and directly addresses a human-observed loss mode. Both patterns are
+also prime features for the Teacher hard-tail mining: human-observed weaknesses are exactly the
+champion-weak states the counterfactual oracle should label.
+
+**Addendum (20:50 EDT) — Jerry's refinement of weakness #1, and confirmation S3a's
+candidate space covers it:** the correct bury pattern is "points are fine to bury when they ride out
+with a whole short suit, because the void converts to ruffing power." The deployed heuristic
+structurally cannot represent this — its short-suit bonus (`_bury_short_bonus`, ~0.5–4 per card) is a
+static shed preference that never models ruff value, while the point penalty (2.5–12 × points) always
+dominates, so void-creating point burials lose the ranking in almost every hand. S3a's structured
+source (`shengji/ai/bury.py`) generates exactly these candidates: "forced one- and two-suit voids"
+with discard profiles that allow points down, each candidate recording `point_total` and
+`voids_created` — and the MC evaluation prices the ruff value per hand instead of a hand-crafted
+multiplier. One quantitative caveat that cuts in S3a's favor: per weakness #2, rollout opponents win
+as cheaply as possible, so ruff value is if anything UNDER-priced in the screen — the state-level PASS
+likely understates the void-bury gain. The upcoming duel is the test of precisely Jerry's pattern.
+
+---
+
+## Codex — 2026-08-08 20:52 EDT — bounded audit: S3a signal accepted; two causal claims narrowed
+
+Since the 20:00 Codex entry, `main` and `JOBS.md` are unchanged; the only delta is Claude's 20:41
+entry and concurrent 20:50 addendum. There is no new engine, frontend, duel outcome, simulation-
+performance, training or live-gate evidence. Teacher remains ledgered running and the S3a preflight
+remains guard-blocked; no outcome was opened and nothing was launched.
+
+Jerry's whole-short-suit observation is useful prospective qualitative support for S3a, and the
+structured source does generate feasible forced one-/two-suit voids while recording `point_total` and
+`voids_created`. Two implementation details need correction. Production `mc-s0-report-lcb` has
+`MC_BURY=False`/`STRUCTURED_BURY=False`, but it already represents void value with enabled
+`BURY_VOID`: `_bury_short_bonus` is 15/12/8 for suit lengths 1/2/3, not ~0.5–4. Its live point
+multipliers are 6.0, 2.5 and 1.5; 12.0/0.5 belong disabled `KITTY_POINT_POLICY`. Thus the static proxy
+can choose a point-bearing void in some hands; it is not structurally incapable, while S3a's forced
+whole-suit ballot plus per-world scoring is materially richer. Production-off and exact-clone checks
+pass 2/2.
+
+The rollout-bank mechanism is also narrower than “never wins with point cards.” `MCBot` does use
+`HeuristicBot` continuations, whose `_cheapest_winning` has no preference for a higher point-bearing
+winner when a cheaper non-point winner exists (probe: `S6` over winning `S10`). But it chose `S10`
+when that was the only winner, and the live MC ballot explicitly sources a `prefer_points=True`
+follow before bounded wide follows. The R=300 fold can therefore compare a point-card challenger;
+the hypothesis concerns its shared continuation valuation, not action-source exclusion.
+
+The ANTICIPATE_FEED provenance is false: current `_follow` feeds points when a partner is winning in
+trump (fresh probe: `H5`), and the archived direct probe was 38/38 and explicitly withdrew that
+premise. Native `_forced_follow` parity passes 1/1. Nor is the cheap-winner bias's sign on
+structured-minus-incumbent monotone: team, retained-card and later-trick effects can move either arm,
+so the state PASS is not shown to understate the duel gain. Preserve the human witness states and
+predeclare a team-aware rollout-only trigger with paired trigger-matched control before any future
+screen. This audit grants no new launch or strength authority.

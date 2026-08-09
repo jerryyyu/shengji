@@ -2156,3 +2156,66 @@ authority follows. The top ledger rows correctly show Air idle at admission
 next, but `JOBS.md` still says Air "is review-gated" and
 `HANDOFF_ACTIVE.md` still refers to a "sole open review"; both present-tense
 phrases are stale after the PASS. There is no open O0-v2 packet review.
+
+---
+
+## Codex — 2026-08-09 03:50 EDT — bounded audit: O0-v2 SELECT NONE accepted; Teacher snapshot advanced
+
+Exact range `a4e6202..9fecd21` is documentation-only, but it records substantive
+terminal ML evidence. The reviewed gate code makes nonselection exit 4, replays
+all evaluations during independent verification, and recomputes verdict and
+authority from the bound inputs. The reported control LCB `-0.0674510` and
+plus-margin LCB `-0.109327` therefore admit neither cell; the diagnostic
+interaction also reconciles exactly as `-0.046875 - 0.0151367 = -0.0620117`.
+`SELECT_NONE`, no O1, and no strength/promotion/production authority are the
+conservative conclusions. This retires the exact frozen margin arm; it does not
+by itself prove that every possible estimator-only repair is exhausted. The Air
+gate artifact is not present in this Mini checkout, so this pass did not
+independently rehash the documented `0dbd9aa8…f24e` beyond the recorded
+`verify-gate verified=true` result.
+
+The live ledger is already a stale snapshot: one outcome-blind read-only monitor
+at 03:50 found 3,819/4,096 outer worlds, 59/64 states and 6/8 sealed shards;
+only shards 3 and 4 remain CPU-bound. No outcome was opened, and no stopping,
+retry or migration authority follows. No engine/native/frontend/duel source
+changed, so no parity or functional test rerun was warranted.
+
+---
+
+## Codex — 2026-08-09 06:20 EDT — OPEN REVIEW: Teacher terminal adapter real-output path delta
+
+The fresh one-shot Teacher audit is terminal PASS. Canonical gate SHA-256 is
+`8a1532b7b9a610452609bb2a7a69c9b13a9f1800ad74428d0278e9572aba91f8`;
+supervisor-final SHA-256 is
+`02f4f8b02d674ad3f59f9fa5b607692c7c8d31bdc5d26e2c64f66c983956f237`.
+All eight terminal label SHAs match. A fresh exact evaluator invocation from
+`f78e904`, Mini Python 3.14.6 and the reviewed `server/` cwd returned zero and
+reproduced the canonical gate byte-for-byte. No retry, partial or live Teacher
+worker remains.
+
+The previously reviewed adapter `5b26c4b` correctly refused the real gate with
+`audit gate input path population`. Its synthetic fixture predicted relative
+audit-shard paths; evaluator `f78e904` publishes all eight input paths as
+absolute canonical Mini paths. No adapter artifact was created. Exact pushed
+delta `60d46e1bed0eefabe040dc9dac3a630680d6bdff` changes only those expected
+paths and the fixture, plus one regression proving the old relative form
+refuses:
+
+- parent Git: `5b26c4b4bdb678b2c780c8a4b6ed5b87e181964e`;
+- adapter SHA-256: `974594a7b5754e065888e1959f7088f2d4e73e491d3607b2769472a66385bbbb`;
+- test SHA-256: `658c1681979b8bd4b0a07d27afa1b2d3e4d34b241570d8ec3e192a686b31bf99`;
+- ordered material SHA-256: `08354af1d5f0c4cdea3154ee738add949ca055b33cb5c9b28b3a4e39e03e2303`;
+- focused tests: 30/30 PASS;
+- real gate plus all 839 supervisor events: read-only reopen, zero problems.
+
+Please independently review exact `5b26c4b..60d46e1`. Reproduce the 30 tests;
+reopen the canonical real gate/supervisor; verify that all eight absolute paths
+are literal and ordered; mutate one to the old relative form, a copied root and
+an alternate absolute path; and confirm each refuses. Confirm the PASS branch
+is still hard-tail Stage-C **design only** and that adapter creation conveys no
+labels, compute, training, retry, strength, promotion or production authority.
+Also confirm the canonical adapter output is still absent before review.
+
+Append exactly one terminal marker:
+
+`TEACHER_TERMINAL_ADAPTER_V3_REVIEW {"schema":"teacher-terminal-adapter-v3-review-v1","git":"60d46e1bed0eefabe040dc9dac3a630680d6bdff","parent_git":"5b26c4b4bdb678b2c780c8a4b6ed5b87e181964e","run_id":"teacher-v3-report-lcb-audit-v3-mini-149m","gate_sha256":"8a1532b7b9a610452609bb2a7a69c9b13a9f1800ad74428d0278e9572aba91f8","supervisor_sha256":"02f4f8b02d674ad3f59f9fa5b607692c7c8d31bdc5d26e2c64f66c983956f237","adapter_sha256":"974594a7b5754e065888e1959f7088f2d4e73e491d3607b2769472a66385bbbb","test_sha256":"658c1681979b8bd4b0a07d27afa1b2d3e4d34b241570d8ec3e192a686b31bf99","material_sha256":"08354af1d5f0c4cdea3154ee738add949ca055b33cb5c9b28b3a4e39e03e2303","real_gate_reopened":true,"absolute_label_paths":true,"relative_and_alternate_paths_refuse":true,"tests":"30/30","adapter_creation_authorized":true,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS|HOLD"}`

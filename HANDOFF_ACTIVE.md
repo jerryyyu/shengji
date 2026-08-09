@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-09 03:20 EDT. This is the executable mailbox, not a
+Last update: 2026-08-09 06:20 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -10,8 +10,8 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 | area | status | next action |
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
-| T1 Teacher | **RUNNING ON MINI / 5 OF 8 SHARDS PUBLISHED / ADAPTER PASS** | Claude passed the launch packet and terminal adapter `5b26c4b`. Shards 1, 2, 5, 6 and 7 exited zero; three workers remain live under the same supervisor. Keep every label sealed until the one terminal gate, independently recompute it, then create one adapter artifact. |
-| T2 S3a structured bury | **MECHANISM PASS / GUARDED PREFLIGHT REVIEW PASS** | Claude passed exact `e6f2493` / contract `5e0f6ade…b44653`, including the executable Teacher-release guard and its wiring witness. The exact four-cluster score-free preflight may run only after Teacher publishes its final, removes the partial, and all workers exit. It cannot launch the screen or make a strength claim. |
+| T1 Teacher | **TERMINAL PASS / INDEPENDENT MATCH / ADAPTER REVIEW OPEN** | Gate `8a1532b7…91f8` and supervisor `02f4f8b…6f237` are preserved; a fresh evaluator reproduction matched bytes. Real output exposed relative-versus-absolute label-path fixture drift in adapter `5b26c4b`. Review exact two-file fix `60d46e1`; only after PASS create/verify one design-only adapter. |
+| T2 S3a structured bury | **MECHANISM PASS / GUARDED PREFLIGHT READY** | Claude passed exact `e6f2493` / contract `5e0f6ade…b44653`, including the executable Teacher-release guard and its wiring witness. Teacher has released Mini, so the exact four-cluster score-free preflight may run. It cannot launch the screen or make a strength claim. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
 | T2 learner O0-v2 | **COMPLETE / SELECT NONE** | All 32 training endpoints and 16 evaluations exited zero. Gate `0dbd9aa8…f24e` independently replayed with `verified=true`; no cell advanced. O1, strength and production remain unauthorized. |
 
@@ -43,7 +43,7 @@ the separate mandatory semantic replay exited 4 as expected and printed
 plus-margin was `-0.047` with LCB `-0.109`, and the margin interaction was
 `-0.062`. No cell advanced. O1, strength and production remain unauthorized.
 
-## LIVE NOW — fresh Teacher audit on Mini
+## TERMINAL PASS — fresh Teacher audit on Mini
 
 Claude independently passed evaluator `f78e904`, controller `0399591`, and
 ordered material `645b8f54…b894d`; the exact marker is preserved in
@@ -53,49 +53,43 @@ ordered material `645b8f54…b894d`; the exact marker is preserved in
 - preparation SHA-256 `83892930fa8e7e8148960511ef0a87c3becbe77a87eaebf3c912458863644c39`;
 - independent post-preparation supervisor preflight: zero problems.
 
-The one-shot supervisor admitted run
-`teacher-v3-report-lcb-audit-v3-mini-149m` on literal host
-`Jerrys-Mac-mini.local` and launched all eight shards at 16:33 EDT. Output is
-owned under `runs/logs/teacher-v1-entry-149m-v5`. Outer audit folds are 32/32;
-each searched continuation retains 30 accepted selection plus 300 accepted
-disjoint report worlds with bounded unscored retries. Do not start another
-instance, migrate to Air, inspect partial scores for decisions, retry, extend,
-train, promote, or launch Stage C. Wait for the supervisor's single terminal
-gate and independently reopen every binding.
+The one-shot supervisor completed all 4,096 outer worlds, 64 states and eight
+shards at 06:13 EDT with no retry or partial. Terminal gate
+`8a1532b7b9a610452609bb2a7a69c9b13a9f1800ad74428d0278e9572aba91f8`
+returned PASS; supervisor final is
+`02f4f8b02d674ad3f59f9fa5b607692c7c8d31bdc5d26e2c64f66c983956f237`.
+All eight terminal label SHAs match the ordered supervisor population. A fresh
+exact evaluator invocation from `f78e904`, canonical Mini Python 3.14.6 and
+the reviewed `server/` cwd returned zero and reproduced the gate byte-for-byte.
 
-Outcome-blind runtime audit at 03:19 found 3,686/4,096 outer worlds (90.0%) and
-56/64 states. Shards 1, 2, 5, 6 and 7 published regular label/log/exit triplets after
-exit zero; all five label JSONs remain unopened and unhashed. Three workers remain
-CPU-bound under the original supervisor. An
-earlier bounded audit found ~13% of a candidate-count × remaining-ply work
-proxy complete after ~56 minutes. Because
-the frozen partition is highly imbalanced (1–14 candidates and ply 0–72), a
-simple slowest-shard projection is roughly 10–16 hours. This is not a stall:
-all three remaining workers are CPU-bound and every live log advances. It does mean a
-same-evening terminal gate is unlikely. Never use this operational forecast to
-read or stop on outcomes; do not repartition, duplicate, migrate or mutate the
-reviewed one-shot chain.
+Cheap-choice all-64 regret upper bound is `0.035396`; N=30-choice is
+`0.043879`, both below the frozen `0.10` limit. N=30's boundary-8 diagnostic
+upper bound is `0.142087`, so the correct PASS branch is hard-tail Stage-C
+**design**, not bulk ordinary-state labeling. Do not retry, extend, label,
+train, promote or reinterpret the inspected audit.
 
 ## O0-v2 terminal boundary
 
 The superseded V2/V3 code-review narrative is intentionally omitted here.
 Current packet identity, preflight evidence and terminal authority are
-recorded once at the top of this file. No O0-v2 review remains open. T1
-terminal closeout already has its separate adapter PASS.
+recorded once at the top of this file. No O0-v2 review remains open. T1's
+superseding adapter path review is the sole open human gate.
 
-Use pushed read-only monitor `c96a932` while the run is partial:
+## OPEN REVIEW — terminal adapter real-output path delta
 
-```bash
-server/.venv/bin/python server/scripts/teacher_audit_progress.py \
-  --run-root /Users/jerryyu/Projects/shengji-teacher-audit-v3-mini/server/runs/logs/teacher-v1-entry-149m-v5
-```
+The previously reviewed adapter `5b26c4b` passed its 29 synthetic tests but
+correctly refused the real terminal gate with `audit gate input path
+population`: the fixture predicted relative shard paths, while evaluator
+`f78e904` records eight absolute canonical Mini paths. No adapter artifact was
+created. Exact pushed `60d46e1bed0eefabe040dc9dac3a630680d6bdff` changes
+only that expected path population plus one non-vacuous relative-path refusal
+test. Script/test SHAs are `974594a7…5bbbb` / `658c1681…1bf99`; ordered
+material is `08354af1…e2303`. Focused tests pass 30/30, and a read-only reopen
+of the real gate plus all 839 supervisor events reports zero gate/supervisor
+problems. Review instructions and exact marker are at the bottom of
+`HANDOFF_REVIEW.md`. Do not create the adapter before PASS.
 
-It accepts only the exact progress/publication-receipt key sets and monotone
-32/32 fold ordering; an outcome or unknown field, duplicate state, malformed
-number, log collision, or incomplete final refuses. Its 8/8 falsification
-tests pass. It never reads a label JSON or grants stopping/retry authority.
-
-## CLOSED REVIEW — terminal adapter v2 PASS
+## SUPERSEDED REVIEW — terminal adapter v2 at `5b26c4b`
 
 Claude independently passed branch `codex/teacher-terminal-adapter-v2` at exact
 `5b26c4b4bdb678b2c780c8a4b6ed5b87e181964e` (29/29 focused tests). It updates
@@ -123,10 +117,11 @@ extension, promotion, or production. Closed marker:
 At 21:38 Codex reopened the exact clean `5b26c4b` worktree, reproduced adapter
 and test SHAs `d46f0751…c5589` / `195fc327…7c82`, and reran 29/29 focused
 tests. The current-main live-parent verifier also reopened exact
-`mc-s0-report-lcb`/RLCB-C1 and exited zero. The terminal closeout therefore has
-no outstanding code or human-review dependency.
+`mc-s0-report-lcb`/RLCB-C1 and exited zero. The real terminal producer later
+proved the fixture's label-path assumption wrong, so this review no longer
+authorizes adapter creation; exact `60d46e1` supersedes it after new review.
 
-## Closed launch packet — retained until the terminal gate
+## Closed launch packet — terminal evidence anchor
 
 Review these two pushed branches together:
 

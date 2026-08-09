@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 03:18 EDT
+## Current synthesis — 2026-08-09 06:20 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -52,10 +52,14 @@ what those results change in the research plan.
   64-state continuation audit refused operationally before publishing a label
   or gate, so it produced no ML verdict and is nonretryable. Score-free
   diagnostics, bounded unscored-retry semantics, the untouched complement and
-  a fresh one-shot controller subsequently passed review. That fresh audit is
-  now running on Mini; its first terminal gate must be independently
-  recomputed and routed through the already-reviewed outcome adapter before
-  either Stage-C design or redesign.
+  a fresh one-shot controller subsequently passed review. The fresh audit is
+  now terminal PASS and independently byte-recomputed at gate
+  `8a1532b7…91f8`: cheap-choice all-state regret upper bound `0.0354` and
+  N=30-choice `0.0439` both beat the frozen `0.10` limit. N=30's boundary-8
+  diagnostic remained weak at `0.1421`, so PASS routes to a hard-tail Stage-C
+  design rather than bulk ordinary-state scaling. A real-output absolute-path
+  adapter delta is under superseding review; no labels or training are yet
+  authorized.
 - **Search challengers:** the independently reviewed live-parent contract now
   binds S3a and S3b to exact report-LCB and makes formal-S0/`mc-strong`
   re-entry unreachable. S3b v2 then failed its operational preflight: its

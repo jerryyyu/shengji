@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-09 03:20 EDT.
+Last re-derived: 2026-08-09 06:20 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -105,7 +105,15 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
   reviewed and frozen at `82da0fd8…9d94c`. Exact evaluator `f78e904` and Mini
   controller `0399591` passed no-write preflight over all 22 inputs and exact
   launch review. Receipt `e293858c…a10d` and preparation `83892930…c39`
-  reopened cleanly; the reviewed eight-shard audit is now running on Mini.
+  reopened cleanly. The fresh audit completed terminal PASS at gate
+  `8a1532b7…91f8`; an independent evaluator reproduction was byte-identical.
+  Cheap-choice all-64 regret upper bound was `0.0354` and N=30-choice was
+  `0.0439`, both below `0.10`; N=30's boundary-8 diagnostic was `0.1421`.
+  Adapter `5b26c4b` then correctly refused the real gate because its fixture
+  predicted relative label paths while the evaluator publishes absolute
+  canonical paths. Exact two-file fix `60d46e1` passes 30/30 and reopens the
+  real gate/supervisor with zero problems; superseding external review is the
+  sole T1 blocker. No labels or training are authorized.
 
 ## NOW — ordered by value
 
@@ -113,9 +121,9 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 |---|---|---|
 | **T1 / Lane A production latency — COMPLETE / LIVE MONITOR** | Keep the first stronger-than-MC production policy enjoyable to play | Fly release 17 runs exact `latency-cd6789e` / `047bcfe4...5b300`. Health, native activation, claim, reconnect, stale-discard, X-ray isolation and concurrent WebSocket responsiveness passed live. Keep release 16 as the runtime rollback and `mc-strong` as the separate policy rollback; collect ordinary human-room timing before considering a CPU resize. |
 | **T1 / Lane A.1 V11pair — COMPLETE / SELECT NONE** | Preserve the learned milestone without forcing it into the champion | Artifact repair passed; the frozen rule rejected protected composition. Keep v11 as a bounded proposer/ranker and teacher diagnostic only. No protected-anchor run is authorized. |
-| **T1 / Lane B teacher — RUNNING ON MINI** | Determine whether cheap N=30 choices remain good under the full champion continuation | Exact launch review passed. One-shot receipt `e293858c…a10d` and preparation `83892930…c39` reopened with zero post-preflight problems; one supervisor owns 8/8 shards for run `teacher-v3-report-lcb-audit-v3-mini-149m`. Wait for one terminal gate; no retry, Stage C or training is implied. |
+| **T1 / Lane B teacher — TERMINAL PASS / ADAPTER DELTA REVIEW** | Determine whether cheap N=30 choices remain good under the full champion continuation | Gate `8a1532b7…91f8` passed and independently reproduced byte-for-byte. Exact `60d46e1` repairs only the real absolute label-path population; wait for superseding review, then create/verify one design-only adapter. No labels or training yet. |
 | **T2 / live parent + S3 reparenting — COMPLETE / REVIEW PASS** | Make every new search mechanism challenge the bot people actually play | Claude independently passed exact `05ea1d1` / material `66be133c…e17c`, reproduced parent output `5f9ddbfb…8402`, reopened RLCB-C1 and falsified stale-S0 re-entry. S3a/S3b retain their narrow v2 boundaries. This authorizes only the predeclared score-free S3b Mini preflight, not strength compute. |
-| **T2 / S3a structured bury — MECHANISM PASS / GUARDED PREFLIGHT REVIEW PASS** | Test whether a much wider, strategy-aware kitty ballot finds better once-per-round decisions | Claude passed exact `e6f2493` / contract `5e0f6ade…b44653`, including 16/16 tests, every Teacher-release predicate and the non-vacuous wiring witness. The exact four-cluster score-free preflight may run only after Teacher releases Mini; it authorizes no screen, strength conclusion or promotion. |
+| **T2 / S3a structured bury — MECHANISM PASS / GUARDED PREFLIGHT READY** | Test whether a much wider, strategy-aware kitty ballot finds better once-per-round decisions | Claude passed exact `e6f2493` / contract `5e0f6ade…b44653`, including 16/16 tests, every Teacher-release predicate and the non-vacuous wiring witness. Teacher has released Mini; run the exact four-cluster score-free preflight. It authorizes no screen, strength conclusion or promotion. |
 | **T2 / S3b sampled exact endgame — PREFLIGHT TERMINAL HOLD / NO SCREEN** | Replace heuristic continuation with bounded exact solving when every hand has at most four cards | The exact predeclared Mini attempt reached the frozen cumulative `250,000`-node ceiling in its first treatment cluster and failed before publishing a receipt. No score/raw record survived and the 2,048 screen is unauthorized. Never rerun or raise the cap in v2; a future v3 must separately review a narrower threshold, a solver optimization, or a different bound. |
 | **T1 / Lane C Direct-Q — COMPLETE / SELECT NONE** | Learn from the failure without selecting its positive gameplay tail | Preserve aggregate SHA `1fa6789e…791`; do not deploy, extend or mutate the 144M recipe. The next learner requires a separately frozen Suphx-style or other role-correct microbaseline gate. |
 | **T1 / Lane C Suphx O0 — COMPLETE / SELECT NONE** | Test whether a full-information policy can learn before spending compute on feature removal | Preserve gate SHA `592a009a…bd407c`. Both ensemble LCBs passed, but seed 1 lost to its equal-seed public arm (`-0.207`), failing the registered robustness conjunction. O1 is closed for this exact recipe; the next learner needs a fresh packet, not an O0 extension. |
@@ -177,14 +185,12 @@ champion-matched null on fresh deal clusters.
 
 ### T1 — Champion flywheel launch: fresh Teacher asset/controller gate
 
-T1 is complete in four of five lanes: production report-LCB/release 17 is
-live, RLCB-C1 confirmed it, V11 direct-v2 selected none, and Direct-Q/O0 each
-reached an honest stop. Teacher audit-v2 produced no valid terminal verdict.
-Its diagnosis, retry semantics and untouched complement have passed review,
-but T1 is still not complete. The fresh evaluator/controller and exact launch
-packet passed review; the valid audit is now running on Mini. Preserve its
-first terminal gate, independently verify it, then route it through reviewed
-adapter v2 to Stage-C design or redesign/stop.
+T1 is complete in four lanes and has valid terminal evidence in the fifth:
+production report-LCB/release 17 is live, RLCB-C1 confirmed it, V11 direct-v2
+selected none, Direct-Q/O0 reached honest stops, and the fresh Teacher audit
+passed. The gate and independent byte reproduction are preserved. T1 closes
+after external review of exact adapter path delta `60d46e1` and creation plus
+verification of its design-only Stage-C artifact.
 
 ### T2 — First live-champion challenger: active in parallel
 
@@ -199,9 +205,9 @@ bot rather than imitate it.
 | **T2.1 / S3a — COMPLETE / MECHANISM PASS** | Run the 512-state structured-bury mechanism screen under its fresh v2 namespace | Eight shards and the aggregate completed; separate verification passed. All three state-level LCBs exceed zero. Aggregate `74aa5a39…396cd`, final `d3f2b1ab…69a6b`. This authorizes only the next deliverable: a separately preregistered full-game duel. |
 | **T2.2 / S3b — COMPLETE / TERMINAL HOLD** | Run the score-free two-cluster throughput preflight for the report-LCB sampled-exact lane on Mini | At exact head `cd44ea8`, the first treatment cluster raised `ExactEndgameBudgetExceeded: max_nodes=250000`; exit 1, no `1/2` completion, receipt or partial. This falsifies the v2 zero-overflow feasibility condition. Same-recipe retry/cap change/fallback is unauthorized. |
 | **T2.3 / S3b v2 — CLOSED / UNAUTHORIZED** | Launch the 2,048-cluster complete-round sampled-exact screen when capacity and preflight permit | The required preflight did not pass and the zero-overflow invariant failed before a cluster completed. Preserve the seed and failure. A fresh v3 design/review—not a mutation of this attempt—is required before more sampled-exact compute. |
-| **T2.4 / Teacher — AUDIT RUNNING / ADAPTER REVIEW PASS** | Convert a valid terminal audit into a Stage-C contract | Exact Mini launch review passed; one supervisor owns 8/8 audit shards. Claude independently passed exact adapter `5b26c4b`, including canonical paths, literal parent populations/receipt nonce, Python runtime and symlink refusals. Independently verify the first terminal gate, then create and verify one adapter artifact; neither branch launches compute. |
+| **T2.4 / Teacher — TERMINAL PASS / SUPERSEDING ADAPTER REVIEW OPEN** | Convert a valid terminal audit into a Stage-C contract | Gate `8a1532b7…91f8` and supervisor `02f4f8b…6f237` are terminal; independent aggregation matched bytes. Real output exposed relative-versus-absolute label-path fixture drift. Exact `60d46e1` passes 30/30 and reopens the real evidence; external review must pass before one adapter is created. |
 | **T2.5 / learner — COMPLETE / SELECT NONE** | Test whether shared-public CRN, with margin sharpening isolated factorially, makes oracle access robust across seeds | All 32 training endpoints and 16 evaluations exited zero. Gate `0dbd9aa8…f24e` independently replayed with `verified=true`; neither cell advanced, so O1, strength and production remain unauthorized. |
-| **T2.6 / S3a duel — PREFLIGHT REVIEW PASS / WAIT TEACHER RELEASE** | Test whether the state-level structured-bury gain survives full games against production | Exact core/controller `b5dee2e` / `0085409` and guarded packet `e6f2493` passed external review. Contract `5e0f6ade…b44653` freezes four score-free clusters, seed 18,000,000,000, cap pairs, command and executable Teacher-release guard. Run only after that guard clears; the preflight can authorize screen-packet review, not a screen or strength claim. |
+| **T2.6 / S3a duel — PREFLIGHT REVIEW PASS / TEACHER RELEASED** | Test whether the state-level structured-bury gain survives full games against production | Exact core/controller `b5dee2e` / `0085409` and guarded packet `e6f2493` passed external review. Contract `5e0f6ade…b44653` freezes four score-free clusters, seed 18,000,000,000, cap pairs, command and executable Teacher-release guard. Mini is now released; run the exact score-free preflight, which can authorize screen-packet review but not a screen or strength claim. |
 
 T2 launch readiness is achieved: T2.0 passed and S3a produced a valid positive
 mechanism screen. The next milestone is stronger: get S3a into one honest
@@ -210,31 +216,25 @@ in parallel. It does not require manufacturing a positive duel result.
 
 ### Fleet order overnight — Aug 9
 
-1. **Mini / critical path:** keep the reviewed fresh Teacher audit under its
-   sole supervisor. At 03:19 EDT it was healthy and outcome-sealed at
-   3,686/4,096 outer worlds (90.0%), 56/64 states and 5/8 published shards.
-   Do not duplicate, retry or migrate it. When its first terminal final
-   appears, independently recompute the exact evaluator gate, compare bytes
-   and SHA-256 with the supervisor result, then create and verify the reviewed
-   outcome adapter. A verified PASS enters hard-tail Stage-C **design**; a
-   verified FAIL/INCONCLUSIVE enters frozen-evidence diagnosis/redesign.
-   Neither branch launches compute automatically.
+1. **Mini / Teacher COMPLETE:** all 8/8 shards, the terminal PASS gate and
+   supervisor final are preserved. Independent aggregation matched exact
+   bytes/SHA. Do not retry or extend. Adapter creation waits only on review of
+   `60d46e1`; PASS may emit hard-tail Stage-C **design** and no compute.
 2. **Air / COMPLETE:** admission, all 32 training endpoints, all 16
    evaluations, the terminal gate and independent semantic replay completed.
    Preserve terminal `SELECT_NONE` at gate `0dbd9aa8…f24e`; no O1, strength or
    production action is authorized. Air has no reviewed successor launch.
-3. **After Teacher releases Mini:** the already-reviewed S3a four-cluster
-   score-free preflight may run under its executable release guard. This is a
+3. **Mini next:** the already-reviewed S3a four-cluster score-free preflight
+   may now run under its executable release guard. This is a
    useful T2 follow-up, not a requirement for closing the active goal, and it
    can authorize only full screen-packet review—not a strength run.
 4. **Local/product:** continue passive release-17 timing collection; no policy
    or production change is part of this overnight sequence.
 
 Useful admitted work—not merely busy CPUs—is the utilization target. The
-O0-v2 is now terminal and Air is free; Teacher remains the sole running
-critical-path job. If the Teacher's slow tail does not finish
-overnight, preserve the run and continue from the same one-shot namespace in
-the morning; elapsed time alone never authorizes a duplicate or migration.
+O0-v2 and Teacher are terminal; Air and Mini are free. The only T1 blocker is
+the narrow external adapter review. The independently reviewed S3a preflight
+can use Mini without widening any strength authority.
 
 ### Parallel implementation queue — never wait idly for a run
 
@@ -243,21 +243,18 @@ ready for each free host, but continue the first unblocked implementation item
 whenever a review or run is live:
 
 1. **COMPLETE:** exact `05ea1d1` T2.0 live-parent review passed;
-2. **PREFLIGHT REVIEW PASS / WAIT TEACHER RELEASE:** exact `e6f2493` /
+2. **PREFLIGHT REVIEW PASS / READY ON MINI:** exact `e6f2493` /
    contract `5e0f6ade…b44653` independently passed. Its live-Teacher refusal and
-   wiring are mutation-proven; the namespace remains absent. Only after the
-   executable release guard clears may the four-cluster score-free preflight
-   run;
-3. **RUNNING ON MINI:** exact 30+300 accepted-world semantics and
-   historical/current state provenance are frozen; one reviewed supervisor
-   owns 8/8 fresh audit shards and must end at one terminal gate;
-4. **ADAPTER-V2 REVIEW PASS at `5b26c4b`:** the fresh terminal adapter
-   precommits PASS to a hard-tail Stage-C design and FAIL/INCONCLUSIVE to the
-   existing-evidence diagnostic only, binds the exact v2 gate/supervisor and
-   Mini provenance, and authorizes no compute;
-5. **INTEGRATION MERGED at `59a23c7`:** keyed common-random-number streams, a
-   shared public projection and the two-sided logit-margin cell are bounded;
-   freeze a fresh runner/population/gate packet;
+   wiring are mutation-proven; Teacher has released Mini and the namespace
+   remains absent. Run the exact four-cluster score-free preflight;
+3. **TEACHER TERMINAL PASS:** exact 30+300 accepted-world semantics and
+   historical/current state provenance are frozen; all 8/8 shards and the
+   independently reproduced gate are preserved;
+4. **ADAPTER DELTA REVIEW OPEN at `60d46e1`:** real output exposed the prior
+   relative-path fixture mismatch. The exact fix retains PASS as hard-tail
+   Stage-C design only and authorizes no compute;
+5. **O0-v2 COMPLETE / SELECT NONE:** keyed CRN and semantic replay passed, but
+   neither frozen cell advanced. O1 is closed for this recipe;
 6. version the shared `ExperimentSpec`/progress receipt so reviewed jobs are
    launch-ready without making promotion or evidence decisions automatic;
 7. if all strength work is review-blocked, use the slot for encoder-provenance,

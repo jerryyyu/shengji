@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 03:20 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 06:20 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,19 +10,15 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shards 1, 2, 5, 6 and 7 exited zero and published 5/8 label triplets; three workers remain CPU-bound. At 03:19, score-free progress was 3,686/4,096 outer worlds (90.0%) and 56/64 states. The label JSONs remain sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
+| Mini | none | **FREE / TEACHER PASS:** all 8/8 shards exited zero; gate `8a1532b7…91f8` and supervisor `02f4f8b…6f237` are terminal. Independent aggregation was byte-identical. The reviewed S3a score-free preflight is next admitted use. |
 | Air | none | **FREE / O0-v2 CLOSED:** all 32 training endpoints, 16 evaluations, terminal gate and independent replay completed. Gate `0dbd9aa8…f24e` is `SELECT_NONE` and independently `verified=true`. No O1/strength/production authority and no reviewed Air successor. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
-The T1 Teacher audit is **running on Mini**. Receipt
+The T1 Teacher audit is **terminal PASS**. Receipt
 `e293858c…a10d` and preparation `83892930…c39` are exact, and the supervisor
-post-preparation preflight returned zero problems. Air completed and
-independently verified the admitted O0-v2 terminal result.
-The runtime forecast uses only score-free progress events emitted after each
-outer world plus frozen candidate counts/ply; it reads no utility, regret,
-choice or gate outcome. It is operational sizing, not evidence. The job is
-healthy but the nested report-LCB continuation geometry was not throughput-
-preflighted before launch.
+post-preparation preflight returned zero problems. All 64 states and 8 shards
+completed, and independent aggregation reproduced the gate byte-for-byte. Air
+completed and independently verified the admitted O0-v2 terminal result.
 
 ## Next admitted execution
 
@@ -32,14 +28,15 @@ preflighted before launch.
    controller `0399591`, and material `645b8f54…b894d`.
 2. **Complete:** the one-shot preparer emitted exact receipt
    `e293858c…a10d` and preparation `83892930…c39`; both reopened cleanly.
-3. **Running:** one Mini supervisor owns the population; shards 1, 2, 5, 6 and 7
-   exited zero and three workers remain live. Outer folds are 32/32 while each searched
-   continuation retains the reviewed inner 30+300 accepted-world dose. Do not
-   open the published label before the terminal gate.
-4. **Complete:** Claude independently passed terminal adapter `5b26c4b`.
-5. Preserve and independently verify the first terminal PASS, FAIL, or
-   INCONCLUSIVE gate, then create/verify one adapter artifact. Never retry,
-   extend, promote, or move hosts from this packet.
+3. **Complete:** all eight shards exited zero; terminal gate `8a1532b7…91f8`
+   is PASS and supervisor final is `02f4f8b…6f237`.
+4. **Complete:** a fresh exact evaluator aggregation returned zero and matched
+   the canonical gate byte-for-byte.
+5. **Review open:** the previously passed adapter `5b26c4b` correctly refused
+   the real absolute label paths because its fixture predicted relative paths.
+   Exact `60d46e1` changes only that literal contract, passes 30/30 and reopens
+   the real gate/supervisor with zero problems. Await external PASS, then
+   create/verify one design-only adapter. Never retry, extend or train here.
 
 ### T2 S3a
 
@@ -72,6 +69,7 @@ cell advanced. O1, strength and production remain unauthorized.
 
 | date | job | verdict / headline | evidence anchor |
 |---|---|---|---|
+| 08-09 | Teacher-v3 fresh audit | **PASS / STAGE-C DESIGN**; cheap upper `0.0354`, N=30 upper `0.0439` below `0.10`; no training authority | gate `8a1532b7...91f8`; supervisor `02f4f8b...6f237` |
 | 08-09 | Suphx O0-v2 | **SELECT NONE**; control `+0.015` (LCB `-0.067`), plus-margin `-0.047` (LCB `-0.109`); independently replayed | gate `0dbd9aa8...f24e`; admission `f436f4b0...01e7a` |
 | 08-08 | S3a 512-state screen | **AUTHORIZE DUEL DESIGN**; all three state-level LCBs positive; no production authority | aggregate `74aa5a39...396cd`; final `d3f2b1ab...69a6b` |
 | 08-08 | S3a v2 sizing | **CAPACITY PASS**; 0.142 fleet-hours / 0.0178 max-shard hours under frozen 400/60 caps | receipt `cf770277...5c431` |

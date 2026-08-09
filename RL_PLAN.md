@@ -331,7 +331,9 @@ strength loop works.
    `abd9f36f…cdc00`. The repaired complete-round v2 controller and packet are
    frozen at `cad3992` / `17036e63…1385`, preserving natural trigger traffic
    against the exact live champion and an analysis-identical matched null.
-   External review must precede launch, and Mini remains occupied by S3a. Do
+   Claude independently passed the repaired packet at `51a864c`; exactly one
+   2,048-cluster Mini screen may launch after S3a releases the host and a fresh
+   admission/receipt is created. Do
    not treat `+5.156` points as a duel-strength estimate: using a K now can
    still waste future control over a full continuation.
 3. **Repair then review the Teacher Stage C contract.** Exact `b0ef0f9` defines
@@ -369,8 +371,9 @@ starts from a diagnosed mechanism rather than another undifferentiated corpus.
   it explicitly constructs one-/two-suit voids containing points and evaluates
   them through rollouts.
 - **S4 point-banking continuation** has passed its exact-state mechanism
-  screen in both roles and its score-free complete-round capacity gate. Packet
-  `17036e63…1385` is frozen. The remaining empirical question is deployment
+  screen in both roles and its complete-round packet review. Packet
+  `17036e63…1385` is frozen and independently passed at `51a864c`; its sole
+  Mini launch waits behind S3a. The remaining empirical question is deployment
   relevance: does the continuation-only change improve complete-round utility
   under natural traffic against the live champion and matched null?
 - **Later exact search** requires a new operational hypothesis. S3b-v2 is

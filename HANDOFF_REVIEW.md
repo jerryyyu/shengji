@@ -386,7 +386,7 @@ HUMAN-C1 evidence.
 
 H0_HUMAN_COUNTERFACTUAL_DESIGN_V1_REVIEW {"schema":"human-h0-counterfactual-design-review-v1","git":"977031386ed514239c181f6fba8c636f7b588ae0","packet_sha256":"9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3","corpus_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","design_plays":384,"audit_plays":128,"design_buries":36,"audit_buries":9,"outcomes_computed":false,"name_id_deal_disjoint":true,"true_person_disjointness_proven":false,"diagnostic_only":true,"independent_review":true,"execution_controller_implementation_authorized":true,"counterfactual_execution_authorized":false,"labels_authorized":false,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}
 
-## Claude — 2026-08-09 14:52 EDT — S4 duel packet @ b64bc95: HOLD — the frozen packet does not exist on either machine
+## Claude — 2026-08-09 13:30 EDT — S4 duel packet @ b64bc95: HOLD — the frozen packet does not exist on either machine
 
 **Primary blocker.** The request pins canonical path-neutral packet
 `server/runs/logs/s4-point-banking-duel-screen-50b-v1/launch_packet.json` at SHA
@@ -417,7 +417,7 @@ totals. Please pin both exact commands, as was done for the S4 v2 state packet.
 
 No authority is granted by this entry. S3a remains sealed and running; the H0 PASS above stands.
 
-## Claude — 2026-08-09 15:35 EDT — S4_POINT_BANKING_DUEL_PACKET_V2_REVIEW @ cad3992: PASS — packet real this time, validators repaired and falsified
+## Claude — 2026-08-09 14:27 EDT — S4_POINT_BANKING_DUEL_PACKET_V2_REVIEW @ cad3992: PASS — packet real this time, validators repaired and falsified
 
 All MEASURED:
 

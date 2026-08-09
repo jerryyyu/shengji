@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-09 14:24 EDT.
+Last re-derived: 2026-08-09 14:29 EDT.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
 `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -35,7 +35,7 @@ here.
   found its pinned V11 SHA names no artifact. V1 has no outcomes and cannot
   parent execution. Exact `12dac55` repairs the executable checkpoint/live-
   parent bindings and freezes score-free v2 packet `2cccf580…8f2b`, reproduced
-  byte-exact on Air; rereview is queued after S4. Execution, labels, training
+  byte-exact on Air; rereview is now open. Execution, labels, training
   and strength remain closed. The latest complete
   server pull at 18:09 UTC found all 30 files unchanged, so this corpus remains
   the current production snapshot rather than a stale copy. Its split is
@@ -55,8 +55,11 @@ here.
   underfilled report work and direct shards without reviewed authority. Exact
   `cad3992` is the repaired v2 runner/controller. Fresh score-free Air
   preflight `fcc8b891…ee060` passed, and packet `17036e63…1385` recomputes.
-  This opens packet review only, not a duel or strength claim; v1
-  `b64bc95` / `80e4f1bf…6947` is preserved as superseded evidence.
+  Claude independently passed the repaired packet at marker commit `51a864c`.
+  This authorizes exactly one 2,048-cluster Mini screen after S3a releases the
+  host and a fresh admission/receipt is created; it is not a strength claim or
+  confirmation authority. V1 `b64bc95` / `80e4f1bf…6947` is preserved as
+  superseded evidence.
 - **Learners:** V11 direct-v2, Direct-Q, O0 and O0-v2 all selected none under
   their registered gates. They remain diagnostics, not deployable policies.
 - **Free capacity:** Air is free after S4's score-free preflight. No reviewed
@@ -67,8 +70,8 @@ here.
 | priority | work | exact exit gate |
 |---|---|---|
 | **P0 / S3a terminal** | Let the sealed 2,048-cluster full-game screen finish | Count-only monitor; run the exact terminal verifier once. PASS opens confirmation-packet review only. SELECT NONE closes the exact recipe. |
-| **P1 / S4 point-banking rollout** | Review the repaired v2 complete-round packet, then wait for admitted Mini capacity | Exact `cad3992` / `17036e63…1385`; score-free preflight `fcc8b891…ee060`. The obsolete v1 HOLD is accepted; v2 exists in named Mini/Air worktrees with pinned tests. PASS may authorize one 2,048-cluster screen only; no launch while S3a owns Mini. |
-| **P1 / human counterfactual H0** | Rereview the repaired score-free v2 design | V1 split review passed but its V11 digest is non-executable. Exact `12dac55` / `2cccf580…8f2b` binds real `ep07.npz`, portable report-LCB parent and fixed 30/300 proposal/report semantics. After S4, PASS may authorize controller implementation only—not execution or outcomes. |
+| **P1 / S4 point-banking rollout** | Wait for Mini, then admit and launch the one reviewed screen | Claude PASS at `51a864c` authorizes exact `cad3992` / `17036e63…1385` once. Create the fresh admission/receipt only after S3a releases Mini; then run 2,048 clusters exactly once. Confirmation, retry, strength and promotion remain closed. |
+| **P1 / human counterfactual H0** | Rereview the repaired score-free v2 design | V1 split review passed but its V11 digest is non-executable. Exact `12dac55` / `2cccf580…8f2b` binds real `ep07.npz`, portable report-LCB parent and fixed 30/300 proposal/report semantics. This is the sole open review; PASS may authorize controller implementation only—not execution or outcomes. |
 | **P1 / Teacher Stage C** | Repair the H0 parent binding, then review the 2,048-state design | Existing `b0ef0f9` / `45802e47…a350` consumes superseded H0 v1 and is held pre-review. After H0 v2 PASS, freeze a replacement. A later PASS may authorize score-free capture/controller implementation only—not capture, labels or training. |
 | **P2 / S3a confirmation** | Confirm a positive screen against the live champion | Only conditional on terminal PASS: freeze and externally review an 8,192-cluster one-shot packet, then launch once. No automatic promotion. |
 | **P2 / experiment infrastructure** | Make reviewed jobs cheaper to launch correctly | Introduce one immutable `ExperimentSpec`/receipt boundary for code, data, policy, ballot, sampler, continuation, actor, seeds, metric, null, work, stop rule and output. Scheduling may automate reviewed work; it may not select or promote. |
@@ -109,13 +112,13 @@ unreviewed strength compute, training, promotion and production changes.
 
 1. Preserve S3a until one terminal verifier verdict; do not spend its sealed
    evidence twice.
-2. **done:** independently review and run S4 exact-state v2 once. Supersede the
+2. **packet PASS / launch queued:** independently review and run S4 exact-state v2 once. Supersede the
    defective unlaunched full-game v1 packet, then implement, preflight and
-   freeze repaired full-game v2 at `17036e63…1385`. Review is next; do not
-   launch it without PASS or while S3a owns Mini.
-3. **repair in review queue:** H0 v1's split review passed, but executable audit
+   freeze repaired full-game v2 at `17036e63…1385`. Claude passed the repaired
+   packet; do not create its admission or launch while S3a owns Mini.
+3. **open review:** H0 v1's split review passed, but executable audit
    found a nonexistent V11 digest before controller work. Exact `12dac55`
-   freezes byte-reproduced v2 at `2cccf580…8f2b`; review it after S4. Then
+   freezes byte-reproduced v2 at `2cccf580…8f2b`; review it now. Then
    repair Stage C's H0 binding and only after PASS implement the H0 controller.
    No packet may execute, capture, label or train without new authority.
 4. Keep Mini on the long reviewed S3a job and use Air for bounded reviewed

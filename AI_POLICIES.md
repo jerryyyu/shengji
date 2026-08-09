@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-09 09:17 EDT
+## Current synthesis — 2026-08-09 09:55 EDT
 
 ### Canonical terminal-results table
 
@@ -99,10 +99,35 @@ Evidence anchors, in the same order:
 - High-N and late assets are replayable state reservoirs, not oracles; their
   labels use old ballots, non-strict sampling, raw points and heuristic
   continuation. Relabel fresh named strata under the current contract.
+- The August 9 Fly-snapshot-only human refresh replayed 122 complete rounds and
+  accepted 2,830 plays plus 45 buries under the repaired public/no-private-
+  kitty encoder. It explicitly rejected seven incomplete rounds, excluded 12
+  legacy local-only rooms, found 25 human plays outside the broad exhaustive-
+  follow analysis ballot, and found points in 22/45 human buries. This is
+  proposal/coverage evidence, not proof that human actions or round-return
+  labels are stronger. Use player/deal-disjoint splits and counterfactual
+  relabeling before training beyond a separately measured BC control.
 - Encoder identity includes semantics and transitive bytes. Drifted banker-
   private-kitty assets remain quarantined; `gen_v4_all`, which trained
   v11pair, is clean. House progression is uncapped; `+/-3` is only a named
   legacy RL target.
+
+### Human-observed policy surfaces
+
+- **Kitty:** production is strongly point-shy rather than incapable of
+  burying points. S3a explicitly constructs point/void/trump alternatives; its
+  state mechanism passed and its sealed full-game screen is the active strength
+  test.
+- **Point banking:** root MC can source a point-bearing winner, but shared
+  heuristic continuation selects the cheapest winner when a cheaper non-point
+  winner also exists. The proposed S4 treatment changes continuation only and
+  must include team-aware positive/negative witnesses plus a trigger-matched
+  null. It is not yet a strength result.
+- **People-facing target:** human agreement is a style/coverage diagnostic.
+  After bot-vs-bot confirmation, a blinded opt-in `HUMAN-C1` must compare the
+  candidate with the live champion across the same human cohort, balanced by
+  team/banker/seat and clustered by player session. Evaluation games never
+  enter training or selection.
 
 ### Learned policies and RL
 

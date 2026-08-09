@@ -66,10 +66,15 @@ an exact named policy at freeze time. Push every accepted commit.
 ## 4. Update human and production evidence
 
 Fetch production logs read-only with `scripts/fetch_fly_logs.sh` when new human
-traffic exists. Keep `logs/local/` out of human mining. Do not merge rebuilt
-human encodings into training automatically: banker rows generated under the
-private-kitty encoder drift are quarantined, so any new shard needs the exact
-public/no-private-kitty encoder identity and a fresh declared use/split.
+traffic exists. The fetch stages and validates every remote JSONL, preserves
+changed local copies in a timestamped ignored archive, atomically publishes
+the refresh, and writes a source-hash manifest. Keep `logs/local/` out of human
+mining. Build a fresh versioned corpus with `shengji.rl.human_shards`; require
+source/producer/encoder hashes, explicit replay/rejection counters and
+pseudonymous decision sidecars. Do not merge it into training automatically:
+banker rows generated under the private-kitty encoder drift are quarantined,
+and raw human choice/round return is a proposal or BC control—not strength
+truth—until a declared split and counterfactual Teacher gate pass.
 
 For release 17, monitor ordinary and concurrent-room bot timings, stale-search
 discards, WebSocket responsiveness and X-ray isolation. Keep the runtime

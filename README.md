@@ -7,7 +7,7 @@ Full-stack implementation of the classic Chinese partnership trick-taking game:
 Python rules engine + Monte Carlo AI + FastAPI multiplayer server + React web
 UI with Mandarin voice announcements.
 
-## Project state — 2026-08-08
+## Project state — 2026-08-09
 
 The production bot is **`mc-s0-report-lcb`**, the first policy in this project
 to earn a fresh, preregistered superiority result over the previous N=30 MC
@@ -18,13 +18,16 @@ improved signed level utility by `+0.338 +/- 0.068` per round; a matched null
 was flat. Fly release 17 runs the same decision rule off the WebSocket event
 loop so search no longer freezes room interaction.
 
-The only unfinished T1 gate is a sealed 64-state Teacher-v3 audit running on
-the Air. It asks whether the cheap labels we can generate at scale still pick
-good actions when judged under the full production continuation. Mini is free
-for the next search challenger. The next milestone is to test structured kitty
-buries and sampled exact endgames against the bot actually in production, not
-against its obsolete `mc-strong` parent. See [BACKLOG.md](BACKLOG.md) for the
-ordered queue and [AI_POLICIES.md](AI_POLICIES.md) for the canonical results.
+T1 is closed. Its fresh Teacher audit found that cheap/N=30 choices remain
+faithful on ordinary states under the production continuation, but the hard
+boundary was weaker; the next data step is therefore a reviewed hard-tail
+Stage C rather than indiscriminate bulk labels. T2's structured-bury mechanism
+passed its 512-state screen and a fresh 2,048-cluster full-game screen is now
+running sealed on Mini against the exact live champion. The T3 plan adds the
+orthogonal point-banking rollout hypothesis and a counterfactually relabeled
+human-action lane, with eventual blinded evaluation against people—not just
+other bots. See [BACKLOG.md](BACKLOG.md) for the executable queue and
+[AI_POLICIES.md](AI_POLICIES.md) for canonical results.
 
 ## Quick start
 
@@ -149,7 +152,10 @@ validation battery.
   position.
 - `scripts/analyze_human.py`, `scripts/eval_vs_human.py` — score human
   decisions against the bot / the whole policy ladder.
-- `scripts/fetch_fly_logs.sh` — pull prod game logs for the above.
+- `scripts/fetch_fly_logs.sh` — atomically refresh and hash prod game logs.
+- `python -m shengji.rl.human_shards` — build a fresh replay-audited,
+  provenance-bound human play/bury corpus; raw human choices remain proposal
+  data until counterfactually validated.
 
 
 ## Project docs
@@ -165,7 +171,7 @@ validation battery.
 | `JOBS.md` | live fleet job plus compact terminal-job index |
 | `MAINTENANCE.md` | daily routine (any session can execute it) |
 | `HANDOFF_ACTIVE.md` | compact executable Codex/Claude mailbox |
-| `HANDOFF_REVIEW.md` | append-only external-review evidence ledger |
+| `HANDOFF_REVIEW.md` | short active exact-review mailbox; completed ledgers are archived |
 | `DEPLOY.md` / `PROTOCOL.md` | hosting + wire protocol |
 | `web/README.md` | client architecture, protocol contract, UI invariants |
 | `docs_archive/` | compacted history (RL chronology, resolved backlog, old review rounds) |

@@ -1,5 +1,11 @@
 # Teacher-v1 staged experiment spec
 
+> **Archived 2026-08-09 after T1 terminal PASS.** This is the frozen historical
+> execution contract, including status text written while the audit was live.
+> Current Teacher Stage-C design and authority live in `RL_PLAN.md`,
+> `BACKLOG.md`, `AI_POLICIES.md` and the verified terminal adapter; nothing in
+> this archive authorizes a retry, label run, training run or promotion.
+
 > **Naming/lifecycle note.** `Teacher-v1` is the pipeline family; the active
 > repaired experiment is the v3 packet below. This evidence-bound filename
 > remains stable while its champion audit is live. After a terminal audit, move

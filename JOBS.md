@@ -1,148 +1,75 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 09:17 EDT. This file owns live compute and compact
-terminal job stubs. Exact historical detail is archived at
-`docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
-`AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
-in `HANDOFF_ACTIVE.md`.
+Last reconciled: 2026-08-09 09:33 EDT. This file owns live compute and compact
+terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
+order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 ## Live fleet
 
-| host | live strength job | status / next admitted use |
+| host | job | status / next admitted use |
 |---|---|---|
-| Mini | `s3a-bury-duel-screen-153m-v1` | **RUNNING / OUTCOME SEALED:** exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight live shards × 256 clusters. Monitor count-only `supervisor.jsonl.partial`; never inspect partial outcomes, retry or move HEAD. |
-| Air | none | **FREE / O0-v2 CLOSED:** all 32 training endpoints, 16 evaluations, terminal gate and independent replay completed. Gate `0dbd9aa8…f24e` is `SELECT_NONE` and independently `verified=true`. No O1/strength/production authority and no reviewed Air successor. |
-| Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
+| Mini | `s3a-bury-duel-screen-153m-v1` | **RUNNING / OUTCOME SEALED.** Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight shards × 256. Latest count-only heartbeat: `8,9,8,8,8,9,8,8`. Never inspect shard outcomes, retry, extend or move the pinned checkout. |
+| Air | none | **FREE.** O0-v2 is terminal SELECT NONE; no reviewed successor launch exists. Use only for bounded code/tests or a separately reviewed packet. |
+| Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
-The T1 Teacher audit and adapter are **complete**. Receipt
-`e293858c…a10d` and preparation `83892930…c39` are exact, and the supervisor
-post-preparation preflight returned zero problems. All 64 states and 8 shards
-completed, and independent aggregation reproduced the gate byte-for-byte.
-Adapter `56ccefbd…c2442` independently verifies as hard-tail Stage-C design
-only. Air completed and independently verified the admitted O0-v2 result.
+## S3a legal next action
 
-## Next admitted execution
+Monitor only `supervisor.jsonl.partial` count/status fields until all workers
+terminate. Then invoke the exact controller verifier once:
 
-### T1 Teacher
+- `AUTHORIZE_CONFIRM_PACKET_REVIEW`: freeze one fresh 8,192-cluster
+  confirmation packet and request external review. This does not authorize its
+  launch.
+- `SELECT_NONE`: preserve the terminal aggregate/final and close the exact S3a
+  recipe. Do not retry, tune from outcomes or pool with the 512-state screen.
+- operational refusal: preserve the namespace and diagnose without reading or
+  manufacturing strength evidence.
 
-1. **Complete:** exact Mini launch review passed for evaluator `f78e904`,
-   controller `0399591`, and material `645b8f54…b894d`.
-2. **Complete:** the one-shot preparer emitted exact receipt
-   `e293858c…a10d` and preparation `83892930…c39`; both reopened cleanly.
-3. **Complete:** all eight shards exited zero; terminal gate `8a1532b7…91f8`
-   is PASS and supervisor final is `02f4f8b…6f237`.
-4. **Complete:** a fresh exact evaluator aggregation returned zero and matched
-   the canonical gate byte-for-byte.
-5. **Complete:** Claude passed repaired exact `60d46e1`; Codex reran 30/30,
-   created the adapter once and independently verified SHA
-   `56ccefbd62d9ea2aef30a4c6e54e11a0d2231e464f129e754b84b3488f1c2442`.
-   Decision is `DESIGN_HARD_TAIL_STAGE_C`; next authority is packet review
-   only. Never retry, extend, label or train from this audit.
-
-### T2 S3a
-
-The state-level screen has already passed. Claude passed repaired core
-`b5dee2e` and Mini-only controller `0085409`; integration `fcad972` preserved
-the reviewed bytes and passed 76/76. The first literal packet is superseded
-because Teacher exclusivity was prose-only. Exact `e6f2493` hashes and enforces
-the terminal-final/no-partial/no-live-worker gate; its focused tests pass
-16/16, including wiring non-vacuity, and a real live-Teacher probe refused
-before creating a namespace. Claude independently passed superseding contract
-`5e0f6ade…b44653`, all 16 tests and the equivalent `192/24`, `768/96` caps.
-The exact preflight ran once after the Teacher guard cleared. It completed in
-255.3 seconds with exact work, zero bad counters, receipt `97280974…68ca`,
-preflight `09692f82…edf0` and final `56943242…e9f`. The 2× projection is
-`72.62` fleet-hours / `9.08` max-shard hours for the screen and `290.50` /
-`36.31` for confirmation. Its terminal authority was external review of one
-screen packet; it did not itself grant strength compute.
-
-Exact screen controller `c599b42` is pushed. Controller/test/material SHAs are
-`68ff254e…029d` / `3adfe379…0563` / `c76a030a…0714`; 17/17 focused and
-100/100 broad S3/live-parent tests pass. Claude's external review passed all
-six requested groups. Codex independently reverified packet `de16247b…cdd4`,
-copied committed review `efa13d95…ba70`, admitted once at `567e8aa8…41c5e`
-and launched once at receipt `2c89bed3…cbb2c`. All eight Mini shards are live.
-The only permitted next action is count-only monitoring followed by terminal
-`verify`; no confirmation, retry, strength claim, promotion or production
-action is authorized.
-
-### T2 learner
-
-O0-v2 public-key integration and mandatory semantic replay are reviewed.
-Claude's V3 PASS confirmed test-only exact `2e13c35`, including the direct
-endpoint replay removal witness and 163/163 local/strict-Air tests. The one
-score-redacted Air preflight passed at `f8e1dc16…12eaf`; its 2x projection is
-59.4 minutes. Packet `20d2aaee…5cab0` is frozen and independently reverified.
-Claude's separate packet review passed after in-situ reopen and adversarial
-mutation probes. Exact committed review `116dfb8c…e3d` was admitted once at
-`f436f4b0…01e7a`; all 32 training and 16 evaluation endpoints exited zero.
-The terminal gate selected none at `0dbd9aa8…f24e`; a separate full semantic
-replay exited with the expected code 4 and `verified=true`. Neither factorial
-cell advanced. O1, strength and production remain unauthorized.
+The reviewed preflight completed 4/4 score-free clusters in 255.3 seconds and
+projected the screen at `72.62` fleet-hours / `9.08` max-shard hours. That is
+capacity evidence, not a strength result.
 
 ## Terminal job index
 
-| date | job | verdict / headline | evidence anchor |
+The canonical numbers and meanings are in the results table in
+`AI_POLICIES.md`; this table is only an artifact locator.
+
+| date | job | terminal verdict | anchor |
 |---|---|---|---|
-| 08-09 | S3a full-game preflight | **CAPACITY PASS / SCREEN PACKET REVIEW**; 4/4 clusters, exact 952/952 structured rollouts, screen projection `72.62` fleet-hours / `9.08` max-shard hours | preflight `09692f82...edf0`; final `56943242...e9f` |
-| 08-09 | Teacher-v3 fresh audit | **PASS / STAGE-C DESIGN**; cheap upper `0.0354`, N=30 upper `0.0439` below `0.10`; no training authority | gate `8a1532b7...91f8`; supervisor `02f4f8b...6f237` |
-| 08-09 | Suphx O0-v2 | **SELECT NONE**; control `+0.015` (LCB `-0.067`), plus-margin `-0.047` (LCB `-0.109`); independently replayed | gate `0dbd9aa8...f24e`; admission `f436f4b0...01e7a` |
-| 08-08 | S3a 512-state screen | **AUTHORIZE DUEL DESIGN**; all three state-level LCBs positive; no production authority | aggregate `74aa5a39...396cd`; final `d3f2b1ab...69a6b` |
-| 08-08 | S3a v2 sizing | **CAPACITY PASS**; 0.142 fleet-hours / 0.0178 max-shard hours under frozen 400/60 caps | receipt `cf770277...5c431` |
-| 08-08 | Teacher Stage B | **PASS**; regret upper bound `0.019548 < 0.10` | gate `f607b489...89694` |
-| 08-08 | Teacher audit-v2 | **OPERATIONAL REFUSAL / NO ML VERDICT**; incomplete continuation, no labels/gate | receipt `ce51b826...71d0`; failed root preserved |
-| 08-08 | S3b v2 preflight | **TERMINAL HOLD / NO SCREEN**; exact node cap hit in cluster 1 | head `cd44ea8`; no final/partial receipt |
-| 08-08 | Suphx O0 | **SELECT NONE**; aggregate oracle signal, seed-1 reversal | gate `592a009a...bd407c` |
-| 08-07 | RLCB-C1 | **CONFIRM**; report-LCB `+0.338379 +/- 0.067706`, null flat | aggregate `83f5a9df...f5ef5ea`; closeout `06dd487d...b7aae5` |
-| 08-07 | production latency | **LIVE**; release 17, off-loop isolated search | image `latency-cd6789e`; manifest `047bcfe4...5b300` |
-| 08-07 | V11 direct-v2 | **SELECT NONE**; `-0.141113 +/- 0.069823` versus current | aggregate `b7c90ba4...05d21ad` |
-| 08-07 | Direct-Q 144M | **SELECT NONE**; positive gameplay, failed held-out learning | aggregate `1fa6789e...ce791` |
-| 08-07 | formal S0 | **SELECT NONE**; numerical S0c outcome unread/nonretryable | closeout `ef0a365...fde9a` |
-| 08-05 | DEV-512 ballot | **SELECT NONE**; no design advanced, CALIB/REPORT sealed | state asset `af787485...85d3e7b` |
-| 08-04 | sampler Package H | **PASS** within bounded strict scope; not posterior calibration | commit `aea3774`; `certify_sampler_v3.json` |
+| 08-09 | Teacher-v3 fresh audit | **PASS / STAGE-C DESIGN** | gate `8a1532b7…91f8`; supervisor `02f4f8b…6f237`; adapter `56ccefbd…c2442` |
+| 08-09 | Suphx O0-v2 | **SELECT NONE** | gate `0dbd9aa8…f24e`; independent semantic replay `verified=true` |
+| 08-09 | S3a full-game preflight | **CAPACITY PASS** | preflight `09692f82…edf0`; final `56943242…e9f` |
+| 08-08 | S3a 512-state screen | **MECHANISM PASS** | aggregate `74aa5a39…396cd`; final `d3f2b1ab…69a6b` |
+| 08-08 | S3b-v2 preflight | **TERMINAL HOLD / NO SCREEN** | exact head `cd44ea8`; no receipt/final by design |
+| 08-08 | Teacher Stage B | **PASS** | gate `f607b489…89694` |
+| 08-08 | Teacher audit-v2 | **OPERATIONAL REFUSAL / NO ML VERDICT** | receipt `ce51b826…71d0`; failed root preserved |
+| 08-08 | Suphx O0 | **SELECT NONE** | gate `592a009a…bd407c` |
+| 08-07 | RLCB-C1 | **CONFIRM** | aggregate `83f5a9df…f5ef5ea`; closeout `06dd487d…b7aae5` |
+| 08-07 | production latency | **LIVE** | image `latency-cd6789e`; manifest `047bcfe4…5b300` |
+| 08-07 | V11 direct-v2 | **SELECT NONE** | aggregate `b7c90ba4…05d21ad` |
+| 08-07 | Direct-Q 144M | **SELECT NONE** | aggregate `1fa6789e…ce791` |
+| 08-07 | formal S0 | **SELECT NONE / OUTCOMES UNREAD** | closeout `ef0a365…fde9a` |
+| 08-05 | DEV-512 ballot | **SELECT NONE** | asset `af787485…85d3e7b` |
+| 08-04 | sampler Package H | **BOUNDED PASS** | commit `aea3774`; `certify_sampler_v3.json` |
 
-No row grants more authority than its original gate. In particular, S3a's
-positive state screen permits duel **design**, not a duel launch, strength
-claim, policy promotion, or production change.
+No terminal row grants more authority than its original gate. In particular,
+Teacher authorizes Stage-C packet review rather than labels/training; the S3a
+state screen authorizes a full-game design rather than strength; and O0-v2
+does not authorize O1.
 
-## Current terminal details
+## Preserved failures
 
-### S3a 512-state screen — verified PASS
-
-- reviewed source git `14548d3da31c3cfe899cbd7e572614ae05242c0a`;
-- run ID `s3a-bury-v2-screen-136m-v1`, eight successful shards, exact seeds
-  136,000,000–136,000,511;
-- aggregate `74aa5a3947e1daaa5aa4bc33eef8ae04eaaf695d0cb900c7045eb0cbbc4396cd`;
-- supervisor final
-  `d3f2b1ab48085ccf37534b5dd7f20ea6cf0d7644c6c49304b644ecf895169a6b`;
-- separate CLI verifier exited zero with `verified=true`;
-- structured-minus-incumbent `+0.997314 +/- 0.400606`, LCB `+0.596708`;
-- structured-minus-legacy-four `+0.877848 +/- 0.379885`, LCB `+0.497963`;
-- structured-minus-random-widening `+3.252848 +/- 0.561197`, LCB
-  `+2.691652`;
-- no problems, partials or symlinks; retry/resume false; production promotion
-  false.
-
-### Teacher audit-v2 — immutable refusal
-
-Stage B passed, but audit-v2 shard 6 stopped after a complete selection fold
-and incomplete report continuation. The supervisor terminated siblings. No
-label final, terminal audit gate, or regular supervisor final exists, so the
-reviewed adapter cannot consume it. Preserve
-`~/Projects/shengji-teacher-audit-v2-air` and the earlier failed v1 root; never
-resume, migrate, delete, or reinterpret them. Exact retry semantics at
-`1589fb4` passed independent review but did not authorize a new run.
-
-### S3b v2 — immutable preflight HOLD
-
-The exact treatment exceeded `max_nodes=250000` before cluster 1 completed.
-No score, raw record, receipt, or partial survived. V2 may not retry or change
-its cap/fallback. Any future v3 requires a fresh resource contract and review.
+- Teacher audit-v1/v2 roots remain immutable evidence of publication and
+  underfilled-continuation refusals. The fresh v3 audit supersedes them
+  operationally but does not rewrite them.
+- S3b-v2 exceeded its frozen 250k-node cap before completing its first
+  treatment cluster. No score, partial or receipt survived; v2 cannot retry.
+- Formal S0c completed compute but failed the evidence chain before corrected
+  score parsing. Its numerical result remains permanently unread.
 
 ## Archive pointers
 
-- Full pre-compaction ledger:
-  `docs_archive/jobs-through-2026-08-08.md`, SHA-256
-  `26beff936f6c0744b220fc79e233163c8f09acde8a13adcba5450327ad132252`.
-- Day chronology: `docs_archive/daily-log-2026-08-08.md`.
-- Review markers and adversarial findings: `HANDOFF_REVIEW.md`.
+- `docs_archive/jobs-through-2026-08-08.md`
+- `docs_archive/daily-log-2026-08-08.md`
+- `docs_archive/daily-log-2026-08-09.md`
+- `docs_archive/handoff-review-2026-08-08-through-2026-08-09-t1-t2.md`

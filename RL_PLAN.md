@@ -255,77 +255,163 @@ result.
 
 ## ROADMAP FROM HERE — live-champion flywheel
 
-The production baseline is no longer “MC in general.” It is the exact
-`mc-s0-report-lcb` decision rule confirmed by RLCB-C1. Every new search,
-teacher or learner experiment must bind that named parent at freeze time and
-include a matched null/control; inheriting formal S0's stale `mc-strong`
-meaning is a protocol bug. `BACKLOG.md` owns live order and machine assignment.
-This section owns why the lanes fit together.
+The baseline is the exact deployed `mc-s0-report-lcb` policy, not “MC” in the
+abstract. Every challenger binds that parent plus a matched null at freeze
+time. The immediate milestone is **T3: turn human-observed weaknesses into one
+reviewed live-champion challenger and a better hard-tail Teacher**. Live order
+and machine ownership remain in `BACKLOG.md`; this section explains how the
+strength loop works.
+
+### T3 decision tree
+
+1. **Finish the sealed S3a screen.** The structured-bury 512-state mechanism
+   screen already passed and its fresh 2,048-cluster full-game screen is live
+   on Mini. Terminal PASS permits freezing an 8,192-cluster confirmation packet
+   for external review; it does not permit an automatic launch or promotion.
+   SELECT NONE closes this exact recipe without tuning or retry.
+2. **Build the orthogonal S4 mechanism while Mini computes.** Production can
+   source a point-bearing winning action at the root, but shared rollout
+   continuation chooses the cheapest winner when several winners exist. S4
+   changes continuation only, with a team-aware “bank points now” trigger,
+   incumbent control, trigger-matched null, named positive/negative witnesses,
+   exact counters and a fresh state screen. The effect sign is empirical: using
+   a K now may bank points or waste future control.
+3. **Freeze Teacher Stage C.** The completed audit found cheap and N=30 choices
+   faithful on ordinary states, while the N=30 boundary diagnostic remained
+   weaker. Stage C therefore oversamples uncertainty/disagreement, exact-late
+   opportunities and observed failure mechanisms, escalates difficult labels,
+   and preserves untouched hard-tail evaluation. Review precedes all labels,
+   compute and training.
+4. **Add a human-action counterfactual pilot.** Human moves broaden the action
+   and state distribution beyond heuristic self-play, but raw imitation or
+   final-round return is not a strength target. Reconstruct and validate each
+   decision, add the human action to the champion/structured ballot, and
+   compare all actions on common worlds under named continuations. Human data
+   proposes alternatives; the counterfactual Teacher decides whether they are
+   supported.
+
+T3 exits with one verified S3a terminal verdict, its conditional reviewed
+confirmation packet or immutable closeout, a reviewed S4 mechanism/preflight
+packet, and reviewed Stage-C/human-pilot design packets. This is useful even if
+every strength screen selects none: the next attempt starts from a diagnosed
+mechanism rather than another undifferentiated corpus.
 
 ### Lane A — improve search directly
 
-1. **Structured bury (S3a).** Burial happens once per round and has a
-   combinatorial action set, so it is a high-leverage place to spend more
-   proposal and rollout work. The existing 512-state mechanism screen compares
-   a structured ballot with the legacy four candidates and trigger-matched
-   random widening on disjoint report worlds. It must first be reparented to
-   report-LCB. A PASS only licenses a fresh full-game duel design; the state
-   screen cannot promote a bot.
-2. **Sampled exact endgame (S3b).** When all hands have at most four cards,
-   solve each determinized world exactly within the proved 250k-node bound
-   instead of finishing with the heuristic. The mechanics challenge and
-   2,048-screen/8,192-confirm runner already exist. Reparent the currently
-   unreachable report-LCB lane, run a score-free throughput preflight, then
-   spend strength compute only if the frozen capacity gates pass.
-3. **Later proposal work.** DEV-512 rejected its registered generic widening
-   designs. A future lead proposer must arise from a new hypothesis and fresh
-   population; it cannot append arms to inspected DEV or call more candidate
-   count by itself a strength mechanism.
+- **S3a structured bury** directly tests the observed point-shy kitty policy.
+  The incumbent can bury points in rare void/trump cases; S3a is broader because
+  it explicitly constructs one-/two-suit voids containing points and evaluates
+  them through rollouts.
+- **S4 point-banking continuation** fixes a possible world-model blind spot,
+  not engine legality or root ballot membership. It must be tested on both
+  teams and include states where taking the point card is strategically wrong.
+- **Later exact search** requires a new operational hypothesis. S3b-v2 is
+  terminal after its first treatment cluster exceeded the frozen 250k-node
+  budget; raising the cap after inspection is not a continuation of v2.
+- Generic candidate widening remains closed on DEV-512. New action sources
+  must come from a named mechanism—structured tactics, human proposals or a
+  model—and beat a same-budget random diversifier on fresh states.
 
-### Lane B — make a teacher that can exceed the champion
+### Lane B — build a Teacher beyond heuristic self-play
 
-Teacher-v3 Stage B established that cheap N=30 labels agreed with gold on the
-sampled ordinary states. The running 64-state audit asks the harder question:
-whether those choices remain good under full downstream report-LCB
-continuation. Stage B does not prove fidelity on high-SE/disagreement tails.
+The Teacher should not merely make the existing heuristic target less noisy.
+Its candidate set and continuation portfolio must expose strategies the
+heuristic never generates or systematically misprices.
 
-After the audit:
+The Stage-C progression is:
 
-- PASS permits a fresh Stage-C contract, not automatic bulk generation. Mine
-  uncertainty/disagreement strata from non-evaluation states, escalate uncertain
-  labels to gold or exact-late continuation, and separately gate hard-tail
-  regret.
-- FAIL or INCONCLUSIVE means diagnose the smallest continuation/selection
-  failure and redesign; do not make the same labeler more precise at scale.
-- Only after untouched teacher gain should three-seed/state-count curves train
-  a pairwise/listwise ranker plus a calibrated scoring-bracket head. Integrate
-  first as a proposal/ranking/allocation feature inside MC. Fresh paired games
-  against report-LCB decide whether a 10k/50k wave is justified.
+1. capture fresh non-evaluation states with explicit early/mid/late,
+   lead/follow, banker/non-banker and action-count cells;
+2. oversample champion uncertainty, champion-versus-V11/human/structured
+   disagreement, point-bearing kitty voids, point-banking winners and
+   exact-late opportunities;
+3. evaluate the union of incumbent, structured, V11 and human proposals on
+   common proposal worlds plus independent report worlds;
+4. compare named continuation contracts: the production continuation for
+   deployment relevance, S4 when applicable, and exact/perfect-information
+   late play only as a bounded privileged diagnostic—not a public-policy label;
+5. escalate high-SE/disagreement rows to larger budgets or exact-late labels
+   and gate hard-tail regret on untouched states;
+6. train separate pairwise/listwise ranking and calibrated signed-outcome
+   heads across seeds and state-count curves; integrate first as proposal,
+   ranking or allocation help inside search;
+7. spend 10k/50k-scale collection only after untouched teacher metrics and a
+   fresh paired bot screen improve.
+
+“Hard tail” is not synonymous with openings. Early leads matter because their
+continuations are long and existing data overexposed lead weaknesses, but bury,
+follow, late play and role-specific decisions remain separate strata. Report
+per-surface gains so a narrow opener improvement cannot masquerade as a general
+policy improvement.
+
+### Human-data lane — diversify, then verify
+
+The existing human path is not ready to serve as strength truth. It records
+play decisions only, labels them with coarse final-round return, silently skips
+replay failures, mixes player skill, and its cached banker rows from the encoder
+drift window are quarantined. The earlier v6.1 blend increased human agreement
+but scored 46% against v6 in a small sibling duel: evidence for style transfer,
+not strength.
+
+Use human data in four bounded stages:
+
+1. **Rebuild provenance.** Regenerate from raw logs under the repaired encoder;
+   replace blanket exception swallowing with reasoned counters; bind player,
+   deal, engine, legal ballot and split digests; capture human bury decisions
+   as a separate surface instead of ignoring them.
+2. **Quality and leakage controls.** Split by game/deal and preferably player,
+   exclude bots/tests/incomplete or unreplayable rounds, stratify by experience
+   rather than treating all players equally, and never use the same human
+   witness in model selection and REPORT.
+3. **Counterfactual action pilot.** On a frozen 256–512 decision sample, add
+   the actual human action to the current ballot and measure human-versus-
+   champion action deltas on shared worlds. Record where humans introduce a
+   genuinely new candidate, where the production continuation reverses it,
+   and where a second continuation changes that ranking.
+4. **Only then choose the learning use.** Strong supported actions can train a
+   proposal/prior head; disagreement states feed Stage C; raw behavioral
+   cloning remains an initialization/style control. Promotion still requires
+   fresh paired play against the live champion.
+
+This breaks the closed heuristic-self-play loop without declaring every human
+move optimal or leaking private full-deal information into a deployable model.
 
 ### Lane C — learn beyond MC imitation
 
-Direct-Q and Suphx O0 both reached terminal SELECT NONE, but they failed
-different gates. Direct-Q's gameplay was positive while held-out role learning
-failed; O0 learned an aggregate oracle-public edge but not robustly across
-seeds, and its policies remained nearly uniform. This is evidence of
-implementation/credit-assignment risk, not a broad rejection of either family.
-
-The next learner is one fresh mechanism battery, not an extension of either
-inspected run. Common-random-number evaluation and at least eight independent
-training seeds are shared inference infrastructure. Then isolate sharpening,
-dose, target/credit and feature-use changes factorially enough that a result
-names the mechanism that moved. Privileged-feature removal (O1), AWAC and large
-opponent-pool self-play wait until this small learner can robustly acquire and
-use its oracle signal.
+Direct-Q and O0/O0-v2 failed different gates and do not reject RL broadly.
+Their reusable result is the evaluation chassis: common-random-number tests,
+semantic replay and at least eight independent training seeds. The next small
+learner changes one substantive mechanism—target/credit, decision-type
+specialization, data curriculum or bounded policy adaptation—while holding
+that chassis fixed. O1, AWAC and large opponent-pool self-play wait until a
+small model robustly acquires and uses the intended signal.
 
 ### Flywheel
 
-Mine states where the live champion is uncertain or disagrees with bounded
-proposal sources; label them with a stronger continuation/oracle; train a
-ranker and calibrated outcome head; use the model to focus rather than replace
-search; confirm one frozen composition against the live champion; then make a
-promoted policy the next teacher. Compute buys a stronger decision or target,
-not just more rows.
+Human play, structured tactics and model disagreement propose states/actions
+outside the incumbent's habits. A stronger counterfactual Teacher evaluates
+them under explicit continuation contracts. A ranker then focuses search on
+the supported alternatives; fresh paired games decide whether the composition
+beats the named champion. A promoted policy becomes the next parent and the
+next Teacher reference. Compute buys a new strategy or a better target—not
+just more rows generated by the same heuristic.
+
+### Strength against people
+
+Paired bot games are the laboratory instrument, not the final product metric.
+They provide common deals and tight uncertainty, so every candidate must first
+beat the exact live champion there. A confirmed candidate then enters an
+opt-in, blinded human screen: randomize candidate versus champion across the
+same player cohort, balance banker/team/seat, cluster by player session, and
+measure signed level utility plus game win, fallback, completion and latency.
+Human evaluation games are permanently excluded from training and selection.
+
+The people-facing claim has two parts: candidate-minus-champion improvement
+against the same human cohort, and absolute performance against a named
+experienced cohort. Raw site-average win rate is descriptive because changing
+player mix can move it without any bot change. `HUMAN-C1` should predeclare a
+one-sided candidate-minus-champion utility gate and non-inferiority experience
+guards before policy identities or outcomes are opened.
 
 ## v11pair's surviving role
 
@@ -381,130 +467,47 @@ warning: **higher precision cannot repair the wrong estimand, action set or
 state distribution.** Keep high-N as a replayable reservoir and provisional
 diagnostic set, not the foundation for an unqualified bulk retrain.
 
-### Historical high-N workbench — diagnose, never promote
+### High-N and artifact boundary — compact surviving result
 
-There is one comparison the old labels support more cleanly than “regret to
-the selected high-N best.” A policy trained independently of this artifact can
-choose one stored action, then be compared directly with stored candidate 0 on
-their 240 common worlds. The action pair is fixed before these labels are read,
-so this avoids selected-maximum winner's curse. It still measures only
-historical acting-team raw-point `Q^Heuristic`, not game strength.
+The old high-N labels are useful only for fixed-pair diagnosis. On 240 shared
+worlds per action, v11 beat Smart's stored action by `+0.397 +/- 0.037` raw
+heuristic points on 12,340 original rows and `+0.334 +/- 0.047` on 7,292 later
+rows, but harmful overrides rose from 18.0% to 25.7%. This explains “many small
+wins, expensive misses” and motivates an MC anchor; it does not establish bot
+strength. The labels use an old ballot, non-strict sampler, raw points and one
+heuristic continuation. Post-hoc lead archetypes are hypothesis strata, never
+deployable filters.
 
-`scripts/highn_v11_audit.py` applies that contract to frozen v11pair:
+Keep artifact classes separate:
 
-| DEV reservoir | rows / deals | override rate | v11 minus Smart, raw `Q^H` points per decision | harmful / >2 paired-SE harmful overrides |
-|---|---:|---:|---:|---:|
-| original high-N | 12,340 / 3,085 | 12.4% | `+0.397 +/- 0.037` | 18.0% / 8.9% |
-| later-ply supplement | 7,292 / 1,823 | 13.4% | `+0.334 +/- 0.047` | 25.7% / 12.9% |
+1. A **state reservoir** stores reconstructable public/private replay state and
+   a frozen split, but no claim that old scores are current truth.
+2. A **counterfactual Teacher set** binds ballot, belief sampler, continuation,
+   signed utility and common/report worlds, retaining paired outcomes rather
+   than only an argmax.
+3. An **episodic RL set** binds immutable actor identity, sequential history and
+   role-correct terminal return.
+4. A **human-behaviour set** binds replay keys, pseudonymous player grouping and
+   the actual human action. It is a proposal/prior source until counterfactually
+   relabeled; mixed-skill imitation is not an oracle.
 
-Both runs rebuilt with zero errors and current Smart matched stored candidate 0
-on every row. The apparent v11 signal survives the shift into mostly mid-game
-states, but the loss tail gets worse. That is consistent with its confirmed
-win over Smart and with the earlier observation that v11 hits often but misses
-expensively. It strengthens the case for an MC anchor that can correct the
-tail; it does not prove the anchor works, because stored means cannot simulate
-a stochastic N=30 decision. It also explains why blindly lowering the v11
-threshold was the wrong use of this corpus.
+Current frozen assets are indexed, not re-described here:
 
-The lead diagnosis is now more specific. The old selected-best table and the
-independent human coverage audit both pointed to leads, but DEV-512 showed that
-naive widening did not improve selection. In the fixed-pair audit v11's
-original-corpus lead overrides are positive on average (`+0.515 +/- 0.065`),
-yet their action-type tails differ sharply: non-point-single to pair is strong
-in this surrogate, while point-single to pair and single to tractor are noisy.
-Those post-hoc archetypes are hypothesis strata, **not deployable filters**.
+- `deep_leads.v1` is a 768-state DEV/CALIB/REPORT reservoir for missing depth;
+- `pilot_dev512.v6` selected none and cannot train; its CALIB asset stays sealed;
+- `s0_override_audit.v1` is an inspected report-fold regression fixture;
+- high-N and historical human encodings generated during banker-private-kitty
+  drift remain quarantined;
+- the refreshed human corpus is published only with source hashes, explicit
+  replay/rejection counters and the public/no-private-kitty encoder identity.
 
-### Artifact boundaries and clean-teacher sequence
-
-The inspected high-N rows may only diagnose and generate hypotheses. Mine DEV
-at no more than one state per deal into named strata (clear v11 wins/losses,
-threshold disagreements, high paired-SE choices and lead transitions), preserve
-every denominator, and leave old CALIB/REPORT assignments uninspected. Freeze
-any resulting state-selection rule, then apply it to **fresh non-evaluation
-deals**; never fit a production filter or successor on the mined rows. The
-original corpus has zero true-late DEV decisions and the supplement only eight,
-so the frozen deep-lead reservoir supplies missing state coverage, not labels.
-Old clear-loss rows may remain regression/challenge fixtures, but not a
-promotion set. Do not rerun all 37.1M historical evaluations, refit another
-threshold to their surrogate, or train a generic leaf from them.
-
-Keep three artifact classes separate:
-
-1. A **state reservoir** stores reconstructable setup/history and a frozen
-   deal-disjoint assignment, but no action scores. The frozen deep-lead capture
-   is such a reservoir, not training data.
-2. A **counterfactual teacher set** fixes the ballot, belief sampler,
-   continuation policy and utility target, then evaluates every compared action
-   on common proposal worlds with disjoint report worlds. It stores raw
-   per-world returns or sufficient paired statistics, not only a selected
-   action.
-3. An **episodic RL set** stores immutable actor identity, role-correct signed
-   terminal returns and sequential public/action history. It must not be mixed
-   with search-distillation rows as though their targets were interchangeable.
-
-Teacher-v1 earns scale in this order:
-
-1. retain the closed hard-validity/support certificate and explicitly version
-   any posterior weighting;
-2. pass the 64-state mechanics and 128-state gold-continuation gates;
-3. freeze a fresh, non-evaluation, deal-disjoint selection rule with explicit
-   early/mid/late, role, lead/follow, candidate-count and disagreement coverage;
-4. relabel the union of the exact current ballot, Smart choice, frozen-v11
-   choice and registered proposal actions with common proposal worlds,
-   independent report worlds and signed scoring-bracket outcomes;
-5. train separate ranking and calibrated-outcome heads across three seeds and
-   state-count curves; untouched teacher metrics must improve before a
-   10k/50k collection wave;
-6. preserve REPORT for one selected design, then require fresh paired games
-   before calling the new data strength-producing.
-
-Every generated dataset must name and digest its state-selection rule, split,
-`BallotSpec`, engine, sampler, continuation policy, target/perspective, world
-budget, generator and source checkpoint. Incompatible shards are never merged
-silently. Corpus size is not progress by itself; progress is lower untouched
-decision regret under the deployment contract followed by verified online
-strength.
-
-### Frozen evaluation assets — rebuilt from disk 2026-08-05
-
-These assets are **not training data**. DEV may select one design and CALIB may
-judge that frozen design once; neither may be pooled into a teacher corpus.
-Because DEV-512 selected none, its CALIB and REPORT assets remain sealed. Any
-new teacher or strength audit receives a separately versioned split.
-
-| artifact | size / identity | what it is | status / allowed use |
-|---|---|---|---|
-| `rl_data/deep_leads.v1.jsonl` + `deep_lead_split.v1.json` | 768 raw lead states; 256 each DEV/CALIB/REPORT; 48 split/trick/role cells x16; data hash `ffccfde64932eb3a` | Reconstructable state reservoir captured before ballot scoring. It supplies the late/deep coverage missing from the older corpora. | **FROZEN reservoir.** May build registered evaluation sets; never train from split identity or inspect REPORT outcomes. |
-| `rl_data/pilot_dev512.v6.json` | 512 unique deals; hash `af78748586034f6f`; bands 170/171/171; size 0/72/98, 11/131/29, 152/19/0; roles 85/85, 86/85, 86/85; source 129/41/0, 17/154/0, 0/1/170 | DEV worksheet for the lead-ballot design screen. Frozen from clean `53d9b67` by a fail-closed freezer: size drives deal selection, and a shortage or replay error publishes nothing instead of a short file. | **512/512 SCORED; SELECT NONE.** Eight clean shards at `884030f`, strict aggregate reproduced; no design advanced and this asset may not train a model. Supersedes v5 (`097ea3851cd3bb9c`), whose marginal-cell dedup moved 52/512 exact DEV states under row reversal. v3/v4/v5 remain named negative controls. |
-| `rl_data/pilot_calib512.v6.json` | 512 unique deals, disjoint from DEV; hash `3872350f57a4dd60`; identical band/size/role allocation | Untouched holdout to judge exactly one frozen DEV-selected design. No action labels or scores. | **UNTOUCHED.** Do not tune, train, or score. Supersedes v5 (`00ca4de1915d8c4f`). |
-| `tests/data/s0_override_audit.v1.json` | 150 frozen DEV decisions; first 20 actual N=30 overrides each carry all 300 fresh signed paired deltas; SHA-256 `9703b50817fb03622c3739e44f73e19083b1e8337300be7054774e2308e13ef5` | Reproducible calibration/challenge asset for report-fold dose and both-role override semantics. It selected R=300 by a committed rule. | **INSPECTED DEV DIAGNOSTIC.** May regression-test S0 mechanics and dose identity; never a strength result, promotion set, generic teacher or training corpus. |
-| Mini `runs/logs/s0a-v1.aggregate.json` | 2,048 mirrored clusters, seeds 132,000,000–132,002,047; SHA-256 `0fcd53d4f782a705bfef9ea8ec6155c49db45d76ec71ce25891a9f864413de49` | Fresh decision-rule mechanism screen: report-LCB +0.353 +/- 0.069 versus current and +0.293 +/- 0.066 versus equal-work uniform; null flat. | **SEALED / REPORT-LCB SELECTED.** Non-promotable parent for S0b only; not training data or deployment evidence. |
-| Mini `runs/logs/s0b-lcb-v1.aggregate.json` | 2,048 mirrored clusters, seeds 134,000,000–134,002,047; SHA-256 `25c0177e27c0e185e96701ad788313a7ea14b892e24586186df02466bf144803` | Fresh allocation screen under report-LCB: report-uniform replicated at +0.357 +/- 0.066 versus current; adaptive added unresolved +0.037 +/- 0.060. | **SEALED / ADAPTIVE SELECTED BY REGISTERED POINT ESTIMATE.** Parent for exact S0c-adaptive-LCB only. Shows report-rule replication, not measurable allocation benefit; never training data. |
-
-The completed screen's primary 95% half-width was 0.337. Holding that
-variance fixed, 2,048 comparable states would narrow it only to about 0.169,
-and roughly 5,800 would be required to resolve a 0.10 regret effect. The right
-response is therefore **not** to append to inspected DEV-512 or cycle more
-ballot arms through it. Preserve it as a negative design worksheet. The new
-2,048-state `teacher-v1` proposal is a different asset: non-evaluation states,
-much deeper common-world counterfactual labels, per-world outcomes and an
-iterative training purpose. It may grow to 10k/50k only after held-out teacher
-metrics and fresh paired games show that its learned mechanism improves the
-champion. A final strength claim receives its own fresh-seed power calculation
-and full-game confirmation, as required by the archived
-`docs_archive/ballot-plan-through-2026-08-05.md` contract.
-
-### Historical training-data inventory
-
-The byte/row inventory rebuilt on 2026-08-04 is historical operational detail,
-not the current experiment queue. Its exact table remains in
-`docs_archive/daily-log-2026-08-04.md`; later quarantine and usage conclusions
-are synthesized above.
-
-The surviving rule is simple: raw replayable state reservoirs may be reused
-under a newly frozen contract, but contaminated encodings are regenerated and
-old heuristic/non-strict labels are never relabelled “oracle.” Dataset size is
-not evidence of target quality.
+Detailed inventory remains in `docs_archive/daily-log-2026-08-04.md` and
+`docs_archive/daily-log-2026-08-05.md`. Every new dataset binds selection and
+split, ballot, engine, sampler, continuation, utility/perspective, budget,
+producer, encoder and actor/checkpoint identity. DEV may select one design,
+CALIB may judge it once, REPORT remains untouched, and incompatible artifact
+classes never merge silently. Scale follows lower untouched hard-tail regret
+and fresh online strength—not row count.
 
 ## Measurement rules (non-negotiable)
 

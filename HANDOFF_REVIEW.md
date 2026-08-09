@@ -645,3 +645,52 @@ strength-capable compute this cycle.
 H0_HUMAN_COUNTERFACTUAL_CONTROLLER_V2_REVIEW {"admission_slot_logical_path":"server/runs/locks/human-v8-h0-counterfactual-execution-v2.consumed.json","candidate_geometry_sha256":"876ed56bd8f436d58cb6f3d58774a0f06756afb4d8c98ffdb49d9424b545ff2b","compiled_fast_binary_sha256":"9c9e77fbdc4c6caceec195465155f37ec6369e409462fd838bc142bf8a0be4c1","controller_script_sha256":"108e6bb20983350db2a7b679cd080f29acf6128fa0557d4d0e7f1a1823eaf379","corpus_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","deletion_proof_one_shot":true,"design_packet_sha256":"4d3f0a35082c6957f2a468686b8eedbd6d7cbbf9540503fcea08cccf27c8cc3c","design_review_git":"239f13ce52a8be81108fdebf9bd0e96742e60133","fast_router_sha256":"f2506d5c51b8ad37303f04dce59899de0d7c1179633b08ce61f48eb86cec1a3e","git":"6977dbbdc77276b115faf941509b8034d7801bf0","independent_review":true,"labels_authorized":false,"max_candidate_worlds":1329210,"one_counterfactual_execution_authorized":true,"outcomes_computed_before_review":false,"packet_sha256":"3f68dc6ec6d5f90043f36c0a68847ca9ef510641e01760ac4fa11ebd6a6a7fcf","production_deployment":false,"production_promotion":false,"runtime_script_sha256":"ddf8b2504ff70d7af928e3c6f39c5a9e5071abd8eaea0c6af9c6719c2992a124","schedule_sha256":"f54ce37425707dfeea3563bbc5d635617943152166a82825a74e55ad00131793","schema":"human-h0-counterfactual-controller-review-v2","score_free_preflight_verified":true,"selected_bury_rows_sha256":"cdfe77dfbec0e97fb8935c5822239acd6db60c644c433c32a4445913459aa1e8","selected_play_rows_sha256":"18673b20ca0a5b1a8e476f3bcf45cf9d08f90f4244f9c5ee07cb8bd8cd47711d","source_manifest_sha256":"07ff18fb35f2fb987f18b37b5100172e2751681fbfed17285ce7d7035232aa5e","strength_claim":false,"strict_runtime_verified":true,"training_authorized":false,"v11_checkpoint_sha256":"cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003","verdict":"PASS","worlds_sampled_before_review":0}
 
 S3C_ONE_CARD_CAPACITY_CONTROLLER_V1_REVIEW {"census_sha256":"236326099dc9763c6a5941bcb2a90670c4e23ac390ea07a0e4ec5063fa50b52a","controller_script_sha256":"9f3cf108bf5f0706080a9f270f2c756f91c9b8cc6ed46cff53fa5b028d0468eb","design_packet_sha256":"df1024280a77c60174a57c3273ba3624e672bec9afde023576fde0404df49eca","design_review_git":"084ba7eba59cd0a317a50c4088f194d2376c1e03","exact_solver_sessions_before_review":0,"git":"e9db4a23457ff4221d342c9a422e50ea491fe7ab","independent_review":true,"max_execution_nodes":65536,"max_terminal_replay_nodes":65536,"one_card_capacity_execution_authorized":true,"outcomes_computed_before_review":false,"packet_sha256":"f58d23b74046dd04963b4f10fbf605030221219eef6d325c5e8319043643874a","production_deployment":false,"production_promotion":false,"root_geometry_sha256":"b2599bb50d8e2bd2762ac73af3206749e1f446eb5b971c1562e706883e48be0b","roots":64,"runtime_script_sha256":"5886fecfb11020d6b32488076e12356a02874499f2a42024d24fdf60fb4233c2","schedule_sha256":"8257499b8b613d02c899161bfd8ffac5579336dc54239ab443dfe5a7fad5e7de","schema":"s3c-one-card-capacity-controller-review-v1","score_free_preflight_verified":true,"solver_or_strength_screen_authorized":false,"strength_claim":false,"training_authorized":false,"two_card_packet_review_authorized":false,"verdict":"PASS","worlds":256,"worlds_sampled_before_review":0}
+
+## Claude — 2026-08-10 00:04 EDT — Stage-C v3 PASS; S5 census code PASS with one required boundary fixture
+
+**Strength watch:** the S4 duel screen is RUNNING (577/2,048 when measured this cycle, balanced);
+Mini remains 100% on strength-capable compute. Air idle. Both reviews below gate future capture/
+census work only.
+
+**TEACHER_STAGE_C_V3_REVIEW @ source `20bdb95` / asset `1a29418`: PASS.** All MEASURED:
+
+- Packet hashes exactly `f213314a…3b4`; script SHA exact; pinned five-file battery 74/74.
+- Cross-root `verify` from the clean source worktree reproduces `VERIFIED_FOR_DESIGN_REVIEW` with
+  the exact SHA. Two refusals measured on the way: a wrong live-parent evidence checkout refuses
+  with recomputation drift (the attestation binds the exact evidence checkout git `931f5041…`,
+  reproduced only against `shengji-h0-controller-931-review`), and an authority-widening tamper
+  (`state_capture_authorized→true`, packet re-hashed) refuses with BOTH the specific widening
+  guard and recomputation drift.
+- Work ceiling verified: ordinary 5,996,544 + hard-tail 2,880,768 + deeper audit 1,015,808 +
+  conditional S4 300,800 + conditional S5 300,800 = exactly 10,494,720 candidate-world rollouts;
+  `recursive_mc_continuation_rollouts = 0` everywhere; caps are hard refusal boundaries with
+  no-extension quotas; partial folds publish no label.
+- H0 boundary: human witnesses are DESIGN-split-only (420 rows; 137 AUDIT rows preserved and NOT
+  consumed), require counterfactual support before any use, never enter CALIB/REPORT, and raw H0
+  actions cannot enter the fresh 2,048-state population. Hard-tail labels use exact `HeuristicBot`
+  continuation with disjoint selection/report folds; the 600-world audit reference evaluates the
+  fixed choice pair on common report worlds and never reselects.
+- Conditionals verified: S4 tag needs the running screen's terminal PASS; S3c needs its sequential
+  gates; S5 needs census schema `s5-point-protection-census-v1` with decision
+  `S5_DESIGN_REVIEW_ELIGIBLE` plus a separate treatment review, max 160 states inside the existing
+  play quota. Split 1,024/512/512 with 1,920 play + 128 bury; one state per deal.
+- Scope: capture/controller implementation only — no capture, labels, training, strength,
+  promotion, production.
+
+**S5 point-protection census (PR #4 @ `c7bba40`): code PASS for one deterministic census freeze,
+with one REQUIRED fixture before its result can feed the Stage-C S5 eligibility decision.**
+
+- Verified: truly exhaustive follow enumeration (multiset walk over the hand with a declared cap
+  that REFUSES on exceed — not sampling), legality via `validate_follow`, the historical action
+  must be inside the enumerated universe, current-policy geometry from the production bot with
+  preserved `mc-decision-v2` ballot/replay authentication, evaluation-tagged sources excluded, no
+  MC sampling or rollouts, no raw names/cards/identifiers (witness digests only), historical-only
+  versus currently-reproduced defects separated and test-covered; 11/11 tests green.
+- **The finding:** weakening the avoidable-points definition from strictly-fewer to
+  fewer-or-equal (`<` → `<=`) leaves all 11 tests green — no fixture pins the boundary where every
+  cheaper alternative carries EQUAL points, and no backup guard exists, so that regression would
+  silently inflate trigger counts. The shipped code is correct; please add one witness fixture
+  whose alternatives are equal-points-only (expected: NOT a trigger) before the census output is
+  consumed by Stage-C's `S5_DESIGN_REVIEW_ELIGIBLE` gate.
+
+TEACHER_STAGE_C_V3_REVIEW {"adapter_sha256":"56ccefbd62d9ea2aef30a4c6e54e11a0d2231e464f129e754b84b3488f1c2442","audit_report_worlds":600,"audit_selection_worlds":128,"bury_candidate_cap":33,"calib_states":512,"capture_controller_implementation_authorized":true,"design_states":1024,"git":"20bdb95e50169d0877f096e1418c2f135bb2b9f3","h0_controller_review_schema":"human-h0-counterfactual-controller-review-v2","h0_controller_sha256":"3f68dc6ec6d5f90043f36c0a68847ca9ef510641e01760ac4fa11ebd6a6a7fcf","hard_tail_report_worlds":300,"hard_tail_selection_worlds":64,"independent_review":true,"labels_authorized":false,"live_parent_policy":"mc-s0-report-lcb","live_parent_schema":"live-champion-parent-v1","max_candidate_worlds":10494720,"ordinary_worlds":[256,256],"outcomes_computed_before_review":false,"packet_sha256":"f213314ace8ead497fcaccde150d0694851069b970948a10d0823cf74ceb93b4","play_candidate_cap":20,"production_deployment":false,"production_promotion":false,"recursive_mc_continuation_rollouts":0,"report_states":512,"schema":"teacher-stage-c-hard-tail-design-review-v3","score_free":true,"script_sha256":"8c56f6e48b6157e6fad3eecd6950bd40706718bd963427a446dc50dc843ab3ed","state_capture_authorized":false,"states":2048,"strength_claim":false,"training_authorized":false,"verdict":"PASS","worlds_sampled_before_review":0}

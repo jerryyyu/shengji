@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 15:20 EDT
+## Current synthesis — 2026-08-09 16:18 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -137,6 +137,16 @@ what those results change in the research plan.
   is name-derived pseudonymous-player/deal disjoint, not provably true-person
   disjoint if one person used multiple names. That limits H0 to diagnostics;
   HUMAN-C1 needs consented stable evaluation-session identity.
+- **Human loss forensics:** the initial aggregate claim that bots slough nearly
+  twice as many points as humans was withdrawn after seat-count normalization
+  (roughly 19 versus 17 points per seat-round). The surviving DEV signals map
+  to S3a bury, S4 point-banking and S3c endgame work. A narrower defensive
+  point-protection hypothesis remains, but H0 contains human decisions rather
+  than the bot-seat mistakes around them. Baseline follow logic already tries
+  to avoid points and the MC ballot already contains point-avoiding and
+  point-seeking follows, so S5 begins with exact source-bound replay, legal
+  alternative enumeration and current-champion reproduction—not a policy
+  patch or strength run.
 - **Data/sampler:** the bounded strict sampler certificate passed, but posterior
   fidelity and global constructive completeness remain open. High-N and
   late-ply data are replayable state reservoirs under old named targets, not
@@ -171,6 +181,9 @@ what those results change in the research plan.
 10. Bot-vs-bot paired evidence is the controlled strength gate; the product
     claim ultimately requires a blinded candidate-versus-champion comparison
     against the same human cohort plus an absolute experienced-human benchmark.
+11. Human-loss aggregates generate hypotheses only after per-seat normalization.
+    Replay bot decisions separately from H0, prove the legal counterfactual and
+    reproduce it under the current policy before creating a new mechanism.
 
 ## Literature-derived design constraints — 2026-08-04
 
@@ -347,12 +360,19 @@ remain in `BACKLOG.md`; this section owns the durable decision tree.
    formulation after S3b's four-card capacity failure, not a retry or strength
    run. Human prefixes supply witnesses; fresh deal-disjoint prefixes own formal
    selection.
+6. **Route the loss-forensics gap through an S5 replay gate.** Bind the same
+   frozen Fly source manifest, reconstruct bot-seat losing follows, enumerate
+   all legal lower-point alternatives, record production-ballot membership and
+   ask both the current champion and its rollout policy to replay each state.
+   Close the hypothesis if the action was forced or no longer reproduced. Only
+   a reproducible defect may open a separately reviewed treatment/null design.
 
 T3 exits with one verified S3a terminal verdict and either a reviewed
 confirmation packet or immutable closeout; the reviewed S4 whole-game screen
 launched or terminally resolved; bounded reviewed H0 and Stage-C contracts; and
 the leakage-safe human ladder plus S3c score-free feasibility asset. A review
-is a routing boundary, not the milestone's scientific output.
+is a routing boundary, not the milestone's scientific output. S5 replay is
+valuable T3-support work and does not silently expand this exit gate.
 
 ### T4 — first closed stronger-Teacher generation
 
@@ -389,6 +409,14 @@ produce privileged diagnostic targets for a cheap distilled endgame head.
   Mini launch waits behind S3a. The remaining empirical question is deployment
   relevance: does the continuation-only change improve complete-round utility
   under natural traffic against the live champion and matched null?
+- **S5 defensive point protection** is not yet an implementation hypothesis.
+  Observational loss mining suggests a narrower avoidable-slough surface, but
+  its original global headline disappeared after per-seat normalization.
+  Because baseline follow logic already prefers non-points and MC already
+  sources both follow extremes, exact replay must identify whether any defect
+  lies in forced legality, ballot caps, search ranking, rollout continuation or
+  an obsolete historical policy. Human loss states are DEV witnesses only;
+  formal mechanism selection, if opened, uses fresh trigger-matched states.
 - **S3c exact-root curriculum** is the new operational hypothesis, not an S3b
   retry. S3b-v2 is terminal after its first four-card treatment cluster
   exceeded the frozen cumulative 250k-node budget. Start from naturally
@@ -426,7 +454,7 @@ This table separates them by the training signal they actually produced.
 | **Teacher-v3 Stage A** | Run the complete dense label schema twice on the same 64 frozen states under distinct receipts. | Exact deterministic replay/mechanics passed and exposed multiple publication/identity defects before scale. | This certified the producer, not label quality or strength. Keep as the small falsifiability preflight for future Teacher versions. |
 | **Teacher-v3 Stage B** | On 128 disjoint mostly ordinary states, compare cheap heuristic-continuation choices with much more expensive `mc-strong@N=30` continuation labels. | Cheap-minus-gold regret upper bound was `0.0195 < 0.10`; the cheap proxy was adequate on this sampled population. | It only showed agreement with the old MC continuation on ordinary states. It did not create a dataset/model or show labels beyond the live champion. |
 | **Fresh live-champion audit** | On an untouched 64-state complement, compare frozen cheap and N=30 choices against the deployed report-LCB root evaluator. | Cheap and N=30 all-state regret bounds passed (`0.0354` and `0.0439`), but the eight boundary states had a weaker N=30 bound (`0.1421`). | Ordinary rows can be labeled cheaply; uncertain/boundary rows need escalation. This is the direct empirical reason for Stage C's mixed-budget hard tail. |
-| **Teacher Stage C (planned, not yet executed)** | Capture 2,048 fresh split-safe states; deliberately mix ordinary anchors with uncertainty/disagreement, human/V11/structured proposals, bury, point mechanisms and exact-late opportunities. Use cheap labels only where certified and spend report-LCB or bounded exact diagnostics on the hard tail. | **No impact result yet:** no Stage-C states, labels, checkpoint or challenger currently exists. | Publish the 1,024 DESIGN / 512 CALIB / 512 untouched REPORT asset, train at least eight seeds, then require an untouched Teacher gate and fresh whole-game win. This is the first Teacher strategy designed to expand both state/action coverage and label strength. |
+| **Teacher Stage C (planned, not yet executed)** | Capture 2,048 fresh split-safe states; deliberately mix ordinary anchors with uncertainty/disagreement, human/V11/structured proposals, bury, point-banking, replay-verified point-protection and exact-late opportunities. Use cheap labels only where certified and spend report-LCB or bounded exact diagnostics on the hard tail. | **No impact result yet:** no Stage-C states, labels, checkpoint or challenger currently exists. | Publish the 1,024 DESIGN / 512 CALIB / 512 untouched REPORT asset, train at least eight seeds, then require an untouched Teacher gate and fresh whole-game win. This is the first Teacher strategy designed to expand both state/action coverage and label strength. |
 
 In plain English, Stage B asked, “Can the cheap grader reproduce the expensive
 grader on normal exam questions?” Stage C asks, “Can we write a better exam,
@@ -439,8 +467,9 @@ The Stage-C progression is:
 1. capture fresh non-evaluation states with explicit early/mid/late,
    lead/follow, banker/non-banker and action-count cells;
 2. oversample champion uncertainty, champion-versus-V11/human/structured
-   disagreement, point-bearing kitty voids, point-banking winners and
-   exact-late opportunities;
+   disagreement, point-bearing kitty voids, point-banking winners,
+   replay-verified defensive point-protection states and exact-late
+   opportunities;
 3. evaluate the union of incumbent, structured, V11 and human proposals on
    common proposal worlds plus independent report worlds;
 4. compare named continuation contracts: the production continuation for
@@ -513,6 +542,17 @@ human moves remain useful error-analysis cases. Raw H0 actions never become
 strength labels merely because a person played them, and H0 AUDIT never becomes
 the final model-selection REPORT.
 
+H0 answers “was the human's action a useful proposal?” It does **not** answer
+“why did the bot seat lose that trick?” The latter requires replaying every bot
+event from the source logs, because `human_v8/play_decisions.jsonl` indexes only
+human actions. S5 therefore uses the same source-manifest hashes but publishes
+a separate score-free bot-decision census: current ownership of the trick,
+whether any legal action could win, point totals for every legal losing follow,
+production-ballot membership, historical action and current champion/rollout
+reproduction. Those human-game states remain DESIGN witnesses. A passing
+trigger definition is transferred to fresh bot-generated CALIB/REPORT states;
+the cited losses themselves never select or confirm a policy.
+
 Use human data in three bounded stages:
 
 1. **Freeze the honest split.** Player/deal connectivity leaves only five
@@ -530,6 +570,12 @@ Use human data in three bounded stages:
    proposal/prior head; disagreement states feed Stage C; raw behavioral
    cloning remains an initialization/style control. Promotion still requires
    fresh paired play against the live champion.
+
+In parallel, use S5 replay to decide whether defensive point protection is a
+real missing mechanism or merely a misleading observational label. If exact
+replay supports it, Stage C gains a named hard-tail stratum and a separately
+reviewed candidate/continuation source. If not, preserve the negative and do
+not manufacture a “never discard points” rule that duplicates existing logic.
 
 This breaks the closed heuristic-self-play loop without declaring every human
 move optimal or leaking private full-deal information into a deployable model.

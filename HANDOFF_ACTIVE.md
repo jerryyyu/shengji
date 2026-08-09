@@ -226,23 +226,23 @@ If any probe fails, append a prose HOLD and do not emit a PASS marker.
 
 1. **Complete:** exact launch review passed; the one-shot receipt and
    preparation were created and independently reopened.
-2. **Running:** eight Mini label shards are owned by one supervisor. Do not
-   launch a duplicate, retry, extension, or host migration.
-3. After the supervisor publishes the finalized JSONL, reopen its ordered
-   eight `label_sha256s`, gate SHA, gate return code, and verdict. Require
-   return code 0 exactly for PASS and 4 exactly for FAIL/INCONCLUSIVE.
-4. In a new `mktemp -d` namespace, rerun exact evaluator `f78e904` `gate`
-   under `/opt/homebrew/bin/python3.14` with receipt `e293858c…a10d`, the
-   literal eight label paths, and those eight terminal hashes. Accept its 0/4
-   return-code contract, then require the recomputed gate bytes and SHA to
-   match the supervisor gate exactly. This is aggregation only: no worlds.
-5. Compute the finalized supervisor-JSONL SHA. Run reviewed adapter `5b26c4b`
-   `create` once with the exact gate/progress paths and hashes into the sole
-   canonical `teacher_terminal_adapter_v2.json`, then run `verify` with that
-   adapter's exact SHA.
-6. Record both terminal artifacts. PASS opens Stage-C/hard-tail **design**;
-   FAIL/INCONCLUSIVE records frozen-evidence diagnosis/redesign. That closes
-   T1. Neither branch automatically launches labels, training, or production.
+2. **Complete:** all eight Mini shards exited zero; terminal gate
+   `8a1532b7…91f8` is PASS and supervisor `02f4f8b…6f237` is finalized. Never
+   duplicate, retry, extend or migrate this consumed run.
+3. **Complete:** exact evaluator `f78e904` reran in a disposable namespace
+   under the registered Python/cwd and reproduced the canonical gate
+   byte-for-byte. This was aggregation only; no worlds were replayed.
+4. **Open external review — sole active-goal blocker:** review exact adapter
+   delta `5b26c4b..60d46e1`. The real gate/supervisor reopen with zero problems,
+   30/30 tests pass, and the canonical adapter remains absent.
+5. **Only after exact PASS:** from clean adapter branch `60d46e1`, create one
+   canonical `teacher_terminal_adapter_v2.json` with gate
+   `8a1532b7…91f8` and supervisor `02f4f8b…6f237`, then independently run
+   `verify` against the adapter's exact SHA.
+6. Record the adapter SHA and verified design-only decision. PASS opens
+   Stage-C/hard-tail **design** only. No labels, compute, training, retry,
+   extension, strength claim, promotion or production action follows. That
+   closes T1 and the last incomplete clause of the active goal.
 
 ## S3a terminal packet
 

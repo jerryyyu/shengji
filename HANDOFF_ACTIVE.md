@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-09 01:49 EDT. This is the executable mailbox, not a
+Last update: 2026-08-09 02:23 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -10,7 +10,7 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 | area | status | next action |
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
-| T1 Teacher | **RUNNING ON MINI / 3 OF 8 SHARDS PUBLISHED / ADAPTER PASS** | Claude passed the launch packet and terminal adapter `5b26c4b`. Shards 2, 5 and 7 exited zero; five workers remain live under the same supervisor. Keep every label sealed until the one terminal gate, independently recompute it, then create one adapter artifact. |
+| T1 Teacher | **RUNNING ON MINI / 5 OF 8 SHARDS PUBLISHED / ADAPTER PASS** | Claude passed the launch packet and terminal adapter `5b26c4b`. Shards 1, 2, 5, 6 and 7 exited zero; three workers remain live under the same supervisor. Keep every label sealed until the one terminal gate, independently recompute it, then create one adapter artifact. |
 | T2 S3a structured bury | **MECHANISM PASS / GUARDED PREFLIGHT REVIEW PASS** | Claude passed exact `e6f2493` / contract `5e0f6ade…b44653`, including the executable Teacher-release guard and its wiring witness. The exact four-cluster score-free preflight may run only after Teacher publishes its final, removes the partial, and all workers exit. It cannot launch the screen or make a strength claim. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
 | T2 learner O0-v2 | **AIR PREFLIGHT PASS / PACKET REVIEW OPEN / NO TRAINING** | Claude passed exact `2e13c35`. The one disposable score-redacted Air preflight passed and independently reverified; frozen packet `20d2aaee…5cab0` now awaits exact `SUPHX_O0_V2_AIR_PACKET_REVIEW_V1`. Do not admit or train before that separate PASS. |
@@ -53,9 +53,9 @@ instance, migrate to Air, inspect partial scores for decisions, retry, extend,
 train, promote, or launch Stage C. Wait for the supervisor's single terminal
 gate and independently reopen every binding.
 
-Outcome-blind runtime audit at 01:49 found 3,333/4,096 outer worlds (81.4%) and
-50/64 states. Shards 2, 5 and 7 published regular label/log/exit triplets after
-exit zero; all three label JSONs remain unopened and unhashed. Five workers remain
+Outcome-blind runtime audit at 02:23 found 3,512/4,096 outer worlds (85.7%) and
+53/64 states. Shards 1, 2, 5, 6 and 7 published regular label/log/exit triplets after
+exit zero; all five label JSONs remain unopened and unhashed. Three workers remain
 CPU-bound under the original supervisor. An
 earlier bounded audit found ~13% of a candidate-count × remaining-ply work
 proxy complete after ~56 minutes. Because

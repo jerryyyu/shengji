@@ -201,8 +201,8 @@ in parallel. It does not require manufacturing a positive duel result.
 ### Fleet order overnight — Aug 9
 
 1. **Mini / critical path:** keep the reviewed fresh Teacher audit under its
-   sole supervisor. At 01:22 EDT it was healthy and outcome-sealed at
-   3,272/4,096 outer worlds (79.9%), 48/64 states and 3/8 published shards.
+   sole supervisor. At 02:23 EDT it was healthy and outcome-sealed at
+   3,512/4,096 outer worlds (85.7%), 53/64 states and 5/8 published shards.
    Do not duplicate, retry or migrate it. When its first terminal final
    appears, independently recompute the exact evaluator gate, compare bytes
    and SHA-256 with the supervisor result, then create and verify the reviewed

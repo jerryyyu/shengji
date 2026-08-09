@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 01:49 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 02:23 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,7 +10,7 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shards 2, 5 and 7 exited zero and published 3/8 label triplets; five workers remain CPU-bound. At 01:49, score-free progress was 3,333/4,096 outer worlds (81.4%) and 50/64 states. The label JSONs remain sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
+| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shards 1, 2, 5, 6 and 7 exited zero and published 5/8 label triplets; three workers remain CPU-bound. At 02:23, score-free progress was 3,512/4,096 outer worlds (85.7%) and 53/64 states. The label JSONs remain sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
 | Air | none | **PREFLIGHT PASS / PACKET REVIEW OPEN:** Claude passed exact `2e13c35`; the score-redacted preflight passed at `f8e1dc16…12eaf` and projected 59.4 minutes with 2x safety. Frozen packet `20d2aaee…5cab0` independently verifies. Air is physically idle until separate packet review; do not admit or train early. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
@@ -32,8 +32,8 @@ preflighted before launch.
    controller `0399591`, and material `645b8f54…b894d`.
 2. **Complete:** the one-shot preparer emitted exact receipt
    `e293858c…a10d` and preparation `83892930…c39`; both reopened cleanly.
-3. **Running:** one Mini supervisor owns the population; shards 2, 5 and 7
-   exited zero and five workers remain live. Outer folds are 32/32 while each searched
+3. **Running:** one Mini supervisor owns the population; shards 1, 2, 5, 6 and 7
+   exited zero and three workers remain live. Outer folds are 32/32 while each searched
    continuation retains the reviewed inner 30+300 accepted-world dose. Do not
    open the published label before the terminal gate.
 4. **Complete:** Claude independently passed terminal adapter `5b26c4b`.

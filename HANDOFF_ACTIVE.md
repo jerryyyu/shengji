@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 12:08 EDT. This is the executable mailbox, not a
+Last compacted: 2026-08-09 12:12 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, live compute in `JOBS.md`,
 queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 
@@ -14,7 +14,7 @@ queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 | T2 S3b sampled exact | **TERMINAL HOLD** | The first frozen treatment cluster exceeded the 250k-node cap. Do not retry or relax v2. |
 | T2 learner O0-v2 | **COMPLETE / SELECT NONE** | Gate `0dbd9aa8…f24e` independently replayed. O1 and production remain unauthorized. |
 | S4 point banking | **V1 CLOSED / V2 GENERATION REPLAY COMPLETE / REREVIEW OPEN** | Exact treatment `1b35fb7`, asset `4538be85…6b5f`; independent score-free replay `b0ef0f9` / `3079fb16…f0a9`. Treatment/null outcomes remain uncomputed. |
-| Human corpus / H0 | **V8 REVIEW PASS + SCORE-FREE H0 PACKET FROZEN** | Corpus `b9699790…16553`; exact packet producer `9770313`, packet `9ff160a9…247d3`. Queue its design review after S4; no execution, labels, training or strength. |
+| Human corpus / H0 | **V8 REVIEW PASS + SCORE-FREE H0 PACKET FROZEN** | Corpus `b9699790…16553`; exact packet producer `9770313`, packet `9ff160a9…247d3`. Forward-only `45f30bb` refuses evaluation-tagged training publication; frozen evidence is unchanged. Queue H0 review after S4. |
 | External review | **OPEN / S4 ONLY** | Review the exact S4 packet below. S3a remains already reviewed/sealed; human-v8 is closed PASS. |
 
 The latest status-only S3a heartbeat still has all eight workers live with no

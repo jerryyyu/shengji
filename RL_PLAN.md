@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 12:08 EDT
+## Current synthesis — 2026-08-09 12:12 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -403,6 +403,10 @@ person who changed names stayed in one fold. Treat H0 as a bounded diagnostic
 and proposal source. A formal people-strength gate must assign stable,
 consented pseudonymous participant/session IDs before play and keep those
 evaluation logs physically and logically out of all training builders.
+Forward-only exact `45f30bb` implements the logical half: a HUMAN-C1 schema or
+any `training_excluded=true` event makes the builder refuse the entire
+publication, even if someone copied an evaluation file into the corpus glob.
+This does not alter or re-authorize frozen `human_v8`/H0 evidence.
 
 Use human data in three bounded stages:
 

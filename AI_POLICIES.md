@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-09 12:08 EDT
+## Current synthesis — 2026-08-09 12:12 EDT
 
 ### Canonical terminal-results table
 
@@ -139,7 +139,10 @@ Evidence anchors, in the same order:
   After bot-vs-bot confirmation, a blinded opt-in `HUMAN-C1` must compare the
   candidate with the live champion across the same human cohort, balanced by
   team/banker/seat and clustered by player session. Evaluation games never
-  enter training or selection.
+  enter training or selection. Forward-only guard `45f30bb` now makes the
+  human-corpus builder refuse the whole publication if any round carries the
+  HUMAN-C1 schema or a `training_excluded=true` tag; physical log separation
+  and immutable assignment logging remain to implement.
 - **Human proposal pilot:** exact `9770313` freezes a score-free H0 design at
   packet `9ff160a9…247d3`: 384 DESIGN and 128 player/deal-disjoint AUDIT play
   keys plus separate bury surfaces. It deliberately retains every late and

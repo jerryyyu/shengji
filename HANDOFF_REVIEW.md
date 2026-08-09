@@ -487,3 +487,34 @@ counterfactual execution, labels, training, strength, promotion or production; H
 diagnostic-only under the explicit name-derived identity limitation.
 
 H0_HUMAN_COUNTERFACTUAL_DESIGN_V2_REVIEW {"schema":"human-h0-counterfactual-design-review-v2","git":"12dac556d98c31de15018e7eeb9c3caa6e20486b","packet_sha256":"2cccf5803ca60cf41690f18dc0e85febaf36a88ce702587e8c86a67e2a358f2b","superseded_v1_packet_sha256":"9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3","corpus_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","v11_checkpoint_sha256":"cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003","live_parent_authenticator_sha256":"d6515d6db76290c3ad145f9194a7985d7d78223f688a30c78cdb520de41c521b","design_plays":384,"audit_plays":128,"design_buries":36,"audit_buries":9,"outcomes_computed":false,"independent_review":true,"execution_controller_implementation_authorized":true,"counterfactual_execution_authorized":false,"labels_authorized":false,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}
+
+## Claude — 2026-08-09 18:26 EDT — H0_HUMAN_COUNTERFACTUAL_DESIGN_V3_REVIEW @ d6214ce: PASS — bounded delta verified; work ceiling recomputed exactly
+
+All MEASURED on the clean review roots (producer `b02b6de`, packet `d6214ce`, both porcelain-clean):
+
+- Packet hashes exactly `4d3f0a35…8cc3c`; battery 22/22 from the packet root with the pinned
+  invocation; the cross-root `verify` (producer source pointed at the separate packet root)
+  reproduces `VERIFIED_FOR_DESIGN_REVIEW` with the exact SHA and `execution_authorized=false`; a
+  candidate-count-tampered packet copy refuses with `packet full recomputation drift` — the
+  recompute guard measured accepting and refusing.
+- Geometry preserved and re-measured: DESIGN 384 plays / 67 deals, AUDIT 128 / 24, zero overlap,
+  max 8 per deal, buries 36/9. The frozen play-row digest `18673b20…711d` matches both the
+  split contract and the `supersedes` block (v2's selected plays carried over byte-exact); the new
+  bury-row digest `cdfe77df…1e8` is bound in `bury_surface`.
+- Candidate caps recompute: production ballot lead<=14 / follow<=12 plus human+V11+random gives the
+  17-play cap; structured-bury ballot 32 plus human gives the 33-bury cap; V11 and random draw from
+  the same novel pool.
+- **Work ceiling exact by my own arithmetic**: per play row 2,430 worlds (pilot 17x30 + 3x300 =
+  1,410; root reference 14x30 + 2x300 = 1,020) and per bury row 1,890 (33x30 + 3x300);
+  512 x 2,430 + 45 x 1,890 = **1,329,210** — matching the marker field.
+- Continuation semantics: report-LCB is the root reference only; the downstream rollout
+  continuation is exact `HeuristicBot` with its source bytes pinned (13,967 bytes, logical path);
+  the three world folds are pairwise disjoint with common random worlds across actions within each
+  fold; outputs are source membership/survival and paired utilities; authority block all-false.
+- V11 (`ep07.npz` = `cd89d6ed…c003`) and live-parent authenticator (`d6515d6d…521b`) evidence
+  carries over from my v2 review unchanged, as the request scopes.
+
+Scope of this PASS: execution-controller implementation only. No counterfactual execution, labels,
+training, strength, promotion or production.
+
+H0_HUMAN_COUNTERFACTUAL_DESIGN_V3_REVIEW {"schema":"human-h0-counterfactual-design-review-v3","git":"d6214ceae7c3f0ddb0c00f67d92b71f32ba579f7","producer_git":"b02b6deb1ef0bda44eaf10ea349cb050355a7f15","packet_sha256":"4d3f0a35082c6957f2a468686b8eedbd6d7cbbf9540503fcea08cccf27c8cc3c","superseded_v2_packet_sha256":"2cccf5803ca60cf41690f18dc0e85febaf36a88ce702587e8c86a67e2a358f2b","corpus_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","v11_checkpoint_sha256":"cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003","live_parent_authenticator_sha256":"d6515d6db76290c3ad145f9194a7985d7d78223f688a30c78cdb520de41c521b","selected_play_rows_sha256":"18673b20ca0a5b1a8e476f3bcf45cf9d08f90f4244f9c5ee07cb8bd8cd47711d","selected_bury_rows_sha256":"cdfe77dfbec0e97fb8935c5822239acd6db60c644c433c32a4445913459aa1e8","play_candidate_cap":17,"bury_candidate_cap":33,"max_candidate_worlds":1329210,"design_plays":384,"audit_plays":128,"design_buries":36,"audit_buries":9,"outcomes_computed":false,"independent_review":true,"execution_controller_implementation_authorized":true,"counterfactual_execution_authorized":false,"labels_authorized":false,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}

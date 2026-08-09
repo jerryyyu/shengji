@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 12:38 EDT
+## Current synthesis — 2026-08-09 13:10 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -95,8 +95,13 @@ what those results change in the research plan.
   exactly verified terminal `abd9f36f…cdc00`: overall acting-team point delta
   `+5.156` with one-sided LCB `+3.029`, positive attacker and defender means,
   35 wins / 4 losses / 25 ties, and level utility `+0.25`. This establishes
-  the narrow exact-late mechanism and opens a fresh complete-round packet for
-  review; it is not whole-bot strength or production authority.
+  the narrow exact-late mechanism. Exact `b64bc95` now freezes the natural-
+  traffic complete-round runner/controller: treatment, analysis-identical
+  matched null and champion share mirrored deals and RNG streams. A four-
+  cluster score-free Air preflight passed in 332.45 seconds, projected the
+  screen at 94.56 fleet-hours / 11.82 max-shard hours, and packet
+  `80e4f1bf…6947` fully recomputes. External review still gates its only Mini
+  launch; this is not whole-bot strength or production authority.
 - **Human data:** the atomically refreshed Fly-snapshot-only `human_v8` corpus
   passed independent publication review at producer `b52dc33`, source manifest
   `07ff18fb…a5e` and corpus manifest `b9699790…16553`. It contains 2,830 plays,
@@ -312,11 +317,12 @@ strength loop works.
    SELECT NONE closes this exact recipe without tuning or retry.
 2. **Carry S4 from mechanism evidence to whole-game evidence.** The reviewed
    one-shot exact-state screen passed in both roles at terminal
-   `abd9f36f…cdc00`. Freeze a fresh complete-round controller against the exact
-   live champion plus a trigger-matched null, preserve natural trigger traffic,
-   and require external packet review before launch. Do not tune from the 64
-   state outcomes or treat `+5.156` points as a duel-strength estimate: using a
-   K now can still waste future control over a full continuation.
+   `abd9f36f…cdc00`. The fresh complete-round controller and packet are now
+   frozen at `b64bc95` / `80e4f1bf…6947`, preserving natural trigger traffic
+   against the exact live champion and an analysis-identical matched null.
+   External review must precede launch, and Mini remains occupied by S3a. Do
+   not treat `+5.156` points as a duel-strength estimate: using a K now can
+   still waste future control over a full continuation.
 3. **Review the frozen Teacher Stage C contract.** Exact `b0ef0f9` defines
    2,048 fresh states and fixed 250k-deal scan windows for each split. Cheap
    labels remain only on ordinary anchors; uncertainty/disagreement/bury use
@@ -345,10 +351,11 @@ starts from a diagnosed mechanism rather than another undifferentiated corpus.
   The incumbent can bury points in rare void/trump cases; S3a is broader because
   it explicitly constructs one-/two-suit voids containing points and evaluates
   them through rollouts.
-- **S4 point-banking continuation** has now passed its exact-state mechanism
-  screen in both roles. The remaining question is deployment relevance: does
-  the frozen continuation-only change improve complete-round utility under
-  natural traffic against the live champion and a matched null?
+- **S4 point-banking continuation** has passed its exact-state mechanism
+  screen in both roles and its score-free complete-round capacity gate. Packet
+  `80e4f1bf…6947` is frozen. The remaining empirical question is deployment
+  relevance: does the continuation-only change improve complete-round utility
+  under natural traffic against the live champion and matched null?
 - **Later exact search** requires a new operational hypothesis. S3b-v2 is
   terminal after its first treatment cluster exceeded the frozen 250k-node
   budget; raising the cap after inspection is not a continuation of v2.

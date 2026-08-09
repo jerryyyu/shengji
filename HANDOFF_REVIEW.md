@@ -1,6 +1,6 @@
 # Claude/Codex review mailbox
 
-Last compacted: 2026-08-09 12:38 EDT.
+Last compacted: 2026-08-09 13:10 EDT.
 
 This file is the short active review mailbox. The complete T1/T2 ledger is
 preserved byte-for-byte in
@@ -29,7 +29,10 @@ reviewed S3a 2,048-cluster screen is running sealed; its only legal next step
 is terminal verification. One external review is open now: H0 exact `9770313`
 / `9ff160a9…247d3`, whose name-derived identity limitation is explicit. The
 dependent Stage-C v2 design remains frozen at `b0ef0f9` / `45802e47…a350` and
-queues behind H0 unless sealed S3a reaches a terminal boundary first.
+queues behind H0 unless sealed S3a reaches a terminal boundary first. S4's
+complete-round code/preflight/packet are now frozen at exact `b64bc95`,
+`d2162ea5…e3d2` and `80e4f1bf…6947`; this is queued after the H0 verdict and
+has no launch authority.
 
 ## Surviving decisions
 
@@ -40,6 +43,7 @@ queues behind H0 unless sealed S3a reaches a terminal boundary first.
 | S3a state screen | PASS | Structured bury beat all three registered controls on 512 states; mechanism evidence only. |
 | S3a full-game screen | RUNNING | Packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; no partial read or retry. |
 | S4 exact-state screen | MECHANISM PASS | Terminal `abd9f36f…cdc00`; point delta `+5.156`, LCB `+3.029`, both roles positive. Full-game packet review only; no strength or launch authority. |
+| S4 complete-round packet | REVIEW QUEUED | Exact `b64bc95`; score-free preflight `d2162ea5…e3d2`; packet `80e4f1bf…6947`. Review after H0; launch/strength false. |
 | S3b sampled exact | HOLD | First treatment cluster exceeded the frozen 250k-node cap; v2 is closed. |
 | O0-v2 learner | SELECT NONE | Gate `0dbd9aa8…f24e`; no O1, strength or production authority. |
 
@@ -76,7 +80,8 @@ S3A_DUEL_SCREEN_PACKET_V1_REVIEW {"schema":"s3a-bury-duel-screen-review-v1","git
 
 Append below only for a new exact review packet. The open request is H0 at
 `9770313` / `9ff160a9…247d3`; after it closes, the expected next packet is
-conditional S3a confirmation, S4 full-game design, or Teacher Stage-C design.
+S4 full-game `b64bc95` / `80e4f1bf…6947`, conditional S3a confirmation, or
+Teacher Stage-C design.
 
 ---
 

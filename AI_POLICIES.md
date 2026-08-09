@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-09 12:38 EDT
+## Current synthesis — 2026-08-09 13:10 EDT
 
 ### Canonical terminal-results table
 
@@ -36,6 +36,7 @@ results table.
 | 08-08 | Teacher-v3 Stage B / audit-v2 | **STAGE B PASS / AUDIT OPERATIONAL REFUSAL** | cheap-minus-gold regret upper bound `0.0195 < 0.10`; audit shard 6 stopped on an incomplete champion-report continuation and published no labels/gate | Cheap labels agreed on sampled ordinary states. The continuation audit produced no ML verdict and is nonretryable; reviewed score-free diagnostics now gate a fresh versioned synthetic contract. |
 | 08-09 | Teacher-v3 fresh champion audit | **PASS / STAGE-C DESIGN** | cheap-choice all-64 regret upper bound `0.0354`; N=30-choice upper bound `0.0439`, both below `0.10`; N=30 boundary-8 diagnostic upper bound `0.1421` | The cheap and N=30 choices are champion-faithful on the frozen 64-state complement. The boundary diagnostic motivates hard-tail escalation. Reviewed adapter `56ccefbd…c2442` now freezes that design-only contract; it authorizes no labels, training or promotion. |
 | 08-09 | S4 point-banking exact-state screen | **MECHANISM PASS / FULL-GAME PACKET REVIEW** | overall acting-team point delta `+5.156`, one-sided LCB `+3.029`; attacker/defender means `+6.406/+3.906`; 35 wins, 4 losses, 25 ties; level utility `+0.25` | Banking a point-card winner while retaining higher control helps on the frozen exact-late trigger population in both roles. This is strong mechanism evidence, not a whole-bot strength claim; a fresh complete-round packet still needs review. |
+| 08-09 | S4 complete-round score-free preflight | **CAPACITY PASS / PACKET FROZEN** | 4 clusters in `332.45s`; projected screen `94.56` fleet-hours / `11.82` max-shard hours; treatment/null both trigger in both roles with exact dose | Exact `b64bc95` freezes treatment, analysis-identical null and live champion on common mirrored streams. Packet `80e4f1bf…6947` is reviewable but cannot launch or support strength. |
 | 08-09 | S3a full-game score-free preflight | **CAPACITY PASS / SCREEN LAUNCHED AFTER REVIEW** | 4/4 clusters in 255.3 seconds; exact structured work; screen projection `72.62` fleet-hours / `9.08` max-shard hours under the frozen 2× factor | Structured bury is non-vacuously wired and the preregistered full-game screen fits Mini. Separate packet review passed and the sealed screen is running; this row itself remains capacity evidence, not strength evidence. |
 | 08-08 | S3b v2 throughput | **HOLD / NO SCREEN** | first exact-treatment cluster exceeded the frozen cumulative `250,000`-node cap; no receipt published | The registered four-card sampled-exact recipe is not operationally admissible under its zero-overflow rule. No strength conclusion; no retry or 2,048 screen. |
 | 08-08 | S3a v2 sizing | **CAPACITY PASS / NO STRENGTH VERDICT** | frozen projection `0.142` fleet-hours / `0.0178` max-shard hours, exact work and zero failed worlds | This cleared placement for the subsequently reviewed and completed 512-state screen; sizing itself made no strength claim. |
@@ -58,6 +59,8 @@ Evidence anchors, in the same order:
 - S4 exact-state screen `abd9f36fa3e84c81b90e22f1c827f828a549f7fd6a9420ffbdb7c168974cdc00`;
   pre-outcome receipt `90124eb6f89c27cedc38770b2da5b3b8597400694281729656105f67803f526b`;
   admission `83993ec6609c2a7528853d4c1db789f137d3f0cbfff97d20fbf526cbd5ff5e6d`.
+- S4 complete-round preflight `d2162ea5271782c4d424f56c6e1cea7222db5df15a5b34286a84371c4fcae3d2`;
+  frozen packet `80e4f1bfa7e995e9acd7439e4381c7a3995a7ea33e98f5495883589ccb746947`.
 - S3a full-game preflight `09692f823d26d38ea76c7c6e36ea007a5031c0f05ca1a76795c84e7d0722edf0`;
   supervisor final `56943242f3620b09774a55eab992fbac0bce6ad224c3ada6a7b54a5634799e9f`;
   reviewed screen packet `de16247bfea13bde516cfb45317f7d21d46d758ae700441b9b747b41f3d5cdd4`;
@@ -140,8 +143,10 @@ Evidence anchors, in the same order:
   one-shot Air screen then verified terminal result `abd9f36f…cdc00`: overall
   point delta `+5.156` (LCB `+3.029`), positive means in both roles, 35/4/25
   wins/losses/ties and level utility `+0.25`. This establishes the narrow
-  exact-late mechanism and opens full-game packet review only; it is not bot
-  strength or production authority.
+  exact-late mechanism. Exact `b64bc95` now implements the natural-traffic
+  complete-round treatment/null/champion comparison. Its score-free Air
+  preflight passed, and packet `80e4f1bf…6947` is frozen for review. It still
+  is not bot strength or production authority.
 - **People-facing target:** human agreement is a style/coverage diagnostic.
   After bot-vs-bot confirmation, a blinded opt-in `HUMAN-C1` must compare the
   candidate with the live champion across the same human cohort, balanced by

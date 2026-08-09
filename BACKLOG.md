@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-09 12:38 EDT.
+Last re-derived: 2026-08-09 13:10 EDT.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
 `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -43,19 +43,20 @@ here.
   `3079fb16…f0a9`. Claude passed rereview. The one reviewed Air execution
   exactly verified terminal result `abd9f36f…cdc00`: overall point delta
   `+5.156`, LCB `+3.029`, both roles positive, 35 wins/4 losses/25 ties.
-  This opens full-game packet review only, not a duel or strength claim.
+  Exact `b64bc95` now freezes the complete-round runner/controller. Score-free
+  Air preflight `d2162ea5…e3d2` passed and packet `80e4f1bf…6947` recomputes.
+  This opens packet review only, not a duel or strength claim.
 - **Learners:** V11 direct-v2, Direct-Q, O0 and O0-v2 all selected none under
   their registered gates. They remain diagnostics, not deployable policies.
-- **Free capacity:** Air has no further reviewed strength launch. S4 full-game
-  controller/packet code, deterministic tests and score-free preflights may
-  proceed while Mini computes.
+- **Free capacity:** Air is free after S4's score-free preflight. No reviewed
+  strength launch is available there; Mini remains exclusive to sealed S3a.
 
 ## NOW — ordered by value
 
 | priority | work | exact exit gate |
 |---|---|---|
 | **P0 / S3a terminal** | Let the sealed 2,048-cluster full-game screen finish | Count-only monitor; run the exact terminal verifier once. PASS opens confirmation-packet review only. SELECT NONE closes the exact recipe. |
-| **P1 / S4 point-banking rollout** | Move the positive exact-state mechanism to fresh complete-round evidence | Implement and freeze a live-champion/matched-null full-game packet bound to terminal `abd9f36f…cdc00`; external review must precede any launch. The state result cannot promote or tune the recipe. |
+| **P1 / S4 point-banking rollout** | Review the frozen complete-round packet, then wait for admitted Mini capacity | Exact `b64bc95` / `80e4f1bf…6947`; score-free preflight `d2162ea5…e3d2`. Queue review immediately after H0. PASS may authorize one 2,048-cluster screen only; no launch while S3a owns Mini. |
 | **P1 / Teacher Stage C** | Review the repaired 2,048-state hard-tail v2 design | After H0 review, inspect exact `b0ef0f9` / `45802e47…a350`. PASS may authorize score-free capture/controller implementation only—not capture, labels or training. V1 is superseded. |
 | **P1 / human counterfactual H0** | Review the frozen score-free 384/128 design/audit packet | Explicitly accept or reject the historical name-derived identity limitation. PASS may authorize implementation of the counterfactual execution controller only. It does not authorize outcomes, labels, training or strength compute. Raw imitation/agreement remain controls. |
 | **P2 / S3a confirmation** | Confirm a positive screen against the live champion | Only conditional on terminal PASS: freeze and externally review an 8,192-cluster one-shot packet, then launch once. No automatic promotion. |
@@ -90,8 +91,9 @@ unreviewed strength compute, training, promotion and production changes.
 
 1. Preserve S3a until one terminal verifier verdict; do not spend its sealed
    evidence twice.
-2. **done:** independently review and run S4 v2 exactly once. It passed. Next
-   implement/freeze a full-game packet; do not launch it without fresh review.
+2. **done:** independently review and run S4 v2 once, then implement, preflight
+   and freeze its full-game packet at `80e4f1bf…6947`. Review is next; do not
+   launch it without PASS or while S3a owns Mini.
 3. **done:** freeze no-compute Teacher Stage-C v2 and H0 packets. Queue H0
    review first, then Stage C; neither packet may capture, label or train.
 4. Keep Mini on the long reviewed S3a job and use Air for bounded reviewed

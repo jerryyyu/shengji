@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-09 14:10 EDT.
+Last re-derived: 2026-08-09 14:24 EDT.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
 `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -72,7 +72,7 @@ here.
 | **P1 / Teacher Stage C** | Repair the H0 parent binding, then review the 2,048-state design | Existing `b0ef0f9` / `45802e47…a350` consumes superseded H0 v1 and is held pre-review. After H0 v2 PASS, freeze a replacement. A later PASS may authorize score-free capture/controller implementation only—not capture, labels or training. |
 | **P2 / S3a confirmation** | Confirm a positive screen against the live champion | Only conditional on terminal PASS: freeze and externally review an 8,192-cluster one-shot packet, then launch once. No automatic promotion. |
 | **P2 / experiment infrastructure** | Make reviewed jobs cheaper to launch correctly | Introduce one immutable `ExperimentSpec`/receipt boundary for code, data, policy, ballot, sampler, continuation, actor, seeds, metric, null, work, stop rule and output. Scheduling may automate reviewed work; it may not select or promote. |
-| **P2 / HUMAN-C1 instrumentation** | Make the people-facing gate executable without contaminating training | Exact `6082589` adds disconnect invalidation to the prior tag/log-write guards: an in-progress assigned session stops before bot cover, takeover, deal or round advancement. The 82-test corpus/server battery passes locally and on Air. Still required: reviewed assignment factory, consent ingress, runtime reopen, terminal estimator and synthetic C0. No WebSocket route or human launch exists. |
+| **P2 / HUMAN-C1 instrumentation** | Make the people-facing gate executable without contaminating training | Exact `859a26e` extends the tag/log/disconnect guards with an inert assignment constructor. It derives the hidden complementary arm and opaque session from a reviewed design, secret and two matching opt-ins; 88 focused tests pass locally/Air. Still required: external review, durable one-use issuance, authenticated consent ingress, runtime reopen, terminal estimator and synthetic C0. No WebSocket route or human launch exists. |
 | **P2 / production performance** | Keep the stronger bot pleasant under concurrent traffic | Continue passive release-17 timing; add a concurrent-room tail gate before changing CPU size. Port hot rollout leaves only with pure/compiled parity and end-to-end policy timing. |
 
 ## Active T3 milestone — human-witness challenger flywheel

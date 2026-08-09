@@ -444,9 +444,15 @@ disconnects, before bot cover, takeover, declaration, dealing or round
 advancement can manufacture a selectively complete session. It records only a
 redacted reason; completed games remain valid, stale socket teardown is a
 no-op, and ordinary rooms retain their old behavior. The focused battery
-passes 82/82 locally and independently on Air. Consent/token ingress, reviewed
-assignment construction, runtime artifact reopening, synthetic C0 and a
-terminal estimator are still required.
+passes 82/82 locally and independently on Air. Exact `859a26e` adds an inert
+constructor that binds a reviewed design digest plus both arm
+policy/Git/image/ballot identities, requires two distinct opt-ins matching the
+cohort and consent version, and derives the complementary arm and opaque
+session ID from a server secret. The caller cannot provide either output, and
+the session domain includes the design identity. Its expanded focused battery
+passes 88/88 locally and in an exact Air worktree. External review, durable
+one-use issuance, authenticated consent/token ingress, runtime artifact
+reopening, synthetic C0 and a terminal estimator are still required.
 
 Use human data in three bounded stages:
 

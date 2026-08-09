@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 14:10 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 14:24 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,7 +8,7 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | `s3a-bury-duel-screen-153m-v1` | **RUNNING / OUTCOME SEALED.** Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight shards × 256. Latest count-only heartbeat: `167,165,167,169,170,166,169,166` (1,339/2,048). Never inspect shard outcomes, retry, extend or move the pinned checkout. |
+| Mini | `s3a-bury-duel-screen-153m-v1` | **RUNNING / OUTCOME SEALED.** Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight shards × 256. Latest count-only heartbeat: `175,173,175,177,177,174,177,174` (1,402/2,048). Never inspect shard outcomes, retry, extend or move the pinned checkout. |
 | Air | none | **FREE.** Repaired S4 v2 score-free preflight passed at `fcc8b891…ee060`; full-game packet `17036e63…1385` is frozen but unreviewed and has no launch authority. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 

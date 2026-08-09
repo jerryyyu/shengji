@@ -164,14 +164,21 @@ Evidence anchors, in the same order:
   hidden complementary blocks, derived participant-pair identity, per-arm
   policy/Git/image/ballot identity, exact 0/2-human versus 1/3-bot enforcement,
   name/chat redaction and fail-closed evaluation writes. No WebSocket path can
-  construct such a room, so consent ingress, reviewed assignment authority,
-  runtime artifact reopening, synthetic C0 and the terminal analyzer remain
-  launch blockers. Exact `6082589` also makes a bound-human disconnect during
-  an assigned in-progress game terminal: it records only a redacted reason and
+  construct such a room. Exact `6082589` also makes a bound-human disconnect
+  during an assigned in-progress game terminal: it records only a redacted reason and
   stops bot cover, takeover, declaration, dealing and round advancement.
   Completed games remain valid, stale socket teardown is a no-op, and ordinary
   rooms retain their old behavior. The focused corpus/server battery passes
-  82/82 locally and independently on Air. The earlier repair scans tags
+  82/82 locally and independently on Air. Exact `859a26e` adds an inert
+  assignment constructor: a score-free reviewed design binds both arm
+  policy/Git/image/ballot identities; two consent facts must
+  match cohort and consent version; and the secret-derived arm and opaque
+  session ID are complementary, deterministic and design-domain-separated.
+  Clients still cannot reach this path or choose an arm/session. Its expanded
+  focused battery passes 88/88 locally and on exact Air. Durable one-use
+  issuance, authenticated consent ingress, runtime artifact reopening,
+  synthetic C0 and the terminal analyzer remain launch blockers. The earlier
+  repair scans tags
   before malformed-round rejection and terminally invalidates an evaluation
   room after any log-write failure, so neither path can manufacture a partial
   training or evaluation publication.

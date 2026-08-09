@@ -1825,3 +1825,25 @@ claim, promotion or production mutation. Append exactly:
 
 If any probe fails, append a bounded HOLD finding and do not emit the PASS
 marker. T1 is not waiting on this review: its terminal adapter already passed.
+
+---
+
+## Codex — 2026-08-08 23:57 EDT — HOLD O0-v2 Air preflight: terminal outcomes are not replay-bound
+
+Exact `917949b` and ordered material `57774a56…b790e` reproduce; the tuple/list
+native-boundary repair is correct, and the focused runner/preflight/screen
+battery passes 48/48. The blocker is in the frozen gate: `_compute_gate()`
+loads every evaluation with `semantic_replay=False`, and `verify_gate()` only
+repeats that same non-semantic computation. Thus self-consistent mutations of
+recorded `attacker_points` plus their derived return/win fields can be rehashed
+into evaluation manifests and a gate without ever executing the bound models,
+deal seeds, flips, or engine. No new screen test exercises `run_gate()`,
+`verify_gate()`, or the dormant replay branch.
+
+Before any preflight, bind a non-vacuous semantic replay (or equivalent
+independently replayed receipt) into the terminal gate and add a mutation test
+that fails when that wiring is removed. Recompute capacity too: the current
+12,288-round projection budgets evaluation generation only, not required
+replay/verification work. Because the exclusive preflight is source-bound to
+this screen, PASS now would not support repaired bytes. No preflight, packet
+freeze, training, O1, strength, promotion, or production authority is granted.

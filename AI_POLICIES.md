@@ -165,8 +165,13 @@ Evidence anchors, in the same order:
   policy/Git/image/ballot identity, exact 0/2-human versus 1/3-bot enforcement,
   name/chat redaction and fail-closed evaluation writes. No WebSocket path can
   construct such a room, so consent ingress, reviewed assignment authority,
-  runtime artifact reopening, disconnect invalidation, synthetic C0 and the
-  terminal analyzer remain launch blockers. The latest repair scans tags
+  runtime artifact reopening, synthetic C0 and the terminal analyzer remain
+  launch blockers. Exact `6082589` also makes a bound-human disconnect during
+  an assigned in-progress game terminal: it records only a redacted reason and
+  stops bot cover, takeover, declaration, dealing and round advancement.
+  Completed games remain valid, stale socket teardown is a no-op, and ordinary
+  rooms retain their old behavior. The focused corpus/server battery passes
+  82/82 locally and independently on Air. The earlier repair scans tags
   before malformed-round rejection and terminally invalidates an evaluation
   room after any log-write failure, so neither path can manufacture a partial
   training or evaluation publication.

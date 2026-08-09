@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 13:55 EDT. This is the executable mailbox, not a
+Last compacted: 2026-08-09 14:04 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, live compute in `JOBS.md`,
 queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 
@@ -15,12 +15,12 @@ queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 | T2 learner O0-v2 | **COMPLETE / SELECT NONE** | Gate `0dbd9aa8…f24e` independently replayed. O1 and production remain unauthorized. |
 | S4 point banking | **MECHANISM PASS + REPAIRED FULL-GAME V2 PACKET FROZEN / REVIEW QUEUED** | Pre-review audit superseded v1 without launch/outcomes. Exact v2 `cad3992`; score-free Air preflight `fcc8b891…ee060`; Mini packet `17036e63…1385` fully recomputes. No duel launch or strength claim. |
 | Human corpus / H0 | **V8 REVIEW PASS / H0 V1 SUPERSEDED PRE-EXECUTION / V2 FROZEN** | Claude passed v1's split semantics, then executable audit found its V11 SHA names no artifact. Exact `12dac55` repairs the parent at packet `2cccf580…8f2b`, independently reproduced on Air. Queue v2 rereview after S4; no controller or outcome yet. |
-| HUMAN-C1 | **INERT IDENTITY/LOG SEAM ONLY / AUDIT FIXES LANDED** | Exact `b198839` moves evaluation-tag refusal before every replay rejection and terminally invalidates a room on evaluation-log failure; mixed publications and unlogged starts now refuse. The 77-test corpus/server battery passes locally and on Air. No traffic path; consent/assignment ingress, runtime reopen, disconnect invalidation, C0/analyzer remain. |
+| HUMAN-C1 | **INERT EVIDENCE SEAM / DISCONNECT INVALIDATION LANDED** | Exact `6082589` terminally invalidates an in-progress assigned session on bound-human disconnect and stops all deal/bot/takeover/round progress; completed games and stale sockets are handled correctly. The 82-test corpus/server battery passes locally and on Air. No traffic path; consent/assignment ingress, runtime reopen, C0/analyzer remain. |
 | External review | **OPEN / S4 COMPLETE-ROUND V2 ONLY** | Claude's S4 HOLD applied to obsolete v1 only; repaired v2 has fresh namespaces, an existing packet in named Mini/Air worktrees and pinned test commands. H0 v2 is frozen but queued next so the mailbox has one review target. |
 
 The latest status-only S3a heartbeat still has all eight workers live with no
 completed shard. The latest cluster-count snapshot was
-`152,151,152,154,155,152,153,151 / 256` (1,220/2,048). Outcomes remain unread.
+`164,162,163,165,166,163,166,163 / 256` (1,312/2,048). Outcomes remain unread.
 
 ## Active milestone — T3 human-witness challenger flywheel
 
@@ -258,16 +258,18 @@ Requested H0 v2 marker after S4 closes:
 
 H0_HUMAN_COUNTERFACTUAL_DESIGN_V2_REVIEW {"schema":"human-h0-counterfactual-design-review-v2","git":"12dac556d98c31de15018e7eeb9c3caa6e20486b","packet_sha256":"2cccf5803ca60cf41690f18dc0e85febaf36a88ce702587e8c86a67e2a358f2b","superseded_v1_packet_sha256":"9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3","corpus_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","v11_checkpoint_sha256":"cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003","live_parent_authenticator_sha256":"d6515d6db76290c3ad145f9194a7985d7d78223f688a30c78cdb520de41c521b","design_plays":384,"audit_plays":128,"design_buries":36,"audit_buries":9,"outcomes_computed":false,"independent_review":true,"execution_controller_implementation_authorized":true,"counterfactual_execution_authorized":false,"labels_authorized":false,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}
 
-The forward HUMAN-C1 range through `b198839` is not a launch request and does
+The forward HUMAN-C1 range through `6082589` is not a launch request and does
 not block S4. A later bounded review should confirm ordinary-room log behavior
 is unchanged, evaluation/training roots cannot overlap, the room bot's policy
 name must match the hidden arm, the participant-derived pair and per-arm ballot
 identities cannot drift, both block slots are complementary, seats 0/2 are the
 two bound humans, raw names/chat are absent, evaluation write failures surface,
 and the corpus refuses tags anywhere in a round, including malformed rounds
-that lack `round_start`. Confirm any evaluation write failure terminally
-invalidates the room before a retry can manufacture a complete session.
-Focused audit tests pass 77/77 on Mini and independently on Air. No
+that lack `round_start`. Evaluation write failure or a bound-human disconnect
+must terminally invalidate an in-progress room before retry, bot cover,
+takeover, deal or round advancement can manufacture a selective session;
+completed games and stale socket teardown must remain valid/no-op respectively.
+Focused audit tests pass 82/82 locally and independently on Air. No
 consent/assignment ingress, evaluation room
 route, traffic, strength claim or promotion exists.
 

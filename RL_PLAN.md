@@ -438,9 +438,15 @@ frozen `human_v8`/H0 evidence. The inert server-side identity/logging seam adds
 complementary hidden blocks, participant-derived pair clustering, separate
 per-arm policy/Git/image/ballot identity, a disjoint log root, policy and
 0/2-human-versus-1/3-bot binding, name/chat redaction and fail-closed writes.
-It is deliberately unreachable from the live WebSocket. Consent/token ingress,
-reviewed assignment construction, runtime artifact reopening, disconnect
-invalidation, synthetic C0 and a terminal estimator are still required.
+It is deliberately unreachable from the live WebSocket. Exact `6082589`
+terminally invalidates an assigned in-progress game when either bound human
+disconnects, before bot cover, takeover, declaration, dealing or round
+advancement can manufacture a selectively complete session. It records only a
+redacted reason; completed games remain valid, stale socket teardown is a
+no-op, and ordinary rooms retain their old behavior. The focused battery
+passes 82/82 locally and independently on Air. Consent/token ingress, reviewed
+assignment construction, runtime artifact reopening, synthetic C0 and a
+terminal estimator are still required.
 
 Use human data in three bounded stages:
 

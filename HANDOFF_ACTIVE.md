@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 12:18 EDT. This is the executable mailbox, not a
+Last compacted: 2026-08-09 12:28 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, live compute in `JOBS.md`,
 queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 
@@ -15,12 +15,12 @@ queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 | T2 learner O0-v2 | **COMPLETE / SELECT NONE** | Gate `0dbd9aa8…f24e` independently replayed. O1 and production remain unauthorized. |
 | S4 point banking | **V1 CLOSED / V2 GENERATION REPLAY COMPLETE / REREVIEW OPEN** | Exact treatment `1b35fb7`, asset `4538be85…6b5f`; independent score-free replay `b0ef0f9` / `3079fb16…f0a9`. Treatment/null outcomes remain uncomputed. |
 | Human corpus / H0 | **V8 REVIEW PASS + SCORE-FREE H0 PACKET FROZEN** | Corpus `b9699790…16553`; exact packet producer `9770313`, packet `9ff160a9…247d3`. Forward-only `45f30bb` refuses evaluation-tagged training publication; frozen evidence is unchanged. Queue H0 review after S4. |
-| HUMAN-C1 | **INERT IDENTITY/LOG SEAM ONLY** | Exact `4880159` adds hidden complementary blocks, exact server-only identity and disjoint fail-closed logging. It is unreachable from WebSocket traffic; consent ingress, layout/runtime binding, C0 and analyzer remain. |
+| HUMAN-C1 | **INERT IDENTITY/LOG SEAM ONLY** | Through exact `340ae4e`: hidden blocks, derived pair ID, per-arm artifacts, disjoint logs, exact 0/2-human layout, privacy redaction and fail-closed writes; 80/80 local + Air. No traffic path; consent/assignment ingress, runtime reopen, disconnect invalidation, C0/analyzer remain. |
 | External review | **OPEN / S4 ONLY** | Review the exact S4 packet below. S3a remains already reviewed/sealed; human-v8 is closed PASS. |
 
 The latest status-only S3a heartbeat still has all eight workers live with no
 completed shard. The latest cluster-count snapshot was
-`97,96,94,98,95,95,95,95 / 256` (765/2,048). Outcomes remain unread.
+`108,108,107,111,108,107,108,107 / 256` (864/2,048). Outcomes remain unread.
 
 ## Active milestone — T3 human-witness challenger flywheel
 
@@ -217,13 +217,15 @@ Dependency order after S4: review H0 first, because Stage C consumes only its
 DESIGN split; then review Stage C. If S3a terminates first, its immutable
 terminal path takes priority.
 
-The forward HUMAN-C1 delta `45f30bb..4880159` is not a launch request and does
+The forward HUMAN-C1 delta `45f30bb..340ae4e` is not a launch request and does
 not block S4. A later bounded review should confirm ordinary-room log behavior
 is unchanged, evaluation/training roots cannot overlap, the room bot's policy
-name must match the hidden arm, both block slots are complementary, evaluation
-write failures surface, and the corpus refuses tags anywhere in a round.
-Focused human/H0/WebSocket/scheduler tests pass 68/68. No consent/assignment
-ingress, evaluation room route, traffic, strength claim or promotion exists.
+name must match the hidden arm, the participant-derived pair and per-arm ballot
+identities cannot drift, both block slots are complementary, seats 0/2 are the
+two bound humans, raw names/chat are absent, evaluation write failures surface,
+and the corpus refuses tags anywhere in a round. Focused tests pass 80/80 on
+Mini and independently on Air. No consent/assignment ingress, evaluation room
+route, traffic, strength claim or promotion exists.
 
 ## Fleet and safety rules
 

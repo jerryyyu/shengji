@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-09 12:18 EDT
+## Current synthesis — 2026-08-09 12:28 EDT
 
 ### Canonical terminal-results table
 
@@ -142,11 +142,13 @@ Evidence anchors, in the same order:
   enter training or selection. Forward-only guard `45f30bb` now makes the
   human-corpus builder refuse the whole publication if any round carries the
   HUMAN-C1 schema or a `training_excluded=true` tag. Physical separation is
-  now backed by inert room primitives at `4880159`: a disjoint root, hidden
-  complementary blocks, exact arm/policy/Git/image/ballot identity and
-  fail-closed evaluation writes. No WebSocket path can construct such a room,
-  so consent ingress, reviewed assignment authority, team-layout enforcement
-  and the terminal analyzer remain launch blockers.
+  now backed by inert room primitives through `340ae4e`: a disjoint root,
+  hidden complementary blocks, derived participant-pair identity, per-arm
+  policy/Git/image/ballot identity, exact 0/2-human versus 1/3-bot enforcement,
+  name/chat redaction and fail-closed evaluation writes. No WebSocket path can
+  construct such a room, so consent ingress, reviewed assignment authority,
+  runtime artifact reopening, disconnect invalidation, synthetic C0 and the
+  terminal analyzer remain launch blockers.
 - **Human proposal pilot:** exact `9770313` freezes a score-free H0 design at
   packet `9ff160a9…247d3`: 384 DESIGN and 128 player/deal-disjoint AUDIT play
   keys plus separate bury surfaces. It deliberately retains every late and

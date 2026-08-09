@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 12:08 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 12:29 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,7 +8,7 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | `s3a-bury-duel-screen-153m-v1` | **RUNNING / OUTCOME SEALED.** Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight shards × 256. Latest count-only heartbeat: `97,96,94,98,95,95,95,95` (765/2,048). Never inspect shard outcomes, retry, extend or move the pinned checkout. |
+| Mini | `s3a-bury-duel-screen-153m-v1` | **RUNNING / OUTCOME SEALED.** Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight shards × 256. Latest count-only heartbeat: `108,108,107,111,108,107,108,107` (864/2,048). Never inspect shard outcomes, retry, extend or move the pinned checkout. |
 | Air | none | **FREE / S4 V2 SCORE-FREE REPLAY COMPLETE.** Capture `4538be85…6b5f`; independent 69,047-deal generation replay `3079fb16…f0a9`; no outcomes. The exact screen remains on external rereview. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 

@@ -236,12 +236,17 @@ def build_corpus(patterns: list[str], out_dir: str,
             for round_no, events in sorted(rounds.items()):
                 reference = f"{source.name}:round-{round_no}"
                 stats["rounds_seen"] += 1
+                # Evaluation exclusion is a publication-level safety boundary,
+                # not another replay-quality rejection.  Scan before *every*
+                # early continue (including missing round_start/end), otherwise
+                # a copied HUMAN-C1 fragment can be counted as merely malformed
+                # while ordinary rows from the same build are still published.
+                _refuse_evaluation_round(events, reference)
                 start = next((e for e in events if e.get("e") == "round_start"), None)
                 end = next((e for e in events if e.get("e") == "round_end"), None)
                 if start is None:
                     reject("round_missing_start", reference)
                     continue
-                _refuse_evaluation_round(events, reference)
                 if end is None:
                     reject("round_incomplete", reference)
                     continue

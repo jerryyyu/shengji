@@ -184,6 +184,23 @@ def test_evaluation_tag_on_later_event_also_refuses_publication(tmp_path):
     assert not out.exists()
 
 
+def test_tagged_round_without_start_refuses_mixed_publication(tmp_path):
+    events = _completed_round(1)
+    events.append(_event(
+        2, "evaluation_fragment", training_excluded=True,
+        experiment={"schema": "human-vs-bot-evaluation-v1"}))
+    source = tmp_path / "MIXED.jsonl"
+    _write_jsonl(source, events)
+    out = tmp_path / "human_v9"
+
+    with pytest.raises(HumanCorpusError, match="evaluation-only round"):
+        build_corpus([str(source)], str(out))
+
+    # The valid ordinary round must not leak out of a mixed publication.
+    assert not out.exists()
+    assert not (tmp_path / "human_v9.partial").exists()
+
+
 def test_source_manifest_defines_population_and_excludes_legacy_files(tmp_path):
     current = tmp_path / "CURRENT.jsonl"
     legacy = tmp_path / "LEGACY.jsonl"

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import random
 from types import SimpleNamespace
@@ -149,6 +150,30 @@ def test_evaluation_logging_failure_is_not_silenced(tmp_path, monkeypatch):
 
     with pytest.raises(OSError):
         room.log_event("probe")
+    assert room.evaluation_invalidated is True
+
+
+def test_evaluation_start_logging_failure_terminally_invalidates_room(
+        tmp_path, monkeypatch):
+    from shengji.api import server
+
+    monkeypatch.setattr(server, "LOG_DIR", tmp_path / "ordinary")
+    room = _evaluation_room(server, tmp_path)
+    # Construct the room first, then make its dedicated log root unwritable as
+    # a directory.  start_game must fail before launching deal/watchdog tasks.
+    room.log_dir.write_text("not a directory")
+
+    async def scenario():
+        with pytest.raises(OSError):
+            await server.handle_action(room, 0, {"type": "start_game"})
+
+        assert room.evaluation_invalidated is True
+        assert room.deal_task is None
+        assert room.watchdog_task is None
+        with pytest.raises(server.IllegalPlay, match="invalidated"):
+            await server.handle_action(room, 0, {"type": "start_game"})
+
+    asyncio.run(scenario())
 
 
 def _evaluation_room(server, tmp_path):

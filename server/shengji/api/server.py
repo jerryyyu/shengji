@@ -106,6 +106,11 @@ class Room:
     # can construct one yet.
     log_dir: Path | None = None
     evaluation: HumanEvaluationContext | None = None
+    # Any missing evaluation event destroys the assigned session's evidence
+    # chain.  Keep the room terminally unusable rather than allowing a retry or
+    # subsequent play to create an apparently complete but selectively logged
+    # HUMAN-C1 block.
+    evaluation_invalidated: bool = False
 
     def __post_init__(self) -> None:
         if self.log_dir is None:
@@ -156,6 +161,7 @@ class Room:
                 f.write(json.dumps(rec) + "\n")
         except OSError:
             if self.evaluation is not None:
+                self.evaluation_invalidated = True
                 raise  # evidence rooms fail closed instead of silently playing
 
     # ------------------------------------------------------------- id mapping
@@ -980,6 +986,8 @@ def validate_human_evaluation_start(room: Room) -> None:
     context = room.evaluation
     if context is None:
         return
+    if room.evaluation_invalidated:
+        raise IllegalPlay("Evaluation session was invalidated by logging failure.")
     if len(room.seats) != 4:
         raise IllegalPlay("Evaluation requires exactly four assigned seats.")
     for seat in (0, 2):
@@ -996,6 +1004,8 @@ def validate_human_evaluation_start(room: Room) -> None:
 
 async def handle_action(room: Room, seat: int, msg: dict) -> None:
     """Caller holds room.lock. Raises IllegalPlay on bad input."""
+    if room.evaluation is not None and room.evaluation_invalidated:
+        raise IllegalPlay("Evaluation session was invalidated by logging failure.")
     t = msg.get("type")
     game, rnd = room.game, room.round
 

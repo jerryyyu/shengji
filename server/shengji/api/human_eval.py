@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import re
+from dataclasses import asdict
 from dataclasses import dataclass
 from typing import Literal
 
@@ -26,6 +28,31 @@ _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 class HumanEvaluationError(ValueError):
     """The proposed room identity is not evidence-grade."""
+
+
+def registered_policy_ballot_id(policy: str) -> str:
+    """Reconstruct the registered policy's executable ballot identity.
+
+    The digest includes every named ballot stage and its derived source/config
+    identity.  Git and image identity bind the rest of the executable policy;
+    this field prevents a reviewed room from silently widening or swapping the
+    action generator inside that artifact.
+    """
+    _require(_ID, policy, "policy")
+    try:
+        from ..engine.ballot import policy_ballots
+        stages = policy_ballots(policy)
+    except Exception as exc:
+        raise HumanEvaluationError(
+            f"cannot reopen registered policy ballot: {policy}") from exc
+    payload = {
+        stage: asdict(spec)
+        for stage, spec in sorted(stages.items())
+    }
+    raw = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), default=str,
+    ).encode()
+    return "policy-ballots-v1-" + hashlib.sha256(raw).hexdigest()
 
 
 def _require(pattern: re.Pattern[str], value: str, field: str) -> None:
@@ -205,6 +232,22 @@ class HumanEvaluationContext:
         return (self.candidate_policy if self.arm == "candidate"
                 else self.champion_policy)
 
+    @property
+    def active_policy_identity(self) -> PolicyIdentity:
+        if self.arm == "candidate":
+            return PolicyIdentity(
+                policy=self.candidate_policy,
+                git=self.candidate_git,
+                image_sha256=self.candidate_image_sha256,
+                ballot_id=self.candidate_ballot_id,
+            )
+        return PolicyIdentity(
+            policy=self.champion_policy,
+            git=self.champion_git,
+            image_sha256=self.champion_image_sha256,
+            ballot_id=self.champion_ballot_id,
+        )
+
     def log_payload(self) -> dict:
         """Return the complete server-only identity attached to every event."""
         return {
@@ -312,3 +355,40 @@ def construct_reviewed_assignment(
         candidate_ballot_id=design.candidate.ballot_id,
         champion_ballot_id=design.champion.ballot_id,
     )
+
+
+def reopen_assigned_policy(
+        context: HumanEvaluationContext, *, runtime_git: str,
+        runtime_image_sha256: str):
+    """Reconstruct and authenticate the policy an assigned room will run.
+
+    A future ingress must obtain the runtime Git/image values from its reviewed
+    immutable deployment receipt.  No caller-supplied bot is accepted here:
+    the exact registered policy is rebuilt and its executable ballot is
+    independently derived before a room may receive it.
+    """
+    if not isinstance(context, HumanEvaluationContext):
+        raise HumanEvaluationError("invalid evaluation context")
+    _require(_GIT, runtime_git, "runtime_git")
+    _require(_SHA256, runtime_image_sha256, "runtime_image_sha256")
+    expected = context.active_policy_identity
+    if runtime_git != expected.git:
+        raise HumanEvaluationError(
+            "assigned policy Git does not match evaluation runtime")
+    if runtime_image_sha256 != expected.image_sha256:
+        raise HumanEvaluationError(
+            "assigned policy image does not match evaluation runtime")
+    actual_ballot_id = registered_policy_ballot_id(expected.policy)
+    if actual_ballot_id != expected.ballot_id:
+        raise HumanEvaluationError(
+            "assigned policy ballot does not match evaluation runtime")
+    try:
+        from ..ai.registry import make_bot
+        bot = make_bot(expected.policy)
+    except Exception as exc:
+        raise HumanEvaluationError(
+            f"cannot reopen registered policy: {expected.policy}") from exc
+    if getattr(bot, "policy_name", None) != expected.policy:
+        raise HumanEvaluationError(
+            "reopened policy name does not match evaluation assignment")
+    return bot

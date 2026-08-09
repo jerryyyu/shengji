@@ -15,6 +15,8 @@ from shengji.api.human_eval import (
     blocked_arm,
     construct_reviewed_assignment,
     derive_participant_pair_id,
+    registered_policy_ballot_id,
+    reopen_assigned_policy,
 )
 
 
@@ -181,6 +183,48 @@ def test_consent_fact_refuses_false_or_truthy_opt_in():
         ConsentedParticipant(
             participant_id="b" * 32, cohort_id="experienced-v1",
             consent_version="consent-v1", opted_in=1)
+
+
+def _registered_context(**changes):
+    values = {
+        "candidate_policy": "mc-strong",
+        "candidate_ballot_id": registered_policy_ballot_id("mc-strong"),
+        "champion_policy": "mc-s0-report-lcb",
+        "champion_ballot_id": registered_policy_ballot_id(
+            "mc-s0-report-lcb"),
+    }
+    values.update(changes)
+    return _context(**values)
+
+
+@pytest.mark.parametrize("arm", ["candidate", "champion"])
+def test_runtime_reopens_exact_registered_assigned_policy(arm):
+    context = _registered_context(arm=arm)
+    expected = context.active_policy_identity
+
+    bot = reopen_assigned_policy(
+        context, runtime_git=expected.git,
+        runtime_image_sha256=expected.image_sha256)
+
+    assert bot.policy_name == expected.policy
+
+
+@pytest.mark.parametrize("changes,runtime_git,runtime_image,match", [
+    ({}, "0" * 40, "e" * 64, "Git"),
+    ({}, "d" * 40, "0" * 64, "image"),
+    ({"candidate_ballot_id": "wrong-ballot-v1"},
+     "d" * 40, "e" * 64, "ballot"),
+    ({"candidate_policy": "not-registered-policy",
+      "candidate_ballot_id": "not-registered-ballot"},
+     "d" * 40, "e" * 64, "cannot reopen"),
+])
+def test_runtime_policy_reopen_fails_closed(changes, runtime_git,
+                                            runtime_image, match):
+    context = _registered_context(**changes)
+    with pytest.raises(HumanEvaluationError, match=match):
+        reopen_assigned_policy(
+            context, runtime_git=runtime_git,
+            runtime_image_sha256=runtime_image)
 
 
 def test_room_writes_evaluation_only_to_separate_root(tmp_path, monkeypatch):

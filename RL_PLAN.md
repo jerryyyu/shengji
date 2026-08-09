@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 11:36 EDT
+## Current synthesis — 2026-08-09 12:08 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -60,10 +60,12 @@ what those results change in the research plan.
   design rather than bulk ordinary-state scaling. Claude passed the
   real-output absolute-path adapter delta at exact `60d46e1`; canonical adapter
   `56ccefbd…c2442` was created once and independently verified. Its only next
-  authority was Stage-C packet design/review. Exact `94cfc1e` now freezes that
-  no-compute contract: 2,048 states split 1,024 DESIGN / 512 CALIB / 512 REPORT,
-  with 1,920 play and 128 separately modeled bury states. Packet
-  `4df94e6c…13354` awaits review; no capture, labels, compute or training.
+  authority was Stage-C packet design/review. Pre-review audit superseded v1:
+  it mismatched the adapter identity, did not reopen the authenticated live
+  parent, and pinned closed S4 v1. Exact `b0ef0f9` freezes repaired v2 at
+  `45802e47…a350`: 2,048 states split 1,024 DESIGN / 512 CALIB / 512 REPORT,
+  with 1,920 play and 128 separately modeled bury states. It awaits H0 then
+  design review; no capture, labels, compute or training.
 - **Search challengers:** the independently reviewed live-parent contract now
   binds S3a and S3b to exact report-LCB and makes formal-S0/`mc-strong`
   re-entry unreachable. S3b v2 then failed its operational preflight: its
@@ -87,8 +89,10 @@ what those results change in the research plan.
   treatment acts only from the secure last seat and only while retaining a
   higher winner. Named continuations show both +10 immediate value and -10
   future-control risk. Fresh score-free asset `4538be85…6b5f` froze 64
-  exact-late states from unique deals, 32 per role; no outcome has been computed
-  and replacement review gates the one-shot screen.
+  exact-late states from unique deals, 32 per role. Independent score-free
+  verifier `b0ef0f9` then rescanned all 69,047 ascending deals and reproduced
+  every row exactly at `3079fb16…f0a9`; no outcome has been computed and
+  replacement rereview gates the one-shot screen.
 - **Human data:** the atomically refreshed Fly-snapshot-only `human_v8` corpus
   passed independent publication review at producer `b52dc33`, source manifest
   `07ff18fb…a5e` and corpus manifest `b9699790…16553`. It contains 2,830 plays,
@@ -97,8 +101,11 @@ what those results change in the research plan.
   now frozen that score-free design: 384 DESIGN and 128 player/deal-disjoint
   AUDIT play keys, every late/off-analysis-ballot row, all 36/9 split buries,
   and no outcomes. Packet `9ff160a9…247d3` awaits its later design review. A
-  second complete server pull at 15:01 UTC found every one of the 30 source
-  files unchanged, so this remains the current production snapshot.
+  latest complete server pull at 16:07 UTC found every one of the 30 source
+  files unchanged, so this remains the current production snapshot. The split
+  is name-derived pseudonymous-player/deal disjoint, not provably true-person
+  disjoint if one person used multiple names. That limits H0 to diagnostics;
+  HUMAN-C1 needs consented stable evaluation-session identity.
 - **Data/sampler:** the bounded strict sampler certificate passed, but posterior
   fidelity and global constructive completeness remain open. High-N and
   late-ply data are replayable state reservoirs under old named targets, not
@@ -305,15 +312,19 @@ strength loop works.
    scanned 69,047 fresh deals from seed 161,000,000 and froze 32 attacker plus
    32 defender triggers from unique deals at `4538be85…6b5f`. It also binds an
    executable material recipe, exact admission, Air native runtime, one-shot
-   receipt and full recomputation. External review must precede the exact
-   two-card-endgame screen. The sign remains empirical: using a K now may bank
-   points or waste future control.
-3. **Review the frozen Teacher Stage C contract.** Exact `94cfc1e` defines
+   receipt and full recomputation. External verifier `b0ef0f9` independently
+   rescanned the entire ascending population and rebuilt all 64 rows exactly
+   at `3079fb16…f0a9`. Rereview must precede the exact two-card-endgame screen.
+   The sign remains empirical: using a K now may bank points or waste future
+   control.
+3. **Review the frozen Teacher Stage C contract.** Exact `b0ef0f9` defines
    2,048 fresh states and fixed 250k-deal scan windows for each split. Cheap
    labels remain only on ordinary anchors; uncertainty/disagreement/bury use
    live report-LCB gold, exact-late uses an information-set-legal solver or the
-   live gold fallback, and S4 is conditional on its own terminal PASS. Review
-   precedes capture, labels, compute and training.
+   live gold fallback, and S4 is conditional on its own terminal PASS. Repaired
+   v2 also reopens the authenticated live parent and defines independent
+   audit/reference folds plus equal-budget proposal-recall LCBs. Review follows
+   H0 and precedes capture, labels, compute and training; v1 is superseded.
 4. **Add a human-action counterfactual pilot.** Human moves broaden the action
    and state distribution beyond heuristic self-play, but raw imitation or
    final-round return is not a strength target. Reconstruct and validate each
@@ -385,6 +396,13 @@ players and includes bury decisions. Its 2,830 plays and 45 buries remain human
 behaviour, not strength truth. The earlier v6.1 blend increased human agreement
 but scored 46% against v6 in a small sibling duel: evidence for style transfer,
 not strength.
+
+The current pseudonymous-player split is the strongest separation available
+from historical logs, but a display-name-derived identity cannot prove that a
+person who changed names stayed in one fold. Treat H0 as a bounded diagnostic
+and proposal source. A formal people-strength gate must assign stable,
+consented pseudonymous participant/session IDs before play and keep those
+evaluation logs physically and logically out of all training builders.
 
 Use human data in three bounded stages:
 

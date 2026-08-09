@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-09 11:36 EDT
+## Current synthesis — 2026-08-09 12:08 EDT
 
 ### Canonical terminal-results table
 
@@ -106,7 +106,10 @@ Evidence anchors, in the same order:
   follow analysis ballot, and found points in 22/45 human buries. This is
   proposal/coverage evidence, not proof that human actions or round-return
   labels are stronger. Use player/deal-disjoint splits and counterfactual
-  relabeling before training beyond a separately measured BC control. Clean
+  relabeling before training beyond a separately measured BC control. Its
+  current split is disjoint by pseudonymous player name and deal, but cannot
+  prove true-person disjointness when one person changes names; H0 is therefore
+  a diagnostic proposal pilot, not people-strength evidence. Clean
   producer is `b52dc33`; corpus manifest SHA-256 is `b9699790…16553`.
 - Encoder identity includes semantics and transitive bytes. Drifted banker-
   private-kitty assets remain quarantined; `gen_v4_all`, which trained
@@ -128,7 +131,10 @@ Evidence anchors, in the same order:
   choice, act only last, and require a higher winning reserve. Named
   continuations demonstrate both +10 immediate value and -10 future-control
   risk. Fresh score-free 64-state asset `4538be85…6b5f` awaits review; no
-  outcome or strength result exists.
+  outcome or strength result exists. Independent score-free verifier
+  `b0ef0f9` rescanned all 69,047 ascending deals and rebuilt every stored row
+  exactly at witness `3079fb16…f0a9`; this repairs capture provenance but says
+  nothing yet about whether the mechanism helps.
 - **People-facing target:** human agreement is a style/coverage diagnostic.
   After bot-vs-bot confirmation, a blinded opt-in `HUMAN-C1` must compare the
   candidate with the live champion across the same human cohort, balanced by
@@ -139,11 +145,15 @@ Evidence anchors, in the same order:
   keys plus separate bury surfaces. It deliberately retains every late and
   off-analysis-ballot move. No counterfactual outcome, label, training or
   strength authority exists.
-- **Teacher Stage C:** exact `94cfc1e` freezes a no-compute 2,048-state design
+- **Teacher Stage C:** exact `b0ef0f9` freezes repaired no-compute v2 at
+  `45802e47…a350`: a 2,048-state design
   (1,024 DESIGN / 512 CALIB / 512 REPORT; 1,920 play + 128 bury). Ordinary
   anchors may use the audited cheap proxy; hard-tail targets require live
-  report-LCB gold or a reviewed information-set-legal exact solver. Packet
-  `4df94e6c…13354` awaits review and grants no capture, label or model work.
+  report-LCB gold or a reviewed information-set-legal exact solver. V2 consumes
+  the adapter's literal identity, reopens the authenticated live parent,
+  conditionally binds S4 v2 and defines untouched regret/recall gates. V1
+  `4df94e6c…13354` is superseded; v2 awaits H0 then review and grants no capture,
+  label or model work.
 
 ### Learned policies and RL
 

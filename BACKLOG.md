@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-09 11:36 EDT.
+Last re-derived: 2026-08-09 12:08 EDT.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
 `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -16,9 +16,11 @@ here.
   `mc-strong`.
 - **Live strength compute:** the reviewed S3a structured-bury full-game screen
   is running on Mini, eight shards × 256 clusters. Outcomes are sealed.
-- **Teacher:** the fresh audit passed on ordinary states. Exact `94cfc1e` now
-  freezes a 2,048-state hard-tail Stage-C design at `4df94e6c…13354`; it awaits
-  review and authorizes no capture, labeling, compute or training.
+- **Teacher:** the fresh audit passed on ordinary states. Pre-review audit
+  superseded Stage-C v1 because it mismatched the adapter packet ID, had not
+  reopened the live parent and pinned closed S4 v1. Exact `b0ef0f9` now freezes
+  repaired 2,048-state v2 at `45802e47…a350`; it awaits H0 then design review
+  and authorizes no capture, labeling, compute or training.
 - **Human corpus:** production logs were atomically refreshed on August 9.
   The exact Fly-snapshot-only `human_v8` rebuild contains 2,830 accepted plays,
   45 human buries and 122 fully replayed rounds; all seven incomplete rounds
@@ -28,13 +30,17 @@ here.
   design packet is now authorized. Exact `9770313` froze and independently
   verified a score-free 384-DESIGN/128-AUDIT packet at `9ff160a9…247d3`;
   execution, labels, training and strength remain closed. A second complete
-  server pull at 15:01 UTC found all 30 files unchanged, so this corpus remains
-  the current production snapshot rather than a stale copy.
+  server pull at 16:07 UTC found all 30 files unchanged, so this corpus remains
+  the current production snapshot rather than a stale copy. Its split is
+  name-derived pseudonymous-player/deal disjoint, not guaranteed true-person
+  disjoint if a person changed names; that is acceptable for H0 diagnostics,
+  not HUMAN-C1 evidence.
 - **S4:** v1 is closed HOLD without outcomes because its material digest did
   not reproduce. Exact `1b35fb7` fixes the utility and evidence boundary. A
   fresh score-free Air capture froze 64 unique exact-late trigger states
-  (32 per role) at `4538be85…6b5f`; outcomes remain uncomputed and replacement
-  review is open.
+  (32 per role) at `4538be85…6b5f`. Exact `b0ef0f9` then independently rescanned
+  all 69,047 ascending deals and rebuilt every row exactly; witness
+  `3079fb16…f0a9`. Outcomes remain uncomputed and replacement rereview is open.
 - **Learners:** V11 direct-v2, Direct-Q, O0 and O0-v2 all selected none under
   their registered gates. They remain diagnostics, not deployable policies.
 - **Free capacity:** Air has no reviewed strength launch. Coding, deterministic
@@ -45,9 +51,9 @@ here.
 | priority | work | exact exit gate |
 |---|---|---|
 | **P0 / S3a terminal** | Let the sealed 2,048-cluster full-game screen finish | Count-only monitor; run the exact terminal verifier once. PASS opens confirmation-packet review only. SELECT NONE closes the exact recipe. |
-| **P1 / S4 point-banking rollout** | Review the isolated mechanism + score-free 64-state asset | PASS authorizes one exact state screen only. Its terminal result may open a full-game packet review or close the exact recipe; no automatic duel. |
-| **P1 / Teacher Stage C** | Review the frozen 2,048-state hard-tail design | After H0 review, inspect exact `94cfc1e` / `4df94e6c…13354`. PASS may authorize score-free capture/controller implementation only—not capture, labels or training. |
-| **P1 / human counterfactual H0** | Review the frozen score-free 384/128 design/audit packet | PASS may authorize implementation of the counterfactual execution controller only. It does not authorize outcomes, labels, training or strength compute. Raw imitation/agreement remain controls. |
+| **P1 / S4 point-banking rollout** | Rereview the isolated mechanism + score-free capture and generation witness | Confirm `1b35fb7` / `4538be85…6b5f` with verifier `b0ef0f9` / `3079fb16…f0a9`, and the corrected portable namespace claim. PASS authorizes one exact state screen only. |
+| **P1 / Teacher Stage C** | Review the repaired 2,048-state hard-tail v2 design | After H0 review, inspect exact `b0ef0f9` / `45802e47…a350`. PASS may authorize score-free capture/controller implementation only—not capture, labels or training. V1 is superseded. |
+| **P1 / human counterfactual H0** | Review the frozen score-free 384/128 design/audit packet | Explicitly accept or reject the historical name-derived identity limitation. PASS may authorize implementation of the counterfactual execution controller only. It does not authorize outcomes, labels, training or strength compute. Raw imitation/agreement remain controls. |
 | **P2 / S3a confirmation** | Confirm a positive screen against the live champion | Only conditional on terminal PASS: freeze and externally review an 8,192-cluster one-shot packet, then launch once. No automatic promotion. |
 | **P2 / experiment infrastructure** | Make reviewed jobs cheaper to launch correctly | Introduce one immutable `ExperimentSpec`/receipt boundary for code, data, policy, ballot, sampler, continuation, actor, seeds, metric, null, work, stop rule and output. Scheduling may automate reviewed work; it may not select or promote. |
 | **P2 / HUMAN-C1 instrumentation** | Make the people-facing gate executable without contaminating training | Freeze an off-by-default room/session assignment and logging contract: controlled 2-human-team versus 2-bot-team layout, hidden candidate/champion arm, exact policy/image identity, consented pseudonymous participant/session IDs, and a physically separate evaluation log root that the human-corpus builder also refuses by tag. No human experiment launches in T3. |
@@ -65,7 +71,8 @@ T3 is complete when:
 2. a PASS has a frozen, externally reviewed confirmation packet, or a
    SELECT NONE has an explicit immutable closeout;
 3. S4 point-banking has reviewed mechanism code and a fresh screen/preflight
-   packet (now frozen at 64 states, review open; not necessarily positive); and
+   packet (now frozen at 64 states with full generation replay, rereview open;
+   not necessarily positive); and
 4. Teacher Stage C has a reviewed design packet but has not generated labels
    without separate authority; and
 5. the refreshed human corpus and a leakage-safe counterfactual H0 packet are
@@ -81,8 +88,8 @@ unreviewed strength compute, training, promotion and production changes.
    evidence twice.
 2. Obtain independent S4 v2 review, then run its already-frozen 64-state exact
    screen once. A positive screen only opens full-game packet review.
-3. **done:** freeze no-compute Teacher Stage-C and H0 packets. Queue H0 review
-   first, then Stage C; neither packet may capture, label or train.
+3. **done:** freeze no-compute Teacher Stage-C v2 and H0 packets. Queue H0
+   review first, then Stage C; neither packet may capture, label or train.
 4. Keep Mini on the long reviewed S3a job and use Air for bounded reviewed
    work only. Idle compute is not a reason to invent an unregistered run.
 5. Define the next real product gate as candidate-versus-champion performance

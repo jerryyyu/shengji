@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 11:36 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 12:08 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,8 +8,8 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | `s3a-bury-duel-screen-153m-v1` | **RUNNING / OUTCOME SEALED.** Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight shards × 256. Latest count-only heartbeat: `78,78,75,79,77,75,76,76` (614/2,048). Never inspect shard outcomes, retry, extend or move the pinned checkout. |
-| Air | none | **FREE / S4 V2 SCORE-FREE CAPTURE COMPLETE.** Exact `1b35fb7`, 64 states at `4538be85…6b5f`; no outcomes. The exact screen awaits external review. Use Air only for bounded code/tests or a separately reviewed packet. |
+| Mini | `s3a-bury-duel-screen-153m-v1` | **RUNNING / OUTCOME SEALED.** Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight shards × 256. Latest count-only heartbeat: `97,96,94,98,95,95,95,95` (765/2,048). Never inspect shard outcomes, retry, extend or move the pinned checkout. |
+| Air | none | **FREE / S4 V2 SCORE-FREE REPLAY COMPLETE.** Capture `4538be85…6b5f`; independent 69,047-deal generation replay `3079fb16…f0a9`; no outcomes. The exact screen remains on external rereview. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
 ## S3a legal next action
@@ -36,8 +36,9 @@ The canonical numbers and meanings are in the results table in
 
 | date | job | terminal verdict | anchor |
 |---|---|---|---|
-| 08-09 | Teacher Stage-C design freeze | **NO-COMPUTE COMPLETE / REVIEW QUEUED** | exact `94cfc1e`; 1,024/512/512 DESIGN/CALIB/REPORT; packet `4df94e6c…13354` |
+| 08-09 | Teacher Stage-C design freeze v2 | **NO-COMPUTE COMPLETE / REVIEW QUEUED AFTER H0** | exact `b0ef0f9`; 1,024/512/512 DESIGN/CALIB/REPORT; packet `45802e47…a350`; v1 superseded |
 | 08-09 | Human H0 design freeze | **SCORE-FREE COMPLETE / REVIEW QUEUED** | exact `9770313`; 384 DESIGN + 128 AUDIT; packet `9ff160a9…247d3`; no outcomes computed |
+| 08-09 | S4 v2 generation replay | **SCORE-FREE COMPLETE / REREVIEW OPEN** | exact verifier `b0ef0f9`; all 69,047 ascending deals rescanned and all 64 states rebuilt exactly; witness `3079fb16…f0a9`; no outcomes |
 | 08-09 | S4 fresh state capture v2 | **SCORE-FREE COMPLETE / REVIEW OPEN** | exact `1b35fb7`; 64 unique deals (32/role); states `4538be85…6b5f`; Air native `d14eefdd…ebe2e0`; no outcomes computed |
 | 08-09 | S4 fresh state capture v1 | **HOLD / CLOSED WITHOUT OUTCOMES** | exact `402c012`; state asset internally valid, but claimed material digest was irreproducible and test counts were unpinned; replaced by fresh v2 rather than reused |
 | 08-09 | Teacher-v3 fresh audit | **PASS / STAGE-C DESIGN** | gate `8a1532b7…91f8`; supervisor `02f4f8b…6f237`; adapter `56ccefbd…c2442` |

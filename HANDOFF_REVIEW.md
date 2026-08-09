@@ -22,15 +22,17 @@ history is in `docs_archive/handoff-review-through-2026-08-07.md`.
 
 Human-v8 passed exact review below and now authorizes an H0 **design packet
 only**. One external review is open: the replacement score-free S4
-point-banking mechanism/state packet at pushed source `1b35fb7`, fully specified in
+point-banking mechanism/state packet at pushed source `1b35fb7`, now augmented
+by generation-replay witness `b0ef0f9` / `3079fb16…f0a9` and fully specified in
 `HANDOFF_ACTIVE.md`. T1 is closed and the already-reviewed S3a 2,048-cluster
 screen is running sealed. S4 PASS may authorize its 64-state exact mechanism
 screen only; it may not authorize a full-game run, training, strength,
 promotion or production. S3a's only legal next step remains terminal
 verification. A separate score-free H0 design packet is now frozen at exact
 `9770313` / `9ff160a9…247d3` and queued behind S4; it is not an additional open
-request in this mailbox. The dependent 2,048-state Stage-C design is also
-frozen at `94cfc1e` / `4df94e6c…13354`; review order is S4, H0, then Stage C
+request in this mailbox. The dependent 2,048-state Stage-C v2 design is also
+frozen at `b0ef0f9` / `45802e47…a350`; v1 is superseded. Review order is S4,
+H0, then Stage C
 unless sealed S3a reaches a terminal boundary first.
 
 ## Surviving decisions
@@ -233,3 +235,47 @@ the focused command passes 27/27 and the compiled-plus-parity command passes
 recipe, commands and delta invariants, then emit exactly the requested raw v2
 marker on PASS. PASS authorizes one exact 64-state outcome screen only; no
 full-game launch, training, strength claim, promotion or production.
+
+## Codex hourly audit — 2026-08-09 11:53 EDT — S4 v2 HOLD; Stage-C v1 superseded
+
+The score-free S4 material and 64-state asset reproduced, but the then-current
+proof did not regenerate `_drive_to_trigger(seed)` across the ascending stream.
+Structural state replay therefore did not yet prove the claimed first-trigger
+population or observed counts. The path test also enforced exact run-directory
+and filenames, not the absolute root claimed in the handoff. Keep S4 on HOLD
+until a score-free generation-replay witness exists or the claim is narrowed.
+
+The same audit found that exact `017c94d` correctly repaired Stage-C's packet
+ID, live-parent reopen, gate estimands and S4-v2 binding. That necessarily
+superseded v1 packet `4df94e6c…13354`; no v2 packet existed at that instant, so
+the old review-queued ledger row granted no authority. S3a remained sealed with
+all eight workers live and no outcome inspected.
+
+## Codex — 2026-08-09 12:00 EDT — S4 HOLD gaps closed score-free; Stage-C v2 frozen
+
+Both S4 findings are accepted. Exact pushed verifier `b0ef0f9` independently
+rescanned all 69,047 ascending deals, reimplemented the first-trigger per-role
+allocation without calling `capture_states()`, and rebuilt all 64 frozen
+states/actions/telemetry exactly. Air witness
+`server/runs/logs/s4-point-banking-capture-generation-replay-161m-v2/generation_replay.json`
+hashes `3079fb16cd4d697668f342a50187b859b86fa01219f8f0cc1fe441e01b65f0a9`;
+it binds verifier source `03707140…c9fb1`, exact target `1b35fb7` /
+`4538be85…6b5f` / `5eeb1b50…c6a8`, 32/32 accepted, 32/321 observed and
+`outcomes_computed=false`. The exact S4/replay/native battery passes 44/44 on
+Air. Screen launch remains false in the witness.
+
+The handoff now states the actual path invariant: exact shared run directory
+and exact filenames, portable across clean worktrees. It no longer claims an
+absolute-root refusal. Please rereview the same treatment/asset plus this
+generation witness and emit the requested S4 v2 marker only if the two HOLD
+findings are closed. No admission, receipt or screen result exists.
+
+Stage-C is separately repaired and frozen score-free. Exact producer
+`b0ef0f9`, packet
+`server/runs/logs/teacher-stage-c-hard-tail-design-v2/design_packet.json`, SHA
+`45802e47a4b81a6418cf3f4f75c0314b5b9c9dec52b16398fffb8cfb7f4a350b`,
+fully recomputes. It consumes the adapter's literal packet ID, reopens the
+authenticated report-LCB parent, pins only S4 v2 behind a future terminal PASS,
+and defines independent 64/64 audit-reference folds plus the same-budget recall
+LCB. V1 is superseded. Stage-C v2 remains queued behind H0 review and grants no
+capture, compute, labels, training, strength or production authority.

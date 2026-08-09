@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 11:36 EDT. This is the executable mailbox, not a
+Last compacted: 2026-08-09 12:08 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, live compute in `JOBS.md`,
 queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 
@@ -9,17 +9,17 @@ queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 | area | status | next legal action |
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 measured `+0.338 +/- 0.068` versus `mc-strong`. Keep release 16 as runtime rollback and `mc-strong` as policy rollback. |
-| T1 Teacher / Stage C | **T1 COMPLETE + 2,048-STATE DESIGN FROZEN** | Adapter `56ccefbd…c2442`; exact producer `94cfc1e`, packet `4df94e6c…13354`. Queue design review after its H0 dependency; no capture, labels, compute or training. |
+| T1 Teacher / Stage C | **T1 COMPLETE + REPAIRED 2,048-STATE V2 DESIGN FROZEN** | Adapter `56ccefbd…c2442`; exact producer `b0ef0f9`, packet `45802e47…a350`. V1 is superseded before review. Queue v2 review after H0; no capture, labels, compute or training. |
 | T2 S3a structured bury | **2,048-CLUSTER SCREEN RUNNING / SEALED** | Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight Mini shards × 256. Count-only monitoring, then one terminal verify. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The first frozen treatment cluster exceeded the 250k-node cap. Do not retry or relax v2. |
 | T2 learner O0-v2 | **COMPLETE / SELECT NONE** | Gate `0dbd9aa8…f24e` independently replayed. O1 and production remain unauthorized. |
-| S4 point banking | **V1 CLOSED HOLD / FRESH SCORE-FREE V2 REVIEW OPEN** | Exact source `1b35fb7`, asset `4538be85…6b5f`; treatment/null outcomes are uncomputed. Review may authorize this one state screen only. |
+| S4 point banking | **V1 CLOSED / V2 GENERATION REPLAY COMPLETE / REREVIEW OPEN** | Exact treatment `1b35fb7`, asset `4538be85…6b5f`; independent score-free replay `b0ef0f9` / `3079fb16…f0a9`. Treatment/null outcomes remain uncomputed. |
 | Human corpus / H0 | **V8 REVIEW PASS + SCORE-FREE H0 PACKET FROZEN** | Corpus `b9699790…16553`; exact packet producer `9770313`, packet `9ff160a9…247d3`. Queue its design review after S4; no execution, labels, training or strength. |
 | External review | **OPEN / S4 ONLY** | Review the exact S4 packet below. S3a remains already reviewed/sealed; human-v8 is closed PASS. |
 
 The latest status-only S3a heartbeat still has all eight workers live with no
 completed shard. The latest cluster-count snapshot was
-`78,78,75,79,77,75,76,76 / 256` (614/2,048). Outcomes remain unread.
+`97,96,94,98,95,95,95,95 / 256` (765/2,048). Outcomes remain unread.
 
 ## Active milestone — T3 human-witness challenger flywheel
 
@@ -43,12 +43,15 @@ T3 exits only after all four boundaries below are satisfied:
    deals, binds its executable material recipe and Air native runtime, and
    verifies by full replay; no exact outcome has been computed. External review
    gates the one-shot exact state screen. The sign is not assumed.
-3. **Review the frozen Teacher Stage C design.** Exact `94cfc1e` defines 2,048
+3. **Review the frozen Teacher Stage C design.** Exact `b0ef0f9` defines 2,048
    fresh states: 1,024 DESIGN, 512 CALIB and 512 REPORT, with separate play and
    bury surfaces. It spends hard-tail gold labels on uncertainty,
    disagreement, exact-late and point-banking states while preserving an
    ordinary anchor. Human examples are DESIGN diagnostics only and cannot
-   enter CALIB/REPORT. Packet review precedes state capture, labels and compute.
+   enter CALIB/REPORT. V2 also consumes the adapter's literal packet ID,
+   reopens the exact live parent, conditionally binds S4 v2, and defines the
+   regret/recall estimands. Packet review precedes state capture, labels and
+   compute; v1 `4df94e6c…13354` is superseded.
 4. **Review the frozen human H0 design.** The August 9 evidence-grade
    Fly-snapshot-only rebuild accepts 2,830 plays and 45 buries from 122 fully
    replayed rounds, counts seven incomplete rounds, and finds 25 legal
@@ -56,8 +59,12 @@ T3 exits only after all four boundaries below are satisfied:
    Claude's corpus review passed. Exact `9770313` now freezes 384 DESIGN and
    128 disjoint AUDIT play keys plus all 36/9 human buries, using human actions
    as proposals rather than truth. The packet is score-free and independently
-   verifies; queue its review after S4. HUMAN-C1 evaluation games can never
-   train or select the candidate.
+   verifies. Historical identity is pseudonymized from names, so the split is
+   name-ID/deal-disjoint but cannot prove true-person disjointness if one
+   person changed names; review must accept this as a diagnostic-only H0
+   limitation. Queue its review after S4. HUMAN-C1 evaluation games instead
+   require stable consented session identity and can never train or select the
+   candidate.
 
 Active `/goal`:
 
@@ -148,9 +155,23 @@ claims. Review this fresh replacement only:
 Delta-specific correctness fixes are part of this review: the secondary
 house-rule utility now distinguishes 80 (`+0.5`) from 120 (`+1.5`), the full
 admission object must match exactly, capture/runtime/native/material fields
-fully verify, canonical paths refuse alternates, and a one-shot receipt consumes
-the namespace before the first outcome. `verify-screen` fully recomputes any
-terminal artifact. No `screen.json`, receipt or admission exists yet.
+fully verify, exact run-directory/filename relationships refuse alternate
+artifact names, and a one-shot receipt consumes the namespace before the first
+outcome. The namespace is deliberately portable across clean worktrees; it was
+never an absolute-root invariant. `verify-screen` fully recomputes any terminal
+artifact. No `screen.json`, receipt or admission exists yet.
+
+The 11:53 audit correctly noted that structural replay alone did not prove the
+ascending population. Exact pushed verifier `b0ef0f9fe59e15c1618ae25e7dfa5ddd851bd94e`
+therefore rescanned the entire score-free stream on Air without calling an
+outcome scorer. Canonical witness
+`/Users/jerryyu/Projects/shengji/server/runs/logs/s4-point-banking-capture-generation-replay-161m-v2/generation_replay.json`
+has SHA-256 `3079fb16cd4d697668f342a50187b859b86fa01219f8f0cc1fe441e01b65f0a9`.
+It independently selected the first 32 triggers per role in ascending order,
+stopped at deal 69,047, reproduced observed supply 32/321, and rebuilt all 64
+stored states/actions/telemetry exactly. Its own source SHA is
+`03707140…c9fb1`; the exact compiled battery passes 44/44. The witness grants
+review only and leaves screen launch false.
 
 Check both named utility witnesses, baseline contest preservation, last-seat
 and higher-reserve semantics, role symmetry, matched-null work, deterministic
@@ -173,13 +194,17 @@ After the S4 review closes, the next request is exactly one of:
   one-shot controller and authority boundary.
 - **Teacher Stage-C design review**: inspect strata, split exclusion, label
   escalation, exact data contract and explicit no-compute/no-training flags.
-  Exact producer `94cfc1ebed8096a88bebd12a4adddfe2396f0cfd`;
+  Review v2 only after H0. Exact producer
+  `b0ef0f9fe59e15c1618ae25e7dfa5ddd851bd94e`;
   canonical packet
-  `/Users/jerryyu/Projects/shengji/server/runs/logs/teacher-stage-c-hard-tail-design-v1/design_packet.json`,
-  SHA-256 `4df94e6ce71a1de94cd83ab125a87c705b737d27ce49d1b4c5e7e13e09a13354`.
+  `/Users/jerryyu/Projects/shengji/server/runs/logs/teacher-stage-c-hard-tail-design-v2/design_packet.json`,
+  SHA-256 `45802e47a4b81a6418cf3f4f75c0314b5b9c9dec52b16398fffb8cfb7f4a350b`.
+  V1 `94cfc1e` / `4df94e6c…13354` is superseded and grants no review.
 - **Human H0 design-packet review**: inspect source/encoder hashes, pseudonymous
   player/deal splits, replay/rejection counters, action-union semantics,
-  continuation comparison and HUMAN-C1 evaluation exclusion. Exact producer
+  continuation comparison and HUMAN-C1 evaluation exclusion. Explicitly judge
+  whether name-ID/deal disjointness is sufficient for this diagnostic-only
+  pilot despite not proving true-person disjointness. Exact producer
   `977031386ed514239c181f6fba8c636f7b588ae0`; canonical packet
   `/Users/jerryyu/Projects/shengji/server/runs/logs/human-v8-h0-counterfactual-pilot-v1/design_packet.json`,
   SHA-256 `9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3`.

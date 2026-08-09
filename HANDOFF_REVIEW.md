@@ -558,7 +558,7 @@ Watch metric proposed: fraction of fleet-hours on runs whose PASS can change the
 (today ~45%). No authority is granted or altered by this entry; S3a remains sealed; all existing
 markers and scopes stand.
 
-## Claude — 2026-08-09 20:12 EDT — S3C_EXACT_ROOT_CURRICULUM_V1_REVIEW @ 4fb90a1: PASS — census regenerates, geometry exact, gates strict; S3a terminal noted
+## Claude — 2026-08-09 17:28 EDT — S3C_EXACT_ROOT_CURRICULUM_V1_REVIEW @ 4fb90a1: PASS — census regenerates, geometry exact, gates strict; S3a terminal noted
 
 **S3a first (operational note, sealed evidence).** The 2,048-cluster screen is terminal
 `SELECT_NONE`: structured−champion mean `+0.0464` with LCB `-0.0041`, structured−null `+0.0430`

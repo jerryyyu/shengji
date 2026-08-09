@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 17:25 EDT
+## Current synthesis — 2026-08-09 17:34 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -73,11 +73,13 @@ what those results change in the research plan.
   re-entering. S3b v2 remains closed on its 250k-node capacity failure. S3a's
   structured bury proposals beat every control on the selected 512-state
   objective, but the fresh 2,048-cluster complete-round screen terminally
-  returned **SELECT NONE**. Aggregate `20609613…271f` and final
-  `32156d79…c9ff` verified. This is the useful distinction the flywheel needs:
+  returned **SELECT NONE**: structured-minus-champion `+0.0464`, LCB
+  `-0.0041`; aggregate `20609613…271f` and final `32156d79…c9ff` verified.
+  This is the useful distinction the flywheel needs:
   candidate generation improved locally, while the composed policy did not
-  earn confirmation. Close the exact recipe without tuning or retry; retain
-  its disagreement states as diagnostic/Teacher supply.
+  earn confirmation. Close the consumed stream without tuning or retry; retain
+  its disagreements as diagnostic/Teacher supply. Only a separately
+  preregistered fresh larger design could revisit the near-miss.
 - **Point-banking S4:** v1 is closed HOLD without outcomes because its claimed
   material digest did not reproduce. Exact `1b35fb7` repaired that evidence
   boundary and a secondary utility bug while preserving the observed
@@ -113,9 +115,10 @@ what those results change in the research plan.
   local and Air two-root reviews. The 768 unique-deal roots are balanced 64 per
   within-trick offset at each one-/two-/three-card band. One-card roots all have
   one legal action; two-card roots have median 2/max 3 and three-card roots
-  median 3/max 7. This establishes natural supply and bounded root geometry,
-  not solver capacity or strength. External packet review precedes one-card
-  controller implementation; no solver/screen launch is authorized.
+  median 3/max 7. Claude independently passed the curriculum at marker commit
+  `084ba7e`. This establishes natural supply and bounded root geometry, not
+  solver capacity or strength. It authorizes score-free one-card controller
+  implementation only; no solver/screen launch is authorized.
 - **Human data:** the atomically refreshed Fly-snapshot-only `human_v8` corpus
   passed independent publication review at producer `b52dc33`, source manifest
   `07ff18fb…a5e` and corpus manifest `b9699790…16553`. It contains 2,830 plays,
@@ -368,12 +371,13 @@ decision tree.
    binding now; review still precedes capture, labels, compute and training. Passing
    this design is not “building a dataset”: Stage C becomes real only when its
    2,048 states and labels are published under a later reviewed execution.
-5. **Review the frozen S3c curriculum.** Exact producer `0b96fae`, asset commit
-   `4fb90a1`, census `23632609…b52a` and packet `df102428…9eca` now bind the
-   score-free one→two→three-card path. This is a new bounded formulation after
-   S3b's four-card capacity failure, not a retry or strength run. Human prefixes
-   supply witnesses; fresh deal-disjoint prefixes own formal selection. Review
-   PASS may authorize one-card controller implementation only.
+5. **Implement the passed S3c one-card controller.** Exact producer `0b96fae`,
+   asset `4fb90a1`, census `23632609…b52a` and packet `df102428…9eca` bind the
+   score-free one→two→three-card path; Claude passed the design at `084ba7e`.
+   This is a new bounded formulation after S3b's four-card capacity failure,
+   not a retry or strength run. Human prefixes supply witnesses; fresh
+   deal-disjoint prefixes own formal selection. The PASS authorizes one-card
+   controller implementation only—not solver execution.
 6. **Route the loss-forensics gap through an S5 replay gate.** Bind the same
    frozen Fly source manifest, reconstruct bot-seat losing follows, enumerate
    all legal lower-point alternatives, record production-ballot membership and
@@ -384,10 +388,11 @@ decision tree.
 T3 exits with S3a immutably closed, the reviewed S4 whole-game screen launched
 or terminally resolved, bounded reviewed H0 and Stage-C controllers/contracts,
 and the leakage-safe human ladder plus reviewed S3c score-free feasibility
-asset. S3a and the S4 launch conditions are already satisfied. H0 controller
-review, Stage-C-v3 freeze/review and S3c design review remain. A review is a
-routing boundary, not the milestone's scientific output. S5 replay is useful
-support work and does not silently expand this exit gate.
+asset. S3a, the S4 launch condition and S3c design review are already satisfied.
+H0 controller review and Stage-C-v3 freeze/review remain. A review is a routing
+boundary, not the milestone's scientific output. S5 replay and the newly
+authorized S3c one-card controller are useful follow-on work and do not
+silently expand this exit gate.
 
 ### T4 — first closed stronger-Teacher generation
 

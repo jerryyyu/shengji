@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 17:25 EDT. This is the executable mailbox, not a
+Last compacted: 2026-08-09 17:34 EDT. This is the executable mailbox, not a
 history. Terminal conclusions live in `AI_POLICIES.md`, live compute in
 `JOBS.md`, queue order in `BACKLOG.md`, and durable review records in
 `HANDOFF_REVIEW.md`.
@@ -10,11 +10,11 @@ history. Terminal conclusions live in `AI_POLICIES.md`, live compute in
 | area | status | next legal action |
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 measured `+0.338 +/- 0.068` signed levels versus `mc-strong`. |
-| S3a structured bury | **TERMINAL SELECT NONE** | Exact verifier accepted all 2,048 clusters; aggregate `20609613…271f`, final `32156d79…c9ff`. Close this recipe: no retry, tuning, confirmation or pooled inference. |
+| S3a structured bury | **TERMINAL SELECT NONE** | Structured-minus-champion was `+0.0464`, LCB `-0.0041`; aggregate `20609613…271f`, final `32156d79…c9ff`. No retry, tuning, confirmation or pooling. Any revisit must be a separately preregistered fresh larger design. |
 | S4 point banking | **2,048-CLUSTER MINI SCREEN RUNNING / SEALED** | Exact `cad3992`, packet `17036e63…1385`, admission `1d99bb55…bdbf`, receipt `20a420d2…5cc`. Count/status monitoring only, then one terminal verify. |
 | Human H0 | **CONTROLLER FROZEN / REVIEW OPEN / ZERO OUTCOMES** | Producer `931f504`, asset `ff277b4`, packet `13d9a97f…61fc`. Review the controller below. PASS may authorize one diagnostic execution receipt; it does not itself execute, train or promote. |
 | Teacher Stage C | **T1 COMPLETE / V2 HELD** | Rebind the score-free design to passed H0-v3/controller semantics only after the controller review closes. No state capture, labels, compute or training. |
-| S3c small endgames | **768-ROOT CURRICULUM FROZEN / REVIEW QUEUED** | Producer `0b96fae`, asset `4fb90a1`, packet `df102428…9eca`. Resume after the active H0 review; no solver outcome exists. |
+| S3c small endgames | **DESIGN PASS / ONE-CARD CONTROLLER IMPLEMENTATION ONLY** | Claude marker at `084ba7e` passed producer `0b96fae`, asset `4fb90a1`, census `23632609…b52a` and packet `df102428…9eca`. Implement/freeze a score-free one-card capacity controller next; no solver run or outcome. |
 | S5 point protection | **REPLAY HYPOTHESIS ONLY** | Reconstruct bot-seat losing follows and prove an avoidable lower-point legal action still exists before designing a treatment. |
 | HUMAN-C1 | **PARKED / NO TRAFFIC** | Preserve the inert seam. Per strategy review, defer further infrastructure until a challenger beats report-LCB in confirmation. |
 
@@ -31,13 +31,14 @@ real whole-game test.
 | **T3.3 H0 bounded design** | Let human and V11 actions expand the bot's ideas, but judge them fairly instead of copying them. | **Closed design PASS** at `239f13c`; exact v3 packet `4d3f0a35…8cc3c`. |
 | **T3.4 H0 controller** | Identify which human/V11/random proposals survive fresh rollout evaluation and can seed better ballots or Teacher examples. | **Implementation and immutable packet complete.** External review is the only remaining T3.4 gate; no world or outcome has been sampled. |
 | **T3.5 Stage-C-v3 contract** | Spend expensive labels on uncertainty, disagreement, point play, bury and late states rather than ordinary heuristic self-play. | V2 binds obsolete H0. Rebind/freeze v3 after H0 controller review; no dataset exists yet. |
-| **T3.6 S3c feasibility** | Start exact search at tiny natural endgames, then grow one card at a time instead of retrying the failed four-card jump. | Census/curriculum frozen and reproduced. External review remains; no solver run. |
+| **T3.6 S3c feasibility** | Start exact search at tiny natural endgames, then grow one card at a time instead of retrying the failed four-card jump. | **T3 design gate complete.** Census/curriculum reproduced and external review passed at `084ba7e`. One-card controller implementation is newly authorized; no solver run. |
 | **Human evaluation boundary** | Ensure a bot that beats bots can ultimately be tested honestly against people. | `human_v8` is provenance-verified and training-excluded as declared. HUMAN-C1 traffic work is parked until a real challenger exists. |
 
 Active `/goal`:
 
 > Complete T3 human-witness challenger readiness; terminally preserve S3a;
-> run only the reviewed S4 screen; freeze/review H0, Stage-C and S3c contracts;
+> run only the reviewed S4 screen; freeze/review H0 and Stage-C contracts;
+> preserve the reviewed S3c path;
 > define the leakage-safe human ladder; stop before unreviewed strength
 > compute, training, promotion or production change.
 
@@ -138,8 +139,8 @@ production.
 ## Queued after H0 review
 
 1. Rebind/freeze Stage-C-v3 without capturing states or labels.
-2. Resume the S3c curriculum review (`0b96fae` / `4fb90a1` /
-   `df102428…9eca`); PASS may authorize one-card controller implementation only.
+2. Implement/freeze the score-free S3c one-card capacity controller under the
+   `084ba7e` PASS. Do not run the solver or infer strength.
 3. Build the S5 score-free bot-decision replay census if coding capacity
    remains. Do not infer a treatment from aggregate human-loss forensics.
 

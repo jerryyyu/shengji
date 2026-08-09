@@ -598,3 +598,50 @@ Scope of this PASS: implementation of the score-free one-card capacity controlle
 or screen launch, no training, no strength claim, no promotion.
 
 S3C_EXACT_ROOT_CURRICULUM_V1_REVIEW {"schema":"s3c-exact-root-curriculum-review-v1","git":"4fb90a1242e467d5f69660ae03e4f164290202a1","producer_git":"0b96faeb4921bd87e71249dd3f7158861a46e124","census_sha256":"236326099dc9763c6a5941bcb2a90670c4e23ac390ea07a0e4ec5063fa50b52a","packet_sha256":"df1024280a77c60174a57c3273ba3624e672bec9afde023576fde0404df49eca","human_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","census_rows":768,"outcomes_computed":false,"independent_review":true,"one_card_controller_implementation_authorized":true,"solver_or_screen_launch_authorized":false,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}
+
+## Claude — 2026-08-09 22:24 EDT — H0 controller v2 and S3c one-card controller: both PASS — all load-bearing checks measured
+
+**Strength watch first:** the S4 duel screen is RUNNING sealed on Mini (336/2,048 clusters at 83
+minutes when measured, balanced shards, ~99% CPU x 8) — the fleet is fully committed to
+strength-capable compute this cycle.
+
+**H0_HUMAN_COUNTERFACTUAL_CONTROLLER_V2 @ source `6977dbb` / asset `d99f7e8`: PASS.**
+
+- Committed packet hashes exactly `3f68dc6e…7fcf`; focused 34/34 and the broader H0+Stage-C/B
+  battery 58/58 (controller + packet + stage_c_design + stage_b_readiness).
+- Cross-root `verify` from the clean source worktree reproduces `VERIFIED_FOR_CONTROLLER_REVIEW`
+  with the exact SHA, 557 rows replayed, 0 worlds sampled. First attempt refused on missing
+  RLCB-C1 aggregate/closeout — the portable live-parent authenticator measured refusing; supplying
+  the canonical artifacts produced the exact accept.
+- Runtime pins measured at verify (not only freeze): missing `SHENGJI_REQUIRE_VOIDS` refuses with
+  `set SHENGJI_REQUIRE_VOIDS=1`; `SHENGJI_UNIFORM_DEAL=1` refuses with the experimental-flag
+  message.
+- Durable-slot mutation: neutralizing the slot-consumed refusal turns exactly
+  `test_admission_slot_survives_receipt_deletion_and_blocks_reissue` AND
+  `test_receipt_publication_failure_still_consumes_admission` red — and the failure mode shows the
+  backup layer (`publish_exclusive` overwrite refusal) still firing. Slot publishes before the
+  receipt; deletion cannot reissue.
+- v3 design preserved: the marker binds design packet `4d3f0a35…8cc3c`, both row digests, the
+  17/33 caps and the 1,329,210-world ceiling — all values I verified at the v3 design review.
+  Scope: one future diagnostic receipt only; no execution, labels, training, strength, promotion.
+
+**S3C_ONE_CARD_CAPACITY_CONTROLLER_V1 @ source `e9db4a2` / asset `64dc65a`: PASS.**
+
+- Committed packet hashes exactly `f58d23b7…3874`; pinned battery 49/49.
+- Cross-root `verify` from the clean producer worktree reproduces
+  `VERIFIED_FOR_CONTROLLER_REVIEW` with the exact SHA, 64 roots replayed, 0 worlds, 0 exact
+  sessions.
+- Geometry by my own arithmetic: 64 roots at exactly 16 per within-trick offset, 27 attacker /
+  37 defender, 16 lead / 48 follow, 256 unique deterministic world seeds; caps 65,536 execution +
+  65,536 terminal-replay nodes, 256 per world session; offsets 0-2 one exact frontier, offset 3
+  none (forced terminal play).
+- Refusal semantics mutation: removing the first-refusal stop in `run_root` turns exactly
+  `test_run_root_stops_at_first_refusal_without_replacement` red; root is the refusal unit, no
+  retry/replacement, publications are digests and capacity counters only.
+- Admission slot publishes before receipt (result contract), exclusive publication test-covered.
+  Scope: one mechanics/capacity run only; a complete terminal opens two-card packet review only —
+  no solver/strength screen, training or production.
+
+H0_HUMAN_COUNTERFACTUAL_CONTROLLER_V2_REVIEW {"admission_slot_logical_path":"server/runs/locks/human-v8-h0-counterfactual-execution-v2.consumed.json","candidate_geometry_sha256":"876ed56bd8f436d58cb6f3d58774a0f06756afb4d8c98ffdb49d9424b545ff2b","compiled_fast_binary_sha256":"9c9e77fbdc4c6caceec195465155f37ec6369e409462fd838bc142bf8a0be4c1","controller_script_sha256":"108e6bb20983350db2a7b679cd080f29acf6128fa0557d4d0e7f1a1823eaf379","corpus_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","deletion_proof_one_shot":true,"design_packet_sha256":"4d3f0a35082c6957f2a468686b8eedbd6d7cbbf9540503fcea08cccf27c8cc3c","design_review_git":"239f13ce52a8be81108fdebf9bd0e96742e60133","fast_router_sha256":"f2506d5c51b8ad37303f04dce59899de0d7c1179633b08ce61f48eb86cec1a3e","git":"6977dbbdc77276b115faf941509b8034d7801bf0","independent_review":true,"labels_authorized":false,"max_candidate_worlds":1329210,"one_counterfactual_execution_authorized":true,"outcomes_computed_before_review":false,"packet_sha256":"3f68dc6ec6d5f90043f36c0a68847ca9ef510641e01760ac4fa11ebd6a6a7fcf","production_deployment":false,"production_promotion":false,"runtime_script_sha256":"ddf8b2504ff70d7af928e3c6f39c5a9e5071abd8eaea0c6af9c6719c2992a124","schedule_sha256":"f54ce37425707dfeea3563bbc5d635617943152166a82825a74e55ad00131793","schema":"human-h0-counterfactual-controller-review-v2","score_free_preflight_verified":true,"selected_bury_rows_sha256":"cdfe77dfbec0e97fb8935c5822239acd6db60c644c433c32a4445913459aa1e8","selected_play_rows_sha256":"18673b20ca0a5b1a8e476f3bcf45cf9d08f90f4244f9c5ee07cb8bd8cd47711d","source_manifest_sha256":"07ff18fb35f2fb987f18b37b5100172e2751681fbfed17285ce7d7035232aa5e","strength_claim":false,"strict_runtime_verified":true,"training_authorized":false,"v11_checkpoint_sha256":"cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003","verdict":"PASS","worlds_sampled_before_review":0}
+
+S3C_ONE_CARD_CAPACITY_CONTROLLER_V1_REVIEW {"census_sha256":"236326099dc9763c6a5941bcb2a90670c4e23ac390ea07a0e4ec5063fa50b52a","controller_script_sha256":"9f3cf108bf5f0706080a9f270f2c756f91c9b8cc6ed46cff53fa5b028d0468eb","design_packet_sha256":"df1024280a77c60174a57c3273ba3624e672bec9afde023576fde0404df49eca","design_review_git":"084ba7eba59cd0a317a50c4088f194d2376c1e03","exact_solver_sessions_before_review":0,"git":"e9db4a23457ff4221d342c9a422e50ea491fe7ab","independent_review":true,"max_execution_nodes":65536,"max_terminal_replay_nodes":65536,"one_card_capacity_execution_authorized":true,"outcomes_computed_before_review":false,"packet_sha256":"f58d23b74046dd04963b4f10fbf605030221219eef6d325c5e8319043643874a","production_deployment":false,"production_promotion":false,"root_geometry_sha256":"b2599bb50d8e2bd2762ac73af3206749e1f446eb5b971c1562e706883e48be0b","roots":64,"runtime_script_sha256":"5886fecfb11020d6b32488076e12356a02874499f2a42024d24fdf60fb4233c2","schedule_sha256":"8257499b8b613d02c899161bfd8ffac5579336dc54239ab443dfe5a7fad5e7de","schema":"s3c-one-card-capacity-controller-review-v1","score_free_preflight_verified":true,"solver_or_strength_screen_authorized":false,"strength_claim":false,"training_authorized":false,"two_card_packet_review_authorized":false,"verdict":"PASS","worlds":256,"worlds_sampled_before_review":0}

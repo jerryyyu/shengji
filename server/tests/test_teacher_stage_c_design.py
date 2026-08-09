@@ -185,6 +185,7 @@ def test_v2_packet_binds_fresh_s4_parent_and_exact_teacher_gates(
     parent = packet["authority_parent"]["live_parent"]
     assert parent["authenticator_schema"] == "live-champion-parent-v1"
     assert parent["reopened_at_packet_freeze"] is False
+    assert parent["mode"] == "smoke-expected-payload-only"
     assert parent["payload"]["champion_policy"] == "mc-s0-report-lcb"
     conditional = packet["label_contract"]["point_banking"]["conditional_s4"]
     assert conditional == stage_c.S4_CONDITIONAL
@@ -213,22 +214,29 @@ def test_real_packet_must_reopen_live_parent(
         "git": "c" * 40, "tree_dirty": False,
         "promotable": True, "script_sha256": "d" * 64,
     })
-    reopened = stage_c.LIVE_PARENT_AUTH.expected_parent()
-    monkeypatch.setattr(stage_c.LIVE_PARENT_AUTH,
-                        "require_live_champion_parent", lambda: reopened)
+    with pytest.raises(stage_c.StageCDesignError,
+                       match="requires --live-parent-repo"):
+        stage_c.reopen_live_parent(smoke=False, repo=None, python=None)
+
+    attestation = {
+        "authenticator_schema": stage_c.LIVE_PARENT_AUTH.SCHEMA,
+        "reopened_at_packet_freeze": True,
+        "mode": "explicit-clean-evidence-checkout",
+        "authenticator_git": "e" * 40,
+        "authenticator_script_sha256": "f" * 64,
+        "payload": stage_c.LIVE_PARENT_AUTH.expected_parent(),
+    }
     packet = stage_c.build_packet(
         tmp_path / "adapter.json", stage_c.ADAPTER_SHA256,
-        tmp_path / "h0.json", stage_c.H0_SHA256, smoke=False)
+        tmp_path / "h0.json", stage_c.H0_SHA256, smoke=False,
+        live_parent_attestation=attestation)
     assert packet["authority_parent"]["live_parent"][
         "reopened_at_packet_freeze"] is True
 
-    def refuse():
-        raise RuntimeError("parent unavailable")
-
-    monkeypatch.setattr(stage_c.LIVE_PARENT_AUTH,
-                        "require_live_champion_parent", refuse)
+    not_reopened = dict(attestation, reopened_at_packet_freeze=False)
     with pytest.raises(stage_c.StageCDesignError,
-                       match="live champion parent did not reopen"):
+                       match="reopen attestation drift"):
         stage_c.build_packet(
             tmp_path / "adapter.json", stage_c.ADAPTER_SHA256,
-            tmp_path / "h0.json", stage_c.H0_SHA256, smoke=False)
+            tmp_path / "h0.json", stage_c.H0_SHA256, smoke=False,
+            live_parent_attestation=not_reopened)

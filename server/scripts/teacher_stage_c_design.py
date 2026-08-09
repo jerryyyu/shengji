@@ -122,6 +122,87 @@ def _git(*args: str) -> str:
     ).stdout.strip()
 
 
+def reopen_live_parent(*, smoke: bool, repo: Path | None,
+                       python: Path | None) -> dict:
+    """Reopen the champion from an explicit clean evidence checkout.
+
+    The active Mini checkout owns the canonical RLCB-C1 artifacts while design
+    work normally happens in a separate clean worktree.  Importing the local
+    authenticator would silently redirect its canonical paths to that scratch
+    worktree.  Real freezes therefore execute the exact same authenticator from
+    an explicit evidence checkout, while binding its Git and script bytes.
+    """
+    if smoke:
+        payload = LIVE_PARENT_AUTH.expected_parent()
+        LIVE_PARENT_AUTH.require_parent_payload(payload)
+        return {
+            "authenticator_schema": LIVE_PARENT_AUTH.SCHEMA,
+            "reopened_at_packet_freeze": False,
+            "mode": "smoke-expected-payload-only",
+            "payload": payload,
+        }
+    if repo is None or python is None:
+        raise StageCDesignError(
+            "real Stage-C freeze requires --live-parent-repo and "
+            "--live-parent-python")
+    repo = repo.resolve()
+    python = python.resolve()
+    script = repo / "server/scripts/live_champion_parent.py"
+    if (not repo.is_dir() or not python.is_file() or not script.is_file()
+            or repo.is_symlink() or script.is_symlink()):
+        raise StageCDesignError("live-parent reopener path is not regular")
+    try:
+        git = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "HEAD"], check=True,
+            capture_output=True, text=True).stdout.strip()
+        status = subprocess.run(
+            ["git", "-C", str(repo), "status", "--porcelain"], check=True,
+            capture_output=True, text=True).stdout.splitlines()
+    except subprocess.CalledProcessError as exc:
+        raise StageCDesignError("live-parent evidence checkout is not Git") from exc
+    # The evidence checkout may receive an unrelated handoff-note edit while a
+    # sealed run owns it.  Requiring global cleanliness would make a Markdown
+    # mailbox block a source-hash authenticator.  Any server or deployment
+    # change still refuses; the authenticator itself rehashes every champion,
+    # engine, evaluator and binary input before returning.
+    relevant_dirty = []
+    for line in status:
+        path = line[3:] if len(line) >= 4 else line
+        paths = path.split(" -> ")
+        if any(item == "fly.toml" or item.startswith("server/")
+               for item in paths):
+            relevant_dirty.append(line)
+    if relevant_dirty:
+        raise StageCDesignError(
+            "live-parent evidence checkout has relevant dirty paths: "
+            + ",".join(relevant_dirty))
+    local_authenticator_sha = sha256_file(LIVE_PARENT_AUTH.__file__)
+    if sha256_file(script) != local_authenticator_sha:
+        raise StageCDesignError("live-parent authenticator source differs")
+    env = dict(os.environ)
+    env["SHENGJI_FAST"] = "1"
+    env["SHENGJI_REQUIRE_VOIDS"] = "1"
+    try:
+        completed = subprocess.run(
+            [str(python), str(script), "verify"], cwd=repo / "server",
+            env=env, check=True, capture_output=True, text=True)
+        payload = json.loads(completed.stdout)
+        LIVE_PARENT_AUTH.require_parent_payload(payload)
+    except (subprocess.CalledProcessError, ValueError, TypeError,
+            LIVE_PARENT_AUTH.ProtocolRefused) as exc:
+        raise StageCDesignError(
+            f"live champion parent did not reopen: {type(exc).__name__}: {exc}"
+        ) from exc
+    return {
+        "authenticator_schema": LIVE_PARENT_AUTH.SCHEMA,
+        "reopened_at_packet_freeze": True,
+        "mode": "explicit-clean-evidence-checkout",
+        "authenticator_git": git,
+        "authenticator_script_sha256": local_authenticator_sha,
+        "payload": payload,
+    }
+
+
 def producer_identity(*, smoke: bool) -> dict:
     git = _git("rev-parse", "HEAD")
     dirty = bool(_git("status", "--porcelain"))
@@ -220,17 +301,21 @@ def _split_geometry() -> dict:
 
 
 def build_packet(adapter_path: Path, adapter_sha256: str,
-                 h0_path: Path, h0_sha256: str, *, smoke: bool) -> dict:
+                 h0_path: Path, h0_sha256: str, *, smoke: bool,
+                 live_parent_attestation: dict | None = None) -> dict:
     adapter = validate_adapter(adapter_path, adapter_sha256)
     h0 = validate_h0(h0_path, h0_sha256)
-    try:
-        live_parent = (LIVE_PARENT_AUTH.expected_parent() if smoke else
-                       LIVE_PARENT_AUTH.require_live_champion_parent())
-    except Exception as exc:
-        raise StageCDesignError(
-            f"live champion parent did not reopen: {type(exc).__name__}: {exc}"
-        ) from exc
-    LIVE_PARENT_AUTH.require_parent_payload(live_parent)
+    if live_parent_attestation is None:
+        live_parent_attestation = reopen_live_parent(
+            smoke=smoke, repo=None, python=None)
+    if (not isinstance(live_parent_attestation, dict)
+            or live_parent_attestation.get("authenticator_schema")
+            != LIVE_PARENT_AUTH.SCHEMA
+            or live_parent_attestation.get("reopened_at_packet_freeze")
+            is not (not smoke)):
+        raise StageCDesignError("live-parent reopen attestation drift")
+    LIVE_PARENT_AUTH.require_parent_payload(
+        live_parent_attestation.get("payload"))
     geometry = _split_geometry()
     packet = {
         "schema": SCHEMA,
@@ -243,10 +328,8 @@ def build_packet(adapter_path: Path, adapter_sha256: str,
             "audit_supervisor_sha256": (
                 adapter["evidence"]["supervisor_progress"]["sha256"]),
             "live_parent": {
-                "authenticator_schema": LIVE_PARENT_AUTH.SCHEMA,
-                "reopened_at_packet_freeze": not smoke,
+                **live_parent_attestation,
                 "must_reopen_at_capture_and_label": True,
-                "payload": live_parent,
             },
         },
         "objective": (
@@ -464,6 +547,8 @@ def _parser() -> argparse.ArgumentParser:
         child.add_argument("--expected-h0-sha256", required=True)
         child.add_argument("--packet", required=True)
         child.add_argument("--expected-git")
+        child.add_argument("--live-parent-repo")
+        child.add_argument("--live-parent-python")
         child.add_argument("--smoke", action="store_true")
     return parser
 
@@ -472,9 +557,17 @@ def main() -> None:
     args = _parser().parse_args()
     if args.expected_git and _git("rev-parse", "HEAD") != args.expected_git:
         raise StageCDesignError("producer Git differs from expected Git")
+    live_parent_attestation = reopen_live_parent(
+        smoke=args.smoke,
+        repo=(Path(args.live_parent_repo)
+              if args.live_parent_repo is not None else None),
+        python=(Path(args.live_parent_python)
+                if args.live_parent_python is not None else None),
+    )
     expected = build_packet(
         Path(args.adapter), args.expected_adapter_sha256,
-        Path(args.h0_packet), args.expected_h0_sha256, smoke=args.smoke)
+        Path(args.h0_packet), args.expected_h0_sha256, smoke=args.smoke,
+        live_parent_attestation=live_parent_attestation)
     packet_path = Path(args.packet)
     if args.command == "freeze":
         publish_exclusive(packet_path, expected)

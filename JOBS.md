@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 18:24 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 19:15 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,8 +8,8 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | `s4-point-banking-duel-screen-100b-v2` | **RUNNING / OUTCOME SEALED.** Exact `cad3992`, packet `17036e63…1385`, admission `1d99bb55…bdbf`, receipt `20a420d2…5cc`; eight shards × 256. Latest count-only heartbeat: `35,34,32,33,34,34,35,33 / 256` (270/2,048), all workers live. Never inspect partial outcomes, retry, extend or move the pinned checkout. |
-| Air | none | **FREE.** Use it for exact controller review/tests or another already reviewed job. No unreviewed strength launch exists. |
+| Mini | `s4-point-banking-duel-screen-100b-v2` | **RUNNING / OUTCOME SEALED.** Exact `cad3992`, packet `17036e63…1385`, admission `1d99bb55…bdbf`, receipt `20a420d2…5cc`; eight shards × 256. Latest count-only heartbeat: `63,61,57,61,61,60,61,60 / 256` (484/2,048), all workers live at 19:15. Never inspect partial outcomes, retry, extend or move the pinned checkout. |
+| Air | none | **FREE.** Stage-C-v3 and S5 require review, while reviewed H0 and S3c are deliberate one-shot jobs better placed on Mini after S4 unless a separate exact Air placement is chosen. No unreviewed strength launch exists. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
 ## S4 legal next action
@@ -38,8 +38,10 @@ The canonical numbers and meanings are in the results table in
 | date | job | terminal verdict | anchor |
 |---|---|---|---|
 | 08-09 | S3a structured-bury full-game screen | **SELECT NONE / CLOSED** | exact `c599b42`; all 2,048 clusters verified; aggregate `20609613…271f`, final `32156d79…c9ff`; no confirmation, retry, tuning or promotion |
-| 08-09 | Human H0-v3 controller v2 | **SCORE-FREE FROZEN / REVIEW OPEN** | source `6977dbb`; asset `d99f7e8`; packet `3f68dc6e…7fcf`; 557/557 rows; 34/34 focused and 58/58 broader tests; strict runtime CLI refusals and deletion-proof admission; zero worlds/outcomes; no execution authority before PASS |
-| 08-09 | S3c one-card controller | **SCORE-FREE FROZEN / REVIEW OPEN** | source `e9db4a2`; asset `64dc65a`; packet `f58d23b7…3874`; 64 public roots; 49/49 tests; zero worlds/exact sessions; no execution/strength authority |
+| 08-09 | Teacher Stage-C design v3 | **SCORE-FREE FROZEN / REVIEW OPEN** | source `20bdb95`; asset `1a29418`; packet `f213314a…3b4`; 1,024/512/512 split, 20/33 caps, 10,494,720 max candidate-world work, zero recursive-MC continuations and zero states/labels |
+| 08-09 | S5 replay-census code | **CODE REVIEW OPEN / NO CENSUS** | draft PR #4; source `c7bba40`; 11 focused and 43 broader tests; code PASS may authorize one deterministic score-free freeze only |
+| 08-09 | Human H0-v3 controller v2 | **CONTROLLER PASS / ONE DIAGNOSTIC ELIGIBLE** | source `6977dbb`; packet `3f68dc6e…7fcf`; external marker at `cc1c293`; 557/557 rows, strict runtime and deletion-proof admission reproduced; zero worlds/outcomes |
+| 08-09 | S3c one-card controller | **CONTROLLER PASS / ONE MECHANICS RUN ELIGIBLE** | source `e9db4a2`; packet `f58d23b7…3874`; external marker at `cc1c293`; 64 roots / 256 worlds, zero pre-review worlds/exact sessions; no strength authority |
 | 08-09 | Human H0-v3 controller v1 | **HOLD / SUPERSEDED BEFORE OUTCOMES** | producer `931f504`; asset `ff277b4`; packet `13d9a97f…61fc`; runtime did not self-enforce compiled/strict-void mode and receipt deletion could reissue; preserved and replaced by frozen v2 |
 | 08-09 | S3c natural-prefix census + curriculum | **DESIGN PASS / ONE-CARD CONTROLLER IMPLEMENTATION ONLY** | producer `0b96fae`; asset `4fb90a1`; 768 roots; census `23632609…b52a`; packet `df102428…9eca`; Claude marker commit `084ba7e`; no solver/screen/training/strength authority |
 | 08-09 | S4 complete-round v2 preflight + packet | **PACKET PASS / MINI SCREEN RUNNING** | exact `cad3992`; preflight `fcc8b891…ee060`, 91.40 fleet-hours / 11.42 max-shard hours; packet `17036e63…1385`; Claude marker `51a864c`; admission `1d99bb55…bdbf`, receipt `20a420d2…5cc`; no confirmation/strength |

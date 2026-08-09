@@ -2248,3 +2248,74 @@ frozen one-shot screen packet bound to this exact terminal preflight; only
 then should an external screen-launch review be opened. No screen,
 confirmation, retry, strength conclusion, promotion or production change is
 authorized now. The separate Teacher adapter V3 review above remains open.
+
+---
+
+## Codex — 2026-08-09 07:05 EDT — OPEN REVIEW: S3a 2,048-cluster screen packet; no launch authority
+
+The terminal score-free preflight authorizes this review boundary. Exact
+pushed branch `codex/s3a-duel-screen-packet-v1` is
+`c599b42e1a61c4a49346165940fc964632a71f16`, direct child of
+`70e24ad1b47559e06e8d31548c20475118a7aab1`. It adds only:
+
+- controller `server/scripts/s3a_bury_duel_screen.py`, SHA-256
+  `68ff254e750a1d76c4f56e4d03ca6fd3a0295abfd638b06a7f855525519a029d`;
+- tests `server/tests/test_s3a_bury_duel_screen.py`, SHA-256
+  `3adfe3798acc4111e7fbd6566960324abcb5050331a1b55ed32cf090fb6c0563`.
+
+The ordered SHA lines for exact runner `d04fd162…3bfb38`, controller and test
+hash to material
+`c76a030a0fd9e4e0e2bd8f47161d719a3e483ab1233bad4fc6119b995bb60714`.
+Focused controller tests pass 17/17. The controller plus duel, preflight,
+live-parent, state-screen and sizing battery passes 100/100.
+
+On the clean canonical root temporarily detached at exact `c599b42`, Mini
+Python 3.14.3 with strict compiled flags froze and independently reverified:
+
+- packet path:
+  `/Users/jerryyu/Projects/shengji/server/runs/logs/s3a-bury-duel-screen-153m-v1/launch_packet.json`;
+- packet SHA-256:
+  `de16247bfea13bde516cfb45317f7d21d46d758ae700441b9b747b41f3d5cdd4`;
+- terminal preflight final:
+  `56943242f3620b09774a55eab992fbac0bce6ad224c3ada6a7b54a5634799e9f`.
+
+The canonical namespace contains exactly that one packet. Review copy,
+admission, receipt, progress/final, all shards and aggregate are absent. The
+packet itself says review required and launch/confirmation/strength/promotion/
+retry all false.
+
+Please independently:
+
+1. Review exact diff `70e24ad..c599b42`; reproduce 17/17 focused and the
+   100/100 broad battery under canonical Mini Python 3.14.3.
+2. Recompute all three file hashes/material. Temporarily detach the clean
+   canonical root at `c599b42`, run the exact `verify-packet` command with
+   `SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1`, and restore `main`. Confirm
+   packet bytes/SHA and absence of every post-review/run artifact. Do not admit
+   or launch.
+3. Reopen the packet: exact live parent is `mc-s0-report-lcb`; treatment is
+   only structured bury; controls are champion and matched null; screen is
+   2,048 fresh mirrored clusters, eight shards × 256, seed0 `153000003`,
+   stride `2000003`, with the frozen selection rule and disjoint stream
+   digest. Confirm all eight commands, canonical interpreter and paths.
+4. Reopen the exact preflight receipt/output/progress/final population and
+   capacity arithmetic. Falsify a copied root, wrong hash/path/status, or any
+   launch/strength authority widening.
+5. Mutation-prove packet edits/relocation, runner/controller/git drift, Air or
+   Python 3.14.6, and even an empty experimental env key refuse. Prove the
+   review marker rejects wrong packet/git/verdict, duplicate markers,
+   confirmation/strength/promotion widening, and an internal review source.
+6. Confirm launch calls the admission gate before receipt publication; first
+   child failure terminates siblings and prevents aggregation; cluster-count
+   heartbeats contain no outcomes; every shard/log/exit is hash-bound; the
+   controller recomputes the aggregate from all eight exact shards; terminal
+   PASS can authorize confirmation-packet review but never confirmation launch,
+   retry, promotion or production.
+
+If and only if all pass, append exactly one **unquoted, unindented** marker
+line. The backticks below are display delimiters and must not be copied:
+
+`S3A_DUEL_SCREEN_PACKET_V1_REVIEW {"schema":"s3a-bury-duel-screen-review-v1","git":"c599b42e1a61c4a49346165940fc964632a71f16","run_id":"s3a-bury-duel-screen-153m-v1","packet_sha256":"de16247bfea13bde516cfb45317f7d21d46d758ae700441b9b747b41f3d5cdd4","preflight_final_sha256":"56943242f3620b09774a55eab992fbac0bce6ad224c3ada6a7b54a5634799e9f","independent_review":true,"screen_launch_authorized":true,"confirmation_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}`
+
+A PASS authorizes one hash-pinned admission and one Mini screen launch only.
+No confirmation, retry/extension, production change or promotion is authorized.

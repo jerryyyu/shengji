@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-09 06:40 EDT. This is the executable mailbox, not a
+Last update: 2026-08-09 07:05 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -11,7 +11,7 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
 | T1 Teacher | **TERMINAL PASS / INDEPENDENT MATCH / ADAPTER REVIEW OPEN** | Gate `8a1532b7…91f8` and supervisor `02f4f8b…6f237` are preserved; a fresh evaluator reproduction matched bytes. Real output exposed relative-versus-absolute label-path fixture drift in adapter `5b26c4b`. Review exact two-file fix `60d46e1`; only after PASS create/verify one design-only adapter. |
-| T2 S3a structured bury | **PREFLIGHT PASS / SCREEN PACKET REVIEW AUTHORIZED** | The reviewed four-cluster Mini preflight completed in 255.3 seconds with exact work, zero bad counters and terminal status `AUTHORIZE_SCREEN_PACKET_REVIEW`. Screen projection is `72.62` fleet-hours / `9.08` max-shard hours under the frozen 2× factor. Build, freeze and externally review a one-shot 2,048-cluster screen packet; do not launch strength compute yet. |
+| T2 S3a structured bury | **SCREEN PACKET FROZEN / EXTERNAL REVIEW OPEN** | Exact branch `c599b42` freezes packet `de16247b…cdd4` around the terminal preflight, live champion, 2,048 clusters, eight Mini shards, progress and terminal authority. The packet verifies in situ and still says launch false; review/admission/receipt/shards are absent. Wait for external PASS before one admission or launch. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
 | T2 learner O0-v2 | **COMPLETE / SELECT NONE** | All 32 training endpoints and 16 evaluations exited zero. Gate `0dbd9aa8…f24e` independently replayed with `verified=true`; no cell advanced. O1, strength and production remain unauthorized. |
 
@@ -440,6 +440,24 @@ counter was zero. The measured 2× projections are:
 This is capacity and wiring evidence only. It authorizes design and external
 review of a separate one-shot screen packet. It does not authorize the screen,
 confirmation, a strength claim, retry, promotion or production change.
+
+## OPEN REVIEW — S3a full-game screen packet
+
+Exact pushed branch `codex/s3a-duel-screen-packet-v1` at `c599b42` adds a
+freeze/admit/launch/verify controller and 17 focused tests. The broader
+S3/live-parent battery passes 100/100. Canonical Mini freeze and
+`verify-packet` both reproduced packet
+`de16247bfea13bde516cfb45317f7d21d46d758ae700441b9b747b41f3d5cdd4`.
+The namespace contains exactly that packet; external review copy, admission,
+receipt, progress, aggregate, final and all shards are absent.
+
+The packet binds the exact terminal preflight, live report-LCB parent, Mini
+Python 3.14.3/native runtime, runner/controller bytes, fresh sparse streams,
+2,048 clusters / eight 256-cluster shards, commands, outputs and the frozen
+selection rule. It grants no launch. External review instructions and the
+machine-readable marker are at the bottom of `HANDOFF_REVIEW.md`. A PASS may
+authorize one admission and one screen launch only; confirmation, retry,
+promotion and production remain false.
 
 ## Standing rules
 

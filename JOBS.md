@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 06:40 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 07:05 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,7 +10,7 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | none | **FREE / S3a PREFLIGHT PASS:** the reviewed four-cluster score-free run ended `AUTHORIZE_SCREEN_PACKET_REVIEW`; final `56943242…e9f`. No screen is admitted until a separate one-shot packet passes external review. |
+| Mini | none | **FREE / S3a SCREEN REVIEW-GATED:** packet `de16247b…cdd4` at exact `c599b42` verifies but says launch false. External review, one admission and a fresh receipt are required before the 2,048-cluster screen. |
 | Air | none | **FREE / O0-v2 CLOSED:** all 32 training endpoints, 16 evaluations, terminal gate and independent replay completed. Gate `0dbd9aa8…f24e` is `SELECT_NONE` and independently `verified=true`. No O1/strength/production authority and no reviewed Air successor. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
@@ -54,6 +54,13 @@ preflight `09692f82…edf0` and final `56943242…e9f`. The 2× projection is
 `72.62` fleet-hours / `9.08` max-shard hours for the screen and `290.50` /
 `36.31` for confirmation. Its only authority is design and external review of
 the screen packet; no strength run has started.
+
+Exact screen controller `c599b42` is pushed. Controller/test/material SHAs are
+`68ff254e…029d` / `3adfe379…0563` / `c76a030a…0714`; 17/17 focused and
+100/100 broad S3/live-parent tests pass. The canonical deterministic packet is
+`de16247b…cdd4` and independently verifies. The namespace contains only the
+packet—no review copy, admission, receipt, progress, shard, aggregate or final.
+External packet review is the sole screen-launch gate.
 
 ### T2 learner
 

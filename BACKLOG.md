@@ -208,7 +208,7 @@ bot rather than imitate it.
 | **T2.4 / Teacher — TERMINAL PASS / SUPERSEDING ADAPTER REVIEW OPEN** | Convert a valid terminal audit into a Stage-C contract | Gate `8a1532b7…91f8` and supervisor `02f4f8b…6f237` are terminal; independent aggregation matched bytes. Real output exposed relative-versus-absolute label-path fixture drift. Exact `60d46e1` passes 30/30 and reopens the real evidence; external review must pass before one adapter is created. |
 | **T2.5 / learner — COMPLETE / SELECT NONE** | Test whether shared-public CRN, with margin sharpening isolated factorially, makes oracle access robust across seeds | All 32 training endpoints and 16 evaluations exited zero. Gate `0dbd9aa8…f24e` independently replayed with `verified=true`; neither cell advanced, so O1, strength and production remain unauthorized. |
 | **T2.6 / S3a duel — COMPLETE / PREFLIGHT PASS** | Prove the complete-round screen is wired and fits Mini before reading strength evidence | Exact contract `5e0f6ade…b44653` completed four score-free clusters in 255.3 seconds. Receipt `97280974…68ca`, preflight `09692f82…edf0`, final `56943242…e9f`; screen projection `72.62` fleet-hours / `9.08` max-shard hours. Terminal authority is screen-packet review only. |
-| **T2.7 / S3a duel screen — PACKET IMPLEMENTATION / REVIEW NEXT** | Test whether the positive state-level bury mechanism improves fresh complete-round utility against production | Freeze the existing 2,048-cluster, eight-shard, mirrored three-arm screen in a one-shot Mini packet bound to the terminal preflight, exact live parent, commands, progress, immutable outputs and aggregate gate. External PASS is required before launch. Screen PASS may authorize confirmation-packet review only; SELECT NONE is terminal for this recipe. |
+| **T2.7 / S3a duel screen — PACKET FROZEN / REVIEW OPEN** | Test whether the positive state-level bury mechanism improves fresh complete-round utility against production | Exact `c599b42`, controller `68ff254e…029d`, packet `de16247b…cdd4`; 17/17 focused and 100/100 broad tests pass. Canonical packet verification passed with no admission or run artifact. External PASS is required before one Mini launch. Screen PASS may authorize confirmation-packet review only; SELECT NONE is terminal for this recipe. |
 
 T2 launch readiness is achieved: T2.0 passed and S3a produced a valid positive
 mechanism screen. The next milestone is stronger: get S3a into one honest
@@ -225,10 +225,10 @@ in parallel. It does not require manufacturing a positive duel result.
    evaluations, the terminal gate and independent semantic replay completed.
    Preserve terminal `SELECT_NONE` at gate `0dbd9aa8…f24e`; no O1, strength or
    production action is authorized. Air has no reviewed successor launch.
-3. **Mini / S3a PREFLIGHT COMPLETE:** terminal final `56943242…e9f` authorizes
-   only screen-packet review. Implement, freeze and externally review the
-   one-shot 2,048-cluster screen packet. If that review passes, Mini's
-   conservative overnight critical path is `9.08` hours; no launch before it.
+3. **Mini / S3a PACKET REVIEW OPEN:** exact `c599b42` / packet
+   `de16247b…cdd4` is frozen, verifies and grants no launch. If external
+   review passes, admit once and run the eight-shard screen; Mini's
+   conservative overnight critical path is `9.08` hours.
 4. **Local/product:** continue passive release-17 timing collection; no policy
    or production change is part of this overnight sequence.
 

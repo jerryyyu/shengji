@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 13:35 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 13:55 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,7 +8,7 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | `s3a-bury-duel-screen-153m-v1` | **RUNNING / OUTCOME SEALED.** Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight shards × 256. Latest count-only heartbeat: `147,146,146,149,149,146,149,145` (1,177/2,048). Never inspect shard outcomes, retry, extend or move the pinned checkout. |
+| Mini | `s3a-bury-duel-screen-153m-v1` | **RUNNING / OUTCOME SEALED.** Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight shards × 256. Latest count-only heartbeat: `152,151,152,154,155,152,153,151` (1,220/2,048). Never inspect shard outcomes, retry, extend or move the pinned checkout. |
 | Air | none | **FREE.** Repaired S4 v2 score-free preflight passed at `fcc8b891…ee060`; full-game packet `17036e63…1385` is frozen but unreviewed and has no launch authority. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
@@ -36,10 +36,10 @@ The canonical numbers and meanings are in the results table in
 
 | date | job | terminal verdict | anchor |
 |---|---|---|---|
-| 08-09 | S4 complete-round v2 preflight + packet | **CAPACITY PASS / PACKET REVIEW QUEUED** | exact `cad3992`; preflight `fcc8b891…ee060`, 91.40 fleet-hours / 11.42 max-shard hours; packet `17036e63…1385`; no launch/strength |
+| 08-09 | S4 complete-round v2 preflight + packet | **CAPACITY PASS / PACKET REVIEW OPEN** | exact `cad3992`; preflight `fcc8b891…ee060`, 91.40 fleet-hours / 11.42 max-shard hours; packet `17036e63…1385`; obsolete-v1 HOLD superseded; no launch/strength |
 | 08-09 | S4 point-banking exact-state screen | **MECHANISM PASS / FULL-GAME PACKET REVIEW** | screen `abd9f36f…cdc00`; receipt `90124eb6…f526b`; overall point delta `+5.156`, LCB `+3.029`; both roles positive; no strength or launch authority |
-| 08-09 | Teacher Stage-C design freeze v2 | **NO-COMPUTE COMPLETE / REVIEW QUEUED AFTER H0** | exact `b0ef0f9`; 1,024/512/512 DESIGN/CALIB/REPORT; packet `45802e47…a350`; v1 superseded |
-| 08-09 | Human H0 design freeze | **SCORE-FREE COMPLETE / REVIEW QUEUED** | exact `9770313`; 384 DESIGN + 128 AUDIT; packet `9ff160a9…247d3`; no outcomes computed |
+| 08-09 | Teacher Stage-C design freeze v2 | **NO-COMPUTE COMPLETE / REVIEW QUEUED AFTER S4** | exact `b0ef0f9`; 1,024/512/512 DESIGN/CALIB/REPORT; packet `45802e47…a350`; v1 superseded |
+| 08-09 | Human H0 design freeze | **DESIGN PASS / CONTROLLER IMPLEMENTATION ONLY** | exact `9770313`; 384 DESIGN + 128 AUDIT; packet `9ff160a9…247d3`; no outcomes computed; execution/training/strength remain closed |
 | 08-09 | S4 v2 generation replay | **SCORE-FREE COMPLETE / CONSUMED BY REVIEWED SCREEN** | exact verifier `b0ef0f9`; all 69,047 ascending deals rescanned and all 64 states rebuilt exactly; witness `3079fb16…f0a9` |
 | 08-09 | S4 fresh state capture v2 | **SCORE-FREE COMPLETE / CONSUMED BY REVIEWED SCREEN** | exact `1b35fb7`; 64 unique deals (32/role); states `4538be85…6b5f`; Air native `d14eefdd…ebe2e0` |
 | 08-09 | S4 fresh state capture v1 | **HOLD / CLOSED WITHOUT OUTCOMES** | exact `402c012`; state asset internally valid, but claimed material digest was irreproducible and test counts were unpinned; replaced by fresh v2 rather than reused |

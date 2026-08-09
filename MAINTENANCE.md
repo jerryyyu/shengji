@@ -66,9 +66,10 @@ an exact named policy at freeze time. Push every accepted commit.
 ## 4. Update human and production evidence
 
 Fetch production logs read-only with `scripts/fetch_fly_logs.sh` when new human
-traffic exists. The fetch stages and validates every remote JSONL, preserves
-changed local copies in a timestamped ignored archive, atomically publishes
-the refresh, and writes a source-hash manifest. Keep `logs/local/` out of human
+traffic exists. The fetch stages and validates every remote JSONL before any
+publish, preserves changed local copies in a timestamped ignored archive,
+atomically replaces each file, and writes a source-hash manifest. Keep
+`logs/local/` out of human
 mining. Build a fresh versioned corpus with `shengji.rl.human_shards`; require
 source/producer/encoder hashes, explicit replay/rejection counters and
 pseudonymous decision sidecars. Do not merge it into training automatically:

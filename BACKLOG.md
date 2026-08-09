@@ -22,7 +22,8 @@ here.
   The exact Fly-snapshot-only `human_v8` rebuild contains 2,830 accepted plays,
   45 human buries and 122 fully replayed rounds; all seven incomplete rounds
   are counted, and 12 legacy local-only rooms are excluded. This is a
-  proposal/diagnostic asset, not an authorized strength target.
+  proposal/diagnostic asset, not an authorized strength target. Clean producer
+  `b52dc33` and corpus manifest `b9699790…16553` are open for external review.
 - **Learners:** V11 direct-v2, Direct-Q, O0 and O0-v2 all selected none under
   their registered gates. They remain diagnostics, not deployable policies.
 - **Free capacity:** Air has no reviewed strength launch. Coding, deterministic

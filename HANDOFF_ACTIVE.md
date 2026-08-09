@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 09:33 EDT. This is the executable mailbox, not a
+Last compacted: 2026-08-09 10:14 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, live compute in `JOBS.md`,
 queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 
@@ -13,10 +13,12 @@ queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 | T2 S3a structured bury | **2,048-CLUSTER SCREEN RUNNING / SEALED** | Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight Mini shards × 256. Count-only monitoring, then one terminal verify. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The first frozen treatment cluster exceeded the 250k-node cap. Do not retry or relax v2. |
 | T2 learner O0-v2 | **COMPLETE / SELECT NONE** | Gate `0dbd9aa8…f24e` independently replayed. O1 and production remain unauthorized. |
-| External review | **NONE OPEN** | Do not ask Claude for a generic status review. Open a request only for one exact packet named below. |
+| Human corpus | **CLEAN V8 PUBLISHED / EXTERNAL REVIEW OPEN** | Exact main `b52dc33`, source manifest `07ff18fb…a5e`, corpus manifest `b9699790…16553`; 2,830 plays and 45 buries. No training or strength authority. |
+| External review | **OPEN / HUMAN V8 ONLY** | Review the exact packet below. S3a remains already reviewed and sealed; no generic status review is needed. |
 
 The most recent count-only S3a heartbeat saw all eight workers live and
-progressing at `8,9,8,8,8,9,8,8 / 256` clusters. Outcomes remain unread.
+progressing at `31,32,32,31,31,32,31,31 / 256` clusters (251/2,048).
+Outcomes remain unread.
 
 ## Active milestone — T3 human-witness challenger flywheel
 
@@ -95,7 +97,35 @@ it on common worlds under production and alternate named continuations.
 
 ## Conditional Claude review packets
 
-There is no blocker now. The next request is exactly one of:
+### OPEN NOW — human-v8 publication review
+
+Review exact pushed main `b52dc33c45f54fabf2ef44e23da530bc3f48e032`
+and canonical local artifact
+`/Users/jerryyu/Projects/shengji/server/rl_data/human_v8`:
+
+- code/test ordered material SHA-256 `1cc3dae9…9e7c`; exact file SHAs are
+  fetcher `8a8abe09…e1ee`, builder `c60a892b…5dfe`, fetch tests
+  `c6295049…4032`, builder tests `131c8a36…61e`;
+- Fly source manifest `07ff18fb…a5e`; corpus manifest
+  `b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553`;
+- artifacts: NPZ `853e663d…bc6f`, play sidecar `c13f49ce…2117`, bury
+  sidecar `42e47ec9…3d28`;
+- producer Git is exact `b52dc33`, `producer_tree_dirty=false`; exactly 30/30
+  Fly members are hash-matched, 12 legacy nonmembers excluded, 122/129 rounds
+  replayed and seven incomplete rounds counted; 2,830 play and 45 bury rows
+  reconcile independently; focused tests pass 8/8.
+
+Check the all-before-publish fetch boundary, snapshot population, source
+immutability, replay/score admission, player pseudonymization, action-sidecar
+alignment, encoder identity, artifact hashes/shapes and authority. PASS may
+freeze an H0 design packet only. It must not authorize training, labels,
+strength, promotion or production. Requested raw marker:
+
+`HUMAN_V8_CORPUS_V1_REVIEW {"git":"b52dc33c45f54fabf2ef44e23da530bc3f48e032","source_manifest_sha256":"07ff18fb35f2fb987f18b37b5100172e2751681fbfed17285ce7d7035232aa5e","corpus_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","snapshot_sources":30,"legacy_sources_excluded":12,"play_rows":2830,"bury_rows":45,"producer_clean":true,"independent_review":true,"h0_design_packet_authorized":true,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}`
+
+### Later conditional packets
+
+After the human-v8 review closes, the next request is exactly one of:
 
 - **S3a confirmation review**, only after a terminal screen PASS: inspect the
   frozen 8,192-cluster packet, live-parent/null identity, fresh seeds, capacity,
@@ -105,7 +135,7 @@ There is no blocker now. The next request is exactly one of:
   null, counters and score-free capacity.
 - **Teacher Stage-C design review**: inspect strata, split exclusion, label
   escalation, exact data contract and explicit no-compute/no-training flags.
-- **Human H0 packet review**: inspect source/encoder hashes, pseudonymous
+- **Human H0 design-packet review**: inspect source/encoder hashes, pseudonymous
   player/deal splits, replay/rejection counters, action-union semantics,
   continuation comparison and HUMAN-C1 evaluation exclusion.
 

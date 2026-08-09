@@ -106,7 +106,8 @@ Evidence anchors, in the same order:
   follow analysis ballot, and found points in 22/45 human buries. This is
   proposal/coverage evidence, not proof that human actions or round-return
   labels are stronger. Use player/deal-disjoint splits and counterfactual
-  relabeling before training beyond a separately measured BC control.
+  relabeling before training beyond a separately measured BC control. Clean
+  producer is `b52dc33`; corpus manifest SHA-256 is `b9699790…16553`.
 - Encoder identity includes semantics and transitive bytes. Drifted banker-
   private-kitty assets remain quarantined; `gen_v4_all`, which trained
   v11pair, is clean. House progression is uncapped; `+/-3` is only a named

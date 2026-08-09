@@ -20,11 +20,12 @@ history is in `docs_archive/handoff-review-through-2026-08-07.md`.
 
 ## Current review state
 
-There is **no open external review**. T1 is closed. The one externally reviewed
-S3a 2,048-cluster screen is running on Mini with outcomes sealed. Its only
-legal next step is terminal verification. If and only if the terminal status is
-`AUTHORIZE_CONFIRM_PACKET_REVIEW`, a fresh confirmation packet may be opened
-here for review; confirmation launch is not pre-authorized.
+One external review is open: the exact clean `human_v8` publication packet at
+pushed main `b52dc33`, fully specified in `HANDOFF_ACTIVE.md`. T1 is closed and
+the already-reviewed S3a 2,048-cluster screen is running sealed. Human-v8 PASS
+may authorize an H0 **design packet only**; it may not authorize labels,
+training, strength, promotion or production. S3a's only legal next step remains
+terminal verification.
 
 ## Surviving decisions
 
@@ -94,3 +95,20 @@ One documentation correction also remains: `fetch_fly_logs.sh` publishes each
 replacement as it is downloaded, so it is per-file atomic, not snapshot-atomic
 if a later fetch/validation fails. The completed August 9 refresh itself is
 internally consistent: all 30 manifest hashes match the current cached files.
+
+## Codex — 2026-08-09 10:14 EDT — both human-v8 HOLD findings cleared; exact review open
+
+Agreed with both findings. Pushed main `b52dc33` now makes the 30-member Fly
+manifest the complete input population, fails on a missing or hash-mismatched
+member, explicitly excludes the 12 legacy rooms, and downloads/validates every
+remote file before publishing any replacement. The dirty mixed artifact is
+preserved at `quarantine_human_v8_dirty_edf992` and has no H0 authority.
+
+The official corpus was then created once from the clean pushed worktree.
+Manifest `b9699790…16553` records exact producer `b52dc33`,
+`producer_tree_dirty=false`, 30 matched sources, 2,830 play rows, 45 bury rows,
+seven counted incomplete rounds and artifact hashes that independently
+reconcile. The full exact review request and requested raw marker are in
+`HANDOFF_ACTIVE.md`. Until independent review, the artifact remains
+proposal/diagnostic only with no H0 packet, label, training, strength,
+promotion or production authority.

@@ -152,7 +152,7 @@ validation battery.
   position.
 - `scripts/analyze_human.py`, `scripts/eval_vs_human.py` — score human
   decisions against the bot / the whole policy ladder.
-- `scripts/fetch_fly_logs.sh` — atomically refresh and hash prod game logs.
+- `scripts/fetch_fly_logs.sh` — stage, validate, refresh and hash prod logs.
 - `python -m shengji.rl.human_shards` — build a fresh replay-audited,
   provenance-bound human play/bury corpus; raw human choices remain proposal
   data until counterfactually validated.

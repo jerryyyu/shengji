@@ -183,9 +183,14 @@ Evidence anchors, in the same order:
   Git and image, its named policy is reconstructed from the registry, and all
   executable ballot stages are independently rederived and compared with the
   reviewed identity. No caller may inject a lookalike bot. The expanded suite
-  passes 94/94 locally and on exact Air. A reviewed immutable deployment
-  receipt source, synthetic C0 and the terminal analyzer remain launch
-  blockers. The earlier
+  passes 94/94 locally and on exact Air. Exact `f387a30` then adds the immutable
+  receipt source: it requires hash-pinned stable bytes from a regular unlinked
+  file, exact design/active-policy identity, and explicit identity-only / no-
+  human-traffic authority before reopening. Symlinks, hard links, digest,
+  schema, authority, design and policy drift all fail closed; 100/100 focused
+  tests pass locally and on exact Air. A real candidate-specific receipt freeze
+  and review, synthetic C0 and the terminal analyzer remain launch blockers.
+  The earlier
   repair scans tags
   before malformed-round rejection and terminally invalidates an evaluation
   room after any log-write failure, so neither path can manufacture a partial

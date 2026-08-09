@@ -459,8 +459,12 @@ Exact `fff688b` independently reopens the active registry policy under exact
 runtime Git/image identity and rederives every executable ballot stage before
 returning the bot; caller-injected policy objects are not accepted. Its
 expanded focused battery passes 94/94 locally and on exact Air. A reviewed
-immutable deployment-receipt source, synthetic C0 and a terminal estimator are
-still required.
+immutable deployment-receipt source is implemented at exact `f387a30`: only
+hash-pinned, stable regular-unlinked bytes with exact design/policy identity and
+identity-only/no-traffic authority can reopen the bot. Symlink, hardlink,
+digest, schema, authority and identity drift all refuse. The 100-test focused
+battery passes locally and on exact Air. A real candidate-specific receipt
+freeze/review, synthetic C0 and a terminal estimator are still required.
 
 Use human data in three bounded stages:
 

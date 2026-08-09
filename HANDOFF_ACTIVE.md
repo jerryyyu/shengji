@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 14:36 EDT. This is the executable mailbox, not a
+Last compacted: 2026-08-09 14:40 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, live compute in `JOBS.md`,
 queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 
@@ -15,12 +15,12 @@ queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 | T2 learner O0-v2 | **COMPLETE / SELECT NONE** | Gate `0dbd9aa8…f24e` independently replayed. O1 and production remain unauthorized. |
 | S4 point banking | **MECHANISM PASS + FULL-GAME V2 PACKET PASS / MINI QUEUED** | Claude marker `51a864c` independently passed exact `cad3992` / `17036e63…1385`. One 2,048-cluster Mini screen is authorized after S3a releases the host and a fresh admission/receipt is created. No outcome, confirmation, strength or promotion authority. |
 | Human corpus / H0 | **V8 REVIEW PASS / H0 V1 SUPERSEDED PRE-EXECUTION / V2 REVIEW OPEN** | Claude passed v1's split semantics, then executable audit found its V11 SHA names no artifact. Exact `12dac55` repairs the parent at packet `2cccf580…8f2b`, independently reproduced on Air. V2 is now the sole review target; no controller or outcome yet. |
-| HUMAN-C1 | **INERT EVIDENCE SEAM / RUNTIME REOPEN LANDED** | Exact `fff688b` retains the disconnect/log/corpus/assignment guards and now reconstructs the assigned registry policy while rederiving every ballot stage under exact Git/image identity. The 94-test focused battery passes locally and on exact Air. No traffic path; external review, durable issuance, authenticated consent and reviewed deploy-receipt ingress, C0/analyzer remain. |
+| HUMAN-C1 | **INERT EVIDENCE SEAM / RECEIPT REOPEN LANDED** | Exact `f387a30` retains every prior guard and reopens the active runtime only through a hash-pinned identity-only receipt whose stable regular bytes bind design/policy/Git/image/ballot and forbid human traffic. The 100-test focused battery passes locally and on exact Air. No traffic path; external review, real receipt freeze, durable issuance, authenticated consent, C0/analyzer remain. |
 | External review | **OPEN / H0 V2 DESIGN ONLY** | S4 v2 closed PASS at `51a864c`. Review exact H0 v2 `12dac55` / `2cccf580…8f2b` next. HUMAN-C1 remains a later bounded review so the mailbox has one target. |
 
 The latest status-only S3a heartbeat still has all eight workers live with no
 completed shard. The latest cluster-count snapshot was
-`182,180,181,184,184,181,183,181 / 256` (1,456/2,048). Outcomes remain unread.
+`184,183,184,186,187,183,185,183 / 256` (1,475/2,048). Outcomes remain unread.
 
 ## Active milestone — T3 human-witness challenger flywheel
 
@@ -265,7 +265,7 @@ Requested H0 v2 marker now:
 
 H0_HUMAN_COUNTERFACTUAL_DESIGN_V2_REVIEW {"schema":"human-h0-counterfactual-design-review-v2","git":"12dac556d98c31de15018e7eeb9c3caa6e20486b","packet_sha256":"2cccf5803ca60cf41690f18dc0e85febaf36a88ce702587e8c86a67e2a358f2b","superseded_v1_packet_sha256":"9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3","corpus_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","v11_checkpoint_sha256":"cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003","live_parent_authenticator_sha256":"d6515d6db76290c3ad145f9194a7985d7d78223f688a30c78cdb520de41c521b","design_plays":384,"audit_plays":128,"design_buries":36,"audit_buries":9,"outcomes_computed":false,"independent_review":true,"execution_controller_implementation_authorized":true,"counterfactual_execution_authorized":false,"labels_authorized":false,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}
 
-The forward HUMAN-C1 range through `fff688b` is not a launch request and does
+The forward HUMAN-C1 range through `f387a30` is not a launch request and does
 not block S4. A later bounded review should confirm ordinary-room log behavior
 is unchanged, evaluation/training roots cannot overlap, the room bot's policy
 name must match the hidden arm, the participant-derived pair and per-arm ballot
@@ -282,10 +282,13 @@ reviewed cohort/consent version; binds both exact policy/Git/image/ballot
 identities plus the design digest; and derives complementary, deterministic,
 design-domain-separated sessions. Runtime reopening must then reject Git,
 image or ballot drift, reconstruct the named active policy from the registry,
-and refuse caller-injected policy objects. Focused audit tests pass 94/94
-locally and independently in exact Air worktree
-`/Users/jerryyu/Projects/shengji-human-c1-fff-air`. No reviewed deployment-
-receipt source, authenticated consent, durable issuance or evaluation-room
+and refuse caller-injected policy objects. Receipt reopening must additionally
+bind stable regular-unlinked bytes by SHA-256, exact design and active policy,
+and identity-only/no-traffic authority while refusing symlink, hardlink,
+schema or field drift. Focused audit tests pass 100/100 locally and
+independently in exact Air worktree
+`/Users/jerryyu/Projects/shengji-human-c1-f38-air`. No real candidate receipt
+freeze/review, authenticated consent, durable issuance or evaluation-room
 ingress, traffic, strength claim or promotion exists.
 
 ## Fleet and safety rules

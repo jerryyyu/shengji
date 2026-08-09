@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 10:14 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 10:56 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -9,7 +9,7 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 | host | job | status / next admitted use |
 |---|---|---|
 | Mini | `s3a-bury-duel-screen-153m-v1` | **RUNNING / OUTCOME SEALED.** Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight shards × 256. Latest count-only heartbeat: `31,32,32,31,31,32,31,31` (251/2,048). Never inspect shard outcomes, retry, extend or move the pinned checkout. |
-| Air | none | **FREE.** O0-v2 is terminal SELECT NONE; no reviewed successor launch exists. Use only for bounded code/tests or a separately reviewed packet. |
+| Air | none | **FREE.** S4's score-free capture is complete; its outcome-bearing exact screen awaits review. Use Air only for bounded code/tests or a separately reviewed packet. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
 ## S3a legal next action
@@ -36,6 +36,7 @@ The canonical numbers and meanings are in the results table in
 
 | date | job | terminal verdict | anchor |
 |---|---|---|---|
+| 08-09 | S4 fresh state capture | **SCORE-FREE COMPLETE / REVIEW OPEN** | exact `402c012`; 64 unique deals (32/role); states `f44a0c72…e6b72`; no outcomes computed |
 | 08-09 | Teacher-v3 fresh audit | **PASS / STAGE-C DESIGN** | gate `8a1532b7…91f8`; supervisor `02f4f8b…6f237`; adapter `56ccefbd…c2442` |
 | 08-09 | Suphx O0-v2 | **SELECT NONE** | gate `0dbd9aa8…f24e`; independent semantic replay `verified=true` |
 | 08-09 | S3a full-game preflight | **CAPACITY PASS** | preflight `09692f82…edf0`; final `56943242…e9f` |

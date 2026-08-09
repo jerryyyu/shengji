@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-09 09:55 EDT
+## Current synthesis — 2026-08-09 10:56 EDT
 
 ### Canonical terminal-results table
 
@@ -121,9 +121,12 @@ Evidence anchors, in the same order:
   test.
 - **Point banking:** root MC can source a point-bearing winner, but shared
   heuristic continuation selects the cheapest winner when a cheaper non-point
-  winner also exists. The proposed S4 treatment changes continuation only and
-  must include team-aware positive/negative witnesses plus a trigger-matched
-  null. It is not yet a strength result.
+  winner also exists. Exact `402c012` now implements S4 outside sealed
+  MCBot/registry bytes: treatment and matched null share analysis, preserve the
+  root ballot and baseline contest choice, act only last, and require a higher
+  winning reserve. Named continuations demonstrate both +10 immediate value
+  and -10 future-control risk. A fresh score-free 64-state asset is awaiting
+  review; no outcome or strength result exists.
 - **People-facing target:** human agreement is a style/coverage diagnostic.
   After bot-vs-bot confirmation, a blinded opt-in `HUMAN-C1` must compare the
   candidate with the live champion across the same human cohort, balanced by
@@ -232,6 +235,15 @@ production rule measured `+0.338379 +/- 0.067706` versus `mc-strong`, while the
 collision-free current-policy null was `-0.019043 +/- 0.068270`. This confirms
 one-round paired level-utility superiority only; it does not prove multi-round
 progression or authorize changes to N, R, ballot, sampler or confidence rule.
+
+### S4 point-banking arms — experiment-only, not globally registered
+
+`make_point_banking_bot()` in `ai/point_banking.py` constructs the exact
+`mc-s0-report-lcb` class with either the treatment or trigger-matched-null
+rollout policy. Keeping these names out of the shared registry preserves the
+source identities bound by terminal RLCB/Teacher evidence. Both arms retain
+the champion's root ballot, selection/report work and RNG stream; only rollout
+continuation differs. They have no production, training or strength authority.
 
 ### `smart` — SmartBot v3
 `ai/smart.py` + `ai/memory.py`: heuristic layered with public-information

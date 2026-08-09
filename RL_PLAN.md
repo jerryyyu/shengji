@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 09:17 EDT
+## Current synthesis — 2026-08-09 10:56 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -76,6 +76,19 @@ what those results change in the research plan.
   receipt `2c89bed3…cbb2c` launched eight sealed Mini shards against exact
   report-LCB with a champion-matched null. Await terminal verification without
   inspecting partial outcomes. PASS can open confirmation-packet review only.
+- **Point-banking S4:** exact `402c012` implements the observed continuation
+  blind spot outside the sealed MCBot/registry source boundary. Treatment and
+  matched null preserve the root ballot and baseline decision to contest the
+  trick; treatment acts only from the secure last seat and only while retaining
+  a higher winner. Named continuations show both +10 immediate value and -10
+  future-control risk. A fresh score-free asset froze 64 exact-late states from
+  unique deals, 32 per role; no outcome has been computed and review gates the
+  one-shot state screen.
+- **Human data:** the atomically refreshed Fly-snapshot-only `human_v8` corpus
+  passed independent publication review at producer `b52dc33`, source manifest
+  `07ff18fb…a5e` and corpus manifest `b9699790…16553`. It contains 2,830 plays,
+  45 buries and explicit replay/refusal provenance. It authorizes one H0 design
+  packet only—not labels, training or a strength claim.
 - **Data/sampler:** the bounded strict sampler certificate passed, but posterior
   fidelity and global constructive completeness remain open. High-N and
   late-ply data are replayable state reservoirs under old named targets, not
@@ -103,6 +116,11 @@ what those results change in the research plan.
 8. S3a is the first positive structured-search mechanism: preserve its frozen
    proposal recipe and move to fresh full-game evidence. Do not tune from the
    inspected 512 states or treat per-state bury gain as signed-level utility.
+9. Human actions are candidate sources, not labels. Measure whether they add
+   useful actions and survive counterfactual evaluation before imitation.
+10. Bot-vs-bot paired evidence is the controlled strength gate; the product
+    claim ultimately requires a blinded candidate-versus-champion comparison
+    against the same human cohort plus an absolute experienced-human benchmark.
 
 ## Literature-derived design constraints — 2026-08-04
 
@@ -269,13 +287,13 @@ strength loop works.
    on Mini. Terminal PASS permits freezing an 8,192-cluster confirmation packet
    for external review; it does not permit an automatic launch or promotion.
    SELECT NONE closes this exact recipe without tuning or retry.
-2. **Build the orthogonal S4 mechanism while Mini computes.** Production can
-   source a point-bearing winning action at the root, but shared rollout
-   continuation chooses the cheapest winner when several winners exist. S4
-   changes continuation only, with a team-aware “bank points now” trigger,
-   incumbent control, trigger-matched null, named positive/negative witnesses,
-   exact counters and a fresh state screen. The effect sign is empirical: using
-   a K now may bank points or waste future control.
+2. **Review and execute the bounded S4 mechanism screen.** Exact `402c012`
+   changes continuation only, with incumbent control, a trigger-matched null,
+   named positive/negative witnesses and exact counters. Its score-free capture
+   scanned 67,237 fresh deals and froze 32 attacker plus 32 defender triggers
+   from unique deals. External review must precede the exact two-card-endgame
+   screen. The sign remains empirical: using a K now may bank points or waste
+   future control.
 3. **Freeze Teacher Stage C.** The completed audit found cheap and N=30 choices
    faithful on ordinary states, while the N=30 boundary diagnostic remained
    weaker. Stage C therefore oversamples uncertainty/disagreement, exact-late
@@ -346,29 +364,33 @@ policy improvement.
 
 ### Human-data lane — diversify, then verify
 
-The existing human path is not ready to serve as strength truth. It records
-play decisions only, labels them with coarse final-round return, silently skips
-replay failures, mixes player skill, and its cached banker rows from the encoder
-drift window are quarantined. The earlier v6.1 blend increased human agreement
+The August 9 `human_v8` rebuild repairs the old path's provenance failures: it
+is Fly-snapshot-only, stages updates atomically, verifies source hashes, records
+reasoned replay refusals, binds the repaired public encoder, pseudonymizes
+players and includes bury decisions. Its 2,830 plays and 45 buries remain human
+behaviour, not strength truth. The earlier v6.1 blend increased human agreement
 but scored 46% against v6 in a small sibling duel: evidence for style transfer,
 not strength.
 
-Use human data in four bounded stages:
+Use human data in three bounded stages:
 
-1. **Rebuild provenance.** Regenerate from raw logs under the repaired encoder;
-   replace blanket exception swallowing with reasoned counters; bind player,
-   deal, engine, legal ballot and split digests; capture human bury decisions
-   as a separate surface instead of ignoring them.
-2. **Quality and leakage controls.** Split by game/deal and preferably player,
-   exclude bots/tests/incomplete or unreplayable rounds, stratify by experience
-   rather than treating all players equally, and never use the same human
-   witness in model selection and REPORT.
-3. **Counterfactual action pilot.** On a frozen 256–512 decision sample, add
+1. **Freeze the honest split.** Player/deal connectivity leaves only five
+   independent components, and two contain almost all rows. Use the large
+   three-player/78-deal component for DESIGN, the separate one-player/28-deal
+   component for AUDIT, and the remaining three tiny components only as a
+   RESERVE diagnostic. Calling these data a meaningful three-way
+   DEV/CALIB/REPORT split would overstate their independence; formal REPORT
+   remains fresh synthetic/full-game and `HUMAN-C1` evidence.
+2. **Counterfactual action pilot.** Freeze up to 384 DESIGN and 128 AUDIT play
+   decisions, cap repeated decisions per deal, include every off-ballot action,
+   and oversample scarce late play. Add
    the actual human action to the current ballot and measure human-versus-
    champion action deltas on shared worlds. Record where humans introduce a
    genuinely new candidate, where the production continuation reverses it,
    and where a second continuation changes that ranking.
-4. **Only then choose the learning use.** Strong supported actions can train a
+   Treat the 36 DESIGN and nine AUDIT buries as a separate surface rather than
+   forcing them into the play estimand.
+3. **Only then choose the learning use.** Strong supported actions can train a
    proposal/prior head; disagreement states feed Stage C; raw behavioral
    cloning remains an initialization/style control. Promotion still requires
    fresh paired play against the live champion.
@@ -412,6 +434,12 @@ experienced cohort. Raw site-average win rate is descriptive because changing
 player mix can move it without any bot change. `HUMAN-C1` should predeclare a
 one-sided candidate-minus-champion utility gate and non-inferiority experience
 guards before policy identities or outcomes are opened.
+
+The end target is not “best in the policy pool.” A bot is product-strong only
+after it first beats the live champion on paired deals, then improves against
+the same blinded human cohort, and finally reports absolute signed level
+utility against a named experienced-player cohort. Those three questions are
+different and must not share selection games.
 
 ## v11pair's surviving role
 

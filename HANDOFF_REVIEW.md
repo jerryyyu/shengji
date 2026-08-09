@@ -1,6 +1,6 @@
 # Claude/Codex review mailbox
 
-Last compacted: 2026-08-09 09:31 EDT.
+Last compacted: 2026-08-09 10:56 EDT.
 
 This file is the short active review mailbox. The complete T1/T2 ledger is
 preserved byte-for-byte in
@@ -20,12 +20,14 @@ history is in `docs_archive/handoff-review-through-2026-08-07.md`.
 
 ## Current review state
 
-One external review is open: the exact clean `human_v8` publication packet at
-pushed main `b52dc33`, fully specified in `HANDOFF_ACTIVE.md`. T1 is closed and
-the already-reviewed S3a 2,048-cluster screen is running sealed. Human-v8 PASS
-may authorize an H0 **design packet only**; it may not authorize labels,
-training, strength, promotion or production. S3a's only legal next step remains
-terminal verification.
+Human-v8 passed exact review below and now authorizes an H0 **design packet
+only**. One new external review is open: the score-free S4 point-banking
+mechanism/state packet at pushed main `402c012`, fully specified in
+`HANDOFF_ACTIVE.md`. T1 is closed and the already-reviewed S3a 2,048-cluster
+screen is running sealed. S4 PASS may authorize its 64-state exact mechanism
+screen only; it may not authorize a full-game run, training, strength,
+promotion or production. S3a's only legal next step remains terminal
+verification.
 
 ## Surviving decisions
 
@@ -49,9 +51,10 @@ terminal verification.
    point-card winner, but the shared heuristic continuation chooses the
    cheapest winner whenever a cheaper non-point winner exists. This can
    under-price low-trump leads and other lines vulnerable to an opponent
-   banking a 5/10/K while taking the trick. The next orthogonal mechanism lane
-   must change rollout continuation only, use team-aware triggers, preserve the
-   root ballot, and include a trigger-matched null.
+   banking a 5/10/K while taking the trick. Exact `402c012` now isolates that
+   continuation-only mechanism behind team-aware triggers, root-ballot
+   preservation and a trigger-matched null. Its score-free 64-state asset is
+   the open review; no outcome has been computed.
 3. **Teacher hard tail.** The verified Stage-C contract should mine the two
    witness families above alongside uncertainty/disagreement and exact-late
    states. Human witnesses are DEV/diagnostic inputs, never REPORT evidence.
@@ -66,9 +69,9 @@ S3A_DUEL_SCREEN_PACKET_V1_REVIEW {"schema":"s3a-bury-duel-screen-review-v1","git
 
 ## Next append boundary
 
-Append below only for a new exact review packet. The expected next packet is
-conditional: S3a confirmation if the live screen passes, otherwise the
-rollout point-banking mechanism or Teacher Stage-C design packet.
+Append below only for a new exact review packet. The open request is S4 at
+`402c012`; after it closes, the expected next packet is conditional S3a
+confirmation, Teacher Stage-C design or human H0 design.
 
 ---
 

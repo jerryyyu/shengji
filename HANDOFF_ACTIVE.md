@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 10:14 EDT. This is the executable mailbox, not a
+Last compacted: 2026-08-09 10:56 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, live compute in `JOBS.md`,
 queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 
@@ -13,12 +13,13 @@ queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 | T2 S3a structured bury | **2,048-CLUSTER SCREEN RUNNING / SEALED** | Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight Mini shards × 256. Count-only monitoring, then one terminal verify. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The first frozen treatment cluster exceeded the 250k-node cap. Do not retry or relax v2. |
 | T2 learner O0-v2 | **COMPLETE / SELECT NONE** | Gate `0dbd9aa8…f24e` independently replayed. O1 and production remain unauthorized. |
-| Human corpus | **CLEAN V8 PUBLISHED / EXTERNAL REVIEW OPEN** | Exact main `b52dc33`, source manifest `07ff18fb…a5e`, corpus manifest `b9699790…16553`; 2,830 plays and 45 buries. No training or strength authority. |
-| External review | **OPEN / HUMAN V8 ONLY** | Review the exact packet below. S3a remains already reviewed and sealed; no generic status review is needed. |
+| S4 point banking | **CODE + SCORE-FREE 64-STATE ASSET / REVIEW OPEN** | Exact `402c012`, asset `f44a0c72…e6b72`; treatment/null outcomes are uncomputed. Review may authorize this state screen only. |
+| Human corpus | **CLEAN V8 / REVIEW PASS** | Exact `b52dc33`, source manifest `07ff18fb…a5e`, corpus `b9699790…16553`; H0 design is authorized, but labels/training/strength are not. |
+| External review | **OPEN / S4 ONLY** | Review the exact S4 packet below. S3a remains already reviewed/sealed; human-v8 is closed PASS. |
 
-The most recent count-only S3a heartbeat saw all eight workers live and
-progressing at `31,32,32,31,31,32,31,31 / 256` clusters (251/2,048).
-Outcomes remain unread.
+The latest status-only S3a heartbeat still has all eight workers live with no
+completed shard. The last recorded cluster-count snapshot was
+`31,32,32,31,31,32,31,31 / 256` (251/2,048). Outcomes remain unread.
 
 ## Active milestone — T3 human-witness challenger flywheel
 
@@ -34,23 +35,25 @@ T3 exits only after all four boundaries below are satisfied:
    8,192-cluster confirmation packet for external review; do not launch it
    before that review. If it returns `SELECT_NONE`, close this exact recipe—no
    tuning, retry or pooled inference.
-2. **Make the point-banking observation testable.** Implement a rollout-only,
-   team-aware mechanism that may choose a point-bearing winner when multiple
-   legal winners exist. Preserve root action sourcing and the live policy.
-   Require named human/synthetic witnesses, deterministic treatment/control
-   replay, a trigger-matched null, exact work counters and a fresh state-level
-   screen contract. The sign is not assumed positive.
+2. **Review the frozen point-banking screen.** Exact `402c012` changes rollout
+   continuation only and leaves sealed MCBot/registry bytes untouched. The
+   treatment acts only last, after the baseline chose to win, and only while
+   retaining a higher winner. Its matched null executes the same analysis. A
+   score-free capture froze 32 attacker + 32 defender states from 64 unique
+   deals; no exact outcome has been computed. External review gates the
+   one-shot exact state screen. The sign is not assumed.
 3. **Freeze Teacher Stage C.** Build a reviewable design packet that samples
    uncertainty/disagreement and exact-late states plus the two human witness
    families below. Human examples are DEV diagnostics only and cannot enter
    CALIB/REPORT. Packet review precedes labels, compute and training.
-4. **Refresh and counterfactually use human play.** The August 9 evidence-grade
+4. **Freeze the reviewed human H0 design.** The August 9 evidence-grade
    Fly-snapshot-only rebuild accepts 2,830 plays and 45 buries from 122 fully
    replayed rounds, counts seven incomplete rounds, and finds 25 legal
    off-ballot human plays. Twelve legacy local-only rooms are excluded.
-   Freeze a player/deal-disjoint H0 pilot that uses human actions as proposals,
-   not truth. Define the blinded HUMAN-C1 candidate-versus-champion protocol;
-   its evaluation games can never train or select the candidate.
+   Claude's exact review passed. Freeze a player/deal-disjoint H0 pilot that
+   uses human actions as proposals, not truth. Define the blinded HUMAN-C1
+   candidate-versus-champion protocol; its evaluation games can never train or
+   select the candidate.
 
 Active `/goal`:
 
@@ -80,10 +83,12 @@ the live full-game screen is the first actual bot-strength test of this issue.
 The root follow ballot can contain point-card winners. The narrower bug is in
 shared rollout continuation: when several legal winners exist, the heuristic
 chooses the cheapest one, so it can under-price a low-trump lead that lets an
-opponent win with a 5/10/K instead. This is not the old point-feeding issue and
-is not yet implemented as a strength treatment. The proposed S4 experiment
-changes continuation only and needs a team-aware trigger because banking a
-point is not always strategically better.
+opponent win with a 5/10/K instead. This is not the old point-feeding issue.
+S4 is now implemented outside the sealed production modules: it preserves the
+root ballot/contest decision, acts only from the secure last seat and requires
+a higher winning reserve. Named continuations show both a ten-point benefit
+and a ten-point future-control cost. The 64-state asset is score-free and
+awaiting review; none of this is yet a strength result.
 
 ### H3 — human actions escape heuristic support
 
@@ -95,44 +100,51 @@ self-play generator can omit or disfavor. It does not say those moves are
 better. H0 must add each human action to the frozen candidate union and price
 it on common worlds under production and alternate named continuations.
 
-## Conditional Claude review packets
+## Claude review packet
 
-### OPEN NOW — human-v8 publication review
+### OPEN NOW — S4 point-banking mechanism and exact-state screen
 
-Review exact pushed main `b52dc33c45f54fabf2ef44e23da530bc3f48e032`
-and canonical local artifact
-`/Users/jerryyu/Projects/shengji/server/rl_data/human_v8`:
+Review exact pushed main `402c01203324ea3902891bef6cedf077a91ecec7`
+and canonical score-free asset
+`/Users/jerryyu/Projects/shengji/server/runs/logs/s4-point-banking-state-screen-160m-v1/states.json`:
 
-- code/test ordered material SHA-256 `1cc3dae9…9e7c`; exact file SHAs are
-  fetcher `8a8abe09…e1ee`, builder `c60a892b…5dfe`, fetch tests
-  `c6295049…4032`, builder tests `131c8a36…61e`;
-- Fly source manifest `07ff18fb…a5e`; corpus manifest
-  `b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553`;
-- artifacts: NPZ `853e663d…bc6f`, play sidecar `c13f49ce…2117`, bury
-  sidecar `42e47ec9…3d28`;
-- producer Git is exact `b52dc33`, `producer_tree_dirty=false`; exactly 30/30
-  Fly members are hash-matched, 12 legacy nonmembers excluded, 122/129 rounds
-  replayed and seven incomplete rounds counted; 2,830 play and 45 bury rows
-  reconcile independently; focused tests pass 8/8.
+- asset SHA-256 `f44a0c72593bef0ff93d96d2f9d93ece1a7a5c8afe44ab900466dd1f7c9e6b72`;
+  it records `score_free=true`, `outcomes_computed=false`,
+  `training_authorized=false`, clean exact Git and compiled routing;
+- code/test ordered material SHA-256
+  `96f547f78150035dbf0be13fc56ac5f38280231fd8c671d8550284ff1c9124b3`;
+  exact SHAs are point policy `49d10d13…24cd1`, screen
+  `438384fd…99bb`, policy tests `d5c022ca…f2d3`, screen tests
+  `6ca9042c…2163`;
+- capture scanned 67,237 fresh deals at seed start 160,000,000 and froze 64
+  unique deals, exactly 32 per acting-team role. Natural trigger supply was 32
+  attacker versus 308 defender; the screen intentionally reports equal-role
+  and per-role estimands rather than hiding that skew;
+- pure focused evidence/identity suite passes 90/90; compiled S4 + fast parity
+  passes 30/30. The full clean-worktree run had 927 pass / 63 skip; after S4
+  isolation, the three sealed-source drift failures are cleared. The remaining
+  seven are the pre-existing missing-local-assets/root-path/compiled-runtime
+  checks for this worktree.
 
-Check the all-before-publish fetch boundary, snapshot population, source
-immutability, replay/score admission, player pseudonymization, action-sidecar
-alignment, encoder identity, artifact hashes/shapes and authority. PASS may
-freeze an H0 design packet only. It must not authorize training, labels,
-strength, promotion or production. Requested raw marker:
+Check both named utility witnesses, baseline contest preservation, last-seat
+and higher-reserve semantics, role symmetry, matched-null work, deterministic
+telemetry, root-ballot equality, and that `mcbot.py`/`registry.py` are unchanged.
+Then inspect score-free population selection, physical-deck replay, unique
+deal/role quotas, exact two-card solver boundary, one-sided gate math,
+exclusive publication, admission binding and authority. Do not compute or
+inspect state outcomes during review. PASS authorizes exactly one execution of
+this 64-state exact screen. It does not authorize a full-game packet/run,
+training, strength, promotion or production. Requested raw marker:
 
-`HUMAN_V8_CORPUS_V1_REVIEW {"git":"b52dc33c45f54fabf2ef44e23da530bc3f48e032","source_manifest_sha256":"07ff18fb35f2fb987f18b37b5100172e2751681fbfed17285ce7d7035232aa5e","corpus_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","snapshot_sources":30,"legacy_sources_excluded":12,"play_rows":2830,"bury_rows":45,"producer_clean":true,"independent_review":true,"h0_design_packet_authorized":true,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}`
+`S4_POINT_BANKING_SCREEN_V1_REVIEW {"schema":"s4-point-banking-screen-review-v1","git":"402c01203324ea3902891bef6cedf077a91ecec7","states_sha256":"f44a0c72593bef0ff93d96d2f9d93ece1a7a5c8afe44ab900466dd1f7c9e6b72","material_sha256":"96f547f78150035dbf0be13fc56ac5f38280231fd8c671d8550284ff1c9124b3","states":64,"attacker_states":32,"defender_states":32,"unique_deals":64,"score_free":true,"outcomes_computed":false,"independent_review":true,"screen_launch_authorized":true,"full_game_launch_authorized":false,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}`
 
 ### Later conditional packets
 
-After the human-v8 review closes, the next request is exactly one of:
+After the S4 review closes, the next request is exactly one of:
 
 - **S3a confirmation review**, only after a terminal screen PASS: inspect the
   frozen 8,192-cluster packet, live-parent/null identity, fresh seeds, capacity,
   one-shot controller and authority boundary.
-- **S4 mechanism/preflight review**, if its code and packet are ready: inspect
-  action semantics, witness non-vacuity, treatment isolation, trigger-matched
-  null, counters and score-free capacity.
 - **Teacher Stage-C design review**: inspect strata, split exclusion, label
   escalation, exact data contract and explicit no-compute/no-training flags.
 - **Human H0 design-packet review**: inspect source/encoder hashes, pseudonymous

@@ -30,6 +30,8 @@ import h0_human_counterfactual_runtime as H0_RUNTIME  # noqa: E402
 
 
 SCHEMA = "teacher-stage-c-hard-tail-design-v3"
+REVIEW_SCHEMA = "teacher-stage-c-hard-tail-design-review-v3"
+REVIEW_MARKER = "TEACHER_STAGE_C_V3_REVIEW "
 # The terminal adapter grants this literal packet identity.  A previous draft
 # silently dropped the word "design" and therefore did not consume its parent
 # authority exactly even though no compute had started.
@@ -771,14 +773,49 @@ def build_packet(adapter_path: Path, adapter_sha256: str,
             "separately review and launch labels",
             "terminally gate Teacher fidelity before model work",
         ],
+        "review_contract": {
+            "schema": REVIEW_SCHEMA,
+            "marker": REVIEW_MARKER.strip(),
+            "required_verdict": "PASS",
+            "pass_authorizes": (
+                "implementation of one score-free Stage-C capture/controller "
+                "packet only"
+            ),
+            "pass_does_not_authorize": [
+                "state capture", "belief-world sampling", "labels",
+                "training", "strength claim", "promotion", "deployment",
+            ],
+            "required_claim_fields": [
+                "schema", "git", "script_sha256", "packet_sha256",
+                "adapter_sha256", "h0_controller_sha256",
+                "h0_controller_review_schema", "live_parent_schema",
+                "live_parent_policy", "states", "design_states",
+                "calib_states", "report_states", "play_candidate_cap",
+                "bury_candidate_cap", "max_candidate_worlds",
+                "recursive_mc_continuation_rollouts", "ordinary_worlds",
+                "hard_tail_selection_worlds", "hard_tail_report_worlds",
+                "audit_selection_worlds", "audit_report_worlds",
+                "score_free", "worlds_sampled_before_review",
+                "outcomes_computed_before_review", "independent_review",
+                "capture_controller_implementation_authorized",
+                "state_capture_authorized", "labels_authorized",
+                "training_authorized", "strength_claim",
+                "production_promotion", "production_deployment", "verdict",
+            ],
+        },
         "authority": {
+            "score_free": True,
+            "worlds_sampled": False,
+            "outcomes_computed": False,
             "design_review_authorized": True,
+            "capture_controller_implementation_authorized": False,
             "state_capture_authorized": False,
             "compute_authorized": False,
             "labels_authorized": False,
             "training_authorized": False,
             "strength_claim": False,
             "production_promotion": False,
+            "production_deployment": False,
             "retry_or_extension_authorized": False,
         },
     }
@@ -791,13 +828,19 @@ def packet_problems(actual: dict, expected: dict) -> list[str]:
     if actual != expected:
         problems.append("Stage-C packet full recomputation drift")
     authority = actual.get("authority", {})
-    if (authority.get("design_review_authorized") is not True
+    if (authority.get("score_free") is not True
+            or authority.get("worlds_sampled") is not False
+            or authority.get("outcomes_computed") is not False
+            or authority.get("design_review_authorized") is not True
+            or authority.get("capture_controller_implementation_authorized")
+            is not False
             or authority.get("state_capture_authorized") is not False
             or authority.get("compute_authorized") is not False
             or authority.get("labels_authorized") is not False
             or authority.get("training_authorized") is not False
             or authority.get("strength_claim") is not False
             or authority.get("production_promotion") is not False
+            or authority.get("production_deployment") is not False
             or authority.get("retry_or_extension_authorized") is not False):
         problems.append("Stage-C packet authority widened")
     return sorted(set(problems))

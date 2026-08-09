@@ -177,13 +177,18 @@ def test_h0_controller_requires_exact_external_pass_marker(tmp_path: Path) -> No
 
 def test_packet_authority_refuses_capture_or_training() -> None:
     expected = {"authority": {
+        "score_free": True,
+        "worlds_sampled": False,
+        "outcomes_computed": False,
         "design_review_authorized": True,
+        "capture_controller_implementation_authorized": False,
         "state_capture_authorized": False,
         "compute_authorized": False,
         "labels_authorized": False,
         "training_authorized": False,
         "strength_claim": False,
         "production_promotion": False,
+        "production_deployment": False,
         "retry_or_extension_authorized": False,
     }}
     assert stage_c.packet_problems(expected, expected) == []
@@ -262,6 +267,10 @@ def test_v3_packet_binds_executable_h0_and_conditional_mechanisms(
         "report_worlds_fixed_selection_winner_and_candidate0"] == 300
     assert packet["work_contract"]["all_optional_mechanisms_max"] == \
         10_494_720
+    review = packet["review_contract"]
+    assert review["schema"] == stage_c.REVIEW_SCHEMA
+    assert review["pass_authorizes"].startswith("implementation of one")
+    assert "state capture" in review["pass_does_not_authorize"]
 
     gate = packet["gate_contract"]
     assert gate["audit_reference"]["selection_worlds"] == 128

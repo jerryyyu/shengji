@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 16:25 EDT
+## Current synthesis — 2026-08-09 17:25 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -68,21 +68,16 @@ what those results change in the research plan.
   audit superseded its H0 v1 parent, so Stage-C v2 is held pre-review. Repair
   the binding only after a bounded H0 successor passes. No capture, labels,
   compute or training.
-- **Search challengers:** the independently reviewed live-parent contract now
-  binds S3a and S3b to exact report-LCB and makes formal-S0/`mc-strong`
-  re-entry unreachable. S3b v2 then failed its operational preflight: its
-  first exact-treatment cluster exceeded the frozen cumulative 250k-node cap,
-  so no receipt or strength screen is authorized. S3a's separately reviewed
-  512-state mechanism screen is now terminal PASS: structured bury beat the
-  live incumbent, legacy-four and trigger-matched random widening with every
-  frozen state-level LCB above zero. This is proposal-generation evidence, not
-  bot strength. Its reviewed full-game score-free preflight subsequently
-  completed exact work and projects the 2,048-cluster screen at `72.62`
-  fleet-hours / `9.08` max-shard hours. Claude passed the separately frozen
-  one-shot packet at exact `c599b42`; one admission `567e8aa8…41c5e` and
-  receipt `2c89bed3…cbb2c` launched eight sealed Mini shards against exact
-  report-LCB with a champion-matched null. Await terminal verification without
-  inspecting partial outcomes. PASS can open confirmation-packet review only.
+- **Search challengers:** the independently reviewed live-parent contract binds
+  S3a/S3b to exact report-LCB and prevents old baselines from silently
+  re-entering. S3b v2 remains closed on its 250k-node capacity failure. S3a's
+  structured bury proposals beat every control on the selected 512-state
+  objective, but the fresh 2,048-cluster complete-round screen terminally
+  returned **SELECT NONE**. Aggregate `20609613…271f` and final
+  `32156d79…c9ff` verified. This is the useful distinction the flywheel needs:
+  candidate generation improved locally, while the composed policy did not
+  earn confirmation. Close the exact recipe without tuning or retry; retain
+  its disagreement states as diagnostic/Teacher supply.
 - **Point-banking S4:** v1 is closed HOLD without outcomes because its claimed
   material digest did not reproduce. Exact `1b35fb7` repaired that evidence
   boundary and a secondary utility bug while preserving the observed
@@ -108,9 +103,10 @@ what those results change in the research plan.
   score-free Air preflight `fcc8b891…ee060` passed in 321.32 seconds, projected
   the screen at 91.40 fleet-hours / 11.42 max-shard hours, and packet
   `17036e63…1385` fully recomputes. Claude independently passed that packet at
-  `51a864c`; exactly one Mini screen is queued after S3a releases the host and
-  a fresh admission/receipt is created. Confirmation is hard-closed pending a
-  future reviewed controller.
+  `51a864c`. After S3a closed, exactly one 2,048-cluster Mini screen launched
+  under admission `1d99bb55…bdbf` and receipt `20a420d2…5cc`. Outcomes remain
+  sealed until terminal verification; confirmation is hard-closed pending a
+  future reviewed packet.
 - **Small-endgame S3c:** exact producer `0b96fae` froze a real score-free
   natural-prefix census at asset commit `4fb90a1`. Census
   `23632609…b52a` and curriculum packet `df102428…9eca` reproduce from clean
@@ -140,8 +136,10 @@ what those results change in the research plan.
   bounded v3 at `4d3f0a35…8cc3c`: at most 17 play / 33 bury actions, explicit
   `HeuristicBot` continuation, three disjoint folds and a hard ceiling of
   1,329,210 candidate-world rollouts. Claude independently passed v3 at marker
-  `239f13c`; score-free controller implementation is now authorized, but no
-  controller or outcome exists.
+  `239f13c`. Exact producer `931f504` and asset `ff277b4` now freeze controller
+  packet `13d9a97f…61fc`: all 557 rows replay, focused tests pass 30/30, and
+  preflight sampled zero worlds/outcomes. Independent controller review is
+  open; counterfactual execution, labels, training and strength remain closed.
   The latest complete server pull at 16:07 UTC found every one
   of the 30 source
   files unchanged, so this remains the current production snapshot. The split
@@ -184,9 +182,10 @@ what those results change in the research plan.
 7. Screens choose one candidate; only a fresh paired confirmation against the
    named champion establishes strength. Correctness repairs, green pipelines,
    faster simulation and larger corpora are enabling work, not AI wins.
-8. S3a is the first positive structured-search mechanism: preserve its frozen
-   proposal recipe and move to fresh full-game evidence. Do not tune from the
-   inspected 512 states or treat per-state bury gain as signed-level utility.
+8. S3a showed that structured ballot proposals can improve a selected-state
+   objective, then selected none in fresh full games. Preserve both facts:
+   close the policy recipe, but use its disagreements to diagnose when better
+   proposals fail to translate through search and continuation.
 9. Human actions are candidate sources, not labels. Measure whether they add
    useful actions and survive counterfactual evaluation before imitation.
 10. Bot-vs-bot paired evidence is the controlled strength gate; the product
@@ -317,31 +316,31 @@ result.
 
 The baseline is the exact deployed `mc-s0-report-lcb` policy, not “MC” in the
 abstract. Every challenger binds that parent plus a matched null at freeze
-time. **T3 is the execution-ready strength bridge:** resolve one live search
-screen, queue the second reviewed whole-game hypothesis, and make the human and
-Teacher lanes executable. It is not itself a claim that a learned model became
-stronger. **T4 is the first closed Teacher generation:** capture, label, train,
-integrate and test one challenger end to end. Live order and machine ownership
-remain in `BACKLOG.md`; this section owns the durable decision tree.
+time. **T3 is the execution-ready strength bridge:** S3a is terminal negative,
+S4 is receiving its fresh whole-game test, and the human/Teacher/endgame lanes
+are being made executable. It is not itself a claim that a learned model became
+stronger. **T4 is the first closed Teacher generation:** execute H0 once,
+capture, label, train, integrate and test one challenger end to end. Live order
+and machine ownership remain in `BACKLOG.md`; this section owns the durable
+decision tree.
 
 ### T3 decision tree
 
-1. **Finish the sealed S3a screen.** The structured-bury 512-state mechanism
-   screen already passed and its fresh 2,048-cluster full-game screen is live
-   on Mini. Terminal PASS permits freezing an 8,192-cluster confirmation packet
-   for external review; it does not permit an automatic launch or promotion.
-   SELECT NONE closes this exact recipe without tuning or retry.
+1. **Preserve the terminal S3a result.** The structured-bury 512-state
+   mechanism passed, but the fresh 2,048-cluster full-game screen selected none.
+   The exact policy recipe is closed without confirmation, tuning, retry or
+   pooled inference. Its candidate disagreements may remain diagnostic input.
 2. **Carry S4 from mechanism evidence to whole-game evidence.** The reviewed
    one-shot exact-state screen passed in both roles at terminal
    `abd9f36f…cdc00`. The repaired complete-round v2 controller and packet are
    frozen at `cad3992` / `17036e63…1385`, preserving natural trigger traffic
    against the exact live champion and an analysis-identical matched null.
    Claude independently passed the repaired packet at `51a864c`; exactly one
-   2,048-cluster Mini screen may launch after S3a releases the host and a fresh
-   admission/receipt is created. Do
-   not treat `+5.156` points as a duel-strength estimate: using a K now can
-   still waste future control over a full continuation.
-3. **Implement the passed human-action counterfactual design.** The human
+   2,048-cluster Mini screen is now running under admission
+   `1d99bb55…bdbf` and receipt `20a420d2…5cc`. Do not treat `+5.156` points as
+   a duel-strength estimate: using a K now can still waste future control over
+   a full continuation. Keep outcomes sealed until one terminal verify.
+3. **Close review of the passed human-action counterfactual controller.** The human
    corpus broadens the action/state distribution, but raw imitation and final
    returns are not strength labels. H0-v2 repaired the V11 artifact identity,
    yet its execution language leaves “analysis ballot,” downstream
@@ -353,8 +352,10 @@ remain in `BACKLOG.md`; this section owns the durable decision tree.
    worlds. Explicitly bind `HeuristicBot` as the production root evaluator's
    rollout continuation; report-LCB is the root selection/report rule, not a
    recursive downstream policy. Specify bury work separately. Claude passed
-   this bounded v3 design at `239f13c`; implement/freeze the score-free
-   controller now. Controller review still precedes any outcome.
+   this bounded v3 design at `239f13c`. Exact producer `931f504`, asset
+   `ff277b4` and packet `13d9a97f…61fc` now implement/freeze the score-free
+   controller over all 557 rows with zero worlds/outcomes. Independent
+   controller review is the remaining T3 gate and still precedes execution.
 4. **Repair then review the Teacher Stage C contract.** Exact `b0ef0f9` defines
    2,048 fresh states and fixed 250k-deal scan windows for each split. Cheap
    labels remain only on ordinary anchors; uncertainty/disagreement/bury use
@@ -380,12 +381,13 @@ remain in `BACKLOG.md`; this section owns the durable decision tree.
    Close the hypothesis if the action was forced or no longer reproduced. Only
    a reproducible defect may open a separately reviewed treatment/null design.
 
-T3 exits with one verified S3a terminal verdict and either a reviewed
-confirmation packet or immutable closeout; the reviewed S4 whole-game screen
-launched or terminally resolved; bounded reviewed H0 and Stage-C contracts; and
-the leakage-safe human ladder plus S3c score-free feasibility asset. A review
-is a routing boundary, not the milestone's scientific output. S5 replay is
-valuable T3-support work and does not silently expand this exit gate.
+T3 exits with S3a immutably closed, the reviewed S4 whole-game screen launched
+or terminally resolved, bounded reviewed H0 and Stage-C controllers/contracts,
+and the leakage-safe human ladder plus reviewed S3c score-free feasibility
+asset. S3a and the S4 launch conditions are already satisfied. H0 controller
+review, Stage-C-v3 freeze/review and S3c design review remain. A review is a
+routing boundary, not the milestone's scientific output. S5 replay is useful
+support work and does not silently expand this exit gate.
 
 ### T4 — first closed stronger-Teacher generation
 
@@ -412,14 +414,14 @@ produce privileged diagnostic targets for a cheap distilled endgame head.
 
 ### Lane A — improve search directly
 
-- **S3a structured bury** directly tests the observed point-shy kitty policy.
-  The incumbent can bury points in rare void/trump cases; S3a is broader because
-  it explicitly constructs one-/two-suit voids containing points and evaluates
-  them through rollouts.
+- **S3a structured bury** tested the observed point-shy kitty policy. Explicit
+  point/void/trump proposals improved the selected-state objective, but the
+  full-game screen selected none. The policy recipe is closed; its useful
+  residue is a set of proposal/continuation disagreement states for Stage C.
 - **S4 point-banking continuation** has passed its exact-state mechanism
   screen in both roles and its complete-round packet review. Packet
   `17036e63…1385` is frozen and independently passed at `51a864c`; its sole
-  Mini launch waits behind S3a. The remaining empirical question is deployment
+  Mini screen is now running. The remaining empirical question is deployment
   relevance: does the continuation-only change improve complete-round utility
   under natural traffic against the live champion and matched null?
 - **S5 defensive point protection** is not yet an implementation hypothesis.
@@ -550,7 +552,7 @@ human corpus allows.
 |---|---|---|---|
 | **H0 v1** — exact `9770313`, packet `9ff160a9…247d3` | Froze the population, DESIGN/AUDIT split and no-outcome authority; intended to compare production, human, V11 and random proposals. | Split/design review PASS, then **SUPERSEDED PRE-EXECUTION**: the pinned V11 SHA named no executable artifact. No controller or outcome existed. | The sampling/split geometry survives, but v1 cannot parent execution. |
 | **H0 v2** — exact `12dac55`, packet `2cccf580…8f2b` | Preserved the rows and bound the real `ep07.npz` V11 checkpoint, portable live report-LCB parent and disjoint 30-world selection / 300-world reporting idea. | Claude passed the identity repair at `9fdb67a`, then a score-free implementation audit **SUPERSEDED IT PRE-CONTROLLER**. “Analysis ballot” had no hard cap, report-LCB was conflated with downstream continuation, and requested candidate recall had no defined relevant-action universe. No outcomes existed. | V2 proved the real artifacts and parent could reopen; it did not define a finite executable estimand. |
-| **H0 v3** — source `b02b6de`, packet commit `d6214ce`, packet `4d3f0a35…8cc3c` | Preserves every v2 play row, freezes all bury keys, caps the union at 17 play / 33 bury actions, draws V11 and random from the same novel pool, separates report-LCB root choice from `HeuristicBot` rollout continuation, uses three disjoint folds and caps total work at 1,329,210 candidate-world rollouts. | **DESIGN PASS** at Claude marker `239f13c`. No controller, outcome, label, training or strength authority. | Implement and freeze one score-free controller. That controller needs its own review before T4 executes it once. |
+| **H0 v3** — source `b02b6de`, packet commit `d6214ce`, packet `4d3f0a35…8cc3c` | Preserves every v2 play row, freezes all bury keys, caps the union at 17 play / 33 bury actions, draws V11 and random from the same novel pool, separates report-LCB root choice from `HeuristicBot` rollout continuation, uses three disjoint folds and caps total work at 1,329,210 candidate-world rollouts. | **DESIGN PASS / CONTROLLER FROZEN.** Claude passed the design at `239f13c`; producer `931f504`, asset `ff277b4` and controller packet `13d9a97f…61fc` replay all 557 rows score-free. No world/outcome was computed. | Independent controller review remains. PASS may authorize one T4 diagnostic execution receipt; it does not execute, label, train or claim strength. |
 
 After the one reviewed T4 execution, H0 publishes proposal-source membership
 and survival, paired human/model/champion utilities, continuation ranking flips
@@ -580,8 +582,9 @@ Use human data in three bounded stages:
    RESERVE diagnostic. Calling these data a meaningful three-way
    DEV/CALIB/REPORT split would overstate their independence; formal REPORT
    remains fresh synthetic/full-game and `HUMAN-C1` evidence.
-2. **Run the bounded counterfactual once.** H0-v3 design review passed at
-   `239f13c`; implement and review its score-free controller, then execute once.
+2. **Run the bounded counterfactual once.** H0-v3 design passed at `239f13c`;
+   its score-free controller is frozen at `931f504` / `ff277b4` and awaits
+   independent review. Only after PASS may T4 create one receipt and execute.
    Keep bury separate from play and report where each human/V11/random source
    entered and survived; never infer quality from mere ballot membership.
 3. **Only then choose the learning use.** Strong supported actions can train a

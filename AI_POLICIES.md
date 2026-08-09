@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-09 16:34 EDT
+## Current synthesis — 2026-08-09 17:25 EDT
 
 ### Canonical terminal-results table
 
@@ -35,12 +35,14 @@ results table.
 | 08-09 | Suphx O0-v2 | Repeat the oracle/public comparison on identical public trajectories and separately test whether emphasizing larger oracle margins helps. | **SELECT NONE** | CRN control oracle-minus-public `+0.015`, LCB `-0.067`; plus-margin `-0.047`, LCB `-0.109`; interaction `-0.062` | Shared-public CRN repaired the comparison mechanics but did not make oracle use robust. Margin sharpening was directionally worse, no cell advanced, and O1 remains unauthorized. |
 | 08-08 | Teacher-v3 Stage B / audit-v2 | Compare cheap heuristic-continuation labels with much deeper MC-continuation labels on ordinary states to see whether cheap labels are trustworthy. | **STAGE B PASS / AUDIT OPERATIONAL REFUSAL** | cheap-minus-gold regret upper bound `0.0195 < 0.10`; audit shard 6 stopped on an incomplete champion-report continuation and published no labels/gate | Cheap labels agreed on sampled ordinary states. The continuation audit produced no ML verdict and is nonretryable; reviewed score-free diagnostics now gate a fresh versioned synthetic contract. |
 | 08-09 | Teacher-v3 fresh champion audit | Repeat that label-fidelity comparison on an untouched 64-state complement and identify where ordinary N=30 labels become uncertain enough to need expensive treatment. | **PASS / STAGE-C DESIGN** | cheap-choice all-64 regret upper bound `0.0354`; N=30-choice upper bound `0.0439`, both below `0.10`; N=30 boundary-8 diagnostic upper bound `0.1421` | The cheap and N=30 choices are champion-faithful on the frozen 64-state complement. The boundary diagnostic motivates hard-tail escalation. Reviewed adapter `56ccefbd…c2442` now freezes that design-only contract; it authorizes no labels, training or promotion. |
-| 08-09 | S4 point-banking exact-state screen | In rollouts, when the bot is already winning the trick and can retain a higher winner, let it bank a 5/10/K instead of always spending the cheapest winner. | **MECHANISM PASS / FULL-GAME PACKET PASS** | overall acting-team point delta `+5.156`, one-sided LCB `+3.029`; attacker/defender means `+6.406/+3.906`; 35 wins, 4 losses, 25 ties; level utility `+0.25` | Banking a point-card winner while retaining higher control helps on the frozen exact-late trigger population in both roles. This is strong mechanism evidence, not a whole-bot strength claim; the repaired complete-round packet passed review and waits for Mini. |
-| 08-09 | S4 complete-round score-free preflight v2 | Play complete mirrored rounds with the point-banking rollout rule, an analysis-identical null, and the live champion on the same deals and random streams. | **CAPACITY + PACKET PASS / SCREEN QUEUED** | 4 clusters in `321.32s`; projected screen `91.40` fleet-hours / `11.42` max-shard hours; treatment/null both trigger in both roles with exact dose | A pre-review audit superseded unlaunched v1. Exact `cad3992` recomputes raw outcomes and enforces 330 accepted worlds/search. Claude passed packet `17036e63…1385`; one Mini screen is authorized after S3a releases the host and a fresh admission/receipt is created. |
+| 08-09 | S4 point-banking exact-state screen | In rollouts, when the bot is already winning the trick and can retain a higher winner, let it bank a 5/10/K instead of always spending the cheapest winner. | **MECHANISM PASS / FULL-GAME SCREEN RUNNING** | overall acting-team point delta `+5.156`, one-sided LCB `+3.029`; attacker/defender means `+6.406/+3.906`; 35 wins, 4 losses, 25 ties; level utility `+0.25` | Banking a point-card winner while retaining higher control helps on the frozen exact-late trigger population in both roles. This is mechanism evidence; the fresh whole-game test is now running. |
+| 08-09 | S4 complete-round score-free preflight v2 | Play complete mirrored rounds with the point-banking rollout rule, an analysis-identical null, and the live champion on the same deals and random streams. | **CAPACITY + PACKET PASS / SCREEN RUNNING** | 4 clusters in `321.32s`; projected screen `91.40` fleet-hours / `11.42` max-shard hours; treatment/null both trigger in both roles with exact dose | Exact `cad3992` repairs the superseded v1 validator, and Claude passed packet `17036e63…1385`. After S3a released Mini, one sealed 2,048-cluster screen consumed admission `1d99bb55…bdbf` and receipt `20a420d2…5cc`. |
 | 08-09 | Human H0 counterfactual design v1 | Add the move a human actually played to the champion ballot alongside V11 and random proposals, then price those choices on common simulated worlds instead of imitating the human blindly. | **SPLIT REVIEW PASS / SUPERSEDED PRE-EXECUTION** | 384 DESIGN + 128 name-ID/deal-disjoint AUDIT plays; separate 36/9 buries; every eligible late/off-ballot row retained; zero outcomes | The split and authority semantics passed, but later executable audit found the pinned V11 digest names no artifact. V1 cannot parent a controller. |
 | 08-09 | Human H0 counterfactual design v2 | Preserve v1's human sample while repairing the real V11 checkpoint and deployed report-LCB parent identities. | **IDENTITY DELTA PASS / SUPERSEDED PRE-CONTROLLER** | Claude PASS `9fdb67a`; same 384/128 plays and 36/9 buries; zero outcomes | The executable artifacts reopened correctly, but the analysis-ballot cap, downstream continuation and candidate-recall estimand remained ambiguous. Bounded v3 replaces the design before any controller or result. |
 | 08-09 | Human H0 counterfactual design v3 | Cap the human/V11/random proposal union, make every source compete under fixed disjoint work, and distinguish the root report-LCB judge from the heuristic policy used inside rollouts. | **DESIGN PASS / CONTROLLER IMPLEMENTATION ONLY** | Claude PASS `239f13c`; 17/33 play/bury caps, three disjoint folds and 1,329,210 maximum candidate-world rollouts; zero outcomes | The human/model proposal experiment is now finite and executable. The PASS authorizes one score-free controller implementation—not a counterfactual run, label, training, strength claim or production change. |
-| 08-09 | S3a full-game score-free preflight | Give the banker structured point/void/trump kitty options, evaluate them with the live search, and test the resulting bot over complete rounds. | **CAPACITY PASS / SCREEN LAUNCHED AFTER REVIEW** | 4/4 clusters in 255.3 seconds; exact structured work; screen projection `72.62` fleet-hours / `9.08` max-shard hours under the frozen 2× factor | Structured bury is non-vacuously wired and the preregistered full-game screen fits Mini. Separate packet review passed and the sealed screen is running; this row itself remains capacity evidence, not strength evidence. |
+| 08-09 | Human H0-v3 score-free controller | Replay the frozen human decisions, build the production+human+V11+random candidate unions, and bind one future diagnostic run so incomplete work cannot look like a result. | **FROZEN / CONTROLLER REVIEW OPEN** | 557/557 rows replayed; geometry `876ed56b…ff2b`; maximum 1,329,210 candidate-world rollouts; **0 worlds and 0 outcomes** | Producer `931f504`, asset `ff277b4` and packet `13d9a97f…61fc` make the experiment executable but do not run it. Independent controller review is still required. |
+| 08-09 | S3a structured-bury full-game screen | Give the banker structured point/void/trump kitty options, then test the resulting policy over fresh complete mirrored rounds rather than selected bury states. | **SELECT NONE / CLOSED** | all 2,048 clusters terminally verified; aggregate `20609613…271f`, final `32156d79…c9ff` | The positive 512-state bury mechanism did not earn full-game confirmation. Close this exact recipe without retrying or tuning on the screen; proposal widening remains a useful diagnostic, not a deployable policy. |
+| 08-09 | S3a full-game score-free preflight | Check that structured-bury search is genuinely triggered, consumes exact work and fits Mini before the fresh full-game test. | **CAPACITY PASS / CONSUMED** | 4/4 clusters in 255.3 seconds; screen projection `72.62` fleet-hours / `9.08` max-shard hours | The sizing was correct and enabled the now-terminal screen. It was capacity evidence, not evidence that the policy would win. |
 | 08-08 | S3b v2 throughput | Sample compatible hidden hands, solve the remaining four-card perfect-information game exactly by partnership minimax inside each sampled world, then average those exact world values. | **HOLD / NO SCREEN** | first exact-treatment cluster exceeded the frozen cumulative `250,000`-node cap; no receipt published | The registered four-card sampled-exact recipe is not operationally admissible under its zero-overflow rule. No strength conclusion; no retry or 2,048 screen. |
 | 08-08 | S3a v2 sizing | Run a tiny score-free dry run to verify the structured-bury mechanism consumes exact work and fits available compute. | **CAPACITY PASS / NO STRENGTH VERDICT** | frozen projection `0.142` fleet-hours / `0.0178` max-shard hours, exact work and zero failed worlds | This cleared placement for the subsequently reviewed and completed 512-state screen; sizing itself made no strength claim. |
 | 08-08 | S3a structured-bury screen | Compare strategy-aware point/void/trump kitty candidates with the live heuristic choice, the old four-choice search, and equally wide random candidates on fixed states. | **MECHANISM PASS / AUTHORIZE DUEL DESIGN** | structured-minus-live-incumbent `+0.997 +/- 0.401` (LCB `+0.597`); minus legacy-four `+0.878 +/- 0.380`; minus matched random widening `+3.253 +/- 0.561` | Structured proposal generation improved the frozen state-level bury objective against every preregistered control. This is the first positive S3 mechanism signal, but only a fresh full-game duel can establish bot strength. |
@@ -63,12 +65,18 @@ Evidence anchors, in the same order:
   pre-outcome receipt `90124eb6f89c27cedc38770b2da5b3b8597400694281729656105f67803f526b`;
   admission `83993ec6609c2a7528853d4c1db789f137d3f0cbfff97d20fbf526cbd5ff5e6d`.
 - S4 complete-round v2 preflight `fcc8b8913d80db5b1fe4bb7d6b727dc722bb7d0f4ec9c8806842535fc43ee060`;
-  frozen packet `17036e6307ad0072ae10aeaaddde0ed3628a2f526ca440e909cdc35cd5071385`.
+  frozen packet `17036e6307ad0072ae10aeaaddde0ed3628a2f526ca440e909cdc35cd5071385`;
+  running-screen admission `1d99bb55f780cb9f5a9f0ef99c810e0045eb99b458ff73d9190d8d59c60cbdbf`;
+  receipt `20a420d2e939f8f1ce375ca32cee81d044db2c29dff7e52fbe7080a000dd65cc`.
 - Human H0 v1 design packet `9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3`;
   repaired v2 packet `2cccf5803ca60cf41690f18dc0e85febaf36a88ce702587e8c86a67e2a358f2b`;
   bounded v3 packet `4d3f0a35082c6957f2a468686b8eedbd6d7cbbf9540503fcea08cccf27c8cc3c`;
   bounded-v3 design-review marker `239f13ce52a8be81108fdebf9bd0e96742e60133`;
   reviewed corpus manifest `b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553`.
+- H0-v3 controller packet `13d9a97f9adf26860b9f5e0d4889960c75baa5bf979b939206d2399472ba61fc`;
+  candidate geometry `876ed56bd8f436d58cb6f3d58774a0f06756afb4d8c98ffdb49d9424b545ff2b`.
+- S3a full-game aggregate `20609613e000ff4d11640dc35827527ca14e0ec09720c9c6cda1c64f6cdc271f`;
+  terminal final `32156d79aaff247c2d3b60bcf45460442a224c31f415d6689b769b0eba32c9ff`.
 - S3a full-game preflight `09692f823d26d38ea76c7c6e36ea007a5031c0f05ca1a76795c84e7d0722edf0`;
   supervisor final `56943242f3620b09774a55eab992fbac0bce6ad224c3ada6a7b54a5634799e9f`;
   reviewed screen packet `de16247bfea13bde516cfb45317f7d21d46d758ae700441b9b747b41f3d5cdd4`;
@@ -106,11 +114,10 @@ Evidence anchors, in the same order:
 - DEV-512 selected none: the shipped ballot had the lowest equal-work regret and
   CALIB/REPORT remain sealed. This rejects its registered designs, not every
   future proposal-search hypothesis.
-- S3a now supplies that missing positive proposal-search signal specifically
-  for bury decisions: structured widening beat the incumbent, legacy-four and
-  trigger-matched random widening on 512 frozen states. Its per-state evidence
-  is inspected and non-promotable; the mechanism must move to fresh full-game
-  clusters before any policy claim.
+- S3a supplied a real state-level proposal-search signal for bury decisions,
+  but the fresh 2,048-cluster full-game screen terminally selected none. The
+  broader ballot remains useful diagnostic evidence; this exact policy recipe
+  is closed without confirmation, retry or tuning on the screen.
 - High-N and late assets are replayable state reservoirs, not oracles; their
   labels use old ballots, non-strict sampling, raw points and heuristic
   continuation. Relabel fresh named strata under the current contract.
@@ -134,9 +141,10 @@ Evidence anchors, in the same order:
 ### Human-observed policy surfaces
 
 - **Kitty:** production is strongly point-shy rather than incapable of
-  burying points. S3a explicitly constructs point/void/trump alternatives; its
-  state mechanism passed and its sealed full-game screen is the active strength
-  test.
+  burying points. S3a's point/void/trump alternatives improved the selected
+  512-state objective, but the fresh whole-game screen selected none. Do not
+  ship or retune this recipe; use its disagreement states as future Teacher or
+  proposal diagnostics.
 - **Point banking:** root MC can source a point-bearing winner, but shared
   heuristic continuation selects the cheapest winner when a cheaper non-point
   winner also exists. S4 v1 is closed HOLD without outcomes because its
@@ -156,9 +164,10 @@ Evidence anchors, in the same order:
   and authority gaps. Exact `cad3992` implements the repaired natural-traffic
   treatment/null/champion comparison; score-free preflight `fcc8b891…ee060`
   passed and packet `17036e63…1385` independently closed PASS at Claude marker
-  commit `51a864c`. Exactly one 2,048-cluster Mini screen is authorized after
-  S3a releases the host and a fresh admission/receipt is created. It still is
-  not bot strength, confirmation or production authority.
+  commit `51a864c`. After S3a closed, the one admitted 2,048-cluster Mini
+  screen launched under admission `1d99bb55…bdbf` and receipt
+  `20a420d2…5cc`. Its outcome remains sealed; it is not yet bot strength,
+  confirmation or production authority.
 - **People-facing target:** human agreement is a style/coverage diagnostic.
   After bot-vs-bot confirmation, a blinded opt-in `HUMAN-C1` must compare the
   candidate with the live champion across the same human cohort, balanced by
@@ -216,8 +225,10 @@ Evidence anchors, in the same order:
   bounded v3 at `4d3f0a35…8cc3c`: 17/33 play/bury caps, explicit
   `HeuristicBot` continuation, three disjoint folds and maximum 1,329,210
   candidate-world rollouts. Claude independently passed the design at
-  `239f13c`; one score-free controller implementation is now authorized. No
-  controller, outcome, label, training or strength authority exists.
+  `239f13c`. Exact producer `931f504` and asset `ff277b4` now freeze controller
+  packet `13d9a97f…61fc`: all 557 rows replay, geometry is
+  `876ed56b…ff2b`, and preflight consumed zero worlds/outcomes. Controller
+  review is open; no execution, label, training or strength authority exists.
 - **Teacher Stage C:** exact `b0ef0f9` froze no-compute v2 at
   `45802e47…a350`: a 2,048-state design
   (1,024 DESIGN / 512 CALIB / 512 REPORT; 1,920 play + 128 bury). Ordinary

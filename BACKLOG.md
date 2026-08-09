@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-09 15:44 EDT.
+Last re-derived: 2026-08-09 17:25 EDT.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
 `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -14,58 +14,31 @@ here.
   confirmed `+0.338 +/- 0.068` signed levels versus `mc-strong`; the matched
   null was flat. Runtime rollback is release 16; policy rollback is
   `mc-strong`.
-- **Live strength compute:** the reviewed S3a structured-bury full-game screen
-  is running on Mini, eight shards × 256 clusters. Outcomes are sealed.
-- **Teacher:** the fresh audit passed on ordinary states. Pre-review audit
-  superseded Stage-C v1 because it mismatched the adapter packet ID, had not
-  reopened the live parent and pinned closed S4 v1. Exact `b0ef0f9` freezes
-  repaired 2,048-state v2 at `45802e47…a350`, but a later executable audit
-  superseded its H0 v1 parent before outcomes. Freeze a new Stage-C binding
-  only after bounded H0 v3 passes. Stage C is currently a design, not a
-  dataset: no 2,048-state capture, labels, checkpoint or challenger exists.
-- **Human corpus:** production logs were atomically refreshed on August 9.
-  The exact Fly-snapshot-only `human_v8` rebuild contains 2,830 accepted plays,
-  45 human buries and 122 fully replayed rounds; all seven incomplete rounds
-  are counted, and 12 legacy local-only rooms are excluded. This is a
-  proposal/diagnostic asset, not an authorized strength target. Clean producer
-  `b52dc33` and corpus manifest `b9699790…16553` passed exact review; that
-  evidence authorizes bounded H0 design only. V1 passed split review but named
-  no executable V11 artifact. V2 repaired that identity and independently
-  passed at `9fdb67a`; a later score-free execution audit found its analysis
-  ballot cap, downstream continuation and requested candidate-recall output
-  underdefined. No controller or outcome existed. Exact source `b02b6de` and
-  packet commit `d6214ce` freeze bounded v3 at `4d3f0a35…8cc3c`: the same
-  384-DESIGN/128-AUDIT play rows, all 36/9 exact bury keys, at most 17 play or
-  33 bury candidates, explicit `HeuristicBot` continuation and a hard ceiling
-  of 1,329,210 candidate-world rollouts. V3 delta review is open. Execution,
-  labels, training and strength remain closed. The latest complete
-  server pull at 18:09 UTC found all 30 files unchanged, so this corpus remains
-  the current production snapshot rather than a stale copy. Its split is
-  name-derived pseudonymous-player/deal disjoint, not guaranteed true-person
-  disjoint if a person changed names; that is acceptable for H0 diagnostics,
-  not HUMAN-C1 evidence.
-- **S4:** v1 is closed HOLD without outcomes because its material digest did
-  not reproduce. Exact `1b35fb7` fixes the utility and evidence boundary. A
-  fresh score-free Air capture froze 64 unique exact-late trigger states
-  (32 per role) at `4538be85…6b5f`. Exact `b0ef0f9` then independently rescanned
-  all 69,047 ascending deals and rebuilt every row exactly; witness
-  `3079fb16…f0a9`. Claude passed rereview. The one reviewed Air execution
-  exactly verified terminal result `abd9f36f…cdc00`: overall point delta
-  `+5.156`, LCB `+3.029`, both roles positive, 35 wins/4 losses/25 ties.
-  A pre-review audit invalidated the first complete-round packet without any
-  launch or outcomes: its validator accepted wrong-signed/unbounded utility,
-  underfilled report work and direct shards without reviewed authority. Exact
-  `cad3992` is the repaired v2 runner/controller. Fresh score-free Air
-  preflight `fcc8b891…ee060` passed, and packet `17036e63…1385` recomputes.
-  Claude independently passed the repaired packet at marker commit `51a864c`.
-  This authorizes exactly one 2,048-cluster Mini screen after S3a releases the
-  host and a fresh admission/receipt is created; it is not a strength claim or
-  confirmation authority. V1 `b64bc95` / `80e4f1bf…6947` is preserved as
-  superseded evidence.
+- **S3a:** the structured-bury mechanism improved its selected 512-state
+  objective, but the fresh 2,048-cluster full-game screen terminally returned
+  **SELECT NONE**. Aggregate `20609613…271f` and final `32156d79…c9ff` verified.
+  This exact recipe is closed—no retry, tuning, confirmation or pooling.
+- **S4 live strength compute:** the point-banking mechanism passed exact-state
+  testing in both roles (`+5.156` points; LCB `+3.029`). Its separately
+  reviewed full-game v2 screen is now running on Mini under exact `cad3992`,
+  packet `17036e63…1385`, admission `1d99bb55…bdbf` and receipt
+  `20a420d2…5cc`. Outcomes stay sealed until one terminal verification.
+- **Human corpus / H0:** reviewed `human_v8` contains 2,830 plays and 45 buries
+  from the exact Fly snapshot. The bounded v3 design passed, and exact producer
+  `931f504` plus asset `ff277b4` now freeze a score-free controller over all
+  557 selected rows at packet `13d9a97f…61fc`. It replayed every row while
+  sampling **zero worlds** and computing **zero outcomes**. Independent
+  controller review is the only remaining T3.4 gate; execution belongs to T4.
+- **Teacher / endgame:** Stage-C v2 is held because it binds obsolete H0.
+  Rebind/freeze v3 only after the H0 controller review. The S3c 768-root
+  natural-prefix census/curriculum is frozen and reproduced; its external
+  design review follows the sole active H0 review. Neither lane has produced
+  labels, a checkpoint, a solver result or a strength claim.
 - **Learners:** V11 direct-v2, Direct-Q, O0 and O0-v2 all selected none under
   their registered gates. They remain diagnostics, not deployable policies.
-- **Free capacity:** Air is free after S4's score-free preflight. No reviewed
-  strength launch is available there; Mini remains exclusive to sealed S3a.
+- **Capacity:** Mini is dedicated to sealed S4; Air is free for exact review
+  reproduction and bounded coding tests. HUMAN-C1 infrastructure is parked
+  until a challenger first beats report-LCB.
 
 ## NOW — output ledger ordered by value
 
@@ -75,14 +48,14 @@ scientific output of that step.
 
 | priority / milestone | strategy and problem, in plain English | progress so far and what's left, in plain English | next work | required output | exact exit gate |
 |---|---|---|---|---|---|
-| **P0 / T3.1 S3a terminal** | The banker is extremely reluctant to bury points. Give it deliberate point/void/trump kitty plans and test whether that makes the complete bot win more—not merely whether individual buries look better. | The focused 512-state test passed. The sealed 2,048-game-state screen is over 90% complete with all eight workers healthy; no result has been opened. **Left:** finish the sealed run, verify it once, then either close the recipe or freeze its confirmation packet. | Let the sealed 2,048-cluster full-game screen finish | One verifier-authenticated screen aggregate and terminal verdict; on PASS, one frozen 8,192-cluster confirmation packet | Count-only monitor, then invoke the exact terminal verifier once. `AUTHORIZE_CONFIRM_PACKET_REVIEW` opens packet review only; `SELECT_NONE` immutably closes the recipe. |
-| **P1 / T3.2 S4 whole-game screen** | Current rollouts usually win a trick with the cheapest card and can miss free 5/10/K points. Let simulated players bank a point card when they can still retain higher control, then test whether that local improvement survives a whole round. | The targeted state test passed in both team roles (`+5.156` points, lower bound `+3.029`). The full-game v2 packet passed review and is queued; it has not run. **Left:** launch once Mini is free and obtain the whole-game verdict. | Release Mini from S3a, create the one fresh admission/receipt and launch reviewed v2 | One 2,048-cluster three-arm whole-game aggregate versus live report-LCB and matched null, with a terminal screen verdict | Exact `cad3992` / `17036e63…1385`, Claude PASS `51a864c`, one launch only. PASS may open a separately frozen confirmation packet; SELECT NONE closes v2. No retry or promotion. |
+| **DONE / T3.1 S3a terminal** | The banker is extremely reluctant to bury points. Give it deliberate point/void/trump kitty plans and test whether that makes the complete bot win more—not merely whether individual buries look better. | **Closed SELECT NONE.** The focused 512-state mechanism passed, but the fresh 2,048-cluster complete-round test did not advance. **Left:** none; preserve the negative and reuse disagreement states only as diagnostics. | No further work on this recipe | Verified aggregate `20609613…271f` and final `32156d79…c9ff` | Satisfied. No retry, tuning, confirmation, pooling or promotion. |
+| **P0 / T3.2 S4 whole-game screen** | Current rollouts usually win a trick with the cheapest card and can miss free 5/10/K points. Let simulated players bank a point card when they can still retain higher control, then test whether that local improvement survives a whole round. | The targeted state test passed in both roles (`+5.156` points, LCB `+3.029`). The reviewed 2,048-cluster full-game screen is running on Mini and outcomes are sealed. **Left:** terminally verify once, then close or freeze a confirmation packet. | Count/status monitoring only until all shards stop | One verifier-authenticated three-arm whole-game verdict versus live report-LCB and matched null | Exact `cad3992` / `17036e63…1385`, admission `1d99bb55…bdbf`, receipt `20a420d2…5cc`. PASS may open confirmation-packet review; SELECT NONE closes v2. |
 | **P1 / T3-support S5 replay gate** | Live-loss mining suggests bots may give points to an enemy-owned trick even when a cheaper legal discard exists. First prove that exact situation exists and that today's champion still makes it; do not patch from an observational aggregate. | The original “bots feed nearly twice as much” claim was withdrawn after per-seat normalization. The narrower loss pattern remains interesting, but baseline follow logic already tries to avoid points and MC already offers both point-avoiding and point-seeking follows. **Left:** replay bot-seat decisions with full legality and current-policy checks. | Build a score-free, source-hash-bound census of losing-follow decisions from the frozen Fly snapshot | Exact trigger/refusal counts, identifier-free witness digests, legal lower-point alternatives, ballot membership and current champion/rollout reproduction; then either close the hypothesis or freeze an S5 design | No treatment or strength run until replay proves the avoidable action exists and isolates whether the defect is sourcing, ranking or continuation. Human-loss rows remain DESIGN/DEV only. This support lane does not expand T3's exit gate. |
 | **P1 / T3.3 H0 bounded design** | Humans and V11 sometimes suggest moves outside the production bot's habits. Define a finite, fair experiment that evaluates those moves instead of blindly copying the human or flooding the ballot. | **Closed PASS.** V1 had a bad model identity; V2 repaired identity but left work/candidate semantics vague. Claude independently passed bounded v3 at marker `239f13c`. **Left:** none for the design; hand its exact contract to T3.4. | Preserve exact packet `4d3f0a35…8cc3c` and review marker `239f13c` | One external PASS marker binding caps, folds, continuation and the 1,329,210-work ceiling | Satisfied. The PASS authorizes score-free controller implementation only—no counterfactual outcomes. |
-| **P1 / T3.4 H0 controller** | Turn the H0 paper experiment into a reproducible program so every human/model/random proposal is judged on the intended shared worlds and partial failures cannot masquerade as results. | H0-v3 design is now independently passed; no controller or outcome exists. **Left:** implement, mutation-test, freeze and independently review the score-free controller. | Implement and test the immutable one-shot controller from the exact passed v3 contract | One score-free controller packet binding exact inputs, candidate source/survival counters, 30-world selection, disjoint 300-world reports, refusals and terminal verifier | Independent controller PASS freezes the T4.1 execution candidate. T3 stops before execution. |
+| **P0 / T3.4 H0 controller** | Turn the H0 paper experiment into a reproducible program so every human/model/random proposal is judged on intended shared worlds and partial failures cannot masquerade as results. | **Implementation/freeze complete.** All 557 rows replay score-free; tests pass 30/30; packet `13d9a97f…61fc` binds finite work and zero outcomes. **Left:** independent controller PASS/HOLD only. | Review exact producer `931f504` and asset `ff277b4`; do not execute | One external marker covering folds, utility, work/refusal accounting, replay and one-shot authority | PASS freezes the T4.1 execution candidate. T3 stops before execution. HOLD returns only the named defect. |
 | **P1 / T3.5 Teacher Stage-C contract** | Earlier Teachers mostly repeated normal heuristic self-play. Build a better curriculum that keeps cheap labels for routine choices but spends report-LCB-quality work on uncertainty, novel proposals, bury, point play and late-game states. | Stage B established that cheap labels match expensive labels on ordinary states. The old Stage-C draft points to H0 v1 and leaves proposal/work semantics vague; no Stage-C dataset exists. **Left:** rewrite it around executable H0 v3, freeze it and obtain review PASS. | Rebind the 2,048-state design to executable H0 v3, then review it | One frozen Stage-C-v3 design packet plus external PASS/HOLD marker; it must name split quotas, scan windows, label budgets, parent identities and refusal counters | PASS makes T4.2 capture implementation legal; it does not create states or labels. HOLD returns only the named defect. |
 | **P1 / T3.6 S3c exact-root feasibility** | Four-card exact search exploded past its node cap. Start with naturally reached one-card endings, then two and three, proving capacity and useful choices at each size before attempting the hard case again. | The real 768-root score-free census and one→two→three-card packet are frozen and reproduce on Mini and Air. It confirms one-card roots are mechanics-only, while two/three cards have bounded real branching. **Left:** obtain external design review, then implement/review the one-card capacity controller; no solver run is authorized yet. | Review exact producer `0b96fae`, asset commit `4fb90a1`, census `23632609…b52a` and packet `df102428…9eca` | One deal-disjoint census manifest, complexity distribution/capacity envelope, human witness appendix and immutable no-outcome launch packet | Review PASS may authorize the one-card feasibility controller implementation only. Four-card work remains closed until three-card evidence passes its predeclared capacity and strength gates. |
-| **P2 / T3.7 HUMAN-C1 no-traffic contract** | Bot-vs-bot wins are necessary but do not prove people get a stronger opponent. Prepare a blinded same-human-cohort A/B test while ensuring evaluation games can never leak into training. | An inert consent/arm/ledger seam and synthetic checks exist; no human traffic is authorized. **Left:** add account authentication, measured runtime identity, immutable block scope, structural training exclusion and independent review. | Complete the evidence boundary without connecting live traffic | One reviewed design/receipt schema, immutable block namespace/ledger, measured runtime identity check, candidate receipt, terminal estimator and synthetic C0 | External PASS establishes an inert launch-ready harness. A separate traffic packet and user authority are still required; evaluation logs remain training-excluded. |
+| **PARKED / HUMAN-C1 no-traffic contract** | Bot-vs-bot wins are necessary but do not prove people get a stronger opponent. Eventually compare a confirmed challenger with production against the same blinded human cohort without leaking evaluation games into training. | An inert consent/arm/ledger seam and the people-facing estimand exist; no traffic is authorized. **Left later:** account binding, measured runtime identity, immutable reviewed blocks, candidate receipt, synthetic C0 and estimator. | Preserve the seam; resume only after a challenger beats report-LCB in confirmation | A reviewed launch-ready harness tied to a real candidate | Not part of T3 completion. A separate traffic packet and explicit user authority remain required. |
 | **P2 / T3.X experiment infrastructure** | Too many runs have failed because code, data, seeds or authority did not match the reviewed experiment. Put the whole experiment in one immutable receipt so launches become routine and falsifiable. | Several recent runners now have strong one-off receipts and fail-closed validators. **Left:** extract and test one shared `ExperimentSpec` boundary rather than rebuilding the contract for every lane. | Make reviewed jobs cheaper to launch correctly | One tested immutable `ExperimentSpec`/receipt boundary for code, data, policy, ballot, sampler, continuation, actor, seeds, metric, null, work, stop rule and output | Tests prove identity drift/refusal and exact reopen. Scheduling may automate reviewed work; it may not select or promote. |
 | **P2 / product performance** | A stronger bot still feels weak if every move pauses the room. Measure concurrent tail latency and compile only proven hot paths without changing decisions. | Release 17 moved speculative search off the room event loop and is live; single-policy cost is known. **Left:** measure concurrent p50/p95/p99 and prove semantic parity for the next compiled hot path before deploying it. | Keep the stronger bot pleasant under concurrent traffic | One concurrent-room p50/p95/p99 policy-latency report and pure/compiled parity record for each changed hot leaf | Tail gate passes before deployment; CPU resize remains a separate operational experiment. |
 
@@ -110,10 +83,10 @@ T3 is complete only when the required outputs below are terminal:
 
 | output | what question this answers, in plain English | progress so far and what's left, in plain English | milestone result | T3 exit condition |
 |---|---|---|---|---|
-| **T3.1 S3a verdict** | Do strategy-aware point/void kitty choices improve the complete bot, or did they only look good on selected bury states? | The focused bury-state evidence passed; the sealed whole-game screen is over 90% complete and still unread. **Left:** finish and verify once, then close or freeze confirmation. | A verified structured-bury screen result | Terminal verifier returns once; positive result has a frozen externally reviewed confirmation packet, negative result has an immutable closeout. |
-| **T3.2 S4 whole-game evidence** | Does point banking still help at its natural frequency after accounting for later control, rather than only on hand-picked trigger states? | The trigger-matched state mechanism and repaired packet passed. **Left:** run the queued 2,048-cluster whole-game screen after S3a releases Mini. | Natural-traffic point-banking result rather than the existing exact-state witness only | The reviewed 2,048-cluster screen has launched and either terminally selected none or produced a frozen next packet. T3 does not require confirmation or promotion. |
+| **T3.1 S3a verdict** | Do strategy-aware point/void kitty choices improve the complete bot, or did they only look good on selected bury states? | **Complete: SELECT NONE.** The selected-state signal did not survive full games. **Left:** none; this exact recipe is closed. | Verified aggregate `20609613…271f` and final `32156d79…c9ff` | Satisfied by immutable closeout; no confirmation, retry or tuning. |
+| **T3.2 S4 whole-game evidence** | Does point banking still help at its natural frequency after accounting for later control, rather than only on hand-picked trigger states? | **T3 launch condition satisfied.** Exact-state mechanism and packet passed; one 2,048-cluster screen is running on Mini. **Left for science:** one terminal verifier verdict after shards stop. | Natural-traffic point-banking result rather than the existing exact-state witness only | T3 required launch or terminal resolution; launch is satisfied. Outcomes remain sealed and promotion remains closed. |
 | **T3.3 H0-v3 design** | Can we test human and learned-model ideas fairly without assuming they are correct or giving them unlimited candidate/work advantage? | **Complete:** bounded v3 reproduces on both machines and Claude passed it at `239f13c`. **Left:** none for this row; no outcomes were computed. | A bounded, executable human/model proposal experiment | Satisfied by external PASS on exact packet `4d3f0a35…8cc3c`. |
-| **T3.4 H0 controller** | Can that counterfactual experiment be run once, exactly as designed, with every candidate source, fold and failure accounted for? | The design gate is open, but no controller or outcome exists. **Left:** implement, test, freeze and independently review the score-free controller. | Reproducible machinery for one future counterfactual run | Score-free controller packet frozen and externally passed, with candidate source/survival, fold, work and refusal accounting. T3 does not execute it. |
+| **T3.4 H0 controller** | Can that counterfactual experiment be run once, exactly as designed, with every candidate source, fold and failure accounted for? | **Implementation/freeze complete:** producer `931f504`, asset `ff277b4`, packet `13d9a97f…61fc`; 557 rows replayed and zero worlds sampled. **Left:** independent controller review only. | Reproducible machinery for one future counterfactual run | Score-free packet receives external PASS, including source/survival, folds, work and refusal accounting. T3 does not execute it. |
 | **T3.5 Stage-C-v3 contract** | Do we have an executable recipe for generating training examples that challenge the live champion instead of repeating ordinary heuristic self-play? | Stage B's ordinary-state audit passed; Stage C is still an obsolete H0-v1-bound draft. **Left:** rewrite, freeze and review v3; no capture or labels exist yet. | A reviewed recipe for creating the first stronger-Teacher asset | Frozen packet bound to executable H0-v3 and external PASS. No state capture, label or training is implied. |
 | **T3.6 S3c feasibility asset** | Can sampled exact search work reliably on tiny natural endgames and then grow one card at a time, rather than jumping back to the failed four-card case? | The real 768-root census and curriculum packet are frozen and independently reproduce. **Left:** external review; then one-card controller implementation/review, without running it inside T3 unless separately authorized. | A bounded small-endgame path after S3b's four-card failure | Score-free natural-prefix census and reviewed one→two→three-card exact-root packet. No strength outcome is required. |
 | **T3 data/evaluation boundary** | Can human play diversify the bot's ideas while keeping both model selection and the eventual human A/B test honest? | `human_v8` is provenance-verified and split; 25 off-ballot actions and 22/45 point-bearing buries are retained as proposal evidence. **Left:** keep these rows out of REPORT and enforce structural exclusion for future human A/B traffic. | Human evidence can diversify proposals without contaminating final evaluation | `human_v8` remains provenance-verified; DESIGN/AUDIT and future HUMAN-C1 traffic are excluded from model-selection REPORT and training as declared. |
@@ -127,17 +100,19 @@ unreviewed strength compute, training, promotion and production changes.
 
 ### Today's concrete exits
 
-1. Preserve S3a until one terminal verifier verdict; do not spend its sealed
-   evidence twice.
-2. **T3.2 packet PASS / launch queued:** S4 full-game v2 is already frozen at
-   `17036e63…1385` and independently passed. Do not create its admission or
-   launch while S3a owns Mini; release of Mini opens exactly one screen.
+1. **T3.1 closed:** S3a terminally selected none at aggregate
+   `20609613…271f` / final `32156d79…c9ff`. Preserve the negative; do not retry,
+   tune, confirm or pool it.
+2. **T3.2 launched:** S4 full-game v2 is running on Mini under exact
+   `cad3992` / `17036e63…1385`, admission `1d99bb55…bdbf` and receipt
+   `20a420d2…5cc`. Read only count/status until one terminal verify.
 3. **T3.3 closed PASS:** Claude passed bounded H0 v3 exact `d6214ce` /
    `4d3f0a35…8cc3c` at marker `239f13c`. This opens T3.4 controller
    implementation only; it does not authorize outcomes.
-4. **T3.4/T3.5 code while compute runs:** implement and freeze the score-free
-   H0 controller; in parallel rebind and freeze Stage-C-v3 for review.
-   Neither step may execute counterfactuals, capture states, label or train.
+4. **T3.4 controller frozen / review open:** exact producer `931f504`, asset
+   `ff277b4`, packet `13d9a97f…61fc`; 30/30 focused tests, all 557 rows replay,
+   zero worlds/outcomes. Obtain external PASS/HOLD, then rebind and freeze
+   Stage-C-v3. Neither step may execute counterfactuals, capture, label or train.
 5. **T3.6 packet frozen / review next:** exact producer `0b96fae`, asset commit
    `4fb90a1`, census `23632609…b52a` and packet `df102428…9eca` reproduce on
    Mini and Air. External PASS may authorize one-card controller implementation
@@ -146,8 +121,9 @@ unreviewed strength compute, training, promotion and production changes.
    bot decisions, enumerate legal lower-point alternatives and ask whether the
    current champion/continuation reproduces the action. The corrected
    observational aggregate alone cannot authorize a treatment.
-7. Keep Mini on the long reviewed S3a job and use Air for bounded reviewed
-   work only. Idle compute is not a reason to invent an unregistered run.
+7. Keep Mini on the reviewed S4 job and use Air for exact review reproduction
+   or bounded coding tests. Idle compute is not a reason to invent an
+   unregistered strength run.
 8. Keep the next real product gate as candidate-versus-champion performance
    against the same blinded human cohort, followed by an absolute experienced-
    human benchmark. Bot Elo and site-average win rate remain diagnostics.
@@ -160,7 +136,7 @@ reviews pass.
 
 | output | how this could make the bot stronger, in plain English | progress so far and what's left, in plain English | concrete artifact | terminal gate |
 |---|---|---|---|---|
-| **T4.1 H0 outcome** | Discover which human, V11 or random novel moves are genuinely useful under fair search, so Stage C learns from supported alternatives rather than copying style. | Corpus and bounded design exist and v3 passed review, but there is no controller or action-utility outcome. **Left:** build/pass the controller, then run the frozen counterfactual once. | One verified counterfactual bundle over the frozen 384 DESIGN / 128 AUDIT plays and 36/9 buries, with action-source survival and paired human/model/champion utilities | Run the independently passed controller once. Publish all refusals; partial work cannot publish utility. Classify which proposal sources survive rather than treating human agreement as strength. |
+| **T4.1 H0 outcome** | Discover which human, V11 or random novel moves are genuinely useful under fair search, so Stage C learns from supported alternatives rather than copying style. | Corpus, bounded design and score-free controller packet exist; no counterfactual world or utility has been computed. **Left:** obtain controller PASS, create one receipt, then execute once. | One verified counterfactual bundle over the frozen 384 DESIGN / 128 AUDIT plays and 36/9 buries, with action-source survival and paired human/model/champion utilities | Run the independently passed controller once. Publish all refusals; partial work cannot publish utility. Classify proposal sources rather than treating human agreement as strength. |
 | **T4.2 Stage-C dataset** | Create the first clean curriculum whose hard examples and candidate moves can exceed the old heuristic Teacher while preserving routine coverage. | Split sizes and desired mixture are drafted, but zero Stage-C states are captured or labeled. **Left:** pass the repaired Stage-C-v3 contract, implement capture/labeling and freeze all 2,048 rows. | Exactly 2,048 accepted replayable states—1,024 DESIGN, 512 CALIB, 512 untouched REPORT—with 1,920 play and 128 bury rows, rejection counters, action unions and named label provenance | Capture and label only under the reviewed Stage-C-v3 controller. Hash the dataset/manifest; no training begins if quotas, independence or label budgets drift. |
 | **T4.3 seeded models** | Test whether the new signal is actually learnable and stable—not merely a lucky checkpoint—using heads that match how search will consume them. | No Stage-C dataset, frozen recipe or report-LCB-trained checkpoint exists. **Left:** freeze one recipe, train at least eight seeds and measure learning curves/variance. | At least eight seeds of separate play-ranking and calibrated signed-outcome heads, with bury modeled separately, plus state-count learning curves | Choose architecture/hyperparameters on DESIGN and one frozen recipe/checkpoint rule on CALIB. Training seed variance is part of the result; no single lucky seed advances. |
 | **T4.4 untouched Teacher gate** | Check on unseen states whether the frozen model ranks and values actions better before spending a full gameplay screen or tuning to its mistakes. | Not started because the dataset/models do not exist; REPORT remains planned rather than opened evidence. **Left:** select once on CALIB, then open the 512-row REPORT exactly once. | One REPORT-open result for the frozen recipe: per-surface regret/coverage/calibration and comparison with the live Teacher baseline | Open REPORT once. PASS freezes exactly one bounded proposal/ranking challenger; failure is classified as data, target, capacity or composition rather than silently retuned on REPORT. |
@@ -176,9 +152,10 @@ public-policy Stage-C labels.
 
 ### Lane A — improve the search policy directly
 
-- **S3a structured bury:** directly addresses the bot's point-shy kitty
+- **S3a structured bury:** directly addressed the bot's point-shy kitty
   behavior with strategy-aware void/point/trump candidates. The 512-state
-  mechanism screen passed; the fresh full-game screen is live.
+  mechanism passed, but the fresh full-game screen selected none. Close this
+  policy recipe; retain its disagreements as Teacher/proposal diagnostics.
 - **S4 point-banking continuation:** the exact-late mechanism screen passed in
   both roles (`+5.156` points overall, LCB `+3.029`). Preserve the frozen
   continuation-only recipe and now test natural complete-round utility against
@@ -249,7 +226,7 @@ Natural supply was highly role-skewed (32 attacker, 321 defender), so the
 mechanism screen reported both equal-role and per-role estimands. The one-shot
 exact result passed: overall acting-team point delta `+5.156` (one-sided LCB
 `+3.029`), attacker/defender means `+6.406/+3.906`, 35 wins, 4 losses, 25 ties,
-and level utility `+0.25`. A future full-game screen must restore natural
+and level utility `+0.25`. The running full-game v2 screen now restores natural
 traffic weighting and may still select none; state-level mechanism evidence is
 not whole-policy strength.
 

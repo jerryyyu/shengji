@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-09 12:28 EDT.
+Last re-derived: 2026-08-09 12:38 EDT.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
 `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -40,18 +40,22 @@ here.
   fresh score-free Air capture froze 64 unique exact-late trigger states
   (32 per role) at `4538be85…6b5f`. Exact `b0ef0f9` then independently rescanned
   all 69,047 ascending deals and rebuilt every row exactly; witness
-  `3079fb16…f0a9`. Outcomes remain uncomputed and replacement rereview is open.
+  `3079fb16…f0a9`. Claude passed rereview. The one reviewed Air execution
+  exactly verified terminal result `abd9f36f…cdc00`: overall point delta
+  `+5.156`, LCB `+3.029`, both roles positive, 35 wins/4 losses/25 ties.
+  This opens full-game packet review only, not a duel or strength claim.
 - **Learners:** V11 direct-v2, Direct-Q, O0 and O0-v2 all selected none under
   their registered gates. They remain diagnostics, not deployable policies.
-- **Free capacity:** Air has no reviewed strength launch. Coding, deterministic
-  tests and score-free preflights may proceed while Mini computes.
+- **Free capacity:** Air has no further reviewed strength launch. S4 full-game
+  controller/packet code, deterministic tests and score-free preflights may
+  proceed while Mini computes.
 
 ## NOW — ordered by value
 
 | priority | work | exact exit gate |
 |---|---|---|
 | **P0 / S3a terminal** | Let the sealed 2,048-cluster full-game screen finish | Count-only monitor; run the exact terminal verifier once. PASS opens confirmation-packet review only. SELECT NONE closes the exact recipe. |
-| **P1 / S4 point-banking rollout** | Rereview the isolated mechanism + score-free capture and generation witness | Confirm `1b35fb7` / `4538be85…6b5f` with verifier `b0ef0f9` / `3079fb16…f0a9`, and the corrected portable namespace claim. PASS authorizes one exact state screen only. |
+| **P1 / S4 point-banking rollout** | Move the positive exact-state mechanism to fresh complete-round evidence | Implement and freeze a live-champion/matched-null full-game packet bound to terminal `abd9f36f…cdc00`; external review must precede any launch. The state result cannot promote or tune the recipe. |
 | **P1 / Teacher Stage C** | Review the repaired 2,048-state hard-tail v2 design | After H0 review, inspect exact `b0ef0f9` / `45802e47…a350`. PASS may authorize score-free capture/controller implementation only—not capture, labels or training. V1 is superseded. |
 | **P1 / human counterfactual H0** | Review the frozen score-free 384/128 design/audit packet | Explicitly accept or reject the historical name-derived identity limitation. PASS may authorize implementation of the counterfactual execution controller only. It does not authorize outcomes, labels, training or strength compute. Raw imitation/agreement remain controls. |
 | **P2 / S3a confirmation** | Confirm a positive screen against the live champion | Only conditional on terminal PASS: freeze and externally review an 8,192-cluster one-shot packet, then launch once. No automatic promotion. |
@@ -70,9 +74,9 @@ T3 is complete when:
 1. the current S3a screen has one independently verified terminal verdict;
 2. a PASS has a frozen, externally reviewed confirmation packet, or a
    SELECT NONE has an explicit immutable closeout;
-3. S4 point-banking has reviewed mechanism code and a fresh screen/preflight
-   packet (now frozen at 64 states with full generation replay, rereview open;
-   not necessarily positive); and
+3. S4 point-banking has a verified terminal state screen (now positive at
+   `abd9f36f…cdc00`) and a frozen full-game packet ready for external review;
+   no full-game launch is required for T3; and
 4. Teacher Stage C has a reviewed design packet but has not generated labels
    without separate authority; and
 5. the refreshed human corpus and a leakage-safe counterfactual H0 packet are
@@ -86,8 +90,8 @@ unreviewed strength compute, training, promotion and production changes.
 
 1. Preserve S3a until one terminal verifier verdict; do not spend its sealed
    evidence twice.
-2. Obtain independent S4 v2 review, then run its already-frozen 64-state exact
-   screen once. A positive screen only opens full-game packet review.
+2. **done:** independently review and run S4 v2 exactly once. It passed. Next
+   implement/freeze a full-game packet; do not launch it without fresh review.
 3. **done:** freeze no-compute Teacher Stage-C v2 and H0 packets. Queue H0
    review first, then Stage C; neither packet may capture, label or train.
 4. Keep Mini on the long reviewed S3a job and use Air for bounded reviewed
@@ -103,10 +107,10 @@ unreviewed strength compute, training, promotion and production changes.
 - **S3a structured bury:** directly addresses the bot's point-shy kitty
   behavior with strategy-aware void/point/trump candidates. The 512-state
   mechanism screen passed; the fresh full-game screen is live.
-- **S4 point-banking continuation:** test whether the rollout world model
-  under-prices leads because it chooses the cheapest winner when a point-card
-  winner is also legal. Change rollout continuation only; preserve root action
-  sourcing. Include the incumbent continuation and a trigger-matched null.
+- **S4 point-banking continuation:** the exact-late mechanism screen passed in
+  both roles (`+5.156` points overall, LCB `+3.029`). Preserve the frozen
+  continuation-only recipe and now test natural complete-round utility against
+  the live champion and a trigger-matched null.
 - **Later search:** S3b-v2 is closed on its node cap. Any exact-late successor
   needs a new bound/solver hypothesis and fresh review, not a relaxed retry.
 
@@ -164,10 +168,12 @@ Implemented initially at `402c012`; the reviewable replacement is exact
 The replacement score-free asset scanned 69,047 fresh deals from seed
 161,000,000 and froze 32 attacker plus 32 defender triggers from unique deals.
 Natural supply was highly role-skewed (32 attacker, 321 defender), so the
-mechanism screen reports both equal-role
-and per-role estimands; a future full-game screen must restore natural traffic
-weighting. Do not assume the sign. Spending a K now can lose future control,
-so the exact screen can select none.
+mechanism screen reported both equal-role and per-role estimands. The one-shot
+exact result passed: overall acting-team point delta `+5.156` (one-sided LCB
+`+3.029`), attacker/defender means `+6.406/+3.906`, 35 wins, 4 losses, 25 ties,
+and level utility `+0.25`. A future full-game screen must restore natural
+traffic weighting and may still select none; state-level mechanism evidence is
+not whole-policy strength.
 
 ## Teacher Stage-C packet contract
 

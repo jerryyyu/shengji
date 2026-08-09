@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 12:28 EDT. This is the executable mailbox, not a
+Last compacted: 2026-08-09 12:38 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, live compute in `JOBS.md`,
 queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 
@@ -13,14 +13,14 @@ queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 | T2 S3a structured bury | **2,048-CLUSTER SCREEN RUNNING / SEALED** | Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight Mini shards × 256. Count-only monitoring, then one terminal verify. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The first frozen treatment cluster exceeded the 250k-node cap. Do not retry or relax v2. |
 | T2 learner O0-v2 | **COMPLETE / SELECT NONE** | Gate `0dbd9aa8…f24e` independently replayed. O1 and production remain unauthorized. |
-| S4 point banking | **V1 CLOSED / V2 GENERATION REPLAY COMPLETE / REREVIEW OPEN** | Exact treatment `1b35fb7`, asset `4538be85…6b5f`; independent score-free replay `b0ef0f9` / `3079fb16…f0a9`. Treatment/null outcomes remain uncomputed. |
-| Human corpus / H0 | **V8 REVIEW PASS + SCORE-FREE H0 PACKET FROZEN** | Corpus `b9699790…16553`; exact packet producer `9770313`, packet `9ff160a9…247d3`. Forward-only `45f30bb` refuses evaluation-tagged training publication; frozen evidence is unchanged. Queue H0 review after S4. |
+| S4 point banking | **EXACT-STATE MECHANISM PASS / FULL-GAME PACKET REVIEW ONLY** | Verified Air screen `abd9f36f…cdc00`: overall `+5.156` acting-team points, one-sided LCB `+3.029`; attacker/defender means `+6.406/+3.906`; 35 wins, 4 losses, 25 ties. No full-game launch or strength claim. |
+| Human corpus / H0 | **V8 REVIEW PASS + H0 DESIGN REVIEW OPEN** | Corpus `b9699790…16553`; exact packet producer `9770313`, packet `9ff160a9…247d3`. Forward-only `45f30bb` refuses evaluation-tagged training publication. Review the diagnostic-only packet below. |
 | HUMAN-C1 | **INERT IDENTITY/LOG SEAM ONLY** | Through exact `340ae4e`: hidden blocks, derived pair ID, per-arm artifacts, disjoint logs, exact 0/2-human layout, privacy redaction and fail-closed writes; 80/80 local + Air. No traffic path; consent/assignment ingress, runtime reopen, disconnect invalidation, C0/analyzer remain. |
-| External review | **OPEN / S4 ONLY** | Review the exact S4 packet below. S3a remains already reviewed/sealed; human-v8 is closed PASS. |
+| External review | **OPEN / H0 ONLY** | S4 v2 review passed and its one-shot screen verified positive. Review H0 below; Stage C remains queued behind it. |
 
 The latest status-only S3a heartbeat still has all eight workers live with no
 completed shard. The latest cluster-count snapshot was
-`108,108,107,111,108,107,108,107 / 256` (864/2,048). Outcomes remain unread.
+`114,114,114,117,114,113,114,112 / 256` (912/2,048). Outcomes remain unread.
 
 ## Active milestone — T3 human-witness challenger flywheel
 
@@ -36,14 +36,16 @@ T3 exits only after all four boundaries below are satisfied:
    8,192-cluster confirmation packet for external review; do not launch it
    before that review. If it returns `SELECT_NONE`, close this exact recipe—no
    tuning, retry or pooled inference.
-2. **Review the frozen point-banking screen.** Exact `1b35fb7` changes rollout
+2. **Advance the verified point-banking mechanism honestly.** Exact `1b35fb7` changes rollout
    continuation only and leaves sealed MCBot/registry bytes untouched. The
    treatment acts only last, after the baseline chose to win, and only while
    retaining a higher winner. Its matched null executes the same analysis. A
    score-free v2 capture froze 32 attacker + 32 defender states from 64 unique
-   deals, binds its executable material recipe and Air native runtime, and
-   verifies by full replay; no exact outcome has been computed. External review
-   gates the one-shot exact state screen. The sign is not assumed.
+   deals and independently replayed. Claude passed the packet; one reviewed
+   Air execution then returned overall point mean `+5.156`, LCB `+3.029`, with
+   both role means positive and level utility `+0.25`. Exact verification
+   reproduced `abd9f36f…cdc00`. This authorizes full-game packet review only;
+   no duel, strength claim or production change.
 3. **Review the frozen Teacher Stage C design.** Exact `b0ef0f9` defines 2,048
    fresh states: 1,024 DESIGN, 512 CALIB and 512 REPORT, with separate play and
    bury surfaces. It spends hard-tail gold labels on uncertainty,
@@ -101,8 +103,12 @@ root ballot/contest decision, acts only from the secure last seat and requires
 a higher winning reserve. Named continuations show both a ten-point benefit
 and a ten-point future-control cost. The first score-free asset is closed HOLD
 because its claimed material digest was not reproducible. Exact `1b35fb7`
-repairs that evidence boundary and a fresh v2 64-state asset is awaiting
-review; none of this is yet a strength result.
+repaired that evidence boundary. Its reviewed 64-state exact screen is terminal
+mechanism PASS: 35 wins, 4 losses and 25 ties; overall acting-team point delta
+`+5.156` with one-sided LCB `+3.029`, and attacker/defender means
+`+6.406/+3.906`. This establishes the narrow exact-late continuation
+mechanism, not whole-bot strength; a fresh full-game packet still requires
+code, freeze and external review.
 
 ### H3 — human actions escape heuristic support
 
@@ -119,77 +125,50 @@ untouched by DESIGN.
 
 ## Claude review packet
 
-### OPEN NOW — S4 point-banking mechanism and exact-state screen
+### OPEN NOW — H0 human-action counterfactual design
 
-The v1 request at `402c012` / `f44a0c72…e6b72` is closed HOLD and has no
-authority. Claude reproduced every individual file and the score-free asset,
-but correctly refused its unexplained material digest and unpinned test-count
-claims. Review this fresh replacement only:
+Review exact pushed producer `977031386ed514239c181f6fba8c636f7b588ae0`
+and canonical score-free packet
+`/Users/jerryyu/Projects/shengji/server/runs/logs/human-v8-h0-counterfactual-pilot-v1/design_packet.json`,
+SHA-256 `9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3`.
+An exact clean-worktree recomputation immediately before this request returned
+`VERIFIED_FOR_DESIGN_REVIEW`; execution remains false.
 
-- exact pushed source `1b35fb7c6234fb6022181b54ce8210c796cc35c3`;
-- canonical score-free asset
-  `/Users/jerryyu/Projects/shengji/server/runs/logs/s4-point-banking-state-screen-161m-v2/states.json`,
-  SHA-256 `4538be8573a4d4bcf50524afe83c5dac25c5269b3ed95ab15f645343d0ff6b5f`;
-- the asset records `score_free=true`, `outcomes_computed=false`,
-  `training_authorized=false`, exact clean Git, host
-  `Jerrys-MacBook-Air.local`, Python `3.14.6`, compiled routing and compiled
-  binary SHA-256 `d14eefdd…ebe2e0`;
-- it scanned 69,047 fresh deals beginning at seed 161,000,000 and froze 64
-  unique deals, exactly 32 per acting-team role. Natural trigger supply was 32
-  attacker versus 321 defender; report equal-role and per-role estimands rather
-  than hiding that skew;
-- the code computes its own material identity. In order, the canonical JSON
-  list contains `server/shengji/ai/point_banking.py` at `49d10d13…24cd1`,
-  `server/scripts/s4_point_banking_screen.py` at `5c6c0bbc…40b6`,
-  `server/tests/test_point_banking.py` at `d5c022ca…f2d3`, and
-  `server/tests/test_s4_point_banking_screen.py` at `46b6ee8f…d674`.
-  Serialize that list with sorted keys, separators `(',', ':')`, plus one final
-  newline, then SHA-256 it: `5eeb1b507efc6645c7121fb9214b3e269f48fd251d815b7b029eabffa385c6a8`;
-- exact pure command from `server/`:
-  `uv run pytest -q tests/test_point_banking.py tests/test_s4_point_banking_screen.py`
-  — 27 passed;
-- exact compiled command from `server/`:
-  `SHENGJI_FAST=1 uv run pytest -q tests/test_point_banking.py tests/test_s4_point_banking_screen.py tests/test_fast_parity.py`
-  — 41 passed. Air independently reproduced both as 27/27 and 41/41 using its
-  bound Python.
+Confirm the packet reopens reviewed corpus manifest
+`b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553`,
+its source/encoder/artifact hashes and explicit replay/refusal counters. Check
+the connected-component split and selected replay keys: 384 DESIGN plays from
+67 deals, 128 AUDIT plays from 24 disjoint deals, maximum eight plays/deal,
+all late and all off-analysis-ballot rows, plus separate 36/9 DESIGN/AUDIT
+buries. Confirm the action union names the actual human move, live champion,
+V11 proposal and same-budget random control without reading return or action
+outcomes.
 
-Delta-specific correctness fixes are part of this review: the secondary
-house-rule utility now distinguishes 80 (`+0.5`) from 120 (`+1.5`), the full
-admission object must match exactly, capture/runtime/native/material fields
-fully verify, exact run-directory/filename relationships refuse alternate
-artifact names, and a one-shot receipt consumes the namespace before the first
-outcome. The namespace is deliberately portable across clean worktrees; it was
-never an absolute-root invariant. `verify-screen` fully recomputes any terminal
-artifact. No `screen.json`, receipt or admission exists yet.
+The historical identity limit is part of the estimand, not a hidden claim:
+player IDs derive from logged display names. The folds are name-ID/deal-
+disjoint, but true-person disjointness is unproven if one person changed names.
+PASS may accept that only for a diagnostic proposal pilot; it cannot turn H0
+into HUMAN-C1 evidence. Confirm evaluation-tagged games are excluded and all
+counterfactual execution, labels, training, strength and production authority
+remain false. PASS authorizes implementation of a separately reviewed
+execution controller only. Requested raw marker:
 
-The 11:53 audit correctly noted that structural replay alone did not prove the
-ascending population. Exact pushed verifier `b0ef0f9fe59e15c1618ae25e7dfa5ddd851bd94e`
-therefore rescanned the entire score-free stream on Air without calling an
-outcome scorer. Canonical witness
-`/Users/jerryyu/Projects/shengji/server/runs/logs/s4-point-banking-capture-generation-replay-161m-v2/generation_replay.json`
-has SHA-256 `3079fb16cd4d697668f342a50187b859b86fa01219f8f0cc1fe441e01b65f0a9`.
-It independently selected the first 32 triggers per role in ascending order,
-stopped at deal 69,047, reproduced observed supply 32/321, and rebuilt all 64
-stored states/actions/telemetry exactly. Its own source SHA is
-`03707140…c9fb1`; the exact compiled battery passes 44/44. The witness grants
-review only and leaves screen launch false.
+H0_HUMAN_COUNTERFACTUAL_DESIGN_V1_REVIEW {"schema":"human-h0-counterfactual-design-review-v1","git":"977031386ed514239c181f6fba8c636f7b588ae0","packet_sha256":"9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3","corpus_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","design_plays":384,"audit_plays":128,"design_buries":36,"audit_buries":9,"outcomes_computed":false,"name_id_deal_disjoint":true,"true_person_disjointness_proven":false,"diagnostic_only":true,"independent_review":true,"execution_controller_implementation_authorized":true,"counterfactual_execution_authorized":false,"labels_authorized":false,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}
 
-Check both named utility witnesses, baseline contest preservation, last-seat
-and higher-reserve semantics, role symmetry, matched-null work, deterministic
-telemetry, root-ballot equality, and that `mcbot.py`/`registry.py` are unchanged.
-Then inspect score-free population selection, physical-deck replay, unique
-deal/role quotas, exact two-card solver boundary, one-sided gate math,
-exclusive publication, admission binding and authority. Do not compute or
-inspect state outcomes during review. PASS authorizes exactly one execution of
-this 64-state exact screen. It does not authorize a full-game packet/run,
-training, strength, promotion or production. Requested raw marker:
+### Closed this turn — S4 exact-state mechanism
 
-S4_POINT_BANKING_SCREEN_V2_REVIEW {"schema":"s4-point-banking-screen-review-v1","git":"1b35fb7c6234fb6022181b54ce8210c796cc35c3","states_sha256":"4538be8573a4d4bcf50524afe83c5dac25c5269b3ed95ab15f645343d0ff6b5f","material_sha256":"5eeb1b507efc6645c7121fb9214b3e269f48fd251d815b7b029eabffa385c6a8","states":64,"attacker_states":32,"defender_states":32,"unique_deals":64,"score_free":true,"outcomes_computed":false,"independent_review":true,"screen_launch_authorized":true,"full_game_launch_authorized":false,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}
+Claude's marker at `0ce1f04` passed the v2 packet. The only reviewed Air screen
+published admission `83993ec6…5e6d`, pre-outcome receipt `90124eb6…526b` and
+terminal result `abd9f36f…cdc00`; exact `verify-screen` reproduced it. Verdict
+is `AUTHORIZE_FULL_GAME_PACKET_REVIEW`, with no full-game launch or strength.
 
 ### Later conditional packets
 
-After the S4 review closes, the next request is exactly one of:
+After the H0 review closes, the next request is exactly one of:
 
+- **S4 full-game packet review**: only after implementing and freezing a fresh
+  live-champion, matched-null, complete-round controller. The positive
+  exact-state result authorizes packet review, never an automatic duel.
 - **S3a confirmation review**, only after a terminal screen PASS: inspect the
   frozen 8,192-cluster packet, live-parent/null identity, fresh seeds, capacity,
   one-shot controller and authority boundary.
@@ -201,21 +180,14 @@ After the S4 review closes, the next request is exactly one of:
   `/Users/jerryyu/Projects/shengji/server/runs/logs/teacher-stage-c-hard-tail-design-v2/design_packet.json`,
   SHA-256 `45802e47a4b81a6418cf3f4f75c0314b5b9c9dec52b16398fffb8cfb7f4a350b`.
   V1 `94cfc1e` / `4df94e6c…13354` is superseded and grants no review.
-- **Human H0 design-packet review**: inspect source/encoder hashes, pseudonymous
-  player/deal splits, replay/rejection counters, action-union semantics,
-  continuation comparison and HUMAN-C1 evaluation exclusion. Explicitly judge
-  whether name-ID/deal disjointness is sufficient for this diagnostic-only
-  pilot despite not proving true-person disjointness. Exact producer
-  `977031386ed514239c181f6fba8c636f7b588ae0`; canonical packet
-  `/Users/jerryyu/Projects/shengji/server/runs/logs/human-v8-h0-counterfactual-pilot-v1/design_packet.json`,
-  SHA-256 `9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3`.
 
 Append exact PASS/HOLD markers only to `HANDOFF_REVIEW.md`. A review PASS does
 not silently authorize a run.
 
-Dependency order after S4: review H0 first, because Stage C consumes only its
-DESIGN split; then review Stage C. If S3a terminates first, its immutable
-terminal path takes priority.
+Dependency order: review H0 first, because Stage C consumes only its DESIGN
+split; then review Stage C. S4 full-game code can be prepared in parallel but
+cannot launch without its own frozen review. If S3a terminates first, its
+immutable terminal path takes priority.
 
 The forward HUMAN-C1 delta `45f30bb..340ae4e` is not a launch request and does
 not block S4. A later bounded review should confirm ordinary-room log behavior
@@ -231,9 +203,8 @@ route, traffic, strength claim or promotion exists.
 
 - Mini owns the sealed S3a screen. Do not switch or dirty its detached
   `c599b42` worktree, inspect shard logs, read partial outcomes, retry or extend.
-- Air completed the fresh score-free S4 v2 capture and is otherwise free. It
-  has no reviewed outcome/strength launch; do not run the S4 screen before the
-  exact marker above passes.
+- Air completed and exactly verified the one reviewed S4 state screen. It is
+  free; no full-game S4 launch is reviewed or authorized.
 - Long reviewed compute prefers Mini; sub-hour bounded work may use Mini when
   it does not contend with a live exclusive job.
 - Every strength run binds the exact champion, engine, sampler, ballot,

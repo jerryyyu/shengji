@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 12:28 EDT
+## Current synthesis — 2026-08-09 12:38 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -82,17 +82,21 @@ what those results change in the research plan.
   report-LCB with a champion-matched null. Await terminal verification without
   inspecting partial outcomes. PASS can open confirmation-packet review only.
 - **Point-banking S4:** v1 is closed HOLD without outcomes because its claimed
-  material digest did not reproduce. Exact `1b35fb7` repairs that evidence
+  material digest did not reproduce. Exact `1b35fb7` repaired that evidence
   boundary and a secondary utility bug while preserving the observed
   continuation-only mechanism outside sealed MCBot/registry source. Treatment
   and matched null preserve the root ballot and baseline decision to contest;
   treatment acts only from the secure last seat and only while retaining a
   higher winner. Named continuations show both +10 immediate value and -10
   future-control risk. Fresh score-free asset `4538be85…6b5f` froze 64
-  exact-late states from unique deals, 32 per role. Independent score-free
-  verifier `b0ef0f9` then rescanned all 69,047 ascending deals and reproduced
-  every row exactly at `3079fb16…f0a9`; no outcome has been computed and
-  replacement rereview gates the one-shot screen.
+  exact-late states from unique deals, 32 per role. Independent verifier
+  `b0ef0f9` rescanned all 69,047 ascending deals and reproduced every row at
+  `3079fb16…f0a9`. After external PASS, the one authorized Air execution
+  exactly verified terminal `abd9f36f…cdc00`: overall acting-team point delta
+  `+5.156` with one-sided LCB `+3.029`, positive attacker and defender means,
+  35 wins / 4 losses / 25 ties, and level utility `+0.25`. This establishes
+  the narrow exact-late mechanism and opens a fresh complete-round packet for
+  review; it is not whole-bot strength or production authority.
 - **Human data:** the atomically refreshed Fly-snapshot-only `human_v8` corpus
   passed independent publication review at producer `b52dc33`, source manifest
   `07ff18fb…a5e` and corpus manifest `b9699790…16553`. It contains 2,830 plays,
@@ -306,17 +310,13 @@ strength loop works.
    on Mini. Terminal PASS permits freezing an 8,192-cluster confirmation packet
    for external review; it does not permit an automatic launch or promotion.
    SELECT NONE closes this exact recipe without tuning or retry.
-2. **Review and execute the bounded S4 mechanism screen.** Exact `1b35fb7`
-   changes continuation only, with incumbent control, a trigger-matched null,
-   named positive/negative witnesses and exact counters. Its score-free capture
-   scanned 69,047 fresh deals from seed 161,000,000 and froze 32 attacker plus
-   32 defender triggers from unique deals at `4538be85…6b5f`. It also binds an
-   executable material recipe, exact admission, Air native runtime, one-shot
-   receipt and full recomputation. External verifier `b0ef0f9` independently
-   rescanned the entire ascending population and rebuilt all 64 rows exactly
-   at `3079fb16…f0a9`. Rereview must precede the exact two-card-endgame screen.
-   The sign remains empirical: using a K now may bank points or waste future
-   control.
+2. **Carry S4 from mechanism evidence to whole-game evidence.** The reviewed
+   one-shot exact-state screen passed in both roles at terminal
+   `abd9f36f…cdc00`. Freeze a fresh complete-round controller against the exact
+   live champion plus a trigger-matched null, preserve natural trigger traffic,
+   and require external packet review before launch. Do not tune from the 64
+   state outcomes or treat `+5.156` points as a duel-strength estimate: using a
+   K now can still waste future control over a full continuation.
 3. **Review the frozen Teacher Stage C contract.** Exact `b0ef0f9` defines
    2,048 fresh states and fixed 250k-deal scan windows for each split. Cheap
    labels remain only on ordinary anchors; uncertainty/disagreement/bury use
@@ -334,10 +334,10 @@ strength loop works.
    supported.
 
 T3 exits with one verified S3a terminal verdict, its conditional reviewed
-confirmation packet or immutable closeout, a reviewed S4 mechanism/preflight
-packet, and reviewed Stage-C/human-pilot design packets. This is useful even if
-every strength screen selects none: the next attempt starts from a diagnosed
-mechanism rather than another undifferentiated corpus.
+confirmation packet or immutable closeout, a frozen S4 complete-round packet
+ready for external review, and reviewed Stage-C/human-pilot design packets.
+This is useful even if every strength screen selects none: the next attempt
+starts from a diagnosed mechanism rather than another undifferentiated corpus.
 
 ### Lane A — improve search directly
 
@@ -345,9 +345,10 @@ mechanism rather than another undifferentiated corpus.
   The incumbent can bury points in rare void/trump cases; S3a is broader because
   it explicitly constructs one-/two-suit voids containing points and evaluates
   them through rollouts.
-- **S4 point-banking continuation** fixes a possible world-model blind spot,
-  not engine legality or root ballot membership. It must be tested on both
-  teams and include states where taking the point card is strategically wrong.
+- **S4 point-banking continuation** has now passed its exact-state mechanism
+  screen in both roles. The remaining question is deployment relevance: does
+  the frozen continuation-only change improve complete-round utility under
+  natural traffic against the live champion and a matched null?
 - **Later exact search** requires a new operational hypothesis. S3b-v2 is
   terminal after its first treatment cluster exceeded the frozen 250k-node
   budget; raising the cap after inspection is not a continuation of v2.

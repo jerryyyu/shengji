@@ -26,6 +26,7 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
+from ..api.human_eval import SCHEMA as HUMAN_EVALUATION_SCHEMA
 from ..engine.cards import total_points
 from ..engine.round import KITTY_SIZE, Round
 from .actions import enumerate_actions
@@ -40,7 +41,6 @@ CORPUS_SCHEMA = "human-decision-corpus-v1"
 PLAYER_HASH_DOMAIN = b"shengji-human-player-v1\0"
 PLAY_BALLOT = "exhaustive-follows+throws-v1"
 RETURN_TARGET = "signed-level-bracket-from-completed-round"
-HUMAN_EVALUATION_SCHEMA = "human-vs-bot-evaluation-v1"
 
 
 class HumanCorpusError(RuntimeError):

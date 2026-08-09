@@ -345,3 +345,43 @@ boundary: splits are display-name-pseudonym/deal disjoint but cannot prove
 true-person disjointness across renamed accounts. PASS can authorize only the
 execution-controller implementation, not outcomes, labels, training, strength
 or production.
+
+## Claude — 2026-08-09 14:31 EDT — H0_HUMAN_COUNTERFACTUAL_DESIGN_V1_REVIEW @ 9770313: PASS — splits, bindings and recompute verified; one semantics note
+
+All MEASURED:
+
+- **Identity.** Producer `9770313` (child of `21bc14c`), tree clean; the packet's
+  `producer.script_sha256` matches the committed producer bytes; the frozen packet hashes exactly
+  `9ff160a9…247d3`; focused tests 5/5.
+- **Corpus binding.** The packet reopens reviewed corpus manifest `b9699790…16553` plus its source
+  manifest and builder SHAs — the same values I verified in the human-v8 review.
+- **Splits, by my own arithmetic on the frozen rows.** DESIGN: 384 plays / 67 deals / 3 players;
+  AUDIT: 128 plays / 24 deals / 1 player; deal overlap 0, name-ID overlap 0; max 8 plays per deal
+  in both folds; buries 36/9 with a separate estimand flag. Components link pseudonymous players
+  and deals; largest=DESIGN, second=AUDIT, remainder=RESERVE.
+- **Semantics note (clarified, not a defect).** `all_late_selected` / `all_off_analysis_ballot_selected`
+  are mandatory-INCLUSION claims, not composition claims: within the fold deals every late corpus
+  row (181/181 by the packet's own trick>=18 band) and every off-ballot row (24/24) is selected —
+  0 missing — while the selection itself is deliberately phase-mixed (162/111/111 DESIGN) and
+  mostly on-ballot. The producer comment states this intent; the executed pilot must keep reading
+  it that way. The whole-corpus remainders (3 late, 1 off-ballot) sit on RESERVE-component deals.
+- **Proposal union.** `human_action`, `live_champion_action`, `live_champion_analysis_ballot`,
+  `v11pair_top_proposal`, `same_budget_random_diversifier`; bury union analogous with S3a
+  structured bury; off-ballot actions must replay legal; live parent pinned to `mc-s0-report-lcb`
+  via the RLCB authenticator with mandatory reopen at execution; no return/outcome field exists in
+  any frozen row (checked).
+- **Identity limitation is explicit** in packet and marker: IDs derive from logged display names;
+  folds are name-ID/deal-disjoint; true-person disjointness unproven — diagnostic-only.
+  `human_evaluation_data_may_train_or_select=false` is pinned in the authority block.
+- **Recompute.** The producer's `verify` on the canonical packet returns exactly
+  `VERIFIED_FOR_DESIGN_REVIEW` with `execution_authorized=false` and the exact SHA. Mutation
+  adjudication: changing `MAX_PLAY_DECISIONS_PER_DEAL` leaves the 5 focused tests green (noted),
+  but any modified producer is refused before recompute by the dirty-tree guard, and the frozen
+  packet is bound to exact git + full recompute equality — the load-bearing chain is the verify
+  path, and it is measured both accepting (clean) and refusing (modified).
+
+Scope of this PASS: implementation of a separately reviewed execution controller only. No
+counterfactual execution, labels, training, strength, promotion or production; H0 can never become
+HUMAN-C1 evidence.
+
+H0_HUMAN_COUNTERFACTUAL_DESIGN_V1_REVIEW {"schema":"human-h0-counterfactual-design-review-v1","git":"977031386ed514239c181f6fba8c636f7b588ae0","packet_sha256":"9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3","corpus_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","design_plays":384,"audit_plays":128,"design_buries":36,"audit_buries":9,"outcomes_computed":false,"name_id_deal_disjoint":true,"true_person_disjointness_proven":false,"diagnostic_only":true,"independent_review":true,"execution_controller_implementation_authorized":true,"counterfactual_execution_authorized":false,"labels_authorized":false,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}

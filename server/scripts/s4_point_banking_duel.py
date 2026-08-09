@@ -32,6 +32,7 @@ import math
 import os
 import platform
 import random
+import stat
 import subprocess
 import sys
 import time
@@ -60,28 +61,37 @@ from shengji.engine.game import Game  # noqa: E402
 from shengji.evaluation import counters, paired_by_seed  # noqa: E402
 
 
-SCHEMA = "s4-point-banking-duel-shard-v1"
-AGGREGATE_SCHEMA = "s4-point-banking-duel-aggregate-v1"
-PREFLIGHT_SCHEMA = "s4-point-banking-duel-preflight-v1"
+SCHEMA = "s4-point-banking-duel-shard-v2"
+AGGREGATE_SCHEMA = "s4-point-banking-duel-aggregate-v2"
+PREFLIGHT_SCHEMA = "s4-point-banking-duel-preflight-v2"
+EXECUTION_RECEIPT_SCHEMA = "s4-point-banking-duel-screen-receipt-v2"
+PACKET_SCHEMA = "s4-point-banking-duel-screen-packet-v2"
+PACKET_REVIEW_SCHEMA = "s4-point-banking-duel-screen-review-v2"
+PACKET_REVIEW_MARKER = "S4_POINT_BANKING_DUEL_PACKET_V2_REVIEW "
+ADMISSION_SCHEMA = "s4-point-banking-duel-screen-admission-v2"
 SHARD_COUNT = 8
 STREAM_STRIDE = 3_000_017
 POLICY_ROLE_OFFSETS = (0, 500_000)
 OPPONENT_ROLE_OFFSETS = (1_000_000, 1_500_000)
-PREFLIGHT_SEED0 = 40_000_000_000
+PREFLIGHT_SEED0 = 96_000_000_000
 PREFLIGHT_CLUSTERS = 4
-PREFLIGHT_RUN_ID = "s4-point-banking-duel-preflight-40b-v1"
+PREFLIGHT_RUN_ID = "s4-point-banking-duel-preflight-96b-v2"
 THROUGHPUT_SAFETY_FACTOR = 2.0
+ROOT_WORLDS = 30
+REPORT_WORLDS = 300
+MAX_ATTACKER_POINTS = 4_120
+MAX_LEVEL_CHANGE = 101
 PHASES = {
     "screen": {
-        "run_id": "s4-point-banking-duel-screen-50b-v1",
-        "seed0": 50_000_000_000,
+        "run_id": "s4-point-banking-duel-screen-100b-v2",
+        "seed0": 100_000_000_000,
         "clusters": 2_048,
         "clusters_per_shard": 256,
         "claim": "non_promotable_s4_complete_round_screen",
     },
     "confirm": {
-        "run_id": "s4-point-banking-duel-confirm-70b-v1",
-        "seed0": 70_000_000_000,
+        "run_id": "s4-point-banking-duel-confirm-120b-v2",
+        "seed0": 120_000_000_000,
         "clusters": 8_192,
         "clusters_per_shard": 1_024,
         "claim": "independent_s4_complete_round_confirmation",
@@ -181,6 +191,17 @@ def write_exclusive(path: os.PathLike | str, payload: dict) -> None:
         raise
 
 
+def require_regular_unlinked(path: Path, *, label: str) -> None:
+    partial = Path(str(path) + ".partial")
+    try:
+        info = path.lstat()
+    except FileNotFoundError as exc:
+        raise ProtocolRefused(f"{label} is missing") from exc
+    if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+            or os.path.lexists(partial)):
+        raise ProtocolRefused(f"{label} is linked, nonregular, or partial")
+
+
 def is_sha256(value: object) -> bool:
     return (isinstance(value, str) and len(value) == 64
             and all(char in "0123456789abcdef" for char in value))
@@ -263,6 +284,187 @@ def cluster_seed(phase: str, cluster_index: int) -> int:
     return spec["seed0"] + STREAM_STRIDE * cluster_index
 
 
+def require_execution_receipt(path: str | os.PathLike,
+                              expected_sha256: str, *,
+                              expected_git: str, phase: str) -> dict:
+    """Bind every score-bearing shard to a pre-existing reviewed receipt.
+
+    V2 deliberately implements screen execution only.  Confirmation needs a
+    separately reviewed controller after a passing screen; a caller cannot
+    precompute confirmation shards and seek authority only at aggregation.
+    """
+    if phase != "screen":
+        raise ProtocolRefused(
+            "S4 v2 confirmation requires a future reviewed controller")
+    source = Path(path).resolve()
+    namespace = (REPO / "server/runs/logs"
+                 / PHASES[phase]["run_id"]).resolve()
+    expected_path = namespace / "receipt.json"
+    if source != expected_path:
+        raise ProtocolRefused("S4 execution receipt is not canonical")
+    require_regular_unlinked(source, label="S4 execution receipt")
+    if not is_sha256(expected_sha256) or sha256(source) != expected_sha256:
+        raise ProtocolRefused("S4 execution receipt SHA-256 drift")
+    try:
+        receipt = json.loads(source.read_bytes())
+    except (OSError, ValueError) as exc:
+        raise ProtocolRefused(f"cannot reopen S4 execution receipt: {exc}") \
+            from exc
+    expected_fields = {
+        "schema", "run_id", "phase", "complete", "git", "runner_sha256",
+        "created_time_ns", "nonce", "packet_sha256", "admission_sha256",
+        "preflight_sha256", "mechanism_screen_sha256",
+        "screen_launch_authorized", "confirmation_launch_authorized",
+        "strength_claim", "training_authorized", "production_promotion",
+        "retry_or_resume_authorized",
+    }
+    if (not isinstance(receipt, dict) or set(receipt) != expected_fields
+            or receipt.get("schema") != EXECUTION_RECEIPT_SCHEMA
+            or receipt.get("run_id") != PHASES[phase]["run_id"]
+            or receipt.get("phase") != phase
+            or receipt.get("complete") is not True
+            or receipt.get("git") != expected_git
+            or receipt.get("runner_sha256") != sha256(SCRIPT)
+            or not is_sha256(receipt.get("nonce"))
+            or not all(is_sha256(receipt.get(name)) for name in (
+                "packet_sha256", "admission_sha256", "preflight_sha256",
+                "mechanism_screen_sha256"))
+            or receipt.get("screen_launch_authorized") is not True
+            or receipt.get("confirmation_launch_authorized") is not False
+            or receipt.get("strength_claim") is not False
+            or receipt.get("training_authorized") is not False
+            or receipt.get("production_promotion") is not False
+            or receipt.get("retry_or_resume_authorized") is not False):
+        raise ProtocolRefused("S4 execution receipt authority/identity drift")
+    created = receipt.get("created_time_ns")
+    if isinstance(created, bool) or not isinstance(created, int) or created <= 0:
+        raise ProtocolRefused("S4 execution receipt creation time drift")
+
+    packet_path = namespace / "launch_packet.json"
+    admission_path = namespace / "review_admission.json"
+    review_path = namespace / "review_record.txt"
+    for artifact, digest, label in (
+            (packet_path, receipt["packet_sha256"], "S4 launch packet"),
+            (admission_path, receipt["admission_sha256"],
+             "S4 review admission")):
+        require_regular_unlinked(artifact, label=label)
+        if sha256(artifact) != digest:
+            raise ProtocolRefused(f"{label} SHA-256 drift")
+    require_regular_unlinked(review_path, label="S4 review record")
+    try:
+        packet = json.loads(packet_path.read_bytes())
+        admission = json.loads(admission_path.read_bytes())
+        review_text = review_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ProtocolRefused(f"cannot reopen S4 authority chain: {exc}") \
+            from exc
+
+    packet_fields = {
+        "schema", "run_id", "git", "runner", "controller", "runtime",
+        "parent", "mechanism_parent", "score_free_preflight",
+        "phase_identity", "namespace", "jobs",
+        "aggregate_command_template", "aggregate_output",
+        "heartbeat_seconds", "screen_clusters", "shard_count",
+        "selection_rule", "claim_boundary", "packet_review_authorized",
+        "screen_launch_authorized", "confirmation_launch_authorized",
+        "strength_claim", "training_authorized", "production_promotion",
+        "retry_or_extension_authorized",
+    }
+    runner_ref = packet.get("runner") if isinstance(packet, dict) else None
+    preflight_ref = (packet.get("score_free_preflight")
+                     if isinstance(packet, dict) else None)
+    mechanism_ref = (packet.get("mechanism_parent", {}).get("screen")
+                     if isinstance(packet, dict)
+                     and isinstance(packet.get("mechanism_parent"), dict)
+                     else None)
+    if (not isinstance(packet, dict) or set(packet) != packet_fields
+            or packet.get("schema") != PACKET_SCHEMA
+            or packet.get("run_id") != PHASES[phase]["run_id"]
+            or packet.get("git") != expected_git
+            or runner_ref != {
+                "path": "server/scripts/s4_point_banking_duel.py",
+                "sha256": sha256(SCRIPT),
+            }
+            or packet.get("phase_identity") != phase_identity(phase)
+            or packet.get("namespace") != str(
+                Path("server/runs/logs") / PHASES[phase]["run_id"])
+            or not isinstance(preflight_ref, dict)
+            or preflight_ref.get("sha256") != receipt["preflight_sha256"]
+            or preflight_ref.get("score_free") is not True
+            or preflight_ref.get("outcomes_published") is not False
+            or not isinstance(mechanism_ref, dict)
+            or mechanism_ref.get("sha256") !=
+            receipt["mechanism_screen_sha256"]
+            or packet.get("packet_review_authorized") is not True
+            or packet.get("screen_launch_authorized") is not False
+            or packet.get("confirmation_launch_authorized") is not False
+            or packet.get("strength_claim") is not False
+            or packet.get("training_authorized") is not False
+            or packet.get("production_promotion") is not False
+            or packet.get("retry_or_extension_authorized") is not False):
+        raise ProtocolRefused("S4 launch packet identity/authority drift")
+
+    review_ref = admission.get("review") \
+        if isinstance(admission, dict) else None
+    matches = [
+        line[len(PACKET_REVIEW_MARKER):]
+        for line in review_text.splitlines()
+        if line.startswith(PACKET_REVIEW_MARKER)
+    ]
+    if len(matches) != 1:
+        raise ProtocolRefused("S4 review record must contain one exact marker")
+    try:
+        review_claim = json.loads(matches[0])
+    except ValueError as exc:
+        raise ProtocolRefused("S4 review marker is invalid JSON") from exc
+    expected_claim = {
+        "schema": PACKET_REVIEW_SCHEMA,
+        "git": expected_git,
+        "run_id": PHASES[phase]["run_id"],
+        "packet_sha256": receipt["packet_sha256"],
+        "preflight_sha256": receipt["preflight_sha256"],
+        "mechanism_screen_sha256": receipt["mechanism_screen_sha256"],
+        "independent_review": True,
+        "screen_launch_authorized": True,
+        "confirmation_launch_authorized": False,
+        "strength_claim": False,
+        "training_authorized": False,
+        "production_promotion": False,
+        "verdict": "PASS",
+    }
+    admission_fields = {
+        "schema", "run_id", "packet", "review", "review_claim",
+        "operator_asserted_independent_review", "screen_launch_authorized",
+        "confirmation_launch_authorized", "strength_claim",
+        "training_authorized", "production_promotion",
+    }
+    if (not isinstance(admission, dict) or set(admission) != admission_fields
+            or admission.get("schema") != ADMISSION_SCHEMA
+            or admission.get("run_id") != PHASES[phase]["run_id"]
+            or admission.get("packet") != {
+                "path": str(Path("server/runs/logs")
+                            / PHASES[phase]["run_id"]
+                            / "launch_packet.json"),
+                "sha256": receipt["packet_sha256"],
+            }
+            or not isinstance(review_ref, dict)
+            or review_ref.get("path") != str(
+                Path("server/runs/logs") / PHASES[phase]["run_id"]
+                / "review_record.txt")
+            or review_ref.get("sha256") != sha256(review_path)
+            or admission.get("review_claim") != expected_claim
+            or review_claim != expected_claim
+            or admission.get("operator_asserted_independent_review") is not True
+            or admission.get("screen_launch_authorized") is not True
+            or admission.get("confirmation_launch_authorized") is not False
+            or admission.get("strength_claim") is not False
+            or admission.get("training_authorized") is not False
+            or admission.get("production_promotion") is not False):
+        raise ProtocolRefused("S4 review admission authority drift")
+    return {"path": str(source.relative_to(REPO)),
+            "sha256": expected_sha256}
+
+
 def _stream_uses(seed0: int, clusters: int) -> list[tuple[int, int, str]]:
     uses = []
     for cluster_index in range(clusters):
@@ -331,6 +533,11 @@ def protocol_problems(parent: dict) -> list[str]:
             or bots["treatment"].rng.getstate() != bots["champion"].rng.getstate():
         problems.append("S4 root RNG streams differ")
     for label, bot in bots.items():
+        if (bot.N_DETERMINIZATIONS != ROOT_WORLDS
+                or bot.REPORT_FOLD_WORLDS != REPORT_WORLDS
+                or bot.REPORT_RULE != "lcb"
+                or bot.REQUIRE_EXACT_WORK is not True):
+            problems.append(f"{label} report-LCB work contract drifted")
         if any(getattr(bot, name, False) for name in (
                 "MC_BURY", "STRUCTURED_BURY", "EXACT_ENDGAME",
                 "ADAPTIVE_ALLOCATION", "RANDOM_ALLOCATION")):
@@ -408,7 +615,8 @@ def point_banking_telemetry(bots, *, mode: str) -> dict:
 
 
 def _record(run_id: str, label: str, seed: int, flip: int, won: int,
-            level_utility: int, arm_bots, opp_bots) -> dict:
+            level_utility: int, *, banker: int, attacker_points: int,
+            winner_team: int, level_change: int, arm_bots, opp_bots) -> dict:
     mode = {"treatment": "treatment", "matched_null": "matched_null",
             "champion": "off"}[label]
     return {
@@ -418,6 +626,10 @@ def _record(run_id: str, label: str, seed: int, flip: int, won: int,
         "opponent": OPPONENT,
         "seed": seed,
         "flip": flip,
+        "banker": banker,
+        "attacker_points": attacker_points,
+        "winner_team": winner_team,
+        "level_change": level_change,
         "won": won,
         "level_utility": level_utility,
         "arm": {
@@ -446,7 +658,10 @@ def play_arm_cluster(label: str, seed: int, *, run_id: str) -> list[dict]:
         utility = (1 if won else -1) * max(1, int(log.level_change))
         records.append(_record(
             run_id, label, seed, flip, won, utility,
-            [a1, a2], [b1, b2]))
+            banker=int(log.banker), attacker_points=int(log.attacker_points),
+            winner_team=int(log.winner_team),
+            level_change=int(log.level_change),
+            arm_bots=[a1, a2], opp_bots=[b1, b2]))
     return records
 
 
@@ -526,12 +741,38 @@ def counter_problems(value: object, *, expected_mode: str) -> list[str]:
             and isinstance(value.get("failed_worlds"), int)
             and value["rejected_worlds"] > value["failed_worlds"]):
         problems.append("rejected worlds exceed failed worlds")
+    if (isinstance(value.get("searches"), int)
+            and isinstance(value.get("accepted_worlds"), int)):
+        expected_worlds = (ROOT_WORLDS + REPORT_WORLDS) * value["searches"]
+        if value["accepted_worlds"] != expected_worlds:
+            problems.append(
+                "accepted report-LCB dose "
+                f"{value['accepted_worlds']} != {expected_worlds}")
+        if value["searches"] > 0 and value.get("rollouts", 0) <= 0:
+            problems.append("searches consumed no rollouts")
     for name in FORBIDDEN_COUNTER_FIELDS:
         if value.get(name) != 0:
             problems.append(f"forbidden counter {name} is nonzero")
     problems.extend(telemetry_problems(
         value.get("point_banking"), expected_mode=expected_mode))
     return sorted(set(problems))
+
+
+def expected_round_outcome(*, banker: int,
+                           attacker_points: int) -> tuple[int, int]:
+    if (isinstance(banker, bool) or not isinstance(banker, int)
+            or not 0 <= banker < 4):
+        raise ValueError("banker must be a seat")
+    if (isinstance(attacker_points, bool)
+            or not isinstance(attacker_points, int)
+            or not 0 <= attacker_points <= MAX_ATTACKER_POINTS
+            or attacker_points % 5 != 0):
+        raise ValueError("attacker points outside physical house bound")
+    banker_team = banker % 2
+    if attacker_points >= 80:
+        return 1 - banker_team, (attacker_points - 80) // 40
+    gain = 3 if attacker_points == 0 else (2 if attacker_points < 40 else 1)
+    return banker_team, gain
 
 
 def record_problems(record: object, *, phase: str, expected_seed: int,
@@ -541,6 +782,7 @@ def record_problems(record: object, *, phase: str, expected_seed: int,
         return ["record is not an object"]
     expected_fields = {
         "run", "label", "policy", "opponent", "seed", "flip", "won",
+        "banker", "attacker_points", "winner_team", "level_change",
         "level_utility", "arm", "opp",
     }
     problems = []
@@ -554,12 +796,37 @@ def record_problems(record: object, *, phase: str, expected_seed: int,
             or record.get("seed") != expected_seed
             or record.get("flip") != expected_flip):
         problems.append("record identity")
-    if record.get("won") not in (0, 1):
-        problems.append("record win value")
+    won = record.get("won")
+    winner_team = record.get("winner_team")
+    level_change = record.get("level_change")
     utility = record.get("level_utility")
+    policy_team = 0 if expected_flip == 0 else 1
+    try:
+        expected_winner, expected_gain = expected_round_outcome(
+            banker=record.get("banker"),
+            attacker_points=record.get("attacker_points"))
+    except ValueError as exc:
+        problems.append(str(exc))
+        expected_winner = expected_gain = None
+    if (isinstance(winner_team, bool) or winner_team not in (0, 1)
+            or winner_team != expected_winner):
+        problems.append("record winner team")
+    if (isinstance(level_change, bool) or not isinstance(level_change, int)
+            or not 0 <= level_change <= MAX_LEVEL_CHANGE
+            or level_change != expected_gain):
+        problems.append("record level change")
+    expected_won = int(winner_team == policy_team) \
+        if winner_team in (0, 1) else None
+    if isinstance(won, bool) or won not in (0, 1) or won != expected_won:
+        problems.append("record win value")
+    expected_utility = ((1 if won else -1) * max(1, level_change)
+                        if won in (0, 1)
+                        and isinstance(level_change, int)
+                        and not isinstance(level_change, bool) else None)
     if (isinstance(utility, bool) or not isinstance(utility, int)
-            or utility == 0):
-        problems.append("record level utility")
+            or not 1 <= abs(utility) <= MAX_LEVEL_CHANGE
+            or utility != expected_utility):
+        problems.append("record signed/bounded level utility")
     mode = {"treatment": "treatment", "matched_null": "matched_null",
             "champion": "off"}[expected_label]
     problems.extend(
@@ -572,12 +839,13 @@ def record_problems(record: object, *, phase: str, expected_seed: int,
 
 
 def shard_problems(payload: object, *, phase: str, shard_index: int,
-                   parent: dict, runtime: dict) -> list[str]:
+                   parent: dict, runtime: dict,
+                   execution_receipt: dict) -> list[str]:
     if not isinstance(payload, dict):
         return ["shard is not an object"]
     expected_fields = {
         "schema", "complete", "phase", "phase_identity", "shard_index",
-        "cluster_indexes", "parent", "runtime", "records",
+        "cluster_indexes", "parent", "runtime", "execution_receipt", "records",
         "production_promotion", "retry_or_extension_authorized",
     }
     problems = []
@@ -593,6 +861,7 @@ def shard_problems(payload: object, *, phase: str, shard_index: int,
             or payload.get("cluster_indexes") != expected_indexes
             or payload.get("parent") != parent
             or payload.get("runtime") != runtime
+            or payload.get("execution_receipt") != execution_receipt
             or payload.get("production_promotion") is not False
             or payload.get("retry_or_extension_authorized") is not False):
         problems.append("shard identity")
@@ -618,6 +887,13 @@ def shard_problems(payload: object, *, phase: str, shard_index: int,
 def run_shard(args) -> None:
     parent, runtime = require_runtime(args.expected_git)
     phase = args.phase
+    execution_receipt = require_execution_receipt(
+        args.execution_receipt, args.expected_execution_receipt_sha256,
+        expected_git=args.expected_git, phase=phase)
+    expected_out = (REPO / "server/runs/logs" / PHASES[phase]["run_id"]
+                    / f"shard-{args.shard_index:02d}.json").resolve()
+    if Path(args.out).resolve() != expected_out:
+        raise ProtocolRefused("S4 shard output is not canonical")
     indexes = list(range(
         args.shard_index, PHASES[phase]["clusters"], SHARD_COUNT))
     records = []
@@ -643,13 +919,15 @@ def run_shard(args) -> None:
         "cluster_indexes": indexes,
         "parent": parent,
         "runtime": runtime,
+        "execution_receipt": execution_receipt,
         "records": records,
         "production_promotion": False,
         "retry_or_extension_authorized": False,
     }
     problems = shard_problems(
         payload, phase=phase, shard_index=args.shard_index,
-        parent=parent, runtime=runtime)
+        parent=parent, runtime=runtime,
+        execution_receipt=execution_receipt)
     if problems:
         raise ProtocolRefused("invalid S4 shard: " + "; ".join(problems))
     write_exclusive(args.out, payload)
@@ -716,8 +994,12 @@ def build_aggregate(*, phase: str, shards: list[dict], inputs: list[dict],
     treatment = telemetry["treatment"]["arm"]
     matched_null = telemetry["matched_null"]["arm"]
     null_outcomes_equal = all(
-        (left["won"], left["level_utility"])
-        == (right["won"], right["level_utility"])
+        tuple(left[name] for name in (
+            "banker", "attacker_points", "winner_team", "level_change",
+            "won", "level_utility"))
+        == tuple(right[name] for name in (
+            "banker", "attacker_points", "winner_team", "level_change",
+            "won", "level_utility"))
         for left, right in zip(
             records["matched_null"], records["champion"], strict=True)
     )
@@ -788,17 +1070,21 @@ def build_aggregate(*, phase: str, shards: list[dict], inputs: list[dict],
     }
 
 
-def load_shards(args, *, parent: dict, runtime: dict):
+def load_shards(args, *, parent: dict, runtime: dict,
+                execution_receipt: dict):
     if len(args.shards) != SHARD_COUNT:
         raise ProtocolRefused(f"expected exactly {SHARD_COUNT} shards")
     shards = []
     inputs = []
     seen = set()
     for expected_index, raw_path in enumerate(args.shards):
-        path = Path(raw_path)
-        partial = Path(str(path) + ".partial")
-        if (not path.is_file() or path.is_symlink() or os.path.lexists(partial)):
-            raise ProtocolRefused(f"invalid shard artifact {path}")
+        path = Path(raw_path).resolve()
+        expected_path = (REPO / "server/runs/logs"
+                         / PHASES[args.phase]["run_id"]
+                         / f"shard-{expected_index:02d}.json").resolve()
+        if path != expected_path:
+            raise ProtocolRefused("S4 aggregate shard path is not canonical")
+        require_regular_unlinked(path, label=f"S4 shard {expected_index}")
         digest = sha256(path)
         if digest in seen:
             raise ProtocolRefused("duplicate shard digest")
@@ -806,7 +1092,8 @@ def load_shards(args, *, parent: dict, runtime: dict):
         payload = json.loads(path.read_bytes())
         problems = shard_problems(
             payload, phase=args.phase, shard_index=expected_index,
-            parent=parent, runtime=runtime)
+            parent=parent, runtime=runtime,
+            execution_receipt=execution_receipt)
         if problems:
             raise ProtocolRefused(
                 f"invalid shard {expected_index}: " + "; ".join(problems))
@@ -855,6 +1142,16 @@ def load_screen_parent(path: str | None, expected_sha256: str | None, *,
 
 def aggregate_command(args) -> None:
     parent, runtime = require_runtime(args.expected_git)
+    if args.phase != "screen":
+        raise ProtocolRefused(
+            "S4 v2 confirmation requires a future reviewed controller")
+    execution_receipt = require_execution_receipt(
+        args.execution_receipt, args.expected_execution_receipt_sha256,
+        expected_git=args.expected_git, phase=args.phase)
+    expected_out = (REPO / "server/runs/logs" / PHASES[args.phase]["run_id"]
+                    / "aggregate.json").resolve()
+    if Path(args.out).resolve() != expected_out:
+        raise ProtocolRefused("S4 aggregate output is not canonical")
     screen_parent = load_screen_parent(
         args.screen_aggregate, args.expected_screen_aggregate_sha256,
         parent=parent, runtime=runtime)
@@ -862,7 +1159,9 @@ def aggregate_command(args) -> None:
         raise ProtocolRefused("screen phase cannot consume a screen parent")
     if args.phase == "confirm" and screen_parent is None:
         raise ProtocolRefused("confirmation requires an exact passing screen")
-    shards, inputs = load_shards(args, parent=parent, runtime=runtime)
+    shards, inputs = load_shards(
+        args, parent=parent, runtime=runtime,
+        execution_receipt=execution_receipt)
     payload = build_aggregate(
         phase=args.phase, shards=shards, inputs=inputs,
         parent=parent, runtime=runtime, screen_parent=screen_parent)
@@ -888,6 +1187,10 @@ def _add_record_counters(totals: Counter, record: dict) -> None:
 
 def preflight(args) -> None:
     parent, runtime = require_runtime(args.expected_git)
+    expected_out = (REPO / "server/runs/logs" / PREFLIGHT_RUN_ID
+                    / "preflight.json").resolve()
+    if Path(args.out).resolve() != expected_out:
+        raise ProtocolRefused("S4 preflight output is not canonical")
     started = time.perf_counter()
     totals = {label: Counter() for label in LABEL_ORDER}
     telemetry = {label: Counter({name: 0 for name in
@@ -998,6 +1301,8 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--phase", choices=tuple(PHASES), required=True)
     run.add_argument("--shard-index", type=int, required=True)
     run.add_argument("--progress-every", type=int, default=1)
+    run.add_argument("--execution-receipt", required=True)
+    run.add_argument("--expected-execution-receipt-sha256", required=True)
     run.add_argument("--out", required=True)
 
     agg = commands.add_parser("aggregate")
@@ -1006,6 +1311,8 @@ def parser() -> argparse.ArgumentParser:
     agg.add_argument("--shards", nargs="+", required=True)
     agg.add_argument("--screen-aggregate")
     agg.add_argument("--expected-screen-aggregate-sha256")
+    agg.add_argument("--execution-receipt", required=True)
+    agg.add_argument("--expected-execution-receipt-sha256", required=True)
     agg.add_argument("--out", required=True)
 
     preflight_parser = commands.add_parser("preflight")

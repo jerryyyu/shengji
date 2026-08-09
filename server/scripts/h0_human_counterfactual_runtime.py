@@ -133,7 +133,21 @@ def _is_terminal_file(path: Path) -> bool:
             and not os.path.lexists(Path(str(path) + ".partial")))
 
 
+def _self_hash(payload: Mapping[str, object], field: str) -> str:
+    return CTRL.sha256_bytes(CTRL.canonical_json({
+        key: value for key, value in payload.items() if key != field
+    }))
+
+
+def _expected_slot_path() -> Path:
+    return (REPO / CTRL.admission_slot_logical_path()).resolve()
+
+
 def _controller_packet(path: Path, expected_sha256: str | None = None) -> dict:
+    try:
+        execution_runtime = CTRL.require_execution_runtime()
+    except CTRL.ControllerRefused as exc:
+        raise RuntimeRefused(str(exc)) from exc
     if _git("status", "--porcelain"):
         raise RuntimeRefused("H0 runtime refuses a dirty tree")
     if not _is_terminal_file(path):
@@ -164,6 +178,8 @@ def _controller_packet(path: Path, expected_sha256: str | None = None) -> dict:
         raise RuntimeRefused("controller packet authority widened")
     if packet.get("producer", {}).get("git") != _git("rev-parse", "HEAD"):
         raise RuntimeRefused("controller packet Git differs from runtime")
+    if packet.get("execution_runtime") != execution_runtime:
+        raise RuntimeRefused("controller packet execution runtime drift")
     return packet
 
 
@@ -172,6 +188,8 @@ def _expected_review_claim(packet: dict, packet_sha256: str) -> dict:
         "schema": CTRL.REVIEW_SCHEMA,
         "git": packet["producer"]["git"],
         "controller_script_sha256": packet["producer"]["script_sha256"],
+        "runtime_script_sha256": packet["runtime_sources"][
+            "server/scripts/h0_human_counterfactual_runtime.py"],
         "packet_sha256": packet_sha256,
         "design_packet_sha256": CTRL.DESIGN_PACKET_SHA256,
         "design_review_git": CTRL.DESIGN_REVIEW_GIT,
@@ -185,6 +203,13 @@ def _expected_review_claim(packet: dict, packet_sha256: str) -> dict:
             "candidate_geometry_sha256"],
         "max_candidate_worlds": CTRL.MAX_CANDIDATE_WORLDS,
         "score_free_preflight_verified": True,
+        "strict_runtime_verified": True,
+        "fast_router_sha256": packet["execution_runtime"][
+            "fast_router_sha256"],
+        "compiled_fast_binary_sha256": packet["execution_runtime"][
+            "compiled_fast_binary_sha256"],
+        "admission_slot_logical_path": CTRL.admission_slot_logical_path(),
+        "deletion_proof_one_shot": True,
         "worlds_sampled_before_review": 0,
         "outcomes_computed_before_review": False,
         "independent_review": True,
@@ -255,6 +280,7 @@ def _receipt(path: Path, expected_sha256: str | None,
         "git": packet["producer"]["git"],
         "controller_packet_sha256": packet_sha256,
         "schedule_sha256": packet["schedule"]["schedule_sha256"],
+        "admission_slot": str(_expected_slot_path()),
         "one_shot": True,
         "design_and_audit_launch_together": True,
         "counterfactual_execution_authorized": True,
@@ -275,10 +301,26 @@ def _receipt(path: Path, expected_sha256: str | None,
         raise RuntimeRefused("execution receipt review claim drift")
     if receipt.get("input_identities") != packet.get("inputs"):
         raise RuntimeRefused("execution receipt input identities drift")
-    if receipt.get("receipt_sha256") != CTRL.sha256_bytes(
-            CTRL.canonical_json({key: value for key, value in receipt.items()
-                                 if key != "receipt_sha256"})):
+    if receipt.get("receipt_sha256") != _self_hash(
+            receipt, "receipt_sha256"):
         raise RuntimeRefused("execution receipt self-hash drift")
+    slot_path = _expected_slot_path()
+    if not _is_terminal_file(slot_path):
+        raise RuntimeRefused("durable admission slot is missing")
+    slot = _load_json(slot_path)
+    expected_slot = {
+        "schema": CTRL.ADMISSION_SCHEMA,
+        "run_id": CTRL.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": packet_sha256,
+        "schedule_sha256": packet["schedule"]["schedule_sha256"],
+        "receipt_path": str(expected_path),
+        "receipt_file_sha256": CTRL.sha256_file(path),
+        "consumed_even_if_receipt_publication_fails": True,
+    }
+    expected_slot["slot_sha256"] = _self_hash(expected_slot, "slot_sha256")
+    if slot != expected_slot:
+        raise RuntimeRefused("durable admission slot drift")
     return receipt
 
 
@@ -299,6 +341,10 @@ def admit(*, packet_path: Path, expected_packet_sha256: str,
     if (receipt_path.parent.resolve() != namespace.resolve()
             or receipt_path.name != "execution-receipt.json"):
         raise RuntimeRefused("execution receipt must use its reviewed path")
+    slot_path = _expected_slot_path()
+    if (os.path.lexists(slot_path)
+            or os.path.lexists(Path(str(slot_path) + ".partial"))):
+        raise RuntimeRefused("one-shot admission slot is already consumed")
     namespace.mkdir(parents=True, exist_ok=True)
     allowed_existing = {packet_path.resolve(), review_record.resolve()}
     for path in namespace.iterdir():
@@ -312,6 +358,7 @@ def admit(*, packet_path: Path, expected_packet_sha256: str,
         "controller_packet_sha256": expected_packet_sha256,
         "controller_packet_internal_sha256": packet["packet_sha256"],
         "schedule_sha256": packet["schedule"]["schedule_sha256"],
+        "admission_slot": str(slot_path),
         "review_record_sha256": CTRL.sha256_file(review_record),
         "review_claim": claim,
         "input_identities": packet["inputs"],
@@ -324,7 +371,22 @@ def admit(*, packet_path: Path, expected_packet_sha256: str,
         "production_promotion": False,
         "production_deployment": False,
     }
-    receipt["receipt_sha256"] = CTRL.sha256_bytes(CTRL.canonical_json(receipt))
+    receipt["receipt_sha256"] = _self_hash(receipt, "receipt_sha256")
+    slot = {
+        "schema": CTRL.ADMISSION_SCHEMA,
+        "run_id": CTRL.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": expected_packet_sha256,
+        "schedule_sha256": packet["schedule"]["schedule_sha256"],
+        "receipt_path": str(receipt_path.resolve()),
+        "receipt_file_sha256": CTRL.sha256_bytes(
+            CTRL.canonical_json(receipt)),
+        "consumed_even_if_receipt_publication_fails": True,
+    }
+    slot["slot_sha256"] = _self_hash(slot, "slot_sha256")
+    # Consume authority first. A crash or receipt-publication failure may
+    # strand this one run, but deleting the receipt cannot make it reusable.
+    CTRL.publish_exclusive(slot_path, slot)
     CTRL.publish_exclusive(receipt_path, receipt)
     return receipt
 

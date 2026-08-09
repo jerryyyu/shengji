@@ -41,6 +41,7 @@ from shengji.rl.suphx_o0_v2_runner import (  # noqa: E402
     _legacy_sample,
     new_o0_v2_bundle,
     new_o0_v2_runner,
+    resume_o0_v2_runner,
     validate_o0_v2_sample,
 )
 from shengji.rl.suphx_policy import new_from_scratch_model  # noqa: E402
@@ -278,3 +279,76 @@ def test_one_real_synchronous_iteration_publishes_keyed_work_only(tmp_path):
     assert collector.key_receipt["strength_scores"] is None
     assert collector.key_receipt["strength_claim"] is False
     assert collector.key_receipt["production_promotion"] is False
+
+
+def _run_one(runner, algorithm):
+    collector = SuphxO0V2Collector(runner.contract_sha256, algorithm)
+    update = SuphxO0V2PolicyGradientUpdate(algorithm)
+    receipt = runner.run_iteration(collector, update)
+    runner.adopt_current_candidate_as_actor()
+    return receipt, collector.key_receipt
+
+
+def test_exact_resume_matches_an_uninterrupted_two_iteration_run(tmp_path):
+    torch.use_deterministic_algorithms(True, warn_only=False)
+    algorithm = O0V2Algorithm(
+        _crn_spec(), 2, "oracle", CELL_CONTROL)
+    model_seed = 2_026_081_002
+    learner_seed = 2_026_082_002
+    root_seed = 2_026_083_002
+
+    uninterrupted_bundle = new_o0_v2_bundle(
+        model_seed=model_seed, learner_rng_seed=learner_seed)
+    uninterrupted_initial = publish_initial_actor(
+        uninterrupted_bundle.learner, tmp_path / "uninterrupted-initial")
+    uninterrupted = new_o0_v2_runner(
+        bundle=uninterrupted_bundle,
+        actor_ref=uninterrupted_initial,
+        snapshot_dir=tmp_path / "uninterrupted-candidates",
+        root_seed=root_seed,
+        algorithm=algorithm,
+    )
+    uninterrupted_receipts = [_run_one(uninterrupted, algorithm) for _ in range(2)]
+
+    resumed_bundle = new_o0_v2_bundle(
+        model_seed=model_seed, learner_rng_seed=learner_seed)
+    resumed_initial = publish_initial_actor(
+        resumed_bundle.learner, tmp_path / "resumed-initial")
+    resumed = new_o0_v2_runner(
+        bundle=resumed_bundle,
+        actor_ref=resumed_initial,
+        snapshot_dir=tmp_path / "resumed-candidates",
+        root_seed=root_seed,
+        algorithm=algorithm,
+    )
+    first_receipt, first_key_receipt = _run_one(resumed, algorithm)
+    checkpoint = resumed.save_checkpoint(tmp_path / "resume.pt")
+    boundary_actor = resumed.actor_ref
+    boundary_candidate = resumed.candidate_ref
+
+    restored_bundle = new_o0_v2_bundle(
+        model_seed=model_seed, learner_rng_seed=learner_seed)
+    restored = resume_o0_v2_runner(
+        checkpoint,
+        bundle=restored_bundle,
+        actor_ref=boundary_actor,
+        candidate_ref=boundary_candidate,
+        snapshot_dir=tmp_path / "resumed-candidates",
+        root_seed=root_seed,
+        algorithm=algorithm,
+    )
+    second_receipt, second_key_receipt = _run_one(restored, algorithm)
+
+    assert first_receipt.progress.next_iteration == 1
+    assert second_receipt.progress.next_iteration == 2
+    assert [first_key_receipt, second_key_receipt] == [
+        uninterrupted_receipts[0][1], uninterrupted_receipts[1][1]]
+    assert state_digest(restored.learner.state_dict()) == \
+        state_digest(uninterrupted.learner.state_dict())
+    assert state_digest(restored.optimizer.state_dict()) == \
+        state_digest(uninterrupted.optimizer.state_dict())
+    assert state_digest(restored.replay.state_dict()) == \
+        state_digest(uninterrupted.replay.state_dict())
+    assert state_digest(restored.rng.state_dict()) == \
+        state_digest(uninterrupted.rng.state_dict())
+    assert restored.actor_ref.sha256 == uninterrupted.actor_ref.sha256

@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-09 01:04 EDT. This is the executable mailbox, not a
+Last update: 2026-08-09 01:28 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -13,7 +13,25 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 | T1 Teacher | **RUNNING ON MINI / 3 OF 8 SHARDS PUBLISHED / ADAPTER PASS** | Claude passed the launch packet and terminal adapter `5b26c4b`. Shards 2, 5 and 7 exited zero; five workers remain live under the same supervisor. Keep every label sealed until the one terminal gate, independently recompute it, then create one adapter artifact. |
 | T2 S3a structured bury | **MECHANISM PASS / GUARDED PREFLIGHT REVIEW PASS** | Claude passed exact `e6f2493` / contract `5e0f6ade…b44653`, including the executable Teacher-release guard and its wiring witness. The exact four-cluster score-free preflight may run only after Teacher publishes its final, removes the partial, and all workers exit. It cannot launch the screen or make a strength claim. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
-| T2 learner O0-v2 | **DELTA-ONLY V3 AIR REVIEW OPEN / NO TRAINING** | Claude's V2 HOLD found one missing endpoint-call witness, not a semantic replay bug. Exact test-only delta `2e13c35` is removal-proven and passes 163/163 locally and on strict compiled Air. Claude must review marker `SUPHX_O0_V2_AIR_CODE_REVIEW_V3` before the disposable preflight runs. |
+| T2 learner O0-v2 | **AIR PREFLIGHT PASS / PACKET REVIEW OPEN / NO TRAINING** | Claude passed exact `2e13c35`. The one disposable score-redacted Air preflight passed and independently reverified; frozen packet `20d2aaee…5cab0` now awaits exact `SUPHX_O0_V2_AIR_PACKET_REVIEW_V1`. Do not admit or train before that separate PASS. |
+
+## OPEN NOW — O0-v2 frozen Air packet review
+
+Claude's delta-only V3 review passed exact `2e13c35`; its marker is preserved
+in `HANDOFF_REVIEW.md`. The authorized Air preflight then passed all criteria
+in 1.75 seconds and independently reverified at SHA-256
+`f8e1dc1673d1d6f3e20d3f849e84c7f45da570ba6b49db07f030d4d34e312eaf`.
+Its conservative 2x projection is 3,561.71 seconds (59.4 minutes), below the
+frozen eight-hour ceiling. It contains no scores and authorizes no training.
+
+The canonical Air packet was frozen and independently reverified at exact
+path `server/runs/logs/suphx-o0-v2-air-8seed-v1/launch_packet.json`, SHA-256
+`20d2aaee9773ab40011d9e3844132a6bbf458a4a6fdf258af578813563f5cab0`.
+It binds eight fresh initial seeds, both factorial cells and arms, exact
+source/runtime/preflight identity, and still says `training_authorized=false`.
+Claude should now perform the bounded packet review requested at the bottom of
+`HANDOFF_REVIEW.md`. PASS can authorize admission and O0-v2 training only;
+O1, strength, promotion and production remain false.
 
 ## LIVE NOW — fresh Teacher audit on Mini
 
@@ -35,7 +53,7 @@ instance, migrate to Air, inspect partial scores for decisions, retry, extend,
 train, promote, or launch Stage C. Wait for the supervisor's single terminal
 gate and independently reopen every binding.
 
-Outcome-blind runtime audit at 01:05 found 3,235/4,096 outer worlds (79.0%) and
+Outcome-blind runtime audit at 01:22 found 3,272/4,096 outer worlds (79.9%) and
 48/64 states. Shards 2, 5 and 7 published regular label/log/exit triplets after
 exit zero; all three label JSONs remain unopened and unhashed. Five workers remain
 CPU-bound under the original supervisor. An

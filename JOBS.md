@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 01:04 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 01:28 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,13 +10,14 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shards 2, 5 and 7 exited zero and published 3/8 label triplets; five workers remain CPU-bound. At 01:05, score-free progress was 3,235/4,096 outer worlds (79.0%) and 48/64 states. The label JSONs remain sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
-| Air | none | Physically idle. S3a remains inadmissible because its parent is Mini-bound. O0-v2 exact test-only delta `2e13c35` passes 163/163 strict compiled-Air tests and its endpoint-call removal probe fails as intended, but delta-only V3 review remains open; do not run the preflight early. |
+| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shards 2, 5 and 7 exited zero and published 3/8 label triplets; five workers remain CPU-bound. At 01:22, score-free progress was 3,272/4,096 outer worlds (79.9%) and 48/64 states. The label JSONs remain sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
+| Air | none | **PREFLIGHT PASS / PACKET REVIEW OPEN:** Claude passed exact `2e13c35`; the score-redacted preflight passed at `f8e1dc16…12eaf` and projected 59.4 minutes with 2x safety. Frozen packet `20d2aaee…5cab0` independently verifies. Air is physically idle until separate packet review; do not admit or train early. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
 The T1 Teacher audit is **running on Mini**. Receipt
 `e293858c…a10d` and preparation `83892930…c39` are exact, and the supervisor
-post-preparation preflight returned zero problems. Air remains idle by design.
+post-preparation preflight returned zero problems. Air is review-gated after a
+successful disposable O0-v2 preflight and packet freeze.
 The runtime forecast uses only score-free progress events emitted after each
 outer world plus frozen candidate counts/ply; it reads no utility, regret,
 choice or gate outcome. It is operational sizing, not evidence. The job is

@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-08 21:00 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-08 21:38 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,7 +10,7 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shard 2 exited zero and published 1/8 label triplets; seven workers remain CPU-bound. At 21:00, score-free progress was 1,903/4,096 outer worlds (46.5%) and 26/64 states. The label JSON remains sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
+| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shard 2 exited zero and published 1/8 label triplets; seven workers remain CPU-bound. At 21:38, score-free progress was 2,175/4,096 outer worlds (53.1%) and 31/64 states. The label JSON remains sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
 | Air | none | Physically idle but not admissible for the current S3a parent. A no-write probe with exact copied RLCB-C1 evidence/native bytes still refused the historical Mini `execution_host`/Python lock. Do not launch S3a on Air without a separately reviewed portable-parent design. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 

@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 21:00 EDT. This is the executable mailbox, not a
+Last update: 2026-08-08 21:38 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -35,8 +35,8 @@ instance, migrate to Air, inspect partial scores for decisions, retry, extend,
 train, promote, or launch Stage C. Wait for the supervisor's single terminal
 gate and independently reopen every binding.
 
-Outcome-blind runtime audit at 21:00 found 1,903/4,096 outer worlds (46.5%) and
-26/64 states. Shard 2 published its regular label/log/exit triplet after exit
+Outcome-blind runtime audit at 21:38 found 2,175/4,096 outer worlds (53.1%) and
+31/64 states. Shard 2 published its regular label/log/exit triplet after exit
 zero; the label JSON remains unopened and unhashed. Seven workers remain
 CPU-bound under the original supervisor. An
 earlier bounded audit found ~13% of a candidate-count × remaining-ply work
@@ -84,6 +84,12 @@ frozen evidence only. Neither may launch labels, compute, training, retry,
 extension, promotion, or production. Closed marker:
 
 `TEACHER_TERMINAL_ADAPTER_V2_REVIEW {"git":"5b26c4b4bdb678b2c780c8a4b6ed5b87e181964e","run_id":"teacher-v3-report-lcb-audit-v3-mini-149m","canonical_namespace":true,"reject_parent_symlinks":true,"literal_parent_populations":true,"literal_receipt_nonce":true,"exact_adapter_python":"3.14.6","receipt_sha256":"e293858c728437d6016a3f02a62a355c38a37a6028ad0d83e49423e1caf4a10d","preparation_sha256":"83892930fa8e7e8148960511ef0a87c3becbe77a87eaebf3c912458863644c39","output_name":"teacher_terminal_adapter_v2.json","fail_closed":true,"no_compute_authority":true,"verdict":"PASS"}`
+
+At 21:38 Codex reopened the exact clean `5b26c4b` worktree, reproduced adapter
+and test SHAs `d46f0751…c5589` / `195fc327…7c82`, and reran 29/29 focused
+tests. The current-main live-parent verifier also reopened exact
+`mc-s0-report-lcb`/RLCB-C1 and exited zero. The terminal closeout therefore has
+no outstanding code or human-review dependency.
 
 ## Closed launch packet — retained until the terminal gate
 

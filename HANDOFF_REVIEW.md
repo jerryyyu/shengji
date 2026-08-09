@@ -557,3 +557,44 @@ non-strength. Four recommendations for the queue, in priority order:
 Watch metric proposed: fraction of fleet-hours on runs whose PASS can change the deployed bot
 (today ~45%). No authority is granted or altered by this entry; S3a remains sealed; all existing
 markers and scopes stand.
+
+## Claude — 2026-08-09 20:12 EDT — S3C_EXACT_ROOT_CURRICULUM_V1_REVIEW @ 4fb90a1: PASS — census regenerates, geometry exact, gates strict; S3a terminal noted
+
+**S3a first (operational note, sealed evidence).** The 2,048-cluster screen is terminal
+`SELECT_NONE`: structured−champion mean `+0.0464` with LCB `-0.0041`, structured−null `+0.0430`
+with LCB `-0.0228`, null−champion `+0.0034` (clean interval). The gate is honest and the namespace
+is consumed; the positive means with a 0.004-miss LCB make a FRESH larger preregistered design the
+legitimate follow-up, never a retry. Mini is now free for the queued S4 duel screen.
+
+**S3c review, all MEASURED on the clean two-root pairs (producer `0b96fae`, asset `4fb90a1`):**
+
+- Census hashes exactly `23632609…b52a` (768 rows) and the packet `df102428…9eca`; focused
+  S3c+endgame battery 29/29; cross-root `verify-census` returns `VERIFIED_SCORE_FREE` with the
+  exact SHA and `verify-packet` returns `VERIFIED_FOR_DESIGN_REVIEW` with
+  `solver_or_screen_launch_authorized=false`.
+- **Geometry by my own arithmetic**: 768 unique deal seeds; three bands (cards-remaining 1-4, 5-8,
+  9-12) x 4 within-trick offsets x exactly 64 rows; one-card band entirely forced
+  (`legal_action_count` min=median=max=1 — mechanics-only as claimed); two-card band median 2 /
+  max 3; three-card band median 3 / max 7; no outcome-shaped field in any row.
+- **Tamper probe**: a single `legal_action_count` increment in a census copy refuses with
+  `census full recomputation drift` — the full-regeneration equality is the load-bearing guard,
+  measured accepting and refusing. A mutation making the verify-side per-offset quota
+  self-referential survives the focused tests — adjudicated redundant-defensive: capture-time
+  quota enforcement is separate and the full recomputation subsumes the structural pre-check.
+- **Information boundary**: the exact solver runs inside each accepted determinized world with the
+  production information-set sampler; hidden hands never reach the public policy; world values
+  average before root choice; human rows are design witnesses only with no raw identifiers and the
+  witness appendix bound to corpus manifest `b9699790…16553`.
+- **Curriculum gates are strict and sequential**: one-card (256-node cap, capacity/mechanics only,
+  no utility gate) → two-card (10k nodes, dual positive-LCB state screen with matched random
+  diversifier) → three-card (100k nodes, state screen plus fresh 2,048-cluster complete-round
+  screen vs the exact live champion) → four-card CLOSED by the S3b-v2 capacity failure with an
+  explicit no-relaxation reopen condition. Exact solver source bytes pinned (`endgame.py`,
+  `f01d8f93…`); same-budget null, disjoint selection/report worlds, and
+  zero-refusal/zero-overflow requirements in the shared execution contract; authority block
+  all-false.
+
+Scope of this PASS: implementation of the score-free one-card capacity controller only. No solver
+or screen launch, no training, no strength claim, no promotion.
+
+S3C_EXACT_ROOT_CURRICULUM_V1_REVIEW {"schema":"s3c-exact-root-curriculum-review-v1","git":"4fb90a1242e467d5f69660ae03e4f164290202a1","producer_git":"0b96faeb4921bd87e71249dd3f7158861a46e124","census_sha256":"236326099dc9763c6a5941bcb2a90670c4e23ac390ea07a0e4ec5063fa50b52a","packet_sha256":"df1024280a77c60174a57c3273ba3624e672bec9afde023576fde0404df49eca","human_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","census_rows":768,"outcomes_computed":false,"independent_review":true,"one_card_controller_implementation_authorized":true,"solver_or_screen_launch_authorized":false,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}

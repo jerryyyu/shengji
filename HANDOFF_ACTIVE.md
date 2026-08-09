@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 14:45 EDT. This is the executable mailbox, not a
+Last compacted: 2026-08-09 14:55 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, live compute in `JOBS.md`,
 queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 
@@ -15,12 +15,12 @@ queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 | T2 learner O0-v2 | **COMPLETE / SELECT NONE** | Gate `0dbd9aa8…f24e` independently replayed. O1 and production remain unauthorized. |
 | S4 point banking | **MECHANISM PASS + FULL-GAME V2 PACKET PASS / MINI QUEUED** | Claude marker `51a864c` independently passed exact `cad3992` / `17036e63…1385`. One 2,048-cluster Mini screen is authorized after S3a releases the host and a fresh admission/receipt is created. No outcome, confirmation, strength or promotion authority. |
 | Human corpus / H0 | **V8 REVIEW PASS / H0 V1 SUPERSEDED PRE-EXECUTION / V2 REVIEW OPEN** | Claude passed v1's split semantics, then executable audit found its V11 SHA names no artifact. Exact `12dac55` repairs the parent at packet `2cccf580…8f2b`, independently reproduced on Air. V2 is now the sole review target; no controller or outcome yet. |
-| HUMAN-C1 | **INERT EVIDENCE SEAM / ONE-USE RESERVATION LANDED** | Exact `064988f` retains every prior guard and adds durable secret-independent block-slot reservation with exclusive concurrent publication and no traffic/training/promotion authority. The 104-test focused battery passes locally and on exact Air. No traffic path; external review, real runtime receipt freeze, authenticated consent, C0/analyzer remain. |
+| HUMAN-C1 | **INERT EVIDENCE SEAM / CONSENT VERIFIER LANDED** | Exact `9660c86` authenticates canonical short-lived opt-in assertions against the exact design before hidden assignment, on top of the one-use reservation seam. The 113-test focused battery passes locally and on exact Air. No issuer/account binding or traffic path; measured runtime identity, immutable reviewed block ledger, candidate receipt, C0/analyzer and external review remain. |
 | External review | **OPEN / H0 V2 DESIGN ONLY** | S4 v2 closed PASS at `51a864c`. Review exact H0 v2 `12dac55` / `2cccf580…8f2b` next. HUMAN-C1 remains a later bounded review so the mailbox has one target. |
 
 The latest status-only S3a heartbeat still has all eight workers live with no
 completed shard. The latest cluster-count snapshot was
-`187,186,187,189,189,186,188,185 / 256` (1,497/2,048). Outcomes remain unread.
+`189,188,188,192,192,188,191,188 / 256` (1,516/2,048). Outcomes remain unread.
 
 ## Active milestone — T3 human-witness challenger flywheel
 
@@ -265,7 +265,7 @@ Requested H0 v2 marker now:
 
 H0_HUMAN_COUNTERFACTUAL_DESIGN_V2_REVIEW {"schema":"human-h0-counterfactual-design-review-v2","git":"12dac556d98c31de15018e7eeb9c3caa6e20486b","packet_sha256":"2cccf5803ca60cf41690f18dc0e85febaf36a88ce702587e8c86a67e2a358f2b","superseded_v1_packet_sha256":"9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3","corpus_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","v11_checkpoint_sha256":"cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003","live_parent_authenticator_sha256":"d6515d6db76290c3ad145f9194a7985d7d78223f688a30c78cdb520de41c521b","design_plays":384,"audit_plays":128,"design_buries":36,"audit_buries":9,"outcomes_computed":false,"independent_review":true,"execution_controller_implementation_authorized":true,"counterfactual_execution_authorized":false,"labels_authorized":false,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}
 
-The forward HUMAN-C1 range through `064988f` is not a launch request and does
+The forward HUMAN-C1 range through `9660c86` is not a launch request and does
 not block S4. A later bounded review should confirm ordinary-room log behavior
 is unchanged, evaluation/training roots cannot overlap, the room bot's policy
 name must match the hidden arm, the participant-derived pair and per-arm ballot
@@ -288,17 +288,28 @@ and identity-only/no-traffic authority while refusing symlink, hardlink,
 schema or field drift. One-use reservation must key the public design/pair/
 block/slot rather than the secret-derived session, admit exactly one concurrent
 issuer, fsync its identity-only/no-traffic receipt and never retry a partial.
-Focused audit tests pass 104/104 locally and independently in exact Air
-worktree `/Users/jerryyu/Projects/shengji-human-c1-064-air`. No real candidate
-runtime receipt freeze/review, authenticated consent or evaluation-room
-ingress, traffic, strength claim or promotion exists.
+Consent assertions must be canonical, HMAC-authenticated, design/audience/
+cohort/version bound, short-lived and unable to supply arm/session/block/policy.
+Focused audit tests pass 113/113 locally and independently in exact Air
+worktree `/Users/jerryyu/Projects/shengji-human-c1-966-air`.
+
+Claude's 14:51 bounded audit correctly narrows the remaining claims: receipt
+reopening compares declared Git/image strings but does not yet attest the bytes
+actually executing; deleting the reservation file could permit reissue; and
+`block_id` is still caller-selected rather than confined to a reviewed
+namespace. The new verifier authenticates assertions but no trusted issuer or
+site-account binding exists. Require measured runtime identity, an immutable
+ledger/reviewed block namespace and authenticated issuer before calling the
+seam evidence-grade. No real candidate receipt, WebSocket ingress, traffic,
+strength claim or promotion exists.
 
 ## Fleet and safety rules
 
 - Mini owns the sealed S3a screen. Do not switch or dirty its detached
   `c599b42` worktree, inspect shard logs, read partial outcomes, retry or extend.
 - Air completed the repaired S4 v2 score-free preflight and independent tests.
-  It is free; packet `17036e63…1385` has no launch authority before review.
+  It is free. Packet `17036e63…1385` passed review, but its sole launch is
+  Mini-bound and requires a fresh admission/receipt after S3a releases Mini.
 - Long reviewed compute prefers Mini; sub-hour bounded work may use Mini when
   it does not contend with a live exclusive job.
 - Every strength run binds the exact champion, engine, sampler, ballot,

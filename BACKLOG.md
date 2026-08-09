@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-09 14:45 EDT.
+Last re-derived: 2026-08-09 14:55 EDT.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
 `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -75,7 +75,7 @@ here.
 | **P1 / Teacher Stage C** | Repair the H0 parent binding, then review the 2,048-state design | Existing `b0ef0f9` / `45802e47…a350` consumes superseded H0 v1 and is held pre-review. After H0 v2 PASS, freeze a replacement. A later PASS may authorize score-free capture/controller implementation only—not capture, labels or training. |
 | **P2 / S3a confirmation** | Confirm a positive screen against the live champion | Only conditional on terminal PASS: freeze and externally review an 8,192-cluster one-shot packet, then launch once. No automatic promotion. |
 | **P2 / experiment infrastructure** | Make reviewed jobs cheaper to launch correctly | Introduce one immutable `ExperimentSpec`/receipt boundary for code, data, policy, ballot, sampler, continuation, actor, seeds, metric, null, work, stop rule and output. Scheduling may automate reviewed work; it may not select or promote. |
-| **P2 / HUMAN-C1 instrumentation** | Make the people-facing gate executable without contaminating training | Exact `064988f` extends every prior guard with durable secret-independent one-use block-slot reservation; concurrent issuance has one winner and interrupted publication stays consumed. The 104-test focused battery passes locally/Air. Still required: external review, a real candidate-specific runtime receipt freeze, authenticated consent ingress, terminal estimator and synthetic C0. No WebSocket route or human launch exists. |
+| **P2 / HUMAN-C1 instrumentation** | Make the people-facing gate executable without contaminating training | Exact `9660c86` adds short-lived HMAC-authenticated, canonical, design-bound opt-in assertions on top of the one-use reservation seam; 113 focused tests pass locally and on exact Air. It remains inert. Still required: external review, authenticated issuer/account binding, measured runtime identity, an immutable reviewed block namespace/ledger, candidate receipt, terminal estimator and synthetic C0. No WebSocket route or human launch exists. |
 | **P2 / production performance** | Keep the stronger bot pleasant under concurrent traffic | Continue passive release-17 timing; add a concurrent-room tail gate before changing CPU size. Port hot rollout leaves only with pure/compiled parity and end-to-end policy timing. |
 
 ## Active T3 milestone — human-witness challenger flywheel
@@ -83,6 +83,13 @@ here.
 **Plain-English objective:** convert two observed production weaknesses into
 an honest challenger and better Teacher data, without depending on a positive
 S3a result.
+
+Honest strength accounting: T1 and T2 have **not yet produced a confirmed
+successor** to `mc-s0-report-lcb`. T1 certified the Teacher/evaluator and T2
+has produced mechanism evidence plus several negative or bounded results. The
+next strength milestone must spend that machinery on a frozen challenger and
+freshly confirm it against report-LCB; another readiness packet alone is not a
+bot-strength result.
 
 Bot-vs-bot proof is the reproducible engineering filter, not the destination.
 The product destination is a challenger that first improves over the live
@@ -314,6 +321,15 @@ Before recruiting players, freeze and review one no-traffic contract that:
 5. reports candidate-minus-champion bot-team signed level utility with
    player/session-clustered inference. A separate absolute row asks whether the
    candidate bot team itself beats the named experienced-human cohort.
+
+The current inert seam is deliberately short of that contract. It can validate
+canonical, short-lived consent assertions against the exact reviewed design,
+derive a hidden complementary arm, reserve a pair/block slot once and reopen a
+registry policy from declared receipt fields. It does **not** yet authenticate
+the consent issuer to a site account, measure the Git/image actually executing,
+prevent an operator from deleting a reservation ledger, or constrain
+caller-selected block IDs to a reviewed namespace. Those are launch blockers,
+not wording details; none of the current helpers grants human traffic.
 
 The site's ordinary one-human-plus-three-bot experience remains a later
 product/latency and satisfaction A/B. It is not the clean strength estimand

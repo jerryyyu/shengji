@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 14:45 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 14:55 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,7 +8,7 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | `s3a-bury-duel-screen-153m-v1` | **RUNNING / OUTCOME SEALED.** Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight shards × 256. Latest count-only heartbeat: `187,186,187,189,189,186,188,185` (1,497/2,048). Never inspect shard outcomes, retry, extend or move the pinned checkout. |
+| Mini | `s3a-bury-duel-screen-153m-v1` | **RUNNING / OUTCOME SEALED.** Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight shards × 256. Latest count-only heartbeat: `189,188,188,192,192,188,191,188` (1,516/2,048). Never inspect shard outcomes, retry, extend or move the pinned checkout. |
 | Air | none | **FREE.** Claude passed S4 v2 packet `17036e63…1385`, but its sole screen is Mini-bound and waits behind S3a. Air has no reviewed strength launch; use it for exact review/test work. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
@@ -36,7 +36,7 @@ The canonical numbers and meanings are in the results table in
 
 | date | job | terminal verdict | anchor |
 |---|---|---|---|
-| 08-09 | S4 complete-round v2 preflight + packet | **CAPACITY PASS / PACKET REVIEW OPEN** | exact `cad3992`; preflight `fcc8b891…ee060`, 91.40 fleet-hours / 11.42 max-shard hours; packet `17036e63…1385`; obsolete-v1 HOLD superseded; no launch/strength |
+| 08-09 | S4 complete-round v2 preflight + packet | **PACKET PASS / ONE MINI SCREEN QUEUED** | exact `cad3992`; preflight `fcc8b891…ee060`, 91.40 fleet-hours / 11.42 max-shard hours; packet `17036e63…1385`; Claude marker `51a864c`; fresh admission/receipt only after S3a; no confirmation/strength |
 | 08-09 | S4 point-banking exact-state screen | **MECHANISM PASS / FULL-GAME PACKET REVIEW** | screen `abd9f36f…cdc00`; receipt `90124eb6…f526b`; overall point delta `+5.156`, LCB `+3.029`; both roles positive; no strength or launch authority |
 | 08-09 | Human H0 design v2 | **SCORE-FREE REPAIR COMPLETE / REREVIEW QUEUED** | exact `12dac55`; packet `2cccf580…8f2b`; real V11 `cd89d6ed…c003` + portable live parent bound; byte-reproduced on Air; no outcomes/controller authority |
 | 08-09 | Human H0 design v1 | **SPLIT REVIEW PASS / SUPERSEDED PRE-EXECUTION** | exact `9770313`; packet `9ff160a9…247d3`; split semantics passed, but pinned V11 SHA names no artifact; no outcomes computed |

@@ -177,82 +177,31 @@ states what the external evidence changes now.
 | [DouZero](https://proceedings.mlr.press/v139/zha21a.html) | Deep Monte Carlo learned action values directly from terminal returns at scale, with explicit action encoding, action-history recurrence, and separate networks for the three asymmetric roles. It did not need inference-time search. | The closest faithful baseline is from-scratch, role-conditioned/action-conditioned Q learning with immutable actor snapshots and direct signed returns. Warm-starting a dueling policy head and regressing an oracle residual is a different algorithm, so its collapse does not reject DouZero. |
 | [Libratus](https://noambrown.github.io/papers/17-Science-Superhuman.pdf), [Pluribus](https://noambrown.github.io/papers/19-Science-Superhuman.pdf), [depth-limited solving](https://arxiv.org/abs/1805.08195) | A blueprint plus real-time search can exceed either alone; hidden-information subgames depend on ranges and off-path strategy. Pluribus evaluates leaves against a small portfolio of continuation strategies rather than pretending one scalar continuation is universal. | Keep a fixed blueprint/partner policy during root search and test a small continuation-policy portfolio as a robustness arm. Do not label one heuristic-continuation `Q(s,a)` target a generic value. Poker's equilibrium guarantees do not transfer to a decentralized four-player partnership. |
 | [ReBeL](https://papers.nips.cc/paper/2020/hash/c61f571dbd2fb949d3fe5ae1608dd48b-Abstract.html), [Student of Games](https://arxiv.org/abs/2112.03178), [policy search in cooperative partially observed games](https://arxiv.org/abs/1912.02318) | Search in imperfect information needs a public belief/range state and policy-consistent continuation; a private observation does not possess one strategy-independent scalar value. Cooperative search must preserve the policy teammates use to interpret public actions. | The long-term search state is public history plus beliefs over hands and continuation policies. Root determinization with fixed public-information rollouts is a useful approximation; independent per-world MCTS or a v11 relative score used as a leaf is not. |
-| [AutoGo](https://evjang.com/2026/04/28/autogo.html#cover) / [repository](https://github.com/ericjang/autogo) | Simple learning loops become productive when experiments are self-contained, fleet jobs are reproducible, and collect→train→evaluate is first made stable synchronously; asynchronous throughput comes later. | Adopt one immutable `ExperimentSpec`, frozen actor/checkpoint paths, bounded automated queues, and machine-readable gates. Let automation schedule preregistered work, never invent a new metric or promote a checkpoint. This is experiment infrastructure, not evidence for one RL algorithm. |
+| [AutoGo](https://evjang.com/2026/04/28/autogo.html#cover) / [repository](https://github.com/ericjang/autogo) | Simple learning loops become productive when collect→train→evaluate first works on a smaller domain (the repository defaults heavily to 9×9), with self-contained experiments and reproducible fleet jobs; scale and asynchrony come later. | Use the same curriculum twice: make one-/two-/three-card Shengji endgames work before expanding exact search, and make one synchronous immutable Teacher→train→evaluate loop work before scaling actors. Automation may schedule a preregistered experiment; it may not invent a metric or promote a checkpoint. |
 
-### What this changes in the strength plan
+### Research constraints that survive
 
-1. **Do not make “MCTS with the RL policy” the primary objective.** The near-
-   term champion path is confidence-aware evaluation and allocation on the
-   current ballot, followed independently by structured burial and endgame
-   search. DEV-512 selected no widening design, so contextual lead expansion is
-   a closed screen result rather than an active prerequisite.
-2. **Use learned models first where the target is identifiable.** v11pair may
-   rank/propose actions on its exact ballot, but direct-v2 has since rejected
-   its protected-anchor composition. Teacher work may compare its proposal
-   recall/regret with a same-budget random diversifier, then train separate
-   lead/follow ranking surfaces only if untouched teacher metrics support them.
-   A value model must name its perspective, belief, continuation policy and
-   horizon; otherwise it is not a leaf contract.
-3. **Treat rollout-policy uncertainty explicitly.** As a later bounded
-   robustness arm, compare the incumbent single continuation against a small
-   fixed portfolio (for example current Smart, conservative/tempo, and
-   point-aggressive continuations) at equal total work. This is not a claim
-   that a stronger standalone roller automatically makes stronger MC.
-4. **Use the completed faithful probes to isolate the next mechanism.**
-   Direct-Q found positive gameplay but failed held-out role learning; Suphx O0
-   found aggregate oracle acquisition but failed seed robustness. A successor
-   uses common-random-number evaluation and at least eight training seeds, then
-   varies sharpening/dose/target mechanisms without bundling them into one
-   uninterpretable recipe. Only robust held-out learning earns fleet scale.
-5. **Belief-state search is the long-term tree-search lane.** Learn action-
-   conditioned card ownership/ranges, calibrate them against held-out hidden
-   deals and exact toy posteriors, then search public belief states with a fixed
-   continuation-policy portfolio. ReBeL's convergence result is two-player
-   zero-sum; Shengji should borrow the representation, not claim the theorem.
+The table above is an architecture filter; the live execution plan is owned by
+the roadmap below. Its durable constraints are: search a public belief or a
+clearly named determinization approximation rather than pretending a private
+observation has one universal value; specialize heterogeneous decision/role
+surfaces; bind every value to its perspective, horizon and continuation
+policy; introduce learned models first as bounded proposals/rankers unless a
+calibrated value contract has actually passed; and establish the loop on a
+small domain before scaling it. A small fixed continuation-policy portfolio is
+a legitimate robustness experiment, but a stronger standalone rollout policy
+does not automatically imply a stronger search policy.
 
-### Historical DMC2 was not a valid Suphx or DouZero test
-
-The negative result remains useful as a pipeline alarm, but it is not evidence
-against the underlying RL families:
-
-- **There was a defender-perspective sign defect.** `round_value()` and the
-  oracle are attacker-perspective. `actor_batch()` signs terminal return by the
-  acting seat, but ingestion computes `adv = signed_return - V_attacker` for
-  every seat. A defender needs `-return - (-V_attacker)`, not
-  `-return - V_attacker`. The unused `seat_l` list is consistent with a missing
-  intended sign transform. The executable now records raw attacker return plus
-  role sign and computes `sign * (return - oracle)`; antisymmetry is tested.
-  This repair cannot rehabilitate the historical learning verdict.
-- **The “Suphx oracle baseline” is a different method.** Suphx trained a
-  full-information policy and gradually removed privileged inputs. Here a
-  scalar value trained on heuristic trick-start states is subtracted from a
-  chosen-action regression target at arbitrary decision states. Suphx also
-  reported that simple oracle distillation did not work.
-- **The “DouZero-style DMC” omits defining parts of the baseline.** It warm-
-  starts a dueling CE/distillation network, uses one network across roles,
-  compresses history into aggregate card planes, and fits oracle-residual
-  targets. DouZero trained role-specific action-value networks from scratch on
-  direct episodic returns with sequential history and massive actor throughput.
-- **Run integrity was not immutable.** Actor tasks received mutable
-  `generator.pt`/`candidate.pt` paths, and a passing gate overwrote the generator
-  with the learner's later state rather than the exact candidate it evaluated.
-  Workers now receive path+SHA identities, snapshots are atomic and never
-  overwritten, promotions use the evaluated bytes, and every actor batch has a
-  named seed and ledger entry. The 20-pair/55% legacy gate is still not a
-  strength gate. `e49cf60` now closes transactional learner/optimizer/replay
-  resume, interruption poison, implicit-global-RNG exclusion, Python-side
-  learner/optimizer state and exclusive generation publication.
-
-Verdict: target symmetry and immutable actor/candidate boundaries are now
-closed, and a bounded smoke records itself as non-promotable. Preserve the
-spread alarm, replay cap, opponent-pool idea and bookkeeping, but do not resume
-AWAC or scale DMC2. The next gate is now the concrete Suphx/DouZero algorithm
-and its own exact resumed-output test, so a recipe bundle cannot hide which
-idea worked.
+Historical DMC2 is consolidated into the lineage below and the dated archive.
+Its spread alarm caught a real collapse, but its defender sign, target,
+algorithm identity and mutable actor/promotion boundaries made it neither a
+faithful Suphx test nor a faithful DouZero test. Preserve the alarms, replay
+cap, immutable bookkeeping and opponent-pool idea; do not resume or scale the
+13-part recipe as one bundled hypothesis.
 
 ---
 
-## Model lineage: BC through v13 (authoritative summary)
+## Learned-model and training-system lineage (authoritative summary)
 
 This section owns the experiment history: what changed, what question it
 tested, and what survived. `AI_POLICIES.md` owns runnable policy names and
@@ -262,16 +211,18 @@ The detailed day-by-day chronology remains in
 `docs_archive/rl-plan-chronology-through-2026-08-03.md`.
 
 The early project reused version numbers in three namespaces. **Distillation
-v1-v13** below names model/training iterations; **DMC recipe v1/v2** names a
-self-play training branch; **ballot v1/v2/v3** names action enumerators. They
-are not successive versions of one artifact. Historical pre-v7 gates also
-predate the current seeded, paired evaluator and are directional screens, not
-promotion evidence.
+v1-v13** names model/training iterations; **DMC recipe v1/v2**, Direct-Q and O0
+name separate training branches; **ballot v1/v2/v3** names action enumerators.
+They are not successive versions of one artifact, so newer work is recorded by
+its real branch name rather than being relabelled `v14` or `v15`. Historical
+pre-v7 gates also predate the current seeded, paired evaluator and are
+directional screens, not promotion evidence.
 
 | model / branch | improvement / hypothesis tested | best evidence | conclusion |
 |---|---|---|---|
 | **BC baseline** (pre-v1) | Behavior-cloned SmartBot from about 20k rounds using the original 531-dimensional observation and 60-dimensional action encoding. | 89.7% teacher imitation; historical gates 48% vs SmartBot and 29% vs MC. A later play-time ballot expansion sent the same family to Elo 798 until the training ballot was restored. | The encoder carried substantial game signal, but small imitation errors were exploitable by search. Established the ballot/version-freeze requirement. |
 | **DMC recipe v1 branch** | Warm-started BC, then regressed raw terminal returns in self-play. This was a self-play branch, not distillation model v1. | Flat 30-34% vs SmartBot over roughly 400k rounds; cross-candidate score spread collapsed `22.5 -> 0.26`. | Closed as an unsafe implementation/target combination: raw-return regression destroyed the pretrained ordering and the degraded policy generated its own data. It did not prove self-play RL cannot work. |
+| **DMC recipe v2 / DMC2** | Bundled dueling heads, a scalar “oracle residual,” annealed anchor, gating, opponent pool, auxiliary heads, exploration scheduling and replay controls as scaffolding for a later AWAC rewrite. | Its own spread alarm halted collapse twice. Later audit found the defender residual had the wrong perspective, the recipe was neither Suphx privileged-policy training nor DouZero direct role-Q, and mutable actor/candidate paths could detach promotion from evaluated bytes. | **INVALID ALGORITHM-FAMILY TEST.** The guards and immutable-resume repairs survive; the bundled DMC2 result does not reject AWAC, Suphx, DouZero or residual learning and should not be resumed as one recipe. |
 | **distill v1** | Single-Q search distillation with MSE on MC candidate values plus CE on the selected action, on the partial N=10 corpus. | Historical gate 32% vs SmartBot / 22% vs MC. | Dense search labels alone were insufficient under this loss and data scale. |
 | **distill v2** | Added a CE temperature to decouple choice learning from raw value scale. | 30% / 27% in the same historical gates. Later `0.03` and `0.10` sweeps did not beat the `0.05` recipe. | No detected standalone gain from temperature tuning. |
 | **distill v3** | Split policy and value heads so value-scale movement could not directly define the policy scores. | 32% / 24% in the historical gates. | Architecture separation alone did not solve the noisy stochastic-teacher target. |
@@ -290,20 +241,31 @@ small-n or unseeded results below are labelled as such.
 | **v8 family** (`v8a`, `v8b`, `v8along`) | Moved to the larger `gen_v3` corpus and fixed the trainer so choice-only TRACTOR_LOCK rows were no longer discarded. A was the raw-value soft-target control; B added the acting policy's +5 candidate-0 margin to the policy target while leaving the value head absolute; A-long tested 12 epochs. | Margin-aware B raised held-out teacher-choice agreement from roughly 43% to 62.5%, proving the loss/metric mismatch was real. The strength anchors were run before the stochastic-opponent seeding repair and did not show a reliable gain; longer A training and the v8 value-head screen also showed no detected benefit. | Important data-contract and target-alignment fix, but no promotable strength result. Better imitation alone did not imply a better bot. |
 | **v9 warm / scratch** | Trained on `gen_v4`, whose teacher was the v7 value-leaf hybrid; directly tested warm versus random initialization and then extended both arms to 16 epochs. This was the first flywheel attempt: train on the hybrid teacher, then reuse the new value head in the hybrid. | Warm and scratch had no detected difference after six epochs. In later n=120 screens both peaked near epoch 8 and then weakened; the logged warm arm was 56% vs Smart / 37% vs MC and scratch 47% / 33%. A v9-leaf head did not improve on the v7 head in the same small screen. | No evidence that warm start, more epochs, or one expert-iteration turn improved strength. The negative result is about this pipeline, not proof that expert iteration cannot work. |
 | **v10res** | First residual override attempt: regress `Q(s,a_i)-Q(s,a_0)` and let SmartBot's candidate 0 stand unless predicted gain clears a threshold. | It overrode only about 1.3-1.5% of states where the teacher overrode about 15%; pairwise RMSE was 6.1995 versus 6.2112 for predicting zero, and it scored 47% vs Smart in its screen. The model still scored rows independently without a pairwise loss, train/play ballots differed, training and deployment read different heads, and the registered epoch initially differed from the evaluated one. | **Invalid test of the residual-learning hypothesis.** The checkpoint was a near no-op; do not count it as evidence that residual learning failed. |
-| **v11pair** | Corrected v10 around the deployed decision: optimize `(q_i-q_0)` against `(Q_i-Q_0)` with Huber loss and boundary weighting, use the exact valued ballot at inference, and fit the 0.02 threshold on one split before reporting another. | `rl-override-v11pair` **CONFIRMED** 57.7% vs SmartBot (277-203, n=480, two disjoint blocks). Its 51.1% vs MC over 4,880 rounds used MC factories that silently discarded seeds. The later clean 2,048-cluster current-MC block was strongly negative (`-0.132 +/- 0.070`), but exact source audit showed it inferred with a banker-private-kitty encoder never seen in training; it validly rejects that implementation and is not a clean model ablation. Gating/root racing were not confirmed; pairwise deltas are invalid as scalar leaves. | The only confirmed online gain in v7-v13, and the key lesson is exact objective/ballot/encoder alignment. Keep it as a direct override or root proposal/ranking candidate; it has not beaten MC. A corrected-encoder direct rerun is required before the learned hypothesis receives a current-contract verdict. |
+| **v11pair** | Corrected v10 around the deployed decision: optimize `(q_i-q_0)` against `(Q_i-Q_0)` with Huber loss and boundary weighting, use the exact valued ballot at inference, and fit the 0.02 threshold on one split before reporting another. | `rl-override-v11pair` **CONFIRMED** 57.7% vs SmartBot (277-203, n=480, two disjoint blocks). Its 51.1% vs MC over 4,880 rounds used MC factories that silently discarded seeds; a later negative block used a banker-private-kitty encoder absent from training. The corrected-encoder direct-v2 test finally supplied the current-contract verdict: v11-minus-live `-0.141 +/- 0.070` and v11-minus-matched-null `-0.110 +/- 0.070`. | The only confirmed learned online gain is versus SmartBot, not MC or report-LCB. Direct/protected-anchor composition is closed. Pairwise deltas are not scalar leaves; V11 survives only as a bounded proposal/ranker and Teacher disagreement signal against a same-budget random control. |
 | **v12** | No model, checkpoint, or experiment used this number. | — | Skipped; do not infer a missing failure. |
 | **v13abs** | Warm-started v7w and fit the value output to absolute 240-world means from 20,845 high-N states, using inverse-variance weighting. The actual target is raw-point action value under heuristic continuation, `Q^H(s,a)`, not a generic state value. The trainer updated the whole network, not only a detached head. | Offline SCREEN: unweighted RMSE improved `0.1052 -> 0.0699` and stored-ballot regret `1.478 -> 1.293`. Online leaf SCREEN: v13 and v7 each won 52.8%; v13 was `-0.004 +/- 0.206` versus the MC reference and v7 `+0.024 +/- 0.215`. The direct paired v13-minus-v7 contrast is **`-0.028 +/- 0.185`** (250 clusters). There were two train/deploy shifts: early-state and ballot mismatch. A later byte audit adds a third, terminal defect: `highn_train.py` consumed `rl_data/highn_enc`, whose 5,923 banker rows all use the private-kitty drift. | **INCOMPATIBLE / NOT CONFIRMED.** It learned contaminated offline tensors better but did not improve the bot. Rebuild `highn_enc`, retrain and freshly evaluate any successor; the existing checkpoint cannot become valid merely by regenerating the cache. This does not rule out a correctly targeted absolute-value model. |
+| **Direct-Q 144M** | Faithful bounded DouZero-style probe: learn role-conditioned, action-conditioned values from direct signed episodic returns with immutable actors rather than distilling MC choices. | Gameplay evaluation was attractive at `+0.163 +/- 0.059`, but seed 1 and both pooled-role held-out MSE gates failed. The preregistered learner gate therefore selected none. | The chassis is reusable and the gameplay tail is a follow-up clue, not permission to promote or simply train longer. A successor must isolate a target/credit or surface-specialization change and pass learning across at least eight seeds before larger fleet scale. |
+| **Suphx O0** | Test whether a full-information training-time policy can acquire a signal that survives in its public-information counterpart. | Oracle-minus-public was `+0.073` with aggregate LCB `+0.0025`, but seed means were `+0.344/-0.207/+0.082`; the required seed robustness failed. | Full information was learnable in aggregate, but the benefit was not reliably transferred. O1 was not authorized. |
+| **Suphx O0-v2** | Repair the comparison with shared-public common-random-number trajectories, then isolate extra oracle-margin sharpening from the control curriculum. | Control oracle-minus-public was `+0.015`, LCB `-0.067`; plus-margin was `-0.047`, LCB `-0.109`; interaction was `-0.062`. No cell advanced. | The repaired test is a clean negative for these two mechanisms. It does not reject privileged-policy curricula generally, but it closes O0/O0-v2 extension and the proposed sharpening step. |
 
 The progression is therefore not “each version got stronger.” v7 reduced
 teacher noise; v8 repaired the data and behavior-target contract; v9 tested
 initialization, duration, and one flywheel turn; v10-v11 showed that an
 implementation can make a valid hypothesis look inert until the trained
 quantity and ballot exactly match deployment; v13 improved supervised fit but
-exposed a state-distribution and value-contract mismatch. No v7-v13 model has
-shown a verified advantage over the deployed `mc-strong`; v11's confirmed gain
-over SmartBot is the one positive learned-policy result.
+exposed a state-distribution and value-contract mismatch; Direct-Q and O0 then
+tested cleaner return-learning and privileged-policy mechanisms without
+clearing their own learner gates. No learned model has shown a verified
+advantage over the live report-LCB champion; v11's confirmed gain over
+SmartBot remains the one positive learned-policy result.
 
-Before any v14-style leaf experiment, checkpoint metadata must name and assert
+Teacher-v3 is intentionally absent from the model rows: it validated a labeler
+and froze a Stage-C design, but it has not captured the 2,048-state Stage-C
+asset, published labels, trained a checkpoint or produced a challenger. Those
+are separate future milestones and must not be implied by calling the Teacher
+audit “training.”
+
+Before any successor model experiment, checkpoint metadata must name and assert
 the target, perspective, continuation policy, state sampler/horizon, ballot
 version, and encoder version. A mismatch is an invalid run, not a negative ML
 result.
@@ -376,9 +338,19 @@ starts from a diagnosed mechanism rather than another undifferentiated corpus.
   Mini launch waits behind S3a. The remaining empirical question is deployment
   relevance: does the continuation-only change improve complete-round utility
   under natural traffic against the live champion and matched null?
-- **Later exact search** requires a new operational hypothesis. S3b-v2 is
-  terminal after its first treatment cluster exceeded the frozen 250k-node
-  budget; raising the cap after inspection is not a continuation of v2.
+- **S3c exact-root curriculum** is the new operational hypothesis, not an S3b
+  retry. S3b-v2 is terminal after its first four-card treatment cluster
+  exceeded the frozen cumulative 250k-node budget. Start from naturally
+  replayed full-deal prefixes with at most one card per hand, then two, then
+  three. At each root, sample compatible hidden worlds, reuse one exact
+  partnership-minimax session per world across the bounded production ballot,
+  require complete work or fall back unchanged, and compare against the live
+  champion on fresh deal-disjoint states. Human endgames are DESIGN witnesses
+  and error-analysis cases; formal selection uses fresh bot-generated prefixes.
+  Four-card roots advance only if the three-card lane establishes both strength
+  and a predeclared complexity envelope. This applies AutoGo's small-domain
+  lesson while preserving the imperfect-information caveat: exact per-world
+  minimax is a privileged approximation, not an exact public Shengji solution.
 - Generic candidate widening remains closed on DEV-512. New action sources
   must come from a named mechanism—structured tactics, human proposals or a
   model—and beat a same-budget random diversifier on fresh states.

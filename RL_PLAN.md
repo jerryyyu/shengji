@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-08 15:45 EDT
+## Current synthesis — 2026-08-09 03:18 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -39,19 +39,23 @@ what those results change in the research plan.
 - **Formal S0:** terminal SELECT NONE because its evidence chain failed before
   corrected outcome parsing. Its unread population is nonretryable. The
   independent RLCB-C1 result, not S0 reinterpretation, supports production.
-- **Learned policies:** V11 direct-v2, Direct-Q and Suphx O0 all selected none.
+- **Learned policies:** V11 direct-v2, Direct-Q, Suphx O0 and its O0-v2
+  shared-public-CRN successor all selected none.
   These are different failures: V11 lost directly; Direct-Q's gameplay tail was
   positive but held-out role learning failed; O0 learned an aggregate
-  oracle-public edge but failed seed robustness and stayed nearly uniform.
+  oracle-public edge but failed seed robustness and stayed nearly uniform;
+  O0-v2 repaired coupling and replay semantics but measured control
+  oracle-minus-public at only `+0.015` with LCB `-0.067`, while its isolated
+  margin-sharpening cell was worse at `-0.047` with LCB `-0.109`.
   V11 survives only as a bounded proposal/ranking/teacher diagnostic.
-- **Teacher:** Stage B passed on sampled ordinary states. The sealed 64-state
-  continuation audit then refused operationally before publishing any label or
-  gate: one exact champion report fold was incomplete. This is no ML verdict
-  and the consumed attempt cannot be retried. Score-free diagnostics and an
-  unchanged-estimand retry contract passed: failed draws may be retried but
-  never scored, and all counters must reconcile. The next gate is independent
-  review and freeze of the exact untouched 64-state complement, followed by a
-  separately reviewed fresh controller—not a 2,048-state wave.
+- **Teacher:** Stage B passed on sampled ordinary states. The first sealed
+  64-state continuation audit refused operationally before publishing a label
+  or gate, so it produced no ML verdict and is nonretryable. Score-free
+  diagnostics, bounded unscored-retry semantics, the untouched complement and
+  a fresh one-shot controller subsequently passed review. That fresh audit is
+  now running on Mini; its first terminal gate must be independently
+  recomputed and routed through the already-reviewed outcome adapter before
+  either Stage-C design or redesign.
 - **Search challengers:** the independently reviewed live-parent contract now
   binds S3a and S3b to exact report-LCB and makes formal-S0/`mc-strong`
   re-entry unreachable. S3b v2 then failed its operational preflight: its

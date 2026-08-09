@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 02:48 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 03:20 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,14 +10,14 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shards 1, 2, 5, 6 and 7 exited zero and published 5/8 label triplets; three workers remain CPU-bound. At 02:48, score-free progress was 3,601/4,096 outer worlds (87.9%) and 55/64 states. The label JSONs remain sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
-| Air | `suphx-o0-v2-air-8seed-v1` | **TERMINAL GATE RUNNING:** review `116dfb8c…e3d` admitted packet `20d2aaee…5cab0` at `f436f4b0…01e7a`. All 32 training endpoints and 16 post-publication-replayed evaluations exited zero. The serial gate is CPU-bound; run independent `verify-gate` after it publishes. O1/strength/production remain false. |
+| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shards 1, 2, 5, 6 and 7 exited zero and published 5/8 label triplets; three workers remain CPU-bound. At 03:19, score-free progress was 3,686/4,096 outer worlds (90.0%) and 56/64 states. The label JSONs remain sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
+| Air | none | **FREE / O0-v2 CLOSED:** all 32 training endpoints, 16 evaluations, terminal gate and independent replay completed. Gate `0dbd9aa8…f24e` is `SELECT_NONE` and independently `verified=true`. No O1/strength/production authority and no reviewed Air successor. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
 The T1 Teacher audit is **running on Mini**. Receipt
 `e293858c…a10d` and preparation `83892930…c39` are exact, and the supervisor
-post-preparation preflight returned zero problems. Air is running the admitted
-O0-v2 terminal gate after successful training and evaluation.
+post-preparation preflight returned zero problems. Air completed and
+independently verified the admitted O0-v2 terminal result.
 The runtime forecast uses only score-free progress events emitted after each
 outer world plus frozen candidate counts/ply; it reads no utility, regret,
 choice or gate outcome. It is operational sizing, not evidence. The job is
@@ -63,14 +63,16 @@ score-redacted Air preflight passed at `f8e1dc16…12eaf`; its 2x projection is
 59.4 minutes. Packet `20d2aaee…5cab0` is frozen and independently reverified.
 Claude's separate packet review passed after in-situ reopen and adversarial
 mutation probes. Exact committed review `116dfb8c…e3d` was admitted once at
-`f436f4b0…01e7a`; all 32 training and 16 evaluation endpoints exited zero,
-and the terminal gate is running its serial recomputation/internal replay.
-O1, strength and production remain unauthorized.
+`f436f4b0…01e7a`; all 32 training and 16 evaluation endpoints exited zero.
+The terminal gate selected none at `0dbd9aa8…f24e`; a separate full semantic
+replay exited with the expected code 4 and `verified=true`. Neither factorial
+cell advanced. O1, strength and production remain unauthorized.
 
 ## Terminal job index
 
 | date | job | verdict / headline | evidence anchor |
 |---|---|---|---|
+| 08-09 | Suphx O0-v2 | **SELECT NONE**; control `+0.015` (LCB `-0.067`), plus-margin `-0.047` (LCB `-0.109`); independently replayed | gate `0dbd9aa8...f24e`; admission `f436f4b0...01e7a` |
 | 08-08 | S3a 512-state screen | **AUTHORIZE DUEL DESIGN**; all three state-level LCBs positive; no production authority | aggregate `74aa5a39...396cd`; final `d3f2b1ab...69a6b` |
 | 08-08 | S3a v2 sizing | **CAPACITY PASS**; 0.142 fleet-hours / 0.0178 max-shard hours under frozen 400/60 caps | receipt `cf770277...5c431` |
 | 08-08 | Teacher Stage B | **PASS**; regret upper bound `0.019548 < 0.10` | gate `f607b489...89694` |

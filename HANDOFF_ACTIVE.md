@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-09 02:48 EDT. This is the executable mailbox, not a
+Last update: 2026-08-09 03:20 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -13,7 +13,7 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 | T1 Teacher | **RUNNING ON MINI / 5 OF 8 SHARDS PUBLISHED / ADAPTER PASS** | Claude passed the launch packet and terminal adapter `5b26c4b`. Shards 1, 2, 5, 6 and 7 exited zero; three workers remain live under the same supervisor. Keep every label sealed until the one terminal gate, independently recompute it, then create one adapter artifact. |
 | T2 S3a structured bury | **MECHANISM PASS / GUARDED PREFLIGHT REVIEW PASS** | Claude passed exact `e6f2493` / contract `5e0f6ade…b44653`, including the executable Teacher-release guard and its wiring witness. The exact four-cluster score-free preflight may run only after Teacher publishes its final, removes the partial, and all workers exit. It cannot launch the screen or make a strength claim. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
-| T2 learner O0-v2 | **TERMINAL GATE RUNNING ON AIR** | Exact committed review SHA `116dfb8c…e3d` admitted packet `20d2aaee…5cab0` at admission `f436f4b0…01e7a`. All 32 training endpoints and 16 evaluations completed at exit 0; the serial gate is CPU-bound. Run independent `verify-gate` after publication. O1, strength and production remain unauthorized. |
+| T2 learner O0-v2 | **COMPLETE / SELECT NONE** | All 32 training endpoints and 16 evaluations exited zero. Gate `0dbd9aa8…f24e` independently replayed with `verified=true`; no cell advanced. O1, strength and production remain unauthorized. |
 
 ## CLOSED — O0-v2 frozen Air packet review PASS
 
@@ -32,12 +32,16 @@ source/runtime/preflight identity, and still says `training_authorized=false`.
 Claude independently reopened the packet in situ, reproduced every identity
 and collision binding, ran ten artifact tamper probes plus review-marker
 mutations, and appended the exact machine-readable PASS to
-`HANDOFF_REVIEW.md`. Admission and the frozen O0-v2 battery are now authorized;
-O1, strength, promotion and production remain false. Exact committed review
+`HANDOFF_REVIEW.md`. Admission and the frozen O0-v2 battery were authorized;
+O1, strength, promotion and production remained false. Exact committed review
 SHA `116dfb8c…e3d` was copied byte-for-byte to Air and admitted once at
 `f436f4b0…01e7a`. All 32 training endpoints and 16 evaluation endpoints then
-completed at exit 0; the terminal gate and mandatory internal replay are now
-running. Do not open a partial or launch O1 from this mechanism result.
+completed at exit 0. The terminal gate selected none at SHA-256
+`0dbd9aa8bdefb1980535e52cee7c8bcc0bb28f2759b9c20189db2c341bfff24e`;
+the separate mandatory semantic replay exited 4 as expected and printed
+`verified=true`. Control oracle-minus-public was `+0.015` with LCB `-0.067`;
+plus-margin was `-0.047` with LCB `-0.109`, and the margin interaction was
+`-0.062`. No cell advanced. O1, strength and production remain unauthorized.
 
 ## LIVE NOW — fresh Teacher audit on Mini
 
@@ -59,25 +63,25 @@ instance, migrate to Air, inspect partial scores for decisions, retry, extend,
 train, promote, or launch Stage C. Wait for the supervisor's single terminal
 gate and independently reopen every binding.
 
-Outcome-blind runtime audit at 02:48 found 3,601/4,096 outer worlds (87.9%) and
-55/64 states. Shards 1, 2, 5, 6 and 7 published regular label/log/exit triplets after
+Outcome-blind runtime audit at 03:19 found 3,686/4,096 outer worlds (90.0%) and
+56/64 states. Shards 1, 2, 5, 6 and 7 published regular label/log/exit triplets after
 exit zero; all five label JSONs remain unopened and unhashed. Three workers remain
 CPU-bound under the original supervisor. An
 earlier bounded audit found ~13% of a candidate-count × remaining-ply work
 proxy complete after ~56 minutes. Because
 the frozen partition is highly imbalanced (1–14 candidates and ply 0–72), a
 simple slowest-shard projection is roughly 10–16 hours. This is not a stall:
-all eight workers remain CPU-bound and every log advances. It does mean a
+all three remaining workers are CPU-bound and every live log advances. It does mean a
 same-evening terminal gate is unlikely. Never use this operational forecast to
 read or stop on outcomes; do not repartition, duplicate, migrate or mutate the
 reviewed one-shot chain.
 
-## O0-v2 review boundary
+## O0-v2 terminal boundary
 
 The superseded V2/V3 code-review narrative is intentionally omitted here.
-Current packet identity, preflight evidence, authority and the sole open
-review are recorded once at the top of this file. T1 terminal closeout already
-has its separate adapter PASS.
+Current packet identity, preflight evidence and terminal authority are
+recorded once at the top of this file. No O0-v2 review remains open. T1
+terminal closeout already has its separate adapter PASS.
 
 Use pushed read-only monitor `c96a932` while the run is partial:
 

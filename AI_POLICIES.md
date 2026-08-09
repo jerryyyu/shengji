@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-08 15:45 EDT
+## Current synthesis — 2026-08-09 03:18 EDT
 
 ### Canonical terminal-results table
 
@@ -32,6 +32,7 @@ results table.
 | 08-07 | V11 direct-v2 | **SELECT NONE** | v11-minus-current `-0.141 +/- 0.070`; v11-minus-null `-0.110 +/- 0.070` | No direct or protected-anchor composition. V11 survives only as a proposal/ranking and teacher diagnostic hypothesis. |
 | 08-07 | Direct-Q 144M | **SELECT NONE** | gameplay `+0.163 +/- 0.059`, but seed 1 and both pooled role held-out MSE gates failed | The attractive gameplay tail cannot override the registered learning failure. Redesign rather than extend. |
 | 08-08 | Suphx O0 | **SELECT NONE** | oracle-minus-public `+0.073`, LCB `+0.0025`; seed means `+0.344/-0.207/+0.082` | Full information produced an aggregate signal but not robust seedwise benefit. O1 is unauthorized. |
+| 08-09 | Suphx O0-v2 | **SELECT NONE** | CRN control oracle-minus-public `+0.015`, LCB `-0.067`; plus-margin `-0.047`, LCB `-0.109`; interaction `-0.062` | Shared-public CRN repaired the comparison mechanics but did not make oracle use robust. Margin sharpening was directionally worse, no cell advanced, and O1 remains unauthorized. |
 | 08-08 | Teacher-v3 Stage B / audit-v2 | **STAGE B PASS / AUDIT OPERATIONAL REFUSAL** | cheap-minus-gold regret upper bound `0.0195 < 0.10`; audit shard 6 stopped on an incomplete champion-report continuation and published no labels/gate | Cheap labels agreed on sampled ordinary states. The continuation audit produced no ML verdict and is nonretryable; reviewed score-free diagnostics now gate a fresh versioned synthetic contract. |
 | 08-08 | S3b v2 throughput | **HOLD / NO SCREEN** | first exact-treatment cluster exceeded the frozen cumulative `250,000`-node cap; no receipt published | The registered four-card sampled-exact recipe is not operationally admissible under its zero-overflow rule. No strength conclusion; no retry or 2,048 screen. |
 | 08-08 | S3a v2 sizing | **CAPACITY PASS / NO STRENGTH VERDICT** | frozen projection `0.142` fleet-hours / `0.0178` max-shard hours, exact work and zero failed worlds | This cleared placement for the subsequently reviewed and completed 512-state screen; sizing itself made no strength claim. |
@@ -45,6 +46,8 @@ Evidence anchors, in the same order:
 - V11 direct-v2 aggregate `b7c90ba4c1a9bb421a4cfcc788dbf1eb44365868f65ee0eb58257b38205d21ad`.
 - Direct-Q aggregate `1fa6789eded784e03778f5ede841e45039579625477dbaa249d63c5ccc8ce791`.
 - Suphx O0 gate `592a009aaf6fbd6680b6d9bab5e9738832050d1654b71dc6f2e19612d0bd407c`.
+- Suphx O0-v2 gate `0dbd9aa8bdefb1980535e52cee7c8bcc0bb28f2759b9c20189db2c341bfff24e`;
+  independent semantic replay returned `verified=true`.
 - Teacher-v3 Stage-B gate `f607b48986aaa8b05194f88e8638540bc5c9360f09f3c28a7565d8d8cac89694`.
 - S3b v2 closeout: clean head `cd44ea8a6fefb8fba258d01bcca4bed98169a217`,
   runner SHA `ed4252b2f957e2855446ca63858e7da973949934850684e8f92e5950ca74050d`;
@@ -102,8 +105,11 @@ Evidence anchors, in the same order:
   no strategy-independent scalar value without a named belief/continuation.
 - Direct-Q's positive gameplay tail failed held-out role learning. Suphx O0's
   aggregate oracle-public signal failed seed robustness and stayed nearly
-  uniform. Both select none; together they motivate a fresh CRN/eight-seed
-  mechanism battery, not extensions of inspected runs or O1.
+  uniform. O0-v2 then completed the fresh eight-seed shared-public CRN
+  mechanism battery: coupling and semantic replay passed, but the control
+  cell's oracle-minus-public LCB was `-0.067` and margin sharpening moved the
+  mean down by `0.062`. All select none. The next learner needs a new target,
+  credit/data or adaptation mechanism—not O1 or another estimator-only repair.
 - Historical DMC2 had role-target, actor and promotion defects and was not a
   faithful AWAC/Suphx/DouZero implementation. Preserve its alarms, not its
   algorithmic verdict.
@@ -114,8 +120,8 @@ This ledger intentionally carries no live queue. Current order, blockers,
 machine assignment and milestone gates live only in `BACKLOG.md`. The durable
 conclusion is that new S3 mechanisms must bind exact report-LCB, Teacher scale
 waits on its champion/hard-tail gates, V11 is proposal/diagnostic only, and a
-fresh Direct-Q/O0 successor must isolate one learner mechanism on new
-seeds/data.
+fresh learner must change the target, data/credit assignment or adaptation
+mechanism under the now-proven CRN/replay evaluation boundary.
 
 ## Using policies
 

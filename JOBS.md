@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 02:30 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 02:48 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,8 +10,8 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shards 1, 2, 5, 6 and 7 exited zero and published 5/8 label triplets; three workers remain CPU-bound. At 02:23, score-free progress was 3,512/4,096 outer worlds (85.7%) and 53/64 states. The label JSONs remain sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
-| Air | none | **PACKET REVIEW PASS / ADMISSION NEXT:** Claude independently passed frozen packet `20d2aaee…5cab0`, including Air reopen, tamper probes, review-gate mutations and deal arithmetic. Copy the exact committed review bytes, admit once, then run only the frozen O0-v2 battery. O1/strength/production remain false. |
+| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shards 1, 2, 5, 6 and 7 exited zero and published 5/8 label triplets; three workers remain CPU-bound. At 02:48, score-free progress was 3,601/4,096 outer worlds (87.9%) and 55/64 states. The label JSONs remain sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
+| Air | `suphx-o0-v2-air-8seed-v1` | **TERMINAL GATE RUNNING:** review `116dfb8c…e3d` admitted packet `20d2aaee…5cab0` at `f436f4b0…01e7a`. All 32 training endpoints and 16 post-publication-replayed evaluations exited zero. The serial gate is CPU-bound; run independent `verify-gate` after it publishes. O1/strength/production remain false. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
 The T1 Teacher audit is **running on Mini**. Receipt
@@ -62,8 +62,10 @@ endpoint replay removal witness and 163/163 local/strict-Air tests. The one
 score-redacted Air preflight passed at `f8e1dc16…12eaf`; its 2x projection is
 59.4 minutes. Packet `20d2aaee…5cab0` is frozen and independently reverified.
 Claude's separate packet review passed after in-situ reopen and adversarial
-mutation probes. Admission and the exact battery are authorized; O1, strength
-and production remain unauthorized.
+mutation probes. Exact committed review `116dfb8c…e3d` was admitted once at
+`f436f4b0…01e7a`; all 32 training and 16 evaluation endpoints exited zero,
+and the terminal gate is running its serial recomputation/internal replay.
+O1, strength and production remain unauthorized.
 
 ## Terminal job index
 

@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-09 02:30 EDT. This is the executable mailbox, not a
+Last update: 2026-08-09 02:48 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -13,7 +13,7 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 | T1 Teacher | **RUNNING ON MINI / 5 OF 8 SHARDS PUBLISHED / ADAPTER PASS** | Claude passed the launch packet and terminal adapter `5b26c4b`. Shards 1, 2, 5, 6 and 7 exited zero; three workers remain live under the same supervisor. Keep every label sealed until the one terminal gate, independently recompute it, then create one adapter artifact. |
 | T2 S3a structured bury | **MECHANISM PASS / GUARDED PREFLIGHT REVIEW PASS** | Claude passed exact `e6f2493` / contract `5e0f6ade…b44653`, including the executable Teacher-release guard and its wiring witness. The exact four-cluster score-free preflight may run only after Teacher publishes its final, removes the partial, and all workers exit. It cannot launch the screen or make a strength claim. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
-| T2 learner O0-v2 | **PACKET REVIEW PASS / ADMISSION AUTHORIZED / NOT RUNNING** | Claude independently passed frozen Air packet `20d2aaee…5cab0`, including in-situ reopen, tamper probes, review-gate mutations and deal arithmetic. Copy the exact committed review bytes to Air, admit once, then run only the frozen battery. O1, strength and production remain unauthorized. |
+| T2 learner O0-v2 | **TERMINAL GATE RUNNING ON AIR** | Exact committed review SHA `116dfb8c…e3d` admitted packet `20d2aaee…5cab0` at admission `f436f4b0…01e7a`. All 32 training endpoints and 16 evaluations completed at exit 0; the serial gate is CPU-bound. Run independent `verify-gate` after publication. O1, strength and production remain unauthorized. |
 
 ## CLOSED — O0-v2 frozen Air packet review PASS
 
@@ -33,7 +33,11 @@ Claude independently reopened the packet in situ, reproduced every identity
 and collision binding, ran ten artifact tamper probes plus review-marker
 mutations, and appended the exact machine-readable PASS to
 `HANDOFF_REVIEW.md`. Admission and the frozen O0-v2 battery are now authorized;
-O1, strength, promotion and production remain false.
+O1, strength, promotion and production remain false. Exact committed review
+SHA `116dfb8c…e3d` was copied byte-for-byte to Air and admitted once at
+`f436f4b0…01e7a`. All 32 training endpoints and 16 evaluation endpoints then
+completed at exit 0; the terminal gate and mandatory internal replay are now
+running. Do not open a partial or launch O1 from this mechanism result.
 
 ## LIVE NOW — fresh Teacher audit on Mini
 
@@ -55,8 +59,8 @@ instance, migrate to Air, inspect partial scores for decisions, retry, extend,
 train, promote, or launch Stage C. Wait for the supervisor's single terminal
 gate and independently reopen every binding.
 
-Outcome-blind runtime audit at 02:23 found 3,512/4,096 outer worlds (85.7%) and
-53/64 states. Shards 1, 2, 5, 6 and 7 published regular label/log/exit triplets after
+Outcome-blind runtime audit at 02:48 found 3,601/4,096 outer worlds (87.9%) and
+55/64 states. Shards 1, 2, 5, 6 and 7 published regular label/log/exit triplets after
 exit zero; all five label JSONs remain unopened and unhashed. Three workers remain
 CPU-bound under the original supervisor. An
 earlier bounded audit found ~13% of a candidate-count × remaining-ply work

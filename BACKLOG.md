@@ -190,7 +190,7 @@ bot rather than imitate it.
 | **T2.2 / S3b — COMPLETE / TERMINAL HOLD** | Run the score-free two-cluster throughput preflight for the report-LCB sampled-exact lane on Mini | At exact head `cd44ea8`, the first treatment cluster raised `ExactEndgameBudgetExceeded: max_nodes=250000`; exit 1, no `1/2` completion, receipt or partial. This falsifies the v2 zero-overflow feasibility condition. Same-recipe retry/cap change/fallback is unauthorized. |
 | **T2.3 / S3b v2 — CLOSED / UNAUTHORIZED** | Launch the 2,048-cluster complete-round sampled-exact screen when capacity and preflight permit | The required preflight did not pass and the zero-overflow invariant failed before a cluster completed. Preserve the seed and failure. A fresh v3 design/review—not a mutation of this attempt—is required before more sampled-exact compute. |
 | **T2.4 / Teacher — AUDIT RUNNING / ADAPTER REVIEW PASS** | Convert a valid terminal audit into a Stage-C contract | Exact Mini launch review passed; one supervisor owns 8/8 audit shards. Claude independently passed exact adapter `5b26c4b`, including canonical paths, literal parent populations/receipt nonce, Python runtime and symlink refusals. Independently verify the first terminal gate, then create and verify one adapter artifact; neither branch launches compute. |
-| **T2.5 / learner — PACKET REVIEW PASS / ADMISSION AUTHORIZED** | Test whether shared-public CRN, with margin sharpening isolated factorially, makes oracle access robust across seeds | Claude independently passed exact frozen packet `20d2aaee…5cab0` after Air reopen, ten tamper probes, review-gate mutations and deal-population recomputation. Copy the exact committed review, admit once and run only the frozen battery. O1, strength and production remain unauthorized. |
+| **T2.5 / learner — TERMINAL GATE RUNNING ON AIR** | Test whether shared-public CRN, with margin sharpening isolated factorially, makes oracle access robust across seeds | Exact review `116dfb8c…e3d` admitted packet `20d2aaee…5cab0` at `f436f4b0…01e7a`. All 32 training endpoints and 16 evaluations completed at exit 0. Wait for the serial gate, then run independent `verify-gate`; preserve either verdict. O1, strength and production remain unauthorized. |
 | **T2.6 / S3a duel — PREFLIGHT REVIEW PASS / WAIT TEACHER RELEASE** | Test whether the state-level structured-bury gain survives full games against production | Exact core/controller `b5dee2e` / `0085409` and guarded packet `e6f2493` passed external review. Contract `5e0f6ade…b44653` freezes four score-free clusters, seed 18,000,000,000, cap pairs, command and executable Teacher-release guard. Run only after that guard clears; the preflight can authorize screen-packet review, not a screen or strength claim. |
 
 T2 launch readiness is achieved: T2.0 passed and S3a produced a valid positive
@@ -209,11 +209,10 @@ in parallel. It does not require manufacturing a positive duel result.
    outcome adapter. A verified PASS enters hard-tail Stage-C **design**; a
    verified FAIL/INCONCLUSIVE enters frozen-evidence diagnosis/redesign.
    Neither branch launches compute automatically.
-2. **Air / independent utilization:** code review, score-redacted preflight,
-   packet freeze and independent packet review are complete. Copy the exact
-   committed review bytes, admit packet `20d2aaee…5cab0` once, and launch only
-   its frozen eight-seed O0-v2 training/evaluation/gate sequence. O1, strength
-   and production remain unauthorized regardless of its terminal result.
+2. **Air / independent utilization:** admission, all 32 training endpoints and
+   all 16 evaluations are complete. The serial terminal gate is running; once
+   it publishes, run the separately required `verify-gate`, preserve the exact
+   verdict and stop. O1, strength and production remain unauthorized.
 3. **After Teacher releases Mini:** the already-reviewed S3a four-cluster
    score-free preflight may run under its executable release guard. This is a
    useful T2 follow-up, not a requirement for closing the active goal, and it

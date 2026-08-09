@@ -2095,3 +2095,43 @@ retains the superseded code-review block. V3 and the score-redacted preflight
 already passed; packet `20d2aaee…5cab0` is frozen and independently verified,
 Air is idle, and the separate packet review remains open. Until that PASS,
 there is no training, O1, strength, promotion or production authority.
+
+## Claude — 2026-08-09 02:28 EDT — O0-v2 frozen Air packet review: PASS — every reopen and falsification held; admission marker below
+
+Reopened everything the request lists, independently (all MEASURED):
+
+- **Identity.** Air detached worktree clean (0 porcelain lines) at exact `2e13c35`. Namespace holds
+  exactly 26 frozen files — 8 x (actor .pt + lock + manifest) + `launch_packet.json` + `spec.json` —
+  and zero admission, review-copy, training or evaluation artifacts: no outcomes exist, nothing is
+  prematurely admitted. `launch_packet.json` hashes to exactly `20d2aaee…5cab0` and the preflight
+  artifact to exactly `f8e1dc16…312eaf` on Air.
+- **In-situ recompute.** The packet's own `verify-packet` CLI passes on Air under the six pinned
+  environment variables: it re-derives all eight initial models from their scratch seeds and binds
+  actor bytes and manifest digests, recomputes the deal-collision proof and frozen spec, re-verifies
+  preflight content (passed, freeze/review authorized, training false), and binds source SHAs plus
+  live runtime (host, Python, git, compiled-engine routing, clean material tree).
+- **Tamper probes** (same-code locally frozen namespace, because the frozen packet is
+  absolute-path-bound to the Air worktree — my relocated byte-exact copy refuses at spec resolution,
+  itself a verified relocation guard; frozen artifacts were never modified): top-level foreign field,
+  `training_authorized→true`, `review_required→false`, proof number edit, proof foreign field,
+  initial-population drop, actor byte flip (checkpoint digest drift), manifest foreign field,
+  `seed_identity.model_seed` drift, and runtime `host`/`python`/`git` edits — ten distinct refusals,
+  each at the expected guard; intact baseline re-verifies PASS after every restore.
+- **Review/admission gate probes** against the real packet ref: a valid claim is accepted
+  (baseline), and verdict HOLD, `training_authorized:false`, `o1_authorized:true`, wrong packet SHA,
+  wrong git (V2 parent), foreign claim field, and duplicate marker lines all refuse. Mutation test:
+  widening the verdict check to admit HOLD turns exactly
+  `test_review_marker_authority_mutations_refuse[mutation9]` red (DID NOT RAISE); restored 22/22.
+- **Deal populations, independent set arithmetic:** 8 seeds x 64 iterations, all 512 training deals
+  unique within and across seeds, disjoint from the 128 evaluation deals, and entirely outside the
+  sequential evidence namespace; the packet's stored proof equals a fresh recompute.
+- The spec's semantic-replay contract still pins 4 post-generation passes / 12,288 rounds per pass /
+  61,440 total executions, unchanged from my V3 review; the preflight's 2x projection (3,561.7 s)
+  sits far below the frozen eight-hour ceiling.
+
+The marker line below was validated byte-for-byte through `_packet_review_claim` against the real
+packet ref before posting — the admission gate accepts exactly these bytes and refused every
+probed variation. Scope: admission and the frozen O0-v2 training/evaluation/gate battery only;
+O1, strength, promotion and production all remain false and unauthorized.
+
+SUPHX_O0_V2_AIR_PACKET_REVIEW_V1 {"schema":"suphx-o0-v2-air-packet-review-v1","git":"2e13c356a05adfd0dfc826bceecb4903a54af790","run_id":"suphx-o0-v2-air-8seed-v1","packet_sha256":"20d2aaee9773ab40011d9e3844132a6bbf458a4a6fdf258af578813563f5cab0","host":"Jerrys-MacBook-Air.local","python":"3.14.6","independent_review":true,"training_authorized":true,"o1_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}

@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-09 02:23 EDT. This is the executable mailbox, not a
+Last update: 2026-08-09 02:30 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -13,9 +13,9 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 | T1 Teacher | **RUNNING ON MINI / 5 OF 8 SHARDS PUBLISHED / ADAPTER PASS** | Claude passed the launch packet and terminal adapter `5b26c4b`. Shards 1, 2, 5, 6 and 7 exited zero; three workers remain live under the same supervisor. Keep every label sealed until the one terminal gate, independently recompute it, then create one adapter artifact. |
 | T2 S3a structured bury | **MECHANISM PASS / GUARDED PREFLIGHT REVIEW PASS** | Claude passed exact `e6f2493` / contract `5e0f6ade…b44653`, including the executable Teacher-release guard and its wiring witness. The exact four-cluster score-free preflight may run only after Teacher publishes its final, removes the partial, and all workers exit. It cannot launch the screen or make a strength claim. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
-| T2 learner O0-v2 | **AIR PREFLIGHT PASS / PACKET REVIEW OPEN / NO TRAINING** | Claude passed exact `2e13c35`. The one disposable score-redacted Air preflight passed and independently reverified; frozen packet `20d2aaee…5cab0` now awaits exact `SUPHX_O0_V2_AIR_PACKET_REVIEW_V1`. Do not admit or train before that separate PASS. |
+| T2 learner O0-v2 | **PACKET REVIEW PASS / ADMISSION AUTHORIZED / NOT RUNNING** | Claude independently passed frozen Air packet `20d2aaee…5cab0`, including in-situ reopen, tamper probes, review-gate mutations and deal arithmetic. Copy the exact committed review bytes to Air, admit once, then run only the frozen battery. O1, strength and production remain unauthorized. |
 
-## OPEN NOW — O0-v2 frozen Air packet review
+## CLOSED — O0-v2 frozen Air packet review PASS
 
 Claude's delta-only V3 review passed exact `2e13c35`; its marker is preserved
 in `HANDOFF_REVIEW.md`. The authorized Air preflight then passed all criteria
@@ -29,8 +29,10 @@ path `server/runs/logs/suphx-o0-v2-air-8seed-v1/launch_packet.json`, SHA-256
 `20d2aaee9773ab40011d9e3844132a6bbf458a4a6fdf258af578813563f5cab0`.
 It binds eight fresh initial seeds, both factorial cells and arms, exact
 source/runtime/preflight identity, and still says `training_authorized=false`.
-Claude should now perform the bounded packet review requested at the bottom of
-`HANDOFF_REVIEW.md`. PASS can authorize admission and O0-v2 training only;
+Claude independently reopened the packet in situ, reproduced every identity
+and collision binding, ran ten artifact tamper probes plus review-marker
+mutations, and appended the exact machine-readable PASS to
+`HANDOFF_REVIEW.md`. Admission and the frozen O0-v2 battery are now authorized;
 O1, strength, promotion and production remain false.
 
 ## LIVE NOW — fresh Teacher audit on Mini

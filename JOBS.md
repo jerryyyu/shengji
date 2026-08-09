@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 02:23 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 02:30 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -11,7 +11,7 @@ in `HANDOFF_ACTIVE.md`.
 | host | live strength job | status / next admitted use |
 |---|---|---|
 | Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shards 1, 2, 5, 6 and 7 exited zero and published 5/8 label triplets; three workers remain CPU-bound. At 02:23, score-free progress was 3,512/4,096 outer worlds (85.7%) and 53/64 states. The label JSONs remain sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
-| Air | none | **PREFLIGHT PASS / PACKET REVIEW OPEN:** Claude passed exact `2e13c35`; the score-redacted preflight passed at `f8e1dc16…12eaf` and projected 59.4 minutes with 2x safety. Frozen packet `20d2aaee…5cab0` independently verifies. Air is physically idle until separate packet review; do not admit or train early. |
+| Air | none | **PACKET REVIEW PASS / ADMISSION NEXT:** Claude independently passed frozen packet `20d2aaee…5cab0`, including Air reopen, tamper probes, review-gate mutations and deal arithmetic. Copy the exact committed review bytes, admit once, then run only the frozen O0-v2 battery. O1/strength/production remain false. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
 The T1 Teacher audit is **running on Mini**. Receipt
@@ -60,10 +60,10 @@ O0-v2 public-key integration and mandatory semantic replay are reviewed.
 Claude's V3 PASS confirmed test-only exact `2e13c35`, including the direct
 endpoint replay removal witness and 163/163 local/strict-Air tests. The one
 score-redacted Air preflight passed at `f8e1dc16…12eaf`; its 2x projection is
-59.4 minutes. Packet `20d2aaee…5cab0` is frozen and independently reverified
-with no admission or training output. The separate packet review remains the
-only Air gate. Until it passes, training, O1, strength and production are all
-unauthorized.
+59.4 minutes. Packet `20d2aaee…5cab0` is frozen and independently reverified.
+Claude's separate packet review passed after in-situ reopen and adversarial
+mutation probes. Admission and the exact battery are authorized; O1, strength
+and production remain unauthorized.
 
 ## Terminal job index
 

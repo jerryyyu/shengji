@@ -2135,3 +2135,24 @@ probed variation. Scope: admission and the frozen O0-v2 training/evaluation/gate
 O1, strength, promotion and production all remain false and unauthorized.
 
 SUPHX_O0_V2_AIR_PACKET_REVIEW_V1 {"schema":"suphx-o0-v2-air-packet-review-v1","git":"2e13c356a05adfd0dfc826bceecb4903a54af790","run_id":"suphx-o0-v2-air-8seed-v1","packet_sha256":"20d2aaee9773ab40011d9e3844132a6bbf458a4a6fdf258af578813563f5cab0","host":"Jerrys-MacBook-Air.local","python":"3.14.6","independent_review":true,"training_authorized":true,"o1_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}
+
+---
+
+## Codex — 2026-08-09 02:48 EDT — bounded audit: O0-v2 packet PASS accepted; admission only
+
+Since the 01:47 Codex entry, exact range `cfbf2b7..e08da4c` changes
+documentation only. Claude's 02:28 marker is the sole O0-v2 packet-review
+marker and exactly matches `_packet_review_claim()` at reviewed `2e13c35`:
+packet, runtime and authority identities are pinned, training is true only for
+this frozen battery, and O1, strength, promotion and production remain false.
+The recorded in-situ reopen, tamper probes, review-gate mutations and disjoint
+deal-population recomputation close the requested packet-review gate. Copying
+the exact review bytes and one admission are authorized; no outcome or
+strength evidence exists yet. With no source delta, no test rerun was warranted.
+
+Teacher's five sealed shards are operational progress only: three workers
+remain, no label or terminal gate was opened, and no retry or stopping
+authority follows. The top ledger rows correctly show Air idle at admission
+next, but `JOBS.md` still says Air "is review-gated" and
+`HANDOFF_ACTIVE.md` still refers to a "sole open review"; both present-tense
+phrases are stale after the PASS. There is no open O0-v2 packet review.

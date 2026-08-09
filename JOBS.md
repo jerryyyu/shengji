@@ -16,8 +16,8 @@ in `HANDOFF_ACTIVE.md`.
 
 The T1 Teacher audit is **running on Mini**. Receipt
 `e293858c…a10d` and preparation `83892930…c39` are exact, and the supervisor
-post-preparation preflight returned zero problems. Air is review-gated after a
-successful disposable O0-v2 preflight and packet freeze.
+post-preparation preflight returned zero problems. Air is running the admitted
+O0-v2 terminal gate after successful training and evaluation.
 The runtime forecast uses only score-free progress events emitted after each
 outer world plus frozen candidate counts/ply; it reads no utility, regret,
 choice or gate outcome. It is operational sizing, not evidence. The job is

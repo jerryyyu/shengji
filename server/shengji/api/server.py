@@ -24,6 +24,7 @@ from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
+from .human_eval import HumanEvaluationContext
 
 
 def _fast_active() -> bool:
@@ -97,23 +98,56 @@ class Room:
     deal_task: asyncio.Task | None = None
     watchdog_task: asyncio.Task | None = None
     cleanup_task: asyncio.Task | None = None
+    # Ordinary rooms use LOG_DIR.  A reviewed human evaluation must provide a
+    # different root plus an immutable server-only identity; no websocket path
+    # can construct one yet.
+    log_dir: Path | None = None
+    evaluation: HumanEvaluationContext | None = None
+
+    def __post_init__(self) -> None:
+        if self.log_dir is None:
+            self.log_dir = LOG_DIR
+        else:
+            self.log_dir = Path(self.log_dir)
+        if self.evaluation is not None:
+            evaluation_root = self.log_dir.resolve()
+            training_root = LOG_DIR.resolve()
+            if (evaluation_root == training_root
+                    or evaluation_root.is_relative_to(training_root)
+                    or training_root.is_relative_to(evaluation_root)):
+                raise ValueError(
+                    "human evaluation rooms require a disjoint log root")
+        if (self.evaluation is not None
+                and getattr(self.bot, "policy_name", None)
+                != self.evaluation.active_policy):
+            raise ValueError(
+                "human evaluation policy identity does not match room bot")
 
     @property
     def round(self) -> Round | None:
         return self.game.round if self.game else None
 
     def log_event(self, kind: str, **data) -> None:
-        """Append one JSONL record to this room's game log. Best-effort —
-        logging must never break the game."""
+        """Append one JSONL record.
+
+        Ordinary game logging remains best-effort.  Evaluation logging fails
+        closed because continuing an unrecorded assigned session would create
+        evidence that cannot be audited.
+        """
         try:
-            LOG_DIR.mkdir(parents=True, exist_ok=True)
+            assert self.log_dir is not None
+            self.log_dir.mkdir(parents=True, exist_ok=True)
             rec = {"t": round(time.time(), 3), "room": self.code,
                    "round": self.game.round_no if self.game else 0,
                    "e": kind, **data}
-            with open(LOG_DIR / f"{self.code}.jsonl", "a") as f:
+            if self.evaluation is not None:
+                rec["experiment"] = self.evaluation.log_payload()
+                rec["training_excluded"] = True
+            with open(self.log_dir / f"{self.code}.jsonl", "a") as f:
                 f.write(json.dumps(rec) + "\n")
         except OSError:
-            pass
+            if self.evaluation is not None:
+                raise  # evidence rooms fail closed instead of silently playing
 
     # ------------------------------------------------------------- id mapping
     def index_round(self) -> None:

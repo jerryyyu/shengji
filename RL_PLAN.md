@@ -68,8 +68,11 @@ what those results change in the research plan.
   512-state mechanism screen is now terminal PASS: structured bury beat the
   live incumbent, legacy-four and trigger-matched random widening with every
   frozen state-level LCB above zero. This is proposal-generation evidence, not
-  bot strength. The next gate is a fresh mirrored full-game duel against exact
-  report-LCB with a champion-matched null.
+  bot strength. Its reviewed full-game score-free preflight subsequently
+  completed exact work and projects the 2,048-cluster screen at `72.62`
+  fleet-hours / `9.08` max-shard hours. The next gate is a separately frozen
+  and externally reviewed one-shot screen packet against exact report-LCB with
+  a champion-matched null; the preflight itself authorizes no strength run.
 - **Data/sampler:** the bounded strict sampler certificate passed, but posterior
   fidelity and global constructive completeness remain open. High-N and
   late-ply data are replayable state reservoirs under old named targets, not

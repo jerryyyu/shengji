@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-09 06:20 EDT. This is the executable mailbox, not a
+Last update: 2026-08-09 06:40 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -11,7 +11,7 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
 | T1 Teacher | **TERMINAL PASS / INDEPENDENT MATCH / ADAPTER REVIEW OPEN** | Gate `8a1532b7…91f8` and supervisor `02f4f8b…6f237` are preserved; a fresh evaluator reproduction matched bytes. Real output exposed relative-versus-absolute label-path fixture drift in adapter `5b26c4b`. Review exact two-file fix `60d46e1`; only after PASS create/verify one design-only adapter. |
-| T2 S3a structured bury | **MECHANISM PASS / GUARDED PREFLIGHT READY** | Claude passed exact `e6f2493` / contract `5e0f6ade…b44653`, including the executable Teacher-release guard and its wiring witness. Teacher has released Mini, so the exact four-cluster score-free preflight may run. It cannot launch the screen or make a strength claim. |
+| T2 S3a structured bury | **PREFLIGHT PASS / SCREEN PACKET REVIEW AUTHORIZED** | The reviewed four-cluster Mini preflight completed in 255.3 seconds with exact work, zero bad counters and terminal status `AUTHORIZE_SCREEN_PACKET_REVIEW`. Screen projection is `72.62` fleet-hours / `9.08` max-shard hours under the frozen 2× factor. Build, freeze and externally review a one-shot 2,048-cluster screen packet; do not launch strength compute yet. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
 | T2 learner O0-v2 | **COMPLETE / SELECT NONE** | All 32 training endpoints and 16 evaluations exited zero. Gate `0dbd9aa8…f24e` independently replayed with `verified=true`; no cell advanced. O1, strength and production remain unauthorized. |
 
@@ -418,6 +418,28 @@ This command remains dormant until the executable Teacher guard clears. Its
 strongest possible terminal status is `AUTHORIZE_SCREEN_PACKET_REVIEW`; it
 authorizes no screen, confirmation, strength conclusion, retry, promotion or
 production change.
+
+## TERMINAL PASS — S3a full-game score-free preflight
+
+After Teacher released Mini, the exact reviewed command ran once from clean
+detached `e6f2493` under canonical Mini Python 3.14.3. All four clusters
+completed in 255.321 seconds. Receipt `97280974…68ca`, preflight
+`09692f82…edf0` and supervisor final `56943242…e9f` independently verify;
+the terminal status is `AUTHORIZE_SCREEN_PACKET_REVIEW`.
+
+The treatment witnessed four opportunities, four complete searches, three
+overrides, exactly 32 accepted structured worlds and 952/952 candidate
+rollouts. Every failed/rejected/short/zero-world/void-fallback/exact-endgame
+counter was zero. The measured 2× projections are:
+
+- 2,048-cluster screen: `72.6246` fleet-hours / `9.0781` max-shard hours,
+  below frozen caps `192/24`;
+- 8,192-cluster confirmation: `290.4982` fleet-hours / `36.3123`
+  max-shard hours, below frozen caps `768/96`.
+
+This is capacity and wiring evidence only. It authorizes design and external
+review of a separate one-shot screen packet. It does not authorize the screen,
+confirmation, a strength claim, retry, promotion or production change.
 
 ## Standing rules
 

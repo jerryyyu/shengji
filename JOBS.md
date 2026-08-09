@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 06:20 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 06:40 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,7 +10,7 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | none | **FREE / TEACHER PASS:** all 8/8 shards exited zero; gate `8a1532b7…91f8` and supervisor `02f4f8b…6f237` are terminal. Independent aggregation was byte-identical. The reviewed S3a score-free preflight is next admitted use. |
+| Mini | none | **FREE / S3a PREFLIGHT PASS:** the reviewed four-cluster score-free run ended `AUTHORIZE_SCREEN_PACKET_REVIEW`; final `56943242…e9f`. No screen is admitted until a separate one-shot packet passes external review. |
 | Air | none | **FREE / O0-v2 CLOSED:** all 32 training endpoints, 16 evaluations, terminal gate and independent replay completed. Gate `0dbd9aa8…f24e` is `SELECT_NONE` and independently `verified=true`. No O1/strength/production authority and no reviewed Air successor. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
@@ -48,8 +48,12 @@ the terminal-final/no-partial/no-live-worker gate; its focused tests pass
 16/16, including wiring non-vacuity, and a real live-Teacher probe refused
 before creating a namespace. Claude independently passed superseding contract
 `5e0f6ade…b44653`, all 16 tests and the equivalent `192/24`, `768/96` caps.
-The exact preflight may run only after the executable Teacher guard clears; it
-cannot launch the screen or make a strength claim.
+The exact preflight ran once after the Teacher guard cleared. It completed in
+255.3 seconds with exact work, zero bad counters, receipt `97280974…68ca`,
+preflight `09692f82…edf0` and final `56943242…e9f`. The 2× projection is
+`72.62` fleet-hours / `9.08` max-shard hours for the screen and `290.50` /
+`36.31` for confirmation. Its only authority is design and external review of
+the screen packet; no strength run has started.
 
 ### T2 learner
 
@@ -69,6 +73,7 @@ cell advanced. O1, strength and production remain unauthorized.
 
 | date | job | verdict / headline | evidence anchor |
 |---|---|---|---|
+| 08-09 | S3a full-game preflight | **CAPACITY PASS / SCREEN PACKET REVIEW**; 4/4 clusters, exact 952/952 structured rollouts, screen projection `72.62` fleet-hours / `9.08` max-shard hours | preflight `09692f82...edf0`; final `56943242...e9f` |
 | 08-09 | Teacher-v3 fresh audit | **PASS / STAGE-C DESIGN**; cheap upper `0.0354`, N=30 upper `0.0439` below `0.10`; no training authority | gate `8a1532b7...91f8`; supervisor `02f4f8b...6f237` |
 | 08-09 | Suphx O0-v2 | **SELECT NONE**; control `+0.015` (LCB `-0.067`), plus-margin `-0.047` (LCB `-0.109`); independently replayed | gate `0dbd9aa8...f24e`; admission `f436f4b0...01e7a` |
 | 08-08 | S3a 512-state screen | **AUTHORIZE DUEL DESIGN**; all three state-level LCBs positive; no production authority | aggregate `74aa5a39...396cd`; final `d3f2b1ab...69a6b` |

@@ -2219,3 +2219,32 @@ Also confirm the canonical adapter output is still absent before review.
 Append exactly one terminal marker:
 
 `TEACHER_TERMINAL_ADAPTER_V3_REVIEW {"schema":"teacher-terminal-adapter-v3-review-v1","git":"60d46e1bed0eefabe040dc9dac3a630680d6bdff","parent_git":"5b26c4b4bdb678b2c780c8a4b6ed5b87e181964e","run_id":"teacher-v3-report-lcb-audit-v3-mini-149m","gate_sha256":"8a1532b7b9a610452609bb2a7a69c9b13a9f1800ad74428d0278e9572aba91f8","supervisor_sha256":"02f4f8b02d674ad3f59f9fa5b607692c7c8d31bdc5d26e2c64f66c983956f237","adapter_sha256":"974594a7b5754e065888e1959f7088f2d4e73e491d3607b2769472a66385bbbb","test_sha256":"658c1681979b8bd4b0a07d27afa1b2d3e4d34b241570d8ec3e192a686b31bf99","material_sha256":"08354af1d5f0c4cdea3154ee738add949ca055b33cb5c9b28b3a4e39e03e2303","real_gate_reopened":true,"absolute_label_paths":true,"relative_and_alternate_paths_refuse":true,"tests":"30/30","adapter_creation_authorized":true,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
+
+---
+
+## Codex — 2026-08-09 06:40 EDT — S3a score-free preflight terminal PASS; screen packet review is the next boundary
+
+After Teacher released Mini, the exact already-reviewed one-shot command ran
+from clean detached `e6f2493943d5ec2b826d852ec62a782bef10e412` under
+canonical Mini Python 3.14.3. The four score-free clusters completed at exit
+zero in 255.321 seconds. Receipt SHA-256 is
+`972809744b837130b958e7a6de6c9cb9d8e6d57f17c444bf7bf40c53b82468ca`;
+preflight SHA-256 is
+`09692f823d26d38ea76c7c6e36ea007a5031c0f05ca1a76795c84e7d0722edf0`;
+supervisor-final SHA-256 is
+`56943242f3620b09774a55eab992fbac0bce6ad224c3ada6a7b54a5634799e9f`.
+The independent controller `verify` command exited zero.
+
+All forbidden counters are zero. Structured bury witnessed four opportunities,
+four complete searches, three overrides, exactly 32 accepted worlds and
+952/952 candidate rollouts. The frozen 2× projection is `72.6246`
+fleet-hours / `9.0781` max-shard hours for the 2,048-cluster screen and
+`290.4982` / `36.3123` for confirmation, below the registered `192/24`
+and `768/96` caps. Terminal status is
+`AUTHORIZE_SCREEN_PACKET_REVIEW`.
+
+No new review is requested by this entry. The next deliverable is code and a
+frozen one-shot screen packet bound to this exact terminal preflight; only
+then should an external screen-launch review be opened. No screen,
+confirmation, retry, strength conclusion, promotion or production change is
+authorized now. The separate Teacher adapter V3 review above remains open.

@@ -56,15 +56,23 @@ from shengji.rl.replay_log import group_rounds, rebuild_round  # noqa: E402
 from shengji.rl.torch_policy import _load_npnet  # noqa: E402
 
 
-SCHEMA = "human-h0-counterfactual-controller-v1"
-PACKET_ID = "human-v8-h0-counterfactual-controller-v1"
-RUN_ID = "human-v8-h0-counterfactual-execution-v1"
-SHARD_SCHEMA = "human-h0-counterfactual-shard-v1"
-AGGREGATE_SCHEMA = "human-h0-counterfactual-aggregate-v1"
-REVIEW_SCHEMA = "human-h0-counterfactual-controller-review-v1"
-REVIEW_MARKER = "H0_HUMAN_COUNTERFACTUAL_CONTROLLER_V1_REVIEW "
-RECEIPT_SCHEMA = "human-h0-counterfactual-execution-receipt-v1"
+SCHEMA = "human-h0-counterfactual-controller-v2"
+PACKET_ID = "human-v8-h0-counterfactual-controller-v2"
+RUN_ID = "human-v8-h0-counterfactual-execution-v2"
+SHARD_SCHEMA = "human-h0-counterfactual-shard-v2"
+AGGREGATE_SCHEMA = "human-h0-counterfactual-aggregate-v2"
+REVIEW_SCHEMA = "human-h0-counterfactual-controller-review-v2"
+REVIEW_MARKER = "H0_HUMAN_COUNTERFACTUAL_CONTROLLER_V2_REVIEW "
+RECEIPT_SCHEMA = "human-h0-counterfactual-execution-receipt-v2"
+ADMISSION_SCHEMA = "human-h0-counterfactual-admission-slot-v2"
 SHARD_COUNT = 8
+
+SAMPLER_FLAGS = (
+    "SHENGJI_WEIGHTED_SPLITS",
+    "SHENGJI_UNIFORM_DEAL",
+    "SHENGJI_PHYSICAL_FILLS",
+    "SHENGJI_ALLOW_BALLOT_MISMATCH",
+)
 
 DESIGN_PACKET_LOGICAL_PATH = (
     "server/runs/logs/human-v8-h0-counterfactual-pilot-v3/"
@@ -800,6 +808,41 @@ def runtime_sources() -> dict:
     return dict(sorted(sources.items()))
 
 
+def require_execution_runtime() -> dict:
+    """Reopen the exact sampler/native mode required by the H0 design.
+
+    The v1 controller merely hashed whichever compiled binary happened to be
+    importable.  It did not make the future runtime refuse pure Python or
+    void-relaxed sampling.  This function is called both while freezing the
+    score-free packet and every time the execution runtime opens that packet.
+    """
+    if os.environ.get("SHENGJI_FAST") != "1":
+        raise ControllerRefused("set SHENGJI_FAST=1")
+    if os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
+        raise ControllerRefused("set SHENGJI_REQUIRE_VOIDS=1")
+    enabled = [name for name in SAMPLER_FLAGS if os.environ.get(name)]
+    if enabled:
+        raise ControllerRefused(
+            f"experimental sampler/ballot flags must be unset: {enabled}")
+    from shengji.engine import combos, fast
+    if not fast.HAVE_FAST or combos.decompose is not fast.decompose:
+        raise ControllerRefused("compiled engine requested but not active")
+    return {
+        "environment": {
+            "SHENGJI_FAST": "1",
+            "SHENGJI_REQUIRE_VOIDS": "1",
+        },
+        "experimental_sampler_flags": [],
+        "fast_engine": True,
+        "fast_router_sha256": sha256_file(fast.__file__),
+        "compiled_fast_binary_sha256": sha256_file(fast._fast.__file__),
+    }
+
+
+def admission_slot_logical_path() -> str:
+    return f"server/runs/locks/{RUN_ID}.consumed.json"
+
+
 def command_templates(schedule: dict) -> dict:
     shard_commands = []
     for shard in schedule["shards"]:
@@ -866,6 +909,9 @@ def command_templates(schedule: dict) -> dict:
 
 def result_contract(schedule: dict) -> dict:
     return {
+        "durable_one_shot_admission_slot": admission_slot_logical_path(),
+        "admission_slot_published_before_receipt": True,
+        "receipt_deletion_cannot_reissue": True,
         "shard_schema": SHARD_SCHEMA,
         "aggregate_schema": AGGREGATE_SCHEMA,
         "every_selected_row_exactly_once": True,
@@ -929,6 +975,7 @@ def build_controller_packet(design_path: Path, corpus: Path,
                             source_root: Path, source_manifest: Path,
                             v11_checkpoint: Path, review_record: Path,
                             *, smoke: bool) -> dict:
+    execution_runtime = require_execution_runtime()
     design_packet = validate_design_packet(design_path)
     design_review = require_design_review(review_record)
     manifest, _plays, _buries, catalog = validate_inputs(
@@ -974,6 +1021,7 @@ def build_controller_packet(design_path: Path, corpus: Path,
             "selected_play_rows_sha256": SELECTED_PLAY_ROWS_SHA256,
             "selected_bury_rows_sha256": SELECTED_BURY_ROWS_SHA256,
         },
+        "execution_runtime": execution_runtime,
         "runtime_sources": runtime_sources(),
         "rng": {
             "derivation": (
@@ -1002,12 +1050,17 @@ def build_controller_packet(design_path: Path, corpus: Path,
             "hold_authorizes": "no execution",
             "required_claim_fields": [
                 "schema", "git", "controller_script_sha256",
+                "runtime_script_sha256",
                 "packet_sha256", "design_packet_sha256",
                 "design_review_git", "corpus_manifest_sha256",
                 "source_manifest_sha256", "v11_checkpoint_sha256",
                 "selected_play_rows_sha256", "selected_bury_rows_sha256",
                 "schedule_sha256", "candidate_geometry_sha256",
                 "max_candidate_worlds", "score_free_preflight_verified",
+                "strict_runtime_verified", "fast_router_sha256",
+                "compiled_fast_binary_sha256",
+                "admission_slot_logical_path",
+                "deletion_proof_one_shot",
                 "worlds_sampled_before_review",
                 "outcomes_computed_before_review", "independent_review",
                 "one_counterfactual_execution_authorized",
@@ -1057,6 +1110,19 @@ def packet_problems(packet: dict, expected: dict) -> list[str]:
             or preflight.get("candidate_world_rollouts") != 0
             or preflight.get("outcomes_computed") is not False):
         problems.append("score-free preflight widened")
+    runtime = packet.get("execution_runtime", {})
+    if (runtime != expected.get("execution_runtime")
+            or runtime.get("environment") != {
+                "SHENGJI_FAST": "1", "SHENGJI_REQUIRE_VOIDS": "1"}
+            or runtime.get("experimental_sampler_flags") != []
+            or runtime.get("fast_engine") is not True):
+        problems.append("execution runtime contract drift")
+    contract = packet.get("result_contract", {})
+    if (contract.get("durable_one_shot_admission_slot")
+            != admission_slot_logical_path()
+            or contract.get("admission_slot_published_before_receipt") is not True
+            or contract.get("receipt_deletion_cannot_reissue") is not True):
+        problems.append("one-shot admission contract drift")
     return sorted(set(problems))
 
 

@@ -411,6 +411,20 @@ def test_incomplete_aggregate_suppresses_all_utility_metrics() -> None:
 
 def test_controller_authority_and_score_free_preflight_cannot_widen() -> None:
     expected = {
+        "execution_runtime": {
+            "environment": {
+                "SHENGJI_FAST": "1", "SHENGJI_REQUIRE_VOIDS": "1"},
+            "experimental_sampler_flags": [],
+            "fast_engine": True,
+            "fast_router_sha256": "a" * 64,
+            "compiled_fast_binary_sha256": "b" * 64,
+        },
+        "result_contract": {
+            "durable_one_shot_admission_slot":
+                ctrl.admission_slot_logical_path(),
+            "admission_slot_published_before_receipt": True,
+            "receipt_deletion_cannot_reissue": True,
+        },
         "authority": {
             "score_free": True,
             "worlds_sampled": False,
@@ -433,3 +447,137 @@ def test_controller_authority_and_score_free_preflight_cannot_widen() -> None:
     widened["authority"]["counterfactual_execution_authorized"] = True
     problems = ctrl.packet_problems(widened, expected)
     assert "controller authority widened" in problems
+    relaxed = json.loads(json.dumps(expected))
+    relaxed["execution_runtime"]["environment"][
+        "SHENGJI_REQUIRE_VOIDS"] = "0"
+    assert "execution runtime contract drift" in ctrl.packet_problems(
+        relaxed, expected)
+    reusable = json.loads(json.dumps(expected))
+    reusable["result_contract"]["receipt_deletion_cannot_reissue"] = False
+    assert "one-shot admission contract drift" in ctrl.packet_problems(
+        reusable, expected)
+
+
+def test_execution_runtime_requires_fast_strict_voids_and_no_experiments(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SHENGJI_FAST", raising=False)
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    with pytest.raises(ctrl.ControllerRefused, match="SHENGJI_FAST"):
+        ctrl.require_execution_runtime()
+
+    monkeypatch.setenv("SHENGJI_FAST", "1")
+    monkeypatch.delenv("SHENGJI_REQUIRE_VOIDS", raising=False)
+    with pytest.raises(ctrl.ControllerRefused, match="SHENGJI_REQUIRE_VOIDS"):
+        ctrl.require_execution_runtime()
+
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    monkeypatch.setenv("SHENGJI_UNIFORM_DEAL", "1")
+    with pytest.raises(ctrl.ControllerRefused, match="experimental"):
+        ctrl.require_execution_runtime()
+    monkeypatch.delenv("SHENGJI_UNIFORM_DEAL")
+
+    contract = ctrl.require_execution_runtime()
+    assert contract["fast_engine"] is True
+    assert contract["environment"] == {
+        "SHENGJI_FAST": "1", "SHENGJI_REQUIRE_VOIDS": "1"}
+
+
+def test_runtime_packet_open_is_wired_to_strict_runtime_gate(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def refuse_runtime() -> dict:
+        raise runtime.CTRL.ControllerRefused(
+            "synthetic strict-runtime refusal")
+
+    monkeypatch.setattr(
+        runtime.CTRL, "require_execution_runtime", refuse_runtime)
+    with pytest.raises(runtime.RuntimeRefused, match="strict-runtime"):
+        runtime._controller_packet(tmp_path / "missing.json")
+
+
+def _admission_packet() -> dict:
+    return {
+        "producer": {"git": "a" * 40},
+        "packet_sha256": "b" * 64,
+        "schedule": {"schedule_sha256": "c" * 64},
+        "inputs": {"fixture": "d" * 64},
+        "execution_runtime": {
+            "fast_router_sha256": "e" * 64,
+            "compiled_fast_binary_sha256": "f" * 64,
+        },
+    }
+
+
+def _patch_admission_dependencies(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, packet: dict
+) -> tuple[Path, Path, Path]:
+    monkeypatch.setattr(runtime, "REPO", tmp_path)
+    monkeypatch.setattr(
+        runtime, "_controller_packet", lambda *_args, **_kwargs: packet)
+    monkeypatch.setattr(
+        runtime, "_validate_current_inputs", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        runtime, "_review_claim", lambda *_args, **_kwargs: {
+            "one_counterfactual_execution_authorized": True})
+    namespace = (tmp_path / "server" / "runs" / "logs" / ctrl.RUN_ID)
+    receipt = namespace / "execution-receipt.json"
+    slot = tmp_path / ctrl.admission_slot_logical_path()
+    return namespace, receipt, slot
+
+
+def _admit_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                   packet: dict, namespace: Path, receipt: Path) -> dict:
+    review = tmp_path / "review.md"
+    review.write_text("review\n")
+    return runtime.admit(
+        packet_path=tmp_path / "controller-packet.json",
+        expected_packet_sha256="1" * 64,
+        review_record=review,
+        receipt_path=receipt,
+        namespace=namespace,
+        design_path=tmp_path / "design.json",
+        corpus=tmp_path / "corpus",
+        source_root=tmp_path / "source",
+        source_manifest=tmp_path / "source-manifest.json",
+        v11_checkpoint=tmp_path / "model.npz",
+    )
+
+
+def test_admission_slot_survives_receipt_deletion_and_blocks_reissue(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    packet = _admission_packet()
+    namespace, receipt, slot = _patch_admission_dependencies(
+        tmp_path, monkeypatch, packet)
+    admitted = _admit_fixture(
+        tmp_path, monkeypatch, packet, namespace, receipt)
+    assert receipt.is_file()
+    assert slot.is_file()
+    assert admitted["admission_slot"] == str(slot.resolve())
+    monkeypatch.setattr(
+        runtime, "_expected_review_claim", lambda *_args, **_kwargs: {
+            "one_counterfactual_execution_authorized": True})
+    assert runtime._receipt(
+        receipt, ctrl.sha256_file(receipt), packet, "1" * 64) == admitted
+    receipt.unlink()
+    with pytest.raises(runtime.RuntimeRefused, match="already consumed"):
+        _admit_fixture(tmp_path, monkeypatch, packet, namespace, receipt)
+
+
+def test_receipt_publication_failure_still_consumes_admission(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    packet = _admission_packet()
+    namespace, receipt, slot = _patch_admission_dependencies(
+        tmp_path, monkeypatch, packet)
+    original_publish = runtime.CTRL.publish_exclusive
+
+    def fail_receipt(path: Path, payload: dict) -> None:
+        if path.resolve() == receipt.resolve():
+            raise OSError("synthetic receipt publication failure")
+        original_publish(path, payload)
+
+    monkeypatch.setattr(runtime.CTRL, "publish_exclusive", fail_receipt)
+    with pytest.raises(OSError, match="synthetic receipt"):
+        _admit_fixture(tmp_path, monkeypatch, packet, namespace, receipt)
+    assert slot.is_file()
+    assert not receipt.exists()
+    with pytest.raises(runtime.RuntimeRefused, match="already consumed"):
+        _admit_fixture(tmp_path, monkeypatch, packet, namespace, receipt)

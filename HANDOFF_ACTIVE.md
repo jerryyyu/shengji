@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 11:18 EDT. This is the executable mailbox, not a
+Last compacted: 2026-08-09 11:36 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, live compute in `JOBS.md`,
 queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 
@@ -13,13 +13,13 @@ queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 | T2 S3a structured bury | **2,048-CLUSTER SCREEN RUNNING / SEALED** | Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight Mini shards × 256. Count-only monitoring, then one terminal verify. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The first frozen treatment cluster exceeded the 250k-node cap. Do not retry or relax v2. |
 | T2 learner O0-v2 | **COMPLETE / SELECT NONE** | Gate `0dbd9aa8…f24e` independently replayed. O1 and production remain unauthorized. |
-| S4 point banking | **CODE + SCORE-FREE 64-STATE ASSET / REVIEW OPEN** | Exact `402c012`, asset `f44a0c72…e6b72`; treatment/null outcomes are uncomputed. Review may authorize this state screen only. |
+| S4 point banking | **V1 CLOSED HOLD / FRESH SCORE-FREE V2 REVIEW OPEN** | Exact source `1b35fb7`, asset `4538be85…6b5f`; treatment/null outcomes are uncomputed. Review may authorize this one state screen only. |
 | Human corpus / H0 | **V8 REVIEW PASS + SCORE-FREE H0 PACKET FROZEN** | Corpus `b9699790…16553`; exact packet producer `9770313`, packet `9ff160a9…247d3`. Queue its design review after S4; no execution, labels, training or strength. |
 | External review | **OPEN / S4 ONLY** | Review the exact S4 packet below. S3a remains already reviewed/sealed; human-v8 is closed PASS. |
 
 The latest status-only S3a heartbeat still has all eight workers live with no
 completed shard. The latest cluster-count snapshot was
-`68,68,66,70,66,66,67,67 / 256` (538/2,048). Outcomes remain unread.
+`78,78,75,79,77,75,76,76 / 256` (614/2,048). Outcomes remain unread.
 
 ## Active milestone — T3 human-witness challenger flywheel
 
@@ -35,13 +35,14 @@ T3 exits only after all four boundaries below are satisfied:
    8,192-cluster confirmation packet for external review; do not launch it
    before that review. If it returns `SELECT_NONE`, close this exact recipe—no
    tuning, retry or pooled inference.
-2. **Review the frozen point-banking screen.** Exact `402c012` changes rollout
+2. **Review the frozen point-banking screen.** Exact `1b35fb7` changes rollout
    continuation only and leaves sealed MCBot/registry bytes untouched. The
    treatment acts only last, after the baseline chose to win, and only while
    retaining a higher winner. Its matched null executes the same analysis. A
-   score-free capture froze 32 attacker + 32 defender states from 64 unique
-   deals; no exact outcome has been computed. External review gates the
-   one-shot exact state screen. The sign is not assumed.
+   score-free v2 capture froze 32 attacker + 32 defender states from 64 unique
+   deals, binds its executable material recipe and Air native runtime, and
+   verifies by full replay; no exact outcome has been computed. External review
+   gates the one-shot exact state screen. The sign is not assumed.
 3. **Review the frozen Teacher Stage C design.** Exact `94cfc1e` defines 2,048
    fresh states: 1,024 DESIGN, 512 CALIB and 512 REPORT, with separate play and
    bury surfaces. It spends hard-tail gold labels on uncertainty,
@@ -90,8 +91,10 @@ opponent win with a 5/10/K instead. This is not the old point-feeding issue.
 S4 is now implemented outside the sealed production modules: it preserves the
 root ballot/contest decision, acts only from the secure last seat and requires
 a higher winning reserve. Named continuations show both a ten-point benefit
-and a ten-point future-control cost. The 64-state asset is score-free and
-awaiting review; none of this is yet a strength result.
+and a ten-point future-control cost. The first score-free asset is closed HOLD
+because its claimed material digest was not reproducible. Exact `1b35fb7`
+repairs that evidence boundary and a fresh v2 64-state asset is awaiting
+review; none of this is yet a strength result.
 
 ### H3 — human actions escape heuristic support
 
@@ -110,27 +113,44 @@ untouched by DESIGN.
 
 ### OPEN NOW — S4 point-banking mechanism and exact-state screen
 
-Review exact pushed main `402c01203324ea3902891bef6cedf077a91ecec7`
-and canonical score-free asset
-`/Users/jerryyu/Projects/shengji/server/runs/logs/s4-point-banking-state-screen-160m-v1/states.json`:
+The v1 request at `402c012` / `f44a0c72…e6b72` is closed HOLD and has no
+authority. Claude reproduced every individual file and the score-free asset,
+but correctly refused its unexplained material digest and unpinned test-count
+claims. Review this fresh replacement only:
 
-- asset SHA-256 `f44a0c72593bef0ff93d96d2f9d93ece1a7a5c8afe44ab900466dd1f7c9e6b72`;
-  it records `score_free=true`, `outcomes_computed=false`,
-  `training_authorized=false`, clean exact Git and compiled routing;
-- code/test ordered material SHA-256
-  `96f547f78150035dbf0be13fc56ac5f38280231fd8c671d8550284ff1c9124b3`;
-  exact SHAs are point policy `49d10d13…24cd1`, screen
-  `438384fd…99bb`, policy tests `d5c022ca…f2d3`, screen tests
-  `6ca9042c…2163`;
-- capture scanned 67,237 fresh deals at seed start 160,000,000 and froze 64
+- exact pushed source `1b35fb7c6234fb6022181b54ce8210c796cc35c3`;
+- canonical score-free asset
+  `/Users/jerryyu/Projects/shengji/server/runs/logs/s4-point-banking-state-screen-161m-v2/states.json`,
+  SHA-256 `4538be8573a4d4bcf50524afe83c5dac25c5269b3ed95ab15f645343d0ff6b5f`;
+- the asset records `score_free=true`, `outcomes_computed=false`,
+  `training_authorized=false`, exact clean Git, host
+  `Jerrys-MacBook-Air.local`, Python `3.14.6`, compiled routing and compiled
+  binary SHA-256 `d14eefdd…ebe2e0`;
+- it scanned 69,047 fresh deals beginning at seed 161,000,000 and froze 64
   unique deals, exactly 32 per acting-team role. Natural trigger supply was 32
-  attacker versus 308 defender; the screen intentionally reports equal-role
-  and per-role estimands rather than hiding that skew;
-- pure focused evidence/identity suite passes 90/90; compiled S4 + fast parity
-  passes 30/30. The full clean-worktree run had 927 pass / 63 skip; after S4
-  isolation, the three sealed-source drift failures are cleared. The remaining
-  seven are the pre-existing missing-local-assets/root-path/compiled-runtime
-  checks for this worktree.
+  attacker versus 321 defender; report equal-role and per-role estimands rather
+  than hiding that skew;
+- the code computes its own material identity. In order, the canonical JSON
+  list contains `server/shengji/ai/point_banking.py` at `49d10d13…24cd1`,
+  `server/scripts/s4_point_banking_screen.py` at `5c6c0bbc…40b6`,
+  `server/tests/test_point_banking.py` at `d5c022ca…f2d3`, and
+  `server/tests/test_s4_point_banking_screen.py` at `46b6ee8f…d674`.
+  Serialize that list with sorted keys, separators `(',', ':')`, plus one final
+  newline, then SHA-256 it: `5eeb1b507efc6645c7121fb9214b3e269f48fd251d815b7b029eabffa385c6a8`;
+- exact pure command from `server/`:
+  `uv run pytest -q tests/test_point_banking.py tests/test_s4_point_banking_screen.py`
+  — 27 passed;
+- exact compiled command from `server/`:
+  `SHENGJI_FAST=1 uv run pytest -q tests/test_point_banking.py tests/test_s4_point_banking_screen.py tests/test_fast_parity.py`
+  — 41 passed. Air independently reproduced both as 27/27 and 41/41 using its
+  bound Python.
+
+Delta-specific correctness fixes are part of this review: the secondary
+house-rule utility now distinguishes 80 (`+0.5`) from 120 (`+1.5`), the full
+admission object must match exactly, capture/runtime/native/material fields
+fully verify, canonical paths refuse alternates, and a one-shot receipt consumes
+the namespace before the first outcome. `verify-screen` fully recomputes any
+terminal artifact. No `screen.json`, receipt or admission exists yet.
 
 Check both named utility witnesses, baseline contest preservation, last-seat
 and higher-reserve semantics, role symmetry, matched-null work, deterministic
@@ -142,7 +162,7 @@ inspect state outcomes during review. PASS authorizes exactly one execution of
 this 64-state exact screen. It does not authorize a full-game packet/run,
 training, strength, promotion or production. Requested raw marker:
 
-`S4_POINT_BANKING_SCREEN_V1_REVIEW {"schema":"s4-point-banking-screen-review-v1","git":"402c01203324ea3902891bef6cedf077a91ecec7","states_sha256":"f44a0c72593bef0ff93d96d2f9d93ece1a7a5c8afe44ab900466dd1f7c9e6b72","material_sha256":"96f547f78150035dbf0be13fc56ac5f38280231fd8c671d8550284ff1c9124b3","states":64,"attacker_states":32,"defender_states":32,"unique_deals":64,"score_free":true,"outcomes_computed":false,"independent_review":true,"screen_launch_authorized":true,"full_game_launch_authorized":false,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}`
+S4_POINT_BANKING_SCREEN_V2_REVIEW {"schema":"s4-point-banking-screen-review-v1","git":"1b35fb7c6234fb6022181b54ce8210c796cc35c3","states_sha256":"4538be8573a4d4bcf50524afe83c5dac25c5269b3ed95ab15f645343d0ff6b5f","material_sha256":"5eeb1b507efc6645c7121fb9214b3e269f48fd251d815b7b029eabffa385c6a8","states":64,"attacker_states":32,"defender_states":32,"unique_deals":64,"score_free":true,"outcomes_computed":false,"independent_review":true,"screen_launch_authorized":true,"full_game_launch_authorized":false,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}
 
 ### Later conditional packets
 
@@ -175,9 +195,9 @@ terminal path takes priority.
 
 - Mini owns the sealed S3a screen. Do not switch or dirty its detached
   `c599b42` worktree, inspect shard logs, read partial outcomes, retry or extend.
-- Air is free but has no reviewed strength launch. Use it only for bounded
-  implementation tests or an independently reviewed packet—not speculative
-  evidence generation.
+- Air completed the fresh score-free S4 v2 capture and is otherwise free. It
+  has no reviewed outcome/strength launch; do not run the S4 screen before the
+  exact marker above passes.
 - Long reviewed compute prefers Mini; sub-hour bounded work may use Mini when
   it does not contend with a live exclusive job.
 - Every strength run binds the exact champion, engine, sampler, ballot,

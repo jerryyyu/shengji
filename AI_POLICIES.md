@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-09 11:18 EDT
+## Current synthesis — 2026-08-09 11:36 EDT
 
 ### Canonical terminal-results table
 
@@ -121,12 +121,14 @@ Evidence anchors, in the same order:
   test.
 - **Point banking:** root MC can source a point-bearing winner, but shared
   heuristic continuation selects the cheapest winner when a cheaper non-point
-  winner also exists. Exact `402c012` now implements S4 outside sealed
-  MCBot/registry bytes: treatment and matched null share analysis, preserve the
-  root ballot and baseline contest choice, act only last, and require a higher
-  winning reserve. Named continuations demonstrate both +10 immediate value
-  and -10 future-control risk. A fresh score-free 64-state asset is awaiting
-  review; no outcome or strength result exists.
+  winner also exists. S4 v1 is closed HOLD without outcomes because its
+  material digest was irreproducible. Exact `1b35fb7` now supplies the fresh
+  reviewable replacement outside sealed MCBot/registry bytes: treatment and
+  matched null share analysis, preserve the root ballot and baseline contest
+  choice, act only last, and require a higher winning reserve. Named
+  continuations demonstrate both +10 immediate value and -10 future-control
+  risk. Fresh score-free 64-state asset `4538be85…6b5f` awaits review; no
+  outcome or strength result exists.
 - **People-facing target:** human agreement is a style/coverage diagnostic.
   After bot-vs-bot confirmation, a blinded opt-in `HUMAN-C1` must compare the
   candidate with the live champion across the same human cohort, balanced by

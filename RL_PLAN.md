@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 11:18 EDT
+## Current synthesis — 2026-08-09 11:36 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -79,14 +79,16 @@ what those results change in the research plan.
   receipt `2c89bed3…cbb2c` launched eight sealed Mini shards against exact
   report-LCB with a champion-matched null. Await terminal verification without
   inspecting partial outcomes. PASS can open confirmation-packet review only.
-- **Point-banking S4:** exact `402c012` implements the observed continuation
-  blind spot outside the sealed MCBot/registry source boundary. Treatment and
-  matched null preserve the root ballot and baseline decision to contest the
-  trick; treatment acts only from the secure last seat and only while retaining
-  a higher winner. Named continuations show both +10 immediate value and -10
-  future-control risk. A fresh score-free asset froze 64 exact-late states from
-  unique deals, 32 per role; no outcome has been computed and review gates the
-  one-shot state screen.
+- **Point-banking S4:** v1 is closed HOLD without outcomes because its claimed
+  material digest did not reproduce. Exact `1b35fb7` repairs that evidence
+  boundary and a secondary utility bug while preserving the observed
+  continuation-only mechanism outside sealed MCBot/registry source. Treatment
+  and matched null preserve the root ballot and baseline decision to contest;
+  treatment acts only from the secure last seat and only while retaining a
+  higher winner. Named continuations show both +10 immediate value and -10
+  future-control risk. Fresh score-free asset `4538be85…6b5f` froze 64
+  exact-late states from unique deals, 32 per role; no outcome has been computed
+  and replacement review gates the one-shot screen.
 - **Human data:** the atomically refreshed Fly-snapshot-only `human_v8` corpus
   passed independent publication review at producer `b52dc33`, source manifest
   `07ff18fb…a5e` and corpus manifest `b9699790…16553`. It contains 2,830 plays,
@@ -94,7 +96,9 @@ what those results change in the research plan.
   packet only—not labels, training or a strength claim. Exact `9770313` has
   now frozen that score-free design: 384 DESIGN and 128 player/deal-disjoint
   AUDIT play keys, every late/off-analysis-ballot row, all 36/9 split buries,
-  and no outcomes. Packet `9ff160a9…247d3` awaits its later design review.
+  and no outcomes. Packet `9ff160a9…247d3` awaits its later design review. A
+  second complete server pull at 15:01 UTC found every one of the 30 source
+  files unchanged, so this remains the current production snapshot.
 - **Data/sampler:** the bounded strict sampler certificate passed, but posterior
   fidelity and global constructive completeness remain open. High-N and
   late-ply data are replayable state reservoirs under old named targets, not
@@ -108,8 +112,10 @@ what those results change in the research plan.
 3. Train a within-state ranking head and a calibrated scoring-bracket/outcome
    head separately; never force relative V11 deltas into a scalar leaf.
 4. A Teacher PASS licenses a new hard-tail contract, not automatic bulk scale.
-   Mine uncertainty/disagreement, escalate uncertain labels to gold/exact-late,
-   and gate hard-tail regret separately.
+   Hard tail is not “openers”: protect early leads, follow and bury decisions,
+   late play, both roles, uncertainty/disagreement and human-observed mechanism
+   strata; escalate uncertain labels to gold/exact-late and gate their regret
+   separately.
 5. Direct-Q/O0 successors share CRN evaluation and at least eight independent
    training seeds, then isolate sharpening, dose, target/credit and feature-use
    mechanisms instead of bundling them.
@@ -293,13 +299,15 @@ strength loop works.
    on Mini. Terminal PASS permits freezing an 8,192-cluster confirmation packet
    for external review; it does not permit an automatic launch or promotion.
    SELECT NONE closes this exact recipe without tuning or retry.
-2. **Review and execute the bounded S4 mechanism screen.** Exact `402c012`
+2. **Review and execute the bounded S4 mechanism screen.** Exact `1b35fb7`
    changes continuation only, with incumbent control, a trigger-matched null,
    named positive/negative witnesses and exact counters. Its score-free capture
-   scanned 67,237 fresh deals and froze 32 attacker plus 32 defender triggers
-   from unique deals. External review must precede the exact two-card-endgame
-   screen. The sign remains empirical: using a K now may bank points or waste
-   future control.
+   scanned 69,047 fresh deals from seed 161,000,000 and froze 32 attacker plus
+   32 defender triggers from unique deals at `4538be85…6b5f`. It also binds an
+   executable material recipe, exact admission, Air native runtime, one-shot
+   receipt and full recomputation. External review must precede the exact
+   two-card-endgame screen. The sign remains empirical: using a K now may bank
+   points or waste future control.
 3. **Review the frozen Teacher Stage C contract.** Exact `94cfc1e` defines
    2,048 fresh states and fixed 250k-deal scan windows for each split. Cheap
    labels remain only on ordinary anchors; uncertainty/disagreement/bury use

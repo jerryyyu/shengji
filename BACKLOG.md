@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-09 11:18 EDT.
+Last re-derived: 2026-08-09 11:36 EDT.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
 `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -27,10 +27,14 @@ here.
   `b52dc33` and corpus manifest `b9699790…16553` passed exact review; one H0
   design packet is now authorized. Exact `9770313` froze and independently
   verified a score-free 384-DESIGN/128-AUDIT packet at `9ff160a9…247d3`;
-  execution, labels, training and strength remain closed.
-- **S4:** isolated mechanism code is pushed at `402c012`. A score-free fresh
-  capture froze 64 unique exact-late trigger states (32 per role) at
-  `f44a0c72…e6b72`; outcomes are uncomputed and external review is open.
+  execution, labels, training and strength remain closed. A second complete
+  server pull at 15:01 UTC found all 30 files unchanged, so this corpus remains
+  the current production snapshot rather than a stale copy.
+- **S4:** v1 is closed HOLD without outcomes because its material digest did
+  not reproduce. Exact `1b35fb7` fixes the utility and evidence boundary. A
+  fresh score-free Air capture froze 64 unique exact-late trigger states
+  (32 per role) at `4538be85…6b5f`; outcomes remain uncomputed and replacement
+  review is open.
 - **Learners:** V11 direct-v2, Direct-Q, O0 and O0-v2 all selected none under
   their registered gates. They remain diagnostics, not deployable policies.
 - **Free capacity:** Air has no reviewed strength launch. Coding, deterministic
@@ -74,7 +78,7 @@ unreviewed strength compute, training, promotion and production changes.
 
 1. Preserve S3a until one terminal verifier verdict; do not spend its sealed
    evidence twice.
-2. Obtain independent S4 review, then run its already-frozen 64-state exact
+2. Obtain independent S4 v2 review, then run its already-frozen 64-state exact
    screen once. A positive screen only opens full-game packet review.
 3. **done:** freeze no-compute Teacher Stage-C and H0 packets. Queue H0 review
    first, then Stage C; neither packet may capture, label or train.
@@ -129,7 +133,8 @@ MC can source point-card winners, and the heuristic uses one when it is the
 only winner. The suspected bias occurs when rollout continuation has multiple
 legal winners and `_cheapest_winning` selects a cheaper non-point card.
 
-Implemented at exact `402c012` and frozen for review:
+Implemented initially at `402c012`; the reviewable replacement is exact
+`1b35fb7`:
 
 - named states in both directions: treatment chooses a point winner when
   justified, and declines it when banking points harms team utility;
@@ -143,10 +148,15 @@ Implemented at exact `402c012` and frozen for review:
 - mutation tests proving each witness fails if the treatment is removed or
   applied at root;
 - fresh, deal-disjoint state population and one predeclared screen metric.
+- exact house/Teacher secondary utility (80 and 120 attacker points remain
+  distinct), executable ordered-material identity, full admission equality,
+  canonical namespace/receipt consumption, runtime/native binding and a full
+  terminal recomputation command.
 
-The score-free asset scanned 67,237 fresh deals and froze 32 attacker plus 32
-defender triggers from unique deals. Natural supply was highly role-skewed
-(32 attacker, 308 defender), so the mechanism screen reports both equal-role
+The replacement score-free asset scanned 69,047 fresh deals from seed
+161,000,000 and froze 32 attacker plus 32 defender triggers from unique deals.
+Natural supply was highly role-skewed (32 attacker, 321 defender), so the
+mechanism screen reports both equal-role
 and per-role estimands; a future full-game screen must restore natural traffic
 weighting. Do not assume the sign. Spending a K now can lose future control,
 so the exact screen can select none.
@@ -156,7 +166,9 @@ so the exact screen can select none.
 The Teacher audit says cheap and N=30 choices are faithful on its 64 ordinary
 states, but the N=30 boundary diagnostic was weaker (`0.1421` upper bound).
 Stage C should therefore spend compute on the hard tail rather than relabeling
-ordinary states horizontally.
+ordinary states horizontally. “Hard tail” is not shorthand for openers: early
+leads are one protected stratum, alongside follow, bury, late play, both roles,
+uncertainty/disagreement and the two human-observed point mechanisms.
 
 The packet must bind:
 

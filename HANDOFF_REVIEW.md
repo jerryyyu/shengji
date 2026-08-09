@@ -21,8 +21,8 @@ history is in `docs_archive/handoff-review-through-2026-08-07.md`.
 ## Current review state
 
 Human-v8 passed exact review below and now authorizes an H0 **design packet
-only**. One new external review is open: the score-free S4 point-banking
-mechanism/state packet at pushed main `402c012`, fully specified in
+only**. One external review is open: the replacement score-free S4
+point-banking mechanism/state packet at pushed source `1b35fb7`, fully specified in
 `HANDOFF_ACTIVE.md`. T1 is closed and the already-reviewed S3a 2,048-cluster
 screen is running sealed. S4 PASS may authorize its 64-state exact mechanism
 screen only; it may not authorize a full-game run, training, strength,
@@ -55,10 +55,11 @@ unless sealed S3a reaches a terminal boundary first.
    point-card winner, but the shared heuristic continuation chooses the
    cheapest winner whenever a cheaper non-point winner exists. This can
    under-price low-trump leads and other lines vulnerable to an opponent
-   banking a 5/10/K while taking the trick. Exact `402c012` now isolates that
+   banking a 5/10/K while taking the trick. Exact `1b35fb7` now isolates that
    continuation-only mechanism behind team-aware triggers, root-ballot
-   preservation and a trigger-matched null. Its score-free 64-state asset is
-   the open review; no outcome has been computed.
+   preservation and a trigger-matched null, while repairing the v1 evidence
+   boundary. Its fresh score-free v2 64-state asset is the open review; no
+   outcome has been computed.
 3. **Teacher hard tail.** The verified Stage-C contract should mine the two
    witness families above alongside uncertainty/disagreement and exact-late
    states. Human witnesses are DEV/diagnostic inputs, never REPORT evidence.
@@ -74,7 +75,7 @@ S3A_DUEL_SCREEN_PACKET_V1_REVIEW {"schema":"s3a-bury-duel-screen-review-v1","git
 ## Next append boundary
 
 Append below only for a new exact review packet. The open request is S4 at
-`402c012`; after it closes, the expected next packet is conditional S3a
+`1b35fb7`; after it closes, the expected next packet is conditional S3a
 confirmation, Teacher Stage-C design or human H0 design.
 
 ---
@@ -203,3 +204,32 @@ pytest commands for both counts in the repost.
 No authority is granted by this entry. The screen remains unlaunched; S3a remains sealed and
 running. On the repost I expect to verify only the material recipe and the two battery
 invocations, then issue the marker.
+
+## Codex — 2026-08-09 11:36 EDT — S4 v1 HOLD accepted; fresh v2 delta review open
+
+The v1 namespace remains closed with no outcomes. Pushed source `1b35fb7`
+clears the reproducibility findings and also fixes a separately discovered
+pre-outcome correctness error: the old secondary utility collapsed the 80- and
+120-point attacker brackets, whereas the exact house/Teacher objective scores
+them `+0.5` and `+1.5`. The replacement computes its material SHA in code from
+an ordered canonical-JSON file list, requires an exact full admission object,
+binds host/Python/native binary/material in the capture, consumes its canonical
+namespace with a receipt before outcome work, and provides a full terminal
+recomputation command.
+
+Fresh Air capture `s4-point-banking-state-screen-161m-v2` scanned 69,047 deals
+from seed 161,000,000 and froze 64 unique score-free states, 32 per role. Asset
+SHA-256 is `4538be8573a4d4bcf50524afe83c5dac25c5269b3ed95ab15f645343d0ff6b5f`;
+runtime is clean exact `1b35fb7`, host `Jerrys-MacBook-Air.local`, Python
+3.14.6, compiled route SHA `d14eefdd…ebe2e0`. Full replay verification passes.
+No admission, receipt, screen output, treatment/null outcome, training or
+strength claim exists.
+
+Material recipe and the two exact pytest commands are pinned in
+`HANDOFF_ACTIVE.md`. The computed material SHA is
+`5eeb1b507efc6645c7121fb9214b3e269f48fd251d815b7b029eabffa385c6a8`;
+the focused command passes 27/27 and the compiled-plus-parity command passes
+41/41 both locally and on Air. Please review the replacement source, asset,
+recipe, commands and delta invariants, then emit exactly the requested raw v2
+marker on PASS. PASS authorizes one exact 64-state outcome screen only; no
+full-game launch, training, strength claim, promotion or production.

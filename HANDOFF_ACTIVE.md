@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-09 06:58 EDT. This is the executable mailbox, not a
+Last update: 2026-08-09 09:17 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -10,8 +10,8 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 | area | status | next action |
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
-| T1 Teacher | **TERMINAL PASS / INDEPENDENT MATCH / ADAPTER REVIEW OPEN** | Gate `8a1532b7…91f8` and supervisor `02f4f8b…6f237` are preserved; a fresh evaluator reproduction matched bytes. Real output exposed relative-versus-absolute label-path fixture drift in adapter `5b26c4b`. Review exact two-file fix `60d46e1`; only after PASS create/verify one design-only adapter. |
-| T2 S3a structured bury | **SCREEN PACKET FROZEN / EXTERNAL REVIEW OPEN** | Exact branch `c599b42` freezes packet `de16247b…cdd4` around the terminal preflight, live champion, 2,048 clusters, eight Mini shards, progress and terminal authority. The packet verifies in situ and still says launch false; review/admission/receipt/shards are absent. Wait for external PASS before one admission or launch. |
+| T1 Teacher | **COMPLETE / STAGE-C DESIGN CONTRACT** | Claude passed exact adapter delta `60d46e1`; Codex reran 30/30, reopened gate `8a1532b7…91f8` / supervisor `02f4f8b…6f237`, then created and verified the one canonical adapter at `56ccefbd…c2442`. It says `DESIGN_HARD_TAIL_STAGE_C` and authorizes packet review only—no labels, compute or training. |
+| T2 S3a structured bury | **2,048-CLUSTER SCREEN RUNNING / OUTCOME SEALED** | Claude passed exact `c599b42` / packet `de16247b…cdd4`. One admission `567e8aa8…41c5e` and receipt `2c89bed3…cbb2c` launched eight Mini shards × 256 clusters. Monitor count-only heartbeats; do not inspect partial outcomes or retry. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
 | T2 learner O0-v2 | **COMPLETE / SELECT NONE** | All 32 training endpoints and 16 evaluations exited zero. Gate `0dbd9aa8…f24e` independently replayed with `verified=true`; no cell advanced. O1, strength and production remain unauthorized. |
 
@@ -72,22 +72,30 @@ train, promote or reinterpret the inspected audit.
 
 The superseded V2/V3 code-review narrative is intentionally omitted here.
 Current packet identity, preflight evidence and terminal authority are
-recorded once at the top of this file. No O0-v2 review remains open. T1's
-superseding adapter path review is the sole open human gate.
+recorded once at the top of this file. No O0-v2 or T1 review remains open.
+The only live strength work is the already-reviewed S3a screen on Mini.
 
-## OPEN REVIEW — terminal adapter real-output path delta
+## CLOSED — terminal adapter V3 PASS and canonical Stage-C contract
 
 The previously reviewed adapter `5b26c4b` passed its 29 synthetic tests but
 correctly refused the real terminal gate with `audit gate input path
 population`: the fixture predicted relative shard paths, while evaluator
-`f78e904` records eight absolute canonical Mini paths. No adapter artifact was
-created. Exact pushed `60d46e1bed0eefabe040dc9dac3a630680d6bdff` changes
+`f78e904` records eight absolute canonical Mini paths. Exact pushed
+`60d46e1bed0eefabe040dc9dac3a630680d6bdff` changes
 only that expected path population plus one non-vacuous relative-path refusal
 test. Script/test SHAs are `974594a7…5bbbb` / `658c1681…1bf99`; ordered
 material is `08354af1…e2303`. Focused tests pass 30/30, and a read-only reopen
 of the real gate plus all 839 supervisor events reports zero gate/supervisor
-problems. Review instructions and exact marker are at the bottom of
-`HANDOFF_REVIEW.md`. Do not create the adapter before PASS.
+problems. Claude independently passed the exact delta and refusal probes.
+
+Codex then reran 30/30 under Python 3.14.6, rehashed the canonical evidence,
+and created the adapter exactly once. Canonical
+`teacher_terminal_adapter_v2.json` is SHA-256
+`56ccefbd62d9ea2aef30a4c6e54e11a0d2231e464f129e754b84b3488f1c2442`;
+the independent `verify` command passed. Its decision is
+`DESIGN_HARD_TAIL_STAGE_C`, next authority is
+`AUTHORIZE_STAGE_C_PACKET_REVIEW`, and label, compute, training, retry,
+strength, promotion and production authority remain false.
 
 ## SUPERSEDED REVIEW — terminal adapter v2 at `5b26c4b`
 
@@ -119,7 +127,8 @@ and test SHAs `d46f0751…c5589` / `195fc327…7c82`, and reran 29/29 focused
 tests. The current-main live-parent verifier also reopened exact
 `mc-s0-report-lcb`/RLCB-C1 and exited zero. The real terminal producer later
 proved the fixture's label-path assumption wrong, so this review no longer
-authorizes adapter creation; exact `60d46e1` supersedes it after new review.
+authorizes adapter creation. Exact `60d46e1` has superseded it, passed new
+review, and produced the verified canonical adapter recorded above.
 
 ## Closed launch packet — terminal evidence anchor
 
@@ -232,17 +241,15 @@ If any probe fails, append a prose HOLD and do not emit a PASS marker.
 3. **Complete:** exact evaluator `f78e904` reran in a disposable namespace
    under the registered Python/cwd and reproduced the canonical gate
    byte-for-byte. This was aggregation only; no worlds were replayed.
-4. **Open external review — sole active-goal blocker:** review exact adapter
-   delta `5b26c4b..60d46e1`. The real gate/supervisor reopen with zero problems,
-   30/30 tests pass, and the canonical adapter remains absent.
-5. **Only after exact PASS:** from clean adapter branch `60d46e1`, create one
-   canonical `teacher_terminal_adapter_v2.json` with gate
-   `8a1532b7…91f8` and supervisor `02f4f8b…6f237`, then independently run
-   `verify` against the adapter's exact SHA.
-6. Record the adapter SHA and verified design-only decision. PASS opens
-   Stage-C/hard-tail **design** only. No labels, compute, training, retry,
-   extension, strength claim, promotion or production action follows. That
-   closes T1 and the last incomplete clause of the active goal.
+4. **Complete:** Claude independently passed exact adapter delta
+   `5b26c4b..60d46e1`, including the real absolute-path population and refusal
+   mutations.
+5. **Complete:** Codex reran 30/30, created the canonical adapter once, and
+   independently verified exact SHA `56ccefbd…c2442` against gate
+   `8a1532b7…91f8` and supervisor `02f4f8b…6f237`.
+6. **T1 closed:** the verified artifact opens Stage-C/hard-tail **packet
+   review** only. No labels, compute, training, retry, extension, strength
+   claim, promotion or production action follows.
 
 ## S3a terminal packet
 
@@ -441,23 +448,26 @@ This is capacity and wiring evidence only. It authorizes design and external
 review of a separate one-shot screen packet. It does not authorize the screen,
 confirmation, a strength claim, retry, promotion or production change.
 
-## OPEN REVIEW — S3a full-game screen packet
+## RUNNING — reviewed S3a full-game screen
 
 Exact pushed branch `codex/s3a-duel-screen-packet-v1` at `c599b42` adds a
 freeze/admit/launch/verify controller and 17 focused tests. The broader
 S3/live-parent battery passes 100/100. Canonical Mini freeze and
 `verify-packet` both reproduced packet
 `de16247bfea13bde516cfb45317f7d21d46d758ae700441b9b747b41f3d5cdd4`.
-The namespace contains exactly that packet; external review copy, admission,
-receipt, progress, aggregate, final and all shards are absent.
+Claude independently passed all six review groups and appended the exact
+machine-readable marker. Codex reverified the packet in situ, copied committed
+review SHA `efa13d95…ba70`, and admitted it exactly once at
+`567e8aa8…41c5e`.
 
 The packet binds the exact terminal preflight, live report-LCB parent, Mini
 Python 3.14.3/native runtime, runner/controller bytes, fresh sparse streams,
 2,048 clusters / eight 256-cluster shards, commands, outputs and the frozen
-selection rule. It grants no launch. External review instructions and the
-machine-readable marker are at the bottom of `HANDOFF_REVIEW.md`. A PASS may
-authorize one admission and one screen launch only; confirmation, retry,
-promotion and production remain false.
+selection rule. One launch published receipt `2c89bed3…cbb2c` and started all
+eight 256-cluster Mini workers under the pinned controller. Progress exposes
+cluster counts only; shard logs and results stay uninspected until the terminal
+aggregate and separate `verify` succeed. Confirmation, retry, promotion and
+production remain false regardless of the screen outcome.
 
 ## Standing rules
 

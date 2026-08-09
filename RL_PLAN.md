@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 06:20 EDT
+## Current synthesis — 2026-08-09 09:17 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -57,9 +57,10 @@ what those results change in the research plan.
   `8a1532b7…91f8`: cheap-choice all-state regret upper bound `0.0354` and
   N=30-choice `0.0439` both beat the frozen `0.10` limit. N=30's boundary-8
   diagnostic remained weak at `0.1421`, so PASS routes to a hard-tail Stage-C
-  design rather than bulk ordinary-state scaling. A real-output absolute-path
-  adapter delta is under superseding review; no labels or training are yet
-  authorized.
+  design rather than bulk ordinary-state scaling. Claude passed the
+  real-output absolute-path adapter delta at exact `60d46e1`; canonical adapter
+  `56ccefbd…c2442` was created once and independently verified. Its only next
+  authority is Stage-C packet review—no labels, compute or training.
 - **Search challengers:** the independently reviewed live-parent contract now
   binds S3a and S3b to exact report-LCB and makes formal-S0/`mc-strong`
   re-entry unreachable. S3b v2 then failed its operational preflight: its
@@ -70,9 +71,11 @@ what those results change in the research plan.
   frozen state-level LCB above zero. This is proposal-generation evidence, not
   bot strength. Its reviewed full-game score-free preflight subsequently
   completed exact work and projects the 2,048-cluster screen at `72.62`
-  fleet-hours / `9.08` max-shard hours. The next gate is a separately frozen
-  and externally reviewed one-shot screen packet against exact report-LCB with
-  a champion-matched null; the preflight itself authorizes no strength run.
+  fleet-hours / `9.08` max-shard hours. Claude passed the separately frozen
+  one-shot packet at exact `c599b42`; one admission `567e8aa8…41c5e` and
+  receipt `2c89bed3…cbb2c` launched eight sealed Mini shards against exact
+  report-LCB with a champion-matched null. Await terminal verification without
+  inspecting partial outcomes. PASS can open confirmation-packet review only.
 - **Data/sampler:** the bounded strict sampler certificate passed, but posterior
   fidelity and global constructive completeness remain open. High-N and
   late-ply data are replayable state reservoirs under old named targets, not

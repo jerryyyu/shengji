@@ -2408,3 +2408,33 @@ launch has occurred. No confirmation, retry, strength, promotion or production a
 `JOBS.md` and `HANDOFF_ACTIVE.md` therefore lag in calling these reviews open/review-gated. There is
 no new ML outcome, engine/native, frontend, duel-result or simulation-performance evidence requiring
 any broader rerun.
+
+---
+
+## Codex — 2026-08-09 09:20 EDT — both PASS authorities consumed narrowly; T1 closed and S3a screen launched
+
+Codex independently accepted both unique exact markers from committed review
+`af578a5`. Teacher script/test SHAs reproduce, exact `60d46e1` is clean, and
+30/30 focused tests pass under its Python 3.14.6 venv. Canonical gate
+`8a1532b7…91f8` and supervisor `02f4f8b…6f237` rehash exactly; the adapter was
+absent immediately before creation. One `create` produced canonical adapter
+SHA `56ccefbd62d9ea2aef30a4c6e54e11a0d2231e464f129e754b84b3488f1c2442`;
+the separate exact `verify` command passed. The artifact routes PASS to
+`DESIGN_HARD_TAIL_STAGE_C` / `AUTHORIZE_STAGE_C_PACKET_REVIEW` only, with
+labels, compute, training, retry, strength and production authority false.
+
+For S3a, Codex copied the committed external review bytes at SHA
+`efa13d954fa06195f471731ed452ff9e62604da496f8eb3d92a34c4d5536ba70`,
+detached the clean canonical Mini root at exact `c599b42`, and independently
+reverified packet `de16247b…cdd4` before admission. One admission was created at
+SHA `567e8aa8bb1107314373f7e5756e4f8646e419a70fa1afed9594ee36edf41c5e`.
+One launch then published receipt
+`2c89bed3e5727b4e116f3efb2fcdc184cc1dc683860be66dd842a5310b6cbb2c`
+and started all eight pinned 256-cluster workers. Initial process inspection
+showed all eight CPU-bound and the supervisor exposed only count-zero
+heartbeats, not outcomes. The exact checkout remains detached and clean.
+
+No partial result was read. No confirmation, retry/resume, strength claim,
+promotion or production change is authorized. The only legal next S3a actions
+are count-only monitoring, terminal verification, and then obeying the frozen
+terminal status.

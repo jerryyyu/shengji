@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 06:58 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 09:17 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,15 +10,16 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | none | **FREE / S3a SCREEN REVIEW-GATED:** packet `de16247b…cdd4` at exact `c599b42` verifies but says launch false. External review, one admission and a fresh receipt are required before the 2,048-cluster screen. |
+| Mini | `s3a-bury-duel-screen-153m-v1` | **RUNNING / OUTCOME SEALED:** exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight live shards × 256 clusters. Monitor count-only `supervisor.jsonl.partial`; never inspect partial outcomes, retry or move HEAD. |
 | Air | none | **FREE / O0-v2 CLOSED:** all 32 training endpoints, 16 evaluations, terminal gate and independent replay completed. Gate `0dbd9aa8…f24e` is `SELECT_NONE` and independently `verified=true`. No O1/strength/production authority and no reviewed Air successor. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
-The T1 Teacher audit is **terminal PASS**. Receipt
+The T1 Teacher audit and adapter are **complete**. Receipt
 `e293858c…a10d` and preparation `83892930…c39` are exact, and the supervisor
 post-preparation preflight returned zero problems. All 64 states and 8 shards
-completed, and independent aggregation reproduced the gate byte-for-byte. Air
-completed and independently verified the admitted O0-v2 terminal result.
+completed, and independent aggregation reproduced the gate byte-for-byte.
+Adapter `56ccefbd…c2442` independently verifies as hard-tail Stage-C design
+only. Air completed and independently verified the admitted O0-v2 result.
 
 ## Next admitted execution
 
@@ -32,11 +33,11 @@ completed and independently verified the admitted O0-v2 terminal result.
    is PASS and supervisor final is `02f4f8b…6f237`.
 4. **Complete:** a fresh exact evaluator aggregation returned zero and matched
    the canonical gate byte-for-byte.
-5. **Review open:** the previously passed adapter `5b26c4b` correctly refused
-   the real absolute label paths because its fixture predicted relative paths.
-   Exact `60d46e1` changes only that literal contract, passes 30/30 and reopens
-   the real gate/supervisor with zero problems. Await external PASS, then
-   create/verify one design-only adapter. Never retry, extend or train here.
+5. **Complete:** Claude passed repaired exact `60d46e1`; Codex reran 30/30,
+   created the adapter once and independently verified SHA
+   `56ccefbd62d9ea2aef30a4c6e54e11a0d2231e464f129e754b84b3488f1c2442`.
+   Decision is `DESIGN_HARD_TAIL_STAGE_C`; next authority is packet review
+   only. Never retry, extend, label or train from this audit.
 
 ### T2 S3a
 
@@ -52,15 +53,18 @@ The exact preflight ran once after the Teacher guard cleared. It completed in
 255.3 seconds with exact work, zero bad counters, receipt `97280974…68ca`,
 preflight `09692f82…edf0` and final `56943242…e9f`. The 2× projection is
 `72.62` fleet-hours / `9.08` max-shard hours for the screen and `290.50` /
-`36.31` for confirmation. Its only authority is design and external review of
-the screen packet; no strength run has started.
+`36.31` for confirmation. Its terminal authority was external review of one
+screen packet; it did not itself grant strength compute.
 
 Exact screen controller `c599b42` is pushed. Controller/test/material SHAs are
 `68ff254e…029d` / `3adfe379…0563` / `c76a030a…0714`; 17/17 focused and
-100/100 broad S3/live-parent tests pass. The canonical deterministic packet is
-`de16247b…cdd4` and independently verifies. The namespace contains only the
-packet—no review copy, admission, receipt, progress, shard, aggregate or final.
-External packet review is the sole screen-launch gate.
+100/100 broad S3/live-parent tests pass. Claude's external review passed all
+six requested groups. Codex independently reverified packet `de16247b…cdd4`,
+copied committed review `efa13d95…ba70`, admitted once at `567e8aa8…41c5e`
+and launched once at receipt `2c89bed3…cbb2c`. All eight Mini shards are live.
+The only permitted next action is count-only monitoring followed by terminal
+`verify`; no confirmation, retry, strength claim, promotion or production
+action is authorized.
 
 ### T2 learner
 

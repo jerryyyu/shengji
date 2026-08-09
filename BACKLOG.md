@@ -121,9 +121,9 @@ artifacts in `JOBS.md`, and detailed reviewer discussion in
 |---|---|---|
 | **T1 / Lane A production latency — COMPLETE / LIVE MONITOR** | Keep the first stronger-than-MC production policy enjoyable to play | Fly release 17 runs exact `latency-cd6789e` / `047bcfe4...5b300`. Health, native activation, claim, reconnect, stale-discard, X-ray isolation and concurrent WebSocket responsiveness passed live. Keep release 16 as the runtime rollback and `mc-strong` as the separate policy rollback; collect ordinary human-room timing before considering a CPU resize. |
 | **T1 / Lane A.1 V11pair — COMPLETE / SELECT NONE** | Preserve the learned milestone without forcing it into the champion | Artifact repair passed; the frozen rule rejected protected composition. Keep v11 as a bounded proposer/ranker and teacher diagnostic only. No protected-anchor run is authorized. |
-| **T1 / Lane B teacher — TERMINAL PASS / ADAPTER DELTA REVIEW** | Determine whether cheap N=30 choices remain good under the full champion continuation | Gate `8a1532b7…91f8` passed and independently reproduced byte-for-byte. Exact `60d46e1` repairs only the real absolute label-path population; wait for superseding review, then create/verify one design-only adapter. No labels or training yet. |
-| **T2 / live parent + S3 reparenting — COMPLETE / REVIEW PASS** | Make every new search mechanism challenge the bot people actually play | Claude independently passed exact `05ea1d1` / material `66be133c…e17c`, reproduced parent output `5f9ddbfb…8402`, reopened RLCB-C1 and falsified stale-S0 re-entry. S3a/S3b retain their narrow v2 boundaries. This authorizes only the predeclared score-free S3b Mini preflight, not strength compute. |
-| **T2 / S3a structured bury — PREFLIGHT PASS / SCREEN PACKET NEXT** | Test whether a much wider, strategy-aware kitty ballot improves complete-round play | The reviewed Mini preflight completed exact work in 255.3 seconds with zero bad counters. Its conservative screen projection is `72.62` fleet-hours / `9.08` max-shard hours. Freeze and externally review the one-shot 2,048-cluster screen packet; no strength launch is authorized yet. |
+| **T1 / Lane B teacher — COMPLETE / STAGE-C DESIGN CONTRACT** | Determine whether cheap N=30 choices remain good under the full champion continuation | Gate `8a1532b7…91f8` passed and independently reproduced. Claude passed exact adapter `60d46e1`; canonical artifact `56ccefbd…c2442` independently verifies and routes only to hard-tail Stage-C packet review. No labels or training are authorized. |
+| **T2 / live parent + S3 reparenting — COMPLETE / REVIEW PASS** | Make every new search mechanism challenge the bot people actually play | Claude independently passed exact `05ea1d1` / material `66be133c…e17c`, reproduced parent output `5f9ddbfb…8402`, reopened RLCB-C1 and falsified stale-S0 re-entry. Every surviving S3 run is pinned to exact `mc-s0-report-lcb`; this contract alone grants no strength compute. |
+| **T2 / S3a structured bury — FULL-GAME SCREEN RUNNING** | Test whether a much wider, strategy-aware kitty ballot improves complete-round play | The preflight passed in 255.3 seconds; Claude then passed exact screen packet `de16247b…cdd4`. One admission `567e8aa8…41c5e` and receipt `2c89bed3…cbb2c` launched eight Mini shards. Await the sealed terminal aggregate; no partial read or retry. |
 | **T2 / S3b sampled exact endgame — PREFLIGHT TERMINAL HOLD / NO SCREEN** | Replace heuristic continuation with bounded exact solving when every hand has at most four cards | The exact predeclared Mini attempt reached the frozen cumulative `250,000`-node ceiling in its first treatment cluster and failed before publishing a receipt. No score/raw record survived and the 2,048 screen is unauthorized. Never rerun or raise the cap in v2; a future v3 must separately review a narrower threshold, a solver optimization, or a different bound. |
 | **T1 / Lane C Direct-Q — COMPLETE / SELECT NONE** | Learn from the failure without selecting its positive gameplay tail | Preserve aggregate SHA `1fa6789e…791`; do not deploy, extend or mutate the 144M recipe. The next learner requires a separately frozen Suphx-style or other role-correct microbaseline gate. |
 | **T1 / Lane C Suphx O0 — COMPLETE / SELECT NONE** | Test whether a full-information policy can learn before spending compute on feature removal | Preserve gate SHA `592a009a…bd407c`. Both ensemble LCBs passed, but seed 1 lost to its equal-seed public arm (`-0.207`), failing the registered robustness conjunction. O1 is closed for this exact recipe; the next learner needs a fresh packet, not an O0 extension. |
@@ -178,19 +178,20 @@ positive. That authorizes design of a fresh full-game duel, not a strength
 claim. The reviewed v2 parent binds both S3 lanes to exact
 `mc-s0-report-lcb` and blocks formal-S0/`mc-strong` re-entry. S3b v2 stopped at
 its operational preflight after a first-cluster exact-budget overflow; its
-2,048/8,192 path is closed. S3a now needs a new mirrored full-game runner and
-champion-matched null on fresh deal clusters.
+2,048/8,192 path is closed. S3a's mirrored runner, champion-matched null,
+preflight and packet are now reviewed; its fresh 2,048-cluster full-game
+screen is running with outcomes sealed.
 
 ## Milestones
 
 ### T1 — Champion flywheel launch: fresh Teacher asset/controller gate
 
-T1 is complete in four lanes and has valid terminal evidence in the fifth:
+T1 is complete in all five lanes:
 production report-LCB/release 17 is live, RLCB-C1 confirmed it, V11 direct-v2
 selected none, Direct-Q/O0 reached honest stops, and the fresh Teacher audit
-passed. The gate and independent byte reproduction are preserved. T1 closes
-after external review of exact adapter path delta `60d46e1` and creation plus
-verification of its design-only Stage-C artifact.
+passed. The gate and independent byte reproduction are preserved; exact
+adapter `60d46e1` passed external review and canonical artifact
+`56ccefbd…c2442` verifies as design-only Stage-C packet-review authority.
 
 ### T2 — First live-champion challenger: active in parallel
 
@@ -205,37 +206,37 @@ bot rather than imitate it.
 | **T2.1 / S3a — COMPLETE / MECHANISM PASS** | Run the 512-state structured-bury mechanism screen under its fresh v2 namespace | Eight shards and the aggregate completed; separate verification passed. All three state-level LCBs exceed zero. Aggregate `74aa5a39…396cd`, final `d3f2b1ab…69a6b`. This authorizes only the next deliverable: a separately preregistered full-game duel. |
 | **T2.2 / S3b — COMPLETE / TERMINAL HOLD** | Run the score-free two-cluster throughput preflight for the report-LCB sampled-exact lane on Mini | At exact head `cd44ea8`, the first treatment cluster raised `ExactEndgameBudgetExceeded: max_nodes=250000`; exit 1, no `1/2` completion, receipt or partial. This falsifies the v2 zero-overflow feasibility condition. Same-recipe retry/cap change/fallback is unauthorized. |
 | **T2.3 / S3b v2 — CLOSED / UNAUTHORIZED** | Launch the 2,048-cluster complete-round sampled-exact screen when capacity and preflight permit | The required preflight did not pass and the zero-overflow invariant failed before a cluster completed. Preserve the seed and failure. A fresh v3 design/review—not a mutation of this attempt—is required before more sampled-exact compute. |
-| **T2.4 / Teacher — TERMINAL PASS / SUPERSEDING ADAPTER REVIEW OPEN** | Convert a valid terminal audit into a Stage-C contract | Gate `8a1532b7…91f8` and supervisor `02f4f8b…6f237` are terminal; independent aggregation matched bytes. Real output exposed relative-versus-absolute label-path fixture drift. Exact `60d46e1` passes 30/30 and reopens the real evidence; external review must pass before one adapter is created. |
+| **T2.4 / Teacher — COMPLETE / STAGE-C CONTRACT** | Convert a valid terminal audit into a Stage-C contract | Gate `8a1532b7…91f8` and supervisor `02f4f8b…6f237` independently matched. Claude passed exact `60d46e1`; Codex reran 30/30 and created/verified one canonical adapter at `56ccefbd…c2442`. It authorizes hard-tail Stage-C packet review only. |
 | **T2.5 / learner — COMPLETE / SELECT NONE** | Test whether shared-public CRN, with margin sharpening isolated factorially, makes oracle access robust across seeds | All 32 training endpoints and 16 evaluations exited zero. Gate `0dbd9aa8…f24e` independently replayed with `verified=true`; neither cell advanced, so O1, strength and production remain unauthorized. |
 | **T2.6 / S3a duel — COMPLETE / PREFLIGHT PASS** | Prove the complete-round screen is wired and fits Mini before reading strength evidence | Exact contract `5e0f6ade…b44653` completed four score-free clusters in 255.3 seconds. Receipt `97280974…68ca`, preflight `09692f82…edf0`, final `56943242…e9f`; screen projection `72.62` fleet-hours / `9.08` max-shard hours. Terminal authority is screen-packet review only. |
-| **T2.7 / S3a duel screen — PACKET FROZEN / REVIEW OPEN** | Test whether the positive state-level bury mechanism improves fresh complete-round utility against production | Exact `c599b42`, controller `68ff254e…029d`, packet `de16247b…cdd4`; 17/17 focused and 100/100 broad tests pass. Canonical packet verification passed with no admission or run artifact. External PASS is required before one Mini launch. Screen PASS may authorize confirmation-packet review only; SELECT NONE is terminal for this recipe. |
+| **T2.7 / S3a duel screen — RUNNING / OUTCOME SEALED** | Test whether the positive state-level bury mechanism improves fresh complete-round utility against production | Claude passed exact `c599b42` / packet `de16247b…cdd4`. Codex admitted once at `567e8aa8…41c5e` and launched once at receipt `2c89bed3…cbb2c`; eight Mini shards × 256 clusters are live. Screen PASS may authorize confirmation-packet review only; SELECT NONE is terminal for this recipe. |
 
-T2 launch readiness is achieved: T2.0 passed and S3a produced a valid positive
-mechanism screen. The next milestone is stronger: get S3a into one honest
-fresh full-game duel while advancing the Teacher and O0 implementation gates
-in parallel. It does not require manufacturing a positive duel result.
+T2 launch readiness is complete and the one reviewed fresh full-game S3a
+screen is now running. The next milestone is its sealed terminal verdict: PASS
+may open confirmation-packet review only; SELECT NONE closes this recipe. It
+does not require manufacturing a positive result.
 
 ### Fleet order overnight — Aug 9
 
 1. **Mini / Teacher COMPLETE:** all 8/8 shards, the terminal PASS gate and
-   supervisor final are preserved. Independent aggregation matched exact
-   bytes/SHA. Do not retry or extend. Adapter creation waits only on review of
-   `60d46e1`; PASS may emit hard-tail Stage-C **design** and no compute.
+   supervisor final are preserved. Exact `60d46e1` passed review; adapter
+   `56ccefbd…c2442` was created once and verified as hard-tail Stage-C packet
+   review only. Do not retry, extend, label or train from this audit.
 2. **Air / COMPLETE:** admission, all 32 training endpoints, all 16
    evaluations, the terminal gate and independent semantic replay completed.
    Preserve terminal `SELECT_NONE` at gate `0dbd9aa8…f24e`; no O1, strength or
    production action is authorized. Air has no reviewed successor launch.
-3. **Mini / S3a PACKET REVIEW OPEN:** exact `c599b42` / packet
-   `de16247b…cdd4` is frozen, verifies and grants no launch. If external
-   review passes, admit once and run the eight-shard screen; Mini's
-   conservative overnight critical path is `9.08` hours.
+3. **Mini / S3a SCREEN RUNNING:** Claude passed exact `c599b42` / packet
+   `de16247b…cdd4`; admission `567e8aa8…41c5e` and receipt
+   `2c89bed3…cbb2c` bind the single eight-shard launch. Monitor count-only
+   progress; preserve the estimated `9.08`-hour critical path and read only the
+   terminal verified aggregate.
 4. **Local/product:** continue passive release-17 timing collection; no policy
    or production change is part of this overnight sequence.
 
-Useful admitted work—not merely busy CPUs—is the utilization target. The
-O0-v2 and Teacher are terminal; Air and Mini are free. The only T1 blocker is
-the narrow external adapter review. The independently reviewed S3a preflight
-can use Mini without widening any strength authority.
+Useful admitted work—not merely busy CPUs—is the utilization target. O0-v2
+and Teacher are terminal, Air is free, and Mini is occupied by the reviewed
+S3a screen. No T1 blocker remains.
 
 ### Parallel implementation queue — never wait idly for a run
 
@@ -244,16 +245,15 @@ ready for each free host, but continue the first unblocked implementation item
 whenever a review or run is live:
 
 1. **COMPLETE:** exact `05ea1d1` T2.0 live-parent review passed;
-2. **PREFLIGHT REVIEW PASS / READY ON MINI:** exact `e6f2493` /
-   contract `5e0f6ade…b44653` independently passed. Its live-Teacher refusal and
-   wiring are mutation-proven; Teacher has released Mini and the namespace
-   remains absent. Run the exact four-cluster score-free preflight;
+2. **S3A SCREEN RUNNING:** the exact `e6f2493` preflight passed, packet
+   `de16247b…cdd4` passed external review, and one launch is bound by admission
+   `567e8aa8…41c5e` / receipt `2c89bed3…cbb2c`. Await terminal verification;
 3. **TEACHER TERMINAL PASS:** exact 30+300 accepted-world semantics and
    historical/current state provenance are frozen; all 8/8 shards and the
    independently reproduced gate are preserved;
-4. **ADAPTER DELTA REVIEW OPEN at `60d46e1`:** real output exposed the prior
-   relative-path fixture mismatch. The exact fix retains PASS as hard-tail
-   Stage-C design only and authorizes no compute;
+4. **TEACHER ADAPTER COMPLETE:** exact `60d46e1` passed external review and
+   canonical `56ccefbd…c2442` verifies as hard-tail Stage-C packet-review
+   authority only;
 5. **O0-v2 COMPLETE / SELECT NONE:** keyed CRN and semantic replay passed, but
    neither frozen cell advanced. O1 is closed for this recipe;
 6. version the shared `ExperimentSpec`/progress receipt so reviewed jobs are

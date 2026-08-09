@@ -102,6 +102,9 @@ PACKET_REVIEW_MARKER = "SUPHX_O0_V2_AIR_PACKET_REVIEW_V1 "
 
 RUN_ID = "suphx-o0-v2-air-8seed-v1"
 RUN_RELATIVE_ROOT = "server/runs/logs/suphx-o0-v2-air-8seed-v1"
+PREFLIGHT_RELATIVE_PATH = (
+    "server/runs/logs/suphx-o0-v2-air-runtime-preflight-v1.json"
+)
 EXPECTED_HOST = "Jerrys-MacBook-Air.local"
 EXPECTED_PYTHON = "3.14.6"
 REQUIRED_EXECUTION_ENVIRONMENT = {
@@ -147,7 +150,9 @@ T_CRITICAL_DF7 = 2.3646242515927844
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 EXPECTED_RUN_ROOT = (_REPO_ROOT / RUN_RELATIVE_ROOT).resolve()
 _MATERIAL_RELATIVE_PATHS = (
+    "server/scripts/suphx_o0_v2_preflight.py",
     "server/scripts/suphx_o0_v2_screen.py",
+    "server/shengji/rl/suphx_o0_v2_preflight.py",
     "server/shengji/rl/suphx_o0_v2_screen.py",
     "server/shengji/rl/suphx_o0_v2_runner.py",
     "server/shengji/rl/suphx_o0_v2_integration.py",
@@ -413,6 +418,14 @@ def _spec_payload() -> dict[str, Any]:
             "positive_authority": "O1 design and independent review only",
             "negative_authority": "stop same-recipe oracle thread",
         },
+        "preflight": {
+            "artifact": PREFLIGHT_RELATIVE_PATH,
+            "score_redacted": True,
+            "four_disposable_endpoint_iterations": True,
+            "disposable_evaluation_timing_rounds": 4,
+            "packet_freeze_requires_pass": True,
+            "training_authorized": False,
+        },
         "authority": {
             "packet_review_required_before_training": True,
             "o1_training": False,
@@ -436,6 +449,20 @@ def _artifact_names() -> dict[str, str]:
 
 def _packet_path(root: Path) -> Path:
     return root / "launch_packet.json"
+
+
+def _preflight_ref() -> CheckpointRef:
+    from .suphx_o0_v2_preflight import verify_preflight
+
+    path = _REPO_ROOT / PREFLIGHT_RELATIVE_PATH
+    payload = verify_preflight(path)
+    if payload.get("passed") is not True \
+            or payload.get("packet_freeze_and_review_authorized") is not True \
+            or any(payload.get(name) is not False for name in (
+                "training_authorized", "o1_authorized", "strength_claim",
+                "production_promotion")):
+        raise SuphxO0V2ScreenError("Air preflight authority/capacity drift")
+    return CheckpointRef.capture(_require_regular_final(path))
 
 
 def _initial_path(root: Path, index: int) -> Path:
@@ -462,6 +489,7 @@ def freeze_packet(root: str | Path) -> CheckpointRef:
     root.mkdir(parents=True, exist_ok=True)
     runtime = runtime_identity()
     sources = source_identity()
+    preflight_ref = _preflight_ref()
     spec_ref = _publish_json(root / "spec.json", _spec_payload())
     initial_refs: dict[str, dict[str, str]] = {}
     for identity in SEED_IDENTITIES:
@@ -491,6 +519,7 @@ def freeze_packet(root: str | Path) -> CheckpointRef:
         "run_id": RUN_ID,
         "artifact_root": RUN_RELATIVE_ROOT,
         "spec_ref": spec_ref.as_dict(),
+        "preflight_ref": preflight_ref.as_dict(),
         "initial_manifest_refs": initial_refs,
         "deal_collision_proof": _deal_collision_proof(),
         "source_identity": sources,
@@ -543,7 +572,8 @@ def verify_packet(ref: CheckpointRef) -> dict[str, Any]:
     payload = _load_json(ref)
     expected_fields = {
         "schema", "screen_schema", "run_id", "artifact_root", "spec_ref",
-        "initial_manifest_refs", "deal_collision_proof", "source_identity",
+        "preflight_ref", "initial_manifest_refs", "deal_collision_proof",
+        "source_identity",
         "runtime", "required_execution_environment", "artifact_names",
         "review_required",
         "training_authorized", "o1_authorized", "strength_claim",
@@ -567,6 +597,7 @@ def verify_packet(ref: CheckpointRef) -> dict[str, Any]:
         raise SuphxO0V2ScreenError("launch packet is outside exact namespace")
     spec_ref = CheckpointRef.capture(_require_regular_final(root / "spec.json"))
     _same_ref(payload["spec_ref"], spec_ref, "packet spec")
+    _same_ref(payload["preflight_ref"], _preflight_ref(), "packet preflight")
     if _load_json(spec_ref) != _spec_payload():
         raise SuphxO0V2ScreenError("frozen O0-v2 spec drift")
     refs = payload.get("initial_manifest_refs")

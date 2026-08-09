@@ -81,12 +81,16 @@ def _runtime():
 @pytest.fixture
 def frozen_packet(tmp_path, monkeypatch):
     root = tmp_path / "packet"
+    preflight = tmp_path / "preflight.json"
+    preflight.write_text("{}\n")
+    preflight_ref = CheckpointRef.capture(preflight)
     monkeypatch.setattr(screen, "EXPECTED_RUN_ROOT", root)
     monkeypatch.setattr(screen, "runtime_identity", _runtime)
     monkeypatch.setattr(
         screen, "source_identity",
         lambda: {"schema": "test-sources", "files": {"x": "b" * 64}},
     )
+    monkeypatch.setattr(screen, "_preflight_ref", lambda: preflight_ref)
     ref = freeze_packet(root)
     return root, ref
 
@@ -155,6 +159,7 @@ def test_freeze_publishes_exact_non_authorizing_packet(frozen_packet):
     packet = verify_packet(ref)
     assert ref == CheckpointRef.capture(root / "launch_packet.json")
     assert packet["runtime"] == _runtime()
+    assert packet["preflight_ref"] == screen._preflight_ref().as_dict()
     assert packet["review_required"] is True
     assert packet["training_authorized"] is False
     assert packet["o1_authorized"] is False

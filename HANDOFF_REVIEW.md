@@ -518,3 +518,42 @@ Scope of this PASS: execution-controller implementation only. No counterfactual 
 training, strength, promotion or production.
 
 H0_HUMAN_COUNTERFACTUAL_DESIGN_V3_REVIEW {"schema":"human-h0-counterfactual-design-review-v3","git":"d6214ceae7c3f0ddb0c00f67d92b71f32ba579f7","producer_git":"b02b6deb1ef0bda44eaf10ea349cb050355a7f15","packet_sha256":"4d3f0a35082c6957f2a468686b8eedbd6d7cbbf9540503fcea08cccf27c8cc3c","superseded_v2_packet_sha256":"2cccf5803ca60cf41690f18dc0e85febaf36a88ce702587e8c86a67e2a358f2b","corpus_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","v11_checkpoint_sha256":"cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003","live_parent_authenticator_sha256":"d6515d6db76290c3ad145f9194a7985d7d78223f688a30c78cdb520de41c521b","selected_play_rows_sha256":"18673b20ca0a5b1a8e476f3bcf45cf9d08f90f4244f9c5ee07cb8bd8cd47711d","selected_bury_rows_sha256":"cdfe77dfbec0e97fb8935c5822239acd6db60c644c433c32a4445913459aa1e8","play_candidate_cap":17,"bury_candidate_cap":33,"max_candidate_worlds":1329210,"design_plays":384,"audit_plays":128,"design_buries":36,"audit_buries":9,"outcomes_computed":false,"independent_review":true,"execution_controller_implementation_authorized":true,"counterfactual_execution_authorized":false,"labels_authorized":false,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}
+
+## Claude — 2026-08-09 19:05 EDT — Jerry-requested strategy assessment: four process recommendations to shift cycle-spend toward bot strength
+
+Jerry asked for an adversarial review of the latest strategy docs with one focus: are we building a
+better bot, or mostly infrastructure/audit machinery? Full assessment delivered in chat; the doc
+strategy itself is sound — the lanes map one-to-one onto the measured human-loss gaps, the S5
+staging (bot-seat replay first, not a policy patch) is right, and the kill discipline is real.
+The uncomfortable accounting: production has been unchanged since RLCB-C1; of ~182 commits in
+48 hours roughly a third are docs/records and a fifth are human-eval infrastructure; the S4
+mechanism is 283 lines against ~4,000 lines of evidence machinery; and of ten review cycles today
+only two gated compute that can change the deployed bot. The bottleneck is not fleet-hours — Air
+sat mostly idle — it is implementation/review cycle time, and it is being spent majority
+non-strength. Four recommendations for the queue, in priority order:
+
+1. **Run the S4 duel screen on Air instead of queueing behind S3a.** The `host=Mini` pin in packet
+   `17036e63…1385` is convention, not evidence-load-bearing — Air ran the S4 state screen, the
+   generation replay and both preflights with verified binaries. A repacked Air variant (same
+   mechanism/streams/dose, host/runtime rebound, fresh namespace) lets both live mechanisms test in
+   parallel tonight rather than serially over two days. I will review the repack as a bounded
+   delta.
+2. **Adopt a packet freeze checklist before any review request**: (a) every named artifact exists
+   at its canonical path on the named host, (b) every digest in the request recomputes from bytes,
+   (c) every test count has a pinned invocation, (d) the marker template parses and matches the
+   authority gate. Every supersession this cycle — S4 v1, S4-duel v1, H0 v1 and v2, Stage-C v1 —
+   failed on exactly one of these four, and each cost a full authoring plus review round trip.
+3. **Time-box HUMAN-C1 infrastructure until a challenger beats report-LCB in confirmation.**
+   Consent HMACs, one-use reservations and identity receipts are evaluation machinery for a bot
+   that does not exist yet; they compete for the binding constraint (cycle time). Park the lane at
+   its current boundary; my open bounded-audit findings there (measured runtime identity, ledgered
+   block namespace, authenticated issuer) can wait with it.
+4. **Tier review rigor by claim class.** Full adversarial depth (mutations, dual-host reopens,
+   removal proofs) for anything that can touch a strength claim, production, or training data;
+   single-pass review for diagnostic-only lanes. H0 is diagnostic by construction and consumed
+   three full-rigor cycles; the rigor that makes `+0.338` trustworthy is diluted when spent
+   flat-rate.
+
+Watch metric proposed: fraction of fleet-hours on runs whose PASS can change the deployed bot
+(today ~45%). No authority is granted or altered by this entry; S3a remains sealed; all existing
+markers and scopes stand.

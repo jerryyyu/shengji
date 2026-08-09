@@ -188,8 +188,14 @@ Evidence anchors, in the same order:
   file, exact design/active-policy identity, and explicit identity-only / no-
   human-traffic authority before reopening. Symlinks, hard links, digest,
   schema, authority, design and policy drift all fail closed; 100/100 focused
-  tests pass locally and on exact Air. A real candidate-specific receipt freeze
-  and review, synthetic C0 and the terminal analyzer remain launch blockers.
+  tests pass locally and on exact Air. Exact `064988f` adds durable one-use
+  slot reservation keyed independently of the secret-derived session ID;
+  exclusive publication permits one concurrent issuer, fsyncs file/directory,
+  and leaves interrupted writes consumed rather than retryable. The reservation
+  itself is identity-only and grants no traffic, training or promotion. The
+  104-test battery passes locally and on exact Air. A real candidate-specific
+  receipt freeze/review, authenticated consent ingress, synthetic C0 and the
+  terminal analyzer remain launch blockers.
   The earlier
   repair scans tags
   before malformed-round rejection and terminally invalidates an evaluation

@@ -463,8 +463,13 @@ immutable deployment-receipt source is implemented at exact `f387a30`: only
 hash-pinned, stable regular-unlinked bytes with exact design/policy identity and
 identity-only/no-traffic authority can reopen the bot. Symlink, hardlink,
 digest, schema, authority and identity drift all refuse. The 100-test focused
-battery passes locally and on exact Air. A real candidate-specific receipt
-freeze/review, synthetic C0 and a terminal estimator are still required.
+battery passes locally and on exact Air. Exact `064988f` adds durable one-use
+reservation keyed by design/pair/block/slot rather than the secret-derived
+session ID. Exclusive creation allows one concurrent issuer, fsyncs the
+identity-only/no-traffic receipt and treats an interruption as consumed. Its
+104-test battery passes locally and on exact Air. A real candidate-specific
+receipt freeze/review, authenticated consent ingress, synthetic C0 and a
+terminal estimator are still required.
 
 Use human data in three bounded stages:
 

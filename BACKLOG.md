@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-09 14:40 EDT.
+Last re-derived: 2026-08-09 14:45 EDT.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
 `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -75,7 +75,7 @@ here.
 | **P1 / Teacher Stage C** | Repair the H0 parent binding, then review the 2,048-state design | Existing `b0ef0f9` / `45802e47…a350` consumes superseded H0 v1 and is held pre-review. After H0 v2 PASS, freeze a replacement. A later PASS may authorize score-free capture/controller implementation only—not capture, labels or training. |
 | **P2 / S3a confirmation** | Confirm a positive screen against the live champion | Only conditional on terminal PASS: freeze and externally review an 8,192-cluster one-shot packet, then launch once. No automatic promotion. |
 | **P2 / experiment infrastructure** | Make reviewed jobs cheaper to launch correctly | Introduce one immutable `ExperimentSpec`/receipt boundary for code, data, policy, ballot, sampler, continuation, actor, seeds, metric, null, work, stop rule and output. Scheduling may automate reviewed work; it may not select or promote. |
-| **P2 / HUMAN-C1 instrumentation** | Make the people-facing gate executable without contaminating training | Exact `f387a30` extends the tag/log/disconnect/assignment/runtime guards with hash-pinned identity-only receipt ingestion; symlink/hardlink, design, authority and policy drift refuse. The 100-test focused battery passes locally/Air. Still required: external review, a real candidate-specific receipt freeze, durable one-use issuance, authenticated consent ingress, terminal estimator and synthetic C0. No WebSocket route or human launch exists. |
+| **P2 / HUMAN-C1 instrumentation** | Make the people-facing gate executable without contaminating training | Exact `064988f` extends every prior guard with durable secret-independent one-use block-slot reservation; concurrent issuance has one winner and interrupted publication stays consumed. The 104-test focused battery passes locally/Air. Still required: external review, a real candidate-specific runtime receipt freeze, authenticated consent ingress, terminal estimator and synthetic C0. No WebSocket route or human launch exists. |
 | **P2 / production performance** | Keep the stronger bot pleasant under concurrent traffic | Continue passive release-17 timing; add a concurrent-room tail gate before changing CPU size. Port hot rollout leaves only with pure/compiled parity and end-to-end policy timing. |
 
 ## Active T3 milestone — human-witness challenger flywheel

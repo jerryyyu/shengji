@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-09 17:34 EDT
+## Current synthesis — 2026-08-09 18:24 EDT
 
 ### Canonical terminal-results table
 
@@ -40,7 +40,8 @@ results table.
 | 08-09 | Human H0 counterfactual design v1 | Add the move a human actually played to the champion ballot alongside V11 and random proposals, then price those choices on common simulated worlds instead of imitating the human blindly. | **SPLIT REVIEW PASS / SUPERSEDED PRE-EXECUTION** | 384 DESIGN + 128 name-ID/deal-disjoint AUDIT plays; separate 36/9 buries; every eligible late/off-ballot row retained; zero outcomes | The split and authority semantics passed, but later executable audit found the pinned V11 digest names no artifact. V1 cannot parent a controller. |
 | 08-09 | Human H0 counterfactual design v2 | Preserve v1's human sample while repairing the real V11 checkpoint and deployed report-LCB parent identities. | **IDENTITY DELTA PASS / SUPERSEDED PRE-CONTROLLER** | Claude PASS `9fdb67a`; same 384/128 plays and 36/9 buries; zero outcomes | The executable artifacts reopened correctly, but the analysis-ballot cap, downstream continuation and candidate-recall estimand remained ambiguous. Bounded v3 replaces the design before any controller or result. |
 | 08-09 | Human H0 counterfactual design v3 | Cap the human/V11/random proposal union, make every source compete under fixed disjoint work, and distinguish the root report-LCB judge from the heuristic policy used inside rollouts. | **DESIGN PASS / CONTROLLER IMPLEMENTATION ONLY** | Claude PASS `239f13c`; 17/33 play/bury caps, three disjoint folds and 1,329,210 maximum candidate-world rollouts; zero outcomes | The human/model proposal experiment is now finite and executable. The PASS authorizes one score-free controller implementation—not a counterfactual run, label, training, strength claim or production change. |
-| 08-09 | Human H0-v3 score-free controller v1 | Replay the frozen human decisions, build the production+human+V11+random candidate unions, and bind one future diagnostic run so incomplete work cannot look like a result. | **HOLD / SUPERSEDED BEFORE OUTCOMES** | 557/557 rows replayed; geometry `876ed56b…ff2b`; **0 worlds and 0 outcomes** | Packet `13d9a97f…61fc` is preserved, but Claude found the runtime did not self-enforce compiled/strict-void mode and receipt deletion could reissue admission. This is no verdict on human/V11 proposals; a versioned controller repair is required. |
+| 08-09 | Human H0-v3 score-free controller v1 | Replay the frozen human decisions, build the production+human+V11+random candidate unions, and bind one future diagnostic run so incomplete work cannot look like a result. | **HOLD / SUPERSEDED BEFORE OUTCOMES** | 557/557 rows replayed; geometry `876ed56b…ff2b`; **0 worlds and 0 outcomes** | Packet `13d9a97f…61fc` is preserved, but Claude found the runtime did not self-enforce compiled/strict-void mode and receipt deletion could reissue admission. This is no verdict on human/V11 proposals; frozen controller v2 replaces it. |
+| 08-09 | Human H0-v3 score-free controller v2 | Keep the same bounded human/model proposal experiment, but make the executable itself refuse weak sampler settings and consume an irreversible admission before it can publish a receipt. | **FROZEN / REVIEW OPEN / ZERO OUTCOMES** | source `6977dbb`; packet `3f68dc6e…7fcf`; 557/557 rows; 34/34 focused and 58/58 broader tests; missing strict voids and an experimental sampler flag both refuse at the real CLI | V2 repairs the two v1 launch defects without testing the hypothesis. External PASS is still required before one diagnostic execution; no label, training, strength or production authority exists. |
 | 08-09 | S3a structured-bury full-game screen | Give the banker structured point/void/trump kitty options, then test the resulting policy over fresh complete mirrored rounds rather than selected bury states. | **SELECT NONE / CLOSED** | structured-minus-champion `+0.0464`, LCB `-0.0041`; structured-minus-null `+0.0430`, LCB `-0.0228`; all 2,048 clusters verified | The positive mean narrowly missed the preregistered gate, so no confirmation or deployment. Close the consumed stream without retry/tuning; only a separately preregistered fresh larger design could revisit the mechanism. |
 | 08-09 | S3c exact-root curriculum + one-card controller | Start exact endgame work at naturally reached one-card endings, then advance to two and three cards only after each smaller problem proves bounded and useful. | **DESIGN PASS / CONTROLLER REVIEW OPEN** | 768 unique-deal roots; one-card actions all forced, two-card median/max 2/3, three-card median/max 3/7; controller packet `f58d23b7…3874` covers 64 roots × 4 worlds with 49/49 tests and zero pre-review worlds | Claude passed the curriculum at `084ba7e`; source `e9db4a2` and asset `64dc65a` now freeze the score-free one-card capacity controller. This proves supply and reviewability—not solver capacity or strength. No solver run is authorized before controller PASS. |
 | 08-09 | S3a full-game score-free preflight | Check that structured-bury search is genuinely triggered, consumes exact work and fits Mini before the fresh full-game test. | **CAPACITY PASS / CONSUMED** | 4/4 clusters in 255.3 seconds; screen projection `72.62` fleet-hours / `9.08` max-shard hours | The sizing was correct and enabled the now-terminal screen. It was capacity evidence, not evidence that the policy would win. |
@@ -74,8 +75,10 @@ Evidence anchors, in the same order:
   bounded v3 packet `4d3f0a35082c6957f2a468686b8eedbd6d7cbbf9540503fcea08cccf27c8cc3c`;
   bounded-v3 design-review marker `239f13ce52a8be81108fdebf9bd0e96742e60133`;
   reviewed corpus manifest `b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553`.
-- H0-v3 controller packet `13d9a97f9adf26860b9f5e0d4889960c75baa5bf979b939206d2399472ba61fc`;
-  candidate geometry `876ed56bd8f436d58cb6f3d58774a0f06756afb4d8c98ffdb49d9424b545ff2b`.
+- H0-v3 controller v1 packet `13d9a97f9adf26860b9f5e0d4889960c75baa5bf979b939206d2399472ba61fc`;
+  replacement v2 packet `3f68dc6ec6d5f90043f36c0a68847ca9ef510641e01760ac4fa11ebd6a6a7fcf`;
+  candidate geometry `876ed56bd8f436d58cb6f3d58774a0f06756afb4d8c98ffdb49d9424b545ff2b`;
+  v2 controller/runtime `108e6bb2…379` / `ddf8b250…a124`.
 - S3a full-game aggregate `20609613e000ff4d11640dc35827527ca14e0ec09720c9c6cda1c64f6cdc271f`;
   terminal final `32156d79aaff247c2d3b60bcf45460442a224c31f415d6689b769b0eba32c9ff`.
 - S3c census `236326099dc9763c6a5941bcb2a90670c4e23ac390ea07a0e4ec5063fa50b52a`;
@@ -234,8 +237,12 @@ Evidence anchors, in the same order:
   packet `13d9a97f…61fc`: all 557 rows replayed, geometry is
   `876ed56b…ff2b`, and preflight consumed zero worlds/outcomes. Claude held v1
   because runtime mode was not self-enforced and receipt deletion could reissue
-  admission. Preserve it and freeze a versioned repair; no execution, label,
-  training or strength authority exists.
+  admission. V1 remains immutable. Replacement source `6977dbb`, asset
+  `d99f7e8` and packet `3f68dc6e…7fcf` now require compiled/strict-void runtime
+  on every packet open, reject experimental sampler flags and publish a durable
+  admission slot before the receipt. Score-free freeze/recompute still consumed
+  zero worlds/outcomes; external review remains before execution, labels,
+  training or strength authority.
 - **Teacher Stage C:** exact `b0ef0f9` froze no-compute v2 at
   `45802e47…a350`: a 2,048-state design
   (1,024 DESIGN / 512 CALIB / 512 REPORT; 1,920 play + 128 bury). Ordinary

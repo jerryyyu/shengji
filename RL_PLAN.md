@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 18:05 EDT
+## Current synthesis — 2026-08-09 18:24 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -147,8 +147,12 @@ what those results change in the research plan.
   packet `13d9a97f…61fc`: all 557 rows replayed and preflight sampled zero
   worlds/outcomes. Claude held it before execution because the runtime did not
   itself enforce compiled/strict-void mode and deleting the receipt could
-  reissue admission. Preserve v1; a versioned repair and new review now precede
-  counterfactual execution, labels, training and strength.
+  reissue admission. V1 remains immutable. Replacement source `6977dbb`, asset
+  `d99f7e8` and packet `3f68dc6e…7fcf` now self-enforce compiled/strict-void
+  runtime, reject experimental sampler flags and consume a durable admission
+  slot before receipt publication. Its score-free preflight again replayed all
+  557 rows with zero worlds/outcomes; external PASS/HOLD remains before H0
+  execution and before Stage-C-v3 rebinding.
   The latest complete server pull at 16:07 UTC found every one
   of the 30 source
   files unchanged, so this remains the current production snapshot. The split
@@ -349,7 +353,7 @@ decision tree.
    `1d99bb55…bdbf` and receipt `20a420d2…5cc`. Do not treat `+5.156` points as
    a duel-strength estimate: using a K now can still waste future control over
    a full continuation. Keep outcomes sealed until one terminal verify.
-3. **Repair and close review of the passed human-action counterfactual controller.** The human
+3. **Close review of the passed human-action counterfactual controller.** The human
    corpus broadens the action/state distribution, but raw imitation and final
    returns are not strength labels. H0-v2 repaired the V11 artifact identity,
    yet its execution language leaves “analysis ballot,” downstream
@@ -364,9 +368,9 @@ decision tree.
    this bounded v3 design at `239f13c`. Exact producer `931f504`, asset
    `ff277b4` and packet `13d9a97f…61fc` implemented/froze v1 over all 557 rows
    with zero worlds/outcomes. Claude's HOLD found missing self-enforcement of
-   compiled/strict-void mode and a deletable one-shot receipt. Freeze a
-   versioned replacement with both mutation-tested; review still precedes
-   execution.
+   compiled/strict-void mode and a deletable one-shot receipt. Replacement
+   source `6977dbb` / packet `3f68dc6e…7fcf` mutation-tests both boundaries and
+   again computes zero outcomes. External review still precedes execution.
 4. **Repair then review the Teacher Stage C contract.** Exact `b0ef0f9` defines
    2,048 fresh states and fixed 250k-deal scan windows for each split. Cheap
    labels remain only on ordinary anchors; uncertainty/disagreement/bury use
@@ -375,8 +379,9 @@ decision tree.
    solver passes; and S4 is conditional on its own terminal PASS. Repaired
    v2 also reopens the authenticated live parent and defines independent
    audit/reference folds plus equal-budget proposal-recall LCBs, but its H0 v1
-   parent is now superseded. Bounded H0 v3 passed at `239f13c`, so freeze a new
-   binding now; review still precedes capture, labels, compute and training. Passing
+   parent is now superseded. Bounded H0 v3 passed at `239f13c`, and its repaired
+   controller v2 is frozen for review. Freeze a new Stage-C binding only after
+   that controller passes; review still precedes capture, labels, compute and training. Passing
    this design is not “building a dataset”: Stage C becomes real only when its
    2,048 states and labels are published under a later reviewed execution.
 5. **Close review of the passed S3c one-card controller.** Exact producer `0b96fae`,
@@ -399,7 +404,7 @@ T3 exits with S3a immutably closed, the reviewed S4 whole-game screen launched
 or terminally resolved, bounded reviewed H0 and Stage-C controllers/contracts,
 and the leakage-safe human ladder plus reviewed S3c score-free feasibility
 asset. S3a, the S4 launch condition and S3c design review are already satisfied.
-H0 controller repair/review and Stage-C-v3 freeze/review remain. A review is a
+H0 controller-v2 review and Stage-C-v3 freeze/review remain. A review is a
 routing boundary, not the milestone's scientific output. S5 replay and the
 frozen S3c one-card controller review are useful follow-on work and do not
 silently expand this exit gate.
@@ -567,7 +572,7 @@ human corpus allows.
 |---|---|---|---|
 | **H0 v1** — exact `9770313`, packet `9ff160a9…247d3` | Froze the population, DESIGN/AUDIT split and no-outcome authority; intended to compare production, human, V11 and random proposals. | Split/design review PASS, then **SUPERSEDED PRE-EXECUTION**: the pinned V11 SHA named no executable artifact. No controller or outcome existed. | The sampling/split geometry survives, but v1 cannot parent execution. |
 | **H0 v2** — exact `12dac55`, packet `2cccf580…8f2b` | Preserved the rows and bound the real `ep07.npz` V11 checkpoint, portable live report-LCB parent and disjoint 30-world selection / 300-world reporting idea. | Claude passed the identity repair at `9fdb67a`, then a score-free implementation audit **SUPERSEDED IT PRE-CONTROLLER**. “Analysis ballot” had no hard cap, report-LCB was conflated with downstream continuation, and requested candidate recall had no defined relevant-action universe. No outcomes existed. | V2 proved the real artifacts and parent could reopen; it did not define a finite executable estimand. |
-| **H0 v3** — source `b02b6de`, packet commit `d6214ce`, packet `4d3f0a35…8cc3c` | Preserves every v2 play row, freezes all bury keys, caps the union at 17 play / 33 bury actions, draws V11 and random from the same novel pool, separates report-LCB root choice from `HeuristicBot` rollout continuation, uses three disjoint folds and caps total work at 1,329,210 candidate-world rollouts. | **DESIGN PASS / CONTROLLER V1 HOLD.** Claude passed the design at `239f13c`; controller v1 `13d9a97f…61fc` replayed all 557 rows score-free and sampled no world, then review found missing runtime-mode enforcement and deletion-proof admission. | Preserve v1 and freeze/review a versioned repair. Only that PASS may authorize one T4 diagnostic receipt; it does not execute, label, train or claim strength. |
+| **H0 v3** — source `b02b6de`, packet commit `d6214ce`, packet `4d3f0a35…8cc3c` | Preserves every v2 play row, freezes all bury keys, caps the union at 17 play / 33 bury actions, draws V11 and random from the same novel pool, separates report-LCB root choice from `HeuristicBot` rollout continuation, uses three disjoint folds and caps total work at 1,329,210 candidate-world rollouts. | **DESIGN PASS / CONTROLLER V2 REVIEW OPEN.** Claude passed the design at `239f13c`; controller v1 `13d9a97f…61fc` was held pre-outcome. Replacement source `6977dbb` / packet `3f68dc6e…7fcf` closes strict-runtime and deletion-proof admission defects, replays 557/557 rows and samples zero worlds. | Obtain external PASS/HOLD on v2. Only PASS may authorize one T4 diagnostic receipt and Stage-C-v3 rebinding; it does not execute, label, train or claim strength. |
 
 After the one reviewed T4 execution, H0 publishes proposal-source membership
 and survival, paired human/model/champion utilities, continuation ranking flips

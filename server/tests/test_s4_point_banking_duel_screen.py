@@ -43,13 +43,13 @@ def _review_claim(packet_sha256: str = "d" * 64) -> dict:
 
 
 def test_packet_constants_bind_fresh_screen_and_exact_parents():
-    assert CTRL.RUN_ID == "s4-point-banking-duel-screen-50b-v1"
+    assert CTRL.RUN_ID == "s4-point-banking-duel-screen-100b-v2"
     assert CTRL.EXPECTED_HOST == "Jerrys-Mac-mini.local"
     assert CTRL.EXPECTED_PYTHON == "3.14.3"
     assert CTRL.PREFLIGHT_GIT == \
-        "5390019aef36f63150d7613b38bf56cf9cfebf8b"
+        "57ab02dbe7632d59f97ee16967df39dc829848ae"
     assert CTRL.PREFLIGHT_SHA256 == \
-        "d2162ea5271782c4d424f56c6e1cea7222db5df15a5b34286a84371c4fcae3d2"
+        "fcc8b8913d80db5b1fe4bb7d6b727dc722bb7d0f4ec9c8806842535fc43ee060"
     assert CTRL.MECHANISM_SCREEN_SHA256 == \
         "abd9f36fa3e84c81b90e22f1c827f828a549f7fd6a9420ffbdb7c168974cdc00"
     assert DUEL.PHASES["screen"]["clusters"] == 2_048
@@ -60,10 +60,17 @@ def test_command_templates_are_path_neutral_and_complete():
     commands = [CTRL.command_template(index)
                 for index in range(CTRL.SHARD_COUNT)]
     assert all(command[0] == "{python}" for command in commands)
-    assert all(command[5:7] == ["--phase", "screen"]
+    assert all(command[command.index("--phase") + 1] == "screen"
                for command in commands)
-    assert [command[8] for command in commands] == \
+    assert [command[command.index("--shard-index") + 1]
+            for command in commands] == \
         [str(index) for index in range(CTRL.SHARD_COUNT)]
+    assert all(command[command.index("--execution-receipt") + 1]
+               == str(CTRL.NAMESPACE / CTRL.RECEIPT_NAME)
+               for command in commands)
+    assert all(command[
+        command.index("--expected-execution-receipt-sha256") + 1]
+        == "{execution_receipt_sha256}" for command in commands)
     assert len({command[-1] for command in commands}) == CTRL.SHARD_COUNT
     assert all(not item.startswith("/Users/")
                for command in commands for item in command)
@@ -71,7 +78,24 @@ def test_command_templates_are_path_neutral_and_complete():
     assert aggregate[0] == "{python}"
     assert all(str(CTRL.NAMESPACE / name) in aggregate
                for name in CTRL.SHARD_NAMES)
+    assert aggregate[aggregate.index("--execution-receipt") + 1] == \
+        str(CTRL.NAMESPACE / CTRL.RECEIPT_NAME)
+    assert aggregate[
+        aggregate.index("--expected-execution-receipt-sha256") + 1] == \
+        "{execution_receipt_sha256}"
     assert not any(item.startswith("/Users/") for item in aggregate)
+
+
+def test_resolved_shard_command_binds_exact_preexisting_receipt():
+    paths = CTRL.paths_for()
+    command = CTRL.shard_argv(
+        _config(), 3, paths.shards[3], "e" * 64)
+    assert command[command.index("--execution-receipt") + 1] == \
+        str(paths.receipt)
+    assert command[
+        command.index("--expected-execution-receipt-sha256") + 1] == \
+        "e" * 64
+    assert not any(item.startswith("{") for item in command)
 
 
 def test_packet_contract_grants_review_not_launch():
@@ -123,7 +147,10 @@ def test_receipt_consumes_one_screen_without_broadening_authority():
     receipt = {
         "schema": CTRL.RECEIPT_SCHEMA,
         "run_id": CTRL.RUN_ID,
+        "phase": "screen",
         "complete": True,
+        "git": "a" * 40,
+        "runner_sha256": "b" * 64,
         "created_time_ns": 1,
         "nonce": "e" * 64,
         "packet_sha256": "f" * 64,
@@ -138,11 +165,11 @@ def test_receipt_consumes_one_screen_without_broadening_authority():
         "retry_or_resume_authorized": False,
     }
     assert CTRL.receipt_problems(
-        receipt, packet_sha256="f" * 64,
+        receipt, config=_config(), packet_sha256="f" * 64,
         admission_sha256="1" * 64) == []
     receipt["retry_or_resume_authorized"] = True
     assert CTRL.receipt_problems(
-        receipt, packet_sha256="f" * 64,
+        receipt, config=_config(), packet_sha256="f" * 64,
         admission_sha256="1" * 64)
 
 

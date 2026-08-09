@@ -37,14 +37,14 @@ import s4_point_banking_duel as DUEL  # noqa: E402
 import s4_point_banking_screen as MECHANISM  # noqa: E402
 
 
-SCHEMA = "s4-point-banking-duel-screen-controller-v1"
-PACKET_SCHEMA = "s4-point-banking-duel-screen-packet-v1"
-PACKET_REVIEW_SCHEMA = "s4-point-banking-duel-screen-review-v1"
-PACKET_REVIEW_MARKER = "S4_POINT_BANKING_DUEL_PACKET_V1_REVIEW "
-ADMISSION_SCHEMA = "s4-point-banking-duel-screen-admission-v1"
-RECEIPT_SCHEMA = "s4-point-banking-duel-screen-receipt-v1"
-EXIT_SCHEMA = "s4-point-banking-duel-screen-exit-v1"
-FINAL_SCHEMA = "s4-point-banking-duel-screen-final-v1"
+SCHEMA = "s4-point-banking-duel-screen-controller-v2"
+PACKET_SCHEMA = DUEL.PACKET_SCHEMA
+PACKET_REVIEW_SCHEMA = DUEL.PACKET_REVIEW_SCHEMA
+PACKET_REVIEW_MARKER = DUEL.PACKET_REVIEW_MARKER
+ADMISSION_SCHEMA = DUEL.ADMISSION_SCHEMA
+RECEIPT_SCHEMA = DUEL.EXECUTION_RECEIPT_SCHEMA
+EXIT_SCHEMA = "s4-point-banking-duel-screen-exit-v2"
+FINAL_SCHEMA = "s4-point-banking-duel-screen-final-v2"
 RUN_ID = DUEL.PHASES["screen"]["run_id"]
 EXPECTED_HOST = "Jerrys-Mac-mini.local"
 EXPECTED_PYTHON = "3.14.3"
@@ -66,9 +66,9 @@ AGGREGATE_NAME = "aggregate.json"
 PREFLIGHT_PATH = Path("server/runs/logs") / DUEL.PREFLIGHT_RUN_ID / \
     "preflight.json"
 PREFLIGHT_SHA256 = (
-    "d2162ea5271782c4d424f56c6e1cea7222db5df15a5b34286a84371c4fcae3d2"
+    "fcc8b8913d80db5b1fe4bb7d6b727dc722bb7d0f4ec9c8806842535fc43ee060"
 )
-PREFLIGHT_GIT = "5390019aef36f63150d7613b38bf56cf9cfebf8b"
+PREFLIGHT_GIT = "57ab02dbe7632d59f97ee16967df39dc829848ae"
 MECHANISM_NAMESPACE = Path("server/runs/logs") / MECHANISM.RUN_ID
 MECHANISM_STATES_SHA256 = (
     "4538be8573a4d4bcf50524afe83c5dac25c5269b3ed95ab15f645343d0ff6b5f"
@@ -239,6 +239,9 @@ def command_template(index: int) -> list[str]:
         "--phase", "screen",
         "--shard-index", str(index),
         "--progress-every", "1",
+        "--execution-receipt", str(NAMESPACE / RECEIPT_NAME),
+        "--expected-execution-receipt-sha256",
+        "{execution_receipt_sha256}",
         "--out", str(NAMESPACE / SHARD_NAMES[index]),
     ]
 
@@ -249,19 +252,31 @@ def aggregate_template() -> list[str]:
         "--expected-git", "{git}",
         "--phase", "screen",
         "--shards", *[str(NAMESPACE / name) for name in SHARD_NAMES],
+        "--execution-receipt", str(NAMESPACE / RECEIPT_NAME),
+        "--expected-execution-receipt-sha256",
+        "{execution_receipt_sha256}",
         "--out", str(NAMESPACE / AGGREGATE_NAME),
     ]
 
 
-def shard_argv(config: Config, index: int, output: Path) -> tuple[str, ...]:
+def shard_argv(config: Config, index: int, output: Path,
+               execution_receipt_sha256: str) -> tuple[str, ...]:
     expected_output = ROOT / NAMESPACE / SHARD_NAMES[index]
     if output != expected_output:
         raise SupervisorRefused("shard output path drift")
+    if not is_sha256(execution_receipt_sha256):
+        raise SupervisorRefused("execution receipt SHA-256 is invalid")
     template = command_template(index)
+    relative_paths = {
+        str(RUNNER), str(NAMESPACE / RECEIPT_NAME),
+        str(NAMESPACE / SHARD_NAMES[index]),
+    }
     resolved = [
         sys.executable if item == "{python}"
         else config.expected_git if item == "{git}"
-        else str(ROOT / item) if item in (str(RUNNER), str(NAMESPACE / SHARD_NAMES[index]))
+        else execution_receipt_sha256
+        if item == "{execution_receipt_sha256}"
+        else str(ROOT / item) if item in relative_paths
         else item
         for item in template
     ]
@@ -775,8 +790,15 @@ def _wait_parallel(jobs: list[Job], progress: Progress,
         time.sleep(heartbeat_seconds)
 
 
-def _recompute_aggregate(paths: Paths, *, parent: dict,
+def _recompute_aggregate(config: Config, paths: Paths, *, parent: dict,
                          runtime: dict) -> dict:
+    try:
+        execution_receipt = DUEL.require_execution_receipt(
+            paths.receipt, sha256_file(paths.receipt),
+            expected_git=config.expected_git, phase="screen")
+    except Exception as exc:
+        raise SupervisorRefused(
+            f"S4 execution receipt refused during aggregation: {exc}") from exc
     shards = []
     inputs = []
     problems = []
@@ -789,7 +811,8 @@ def _recompute_aggregate(paths: Paths, *, parent: dict,
             f"shard {index}: {problem}"
             for problem in DUEL.shard_problems(
                 payload, phase="screen", shard_index=index,
-                parent=parent, runtime=runtime))
+                parent=parent, runtime=runtime,
+                execution_receipt=execution_receipt))
         shards.append(payload)
         inputs.append({"path": rel(path), "sha256": sha256_file(path),
                        "shard_index": index})
@@ -805,12 +828,15 @@ def _recompute_aggregate(paths: Paths, *, parent: dict,
         parent=parent, runtime=runtime, screen_parent=None)
 
 
-def receipt_problems(receipt: dict, *, packet_sha256: str,
-                     admission_sha256: str) -> list[str]:
+def receipt_problems(receipt: dict, *, config: Config,
+                     packet_sha256: str, admission_sha256: str) -> list[str]:
     expected = {
         "schema": RECEIPT_SCHEMA,
         "run_id": RUN_ID,
+        "phase": "screen",
         "complete": True,
+        "git": config.expected_git,
+        "runner_sha256": config.expected_runner_sha256,
         "created_time_ns": receipt.get("created_time_ns"),
         "nonce": receipt.get("nonce"),
         "packet_sha256": packet_sha256,
@@ -833,18 +859,22 @@ def receipt_problems(receipt: dict, *, packet_sha256: str,
     return sorted(set(problems))
 
 
-def _job_specs(config: Config, paths: Paths):
+def _job_specs(config: Config, paths: Paths,
+               execution_receipt_sha256: str):
     return [(
         f"shard-{index:02d}",
-        shard_argv(config, index, paths.shards[index]),
+        shard_argv(config, index, paths.shards[index],
+                   execution_receipt_sha256),
         paths.shards[index], paths.shard_logs[index], paths.shard_exits[index],
     ) for index in range(SHARD_COUNT)]
 
 
-def terminal_job_evidence(config: Config, paths: Paths):
+def terminal_job_evidence(config: Config, paths: Paths,
+                          execution_receipt_sha256: str):
     evidence = []
     problems = []
-    for name, argv, output, log, exit_path in _job_specs(config, paths):
+    for name, argv, output, log, exit_path in _job_specs(
+            config, paths, execution_receipt_sha256):
         artifacts = {"output": output, "log": log, "exit": exit_path}
         invalid = [label for label, path in artifacts.items()
                    if not is_regular_unlinked(path) or lexists(partial(path))]
@@ -916,7 +946,10 @@ def launch(config: Config) -> None:
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "run_id": RUN_ID,
+        "phase": "screen",
         "complete": True,
+        "git": config.expected_git,
+        "runner_sha256": config.expected_runner_sha256,
         "created_time_ns": time.time_ns(),
         "nonce": secrets.token_hex(32),
         "packet_sha256": packet_sha256,
@@ -931,11 +964,12 @@ def launch(config: Config) -> None:
         "retry_or_resume_authorized": False,
     }
     problems = receipt_problems(
-        receipt, packet_sha256=packet_sha256,
+        receipt, config=config, packet_sha256=packet_sha256,
         admission_sha256=admission_sha256)
     if problems:
         raise SupervisorRefused("; ".join(problems))
     _write_json_exclusive(paths.receipt, receipt)
+    execution_receipt_sha256 = sha256_file(paths.receipt)
     progress = Progress(paths.progress_partial)
     jobs: list[Job] = []
     try:
@@ -943,19 +977,21 @@ def launch(config: Config) -> None:
             "launch", "receipt-published",
             packet_sha256=packet_sha256,
             admission_sha256=admission_sha256,
-            receipt_sha256=sha256_file(paths.receipt))
-        for name, argv, output, log, exit_path in _job_specs(config, paths):
+            receipt_sha256=execution_receipt_sha256)
+        for name, argv, output, log, exit_path in _job_specs(
+                config, paths, execution_receipt_sha256):
             job = _start_job(name, argv, output, log, exit_path)
             jobs.append(job)
             progress.event("shard", "started", job=name,
                            pid=job.process.pid, output=rel(output))
         _wait_parallel(jobs, progress, config.heartbeat_seconds)
         aggregate = _recompute_aggregate(
-            paths, parent=parent, runtime=runtime)
+            config, paths, parent=parent, runtime=runtime)
         _write_json_exclusive(paths.aggregate, aggregate)
         if _load_json(paths.aggregate) != aggregate:
             raise SupervisorRefused("S4 aggregate failed exact reopen")
-        job_evidence, evidence_problems = terminal_job_evidence(config, paths)
+        job_evidence, evidence_problems = terminal_job_evidence(
+            config, paths, execution_receipt_sha256)
         if evidence_problems:
             raise SupervisorRefused("; ".join(evidence_problems))
         progress.event("aggregate", "complete",
@@ -999,13 +1035,16 @@ def verify(config: Config) -> dict:
     packet_sha256 = sha256_file(paths.packet)
     admission_sha256 = sha256_file(paths.admission)
     problems = receipt_problems(
-        _load_json(paths.receipt), packet_sha256=packet_sha256,
+        _load_json(paths.receipt), config=config,
+        packet_sha256=packet_sha256,
         admission_sha256=admission_sha256)
+    execution_receipt_sha256 = sha256_file(paths.receipt)
     aggregate = _load_json(paths.aggregate)
     if aggregate != _recompute_aggregate(
-            paths, parent=parent, runtime=runtime):
+            config, paths, parent=parent, runtime=runtime):
         problems.append("S4 aggregate full recomputation drift")
-    job_evidence, evidence_problems = terminal_job_evidence(config, paths)
+    job_evidence, evidence_problems = terminal_job_evidence(
+        config, paths, execution_receipt_sha256)
     problems += evidence_problems
     expected_final = final_payload(
         paths=paths, packet_sha256=packet_sha256,

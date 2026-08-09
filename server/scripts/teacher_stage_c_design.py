@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Freeze the no-compute Teacher Stage-C hard-tail design contract.
 
-This tool consumes the independently verified T1 terminal adapter and the
-score-free H0 human-action packet.  It emits experiment geometry only: fresh
-seed blocks, split/stratum quotas, candidate sources, label routing, gates and
-authority.  It never captures a state, samples a world, labels an action,
-trains a model or promotes a policy.
+This tool consumes the independently verified T1 terminal adapter plus the
+reviewed executable H0 human-action controller and its exact PASS marker.  It
+emits experiment geometry only: fresh seed blocks, split/stratum quotas,
+candidate sources, label routing, gates and authority.  It never captures a
+state, samples a world, labels an action, trains a model or promotes a policy.
 """
 from __future__ import annotations
 
@@ -21,28 +21,65 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).resolve()
 SERVER = SCRIPT.parents[1]
+REPO = SERVER.parent
 sys.path.insert(0, str(SCRIPT.parent))
 
 import live_champion_parent as LIVE_PARENT_AUTH  # noqa: E402
+import h0_human_counterfactual_controller as H0_CONTROLLER  # noqa: E402
+import h0_human_counterfactual_runtime as H0_RUNTIME  # noqa: E402
 
 
-SCHEMA = "teacher-stage-c-hard-tail-design-v2"
+SCHEMA = "teacher-stage-c-hard-tail-design-v3"
 # The terminal adapter grants this literal packet identity.  A previous draft
 # silently dropped the word "design" and therefore did not consume its parent
 # authority exactly even though no compute had started.
 PACKET_ID = "teacher-v3-hard-tail-stage-c-design-v1"
 ADAPTER_SCHEMA = "teacher-v3-terminal-adapter-v2"
 ADAPTER_SHA256 = "56ccefbd62d9ea2aef30a4c6e54e11a0d2231e464f129e754b84b3488f1c2442"
-H0_SCHEMA = "human-h0-counterfactual-design-v1"
-H0_SHA256 = "9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3"
+H0_CONTROLLER_SCHEMA = "human-h0-counterfactual-controller-v2"
+H0_CONTROLLER_SHA256 = (
+    "3f68dc6ec6d5f90043f36c0a68847ca9ef510641e01760ac4fa11ebd6a6a7fcf"
+)
+H0_CONTROLLER_INTERNAL_SHA256 = (
+    "7744c745fd92f5ae725c8a2f45882b7e6668c14b5bf2a3570c738d245dc6b9ec"
+)
+H0_CONTROLLER_GIT = "6977dbbdc77276b115faf941509b8034d7801bf0"
+H0_CONTROLLER_PACKET_GIT = "d99f7e8245e8f521475a1f109dcf7a9196e88878"
+H0_SCHEDULE_SHA256 = (
+    "f54ce37425707dfeea3563bbc5d635617943152166a82825a74e55ad00131793"
+)
+H0_CANDIDATE_GEOMETRY_SHA256 = (
+    "876ed56bd8f436d58cb6f3d58774a0f06756afb4d8c98ffdb49d9424b545ff2b"
+)
 HUMAN_CORPUS_SHA256 = "b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553"
 S4_CONDITIONAL = {
-    "run_id": "s4-point-banking-state-screen-161m-v2",
-    "git": "1b35fb7c6234fb6022181b54ce8210c796cc35c3",
-    "states_sha256": "4538be8573a4d4bcf50524afe83c5dac25c5269b3ed95ab15f645343d0ff6b5f",
+    "run_id": "s4-point-banking-duel-screen-100b-v2",
+    "git": "cad399294b888865a3bb79c47a9892200b896013",
+    "design_packet_sha256": (
+        "17036e6307ad0072ae10aeaaddde0ed3628a2f526ca440e909cdc35cd5071385"
+    ),
+    "execution_receipt_sha256": (
+        "20a420d2e939f8f1ce375ca32cee81d044db2c29dff7e52fbe7080a000dd65cc"
+    ),
     "use_requires_separate_terminal_pass": True,
-    "required_terminal_verdict": "AUTHORIZE_FULL_GAME_PACKET_REVIEW",
+    "required_terminal_verdict": "AUTHORIZE_CONFIRM_PACKET_REVIEW",
     "terminal_screen_sha256_must_bind_at_execution": True,
+}
+S3C_CONDITIONAL = {
+    "controller_git": "e9db4a23457ff4221d342c9a422e50ea491fe7ab",
+    "controller_packet_sha256": (
+        "f58d23b74046dd04963b4f10fbf605030221219eef6d325c5e8319043643874a"
+    ),
+    "controller_review_schema": "s3c-one-card-capacity-controller-review-v1",
+    "one_card_use_requires_complete_mechanics_execution": True,
+    "two_or_three_card_use_requires_separate_reviewed_stage": True,
+}
+S5_CONDITIONAL = {
+    "required_census_schema": "s5-point-protection-census-v1",
+    "required_census_decision": "S5_DESIGN_REVIEW_ELIGIBLE",
+    "human_witnesses_are_design_only": True,
+    "fresh_trigger_matched_population_required": True,
+    "treatment_requires_separate_design_review": True,
 }
 
 SPLITS = {
@@ -83,6 +120,16 @@ SPLITS = {
         "bury": {"ordinary_anchor": 16, "structured_point_void": 16},
     },
 }
+PLAY_CANDIDATE_CAP = 20
+BURY_CANDIDATE_CAP = 33
+ORDINARY_SELECTION_WORLDS = 256
+ORDINARY_REPORT_WORLDS = 256
+HARD_TAIL_SELECTION_WORLDS = 64
+HARD_TAIL_REPORT_WORLDS = 300
+AUDIT_REFERENCE_SELECTION_WORLDS = 128
+AUDIT_REFERENCE_REPORT_WORLDS = 600
+FIXED_REPORT_ACTIONS = 2
+CONDITIONAL_MECHANISM_STATES = 160
 
 
 class StageCDesignError(RuntimeError):
@@ -118,7 +165,8 @@ def _load_json(path: Path) -> dict:
 
 def _git(*args: str) -> str:
     return subprocess.run(
-        ["git", *args], check=True, capture_output=True, text=True
+        ["git", *args], cwd=REPO, check=True,
+        capture_output=True, text=True
     ).stdout.strip()
 
 
@@ -182,9 +230,15 @@ def reopen_live_parent(*, smoke: bool, repo: Path | None,
     env = dict(os.environ)
     env["SHENGJI_FAST"] = "1"
     env["SHENGJI_REQUIRE_VOIDS"] = "1"
+    portable_reopen = (
+        "import json,sys;sys.path.insert(0,'scripts');"
+        "import live_champion_parent as parent;"
+        "print(json.dumps("
+        "parent.require_portable_live_champion_parent(),sort_keys=True))"
+    )
     try:
         completed = subprocess.run(
-            [str(python), str(script), "verify"], cwd=repo / "server",
+            [str(python), "-c", portable_reopen], cwd=repo / "server",
             env=env, check=True, capture_output=True, text=True)
         payload = json.loads(completed.stdout)
         LIVE_PARENT_AUTH.require_parent_payload(payload)
@@ -261,26 +315,101 @@ def validate_adapter(path: Path, expected_sha256: str) -> dict:
     return adapter
 
 
-def validate_h0(path: Path, expected_sha256: str) -> dict:
-    if expected_sha256 != H0_SHA256 or sha256_file(path) != H0_SHA256:
-        raise StageCDesignError("H0 design packet SHA-256 drift")
-    h0 = _load_json(path)
-    authority = h0.get("authority", {})
-    selected = h0.get("split_contract", {}).get("selected", {})
-    if (h0.get("schema") != H0_SCHEMA
-            or h0.get("human_corpus", {}).get("manifest_sha256")
-            != HUMAN_CORPUS_SHA256
-            or len(selected.get("DESIGN", [])) != 384
-            or len(selected.get("AUDIT", [])) != 128
-            or authority.get("score_free") is not True
-            or authority.get("outcomes_computed") is not False
-            or authority.get("counterfactual_execution_authorized") is not False
-            or authority.get("labels_authorized") is not False
-            or authority.get("training_authorized") is not False
-            or authority.get("strength_claim") is not False
-            or authority.get("production_promotion") is not False):
-        raise StageCDesignError("H0 packet identity/authority")
-    return h0
+def validate_h0_controller(path: Path, expected_sha256: str,
+                           review_record: Path) -> tuple[dict, dict]:
+    """Bind Stage C to the passed executable H0 controller, not its draft.
+
+    Stage-C v2 consumed the score-free H0 *design* packet.  That left the
+    proposal caps, schedule, strict runtime and refusal semantics as prose.
+    The reviewed controller is the first artifact that makes those semantics
+    executable, so v3 requires both its immutable packet and its exact PASS
+    marker while preserving the controller's no-outcome/no-label authority.
+    """
+    if (expected_sha256 != H0_CONTROLLER_SHA256
+            or not H0_CONTROLLER.is_regular_unlinked(path)
+            or sha256_file(path) != H0_CONTROLLER_SHA256):
+        raise StageCDesignError("H0 controller packet SHA-256 drift")
+    packet = _load_json(path)
+    authority = packet.get("authority", {})
+    preflight = packet.get("score_free_preflight", {})
+    inputs = packet.get("inputs", {})
+    result = packet.get("result_contract", {})
+    if (packet.get("schema") != H0_CONTROLLER_SCHEMA
+            or packet.get("packet_id") != H0_CONTROLLER.PACKET_ID
+            or packet.get("run_id") != H0_CONTROLLER.RUN_ID
+            or packet.get("packet_sha256") !=
+            H0_CONTROLLER_INTERNAL_SHA256
+            or packet.get("producer") != {
+                "git": H0_CONTROLLER_GIT,
+                "promotable": True,
+                "script_sha256": H0_CONTROLLER.sha256_file(
+                    H0_CONTROLLER.SCRIPT),
+                "tree_dirty": False,
+            }
+            or packet.get("design", {}).get("sha256") !=
+            H0_CONTROLLER.DESIGN_PACKET_SHA256
+            or inputs.get("human_corpus", {}).get("manifest_sha256") !=
+            HUMAN_CORPUS_SHA256
+            or inputs.get("source_snapshot", {}).get("manifest_sha256") !=
+            H0_CONTROLLER.SOURCE_MANIFEST_SHA256
+            or inputs.get("v11pair", {}).get("sha256") !=
+            H0_CONTROLLER.V11PAIR_SHA256
+            or inputs.get("selected_play_rows_sha256") !=
+            H0_CONTROLLER.SELECTED_PLAY_ROWS_SHA256
+            or inputs.get("selected_bury_rows_sha256") !=
+            H0_CONTROLLER.SELECTED_BURY_ROWS_SHA256
+            or preflight.get("status") != "VERIFIED_SCORE_FREE"
+            or preflight.get("rows_replayed") != 557
+            or preflight.get("worlds_sampled") != 0
+            or preflight.get("candidate_world_rollouts") != 0
+            or preflight.get("outcomes_computed") is not False
+            or packet.get("schedule", {}).get("shard_count") != 8
+            or packet.get("packet_sha256") != sha256_bytes(canonical_json({
+                key: value for key, value in packet.items()
+                if key != "packet_sha256"
+            }))):
+        raise StageCDesignError("H0 controller identity/preflight drift")
+    # Schedule identity and candidate geometry are independent boundaries;
+    # the maximum future work lives in the result contract.
+    if (packet.get("schedule", {}).get("schedule_sha256") !=
+            H0_SCHEDULE_SHA256
+            or preflight.get("candidate_geometry_sha256") !=
+            H0_CANDIDATE_GEOMETRY_SHA256
+            or result.get("work", {}).get("candidate_world_ceiling") !=
+            H0_CONTROLLER.MAX_CANDIDATE_WORLDS
+            or result.get("durable_one_shot_admission_slot") !=
+            H0_CONTROLLER.admission_slot_logical_path()
+            or result.get("receipt_deletion_cannot_reissue") is not True
+            or authority != {
+                "score_free": True,
+                "worlds_sampled": False,
+                "outcomes_computed": False,
+                "controller_review_authorized": True,
+                "counterfactual_execution_authorized": False,
+                "labels_authorized": False,
+                "training_authorized": False,
+                "strength_claim": False,
+                "production_promotion": False,
+                "production_deployment": False,
+                "human_evaluation_data_may_train_or_select": False,
+            }):
+        raise StageCDesignError("H0 controller work/authority drift")
+    try:
+        LIVE_PARENT_AUTH.require_parent_payload(inputs.get("live_parent"))
+    except LIVE_PARENT_AUTH.ProtocolRefused as exc:
+        raise StageCDesignError("H0 controller live-parent drift") from exc
+    if not H0_CONTROLLER.is_regular_unlinked(review_record):
+        raise StageCDesignError("H0 controller review record is not regular")
+    try:
+        claim = H0_CONTROLLER._marker_claim(
+            review_record, H0_CONTROLLER.REVIEW_MARKER)
+        expected_claim = H0_RUNTIME._expected_review_claim(
+            packet, H0_CONTROLLER_SHA256)
+    except (H0_CONTROLLER.ControllerRefused, KeyError, TypeError) as exc:
+        raise StageCDesignError("H0 controller review cannot reopen") from exc
+    if claim != expected_claim:
+        raise StageCDesignError("H0 controller PASS marker drift")
+    return packet, claim
 
 
 def _split_geometry() -> dict:
@@ -300,11 +429,80 @@ def _split_geometry() -> dict:
     return geometry
 
 
+def _work_ceiling(geometry: dict) -> dict:
+    ordinary_play = sum(
+        split["play"]["ordinary_anchor"] for split in geometry.values())
+    ordinary_bury = sum(
+        split["bury"]["ordinary_anchor"] for split in geometry.values())
+    total_play = sum(split["play_total"] for split in geometry.values())
+    total_bury = sum(split["bury_total"] for split in geometry.values())
+    hard_play = total_play - ordinary_play
+    hard_bury = total_bury - ordinary_bury
+    ordinary = (
+        ordinary_play * PLAY_CANDIDATE_CAP
+        + ordinary_bury * BURY_CANDIDATE_CAP
+    ) * (ORDINARY_SELECTION_WORLDS + ORDINARY_REPORT_WORLDS)
+    hard_selection = (
+        hard_play * PLAY_CANDIDATE_CAP
+        + hard_bury * BURY_CANDIDATE_CAP
+    ) * HARD_TAIL_SELECTION_WORLDS
+    hard_report = (
+        hard_play + hard_bury
+    ) * FIXED_REPORT_ACTIONS * HARD_TAIL_REPORT_WORLDS
+    audit_play, audit_bury = 224, 32
+    audit_selection = (
+        audit_play * PLAY_CANDIDATE_CAP
+        + audit_bury * BURY_CANDIDATE_CAP
+    ) * AUDIT_REFERENCE_SELECTION_WORLDS
+    audit_report = (
+        audit_play + audit_bury
+    ) * FIXED_REPORT_ACTIONS * AUDIT_REFERENCE_REPORT_WORLDS
+    one_conditional = CONDITIONAL_MECHANISM_STATES * (
+        PLAY_CANDIDATE_CAP * HARD_TAIL_SELECTION_WORLDS
+        + FIXED_REPORT_ACTIONS * HARD_TAIL_REPORT_WORLDS
+    )
+    base = ordinary + hard_selection + hard_report
+    audit = audit_selection + audit_report
+    total = base + audit + 2 * one_conditional
+    if (ordinary_play, ordinary_bury, hard_play, hard_bury) != (
+            480, 64, 1440, 64):
+        raise StageCDesignError("Stage-C work population drift")
+    if total != 10_494_720:
+        raise StageCDesignError("Stage-C work ceiling arithmetic drift")
+    return {
+        "unit": "candidate-world rollout",
+        "ordinary_labels": ordinary,
+        "hard_tail_selection_and_fixed_report":
+            hard_selection + hard_report,
+        "deeper_audit_reference": audit,
+        "conditional_s4_max": one_conditional,
+        "conditional_s5_max": one_conditional,
+        "all_optional_mechanisms_max": total,
+        "recursive_mc_continuation_rollouts": 0,
+        "exact_solver_nodes": (
+            "separately bounded by a passed S3c stage and replace, never add "
+            "to, the corresponding heuristic continuation fold"
+        ),
+    }
+
+
 def build_packet(adapter_path: Path, adapter_sha256: str,
-                 h0_path: Path, h0_sha256: str, *, smoke: bool,
+                 h0_controller_path: Path, h0_controller_sha256: str,
+                 h0_review_record: Path, *, smoke: bool,
                  live_parent_attestation: dict | None = None) -> dict:
     adapter = validate_adapter(adapter_path, adapter_sha256)
-    h0 = validate_h0(h0_path, h0_sha256)
+    h0, h0_review = validate_h0_controller(
+        h0_controller_path, h0_controller_sha256, h0_review_record)
+    h0_cells = h0["score_free_preflight"]["cell_counts"]
+    h0_design_rows = sum(
+        count for cell, count in h0_cells.items()
+        if cell.startswith("DESIGN:"))
+    h0_audit_rows = sum(
+        count for cell, count in h0_cells.items()
+        if cell.startswith("AUDIT:"))
+    if (h0_design_rows != 420 or h0_audit_rows != 137
+            or h0_design_rows + h0_audit_rows != 557):
+        raise StageCDesignError("H0 controller split geometry drift")
     if live_parent_attestation is None:
         live_parent_attestation = reopen_live_parent(
             smoke=smoke, repo=None, python=None)
@@ -316,7 +514,12 @@ def build_packet(adapter_path: Path, adapter_sha256: str,
         raise StageCDesignError("live-parent reopen attestation drift")
     LIVE_PARENT_AUTH.require_parent_payload(
         live_parent_attestation.get("payload"))
+    if (h0.get("inputs", {}).get("live_parent") !=
+            live_parent_attestation.get("payload")):
+        raise StageCDesignError(
+            "H0 controller and Stage-C live parent differ")
     geometry = _split_geometry()
+    work_ceiling = _work_ceiling(geometry)
     packet = {
         "schema": SCHEMA,
         "packet_id": PACKET_ID,
@@ -330,6 +533,21 @@ def build_packet(adapter_path: Path, adapter_sha256: str,
             "live_parent": {
                 **live_parent_attestation,
                 "must_reopen_at_capture_and_label": True,
+            },
+            "h0_controller": {
+                "packet_sha256": H0_CONTROLLER_SHA256,
+                "packet_internal_sha256": H0_CONTROLLER_INTERNAL_SHA256,
+                "source_git": H0_CONTROLLER_GIT,
+                "packet_git": H0_CONTROLLER_PACKET_GIT,
+                "design_packet_sha256":
+                    H0_CONTROLLER.DESIGN_PACKET_SHA256,
+                "review_claim": h0_review,
+                "schedule_sha256": H0_SCHEDULE_SHA256,
+                "candidate_geometry_sha256":
+                    H0_CANDIDATE_GEOMETRY_SHA256,
+                "max_candidate_worlds":
+                    H0_CONTROLLER.MAX_CANDIDATE_WORLDS,
+                "execution_is_diagnostic_not_label_authority": True,
             },
         },
         "objective": (
@@ -359,20 +577,39 @@ def build_packet(adapter_path: Path, adapter_sha256: str,
                 "exact_late_eligible": "equal role x lead/follow cells",
                 "point_banking_opportunity": "equal attacker/defender roles",
             },
+            "conditional_secondary_tags": {
+                "replay_verified_point_protection": {
+                    "maximum_states": CONDITIONAL_MECHANISM_STATES,
+                    "must_overlap_existing_play_quota": True,
+                    "requires": S5_CONDITIONAL,
+                },
+                "human_derived_proposer_disagreement": {
+                    "must_overlap_proposal_disagreement": True,
+                    "requires_supported_h0_design_result": True,
+                },
+            },
             "human_witnesses": {
-                "h0_packet_sha256": H0_SHA256,
+                "h0_controller_packet_sha256": H0_CONTROLLER_SHA256,
+                "h0_controller_review_schema":
+                    H0_CONTROLLER.REVIEW_SCHEMA,
                 "allowed_source_split": "DESIGN",
                 "supplemental_dev_diagnostic_only": True,
                 "included_in_calib_or_report": False,
                 "audit_rows_consumed": False,
-                "design_rows": len(h0["split_contract"]["selected"]["DESIGN"]),
+                "design_rows": h0_design_rows,
+                "audit_rows_preserved": h0_audit_rows,
+                "human_action_requires_counterfactual_support_before_use":
+                    True,
             },
         },
         "candidate_contract": {
+            "max_unique_play_actions": PLAY_CANDIDATE_CAP,
+            "max_unique_bury_actions": BURY_CANDIDATE_CAP,
             "play_union": [
                 "live_champion_analysis_ballot",
                 "v11pair_top_proposal",
                 "named_structured_lead_or_follow_mechanisms",
+                "conditional_replay_verified_s5_mechanism",
                 "same_budget_random_diversifier",
             ],
             "bury_union": [
@@ -380,10 +617,21 @@ def build_packet(adapter_path: Path, adapter_sha256: str,
                 "s3a_structured_point_void_bury",
                 "same_budget_random_structured_bury",
             ],
-            "human_action_union": "H0 DESIGN diagnostics only",
+            "human_action_union_on_fresh_2048": False,
+            "human_derived_proposer": (
+                "may enter only as a separately frozen rule/model derived "
+                "from supported H0 DESIGN proposals; H0 AUDIT cannot tune it"
+            ),
             "v11pair_is_proposal_not_scalar_leaf": True,
             "s3a_source_git": "c599b42e1a61c4a49346165940fc964632a71f16",
+            "s3a_terminal_result": (
+                "SELECT_NONE; retain candidate source only for per-state "
+                "Teacher evaluation, never as a policy prior"
+            ),
             "all_actions_replayed_legal_before_label": True,
+            "unsupported_human_action_fallback": (
+                "omit human source; preserve V11/structured/random sources"
+            ),
         },
         "label_contract": {
             "utility": "acting-team-signed-level-utility",
@@ -391,30 +639,66 @@ def build_packet(adapter_path: Path, adapter_sha256: str,
             "common_worlds_within_state_action_comparisons": True,
             "folds_disjoint_by_seed_and_world_digest": True,
             "ordinary_anchor": {
-                "continuation": "passed-cheap-proxy",
-                "selection_worlds": 256,
-                "report_worlds": 256,
+                "continuation": "HeuristicBot",
+                "source": "passed Stage-B cheap-proxy contract",
+                "selection_worlds": ORDINARY_SELECTION_WORLDS,
+                "report_worlds": ORDINARY_REPORT_WORLDS,
+                "all_candidates_receive_both_folds": True,
             },
             "uncertainty_disagreement_bury": {
-                "continuation": "live-mc-s0-report-lcb-gold",
-                "gold_selection_worlds": 64,
-                "gold_report_worlds": 64,
+                "root_semantics": (
+                    "report-LCB-compatible candidate comparison under the "
+                    "exact live ballot/sampler"
+                ),
+                "rollout_continuation": "HeuristicBot",
+                "recursive_mc_continuation": False,
+                "selection_worlds_all_candidates":
+                    HARD_TAIL_SELECTION_WORLDS,
+                "selection_rule": (
+                    "highest acting-team signed mean; deterministic lowest "
+                    "candidate index tie-break"
+                ),
+                "report_worlds_fixed_selection_winner_and_candidate0":
+                    HARD_TAIL_REPORT_WORLDS,
+                "final_choice_rule": (
+                    "use the fixed selection winner only when its paired "
+                    "one-sided 95% LCB versus candidate0 is greater than 0; "
+                    "otherwise use candidate0"
+                ),
+                "report_fold_never_reselects": True,
                 "n30_may_screen_but_cannot_supply_hard_tail_target": True,
             },
             "exact_late": {
                 "preferred": "reviewed-information-set-legal-exact-solver",
                 "oracle_hidden_hands_for_deployable_label": False,
-                "fallback": "live-mc-s0-report-lcb-gold-64-plus-64",
+                "fallback": (
+                    "the same non-recursive root label contract; never "
+                    "silently substitute recursive MC"
+                ),
                 "silent_skip_authorized": False,
+                "conditional_s3c": S3C_CONDITIONAL,
             },
             "point_banking": {
                 "production_continuation_always_reported": True,
                 "conditional_s4": S4_CONDITIONAL,
                 "s4_result_cannot_replace_production_estimand": True,
             },
+            "defensive_point_protection": {
+                "conditional_s5": S5_CONDITIONAL,
+                "production_continuation_always_reported": True,
+                "unverified_human_loss_rows_cannot_supply_labels": True,
+            },
             "raw_action_tensor_and_uncertainty_preserved": True,
             "selected_argmax_only_is_invalid": True,
             "exact_work_and_refusal_counters_required": True,
+        },
+        "work_contract": {
+            **work_ceiling,
+            "candidate_caps_are_hard_refusal_boundaries": True,
+            "all_split_and_stratum_quotas_must_fill_without_extension": True,
+            "conditional_tags_do_not_increase_state_count": True,
+            "partial_or_underfilled_fold_publishes_no_label_for_that_state":
+                True,
         },
         "gate_contract": {
             "report_never_selects_recipe": True,
@@ -432,14 +716,18 @@ def build_packet(adapter_path: Path, adapter_sha256: str,
                 "ordinary_anchor": (
                     "fixed cheap-heuristic selection-fold argmax"),
                 "hard_tail": (
-                    "fixed declared gold-or-exact label selection-fold argmax"),
+                    "fixed 64-world selection winner, accepted only by its "
+                    "disjoint 300-world LCB versus candidate0; exact may "
+                    "replace only under its separate passed stage"),
                 "audit_reference": (
-                    "fixed live-report-lcb-gold audit-selection argmax"),
+                    "fixed 128-world selection winner, accepted only by its "
+                    "disjoint 600-world LCB versus candidate0"),
             },
             "audit_reference": {
-                "continuation": "live-mc-s0-report-lcb-gold",
-                "selection_worlds": 64,
-                "report_worlds": 64,
+                "rollout_continuation": "HeuristicBot",
+                "recursive_mc_continuation": False,
+                "selection_worlds": AUDIT_REFERENCE_SELECTION_WORLDS,
+                "report_worlds": AUDIT_REFERENCE_REPORT_WORLDS,
                 "selection_and_report_worlds_disjoint": True,
                 "all_audit_worlds_disjoint_from_label_worlds": True,
                 "fixed_choice_pair_evaluated_on_common_report_worlds": True,
@@ -543,18 +831,27 @@ def _parser() -> argparse.ArgumentParser:
         child = sub.add_parser(command)
         child.add_argument("--adapter", required=True)
         child.add_argument("--expected-adapter-sha256", required=True)
-        child.add_argument("--h0-packet", required=True)
-        child.add_argument("--expected-h0-sha256", required=True)
+        child.add_argument("--h0-controller", required=True)
+        child.add_argument("--expected-h0-controller-sha256", required=True)
+        child.add_argument("--h0-review-record", required=True)
         child.add_argument("--packet", required=True)
         child.add_argument("--expected-git")
         child.add_argument("--live-parent-repo")
         child.add_argument("--live-parent-python")
         child.add_argument("--smoke", action="store_true")
+        if command == "verify":
+            child.add_argument("--expected-packet-sha256")
     return parser
 
 
 def main() -> None:
     args = _parser().parse_args()
+    if not args.smoke and not args.expected_git:
+        raise StageCDesignError("real Stage-C freeze/verify requires --expected-git")
+    if (args.command == "verify" and not args.smoke
+            and not args.expected_packet_sha256):
+        raise StageCDesignError(
+            "real Stage-C verification requires --expected-packet-sha256")
     if args.expected_git and _git("rev-parse", "HEAD") != args.expected_git:
         raise StageCDesignError("producer Git differs from expected Git")
     live_parent_attestation = reopen_live_parent(
@@ -566,7 +863,8 @@ def main() -> None:
     )
     expected = build_packet(
         Path(args.adapter), args.expected_adapter_sha256,
-        Path(args.h0_packet), args.expected_h0_sha256, smoke=args.smoke,
+        Path(args.h0_controller), args.expected_h0_controller_sha256,
+        Path(args.h0_review_record), smoke=args.smoke,
         live_parent_attestation=live_parent_attestation)
     packet_path = Path(args.packet)
     if args.command == "freeze":
@@ -580,6 +878,9 @@ def main() -> None:
         }, sort_keys=True))
         return
     actual = _load_json(packet_path)
+    if (args.expected_packet_sha256
+            and sha256_file(packet_path) != args.expected_packet_sha256):
+        raise StageCDesignError("external Stage-C packet SHA-256 drift")
     problems = packet_problems(actual, expected)
     if problems:
         raise StageCDesignError("; ".join(problems))

@@ -28,7 +28,9 @@ import hashlib
 import json
 import math
 import os
+import platform
 import random
+import stat
 import subprocess
 import sys
 from collections import Counter
@@ -46,10 +48,14 @@ from shengji.engine.combos import decompose                         # noqa: E402
 from shengji.engine.round import Round, Trick, TrickPlay            # noqa: E402
 
 
+ROOT = Path(__file__).resolve().parents[2]
+SERVER = ROOT / "server"
+RUN_ID = "s4-point-banking-state-screen-161m-v2"
 CAPTURE_SCHEMA = "s4-point-banking-states-v1"
 SCREEN_SCHEMA = "s4-point-banking-exact-screen-v1"
 ADMISSION_SCHEMA = "s4-point-banking-screen-review-v1"
-SEED0 = 160_000_000
+SCREEN_RECEIPT_SCHEMA = "s4-point-banking-screen-receipt-v1"
+SEED0 = 161_000_000
 MAX_DEALS = 200_000
 ROLE_QUOTA = {"attacker": 32, "defender": 32}
 HAND_CARDS_AT_DECISION = 3
@@ -57,6 +63,12 @@ EXACT_MAX_HAND_CARDS = 2
 EXACT_MAX_NODES = 50_000
 T_CRITICAL_OVERALL = 1.669       # one-sided 95%, df=63
 T_CRITICAL_ROLE = 1.696          # one-sided 95%, df=31
+MATERIAL_PATHS = (
+    SERVER / "shengji/ai/point_banking.py",
+    SERVER / "scripts/s4_point_banking_screen.py",
+    SERVER / "tests/test_point_banking.py",
+    SERVER / "tests/test_s4_point_banking_screen.py",
+)
 
 
 class S4ProtocolError(RuntimeError):
@@ -77,6 +89,14 @@ def sha256_file(path: str | os.PathLike) -> str:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def material_identity() -> dict:
+    files = [{
+        "path": str(path.relative_to(ROOT)),
+        "sha256": sha256_file(path),
+    } for path in MATERIAL_PATHS]
+    return {"files": files, "sha256": sha256_bytes(canonical_json(files))}
 
 
 def git_output(*args: str) -> str:
@@ -107,13 +127,18 @@ def runtime(*, smoke: bool) -> dict:
         "endgame": endgame.__file__,
         "engine_round": round_mod.__file__,
     }
+    if fast.HAVE_FAST and getattr(fast, "_fast", None) is not None:
+        paths["compiled_fast"] = fast._fast.__file__
+    material = material_identity()
     return {
         "git": git_output("rev-parse", "HEAD"),
         "tree_dirty": dirty,
         "promotable": not smoke,
+        "host": platform.node(),
         "python": sys.version.split()[0],
         "fast_engine": bool(fast.HAVE_FAST),
         "fast_routed": bool(fast_routed),
+        "material_sha256": material["sha256"],
         "files": {name: sha256_file(path)
                   for name, path in sorted(paths.items())},
     }
@@ -138,6 +163,9 @@ def publish_exclusive(path: str | os.PathLike, payload: dict) -> None:
         if partial.exists() and not final.exists():
             partial.unlink()
         raise
+    info = final.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        raise S4ProtocolError("published S4 artifact is not regular/unlinked")
 
 
 def _play_record(trick: Trick) -> dict:
@@ -353,13 +381,20 @@ def capture_states(*, seed0: int, max_deals: int,
     }
 
 
-def _round_team_level_value(attacker_points: int, acting_is_attacker: bool) -> int:
+def _round_team_level_value(attacker_points: int,
+                            acting_is_attacker: bool) -> float:
+    """House-rule level bracket plus half a level for deal possession.
+
+    This is the same uncapped signed-level utility used by the Teacher and MC
+    objective.  In particular, 80 and 120 attacker points must not collapse:
+    they are +0.5 and +1.5 from the attacker perspective respectively.
+    """
     if attacker_points >= 80:
-        attacker_value = max(1, (attacker_points - 80) // 40)
+        attacker_value = (attacker_points - 80) // 40 + 0.5
+    elif attacker_points == 0:
+        attacker_value = -3.5
     else:
-        defender_gain = (3 if attacker_points == 0 else
-                         2 if attacker_points < 40 else 1)
-        attacker_value = -defender_gain
+        attacker_value = -(1 + (79 - attacker_points) // 40) - 0.5
     return attacker_value if acting_is_attacker else -attacker_value
 
 
@@ -466,6 +501,24 @@ def aggregate(rows: list[dict]) -> dict:
     }
 
 
+def capture_contract() -> dict:
+    return {
+        "hand_cards_at_decision": HAND_CARDS_AT_DECISION,
+        "exact_max_hand_cards_after_action": EXACT_MAX_HAND_CARDS,
+        "exact_max_nodes": EXACT_MAX_NODES,
+        "primary": "acting-team signed exact final attacker-point delta",
+        "secondary": "acting-team signed uncapped level utility delta",
+        "gate": {
+            "overall_point_lcb_gt_0": True,
+            "each_role_point_mean_gt_0": True,
+            "overall_level_utility_mean_ge_0": True,
+            "point_wins_gt_losses": True,
+        },
+        "terminal_authority": [
+            "AUTHORIZE_FULL_GAME_PACKET_REVIEW", "SELECT_NONE"],
+    }
+
+
 def verify_capture(payload: dict) -> None:
     if payload.get("schema") != CAPTURE_SCHEMA:
         raise S4ProtocolError("wrong S4 capture schema")
@@ -475,13 +528,34 @@ def verify_capture(payload: dict) -> None:
             or payload.get("training_authorized") is not False
             or payload.get("strength_claim") is not False):
         raise S4ProtocolError("S4 capture is not score-free")
-    if payload.get("seed0") != SEED0 or payload.get("role_quota") != ROLE_QUOTA:
+    if (payload.get("seed0") != SEED0
+            or payload.get("seed_end_inclusive") != SEED0 + MAX_DEALS - 1
+            or payload.get("role_quota") != ROLE_QUOTA
+            or payload.get("accepted_by_role") != ROLE_QUOTA
+            or payload.get("source_policy") != "heuristic"
+            or payload.get("selection")
+            != "first trigger per role in ascending fresh deal stream"
+            or payload.get("contract") != capture_contract()):
         raise S4ProtocolError("S4 capture constants drifted")
+    deals_scanned = payload.get("deals_scanned")
+    if (isinstance(deals_scanned, bool) or not isinstance(deals_scanned, int)
+            or not 1 <= deals_scanned <= MAX_DEALS):
+        raise S4ProtocolError("S4 capture deal count drifted")
+    observed = payload.get("observed_triggers_by_role")
+    if (not isinstance(observed, dict) or set(observed) != set(ROLE_QUOTA)
+            or any(isinstance(observed[role], bool)
+                   or not isinstance(observed[role], int)
+                   or observed[role] < ROLE_QUOTA[role]
+                   for role in ROLE_QUOTA)):
+        raise S4ProtocolError("S4 observed trigger counts drifted")
     capture_runtime = payload.get("runtime", {})
     if (capture_runtime.get("tree_dirty") is not False
             or capture_runtime.get("promotable") is not True
             or capture_runtime.get("fast_engine") is not True
-            or capture_runtime.get("fast_routed") is not True):
+            or capture_runtime.get("fast_routed") is not True
+            or capture_runtime.get("material_sha256")
+            != material_identity()["sha256"]
+            or "compiled_fast" not in capture_runtime.get("files", {})):
         raise S4ProtocolError("S4 capture runtime is not promotable")
     states = payload.get("states")
     if not isinstance(states, list) or len(states) != sum(ROLE_QUOTA.values()):
@@ -489,28 +563,166 @@ def verify_capture(payload: dict) -> None:
     counts = Counter(row.get("role") for row in states)
     if dict(counts) != ROLE_QUOTA:
         raise S4ProtocolError("S4 capture role population drift")
+    seeds = [row.get("deal_seed") for row in states]
+    if (any(isinstance(seed, bool) or not isinstance(seed, int)
+            for seed in seeds)
+            or seeds != sorted(seeds) or len(seeds) != len(set(seeds))
+            or not all(SEED0 <= seed < SEED0 + deals_scanned for seed in seeds)):
+        raise S4ProtocolError("S4 capture seed population drift")
     for row in states:
         replay_state(row)
+        if row.get("state_id") != f"{row['deal_seed']}:late-last-follow":
+            raise S4ProtocolError("S4 capture state identity drift")
         if row["trigger_delta"].get("triggers") != 1:
             raise S4ProtocolError("S4 capture includes a nontrigger state")
+
+
+def expected_admission(*, git: str, states_sha256: str) -> dict:
+    return {
+        "schema": ADMISSION_SCHEMA,
+        "git": git,
+        "states_sha256": states_sha256,
+        "material_sha256": material_identity()["sha256"],
+        "states": sum(ROLE_QUOTA.values()),
+        "attacker_states": ROLE_QUOTA["attacker"],
+        "defender_states": ROLE_QUOTA["defender"],
+        "unique_deals": sum(ROLE_QUOTA.values()),
+        "score_free": True,
+        "outcomes_computed": False,
+        "independent_review": True,
+        "screen_launch_authorized": True,
+        "full_game_launch_authorized": False,
+        "training_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "verdict": "PASS",
+    }
 
 
 def verify_admission(path: str, *, git: str, states_sha256: str) -> dict:
     with open(path, encoding="utf-8") as fh:
         admission = json.load(fh)
-    required = {
-        "schema": ADMISSION_SCHEMA,
-        "git": git,
-        "states_sha256": states_sha256,
-        "independent_review": True,
-        "screen_launch_authorized": True,
-        "strength_claim": False,
-        "production_promotion": False,
-        "verdict": "PASS",
-    }
-    if any(admission.get(key) != value for key, value in required.items()):
+    if admission != expected_admission(
+            git=git, states_sha256=states_sha256):
         raise S4ProtocolError("S4 external review admission mismatch")
     return admission
+
+
+def screen_receipt(*, git: str, states_sha256: str,
+                   admission_sha256: str) -> dict:
+    return {
+        "schema": SCREEN_RECEIPT_SCHEMA,
+        "run_id": RUN_ID,
+        "complete": True,
+        "git": git,
+        "material_sha256": material_identity()["sha256"],
+        "states_sha256": states_sha256,
+        "review_admission_sha256": admission_sha256,
+        "output_name": "screen.json",
+        "screen_namespace_consumed": True,
+        "screen_launch_authorized": True,
+        "full_game_launch_authorized": False,
+        "training_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "retry_or_extension_authorized": False,
+    }
+
+
+def _real_capture_path(path: str | os.PathLike) -> Path:
+    resolved = Path(path).resolve()
+    if resolved.name != "states.json" or resolved.parent.name != RUN_ID:
+        raise S4ProtocolError(
+            f"real S4 capture requires {RUN_ID}/states.json")
+    return resolved
+
+
+def _real_screen_paths(states: str | os.PathLike,
+                       admission: str | os.PathLike,
+                       output: str | os.PathLike) -> tuple[Path, Path, Path, Path]:
+    state_path = Path(states).resolve()
+    admission_path = Path(admission).resolve()
+    output_path = Path(output).resolve()
+    if (state_path.parent != admission_path.parent
+            or state_path.parent != output_path.parent
+            or state_path.parent.name != RUN_ID
+            or state_path.name != "states.json"
+            or admission_path.name != "review_admission.json"
+            or output_path.name != "screen.json"):
+        raise S4ProtocolError("real S4 screen paths are not the canonical namespace")
+    return (state_path, admission_path, output_path,
+            state_path.parent / "screen_receipt.json")
+
+
+def expected_screen_result(*, states: dict, states_sha256: str,
+                           admission: dict, admission_sha256: str,
+                           receipt_sha256: str, rt: dict) -> dict:
+    rows = [score_state(state) for state in states["states"]]
+    return {
+        "schema": SCREEN_SCHEMA,
+        "run_id": RUN_ID,
+        "complete": True,
+        "git": rt["git"],
+        "runtime": rt,
+        "states_sha256": states_sha256,
+        "review_admission_sha256": admission_sha256,
+        "review_admission": admission,
+        "screen_receipt_sha256": receipt_sha256,
+        "rows": rows,
+        "aggregate": aggregate(rows),
+    }
+
+
+def verify_screen_artifact(*, states_path: Path, admission_path: Path,
+                           output_path: Path, receipt_path: Path,
+                           rt: dict) -> dict:
+    for path in (states_path, admission_path, output_path, receipt_path):
+        require_regular_unlinked(path)
+    observed_sha = sha256_file(states_path)
+    states = _load_json(states_path)
+    verify_capture(states)
+    if states.get("runtime") != rt:
+        raise S4ProtocolError("S4 verifier runtime differs from capture runtime")
+    admission = verify_admission(
+        str(admission_path), git=rt["git"], states_sha256=observed_sha)
+    admission_sha = sha256_file(admission_path)
+    expected_receipt = screen_receipt(
+        git=rt["git"], states_sha256=observed_sha,
+        admission_sha256=admission_sha)
+    receipt = _load_json(receipt_path)
+    if receipt != expected_receipt:
+        raise S4ProtocolError("S4 screen receipt full recomputation drift")
+    expected = expected_screen_result(
+        states=states, states_sha256=observed_sha,
+        admission=admission, admission_sha256=admission_sha,
+        receipt_sha256=sha256_file(receipt_path), rt=rt)
+    actual = _load_json(output_path)
+    if actual != expected:
+        raise S4ProtocolError("S4 screen full recomputation drift")
+    return actual
+
+
+def _load_json(path: str | os.PathLike) -> dict:
+    try:
+        value = json.loads(Path(path).read_bytes())
+    except (OSError, ValueError) as exc:
+        raise S4ProtocolError(f"cannot reopen JSON {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise S4ProtocolError(f"JSON root is not an object: {path}")
+    return value
+
+
+def require_regular_unlinked(path: str | os.PathLike, *, final: bool = True) -> None:
+    artifact = Path(path)
+    partial = Path(str(artifact) + ".partial")
+    try:
+        info = artifact.lstat()
+    except FileNotFoundError as exc:
+        raise S4ProtocolError(f"missing S4 artifact: {artifact}") from exc
+    if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+            or (final and os.path.lexists(partial))):
+        raise S4ProtocolError(
+            f"S4 artifact is linked, nonregular, or has a partial: {artifact}")
 
 
 def main() -> None:
@@ -525,43 +737,75 @@ def main() -> None:
     screen.add_argument("--review-admission", required=True)
     screen.add_argument("--out", required=True)
     screen.add_argument("--smoke", action="store_true")
+    verify = sub.add_parser("verify-screen")
+    verify.add_argument("--states", required=True)
+    verify.add_argument("--expected-states-sha256", required=True)
+    verify.add_argument("--review-admission", required=True)
+    verify.add_argument("--screen", required=True)
+    verify.add_argument("--smoke", action="store_true")
     args = parser.parse_args()
 
     rt = runtime(smoke=args.smoke)
     if args.command == "capture":
+        if not args.smoke:
+            _real_capture_path(args.out)
         payload = capture_states(
             seed0=SEED0, max_deals=MAX_DEALS,
             role_quota=dict(ROLE_QUOTA), progress=True)
         payload["runtime"] = rt
-        payload["contract"] = {
-            "hand_cards_at_decision": HAND_CARDS_AT_DECISION,
-            "exact_max_hand_cards_after_action": EXACT_MAX_HAND_CARDS,
-            "exact_max_nodes": EXACT_MAX_NODES,
-            "primary": "acting-team signed exact final attacker-point delta",
-            "gate": {
-                "overall_point_lcb_gt_0": True,
-                "each_role_point_mean_gt_0": True,
-                "overall_level_utility_mean_ge_0": True,
-                "point_wins_gt_losses": True,
-            },
-            "terminal_authority": [
-                "AUTHORIZE_FULL_GAME_PACKET_REVIEW", "SELECT_NONE"],
-        }
+        payload["contract"] = capture_contract()
         publish_exclusive(args.out, payload)
         print(f"S4_CAPTURE_COMPLETE path={args.out} "
               f"sha256={sha256_file(args.out)} states={len(payload['states'])}")
         return
 
-    observed_sha = sha256_file(args.states)
+    if args.command == "verify-screen":
+        if not args.smoke:
+            states_path, admission_path, output_path, receipt_path = \
+                _real_screen_paths(
+                    args.states, args.review_admission, args.screen)
+        else:
+            states_path = Path(args.states)
+            admission_path = Path(args.review_admission)
+            output_path = Path(args.screen)
+            receipt_path = output_path.with_name("screen_receipt.json")
+        if sha256_file(states_path) != args.expected_states_sha256:
+            raise S4ProtocolError("S4 states SHA does not match verifier input")
+        result = verify_screen_artifact(
+            states_path=states_path, admission_path=admission_path,
+            output_path=output_path, receipt_path=receipt_path, rt=rt)
+        print(f"S4_SCREEN_VERIFIED path={output_path} "
+              f"sha256={sha256_file(output_path)} "
+              f"verdict={result['aggregate']['verdict']}")
+        return
+
+    if not args.smoke:
+        states_path, admission_path, output_path, receipt_path = \
+            _real_screen_paths(args.states, args.review_admission, args.out)
+    else:
+        states_path = Path(args.states)
+        admission_path = Path(args.review_admission)
+        output_path = Path(args.out)
+        receipt_path = output_path.with_name("screen_receipt.json")
+    require_regular_unlinked(states_path)
+    require_regular_unlinked(admission_path)
+    observed_sha = sha256_file(states_path)
     if observed_sha != args.expected_states_sha256:
         raise S4ProtocolError("S4 states SHA does not match predeclared input")
-    with open(args.states, encoding="utf-8") as fh:
-        states = json.load(fh)
+    states = _load_json(states_path)
     verify_capture(states)
-    if states.get("runtime", {}).get("git") != rt["git"]:
-        raise S4ProtocolError("S4 screen git differs from capture git")
+    if states.get("runtime") != rt:
+        raise S4ProtocolError("S4 screen runtime differs from capture runtime")
     admission = verify_admission(
-        args.review_admission, git=rt["git"], states_sha256=observed_sha)
+        str(admission_path), git=rt["git"], states_sha256=observed_sha)
+    admission_sha = sha256_file(admission_path)
+    receipt = screen_receipt(
+        git=rt["git"], states_sha256=observed_sha,
+        admission_sha256=admission_sha)
+    # Publishing this receipt consumes the one canonical screen namespace
+    # before the first outcome is computed.  A crash or solver refusal leaves
+    # the receipt in place and cannot be retried as the same experiment.
+    publish_exclusive(receipt_path, receipt)
     rows = []
     for index, state in enumerate(states["states"], start=1):
         rows.append(score_state(state))
@@ -570,17 +814,19 @@ def main() -> None:
                   flush=True)
     result = {
         "schema": SCREEN_SCHEMA,
+        "run_id": RUN_ID,
         "complete": True,
         "git": rt["git"],
         "runtime": rt,
         "states_sha256": observed_sha,
-        "review_admission_sha256": sha256_file(args.review_admission),
+        "review_admission_sha256": admission_sha,
         "review_admission": admission,
+        "screen_receipt_sha256": sha256_file(receipt_path),
         "rows": rows,
         "aggregate": aggregate(rows),
     }
-    publish_exclusive(args.out, result)
-    print(f"S4_SCREEN_COMPLETE path={args.out} sha256={sha256_file(args.out)} "
+    publish_exclusive(output_path, result)
+    print(f"S4_SCREEN_COMPLETE path={output_path} sha256={sha256_file(output_path)} "
           f"verdict={result['aggregate']['verdict']}")
 
 

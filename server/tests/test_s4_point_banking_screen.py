@@ -22,7 +22,8 @@ def _real_trigger_row():
 
 
 def test_frozen_population_and_exact_boundary_constants():
-    assert S4.SEED0 == 160_000_000
+    assert S4.RUN_ID == "s4-point-banking-state-screen-161m-v2"
+    assert S4.SEED0 == 161_000_000
     assert S4.MAX_DEALS == 200_000
     assert S4.ROLE_QUOTA == {"attacker": 32, "defender": 32}
     assert S4.HAND_CARDS_AT_DECISION == 3
@@ -30,6 +31,22 @@ def test_frozen_population_and_exact_boundary_constants():
     assert S4.EXACT_MAX_NODES == 50_000
     assert S4.T_CRITICAL_OVERALL == 1.669
     assert S4.T_CRITICAL_ROLE == 1.696
+
+
+@pytest.mark.parametrize("points,attacker,defender", [
+    (0, -3.5, 3.5),
+    (39, -2.5, 2.5),
+    (40, -1.5, 1.5),
+    (79, -1.5, 1.5),
+    (80, 0.5, -0.5),
+    (119, 0.5, -0.5),
+    (120, 1.5, -1.5),
+    (160, 2.5, -2.5),
+])
+def test_secondary_level_utility_matches_house_brackets(
+        points, attacker, defender):
+    assert S4._round_team_level_value(points, True) == attacker
+    assert S4._round_team_level_value(points, False) == defender
 
 
 def test_named_real_state_round_trips_full_physical_deck_and_exact_scores():
@@ -96,24 +113,47 @@ def test_aggregate_refuses_role_shortfall_and_duplicate_deals():
 
 def test_review_admission_is_exactly_bound_to_git_and_state_asset(tmp_path):
     path = tmp_path / "admission.json"
-    record = {
-        "schema": S4.ADMISSION_SCHEMA,
-        "git": "a" * 40,
-        "states_sha256": "b" * 64,
-        "independent_review": True,
-        "screen_launch_authorized": True,
-        "strength_claim": False,
-        "production_promotion": False,
-        "verdict": "PASS",
-    }
+    record = S4.expected_admission(git="a" * 40, states_sha256="b" * 64)
     path.write_text(json.dumps(record))
     assert S4.verify_admission(
         str(path), git="a" * 40, states_sha256="b" * 64) == record
-    record["screen_launch_authorized"] = False
+    record["training_authorized"] = True
     path.write_text(json.dumps(record))
     with pytest.raises(S4.S4ProtocolError, match="admission mismatch"):
         S4.verify_admission(
             str(path), git="a" * 40, states_sha256="b" * 64)
+
+    record = S4.expected_admission(git="a" * 40, states_sha256="b" * 64)
+    record["unexpected_authority"] = True
+    path.write_text(json.dumps(record))
+    with pytest.raises(S4.S4ProtocolError, match="admission mismatch"):
+        S4.verify_admission(
+            str(path), git="a" * 40, states_sha256="b" * 64)
+
+
+def test_screen_receipt_consumes_exactly_one_namespace(tmp_path):
+    receipt = S4.screen_receipt(
+        git="a" * 40, states_sha256="b" * 64,
+        admission_sha256="c" * 64)
+    assert receipt["screen_namespace_consumed"] is True
+    assert receipt["retry_or_extension_authorized"] is False
+    assert receipt["full_game_launch_authorized"] is False
+    path = tmp_path / "screen_receipt.json"
+    S4.publish_exclusive(path, receipt)
+    with pytest.raises(S4.S4ProtocolError, match="refusing existing"):
+        S4.publish_exclusive(path, receipt)
+
+
+def test_real_namespace_paths_are_closed():
+    root = Path("/tmp") / S4.RUN_ID
+    paths = S4._real_screen_paths(
+        root / "states.json", root / "review_admission.json",
+        root / "screen.json")
+    assert paths[-1].name == "screen_receipt.json"
+    with pytest.raises(S4.S4ProtocolError, match="canonical namespace"):
+        S4._real_screen_paths(
+            root / "states.json", root / "review_admission.json",
+            root / "screen-copy.json")
 
 
 def test_exclusive_publish_never_overwrites_or_resumes(tmp_path):
@@ -129,3 +169,16 @@ def test_exclusive_publish_never_overwrites_or_resumes(tmp_path):
     with pytest.raises(S4.S4ProtocolError, match="refusing existing"):
         S4.publish_exclusive(partial_target, {"second": True})
     assert not partial_target.exists()
+
+
+def test_artifact_verifier_rejects_symlinks_and_partials(tmp_path):
+    target = tmp_path / "target.json"
+    target.write_text("{}")
+    linked = tmp_path / "linked.json"
+    linked.symlink_to(target)
+    with pytest.raises(S4.S4ProtocolError, match="linked, nonregular"):
+        S4.require_regular_unlinked(linked)
+
+    Path(str(target) + ".partial").write_text("stale")
+    with pytest.raises(S4.S4ProtocolError, match="has a partial"):
+        S4.require_regular_unlinked(target)

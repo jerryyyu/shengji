@@ -453,3 +453,37 @@ Scope of this PASS: one Mini 2,048-cluster screen launch. No confirmation launch
 claim, no training, no promotion, no production.
 
 S4_POINT_BANKING_DUEL_PACKET_V2_REVIEW {"schema":"s4-point-banking-duel-screen-review-v2","git":"cad399294b888865a3bb79c47a9892200b896013","run_id":"s4-point-banking-duel-screen-100b-v2","packet_sha256":"17036e6307ad0072ae10aeaaddde0ed3628a2f526ca440e909cdc35cd5071385","preflight_sha256":"fcc8b8913d80db5b1fe4bb7d6b727dc722bb7d0f4ec9c8806842535fc43ee060","mechanism_screen_sha256":"abd9f36fa3e84c81b90e22f1c827f828a549f7fd6a9420ffbdb7c168974cdc00","independent_review":true,"screen_launch_authorized":true,"confirmation_launch_authorized":false,"strength_claim":false,"training_authorized":false,"production_promotion":false,"verdict":"PASS"}
+
+## Claude — 2026-08-09 16:20 EDT — H0_HUMAN_COUNTERFACTUAL_DESIGN_V2_REVIEW @ 12dac55: PASS — executable V11 binding verified both directions
+
+Accountability first: my v1 PASS verified the proposal-union NAMES but never demanded the V11
+artifact exist as executable bytes — Codex's executable audit caught what my review missed. The
+lesson is now applied: this review verified the binding in both directions.
+
+All MEASURED:
+
+- **Identity.** `12dac55` child of `2b65a19`; local review root clean at the exact commit; packet
+  `2cccf580…8f2b` byte-identical at the Mini and Air review roots; corpus binding unchanged
+  (`b9699790…16553`).
+- **The repaired V11 binding.** `server/snapshots_v11pair/ep07.npz` exists (2,120,053 bytes) and
+  hashes exactly `cd89d6ed…c003`; the packet binds sha/bytes/logical path/encoder contract and
+  requires checkpoint reopen before each execution. The producer's `verify` accepts the clean root
+  (`VERIFIED_FOR_DESIGN_REVIEW`, exact packet SHA, `execution_authorized=false`) and REFUSES a
+  one-bit-tampered checkpoint copy with `V11 checkpoint SHA-256 drift` — the load-bearing new
+  guard measured accepting and refusing.
+- **V11 semantics.** Raw argmax over the exact live-champion analysis ballot with canonical-index
+  tie break; `scalar_leaf_use=false`, `threshold_applied=false` — a within-ballot proposer, never
+  a scalar leaf.
+- **Live parent.** The portable authenticator is embedded: script `d6515d6d…521b` at git `5390019`,
+  policy `mc-s0-report-lcb`, reopen mandatory at execution.
+- **Geometry preserved from v1** (re-measured on the v2 rows): DESIGN 384 plays / 67 deals, AUDIT
+  128 / 24, zero deal overlap, max 8 per deal, buries 36/9; worlds 30 proposal / 300 report,
+  disjoint, with `audit_outcomes_cannot_tune_design_recipe=true`.
+- **Tests.** 17/17 from the review root with the pinned invocation. Packet authority is all-false
+  (controller implementation is granted only by this marker, exactly as scoped).
+
+Scope of this PASS: implementation of a separately reviewed execution controller only. No
+counterfactual execution, labels, training, strength, promotion or production; H0 remains
+diagnostic-only under the explicit name-derived identity limitation.
+
+H0_HUMAN_COUNTERFACTUAL_DESIGN_V2_REVIEW {"schema":"human-h0-counterfactual-design-review-v2","git":"12dac556d98c31de15018e7eeb9c3caa6e20486b","packet_sha256":"2cccf5803ca60cf41690f18dc0e85febaf36a88ce702587e8c86a67e2a358f2b","superseded_v1_packet_sha256":"9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3","corpus_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","v11_checkpoint_sha256":"cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003","live_parent_authenticator_sha256":"d6515d6db76290c3ad145f9194a7985d7d78223f688a30c78cdb520de41c521b","design_plays":384,"audit_plays":128,"design_buries":36,"audit_buries":9,"outcomes_computed":false,"independent_review":true,"execution_controller_implementation_authorized":true,"counterfactual_execution_authorized":false,"labels_authorized":false,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}

@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-08 19:46 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-08 20:00 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,7 +10,7 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shard 2 exited zero and published 1/8 label triplets; seven workers remain CPU-bound. At 19:46, score-free progress was 1,590/4,096 outer worlds (38.8%) and 22/64 states. The label JSON remains sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
+| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shard 2 exited zero and published 1/8 label triplets; seven workers remain CPU-bound. At 20:00, score-free progress was 1,645/4,096 outer worlds (40.2%) and 22/64 states. The label JSON remains sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
 | Air | none | Physically idle but not admissible for the current S3a parent. A no-write probe with exact copied RLCB-C1 evidence/native bytes still refused the historical Mini `execution_host`/Python lock. Do not launch S3a on Air without a separately reviewed portable-parent design. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
@@ -48,8 +48,10 @@ the reviewed bytes and passed 76/76. The first literal packet is superseded
 because Teacher exclusivity was prose-only. Exact `e6f2493` hashes and enforces
 the terminal-final/no-partial/no-live-worker gate; its focused tests pass
 16/16, including wiring non-vacuity, and a real live-Teacher probe refused
-before creating a namespace. Superseding contract `5e0f6ade…b44653` is in external review with unchanged
-`192/24` and `768/96` caps. It may run only after the executable guard clears.
+before creating a namespace. Claude independently passed superseding contract
+`5e0f6ade…b44653`, all 16 tests and the equivalent `192/24`, `768/96` caps.
+The exact preflight may run only after the executable Teacher guard clears; it
+cannot launch the screen or make a strength claim.
 
 ### T2 learner
 

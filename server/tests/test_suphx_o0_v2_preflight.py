@@ -93,7 +93,14 @@ def test_contract_is_disposable_redacted_and_non_authorizing():
     assert contract["iterations_per_endpoint"] == 1
     assert contract["registered_training_iterations"] == 64
     assert contract["registered_training_endpoints"] == 32
-    assert contract["registered_evaluation_rounds"] == 12_288
+    assert contract["registered_evaluation_generation_rounds"] == 12_288
+    assert contract[
+        "registered_semantic_replay_passes_after_generation"] == 4
+    assert contract["registered_semantic_replay_rounds"] == 49_152
+    assert contract["registered_total_evaluation_executions"] == 61_440
+    assert contract["parallel_evaluation_passes"] == 2
+    assert contract["serial_gate_replay_passes"] == 3
+    assert contract["independent_verify_gate_replay_required"] is True
     assert contract["disposable_training_deal_seed"] \
         == preflight.CrossedCRNStreams(
             preflight.PREFLIGHT_CRN_SPEC,
@@ -201,6 +208,14 @@ def test_projection_uses_maximum_timings_and_refuses_bad_shapes():
     assert projection["training_seconds_with_safety"] \
         == 2.0 * preflight.ITERATIONS * preflight.TRAINING_ENDPOINTS \
         / preflight.PARALLEL_JOBS * preflight.TIMING_SAFETY_FACTOR
+    assert projection["parallel_evaluation_seconds_with_safety"] \
+        == 0.4 * preflight.EVALUATION_ROUNDS \
+        * preflight.PARALLEL_EVALUATION_PASSES \
+        / preflight.PARALLEL_JOBS * preflight.TIMING_SAFETY_FACTOR
+    assert projection["serial_gate_replay_seconds_with_safety"] \
+        == 0.4 * preflight.EVALUATION_ROUNDS \
+        * preflight.SERIAL_GATE_REPLAY_PASSES \
+        * preflight.TIMING_SAFETY_FACTOR
 
     bad = copy.deepcopy(endpoints)
     bad[0]["unexpected"] = True

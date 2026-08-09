@@ -45,10 +45,14 @@ from .suphx_o0_v2_screen import (
     CRN_SPEC,
     EVAL_DEALS,
     EVAL_SEED0,
+    EVALUATION_ROUNDS,
     EXPECTED_SURFACES,
     ITERATIONS,
     MARGIN_SPEC,
+    PARALLEL_EVALUATION_PASSES,
     RUNNER_SPEC_SHA256,
+    SEMANTIC_REPLAY_PASSES_AFTER_GENERATION,
+    SERIAL_GATE_REPLAY_PASSES,
     _GreedyOrdinary,
     _SetupComposite,
     runtime_identity,
@@ -77,7 +81,6 @@ TIMING_SAFETY_FACTOR = 2.0
 MAX_PREFLIGHT_SECONDS = 600.0
 MAX_PROJECTED_WALL_SECONDS = 8 * 60 * 60.0
 TRAINING_ENDPOINTS = len(CELLS) * len(ARMS) * 8
-EVALUATION_ROUNDS = 8 * len(CELLS) * 3 * EVAL_DEALS * 2
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 EXPECTED_PREFLIGHT_PATH = (_REPO_ROOT / PREFLIGHT_RELATIVE_PATH).resolve()
@@ -121,7 +124,16 @@ def _contract() -> dict[str, Any]:
         "evaluation_rounds": PREFLIGHT_EVAL_ROUNDS,
         "registered_training_iterations": ITERATIONS,
         "registered_training_endpoints": TRAINING_ENDPOINTS,
-        "registered_evaluation_rounds": EVALUATION_ROUNDS,
+        "registered_evaluation_generation_rounds": EVALUATION_ROUNDS,
+        "registered_semantic_replay_passes_after_generation":
+            SEMANTIC_REPLAY_PASSES_AFTER_GENERATION,
+        "registered_semantic_replay_rounds": (
+            EVALUATION_ROUNDS * SEMANTIC_REPLAY_PASSES_AFTER_GENERATION),
+        "registered_total_evaluation_executions": EVALUATION_ROUNDS * (
+            1 + SEMANTIC_REPLAY_PASSES_AFTER_GENERATION),
+        "parallel_evaluation_passes": PARALLEL_EVALUATION_PASSES,
+        "serial_gate_replay_passes": SERIAL_GATE_REPLAY_PASSES,
+        "independent_verify_gate_replay_required": True,
         "parallel_jobs": PARALLEL_JOBS,
         "timing_safety_factor": TIMING_SAFETY_FACTOR,
         "max_preflight_seconds": MAX_PREFLIGHT_SECONDS,
@@ -293,15 +305,25 @@ def _projection_and_criteria(
         maximum_training_iteration * ITERATIONS * TRAINING_ENDPOINTS
         / PARALLEL_JOBS * TIMING_SAFETY_FACTOR
     )
-    projected_evaluation = (
+    projected_parallel_evaluation = (
         maximum_evaluation_round * EVALUATION_ROUNDS
+        * PARALLEL_EVALUATION_PASSES
         / PARALLEL_JOBS * TIMING_SAFETY_FACTOR
     )
+    projected_serial_replay = (
+        maximum_evaluation_round * EVALUATION_ROUNDS
+        * SERIAL_GATE_REPLAY_PASSES * TIMING_SAFETY_FACTOR
+    )
+    projected_evaluation = (
+        projected_parallel_evaluation + projected_serial_replay)
     projected_total = projected_training + projected_evaluation
     projection = {
         "maximum_training_iteration_seconds": maximum_training_iteration,
         "maximum_evaluation_round_seconds": maximum_evaluation_round,
         "training_seconds_with_safety": projected_training,
+        "parallel_evaluation_seconds_with_safety":
+            projected_parallel_evaluation,
+        "serial_gate_replay_seconds_with_safety": projected_serial_replay,
         "evaluation_seconds_with_safety": projected_evaluation,
         "total_wall_seconds_with_safety": projected_total,
     }

@@ -140,6 +140,13 @@ COMPARISONS = (
     "same_model_null",
 )
 EXPECTED_SURFACES = tuple(POLICY_SPEC["surfaces"])
+EVALUATION_ROUNDS = (
+    len(TRAINING_SEED_INDICES) * len(CELLS) * len(COMPARISONS)
+    * EVAL_DEALS * 2
+)
+SEMANTIC_REPLAY_PASSES_AFTER_GENERATION = 4
+PARALLEL_EVALUATION_PASSES = 2
+SERIAL_GATE_REPLAY_PASSES = 3
 
 # Two predeclared cell-level oracle-minus-public tests share a family-wise
 # one-sided alpha of at most .05 by Bonferroni (.025 each), df=8-1.
@@ -389,6 +396,17 @@ def _spec_payload() -> dict[str, Any]:
             "declaration": "SmartBot",
             "burial": "SmartBot",
             "training_use": False,
+            "semantic_replay": {
+                "post_publication_endpoint_replay": True,
+                "gate_compute_replay": True,
+                "gate_internal_verify_replay": True,
+                "independent_verify_gate_replay_required": True,
+                "passes_after_generation":
+                    SEMANTIC_REPLAY_PASSES_AFTER_GENERATION,
+                "rounds_per_pass": EVALUATION_ROUNDS,
+                "total_evaluation_executions": EVALUATION_ROUNDS * (
+                    1 + SEMANTIC_REPLAY_PASSES_AFTER_GENERATION),
+            },
         },
         "inference": {
             "unit": "training seed mean over 128 paired deals and two flips",
@@ -1364,7 +1382,7 @@ def evaluate_seed_cell(
         "production_promotion": False,
     }
     ref = _publish_json(_evaluation_path(root, index, cell), payload)
-    _load_evaluation(root, index, cell, semantic_replay=False)
+    _load_evaluation(root, index, cell)
     return ref
 
 
@@ -1424,7 +1442,7 @@ def _exact_two_flip_means(
 
 
 def _load_evaluation(
-        root: str | Path, index: int, cell: str, *, semantic_replay: bool) \
+        root: str | Path, index: int, cell: str) \
         -> tuple[CheckpointRef, dict[str, dict[int, float]], dict[str, Any]]:
     root = _require_run_root(root)
     packet_ref, admission_ref, _ = _require_admission(root)
@@ -1554,22 +1572,21 @@ def _load_evaluation(
                 or row.get("candidate_signed_return") != signed \
                 or row.get("candidate_won") != int(signed > 0.0):
             raise SuphxO0V2ScreenError("evaluation signed utility drift")
-        if semantic_replay:
-            expected = _comparison_round(
-                comparison=row["comparison"],
-                index=index,
-                cell=cell,
-                deal_seed=row["deal_seed"],
-                flip=row["flip"],
-                candidate_model=candidate_model,
-                reference_model=reference_model,
-                candidate_ref=candidate_ref,
-                reference_ref=reference_ref,
-                candidate_gamma=candidate_gamma,
-                reference_gamma=reference_gamma,
-            )
-            if dict(row) != expected:
-                raise SuphxO0V2ScreenError("evaluation semantic replay drift")
+        expected = _comparison_round(
+            comparison=row["comparison"],
+            index=index,
+            cell=cell,
+            deal_seed=row["deal_seed"],
+            flip=row["flip"],
+            candidate_model=candidate_model,
+            reference_model=reference_model,
+            candidate_ref=candidate_ref,
+            reference_ref=reference_ref,
+            candidate_gamma=candidate_gamma,
+            reference_gamma=reference_gamma,
+        )
+        if dict(row) != expected:
+            raise SuphxO0V2ScreenError("evaluation semantic replay drift")
         grouped[row["comparison"]].append(row)
     if seen != expected_keys:
         raise SuphxO0V2ScreenError("evaluation expected population drift")
@@ -1610,6 +1627,26 @@ def _terminal_verdict(advanced: Sequence[str]) -> str:
     if not cells:
         return "SELECT_NONE"
     raise SuphxO0V2ScreenError("terminal advanced-cell population drift")
+
+
+def _semantic_replay_contract() -> dict[str, Any]:
+    return {
+        "required": True,
+        "post_publication_endpoint_replay": True,
+        "gate_compute_replay": True,
+        "gate_internal_verify_replay": True,
+        "independent_verify_gate_replay_required": True,
+        "passes_after_generation": SEMANTIC_REPLAY_PASSES_AFTER_GENERATION,
+        "rounds_per_pass": EVALUATION_ROUNDS,
+        "parallel_passes": PARALLEL_EVALUATION_PASSES,
+        "serial_gate_replay_passes": SERIAL_GATE_REPLAY_PASSES,
+        "total_evaluation_executions": EVALUATION_ROUNDS * (
+            1 + SEMANTIC_REPLAY_PASSES_AFTER_GENERATION),
+        "binds": [
+            "model_refs", "deal_seed", "flip", "compiled_engine",
+            "banker", "attacker_points", "signed_return", "diagnostics",
+        ],
+    }
 
 
 def _cell_criteria(
@@ -1672,7 +1709,7 @@ def _compute_gate(root: str | Path) -> dict[str, Any]:
                     training_ref.as_dict()
                 cell_receipts.extend(receipts)
             evaluation_ref, comparisons, _ = _load_evaluation(
-                root, index, cell, semantic_replay=False)
+                root, index, cell)
             inputs["evaluation"][cell][str(index)] = evaluation_ref.as_dict()
             seed_means[cell][str(index)] = {
                 comparison: float(np.mean(list(values.values())))
@@ -1729,6 +1766,7 @@ def _compute_gate(root: str | Path) -> dict[str, Any]:
         "cell_primary": primary,
         "cross_cell_interaction_diagnostic": interaction,
         "cross_arm_coupling": coupling,
+        "semantic_replay_contract": _semantic_replay_contract(),
         "cell_criteria": criteria,
         "advanced_cells": advanced,
         "verdict": verdict,
@@ -1764,7 +1802,8 @@ def verify_gate(ref: CheckpointRef) -> dict[str, Any]:
         "schema", "screen_schema", "run_id", "root", "inputs",
         "training_seeds_are_inference_units", "seed_comparison_means",
         "cell_primary", "cross_cell_interaction_diagnostic",
-        "cross_arm_coupling", "cell_criteria", "advanced_cells", "verdict",
+        "cross_arm_coupling", "semantic_replay_contract", "cell_criteria",
+        "advanced_cells", "verdict",
         "authorizes_o1_freeze_and_independent_review",
         "authorizes_o1_training", "strength_claim", "production_promotion",
     }
@@ -1773,6 +1812,8 @@ def verify_gate(ref: CheckpointRef) -> dict[str, Any]:
             or payload.get("screen_schema") != SCREEN_SCHEMA \
             or payload.get("run_id") != RUN_ID \
             or payload.get("training_seeds_are_inference_units") is not True \
+            or payload.get("semantic_replay_contract") \
+            != _semantic_replay_contract() \
             or payload.get("verdict") not in {
                 "ADVANCE_BOTH", "ADVANCE_CRN_CONTROL",
                 "ADVANCE_CRN_PLUS_MARGIN", "SELECT_NONE"} \

@@ -161,3 +161,45 @@ Scope of this PASS: freezing one H0 **design packet** for review. No labels, no 
 strength claim, no promotion, no production.
 
 HUMAN_V8_CORPUS_V1_REVIEW {"git":"b52dc33c45f54fabf2ef44e23da530bc3f48e032","source_manifest_sha256":"07ff18fb35f2fb987f18b37b5100172e2751681fbfed17285ce7d7035232aa5e","corpus_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","snapshot_sources":30,"legacy_sources_excluded":12,"play_rows":2830,"bury_rows":45,"producer_clean":true,"independent_review":true,"h0_design_packet_authorized":true,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}
+
+## Claude — 2026-08-09 12:24 EDT — S4 point-banking packet @ 402c012: HOLD — the ordered material SHA does not reproduce; everything else verifies
+
+**The blocker (concrete and narrow).** The requested marker binds
+`material_sha256=96f547f78150035dbf0be13fc56ac5f38280231fd8c671d8550284ff1c9124b3`, and I cannot
+reproduce that value from the four named files, whose individual SHA-256s all match the request
+exactly (point policy `49d10d13…24cd1`, screen `438384fd…99bb`, policy tests `d5c022ca…f2d3`,
+screen tests `6ca9042c…2163`). I tried every permutation of the four paths under the established
+shasum-lines construction plus variants: `sha  path` with `server/`-prefixed, `./`-prefixed,
+absolute, and basename paths; one-space, star-binary, path-first and colon formats; with and
+without trailing newline; the five-path variant including `states.json`; hash-only, hex- and
+binary-digest concatenation; and raw concatenated file bytes — roughly a thousand constructions,
+none matching. I will not sign a marker binding a value I cannot recompute. Please repost with
+either a corrected `material_sha256` or the exact recipe (file list, order, line format) that
+yields `96f547f7…`. Secondary ask: the `90/90` and `30/30` battery claims name no invocation — the
+two S4 test files collect 16 tests (16/16 pure AND compiled, measured); please pin the exact
+pytest commands for both counts in the repost.
+
+**Everything else verifies (measured), so the repost can be delta-only:**
+
+- Identity: `402c012` is a direct child of `13b6b8f`; the delta adds exactly the four files; the
+  sealed modules (`mcbot.py`, `registry.py`, `heuristic.py`, `smart.py`) are untouched — the
+  experiment wraps the exact champion class and refuses a non-heuristic rollout or any enabled S3
+  feature at construction.
+- Asset: `states.json` hashes exactly `f44a0c72…e6b72`; `score_free=true`,
+  `outcomes_computed=false`, `training_authorized=false`; 64 states, 32 attacker / 32 defender by
+  the `role` field, 64 unique deal seeds, 67,237 deals scanned from seed 160,000,000; no
+  outcome-shaped field exists in any state record.
+- Mechanism semantics, read at the seam: continuation-only `_follow` override; the historical
+  contest/no-contest decision is preserved (a non-winning baseline always declines); triggers
+  require last seat (`len(trick.plays) == 3`) and a same-suit higher winning reserve; the null
+  performs identical validation/`beats` work and the telemetry validator enforces the exact
+  counter identities (`triggers = attacker + defender`, `changes/noops` vs `apply_treatment`,
+  `triggers <= opportunities`), with hard assertions on impossible/zero point gain and unchanged
+  action.
+- Witnesses non-vacuous: neutralizing the higher-reserve requirement turns exactly
+  `test_named_negative_witness_declines_when_point_card_is_future_control` red (the treatment
+  banks HK it should hold as future control); restored 16/16 pure and compiled.
+
+No authority is granted by this entry. The screen remains unlaunched; S3a remains sealed and
+running. On the repost I expect to verify only the material recipe and the two battery
+invocations, then issue the marker.

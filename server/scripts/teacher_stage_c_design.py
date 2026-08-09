@@ -846,6 +846,54 @@ def packet_problems(actual: dict, expected: dict) -> list[str]:
     return sorted(set(problems))
 
 
+def expected_review_claim(packet: dict, packet_sha256: str) -> dict:
+    if (packet.get("schema") != SCHEMA
+            or packet.get("producer", {}).get("promotable") is not True
+            or len(packet_sha256) != 64):
+        raise StageCDesignError("cannot derive review claim from packet")
+    splits = packet["population_contract"]["splits"]
+    candidates = packet["candidate_contract"]
+    work = packet["work_contract"]
+    return {
+        "schema": REVIEW_SCHEMA,
+        "git": packet["producer"]["git"],
+        "script_sha256": packet["producer"]["script_sha256"],
+        "packet_sha256": packet_sha256,
+        "adapter_sha256": ADAPTER_SHA256,
+        "h0_controller_sha256": H0_CONTROLLER_SHA256,
+        "h0_controller_review_schema": H0_CONTROLLER.REVIEW_SCHEMA,
+        "live_parent_schema": LIVE_PARENT_AUTH.SCHEMA,
+        "live_parent_policy": LIVE_PARENT_AUTH.CHAMPION_POLICY,
+        "states": packet["population_contract"]["total_states"],
+        "design_states": splits["DESIGN"]["total"],
+        "calib_states": splits["CALIB"]["total"],
+        "report_states": splits["REPORT"]["total"],
+        "play_candidate_cap": candidates["max_unique_play_actions"],
+        "bury_candidate_cap": candidates["max_unique_bury_actions"],
+        "max_candidate_worlds": work["all_optional_mechanisms_max"],
+        "recursive_mc_continuation_rollouts":
+            work["recursive_mc_continuation_rollouts"],
+        "ordinary_worlds": [
+            ORDINARY_SELECTION_WORLDS, ORDINARY_REPORT_WORLDS],
+        "hard_tail_selection_worlds": HARD_TAIL_SELECTION_WORLDS,
+        "hard_tail_report_worlds": HARD_TAIL_REPORT_WORLDS,
+        "audit_selection_worlds": AUDIT_REFERENCE_SELECTION_WORLDS,
+        "audit_report_worlds": AUDIT_REFERENCE_REPORT_WORLDS,
+        "score_free": True,
+        "worlds_sampled_before_review": 0,
+        "outcomes_computed_before_review": False,
+        "independent_review": True,
+        "capture_controller_implementation_authorized": True,
+        "state_capture_authorized": False,
+        "labels_authorized": False,
+        "training_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+        "verdict": "PASS",
+    }
+
+
 def publish_exclusive(path: Path, payload: dict) -> None:
     partial = Path(str(path) + ".partial")
     path.parent.mkdir(parents=True, exist_ok=True)

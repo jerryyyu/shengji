@@ -271,6 +271,13 @@ def test_v3_packet_binds_executable_h0_and_conditional_mechanisms(
     assert review["schema"] == stage_c.REVIEW_SCHEMA
     assert review["pass_authorizes"].startswith("implementation of one")
     assert "state capture" in review["pass_does_not_authorize"]
+    reviewable = json.loads(json.dumps(packet))
+    reviewable["producer"]["promotable"] = True
+    claim = stage_c.expected_review_claim(reviewable, "e" * 64)
+    assert set(claim) == set(review["required_claim_fields"])
+    assert claim["max_candidate_worlds"] == 10_494_720
+    assert claim["capture_controller_implementation_authorized"] is True
+    assert claim["state_capture_authorized"] is False
 
     gate = packet["gate_contract"]
     assert gate["audit_reference"]["selection_worlds"] == 128

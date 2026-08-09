@@ -26,9 +26,15 @@ def _adapter() -> dict:
         "training_authorized": False,
         "production_promotion": False,
         "contract": {
+            "packet_id": stage_c.PACKET_ID,
             "decision": "DESIGN_HARD_TAIL_STAGE_C",
             "next_authority": "AUTHORIZE_STAGE_C_PACKET_REVIEW",
             "model_work_authorized_only_after_teacher_gate": True,
+            "live_parent": {
+                "policy": stage_c.LIVE_PARENT_AUTH.CHAMPION_POLICY,
+                "authenticator": stage_c.LIVE_PARENT_AUTH.SCHEMA,
+                "must_reopen_at_packet_freeze": True,
+            },
             "separate_gates_required": [
                 "hard_tail_regret_upper_bound",
                 "ordinary_anchor_regret_upper_bound",
@@ -93,6 +99,25 @@ def test_adapter_requires_design_only_pass(monkeypatch: pytest.MonkeyPatch,
         stage_c.validate_adapter(path, stage_c.ADAPTER_SHA256)
 
 
+def test_adapter_requires_exact_packet_and_live_parent(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    path = tmp_path / "adapter.json"
+    monkeypatch.setattr(stage_c, "sha256_file",
+                        lambda candidate: stage_c.ADAPTER_SHA256
+                        if Path(candidate) == path else "0" * 64)
+    wrong_packet = _adapter()
+    wrong_packet["contract"]["packet_id"] = "nearby-stage-c"
+    path.write_text(json.dumps(wrong_packet))
+    with pytest.raises(stage_c.StageCDesignError, match="authority/decision"):
+        stage_c.validate_adapter(path, stage_c.ADAPTER_SHA256)
+
+    wrong_parent = _adapter()
+    wrong_parent["contract"]["live_parent"]["policy"] = "mc-strong"
+    path.write_text(json.dumps(wrong_parent))
+    with pytest.raises(stage_c.StageCDesignError, match="live-parent"):
+        stage_c.validate_adapter(path, stage_c.ADAPTER_SHA256)
+
+
 def test_h0_audit_rows_remain_unconsumed(monkeypatch: pytest.MonkeyPatch,
                                          tmp_path: Path) -> None:
     path = tmp_path / "h0.json"
@@ -140,3 +165,70 @@ def test_hard_tail_target_cannot_fall_back_to_n30() -> None:
     assert '"continuation": "live-mc-s0-report-lcb-gold"' in source
     assert '"fallback": "live-mc-s0-report-lcb-gold-64-plus-64"' in source
     assert '"n30_may_screen_but_cannot_supply_hard_tail_target": True' in source
+
+
+def test_v2_packet_binds_fresh_s4_parent_and_exact_teacher_gates(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(stage_c, "validate_adapter",
+                        lambda *_args: _adapter())
+    monkeypatch.setattr(stage_c, "validate_h0", lambda *_args: _h0())
+    monkeypatch.setattr(stage_c, "producer_identity", lambda **_kwargs: {
+        "git": "c" * 40, "tree_dirty": False,
+        "promotable": False, "script_sha256": "d" * 64,
+    })
+    packet = stage_c.build_packet(
+        tmp_path / "adapter.json", stage_c.ADAPTER_SHA256,
+        tmp_path / "h0.json", stage_c.H0_SHA256, smoke=True)
+
+    assert packet["schema"] == "teacher-stage-c-hard-tail-design-v2"
+    assert packet["packet_id"] == _adapter()["contract"]["packet_id"]
+    parent = packet["authority_parent"]["live_parent"]
+    assert parent["authenticator_schema"] == "live-champion-parent-v1"
+    assert parent["reopened_at_packet_freeze"] is False
+    assert parent["payload"]["champion_policy"] == "mc-s0-report-lcb"
+    conditional = packet["label_contract"]["point_banking"]["conditional_s4"]
+    assert conditional == stage_c.S4_CONDITIONAL
+    assert conditional["git"] == \
+        "1b35fb7c6234fb6022181b54ce8210c796cc35c3"
+    assert conditional["states_sha256"] == \
+        "4538be8573a4d4bcf50524afe83c5dac25c5269b3ed95ab15f645343d0ff6b5f"
+
+    gate = packet["gate_contract"]
+    assert gate["audit_reference"]["selection_worlds"] == 64
+    assert gate["audit_reference"]["report_worlds"] == 64
+    assert gate["audit_reference"][
+        "all_audit_worlds_disjoint_from_label_worlds"] is True
+    assert "audit-reference minus label-choice" in \
+        gate["audit_reference"]["regret"]
+    assert "lower bound" in gate["proposal_recall"]["gate"]
+    assert gate["proposal_recall"]["candidate_counts_equal_per_state"] is True
+
+
+def test_real_packet_must_reopen_live_parent(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(stage_c, "validate_adapter",
+                        lambda *_args: _adapter())
+    monkeypatch.setattr(stage_c, "validate_h0", lambda *_args: _h0())
+    monkeypatch.setattr(stage_c, "producer_identity", lambda **_kwargs: {
+        "git": "c" * 40, "tree_dirty": False,
+        "promotable": True, "script_sha256": "d" * 64,
+    })
+    reopened = stage_c.LIVE_PARENT_AUTH.expected_parent()
+    monkeypatch.setattr(stage_c.LIVE_PARENT_AUTH,
+                        "require_live_champion_parent", lambda: reopened)
+    packet = stage_c.build_packet(
+        tmp_path / "adapter.json", stage_c.ADAPTER_SHA256,
+        tmp_path / "h0.json", stage_c.H0_SHA256, smoke=False)
+    assert packet["authority_parent"]["live_parent"][
+        "reopened_at_packet_freeze"] is True
+
+    def refuse():
+        raise RuntimeError("parent unavailable")
+
+    monkeypatch.setattr(stage_c.LIVE_PARENT_AUTH,
+                        "require_live_champion_parent", refuse)
+    with pytest.raises(stage_c.StageCDesignError,
+                       match="live champion parent did not reopen"):
+        stage_c.build_packet(
+            tmp_path / "adapter.json", stage_c.ADAPTER_SHA256,
+            tmp_path / "h0.json", stage_c.H0_SHA256, smoke=False)

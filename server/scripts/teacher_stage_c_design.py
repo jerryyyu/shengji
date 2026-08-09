@@ -15,25 +15,34 @@ import json
 import os
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 
-SCHEMA = "teacher-stage-c-hard-tail-design-v1"
-PACKET_ID = "teacher-v3-hard-tail-stage-c-v1"
+SCRIPT = Path(__file__).resolve()
+SERVER = SCRIPT.parents[1]
+sys.path.insert(0, str(SCRIPT.parent))
+
+import live_champion_parent as LIVE_PARENT_AUTH  # noqa: E402
+
+
+SCHEMA = "teacher-stage-c-hard-tail-design-v2"
+# The terminal adapter grants this literal packet identity.  A previous draft
+# silently dropped the word "design" and therefore did not consume its parent
+# authority exactly even though no compute had started.
+PACKET_ID = "teacher-v3-hard-tail-stage-c-design-v1"
 ADAPTER_SCHEMA = "teacher-v3-terminal-adapter-v2"
 ADAPTER_SHA256 = "56ccefbd62d9ea2aef30a4c6e54e11a0d2231e464f129e754b84b3488f1c2442"
 H0_SCHEMA = "human-h0-counterfactual-design-v1"
 H0_SHA256 = "9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3"
 HUMAN_CORPUS_SHA256 = "b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553"
-LIVE_PARENT = {
-    "policy": "mc-s0-report-lcb",
-    "authenticator_git": "05ea1d10f8386b4e8826fbf51e2895ff3c9ba554",
-    "must_reopen_at_capture_and_label": True,
-}
 S4_CONDITIONAL = {
-    "git": "402c01203324ea3902891bef6cedf077a91ecec7",
-    "states_sha256": "f44a0c72593bef0ff93d96d2f9d93ece1a7a5c8afe44ab900466dd1f7c9e6b72",
+    "run_id": "s4-point-banking-state-screen-161m-v2",
+    "git": "1b35fb7c6234fb6022181b54ce8210c796cc35c3",
+    "states_sha256": "4538be8573a4d4bcf50524afe83c5dac25c5269b3ed95ab15f645343d0ff6b5f",
     "use_requires_separate_terminal_pass": True,
+    "required_terminal_verdict": "AUTHORIZE_FULL_GAME_PACKET_REVIEW",
+    "terminal_screen_sha256_must_bind_at_execution": True,
 }
 
 SPLITS = {
@@ -141,10 +150,17 @@ def validate_adapter(path: Path, expected_sha256: str) -> dict:
             or adapter.get("training_authorized") is not False
             or adapter.get("production_promotion") is not False
             or contract.get("decision") != "DESIGN_HARD_TAIL_STAGE_C"
+            or contract.get("packet_id") != PACKET_ID
             or contract.get("next_authority") != "AUTHORIZE_STAGE_C_PACKET_REVIEW"
             or contract.get("model_work_authorized_only_after_teacher_gate")
             is not True):
         raise StageCDesignError("Teacher terminal adapter authority/decision")
+    if contract.get("live_parent") != {
+            "policy": LIVE_PARENT_AUTH.CHAMPION_POLICY,
+            "authenticator": LIVE_PARENT_AUTH.SCHEMA,
+            "must_reopen_at_packet_freeze": True,
+    }:
+        raise StageCDesignError("Teacher terminal adapter live-parent contract")
     required_gates = set(contract.get("separate_gates_required", []))
     if required_gates != {
         "hard_tail_regret_upper_bound",
@@ -207,6 +223,14 @@ def build_packet(adapter_path: Path, adapter_sha256: str,
                  h0_path: Path, h0_sha256: str, *, smoke: bool) -> dict:
     adapter = validate_adapter(adapter_path, adapter_sha256)
     h0 = validate_h0(h0_path, h0_sha256)
+    try:
+        live_parent = (LIVE_PARENT_AUTH.expected_parent() if smoke else
+                       LIVE_PARENT_AUTH.require_live_champion_parent())
+    except Exception as exc:
+        raise StageCDesignError(
+            f"live champion parent did not reopen: {type(exc).__name__}: {exc}"
+        ) from exc
+    LIVE_PARENT_AUTH.require_parent_payload(live_parent)
     geometry = _split_geometry()
     packet = {
         "schema": SCHEMA,
@@ -218,7 +242,12 @@ def build_packet(adapter_path: Path, adapter_sha256: str,
             "audit_gate_sha256": adapter["evidence"]["gate"]["sha256"],
             "audit_supervisor_sha256": (
                 adapter["evidence"]["supervisor_progress"]["sha256"]),
-            "live_parent": LIVE_PARENT,
+            "live_parent": {
+                "authenticator_schema": LIVE_PARENT_AUTH.SCHEMA,
+                "reopened_at_packet_freeze": not smoke,
+                "must_reopen_at_capture_and_label": True,
+                "payload": live_parent,
+            },
         },
         "objective": (
             "Build a 2,048-state counterfactual Teacher whose hard-tail labels "
@@ -316,10 +345,47 @@ def build_packet(adapter_path: Path, adapter_sha256: str,
                 "play_point_banking_opportunity": 32,
                 "bury_all_report": 32,
             },
-            "live_champion_selection_worlds": 32,
-            "live_champion_report_worlds": 32,
+            "choice_rules": {
+                "ordinary_anchor": (
+                    "fixed cheap-heuristic selection-fold argmax"),
+                "hard_tail": (
+                    "fixed declared gold-or-exact label selection-fold argmax"),
+                "audit_reference": (
+                    "fixed live-report-lcb-gold audit-selection argmax"),
+            },
+            "audit_reference": {
+                "continuation": "live-mc-s0-report-lcb-gold",
+                "selection_worlds": 64,
+                "report_worlds": 64,
+                "selection_and_report_worlds_disjoint": True,
+                "all_audit_worlds_disjoint_from_label_worlds": True,
+                "fixed_choice_pair_evaluated_on_common_report_worlds": True,
+                "regret": (
+                    "audit-reference minus label-choice acting-team signed "
+                    "level utility, clustered by deal/state"),
+            },
+            "regret_estimands": {
+                "ordinary_anchor": (
+                    "audit-reference choice minus frozen cheap-label choice"),
+                "hard_tail": (
+                    "audit-reference choice minus frozen gold-or-exact "
+                    "hard-tail label choice"),
+                "one_sided_interval": "Student-t 95% upper bound by state",
+            },
             "hard_tail_regret_one_sided_95_upper_bound_max": 0.10,
             "ordinary_anchor_regret_one_sided_95_upper_bound_max": 0.10,
+            "proposal_recall": {
+                "target": "fixed audit-reference action",
+                "treatment": (
+                    "base analysis ballot plus named proposal sources"),
+                "control": (
+                    "same base ballot plus equal-count random legal diversity"),
+                "candidate_counts_equal_per_state": True,
+                "paired_unit": "deal/state",
+                "gate": (
+                    "one-sided 95% lower bound of treatment-minus-control "
+                    "recall is greater than zero"),
+            },
             "proposal_recall_must_beat_same_budget_random_diversity": True,
             "per_role_surface_phase_results_required": True,
             "exact_work_zero_fallbacks_required": True,

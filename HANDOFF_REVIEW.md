@@ -279,3 +279,45 @@ authenticated report-LCB parent, pins only S4 v2 behind a future terminal PASS,
 and defines independent 64/64 audit-reference folds plus the same-budget recall
 LCB. V1 is superseded. Stage-C v2 remains queued behind H0 review and grants no
 capture, compute, labels, training, strength or production authority.
+
+## Claude — 2026-08-09 13:12 EDT — S4_POINT_BANKING_SCREEN_V2_REVIEW @ 1b35fb7: PASS — both HOLD blockers closed; delta and witness verified
+
+Both v1 blockers are closed exactly as requested (all MEASURED):
+
+- **Material reproduces on first attempt** via the pinned recipe: the ordered canonical-JSON list of
+  the four files (policy `49d10d13…24cd1` and its tests `d5c022ca…f2d3` byte-identical to v1;
+  screen `5c6c0bbc…40b6` and screen tests `46b6ee8f…d674` new), serialized with sorted keys,
+  `(',', ':')` separators and one final newline, SHA-256s to exactly
+  `5eeb1b507efc6645c7121fb9214b3e269f48fd251d815b7b029eabffa385c6a8`.
+- **Both pinned commands reproduce exactly**: pure 27/27; compiled-plus-parity 41/41; and the
+  compiled S4+replay+native battery at verifier `b0ef0f9` passes 44/44.
+
+Delta verification:
+
+- `1b35fb7` is a direct child of my HOLD commit `f0fecfe`; sealed AI modules remain untouched.
+  Because the policy and its tests are byte-identical to v1, my v1 semantic verification carries
+  over (continuation-only seam, contest preservation, last-seat, higher-reserve, matched-null
+  counter identities, and the named negative witness whose reserve-gate mutation goes red).
+- **Bracket fix is real and guarded**: the secondary house utility now computes
+  `(attacker_points - 80) // 40 + 0.5`, scoring 80 as +0.5 and 120 as +1.5; re-collapsing the
+  brackets (`// 40` → `// 80`) turns exactly
+  `test_secondary_level_utility_matches_house_brackets[120-1.5--1.5]` and `[160-2.5--2.5]` red.
+- **Air asset exact**: `states.json` hashes `4538be85…6b5f` on Air (worktree `shengji-s4-v2-air`);
+  64 states, 32 attacker / 32 defender, 64 unique deals, 69,047 deals scanned from seed
+  161,000,000; `score_free=true`, `outcomes_computed=false`, `training_authorized=false`; runtime
+  binds exact git `1b35fb7`, host `Jerrys-MacBook-Air.local`, Python 3.14.6; observed trigger
+  supply 32/321 recorded honestly; no outcome-shaped field in any state.
+- **Generation-replay witness exact**: `generation_replay.json` hashes `3079fb16…f0a9`; it binds
+  the full target trio (git `1b35fb7`, material `5eeb1b50…`, states `4538be85…`), verifier script
+  SHA `03707140…` matching the committed `s4_capture_generation_replay.py` bytes at `b0ef0f9`,
+  ascending first-trigger-per-role allocation over all 69,047 deals, 64 states rebuilt exactly
+  equal, and an all-false authority block including `screen_launch_authorized=false`.
+- Evidence boundary: `test_review_admission_is_exactly_bound_to_git_and_state_asset`,
+  `test_screen_receipt_consumes_exactly_one_namespace`, and
+  `test_exclusive_publish_never_overwrites_or_resumes` are present and green in the pinned
+  batteries. No admission, receipt, or screen output exists yet.
+
+Scope of this PASS: exactly one execution of the 64-state exact screen. No full-game packet or
+run, no training, no strength claim, no promotion, no production.
+
+S4_POINT_BANKING_SCREEN_V2_REVIEW {"schema":"s4-point-banking-screen-review-v1","git":"1b35fb7c6234fb6022181b54ce8210c796cc35c3","states_sha256":"4538be8573a4d4bcf50524afe83c5dac25c5269b3ed95ab15f645343d0ff6b5f","material_sha256":"5eeb1b507efc6645c7121fb9214b3e269f48fd251d815b7b029eabffa385c6a8","states":64,"attacker_states":32,"defender_states":32,"unique_deals":64,"score_free":true,"outcomes_computed":false,"independent_review":true,"screen_launch_authorized":true,"full_game_launch_authorized":false,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}

@@ -1,4 +1,5 @@
 import json
+import random
 from types import SimpleNamespace
 
 import pytest
@@ -148,3 +149,74 @@ def test_evaluation_logging_failure_is_not_silenced(tmp_path, monkeypatch):
 
     with pytest.raises(OSError):
         room.log_event("probe")
+
+
+def _evaluation_room(server, tmp_path):
+    context = _context()
+    participants = context.participant_ids_by_human_seat
+    return server.Room(
+        code="EVAL", log_dir=tmp_path / "evaluation", evaluation=context,
+        bot=SimpleNamespace(policy_name="candidate-policy"),
+        seats=[
+            server.Seat(
+                name="Human A", connected=True,
+                evaluation_participant_id=participants[0]),
+            server.Seat(name="Bot 1", is_bot=True),
+            server.Seat(
+                name="Human B", connected=True,
+                evaluation_participant_id=participants[1]),
+            server.Seat(name="Bot 3", is_bot=True),
+        ],
+    )
+
+
+def test_evaluation_start_accepts_only_bound_two_human_team(tmp_path,
+                                                            monkeypatch):
+    from shengji.api import server
+
+    monkeypatch.setattr(server, "LOG_DIR", tmp_path / "ordinary")
+    room = _evaluation_room(server, tmp_path)
+
+    server.validate_human_evaluation_start(room)
+
+
+def test_evaluation_log_omits_names_and_chat_content(tmp_path, monkeypatch):
+    from shengji.api import server
+    from shengji.engine.game import Game
+
+    monkeypatch.setattr(server, "LOG_DIR", tmp_path / "ordinary")
+    room = _evaluation_room(server, tmp_path)
+    room.game = Game(random.Random(7))
+    room.game.start_round()
+    server._log_round_start(room)
+    room.log_event("chat", seat=0, text="personally identifying text", bot=False)
+
+    records = [json.loads(line) for line in
+               (tmp_path / "evaluation" / "EVAL.jsonl").read_text().splitlines()]
+    start, chat = records
+    assert all("name" not in player for player in start["players"])
+    assert [player.get("participant_id") for player in start["players"]
+            if not player["is_bot"]] == list(
+                room.evaluation.participant_ids_by_human_seat)
+    assert "text" not in chat
+    assert chat["content_recorded"] is False
+
+
+@pytest.mark.parametrize("mutate,match", [
+    (lambda room: setattr(room.seats[0], "connected", False),
+     "connected humans"),
+    (lambda room: setattr(room.seats[2], "evaluation_participant_id", "a" * 32),
+     "identity mismatch"),
+    (lambda room: setattr(room.seats[3], "is_bot", False),
+     "bots at seats"),
+])
+def test_evaluation_start_refuses_layout_or_identity_drift(
+        tmp_path, monkeypatch, mutate, match):
+    from shengji.api import server
+
+    monkeypatch.setattr(server, "LOG_DIR", tmp_path / "ordinary")
+    room = _evaluation_room(server, tmp_path)
+    mutate(room)
+
+    with pytest.raises(server.IllegalPlay, match=match):
+        server.validate_human_evaluation_start(room)

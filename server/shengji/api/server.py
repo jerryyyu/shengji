@@ -79,6 +79,9 @@ class Seat:
     # seat, and a returning player must be able to resume even while their
     # stale socket is still open.
     token: str = field(default_factory=lambda: secrets.token_urlsafe(12))
+    # Assigned only by a future reviewed HUMAN-C1 ingress.  It is server-only;
+    # ordinary rooms and client state never use or expose it.
+    evaluation_participant_id: str | None = None
 
 
 @dataclass
@@ -141,6 +144,12 @@ class Room:
                    "round": self.game.round_no if self.game else 0,
                    "e": kind, **data}
             if self.evaluation is not None:
+                if kind == "chat":
+                    rec = {
+                        "t": rec["t"], "room": rec["room"],
+                        "round": rec["round"], "e": kind,
+                        "seat": data.get("seat"), "content_recorded": False,
+                    }
                 rec["experiment"] = self.evaluation.log_payload()
                 rec["training_excluded"] = True
             with open(self.log_dir / f"{self.code}.jsonl", "a") as f:
@@ -535,10 +544,24 @@ async def advance_if_all_ready(room: Room) -> bool:
 def _log_round_start(room: Room) -> None:
     rnd, game = room.round, room.game
     assert rnd is not None and game is not None
+    if room.evaluation is None:
+        players = [
+            {"seat": i, "name": seat.name, "is_bot": seat.is_bot}
+            for i, seat in enumerate(room.seats)
+        ]
+    else:
+        players = [
+            {
+                "seat": i,
+                "is_bot": seat.is_bot,
+                **({"participant_id": seat.evaluation_participant_id}
+                   if not seat.is_bot else {}),
+            }
+            for i, seat in enumerate(room.seats)
+        ]
     room.log_event("round_start", deck=rnd.deck, banker=rnd.banker,
                    trump_rank=rnd.trump_rank, levels=list(game.levels),
-                   players=[{"seat": i, "name": s.name, "is_bot": s.is_bot}
-                            for i, s in enumerate(room.seats)])
+                   players=players)
 
 
 def _log_round_end(room: Room) -> None:
@@ -952,6 +975,25 @@ def _card_ids(msg: dict) -> list[int]:
     return ids
 
 
+def validate_human_evaluation_start(room: Room) -> None:
+    """Refuse a HUMAN-C1 start unless the clean 2-human/2-bot estimand holds."""
+    context = room.evaluation
+    if context is None:
+        return
+    if len(room.seats) != 4:
+        raise IllegalPlay("Evaluation requires exactly four assigned seats.")
+    for seat in (0, 2):
+        occupant = room.seats[seat]
+        expected = context.participant_ids_by_human_seat[seat // 2]
+        if occupant.is_bot or not occupant.connected:
+            raise IllegalPlay(
+                "Evaluation requires connected humans at seats 0 and 2.")
+        if occupant.evaluation_participant_id != expected:
+            raise IllegalPlay("Evaluation participant identity mismatch.")
+    if any(not room.seats[seat].is_bot for seat in (1, 3)):
+        raise IllegalPlay("Evaluation requires bots at seats 1 and 3.")
+
+
 async def handle_action(room: Room, seat: int, msg: dict) -> None:
     """Caller holds room.lock. Raises IllegalPlay on bad input."""
     t = msg.get("type")
@@ -983,6 +1025,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
             raise IllegalPlay("Need exactly 4 players.")
         if room.game:
             raise IllegalPlay("Game already started.")
+        validate_human_evaluation_start(room)
         room.game = Game()
         room.game.start_round()
         room.index_round()

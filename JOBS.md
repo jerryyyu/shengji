@@ -38,8 +38,9 @@ The canonical numbers and meanings are in the results table in
 |---|---|---|---|
 | 08-09 | S4 complete-round v2 preflight + packet | **CAPACITY PASS / PACKET REVIEW OPEN** | exact `cad3992`; preflight `fcc8b891…ee060`, 91.40 fleet-hours / 11.42 max-shard hours; packet `17036e63…1385`; obsolete-v1 HOLD superseded; no launch/strength |
 | 08-09 | S4 point-banking exact-state screen | **MECHANISM PASS / FULL-GAME PACKET REVIEW** | screen `abd9f36f…cdc00`; receipt `90124eb6…f526b`; overall point delta `+5.156`, LCB `+3.029`; both roles positive; no strength or launch authority |
-| 08-09 | Teacher Stage-C design freeze v2 | **NO-COMPUTE COMPLETE / REVIEW QUEUED AFTER S4** | exact `b0ef0f9`; 1,024/512/512 DESIGN/CALIB/REPORT; packet `45802e47…a350`; v1 superseded |
-| 08-09 | Human H0 design freeze | **DESIGN PASS / CONTROLLER IMPLEMENTATION ONLY** | exact `9770313`; 384 DESIGN + 128 AUDIT; packet `9ff160a9…247d3`; no outcomes computed; execution/training/strength remain closed |
+| 08-09 | Human H0 design v2 | **SCORE-FREE REPAIR COMPLETE / REREVIEW QUEUED** | exact `12dac55`; packet `2cccf580…8f2b`; real V11 `cd89d6ed…c003` + portable live parent bound; byte-reproduced on Air; no outcomes/controller authority |
+| 08-09 | Human H0 design v1 | **SPLIT REVIEW PASS / SUPERSEDED PRE-EXECUTION** | exact `9770313`; packet `9ff160a9…247d3`; split semantics passed, but pinned V11 SHA names no artifact; no outcomes computed |
+| 08-09 | Teacher Stage-C design freeze v2 | **HELD PRE-REVIEW / H0 PARENT SUPERSEDED** | exact `b0ef0f9`; 1,024/512/512 DESIGN/CALIB/REPORT; packet `45802e47…a350`; repair after H0 v2 PASS; no compute |
 | 08-09 | S4 v2 generation replay | **SCORE-FREE COMPLETE / CONSUMED BY REVIEWED SCREEN** | exact verifier `b0ef0f9`; all 69,047 ascending deals rescanned and all 64 states rebuilt exactly; witness `3079fb16…f0a9` |
 | 08-09 | S4 fresh state capture v2 | **SCORE-FREE COMPLETE / CONSUMED BY REVIEWED SCREEN** | exact `1b35fb7`; 64 unique deals (32/role); states `4538be85…6b5f`; Air native `d14eefdd…ebe2e0` |
 | 08-09 | S4 fresh state capture v1 | **HOLD / CLOSED WITHOUT OUTCOMES** | exact `402c012`; state asset internally valid, but claimed material digest was irreproducible and test counts were unpinned; replaced by fresh v2 rather than reused |

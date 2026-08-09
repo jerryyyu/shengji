@@ -37,7 +37,7 @@ results table.
 | 08-09 | Teacher-v3 fresh champion audit | **PASS / STAGE-C DESIGN** | cheap-choice all-64 regret upper bound `0.0354`; N=30-choice upper bound `0.0439`, both below `0.10`; N=30 boundary-8 diagnostic upper bound `0.1421` | The cheap and N=30 choices are champion-faithful on the frozen 64-state complement. The boundary diagnostic motivates hard-tail escalation. Reviewed adapter `56ccefbd…c2442` now freezes that design-only contract; it authorizes no labels, training or promotion. |
 | 08-09 | S4 point-banking exact-state screen | **MECHANISM PASS / FULL-GAME PACKET REVIEW** | overall acting-team point delta `+5.156`, one-sided LCB `+3.029`; attacker/defender means `+6.406/+3.906`; 35 wins, 4 losses, 25 ties; level utility `+0.25` | Banking a point-card winner while retaining higher control helps on the frozen exact-late trigger population in both roles. This is strong mechanism evidence, not a whole-bot strength claim; a fresh complete-round packet still needs review. |
 | 08-09 | S4 complete-round score-free preflight v2 | **CAPACITY PASS / REPAIRED PACKET FROZEN** | 4 clusters in `321.32s`; projected screen `91.40` fleet-hours / `11.42` max-shard hours; treatment/null both trigger in both roles with exact dose | A pre-review audit superseded unlaunched v1. Exact `cad3992` recomputes raw outcomes, enforces 330 accepted worlds/search and requires reviewed authority before shards. Packet `17036e63…1385` is reviewable but cannot launch or support strength. |
-| 08-09 | Human H0 counterfactual design | **DESIGN PASS / CONTROLLER IMPLEMENTATION ONLY** | 384 DESIGN + 128 name-ID/deal-disjoint AUDIT plays; separate 36/9 buries; every eligible late/off-ballot row retained; zero outcomes | Human actions may now enter a separately reviewed diagnostic execution controller as proposals. This does not make them labels, prove true-person disjointness, authorize execution/training, or support a people-strength claim. |
+| 08-09 | Human H0 counterfactual design v1 | **SPLIT REVIEW PASS / SUPERSEDED PRE-EXECUTION** | 384 DESIGN + 128 name-ID/deal-disjoint AUDIT plays; separate 36/9 buries; every eligible late/off-ballot row retained; zero outcomes | The split and authority semantics passed, but later executable audit found the pinned V11 digest names no artifact. V1 cannot parent a controller; score-free v2 repairs it without changing the selected population. |
 | 08-09 | S3a full-game score-free preflight | **CAPACITY PASS / SCREEN LAUNCHED AFTER REVIEW** | 4/4 clusters in 255.3 seconds; exact structured work; screen projection `72.62` fleet-hours / `9.08` max-shard hours under the frozen 2× factor | Structured bury is non-vacuously wired and the preregistered full-game screen fits Mini. Separate packet review passed and the sealed screen is running; this row itself remains capacity evidence, not strength evidence. |
 | 08-08 | S3b v2 throughput | **HOLD / NO SCREEN** | first exact-treatment cluster exceeded the frozen cumulative `250,000`-node cap; no receipt published | The registered four-card sampled-exact recipe is not operationally admissible under its zero-overflow rule. No strength conclusion; no retry or 2,048 screen. |
 | 08-08 | S3a v2 sizing | **CAPACITY PASS / NO STRENGTH VERDICT** | frozen projection `0.142` fleet-hours / `0.0178` max-shard hours, exact work and zero failed worlds | This cleared placement for the subsequently reviewed and completed 512-state screen; sizing itself made no strength claim. |
@@ -62,7 +62,8 @@ Evidence anchors, in the same order:
   admission `83993ec6609c2a7528853d4c1db789f137d3f0cbfff97d20fbf526cbd5ff5e6d`.
 - S4 complete-round v2 preflight `fcc8b8913d80db5b1fe4bb7d6b727dc722bb7d0f4ec9c8806842535fc43ee060`;
   frozen packet `17036e6307ad0072ae10aeaaddde0ed3628a2f526ca440e909cdc35cd5071385`.
-- Human H0 design packet `9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3`;
+- Human H0 v1 design packet `9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3`;
+  repaired v2 packet `2cccf5803ca60cf41690f18dc0e85febaf36a88ce702587e8c86a67e2a358f2b`;
   reviewed corpus manifest `b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553`.
 - S3a full-game preflight `09692f823d26d38ea76c7c6e36ea007a5031c0f05ca1a76795c84e7d0722edf0`;
   supervisor final `56943242f3620b09774a55eab992fbac0bce6ad224c3ada6a7b54a5634799e9f`;
@@ -169,21 +170,25 @@ Evidence anchors, in the same order:
   before malformed-round rejection and terminally invalidates an evaluation
   room after any log-write failure, so neither path can manufacture a partial
   training or evaluation publication.
-- **Human proposal pilot:** exact `9770313` freezes a score-free H0 design at
-  packet `9ff160a9…247d3`: 384 DESIGN and 128 player/deal-disjoint AUDIT play
-  keys plus separate bury surfaces. It deliberately retains every late and
-  off-analysis-ballot move. Independent design review passed and authorizes
-  implementation of a separately reviewed controller only. No counterfactual
-  outcome, label, training or strength authority exists.
-- **Teacher Stage C:** exact `b0ef0f9` freezes repaired no-compute v2 at
+- **Human proposal pilot:** exact `9770313` froze score-free H0 v1 at packet
+  `9ff160a9…247d3`: 384 DESIGN and 128 player/deal-disjoint AUDIT play keys plus
+  separate bury surfaces. Its split review passed, but executable audit found
+  V11 SHA `0260ad67…455e` names no artifact. Exact `12dac55` v2 preserves the
+  selected rows while binding executable `ep07.npz` at `cd89d6ed…c003`, the
+  portable live parent, raw within-ballot V11 proposal semantics and disjoint
+  30/300 selection/report folds. Packet `2cccf580…8f2b` reproduced exactly on
+  Air and awaits rereview. No controller, outcome, label, training or strength
+  authority exists.
+- **Teacher Stage C:** exact `b0ef0f9` froze no-compute v2 at
   `45802e47…a350`: a 2,048-state design
   (1,024 DESIGN / 512 CALIB / 512 REPORT; 1,920 play + 128 bury). Ordinary
   anchors may use the audited cheap proxy; hard-tail targets require live
   report-LCB gold or a reviewed information-set-legal exact solver. V2 consumes
   the adapter's literal identity, reopens the authenticated live parent,
   conditionally binds S4 v2 and defines untouched regret/recall gates. V1
-  `4df94e6c…13354` is superseded; H0 passed and v2 awaits review after S4. It
-  grants no capture, label or model work.
+  `4df94e6c…13354` is superseded. Stage-C v2 itself now binds superseded H0 v1,
+  so it is held before review and must be repaired after H0 v2 PASS. It grants
+  no capture, label or model work.
 
 ### Learned policies and RL
 

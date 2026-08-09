@@ -9,14 +9,14 @@ queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 | area | status | next legal action |
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 measured `+0.338 +/- 0.068` versus `mc-strong`. Keep release 16 as runtime rollback and `mc-strong` as policy rollback. |
-| T1 Teacher / Stage C | **T1 COMPLETE + REPAIRED 2,048-STATE V2 DESIGN FROZEN** | Adapter `56ccefbd…c2442`; exact producer `b0ef0f9`, packet `45802e47…a350`. V1 is superseded before review. Queue v2 review after S4; no capture, labels, compute or training. |
+| T1 Teacher / Stage C | **T1 COMPLETE / STAGE-C V2 HELD PRE-REVIEW** | Adapter `56ccefbd…c2442`; exact producer `b0ef0f9`, packet `45802e47…a350`. Its H0 parent is now superseded pre-execution; repair/freeze the Stage-C binding only after H0 v2 passes. No capture, labels, compute or training. |
 | T2 S3a structured bury | **2,048-CLUSTER SCREEN RUNNING / SEALED** | Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight Mini shards × 256. Count-only monitoring, then one terminal verify. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The first frozen treatment cluster exceeded the 250k-node cap. Do not retry or relax v2. |
 | T2 learner O0-v2 | **COMPLETE / SELECT NONE** | Gate `0dbd9aa8…f24e` independently replayed. O1 and production remain unauthorized. |
 | S4 point banking | **MECHANISM PASS + REPAIRED FULL-GAME V2 PACKET FROZEN / REVIEW QUEUED** | Pre-review audit superseded v1 without launch/outcomes. Exact v2 `cad3992`; score-free Air preflight `fcc8b891…ee060`; Mini packet `17036e63…1385` fully recomputes. No duel launch or strength claim. |
-| Human corpus / H0 | **V8 REVIEW PASS + H0 DESIGN PASS** | Corpus `b9699790…16553`; exact packet producer `9770313`, packet `9ff160a9…247d3`. Claude authorizes implementation of a separately reviewed score-free controller only. Outcomes, labels, training, strength and HUMAN-C1 claims remain closed. |
+| Human corpus / H0 | **V8 REVIEW PASS / H0 V1 SUPERSEDED PRE-EXECUTION / V2 FROZEN** | Claude passed v1's split semantics, then executable audit found its V11 SHA names no artifact. Exact `12dac55` repairs the parent at packet `2cccf580…8f2b`, independently reproduced on Air. Queue v2 rereview after S4; no controller or outcome yet. |
 | HUMAN-C1 | **INERT IDENTITY/LOG SEAM ONLY / AUDIT FIXES LANDED** | Exact `b198839` moves evaluation-tag refusal before every replay rejection and terminally invalidates a room on evaluation-log failure; mixed publications and unlogged starts now refuse. The 77-test corpus/server battery passes locally and on Air. No traffic path; consent/assignment ingress, runtime reopen, disconnect invalidation, C0/analyzer remain. |
-| External review | **OPEN / S4 COMPLETE-ROUND V2 ONLY** | H0 design review passed. Claude's HOLD applied to obsolete v1 only; repaired v2 has fresh namespaces, an existing packet in named Mini/Air worktrees and pinned test commands. Review the v2 delta below. |
+| External review | **OPEN / S4 COMPLETE-ROUND V2 ONLY** | Claude's S4 HOLD applied to obsolete v1 only; repaired v2 has fresh namespaces, an existing packet in named Mini/Air worktrees and pinned test commands. H0 v2 is frozen but queued next so the mailbox has one review target. |
 
 The latest status-only S3a heartbeat still has all eight workers live with no
 completed shard. The latest cluster-count snapshot was
@@ -55,16 +55,17 @@ T3 exits only after all four boundaries below are satisfied:
    projects 91.40 fleet-hours / 11.42 max-shard hours. Packet
    `17036e63…1385` is frozen and recomputes; review remains required before any
    duel, and no strength claim or production change exists.
-3. **Review the frozen Teacher Stage C design.** Exact `b0ef0f9` defines 2,048
+3. **Repair then review the frozen Teacher Stage C design.** Exact `b0ef0f9` defines 2,048
    fresh states: 1,024 DESIGN, 512 CALIB and 512 REPORT, with separate play and
    bury surfaces. It spends hard-tail gold labels on uncertainty,
    disagreement, exact-late and point-banking states while preserving an
    ordinary anchor. Human examples are DESIGN diagnostics only and cannot
    enter CALIB/REPORT. V2 also consumes the adapter's literal packet ID,
    reopens the exact live parent, conditionally binds S4 v2, and defines the
-   regret/recall estimands. Packet review precedes state capture, labels and
-   compute; v1 `4df94e6c…13354` is superseded.
-4. **Implement the independently passed human H0 design boundary.** The August 9 evidence-grade
+   regret/recall estimands, but it binds now-superseded H0 v1. After H0 v2
+   passes, freeze a replacement binding before packet review. Review precedes
+   state capture, labels and compute; no existing Stage-C packet grants work.
+4. **Repair and rereview the human H0 design boundary.** The August 9 evidence-grade
    Fly-snapshot-only rebuild accepts 2,830 plays and 45 buries from 122 fully
    replayed rounds, counts seven incomplete rounds, and finds 25 legal
    off-ballot human plays. Twelve legacy local-only rooms are excluded.
@@ -73,9 +74,13 @@ T3 exits only after all four boundaries below are satisfied:
    as proposals rather than truth. The packet is score-free and independently
    verifies. Historical identity is pseudonymized from names, so the split is
    name-ID/deal-disjoint but cannot prove true-person disjointness if one
-   person changed names. Claude accepted that limitation for this diagnostic-
-   only pilot and authorized implementation of a separately reviewed score-
-   free execution controller only. The frozen DESIGN selection is intentionally
+   person changed names. Claude accepted that limitation for diagnostic-only
+   v1, but a pre-controller executable audit found v1 pinned V11 SHA
+   `0260ad67…455e`, which matches no project artifact; the authenticated
+   executable checkpoint is `ep07.npz` at `cd89d6ed…c003`. V1 produced no
+   outcome and is superseded. Exact `12dac55` v2 binds the real checkpoint,
+   portable live parent and fixed proposal/report semantics; packet
+   `2cccf580…8f2b` independently recomputes and awaits review. The DESIGN selection is intentionally
    late-weighted (162 late / 111 mid / 111 early), and the requirement to keep
    every late and off-ballot row means inclusion within eligible fold deals,
    not that the entire packet is late-only. HUMAN-C1 evaluation games instead
@@ -139,15 +144,16 @@ untouched by DESIGN.
 
 ## Claude review packet
 
-### CLOSED PASS — H0 human-action counterfactual design
+### CLOSED / SUPERSEDED BEFORE EXECUTION — H0 v1 human-action design
 
-Claude independently passed exact `9770313` / packet `9ff160a9…247d3`. The
-full marker and measured review live in `HANDOFF_REVIEW.md`; this active file
-does not duplicate them. Scope is deliberately narrow: implementation of a
-separately reviewed score-free controller only. Counterfactual execution,
-outcomes, labels, training, strength, promotion and HUMAN-C1 evidence all
-remain unauthorized. Name-derived identity is acceptable for this diagnostic
-pilot but does not prove true-person disjointness.
+Claude independently passed the split and authority semantics of exact
+`9770313` / packet `9ff160a9…247d3`. A later executable audit found its pinned
+V11 SHA `0260ad67…455e` names no model in the repository or authenticated model
+inventory. The actual corrected-encoder artifact used throughout V11 and
+Teacher work is `ep07.npz` at `cd89d6ed…c003`. Because no controller or outcome
+existed, v1 is preserved as a measured-but-unexecutable design and superseded
+without contamination. Its identity limitation and inclusion semantics still
+stand; its PASS cannot parent an execution controller.
 
 ### Closed this turn — S4 exact-state mechanism
 
@@ -213,29 +219,44 @@ S4_POINT_BANKING_DUEL_PACKET_V2_REVIEW {"schema":"s4-point-banking-duel-screen-r
 
 ### Later conditional packets
 
-After the S4 review closes, the next request is exactly one of:
+After the S4 review closes, the next request is chosen by this order:
 
 - **S3a confirmation review**, only after a terminal screen PASS: inspect the
   frozen 8,192-cluster packet, live-parent/null identity, fresh seeds, capacity,
   one-shot controller and authority boundary.
-- **Teacher Stage-C design review**: inspect strata, split exclusion, label
-  escalation, exact data contract and explicit no-compute/no-training flags.
-  Review v2 after S4. Exact producer
-  `b0ef0f9fe59e15c1618ae25e7dfa5ddd851bd94e`;
-  canonical packet
-  `/Users/jerryyu/Projects/shengji/server/runs/logs/teacher-stage-c-hard-tail-design-v2/design_packet.json`,
-  SHA-256 `45802e47a4b81a6418cf3f4f75c0314b5b9c9dec52b16398fffb8cfb7f4a350b`.
-  V1 `94cfc1e` / `4df94e6c…13354` is superseded and grants no review.
+- **H0 v2 design rereview**: exact `12dac556d98c31de15018e7eeb9c3caa6e20486b`,
+  packet `2cccf5803ca60cf41690f18dc0e85febaf36a88ce702587e8c86a67e2a358f2b`.
+  Confirm v1's nonexistent V11 identity is replaced by executable
+  `ep07.npz` SHA `cd89d6ed…c003`; portable live parent `d6515d6d…521b` is
+  embedded; V11 is a raw within-ballot proposal, never a scalar leaf; and the
+  30-world selection / disjoint 300-world fixed-report semantics cannot read
+  outcomes while constructing candidates. The same 384/128 play and 36/9
+  bury geometry must remain. Exact recomputation and 17/17 tests passed both
+  locally and on Air. Local review root is
+  `/Users/jerryyu/Projects/shengji-h0-12d-review`; Air root is
+  `/Users/jerryyu/Projects/shengji-h0-12d-air`. From either root, run
+  `PYTHONPATH=server <python> -m pytest -q server/tests/test_h0_human_counterfactual_packet.py server/tests/test_teacher_stage_c_design.py`, then invoke the producer's
+  `verify` with the root's `server/rl_data/human_v8`, `ep07.npz`, expected
+  corpus SHA and canonical packet. PASS may authorize controller
+  implementation only.
+- **Teacher Stage-C repair/review**: its current v2 packet consumes superseded
+  H0 v1. After H0 v2 PASS, freeze a fresh binding, then inspect strata, split
+  exclusion, label escalation, exact data contract and explicit no-compute/no-
+  training flags. Existing `b0ef0f9` / `45802e47…a350` grants no review or
+  compute.
 
 Append exact PASS/HOLD markers only to `HANDOFF_REVIEW.md`. A review PASS does
 not silently authorize a run.
 
-Dependency order: H0 design review is closed PASS. Review the already-frozen
-S4 packet now so Mini cannot become idle after S3a; review Stage C next because
-it consumes only H0's DESIGN split. H0 controller implementation may proceed
-in parallel, but it cannot execute. S4 cannot launch without its own PASS or
-while S3a owns Mini. If S3a terminates first, its immutable terminal path takes
-priority.
+Dependency order: review the already-frozen S4 packet now so Mini cannot
+become idle after S3a. Then review H0 v2; only its PASS can restart controller
+implementation. Repair/review Stage C last because its existing packet binds
+superseded H0 v1. S4 cannot launch without its own PASS or while S3a owns Mini.
+If S3a terminates first, its immutable terminal path takes priority.
+
+Requested H0 v2 marker after S4 closes:
+
+H0_HUMAN_COUNTERFACTUAL_DESIGN_V2_REVIEW {"schema":"human-h0-counterfactual-design-review-v2","git":"12dac556d98c31de15018e7eeb9c3caa6e20486b","packet_sha256":"2cccf5803ca60cf41690f18dc0e85febaf36a88ce702587e8c86a67e2a358f2b","superseded_v1_packet_sha256":"9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3","corpus_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","v11_checkpoint_sha256":"cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003","live_parent_authenticator_sha256":"d6515d6db76290c3ad145f9194a7985d7d78223f688a30c78cdb520de41c521b","design_plays":384,"audit_plays":128,"design_buries":36,"audit_buries":9,"outcomes_computed":false,"independent_review":true,"execution_controller_implementation_authorized":true,"counterfactual_execution_authorized":false,"labels_authorized":false,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}
 
 The forward HUMAN-C1 range through `b198839` is not a launch request and does
 not block S4. A later bounded review should confirm ordinary-room log behavior

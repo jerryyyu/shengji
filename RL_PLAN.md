@@ -64,8 +64,9 @@ what those results change in the research plan.
   it mismatched the adapter identity, did not reopen the authenticated live
   parent, and pinned closed S4 v1. Exact `b0ef0f9` freezes repaired v2 at
   `45802e47…a350`: 2,048 states split 1,024 DESIGN / 512 CALIB / 512 REPORT,
-  with 1,920 play and 128 separately modeled bury states. H0 has passed; Stage
-  C now awaits design review after S4. No capture, labels, compute or training.
+  with 1,920 play and 128 separately modeled bury states. A later executable
+  audit superseded its H0 v1 parent, so Stage-C v2 is held pre-review. Repair
+  the binding only after H0 v2 PASS. No capture, labels, compute or training.
 - **Search challengers:** the independently reviewed live-parent contract now
   binds S3a and S3b to exact report-LCB and makes formal-S0/`mc-strong`
   re-entry unreachable. S3b v2 then failed its operational preflight: its
@@ -114,8 +115,12 @@ what those results change in the research plan.
   packet only—not labels, training or a strength claim. Exact `9770313` has
   now frozen that score-free design: 384 DESIGN and 128 player/deal-disjoint
   AUDIT play keys, every late/off-analysis-ballot row, all 36/9 split buries,
-  and no outcomes. Packet `9ff160a9…247d3` independently passed design review;
-  only implementation of a separately reviewed controller is authorized. A
+  and no outcomes. Packet `9ff160a9…247d3` independently passed split/design
+  review, but later executable audit found its V11 SHA names no artifact, so
+  it cannot parent a controller. Exact `12dac55` v2 binds the executable
+  checkpoint, portable live parent and explicit disjoint 30/300 selection/
+  report rule at packet `2cccf580…8f2b`; it reproduced exactly on Air and
+  awaits rereview. A
   latest complete server pull at 16:07 UTC found every one of the 30 source
   files unchanged, so this remains the current production snapshot. The split
   is name-derived pseudonymous-player/deal disjoint, not provably true-person
@@ -329,20 +334,24 @@ strength loop works.
    External review must precede launch, and Mini remains occupied by S3a. Do
    not treat `+5.156` points as a duel-strength estimate: using a K now can
    still waste future control over a full continuation.
-3. **Review the frozen Teacher Stage C contract.** Exact `b0ef0f9` defines
+3. **Repair then review the Teacher Stage C contract.** Exact `b0ef0f9` defines
    2,048 fresh states and fixed 250k-deal scan windows for each split. Cheap
    labels remain only on ordinary anchors; uncertainty/disagreement/bury use
    live report-LCB gold, exact-late uses an information-set-legal solver or the
    live gold fallback, and S4 is conditional on its own terminal PASS. Repaired
    v2 also reopens the authenticated live parent and defines independent
-   audit/reference folds plus equal-budget proposal-recall LCBs. Review follows
-   S4 and precedes capture, labels, compute and training; v1 is superseded.
-4. **Implement the passed human-action counterfactual pilot boundary.** Human moves broaden the action
+   audit/reference folds plus equal-budget proposal-recall LCBs, but its H0 v1
+   parent is now superseded. Freeze a new binding only after H0 v2 PASS; review
+   still precedes capture, labels, compute and training.
+4. **Rereview the repaired human-action counterfactual pilot boundary.** Human moves broaden the action
    and state distribution beyond heuristic self-play, but raw imitation or
    final-round return is not a strength target. Reconstruct and validate each
    decision, add the human action to the champion/structured ballot, and
-   compare all actions on common worlds under named continuations. Claude's
-   design PASS authorizes only a fail-closed, score-free controller freeze and
+   compare all actions on common worlds under named continuations. V1's split
+   review remains informative but cannot authorize a controller because its
+   V11 digest was non-executable. Exact `12dac55` v2 repairs that identity and
+   makes V11 a raw within-ballot proposal rather than a scalar leaf. Fresh v2
+   PASS may authorize only a fail-closed, score-free controller freeze and
    another review—not execution, labels or training. Human data proposes
    alternatives; the counterfactual Teacher decides whether they are supported.
 
@@ -442,7 +451,7 @@ Use human data in three bounded stages:
    RESERVE diagnostic. Calling these data a meaningful three-way
    DEV/CALIB/REPORT split would overstate their independence; formal REPORT
    remains fresh synthetic/full-game and `HUMAN-C1` evidence.
-2. **Counterfactual action pilot.** Exact `9770313` freezes 384 DESIGN and 128
+2. **Counterfactual action pilot.** Exact `9770313` v1 froze 384 DESIGN and 128
    AUDIT play decisions, caps each deal at eight, includes every late and every
    off-analysis-ballot action, and balances lead/follow and role. Add
    the actual human action to the current ballot and measure human-versus-
@@ -450,9 +459,11 @@ Use human data in three bounded stages:
    genuinely new candidate, where the production continuation reverses it,
    and where a second continuation changes that ranking.
    Treat the 36 DESIGN and nine AUDIT buries as a separate surface rather than
-   forcing them into the play estimand. Independent design review has passed;
-   the next artifact is a score-free controller that must itself be reviewed
-   before computing a single counterfactual outcome.
+   forcing them into the play estimand. Its split review passed, but its V11
+   digest names no executable artifact. Exact `12dac55` v2 preserves the rows
+   and binds `ep07.npz` at `cd89d6ed…c003`, the portable live parent and fixed
+   selection/report semantics. Rereview v2 before implementing a score-free
+   controller; review that controller again before one counterfactual outcome.
 3. **Only then choose the learning use.** Strong supported actions can train a
    proposal/prior head; disagreement states feed Stage C; raw behavioral
    cloning remains an initialization/style control. Promotion still requires

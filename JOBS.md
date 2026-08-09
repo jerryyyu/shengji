@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 01:28 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 01:49 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,7 +10,7 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shards 2, 5 and 7 exited zero and published 3/8 label triplets; five workers remain CPU-bound. At 01:22, score-free progress was 3,272/4,096 outer worlds (79.9%) and 48/64 states. The label JSONs remain sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
+| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shards 2, 5 and 7 exited zero and published 3/8 label triplets; five workers remain CPU-bound. At 01:49, score-free progress was 3,333/4,096 outer worlds (81.4%) and 50/64 states. The label JSONs remain sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
 | Air | none | **PREFLIGHT PASS / PACKET REVIEW OPEN:** Claude passed exact `2e13c35`; the score-redacted preflight passed at `f8e1dc16…12eaf` and projected 59.4 minutes with 2x safety. Frozen packet `20d2aaee…5cab0` independently verifies. Air is physically idle until separate packet review; do not admit or train early. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
@@ -56,21 +56,14 @@ cannot launch the screen or make a strength claim.
 
 ### T2 learner
 
-O0-v2 public-key integration is merged and reviewed. The first Air packet at
-`917949b` is superseded: an adversarial audit showed its terminal gate could
-consume self-consistent rewritten outcomes without executing the bound game.
-Exact repair `7a1facf` makes semantic replay mandatory after endpoint
-publication, during gate computation, during the gate's internal verification
-and during independent verification. Its non-vacuous mutation witness and
-complete Suphx battery pass 162/162 locally and under the strict compiled Air
-runtime. Capacity now charges 12,288 generated rounds plus four replay passes,
-or 61,440 total executions. Superseding review V2 is required before the one
-disposable score-redacted preflight. Claude's V2 review verified those claims
-but held because removing the endpoint call left tests green. Test-only delta
-`2e13c35` adds the missing direct witness; the removal probe now fails and the
-full local/Air batteries pass 163/163. Delta-only V3 review is required. Even
-a preflight PASS can authorize only packet freezing and review—not training,
-O1, strength, or production.
+O0-v2 public-key integration and mandatory semantic replay are reviewed.
+Claude's V3 PASS confirmed test-only exact `2e13c35`, including the direct
+endpoint replay removal witness and 163/163 local/strict-Air tests. The one
+score-redacted Air preflight passed at `f8e1dc16…12eaf`; its 2x projection is
+59.4 minutes. Packet `20d2aaee…5cab0` is frozen and independently reverified
+with no admission or training output. The separate packet review remains the
+only Air gate. Until it passes, training, O1, strength and production are all
+unauthorized.
 
 ## Terminal job index
 

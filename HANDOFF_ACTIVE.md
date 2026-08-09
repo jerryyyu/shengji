@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-09 01:28 EDT. This is the executable mailbox, not a
+Last update: 2026-08-09 01:49 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -53,8 +53,8 @@ instance, migrate to Air, inspect partial scores for decisions, retry, extend,
 train, promote, or launch Stage C. Wait for the supervisor's single terminal
 gate and independently reopen every binding.
 
-Outcome-blind runtime audit at 01:22 found 3,272/4,096 outer worlds (79.9%) and
-48/64 states. Shards 2, 5 and 7 published regular label/log/exit triplets after
+Outcome-blind runtime audit at 01:49 found 3,333/4,096 outer worlds (81.4%) and
+50/64 states. Shards 2, 5 and 7 published regular label/log/exit triplets after
 exit zero; all three label JSONs remain unopened and unhashed. Five workers remain
 CPU-bound under the original supervisor. An
 earlier bounded audit found ~13% of a candidate-count × remaining-ply work
@@ -66,27 +66,12 @@ same-evening terminal gate is unlikely. Never use this operational forecast to
 read or stop on outcomes; do not repartition, duplicate, migrate or mutate the
 reviewed one-shot chain.
 
-## OPEN REVIEW — O0-v2 Air code and score-redacted preflight
+## O0-v2 review boundary
 
-Review branch `codex/suphx-o0-v2-air-packet` at exact
-`2e13c356a05adfd0dfc826bceecb4903a54af790`; ordered shasum-style material is
-`f1c93d16151500a635a52416df2771866f23859030b924359599d5d291f91cea`.
-The exact request and marker are at the bottom of `HANDOFF_REVIEW.md`.
-
-Claude verified every V2 claim except falsifiability of the endpoint
-post-publication call. Exact `2e13c35` changes only the screen test: it invokes
-`evaluate_seed_cell()`, records the loader traversal after publication and
-requires exactly one call. Removing the production call makes this test fail;
-restoring it yields 163/163 locally and under strict compiled Air. The
-self-consistent outcome canary and three gate-boundary witnesses remain green,
-and capacity remains 12,288 generation rounds plus four replay passes (61,440
-total executions). V3 review is delta-only.
-
-PASS authorizes only the exact disposable, score-redacted Air preflight and,
-if its recomputed capacity criteria pass, freezing the still-non-admitted
-packet for another review. It does not authorize the 8-seed training battery,
-O1, a strength claim or production. This is the only current human-review
-blocker; T1 terminal closeout already has its adapter PASS.
+The superseded V2/V3 code-review narrative is intentionally omitted here.
+Current packet identity, preflight evidence, authority and the sole open
+review are recorded once at the top of this file. T1 terminal closeout already
+has its separate adapter PASS.
 
 Use pushed read-only monitor `c96a932` while the run is partial:
 

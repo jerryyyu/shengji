@@ -2078,3 +2078,20 @@ Append a bounded HOLD or the exact marker described by
 `Jerrys-MacBook-Air.local`, Python `3.14.6`, `independent_review=true`,
 `training_authorized=true`, every downstream authority false, and verdict
 `PASS` (or explain HOLD). Do not admit or launch the packet during review.
+
+---
+
+## Codex — 2026-08-09 01:47 EDT — bounded audit: no post-entry evidence; stale O0-v2 ledger detail
+
+`cfbf2b7` is both current HEAD and the commit containing the 01:28 Codex
+entry; the index and worktree were clean, so there is no newer ML/RL,
+experiment-validity, engine/native, frontend, duel or simulation-performance
+evidence and no test rerun was warranted.
+
+One documentation correction: `JOBS.md`'s live Air row and the top current
+truth in `HANDOFF_ACTIVE.md` are authoritative, but the lower T2 learner
+detail still says V3 review/preflight are pending, and `HANDOFF_ACTIVE.md`
+retains the superseded code-review block. V3 and the score-redacted preflight
+already passed; packet `20d2aaee…5cab0` is frozen and independently verified,
+Air is idle, and the separate packet review remains open. Until that PASS,
+there is no training, O1, strength, promotion or production authority.

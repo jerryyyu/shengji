@@ -50,6 +50,7 @@ here.
 | **P1 / human counterfactual H0** | Review the frozen score-free 384/128 design/audit packet | PASS may authorize implementation of the counterfactual execution controller only. It does not authorize outcomes, labels, training or strength compute. Raw imitation/agreement remain controls. |
 | **P2 / S3a confirmation** | Confirm a positive screen against the live champion | Only conditional on terminal PASS: freeze and externally review an 8,192-cluster one-shot packet, then launch once. No automatic promotion. |
 | **P2 / experiment infrastructure** | Make reviewed jobs cheaper to launch correctly | Introduce one immutable `ExperimentSpec`/receipt boundary for code, data, policy, ballot, sampler, continuation, actor, seeds, metric, null, work, stop rule and output. Scheduling may automate reviewed work; it may not select or promote. |
+| **P2 / HUMAN-C1 instrumentation** | Make the people-facing gate executable without contaminating training | Freeze an off-by-default room/session assignment and logging contract: controlled 2-human-team versus 2-bot-team layout, hidden candidate/champion arm, exact policy/image identity, consented pseudonymous participant/session IDs, and a physically separate evaluation log root that the human-corpus builder also refuses by tag. No human experiment launches in T3. |
 | **P2 / production performance** | Keep the stronger bot pleasant under concurrent traffic | Continue passive release-17 timing; add a concurrent-room tail gate before changing CPU size. Port hot rollout leaves only with pure/compiled parity and end-to-end policy timing. |
 
 ## Active T3 milestone — human-witness challenger flywheel
@@ -242,6 +243,42 @@ All human evaluation rooms are quarantined from training and model selection.
 Policy identity is hidden from players during the test, consent/opt-in is
 recorded, and promotion still requires the bot-vs-bot correctness/strength
 chain so noisy human traffic cannot select a policy by accident.
+
+### HUMAN-C1 implementation boundary
+
+The current production server is **not yet an evidence-grade A/B harness**:
+
+- its bot policy is selected deployment-wide from `SHENGJI_BOT`, not assigned
+  immutably per room/session;
+- `round_start` does not bind an experiment arm, policy commit/image,
+  assignment probability or consented pseudonymous participant/session ID;
+- normal rooms can mix human and bot partners/opponents, so changing every bot
+  does not isolate whether a policy helped its human partner or beat its human
+  opponents; and
+- all `/data/logs/*.jsonl` files feed the production-log snapshot. Evaluation
+  traffic would therefore leak into a later human corpus unless it is
+  structurally separated and refused again at corpus-build time.
+
+Before recruiting players, freeze and review one no-traffic contract that:
+
+1. runs two human teammates against two identical bot teammates, with balanced
+   parity seats, banker opportunity and starting levels;
+2. assigns candidate or champion once per room/session from a hidden,
+   preregistered block schedule and never changes policy mid-session;
+3. records experiment/arm probability, exact Git/image/policy/ballot identity,
+   consent version, pseudonymous player cohort/session IDs, seat/team/banker,
+   completion/refusal/fallback and timing;
+4. writes to a dedicated evaluation log root outside `/data/logs`, while the
+   corpus builder independently rejects the experiment tag if a file is copied
+   into training inputs by mistake; and
+5. reports candidate-minus-champion bot-team signed level utility with
+   player/session-clustered inference. A separate absolute row asks whether the
+   candidate bot team itself beats the named experienced-human cohort.
+
+The site's ordinary one-human-plus-three-bot experience remains a later
+product/latency and satisfaction A/B. It is not the clean strength estimand
+because the changed policy appears on both the human's team and the opposing
+team.
 
 ## Correctness and data
 

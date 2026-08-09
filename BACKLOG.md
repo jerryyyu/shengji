@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-09 11:10 EDT.
+Last re-derived: 2026-08-09 11:18 EDT.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
 `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -16,8 +16,9 @@ here.
   `mc-strong`.
 - **Live strength compute:** the reviewed S3a structured-bury full-game screen
   is running on Mini, eight shards × 256 clusters. Outcomes are sealed.
-- **Teacher:** the fresh audit passed on ordinary states and routed to a
-  hard-tail Stage-C design. No labeling or training is authorized yet.
+- **Teacher:** the fresh audit passed on ordinary states. Exact `94cfc1e` now
+  freezes a 2,048-state hard-tail Stage-C design at `4df94e6c…13354`; it awaits
+  review and authorizes no capture, labeling, compute or training.
 - **Human corpus:** production logs were atomically refreshed on August 9.
   The exact Fly-snapshot-only `human_v8` rebuild contains 2,830 accepted plays,
   45 human buries and 122 fully replayed rounds; all seven incomplete rounds
@@ -41,7 +42,7 @@ here.
 |---|---|---|
 | **P0 / S3a terminal** | Let the sealed 2,048-cluster full-game screen finish | Count-only monitor; run the exact terminal verifier once. PASS opens confirmation-packet review only. SELECT NONE closes the exact recipe. |
 | **P1 / S4 point-banking rollout** | Review the isolated mechanism + score-free 64-state asset | PASS authorizes one exact state screen only. Its terminal result may open a full-game packet review or close the exact recipe; no automatic duel. |
-| **P1 / Teacher Stage C** | Build data where the champion is uncertain or visibly weak | Freeze a no-compute design packet with strata, quotas, DEV/CALIB/REPORT exclusions, label escalation and full data identity; external review is the gate to any labels. |
+| **P1 / Teacher Stage C** | Review the frozen 2,048-state hard-tail design | After H0 review, inspect exact `94cfc1e` / `4df94e6c…13354`. PASS may authorize score-free capture/controller implementation only—not capture, labels or training. |
 | **P1 / human counterfactual H0** | Review the frozen score-free 384/128 design/audit packet | PASS may authorize implementation of the counterfactual execution controller only. It does not authorize outcomes, labels, training or strength compute. Raw imitation/agreement remain controls. |
 | **P2 / S3a confirmation** | Confirm a positive screen against the live champion | Only conditional on terminal PASS: freeze and externally review an 8,192-cluster one-shot packet, then launch once. No automatic promotion. |
 | **P2 / experiment infrastructure** | Make reviewed jobs cheaper to launch correctly | Introduce one immutable `ExperimentSpec`/receipt boundary for code, data, policy, ballot, sampler, continuation, actor, seeds, metric, null, work, stop rule and output. Scheduling may automate reviewed work; it may not select or promote. |
@@ -75,8 +76,8 @@ unreviewed strength compute, training, promotion and production changes.
    evidence twice.
 2. Obtain independent S4 review, then run its already-frozen 64-state exact
    screen once. A positive screen only opens full-game packet review.
-3. Freeze one no-compute Teacher Stage-C design packet. The H0 no-compute
-   packet is already frozen and verified; neither packet may label or train.
+3. **done:** freeze no-compute Teacher Stage-C and H0 packets. Queue H0 review
+   first, then Stage C; neither packet may capture, label or train.
 4. Keep Mini on the long reviewed S3a job and use Air for bounded reviewed
    work only. Idle compute is not a reason to invent an unregistered run.
 5. Define the next real product gate as candidate-versus-champion performance

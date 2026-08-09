@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 11:10 EDT. This is the executable mailbox, not a
+Last compacted: 2026-08-09 11:18 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, live compute in `JOBS.md`,
 queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 
@@ -9,7 +9,7 @@ queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 | area | status | next legal action |
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 measured `+0.338 +/- 0.068` versus `mc-strong`. Keep release 16 as runtime rollback and `mc-strong` as policy rollback. |
-| T1 Teacher | **COMPLETE / STAGE-C DESIGN** | Gate `8a1532b7…91f8`, supervisor `02f4f8b…6f237`, and adapter `56ccefbd…c2442` verify. The only authority is design and external review of a hard-tail Stage-C packet—no labels, training or production. |
+| T1 Teacher / Stage C | **T1 COMPLETE + 2,048-STATE DESIGN FROZEN** | Adapter `56ccefbd…c2442`; exact producer `94cfc1e`, packet `4df94e6c…13354`. Queue design review after its H0 dependency; no capture, labels, compute or training. |
 | T2 S3a structured bury | **2,048-CLUSTER SCREEN RUNNING / SEALED** | Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight Mini shards × 256. Count-only monitoring, then one terminal verify. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The first frozen treatment cluster exceeded the 250k-node cap. Do not retry or relax v2. |
 | T2 learner O0-v2 | **COMPLETE / SELECT NONE** | Gate `0dbd9aa8…f24e` independently replayed. O1 and production remain unauthorized. |
@@ -19,7 +19,7 @@ queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 
 The latest status-only S3a heartbeat still has all eight workers live with no
 completed shard. The latest cluster-count snapshot was
-`63,64,61,66,62,62,63,63 / 256` (504/2,048). Outcomes remain unread.
+`68,68,66,70,66,66,67,67 / 256` (538/2,048). Outcomes remain unread.
 
 ## Active milestone — T3 human-witness challenger flywheel
 
@@ -42,10 +42,12 @@ T3 exits only after all four boundaries below are satisfied:
    score-free capture froze 32 attacker + 32 defender states from 64 unique
    deals; no exact outcome has been computed. External review gates the
    one-shot exact state screen. The sign is not assumed.
-3. **Freeze Teacher Stage C.** Build a reviewable design packet that samples
-   uncertainty/disagreement and exact-late states plus the two human witness
-   families below. Human examples are DEV diagnostics only and cannot enter
-   CALIB/REPORT. Packet review precedes labels, compute and training.
+3. **Review the frozen Teacher Stage C design.** Exact `94cfc1e` defines 2,048
+   fresh states: 1,024 DESIGN, 512 CALIB and 512 REPORT, with separate play and
+   bury surfaces. It spends hard-tail gold labels on uncertainty,
+   disagreement, exact-late and point-banking states while preserving an
+   ordinary anchor. Human examples are DESIGN diagnostics only and cannot
+   enter CALIB/REPORT. Packet review precedes state capture, labels and compute.
 4. **Review the frozen human H0 design.** The August 9 evidence-grade
    Fly-snapshot-only rebuild accepts 2,830 plays and 45 buries from 122 fully
    replayed rounds, counts seven incomplete rounds, and finds 25 legal
@@ -151,6 +153,10 @@ After the S4 review closes, the next request is exactly one of:
   one-shot controller and authority boundary.
 - **Teacher Stage-C design review**: inspect strata, split exclusion, label
   escalation, exact data contract and explicit no-compute/no-training flags.
+  Exact producer `94cfc1ebed8096a88bebd12a4adddfe2396f0cfd`;
+  canonical packet
+  `/Users/jerryyu/Projects/shengji/server/runs/logs/teacher-stage-c-hard-tail-design-v1/design_packet.json`,
+  SHA-256 `4df94e6ce71a1de94cd83ab125a87c705b737d27ce49d1b4c5e7e13e09a13354`.
 - **Human H0 design-packet review**: inspect source/encoder hashes, pseudonymous
   player/deal splits, replay/rejection counters, action-union semantics,
   continuation comparison and HUMAN-C1 evaluation exclusion. Exact producer
@@ -160,6 +166,10 @@ After the S4 review closes, the next request is exactly one of:
 
 Append exact PASS/HOLD markers only to `HANDOFF_REVIEW.md`. A review PASS does
 not silently authorize a run.
+
+Dependency order after S4: review H0 first, because Stage C consumes only its
+DESIGN split; then review Stage C. If S3a terminates first, its immutable
+terminal path takes priority.
 
 ## Fleet and safety rules
 

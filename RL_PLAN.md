@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 11:10 EDT
+## Current synthesis — 2026-08-09 11:18 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -60,7 +60,10 @@ what those results change in the research plan.
   design rather than bulk ordinary-state scaling. Claude passed the
   real-output absolute-path adapter delta at exact `60d46e1`; canonical adapter
   `56ccefbd…c2442` was created once and independently verified. Its only next
-  authority is Stage-C packet review—no labels, compute or training.
+  authority was Stage-C packet design/review. Exact `94cfc1e` now freezes that
+  no-compute contract: 2,048 states split 1,024 DESIGN / 512 CALIB / 512 REPORT,
+  with 1,920 play and 128 separately modeled bury states. Packet
+  `4df94e6c…13354` awaits review; no capture, labels, compute or training.
 - **Search challengers:** the independently reviewed live-parent contract now
   binds S3a and S3b to exact report-LCB and makes formal-S0/`mc-strong`
   re-entry unreachable. S3b v2 then failed its operational preflight: its
@@ -297,12 +300,12 @@ strength loop works.
    from unique deals. External review must precede the exact two-card-endgame
    screen. The sign remains empirical: using a K now may bank points or waste
    future control.
-3. **Freeze Teacher Stage C.** The completed audit found cheap and N=30 choices
-   faithful on ordinary states, while the N=30 boundary diagnostic remained
-   weaker. Stage C therefore oversamples uncertainty/disagreement, exact-late
-   opportunities and observed failure mechanisms, escalates difficult labels,
-   and preserves untouched hard-tail evaluation. Review precedes all labels,
-   compute and training.
+3. **Review the frozen Teacher Stage C contract.** Exact `94cfc1e` defines
+   2,048 fresh states and fixed 250k-deal scan windows for each split. Cheap
+   labels remain only on ordinary anchors; uncertainty/disagreement/bury use
+   live report-LCB gold, exact-late uses an information-set-legal solver or the
+   live gold fallback, and S4 is conditional on its own terminal PASS. Review
+   precedes capture, labels, compute and training.
 4. **Add a human-action counterfactual pilot.** Human moves broaden the action
    and state distribution beyond heuristic self-play, but raw imitation or
    final-round return is not a strength target. Reconstruct and validate each

@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-09 11:10 EDT
+## Current synthesis — 2026-08-09 11:18 EDT
 
 ### Canonical terminal-results table
 
@@ -137,6 +137,11 @@ Evidence anchors, in the same order:
   keys plus separate bury surfaces. It deliberately retains every late and
   off-analysis-ballot move. No counterfactual outcome, label, training or
   strength authority exists.
+- **Teacher Stage C:** exact `94cfc1e` freezes a no-compute 2,048-state design
+  (1,024 DESIGN / 512 CALIB / 512 REPORT; 1,920 play + 128 bury). Ordinary
+  anchors may use the audited cheap proxy; hard-tail targets require live
+  report-LCB gold or a reviewed information-set-legal exact solver. Packet
+  `4df94e6c…13354` awaits review and grants no capture, label or model work.
 
 ### Learned policies and RL
 

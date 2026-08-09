@@ -466,6 +466,46 @@ def test_evaluation_loader_replays_models_and_refuses_self_consistent_outcome(
         screen._load_evaluation(root, 0, CELL_CONTROL)
 
 
+def test_evaluate_seed_cell_reenters_loader_after_publication(
+        tmp_path, monkeypatch):
+    root = tmp_path / "endpoint-replay"
+    root.mkdir()
+    monkeypatch.setattr(screen, "EXPECTED_RUN_ROOT", root)
+    monkeypatch.setattr(screen, "EVAL_DEALS", 1)
+    placeholder = _write_json(root / "input.json", {"kind": "input"})
+    actor = object()
+    monkeypatch.setattr(
+        screen, "_require_admission",
+        lambda _root: (placeholder, placeholder, {}))
+    monkeypatch.setattr(
+        screen, "_verify_initial",
+        lambda _root, _index: (placeholder, placeholder, {}))
+    monkeypatch.setattr(
+        screen, "_load_training",
+        lambda *_args: (placeholder, placeholder, {}, []))
+    monkeypatch.setattr(screen, "load_verified", lambda *_args: actor)
+    monkeypatch.setattr(
+        screen, "_comparison_round",
+        lambda **kwargs: {
+            "comparison": kwargs["comparison"],
+            "deal_seed": kwargs["deal_seed"],
+            "flip": kwargs["flip"],
+        })
+    calls = []
+
+    def load_evaluation(_root, index, cell):
+        calls.append((Path(_root), index, cell))
+        return placeholder, {}, {}
+
+    monkeypatch.setattr(screen, "_load_evaluation", load_evaluation)
+    ref = screen.evaluate_seed_cell(root, 0, CELL_CONTROL)
+
+    assert Path(ref.path) == root / "eval" / CELL_CONTROL / "seed_0.json"
+    # This is the endpoint post-publication replay boundary. Removing the
+    # call immediately after publication must leave this witness red.
+    assert calls == [(root, 0, CELL_CONTROL)]
+
+
 def test_run_and_independent_gate_verification_reenter_evaluation_loader(
         tmp_path, monkeypatch):
     root = tmp_path / "gate-replay"

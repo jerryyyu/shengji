@@ -416,3 +416,40 @@ totals. Please pin both exact commands, as was done for the S4 v2 state packet.
   passed at `0ce1f04`.
 
 No authority is granted by this entry. S3a remains sealed and running; the H0 PASS above stands.
+
+## Claude — 2026-08-09 15:35 EDT — S4_POINT_BANKING_DUEL_PACKET_V2_REVIEW @ cad3992: PASS — packet real this time, validators repaired and falsified
+
+All MEASURED:
+
+- **Identity.** `cad3992` child of `b198839`; runner `8bf72a64…cbf7`, controller `ef05d668…911b`,
+  portable live-parent reopener `d6515d6d…521b` all reproduce. The packet exists byte-identically
+  at BOTH named review roots (Mini `shengji-s4-duel-cad-mini`, Air `shengji-s4-duel-cad-air`) and
+  hashes exactly `17036e63…1385`; the Mini review root is clean at exact `cad3992`.
+- **Batteries.** The two pinned invocations reproduce exactly: 44/44 pure and 58/58
+  compiled-plus-parity from the Mini review root.
+- **Packet.** Fresh namespace `100b-v2` at seed0 100,000,000,000, stride 3,000,017, 2,048 clusters
+  as 8x256 — disjoint from every consumed stream family. The selection rule is the full strict
+  conjunction: LCB95(treatment−champion)>0 AND LCB95(treatment−matched_null)>0, matched null
+  raw-outcome-identical to champion on every seed/flip, both-role triggering, exact change/noop
+  accounting, champion/opponent S4 counters zero, exact registered MC work; PASS opens
+  confirmation-packet review only. Parent is reference-identity-only `mc-s0-report-lcb`; the
+  mechanism parent binds the S4 state-screen admission chain (`83993ec6…`); the score-free v2
+  preflight binds by path/git/elapsed 321.321 s with projections 91.40/11.42 vs caps, and the
+  preflight artifact reopens byte-exact on Air (`fcc8b891…ee060`). Authority: packet_review true,
+  screen launch/confirmation/retry all false; runtime pinned to Mini Python 3.14.3 at `cad3992`.
+- **Repaired validators, hostile probes all refused with named problems** (baseline accepts):
+  utility 999 → signed/bounded refusal; loss-with-positive-utility → signed/bounded + winner-team;
+  wrong winner reconstruction → win value + winner team; non-multiple-of-5 attacker points →
+  physical house bound; utility 0 → signed/bounded. Outcomes are fully reconstructed from raw
+  `banker`/`attacker_points` including the 80/120 brackets; accepted-world dose must equal
+  `(30+300) x searches`; score-bearing execution requires the canonical reviewed receipt
+  (`require_execution_receipt`).
+- **Mutations adjudicated.** Neutralizing only the utility BOUNDS clause survives the battery —
+  redundant-defensive, backed by the exact-equality term whose expected value is always in bounds
+  (differentially confirmed). Neutralizing the whole utility check turns exactly
+  `test_record_validation_recomputes_sign_and_binds_physical_utility` red. Restored green.
+
+Scope of this PASS: one Mini 2,048-cluster screen launch. No confirmation launch, no strength
+claim, no training, no promotion, no production.
+
+S4_POINT_BANKING_DUEL_PACKET_V2_REVIEW {"schema":"s4-point-banking-duel-screen-review-v2","git":"cad399294b888865a3bb79c47a9892200b896013","run_id":"s4-point-banking-duel-screen-100b-v2","packet_sha256":"17036e6307ad0072ae10aeaaddde0ed3628a2f526ca440e909cdc35cd5071385","preflight_sha256":"fcc8b8913d80db5b1fe4bb7d6b727dc722bb7d0f4ec9c8806842535fc43ee060","mechanism_screen_sha256":"abd9f36fa3e84c81b90e22f1c827f828a549f7fd6a9420ffbdb7c168974cdc00","independent_review":true,"screen_launch_authorized":true,"confirmation_launch_authorized":false,"strength_claim":false,"training_authorized":false,"production_promotion":false,"verdict":"PASS"}

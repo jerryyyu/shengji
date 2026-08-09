@@ -1,5 +1,7 @@
 import asyncio
+import base64
 import hashlib
+import hmac
 import json
 import os
 import random
@@ -18,11 +20,13 @@ from shengji.api.human_eval import (
     PolicyIdentity,
     blocked_arm,
     construct_reviewed_assignment,
+    construct_reviewed_assignment_from_consent_assertions,
     derive_participant_pair_id,
     registered_policy_ballot_id,
     reserve_assignment_once,
     reopen_assigned_policy,
     reopen_assigned_policy_from_receipt,
+    verify_consent_assertion,
 )
 
 
@@ -88,6 +92,33 @@ def _participants(**changes):
         index_text, field = key.split("__", 1)
         values[int(index_text)][field] = value
     return tuple(ConsentedParticipant(**value) for value in values)
+
+
+def _consent_assertion(*, participant_id="b" * 32, secret=b"c" * 32,
+                       issued_at=1_000, expires_at=2_000, **changes):
+    claims = {
+        "schema": "human-evaluation-consent-assertion-v1",
+        "audience": "shengji-human-evaluation-ingress-v1",
+        "experiment_id": "human-c1-pilot-v1",
+        "assignment_design_sha256": "a" * 64,
+        "participant_id": participant_id,
+        "cohort_id": "experienced-v1",
+        "consent_version": "consent-v1",
+        "opted_in": True,
+        "issued_at_unix_s": issued_at,
+        "expires_at_unix_s": expires_at,
+    }
+    claims.update(changes)
+    raw = json.dumps(
+        claims, sort_keys=True, separators=(",", ":"),
+    ).encode()
+    payload = base64.urlsafe_b64encode(raw).rstrip(b"=")
+    signature = hmac.new(
+        secret,
+        b"human-evaluation-consent-assertion-v1\0" + payload,
+        hashlib.sha256,
+    ).hexdigest()
+    return f"{payload.decode()}.{signature}"
 
 
 def test_block_schedule_is_deterministic_and_complementary():
@@ -189,6 +220,99 @@ def test_consent_fact_refuses_false_or_truthy_opt_in():
         ConsentedParticipant(
             participant_id="b" * 32, cohort_id="experienced-v1",
             consent_version="consent-v1", opted_in=1)
+
+
+def test_signed_consent_assertions_bind_both_people_to_exact_design():
+    first_token = _consent_assertion(participant_id="b" * 32)
+    second_token = _consent_assertion(participant_id="c" * 32)
+
+    first = verify_consent_assertion(
+        first_token, design=_design(), consent_secret=b"c" * 32,
+        now_unix_s=1_500)
+    context = construct_reviewed_assignment_from_consent_assertions(
+        design=_design(),
+        consent_assertions_by_human_seat=(first_token, second_token),
+        block_id="pair-block-0001", block_slot=0,
+        assignment_secret=b"x" * 32, consent_secret=b"c" * 32,
+        now_unix_s=1_500)
+
+    assert first == _participants()[0]
+    assert context.participant_ids_by_human_seat == ("b" * 32, "c" * 32)
+    assert context.assignment_design_sha256 == "a" * 64
+    assert context.arm in {"candidate", "champion"}
+    assert context.session_id.startswith("session-")
+
+
+@pytest.mark.parametrize("token,secret,now,match", [
+    (_consent_assertion(), b"z" * 32, 1_500, "signature"),
+    (_consent_assertion(expires_at=1_500), b"c" * 32, 1_500, "expired"),
+    (_consent_assertion(issued_at=1_501), b"c" * 32, 1_500,
+     "not yet valid"),
+    (_consent_assertion(expires_at=1_000 + 86_401), b"c" * 32, 1_500,
+     "lifetime"),
+    (_consent_assertion(opted_in=False), b"c" * 32, 1_500,
+     "not opted in"),
+    (_consent_assertion(arm="candidate"), b"c" * 32, 1_500, "fields"),
+])
+def test_consent_assertion_refuses_auth_design_or_authority_drift(
+        token, secret, now, match):
+    with pytest.raises(HumanEvaluationError, match=match):
+        verify_consent_assertion(
+            token, design=_design(), consent_secret=secret,
+            now_unix_s=now)
+
+
+def test_consent_assertion_refuses_other_design_and_duplicate_json():
+    token = _consent_assertion()
+    with pytest.raises(HumanEvaluationError, match="evaluation design"):
+        verify_consent_assertion(
+            token,
+            design=replace(_design(), assignment_design_sha256="2" * 64),
+            consent_secret=b"c" * 32, now_unix_s=1_500)
+
+    raw = (
+        b'{"audience":"shengji-human-evaluation-ingress-v1",'
+        b'"audience":"shengji-human-evaluation-ingress-v1"}'
+    )
+    payload = base64.urlsafe_b64encode(raw).rstrip(b"=")
+    signature = hmac.new(
+        b"c" * 32,
+        b"human-evaluation-consent-assertion-v1\0" + payload,
+        hashlib.sha256,
+    ).hexdigest()
+    duplicate = f"{payload.decode()}.{signature}"
+    with pytest.raises(HumanEvaluationError, match="duplicate"):
+        verify_consent_assertion(
+            duplicate, design=_design(), consent_secret=b"c" * 32,
+            now_unix_s=1_500)
+
+
+def test_consent_assertion_refuses_noncanonical_payload_encoding():
+    claims = {
+        "schema": "human-evaluation-consent-assertion-v1",
+        "audience": "shengji-human-evaluation-ingress-v1",
+        "experiment_id": "human-c1-pilot-v1",
+        "assignment_design_sha256": "a" * 64,
+        "participant_id": "b" * 32,
+        "cohort_id": "experienced-v1",
+        "consent_version": "consent-v1",
+        "opted_in": True,
+        "issued_at_unix_s": 1_000,
+        "expires_at_unix_s": 2_000,
+    }
+    raw = json.dumps(claims, sort_keys=False, indent=1).encode()
+    payload = base64.urlsafe_b64encode(raw).rstrip(b"=")
+    signature = hmac.new(
+        b"c" * 32,
+        b"human-evaluation-consent-assertion-v1\0" + payload,
+        hashlib.sha256,
+    ).hexdigest()
+    token = f"{payload.decode()}.{signature}"
+
+    with pytest.raises(HumanEvaluationError, match="fields"):
+        verify_consent_assertion(
+            token, design=_design(), consent_secret=b"c" * 32,
+            now_unix_s=1_500)
 
 
 def _registered_context(**changes):

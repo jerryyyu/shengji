@@ -7,6 +7,7 @@ schedule.  Production room creation has no path to construct this context yet.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -22,6 +23,10 @@ from typing import Literal
 SCHEMA = "human-vs-bot-evaluation-v1"
 RUNTIME_RECEIPT_SCHEMA = "human-evaluation-runtime-identity-receipt-v1"
 ASSIGNMENT_RESERVATION_SCHEMA = "human-evaluation-assignment-reservation-v1"
+CONSENT_ASSERTION_SCHEMA = "human-evaluation-consent-assertion-v1"
+CONSENT_ASSERTION_AUDIENCE = "shengji-human-evaluation-ingress-v1"
+MAX_CONSENT_ASSERTION_BYTES = 4096
+MAX_CONSENT_ASSERTION_LIFETIME_SECONDS = 24 * 60 * 60
 ARMS = ("candidate", "champion")
 HUMAN_SEATS = (0, 2)
 BOT_SEATS = (1, 3)
@@ -33,6 +38,34 @@ _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 class HumanEvaluationError(ValueError):
     """The proposed room identity is not evidence-grade."""
+
+
+def _canonical_json(value: object) -> bytes:
+    return json.dumps(
+        value, sort_keys=True, separators=(",", ":"),
+    ).encode()
+
+
+def _json_object_without_duplicate_keys(raw: bytes) -> dict:
+    def reject_duplicates(pairs: list[tuple[str, object]]) -> dict:
+        result: dict = {}
+        for key, value in pairs:
+            if key in result:
+                raise HumanEvaluationError(
+                    "duplicate consent assertion field")
+            result[key] = value
+        return result
+
+    try:
+        value = json.loads(raw, object_pairs_hook=reject_duplicates)
+    except HumanEvaluationError:
+        raise
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise HumanEvaluationError(
+            "invalid consent assertion JSON") from exc
+    if not isinstance(value, dict):
+        raise HumanEvaluationError("consent assertion is not an object")
+    return value
 
 
 def registered_policy_ballot_id(policy: str) -> str:
@@ -160,7 +193,7 @@ class HumanEvaluationDesign:
 
 @dataclass(frozen=True)
 class ConsentedParticipant:
-    """Server-verified consent facts; token verification remains ingress work."""
+    """Server-verified consent facts."""
 
     participant_id: str
     cohort_id: str
@@ -173,6 +206,92 @@ class ConsentedParticipant:
         _require(_ID, self.consent_version, "consent_version")
         if self.opted_in is not True:
             raise HumanEvaluationError("participant has not opted in")
+
+
+def verify_consent_assertion(
+        token: str, *, design: HumanEvaluationDesign,
+        consent_secret: bytes, now_unix_s: int) -> ConsentedParticipant:
+    """Authenticate one short-lived opt-in assertion for an exact design.
+
+    Assertions are issued outside this module by a separately reviewed,
+    authenticated consent flow.  This verifier accepts only canonical JSON in
+    ``base64url(payload).hex_hmac`` form.  It deliberately grants neither an
+    assignment nor human-traffic authority; the two distinct verified facts
+    still have to pass :func:`construct_reviewed_assignment` and the durable
+    one-use reservation boundary.
+    """
+    if not isinstance(design, HumanEvaluationDesign):
+        raise HumanEvaluationError("invalid evaluation design")
+    if not isinstance(consent_secret, bytes) or len(consent_secret) < 32:
+        raise HumanEvaluationError("consent secret must contain >=32 bytes")
+    if (not isinstance(now_unix_s, int) or isinstance(now_unix_s, bool)
+            or now_unix_s < 0):
+        raise HumanEvaluationError("invalid consent verification time")
+    if (not isinstance(token, str) or not token.isascii()
+            or not 0 < len(token.encode("ascii"))
+            <= MAX_CONSENT_ASSERTION_BYTES
+            or token.count(".") != 1):
+        raise HumanEvaluationError("invalid consent assertion encoding")
+    payload_text, signature = token.split(".", 1)
+    if (not payload_text
+            or re.fullmatch(r"[A-Za-z0-9_-]+", payload_text) is None
+            or _SHA256.fullmatch(signature) is None):
+        raise HumanEvaluationError("invalid consent assertion encoding")
+    payload_segment = payload_text.encode("ascii")
+    padding = b"=" * ((4 - len(payload_segment) % 4) % 4)
+    try:
+        raw = base64.b64decode(
+            payload_segment + padding, altchars=b"-_", validate=True)
+    except ValueError as exc:
+        raise HumanEvaluationError(
+            "invalid consent assertion encoding") from exc
+    if base64.urlsafe_b64encode(raw).rstrip(b"=") != payload_segment:
+        raise HumanEvaluationError("non-canonical consent assertion encoding")
+    expected_signature = hmac.new(
+        consent_secret,
+        CONSENT_ASSERTION_SCHEMA.encode() + b"\0" + payload_segment,
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(signature, expected_signature):
+        raise HumanEvaluationError("consent assertion signature mismatch")
+
+    claims = _json_object_without_duplicate_keys(raw)
+    expected_fields = {
+        "schema", "audience", "experiment_id",
+        "assignment_design_sha256", "participant_id", "cohort_id",
+        "consent_version", "opted_in", "issued_at_unix_s",
+        "expires_at_unix_s",
+    }
+    if set(claims) != expected_fields or _canonical_json(claims) != raw:
+        raise HumanEvaluationError("invalid consent assertion fields")
+    if (claims.get("schema") != CONSENT_ASSERTION_SCHEMA
+            or claims.get("audience") != CONSENT_ASSERTION_AUDIENCE
+            or claims.get("experiment_id") != design.experiment_id
+            or claims.get("assignment_design_sha256")
+            != design.assignment_design_sha256
+            or claims.get("cohort_id") != design.cohort_id
+            or claims.get("consent_version") != design.consent_version):
+        raise HumanEvaluationError(
+            "consent assertion does not match evaluation design")
+    issued_at = claims.get("issued_at_unix_s")
+    expires_at = claims.get("expires_at_unix_s")
+    if (not isinstance(issued_at, int) or isinstance(issued_at, bool)
+            or not isinstance(expires_at, int)
+            or isinstance(expires_at, bool)
+            or issued_at < 0 or expires_at <= issued_at
+            or expires_at - issued_at
+            > MAX_CONSENT_ASSERTION_LIFETIME_SECONDS):
+        raise HumanEvaluationError("invalid consent assertion lifetime")
+    if issued_at > now_unix_s:
+        raise HumanEvaluationError("consent assertion is not yet valid")
+    if expires_at <= now_unix_s:
+        raise HumanEvaluationError("consent assertion has expired")
+    return ConsentedParticipant(
+        participant_id=claims.get("participant_id"),
+        cohort_id=claims.get("cohort_id"),
+        consent_version=claims.get("consent_version"),
+        opted_in=claims.get("opted_in"),
+    )
 
 
 @dataclass(frozen=True)
@@ -359,6 +478,38 @@ def construct_reviewed_assignment(
         champion_image_sha256=design.champion.image_sha256,
         candidate_ballot_id=design.candidate.ballot_id,
         champion_ballot_id=design.champion.ballot_id,
+    )
+
+
+def construct_reviewed_assignment_from_consent_assertions(
+        *, design: HumanEvaluationDesign,
+        consent_assertions_by_human_seat: tuple[str, str],
+        block_id: str, block_slot: int, assignment_secret: bytes,
+        consent_secret: bytes, now_unix_s: int) -> HumanEvaluationContext:
+    """Authenticate two opt-ins before constructing a score-free assignment.
+
+    No token may provide the arm, session, block or policy.  Those values come
+    exclusively from the reviewed design and the server-side assignment
+    secret.  This helper remains unreachable from production room ingress.
+    """
+    if (not isinstance(consent_assertions_by_human_seat, tuple)
+            or len(consent_assertions_by_human_seat) != 2
+            or not all(isinstance(value, str)
+                       for value in consent_assertions_by_human_seat)):
+        raise HumanEvaluationError(
+            "two consent assertions are required for seats 0 and 2")
+    participants = tuple(
+        verify_consent_assertion(
+            token, design=design, consent_secret=consent_secret,
+            now_unix_s=now_unix_s)
+        for token in consent_assertions_by_human_seat
+    )
+    return construct_reviewed_assignment(
+        design=design,
+        participants_by_human_seat=participants,
+        block_id=block_id,
+        block_slot=block_slot,
+        assignment_secret=assignment_secret,
     )
 
 

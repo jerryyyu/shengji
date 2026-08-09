@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 13:10 EDT
+## Current synthesis — 2026-08-09 13:35 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -95,13 +95,18 @@ what those results change in the research plan.
   exactly verified terminal `abd9f36f…cdc00`: overall acting-team point delta
   `+5.156` with one-sided LCB `+3.029`, positive attacker and defender means,
   35 wins / 4 losses / 25 ties, and level utility `+0.25`. This establishes
-  the narrow exact-late mechanism. Exact `b64bc95` now freezes the natural-
-  traffic complete-round runner/controller: treatment, analysis-identical
-  matched null and champion share mirrored deals and RNG streams. A four-
-  cluster score-free Air preflight passed in 332.45 seconds, projected the
-  screen at 94.56 fleet-hours / 11.82 max-shard hours, and packet
-  `80e4f1bf…6947` fully recomputes. External review still gates its only Mini
-  launch; this is not whole-bot strength or production authority.
+  the narrow exact-late mechanism. A pre-review adversarial audit superseded
+  the first full-game packet without launch or outcomes: its record validator
+  admitted wrong-signed/unbounded utility, underfilled report work and direct
+  shards without reviewed authority. Exact `cad3992` freezes repaired v2:
+  treatment, analysis-identical matched null and champion share mirrored deals
+  and RNG streams; raw round points reconstruct every signed utility; each
+  search consumes exactly 30+300 accepted worlds; and every canonical shard
+  reopens the reviewed packet/admission/receipt chain before compute. Fresh
+  score-free Air preflight `fcc8b891…ee060` passed in 321.32 seconds, projected
+  the screen at 91.40 fleet-hours / 11.42 max-shard hours, and packet
+  `17036e63…1385` fully recomputes. External review still gates its only Mini
+  launch; confirmation is hard-closed pending a future reviewed controller.
 - **Human data:** the atomically refreshed Fly-snapshot-only `human_v8` corpus
   passed independent publication review at producer `b52dc33`, source manifest
   `07ff18fb…a5e` and corpus manifest `b9699790…16553`. It contains 2,830 plays,
@@ -317,8 +322,8 @@ strength loop works.
    SELECT NONE closes this exact recipe without tuning or retry.
 2. **Carry S4 from mechanism evidence to whole-game evidence.** The reviewed
    one-shot exact-state screen passed in both roles at terminal
-   `abd9f36f…cdc00`. The fresh complete-round controller and packet are now
-   frozen at `b64bc95` / `80e4f1bf…6947`, preserving natural trigger traffic
+   `abd9f36f…cdc00`. The repaired complete-round v2 controller and packet are
+   frozen at `cad3992` / `17036e63…1385`, preserving natural trigger traffic
    against the exact live champion and an analysis-identical matched null.
    External review must precede launch, and Mini remains occupied by S3a. Do
    not treat `+5.156` points as a duel-strength estimate: using a K now can
@@ -353,7 +358,7 @@ starts from a diagnosed mechanism rather than another undifferentiated corpus.
   them through rollouts.
 - **S4 point-banking continuation** has passed its exact-state mechanism
   screen in both roles and its score-free complete-round capacity gate. Packet
-  `80e4f1bf…6947` is frozen. The remaining empirical question is deployment
+  `17036e63…1385` is frozen. The remaining empirical question is deployment
   relevance: does the continuation-only change improve complete-round utility
   under natural traffic against the live champion and matched null?
 - **Later exact search** requires a new operational hypothesis. S3b-v2 is
@@ -411,11 +416,13 @@ person who changed names stayed in one fold. Treat H0 as a bounded diagnostic
 and proposal source. A formal people-strength gate must assign stable,
 consented pseudonymous participant/session IDs before play and keep those
 evaluation logs physically and logically out of all training builders.
-Forward-only exact `45f30bb` implements the logical half: a HUMAN-C1 schema or
-any `training_excluded=true` event makes the builder refuse the entire
-publication, even if someone copied an evaluation file into the corpus glob.
-This does not alter or re-authorize frozen `human_v8`/H0 evidence.
-Exact range through `340ae4e` adds the inert server-side identity/logging seam:
+Forward-only exact range through `b198839` implements the logical half: a
+HUMAN-C1 schema or any `training_excluded=true` event makes the builder refuse
+the entire publication—even on a malformed round with no `round_start`—if
+someone copied an evaluation file into the corpus glob. An evaluation log
+failure terminally invalidates its room before a retry or deal task can create
+apparently complete selective evidence. This does not alter or re-authorize
+frozen `human_v8`/H0 evidence. The inert server-side identity/logging seam adds
 complementary hidden blocks, participant-derived pair clustering, separate
 per-arm policy/Git/image/ballot identity, a disjoint log root, policy and
 0/2-human-versus-1/3-bot binding, name/chat redaction and fail-closed writes.

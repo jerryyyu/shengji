@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 13:10 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 13:35 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,8 +8,8 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | `s3a-bury-duel-screen-153m-v1` | **RUNNING / OUTCOME SEALED.** Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight shards × 256. Latest count-only heartbeat: `133,131,132,135,134,131,134,131` (1,061/2,048). Never inspect shard outcomes, retry, extend or move the pinned checkout. |
-| Air | none | **FREE.** S4 score-free preflight passed at `d2162ea5…e3d2`; full-game packet `80e4f1bf…6947` is frozen but unreviewed and has no launch authority. |
+| Mini | `s3a-bury-duel-screen-153m-v1` | **RUNNING / OUTCOME SEALED.** Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight shards × 256. Latest count-only heartbeat: `147,146,146,149,149,146,149,145` (1,177/2,048). Never inspect shard outcomes, retry, extend or move the pinned checkout. |
+| Air | none | **FREE.** Repaired S4 v2 score-free preflight passed at `fcc8b891…ee060`; full-game packet `17036e63…1385` is frozen but unreviewed and has no launch authority. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
 ## S3a legal next action
@@ -36,7 +36,7 @@ The canonical numbers and meanings are in the results table in
 
 | date | job | terminal verdict | anchor |
 |---|---|---|---|
-| 08-09 | S4 complete-round preflight + packet | **CAPACITY PASS / PACKET REVIEW QUEUED** | exact `b64bc95`; preflight `d2162ea5…e3d2`, 94.56 fleet-hours / 11.82 max-shard hours; packet `80e4f1bf…6947`; no launch/strength |
+| 08-09 | S4 complete-round v2 preflight + packet | **CAPACITY PASS / PACKET REVIEW QUEUED** | exact `cad3992`; preflight `fcc8b891…ee060`, 91.40 fleet-hours / 11.42 max-shard hours; packet `17036e63…1385`; no launch/strength |
 | 08-09 | S4 point-banking exact-state screen | **MECHANISM PASS / FULL-GAME PACKET REVIEW** | screen `abd9f36f…cdc00`; receipt `90124eb6…f526b`; overall point delta `+5.156`, LCB `+3.029`; both roles positive; no strength or launch authority |
 | 08-09 | Teacher Stage-C design freeze v2 | **NO-COMPUTE COMPLETE / REVIEW QUEUED AFTER H0** | exact `b0ef0f9`; 1,024/512/512 DESIGN/CALIB/REPORT; packet `45802e47…a350`; v1 superseded |
 | 08-09 | Human H0 design freeze | **SCORE-FREE COMPLETE / REVIEW QUEUED** | exact `9770313`; 384 DESIGN + 128 AUDIT; packet `9ff160a9…247d3`; no outcomes computed |
@@ -66,6 +66,10 @@ does not authorize O1.
 
 ## Preserved failures
 
+- S4 full-game v1 `b64bc95` / `80e4f1bf…6947` is superseded before external
+  review. Adversarial probes found outcome-sign/bound, accepted-work and direct-
+  authority gaps. It never launched and published no outcomes; repaired v2 is
+  a fresh seed namespace rather than a retry.
 - Teacher audit-v1/v2 roots remain immutable evidence of publication and
   underfilled-continuation refusals. The fresh v3 audit supersedes them
   operationally but does not rewrite them.

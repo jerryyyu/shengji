@@ -403,6 +403,18 @@ def build_census(corpus: Path, expected_manifest_sha256: str, *,
             ),
             "summary": _band_summary(band_rows),
         }
+        if not smoke:
+            print(json.dumps({
+                "phase": "score-free-census",
+                "band_complete": band,
+                "bands_complete": len(scan),
+                "bands_total": len(BAND_SEED_STARTS),
+                "rows_complete": len(rows),
+                "rows_total": (
+                    len(BAND_SEED_STARTS) * len(OFFSETS) * ROWS_PER_OFFSET),
+                "seeds_scanned_in_band": seeds_scanned,
+                "outcomes_computed": False,
+            }, sort_keys=True), file=sys.stderr, flush=True)
     rows.sort(key=lambda row: row["state_id"])
     seeds = [row["deal_seed"] for row in rows]
     if len(seeds) != len(set(seeds)):

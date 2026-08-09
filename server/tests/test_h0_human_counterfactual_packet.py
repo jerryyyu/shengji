@@ -95,7 +95,8 @@ def test_corpus_validation_binds_artifacts_and_authority(tmp_path: Path) -> None
     corpus = tmp_path / "human"
     corpus.mkdir()
     play = _play("p1", "A.jsonl", 1, 1, trick=1)
-    bury = {"source": "A.jsonl", "round": 1, "player_id": "p1"}
+    bury = {"source": "A.jsonl", "round": 1, "seat": 0,
+            "player_id": "p1", "chosen": ["H3"]}
     _write_jsonl(corpus / "play_decisions.jsonl", [play])
     _write_jsonl(corpus / "bury_decisions.jsonl", [bury])
     (corpus / "shard_00000.npz").write_bytes(b"score-free-test-fixture")
@@ -144,7 +145,7 @@ def test_packet_authority_cannot_widen() -> None:
     assert "packet authority widened" in h0.packet_problems(widened, expected)
 
 
-def test_v2_binds_the_executable_v11_checkpoint_and_portable_parent(
+def test_v3_binds_the_executable_v11_checkpoint_and_portable_parent(
         monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     checkpoint = tmp_path / "ep07.npz"
     checkpoint.write_bytes(b"fixture")
@@ -179,10 +180,101 @@ def test_v11_checkpoint_drift_refuses(monkeypatch: pytest.MonkeyPatch,
         h0.validate_v11_checkpoint(checkpoint)
 
 
-def test_v2_proposal_semantics_are_not_a_scalar_leaf() -> None:
-    source = SCRIPT.read_text()
-    assert '"action_universe": "exact-live-champion-analysis-ballot"' in source
-    assert '"threshold_applied": False' in source
-    assert '"scalar_leaf_use": False' in source
-    assert '"proposals_per_decision": 1' in source
-    assert '"report_fold_cannot_select_or_change_candidate_union": True' in source
+def test_v3_play_union_is_bounded_and_exhaustive_actions_only_propose() -> None:
+    contract = h0.proposal_contract(
+        {"policy": "mc-s0-report-lcb"}, {"sha256": "c" * 64})
+    assert contract["production_ballot"] == {
+        "source": "MCBot._candidates from exact live parent",
+        "lead_max_candidates": 14,
+        "follow_max_candidates": 12,
+        "must_preserve_order_and_candidate_zero": True,
+        "full_exhaustive_universe_is_not_added_to_union": True,
+    }
+    assert contract["play_source_maxima"] == {
+        "live_production_ballot": 14,
+        "human_action": 1,
+        "v11pair_top_proposal": 1,
+        "matched_random_proposal": 1,
+        "max_unique_after_deduplication": 17,
+    }
+    assert contract["analysis_action_universe"][
+        "all_actions_evaluated_by_pilot"] is False
+    assert contract["v11pair_top_proposal"]["action_universe"] == \
+        "shared-novel-proposal-pool"
+    assert contract["random_diversifier"]["action_universe"] == \
+        "shared-novel-proposal-pool"
+    assert contract["novel_proposal_pool"]["shared_by_v11_and_random"] is True
+    assert contract["v11pair_top_proposal"]["threshold_applied"] is False
+    assert contract["v11pair_top_proposal"]["scalar_leaf_use"] is False
+    encoded = json.dumps(contract, sort_keys=True)
+    assert "live_champion_analysis_ballot" not in encoded
+    assert "same_budget_random_structured_bury" not in encoded
+
+
+def test_v3_bury_is_a_separate_bounded_surface() -> None:
+    contract = h0.proposal_contract({}, {})
+    bury = contract["structured_bury_ballot"]
+    assert bury["max_candidates"] == 32
+    assert bury["candidate_zero"] == "live_smart_bury"
+    assert bury["max_unique_after_human_deduplication"] == 33
+    assert contract["bury_union"] == [
+        "s3a_structured_ballot_including_live_smart_candidate_zero",
+        "human_bury_if_novel",
+    ]
+
+
+def test_v3_names_root_policy_and_real_rollout_continuation_separately() -> None:
+    contract = h0.execution_contract()
+    assert contract["play_root_reference"]["policy"] == "mc-s0-report-lcb"
+    assert contract["play_root_reference"][
+        "separate_from_pilot_selection_and_report_folds"] is True
+    assert contract["bury_root_reference"] == {
+        "policy": "live_smart_bury",
+        "candidate_world_rollouts": 0,
+        "must_equal_structured_ballot_candidate_zero": True,
+    }
+    rollout = contract["rollout_continuation"]
+    assert rollout["policy"] == "HeuristicBot"
+    assert rollout["logical_path"] == "server/shengji/ai/heuristic.py"
+    assert rollout["sha256"] == h0.ROLLOUT_POLICY_SHA256
+    assert rollout["report_lcb_is_not_recursive_continuation"] is True
+    assert contract["rng_folds"][
+        "all_three_world_folds_pairwise_disjoint"] is True
+    encoded = json.dumps(contract, sort_keys=True)
+    assert '"production_continuation": "mc-s0-report-lcb"' not in encoded
+
+
+def test_v3_work_ceiling_reconciles_from_named_actions_and_worlds() -> None:
+    assert h0.PLAY_REFERENCE_MAX_CANDIDATE_WORLDS == 14 * 30 + 2 * 300
+    assert h0.PLAY_PILOT_MAX_CANDIDATE_WORLDS == 17 * 30 + 3 * 300
+    assert h0.PLAY_MAX_CANDIDATE_WORLDS == 2430
+    assert h0.BURY_MAX_CANDIDATE_WORLDS == 33 * 30 + 3 * 300 == 1890
+    expected = 512 * 2430 + 45 * 1890
+    assert h0.TOTAL_MAX_CANDIDATE_WORLDS == expected == 1_329_210
+    work = h0.execution_contract()["work_ceiling"]
+    assert work["selected_play_rows"] == 512
+    assert work["selected_bury_rows"] == 45
+    assert work["all_rows_max_candidate_worlds"] == expected
+
+
+def test_v3_reports_source_survival_not_undefined_candidate_recall() -> None:
+    contract = h0.execution_contract()
+    outputs = contract["outputs"]
+    assert outputs["candidate_recall_claimed"] is False
+    assert outputs["report_estimands"] == [
+        "human-minus-reference-paired-utility",
+        "selected-minus-reference-paired-utility",
+        "selected-minus-human-paired-utility",
+    ]
+    completion = contract["row_completion"]
+    assert completion["no_replacement_or_resampling_of_selected_rows"] is True
+    assert completion[
+        "partial_action_or_world_dose_cannot_publish_a_utility_row"] is True
+
+
+def test_v3_source_identity_drift_refuses(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(h0, "sha256_file", lambda _path: "0" * 64)
+    with pytest.raises(h0.H0PacketError, match="source SHA-256 drift"):
+        h0.validate_source(
+            h0.ROLLOUT_POLICY_LOGICAL_PATH, h0.ROLLOUT_POLICY_SHA256)

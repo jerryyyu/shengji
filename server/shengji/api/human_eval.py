@@ -10,13 +10,17 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import re
+import stat
 from dataclasses import asdict
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 
 SCHEMA = "human-vs-bot-evaluation-v1"
+RUNTIME_RECEIPT_SCHEMA = "human-evaluation-runtime-identity-receipt-v1"
 ARMS = ("candidate", "champion")
 HUMAN_SEATS = (0, 2)
 BOT_SEATS = (1, 3)
@@ -392,3 +396,84 @@ def reopen_assigned_policy(
         raise HumanEvaluationError(
             "reopened policy name does not match evaluation assignment")
     return bot
+
+
+def _read_regular_unlinked(path: Path) -> bytes:
+    """Read stable bytes while refusing symlinks and shared hard links."""
+    try:
+        listed = path.lstat()
+    except OSError as exc:
+        raise HumanEvaluationError("cannot open runtime identity receipt") from exc
+    if not stat.S_ISREG(listed.st_mode) or listed.st_nlink != 1:
+        raise HumanEvaluationError(
+            "runtime identity receipt must be a regular unlinked file")
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise HumanEvaluationError("cannot open runtime identity receipt") from exc
+    try:
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            before = os.fstat(handle.fileno())
+            if (before.st_dev, before.st_ino) != (listed.st_dev, listed.st_ino):
+                raise HumanEvaluationError(
+                    "runtime identity receipt changed before open")
+            raw = handle.read()
+            after = os.fstat(handle.fileno())
+    finally:
+        os.close(descriptor)
+    stable_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns")
+    if (before.st_nlink != 1 or after.st_nlink != 1
+            or not stat.S_ISREG(after.st_mode)
+            or any(getattr(before, field) != getattr(after, field)
+                   for field in stable_fields)
+            or len(raw) != after.st_size):
+        raise HumanEvaluationError(
+            "runtime identity receipt changed while reading")
+    return raw
+
+
+def reopen_assigned_policy_from_receipt(
+        context: HumanEvaluationContext, *, receipt_path: str | Path,
+        expected_receipt_sha256: str):
+    """Reopen an assigned policy from an exact identity-only receipt.
+
+    The receipt deliberately grants no room or traffic authority.  A later
+    reviewed ingress/admission must pin its digest and separately authorize a
+    bounded evaluation launch.
+    """
+    _require(_SHA256, expected_receipt_sha256, "expected_receipt_sha256")
+    raw = _read_regular_unlinked(Path(receipt_path))
+    if hashlib.sha256(raw).hexdigest() != expected_receipt_sha256:
+        raise HumanEvaluationError("runtime identity receipt digest mismatch")
+    try:
+        receipt = json.loads(raw)
+    except (TypeError, ValueError) as exc:
+        raise HumanEvaluationError("invalid runtime identity receipt JSON") from exc
+    expected_keys = {
+        "schema", "assignment_design_sha256", "policy",
+        "identity_only", "human_traffic_authorized",
+    }
+    if not isinstance(receipt, dict) or set(receipt) != expected_keys:
+        raise HumanEvaluationError("invalid runtime identity receipt fields")
+    if (receipt.get("schema") != RUNTIME_RECEIPT_SCHEMA
+            or receipt.get("identity_only") is not True
+            or receipt.get("human_traffic_authorized") is not False):
+        raise HumanEvaluationError("invalid runtime identity receipt authority")
+    if receipt.get("assignment_design_sha256") != \
+            context.assignment_design_sha256:
+        raise HumanEvaluationError(
+            "runtime identity receipt design does not match assignment")
+    policy = receipt.get("policy")
+    if not isinstance(policy, dict) or set(policy) != {
+            "policy", "git", "image_sha256", "ballot_id"}:
+        raise HumanEvaluationError("invalid runtime policy identity fields")
+    expected = asdict(context.active_policy_identity)
+    if policy != expected:
+        raise HumanEvaluationError(
+            "runtime policy identity does not match assignment")
+    return reopen_assigned_policy(
+        context, runtime_git=policy["git"],
+        runtime_image_sha256=policy["image_sha256"])

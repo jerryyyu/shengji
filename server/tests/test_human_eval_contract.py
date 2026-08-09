@@ -1,5 +1,7 @@
 import asyncio
+import hashlib
 import json
+import os
 import random
 from dataclasses import replace
 from types import SimpleNamespace
@@ -17,6 +19,7 @@ from shengji.api.human_eval import (
     derive_participant_pair_id,
     registered_policy_ballot_id,
     reopen_assigned_policy,
+    reopen_assigned_policy_from_receipt,
 )
 
 
@@ -225,6 +228,87 @@ def test_runtime_policy_reopen_fails_closed(changes, runtime_git,
         reopen_assigned_policy(
             context, runtime_git=runtime_git,
             runtime_image_sha256=runtime_image)
+
+
+def _runtime_receipt(context):
+    return {
+        "schema": "human-evaluation-runtime-identity-receipt-v1",
+        "assignment_design_sha256": context.assignment_design_sha256,
+        "policy": {
+            "policy": context.active_policy_identity.policy,
+            "git": context.active_policy_identity.git,
+            "image_sha256": context.active_policy_identity.image_sha256,
+            "ballot_id": context.active_policy_identity.ballot_id,
+        },
+        "identity_only": True,
+        "human_traffic_authorized": False,
+    }
+
+
+def _write_runtime_receipt(path, receipt):
+    raw = json.dumps(receipt, sort_keys=True).encode()
+    path.write_bytes(raw)
+    return hashlib.sha256(raw).hexdigest()
+
+
+def test_runtime_receipt_reopens_exact_policy_without_granting_traffic(
+        tmp_path):
+    context = _registered_context()
+    path = tmp_path / "runtime-receipt.json"
+    digest = _write_runtime_receipt(path, _runtime_receipt(context))
+
+    bot = reopen_assigned_policy_from_receipt(
+        context, receipt_path=path, expected_receipt_sha256=digest)
+
+    assert bot.policy_name == context.active_policy
+
+
+@pytest.mark.parametrize("mutate,match", [
+    (lambda receipt: receipt.update(
+        assignment_design_sha256="2" * 64), "design"),
+    (lambda receipt: receipt.update(
+        human_traffic_authorized=True), "authority"),
+    (lambda receipt: receipt["policy"].update(
+        ballot_id="wrong-ballot-v1"), "policy identity"),
+    (lambda receipt: receipt.update(extra="ambiguous"), "fields"),
+])
+def test_runtime_receipt_refuses_identity_or_authority_drift(
+        tmp_path, mutate, match):
+    context = _registered_context()
+    receipt = _runtime_receipt(context)
+    mutate(receipt)
+    path = tmp_path / "runtime-receipt.json"
+    digest = _write_runtime_receipt(path, receipt)
+
+    with pytest.raises(HumanEvaluationError, match=match):
+        reopen_assigned_policy_from_receipt(
+            context, receipt_path=path,
+            expected_receipt_sha256=digest)
+
+
+def test_runtime_receipt_refuses_wrong_digest_symlink_and_hardlink(tmp_path):
+    context = _registered_context()
+    original = tmp_path / "runtime-receipt.json"
+    digest = _write_runtime_receipt(original, _runtime_receipt(context))
+
+    with pytest.raises(HumanEvaluationError, match="digest mismatch"):
+        reopen_assigned_policy_from_receipt(
+            context, receipt_path=original,
+            expected_receipt_sha256="0" * 64)
+
+    symlink = tmp_path / "runtime-receipt-symlink.json"
+    symlink.symlink_to(original)
+    with pytest.raises(HumanEvaluationError, match="regular unlinked"):
+        reopen_assigned_policy_from_receipt(
+            context, receipt_path=symlink,
+            expected_receipt_sha256=digest)
+
+    hardlink = tmp_path / "runtime-receipt-hardlink.json"
+    os.link(original, hardlink)
+    with pytest.raises(HumanEvaluationError, match="regular unlinked"):
+        reopen_assigned_policy_from_receipt(
+            context, receipt_path=hardlink,
+            expected_receipt_sha256=digest)
 
 
 def test_room_writes_evaluation_only_to_separate_root(tmp_path, monkeypatch):

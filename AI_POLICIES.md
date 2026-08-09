@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-09 13:35 EDT
+## Current synthesis — 2026-08-09 16:34 EDT
 
 ### Canonical terminal-results table
 
@@ -39,6 +39,7 @@ results table.
 | 08-09 | S4 complete-round score-free preflight v2 | Play complete mirrored rounds with the point-banking rollout rule, an analysis-identical null, and the live champion on the same deals and random streams. | **CAPACITY + PACKET PASS / SCREEN QUEUED** | 4 clusters in `321.32s`; projected screen `91.40` fleet-hours / `11.42` max-shard hours; treatment/null both trigger in both roles with exact dose | A pre-review audit superseded unlaunched v1. Exact `cad3992` recomputes raw outcomes and enforces 330 accepted worlds/search. Claude passed packet `17036e63…1385`; one Mini screen is authorized after S3a releases the host and a fresh admission/receipt is created. |
 | 08-09 | Human H0 counterfactual design v1 | Add the move a human actually played to the champion ballot alongside V11 and random proposals, then price those choices on common simulated worlds instead of imitating the human blindly. | **SPLIT REVIEW PASS / SUPERSEDED PRE-EXECUTION** | 384 DESIGN + 128 name-ID/deal-disjoint AUDIT plays; separate 36/9 buries; every eligible late/off-ballot row retained; zero outcomes | The split and authority semantics passed, but later executable audit found the pinned V11 digest names no artifact. V1 cannot parent a controller. |
 | 08-09 | Human H0 counterfactual design v2 | Preserve v1's human sample while repairing the real V11 checkpoint and deployed report-LCB parent identities. | **IDENTITY DELTA PASS / SUPERSEDED PRE-CONTROLLER** | Claude PASS `9fdb67a`; same 384/128 plays and 36/9 buries; zero outcomes | The executable artifacts reopened correctly, but the analysis-ballot cap, downstream continuation and candidate-recall estimand remained ambiguous. Bounded v3 replaces the design before any controller or result. |
+| 08-09 | Human H0 counterfactual design v3 | Cap the human/V11/random proposal union, make every source compete under fixed disjoint work, and distinguish the root report-LCB judge from the heuristic policy used inside rollouts. | **DESIGN PASS / CONTROLLER IMPLEMENTATION ONLY** | Claude PASS `239f13c`; 17/33 play/bury caps, three disjoint folds and 1,329,210 maximum candidate-world rollouts; zero outcomes | The human/model proposal experiment is now finite and executable. The PASS authorizes one score-free controller implementation—not a counterfactual run, label, training, strength claim or production change. |
 | 08-09 | S3a full-game score-free preflight | Give the banker structured point/void/trump kitty options, evaluate them with the live search, and test the resulting bot over complete rounds. | **CAPACITY PASS / SCREEN LAUNCHED AFTER REVIEW** | 4/4 clusters in 255.3 seconds; exact structured work; screen projection `72.62` fleet-hours / `9.08` max-shard hours under the frozen 2× factor | Structured bury is non-vacuously wired and the preregistered full-game screen fits Mini. Separate packet review passed and the sealed screen is running; this row itself remains capacity evidence, not strength evidence. |
 | 08-08 | S3b v2 throughput | Sample compatible hidden hands, solve the remaining four-card perfect-information game exactly by partnership minimax inside each sampled world, then average those exact world values. | **HOLD / NO SCREEN** | first exact-treatment cluster exceeded the frozen cumulative `250,000`-node cap; no receipt published | The registered four-card sampled-exact recipe is not operationally admissible under its zero-overflow rule. No strength conclusion; no retry or 2,048 screen. |
 | 08-08 | S3a v2 sizing | Run a tiny score-free dry run to verify the structured-bury mechanism consumes exact work and fits available compute. | **CAPACITY PASS / NO STRENGTH VERDICT** | frozen projection `0.142` fleet-hours / `0.0178` max-shard hours, exact work and zero failed worlds | This cleared placement for the subsequently reviewed and completed 512-state screen; sizing itself made no strength claim. |
@@ -66,6 +67,7 @@ Evidence anchors, in the same order:
 - Human H0 v1 design packet `9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3`;
   repaired v2 packet `2cccf5803ca60cf41690f18dc0e85febaf36a88ce702587e8c86a67e2a358f2b`;
   bounded v3 packet `4d3f0a35082c6957f2a468686b8eedbd6d7cbbf9540503fcea08cccf27c8cc3c`;
+  bounded-v3 design-review marker `239f13ce52a8be81108fdebf9bd0e96742e60133`;
   reviewed corpus manifest `b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553`.
 - S3a full-game preflight `09692f823d26d38ea76c7c6e36ea007a5031c0f05ca1a76795c84e7d0722edf0`;
   supervisor final `56943242f3620b09774a55eab992fbac0bce6ad224c3ada6a7b54a5634799e9f`;
@@ -213,8 +215,9 @@ Evidence anchors, in the same order:
   underdefined. Exact source `b02b6de` / packet commit `d6214ce` freezes
   bounded v3 at `4d3f0a35…8cc3c`: 17/33 play/bury caps, explicit
   `HeuristicBot` continuation, three disjoint folds and maximum 1,329,210
-  candidate-world rollouts. V3 review is open. No controller, outcome, label,
-  training or strength authority exists.
+  candidate-world rollouts. Claude independently passed the design at
+  `239f13c`; one score-free controller implementation is now authorized. No
+  controller, outcome, label, training or strength authority exists.
 - **Teacher Stage C:** exact `b0ef0f9` froze no-compute v2 at
   `45802e47…a350`: a 2,048-state design
   (1,024 DESIGN / 512 CALIB / 512 REPORT; 1,920 play + 128 bury). Ordinary
@@ -223,8 +226,8 @@ Evidence anchors, in the same order:
   the adapter's literal identity, reopens the authenticated live parent,
   conditionally binds S4 v2 and defines untouched regret/recall gates. V1
   `4df94e6c…13354` is superseded. Stage-C v2 itself now binds superseded H0 v1,
-  so it is held before review and must be repaired only after bounded H0 v3
-  PASS. It grants no capture, label or model work.
+  so it remains held before review. Bounded H0 v3 has now passed; freeze a
+  Stage-C v3 binding next. It grants no capture, label or model work.
 
 ### Learned policies and RL
 

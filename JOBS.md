@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 15:47 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 16:25 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,8 +8,8 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | `s3a-bury-duel-screen-153m-v1` | **RUNNING / OUTCOME SEALED.** Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight shards × 256. Latest count-only heartbeat: `220,219,220,223,223,218,223,217` (1,763/2,048). Never inspect shard outcomes, retry, extend or move the pinned checkout. |
-| Air | none | **FREE.** Claude passed S4 v2 packet `17036e63…1385`, but its sole screen is Mini-bound and waits behind S3a. Air has no reviewed strength launch; use it for exact review/test work. |
+| Mini | `s3a-bury-duel-screen-153m-v1` | **RUNNING / OUTCOME SEALED.** Exact `c599b42`, packet `de16247b…cdd4`, admission `567e8aa8…41c5e`, receipt `2c89bed3…cbb2c`; eight shards × 256. Latest count-only heartbeat: `243,240,242,246,245,240,244,239` (1,939/2,048). Never inspect shard outcomes, retry, extend or move the pinned checkout. |
+| Air | none | **FREE.** The 1.81-second S3c score-free census is complete and independently replayed. S4's sole screen is Mini-bound behind S3a. Air has no reviewed strength launch; use it for exact review/test work. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
 ## S3a legal next action
@@ -36,9 +36,10 @@ The canonical numbers and meanings are in the results table in
 
 | date | job | terminal verdict | anchor |
 |---|---|---|---|
+| 08-09 | S3c natural-prefix census + curriculum | **SCORE-FREE FROZEN / DESIGN REVIEW NEXT** | producer `0b96fae`; asset commit `4fb90a1`; 768 roots; census `23632609…b52a`; packet `df102428…9eca`; local/Air replay pass; no solver/screen/training/strength authority |
 | 08-09 | S4 complete-round v2 preflight + packet | **PACKET PASS / ONE MINI SCREEN QUEUED** | exact `cad3992`; preflight `fcc8b891…ee060`, 91.40 fleet-hours / 11.42 max-shard hours; packet `17036e63…1385`; Claude marker `51a864c`; fresh admission/receipt only after S3a; no confirmation/strength |
 | 08-09 | S4 point-banking exact-state screen | **MECHANISM PASS / FULL-GAME PACKET REVIEW** | screen `abd9f36f…cdc00`; receipt `90124eb6…f526b`; overall point delta `+5.156`, LCB `+3.029`; both roles positive; no strength or launch authority |
-| 08-09 | Human H0 design v3 | **SCORE-FREE FROZEN / DELTA REVIEW OPEN** | source `b02b6de`, packet commit `d6214ce`, packet `4d3f0a35…8cc3c`; preserved plays, frozen buries, 17/33 caps, explicit continuation, finite work; no controller/outcomes |
+| 08-09 | Human H0 design v3 | **DESIGN PASS / CONTROLLER IMPLEMENTATION NEXT** | source `b02b6de`, packet commit `d6214ce`, packet `4d3f0a35…8cc3c`; Claude marker `239f13c`; preserved plays, frozen buries, 17/33 caps, explicit continuation, finite work; no controller/outcomes |
 | 08-09 | Human H0 design v2 | **IDENTITY DELTA PASS / SUPERSEDED PRE-CONTROLLER** | exact `12dac55`; packet `2cccf580…8f2b`; Claude marker `9fdb67a`; real V11 + portable parent passed, later bounded-design audit superseded it; no outcomes |
 | 08-09 | Human H0 design v1 | **SPLIT REVIEW PASS / SUPERSEDED PRE-EXECUTION** | exact `9770313`; packet `9ff160a9…247d3`; split semantics passed, but pinned V11 SHA names no artifact; no outcomes computed |
 | 08-09 | Teacher Stage-C design freeze v2 | **HELD PRE-REVIEW / H0 PARENT SUPERSEDED** | exact `b0ef0f9`; 1,024/512/512 DESIGN/CALIB/REPORT; packet `45802e47…a350`; repair only after bounded H0 v3 PASS; no capture/labels/compute |

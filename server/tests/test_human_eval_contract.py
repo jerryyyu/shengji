@@ -1,14 +1,19 @@
 import asyncio
 import json
 import random
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
 
 from shengji.api.human_eval import (
+    ConsentedParticipant,
+    HumanEvaluationDesign,
     HumanEvaluationContext,
     HumanEvaluationError,
+    PolicyIdentity,
     blocked_arm,
+    construct_reviewed_assignment,
     derive_participant_pair_id,
 )
 
@@ -16,6 +21,7 @@ from shengji.api.human_eval import (
 def _context(**changes):
     values = {
         "experiment_id": "human-c1-pilot-v1",
+        "assignment_design_sha256": "a" * 64,
         "session_id": "session-0001",
         "participant_ids_by_human_seat": ("b" * 32, "c" * 32),
         "cohort_id": "experienced-v1",
@@ -36,6 +42,44 @@ def _context(**changes):
         values["participant_ids_by_human_seat"])
     values.update(changes)
     return HumanEvaluationContext(**values)
+
+
+def _design():
+    return HumanEvaluationDesign(
+        experiment_id="human-c1-pilot-v1",
+        assignment_design_sha256="a" * 64,
+        cohort_id="experienced-v1",
+        consent_version="consent-v1",
+        candidate=PolicyIdentity(
+            policy="candidate-policy", git="d" * 40,
+            image_sha256="e" * 64,
+            ballot_id="s3a-structured-bury-v1"),
+        champion=PolicyIdentity(
+            policy="mc-s0-report-lcb", git="f" * 40,
+            image_sha256="1" * 64,
+            ballot_id="report-lcb-ballot-v1"),
+    )
+
+
+def _participants(**changes):
+    values = [
+        {
+            "participant_id": "b" * 32,
+            "cohort_id": "experienced-v1",
+            "consent_version": "consent-v1",
+            "opted_in": True,
+        },
+        {
+            "participant_id": "c" * 32,
+            "cohort_id": "experienced-v1",
+            "consent_version": "consent-v1",
+            "opted_in": True,
+        },
+    ]
+    for key, value in changes.items():
+        index_text, field = key.split("__", 1)
+        values[int(index_text)][field] = value
+    return tuple(ConsentedParticipant(**value) for value in values)
 
 
 def test_block_schedule_is_deterministic_and_complementary():
@@ -70,6 +114,7 @@ def test_payload_is_complete_evaluation_only_and_server_side():
     payload = _context().log_payload()
 
     assert payload["human_seats"] == [0, 2]
+    assert payload["assignment_design_sha256"] == "a" * 64
     assert payload["bot_seats"] == [1, 3]
     assert payload["assignment_probability"] == 0.5
     assert payload["active_policy"] == "candidate-policy"
@@ -79,6 +124,63 @@ def test_payload_is_complete_evaluation_only_and_server_side():
     assert payload["candidate_selection_excluded"] is True
     assert payload["production_promotion_gate"] is True
     assert payload["policy_hidden_from_players"] is True
+
+
+def test_reviewed_assignment_derives_hidden_complementary_arms_and_sessions():
+    common = {
+        "design": _design(),
+        "participants_by_human_seat": _participants(),
+        "block_id": "pair-block-0001",
+        "assignment_secret": b"x" * 32,
+    }
+    first = construct_reviewed_assignment(**common, block_slot=0)
+    second = construct_reviewed_assignment(**common, block_slot=1)
+    replay = construct_reviewed_assignment(**common, block_slot=0)
+
+    assert {first.arm, second.arm} == {"candidate", "champion"}
+    assert first.session_id != second.session_id
+    assert replay == first
+    assert first.participant_pair_id == second.participant_pair_id
+    assert first.assignment_design_sha256 == "a" * 64
+    assert first.log_payload()["assignment_probability"] == 0.5
+
+
+def test_reviewed_design_digest_domains_session_identity():
+    common = {
+        "participants_by_human_seat": _participants(),
+        "block_id": "pair-block-0001",
+        "block_slot": 0,
+        "assignment_secret": b"x" * 32,
+    }
+    first = construct_reviewed_assignment(design=_design(), **common)
+    second_design = replace(
+        _design(), assignment_design_sha256="2" * 64)
+    second = construct_reviewed_assignment(design=second_design, **common)
+
+    assert first.session_id != second.session_id
+
+
+@pytest.mark.parametrize("participants,match", [
+    (lambda: _participants(**{"0__cohort_id": "site-average"}), "cohort"),
+    (lambda: _participants(**{"1__consent_version": "old-consent"}),
+     "consent version"),
+    (lambda: _participants(**{"1__participant_id": "b" * 32}),
+     "two distinct"),
+])
+def test_reviewed_assignment_refuses_participant_design_drift(participants,
+                                                               match):
+    with pytest.raises(HumanEvaluationError, match=match):
+        construct_reviewed_assignment(
+            design=_design(), participants_by_human_seat=participants(),
+            block_id="pair-block-0001", block_slot=0,
+            assignment_secret=b"x" * 32)
+
+
+def test_consent_fact_refuses_false_or_truthy_opt_in():
+    with pytest.raises(HumanEvaluationError, match="not opted in"):
+        ConsentedParticipant(
+            participant_id="b" * 32, cohort_id="experienced-v1",
+            consent_version="consent-v1", opted_in=1)
 
 
 def test_room_writes_evaluation_only_to_separate_root(tmp_path, monkeypatch):

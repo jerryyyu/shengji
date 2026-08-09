@@ -45,7 +45,9 @@ def derive_participant_pair_id(participant_ids: tuple[str, str]) -> str:
 
 
 def blocked_arm(*, assignment_secret: bytes, participant_pair_id: str,
-                block_id: str, block_slot: int) -> Literal["candidate", "champion"]:
+                block_id: str, block_slot: int,
+                assignment_domain: str | None = None
+                ) -> Literal["candidate", "champion"]:
     """Return one complementary arm per slot in a hidden two-session block."""
     if not isinstance(assignment_secret, bytes) or len(assignment_secret) < 32:
         raise HumanEvaluationError("assignment secret must contain >=32 bytes")
@@ -53,10 +55,92 @@ def blocked_arm(*, assignment_secret: bytes, participant_pair_id: str,
     _require(_ID, block_id, "block_id")
     if block_slot not in (0, 1) or isinstance(block_slot, bool):
         raise HumanEvaluationError("block_slot must be 0 or 1")
-    message = f"{SCHEMA}\0{participant_pair_id}\0{block_id}".encode()
+    if assignment_domain is not None:
+        _require(_ID, assignment_domain, "assignment_domain")
+    domain = "" if assignment_domain is None else f"{assignment_domain}\0"
+    message = (
+        f"{SCHEMA}\0{domain}{participant_pair_id}\0{block_id}"
+    ).encode()
     first = hmac.new(assignment_secret, message, hashlib.sha256).digest()[0] & 1
     candidate_slot = first
     return "candidate" if block_slot == candidate_slot else "champion"
+
+
+def _session_id(*, assignment_secret: bytes, participant_pair_id: str,
+                block_id: str, block_slot: int,
+                assignment_domain: str) -> str:
+    """Derive one opaque, idempotent session ID without revealing the arm."""
+    if not isinstance(assignment_secret, bytes) or len(assignment_secret) < 32:
+        raise HumanEvaluationError("assignment secret must contain >=32 bytes")
+    _require(_PSEUDONYM, participant_pair_id, "participant_pair_id")
+    _require(_ID, block_id, "block_id")
+    _require(_ID, assignment_domain, "assignment_domain")
+    if block_slot not in (0, 1) or isinstance(block_slot, bool):
+        raise HumanEvaluationError("block_slot must be 0 or 1")
+    message = (
+        f"{SCHEMA}\0session\0{assignment_domain}\0{participant_pair_id}"
+        f"\0{block_id}\0{block_slot}"
+    ).encode()
+    digest = hmac.new(assignment_secret, message, hashlib.sha256).hexdigest()
+    return f"session-{digest[:32]}"
+
+
+@dataclass(frozen=True)
+class PolicyIdentity:
+    """One reviewed policy artifact named by an evaluation design."""
+
+    policy: str
+    git: str
+    image_sha256: str
+    ballot_id: str
+
+    def __post_init__(self) -> None:
+        _require(_ID, self.policy, "policy")
+        _require(_GIT, self.git, "git")
+        _require(_SHA256, self.image_sha256, "image_sha256")
+        _require(_ID, self.ballot_id, "ballot_id")
+
+
+@dataclass(frozen=True)
+class HumanEvaluationDesign:
+    """Reviewed, score-free identity from which assignments may be built."""
+
+    experiment_id: str
+    assignment_design_sha256: str
+    cohort_id: str
+    consent_version: str
+    candidate: PolicyIdentity
+    champion: PolicyIdentity
+
+    def __post_init__(self) -> None:
+        for field in ("experiment_id", "cohort_id", "consent_version"):
+            _require(_ID, getattr(self, field), field)
+        _require(_SHA256, self.assignment_design_sha256,
+                 "assignment_design_sha256")
+        if not isinstance(self.candidate, PolicyIdentity):
+            raise HumanEvaluationError("invalid candidate identity")
+        if not isinstance(self.champion, PolicyIdentity):
+            raise HumanEvaluationError("invalid champion identity")
+        if self.candidate.policy == self.champion.policy:
+            raise HumanEvaluationError(
+                "candidate and champion policy names must differ")
+
+
+@dataclass(frozen=True)
+class ConsentedParticipant:
+    """Server-verified consent facts; token verification remains ingress work."""
+
+    participant_id: str
+    cohort_id: str
+    consent_version: str
+    opted_in: bool
+
+    def __post_init__(self) -> None:
+        _require(_PSEUDONYM, self.participant_id, "participant_id")
+        _require(_ID, self.cohort_id, "cohort_id")
+        _require(_ID, self.consent_version, "consent_version")
+        if self.opted_in is not True:
+            raise HumanEvaluationError("participant has not opted in")
 
 
 @dataclass(frozen=True)
@@ -64,6 +148,7 @@ class HumanEvaluationContext:
     """Immutable assignment/log identity; never serialized to client state."""
 
     experiment_id: str
+    assignment_design_sha256: str
     session_id: str
     participant_pair_id: str
     participant_ids_by_human_seat: tuple[str, str]
@@ -87,6 +172,8 @@ class HumanEvaluationContext:
                       "champion_policy", "candidate_ballot_id",
                       "champion_ballot_id"):
             _require(_ID, getattr(self, field), field)
+        _require(_SHA256, self.assignment_design_sha256,
+                 "assignment_design_sha256")
         _require(_PSEUDONYM, self.participant_pair_id, "participant_pair_id")
         if (not isinstance(self.participant_ids_by_human_seat, tuple)
                 or len(self.participant_ids_by_human_seat) != 2
@@ -123,6 +210,7 @@ class HumanEvaluationContext:
         return {
             "schema": SCHEMA,
             "experiment_id": self.experiment_id,
+            "assignment_design_sha256": self.assignment_design_sha256,
             "session_id": self.session_id,
             "participant_pair_id": self.participant_pair_id,
             "participants": [
@@ -157,3 +245,70 @@ class HumanEvaluationContext:
             "production_promotion_gate": True,
             "policy_hidden_from_players": True,
         }
+
+
+def construct_reviewed_assignment(
+        *, design: HumanEvaluationDesign,
+        participants_by_human_seat: tuple[ConsentedParticipant,
+                                          ConsentedParticipant],
+        block_id: str, block_slot: int,
+        assignment_secret: bytes) -> HumanEvaluationContext:
+    """Construct an immutable hidden assignment from a reviewed design.
+
+    This is deliberately a pure, server-only constructor.  It derives the arm
+    and session ID rather than accepting either from a client.  A future
+    ingress must still authenticate consent tokens and durably enforce that a
+    reviewed block slot is issued and completed at most once.
+    """
+    if not isinstance(design, HumanEvaluationDesign):
+        raise HumanEvaluationError("invalid evaluation design")
+    if (not isinstance(participants_by_human_seat, tuple)
+            or len(participants_by_human_seat) != 2
+            or not all(isinstance(value, ConsentedParticipant)
+                       for value in participants_by_human_seat)):
+        raise HumanEvaluationError(
+            "two consented participants are required for seats 0 and 2")
+    participant_ids = tuple(
+        participant.participant_id
+        for participant in participants_by_human_seat)
+    pair_id = derive_participant_pair_id(participant_ids)
+    for participant in participants_by_human_seat:
+        if participant.cohort_id != design.cohort_id:
+            raise HumanEvaluationError("participant cohort does not match design")
+        if participant.consent_version != design.consent_version:
+            raise HumanEvaluationError(
+                "participant consent version does not match design")
+    arm = blocked_arm(
+        assignment_secret=assignment_secret,
+        participant_pair_id=pair_id,
+        block_id=block_id,
+        block_slot=block_slot,
+        assignment_domain=design.assignment_design_sha256,
+    )
+    session_id = _session_id(
+        assignment_secret=assignment_secret,
+        participant_pair_id=pair_id,
+        block_id=block_id,
+        block_slot=block_slot,
+        assignment_domain=design.assignment_design_sha256,
+    )
+    return HumanEvaluationContext(
+        experiment_id=design.experiment_id,
+        assignment_design_sha256=design.assignment_design_sha256,
+        session_id=session_id,
+        participant_pair_id=pair_id,
+        participant_ids_by_human_seat=participant_ids,
+        cohort_id=design.cohort_id,
+        consent_version=design.consent_version,
+        block_id=block_id,
+        block_slot=block_slot,
+        arm=arm,
+        candidate_policy=design.candidate.policy,
+        candidate_git=design.candidate.git,
+        candidate_image_sha256=design.candidate.image_sha256,
+        champion_policy=design.champion.policy,
+        champion_git=design.champion.git,
+        champion_image_sha256=design.champion.image_sha256,
+        candidate_ballot_id=design.candidate.ballot_id,
+        champion_ballot_id=design.champion.ballot_id,
+    )

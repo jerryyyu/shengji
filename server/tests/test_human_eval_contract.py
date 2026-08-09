@@ -245,3 +245,103 @@ def test_evaluation_start_refuses_layout_or_identity_drift(
 
     with pytest.raises(server.IllegalPlay, match=match):
         server.validate_human_evaluation_start(room)
+
+
+def test_bound_participant_disconnect_terminally_invalidates_session(
+        tmp_path, monkeypatch):
+    from shengji.api import server
+    from shengji.engine.game import Game
+
+    monkeypatch.setattr(server, "LOG_DIR", tmp_path / "ordinary")
+    room = _evaluation_room(server, tmp_path)
+    room.game = Game(random.Random(7))
+    room.game.start_round()
+    seat = room.seats[0]
+
+    server._detach(seat, room, seat.gen)
+
+    assert room.evaluation_invalidated is True
+    assert seat.connected is False
+    records = [json.loads(line) for line in
+               (tmp_path / "evaluation" / "EVAL.jsonl").read_text().splitlines()]
+    assert records == [{
+        **{key: records[0][key] for key in ("t", "room", "round")},
+        "e": "evaluation_invalidated",
+        "seat": 0,
+        "reason": "participant_disconnect",
+        "terminal": True,
+        "experiment": room.evaluation.log_payload(),
+        "training_excluded": True,
+    }]
+    assert "name" not in records[0]
+
+
+def test_stale_disconnect_cannot_invalidate_live_evaluation_session(
+        tmp_path, monkeypatch):
+    from shengji.api import server
+    from shengji.engine.game import Game
+
+    monkeypatch.setattr(server, "LOG_DIR", tmp_path / "ordinary")
+    room = _evaluation_room(server, tmp_path)
+    room.game = Game(random.Random(7))
+    room.game.start_round()
+    seat = room.seats[0]
+
+    server._detach(seat, room, seat.gen - 1)
+
+    assert room.evaluation_invalidated is False
+    assert seat.connected is True
+    assert not (tmp_path / "evaluation" / "EVAL.jsonl").exists()
+
+
+def test_disconnect_log_failure_still_detaches_and_invalidates(
+        tmp_path, monkeypatch):
+    from shengji.api import server
+    from shengji.engine.game import Game
+
+    monkeypatch.setattr(server, "LOG_DIR", tmp_path / "ordinary")
+    room = _evaluation_room(server, tmp_path)
+    room.game = Game(random.Random(7))
+    room.game.start_round()
+    room.log_dir.write_text("not a directory")
+    seat = room.seats[0]
+
+    server._detach(seat, room, seat.gen)
+
+    assert room.evaluation_invalidated is True
+    assert seat.connected is False
+    assert seat.ws is None
+
+
+def test_disconnect_after_completed_game_does_not_invalidate_evidence(
+        tmp_path, monkeypatch):
+    from shengji.api import server
+    from shengji.engine.game import Game
+
+    monkeypatch.setattr(server, "LOG_DIR", tmp_path / "ordinary")
+    room = _evaluation_room(server, tmp_path)
+    room.game = Game(random.Random(7))
+    room.game.start_round()
+    room.game.game_over = True
+    seat = room.seats[0]
+
+    server._detach(seat, room, seat.gen)
+
+    assert room.evaluation_invalidated is False
+    assert seat.connected is False
+
+
+def test_invalidated_evaluation_refuses_bot_and_takeover_progress(
+        tmp_path, monkeypatch):
+    from shengji.api import server
+
+    monkeypatch.setattr(server, "LOG_DIR", tmp_path / "ordinary")
+    room = _evaluation_room(server, tmp_path)
+    room.evaluation_invalidated = True
+    monkeypatch.setattr(server, "current_actor", lambda _room: 1)
+    assert server._turn_eligible(room, 1, "bot") is False
+
+    room.seats[0].connected = False
+    room.seats[0].left_at = server.now() - server.TAKEOVER_AFTER - 1
+    monkeypatch.setattr(server, "current_actor", lambda _room: 0)
+    assert server._turn_eligible(room, 0, "takeover") is False

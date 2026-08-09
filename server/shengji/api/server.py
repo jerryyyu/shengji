@@ -24,7 +24,7 @@ from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
-from .human_eval import HumanEvaluationContext
+from .human_eval import HUMAN_SEATS, HumanEvaluationContext
 
 
 def _fast_active() -> bool:
@@ -534,6 +534,8 @@ async def advance_if_all_ready(room: Room) -> bool:
     remaining players wait forever on a browser that is never coming back
     (Jerry, 2026-08-03).
     """
+    if room.evaluation is not None and room.evaluation_invalidated:
+        return False
     rnd, game = room.round, room.game
     if game is None or rnd is None or rnd.phase != "round_end" or game.game_over:
         return False
@@ -583,6 +585,8 @@ def _log_round_end(room: Room) -> None:
 
 def bot_step(room: Room, seat: int) -> bool:
     """One bot decision for ``seat`` (caller holds the lock). True if acted."""
+    if room.evaluation is not None and room.evaluation_invalidated:
+        return False
     game, rnd = room.game, room.round
     if game is None or rnd is None or game.game_over:
         return False
@@ -643,6 +647,8 @@ class _PreparedBotTurn:
 
 def _turn_eligible(room: Room, seat: int, mode: str, *,
                    owner_left_at: float | None = None) -> bool:
+    if room.evaluation is not None and room.evaluation_invalidated:
+        return False
     if current_actor(room) != seat or not 0 <= seat < len(room.seats):
         return False
     owner = room.seats[seat]
@@ -902,6 +908,8 @@ def kick_bots(room: Room) -> None:
 
 # ---------------------------------------------------------------- deal task
 def _bot_declares(room: Room, seats: list[int], final: bool = False) -> None:
+    if room.evaluation is not None and room.evaluation_invalidated:
+        return
     rnd = room.round
     assert rnd is not None
     for s in seats:
@@ -923,6 +931,8 @@ async def run_deal(room: Room) -> None:
         async with room.lock:
             if room.round is not rnd:
                 return
+            if room.evaluation is not None and room.evaluation_invalidated:
+                return
             if rnd.phase != "deal":
                 break
             seat, idx, code = rnd.deal_next()
@@ -933,6 +943,8 @@ async def run_deal(room: Room) -> None:
 
     loop = asyncio.get_event_loop()
     async with room.lock:
+        if room.evaluation is not None and room.evaluation_invalidated:
+            return
         _bot_declares(room, list(range(4)), final=True)
         for s in range(4):
             if room.seats[s].is_bot:
@@ -943,6 +955,8 @@ async def run_deal(room: Room) -> None:
     while True:
         await asyncio.sleep(0.25)
         async with room.lock:
+            if room.evaluation is not None and room.evaluation_invalidated:
+                return
             if room.round is not rnd or rnd.phase != "declare":
                 return
             if rnd.declaration is not last_declaration:
@@ -1416,6 +1430,26 @@ def _detach(seat: Seat, room: Room | None = None,
     """
     if gen is not None and gen != seat.gen:
         return                       # a newer socket owns this seat now
+    if (room is not None and room.evaluation is not None
+            and room.game is not None and not room.game.game_over
+            and seat in room.seats
+            and room.seats.index(seat) in HUMAN_SEATS
+            and not room.evaluation_invalidated):
+        # HUMAN-C1 cannot let selective dropout turn into bot-cover play or a
+        # shorter favorable session.  The assignment is terminal as soon as a
+        # bound participant leaves after the game starts.  Log only the seat
+        # and a fixed reason; the immutable experiment context already carries
+        # pseudonymous identity and raw names never enter this root.
+        room.evaluation_invalidated = True
+        try:
+            room.log_event(
+                "evaluation_invalidated", seat=room.seats.index(seat),
+                reason="participant_disconnect", terminal=True,
+            )
+        except OSError:
+            # log_event also marks the room invalid.  Socket cleanup must still
+            # finish so neither takeover nor a stale connection can act.
+            pass
     if room is not None and seat in room.seats:
         room.ready.discard(room.seats.index(seat))
     seat.ws, seat.connected = None, False

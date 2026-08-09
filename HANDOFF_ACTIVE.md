@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-09 00:15 EDT. This is the executable mailbox, not a
+Last update: 2026-08-09 01:04 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -10,10 +10,10 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 | area | status | next action |
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 confirmed `+0.338379 +/- 0.067706` versus `mc-strong`. Runtime rollback is release 16; policy rollback is `mc-strong`. |
-| T1 Teacher | **RUNNING ON MINI / 2 OF 8 SHARDS PUBLISHED / ADAPTER PASS** | Claude passed the launch packet and terminal adapter `5b26c4b`. Shards 2 and 7 exited zero; six workers remain live under the same supervisor. Keep every label sealed until the one terminal gate, independently recompute it, then create one adapter artifact. |
+| T1 Teacher | **RUNNING ON MINI / 3 OF 8 SHARDS PUBLISHED / ADAPTER PASS** | Claude passed the launch packet and terminal adapter `5b26c4b`. Shards 2, 5 and 7 exited zero; five workers remain live under the same supervisor. Keep every label sealed until the one terminal gate, independently recompute it, then create one adapter artifact. |
 | T2 S3a structured bury | **MECHANISM PASS / GUARDED PREFLIGHT REVIEW PASS** | Claude passed exact `e6f2493` / contract `5e0f6ade…b44653`, including the executable Teacher-release guard and its wiring witness. The exact four-cluster score-free preflight may run only after Teacher publishes its final, removes the partial, and all workers exit. It cannot launch the screen or make a strength claim. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
-| T2 learner O0-v2 | **SUPERSEDING AIR REVIEW OPEN / NO TRAINING** | The 23:57 semantic-replay HOLD superseded `917949b`. Exact repair `7a1facf` passes 162/162 locally and on strict compiled Air; Claude must review marker `SUPHX_O0_V2_AIR_CODE_REVIEW_V2` before the disposable preflight runs. |
+| T2 learner O0-v2 | **DELTA-ONLY V3 AIR REVIEW OPEN / NO TRAINING** | Claude's V2 HOLD found one missing endpoint-call witness, not a semantic replay bug. Exact test-only delta `2e13c35` is removal-proven and passes 163/163 locally and on strict compiled Air. Claude must review marker `SUPHX_O0_V2_AIR_CODE_REVIEW_V3` before the disposable preflight runs. |
 
 ## LIVE NOW — fresh Teacher audit on Mini
 
@@ -35,9 +35,9 @@ instance, migrate to Air, inspect partial scores for decisions, retry, extend,
 train, promote, or launch Stage C. Wait for the supervisor's single terminal
 gate and independently reopen every binding.
 
-Outcome-blind runtime audit at 00:15 found 3,056/4,096 outer worlds (74.6%) and
-45/64 states. Shards 2 and 7 published regular label/log/exit triplets after
-exit zero; both label JSONs remain unopened and unhashed. Six workers remain
+Outcome-blind runtime audit at 01:05 found 3,235/4,096 outer worlds (79.0%) and
+48/64 states. Shards 2, 5 and 7 published regular label/log/exit triplets after
+exit zero; all three label JSONs remain unopened and unhashed. Five workers remain
 CPU-bound under the original supervisor. An
 earlier bounded audit found ~13% of a candidate-count × remaining-ply work
 proxy complete after ~56 minutes. Because
@@ -51,18 +51,18 @@ reviewed one-shot chain.
 ## OPEN REVIEW — O0-v2 Air code and score-redacted preflight
 
 Review branch `codex/suphx-o0-v2-air-packet` at exact
-`7a1facf04d6a5dded2b682d388c605bf6b6c66d8`; ordered shasum-style material is
-`632971231a6a7d8c44379329842f130ace250199d981a0fc679b60b25a043889`.
+`2e13c356a05adfd0dfc826bceecb4903a54af790`; ordered shasum-style material is
+`f1c93d16151500a635a52416df2771866f23859030b924359599d5d291f91cea`.
 The exact request and marker are at the bottom of `HANDOFF_REVIEW.md`.
 
-Codex measured 162/162 Suphx tests locally and on Air under the compiled engine
-and exact thread/runtime pins. Exact `7a1facf` preserves the tuple/list native
-repair, removes the nonsemantic evaluation-loader escape, replays every row at
-all four required post-generation boundaries and adds a self-consistent score
-rewrite that fails only because real semantic replay is wired. Capacity now
-includes 12,288 generation rounds plus four replay passes (61,440 total
-executions). Air reopens at Python 3.14.6, Torch 2.13.0, NumPy 2.5.1, ten CPUs
-and source digest `25c727da…a586aa7`.
+Claude verified every V2 claim except falsifiability of the endpoint
+post-publication call. Exact `2e13c35` changes only the screen test: it invokes
+`evaluate_seed_cell()`, records the loader traversal after publication and
+requires exactly one call. Removing the production call makes this test fail;
+restoring it yields 163/163 locally and under strict compiled Air. The
+self-consistent outcome canary and three gate-boundary witnesses remain green,
+and capacity remains 12,288 generation rounds plus four replay passes (61,440
+total executions). V3 review is delta-only.
 
 PASS authorizes only the exact disposable, score-redacted Air preflight and,
 if its recomputed capacity criteria pass, freezing the still-non-admitted

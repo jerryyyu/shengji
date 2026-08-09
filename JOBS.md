@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 00:15 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 01:04 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,8 +10,8 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shards 2 and 7 exited zero and published 2/8 label triplets; six workers remain CPU-bound. At 00:15, score-free progress was 3,056/4,096 outer worlds (74.6%) and 45/64 states. The label JSONs remain sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
-| Air | none | Physically idle. S3a remains inadmissible because its parent is Mini-bound. Repaired O0-v2 exact `7a1facf` passes 162/162 strict compiled-Air tests and runtime/source attestation, but its superseding score-redacted preflight review remains open; do not run it early. |
+| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shards 2, 5 and 7 exited zero and published 3/8 label triplets; five workers remain CPU-bound. At 01:05, score-free progress was 3,235/4,096 outer worlds (79.0%) and 48/64 states. The label JSONs remain sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
+| Air | none | Physically idle. S3a remains inadmissible because its parent is Mini-bound. O0-v2 exact test-only delta `2e13c35` passes 163/163 strict compiled-Air tests and its endpoint-call removal probe fails as intended, but delta-only V3 review remains open; do not run the preflight early. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
 The T1 Teacher audit is **running on Mini**. Receipt
@@ -31,8 +31,8 @@ preflighted before launch.
    controller `0399591`, and material `645b8f54…b894d`.
 2. **Complete:** the one-shot preparer emitted exact receipt
    `e293858c…a10d` and preparation `83892930…c39`; both reopened cleanly.
-3. **Running:** one Mini supervisor owns the population; shards 2 and 7 exited
-   zero and six workers remain live. Outer folds are 32/32 while each searched
+3. **Running:** one Mini supervisor owns the population; shards 2, 5 and 7
+   exited zero and five workers remain live. Outer folds are 32/32 while each searched
    continuation retains the reviewed inner 30+300 accepted-world dose. Do not
    open the published label before the terminal gate.
 4. **Complete:** Claude independently passed terminal adapter `5b26c4b`.
@@ -64,8 +64,12 @@ and during independent verification. Its non-vacuous mutation witness and
 complete Suphx battery pass 162/162 locally and under the strict compiled Air
 runtime. Capacity now charges 12,288 generated rounds plus four replay passes,
 or 61,440 total executions. Superseding review V2 is required before the one
-disposable score-redacted preflight. Even a preflight PASS can authorize only
-packet freezing and review—not training, O1, strength, or production.
+disposable score-redacted preflight. Claude's V2 review verified those claims
+but held because removing the endpoint call left tests green. Test-only delta
+`2e13c35` adds the missing direct witness; the removal probe now fails and the
+full local/Air batteries pass 163/163. Delta-only V3 review is required. Even
+a preflight PASS can authorize only packet freezing and review—not training,
+O1, strength, or production.
 
 ## Terminal job index
 

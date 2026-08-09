@@ -131,6 +131,7 @@ def test_packet_authority_cannot_widen() -> None:
     expected = {"authority": {
         "score_free": True,
         "outcomes_computed": False,
+        "execution_controller_implementation_authorized": False,
         "counterfactual_execution_authorized": False,
         "labels_authorized": False,
         "training_authorized": False,
@@ -141,3 +142,47 @@ def test_packet_authority_cannot_widen() -> None:
     widened = json.loads(json.dumps(expected))
     widened["authority"]["training_authorized"] = True
     assert "packet authority widened" in h0.packet_problems(widened, expected)
+
+
+def test_v2_binds_the_executable_v11_checkpoint_and_portable_parent(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    checkpoint = tmp_path / "ep07.npz"
+    checkpoint.write_bytes(b"fixture")
+    monkeypatch.setattr(
+        h0, "sha256_file",
+        lambda path: (h0.V11PAIR_SHA256 if Path(path) == checkpoint
+                      else h0.LIVE_PARENT_AUTH_SHA256),
+    )
+    bound = h0.validate_v11_checkpoint(checkpoint)
+    assert bound == {
+        "logical_path": "server/snapshots_v11pair/ep07.npz",
+        "sha256": h0.V11PAIR_SHA256,
+        "bytes": len(b"fixture"),
+        "format": "numpy-npz",
+        "encoder_contract": "reviewed-public-no-private-kitty-v1",
+    }
+    assert h0.V11PAIR_SHA256 == \
+        "cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003"
+    parent = h0.live_parent_contract()
+    assert parent["policy"] == "mc-s0-report-lcb"
+    assert parent["authenticator_git"] == \
+        "5390019aef36f63150d7613b38bf56cf9cfebf8b"
+    assert parent["must_reopen_portably_before_each_execution"] is True
+
+
+def test_v11_checkpoint_drift_refuses(monkeypatch: pytest.MonkeyPatch,
+                                      tmp_path: Path) -> None:
+    checkpoint = tmp_path / "ep07.npz"
+    checkpoint.write_bytes(b"wrong")
+    monkeypatch.setattr(h0, "sha256_file", lambda _path: "0" * 64)
+    with pytest.raises(h0.H0PacketError, match="V11 checkpoint SHA-256 drift"):
+        h0.validate_v11_checkpoint(checkpoint)
+
+
+def test_v2_proposal_semantics_are_not_a_scalar_leaf() -> None:
+    source = SCRIPT.read_text()
+    assert '"action_universe": "exact-live-champion-analysis-ballot"' in source
+    assert '"threshold_applied": False' in source
+    assert '"scalar_leaf_use": False' in source
+    assert '"proposals_per_decision": 1' in source
+    assert '"report_fold_cannot_select_or_change_candidate_union": True' in source

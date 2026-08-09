@@ -18,22 +18,35 @@ import json
 import os
 import stat
 import subprocess
+import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
 
-SCHEMA = "human-h0-counterfactual-design-v1"
+SCRIPT = Path(__file__).resolve()
+SERVER = SCRIPT.parents[1]
+sys.path.insert(0, str(SCRIPT.parent))
+
+import live_champion_parent as LIVE_PARENT_AUTH  # noqa: E402
+
+SCHEMA = "human-h0-counterfactual-design-v2"
 CORPUS_SCHEMA = "human-decision-corpus-v1"
-PACKET_ID = "human-v8-h0-counterfactual-pilot-v1"
+PACKET_ID = "human-v8-h0-counterfactual-pilot-v2"
 SELECTION_DOMAIN = b"shengji-human-h0-selection-v1\0"
 PLAY_TARGETS = {"DESIGN": 384, "AUDIT": 128}
 MAX_PLAY_DECISIONS_PER_DEAL = 8
-LIVE_PARENT = {
-    "policy": "mc-s0-report-lcb",
-    "authenticator_git": "05ea1d10f8386b4e8826fbf51e2895ff3c9ba554",
-    "must_reopen_at_execution": True,
-}
-V11PAIR_SHA256 = "0260ad67deb7a89577411fafc822bc1ea196884be177fde253705db0d544455e"
+V1_PACKET_SHA256 = (
+    "9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3"
+)
+LIVE_PARENT_AUTH_GIT = "5390019aef36f63150d7613b38bf56cf9cfebf8b"
+LIVE_PARENT_AUTH_SHA256 = (
+    "d6515d6db76290c3ad145f9194a7985d7d78223f688a30c78cdb520de41c521b"
+)
+V11PAIR_LOGICAL_PATH = "server/snapshots_v11pair/ep07.npz"
+V11PAIR_SHA256 = (
+    "cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003"
+)
+PROPOSAL_SEED_DOMAIN = b"shengji-human-h0-proposal-v2\0"
 
 # Early/mid cells are intentionally balanced across role and lead/follow.
 # Every late and off-ballot row is mandatory.  Late cell targets are therefore
@@ -125,6 +138,50 @@ def producer_identity(*, smoke: bool) -> dict:
         "tree_dirty": dirty,
         "script_sha256": sha256_file(__file__),
         "promotable": not smoke,
+    }
+
+
+def live_parent_contract() -> dict:
+    """Bind the portable live-champion reopener, not its obsolete v1 bytes."""
+    if sha256_file(LIVE_PARENT_AUTH.__file__) != LIVE_PARENT_AUTH_SHA256:
+        raise H0PacketError("live-parent authenticator source drift")
+    try:
+        parent = LIVE_PARENT_AUTH.require_parent_payload(
+            LIVE_PARENT_AUTH.expected_parent())
+    except LIVE_PARENT_AUTH.ProtocolRefused as exc:
+        raise H0PacketError(f"live-parent contract refused: {exc}") from exc
+    if parent.get("champion_policy") != "mc-s0-report-lcb":
+        raise H0PacketError("live-parent policy drift")
+    return {
+        "policy": parent["champion_policy"],
+        "authenticator_schema": LIVE_PARENT_AUTH.SCHEMA,
+        "authenticator_git": LIVE_PARENT_AUTH_GIT,
+        "authenticator_script_sha256": LIVE_PARENT_AUTH_SHA256,
+        "expected_parent": parent,
+        "must_reopen_portably_at_controller_freeze": True,
+        "must_reopen_portably_before_each_execution": True,
+    }
+
+
+def validate_v11_checkpoint(path: Path) -> dict:
+    """Require the executable, corrected-encoder V11 artifact by bytes."""
+    try:
+        info = path.lstat()
+    except OSError as exc:
+        raise H0PacketError(f"cannot stat V11 checkpoint: {exc}") from exc
+    if (not stat.S_ISREG(info.st_mode) or info.st_nlink < 1
+            or path.is_symlink()):
+        raise H0PacketError("V11 checkpoint is not a regular file")
+    actual = sha256_file(path)
+    if actual != V11PAIR_SHA256:
+        raise H0PacketError(
+            f"V11 checkpoint SHA-256 drift: {actual}")
+    return {
+        "logical_path": V11PAIR_LOGICAL_PATH,
+        "sha256": actual,
+        "bytes": info.st_size,
+        "format": "numpy-npz",
+        "encoder_contract": "reviewed-public-no-private-kitty-v1",
     }
 
 
@@ -419,9 +476,11 @@ def _component_record(component: dict, assignment: str) -> dict:
 
 
 def build_packet(corpus_dir: Path, expected_manifest_sha256: str,
-                 *, smoke: bool) -> dict:
+                 v11_checkpoint: Path, *, smoke: bool) -> dict:
     manifest, plays, buries = validate_corpus(
         corpus_dir, expected_manifest_sha256)
+    v11 = validate_v11_checkpoint(v11_checkpoint)
+    live_parent = live_parent_contract()
     components = derive_components(plays, buries)
     if len(components) < 3:
         raise H0PacketError("too few independent player/deal components")
@@ -461,6 +520,16 @@ def build_packet(corpus_dir: Path, expected_manifest_sha256: str,
     packet = {
         "schema": SCHEMA,
         "packet_id": PACKET_ID,
+        "supersedes": {
+            "schema": "human-h0-counterfactual-design-v1",
+            "packet_id": "human-v8-h0-counterfactual-pilot-v1",
+            "packet_sha256": V1_PACKET_SHA256,
+            "reason": (
+                "v1 pinned a non-existent V11 checkpoint digest and left "
+                "proposal attribution/selection semantics underspecified"
+            ),
+            "v1_outcomes_computed": False,
+        },
         "producer": producer_identity(smoke=smoke),
         "human_corpus": {
             "manifest_sha256": expected_manifest_sha256,
@@ -515,8 +584,28 @@ def build_packet(corpus_dir: Path, expected_manifest_sha256: str,
                 "s3a_structured_bury",
                 "same_budget_random_structured_bury",
             ],
-            "live_parent": LIVE_PARENT,
-            "v11pair_checkpoint_sha256": V11PAIR_SHA256,
+            "live_parent": live_parent,
+            "v11pair_checkpoint": v11,
+            "v11pair_top_proposal": {
+                "action_universe": "exact-live-champion-analysis-ballot",
+                "choice": "finite raw argmax with canonical-index tie break",
+                "threshold_applied": False,
+                "scalar_leaf_use": False,
+                "checkpoint_must_reopen_before_each_execution": True,
+            },
+            "random_diversifier": {
+                "proposals_per_decision": 1,
+                "action_universe": (
+                    "replay-legal exhaustive action set outside the current "
+                    "deduplicated union"
+                ),
+                "stream_domain_sha256": sha256_bytes(PROPOSAL_SEED_DOMAIN),
+                "stream_key": "split,replay_key,surface,source",
+                "on_empty_novel_pool": "record-no-novel-proposal",
+                "cannot_advance_belief_or_continuation_rng": True,
+            },
+            "candidate_identity": "sorted-card-multiset",
+            "duplicate_source_attribution": "retain-all-sources-on-one-action",
             "human_action_is_truth": False,
             "off_ballot_actions_must_be_replayed_legal": True,
         },
@@ -526,6 +615,21 @@ def build_packet(corpus_dir: Path, expected_manifest_sha256: str,
             "report_worlds_per_fixed_pair": 300,
             "proposal_and_report_worlds_disjoint": True,
             "common_random_worlds_within_pair": True,
+            "proposal_selection": {
+                "evaluate": "all-unique-union-candidates",
+                "rule": "largest mean acting-team signed level utility",
+                "tie_break": "canonical candidate index",
+                "outcome_blind_candidate_union": True,
+            },
+            "report_fixed_actions": [
+                "live_champion_action",
+                "human_action",
+                "proposal_selection_winner",
+            ],
+            "report_action_deduplication": "sorted-card-multiset",
+            "report_fold_cannot_select_or_change_candidate_union": True,
+            "design_and_audit_launch_together_under_one_frozen_packet": True,
+            "audit_outcomes_cannot_tune_design_recipe": True,
             "primary_metric": "acting-team-signed-level-utility",
             "cluster": "deal",
             "production_continuation": "mc-s0-report-lcb",
@@ -545,6 +649,7 @@ def build_packet(corpus_dir: Path, expected_manifest_sha256: str,
             "score_free": True,
             "outcomes_computed": False,
             "design_review_authorized": True,
+            "execution_controller_implementation_authorized": False,
             "counterfactual_execution_authorized": False,
             "labels_authorized": False,
             "training_authorized": False,
@@ -564,6 +669,8 @@ def packet_problems(packet: dict, expected: dict) -> list[str]:
     authority = packet.get("authority", {})
     if (authority.get("score_free") is not True
             or authority.get("outcomes_computed") is not False
+            or authority.get("execution_controller_implementation_authorized")
+            is not False
             or authority.get("counterfactual_execution_authorized") is not False
             or authority.get("labels_authorized") is not False
             or authority.get("training_authorized") is not False
@@ -601,6 +708,7 @@ def _parser() -> argparse.ArgumentParser:
         child = sub.add_parser(command)
         child.add_argument("--corpus", required=True)
         child.add_argument("--expected-corpus-sha256", required=True)
+        child.add_argument("--v11-checkpoint", required=True)
         child.add_argument("--packet", required=True)
         child.add_argument("--expected-git")
         child.add_argument("--smoke", action="store_true")
@@ -612,7 +720,8 @@ def main() -> None:
     if args.expected_git and _git("rev-parse", "HEAD") != args.expected_git:
         raise H0PacketError("producer Git differs from expected Git")
     expected = build_packet(
-        Path(args.corpus), args.expected_corpus_sha256, smoke=args.smoke)
+        Path(args.corpus), args.expected_corpus_sha256,
+        Path(args.v11_checkpoint), smoke=args.smoke)
     packet_path = Path(args.packet)
     if args.command == "freeze":
         publish_exclusive(packet_path, expected)

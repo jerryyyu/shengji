@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 14:04 EDT. This is the executable mailbox, not a
+Last compacted: 2026-08-09 14:10 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, live compute in `JOBS.md`,
 queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 
@@ -20,7 +20,7 @@ queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 
 The latest status-only S3a heartbeat still has all eight workers live with no
 completed shard. The latest cluster-count snapshot was
-`164,162,163,165,166,163,166,163 / 256` (1,312/2,048). Outcomes remain unread.
+`167,165,167,169,170,166,169,166 / 256` (1,339/2,048). Outcomes remain unread.
 
 ## Active milestone — T3 human-witness challenger flywheel
 

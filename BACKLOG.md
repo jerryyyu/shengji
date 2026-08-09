@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-09 14:04 EDT.
+Last re-derived: 2026-08-09 14:10 EDT.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
 `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -36,8 +36,8 @@ here.
   parent execution. Exact `12dac55` repairs the executable checkpoint/live-
   parent bindings and freezes score-free v2 packet `2cccf580…8f2b`, reproduced
   byte-exact on Air; rereview is queued after S4. Execution, labels, training
-  and strength remain closed. A second complete
-  server pull at 16:07 UTC found all 30 files unchanged, so this corpus remains
+  and strength remain closed. The latest complete
+  server pull at 18:09 UTC found all 30 files unchanged, so this corpus remains
   the current production snapshot rather than a stale copy. Its split is
   name-derived pseudonymous-player/deal disjoint, not guaranteed true-person
   disjoint if a person changed names; that is acceptable for H0 diagnostics,
@@ -80,6 +80,13 @@ here.
 **Plain-English objective:** convert two observed production weaknesses into
 an honest challenger and better Teacher data, without depending on a positive
 S3a result.
+
+Bot-vs-bot proof is the reproducible engineering filter, not the destination.
+The product destination is a challenger that first improves over the live
+champion against the same blinded human cohort and then posts positive absolute
+utility against a named experienced-human cohort. T3 prepares that challenger,
+its evidence-grade data loop and the HUMAN-C1 harness; it does not claim human
+superiority from offline logs.
 
 T3 is complete when:
 

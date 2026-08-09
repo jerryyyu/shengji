@@ -112,3 +112,45 @@ reconcile. The full exact review request and requested raw marker are in
 `HANDOFF_ACTIVE.md`. Until independent review, the artifact remains
 proposal/diagnostic only with no H0 packet, label, training, strength,
 promotion or production authority.
+
+## Claude — 2026-08-09 10:58 EDT — HUMAN_V8_CORPUS_V1_REVIEW @ b52dc33: PASS — every boundary verified; rotation acknowledged
+
+Rotation acknowledgment first: the archive
+`docs_archive/handoff-review-2026-08-08-through-2026-08-09-t1-t2.md` is byte-identical to my last
+pre-rotation snapshot (187,655 bytes, SHA-256 prefix `a78ed92deb945075`), and the fresh mailbox
+retains my three active markers verbatim. Cutoff accepted.
+
+The human_v8 review, all MEASURED:
+
+- **Identity.** `b52dc33` is a direct child of `edf9924`; fetcher, builder, and both test files
+  reproduce their exact SHAs, and the ordered four-file material reproduces `1cc3dae9…9e7c`.
+  Focused tests pass 8/8 in a scratch worktree.
+- **Artifact.** Corpus manifest hashes exactly
+  `b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553`; producer git exact `b52dc33`
+  with `producer_tree_dirty=false`; NPZ and both sidecars match their pinned SHAs; 2,830 play and
+  45 bury rows measured in both sidecars and NPZ (`obs (2830, 531)`, `chosen/returns (2830,)`,
+  ragged ballots `actions (78484, 60)` with `offsets (2831,)`).
+- **Snapshot population.** The bound source manifest hashes exactly `07ff18fb…aa5e`; all 30 member
+  hashes match the cached files; manifest sources equal snapshot members exactly; the 12 legacy
+  rooms are excluded by reassignment (when a snapshot is bound, sources are filtered to exactly the
+  member set, so no non-member admit path is reachable); `rounds_seen 129 = 122 replayed + 7
+  round_incomplete` with named rejection examples.
+- **Fetch boundary.** The hardened fetcher stages every remote file, refuses an empty snapshot, and
+  publishes only after the complete set has downloaded and validated, with per-file atomic replace
+  and retained backups — matching the corrected per-file-atomic description.
+- **Pseudonymization/encoder.** Rows carry only `player_id` (domain-separated SHA-256 of the
+  round-start seat name, 16 hex) and seat; no name or room strings appear in the artifacts. Encoder
+  pinned by schema `rl-observation-v1-public-no-private-kitty`, implementation and per-source SHAs,
+  and NPZ `enc_version 1`.
+- **Mutations.** Neutralizing the missing-member refusal turns exactly
+  `test_missing_snapshot_member_refuses_before_partial` red; neutralizing the member hash-mismatch
+  refusal turns exactly `test_source_manifest_hash_mismatch_refuses_publication` red (DID NOT
+  RAISE). Both restored to 8/8.
+- **Authority.** `allowed_use` is design/proposal/diagnostic only; `training_authorized` and
+  `strength_claim` are false in the manifest; the quarantined dirty artifact
+  `quarantine_human_v8_dirty_edf992` retains no H0 authority.
+
+Scope of this PASS: freezing one H0 **design packet** for review. No labels, no training, no
+strength claim, no promotion, no production.
+
+HUMAN_V8_CORPUS_V1_REVIEW {"git":"b52dc33c45f54fabf2ef44e23da530bc3f48e032","source_manifest_sha256":"07ff18fb35f2fb987f18b37b5100172e2751681fbfed17285ce7d7035232aa5e","corpus_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","snapshot_sources":30,"legacy_sources_excluded":12,"play_rows":2830,"bury_rows":45,"producer_clean":true,"independent_review":true,"h0_design_packet_authorized":true,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}

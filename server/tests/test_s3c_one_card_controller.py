@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -257,6 +258,15 @@ def test_packet_authority_and_preflight_mutations_refuse() -> None:
             "action_values_computed": False,
             "outcomes_computed": False,
         },
+        "result_contract": {
+            "durable_one_shot_admission_slot":
+                CTRL.admission_slot_logical_path(),
+            "admission_slot_published_before_receipt": True,
+            "receipt_deletion_cannot_reissue": True,
+            "admission_slot_gitignored": True,
+            "admit_then_runtime_reopen_required": True,
+            "unrelated_git_dirt_refused": True,
+        },
     }
     assert CTRL.packet_problems(expected, expected) == []
     widened = copy.deepcopy(expected)
@@ -479,6 +489,123 @@ def test_admission_slot_survives_receipt_and_blocks_reissue(
             namespace=namespace,
             receipt_path=receipt_path,
         )
+
+
+def _init_runtime_git_fixture(tmp_path: Path) -> str:
+    (tmp_path / ".gitignore").write_text(
+        "logs/\nserver/runs/locks/\n")
+    (tmp_path / "tracked.txt").write_text("clean\n")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "runtime-test@example.invalid"],
+        cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Runtime Test"], cwd=tmp_path,
+        check=True)
+    subprocess.run(
+        ["git", "add", ".gitignore", "tracked.txt"], cwd=tmp_path,
+        check=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "fixture"], cwd=tmp_path, check=True)
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path, check=True,
+        capture_output=True, text=True).stdout.strip()
+
+
+def test_real_admit_then_packet_reopen_ignores_only_durable_slot(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    head = _init_runtime_git_fixture(tmp_path)
+    monkeypatch.setattr(CTRL, "REPO", tmp_path)
+    monkeypatch.setattr(RUNTIME, "REPO", tmp_path)
+
+    authority = {
+        "score_free": True,
+        "worlds_sampled": False,
+        "exact_solver_invoked": False,
+        "action_values_computed": False,
+        "outcomes_computed": False,
+        "controller_review_authorized": True,
+        "one_card_capacity_execution_authorized": False,
+        "two_card_packet_review_authorized": False,
+        "solver_or_strength_screen_authorized": False,
+        "training_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+    }
+    contract = {
+        "durable_one_shot_admission_slot":
+            CTRL.admission_slot_logical_path(),
+        "admission_slot_published_before_receipt": True,
+        "receipt_deletion_cannot_reissue": True,
+        "admission_slot_gitignored": True,
+        "admit_then_runtime_reopen_required": True,
+        "unrelated_git_dirt_refused": True,
+    }
+    packet = {
+        "schema": CTRL.SCHEMA,
+        "packet_id": CTRL.PACKET_ID,
+        "run_id": CTRL.RUN_ID,
+        "producer": {
+            "git": head, "controller_script_sha256": "f" * 64},
+        "runtime_sources": {
+            "server/scripts/s3c_one_card_runtime.py": "1" * 64},
+        "schedule": {"schedule_sha256": "d" * 64},
+        "score_free_preflight": {
+            "root_geometry_sha256": "2" * 64,
+            "worlds_sampled": 0,
+            "exact_solver_sessions": 0,
+            "exact_solver_nodes": 0,
+            "action_values_computed": False,
+            "outcomes_computed": False,
+        },
+        "result_contract": contract,
+        "authority": authority,
+    }
+    packet["packet_sha256"] = CTRL.sha256_bytes(CTRL.canonical_json(packet))
+    fixture_dir = tmp_path / "server" / "runs" / "logs" / "fixture"
+    fixture_dir.mkdir(parents=True)
+    packet_path = fixture_dir / "controller-packet.json"
+    review_path = fixture_dir / "review.md"
+    packet_path.write_bytes(CTRL.canonical_json(packet))
+    packet_file_sha = CTRL.sha256_file(packet_path)
+    review_path.write_text("review\n")
+    monkeypatch.setattr(
+        CTRL, "build_controller_packet", lambda *_args, **_kwargs: packet)
+    monkeypatch.setattr(
+        RUNTIME, "_controller_review",
+        lambda *_args: RUNTIME.expected_review_claim(packet, packet_file_sha))
+
+    namespace = (tmp_path / "server" / "runs" / "logs" / CTRL.RUN_ID)
+    receipt_path = namespace / "execution-receipt.json"
+    RUNTIME.admit(
+        packet_path=packet_path,
+        expected_packet_sha256=packet_file_sha,
+        design_path=tmp_path / "design.json",
+        census_path=tmp_path / "census.json",
+        design_review_record=review_path,
+        controller_review_record=review_path,
+        namespace=namespace,
+        receipt_path=receipt_path,
+    )
+    assert (tmp_path / CTRL.admission_slot_logical_path()).is_file()
+    assert CTRL.git("status", "--porcelain", "--untracked-files=all") == ""
+    reopened = RUNTIME._controller_packet(
+        packet_path, packet_file_sha, tmp_path / "design.json",
+        tmp_path / "census.json", review_path)
+    assert reopened["external_packet_sha256"] == packet_file_sha
+
+    (tmp_path / "unexpected.txt").write_text("not runtime state\n")
+    with pytest.raises(RUNTIME.RuntimeRefused, match="dirty tree"):
+        RUNTIME._controller_packet(
+            packet_path, packet_file_sha, tmp_path / "design.json",
+            tmp_path / "census.json", review_path)
+    (tmp_path / "unexpected.txt").unlink()
+    (tmp_path / "tracked.txt").write_text("modified\n")
+    with pytest.raises(RUNTIME.RuntimeRefused, match="dirty tree"):
+        RUNTIME._controller_packet(
+            packet_path, packet_file_sha, tmp_path / "design.json",
+            tmp_path / "census.json", review_path)
 
 
 def test_terminal_verifier_requires_explicit_full_replay() -> None:

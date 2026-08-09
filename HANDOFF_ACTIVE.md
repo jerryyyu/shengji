@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 15:44 EDT. This is the executable mailbox, not a
+Last compacted: 2026-08-09 15:47 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, live compute in `JOBS.md`,
 queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 
@@ -20,7 +20,7 @@ queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 
 The latest status-only S3a heartbeat still has all eight workers live with no
 completed shard. The latest cluster-count snapshot was
-`213,212,213,215,216,211,215,210 / 256` (1,705/2,048). Outcomes remain unread.
+`220,219,220,223,223,218,223,217 / 256` (1,763/2,048). Outcomes remain unread.
 
 ## Active milestone — T3 human-witness challenger flywheel
 
@@ -257,12 +257,19 @@ to freeze/review the immutable confirmation packet:
   semantics; and maximum 1,329,210 candidate-world rollouts. Outputs are
   source membership/survival and paired utilities, not undefined candidate
   recall. Incomplete rows are named refusals and partial work cannot publish
-  utility. Run
+  utility. Clean review roots are local producer
+  `/Users/jerryyu/Projects/shengji-h0-b02-producer-review`, local packet
+  `/Users/jerryyu/Projects/shengji-h0-d621-review`, Air producer
+  `/Users/jerryyu/Projects/shengji-h0-b02-air` and Air packet
+  `/Users/jerryyu/Projects/shengji-h0-d621-air`. Run
   `PYTHONPATH=server server/.venv/bin/python -m pytest -q server/tests/test_h0_human_counterfactual_packet.py server/tests/test_teacher_stage_c_design.py`
-  (22/22 at freeze), then invoke the producer's `verify` at exact packet commit
-  with corpus manifest `b9699790…16553`, executable `ep07.npz` SHA
-  `cd89d6ed…c003` and the canonical packet. PASS may authorize controller
-  implementation only; it may not authorize execution.
+  from the packet root. Then invoke `verify` from exact producer source
+  `b02b6de`, pointing `--packet` at the separate exact `d6214ce` packet root;
+  running the producer at packet commit would correctly fail identity. Both
+  local and Air returned `VERIFIED_FOR_DESIGN_REVIEW` with file SHA
+  `4d3f0a35…8cc3c`, and both test batteries passed 22/22. Use corpus manifest
+  `b9699790…16553` and executable `ep07.npz` SHA `cd89d6ed…c003`. PASS may
+  authorize controller implementation only; it may not authorize execution.
 - **Teacher Stage-C repair/review**: its current v2 packet consumes superseded
   H0 v1. After H0 v3 PASS, freeze a fresh binding, then inspect strata, split
   exclusion, label escalation, exact data contract and explicit no-compute/no-

@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-09 10:56 EDT.
+Last re-derived: 2026-08-09 11:10 EDT.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
 `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -24,7 +24,9 @@ here.
   are counted, and 12 legacy local-only rooms are excluded. This is a
   proposal/diagnostic asset, not an authorized strength target. Clean producer
   `b52dc33` and corpus manifest `b9699790…16553` passed exact review; one H0
-  design packet is now authorized, but labels/training/strength remain closed.
+  design packet is now authorized. Exact `9770313` froze and independently
+  verified a score-free 384-DESIGN/128-AUDIT packet at `9ff160a9…247d3`;
+  execution, labels, training and strength remain closed.
 - **S4:** isolated mechanism code is pushed at `402c012`. A score-free fresh
   capture froze 64 unique exact-late trigger states (32 per role) at
   `f44a0c72…e6b72`; outcomes are uncomputed and external review is open.
@@ -40,7 +42,7 @@ here.
 | **P0 / S3a terminal** | Let the sealed 2,048-cluster full-game screen finish | Count-only monitor; run the exact terminal verifier once. PASS opens confirmation-packet review only. SELECT NONE closes the exact recipe. |
 | **P1 / S4 point-banking rollout** | Review the isolated mechanism + score-free 64-state asset | PASS authorizes one exact state screen only. Its terminal result may open a full-game packet review or close the exact recipe; no automatic duel. |
 | **P1 / Teacher Stage C** | Build data where the champion is uncertain or visibly weak | Freeze a no-compute design packet with strata, quotas, DEV/CALIB/REPORT exclusions, label escalation and full data identity; external review is the gate to any labels. |
-| **P1 / human counterfactual H0** | Spend the now-reviewed corpus on strategies absent from heuristic self-play | Freeze a player/deal-disjoint design/audit packet from `human_v8`; union each human action with incumbent/structured/model proposals and compare on common worlds. Raw imitation/agreement remain controls. |
+| **P1 / human counterfactual H0** | Review the frozen score-free 384/128 design/audit packet | PASS may authorize implementation of the counterfactual execution controller only. It does not authorize outcomes, labels, training or strength compute. Raw imitation/agreement remain controls. |
 | **P2 / S3a confirmation** | Confirm a positive screen against the live champion | Only conditional on terminal PASS: freeze and externally review an 8,192-cluster one-shot packet, then launch once. No automatic promotion. |
 | **P2 / experiment infrastructure** | Make reviewed jobs cheaper to launch correctly | Introduce one immutable `ExperimentSpec`/receipt boundary for code, data, policy, ballot, sampler, continuation, actor, seeds, metric, null, work, stop rule and output. Scheduling may automate reviewed work; it may not select or promote. |
 | **P2 / production performance** | Keep the stronger bot pleasant under concurrent traffic | Continue passive release-17 timing; add a concurrent-room tail gate before changing CPU size. Port hot rollout leaves only with pure/compiled parity and end-to-end policy timing. |
@@ -73,8 +75,8 @@ unreviewed strength compute, training, promotion and production changes.
    evidence twice.
 2. Obtain independent S4 review, then run its already-frozen 64-state exact
    screen once. A positive screen only opens full-game packet review.
-3. Freeze one no-compute Teacher Stage-C design packet and one no-compute H0
-   human-action packet for review. Neither packet may label or train.
+3. Freeze one no-compute Teacher Stage-C design packet. The H0 no-compute
+   packet is already frozen and verified; neither packet may label or train.
 4. Keep Mini on the long reviewed S3a job and use Air for bounded reviewed
    work only. Idle compute is not a reason to invent an unregistered run.
 5. Define the next real product gate as candidate-versus-champion performance
@@ -178,14 +180,15 @@ useful proposal/coverage findings, not proof that the human actions are better.
 
 Next actions:
 
-1. freeze the independently reviewed `human_v8` identity in the H0 packet;
+1. **done:** freeze the independently reviewed `human_v8` identity in the H0
+   packet (`9770313`, packet `9ff160a9…247d3`);
 2. use the connected-component boundary honestly: the three-player/78-deal
    component is DESIGN, the separate one-player/28-deal component is AUDIT,
    and the three tiny components (three players/five deals) are RESERVE. This
    corpus cannot support a credible three-way player+deal-disjoint REPORT;
-3. select up to 384 DESIGN plus 128 AUDIT rows, cap repeated decisions per
-   deal, and set quotas over lead/follow, role, depth, player,
-   off-ballot action and the two observed failure mechanisms;
+3. **done:** select 384 DESIGN plus 128 AUDIT rows, cap repeated decisions at
+   eight per deal, include every late/off-ballot row, and balance lead/follow,
+   role and depth;
 4. union the actual human action with report-LCB, structured and bounded-model
    proposals, then evaluate fixed pairs on common proposal and disjoint report
    worlds;
@@ -198,6 +201,11 @@ Current component inventory: DESIGN has 2,323 plays plus 36 buries across 78
 deals; AUDIT has 456 plays plus nine buries across 28 deals; RESERVE has 51
 plays, no buries and five deals. Formal strength REPORT remains fresh paired
 bot play and the blinded people-facing ladder below.
+
+The frozen sample covers 67 DESIGN and 24 AUDIT deals. DESIGN is 111 early,
+111 mid and 162 late; AUDIT is 55 early, 54 mid and 19 late. All 19/5
+off-analysis-ballot plays are retained. This deliberate hard-tail weighting is
+reported explicitly and is not an estimate of site action frequency.
 
 ## People-facing strength ladder
 

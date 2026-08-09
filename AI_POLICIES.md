@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-09 10:56 EDT
+## Current synthesis — 2026-08-09 11:10 EDT
 
 ### Canonical terminal-results table
 
@@ -132,6 +132,11 @@ Evidence anchors, in the same order:
   candidate with the live champion across the same human cohort, balanced by
   team/banker/seat and clustered by player session. Evaluation games never
   enter training or selection.
+- **Human proposal pilot:** exact `9770313` freezes a score-free H0 design at
+  packet `9ff160a9…247d3`: 384 DESIGN and 128 player/deal-disjoint AUDIT play
+  keys plus separate bury surfaces. It deliberately retains every late and
+  off-analysis-ballot move. No counterfactual outcome, label, training or
+  strength authority exists.
 
 ### Learned policies and RL
 

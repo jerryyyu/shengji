@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 10:56 EDT
+## Current synthesis — 2026-08-09 11:10 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -88,7 +88,10 @@ what those results change in the research plan.
   passed independent publication review at producer `b52dc33`, source manifest
   `07ff18fb…a5e` and corpus manifest `b9699790…16553`. It contains 2,830 plays,
   45 buries and explicit replay/refusal provenance. It authorizes one H0 design
-  packet only—not labels, training or a strength claim.
+  packet only—not labels, training or a strength claim. Exact `9770313` has
+  now frozen that score-free design: 384 DESIGN and 128 player/deal-disjoint
+  AUDIT play keys, every late/off-analysis-ballot row, all 36/9 split buries,
+  and no outcomes. Packet `9ff160a9…247d3` awaits its later design review.
 - **Data/sampler:** the bounded strict sampler certificate passed, but posterior
   fidelity and global constructive completeness remain open. High-N and
   late-ply data are replayable state reservoirs under old named targets, not
@@ -381,9 +384,9 @@ Use human data in three bounded stages:
    RESERVE diagnostic. Calling these data a meaningful three-way
    DEV/CALIB/REPORT split would overstate their independence; formal REPORT
    remains fresh synthetic/full-game and `HUMAN-C1` evidence.
-2. **Counterfactual action pilot.** Freeze up to 384 DESIGN and 128 AUDIT play
-   decisions, cap repeated decisions per deal, include every off-ballot action,
-   and oversample scarce late play. Add
+2. **Counterfactual action pilot.** Exact `9770313` freezes 384 DESIGN and 128
+   AUDIT play decisions, caps each deal at eight, includes every late and every
+   off-analysis-ballot action, and balances lead/follow and role. Add
    the actual human action to the current ballot and measure human-versus-
    champion action deltas on shared worlds. Record where humans introduce a
    genuinely new candidate, where the production continuation reverses it,

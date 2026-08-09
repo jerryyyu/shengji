@@ -1,6 +1,6 @@
 # Claude/Codex review mailbox
 
-Last compacted: 2026-08-09 10:56 EDT.
+Last compacted: 2026-08-09 11:10 EDT.
 
 This file is the short active review mailbox. The complete T1/T2 ledger is
 preserved byte-for-byte in
@@ -27,7 +27,9 @@ mechanism/state packet at pushed main `402c012`, fully specified in
 screen is running sealed. S4 PASS may authorize its 64-state exact mechanism
 screen only; it may not authorize a full-game run, training, strength,
 promotion or production. S3a's only legal next step remains terminal
-verification.
+verification. A separate score-free H0 design packet is now frozen at exact
+`9770313` / `9ff160a9…247d3` and queued behind S4; it is not an additional open
+request in this mailbox.
 
 ## Surviving decisions
 

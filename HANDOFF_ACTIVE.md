@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 10:56 EDT. This is the executable mailbox, not a
+Last compacted: 2026-08-09 11:10 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, live compute in `JOBS.md`,
 queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 
@@ -14,12 +14,12 @@ queue order in `BACKLOG.md`, and reviewed markers in `HANDOFF_REVIEW.md`.
 | T2 S3b sampled exact | **TERMINAL HOLD** | The first frozen treatment cluster exceeded the 250k-node cap. Do not retry or relax v2. |
 | T2 learner O0-v2 | **COMPLETE / SELECT NONE** | Gate `0dbd9aa8…f24e` independently replayed. O1 and production remain unauthorized. |
 | S4 point banking | **CODE + SCORE-FREE 64-STATE ASSET / REVIEW OPEN** | Exact `402c012`, asset `f44a0c72…e6b72`; treatment/null outcomes are uncomputed. Review may authorize this state screen only. |
-| Human corpus | **CLEAN V8 / REVIEW PASS** | Exact `b52dc33`, source manifest `07ff18fb…a5e`, corpus `b9699790…16553`; H0 design is authorized, but labels/training/strength are not. |
+| Human corpus / H0 | **V8 REVIEW PASS + SCORE-FREE H0 PACKET FROZEN** | Corpus `b9699790…16553`; exact packet producer `9770313`, packet `9ff160a9…247d3`. Queue its design review after S4; no execution, labels, training or strength. |
 | External review | **OPEN / S4 ONLY** | Review the exact S4 packet below. S3a remains already reviewed/sealed; human-v8 is closed PASS. |
 
 The latest status-only S3a heartbeat still has all eight workers live with no
-completed shard. The last recorded cluster-count snapshot was
-`31,32,32,31,31,32,31,31 / 256` (251/2,048). Outcomes remain unread.
+completed shard. The latest cluster-count snapshot was
+`63,64,61,66,62,62,63,63 / 256` (504/2,048). Outcomes remain unread.
 
 ## Active milestone — T3 human-witness challenger flywheel
 
@@ -46,14 +46,15 @@ T3 exits only after all four boundaries below are satisfied:
    uncertainty/disagreement and exact-late states plus the two human witness
    families below. Human examples are DEV diagnostics only and cannot enter
    CALIB/REPORT. Packet review precedes labels, compute and training.
-4. **Freeze the reviewed human H0 design.** The August 9 evidence-grade
+4. **Review the frozen human H0 design.** The August 9 evidence-grade
    Fly-snapshot-only rebuild accepts 2,830 plays and 45 buries from 122 fully
    replayed rounds, counts seven incomplete rounds, and finds 25 legal
    off-ballot human plays. Twelve legacy local-only rooms are excluded.
-   Claude's exact review passed. Freeze a player/deal-disjoint H0 pilot that
-   uses human actions as proposals, not truth. Define the blinded HUMAN-C1
-   candidate-versus-champion protocol; its evaluation games can never train or
-   select the candidate.
+   Claude's corpus review passed. Exact `9770313` now freezes 384 DESIGN and
+   128 disjoint AUDIT play keys plus all 36/9 human buries, using human actions
+   as proposals rather than truth. The packet is score-free and independently
+   verifies; queue its review after S4. HUMAN-C1 evaluation games can never
+   train or select the candidate.
 
 Active `/goal`:
 
@@ -98,7 +99,10 @@ banker decisions.
 That is direct evidence that site play explores actions the historical
 self-play generator can omit or disfavor. It does not say those moves are
 better. H0 must add each human action to the frozen candidate union and price
-it on common worlds under production and alternate named continuations.
+it on common worlds under production and alternate named continuations. The
+frozen H0 packet selects every late and every off-analysis-ballot row, caps a
+deal at eight play decisions, and keeps the one-player/28-deal AUDIT component
+untouched by DESIGN.
 
 ## Claude review packet
 
@@ -149,7 +153,10 @@ After the S4 review closes, the next request is exactly one of:
   escalation, exact data contract and explicit no-compute/no-training flags.
 - **Human H0 design-packet review**: inspect source/encoder hashes, pseudonymous
   player/deal splits, replay/rejection counters, action-union semantics,
-  continuation comparison and HUMAN-C1 evaluation exclusion.
+  continuation comparison and HUMAN-C1 evaluation exclusion. Exact producer
+  `977031386ed514239c181f6fba8c636f7b588ae0`; canonical packet
+  `/Users/jerryyu/Projects/shengji/server/runs/logs/human-v8-h0-counterfactual-pilot-v1/design_packet.json`,
+  SHA-256 `9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3`.
 
 Append exact PASS/HOLD markers only to `HANDOFF_REVIEW.md`. A review PASS does
 not silently authorize a run.

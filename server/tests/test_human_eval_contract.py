@@ -7,6 +7,7 @@ from shengji.api.human_eval import (
     HumanEvaluationContext,
     HumanEvaluationError,
     blocked_arm,
+    derive_participant_pair_id,
 )
 
 
@@ -14,7 +15,6 @@ def _context(**changes):
     values = {
         "experiment_id": "human-c1-pilot-v1",
         "session_id": "session-0001",
-        "participant_pair_id": "a" * 32,
         "participant_ids_by_human_seat": ("b" * 32, "c" * 32),
         "cohort_id": "experienced-v1",
         "consent_version": "consent-v1",
@@ -27,16 +27,20 @@ def _context(**changes):
         "champion_policy": "mc-s0-report-lcb",
         "champion_git": "f" * 40,
         "champion_image_sha256": "1" * 64,
-        "ballot_id": "report-lcb-ballot-v1",
+        "candidate_ballot_id": "s3a-structured-bury-v1",
+        "champion_ballot_id": "report-lcb-ballot-v1",
     }
+    values["participant_pair_id"] = derive_participant_pair_id(
+        values["participant_ids_by_human_seat"])
     values.update(changes)
     return HumanEvaluationContext(**values)
 
 
 def test_block_schedule_is_deterministic_and_complementary():
+    participants = ("b" * 32, "c" * 32)
     kwargs = {
         "assignment_secret": b"x" * 32,
-        "participant_pair_id": "a" * 32,
+        "participant_pair_id": derive_participant_pair_id(participants),
         "block_id": "pair-block-0001",
     }
     first = blocked_arm(**kwargs, block_slot=0)
@@ -52,6 +56,8 @@ def test_block_schedule_is_deterministic_and_complementary():
     ({"candidate_git": "dirty"}, "candidate_git"),
     ({"candidate_image_sha256": "e" * 63}, "candidate_image"),
     ({"block_slot": True}, "block_slot"),
+    ({"participant_pair_id": "a" * 32}, "participant_pair_id"),
+    ({"candidate_policy": "mc-s0-report-lcb"}, "must differ"),
 ])
 def test_context_refuses_ambiguous_identity(changes, match):
     with pytest.raises(HumanEvaluationError, match=match):
@@ -65,6 +71,8 @@ def test_payload_is_complete_evaluation_only_and_server_side():
     assert payload["bot_seats"] == [1, 3]
     assert payload["assignment_probability"] == 0.5
     assert payload["active_policy"] == "candidate-policy"
+    assert payload["candidate"]["ballot_id"] == "s3a-structured-bury-v1"
+    assert payload["champion"]["ballot_id"] == "report-lcb-ballot-v1"
     assert payload["training_excluded"] is True
     assert payload["candidate_selection_excluded"] is True
     assert payload["production_promotion_gate"] is True

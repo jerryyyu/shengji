@@ -33,6 +33,17 @@ def _require(pattern: re.Pattern[str], value: str, field: str) -> None:
         raise HumanEvaluationError(f"invalid {field}")
 
 
+def derive_participant_pair_id(participant_ids: tuple[str, str]) -> str:
+    """Derive the stable clustering key from two pseudonymous identities."""
+    if (not isinstance(participant_ids, tuple) or len(participant_ids) != 2
+            or len(set(participant_ids)) != 2):
+        raise HumanEvaluationError("two distinct participant IDs are required")
+    for value in participant_ids:
+        _require(_PSEUDONYM, value, "participant_id")
+    raw = (SCHEMA + "\0" + "\0".join(sorted(participant_ids))).encode()
+    return hashlib.sha256(raw).hexdigest()[:32]
+
+
 def blocked_arm(*, assignment_secret: bytes, participant_pair_id: str,
                 block_id: str, block_slot: int) -> Literal["candidate", "champion"]:
     """Return one complementary arm per slot in a hidden two-session block."""
@@ -67,12 +78,14 @@ class HumanEvaluationContext:
     champion_policy: str
     champion_git: str
     champion_image_sha256: str
-    ballot_id: str
+    candidate_ballot_id: str
+    champion_ballot_id: str
 
     def __post_init__(self) -> None:
         for field in ("experiment_id", "session_id", "cohort_id",
                       "consent_version", "block_id", "candidate_policy",
-                      "champion_policy", "ballot_id"):
+                      "champion_policy", "candidate_ballot_id",
+                      "champion_ballot_id"):
             _require(_ID, getattr(self, field), field)
         _require(_PSEUDONYM, self.participant_pair_id, "participant_pair_id")
         if (not isinstance(self.participant_ids_by_human_seat, tuple)
@@ -82,6 +95,10 @@ class HumanEvaluationContext:
                 "two distinct participant IDs are required for seats 0 and 2")
         for value in self.participant_ids_by_human_seat:
             _require(_PSEUDONYM, value, "participant_id")
+        if self.participant_pair_id != derive_participant_pair_id(
+                self.participant_ids_by_human_seat):
+            raise HumanEvaluationError(
+                "participant_pair_id does not match participant IDs")
         if self.arm not in ARMS:
             raise HumanEvaluationError("arm must be candidate or champion")
         if self.block_slot not in (0, 1) or isinstance(self.block_slot, bool):
@@ -92,6 +109,9 @@ class HumanEvaluationContext:
                  "candidate_image_sha256")
         _require(_SHA256, self.champion_image_sha256,
                  "champion_image_sha256")
+        if self.candidate_policy == self.champion_policy:
+            raise HumanEvaluationError(
+                "candidate and champion policy names must differ")
 
     @property
     def active_policy(self) -> str:
@@ -123,14 +143,15 @@ class HumanEvaluationContext:
                 "policy": self.candidate_policy,
                 "git": self.candidate_git,
                 "image_sha256": self.candidate_image_sha256,
+                "ballot_id": self.candidate_ballot_id,
             },
             "champion": {
                 "policy": self.champion_policy,
                 "git": self.champion_git,
                 "image_sha256": self.champion_image_sha256,
+                "ballot_id": self.champion_ballot_id,
             },
             "active_policy": self.active_policy,
-            "ballot_id": self.ballot_id,
             "training_excluded": True,
             "candidate_selection_excluded": True,
             "production_promotion_gate": True,

@@ -93,7 +93,7 @@ def _gate(verdict: str) -> dict:
         "n30_inputs": A.expected_parent_inputs("n30_inputs"),
         "inputs": [{
             "path": (
-                f"{A.AUDIT_NAMESPACE}/"
+                f"{A.AUDIT_SERVER_ROOT}/{A.AUDIT_NAMESPACE}/"
                 f"champion_audit_v2_shard{index:02d}.json"),
             "sha256": f"{index + 1:064x}",
             "shard_index": index,
@@ -411,6 +411,25 @@ def test_gate_input_shards_must_be_canonical_and_ordered(
     )
     with pytest.raises(A.AdapterRefusal, match="ordered shard population"):
         A.create(config, tmp_path / A.OUTPUT_NAME)
+
+
+def test_gate_refuses_relative_audit_input_population(
+        tmp_path, monkeypatch):
+    """The real evaluator publishes absolute canonical label paths."""
+    config = _fixture(tmp_path, monkeypatch)
+    gate = json.loads(config.gate.read_text())
+    gate["inputs"][0]["path"] = (
+        f"{A.AUDIT_NAMESPACE}/champion_audit_v2_shard00.json")
+    config.gate.write_text(json.dumps(gate, sort_keys=True))
+    changed = A.Config(
+        gate=config.gate,
+        expected_gate_sha256=_sha(config.gate),
+        supervisor_progress=config.supervisor_progress,
+        expected_supervisor_sha256=config.expected_supervisor_sha256,
+        expected_git=config.expected_git,
+    )
+    with pytest.raises(A.AdapterRefusal, match="input path population"):
+        A.create(changed, tmp_path / A.OUTPUT_NAME)
 
 
 @pytest.mark.parametrize(

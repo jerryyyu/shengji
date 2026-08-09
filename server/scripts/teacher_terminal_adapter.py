@@ -89,6 +89,9 @@ AUDIT_STATE_SHA256 = (
 )
 PARENT_NAMESPACE = "runs/logs/teacher-v1-entry-149m-v3"
 AUDIT_NAMESPACE = "runs/logs/teacher-v1-entry-149m-v5"
+AUDIT_SERVER_ROOT = (
+    "/Users/jerryyu/Projects/shengji-teacher-audit-v3-mini/server"
+)
 OUTPUT_NAME = "teacher_terminal_adapter_v2.json"
 CHEAP_INPUT_SHA256S = (
     "4b0bf96d130a50d1d3f72e88cc739c6ea2a967552804c4d50b57f104e3654953",
@@ -407,7 +410,8 @@ def _gate_problems(gate: dict) -> list[str]:
             digests = [item["sha256"] for item in inputs]
             indices = [item["shard_index"] for item in inputs]
             expected_paths = [
-                f"{AUDIT_NAMESPACE}/champion_audit_v2_shard{index:02d}.json"
+                f"{AUDIT_SERVER_ROOT}/{AUDIT_NAMESPACE}/"
+                f"champion_audit_v2_shard{index:02d}.json"
                 for index in range(8)
             ]
             if paths != expected_paths:

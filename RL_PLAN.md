@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 13:35 EDT
+## Current synthesis — 2026-08-09 15:20 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -66,7 +66,8 @@ what those results change in the research plan.
   `45802e47…a350`: 2,048 states split 1,024 DESIGN / 512 CALIB / 512 REPORT,
   with 1,920 play and 128 separately modeled bury states. A later executable
   audit superseded its H0 v1 parent, so Stage-C v2 is held pre-review. Repair
-  the binding only after H0 v2 PASS. No capture, labels, compute or training.
+  the binding only after a bounded H0 successor passes. No capture, labels,
+  compute or training.
 - **Search challengers:** the independently reviewed live-parent contract now
   binds S3a and S3b to exact report-LCB and makes formal-S0/`mc-strong`
   re-entry unreachable. S3b v2 then failed its operational preflight: its
@@ -106,8 +107,10 @@ what those results change in the research plan.
   reopens the reviewed packet/admission/receipt chain before compute. Fresh
   score-free Air preflight `fcc8b891…ee060` passed in 321.32 seconds, projected
   the screen at 91.40 fleet-hours / 11.42 max-shard hours, and packet
-  `17036e63…1385` fully recomputes. External review still gates its only Mini
-  launch; confirmation is hard-closed pending a future reviewed controller.
+  `17036e63…1385` fully recomputes. Claude independently passed that packet at
+  `51a864c`; exactly one Mini screen is queued after S3a releases the host and
+  a fresh admission/receipt is created. Confirmation is hard-closed pending a
+  future reviewed controller.
 - **Human data:** the atomically refreshed Fly-snapshot-only `human_v8` corpus
   passed independent publication review at producer `b52dc33`, source manifest
   `07ff18fb…a5e` and corpus manifest `b9699790…16553`. It contains 2,830 plays,
@@ -119,9 +122,14 @@ what those results change in the research plan.
   review, but later executable audit found its V11 SHA names no artifact, so
   it cannot parent a controller. Exact `12dac55` v2 binds the executable
   checkpoint, portable live parent and explicit disjoint 30/300 selection/
-  report rule at packet `2cccf580…8f2b`; it reproduced exactly on Air and
-  awaits rereview. A
-  latest complete server pull at 16:07 UTC found every one of the 30 source
+  report folds at packet `2cccf580…8f2b`; it reproduced exactly on Air. A later
+  score-free execution-design audit found two remaining ambiguities before
+  controller work: v2 does not cap its named “analysis ballot” in the packet,
+  and it names the root report-LCB policy as though it were the downstream
+  rollout continuation. Hold v2 and freeze a bounded v3 with an at-most-17-
+  action play union, explicit bury work, and the actual heuristic rollout
+  continuation. The latest complete server pull at 16:07 UTC found every one
+  of the 30 source
   files unchanged, so this remains the current production snapshot. The split
   is name-derived pseudonymous-player/deal disjoint, not provably true-person
   disjoint if one person used multiple names. That limits H0 to diagnostics;
@@ -276,10 +284,12 @@ result.
 
 The baseline is the exact deployed `mc-s0-report-lcb` policy, not “MC” in the
 abstract. Every challenger binds that parent plus a matched null at freeze
-time. The immediate milestone is **T3: turn human-observed weaknesses into one
-reviewed live-champion challenger and a better hard-tail Teacher**. Live order
-and machine ownership remain in `BACKLOG.md`; this section explains how the
-strength loop works.
+time. **T3 is the execution-ready strength bridge:** resolve one live search
+screen, queue the second reviewed whole-game hypothesis, and make the human and
+Teacher lanes executable. It is not itself a claim that a learned model became
+stronger. **T4 is the first closed Teacher generation:** capture, label, train,
+integrate and test one challenger end to end. Live order and machine ownership
+remain in `BACKLOG.md`; this section owns the durable decision tree.
 
 ### T3 decision tree
 
@@ -298,33 +308,65 @@ strength loop works.
    admission/receipt is created. Do
    not treat `+5.156` points as a duel-strength estimate: using a K now can
    still waste future control over a full continuation.
-3. **Repair then review the Teacher Stage C contract.** Exact `b0ef0f9` defines
+3. **Bound and rereview the human-action counterfactual pilot.** The human
+   corpus broadens the action/state distribution, but raw imitation and final
+   returns are not strength labels. H0-v2 repaired the V11 artifact identity,
+   yet its execution language leaves “analysis ballot,” downstream
+   continuation and proposal recall too ambiguous to implement safely. Freeze
+   v3 with the production `MCBot._candidates` ballot (14 lead / 12 follow),
+   plus at most one human, one exhaustive-universe V11 and one matched-random
+   proposal: at most 17 play actions. Select on 30 shared worlds; report only
+   the fixed champion, human and selected actions on 300 disjoint shared
+   worlds. Explicitly bind `HeuristicBot` as the production root evaluator's
+   rollout continuation; report-LCB is the root selection/report rule, not a
+   recursive downstream policy. Specify bury work separately. Review precedes
+   controller implementation; controller review precedes any outcome.
+4. **Repair then review the Teacher Stage C contract.** Exact `b0ef0f9` defines
    2,048 fresh states and fixed 250k-deal scan windows for each split. Cheap
    labels remain only on ordinary anchors; uncertainty/disagreement/bury use
-   live report-LCB gold, exact-late uses an information-set-legal solver or the
-   live gold fallback, and S4 is conditional on its own terminal PASS. Repaired
+   live report-LCB gold; exact-per-world late solving is a privileged diagnostic
+   rather than a public-policy label unless a separate information-set-legal
+   solver passes; and S4 is conditional on its own terminal PASS. Repaired
    v2 also reopens the authenticated live parent and defines independent
    audit/reference folds plus equal-budget proposal-recall LCBs, but its H0 v1
-   parent is now superseded. Freeze a new binding only after H0 v2 PASS; review
-   still precedes capture, labels, compute and training.
-4. **Rereview the repaired human-action counterfactual pilot boundary.** Human moves broaden the action
-   and state distribution beyond heuristic self-play, but raw imitation or
-   final-round return is not a strength target. Reconstruct and validate each
-   decision, add the human action to the champion/structured ballot, and
-   compare all actions on common worlds under named continuations. V1's split
-   review remains informative but cannot authorize a controller because its
-   V11 digest was non-executable. Exact `12dac55` v2 repairs that identity and
-   makes V11 a raw within-ballot proposal rather than a scalar leaf. Fresh v2
-   PASS may authorize only a fail-closed, score-free controller freeze and
-   another review—not execution, labels or training. Human data proposes
-   alternatives; the counterfactual Teacher decides whether they are supported.
+   parent is now superseded. Freeze a new binding only after bounded H0 v3
+   passes; review still precedes capture, labels, compute and training. Passing
+   this design is not “building a dataset”: Stage C becomes real only when its
+   2,048 states and labels are published under a later reviewed execution.
+5. **Prepare S3c while compute runs.** Build a score-free natural-prefix census
+   and immutable one→two→three-card exact-root contract. This is a new bounded
+   formulation after S3b's four-card capacity failure, not a retry or strength
+   run. Human prefixes supply witnesses; fresh deal-disjoint prefixes own formal
+   selection.
 
-T3 exits with one verified S3a terminal verdict, its conditional reviewed
-confirmation packet or immutable closeout, a reviewed S4 complete-round
-packet, a reviewed Stage-C design, and a reviewed H0 design plus frozen
-execution-controller packet.
-This is useful even if every strength screen selects none: the next attempt
-starts from a diagnosed mechanism rather than another undifferentiated corpus.
+T3 exits with one verified S3a terminal verdict and either a reviewed
+confirmation packet or immutable closeout; the reviewed S4 whole-game screen
+launched or terminally resolved; bounded reviewed H0 and Stage-C contracts; and
+the leakage-safe human ladder plus S3c score-free feasibility asset. A review
+is a routing boundary, not the milestone's scientific output.
+
+### T4 — first closed stronger-Teacher generation
+
+T4 must produce artifacts and a challenger, not another design-only audit:
+
+1. execute the reviewed H0 counterfactual once and identify human/model actions
+   that survive fresh common-world evaluation;
+2. capture the frozen 2,048-state Stage-C asset, publish acceptance/rejection
+   counters, and label ordinary versus hard-tail rows under their named budgets;
+3. train at least eight seeds of separate play-ranking and calibrated-outcome
+   heads, with bury separate, and choose the recipe/checkpoint only on CALIB;
+4. open the untouched REPORT fold once; only a passing recipe becomes the one
+   bounded proposal/ranking challenger;
+5. run that challenger in a fresh paired whole-game screen against report-LCB
+   plus a same-budget random/null arm; and
+6. grow to 10k/50k states only if the 2,048-state learning curves and online
+   screen show the intended signal. Otherwise classify the failure as data,
+   target, capacity or composition and route a new mechanism instead of merely
+   closing the family.
+
+S3c runs in parallel as the small-domain search/Teacher lane. A passed
+one-/two-/three-card exact-root policy can both improve late play directly and
+produce privileged diagnostic targets for a cheap distilled endgame head.
 
 ### Lane A — improve search directly
 
@@ -397,51 +439,20 @@ behaviour, not strength truth. The earlier v6.1 blend increased human agreement
 but scored 46% against v6 in a small sibling duel: evidence for style transfer,
 not strength.
 
-The current pseudonymous-player split is the strongest separation available
-from historical logs, but a display-name-derived identity cannot prove that a
-person who changed names stayed in one fold. Treat H0 as a bounded diagnostic
-and proposal source. A formal people-strength gate must assign stable,
-consented pseudonymous participant/session IDs before play and keep those
-evaluation logs physically and logically out of all training builders.
-Forward-only exact range through `b198839` implements the logical half: a
-HUMAN-C1 schema or any `training_excluded=true` event makes the builder refuse
-the entire publication—even on a malformed round with no `round_start`—if
-someone copied an evaluation file into the corpus glob. An evaluation log
-failure terminally invalidates its room before a retry or deal task can create
-apparently complete selective evidence. This does not alter or re-authorize
-frozen `human_v8`/H0 evidence. The inert server-side identity/logging seam adds
-complementary hidden blocks, participant-derived pair clustering, separate
-per-arm policy/Git/image/ballot identity, a disjoint log root, policy and
-0/2-human-versus-1/3-bot binding, name/chat redaction and fail-closed writes.
-It is deliberately unreachable from the live WebSocket. Exact `6082589`
-terminally invalidates an assigned in-progress game when either bound human
-disconnects, before bot cover, takeover, declaration, dealing or round
-advancement can manufacture a selectively complete session. It records only a
-redacted reason; completed games remain valid, stale socket teardown is a
-no-op, and ordinary rooms retain their old behavior. The focused battery
-passes 82/82 locally and independently on Air. Exact `859a26e` adds an inert
-constructor that binds a reviewed design digest plus both arm
-policy/Git/image/ballot identities, requires two distinct opt-ins matching the
-cohort and consent version, and derives the complementary arm and opaque
-session ID from a server secret. The caller cannot provide either output, and
-the session domain includes the design identity. Its expanded focused battery
-passes 88/88 locally and in an exact Air worktree. External review, durable
-one-use issuance and authenticated consent/token ingress remain required.
-Exact `fff688b` independently reopens the active registry policy under exact
-runtime Git/image identity and rederives every executable ballot stage before
-returning the bot; caller-injected policy objects are not accepted. Its
-expanded focused battery passes 94/94 locally and on exact Air. A reviewed
-immutable deployment-receipt source is implemented at exact `f387a30`: only
-hash-pinned, stable regular-unlinked bytes with exact design/policy identity and
-identity-only/no-traffic authority can reopen the bot. Symlink, hardlink,
-digest, schema, authority and identity drift all refuse. The 100-test focused
-battery passes locally and on exact Air. Exact `064988f` adds durable one-use
-reservation keyed by design/pair/block/slot rather than the secret-derived
-session ID. Exclusive creation allows one concurrent issuer, fsyncs the
-identity-only/no-traffic receipt and treats an interruption as consumed. Its
-104-test battery passes locally and on exact Air. A real candidate-specific
-receipt freeze/review, authenticated consent ingress, synthetic C0 and a
-terminal estimator are still required.
+The current pseudonymous-player split is the strongest historical separation
+available, but display-name identity cannot prove that one person who changed
+names stayed in one fold. H0 is therefore a bounded diagnostic/proposal source,
+not people-strength evidence. HUMAN-C1 is the separate forward-only ladder: it
+requires stable consented session identity, complementary hidden assignment,
+two humans versus two identical bots, exact policy/Git/image/ballot binding,
+fail-closed logging and a disjoint `training_excluded` root. The inert code now
+covers redaction, disconnect invalidation, registry reopening, authenticated
+short-lived consent assertions and one-use reservations, while remaining
+unreachable from the live WebSocket. Before traffic it still needs external
+review, measured rather than merely declared runtime identity, an immutable
+reviewed block ledger/namespace, a candidate receipt, synthetic C0 and the
+terminal estimator. Implementation history belongs in the dated log and
+`AI_POLICIES.md`, not in this roadmap.
 
 Use human data in three bounded stages:
 
@@ -462,9 +473,10 @@ Use human data in three bounded stages:
    Treat the 36 DESIGN and nine AUDIT buries as a separate surface rather than
    forcing them into the play estimand. Its split review passed, but its V11
    digest names no executable artifact. Exact `12dac55` v2 preserves the rows
-   and binds `ep07.npz` at `cd89d6ed…c003`, the portable live parent and fixed
-   selection/report semantics. Rereview v2 before implementing a score-free
-   controller; review that controller again before one counterfactual outcome.
+   and repairs `ep07.npz`/live-parent identity, but its candidate cap,
+   continuation and output estimands remain ambiguous. Supersede it score-free
+   with bounded v3; review v3 before implementing a controller, and review that
+   controller again before one counterfactual outcome.
 3. **Only then choose the learning use.** Strong supported actions can train a
    proposal/prior head; disagreement states feed Stage C; raw behavioral
    cloning remains an initialization/style control. Promotion still requires
@@ -515,21 +527,6 @@ after it first beats the live champion on paired deals, then improves against
 the same blinded human cohort, and finally reports absolute signed level
 utility against a named experienced-player cohort. Those three questions are
 different and must not share selection games.
-
-## v11pair's surviving role
-
-The corrected 2,048-cluster direct-v2 result selected none:
-v11-minus-current was `-0.141 +/- 0.070`, v11-minus-null was
-`-0.110 +/- 0.070`, and protected composition was unauthorized. Do not rerun
-the direct or protected-anchor recipe, revive top-k pruning, or use pairwise
-deltas as a scalar leaf.
-
-The confirmed 57.7% result versus SmartBot still says the frozen model contains
-within-ballot ranking signal. Its only live hypotheses are therefore bounded
-proposal diversification, ranking/diagnosis and Teacher disagreement mining.
-Any proposal experiment must compare v11 recall/regret against a same-budget
-random diversifier; “the model proposed it” is not a control or a strength
-claim.
 
 ## Data and evaluation contract
 

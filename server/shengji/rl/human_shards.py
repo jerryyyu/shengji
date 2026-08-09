@@ -40,6 +40,7 @@ CORPUS_SCHEMA = "human-decision-corpus-v1"
 PLAYER_HASH_DOMAIN = b"shengji-human-player-v1\0"
 PLAY_BALLOT = "exhaustive-follows+throws-v1"
 RETURN_TARGET = "signed-level-bracket-from-completed-round"
+HUMAN_EVALUATION_SCHEMA = "human-vs-bot-evaluation-v1"
 
 
 class HumanCorpusError(RuntimeError):
@@ -137,6 +138,26 @@ def _error_key(exc: BaseException) -> str:
     return type(exc).__name__
 
 
+def _refuse_evaluation_round(events: list[dict], reference: str) -> None:
+    """Keep people-facing evaluation evidence out of every training corpus.
+
+    HUMAN-C1 will live under a physically separate log root, but paths can be
+    copied or globbed incorrectly.  The immutable log tag is therefore a
+    second, content-level boundary; scan the whole round so moving the tag
+    cannot bypass it.  Refuse the whole publication rather than silently
+    dropping a favorable or unfavorable evaluation subset.
+    """
+    for event in events:
+        experiment = event.get("experiment")
+        tagged = event.get("training_excluded") is True
+        if isinstance(experiment, dict):
+            tagged = tagged or experiment.get("training_excluded") is True
+            tagged = tagged or experiment.get("schema") == HUMAN_EVALUATION_SCHEMA
+        if tagged:
+            raise HumanCorpusError(
+                f"evaluation-only round cannot enter human corpus: {reference}")
+
+
 def build_corpus(patterns: list[str], out_dir: str,
                  *, source_manifest: str | None = None,
                  run_id: str | None = None) -> dict:
@@ -220,6 +241,7 @@ def build_corpus(patterns: list[str], out_dir: str,
                 if start is None:
                     reject("round_missing_start", reference)
                     continue
+                _refuse_evaluation_round(events, reference)
                 if end is None:
                     reject("round_incomplete", reference)
                     continue

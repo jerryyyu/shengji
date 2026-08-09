@@ -152,6 +152,38 @@ def test_source_manifest_hash_mismatch_refuses_publication(tmp_path):
     assert not (tmp_path / "human_v8.partial").exists()
 
 
+@pytest.mark.parametrize("tag", [
+    {"training_excluded": True},
+    {"experiment": {"schema": "human-vs-bot-evaluation-v1"}},
+    {"experiment": {"schema": "future-eval-v2", "training_excluded": True}},
+])
+def test_evaluation_only_round_refuses_entire_publication(tmp_path, tag):
+    events = _completed_round()
+    events[0].update(tag)
+    source = tmp_path / "EVAL.jsonl"
+    _write_jsonl(source, events)
+    out = tmp_path / "human_v9"
+
+    with pytest.raises(HumanCorpusError, match="evaluation-only round"):
+        build_corpus([str(source)], str(out))
+
+    assert not out.exists()
+    assert not (tmp_path / "human_v9.partial").exists()
+
+
+def test_evaluation_tag_on_later_event_also_refuses_publication(tmp_path):
+    events = _completed_round()
+    events[-1]["training_excluded"] = True
+    source = tmp_path / "EVAL.jsonl"
+    _write_jsonl(source, events)
+    out = tmp_path / "human_v9"
+
+    with pytest.raises(HumanCorpusError, match="evaluation-only round"):
+        build_corpus([str(source)], str(out))
+
+    assert not out.exists()
+
+
 def test_source_manifest_defines_population_and_excludes_legacy_files(tmp_path):
     current = tmp_path / "CURRENT.jsonl"
     legacy = tmp_path / "LEGACY.jsonl"

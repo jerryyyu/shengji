@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-09 12:12 EDT.
+Last re-derived: 2026-08-09 12:18 EDT.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
 `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -56,7 +56,7 @@ here.
 | **P1 / human counterfactual H0** | Review the frozen score-free 384/128 design/audit packet | Explicitly accept or reject the historical name-derived identity limitation. PASS may authorize implementation of the counterfactual execution controller only. It does not authorize outcomes, labels, training or strength compute. Raw imitation/agreement remain controls. |
 | **P2 / S3a confirmation** | Confirm a positive screen against the live champion | Only conditional on terminal PASS: freeze and externally review an 8,192-cluster one-shot packet, then launch once. No automatic promotion. |
 | **P2 / experiment infrastructure** | Make reviewed jobs cheaper to launch correctly | Introduce one immutable `ExperimentSpec`/receipt boundary for code, data, policy, ballot, sampler, continuation, actor, seeds, metric, null, work, stop rule and output. Scheduling may automate reviewed work; it may not select or promote. |
-| **P2 / HUMAN-C1 instrumentation** | Make the people-facing gate executable without contaminating training | Forward tag refusal landed at `45f30bb` (15/15 human/H0 tests): the builder aborts publication on HUMAN-C1 or `training_excluded` content. Next freeze the off-by-default controlled 2-human-team versus 2-bot-team assignment/logging contract with hidden arm, exact policy/image, consented stable IDs and a physically separate evaluation root. No human experiment launches in T3. |
+| **P2 / HUMAN-C1 instrumentation** | Make the people-facing gate executable without contaminating training | Tag refusal `45f30bb` plus inert identity/log seam `4880159` pass 68/68 focused tests: disjoint root, hidden complementary blocks, exact arm/policy/artifact fields, policy-name binding and fail-closed writes. Still required: reviewed assignment factory, consent/stable-ID ingress, 0/2-human vs 1/3-bot enforcement, runtime image/Git reopen, terminal estimator and synthetic C0. No WebSocket route or human launch exists in T3. |
 | **P2 / production performance** | Keep the stronger bot pleasant under concurrent traffic | Continue passive release-17 timing; add a concurrent-room tail gate before changing CPU size. Port hot rollout leaves only with pure/compiled parity and end-to-end policy timing. |
 
 ## Active T3 milestone — human-witness challenger flywheel

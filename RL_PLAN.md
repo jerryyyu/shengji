@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 12:12 EDT
+## Current synthesis — 2026-08-09 12:18 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -407,6 +407,12 @@ Forward-only exact `45f30bb` implements the logical half: a HUMAN-C1 schema or
 any `training_excluded=true` event makes the builder refuse the entire
 publication, even if someone copied an evaluation file into the corpus glob.
 This does not alter or re-authorize frozen `human_v8`/H0 evidence.
+Exact `4880159` adds the inert server-side identity/logging seam: complementary
+hidden two-session assignment, immutable candidate/champion and artifact
+identity, a disjoint per-room log root, policy-name binding, and fail-closed
+evaluation writes. It is deliberately unreachable from the live WebSocket.
+Consent/token ingress, reviewed assignment construction, 0/2-human versus
+1/3-bot enforcement and a terminal estimator are still required before C1.
 
 Use human data in three bounded stages:
 

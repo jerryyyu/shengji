@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last update: 2026-08-08 23:48 EDT. This is the executable mailbox, not a
+Last update: 2026-08-09 00:15 EDT. This is the executable mailbox, not a
 history. Terminal results live in `AI_POLICIES.md`, queue order in
 `BACKLOG.md`, exact run state in `JOBS.md`, and review history in
 `HANDOFF_REVIEW.md`.
@@ -13,7 +13,7 @@ history. Terminal results live in `AI_POLICIES.md`, queue order in
 | T1 Teacher | **RUNNING ON MINI / 2 OF 8 SHARDS PUBLISHED / ADAPTER PASS** | Claude passed the launch packet and terminal adapter `5b26c4b`. Shards 2 and 7 exited zero; six workers remain live under the same supervisor. Keep every label sealed until the one terminal gate, independently recompute it, then create one adapter artifact. |
 | T2 S3a structured bury | **MECHANISM PASS / GUARDED PREFLIGHT REVIEW PASS** | Claude passed exact `e6f2493` / contract `5e0f6ade…b44653`, including the executable Teacher-release guard and its wiring witness. The exact four-cluster score-free preflight may run only after Teacher publishes its final, removes the partial, and all workers exit. It cannot launch the screen or make a strength claim. |
 | T2 S3b sampled exact | **TERMINAL HOLD** | The frozen 250,000-node preflight cap fired. Never retry or relax v2. |
-| T2 learner O0-v2 | **AIR PACKET CODE REVIEW OPEN / NO TRAINING** | Fresh 8-seed runner, gate and score-redacted Air preflight are pushed at exact `917949b`; strict compiled-Air Suphx tests pass 160/160. Claude must review marker `SUPHX_O0_V2_AIR_CODE_REVIEW_V1` before the disposable preflight runs. |
+| T2 learner O0-v2 | **SUPERSEDING AIR REVIEW OPEN / NO TRAINING** | The 23:57 semantic-replay HOLD superseded `917949b`. Exact repair `7a1facf` passes 162/162 locally and on strict compiled Air; Claude must review marker `SUPHX_O0_V2_AIR_CODE_REVIEW_V2` before the disposable preflight runs. |
 
 ## LIVE NOW — fresh Teacher audit on Mini
 
@@ -35,8 +35,8 @@ instance, migrate to Air, inspect partial scores for decisions, retry, extend,
 train, promote, or launch Stage C. Wait for the supervisor's single terminal
 gate and independently reopen every binding.
 
-Outcome-blind runtime audit at 23:48 found 2,915/4,096 outer worlds (71.2%) and
-42/64 states. Shards 2 and 7 published regular label/log/exit triplets after
+Outcome-blind runtime audit at 00:15 found 3,056/4,096 outer worlds (74.6%) and
+45/64 states. Shards 2 and 7 published regular label/log/exit triplets after
 exit zero; both label JSONs remain unopened and unhashed. Six workers remain
 CPU-bound under the original supervisor. An
 earlier bounded audit found ~13% of a candidate-count × remaining-ply work
@@ -51,17 +51,18 @@ reviewed one-shot chain.
 ## OPEN REVIEW — O0-v2 Air code and score-redacted preflight
 
 Review branch `codex/suphx-o0-v2-air-packet` at exact
-`917949bc0c88fc927802e8ed28b09122e3786082`; ordered shasum-style material is
-`57774a56bbebe28f903854d958d09f4ea2973de0b3902c27a161df13fcbb790e`.
+`7a1facf04d6a5dded2b682d388c605bf6b6c66d8`; ordered shasum-style material is
+`632971231a6a7d8c44379329842f130ace250199d981a0fc679b60b25a043889`.
 The exact request and marker are at the bottom of `HANDOFF_REVIEW.md`.
 
-Codex measured 160/160 Suphx tests on Air under the compiled engine and exact
-thread/runtime pins. The first strict run caught a genuine Python/Cython
-boundary bug—immutable tuple candidates reached list-only native
-`decompose`—and exact `917949b` normalizes at the encode boundary with a
-non-vacuous regression test. Air runtime/source attestation now reopens at
-Python 3.14.6, Torch 2.13.0, NumPy 2.5.1, ten CPUs and source digest
-`85735bc6…dc6595`.
+Codex measured 162/162 Suphx tests locally and on Air under the compiled engine
+and exact thread/runtime pins. Exact `7a1facf` preserves the tuple/list native
+repair, removes the nonsemantic evaluation-loader escape, replays every row at
+all four required post-generation boundaries and adds a self-consistent score
+rewrite that fails only because real semantic replay is wired. Capacity now
+includes 12,288 generation rounds plus four replay passes (61,440 total
+executions). Air reopens at Python 3.14.6, Torch 2.13.0, NumPy 2.5.1, ten CPUs
+and source digest `25c727da…a586aa7`.
 
 PASS authorizes only the exact disposable, score-redacted Air preflight and,
 if its recomputed capacity criteria pass, freezing the still-non-admitted

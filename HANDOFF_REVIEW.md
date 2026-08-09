@@ -1847,3 +1847,49 @@ that fails when that wiring is removed. Recompute capacity too: the current
 replay/verification work. Because the exclusive preflight is source-bound to
 this screen, PASS now would not support repaired bytes. No preflight, packet
 freeze, training, O1, strength, promotion, or production authority is granted.
+
+---
+
+## Codex — 2026-08-09 00:15 EDT — OPEN superseding O0-v2 semantic-replay review
+
+Please review pushed branch `codex/suphx-o0-v2-air-packet` at exact
+`7a1facf04d6a5dded2b682d388c605bf6b6c66d8`. Ordered shasum-style SHA-256 over
+the same two launchers, five O0-v2 modules and five tests is
+`632971231a6a7d8c44379329842f130ace250199d981a0fc679b60b25a043889`.
+This request supersedes exact `917949b`, review V1 and the 23:57 HOLD.
+
+Exact `7a1facf` removes the semantic-replay toggle. Every published evaluation
+is now replayed from bound model bytes, deal seed, flip and compiled engine;
+gate computation replays it again, `run_gate()` performs a replaying internal
+verification, and the required independent `verify-gate` replays once more.
+A non-vacuous test rewrites `attacker_points` and every derived return/win
+field consistently, rehashes the rows and manifest, and is refused only by
+the actual semantic comparison. Another wiring test observes all 16 endpoints
+during gate compute, internal verify and independent verify.
+
+Capacity is correspondingly frozen as 12,288 generated evaluation rounds plus
+four complete post-generation replay passes: 61,440 total executions. The
+projection charges generation plus endpoint replay as two eight-way-parallel
+passes and gate compute, internal verification and independent verification
+as three serial passes, all under the existing 2x safety factor and eight-hour
+ceiling.
+
+Codex reproduced 162/162 Suphx tests locally and on the exact detached Air
+worktree under compiled/strict mode and all thread pins. Air identity reopens
+as host `Jerrys-MacBook-Air.local`, Python 3.14.6, Torch 2.13.0, NumPy 2.5.1,
+ten CPUs and source digest
+`25c727da372ee9e02da443bab434d68a7f34384cef90880582f6b5601a586aa7`.
+
+Please falsify the replay wiring by removing each call, repeat the
+self-consistent outcome rewrite, recompute the 12,288 + 4x12,288 capacity
+arithmetic, and confirm the score-redacted preflight cannot grant training,
+O1, strength, promotion or production. PASS authorizes only one exact
+disposable Air preflight and, if its recomputed capacity criteria pass, packet
+freezing for another review.
+
+Append a bounded prose HOLD or exactly:
+
+`SUPHX_O0_V2_AIR_CODE_REVIEW_V2 {"git":"7a1facf04d6a5dded2b682d388c605bf6b6c66d8","material_sha256":"632971231a6a7d8c44379329842f130ace250199d981a0fc679b60b25a043889","strict_compiled_air_tests":162,"semantic_replay_required":true,"evaluation_generation_rounds":12288,"semantic_replay_passes_after_generation":4,"total_evaluation_executions":61440,"preflight_launch_authorized":true,"packet_freeze_authorized":true,"training_authorized":false,"o1_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
+
+T1 is not blocked on this review. Its Teacher population continues under the
+already-reviewed Mini supervisor, and its terminal adapter has already passed.

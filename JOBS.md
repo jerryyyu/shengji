@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-08 23:48 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 00:15 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,8 +10,8 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shards 2 and 7 exited zero and published 2/8 label triplets; six workers remain CPU-bound. At 23:48, score-free progress was 2,915/4,096 outer worlds (71.2%) and 42/64 states. The label JSONs remain sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
-| Air | none | Physically idle. S3a remains inadmissible because its parent is Mini-bound. O0-v2 exact `917949b` passes 160/160 strict compiled-Air tests and runtime attestation, but its score-redacted preflight awaits independent code review; do not run it early. |
+| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shards 2 and 7 exited zero and published 2/8 label triplets; six workers remain CPU-bound. At 00:15, score-free progress was 3,056/4,096 outer worlds (74.6%) and 45/64 states. The label JSONs remain sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
+| Air | none | Physically idle. S3a remains inadmissible because its parent is Mini-bound. Repaired O0-v2 exact `7a1facf` passes 162/162 strict compiled-Air tests and runtime/source attestation, but its superseding score-redacted preflight review remains open; do not run it early. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
 The T1 Teacher audit is **running on Mini**. Receipt
@@ -55,13 +55,17 @@ cannot launch the screen or make a strength claim.
 
 ### T2 learner
 
-O0-v2 public-key integration is merged and reviewed. Fresh runner/gate plus a
-score-redacted Air preflight are pushed at exact `917949b`; local focused
-tests pass and strict compiled-Air Suphx tests pass 160/160 after the strict
-run exposed and repaired a tuple/list native-boundary bug. Independent code
-review is now required before the disposable preflight. Even a preflight PASS
-can authorize only packet freezing and review—not training, O1, strength, or
-production.
+O0-v2 public-key integration is merged and reviewed. The first Air packet at
+`917949b` is superseded: an adversarial audit showed its terminal gate could
+consume self-consistent rewritten outcomes without executing the bound game.
+Exact repair `7a1facf` makes semantic replay mandatory after endpoint
+publication, during gate computation, during the gate's internal verification
+and during independent verification. Its non-vacuous mutation witness and
+complete Suphx battery pass 162/162 locally and under the strict compiled Air
+runtime. Capacity now charges 12,288 generated rounds plus four replay passes,
+or 61,440 total executions. Superseding review V2 is required before the one
+disposable score-redacted preflight. Even a preflight PASS can authorize only
+packet freezing and review—not training, O1, strength, or production.
 
 ## Terminal job index
 

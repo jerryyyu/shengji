@@ -45,6 +45,7 @@ from shengji.rl.suphx_o0_v2_runner import (  # noqa: E402
     validate_o0_v2_sample,
 )
 from shengji.rl.suphx_policy import new_from_scratch_model  # noqa: E402
+from shengji.rl import suphx_o0_v2_runner as runner_module  # noqa: E402
 from shengji.rl.synchronous_selfplay import (  # noqa: E402
     ActorBatchIdentity,
     LearnerUpdateContext,
@@ -57,6 +58,22 @@ def _crn_spec():
         root_seed=2_026_080_900,
         training_seed_indices=tuple(range(8)),
     )
+
+
+def test_immutable_projection_is_normalized_at_the_compiled_engine_boundary(
+        monkeypatch):
+    seen = []
+
+    def fake_encode(action, _rnd):
+        seen.append(action)
+        assert isinstance(action, list)
+        return [0.0] * runner_module.ACT_DIM
+
+    monkeypatch.setattr(runner_module, "encode_action", fake_encode)
+    encoded = runner_module._encode_projected_candidates(
+        (("S3",), ("H5", "H5")), object())
+    assert seen == [["S3"], ["H5", "H5"]]
+    assert encoded.shape == (2, runner_module.ACT_DIM)
 
 
 @pytest.fixture(scope="module")

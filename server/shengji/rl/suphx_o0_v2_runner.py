@@ -251,6 +251,17 @@ class _DecisionRecordV2:
     behavior_value: float
 
 
+def _encode_projected_candidates(
+        candidate_cards: tuple[tuple[str, ...], ...], rnd: Round) \
+        -> np.ndarray:
+    # The public-key projection is deliberately immutable (tuples), while the
+    # compiled engine's ``decompose`` boundary accepts a concrete list only.
+    # Normalize explicitly so Python and Cython execute the same contract.
+    return np.asarray([
+        encode_action(list(action), rnd) for action in candidate_cards
+    ], dtype=np.float32).reshape(-1, ACT_DIM)
+
+
 class SuphxO0V2OrdinaryActor:
     """Categorical ordinary-play actor whose draws are public-context keyed."""
 
@@ -279,9 +290,8 @@ class SuphxO0V2OrdinaryActor:
             count=PERFECT_DIM,
         )
         masked = apply_privilege_mask(perfect, mask)
-        candidates = np.asarray([
-            encode_action(action, rnd) for action in projection.candidate_cards
-        ], dtype=np.float32).reshape(-1, ACT_DIM)
+        candidates = _encode_projected_candidates(
+            projection.candidate_cards, rnd)
         # The projection is immutable so the key cannot be invalidated.  Torch
         # warns on read-only NumPy buffers, so score byte-identical writable
         # copies; sample validation recomputes the key from those exact bytes.

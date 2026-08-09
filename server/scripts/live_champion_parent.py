@@ -215,6 +215,99 @@ def _confirmation_problems(closeout: dict) -> list[str]:
     return sorted(set(problems))
 
 
+def _portable_confirmation_problems(closeout: object,
+                                    aggregate: object) -> list[str]:
+    """Authenticate sealed RLCB-C1 evidence without replaying its old host.
+
+    ``RLCB_CLOSEOUT.verify`` deliberately reconstructs the original aggregate
+    under its immutable Mini hostname, Python version, and absolute execution
+    root.  That is the right closeout check on the original machine, but it is
+    impossible for a descendant experiment in a clean worktree or on Air.
+
+    The portable boundary is different and narrower: exact SHA-256 identities
+    authenticate the already-reviewed closeout and aggregate bytes, this
+    function independently checks their authority-bearing fields, and the
+    caller separately reopens *current* champion source/policy/native bytes.
+    It does not claim to rerun the historical aggregate on a new host.
+    """
+    if not isinstance(closeout, dict):
+        return ["portable RLCB-C1 closeout is not an object"]
+    if not isinstance(aggregate, dict):
+        return ["portable RLCB-C1 aggregate is not an object"]
+    problems = []
+    fixed = {
+        "schema": RLCB_CLOSEOUT.SCHEMA,
+        "state": "FORMAL_CONFIRMATION_CONFIRMED_ARTIFACT_ONLY",
+        "complete": True,
+        "artifact_only": True,
+        "original_git": RLCB_ORIGINAL_GIT,
+        "production_promotion": False,
+        "automatic_deployment": False,
+        "s0c_reopened": False,
+    }
+    for key, value in fixed.items():
+        if closeout.get(key) != value:
+            problems.append(f"portable closeout field drift: {key}")
+    closeout_aggregate = closeout.get("aggregate")
+    if (not isinstance(closeout_aggregate, dict)
+            or closeout_aggregate.get("sha256") != RLCB_AGGREGATE_SHA256
+            or closeout_aggregate.get("decision") != "CONFIRM_REPORT_LCB"
+            or closeout_aggregate.get("formal_confirmation") is not True):
+        problems.append("portable closeout aggregate authority drifted")
+    freeze = closeout.get("freeze_receipt")
+    if (not isinstance(freeze, dict)
+            or freeze.get("sha256") != RLCB_FREEZE_SHA256):
+        problems.append("portable closeout freeze authority drifted")
+    if closeout.get("closeout_executable") != {
+            "git": RLCB_CLOSEOUT_GIT,
+            "script_sha256": RLCB_CLOSEOUT_SCRIPT_SHA256,
+    }:
+        problems.append("portable closeout executable drifted")
+    runtime = closeout.get("runtime")
+    if not isinstance(runtime, dict):
+        problems.append("portable closeout runtime missing")
+    else:
+        if runtime.get("fast_binary_sha256") != FAST_BINARY_SHA256:
+            problems.append("portable closeout compiled identity drifted")
+        if runtime.get("selection_digest") != RLCB_SELECTION_DIGEST:
+            problems.append("portable closeout selection identity drifted")
+        contracts = runtime.get("policy_contract_sha256s")
+        if (not isinstance(contracts, dict)
+                or contracts.get(CHAMPION_POLICY) !=
+                CHAMPION_POLICY_CONTRACT_SHA256):
+            problems.append("portable closeout champion contract drifted")
+        sources = runtime.get("source_sha256s")
+        if (not isinstance(sources, dict)
+                or {name: sources.get(name)
+                    for name in CHAMPION_SOURCE_SHA256S} !=
+                CHAMPION_SOURCE_SHA256S):
+            problems.append("portable closeout champion sources drifted")
+    aggregate_fixed = {
+        "git_sha": RLCB_ORIGINAL_GIT,
+        "complete": True,
+        "decision": "CONFIRM_REPORT_LCB",
+        "formal_confirmation": True,
+        "production_promotion": False,
+        "automatic_deployment": False,
+    }
+    for key, value in aggregate_fixed.items():
+        if aggregate.get(key) != value:
+            problems.append(f"portable aggregate field drift: {key}")
+    if aggregate.get("selection_digest") != RLCB_SELECTION_DIGEST:
+        problems.append("portable aggregate selection identity drifted")
+    return sorted(set(problems))
+
+
+def _json_object(path: Path, label: str) -> dict:
+    try:
+        value = json.loads(path.read_bytes())
+    except (OSError, ValueError) as exc:
+        raise ProtocolRefused(f"cannot reopen {label}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ProtocolRefused(f"{label} is not an object")
+    return value
+
+
 def _current_policy_problems(fast) -> list[str]:
     problems = C1.protocol_problems(require_receipt=False)
     sources = C1.source_sha256s()
@@ -273,6 +366,44 @@ def require_live_champion_parent() -> dict:
             f"independent RLCB-C1 reopening failed: {type(exc).__name__}: {exc}") \
             from exc
     problems = _confirmation_problems(closeout)
+    problems += _current_policy_problems(fast)
+    if problems:
+        raise ProtocolRefused("; ".join(sorted(set(problems))))
+    return expected_parent()
+
+
+def require_portable_live_champion_parent() -> dict:
+    """Reopen sealed confirmation bytes and current semantics on any host.
+
+    This is for fresh descendant experiments.  It preserves the original
+    strict :func:`require_live_champion_parent` unchanged for protocols that
+    intentionally require the historical Mini runtime.
+    """
+    if os.environ.get("SHENGJI_FAST") != "1" or \
+            os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
+        raise ProtocolRefused("set SHENGJI_FAST=1 and SHENGJI_REQUIRE_VOIDS=1")
+    from shengji.engine import combos, fast
+    if not fast.HAVE_FAST or combos.decompose is not fast.decompose:
+        raise ProtocolRefused("compiled engine requested but not active")
+    artifacts = (
+        (RLCB_CLOSEOUT_PATH, RLCB_CLOSEOUT_SHA256,
+         "RLCB-C1 artifact closeout"),
+        (RLCB_AGGREGATE_PATH, RLCB_AGGREGATE_SHA256,
+         "RLCB-C1 aggregate"),
+        (RLCB_FREEZE_PATH, RLCB_FREEZE_SHA256,
+         "RLCB-C1 freeze receipt"),
+    )
+    problems = []
+    for path, expected_sha256, label in artifacts:
+        if path.is_symlink() or not path.is_file():
+            problems.append(f"{label} missing/non-regular")
+        elif sha256(path) != expected_sha256:
+            problems.append(f"{label} digest mismatch")
+    if problems:
+        raise ProtocolRefused("; ".join(sorted(set(problems))))
+    closeout = _json_object(RLCB_CLOSEOUT_PATH, "RLCB-C1 artifact closeout")
+    aggregate = _json_object(RLCB_AGGREGATE_PATH, "RLCB-C1 aggregate")
+    problems = _portable_confirmation_problems(closeout, aggregate)
     problems += _current_policy_problems(fast)
     if problems:
         raise ProtocolRefused("; ".join(sorted(set(problems))))

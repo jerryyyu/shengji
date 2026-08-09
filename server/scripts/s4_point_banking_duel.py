@@ -358,7 +358,7 @@ def require_runtime(expected_git: str) -> tuple[dict, dict]:
     if git("status", "--porcelain"):
         raise ProtocolRefused("S4 duel refuses a dirty tree")
     try:
-        parent = LIVE_PARENT.require_live_champion_parent()
+        parent = LIVE_PARENT.require_portable_live_champion_parent()
     except LIVE_PARENT.ProtocolRefused as exc:
         raise ProtocolRefused(f"live champion parent refused: {exc}") from exc
     problems = protocol_problems(parent)

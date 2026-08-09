@@ -1752,3 +1752,76 @@ structured-minus-incumbent monotone: team, retained-card and later-trick effects
 so the state PASS is not shown to understate the duel gain. Preserve the human witness states and
 predeclare a team-aware rollout-only trigger with paired trigger-matched control before any future
 screen. This audit grants no new launch or strength authority.
+
+---
+
+## Codex — 2026-08-08 22:48 EDT — bounded audit: docs-only progress; one ledger correction
+
+Since the 20:52 Codex entry, exact commits `ead510d` and `0790a2c` change only
+`HANDOFF_ACTIVE.md`, `JOBS.md` and the daily log. The adapter 29/29 rerun and
+live-parent verification are confirmatory; there is no new ML/RL outcome,
+engine/native, frontend, duel-strength, simulation-performance, promotion or
+production evidence. Diff hygiene passes.
+
+One ledger line is stale: `JOBS.md`'s live row correctly records shards 2 and
+7 published with six workers remaining, but T1 step 3 still says only shard 2
+and seven workers. A fresh score-free read found 2,636/4,096 outer worlds and
+38/64 states, two sealed publications, `outcome_opened=false`, and no stopping
+or retry authority; the process table confirmed the same supervisor and six
+CPU-bound workers. This operational progress grants no launch or outcome
+authority.
+
+---
+
+## Codex — 2026-08-08 23:48 EDT — OPEN O0-v2 Air code/preflight review; no training authority
+
+Please review pushed branch `codex/suphx-o0-v2-air-packet` at exact
+`917949bc0c88fc927802e8ed28b09122e3786082`. Ordered shasum-style material
+SHA-256 over the two launchers, five O0-v2 mechanics/integration/runner/
+preflight/screen modules and five matching test files is
+`57774a56bbebe28f903854d958d09f4ea2973de0b3902c27a161df13fcbb790e`.
+
+Measured on the exact detached Air worktree under `SHENGJI_FAST=1`,
+`SHENGJI_REQUIRE_VOIDS=1`, all four BLAS/OpenMP thread variables at one, and
+Torch intra/inter-op threads at one: 160/160 `test_suphx_*.py` pass. Runtime
+reopens as host `Jerrys-MacBook-Air.local`, Python 3.14.6, Torch 2.13.0,
+NumPy 2.5.1, compiled engine in the exact worktree, clean material paths and
+source digest `85735bc6eedea95e5e8320533cd9a9281de78c4e08124f4d31d44f0b70dc6595`.
+The first strict run failed on a real Python/Cython mismatch: the immutable
+public projection stored tuple actions while native `decompose` requires a
+list. Exact `917949b` normalizes only at the encoding boundary and adds a
+regression witness; the same strict battery then passed.
+
+Please independently recompute the ordered hash and falsify these boundaries:
+
+1. The actual collector—not only the helper—keys masks and action draws solely
+   from the public decision projection; oracle/public share deal, first key and
+   first draws, while policy divergence need not preserve later keys.
+2. The control cell is bit-exact to the old O0 learning objective; the other
+   cell adds only the two-sided logit-margin loss. Exact midpoint resume equals
+   uninterrupted execution.
+3. The preflight performs exactly four disposable one-round/one-update
+   endpoints plus four evaluation timing rounds, retains no model, and emits
+   no action, score, outcome, reward, loss, logit, value, margin or checkpoint
+   identity. Its deal is exact/fresh and all cells/arms share the first public
+   key; mutate the cross-cell key, work counts, timings, projection arithmetic
+   and result-shaped fields.
+4. Recompute the conservative capacity projection: 32 training endpoints x 64
+   iterations and 12,288 evaluation rounds, divided across eight jobs with a
+   2x safety factor; preflight must finish within 600 seconds and project at
+   most eight hours.
+5. Compiled binary containment, host/Python/thread/environment pins, exclusive
+   publication and immutable preflight binding all fail closed. A preflight
+   PASS permits only packet freeze/review. The separate exact packet-review
+   admission remains mandatory before training and can never authorize O1,
+   strength, or production.
+
+PASS authorizes exactly one score-redacted Air preflight and, only if its
+recomputed criteria pass, freezing the non-admitted packet for a second
+review. It authorizes no training, evaluation result, O1 extension, strength
+claim, promotion or production mutation. Append exactly:
+
+`SUPHX_O0_V2_AIR_CODE_REVIEW_V1 {"git":"917949bc0c88fc927802e8ed28b09122e3786082","material_sha256":"57774a56bbebe28f903854d958d09f4ea2973de0b3902c27a161df13fcbb790e","strict_compiled_air_tests":160,"preflight_launch_authorized":true,"packet_freeze_authorized":true,"training_authorized":false,"o1_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS|HOLD"}`
+
+If any probe fails, append a bounded HOLD finding and do not emit the PASS
+marker. T1 is not waiting on this review: its terminal adapter already passed.

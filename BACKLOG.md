@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-08 20:00 EDT.
+Last re-derived: 2026-08-08 23:48 EDT.
 
 This is the execution queue, not an experiment notebook. Durable policy
 conclusions belong in `AI_POLICIES.md`, model history in `RL_PLAN.md`, job
@@ -190,7 +190,7 @@ bot rather than imitate it.
 | **T2.2 / S3b — COMPLETE / TERMINAL HOLD** | Run the score-free two-cluster throughput preflight for the report-LCB sampled-exact lane on Mini | At exact head `cd44ea8`, the first treatment cluster raised `ExactEndgameBudgetExceeded: max_nodes=250000`; exit 1, no `1/2` completion, receipt or partial. This falsifies the v2 zero-overflow feasibility condition. Same-recipe retry/cap change/fallback is unauthorized. |
 | **T2.3 / S3b v2 — CLOSED / UNAUTHORIZED** | Launch the 2,048-cluster complete-round sampled-exact screen when capacity and preflight permit | The required preflight did not pass and the zero-overflow invariant failed before a cluster completed. Preserve the seed and failure. A fresh v3 design/review—not a mutation of this attempt—is required before more sampled-exact compute. |
 | **T2.4 / Teacher — AUDIT RUNNING / ADAPTER REVIEW PASS** | Convert a valid terminal audit into a Stage-C contract | Exact Mini launch review passed; one supervisor owns 8/8 audit shards. Claude independently passed exact adapter `5b26c4b`, including canonical paths, literal parent populations/receipt nonce, Python runtime and symlink refusals. Independently verify the first terminal gate, then create and verify one adapter artifact; neither branch launches compute. |
-| **T2.5 / learner — INTEGRATION MERGED / RUNNER PACKET NEXT** | Write, but do not yet bundle-run, a fresh O0-v2 mechanism battery | Claude passed exact `dd730a8` / material `639c259b…a0494b`; equivalent merge `59a23c7` passes 22/22 focused and 112/112 Suphx. Freeze a fresh population/runner/gate packet without changing dose, target, feature schedule, optimizer, or margin cell. No training is authorized yet. |
+| **T2.5 / learner — AIR PACKET CODE REVIEW OPEN / NO TRAINING** | Test whether shared-public CRN, with margin sharpening isolated factorially, makes oracle access robust across seeds | Fresh 8-seed runner/gate and score-redacted Air preflight are pushed at exact `917949b`. Strict compiled-Air Suphx tests pass 160/160 after catching and repairing a tuple/list native-boundary bug; runtime/source attestation passes. Obtain exact `SUPHX_O0_V2_AIR_CODE_REVIEW_V1`, run only the disposable preflight, then freeze/review the packet. Training, O1, strength and production remain unauthorized. |
 | **T2.6 / S3a duel — PREFLIGHT REVIEW PASS / WAIT TEACHER RELEASE** | Test whether the state-level structured-bury gain survives full games against production | Exact core/controller `b5dee2e` / `0085409` and guarded packet `e6f2493` passed external review. Contract `5e0f6ade…b44653` freezes four score-free clusters, seed 18,000,000,000, cap pairs, command and executable Teacher-release guard. Run only after that guard clears; the preflight can authorize screen-packet review, not a screen or strength claim. |
 
 T2 launch readiness is achieved: T2.0 passed and S3a produced a valid positive

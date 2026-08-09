@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-08 22:00 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-08 23:48 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,8 +10,8 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shards 2 and 7 exited zero and published 2/8 label triplets; six workers remain CPU-bound. At 22:00, score-free progress was 2,422/4,096 outer worlds (59.1%) and 35/64 states. The label JSONs remain sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
-| Air | none | Physically idle but not admissible for the current S3a parent. A no-write probe with exact copied RLCB-C1 evidence/native bytes still refused the historical Mini `execution_host`/Python lock. Do not launch S3a on Air without a separately reviewed portable-parent design. |
+| Mini | `teacher-v3-report-lcb-audit-v3-mini-149m` | **RUNNING / HEALTHY / LONG:** shards 2 and 7 exited zero and published 2/8 label triplets; six workers remain CPU-bound. At 23:48, score-free progress was 2,915/4,096 outer worlds (71.2%) and 42/64 states. The label JSONs remain sealed. Exact monitor `c96a932` passes 8/8. Wait for one terminal gate; no duplicate/retry/migration. |
+| Air | none | Physically idle. S3a remains inadmissible because its parent is Mini-bound. O0-v2 exact `917949b` passes 160/160 strict compiled-Air tests and runtime attestation, but its score-redacted preflight awaits independent code review; do not run it early. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
 The T1 Teacher audit is **running on Mini**. Receipt
@@ -31,8 +31,8 @@ preflighted before launch.
    controller `0399591`, and material `645b8f54…b894d`.
 2. **Complete:** the one-shot preparer emitted exact receipt
    `e293858c…a10d` and preparation `83892930…c39`; both reopened cleanly.
-3. **Running:** one Mini supervisor owns the population; shard 2 exited zero
-   and seven workers remain live. Outer folds are 32/32 while each searched
+3. **Running:** one Mini supervisor owns the population; shards 2 and 7 exited
+   zero and six workers remain live. Outer folds are 32/32 while each searched
    continuation retains the reviewed inner 30+300 accepted-world dose. Do not
    open the published label before the terminal gate.
 4. **Complete:** Claude independently passed terminal adapter `5b26c4b`.
@@ -55,9 +55,13 @@ cannot launch the screen or make a strength claim.
 
 ### T2 learner
 
-O0-v2 public-key integration is merged and reviewed. Packet design may proceed
-in parallel, but no collector, training job, O1 extension, or strength run is
-authorized yet.
+O0-v2 public-key integration is merged and reviewed. Fresh runner/gate plus a
+score-redacted Air preflight are pushed at exact `917949b`; local focused
+tests pass and strict compiled-Air Suphx tests pass 160/160 after the strict
+run exposed and repaired a tuple/list native-boundary bug. Independent code
+review is now required before the disposable preflight. Even a preflight PASS
+can authorize only packet freezing and review—not training, O1, strength, or
+production.
 
 ## Terminal job index
 

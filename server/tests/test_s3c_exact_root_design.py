@@ -64,16 +64,22 @@ def _fake_prefix(seed: int, band: int, offset: int) -> dict:
     }
 
 
+def _fake_sources(*, exact_solver_digest: str = "e" * 64) -> dict:
+    return {
+        name: {
+            "logical_path": logical_path,
+            "sha256": (exact_solver_digest if name == "exact_solver"
+                       else S3C.sha256_bytes(name.encode())),
+            "bytes": 1,
+        }
+        for name, logical_path in S3C.SOURCE_PATHS.items()
+    }
+
+
 def _smoke_census(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
     corpus, digest = _corpus(tmp_path, monkeypatch)
     monkeypatch.setattr(S3C, "prefix_row", _fake_prefix)
-    monkeypatch.setattr(S3C, "source_identity", lambda: {
-        "exact_solver": {
-            "logical_path": "server/shengji/ai/endgame.py",
-            "sha256": "e" * 64,
-            "bytes": 1,
-        }
-    })
+    monkeypatch.setattr(S3C, "source_identity", _fake_sources)
     return S3C.build_census(corpus, digest, smoke=True)
 
 
@@ -156,6 +162,52 @@ def test_validate_census_refuses_mutated_quota(
         S3C.validate_census(path, S3C.sha256_file(path))
 
 
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (lambda census: census["rows"][0].__setitem__(
+            "state_id", "wrong"), "row selection identity"),
+        (lambda census: census["rows"][0].__setitem__(
+            "action_value", 1), "row field set"),
+        (lambda census: census["rows"][0].__setitem__(
+            "cards_remaining", -1), "row hand geometry"),
+        (lambda census: census["scan_contract"]["1"].__setitem__(
+            "seeds_scanned", 1), "band 1 scan contract"),
+    ],
+)
+def test_validate_census_refuses_malformed_rows_and_scan(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        mutation, message: str) -> None:
+    census = _smoke_census(tmp_path, monkeypatch)
+    mutation(census)
+    path = tmp_path / "mutated.json"
+    path.write_bytes(S3C.canonical_json(census))
+    with pytest.raises(S3C.S3CDesignError, match=message):
+        S3C.validate_census(path, S3C.sha256_file(path))
+
+
+def test_validate_census_refuses_stale_embedded_digest(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    census = _smoke_census(tmp_path, monkeypatch)
+    census["human_witness_appendix"]["classification"] += " changed"
+    path = tmp_path / "stale-digest.json"
+    path.write_bytes(S3C.canonical_json(census))
+    with pytest.raises(S3C.S3CDesignError, match="embedded digest"):
+        S3C.validate_census(path, S3C.sha256_file(path))
+
+
+def test_packet_refuses_stale_source_identity(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    census = _smoke_census(tmp_path, monkeypatch)
+    path = tmp_path / "census.json"
+    path.write_bytes(S3C.canonical_json(census))
+    monkeypatch.setattr(
+        S3C, "source_identity",
+        lambda: _fake_sources(exact_solver_digest="f" * 64))
+    with pytest.raises(S3C.S3CDesignError, match="packet source identity"):
+        S3C.build_packet(path, S3C.sha256_file(path), smoke=True)
+
+
 def test_real_packet_refuses_smoke_census(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     census = _smoke_census(tmp_path, monkeypatch)
@@ -170,3 +222,17 @@ def test_publish_is_exclusive(tmp_path: Path) -> None:
     S3C.publish_exclusive(path, {"ok": True})
     with pytest.raises(S3C.S3CDesignError, match="existing"):
         S3C.publish_exclusive(path, {"ok": False})
+
+
+def test_frozen_loader_refuses_symlink_and_hardlink(tmp_path: Path) -> None:
+    source = tmp_path / "source.json"
+    source.write_text("{}\n")
+    symlink = tmp_path / "symlink.json"
+    symlink.symlink_to(source)
+    with pytest.raises(S3C.S3CDesignError, match="regular/unlinked"):
+        S3C._load_frozen_json(symlink)
+
+    hardlink = tmp_path / "hardlink.json"
+    hardlink.hardlink_to(source)
+    with pytest.raises(S3C.S3CDesignError, match="regular/unlinked"):
+        S3C._load_frozen_json(source)

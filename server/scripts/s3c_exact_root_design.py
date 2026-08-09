@@ -54,6 +54,31 @@ SOURCE_PATHS = {
     "legal": "server/shengji/engine/legal.py",
     "combos": "server/shengji/engine/combos.py",
 }
+CENSUS_CLAIM = (
+    "natural-prefix supply and root-action geometry only; no action value, "
+    "game outcome, strength, training or production evidence"
+)
+CENSUS_AUTHORITY = {
+    "score_free": True,
+    "outcomes_computed": False,
+    "action_values_computed": False,
+    "strength_claim": False,
+    "training_authorized": False,
+    "production_promotion": False,
+    "curriculum_packet_review_authorized": True,
+    "solver_or_screen_launch_authorized": False,
+}
+CENSUS_KEYS = {
+    "schema", "census_id", "producer", "sources", "claim",
+    "scan_contract", "rows", "human_witness_appendix", "authority",
+    "census_sha256",
+}
+ROW_KEYS = {
+    "state_id", "deal_seed", "max_hand_cards", "within_trick_offset",
+    "actor_seat", "actor_role", "surface", "trick_index",
+    "trick_play_count", "lead_size", "hand_sizes", "cards_remaining",
+    "legal_action_count", "legal_action_size_counts", "state_sha256",
+}
 
 
 class S3CDesignError(RuntimeError):
@@ -75,6 +100,15 @@ def sha256_file(path: str | os.PathLike[str]) -> str:
         for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _is_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_hex_digest(value: object, length: int = 64) -> bool:
+    return (isinstance(value, str) and len(value) == length
+            and all(char in "0123456789abcdef" for char in value))
 
 
 def _git(*args: str) -> str:
@@ -100,6 +134,12 @@ def _load_json(path: Path) -> dict:
     if not isinstance(value, dict):
         raise S3CDesignError(f"JSON root is not an object: {path}")
     return value
+
+
+def _load_frozen_json(path: Path) -> dict:
+    if not _regular_unlinked(path):
+        raise S3CDesignError(f"frozen artifact is not regular/unlinked: {path}")
+    return _load_json(path)
 
 
 def _load_jsonl(path: Path) -> list[dict]:
@@ -372,24 +412,12 @@ def build_census(corpus: Path, expected_manifest_sha256: str, *,
         "census_id": CENSUS_ID,
         "producer": producer_identity(smoke=smoke),
         "sources": source_identity(),
-        "claim": (
-            "natural-prefix supply and root-action geometry only; no action "
-            "value, game outcome, strength, training or production evidence"
-        ),
+        "claim": CENSUS_CLAIM,
         "scan_contract": scan,
         "rows": rows,
         "human_witness_appendix": human_witness_appendix(
             corpus, expected_manifest_sha256),
-        "authority": {
-            "score_free": True,
-            "outcomes_computed": False,
-            "action_values_computed": False,
-            "strength_claim": False,
-            "training_authorized": False,
-            "production_promotion": False,
-            "curriculum_packet_review_authorized": True,
-            "solver_or_screen_launch_authorized": False,
-        },
+        "authority": dict(CENSUS_AUTHORITY),
     }
     census["census_sha256"] = sha256_bytes(canonical_json(census))
     return census
@@ -411,25 +439,159 @@ def census_problems(actual: dict, expected: dict) -> list[str]:
     return sorted(set(problems))
 
 
+def _validate_producer(producer: object) -> bool:
+    if not isinstance(producer, dict) or set(producer) != {
+            "git", "tree_dirty", "promotable", "script_sha256"}:
+        return False
+    if (not isinstance(producer["tree_dirty"], bool)
+            or not isinstance(producer["promotable"], bool)
+            or (producer["promotable"] and producer["tree_dirty"])
+            or not _is_hex_digest(producer["git"], 40)
+            or not _is_hex_digest(producer["script_sha256"])):
+        return False
+    return True
+
+
+def _validate_sources(sources: object) -> bool:
+    if not isinstance(sources, dict) or set(sources) != set(SOURCE_PATHS):
+        return False
+    for name, logical_path in SOURCE_PATHS.items():
+        item = sources.get(name)
+        if (not isinstance(item, dict)
+                or set(item) != {"logical_path", "sha256", "bytes"}
+                or item.get("logical_path") != logical_path
+                or not _is_hex_digest(item.get("sha256"))
+                or not _is_int(item.get("bytes"))
+                or item["bytes"] <= 0):
+            return False
+    return True
+
+
+def _expected_offset(band: int, seed: int) -> int:
+    return int.from_bytes(hashlib.sha256(
+        f"{CENSUS_ID}:{band}:{seed}".encode()).digest()[:8], "big") % 4
+
+
+def _validate_row(row: object) -> str | None:
+    if not isinstance(row, dict) or set(row) != ROW_KEYS:
+        return "row field set drift"
+    band = row.get("max_hand_cards")
+    seed = row.get("deal_seed")
+    offset = row.get("within_trick_offset")
+    if (not _is_int(band) or band not in BAND_SEED_STARTS
+            or not _is_int(seed) or not _is_int(offset) or offset not in OFFSETS):
+        return "row band/seed/offset drift"
+    seed_start = BAND_SEED_STARTS[band]
+    if (not seed_start <= seed < seed_start + SCAN_DEALS_PER_BAND
+            or offset != _expected_offset(band, seed)
+            or row.get("state_id") != f"s3c-b{band}-s{seed}-o{offset}"):
+        return "row selection identity drift"
+    if (not _is_int(row.get("actor_seat"))
+            or not 0 <= row["actor_seat"] < 4
+            or row.get("actor_role") not in {"attacker", "defender"}
+            or row.get("surface") != ("lead" if offset == 0 else "follow")
+            or not _is_int(row.get("trick_index"))
+            or row["trick_index"] < 0
+            or row.get("trick_play_count") != offset
+            or not _is_hex_digest(row.get("state_sha256"))):
+        return "row replay metadata drift"
+    lead_size = row.get("lead_size")
+    if offset == 0:
+        if lead_size is not None:
+            return "row lead geometry drift"
+        expected_hands = [band] * 4
+    else:
+        if (not _is_int(lead_size) or not 1 <= lead_size <= band):
+            return "row lead geometry drift"
+        expected_hands = sorted(
+            [band - lead_size] * offset + [band] * (4 - offset))
+    hands = row.get("hand_sizes")
+    if (not isinstance(hands, list) or len(hands) != 4
+            or any(not _is_int(value) or not 0 <= value <= band
+                   for value in hands)
+            or sorted(hands) != expected_hands
+            or hands[row["actor_seat"]] != band
+            or row.get("cards_remaining") != sum(hands)):
+        return "row hand geometry drift"
+    action_count = row.get("legal_action_count")
+    size_counts = row.get("legal_action_size_counts")
+    if (not _is_int(action_count) or action_count <= 0
+            or not isinstance(size_counts, dict) or not size_counts):
+        return "row legal-action geometry drift"
+    total = 0
+    for size, count in size_counts.items():
+        if (not isinstance(size, str) or not size.isdigit()
+                or not 1 <= int(size) <= band
+                or not _is_int(count) or count <= 0):
+            return "row legal-action geometry drift"
+        total += count
+    if total != action_count:
+        return "row legal-action geometry drift"
+    return None
+
+
+def _validate_human_appendix(appendix: object) -> bool:
+    if not isinstance(appendix, dict) or set(appendix) != {
+            "manifest_sha256", "play_artifact_sha256", "classification",
+            "by_equivalent_band", "witness_key_sha256",
+            "raw_identifiers_published", "formal_selection_source", "use"}:
+        return False
+    bands = appendix.get("by_equivalent_band")
+    if (appendix.get("manifest_sha256") != HUMAN_MANIFEST_SHA256
+            or not _is_hex_digest(appendix.get("play_artifact_sha256"))
+            or not _is_hex_digest(appendix.get("witness_key_sha256"))
+            or appendix.get("raw_identifiers_published") is not False
+            or appendix.get("formal_selection_source") is not False
+            or appendix.get("use") != "DESIGN witnesses and error analysis only"
+            or not isinstance(appendix.get("classification"), str)
+            or not isinstance(bands, dict)
+            or set(bands) != {"1", "2", "3"}):
+        return False
+    for summary in bands.values():
+        if (not isinstance(summary, dict)
+                or not _is_int(summary.get("rows")) or summary["rows"] < 0
+                or not _is_int(summary.get("source_rounds"))
+                or summary["source_rounds"] < 0
+                or any(not isinstance(key, str)
+                       or not (key in {"rows", "source_rounds"}
+                               or key.startswith("surface:")
+                               or key.startswith("role:"))
+                       or not _is_int(value) or value < 0
+                       for key, value in summary.items())):
+            return False
+    return True
+
+
 def validate_census(path: Path, expected_sha256: str) -> dict:
     if not _regular_unlinked(path) or sha256_file(path) != expected_sha256:
         raise S3CDesignError("census file identity drift")
     census = _load_json(path)
-    authority = census.get("authority", {})
     rows = census.get("rows")
     producer = census.get("producer", {})
-    expected_per_offset = (ROWS_PER_OFFSET
-                           if producer.get("promotable") is True else 1)
-    if (census.get("schema") != CENSUS_SCHEMA
+    if (set(census) != CENSUS_KEYS
+            or census.get("schema") != CENSUS_SCHEMA
             or census.get("census_id") != CENSUS_ID
+            or census.get("claim") != CENSUS_CLAIM
+            or not _validate_producer(producer)
+            or not _validate_sources(census.get("sources"))
             or not isinstance(rows, list)
-            or len(rows) != 3 * 4 * expected_per_offset
-            or len({row.get("deal_seed") for row in rows}) != len(rows)
-            or authority.get("score_free") is not True
-            or authority.get("outcomes_computed") is not False
-            or authority.get("action_values_computed") is not False
-            or authority.get("solver_or_screen_launch_authorized") is not False):
+            or census.get("authority") != CENSUS_AUTHORITY
+            or not _validate_human_appendix(
+                census.get("human_witness_appendix"))):
         raise S3CDesignError("census structure/authority drift")
+    expected_per_offset = ROWS_PER_OFFSET if producer["promotable"] else 1
+    if (len(rows) != 3 * 4 * expected_per_offset
+            or len({row.get("deal_seed") for row in rows}) != len(rows)):
+        raise S3CDesignError("census structure/authority drift")
+    for row in rows:
+        problem = _validate_row(row)
+        if problem:
+            raise S3CDesignError(problem)
+    if rows != sorted(rows, key=lambda row: row["state_id"]):
+        raise S3CDesignError("census row ordering drift")
+    scan = census.get("scan_contract")
+    if not isinstance(scan, dict) or set(scan) != {"1", "2", "3"}:
+        raise S3CDesignError("census scan contract drift")
     for band in BAND_SEED_STARTS:
         band_rows = [row for row in rows if row.get("max_hand_cards") == band]
         if (len(band_rows) != 4 * expected_per_offset
@@ -437,6 +599,28 @@ def validate_census(path: Path, expected_sha256: str) -> dict:
                 != Counter({offset: expected_per_offset
                             for offset in OFFSETS})):
             raise S3CDesignError(f"band {band} quota drift")
+        item = scan.get(str(band))
+        expected_cap = SCAN_DEALS_PER_BAND if producer["promotable"] else 256
+        if (not isinstance(item, dict)
+                or set(item) != {"seed_start", "scan_cap", "seeds_scanned",
+                                 "skipped_no_exact_band", "selection", "summary"}
+                or item.get("seed_start") != BAND_SEED_STARTS[band]
+                or item.get("scan_cap") != expected_cap
+                or not _is_int(item.get("seeds_scanned"))
+                or not 1 <= item["seeds_scanned"] <= expected_cap
+                or not _is_int(item.get("skipped_no_exact_band"))
+                or not 0 <= item["skipped_no_exact_band"] <= item["seeds_scanned"]
+                or item.get("summary") != _band_summary(band_rows)
+                or any(row["deal_seed"] >= (BAND_SEED_STARTS[band]
+                                             + item["seeds_scanned"])
+                       for row in band_rows)):
+            raise S3CDesignError(f"band {band} scan contract drift")
+    embedded = census.get("census_sha256")
+    unhashed = dict(census)
+    unhashed.pop("census_sha256", None)
+    if (not _is_hex_digest(embedded)
+            or embedded != sha256_bytes(canonical_json(unhashed))):
+        raise S3CDesignError("census embedded digest drift")
     return census
 
 
@@ -445,10 +629,18 @@ def build_packet(census_path: Path, expected_census_sha256: str, *,
     census = validate_census(census_path, expected_census_sha256)
     if census.get("producer", {}).get("promotable") is not (not smoke):
         raise S3CDesignError("smoke/real census authority differs from packet")
+    packet_producer = producer_identity(smoke=smoke)
+    packet_sources = source_identity()
+    if (census["producer"]["git"] != packet_producer["git"]
+            or census["producer"]["script_sha256"]
+            != packet_producer["script_sha256"]
+            or census["sources"] != packet_sources):
+        raise S3CDesignError(
+            "census was not produced by this packet source identity")
     packet = {
         "schema": PACKET_SCHEMA,
         "packet_id": PACKET_ID,
-        "producer": producer_identity(smoke=smoke),
+        "producer": packet_producer,
         "parent": {
             "census_sha256": expected_census_sha256,
             "embedded_census_sha256": census["census_sha256"],
@@ -645,7 +837,7 @@ def main() -> None:
         if args.command == "census":
             publish_exclusive(path, expected)
         else:
-            problems = census_problems(_load_json(path), expected)
+            problems = census_problems(_load_frozen_json(path), expected)
             if problems:
                 raise S3CDesignError("; ".join(problems))
         print(json.dumps({
@@ -663,7 +855,7 @@ def main() -> None:
     if args.command == "freeze-packet":
         publish_exclusive(path, packet)
     else:
-        problems = packet_problems(_load_json(path), packet)
+        problems = packet_problems(_load_frozen_json(path), packet)
         if problems:
             raise S3CDesignError("; ".join(problems))
     print(json.dumps({

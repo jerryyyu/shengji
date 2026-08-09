@@ -2319,3 +2319,92 @@ line. The backticks below are display delimiters and must not be copied:
 
 A PASS authorizes one hash-pinned admission and one Mini screen launch only.
 No confirmation, retry/extension, production change or promotion is authorized.
+
+## Claude — 2026-08-09 07:58 EDT — TEACHER_TERMINAL_ADAPTER_V3_REVIEW @ 60d46e1: PASS — absolute-path delta verified; real gate reopened
+
+Identity: parent exactly `5b26c4b` (git %P); delta is 6 lines in the adapter (absolute
+`AUDIT_SERVER_ROOT` prefix on the eight expected input paths) plus fixture update and one refusal
+regression in the tests; both file SHAs and ordered material `08354af1…e03e2303` reproduce.
+
+Measured: 30/30 focused tests. Canonical real gate reproduces `8a1532b7…aba91f8` and supervisor
+final `02f4f8b0…956f237` with 839 events; the real gate's eight input paths are byte-literal,
+absolute, and ordered (equal to the delta's expected list); verdict field is PASS; the canonical
+adapter output `teacher_terminal_adapter_v2.json` is absent before review.
+
+Falsifications: driving `_gate_problems` directly — baseline real gate yields zero problems;
+relative-form shard 0, all-shards copied root, alternate-absolute shard 3, and reversed order each
+yield exactly one input-path-population problem. Driving the full `create()` with any noncanonical
+config location refuses earlier at the parent-chain canonical-path walk (defense in depth, also
+measured). Mutation: neutralizing the population equality turns exactly
+`test_gate_refuses_relative_audit_input_population` and
+`test_gate_refuses_nonliteral_parent_or_label_population[audit_path-…]` red; restored 30/30.
+
+The delta touches no verdict routing: PASS remains hard-tail Stage-C **design only**, and adapter
+creation conveys no label, compute, training, retry, strength, promotion or production authority.
+
+TEACHER_TERMINAL_ADAPTER_V3_REVIEW {"schema":"teacher-terminal-adapter-v3-review-v1","git":"60d46e1bed0eefabe040dc9dac3a630680d6bdff","parent_git":"5b26c4b4bdb678b2c780c8a4b6ed5b87e181964e","run_id":"teacher-v3-report-lcb-audit-v3-mini-149m","gate_sha256":"8a1532b7b9a610452609bb2a7a69c9b13a9f1800ad74428d0278e9572aba91f8","supervisor_sha256":"02f4f8b02d674ad3f59f9fa5b607692c7c8d31bdc5d26e2c64f66c983956f237","adapter_sha256":"974594a7b5754e065888e1959f7088f2d4e73e491d3607b2769472a66385bbbb","test_sha256":"658c1681979b8bd4b0a07d27afa1b2d3e4d34b241570d8ec3e192a686b31bf99","material_sha256":"08354af1d5f0c4cdea3154ee738add949ca055b33cb5c9b28b3a4e39e03e2303","real_gate_reopened":true,"absolute_label_paths":true,"relative_and_alternate_paths_refuse":true,"tests":"30/30","adapter_creation_authorized":true,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}
+
+## Claude — 2026-08-09 08:34 EDT — S3A_DUEL_SCREEN_PACKET_V1_REVIEW @ c599b42: PASS — all six requested verifications held
+
+1. **Identity/tests.** Direct child of `70e24ad` (git %P); the delta adds exactly the controller and
+   its tests; controller `68ff254e…9a029d`, test `3adfe379…90fb6c3`, runner `d04fd162…3bfb38` and
+   ordered material `c76a030a…b60714` all reproduce byte-for-byte. Focused 17/17 and the exact
+   100-test battery (screen 17 + duel 20 + preflight 16 + live-parent 8 + pilot 27 + throughput 12)
+   pass under Mini venv Python 3.14.3; I additionally ran the supervisor file for 108 total green.
+2. **Canonical packet.** On the clean canonical root temporarily detached at exact `c599b42` (my
+   uncommitted ledger bytes stash-preserved and restored, verified after), the exact `verify-packet`
+   command with `SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1` recomputed the full expected packet and
+   reproduced SHA `de16247b…f3d5cdd4` with `screen_launch_authorized: false`; the namespace contains
+   exactly `launch_packet.json` — review copy, admission, receipt, progress, final, shards, logs,
+   exits and aggregate all absent. Main restored clean.
+3. **Packet contents.** Parent and opponent are exact live `mc-s0-report-lcb` (structured treatment /
+   champion control / matched null labels; live-parent binding via `require_runtime` with the RLCB
+   anchors — a copied root refuses on exactly that binding, measured); screen is 2,048 fresh
+   mirrored clusters, 8 shards x 256, seed0 `153000003`, stride `2000003`, frozen selection rule and
+   stream digests; all eight shard argvs and canonical interpreter/paths are part of the recomputed
+   packet equality.
+4. **Preflight binding.** Receipt `97280974…`, preflight `09692f82…`, progress `44ad26d0…`, final
+   `56943242…` and contract `5e0f6ade…` are pinned constants; the terminal status must be
+   `AUTHORIZE_SCREEN_PACKET_REVIEW` with review-only authority; capacity is enforced as
+   projections <= budgets (72.6246/9.0781 vs 192/24 fleet/shard hours) inside `preflight_evidence()`.
+5. **Falsifications (measured).** Copied scratch root refuses via the live-parent execution binding;
+   an EMPTY `SHENGJI_WEIGHTED_SPLITS` refuses (presence semantics, not truthiness); review-claim
+   probes: valid baseline accepted, then verdict HOLD, wrong git, wrong packet SHA, wrong preflight
+   final, confirmation/strength/promotion widening, foreign field and duplicate markers all refuse
+   (whole-dict equality); the internal review source is refused and test-covered
+   (`test_admission_refuses_internal_review_source`). Air and homebrew Python 3.14.6 refuse on the
+   `EXPECTED_HOST`/`EXPECTED_PYTHON` pins checked before any work. Mutation: neutralizing the claim
+   equality turns exactly `test_review_marker_is_exact_unique_and_narrow` red (DID NOT RAISE);
+   restored 17/17.
+6. **Launch chain.** `launch()` runs the admission gate before receipt publication
+   (`_require_admission` inside `launch_preflight`, namespace restricted to exactly
+   packet/review/admission, all execution targets absent); the first nonzero shard SIGTERMs sibling
+   process groups and raises before any aggregation; heartbeats carry cluster counts only; every
+   shard/log/exit is bound by full exit-receipt recomputation; the aggregate is recomputed from all
+   eight exact shard bytes with path/hash uniqueness and a single `DUEL.build_aggregate` call;
+   terminal PASS is `AUTHORIZE_CONFIRM_PACKET_REVIEW` with confirmation launch, retry/resume,
+   strength and promotion pinned false everywhere.
+
+Scope of this PASS: one hash-pinned admission and one Mini screen launch. No confirmation launch, no
+retry or extension, no strength conclusion, no promotion, no production change.
+
+S3A_DUEL_SCREEN_PACKET_V1_REVIEW {"schema":"s3a-bury-duel-screen-review-v1","git":"c599b42e1a61c4a49346165940fc964632a71f16","run_id":"s3a-bury-duel-screen-153m-v1","packet_sha256":"de16247bfea13bde516cfb45317f7d21d46d758ae700441b9b747b41f3d5cdd4","preflight_final_sha256":"56943242f3620b09774a55eab992fbac0bce6ad224c3ada6a7b54a5634799e9f","independent_review":true,"screen_launch_authorized":true,"confirmation_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}
+
+---
+
+## Codex — 2026-08-09 07:50 EDT — bounded audit: both PASS reviews accepted; ledgers lag
+
+Since the 06:58 Codex entry, the only main-worktree delta is Claude's two review records. Both exact
+parents, file hashes and ordered material hashes reproduce, and both markers are unique. The focused
+relative-path refusal and narrow S3a marker tests pass 1/1 each; the actual S3a marker is accepted
+byte-for-byte by `_review_claim()` with confirmation, strength and production authority false.
+
+The Teacher V3 PASS closes its path-delta review and authorizes only creating and independently
+verifying one design-only adapter; that adapter remains absent. The S3a PASS closes the packet review
+and authorizes only one hash-pinned admission plus one Mini 2,048-cluster screen launch; packet
+`de16247b…cdd4` still hashes exactly and remains the namespace's sole file, so neither admission nor
+launch has occurred. No confirmation, retry, strength, promotion or production authority follows.
+
+`JOBS.md` and `HANDOFF_ACTIVE.md` therefore lag in calling these reviews open/review-gated. There is
+no new ML outcome, engine/native, frontend, duel-result or simulation-performance evidence requiring
+any broader rerun.

@@ -122,13 +122,16 @@ what those results change in the research plan.
   review, but later executable audit found its V11 SHA names no artifact, so
   it cannot parent a controller. Exact `12dac55` v2 binds the executable
   checkpoint, portable live parent and explicit disjoint 30/300 selection/
-  report folds at packet `2cccf580…8f2b`; it reproduced exactly on Air. A later
-  score-free execution-design audit found two remaining ambiguities before
-  controller work: v2 does not cap its named “analysis ballot” in the packet,
-  and it names the root report-LCB policy as though it were the downstream
-  rollout continuation. Hold v2 and freeze a bounded v3 with an at-most-17-
-  action play union, explicit bury work, and the actual heuristic rollout
-  continuation. The latest complete server pull at 16:07 UTC found every one
+  report folds at packet `2cccf580…8f2b`; Claude passed that identity repair at
+  `9fdb67a`. A later score-free execution-design audit found three remaining
+  ambiguities before controller work: v2 did not cap its “analysis ballot,”
+  conflated the root report-LCB decision rule with downstream rollout
+  continuation, and requested undefined candidate recall. V2 produced no
+  outcome. Exact source `b02b6de` and packet commit `d6214ce` now freeze
+  bounded v3 at `4d3f0a35…8cc3c`: at most 17 play / 33 bury actions, explicit
+  `HeuristicBot` continuation, three disjoint folds and a hard ceiling of
+  1,329,210 candidate-world rollouts. Delta review precedes controller work.
+  The latest complete server pull at 16:07 UTC found every one
   of the 30 source
   files unchanged, so this remains the current production snapshot. The split
   is name-derived pseudonymous-player/deal disjoint, not provably true-person
@@ -403,6 +406,28 @@ The Teacher should not merely make the existing heuristic target less noisy.
 Its candidate set and continuation portfolio must expose strategies the
 heuristic never generates or systematically misprices.
 
+#### Teacher/data-generation lineage
+
+“Teacher” has referred to several materially different things in this project.
+This table separates them by the training signal they actually produced.
+
+| strategy | how labels/states were created | measured impact | remaining gap / best next use |
+|---|---|---|---|
+| **SmartBot imitation (BC through early distillation)** | Generate broad self-play states and copy the heuristic's chosen action; later N=10 MC corpora attached noisy candidate values to the same general distribution. | BC learned substantial game structure, and soft MC targets plus more data improved the standalone student through v6. None reached MC strength. | More horizontal copies preserve the heuristic's action and continuation ceiling. Retain only as initialization and an ordinary-state anchor. |
+| **N=30 MC Teacher (v7)** | Spend more worlds on the same style of MC candidate comparison, reducing label noise without changing the action source or heuristic continuation. | v7w was a useful successor/initializer and later enabled v11pair, but never showed a verified gain over MC/report-LCB. | Better precision is not a better strategy distribution. Use N=30 for cheap ordinary labels, not as universal gold. |
+| **One-turn learned-Teacher flywheel (v9 / `gen_v4`)** | Use the v7 value-leaf hybrid as Teacher, train v9 on its choices, then try the learned head again inside the hybrid. | Warm versus scratch and longer training did not improve strength; the v9 leaf did not beat the v7 leaf. | The loop reproduced its own approximation and continuation bias. A future flywheel needs independently stronger action proposals/labels before self-training. |
+| **High-N vertical relabeling (v13)** | Re-evaluate 20,845 selected states at 240 worlds and regress absolute action value under heuristic continuation. | Offline RMSE/regret improved, but online v13-minus-v7 was `-0.028 +/- 0.185`; the source also had banker-private-kitty encoding contamination and train/deploy ballot/state shifts. | Vertical compute is useful only with clean replay, a deployment-matched target and hard-tail coverage. Existing v13 data/checkpoint cannot be repaired retroactively. |
+| **Teacher-v3 Stage A** | Run the complete dense label schema twice on the same 64 frozen states under distinct receipts. | Exact deterministic replay/mechanics passed and exposed multiple publication/identity defects before scale. | This certified the producer, not label quality or strength. Keep as the small falsifiability preflight for future Teacher versions. |
+| **Teacher-v3 Stage B** | On 128 disjoint mostly ordinary states, compare cheap heuristic-continuation choices with much more expensive `mc-strong@N=30` continuation labels. | Cheap-minus-gold regret upper bound was `0.0195 < 0.10`; the cheap proxy was adequate on this sampled population. | It only showed agreement with the old MC continuation on ordinary states. It did not create a dataset/model or show labels beyond the live champion. |
+| **Fresh live-champion audit** | On an untouched 64-state complement, compare frozen cheap and N=30 choices against the deployed report-LCB root evaluator. | Cheap and N=30 all-state regret bounds passed (`0.0354` and `0.0439`), but the eight boundary states had a weaker N=30 bound (`0.1421`). | Ordinary rows can be labeled cheaply; uncertain/boundary rows need escalation. This is the direct empirical reason for Stage C's mixed-budget hard tail. |
+| **Teacher Stage C (planned, not yet executed)** | Capture 2,048 fresh split-safe states; deliberately mix ordinary anchors with uncertainty/disagreement, human/V11/structured proposals, bury, point mechanisms and exact-late opportunities. Use cheap labels only where certified and spend report-LCB or bounded exact diagnostics on the hard tail. | **No impact result yet:** no Stage-C states, labels, checkpoint or challenger currently exists. | Publish the 1,024 DESIGN / 512 CALIB / 512 untouched REPORT asset, train at least eight seeds, then require an untouched Teacher gate and fresh whole-game win. This is the first Teacher strategy designed to expand both state/action coverage and label strength. |
+
+In plain English, Stage B asked, “Can the cheap grader reproduce the expensive
+grader on normal exam questions?” Stage C asks, “Can we write a better exam,
+including the questions and candidate answers our current bot tends to miss,
+and spend the expensive grader only where it matters?” Stage B validated a
+cost-saving component; Stage C is intended to create new learning signal.
+
 The Stage-C progression is:
 
 1. capture fresh non-evaluation states with explicit early/mid/late,
@@ -454,6 +479,34 @@ reviewed block ledger/namespace, a candidate receipt, synthetic C0 and the
 terminal estimator. Implementation history belongs in the dated log and
 `AI_POLICIES.md`, not in this roadmap.
 
+#### H0 plan and version history
+
+H0 is the project label for the first **human-action counterfactual pilot**.
+It does not train a model and it does not assume the human move is correct. It
+holds the historical decision fixed, adds bounded human/model/random proposals
+to the production ballot, and asks which action survives fresh shared-world
+evaluation.
+
+The population is fixed across versions: 384 DESIGN and 128 disjoint AUDIT
+play decisions, plus 36 DESIGN and nine AUDIT buries. The play sample keeps
+every eligible late and off-analysis-ballot witness, caps repeated decisions at
+eight per deal, and balances role/lead/follow as far as the small connected
+human corpus allows.
+
+| version | what changed | terminal status | lesson / next authority |
+|---|---|---|---|
+| **H0 v1** — exact `9770313`, packet `9ff160a9…247d3` | Froze the population, DESIGN/AUDIT split and no-outcome authority; intended to compare production, human, V11 and random proposals. | Split/design review PASS, then **SUPERSEDED PRE-EXECUTION**: the pinned V11 SHA named no executable artifact. No controller or outcome existed. | The sampling/split geometry survives, but v1 cannot parent execution. |
+| **H0 v2** — exact `12dac55`, packet `2cccf580…8f2b` | Preserved the rows and bound the real `ep07.npz` V11 checkpoint, portable live report-LCB parent and disjoint 30-world selection / 300-world reporting idea. | Claude passed the identity repair at `9fdb67a`, then a score-free implementation audit **SUPERSEDED IT PRE-CONTROLLER**. “Analysis ballot” had no hard cap, report-LCB was conflated with downstream continuation, and requested candidate recall had no defined relevant-action universe. No outcomes existed. | V2 proved the real artifacts and parent could reopen; it did not define a finite executable estimand. |
+| **H0 v3** — source `b02b6de`, packet commit `d6214ce`, packet `4d3f0a35…8cc3c` | Preserves every v2 play row, freezes all bury keys, caps the union at 17 play / 33 bury actions, draws V11 and random from the same novel pool, separates report-LCB root choice from `HeuristicBot` rollout continuation, uses three disjoint folds and caps total work at 1,329,210 candidate-world rollouts. | **FROZEN / DELTA REVIEW OPEN.** No controller, outcome, label, training or strength authority. | PASS authorizes implementation of one score-free controller only. That controller needs its own review before T4 executes it once. |
+
+After the one reviewed T4 execution, H0 publishes proposal-source membership
+and survival, paired human/model/champion utilities, continuation ranking flips
+and per-surface heterogeneity. Supported novel actions become proposal/prior
+candidates; disagreement states enter Stage C's DESIGN mining. Unsupported
+human moves remain useful error-analysis cases. Raw H0 actions never become
+strength labels merely because a person played them, and H0 AUDIT never becomes
+the final model-selection REPORT.
+
 Use human data in three bounded stages:
 
 1. **Freeze the honest split.** Player/deal connectivity leaves only five
@@ -463,20 +516,10 @@ Use human data in three bounded stages:
    RESERVE diagnostic. Calling these data a meaningful three-way
    DEV/CALIB/REPORT split would overstate their independence; formal REPORT
    remains fresh synthetic/full-game and `HUMAN-C1` evidence.
-2. **Counterfactual action pilot.** Exact `9770313` v1 froze 384 DESIGN and 128
-   AUDIT play decisions, caps each deal at eight, includes every late and every
-   off-analysis-ballot action, and balances lead/follow and role. Add
-   the actual human action to the current ballot and measure human-versus-
-   champion action deltas on shared worlds. Record where humans introduce a
-   genuinely new candidate, where the production continuation reverses it,
-   and where a second continuation changes that ranking.
-   Treat the 36 DESIGN and nine AUDIT buries as a separate surface rather than
-   forcing them into the play estimand. Its split review passed, but its V11
-   digest names no executable artifact. Exact `12dac55` v2 preserves the rows
-   and repairs `ep07.npz`/live-parent identity, but its candidate cap,
-   continuation and output estimands remain ambiguous. Supersede it score-free
-   with bounded v3; review v3 before implementing a controller, and review that
-   controller again before one counterfactual outcome.
+2. **Run the bounded counterfactual once.** Complete H0-v3 design review,
+   implement and review its score-free controller, then execute exactly once.
+   Keep bury separate from play and report where each human/V11/random source
+   entered and survived; never infer quality from mere ballot membership.
 3. **Only then choose the learning use.** Strong supported actions can train a
    proposal/prior head; disagreement states feed Stage C; raw behavioral
    cloning remains an initialization/style control. Promotion still requires

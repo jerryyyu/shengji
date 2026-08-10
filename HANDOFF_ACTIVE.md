@@ -12,7 +12,7 @@ Terminal markers live in `HANDOFF_REVIEW.md`, policy synthesis in
 | S3a structured bury | **TERMINAL SELECT NONE** | Preserve `+0.0464`, LCB `-0.0041`; no retry, tuning, pooling or confirmation. |
 | S4 point banking | **SEALED MINI SCREEN RUNNING** | Exact `cad3992`, packet `17036e63…1385`, receipt `20a420d2…5cc`; 676 count-only shard lines at 20:03 with eight CPU-bound workers. Do not inspect partial outcomes. |
 | Human H0 | **V2 REVIEW LOGIC PASS / OPERATIONAL HOLD; V3 REVIEW OPEN** | The v2 admission tombstone dirties Git and makes runtime reopen impossible. Review PR #6 source `4ebcd09` plus packet `cf074871…35392`; do not issue a receipt. |
-| Teacher Stage C | **V3 DESIGN PASS / ZERO STATES / REBIND BLOCKED** | Claude passed design packet `f213314a…3b4` at commit `d92f595`. It is bound to broken H0-v2, so PASS cannot open capture until reviewed H0-v3 is explicitly rebound in a successor packet. |
+| Teacher Stage C | **V3 DESIGN PASS / ZERO STATES / REBIND BLOCKED** | Claude passed design packet `f213314a…3b4` at commit `d92f595`. It binds broken H0-v2 and conditionally names broken S3c-v1; after both replacements pass, one successor must rebind them without changing curriculum geometry. |
 | S3c small endgames | **V1 REVIEW LOGIC PASS / OPERATIONAL HOLD; V2 REVIEW OPEN** | The same tombstone bug blocks v1. Review PR #6 packet `cafbee43…f23e`; do not issue a mechanics receipt. |
 | S5 point protection | **BOUNDARY FIXTURE PUSHED / RE-REVIEW OPEN / NO CENSUS** | PR #4 head `2351b36` adds a real lower-ranked-but-equal-point witness and mutation proof. Re-review before one deterministic census freeze. |
 | HUMAN-C1 | **PARKED / NO TRAFFIC** | Resume only after a challenger beats report-LCB in confirmation. |
@@ -114,5 +114,6 @@ treatment, Stage-C eligibility decision, strength compute or training follows.
 - Air: idle and available for review reproduction or another separately
   reviewed bounded job; no unregistered strength launch.
 - Do not create H0/S3c consumed slots or receipts before v3/v2 review PASS.
-- Do not capture or label Stage C until a reviewed H0-v3 rebind packet passes.
+- Do not capture or label Stage C until a reviewed H0-v3/S3c-v2 rebind packet
+  passes without changing the curriculum estimand.
 - Never retry, extend, tune from or pool a consumed one-shot stream.

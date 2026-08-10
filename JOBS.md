@@ -38,7 +38,7 @@ The canonical numbers and meanings are in the results table in
 | date | job | terminal verdict | anchor |
 |---|---|---|---|
 | 08-09 | S3a structured-bury full-game screen | **SELECT NONE / CLOSED** | exact `c599b42`; all 2,048 clusters verified; aggregate `20609613…271f`, final `32156d79…c9ff`; no confirmation, retry, tuning or promotion |
-| 08-09 | Teacher Stage-C design v3 | **DESIGN PASS / OPERATIONAL REBIND PENDING** | source `20bdb95`; asset `1a29418`; packet `f213314a…3b4`; Claude PASS at `d92f595`; zero states/labels; still binds broken H0-v2, so capture remains closed |
+| 08-09 | Teacher Stage-C design v3 | **DESIGN PASS / OPERATIONAL REBIND PENDING** | source `20bdb95`; asset `1a29418`; packet `f213314a…3b4`; Claude PASS at `d92f595`; zero states/labels; still binds broken H0-v2 and conditional S3c-v1, so capture remains closed |
 | 08-09 | S5 replay-census code | **BOUNDARY FIXTURE PUSHED / RE-REVIEW OPEN / NO CENSUS** | draft PR #4 head `2351b36`; real `HK` versus lower-ranked equal-point `H10` witness; named `<`→`<=` mutation fails; 12 focused + 52 broader available tests pass |
 | 08-09 | H0 controller admit→runtime repair | **V3 PACKET REVIEW OPEN / ZERO OUTCOMES** | PR #6; source `4ebcd09`; packet `cf074871…35392`; 557 rows; 97 combined tests; no diagnostic receipt before external PASS |
 | 08-09 | Human H0-v3 controller v2 | **COMPONENT PASS / OPERATIONAL HOLD** | source `6977dbb`; packet `3f68dc6e…7fcf`; admission's unignored lock makes runtime reject its own dirty tree; zero worlds/outcomes |
@@ -72,9 +72,10 @@ The canonical numbers and meanings are in the results table in
 | 08-04 | sampler Package H | **BOUNDED PASS** | commit `aea3774`; `certify_sampler_v3.json` |
 
 No terminal row grants more authority than its original gate. In particular,
-Teacher's passed Stage-C design remains blocked on an executable H0 rebind and
-does not authorize labels/training; the S3a state screen authorized only the
-now-terminal full-game test; and O0-v2 does not authorize O1.
+Teacher's passed Stage-C design remains blocked on executable H0/S3c
+replacement bindings and does not authorize labels/training; the S3a state
+screen authorized only the now-terminal full-game test; and O0-v2 does not
+authorize O1.
 
 ## Preserved failures
 

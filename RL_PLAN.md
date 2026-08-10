@@ -60,9 +60,9 @@ what those results change in the research plan.
   recursive-MC continuation rollouts. Raw human actions cannot become labels;
   supported proposal rules and S4/S3c/S5 mechanisms enter only through their
   own gates. Claude passed the design at `d92f595`, but it binds the
-  operationally broken H0-v2 controller. A minimal successor must bind reviewed
-  H0-v3 before capture-controller implementation. Zero states, labels or models
-  exist.
+  operationally broken H0-v2 controller and conditionally names broken S3c-v1.
+  A minimal successor must bind reviewed H0-v3/S3c-v2 before capture-controller
+  implementation. Zero states, labels or models exist.
 - **Search challengers:** the independently reviewed live-parent contract binds
   S3a/S3b to exact report-LCB and prevents old baselines from silently
   re-entering. S3b v2 remains closed on its 250k-node capacity failure. S3a's
@@ -333,9 +333,9 @@ decision tree.
    ordinary anchors, hard-tail selection/report folds, 20/33 candidate caps,
    conditional mechanism cells and 10,494,720 maximum candidate-world work.
    `HeuristicBot` continuation keeps recursive MC at zero. Claude passed that
-   curriculum design at `d92f595`, but it names unusable H0-v2. After H0-v3
-   passes, freeze and review a minimal identity/lock rebind; capture, labels,
-   compute and training remain closed until then.
+   curriculum design at `d92f595`, but it names unusable H0-v2 and conditional
+   S3c-v1. After both replacements pass, freeze and review one allowlisted
+   identity/lock rebind; capture, labels, compute and training remain closed.
 5. **Repair the S3c one-card controller before T4 mechanics.** The score-free
    curriculum and source `e9db4a2` / packet `f58d23b7…3874` passed component
    review, but share H0's unignored-lock reopen failure. Replacement source
@@ -442,7 +442,7 @@ This table separates them by the training signal they actually produced.
 | **Teacher-v3 Stage A** | Run the complete dense label schema twice on the same 64 frozen states under distinct receipts. | Exact deterministic replay/mechanics passed and exposed multiple publication/identity defects before scale. | This certified the producer, not label quality or strength. Keep as the small falsifiability preflight for future Teacher versions. |
 | **Teacher-v3 Stage B** | On 128 disjoint mostly ordinary states, compare cheap heuristic-continuation choices with much more expensive `mc-strong@N=30` continuation labels. | Cheap-minus-gold regret upper bound was `0.0195 < 0.10`; the cheap proxy was adequate on this sampled population. | It only showed agreement with the old MC continuation on ordinary states. It did not create a dataset/model or show labels beyond the live champion. |
 | **Fresh live-champion audit** | On an untouched 64-state complement, compare frozen cheap and N=30 choices against the deployed report-LCB root evaluator. | Cheap and N=30 all-state regret bounds passed (`0.0354` and `0.0439`), but the eight boundary states had a weaker N=30 bound (`0.1421`). | Ordinary rows can be labeled cheaply; uncertain/boundary rows need escalation. This is the direct empirical reason for Stage C's mixed-budget hard tail. |
-| **Teacher Stage C v3 (design passed, not executed)** | Capture 2,048 fresh split-safe states; mix ordinary anchors with uncertainty/disagreement, human/V11/structured proposals, bury, point play and tiny endgames. Use cheap labels where certified and deeper disjoint root comparisons on the hard tail, without recursively calling MC inside MC. | Source `20bdb95`, asset `1a29418`, packet `f213314a…3b4` freeze the exact 1,024/512/512 split, 20/33 caps and 10,494,720 maximum work; Claude passed the design at `d92f595`. It still binds broken H0-v2. **No impact result yet:** zero states, labels, checkpoints or challengers exist. | Pass H0-v3, minimally rebind/review Stage C, then implement/review capture and labeling; train at least eight seeds and require an untouched Teacher gate plus fresh whole-game win. |
+| **Teacher Stage C v3 (design passed, not executed)** | Capture 2,048 fresh split-safe states; mix ordinary anchors with uncertainty/disagreement, human/V11/structured proposals, bury, point play and tiny endgames. Use cheap labels where certified and deeper disjoint root comparisons on the hard tail, without recursively calling MC inside MC. | Source `20bdb95`, asset `1a29418`, packet `f213314a…3b4` freeze the exact 1,024/512/512 split, 20/33 caps and 10,494,720 maximum work; Claude passed the design at `d92f595`. It still binds broken H0-v2 and conditional S3c-v1. **No impact result yet:** zero states, labels, checkpoints or challengers exist. | Pass H0-v3/S3c-v2, minimally rebind/review Stage C, then implement/review capture and labeling; train at least eight seeds and require an untouched Teacher gate plus fresh whole-game win. |
 
 In plain English, Stage B asked, “Can the cheap grader reproduce the expensive
 grader on normal exam questions?” Stage C asks, “Can we write a better exam,

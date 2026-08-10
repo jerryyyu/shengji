@@ -51,6 +51,87 @@ def test_play_union_rejects_observed_live_drift(monkeypatch) -> None:
             experiment_id="experiment", observed_live=[["S2"]])
 
 
+def test_live_source_uses_observing_wrapper_not_detached_helper(
+        monkeypatch) -> None:
+    wrapper = object()
+    observed = [["H2"], ["HA"]]
+    seen = {}
+    monkeypatch.setattr(SOURCE, "make_bot", lambda *_args, **_kw: object())
+    monkeypatch.setattr(SOURCE, "public_state_key",
+                        lambda *_args, **_kw: "public-state")
+
+    def build(rnd, seat, state_id, split, net, production, **kwargs):
+        seen.update({
+            "rnd": rnd, "seat": seat, "state_id": state_id,
+            "split": split, "net": net, "production": production,
+            **kwargs,
+        })
+        return ([{"cards": ["H2"], "sources": ["live"]}],
+                {"public_information_only": True})
+
+    monkeypatch.setattr(SOURCE, "build_play_union", build)
+    source = SOURCE.make_play_candidate_source(_Net())
+    union, record = source(wrapper, "round", 2, observed)
+    assert union == [["H2"]]
+    assert record["public_information_only"] is True
+    assert seen["production"] is wrapper
+    assert seen["observed_live"] == observed
+    assert seen["observed_live_is_parent_bound"] is True
+
+
+def test_parent_bound_lead_source_reuses_observed_ballot_without_recursion(
+        monkeypatch) -> None:
+    rnd = SimpleNamespace(trick=SimpleNamespace(plays=[]))
+    observed = [["H2"], ["HA"]]
+
+    class ObservingParent:
+        def canonical_lead(self, actual_round, seat):
+            assert actual_round is rnd and seat == 0
+            return ["H2"]
+
+        def _candidates(self, *_args):
+            raise AssertionError("wrapper candidate recursion")
+
+    monkeypatch.setattr(SOURCE, "enumerate_actions", lambda *_args, **_kw: [
+        ["H2"], ["HA"], ["S3"],
+    ])
+    monkeypatch.setattr(SOURCE, "encode_obs", lambda *_args: [0.0])
+    monkeypatch.setattr(SOURCE, "encode_action", lambda action, _rnd: action)
+
+    def propose(_arm, policy, actual_round, seat, **_kwargs):
+        assert policy.canonical_lead(actual_round, seat) == ["H2"]
+        assert policy._candidates(actual_round, seat) == observed
+        return [["H2"], ["S3"]]
+
+    monkeypatch.setattr(SOURCE, "structured_lead_propose", propose)
+    union, diagnostics = SOURCE.build_play_union(
+        rnd, 0, "state", "SCREEN", _Net(), ObservingParent(),
+        experiment_id="experiment", observed_live=observed,
+        observed_live_is_parent_bound=True)
+    assert [item["cards"] for item in union[:2]] == observed
+    assert diagnostics["structured_novel"] is True
+
+
+def test_live_bury_source_does_not_recompute_incumbent_with_helper(
+        monkeypatch) -> None:
+    incumbent = ["H2"] * 8
+    monkeypatch.setattr(SOURCE, "make_bot", lambda *_args, **_kw: object())
+    monkeypatch.setattr(SOURCE, "public_state_key",
+                        lambda *_args, **_kw: "public-bury")
+    seen = {}
+
+    def build(_rnd, _seat, _state_id, **kwargs):
+        seen.update(kwargs)
+        return ([{"cards": incumbent, "sources": ["live"]}],
+                {"public_information_only": True})
+
+    monkeypatch.setattr(SOURCE, "build_bury_union", build)
+    source = SOURCE.make_bury_candidate_source()
+    union, _record = source(object(), object(), 0, [incumbent])
+    assert union == [incumbent]
+    assert seen["incumbent"] == incumbent
+
+
 def _capture_runtime():
     server = Path(__file__).resolve().parents[1]
     script = server / "scripts" / "teacher_stage_c_capture_runtime.py"
@@ -141,6 +222,43 @@ def test_live_play_source_and_wrapper_integrate_on_replayed_state() -> None:
     assert bot.stage_c_focus_fallbacks == 0
     assert bot.last_stage_c_focus_record["candidate_source"][
         "public_information_only"] is True
+
+
+def test_live_lead_source_and_wrapper_do_not_recurse() -> None:
+    from shengji.rl import stage_c_composition as composition
+
+    runtime = _capture_runtime()
+    base = runtime._load_json(runtime.REPO / runtime.BASE_PATH)
+    cell = next(cell for cell in runtime.CTRL.quota_cells(base)["DESIGN"]
+                if cell["cell_id"] == (
+                    "DESIGN:play:ordinary_anchor:early:attacker:lead"))
+    state, reason = runtime.capture_deal(
+        170_000_012, "DESIGN", cell, runtime._actor_identity())
+    assert reason == "eligible" and state is not None
+    rnd = runtime.replay_state(state)
+    net = runtime._load_npnet(str(runtime.REPO / runtime.V11_PATH))
+
+    class SelectLast:
+        surface = "play"
+        head = "ranking"
+        epoch = 1
+
+        def select(self, _obs, actions):
+            return {
+                "surface": self.surface, "head": self.head,
+                "epoch": self.epoch, "candidate_count": len(actions),
+                "selected_index": len(actions) - 1,
+            }
+
+    bot = composition.make_play_report_lcb_bot(
+        SelectLast(), SOURCE.make_play_candidate_source(net),
+        arm="treatment", seed=5)
+    focused = bot._candidates(rnd, state["seat"])
+    assert 1 <= len(focused) <= 2
+    assert bot.stage_c_focus_fallbacks == 0
+    assert bot.last_stage_c_focus_record["fallback_to_live_ballot"] is False
+    assert bot.last_stage_c_focus_record["candidate_source"]["schema"] \
+        == SOURCE.SCHEMA
 
 
 def test_live_bury_source_integrates_on_replayed_state() -> None:

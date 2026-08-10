@@ -63,6 +63,43 @@ def _dedupe(actions: Iterable[Sequence[str]]) -> list[list[str]]:
     return result
 
 
+class _ParentBoundLeadPolicy:
+    """Expose one already-observed parent ballot without wrapper recursion.
+
+    ``pilot_arms.structured_universe`` asks its policy for both the protected
+    canonical lead and the deployed candidate ballot.  During composition the
+    policy object is itself the Stage-C wrapper, so calling its ``_candidates``
+    method would recursively re-enter candidate generation.  This narrow
+    adapter keeps the exact parent-bound ballot already returned by
+    ``super()._candidates`` and delegates only the non-overridden canonical
+    lead boundary to the observing wrapper.
+    """
+
+    def __init__(self, parent, rnd, seat: int,
+                 observed_live: Sequence[Sequence[str]]):
+        self._parent = parent
+        self._rnd = rnd
+        self._seat = seat
+        self._live = _dedupe(observed_live)
+
+    def _require_state(self, rnd, seat: int) -> None:
+        if rnd is not self._rnd or seat != self._seat:
+            raise StageCCandidateError(
+                "parent-bound structured lead state drift")
+
+    def canonical_lead(self, rnd, seat: int) -> list[str]:
+        self._require_state(rnd, seat)
+        value = list(self._parent.canonical_lead(rnd, seat))
+        if action_key(value) != action_key(self._live[0]):
+            raise StageCCandidateError(
+                "parent-bound canonical lead differs from observed ballot")
+        return list(self._live[0])
+
+    def _candidates(self, rnd, seat: int) -> list[list[str]]:
+        self._require_state(rnd, seat)
+        return [list(value) for value in self._live]
+
+
 def public_state_key(rnd, seat: int,
                      live_candidates: Sequence[Sequence[str]]) -> str:
     """Bind inference randomness to public observation plus the live ballot."""
@@ -83,21 +120,31 @@ def build_play_union(
     rnd, seat: int, state_id: str, split: str, net, production,
     *, experiment_id: str,
     observed_live: Sequence[Sequence[str]] | None = None,
+    observed_live_is_parent_bound: bool = False,
 ) -> tuple[list[dict], dict]:
     """Build the frozen Stage-C play source family from legal visible inputs."""
     if (not isinstance(state_id, str) or not state_id
             or not isinstance(split, str) or not split
             or not isinstance(experiment_id, str) or not experiment_id):
         raise StageCCandidateError("Stage-C play source identity drift")
-    generated_live = _dedupe(production._candidates(rnd, seat))
-    if observed_live is not None:
+    if observed_live_is_parent_bound:
+        if observed_live is None:
+            raise StageCCandidateError(
+                "parent-bound Stage-C play source lacks observed ballot")
+        # The composition wrapper obtained this ballot by calling the exact
+        # live parent's `_candidates` through `super()`. Calling `_candidates`
+        # again here would either recurse into the wrapper or use a detached
+        # helper bot whose Memory never observed the current game.
+        live = _dedupe(observed_live)
+    else:
+        generated_live = _dedupe(production._candidates(rnd, seat))
+        live = generated_live
+    if observed_live is not None and not observed_live_is_parent_bound:
         observed = _dedupe(observed_live)
         if observed != generated_live:
             raise StageCCandidateError(
                 "Stage-C observed live ballot differs from production")
         live = observed
-    else:
-        live = generated_live
     if not live or len(live) > PLAY_CANDIDATE_CAP:
         raise StageCCandidateError("live Stage-C play ballot cap/emptiness drift")
 
@@ -121,8 +168,12 @@ def build_play_union(
 
     structured = None
     if not rnd.trick.plays:
+        structured_policy = (
+            _ParentBoundLeadPolicy(production, rnd, seat, live)
+            if observed_live_is_parent_bound else production)
         proposed = structured_lead_propose(
-            "quota", production, rnd, seat, budget=PLAY_CANDIDATE_CAP,
+            "quota", structured_policy, rnd, seat,
+            budget=PLAY_CANDIDATE_CAP,
             seed=_seed(experiment_id, split, state_id, "structured-lead"),
             state_key=state_id,
         )
@@ -191,12 +242,14 @@ def build_play_union(
 
 def build_bury_union(
     rnd, seat: int, state_id: str, *, experiment_id: str,
+    incumbent: Sequence[str] | None = None,
 ) -> tuple[list[dict], dict]:
     """Build the frozen structured-plus-random banker bury source family."""
     if (not isinstance(state_id, str) or not state_id
             or not isinstance(experiment_id, str) or not experiment_id):
         raise StageCCandidateError("Stage-C bury source identity drift")
-    incumbent = SmartBot().decide_bury(rnd, seat)
+    incumbent = (SmartBot().decide_bury(rnd, seat)
+                 if incumbent is None else list(incumbent))
     ballot = structured_bury_ballot(
         rnd.hands[seat], rnd.ordering, incumbent, max_candidates=32)
     if (not ballot.candidates or len(ballot.candidates) > 32
@@ -252,14 +305,18 @@ def build_bury_union(
 
 def make_play_candidate_source(net, *, policy: str = "mc-s0-report-lcb"):
     """Return the candidate-source callback consumed by the play wrapper."""
-    production = make_bot(policy, seed=0)
+    # Resolve the policy eagerly so a stale registry name refuses factory
+    # construction. The callback itself must use `_wrapper`: unlike a detached
+    # helper, it has observed every declaration, trick and play in this game.
+    make_bot(policy, seed=0)
 
-    def source(_wrapper, rnd, seat: int, observed_live):
+    def source(wrapper, rnd, seat: int, observed_live):
         state_id = public_state_key(rnd, seat, observed_live)
         union, diagnostics = build_play_union(
-            rnd, seat, state_id, INFERENCE_SPLIT, net, production,
+            rnd, seat, state_id, INFERENCE_SPLIT, net, wrapper,
             experiment_id=INFERENCE_EXPERIMENT_ID,
             observed_live=observed_live,
+            observed_live_is_parent_bound=True,
         )
         return [list(candidate["cards"]) for candidate in union], diagnostics
 
@@ -268,17 +325,17 @@ def make_play_candidate_source(net, *, policy: str = "mc-s0-report-lcb"):
 
 def make_bury_candidate_source(*, policy: str = "mc-s0-report-lcb"):
     """Return a public structured-bury source with live-incumbent binding."""
-    production = make_bot(policy, seed=0)
+    make_bot(policy, seed=0)
 
     def source(_wrapper, rnd, seat: int, observed_live):
         live = _dedupe(observed_live)
-        expected = _dedupe([production.decide_bury(rnd, seat)])
-        if live != expected:
+        if len(live) != 1:
             raise StageCCandidateError(
-                "Stage-C observed bury incumbent differs from production")
+                "Stage-C observed bury incumbent population drift")
         state_id = public_state_key(rnd, seat, live)
         union, diagnostics = build_bury_union(
-            rnd, seat, state_id, experiment_id=INFERENCE_EXPERIMENT_ID)
+            rnd, seat, state_id, experiment_id=INFERENCE_EXPERIMENT_ID,
+            incumbent=live[0])
         if action_key(union[0]["cards"]) != action_key(live[0]):
             raise StageCCandidateError(
                 "Stage-C bury candidate zero differs from live incumbent")

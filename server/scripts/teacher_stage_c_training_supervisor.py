@@ -8,18 +8,20 @@ later wave, records each child exit, emits visible progress, and invokes the
 frozen aggregate only after all 48 cells exit zero.  It never changes a model,
 target, split, seed, curve, epoch, selector, or output path.
 
-Any child failure, collision, signal, identity drift, or publication failure
-terminates the remaining children and leaves the progress file partial.  The
-supervisor cannot resume, retry, open REPORT, claim strength, promote, or
-deploy.  Its ``verify`` command reopens every terminal child/checkpoint and
-recomputes the aggregate from the reviewed packet.
+Any child failure, collision, handled termination signal, identity drift, or
+publication failure terminates the remaining children and leaves the progress
+file partial.  The supervisor cannot resume, retry, open REPORT, claim
+strength, promote, or deploy.  Its ``verify`` command reopens every terminal
+child/checkpoint and recomputes the aggregate from the reviewed packet.
 """
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
+import signal
 import stat
 import subprocess
 import sys
@@ -57,6 +59,17 @@ class TrainingSupervisorRefused(RuntimeError):
     """The reviewed one-shot training execution cannot proceed or verify."""
 
 
+class TrainingSupervisorInterrupted(BaseException):
+    """A handled process signal interrupted the one-shot owner."""
+
+    def __init__(self, signum: int):
+        self.signum = int(signum)
+        self.signal_name = signal.Signals(signum).name
+        super().__init__(
+            f"training supervisor received {self.signal_name}; "
+            "all owned children are terminally stopped")
+
+
 @dataclass(frozen=True)
 class Config:
     expected_git: str
@@ -86,6 +99,76 @@ class RunningJob:
     log_partial: Path
     started_ns: int
     finished: bool = False
+
+
+class SignalOwner:
+    """Own live children across catchable process termination signals.
+
+    A handled signal is deferred around ``Popen`` until the new child is
+    registered. This closes the otherwise unavoidable interval where the
+    supervisor could die after spawning a cell but before its scheduler list
+    knew the PID, without leaking a blocked signal mask into the child.
+    """
+
+    def __init__(self) -> None:
+        self.signals = tuple(
+            getattr(signal, name) for name in CTRL.SUPERVISOR_HANDLED_SIGNALS)
+        self.previous: dict[int, object] = {}
+        self.jobs: list[RunningJob] = []
+        self.interrupted_by: int | None = None
+        self.spawning = False
+
+    def __enter__(self) -> "SignalOwner":
+        self.previous = {
+            signum: signal.getsignal(signum) for signum in self.signals}
+        for signum in self.signals:
+            signal.signal(signum, self._handle)
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> bool:
+        try:
+            if exc_type is not None or self.jobs:
+                _stop_jobs(self.jobs)
+        finally:
+            for signum, previous in self.previous.items():
+                signal.signal(signum, previous)
+        return False
+
+    def _handle(self, signum: int, _frame: object) -> None:
+        if self.interrupted_by is None:
+            self.interrupted_by = signum
+            # Ignore repeats while Python unwinds and waits for children; a
+            # second signal must not interrupt the cleanup it asked for.
+            for handled in self.signals:
+                signal.signal(handled, signal.SIG_IGN)
+        if not self.spawning:
+            raise TrainingSupervisorInterrupted(self.interrupted_by)
+
+    def register(self, job: RunningJob) -> None:
+        if job in self.jobs:
+            raise TrainingSupervisorRefused(
+                f"duplicate signal ownership for {job.spec.name}")
+        self.jobs.append(job)
+
+    def unregister(self, job: RunningJob) -> None:
+        try:
+            self.jobs.remove(job)
+        except ValueError as exc:
+            raise TrainingSupervisorRefused(
+                f"lost signal ownership for {job.spec.name}") from exc
+
+    @contextlib.contextmanager
+    def deferred_until_registered(self):
+        if self.spawning:
+            raise TrainingSupervisorRefused(
+                "nested training child spawn is not authorized")
+        self.spawning = True
+        try:
+            yield
+        finally:
+            self.spawning = False
+            if self.interrupted_by is not None:
+                raise TrainingSupervisorInterrupted(self.interrupted_by)
 
 
 def canonical_json(value: object) -> bytes:
@@ -214,10 +297,17 @@ def _validated_parents(config: Config) -> tuple[dict, dict, dict]:
         raise TrainingSupervisorRefused(
             f"training parent refused: {exc}") from exc
     runtime = packet.get("runtime_contract", {})
+    signal_contract = runtime.get("supervisor_signal_contract", {})
     if (runtime.get("max_concurrent_cells") != MAX_WORKERS
             or runtime.get("cpu_threads_per_cell") != 1
             or runtime.get("device") != "cpu"
-            or config.heartbeat_seconds != HEARTBEAT_SECONDS):
+            or config.heartbeat_seconds != HEARTBEAT_SECONDS
+            or signal_contract != {
+                "handled_signals": list(CTRL.SUPERVISOR_HANDLED_SIGNALS),
+                "signals_deferred_until_child_registered": True,
+                "terminates_all_owned_children": True,
+                "orphaned_cells_authorized": False,
+            }):
         raise TrainingSupervisorRefused(
             "training supervisor concurrency/runtime drift")
     return packet, dataset, receipt
@@ -348,7 +438,7 @@ def _child_environment() -> dict[str, str]:
     return value
 
 
-def _start_job(spec: JobSpec) -> RunningJob:
+def _start_job(spec: JobSpec, owner: SignalOwner | None = None) -> RunningJob:
     spec.log_final.parent.mkdir(parents=True, exist_ok=True)
     log_partial = partial(spec.log_final)
     try:
@@ -356,17 +446,34 @@ def _start_job(spec: JobSpec) -> RunningJob:
     except FileExistsError as exc:
         raise TrainingSupervisorRefused(
             f"refusing existing child log {log_partial}") from exc
+    process = None
+    registered = False
     try:
-        process = subprocess.Popen(
-            spec.argv, cwd=REPO, env=_child_environment(),
-            stdout=handle, stderr=subprocess.STDOUT, text=True,
-        )
+        blocker = owner.deferred_until_registered() if owner is not None \
+            else contextlib.nullcontext()
+        with blocker:
+            process = subprocess.Popen(
+                spec.argv, cwd=REPO, env=_child_environment(),
+                stdout=handle, stderr=subprocess.STDOUT, text=True,
+            )
+            job = RunningJob(
+                spec=spec, process=process, log_handle=handle,
+                log_partial=log_partial, started_ns=time.time_ns())
+            if owner is not None:
+                owner.register(job)
+                registered = True
+        return job
     except BaseException:
-        handle.close()
+        if process is not None and not registered and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=10.0)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+        if not registered:
+            handle.close()
         raise
-    return RunningJob(
-        spec=spec, process=process, log_handle=handle,
-        log_partial=log_partial, started_ns=time.time_ns())
 
 
 def _exit_payload(job: RunningJob, returncode: int) -> dict:
@@ -477,7 +584,8 @@ def _heartbeat(progress: Progress, *, live: Sequence[RunningJob],
 
 
 def _run_cells(packet: Mapping[str, object], config: Config,
-               progress: Progress) -> list[JobSpec]:
+               progress: Progress,
+               owner: SignalOwner | None = None) -> list[JobSpec]:
     specs = cell_specs(packet, config)
     queued = list(specs)
     live: list[RunningJob] = []
@@ -488,7 +596,7 @@ def _run_cells(packet: Mapping[str, object], config: Config,
         while queued or live:
             while queued and len(live) < MAX_WORKERS:
                 spec = queued.pop(0)
-                job = _start_job(spec)
+                job = _start_job(spec, owner)
                 live.append(job)
                 progress.event(
                     "cell", "started", job=spec.name, index=spec.index,
@@ -499,6 +607,8 @@ def _run_cells(packet: Mapping[str, object], config: Config,
                 if code is None:
                     continue
                 _finish_job(job, code)
+                if owner is not None:
+                    owner.unregister(job)
                 progress.event(
                     "cell", "exit", job=job.spec.name,
                     index=job.spec.index, pid=job.process.pid,
@@ -528,9 +638,10 @@ def _run_cells(packet: Mapping[str, object], config: Config,
 
 
 def _run_aggregate(packet: Mapping[str, object], config: Config,
-                   progress: Progress) -> JobSpec:
+                   progress: Progress,
+                   owner: SignalOwner | None = None) -> JobSpec:
     spec = aggregate_spec(packet, config)
-    job = _start_job(spec)
+    job = _start_job(spec, owner)
     progress.event("aggregate", "started", pid=job.process.pid)
     last_heartbeat = time.monotonic()
     try:
@@ -542,6 +653,8 @@ def _run_aggregate(packet: Mapping[str, object], config: Config,
             time.sleep(min(0.25, config.heartbeat_seconds))
         code = int(job.process.returncode)
         _finish_job(job, code)
+        if owner is not None:
+            owner.unregister(job)
     except BaseException:
         _stop_jobs([job])
         raise
@@ -661,21 +774,22 @@ def launch(config: Config) -> dict:
         raise TrainingSupervisorRefused("; ".join(problems))
     progress = Progress()
     try:
-        progress.event(
-            "launch", "started", cells=CTRL.TRAINING_CELLS,
-            max_workers=MAX_WORKERS,
-            packet_sha256=config.expected_packet_sha256,
-            receipt_sha256=config.expected_receipt_sha256)
-        _run_cells(packet, config, progress)
-        _run_aggregate(packet, config, progress)
-        jobs = terminal_job_evidence(packet, config)
-        progress.event("launch", "complete", cells=CTRL.TRAINING_CELLS)
-        progress.publish()
-        value = final_payload(
-            config=config, packet=packet, job_evidence=jobs)
-        _write_json_exclusive((REPO / FINAL_PATH).resolve(), value)
-        print(json.dumps(value, indent=2, sort_keys=True), flush=True)
-        return value
+        with SignalOwner() as owner:
+            progress.event(
+                "launch", "started", cells=CTRL.TRAINING_CELLS,
+                max_workers=MAX_WORKERS,
+                packet_sha256=config.expected_packet_sha256,
+                receipt_sha256=config.expected_receipt_sha256)
+            _run_cells(packet, config, progress, owner)
+            _run_aggregate(packet, config, progress, owner)
+            jobs = terminal_job_evidence(packet, config)
+            progress.event("launch", "complete", cells=CTRL.TRAINING_CELLS)
+            progress.publish()
+            value = final_payload(
+                config=config, packet=packet, job_evidence=jobs)
+            _write_json_exclusive((REPO / FINAL_PATH).resolve(), value)
+            print(json.dumps(value, indent=2, sort_keys=True), flush=True)
+            return value
     except BaseException as exc:
         try:
             progress.event("launch", "refused", error=type(exc).__name__)
@@ -765,6 +879,9 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
+    except TrainingSupervisorInterrupted as exc:
+        print(f"REFUSING: {type(exc).__name__}: {exc}", file=sys.stderr)
+        raise SystemExit(128 + exc.signum) from exc
     except (TrainingSupervisorRefused, RUNTIME.TrainingRuntimeRefused,
             CTRL.TrainingControllerRefused) as exc:
         print(f"REFUSING: {type(exc).__name__}: {exc}", file=sys.stderr)

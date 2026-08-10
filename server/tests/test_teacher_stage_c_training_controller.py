@@ -230,11 +230,20 @@ def test_packet_exposes_only_training_review_authority(monkeypatch) -> None:
     assert claim["single_capability_selection"] is True
     assert claim["max_concurrent_cells"] == 8
     assert claim["supervisor_heartbeat_seconds"] == 30
+    assert claim["supervisor_handled_signals"] == [
+        "SIGHUP", "SIGINT", "SIGTERM"]
+    assert claim["supervisor_signals_deferred_until_child_registered"] is True
+    assert claim["supervisor_terminates_all_owned_children"] is True
+    assert claim["supervisor_orphaned_cells_authorized"] is False
     assert claim["supervisor_resume_authorized"] is False
     assert claim["supervisor_retry_authorized"] is False
     assert packet["result_contract"]["supervision"] == {
         "max_concurrent_cells": 8,
         "heartbeat_seconds": 30,
+        "handled_signals": ["SIGHUP", "SIGINT", "SIGTERM"],
+        "signals_deferred_until_child_registered": True,
+        "terminates_all_owned_children": True,
+        "orphaned_cells_authorized": False,
         "starts_all_frozen_cells": True,
         "resume_authorized": False,
         "retry_authorized": False,

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -33,6 +35,12 @@ def _packet() -> dict:
             "max_concurrent_cells": 8,
             "cpu_threads_per_cell": 1,
             "device": "cpu",
+            "supervisor_signal_contract": {
+                "handled_signals": ["SIGHUP", "SIGINT", "SIGTERM"],
+                "signals_deferred_until_child_registered": True,
+                "terminates_all_owned_children": True,
+                "orphaned_cells_authorized": False,
+            },
         },
     }
 
@@ -167,7 +175,7 @@ def test_scheduler_starts_all_six_waves_with_eight_before_first_exit(
     monkeypatch.setattr(SUP, "REPO", tmp_path)
     started = []
 
-    def start(spec):
+    def start(spec, owner=None):
         started.append(spec.index)
         return SUP.RunningJob(
             spec=spec, process=_FakeProcess(1000 + int(spec.index)),
@@ -196,7 +204,7 @@ def test_failed_first_wave_stops_peers_and_never_starts_later_cells(
     started = []
     stopped = []
 
-    def start(spec):
+    def start(spec, owner=None):
         started.append(spec.index)
         code = 7 if spec.index == 0 else None
         return SUP.RunningJob(
@@ -250,7 +258,7 @@ def test_aggregate_gate_binds_identity_self_hash_and_report_authority(
     monkeypatch.setattr(SUP, "aggregate_spec", lambda *args: spec)
     monkeypatch.setattr(
         SUP, "_start_job",
-        lambda ignored: SUP.RunningJob(
+        lambda ignored, owner=None: SUP.RunningJob(
             spec=spec, process=_LiveProcess(3000, 0),
             log_handle=io.StringIO(),
             log_partial=tmp_path / "aggregate.log.partial", started_ns=1))
@@ -311,3 +319,66 @@ def test_exit_evidence_binds_exact_command_and_forbids_retry() -> None:
     value["retry_authorized"] = False
     value["argv_sha256"] = "0" * 64
     assert not SUP._expected_exit(spec, value)
+
+
+@pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGHUP])
+def test_handled_signal_terminates_registered_real_child_without_orphan(
+        monkeypatch, tmp_path: Path, signum: int) -> None:
+    monkeypatch.setattr(SUP, "REPO", tmp_path)
+    spec = SUP.JobSpec(
+        name="signal-owned-cell", index=0,
+        argv=(sys.executable, "-c", "import time; time.sleep(60)"),
+        output=tmp_path / "cell.json",
+        log_final=tmp_path / "cell.log",
+        exit_final=tmp_path / "exit.json")
+    job = None
+    with pytest.raises(SUP.TrainingSupervisorInterrupted) as caught:
+        with SUP.SignalOwner() as owner:
+            job = SUP._start_job(spec, owner)
+            assert job.process.poll() is None
+            os.kill(os.getpid(), signum)
+    assert caught.value.signum == signum
+    assert job is not None
+    job.process.wait(timeout=2.0)
+    assert job.process.poll() is not None
+    assert spec.log_final.is_file()
+    assert not SUP.partial(spec.log_final).exists()
+    exit_value = json.loads(spec.exit_final.read_text())
+    assert exit_value["returncode"] == -signal.SIGTERM
+    assert exit_value["retry_authorized"] is False
+
+
+def test_signal_during_spawn_is_deferred_until_child_registration(
+        monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(SUP, "REPO", tmp_path)
+    spec = SUP.JobSpec(
+        name="spawn-window-cell", index=0,
+        argv=(sys.executable, "-c", "import time; time.sleep(60)"),
+        output=tmp_path / "cell.json",
+        log_final=tmp_path / "cell.log",
+        exit_final=tmp_path / "exit.json")
+    real_popen = subprocess.Popen
+    spawned = []
+
+    def signal_before_popen_returns(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+        spawned.append(process)
+        # The handler must defer SIGTERM until the returned process is in
+        # SignalOwner.jobs; the child itself must not inherit a blocked mask.
+        os.kill(os.getpid(), signal.SIGTERM)
+        return process
+
+    monkeypatch.setattr(SUP.subprocess, "Popen", signal_before_popen_returns)
+    try:
+        with pytest.raises(SUP.TrainingSupervisorInterrupted):
+            with SUP.SignalOwner() as owner:
+                SUP._start_job(spec, owner)
+    finally:
+        for process in spawned:
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=2.0)
+    assert len(spawned) == 1
+    assert spawned[0].poll() is not None
+    assert spec.exit_final.is_file()
+    assert not SUP.partial(spec.log_final).exists()

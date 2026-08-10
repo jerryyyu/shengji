@@ -71,6 +71,7 @@ TRAINING_CELLS = len(MODEL.SURFACES) * len(MODEL.TRAINING_SEEDS) \
     * len(MODEL.CURVE_FRACTIONS)
 SUPERVISOR_MAX_WORKERS = len(MODEL.TRAINING_SEEDS)
 SUPERVISOR_HEARTBEAT_SECONDS = 30
+SUPERVISOR_HANDLED_SIGNALS = ("SIGHUP", "SIGINT", "SIGTERM")
 
 SOURCE_PATHS = (
     "server/scripts/teacher_stage_c_training_controller.py",
@@ -170,6 +171,12 @@ def runtime_contract() -> dict:
         "device": "cpu",
         "cpu_threads_per_cell": TRAIN.CPU_THREADS,
         "max_concurrent_cells": SUPERVISOR_MAX_WORKERS,
+        "supervisor_signal_contract": {
+            "handled_signals": list(SUPERVISOR_HANDLED_SIGNALS),
+            "signals_deferred_until_child_registered": True,
+            "terminates_all_owned_children": True,
+            "orphaned_cells_authorized": False,
+        },
         "heartbeat": (
             "each cell logs one JSON record after every epoch; the one-shot "
             "supervisor publishes fleet progress at least every 30 seconds"
@@ -659,6 +666,10 @@ def result_contract(schedule: Mapping[str, object]) -> dict:
         "supervision": {
             "max_concurrent_cells": SUPERVISOR_MAX_WORKERS,
             "heartbeat_seconds": SUPERVISOR_HEARTBEAT_SECONDS,
+            "handled_signals": list(SUPERVISOR_HANDLED_SIGNALS),
+            "signals_deferred_until_child_registered": True,
+            "terminates_all_owned_children": True,
+            "orphaned_cells_authorized": False,
             "starts_all_frozen_cells": True,
             "resume_authorized": False,
             "retry_authorized": False,
@@ -838,6 +849,10 @@ def expected_review_claim(packet: Mapping[str, object],
         "max_concurrent_cells": packet["runtime_contract"][
             "max_concurrent_cells"],
         "supervisor_heartbeat_seconds": SUPERVISOR_HEARTBEAT_SECONDS,
+        "supervisor_handled_signals": list(SUPERVISOR_HANDLED_SIGNALS),
+        "supervisor_signals_deferred_until_child_registered": True,
+        "supervisor_terminates_all_owned_children": True,
+        "supervisor_orphaned_cells_authorized": False,
         "supervisor_resume_authorized": False,
         "supervisor_retry_authorized": False,
         "independent_review": True,

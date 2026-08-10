@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-10 14:24 EDT
+## Current synthesis — 2026-08-10 17:59 EDT
 
 ### Canonical terminal-results table
 
@@ -29,7 +29,7 @@ results table.
 | 08-07 | report-LCB / RLCB-C1 | Let N=30 MC nominate one move, recheck that move against the heuristic choice on 300 fresh shared worlds, and override only when a conservative lower bound is positive. | **CONFIRM** | `+0.338 +/- 0.068` signed levels versus `mc-strong`; matched null `-0.019 +/- 0.068` | The deployed one-round decision rule is stronger than its named N=30 parent. It does not prove adaptive allocation or multi-round progression. |
 | 08-07 | formal S0 | Compare several confidence and work-allocation rules through one sealed screen/confirmation pipeline. | **SELECT NONE** | S0c outcomes remain unread | The evidence chain failed before the corrected evaluator parsed scores. Never retry, pool or infer a numerical result. This does not undo independent RLCB-C1. |
 | 08-05 | DEV-512 lead ballot | Offer more context-specific lead combinations, model-ranked choices, or matched random choices, then ask whether the wider ballot contains better moves at equal work. | **SELECT NONE** | quota-minus-random `+0.110 +/- 0.337`; incumbent had the lowest equal-work regret | The registered widening/selectors did not earn CALIB or a duel. It does not reject all proposal search. |
-| 08-07 | V11 direct-v2 | Use the learned V11 pairwise model to choose or propose a move while retaining the current policy as a protected fallback. | **SELECT NONE** | v11-minus-current `-0.141 +/- 0.070`; v11-minus-null `-0.110 +/- 0.070` | No direct or protected-anchor composition. V11 survives only as a proposal/ranking and teacher diagnostic hypothesis. |
+| 08-07 | V11 direct-v2 | Use the learned V11 pairwise model to choose or propose a move while retaining the current policy as a protected fallback. | **SELECT NONE** | v11-minus-current `-0.141 +/- 0.070`; v11-minus-null `-0.110 +/- 0.070` | No direct or protected-anchor composition. Later Stage-C recall was also inconclusive, so V11 is historical diagnostic evidence rather than a current inference dependency. |
 | 08-07 | Direct-Q 144M | Train an action-conditioned value model directly from played-game returns and let its predicted return choose actions. | **SELECT NONE** | gameplay `+0.163 +/- 0.059`, but seed 1 and both pooled role held-out MSE gates failed | The attractive gameplay tail cannot override the registered learning failure. Redesign rather than extend. |
 | 08-08 | Suphx O0 | Give a training-time oracle all hands and test whether its privileged signal can teach a public-information policy something useful. | **SELECT NONE** | oracle-minus-public `+0.073`, LCB `+0.0025`; seed means `+0.344/-0.207/+0.082` | Full information produced an aggregate signal but not robust seedwise benefit. O1 is unauthorized. |
 | 08-09 | Suphx O0-v2 | Repeat the oracle/public comparison on identical public trajectories and separately test whether emphasizing larger oracle margins helps. | **SELECT NONE** | CRN control oracle-minus-public `+0.015`, LCB `-0.067`; plus-margin `-0.047`, LCB `-0.109`; interaction `-0.062` | Shared-public CRN repaired the comparison mechanics but did not make oracle use robust. Margin sharpening was directionally worse, no cell advanced, and O1 remains unauthorized. |
@@ -38,6 +38,7 @@ results table.
 | 08-09 | Teacher Stage-C design + controller rebind | Turn the audit lesson into one finite recipe: keep broad cheap ordinary anchors, spend deeper disjoint root comparisons on hard cases, and conditionally add supported human/model/mechanism proposals without recursively calling MC inside MC. | **DESIGN + REBIND PASS / ZERO STATES** | base `20bdb95` / `f213314a…3b4`; rebind `7018f36` / `b60c4298…7b18`; 1,024 DESIGN / 512 CALIB / 512 REPORT; 20/33 caps; 10,494,720 maximum candidate-world rollouts | Claude passed both the bounded curriculum and the exact H0-v3/S3c-v2 dependency rebind at `cb9471b`; all seven curriculum hashes remain unchanged. Capture-controller implementation is eligible, but no state, label, model or strength result exists. |
 | 08-10 | Teacher Stage-C capture v7 | Generate the promised balanced hard-tail exam, then replay every scanned deal and selected state so parallel capture cannot quietly choose a lucky subset. | **CAPTURE + EXTERNAL STATE-SET PASS** | 750,000 dispositions replayed; exact 2,048 states = `1024/512/512` DESIGN/CALIB/REPORT and `1920/128` play/bury; state set `c7a769c4…e8e1c`, verifier `143fb2db…4adb` | The first split-safe Stage-C population is real and immutable. It authorizes bounded labeling, not a model or strength claim. |
 | 08-10 | Teacher Stage-C label v1 | Evaluate every candidate on independent selection/report folds, but incorrectly require every realized hidden world to be unique within and across folds. | **TERMINAL NO-USE / NO AGGREGATE** | eight slots consumed; 2 complete and 6 refused shards; 971/1,024 rows complete; receipt `0c3d7ea0…adc1c`; no aggregate or partial mining | The refusal revealed that world-identity deduplication exhausts late-state support and reweights the posterior. Never continue or aggregate v1. Iid-with-replacement v2 must pass fresh capacity and label gates. |
+| 08-10 | Teacher Stage-C labels v2 | Draw hidden worlds iid with replacement, price every retained bounded candidate on shared independent MC folds, and verify that the resulting labels stay faithful to the expensive reference on both ordinary and hard-tail states. | **TERMINAL COMPLETE / LABEL FIDELITY PASS / CONSUMPTION REVIEW OPEN** | 16/16 shards; 2,048/2,048 rows; zero refusals; exact 4,984,960 candidate-worlds; ordinary/hard-tail regret UCBs `0.0000295/0.02069`; aggregate `d0b4397c…cdb9` | The MC counterfactual targets are usable training data after independent terminal/source review. V11 was only `+1/48` over matched random with LCB `-0.05799`, so it is not an admitted proposer, feature or inference dependency. V11-origin actions remain ordinary source-agnostic action examples. |
 | 08-09 | S4 point-banking exact-state screen | In rollouts, when the bot is already winning the trick and can retain a higher winner, let it bank a 5/10/K instead of always spending the cheapest winner. | **MECHANISM PASS** | overall acting-team point delta `+5.156`, one-sided LCB `+3.029`; attacker/defender means `+6.406/+3.906`; 35 wins, 4 losses, 25 ties; level utility `+0.25` | Banking a point-card winner while retaining higher control helps on the frozen exact-late trigger population in both roles. The whole-game row below shows the effect survives natural traffic. |
 | 08-10 | S4 complete-round screen v2 | Play complete mirrored rounds with the point-banking rollout rule, an analysis-identical null, and the live champion on the same deals and random streams. | **TERMINAL SCREEN PASS / NO CONFIRMATION LAUNCH** | treatment−champion `+0.086914 +/- 0.056166`, one-sided LCB `+0.030748`; treatment−null identical; null−champion exactly zero; 2,048 clusters | Point banking is the first post-report-LCB mechanism to pass a fresh whole-game screen. Confirmation remains a separately reviewed future milestone; T4 does not launch it. |
 | 08-09 | Human H0 counterfactual design v1 | Add the move a human actually played to the champion ballot alongside V11 and random proposals, then price those choices on common simulated worlds instead of imitating the human blindly. | **SPLIT REVIEW PASS / SUPERSEDED PRE-EXECUTION** | 384 DESIGN + 128 name-ID/deal-disjoint AUDIT plays; separate 36/9 buries; every eligible late/off-ballot row retained; zero outcomes | The split and authority semantics passed, but later executable audit found the pinned V11 digest names no artifact. V1 cannot parent a controller. |
@@ -77,8 +78,13 @@ Evidence anchors, in the same order:
   `143fb2dbad4623969661aca4582e46936a4a23ca032431a177967429fb434adb`
   externally passed. Label-v1 receipt is
   `0c3d7ea00b2a0234102e11b46ef3bf5296437e4bd51418e048155c78693adc1c`;
-  no aggregate. Fresh iid-v2 capacity packet under review is
-  `a667b6bbe1fd0e75266a878ec54e8643d68694ba8eef19bc8f32d2df6bc8795c`.
+  no aggregate. Fresh label-v2 packet external/internal SHA is
+  `0d119c842a63b2f3d69c2269690573f0475f4b100dfff7f40d523799bdf4dc32` /
+  `b800b3307859be7dac5e8b91cc019c25799a0372cb88e39de988e597512187ed`;
+  its terminal aggregate external/internal SHA is
+  `d0b4397ce0135b5ae665a76f9188ae3c974e2e440e0d6dc047d5080b27e6cdb9` /
+  `882baad7a5a8adf5044d8d6249e47b1a44f2dd838d1cb67c304fcbde1f02aac0`.
+  V11-free downstream source is `7dee880` and remains under external review.
 - S4 exact-state screen `abd9f36fa3e84c81b90e22f1c827f828a549f7fd6a9420ffbdb7c168974cdc00`;
   pre-outcome receipt `90124eb6f89c27cedc38770b2da5b3b8597400694281729656105f67803f526b`;
   admission `83993ec6609c2a7528853d4c1db789f137d3f0cbfff97d20fbf526cbd5ff5e6d`.
@@ -290,21 +296,26 @@ Evidence anchors, in the same order:
   state set `c7a769c4…e8e1c`: exact 1,024 DESIGN / 512 CALIB / 512 REPORT and
   1,920 play / 128 bury states after all 750,000 dispositions replayed. H0's
   one diagnostic terminally refused aggregate utility, so no human-derived
-  rule entered; V11 remains only its bounded proposal source. Label v1 then
+  rule entered. Label v1 then
   proved that “disjoint folds” had been implemented incorrectly as disjoint
   realized world identities. Eight slots produced 2 complete / 6 refused
   shards and no aggregate. Deleting duplicates also flattened the posterior,
-  so v1 is terminal no-use rather than a capacity near-miss. Fresh iid-v2
-  `8a202e9` retains successful draws with replacement, domain-separates RNG
-  streams, schema-refuses v1 and awaits capacity packet review at
-  `a667b6bb…795c`. No usable label, checkpoint or REPORT look exists.
+  so v1 is terminal no-use rather than a capacity near-miss. Fresh iid-v2 then
+  completed all 16 shards and 2,048 rows with exact 4,984,960 candidate-worlds,
+  zero refusals and aggregate `d0b4397c…cdb9`. Ordinary/hard-tail fidelity UCBs
+  are `0.0000295/0.02069`, both below `0.10`. Its separate V11 recall diagnostic
+  was inconclusive (`+1/48`, LCB `-0.05799`), so source `7dee880` consumes the
+  valid MC labels without exposing source tags to the learner and without
+  loading V11 at inference. External terminal/source review still precedes a
+  training-packet freeze; no checkpoint or REPORT look exists.
 
 ### Learned policies and RL
 
-- V11pair's confirmed 57.7% result over SmartBot shows within-ballot ranking
-  signal, but direct-v2 selected none against current search and rejected
-  protected composition. Use it only as a bounded proposal/ranking and teacher
-  diagnostic, never a scalar leaf.
+- V11pair's confirmed 57.7% result over SmartBot shows historical within-ballot
+  ranking signal, but direct-v2 selected none against current search and the
+  Stage-C matched-random recall check was inconclusive. Do not load it in the
+  Stage-C model or composed challenger. Its historical disagreements may remain
+  source-agnostic training examples and diagnostics; it is never a scalar leaf.
 - v13 fit its offline target better without improving play; existing value-leaf
   and learned-rollout hybrids have no verified gain. A private observation has
   no strategy-independent scalar value without a named belief/continuation.
@@ -324,8 +335,8 @@ Evidence anchors, in the same order:
 This ledger intentionally carries no live queue. Current order, blockers,
 machine assignment and milestone gates live only in `BACKLOG.md`. The durable
 conclusion is that new S3 mechanisms must bind exact report-LCB, Teacher scale
-waits on its champion/hard-tail gates, V11 is proposal/diagnostic only, and a
-fresh learner must change the target, data/credit assignment or adaptation
+waits on its champion/hard-tail gates, V11 is not a Stage-C runtime dependency,
+and a fresh learner must change the target, data/credit assignment or adaptation
 mechanism under the now-proven CRN/replay evaluation boundary.
 
 ## Using policies
@@ -435,9 +446,9 @@ The standalone checkpoint line is paused as a strength target and retained as
 a cheap diagnostic/deployment baseline. The durable learned-policy conclusions
 are:
 
-- `v11pair` is useful as an exact-ballot root proposal/ranker; it beat SmartBot
-  but has no valid superiority result over MC and cannot be used as a generic
-  scalar leaf.
+- `v11pair` showed exact-ballot ranking signal against SmartBot, but has no
+  valid superiority result over MC and failed admission to the current Stage-C
+  runtime. It cannot be used as a generic scalar leaf.
 - v13 fit its offline target better without improving play. Offline loss and
   old-surrogate agreement are not promotion metrics.
 - Ballot or encoder changes invalidate trained checkpoints even when tensor
@@ -445,8 +456,9 @@ are:
   rerun its direct gate.
 - Replacing the rollout policy and the tested value-leaf hybrids did not
   establish gains. Preserve the complete root ballot; corrected direct-v2
-  rejected v11 protected anchoring, so learned signals remain bounded
-  proposal/ranking or teacher diagnostics until a new contract passes.
+  rejected v11 protected anchoring. Historical V11 disagreements remain
+  diagnostic examples only; the new Stage-C ensemble must earn its own
+  proposal role under REPORT and whole-game gates.
 - Historical DMC/DMC2 runs exposed action-spread collapse, a role-sign defect
   and incomplete algorithm fidelity; they do not reject AWAC, Suphx or
   DouZero. The repaired Direct-Q screen produced positive gameplay but failed
@@ -560,9 +572,10 @@ penalty forces the beaten component, exhaustive-follow enumeration
 - **A legal sampler is not automatically calibrated.** Package H proves bounded
   strict validity/support on its registered reservoirs. Posterior fidelity and
   global constructive completeness remain separate questions.
-- **Learned models need an identifiable role.** Pairwise V11 scores may
-  propose/rank within a ballot but are not scalar leaves. Better offline fit
-  did not imply better play. Direct-Q and O0 failures require a fresh,
+- **Learned models need an identifiable role.** Pairwise scores may
+  propose/rank within a ballot but are not scalar leaves; V11 itself is not
+  admitted to the current Stage-C runtime. Better offline fit did not imply
+  better play. Direct-Q and O0 failures require a fresh,
   mechanism-isolating learner experiment, not more compute on inspected runs.
 - **Correctness and throughput are gates, not strength.** A fixed engine bug,
   green code gate, faster simulator or larger corpus enables an experiment; it

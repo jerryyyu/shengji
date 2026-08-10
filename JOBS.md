@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-10 16:53 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-10 18:00 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,8 +8,8 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | none | **FREE / T4 LABEL-V2 PACKET REVIEW.** Capacity-v3 result passed externally. Fresh score-free packet `0d119c84…dc32` re-verifies at exact `167feab`; no label receipt, shard slot, world or outcome exists. Only its external PASS may start the 16 shards. |
-| Air | S4 fixed replication | **LIVE, 8/8 SHARDS STARTED.** Exact `fb6ec1a`; packet `b239b849…ab76b`, admission `5fc07959…cb88`, receipt `fc6d54e7…1077`. Supervisor heartbeats every 30 seconds across 2,048 primary clusters plus 256 balanced null sentinels; projected max shard 7.732 hours. No interim inference or retry. |
+| Mini | none | **FREE / T4 TERMINAL-LABEL REVIEW.** The reviewed label-v2 packet completed all 16 shards and 2,048/2,048 rows with zero refusals. Aggregate `d0b4397c…cdb9` passed its internal fidelity checks, but no training packet may freeze until Claude independently reviews the aggregate and V11-free consumer source `7dee880`. |
+| Air | S4 fixed replication | **LIVE, 8/8 SHARDS HEALTHY.** Exact `fb6ec1a`; packet `b239b849…ab76b`, admission `5fc07959…cb88`, receipt `fc6d54e7…1077`. Supervisor heartbeats every 30 seconds across 2,048 primary clusters plus 256 balanced null sentinels; `210/2,048` primary clusters at 18:00. No interim inference or retry. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
 ## Next admitted execution
@@ -28,12 +28,16 @@ deals, plus all 2,048 selected states regenerated. Current order:
 3. Capacity-v2 result `64fdda5f…4cf2` is terminal no-use: Codex's own marker
    was not external review and missing NumPy refused all 32 rows before worlds.
 4. Capacity-v3 packet, one Mini run and terminal result review are complete.
-5. Label-v2 packet `0d119c84…dc32` is frozen and review-open. Only its exact
-   PASS may admit one 16-shard execution and aggregate on 2,048/2,048 complete.
-6. Mini starts the model sweep only after complete reviewed iid-v2 labels and
-   a reviewed training packet. DESIGN/CALIB choose a capability; untouched
-   REPORT remains closed until that selection is final. Air stays on the
-   separately gated S4 lane.
+5. Label-v2 packet `0d119c84…dc32` passed externally and its one 16-shard
+   execution is terminal: 2,048/2,048 rows, zero refusals and exact
+   4,984,960 candidate-worlds. Aggregate `d0b4397c…cdb9` fully recomputed.
+6. The label aggregate and V11-free consumer source `7dee880` are under one
+   external review. Its new marker separates valid MC-label fidelity from the
+   failed V11-recall diagnostic; no old combined marker can authorize training.
+7. After that PASS, Mini may freeze the model-sweep packet. Execution still
+   requires a separate packet PASS. DESIGN/CALIB choose a capability;
+   untouched REPORT remains closed until that selection is final. Air stays
+   on the separately gated S4 lane.
 
 Separately, the user authorized idle Air for the promising S4 lane. The old
 365.592-fleet-hour confirmation remains closed. New source `fb6ec1a` reduces
@@ -48,7 +52,7 @@ The canonical numbers and meanings are in the results table in
 
 | date | job | terminal verdict | anchor |
 |---|---|---|---|
-| 08-10 | Teacher Stage-C label controller v2 | **FROZEN / EXTERNAL PACKET REVIEW OPEN / ZERO WORLDS** | source `167feab`; packet external/internal `0d119c84…dc32` / `b800b330…87ed`; 2,048 states, 16 shards, 4,984,960 exact candidate-worlds; 45/45 focused tests; no receipt/slot/label/outcome |
+| 08-10 | Teacher Stage-C labels v2 | **TERMINAL COMPLETE / MC FIDELITY PASS / EXTERNAL CONSUMPTION REVIEW OPEN** | source `167feab`; packet `0d119c84…dc32`; 16/16 shards, 2,048/2,048 rows, zero refusals, exact 4,984,960 candidate-worlds; aggregate external/internal `d0b4397c…cdb9` / `882baad7…aac0`; ordinary/hard-tail regret UCBs `0.0000295/0.02069`; V11 recall LCB `-0.05799`, so V11 is not admitted |
 | 08-10 | Teacher Stage-C capacity v3 | **TERMINAL + EXTERNAL RESULT PASS** | source `167feab`; result external/internal `e2eea8c4…d32d4` / `00bd3456…7e9f`; slot `6dc1f9bd…d0fb`; 32/32, 147,384 exact worlds, zero refusals/outcomes; projection 1.640 fleet-hours / 0.235 wall-hours; Claude PASS `9c4e040` |
 | 08-10 | Teacher Stage-C capacity v2 | **TERMINAL NO-USE / ZERO WORLDS** | result external/internal `64fdda5f…4cf2` / `def43a24…2102`; consumed slot `b6c1219a…5e72`; 32/32 missing-NumPy V11-load refusals, zero candidate worlds/sampler attempts/outcomes; Codex self-review was invalid; never retry |
 | 08-10 | S4 fixed Air replication | **PACKET PASS / LIVE 8-SHARD OUTCOME RUN** | exact `fb6ec1a`; preflight `a89a4498…69`; packet `b239b849…ab76b`; admission `5fc07959…cb88`; receipt `fc6d54e7…1077`; 2,048 primary + 256 null-sentinel clusters; no interim verdict |

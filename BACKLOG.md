@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-10 16:53 EDT.
+Last re-derived: 2026-08-10 18:00 EDT.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
 `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -30,13 +30,15 @@ here.
   remain, while the exact-null control becomes a balanced 256-cluster sentinel.
   Its 8-cluster score-free preflight passed and projected 61.853 fleet-hours;
   packet `b239b849…ab76b` passed independently and the one fixed Air run is
-  live under receipt `fc6d54e7…1077` with all eight shards started.
+  live under receipt `fc6d54e7…1077`; all eight shards are healthy and reached
+  `210/2,048` primary clusters at the 18:00 snapshot.
 - **Human corpus / H0:** reviewed `human_v8` contains 2,830 plays and 45 buries.
   The one authorized H0-v3 diagnostic ran, but only 555/557 rows completed;
   two score-free refusals forced terminal
   `REFUSED_INCOMPLETE_NO_AGGREGATE_UTILITY`. Do not retry or mine partial
-  utilities. No human-derived proposer enters Stage C; V11 survives only as
-  its separately frozen bounded proposal source.
+  utilities. No human-derived proposer enters Stage C. The later label audit
+  also failed to prove V11 recall against matched random, so V11 is not an
+  inference source either.
 - **Teacher Stage C:** v3–v7 bought exact phase, hand-order, final-trick and
   split-safe capture semantics; state set `c7a769c4…e8e1c` and verifier
   `143fb2db…4adb` remain externally passed. Label v1 then exposed a different
@@ -49,8 +51,14 @@ here.
   32 V11 loads refused with zero candidate worlds, sampler attempts or retained
   outcomes. Fresh v3 `167feab` then passed external packet review and its one
   Mini probe: 32/32, exact 147,384 candidate-worlds, zero refusals/outcomes and
-  result `e2eea8c4…d32d4`; Claude passed the terminal result. Fresh score-free
-  label-v2 packet `0d119c84…dc32` now gates the one label execution.
+  result `e2eea8c4…d32d4`; Claude passed the terminal result. The reviewed
+  label-v2 packet then completed all 16 Mini shards: 2,048/2,048 rows, zero
+  refusals, exact 4,984,960 candidate-worlds and aggregate `d0b4397c…cdb9`.
+  Teacher fidelity passed (ordinary/hard-tail regret UCBs
+  `0.0000295/0.02069`); V11 was only net `+1/48` versus matched random with
+  LCB `-0.05799`, so it is not admitted. Pushed `7dee880` keeps the good MC
+  labels, makes source identity invisible to the learner, replaces V11 at
+  inference with the learned Teacher's own proposal and awaits external review.
 - **S5 replay:** Claude passed PR #4 head `2351b36`, including the required
   lower-ranked-but-equal-point negative fixture and red `<`→`<=` mutation.
   One deterministic score-free census freeze is eligible later; no census,
@@ -60,7 +68,7 @@ here.
 - **Capacity:** v1 result `111092b7…cee0` remains a valid terminal sizing
   artifact but did not target late small-support states. V2 is terminal no-use
   at result `64fdda5f…4cf2`; it measured an environment omission, not sampler
-  capacity. Mini is idle at label-v2 packet review. Air runs the separately
+  capacity. Mini is idle at terminal label/result-source review. Air runs the separately
   reviewed S4 fixed replication under receipt `fc6d54e7…1077`.
   Capture, label-v1 and capacity-v2 consumed slots may never rerun.
   HUMAN-C1 remains parked until a challenger first beats report-LCB.
@@ -74,12 +82,12 @@ scientific output of that step.
 | priority / milestone | strategy and problem, in plain English | progress so far and what's left, in plain English | next work | required output | exact exit gate |
 |---|---|---|---|---|---|
 | **DONE / T4.2 capture + state set** | Mine a balanced set of ordinary and hard decisions where a stronger Teacher can reveal choices the live bot misses. | **Complete and externally passed.** V7 has one consumed receipt, 24/24 fresh shards, exact 2,048-state freeze, clean full replay and independent population/digest review. **Left:** none; preserve immutable assets. | No new compute | Exactly 1,024 DESIGN + 512 CALIB + 512 untouched REPORT states, including 1,920 play and 128 bury rows | Satisfied by reviewed state set `c7a769c4…e8e1c` and verifier `143fb2db…4adb`; no retry, pooling or extension. |
-| **P0 / T4.2 labels** | Price every candidate with a stronger, explicitly bounded Teacher so the learner receives counterfactual ranking signal rather than another imitation label. | **Capacity-v3 terminal result PASS; label-v2 packet frozen:** `0d119c84…dc32` binds 2,048 states, 16 shards and 4,984,960 exact candidate-worlds with zero pre-review label work. **Left:** external packet PASS, 16 complete Mini shards and reviewed aggregate. | Independently review the frozen label-v2 packet; sample nothing before PASS | Complete candidate-level labels with correct posterior mass plus exact fold, continuation, work and refusal provenance | Every row and aggregate reopens; underfill, parent/runtime drift or budget breach terminally holds without partial utility. V1/capacity-v2 may never continue or aggregate. |
-| **P0 / T4.3 seeded models** | Learn a stable ranker and calibrated outcome signal from the new Teacher rather than selecting one lucky checkpoint. | Capacity-v3 head `167feab` descends from the integrated iid-v2 source. Its isolated Mini environment now has exact Python 3.14.6, NumPy 2.5.1 and Torch 2.13.0; the model/training/REPORT slice passes 49/49 there. No checkpoint or REPORT look exists. **Left:** complete/review v2 labels, freeze/review training packet, then 48 play/bury × eight-seed × 25/50/100% cells using DESIGN/CALIB only. | Mini runs at most eight cells concurrently after reviewed labels and training packet; Air remains isolated to S4 | Eight seeds per surface/head family plus state-count learning curves, seed dispersion and one frozen CALIB selection | No single seed advances. The full-data cohort must meet the predeclared stability/calibration gate before REPORT opens. |
+| **P0 / T4.2 labels** | Price every candidate with a stronger, explicitly bounded Teacher so the learner receives counterfactual ranking signal rather than another imitation label. | **Terminal complete / MC fidelity PASS.** Reviewed packet `0d119c84…dc32` produced all 2,048 rows with zero refusals and exact work; aggregate `d0b4397c…cdb9` fully recomputes byte-for-byte. Ordinary/hard-tail UCBs are `0.0000295/0.02069`. V11 recall did not pass and is not admitted. **Left:** independent terminal-result plus V11-free consumption review only. | Review exact aggregate and source `7dee880`; never rerun labels | Complete candidate-level labels with correct posterior mass plus exact fold, continuation, work and refusal provenance | The new V3 marker must certify label fidelity, V11 non-admission, sealed REPORT and one packet freeze only. All 17 slots/16 shards remain immutable. |
+| **P0 / T4.3 seeded models** | Learn a stable ranker and calibrated outcome signal from the new Teacher rather than selecting one lucky checkpoint. | Pushed `7dee880` / draft PR #20 owns every wave of the 48-cell matrix and consumes the good MC labels without making V11 a feature or inference dependency. The exact Python 3.14.6 compiled/strict-void Stage-C/Teacher slice passes 233/233. No dataset, packet, checkpoint or REPORT look exists. **Left:** Claude terminal/source PASS, freeze and separately review the training packet, then run play/bury × eight seeds × 25/50/100% using DESIGN/CALIB only. | After the V3 consumption marker, freeze the packet; only its separate PASS lets Mini run at most eight cells concurrently | Eight seeds per surface/head family plus state-count learning curves, seed dispersion and one frozen CALIB selection | No single seed advances. The full-data cohort must meet the predeclared stability/calibration gate before REPORT opens. |
 | **P0 / T4.4 untouched REPORT** | Ask once on unseen states whether the frozen learner improves Teacher choice/regret and calibration before paying for games. | Integrated `42e1726` routes both REPORT parent reads through the same exact-hash/source validator; REPORT has never opened. **Left:** wait for one DESIGN/CALIB selection, freeze/review exact evaluator assets, then consume REPORT once. | Later evaluate only the selected surface/head/epoch cohort | One 512-state REPORT result with ranking regret/coverage and signed-outcome calibration against the live baseline | Exactly one capability passes the frozen REPORT gate or the generation selects none; no REPORT retuning or second look. |
-| **P0 / T4.5 composed challenger** | Let the model focus fresh report-LCB search on one Teacher-supported challenger, while a matched random proposal tells us whether the learned ranking—not merely narrowing the ballot—adds strength. | Integrated `42e1726` retains `68e351b` composition behavior and the prior 300-play/50-bury parity result while making the full parent chain executable. No model, packet or run exists. **Left:** later packet/source review, then after a REPORT passer score-free capacity and one fresh screen. | Execute only from the single REPORT passer | One mirrored treatment/null/champion result against `mc-s0-report-lcb` | Treatment must have positive one-sided utility LCB versus both champion and null; null must remain compatible with champion. PASS opens confirmation-packet review only. |
-| **DONE / T4.1 H0 diagnostic** | Test whether human or V11 proposals survive fair counterfactual pricing before admitting them into the Teacher curriculum. | **Terminal no-use.** The one run completed 555/557 rows; two score-free refusals forced `REFUSED_INCOMPLETE_NO_AGGREGATE_UTILITY`. **Left:** none for this exact diagnostic. Never retry or mine partial utilities. | Preserve the refusal and omit H0-derived rules | Immutable aggregate `84ef4400…196c` / internal `c314a2e1…6630` | Satisfied as a negative operational result. Stage C admits no human-derived proposer; V11 remains only its separately frozen bounded source. |
-| **P0 parallel / S4 fixed replication** | Check whether point banking's first positive whole-game result repeats independently without spending 365.6 fleet-hours on a redundant full null arm. | **Packet PASS / live.** Air consumed admission `5fc07959…cb88` and receipt `fc6d54e7…1077`; all eight shards started over 2,048 primary + 256 sentinel clusters. **Left:** terminal publication, pinned verification and independent result review. | Supervise without interim inference; Mini remains reserved for T4 | Independent fixed-look replication plus exact null-sentinel control | LCB95(treatment−champion)>0 over all 2,048 clusters, null equals champion on all 256 sentinel clusters, exact dose/work; no retry/extension or automatic deploy. |
+| **P0 / T4.5 composed challenger** | Let the learned MC-Teacher propose and rank a novel legal move, then let fresh report-LCB veto unsafe overrides; a matched random selector tells us whether the learned choice adds strength. | Composition v2 at `7dee880` removes the V11 artifact and parent entirely. The learned eight-seed ensemble proposes its own top exhaustive novel action; literal live candidate zero, structured/random sources, report-LCB protection and same-work null remain. No model, packet or run exists. **Left:** source review now; after a REPORT passer, score-free capacity and one fresh screen. | Execute only from the single REPORT passer | One mirrored treatment/null/champion result against `mc-s0-report-lcb` | Treatment must have positive one-sided utility LCB versus both champion and null; null must remain compatible with champion. PASS opens confirmation-packet review only. |
+| **DONE / T4.1 H0 diagnostic** | Test whether human or V11 proposals survive fair counterfactual pricing before admitting them into the Teacher curriculum. | **Terminal no-use.** The one run completed 555/557 rows; two score-free refusals forced `REFUSED_INCOMPLETE_NO_AGGREGATE_UTILITY`. The independent Stage-C label audit later also left V11 recall inconclusive. **Left:** none; never retry or mine partial utilities. | Preserve the refusal and omit both H0-derived and V11 proposer rules | Immutable aggregate `84ef4400…196c` / internal `c314a2e1…6630`, plus label aggregate `d0b4397c…cdb9` | Satisfied as a terminal diagnostic. Human/V11 actions can remain generic examples, but neither source is admitted at inference. |
+| **P0 parallel / S4 fixed replication** | Check whether point banking's first positive whole-game result repeats independently without spending 365.6 fleet-hours on a redundant full null arm. | **Packet PASS / live.** Air consumed admission `5fc07959…cb88` and receipt `fc6d54e7…1077`; all eight shards are healthy, `210/2,048` primary clusters at 18:00, plus the frozen 256 sentinels. **Left:** terminal publication, pinned verification and independent result review. | Supervise without interim inference; Mini remains reserved for T4 | Independent fixed-look replication plus exact null-sentinel control | LCB95(treatment−champion)>0 over all 2,048 clusters, null equals champion on all 256 sentinel clusters, exact dose/work; no retry/extension or automatic deploy. |
 | **P1 / S6 shuai-pai sourcing** | Whenever a legal lead can be played as shuai-pai, make at least one such choice visible so search can price success, failed-throw and ruff risk instead of silently excluding the tactic. | Draft PR #19 head `cfa5a53` now covers the KESP actions plus natural early/mid/late states. A late trump-only witness is red under v1 and green under v2; append-only union preserves the literal live ballot and candidate zero. 11 focused / 58 broader tests pass. **Left:** external semantics review and an equal-work packet/screen after T4's current gate. | Review source after the immediate label gate, without launching compute | Public-only, lead-only, deterministic ≤8 additions with ≥1 legal shuai whenever possible, unioned with literal candidate zero plus same-work control | Source PASS authorizes packet design only; missing an available shuai in any phase fails the source gate, and no source PASS alone authorizes a screen. |
 | **P1 / S5 replay census** | Determine whether the bot really donates points to lost tricks when a cheaper legal discard exists, instead of trusting observational log correlations. | Exact fixture boundary at `2351b36` passed, including the equal-point negative witness. **Left:** one deterministic score-free census freeze when it does not compete with T4. | Freeze/review census later | Trigger/refusal counts and replayable identifier-free witnesses | Census may open treatment design only; it cannot enter Stage C or claim strength automatically. |
 | **PARKED / HUMAN-C1** | Ultimately prove the challenger is better for people, not merely against bots. | Inert harness only. **Left:** account binding, runtime identity, immutable blocks, candidate receipt, synthetic C0 and estimator. | Resume only after a challenger beats report-LCB in confirmation | Reviewed blinded candidate-versus-champion human test | Separate traffic packet and explicit user authority required. |
@@ -144,12 +152,11 @@ unreviewed strength compute, training, promotion and production changes.
 7. **S5 boundary fixture closed PASS:** PR #4 head `2351b36` pins the
    lower-ranked-but-equal-point non-trigger. One score-free census freeze is
    eligible later; it was not required for T3.
-8. Mini and Air are idle pending iid-v2 capacity-packet review. On PASS, Mini
-   owns one short outcome-discarding capacity run; its result and a later fresh
-   label packet each require review before the 16-shard label run. Air is
-   staged at iid-v2 `8a202e9` and waits for complete reviewed labels plus a
-   reviewed training packet before the 48-cell matrix. Idle compute is not a
-   reason to invent an unregistered strength run.
+8. Mini is idle behind the terminal label/V11-free consumption review; after
+   that marker it may freeze—but not execute—the training packet. Air is fully
+   occupied by the healthy eight-shard S4 replication. After separate packet
+   PASS, Mini owns the 48-cell matrix at eight-way concurrency. Idle compute is
+   not a reason to invent an unregistered strength run.
 9. Keep the next real product gate as candidate-versus-champion performance
    against the same blinded human cohort, followed by an absolute experienced-
    human benchmark. Bot Elo and site-average win rate remain diagnostics.
@@ -323,8 +330,9 @@ recursive report-LCB search at every future node:
 
 Plain English: Stage C keeps broad routine coverage, spends most extra compute
 on decisions where the live bot is uncertain or missing a plausible idea, and
-protects a fresh exam set. External PASS/HOLD is still required. A PASS would
-authorize only implementation of a capture/controller, not the dataset itself.
+protects a fresh exam set. This contract has now produced the reviewed state
+set and complete label-v2 aggregate. It still authorizes neither a checkpoint
+nor strength: the active training/REPORT gates are in the `NOW` table.
 
 ## Human-data execution
 
@@ -334,33 +342,23 @@ incomplete rounds, and 25 legal human plays absent from the broad analysis
 ballot. Humans buried at least one point in 22/45 observed buries. Those are
 useful proposal/coverage findings, not proof that the human actions are better.
 
-Next actions:
+H0-v3 is terminal no-use. Its one reviewed execution completed 555/557 rows;
+two score-free refusals correctly blocked aggregate utility. Never retry or
+mine partial source-survival/utility statistics. This result does not prove
+human or V11 actions are weak. It means neither source earned an inference
+rule in this T4 generation. The later Stage-C label audit also left V11 recall
+inconclusive, so the V11 checkpoint is absent from the learner/composition.
 
-1. **done — bounded v3 review PASS:** V2 repaired executable identity but was
-   superseded before controller work. Claude passed exact bounded v3
-   (`d6214ce`, packet `4d3f0a35…8cc3c`) at marker `239f13c`;
-2. use the connected-component boundary honestly: the three-player/78-deal
-   component is DESIGN, the separate one-player/28-deal component is AUDIT,
-   and the three tiny components (three players/five deals) are RESERVE. This
-   corpus cannot support a credible three-way player+deal-disjoint REPORT;
-3. **done:** select 384 DESIGN plus 128 AUDIT rows, cap repeated decisions at
-   eight per deal, include every late/off-ballot row, and balance lead/follow,
-   role and depth;
-4. separately replay **bot-seat** losing-follow decisions from the same frozen
-   source logs for S5. H0 contains human actions and cannot by itself explain
-   the bot mistakes surrounding those actions;
-5. **done — controller review PASS:** source `6977dbb`, packet
-   `3f68dc6e…7fcf` now bind the bounded production ballot plus actual human,
-   V11 and matched-random proposals, fixed common-world/disjoint-report work,
-   strict runtime and deletion-proof one-shot admission. T4 may create one
-   diagnostic receipt; no outcome exists yet;
-6. after that one T4 execution, report proposal-source membership and post-selection survival,
-   human-minus-champion paired utility, continuation ranking flips and
-   per-player/per-surface heterogeneity. Do not report undefined “candidate
-   recall” without a complete named relevant-action universe;
-7. use supported actions plus replay-verified bot-loss triggers for a
-   proposal/prior head and hard-tail mining. Keep raw BC as a separately
-   measured initialization/style control.
+The remaining human-data uses are narrower and actionable:
+
+1. preserve human actions as source-agnostic DEV/regression examples whose MC
+   targets—not provenance—determine whether the learner values them;
+2. replay **bot-seat** losing-follow decisions from the same frozen logs for
+   S5, because H0 indexes human actions and cannot explain surrounding bot
+   mistakes; and
+3. keep raw behavior cloning only as a separately measured initialization or
+   style control. Final people-strength evidence comes from HUMAN-C1, not
+   historical action agreement.
 
 Current component inventory: DESIGN has 2,323 plays plus 36 buries across 78
 deals; AUDIT has 456 plays plus nine buries across 28 deals; RESERVE has 51

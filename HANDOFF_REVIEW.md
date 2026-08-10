@@ -2113,3 +2113,87 @@ Independent P0 review of the fresh label-v2 packet, external `0d119c84…dc32`, 
 The appended marker was generated from the verifier's `expected_review_claim(packet, external_sha)` and is byte-identical to the (deliberately non-authoritative) template in the request. Scope: exactly one 16-shard Mini label execution at ≤8 workers, aggregation only at 2,048/2,048 complete with zero refusals — no retry, no partial-utility inspection, no training, REPORT, strength, confirmation, promotion or deployment.
 
 TEACHER_STAGE_C_LABEL_CONTROLLER_V2_REVIEW {"audit_report_actions":3,"audit_report_candidate_worlds":1200,"audit_report_worlds":400,"audit_states":256,"bury_states":128,"calib_states":512,"capacity_packet_sha256":"b53eb5099eab88041badd07465bae817c14c399efc0a141984add8049d62ce19","capacity_pass":true,"capacity_result_review_schema":"teacher-stage-c-label-capacity-result-review-v3","capacity_result_sha256":"e2eea8c433a2b0f21d6cab43a29f8e89797cac46903a1183ab61ba82bbbd32d4","capture_controller_sha256":"b53af06cfef158b0c9fa0881386b4f78773003700549745c125b46b6cf6a8a43","capture_verification_sha256":"143fb2dbad4623969661aca4582e46936a4a23ca032431a177967429fb434adb","controller_script_sha256":"100a5d5db5de61b6f34d5c97e242ba0854877282b0e489d247f6af45c2870b50","design_states":1024,"domain_separated_fold_streams":true,"exact_candidate_worlds":4984960,"git":"167feab60cf7b8617e23d29e93110a9b80e85a75","independent_review":true,"label_shards":16,"max_candidate_worlds":10494720,"max_sampler_attempts":38446080,"one_label_execution_authorized":true,"outcomes_computed_before_review":false,"packet_sha256":"0d119c842a63a2f3d69c2269690573f0475f4b100dfff7f40d523799bdf4dc32","play_states":1920,"production_deployment":false,"production_promotion":false,"report_labels_sealed_from_training":true,"report_states":512,"runtime_script_sha256":"a84e054c707b02de7a371ded652ef50a29dae6cf702708c1149b96f1b5614c78","sampling_with_replacement":true,"schedule_sha256":"1c28ee03ff8ee174e177c451802029a495f35434cdb9efe1c18341ee4c891f69","schema":"teacher-stage-c-label-controller-review-v2","shard_admission_slots":16,"state_set_review_schema":"teacher-stage-c-state-set-review-v1","state_set_sha256":"c7a769c4efab582a38a4b77e8a707acde65a3e022d5db9fb27f660809e6e8e1c","states":2048,"states_per_shard":128,"strength_claim":false,"training_authorized":false,"verdict":"PASS","worlds_sampled_before_review":0}
+
+## Codex — 2026-08-10 17:55 EDT — P0 terminal label result + V11-free consumption review requested
+
+The one reviewed label-v2 execution is terminal and complete. Exact immutable
+source is `167feab60cf7b8617e23d29e93110a9b80e85a75`; label packet external /
+internal SHA is `0d119c842a63a2f3d69c2269690573f0475f4b100dfff7f40d523799bdf4dc32` /
+`b800b3307859be7dac5e8b91cc019c25799a0372cb88e39de988e597512187ed`.
+The global admission plus all 16 shard slots were consumed exactly once. All
+16 shards exited zero and published 2,048/2,048 complete rows with zero
+refusals. Aggregate external/internal SHA is
+`d0b4397ce0135b5ae665a76f9188ae3c974e2e440e0d6dc047d5080b27e6cdb9` /
+`882baad7a5a8adf5044d8d6249e47b1a44f2dd838d1cb67c304fcbde1f02aac0`.
+Exact work reconciles at `4,984,960/4,984,960` attempted/completed
+candidate-worlds and `961,152/961,152` sampler attempts/accepted. A separate
+full terminal recomputation replayed and semantically revalidated every row,
+then rebuilt the aggregate byte-for-byte (`full_recompute_equal=true`). No
+official partial exists.
+
+The terminal result contains two distinct findings:
+
+1. **MC Teacher fidelity passed.** Ordinary-anchor regret mean/UCB is
+   `-0.009453125 / 0.000029492483002387104`; hard-tail regret mean/UCB is
+   `0.014700520833333333 / 0.020693163675050034`. Both frozen one-sided UCBs
+   are far below the `0.10` ceiling.
+2. **V11 proposal recall was not proven.** On 48 matched proposal-disagreement
+   states its mean versus the one-action random control is `+0.0208333`, exactly
+   net `+1/48`, with LCB/UCB `-0.0579949 / +0.0996616`. V11 is therefore not
+   admitted. The aggregate's old combined decision
+   `DIAGNOSE_FROZEN_STAGE_C_ONLY` correctly reflects the original conjunction;
+   it is not evidence that the MC labels failed.
+
+User direction is explicit: T4 may proceed without V11. Pushed exact source
+`7dee880` on `codex/stage-c-training-supervisor-v1`, draft PR #20, implements
+that narrow separation:
+
+- the legacy V2 helper now refuses to print a PASS-shaped marker unless the
+  original fidelity-plus-V11 conjunction truly passed;
+- a new hash-bound V3 consumption marker can authorize one dataset/training-
+  packet freeze only when both Teacher-fidelity bounds pass;
+- all reviewed candidate cards remain available as ordinary action examples,
+  but source tags never enter the observation, action encoding, target or
+  network. A named invariance test changes the V11 source tags and proves the
+  materialized example is byte-identical;
+- V11 remains loadable only while revalidating the immutable upstream label
+  shards. It is not admitted as a learned feature, inference proposer or
+  production dependency; and
+- composition packet v2 contains no V11 parent or artifact. For play, the
+  learned MC-Teacher ensemble itself scores the exhaustive public legal-action
+  set and contributes at most one novel challenger. Literal live candidate
+  zero, named structured/random sources, fresh report-LCB protection and the
+  trigger/work-matched random selector remain.
+
+The exact Python 3.14.6 compiled/strict-void Stage-C + Teacher battery passes
+233/233. Focused touched-source tests pass 61/61. The broader repository run
+passed 1,598, skipped seven and failed 23 only because this isolated worktree
+lacks historical gitignored corpora/checkpoints or because old receipts pin a
+different absolute execution root; none touched this delta.
+
+Please independently review both the terminal artifact and exact pushed code:
+
+1. authenticate the global receipt, all 16 ordered shard slots/files, zero
+   exits/refusals/partials, exact work and aggregate hashes; independently
+   recompute the aggregate or reproduce the full-recompute equality;
+2. recompute all three terminal statistics, their fixed populations/critical
+   values and the old combined decision; confirm Teacher fidelity PASS and V11
+   **not admitted**, without relabeling the V11 result as negative strength;
+3. inspect the unsafe legacy-helper regression and prove no old V2 PASS marker
+   can be generated or consumed for this aggregate;
+4. prove the new V3 marker binds this exact aggregate, DESIGN/CALIB and sealed
+   REPORT manifests, controller/model source hashes, zero REPORT reads and only
+   one V11-free training-controller freeze;
+5. verify source provenance is absent from model inputs/targets, while all
+   frozen action/outcome evidence remains intact; and
+6. review PR #20's supervisor and composition delta: all 48 training cells are
+   owned at max eight concurrent with no retry/resume, and later composition
+   neither names nor loads V11 and cannot bypass fresh report-LCB.
+
+If and only if clean, append the following verifier-generated line as one
+actual raw marker. Until then, do not freeze a dataset or packet. PASS grants
+one V11-free dataset/training-controller freeze for a **separate packet
+review**. It grants no training execution, REPORT opening, strength claim,
+screen, confirmation, promotion or deployment.
+
+`TEACHER_STAGE_C_LABEL_FIDELITY_CONSUMPTION_V3_REVIEW {"aggregate_internal_sha256":"882baad7a5a8adf5044d8d6249e47b1a44f2dd838d1cb67c304fcbde1f02aac0","aggregate_sha256":"d0b4397ce0135b5ae665a76f9188ae3c974e2e440e0d6dc047d5080b27e6cdb9","candidate_provenance_contract_sha256":"08a8d88f29edd5bb554a95d9eb7d8678bba1c316f86c89ae7631a2f578a96412","complete_rows":2048,"design_calib_manifest_sha256":"2d99a1207f9ebd5f4af0108d8afc5bae4e2ae3f59809b78ea7ca6f8855bb8772","hard_tail_regret_mean":0.014700520833333333,"hard_tail_regret_ucb":0.020693163675050034,"independent_review":true,"label_fidelity_pass":true,"label_git":"167feab60cf7b8617e23d29e93110a9b80e85a75","one_v11_free_training_controller_freeze_authorized":true,"ordinary_anchor_regret_mean":-0.009453125,"ordinary_anchor_regret_ucb":2.9492483002387104e-05,"original_combined_decision":"DIAGNOSE_FROZEN_STAGE_C_ONLY","production_deployment":false,"production_promotion":false,"refused_rows":0,"report_open_authorized":false,"report_shards_opened_by_training_review":0,"schema":"teacher-stage-c-label-fidelity-consumption-review-v3","sealed_report_manifest_sha256":"3269d820b26ee39ef1622c04890b44d9436575b80f7d991f26f9e3339618a033","stage_c_model_script_sha256":"d067d0250fc38ae4e628f68616ebafe3a1daa447f83c341b284c05c1d9ff00d5","state_set_sha256":"c7a769c4efab582a38a4b77e8a707acde65a3e022d5db9fb27f660809e6e8e1c","states":2048,"strength_claim":false,"training_authorized":false,"training_controller_script_sha256":"38ae1edaa2501911c938089ad8ef7fb26b068a193f91f66151dac5a8cc480231","v11_proposer_admitted":false,"v11_recall_lcb":-0.057994909647547,"v11_recall_mean":0.020833333333333332,"v11_recall_pass":false,"v11_recall_ucb":0.09966157631421366,"verdict":"PASS"}`

@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-10 14:24 EDT
+## Current synthesis — 2026-08-10 17:59 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -47,20 +47,26 @@ what those results change in the research plan.
   O0-v2 repaired coupling and replay semantics but measured control
   oracle-minus-public at only `+0.015` with LCB `-0.067`, while its isolated
   margin-sharpening cell was worse at `-0.047` with LCB `-0.109`.
-  V11 survives only as a bounded proposal/ranking/teacher diagnostic.
+  V11 survives only as a historical proposal/ranking diagnostic; it is not an
+  admitted dependency of the current Stage-C learner or composed challenger.
 - **Teacher:** Stage B and the fresh 64-state audit established that cheap
   labels are adequate on ordinary states while the boundary tail needs deeper
   work. Stage C has now spent that design: capture-v7 replayed all 750,000
   dispositions and froze an externally reviewed 2,048-state population at
   exact DESIGN/CALIB/REPORT `1024/512/512` and play/bury `1920/128`.
-  Human H0 terminally produced no aggregate, so no human-derived rule entered;
-  V11 remains only its separately bounded proposal source. The first reviewed
+  Human H0 terminally produced no aggregate, so no human-derived rule entered.
+  The first reviewed
   label wave then exposed a new statistical bug: deleting repeated realized
   hidden worlds both exhausted late-state support and flattened posterior
   mass. V1 is terminal no-use after 2 complete / 6 refused shards and no
-  aggregate. Iid-v2 source `8a202e9` retains draws with replacement,
-  domain-separates folds and awaits capacity-packet review at
-  `a667b6bb…795c`. No model or REPORT look exists.
+  aggregate. Iid label-v2 then completed 16/16 shards and 2,048/2,048 rows at
+  exact 4,984,960 candidate-worlds with zero refusals. Aggregate
+  `d0b4397c…cdb9` passed ordinary/hard-tail fidelity at UCBs
+  `0.0000295/0.02069`; the separate V11-versus-matched-random recall check was
+  inconclusive at only `+1/48`, LCB `-0.05799`. Source `7dee880` therefore keeps
+  the valid MC targets while hiding source tags and removing V11 from training
+  and inference. External terminal/source review precedes the training packet;
+  no checkpoint or REPORT look exists.
 - **Search challengers:** the independently reviewed live-parent contract binds
   S3a/S3b to exact report-LCB and prevents old baselines from silently
   re-entering. S3b v2 remains closed on its 250k-node capacity failure. S3a's
@@ -260,7 +266,7 @@ small-n or unseeded results below are labelled as such.
 | **v8 family** (`v8a`, `v8b`, `v8along`) | Moved to the larger `gen_v3` corpus and fixed the trainer so choice-only TRACTOR_LOCK rows were no longer discarded. A was the raw-value soft-target control; B added the acting policy's +5 candidate-0 margin to the policy target while leaving the value head absolute; A-long tested 12 epochs. | Margin-aware B raised held-out teacher-choice agreement from roughly 43% to 62.5%, proving the loss/metric mismatch was real. The strength anchors were run before the stochastic-opponent seeding repair and did not show a reliable gain; longer A training and the v8 value-head screen also showed no detected benefit. | Important data-contract and target-alignment fix, but no promotable strength result. Better imitation alone did not imply a better bot. |
 | **v9 warm / scratch** | Trained on `gen_v4`, whose teacher was the v7 value-leaf hybrid; directly tested warm versus random initialization and then extended both arms to 16 epochs. This was the first flywheel attempt: train on the hybrid teacher, then reuse the new value head in the hybrid. | Warm and scratch had no detected difference after six epochs. In later n=120 screens both peaked near epoch 8 and then weakened; the logged warm arm was 56% vs Smart / 37% vs MC and scratch 47% / 33%. A v9-leaf head did not improve on the v7 head in the same small screen. | No evidence that warm start, more epochs, or one expert-iteration turn improved strength. The negative result is about this pipeline, not proof that expert iteration cannot work. |
 | **v10res** | First residual override attempt: regress `Q(s,a_i)-Q(s,a_0)` and let SmartBot's candidate 0 stand unless predicted gain clears a threshold. | It overrode only about 1.3-1.5% of states where the teacher overrode about 15%; pairwise RMSE was 6.1995 versus 6.2112 for predicting zero, and it scored 47% vs Smart in its screen. The model still scored rows independently without a pairwise loss, train/play ballots differed, training and deployment read different heads, and the registered epoch initially differed from the evaluated one. | **Invalid test of the residual-learning hypothesis.** The checkpoint was a near no-op; do not count it as evidence that residual learning failed. |
-| **v11pair** | Corrected v10 around the deployed decision: optimize `(q_i-q_0)` against `(Q_i-Q_0)` with Huber loss and boundary weighting, use the exact valued ballot at inference, and fit the 0.02 threshold on one split before reporting another. | `rl-override-v11pair` **CONFIRMED** 57.7% vs SmartBot (277-203, n=480, two disjoint blocks). Its 51.1% vs MC over 4,880 rounds used MC factories that silently discarded seeds; a later negative block used a banker-private-kitty encoder absent from training. The corrected-encoder direct-v2 test finally supplied the current-contract verdict: v11-minus-live `-0.141 +/- 0.070` and v11-minus-matched-null `-0.110 +/- 0.070`. | The only confirmed learned online gain is versus SmartBot, not MC or report-LCB. Direct/protected-anchor composition is closed. Pairwise deltas are not scalar leaves; V11 survives only as a bounded proposal/ranker and Teacher disagreement signal against a same-budget random control. |
+| **v11pair** | Corrected v10 around the deployed decision: optimize `(q_i-q_0)` against `(Q_i-Q_0)` with Huber loss and boundary weighting, use the exact valued ballot at inference, and fit the 0.02 threshold on one split before reporting another. | `rl-override-v11pair` **CONFIRMED** 57.7% vs SmartBot (277-203, n=480, two disjoint blocks). Its 51.1% vs MC over 4,880 rounds used MC factories that silently discarded seeds; a later negative block used a banker-private-kitty encoder absent from training. The corrected-encoder direct-v2 test supplied the current-contract verdict: v11-minus-live `-0.141 +/- 0.070` and v11-minus-matched-null `-0.110 +/- 0.070`; Stage-C later found only `+1/48` against matched random, LCB `-0.05799`. | The only confirmed learned online gain is versus SmartBot, not MC or report-LCB. Direct/protected-anchor composition is closed, and V11 is not admitted into the Stage-C runtime. Pairwise deltas are not scalar leaves; historical V11 disagreements may remain source-agnostic diagnostic examples. |
 | **v12** | No model, checkpoint, or experiment used this number. | — | Skipped; do not infer a missing failure. |
 | **v13abs** | Warm-started v7w and fit the value output to absolute 240-world means from 20,845 high-N states, using inverse-variance weighting. The actual target is raw-point action value under heuristic continuation, `Q^H(s,a)`, not a generic state value. The trainer updated the whole network, not only a detached head. | Offline SCREEN: unweighted RMSE improved `0.1052 -> 0.0699` and stored-ballot regret `1.478 -> 1.293`. Online leaf SCREEN: v13 and v7 each won 52.8%; v13 was `-0.004 +/- 0.206` versus the MC reference and v7 `+0.024 +/- 0.215`. The direct paired v13-minus-v7 contrast is **`-0.028 +/- 0.185`** (250 clusters). There were two train/deploy shifts: early-state and ballot mismatch. A later byte audit adds a third, terminal defect: `highn_train.py` consumed `rl_data/highn_enc`, whose 5,923 banker rows all use the private-kitty drift. | **INCOMPATIBLE / NOT CONFIRMED.** It learned contaminated offline tensors better but did not improve the bot. Rebuild `highn_enc`, retrain and freshly evaluate any successor; the existing checkpoint cannot become valid merely by regenerating the cache. This does not rule out a correctly targeted absolute-value model. |
 | **Direct-Q 144M** | Faithful bounded DouZero-style probe: learn role-conditioned, action-conditioned values from direct signed episodic returns with immutable actors rather than distilling MC choices. | Gameplay evaluation was attractive at `+0.163 +/- 0.059`, but seed 1 and both pooled-role held-out MSE gates failed. The preregistered learner gate therefore selected none. | The chassis is reusable and the gameplay tail is a follow-up clue, not permission to promote or simply train longer. A successor must isolate a target/credit or surface-specialization change and pass learning across at least eight seeds before larger fleet scale. |
@@ -330,15 +336,18 @@ decision tree.
    completed 555/557 rows, but two score-free refusals correctly prevented an
    aggregate. Never retry or mine the partial utilities. This is no evidence
    that human ideas are weak; it simply admits no H0-derived proposer into this
-   Stage-C generation. V11 remains only its separately frozen bounded source.
+   Stage-C generation. V11's later matched-random recall check was also
+   inconclusive, so neither source is an inference dependency of this Teacher.
 4. **Advance Stage C from its reviewed state set through iid labels.** Capture
    v7 completed and independently authenticated exact `1024/512/512` splits,
    `1920/128` play/bury surfaces, all 750,000 scan dispositions and all 2,048
    selected states. Label v1 then terminally exposed realized-world
    deduplication as both a finite-support failure and a posterior bias. Preserve
-   its 2 complete / 6 refused shards without aggregate. Fresh iid-v2 `8a202e9`
-   retains with-replacement draws; capacity packet `a667b6bb…795c` is the
-   current external review gate before any more sampling.
+   its 2 complete / 6 refused shards without aggregate. Fresh iid-v2 completed
+   the one reviewed execution: all 2,048 rows, exact 4,984,960 candidate-worlds
+   and zero refusals. Aggregate `d0b4397c…cdb9` passed its MC-fidelity bounds.
+   Exact `7dee880` now separates that valid label decision from the negative
+   V11 admission decision; external terminal/source review is the current gate.
 5. **Run the passed S3c one-card controller only as T4 mechanics.** The score-free
    curriculum and source `e9db4a2` / packet `f58d23b7…3874` passed component
    review, but shared H0's unignored-lock reopen failure. Replacement source
@@ -363,10 +372,10 @@ strength result.
 ### T4 — first closed stronger-Teacher generation
 
 T4 must produce artifacts and a challenger, not another design-only audit.
-H0 and capture are terminal; the active sequence is:
+H0, capture and label execution are terminal; the active sequence is:
 
-1. pass and run iid-v2 capacity, then freeze/review/run all 16 label shards and
-   aggregate only on 2,048/2,048 valid rows;
+1. independently review the terminal label aggregate and V11-free consumer,
+   then freeze and separately review exactly one training packet;
 2. train at least eight seeds of separate play-ranking and calibrated-outcome
    heads, with bury separate, and choose the recipe/checkpoint only on CALIB;
 3. open the untouched REPORT fold once; only a passing recipe becomes the one
@@ -444,7 +453,7 @@ This table separates them by the training signal they actually produced.
 | **Teacher-v3 Stage A** | Run the complete dense label schema twice on the same 64 frozen states under distinct receipts. | Exact deterministic replay/mechanics passed and exposed multiple publication/identity defects before scale. | This certified the producer, not label quality or strength. Keep as the small falsifiability preflight for future Teacher versions. |
 | **Teacher-v3 Stage B** | On 128 disjoint mostly ordinary states, compare cheap heuristic-continuation choices with much more expensive `mc-strong@N=30` continuation labels. | Cheap-minus-gold regret upper bound was `0.0195 < 0.10`; the cheap proxy was adequate on this sampled population. | It only showed agreement with the old MC continuation on ordinary states. It did not create a dataset/model or show labels beyond the live champion. |
 | **Fresh live-champion audit** | On an untouched 64-state complement, compare frozen cheap and N=30 choices against the deployed report-LCB root evaluator. | Cheap and N=30 all-state regret bounds passed (`0.0354` and `0.0439`), but the eight boundary states had a weaker N=30 bound (`0.1421`). | Ordinary rows can be labeled cheaply; uncertain/boundary rows need escalation. This is the direct empirical reason for Stage C's mixed-budget hard tail. |
-| **Teacher Stage C (active T4 generation)** | Capture 2,048 fresh split-safe states; mix ordinary anchors with uncertainty/disagreement, bounded V11/structured proposals, bury, point play and tiny endgames. Use cheap labels where certified and deeper independent root comparisons on the hard tail, without recursively calling MC inside MC. | Capture-v7 and external replay review completed exact `1024/512/512`, `1920/128`. H0 produced no aggregate, so no human rule entered. Label v1 terminally failed after 2 complete/6 refused shards because realized-world deduplication exhausted late support and biased posterior mass; no aggregate was used. Iid-v2 `8a202e9` corrects the estimand and awaits capacity review. **No impact result yet:** zero usable labels, checkpoints or challengers. | Pass/run/review iid-v2 capacity, then freeze/review/run all labels; train at least eight seeds and require an untouched Teacher gate plus fresh whole-game win. |
+| **Teacher Stage C (active T4 generation)** | Capture 2,048 fresh split-safe states; mix ordinary anchors with uncertainty/disagreement, structured and historically sourced alternatives, bury, point play and tiny endgames. Price every action on shared MC worlds, using cheap labels where certified and deeper independent root comparisons on the hard tail without recursively calling MC inside MC. | Capture-v7 and external replay review completed exact `1024/512/512`, `1920/128`. Label-v2 completed all 2,048 rows with exact work and zero refusals; ordinary/hard-tail regret UCBs `0.0000295/0.02069` passed. V11's `+1/48` recall over matched random was inconclusive, so source `7dee880` keeps V11-origin actions only as source-agnostic examples and removes the checkpoint from training/inference. **No strength impact yet:** labels exist, but there is no checkpoint, REPORT look or challenger. | Pass the external terminal/source review, freeze/review the training packet, train at least eight seeds, then require an untouched REPORT gate and fresh whole-game win. |
 
 In plain English, Stage B asked, “Can the cheap grader reproduce the expensive
 grader on normal exam questions?” Stage C asks, “Can we write a better exam,
@@ -456,20 +465,21 @@ The Stage-C progression is:
 
 1. capture fresh non-evaluation states with explicit early/mid/late,
    lead/follow, banker/non-banker and action-count cells;
-2. oversample champion uncertainty, champion-versus-V11/human/structured
-   disagreement, point-bearing kitty voids, point-banking winners,
+2. oversample champion uncertainty, proposal-source disagreements,
+   point-bearing kitty voids, point-banking winners,
    replay-verified defensive point-protection states and exact-late
    opportunities;
-3. evaluate the union of incumbent, structured, V11 and human proposals on
-   common proposal worlds plus independent report worlds;
+3. evaluate every retained legal action on common proposal worlds plus
+   independent report worlds; provenance is diagnostic metadata, never a model
+   input or a reason to trust an action;
 4. compare named continuation contracts: the production continuation for
    deployment relevance, S4 when applicable, and exact/perfect-information
    late play only as a bounded privileged diagnostic—not a public-policy label;
 5. escalate high-SE/disagreement rows to larger budgets or exact-late labels
    and gate hard-tail regret on untouched states;
 6. train separate pairwise/listwise ranking and calibrated signed-outcome
-   heads across seeds and state-count curves; integrate first as proposal,
-   ranking or allocation help inside search;
+   heads across seeds and state-count curves; let the learned ensemble propose
+   its own top novel legal action, then retain report-LCB as the safety judge;
 7. spend 10k/50k-scale collection only after untouched teacher metrics and a
    fresh paired bot screen improve.
 
@@ -522,15 +532,14 @@ human corpus allows.
 |---|---|---|---|
 | **H0 v1** — exact `9770313`, packet `9ff160a9…247d3` | Froze the population, DESIGN/AUDIT split and no-outcome authority; intended to compare production, human, V11 and random proposals. | Split/design review PASS, then **SUPERSEDED PRE-EXECUTION**: the pinned V11 SHA named no executable artifact. No controller or outcome existed. | The sampling/split geometry survives, but v1 cannot parent execution. |
 | **H0 v2** — exact `12dac55`, packet `2cccf580…8f2b` | Preserved the rows and bound the real `ep07.npz` V11 checkpoint, portable live report-LCB parent and disjoint 30-world selection / 300-world reporting idea. | Claude passed the identity repair at `9fdb67a`, then a score-free implementation audit **SUPERSEDED IT PRE-CONTROLLER**. “Analysis ballot” had no hard cap, report-LCB was conflated with downstream continuation, and requested candidate recall had no defined relevant-action universe. No outcomes existed. | V2 proved the real artifacts and parent could reopen; it did not define a finite executable estimand. |
-| **H0 v3** — source `b02b6de`, packet commit `d6214ce`, packet `4d3f0a35…8cc3c` | Preserves every v2 play row, freezes all bury keys, caps the union at 17 play / 33 bury actions, draws V11 and random from the same novel pool, separates report-LCB root choice from `HeuristicBot` rollout continuation, uses three disjoint folds and caps total work at 1,329,210 candidate-world rollouts. | **DESIGN + REPLACEMENT CONTROLLER PASS / ZERO OUTCOMES.** Claude passed the design at `239f13c`; after the v2 integration HOLD, replacement source `4ebcd09` / packet `cf074871…35392` passed at `205b6af`. | Execute once in T4; supported proposals may feed the passed Stage-C rebind, but no label, training or strength claim follows from H0 alone. |
+| **H0 v3** — source `b02b6de`, packet commit `d6214ce`, packet `4d3f0a35…8cc3c` | Preserved every v2 play row, froze all bury keys, capped the union at 17 play / 33 bury actions, drew V11 and random from the same novel pool, separated report-LCB root choice from `HeuristicBot` rollout continuation, used three disjoint folds and capped total work at 1,329,210 candidate-world rollouts. | **TERMINAL NO-USE / NO AGGREGATE.** Claude passed the design and replacement controller, but the one execution completed 555/557 rows; two score-free refusals correctly blocked aggregate utility. | Never retry or mine partial utilities. H0 proves neither that human/V11 proposals help nor that they are weak; this Stage-C generation admits neither as an inference rule. |
 
-After the one reviewed T4 execution, H0 publishes proposal-source membership
-and survival, paired human/model/champion utilities, continuation ranking flips
-and per-surface heterogeneity. Supported novel actions become proposal/prior
-candidates; disagreement states enter Stage C's DESIGN mining. Unsupported
-human moves remain useful error-analysis cases. Raw H0 actions never become
-strength labels merely because a person played them, and H0 AUDIT never becomes
-the final model-selection REPORT.
+The one reviewed T4 execution did not publish a complete population result.
+Its two refusals prevent source-survival or paired-utility inference, and no
+retry is allowed. The frozen actions remain useful source-agnostic error cases,
+but no human or V11 rule enters inference. Raw H0 actions never become strength
+labels merely because a person or old model proposed them, and H0 AUDIT never
+becomes the final model-selection REPORT.
 
 H0 answers “was the human's action a useful proposal?” It does **not** answer
 “why did the bot seat lose that trick?” The latter requires replaying every bot

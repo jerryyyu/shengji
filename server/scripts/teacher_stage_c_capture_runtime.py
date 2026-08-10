@@ -10,10 +10,12 @@ Stage-C label folds, trains a model, claims strength, promotes, or deploys.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import copy
 import hashlib
 import json
 import math
+import multiprocessing
 import os
 import random
 import stat
@@ -358,8 +360,8 @@ SCAN_RECORD_FIELDS = (
 )
 DIAGNOSTIC_RECORD_FIELDS = (
     "cell_id", "state_id", "selection_priority", "status", "eligible",
-    "candidate_count", "attempts", "worlds", "candidate_worlds",
-    "selection_diagnostic",
+    "candidate_count", "candidate_actions", "attempts", "worlds",
+    "candidate_worlds", "selection_diagnostic",
 )
 
 
@@ -410,7 +412,11 @@ def _scan_record(ordinal: int, seed: int, cell_id: str, status: str,
 def _diagnostic_record(*, cell_id: str, state: Mapping[str, object],
                        status: str, eligible: bool,
                        diagnostic: Mapping[str, object] | None) -> dict:
-    candidate_count = len(state.get("candidates", []))
+    candidate_actions = [
+        list(_action_key(candidate["cards"]))
+        for candidate in state.get("candidates", [])
+    ]
+    candidate_count = len(candidate_actions)
     attempts = worlds = candidate_worlds = 0
     stored_diagnostic = None
     if diagnostic is not None:
@@ -426,6 +432,7 @@ def _diagnostic_record(*, cell_id: str, state: Mapping[str, object],
         "status": status,
         "eligible": eligible,
         "candidate_count": candidate_count,
+        "candidate_actions": candidate_actions,
         "attempts": attempts,
         "worlds": worlds,
         "candidate_worlds": candidate_worlds,
@@ -598,6 +605,13 @@ def _reconcile_generation_witness(
             raise RuntimeRefused("Stage-C diagnostic witness identity drift")
         candidate_count = _nonnegative_int(
             record.get("candidate_count"), "Stage-C candidate count")
+        candidate_actions = record.get("candidate_actions")
+        if (not isinstance(candidate_actions, list)
+                or len(candidate_actions) != candidate_count
+                or any(not isinstance(action, list) or not action
+                       or list(_action_key(action)) != action
+                       for action in candidate_actions)):
+            raise RuntimeRefused("Stage-C diagnostic candidate actions drift")
         candidate_cap = 20 if expected_scan["surface_type"] == "play" else 33
         if candidate_count > candidate_cap or (
                 record["eligible"] and candidate_count == 0):
@@ -666,9 +680,11 @@ def _reconcile_generation_witness(
                         "Stage-C uncertainty sampler counters do not "
                         "reconcile")
                 margin = diagnostic.get("production_margin")
+                chooser = make_bot("mc-strong", seed=0)
                 if (not isinstance(margin, (int, float))
                         or isinstance(margin, bool)
                         or not math.isfinite(margin)
+                        or float(margin) != float(chooser.MARGIN)
                         or diagnostic.get("margin_window")
                         != UNCERTAINTY_MARGIN_WINDOW):
                     raise RuntimeRefused(
@@ -722,12 +738,15 @@ def _reconcile_generation_witness(
                         raise RuntimeRefused(
                             "Stage-C complete uncertainty statistics drift")
                     gap, se = numeric
+                    expected_best = chooser._pick_index(
+                        candidate_actions, means, range(candidate_count))
                     expected_gap = means[best] - means[0]
                     expected_eligible = (
                         best != 0
                         and abs(expected_gap - float(margin))
                         <= UNCERTAINTY_MARGIN_WINDOW)
-                    if (not math.isclose(
+                    if (best != expected_best
+                            or not math.isclose(
                             float(gap), expected_gap,
                             rel_tol=1e-12, abs_tol=1e-12)
                             or float(se) < 0
@@ -1393,6 +1412,11 @@ def _expected_dataset_path() -> Path:
             "state-set.json").resolve()
 
 
+def _expected_verification_path() -> Path:
+    return (REPO / "server/runs/logs" / CTRL.RUN_ID /
+            "terminal-verification.json").resolve()
+
+
 def _shard_seeds(schedule: Mapping[str, object]) -> range:
     return range(
         int(schedule["first_seed"]),
@@ -1401,47 +1425,45 @@ def _shard_seeds(schedule: Mapping[str, object]) -> range:
     )
 
 
-def run_shard(*, packet_path: Path, expected_packet_sha256: str,
-              receipt_path: Path, expected_receipt_sha256: str,
-              shard_index: int, out: Path, progress_every: int) -> dict:
-    packet = _controller_packet(packet_path, expected_packet_sha256)
-    _receipt(receipt_path, expected_receipt_sha256, packet,
-             expected_packet_sha256)
-    if not 0 <= shard_index < CTRL.CAPTURE_SHARDS:
-        raise RuntimeRefused("capture shard index outside reviewed schedule")
-    if out.resolve() != _expected_shard_path(shard_index):
-        raise RuntimeRefused("capture shard output differs from reviewed path")
-    if os.path.lexists(out) or os.path.lexists(Path(str(out) + ".partial")):
-        raise RuntimeRefused("refusing existing capture shard/partial")
-    schedule = packet["schedule"]["shards"][shard_index]
+def _generate_shard_evidence(
+    packet: dict,
+    schedule: Mapping[str, object],
+    *,
+    shard_index: int,
+    actor_identity: Mapping[str, object],
+    net,
+    progress_every: int,
+    progress_status: str,
+) -> tuple[dict, list[dict], dict, dict, dict]:
+    """Deterministically reconstruct every scan disposition and reservoir.
+
+    The same function owns original generation and terminal replay.  A stored
+    rejection is therefore not evidence by itself: terminal verification
+    reruns the exact actor/candidate path for every scheduled seed and requires
+    byte-identical scan, diagnostic and retained-state witnesses.
+    """
     split = str(schedule["split"])
     cells = {cell["cell_id"]: cell
              for cell in packet["schedule"]["quota_cells"][split]}
     reservoirs: dict[str, list[dict]] = {cell_id: [] for cell_id in cells}
     scan_records: list[dict] = []
-    actor_identity = _actor_identity()
-    net = _load_npnet(str(REPO / V11_PATH))
     seeds = _shard_seeds(schedule)
     for ordinal, seed in enumerate(seeds, 1):
         cell = _cell_for_seed(packet, split, seed)
         cell_id = str(cell["cell_id"])
-        # Every expected population miss is returned as a named reason by
-        # ``capture_deal``. An exception is an implementation/correctness
-        # failure and aborts the shard instead of becoming a plausible-looking
-        # rejection counter.
-        state, reason = capture_deal(seed, split, cell, actor_identity)
+        state, reason = capture_deal(seed, split, cell, dict(actor_identity))
         if (state is not None and cell["stratum"] in {
                 "proposal_disagreement", "structured_point_void"}):
             state, reason = hydrate_candidates(state, net)
         if state is not None:
-            limit = int(cell["pre_candidate_limit"])
-            _reservoir_add(reservoirs[cell_id], state, limit)
+            _reservoir_add(
+                reservoirs[cell_id], state, int(cell["pre_candidate_limit"]))
         scan_records.append(_scan_record(
             ordinal, seed, cell_id, reason, state))
         if progress_every > 0 and (ordinal % progress_every == 0
                                    or ordinal == len(seeds)):
             print(json.dumps({
-                "status": "SCANNING",
+                "status": progress_status,
                 "shard": shard_index,
                 "split": split,
                 "deals_scanned": ordinal,
@@ -1470,14 +1492,17 @@ def run_shard(*, packet_path: Path, expected_packet_sha256: str,
                 if diagnostic is None or reason != "eligible":
                     hydrated = None
             diagnostic_records.append(_diagnostic_record(
-                cell_id=cell_id, state=(evaluated if evaluated is not None else state),
-                status=reason, eligible=hydrated is not None,
-                diagnostic=diagnostic))
+                cell_id=cell_id,
+                state=(evaluated if evaluated is not None else state),
+                status=reason,
+                eligible=hydrated is not None,
+                diagnostic=diagnostic,
+            ))
             if hydrated is not None:
                 eligible.append(hydrated)
             if cell["stratum"] == "champion_uncertainty":
                 print(json.dumps({
-                    "status": "UNCERTAINTY_DIAGNOSTIC",
+                    "status": f"{progress_status}_UNCERTAINTY",
                     "shard": shard_index,
                     "cell_id": cell_id,
                     "candidates_checked": index,
@@ -1505,17 +1530,44 @@ def run_shard(*, packet_path: Path, expected_packet_sha256: str,
     witness["witness_sha256"] = _self_hash(witness, "witness_sha256")
     counts, cell_counts, uncertainty_work = _reconcile_generation_witness(
         packet, schedule, witness, retained)
-    if uncertainty_work["candidate_worlds"] > sum(
-            int(cell["diagnostic_candidate_limit"] or 0)
-            * 20 * CTRL.UNCERTAINTY_WORLDS
-            for cell in cells.values()):
+    max_candidate_worlds = sum(
+        int(cell["diagnostic_candidate_limit"] or 0)
+        * 20 * CTRL.UNCERTAINTY_WORLDS
+        for cell in cells.values())
+    if uncertainty_work["candidate_worlds"] > max_candidate_worlds:
         raise RuntimeRefused("capture uncertainty shard exceeded work ceiling")
-    if uncertainty_work["attempts"] > sum(
-            int(cell["diagnostic_candidate_limit"] or 0)
-            * CTRL.UNCERTAINTY_WORLDS * CTRL.UNCERTAINTY_ATTEMPT_FACTOR
-            for cell in cells.values()):
+    max_attempts = sum(
+        int(cell["diagnostic_candidate_limit"] or 0)
+        * CTRL.UNCERTAINTY_WORLDS * CTRL.UNCERTAINTY_ATTEMPT_FACTOR
+        for cell in cells.values())
+    if uncertainty_work["attempts"] > max_attempts:
         raise RuntimeRefused(
             "capture uncertainty shard exceeded attempt ceiling")
+    return witness, retained, counts, cell_counts, uncertainty_work
+
+
+def run_shard(*, packet_path: Path, expected_packet_sha256: str,
+              receipt_path: Path, expected_receipt_sha256: str,
+              shard_index: int, out: Path, progress_every: int) -> dict:
+    packet = _controller_packet(packet_path, expected_packet_sha256)
+    _receipt(receipt_path, expected_receipt_sha256, packet,
+             expected_packet_sha256)
+    if not 0 <= shard_index < CTRL.CAPTURE_SHARDS:
+        raise RuntimeRefused("capture shard index outside reviewed schedule")
+    if out.resolve() != _expected_shard_path(shard_index):
+        raise RuntimeRefused("capture shard output differs from reviewed path")
+    if os.path.lexists(out) or os.path.lexists(Path(str(out) + ".partial")):
+        raise RuntimeRefused("refusing existing capture shard/partial")
+    schedule = packet["schedule"]["shards"][shard_index]
+    split = str(schedule["split"])
+    actor_identity = _actor_identity()
+    net = _load_npnet(str(REPO / V11_PATH))
+    seeds = _shard_seeds(schedule)
+    witness, retained, counts, cell_counts, uncertainty_work = (
+        _generate_shard_evidence(
+            packet, schedule, shard_index=shard_index,
+            actor_identity=actor_identity, net=net,
+            progress_every=progress_every, progress_status="SCANNING"))
     # Reopen every mutable identity after compute and before publication.
     _controller_packet(packet_path, expected_packet_sha256)
     _receipt(receipt_path, expected_receipt_sha256, packet,
@@ -1631,6 +1683,132 @@ def validate_shard(shard: Mapping[str, object], packet: dict,
             f"capture shard {index} uncertainty attempt ceiling drift")
 
 
+def replay_shard_dispositions(
+    shard: Mapping[str, object],
+    packet: dict,
+    receipt_sha256: str,
+    index: int,
+    *,
+    progress_every: int,
+) -> dict:
+    """Replay every scheduled deal and require the full witness byte-for-byte.
+
+    Structural witness validation cannot prove that an omitted state truly was
+    ineligible.  This terminal path reconstructs the actor trajectory,
+    candidate hydration, uncertainty fold and both reservoirs from the seed
+    schedule.  It therefore catches a forged rejection even when every stored
+    digest and counter was recomputed around the forgery.
+    """
+    validate_shard(shard, packet, receipt_sha256, index)
+    schedule = packet["schedule"]["shards"][index]
+    actor_identity = _actor_identity()
+    net = _load_npnet(str(REPO / V11_PATH))
+    witness, retained, counts, cell_counts, uncertainty_work = (
+        _generate_shard_evidence(
+            packet, schedule, shard_index=index,
+            actor_identity=actor_identity, net=net,
+            progress_every=progress_every,
+            progress_status="REPLAYING_DISPOSITIONS"))
+    if witness != shard.get("generation_witness"):
+        raise RuntimeRefused(
+            f"capture shard {index} replay-authenticated disposition drift")
+    if retained != shard.get("retained_states"):
+        raise RuntimeRefused(
+            f"capture shard {index} replay-authenticated reservoir drift")
+    if (counts != shard.get("counts")
+            or cell_counts != shard.get("cell_counts")
+            or uncertainty_work != shard.get("uncertainty_work")):
+        raise RuntimeRefused(
+            f"capture shard {index} replay-authenticated counters drift")
+    return {
+        "shard_index": index,
+        "deals_replayed": len(_shard_seeds(schedule)),
+        "generation_witness_sha256": witness["witness_sha256"],
+        "retained_state_ids_sha256": shard["retained_state_ids_sha256"],
+        "uncertainty_work": uncertainty_work,
+        "byte_identical": True,
+    }
+
+
+def _replay_shard_from_paths(args: tuple[str, str, str, str, int, int]) -> dict:
+    """Spawn-safe worker for the terminal full-population replay."""
+    (packet_name, packet_sha256, receipt_name, receipt_sha256,
+     index, progress_every) = args
+    packet_path = Path(packet_name)
+    receipt_path = Path(receipt_name)
+    packet = _controller_packet(packet_path, packet_sha256)
+    _receipt(receipt_path, receipt_sha256, packet, packet_sha256)
+    shard_path = _expected_shard_path(index)
+    if not _terminal_file(shard_path):
+        raise RuntimeRefused(
+            f"capture shard {index} is missing before disposition replay")
+    before_sha256 = CTRL.sha256_file(shard_path)
+    shard = _load_json(shard_path)
+    summary = replay_shard_dispositions(
+        shard, packet, receipt_sha256, index,
+        progress_every=progress_every)
+    if CTRL.sha256_file(shard_path) != before_sha256:
+        raise RuntimeRefused(
+            f"capture shard {index} changed during disposition replay")
+    return {**summary, "shard_sha256": before_sha256}
+
+
+def replay_all_shard_dispositions(
+    *,
+    packet_path: Path,
+    expected_packet_sha256: str,
+    receipt_path: Path,
+    expected_receipt_sha256: str,
+    workers: int,
+    progress_every: int,
+) -> list[dict]:
+    if (isinstance(workers, bool) or not isinstance(workers, int)
+            or not 1 <= workers <= CTRL.CAPTURE_SHARDS):
+        raise RuntimeRefused("disposition replay worker count outside 1..24")
+    if (isinstance(progress_every, bool) or not isinstance(progress_every, int)
+            or progress_every <= 0):
+        raise RuntimeRefused("disposition replay progress cadence must be positive")
+    packet = _controller_packet(packet_path, expected_packet_sha256)
+    _receipt(receipt_path, expected_receipt_sha256, packet,
+             expected_packet_sha256)
+    inputs = [(
+        str(packet_path.resolve()), expected_packet_sha256,
+        str(receipt_path.resolve()), expected_receipt_sha256,
+        index, progress_every,
+    ) for index in range(CTRL.CAPTURE_SHARDS)]
+    summaries = []
+    context = multiprocessing.get_context("spawn")
+    with concurrent.futures.ProcessPoolExecutor(
+            max_workers=workers, mp_context=context) as pool:
+        futures = [pool.submit(_replay_shard_from_paths, value)
+                   for value in inputs]
+        try:
+            for future in concurrent.futures.as_completed(futures):
+                summaries.append(future.result())
+        except BaseException:
+            for future in futures:
+                future.cancel()
+            raise
+    summaries.sort(key=lambda item: item["shard_index"])
+    if ([item["shard_index"] for item in summaries]
+            != list(range(CTRL.CAPTURE_SHARDS))
+            or sum(item["deals_replayed"] for item in summaries)
+            != CTRL.TERMINAL_DISPOSITION_REPLAY_DEALS
+            or not all(item["byte_identical"] for item in summaries)):
+        raise RuntimeRefused("terminal disposition replay population drift")
+    replay_candidate_worlds = sum(
+        item["uncertainty_work"]["candidate_worlds"] for item in summaries)
+    replay_attempts = sum(
+        item["uncertainty_work"]["attempts"] for item in summaries)
+    if (replay_candidate_worlds > packet["schedule"][
+            "max_terminal_replay_uncertainty_candidate_worlds"]
+            or replay_attempts > packet["schedule"][
+                "max_terminal_replay_uncertainty_attempts"]):
+        raise RuntimeRefused(
+            "terminal disposition replay uncertainty work exceeded ceiling")
+    return summaries
+
+
 def _audit_rows(states: Sequence[dict], packet: dict) -> list[str]:
     quota = packet["parents"]
     del quota  # Parent presence is already revalidated; use immutable literals below.
@@ -1741,6 +1919,8 @@ def _dataset_payload(packet: dict, receipt_sha256: str,
             CTRL.canonical_json(audit)),
         "states": selected,
         "states_sha256": CTRL.sha256_bytes(CTRL.canonical_json(selected)),
+        "terminal_disposition_replay_required": True,
+        "state_set_review_authorized": False,
         "labels_authorized": False,
         "training_authorized": False,
         "strength_claim": False,
@@ -1817,11 +1997,26 @@ def freeze_dataset(*, packet_path: Path, expected_packet_sha256: str,
 def verify_dataset(*, packet_path: Path, expected_packet_sha256: str,
                    receipt_path: Path, expected_receipt_sha256: str,
                    shard_paths: Sequence[Path], dataset_path: Path,
-                   replay_every_selected_state: bool) -> dict:
+                   replay_every_selected_state: bool,
+                   disposition_replay_workers: int,
+                   disposition_progress_every: int,
+                   out: Path) -> dict:
     if not replay_every_selected_state:
         raise RuntimeRefused(
             "Stage-C terminal verification requires every selected-state replay")
+    if out.resolve() != _expected_verification_path():
+        raise RuntimeRefused(
+            "Stage-C terminal-verification output differs from reviewed path")
+    if os.path.lexists(out) or os.path.lexists(Path(str(out) + ".partial")):
+        raise RuntimeRefused(
+            "refusing existing Stage-C terminal verification/partial")
     packet = _controller_packet(packet_path, expected_packet_sha256)
+    if (disposition_replay_workers != packet["result_contract"][
+            "terminal_disposition_replay_workers"]
+            or disposition_progress_every != packet["result_contract"][
+                "terminal_disposition_progress_every"]):
+        raise RuntimeRefused(
+            "terminal disposition replay worker/progress contract drift")
     _receipt(receipt_path, expected_receipt_sha256, packet,
              expected_packet_sha256)
     shards = _load_shards(packet, expected_receipt_sha256, shard_paths)
@@ -1834,6 +2029,40 @@ def verify_dataset(*, packet_path: Path, expected_packet_sha256: str,
         raise RuntimeRefused("Stage-C dataset full recomputation drift")
     if actual.get("dataset_sha256") != _self_hash(actual, "dataset_sha256"):
         raise RuntimeRefused("Stage-C dataset self-hash drift")
+    disposition_replays = replay_all_shard_dispositions(
+        packet_path=packet_path,
+        expected_packet_sha256=expected_packet_sha256,
+        receipt_path=receipt_path,
+        expected_receipt_sha256=expected_receipt_sha256,
+        workers=disposition_replay_workers,
+        progress_every=disposition_progress_every,
+    )
+    capture_uncertainty = {
+        "attempts": sum(item["uncertainty_work"]["attempts"]
+                        for item in shards),
+        "worlds": sum(item["uncertainty_work"]["worlds"]
+                      for item in shards),
+        "candidate_worlds": sum(
+            item["uncertainty_work"]["candidate_worlds"] for item in shards),
+    }
+    replay_uncertainty = {
+        "attempts": sum(item["uncertainty_work"]["attempts"]
+                        for item in disposition_replays),
+        "worlds": sum(item["uncertainty_work"]["worlds"]
+                      for item in disposition_replays),
+        "candidate_worlds": sum(
+            item["uncertainty_work"]["candidate_worlds"]
+            for item in disposition_replays),
+    }
+    total_uncertainty = {
+        key: capture_uncertainty[key] + replay_uncertainty[key]
+        for key in capture_uncertainty
+    }
+    if (total_uncertainty["candidate_worlds"] > packet["schedule"][
+            "max_total_uncertainty_candidate_worlds"]
+            or total_uncertainty["attempts"] > packet["schedule"][
+                "max_total_uncertainty_attempts"]):
+        raise RuntimeRefused("capture plus terminal uncertainty work exceeded cap")
     net = _load_npnet(str(REPO / V11_PATH))
     for index, state in enumerate(actual["states"], 1):
         rnd = replay_state(state)
@@ -1859,18 +2088,41 @@ def verify_dataset(*, packet_path: Path, expected_packet_sha256: str,
     if CTRL.sha256_file(dataset_path) != CTRL.sha256_bytes(
             CTRL.canonical_json(actual)):
         raise RuntimeRefused("Stage-C dataset changed during verification")
-    return {
+    payload = {
+        "schema": CTRL.VERIFICATION_SCHEMA,
+        "run_id": CTRL.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": expected_packet_sha256,
+        "capture_receipt_sha256": expected_receipt_sha256,
+        "schedule_sha256": packet["schedule"]["schedule_sha256"],
         "status": "VERIFIED_STAGE_C_CAPTURE",
         "dataset_sha256": CTRL.sha256_file(dataset_path),
         "states": actual["state_count"],
         "split_counts": actual["split_counts"],
         "surface_counts": actual["surface_counts"],
         "replay_every_selected_state": True,
+        "terminal_disposition_replay_deals": sum(
+            item["deals_replayed"] for item in disposition_replays),
+        "terminal_disposition_replay_workers": disposition_replay_workers,
+        "disposition_replays": disposition_replays,
+        "capture_uncertainty_work": capture_uncertainty,
+        "terminal_replay_uncertainty_work": replay_uncertainty,
+        "total_uncertainty_work": total_uncertainty,
+        "all_scan_dispositions_replay_authenticated": True,
+        "state_set_review_authorized": True,
         "labels_authorized": False,
         "training_authorized": False,
         "strength_claim": False,
         "production_promotion": False,
+        "production_deployment": False,
     }
+    payload["verification_sha256"] = _self_hash(
+        payload, "verification_sha256")
+    _controller_packet(packet_path, expected_packet_sha256)
+    _receipt(receipt_path, expected_receipt_sha256, packet,
+             expected_packet_sha256)
+    CTRL.publish_exclusive(out, payload)
+    return payload
 
 
 def _identity_args(parser: argparse.ArgumentParser) -> None:
@@ -1913,6 +2165,11 @@ def parser() -> argparse.ArgumentParser:
     verify_parser.add_argument("--dataset", required=True)
     verify_parser.add_argument("--replay-every-selected-state",
                                action="store_true")
+    verify_parser.add_argument("--disposition-replay-workers", type=int,
+                               required=True)
+    verify_parser.add_argument("--disposition-progress-every", type=int,
+                               default=250)
+    verify_parser.add_argument("--out", required=True)
     return root
 
 
@@ -1945,7 +2202,10 @@ def main(argv: list[str] | None = None) -> None:
             expected_receipt_sha256=args.expected_capture_receipt_sha256,
             shard_paths=[Path(path) for path in args.shards],
             dataset_path=Path(args.dataset),
-            replay_every_selected_state=args.replay_every_selected_state)
+            replay_every_selected_state=args.replay_every_selected_state,
+            disposition_replay_workers=args.disposition_replay_workers,
+            disposition_progress_every=args.disposition_progress_every,
+            out=Path(args.out))
     print(json.dumps(value, sort_keys=True))
 
 

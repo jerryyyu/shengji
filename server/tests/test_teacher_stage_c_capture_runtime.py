@@ -189,6 +189,75 @@ def _rehash_witness_and_shard(shard: dict) -> None:
     shard["shard_sha256"] = runtime._self_hash(shard, "shard_sha256")
 
 
+def _real_one_seed_bury_shard() -> tuple[dict, dict, str]:
+    schedule = copy.deepcopy(ctrl.build_schedule(_base()))
+    seed = 170_000_000
+    while True:
+        cell = runtime._cell_for_seed({"schedule": schedule}, "DESIGN", seed)
+        if (cell["surface_type"] == "bury"
+                and cell["stratum"] == "ordinary_anchor"):
+            break
+        seed += 1
+    shard_schedule = copy.deepcopy(schedule["shards"][0])
+    shard_schedule.update({
+        "seed_start": seed, "scan_deals": 1, "first_seed": seed,
+        "seed_stride": 8, "seed_count": 1,
+    })
+    schedule["shards"][0] = shard_schedule
+    schedule["scan_deals"] = 1
+    schedule["schedule_sha256"] = ctrl.sha256_bytes(ctrl.canonical_json({
+        key: value for key, value in schedule.items()
+        if key != "schedule_sha256"
+    }))
+    packet = {
+        "external_sha256": "a" * 64,
+        "producer": {"git": "b" * 40},
+        "schedule": schedule,
+    }
+    actor_identity = runtime._actor_identity()
+    net = runtime._load_npnet(str(_repo() / runtime.V11_PATH))
+    witness, retained, counts, cell_counts, work = (
+        runtime._generate_shard_evidence(
+            packet, shard_schedule, shard_index=0,
+            actor_identity=actor_identity, net=net,
+            progress_every=0, progress_status="TEST"))
+    assert len(retained) == 1
+    receipt = "c" * 64
+    seeds = runtime._shard_seeds(shard_schedule)
+    shard = {
+        "schema": ctrl.SHARD_SCHEMA,
+        "run_id": ctrl.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": packet["external_sha256"],
+        "capture_receipt_sha256": receipt,
+        "schedule_sha256": schedule["schedule_sha256"],
+        "shard_index": 0,
+        "split": "DESIGN",
+        "schedule": shard_schedule,
+        "actor_identity": actor_identity,
+        "scan": {
+            "seed_count": 1, "first_seed": seeds.start,
+            "seed_stride": seeds.step, "stop_exclusive": seeds.stop,
+            "ledger_sha256": witness["scan_records_sha256"],
+            "generation_witness_sha256": witness["witness_sha256"],
+        },
+        "counts": counts,
+        "cell_counts": cell_counts,
+        "uncertainty_work": work,
+        "generation_witness": witness,
+        "retained_states": retained,
+        "retained_state_ids_sha256": ctrl.sha256_bytes(
+            ctrl.canonical_json([state["state_id"] for state in retained])),
+        "complete": True,
+        "labels_authorized": False,
+        "training_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+    }
+    shard["shard_sha256"] = runtime._self_hash(shard, "shard_sha256")
+    return packet, shard, receipt
+
+
 def test_cell_assignment_is_deterministic_and_in_split() -> None:
     packet = _packet()
     first = [runtime._cell_for_seed(packet, "DESIGN", seed)["cell_id"]
@@ -330,6 +399,48 @@ def test_terminal_shard_rejects_unreconciled_or_negative_work() -> None:
     _rehash_witness_and_shard(missing)
     with pytest.raises(runtime.RuntimeRefused, match="population drift"):
         runtime.validate_shard(missing, packet, receipt, 0)
+
+
+def test_terminal_disposition_replay_rejects_fully_rehashed_suppression() -> None:
+    packet, shard, receipt = _real_one_seed_bury_shard()
+    runtime.validate_shard(shard, packet, receipt, 0)
+    runtime.replay_shard_dispositions(
+        shard, packet, receipt, 0, progress_every=1)
+
+    forged = copy.deepcopy(shard)
+    scan = forged["generation_witness"]["scan_records"][0]
+    scan.update({
+        "status": "forged_suppression", "surface_type": None,
+        "seat": None, "ply": None, "state_id": None,
+        "selection_priority": None,
+    })
+    forged["generation_witness"]["diagnostic_records"] = []
+    forged["retained_states"] = []
+    witness = forged["generation_witness"]
+    witness["scan_records_sha256"] = runtime._records_sha256(
+        witness["scan_records"])
+    witness["diagnostic_records_sha256"] = runtime._records_sha256([])
+    witness["witness_sha256"] = runtime._self_hash(
+        witness, "witness_sha256")
+    counts, cell_counts, work = runtime._reconcile_generation_witness(
+        packet, forged["schedule"], witness, [])
+    forged["counts"] = counts
+    forged["cell_counts"] = cell_counts
+    forged["uncertainty_work"] = work
+    forged["scan"]["ledger_sha256"] = witness["scan_records_sha256"]
+    forged["scan"]["generation_witness_sha256"] = witness["witness_sha256"]
+    forged["retained_state_ids_sha256"] = ctrl.sha256_bytes(
+        ctrl.canonical_json([]))
+    forged["shard_sha256"] = runtime._self_hash(
+        forged, "shard_sha256")
+
+    # Structural reconciliation alone intentionally cannot decide whether a
+    # rejected trajectory existed.  The mandatory terminal replay can.
+    runtime.validate_shard(forged, packet, receipt, 0)
+    with pytest.raises(runtime.RuntimeRefused,
+                       match="replay-authenticated disposition"):
+        runtime.replay_shard_dispositions(
+            forged, packet, receipt, 0, progress_every=1)
 
 
 def test_shard_seed_schedule_partitions_exact_split() -> None:
@@ -493,6 +604,90 @@ def test_uncertainty_underfill_reports_every_failed_attempt(
         "rejected_worlds": 0,
         "impossible_worlds": 0,
     }
+
+
+def test_uncertainty_winner_and_margin_are_recomputed_from_frozen_bot() -> None:
+    schedule = copy.deepcopy(ctrl.build_schedule(_base()))
+    seed = 170_000_000
+    while True:
+        cell = runtime._cell_for_seed({"schedule": schedule}, "DESIGN", seed)
+        if cell["stratum"] == "champion_uncertainty":
+            break
+        seed += 1
+    shard_schedule = copy.deepcopy(schedule["shards"][0])
+    shard_schedule.update({
+        "seed_start": seed, "scan_deals": 1, "first_seed": seed,
+        "seed_stride": 8, "seed_count": 1,
+    })
+    packet = {"schedule": schedule}
+    state_id = runtime._canonical_state_id(
+        split="DESIGN", seed=seed, surface_type="play", seat=0, ply=0)
+    state = {
+        "surface_type": "play", "seat": 0, "ply": 0,
+        "state_id": state_id,
+        "selection_priority": runtime._priority(
+            "DESIGN", str(cell["cell_id"]), seed, state_id),
+        "candidates": [{"cards": ["C2"]}, {"cards": ["C3"]}],
+    }
+    diagnostic = {
+        "schema": "teacher-stage-c-uncertainty-selection-v1",
+        "selection_only": True,
+        "may_train_or_label": False,
+        "evaluation_complete": True,
+        "worlds": 30,
+        "attempts": 30,
+        "candidate_worlds": 60,
+        "sampler_counters": {
+            "sample_attempts": 30, "accepted_worlds": 30,
+            "failed_worlds": 0, "rejected_worlds": 0,
+            "impossible_worlds": 0,
+        },
+        "means": [0.0, 5.0],
+        "raw_best_index": 0,
+        "paired_gap_vs_candidate0": 0.0,
+        "paired_se_vs_candidate0": 0.0,
+        "production_margin": 5.0,
+        "margin_window": runtime.UNCERTAINTY_MARGIN_WINDOW,
+        "eligible": False,
+    }
+    scan_records = [runtime._scan_record(
+        1, seed, str(cell["cell_id"]), "eligible", state)]
+    diagnostic_records = [runtime._diagnostic_record(
+        cell_id=str(cell["cell_id"]), state=state,
+        status="outside_uncertainty_window", eligible=False,
+        diagnostic=diagnostic)]
+    witness = {
+        "schema": ctrl.GENERATION_WITNESS_SCHEMA,
+        "complete": True,
+        "scan_records": scan_records,
+        "scan_records_sha256": runtime._records_sha256(scan_records),
+        "diagnostic_records": diagnostic_records,
+        "diagnostic_records_sha256": runtime._records_sha256(
+            diagnostic_records),
+    }
+    witness["witness_sha256"] = runtime._self_hash(
+        witness, "witness_sha256")
+    with pytest.raises(runtime.RuntimeRefused,
+                       match="uncertainty selection semantics"):
+        runtime._reconcile_generation_witness(
+            packet, shard_schedule, witness, [])
+
+    diagnostic["raw_best_index"] = 1
+    diagnostic["paired_gap_vs_candidate0"] = 5.0
+    diagnostic["eligible"] = True
+    diagnostic_records[0] = runtime._diagnostic_record(
+        cell_id=str(cell["cell_id"]), state=state,
+        status="eligible", eligible=True, diagnostic=diagnostic)
+    diagnostic["production_margin"] = 999.0
+    diagnostic_records[0]["selection_diagnostic"] = diagnostic
+    witness["diagnostic_records_sha256"] = runtime._records_sha256(
+        diagnostic_records)
+    witness["witness_sha256"] = runtime._self_hash(
+        witness, "witness_sha256")
+    with pytest.raises(runtime.RuntimeRefused,
+                       match="margin semantics"):
+        runtime._reconcile_generation_witness(
+            packet, shard_schedule, witness, [])
 
 
 def test_generation_witness_reconciles_underfill_attempt_work() -> None:
@@ -731,4 +926,7 @@ def test_runtime_cli_requires_replay_flag() -> None:
             packet_path=Path("missing"), expected_packet_sha256="a" * 64,
             receipt_path=Path("missing"), expected_receipt_sha256="b" * 64,
             shard_paths=[], dataset_path=Path("missing"),
-            replay_every_selected_state=False)
+            replay_every_selected_state=False,
+            disposition_replay_workers=8,
+            disposition_progress_every=250,
+            out=Path("missing"))

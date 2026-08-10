@@ -521,7 +521,15 @@ def evaluate_predictions(examples: Sequence[Mapping[str, object]],
             state_brier.append(sum((float(model_p) - float(target_p)) ** 2
                                    for model_p, target_p in zip(
                                        predicted, actual, strict=True)))
-            state_mae.append(abs(distribution_mean(predicted)
+            # ``predicted`` comes from float32 softmax and is already checked
+            # above at the frozen 1e-6 model-output tolerance.  Reusing the
+            # 1e-9 empirical-target validator here would reject ordinary
+            # softmax roundoff even though the prediction contract passed.
+            predicted_mean = sum(
+                utility * float(probability)
+                for utility, probability in zip(
+                    UTILITY_BINS, predicted, strict=True))
+            state_mae.append(abs(predicted_mean
                                  - distribution_mean(actual)))
             if prior_distribution is not None:
                 state_prior.append(-sum(

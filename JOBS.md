@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-10 08:37 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-10 08:42 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,19 +8,19 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | none | **FREE / WAITING ON CAPTURE-V6 REVIEW.** V5 was held before admission on an equal-value incumbent-bury ordering bug. On exact v6 PASS, Mini consumes the fresh slot once and runs 24 shards in three waves of eight, then freezes 2,048 states and replay-authenticates all 750,000 dispositions. |
+| Mini | Teacher Stage-C capture v6, session `13568` | **RUNNING / WAVE 1 OF 3.** Exact review PASS `8d6ce71`; source `2bdb094`; packet `40c602ea…20ffd`; one-shot receipt external SHA `8580b336…f8c66` (internal `cc24b5b7…0bd10`). Eight workers run at a time with progress every 250 deals. After 24 shards, the same bounded script freezes 2,048 states and replay-authenticates all 750,000 dispositions. |
 | Air | none | **FREE / V6 TRAINING SOURCE STAGED.** Detached head `8ca347f` passes 145/145 under Python 3.14.6. Air starts the 48-cell play/bury × eight-seed × 25/50/100% matrix only after complete reviewed labels exist. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
 ## Next admitted execution
 
-The only immediate compute gate is external review of capture-v6 source
-`2bdb094`, packet commit `055a196`, external packet SHA
-`40c602ea…20ffd`. V5's review found one remaining equal-valued incumbent-bury
-tie after its play/follow/random-source repairs; it has no receipt/state and is
-superseded. Capture-v3's six partials remain terminal no-use. After v6 PASS:
+Capture-v6 passed exact independent review at `8d6ce71` and was admitted once.
+The 07:53 v5 HOLD was Codex's audit; its remaining equal-valued
+incumbent-bury tie was repaired before this run. V5 has no receipt/state and is
+superseded; capture-v3's six partials remain terminal no-use. Current order:
 
-1. Mini runs all 24 capture shards from scratch in three eight-worker waves.
+1. **RUNNING:** Mini runs all 24 capture shards from scratch in three
+   eight-worker waves.
 2. Mini freezes exactly 2,048 states and authenticates the full 750,000-deal
    scan. External state-set review follows.
 3. Mini runs a reviewed 32-state label-capacity pilot, then (only on PASS) the
@@ -58,7 +58,7 @@ The canonical numbers and meanings are in the results table in
 | 08-10 | Teacher Stage-C capture v3 | **TERMINAL HOLD / SIX PARTIAL SHARDS NO-USE** | exact source `0b697b6`; first wave found deterministic exact-late phase drift at seeds `170002101` and `170007422`; no later waves, pooling or retry |
 | 08-10 | Teacher Stage-C capture v4 repair | **EXTERNAL PASS / SUPERSEDED PRE-ADMISSION** | source `5a51a1e`; packet `0d1a94d4…54eaa`; Claude PASS `8263492`; exact phase fix remains valid, but a later candidate canonicality defect means no v4 receipt/state may be issued |
 | 08-10 | Teacher Stage-C capture v5 canonical-source repair | **HOLD / SUPERSEDED BEFORE ADMISSION** | source `a71c67e`; packet `e299ac6c…cf749`; play/follow/random-source repairs were sound, but equal-valued SmartBot incumbent buries still inherited hand order; zero v5 states/worlds |
-| 08-10 | Teacher Stage-C capture v6 incumbent repair | **EXTERNAL REVIEW OPEN / ZERO V6 STATES** | source `2bdb094`; packet commit `055a196`; packet `40c602ea…20ffd`; exact `Random(25)` tie witness plus 350-state soak; 57/57 focused tests |
+| 08-10 | Teacher Stage-C capture v6 incumbent repair | **EXTERNAL PASS / CAPTURE RUNNING** | Claude PASS `8d6ce71`; source `2bdb094`; packet commit `055a196`; packet `40c602ea…20ffd`; one-shot receipt external `8580b336…f8c66`; Mini session `13568` |
 | 08-09 | S4 complete-round v2 screen | **TERMINAL PASS / CONFIRMATION NOT LAUNCHED** | exact `cad3992`; treatment−champion `+0.086914 +/- 0.056166`, LCB `+0.030748`; treatment and matched null identical, null−champion zero; confirmation projection `365.592` fleet-hours / `45.699` max-shard hours |
 | 08-09 | S4 point-banking exact-state screen | **MECHANISM PASS / FULL-GAME PACKET REVIEW** | screen `abd9f36f…cdc00`; receipt `90124eb6…f526b`; overall point delta `+5.156`, LCB `+3.029`; both roles positive; no strength or launch authority |
 | 08-09 | Human H0 design v3 | **DESIGN PASS / CONTROLLER FROZEN** | source `b02b6de`, packet commit `d6214ce`, packet `4d3f0a35…8cc3c`; Claude marker `239f13c`; preserved plays, frozen buries, 17/33 caps, explicit continuation, finite work; no outcomes |

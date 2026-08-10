@@ -2,16 +2,18 @@
 
 The learned model never directly overrides the incumbent here.  It selects at
 most one challenger from an already frozen public-information candidate union.
-The treatment pair is incumbent versus that challenger.  A matched null uses
+The treatment pair is incumbent versus that challenger. A matched null uses
 the exact same model trigger (and therefore the same number of searched arms)
-but substitutes one deterministic random non-incumbent candidate.  A later
-reviewed policy wrapper may feed those pairs to fresh paired report-LCB search.
+but substitutes one deterministic random non-incumbent candidate. The policy
+wrappers feed those pairs to fresh paired report-LCB search.
 
-This module does not generate ballots, sample worlds, play cards, register a
-bot, open evidence, or authorize strength/promotion/deployment.
+This module does not register a bot, open evidence, or authorize a strength
+run, promotion, or deployment. Merely constructing a wrapper grants no run
+authority.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import random
 import time
@@ -30,6 +32,40 @@ BURY_CANDIDATE_CAP = 33
 
 class StageCCompositionError(RuntimeError):
     """A candidate union, surface, model result, or null identity drifted."""
+
+
+def _require_live_report_lcb(bot) -> None:
+    expected = {
+        "N_DETERMINIZATIONS": 30,
+        "REQUIRE_EXACT_WORK": True,
+        "REPORT_FOLD_WORLDS": 300,
+        "REPORT_RULE": "lcb",
+        "REPORT_MIN_GAIN": 0.0,
+        "REPORT_ALPHA": 0.05,
+    }
+    actual = {name: getattr(bot, name, None) for name in expected}
+    if actual != expected:
+        raise StageCCompositionError(
+            "Stage-C parent differs from exact live report-LCB")
+
+
+def _validate_candidate_legality(rnd, seat: int,
+                                 candidates: Sequence[Sequence[str]],
+                                 surface: str) -> None:
+    for candidate in candidates:
+        clone = copy.deepcopy(rnd)
+        try:
+            if surface == "play":
+                clone.play(seat, list(candidate))
+            elif surface == "bury":
+                clone.bury(seat, list(candidate))
+            else:
+                raise StageCCompositionError(
+                    "Stage-C candidate legality surface drift")
+        except Exception as exc:
+            raise StageCCompositionError(
+                f"Stage-C {surface} candidate is replay-illegal: {exc}") \
+                from exc
 
 
 def action_key(cards: Sequence[object]) -> tuple[str, ...]:
@@ -169,6 +205,7 @@ def make_play_report_lcb_bot(
 
         def __init__(self, policy_seed=None):
             super().__init__(policy_seed)
+            _require_live_report_lcb(self)
             self.stage_c_focus_calls = 0
             self.stage_c_focus_triggers = 0
             self.stage_c_focus_fallbacks = 0
@@ -184,6 +221,7 @@ def make_play_report_lcb_bot(
                 if action_key(union[0]) != action_key(live[0]):
                     raise StageCCompositionError(
                         "Stage-C union candidate zero differs from live")
+                _validate_candidate_legality(rnd, seat, union, "play")
                 state_key = _state_key(rnd, seat, union)
                 record = focused_pairs(
                     ensemble, rnd, seat, union, state_key=state_key)
@@ -314,6 +352,7 @@ def make_bury_report_lcb_bot(
 
         def __init__(self, policy_seed=None):
             super().__init__(policy_seed)
+            _require_live_report_lcb(self)
             self.stage_c_focus_calls = 0
             self.stage_c_focus_triggers = 0
             self.stage_c_focus_fallbacks = 0
@@ -340,6 +379,7 @@ def make_bury_report_lcb_bot(
                 if action_key(union[0]) != action_key(incumbent):
                     raise StageCCompositionError(
                         "Stage-C bury candidate zero differs from live")
+                _validate_candidate_legality(rnd, seat, union, "bury")
                 if not isinstance(source_record, Mapping):
                     raise StageCCompositionError(
                         "Stage-C candidate-source record drift")

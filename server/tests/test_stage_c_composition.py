@@ -31,12 +31,20 @@ class _BuryEnsemble(_Ensemble):
     surface = "bury"
 
 
+class _Round(SimpleNamespace):
+    def play(self, _seat, _cards):
+        return None
+
+    def bury(self, _seat, _cards):
+        return None
+
+
 def _round():
-    return SimpleNamespace(phase="play", turn=2, banker=0)
+    return _Round(phase="play", turn=2, banker=0)
 
 
 def _bury_round():
-    return SimpleNamespace(phase="bury", turn=None, banker=0)
+    return _Round(phase="bury", turn=None, banker=0)
 
 
 def test_model_trigger_focuses_treatment_and_matches_null_work(monkeypatch) -> None:
@@ -163,6 +171,45 @@ def test_play_wrapper_treatment_and_null_share_triggered_arm_count(
     assert len(null._candidates(_round(), 2)) == 2
     assert treatment.last_stage_c_focus_record["model_selected_index"] \
         == null.last_stage_c_focus_record["model_selected_index"] == 2
+
+
+def test_wrapper_refuses_parent_contract_drift(monkeypatch) -> None:
+    from shengji.ai.registry import REGISTRY
+
+    base = REGISTRY["mc-s0-report-lcb"]
+    monkeypatch.setattr(base, "REPORT_FOLD_WORLDS", 299)
+    with pytest.raises(COMPOSE.StageCCompositionError, match="exact live"):
+        COMPOSE.make_play_report_lcb_bot(
+            _Ensemble(1), lambda *_args: ([['H2']], {}),
+            arm="treatment", seed=1)
+
+
+def test_play_wrapper_falls_back_when_source_candidate_is_illegal(
+        monkeypatch) -> None:
+    from shengji.ai.registry import REGISTRY
+
+    base = REGISTRY["mc-s0-report-lcb"]
+    live = [["H2"], ["HA"]]
+    monkeypatch.setattr(base, "_candidates",
+                        lambda _self, _rnd, _seat: copy.deepcopy(live))
+    monkeypatch.setattr(COMPOSE, "encode_obs", lambda _rnd, _seat: [0.0])
+    monkeypatch.setattr(COMPOSE, "encode_action", lambda _action, _rnd: [0.0])
+
+    class Round(SimpleNamespace):
+        def __deepcopy__(self, _memo):
+            return self
+
+        def play(self, _seat, cards):
+            if cards == ["BAD"]:
+                raise ValueError("not held")
+
+    rnd = Round(phase="play", turn=2, banker=0)
+    source = lambda *_args: (live + [["BAD"]], {})
+    bot = COMPOSE.make_play_report_lcb_bot(
+        _Ensemble(2), source, arm="treatment", seed=2)
+    assert bot._candidates(rnd, 2) == live
+    assert bot.stage_c_focus_fallbacks == 1
+    assert "replay-illegal" in bot.last_stage_c_focus_record["failure"]
 
 
 def test_bury_report_fold_uses_fresh_paired_banker_values() -> None:

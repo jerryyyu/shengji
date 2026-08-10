@@ -29,12 +29,19 @@ def _report_packet():
             "model_state_sha256": f"{seed + 101:064x}",
             "checkpoint_contract": {"seed": seed},
         } for seed in MODEL.TRAINING_SEEDS],
-        "report_manifest": [{
-            "index": index,
-            "logical_path": f"report/shard-{index - 12}.json",
-            "sha256": f"{index + 1:064x}",
-            "row_sha256s_sha256": f"{index + 101:064x}",
-        } for index in range(12, 16)],
+        "parents": {"fresh_report_selection": {
+            "sealed_selection_sha256": "8" * 64,
+            "fresh_report_states": 512,
+        }},
+        "report_schedule": {
+            "schedule_sha256": "9" * 64,
+            "candidate_world_ceiling": 10_000,
+            "shards": [{
+                "index": index,
+                "state_ids_sha256": f"{index + 11:064x}",
+            } for index in range(8)],
+        },
+        "report_contract": {"states": 2},
     }
 
 
@@ -73,16 +80,32 @@ def _report_result(packet):
         "selected_capability": packet["selected_capability"],
         "checkpoint_manifest_sha256": CTRL.REPORT_CTRL._manifest_hash(
             packet["checkpoint_manifest"]),
-        "report_manifest_sha256": CTRL.REPORT_CTRL._manifest_hash(
-            packet["report_manifest"]),
-        "opened_report_shards": [{
-            "index": item["index"],
-            "logical_path": item["logical_path"],
-            "external_sha256": item["sha256"],
-            "row_sha256s_sha256": item["row_sha256s_sha256"],
-        } for item in packet["report_manifest"]],
-        "report_shard_files_opened": 4,
-        "report_rows_opened": 512,
+        "fresh_report_selection_sha256": packet["parents"][
+            "fresh_report_selection"]["sealed_selection_sha256"],
+        "report_schedule_sha256": packet["report_schedule"][
+            "schedule_sha256"],
+        "opened_report_label_shards": [{
+            "index": index,
+            "logical_path": CTRL.REPORT_RUNTIME.SHARD_PATHS[index],
+            "external_sha256": f"{index + 31:064x}",
+            "internal_sha256": f"{index + 41:064x}",
+            "state_ids_sha256": packet["report_schedule"]["shards"][
+                index]["state_ids_sha256"],
+            "row_sha256s_sha256": f"{index + 51:064x}",
+            "status": "COMPLETE",
+            "refused_rows": 0,
+        } for index in range(8)],
+        "report_label_shard_files_opened": 8,
+        "fresh_report_states_reconstructed": 512,
+        "selected_surface_rows_labeled": 2,
+        "report_label_refusals": 0,
+        "work": {
+            "candidate_worlds_attempted": 9_000,
+            "candidate_worlds_completed": 9_000,
+        },
+        "candidate_world_ceiling": 10_000,
+        "candidate_world_ceiling_respected": True,
+        "v11_checkpoint_loaded": False,
         "evaluation": evaluation,
         "decision": evaluation["decision"],
         "composition_packet_review_authorized": True,
@@ -93,6 +116,30 @@ def _report_result(packet):
     }
     result["result_sha256"] = CTRL.self_hash(result, "result_sha256")
     return result
+
+
+def _report_supervisor_final(result):
+    value = {
+        "schema": CTRL.REPORT_SUPERVISOR.FINAL_SCHEMA,
+        "run_id": CTRL.REPORT_CTRL.RUN_ID,
+        "git": "a" * 40,
+        "controller_packet_sha256": "1" * 64,
+        "report_receipt_sha256": "2" * 64,
+        "report_schedule_sha256": "9" * 64,
+        "label_shards_complete": 8,
+        "result_path": CTRL.REPORT_RUNTIME.RESULT_PATH,
+        "result_external_sha256": "4" * 64,
+        "result_internal_sha256": result["result_sha256"],
+        "decision": result["decision"],
+        "composition_packet_review_authorized": True,
+        "report_reuse_authorized": False,
+        "retry_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+    }
+    value["final_sha256"] = CTRL.self_hash(value, "final_sha256")
+    return value
 
 
 def _exports():
@@ -112,33 +159,50 @@ def test_terminal_report_result_is_reopened_without_reselection(
     packet = _report_packet()
     packet["report_contract"] = {"states": 2}
     result = _report_result(packet)
+    supervisor = _report_supervisor_final(result)
     result_path = tmp_path / CTRL.REPORT_RUNTIME.RESULT_PATH
     result_path.parent.mkdir(parents=True)
     result_path.write_text("result")
     monkeypatch.setattr(CTRL, "REPO", tmp_path)
     monkeypatch.setattr(
         CTRL.REPORT_RUNTIME, "_packet",
-        lambda *_args, **_kw: (packet, {}, {}, {}))
+        lambda *_args, **_kw: (packet, {}, {}, {}, []))
     monkeypatch.setattr(CTRL.REPORT_RUNTIME, "_receipt",
-                        lambda *_args, **_kw: {})
-    reopened = []
+                        lambda *_args, **_kw: {
+                            "report_open_admission_slot_sha256": "3" * 64})
+    supervisor_path = tmp_path / CTRL.REPORT_SUPERVISOR.FINAL_PATH
+    supervisor_path.parent.mkdir(parents=True, exist_ok=True)
+    supervisor_path.write_text("supervisor")
+    review_claim = {"one_composition_controller_freeze_authorized": True}
     monkeypatch.setattr(
-        CTRL.REPORT_RUNTIME, "_validate_report_open_slot",
-        lambda *_args, **_kw: reopened.append(True))
+        CTRL.REPORT_SUPERVISOR, "expected_review_claim",
+        lambda **_kw: review_claim)
+    monkeypatch.setattr(CTRL, "_marker_claim",
+                        lambda *_args, **_kw: review_claim)
     monkeypatch.setattr(CTRL, "is_regular_unlinked", lambda _path: True)
-    monkeypatch.setattr(CTRL, "sha256_file", lambda _path: "4" * 64)
-    monkeypatch.setattr(CTRL, "load_json", lambda _path: result)
+    monkeypatch.setattr(
+        CTRL, "sha256_file",
+        lambda path: "5" * 64 if path.resolve() == supervisor_path.resolve()
+        else "4" * 64)
+    monkeypatch.setattr(
+        CTRL, "load_json",
+        lambda path: supervisor if path.resolve() == supervisor_path.resolve()
+        else result)
     packet_out, result_out = CTRL.validate_report_result(
         report_packet_path=tmp_path / "packet.json",
         report_packet_sha256="1" * 64,
         report_review_record=tmp_path / "review.txt",
+        fresh_report_review_record=tmp_path / "fresh-review.txt",
+        state_set_review_record=tmp_path / "state-review.txt",
         report_receipt_path=tmp_path / "receipt.json",
         report_receipt_sha256="2" * 64,
         report_result_path=result_path,
-        report_result_sha256="4" * 64)
+        report_result_sha256="4" * 64,
+        report_supervisor_final_path=supervisor_path,
+        report_supervisor_final_sha256="5" * 64,
+        report_result_review_record=tmp_path / "result-review.txt")
     assert packet_out is packet
     assert result_out is result
-    assert reopened == [True]
 
     broken = copy.deepcopy(result)
     broken["composition_packet_review_authorized"] = False
@@ -150,10 +214,15 @@ def test_terminal_report_result_is_reopened_without_reselection(
             report_packet_path=tmp_path / "packet.json",
             report_packet_sha256="1" * 64,
             report_review_record=tmp_path / "review.txt",
+            fresh_report_review_record=tmp_path / "fresh-review.txt",
+            state_set_review_record=tmp_path / "state-review.txt",
             report_receipt_path=tmp_path / "receipt.json",
             report_receipt_sha256="2" * 64,
             report_result_path=result_path,
-            report_result_sha256="4" * 64)
+            report_result_sha256="4" * 64,
+            report_supervisor_final_path=supervisor_path,
+            report_supervisor_final_sha256="5" * 64,
+            report_result_review_record=tmp_path / "result-review.txt")
 
 
 def test_packet_binds_exact_models_population_and_narrow_authority(
@@ -174,11 +243,21 @@ def test_packet_binds_exact_models_population_and_narrow_authority(
                            "external_sha256": "1" * 64},
         report_review_ref={"logical_path": "review.txt",
                            "external_sha256": "7" * 64},
+        fresh_report_review_ref={"logical_path": "fresh-review.txt",
+                                 "external_sha256": "8" * 64},
+        state_set_review_ref={"logical_path": "state-review.txt",
+                              "external_sha256": "9" * 64},
         report_receipt_ref={"logical_path": "receipt.json",
                             "external_sha256": "2" * 64},
         report_result=result,
         report_result_ref={"logical_path": "result.json",
                            "external_sha256": "4" * 64},
+        report_supervisor_final_ref={
+            "logical_path": "report-supervisor-final.json",
+            "external_sha256": "a" * 64},
+        report_result_review_ref={
+            "logical_path": "report-result-review.txt",
+            "external_sha256": "b" * 64},
         exports=_exports())
     assert built["selected_capability"] == _capability()
     assert len(built["model_exports"]) == 8
@@ -257,8 +336,11 @@ def test_initial_review_claim_authorizes_capacity_only(
     built = CTRL.build_packet(
         git="a" * 40, report_packet=packet,
         report_packet_ref={}, report_review_ref={},
+        fresh_report_review_ref={}, state_set_review_ref={},
         report_receipt_ref={}, report_result=result,
         report_result_ref={"external_sha256": "4" * 64},
+        report_supervisor_final_ref={"external_sha256": "5" * 64},
+        report_result_review_ref={"external_sha256": "6" * 64},
         exports=_exports())
     claim = CTRL.expected_review_claim(built, "8" * 64)
     assert claim["one_capacity_preflight_authorized"] is True

@@ -57,9 +57,13 @@ REVIEW_MARKER = \
 
 REPORT_SURFACE_COUNTS = {"play": 480, "bury": 32}
 REPORT_SHARDS = 8
+SUPERVISOR_MAX_WORKERS = 8
+SUPERVISOR_HEARTBEAT_SECONDS = 30
+SUPERVISOR_HANDLED_SIGNALS = ("SIGHUP", "SIGINT", "SIGTERM")
 SOURCE_PATHS = (
     "server/scripts/teacher_stage_c_report_controller.py",
     "server/scripts/teacher_stage_c_report_runtime.py",
+    "server/scripts/teacher_stage_c_report_supervisor.py",
     "server/shengji/rl/stage_c_report.py",
     "server/shengji/rl/stage_c_model.py",
     "server/shengji/rl/stage_c_training.py",
@@ -154,6 +158,14 @@ def runtime_contract() -> dict:
         "numpy": value["numpy"],
         "device": value["device"],
         "cpu_threads": TRAIN.CPU_THREADS,
+        "max_concurrent_label_shards": SUPERVISOR_MAX_WORKERS,
+        "supervisor_heartbeat_seconds": SUPERVISOR_HEARTBEAT_SECONDS,
+        "supervisor_signal_contract": {
+            "handled_signals": list(SUPERVISOR_HANDLED_SIGNALS),
+            "signals_deferred_until_child_registered": True,
+            "terminates_all_owned_children": True,
+            "orphaned_label_workers_authorized": False,
+        },
     }
 
 
@@ -522,6 +534,22 @@ def build_packet(
                     shard["result"] for shard in report_schedule["shards"]],
                 "--out", f"server/runs/logs/{RUN_ID}/report-result.json",
             ],
+            "supervise": [
+                "{python}",
+                "server/scripts/teacher_stage_c_report_supervisor.py",
+                "launch",
+                "--expected-git", "{git}",
+                "--controller-packet", PACKET_PATH,
+                "--expected-controller-packet-sha256", "{packet_sha256}",
+                "--controller-review-record", "{controller_review_record}",
+                "--fresh-report-review-record",
+                "{fresh_report_review_record}",
+                "--state-set-review-record", "{state_set_review_record}",
+                "--report-receipt",
+                f"server/runs/logs/{RUN_ID}/report-receipt.json",
+                "--expected-report-receipt-sha256", "{receipt_sha256}",
+                "--heartbeat-seconds", str(SUPERVISOR_HEARTBEAT_SECONDS),
+            ],
         },
         "authority": {
             "fresh_report_capture_shards_revalidated": 8,
@@ -553,6 +581,8 @@ def expected_review_claim(packet: Mapping[str, object],
             "server/scripts/teacher_stage_c_report_controller.py"],
         "runtime_script_sha256": sources[
             "server/scripts/teacher_stage_c_report_runtime.py"],
+        "supervisor_script_sha256": sources[
+            "server/scripts/teacher_stage_c_report_supervisor.py"],
         "report_model_sha256": sources[
             "server/shengji/rl/stage_c_report.py"],
         "training_aggregate_sha256": packet["parents"][
@@ -571,6 +601,10 @@ def expected_review_claim(packet: Mapping[str, object],
         "report_candidate_world_ceiling": packet["report_schedule"][
             "candidate_world_ceiling"],
         "report_surface_states": packet["report_contract"]["states"],
+        "max_concurrent_label_shards": SUPERVISOR_MAX_WORKERS,
+        "supervisor_heartbeat_seconds": SUPERVISOR_HEARTBEAT_SECONDS,
+        "supervisor_signal_contract": packet["runtime_contract"][
+            "supervisor_signal_contract"],
         "model_score_tie_epsilon": packet["report_contract"][
             "model_score_tie_epsilon"],
         "execution_host": packet["runtime_contract"]["host"],

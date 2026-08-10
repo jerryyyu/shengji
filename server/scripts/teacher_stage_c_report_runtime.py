@@ -718,13 +718,13 @@ def _member_predictions(packet: Mapping[str, object],
     return values
 
 
-def evaluate(*, packet_path: Path, expected_packet_sha256: str,
-             review_record: Path, fresh_report_review_record: Path,
-             state_set_review_record: Path, receipt_path: Path,
-             expected_receipt_sha256: str,
-             shard_paths: Sequence[Path], out: Path) -> dict:
-    if out.resolve() != _expected_result_path():
-        raise ReportRuntimeRefused("Stage-C REPORT result path drift")
+def recompute_result(
+    *, packet_path: Path, expected_packet_sha256: str,
+    review_record: Path, fresh_report_review_record: Path,
+    state_set_review_record: Path, receipt_path: Path,
+    expected_receipt_sha256: str, shard_paths: Sequence[Path],
+) -> dict:
+    """Recompute the fixed terminal result without publishing or admitting."""
     packet, _dataset, _training, _fresh, states = _packet(
         packet_path, expected_packet_sha256,
         fresh_report_review_record=fresh_report_review_record,
@@ -860,6 +860,25 @@ def evaluate(*, packet_path: Path, expected_packet_sha256: str,
                 != item["external_sha256"]:
             raise ReportRuntimeRefused(
                 "fresh REPORT label shard changed during evaluation")
+    return payload
+
+
+def evaluate(*, packet_path: Path, expected_packet_sha256: str,
+             review_record: Path, fresh_report_review_record: Path,
+             state_set_review_record: Path, receipt_path: Path,
+             expected_receipt_sha256: str,
+             shard_paths: Sequence[Path], out: Path) -> dict:
+    if out.resolve() != _expected_result_path():
+        raise ReportRuntimeRefused("Stage-C REPORT result path drift")
+    payload = recompute_result(
+        packet_path=packet_path,
+        expected_packet_sha256=expected_packet_sha256,
+        review_record=review_record,
+        fresh_report_review_record=fresh_report_review_record,
+        state_set_review_record=state_set_review_record,
+        receipt_path=receipt_path,
+        expected_receipt_sha256=expected_receipt_sha256,
+        shard_paths=shard_paths)
     publish_exclusive(out, payload)
     return payload
 

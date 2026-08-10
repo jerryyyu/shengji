@@ -71,6 +71,14 @@ def test_report_packet_binds_fresh_selection_and_no_v11_dependency(
     runtime = {
         "host": "mini", "python": "3.14", "torch": "2.13",
         "numpy": "2.5", "device": "cpu", "cpu_threads": 1,
+        "max_concurrent_label_shards": 8,
+        "supervisor_heartbeat_seconds": 30,
+        "supervisor_signal_contract": {
+            "handled_signals": ["SIGHUP", "SIGINT", "SIGTERM"],
+            "signals_deferred_until_child_registered": True,
+            "terminates_all_owned_children": True,
+            "orphaned_label_workers_authorized": False,
+        },
     }
     capability = {"surface": "play", "head": "ranking", "epoch": 8}
     ensemble = [{
@@ -129,6 +137,8 @@ def test_report_packet_binds_fresh_selection_and_no_v11_dependency(
         "sealed_selection_sha256"] == "4" * 64
     assert packet["report_schedule"]["shard_count"] == 8
     assert len(packet["commands"]["run_shards"]) == 8
+    assert packet["commands"]["supervise"][1] == (
+        "server/scripts/teacher_stage_c_report_supervisor.py")
     assert packet["report_contract"]["v11_checkpoint_loaded"] is False
     assert packet["report_contract"]["v11_candidates_reconstructed"] is False
     assert packet["authority"] == {
@@ -148,4 +158,7 @@ def test_report_packet_binds_fresh_selection_and_no_v11_dependency(
     assert claim["teacher_labels_computed_before_review"] == 0
     assert claim["model_predictions_computed_before_review"] == 0
     assert claim["v11_checkpoint_loaded"] is False
+    assert claim["max_concurrent_label_shards"] == 8
+    assert claim["supervisor_signal_contract"] == runtime[
+        "supervisor_signal_contract"]
     assert claim["composition_authorized"] is False

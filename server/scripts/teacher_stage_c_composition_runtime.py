@@ -268,39 +268,62 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, object]:
 
     parents = packet.get("parents", {})
     if set(parents) != {
-            "report_packet", "report_review_record", "report_receipt",
-            "report_result", "report_open_admission_slot"}:
+            "report_packet", "report_review_record",
+            "fresh_report_review_record", "state_set_review_record",
+            "report_receipt", "report_result", "report_supervisor_final",
+            "report_result_review_record", "report_open_admission_slot"}:
         raise CompositionRuntimeRefused(
             "composition parent population drift")
     report_packet_ref = parents.get("report_packet", {})
     report_review_ref = parents.get("report_review_record", {})
+    fresh_report_review_ref = parents.get("fresh_report_review_record", {})
+    state_set_review_ref = parents.get("state_set_review_record", {})
     report_receipt_ref = parents.get("report_receipt", {})
     report_result_ref = parents.get("report_result", {})
+    report_supervisor_ref = parents.get("report_supervisor_final", {})
+    report_result_review_ref = parents.get(
+        "report_result_review_record", {})
     try:
         report_packet_path, _ = _artifact(
             report_packet_ref, "composition REPORT packet")
-        report_review_path = (REPO / str(
-            report_review_ref.get("logical_path"))).resolve()
-        if (not is_regular_unlinked(report_review_path)
-                or sha256_file(report_review_path)
-                != report_review_ref.get("external_sha256")):
-            raise CompositionRuntimeRefused(
-                "composition REPORT review path/SHA drift")
+        review_paths = []
+        for ref, label in (
+                (report_review_ref, "composition REPORT review"),
+                (fresh_report_review_ref,
+                 "composition fresh REPORT review"),
+                (state_set_review_ref, "composition state-set review"),
+                (report_result_review_ref,
+                 "composition REPORT result review")):
+            path = (REPO / str(ref.get("logical_path"))).resolve()
+            if (not is_regular_unlinked(path)
+                    or sha256_file(path) != ref.get("external_sha256")):
+                raise CompositionRuntimeRefused(f"{label} path/SHA drift")
+            review_paths.append(path)
+        (report_review_path, fresh_report_review_path,
+         state_set_review_path, report_result_review_path) = review_paths
         report_receipt_path, _ = _artifact(
             report_receipt_ref, "composition REPORT receipt")
         report_result_path, _ = _artifact(
             report_result_ref, "composition REPORT result")
+        report_supervisor_path, _ = _artifact(
+            report_supervisor_ref, "composition REPORT supervisor final")
         report_packet, report_result = CTRL.validate_report_result(
             report_packet_path=report_packet_path,
             report_packet_sha256=str(
                 report_packet_ref["external_sha256"]),
             report_review_record=report_review_path,
+            fresh_report_review_record=fresh_report_review_path,
+            state_set_review_record=state_set_review_path,
             report_receipt_path=report_receipt_path,
             report_receipt_sha256=str(
                 report_receipt_ref["external_sha256"]),
             report_result_path=report_result_path,
             report_result_sha256=str(
-                report_result_ref["external_sha256"]))
+                report_result_ref["external_sha256"]),
+            report_supervisor_final_path=report_supervisor_path,
+            report_supervisor_final_sha256=str(
+                report_supervisor_ref["external_sha256"]),
+            report_result_review_record=report_result_review_path)
     except CTRL.CompositionControllerRefused as exc:
         raise CompositionRuntimeRefused(str(exc)) from exc
     if (report_result.get("result_sha256")

@@ -35,6 +35,7 @@ sys.path.insert(0, str(SCRIPT.parent))
 
 import teacher_stage_c_report_controller as REPORT_CTRL  # noqa: E402
 import teacher_stage_c_report_runtime as REPORT_RUNTIME  # noqa: E402
+import teacher_stage_c_report_supervisor as REPORT_SUPERVISOR  # noqa: E402
 from shengji.ai.registry import make_bot  # noqa: E402
 from shengji.engine import combos, fast, legal  # noqa: E402
 from shengji.rl import stage_c_candidates as CANDIDATES  # noqa: E402
@@ -46,20 +47,20 @@ from shengji.rl import stage_c_screen as SCREEN  # noqa: E402
 from shengji.rl import stage_c_training as TRAIN  # noqa: E402
 
 
-SCHEMA = "teacher-stage-c-composition-screen-controller-v2"
-PACKET_ID = "teacher-stage-c-composition-screen-181m-v2"
+SCHEMA = "teacher-stage-c-composition-screen-controller-v3"
+PACKET_ID = "teacher-stage-c-composition-screen-181m-v3"
 RUN_ID = PACKET_ID
 PACKET_PATH = f"server/runs/logs/{RUN_ID}/controller-packet.json"
-REVIEW_SCHEMA = "teacher-stage-c-composition-screen-controller-review-v2"
-REVIEW_MARKER = "TEACHER_STAGE_C_COMPOSITION_SCREEN_CONTROLLER_V2_REVIEW "
-CAPACITY_RESULT_SCHEMA = "teacher-stage-c-composition-capacity-v2"
-CAPACITY_REVIEW_SCHEMA = "teacher-stage-c-composition-capacity-review-v2"
+REVIEW_SCHEMA = "teacher-stage-c-composition-screen-controller-review-v3"
+REVIEW_MARKER = "TEACHER_STAGE_C_COMPOSITION_SCREEN_CONTROLLER_V3_REVIEW "
+CAPACITY_RESULT_SCHEMA = "teacher-stage-c-composition-capacity-v3"
+CAPACITY_REVIEW_SCHEMA = "teacher-stage-c-composition-capacity-review-v3"
 CAPACITY_REVIEW_MARKER = \
-    "TEACHER_STAGE_C_COMPOSITION_CAPACITY_V2_REVIEW "
+    "TEACHER_STAGE_C_COMPOSITION_CAPACITY_V3_REVIEW "
 SUPERVISOR_REVIEW_SCHEMA = \
-    "teacher-stage-c-composition-supervisor-final-review-v2"
+    "teacher-stage-c-composition-supervisor-final-review-v3"
 SUPERVISOR_REVIEW_MARKER = \
-    "TEACHER_STAGE_C_COMPOSITION_SUPERVISOR_FINAL_V2_REVIEW "
+    "TEACHER_STAGE_C_COMPOSITION_SUPERVISOR_FINAL_V3_REVIEW "
 PREFLIGHT_SEED0 = 180_000_000
 PREFLIGHT_CLUSTERS = 4
 PREFLIGHT_MAX_SECONDS = 3_600.0
@@ -223,17 +224,44 @@ def _logical_ref(path: Path, expected_sha256: str, label: str) -> dict:
     return {"logical_path": logical, "external_sha256": expected_sha256}
 
 
+def _marker_claim(path: Path, marker: str, label: str) -> dict:
+    if not is_regular_unlinked(path):
+        raise CompositionControllerRefused(
+            f"{label} is not regular/unlinked")
+    matches = [line[len(marker):] for line in path.read_text().splitlines()
+               if line.startswith(marker)]
+    if len(matches) != 1:
+        raise CompositionControllerRefused(
+            f"{label} must contain exactly one raw marker")
+    try:
+        claim = json.loads(matches[0])
+    except ValueError as exc:
+        raise CompositionControllerRefused(
+            f"{label} marker is invalid JSON") from exc
+    if not isinstance(claim, dict):
+        raise CompositionControllerRefused(
+            f"{label} marker root is not an object")
+    return claim
+
+
 def validate_report_result(
     *, report_packet_path: Path, report_packet_sha256: str,
-    report_review_record: Path, report_receipt_path: Path,
+    report_review_record: Path, fresh_report_review_record: Path,
+    state_set_review_record: Path, report_receipt_path: Path,
     report_receipt_sha256: str, report_result_path: Path,
-    report_result_sha256: str,
+    report_result_sha256: str, report_supervisor_final_path: Path,
+    report_supervisor_final_sha256: str,
+    report_result_review_record: Path,
 ) -> tuple[dict, dict]:
-    """Reopen the terminal REPORT authority without reusing its rows."""
+    """Reopen a separately replayed terminal REPORT without reselection."""
     try:
-        packet, _dataset, _label_packet, _state_set = REPORT_RUNTIME._packet(
-            report_packet_path.resolve(), report_packet_sha256)
-        REPORT_RUNTIME._receipt(
+        packet, _dataset, _training, _fresh, _states = \
+            REPORT_RUNTIME._packet(
+                report_packet_path.resolve(), report_packet_sha256,
+                fresh_report_review_record=
+                fresh_report_review_record.resolve(),
+                state_set_review_record=state_set_review_record.resolve())
+        receipt = REPORT_RUNTIME._receipt(
             report_receipt_path.resolve(), report_receipt_sha256,
             packet, report_packet_sha256, report_review_record.resolve())
     except REPORT_RUNTIME.ReportRuntimeRefused as exc:
@@ -247,12 +275,22 @@ def validate_report_result(
     result = load_json(result_path)
     evaluation = result.get("evaluation")
     capability = packet["selected_capability"]
-    expected_opened = [{
-        "index": item["index"],
-        "logical_path": item["logical_path"],
-        "external_sha256": item["sha256"],
-        "row_sha256s_sha256": item["row_sha256s_sha256"],
-    } for item in packet["report_manifest"]]
+    opened = result.get("opened_report_label_shards")
+    schedule = packet["report_schedule"]
+    opened_ok = (
+        isinstance(opened, list) and len(opened) == REPORT_CTRL.REPORT_SHARDS
+        and all(
+            isinstance(item, dict)
+            and item.get("index") == index
+            and item.get("logical_path") == REPORT_RUNTIME.SHARD_PATHS[index]
+            and is_sha256(item.get("external_sha256"))
+            and is_sha256(item.get("internal_sha256"))
+            and item.get("state_ids_sha256")
+            == schedule["shards"][index]["state_ids_sha256"]
+            and is_sha256(item.get("row_sha256s_sha256"))
+            and item.get("status") == "COMPLETE"
+            and item.get("refused_rows") == 0
+            for index, item in enumerate(opened or [])))
     if (result.get("schema") != REPORT_RUNTIME.RESULT_SCHEMA
             or result.get("run_id") != REPORT_CTRL.RUN_ID
             or result.get("git") != packet["producer"]["git"]
@@ -262,17 +300,30 @@ def validate_report_result(
             != report_receipt_sha256
             or result.get("report_open_admission_slot")
             != REPORT_RUNTIME.REPORT_OPEN_ADMISSION_PATH
-            or not is_sha256(result.get(
-                "report_open_admission_slot_sha256"))
+            or result.get("report_open_admission_slot_sha256")
+            != receipt.get("report_open_admission_slot_sha256")
             or result.get("selected_capability")
             != packet["selected_capability"]
             or result.get("checkpoint_manifest_sha256")
             != REPORT_CTRL._manifest_hash(packet["checkpoint_manifest"])
-            or result.get("report_manifest_sha256")
-            != REPORT_CTRL._manifest_hash(packet["report_manifest"])
-            or result.get("opened_report_shards") != expected_opened
-            or result.get("report_shard_files_opened") != 4
-            or result.get("report_rows_opened") != 512
+            or result.get("fresh_report_selection_sha256")
+            != packet["parents"]["fresh_report_selection"][
+                "sealed_selection_sha256"]
+            or result.get("report_schedule_sha256")
+            != schedule["schedule_sha256"]
+            or not opened_ok
+            or result.get("report_label_shard_files_opened")
+            != REPORT_CTRL.REPORT_SHARDS
+            or result.get("fresh_report_states_reconstructed")
+            != packet["parents"]["fresh_report_selection"][
+                "fresh_report_states"]
+            or result.get("selected_surface_rows_labeled")
+            != packet["report_contract"]["states"]
+            or result.get("report_label_refusals") != 0
+            or result.get("candidate_world_ceiling")
+            != schedule["candidate_world_ceiling"]
+            or result.get("candidate_world_ceiling_respected") is not True
+            or result.get("v11_checkpoint_loaded") is not False
             or not isinstance(evaluation, dict)
             or evaluation.get("schema") != REPORT.REPORT_SCHEMA
             or evaluation.get("surface") != capability["surface"]
@@ -323,13 +374,61 @@ def validate_report_result(
             != self_hash(result, "result_sha256")):
         raise CompositionControllerRefused(
             "Stage-C REPORT result identity/authority drift")
+
+    supervisor_path = report_supervisor_final_path.resolve()
+    if (supervisor_path != (REPO / REPORT_SUPERVISOR.FINAL_PATH).resolve()
+            or not is_regular_unlinked(supervisor_path)
+            or not is_sha256(report_supervisor_final_sha256)
+            or sha256_file(supervisor_path)
+            != report_supervisor_final_sha256):
+        raise CompositionControllerRefused(
+            "Stage-C REPORT supervisor final path/SHA drift")
+    supervisor = load_json(supervisor_path)
+    if (supervisor.get("schema") != REPORT_SUPERVISOR.FINAL_SCHEMA
+            or supervisor.get("run_id") != REPORT_CTRL.RUN_ID
+            or supervisor.get("git") != packet["producer"]["git"]
+            or supervisor.get("controller_packet_sha256")
+            != report_packet_sha256
+            or supervisor.get("report_receipt_sha256")
+            != report_receipt_sha256
+            or supervisor.get("report_schedule_sha256")
+            != schedule["schedule_sha256"]
+            or supervisor.get("label_shards_complete")
+            != REPORT_CTRL.REPORT_SHARDS
+            or supervisor.get("result_path") != REPORT_RUNTIME.RESULT_PATH
+            or supervisor.get("result_external_sha256")
+            != report_result_sha256
+            or supervisor.get("result_internal_sha256")
+            != result["result_sha256"]
+            or supervisor.get("decision") != result["decision"]
+            or supervisor.get("composition_packet_review_authorized")
+            is not True
+            or supervisor.get("report_reuse_authorized") is not False
+            or supervisor.get("retry_authorized") is not False
+            or supervisor.get("strength_claim") is not False
+            or supervisor.get("production_promotion") is not False
+            or supervisor.get("production_deployment") is not False
+            or supervisor.get("final_sha256")
+            != self_hash(supervisor, "final_sha256")):
+        raise CompositionControllerRefused(
+            "Stage-C REPORT supervisor final identity/authority drift")
     try:
-        REPORT_RUNTIME._validate_report_open_slot(
-            packet, report_packet_sha256, report_receipt_sha256,
-            report_review_record.resolve(),
-            str(result["report_open_admission_slot_sha256"]))
-    except REPORT_RUNTIME.ReportRuntimeRefused as exc:
+        expected_review = REPORT_SUPERVISOR.expected_review_claim(
+            packet=packet, packet_external_sha256=report_packet_sha256,
+            receipt_external_sha256=report_receipt_sha256, result=result,
+            result_external_sha256=report_result_sha256,
+            supervisor_final=supervisor,
+            supervisor_external_sha256=report_supervisor_final_sha256)
+    except REPORT_SUPERVISOR.ReportSupervisorRefused as exc:
         raise CompositionControllerRefused(str(exc)) from exc
+    review = _marker_claim(
+        report_result_review_record.resolve(),
+        REPORT_SUPERVISOR.REVIEW_MARKER, "Stage-C REPORT result review")
+    if (review != expected_review
+            or review.get("one_composition_controller_freeze_authorized")
+            is not True):
+        raise CompositionControllerRefused(
+            "Stage-C REPORT result review claim/authority drift")
     return packet, result
 
 
@@ -541,9 +640,13 @@ def build_packet(
     *, git: str, report_packet: Mapping[str, object],
     report_packet_ref: Mapping[str, object],
     report_review_ref: Mapping[str, object],
+    fresh_report_review_ref: Mapping[str, object],
+    state_set_review_ref: Mapping[str, object],
     report_receipt_ref: Mapping[str, object],
     report_result: Mapping[str, object],
-    report_result_ref: Mapping[str, object], exports: list[dict],
+    report_result_ref: Mapping[str, object],
+    report_supervisor_final_ref: Mapping[str, object],
+    report_result_review_ref: Mapping[str, object], exports: list[dict],
 ) -> dict:
     capability = dict(report_packet["selected_capability"])
     if report_result["selected_capability"] != capability:
@@ -562,12 +665,16 @@ def build_packet(
         "parents": {
             "report_packet": dict(report_packet_ref),
             "report_review_record": dict(report_review_ref),
+            "fresh_report_review_record": dict(fresh_report_review_ref),
+            "state_set_review_record": dict(state_set_review_ref),
             "report_receipt": dict(report_receipt_ref),
             "report_result": {
                 **dict(report_result_ref),
                 "internal_sha256": report_result["result_sha256"],
                 "decision": report_result["decision"],
             },
+            "report_supervisor_final": dict(report_supervisor_final_ref),
+            "report_result_review_record": dict(report_result_review_ref),
             "report_open_admission_slot": {
                 "logical_path": report_result[
                     "report_open_admission_slot"],
@@ -609,6 +716,10 @@ def expected_review_claim(packet: Mapping[str, object],
         "packet_internal_sha256": packet["packet_sha256"],
         "report_result_sha256": packet["parents"]["report_result"][
             "external_sha256"],
+        "report_supervisor_final_sha256": packet["parents"][
+            "report_supervisor_final"]["external_sha256"],
+        "report_result_review_record_sha256": packet["parents"][
+            "report_result_review_record"]["external_sha256"],
         "selected_capability": packet["selected_capability"],
         "model_exports_sha256": packet["model_exports_sha256"],
         "ensemble_models": len(packet["model_exports"]),
@@ -718,10 +829,16 @@ def parser() -> argparse.ArgumentParser:
     root.add_argument("--report-packet", required=True)
     root.add_argument("--expected-report-packet-sha256", required=True)
     root.add_argument("--report-review-record", required=True)
+    root.add_argument("--fresh-report-review-record", required=True)
+    root.add_argument("--state-set-review-record", required=True)
     root.add_argument("--report-receipt", required=True)
     root.add_argument("--expected-report-receipt-sha256", required=True)
     root.add_argument("--report-result", required=True)
     root.add_argument("--expected-report-result-sha256", required=True)
+    root.add_argument("--report-supervisor-final", required=True)
+    root.add_argument(
+        "--expected-report-supervisor-final-sha256", required=True)
+    root.add_argument("--report-result-review-record", required=True)
     root.add_argument("--out", required=True)
     root.add_argument("--expected-out-sha256")
     return root
@@ -745,16 +862,29 @@ def main() -> int:
             "composition packet verification input drift")
     report_packet_path = Path(args.report_packet).resolve()
     report_review_path = Path(args.report_review_record).resolve()
+    fresh_report_review_path = Path(
+        args.fresh_report_review_record).resolve()
+    state_set_review_path = Path(args.state_set_review_record).resolve()
     report_receipt_path = Path(args.report_receipt).resolve()
     report_result_path = Path(args.report_result).resolve()
+    report_supervisor_final_path = Path(
+        args.report_supervisor_final).resolve()
+    report_result_review_path = Path(
+        args.report_result_review_record).resolve()
     packet, result = validate_report_result(
         report_packet_path=report_packet_path,
         report_packet_sha256=args.expected_report_packet_sha256,
         report_review_record=report_review_path,
+        fresh_report_review_record=fresh_report_review_path,
+        state_set_review_record=state_set_review_path,
         report_receipt_path=report_receipt_path,
         report_receipt_sha256=args.expected_report_receipt_sha256,
         report_result_path=report_result_path,
-        report_result_sha256=args.expected_report_result_sha256)
+        report_result_sha256=args.expected_report_result_sha256,
+        report_supervisor_final_path=report_supervisor_final_path,
+        report_supervisor_final_sha256=
+        args.expected_report_supervisor_final_sha256,
+        report_result_review_record=report_result_review_path)
     _preflight_export_environment()
     exports = _export_models(packet, verify=args.command == "verify")
     output = build_packet(
@@ -765,6 +895,12 @@ def main() -> int:
         report_review_ref=_logical_ref(
             report_review_path, sha256_file(report_review_path),
             "REPORT review record"),
+        fresh_report_review_ref=_logical_ref(
+            fresh_report_review_path, sha256_file(fresh_report_review_path),
+            "fresh REPORT review record"),
+        state_set_review_ref=_logical_ref(
+            state_set_review_path, sha256_file(state_set_review_path),
+            "state-set review record"),
         report_receipt_ref=_logical_ref(
             report_receipt_path, args.expected_report_receipt_sha256,
             "REPORT receipt"),
@@ -772,6 +908,13 @@ def main() -> int:
         report_result_ref=_logical_ref(
             report_result_path, args.expected_report_result_sha256,
             "REPORT result"),
+        report_supervisor_final_ref=_logical_ref(
+            report_supervisor_final_path,
+            args.expected_report_supervisor_final_sha256,
+            "REPORT supervisor final"),
+        report_result_review_ref=_logical_ref(
+            report_result_review_path, sha256_file(report_result_review_path),
+            "REPORT result review record"),
         exports=exports)
     if args.command == "freeze":
         publish_exclusive(out, output)

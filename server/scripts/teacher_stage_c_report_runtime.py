@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Consume one reviewed Stage-C REPORT packet exactly once.
+"""Label and evaluate one reviewed fresh Stage-C REPORT exactly once.
 
-Admission validates the packet, selected checkpoints and all non-REPORT
-parents without touching a REPORT shard.  Evaluation then opens the four
-sealed label shards, replays their semantics, scores only the CALIB-frozen
-surface/head/epoch ensemble, and publishes one terminal accept/reject result.
-It cannot compose a bot, launch games, promote or deploy.
+Admission authenticates the frozen DESIGN/CALIB-selected ensemble and the
+digest-sealed replacement population without computing a label or prediction.
+Eight one-shot workers then reconstruct their reviewed state partitions and
+run the finite-work Teacher directly on the captured candidate tensor; they
+never load V11. Evaluation reopens all eight terminal label shards, scores the
+frozen ensemble, and publishes one accept/reject result.
+
+No command here composes a bot, launches games, confirms, promotes or deploys.
+Every admission is consumed even when later work crashes or refuses.
 """
 from __future__ import annotations
 
@@ -16,7 +20,7 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, Sequence
 
 
 SCRIPT = Path(__file__).resolve()
@@ -25,6 +29,7 @@ REPO = SCRIPT.parents[2]
 sys.path.insert(0, str(SCRIPT.parent))
 
 import teacher_stage_c_capture_runtime as CAPTURE  # noqa: E402
+import teacher_stage_c_fresh_report_controller as FRESH  # noqa: E402
 import teacher_stage_c_label_runtime as LABEL  # noqa: E402
 import teacher_stage_c_report_controller as CTRL  # noqa: E402
 import teacher_stage_c_training_controller as TRAIN_CTRL  # noqa: E402
@@ -34,18 +39,29 @@ from shengji.rl import stage_c_report as REPORT  # noqa: E402
 from shengji.rl import stage_c_training as TRAIN  # noqa: E402
 
 
-RECEIPT_SCHEMA = "teacher-stage-c-report-receipt-v1"
-ADMISSION_SCHEMA = "teacher-stage-c-report-admission-v1"
-RESULT_SCHEMA = "teacher-stage-c-report-result-v1"
+RECEIPT_SCHEMA = "teacher-stage-c-v11-free-fresh-report-receipt-v1"
+ADMISSION_SCHEMA = "teacher-stage-c-v11-free-fresh-report-admission-v1"
+REPORT_OPEN_ADMISSION_SCHEMA = \
+    "teacher-stage-c-v11-free-fresh-report-open-admission-v1"
+SHARD_ADMISSION_SCHEMA = \
+    "teacher-stage-c-v11-free-fresh-report-shard-admission-v1"
+SHARD_SCHEMA = "teacher-stage-c-v11-free-fresh-report-label-shard-v1"
+RESULT_SCHEMA = "teacher-stage-c-v11-free-fresh-report-result-v1"
 RECEIPT_PATH = f"server/runs/logs/{CTRL.RUN_ID}/report-receipt.json"
 RESULT_PATH = f"server/runs/logs/{CTRL.RUN_ID}/report-result.json"
 ADMISSION_PATH = f"server/runs/locks/{CTRL.RUN_ID}.consumed.json"
 REPORT_OPEN_ADMISSION_PATH = \
     f"server/runs/locks/{CTRL.RUN_ID}.report-open.consumed.json"
+SHARD_ADMISSION_PATHS = tuple(
+    f"server/runs/locks/{CTRL.RUN_ID}.shard-{index:02d}.consumed.json"
+    for index in range(CTRL.REPORT_SHARDS))
+SHARD_PATHS = tuple(
+    f"server/runs/logs/{CTRL.RUN_ID}/labels/shard-{index:02d}.json"
+    for index in range(CTRL.REPORT_SHARDS))
 
 
 class ReportRuntimeRefused(RuntimeError):
-    """A packet, admission, REPORT shard, model or result identity drifted."""
+    """A packet, admission, fresh state, label, model or result drifted."""
 
 
 canonical_json = CTRL.canonical_json
@@ -158,14 +174,28 @@ def _validate_checkpoint_manifest(packet: Mapping[str, object],
         TRAIN.load_snapshot(path, expected_contract=expected_contract)
 
 
-def _packet(path: Path, expected_sha256: str) -> tuple[dict, dict, dict, dict]:
+def _packet(
+    path: Path, expected_sha256: str, *, fresh_report_review_record: Path,
+    state_set_review_record: Path,
+) -> tuple[dict, dict, dict, dict, list[dict]]:
     _require_clean_tree()
     if (path.resolve() != _expected_packet_path()
             or not is_regular_unlinked(path)
             or sha256_file(path) != expected_sha256):
         raise ReportRuntimeRefused("Stage-C REPORT packet path/SHA drift")
     packet = load_json(path)
-    authority = packet.get("authority", {})
+    expected_authority = {
+        "fresh_report_capture_shards_revalidated": 8,
+        "fresh_report_state_material_published": False,
+        "teacher_labels_computed": 0,
+        "model_predictions_computed": 0,
+        "report_utility_opened": False,
+        "one_report_execution_authorized": False,
+        "composition_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+    }
     if (packet.get("schema") != CTRL.SCHEMA
             or packet.get("packet_id") != CTRL.PACKET_ID
             or packet.get("run_id") != CTRL.RUN_ID
@@ -177,15 +207,16 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, dict, dict, dict]:
             or packet.get("producer", {}).get("sources")
             != CTRL._source_sha256s()
             or packet.get("runtime_contract") != CTRL.runtime_contract()
-            or authority.get("report_shard_files_opened") != 0
-            or authority.get("report_rows_opened") != 0
-            or authority.get("one_report_execution_authorized") is not False
-            or authority.get("composition_authorized") is not False
-            or authority.get("strength_claim") is not False
-            or authority.get("production_promotion") is not False
-            or authority.get("production_deployment") is not False):
-        raise ReportRuntimeRefused("Stage-C REPORT packet identity/authority drift")
-    parents = packet.get("parents", {})
+            or packet.get("authority") != expected_authority):
+        raise ReportRuntimeRefused(
+            "Stage-C fresh REPORT packet identity/authority drift")
+
+    parents = packet.get("parents")
+    if not isinstance(parents, dict) or set(parents) != {
+            "training_packet", "training_aggregate",
+            "training_aggregate_review_claim_sha256", "model_dataset",
+            "fresh_report_selection"}:
+        raise ReportRuntimeRefused("Stage-C REPORT parent population drift")
     training_packet_path, training_packet = _parent_file(
         parents["training_packet"], "training packet")
     if training_packet_path != (REPO / TRAIN_CTRL.PACKET_PATH).resolve():
@@ -199,6 +230,7 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, dict, dict, dict]:
     if verified_training_packet != training_packet:
         raise ReportRuntimeRefused(
             "Stage-C REPORT training packet replay drift")
+
     aggregate_path, aggregate = _parent_file(
         parents["training_aggregate"], "training aggregate")
     if (aggregate_path != (REPO / TRAIN_RUNTIME.AGGREGATE_PATH).resolve()
@@ -218,69 +250,78 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, dict, dict, dict]:
             or dataset != verified_dataset
             or dataset.get("dataset_sha256")
             != TRAIN_CTRL.self_hash(dataset, "dataset_sha256")
+            or dataset.get("old_report_labels_quarantined") is not True
             or dataset.get("report_rows_included") is not False
-            or dataset.get("report_shard_files_opened") != 0):
+            or dataset.get("report_label_shard_files_opened") != 0
+            or dataset.get("fresh_report_states_materialized") is not False):
         raise ReportRuntimeRefused("Stage-C REPORT model dataset drift")
-    label_path, label_packet = _parent_file(
-        parents["label_controller"], "label controller")
-    if label_path != (REPO / LABEL._ctrl().CONTROLLER_PACKET_PATH).resolve():
-        raise ReportRuntimeRefused("Stage-C REPORT label packet path drift")
+
+    fresh_parent = parents["fresh_report_selection"]
+    fresh_path, fresh_on_disk = _parent_file(
+        fresh_parent, "fresh REPORT packet")
+    if fresh_path != (REPO / FRESH.PACKET_PATH).resolve():
+        raise ReportRuntimeRefused("fresh REPORT packet path drift")
     try:
-        verified_label_packet = TRAIN_CTRL._reviewed_upstream_label_packet(
-            label_path, str(parents["label_controller"]["external_sha256"]))
+        fresh_report, fresh_review = TRAIN_CTRL.validate_fresh_report(
+            fresh_path, str(fresh_parent["external_sha256"]),
+            fresh_report_review_record, state_set_review_record)
     except TRAIN_CTRL.TrainingControllerRefused as exc:
         raise ReportRuntimeRefused(str(exc)) from exc
-    expected_label_packet = dict(label_packet)
-    expected_label_packet["external_sha256"] = parents["label_controller"][
-        "external_sha256"]
-    if verified_label_packet != expected_label_packet:
-        raise ReportRuntimeRefused("Stage-C REPORT label packet replay drift")
-    label_packet = verified_label_packet
-    state_path, state_set = _parent_file(
-        parents["state_set"], "state set")
-    if (state_path != (REPO / label_packet["parents"]["state_set"][
-            "logical_path"]).resolve()
-            or len(state_set.get("states", [])) != 2048):
-        raise ReportRuntimeRefused("Stage-C REPORT state-set drift")
+    if fresh_report != fresh_on_disk:
+        raise ReportRuntimeRefused("fresh REPORT packet replay drift")
+    sealed = fresh_report["sealed_selection"]
+    expected_fresh_parent = {
+        "logical_path": FRESH.PACKET_PATH,
+        "external_sha256": TRAIN_CTRL.FRESH_REPORT_PACKET_SHA256,
+        "internal_sha256": fresh_report["packet_sha256"],
+        "review_claim_sha256": CTRL._manifest_hash(fresh_review),
+        "sealed_selection_sha256": sealed["sealed_selection_sha256"],
+        "fresh_report_state_ids_sha256": sealed[
+            "fresh_report_state_ids_sha256"],
+        "fresh_report_state_material_sha256": sealed[
+            "fresh_report_state_material_sha256"],
+        "fresh_report_states": sealed["fresh_report_states"],
+        "state_material_published": False,
+    }
+    if (fresh_parent != expected_fresh_parent
+            or dataset.get("fresh_report_selection")
+            != TRAIN_CTRL.fresh_report_dataset_contract(
+                fresh_report, fresh_review)):
+        raise ReportRuntimeRefused(
+            "fresh REPORT selection/dataset binding drift")
+    states = CTRL._selected_fresh_states(
+        fresh_report, state_set_review_record)
+
     _validate_checkpoint_manifest(packet, training_packet)
     surface = packet["selected_capability"]["surface"]
     prior = TRAIN.state_balanced_prior(dataset["examples"]["DESIGN"][surface])
+    schedule = CTRL.build_report_schedule(states, surface=surface)
+    contract = packet.get("report_contract", {})
     if (packet.get("design_prior_distribution") != prior
-            or packet.get("report_contract", {}).get("surface") != surface
-            or packet["report_contract"].get("head")
-            != packet["selected_capability"]["head"]
-            or packet["report_contract"].get("states")
-            != CTRL.REPORT_SURFACE_COUNTS[surface]
-            or packet["report_contract"].get("single_report_look") is not True
-            or packet["report_contract"].get("model_score_tie_epsilon")
+            or packet.get("report_schedule") != schedule
+            or contract.get("surface") != surface
+            or contract.get("head") != packet["selected_capability"]["head"]
+            or contract.get("states") != CTRL.REPORT_SURFACE_COUNTS[surface]
+            or contract.get("candidate_world_ceiling")
+            != schedule["candidate_world_ceiling"]
+            or contract.get("v11_checkpoint_loaded") is not False
+            or contract.get("v11_candidates_reconstructed") is not False
+            or contract.get("captured_candidate_tensor_authenticated")
+            is not True
+            or contract.get("single_report_look") is not True
+            or contract.get("model_score_tie_epsilon")
             != REPORT.MODEL_SCORE_TIE_EPSILON
-            or packet["report_contract"].get("tie_break")
+            or contract.get("tie_break")
             != "lowest candidate index within epsilon"
-            or packet["report_contract"].get(
-                "durable_report_open_admission_slot")
+            or contract.get("durable_report_open_admission_slot")
             != REPORT_OPEN_ADMISSION_PATH
-            or packet["report_contract"].get(
-                "retry_after_report_open_or_failure_authorized") is not False
-            or packet["report_contract"].get(
+            or contract.get("retry_after_report_open_or_failure_authorized")
+            is not False
+            or contract.get(
                 "report_cannot_change_surface_head_epoch_or_seed_population")
             is not True):
-        raise ReportRuntimeRefused("Stage-C REPORT contract/prior drift")
-    manifest = packet.get("report_manifest")
-    if (not isinstance(manifest, list) or len(manifest) != 4
-            or [value.get("index") for value in manifest]
-            != list(range(12, 16))
-            or any(value.get("split") != "REPORT"
-                   or value.get("states") != 128 for value in manifest)
-            or sum(int(value["states"]) for value in manifest) != 512):
-        raise ReportRuntimeRefused("Stage-C REPORT sealed manifest drift")
-    # This deliberately validates logical identities only. No REPORT path is
-    # statted, hashed or opened before the durable admission exists.
-    for item in manifest:
-        expected_path = TRAIN_CTRL._expected_label_shard_path(
-            label_packet, int(item["index"]))
-        if item.get("logical_path") != str(expected_path.relative_to(REPO)):
-            raise ReportRuntimeRefused("Stage-C REPORT shard path drift")
-    return packet, dataset, label_packet, state_set
+        raise ReportRuntimeRefused("Stage-C fresh REPORT contract drift")
+    return packet, dataset, training_packet, fresh_report, states
 
 
 def _review_claim(path: Path, packet: Mapping[str, object],
@@ -301,8 +342,10 @@ def _slot_payload(packet: Mapping[str, object], packet_sha256: str,
         "selected_capability": packet["selected_capability"],
         "checkpoint_manifest_sha256": CTRL._manifest_hash(
             packet["checkpoint_manifest"]),
-        "report_manifest_sha256": CTRL._manifest_hash(
-            packet["report_manifest"]),
+        "report_schedule_sha256": packet["report_schedule"][
+            "schedule_sha256"],
+        "fresh_report_selection_sha256": packet["parents"][
+            "fresh_report_selection"]["sealed_selection_sha256"],
         "controller_review_record_sha256": sha256_file(review_record),
         "receipt_path": RECEIPT_PATH,
         "consumed_even_if_receipt_or_report_publication_fails": True,
@@ -311,86 +354,77 @@ def _slot_payload(packet: Mapping[str, object], packet_sha256: str,
     return value
 
 
+def _report_open_slot_payload(
+    packet: Mapping[str, object], packet_sha256: str,
+    review_record: Path, admission_slot_sha256: str,
+) -> dict:
+    value = {
+        "schema": REPORT_OPEN_ADMISSION_SCHEMA,
+        "run_id": CTRL.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": packet_sha256,
+        "controller_review_record_sha256": sha256_file(review_record),
+        "admission_slot_sha256": admission_slot_sha256,
+        "fresh_report_selection_sha256": packet["parents"][
+            "fresh_report_selection"]["sealed_selection_sha256"],
+        "report_schedule_sha256": packet["report_schedule"][
+            "schedule_sha256"],
+        "selected_capability": packet["selected_capability"],
+        "consumed_before_any_teacher_label_or_model_prediction": True,
+        "retry_after_failure_authorized": False,
+    }
+    value["slot_sha256"] = self_hash(value, "slot_sha256")
+    return value
+
+
 def admit(*, packet_path: Path, expected_packet_sha256: str,
-          review_record: Path, out: Path) -> dict:
-    packet, _dataset, _label_packet, _state_set = _packet(
-        packet_path, expected_packet_sha256)
-    claim = _review_claim(review_record, packet, expected_packet_sha256)
+          review_record: Path, fresh_report_review_record: Path,
+          state_set_review_record: Path, out: Path) -> dict:
     if out.resolve() != _expected_receipt_path():
         raise ReportRuntimeRefused("Stage-C REPORT receipt path drift")
+    packet, _dataset, _training, _fresh, _states = _packet(
+        packet_path, expected_packet_sha256,
+        fresh_report_review_record=fresh_report_review_record,
+        state_set_review_record=state_set_review_record)
+    _review_claim(review_record, packet, expected_packet_sha256)
     slot_path = (REPO / ADMISSION_PATH).resolve()
     slot = _slot_payload(packet, expected_packet_sha256, review_record)
     publish_exclusive(slot_path, slot)
+    slot_sha256 = sha256_file(slot_path)
+    report_slot_path = (REPO / REPORT_OPEN_ADMISSION_PATH).resolve()
+    report_slot = _report_open_slot_payload(
+        packet, expected_packet_sha256, review_record, slot_sha256)
+    publish_exclusive(report_slot_path, report_slot)
+    report_slot_sha256 = sha256_file(report_slot_path)
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "run_id": CTRL.RUN_ID,
         "git": packet["producer"]["git"],
         "controller_packet_sha256": expected_packet_sha256,
-        "controller_packet_internal_sha256": packet["packet_sha256"],
-        "selected_capability": packet["selected_capability"],
         "controller_review_record_sha256": sha256_file(review_record),
-        "controller_review_claim": claim,
+        "selected_capability": packet["selected_capability"],
         "admission_slot": ADMISSION_PATH,
-        "admission_slot_sha256": sha256_file(slot_path),
+        "admission_slot_sha256": slot_sha256,
         "report_open_admission_slot": REPORT_OPEN_ADMISSION_PATH,
-        "report_open_admission_consumed": False,
+        "report_open_admission_slot_sha256": report_slot_sha256,
+        "report_open_admission_consumed": True,
         "report_execution_authorized": True,
-        "report_shard_files_opened": 0,
-        "report_rows_opened": 0,
+        "teacher_labels_computed": 0,
+        "model_predictions_computed": 0,
+        "v11_checkpoint_loaded": False,
         "composition_authorized": False,
         "strength_claim": False,
         "production_promotion": False,
         "production_deployment": False,
     }
     receipt["receipt_sha256"] = self_hash(receipt, "receipt_sha256")
+    _packet(
+        packet_path, expected_packet_sha256,
+        fresh_report_review_record=fresh_report_review_record,
+        state_set_review_record=state_set_review_record)
+    _review_claim(review_record, packet, expected_packet_sha256)
     publish_exclusive(out, receipt)
     return receipt
-
-
-def _report_open_slot_payload(
-    packet: Mapping[str, object], packet_sha256: str,
-    receipt_sha256: str, review_record: Path,
-) -> dict:
-    value = {
-        "schema": "teacher-stage-c-report-open-admission-v1",
-        "run_id": CTRL.RUN_ID,
-        "git": packet["producer"]["git"],
-        "controller_packet_sha256": packet_sha256,
-        "report_receipt_sha256": receipt_sha256,
-        "selected_capability": packet["selected_capability"],
-        "report_manifest_sha256": CTRL._manifest_hash(
-            packet["report_manifest"]),
-        "controller_review_record_sha256": sha256_file(review_record),
-        "result_path": RESULT_PATH,
-        "consumed_before_any_report_path_access": True,
-        "retry_after_report_open_or_failure_authorized": False,
-    }
-    value["slot_sha256"] = self_hash(value, "slot_sha256")
-    return value
-
-
-def _consume_report_open_slot(
-    packet: Mapping[str, object], packet_sha256: str,
-    receipt_sha256: str, review_record: Path,
-) -> tuple[dict, str]:
-    path = (REPO / REPORT_OPEN_ADMISSION_PATH).resolve()
-    value = _report_open_slot_payload(
-        packet, packet_sha256, receipt_sha256, review_record)
-    publish_exclusive(path, value)
-    return value, sha256_file(path)
-
-
-def _validate_report_open_slot(
-    packet: Mapping[str, object], packet_sha256: str,
-    receipt_sha256: str, review_record: Path, expected_sha256: str,
-) -> None:
-    path = (REPO / REPORT_OPEN_ADMISSION_PATH).resolve()
-    expected = _report_open_slot_payload(
-        packet, packet_sha256, receipt_sha256, review_record)
-    if (not is_regular_unlinked(path)
-            or sha256_file(path) != expected_sha256
-            or load_json(path) != expected):
-        raise ReportRuntimeRefused("Stage-C REPORT-open admission drift")
 
 
 def _receipt(path: Path, expected_sha256: str,
@@ -409,81 +443,265 @@ def _receipt(path: Path, expected_sha256: str,
             or receipt.get("run_id") != CTRL.RUN_ID
             or receipt.get("git") != packet["producer"]["git"]
             or receipt.get("controller_packet_sha256") != packet_sha256
-            or receipt.get("controller_packet_internal_sha256")
-            != packet["packet_sha256"]
-            or receipt.get("selected_capability")
-            != packet["selected_capability"]
             or receipt.get("controller_review_record_sha256")
             != sha256_file(review_record)
-            or receipt.get("controller_review_claim")
-            != _review_claim(review_record, packet, packet_sha256)
+            or receipt.get("selected_capability")
+            != packet["selected_capability"]
             or receipt.get("admission_slot") != ADMISSION_PATH
             or receipt.get("admission_slot_sha256") != sha256_file(slot_path)
             or receipt.get("report_open_admission_slot")
             != REPORT_OPEN_ADMISSION_PATH
-            or receipt.get("report_open_admission_consumed") is not False
+            or receipt.get("report_open_admission_consumed") is not True
             or receipt.get("report_execution_authorized") is not True
-            or receipt.get("report_shard_files_opened") != 0
-            or receipt.get("report_rows_opened") != 0
+            or receipt.get("teacher_labels_computed") != 0
+            or receipt.get("model_predictions_computed") != 0
+            or receipt.get("v11_checkpoint_loaded") is not False
             or receipt.get("composition_authorized") is not False
             or receipt.get("receipt_sha256")
             != self_hash(receipt, "receipt_sha256")):
         raise ReportRuntimeRefused("Stage-C REPORT receipt/slot drift")
+    report_slot_path = (REPO / REPORT_OPEN_ADMISSION_PATH).resolve()
+    expected_report_slot = _report_open_slot_payload(
+        packet, packet_sha256, review_record, sha256_file(slot_path))
+    if (not is_regular_unlinked(report_slot_path)
+            or sha256_file(report_slot_path)
+            != receipt.get("report_open_admission_slot_sha256")
+            or load_json(report_slot_path) != expected_report_slot):
+        raise ReportRuntimeRefused(
+            "Stage-C REPORT open admission slot drift")
     return receipt
 
 
-def _report_examples(packet: Mapping[str, object],
-                     label_packet: Mapping[str, object],
-                     state_set: Mapping[str, object]) -> tuple[list[dict], list[dict]]:
-    receipt_parent = packet["parents"]["label_receipt"]
-    receipt_path, _label_receipt = _parent_file(
-        receipt_parent, "label receipt")
-    if receipt_path != (REPO / label_packet["result_contract"]["receipt"]).resolve():
-        raise ReportRuntimeRefused("Stage-C REPORT label receipt path drift")
-    net = LABEL._load_v11()
-    state_map = {str(value["state_id"]): value
-                 for value in state_set["states"]}
-    examples = []
-    opened = []
+def _surface_states(packet: Mapping[str, object],
+                    states: Sequence[dict]) -> list[dict]:
     surface = packet["selected_capability"]["surface"]
-    for item in packet["report_manifest"]:
-        index = int(item["index"])
-        path = (REPO / str(item["logical_path"])).resolve()
-        if (not is_regular_unlinked(path)
-                or sha256_file(path) != item.get("sha256")):
-            raise ReportRuntimeRefused(
-                f"Stage-C REPORT shard {index} path/SHA drift")
-        shard = load_json(path)
-        LABEL.validate_shard(
-            shard, packet=label_packet,
-            receipt_sha256=receipt_parent["external_sha256"],
-            state_set=state_set, index=index, net=net)
-        if (shard.get("status") != "COMPLETE"
-                or shard.get("refused_rows") != 0
-                or sha256_bytes(canonical_json(shard.get("row_sha256s")))
-                != item.get("row_sha256s_sha256")):
-            raise ReportRuntimeRefused(
-                f"Stage-C REPORT shard {index} incomplete")
-        for state_id, row in zip(
-                shard["state_ids"], shard["rows"], strict=True):
-            state = state_map[str(state_id)]
-            if state["surface_type"] != surface:
-                continue
+    values = sorted(
+        (state for state in states if state.get("surface_type") == surface),
+        key=lambda state: str(state["state_id"]))
+    if len(values) != packet["report_contract"]["states"]:
+        raise ReportRuntimeRefused(
+            "fresh REPORT selected-surface population drift")
+    return values
+
+
+def _shard_states(packet: Mapping[str, object], states: Sequence[dict],
+                  index: int) -> list[dict]:
+    if not 0 <= index < CTRL.REPORT_SHARDS:
+        raise ReportRuntimeRefused("fresh REPORT shard index drift")
+    values = _surface_states(packet, states)[index::CTRL.REPORT_SHARDS]
+    schedule = packet["report_schedule"]["shards"][index]
+    if (schedule.get("index") != index
+            or schedule.get("state_count") != len(values)
+            or schedule.get("state_ids_sha256") != CTRL._manifest_hash(
+                [str(state["state_id"]) for state in values])
+            or schedule.get("candidate_world_ceiling") != sum(
+                CTRL._candidate_world_ceiling(state) for state in values)
+            or schedule.get("result") != SHARD_PATHS[index]):
+        raise ReportRuntimeRefused(
+            "fresh REPORT shard schedule/material drift")
+    return values
+
+
+def _shard_slot_payload(packet: Mapping[str, object], packet_sha256: str,
+                        receipt_sha256: str, index: int) -> dict:
+    value = {
+        "schema": SHARD_ADMISSION_SCHEMA,
+        "run_id": CTRL.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": packet_sha256,
+        "report_receipt_sha256": receipt_sha256,
+        "report_schedule_sha256": packet["report_schedule"][
+            "schedule_sha256"],
+        "shard_index": index,
+        "shard_schedule": packet["report_schedule"]["shards"][index],
+        "retry_after_failure_authorized": False,
+    }
+    value["slot_sha256"] = self_hash(value, "slot_sha256")
+    return value
+
+
+def _consume_shard_slot(packet: Mapping[str, object], packet_sha256: str,
+                        receipt_sha256: str, index: int) -> str:
+    path = (REPO / SHARD_ADMISSION_PATHS[index]).resolve()
+    publish_exclusive(
+        path, _shard_slot_payload(packet, packet_sha256, receipt_sha256, index))
+    return sha256_file(path)
+
+
+def _validate_shard_slot(packet: Mapping[str, object], packet_sha256: str,
+                         receipt_sha256: str, index: int,
+                         expected_sha256: str) -> None:
+    path = (REPO / SHARD_ADMISSION_PATHS[index]).resolve()
+    if (not is_regular_unlinked(path)
+            or sha256_file(path) != expected_sha256
+            or load_json(path) != _shard_slot_payload(
+                packet, packet_sha256, receipt_sha256, index)):
+        raise ReportRuntimeRefused(
+            f"fresh REPORT shard {index} admission drift")
+
+
+def run_shard(*, packet_path: Path, expected_packet_sha256: str,
+              review_record: Path, fresh_report_review_record: Path,
+              state_set_review_record: Path, receipt_path: Path,
+              expected_receipt_sha256: str, shard_index: int,
+              progress_every: int, out: Path) -> dict:
+    if not 0 <= shard_index < CTRL.REPORT_SHARDS:
+        raise ReportRuntimeRefused("fresh REPORT shard index drift")
+    if (progress_every <= 0
+            or out.resolve() != (REPO / SHARD_PATHS[shard_index]).resolve()):
+        raise ReportRuntimeRefused("fresh REPORT shard output/progress drift")
+    packet, _dataset, _training, _fresh, states = _packet(
+        packet_path, expected_packet_sha256,
+        fresh_report_review_record=fresh_report_review_record,
+        state_set_review_record=state_set_review_record)
+    _review_claim(review_record, packet, expected_packet_sha256)
+    _receipt(receipt_path, expected_receipt_sha256, packet,
+             expected_packet_sha256, review_record)
+    population = _shard_states(packet, states, shard_index)
+    slot_sha256 = _consume_shard_slot(
+        packet, expected_packet_sha256, expected_receipt_sha256, shard_index)
+    rows = []
+    for ordinal, state in enumerate(population, 1):
+        ledger = LABEL.WorkLedger()
+        try:
             rnd = CAPTURE.replay_state(state)
-            example = MODEL.materialize_example(state, row, rnd)
-            TRAIN._validate_example(example, split="REPORT", surface=surface)
-            examples.append(example)
-        opened.append({
-            "index": index,
-            "logical_path": item["logical_path"],
-            "external_sha256": item["sha256"],
-            "row_sha256s_sha256": item["row_sha256s_sha256"],
-        })
-    examples.sort(key=lambda value: str(value["state_id"]))
-    if (len(examples) != packet["report_contract"]["states"]
-            or len({value["state_id"] for value in examples}) != len(examples)):
-        raise ReportRuntimeRefused("Stage-C REPORT example population drift")
-    return examples, opened
+            row = LABEL.label_replayed_state(
+                state, rnd, include_audit=False, ledger=ledger)
+            LABEL.validate_label_row(
+                state, rnd, row, audit_expected=False)
+        except Exception as exc:
+            row = LABEL.refusal_record(state, exc, ledger)
+        rows.append(row)
+        if ordinal % progress_every == 0 or ordinal == len(population):
+            print(json.dumps({
+                "event": "stage-c-fresh-report-label-progress-v1",
+                "shard_index": shard_index,
+                "states_complete": ordinal,
+                "states_total": len(population),
+                "refusals": sum(
+                    value.get("status") != "COMPLETE" for value in rows),
+            }, sort_keys=True), file=sys.stderr, flush=True)
+    work = LABEL._work_from_rows(rows)
+    refusals = sum(row.get("status") != "COMPLETE" for row in rows)
+    payload = {
+        "schema": SHARD_SCHEMA,
+        "run_id": CTRL.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": expected_packet_sha256,
+        "report_receipt_sha256": expected_receipt_sha256,
+        "report_schedule_sha256": packet["report_schedule"][
+            "schedule_sha256"],
+        "shard_index": shard_index,
+        "state_ids": [str(state["state_id"]) for state in population],
+        "state_ids_sha256": packet["report_schedule"]["shards"][
+            shard_index]["state_ids_sha256"],
+        "shard_admission_slot": SHARD_ADMISSION_PATHS[shard_index],
+        "shard_admission_slot_sha256": slot_sha256,
+        "status": ("COMPLETE" if refusals == 0
+                   else "REFUSED_INCOMPLETE_NO_REPORT_UTILITY"),
+        "complete_rows": len(rows) - refusals,
+        "refused_rows": refusals,
+        "rows": rows,
+        "row_sha256s": [row["row_sha256"] for row in rows],
+        "work": work,
+        "candidate_world_ceiling": packet["report_schedule"]["shards"][
+            shard_index]["candidate_world_ceiling"],
+        "candidate_world_ceiling_respected": (
+            work["candidate_worlds_attempted"]
+            <= packet["report_schedule"]["shards"][shard_index][
+                "candidate_world_ceiling"]),
+        "audit_folds_computed": False,
+        "v11_checkpoint_loaded": False,
+        "model_predictions_computed": 0,
+        "report_utility_published": False,
+        "composition_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+    }
+    payload["shard_sha256"] = self_hash(payload, "shard_sha256")
+    final_packet, _d2, _t2, _f2, final_states = _packet(
+        packet_path, expected_packet_sha256,
+        fresh_report_review_record=fresh_report_review_record,
+        state_set_review_record=state_set_review_record)
+    _review_claim(review_record, final_packet, expected_packet_sha256)
+    _receipt(receipt_path, expected_receipt_sha256, final_packet,
+             expected_packet_sha256, review_record)
+    if ([state["state_id"] for state in _shard_states(
+            final_packet, final_states, shard_index)]
+            != [state["state_id"] for state in population]):
+        raise ReportRuntimeRefused(
+            "fresh REPORT state population changed during labeling")
+    publish_exclusive(out, payload)
+    return payload
+
+
+def validate_shard(shard: Mapping[str, object], *,
+                   packet: Mapping[str, object], states: Sequence[dict],
+                   packet_sha256: str, receipt_sha256: str,
+                   index: int) -> None:
+    population = _shard_states(packet, states, index)
+    rows = shard.get("rows")
+    fixed = {
+        "schema": SHARD_SCHEMA,
+        "run_id": CTRL.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": packet_sha256,
+        "report_receipt_sha256": receipt_sha256,
+        "report_schedule_sha256": packet["report_schedule"][
+            "schedule_sha256"],
+        "shard_index": index,
+        "state_ids": [str(state["state_id"]) for state in population],
+        "state_ids_sha256": packet["report_schedule"]["shards"][index][
+            "state_ids_sha256"],
+        "shard_admission_slot": SHARD_ADMISSION_PATHS[index],
+        "candidate_world_ceiling": packet["report_schedule"]["shards"][
+            index]["candidate_world_ceiling"],
+        "audit_folds_computed": False,
+        "v11_checkpoint_loaded": False,
+        "model_predictions_computed": 0,
+        "report_utility_published": False,
+        "composition_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+    }
+    if (not isinstance(rows, list) or len(rows) != len(population)
+            or shard.get("shard_sha256")
+            != self_hash(shard, "shard_sha256")
+            or any(shard.get(key) != value for key, value in fixed.items())
+            or not isinstance(shard.get("shard_admission_slot_sha256"), str)):
+        raise ReportRuntimeRefused(
+            f"fresh REPORT shard {index} identity drift")
+    _validate_shard_slot(
+        packet, packet_sha256, receipt_sha256, index,
+        str(shard["shard_admission_slot_sha256"]))
+    complete = 0
+    refused = 0
+    for state, row in zip(population, rows, strict=True):
+        if row.get("status") == "COMPLETE":
+            LABEL.validate_label_row(
+                state, CAPTURE.replay_state(state), row,
+                audit_expected=False)
+            complete += 1
+        else:
+            LABEL.validate_refusal_record(
+                state, row, audit_expected=False)
+            refused += 1
+    work = LABEL._work_from_rows(rows)
+    expected_status = ("COMPLETE" if refused == 0
+                       else "REFUSED_INCOMPLETE_NO_REPORT_UTILITY")
+    if (shard.get("status") != expected_status
+            or shard.get("complete_rows") != complete
+            or shard.get("refused_rows") != refused
+            or shard.get("row_sha256s")
+            != [row["row_sha256"] for row in rows]
+            or shard.get("work") != work
+            or shard.get("candidate_world_ceiling_respected")
+            is not (work["candidate_worlds_attempted"]
+                    <= fixed["candidate_world_ceiling"])):
+        raise ReportRuntimeRefused(
+            f"fresh REPORT shard {index} work/status drift")
 
 
 def _member_predictions(packet: Mapping[str, object],
@@ -501,24 +719,91 @@ def _member_predictions(packet: Mapping[str, object],
 
 
 def evaluate(*, packet_path: Path, expected_packet_sha256: str,
-             review_record: Path, receipt_path: Path,
-             expected_receipt_sha256: str, out: Path) -> dict:
+             review_record: Path, fresh_report_review_record: Path,
+             state_set_review_record: Path, receipt_path: Path,
+             expected_receipt_sha256: str,
+             shard_paths: Sequence[Path], out: Path) -> dict:
     if out.resolve() != _expected_result_path():
         raise ReportRuntimeRefused("Stage-C REPORT result path drift")
-    packet, _dataset, label_packet, state_set = _packet(
-        packet_path, expected_packet_sha256)
-    _receipt(receipt_path, expected_receipt_sha256, packet,
-             expected_packet_sha256, review_record)
-    _report_slot, report_slot_sha256 = _consume_report_open_slot(
-        packet, expected_packet_sha256, expected_receipt_sha256,
-        review_record)
-    examples, opened = _report_examples(packet, label_packet, state_set)
-    predictions = _member_predictions(packet, examples)
-    capability = packet["selected_capability"]
-    evaluation = REPORT.evaluate_capability(
-        examples, predictions, surface=capability["surface"],
-        head=capability["head"],
-        prior_distribution=packet["design_prior_distribution"])
+    packet, _dataset, _training, _fresh, states = _packet(
+        packet_path, expected_packet_sha256,
+        fresh_report_review_record=fresh_report_review_record,
+        state_set_review_record=state_set_review_record)
+    receipt = _receipt(
+        receipt_path, expected_receipt_sha256, packet,
+        expected_packet_sha256, review_record)
+    expected_paths = [(REPO / logical).resolve() for logical in SHARD_PATHS]
+    if (len(shard_paths) != CTRL.REPORT_SHARDS
+            or [path.resolve() for path in shard_paths] != expected_paths):
+        raise ReportRuntimeRefused("fresh REPORT label-shard paths drift")
+    surface_states = {
+        str(state["state_id"]): state
+        for state in _surface_states(packet, states)}
+    opened = []
+    examples = []
+    validated_shards = []
+    total_work = {
+        "candidate_worlds_attempted": 0,
+        "candidate_worlds_completed": 0,
+        "sampler_attempts": 0,
+        "accepted_worlds": 0,
+    }
+    refusals = 0
+    for index, path in enumerate(shard_paths):
+        before = sha256_file(path)
+        shard = load_json(path)
+        validate_shard(
+            shard, packet=packet, states=states,
+            packet_sha256=expected_packet_sha256,
+            receipt_sha256=expected_receipt_sha256, index=index)
+        if sha256_file(path) != before:
+            raise ReportRuntimeRefused(
+                f"fresh REPORT shard {index} changed during validation")
+        refusals += int(shard["refused_rows"])
+        for key in total_work:
+            total_work[key] += int(shard["work"][key])
+        validated_shards.append(shard)
+        opened.append({
+            "index": index,
+            "logical_path": SHARD_PATHS[index],
+            "external_sha256": before,
+            "internal_sha256": shard["shard_sha256"],
+            "state_ids_sha256": shard["state_ids_sha256"],
+            "row_sha256s_sha256": sha256_bytes(canonical_json(
+                shard["row_sha256s"])),
+            "status": shard["status"],
+            "refused_rows": shard["refused_rows"],
+        })
+    evaluation = None
+    if refusals == 0:
+        for shard in validated_shards:
+            for state_id, row in zip(
+                    shard["state_ids"], shard["rows"], strict=True):
+                state = surface_states[str(state_id)]
+                example = MODEL.materialize_example(
+                    state, row, CAPTURE.replay_state(state))
+                TRAIN._validate_example(
+                    example, split="REPORT",
+                    surface=packet["selected_capability"]["surface"])
+                examples.append(example)
+        examples.sort(key=lambda value: str(value["state_id"]))
+        if (len(examples) != packet["report_contract"]["states"]
+                or len({value["state_id"] for value in examples})
+                != len(examples)):
+            raise ReportRuntimeRefused(
+                "fresh REPORT example population drift")
+        predictions = _member_predictions(packet, examples)
+        capability = packet["selected_capability"]
+        evaluation = REPORT.evaluate_capability(
+            examples, predictions, surface=capability["surface"],
+            head=capability["head"],
+            prior_distribution=packet["design_prior_distribution"])
+        decision = evaluation["decision"]
+        composition_authorized = evaluation[
+            "composition_packet_review_authorized"]
+    else:
+        decision = "SELECT_NONE_REPORT_LABEL_REFUSAL"
+        composition_authorized = False
     payload = {
         "schema": RESULT_SCHEMA,
         "run_id": CTRL.RUN_ID,
@@ -526,38 +811,55 @@ def evaluate(*, packet_path: Path, expected_packet_sha256: str,
         "controller_packet_sha256": expected_packet_sha256,
         "report_receipt_sha256": expected_receipt_sha256,
         "report_open_admission_slot": REPORT_OPEN_ADMISSION_PATH,
-        "report_open_admission_slot_sha256": report_slot_sha256,
-        "selected_capability": capability,
+        "report_open_admission_slot_sha256": receipt[
+            "report_open_admission_slot_sha256"],
+        "selected_capability": packet["selected_capability"],
         "checkpoint_manifest_sha256": CTRL._manifest_hash(
             packet["checkpoint_manifest"]),
-        "report_manifest_sha256": CTRL._manifest_hash(
-            packet["report_manifest"]),
-        "opened_report_shards": opened,
-        "report_shard_files_opened": len(opened),
-        "report_rows_opened": sum(
-            int(item["states"]) for item in packet["report_manifest"]),
+        "fresh_report_selection_sha256": packet["parents"][
+            "fresh_report_selection"]["sealed_selection_sha256"],
+        "report_schedule_sha256": packet["report_schedule"][
+            "schedule_sha256"],
+        "opened_report_label_shards": opened,
+        "report_label_shard_files_opened": len(opened),
+        "fresh_report_states_reconstructed": len(states),
+        "selected_surface_rows_labeled": sum(
+            item["state_count"]
+            for item in packet["report_schedule"]["shards"]),
+        "report_label_refusals": refusals,
+        "work": total_work,
+        "candidate_world_ceiling": packet["report_schedule"][
+            "candidate_world_ceiling"],
+        "candidate_world_ceiling_respected": (
+            total_work["candidate_worlds_attempted"]
+            <= packet["report_schedule"]["candidate_world_ceiling"]),
+        "v11_checkpoint_loaded": False,
         "evaluation": evaluation,
-        "decision": evaluation["decision"],
-        "composition_packet_review_authorized": evaluation[
-            "composition_packet_review_authorized"],
+        "decision": decision,
+        "composition_packet_review_authorized": composition_authorized,
         "report_reuse_authorized": False,
         "strength_claim": False,
         "production_promotion": False,
         "production_deployment": False,
     }
     payload["result_sha256"] = self_hash(payload, "result_sha256")
-    # Close every mutable input/output TOCTOU boundary after the expensive
-    # prediction pass. `_packet` still does not open REPORT shard paths.
-    final_packet, _dataset2, _label2, _state2 = _packet(
-        packet_path, expected_packet_sha256)
+    final_packet, _d2, _t2, _f2, final_states = _packet(
+        packet_path, expected_packet_sha256,
+        fresh_report_review_record=fresh_report_review_record,
+        state_set_review_record=state_set_review_record)
     _receipt(receipt_path, expected_receipt_sha256, final_packet,
              expected_packet_sha256, review_record)
-    _validate_report_open_slot(
-        final_packet, expected_packet_sha256, expected_receipt_sha256,
-        review_record, report_slot_sha256)
-    for item in packet["report_manifest"]:
-        if sha256_file(REPO / str(item["logical_path"])) != item["sha256"]:
-            raise ReportRuntimeRefused("Stage-C REPORT shard changed during run")
+    if ([state["state_id"]
+         for state in _surface_states(final_packet, final_states)]
+            != [state["state_id"]
+                for state in _surface_states(packet, states)]):
+        raise ReportRuntimeRefused(
+            "fresh REPORT state population changed during evaluation")
+    for item in opened:
+        if sha256_file(REPO / str(item["logical_path"])) \
+                != item["external_sha256"]:
+            raise ReportRuntimeRefused(
+                "fresh REPORT label shard changed during evaluation")
     publish_exclusive(out, payload)
     return payload
 
@@ -565,47 +867,65 @@ def evaluate(*, packet_path: Path, expected_packet_sha256: str,
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description=__doc__)
     commands = root.add_subparsers(dest="command", required=True)
-    for name in ("admit", "evaluate"):
+    for name in ("admit", "run-shard", "evaluate"):
         child = commands.add_parser(name)
         child.add_argument("--expected-git", required=True)
         child.add_argument("--controller-packet", required=True)
         child.add_argument("--expected-controller-packet-sha256", required=True)
         child.add_argument("--controller-review-record", required=True)
+        child.add_argument("--fresh-report-review-record", required=True)
+        child.add_argument("--state-set-review-record", required=True)
         child.add_argument("--out", required=True)
-        if name == "evaluate":
+        if name in {"run-shard", "evaluate"}:
             child.add_argument("--report-receipt", required=True)
-            child.add_argument("--expected-report-receipt-sha256", required=True)
+            child.add_argument(
+                "--expected-report-receipt-sha256", required=True)
+        if name == "run-shard":
+            child.add_argument("--shard-index", required=True, type=int)
+            child.add_argument("--progress-every", type=int, default=1)
+        if name == "evaluate":
+            child.add_argument("--label-shards", nargs="+", required=True)
     return root
 
 
 def main() -> int:
     args = parser().parse_args()
-    if _git("rev-parse", "HEAD") != args.expected_git:
-        raise ReportRuntimeRefused("Stage-C REPORT expected Git drift")
+    if args.expected_git != _git("rev-parse", "HEAD"):
+        raise ReportRuntimeRefused("Stage-C REPORT expected git drift")
     common = {
         "packet_path": Path(args.controller_packet).resolve(),
         "expected_packet_sha256": args.expected_controller_packet_sha256,
         "review_record": Path(args.controller_review_record).resolve(),
+        "fresh_report_review_record": Path(
+            args.fresh_report_review_record).resolve(),
+        "state_set_review_record": Path(
+            args.state_set_review_record).resolve(),
         "out": Path(args.out).resolve(),
     }
     if args.command == "admit":
         value = admit(**common)
+    elif args.command == "run-shard":
+        value = run_shard(
+            **common,
+            receipt_path=Path(args.report_receipt).resolve(),
+            expected_receipt_sha256=args.expected_report_receipt_sha256,
+            shard_index=args.shard_index,
+            progress_every=args.progress_every)
     else:
         value = evaluate(
-            **common, receipt_path=Path(args.report_receipt).resolve(),
-            expected_receipt_sha256=args.expected_report_receipt_sha256)
-    print(json.dumps({
-        "status": value.get("decision", "ADMITTED"),
-        "sha256": sha256_bytes(canonical_json(value)),
-        "composition_authorized": False,
-        "strength_claim": False,
-    }, sort_keys=True))
+            **common,
+            receipt_path=Path(args.report_receipt).resolve(),
+            expected_receipt_sha256=args.expected_report_receipt_sha256,
+            shard_paths=[Path(item).resolve() for item in args.label_shards])
+    print(json.dumps(value, sort_keys=True))
     return 0
 
 
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except ReportRuntimeRefused as exc:
-        print(f"REFUSED: {exc}", file=sys.stderr)
-        raise SystemExit(2)
+    except (ReportRuntimeRefused, CTRL.ReportControllerRefused,
+            LABEL.LabelRefused, REPORT.StageCReportError,
+            TRAIN.StageCTrainingError) as exc:
+        print(f"REFUSED: {type(exc).__name__}: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc

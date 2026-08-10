@@ -1,353 +1,228 @@
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 
 import pytest
 
 import teacher_stage_c_report_runtime as RUNTIME
-from shengji.rl import stage_c_model as MODEL
 
 
-def _packet() -> dict:
+def _state(index: int) -> dict:
     return {
-        "producer": {"git": "a" * 40},
-        "packet_sha256": "b" * 64,
-        "selected_capability": {
-            "surface": "play", "head": "ranking", "epoch": 8,
-        },
-        "checkpoint_manifest": [],
-        "report_manifest": [{
-            "index": index, "split": "REPORT", "states": 128,
-            "logical_path": f"report/shard-{index - 12:02d}.json",
-            "sha256": f"{index + 1:064x}",
-            "row_sha256s_sha256": f"{index + 101:064x}",
-        } for index in range(12, 16)],
-        "design_prior_distribution": [0.125] * 8,
+        "state_id": f"state-{index:04d}",
+        "split": "REPORT",
+        "surface_type": "play",
+        "stratum": "ordinary_anchor",
+        "candidates": [{"cards": ["C2"], "sources": ["captured"]}],
     }
 
 
-def test_report_open_slot_prevents_retry_after_evaluation_failure(
+def _packet(states: list[dict]) -> dict:
+    shards = []
+    for index in range(RUNTIME.CTRL.REPORT_SHARDS):
+        population = states[index::RUNTIME.CTRL.REPORT_SHARDS]
+        shards.append({
+            "index": index,
+            "state_count": len(population),
+            "state_ids_sha256": RUNTIME.CTRL._manifest_hash(
+                [state["state_id"] for state in population]),
+            "candidate_world_ceiling": len(population) * 512,
+            "result": RUNTIME.SHARD_PATHS[index],
+        })
+    schedule = {
+        "schedule_sha256": "3" * 64,
+        "shards": shards,
+        "shard_count": 8,
+        "candidate_world_ceiling": len(states) * 512,
+    }
+    return {
+        "producer": {"git": "a" * 40},
+        "selected_capability": {
+            "surface": "play", "head": "ranking", "epoch": 8},
+        "checkpoint_manifest": [],
+        "parents": {"fresh_report_selection": {
+            "sealed_selection_sha256": "2" * 64}},
+        "report_schedule": schedule,
+        "report_contract": {"states": len(states)},
+    }
+
+
+def test_admission_consumes_report_open_slot_before_any_label(
         monkeypatch, tmp_path) -> None:
-    packet = _packet()
+    states = [_state(index) for index in range(8)]
+    packet = _packet(states)
     review = tmp_path / "review.md"
     review.write_text("review\n")
     monkeypatch.setattr(RUNTIME, "REPO", tmp_path)
     monkeypatch.setattr(
         RUNTIME, "_packet",
-        lambda *_args, **_kwargs: (packet, {}, {}, {}))
-    monkeypatch.setattr(RUNTIME, "_receipt", lambda *_args, **_kwargs: {})
-    calls = []
+        lambda *_args, **_kwargs: (packet, {}, {}, {}, states))
+    monkeypatch.setattr(RUNTIME, "_review_claim", lambda *_args: {})
+    out = tmp_path / RUNTIME.RECEIPT_PATH
+    receipt = RUNTIME.admit(
+        packet_path=tmp_path / "packet.json",
+        expected_packet_sha256="1" * 64,
+        review_record=review,
+        fresh_report_review_record=review,
+        state_set_review_record=review,
+        out=out)
+    assert receipt["report_open_admission_consumed"] is True
+    assert receipt["teacher_labels_computed"] == 0
+    assert receipt["model_predictions_computed"] == 0
+    assert receipt["v11_checkpoint_loaded"] is False
+    assert (tmp_path / RUNTIME.ADMISSION_PATH).is_file()
+    assert (tmp_path / RUNTIME.REPORT_OPEN_ADMISSION_PATH).is_file()
 
-    def fail_after_slot(*_args, **_kwargs):
-        calls.append("opened")
-        raise RuntimeError("simulated failure after REPORT-open admission")
-
-    monkeypatch.setattr(RUNTIME, "_report_examples", fail_after_slot)
-    kwargs = {
-        "packet_path": tmp_path / "packet.json",
-        "expected_packet_sha256": "c" * 64,
-        "review_record": review,
-        "receipt_path": tmp_path / "receipt.json",
-        "expected_receipt_sha256": "d" * 64,
-        "out": tmp_path / RUNTIME.RESULT_PATH,
-    }
-    with pytest.raises(RuntimeError, match="simulated"):
-        RUNTIME.evaluate(**kwargs)
-    slot = tmp_path / RUNTIME.REPORT_OPEN_ADMISSION_PATH
-    assert slot.is_file()
-    assert json.loads(slot.read_text())[
-        "retry_after_report_open_or_failure_authorized"] is False
-    with pytest.raises(RUNTIME.ReportRuntimeRefused, match="existing output"):
-        RUNTIME.evaluate(**kwargs)
-    assert calls == ["opened"]
+    with pytest.raises(RUNTIME.ReportRuntimeRefused,
+                       match="existing output"):
+        RUNTIME.admit(
+            packet_path=tmp_path / "packet.json",
+            expected_packet_sha256="1" * 64,
+            review_record=review,
+            fresh_report_review_record=review,
+            state_set_review_record=review,
+            out=out)
 
 
-def test_packet_validation_does_not_touch_sealed_report_paths(
+def test_run_shard_labels_captured_tensor_without_loading_v11(
         monkeypatch, tmp_path) -> None:
-    git = "a" * 40
-    packet_sha = "1" * 64
-    training_packet_sha = "2" * 64
-    aggregate_sha = "3" * 64
-    dataset_sha = "4" * 64
-    label_sha = "5" * 64
-    state_sha = "6" * 64
-    capability = {"surface": "play", "head": "ranking", "epoch": 8}
-    checkpoints = [{
-        "seed": seed, "surface": "play", "head": "ranking", "epoch": 8,
-        "checkpoint_path": f"checkpoint-{seed}.pt",
-        "checkpoint_sha256": f"{seed + 1:064x}",
-        "model_state_sha256": f"{seed + 101:064x}",
-        "checkpoint_contract": {"seed": seed},
-    } for seed in MODEL.TRAINING_SEEDS]
-    ensemble = [{key: value for key, value in item.items()
-                 if key != "checkpoint_contract"} for item in checkpoints]
-    training_packet = {"schedule": {"cells": []}}
-    aggregate = {
-        "aggregate_sha256": "7" * 64,
-        "selection": {"selected_capability": capability},
-        "selected_ensemble": ensemble,
-    }
-    dataset = {
-        "examples": {"DESIGN": {"play": [{}]}},
-        "report_rows_included": False,
-        "report_shard_files_opened": 0,
-    }
-    dataset["dataset_sha256"] = RUNTIME.TRAIN_CTRL.self_hash(
-        dataset, "dataset_sha256")
-    label_packet = {
-        "parents": {"state_set": {
-            "logical_path": "server/runs/logs/capture/states.json",
-            "external_sha256": state_sha,
-        }},
-        "schedule": {"shards": [
-            {
-                "split": ("DESIGN" if index < 8 else
-                          "CALIB" if index < 12 else "REPORT"),
-                "local_shard": (index if index < 8 else
-                                index - 8 if index < 12 else index - 12),
-            }
-            for index in range(16)
-        ]},
-    }
-    state_set = {"states": [{} for _ in range(2048)]}
-    sources = {"source.py": "8" * 64}
-    runtime = {
-        "host": "mini", "python": "3.14", "torch": "2.13",
-        "numpy": "2.5", "device": "cpu", "cpu_threads": 1,
-    }
-    monkeypatch.setattr(RUNTIME, "REPO", tmp_path)
-    monkeypatch.setattr(RUNTIME.TRAIN_CTRL, "REPO", tmp_path)
-    report_manifest = [{
-        "index": index, "split": "REPORT", "states": 128,
-        "logical_path": str(RUNTIME.TRAIN_CTRL._expected_label_shard_path(
-            label_packet, index).relative_to(tmp_path)),
-        "sha256": f"{index + 10:064x}",
-        "row_sha256s_sha256": f"{index + 110:064x}",
-    } for index in range(12, 16)]
-    packet = {
-        "schema": RUNTIME.CTRL.SCHEMA,
-        "packet_id": RUNTIME.CTRL.PACKET_ID,
-        "run_id": RUNTIME.CTRL.RUN_ID,
-        "producer": {"git": git, "tree_dirty": False, "sources": sources},
-        "runtime_contract": runtime,
-        "parents": {
-            "training_packet": {
-                "logical_path": RUNTIME.TRAIN_CTRL.PACKET_PATH,
-                "external_sha256": training_packet_sha,
-            },
-            "training_aggregate": {
-                "logical_path": RUNTIME.TRAIN_RUNTIME.AGGREGATE_PATH,
-                "external_sha256": aggregate_sha,
-                "internal_sha256": aggregate["aggregate_sha256"],
-            },
-            "model_dataset": {
-                "logical_path": RUNTIME.TRAIN_CTRL.DATASET_PATH,
-                "external_sha256": dataset_sha,
-            },
-            "label_controller": {
-                "logical_path": RUNTIME.LABEL._ctrl().CONTROLLER_PACKET_PATH,
-                "external_sha256": label_sha,
-            },
-            "state_set": label_packet["parents"]["state_set"],
-        },
-        "selected_capability": capability,
-        "checkpoint_manifest": checkpoints,
-        "design_prior_distribution": [0.125] * 8,
-        "report_manifest": report_manifest,
-        "report_contract": {
-            "surface": "play", "head": "ranking", "states": 480,
-            "single_report_look": True,
-            "model_score_tie_epsilon":
-                RUNTIME.REPORT.MODEL_SCORE_TIE_EPSILON,
-            "tie_break": "lowest candidate index within epsilon",
-            "durable_report_open_admission_slot":
-                RUNTIME.REPORT_OPEN_ADMISSION_PATH,
-            "retry_after_report_open_or_failure_authorized": False,
-            "report_cannot_change_surface_head_epoch_or_seed_population": True,
-        },
-        "authority": {
-            "report_shard_files_opened": 0, "report_rows_opened": 0,
-            "one_report_execution_authorized": False,
-            "composition_authorized": False, "strength_claim": False,
-            "production_promotion": False, "production_deployment": False,
-        },
-    }
-    packet["packet_sha256"] = RUNTIME.self_hash(packet, "packet_sha256")
-    packet_path = tmp_path / RUNTIME.CTRL.PACKET_PATH
-    parent_values = {
-        "training packet": (
-            tmp_path / RUNTIME.TRAIN_CTRL.PACKET_PATH, training_packet),
-        "training aggregate": (
-            tmp_path / RUNTIME.TRAIN_RUNTIME.AGGREGATE_PATH, aggregate),
-        "model dataset": (
-            tmp_path / RUNTIME.TRAIN_CTRL.DATASET_PATH, dataset),
-        "label controller": (
-            tmp_path / RUNTIME.LABEL._ctrl().CONTROLLER_PACKET_PATH,
-            label_packet),
-        "state set": (
-            tmp_path / label_packet["parents"]["state_set"]["logical_path"],
-            state_set),
-    }
-    hashed = []
-
-    def fake_sha(path: Path) -> str:
-        logical = str(path)
-        if "/report/shard-" in logical:
-            raise AssertionError("sealed REPORT path touched before admission")
-        hashed.append(logical)
-        return packet_sha
-
-    monkeypatch.setattr(RUNTIME, "sha256_file", fake_sha)
-    monkeypatch.setattr(RUNTIME, "is_regular_unlinked", lambda _path: True)
-    monkeypatch.setattr(RUNTIME, "load_json", lambda _path: packet)
-    monkeypatch.setattr(RUNTIME, "_parent_file",
-                        lambda _parent, label: parent_values[label])
-    monkeypatch.setattr(RUNTIME, "_git",
-                        lambda *args: "" if args[0] == "status" else git)
-    monkeypatch.setattr(RUNTIME.CTRL, "_source_sha256s", lambda: sources)
-    monkeypatch.setattr(RUNTIME.CTRL, "runtime_contract", lambda: runtime)
-    monkeypatch.setattr(
-        RUNTIME.TRAIN_RUNTIME, "_packet",
-        lambda *_args, **_kwargs: (training_packet, dataset))
-    expected_label_packet = dict(label_packet)
-    expected_label_packet["external_sha256"] = label_sha
-    monkeypatch.setattr(
-        RUNTIME.TRAIN_CTRL, "_reviewed_upstream_label_packet",
-        lambda *_args, **_kwargs: expected_label_packet)
-    monkeypatch.setattr(RUNTIME, "_validate_checkpoint_manifest",
-                        lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(RUNTIME.TRAIN, "state_balanced_prior",
-                        lambda _examples: [0.125] * 8)
-    reopened = RUNTIME._packet(packet_path, packet_sha)
-    assert reopened == (packet, dataset, expected_label_packet, state_set)
-    assert hashed == [str(packet_path)]
-
-
-def test_report_examples_open_exact_four_shards_and_selected_surface(
-        monkeypatch, tmp_path) -> None:
-    packet = _packet()
-    packet["parents"] = {"label_receipt": {
-        "logical_path": "label-receipt.json", "external_sha256": "e" * 64,
-    }}
-    packet["report_contract"] = {"states": 480}
-    label_packet = {
-        "result_contract": {"receipt": "label-receipt.json"},
-    }
-    states = []
-    shards = {}
-    cursor = 0
-    for item in packet["report_manifest"]:
-        state_ids = []
-        rows = []
-        for local in range(128):
-            surface = "play" if local < 120 else "bury"
-            state_id = f"report-{cursor}"
-            cursor += 1
-            state_ids.append(state_id)
-            states.append({"state_id": state_id, "surface_type": surface})
-            rows.append({"state_id": state_id})
-        row_hashes = [f"{item['index'] + 200:064x}"] * 128
-        item["row_sha256s_sha256"] = RUNTIME.sha256_bytes(
-            RUNTIME.canonical_json(row_hashes))
-        shards[str(tmp_path / item["logical_path"])] = {
-            "status": "COMPLETE", "refused_rows": 0,
-            "state_ids": state_ids, "rows": rows,
-            "row_sha256s": row_hashes,
-        }
-    opened_paths = []
-    validated = []
+    state = _state(0)
+    packet = _packet([state])
+    packet["report_schedule"]["shards"][0]["result"] = \
+        RUNTIME.SHARD_PATHS[0]
+    review = tmp_path / "review.md"
+    review.write_text("review\n")
     monkeypatch.setattr(RUNTIME, "REPO", tmp_path)
     monkeypatch.setattr(
-        RUNTIME, "_parent_file",
-        lambda _parent, _label: (tmp_path / "label-receipt.json", {}))
-    monkeypatch.setattr(RUNTIME, "is_regular_unlinked", lambda _path: True)
-
-    def fake_sha(path: Path) -> str:
-        opened_paths.append(str(path))
-        manifest = next(value for value in packet["report_manifest"]
-                        if str(tmp_path / value["logical_path"]) == str(path))
-        return manifest["sha256"]
-
-    monkeypatch.setattr(RUNTIME, "sha256_file", fake_sha)
-    monkeypatch.setattr(RUNTIME, "load_json",
-                        lambda path: shards[str(path)])
-    monkeypatch.setattr(RUNTIME.LABEL, "_load_v11", lambda: object())
+        RUNTIME, "_packet",
+        lambda *_args, **_kwargs: (packet, {}, {}, {}, [state]))
+    monkeypatch.setattr(RUNTIME, "_review_claim", lambda *_args: {})
+    monkeypatch.setattr(RUNTIME, "_receipt", lambda *_args: {})
     monkeypatch.setattr(
-        RUNTIME.LABEL, "validate_shard",
-        lambda _shard, **kwargs: validated.append(kwargs["index"]))
-    monkeypatch.setattr(RUNTIME.CAPTURE, "replay_state", lambda state: state)
+        RUNTIME, "_shard_states",
+        lambda _packet, _states, index: [state] if index == 0 else [])
     monkeypatch.setattr(
-        RUNTIME.MODEL, "materialize_example",
-        lambda state, _row, _rnd: {
-            "state_id": state["state_id"], "split": "REPORT",
-            "surface_type": state["surface_type"],
+        RUNTIME, "_consume_shard_slot", lambda *_args: "4" * 64)
+    monkeypatch.setattr(RUNTIME.CAPTURE, "replay_state", lambda value: value)
+    monkeypatch.setattr(
+        RUNTIME.LABEL, "_load_v11",
+        lambda: (_ for _ in ()).throw(AssertionError("V11 loaded")))
+    row = {
+        "status": "COMPLETE", "state_id": state["state_id"],
+        "row_sha256": "5" * 64,
+    }
+    monkeypatch.setattr(
+        RUNTIME.LABEL, "label_replayed_state",
+        lambda *_args, **_kwargs: copy.deepcopy(row))
+    monkeypatch.setattr(
+        RUNTIME.LABEL, "validate_label_row", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        RUNTIME.LABEL, "_work_from_rows", lambda _rows: {
+            "candidate_worlds_attempted": 512,
+            "candidate_worlds_completed": 512,
+            "sampler_attempts": 512,
+            "accepted_worlds": 512,
         })
-    monkeypatch.setattr(RUNTIME.TRAIN, "_validate_example",
-                        lambda *_args, **_kwargs: None)
-    examples, manifest = RUNTIME._report_examples(
-        packet, label_packet, {"states": states})
-    assert len(examples) == 480
-    assert all(value["surface_type"] == "play" for value in examples)
-    assert validated == list(range(12, 16))
-    assert len(manifest) == 4
-    assert opened_paths == [
-        str(tmp_path / value["logical_path"])
-        for value in packet["report_manifest"]
-    ]
+    out = tmp_path / RUNTIME.SHARD_PATHS[0]
+    result = RUNTIME.run_shard(
+        packet_path=tmp_path / "packet.json",
+        expected_packet_sha256="1" * 64,
+        review_record=review,
+        fresh_report_review_record=review,
+        state_set_review_record=review,
+        receipt_path=tmp_path / "receipt.json",
+        expected_receipt_sha256="6" * 64,
+        shard_index=0, progress_every=1, out=out)
+    assert result["status"] == "COMPLETE"
+    assert result["v11_checkpoint_loaded"] is False
+    assert result["audit_folds_computed"] is False
+    assert result["candidate_world_ceiling_respected"] is True
+    assert out.is_file()
+
+    monkeypatch.setattr(
+        RUNTIME, "_validate_shard_slot", lambda *_args, **_kwargs: None)
+    RUNTIME.validate_shard(
+        result, packet=packet, states=[state], packet_sha256="1" * 64,
+        receipt_sha256="6" * 64, index=0)
+    mutated = copy.deepcopy(result)
+    mutated["v11_checkpoint_loaded"] = True
+    mutated["shard_sha256"] = RUNTIME.self_hash(
+        mutated, "shard_sha256")
+    with pytest.raises(RUNTIME.ReportRuntimeRefused, match="identity drift"):
+        RUNTIME.validate_shard(
+            mutated, packet=packet, states=[state],
+            packet_sha256="1" * 64, receipt_sha256="6" * 64, index=0)
 
 
-def test_member_predictions_reopen_exact_eight_frozen_models(
+def test_evaluate_closes_on_any_label_refusal_without_model_look(
         monkeypatch, tmp_path) -> None:
-    packet = _packet()
-    packet["checkpoint_manifest"] = [{
-        "checkpoint_path": f"checkpoint-{seed}.pt",
-        "checkpoint_contract": {"seed": seed},
-    } for seed in RUNTIME.MODEL.TRAINING_SEEDS]
-    configured = []
-    loaded = []
+    states = [_state(index) for index in range(8)]
+    packet = _packet(states)
+    review = tmp_path / "review.md"
+    review.write_text("review\n")
     monkeypatch.setattr(RUNTIME, "REPO", tmp_path)
     monkeypatch.setattr(
-        RUNTIME.TRAIN, "_configure_determinism",
-        lambda seed: configured.append(seed))
-
-    def load(path, *, expected_contract):
-        loaded.append((str(path), expected_contract["seed"]))
-        return {"state_dict": {"seed": expected_contract["seed"]}}
-
-    monkeypatch.setattr(RUNTIME.TRAIN, "load_snapshot", load)
-
-    class Net:
-        def __init__(self, **_kwargs):
-            self.seed = None
-
-        def load_state_dict(self, state, *, strict):
-            assert strict is True
-            self.seed = state["seed"]
-
-    monkeypatch.setattr(RUNTIME.MODEL, "StageCRankingOutcomeNet", Net)
+        RUNTIME, "_packet",
+        lambda *_args, **_kwargs: (packet, {}, {}, {}, states))
     monkeypatch.setattr(
-        RUNTIME.TRAIN, "predict_examples",
-        lambda net, _examples: ([net.seed], [[net.seed]]))
-    result = RUNTIME._member_predictions(packet, [{"state_id": "x"}])
-    assert configured == [RUNTIME.MODEL.TRAINING_SEEDS[0]]
-    assert len(loaded) == 8
-    assert [value[0][0] for value in result] \
-        == list(RUNTIME.MODEL.TRAINING_SEEDS)
+        RUNTIME, "_receipt",
+        lambda *_args, **_kwargs: {
+            "report_open_admission_slot_sha256": "7" * 64})
+    monkeypatch.setattr(
+        RUNTIME, "validate_shard", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        RUNTIME, "_member_predictions",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("model inference ran after label refusal")))
+
+    paths = []
+    for index, logical in enumerate(RUNTIME.SHARD_PATHS):
+        path = tmp_path / logical
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "status": ("REFUSED_INCOMPLETE_NO_REPORT_UTILITY"
+                       if index == 0 else "COMPLETE"),
+            "refused_rows": 1 if index == 0 else 0,
+            "state_ids": [states[index]["state_id"]],
+            "state_ids_sha256": RUNTIME.CTRL._manifest_hash(
+                [states[index]["state_id"]]),
+            "rows": [{"row_sha256": f"{index + 10:064x}"}],
+            "row_sha256s": [f"{index + 10:064x}"],
+            "shard_sha256": f"{index + 20:064x}",
+            "work": {
+                "candidate_worlds_attempted": 0,
+                "candidate_worlds_completed": 0,
+                "sampler_attempts": 0,
+                "accepted_worlds": 0,
+            },
+        }
+        path.write_text(json.dumps(payload))
+        paths.append(path)
+    out = tmp_path / RUNTIME.RESULT_PATH
+    result = RUNTIME.evaluate(
+        packet_path=tmp_path / "packet.json",
+        expected_packet_sha256="1" * 64,
+        review_record=review,
+        fresh_report_review_record=review,
+        state_set_review_record=review,
+        receipt_path=tmp_path / "receipt.json",
+        expected_receipt_sha256="6" * 64,
+        shard_paths=paths, out=out)
+    assert result["decision"] == "SELECT_NONE_REPORT_LABEL_REFUSAL"
+    assert result["evaluation"] is None
+    assert result["composition_packet_review_authorized"] is False
+    assert result["report_label_refusals"] == 1
+    assert result["v11_checkpoint_loaded"] is False
+    assert out.is_file()
 
 
-def test_json_publication_cannot_overwrite_raced_destination(
-        monkeypatch, tmp_path) -> None:
-    path = tmp_path / "result.json"
-    real_link = RUNTIME.os.link
-
-    def raced_link(source, destination, *, follow_symlinks):
-        path.write_bytes(b"other publisher")
-        return real_link(source, destination,
-                         follow_symlinks=follow_symlinks)
-
-    monkeypatch.setattr(RUNTIME.os, "link", raced_link)
-    with pytest.raises(RUNTIME.ReportRuntimeRefused, match="raced"):
-        RUNTIME.publish_exclusive(path, {"value": 1})
-    assert path.read_bytes() == b"other publisher"
-    assert (tmp_path / "result.json.partial").is_file()
+def test_parser_requires_fresh_and_state_review_records() -> None:
+    parser = RUNTIME.parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args([
+            "admit", "--expected-git", "a", "--controller-packet", "p",
+            "--expected-controller-packet-sha256", "b",
+            "--controller-review-record", "r", "--out", "o",
+        ])

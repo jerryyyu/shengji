@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""Freeze a one-shot evaluator packet for the CALIB-selected Stage-C model.
+"""Freeze the one-shot fresh-REPORT evaluator for a CALIB-selected model.
 
-This controller replays the terminal DESIGN/CALIB training aggregate and binds
-the exact eight-model capability selected without REPORT.  It carries the
-four sealed REPORT shard identities forward without opening them.  A separate
-independent packet review is required before the runtime may consume its
-one-shot admission and inspect REPORT once.
+The original Stage-C REPORT labels are diagnostic-only: the V11-free route was
+chosen after their V11 statistic was inspected.  This controller therefore
+binds the separately reviewed fresh REPORT replacement and the exact
+eight-model capability selected on DESIGN/CALIB.  It derives only a digest-
+sealed, score-free eight-shard work schedule.  It does not publish state
+material, compute Teacher labels, run model inference, or open REPORT utility.
+
+After independent review, one runtime may consume the durable REPORT slot,
+reconstruct the reviewed fresh states, label the already-selected surface with
+the frozen finite-work Teacher, and evaluate the frozen ensemble exactly once.
+V11 is neither loaded nor reconstructed on this path.
 """
 from __future__ import annotations
 
@@ -25,6 +31,8 @@ SERVER = SCRIPT.parents[1]
 REPO = SCRIPT.parents[2]
 sys.path.insert(0, str(SCRIPT.parent))
 
+import teacher_stage_c_capture_runtime as CAPTURE  # noqa: E402
+import teacher_stage_c_fresh_report_controller as FRESH  # noqa: E402
 import teacher_stage_c_label_runtime as LABEL  # noqa: E402
 import teacher_stage_c_training_controller as TRAIN_CTRL  # noqa: E402
 import teacher_stage_c_training_runtime as TRAIN_RUNTIME  # noqa: E402
@@ -33,19 +41,22 @@ from shengji.rl import stage_c_report as REPORT  # noqa: E402
 from shengji.rl import stage_c_training as TRAIN  # noqa: E402
 
 
-SCHEMA = "teacher-stage-c-report-controller-v1"
-PACKET_ID = "teacher-v3-hard-tail-stage-c-report-controller-v1"
-RUN_ID = "teacher-v3-hard-tail-stage-c-report-v1"
-CONTROLLER_RUN_ID = "teacher-v3-hard-tail-stage-c-report-controller-v1"
+SCHEMA = "teacher-stage-c-v11-free-fresh-report-controller-v1"
+PACKET_ID = "teacher-v3-hard-tail-stage-c-v11-free-fresh-report-controller-v1"
+RUN_ID = "teacher-v3-hard-tail-stage-c-v11-free-fresh-report-v1"
+CONTROLLER_RUN_ID = \
+    "teacher-v3-hard-tail-stage-c-v11-free-fresh-report-controller-v1"
 PACKET_PATH = f"server/runs/logs/{CONTROLLER_RUN_ID}/controller_packet.json"
 TRAINING_AGGREGATE_REVIEW_SCHEMA = \
     "teacher-stage-c-training-aggregate-review-v1"
 TRAINING_AGGREGATE_REVIEW_MARKER = \
     "TEACHER_STAGE_C_TRAINING_AGGREGATE_V1_REVIEW "
-REVIEW_SCHEMA = "teacher-stage-c-report-controller-review-v1"
-REVIEW_MARKER = "TEACHER_STAGE_C_REPORT_CONTROLLER_V1_REVIEW "
+REVIEW_SCHEMA = "teacher-stage-c-v11-free-fresh-report-controller-review-v1"
+REVIEW_MARKER = \
+    "TEACHER_STAGE_C_V11_FREE_FRESH_REPORT_CONTROLLER_V1_REVIEW "
 
 REPORT_SURFACE_COUNTS = {"play": 480, "bury": 32}
+REPORT_SHARDS = 8
 SOURCE_PATHS = (
     "server/scripts/teacher_stage_c_report_controller.py",
     "server/scripts/teacher_stage_c_report_runtime.py",
@@ -56,8 +67,8 @@ SOURCE_PATHS = (
     "server/shengji/rl/exact_resume.py",
     "server/scripts/teacher_stage_c_training_controller.py",
     "server/scripts/teacher_stage_c_training_runtime.py",
-    "server/scripts/teacher_stage_c_label_controller.py",
     "server/scripts/teacher_stage_c_label_runtime.py",
+    "server/scripts/teacher_stage_c_fresh_report_controller.py",
     "server/scripts/teacher_stage_c_capture_runtime.py",
 )
 
@@ -273,34 +284,94 @@ def _checkpoint_manifest(
     return values
 
 
-def _report_manifest(
-    label_packet: Mapping[str, object], dataset: Mapping[str, object],
+def _candidate_world_ceiling(state: Mapping[str, object]) -> int:
+    candidates = state.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        raise ReportControllerRefused(
+            "fresh REPORT state lacks a frozen candidate tensor")
+    count = len(candidates)
+    recipe = LABEL.recipe_for_state(state)
+    if recipe == "ordinary_anchor":
+        return count * (
+            LABEL.ORDINARY_SELECTION_WORLDS
+            + LABEL.ORDINARY_REPORT_WORLDS)
+    return (count * LABEL.HARD_SELECTION_WORLDS
+            + 2 * LABEL.HARD_REPORT_WORLDS)
+
+
+def _selected_fresh_states(
+    fresh_report: Mapping[str, object], state_set_review_record: Path,
 ) -> list[dict]:
-    values = dataset.get("sealed_report_shards")
-    if (not isinstance(values, list) or len(values) != 4
-            or [value.get("index") for value in values]
-            != list(range(12, 16))
-            or any(value.get("split") != "REPORT" for value in values)):
-        raise ReportControllerRefused("sealed REPORT manifest geometry drift")
-    result = []
-    for item in values:
-        index = int(item["index"])
-        schedule = label_packet["schedule"]["shards"][index]
-        if (schedule.get("split") != "REPORT"
-                or schedule.get("local_shard") != index - 12
-                or schedule.get("state_count") != 128):
-            raise ReportControllerRefused(
-                "sealed REPORT label-schedule geometry drift")
-        path = TRAIN_CTRL._expected_label_shard_path(label_packet, index)
-        # Deliberately do not stat, hash or open `path` here. The reviewed
-        # label aggregate supplied these identities; the one-shot runtime is
-        # the first model consumer permitted to inspect the REPORT files.
-        result.append({
-            **dict(item),
-            "states": int(schedule["state_count"]),
-            "logical_path": str(path.relative_to(REPO)),
+    """Recompute the sealed population without publishing its material."""
+    try:
+        capture_packet, state_set, _verification, _review = \
+            FRESH._capture_parents(
+                capture_packet_path=(REPO / FRESH.CAPTURE_PACKET_PATH).resolve(),
+                state_set_path=(REPO / FRESH.CAPTURE_STATE_SET_PATH).resolve(),
+                verification_path=(
+                    REPO / FRESH.CAPTURE_VERIFICATION_PATH).resolve(),
+                state_set_review_record=state_set_review_record)
+        capture_shards = FRESH._report_shards(capture_packet, state_set)
+        sealed, states = FRESH.sealed_selection(
+            capture_packet=capture_packet, state_set=state_set,
+            shards=capture_shards)
+    except (FRESH.FreshReportRefused, CAPTURE.RuntimeRefused) as exc:
+        raise ReportControllerRefused(
+            f"fresh REPORT material reconstruction failed: {exc}") from exc
+    if sealed != fresh_report.get("sealed_selection"):
+        raise ReportControllerRefused(
+            "fresh REPORT material differs from reviewed sealed selection")
+    return states
+
+
+def build_report_schedule(
+    states: Sequence[Mapping[str, object]], *, surface: str,
+) -> dict:
+    """Partition the selected surface without publishing state identifiers."""
+    if surface not in MODEL.SURFACES:
+        raise ReportControllerRefused("fresh REPORT surface is unknown")
+    selected = sorted(
+        (state for state in states if state.get("surface_type") == surface),
+        key=lambda state: str(state["state_id"]),
+    )
+    if (len(selected) != REPORT_SURFACE_COUNTS[surface]
+            or len({str(state["state_id"]) for state in selected})
+            != len(selected)):
+        raise ReportControllerRefused(
+            "fresh REPORT selected-surface population drift")
+    shards = []
+    for index in range(REPORT_SHARDS):
+        population = selected[index::REPORT_SHARDS]
+        ids = [str(state["state_id"]) for state in population]
+        shards.append({
+            "index": index,
+            "state_count": len(population),
+            "state_ids_sha256": _manifest_hash(ids),
+            "candidate_world_ceiling": sum(
+                _candidate_world_ceiling(state) for state in population),
+            "result": (
+                f"server/runs/logs/{RUN_ID}/labels/shard-{index:02d}.json"),
         })
-    return result
+    schedule = {
+        "schema": "teacher-stage-c-fresh-report-schedule-v1",
+        "surface": surface,
+        "states": len(selected),
+        "selected_surface_state_ids_sha256": _manifest_hash(
+            [str(state["state_id"]) for state in selected]),
+        "partition_rule": (
+            "sort selected-surface states by state_id, then assign position "
+            "modulo eight"),
+        "shard_count": REPORT_SHARDS,
+        "shards": shards,
+        "candidate_world_ceiling": sum(
+            int(shard["candidate_world_ceiling"]) for shard in shards),
+        "audit_folds_computed": False,
+        "state_material_published": False,
+        "teacher_labels_computed": False,
+        "model_predictions_computed": False,
+    }
+    schedule["schedule_sha256"] = self_hash(schedule, "schedule_sha256")
+    return schedule
 
 
 def build_packet(
@@ -308,14 +379,15 @@ def build_packet(
     training_aggregate: Mapping[str, object],
     training_aggregate_sha256: str,
     training_aggregate_review: Mapping[str, object],
-    dataset: Mapping[str, object], label_packet: Mapping[str, object],
-    label_controller_sha256: str, label_receipt_sha256: str,
+    dataset: Mapping[str, object], fresh_report: Mapping[str, object],
+    fresh_report_review: Mapping[str, object],
+    fresh_states: Sequence[Mapping[str, object]],
 ) -> dict:
     capability = training_aggregate["selection"]["selected_capability"]
     surface = str(capability["surface"])
     checkpoints = _checkpoint_manifest(
         training_packet, training_aggregate)
-    report_manifest = _report_manifest(label_packet, dataset)
+    report_schedule = build_report_schedule(fresh_states, surface=surface)
     prior = TRAIN.state_balanced_prior(
         dataset["examples"]["DESIGN"][surface])
     current_runtime = runtime_contract()
@@ -351,21 +423,27 @@ def build_packet(
                 "external_sha256": training_aggregate[
                     "model_dataset_sha256"],
             },
-            "label_controller": {
-                "logical_path": LABEL._ctrl().CONTROLLER_PACKET_PATH,
-                "external_sha256": label_controller_sha256,
+            "fresh_report_selection": {
+                "logical_path": FRESH.PACKET_PATH,
+                "external_sha256": TRAIN_CTRL.FRESH_REPORT_PACKET_SHA256,
+                "internal_sha256": fresh_report["packet_sha256"],
+                "review_claim_sha256": _manifest_hash(fresh_report_review),
+                "sealed_selection_sha256": fresh_report[
+                    "sealed_selection"]["sealed_selection_sha256"],
+                "fresh_report_state_ids_sha256": fresh_report[
+                    "sealed_selection"]["fresh_report_state_ids_sha256"],
+                "fresh_report_state_material_sha256": fresh_report[
+                    "sealed_selection"]["fresh_report_state_material_sha256"],
+                "fresh_report_states": fresh_report[
+                    "sealed_selection"]["fresh_report_states"],
+                "state_material_published": False,
             },
-            "label_receipt": {
-                "logical_path": label_packet["result_contract"]["receipt"],
-                "external_sha256": label_receipt_sha256,
-            },
-            "state_set": dict(label_packet["parents"]["state_set"]),
         },
         "selected_capability": dict(capability),
         "runtime_contract": current_runtime,
         "checkpoint_manifest": checkpoints,
         "design_prior_distribution": prior,
-        "report_manifest": report_manifest,
+        "report_schedule": report_schedule,
         "report_contract": {
             "surface": surface,
             "head": capability["head"],
@@ -382,6 +460,14 @@ def build_packet(
             "outcome_head_additional_gate":
                 "REPORT outcome NLL improvement vs DESIGN prior LCB > 0",
             "critical": REPORT.REPORT_T_CRITICAL,
+            "fresh_teacher_label_recipe": (
+                "same finite-work iid-with-replacement Stage-C v2 label "
+                "recipe; selected surface only; no audit fold"),
+            "candidate_world_ceiling": report_schedule[
+                "candidate_world_ceiling"],
+            "v11_checkpoint_loaded": False,
+            "v11_candidates_reconstructed": False,
+            "captured_candidate_tensor_authenticated": True,
             "single_report_look": True,
             "durable_report_open_admission_slot":
                 f"server/runs/locks/{RUN_ID}.report-open.consumed.json",
@@ -397,8 +483,28 @@ def build_packet(
                 "--controller-packet", PACKET_PATH,
                 "--expected-controller-packet-sha256", "{packet_sha256}",
                 "--controller-review-record", "{controller_review_record}",
+                "--fresh-report-review-record",
+                "{fresh_report_review_record}",
+                "--state-set-review-record", "{state_set_review_record}",
                 "--out", f"server/runs/logs/{RUN_ID}/report-receipt.json",
             ],
+            "run_shards": [[
+                "{python}",
+                "server/scripts/teacher_stage_c_report_runtime.py", "run-shard",
+                "--expected-git", "{git}",
+                "--controller-packet", PACKET_PATH,
+                "--expected-controller-packet-sha256", "{packet_sha256}",
+                "--controller-review-record", "{controller_review_record}",
+                "--fresh-report-review-record",
+                "{fresh_report_review_record}",
+                "--state-set-review-record", "{state_set_review_record}",
+                "--report-receipt",
+                f"server/runs/logs/{RUN_ID}/report-receipt.json",
+                "--expected-report-receipt-sha256", "{receipt_sha256}",
+                "--shard-index", str(shard["index"]),
+                "--progress-every", "1",
+                "--out", shard["result"],
+            ] for shard in report_schedule["shards"]],
             "evaluate": [
                 "{python}",
                 "server/scripts/teacher_stage_c_report_runtime.py", "evaluate",
@@ -406,15 +512,23 @@ def build_packet(
                 "--controller-packet", PACKET_PATH,
                 "--expected-controller-packet-sha256", "{packet_sha256}",
                 "--controller-review-record", "{controller_review_record}",
+                "--fresh-report-review-record",
+                "{fresh_report_review_record}",
+                "--state-set-review-record", "{state_set_review_record}",
                 "--report-receipt",
                 f"server/runs/logs/{RUN_ID}/report-receipt.json",
                 "--expected-report-receipt-sha256", "{receipt_sha256}",
+                "--label-shards", *[
+                    shard["result"] for shard in report_schedule["shards"]],
                 "--out", f"server/runs/logs/{RUN_ID}/report-result.json",
             ],
         },
         "authority": {
-            "report_shard_files_opened": 0,
-            "report_rows_opened": 0,
+            "fresh_report_capture_shards_revalidated": 8,
+            "fresh_report_state_material_published": False,
+            "teacher_labels_computed": 0,
+            "model_predictions_computed": 0,
+            "report_utility_opened": False,
             "one_report_execution_authorized": False,
             "composition_authorized": False,
             "strength_claim": False,
@@ -447,7 +561,15 @@ def expected_review_claim(packet: Mapping[str, object],
         "checkpoint_manifest_sha256": _manifest_hash(
             packet["checkpoint_manifest"]),
         "ensemble_models": len(packet["checkpoint_manifest"]),
-        "report_manifest_sha256": _manifest_hash(packet["report_manifest"]),
+        "fresh_report_packet_sha256": packet["parents"][
+            "fresh_report_selection"]["external_sha256"],
+        "fresh_report_selection_sha256": packet["parents"][
+            "fresh_report_selection"]["sealed_selection_sha256"],
+        "report_schedule_sha256": packet["report_schedule"][
+            "schedule_sha256"],
+        "report_label_shards": packet["report_schedule"]["shard_count"],
+        "report_candidate_world_ceiling": packet["report_schedule"][
+            "candidate_world_ceiling"],
         "report_surface_states": packet["report_contract"]["states"],
         "model_score_tie_epsilon": packet["report_contract"][
             "model_score_tie_epsilon"],
@@ -455,8 +577,11 @@ def expected_review_claim(packet: Mapping[str, object],
         "python": packet["runtime_contract"]["python"],
         "torch": packet["runtime_contract"]["torch"],
         "numpy": packet["runtime_contract"]["numpy"],
-        "report_shard_files_opened_before_review": 0,
-        "report_rows_opened_before_review": 0,
+        "teacher_labels_computed_before_review": 0,
+        "model_predictions_computed_before_review": 0,
+        "report_utility_opened_before_review": False,
+        "fresh_report_state_material_published": False,
+        "v11_checkpoint_loaded": False,
         "single_report_look": True,
         "report_open_admission_slot": packet["report_contract"][
             "durable_report_open_admission_slot"],
@@ -499,21 +624,16 @@ def parser() -> argparse.ArgumentParser:
     root.add_argument("--training-aggregate", required=True)
     root.add_argument("--expected-training-aggregate-sha256", required=True)
     root.add_argument("--training-aggregate-review-record", required=True)
-    root.add_argument("--label-controller", required=True)
-    root.add_argument("--expected-label-controller-sha256", required=True)
-    root.add_argument("--label-controller-review-record", required=True)
-    root.add_argument("--label-receipt", required=True)
-    root.add_argument("--expected-label-receipt-sha256", required=True)
+    root.add_argument("--fresh-report-controller", required=True)
+    root.add_argument("--expected-fresh-report-controller-sha256", required=True)
+    root.add_argument("--fresh-report-review-record", required=True)
     root.add_argument("--state-set-review-record", required=True)
-    root.add_argument("--label-aggregate", required=True)
-    root.add_argument("--expected-label-aggregate-sha256", required=True)
-    root.add_argument("--label-aggregate-review-record", required=True)
     root.add_argument("--out", required=True)
     root.add_argument("--expected-out-sha256")
     return root
 
 
-def _validated_inputs(args) -> tuple[dict, dict, dict, dict, dict]:
+def _validated_inputs(args) -> tuple[dict, dict, dict, dict, dict, dict, list]:
     if _git("status", "--porcelain"):
         raise ReportControllerRefused(
             "real Stage-C REPORT packet freeze refuses dirty tree")
@@ -529,36 +649,29 @@ def _validated_inputs(args) -> tuple[dict, dict, dict, dict, dict]:
             aggregate_review_record=Path(
                 args.training_aggregate_review_record).resolve())
     try:
-        label_packet = TRAIN_CTRL._reviewed_upstream_label_packet(
-            Path(args.label_controller).resolve(),
-            args.expected_label_controller_sha256)
+        fresh_report, fresh_review = TRAIN_CTRL.validate_fresh_report(
+            Path(args.fresh_report_controller).resolve(),
+            args.expected_fresh_report_controller_sha256,
+            Path(args.fresh_report_review_record).resolve(),
+            Path(args.state_set_review_record).resolve())
     except TRAIN_CTRL.TrainingControllerRefused as exc:
         raise ReportControllerRefused(
-            f"reviewed label-controller validation failed: {exc}") from exc
-    state_set, _verification = LABEL._validated_parents(
-        label_packet, Path(args.state_set_review_record).resolve())
-    LABEL._receipt(
-        Path(args.label_receipt).resolve(),
-        args.expected_label_receipt_sha256, label_packet,
-        args.expected_label_controller_sha256,
-        Path(args.label_controller_review_record).resolve(),
-        Path(args.state_set_review_record).resolve())
-    label_aggregate, _label_review = TRAIN_CTRL.validate_label_aggregate(
-        Path(args.label_aggregate).resolve(),
-        args.expected_label_aggregate_sha256,
-        Path(args.label_aggregate_review_record).resolve())
-    if (args.expected_label_aggregate_sha256
-            != training_packet["parents"]["label_aggregate"][
-                "external_sha256"]
-            or label_aggregate["state_set_sha256"]
-            != dataset["state_set_sha256"]
-            or len(state_set["states"]) != 2048
-            or _manifest_hash(label_aggregate["sealed_report_manifest"])
-            != dataset["sealed_report_manifest_sha256"]):
+            f"reviewed fresh REPORT validation failed: {exc}") from exc
+    if (training_packet["parents"]["fresh_report_selection"][
+            "external_sha256"]
+            != args.expected_fresh_report_controller_sha256
+            or dataset.get("fresh_report_selection")
+            != TRAIN_CTRL.fresh_report_dataset_contract(
+                fresh_report, fresh_review)
+            or dataset.get("old_report_labels_quarantined") is not True
+            or dataset.get("report_rows_included") is not False
+            or dataset.get("fresh_report_states_materialized") is not False):
         raise ReportControllerRefused(
-            "Stage-C REPORT label/training/state parent drift")
+            "Stage-C REPORT fresh-selection/training parent drift")
+    fresh_states = _selected_fresh_states(
+        fresh_report, Path(args.state_set_review_record).resolve())
     return (training_packet, dataset, training_aggregate, training_review,
-            label_packet)
+            fresh_report, fresh_review, fresh_states)
 
 
 def main() -> int:
@@ -569,9 +682,8 @@ def main() -> int:
         training_packet=inputs[0], dataset=inputs[1],
         training_aggregate=inputs[2],
         training_aggregate_sha256=args.expected_training_aggregate_sha256,
-        training_aggregate_review=inputs[3], label_packet=inputs[4],
-        label_controller_sha256=args.expected_label_controller_sha256,
-        label_receipt_sha256=args.expected_label_receipt_sha256)
+        training_aggregate_review=inputs[3], fresh_report=inputs[4],
+        fresh_report_review=inputs[5], fresh_states=inputs[6])
     out = Path(args.out).resolve()
     if out != (REPO / PACKET_PATH).resolve():
         raise ReportControllerRefused("Stage-C REPORT packet output path drift")
@@ -586,8 +698,10 @@ def main() -> int:
         "packet_sha256": sha256_file(out),
         "packet_internal_sha256": packet["packet_sha256"],
         "selected_capability": packet["selected_capability"],
-        "report_shard_files_opened": 0,
-        "report_rows_opened": 0,
+        "fresh_report_state_material_published": False,
+        "teacher_labels_computed": 0,
+        "model_predictions_computed": 0,
+        "report_utility_opened": False,
         "report_execution_authorized": False,
     }, sort_keys=True))
     return 0

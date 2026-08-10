@@ -186,6 +186,7 @@ def test_review_claim_authorizes_capture_only(
                                       "REPORT": 512},
             "required_play_states": 1920,
             "required_bury_states": 128,
+            "exact_late_requires_phase_late": True,
             "terminal_disposition_replay_deals": 750_000,
             "terminal_disposition_replay_workers": 8,
             "terminal_disposition_progress_every": 250,

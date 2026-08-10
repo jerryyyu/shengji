@@ -854,3 +854,46 @@ packet bytes. Scope: ONE score-free capture execution. No H0 outcomes, labels, t
 claims, promotion or deployment.
 
 TEACHER_STAGE_C_CAPTURE_CONTROLLER_V1_REVIEW {"base_stage_c_sha256":"f213314ace8ead497fcaccde150d0694851069b970948a10d0823cf74ceb93b4","bury_states":128,"calib_states":512,"capture_shards":24,"controller_script_sha256":"9035512d5b44ac90a2cf86af75e365ad9fbd74fd589414cdb2a1d666b8ba9276","design_states":1024,"exclusion_manifest_sha256":"89887733241af9a9583e2930ef0e0bd83dcdfa0a0f0dce3147d924dffa11d86c","git":"67fb31f8cfd16ad83e1998cda50e01ef7447f115","h0_controller_sha256":"cf074871cf977c0b072c528c395082b453b3b589f445c524baae9016e1d35392","independent_review":true,"labels_authorized":false,"live_parent_policy":"mc-s0-report-lcb","live_parent_schema":"live-champion-parent-v1","max_uncertainty_candidate_worlds":9216000,"one_capture_execution_authorized":true,"outcomes_computed_before_review":false,"packet_sha256":"e23356f77d2e7c20a96f8ec9304df5d3a8b9bbc634a60f9696d8c06a01196f2c","play_states":1920,"production_deployment":false,"production_promotion":false,"rebind_sha256":"b60c4298493794b6de0ffe6907e8b92fb24f4bab6d56cc4c653eb1c67a1b7b18","report_states":512,"runtime_script_sha256":"273fab484422b8cf2cf76bb9c153a1bdddeba7f0bc57603d95db0ec2c08e6423","s3c_controller_sha256":"cafbee439f8c30a07b0b6801d52620d7197afc3633badbc531bc5b156ce2f23e","scan_deals":750000,"schedule_sha256":"a618952110871df1ce970173199ea5c9ff88e27ef9b4f05265ec2973d7e80499","schema":"teacher-stage-c-capture-controller-review-v1","states":2048,"states_captured_before_review":0,"strength_claim":false,"training_authorized":false,"uncertainty_worlds":30,"v11_checkpoint_sha256":"cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003","verdict":"PASS","worlds_sampled_before_review":0}
+
+## Claude — 2026-08-10 00:58 EDT — S6 candidate from live KESP forensics: three frozen throw-sourcing witnesses; two bounded ballot additions proposed (Jerry-directed)
+
+Jerry reviewed his live KESP game and identified three shuai-pai decisions the champion's ballot
+cannot even consider. I independently reproduced all three: rebuilt each exact Round from the live
+log via `replay_log.rebuild_round`, replayed to the decision, and ran the production champion's
+`_candidates` — the ballots below are measured, byte-identical to Jerry's readings, and
+cap-independent (the plays are never SOURCED, so no cap admits them).
+
+**Witness 1 — partial near-boss throw (succeeded).** KESP round 4 (trump C3), jerry led
+`DJ DJ DQ DQ DA` for 25 points while keeping D5/D8/D9/D10. `near_boss_throws` emits only the
+WHOLE-suit throw and requires every component boss/near-boss; the retained low singles disqualify
+the suit, and partial top-of-suit throws have no source at all.
+
+**Witness 2 — top boss-component bundle under ruff risk (ruffed).** KESP round 5 (trump D5),
+hand `C6 C7 C8 CA CK CQ D10 DA DJ DK H4 H4 H7 HJ HQ LJ`; measured ballot exactly
+`[HQ, H4H4, CA, LJ, H4, C6, DJ]` — no `CQ CK CA`. Root cause is the Boolean pre-filter: every
+throw source (`near_boss_throws` AND `_boss_components` feeding SmartBot's `_lead`) opens with
+`if not cards or mem.ruff_risk(s, opps): continue`. Ruff risk suppresses the candidate instead of
+letting sampled worlds price whether an all-trump shape-matching response exists.
+
+**Witness 3 — whole-remaining-suit evacuation (ruffed).** Same round, hand
+`C6 C7 C8 D10 DK HJ LJ`; measured ballot exactly `[HJ, C8, LJ, C6]` — no `C6 C7 C8`. No source
+family exists for suit evacuation: near-boss singles must be boss (`mem.is_boss` else break), so a
+low-card shed can never qualify, ruff risk aside.
+
+**The judgment point, from the same log:** both round-5 throws were in fact beaten by uniform
+all-trump responses (AKQ by progressively higher trump triples ending `BJ C5 D6`; 876 by Bot 1's
+`D8 BJ C5` — C5 effective trump under rank 5). Their absence from the ballot is therefore not
+proven harmful in these instances — but the bot could not even CONSIDER them, and a Boolean filter
+cannot distinguish these losing cases from Witness 1's winning case. Search should judge; sourcing
+should not pre-decide.
+
+**Proposal (S6, bounded — per Jerry):** freeze the three witnesses above as named DEV assets and
+screen exactly two ballot additions, not combinatorial throw enumeration:
+1. **top boss-component bundle despite ruff risk** — the maximal boss/near-boss component bundle of
+   a plain suit enters the MC ballot even when `ruff_risk` is true; rollouts price the ruff.
+2. **whole remaining plain-suit throw** — when a plain-suit holding is the player's entire
+   remaining suit, the evacuation throw enters the ballot regardless of component bossness.
+
+Both are continuation-preserving ballot-widening changes in the S4 review pattern: sealed modules
+untouched (wrapper experiment), trigger-matched null, exact-state screen before any full-game
+claim. No authority requested by this entry; witnesses are DEV/diagnostic only.

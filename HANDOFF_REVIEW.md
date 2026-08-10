@@ -812,3 +812,45 @@ Two errors, both mine:
 Root cause is the class my own protocol warns about: deriving a quantitative claim (elapsed hours)
 from a remembered narrative instead of the artifact's own timestamp. The correction rule applied
 going forward: elapsed-time claims must quote `created_time_ns` arithmetic inline.
+
+## Claude — 2026-08-09 23:12 EDT — TEACHER_STAGE_C_CAPTURE_CONTROLLER_V1_REVIEW @ 67fb31f: PASS — all seven measured checks; one test-port ask
+
+Review of draft PR #9 (source `67fb31f`, packet from `54ae266`), per the routed request. All
+MEASURED from a clean hydrated worktree:
+
+1. **Reopening**: `verify` reproduces `VERIFIED_FOR_CAPTURE_CONTROLLER_REVIEW` with the exact
+   external SHA `e23356f7…96f2c` and `states_captured: 0, worlds_sampled: 0`, reopening the base
+   Stage-C design, rebind, H0-v3, S3c-v2, live report-LCB parent (canonical RLCB bytes required —
+   absence refuses), V11pair checkpoint and all 19 evaluation-exclusion assets with pinned SHAs and
+   seed-identity counts.
+2. **Schedule**: 750,000 scan deals / 24 shards (8 per split), pre-deal cell assignment by named
+   hash, one state per deal across all splits, `TERMINAL_HOLD_NO_EXTENSION` on underfill; split
+   totals and 1,920+128 state geometry bound through the frozen parents.
+3. **Candidates**: candidate-zero/live-ballot identity with 20/33 caps; play union is champion
+   analysis ballot + v11pair proposal (never scalar leaf) + named structured mechanisms +
+   conditional replay-verified S5 + same-budget random; bury union live/structured/random; S3a
+   retained as candidate source only with its SELECT_NONE recorded, never a policy prior; raw
+   human actions excluded from fresh CALIB/REPORT with the unsupported-source fallback (omit
+   human, keep V11/structured/random) — consistent with H0-v3's terminal refusal.
+4. **Uncertainty reservoir**: hash-smallest admission before any belief draw, N=30 selection-only
+   common worlds, streams disjoint from all label/audit streams, ceiling 9,216,000 bound by full
+   recomputation (widening it by one refuses, measured).
+5. **One-shot semantics**: durable slot before receipt, exclusive outputs everywhere, namespace
+   admits only packet+review before receipt, exception-aborts, end-of-compute identity reopening,
+   every accepted state must replay.
+6. **Mutations**: schedule widening → recomputation drift; authority widening → BOTH the specific
+   guard and drift; tampered rebind bytes → `Stage-C rebind external SHA-256 drift`; tampered
+   H0-v3 bytes → `H0-v3 external SHA-256 drift`; the ignored-lock seam is test-covered
+   (`test_ignored_admission_reopens_but_unrelated_dirt_refuses`). One surviving mutation
+   (consumed-slot pre-check) adjudicated redundant-defensive with TWO structural backstops
+   (exclusive slot publish refuses overwrite; namespace-content check refuses existing targets) —
+   ASK: port the H0-style `slot_survives_receipt_deletion_and_blocks_reissue` test to the capture
+   runtime so this guard stays observable.
+7. **Batteries**: focused capture 23/23; my transitive composition 115/115 (superset of the claimed
+   113/113; no failure anywhere) under compiled strict-void mode.
+
+The marker below is generated from the verifier's own `expected_review_claim` over the frozen
+packet bytes. Scope: ONE score-free capture execution. No H0 outcomes, labels, training, strength
+claims, promotion or deployment.
+
+TEACHER_STAGE_C_CAPTURE_CONTROLLER_V1_REVIEW {"base_stage_c_sha256":"f213314ace8ead497fcaccde150d0694851069b970948a10d0823cf74ceb93b4","bury_states":128,"calib_states":512,"capture_shards":24,"controller_script_sha256":"9035512d5b44ac90a2cf86af75e365ad9fbd74fd589414cdb2a1d666b8ba9276","design_states":1024,"exclusion_manifest_sha256":"89887733241af9a9583e2930ef0e0bd83dcdfa0a0f0dce3147d924dffa11d86c","git":"67fb31f8cfd16ad83e1998cda50e01ef7447f115","h0_controller_sha256":"cf074871cf977c0b072c528c395082b453b3b589f445c524baae9016e1d35392","independent_review":true,"labels_authorized":false,"live_parent_policy":"mc-s0-report-lcb","live_parent_schema":"live-champion-parent-v1","max_uncertainty_candidate_worlds":9216000,"one_capture_execution_authorized":true,"outcomes_computed_before_review":false,"packet_sha256":"e23356f77d2e7c20a96f8ec9304df5d3a8b9bbc634a60f9696d8c06a01196f2c","play_states":1920,"production_deployment":false,"production_promotion":false,"rebind_sha256":"b60c4298493794b6de0ffe6907e8b92fb24f4bab6d56cc4c653eb1c67a1b7b18","report_states":512,"runtime_script_sha256":"273fab484422b8cf2cf76bb9c153a1bdddeba7f0bc57603d95db0ec2c08e6423","s3c_controller_sha256":"cafbee439f8c30a07b0b6801d52620d7197afc3633badbc531bc5b156ce2f23e","scan_deals":750000,"schedule_sha256":"a618952110871df1ce970173199ea5c9ff88e27ef9b4f05265ec2973d7e80499","schema":"teacher-stage-c-capture-controller-review-v1","states":2048,"states_captured_before_review":0,"strength_claim":false,"training_authorized":false,"uncertainty_worlds":30,"v11_checkpoint_sha256":"cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003","verdict":"PASS","worlds_sampled_before_review":0}

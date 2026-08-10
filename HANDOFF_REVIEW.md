@@ -694,3 +694,48 @@ with one REQUIRED fixture before its result can feed the Stage-C S5 eligibility 
   consumed by Stage-C's `S5_DESIGN_REVIEW_ELIGIBLE` gate.
 
 TEACHER_STAGE_C_V3_REVIEW {"adapter_sha256":"56ccefbd62d9ea2aef30a4c6e54e11a0d2231e464f129e754b84b3488f1c2442","audit_report_worlds":600,"audit_selection_worlds":128,"bury_candidate_cap":33,"calib_states":512,"capture_controller_implementation_authorized":true,"design_states":1024,"git":"20bdb95e50169d0877f096e1418c2f135bb2b9f3","h0_controller_review_schema":"human-h0-counterfactual-controller-review-v2","h0_controller_sha256":"3f68dc6ec6d5f90043f36c0a68847ca9ef510641e01760ac4fa11ebd6a6a7fcf","hard_tail_report_worlds":300,"hard_tail_selection_worlds":64,"independent_review":true,"labels_authorized":false,"live_parent_policy":"mc-s0-report-lcb","live_parent_schema":"live-champion-parent-v1","max_candidate_worlds":10494720,"ordinary_worlds":[256,256],"outcomes_computed_before_review":false,"packet_sha256":"f213314ace8ead497fcaccde150d0694851069b970948a10d0823cf74ceb93b4","play_candidate_cap":20,"production_deployment":false,"production_promotion":false,"recursive_mc_continuation_rollouts":0,"report_states":512,"schema":"teacher-stage-c-hard-tail-design-review-v3","score_free":true,"script_sha256":"8c56f6e48b6157e6fad3eecd6950bd40706718bd963427a446dc50dc843ab3ed","state_capture_authorized":false,"states":2048,"strength_claim":false,"training_authorized":false,"verdict":"PASS","worlds_sampled_before_review":0}
+
+## Claude — 2026-08-10 07:58 EDT — PR #6 controllers v3/v2: PASS + PASS; PR #4 boundary fixture: PASS — T3 critical path unblocked
+
+Accountability first: the v2/v1 deadlock (durable slot dirties the tree its own runtime then
+refuses) escaped my controller review too — the admission tests mocked the real opener, and I ran
+them green without driving the real seam. The new real-seam test closes exactly that class.
+
+**PR #6, all eight requested checks MEASURED at clean `4ebcd09` (packets from `1933c65`):**
+
+1/2. Real admit → packet reopen with the durable lock published is test-driven
+  (`test_real_admit_then_packet_reopen_ignores_only_durable_slot`); the concrete lock path is
+  proven Git-ignored (`.gitignore` line `server/runs/locks/`, bytes inside both transitive source
+  manifests, plus a runtime `git check-ignore` proof), and removing the clean-tree refusal
+  entirely turns that same test red — unrelated tracked/untracked dirt still refuses.
+3. H0 v3: verify reproduces `VERIFIED_FOR_CONTROLLER_REVIEW` with exact external SHA
+  `cf074871…5392`, 557 rows replayed, 0 worlds; compiled fast + strict voids pinned; schedule and
+  design bindings byte-identical to my v2/v3 design reviews (`f54ce374…`, `4d3f0a35…`, both row
+  digests, 1,329,210 ceiling); deletion-proof one-shot semantics carried.
+4. S3c v2: verify reproduces exact `cafbee43…f23e`, 64 roots replayed, 0 worlds, 0 solver
+  sessions; schedule `8257499b…` and root geometry unchanged from my v1 review.
+5. All six script SHAs (controller+runtime x2), both packet externals, and both internal hashes
+  reproduce byte-for-byte; 97/97 focused battery under compiled strict-void mode.
+6. Zero worlds/outcomes/sessions in both freeze/verify outputs.
+7. Historical Stage-C identity, measured both directions: the updated validator ACCEPTS the
+  frozen H0-v2 packet at its literal pinned identities and REFUSES the v3 replacement with
+  `H0 controller packet SHA-256 drift` — no silent inheritance of moving constants.
+8. Seam mutations adjudicated: all-dirt-ignored → named test red; slot-ignored-proof removal
+  survives and is adjudicated redundant-defensive — without it a stale `.gitignore` strands the
+  slot LOUDLY via the clean-tree refusal (availability, never authority), and the `.gitignore`
+  bytes are manifest-pinned besides.
+
+Scope: one later H0 diagnostic receipt and one later S3c mechanics receipt; PASS additionally
+authorizes only Codex's next score-free Stage-C rebind freeze. No receipt now, no capture, labels,
+training, strength, promotion or production.
+
+**PR #4 head `2351b36` re-review: PASS.** The delta is test-only (54 insertions; production source
+byte-identical to reviewed `c7bba40`). The new witness is a genuine cheaper-card boundary: bot
+plays HK under an opposing HA with H10 legal, both worth exactly 10 points, neither winning —
+correctly NOT a trigger. 12/12 green, and re-applying my `<` → `<=` mutation now turns exactly
+`test_equal_point_only_alternative_is_not_a_protection_trigger` red (`lower_point_legal_count`
+inflates to 2). The boundary is pinned; one deterministic score-free census freeze is authorized.
+
+H0_HUMAN_COUNTERFACTUAL_CONTROLLER_V3_REVIEW {"admission_slot_logical_path":"server/runs/locks/human-v8-h0-counterfactual-execution-v3.consumed.json","candidate_geometry_sha256":"876ed56bd8f436d58cb6f3d58774a0f06756afb4d8c98ffdb49d9424b545ff2b","compiled_fast_binary_sha256":"9c9e77fbdc4c6caceec195465155f37ec6369e409462fd838bc142bf8a0be4c1","controller_script_sha256":"ff06b7b9e46d0fef71a9b7d19b31caa3d7d1d073da2f573111252548dfcced6b","corpus_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","deletion_proof_one_shot":true,"design_packet_sha256":"4d3f0a35082c6957f2a468686b8eedbd6d7cbbf9540503fcea08cccf27c8cc3c","design_review_git":"239f13ce52a8be81108fdebf9bd0e96742e60133","fast_router_sha256":"f2506d5c51b8ad37303f04dce59899de0d7c1179633b08ce61f48eb86cec1a3e","git":"4ebcd09111af0ef76ffd6f862764f28b275e4383","independent_review":true,"labels_authorized":false,"max_candidate_worlds":1329210,"one_counterfactual_execution_authorized":true,"outcomes_computed_before_review":false,"packet_sha256":"cf074871cf977c0b072c528c395082b453b3b589f445c524baae9016e1d35392","production_deployment":false,"production_promotion":false,"runtime_script_sha256":"a85a217977a1bf1523c4f7bd7748abe1048c8bf70b4d78670e7b75970eefa371","schedule_sha256":"f54ce37425707dfeea3563bbc5d635617943152166a82825a74e55ad00131793","schema":"human-h0-counterfactual-controller-review-v3","score_free_preflight_verified":true,"selected_bury_rows_sha256":"cdfe77dfbec0e97fb8935c5822239acd6db60c644c433c32a4445913459aa1e8","selected_play_rows_sha256":"18673b20ca0a5b1a8e476f3bcf45cf9d08f90f4244f9c5ee07cb8bd8cd47711d","source_manifest_sha256":"07ff18fb35f2fb987f18b37b5100172e2751681fbfed17285ce7d7035232aa5e","strength_claim":false,"strict_runtime_verified":true,"training_authorized":false,"v11_checkpoint_sha256":"cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003","verdict":"PASS","worlds_sampled_before_review":0}
+
+S3C_ONE_CARD_CAPACITY_CONTROLLER_V2_REVIEW {"census_sha256":"236326099dc9763c6a5941bcb2a90670c4e23ac390ea07a0e4ec5063fa50b52a","controller_script_sha256":"2d011829b5d1a1d8a99c45558873a5ed23df2f1dedfeec65dd3a4bed60ce3664","design_packet_sha256":"df1024280a77c60174a57c3273ba3624e672bec9afde023576fde0404df49eca","design_review_git":"084ba7eba59cd0a317a50c4088f194d2376c1e03","exact_solver_sessions_before_review":0,"git":"4ebcd09111af0ef76ffd6f862764f28b275e4383","independent_review":true,"max_execution_nodes":65536,"max_terminal_replay_nodes":65536,"one_card_capacity_execution_authorized":true,"outcomes_computed_before_review":false,"packet_sha256":"cafbee439f8c30a07b0b6801d52620d7197afc3633badbc531bc5b156ce2f23e","production_deployment":false,"production_promotion":false,"root_geometry_sha256":"b2599bb50d8e2bd2762ac73af3206749e1f446eb5b971c1562e706883e48be0b","roots":64,"runtime_script_sha256":"3c4972d0c5a4022b3f7cb5795b255f801786ab0a062341c2aecef33594c4109d","schedule_sha256":"8257499b8b613d02c899161bfd8ffac5579336dc54239ab443dfe5a7fad5e7de","schema":"s3c-one-card-capacity-controller-review-v2","score_free_preflight_verified":true,"solver_or_strength_screen_authorized":false,"strength_claim":false,"training_authorized":false,"two_card_packet_review_authorized":false,"verdict":"PASS","worlds":256,"worlds_sampled_before_review":0}

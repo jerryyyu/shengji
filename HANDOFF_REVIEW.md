@@ -1282,3 +1282,36 @@ Scope: ONE score-free v4 capture (full 24-shard schedule restart at eight worker
 training, strength claim, screen, promotion or deployment. The v3 marker must not issue a receipt.
 
 TEACHER_STAGE_C_CAPTURE_CONTROLLER_V4_REVIEW {"base_stage_c_sha256":"f213314ace8ead497fcaccde150d0694851069b970948a10d0823cf74ceb93b4","bury_states":128,"calib_states":512,"capture_shards":24,"complete_generation_witness":true,"controller_script_sha256":"facc2da6f01df077f7b09eeb97ff2ab6650fa09522bc34307c81f3f8ec047dfb","design_states":1024,"exact_late_requires_phase_late":true,"exclusion_manifest_sha256":"89887733241af9a9583e2930ef0e0bd83dcdfa0a0f0dce3147d924dffa11d86c","git":"5a51a1ef3eed35aa6659ae66eeb39f3f5a95f35a","h0_controller_sha256":"cf074871cf977c0b072c528c395082b453b3b589f445c524baae9016e1d35392","independent_review":true,"labels_authorized":false,"live_parent_policy":"mc-s0-report-lcb","live_parent_schema":"live-champion-parent-v1","max_terminal_replay_uncertainty_attempts":4608000,"max_terminal_replay_uncertainty_candidate_worlds":9216000,"max_total_uncertainty_attempts":9216000,"max_total_uncertainty_candidate_worlds":18432000,"max_uncertainty_attempts":4608000,"max_uncertainty_candidate_worlds":9216000,"one_capture_execution_authorized":true,"outcomes_computed_before_review":false,"packet_sha256":"0d1a94d40467511b794283b7916e72703310421b21ece6bcbdd64f14ef954eaa","play_states":1920,"population_experiment_id":"teacher-v3-hard-tail-stage-c-capture-v2","production_deployment":false,"production_promotion":false,"rebind_sha256":"b60c4298493794b6de0ffe6907e8b92fb24f4bab6d56cc4c653eb1c67a1b7b18","report_states":512,"runtime_script_sha256":"0bed211840b4d2b662b8c20250e6b0cc4dc340148308a15cf300df6b8b3c15f5","s3c_controller_sha256":"cafbee439f8c30a07b0b6801d52620d7197afc3633badbc531bc5b156ce2f23e","scan_deals":750000,"schedule_sha256":"0e75ddaefb6a2846cd8723b72eb29bf65cef6570c39290103715aa042817efd1","schema":"teacher-stage-c-capture-controller-review-v4","states":2048,"states_captured_before_review":0,"strength_claim":false,"terminal_disposition_progress_every":250,"terminal_disposition_replay_deals":750000,"terminal_disposition_replay_workers":8,"terminal_recomputes_state_identity":true,"terminal_reconciles_work":true,"terminal_replays_all_scan_dispositions":true,"training_authorized":false,"uncertainty_worlds":30,"v11_checkpoint_sha256":"cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003","verdict":"PASS","worlds_sampled_before_review":0}
+
+## Claude — 2026-08-10 08:56 EDT — TEACHER_STAGE_C_CAPTURE_CONTROLLER_V6_REVIEW @ 2bdb094: PASS — hand-order invariance proven red/green; one attribution correction
+
+**Attribution correction first**: the mailbox gate says "Claude's v5 HOLD". I did not author a v5
+review — my ledger entries go v4 PASS (07:22) directly to this v6 review, and no Claude-authored
+v5 entry exists in any ledger revision. The 07:53 audit that correctly HOLDed v5 was not mine;
+please attribute it to its actual author in the next mailbox sync. The finding itself was real and
+this review confirms its repair.
+
+The v6 delta review, all MEASURED at source `2bdb094` (child of v5 source `a71c67e`):
+
+- **The fix** mirrors the established ballot-canonicalization pattern: the acting banker's hand is
+  replaced by its sorted multiset ONLY during incumbent + structured-bury construction, then the
+  original list object is restored unconditionally in `finally`. The docstring correctly names the
+  defect class: `encode_obs` treats hands as multisets, so equal-valued cards at the eight-card
+  boundary let one encoded state admit two candidate populations under incidental list order.
+- **Red/green on both witnesses**: reverting the canonicalization turns exactly
+  `test_bury_candidate_union_ignores_incidental_hand_order[190000063]` (the named tied-boundary
+  seed) and `test_bury_candidate_union_restores_hand_after_incumbent_failure` (injected-exception
+  restoration) red; at v6 the parameterized witness slice passes 4/4 and the full
+  capture/rebind/live-parent slice 57/57 under compiled strict-void mode.
+- **Preservation verified by byte-diff of frozen packets v4→v6**: `schedule` (sha `0e75ddae…`),
+  `evaluation_exclusions`, `parents`, `inputs` and `authority` are IDENTICAL; the contract
+  sections differ only in version strings, the v6 namespace, and two NEW invariance claims
+  (`candidate_source_hand_order_invariant=true`, `candidate_source_canonical_action_order=
+  "sorted action_key"`). Population experiment remains `…capture-v2`.
+- **Verify reproduces** packet `40c602ea…20ffd` exactly with zero v6 states/worlds; the fresh v6
+  namespace/slot are absent; v3 partials and the withdrawn v4/v5 packets cannot satisfy v6 paths.
+
+Scope: ONE score-free v6 capture — full 24-shard restart in three waves of eight. No labels,
+training, strength claim, screen, promotion or deployment.
+
+TEACHER_STAGE_C_CAPTURE_CONTROLLER_V6_REVIEW {"base_stage_c_sha256":"f213314ace8ead497fcaccde150d0694851069b970948a10d0823cf74ceb93b4","bury_states":128,"calib_states":512,"candidate_source_hand_order_invariant":true,"capture_shards":24,"complete_generation_witness":true,"controller_script_sha256":"1e23afafd90f3fa442e8bce5b66e6c5f5550b3dbae80870a91291966291ab16c","design_states":1024,"exact_late_requires_phase_late":true,"exclusion_manifest_sha256":"89887733241af9a9583e2930ef0e0bd83dcdfa0a0f0dce3147d924dffa11d86c","git":"2bdb0947ee6b5d4b7643c17dca1da8c23f30f5f0","h0_controller_sha256":"cf074871cf977c0b072c528c395082b453b3b589f445c524baae9016e1d35392","independent_review":true,"labels_authorized":false,"live_parent_policy":"mc-s0-report-lcb","live_parent_schema":"live-champion-parent-v1","max_terminal_replay_uncertainty_attempts":4608000,"max_terminal_replay_uncertainty_candidate_worlds":9216000,"max_total_uncertainty_attempts":9216000,"max_total_uncertainty_candidate_worlds":18432000,"max_uncertainty_attempts":4608000,"max_uncertainty_candidate_worlds":9216000,"one_capture_execution_authorized":true,"outcomes_computed_before_review":false,"packet_sha256":"40c602ea483e47bbd6f8c70f38d00c5e84cc3a12e51dbdce5b438e7a85020ffd","play_states":1920,"population_experiment_id":"teacher-v3-hard-tail-stage-c-capture-v2","production_deployment":false,"production_promotion":false,"rebind_sha256":"b60c4298493794b6de0ffe6907e8b92fb24f4bab6d56cc4c653eb1c67a1b7b18","report_states":512,"runtime_script_sha256":"e3f5ce6e472114870d92c918bc573c713237c216b99247466a428af6272408e3","s3c_controller_sha256":"cafbee439f8c30a07b0b6801d52620d7197afc3633badbc531bc5b156ce2f23e","scan_deals":750000,"schedule_sha256":"0e75ddaefb6a2846cd8723b72eb29bf65cef6570c39290103715aa042817efd1","schema":"teacher-stage-c-capture-controller-review-v6","states":2048,"states_captured_before_review":0,"strength_claim":false,"terminal_disposition_progress_every":250,"terminal_disposition_replay_deals":750000,"terminal_disposition_replay_workers":8,"terminal_recomputes_state_identity":true,"terminal_reconciles_work":true,"terminal_replays_all_scan_dispositions":true,"training_authorized":false,"uncertainty_worlds":30,"v11_checkpoint_sha256":"cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003","verdict":"PASS","worlds_sampled_before_review":0}

@@ -42,10 +42,17 @@ def _require_live_report_lcb(bot) -> None:
     expected = {
         "N_DETERMINIZATIONS": 30,
         "REQUIRE_EXACT_WORK": True,
+        "ADAPTIVE_ALLOCATION": False,
+        "RANDOM_ALLOCATION": False,
+        "EXTRA_SELECTION_WORK": 0,
         "REPORT_FOLD_WORLDS": 300,
         "REPORT_RULE": "lcb",
         "REPORT_MIN_GAIN": 0.0,
         "REPORT_ALPHA": 0.05,
+        "MC_BURY": False,
+        "MAX_CANDIDATES": 8,
+        "LEAD_MAX_CANDIDATES": 14,
+        "FOLLOW_MAX_CANDIDATES": 12,
     }
     actual = {name: getattr(bot, name, None) for name in expected}
     if actual != expected:

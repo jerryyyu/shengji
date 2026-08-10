@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import stat
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Mapping, Sequence
 
@@ -35,6 +37,12 @@ from shengji.rl.torch_policy import _load_npnet  # noqa: E402
 
 
 ADMISSION_SCHEMA = "teacher-stage-c-composition-screen-admission-v1"
+CAPACITY_ADMISSION_SCHEMA = \
+    "teacher-stage-c-composition-capacity-admission-v1"
+SUPERVISOR_ADMISSION_SCHEMA = \
+    "teacher-stage-c-composition-supervisor-admission-v1"
+SUPERVISOR_FINAL_SCHEMA = \
+    "teacher-stage-c-composition-supervisor-final-v1"
 RECEIPT_SCHEMA = "teacher-stage-c-composition-screen-receipt-v1"
 SHARD_SCHEMA = "teacher-stage-c-composition-screen-shard-v1"
 AGGREGATE_SCHEMA = "teacher-stage-c-composition-screen-result-v1"
@@ -118,12 +126,20 @@ def _expected_receipt_path() -> Path:
     return (REPO / CTRL.RECEIPT_PATH).resolve()
 
 
+def _expected_capacity_result_path() -> Path:
+    return (REPO / CTRL.CAPACITY_RESULT_PATH).resolve()
+
+
 def _expected_shard_path(index: int) -> Path:
     return (REPO / CTRL.SHARD_PATHS[index]).resolve()
 
 
 def _expected_aggregate_path() -> Path:
     return (REPO / CTRL.RESULT_PATH).resolve()
+
+
+def _expected_supervisor_final_path() -> Path:
+    return (REPO / CTRL.SUPERVISOR_FINAL_PATH).resolve()
 
 
 def _artifact(ref: Mapping[str, object], label: str) -> tuple[Path, dict]:
@@ -158,6 +174,58 @@ def _review_claim(path: Path, packet: Mapping[str, object],
     return claim
 
 
+def _capacity_review_claim(
+    path: Path, packet: Mapping[str, object], packet_sha256: str,
+    capacity_result: Mapping[str, object], capacity_result_sha256: str,
+) -> dict:
+    if not is_regular_unlinked(path):
+        raise CompositionRuntimeRefused(
+            "composition capacity review record is not regular/unlinked")
+    matches = [line[len(CTRL.CAPACITY_REVIEW_MARKER):]
+               for line in path.read_text().splitlines()
+               if line.startswith(CTRL.CAPACITY_REVIEW_MARKER)]
+    if len(matches) != 1:
+        raise CompositionRuntimeRefused(
+            "composition capacity review record needs exactly one marker")
+    try:
+        claim = json.loads(matches[0])
+    except ValueError as exc:
+        raise CompositionRuntimeRefused(
+            "composition capacity review marker is invalid JSON") from exc
+    expected = CTRL.expected_capacity_review_claim(
+        packet, packet_sha256, capacity_result, capacity_result_sha256)
+    if claim != expected:
+        raise CompositionRuntimeRefused(
+            "composition capacity review claim/authority drift")
+    return claim
+
+
+def _supervisor_review_claim(
+    path: Path, packet: Mapping[str, object], packet_sha256: str,
+    supervisor_final: Mapping[str, object], supervisor_final_sha256: str,
+) -> dict:
+    if not is_regular_unlinked(path):
+        raise CompositionRuntimeRefused(
+            "composition supervisor review record is not regular/unlinked")
+    matches = [line[len(CTRL.SUPERVISOR_REVIEW_MARKER):]
+               for line in path.read_text().splitlines()
+               if line.startswith(CTRL.SUPERVISOR_REVIEW_MARKER)]
+    if len(matches) != 1:
+        raise CompositionRuntimeRefused(
+            "composition supervisor review record needs exactly one marker")
+    try:
+        claim = json.loads(matches[0])
+    except ValueError as exc:
+        raise CompositionRuntimeRefused(
+            "composition supervisor review marker is invalid JSON") from exc
+    expected = CTRL.expected_supervisor_review_claim(
+        packet, packet_sha256, supervisor_final, supervisor_final_sha256)
+    if claim != expected:
+        raise CompositionRuntimeRefused(
+            "composition supervisor review claim/authority drift")
+    return claim
+
+
 def _packet(path: Path, expected_sha256: str) -> tuple[dict, object]:
     _require_clean_tree()
     if (path.resolve() != _expected_packet_path()
@@ -179,7 +247,9 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, object]:
             != CTRL._source_sha256s()
             or packet.get("runtime_contract") != CTRL.runtime_contract()
             or authority != {
-                "screen_packet_review_authorized": True,
+                "capacity_preflight_review_authorized": True,
+                "capacity_preflight_launch_authorized": False,
+                "screen_packet_review_authorized": False,
                 "screen_launch_authorized": False,
                 "confirmation_launch_authorized": False,
                 "strength_claim": False,
@@ -188,6 +258,8 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, object]:
             }
             or packet.get("candidate_contract")
             != CTRL.candidate_contract()
+            or packet.get("capacity_contract")
+            != CTRL.capacity_contract()
             or packet.get("screen_contract") != CTRL.screen_contract()
             or packet.get("commands") != CTRL._commands()
             or packet.get("result_contract") != CTRL.result_contract()):
@@ -292,14 +364,37 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, object]:
     return packet, ensemble
 
 
-def _slot_payload(packet: Mapping[str, object], packet_sha256: str,
-                  review_record: Path) -> dict:
+def _validated_capacity_evidence(
+    *, packet: Mapping[str, object], packet_sha256: str,
+    controller_review_record: Path, capacity_result_path: Path,
+    capacity_result_sha256: str, capacity_review_record: Path,
+) -> tuple[dict, dict]:
+    capacity = _capacity_result(
+        capacity_result_path, capacity_result_sha256, packet,
+        packet_sha256, controller_review_record)
+    claim = _capacity_review_claim(
+        capacity_review_record, packet, packet_sha256,
+        capacity, capacity_result_sha256)
+    return capacity, claim
+
+
+def _slot_payload(
+    packet: Mapping[str, object], packet_sha256: str,
+    review_record: Path, capacity_result: Mapping[str, object],
+    capacity_result_sha256: str, capacity_review_record: Path,
+) -> dict:
     value = {
         "schema": ADMISSION_SCHEMA,
         "run_id": CTRL.RUN_ID,
         "git": packet["producer"]["git"],
         "controller_packet_sha256": packet_sha256,
         "controller_review_record_sha256": sha256_file(review_record),
+        "capacity_result_sha256": capacity_result_sha256,
+        "capacity_result_internal_sha256": capacity_result["result_sha256"],
+        "capacity_review_record_sha256": sha256_file(
+            capacity_review_record),
+        "screen_max_shard_seconds": capacity_result[
+            "screen_max_shard_seconds"],
         "selected_capability": packet["selected_capability"],
         "model_exports_sha256": packet["model_exports_sha256"],
         "receipt_path": CTRL.RECEIPT_PATH,
@@ -310,16 +405,29 @@ def _slot_payload(packet: Mapping[str, object], packet_sha256: str,
     return value
 
 
-def admit(*, packet_path: Path, expected_packet_sha256: str,
-          review_record: Path, out: Path) -> dict:
+def admit(
+    *, packet_path: Path, expected_packet_sha256: str,
+    review_record: Path, capacity_result_path: Path,
+    expected_capacity_result_sha256: str,
+    capacity_review_record: Path, out: Path,
+) -> dict:
     packet, _ensemble = _packet(packet_path, expected_packet_sha256)
-    claim = _review_claim(review_record, packet, expected_packet_sha256)
+    controller_claim = _review_claim(
+        review_record, packet, expected_packet_sha256)
+    capacity, capacity_claim = _validated_capacity_evidence(
+        packet=packet, packet_sha256=expected_packet_sha256,
+        controller_review_record=review_record,
+        capacity_result_path=capacity_result_path,
+        capacity_result_sha256=expected_capacity_result_sha256,
+        capacity_review_record=capacity_review_record)
     if out.resolve() != _expected_receipt_path():
         raise CompositionRuntimeRefused(
             "composition screen receipt path drift")
     require_publishable(out, "composition screen receipt")
     slot_path = (REPO / CTRL.ADMISSION_PATH).resolve()
-    slot = _slot_payload(packet, expected_packet_sha256, review_record)
+    slot = _slot_payload(
+        packet, expected_packet_sha256, review_record,
+        capacity, expected_capacity_result_sha256, capacity_review_record)
     publish_exclusive(slot_path, slot)
     receipt = {
         "schema": RECEIPT_SCHEMA,
@@ -328,7 +436,14 @@ def admit(*, packet_path: Path, expected_packet_sha256: str,
         "controller_packet_sha256": expected_packet_sha256,
         "controller_packet_internal_sha256": packet["packet_sha256"],
         "controller_review_record_sha256": sha256_file(review_record),
-        "controller_review_claim": claim,
+        "controller_review_claim": controller_claim,
+        "capacity_result_sha256": expected_capacity_result_sha256,
+        "capacity_result_internal_sha256": capacity["result_sha256"],
+        "capacity_review_record_sha256": sha256_file(
+            capacity_review_record),
+        "capacity_review_claim": capacity_claim,
+        "screen_max_shard_seconds": capacity[
+            "screen_max_shard_seconds"],
         "admission_slot": CTRL.ADMISSION_PATH,
         "admission_slot_sha256": sha256_file(slot_path),
         "selected_capability": packet["selected_capability"],
@@ -345,17 +460,28 @@ def admit(*, packet_path: Path, expected_packet_sha256: str,
     return receipt
 
 
-def _receipt(path: Path, expected_sha256: str,
-             packet: Mapping[str, object], packet_sha256: str,
-             review_record: Path) -> dict:
+def _receipt(
+    path: Path, expected_sha256: str,
+    packet: Mapping[str, object], packet_sha256: str,
+    review_record: Path, capacity_result_path: Path,
+    capacity_result_sha256: str, capacity_review_record: Path,
+) -> tuple[dict, dict]:
     if (path.resolve() != _expected_receipt_path()
             or not is_regular_unlinked(path)
             or sha256_file(path) != expected_sha256):
         raise CompositionRuntimeRefused(
             "composition screen receipt path/SHA drift")
     receipt = load_json(path)
+    capacity, capacity_claim = _validated_capacity_evidence(
+        packet=packet, packet_sha256=packet_sha256,
+        controller_review_record=review_record,
+        capacity_result_path=capacity_result_path,
+        capacity_result_sha256=capacity_result_sha256,
+        capacity_review_record=capacity_review_record)
     slot_path = (REPO / CTRL.ADMISSION_PATH).resolve()
-    expected_slot = _slot_payload(packet, packet_sha256, review_record)
+    expected_slot = _slot_payload(
+        packet, packet_sha256, review_record, capacity,
+        capacity_result_sha256, capacity_review_record)
     if (not is_regular_unlinked(slot_path)
             or load_json(slot_path) != expected_slot
             or sha256_file(slot_path) != receipt.get("admission_slot_sha256")
@@ -369,6 +495,15 @@ def _receipt(path: Path, expected_sha256: str,
             != sha256_file(review_record)
             or receipt.get("controller_review_claim")
             != _review_claim(review_record, packet, packet_sha256)
+            or receipt.get("capacity_result_sha256")
+            != capacity_result_sha256
+            or receipt.get("capacity_result_internal_sha256")
+            != capacity["result_sha256"]
+            or receipt.get("capacity_review_record_sha256")
+            != sha256_file(capacity_review_record)
+            or receipt.get("capacity_review_claim") != capacity_claim
+            or receipt.get("screen_max_shard_seconds")
+            != capacity["screen_max_shard_seconds"]
             or receipt.get("admission_slot") != CTRL.ADMISSION_PATH
             or receipt.get("selected_capability")
             != packet["selected_capability"]
@@ -384,7 +519,7 @@ def _receipt(path: Path, expected_sha256: str,
             != self_hash(receipt, "receipt_sha256")):
         raise CompositionRuntimeRefused(
             "composition screen receipt/admission drift")
-    return receipt
+    return receipt, capacity
 
 
 def _factories(packet: Mapping[str, object], ensemble):
@@ -412,6 +547,621 @@ def _factories(packet: Mapping[str, object], ensemble):
         return make_bot("mc-s0-report-lcb", seed=seed)
 
     return treatment, matched_null, champion
+
+
+def _capacity_slot_payload(
+    packet: Mapping[str, object], packet_sha256: str,
+    review_record: Path,
+) -> dict:
+    value = {
+        "schema": CAPACITY_ADMISSION_SCHEMA,
+        "run_id": CTRL.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": packet_sha256,
+        "controller_review_record_sha256": sha256_file(review_record),
+        "capacity_result_path": CTRL.CAPACITY_RESULT_PATH,
+        "consumed_before_gameplay": True,
+        "retry_or_extension_authorized": False,
+    }
+    value["slot_sha256"] = self_hash(value, "slot_sha256")
+    return value
+
+
+def _validate_capacity_slot(
+    packet: Mapping[str, object], packet_sha256: str,
+    review_record: Path, expected_sha256: str,
+) -> None:
+    path = (REPO / CTRL.CAPACITY_ADMISSION_PATH).resolve()
+    expected = _capacity_slot_payload(packet, packet_sha256, review_record)
+    if (not is_regular_unlinked(path)
+            or sha256_file(path) != expected_sha256
+            or load_json(path) != expected):
+        raise CompositionRuntimeRefused(
+            "composition capacity admission drift")
+
+
+def _capacity_projection(elapsed_seconds: float) -> dict:
+    per_cluster = elapsed_seconds / CTRL.PREFLIGHT_CLUSTERS
+    return {
+        "throughput_safety_factor": CTRL.THROUGHPUT_SAFETY_FACTOR,
+        "screen_fleet_hours": (
+            per_cluster * CTRL.SCREEN_CLUSTERS
+            * CTRL.THROUGHPUT_SAFETY_FACTOR / 3_600.0),
+        "screen_max_shard_hours": (
+            per_cluster * CTRL.CLUSTERS_PER_SHARD
+            * CTRL.THROUGHPUT_SAFETY_FACTOR / 3_600.0),
+        "screen_fleet_hour_cap": CTRL.SCREEN_FLEET_HOUR_CAP,
+        "screen_max_shard_hour_cap": CTRL.SCREEN_MAX_SHARD_HOUR_CAP,
+    }
+
+
+def _capacity_summary_problems(value: Mapping[str, object]) -> list[str]:
+    telemetry = value.get("stage_c_telemetry")
+    work = value.get("work_totals")
+    problems = []
+    if (not isinstance(telemetry, dict)
+            or set(telemetry) != {"treatment", "matched_null"}
+            or not isinstance(work, dict)
+            or set(work) != set(SCREEN.LABELS)):
+        return ["composition capacity work/telemetry population drift"]
+    for label in SCREEN.LABELS:
+        sides = work.get(label)
+        if not isinstance(sides, dict) or set(sides) != {"arm", "opp"}:
+            problems.append(f"capacity {label} side population drift")
+            continue
+        for side in ("arm", "opp"):
+            counters = sides[side]
+            feature_on = label != "champion" and side == "arm"
+            stage = (telemetry.get(label) if feature_on
+                     else SCREEN.feature_off_telemetry())
+            counter_problems = SCREEN._counter_problems(counters)
+            telemetry_problems = SCREEN._telemetry_problems(
+                stage, feature_on=feature_on)
+            problems.extend(
+                f"capacity {label}/{side}: {problem}"
+                for problem in (*counter_problems, *telemetry_problems))
+            if (not counter_problems and not telemetry_problems
+                    and isinstance(counters, dict)
+                    and isinstance(stage, dict)):
+                problems.extend(
+                    f"capacity {label}/{side}: {problem}"
+                    for problem in SCREEN._search_work_problems(
+                        counters, stage, feature_on=feature_on,
+                        surface=str(value.get("surface"))))
+    for label in ("treatment", "matched_null"):
+        stage = telemetry.get(label)
+        if (not isinstance(stage, dict)
+                or stage.get("model_triggers", 0) <= 0):
+            problems.append(f"capacity {label} did not trigger")
+    return problems
+
+
+def capacity_preflight(
+    *, packet_path: Path, expected_packet_sha256: str,
+    review_record: Path, out: Path,
+) -> dict:
+    if out.resolve() != _expected_capacity_result_path():
+        raise CompositionRuntimeRefused(
+            "composition capacity output path drift")
+    require_publishable(out, "composition capacity output")
+    packet, ensemble = _packet(packet_path, expected_packet_sha256)
+    _review_claim(review_record, packet, expected_packet_sha256)
+    slot_path = (REPO / CTRL.CAPACITY_ADMISSION_PATH).resolve()
+    slot = _capacity_slot_payload(
+        packet, expected_packet_sha256, review_record)
+    publish_exclusive(slot_path, slot)
+    slot_sha256 = sha256_file(slot_path)
+    treatment, matched_null, champion = _factories(packet, ensemble)
+    started = time.monotonic()
+    deadline = started + CTRL.PREFLIGHT_MAX_SECONDS
+    records = {
+        "treatment": SCREEN.run_arm_factories(
+            "treatment", treatment, champion,
+            clusters=CTRL.PREFLIGHT_CLUSTERS,
+            seed0=CTRL.PREFLIGHT_SEED0, run_id=CTRL.RUN_ID,
+            policy_has_stage_c=True, progress=False,
+            deadline_monotonic=deadline),
+        "matched_null": SCREEN.run_arm_factories(
+            "matched_null", matched_null, champion,
+            clusters=CTRL.PREFLIGHT_CLUSTERS,
+            seed0=CTRL.PREFLIGHT_SEED0, run_id=CTRL.RUN_ID,
+            policy_has_stage_c=True, progress=False,
+            deadline_monotonic=deadline),
+        "champion": SCREEN.run_arm_factories(
+            "champion", champion, champion,
+            clusters=CTRL.PREFLIGHT_CLUSTERS,
+            seed0=CTRL.PREFLIGHT_SEED0, run_id=CTRL.RUN_ID,
+            policy_has_stage_c=False, progress=False,
+            deadline_monotonic=deadline),
+    }
+    elapsed = round(time.monotonic() - started, 6)
+    if (not math.isfinite(elapsed) or elapsed <= 0
+            or elapsed > CTRL.PREFLIGHT_MAX_SECONDS):
+        raise CompositionRuntimeRefused(
+            "composition capacity elapsed-time drift")
+    surface = str(packet["selected_capability"]["surface"])
+    validation = SCREEN.validate_screen_records(
+        records, expected_seed0=CTRL.PREFLIGHT_SEED0,
+        expected_clusters=CTRL.PREFLIGHT_CLUSTERS,
+        expected_surface=surface)
+    projection = _capacity_projection(elapsed)
+    capacity_pass = (
+        validation["stage_c_telemetry"]["treatment"][
+            "model_triggers"] > 0
+        and validation["stage_c_telemetry"]["matched_null"][
+            "model_triggers"] > 0
+        and projection["screen_fleet_hours"]
+        <= CTRL.SCREEN_FLEET_HOUR_CAP
+        and projection["screen_max_shard_hours"]
+        <= CTRL.SCREEN_MAX_SHARD_HOUR_CAP)
+    payload = {
+        "schema": CTRL.CAPACITY_RESULT_SCHEMA,
+        "run_id": CTRL.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": expected_packet_sha256,
+        "controller_review_record_sha256": sha256_file(review_record),
+        "capacity_admission_slot": CTRL.CAPACITY_ADMISSION_PATH,
+        "capacity_admission_slot_sha256": slot_sha256,
+        "surface": surface,
+        "seed0": CTRL.PREFLIGHT_SEED0,
+        "clusters": CTRL.PREFLIGHT_CLUSTERS,
+        "record_counts": validation["record_counts"],
+        "stage_c_telemetry": validation["stage_c_telemetry"],
+        "work_totals": validation["work_totals"],
+        "all_records_exact_work": validation["all_records_exact_work"],
+        "elapsed_seconds": elapsed,
+        "projection": projection,
+        "screen_max_shard_seconds": (
+            projection["screen_max_shard_hours"] * 3_600.0),
+        "capacity_pass": capacity_pass,
+        "score_free": True,
+        "outcomes_published": False,
+        "decision": ("AUTHORIZE_SCREEN_EXECUTION_REVIEW"
+                     if capacity_pass else "TERMINAL_CAPACITY_HOLD"),
+        "screen_execution_authorized": False,
+        "confirmation_launch_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+        "retry_or_extension_authorized": False,
+    }
+    payload["result_sha256"] = self_hash(payload, "result_sha256")
+    final_packet, _ = _packet(packet_path, expected_packet_sha256)
+    _review_claim(review_record, final_packet, expected_packet_sha256)
+    _validate_capacity_slot(
+        final_packet, expected_packet_sha256, review_record, slot_sha256)
+    publish_exclusive(out, payload)
+    return payload
+
+
+def _capacity_result(
+    path: Path, expected_sha256: str, packet: Mapping[str, object],
+    packet_sha256: str, controller_review_record: Path,
+) -> dict:
+    if (path.resolve() != _expected_capacity_result_path()
+            or not is_regular_unlinked(path)
+            or sha256_file(path) != expected_sha256):
+        raise CompositionRuntimeRefused(
+            "composition capacity result path/SHA drift")
+    value = load_json(path)
+    elapsed = value.get("elapsed_seconds")
+    projection = value.get("projection")
+    if (isinstance(elapsed, bool) or not isinstance(elapsed, (int, float))
+            or not math.isfinite(float(elapsed)) or float(elapsed) <= 0
+            or float(elapsed) > CTRL.PREFLIGHT_MAX_SECONDS
+            or projection != _capacity_projection(float(elapsed))
+            or value.get("schema") != CTRL.CAPACITY_RESULT_SCHEMA
+            or value.get("run_id") != CTRL.RUN_ID
+            or value.get("git") != packet["producer"]["git"]
+            or value.get("controller_packet_sha256") != packet_sha256
+            or value.get("controller_review_record_sha256")
+            != sha256_file(controller_review_record)
+            or value.get("capacity_admission_slot")
+            != CTRL.CAPACITY_ADMISSION_PATH
+            or not CTRL.is_sha256(value.get(
+                "capacity_admission_slot_sha256"))
+            or value.get("surface")
+            != packet["selected_capability"]["surface"]
+            or value.get("seed0") != CTRL.PREFLIGHT_SEED0
+            or value.get("clusters") != CTRL.PREFLIGHT_CLUSTERS
+            or value.get("record_counts") != {
+                label: 2 * CTRL.PREFLIGHT_CLUSTERS
+                for label in SCREEN.LABELS}
+            or value.get("all_records_exact_work") is not True
+            or value.get("screen_max_shard_seconds")
+            != projection.get("screen_max_shard_hours", -1) * 3_600.0
+            or value.get("capacity_pass") is not True
+            or value.get("score_free") is not True
+            or value.get("outcomes_published") is not False
+            or value.get("decision") != "AUTHORIZE_SCREEN_EXECUTION_REVIEW"
+            or value.get("screen_execution_authorized") is not False
+            or value.get("confirmation_launch_authorized") is not False
+            or value.get("strength_claim") is not False
+            or value.get("production_promotion") is not False
+            or value.get("production_deployment") is not False
+            or value.get("retry_or_extension_authorized") is not False
+            or value.get("result_sha256")
+            != self_hash(value, "result_sha256")):
+        raise CompositionRuntimeRefused(
+            "composition capacity result identity/authority drift")
+    if _capacity_summary_problems(value):
+        raise CompositionRuntimeRefused(
+            "composition capacity work summary drift")
+    _validate_capacity_slot(
+        packet, packet_sha256, controller_review_record,
+        str(value["capacity_admission_slot_sha256"]))
+    return value
+
+
+def _supervisor_slot_payload(
+    *, packet: Mapping[str, object], packet_sha256: str,
+    receipt_sha256: str, controller_review_record: Path,
+    capacity_result_sha256: str, capacity_review_record: Path,
+) -> dict:
+    value = {
+        "schema": SUPERVISOR_ADMISSION_SCHEMA,
+        "run_id": CTRL.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": packet_sha256,
+        "screen_receipt_sha256": receipt_sha256,
+        "controller_review_record_sha256": sha256_file(
+            controller_review_record),
+        "capacity_result_sha256": capacity_result_sha256,
+        "capacity_review_record_sha256": sha256_file(
+            capacity_review_record),
+        "child_command_templates": packet["commands"][
+            "supervisor_child_shards"],
+        "shard_outputs": list(CTRL.SHARD_PATHS),
+        "shard_logs": list(CTRL.SHARD_LOG_PATHS),
+        "supervisor_final": CTRL.SUPERVISOR_FINAL_PATH,
+        "consumed_before_child_launch": True,
+        "retry_after_child_failure_authorized": False,
+    }
+    value["slot_sha256"] = self_hash(value, "slot_sha256")
+    return value
+
+
+def _validate_supervisor_slot(
+    *, path: Path, expected_sha256: str,
+    packet: Mapping[str, object], packet_sha256: str,
+    receipt_sha256: str, controller_review_record: Path,
+    capacity_result_sha256: str, capacity_review_record: Path,
+) -> dict:
+    expected_path = (REPO / CTRL.SUPERVISOR_ADMISSION_PATH).resolve()
+    expected = _supervisor_slot_payload(
+        packet=packet, packet_sha256=packet_sha256,
+        receipt_sha256=receipt_sha256,
+        controller_review_record=controller_review_record,
+        capacity_result_sha256=capacity_result_sha256,
+        capacity_review_record=capacity_review_record)
+    if (path.resolve() != expected_path
+            or not is_regular_unlinked(path)
+            or sha256_file(path) != expected_sha256
+            or load_json(path) != expected):
+        raise CompositionRuntimeRefused(
+            "composition supervisor admission drift")
+    return expected
+
+
+def _child_command(
+    *, index: int, packet: Mapping[str, object], packet_sha256: str,
+    controller_review_record: Path, receipt_path: Path,
+    receipt_sha256: str, capacity_result_path: Path,
+    capacity_result_sha256: str, capacity_review_record: Path,
+    supervisor_slot_sha256: str,
+) -> list[str]:
+    return [
+        sys.executable,
+        "server/scripts/teacher_stage_c_composition_runtime.py",
+        "run-shard",
+        "--expected-git", str(packet["producer"]["git"]),
+        "--controller-packet", CTRL.PACKET_PATH,
+        "--expected-controller-packet-sha256", packet_sha256,
+        "--controller-review-record", str(controller_review_record),
+        "--screen-receipt", str(receipt_path),
+        "--expected-screen-receipt-sha256", receipt_sha256,
+        "--capacity-result", str(capacity_result_path),
+        "--expected-capacity-result-sha256", capacity_result_sha256,
+        "--capacity-review-record", str(capacity_review_record),
+        "--supervisor-admission", CTRL.SUPERVISOR_ADMISSION_PATH,
+        "--expected-supervisor-admission-sha256", supervisor_slot_sha256,
+        "--shard-index", str(index),
+        "--out", CTRL.SHARD_PATHS[index],
+    ]
+
+
+def _terminate_children(processes: Sequence[subprocess.Popen]) -> None:
+    live = [process for process in processes if process.poll() is None]
+    for process in live:
+        process.terminate()
+    deadline = time.monotonic() + 5.0
+    while live and time.monotonic() < deadline:
+        live = [process for process in live if process.poll() is None]
+        if live:
+            time.sleep(0.05)
+    for process in live:
+        process.kill()
+    for process in processes:
+        try:
+            process.wait(timeout=5.0)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
+
+def supervise(
+    *, packet_path: Path, expected_packet_sha256: str,
+    review_record: Path, receipt_path: Path,
+    expected_receipt_sha256: str, capacity_result_path: Path,
+    expected_capacity_result_sha256: str,
+    capacity_review_record: Path, out: Path,
+) -> dict:
+    if out.resolve() != _expected_supervisor_final_path():
+        raise CompositionRuntimeRefused(
+            "composition supervisor final path drift")
+    require_publishable(out, "composition supervisor final")
+    output_paths = [(REPO / logical).resolve() for logical in CTRL.SHARD_PATHS]
+    log_paths = [(REPO / logical).resolve() for logical in CTRL.SHARD_LOG_PATHS]
+    for path in (*output_paths, *log_paths):
+        require_publishable(path, "composition supervisor child artifact")
+    # Refuse all known shard-attempt collisions before consuming the one
+    # supervisor admission. A child crash after this point is terminal.
+    for logical in CTRL.SHARD_ADMISSION_PATHS:
+        require_publishable(
+            (REPO / logical).resolve(),
+            "composition supervisor shard-attempt admission")
+    require_publishable(
+        (REPO / CTRL.AGGREGATE_ADMISSION_PATH).resolve(),
+        "composition aggregate admission")
+    require_publishable(
+        _expected_aggregate_path(), "composition aggregate output")
+    packet, _ensemble = _packet(packet_path, expected_packet_sha256)
+    _, capacity = _receipt(
+        receipt_path, expected_receipt_sha256, packet,
+        expected_packet_sha256, review_record, capacity_result_path,
+        expected_capacity_result_sha256, capacity_review_record)
+    slot_path = (REPO / CTRL.SUPERVISOR_ADMISSION_PATH).resolve()
+    require_publishable(slot_path, "composition supervisor admission")
+    slot = _supervisor_slot_payload(
+        packet=packet, packet_sha256=expected_packet_sha256,
+        receipt_sha256=expected_receipt_sha256,
+        controller_review_record=review_record,
+        capacity_result_sha256=expected_capacity_result_sha256,
+        capacity_review_record=capacity_review_record)
+    publish_exclusive(slot_path, slot)
+    slot_sha256 = sha256_file(slot_path)
+    commands = [_child_command(
+        index=index, packet=packet,
+        packet_sha256=expected_packet_sha256,
+        controller_review_record=review_record,
+        receipt_path=receipt_path,
+        receipt_sha256=expected_receipt_sha256,
+        capacity_result_path=capacity_result_path,
+        capacity_result_sha256=expected_capacity_result_sha256,
+        capacity_review_record=capacity_review_record,
+        supervisor_slot_sha256=slot_sha256)
+        for index in range(CTRL.SHARD_COUNT)]
+    handles = []
+    processes: list[subprocess.Popen] = []
+    started = time.monotonic()
+    try:
+        for command, log_path in zip(commands, log_paths, strict=True):
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            handle = log_path.open("xb")
+            handles.append(handle)
+            processes.append(subprocess.Popen(
+                command, cwd=REPO, stdout=handle,
+                stderr=subprocess.STDOUT))
+        deadline = (started + float(capacity["screen_max_shard_seconds"])
+                    + 120.0)
+        next_heartbeat = started
+        while True:
+            codes = [process.poll() for process in processes]
+            if any(code not in {None, 0} for code in codes):
+                _terminate_children(processes)
+                raise CompositionRuntimeRefused(
+                    f"composition supervisor child failure: {codes}")
+            if all(code == 0 for code in codes):
+                break
+            now = time.monotonic()
+            if now >= deadline:
+                _terminate_children(processes)
+                raise CompositionRuntimeRefused(
+                    "composition supervisor exceeded reviewed shard timeout")
+            if now >= next_heartbeat:
+                complete = sum(code == 0 for code in codes)
+                print(f"composition screen: {complete}/{CTRL.SHARD_COUNT} "
+                      "shards complete", flush=True)
+                next_heartbeat = now + 30.0
+            time.sleep(0.25)
+    except BaseException:
+        _terminate_children(processes)
+        raise
+    finally:
+        for handle in handles:
+            handle.close()
+    elapsed = round(time.monotonic() - started, 6)
+    shard_manifest = []
+    for index, path in enumerate(output_paths):
+        if not is_regular_unlinked(path):
+            raise CompositionRuntimeRefused(
+                f"composition supervisor shard {index} unavailable")
+        shard = load_json(path)
+        validate_shard(
+            shard, packet=packet, packet_sha256=expected_packet_sha256,
+            receipt_sha256=expected_receipt_sha256,
+            review_record=review_record, index=index,
+            supervisor_slot_sha256=slot_sha256)
+        shard_manifest.append({
+            "index": index,
+            "logical_path": CTRL.SHARD_PATHS[index],
+            "external_sha256": sha256_file(path),
+            "internal_sha256": shard["shard_sha256"],
+            "log_logical_path": CTRL.SHARD_LOG_PATHS[index],
+            "log_sha256": sha256_file(log_paths[index]),
+            "exit_code": 0,
+        })
+    payload = {
+        "schema": SUPERVISOR_FINAL_SCHEMA,
+        "run_id": CTRL.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": expected_packet_sha256,
+        "controller_review_record_sha256": sha256_file(review_record),
+        "screen_receipt_sha256": expected_receipt_sha256,
+        "capacity_result_sha256": expected_capacity_result_sha256,
+        "capacity_review_record_sha256": sha256_file(
+            capacity_review_record),
+        "supervisor_admission_slot": CTRL.SUPERVISOR_ADMISSION_PATH,
+        "supervisor_admission_slot_sha256": slot_sha256,
+        "commands": commands,
+        "shards": shard_manifest,
+        "shard_manifest_sha256": manifest_hash(shard_manifest),
+        "elapsed_seconds": elapsed,
+        "all_children_exit_zero": True,
+        "outcomes_published": False,
+        "statistics_published": False,
+        "aggregate_execution_authorized": False,
+        "confirmation_launch_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+        "retry_or_extension_authorized": False,
+    }
+    payload["final_sha256"] = self_hash(payload, "final_sha256")
+    final_packet, _ = _packet(packet_path, expected_packet_sha256)
+    _receipt(
+        receipt_path, expected_receipt_sha256, final_packet,
+        expected_packet_sha256, review_record, capacity_result_path,
+        expected_capacity_result_sha256, capacity_review_record)
+    _validate_supervisor_slot(
+        path=slot_path, expected_sha256=slot_sha256,
+        packet=final_packet, packet_sha256=expected_packet_sha256,
+        receipt_sha256=expected_receipt_sha256,
+        controller_review_record=review_record,
+        capacity_result_sha256=expected_capacity_result_sha256,
+        capacity_review_record=capacity_review_record)
+    for item, shard_path, log_path in zip(
+            shard_manifest, output_paths, log_paths, strict=True):
+        if (sha256_file(shard_path) != item["external_sha256"]
+                or sha256_file(log_path) != item["log_sha256"]):
+            raise CompositionRuntimeRefused(
+                "composition supervisor child artifact changed before seal")
+    publish_exclusive(out, payload)
+    return payload
+
+
+def _supervisor_final(
+    *, path: Path, expected_sha256: str,
+    packet: Mapping[str, object], packet_sha256: str,
+    receipt_sha256: str, controller_review_record: Path,
+    capacity_result: Mapping[str, object], capacity_result_sha256: str,
+    capacity_review_record: Path,
+) -> dict:
+    """Reopen the outcome-free terminal seal without opening shard bytes."""
+    if (path.resolve() != _expected_supervisor_final_path()
+            or not is_regular_unlinked(path)
+            or sha256_file(path) != expected_sha256):
+        raise CompositionRuntimeRefused(
+            "composition supervisor final path/SHA drift")
+    value = load_json(path)
+    expected_keys = {
+        "schema", "run_id", "git", "controller_packet_sha256",
+        "controller_review_record_sha256", "screen_receipt_sha256",
+        "capacity_result_sha256", "capacity_review_record_sha256",
+        "supervisor_admission_slot",
+        "supervisor_admission_slot_sha256", "commands", "shards",
+        "shard_manifest_sha256", "elapsed_seconds",
+        "all_children_exit_zero", "outcomes_published",
+        "statistics_published", "aggregate_execution_authorized",
+        "confirmation_launch_authorized", "strength_claim",
+        "production_promotion", "production_deployment",
+        "retry_or_extension_authorized", "final_sha256",
+    }
+    elapsed = value.get("elapsed_seconds")
+    shards = value.get("shards")
+    if (set(value) != expected_keys
+            or value.get("schema") != SUPERVISOR_FINAL_SCHEMA
+            or value.get("run_id") != CTRL.RUN_ID
+            or value.get("git") != packet["producer"]["git"]
+            or value.get("controller_packet_sha256") != packet_sha256
+            or value.get("controller_review_record_sha256")
+            != sha256_file(controller_review_record)
+            or value.get("screen_receipt_sha256") != receipt_sha256
+            or value.get("capacity_result_sha256")
+            != capacity_result_sha256
+            or value.get("capacity_review_record_sha256")
+            != sha256_file(capacity_review_record)
+            or value.get("supervisor_admission_slot")
+            != CTRL.SUPERVISOR_ADMISSION_PATH
+            or not CTRL.is_sha256(value.get(
+                "supervisor_admission_slot_sha256"))
+            or isinstance(elapsed, bool)
+            or not isinstance(elapsed, (int, float))
+            or not math.isfinite(float(elapsed))
+            or float(elapsed) <= 0
+            or float(elapsed) > (
+                float(capacity_result["screen_max_shard_seconds"]) + 120.0)
+            or value.get("all_children_exit_zero") is not True
+            or value.get("outcomes_published") is not False
+            or value.get("statistics_published") is not False
+            or value.get("aggregate_execution_authorized") is not False
+            or value.get("confirmation_launch_authorized") is not False
+            or value.get("strength_claim") is not False
+            or value.get("production_promotion") is not False
+            or value.get("production_deployment") is not False
+            or value.get("retry_or_extension_authorized") is not False
+            or value.get("final_sha256")
+            != self_hash(value, "final_sha256")
+            or not isinstance(shards, list)
+            or len(shards) != CTRL.SHARD_COUNT
+            or value.get("shard_manifest_sha256")
+            != manifest_hash(shards)):
+        raise CompositionRuntimeRefused(
+            "composition supervisor final identity/authority drift")
+    slot_sha256 = str(value["supervisor_admission_slot_sha256"])
+    expected_commands = [_child_command(
+        index=index, packet=packet, packet_sha256=packet_sha256,
+        controller_review_record=controller_review_record,
+        receipt_path=_expected_receipt_path(), receipt_sha256=receipt_sha256,
+        capacity_result_path=_expected_capacity_result_path(),
+        capacity_result_sha256=capacity_result_sha256,
+        capacity_review_record=capacity_review_record,
+        supervisor_slot_sha256=slot_sha256)
+        for index in range(CTRL.SHARD_COUNT)]
+    if value.get("commands") != expected_commands:
+        raise CompositionRuntimeRefused(
+            "composition supervisor child command population drift")
+    manifest_keys = {
+        "index", "logical_path", "external_sha256", "internal_sha256",
+        "log_logical_path", "log_sha256", "exit_code",
+    }
+    for index, item in enumerate(shards):
+        if (not isinstance(item, dict) or set(item) != manifest_keys
+                or item.get("index") != index
+                or item.get("logical_path") != CTRL.SHARD_PATHS[index]
+                or not CTRL.is_sha256(item.get("external_sha256"))
+                or not CTRL.is_sha256(item.get("internal_sha256"))
+                or item.get("log_logical_path")
+                != CTRL.SHARD_LOG_PATHS[index]
+                or not CTRL.is_sha256(item.get("log_sha256"))
+                or item.get("exit_code") != 0):
+            raise CompositionRuntimeRefused(
+                f"composition supervisor shard manifest {index} drift")
+        # Presence/type is score-free. Shard and log bytes remain unopened
+        # until the aggregate admission is durably consumed.
+        if (not is_regular_unlinked(_expected_shard_path(index))
+                or not is_regular_unlinked(
+                    (REPO / CTRL.SHARD_LOG_PATHS[index]).resolve())):
+            raise CompositionRuntimeRefused(
+                f"composition supervisor sealed artifact {index} unavailable")
+    _validate_supervisor_slot(
+        path=(REPO / CTRL.SUPERVISOR_ADMISSION_PATH).resolve(),
+        expected_sha256=slot_sha256,
+        packet=packet, packet_sha256=packet_sha256,
+        receipt_sha256=receipt_sha256,
+        controller_review_record=controller_review_record,
+        capacity_result_sha256=capacity_result_sha256,
+        capacity_review_record=capacity_review_record)
+    return value
 
 
 def _shard_seed0(index: int) -> int:
@@ -488,8 +1238,13 @@ def _validate_attempt_slot(
 
 def run_shard(*, packet_path: Path, expected_packet_sha256: str,
               review_record: Path, receipt_path: Path,
-              expected_receipt_sha256: str, shard_index: int,
-              out: Path) -> dict:
+              expected_receipt_sha256: str,
+              capacity_result_path: Path,
+              expected_capacity_result_sha256: str,
+              capacity_review_record: Path,
+              supervisor_admission_path: Path,
+              expected_supervisor_admission_sha256: str,
+              shard_index: int, out: Path) -> dict:
     if (isinstance(shard_index, bool) or not isinstance(shard_index, int)
             or not 0 <= shard_index < CTRL.SHARD_COUNT
             or out.resolve() != _expected_shard_path(shard_index)):
@@ -497,39 +1252,58 @@ def run_shard(*, packet_path: Path, expected_packet_sha256: str,
             "composition screen shard identity/path drift")
     require_publishable(out, "composition screen shard output")
     packet, ensemble = _packet(packet_path, expected_packet_sha256)
-    _receipt(receipt_path, expected_receipt_sha256, packet,
-             expected_packet_sha256, review_record)
+    _, capacity = _receipt(
+        receipt_path, expected_receipt_sha256, packet,
+        expected_packet_sha256, review_record, capacity_result_path,
+        expected_capacity_result_sha256, capacity_review_record)
+    _validate_supervisor_slot(
+        path=supervisor_admission_path,
+        expected_sha256=expected_supervisor_admission_sha256,
+        packet=packet, packet_sha256=expected_packet_sha256,
+        receipt_sha256=expected_receipt_sha256,
+        controller_review_record=review_record,
+        capacity_result_sha256=expected_capacity_result_sha256,
+        capacity_review_record=capacity_review_record)
     attempt_slot, attempt_slot_sha256 = _consume_attempt_slot(
         packet=packet, packet_sha256=expected_packet_sha256,
         receipt_sha256=expected_receipt_sha256,
         review_record=review_record, kind="shard", index=shard_index)
     treatment, matched_null, champion = _factories(packet, ensemble)
     seed0 = _shard_seed0(shard_index)
+    deadline = time.monotonic() + float(
+        capacity["screen_max_shard_seconds"])
     records = {
         "treatment": SCREEN.run_arm_factories(
             "treatment", treatment, champion,
             clusters=CTRL.CLUSTERS_PER_SHARD, seed0=seed0,
-            run_id=CTRL.RUN_ID, policy_has_stage_c=True),
+            run_id=CTRL.RUN_ID, policy_has_stage_c=True,
+            deadline_monotonic=deadline),
         "matched_null": SCREEN.run_arm_factories(
             "matched_null", matched_null, champion,
             clusters=CTRL.CLUSTERS_PER_SHARD, seed0=seed0,
-            run_id=CTRL.RUN_ID, policy_has_stage_c=True),
+            run_id=CTRL.RUN_ID, policy_has_stage_c=True,
+            deadline_monotonic=deadline),
         "champion": SCREEN.run_arm_factories(
             "champion", champion, champion,
             clusters=CTRL.CLUSTERS_PER_SHARD, seed0=seed0,
-            run_id=CTRL.RUN_ID, policy_has_stage_c=False),
+            run_id=CTRL.RUN_ID, policy_has_stage_c=False,
+            deadline_monotonic=deadline),
     }
     # This call is a structural/work validator. Its shard-level statistical
     # status is deliberately not published or used for stopping.
     SCREEN.aggregate_screen(
         records, expected_seed0=seed0,
-        expected_clusters=CTRL.CLUSTERS_PER_SHARD)
+        expected_clusters=CTRL.CLUSTERS_PER_SHARD,
+        expected_surface=str(packet["selected_capability"]["surface"]))
     payload = {
         "schema": SHARD_SCHEMA,
         "run_id": CTRL.RUN_ID,
         "git": packet["producer"]["git"],
         "controller_packet_sha256": expected_packet_sha256,
         "screen_receipt_sha256": expected_receipt_sha256,
+        "supervisor_admission_slot": CTRL.SUPERVISOR_ADMISSION_PATH,
+        "supervisor_admission_slot_sha256":
+            expected_supervisor_admission_sha256,
         "attempt_admission_slot": attempt_slot,
         "attempt_admission_slot_sha256": attempt_slot_sha256,
         "shard_index": shard_index,
@@ -548,8 +1322,18 @@ def run_shard(*, packet_path: Path, expected_packet_sha256: str,
     payload["shard_sha256"] = self_hash(payload, "shard_sha256")
     # Close mutable identities after expensive gameplay and before publish.
     final_packet, _ = _packet(packet_path, expected_packet_sha256)
-    _receipt(receipt_path, expected_receipt_sha256, final_packet,
-             expected_packet_sha256, review_record)
+    _receipt(
+        receipt_path, expected_receipt_sha256, final_packet,
+        expected_packet_sha256, review_record, capacity_result_path,
+        expected_capacity_result_sha256, capacity_review_record)
+    _validate_supervisor_slot(
+        path=supervisor_admission_path,
+        expected_sha256=expected_supervisor_admission_sha256,
+        packet=final_packet, packet_sha256=expected_packet_sha256,
+        receipt_sha256=expected_receipt_sha256,
+        controller_review_record=review_record,
+        capacity_result_sha256=expected_capacity_result_sha256,
+        capacity_review_record=capacity_review_record)
     _validate_attempt_slot(
         logical=attempt_slot, expected_sha256=attempt_slot_sha256,
         packet=final_packet, packet_sha256=expected_packet_sha256,
@@ -561,7 +1345,8 @@ def run_shard(*, packet_path: Path, expected_packet_sha256: str,
 
 def validate_shard(shard: Mapping[str, object], *, packet: Mapping[str, object],
                    packet_sha256: str, receipt_sha256: str,
-                   review_record: Path, index: int) -> None:
+                   review_record: Path, index: int,
+                   supervisor_slot_sha256: str) -> None:
     records = shard.get("records")
     seed0 = _shard_seed0(index)
     if (shard.get("schema") != SHARD_SCHEMA
@@ -569,6 +1354,11 @@ def validate_shard(shard: Mapping[str, object], *, packet: Mapping[str, object],
             or shard.get("git") != packet["producer"]["git"]
             or shard.get("controller_packet_sha256") != packet_sha256
             or shard.get("screen_receipt_sha256") != receipt_sha256
+            or shard.get("supervisor_admission_slot")
+            != CTRL.SUPERVISOR_ADMISSION_PATH
+            or shard.get("supervisor_admission_slot_sha256")
+            != supervisor_slot_sha256
+            or not CTRL.is_sha256(supervisor_slot_sha256)
             or shard.get("attempt_admission_slot")
             != CTRL.SHARD_ADMISSION_PATHS[index]
             or not CTRL.is_sha256(shard.get(
@@ -598,7 +1388,8 @@ def validate_shard(shard: Mapping[str, object], *, packet: Mapping[str, object],
     try:
         SCREEN.aggregate_screen(
             records, expected_seed0=seed0,
-            expected_clusters=CTRL.CLUSTERS_PER_SHARD)
+            expected_clusters=CTRL.CLUSTERS_PER_SHARD,
+            expected_surface=str(packet["selected_capability"]["surface"]))
     except SCREEN.StageCScreenError as exc:
         raise CompositionRuntimeRefused(str(exc)) from exc
     _validate_attempt_slot(
@@ -612,6 +1403,12 @@ def validate_shard(shard: Mapping[str, object], *, packet: Mapping[str, object],
 def aggregate(*, packet_path: Path, expected_packet_sha256: str,
               review_record: Path, receipt_path: Path,
               expected_receipt_sha256: str,
+              capacity_result_path: Path,
+              expected_capacity_result_sha256: str,
+              capacity_review_record: Path,
+              supervisor_final_path: Path,
+              expected_supervisor_final_sha256: str,
+              supervisor_review_record: Path,
               shard_paths: Sequence[Path], out: Path) -> dict:
     if (out.resolve() != _expected_aggregate_path()
             or len(shard_paths) != CTRL.SHARD_COUNT
@@ -629,8 +1426,25 @@ def aggregate(*, packet_path: Path, expected_packet_sha256: str,
         raise CompositionRuntimeRefused(
             "composition aggregate shard population is incomplete")
     packet, _ensemble = _packet(packet_path, expected_packet_sha256)
-    _receipt(receipt_path, expected_receipt_sha256, packet,
-             expected_packet_sha256, review_record)
+    _receipt(
+        receipt_path, expected_receipt_sha256, packet,
+        expected_packet_sha256, review_record, capacity_result_path,
+        expected_capacity_result_sha256, capacity_review_record)
+    capacity = _capacity_result(
+        capacity_result_path, expected_capacity_result_sha256,
+        packet, expected_packet_sha256, review_record)
+    supervisor_final = _supervisor_final(
+        path=supervisor_final_path,
+        expected_sha256=expected_supervisor_final_sha256,
+        packet=packet, packet_sha256=expected_packet_sha256,
+        receipt_sha256=expected_receipt_sha256,
+        controller_review_record=review_record,
+        capacity_result=capacity,
+        capacity_result_sha256=expected_capacity_result_sha256,
+        capacity_review_record=capacity_review_record)
+    supervisor_claim = _supervisor_review_claim(
+        supervisor_review_record, packet, expected_packet_sha256,
+        supervisor_final, expected_supervisor_final_sha256)
     aggregate_slot, aggregate_slot_sha256 = _consume_attempt_slot(
         packet=packet, packet_sha256=expected_packet_sha256,
         receipt_sha256=expected_receipt_sha256,
@@ -638,13 +1452,25 @@ def aggregate(*, packet_path: Path, expected_packet_sha256: str,
     merged = {label: [] for label in SCREEN.LABELS}
     shard_manifest = []
     opened_shards = []
+    sealed_manifest = supervisor_final["shards"]
     for index, path in enumerate(shard_paths):
+        sealed = sealed_manifest[index]
+        log_path = (REPO / CTRL.SHARD_LOG_PATHS[index]).resolve()
+        if (sha256_file(path) != sealed["external_sha256"]
+                or sha256_file(log_path) != sealed["log_sha256"]):
+            raise CompositionRuntimeRefused(
+                f"composition supervisor seal mismatch for shard {index}")
         shard = load_json(path)
         opened_shards.append(shard)
         validate_shard(
             shard, packet=packet, packet_sha256=expected_packet_sha256,
             receipt_sha256=expected_receipt_sha256,
-            review_record=review_record, index=index)
+            review_record=review_record, index=index,
+            supervisor_slot_sha256=str(supervisor_final[
+                "supervisor_admission_slot_sha256"]))
+        if shard["shard_sha256"] != sealed["internal_sha256"]:
+            raise CompositionRuntimeRefused(
+                f"composition supervisor internal seal mismatch for shard {index}")
         for label in SCREEN.LABELS:
             merged[label].extend(shard["records"][label])
         shard_manifest.append({
@@ -656,7 +1482,8 @@ def aggregate(*, packet_path: Path, expected_packet_sha256: str,
     try:
         result = SCREEN.aggregate_screen(
             merged, expected_seed0=CTRL.SCREEN_SEED0,
-            expected_clusters=CTRL.SCREEN_CLUSTERS)
+            expected_clusters=CTRL.SCREEN_CLUSTERS,
+            expected_surface=str(packet["selected_capability"]["surface"]))
     except SCREEN.StageCScreenError as exc:
         raise CompositionRuntimeRefused(str(exc)) from exc
     payload = {
@@ -665,6 +1492,12 @@ def aggregate(*, packet_path: Path, expected_packet_sha256: str,
         "git": packet["producer"]["git"],
         "controller_packet_sha256": expected_packet_sha256,
         "screen_receipt_sha256": expected_receipt_sha256,
+        "supervisor_final_sha256": expected_supervisor_final_sha256,
+        "supervisor_final_internal_sha256": supervisor_final[
+            "final_sha256"],
+        "supervisor_review_record_sha256": sha256_file(
+            supervisor_review_record),
+        "supervisor_review_claim": supervisor_claim,
         "aggregate_admission_slot": aggregate_slot,
         "aggregate_admission_slot_sha256": aggregate_slot_sha256,
         "selected_capability": packet["selected_capability"],
@@ -683,13 +1516,36 @@ def aggregate(*, packet_path: Path, expected_packet_sha256: str,
     payload["result_sha256"] = self_hash(payload, "result_sha256")
     # Final TOCTOU close after all gameplay records have been opened.
     final_packet, _ = _packet(packet_path, expected_packet_sha256)
-    _receipt(receipt_path, expected_receipt_sha256, final_packet,
-             expected_packet_sha256, review_record)
+    _receipt(
+        receipt_path, expected_receipt_sha256, final_packet,
+        expected_packet_sha256, review_record, capacity_result_path,
+        expected_capacity_result_sha256, capacity_review_record)
+    final_capacity = _capacity_result(
+        capacity_result_path, expected_capacity_result_sha256,
+        final_packet, expected_packet_sha256, review_record)
+    final_supervisor = _supervisor_final(
+        path=supervisor_final_path,
+        expected_sha256=expected_supervisor_final_sha256,
+        packet=final_packet, packet_sha256=expected_packet_sha256,
+        receipt_sha256=expected_receipt_sha256,
+        controller_review_record=review_record,
+        capacity_result=final_capacity,
+        capacity_result_sha256=expected_capacity_result_sha256,
+        capacity_review_record=capacity_review_record)
+    _supervisor_review_claim(
+        supervisor_review_record, final_packet,
+        expected_packet_sha256, final_supervisor,
+        expected_supervisor_final_sha256)
     for index, (item, path, shard) in enumerate(zip(
             shard_manifest, shard_paths, opened_shards, strict=True)):
-        if sha256_file(path) != item["external_sha256"]:
+        sealed = final_supervisor["shards"][index]
+        log_path = (REPO / CTRL.SHARD_LOG_PATHS[index]).resolve()
+        if (sha256_file(path) != item["external_sha256"]
+                or item["external_sha256"] != sealed["external_sha256"]
+                or shard["shard_sha256"] != sealed["internal_sha256"]
+                or sha256_file(log_path) != sealed["log_sha256"]):
             raise CompositionRuntimeRefused(
-                "composition screen shard changed during aggregation")
+                "composition sealed shard changed during aggregation")
         _validate_attempt_slot(
             logical=str(shard["attempt_admission_slot"]),
             expected_sha256=str(shard["attempt_admission_slot_sha256"]),
@@ -708,20 +1564,34 @@ def aggregate(*, packet_path: Path, expected_packet_sha256: str,
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description=__doc__)
     commands = root.add_subparsers(dest="command", required=True)
-    for name in ("admit", "run-shard", "aggregate"):
+    for name in (
+            "capacity-preflight", "admit", "supervise", "run-shard",
+            "aggregate"):
         child = commands.add_parser(name)
         child.add_argument("--expected-git", required=True)
         child.add_argument("--controller-packet", required=True)
         child.add_argument("--expected-controller-packet-sha256", required=True)
         child.add_argument("--controller-review-record", required=True)
         child.add_argument("--out", required=True)
-        if name != "admit":
+        if name in {"admit", "supervise", "run-shard", "aggregate"}:
+            child.add_argument("--capacity-result", required=True)
+            child.add_argument(
+                "--expected-capacity-result-sha256", required=True)
+            child.add_argument("--capacity-review-record", required=True)
+        if name in {"supervise", "run-shard", "aggregate"}:
             child.add_argument("--screen-receipt", required=True)
             child.add_argument(
                 "--expected-screen-receipt-sha256", required=True)
         if name == "run-shard":
+            child.add_argument("--supervisor-admission", required=True)
+            child.add_argument(
+                "--expected-supervisor-admission-sha256", required=True)
             child.add_argument("--shard-index", required=True, type=int)
         if name == "aggregate":
+            child.add_argument("--supervisor-final", required=True)
+            child.add_argument(
+                "--expected-supervisor-final-sha256", required=True)
+            child.add_argument("--supervisor-review-record", required=True)
             child.add_argument("--shards", nargs="+", required=True)
     return root
 
@@ -736,17 +1606,46 @@ def main() -> int:
         "expected_packet_sha256": args.expected_controller_packet_sha256,
         "review_record": Path(args.controller_review_record).resolve(),
     }
+    if args.command == "capacity-preflight":
+        value = capacity_preflight(**common, out=Path(args.out).resolve())
+        capacity_common = None
+    else:
+        capacity_common = {
+            "capacity_result_path": Path(args.capacity_result).resolve(),
+            "expected_capacity_result_sha256":
+                args.expected_capacity_result_sha256,
+            "capacity_review_record": Path(
+                args.capacity_review_record).resolve(),
+        }
     if args.command == "admit":
-        value = admit(**common, out=Path(args.out).resolve())
+        value = admit(
+            **common, **capacity_common, out=Path(args.out).resolve())
+    elif args.command == "supervise":
+        value = supervise(
+            **common, **capacity_common,
+            receipt_path=Path(args.screen_receipt).resolve(),
+            expected_receipt_sha256=args.expected_screen_receipt_sha256,
+            out=Path(args.out).resolve())
     elif args.command == "run-shard":
         value = run_shard(
-            **common, receipt_path=Path(args.screen_receipt).resolve(),
+            **common, **capacity_common,
+            receipt_path=Path(args.screen_receipt).resolve(),
             expected_receipt_sha256=args.expected_screen_receipt_sha256,
+            supervisor_admission_path=Path(
+                args.supervisor_admission).resolve(),
+            expected_supervisor_admission_sha256=
+                args.expected_supervisor_admission_sha256,
             shard_index=args.shard_index, out=Path(args.out).resolve())
-    else:
+    elif args.command == "aggregate":
         value = aggregate(
-            **common, receipt_path=Path(args.screen_receipt).resolve(),
+            **common, **capacity_common,
+            receipt_path=Path(args.screen_receipt).resolve(),
             expected_receipt_sha256=args.expected_screen_receipt_sha256,
+            supervisor_final_path=Path(args.supervisor_final).resolve(),
+            expected_supervisor_final_sha256=
+                args.expected_supervisor_final_sha256,
+            supervisor_review_record=Path(
+                args.supervisor_review_record).resolve(),
             shard_paths=[Path(value).resolve() for value in args.shards],
             out=Path(args.out).resolve())
     print(json.dumps({

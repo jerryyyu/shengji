@@ -28,6 +28,30 @@ def _review(tmp_path: Path) -> Path:
     return path
 
 
+def _capacity_args(tmp_path: Path) -> dict:
+    capacity_review = tmp_path / "capacity-review.txt"
+    capacity_review.write_text("capacity review\n")
+    return {
+        "capacity_result_path": tmp_path / "capacity.json",
+        "expected_capacity_result_sha256": "6" * 64,
+        "capacity_review_record": capacity_review,
+    }
+
+
+def _supervisor_args(tmp_path: Path) -> dict:
+    supervisor_review = tmp_path / "supervisor-review.txt"
+    supervisor_review.write_text("supervisor review\n")
+    return {
+        "supervisor_admission_path":
+            tmp_path / RUNTIME.CTRL.SUPERVISOR_ADMISSION_PATH,
+        "expected_supervisor_admission_sha256": "7" * 64,
+        "supervisor_final_path":
+            tmp_path / RUNTIME.CTRL.SUPERVISOR_FINAL_PATH,
+        "expected_supervisor_final_sha256": "8" * 64,
+        "supervisor_review_record": supervisor_review,
+    }
+
+
 def test_attempt_slots_are_consumed_before_work_and_cannot_retry(
         monkeypatch, tmp_path) -> None:
     packet = _packet()
@@ -71,6 +95,99 @@ def test_review_marker_requires_one_exact_narrow_claim(
         RUNTIME._review_claim(path, packet, "d" * 64)
 
 
+def _exact_work(searches: int = 1, rollouts: int = 660,
+                accepted: int = 330) -> dict:
+    return {
+        "rollouts": rollouts,
+        "searches": searches,
+        "sample_attempts": accepted,
+        "accepted_worlds": accepted,
+        "failed_worlds": 0,
+        "rejected_worlds": 0,
+        "void_fallbacks": 0,
+        "short_searches": 0,
+        "zero_world": 0,
+    }
+
+
+def _triggered_stage() -> dict:
+    value = RUNTIME.SCREEN.feature_off_telemetry()
+    value.update({
+        "focus_calls": 1,
+        "model_triggers": 1,
+        "report_rejections": 1,
+    })
+    return value
+
+
+def _capacity_validation() -> dict:
+    off = _exact_work()
+    focused = _exact_work()
+    return {
+        "record_counts": {
+            label: 2 * RUNTIME.CTRL.PREFLIGHT_CLUSTERS
+            for label in RUNTIME.SCREEN.LABELS},
+        "stage_c_telemetry": {
+            "treatment": _triggered_stage(),
+            "matched_null": _triggered_stage(),
+        },
+        "work_totals": {
+            label: {
+                "arm": dict(focused if label != "champion" else off),
+                "opp": dict(off),
+            } for label in RUNTIME.SCREEN.LABELS
+        },
+        "all_records_exact_work": True,
+    }
+
+
+def test_capacity_preflight_is_score_free_and_precedes_screen_authority(
+        monkeypatch, tmp_path) -> None:
+    packet = _packet()
+    review = _review(tmp_path)
+    monkeypatch.setattr(RUNTIME, "REPO", tmp_path)
+    monkeypatch.setattr(RUNTIME, "_packet",
+                        lambda *_args, **_kw: (packet, object()))
+    monkeypatch.setattr(RUNTIME, "_review_claim", lambda *_args: {})
+    monkeypatch.setattr(
+        RUNTIME, "_factories", lambda *_args: (object(), object(), object()))
+    monkeypatch.setattr(
+        RUNTIME.SCREEN, "run_arm_factories",
+        lambda label, *_args, **_kw: [{"label": label}])
+    monkeypatch.setattr(
+        RUNTIME.SCREEN, "validate_screen_records",
+        lambda *_args, **_kw: _capacity_validation())
+    ticks = iter((100.0, 102.0))
+    monkeypatch.setattr(RUNTIME.time, "monotonic", lambda: next(ticks))
+    out = tmp_path / RUNTIME.CTRL.CAPACITY_RESULT_PATH
+    value = RUNTIME.capacity_preflight(
+        packet_path=tmp_path / "packet.json",
+        expected_packet_sha256="d" * 64,
+        review_record=review, out=out)
+    assert value["capacity_pass"] is True
+    assert value["score_free"] is True
+    assert value["outcomes_published"] is False
+    assert value["screen_execution_authorized"] is False
+    assert value["decision"] == "AUTHORIZE_SCREEN_EXECUTION_REVIEW"
+    assert not ({"records", "stats", "won", "level_utility"} & set(value))
+    assert out.is_file()
+    reopened = RUNTIME._capacity_result(
+        out, RUNTIME.sha256_file(out), packet, "d" * 64, review)
+    assert reopened == value
+
+
+def test_capacity_summary_rejects_rehashed_zero_work() -> None:
+    value = {
+        "surface": "play",
+        **_capacity_validation(),
+    }
+    value["work_totals"]["treatment"]["arm"] = _exact_work(
+        searches=0, rollouts=0, accepted=0)
+    problems = RUNTIME._capacity_summary_problems(value)
+    assert any("work drift" in problem or "differ" in problem
+               for problem in problems)
+
+
 def _row(label: str, seed: int, flip: int):
     return {
         "run": RUNTIME.CTRL.RUN_ID,
@@ -87,11 +204,15 @@ def test_run_shard_executes_all_three_arms_on_same_population(
     monkeypatch.setattr(RUNTIME, "REPO", tmp_path)
     monkeypatch.setattr(RUNTIME, "_packet",
                         lambda *_args, **_kw: (packet, object()))
-    monkeypatch.setattr(RUNTIME, "_receipt", lambda *_args, **_kw: {})
+    monkeypatch.setattr(
+        RUNTIME, "_receipt",
+        lambda *_args, **_kw: ({}, {"screen_max_shard_seconds": 3_600.0}))
     monkeypatch.setattr(
         RUNTIME, "_consume_attempt_slot",
         lambda **_kw: (RUNTIME.CTRL.SHARD_ADMISSION_PATHS[2], "f" * 64))
     monkeypatch.setattr(RUNTIME, "_validate_attempt_slot",
+                        lambda **_kw: None)
+    monkeypatch.setattr(RUNTIME, "_validate_supervisor_slot",
                         lambda **_kw: None)
     factories = (lambda _seed: object(),) * 3
     monkeypatch.setattr(RUNTIME, "_factories", lambda *_args: factories)
@@ -111,7 +232,11 @@ def test_run_shard_executes_all_three_arms_on_same_population(
         packet_path=tmp_path / "packet.json",
         expected_packet_sha256="d" * 64, review_record=review,
         receipt_path=tmp_path / "receipt.json",
-        expected_receipt_sha256="e" * 64, shard_index=2, out=out)
+        expected_receipt_sha256="e" * 64, **_capacity_args(tmp_path),
+        supervisor_admission_path=(
+            tmp_path / RUNTIME.CTRL.SUPERVISOR_ADMISSION_PATH),
+        expected_supervisor_admission_sha256="7" * 64,
+        shard_index=2, out=out)
     seed0 = RUNTIME.CTRL.SCREEN_SEED0 + 2 * RUNTIME.CTRL.CLUSTERS_PER_SHARD
     assert calls == [
         ("treatment", seed0, 256, True),
@@ -143,6 +268,10 @@ def test_run_shard_refuses_output_collision_before_consuming_attempt(
             review_record=_review(tmp_path),
             receipt_path=tmp_path / "receipt.json",
             expected_receipt_sha256="e" * 64,
+            **_capacity_args(tmp_path),
+            supervisor_admission_path=(
+                tmp_path / RUNTIME.CTRL.SUPERVISOR_ADMISSION_PATH),
+            expected_supervisor_admission_sha256="7" * 64,
             shard_index=0, out=out)
 
 
@@ -156,6 +285,9 @@ def test_shard_identity_binds_run_and_attempt_slot(monkeypatch, tmp_path) -> Non
         "git": "a" * 40,
         "controller_packet_sha256": "d" * 64,
         "screen_receipt_sha256": "e" * 64,
+        "supervisor_admission_slot":
+            RUNTIME.CTRL.SUPERVISOR_ADMISSION_PATH,
+        "supervisor_admission_slot_sha256": "7" * 64,
         "attempt_admission_slot": RUNTIME.CTRL.SHARD_ADMISSION_PATHS[0],
         "attempt_admission_slot_sha256": "f" * 64,
         "shard_index": 0,
@@ -177,7 +309,8 @@ def test_shard_identity_binds_run_and_attempt_slot(monkeypatch, tmp_path) -> Non
                         lambda **_kw: None)
     RUNTIME.validate_shard(
         shard, packet=packet, packet_sha256="d" * 64,
-        receipt_sha256="e" * 64, review_record=_review(tmp_path), index=0)
+        receipt_sha256="e" * 64, review_record=_review(tmp_path), index=0,
+        supervisor_slot_sha256="7" * 64)
     broken = json.loads(json.dumps(shard))
     broken["records"]["treatment"][0]["run"] = "other"
     broken["shard_sha256"] = RUNTIME.self_hash(broken, "shard_sha256")
@@ -186,7 +319,8 @@ def test_shard_identity_binds_run_and_attempt_slot(monkeypatch, tmp_path) -> Non
         RUNTIME.validate_shard(
             broken, packet=packet, packet_sha256="d" * 64,
             receipt_sha256="e" * 64,
-            review_record=_review(tmp_path), index=0)
+            review_record=_review(tmp_path), index=0,
+            supervisor_slot_sha256="7" * 64)
 
 
 def test_factories_route_selected_surface_and_keep_champion_literal(
@@ -226,6 +360,9 @@ def test_aggregate_consumes_slot_before_opening_shards(
     monkeypatch.setattr(RUNTIME, "_packet",
                         lambda *_args, **_kw: (packet, object()))
     monkeypatch.setattr(RUNTIME, "_receipt", lambda *_args, **_kw: {})
+    monkeypatch.setattr(
+        RUNTIME, "_capacity_result",
+        lambda *_args, **_kw: {"screen_max_shard_seconds": 3_600.0})
     order = []
 
     def consume(**_kwargs):
@@ -253,6 +390,26 @@ def test_aggregate_consumes_slot_before_opening_shards(
                 RUNTIME.CTRL.SHARD_ADMISSION_PATHS[index],
             "attempt_admission_slot_sha256": f"{index + 101:064x}",
         }
+        log_path = tmp_path / RUNTIME.CTRL.SHARD_LOG_PATHS[index]
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("log")
+    supervisor = {
+        "final_sha256": "a" * 64,
+        "supervisor_admission_slot_sha256": "7" * 64,
+        "shards": [{
+            "index": index,
+            "logical_path": RUNTIME.CTRL.SHARD_PATHS[index],
+            "external_sha256": "9" * 64,
+            "internal_sha256": f"{index + 1:064x}",
+            "log_logical_path": RUNTIME.CTRL.SHARD_LOG_PATHS[index],
+            "log_sha256": "9" * 64,
+            "exit_code": 0,
+        } for index in range(RUNTIME.CTRL.SHARD_COUNT)],
+    }
+    monkeypatch.setattr(RUNTIME, "_supervisor_final",
+                        lambda **_kw: supervisor)
+    monkeypatch.setattr(RUNTIME, "_supervisor_review_claim",
+                        lambda *_args, **_kw: {"verdict": "PASS"})
     monkeypatch.setattr(RUNTIME, "load_json",
                         lambda path: order.append("open") or values[str(path)])
     monkeypatch.setattr(RUNTIME, "validate_shard", lambda *_args, **_kw: None)
@@ -268,6 +425,12 @@ def test_aggregate_consumes_slot_before_opening_shards(
         expected_packet_sha256="d" * 64, review_record=review,
         receipt_path=tmp_path / "receipt.json",
         expected_receipt_sha256="e" * 64,
+        **_capacity_args(tmp_path),
+        supervisor_final_path=(
+            tmp_path / RUNTIME.CTRL.SUPERVISOR_FINAL_PATH),
+        expected_supervisor_final_sha256="8" * 64,
+        supervisor_review_record=(
+            _supervisor_args(tmp_path)["supervisor_review_record"]),
         shard_paths=shards, out=out)
     assert order[0] == "slot"
     assert value["decision"] == "SELECT_NONE"
@@ -298,5 +461,244 @@ def test_aggregate_refuses_missing_shard_before_consuming_attempt(
             review_record=_review(tmp_path),
             receipt_path=tmp_path / "receipt.json",
             expected_receipt_sha256="e" * 64,
+            **_capacity_args(tmp_path),
+            supervisor_final_path=(
+                tmp_path / RUNTIME.CTRL.SUPERVISOR_FINAL_PATH),
+            expected_supervisor_final_sha256="8" * 64,
+            supervisor_review_record=(
+                _supervisor_args(tmp_path)["supervisor_review_record"]),
             shard_paths=shards,
             out=tmp_path / RUNTIME.CTRL.RESULT_PATH)
+
+
+def _sealed_supervisor(
+        packet, review: Path, capacity_review: Path, *,
+        external_sha256: str = "9" * 64) -> dict:
+    slot_sha256 = "7" * 64
+    commands = [["child", str(index)]
+                for index in range(RUNTIME.CTRL.SHARD_COUNT)]
+    shards = [{
+        "index": index,
+        "logical_path": RUNTIME.CTRL.SHARD_PATHS[index],
+        "external_sha256": external_sha256,
+        "internal_sha256": f"{index + 1:064x}",
+        "log_logical_path": RUNTIME.CTRL.SHARD_LOG_PATHS[index],
+        "log_sha256": "a" * 64,
+        "exit_code": 0,
+    } for index in range(RUNTIME.CTRL.SHARD_COUNT)]
+    value = {
+        "schema": RUNTIME.SUPERVISOR_FINAL_SCHEMA,
+        "run_id": RUNTIME.CTRL.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": "d" * 64,
+        "controller_review_record_sha256": RUNTIME.sha256_file(review),
+        "screen_receipt_sha256": "e" * 64,
+        "capacity_result_sha256": "6" * 64,
+        "capacity_review_record_sha256": RUNTIME.sha256_file(
+            capacity_review),
+        "supervisor_admission_slot":
+            RUNTIME.CTRL.SUPERVISOR_ADMISSION_PATH,
+        "supervisor_admission_slot_sha256": slot_sha256,
+        "commands": commands,
+        "shards": shards,
+        "shard_manifest_sha256": RUNTIME.manifest_hash(shards),
+        "elapsed_seconds": 12.5,
+        "all_children_exit_zero": True,
+        "outcomes_published": False,
+        "statistics_published": False,
+        "aggregate_execution_authorized": False,
+        "confirmation_launch_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+        "retry_or_extension_authorized": False,
+    }
+    value["final_sha256"] = RUNTIME.self_hash(value, "final_sha256")
+    return value
+
+
+def test_supervisor_final_is_outcome_free_and_binds_exact_manifest(
+        monkeypatch, tmp_path) -> None:
+    packet = _packet()
+    review = _review(tmp_path)
+    capacity_review = tmp_path / "capacity-review.txt"
+    capacity_review.write_text("capacity review\n")
+    monkeypatch.setattr(RUNTIME, "REPO", tmp_path)
+    for index in range(RUNTIME.CTRL.SHARD_COUNT):
+        for logical in (RUNTIME.CTRL.SHARD_PATHS[index],
+                        RUNTIME.CTRL.SHARD_LOG_PATHS[index]):
+            path = tmp_path / logical
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("sealed")
+    value = _sealed_supervisor(packet, review, capacity_review)
+    out = tmp_path / RUNTIME.CTRL.SUPERVISOR_FINAL_PATH
+    out.write_bytes(RUNTIME.canonical_json(value))
+    monkeypatch.setattr(
+        RUNTIME, "_child_command",
+        lambda *, index, **_kw: ["child", str(index)])
+    monkeypatch.setattr(RUNTIME, "_validate_supervisor_slot",
+                        lambda **_kw: None)
+    reopened = RUNTIME._supervisor_final(
+        path=out, expected_sha256=RUNTIME.sha256_file(out),
+        packet=packet, packet_sha256="d" * 64,
+        receipt_sha256="e" * 64, controller_review_record=review,
+        capacity_result={"screen_max_shard_seconds": 3_600.0},
+        capacity_result_sha256="6" * 64,
+        capacity_review_record=capacity_review)
+    assert reopened == value
+    assert not ({"records", "stats", "won", "level_utility"} & set(reopened))
+
+    tampered = json.loads(json.dumps(value))
+    tampered["stats"] = {"peek": 1}
+    tampered["final_sha256"] = RUNTIME.self_hash(
+        tampered, "final_sha256")
+    out.write_bytes(RUNTIME.canonical_json(tampered))
+    with pytest.raises(RUNTIME.CompositionRuntimeRefused,
+                       match="identity/authority"):
+        RUNTIME._supervisor_final(
+            path=out, expected_sha256=RUNTIME.sha256_file(out),
+            packet=packet, packet_sha256="d" * 64,
+            receipt_sha256="e" * 64, controller_review_record=review,
+            capacity_result={"screen_max_shard_seconds": 3_600.0},
+            capacity_result_sha256="6" * 64,
+            capacity_review_record=capacity_review)
+
+
+def test_supervisor_consumes_one_slot_before_children_and_seals_hashes(
+        monkeypatch, tmp_path) -> None:
+    packet = _packet()
+    packet["commands"] = {
+        "supervisor_child_shards": RUNTIME.CTRL._commands()[
+            "supervisor_child_shards"],
+    }
+    review = _review(tmp_path)
+    capacity = _capacity_args(tmp_path)
+    monkeypatch.setattr(RUNTIME, "REPO", tmp_path)
+    monkeypatch.setattr(RUNTIME, "_packet",
+                        lambda *_args, **_kw: (packet, object()))
+    monkeypatch.setattr(
+        RUNTIME, "_receipt",
+        lambda *_args, **_kw: ({}, {"screen_max_shard_seconds": 3_600.0}))
+    monkeypatch.setattr(RUNTIME, "validate_shard", lambda *_args, **_kw: None)
+    ticks = iter((10.0, 10.5))
+    monkeypatch.setattr(RUNTIME.time, "monotonic", lambda: next(ticks))
+    spawned = []
+
+    class Child:
+        def __init__(self, command, *, cwd, stdout, stderr):
+            assert cwd == tmp_path
+            assert stderr == RUNTIME.subprocess.STDOUT
+            slot = tmp_path / RUNTIME.CTRL.SUPERVISOR_ADMISSION_PATH
+            assert slot.is_file(), "supervisor slot must precede child launch"
+            index = int(command[command.index("--shard-index") + 1])
+            shard = tmp_path / RUNTIME.CTRL.SHARD_PATHS[index]
+            shard.parent.mkdir(parents=True, exist_ok=True)
+            shard.write_bytes(RUNTIME.canonical_json({
+                "shard_sha256": f"{index + 1:064x}"}))
+            stdout.write(f"shard {index} complete\n".encode())
+            stdout.flush()
+            spawned.append(index)
+
+        def poll(self):
+            return 0
+
+        def terminate(self):
+            raise AssertionError("completed child was terminated")
+
+        def kill(self):
+            raise AssertionError("completed child was killed")
+
+        def wait(self, timeout=None):
+            return 0
+
+    monkeypatch.setattr(RUNTIME.subprocess, "Popen", Child)
+    out = tmp_path / RUNTIME.CTRL.SUPERVISOR_FINAL_PATH
+    value = RUNTIME.supervise(
+        packet_path=tmp_path / RUNTIME.CTRL.PACKET_PATH,
+        expected_packet_sha256="d" * 64,
+        review_record=review,
+        receipt_path=tmp_path / RUNTIME.CTRL.RECEIPT_PATH,
+        expected_receipt_sha256="e" * 64,
+        capacity_result_path=capacity["capacity_result_path"],
+        expected_capacity_result_sha256=capacity[
+            "expected_capacity_result_sha256"],
+        capacity_review_record=capacity["capacity_review_record"],
+        out=out)
+    assert spawned == list(range(RUNTIME.CTRL.SHARD_COUNT))
+    assert value["all_children_exit_zero"] is True
+    assert value["outcomes_published"] is False
+    assert value["statistics_published"] is False
+    assert len(value["shards"]) == RUNTIME.CTRL.SHARD_COUNT
+    assert out.is_file()
+    with pytest.raises(RUNTIME.CompositionRuntimeRefused,
+                       match="existing composition supervisor final"):
+        RUNTIME.supervise(
+            packet_path=tmp_path / RUNTIME.CTRL.PACKET_PATH,
+            expected_packet_sha256="d" * 64,
+            review_record=review,
+            receipt_path=tmp_path / RUNTIME.CTRL.RECEIPT_PATH,
+            expected_receipt_sha256="e" * 64,
+            capacity_result_path=capacity["capacity_result_path"],
+            expected_capacity_result_sha256=capacity[
+                "expected_capacity_result_sha256"],
+            capacity_review_record=capacity["capacity_review_record"],
+            out=out)
+
+
+def test_aggregate_rejects_rehashed_shard_after_external_seal_before_open(
+        monkeypatch, tmp_path) -> None:
+    packet = _packet()
+    review = _review(tmp_path)
+    capacity = _capacity_args(tmp_path)
+    supervisor_args = _supervisor_args(tmp_path)
+    monkeypatch.setattr(RUNTIME, "REPO", tmp_path)
+    shards = []
+    for index in range(RUNTIME.CTRL.SHARD_COUNT):
+        shard = tmp_path / RUNTIME.CTRL.SHARD_PATHS[index]
+        log = tmp_path / RUNTIME.CTRL.SHARD_LOG_PATHS[index]
+        shard.parent.mkdir(parents=True, exist_ok=True)
+        shard.write_text("rewritten-and-self-rehashed")
+        log.write_text("log")
+        shards.append(shard)
+    sealed = _sealed_supervisor(
+        packet, review, capacity["capacity_review_record"],
+        external_sha256="1" * 64)
+    monkeypatch.setattr(RUNTIME, "_packet",
+                        lambda *_args, **_kw: (packet, object()))
+    monkeypatch.setattr(RUNTIME, "_receipt", lambda *_args, **_kw: {})
+    monkeypatch.setattr(
+        RUNTIME, "_capacity_result",
+        lambda *_args, **_kw: {"screen_max_shard_seconds": 3_600.0})
+    monkeypatch.setattr(RUNTIME, "_supervisor_final",
+                        lambda **_kw: sealed)
+    monkeypatch.setattr(RUNTIME, "_supervisor_review_claim",
+                        lambda *_args, **_kw: {"verdict": "PASS"})
+    monkeypatch.setattr(
+        RUNTIME, "_consume_attempt_slot",
+        lambda **_kw: (RUNTIME.CTRL.AGGREGATE_ADMISSION_PATH, "f" * 64))
+    real_sha = RUNTIME.sha256_file
+
+    def digest(path):
+        if Path(path).resolve() == shards[0].resolve():
+            return "2" * 64
+        if Path(path).suffix == ".log":
+            return "a" * 64
+        return real_sha(Path(path))
+
+    monkeypatch.setattr(RUNTIME, "sha256_file", digest)
+    monkeypatch.setattr(
+        RUNTIME, "load_json",
+        lambda _path: pytest.fail("changed shard opened before seal check"))
+    with pytest.raises(RUNTIME.CompositionRuntimeRefused,
+                       match="supervisor seal mismatch"):
+        RUNTIME.aggregate(
+            packet_path=tmp_path / "packet.json",
+            expected_packet_sha256="d" * 64, review_record=review,
+            receipt_path=tmp_path / "receipt.json",
+            expected_receipt_sha256="e" * 64,
+            **capacity,
+            supervisor_final_path=supervisor_args["supervisor_final_path"],
+            expected_supervisor_final_sha256="8" * 64,
+            supervisor_review_record=supervisor_args[
+                "supervisor_review_record"],
+            shard_paths=shards, out=tmp_path / RUNTIME.CTRL.RESULT_PATH)

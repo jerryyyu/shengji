@@ -53,6 +53,20 @@ RUN_ID = PACKET_ID
 PACKET_PATH = f"server/runs/logs/{RUN_ID}/controller-packet.json"
 REVIEW_SCHEMA = "teacher-stage-c-composition-screen-controller-review-v1"
 REVIEW_MARKER = "TEACHER_STAGE_C_COMPOSITION_SCREEN_CONTROLLER_V1_REVIEW "
+CAPACITY_RESULT_SCHEMA = "teacher-stage-c-composition-capacity-v1"
+CAPACITY_REVIEW_SCHEMA = "teacher-stage-c-composition-capacity-review-v1"
+CAPACITY_REVIEW_MARKER = \
+    "TEACHER_STAGE_C_COMPOSITION_CAPACITY_V1_REVIEW "
+SUPERVISOR_REVIEW_SCHEMA = \
+    "teacher-stage-c-composition-supervisor-final-review-v1"
+SUPERVISOR_REVIEW_MARKER = \
+    "TEACHER_STAGE_C_COMPOSITION_SUPERVISOR_FINAL_V1_REVIEW "
+PREFLIGHT_SEED0 = 180_000_000
+PREFLIGHT_CLUSTERS = 4
+PREFLIGHT_MAX_SECONDS = 3_600.0
+THROUGHPUT_SAFETY_FACTOR = 2.0
+SCREEN_FLEET_HOUR_CAP = 384.0
+SCREEN_MAX_SHARD_HOUR_CAP = 48.0
 SCREEN_SEED0 = 181_000_000
 SCREEN_CLUSTERS = 2_048
 SHARD_COUNT = 8
@@ -64,9 +78,19 @@ MODEL_PATHS = tuple(
 SHARD_PATHS = tuple(
     f"server/runs/logs/{RUN_ID}/shard-{index:02d}.json"
     for index in range(SHARD_COUNT))
+SHARD_LOG_PATHS = tuple(
+    f"server/runs/logs/{RUN_ID}/shard-{index:02d}.log"
+    for index in range(SHARD_COUNT))
 RESULT_PATH = f"server/runs/logs/{RUN_ID}/aggregate.json"
+CAPACITY_RESULT_PATH = f"server/runs/logs/{RUN_ID}/capacity.json"
+SUPERVISOR_FINAL_PATH = \
+    f"server/runs/logs/{RUN_ID}/supervisor-final.json"
 RECEIPT_PATH = f"server/runs/logs/{RUN_ID}/screen-receipt.json"
+CAPACITY_ADMISSION_PATH = \
+    f"server/runs/locks/{RUN_ID}.capacity.consumed.json"
 ADMISSION_PATH = f"server/runs/locks/{RUN_ID}.consumed.json"
+SUPERVISOR_ADMISSION_PATH = \
+    f"server/runs/locks/{RUN_ID}.supervisor.consumed.json"
 SHARD_ADMISSION_PATHS = tuple(
     f"server/runs/locks/{RUN_ID}.shard-{index:02d}.consumed.json"
     for index in range(SHARD_COUNT))
@@ -393,26 +417,52 @@ def _commands() -> dict:
         "--expected-controller-packet-sha256", "{packet_sha256}",
         "--controller-review-record", "{controller_review_record}",
     ]
+    capacity = [
+        "--capacity-result", CAPACITY_RESULT_PATH,
+        "--expected-capacity-result-sha256", "{capacity_result_sha256}",
+        "--capacity-review-record", "{capacity_review_record}",
+    ]
+    receipt = [
+        "--screen-receipt", RECEIPT_PATH,
+        "--expected-screen-receipt-sha256", "{receipt_sha256}",
+    ]
+    supervisor = [
+        "--supervisor-admission", SUPERVISOR_ADMISSION_PATH,
+        "--expected-supervisor-admission-sha256",
+        "{supervisor_admission_sha256}",
+    ]
     return {
+        "capacity_preflight": [
+            "{python}",
+            "server/scripts/teacher_stage_c_composition_runtime.py",
+            "capacity-preflight", *shared, "--out", CAPACITY_RESULT_PATH,
+        ],
         "admit": [
             "{python}",
             "server/scripts/teacher_stage_c_composition_runtime.py",
-            "admit", *shared, "--out", RECEIPT_PATH,
+            "admit", *shared, *capacity, "--out", RECEIPT_PATH,
         ],
-        "run_shards": [[
+        "supervise": [
             "{python}",
             "server/scripts/teacher_stage_c_composition_runtime.py",
-            "run-shard", *shared,
-            "--screen-receipt", RECEIPT_PATH,
-            "--expected-screen-receipt-sha256", "{receipt_sha256}",
+            "supervise", *shared, *receipt, *capacity,
+            "--out", SUPERVISOR_FINAL_PATH,
+        ],
+        "supervisor_child_shards": [[
+            "{python}",
+            "server/scripts/teacher_stage_c_composition_runtime.py",
+            "run-shard", *shared, *receipt, *capacity, *supervisor,
             "--shard-index", str(index), "--out", SHARD_PATHS[index],
         ] for index in range(SHARD_COUNT)],
         "aggregate": [
             "{python}",
             "server/scripts/teacher_stage_c_composition_runtime.py",
             "aggregate", *shared,
-            "--screen-receipt", RECEIPT_PATH,
-            "--expected-screen-receipt-sha256", "{receipt_sha256}",
+            *receipt, *capacity,
+            "--supervisor-final", SUPERVISOR_FINAL_PATH,
+            "--expected-supervisor-final-sha256",
+            "{supervisor_final_sha256}",
+            "--supervisor-review-record", "{supervisor_review_record}",
             "--shards", *SHARD_PATHS, "--out", RESULT_PATH,
         ],
     }
@@ -447,14 +497,41 @@ def screen_contract() -> dict:
         ],
         "nonzero_model_trigger_required": True,
         "zero_fallback_and_exact_work_required": True,
+        "reviewed_capacity_result_required_before_screen_admission": True,
+        "per_shard_timeout_from_reviewed_capacity_required": True,
+        "supervisor_owns_all_shards_and_logs": True,
+        "external_supervisor_final_review_required_before_aggregate": True,
+        "aggregate_slot_precedes_outcome_open": True,
         "pass_authority": "confirmation packet review only",
+        "retry_or_extension_authorized": False,
+    }
+
+
+def capacity_contract() -> dict:
+    return {
+        "seed0": PREFLIGHT_SEED0,
+        "clusters": PREFLIGHT_CLUSTERS,
+        "arms": list(SCREEN.LABELS),
+        "score_free_output": True,
+        "preflight_max_seconds": PREFLIGHT_MAX_SECONDS,
+        "throughput_safety_factor": THROUGHPUT_SAFETY_FACTOR,
+        "screen_fleet_hour_cap": SCREEN_FLEET_HOUR_CAP,
+        "screen_max_shard_hour_cap": SCREEN_MAX_SHARD_HOUR_CAP,
+        "nonzero_treatment_and_null_trigger_required": True,
+        "zero_fallback_and_exact_work_required": True,
+        "pass_authority": "screen execution review only",
         "retry_or_extension_authorized": False,
     }
 
 
 def result_contract() -> dict:
     return {
+        "capacity_admission_slot": CAPACITY_ADMISSION_PATH,
+        "capacity_result": CAPACITY_RESULT_PATH,
         "admission_slot": ADMISSION_PATH,
+        "supervisor_admission_slot": SUPERVISOR_ADMISSION_PATH,
+        "supervisor_final": SUPERVISOR_FINAL_PATH,
+        "shard_logs": list(SHARD_LOG_PATHS),
         "shard_admission_slots": list(SHARD_ADMISSION_PATHS),
         "aggregate_admission_slot": AGGREGATE_ADMISSION_PATH,
         "receipt": RECEIPT_PATH,
@@ -514,11 +591,14 @@ def build_packet(
         "model_exports": exports,
         "model_exports_sha256": manifest_hash(exports),
         "candidate_contract": candidate_contract(),
+        "capacity_contract": capacity_contract(),
         "screen_contract": screen_contract(),
         "commands": _commands(),
         "result_contract": result_contract(),
         "authority": {
-            "screen_packet_review_authorized": True,
+            "capacity_preflight_review_authorized": True,
+            "capacity_preflight_launch_authorized": False,
+            "screen_packet_review_authorized": False,
             "screen_launch_authorized": False,
             "confirmation_launch_authorized": False,
             "strength_claim": False,
@@ -543,14 +623,80 @@ def expected_review_claim(packet: Mapping[str, object],
         "selected_capability": packet["selected_capability"],
         "model_exports_sha256": packet["model_exports_sha256"],
         "ensemble_models": len(packet["model_exports"]),
-        "seed0": SCREEN_SEED0,
-        "clusters": SCREEN_CLUSTERS,
-        "shards": SHARD_COUNT,
+        "preflight_seed0": PREFLIGHT_SEED0,
+        "preflight_clusters": PREFLIGHT_CLUSTERS,
+        "screen_seed0": SCREEN_SEED0,
+        "screen_clusters": SCREEN_CLUSTERS,
+        "screen_shards": SHARD_COUNT,
         "execution_host": packet["runtime_contract"]["host"],
         "python": packet["runtime_contract"]["python"],
         "numpy": packet["runtime_contract"]["numpy"],
         "independent_review": True,
+        "one_capacity_preflight_authorized": True,
+        "one_screen_execution_authorized": False,
+        "confirmation_launch_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+        "verdict": "PASS",
+    }
+
+
+def expected_capacity_review_claim(
+    packet: Mapping[str, object], packet_external_sha256: str,
+    capacity_result: Mapping[str, object], capacity_external_sha256: str,
+) -> dict:
+    return {
+        "schema": CAPACITY_REVIEW_SCHEMA,
+        "git": packet["producer"]["git"],
+        "run_id": RUN_ID,
+        "packet_sha256": packet_external_sha256,
+        "capacity_result_sha256": capacity_external_sha256,
+        "capacity_result_internal_sha256": capacity_result[
+            "result_sha256"],
+        "preflight_seed0": PREFLIGHT_SEED0,
+        "preflight_clusters": PREFLIGHT_CLUSTERS,
+        "elapsed_seconds": capacity_result["elapsed_seconds"],
+        "screen_fleet_hours": capacity_result["projection"][
+            "screen_fleet_hours"],
+        "screen_max_shard_hours": capacity_result["projection"][
+            "screen_max_shard_hours"],
+        "screen_max_shard_seconds": capacity_result[
+            "screen_max_shard_seconds"],
+        "capacity_pass": True,
+        "score_free": True,
+        "independent_review": True,
         "one_screen_execution_authorized": True,
+        "confirmation_launch_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+        "verdict": "PASS",
+    }
+
+
+def expected_supervisor_review_claim(
+    packet: Mapping[str, object], packet_external_sha256: str,
+    supervisor_final: Mapping[str, object],
+    supervisor_external_sha256: str,
+) -> dict:
+    return {
+        "schema": SUPERVISOR_REVIEW_SCHEMA,
+        "git": packet["producer"]["git"],
+        "run_id": RUN_ID,
+        "packet_sha256": packet_external_sha256,
+        "screen_receipt_sha256": supervisor_final[
+            "screen_receipt_sha256"],
+        "supervisor_final_sha256": supervisor_external_sha256,
+        "supervisor_final_internal_sha256": supervisor_final[
+            "final_sha256"],
+        "shard_manifest_sha256": supervisor_final[
+            "shard_manifest_sha256"],
+        "shards": len(supervisor_final["shards"]),
+        "all_children_exit_zero": True,
+        "outcomes_or_statistics_read_by_reviewer": False,
+        "independent_review": True,
+        "one_aggregate_execution_authorized": True,
         "confirmation_launch_authorized": False,
         "strength_claim": False,
         "production_promotion": False,

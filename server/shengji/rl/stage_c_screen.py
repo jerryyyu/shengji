@@ -17,7 +17,9 @@ Stage-C decision must reconcile, trigger at least once, and have zero fallback.
 """
 from __future__ import annotations
 
+import math
 import random
+import time
 from collections import Counter
 from typing import Callable, Mapping, Sequence
 
@@ -53,6 +55,7 @@ def run_arm_factories(
     *, clusters: int, seed0: int, run_id: str,
     policy_has_stage_c: bool,
     progress: bool = True,
+    deadline_monotonic: float | None = None,
 ) -> list[dict]:
     """Play one mirrored arm using bound factories rather than registry names."""
     if (label not in LABELS
@@ -61,7 +64,11 @@ def run_arm_factories(
             or isinstance(seed0, bool) or not isinstance(seed0, int)
             or seed0 < 0
             or not isinstance(run_id, str) or not run_id
-            or not callable(policy_factory) or not callable(opponent_factory)):
+            or not callable(policy_factory) or not callable(opponent_factory)
+            or (deadline_monotonic is not None
+                and (isinstance(deadline_monotonic, bool)
+                     or not isinstance(deadline_monotonic, (int, float))
+                     or not math.isfinite(float(deadline_monotonic))))):
         raise StageCScreenError("Stage-C screen arm identity drift")
     if policy_has_stage_c is not (label != "champion"):
         raise StageCScreenError("Stage-C screen feature-arm identity drift")
@@ -69,6 +76,10 @@ def run_arm_factories(
     for cluster in range(clusters):
         seed = seed0 + cluster
         for flip in (0, 1):
+            if (deadline_monotonic is not None
+                    and time.monotonic() >= deadline_monotonic):
+                raise StageCScreenError(
+                    "Stage-C screen shard exceeded its reviewed timeout")
             a1 = policy_factory(seed)
             a2 = policy_factory(seed + 500_000)
             b1 = opponent_factory(seed + 1_000_000)
@@ -139,7 +150,8 @@ def _counter_problems(value: object) -> list[str]:
         return ["search counters are not an object"]
     problems = []
     required = (
-        "sample_attempts", "accepted_worlds", "failed_worlds",
+        "rollouts", "searches", "sample_attempts", "accepted_worlds",
+        "failed_worlds",
         "rejected_worlds", "void_fallbacks", "short_searches", "zero_world",
     )
     values = {field: value.get(field) for field in required}
@@ -160,13 +172,80 @@ def _counter_problems(value: object) -> list[str]:
     return problems
 
 
+def _search_work_problems(
+    counters: Mapping[str, object], telemetry: Mapping[str, object], *,
+    feature_on: bool, surface: str,
+) -> list[str]:
+    """Recompute exact live/report work from searches and model triggers.
+
+    Live report-LCB spends 30 common selection worlds and 300 paired report
+    worlds per contested play. With K candidates this is ``30*K + 600``
+    rollouts, where ``2 <= K <= 14``, and exactly 330 accepted worlds.
+
+    A focused play trigger fixes K=2. A focused bury trigger adds one N=300
+    two-candidate banker report (600 rollouts, 300 accepted worlds) while its
+    later play decisions retain the ordinary live formula. These identities
+    make a zero-work or partially-accounted record red instead of trusting a
+    hard-coded exact-work flag.
+    """
+    if surface not in {"play", "bury"}:
+        return ["Stage-C work surface drift"]
+    searches = int(counters["searches"])
+    rollouts = int(counters["rollouts"])
+    accepted = int(counters["accepted_worlds"])
+    triggers = int(telemetry["model_triggers"]) if feature_on else 0
+    if feature_on and surface == "play":
+        problems = []
+        if searches != triggers:
+            problems.append("focused play searches differ from model triggers")
+        if accepted != 330 * triggers:
+            problems.append("focused play accepted-world work drift")
+        if rollouts != 660 * triggers:
+            problems.append("focused play rollout work drift")
+        return problems
+
+    # Feature-off policies have only live play searches. A bury-focused policy
+    # additionally has one search per model trigger, without an N=30 selection
+    # fold for that bury decision.
+    play_searches = searches - triggers
+    problems = []
+    if play_searches < 0:
+        return ["bury trigger/search work drift"]
+    expected_accepted = 330 * play_searches + 300 * triggers
+    if accepted != expected_accepted:
+        problems.append("live/bury accepted-world work drift")
+    selection_rollouts = rollouts - 600 * searches
+    if (selection_rollouts < 60 * play_searches
+            or selection_rollouts > 420 * play_searches
+            or selection_rollouts % 30):
+        problems.append("live play candidate-rollout work drift")
+    return problems
+
+
 def _sum_stage(records: Sequence[Mapping[str, object]], side: str) -> dict:
     totals = Counter({field: 0 for field in TELEMETRY_FIELDS})
     for record in records:
         telemetry = record[side]["stage_c"]
         for field in TELEMETRY_FIELDS:
             totals[field] += telemetry[field]
-    return dict(totals)
+    return {
+        "schema": "teacher-stage-c-policy-telemetry-v1",
+        **dict(totals),
+        "exact_reconciliation": True,
+        "strength_claim": False,
+    }
+
+
+def _sum_work(records: Sequence[Mapping[str, object]], side: str) -> dict:
+    fields = (
+        "rollouts", "searches", "sample_attempts", "accepted_worlds",
+        "failed_worlds", "rejected_worlds", "void_fallbacks",
+        "short_searches", "zero_world",
+    )
+    return {
+        field: sum(int(record[side][field]) for record in records)
+        for field in fields
+    }
 
 
 def _contrast(left: Sequence[dict], right: Sequence[dict]) -> dict:
@@ -180,18 +259,19 @@ def _contrast(left: Sequence[dict], right: Sequence[dict]) -> dict:
     }
 
 
-def aggregate_screen(
+def validate_screen_records(
     records: Mapping[str, Sequence[dict]], *, expected_seed0: int,
-    expected_clusters: int,
+    expected_clusters: int, expected_surface: str,
 ) -> dict:
-    """Validate and gate one frozen three-arm whole-game screen population."""
+    """Validate exact population/work without returning any outcome statistic."""
     if (set(records) != set(LABELS)
             or isinstance(expected_seed0, bool)
             or not isinstance(expected_seed0, int) or expected_seed0 < 0
             or isinstance(expected_clusters, bool)
             or not isinstance(expected_clusters, int)
-            or expected_clusters < 30):
-        raise StageCScreenError("Stage-C screen aggregate identity drift")
+            or expected_clusters <= 0
+            or expected_surface not in {"play", "bury"}):
+        raise StageCScreenError("Stage-C screen validation identity drift")
     expected_keys = {(seed, flip)
                      for seed in range(
                          expected_seed0, expected_seed0 + expected_clusters)
@@ -224,16 +304,27 @@ def aggregate_screen(
                 problems.append(f"{label}: record identity/value drift")
                 continue
             for side in ("arm", "opp"):
+                side_value = row.get(side)
+                structural = _counter_problems(side_value)
                 problems.extend(
                     f"{label}/{side}: {problem}"
-                    for problem in _counter_problems(row.get(side)))
-                telemetry = (row.get(side, {}).get("stage_c")
-                             if isinstance(row.get(side), dict) else None)
+                    for problem in structural)
+                telemetry = (side_value.get("stage_c")
+                             if isinstance(side_value, dict) else None)
                 feature_on = label != "champion" and side == "arm"
+                telemetry_structural = _telemetry_problems(
+                    telemetry, feature_on=feature_on)
                 problems.extend(
                     f"{label}/{side}: {problem}"
-                    for problem in _telemetry_problems(
-                        telemetry, feature_on=feature_on))
+                    for problem in telemetry_structural)
+                if isinstance(side_value, dict) and isinstance(telemetry, dict):
+                    if not structural and not telemetry_structural:
+                        problems.extend(
+                            f"{label}/{side}: {problem}"
+                            for problem in _search_work_problems(
+                                side_value, telemetry,
+                                feature_on=feature_on,
+                                surface=expected_surface))
     if len(run_ids) != 1 or not all(isinstance(value, str) and value
                                     for value in run_ids):
         problems.append("Stage-C screen run identity drift")
@@ -241,8 +332,43 @@ def aggregate_screen(
         raise StageCScreenError(
             "Stage-C screen records refused:\n  - " + "\n  - ".join(problems))
 
-    treatment_stage = _sum_stage(records["treatment"], "arm")
-    null_stage = _sum_stage(records["matched_null"], "arm")
+    return {
+        "run_id": next(iter(run_ids)),
+        "surface": expected_surface,
+        "seed0": expected_seed0,
+        "clusters": expected_clusters,
+        "record_counts": {
+            label: len(records[label]) for label in LABELS},
+        "stage_c_telemetry": {
+            "treatment": _sum_stage(records["treatment"], "arm"),
+            "matched_null": _sum_stage(records["matched_null"], "arm"),
+        },
+        "work_totals": {
+            label: {
+                side: _sum_work(records[label], side)
+                for side in ("arm", "opp")
+            } for label in LABELS
+        },
+        "all_records_exact_work": True,
+    }
+
+
+def aggregate_screen(
+    records: Mapping[str, Sequence[dict]], *, expected_seed0: int,
+    expected_clusters: int, expected_surface: str,
+) -> dict:
+    """Validate and gate one frozen three-arm whole-game screen population."""
+    if (isinstance(expected_clusters, bool)
+            or not isinstance(expected_clusters, int)
+            or expected_clusters < 30):
+        raise StageCScreenError("Stage-C screen aggregate identity drift")
+    validation = validate_screen_records(
+        records, expected_seed0=expected_seed0,
+        expected_clusters=expected_clusters,
+        expected_surface=expected_surface)
+
+    treatment_stage = validation["stage_c_telemetry"]["treatment"]
+    null_stage = validation["stage_c_telemetry"]["matched_null"]
     stats = {
         "treatment_champion": _contrast(
             records["treatment"], records["champion"]),
@@ -263,13 +389,14 @@ def aggregate_screen(
         "matched_null_triggered": null_stage["model_triggers"] > 0,
         "treatment_zero_fallback": treatment_stage["fallbacks"] == 0,
         "matched_null_zero_fallback": null_stage["fallbacks"] == 0,
-        "all_records_exact_work": True,
+        "all_records_exact_work": validation["all_records_exact_work"],
     }
     criteria["all"] = all(criteria.values())
     return {
         "schema": AGGREGATE_SCHEMA,
         "complete": True,
-        "run_id": next(iter(run_ids)),
+        "run_id": validation["run_id"],
+        "surface": expected_surface,
         "seed0": expected_seed0,
         "clusters": expected_clusters,
         "stats": stats,
@@ -277,6 +404,7 @@ def aggregate_screen(
             "treatment": treatment_stage,
             "matched_null": null_stage,
         },
+        "work_totals": validation["work_totals"],
         "criteria": criteria,
         "status": ("AUTHORIZE_CONFIRM_PACKET_REVIEW" if criteria["all"]
                    else "SELECT_NONE"),

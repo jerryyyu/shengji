@@ -8,15 +8,17 @@ import pytest
 from shengji.rl import stage_c_screen as SCREEN
 
 
-def _counters(stage_c):
+def _counters(stage_c, *, feature_on: bool):
+    rollouts = 600 if feature_on else 660
+    accepted = 300 if feature_on else 330
     return {
-        "rollouts": 600,
+        "rollouts": rollouts,
         "searches": 1,
         "search_secs": 0.1,
         "void_fallbacks": 0,
         "rejected_worlds": 0,
-        "sample_attempts": 300,
-        "accepted_worlds": 300,
+        "sample_attempts": accepted,
+        "accepted_worlds": accepted,
         "failed_worlds": 0,
         "short_searches": 0,
         "zero_world": 0,
@@ -62,15 +64,18 @@ def _population(clusters=32, seed0=7000):
                     "flip": flip,
                     "won": 1,
                     "level_utility": utilities[label],
-                    "arm": _counters(stage),
-                    "opp": _counters(SCREEN.feature_off_telemetry()),
+                    "arm": _counters(
+                        stage, feature_on=label != "champion"),
+                    "opp": _counters(
+                        SCREEN.feature_off_telemetry(), feature_on=False),
                 })
     return rows
 
 
 def test_positive_screen_requires_model_gain_and_clean_null() -> None:
     result = SCREEN.aggregate_screen(
-        _population(), expected_seed0=7000, expected_clusters=32)
+        _population(), expected_seed0=7000, expected_clusters=32,
+        expected_surface="bury")
     assert result["stats"]["treatment_champion"]["lcb95"] > 0
     assert result["stats"]["treatment_matched_null"]["lcb95"] > 0
     assert result["stats"]["matched_null_champion"]["mean"] == 0
@@ -85,7 +90,8 @@ def test_positive_model_result_is_rejected_when_null_also_moves() -> None:
     for row in rows["matched_null"]:
         row["level_utility"] = 2
     result = SCREEN.aggregate_screen(
-        rows, expected_seed0=7000, expected_clusters=32)
+        rows, expected_seed0=7000, expected_clusters=32,
+        expected_surface="bury")
     assert result["criteria"][
         "matched_null_champion_interval_contains_zero"] is False
     assert result["status"] == "SELECT_NONE"
@@ -98,13 +104,25 @@ def test_fallback_or_work_failure_refuses_before_statistics() -> None:
         "exact_reconciliation"] = False
     with pytest.raises(SCREEN.StageCScreenError, match="fallback"):
         SCREEN.aggregate_screen(
-            fallback, expected_seed0=7000, expected_clusters=32)
+            fallback, expected_seed0=7000, expected_clusters=32,
+            expected_surface="bury")
 
     short = _population()
     short["treatment"][0]["arm"]["short_searches"] = 1
     with pytest.raises(SCREEN.StageCScreenError, match="underfilled"):
         SCREEN.aggregate_screen(
-            short, expected_seed0=7000, expected_clusters=32)
+            short, expected_seed0=7000, expected_clusters=32,
+            expected_surface="bury")
+
+    zero_work = _population()
+    zero_work["treatment"][0]["arm"].update({
+        "rollouts": 0, "searches": 0, "sample_attempts": 0,
+        "accepted_worlds": 0,
+    })
+    with pytest.raises(SCREEN.StageCScreenError, match="work drift"):
+        SCREEN.aggregate_screen(
+            zero_work, expected_seed0=7000, expected_clusters=32,
+            expected_surface="bury")
 
 
 def test_duplicate_or_missing_seed_flip_refuses() -> None:
@@ -112,7 +130,8 @@ def test_duplicate_or_missing_seed_flip_refuses() -> None:
     rows["treatment"][-1] = copy.deepcopy(rows["treatment"][0])
     with pytest.raises(SCREEN.StageCScreenError, match="population"):
         SCREEN.aggregate_screen(
-            rows, expected_seed0=7000, expected_clusters=32)
+            rows, expected_seed0=7000, expected_clusters=32,
+            expected_surface="bury")
 
 
 def test_win_and_level_utility_sign_must_match() -> None:
@@ -120,7 +139,8 @@ def test_win_and_level_utility_sign_must_match() -> None:
     rows["champion"][0]["won"] = 0
     with pytest.raises(SCREEN.StageCScreenError, match="value drift"):
         SCREEN.aggregate_screen(
-            rows, expected_seed0=7000, expected_clusters=32)
+            rows, expected_seed0=7000, expected_clusters=32,
+            expected_surface="bury")
 
 
 def test_factory_runner_uses_mirrored_seed_streams_and_records_telemetry(

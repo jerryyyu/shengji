@@ -188,8 +188,11 @@ def test_packet_binds_exact_models_population_and_narrow_authority(
     assert len(built["model_exports"]) == 8
     assert built["screen_contract"]["clusters"] == 2_048
     assert built["screen_contract"]["shards"] == 8
+    assert built["capacity_contract"]["clusters"] == 4
     assert built["authority"] == {
-        "screen_packet_review_authorized": True,
+        "capacity_preflight_review_authorized": True,
+        "capacity_preflight_launch_authorized": False,
+        "screen_packet_review_authorized": False,
         "screen_launch_authorized": False,
         "confirmation_launch_authorized": False,
         "strength_claim": False,
@@ -203,13 +206,20 @@ def test_packet_binds_exact_models_population_and_narrow_authority(
 
 def test_commands_cover_each_shard_and_bind_existing_receipt() -> None:
     commands = CTRL._commands()
-    assert len(commands["run_shards"]) == CTRL.SHARD_COUNT
+    assert commands["capacity_preflight"][2] == "capacity-preflight"
+    assert commands["supervise"][2] == "supervise"
+    assert len(commands["supervisor_child_shards"]) == CTRL.SHARD_COUNT
     assert [command[command.index("--shard-index") + 1]
-            for command in commands["run_shards"]] \
+            for command in commands["supervisor_child_shards"]] \
         == [str(index) for index in range(CTRL.SHARD_COUNT)]
     assert all(command[
         command.index("--expected-screen-receipt-sha256") + 1]
-        == "{receipt_sha256}" for command in commands["run_shards"])
+        == "{receipt_sha256}"
+        for command in commands["supervisor_child_shards"])
+    assert all("--expected-supervisor-admission-sha256" in command
+               for command in commands["supervisor_child_shards"])
+    assert "--expected-supervisor-final-sha256" in commands["aggregate"]
+    assert "--supervisor-review-record" in commands["aggregate"]
     assert commands["aggregate"][
         commands["aggregate"].index("--shards") + 1:
         commands["aggregate"].index("--out")] == list(CTRL.SHARD_PATHS)
@@ -232,7 +242,8 @@ def test_model_export_population_refuses_late_collision_before_loading(
     assert not (tmp_path / CTRL.MODEL_PATHS[0]).exists()
 
 
-def test_review_claim_can_authorize_screen_only(monkeypatch, tmp_path) -> None:
+def test_initial_review_claim_authorizes_capacity_only(
+        monkeypatch, tmp_path) -> None:
     packet = _report_packet()
     result = _report_result(packet)
     v11 = tmp_path / CTRL.V11_PATH
@@ -253,7 +264,30 @@ def test_review_claim_can_authorize_screen_only(monkeypatch, tmp_path) -> None:
         report_result_ref={"external_sha256": "4" * 64},
         exports=_exports())
     claim = CTRL.expected_review_claim(built, "8" * 64)
-    assert claim["one_screen_execution_authorized"] is True
+    assert claim["one_capacity_preflight_authorized"] is True
+    assert claim["one_screen_execution_authorized"] is False
     assert claim["confirmation_launch_authorized"] is False
     assert claim["strength_claim"] is False
     assert claim["production_promotion"] is False
+
+
+def test_capacity_review_claim_is_the_only_screen_authority() -> None:
+    packet = {
+        "producer": {"git": "a" * 40},
+    }
+    capacity = {
+        "result_sha256": "b" * 64,
+        "elapsed_seconds": 12.5,
+        "projection": {
+            "screen_fleet_hours": 3.0,
+            "screen_max_shard_hours": 0.375,
+        },
+        "screen_max_shard_seconds": 1_350.0,
+    }
+    claim = CTRL.expected_capacity_review_claim(
+        packet, "c" * 64, capacity, "d" * 64)
+    assert claim["capacity_pass"] is True
+    assert claim["score_free"] is True
+    assert claim["one_screen_execution_authorized"] is True
+    assert claim["confirmation_launch_authorized"] is False
+    assert claim["strength_claim"] is False

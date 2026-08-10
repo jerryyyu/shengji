@@ -496,6 +496,19 @@ def test_one_card_exact_late_capture_replays() -> None:
     assert found["phase"] == "late"
 
 
+@pytest.mark.parametrize("seed", [170_002_101, 170_007_422])
+def test_one_card_mid_phase_witness_is_not_admitted_to_exact_late(seed) -> None:
+    """V3 failed on real throw-shortened hands at tricks 11 and 10."""
+    packet = _packet()
+    cell = runtime._cell_for_seed(packet, "DESIGN", seed)
+    assert cell["stratum"] == "exact_late_eligible"
+    assert cell["phase"] == "late"
+    state, reason = runtime.capture_deal(
+        seed, "DESIGN", cell, runtime._actor_identity())
+    assert state is None
+    assert reason == "target_unreachable"
+
+
 def test_candidate_mutation_is_red() -> None:
     base = _base()
     cell = next(cell for cell in ctrl.quota_cells(base)["DESIGN"]

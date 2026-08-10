@@ -1278,6 +1278,7 @@ def capture_deal(seed: int, split: str, cell: Mapping[str, object],
                 target = bool(opportunity["opportunity"])
         elif cell["stratum"] == "exact_late_eligible":
             target = (all(len(hand) == 1 for hand in rnd.hands)
+                      and phase == cell["phase"]
                       and surface == cell["surface"]
                       and role == cell["role"])
         else:

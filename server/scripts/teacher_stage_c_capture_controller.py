@@ -38,17 +38,17 @@ import teacher_stage_c_controller_rebind as REBIND  # noqa: E402
 import teacher_stage_c_design as DESIGN  # noqa: E402
 
 
-SCHEMA = "teacher-stage-c-capture-controller-v3"
-PACKET_ID = "teacher-v3-hard-tail-stage-c-capture-controller-v3"
-RUN_ID = "teacher-v3-hard-tail-stage-c-capture-v3"
-REVIEW_SCHEMA = "teacher-stage-c-capture-controller-review-v3"
-REVIEW_MARKER = "TEACHER_STAGE_C_CAPTURE_CONTROLLER_V3_REVIEW "
-RECEIPT_SCHEMA = "teacher-stage-c-capture-receipt-v3"
-ADMISSION_SCHEMA = "teacher-stage-c-capture-admission-v3"
-SHARD_SCHEMA = "teacher-stage-c-capture-shard-v3"
-DATASET_SCHEMA = "teacher-stage-c-state-set-v3"
-GENERATION_WITNESS_SCHEMA = "teacher-stage-c-generation-witness-v3"
-VERIFICATION_SCHEMA = "teacher-stage-c-capture-terminal-verification-v3"
+SCHEMA = "teacher-stage-c-capture-controller-v4"
+PACKET_ID = "teacher-v3-hard-tail-stage-c-capture-controller-v4"
+RUN_ID = "teacher-v3-hard-tail-stage-c-capture-v4"
+REVIEW_SCHEMA = "teacher-stage-c-capture-controller-review-v4"
+REVIEW_MARKER = "TEACHER_STAGE_C_CAPTURE_CONTROLLER_V4_REVIEW "
+RECEIPT_SCHEMA = "teacher-stage-c-capture-receipt-v4"
+ADMISSION_SCHEMA = "teacher-stage-c-capture-admission-v4"
+SHARD_SCHEMA = "teacher-stage-c-capture-shard-v4"
+DATASET_SCHEMA = "teacher-stage-c-state-set-v4"
+GENERATION_WITNESS_SCHEMA = "teacher-stage-c-generation-witness-v4"
+VERIFICATION_SCHEMA = "teacher-stage-c-capture-terminal-verification-v4"
 
 BASE_PACKET_SHA256 = REBIND.BASE_PACKET_SHA256
 REBIND_PACKET_SHA256 = (
@@ -62,9 +62,9 @@ ACTOR_POLICY = "smart"
 UNCERTAINTY_WORLDS = 30
 UNCERTAINTY_ATTEMPT_FACTOR = 10
 UNCERTAINTY_RESERVOIR_MULTIPLIER = 4
-# Preserve v2's pre-outcome population/RNG estimand.  V3 changes validation
-# and evidence namespace only; it must not opportunistically redraw the data
-# after an adversarial review found a proof defect.
+# Preserve v2's pre-outcome population/RNG estimand. V4 changes validation,
+# the exact-late phase guard, and the evidence namespace only; it must not
+# opportunistically redraw the data after the v3 execution exposed the guard.
 POPULATION_EXPERIMENT_ID = "teacher-v3-hard-tail-stage-c-capture-v2"
 EXPERIMENT_ID = POPULATION_EXPERIMENT_ID
 TERMINAL_DISPOSITION_REPLAY_DEALS = 750_000
@@ -136,7 +136,8 @@ REVIEW_FIELDS = (
     "exclusion_manifest_sha256",
     "states", "design_states", "calib_states", "report_states",
     "play_states", "bury_states", "scan_deals", "capture_shards",
-    "population_experiment_id", "terminal_disposition_replay_deals",
+    "population_experiment_id", "exact_late_requires_phase_late",
+    "terminal_disposition_replay_deals",
     "terminal_disposition_replay_workers",
     "terminal_disposition_progress_every",
     "uncertainty_worlds", "max_uncertainty_candidate_worlds",
@@ -717,6 +718,7 @@ def build_packet(
             "quota_cells_must_match_schedule_exactly": True,
             "acceptance_and_rejection_counters_required": True,
             "candidate_union_and_source_provenance_required": True,
+            "exact_late_requires_phase_late": True,
             "complete_generation_witness_required": True,
             "one_scan_record_per_scheduled_seed": True,
             "one_diagnostic_record_per_pre_reservoir_state": True,
@@ -827,6 +829,8 @@ def expected_review_claim(packet: dict, external_sha256: str) -> dict:
         "scan_deals": packet["schedule"]["scan_deals"],
         "capture_shards": packet["schedule"]["shard_count"],
         "population_experiment_id": POPULATION_EXPERIMENT_ID,
+        "exact_late_requires_phase_late": packet["result_contract"][
+            "exact_late_requires_phase_late"],
         "terminal_disposition_replay_deals": packet["result_contract"][
             "terminal_disposition_replay_deals"],
         "terminal_disposition_replay_workers": packet["result_contract"][

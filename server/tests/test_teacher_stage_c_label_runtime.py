@@ -155,6 +155,7 @@ def test_strict_sampler_retries_and_reconciles(monkeypatch: pytest.MonkeyPatch) 
     assert sampler["duplicate_discarded"] == 0
     assert len(sampler["world_key_sha256s"]) == 2
     assert ledger.snapshot()["samplers"]["selection"] == sampler
+    assert ledger.snapshot()["sampler_sequence"] == ["selection"]
 
 
 def test_strict_sampler_underfill_is_finite_and_keeps_attempts(
@@ -380,6 +381,7 @@ def test_label_row_can_include_frozen_report_audit_without_work_drift() -> None:
     assert row["work"]["total_candidate_worlds_completed"] == expected
     samplers = row["work"]["samplers"]
     assert set(samplers) == set(runtime.FOLDS)
+    assert row["work"]["sampler_sequence"] == list(runtime.FOLDS)
     assert len({sampler["seed"] for sampler in samplers.values()}) == 4
     assert len({sampler["world_keys_sha256"]
                 for sampler in samplers.values()}) == 4
@@ -439,6 +441,28 @@ def test_refusal_record_never_exposes_partial_outcomes() -> None:
         key: value for key, value in forged.items() if key != "row_sha256"
     }))
     with pytest.raises(runtime.LabelRefused, match="work ledger drift"):
+        runtime.validate_refusal_record(
+            state, forged, audit_expected=False)
+
+
+def test_refusal_record_rejects_reordered_sampler_execution_witness() -> None:
+    state = _state()
+    ledger = runtime.WorkLedger()
+    runtime.label_replayed_state(
+        state, FakeRound(),
+        fold_runner=_fold_runner([0.0, 1.0], [0.0, 1.0]),
+        ledger=ledger,
+    )
+    record = runtime.refusal_record(
+        state, runtime.LabelRefused("post-label publication failure"), ledger)
+    runtime.validate_refusal_record(state, record, audit_expected=False)
+
+    forged = copy.deepcopy(record)
+    forged["attempted_work"]["sampler_sequence"] = ["report", "selection"]
+    forged["row_sha256"] = runtime.sha256_bytes(runtime.canonical_json({
+        key: value for key, value in forged.items() if key != "row_sha256"
+    }))
+    with pytest.raises(runtime.LabelRefused, match="sequence is not a prefix"):
         runtime.validate_refusal_record(
             state, forged, audit_expected=False)
 
@@ -599,7 +623,8 @@ def test_admit_run_shard_and_aggregate_execution_seam(
                              name: 0 for name in runtime.FOLDS},
                          "total_candidate_worlds_attempted": 0,
                          "total_candidate_worlds_completed": 0,
-                         "samplers": {}, "accounting_complete": True},
+                         "samplers": {}, "sampler_sequence": [],
+                         "accounting_complete": True},
             }
             row["row_sha256"] = runtime.sha256_bytes(
                 runtime.canonical_json(row))

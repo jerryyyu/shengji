@@ -148,6 +148,7 @@ class WorkLedger:
     completed: dict[str, int] = field(
         default_factory=lambda: {name: 0 for name in FOLDS})
     samplers: dict[str, dict] = field(default_factory=dict)
+    sampler_sequence: list[str] = field(default_factory=list)
     world_hashes_by_fold: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     def excluded_world_hashes(self) -> set[str]:
@@ -163,6 +164,7 @@ class WorkLedger:
                 or self.excluded_world_hashes().intersection(hashes)):
             raise LabelRefused("label sampler world identities overlap")
         self.samplers[fold] = dict(sampler)
+        self.sampler_sequence.append(fold)
         self.world_hashes_by_fold[fold] = tuple(str(value) for value in hashes)
 
     def begin_candidate_world(self, fold: str) -> None:
@@ -183,6 +185,7 @@ class WorkLedger:
             "total_candidate_worlds_attempted": sum(self.attempted.values()),
             "total_candidate_worlds_completed": sum(self.completed.values()),
             "samplers": dict(sorted(self.samplers.items())),
+            "sampler_sequence": list(self.sampler_sequence),
             "accounting_complete": self.attempted == self.completed,
         }
 
@@ -793,6 +796,7 @@ def validate_label_row(state: Mapping[str, object], rnd,
     }
     work = row.get("work")
     expected_samplers = {value["fold"]: value["sampler"] for value in used}
+    expected_sampler_sequence = [value["fold"] for value in used]
     if (not isinstance(work, dict) or work.get("schema") != WORK_SCHEMA
             or work.get("candidate_worlds_attempted") != expected_fold_work
             or work.get("candidate_worlds_completed") != expected_fold_work
@@ -801,6 +805,7 @@ def validate_label_row(state: Mapping[str, object], rnd,
             or work.get("total_candidate_worlds_completed")
             != sum(expected_fold_work.values())
             or work.get("samplers") != dict(sorted(expected_samplers.items()))
+            or work.get("sampler_sequence") != expected_sampler_sequence
             or work.get("accounting_complete") is not True):
         raise LabelRefused("Stage-C label work ledger drift")
 
@@ -894,6 +899,7 @@ def validate_refusal_record(state: Mapping[str, object],
     attempted = work.get("candidate_worlds_attempted")
     completed = work.get("candidate_worlds_completed")
     samplers = work.get("samplers")
+    sampler_sequence = work.get("sampler_sequence")
     if (not isinstance(attempted, dict) or set(attempted) != set(FOLDS)
             or not isinstance(completed, dict) or set(completed) != set(FOLDS)
             or not all(isinstance(value, int) and not isinstance(value, bool)
@@ -908,7 +914,11 @@ def validate_refusal_record(state: Mapping[str, object],
             or work.get("accounting_complete")
             is not (attempted == completed)
             or not isinstance(samplers, dict)
-            or not set(samplers).issubset(FOLDS)):
+            or not set(samplers).issubset(FOLDS)
+            or not isinstance(sampler_sequence, list)
+            or any(not isinstance(value, str) for value in sampler_sequence)
+            or len(set(sampler_sequence)) != len(sampler_sequence)
+            or set(sampler_sequence) != set(samplers)):
         raise LabelRefused("Stage-C refusal work ledger drift")
     allowed_folds = {"selection", "report"}
     if audit_expected:
@@ -918,7 +928,7 @@ def validate_refusal_record(state: Mapping[str, object],
     sequence = ["selection", "report"]
     if audit_expected:
         sequence.extend(["audit_selection", "audit_report"])
-    if set(samplers) != set(sequence[:len(samplers)]):
+    if sampler_sequence != sequence[:len(sampler_sequence)]:
         raise LabelRefused("Stage-C refusal sampler sequence is not a prefix")
     hashes = []
     for fold, sampler in samplers.items():

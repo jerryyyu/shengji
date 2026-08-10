@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import copy
 import importlib.util
+import hashlib
+import json
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -43,12 +48,16 @@ def _fold_runner(selection_values: list[float],
     def run(_rnd, state, indices, count, purpose, ledger):
         values = selection_values if purpose.endswith("selection") \
             else report_values
+        world_hashes = [runtime.sha256_bytes(
+            f"{state['state_id']}:{purpose}:{index}".encode())
+            for index in range(count)]
         sampler = {
             "schema": runtime.SAMPLER_SCHEMA,
             "fold": purpose,
             "seed": runtime.seed_for(state, purpose),
             "requested": count,
             "accepted": count,
+            "accepted_draws": count,
             "attempts": count,
             "attempt_cap": count * runtime.SAMPLE_ATTEMPT_FACTOR,
             "counters": {
@@ -56,8 +65,12 @@ def _fold_runner(selection_values: list[float],
                 "failed_worlds": 0, "rejected_worlds": 0,
                 "impossible_worlds": 0,
             },
-            "world_keys_sha256": ("1" if purpose.endswith("selection")
-                                    else "2") * 64,
+            "world_key_sha256s": world_hashes,
+            "world_keys_sha256": runtime.sha256_bytes(
+                runtime.canonical_json(world_hashes)),
+            "overlap_discarded": 0,
+            "duplicate_discarded": 0,
+            "exactly_disjoint_from_prior_folds": True,
             "complete": True,
         }
         ledger.record_sampler(purpose, sampler)
@@ -115,7 +128,8 @@ def test_strict_sampler_retries_and_reconciles(monkeypatch: pytest.MonkeyPatch) 
                 self.failed_worlds += 1
                 return None
             self.accepted_worlds += 1
-            return ({1: ["C2"], 2: ["D2"], 3: ["H2"]}, ["S2"])
+            return ({1: [f"C{self.sample_attempts}"],
+                     2: ["D2"], 3: ["H2"]}, ["S2"])
 
     monkeypatch.setattr(runtime, "Memory", lambda *_args, **_kwargs: object())
     ledger = runtime.WorkLedger()
@@ -128,6 +142,10 @@ def test_strict_sampler_retries_and_reconciles(monkeypatch: pytest.MonkeyPatch) 
         "sample_attempts": 4, "accepted_worlds": 2, "failed_worlds": 2,
         "rejected_worlds": 0, "impossible_worlds": 0,
     }
+    assert sampler["accepted_draws"] == 2
+    assert sampler["overlap_discarded"] == 0
+    assert sampler["duplicate_discarded"] == 0
+    assert len(sampler["world_key_sha256s"]) == 2
     assert ledger.snapshot()["samplers"]["selection"] == sampler
 
 
@@ -159,6 +177,60 @@ def test_strict_sampler_underfill_is_finite_and_keeps_attempts(
     assert sampler["attempts"] == runtime.SAMPLE_ATTEMPT_FACTOR
     assert sampler["accepted"] == 0
     assert sampler["complete"] is False
+
+
+def test_later_fold_rejects_an_exact_prior_world_hash(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    worlds = [
+        ({1: ["C2"], 2: ["D2"], 3: ["H2"]}, ["S2"]),
+        ({1: ["C3"], 2: ["D2"], 3: ["H2"]}, ["S2"]),
+    ]
+
+    class SequenceBot:
+        SAMPLE_ATTEMPT_FACTOR = runtime.SAMPLE_ATTEMPT_FACTOR
+        BANKER_KITTY = True
+
+        def __init__(self):
+            self.sample_attempts = 0
+            self.accepted_worlds = 0
+            self.failed_worlds = 0
+            self.rejected_worlds = 0
+            self.impossible_worlds = 0
+
+        def _sample_hands(self, _rnd, _seat, _mem):
+            value = worlds[min(self.sample_attempts, len(worlds) - 1)]
+            self.sample_attempts += 1
+            self.accepted_worlds += 1
+            return value
+
+    monkeypatch.setattr(runtime, "Memory", lambda *_args, **_kwargs: object())
+    ledger = runtime.WorkLedger()
+    first_hash = runtime._world_hash(*worlds[0])
+    prior = {
+        "schema": runtime.SAMPLER_SCHEMA,
+        "fold": "selection", "seed": 1, "requested": 1,
+        "accepted": 1, "accepted_draws": 1,
+        "attempts": 1, "attempt_cap": runtime.SAMPLE_ATTEMPT_FACTOR,
+        "counters": {"sample_attempts": 1, "accepted_worlds": 1,
+                     "failed_worlds": 0, "rejected_worlds": 0,
+                     "impossible_worlds": 0},
+        "world_key_sha256s": [first_hash],
+        "world_keys_sha256": runtime.sha256_bytes(
+            runtime.canonical_json([first_hash])),
+        "overlap_discarded": 0, "duplicate_discarded": 0,
+        "exactly_disjoint_from_prior_folds": True, "complete": True,
+    }
+    ledger.record_sampler("selection", prior)
+    _bot, sampled, report = runtime.draw_common_worlds(
+        FakeRound(), 0, 1, 2, fold="report", ledger=ledger,
+        bot_factory=lambda _seed: SequenceBot())
+    assert sampled == [worlds[1]]
+    assert report["attempts"] == 2
+    assert report["accepted_draws"] == 2
+    assert report["overlap_discarded"] == 1
+    assert report["duplicate_discarded"] == 0
+    assert not set(report["world_key_sha256s"]).intersection(
+        prior["world_key_sha256s"])
 
 
 def test_score_actions_preserves_raw_tensor_and_role_sign() -> None:
@@ -283,6 +355,61 @@ def test_audit_report_certifies_winner_and_measures_label_regret() -> None:
     assert fallback["audit_reference_minus_label_choice"]["mean"] == -1.0
 
 
+def test_label_row_can_include_frozen_report_audit_without_work_drift() -> None:
+    state = _state(stratum="proposal_disagreement", candidates=3)
+    row = runtime.label_replayed_state(
+        state,
+        FakeRound(),
+        include_audit=True,
+        fold_runner=_fold_runner([0.0, 1.0, 2.0], [0.0, 1.0, 2.0]),
+    )
+    assert row["decision"]["final_index"] == 2
+    assert row["audit"]["selection"]["candidate_indices"] == [0, 1, 2]
+    assert row["audit"]["report"]["candidate_indices"] == [0, 2, 2]
+    assert row["audit"]["decision"]["audit_reference_index"] == 2
+    expected = 3 * runtime.HARD_SELECTION_WORLDS + 600
+    expected += 3 * runtime.AUDIT_SELECTION_WORLDS + 1_200
+    assert row["work"]["total_candidate_worlds_completed"] == expected
+    samplers = row["work"]["samplers"]
+    assert set(samplers) == set(runtime.FOLDS)
+    assert len({sampler["seed"] for sampler in samplers.values()}) == 4
+    assert len({sampler["world_keys_sha256"]
+                for sampler in samplers.values()}) == 4
+
+
+def test_semantic_validator_recomputes_decisions_utilities_and_work() -> None:
+    state = _state(stratum="proposal_disagreement", candidates=3)
+    value = runtime.acting_utility(80, attacker=True)
+    row = runtime.label_replayed_state(
+        state, FakeRound(), include_audit=True,
+        fold_runner=_fold_runner([value] * 3, [value] * 3))
+    runtime.validate_label_row(
+        state, FakeRound(), row, audit_expected=True)
+
+    forged = dict(row)
+    forged["decision"] = dict(row["decision"], final_index=2)
+    forged["row_sha256"] = runtime.sha256_bytes(runtime.canonical_json({
+        key: item for key, item in forged.items() if key != "row_sha256"
+    }))
+    with pytest.raises(runtime.LabelRefused, match="decision drift"):
+        runtime.validate_label_row(
+            state, FakeRound(), forged, audit_expected=True)
+
+    overlap = copy.deepcopy(row)
+    sampler = overlap["audit"]["selection"]["sampler"]
+    sampler["world_key_sha256s"][0] = overlap["selection"]["sampler"][
+        "world_key_sha256s"][0]
+    sampler["world_keys_sha256"] = runtime.sha256_bytes(
+        runtime.canonical_json(sampler["world_key_sha256s"]))
+    overlap["work"]["samplers"]["audit_selection"] = copy.deepcopy(sampler)
+    overlap["row_sha256"] = runtime.sha256_bytes(runtime.canonical_json({
+        key: item for key, item in overlap.items() if key != "row_sha256"
+    }))
+    with pytest.raises(runtime.LabelRefused, match="fold separation drift"):
+        runtime.validate_label_row(
+            state, FakeRound(), overlap, audit_expected=True)
+
+
 def test_refusal_record_never_exposes_partial_outcomes() -> None:
     state = _state()
     record = runtime.refusal_record(state, runtime.LabelRefused("x"))
@@ -290,3 +417,188 @@ def test_refusal_record_never_exposes_partial_outcomes() -> None:
     assert record["utility_published"] is False
     assert record["label_published"] is False
     assert "reason" not in record
+    assert record["row_sha256"] == runtime.sha256_bytes(
+        runtime.canonical_json({
+            key: value for key, value in record.items()
+            if key != "row_sha256"
+        }))
+
+
+def _audit_gate_fixture(*, target_random: bool = False):
+    rows = []
+    states = {}
+    for index in range(256):
+        state_id = f"REPORT:{index}"
+        if index < 64:
+            stratum = "ordinary_anchor"
+        elif index < 112:
+            stratum = "proposal_disagreement"
+        else:
+            stratum = "champion_uncertainty"
+        candidates = [
+            {"cards": ["C2"], "sources": ["live_production_ballot"]},
+            {"cards": ["C3"], "sources": ["v11pair_top_proposal"]},
+            {"cards": ["C4"], "sources": ["same_budget_random_diversifier"]},
+        ]
+        states[state_id] = {
+            "state_id": state_id, "stratum": stratum,
+            "surface_type": "play", "phase": "mid", "role": "attacker",
+            "surface": "lead", "candidates": candidates,
+        }
+        target = 2 if target_random and stratum == "proposal_disagreement" else 1
+        rows.append({
+            "state_id": state_id,
+            "audit": {"decision": {
+                "audit_reference_index": target,
+                "audit_reference_minus_label_choice": {"mean": 0.0},
+            }},
+        })
+    return rows, states
+
+
+def test_terminal_audit_gate_clusters_states_and_matches_v11_control() -> None:
+    rows, states = _audit_gate_fixture()
+    gate = runtime._audit_gate(rows, states)
+    assert gate["ordinary_anchor_regret"]["n"] == 64
+    assert gate["hard_tail_regret"]["n"] == 192
+    assert gate["v11_recall_treatment_minus_matched_random"]["n"] == 48
+    assert gate["fidelity_pass"] is True
+    assert gate["v11_recall_pass"] is True
+    assert gate["decision"] == "AUTHORIZE_MODEL_PACKET_REVIEW"
+
+    rows, states = _audit_gate_fixture(target_random=True)
+    failed = runtime._audit_gate(rows, states)
+    assert failed["v11_recall_pass"] is False
+    assert failed["decision"] == "DIAGNOSE_FROZEN_STAGE_C_ONLY"
+
+
+def test_cli_rejects_invalid_admit_instead_of_succeeding_silently() -> None:
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "admit", "--definitely-invalid"],
+        cwd=SCRIPT.parents[2], capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "required" in result.stderr or "unrecognized" in result.stderr
+
+
+def test_admit_run_shard_and_aggregate_execution_seam(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeCtrl:
+        RUN_ID = "test-stage-c-labels"
+        RECEIPT_SCHEMA = "test-receipt"
+        ADMISSION_SCHEMA = "test-admission"
+        SHARD_SCHEMA = "test-shard"
+        AGGREGATE_SCHEMA = "test-aggregate"
+        LABEL_SHARDS = 1
+        EXPECTED_STATES = 1
+
+        @staticmethod
+        def admission_slot_logical_path():
+            return FakeCtrl.slot_logical
+
+        sha256_file = staticmethod(
+            lambda path: hashlib.sha256(Path(path).read_bytes()).hexdigest())
+        sha256_bytes = staticmethod(runtime.sha256_bytes)
+        canonical_json = staticmethod(runtime.canonical_json)
+
+    log_root = runtime.REPO / "server/runs/logs"
+    with tempfile.TemporaryDirectory(dir=log_root) as raw:
+        root = Path(raw)
+        FakeCtrl.slot_logical = str((root / "admission.json").relative_to(
+            runtime.REPO))
+        packet_path = root / "controller.json"
+        packet_path.write_text("{}\n")
+        review = root / "review.txt"
+        review.write_text("review\n")
+        receipt_path = root / "label-receipt.json"
+        shard_path = root / "design/shard-00.json"
+        aggregate_path = root / "label-aggregate.json"
+        state = {
+            "state_id": "DESIGN:1", "split": "DESIGN",
+            "surface_type": "play", "stratum": "ordinary_anchor",
+            "candidates": [{"cards": ["C2"], "sources": []}],
+        }
+        state_set = {"states": [state]}
+        schedule_shard = {
+            "index": 0, "split": "DESIGN", "local_shard": 0,
+            "state_count": 1, "state_ids": [state["state_id"]],
+            "state_ids_sha256": runtime.sha256_bytes(
+                runtime.canonical_json([state["state_id"]])),
+            "audit_state_ids": [], "candidate_worlds": 0,
+        }
+        packet = {
+            "producer": {"git": "f" * 40},
+            "packet_sha256": "a" * 64,
+            "external_sha256": "b" * 64,
+            "parents": {"state_set": {"external_sha256": "c" * 64}},
+            "schedule": {"schedule_sha256": "d" * 64,
+                         "shards": [schedule_shard]},
+            "result_contract": {
+                "receipt": str(receipt_path.relative_to(runtime.REPO)),
+                "shards": [str(shard_path.relative_to(runtime.REPO))],
+                "aggregate": str(aggregate_path.relative_to(runtime.REPO)),
+                "max_candidate_worlds": 0,
+                "max_sampler_attempts": 0,
+            },
+        }
+        monkeypatch.setattr(runtime, "_ctrl", lambda: FakeCtrl)
+        monkeypatch.setattr(runtime, "_controller_packet",
+                            lambda *_args, **_kwargs: packet)
+        monkeypatch.setattr(runtime, "_validated_parents",
+                            lambda *_args, **_kwargs: (state_set, {}))
+        monkeypatch.setattr(runtime, "_controller_review_claim",
+                            lambda *_args, **_kwargs: {"verdict": "PASS"})
+        monkeypatch.setattr(runtime, "_load_v11", lambda: object())
+        monkeypatch.setattr(runtime.CAPTURE, "replay_state",
+                            lambda _state: FakeRound())
+        monkeypatch.setattr(runtime.CAPTURE, "_validate_candidates",
+                            lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(runtime, "validate_label_row",
+                            lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(runtime, "_audit_gate", lambda *_args: {
+            "decision": "AUTHORIZE_MODEL_PACKET_REVIEW"})
+
+        def fake_label(state_value, **_kwargs):
+            row = {
+                "schema": runtime.SCHEMA, "status": "COMPLETE",
+                "state_id": state_value["state_id"], "split": "DESIGN",
+                "surface_type": "play", "stratum": "ordinary_anchor",
+                "audit": None,
+                "work": {"schema": runtime.WORK_SCHEMA,
+                         "candidate_worlds_attempted": {
+                             name: 0 for name in runtime.FOLDS},
+                         "candidate_worlds_completed": {
+                             name: 0 for name in runtime.FOLDS},
+                         "total_candidate_worlds_attempted": 0,
+                         "total_candidate_worlds_completed": 0,
+                         "samplers": {}, "accounting_complete": True},
+            }
+            row["row_sha256"] = runtime.sha256_bytes(
+                runtime.canonical_json(row))
+            return row
+
+        monkeypatch.setattr(runtime, "label_state", fake_label)
+        admitted = runtime.admit(
+            packet_path=packet_path, expected_packet_sha256="b" * 64,
+            controller_review_record=review,
+            state_set_review_record=review, out=receipt_path)
+        receipt_sha = FakeCtrl.sha256_file(receipt_path)
+        runtime._receipt(
+            receipt_path, receipt_sha, packet, "b" * 64, review, review)
+        shard = runtime.run_shard(
+            packet_path=packet_path, expected_packet_sha256="b" * 64,
+            receipt_path=receipt_path, expected_receipt_sha256=receipt_sha,
+            controller_review_record=review, state_set_review_record=review,
+            shard_index=0,
+            progress_every=1, out=shard_path)
+        assert shard["status"] == "COMPLETE"
+        aggregate = runtime.aggregate(
+            packet_path=packet_path, expected_packet_sha256="b" * 64,
+            receipt_path=receipt_path, expected_receipt_sha256=receipt_sha,
+            controller_review_record=review, state_set_review_record=review,
+            shard_paths=[shard_path],
+            out=aggregate_path)
+        assert aggregate["status"] == "COMPLETE"
+        assert aggregate["model_packet_review_authorized"] is True
+        assert aggregate["training_authorized"] is False
+        assert aggregate["report_open_authorized"] is False

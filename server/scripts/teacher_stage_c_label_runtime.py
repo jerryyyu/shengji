@@ -28,10 +28,15 @@ alone authorizes no labels or audit work.
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import math
+import os
+import stat
+import subprocess
 import sys
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Sequence
@@ -125,15 +130,13 @@ def _sampler_delta(before: Mapping[str, int], after: Mapping[str, int]) -> dict[
     return {name: int(after[name]) - int(before[name]) for name in before}
 
 
-def _worlds_digest(worlds: Sequence[tuple]) -> str:
-    keys = []
-    for hands, buried in worlds:
-        key = world_key(hands, buried)
-        keys.append([
-            [[seat, list(cards)] for seat, cards in key[0]],
-            list(key[1]),
-        ])
-    return sha256_bytes(canonical_json(keys))
+def _world_hash(hands, buried) -> str:
+    key = world_key(hands, buried)
+    public = [
+        [[seat, list(cards)] for seat, cards in key[0]],
+        list(key[1]),
+    ]
+    return sha256_bytes(canonical_json(public))
 
 
 @dataclass
@@ -145,11 +148,22 @@ class WorkLedger:
     completed: dict[str, int] = field(
         default_factory=lambda: {name: 0 for name in FOLDS})
     samplers: dict[str, dict] = field(default_factory=dict)
+    world_hashes_by_fold: dict[str, tuple[str, ...]] = field(default_factory=dict)
+
+    def excluded_world_hashes(self) -> set[str]:
+        return {value for values in self.world_hashes_by_fold.values()
+                for value in values}
 
     def record_sampler(self, fold: str, sampler: Mapping[str, object]) -> None:
         if fold not in FOLDS or fold in self.samplers:
             raise LabelRefused("duplicate or unknown label sampler fold")
+        hashes = sampler.get("world_key_sha256s")
+        if (not isinstance(hashes, list)
+                or len(set(hashes)) != len(hashes)
+                or self.excluded_world_hashes().intersection(hashes)):
+            raise LabelRefused("label sampler world identities overlap")
         self.samplers[fold] = dict(sampler)
+        self.world_hashes_by_fold[fold] = tuple(str(value) for value in hashes)
 
     def begin_candidate_world(self, fold: str) -> None:
         if fold not in FOLDS:
@@ -197,13 +211,27 @@ def draw_common_worlds(rnd, seat: int, count: int, seed: int, *,
     mem = Memory(rnd, seat, own_kitty=getattr(bot, "BANKER_KITTY", True))
     before = _sampler_snapshot(bot)
     worlds: list[tuple] = []
+    world_hashes: list[str] = []
+    seen: set[str] = set()
+    excluded = ledger.excluded_world_hashes()
+    overlap_discarded = 0
+    duplicate_discarded = 0
     attempts = 0
     cap = count * factor
     while len(worlds) < count and attempts < cap:
         attempts += 1
         sampled = bot._sample_hands(rnd, seat, mem)
         if sampled is not None:
+            digest = _world_hash(*sampled)
+            if digest in excluded:
+                overlap_discarded += 1
+                continue
+            if digest in seen:
+                duplicate_discarded += 1
+                continue
+            seen.add(digest)
             worlds.append(sampled)
+            world_hashes.append(digest)
     delta = _sampler_delta(before, _sampler_snapshot(bot))
     sampler = {
         "schema": SAMPLER_SCHEMA,
@@ -211,15 +239,21 @@ def draw_common_worlds(rnd, seat: int, count: int, seed: int, *,
         "seed": seed,
         "requested": count,
         "accepted": len(worlds),
+        "accepted_draws": delta["accepted_worlds"],
         "attempts": attempts,
         "attempt_cap": cap,
         "counters": delta,
-        "world_keys_sha256": _worlds_digest(worlds),
+        "world_key_sha256s": world_hashes,
+        "world_keys_sha256": sha256_bytes(canonical_json(world_hashes)),
+        "overlap_discarded": overlap_discarded,
+        "duplicate_discarded": duplicate_discarded,
+        "exactly_disjoint_from_prior_folds": True,
         "complete": len(worlds) == count,
     }
     ledger.record_sampler(fold, sampler)
     if (delta["sample_attempts"] != attempts
-            or delta["accepted_worlds"] != len(worlds)
+            or delta["accepted_worlds"] !=
+            len(worlds) + overlap_discarded + duplicate_discarded
             or delta["sample_attempts"] !=
             delta["accepted_worlds"] + delta["failed_worlds"]
             or delta["rejected_worlds"] > delta["failed_worlds"]
@@ -347,7 +381,9 @@ FoldRunner = Callable[[object, Mapping[str, object], Sequence[int], int, str,
 
 
 def label_replayed_state(state: Mapping[str, object], rnd, *,
-                         fold_runner: FoldRunner = run_fold) -> dict:
+                         include_audit: bool = False,
+                         fold_runner: FoldRunner = run_fold,
+                         ledger: WorkLedger | None = None) -> dict:
     """Produce one complete label row from a replayed, candidate-verified state."""
     candidates = state.get("candidates")
     if not isinstance(candidates, list) or not candidates:
@@ -356,7 +392,7 @@ def label_replayed_state(state: Mapping[str, object], rnd, *,
         else BURY_CANDIDATE_CAP
     if len(candidates) > cap:
         raise LabelRefused("Stage-C label candidate cap exceeded")
-    ledger = WorkLedger()
+    ledger = ledger or WorkLedger()
     all_indices = list(range(len(candidates)))
     recipe = recipe_for_state(state)
     if recipe == "ordinary_anchor":
@@ -394,19 +430,52 @@ def label_replayed_state(state: Mapping[str, object], rnd, *,
             "report_never_selected": True,
             "report_lcb_vs_candidate0": contrast,
         }
-    work = ledger.snapshot()
-    expected = (len(candidates) *
+    expected_label = (len(candidates) *
                 (ORDINARY_SELECTION_WORLDS + ORDINARY_REPORT_WORLDS)
                 if recipe == "ordinary_anchor" else
                 len(candidates) * HARD_SELECTION_WORLDS
                 + 2 * HARD_REPORT_WORLDS)
+    audit = None
+    if include_audit:
+        audit_selection = fold_runner(
+            rnd, state, all_indices, AUDIT_SELECTION_WORLDS,
+            "audit_selection", ledger)
+        audit_winner = selection_winner(audit_selection, len(candidates))
+        plan = audit_report_plan(audit_winner, final_index)
+        audit_report = fold_runner(
+            rnd, state, plan["candidate_indices"], plan["worlds"],
+            "audit_report", ledger)
+        audit = {
+            "selection": audit_selection,
+            "report": audit_report,
+            "decision": audit_report_summary(
+                audit_report,
+                audit_selection_winner=audit_winner,
+                frozen_label_choice=final_index,
+            ),
+            "all_worlds_disjoint_from_label": True,
+        }
+    work = ledger.snapshot()
+    expected = expected_label + (
+        len(candidates) * AUDIT_SELECTION_WORLDS
+        + AUDIT_REPORT_CANDIDATE_WORLDS if include_audit else 0)
     if (work["total_candidate_worlds_attempted"] != expected
             or work["total_candidate_worlds_completed"] != expected):
         raise LabelRefused("Stage-C label candidate-world work drift")
-    if (selection["sampler"]["world_keys_sha256"]
-            == report["sampler"]["world_keys_sha256"]
-            or selection["seed"] == report["seed"]):
-        raise LabelRefused("Stage-C selection/report worlds are not disjoint")
+    used_folds = [selection, report]
+    if audit is not None:
+        used_folds.extend([audit["selection"], audit["report"]])
+    seeds = [fold["seed"] for fold in used_folds]
+    world_digests = [fold["sampler"]["world_keys_sha256"]
+                     for fold in used_folds]
+    world_hash_sets = [set(fold["sampler"]["world_key_sha256s"])
+                       for fold in used_folds]
+    overlaps = any(world_hash_sets[left].intersection(world_hash_sets[right])
+                   for left in range(len(world_hash_sets))
+                   for right in range(left + 1, len(world_hash_sets)))
+    if len(set(seeds)) != len(seeds) or len(set(world_digests)) != len(
+            world_digests) or overlaps:
+        raise LabelRefused("Stage-C label/audit worlds are not disjoint")
     final = candidates[final_index]
     row = {
         "schema": SCHEMA,
@@ -420,6 +489,7 @@ def label_replayed_state(state: Mapping[str, object], rnd, *,
         "recipe": recipe,
         "selection": selection,
         "report": report,
+        "audit": audit,
         "decision": decision,
         "label_action": {
             "index": final_index,
@@ -436,13 +506,17 @@ def label_replayed_state(state: Mapping[str, object], rnd, *,
 
 
 def label_state(state: Mapping[str, object], *, net=None,
-                fold_runner: FoldRunner = run_fold) -> dict:
+                include_audit: bool = False,
+                fold_runner: FoldRunner = run_fold,
+                ledger: WorkLedger | None = None) -> dict:
     """Replay and revalidate a captured state before producing its label."""
     rnd = CAPTURE.replay_state(state)
     if net is None:
         raise LabelRefused("candidate replay requires the frozen V11 network")
     CAPTURE._validate_candidates(state, rnd, net)
-    return label_replayed_state(state, rnd, fold_runner=fold_runner)
+    return label_replayed_state(
+        state, rnd, include_audit=include_audit,
+        fold_runner=fold_runner, ledger=ledger)
 
 
 def audit_report_plan(audit_selection_winner: int,
@@ -503,11 +577,239 @@ def audit_report_summary(report: Mapping[str, object], *,
     }
 
 
+def _validate_sampler(sampler: Mapping[str, object], *, state: Mapping[str, object],
+                      fold: str, requested: int) -> None:
+    counters = sampler.get("counters")
+    hashes = sampler.get("world_key_sha256s")
+    overlap = sampler.get("overlap_discarded")
+    duplicate = sampler.get("duplicate_discarded")
+    if (sampler.get("schema") != SAMPLER_SCHEMA
+            or sampler.get("fold") != fold
+            or sampler.get("seed") != seed_for(state, fold)
+            or sampler.get("requested") != requested
+            or sampler.get("accepted") != requested
+            or not isinstance(sampler.get("attempts"), int)
+            or isinstance(sampler.get("attempts"), bool)
+            or not requested <= sampler["attempts"] <=
+            requested * SAMPLE_ATTEMPT_FACTOR
+            or sampler.get("attempt_cap") != requested * SAMPLE_ATTEMPT_FACTOR
+            or not isinstance(counters, dict)
+            or set(counters) != set(SAMPLER_COUNTERS)
+            or not all(isinstance(value, int) and not isinstance(value, bool)
+                       and value >= 0 for value in counters.values())
+            or counters["sample_attempts"] != sampler["attempts"]
+            or sampler.get("accepted_draws") != counters["accepted_worlds"]
+            or not isinstance(overlap, int) or isinstance(overlap, bool)
+            or overlap < 0
+            or not isinstance(duplicate, int) or isinstance(duplicate, bool)
+            or duplicate < 0
+            or counters["accepted_worlds"]
+            != requested + overlap + duplicate
+            or counters["accepted_worlds"] + counters["failed_worlds"]
+            != counters["sample_attempts"]
+            or counters["rejected_worlds"] > counters["failed_worlds"]
+            or not isinstance(sampler.get("world_keys_sha256"), str)
+            or len(sampler["world_keys_sha256"]) != 64
+            or any(char not in "0123456789abcdef"
+                   for char in sampler["world_keys_sha256"])
+            or not isinstance(hashes, list) or len(hashes) != requested
+            or len(set(hashes)) != requested
+            or not all(isinstance(value, str) and len(value) == 64
+                       and not any(char not in "0123456789abcdef"
+                                   for char in value) for value in hashes)
+            or sampler["world_keys_sha256"]
+            != sha256_bytes(canonical_json(hashes))
+            or sampler.get("exactly_disjoint_from_prior_folds") is not True
+            or sampler.get("complete") is not True):
+        raise LabelRefused(f"Stage-C {fold} sampler semantic drift")
+
+
+def _validate_fold(fold_value: Mapping[str, object], *,
+                   state: Mapping[str, object], rnd,
+                   fold: str, requested: int,
+                   candidate_indices: Sequence[int]) -> None:
+    candidates = state["candidates"]
+    actions = fold_value.get("actions")
+    sampler = fold_value.get("sampler")
+    if not isinstance(sampler, dict):
+        raise LabelRefused(f"Stage-C {fold} sampler missing")
+    _validate_sampler(sampler, state=state, fold=fold, requested=requested)
+    if (fold_value.get("schema") != FOLD_SCHEMA
+            or fold_value.get("fold") != fold
+            or fold_value.get("seed") != seed_for(state, fold)
+            or fold_value.get("worlds") != requested
+            or fold_value.get("candidate_indices") != list(candidate_indices)
+            or fold_value.get("tensor_orientation")
+            != "logical_action_by_common_world"
+            or not isinstance(actions, list)
+            or len(actions) != len(candidate_indices)
+            or fold_value.get("candidate_worlds")
+            != len(candidate_indices) * requested
+            or fold_value.get("complete") is not True):
+        raise LabelRefused(f"Stage-C {fold} tensor geometry drift")
+    attacker = bool(rnd.is_attacker(int(state["seat"])))
+    for logical, (action, candidate_index) in enumerate(zip(
+            actions, candidate_indices, strict=True)):
+        candidate = candidates[candidate_index]
+        raw = action.get("raw_attacker_points")
+        utility = action.get("signed_level_utility")
+        if (action.get("logical_index") != logical
+                or action.get("candidate_index") != candidate_index
+                or action.get("cards") != list(action_key(candidate["cards"]))
+                or action.get("sources") != sorted(
+                    str(value) for value in candidate.get("sources", []))
+                or not isinstance(raw, list) or len(raw) != requested
+                or not isinstance(utility, list) or len(utility) != requested
+                or not all(isinstance(value, (int, float))
+                           and not isinstance(value, bool)
+                           and math.isfinite(float(value)) for value in raw)
+                or not all(isinstance(value, (int, float))
+                           and not isinstance(value, bool)
+                           and math.isfinite(float(value)) for value in utility)):
+            raise LabelRefused(f"Stage-C {fold} action tensor drift")
+        expected_utility = [acting_utility(float(value), attacker=attacker)
+                            for value in raw]
+        if ([float(value) for value in utility] != expected_utility
+                or not math.isclose(
+                    float(action.get("mean_signed_level_utility")),
+                    sum(expected_utility) / requested,
+                    rel_tol=1e-12, abs_tol=1e-12)):
+            raise LabelRefused(f"Stage-C {fold} utility transform drift")
+
+
+def validate_label_row(state: Mapping[str, object], rnd,
+                       row: Mapping[str, object], *,
+                       audit_expected: bool) -> None:
+    """Recompute every decision/work semantic without rerunning rollouts."""
+    candidates = state.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        raise LabelRefused("Stage-C validation state lacks candidates")
+    if (row.get("schema") != SCHEMA or row.get("status") != "COMPLETE"
+            or row.get("state_id") != state.get("state_id")
+            or row.get("split") != state.get("split")
+            or row.get("surface_type") != state.get("surface_type")
+            or row.get("stratum") != state.get("stratum")
+            or row.get("candidate_count") != len(candidates)
+            or row.get("candidate_tensor_sha256")
+            != sha256_bytes(canonical_json(candidates))
+            or row.get("recipe") != recipe_for_state(state)
+            or row.get("raw_action_tensor_preserved") is not True
+            or row.get("recursive_mc_continuation_rollouts") != 0
+            or row.get("complete") is not True
+            or row.get("row_sha256") != sha256_bytes(canonical_json({
+                key: value for key, value in row.items()
+                if key != "row_sha256"
+            }))):
+        raise LabelRefused("Stage-C label row identity/self-hash drift")
+    all_indices = list(range(len(candidates)))
+    recipe = recipe_for_state(state)
+    selection_worlds = (ORDINARY_SELECTION_WORLDS
+                        if recipe == "ordinary_anchor" else
+                        HARD_SELECTION_WORLDS)
+    _validate_fold(row["selection"], state=state, rnd=rnd,
+                   fold="selection", requested=selection_worlds,
+                   candidate_indices=all_indices)
+    winner = selection_winner(row["selection"], len(candidates))
+    if recipe == "ordinary_anchor":
+        report_indices = all_indices
+        report_worlds = ORDINARY_REPORT_WORLDS
+        final_index = winner
+        expected_decision = {
+            "selection_winner_index": winner,
+            "final_index": final_index,
+            "reason": "ordinary_fixed_selection_argmax",
+            "report_never_selected": True,
+            "report_lcb_vs_candidate0": None,
+        }
+    else:
+        report_indices = [0, winner]
+        report_worlds = HARD_REPORT_WORLDS
+        _validate_fold(row["report"], state=state, rnd=rnd,
+                       fold="report", requested=report_worlds,
+                       candidate_indices=report_indices)
+        contrast = _report_contrast(
+            row["report"], critical=HARD_T_95_DF299)
+        final_index = winner if contrast["one_sided_95_lcb"] > 0 else 0
+        expected_decision = {
+            "selection_winner_index": winner,
+            "final_index": final_index,
+            "reason": ("hard_tail_report_lcb_override" if final_index != 0
+                       else "hard_tail_report_lcb_fallback"),
+            "report_never_selected": True,
+            "report_lcb_vs_candidate0": contrast,
+        }
+    if recipe == "ordinary_anchor":
+        _validate_fold(row["report"], state=state, rnd=rnd,
+                       fold="report", requested=report_worlds,
+                       candidate_indices=report_indices)
+    if row.get("decision") != expected_decision:
+        raise LabelRefused("Stage-C frozen label decision drift")
+    candidate = candidates[final_index]
+    if row.get("label_action") != {
+        "index": final_index,
+        "cards": list(action_key(candidate["cards"])),
+        "sources": sorted(str(value) for value in candidate.get("sources", [])),
+    }:
+        raise LabelRefused("Stage-C label action identity drift")
+    used = [row["selection"], row["report"]]
+    audit = row.get("audit")
+    if audit_expected:
+        if not isinstance(audit, dict):
+            raise LabelRefused("Stage-C frozen audit row is missing")
+        _validate_fold(audit["selection"], state=state, rnd=rnd,
+                       fold="audit_selection",
+                       requested=AUDIT_SELECTION_WORLDS,
+                       candidate_indices=all_indices)
+        audit_winner = selection_winner(audit["selection"], len(candidates))
+        plan = audit_report_plan(audit_winner, final_index)
+        _validate_fold(audit["report"], state=state, rnd=rnd,
+                       fold="audit_report", requested=AUDIT_REPORT_WORLDS,
+                       candidate_indices=plan["candidate_indices"])
+        expected_audit = audit_report_summary(
+            audit["report"], audit_selection_winner=audit_winner,
+            frozen_label_choice=final_index)
+        if (audit.get("decision") != expected_audit
+                or audit.get("all_worlds_disjoint_from_label") is not True):
+            raise LabelRefused("Stage-C audit decision drift")
+        used.extend([audit["selection"], audit["report"]])
+    elif audit is not None:
+        raise LabelRefused("Stage-C non-audit row exposed audit outcomes")
+    seeds = [value["seed"] for value in used]
+    digests = [value["sampler"]["world_keys_sha256"] for value in used]
+    hashes = [set(value["sampler"]["world_key_sha256s"]) for value in used]
+    overlaps = any(hashes[left].intersection(hashes[right])
+                   for left in range(len(hashes))
+                   for right in range(left + 1, len(hashes)))
+    if (len(set(seeds)) != len(seeds) or len(set(digests)) != len(digests)
+            or overlaps):
+        raise LabelRefused("Stage-C label fold separation drift")
+    expected_fold_work = {
+        "selection": len(candidates) * selection_worlds,
+        "report": len(report_indices) * report_worlds,
+        "audit_selection": (len(candidates) * AUDIT_SELECTION_WORLDS
+                            if audit_expected else 0),
+        "audit_report": (AUDIT_REPORT_CANDIDATE_WORLDS
+                         if audit_expected else 0),
+    }
+    work = row.get("work")
+    expected_samplers = {value["fold"]: value["sampler"] for value in used}
+    if (not isinstance(work, dict) or work.get("schema") != WORK_SCHEMA
+            or work.get("candidate_worlds_attempted") != expected_fold_work
+            or work.get("candidate_worlds_completed") != expected_fold_work
+            or work.get("total_candidate_worlds_attempted")
+            != sum(expected_fold_work.values())
+            or work.get("total_candidate_worlds_completed")
+            != sum(expected_fold_work.values())
+            or work.get("samplers") != dict(sorted(expected_samplers.items()))
+            or work.get("accounting_complete") is not True):
+        raise LabelRefused("Stage-C label work ledger drift")
+
+
 def refusal_record(state: Mapping[str, object], exc: BaseException,
                    ledger: WorkLedger | None = None) -> dict:
     """Publish exact work and a reason hash, never partial outcome tensors."""
     reason = f"{type(exc).__name__}:{exc}"
-    return {
+    record = {
         "schema": SCHEMA,
         "status": "REFUSED_NO_LABEL",
         "state_id": state.get("state_id"),
@@ -521,3 +823,730 @@ def refusal_record(state: Mapping[str, object], exc: BaseException,
         "label_published": False,
         "training_authorized": False,
     }
+    record["row_sha256"] = sha256_bytes(canonical_json(record))
+    return record
+
+
+# ---------------------------------------------------------------- execution
+
+REPO = SERVER.parent
+
+
+def _ctrl():
+    # The controller imports this primitive module to freeze its source hash;
+    # keep the reverse dependency lazy so normal imports are acyclic.
+    import teacher_stage_c_label_controller as controller
+    return controller
+
+
+def _git(*args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=REPO, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+
+
+def _terminal_file(path: Path) -> bool:
+    try:
+        info = path.lstat()
+    except OSError:
+        return False
+    return (stat.S_ISREG(info.st_mode) and info.st_nlink == 1
+            and not path.is_symlink() and not path.name.endswith(".partial"))
+
+
+def _load_json(path: Path) -> dict:
+    if not _terminal_file(path):
+        raise LabelRefused(f"label input is not terminal/unlinked: {path}")
+    try:
+        value = json.loads(path.read_bytes())
+    except (OSError, ValueError) as exc:
+        raise LabelRefused(f"cannot read label JSON {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise LabelRefused(f"label JSON root is not an object: {path}")
+    return value
+
+
+def _self_hash(value: Mapping[str, object], field: str) -> str:
+    return sha256_bytes(canonical_json({
+        key: item for key, item in value.items() if key != field
+    }))
+
+
+def _publish_exclusive(path: Path, value: Mapping[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = Path(str(path) + ".partial")
+    if os.path.lexists(path) or os.path.lexists(partial):
+        raise LabelRefused(f"refusing existing Stage-C label output: {path}")
+    data = canonical_json(value)
+    fd = os.open(partial, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(partial, path)
+    except BaseException:
+        try:
+            partial.unlink()
+        except OSError:
+            pass
+        raise
+
+
+def _require_clean_tree() -> None:
+    if _git("status", "--porcelain", "--untracked-files=all"):
+        raise LabelRefused("Stage-C label runtime refuses a dirty tree")
+
+
+def _controller_packet(path: Path, expected_sha256: str) -> dict:
+    ctrl = _ctrl()
+    _require_clean_tree()
+    expected_path = (REPO / ctrl.CONTROLLER_PACKET_PATH).resolve()
+    if path.resolve() != expected_path or not _terminal_file(path):
+        raise LabelRefused("label-controller packet path/type drift")
+    if ctrl.sha256_file(path) != expected_sha256:
+        raise LabelRefused("label-controller external SHA-256 drift")
+    packet = _load_json(path)
+    authority = packet.get("authority", {})
+    try:
+        runtime_mode = ctrl.CAPTURE_CTRL.require_runtime_mode()
+        sources = ctrl.runtime_sources()
+        ctrl.require_admission_slot_ignored()
+    except ctrl.ControllerRefused as exc:
+        raise LabelRefused(str(exc)) from exc
+    if (packet.get("schema") != ctrl.SCHEMA
+            or packet.get("packet_id") != ctrl.PACKET_ID
+            or packet.get("run_id") != ctrl.RUN_ID
+            or packet.get("packet_sha256") != ctrl.self_hash(packet)
+            or packet.get("producer", {}).get("git")
+            != _git("rev-parse", "HEAD")
+            or packet.get("runtime_mode") != runtime_mode
+            or packet.get("runtime_sources") != sources
+            or authority.get("score_free") is not True
+            or authority.get("worlds_sampled") is not False
+            or authority.get("outcomes_computed") is not False
+            or authority.get("labels_computed") is not False
+            or authority.get("one_label_execution_authorized") is not False
+            or authority.get("training_authorized") is not False
+            or authority.get("report_open_authorized") is not False
+            or authority.get("strength_claim") is not False
+            or authority.get("production_promotion") is not False
+            or authority.get("production_deployment") is not False):
+        raise LabelRefused("label-controller identity/authority drift")
+    packet = dict(packet)
+    packet["external_sha256"] = expected_sha256
+    return packet
+
+
+def _validated_parents(packet: Mapping[str, object],
+                       state_set_review_record: Path) -> tuple[dict, dict]:
+    ctrl = _ctrl()
+    parents = packet["parents"]
+    state_parent = parents["state_set"]
+    verification_parent = parents["capture_verification"]
+    try:
+        state_set, verification, claim = ctrl.validate_state_set(
+            (REPO / state_parent["logical_path"]).resolve(),
+            state_parent["external_sha256"],
+            (REPO / verification_parent["logical_path"]).resolve(),
+            verification_parent["external_sha256"],
+            state_set_review_record,
+        )
+    except ctrl.ControllerRefused as exc:
+        raise LabelRefused(str(exc)) from exc
+    if (claim != state_parent["review_claim"]
+            or ctrl.build_schedule(state_set) != packet["schedule"]):
+        raise LabelRefused("label-controller state-set/schedule drift")
+    return state_set, verification
+
+
+def _controller_review_claim(review_record: Path, packet: dict,
+                             packet_sha256: str) -> dict:
+    ctrl = _ctrl()
+    try:
+        claim = ctrl.marker_claim(review_record, ctrl.REVIEW_MARKER)
+    except ctrl.ControllerRefused as exc:
+        raise LabelRefused(str(exc)) from exc
+    if claim != ctrl.expected_review_claim(packet, packet_sha256):
+        raise LabelRefused("label-controller PASS marker drift")
+    return claim
+
+
+def _receipt(path: Path, expected_sha256: str, packet: Mapping[str, object],
+             packet_sha256: str, controller_review_record: Path,
+             state_set_review_record: Path) -> dict:
+    ctrl = _ctrl()
+    expected_path = (REPO / packet["result_contract"]["receipt"]).resolve()
+    if path.resolve() != expected_path or not _terminal_file(path):
+        raise LabelRefused("label receipt path/type drift")
+    if ctrl.sha256_file(path) != expected_sha256:
+        raise LabelRefused("label receipt external SHA-256 drift")
+    receipt = _load_json(path)
+    expected = {
+        "schema": ctrl.RECEIPT_SCHEMA,
+        "run_id": ctrl.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": packet_sha256,
+        "controller_packet_internal_sha256": packet["packet_sha256"],
+        "state_set_sha256": packet["parents"]["state_set"]["external_sha256"],
+        "schedule_sha256": packet["schedule"]["schedule_sha256"],
+        "admission_slot": ctrl.admission_slot_logical_path(),
+        "controller_review_record_sha256": ctrl.sha256_file(
+            controller_review_record),
+        "state_set_review_record_sha256": ctrl.sha256_file(
+            state_set_review_record),
+        "controller_review_claim": _controller_review_claim(
+            controller_review_record, dict(packet), packet_sha256),
+        "one_shot": True,
+        "labels_authorized": True,
+        "training_authorized": False,
+        "report_open_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+    }
+    for key, value in expected.items():
+        if receipt.get(key) != value:
+            raise LabelRefused(f"label receipt field drift: {key}")
+    if receipt.get("receipt_sha256") != _self_hash(receipt, "receipt_sha256"):
+        raise LabelRefused("label receipt self-hash drift")
+    slot_path = (REPO / ctrl.admission_slot_logical_path()).resolve()
+    if not _terminal_file(slot_path):
+        raise LabelRefused("durable label admission is missing")
+    slot = _load_json(slot_path)
+    expected_slot = {
+        "schema": ctrl.ADMISSION_SCHEMA,
+        "run_id": ctrl.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": packet_sha256,
+        "state_set_sha256": packet["parents"]["state_set"]["external_sha256"],
+        "schedule_sha256": packet["schedule"]["schedule_sha256"],
+        "receipt_path": str(path.resolve()),
+        "receipt_sha256": expected_sha256,
+        "consumed_even_if_receipt_publication_fails": True,
+    }
+    expected_slot["slot_sha256"] = _self_hash(expected_slot, "slot_sha256")
+    if slot != expected_slot:
+        raise LabelRefused("durable label admission drift")
+    return receipt
+
+
+def admit(*, packet_path: Path, expected_packet_sha256: str,
+          controller_review_record: Path, state_set_review_record: Path,
+          out: Path) -> dict:
+    ctrl = _ctrl()
+    packet = _controller_packet(packet_path, expected_packet_sha256)
+    _validated_parents(packet, state_set_review_record)
+    claim = _controller_review_claim(
+        controller_review_record, packet, expected_packet_sha256)
+    expected_out = (REPO / packet["result_contract"]["receipt"]).resolve()
+    if out.resolve() != expected_out:
+        raise LabelRefused("label receipt output path drift")
+    slot_path = (REPO / ctrl.admission_slot_logical_path()).resolve()
+    if os.path.lexists(slot_path) or os.path.lexists(Path(str(slot_path) + ".partial")):
+        raise LabelRefused("one-shot label admission is already consumed")
+    receipt = {
+        "schema": ctrl.RECEIPT_SCHEMA,
+        "run_id": ctrl.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": expected_packet_sha256,
+        "controller_packet_internal_sha256": packet["packet_sha256"],
+        "state_set_sha256": packet["parents"]["state_set"]["external_sha256"],
+        "schedule_sha256": packet["schedule"]["schedule_sha256"],
+        "admission_slot": ctrl.admission_slot_logical_path(),
+        "controller_review_record_sha256": ctrl.sha256_file(
+            controller_review_record),
+        "state_set_review_record_sha256": ctrl.sha256_file(
+            state_set_review_record),
+        "controller_review_claim": claim,
+        "one_shot": True,
+        "labels_authorized": True,
+        "training_authorized": False,
+        "report_open_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+    }
+    receipt["receipt_sha256"] = _self_hash(receipt, "receipt_sha256")
+    receipt_file_sha = ctrl.sha256_bytes(ctrl.canonical_json(receipt))
+    slot = {
+        "schema": ctrl.ADMISSION_SCHEMA,
+        "run_id": ctrl.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": expected_packet_sha256,
+        "state_set_sha256": packet["parents"]["state_set"]["external_sha256"],
+        "schedule_sha256": packet["schedule"]["schedule_sha256"],
+        "receipt_path": str(out.resolve()),
+        "receipt_sha256": receipt_file_sha,
+        "consumed_even_if_receipt_publication_fails": True,
+    }
+    slot["slot_sha256"] = _self_hash(slot, "slot_sha256")
+    _publish_exclusive(slot_path, slot)
+    _publish_exclusive(out, receipt)
+    return receipt
+
+
+def _expected_shard_path(packet: Mapping[str, object], index: int) -> Path:
+    try:
+        logical = packet["result_contract"]["shards"][index]
+    except (IndexError, KeyError, TypeError) as exc:
+        raise LabelRefused("Stage-C label shard index outside schedule") from exc
+    return (REPO / logical).resolve()
+
+
+def _state_map(state_set: Mapping[str, object]) -> dict[str, dict]:
+    states = state_set.get("states")
+    if not isinstance(states, list):
+        raise LabelRefused("Stage-C state-set rows missing")
+    result = {str(state["state_id"]): state for state in states}
+    if len(result) != len(states):
+        raise LabelRefused("Stage-C state-set identity collision")
+    return result
+
+
+def _load_v11():
+    ctrl = _ctrl()
+    path = REPO / CAPTURE.V11_PATH
+    if ctrl.sha256_file(path) != CAPTURE.V11_SHA256:
+        raise LabelRefused("Stage-C frozen V11 checkpoint drift")
+    return CAPTURE._load_npnet(str(path))
+
+
+def _work_from_rows(rows: Sequence[Mapping[str, object]]) -> dict:
+    attempted = 0
+    completed = 0
+    sampler_attempts = 0
+    accepted_worlds = 0
+    for row in rows:
+        work = row["work"] if row.get("status") == "COMPLETE" \
+            else row["attempted_work"]
+        attempted += int(work["total_candidate_worlds_attempted"])
+        completed += int(work["total_candidate_worlds_completed"])
+        for sampler in work["samplers"].values():
+            sampler_attempts += int(sampler["attempts"])
+            accepted_worlds += int(sampler["accepted"])
+    return {
+        "candidate_worlds_attempted": attempted,
+        "candidate_worlds_completed": completed,
+        "sampler_attempts": sampler_attempts,
+        "accepted_worlds": accepted_worlds,
+    }
+
+
+def run_shard(*, packet_path: Path, expected_packet_sha256: str,
+              receipt_path: Path, expected_receipt_sha256: str,
+              controller_review_record: Path, state_set_review_record: Path,
+              shard_index: int,
+              progress_every: int, out: Path) -> dict:
+    ctrl = _ctrl()
+    packet = _controller_packet(packet_path, expected_packet_sha256)
+    state_set, _verification = _validated_parents(
+        packet, state_set_review_record)
+    _receipt(receipt_path, expected_receipt_sha256, packet,
+             expected_packet_sha256, controller_review_record,
+             state_set_review_record)
+    if not 0 <= shard_index < ctrl.LABEL_SHARDS or progress_every <= 0:
+        raise LabelRefused("Stage-C label shard/progress argument drift")
+    if out.resolve() != _expected_shard_path(packet, shard_index):
+        raise LabelRefused("Stage-C label shard output path drift")
+    if os.path.lexists(out) or os.path.lexists(Path(str(out) + ".partial")):
+        raise LabelRefused("refusing existing Stage-C label shard/partial")
+    schedule = packet["schedule"]["shards"][shard_index]
+    states = _state_map(state_set)
+    net = _load_v11()
+    audit_ids = set(schedule["audit_state_ids"])
+    rows = []
+    for index, state_id in enumerate(schedule["state_ids"], 1):
+        state = states[state_id]
+        ledger = WorkLedger()
+        try:
+            row = label_state(
+                state, net=net, include_audit=state_id in audit_ids,
+                ledger=ledger)
+            rnd = CAPTURE.replay_state(state)
+            validate_label_row(
+                state, rnd, row, audit_expected=state_id in audit_ids)
+        except Exception as exc:
+            row = refusal_record(state, exc, ledger)
+        rows.append(row)
+        if index % progress_every == 0 or index == len(schedule["state_ids"]):
+            print(json.dumps({
+                "status": "LABELING",
+                "shard": shard_index,
+                "states_complete": index,
+                "states_total": len(schedule["state_ids"]),
+                "refusals": sum(value["status"] != "COMPLETE" for value in rows),
+            }, sort_keys=True), file=sys.stderr, flush=True)
+    work = _work_from_rows(rows)
+    refusals = sum(row["status"] != "COMPLETE" for row in rows)
+    payload = {
+        "schema": ctrl.SHARD_SCHEMA,
+        "run_id": ctrl.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": expected_packet_sha256,
+        "label_receipt_sha256": expected_receipt_sha256,
+        "state_set_sha256": packet["parents"]["state_set"]["external_sha256"],
+        "schedule_sha256": packet["schedule"]["schedule_sha256"],
+        "shard_index": shard_index,
+        "split": schedule["split"],
+        "local_shard": schedule["local_shard"],
+        "state_ids": list(schedule["state_ids"]),
+        "state_ids_sha256": schedule["state_ids_sha256"],
+        "audit_state_ids": list(schedule["audit_state_ids"]),
+        "status": ("COMPLETE" if refusals == 0
+                   else "REFUSED_INCOMPLETE_NO_AGGREGATE_UTILITY"),
+        "complete_rows": len(rows) - refusals,
+        "refused_rows": refusals,
+        "rows": rows,
+        "row_sha256s": [row["row_sha256"] for row in rows],
+        "work": work,
+        "expected_candidate_worlds": schedule["candidate_worlds"],
+        "candidate_world_ceiling_respected":
+            work["candidate_worlds_attempted"] <= schedule["candidate_worlds"],
+        "training_authorized": False,
+        "report_open_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+    }
+    payload["shard_sha256"] = _self_hash(payload, "shard_sha256")
+    _controller_packet(packet_path, expected_packet_sha256)
+    _receipt(receipt_path, expected_receipt_sha256, packet,
+             expected_packet_sha256, controller_review_record,
+             state_set_review_record)
+    _publish_exclusive(out, payload)
+    return payload
+
+
+def validate_shard(shard: Mapping[str, object], *, packet: Mapping[str, object],
+                   receipt_sha256: str, state_set: Mapping[str, object],
+                   index: int, net) -> None:
+    ctrl = _ctrl()
+    schedule = packet["schedule"]["shards"][index]
+    rows = shard.get("rows")
+    if (shard.get("schema") != ctrl.SHARD_SCHEMA
+            or shard.get("run_id") != ctrl.RUN_ID
+            or shard.get("git") != packet["producer"]["git"]
+            or shard.get("controller_packet_sha256")
+            != packet["external_sha256"]
+            or shard.get("label_receipt_sha256") != receipt_sha256
+            or shard.get("state_set_sha256")
+            != packet["parents"]["state_set"]["external_sha256"]
+            or shard.get("schedule_sha256")
+            != packet["schedule"]["schedule_sha256"]
+            or shard.get("shard_index") != index
+            or shard.get("split") != schedule["split"]
+            or shard.get("local_shard") != schedule["local_shard"]
+            or shard.get("state_ids") != schedule["state_ids"]
+            or shard.get("state_ids_sha256") != schedule["state_ids_sha256"]
+            or shard.get("audit_state_ids") != schedule["audit_state_ids"]
+            or not isinstance(rows, list) or len(rows) != schedule["state_count"]
+            or shard.get("shard_sha256") != _self_hash(shard, "shard_sha256")
+            or shard.get("training_authorized") is not False
+            or shard.get("report_open_authorized") is not False):
+        raise LabelRefused(f"Stage-C label shard {index} identity drift")
+    states = _state_map(state_set)
+    audit_ids = set(schedule["audit_state_ids"])
+    complete = 0
+    refused = 0
+    for state_id, row in zip(schedule["state_ids"], rows, strict=True):
+        state = states[state_id]
+        if row.get("state_id") != state_id:
+            raise LabelRefused(f"Stage-C label shard {index} row order drift")
+        if row.get("status") == "COMPLETE":
+            rnd = CAPTURE.replay_state(state)
+            CAPTURE._validate_candidates(state, rnd, net)
+            validate_label_row(
+                state, rnd, row, audit_expected=state_id in audit_ids)
+            complete += 1
+        else:
+            if (row.get("status") != "REFUSED_NO_LABEL"
+                    or row.get("utility_published") is not False
+                    or row.get("label_published") is not False
+                    or row.get("training_authorized") is not False
+                    or row.get("row_sha256") != sha256_bytes(canonical_json({
+                        key: value for key, value in row.items()
+                        if key != "row_sha256"
+                    }))):
+                raise LabelRefused(
+                    f"Stage-C label shard {index} refusal leakage")
+            refused += 1
+    expected_status = ("COMPLETE" if refused == 0
+                       else "REFUSED_INCOMPLETE_NO_AGGREGATE_UTILITY")
+    work = _work_from_rows(rows)
+    if (shard.get("status") != expected_status
+            or shard.get("complete_rows") != complete
+            or shard.get("refused_rows") != refused
+            or shard.get("row_sha256s") != [row["row_sha256"] for row in rows]
+            or shard.get("work") != work
+            or shard.get("expected_candidate_worlds")
+            != schedule["candidate_worlds"]
+            or shard.get("candidate_world_ceiling_respected")
+            is not (work["candidate_worlds_attempted"]
+                    <= schedule["candidate_worlds"])):
+        raise LabelRefused(f"Stage-C label shard {index} work/status drift")
+
+
+def _t_critical_for_n(n: int) -> float:
+    # Frozen one-sided 95% Student-t criticals for the only report populations.
+    values = {48: 1.677927, 64: 1.669402, 192: 1.652871, 256: 1.650851}
+    try:
+        return values[n]
+    except KeyError as exc:
+        raise LabelRefused(f"unreviewed Stage-C clustered population: {n}") from exc
+
+
+def _cluster_summary(values: Sequence[float]) -> dict:
+    result = paired_summary(
+        values, [0.0] * len(values), critical=_t_critical_for_n(len(values)))
+    result["unit"] = "frozen REPORT deal/state"
+    return result
+
+
+def _audit_gate(rows: Sequence[Mapping[str, object]],
+                states: Mapping[str, dict]) -> dict:
+    audit_rows = [row for row in rows if row.get("audit") is not None]
+    if len(audit_rows) != 256:
+        raise LabelRefused("Stage-C audit row population drift")
+    grouped = {"ordinary_anchor": [], "hard_tail": []}
+    diagnostics: dict[str, list[float]] = {}
+    v11_diffs = []
+    for row in audit_rows:
+        state = states[str(row["state_id"])]
+        regret = float(row["audit"]["decision"][
+            "audit_reference_minus_label_choice"]["mean"])
+        grouped[recipe_for_state(state)].append(regret)
+        cell = ":".join(str(state.get(name)) for name in (
+            "surface_type", "stratum", "phase", "role", "surface"))
+        diagnostics.setdefault(cell, []).append(regret)
+        if state.get("stratum") == "proposal_disagreement":
+            target = int(row["audit"]["decision"]["audit_reference_index"])
+            candidates = state["candidates"]
+            source_sets = [set(candidate.get("sources", []))
+                           for candidate in candidates]
+            names = set().union(*source_sets)
+            if ("v11pair_top_proposal" not in names
+                    or "same_budget_random_diversifier" not in names):
+                raise LabelRefused(
+                    "Stage-C V11 recall row lacks matched one-action control")
+            target_sources = source_sets[target]
+            live = "live_production_ballot" in target_sources or target == 0
+            treatment = live or "v11pair_top_proposal" in target_sources
+            control = live or "same_budget_random_diversifier" in target_sources
+            v11_diffs.append(float(treatment) - float(control))
+    if [len(grouped[name]) for name in ("ordinary_anchor", "hard_tail")] != [64, 192]:
+        raise LabelRefused("Stage-C ordinary/hard-tail audit quota drift")
+    if len(v11_diffs) != 48:
+        raise LabelRefused("Stage-C V11 recall REPORT quota drift")
+    ordinary = _cluster_summary(grouped["ordinary_anchor"])
+    hard = _cluster_summary(grouped["hard_tail"])
+    v11 = _cluster_summary(v11_diffs)
+    fidelity_pass = (ordinary["one_sided_95_ucb"] <= 0.10
+                     and hard["one_sided_95_ucb"] <= 0.10)
+    recall_pass = v11["one_sided_95_lcb"] > 0
+    return {
+        "schema": "teacher-stage-c-label-fidelity-gate-v1",
+        "audit_states": 256,
+        "ordinary_anchor_regret": ordinary,
+        "hard_tail_regret": hard,
+        "v11_recall_treatment_minus_matched_random": v11,
+        "cell_diagnostics": {
+            key: {"n": len(values), "mean_regret": sum(values) / len(values)}
+            for key, values in sorted(diagnostics.items())
+        },
+        "fidelity_pass": fidelity_pass,
+        "v11_recall_pass": recall_pass,
+        "decision": ("AUTHORIZE_MODEL_PACKET_REVIEW"
+                     if fidelity_pass and recall_pass else
+                     "DIAGNOSE_FROZEN_STAGE_C_ONLY"),
+        "training_authorized": False,
+        "report_open_authorized": False,
+    }
+
+
+def aggregate(*, packet_path: Path, expected_packet_sha256: str,
+              receipt_path: Path, expected_receipt_sha256: str,
+              controller_review_record: Path, state_set_review_record: Path,
+              shard_paths: Sequence[Path], out: Path) -> dict:
+    ctrl = _ctrl()
+    packet = _controller_packet(packet_path, expected_packet_sha256)
+    state_set, _verification = _validated_parents(
+        packet, state_set_review_record)
+    _receipt(receipt_path, expected_receipt_sha256, packet,
+             expected_packet_sha256, controller_review_record,
+             state_set_review_record)
+    expected_out = (REPO / packet["result_contract"]["aggregate"]).resolve()
+    if out.resolve() != expected_out:
+        raise LabelRefused("Stage-C label aggregate output path drift")
+    if len(shard_paths) != ctrl.LABEL_SHARDS:
+        raise LabelRefused("Stage-C aggregate requires all label shards")
+    net = _load_v11()
+    shards = []
+    for index, path in enumerate(shard_paths):
+        if path.resolve() != _expected_shard_path(packet, index):
+            raise LabelRefused("Stage-C aggregate shard path/order drift")
+        shard = _load_json(path)
+        validate_shard(
+            shard, packet=packet, receipt_sha256=expected_receipt_sha256,
+            state_set=state_set, index=index, net=net)
+        shard = dict(shard)
+        shard["external_sha256"] = ctrl.sha256_file(path)
+        shards.append(shard)
+    rows = [row for shard in shards for row in shard["rows"]]
+    refusals = sum(row["status"] != "COMPLETE" for row in rows)
+    work = _work_from_rows(rows)
+    if (len(rows) != ctrl.EXPECTED_STATES
+            or work["candidate_worlds_attempted"]
+            > packet["result_contract"]["max_candidate_worlds"]
+            or work["sampler_attempts"]
+            > packet["result_contract"]["max_sampler_attempts"]):
+        raise LabelRefused("Stage-C aggregate population/work drift")
+    shard_manifest = [{
+        "index": shard["shard_index"],
+        "split": shard["split"],
+        "sha256": shard["external_sha256"],
+        "row_sha256s_sha256": sha256_bytes(canonical_json(
+            shard["row_sha256s"])),
+    } for shard in shards]
+    payload = {
+        "schema": ctrl.AGGREGATE_SCHEMA,
+        "run_id": ctrl.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": expected_packet_sha256,
+        "label_receipt_sha256": expected_receipt_sha256,
+        "state_set_sha256": packet["parents"]["state_set"]["external_sha256"],
+        "schedule_sha256": packet["schedule"]["schedule_sha256"],
+        "status": ("COMPLETE" if refusals == 0
+                   else "TERMINAL_HOLD_NO_EXTENSION"),
+        "states": len(rows),
+        "complete_rows": len(rows) - refusals,
+        "refused_rows": refusals,
+        "work": work,
+        "shards": shard_manifest,
+        "design_calib_manifest": {
+            "splits": ["DESIGN", "CALIB"],
+            "shards": [item for item in shard_manifest
+                       if item["split"] in {"DESIGN", "CALIB"}],
+            "states": 1536,
+            "report_rows_included": False,
+            "training_packet_review_authorized": False,
+        },
+        "sealed_report_manifest": {
+            "split": "REPORT",
+            "shards": [item for item in shard_manifest
+                       if item["split"] == "REPORT"],
+            "states": 512,
+            "sealed_from_training_and_seed_selection": True,
+            "report_open_authorized": False,
+        },
+        "fidelity_gate": None,
+        "utility_published": refusals == 0,
+        "model_packet_review_authorized": False,
+        "training_authorized": False,
+        "report_open_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+    }
+    if refusals == 0:
+        gate = _audit_gate(rows, _state_map(state_set))
+        payload["fidelity_gate"] = gate
+        payload["model_packet_review_authorized"] = (
+            gate["decision"] == "AUTHORIZE_MODEL_PACKET_REVIEW")
+    payload["aggregate_sha256"] = _self_hash(payload, "aggregate_sha256")
+    _controller_packet(packet_path, expected_packet_sha256)
+    _receipt(receipt_path, expected_receipt_sha256, packet,
+             expected_packet_sha256, controller_review_record,
+             state_set_review_record)
+    _publish_exclusive(out, payload)
+    return payload
+
+
+def _identity_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--expected-git", required=True)
+    parser.add_argument("--controller-packet", required=True)
+    parser.add_argument("--expected-controller-packet-sha256", required=True)
+
+
+def _receipt_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--label-receipt", required=True)
+    parser.add_argument("--expected-label-receipt-sha256", required=True)
+    parser.add_argument("--controller-review-record", required=True)
+    parser.add_argument("--state-set-review-record", required=True)
+
+
+def parser() -> argparse.ArgumentParser:
+    root = argparse.ArgumentParser(description=__doc__)
+    commands = root.add_subparsers(dest="command", required=True)
+    admit_parser = commands.add_parser("admit")
+    _identity_args(admit_parser)
+    admit_parser.add_argument("--controller-review-record", required=True)
+    admit_parser.add_argument("--state-set-review-record", required=True)
+    admit_parser.add_argument("--out", required=True)
+    shard_parser = commands.add_parser("run-shard")
+    _identity_args(shard_parser)
+    _receipt_args(shard_parser)
+    shard_parser.add_argument("--shard-index", type=int, required=True)
+    shard_parser.add_argument("--progress-every", type=int, default=1)
+    shard_parser.add_argument("--out", required=True)
+    aggregate_parser = commands.add_parser("aggregate")
+    _identity_args(aggregate_parser)
+    _receipt_args(aggregate_parser)
+    aggregate_parser.add_argument("--shards", nargs="+", required=True)
+    aggregate_parser.add_argument("--out", required=True)
+    return root
+
+
+def main() -> int:
+    args = parser().parse_args()
+    if _git("rev-parse", "HEAD") != args.expected_git:
+        raise LabelRefused("Stage-C label expected Git drift")
+    common = {
+        "packet_path": Path(args.controller_packet).resolve(),
+        "expected_packet_sha256": args.expected_controller_packet_sha256,
+    }
+    if args.command == "admit":
+        value = admit(
+            **common,
+            controller_review_record=Path(
+                args.controller_review_record).resolve(),
+            state_set_review_record=Path(args.state_set_review_record).resolve(),
+            out=Path(args.out).resolve(),
+        )
+    elif args.command == "run-shard":
+        value = run_shard(
+            **common,
+            receipt_path=Path(args.label_receipt).resolve(),
+            expected_receipt_sha256=args.expected_label_receipt_sha256,
+            controller_review_record=Path(
+                args.controller_review_record).resolve(),
+            state_set_review_record=Path(args.state_set_review_record).resolve(),
+            shard_index=args.shard_index,
+            progress_every=args.progress_every,
+            out=Path(args.out).resolve(),
+        )
+    else:
+        value = aggregate(
+            **common,
+            receipt_path=Path(args.label_receipt).resolve(),
+            expected_receipt_sha256=args.expected_label_receipt_sha256,
+            controller_review_record=Path(
+                args.controller_review_record).resolve(),
+            state_set_review_record=Path(args.state_set_review_record).resolve(),
+            shard_paths=[Path(value).resolve() for value in args.shards],
+            out=Path(args.out).resolve(),
+        )
+    print(json.dumps({
+        "status": value.get("status", "ADMITTED"),
+        "sha256": sha256_bytes(canonical_json(value)),
+    }, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except LabelRefused as exc:
+        print(f"REFUSED: {exc}", file=sys.stderr)
+        raise SystemExit(2)

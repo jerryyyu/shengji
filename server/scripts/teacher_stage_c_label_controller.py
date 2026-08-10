@@ -281,6 +281,8 @@ def expected_state_set_review_claim(
         "state_set_sha256": state_set_sha256,
         "state_set_internal_sha256": state_set["dataset_sha256"],
         "states_sha256": state_set["states_sha256"],
+        "report_audit_state_ids_sha256": state_set[
+            "report_audit_state_ids_sha256"],
         "capture_verification_sha256": verification_sha256,
         "capture_verification_internal_sha256": verification[
             "verification_sha256"],

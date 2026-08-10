@@ -1426,6 +1426,12 @@ def run_shard(*, packet_path: Path, expected_packet_sha256: str,
     }
     payload["shard_sha256"] = _self_hash(payload, "shard_sha256")
     _controller_packet(packet_path, expected_packet_sha256)
+    final_state_set, _final_verification = _validated_parents(
+        packet, state_set_review_record)
+    if final_state_set != state_set:
+        raise LabelRefused("Stage-C state set changed during label shard")
+    if ctrl.sha256_file(REPO / CAPTURE.V11_PATH) != CAPTURE.V11_SHA256:
+        raise LabelRefused("Stage-C V11 checkpoint changed during label shard")
     _receipt(receipt_path, expected_receipt_sha256, packet,
              expected_packet_sha256, controller_review_record,
              state_set_review_record)
@@ -1669,6 +1675,15 @@ def aggregate(*, packet_path: Path, expected_packet_sha256: str,
             gate["decision"] == "AUTHORIZE_MODEL_PACKET_REVIEW")
     payload["aggregate_sha256"] = _self_hash(payload, "aggregate_sha256")
     _controller_packet(packet_path, expected_packet_sha256)
+    final_state_set, _final_verification = _validated_parents(
+        packet, state_set_review_record)
+    if final_state_set != state_set:
+        raise LabelRefused("Stage-C state set changed during label aggregate")
+    for path, shard in zip(shard_paths, shards, strict=True):
+        if ctrl.sha256_file(path) != shard["external_sha256"]:
+            raise LabelRefused("Stage-C label shard changed during aggregate")
+    if ctrl.sha256_file(REPO / CAPTURE.V11_PATH) != CAPTURE.V11_SHA256:
+        raise LabelRefused("Stage-C V11 checkpoint changed during aggregate")
     _receipt(receipt_path, expected_receipt_sha256, packet,
              expected_packet_sha256, controller_review_record,
              state_set_review_record)

@@ -142,14 +142,29 @@ def test_schedule_is_deterministic_and_covers_early_and_heavy_geometry() -> None
 def test_projection_uses_slower_sample_and_adds_model_load_per_shard() -> None:
     state_set = _state_set()
     samples, label_schedule = _complete_samples(state_set)
+    # Give every shard one fast and one slow witness.  This must stay
+    # outcome-free, but the unequal rates are essential: a min(rates)
+    # regression would otherwise pass when both synthetic samples run at the
+    # same candidate-world rate.
+    for sample in samples:
+        seconds_per_world = (
+            0.001 if sample["sample_role"] == "earliest_ply" else 0.002
+        )
+        sample["elapsed_seconds"] = (
+            int(sample["candidate_worlds_completed"]) * seconds_per_world
+        )
     projection = capacity.capacity_projection(samples, label_schedule)
     assert projection["throughput_safety_factor"] == 2.0
     assert projection["max_observed_v11_load_seconds"] == 1.0
     first = projection["shards"][0]
     expected_seconds = (
-        label_schedule["shards"][0]["candidate_worlds"] / 1_000.0 + 1.0
+        label_schedule["shards"][0]["candidate_worlds"] * 0.002 + 1.0
     ) * 2.0
     assert first["projected_seconds"] == pytest.approx(expected_seconds)
+    fast_only_seconds = (
+        label_schedule["shards"][0]["candidate_worlds"] * 0.001 + 1.0
+    ) * 2.0
+    assert first["projected_seconds"] != pytest.approx(fast_only_seconds)
     assert len(projection["eight_worker_lpt_assignment"]) == 8
     assert sorted(shard for worker in projection["eight_worker_lpt_assignment"]
                   for shard in worker["shards"]) == list(range(16))

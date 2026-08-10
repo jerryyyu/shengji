@@ -97,3 +97,60 @@ def test_wrong_turn_or_model_index_refuses(monkeypatch) -> None:
     with pytest.raises(COMPOSE.StageCCompositionError, match="selection"):
         COMPOSE.focused_pairs(
             _Ensemble(2), _round(), 2, [["H2"]], state_key="bad-index")
+
+
+def test_play_wrapper_focuses_one_challenger_and_falls_back_to_full_live(
+        monkeypatch) -> None:
+    from shengji.ai.registry import REGISTRY
+
+    base = REGISTRY["mc-s0-report-lcb"]
+    live = [["H2"], ["HA"], ["S3"]]
+    monkeypatch.setattr(base, "_candidates",
+                        lambda _self, _rnd, _seat: copy.deepcopy(live))
+    monkeypatch.setattr(COMPOSE, "encode_obs", lambda _rnd, _seat: [0.0])
+    monkeypatch.setattr(COMPOSE, "encode_action", lambda _action, _rnd: [0.0])
+
+    def source(_bot, _rnd, _seat, observed):
+        assert observed == live
+        return observed + [["D4"]], {"source": "test"}
+
+    bot = COMPOSE.make_play_report_lcb_bot(
+        _Ensemble(3), source, arm="treatment", seed=7)
+    focused = bot._candidates(_round(), 2)
+    assert focused == [["H2"], ["D4"]]
+    assert bot.stage_c_focus_calls == 1
+    assert bot.stage_c_focus_triggers == 1
+    assert bot.stage_c_focus_fallbacks == 0
+    assert bot.last_stage_c_focus_record["candidate_source"] == {
+        "source": "test"}
+
+    def broken(*_args):
+        raise RuntimeError("source failed")
+
+    fallback = COMPOSE.make_play_report_lcb_bot(
+        _Ensemble(1), broken, arm="matched-null", seed=8)
+    assert fallback._candidates(_round(), 2) == live
+    assert fallback.stage_c_focus_fallbacks == 1
+    assert fallback.last_stage_c_focus_record[
+        "fallback_to_live_ballot"] is True
+
+
+def test_play_wrapper_treatment_and_null_share_triggered_arm_count(
+        monkeypatch) -> None:
+    from shengji.ai.registry import REGISTRY
+
+    base = REGISTRY["mc-s0-report-lcb"]
+    live = [["H2"], ["HA"], ["S3"], ["D4"]]
+    monkeypatch.setattr(base, "_candidates",
+                        lambda _self, _rnd, _seat: copy.deepcopy(live))
+    monkeypatch.setattr(COMPOSE, "encode_obs", lambda _rnd, _seat: [0.0])
+    monkeypatch.setattr(COMPOSE, "encode_action", lambda _action, _rnd: [0.0])
+    source = lambda _bot, _rnd, _seat, observed: (observed, {})
+    treatment = COMPOSE.make_play_report_lcb_bot(
+        _Ensemble(2), source, arm="treatment", seed=1)
+    null = COMPOSE.make_play_report_lcb_bot(
+        _Ensemble(2), source, arm="matched-null", seed=1)
+    assert len(treatment._candidates(_round(), 2)) == 2
+    assert len(null._candidates(_round(), 2)) == 2
+    assert treatment.last_stage_c_focus_record["model_selected_index"] \
+        == null.last_stage_c_focus_record["model_selected_index"] == 2

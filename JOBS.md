@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-10 10:11 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-10 10:38 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -23,10 +23,12 @@ deals, plus all 2,048 selected states regenerated. Current order:
 
 1. External review of the immutable v7 state set using the exact request and
    marker at the top of `HANDOFF_REVIEW.md`.
-2. On PASS, Mini runs the reviewed 32-state outcome-discarding label-capacity
-   pilot. Review its result and the v7 label-controller packet.
-3. Only after both PASSes, Mini runs 16 label shards at eight-way concurrency.
-4. Air starts only after complete reviewed labels, using the v7-bound 48-cell
+2. On PASS, freeze the 32-state outcome-discarding capacity packet and obtain
+   its own exact external PASS; freeze samples no worlds and consumes no admission.
+3. Mini then runs the pilot once. Review its result, then freeze and externally
+   review the v7 label-controller packet.
+4. Only after all three PASSes, Mini runs 16 label shards at eight-way concurrency.
+5. Air starts only after complete reviewed labels, using the v7-bound 48-cell
    training controller. DESIGN/CALIB choose a capability; untouched REPORT
    remains closed until that selection is final.
 

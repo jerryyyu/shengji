@@ -199,29 +199,29 @@ def _write_capacity_inputs(root: Path, inputs) -> tuple[Path, str, Path, str,
     return packet_path, packet_sha, result_path, result_sha, review_path
 
 
-def test_label_lane_is_bound_to_capture_v4_not_v3() -> None:
+def test_label_lane_is_bound_to_capture_v5_not_v4() -> None:
     packet = controller.validate_capture_controller(CAPTURE_PACKET)
-    assert packet["schema"] == "teacher-stage-c-capture-controller-v4"
+    assert packet["schema"] == "teacher-stage-c-capture-controller-v5"
     assert packet["run_id"] == controller.CAPTURE_RUN_ID
     assert packet["producer"]["git"] == controller.CAPTURE_SOURCE_GIT
 
     old = (Path(__file__).parents[1] / "runs/logs" /
-           "teacher-v3-hard-tail-stage-c-capture-controller-v3" /
+           "teacher-v3-hard-tail-stage-c-capture-controller-v4" /
            "controller_packet.json")
     with pytest.raises(controller.ControllerRefused,
                        match="external SHA-256 drift"):
         controller.validate_capture_controller(old)
 
 
-def test_v3_state_set_marker_cannot_authorize_v4_labels() -> None:
+def test_v4_state_set_marker_cannot_authorize_v5_labels() -> None:
     log_root = controller.REPO / "server/runs/logs"
     with tempfile.TemporaryDirectory(dir=log_root) as raw:
         inputs = _write_inputs(Path(raw))
         claim = inputs[4].read_text().split(" ", 1)[1]
         inputs[4].write_text(
-            "TEACHER_STAGE_C_STATE_SET_V3_REVIEW " + claim)
+            "TEACHER_STAGE_C_STATE_SET_V4_REVIEW " + claim)
         with pytest.raises(controller.ControllerRefused,
-                           match="must contain exactly one .*V4_REVIEW"):
+                           match="must contain exactly one .*V5_REVIEW"):
             controller.validate_state_set(
                 inputs[0], inputs[1], inputs[2], inputs[3], inputs[4])
 

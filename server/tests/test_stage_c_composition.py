@@ -173,6 +173,55 @@ def test_play_wrapper_treatment_and_null_share_triggered_arm_count(
         == null.last_stage_c_focus_record["model_selected_index"] == 2
 
 
+def test_stage_c_policy_telemetry_reconciles_zero_fallback_run() -> None:
+    bot = SimpleNamespace(
+        stage_c_focus_calls=7,
+        stage_c_model_keeps=3,
+        stage_c_focus_triggers=4,
+        stage_c_focus_fallbacks=0,
+        stage_c_report_overrides=1,
+        stage_c_report_rejections=2,
+        stage_c_report_underfills=1,
+    )
+    result = COMPOSE.stage_c_policy_telemetry([bot])
+    assert result["focus_calls"] == 7
+    assert result["model_triggers"] == 4
+    assert result["exact_reconciliation"] is True
+    bot.stage_c_report_underfills = 0
+    with pytest.raises(COMPOSE.StageCCompositionError, match="reconcile"):
+        COMPOSE.stage_c_policy_telemetry([bot])
+
+
+def test_play_wrapper_records_closed_activation_telemetry(monkeypatch) -> None:
+    from shengji.ai.registry import REGISTRY
+
+    base = REGISTRY["mc-s0-report-lcb"]
+    live = [["H2"], ["HA"]]
+    monkeypatch.setattr(base, "_candidates",
+                        lambda _self, _rnd, _seat: copy.deepcopy(live))
+
+    def decide(self, rnd, seat):
+        candidates = self._candidates(rnd, seat)
+        self.last_decision_record = {
+            "reason": "report_lcb_override", "played_index": 1,
+            "report_fold": {"complete": True}, "work": {"complete": True},
+        }
+        return candidates[1]
+
+    monkeypatch.setattr(base, "decide_play", decide)
+    monkeypatch.setattr(COMPOSE, "encode_obs", lambda _rnd, _seat: [0.0])
+    monkeypatch.setattr(COMPOSE, "encode_action", lambda _action, _rnd: [0.0])
+    source = lambda *_args: (copy.deepcopy(live), {})
+    bot = COMPOSE.make_play_report_lcb_bot(
+        _Ensemble(1), source, arm="treatment", seed=3)
+    assert bot.decide_play(_round(), 2) == ["HA"]
+    telemetry = COMPOSE.stage_c_policy_telemetry([bot])
+    assert telemetry["focus_calls"] == telemetry["model_triggers"] == 1
+    assert telemetry["report_overrides"] == 1
+    assert telemetry["fallbacks"] == 0
+    assert telemetry["exact_reconciliation"] is True
+
+
 def test_wrapper_refuses_parent_contract_drift(monkeypatch) -> None:
     from shengji.ai.registry import REGISTRY
 

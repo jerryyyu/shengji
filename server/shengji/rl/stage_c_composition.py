@@ -28,6 +28,10 @@ from .stage_c_npnet import StageCEnsemble
 SCHEMA = "teacher-stage-c-focused-proposal-v1"
 PLAY_CANDIDATE_CAP = 20
 BURY_CANDIDATE_CAP = 33
+TELEMETRY_FIELDS = (
+    "focus_calls", "model_keeps", "model_triggers", "fallbacks",
+    "report_overrides", "report_rejections", "report_underfills",
+)
 
 
 class StageCCompositionError(RuntimeError):
@@ -66,6 +70,52 @@ def _validate_candidate_legality(rnd, seat: int,
             raise StageCCompositionError(
                 f"Stage-C {surface} candidate is replay-illegal: {exc}") \
                 from exc
+
+
+def stage_c_policy_telemetry(bots: Sequence[object]) -> dict:
+    """Aggregate the activation witness required by a whole-game screen."""
+    if not isinstance(bots, (list, tuple)) or not bots:
+        raise StageCCompositionError("Stage-C telemetry bot population drift")
+    totals = {field: 0 for field in TELEMETRY_FIELDS}
+    for bot in bots:
+        values = {
+            "focus_calls": getattr(bot, "stage_c_focus_calls", None),
+            "model_keeps": getattr(bot, "stage_c_model_keeps", None),
+            "model_triggers": getattr(bot, "stage_c_focus_triggers", None),
+            "fallbacks": getattr(bot, "stage_c_focus_fallbacks", None),
+            "report_overrides": getattr(
+                bot, "stage_c_report_overrides", None),
+            "report_rejections": getattr(
+                bot, "stage_c_report_rejections", None),
+            "report_underfills": getattr(
+                bot, "stage_c_report_underfills", None),
+        }
+        if any(isinstance(value, bool) or not isinstance(value, int)
+               or value < 0 for value in values.values()):
+            raise StageCCompositionError(
+                "Stage-C telemetry counter population drift")
+        for field, value in values.items():
+            totals[field] += value
+    if totals["model_triggers"] > totals["focus_calls"]:
+        raise StageCCompositionError("Stage-C triggers exceed focus calls")
+    # A zero-fallback evidence run has a closed decision tree. When a fallback
+    # occurred, retain the raw counters so the future gate can reject the run;
+    # an exception may have happened after a trigger and therefore overlap it.
+    if totals["fallbacks"] == 0 and (
+            totals["focus_calls"]
+            != totals["model_keeps"] + totals["model_triggers"]
+            or totals["model_triggers"]
+            != totals["report_overrides"]
+            + totals["report_rejections"]
+            + totals["report_underfills"]):
+        raise StageCCompositionError(
+            "Stage-C zero-fallback telemetry does not reconcile")
+    return {
+        "schema": "teacher-stage-c-policy-telemetry-v1",
+        **totals,
+        "exact_reconciliation": totals["fallbacks"] == 0,
+        "strength_claim": False,
+    }
 
 
 def action_key(cards: Sequence[object]) -> tuple[str, ...]:
@@ -209,6 +259,10 @@ def make_play_report_lcb_bot(
             self.stage_c_focus_calls = 0
             self.stage_c_focus_triggers = 0
             self.stage_c_focus_fallbacks = 0
+            self.stage_c_model_keeps = 0
+            self.stage_c_report_overrides = 0
+            self.stage_c_report_rejections = 0
+            self.stage_c_report_underfills = 0
             self.last_stage_c_focus_record = None
             self.policy_name = f"stage-c-play-{arm}"
 
@@ -236,6 +290,8 @@ def make_play_report_lcb_bot(
                             record["null_candidates"])
                 if record["model_triggered"]:
                     self.stage_c_focus_triggers += 1
+                else:
+                    self.stage_c_model_keeps += 1
                 self.last_stage_c_focus_record = record
                 return [list(value) for value in selected]
             except Exception as exc:
@@ -269,6 +325,17 @@ def make_play_report_lcb_bot(
                         "report_fold": decision.get("report_fold"),
                         "work": decision.get("work"),
                     })
+                record = self.last_stage_c_focus_record
+                if (not record.get("fallback_to_live_ballot")
+                        and record.get("model_triggered")):
+                    reason = (None if decision is None
+                              else decision.get("reason"))
+                    if reason == "report_lcb_override":
+                        self.stage_c_report_overrides += 1
+                    elif reason == "report_lcb_below_min_gain":
+                        self.stage_c_report_rejections += 1
+                    else:
+                        self.stage_c_report_underfills += 1
             return played
 
     StageCFocusedReportLCB.__name__ = (
@@ -356,6 +423,9 @@ def make_bury_report_lcb_bot(
             self.stage_c_focus_calls = 0
             self.stage_c_focus_triggers = 0
             self.stage_c_focus_fallbacks = 0
+            self.stage_c_model_keeps = 0
+            self.stage_c_report_overrides = 0
+            self.stage_c_report_rejections = 0
             self.stage_c_report_underfills = 0
             self.last_stage_c_focus_record = None
             self.policy_name = f"stage-c-bury-{arm}"
@@ -392,6 +462,7 @@ def make_bury_report_lcb_bot(
                 record["report_worlds_requested"] = self.REPORT_FOLD_WORLDS
                 record["report_rule"] = self.REPORT_RULE
                 if not record["model_triggered"]:
+                    self.stage_c_model_keeps += 1
                     record["reason"] = "model_kept_incumbent"
                     record["played_candidate_union_index"] = 0
                     record["report_fold"] = None
@@ -469,10 +540,12 @@ def make_bury_report_lcb_bot(
                     record["played_candidate_union_index"] = 0
                     return self._publish_bury_record(record, incumbent)
                 if statistic < self.REPORT_MIN_GAIN:
+                    self.stage_c_report_rejections += 1
                     record["reason"] = f"report_{self.REPORT_RULE}_below_min_gain"
                     record["played_candidate_union_index"] = 0
                     return self._publish_bury_record(record, incumbent)
                 record["reason"] = f"report_{self.REPORT_RULE}_override"
+                self.stage_c_report_overrides += 1
                 record["played_candidate_union_index"] = challenger_index
                 return self._publish_bury_record(record, challenger)
             except Exception as exc:

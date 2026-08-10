@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-10 08:42 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-10 09:09 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,28 +8,31 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | Teacher Stage-C capture v6, session `13568` | **RUNNING / WAVE 1 OF 3.** Exact review PASS `8d6ce71`; source `2bdb094`; packet `40c602ea…20ffd`; one-shot receipt external SHA `8580b336…f8c66` (internal `cc24b5b7…0bd10`). Eight workers run at a time with progress every 250 deals. After 24 shards, the same bounded script freezes 2,048 states and replay-authenticates all 750,000 dispositions. |
-| Air | none | **FREE / V6 TRAINING SOURCE STAGED.** Detached head `8ca347f` passes 145/145 under Python 3.14.6. Air starts the 48-cell play/bury × eight-seed × 25/50/100% matrix only after complete reviewed labels exist. |
+| Mini | none | **FREE / WAITING ON CAPTURE-V7 REVIEW.** V6 completed 24 shards, then terminally refused freeze on six empty exact-late follow cells; no state set exists. V7 `03c87d6` / `b53af06c…8a43` repairs the final-trick predicate and has zero states/worlds. On exact PASS, Mini reruns all 24 shards in a fresh namespace. |
+| Air | none | **FREE / TRAINING CAUSALLY BLOCKED.** V6 training head `8ca347f` passed 145/145 but must be rebound after v7 review. Air starts no checkpoint until a complete reviewed v7 state set and labels exist. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
 ## Next admitted execution
 
-Capture-v6 passed exact independent review at `8d6ce71` and was admitted once.
-The 07:53 v5 HOLD was Codex's audit; its remaining equal-valued
-incumbent-bury tie was repaired before this run. V5 has no receipt/state and is
-superseded; capture-v3's six partials remain terminal no-use. Current order:
+Capture-v6 passed exact review and consumed its one admission. All 24 shards
+completed, but freeze returned `TERMINAL_HOLD_NO_EXTENSION`: exact-late follow
+was structurally impossible under the old all-hands-equal-one predicate. The
+24-shard ordered digest is `89af231f…8d6`; no state set or verification exists.
+V6 may never be retried, pooled or extended. Current order:
 
-1. **RUNNING:** Mini runs all 24 capture shards from scratch in three
-   eight-worker waves.
-2. Mini freezes exactly 2,048 states and authenticates the full 750,000-deal
+1. External review of v7 source `03c87d6`, packet commit `101021d`, packet
+   `b53af06c…8a43`. V7 keeps the byte-identical schedule and changes only the
+   final-trick lead/follow semantic.
+2. On PASS, Mini runs all 24 capture shards from scratch in three eight-worker
+   waves, freezes exactly 2,048 states and authenticates the full 750,000-deal
    scan. External state-set review follows.
-3. Mini runs a reviewed 32-state label-capacity pilot, then (only on PASS) the
+3. Rebind downstream source identity to v7; Mini runs a reviewed 32-state
+   label-capacity pilot, then (only on PASS) the
    16 label shards at eight-way concurrency.
-4. **Code propagation complete:** labels `7d3e6ad` (110 tests), training
-   `8ca347f` (145), REPORT `e788fde` (158), composition `268ebeb`
-   (220 Stage-C / 257 including S3c/live).
-   Composition source rereview can proceed without blocking Mini.
-5. Air starts only after complete reviewed labels, using the v6-bound 48-cell
+4. V6-bound code remains green but is not executable evidence: labels
+   `7d3e6ad`, training `8ca347f`, REPORT `e788fde`, composition `268ebeb`.
+   Rebinding may not alter geometry or open REPORT.
+5. Air starts only after complete reviewed labels, using the v7-bound 48-cell
    training controller. DESIGN/CALIB choose a capability; untouched REPORT
    remains closed until that selection is final.
 
@@ -58,7 +61,8 @@ The canonical numbers and meanings are in the results table in
 | 08-10 | Teacher Stage-C capture v3 | **TERMINAL HOLD / SIX PARTIAL SHARDS NO-USE** | exact source `0b697b6`; first wave found deterministic exact-late phase drift at seeds `170002101` and `170007422`; no later waves, pooling or retry |
 | 08-10 | Teacher Stage-C capture v4 repair | **EXTERNAL PASS / SUPERSEDED PRE-ADMISSION** | source `5a51a1e`; packet `0d1a94d4…54eaa`; Claude PASS `8263492`; exact phase fix remains valid, but a later candidate canonicality defect means no v4 receipt/state may be issued |
 | 08-10 | Teacher Stage-C capture v5 canonical-source repair | **HOLD / SUPERSEDED BEFORE ADMISSION** | source `a71c67e`; packet `e299ac6c…cf749`; play/follow/random-source repairs were sound, but equal-valued SmartBot incumbent buries still inherited hand order; zero v5 states/worlds |
-| 08-10 | Teacher Stage-C capture v6 incumbent repair | **EXTERNAL PASS / CAPTURE RUNNING** | Claude PASS `8d6ce71`; source `2bdb094`; packet commit `055a196`; packet `40c602ea…20ffd`; one-shot receipt external `8580b336…f8c66`; Mini session `13568` |
+| 08-10 | Teacher Stage-C capture v6 incumbent repair | **TERMINAL HOLD / 24 SHARDS NO-USE** | Claude PASS `8d6ce71`; source `2bdb094`; receipt external `8580b336…f8c66`; ordered shards `89af231f…8d6`; six exact-late follow cells `0/N`; no state set/verification, retry or extension |
+| 08-10 | Teacher Stage-C capture v7 final-trick repair | **EXTERNAL REVIEW OPEN / ZERO V7 STATES** | source `03c87d6`; packet commit `101021d`; packet `b53af06c…8a43`; 60/60 tests, real assigned follow witnesses, all six shortage streams fill in bounded replay, 350-state soak |
 | 08-09 | S4 complete-round v2 screen | **TERMINAL PASS / CONFIRMATION NOT LAUNCHED** | exact `cad3992`; treatment−champion `+0.086914 +/- 0.056166`, LCB `+0.030748`; treatment and matched null identical, null−champion zero; confirmation projection `365.592` fleet-hours / `45.699` max-shard hours |
 | 08-09 | S4 point-banking exact-state screen | **MECHANISM PASS / FULL-GAME PACKET REVIEW** | screen `abd9f36f…cdc00`; receipt `90124eb6…f526b`; overall point delta `+5.156`, LCB `+3.029`; both roles positive; no strength or launch authority |
 | 08-09 | Human H0 design v3 | **DESIGN PASS / CONTROLLER FROZEN** | source `b02b6de`, packet commit `d6214ce`, packet `4d3f0a35…8cc3c`; Claude marker `239f13c`; preserved plays, frozen buries, 17/33 caps, explicit continuation, finite work; no outcomes |

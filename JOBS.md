@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-10 10:41 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-10 12:26 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,7 +8,7 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | none | **FREE / WAITING ON CAPACITY-PACKET REVIEW.** The state set passed. Exact capacity packet `e8967d6f…d2a58` is frozen/reproduced; no admission/result/partial exists. One capacity run may start only after its raw PASS marker. |
+| Mini | none | **FREE / WAITING ON CAPACITY-RESULT REVIEW.** The sole run completed 32/32 in 20.62s with zero refusals and no retained outcome. Result `111092b7…cee0` projects full labels at `1.545` fleet-hours / `0.219` eight-worker wall-hours. |
 | Air | none | **FREE / TRAINING CAUSALLY BLOCKED.** V7 training head `57f8e72` is source-green. Air starts no checkpoint until a complete reviewed state set and labels exist. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
@@ -22,12 +22,11 @@ play/bury surfaces, and terminal verification returned
 deals, plus all 2,048 selected states regenerated. Current order:
 
 1. External review of the immutable v7 state set is **complete / PASS**.
-2. The frozen 32-state outcome-discarding capacity packet
-   `e8967d6f…d2a58` now needs exact external PASS; freeze sampled no worlds and
-   consumed no admission.
-3. Mini then runs the pilot once. Review its result, then freeze and externally
-   review the v7 label-controller packet.
-4. Only after all three PASSes, Mini runs 16 label shards at eight-way concurrency.
+2. Capacity packet `e8967d6f…d2a58` externally passed; Mini consumed its sole
+   admission and terminally passed 32/32. Result `111092b7…cee0` now needs
+   exact external review together with test-only unequal-rate fixture `202a1d2`.
+3. On result PASS, freeze and externally review the v7 label-controller packet.
+4. Only after that packet PASS, Mini runs 16 label shards at eight-way concurrency.
 5. Air starts only after complete reviewed labels, using the v7-bound 48-cell
    training controller. DESIGN/CALIB choose a capability; untouched REPORT
    remains closed until that selection is final.
@@ -44,6 +43,7 @@ The canonical numbers and meanings are in the results table in
 
 | date | job | terminal verdict | anchor |
 |---|---|---|---|
+| 08-10 | Teacher Stage-C label capacity | **TERMINAL CAPACITY PASS / RESULT REVIEW OPEN** | packet `e8967d6f…d2a58`; result `111092b7…cee0`; 32/32, zero refusals, no retained outcome; `1.545` projected fleet-hours / `0.219` eight-worker wall-hours; unequal-rate fixture `202a1d2` is mutation-sensitive |
 | 08-09 | S3a structured-bury full-game screen | **SELECT NONE / CLOSED** | exact `c599b42`; all 2,048 clusters verified; aggregate `20609613…271f`, final `32156d79…c9ff`; no confirmation, retry, tuning or promotion |
 | 08-09 | Teacher Stage-C controller rebind | **EXTERNAL PASS / ZERO STATES** | source `7018f36`; packet commit `45429f3`; packet `b60c4298…7b18`; Claude PASS at `cb9471b`; all seven curriculum commitments unchanged; capture-controller implementation only |
 | 08-09 | Teacher Stage-C design v3 | **DESIGN PASS / SUPERSEDED ONLY BY IDENTITY REBIND** | source `20bdb95`; asset `1a29418`; packet `f213314a…3b4`; Claude PASS at `d92f595`; zero states/labels; curriculum preserved exactly by passed rebind `b60c4298…7b18` |

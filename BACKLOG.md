@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-10 10:41 EDT.
+Last re-derived: 2026-08-10 12:26 EDT.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
 `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -38,20 +38,22 @@ here.
   completed 24/24 shards, froze exact `1024/512/512` splits and `1920/128`
   play/bury surfaces, then reproduced all 750,000 dispositions and all 2,048
   selected states. Claude independently passed state set `c7a769c4…e8e1c` and
-  verifier `143fb2db…4adb`. The next 32-state capacity packet
-  `e8967d6f…d2a58` is frozen/reproduced and awaiting external review; it has
-  consumed no admission or outcomes. V7-bound label, training, REPORT and
-  composition source heads are green; no label, checkpoint or REPORT result exists.
+  verifier `143fb2db…4adb`. The 32-state capacity packet
+  `e8967d6f…d2a58` externally passed; its sole Mini execution completed 32/32
+  with zero refusals and no retained outcome. Result `111092b7…cee0` projects
+  the full labels at only `1.545` fleet-hours / `0.219` eight-worker wall-hours
+  and now needs external review. The required unequal-rate fixture is closed at
+  `202a1d2`; no label, checkpoint or REPORT result exists.
 - **S5 replay:** Claude passed PR #4 head `2351b36`, including the required
   lower-ranked-but-equal-point negative fixture and red `<`→`<=` mutation.
   One deterministic score-free census freeze is eligible later; no census,
   treatment or strength run exists.
 - **Learners:** V11 direct-v2, Direct-Q, O0 and O0-v2 all selected none under
   their registered gates. They remain diagnostics, not deployable policies.
-- **Capacity:** Mini and Air are idle at capacity-packet review. State-set PASS
-  is complete; packet `e8967d6f…d2a58` now needs exact external PASS before
-  Mini's one outcome-discarding run. Air waits for complete reviewed labels
-  before the 48-cell matrix. Capture may never be rerun or extended.
+- **Capacity:** Mini and Air are idle at capacity-result review. The one-shot
+  run is terminal PASS at `111092b7…cee0`; exact external PASS is required
+  before the label-controller packet may freeze. Air waits for complete
+  reviewed labels before the 48-cell matrix. Capture/capacity may never rerun.
   HUMAN-C1 remains parked until a challenger first beats report-LCB.
 
 ## NOW — output ledger ordered by value
@@ -63,7 +65,7 @@ scientific output of that step.
 | priority / milestone | strategy and problem, in plain English | progress so far and what's left, in plain English | next work | required output | exact exit gate |
 |---|---|---|---|---|---|
 | **DONE / T4.2 capture + state set** | Mine a balanced set of ordinary and hard decisions where a stronger Teacher can reveal choices the live bot misses. | **Complete and externally passed.** V7 has one consumed receipt, 24/24 fresh shards, exact 2,048-state freeze, clean full replay and independent population/digest review. **Left:** none; preserve immutable assets. | No new compute | Exactly 1,024 DESIGN + 512 CALIB + 512 untouched REPORT states, including 1,920 play and 128 bury rows | Satisfied by reviewed state set `c7a769c4…e8e1c` and verifier `143fb2db…4adb`; no retry, pooling or extension. |
-| **P0 / T4.2 labels** | Price every candidate with a stronger, explicitly bounded Teacher so the learner receives counterfactual ranking signal rather than another imitation label. | V7-bound source `3f6f048` is green. The exact 32-state capacity packet `e8967d6f…d2a58` is frozen/reproduced with no admission or outcome. **Left:** packet PASS, one capacity execution + result PASS, label-controller freeze + external PASS, then 16 complete shards. | Review packet before capacity; review result and label packet before labels | Complete candidate-level labels with exact fold, continuation, work and refusal provenance | Every row and aggregate reopens; underfill, parent drift or budget breach terminally holds without partial utility. |
+| **P0 / T4.2 labels** | Price every candidate with a stronger, explicitly bounded Teacher so the learner receives counterfactual ranking signal rather than another imitation label. | Capacity packet and one-shot run passed operationally: 32/32, zero refusals, result `111092b7…cee0`, no retained outcome, projected `1.545` fleet-hours / `0.219` eight-worker wall-hours. Unequal-rate regression fixture `202a1d2` is green and mutation-sensitive. **Left:** external result PASS, label-controller freeze + external PASS, then 16 complete shards. | Review capacity result; then review label packet before labels | Complete candidate-level labels with exact fold, continuation, work and refusal provenance | Every row and aggregate reopens; underfill, parent drift or budget breach terminally holds without partial utility. |
 | **P0 / T4.3 seeded models** | Learn a stable ranker and calibrated outcome signal from the new Teacher rather than selecting one lucky checkpoint. | V7-bound `57f8e72` is source-green; no checkpoint exists. **Left:** complete labels, then 48 play/bury × eight-seed × 25/50/100% cells selected only with DESIGN/CALIB. | Air runs at most eight cells concurrently after reviewed labels | Eight seeds per surface/head family plus state-count learning curves, seed dispersion and one frozen CALIB selection | No single seed advances. The full-data cohort must meet the predeclared stability/calibration gate before REPORT opens. |
 | **P0 / T4.4 untouched REPORT** | Ask once on unseen states whether the frozen learner improves Teacher choice/regret and calibration before paying for games. | V7-bound `4c8d23b` passes 161 relevant/design tests. REPORT has never opened. **Left:** wait for one DESIGN/CALIB selection, freeze/review exact evaluator assets, then consume REPORT once. | Later evaluate only the selected surface/head/epoch cohort | One 512-state REPORT result with ranking regret/coverage and signed-outcome calibration against the live baseline | Exactly one capability passes the frozen REPORT gate or the generation selects none; no REPORT retuning or second look. |
 | **P0 / T4.5 composed challenger** | Let the model focus fresh report-LCB search on one Teacher-supported challenger, while a matched random proposal tells us whether the learned ranking—not merely narrowing the ballot—adds strength. | V7-bound `68e351b` passes 260 Stage-C/S3c tests and a 300-play/50-bury parity soak. No model, packet or run exists. **Left:** external source review, then after a REPORT passer score-free capacity and one fresh screen. | Execute only from the single REPORT passer | One mirrored treatment/null/champion result against `mc-s0-report-lcb` | Treatment must have positive one-sided utility LCB versus both champion and null; null must remain compatible with champion. PASS opens confirmation-packet review only. |
@@ -133,9 +135,9 @@ unreviewed strength compute, training, promotion and production changes.
 7. **S5 boundary fixture closed PASS:** PR #4 head `2351b36` pins the
    lower-ranked-but-equal-point non-trigger. One score-free census freeze is
    eligible later; it was not required for T3.
-8. Mini and Air are idle pending capture-v6 review. On PASS, Mini owns capture
-   and labels; Air waits for reviewed labels and the v6-rebound 48-cell matrix.
-   Candidate-source propagation and source review run in parallel; idle compute
+8. Mini and Air are idle pending capacity-result review. On PASS, Mini freezes
+   and seeks review of the label controller, then owns the 16-shard label run;
+   Air waits for reviewed labels and the v7-bound 48-cell matrix. Idle compute
    is not a reason to invent an unregistered strength run.
 9. Keep the next real product gate as candidate-versus-champion performance
    against the same blinded human cohort, followed by an absolute experienced-

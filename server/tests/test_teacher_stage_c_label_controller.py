@@ -21,8 +21,8 @@ SPEC.loader.exec_module(controller)
 import teacher_stage_c_label_capacity as capacity  # noqa: E402
 
 CAPTURE_PACKET = (
-    Path(__file__).parents[1] / "runs/logs/"
-    "teacher-v3-hard-tail-stage-c-capture-controller-v3/controller_packet.json"
+    Path(__file__).parents[1] / "runs/logs" /
+    controller.CAPTURE_CTRL.PACKET_ID / "controller_packet.json"
 )
 
 
@@ -197,6 +197,33 @@ def _write_capacity_inputs(root: Path, inputs) -> tuple[Path, str, Path, str,
     review_path.write_text(capacity.RESULT_REVIEW_MARKER + json.dumps(
         claim, sort_keys=True, separators=(",", ":")) + "\n")
     return packet_path, packet_sha, result_path, result_sha, review_path
+
+
+def test_label_lane_is_bound_to_capture_v4_not_v3() -> None:
+    packet = controller.validate_capture_controller(CAPTURE_PACKET)
+    assert packet["schema"] == "teacher-stage-c-capture-controller-v4"
+    assert packet["run_id"] == controller.CAPTURE_RUN_ID
+    assert packet["producer"]["git"] == controller.CAPTURE_SOURCE_GIT
+
+    old = (Path(__file__).parents[1] / "runs/logs" /
+           "teacher-v3-hard-tail-stage-c-capture-controller-v3" /
+           "controller_packet.json")
+    with pytest.raises(controller.ControllerRefused,
+                       match="external SHA-256 drift"):
+        controller.validate_capture_controller(old)
+
+
+def test_v3_state_set_marker_cannot_authorize_v4_labels() -> None:
+    log_root = controller.REPO / "server/runs/logs"
+    with tempfile.TemporaryDirectory(dir=log_root) as raw:
+        inputs = _write_inputs(Path(raw))
+        claim = inputs[4].read_text().split(" ", 1)[1]
+        inputs[4].write_text(
+            "TEACHER_STAGE_C_STATE_SET_V3_REVIEW " + claim)
+        with pytest.raises(controller.ControllerRefused,
+                           match="must contain exactly one .*V4_REVIEW"):
+            controller.validate_state_set(
+                inputs[0], inputs[1], inputs[2], inputs[3], inputs[4])
 
 
 def test_state_set_review_and_schedule_are_exact() -> None:

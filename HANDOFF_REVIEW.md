@@ -791,3 +791,24 @@ Scope: implementation of one score-free Stage-C capture/controller only. No capt
 sampling, solver work, labels, training, strength, promotion or deployment.
 
 TEACHER_STAGE_C_CONTROLLER_REBIND_V1_REVIEW {"base_stage_c_review_schema":"teacher-stage-c-hard-tail-design-review-v3","base_stage_c_sha256":"f213314ace8ead497fcaccde150d0694851069b970948a10d0823cf74ceb93b4","bury_candidate_cap":33,"capture_controller_implementation_authorized":true,"curriculum_changed":false,"exact_solver_sessions_before_review":0,"git":"7018f369e8d706e4b745badd873b38fb708ace18","h0_controller_review_schema":"human-h0-counterfactual-controller-review-v3","h0_controller_sha256":"cf074871cf977c0b072c528c395082b453b3b589f445c524baae9016e1d35392","independent_review":true,"labels_authorized":false,"max_candidate_worlds":10494720,"outcomes_computed_before_review":false,"packet_sha256":"b60c4298493794b6de0ffe6907e8b92fb24f4bab6d56cc4c653eb1c67a1b7b18","play_candidate_cap":20,"production_deployment":false,"production_promotion":false,"recursive_mc_continuation_rollouts":0,"s3c_controller_review_schema":"s3c-one-card-capacity-controller-review-v2","s3c_controller_sha256":"cafbee439f8c30a07b0b6801d52620d7197afc3633badbc531bc5b156ce2f23e","schema":"teacher-stage-c-controller-rebind-review-v1","script_sha256":"513f7ad6e9a505be0bc90fce729cb5f87459d8791ba436cd413242d331a77bf2","state_capture_authorized":false,"states":2048,"strength_claim":false,"training_authorized":false,"verdict":"PASS","worlds_sampled_before_review":0}
+
+## Claude — 2026-08-09 22:22 EDT — CORRECTION: the 20:39 capacity-drift note is WITHDRAWN; the S4 screen is on projection. My last three entry datestamps were wrong
+
+Two errors, both mine:
+
+1. **The "S4 tracking ~2.5x its preflight projection" note (commit `ef5f4e6`) is wrong and
+   withdrawn.** I anchored elapsed time on a fabricated launch time instead of the receipt's
+   `created_time_ns` (17:15 EDT). Measured correctly: at 22:16 the screen is 1,209/2,048 at 5.01
+   elapsed hours — fleet rate 4.0 clusters/min, slowest shard 151/256 projecting ~8.5 hours,
+   comfortably INSIDE the preflight's 11.42-hour max-shard projection. The advice in that note
+   (larger preflight samples, measured-cost confirmation sizing) is harmless but unsupported by
+   this run; treat the note as noise. The run itself was never touched and remains sealed.
+2. **Datestamps on my last three entries are wrong**: the entries stamped "2026-08-10 07:58",
+   "2026-08-10 08:12" and "2026-08-10 09:12" were actually written 2026-08-09 at roughly 20:15,
+   20:39 and 21:12 EDT (see their commit times: `205b6af`, `ef5f4e6`, `cb9471b`). I invented a day
+   rollover that had not happened. All hashes, measurements and verdicts in those entries stand
+   unchanged; only the header dates are wrong.
+
+Root cause is the class my own protocol warns about: deriving a quantitative claim (elapsed hours)
+from a remembered narrative instead of the artifact's own timestamp. The correction rule applied
+going forward: elapsed-time claims must quote `created_time_ns` arithmetic inline.

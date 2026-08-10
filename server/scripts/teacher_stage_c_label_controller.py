@@ -63,15 +63,15 @@ ADMISSION_SCHEMA = "teacher-stage-c-label-admission-v2"
 SHARD_ADMISSION_SCHEMA = "teacher-stage-c-label-shard-admission-v2"
 SHARD_SCHEMA = "teacher-stage-c-label-shard-v2"
 AGGREGATE_SCHEMA = "teacher-stage-c-label-aggregate-v2"
-CAPACITY_PACKET_SCHEMA = "teacher-stage-c-label-capacity-controller-v2"
-CAPACITY_PACKET_ID = "teacher-v3-hard-tail-stage-c-label-capacity-controller-v2"
-CAPACITY_RUN_ID = "teacher-v3-hard-tail-stage-c-label-capacity-v2"
-CAPACITY_RESULT_SCHEMA = "teacher-stage-c-label-capacity-result-v2"
+CAPACITY_PACKET_SCHEMA = "teacher-stage-c-label-capacity-controller-v3"
+CAPACITY_PACKET_ID = "teacher-v3-hard-tail-stage-c-label-capacity-controller-v3"
+CAPACITY_RUN_ID = "teacher-v3-hard-tail-stage-c-label-capacity-v3"
+CAPACITY_RESULT_SCHEMA = "teacher-stage-c-label-capacity-result-v3"
 CAPACITY_RESULT_REVIEW_SCHEMA = (
-    "teacher-stage-c-label-capacity-result-review-v2"
+    "teacher-stage-c-label-capacity-result-review-v3"
 )
 CAPACITY_RESULT_REVIEW_MARKER = (
-    "TEACHER_STAGE_C_LABEL_CAPACITY_RESULT_V2_REVIEW "
+    "TEACHER_STAGE_C_LABEL_CAPACITY_RESULT_V3_REVIEW "
 )
 
 CAPTURE_CONTROLLER_SHA256 = (
@@ -540,6 +540,7 @@ def validate_capacity_evidence(
     try:
         expected_preflight_schedule = capacity.build_capacity_schedule(state_set)
         expected_runtime_sources = capacity.runtime_sources()
+        expected_runtime_dependencies = capacity.runtime_dependency_witness()
     except capacity.CapacityRefused as exc:
         raise ControllerRefused(f"capacity-controller validation failed: {exc}") \
             from exc
@@ -568,6 +569,8 @@ def validate_capacity_evidence(
             or packet.get("preflight_schedule")
             != expected_preflight_schedule
             or packet.get("runtime_sources") != expected_runtime_sources
+            or packet.get("runtime_dependencies") !=
+                expected_runtime_dependencies
             or capacity.forbidden_outcome_paths(packet)
             or authority.get("outcomes_computed") is not False
             or authority.get("outcomes_retained") is not False

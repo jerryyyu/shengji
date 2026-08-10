@@ -80,6 +80,11 @@ def _packet(schedule: dict, label_schedule: dict) -> dict:
     value = {
         "producer": {"git": "a" * 40},
         "parents": {"state_set": {"external_sha256": "b" * 64}},
+        "runtime_dependencies": {
+            "schema": "teacher-stage-c-label-capacity-runtime-witness-v1",
+            "outcomes_computed": False,
+            "worlds_sampled": False,
+        },
         "label_schedule": {
             "schedule_sha256": label_schedule["schedule_sha256"]},
         "preflight_schedule": schedule,
@@ -114,6 +119,18 @@ def test_schedule_selects_two_unique_witnesses_from_every_label_shard() -> None:
         assert len(selected) == 2
         assert len({sample["state_id"] for sample in selected}) == 2
     assert schedule["selection_rule"]["selection_uses_no_outcomes"] is True
+
+
+def test_runtime_witness_loads_v11_before_any_world() -> None:
+    witness = capacity.runtime_dependency_witness()
+    assert witness["host"] == "Jerrys-Mac-mini.local"
+    assert witness["python"] == "3.14.6"
+    assert witness["numpy"] == "2.5.1"
+    assert witness["network_class"] == "NpNet"
+    assert witness["v11_checkpoint_sha256"] == capacity.CAPTURE.V11_SHA256
+    assert witness["outcomes_computed"] is False
+    assert witness["worlds_sampled"] is False
+    assert len(witness["weight_shapes_sha256"]) == 64
 
 
 def test_schedule_is_deterministic_and_covers_late_and_heavy_geometry() -> None:
@@ -301,6 +318,34 @@ def test_admission_is_durable_and_one_shot(tmp_path: Path,
     assert len(first) == 64
     with pytest.raises(capacity.CapacityRefused, match="already consumed"):
         capacity._consume_admission(packet, "b" * 64, review)
+
+
+def test_bad_runtime_refuses_before_admission_is_consumed(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    packet = {"runtime_dependencies": {"frozen": True}}
+    state_set = {"states": []}
+    review = {"verdict": "PASS"}
+    consumed = []
+    monkeypatch.setattr(
+        capacity, "_reopen_packet",
+        lambda *_args: (packet, state_set, review))
+    monkeypatch.setattr(capacity, "REPO", tmp_path)
+    monkeypatch.setattr(capacity, "RESULT_PATH", "capacity-result.json")
+    monkeypatch.setattr(
+        capacity, "runtime_dependency_witness",
+        lambda: (_ for _ in ()).throw(
+            capacity.CapacityRefused("missing NumPy")))
+    monkeypatch.setattr(
+        capacity, "_consume_admission",
+        lambda *_args: consumed.append(True))
+    with pytest.raises(capacity.CapacityRefused, match="missing NumPy"):
+        capacity.run_capacity(
+            tmp_path / "packet.json", "a" * 64,
+            tmp_path / "controller-review.txt",
+            tmp_path / "state-review.txt",
+            tmp_path / "capacity-result.json")
+    assert consumed == []
+    assert not (tmp_path / "capacity-result.json").exists()
 
 
 def test_postcompute_identity_reopens_every_reviewed_input(

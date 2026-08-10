@@ -23,6 +23,7 @@ import json
 import math
 import multiprocessing
 import os
+import platform
 import stat
 import subprocess
 import sys
@@ -42,17 +43,17 @@ import teacher_stage_c_label_controller as CTRL  # noqa: E402
 import teacher_stage_c_label_runtime as LABEL  # noqa: E402
 
 
-SCHEMA = "teacher-stage-c-label-capacity-controller-v2"
-PACKET_ID = "teacher-v3-hard-tail-stage-c-label-capacity-controller-v2"
-RUN_ID = "teacher-v3-hard-tail-stage-c-label-capacity-v2"
+SCHEMA = "teacher-stage-c-label-capacity-controller-v3"
+PACKET_ID = "teacher-v3-hard-tail-stage-c-label-capacity-controller-v3"
+RUN_ID = "teacher-v3-hard-tail-stage-c-label-capacity-v3"
 PACKET_PATH = f"server/runs/logs/{RUN_ID}/controller_packet.json"
 RESULT_PATH = f"server/runs/logs/{RUN_ID}/capacity-result.json"
-PACKET_REVIEW_SCHEMA = "teacher-stage-c-label-capacity-controller-review-v2"
-PACKET_REVIEW_MARKER = "TEACHER_STAGE_C_LABEL_CAPACITY_V2_REVIEW "
-RESULT_SCHEMA = "teacher-stage-c-label-capacity-result-v2"
-RESULT_REVIEW_SCHEMA = "teacher-stage-c-label-capacity-result-review-v2"
-RESULT_REVIEW_MARKER = "TEACHER_STAGE_C_LABEL_CAPACITY_RESULT_V2_REVIEW "
-ADMISSION_SCHEMA = "teacher-stage-c-label-capacity-admission-v2"
+PACKET_REVIEW_SCHEMA = "teacher-stage-c-label-capacity-controller-review-v3"
+PACKET_REVIEW_MARKER = "TEACHER_STAGE_C_LABEL_CAPACITY_V3_REVIEW "
+RESULT_SCHEMA = "teacher-stage-c-label-capacity-result-v3"
+RESULT_REVIEW_SCHEMA = "teacher-stage-c-label-capacity-result-review-v3"
+RESULT_REVIEW_MARKER = "TEACHER_STAGE_C_LABEL_CAPACITY_RESULT_V3_REVIEW "
+ADMISSION_SCHEMA = "teacher-stage-c-label-capacity-admission-v3"
 
 SAMPLES_PER_SHARD = 2
 SAMPLE_STATES = CTRL.LABEL_SHARDS * SAMPLES_PER_SHARD
@@ -63,6 +64,9 @@ MAX_PROJECTED_FLEET_HOURS = 192.0
 MAX_PROJECTED_SHARD_HOURS = 24.0
 MAX_PROJECTED_EIGHT_WORKER_WALL_HOURS = 24.0
 HEARTBEAT_SECONDS = 30.0
+EXPECTED_HOST = "Jerrys-Mac-mini.local"
+EXPECTED_PYTHON = "3.14.6"
+EXPECTED_NUMPY = "2.5.1"
 
 # Exact keys forbidden anywhere in a durable packet/result.  Provenance names
 # such as ``label_schedule_sha256`` are safe; action tensors and world/outcome
@@ -211,6 +215,63 @@ def runtime_sources() -> dict[str, str]:
     return dict(sorted(values.items()))
 
 
+def runtime_dependency_witness() -> dict:
+    """Prove the outcome-free worker bootstrap before admission can be spent."""
+    try:
+        import numpy
+    except Exception as exc:
+        raise CapacityRefused(
+            f"capacity runtime cannot import NumPy: {type(exc).__name__}") \
+            from exc
+    host = platform.node()
+    python = platform.python_version()
+    numpy_version = str(numpy.__version__)
+    if (host != EXPECTED_HOST or python != EXPECTED_PYTHON
+            or numpy_version != EXPECTED_NUMPY):
+        raise CapacityRefused(
+            "capacity runtime dependency identity drift: "
+            f"host={host} python={python} numpy={numpy_version}")
+    try:
+        net = LABEL._load_v11()
+    except Exception as exc:
+        raise CapacityRefused(
+            f"capacity runtime cannot load frozen V11: {type(exc).__name__}") \
+            from exc
+    weights = getattr(net, "w", None)
+    if not isinstance(weights, dict) or not weights:
+        raise CapacityRefused("capacity V11 network lacks frozen weights")
+    weight_shapes = {
+        str(name): {
+            "shape": list(value.shape),
+            "dtype": str(value.dtype),
+        }
+        for name, value in sorted(weights.items())
+    }
+    expected_keys = {
+        "p0b", "p0w", "p2b", "p2w", "q0b", "q0w", "q2b", "q2w",
+        "t0b", "t0w", "t2b", "t2w",
+    }
+    if set(weight_shapes) != expected_keys \
+            or any(value["dtype"] != "float32"
+                   for value in weight_shapes.values()):
+        raise CapacityRefused("capacity V11 weight contract drift")
+    executable = Path(sys.executable).resolve()
+    numpy_init = Path(numpy.__file__).resolve()
+    return {
+        "schema": "teacher-stage-c-label-capacity-runtime-witness-v1",
+        "host": host,
+        "python": python,
+        "numpy": numpy_version,
+        "python_executable_sha256": sha256_file(executable),
+        "numpy_init_sha256": sha256_file(numpy_init),
+        "v11_checkpoint_sha256": CAPTURE.V11_SHA256,
+        "network_class": type(net).__name__,
+        "weight_shapes_sha256": sha256_bytes(canonical_json(weight_shapes)),
+        "outcomes_computed": False,
+        "worlds_sampled": False,
+    }
+
+
 def producer_identity(*, smoke: bool) -> dict:
     require_admission_slot_ignored()
     dirty = bool(_git("status", "--porcelain", "--untracked-files=all"))
@@ -354,6 +415,7 @@ def build_packet(
             },
         },
         "runtime_mode": CTRL.CAPTURE_CTRL.require_runtime_mode(),
+        "runtime_dependencies": runtime_dependency_witness(),
         "runtime_sources": runtime_sources(),
         "label_schedule": {
             "schedule_sha256": label_schedule["schedule_sha256"],
@@ -366,6 +428,8 @@ def build_packet(
         "execution_contract": {
             "spawn_workers": WORKERS,
             "worker_loads_frozen_v11_once": True,
+            "parent_loads_frozen_v11_before_admission": True,
+            "pre_admission_environment_failure_consumes_no_slot": True,
             "exact_label_state_and_semantic_validator": True,
             "outcome_tensor_exists_only_in_ephemeral_worker_memory": True,
             "outcome_tensor_discarded_before_worker_return": True,
@@ -429,6 +493,12 @@ def expected_packet_review_claim(packet: Mapping[str, object],
         "label_schedule_sha256": packet["label_schedule"]["schedule_sha256"],
         "preflight_schedule_sha256": packet[
             "preflight_schedule"]["schedule_sha256"],
+        "runtime_dependency_witness_sha256": sha256_bytes(canonical_json(
+            packet["runtime_dependencies"])),
+        "runtime_host": EXPECTED_HOST,
+        "runtime_python": EXPECTED_PYTHON,
+        "runtime_numpy": EXPECTED_NUMPY,
+        "parent_loads_frozen_v11_before_admission": True,
         "sample_states": SAMPLE_STATES,
         "label_shards": CTRL.LABEL_SHARDS,
         "samples_per_shard": SAMPLES_PER_SHARD,
@@ -477,6 +547,8 @@ def _reopen_packet(
             or packet.get("runtime_sources") != runtime_sources()
             or packet.get("runtime_mode") !=
                 CTRL.CAPTURE_CTRL.require_runtime_mode()
+            or packet.get("runtime_dependencies") !=
+                runtime_dependency_witness()
             or forbidden_outcome_paths(packet)):
         raise CapacityRefused("capacity-controller identity/source drift")
     parents = packet["parents"]
@@ -1024,6 +1096,11 @@ def run_capacity(
         raise CapacityRefused("real capacity-result path drift")
     if os.path.lexists(out) or os.path.lexists(Path(str(out) + ".partial")):
         raise CapacityRefused("capacity-result namespace already exists")
+    # This witness is intentionally before the durable one-shot slot.  Loading
+    # V11 and checking dependencies samples no worlds and computes no outcome;
+    # a missing package or bad checkpoint therefore refuses for free.
+    if runtime_dependency_witness() != packet["runtime_dependencies"]:
+        raise CapacityRefused("pre-admission runtime dependency drift")
     admission_sha256 = _consume_admission(
         packet, expected_packet_sha256, review)
     states = {str(state["state_id"]): state for state in state_set["states"]}

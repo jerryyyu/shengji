@@ -112,7 +112,8 @@ validation battery.
   full transcript with all hands.
 - `scripts/xray.py` / the in-game X-ray (press `x`; needs
   `SHENGJI_DEBUG_TOKEN`) — what the bot sees and would play from any
-  position.
+  position, including the banker's chosen kitty bury and any available
+  bury-search candidates/work account.
 - `scripts/analyze_human.py`, `scripts/eval_vs_human.py` — score human
   decisions against the bot / the whole policy ladder.
 - `scripts/fetch_fly_logs.sh` — pull prod game logs for the above.

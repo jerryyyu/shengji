@@ -17,6 +17,40 @@ interface XrayCandidate {
   bot_plays: boolean;
 }
 
+interface XrayBuryCandidate {
+  cards: string[];
+  sources: string[];
+  banker_avg: number | null;
+  worlds: number;
+  incumbent: boolean;
+  raw_winner: boolean;
+  bot_buries: boolean;
+}
+
+interface XrayBuryWork {
+  cap?: number;
+  worlds_requested?: number;
+  worlds_used?: number;
+  attempts?: number;
+  attempt_cap?: number;
+  candidate_rollouts?: number;
+  complete?: boolean;
+}
+
+interface XrayBuryAnalysis {
+  policy: string;
+  mode: string;
+  chosen: string[];
+  reason: string;
+  fallback: boolean;
+  margin: number | null;
+  gap_vs_incumbent: number | null;
+  search_secs: number;
+  work: XrayBuryWork | null;
+  sampler_delta: Record<string, number> | null;
+  candidates: XrayBuryCandidate[];
+}
+
 interface XrayData {
   seat: number;
   hand: string[];
@@ -27,6 +61,7 @@ interface XrayData {
   boss_cards: string[];
   ruff_risky_suits: string[];
   candidates: XrayCandidate[] | null;
+  bury: XrayBuryAnalysis | null;
 }
 
 type XrayResp = XrayData | { error: string };
@@ -155,38 +190,108 @@ export default function XrayPanel({ state, onClose }: { state: GameState; onClos
           </div>
         </div>
 
-        <div className="xr-section">
-          <div className="xr-head">candidates</div>
-          {data.candidates === null ? (
-            <div className="xr-dim">not your turn — press x on your turn for candidate analysis</div>
-          ) : (
+        {data.bury !== null ? (
+          <div className="xr-section">
+            <div className="xr-head">
+              kitty bury — {data.bury.policy} / {data.bury.mode}
+            </div>
+            <div className="xr-row">
+              <span className="xr-label">chosen</span>
+              <span className="xr-cards">
+                {data.bury.chosen.map((c, i) => <CodeSpan key={i} c={c} />)}
+              </span>
+              {data.bury.fallback ? <span className="xr-tag">fallback</span> : null}
+            </div>
+            <div className="xr-row">
+              <span className="xr-label">reason</span>
+              <span>{data.bury.reason}</span>
+            </div>
+            {data.bury.work === null ? (
+              <div className="xr-dim">heuristic decision — no rollout search</div>
+            ) : (
+              <div className="xr-dim">
+                {data.bury.work.worlds_used ?? 0}/{data.bury.work.worlds_requested ?? 0} worlds
+                {" · "}{data.bury.work.candidate_rollouts ?? 0} candidate rollouts
+                {" · "}{data.bury.search_secs.toFixed(3)}s
+                {data.bury.work.complete === false ? " · underfilled" : ""}
+              </div>
+            )}
+            {data.bury.sampler_delta !== null ? (
+              <div className="xr-dim">
+                sampler: {data.bury.sampler_delta.accepted_worlds ?? 0} accepted /
+                {" "}{data.bury.sampler_delta.sample_attempts ?? 0} attempts
+                {" · "}{data.bury.sampler_delta.failed_worlds ?? 0} failed
+                {" · "}{data.bury.sampler_delta.rejected_worlds ?? 0} rejected
+              </div>
+            ) : null}
             <table className="xr-table">
               <thead>
                 <tr>
-                  <th>play</th>
-                  <th>atk avg</th>
+                  <th>bury</th>
+                  <th>banker avg</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {data.candidates.map((cand, i) => (
-                  <tr key={i} className={cand.bot_plays ? "bot" : ""}>
+                {data.bury.candidates.map((cand, i) => (
+                  <tr key={i} className={cand.bot_buries ? "bot" : ""}>
                     <td>
-                      {cand.play.map((c, j) => (
+                      {cand.cards.map((c, j) => (
                         <CodeSpan key={j} c={c} />
                       ))}
                     </td>
-                    <td className="xr-num">{cand.attackers_avg.toFixed(1)}</td>
+                    <td className="xr-num">
+                      {cand.banker_avg === null ? "—" : cand.banker_avg.toFixed(1)}
+                    </td>
                     <td>
-                      {cand.heuristic_pick ? <span className="xr-tag">heuristic</span> : null}
-                      {cand.bot_plays ? <span className="xr-tag bot">BOT</span> : null}
+                      {cand.incumbent ? <span className="xr-tag">incumbent</span> : null}
+                      {cand.raw_winner ? <span className="xr-tag">raw best</span> : null}
+                      {cand.bot_buries ? <span className="xr-tag bot">BOT</span> : null}
+                      {cand.sources.length > 0 ? (
+                        <span className="xr-tag" title={cand.sources.join(", ")}>
+                          {cand.sources.join("+")}
+                        </span>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="xr-section">
+            <div className="xr-head">play candidates</div>
+            {data.candidates === null ? (
+              <div className="xr-dim">press x on your play turn for candidate analysis</div>
+            ) : (
+              <table className="xr-table">
+                <thead>
+                  <tr>
+                    <th>play</th>
+                    <th>atk avg</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.candidates.map((cand, i) => (
+                    <tr key={i} className={cand.bot_plays ? "bot" : ""}>
+                      <td>
+                        {cand.play.map((c, j) => (
+                          <CodeSpan key={j} c={c} />
+                        ))}
+                      </td>
+                      <td className="xr-num">{cand.attackers_avg.toFixed(1)}</td>
+                      <td>
+                        {cand.heuristic_pick ? <span className="xr-tag">heuristic</span> : null}
+                        {cand.bot_plays ? <span className="xr-tag bot">BOT</span> : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </>
     );
   }

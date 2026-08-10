@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import random
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -424,6 +425,9 @@ def test_controller_authority_and_score_free_preflight_cannot_widen() -> None:
                 ctrl.admission_slot_logical_path(),
             "admission_slot_published_before_receipt": True,
             "receipt_deletion_cannot_reissue": True,
+            "admission_slot_gitignored": True,
+            "admit_then_runtime_reopen_required": True,
+            "unrelated_git_dirt_refused": True,
         },
         "authority": {
             "score_free": True,
@@ -581,3 +585,103 @@ def test_receipt_publication_failure_still_consumes_admission(
     assert not receipt.exists()
     with pytest.raises(runtime.RuntimeRefused, match="already consumed"):
         _admit_fixture(tmp_path, monkeypatch, packet, namespace, receipt)
+
+
+def _init_runtime_git_fixture(tmp_path: Path) -> str:
+    (tmp_path / ".gitignore").write_text(
+        "logs/\nserver/runs/locks/\n")
+    (tmp_path / "tracked.txt").write_text("clean\n")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "runtime-test@example.invalid"],
+        cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Runtime Test"], cwd=tmp_path,
+        check=True)
+    subprocess.run(
+        ["git", "add", ".gitignore", "tracked.txt"], cwd=tmp_path,
+        check=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "fixture"], cwd=tmp_path, check=True)
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path, check=True,
+        capture_output=True, text=True).stdout.strip()
+
+
+def test_real_admit_then_packet_reopen_ignores_only_durable_slot(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression: admission must not make every later runtime call refuse."""
+    head = _init_runtime_git_fixture(tmp_path)
+    monkeypatch.setattr(ctrl, "REPO", tmp_path)
+    monkeypatch.setattr(runtime, "REPO", tmp_path)
+    monkeypatch.setattr(runtime.CTRL, "REPO", tmp_path)
+    execution_runtime = {
+        "fast_engine": True,
+        "environment": {
+            "SHENGJI_FAST": "1", "SHENGJI_REQUIRE_VOIDS": "1"},
+        "experimental_sampler_flags": [],
+        "fast_router_sha256": "e" * 64,
+        "compiled_fast_binary_sha256": "f" * 64,
+    }
+    monkeypatch.setattr(
+        runtime.CTRL, "require_execution_runtime", lambda: execution_runtime)
+    monkeypatch.setattr(
+        runtime, "_validate_current_inputs", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        runtime, "_review_claim", lambda *_args, **_kwargs: {
+            "one_counterfactual_execution_authorized": True})
+
+    namespace = (tmp_path / "server" / "runs" / "logs" / ctrl.RUN_ID)
+    namespace.mkdir(parents=True)
+    packet_path = namespace / "controller-packet.json"
+    review_path = namespace / "review.md"
+    receipt_path = namespace / "execution-receipt.json"
+    packet = {
+        "schema": ctrl.SCHEMA,
+        "packet_id": ctrl.PACKET_ID,
+        "run_id": ctrl.RUN_ID,
+        "producer": {"git": head},
+        "inputs": {"fixture": "d" * 64},
+        "schedule": {"schedule_sha256": "c" * 64},
+        "execution_runtime": execution_runtime,
+        "authority": {
+            "score_free": True,
+            "worlds_sampled": False,
+            "outcomes_computed": False,
+            "counterfactual_execution_authorized": False,
+            "labels_authorized": False,
+            "training_authorized": False,
+            "strength_claim": False,
+            "production_promotion": False,
+            "production_deployment": False,
+        },
+    }
+    packet["packet_sha256"] = ctrl.sha256_bytes(ctrl.canonical_json(packet))
+    packet_path.write_bytes(ctrl.canonical_json(packet))
+    packet_file_sha = ctrl.sha256_file(packet_path)
+    review_path.write_text("review\n")
+
+    runtime.admit(
+        packet_path=packet_path,
+        expected_packet_sha256=packet_file_sha,
+        review_record=review_path,
+        receipt_path=receipt_path,
+        namespace=namespace,
+        design_path=tmp_path / "design.json",
+        corpus=tmp_path / "corpus",
+        source_root=tmp_path / "source",
+        source_manifest=tmp_path / "source-manifest.json",
+        v11_checkpoint=tmp_path / "model.npz",
+    )
+    assert (tmp_path / ctrl.admission_slot_logical_path()).is_file()
+    assert runtime.CTRL._git(
+        "status", "--porcelain", "--untracked-files=all") == ""
+    assert runtime._controller_packet(packet_path, packet_file_sha) == packet
+
+    (tmp_path / "unexpected.txt").write_text("not runtime state\n")
+    with pytest.raises(runtime.RuntimeRefused, match="dirty tree"):
+        runtime._controller_packet(packet_path, packet_file_sha)
+    (tmp_path / "unexpected.txt").unlink()
+    (tmp_path / "tracked.txt").write_text("modified\n")
+    with pytest.raises(runtime.RuntimeRefused, match="dirty tree"):
+        runtime._controller_packet(packet_path, packet_file_sha)

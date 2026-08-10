@@ -99,6 +99,11 @@ def _controller_packet(packet_path: Path, expected_sha256: str,
     if (not _terminal_file(packet_path)
             or CTRL.sha256_file(packet_path) != expected_sha256):
         raise RuntimeRefused("controller packet identity drift")
+    try:
+        CTRL.require_admission_slot_ignored()
+        CTRL.require_clean_tree("S3c runtime refuses a dirty tree")
+    except CTRL.ControllerRefused as exc:
+        raise RuntimeRefused(str(exc)) from exc
     packet = _load_json(packet_path)
     internal = packet.get("packet_sha256")
     unhashed = {key: value for key, value in packet.items()
@@ -174,8 +179,7 @@ def _expected_receipt_path() -> Path:
 
 
 def _expected_slot_path() -> Path:
-    return (REPO / "server" / "runs" / "locks" /
-            f"{CTRL.RUN_ID}.consumed.json").resolve()
+    return (REPO / CTRL.admission_slot_logical_path()).resolve()
 
 
 def _expected_result_path() -> Path:
@@ -225,7 +229,7 @@ def _receipt(path: Path, expected_sha256: str | None,
         raise RuntimeRefused("durable admission slot is missing")
     slot = _load_json(slot_path)
     expected_slot = {
-        "schema": "s3c-one-card-capacity-admission-slot-v1",
+        "schema": CTRL.ADMISSION_SCHEMA,
         "run_id": CTRL.RUN_ID,
         "git": packet["producer"]["git"],
         "controller_packet_sha256": packet_sha256,
@@ -282,7 +286,7 @@ def admit(*, packet_path: Path, expected_packet_sha256: str,
     }
     receipt["receipt_sha256"] = _self_hash(receipt, "receipt_sha256")
     slot = {
-        "schema": "s3c-one-card-capacity-admission-slot-v1",
+        "schema": CTRL.ADMISSION_SCHEMA,
         "run_id": CTRL.RUN_ID,
         "git": packet["producer"]["git"],
         "controller_packet_sha256": expected_packet_sha256,

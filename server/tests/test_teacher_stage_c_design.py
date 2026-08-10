@@ -75,7 +75,7 @@ def _h0_controller() -> dict:
 
 def _h0_review() -> dict:
     return {
-        "schema": stage_c.H0_CONTROLLER.REVIEW_SCHEMA,
+        "schema": stage_c.H0_CONTROLLER_REVIEW_SCHEMA,
         "verdict": "PASS",
     }
 

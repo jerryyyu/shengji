@@ -148,8 +148,11 @@ def _controller_packet(path: Path, expected_sha256: str | None = None) -> dict:
         execution_runtime = CTRL.require_execution_runtime()
     except CTRL.ControllerRefused as exc:
         raise RuntimeRefused(str(exc)) from exc
-    if _git("status", "--porcelain"):
-        raise RuntimeRefused("H0 runtime refuses a dirty tree")
+    try:
+        CTRL.require_admission_slot_ignored()
+        CTRL.require_clean_tree("H0 runtime refuses a dirty tree")
+    except CTRL.ControllerRefused as exc:
+        raise RuntimeRefused(str(exc)) from exc
     if not _is_terminal_file(path):
         raise RuntimeRefused("controller packet is not regular/unlinked")
     actual_sha = CTRL.sha256_file(path)

@@ -56,15 +56,15 @@ from shengji.rl.replay_log import group_rounds, rebuild_round  # noqa: E402
 from shengji.rl.torch_policy import _load_npnet  # noqa: E402
 
 
-SCHEMA = "human-h0-counterfactual-controller-v2"
-PACKET_ID = "human-v8-h0-counterfactual-controller-v2"
-RUN_ID = "human-v8-h0-counterfactual-execution-v2"
-SHARD_SCHEMA = "human-h0-counterfactual-shard-v2"
-AGGREGATE_SCHEMA = "human-h0-counterfactual-aggregate-v2"
-REVIEW_SCHEMA = "human-h0-counterfactual-controller-review-v2"
-REVIEW_MARKER = "H0_HUMAN_COUNTERFACTUAL_CONTROLLER_V2_REVIEW "
-RECEIPT_SCHEMA = "human-h0-counterfactual-execution-receipt-v2"
-ADMISSION_SCHEMA = "human-h0-counterfactual-admission-slot-v2"
+SCHEMA = "human-h0-counterfactual-controller-v3"
+PACKET_ID = "human-v8-h0-counterfactual-controller-v3"
+RUN_ID = "human-v8-h0-counterfactual-execution-v3"
+SHARD_SCHEMA = "human-h0-counterfactual-shard-v3"
+AGGREGATE_SCHEMA = "human-h0-counterfactual-aggregate-v3"
+REVIEW_SCHEMA = "human-h0-counterfactual-controller-review-v3"
+REVIEW_MARKER = "H0_HUMAN_COUNTERFACTUAL_CONTROLLER_V3_REVIEW "
+RECEIPT_SCHEMA = "human-h0-counterfactual-execution-receipt-v3"
+ADMISSION_SCHEMA = "human-h0-counterfactual-admission-slot-v3"
 SHARD_COUNT = 8
 
 SAMPLER_FLAGS = (
@@ -105,6 +105,7 @@ V11PAIR_SHA256 = DESIGN.V11PAIR_SHA256
 MAX_CANDIDATE_WORLDS = DESIGN.TOTAL_MAX_CANDIDATE_WORLDS
 
 SOURCE_PATHS = (
+    ".gitignore",
     "server/scripts/h0_human_counterfactual_runtime.py",
     "server/scripts/h0_human_counterfactual_packet.py",
     "server/scripts/live_champion_parent.py",
@@ -191,9 +192,38 @@ def _git(*args: str) -> str:
     ).stdout.strip()
 
 
+def admission_slot_logical_path() -> str:
+    return f"server/runs/locks/{RUN_ID}.consumed.json"
+
+
+def require_admission_slot_ignored() -> dict:
+    """Prove the sole expected runtime mutation is outside Git status.
+
+    The exact ``.gitignore`` bytes are part of ``SOURCE_PATHS``.  We still
+    verify the concrete v3 path here so a broad or stale cleanliness assumption
+    cannot strand a one-shot admission after its durable tombstone is written.
+    """
+    logical_path = admission_slot_logical_path()
+    result = subprocess.run(
+        ["git", "check-ignore", "--quiet", logical_path], cwd=REPO,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        raise ControllerRefused(
+            f"admission slot is not Git-ignored: {logical_path}")
+    return {"logical_path": logical_path, "gitignored": True}
+
+
+def require_clean_tree(message: str) -> None:
+    """Reject every tracked or unignored untracked mutation."""
+    if _git("status", "--porcelain", "--untracked-files=all"):
+        raise ControllerRefused(message)
+
+
 def producer_identity(*, smoke: bool) -> dict:
     git = _git("rev-parse", "HEAD")
-    dirty = bool(_git("status", "--porcelain"))
+    require_admission_slot_ignored()
+    dirty = bool(_git("status", "--porcelain", "--untracked-files=all"))
     if dirty and not smoke:
         raise ControllerRefused("real controller freeze refuses a dirty tree")
     return {
@@ -839,10 +869,6 @@ def require_execution_runtime() -> dict:
     }
 
 
-def admission_slot_logical_path() -> str:
-    return f"server/runs/locks/{RUN_ID}.consumed.json"
-
-
 def command_templates(schedule: dict) -> dict:
     shard_commands = []
     for shard in schedule["shards"]:
@@ -912,6 +938,9 @@ def result_contract(schedule: dict) -> dict:
         "durable_one_shot_admission_slot": admission_slot_logical_path(),
         "admission_slot_published_before_receipt": True,
         "receipt_deletion_cannot_reissue": True,
+        "admission_slot_gitignored": True,
+        "admit_then_runtime_reopen_required": True,
+        "unrelated_git_dirt_refused": True,
         "shard_schema": SHARD_SCHEMA,
         "aggregate_schema": AGGREGATE_SCHEMA,
         "every_selected_row_exactly_once": True,
@@ -1121,7 +1150,10 @@ def packet_problems(packet: dict, expected: dict) -> list[str]:
     if (contract.get("durable_one_shot_admission_slot")
             != admission_slot_logical_path()
             or contract.get("admission_slot_published_before_receipt") is not True
-            or contract.get("receipt_deletion_cannot_reissue") is not True):
+            or contract.get("receipt_deletion_cannot_reissue") is not True
+            or contract.get("admission_slot_gitignored") is not True
+            or contract.get("admit_then_runtime_reopen_required") is not True
+            or contract.get("unrelated_git_dirt_refused") is not True):
         problems.append("one-shot admission contract drift")
     return sorted(set(problems))
 

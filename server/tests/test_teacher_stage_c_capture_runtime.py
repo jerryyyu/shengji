@@ -554,26 +554,41 @@ def test_bury_candidate_union_restores_hand_after_incumbent_failure(
     assert rnd.hands[seat] == original_cards
 
 
-def test_one_card_exact_late_capture_replays() -> None:
+@pytest.mark.parametrize(
+    ("role", "surface", "seed", "seat", "plays_in_trick", "hand_sizes"),
+    [
+        ("attacker", "lead", 170_010_003, 3, 0, [1, 1, 1, 1]),
+        ("attacker", "follow", 170_000_088, 2, 2, [0, 0, 1, 1]),
+        ("defender", "lead", 170_010_000, 0, 0, [1, 1, 1, 1]),
+        ("defender", "follow", 170_000_216, 1, 2, [0, 1, 1, 0]),
+    ],
+)
+def test_final_trick_exact_late_capture_replays(
+        role, surface, seed, seat, plays_in_trick, hand_sizes) -> None:
     base = _base()
-    cells = [cell for cell in ctrl.quota_cells(base)["DESIGN"]
-             if cell["stratum"] == "exact_late_eligible"]
-    found = None
-    for offset in range(16):
-        for cell in cells:
-            state, reason = runtime.capture_deal(
-                170_010_000 + offset, "DESIGN", cell,
-                runtime._actor_identity())
-            if state is not None:
-                found = state
-                break
-        if found is not None:
-            break
-    assert found is not None
-    rnd = runtime.replay_state(found)
-    assert all(len(hand) == 1 for hand in rnd.hands)
+    cell = next(cell for cell in ctrl.quota_cells(base)["DESIGN"]
+                if cell["stratum"] == "exact_late_eligible"
+                and cell["role"] == role and cell["surface"] == surface)
+    if surface == "follow":
+        # These are real v6 terminal-shortage seeds, not hand-picked deals
+        # evaluated against a cell they were never assigned to.
+        assert runtime._cell_for_seed(_packet(), "DESIGN", seed)[
+            "cell_id"] == cell["cell_id"]
+    state, reason = runtime.capture_deal(
+        seed, "DESIGN", cell, runtime._actor_identity())
+    assert reason == "eligible" and state is not None
+    rnd = runtime.replay_state(state)
+    assert state["seat"] == seat
+    assert len(rnd.trick.plays) == plays_in_trick
+    assert [len(hand) for hand in rnd.hands] == hand_sizes
+    assert runtime._is_final_trick_decision(rnd, state["seat"])
     assert len(rnd.history) >= 12
-    assert found["phase"] == "late"
+    assert state["phase"] == "late"
+    if surface == "follow":
+        # This is the exact v6 regression: a correct final-trick follow has
+        # empty hands for prior players, so the old all-equal-one predicate
+        # necessarily rejects it.
+        assert not all(len(hand) == 1 for hand in rnd.hands)
 
 
 @pytest.mark.parametrize("seed", [170_002_101, 170_007_422])

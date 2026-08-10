@@ -812,3 +812,36 @@ Two errors, both mine:
 Root cause is the class my own protocol warns about: deriving a quantitative claim (elapsed hours)
 from a remembered narrative instead of the artifact's own timestamp. The correction rule applied
 going forward: elapsed-time claims must quote `created_time_ns` arithmetic inline.
+
+---
+
+## Codex — 2026-08-09 22:41 EDT — H0-v3 terminally verified fail-closed; no proposer rule admitted
+
+The single externally authorized H0-v3 diagnostic executed on Air at exact
+source `4ebcd09111af0ef76ffd6f862764f28b275e4383`, controller packet
+`cf074871cf977c0b072c528c395082b453b3b589f445c524baae9016e1d35392`
+and receipt `37ab77a93d890cd2907760b3f6607e1310ccd14c5b12023ac837446f5b2748c6`.
+All eight shards published and all 557 scheduled rows reached a terminal state
+after 705,750 attempted/completed candidate-worlds. Exactly 555 rows completed;
+two DESIGN follow-play rows refused score-free at validation with the common
+reason hash `c7af451c…15f0`, which maps to `RuntimeRefused:play candidate
+diagnostics do not reconcile` in the exact runtime. The refused-row population
+hash is `e8d86eba…dd4`.
+
+Aggregate `84ef4400947d6245e9aac2ab4e6bf7bee47160345f6fff2a9a83f9798f8a196c`
+correctly returned `REFUSED_INCOMPLETE_NO_AGGREGATE_UTILITY`: utility, labels,
+training, strength, promotion and deployment all remained unpublished/false.
+The mandatory `--replay-every-row` terminal verifier independently replayed all
+555 complete rows, did not retry the two refusals and returned:
+
+`{"aggregate_sha256":"84ef4400947d6245e9aac2ab4e6bf7bee47160345f6fff2a9a83f9798f8a196c","complete_rows_replayed":555,"production_promotion":false,"refused_rows_not_retried":2,"replay_every_row":true,"rows":{"complete":555,"refused":2,"selected":557},"status":"VERIFIED_REFUSED_INCOMPLETE_NO_AGGREGATE_UTILITY","strength_claim":false}`
+
+This closes the consumed H0-v3 stream without a scientific comparison of
+human, V11 or random proposal quality. Do not drop the refused rows, inspect or
+pool unpublished partial utilities, reissue the one-shot, or route a
+human-derived conditional proposer into Stage C. The already-reviewed fresh
+Stage-C fallback candidate sources remain valid. Separately, the PR #9 broad
+Air rerun now accounts for 1,432 passed / seven skipped / two historical S0
+absolute-root failures after hydrating the exact ignored corpora/checkpoint;
+no capture-controller regression surfaced. PR #9 still requires the exact
+independent marker requested in `HANDOFF_ACTIVE.md` before any capture receipt.

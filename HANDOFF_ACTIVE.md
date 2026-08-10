@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 22:20 EDT. This is the executable mailbox.
+Last compacted: 2026-08-09 22:41 EDT. This is the executable mailbox.
 Terminal markers live in `HANDOFF_REVIEW.md`, policy synthesis in
 `AI_POLICIES.md`, live jobs in `JOBS.md`, and queue order in `BACKLOG.md`.
 
@@ -11,8 +11,8 @@ Terminal markers live in `HANDOFF_REVIEW.md`, policy synthesis in
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; no production change is open. |
 | T3 human-witness readiness | **COMPLETE** | Every required contract and external review is terminal. The next program milestone is T4 implementation and evidence, not another T3 packet. |
 | S3a structured bury | **TERMINAL SELECT NONE / IMMUTABLY CLOSED** | Aggregate `20609613…271f` and final `32156d79…c9ff` rehash; exact recomputation returned `verified=true`, `+0.0464`, LCB `-0.0041`. Preserve the negative result; no retry, tuning, pooling or confirmation. |
-| S4 point banking | **SEALED MINI SCREEN RUNNING** | Exact `cad3992`, packet `17036e63…1385`, receipt `20a420d2…5cc`; 1,238 count-only shard-log lines at 22:20 with eight CPU-bound workers. Do not inspect partial outcomes. This science result is no longer a T3 readiness blocker. |
-| Human H0 | **V3 EXTERNAL PASS / ZERO OUTCOMES** | Exact packet `cf074871…35392` passed at `205b6af`. One T4 diagnostic receipt is eligible, but none exists. |
+| S4 point banking | **SEALED MINI SCREEN RUNNING** | Exact `cad3992`, packet `17036e63…1385`, receipt `20a420d2…5cc`; 1,310 count-only shard-log lines at 22:39 with eight CPU-bound workers. Do not inspect partial outcomes. This science result is no longer a T3 readiness blocker. |
+| Human H0 | **TERMINAL VERIFIED REFUSAL / NO UTILITY** | Exact source `4ebcd09`, packet `cf074871…35392`, receipt `37ab77a9…748c6`, aggregate `84ef4400…196c`. All 557 rows terminated and replay-verified: 555 complete, two DESIGN follow-play rows refused because play-candidate diagnostics did not reconcile. The aggregate correctly published no utility. Preserve this one-shot result; do not retry, drop rows or admit a human-derived Stage-C rule. |
 | S3c small endgames | **V2 EXTERNAL PASS / ZERO SOLVER WORK** | Exact packet `cafbee43…f23e` passed at `205b6af`. One T4 mechanics receipt is eligible, but none exists. |
 | Teacher Stage C | **CAPTURE CONTROLLER FROZEN / CLAUDE REVIEW REQUIRED / ZERO STATES** | Draft PR #9; exact source `67fb31f`, packet commit `54ae266`, external packet `e23356f7…96f2`, internal packet `c1ee112c…3884`. Exact freeze and recomputation passed with zero states/worlds. **Left:** independent review of the executable capture boundary. Do not admit or launch capture before one exact PASS marker. |
 | S5 point protection | **BOUNDARY FIXTURE PASS / NO CENSUS** | Exact PR #4 head `2351b36` passed; one deterministic score-free census freeze is eligible later. This support lane was not required for T3 completion. |
@@ -31,9 +31,11 @@ Terminal markers live in `HANDOFF_REVIEW.md`, policy synthesis in
 - **S4 mechanism:** the rollout-only, trigger-matched exact-state screen is
   terminal PASS (`+5.156` points, LCB `+3.029`, both roles positive). Its
   separately reviewed natural-traffic screen is the sole live compute job.
-- **H0:** the bounded human/V11/random-proposal controller replays 557 public
-  rows, caps work at 1,329,210 candidate-world rollouts and passed external
-  review with zero worlds or outcomes.
+- **H0:** the bounded human/V11/random-proposal controller was executed once on
+  Air. It completed 555/557 rows and the mandatory terminal verifier replayed
+  every complete row; two DESIGN follow rows refused at candidate-diagnostic
+  validation. Its fail-closed aggregate exposed no utility, so T4 imports no
+  human-derived proposer rule from this run.
 - **Stage C:** the externally passed rebind preserves all seven original
   curriculum commitment hashes, exactly 2,048 planned states, 20/33 play/bury
   caps, 10,494,720 maximum nonrecursive candidate-world rollouts and every
@@ -97,8 +99,9 @@ more contracts:
 
 1. **in review:** Stage-C capture code and zero-work packet are frozen in PR
    #9; obtain the exact external PASS, then issue at most one capture receipt;
-2. after S4 releases Mini, execute the one reviewed H0 diagnostic and admit
-   only empirically supported human/V11 proposal rules;
+2. **closed without a rule:** H0-v3 terminally refused aggregate utility after
+   two of 557 rows failed validation; preserve the one-shot evidence and run
+   Stage C without a human-derived conditional proposer;
 3. capture exactly 2,048 split-safe states, then separately review and run the
    frozen label job;
 4. train at least eight seeds of separate ranking and calibrated signed-outcome
@@ -112,9 +115,10 @@ more contracts:
 
 - Mini: S4 only; read count/status until all workers stop, then invoke the
   exact terminal verifier once.
-- Air: available for review reproduction or later capture overflow; no T4
-  capture receipt exists and review has not authorized execution.
+- Air: available for review reproduction or later capture overflow. The H0
+  one-shot is consumed and terminal; no T4 capture receipt exists and review
+  has not authorized capture.
 - Fly: production `mc-s0-report-lcb` only.
-- Do not issue H0/S3c receipts, capture Stage C, label, train, promote or
-  deploy merely because T3 closed. Each is a separate T4 gate.
+- Do not reissue H0, issue S3c, capture Stage C, label, train, promote or deploy
+  merely because T3 closed. Each remaining action is a separate T4 gate.
 - Never retry, extend, tune from or pool a consumed one-shot stream.

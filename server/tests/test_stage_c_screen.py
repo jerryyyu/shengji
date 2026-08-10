@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from types import SimpleNamespace
 
 import pytest
 
@@ -120,3 +121,45 @@ def test_win_and_level_utility_sign_must_match() -> None:
     with pytest.raises(SCREEN.StageCScreenError, match="value drift"):
         SCREEN.aggregate_screen(
             rows, expected_seed0=7000, expected_clusters=32)
+
+
+def test_factory_runner_uses_mirrored_seed_streams_and_records_telemetry(
+        monkeypatch) -> None:
+    policy_seeds = []
+    opponent_seeds = []
+
+    def bot(seed, *, stage_c):
+        value = SimpleNamespace()
+        if stage_c:
+            value.stage_c_focus_calls = 1
+            value.stage_c_model_keeps = 1
+            value.stage_c_focus_triggers = 0
+            value.stage_c_focus_fallbacks = 0
+            value.stage_c_report_overrides = 0
+            value.stage_c_report_rejections = 0
+            value.stage_c_report_underfills = 0
+        return value
+
+    def policy(seed):
+        policy_seeds.append(seed)
+        return bot(seed, stage_c=True)
+
+    def opponent(seed):
+        opponent_seeds.append(seed)
+        return bot(seed, stage_c=False)
+
+    monkeypatch.setattr(SCREEN, "Game", lambda rng: rng)
+    monkeypatch.setattr(
+        SCREEN, "play_round",
+        lambda _game, _policies: SimpleNamespace(
+            winner_team=0, level_change=2),
+    )
+    records = SCREEN.run_arm_factories(
+        "treatment", policy, opponent, clusters=1, seed0=123,
+        run_id="factory-run", policy_has_stage_c=True, progress=False)
+    assert policy_seeds == [123, 500_123, 123, 500_123]
+    assert opponent_seeds == [1_000_123, 1_500_123] * 2
+    assert [(record["flip"], record["level_utility"])
+            for record in records] == [(0, 2), (1, -2)]
+    assert all(record["arm"]["stage_c"]["exact_reconciliation"]
+               for record in records)

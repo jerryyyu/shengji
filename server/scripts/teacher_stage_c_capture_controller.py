@@ -38,17 +38,17 @@ import teacher_stage_c_controller_rebind as REBIND  # noqa: E402
 import teacher_stage_c_design as DESIGN  # noqa: E402
 
 
-SCHEMA = "teacher-stage-c-capture-controller-v5"
-PACKET_ID = "teacher-v3-hard-tail-stage-c-capture-controller-v5"
-RUN_ID = "teacher-v3-hard-tail-stage-c-capture-v5"
-REVIEW_SCHEMA = "teacher-stage-c-capture-controller-review-v5"
-REVIEW_MARKER = "TEACHER_STAGE_C_CAPTURE_CONTROLLER_V5_REVIEW "
-RECEIPT_SCHEMA = "teacher-stage-c-capture-receipt-v5"
-ADMISSION_SCHEMA = "teacher-stage-c-capture-admission-v5"
-SHARD_SCHEMA = "teacher-stage-c-capture-shard-v5"
-DATASET_SCHEMA = "teacher-stage-c-state-set-v5"
-GENERATION_WITNESS_SCHEMA = "teacher-stage-c-generation-witness-v5"
-VERIFICATION_SCHEMA = "teacher-stage-c-capture-terminal-verification-v5"
+SCHEMA = "teacher-stage-c-capture-controller-v6"
+PACKET_ID = "teacher-v3-hard-tail-stage-c-capture-controller-v6"
+RUN_ID = "teacher-v3-hard-tail-stage-c-capture-v6"
+REVIEW_SCHEMA = "teacher-stage-c-capture-controller-review-v6"
+REVIEW_MARKER = "TEACHER_STAGE_C_CAPTURE_CONTROLLER_V6_REVIEW "
+RECEIPT_SCHEMA = "teacher-stage-c-capture-receipt-v6"
+ADMISSION_SCHEMA = "teacher-stage-c-capture-admission-v6"
+SHARD_SCHEMA = "teacher-stage-c-capture-shard-v6"
+DATASET_SCHEMA = "teacher-stage-c-state-set-v6"
+GENERATION_WITNESS_SCHEMA = "teacher-stage-c-generation-witness-v6"
+VERIFICATION_SCHEMA = "teacher-stage-c-capture-terminal-verification-v6"
 
 BASE_PACKET_SHA256 = REBIND.BASE_PACKET_SHA256
 REBIND_PACKET_SHA256 = (
@@ -62,10 +62,11 @@ ACTOR_POLICY = "smart"
 UNCERTAINTY_WORLDS = 30
 UNCERTAINTY_ATTEMPT_FACTOR = 10
 UNCERTAINTY_RESERVOIR_MULTIPLIER = 4
-# Preserve v2's pre-outcome population/RNG estimand. V5 adds only validation,
-# the exact-late phase guard, canonical multiset proposal construction, and a
-# fresh evidence namespace; it must not opportunistically redraw random seeds
-# after the earlier executions exposed those implementation defects.
+# Preserve v2's pre-outcome population/RNG estimand. V6 adds only validation,
+# the exact-late phase guard, canonical multiset proposal construction
+# (including the incumbent bury), and a fresh evidence namespace; it must not
+# opportunistically redraw random seeds after earlier executions exposed those
+# implementation defects.
 POPULATION_EXPERIMENT_ID = "teacher-v3-hard-tail-stage-c-capture-v2"
 EXPERIMENT_ID = POPULATION_EXPERIMENT_ID
 TERMINAL_DISPOSITION_REPLAY_DEALS = 750_000

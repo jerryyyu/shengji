@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-10 15:09 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-10 15:24 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,7 +8,7 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | none | **FREE / T4 CAPACITY-V3 REVIEW GATE.** Capacity-v2 is terminal no-use after 32 missing-NumPy V11-load refusals, zero candidate worlds/sampler attempts/outcomes and consumed slot `b6c1219a…5e72`. Fresh exact packet `b53eb509…ce19` opens one short run only after Claude PASS. |
+| Mini | none | **FREE / T4 CAPACITY-V3 REVIEW GATE.** Capacity-v2 is terminal no-use after 32 missing-NumPy V11-load refusals, zero candidate worlds/sampler attempts/outcomes and consumed slot `b6c1219a…5e72`. Fresh packet `b53eb509…ce19` opens one short run only after Claude PASS. The same isolated worktree is already staged for later training with Python 3.14.6 + NumPy 2.5.1 + Torch 2.13.0; 49/49 downstream tests pass, but no training authority exists. |
 | Air | none | **FREE / S4 SOURCE REVIEW GATE.** Clean worktree `shengji-s4-replication-air-v1` is exact `fb6ec1a`; Python 3.14.6, fast binary `9c9e77…b4c1`, live parent and prior-screen hashes all reopen. No preflight/outcome exists. Source PASS opens one 8-cluster score-free preflight only. T4 training remains causally blocked on reviewed labels. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 

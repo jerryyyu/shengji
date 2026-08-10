@@ -34,8 +34,8 @@ PASS/HOLD request is the latest `HANDOFF_REVIEW.md` entry.
 | Stage-C capture | **V3 TERMINAL HOLD; V4 REVIEW REQUIRED.** Six partial v3 shards are no-use. V4 source `5a51a1e`, packet `0d1a94d4…54eaa`, 52/52 tests. | External PASS/HOLD on the exact v4 delta. On PASS stage source commit, admit the fresh v4 namespace once, and restart the complete 24-shard schedule at eight workers. |
 | Stage-C state set | Not created. | After capture, freeze exactly 2,048 states (`1024/512/512`, play/bury `1920/128`) and replay all 750,000 dispositions with eight workers; then external state-set review. |
 | Stage-C labels | Source ready on PR #13 at `2376b5f`; no packet or outcome exists. It is now bound to capture-v4 packet `0d1a94d4…54eaa`, source `5a51a1e`, run `…capture-v4` and a fresh V4 state-set marker; capture/rebind/design/label coverage passes 105/105. The old v3 packet and marker are explicitly refused. The capacity runtime reopens every source, state-set and review input after worker completion before it may publish PASS. | After state-set PASS, freeze/review a 32-state score-free capacity pilot. Only a reviewed capacity PASS may open the 16-shard label packet. |
-| Stage-C model | Model/training stack ready through PRs #14–#17; no Stage-C checkpoint exists. | After complete labels, train play/bury surfaces across eight seeds and three DESIGN curves; select only on DESIGN/CALIB and open REPORT once. |
-| Stage-C composition | PR #18 HOLD repairs are pushed at `e93417d`; source rereview is open. | Source PASS may authorize only a later score-free capacity preflight. No composition run exists. |
+| Stage-C model / REPORT | Training head `899f843` and REPORT head `4390569` now carry the capture-v4/label-v4 parent repair; no Stage-C checkpoint or REPORT result exists. The 140-test Mini training lineage and 153-test REPORT lineage pass. Air is cleanly restaged at `899f843`; its 35-test no-data training slice passes under Python 3.14.6. | After complete labels, train play/bury surfaces across eight seeds and three DESIGN curves; select only on DESIGN/CALIB and open REPORT once. |
+| Stage-C composition | PR #18 HOLD repairs plus the capture-v4/label-v4 parent repair are pushed at `ae4fe5f`; its 209-test capture-through-composition slice passes. Source rereview must use this head, not superseded `e93417d`. | Source PASS may authorize only a later score-free capacity preflight. No composition run exists. |
 | S6 throw sourcing | PR #19 at `bf7eace` freezes three KESP witnesses and two bounded candidate families. | Source semantics review only. Even PASS does not authorize a screen. |
 
 ## Compute sequence after capture-v4 PASS
@@ -50,7 +50,7 @@ PASS/HOLD request is the latest `HANDOFF_REVIEW.md` entry.
 4. Review the capacity result and label packet. If passed, Mini executes 16
    label shards with eight workers; the contract caps the projected full run
    at 192 fleet-hours / 24 wall-hours.
-5. Air is already staged cleanly at training source `2767a05` with Python
+5. Air is already staged cleanly at training source `899f843` with Python
    3.14.6, NumPy 2.5.1, Torch 2.13.0 and a passing 44-test no-data slice. Once
    labels pass, run 48 cells (play/bury × eight seeds × 25/50/100% curves), at
    most eight concurrently.

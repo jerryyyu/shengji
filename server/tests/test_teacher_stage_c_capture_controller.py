@@ -46,6 +46,11 @@ def test_schedule_is_exactly_split_safe_and_finite() -> None:
     assert schedule["scan_deals"] == 750_000
     assert schedule["max_uncertainty_candidate_worlds"] == 9_216_000
     assert schedule["max_uncertainty_attempts"] == 4_608_000
+    assert schedule["max_terminal_replay_uncertainty_candidate_worlds"] \
+        == 9_216_000
+    assert schedule["max_terminal_replay_uncertainty_attempts"] == 4_608_000
+    assert schedule["max_total_uncertainty_candidate_worlds"] == 18_432_000
+    assert schedule["max_total_uncertainty_attempts"] == 9_216_000
     assert [item["split"] for item in schedule["shards"][:8]] == ["DESIGN"] * 8
     assert [item["split"] for item in schedule["shards"][8:16]] == ["CALIB"] * 8
     assert [item["split"] for item in schedule["shards"][16:]] == ["REPORT"] * 8
@@ -139,7 +144,19 @@ def test_build_packet_is_score_free_and_review_only(
     assert packet["result_contract"]["required_states"] == 2048
     assert packet["result_contract"]["required_play_states"] == 1920
     assert packet["result_contract"]["required_bury_states"] == 128
+    assert packet["result_contract"]["terminal_disposition_replay_deals"] \
+        == 750_000
+    assert packet["result_contract"]["terminal_disposition_replay_workers"] \
+        == 8
+    assert packet["result_contract"]["terminal_disposition_progress_every"] \
+        == 250
+    assert packet["capture_contract"]["experiment_id"] \
+        == ctrl.POPULATION_EXPERIMENT_ID
+    assert packet["capture_contract"]["validation_namespace_run_id"] \
+        == ctrl.RUN_ID
     assert len(packet["commands"]["run_shards"]) == 24
+    assert "--disposition-replay-workers" in packet["commands"][
+        "verify_dataset"]
     assert packet["packet_sha256"] == ctrl.self_hash(packet)
     widened = json.loads(json.dumps(packet))
     widened["authority"]["labels_authorized"] = True
@@ -169,6 +186,9 @@ def test_review_claim_authorizes_capture_only(
                                       "REPORT": 512},
             "required_play_states": 1920,
             "required_bury_states": 128,
+            "terminal_disposition_replay_deals": 750_000,
+            "terminal_disposition_replay_workers": 8,
+            "terminal_disposition_progress_every": 250,
         },
     }
     claim = ctrl.expected_review_claim(packet, "e" * 64)
@@ -177,6 +197,10 @@ def test_review_claim_authorizes_capture_only(
     assert claim["labels_authorized"] is False
     assert claim["training_authorized"] is False
     assert claim["states_captured_before_review"] == 0
+    assert claim["population_experiment_id"] \
+        == ctrl.POPULATION_EXPERIMENT_ID
+    assert claim["terminal_replays_all_scan_dispositions"] is True
+    assert claim["terminal_disposition_progress_every"] == 250
 
 
 def test_duplicate_review_marker_and_publication_refuse(tmp_path: Path) -> None:

@@ -38,16 +38,17 @@ import teacher_stage_c_controller_rebind as REBIND  # noqa: E402
 import teacher_stage_c_design as DESIGN  # noqa: E402
 
 
-SCHEMA = "teacher-stage-c-capture-controller-v2"
-PACKET_ID = "teacher-v3-hard-tail-stage-c-capture-controller-v2"
-RUN_ID = "teacher-v3-hard-tail-stage-c-capture-v2"
-REVIEW_SCHEMA = "teacher-stage-c-capture-controller-review-v2"
-REVIEW_MARKER = "TEACHER_STAGE_C_CAPTURE_CONTROLLER_V2_REVIEW "
-RECEIPT_SCHEMA = "teacher-stage-c-capture-receipt-v2"
-ADMISSION_SCHEMA = "teacher-stage-c-capture-admission-v2"
-SHARD_SCHEMA = "teacher-stage-c-capture-shard-v2"
-DATASET_SCHEMA = "teacher-stage-c-state-set-v2"
-GENERATION_WITNESS_SCHEMA = "teacher-stage-c-generation-witness-v2"
+SCHEMA = "teacher-stage-c-capture-controller-v3"
+PACKET_ID = "teacher-v3-hard-tail-stage-c-capture-controller-v3"
+RUN_ID = "teacher-v3-hard-tail-stage-c-capture-v3"
+REVIEW_SCHEMA = "teacher-stage-c-capture-controller-review-v3"
+REVIEW_MARKER = "TEACHER_STAGE_C_CAPTURE_CONTROLLER_V3_REVIEW "
+RECEIPT_SCHEMA = "teacher-stage-c-capture-receipt-v3"
+ADMISSION_SCHEMA = "teacher-stage-c-capture-admission-v3"
+SHARD_SCHEMA = "teacher-stage-c-capture-shard-v3"
+DATASET_SCHEMA = "teacher-stage-c-state-set-v3"
+GENERATION_WITNESS_SCHEMA = "teacher-stage-c-generation-witness-v3"
+VERIFICATION_SCHEMA = "teacher-stage-c-capture-terminal-verification-v3"
 
 BASE_PACKET_SHA256 = REBIND.BASE_PACKET_SHA256
 REBIND_PACKET_SHA256 = (
@@ -61,7 +62,14 @@ ACTOR_POLICY = "smart"
 UNCERTAINTY_WORLDS = 30
 UNCERTAINTY_ATTEMPT_FACTOR = 10
 UNCERTAINTY_RESERVOIR_MULTIPLIER = 4
-EXPERIMENT_ID = RUN_ID
+# Preserve v2's pre-outcome population/RNG estimand.  V3 changes validation
+# and evidence namespace only; it must not opportunistically redraw the data
+# after an adversarial review found a proof defect.
+POPULATION_EXPERIMENT_ID = "teacher-v3-hard-tail-stage-c-capture-v2"
+EXPERIMENT_ID = POPULATION_EXPERIMENT_ID
+TERMINAL_DISPOSITION_REPLAY_DEALS = 750_000
+TERMINAL_DISPOSITION_REPLAY_WORKERS = 8
+TERMINAL_DISPOSITION_PROGRESS_EVERY = 250
 
 SAMPLER_FLAGS = (
     "SHENGJI_WEIGHTED_SPLITS",
@@ -128,10 +136,17 @@ REVIEW_FIELDS = (
     "exclusion_manifest_sha256",
     "states", "design_states", "calib_states", "report_states",
     "play_states", "bury_states", "scan_deals", "capture_shards",
+    "population_experiment_id", "terminal_disposition_replay_deals",
+    "terminal_disposition_replay_workers",
+    "terminal_disposition_progress_every",
     "uncertainty_worlds", "max_uncertainty_candidate_worlds",
     "max_uncertainty_attempts",
+    "max_terminal_replay_uncertainty_candidate_worlds",
+    "max_terminal_replay_uncertainty_attempts",
+    "max_total_uncertainty_candidate_worlds",
+    "max_total_uncertainty_attempts",
     "complete_generation_witness", "terminal_recomputes_state_identity",
-    "terminal_reconciles_work",
+    "terminal_reconciles_work", "terminal_replays_all_scan_dispositions",
     "worlds_sampled_before_review", "states_captured_before_review",
     "outcomes_computed_before_review", "independent_review",
     "one_capture_execution_authorized", "labels_authorized",
@@ -515,11 +530,19 @@ def build_schedule(base: dict) -> dict:
         },
         "max_uncertainty_candidate_worlds": max_uncertainty_candidate_worlds,
         "max_uncertainty_attempts": max_uncertainty_attempts,
+        "max_terminal_replay_uncertainty_candidate_worlds":
+            max_uncertainty_candidate_worlds,
+        "max_terminal_replay_uncertainty_attempts": max_uncertainty_attempts,
+        "max_total_uncertainty_candidate_worlds":
+            2 * max_uncertainty_candidate_worlds,
+        "max_total_uncertainty_attempts": 2 * max_uncertainty_attempts,
         "scan_deals": sum(int(base["population_contract"]["splits"][name][
             "scan_deals"]) for name in split_order),
     }
     if len(shards) != CAPTURE_SHARDS:
         raise ControllerRefused("capture shard count drift")
+    if payload["scan_deals"] != TERMINAL_DISPOSITION_REPLAY_DEALS:
+        raise ControllerRefused("capture/terminal-replay deal population drift")
     payload["schedule_sha256"] = sha256_bytes(canonical_json(payload))
     return payload
 
@@ -587,6 +610,12 @@ def command_templates(schedule: dict) -> dict:
             "--shards", *shard_paths, "--dataset",
             f"server/runs/logs/{RUN_ID}/state-set.json",
             "--replay-every-selected-state",
+            "--disposition-replay-workers",
+            str(TERMINAL_DISPOSITION_REPLAY_WORKERS),
+            "--disposition-progress-every",
+            str(TERMINAL_DISPOSITION_PROGRESS_EVERY),
+            "--out",
+            f"server/runs/logs/{RUN_ID}/terminal-verification.json",
         ],
     }
 
@@ -645,6 +674,8 @@ def build_packet(
         "schedule": schedule,
         "capture_contract": {
             "experiment_id": EXPERIMENT_ID,
+            "validation_namespace_run_id": RUN_ID,
+            "population_experiment_id_preserved_from_held_v2": True,
             "actor_policy": ACTOR_POLICY,
             "actor_is_trajectory_generator_not_labeler": True,
             "target_cell_assigned_before_deal": True,
@@ -690,6 +721,15 @@ def build_packet(
             "one_scan_record_per_scheduled_seed": True,
             "one_diagnostic_record_per_pre_reservoir_state": True,
             "terminal_recomputes_cell_state_priority_actor": True,
+            "terminal_replays_every_scan_disposition": True,
+            "terminal_disposition_replay_deals":
+                TERMINAL_DISPOSITION_REPLAY_DEALS,
+            "terminal_disposition_replay_workers":
+                TERMINAL_DISPOSITION_REPLAY_WORKERS,
+            "terminal_disposition_progress_every":
+                TERMINAL_DISPOSITION_PROGRESS_EVERY,
+            "terminal_verification_schema": VERIFICATION_SCHEMA,
+            "dataset_review_requires_terminal_verification": True,
             "nonnegative_reconciled_work_counters": True,
             "dataset_publish_is_exclusive": True,
             "dataset_freeze_authorizes_no_labels": True,
@@ -786,14 +826,30 @@ def expected_review_claim(packet: dict, external_sha256: str) -> dict:
         "bury_states": packet["result_contract"]["required_bury_states"],
         "scan_deals": packet["schedule"]["scan_deals"],
         "capture_shards": packet["schedule"]["shard_count"],
+        "population_experiment_id": POPULATION_EXPERIMENT_ID,
+        "terminal_disposition_replay_deals": packet["result_contract"][
+            "terminal_disposition_replay_deals"],
+        "terminal_disposition_replay_workers": packet["result_contract"][
+            "terminal_disposition_replay_workers"],
+        "terminal_disposition_progress_every": packet["result_contract"][
+            "terminal_disposition_progress_every"],
         "uncertainty_worlds": UNCERTAINTY_WORLDS,
         "max_uncertainty_candidate_worlds": packet["schedule"][
             "max_uncertainty_candidate_worlds"],
         "max_uncertainty_attempts": packet["schedule"][
             "max_uncertainty_attempts"],
+        "max_terminal_replay_uncertainty_candidate_worlds": packet[
+            "schedule"]["max_terminal_replay_uncertainty_candidate_worlds"],
+        "max_terminal_replay_uncertainty_attempts": packet["schedule"][
+            "max_terminal_replay_uncertainty_attempts"],
+        "max_total_uncertainty_candidate_worlds": packet["schedule"][
+            "max_total_uncertainty_candidate_worlds"],
+        "max_total_uncertainty_attempts": packet["schedule"][
+            "max_total_uncertainty_attempts"],
         "complete_generation_witness": True,
         "terminal_recomputes_state_identity": True,
         "terminal_reconciles_work": True,
+        "terminal_replays_all_scan_dispositions": True,
         "worlds_sampled_before_review": 0,
         "states_captured_before_review": 0,
         "outcomes_computed_before_review": False,

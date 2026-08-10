@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 21:17 EDT
+## Current synthesis — 2026-08-10 02:00 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -62,8 +62,11 @@ what those results change in the research plan.
   own gates. Claude passed the design at `d92f595`; replacement H0-v3 and
   S3c-v2 then passed at `205b6af`. Minimal rebind source `7018f36` / packet
   `b60c4298…7b18` passed independently at `cb9471b`, preserving all seven
-  curriculum commitments exactly. Capture-controller implementation is now
-  eligible; zero states, labels or models exist.
+  curriculum commitments exactly. Replay-authenticated capture-v3 source
+  `0b697b6` / packet `d58a9308…c91` now proves every one of the 750,000 scan
+  dispositions, but still awaits its fresh external marker. Label source
+  `c98b608` separately binds finite fold/world work and is awaiting
+  source-readiness review. Zero states, labels or models exist.
 - **Search challengers:** the independently reviewed live-parent contract binds
   S3a/S3b to exact report-LCB and prevents old baselines from silently
   re-entering. S3b v2 remains closed on its 250k-node capacity failure. S3a's
@@ -101,10 +104,12 @@ what those results change in the research plan.
   score-free Air preflight `fcc8b891…ee060` passed in 321.32 seconds, projected
   the screen at 91.40 fleet-hours / 11.42 max-shard hours, and packet
   `17036e63…1385` fully recomputes. Claude independently passed that packet at
-  `51a864c`. After S3a closed, exactly one 2,048-cluster Mini screen launched
-  under admission `1d99bb55…bdbf` and receipt `20a420d2…5cc`. Outcomes remain
-  sealed until terminal verification; confirmation is hard-closed pending a
-  future reviewed packet.
+  `51a864c`. After S3a closed, exactly one 2,048-cluster Mini screen ran under
+  admission `1d99bb55…bdbf` and receipt `20a420d2…5cc`. Terminal verification
+  passed: treatment-minus-live report-LCB was `+0.086914 +/- 0.056166` signed
+  levels with LCB `+0.030748`; matched-null-minus-champion was exactly zero.
+  Aggregate `3c7f27b8…4268` and final `e188f7e8…0f2b` authorize only a fresh
+  confirmation-packet review. Confirmation launch and deployment remain closed.
 - **Small-endgame S3c:** the independently passed census contains 256 natural
   roots in each one-/two-/three-card band. One-card roots are forced moves;
   two-card roots have median/max 2/3 legal actions and three-card roots 3/7.
@@ -120,10 +125,14 @@ what those results change in the research plan.
   imitating people. Source `6977dbb` / packet `3f68dc6e…7fcf` passed component
   review but failed the real admit→runtime seam. Replacement source `4ebcd09` /
   packet `cf074871…35392` repaired that boundary and passed externally at
-  `205b6af`. One later T4 diagnostic execution is eligible, but no receipt,
-  world or outcome exists. Name-based historical splits
-  do not prove true-person independence, so H0 remains proposal diagnostics;
-  the forward-only HUMAN-C1 ladder owns people-facing strength.
+  `205b6af`. Its single T4 execution then completed 555/557 rows and terminally
+  refused two seven-card follow throws whose live actions were absent from the
+  generic analysis enumerator. Exactly 705,750 candidate-world rollouts were
+  accounted, but no aggregate utility was published. The consumed namespace
+  cannot retry or expose its 555 partial outcomes, so no human-derived proposal
+  rule enters Stage C. Name-based historical splits still do not prove
+  true-person independence; the forward-only HUMAN-C1 ladder owns people-facing
+  strength.
 - **Human loss forensics:** the initial aggregate claim that bots slough nearly
   twice as many points as humans was withdrawn after seat-count normalization
   (roughly 19 versus 17 points per seat-round). The surviving DEV signals map
@@ -138,6 +147,14 @@ what those results change in the research plan.
   makes the named `<`→`<=` mutation fail. Claude passed that boundary at
   `205b6af`; one score-free census freeze is eligible, but no census or
   treatment exists.
+- **Throw sourcing S6:** KESP replay exposed three ballot surfaces that the live
+  search does not guarantee: a top/near-boss bundle despite retained lows, a
+  boss-component bundle despite ruff risk, and whole remaining plain-suit
+  evacuation. These are proposal failures, not proof that the throws are good.
+  Freeze exact fixtures and negative triggers, then compare a dedicated source
+  with an equal-count/equal-work null. Keep S6 outside the already-frozen Stage-C
+  population; a later Stage-C version may consume only a separately supported
+  rule.
 - **Data/sampler:** the bounded strict sampler certificate passed, but posterior
   fidelity and global constructive completeness remain open. High-N and
   late-ply data are replayable state reservoirs under old named targets, not
@@ -298,11 +315,12 @@ result.
 
 The baseline is the exact deployed `mc-s0-report-lcb` policy, not “MC” in the
 abstract. Every challenger binds that parent plus a matched null at freeze
-time. **T3 is the execution-ready strength bridge:** S3a is terminal negative,
-S4 is receiving its fresh whole-game test, and the human/Teacher/endgame lanes
-are being made executable. It is not itself a claim that a learned model became
-stronger. **T4 is the first closed Teacher generation:** execute H0 once,
-capture, label, train, integrate and test one challenger end to end. Live order
+time. **T3 was the execution-ready strength bridge:** S3a is terminal negative,
+S4 has now passed its fresh whole-game screen, and the human/Teacher/endgame
+lanes became executable. It did not itself claim that a learned model became
+stronger. **T4 is the first closed Teacher generation:** H0 has conservatively
+closed without an admitted human source; now capture, label, train, integrate
+and test one challenger end to end. Live order
 and machine ownership remain in `BACKLOG.md`; this section owns the durable
 decision tree.
 
@@ -312,23 +330,24 @@ decision tree.
    mechanism passed, but the fresh 2,048-cluster full-game screen selected none.
    The exact policy recipe is closed without confirmation, tuning, retry or
    pooled inference. Its candidate disagreements may remain diagnostic input.
-2. **Carry S4 from mechanism evidence to whole-game evidence.** The reviewed
+2. **Close S4's whole-game screen and preserve its next boundary.** The reviewed
    one-shot exact-state screen passed in both roles at terminal
    `abd9f36f…cdc00`. The repaired complete-round v2 controller and packet are
    frozen at `cad3992` / `17036e63…1385`, preserving natural trigger traffic
    against the exact live champion and an analysis-identical matched null.
    Claude independently passed the repaired packet at `51a864c`; exactly one
-   2,048-cluster Mini screen is now running under admission
-   `1d99bb55…bdbf` and receipt `20a420d2…5cc`. Do not treat `+5.156` points as
-   a duel-strength estimate: using a K now can still waste future control over
-   a full continuation. Keep outcomes sealed until one terminal verify.
-3. **Execute the now-passed human-action controller once in T4.** H0 uses
-   the production ballot plus at most one human, V11 and matched-random
-   proposal; selects on 30 shared worlds and reports fixed choices on 300 fresh
-   worlds with `HeuristicBot` continuation. Source `6977dbb` failed the real
-   admission seam; replacement source `4ebcd09` / packet `cf074871…35392`
-   repairs it and passed externally at `205b6af`. T4 may issue its one receipt
-   after S4 releases Mini; no outcome exists yet.
+   2,048-cluster Mini screen ran under admission `1d99bb55…bdbf` and receipt
+   `20a420d2…5cc`. It terminally measured `+0.086914 +/- 0.056166` signed levels
+   against live report-LCB, LCB `+0.030748`, while the matched null was exactly
+   flat. This authorizes confirmation-packet review only, not launch or deploy.
+3. **Close H0 conservatively after its one reviewed execution.** H0 used the
+   production ballot plus bounded human, V11 and matched-random proposals with
+   disjoint common-world folds. Exact source `4ebcd09` / packet
+   `cf074871…35392` ran once and terminally refused at 555/557 rows: two
+   seven-card follow states falsified the analysis-ballot membership assumption.
+   No aggregate utility was published, partial outcomes are closed, and no
+   human-derived proposal rule enters Stage C. Preserve the failures as ballot
+   regressions; do not retry this namespace.
 4. **Implement capture from the passed Teacher Stage C v3 rebind.** Frozen source `20bdb95`,
    asset `1a29418` and packet `f213314a…3b4` define the 2,048-state split,
    ordinary anchors, hard-tail selection/report folds, 20/33 candidate caps,
@@ -337,8 +356,12 @@ decision tree.
    curriculum design at `d92f595`. Source `7018f36` / packet `b60c4298…7b18`
    rebinds passed H0-v3/S3c-v2 while leaving every curriculum hash unchanged;
    its 105-test combined battery and external review passed at `cb9471b`.
-   Capture-controller implementation is eligible; capture, labels, compute and
-   training remain closed until their own reviews.
+   Replay-authenticated capture source `0b697b6` / packet `d58a9308…c91` is
+   staged on Mini and awaits its exact v3 external marker. Label source
+   `c98b608` is separately reviewable. After capture, independently review the
+   2,048-state set, run the mandatory no-retained-outcome capacity preflight,
+   then freeze and review the label packet. Labels and training remain closed
+   until those gates pass.
 5. **Run the passed S3c one-card controller only as T4 mechanics.** The score-free
    curriculum and source `e9db4a2` / packet `f58d23b7…3874` passed component
    review, but shared H0's unignored-lock reopen failure. Replacement source
@@ -352,8 +375,8 @@ decision tree.
    Close the hypothesis if the action was forced or no longer reproduced. Only
    a reproducible defect may open a separately reviewed treatment/null design.
 
-T3 closed with S3a immutably negative, the reviewed S4 whole-game screen
-launched, executable reviewed H0 and Stage-C contracts, and the leakage-safe
+T3 closed with S3a immutably negative, the now-positive S4 whole-game screen,
+executable reviewed H0 and Stage-C contracts, and the leakage-safe
 human ladder plus executable reviewed S3c feasibility asset. H0-v3, S3c-v2 and
 the minimal Stage-C rebind all passed externally with zero outcomes, solver
 sessions or captured states. S5 replay remains useful support work and does not
@@ -364,8 +387,8 @@ strength result.
 
 T4 must produce artifacts and a challenger, not another design-only audit:
 
-1. execute the reviewed H0 counterfactual once and identify human/model actions
-   that survive fresh common-world evaluation;
+1. preserve H0's terminal refusal: it admits no human-derived proposal rule,
+   while its two missing-ballot throws remain regression and S6 sourcing input;
 2. capture the frozen 2,048-state Stage-C asset, publish acceptance/rejection
    counters, and label ordinary versus hard-tail rows under their named budgets;
 3. train at least eight seeds of separate play-ranking and calibrated-outcome
@@ -389,12 +412,12 @@ produce privileged diagnostic targets for a cheap distilled endgame head.
   point/void/trump proposals improved the selected-state objective, but the
   full-game screen selected none. The policy recipe is closed; its useful
   residue is a set of proposal/continuation disagreement states for Stage C.
-- **S4 point-banking continuation** has passed its exact-state mechanism
-  screen in both roles and its complete-round packet review. Packet
-  `17036e63…1385` is frozen and independently passed at `51a864c`; its sole
-  Mini screen is now running. The remaining empirical question is deployment
-  relevance: does the continuation-only change improve complete-round utility
-  under natural traffic against the live champion and matched null?
+- **S4 point-banking continuation** passed both its exact-state mechanism screen
+  and its sole fresh complete-round screen. Against live report-LCB it measured
+  `+0.086914 +/- 0.056166` signed levels with LCB `+0.030748`, while the matched
+  null was exactly flat. This is screen evidence, not confirmation. Freeze and
+  review the 8,192-cluster confirmation packet separately; do not launch or
+  deploy under the current goal.
 - **S5 defensive point protection** is not yet an implementation hypothesis.
   Observational loss mining suggests a narrower avoidable-slough surface, but
   its original global headline disappeared after per-seat normalization.
@@ -523,7 +546,7 @@ human corpus allows.
 |---|---|---|---|
 | **H0 v1** — exact `9770313`, packet `9ff160a9…247d3` | Froze the population, DESIGN/AUDIT split and no-outcome authority; intended to compare production, human, V11 and random proposals. | Split/design review PASS, then **SUPERSEDED PRE-EXECUTION**: the pinned V11 SHA named no executable artifact. No controller or outcome existed. | The sampling/split geometry survives, but v1 cannot parent execution. |
 | **H0 v2** — exact `12dac55`, packet `2cccf580…8f2b` | Preserved the rows and bound the real `ep07.npz` V11 checkpoint, portable live report-LCB parent and disjoint 30-world selection / 300-world reporting idea. | Claude passed the identity repair at `9fdb67a`, then a score-free implementation audit **SUPERSEDED IT PRE-CONTROLLER**. “Analysis ballot” had no hard cap, report-LCB was conflated with downstream continuation, and requested candidate recall had no defined relevant-action universe. No outcomes existed. | V2 proved the real artifacts and parent could reopen; it did not define a finite executable estimand. |
-| **H0 v3** — source `b02b6de`, packet commit `d6214ce`, packet `4d3f0a35…8cc3c` | Preserves every v2 play row, freezes all bury keys, caps the union at 17 play / 33 bury actions, draws V11 and random from the same novel pool, separates report-LCB root choice from `HeuristicBot` rollout continuation, uses three disjoint folds and caps total work at 1,329,210 candidate-world rollouts. | **DESIGN + REPLACEMENT CONTROLLER PASS / ZERO OUTCOMES.** Claude passed the design at `239f13c`; after the v2 integration HOLD, replacement source `4ebcd09` / packet `cf074871…35392` passed at `205b6af`. | Execute once in T4; supported proposals may feed the passed Stage-C rebind, but no label, training or strength claim follows from H0 alone. |
+| **H0 v3** — source `b02b6de`, packet commit `d6214ce`, packet `4d3f0a35…8cc3c` | Preserves every v2 play row, freezes all bury keys, caps the union at 17 play / 33 bury actions, draws V11 and random from the same novel pool, separates report-LCB root choice from `HeuristicBot` rollout continuation, uses three disjoint folds and caps total work at 1,329,210 candidate-world rollouts. | **TERMINAL REFUSAL / NO AGGREGATE UTILITY.** The replacement controller ran once, completed 555/557 rows and accounted 705,750 candidate-world rollouts. Two seven-card follow throws exposed that the generic analysis enumerator omitted live-ballot actions. | Close the namespace without retry or use of partial outcomes. Admit no human-derived proposal rule to Stage C; retain the two failures as ballot/S6 regression witnesses. |
 
 After the one reviewed T4 execution, H0 publishes proposal-source membership
 and survival, paired human/model/champion utilities, continuation ranking flips
@@ -553,16 +576,15 @@ Use human data in three bounded stages:
    RESERVE diagnostic. Calling these data a meaningful three-way
    DEV/CALIB/REPORT split would overstate their independence; formal REPORT
    remains fresh synthetic/full-game and `HUMAN-C1` evidence.
-2. **Run the bounded counterfactual once.** H0-v3 design passed at `239f13c`;
-   after the v2 admission failure, replacement source `4ebcd09` / packet
-   `cf074871…35392` passed at `205b6af`. T4 should create its single receipt on
-   Mini after S4. Keep bury separate from play and report where each
-   human/V11/random source entered and survived; never infer quality from mere
-   ballot membership.
-3. **Only then choose the learning use.** Strong supported actions can train a
-   proposal/prior head; disagreement states feed Stage C; raw behavioral
-   cloning remains an initialization/style control. Promotion still requires
-   fresh paired play against the live champion.
+2. **Preserve the bounded counterfactual's refusal.** H0-v3 ran once and stopped
+   at 555/557 rows when two legal seven-card follow actions were not members of
+   the generic analysis ballot. It published no aggregate utility. Do not retry,
+   use the partial outcomes or infer quality from mere ballot membership.
+3. **Use the conservative learning decision.** No human-derived proposal rule
+   is admitted. Stage C keeps its frozen V11, structured and matched-random
+   sources; raw behavioral cloning remains only a future initialization/style
+   control. The two failures become exact ballot regressions and S6 design
+   input. Promotion still requires fresh paired play against the live champion.
 
 In parallel, use S5 replay to decide whether defensive point protection is a
 real missing mechanism or merely a misleading observational label. If exact

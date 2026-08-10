@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 21:17 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-10 02:00 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,27 +8,21 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | `s4-point-banking-duel-screen-100b-v2` | **RUNNING / OUTCOME SEALED.** Exact `cad3992`, packet `17036e63…1385`, admission `1d99bb55…bdbf`, receipt `20a420d2…5cc`; eight shards × 256. Latest count-only heartbeat: `122,122,120,121,122,123,122,122 / 256` (974/2,048), all workers CPU-bound at 21:17. Never inspect partial outcomes, retry, extend or move the pinned checkout. |
-| Air | none | **FREE / DIRECTLY CHECKED 21:13.** T3 reviews are complete, but no reviewed T4 capture, H0 execution, S3c execution or training launch exists. Idle capacity is not launch authority. |
+| Mini | none | **FREE / STAGED FOR STAGE-C CAPTURE V3.** Exact source `0b697b6`, packet `d58a9308…c91`, Python 3.14.3 and compiled fast binary are prepared in a clean detached worktree. Admission is unconsumed and the namespace is absent. Launch only after the fresh exact v3 external marker; the old v1 PASS is superseded. |
+| Air | none | **FREE.** Use for independent review reproduction, bounded preparation and later fixed-seed training. Do not duplicate the one-shot capture or train on partial/unreviewed labels. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
-## S4 legal next action
+## S4 terminal boundary
 
-Monitor only `supervisor.jsonl.partial` count/status fields until all workers
-terminate. Then invoke the exact `cad3992` controller verifier once:
+The exact `cad3992` verifier consumed all 2,048 clusters once and returned
+`AUTHORIZE_CONFIRM_PACKET_REVIEW`. Treatment-minus-live report-LCB was
+`+0.086914 +/- 0.056166` signed levels with LCB `+0.030748`; the matched null
+was exactly flat. Aggregate `3c7f27b8…4268`, final `e188f7e8…0f2b` and
+terminal progress `97d910c1…c0fb` rehash.
 
-- `AUTHORIZE_CONFIRM_PACKET_REVIEW`: freeze one fresh 8,192-cluster
-  confirmation packet and request external review. This does not authorize its
-  launch.
-- `SELECT_NONE`: preserve the terminal aggregate/final and close the exact S4
-  recipe. Do not retry, tune from outcomes or pool it with the 64-state
-  mechanism screen.
-- operational refusal: preserve the namespace and diagnose without reading or
-  manufacturing strength evidence.
-
-The reviewed preflight completed 4/4 score-free clusters in 321.32 seconds and
-projected the screen at `91.40` fleet-hours / `11.42` max-shard hours. That is
-capacity evidence, not a strength result.
+Legal next work is to freeze and externally review one fresh 8,192-cluster
+confirmation packet. The current goal explicitly stops before confirmation
+launch, promotion or production change.
 
 ## Terminal job index
 
@@ -37,17 +31,19 @@ The canonical numbers and meanings are in the results table in
 
 | date | job | terminal verdict | anchor |
 |---|---|---|---|
+| 08-10 | S4 point-banking full-game screen | **SCREEN PASS / CONFIRM PACKET REVIEW ONLY** | exact `cad3992`; 2,048 clusters; utility `+0.086914 +/- 0.056166`, LCB `+0.030748`; null exactly zero; aggregate `3c7f27b8…4268`, final `e188f7e8…0f2b`; no confirmation launch or deploy |
+| 08-10 | H0-v3 human/model proposal diagnostic | **REFUSED INCOMPLETE / CLOSED WITHOUT UTILITY** | 555/557 complete, two seven-card follow ballot-membership refusals, 705,750 candidate-world rollouts accounted; no aggregate utility, no retry and no human proposal admitted |
 | 08-09 | S3a structured-bury full-game screen | **SELECT NONE / CLOSED** | exact `c599b42`; all 2,048 clusters verified; aggregate `20609613…271f`, final `32156d79…c9ff`; no confirmation, retry, tuning or promotion |
 | 08-09 | Teacher Stage-C controller rebind | **EXTERNAL PASS / ZERO STATES** | source `7018f36`; packet commit `45429f3`; packet `b60c4298…7b18`; Claude PASS at `cb9471b`; all seven curriculum commitments unchanged; capture-controller implementation only |
 | 08-09 | Teacher Stage-C design v3 | **DESIGN PASS / SUPERSEDED ONLY BY IDENTITY REBIND** | source `20bdb95`; asset `1a29418`; packet `f213314a…3b4`; Claude PASS at `d92f595`; zero states/labels; curriculum preserved exactly by passed rebind `b60c4298…7b18` |
 | 08-09 | S5 replay-census code | **BOUNDARY FIXTURE PASS / NO CENSUS** | draft PR #4 head `2351b36`; real `HK` versus lower-ranked equal-point `H10` witness; named `<`→`<=` mutation fails; 12 focused + 52 broader available tests pass; one score-free census freeze eligible |
-| 08-09 | H0 controller admit→runtime repair | **V3 EXTERNAL PASS / ZERO OUTCOMES** | PR #6; source `4ebcd09`; packet `cf074871…35392`; Claude PASS at `205b6af`; 557 rows; no diagnostic receipt yet |
+| 08-09 | H0 controller admit→runtime repair | **V3 EXTERNAL PASS / LATER CONSUMED** | PR #6; source `4ebcd09`; packet `cf074871…35392`; Claude PASS at `205b6af`; its later one-shot execution is the terminal 555/557 refusal recorded above |
 | 08-09 | Human H0-v3 controller v2 | **COMPONENT PASS / OPERATIONAL HOLD** | source `6977dbb`; packet `3f68dc6e…7fcf`; admission's unignored lock makes runtime reject its own dirty tree; zero worlds/outcomes |
 | 08-09 | S3c one-card controller repair | **V2 EXTERNAL PASS / ZERO SOLVER WORK** | PR #6; source `4ebcd09`; packet `cafbee43…f23e`; Claude PASS at `205b6af`; 64 roots; no mechanics receipt yet |
 | 08-09 | S3c one-card controller v1 | **COMPONENT PASS / OPERATIONAL HOLD** | source `e9db4a2`; packet `f58d23b7…3874`; same unignored-lock admit→runtime failure; zero worlds/exact sessions |
 | 08-09 | Human H0-v3 controller v1 | **HOLD / SUPERSEDED BEFORE OUTCOMES** | producer `931f504`; asset `ff277b4`; packet `13d9a97f…61fc`; runtime did not self-enforce compiled/strict-void mode and receipt deletion could reissue; preserved and replaced by frozen v2 |
 | 08-09 | S3c natural-prefix census + curriculum | **DESIGN PASS / ONE-CARD CONTROLLER IMPLEMENTATION ONLY** | producer `0b96fae`; asset `4fb90a1`; 768 roots; census `23632609…b52a`; packet `df102428…9eca`; Claude marker commit `084ba7e`; no solver/screen/training/strength authority |
-| 08-09 | S4 complete-round v2 preflight + packet | **PACKET PASS / MINI SCREEN RUNNING** | exact `cad3992`; preflight `fcc8b891…ee060`, 91.40 fleet-hours / 11.42 max-shard hours; packet `17036e63…1385`; Claude marker `51a864c`; admission `1d99bb55…bdbf`, receipt `20a420d2…5cc`; no confirmation/strength |
+| 08-09 | S4 complete-round v2 preflight + packet | **PACKET PASS / CONSUMED BY TERMINAL SCREEN** | exact `cad3992`; preflight `fcc8b891…ee060`, 91.40 fleet-hours / 11.42 max-shard hours; packet `17036e63…1385`; Claude marker `51a864c`; admission `1d99bb55…bdbf`, receipt `20a420d2…5cc` |
 | 08-09 | S4 point-banking exact-state screen | **MECHANISM PASS / FULL-GAME PACKET REVIEW** | screen `abd9f36f…cdc00`; receipt `90124eb6…f526b`; overall point delta `+5.156`, LCB `+3.029`; both roles positive; no strength or launch authority |
 | 08-09 | Human H0 design v3 | **DESIGN PASS / CONTROLLER FROZEN** | source `b02b6de`, packet commit `d6214ce`, packet `4d3f0a35…8cc3c`; Claude marker `239f13c`; preserved plays, frozen buries, 17/33 caps, explicit continuation, finite work; no outcomes |
 | 08-09 | Human H0 design v2 | **IDENTITY DELTA PASS / SUPERSEDED PRE-CONTROLLER** | exact `12dac55`; packet `2cccf580…8f2b`; Claude marker `9fdb67a`; real V11 + portable parent passed, later bounded-design audit superseded it; no outcomes |
@@ -97,4 +93,5 @@ authorize O1.
 - `docs_archive/jobs-through-2026-08-08.md`
 - `docs_archive/daily-log-2026-08-08.md`
 - `docs_archive/daily-log-2026-08-09.md`
+- `docs_archive/daily-log-2026-08-10.md`
 - `docs_archive/handoff-review-2026-08-08-through-2026-08-09-t1-t2.md`

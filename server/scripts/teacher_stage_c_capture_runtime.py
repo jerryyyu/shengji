@@ -989,9 +989,19 @@ def _build_play_union(rnd, seat: int, state_id: str, split: str, net) -> tuple[l
 
 
 def _build_bury_union(rnd, seat: int, state_id: str) -> tuple[list[dict], dict]:
-    incumbent = SmartBot().decide_bury(rnd, seat)
-    ballot = structured_bury_ballot(
-        rnd.hands[seat], rnd.ordering, incumbent, max_candidates=32)
+    # ``encode_obs`` represents a hand as a multiset.  SmartBot's bury sorter
+    # is stable, so equal-valued cards at the eight-card boundary otherwise
+    # inherit the engine list order and make one encoded state admit two
+    # different candidate populations.  Canonicalise only for construction
+    # and restore unconditionally; capture/replay must never mutate the round.
+    saved_hand = rnd.hands[seat]
+    rnd.hands[seat] = sorted(saved_hand)
+    try:
+        incumbent = SmartBot().decide_bury(rnd, seat)
+        ballot = structured_bury_ballot(
+            rnd.hands[seat], rnd.ordering, incumbent, max_candidates=32)
+    finally:
+        rnd.hands[seat] = saved_hand
     if (not ballot.candidates or len(ballot.candidates) > 32
             or _action_key(ballot.candidates[0].cards) != _action_key(incumbent)):
         raise RuntimeRefused("Stage-C structured bury ballot drift")

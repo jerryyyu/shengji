@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-09 21:17 EDT
+## Current synthesis — 2026-08-09 22:58 EDT
 
 ### Canonical terminal-results table
 
@@ -35,24 +35,39 @@ results table.
 | 08-09 | Suphx O0-v2 | Repeat the oracle/public comparison on identical public trajectories and separately test whether emphasizing larger oracle margins helps. | **SELECT NONE** | CRN control oracle-minus-public `+0.015`, LCB `-0.067`; plus-margin `-0.047`, LCB `-0.109`; interaction `-0.062` | Shared-public CRN repaired the comparison mechanics but did not make oracle use robust. Margin sharpening was directionally worse, no cell advanced, and O1 remains unauthorized. |
 | 08-08 | Teacher-v3 Stage B / audit-v2 | Compare cheap heuristic-continuation labels with much deeper MC-continuation labels on ordinary states to see whether cheap labels are trustworthy. | **STAGE B PASS / AUDIT OPERATIONAL REFUSAL** | cheap-minus-gold regret upper bound `0.0195 < 0.10`; audit shard 6 stopped on an incomplete champion-report continuation and published no labels/gate | Cheap labels agreed on sampled ordinary states. The continuation audit produced no ML verdict and is nonretryable; reviewed score-free diagnostics now gate a fresh versioned synthetic contract. |
 | 08-09 | Teacher-v3 fresh champion audit | Repeat that label-fidelity comparison on an untouched 64-state complement and identify where ordinary N=30 labels become uncertain enough to need expensive treatment. | **PASS / STAGE-C DESIGN** | cheap-choice all-64 regret upper bound `0.0354`; N=30-choice upper bound `0.0439`, both below `0.10`; N=30 boundary-8 diagnostic upper bound `0.1421` | The cheap and N=30 choices are champion-faithful on the frozen 64-state complement. The boundary diagnostic motivates hard-tail escalation. Reviewed adapter `56ccefbd…c2442` now freezes that design-only contract; it authorizes no labels, training or promotion. |
-| 08-09 | Teacher Stage-C design + controller rebind | Turn the audit lesson into one finite recipe: keep broad cheap ordinary anchors, spend deeper disjoint root comparisons on hard cases, and conditionally add supported human/model/mechanism proposals without recursively calling MC inside MC. | **DESIGN + REBIND PASS / ZERO STATES** | base `20bdb95` / `f213314a…3b4`; rebind `7018f36` / `b60c4298…7b18`; 1,024 DESIGN / 512 CALIB / 512 REPORT; 20/33 caps; 10,494,720 maximum candidate-world rollouts | Claude passed both the bounded curriculum and the exact H0-v3/S3c-v2 dependency rebind at `cb9471b`; all seven curriculum hashes remain unchanged. Capture-controller implementation is eligible, but no state, label, model or strength result exists. |
+| 08-09 | Teacher Stage-C design + controller rebind | Turn the audit lesson into one finite recipe: keep broad cheap ordinary anchors, spend deeper disjoint root comparisons on hard cases, and conditionally add supported model/mechanism proposals without recursively calling MC inside MC. | **DESIGN + REBIND PASS / ZERO STATES** | base `20bdb95` / `f213314a…3b4`; rebind `7018f36` / `b60c4298…7b18`; 1,024 DESIGN / 512 CALIB / 512 REPORT; 20/33 caps; 10,494,720 maximum candidate-world rollouts | Claude passed both the bounded curriculum and the exact dependency rebind; all seven curriculum hashes remain unchanged. H0 later supplied no admissible human rule. The curriculum is ready for capture, but no state, label, model or strength result exists. |
+| 08-09 | Teacher Stage-C capture controller | Collect the exact reviewed hard-state curriculum without allowing selection diagnostics, evaluation seeds or runtime identity drift to leak into later labels. | **FROZEN / EXTERNAL REVIEW REQUIRED / ZERO STATES** | source `67fb31f`; packet `e23356f7…96f2`; 113 focused compiled tests; exact zero-work freeze/recompute | PR #9 is the immediate T4 blocker. A PASS authorizes one score-free capture receipt only; it is not a dataset, label or policy result. |
 | 08-09 | S4 point-banking exact-state screen | In rollouts, when the bot is already winning the trick and can retain a higher winner, let it bank a 5/10/K instead of always spending the cheapest winner. | **MECHANISM PASS / FULL-GAME SCREEN RUNNING** | overall acting-team point delta `+5.156`, one-sided LCB `+3.029`; attacker/defender means `+6.406/+3.906`; 35 wins, 4 losses, 25 ties; level utility `+0.25` | Banking a point-card winner while retaining higher control helps on the frozen exact-late trigger population in both roles. This is mechanism evidence; the fresh whole-game test is now running. |
-| 08-09 | S4 complete-round score-free preflight v2 | Play complete mirrored rounds with the point-banking rollout rule, an analysis-identical null, and the live champion on the same deals and random streams. | **CAPACITY + PACKET PASS / SCREEN RUNNING** | 4 clusters in `321.32s`; projected screen `91.40` fleet-hours / `11.42` max-shard hours; treatment/null both trigger in both roles with exact dose | Exact `cad3992` repairs the superseded v1 validator, and Claude passed packet `17036e63…1385`. After S3a released Mini, one sealed 2,048-cluster screen consumed admission `1d99bb55…bdbf` and receipt `20a420d2…5cc`. |
-| 08-09 | Human H0 counterfactual design v1 | Add the move a human actually played to the champion ballot alongside V11 and random proposals, then price those choices on common simulated worlds instead of imitating the human blindly. | **SPLIT REVIEW PASS / SUPERSEDED PRE-EXECUTION** | 384 DESIGN + 128 name-ID/deal-disjoint AUDIT plays; separate 36/9 buries; every eligible late/off-ballot row retained; zero outcomes | The split and authority semantics passed, but later executable audit found the pinned V11 digest names no artifact. V1 cannot parent a controller. |
-| 08-09 | Human H0 counterfactual design v2 | Preserve v1's human sample while repairing the real V11 checkpoint and deployed report-LCB parent identities. | **IDENTITY DELTA PASS / SUPERSEDED PRE-CONTROLLER** | Claude PASS `9fdb67a`; same 384/128 plays and 36/9 buries; zero outcomes | The executable artifacts reopened correctly, but the analysis-ballot cap, downstream continuation and candidate-recall estimand remained ambiguous. Bounded v3 replaces the design before any controller or result. |
-| 08-09 | Human H0 counterfactual design v3 | Cap the human/V11/random proposal union, make every source compete under fixed disjoint work, and distinguish the root report-LCB judge from the heuristic policy used inside rollouts. | **DESIGN PASS / CONTROLLER IMPLEMENTATION ONLY** | Claude PASS `239f13c`; 17/33 play/bury caps, three disjoint folds and 1,329,210 maximum candidate-world rollouts; zero outcomes | The human/model proposal experiment is now finite and executable. The PASS authorizes one score-free controller implementation—not a counterfactual run, label, training, strength claim or production change. |
-| 08-09 | Human H0-v3 score-free controller v1 | Replay the frozen human decisions, build the production+human+V11+random candidate unions, and bind one future diagnostic run so incomplete work cannot look like a result. | **HOLD / SUPERSEDED BEFORE OUTCOMES** | 557/557 rows replayed; geometry `876ed56b…ff2b`; **0 worlds and 0 outcomes** | Packet `13d9a97f…61fc` is preserved, but Claude found the runtime did not self-enforce compiled/strict-void mode and receipt deletion could reissue admission. This is no verdict on human/V11 proposals; frozen controller v2 replaces it. |
-| 08-09 | Human H0-v3 score-free controller v2 | Keep the same bounded human/model proposal experiment, but make the executable itself refuse weak sampler settings and consume an irreversible admission before it can publish a receipt. | **COMPONENT PASS / SUPERSEDED ON INTEGRATION HOLD** | source `6977dbb`; packet `3f68dc6e…7fcf`; external marker `cc1c293`; 557/557 rows; zero outcomes | Review verified the component logic, but admission wrote an unignored lock that made runtime reject its own tree. Replacement v3 below repairs the seam; v2 remains permanently non-executable. |
-| 08-09 | Human H0-v3 score-free controller v3 | Preserve the same fair proposal comparison while proving the one-shot lock does not make its own runtime reject the repository. | **EXTERNAL PASS / ZERO OUTCOMES** | source `4ebcd09`; packet `cf074871…35392`; 557 rows; 97 focused tests; Claude PASS `205b6af` | The real admit→runtime seam now works while unrelated dirt still refuses. One diagnostic T4 receipt is eligible; no world, utility, label, training or strength claim exists. |
-| 08-09 | S3a structured-bury full-game screen | Give the banker structured point/void/trump kitty options, then test the resulting policy over fresh complete mirrored rounds rather than selected bury states. | **SELECT NONE / CLOSED** | structured-minus-champion `+0.0464`, LCB `-0.0041`; structured-minus-null `+0.0430`, LCB `-0.0228`; all 2,048 clusters verified | The positive mean narrowly missed the preregistered gate, so no confirmation or deployment. Close the consumed stream without retry/tuning; only a separately preregistered fresh larger design could revisit the mechanism. |
-| 08-09 | S3c exact-root curriculum + one-card controller | Start exact endgame work at naturally reached one-card endings, then advance to two and three cards only after each smaller problem proves bounded and useful. | **DESIGN + V2 CONTROLLER PASS / ZERO SOLVER WORK** | 768 unique-deal roots; replacement source `4ebcd09`, packet `cafbee43…f23e`, 64 forced one-card roots; Claude PASS `205b6af` | One bounded mechanics/capacity T4 receipt is eligible. It cannot claim strength, and two-/three-card work remains gated on its terminal result. |
+| 08-09 | Human H0-v3 counterfactual | Put bounded human, V11 and random proposals beside production choices and evaluate them on common selection worlds plus fresh report worlds instead of blindly imitating any source. | **VERIFIED REFUSED INCOMPLETE / NO UTILITY / CLOSED** | 555/557 rows complete; two DESIGN follow rows refused candidate-diagnostic reconciliation; aggregate `84ef4400…196c` published no utility | Preserve the one-shot refusal. It is no verdict on proposal quality, grants no human-derived Stage-C rule, and must not be salvaged by dropping rows or reading partial utilities. |
+| 08-09 | S3a structured-bury full-game screen | Give the banker structured point/void/trump kitty options, then test whether the selected-state gain survives fresh complete mirrored rounds. | **SELECT NONE / CLOSED** | state mechanism `+0.997 +/- 0.401` versus incumbent; whole-game structured-minus-champion `+0.0464`, LCB `-0.0041`; all 2,048 clusters verified | Better local candidates did not become a stronger composed policy. Close the consumed stream without retry/tuning; preserve disagreements as Teacher diagnostics. |
+| 08-09 | S3c exact-root curriculum + one-card capacity | Start exact endgame work at naturally reached one-card endings, then advance to two and three cards only after each smaller problem proves bounded. | **ONE-CARD CAPACITY PASS / TWO-CARD PACKET REVIEW OPEN** | 64/64 roots, 256/256 worlds, 192 exact attempts/successes, zero refusal or overflow; terminal `ed045ab0…78d2` | Replay, sampling and solver capacity work at one card. Because every action is forced, this is not action-quality or strength evidence; a reviewed two-card multi-action packet is next. |
 | 08-09 | S5 point-protection replay boundary | Test the human-log hypothesis that bots sometimes donate a point card to an already-lost trick by reconstructing legality and comparing only strictly lower-point alternatives. | **CODE + BOUNDARY FIXTURE PASS / NO CENSUS** | PR #4 head `2351b36`; equal-point `HK`/`H10` witness; `<`→`<=` mutation red; Claude PASS `205b6af` | One deterministic score-free census freeze is eligible. No observed trigger, treatment, strength result or Stage-C inclusion exists yet. |
-| 08-09 | S3a full-game score-free preflight | Check that structured-bury search is genuinely triggered, consumes exact work and fits Mini before the fresh full-game test. | **CAPACITY PASS / CONSUMED** | 4/4 clusters in 255.3 seconds; screen projection `72.62` fleet-hours / `9.08` max-shard hours | The sizing was correct and enabled the now-terminal screen. It was capacity evidence, not evidence that the policy would win. |
 | 08-08 | S3b v2 throughput | Sample compatible hidden hands, solve the remaining four-card perfect-information game exactly by partnership minimax inside each sampled world, then average those exact world values. | **HOLD / NO SCREEN** | first exact-treatment cluster exceeded the frozen cumulative `250,000`-node cap; no receipt published | The registered four-card sampled-exact recipe is not operationally admissible under its zero-overflow rule. No strength conclusion; no retry or 2,048 screen. |
-| 08-08 | S3a v2 sizing | Run a tiny score-free dry run to verify the structured-bury mechanism consumes exact work and fits available compute. | **CAPACITY PASS / NO STRENGTH VERDICT** | frozen projection `0.142` fleet-hours / `0.0178` max-shard hours, exact work and zero failed worlds | This cleared placement for the subsequently reviewed and completed 512-state screen; sizing itself made no strength claim. |
-| 08-08 | S3a structured-bury screen | Compare strategy-aware point/void/trump kitty candidates with the live heuristic choice, the old four-choice search, and equally wide random candidates on fixed states. | **MECHANISM PASS / AUTHORIZE DUEL DESIGN** | structured-minus-live-incumbent `+0.997 +/- 0.401` (LCB `+0.597`); minus legacy-four `+0.878 +/- 0.380`; minus matched random widening `+3.253 +/- 0.561` | Structured proposal generation improved the frozen state-level bury objective against every preregistered control. This is the first positive S3 mechanism signal, but only a fresh full-game duel can establish bot strength. |
 
-Evidence anchors, in the same order:
+### T3 policy synthesis
+
+- **No production policy changed.** T3 closed readiness and mechanism questions;
+  it did not beat or replace `mc-s0-report-lcb`.
+- **Local improvement is not enough.** S3a improved selected bury states and
+  then selected none in complete games. Future proposal work must measure the
+  composed policy under natural traffic and continuation, not stop at candidate
+  quality.
+- **S4 is the only live direct-policy bet.** Its point-banking mechanism passed
+  exact late states; its sealed whole-game screen decides whether that narrow
+  correction matters often enough to advance.
+- **Human actions remain proposals, not truth.** H0's fail-closed terminal run
+  published no utility, so no human-derived rule enters Stage C. This is an
+  operational refusal, not a negative result on human or V11 ideas.
+- **Stage C and S3c are capability paths, not current policies.** Stage C is a
+  reviewed recipe for better training signal and awaits capture-controller
+  review. One-card S3c proved capacity only; two-card states are the first
+  action-quality test.
+- **T4 is the first end-to-end learned-policy milestone.** It must produce a
+  2,048-state asset, reviewed labels, at least eight training seeds, one
+  untouched REPORT result and one composed whole-game screen. Reviews and green
+  pipelines alone cannot close it.
+
+Primary evidence anchors:
 
 - RLCB-C1 aggregate `83f5a9df2f1db1fa45d50fb005b941b776d9ecc2c9f8703d3d62efff8f5ef5ea`.
 - Formal S0 closeout `ef0a3659859b38d0b9362376e5e403fecb625f59c475600ed09906ce695fde9a`.
@@ -70,6 +85,10 @@ Evidence anchors, in the same order:
   source/asset `20bdb95` / `1a29418`; dependency rebind packet
   `b60c4298493794b6de0ffe6907e8b92fb24f4bab6d56cc4c653eb1c67a1b7b18`;
   external rebind PASS at `cb9471b`; zero states/labels.
+- Stage-C capture controller source `67fb31f8cfd16ad83e1998cda50e01ef7447f115`;
+  packet commit `54ae266`; external packet
+  `e23356f77d2e7c20a96f8ec9304df5d3a8b9bbc634a60f9696d8c06a01196f2c`;
+  zero states/worlds and external review pending.
 - S4 exact-state screen `abd9f36fa3e84c81b90e22f1c827f828a549f7fd6a9420ffbdb7c168974cdc00`;
   pre-outcome receipt `90124eb6f89c27cedc38770b2da5b3b8597400694281729656105f67803f526b`;
   admission `83993ec6609c2a7528853d4c1db789f137d3f0cbfff97d20fbf526cbd5ff5e6d`.
@@ -77,42 +96,20 @@ Evidence anchors, in the same order:
   frozen packet `17036e6307ad0072ae10aeaaddde0ed3628a2f526ca440e909cdc35cd5071385`;
   running-screen admission `1d99bb55f780cb9f5a9f0ef99c810e0045eb99b458ff73d9190d8d59c60cbdbf`;
   receipt `20a420d2e939f8f1ce375ca32cee81d044db2c29dff7e52fbe7080a000dd65cc`.
-- Human H0 v1 design packet `9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3`;
-  repaired v2 packet `2cccf5803ca60cf41690f18dc0e85febaf36a88ce702587e8c86a67e2a358f2b`;
-  bounded v3 packet `4d3f0a35082c6957f2a468686b8eedbd6d7cbbf9540503fcea08cccf27c8cc3c`;
-  bounded-v3 design-review marker `239f13ce52a8be81108fdebf9bd0e96742e60133`;
-  reviewed corpus manifest `b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553`.
-- H0-v3 controller v1 packet `13d9a97f9adf26860b9f5e0d4889960c75baa5bf979b939206d2399472ba61fc`;
-  replacement v2 packet `3f68dc6ec6d5f90043f36c0a68847ca9ef510641e01760ac4fa11ebd6a6a7fcf`;
-  candidate geometry `876ed56bd8f436d58cb6f3d58774a0f06756afb4d8c98ffdb49d9424b545ff2b`;
-  v2 controller/runtime `108e6bb2…379` / `ddf8b250…a124`; external PASS
-  marker is recorded at `cc1c293`. A later integration audit found that the
-  consumed-slot file was unignored, so v2 cannot reopen after admission and
-  has no execution authority. Replacement source `4ebcd09` / H0-v3 packet
-  `cf074871cf977c0b072c528c395082b453b3b589f445c524baae9016e1d35392`
-  passed externally at `205b6af`; no receipt or outcome exists.
+- H0-v3 design `4d3f0a35082c6957f2a468686b8eedbd6d7cbbf9540503fcea08cccf27c8cc3c`;
+  replacement controller `cf074871cf977c0b072c528c395082b453b3b589f445c524baae9016e1d35392`;
+  terminal receipt `37ab77a93…748c6`; aggregate
+  `84ef4400947d…196c`; status
+  `VERIFIED_REFUSED_INCOMPLETE_NO_AGGREGATE_UTILITY`.
 - S3a full-game aggregate `20609613e000ff4d11640dc35827527ca14e0ec09720c9c6cda1c64f6cdc271f`;
   terminal final `32156d79aaff247c2d3b60bcf45460442a224c31f415d6689b769b0eba32c9ff`.
 - S3c census `236326099dc9763c6a5941bcb2a90670c4e23ac390ea07a0e4ec5063fa50b52a`;
-  curriculum packet `df1024280a77c60174a57c3273ba3624e672bec9afde023576fde0404df49eca`;
-  review marker commit `084ba7eba59cd0a317a50c4088f194d2376c1e03`;
-  one-card controller packet `f58d23b74046dd04963b4f10fbf605030221219eef6d325c5e8319043643874a`;
-  external component PASS marker is recorded at `cc1c293`. The same unignored
-  consumed-slot defect blocks runtime. Replacement source `4ebcd09` / packet
-  `cafbee439f8c30a07b0b6801d52620d7197afc3633badbc531bc5b156ce2f23e`
-  passed externally at `205b6af`; one later mechanics receipt is eligible, but
-  no solver work exists.
-- S3a full-game preflight `09692f823d26d38ea76c7c6e36ea007a5031c0f05ca1a76795c84e7d0722edf0`;
-  supervisor final `56943242f3620b09774a55eab992fbac0bce6ad224c3ada6a7b54a5634799e9f`;
-  reviewed screen packet `de16247bfea13bde516cfb45317f7d21d46d758ae700441b9b747b41f3d5cdd4`;
-  admission `567e8aa8bb1107314373f7e5756e4f8646e419a70fa1afed9594ee36edf41c5e`;
-  live receipt `2c89bed3e5727b4e116f3efb2fcdc184cc1dc683860be66dd842a5310b6cbb2c`.
+  replacement controller `cafbee439f8c30a07b0b6801d52620d7197afc3633badbc531bc5b156ce2f23e`;
+  receipt file `350553b7…9aad`; result `f1777267…ff11`; terminal file
+  `ed045ab0…78d2`.
 - S3b v2 closeout: clean head `cd44ea8a6fefb8fba258d01bcca4bed98169a217`,
   runner SHA `ed4252b2f957e2855446ca63858e7da973949934850684e8f92e5950ca74050d`;
   final and partial receipts absent by fail-closed design.
-- S3a v2 sizing receipt `cf7702770e2dd416b0ecfcdcc2ba6a5c32ab262aef0319d87346d05bcdf5c431`.
-- S3a screen aggregate `74aa5a3947e1daaa5aa4bc33eef8ae04eaaf695d0cb900c7045eb0cbbc4396cd`;
-  supervisor final `d3f2b1ab48085ccf37534b5dd7f20ea6cf0d7644c6c49304b644ecf895169a6b`.
 
 ### Production search
 
@@ -239,31 +236,16 @@ Evidence anchors, in the same order:
   before malformed-round rejection and terminally invalidates an evaluation
   room after any log-write failure, so neither path can manufacture a partial
   training or evaluation publication.
-- **Human proposal pilot:** exact `9770313` froze score-free H0 v1 at packet
-  `9ff160a9…247d3`: 384 DESIGN and 128 player/deal-disjoint AUDIT play keys plus
-  separate bury surfaces. Its split review passed, but executable audit found
-  V11 SHA `0260ad67…455e` names no artifact. Exact `12dac55` v2 preserved the
-  rows and repaired executable `ep07.npz` plus the portable live parent; Claude
-  passed that delta at `9fdb67a`. A later score-free implementation audit found
-  its action cap, downstream continuation and candidate-recall output
-  underdefined. Exact source `b02b6de` / packet commit `d6214ce` freezes
-  bounded v3 at `4d3f0a35…8cc3c`: 17/33 play/bury caps, explicit
-  `HeuristicBot` continuation, three disjoint folds and maximum 1,329,210
-  candidate-world rollouts. Claude independently passed the design at
-  `239f13c`. Exact producer `931f504` and asset `ff277b4` froze controller v1
-  packet `13d9a97f…61fc`: all 557 rows replayed, geometry is
-  `876ed56b…ff2b`, and preflight consumed zero worlds/outcomes. Claude held v1
-  because runtime mode was not self-enforced and receipt deletion could reissue
-  admission. V1 remains immutable. Replacement source `6977dbb`, asset
-  `d99f7e8` and packet `3f68dc6e…7fcf` now require compiled/strict-void runtime
-  on every packet open, reject experimental sampler flags and publish a durable
-  admission slot before the receipt. Score-free freeze/recompute still consumed
-  zero worlds/outcomes. Claude independently passed those components at
-  `cc1c293`, but a later real admit→runtime audit found that the slot itself was
-  unignored and therefore made the tree fail its own clean-tree check. V2 has
-  no execution authority. Replacement source `4ebcd09` / packet
-  `cf074871…35392` fixes that seam and passed externally at `205b6af`; no
-  receipt or outcome exists.
+- **Human proposal pilot:** H0-v3 compared bounded production, human, V11 and
+  matched-random proposals under fixed common-world selection and fresh report
+  work; it never treated a human action as a label. After two superseded
+  score-free controllers exposed runtime/admission defects, replacement source
+  `4ebcd09` / packet `cf074871…35392` passed externally at `205b6af`. Its sole
+  T4 execution then terminated with 555/557 complete rows and two DESIGN
+  follow-play validation refusals. Aggregate `84ef4400…196c` correctly
+  published no utility. Preserve the refusal without retry, row dropping or
+  partial interpretation. It supplies no human-derived Stage-C rule and is no
+  verdict on whether the underlying human or V11 proposals were good.
 - **Teacher Stage C:** v1/v2 are superseded design artifacts. Frozen v3 source
   `20bdb95`, asset `1a29418` and packet `f213314a…3b4` bind the passed H0
   controller, exact live parent and canonical adapter to a finite 2,048-state
@@ -274,8 +256,11 @@ Evidence anchors, in the same order:
   makes recursive MC work exactly zero. Claude passed the design at `d92f595`.
   Minimal successor `7018f36` / `b60c4298…7b18` then bound externally passed
   H0-v3/S3c-v2 while preserving every curriculum hash and passed at `cb9471b`.
-  Capture-controller implementation is eligible; no capture, label or model
-  work is authorized yet.
+  Capture-controller source `67fb31f` and external packet
+  `e23356f7…96f2` are now frozen in draft PR #9 with 113 focused compiled tests
+  and zero captured states/worlds. Exact external review is the next gate. A
+  PASS may authorize one score-free capture receipt only; no label, model or
+  strength work is authorized yet.
 
 ### Learned policies and RL
 

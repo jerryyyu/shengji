@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-10 15:24 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-10 16:16 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,8 +8,8 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | none | **FREE / T4 CAPACITY-V3 REVIEW GATE.** Capacity-v2 is terminal no-use after 32 missing-NumPy V11-load refusals, zero candidate worlds/sampler attempts/outcomes and consumed slot `b6c1219a…5e72`. Fresh packet `b53eb509…ce19` opens one short run only after Claude PASS. The same isolated worktree is already staged for later training with Python 3.14.6 + NumPy 2.5.1 + Torch 2.13.0; 49/49 downstream tests pass, but no training authority exists. |
-| Air | none | **FREE / S4 SOURCE REVIEW GATE.** Clean worktree `shengji-s4-replication-air-v1` is exact `fb6ec1a`; Python 3.14.6, fast binary `9c9e77…b4c1`, live parent and prior-screen hashes all reopen. No preflight/outcome exists. Source PASS opens one 8-cluster score-free preflight only. T4 training remains causally blocked on reviewed labels. |
+| Mini | none | **FREE / T4 CAPACITY RESULT REVIEW.** V3 result `e2eea8c4…d32d4` is 32/32 with zero refusals/outcomes retained and exact 147,384 worlds; consumed slot `6dc1f9bd…d0fb`. Result PASS precedes label-packet freeze. The same environment is staged for later training, but no label/training authority exists. |
+| Air | none | **FREE / S4 PACKET REVIEW.** Preflight `a89a4498…69` passed 8/8 and projected 61.853 fleet-hours / 7.732 max-shard hours. Frozen packet `b239b849…ab76b` reopens exactly; no admission, shard or outcome exists. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
 ## Next admitted execution
@@ -27,9 +27,8 @@ deals, plus all 2,048 selected states regenerated. Current order:
    no aggregate and no partial mining. Never run its other eight slots.
 3. Capacity-v2 result `64fdda5f…4cf2` is terminal no-use: Codex's own marker
    was not external review and missing NumPy refused all 32 rows before worlds.
-4. Fresh capacity-v3 packet `b53eb509…ce19` now needs Claude review. Only after
-   PASS, Mini consumes one 32-state outcome-discarding
-   capacity run; its terminal result requires separate external review.
+4. Capacity-v3 packet review and its one Mini run are complete. Result
+   `e2eea8c4…d32d4` now needs separate external review.
 5. Only after that result passes may a v2 label packet be frozen/reviewed,
    followed by one 16-shard execution and aggregate on 2,048/2,048 complete.
 6. Mini starts the model sweep only after complete reviewed iid-v2 labels and
@@ -50,9 +49,9 @@ The canonical numbers and meanings are in the results table in
 
 | date | job | terminal verdict | anchor |
 |---|---|---|---|
-| 08-10 | Teacher Stage-C capacity v3 | **FROZEN/VERIFIED / EXTERNAL REVIEW OPEN / ZERO WORLDS** | source `167feab`; packet external/internal `b53eb509…ce19` / `6a7f6f0e…7281`; runtime witness `071e496c…6264`; exact Mini Python 3.14.6 + NumPy 2.5.1 + V11 load before admission; no slot/result |
+| 08-10 | Teacher Stage-C capacity v3 | **TERMINAL PASS / RESULT REVIEW OPEN** | source `167feab`; result external/internal `e2eea8c4…d32d4` / `00bd3456…7e9f`; slot `6dc1f9bd…d0fb`; 32/32, 147,384 exact worlds, zero refusals/outcomes; projection 1.640 fleet-hours / 0.235 wall-hours |
 | 08-10 | Teacher Stage-C capacity v2 | **TERMINAL NO-USE / ZERO WORLDS** | result external/internal `64fdda5f…4cf2` / `def43a24…2102`; consumed slot `b6c1219a…5e72`; 32/32 missing-NumPy V11-load refusals, zero candidate worlds/sampler attempts/outcomes; Codex self-review was invalid; never retry |
-| 08-10 | S4 fixed Air replication source | **SOURCE REVIEW OPEN / ZERO PREFLIGHT OR OUTCOMES** | exact `fb6ec1a`; runner/controller `678b27b0…37bd` / `77f74b08…2d73`; 2,048 primary + 256 null sentinel = 8,704 records; Air runtime and prior screen reopen exactly; 69/69 tests |
+| 08-10 | S4 fixed Air replication | **SOURCE + SCORE-FREE PREFLIGHT PASS / PACKET REVIEW OPEN / ZERO OUTCOMES** | exact `fb6ec1a`; preflight `a89a4498…69`, 8/8 and all criteria; packet `b239b849…ab76b`; projection 61.853 fleet-hours / 7.732 max-shard hours |
 | 08-10 | Teacher Stage-C iid-v2 capacity packet | **SUPERSEDED / SELF-REVIEW INVALID** | source `8a202e9`; packet external/internal `a667b6bb…795c` / `0a0194ce…6977`; exact schedule remains useful, but Codex's marker was not external authority and the resulting v2 run is terminal no-use |
 | 08-10 | Teacher Stage-C label v1 execution | **TERMINAL NO-USE / NO AGGREGATE** | source `3f6f048`; receipt external `0c3d7ea0…adc1c`; consumed slots `0,4,5,8,10,12,14,15`; 2 complete, 6 refused, 971/1,024 complete rows; untouched slots never run; no partial utility mining |
 | 08-10 | Teacher Stage-C label capacity v1 | **TERMINAL CAPACITY + EXTERNAL RESULT PASS / SUPERSEDED DOWNSTREAM** | packet `e8967d6f…d2a58`; result `111092b7…cee0`; 32/32, zero refusals, no retained outcome; it validly sized v1 but did not exercise the late small-support failure and cannot authorize v2 |

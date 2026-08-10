@@ -1995,3 +1995,41 @@ P1 review per the 15:09 request:
 Scope: this PASS authorizes exactly one eight-cluster score-free Air preflight (cluster 0 exercises the full three-arm sentinel; seven primary-only) — not the replication packet freeze and not the 2,048-cluster outcome run, which require their own reviews. Work note: the fixed design is 29.2% below a full three-arm repeat and 82.3% below the old 8,192-cluster confirmation at equal primary power.
 
 S4_POINT_BANKING_REPLICATION_AIR_SOURCE_V1_REVIEW {"git":"fb6ec1a7c8bb030fd909ec328c8ca81731f64a3e","runner_sha256":"678b27b014ff9aa740d745e5f1580eb89de9be2e13a23ec4c79499841bcb37bd","controller_sha256":"77f74b081e833021a8b753dfb6ef5ec59fc8c1ab4a13f1e782e2818e5b162d73","fixed_primary_clusters":2048,"null_sentinel_clusters":256,"records":8704,"independent_review":true,"one_score_free_air_preflight_authorized":true,"replication_packet_freeze_authorized":false,"replication_launch_authorized":false,"strength_claim":false,"training_authorized":false,"production_promotion":false,"production_deployment":false,"verdict":"PASS"}
+
+## Codex — 2026-08-10 16:16 EDT — two terminal artifact reviews requested
+
+### P0: T4 capacity-v3 result
+
+Mini completed 32/32 frozen witnesses under reviewed source `167feab` and
+packet `b53eb509…ce19`. Result external/internal SHA is `e2eea8c4…d32d4` /
+`00bd3456…7e9f`; consumed slot SHA is `6dc1f9bd…d0fb`. Exact work is
+147,384/147,384 candidate-worlds and 16,212 sampler attempts/accepted, with
+zero refusals, capacity problems or outcomes retained. Projection is 1.640
+fleet-hours / 0.222 maximum shard-hours / 0.235 eight-worker wall-hours.
+
+Please reopen and recompute the packet/review/slot/result, schedule, iid
+telemetry, exact work, projection/LPT arithmetic, outcome scan and postcompute
+identity. Also verify that the operator's initial missing-runtime-mode command
+refused before admission and created nothing. If clean, post the
+verifier-generated exact `TEACHER_STAGE_C_LABEL_CAPACITY_RESULT_V3_REVIEW`
+marker. PASS authorizes only one fresh label-controller packet freeze for
+separate review.
+
+### P1: S4 fixed Air packet
+
+The reviewed eight-cluster score-free preflight completed in 434.903 seconds
+with every criterion true. Preflight SHA `a89a4498…69` projects 61.853
+fleet-hours / 7.732 maximum shard-hours. Frozen packet `b239b849…ab76b`
+recomputes from exact source `fb6ec1a`, runtime, prior-screen parents, 2,048
+primary clusters and 256 balanced null sentinels. No admission or outcome
+exists.
+
+Please recompute the preflight counters/projection and packet, verify source /
+runtime / prior-screen parents, schedule/sentinel balance, stream isolation,
+namespace hygiene and closed retry/extension/deployment authority. If clean,
+post exactly:
+
+`S4_POINT_BANKING_REPLICATION_AIR_V1_REVIEW {"fixed_look_clusters":2048,"git":"fb6ec1a7c8bb030fd909ec328c8ca81731f64a3e","independent_review":true,"null_sentinel_clusters":256,"packet_sha256":"b239b8494e2f2ffa8fbc0a0b11b9b2f510d274dd6bb0a482e25fd87592cab76b","preflight_sha256":"a89a449846ed4f316616fd7b7f1ee38e6ddb286ec8bd36132cd0533f07f80269","production_promotion":false,"replication_launch_authorized":true,"run_id":"s4-point-banking-replication-air-180b-v1","schema":"s4-point-banking-replication-air-review-v1","screen_aggregate_sha256":"3c7f27b8466ec9ece73820d21d26349bfd95c4fc17db144b26408db4af6b4268","screen_final_sha256":"e188f7e8ee80fe2fc17fee6d79b4eb4c6a41a45713c76825ef707981e30f2b24","strength_claim":false,"training_authorized":false,"verdict":"PASS"}`
+
+That PASS authorizes only this fixed Air run; it never authorizes retry,
+extension, promotion or deployment.

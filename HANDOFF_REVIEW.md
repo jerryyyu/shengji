@@ -60,6 +60,45 @@ only after PASS:
 
 `TEACHER_STAGE_C_LABEL_CAPACITY_RESULT_V1_REVIEW {"capacity_pass":true,"complete_samples":32,"controller_packet_sha256":"e8967d6fa05123489371af40e8f7b1ca35af89eaf20cd16bd42c2bc5699d2a58","controller_review_claim_sha256":"fe523cb55faada0f235d722f171a9ec0d5928a8538c6937e83dfbdb14d998626","git":"3f6f048142f97e22c226b03614f361756e03108d","independent_review":true,"label_controller_freeze_authorized":true,"label_schedule_sha256":"1c28ee03ff8ee174e177c451802029a495f35434cdb9efe1c18341ee4c891f69","labels_authorized":false,"outcomes_retained":false,"outcomes_returned_by_workers":false,"preflight_schedule_sha256":"2c91205f0831ce51e7478ba617234b3b19b88f24e6f5012e6811173e9e58f82d","production_deployment":false,"production_promotion":false,"projected_eight_worker_wall_hours":0.21948316485568714,"projected_fleet_hours":1.5446957878280645,"projected_max_shard_hours":0.20923581832035612,"refused_samples":0,"result_internal_sha256":"90b4a1dff482ae7a0964ce4de7bccd078c4b9c97f76a4bc99a0efeb0eb28a792","result_sha256":"111092b731d0e0453bfa4fd992263b28435b6336728d42f912681c51acf0cee0","schema":"teacher-stage-c-label-capacity-result-review-v1","state_set_sha256":"c7a769c4efab582a38a4b77e8a707acde65a3e022d5db9fb27f660809e6e8e1c","strength_claim":false,"training_authorized":false,"verdict":"PASS"}`
 
+## Codex — 2026-08-10 12:40 EDT — parallel source audit: repair impossible label→training/REPORT Git equality
+
+This is a non-blocking source review alongside the capacity-result gate; it
+does not request or grant execution authority.
+
+While preparing the post-label commands, I found that the independently green
+branches could not form one executable pipeline. Label execution correctly
+requires its packet producer Git for the entire one-shot run. But the later
+training controller called that same runtime validator and therefore required
+the old label packet's producer Git to equal the newer training Git. REPORT
+repeated the direct call in both controller and runtime. A complete reviewed
+label aggregate would consequently be impossible to consume downstream even
+when every label source byte was unchanged. Existing tests mocked the parent
+validator, so branch-local green did not exercise this cross-commit boundary.
+
+Pushed integrated source `42e17266e3fbc1c75a89bb09e152a6b2669827d9`
+on `codex/stage-c-integrated-v8` repairs only downstream authentication:
+
+- label execution remains unchanged at exact producer `3f6f048`; its packet,
+  receipt, shards and aggregate still require that Git throughout;
+- training's new `_reviewed_upstream_label_packet` accepts a different parent
+  Git only when the exact logical path, external/self hashes, valid clean
+  producer identity, compiled/strict runtime mode, **every label runtime source
+  hash**, all shard admission paths and every false authority field match;
+- training still replays the state-set parent, label receipt and complete
+  aggregate plus independent markers before opening DESIGN/CALIB;
+- REPORT controller/runtime use that same validator for the old label parent;
+  training/REPORT/composition packets themselves will all be frozen and run at
+  this one integrated Git, so no further cross-Git exception is needed; and
+- no packet, label, checkpoint or REPORT row was created or opened.
+
+Air Python 3.14.6 / Torch 2.13.0 passes 36 focused training tests, 215 complete
+Stage-C tests and 252 Stage-C+S3c tests at this head. The new fixture accepts a
+reviewed clean upstream producer while its sources match, then turns red when
+one current label source hash differs. Please inspect this boundary in parallel
+and post any HOLD finding. The later training-controller packet review remains
+the executable gate; this source audit does not add a new marker or authorize
+training.
+
 ## Codex — 2026-08-10 10:40 EDT — request outcome-free Stage-C label-capacity packet review
 
 The immutable v7 state-set PASS is now recorded exactly once. From clean source

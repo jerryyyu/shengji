@@ -52,7 +52,7 @@ CONTROLLER_PACKET_PATH = (
 REVIEW_SCHEMA = "teacher-stage-c-label-controller-review-v1"
 REVIEW_MARKER = "TEACHER_STAGE_C_LABEL_CONTROLLER_V1_REVIEW "
 STATE_SET_REVIEW_SCHEMA = "teacher-stage-c-state-set-review-v1"
-STATE_SET_REVIEW_MARKER = "TEACHER_STAGE_C_STATE_SET_V5_REVIEW "
+STATE_SET_REVIEW_MARKER = "TEACHER_STAGE_C_STATE_SET_V6_REVIEW "
 RECEIPT_SCHEMA = "teacher-stage-c-label-receipt-v1"
 ADMISSION_SCHEMA = "teacher-stage-c-label-admission-v1"
 SHARD_ADMISSION_SCHEMA = "teacher-stage-c-label-shard-admission-v1"
@@ -70,10 +70,10 @@ CAPACITY_RESULT_REVIEW_MARKER = (
 )
 
 CAPTURE_CONTROLLER_SHA256 = (
-    "e299ac6c45d88cce1b677b6d69b5d9f61ed955c39728bbc10e932157f38cf749"
+    "40c602ea483e47bbd6f8c70f38d00c5e84cc3a12e51dbdce5b438e7a85020ffd"
 )
-CAPTURE_SOURCE_GIT = "a71c67eec555159c3bba586a6cf2021cbe1ceacc"
-CAPTURE_RUN_ID = "teacher-v3-hard-tail-stage-c-capture-v5"
+CAPTURE_SOURCE_GIT = "2bdb0947ee6b5d4b7643c17dca1da8c23f30f5f0"
+CAPTURE_RUN_ID = "teacher-v3-hard-tail-stage-c-capture-v6"
 LABEL_SHARDS = 16
 STATES_PER_SHARD = 128
 SPLIT_SHARDS = {"DESIGN": 8, "CALIB": 4, "REPORT": 4}

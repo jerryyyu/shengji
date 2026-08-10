@@ -375,6 +375,8 @@ def build_packet(
             "rank_ensemble":
                 "mean within-ballot softmax probability across seeds",
             "outcome_ensemble": "mean eight-bin probability across seeds",
+            "model_score_tie_epsilon": REPORT.MODEL_SCORE_TIE_EPSILON,
+            "tie_break": "lowest candidate index within epsilon",
             "primary_gate":
                 "paired-state Teacher improvement vs candidate0 LCB > 0",
             "outcome_head_additional_gate":
@@ -447,6 +449,8 @@ def expected_review_claim(packet: Mapping[str, object],
         "ensemble_models": len(packet["checkpoint_manifest"]),
         "report_manifest_sha256": _manifest_hash(packet["report_manifest"]),
         "report_surface_states": packet["report_contract"]["states"],
+        "model_score_tie_epsilon": packet["report_contract"][
+            "model_score_tie_epsilon"],
         "execution_host": packet["runtime_contract"]["host"],
         "python": packet["runtime_contract"]["python"],
         "torch": packet["runtime_contract"]["torch"],

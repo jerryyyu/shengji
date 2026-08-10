@@ -158,6 +158,9 @@ def test_packet_validation_does_not_touch_sealed_report_paths(
         "report_contract": {
             "surface": "play", "head": "ranking", "states": 480,
             "single_report_look": True,
+            "model_score_tie_epsilon":
+                RUNTIME.REPORT.MODEL_SCORE_TIE_EPSILON,
+            "tie_break": "lowest candidate index within epsilon",
             "durable_report_open_admission_slot":
                 RUNTIME.REPORT_OPEN_ADMISSION_PATH,
             "retry_after_report_open_or_failure_authorized": False,

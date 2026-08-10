@@ -20,6 +20,7 @@ from . import stage_c_model as MODEL
 REPORT_SCHEMA = "teacher-stage-c-model-report-v1"
 REPORT_T_CRITICAL = 1.70
 MIN_REPORT_STATES = 30
+MODEL_SCORE_TIE_EPSILON = 1e-7
 
 
 class StageCReportError(RuntimeError):
@@ -113,7 +114,12 @@ def _selected_index(
         scores = [MODEL.distribution_mean(value) for value in outcomes]
     else:
         raise StageCReportError("Stage-C REPORT capability head drift")
-    return max(range(len(scores)), key=lambda index: (scores[index], -index))
+    maximum = max(scores)
+    # Distinct candidates can share an encoding. Batched float32 matmuls may
+    # then differ by a few ulps solely because of row position; treating that
+    # noise as model preference would violate the frozen lowest-index tie rule.
+    return next(index for index, score in enumerate(scores)
+                if maximum - score <= MODEL_SCORE_TIE_EPSILON)
 
 
 def _nll_improvement(
@@ -199,7 +205,8 @@ def evaluate_capability(
         "ensemble_rule": {
             "ranking": "mean within-ballot softmax probability across seeds",
             "outcome": "mean eight-bin probability across seeds",
-            "tie_break": "lowest candidate index",
+            "tie_break": (
+                "lowest candidate index within model-score epsilon 1e-7"),
         },
         "states": len(examples),
         "proposal_triggers": trigger_count,

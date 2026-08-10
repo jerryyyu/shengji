@@ -252,6 +252,10 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, dict, dict, dict]:
             or packet["report_contract"].get("states")
             != CTRL.REPORT_SURFACE_COUNTS[surface]
             or packet["report_contract"].get("single_report_look") is not True
+            or packet["report_contract"].get("model_score_tie_epsilon")
+            != REPORT.MODEL_SCORE_TIE_EPSILON
+            or packet["report_contract"].get("tie_break")
+            != "lowest candidate index within epsilon"
             or packet["report_contract"].get(
                 "durable_report_open_admission_slot")
             != REPORT_OPEN_ADMISSION_PATH

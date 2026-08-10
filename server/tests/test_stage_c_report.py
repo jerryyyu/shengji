@@ -109,3 +109,11 @@ def test_report_result_changes_under_prediction_mutation() -> None:
         examples, changed, surface="play", head="ranking",
         prior_distribution=[1 / 8] * 8)
     assert first["result_sha256"] != second["result_sha256"]
+
+
+def test_numerically_tied_model_scores_choose_lowest_index() -> None:
+    outcomes = [_distribution(3), _distribution(3)]
+    assert REPORT._selected_index(
+        [0.0, REPORT.MODEL_SCORE_TIE_EPSILON / 2], outcomes, "ranking") == 0
+    assert REPORT._selected_index(
+        [0.0, REPORT.MODEL_SCORE_TIE_EPSILON * 2], outcomes, "ranking") == 1

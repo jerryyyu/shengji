@@ -1,109 +1,130 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 19:15 EDT. This is the short executable mailbox.
-Terminal evidence lives in `HANDOFF_REVIEW.md`, policy synthesis in
+Last compacted: 2026-08-09 20:21 EDT. This is the executable mailbox.
+Terminal markers live in `HANDOFF_REVIEW.md`, policy synthesis in
 `AI_POLICIES.md`, live jobs in `JOBS.md`, and queue order in `BACKLOG.md`.
 
 ## Current truth
 
 | area | status | next legal action |
 |---|---|---|
-| Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; RLCB-C1 measured `+0.338 +/- 0.068` signed levels versus `mc-strong`. |
-| S3a structured bury | **TERMINAL SELECT NONE** | Preserve `+0.0464`, LCB `-0.0041`; no retry, tuning, pooling or confirmation. |
-| S4 point banking | **SEALED MINI SCREEN RUNNING** | Exact `cad3992`, packet `17036e63…1385`, receipt `20a420d2…5cc`; 484/2,048 count-only lines at 19:15 with eight live workers. Inspect no partial outcomes. |
-| Human H0 | **CONTROLLER V2 REVIEW PASS / ZERO OUTCOMES** | Marker landed at `cc1c293`. One diagnostic execution is eligible, but Mini is occupied; no label/training/strength authority. |
-| Teacher Stage C | **V3 FROZEN / REVIEW OPEN / ZERO STATES** | Review exact source `20bdb95`, asset `1a29418`, packet `f213314a…3b4`. No capture or labeling. |
-| S3c small endgames | **ONE-CARD CONTROLLER REVIEW PASS / ZERO SOLVER WORK** | One mechanics/capacity receipt is eligible. Two-card work remains closed. |
-| S5 point protection | **CODE REVIEW OPEN / NO CENSUS YET** | Draft PR #4, source `c7bba40`; review the score-free census before a real freeze. No treatment exists. |
+| Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; no production change is open. |
+| S3a structured bury | **TERMINAL VERIFIED / SELECT NONE** | The exact original verifier returned `verified=true` at 20:20 with aggregate `20609613…271f` and final `32156d79…c9ff`; preserve `+0.0464`, LCB `-0.0041`; no retry, tuning, pooling or confirmation. |
+| S4 point banking | **SEALED MINI SCREEN RUNNING** | Exact `cad3992`, packet `17036e63…1385`, receipt `20a420d2…5cc`; 750 count-only shard lines at 20:21 with eight CPU-bound workers. Do not inspect partial outcomes. |
+| Human H0 | **V2 REVIEW LOGIC PASS / OPERATIONAL HOLD; V3 REVIEW OPEN** | The v2 admission tombstone dirties Git and makes runtime reopen impossible. Review PR #6 source `4ebcd09` plus packet `cf074871…35392`; do not issue a receipt. |
+| Teacher Stage C | **V3 DESIGN PASS / ZERO STATES / REBIND FREEZE BLOCKED** | Claude passed design packet `f213314a…3b4`. Score-free bridge source `7018f36` is prepared with 105 tests: it binds the immutable design plus H0-v3/S3c-v2 without copying curriculum fields. A real packet still requires both replacement PASS markers. |
+| S3c small endgames | **V1 REVIEW LOGIC PASS / OPERATIONAL HOLD; V2 REVIEW OPEN** | The same tombstone bug blocks v1. Review PR #6 packet `cafbee43…f23e`; do not issue a mechanics receipt. |
+| S5 point protection | **BOUNDARY FIXTURE PUSHED / RE-REVIEW OPEN / NO CENSUS** | PR #4 head `2351b36` adds a real lower-ranked-but-equal-point witness and mutation proof. Re-review before one deterministic census freeze. |
 | HUMAN-C1 | **PARKED / NO TRAFFIC** | Resume only after a challenger beats report-LCB in confirmation. |
 
-## Active milestone — T3 human-witness challenger readiness
+## Why Stage C matters after it is executable
 
-Plain English: finish a trustworthy recipe for generating better training
-examples while S4 tests one direct policy improvement. A design review is a
-routing boundary, not a strength result.
+Stage C is a Teacher, not a deployable bot. It creates 2,048 fresh,
+split-safe counterfactual examples where ordinary choices get the certified
+cheap grader and uncertain/disagreement/point/bury/endgame choices get deeper
+common-world comparisons. We then:
 
-| output | why it can improve strength | progress and what remains |
-|---|---|---|
-| **T3.1 S3a** | Test deliberate point/void/trump kitty plans. | **Closed SELECT NONE.** Keep its candidates only as Teacher diagnostics. |
-| **T3.2 S4** | Make rollouts price point-card winners rather than always using the cheapest winner. | Full-game screen is running sealed; one terminal verifier owns the result. |
-| **T3.3–3.4 H0** | Find human/V11 proposals that survive fair common-world evaluation instead of blindly copying people. | Design and controller both passed. The one-shot diagnostic itself is T4 work and has not run. |
-| **T3.5 Stage C v3** | Spend bounded work on uncertainty, proposal disagreement, bury, point play and small endgames while retaining ordinary coverage. | Exact design is frozen below; external PASS/HOLD remains. Zero states or labels exist. |
-| **T3.6 S3c** | Grow exact endgame search from one card rather than retrying the failed four-card jump. | Controller passed; one mechanics run is eligible, with no strength claim. |
-| **S5 support** | Prove whether apparent point feeding is avoidable and still reproduced before inventing another heuristic. | Code-only review is open on PR #4. |
+1. train at least eight seeds of separate within-ballot ranking and calibrated
+   signed-outcome heads, with bury separate;
+2. choose architecture on DESIGN and one recipe/checkpoint rule on CALIB;
+3. open the untouched 512-state REPORT fold once;
+4. if a head passes, use only that capability inside report-LCB—first to add or
+   rank a bounded number of candidates, then optionally to allocate search;
+5. retain the incumbent and let fresh disjoint MC report worlds make the final
+   LCB decision; compare with a same-work random/null arm;
+6. require a fresh whole-game screen and confirmation against
+   `mc-s0-report-lcb` before promotion or a blinded human ladder.
 
-## Review priority 1 — Teacher Stage-C v3 design
+A ranking PASS with calibration failure may propose/rank but may not steer
+value/allocation. The first 2,048 rows prove the learning/composition mechanism;
+10k/50k collection is conditional on untouched offline gain plus whole-game
+gain, not automatic scale.
 
-### Plain-English question
+## Review priority 1 — controller admit-to-runtime repair (PR #6)
 
-Does this packet define a finite, implementable way to build a better Teacher,
-without quietly turning human actions into labels or creating an infeasible
-recursive-MC job? It must bind the passed H0 controller, exact live champion,
-fixed 2,048-state split, candidate caps, folds, refusal rules and a hard maximum
-of 10,494,720 candidate-world rollouts. It is score-free and may authorize only
-implementation of a future capture/controller.
+### Root cause and repair
 
-### Exact assets
+H0-v2 and S3c-v1 correctly publish a durable consumed-slot before their
+receipt, but `server/runs/locks/` was untracked and unignored. Every subsequent
+runtime packet open therefore refused the tree it had just dirtied. The old
+admission tests patched out the real opener and missed the failure.
 
-- producer source `20bdb95e50169d0877f096e1418c2f135bb2b9f3`;
-- asset commit `1a29418155fd2b6e34ad1ad7a64aec740272480c`;
-- packet `server/runs/logs/teacher-v3-hard-tail-stage-c-design-v1/design_packet.json`;
-- external/internal SHA-256 `f213314ace8ead497fcaccde150d0694851069b970948a10d0823cf74ceb93b4` / `649849768d09a14f114569d76fe1753c9044ce05e48de7005f1f008488d84677`;
-- script SHA-256 `8c56f6e48b6157e6fad3eecd6950bd40706718bd963427a446dc50dc843ab3ed`;
-- H0 controller `3f68dc6e…7fcf`, exact H0 PASS marker, candidate geometry `876ed56b…ff2b`;
-- 1,024 DESIGN / 512 CALIB / 512 untouched REPORT; 1,920 play / 128 bury;
-- play/bury caps 20/33; ordinary folds 256+256, hard-tail 64 selection plus a fixed 300-world report, deeper audit 128+600;
-- hard cap 10,494,720 candidate-world rollouts; recursive MC continuation count is exactly zero;
-- real freeze and exact recomputation both passed with zero states, worlds, outcomes or labels.
+PR #6 versions H0 as v3 and S3c as v2. Exact `.gitignore` bytes are part of
+both transitive source manifests; each runtime proves its concrete lock path is
+ignored, then still rejects all other tracked or untracked dirt. New tests run
+real admit -> packet reopen and separately turn both unrelated untracked and
+tracked changes red. The frozen Stage-C-v3 validator now uses literal H0-v2
+evidence identities so historical packets remain reproducible rather than
+silently inheriting moving constants.
 
-### Load-bearing checks
+### Exact assets and measured checks
 
-1. Recompute the packet from clean source `20bdb95`; verify exact adapter,
-   H0 packet/PASS marker, portable live parent, split totals and self-hash.
-2. Confirm raw H0 actions never enter the fresh 2,048-state population.
-   Human-derived proposals require supported H0 DESIGN evidence and a later
-   frozen rule/model; H0 AUDIT cannot tune it.
-3. Confirm hard-tail labels use `HeuristicBot` continuation with disjoint
-   selection/report folds. The 300-world report evaluates only the fixed
-   selection winner versus candidate zero and never reselects.
-4. Recompute the 10,494,720 ceiling, including the deeper audit and optional
-   S4/S5 continuations. Candidate-cap, underfill or partial-fold drift must
-   refuse rather than extend/retry.
-5. Confirm S4, S3c and S5 are conditional: S4 needs this running screen's
-   terminal PASS; S3c needs each sequential mechanics gate; S5 needs a
-   replay-positive census plus separate treatment review.
-6. Mutation-test parent mismatch, H0 authority/self-hash drift, split/work
-   arithmetic and authority widening. PASS may authorize controller
-   implementation only—not capture, labels, training, strength or production.
+- PR: `https://github.com/jerryyyu/shengji/pull/6`;
+- executable source commit: `4ebcd09111af0ef76ffd6f862764f28b275e4383`;
+- packet commit: `1933c65` (packets remain bound to source `4ebcd09`);
+- H0-v3 packet: external/internal `cf074871cf977c0b072c528c395082b453b3b589f445c524baae9016e1d35392` / `757ac2732f3051978aee0fde2daf74ebc1d689ba1050eb2f8e46e3a787b045b2`; 557 rows, zero worlds/outcomes;
+- S3c-v2 packet: external/internal `cafbee439f8c30a07b0b6801d52620d7197afc3633badbc531bc5b156ce2f23e` / `8c8717fd4c4a5af6514d680c8ded30cb4b1ed472b0a69fc894d0d02cf22adb2d`; 64 roots, zero worlds/solver sessions;
+- 97 focused H0/S3c/endgame/Stage-C tests pass under compiled strict-void mode;
+- full-suite collection reaches unrelated ignored-model assets absent from the
+  isolated worktree; no failure was in this change's transitive battery.
 
-Focused command:
+Review the packet bytes from `1933c65` against an exact clean `4ebcd09`
+source checkout with canonical RLCB-C1 evidence/native bytes. Recompute both
+packets, mutation-test the new lock boundary, and confirm Stage-C-v3 still
+reopens its historical H0-v2 evidence. PASS authorizes one later H0 diagnostic
+receipt and one later S3c mechanics receipt only. It does not authorize either
+receipt now, Stage-C capture, labels, training, strength, promotion or prod.
 
-```sh
-SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 PYTHONPATH=server /Users/jerryyu/Projects/shengji/server/.venv/bin/python -m pytest -q server/tests/test_teacher_stage_c_design.py server/tests/test_h0_human_counterfactual_controller.py server/tests/test_h0_human_counterfactual_packet.py server/tests/test_teacher_stage_b_readiness.py server/tests/test_teacher_terminal_adapter.py
-```
+Requested markers:
 
-Requested marker:
+`H0_HUMAN_COUNTERFACTUAL_CONTROLLER_V3_REVIEW {"admission_slot_logical_path":"server/runs/locks/human-v8-h0-counterfactual-execution-v3.consumed.json","candidate_geometry_sha256":"876ed56bd8f436d58cb6f3d58774a0f06756afb4d8c98ffdb49d9424b545ff2b","compiled_fast_binary_sha256":"9c9e77fbdc4c6caceec195465155f37ec6369e409462fd838bc142bf8a0be4c1","controller_script_sha256":"ff06b7b9e46d0fef71a9b7d19b31caa3d7d1d073da2f573111252548dfcced6b","corpus_manifest_sha256":"b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553","deletion_proof_one_shot":true,"design_packet_sha256":"4d3f0a35082c6957f2a468686b8eedbd6d7cbbf9540503fcea08cccf27c8cc3c","design_review_git":"239f13ce52a8be81108fdebf9bd0e96742e60133","fast_router_sha256":"f2506d5c51b8ad37303f04dce59899de0d7c1179633b08ce61f48eb86cec1a3e","git":"4ebcd09111af0ef76ffd6f862764f28b275e4383","independent_review":true,"labels_authorized":false,"max_candidate_worlds":1329210,"one_counterfactual_execution_authorized":true,"outcomes_computed_before_review":false,"packet_sha256":"cf074871cf977c0b072c528c395082b453b3b589f445c524baae9016e1d35392","production_deployment":false,"production_promotion":false,"runtime_script_sha256":"a85a217977a1bf1523c4f7bd7748abe1048c8bf70b4d78670e7b75970eefa371","schedule_sha256":"f54ce37425707dfeea3563bbc5d635617943152166a82825a74e55ad00131793","schema":"human-h0-counterfactual-controller-review-v3","score_free_preflight_verified":true,"selected_bury_rows_sha256":"cdfe77dfbec0e97fb8935c5822239acd6db60c644c433c32a4445913459aa1e8","selected_play_rows_sha256":"18673b20ca0a5b1a8e476f3bcf45cf9d08f90f4244f9c5ee07cb8bd8cd47711d","source_manifest_sha256":"07ff18fb35f2fb987f18b37b5100172e2751681fbfed17285ce7d7035232aa5e","strength_claim":false,"strict_runtime_verified":true,"training_authorized":false,"v11_checkpoint_sha256":"cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003","verdict":"PASS","worlds_sampled_before_review":0}`
 
-`TEACHER_STAGE_C_V3_REVIEW {"adapter_sha256":"56ccefbd62d9ea2aef30a4c6e54e11a0d2231e464f129e754b84b3488f1c2442","audit_report_worlds":600,"audit_selection_worlds":128,"bury_candidate_cap":33,"calib_states":512,"capture_controller_implementation_authorized":true,"design_states":1024,"git":"20bdb95e50169d0877f096e1418c2f135bb2b9f3","h0_controller_review_schema":"human-h0-counterfactual-controller-review-v2","h0_controller_sha256":"3f68dc6ec6d5f90043f36c0a68847ca9ef510641e01760ac4fa11ebd6a6a7fcf","hard_tail_report_worlds":300,"hard_tail_selection_worlds":64,"independent_review":true,"labels_authorized":false,"live_parent_policy":"mc-s0-report-lcb","live_parent_schema":"live-champion-parent-v1","max_candidate_worlds":10494720,"ordinary_worlds":[256,256],"outcomes_computed_before_review":false,"packet_sha256":"f213314ace8ead497fcaccde150d0694851069b970948a10d0823cf74ceb93b4","play_candidate_cap":20,"production_deployment":false,"production_promotion":false,"recursive_mc_continuation_rollouts":0,"report_states":512,"schema":"teacher-stage-c-hard-tail-design-review-v3","score_free":true,"script_sha256":"8c56f6e48b6157e6fad3eecd6950bd40706718bd963427a446dc50dc843ab3ed","state_capture_authorized":false,"states":2048,"strength_claim":false,"training_authorized":false,"verdict":"PASS","worlds_sampled_before_review":0}`
+`S3C_ONE_CARD_CAPACITY_CONTROLLER_V2_REVIEW {"census_sha256":"236326099dc9763c6a5941bcb2a90670c4e23ac390ea07a0e4ec5063fa50b52a","controller_script_sha256":"2d011829b5d1a1d8a99c45558873a5ed23df2f1dedfeec65dd3a4bed60ce3664","design_packet_sha256":"df1024280a77c60174a57c3273ba3624e672bec9afde023576fde0404df49eca","design_review_git":"084ba7eba59cd0a317a50c4088f194d2376c1e03","exact_solver_sessions_before_review":0,"git":"4ebcd09111af0ef76ffd6f862764f28b275e4383","independent_review":true,"max_execution_nodes":65536,"max_terminal_replay_nodes":65536,"one_card_capacity_execution_authorized":true,"outcomes_computed_before_review":false,"packet_sha256":"cafbee439f8c30a07b0b6801d52620d7197afc3633badbc531bc5b156ce2f23e","production_deployment":false,"production_promotion":false,"root_geometry_sha256":"b2599bb50d8e2bd2762ac73af3206749e1f446eb5b971c1562e706883e48be0b","roots":64,"runtime_script_sha256":"3c4972d0c5a4022b3f7cb5795b255f801786ab0a062341c2aecef33594c4109d","schedule_sha256":"8257499b8b613d02c899161bfd8ffac5579336dc54239ab443dfe5a7fad5e7de","schema":"s3c-one-card-capacity-controller-review-v2","score_free_preflight_verified":true,"solver_or_strength_screen_authorized":false,"strength_claim":false,"training_authorized":false,"two_card_packet_review_authorized":false,"verdict":"PASS","worlds":256,"worlds_sampled_before_review":0}`
 
 Append measured PASS/HOLD only to `HANDOFF_REVIEW.md`.
 
-## Review priority 2 — S5 score-free replay census code
+## Review priority 2 — S5 boundary-fixture re-review
 
-Review draft PR #4 / source `c7bba40`. Confirm exhaustive legal-follow
-enumeration, exact source-manifest replay, current ballot and preserved
-`mc-decision-v2` authentication, no MC sampling/rollouts, no raw cards or
-identifiers, and correct separation of historical-only versus currently
-reproduced defects. A code PASS permits one deterministic census freeze only;
-it does not permit an S5 treatment or strength run.
+PR #4 head `2351b36` adds the required real replay/legal witness. The bot
+historically plays `HK` under an opposing `HA`; lower-ranked `H10` is a legal
+follow, both actions carry exactly 10 points, neither can win, and the row must
+remain **not a trigger**. The fixture pins legal/minimum counts, zero avoidable
+point delta, current and logged ballot booleans, terminal trigger and null
+classification. Deliberately weakening all three strict comparisons from `<`
+to `<=` makes this test fail (`lower_point_legal_count` becomes two).
+
+Measured on exact PR head:
+
+- focused S5: 12/12 pass;
+- S5 + engine + ballot + live-parent battery: 52/52 pass, with one unrelated
+  legacy value-leaf test deselected because this isolated worktree lacks the
+  ignored `snapshots_v7w/ep02.pt` asset;
+- `git diff --check` clean; production source is unchanged from reviewed
+  `c7bba40`.
+
+Please re-review only commit `2351b36` and confirm the equal-point witness is a
+genuine cheaper-card boundary and turns the named `<`→`<=` mutation red. A
+PASS authorizes one deterministic score-free census freeze only; no S5
+treatment, Stage-C eligibility decision, strength compute or training follows.
+
+## Queued after review — Stage-C dependency bridge
+
+Branch `codex/stage-c-controller-rebind`, source `7018f36`, contains a
+score-free bridge implementation and eight focused tests. The bridge consumes
+the exact passed Stage-C packet `f213314a…3b4` plus exact reviewed H0-v3 and
+S3c-v2 packets; it stores only hashes of the original objective, population,
+candidate, label, work, gate and execution contracts, and declares every
+curriculum delta false. The combined Stage-C/H0/S3c/endgame battery passes
+105/105 under compiled strict-void mode. Do not review or freeze a real bridge
+packet yet: it intentionally refuses until both controller PASS markers exist.
 
 ## Fleet and safety
 
-- Mini: S4 only until terminal; count/status checks only.
-- Air: free for review reproduction or a separately reviewed bounded job.
-- Fly: release 17, passive monitoring only.
-- Prefer Mini for long H0/Teacher work after S4 releases it; do not trade an
-  exact one-shot run for idle-machine utilization.
-- Never retry, resume, extend, tune from or pool a consumed one-shot stream.
-- Fresh paired confirmation owns policy strength; the blinded human ladder
-  owns eventual product value.
+- Mini: S4 only; count/status checks until all eight workers stop, then one
+  exact terminal verifier.
+- Air: idle and available for review reproduction or another separately
+  reviewed bounded job; no unregistered strength launch.
+- Do not create H0/S3c consumed slots or receipts before v3/v2 review PASS.
+- Do not capture or label Stage C until a reviewed H0-v3/S3c-v2 rebind packet
+  passes without changing the curriculum estimand.
+- Never retry, extend, tune from or pool a consumed one-shot stream.

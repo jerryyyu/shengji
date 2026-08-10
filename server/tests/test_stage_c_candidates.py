@@ -78,6 +78,39 @@ def test_live_source_uses_observing_wrapper_not_detached_helper(
     assert seen["production"] is wrapper
     assert seen["observed_live"] == observed
     assert seen["observed_live_is_parent_bound"] is True
+    assert seen["novel_model_source"] == "stage_c_mc_teacher"
+
+
+def test_play_union_uses_teacher_model_without_v11_value_api(
+        monkeypatch) -> None:
+    rnd = SimpleNamespace(trick=SimpleNamespace(plays=[]))
+    monkeypatch.setattr(SOURCE, "enumerate_actions", lambda *_args, **_kw: [
+        ["H2"], ["S3"], ["D4"],
+    ])
+    monkeypatch.setattr(SOURCE, "encode_obs", lambda *_args: [0.0])
+    monkeypatch.setattr(SOURCE, "encode_action", lambda action, _rnd: action)
+    monkeypatch.setattr(SOURCE, "structured_lead_propose",
+                        lambda *_args, **_kw: [["H2"]])
+
+    class Teacher:
+        def value_candidates(self, *_args):
+            raise AssertionError("V11 value API must not be used")
+
+        def select(self, _obs, actions):
+            return {
+                "candidate_count": len(actions),
+                "selected_index": len(actions) - 1,
+            }
+
+    union, record = SOURCE.build_play_union(
+        rnd, 0, "state", "SCREEN", Teacher(), _Production(),
+        experiment_id="experiment", observed_live=[["H2"], ["HA"]],
+        novel_model_source="stage_c_mc_teacher")
+    assert any("stage_c_mc_teacher_top_proposal" in candidate["sources"]
+               for candidate in union)
+    assert record["novel_model_source"] == "stage_c_mc_teacher"
+    assert record["stage_c_teacher_novel"] is True
+    assert record["v11_novel"] is False
 
 
 def test_parent_bound_lead_source_reuses_observed_ballot_without_recursion(
@@ -325,7 +358,8 @@ def test_live_play_source_and_wrapper_integrate_on_replayed_state() -> None:
                 "selected_index": len(actions) - 1,
             }
 
-    source = SOURCE.make_play_candidate_source(net)
+    source = SOURCE.make_play_candidate_source(
+        net, novel_model_source="v11pair")
     bot = composition.make_play_report_lcb_bot(
         SelectLast(), source, arm="treatment", seed=5)
     focused = bot._candidates(rnd, state["seat"])
@@ -365,7 +399,8 @@ def test_live_lead_source_and_wrapper_do_not_recurse() -> None:
             }
 
     bot = composition.make_play_report_lcb_bot(
-        SelectLast(), SOURCE.make_play_candidate_source(net),
+        SelectLast(), SOURCE.make_play_candidate_source(
+            net, novel_model_source="v11pair"),
         arm="treatment", seed=5)
     focused = bot._candidates(rnd, state["seat"])
     assert 1 <= len(focused) <= 2

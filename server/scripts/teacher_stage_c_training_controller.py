@@ -2,10 +2,15 @@
 """Freeze the Stage-C DESIGN/CALIB model dataset and training packet.
 
 This controller is downstream of a terminal Stage-C label aggregate and its
-independent review.  It reopens and semantically validates only the eight
-DESIGN and four CALIB label shards.  The four REPORT shard paths and hashes are
-carried forward from the reviewed aggregate as a sealed manifest; this process
-never opens those files.
+independent fidelity-consumption review.  Teacher-label fidelity and V11
+proposal recall are separate estimands: the controller may consume the good MC
+counterfactual labels without admitting V11.  V11-origin actions remain only
+source-agnostic state/action examples; proposal-source tags are not model
+features, and downstream inference is forbidden from loading V11.  The
+controller reopens and semantically validates only the eight DESIGN and four
+CALIB label shards.  The four REPORT shard paths and hashes are carried forward
+from the reviewed aggregate as a sealed manifest; this process never opens
+those files.
 
 Freezing the dataset and packet performs no training.  A later independent
 packet review is required before the one-shot training runtime can be admitted.
@@ -50,6 +55,10 @@ PACKET_PATH = f"server/runs/logs/{CONTROLLER_RUN_ID}/controller_packet.json"
 SUPERVISOR_PATH = "server/scripts/teacher_stage_c_training_supervisor.py"
 LABEL_AGGREGATE_REVIEW_SCHEMA = "teacher-stage-c-label-aggregate-review-v2"
 LABEL_AGGREGATE_REVIEW_MARKER = "TEACHER_STAGE_C_LABEL_AGGREGATE_V2_REVIEW "
+LABEL_FIDELITY_REVIEW_SCHEMA = \
+    "teacher-stage-c-label-fidelity-consumption-review-v3"
+LABEL_FIDELITY_REVIEW_MARKER = \
+    "TEACHER_STAGE_C_LABEL_FIDELITY_CONSUMPTION_V3_REVIEW "
 REVIEW_SCHEMA = "teacher-stage-c-training-controller-review-v1"
 REVIEW_MARKER = "TEACHER_STAGE_C_TRAINING_CONTROLLER_V1_REVIEW "
 
@@ -204,6 +213,17 @@ def expected_label_aggregate_review_claim(
     if not all(isinstance(value, dict)
                for value in (ordinary, hard, recall)):
         raise TrainingControllerRefused("label aggregate gate metrics missing")
+    # This legacy marker means that the original conjunction passed.  Never
+    # print a PASS-shaped authorization for a fidelity-only result: the v2
+    # label aggregate intentionally coupled Teacher fidelity to V11 proposal
+    # recall, and a caller could otherwise paste a misleading marker even
+    # though validate_label_aggregate() would later reject it.
+    if (gate.get("decision") != "AUTHORIZE_MODEL_PACKET_REVIEW"
+            or gate.get("fidelity_pass") is not True
+            or gate.get("v11_recall_pass") is not True
+            or aggregate.get("model_packet_review_authorized") is not True):
+        raise TrainingControllerRefused(
+            "legacy label aggregate review requires the combined gate")
     return {
         "schema": LABEL_AGGREGATE_REVIEW_SCHEMA,
         "label_git": aggregate.get("git"),
@@ -222,6 +242,114 @@ def expected_label_aggregate_review_claim(
         "report_shards_opened_by_training_review": 0,
         "independent_review": True,
         "one_training_controller_freeze_authorized": True,
+        "training_authorized": False,
+        "report_open_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+        "verdict": "PASS",
+    }
+
+
+def candidate_provenance_contract() -> dict:
+    """State exactly how frozen proposal provenance may reach the learner."""
+    return {
+        "teacher_targets": "mc_counterfactual_signed_level_utility",
+        "all_reviewed_candidate_actions_retained": True,
+        "candidate_source_tags_in_examples": False,
+        "candidate_source_tags_in_model_inputs": False,
+        "v11_origin_actions_are_source_agnostic_examples": True,
+        "v11_checkpoint_use": "frozen_parent_revalidation_only",
+        "v11_proposer_admitted_for_inference": False,
+        "inference_must_not_load_v11": True,
+    }
+
+
+def expected_label_fidelity_review_claim(
+        aggregate: Mapping[str, object], aggregate_sha256: str) -> dict:
+    """Build the independent authorization for V11-free label consumption.
+
+    The MC counterfactual labels and the V11 proposal-source hypothesis are
+    separate estimands.  This claim admits the former only when both frozen
+    Teacher-fidelity bounds pass.  It deliberately does not admit V11, even if
+    a future aggregate estimates positive recall.
+    """
+    gate = aggregate.get("fidelity_gate")
+    design = aggregate.get("design_calib_manifest")
+    report = aggregate.get("sealed_report_manifest")
+    if not isinstance(gate, dict) or not isinstance(design, dict) \
+            or not isinstance(report, dict):
+        raise TrainingControllerRefused(
+            "label aggregate gate/manifests are missing")
+    ordinary = gate.get("ordinary_anchor_regret")
+    hard = gate.get("hard_tail_regret")
+    recall = gate.get("v11_recall_treatment_minus_matched_random")
+    if not all(isinstance(value, dict)
+               for value in (ordinary, hard, recall)):
+        raise TrainingControllerRefused("label aggregate gate metrics missing")
+    metric_values = (
+        ordinary.get("mean"), ordinary.get("one_sided_95_ucb"),
+        hard.get("mean"), hard.get("one_sided_95_ucb"),
+        recall.get("mean"), recall.get("one_sided_95_lcb"),
+        recall.get("one_sided_95_ucb"),
+    )
+    if any(isinstance(value, bool)
+           or not isinstance(value, (int, float))
+           or not math.isfinite(float(value)) for value in metric_values):
+        raise TrainingControllerRefused(
+            "label aggregate fidelity metric is missing/non-finite")
+    recall_pass = gate.get("v11_recall_pass")
+    if not isinstance(recall_pass, bool):
+        raise TrainingControllerRefused("label aggregate V11 verdict drift")
+    combined_authorized = gate.get("fidelity_pass") is True and recall_pass
+    expected_combined_decision = (
+        "AUTHORIZE_MODEL_PACKET_REVIEW" if combined_authorized
+        else "DIAGNOSE_FROZEN_STAGE_C_ONLY")
+    if (aggregate.get("status") != "COMPLETE"
+            or aggregate.get("states") != 2048
+            or aggregate.get("complete_rows") != 2048
+            or aggregate.get("refused_rows") != 0
+            or aggregate.get("utility_published") is not True
+            or gate.get("schema")
+            != "teacher-stage-c-label-fidelity-gate-v2"
+            or gate.get("fidelity_pass") is not True
+            or float(metric_values[1]) > 0.10
+            or float(metric_values[3]) > 0.10
+            or gate.get("decision") != expected_combined_decision
+            or aggregate.get("model_packet_review_authorized")
+            is not combined_authorized):
+        raise TrainingControllerRefused(
+            "label aggregate does not authorize fidelity-only consumption")
+    provenance = candidate_provenance_contract()
+    return {
+        "schema": LABEL_FIDELITY_REVIEW_SCHEMA,
+        "label_git": aggregate.get("git"),
+        "aggregate_sha256": aggregate_sha256,
+        "aggregate_internal_sha256": aggregate.get("aggregate_sha256"),
+        "state_set_sha256": aggregate.get("state_set_sha256"),
+        "states": aggregate.get("states"),
+        "complete_rows": aggregate.get("complete_rows"),
+        "refused_rows": aggregate.get("refused_rows"),
+        "original_combined_decision": gate.get("decision"),
+        "label_fidelity_pass": True,
+        "ordinary_anchor_regret_mean": metric_values[0],
+        "ordinary_anchor_regret_ucb": metric_values[1],
+        "hard_tail_regret_mean": metric_values[2],
+        "hard_tail_regret_ucb": metric_values[3],
+        "v11_recall_mean": metric_values[4],
+        "v11_recall_lcb": metric_values[5],
+        "v11_recall_ucb": metric_values[6],
+        "v11_recall_pass": recall_pass,
+        "v11_proposer_admitted": False,
+        "candidate_provenance_contract_sha256": _manifest_hash(provenance),
+        "training_controller_script_sha256": sha256_file(SCRIPT),
+        "stage_c_model_script_sha256": sha256_file(
+            SERVER / "shengji/rl/stage_c_model.py"),
+        "design_calib_manifest_sha256": _manifest_hash(design),
+        "sealed_report_manifest_sha256": _manifest_hash(report),
+        "report_shards_opened_by_training_review": 0,
+        "independent_review": True,
+        "one_v11_free_training_controller_freeze_authorized": True,
         "training_authorized": False,
         "report_open_authorized": False,
         "strength_claim": False,
@@ -260,19 +388,22 @@ def validate_label_aggregate(
             or aggregate.get("complete_rows") != 2048
             or aggregate.get("refused_rows") != 0
             or aggregate.get("utility_published") is not True
-            or aggregate.get("model_packet_review_authorized") is not True
             or aggregate.get("training_authorized") is not False
             or aggregate.get("report_open_authorized") is not False
             or not isinstance(gate, dict)
-            or gate.get("decision") != "AUTHORIZE_MODEL_PACKET_REVIEW"
             or gate.get("fidelity_pass") is not True
-            or gate.get("v11_recall_pass") is not True
+            or not isinstance(gate.get("v11_recall_pass"), bool)
             or any(isinstance(value, bool)
                    or not isinstance(value, (int, float))
                    or not math.isfinite(float(value)) for value in metric_values)
             or float(metric_values[0]) > 0.10
             or float(metric_values[1]) > 0.10
-            or float(metric_values[2]) <= 0
+            or gate.get("decision") != (
+                "AUTHORIZE_MODEL_PACKET_REVIEW"
+                if gate.get("v11_recall_pass") is True else
+                "DIAGNOSE_FROZEN_STAGE_C_ONLY")
+            or aggregate.get("model_packet_review_authorized") is not (
+                gate.get("v11_recall_pass") is True)
             or not isinstance(shards, list) or len(shards) != 16
             or [value.get("index") for value in shards] != list(range(16))
             or [value.get("split") for value in shards]
@@ -298,10 +429,12 @@ def validate_label_aggregate(
             or report["shards"] != shards[12:]):
         raise TrainingControllerRefused(
             "label aggregate status/split/authority drift")
-    claim = marker_claim(review_record, LABEL_AGGREGATE_REVIEW_MARKER)
-    expected = expected_label_aggregate_review_claim(aggregate, expected_sha256)
+    claim = marker_claim(review_record, LABEL_FIDELITY_REVIEW_MARKER)
+    expected = expected_label_fidelity_review_claim(
+        aggregate, expected_sha256)
     if claim != expected:
-        raise TrainingControllerRefused("label aggregate PASS marker drift")
+        raise TrainingControllerRefused(
+            "label fidelity-consumption PASS marker drift")
     return aggregate, claim
 
 
@@ -408,6 +541,7 @@ def materialize_dataset(
             sorted(calib_ids))),
         "sealed_report_manifest_sha256": _manifest_hash(report_manifest),
         "sealed_report_shards": list(report_manifest["shards"]),
+        "candidate_provenance_contract": candidate_provenance_contract(),
         "report_rows_included": False,
         "report_shard_files_opened": 0,
         "training_authorized": False,
@@ -481,6 +615,7 @@ def model_contract() -> dict:
         "device": "cpu",
         "cpu_threads": TRAIN.CPU_THREADS,
         "deterministic_algorithms": True,
+        "candidate_provenance": candidate_provenance_contract(),
         "calib_selection": (
             "exactly one surface/head/epoch eight-seed capability; "
             "no unrelated-surface conjunction and no seed cherry-pick"),
@@ -615,9 +750,12 @@ def build_packet(
             "label_aggregate": {
                 "external_sha256": aggregate["external_sha256"],
                 "internal_sha256": aggregate["aggregate_sha256"],
-                "review_schema": LABEL_AGGREGATE_REVIEW_SCHEMA,
+                "review_schema": LABEL_FIDELITY_REVIEW_SCHEMA,
                 "review_claim_sha256": _manifest_hash(aggregate_review),
-                "fidelity_decision": aggregate["fidelity_gate"]["decision"],
+                "original_combined_decision":
+                    aggregate["fidelity_gate"]["decision"],
+                "label_fidelity_pass": True,
+                "v11_proposer_admitted": False,
             },
             "model_dataset": {
                 "logical_path": DATASET_PATH,
@@ -639,6 +777,7 @@ def build_packet(
             "examples_materialized": True,
             "training_started": False,
             "one_training_execution_authorized": False,
+            "v11_inference_authorized": False,
             "report_rows_opened": 0,
             "report_open_authorized": False,
             "strength_claim": False,
@@ -684,6 +823,9 @@ def expected_review_claim(packet: Mapping[str, object],
         "report_shard_files_opened": 0,
         "sealed_report_manifest_sha256": dataset[
             "sealed_report_manifest_sha256"],
+        "candidate_provenance_contract_sha256": _manifest_hash(
+            packet["model_contract"]["candidate_provenance"]),
+        "v11_inference_authorized": False,
         "training_cells": schedule["cell_count"],
         "training_seeds": len(schedule["seeds"]),
         "surfaces": schedule["surfaces"],

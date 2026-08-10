@@ -1,10 +1,12 @@
 """Public-information candidate sourcing for Stage-C model composition.
 
-Stage-C is trained on a bounded union rather than the live MC ballot alone:
-the live ballot, one top V11 proposal, one named structured proposal, and one
-deterministic random novel action.  Production inference must rebuild that
-same source family or the model would be evaluated on a different action
-distribution from the one captured for training.
+Stage-C was trained on a bounded union rather than the live MC ballot alone.
+The frozen corpus included a V11-origin action, but proposal provenance is not
+a model feature and the terminal recall gate did not admit V11 for inference.
+Production therefore uses the learned MC-Teacher ensemble itself to propose
+one exhaustive novel action, alongside the live ballot, one named structured
+proposal, and one deterministic random novel action.  The final whole-game
+screen is the authority for this deliberate source-distribution change.
 
 The builders below deliberately accept the experiment namespace, split and
 state key as inputs.  That lets tests reproduce the frozen capture source
@@ -29,8 +31,8 @@ from .encode import encode_action, encode_obs
 from .stage_c_model import canonical_json
 
 
-SCHEMA = "teacher-stage-c-candidate-source-v2"
-INFERENCE_EXPERIMENT_ID = "teacher-stage-c-composition-screen-v2"
+SCHEMA = "teacher-stage-c-candidate-source-v3"
+INFERENCE_EXPERIMENT_ID = "teacher-stage-c-composition-screen-v3"
 INFERENCE_SPLIT = "SCREEN"
 PLAY_CANDIDATE_CAP = 20
 BURY_CANDIDATE_CAP = 33
@@ -121,11 +123,14 @@ def build_play_union(
     *, experiment_id: str,
     observed_live: Sequence[Sequence[str]] | None = None,
     observed_live_is_parent_bound: bool = False,
+    novel_model_source: str = "v11pair",
 ) -> tuple[list[dict], dict]:
     """Build the frozen Stage-C play source family from legal visible inputs."""
     if (not isinstance(state_id, str) or not state_id
             or not isinstance(split, str) or not split
-            or not isinstance(experiment_id, str) or not experiment_id):
+            or not isinstance(experiment_id, str) or not experiment_id
+            or novel_model_source not in {
+                "v11pair", "stage_c_mc_teacher"}):
         raise StageCCandidateError("Stage-C play source identity drift")
     if observed_live_is_parent_bound:
         if observed_live is None:
@@ -158,17 +163,32 @@ def build_play_union(
     novel = [action for action in exhaustive
              if action_key(action) not in live_keys]
 
-    v11 = None
+    model_proposal = None
+    model_source_name = None
     if novel:
-        values = [float(value) for value in net.value_candidates(
-            encode_obs(rnd, seat),
-            [encode_action(action, rnd) for action in novel],
-        )]
-        if (len(values) != len(novel)
-                or not all(math.isfinite(value) for value in values)):
-            raise StageCCandidateError(
-                "V11 proposal returned missing/non-finite values")
-        v11 = novel[max(range(len(novel)), key=lambda index: values[index])]
+        obs = encode_obs(rnd, seat)
+        actions = [encode_action(action, rnd) for action in novel]
+        if novel_model_source == "v11pair":
+            values = [float(value) for value in net.value_candidates(
+                obs, actions)]
+            if (len(values) != len(novel)
+                    or not all(math.isfinite(value) for value in values)):
+                raise StageCCandidateError(
+                    "V11 proposal returned missing/non-finite values")
+            selected = max(
+                range(len(novel)), key=lambda index: values[index])
+            model_source_name = "v11pair_top_proposal"
+        elif novel_model_source == "stage_c_mc_teacher":
+            record = net.select(obs, actions)
+            selected = record.get("selected_index") \
+                if isinstance(record, dict) else None
+            if (isinstance(selected, bool) or not isinstance(selected, int)
+                    or not 0 <= selected < len(novel)
+                    or record.get("candidate_count") != len(novel)):
+                raise StageCCandidateError(
+                    "Stage-C Teacher proposal returned invalid selection")
+            model_source_name = "stage_c_mc_teacher_top_proposal"
+        model_proposal = novel[selected]
 
     structured = None
     if not rnd.trick.plays:
@@ -219,7 +239,7 @@ def build_play_union(
 
     for action in live:
         add(action, "live_production_ballot")
-    add(v11, "v11pair_top_proposal")
+    add(model_proposal, model_source_name or "missing_model_proposal")
     add(structured, "named_structured_lead_or_follow_mechanism")
     add(random_novel, "same_budget_random_diversifier")
     union = [by_key[key] for key in order]
@@ -240,7 +260,10 @@ def build_play_union(
         "live_candidates": len(live),
         "exhaustive_actions": len(exhaustive),
         "novel_actions": len(novel),
+        "novel_model_source": novel_model_source,
         "v11_novel": "v11pair_top_proposal" in source_names,
+        "stage_c_teacher_novel": (
+            "stage_c_mc_teacher_top_proposal" in source_names),
         "structured_novel": (
             "named_structured_lead_or_follow_mechanism" in source_names),
         "random_novel": "same_budget_random_diversifier" in source_names,
@@ -324,7 +347,10 @@ def build_bury_union(
     return union, diagnostics
 
 
-def make_play_candidate_source(net, *, policy: str = "mc-s0-report-lcb"):
+def make_play_candidate_source(
+    net, *, policy: str = "mc-s0-report-lcb",
+    novel_model_source: str = "stage_c_mc_teacher",
+):
     """Return the candidate-source callback consumed by the play wrapper."""
     # Resolve the policy eagerly so a stale registry name refuses factory
     # construction. The callback itself must use `_wrapper`: unlike a detached
@@ -338,6 +364,7 @@ def make_play_candidate_source(net, *, policy: str = "mc-s0-report-lcb"):
             experiment_id=INFERENCE_EXPERIMENT_ID,
             observed_live=observed_live,
             observed_live_is_parent_bound=True,
+            novel_model_source=novel_model_source,
         )
         return [list(candidate["cards"]) for candidate in union], diagnostics
 

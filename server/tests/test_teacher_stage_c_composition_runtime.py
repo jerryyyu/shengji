@@ -327,10 +327,11 @@ def test_factories_route_selected_surface_and_keep_champion_literal(
         monkeypatch) -> None:
     packet = _packet()
     source = object()
-    monkeypatch.setattr(RUNTIME, "_load_npnet", lambda _path: object())
+    ensemble = object()
+    seen_source = []
     monkeypatch.setattr(
         RUNTIME.CANDIDATES, "make_play_candidate_source",
-        lambda _net: source)
+        lambda net, **kwargs: seen_source.append((net, kwargs)) or source)
     created = []
 
     def make_stage(_ensemble, actual_source, *, arm, seed):
@@ -343,12 +344,15 @@ def test_factories_route_selected_surface_and_keep_champion_literal(
     monkeypatch.setattr(
         RUNTIME, "make_bot",
         lambda name, seed: champions.append((name, seed)) or object())
-    treatment, null, champion = RUNTIME._factories(packet, object())
+    treatment, null, champion = RUNTIME._factories(packet, ensemble)
     assert treatment(1).arm == "treatment"
     assert null(2).arm == "matched-null"
     champion(3)
     assert created == [(source, "treatment", 1),
                        (source, "matched-null", 2)]
+    assert seen_source == [(ensemble, {
+        "novel_model_source": "stage_c_mc_teacher",
+    })]
     assert champions == [("mc-s0-report-lcb", 3)]
 
 

@@ -52,6 +52,7 @@ def _aggregate() -> dict:
             "report_open_authorized": False,
         },
         "fidelity_gate": {
+            "schema": "teacher-stage-c-label-fidelity-gate-v2",
             "decision": "AUTHORIZE_MODEL_PACKET_REVIEW",
             "fidelity_pass": True, "v11_recall_pass": True,
             "ordinary_anchor_regret": _gate_summary(
@@ -70,6 +71,24 @@ def _aggregate() -> dict:
     }
     value["aggregate_sha256"] = CTRL.self_hash(value, "aggregate_sha256")
     value["external_sha256"] = "f" * 64
+    return value
+
+
+def _fidelity_only_aggregate() -> dict:
+    value = _aggregate()
+    gate = value["fidelity_gate"]
+    gate["decision"] = "DIAGNOSE_FROZEN_STAGE_C_ONLY"
+    gate["v11_recall_pass"] = False
+    gate["v11_recall_treatment_minus_matched_random"] = {
+        "n": 48,
+        "mean": 1.0 / 48.0,
+        "one_sided_95_lcb": -0.057994909647547,
+        "one_sided_95_ucb": 0.09966157631421366,
+    }
+    value["model_packet_review_authorized"] = False
+    external = value.pop("external_sha256")
+    value["aggregate_sha256"] = CTRL.self_hash(value, "aggregate_sha256")
+    value["external_sha256"] = external
     return value
 
 
@@ -115,16 +134,43 @@ def test_label_aggregate_review_claim_binds_gate_and_sealed_report() -> None:
     assert claim["training_authorized"] is False
 
 
+def test_legacy_review_helper_refuses_fidelity_only_result() -> None:
+    with pytest.raises(
+            CTRL.TrainingControllerRefused, match="combined gate"):
+        CTRL.expected_label_aggregate_review_claim(
+            _fidelity_only_aggregate(), "f" * 64)
+
+
+def test_fidelity_consumption_claim_admits_labels_but_not_v11() -> None:
+    aggregate = _fidelity_only_aggregate()
+    claim = CTRL.expected_label_fidelity_review_claim(
+        aggregate, "f" * 64)
+    assert claim["original_combined_decision"] \
+        == "DIAGNOSE_FROZEN_STAGE_C_ONLY"
+    assert claim["label_fidelity_pass"] is True
+    assert claim["v11_recall_pass"] is False
+    assert claim["v11_proposer_admitted"] is False
+    assert claim["one_v11_free_training_controller_freeze_authorized"] \
+        is True
+    assert claim["training_authorized"] is False
+
+    failed = copy.deepcopy(aggregate)
+    failed["fidelity_gate"]["fidelity_pass"] = False
+    with pytest.raises(
+            CTRL.TrainingControllerRefused, match="fidelity-only"):
+        CTRL.expected_label_fidelity_review_claim(failed, "f" * 64)
+
+
 def test_label_aggregate_and_exact_review_marker_reopen(tmp_path) -> None:
-    aggregate = _aggregate()
+    aggregate = _fidelity_only_aggregate()
     aggregate.pop("external_sha256")
     path = tmp_path / "aggregate.json"
     path.write_bytes(CTRL.canonical_json(aggregate))
     digest = CTRL.sha256_file(path)
-    claim = CTRL.expected_label_aggregate_review_claim(aggregate, digest)
+    claim = CTRL.expected_label_fidelity_review_claim(aggregate, digest)
     review = tmp_path / "review.md"
     review.write_text(
-        CTRL.LABEL_AGGREGATE_REVIEW_MARKER
+        CTRL.LABEL_FIDELITY_REVIEW_MARKER
         + json.dumps(claim, sort_keys=True, separators=(",", ":")) + "\n")
     reopened, reopened_claim = CTRL.validate_label_aggregate(
         path, digest, review)
@@ -142,8 +188,8 @@ def test_packet_exposes_only_training_review_authority(monkeypatch) -> None:
         "max_concurrent_cells": 8,
         "heartbeat": "one JSON record after every epoch",
     })
-    aggregate = _aggregate()
-    review = CTRL.expected_label_aggregate_review_claim(aggregate, "f" * 64)
+    aggregate = _fidelity_only_aggregate()
+    review = CTRL.expected_label_fidelity_review_claim(aggregate, "f" * 64)
     packet = CTRL.build_packet(
         git="a" * 40, dataset=_dataset(), dataset_external_sha256="2" * 64,
         aggregate=aggregate, aggregate_review=review)
@@ -151,11 +197,21 @@ def test_packet_exposes_only_training_review_authority(monkeypatch) -> None:
         "examples_materialized": True,
         "training_started": False,
         "one_training_execution_authorized": False,
+        "v11_inference_authorized": False,
         "report_rows_opened": 0,
         "report_open_authorized": False,
         "strength_claim": False,
         "production_promotion": False,
         "production_deployment": False,
+    }
+    assert packet["parents"]["label_aggregate"] == {
+        "external_sha256": aggregate["external_sha256"],
+        "internal_sha256": aggregate["aggregate_sha256"],
+        "review_schema": CTRL.LABEL_FIDELITY_REVIEW_SCHEMA,
+        "review_claim_sha256": CTRL._manifest_hash(review),
+        "original_combined_decision": "DIAGNOSE_FROZEN_STAGE_C_ONLY",
+        "label_fidelity_pass": True,
+        "v11_proposer_admitted": False,
     }
     claim = CTRL.expected_review_claim(packet, "3" * 64)
     assert claim["training_supervisor_sha256"] == "a" * 64
@@ -163,6 +219,7 @@ def test_packet_exposes_only_training_review_authority(monkeypatch) -> None:
     assert claim["training_seeds"] == 8
     assert claim["execution_host"] == "mini"
     assert claim["one_training_execution_authorized"] is True
+    assert claim["v11_inference_authorized"] is False
     assert claim["report_open_authorized"] is False
     assert packet["result_contract"]["curve_diagnostics"][
         "selection_eligible_curve_fraction"] == 1.0
@@ -276,17 +333,27 @@ def test_dataset_materialization_opens_only_design_and_calib_shards(
     assert opened == [str(path) for path in expected_paths]
     assert dataset["report_shard_files_opened"] == 0
     assert dataset["report_rows_included"] is False
+    assert dataset["candidate_provenance_contract"] == {
+        "teacher_targets": "mc_counterfactual_signed_level_utility",
+        "all_reviewed_candidate_actions_retained": True,
+        "candidate_source_tags_in_examples": False,
+        "candidate_source_tags_in_model_inputs": False,
+        "v11_origin_actions_are_source_agnostic_examples": True,
+        "v11_checkpoint_use": "frozen_parent_revalidation_only",
+        "v11_proposer_admitted_for_inference": False,
+        "inference_must_not_load_v11": True,
+    }
     assert {split: {surface: len(values) for surface, values in surfaces.items()}
             for split, surfaces in dataset["examples"].items()} \
         == CTRL.EXPECTED_SURFACES
 
 
 def test_aggregate_claim_changes_when_report_manifest_changes() -> None:
-    aggregate = _aggregate()
-    before = CTRL.expected_label_aggregate_review_claim(aggregate, "f" * 64)
+    aggregate = _fidelity_only_aggregate()
+    before = CTRL.expected_label_fidelity_review_claim(aggregate, "f" * 64)
     changed = copy.deepcopy(aggregate)
     changed["sealed_report_manifest"]["shards"][0]["sha256"] = "9" * 64
-    after = CTRL.expected_label_aggregate_review_claim(changed, "f" * 64)
+    after = CTRL.expected_label_fidelity_review_claim(changed, "f" * 64)
     assert before["sealed_report_manifest_sha256"] \
         != after["sealed_report_manifest_sha256"]
 

@@ -33,7 +33,6 @@ from shengji.rl import stage_c_composition as COMPOSITION  # noqa: E402
 from shengji.rl import stage_c_model as MODEL  # noqa: E402
 from shengji.rl import stage_c_npnet as NPNET  # noqa: E402
 from shengji.rl import stage_c_screen as SCREEN  # noqa: E402
-from shengji.rl.torch_policy import _load_npnet  # noqa: E402
 
 
 ADMISSION_SCHEMA = "teacher-stage-c-composition-screen-admission-v1"
@@ -252,6 +251,7 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, object]:
                 "screen_packet_review_authorized": False,
                 "screen_launch_authorized": False,
                 "confirmation_launch_authorized": False,
+                "v11_inference_authorized": False,
                 "strength_claim": False,
                 "production_promotion": False,
                 "production_deployment": False,
@@ -267,6 +267,11 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, object]:
             "composition controller packet identity/authority drift")
 
     parents = packet.get("parents", {})
+    if set(parents) != {
+            "report_packet", "report_review_record", "report_receipt",
+            "report_result", "report_open_admission_slot"}:
+        raise CompositionRuntimeRefused(
+            "composition parent population drift")
     report_packet_ref = parents.get("report_packet", {})
     report_review_ref = parents.get("report_review_record", {})
     report_receipt_ref = parents.get("report_receipt", {})
@@ -315,21 +320,6 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, object]:
         raise CompositionRuntimeRefused(
             "composition REPORT-open parent drift")
 
-    v11 = parents.get("v11pair", {})
-    v11_path = (REPO / str(v11.get("logical_path"))).resolve()
-    if (v11 != {
-            "logical_path": CTRL.V11_PATH,
-            "external_sha256": CTRL.CAPTURE_RUNTIME.V11_SHA256,
-            }
-            or not is_regular_unlinked(v11_path)
-            or sha256_file(v11_path) != v11.get("external_sha256")):
-        raise CompositionRuntimeRefused("composition V11 proposal input drift")
-    if packet["selected_capability"]["surface"] == "play":
-        try:
-            _load_npnet(str(v11_path))
-        except Exception as exc:
-            raise CompositionRuntimeRefused(
-                f"composition V11 proposal model cannot load: {exc}") from exc
     try:
         live_parent = make_bot("mc-s0-report-lcb", seed=0)
         COMPOSITION._require_live_report_lcb(live_parent)
@@ -525,8 +515,8 @@ def _receipt(
 def _factories(packet: Mapping[str, object], ensemble):
     surface = str(packet["selected_capability"]["surface"])
     if surface == "play":
-        v11 = _load_npnet(str(REPO / CTRL.V11_PATH))
-        source = CANDIDATES.make_play_candidate_source(v11)
+        source = CANDIDATES.make_play_candidate_source(
+            ensemble, novel_model_source="stage_c_mc_teacher")
         make_stage = COMPOSITION.make_play_report_lcb_bot
     elif surface == "bury":
         source = CANDIDATES.make_bury_candidate_source()

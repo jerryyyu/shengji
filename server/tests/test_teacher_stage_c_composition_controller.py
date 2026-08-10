@@ -160,11 +160,7 @@ def test_packet_binds_exact_models_population_and_narrow_authority(
         monkeypatch, tmp_path) -> None:
     packet = _report_packet()
     result = _report_result(packet)
-    v11 = tmp_path / CTRL.V11_PATH
-    v11.parent.mkdir(parents=True)
-    v11.write_bytes(b"v11")
     monkeypatch.setattr(CTRL, "REPO", tmp_path)
-    monkeypatch.setattr(CTRL.CAPTURE_RUNTIME, "V11_SHA256", "5" * 64)
     monkeypatch.setattr(CTRL, "sha256_file", lambda _path: "5" * 64)
     monkeypatch.setattr(CTRL, "is_regular_unlinked", lambda _path: True)
     monkeypatch.setattr(CTRL, "_source_sha256s",
@@ -195,6 +191,7 @@ def test_packet_binds_exact_models_population_and_narrow_authority(
         "screen_packet_review_authorized": False,
         "screen_launch_authorized": False,
         "confirmation_launch_authorized": False,
+        "v11_inference_authorized": False,
         "strength_claim": False,
         "production_promotion": False,
         "production_deployment": False,
@@ -202,6 +199,10 @@ def test_packet_binds_exact_models_population_and_narrow_authority(
     assert built["packet_sha256"] == CTRL.self_hash(
         built, "packet_sha256")
     assert len(built["result_contract"]["shard_admission_slots"]) == 8
+    assert "v11pair" not in built["parents"]
+    assert built["candidate_contract"]["novel_model_proposer"] \
+        == "stage_c_mc_teacher_ensemble"
+    assert built["candidate_contract"]["v11_artifact_loaded"] is False
 
 
 def test_commands_cover_each_shard_and_bind_existing_receipt() -> None:
@@ -246,11 +247,7 @@ def test_initial_review_claim_authorizes_capacity_only(
         monkeypatch, tmp_path) -> None:
     packet = _report_packet()
     result = _report_result(packet)
-    v11 = tmp_path / CTRL.V11_PATH
-    v11.parent.mkdir(parents=True)
-    v11.write_bytes(b"v11")
     monkeypatch.setattr(CTRL, "REPO", tmp_path)
-    monkeypatch.setattr(CTRL.CAPTURE_RUNTIME, "V11_SHA256", "5" * 64)
     monkeypatch.setattr(CTRL, "sha256_file", lambda _path: "5" * 64)
     monkeypatch.setattr(CTRL, "is_regular_unlinked", lambda _path: True)
     monkeypatch.setattr(CTRL, "_source_sha256s", lambda: {})
@@ -267,6 +264,7 @@ def test_initial_review_claim_authorizes_capacity_only(
     assert claim["one_capacity_preflight_authorized"] is True
     assert claim["one_screen_execution_authorized"] is False
     assert claim["confirmation_launch_authorized"] is False
+    assert claim["v11_inference_authorized"] is False
     assert claim["strength_claim"] is False
     assert claim["production_promotion"] is False
 

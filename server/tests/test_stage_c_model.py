@@ -189,6 +189,24 @@ def test_target_rejects_world_budget_and_hard_label_drift() -> None:
         MODEL.build_target(_state(), row)
 
 
+def test_materialized_example_is_invariant_to_candidate_source_tags(
+        monkeypatch) -> None:
+    monkeypatch.setattr(MODEL, "encode_obs",
+                        lambda _rnd, _seat: [0.0] * MODEL.OBS_DIM)
+    monkeypatch.setattr(
+        MODEL, "encode_action",
+        lambda _cards, _rnd: [0.0] * MODEL.ACT_DIM)
+    first = _state()
+    second = copy.deepcopy(first)
+    second["candidates"][1]["sources"] = [
+        "stage_c_mc_teacher_top_proposal", "some_future_source"]
+    left = MODEL.materialize_example(first, _row(), object())
+    right = MODEL.materialize_example(second, _row(), object())
+    assert left == right
+    assert "sources" not in left
+    assert "sources" not in left["target"]
+
+
 def test_curve_subsets_are_nested_deterministic_and_stratum_preserving() -> None:
     examples = []
     for surface in MODEL.SURFACES:

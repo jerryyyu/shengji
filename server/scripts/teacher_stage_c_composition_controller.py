@@ -33,7 +33,6 @@ SERVER = SCRIPT.parents[1]
 REPO = SCRIPT.parents[2]
 sys.path.insert(0, str(SCRIPT.parent))
 
-import teacher_stage_c_capture_runtime as CAPTURE_RUNTIME  # noqa: E402
 import teacher_stage_c_report_controller as REPORT_CTRL  # noqa: E402
 import teacher_stage_c_report_runtime as REPORT_RUNTIME  # noqa: E402
 from shengji.ai.registry import make_bot  # noqa: E402
@@ -47,20 +46,20 @@ from shengji.rl import stage_c_screen as SCREEN  # noqa: E402
 from shengji.rl import stage_c_training as TRAIN  # noqa: E402
 
 
-SCHEMA = "teacher-stage-c-composition-screen-controller-v1"
-PACKET_ID = "teacher-stage-c-composition-screen-181m-v1"
+SCHEMA = "teacher-stage-c-composition-screen-controller-v2"
+PACKET_ID = "teacher-stage-c-composition-screen-181m-v2"
 RUN_ID = PACKET_ID
 PACKET_PATH = f"server/runs/logs/{RUN_ID}/controller-packet.json"
-REVIEW_SCHEMA = "teacher-stage-c-composition-screen-controller-review-v1"
-REVIEW_MARKER = "TEACHER_STAGE_C_COMPOSITION_SCREEN_CONTROLLER_V1_REVIEW "
-CAPACITY_RESULT_SCHEMA = "teacher-stage-c-composition-capacity-v1"
-CAPACITY_REVIEW_SCHEMA = "teacher-stage-c-composition-capacity-review-v1"
+REVIEW_SCHEMA = "teacher-stage-c-composition-screen-controller-review-v2"
+REVIEW_MARKER = "TEACHER_STAGE_C_COMPOSITION_SCREEN_CONTROLLER_V2_REVIEW "
+CAPACITY_RESULT_SCHEMA = "teacher-stage-c-composition-capacity-v2"
+CAPACITY_REVIEW_SCHEMA = "teacher-stage-c-composition-capacity-review-v2"
 CAPACITY_REVIEW_MARKER = \
-    "TEACHER_STAGE_C_COMPOSITION_CAPACITY_V1_REVIEW "
+    "TEACHER_STAGE_C_COMPOSITION_CAPACITY_V2_REVIEW "
 SUPERVISOR_REVIEW_SCHEMA = \
-    "teacher-stage-c-composition-supervisor-final-review-v1"
+    "teacher-stage-c-composition-supervisor-final-review-v2"
 SUPERVISOR_REVIEW_MARKER = \
-    "TEACHER_STAGE_C_COMPOSITION_SUPERVISOR_FINAL_V1_REVIEW "
+    "TEACHER_STAGE_C_COMPOSITION_SUPERVISOR_FINAL_V2_REVIEW "
 PREFLIGHT_SEED0 = 180_000_000
 PREFLIGHT_CLUSTERS = 4
 PREFLIGHT_MAX_SECONDS = 3_600.0
@@ -71,7 +70,6 @@ SCREEN_SEED0 = 181_000_000
 SCREEN_CLUSTERS = 2_048
 SHARD_COUNT = 8
 CLUSTERS_PER_SHARD = SCREEN_CLUSTERS // SHARD_COUNT
-V11_PATH = str(CAPTURE_RUNTIME.V11_PATH)
 MODEL_DIR = f"server/runs/logs/{RUN_ID}/models"
 MODEL_PATHS = tuple(
     f"{MODEL_DIR}/seed-{seed}.npz" for seed in MODEL.TRAINING_SEEDS)
@@ -397,14 +395,9 @@ def _preflight_export_environment() -> None:
     # leaves evidence and cannot be silently resumed under the same paths.
     _source_sha256s()
     runtime_contract()
-    v11 = (REPO / V11_PATH).resolve()
-    if (not is_regular_unlinked(v11)
-            or sha256_file(v11) != CAPTURE_RUNTIME.V11_SHA256):
-        raise CompositionControllerRefused("Stage-C V11 proposal input drift")
     try:
         COMPOSITION._require_live_report_lcb(
             make_bot("mc-s0-report-lcb", seed=0))
-        CAPTURE_RUNTIME._load_npnet(str(v11))
     except Exception as exc:
         raise CompositionControllerRefused(
             f"Stage-C composition inference preflight failed: {exc}") from exc
@@ -475,6 +468,9 @@ def candidate_contract() -> dict:
         "play_candidate_cap": CANDIDATES.PLAY_CANDIDATE_CAP,
         "bury_candidate_cap": CANDIDATES.BURY_CANDIDATE_CAP,
         "live_parent": "mc-s0-report-lcb",
+        "novel_model_proposer": "stage_c_mc_teacher_ensemble",
+        "v11_proposer_admitted": False,
+        "v11_artifact_loaded": False,
         "model_proposes_at_most_one_challenger": True,
         "fresh_report_lcb_required": True,
         "direct_model_override_authorized": False,
@@ -553,10 +549,6 @@ def build_packet(
     if report_result["selected_capability"] != capability:
         raise CompositionControllerRefused(
             "Stage-C composition capability drift")
-    v11 = (REPO / V11_PATH).resolve()
-    if (not is_regular_unlinked(v11)
-            or sha256_file(v11) != CAPTURE_RUNTIME.V11_SHA256):
-        raise CompositionControllerRefused("Stage-C V11 proposal input drift")
     packet = {
         "schema": SCHEMA,
         "packet_id": PACKET_ID,
@@ -582,10 +574,6 @@ def build_packet(
                 "external_sha256": report_result[
                     "report_open_admission_slot_sha256"],
             },
-            "v11pair": {
-                "logical_path": V11_PATH,
-                "external_sha256": CAPTURE_RUNTIME.V11_SHA256,
-            },
         },
         "selected_capability": capability,
         "model_exports": exports,
@@ -601,6 +589,7 @@ def build_packet(
             "screen_packet_review_authorized": False,
             "screen_launch_authorized": False,
             "confirmation_launch_authorized": False,
+            "v11_inference_authorized": False,
             "strength_claim": False,
             "production_promotion": False,
             "production_deployment": False,
@@ -631,6 +620,8 @@ def expected_review_claim(packet: Mapping[str, object],
         "execution_host": packet["runtime_contract"]["host"],
         "python": packet["runtime_contract"]["python"],
         "numpy": packet["runtime_contract"]["numpy"],
+        "novel_model_proposer": "stage_c_mc_teacher_ensemble",
+        "v11_inference_authorized": False,
         "independent_review": True,
         "one_capacity_preflight_authorized": True,
         "one_screen_execution_authorized": False,

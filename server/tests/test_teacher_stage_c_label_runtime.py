@@ -68,9 +68,11 @@ def _fold_runner(selection_values: list[float],
             "world_key_sha256s": world_hashes,
             "world_keys_sha256": runtime.sha256_bytes(
                 runtime.canonical_json(world_hashes)),
-            "overlap_discarded": 0,
-            "duplicate_discarded": 0,
-            "exactly_disjoint_from_prior_folds": True,
+            "unique_worlds": count,
+            "duplicate_draws_retained": 0,
+            "prior_fold_overlap_draws_retained": 0,
+            "sampling_with_replacement": True,
+            "domain_separated_stream": True,
             "complete": True,
         }
         ledger.record_sampler(purpose, sampler)
@@ -151,8 +153,11 @@ def test_strict_sampler_retries_and_reconciles(monkeypatch: pytest.MonkeyPatch) 
         "rejected_worlds": 0, "impossible_worlds": 0,
     }
     assert sampler["accepted_draws"] == 2
-    assert sampler["overlap_discarded"] == 0
-    assert sampler["duplicate_discarded"] == 0
+    assert sampler["unique_worlds"] == 2
+    assert sampler["duplicate_draws_retained"] == 0
+    assert sampler["prior_fold_overlap_draws_retained"] == 0
+    assert sampler["sampling_with_replacement"] is True
+    assert sampler["domain_separated_stream"] is True
     assert len(sampler["world_key_sha256s"]) == 2
     assert ledger.snapshot()["samplers"]["selection"] == sampler
     assert ledger.snapshot()["sampler_sequence"] == ["selection"]
@@ -188,7 +193,7 @@ def test_strict_sampler_underfill_is_finite_and_keeps_attempts(
     assert sampler["complete"] is False
 
 
-def test_later_fold_rejects_an_exact_prior_world_hash(
+def test_later_fold_retains_prior_overlap_and_duplicate_iid_draws(
         monkeypatch: pytest.MonkeyPatch) -> None:
     worlds = [
         ({1: ["C2"], 2: ["D2"], 3: ["H2"]}, ["S2"]),
@@ -226,20 +231,65 @@ def test_later_fold_rejects_an_exact_prior_world_hash(
         "world_key_sha256s": [first_hash],
         "world_keys_sha256": runtime.sha256_bytes(
             runtime.canonical_json([first_hash])),
-        "overlap_discarded": 0, "duplicate_discarded": 0,
-        "exactly_disjoint_from_prior_folds": True, "complete": True,
+        "unique_worlds": 1,
+        "duplicate_draws_retained": 0,
+        "prior_fold_overlap_draws_retained": 0,
+        "sampling_with_replacement": True,
+        "domain_separated_stream": True,
+        "complete": True,
     }
     ledger.record_sampler("selection", prior)
     _bot, sampled, report = runtime.draw_common_worlds(
-        FakeRound(), 0, 1, 2, fold="report", ledger=ledger,
+        FakeRound(), 0, 3, 2, fold="report", ledger=ledger,
         bot_factory=lambda _seed: SequenceBot())
-    assert sampled == [worlds[1]]
-    assert report["attempts"] == 2
-    assert report["accepted_draws"] == 2
-    assert report["overlap_discarded"] == 1
-    assert report["duplicate_discarded"] == 0
-    assert not set(report["world_key_sha256s"]).intersection(
+    assert sampled == [worlds[0], worlds[1], worlds[1]]
+    assert report["attempts"] == 3
+    assert report["accepted_draws"] == 3
+    assert report["unique_worlds"] == 2
+    assert report["duplicate_draws_retained"] == 1
+    assert report["prior_fold_overlap_draws_retained"] == 1
+    assert set(report["world_key_sha256s"]).intersection(
         prior["world_key_sha256s"])
+
+
+def test_single_world_support_fills_domain_separated_iid_folds(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    world = ({1: ["C2"], 2: ["D2"], 3: ["H2"]}, ["S2"])
+
+    class ConstantBot:
+        SAMPLE_ATTEMPT_FACTOR = runtime.SAMPLE_ATTEMPT_FACTOR
+        BANKER_KITTY = True
+
+        def __init__(self):
+            self.sample_attempts = 0
+            self.accepted_worlds = 0
+            self.failed_worlds = 0
+            self.rejected_worlds = 0
+            self.impossible_worlds = 0
+
+        def _sample_hands(self, _rnd, _seat, _mem):
+            self.sample_attempts += 1
+            self.accepted_worlds += 1
+            return world
+
+    monkeypatch.setattr(runtime, "Memory", lambda *_args, **_kwargs: object())
+    ledger = runtime.WorkLedger()
+    _bot, selection_worlds, selection = runtime.draw_common_worlds(
+        FakeRound(), 0, 8, 11, fold="selection", ledger=ledger,
+        bot_factory=lambda _seed: ConstantBot())
+    _bot, report_worlds, report = runtime.draw_common_worlds(
+        FakeRound(), 0, 8, 12, fold="report", ledger=ledger,
+        bot_factory=lambda _seed: ConstantBot())
+
+    assert selection_worlds == [world] * 8
+    assert report_worlds == [world] * 8
+    assert selection["attempts"] == report["attempts"] == 8
+    assert selection["unique_worlds"] == report["unique_worlds"] == 1
+    assert selection["duplicate_draws_retained"] == 7
+    assert report["duplicate_draws_retained"] == 7
+    assert selection["prior_fold_overlap_draws_retained"] == 0
+    assert report["prior_fold_overlap_draws_retained"] == 8
+    runtime._validate_domain_separated_streams([selection, report])
 
 
 def test_score_actions_preserves_raw_tensor_and_role_sign() -> None:
@@ -415,7 +465,7 @@ def test_semantic_validator_recomputes_decisions_utilities_and_work() -> None:
     overlap["row_sha256"] = runtime.sha256_bytes(runtime.canonical_json({
         key: item for key, item in overlap.items() if key != "row_sha256"
     }))
-    with pytest.raises(runtime.LabelRefused, match="fold separation drift"):
+    with pytest.raises(runtime.LabelRefused, match="iid stream separation drift"):
         runtime.validate_label_row(
             state, FakeRound(), overlap, audit_expected=True)
 

@@ -42,17 +42,17 @@ import teacher_stage_c_label_controller as CTRL  # noqa: E402
 import teacher_stage_c_label_runtime as LABEL  # noqa: E402
 
 
-SCHEMA = "teacher-stage-c-label-capacity-controller-v1"
-PACKET_ID = "teacher-v3-hard-tail-stage-c-label-capacity-controller-v1"
-RUN_ID = "teacher-v3-hard-tail-stage-c-label-capacity-v1"
+SCHEMA = "teacher-stage-c-label-capacity-controller-v2"
+PACKET_ID = "teacher-v3-hard-tail-stage-c-label-capacity-controller-v2"
+RUN_ID = "teacher-v3-hard-tail-stage-c-label-capacity-v2"
 PACKET_PATH = f"server/runs/logs/{RUN_ID}/controller_packet.json"
 RESULT_PATH = f"server/runs/logs/{RUN_ID}/capacity-result.json"
-PACKET_REVIEW_SCHEMA = "teacher-stage-c-label-capacity-controller-review-v1"
-PACKET_REVIEW_MARKER = "TEACHER_STAGE_C_LABEL_CAPACITY_V1_REVIEW "
-RESULT_SCHEMA = "teacher-stage-c-label-capacity-result-v1"
-RESULT_REVIEW_SCHEMA = "teacher-stage-c-label-capacity-result-review-v1"
-RESULT_REVIEW_MARKER = "TEACHER_STAGE_C_LABEL_CAPACITY_RESULT_V1_REVIEW "
-ADMISSION_SCHEMA = "teacher-stage-c-label-capacity-admission-v1"
+PACKET_REVIEW_SCHEMA = "teacher-stage-c-label-capacity-controller-review-v2"
+PACKET_REVIEW_MARKER = "TEACHER_STAGE_C_LABEL_CAPACITY_V2_REVIEW "
+RESULT_SCHEMA = "teacher-stage-c-label-capacity-result-v2"
+RESULT_REVIEW_SCHEMA = "teacher-stage-c-label-capacity-result-review-v2"
+RESULT_REVIEW_MARKER = "TEACHER_STAGE_C_LABEL_CAPACITY_RESULT_V2_REVIEW "
+ADMISSION_SCHEMA = "teacher-stage-c-label-capacity-admission-v2"
 
 SAMPLES_PER_SHARD = 2
 SAMPLE_STATES = CTRL.LABEL_SHARDS * SAMPLES_PER_SHARD
@@ -85,8 +85,8 @@ SAMPLE_TELEMETRY_FIELDS = {
 }
 SAMPLER_TELEMETRY_FIELDS = {
     "sampler_attempts", "accepted_worlds", "failed_worlds",
-    "rejected_worlds", "impossible_worlds", "overlap_discarded",
-    "duplicate_discarded",
+    "rejected_worlds", "impossible_worlds", "unique_worlds_within_folds",
+    "duplicate_draws_retained", "prior_fold_overlap_draws_retained",
 }
 
 SOURCE_PATHS = tuple(dict.fromkeys((
@@ -245,7 +245,7 @@ def _sample_descriptor(state: Mapping[str, object], *, shard_index: int,
 
 
 def build_capacity_schedule(state_set: Mapping[str, object]) -> dict:
-    """Choose early-continuation and maximal-work witnesses per label shard."""
+    """Choose lowest-support late and maximal-work witnesses per label shard."""
     label_schedule = CTRL.build_schedule(state_set)
     states = {str(state["state_id"]): state for state in state_set["states"]}
     if len(states) != CTRL.EXPECTED_STATES:
@@ -254,18 +254,18 @@ def build_capacity_schedule(state_set: Mapping[str, object]) -> dict:
     for shard in label_schedule["shards"]:
         audit_ids = set(shard["audit_state_ids"])
         rows = [states[str(state_id)] for state_id in shard["state_ids"]]
-        ranked_early = sorted(
+        ranked_late = sorted(
             rows,
             key=lambda state: (
-                int(state["ply"]),
+                -int(state["ply"]),
                 -CTRL._label_candidate_worlds(
                     state, state["state_id"] in audit_ids),
                 str(state["state_id"]),
             ),
         )
-        early = ranked_early[0]
+        late = ranked_late[0]
         remaining = [state for state in rows
-                     if state["state_id"] != early["state_id"]]
+                     if state["state_id"] != late["state_id"]]
         ranked_work = sorted(
             remaining,
             key=lambda state: (
@@ -277,8 +277,8 @@ def build_capacity_schedule(state_set: Mapping[str, object]) -> dict:
         heavy = ranked_work[0]
         samples.extend((
             _sample_descriptor(
-                early, shard_index=shard["index"],
-                sample_role="earliest_ply", audit=early["state_id"] in audit_ids),
+                late, shard_index=shard["index"],
+                sample_role="latest_ply", audit=late["state_id"] in audit_ids),
             _sample_descriptor(
                 heavy, shard_index=shard["index"],
                 sample_role="max_candidate_worlds",
@@ -294,7 +294,7 @@ def build_capacity_schedule(state_set: Mapping[str, object]) -> dict:
     payload = {
         "selection_rule": {
             "per_shard": [
-                "minimum ply, then maximum expected candidate-world work, "
+                "maximum ply, then maximum expected candidate-world work, "
                 "then state ID",
                 "maximum expected candidate-world work among remaining states, "
                 "then minimum ply, then state ID",
@@ -523,8 +523,9 @@ def _aggregate_sampler_telemetry(work: Mapping[str, object]) -> dict[str, int]:
         "failed_worlds": 0,
         "rejected_worlds": 0,
         "impossible_worlds": 0,
-        "overlap_discarded": 0,
-        "duplicate_discarded": 0,
+        "unique_worlds_within_folds": 0,
+        "duplicate_draws_retained": 0,
+        "prior_fold_overlap_draws_retained": 0,
     }
     samplers = work.get("samplers", {})
     if not isinstance(samplers, dict):
@@ -532,14 +533,17 @@ def _aggregate_sampler_telemetry(work: Mapping[str, object]) -> dict[str, int]:
     for sampler in samplers.values():
         counters = sampler["counters"]
         values["sampler_attempts"] += int(sampler["attempts"])
-        # The bot's accepted counter includes draws later discarded as a
-        # cross-fold overlap or within-fold duplicate.  Use that counter for
-        # the attempts identity; ``sampler['accepted']`` is only retained rows.
+        # Every successful iid draw is retained; repeated worlds carry their
+        # posterior probability mass instead of being flattened away.
         values["accepted_worlds"] += int(counters["accepted_worlds"])
         for name in ("failed_worlds", "rejected_worlds", "impossible_worlds"):
             values[name] += int(counters[name])
-        values["overlap_discarded"] += int(sampler["overlap_discarded"])
-        values["duplicate_discarded"] += int(sampler["duplicate_discarded"])
+        values["unique_worlds_within_folds"] += int(
+            sampler["unique_worlds"])
+        values["duplicate_draws_retained"] += int(
+            sampler["duplicate_draws_retained"])
+        values["prior_fold_overlap_draws_retained"] += int(
+            sampler["prior_fold_overlap_draws_retained"])
     return values
 
 

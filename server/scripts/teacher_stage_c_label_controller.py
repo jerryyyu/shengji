@@ -17,6 +17,11 @@ logical action slots on 400 common worlds.  Duplicate identities still consume
 their logical slots.  The amendment changes no state, candidate, label fold,
 utility, continuation, or total-work ceiling and requires its own review before
 one label execution can be admitted.
+
+The v2 sampler retains successful iid draws with replacement.  This preserves
+posterior probability mass and makes low-support late states labelable; merely
+seeing the same hidden world twice is not a sampler failure.  Selection,
+report, and audit folds remain isolated by domain-separated RNG streams.
 """
 from __future__ import annotations
 
@@ -42,31 +47,31 @@ import teacher_stage_c_design as DESIGN  # noqa: E402
 import teacher_stage_c_label_runtime as LABEL  # noqa: E402
 
 
-SCHEMA = "teacher-stage-c-label-controller-v1"
-PACKET_ID = "teacher-v3-hard-tail-stage-c-label-controller-v1"
-RUN_ID = "teacher-v3-hard-tail-stage-c-labels-v1"
-CONTROLLER_RUN_ID = "teacher-v3-hard-tail-stage-c-label-controller-v1"
+SCHEMA = "teacher-stage-c-label-controller-v2"
+PACKET_ID = "teacher-v3-hard-tail-stage-c-label-controller-v2"
+RUN_ID = "teacher-v3-hard-tail-stage-c-labels-v2"
+CONTROLLER_RUN_ID = "teacher-v3-hard-tail-stage-c-label-controller-v2"
 CONTROLLER_PACKET_PATH = (
     f"server/runs/logs/{CONTROLLER_RUN_ID}/controller_packet.json"
 )
-REVIEW_SCHEMA = "teacher-stage-c-label-controller-review-v1"
-REVIEW_MARKER = "TEACHER_STAGE_C_LABEL_CONTROLLER_V1_REVIEW "
+REVIEW_SCHEMA = "teacher-stage-c-label-controller-review-v2"
+REVIEW_MARKER = "TEACHER_STAGE_C_LABEL_CONTROLLER_V2_REVIEW "
 STATE_SET_REVIEW_SCHEMA = "teacher-stage-c-state-set-review-v1"
 STATE_SET_REVIEW_MARKER = "TEACHER_STAGE_C_STATE_SET_V7_REVIEW "
-RECEIPT_SCHEMA = "teacher-stage-c-label-receipt-v1"
-ADMISSION_SCHEMA = "teacher-stage-c-label-admission-v1"
-SHARD_ADMISSION_SCHEMA = "teacher-stage-c-label-shard-admission-v1"
-SHARD_SCHEMA = "teacher-stage-c-label-shard-v1"
-AGGREGATE_SCHEMA = "teacher-stage-c-label-aggregate-v1"
-CAPACITY_PACKET_SCHEMA = "teacher-stage-c-label-capacity-controller-v1"
-CAPACITY_PACKET_ID = "teacher-v3-hard-tail-stage-c-label-capacity-controller-v1"
-CAPACITY_RUN_ID = "teacher-v3-hard-tail-stage-c-label-capacity-v1"
-CAPACITY_RESULT_SCHEMA = "teacher-stage-c-label-capacity-result-v1"
+RECEIPT_SCHEMA = "teacher-stage-c-label-receipt-v2"
+ADMISSION_SCHEMA = "teacher-stage-c-label-admission-v2"
+SHARD_ADMISSION_SCHEMA = "teacher-stage-c-label-shard-admission-v2"
+SHARD_SCHEMA = "teacher-stage-c-label-shard-v2"
+AGGREGATE_SCHEMA = "teacher-stage-c-label-aggregate-v2"
+CAPACITY_PACKET_SCHEMA = "teacher-stage-c-label-capacity-controller-v2"
+CAPACITY_PACKET_ID = "teacher-v3-hard-tail-stage-c-label-capacity-controller-v2"
+CAPACITY_RUN_ID = "teacher-v3-hard-tail-stage-c-label-capacity-v2"
+CAPACITY_RESULT_SCHEMA = "teacher-stage-c-label-capacity-result-v2"
 CAPACITY_RESULT_REVIEW_SCHEMA = (
-    "teacher-stage-c-label-capacity-result-review-v1"
+    "teacher-stage-c-label-capacity-result-review-v2"
 )
 CAPACITY_RESULT_REVIEW_MARKER = (
-    "TEACHER_STAGE_C_LABEL_CAPACITY_RESULT_V1_REVIEW "
+    "TEACHER_STAGE_C_LABEL_CAPACITY_RESULT_V2_REVIEW "
 )
 
 CAPTURE_CONTROLLER_SHA256 = (
@@ -104,6 +109,7 @@ REVIEW_FIELDS = (
     "max_candidate_worlds", "max_sampler_attempts",
     "audit_report_actions", "audit_report_worlds",
     "audit_report_candidate_worlds", "report_labels_sealed_from_training",
+    "sampling_with_replacement", "domain_separated_fold_streams",
     "shard_admission_slots",
     "capacity_packet_sha256", "capacity_result_sha256",
     "capacity_result_review_schema", "capacity_pass",
@@ -668,7 +674,10 @@ def build_packet(
                                 LABEL.ORDINARY_REPORT_WORLDS],
             "hard_tail_selection_worlds": LABEL.HARD_SELECTION_WORLDS,
             "hard_tail_report_worlds": LABEL.HARD_REPORT_WORLDS,
-            "selection_and_report_disjoint": True,
+            "sampling_with_replacement": True,
+            "domain_separated_fold_streams": True,
+            "selection_and_report_random_draws_independent": True,
+            "duplicate_world_draws_preserve_posterior_mass": True,
             "report_never_selects": True,
             "strict_sampler_attempt_factor": LABEL.SAMPLE_ATTEMPT_FACTOR,
             "partial_state_publishes_no_label": True,
@@ -831,6 +840,8 @@ def expected_review_claim(packet: Mapping[str, object], packet_sha256: str) -> d
         "audit_report_worlds": LABEL.AUDIT_REPORT_WORLDS,
         "audit_report_candidate_worlds": LABEL.AUDIT_REPORT_CANDIDATE_WORLDS,
         "report_labels_sealed_from_training": True,
+        "sampling_with_replacement": True,
+        "domain_separated_fold_streams": True,
         "shard_admission_slots": LABEL_SHARDS,
         "capacity_packet_sha256": capacity["controller_external_sha256"],
         "capacity_result_sha256": capacity["result_external_sha256"],

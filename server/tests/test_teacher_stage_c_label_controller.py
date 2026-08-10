@@ -177,8 +177,10 @@ def _write_capacity_inputs(root: Path, inputs) -> tuple[Path, str, Path, str,
             "sampler": {
                 "sampler_attempts": 1, "accepted_worlds": 1,
                 "failed_worlds": 0, "rejected_worlds": 0,
-                "impossible_worlds": 0, "overlap_discarded": 0,
-                "duplicate_discarded": 0,
+                "impossible_worlds": 0,
+                "unique_worlds_within_folds": 1,
+                "duplicate_draws_retained": 0,
+                "prior_fold_overlap_draws_retained": 0,
             },
             "elapsed_seconds": work / 1_000.0,
             "v11_load_seconds": 1.0,
@@ -304,12 +306,17 @@ def test_packet_preserves_3x400_audit_and_report_seal(
         }
         assert packet["split_boundary"][
             "training_or_seed_selection_may_read_report"] is False
+        assert packet["label_contract"]["sampling_with_replacement"] is True
+        assert packet["label_contract"][
+            "domain_separated_fold_streams"] is True
         claim = controller.expected_review_claim(packet, "e" * 64)
         assert claim["audit_report_actions"] == 3
         assert claim["audit_report_worlds"] == 400
         assert claim["one_label_execution_authorized"] is True
         assert claim["training_authorized"] is False
         assert claim["capacity_pass"] is True
+        assert claim["sampling_with_replacement"] is True
+        assert claim["domain_separated_fold_streams"] is True
         assert claim["capacity_packet_sha256"] == capacity_inputs[1]
         assert claim["capacity_result_sha256"] == capacity_inputs[3]
 

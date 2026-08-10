@@ -62,8 +62,9 @@ def _complete_samples(state_set: dict) -> tuple[list[dict], dict]:
                 "failed_worlds": 0,
                 "rejected_worlds": 0,
                 "impossible_worlds": 0,
-                "overlap_discarded": 0,
-                "duplicate_discarded": 0,
+                "unique_worlds_within_folds": 1,
+                "duplicate_draws_retained": 0,
+                "prior_fold_overlap_draws_retained": 0,
             },
             "elapsed_seconds": work / 1_000.0,
             "v11_load_seconds": 1.0,
@@ -106,7 +107,7 @@ def test_schedule_selects_two_unique_witnesses_from_every_label_shard() -> None:
     assert schedule["workers"] == 8
     assert len({sample["state_id"] for sample in schedule["samples"]}) == 32
     assert {sample["sample_role"] for sample in schedule["samples"]} == {
-        "earliest_ply", "max_candidate_worlds"}
+        "latest_ply", "max_candidate_worlds"}
     for shard in range(16):
         selected = [sample for sample in schedule["samples"]
                     if sample["shard_index"] == shard]
@@ -115,7 +116,7 @@ def test_schedule_selects_two_unique_witnesses_from_every_label_shard() -> None:
     assert schedule["selection_rule"]["selection_uses_no_outcomes"] is True
 
 
-def test_schedule_is_deterministic_and_covers_early_and_heavy_geometry() -> None:
+def test_schedule_is_deterministic_and_covers_late_and_heavy_geometry() -> None:
     state_set = _state_set()
     first = capacity.build_capacity_schedule(state_set)
     second = capacity.build_capacity_schedule(copy.deepcopy(state_set))
@@ -126,13 +127,13 @@ def test_schedule_is_deterministic_and_covers_early_and_heavy_geometry() -> None
         rows = [states[state_id] for state_id in shard["state_ids"]]
         chosen = [sample for sample in first["samples"]
                   if sample["shard_index"] == shard["index"]]
-        early = next(value for value in chosen
-                     if value["sample_role"] == "earliest_ply")
-        assert early["ply"] == min(state["ply"] for state in rows)
+        late = next(value for value in chosen
+                    if value["sample_role"] == "latest_ply")
+        assert late["ply"] == max(state["ply"] for state in rows)
         heavy = next(value for value in chosen
                      if value["sample_role"] == "max_candidate_worlds")
         remaining = [state for state in rows
-                     if state["state_id"] != early["state_id"]]
+                     if state["state_id"] != late["state_id"]]
         audit_ids = set(shard["audit_state_ids"])
         expected = max(capacity.CTRL._label_candidate_worlds(
             state, state["state_id"] in audit_ids) for state in remaining)
@@ -164,7 +165,7 @@ def test_projection_refuses_incomplete_or_missing_sample() -> None:
         capacity.capacity_projection(samples, label_schedule)
 
 
-def test_sampler_telemetry_counts_discarded_accepted_draws_in_attempt_identity() -> None:
+def test_sampler_telemetry_counts_retained_duplicate_draws() -> None:
     work = {"samplers": {"selection": {
         "attempts": 3,
         "accepted": 1,
@@ -172,11 +173,14 @@ def test_sampler_telemetry_counts_discarded_accepted_draws_in_attempt_identity()
             "accepted_worlds": 2, "failed_worlds": 1,
             "rejected_worlds": 0, "impossible_worlds": 0,
         },
-        "overlap_discarded": 0,
-        "duplicate_discarded": 1,
+        "unique_worlds": 1,
+        "duplicate_draws_retained": 1,
+        "prior_fold_overlap_draws_retained": 0,
     }}}
     telemetry = capacity._aggregate_sampler_telemetry(work)
     assert telemetry["accepted_worlds"] == 2
+    assert telemetry["unique_worlds_within_folds"] == 1
+    assert telemetry["duplicate_draws_retained"] == 1
     assert telemetry["accepted_worlds"] + telemetry["failed_worlds"] == \
         telemetry["sampler_attempts"]
 
@@ -232,7 +236,7 @@ def test_outcome_or_world_identity_mutation_is_detected_recursively() -> None:
 def test_worker_returns_work_not_transient_outcome(
         monkeypatch: pytest.MonkeyPatch) -> None:
     descriptor = {
-        "shard_index": 0, "sample_role": "earliest_ply",
+        "shard_index": 0, "sample_role": "latest_ply",
         "state_id": "DESIGN:0", "split": "DESIGN",
         "surface_type": "play", "stratum": "ordinary_anchor", "ply": 0,
         "candidate_count": 1, "audit_expected": False,
@@ -263,7 +267,7 @@ def test_worker_returns_work_not_transient_outcome(
 def test_worker_v11_load_failure_returns_safe_terminal_refusal(
         monkeypatch: pytest.MonkeyPatch) -> None:
     descriptor = {
-        "shard_index": 0, "sample_role": "earliest_ply",
+        "shard_index": 0, "sample_role": "latest_ply",
         "state_id": "DESIGN:0", "split": "DESIGN",
         "surface_type": "play", "stratum": "ordinary_anchor", "ply": 0,
         "candidate_count": 1, "audit_expected": False,

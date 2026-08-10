@@ -8,10 +8,13 @@ no worlds and publishes no labels.
 
 The important boundaries are executable here:
 
-* every fold has a domain-separated deterministic stream;
+* every fold has a domain-separated deterministic iid stream;
 * rejected sampler draws consume attempts until a finite reviewed cap;
 * all candidates in a fold share the same accepted worlds;
-* selection and report folds are disjoint;
+* successful draws are retained with replacement, preserving posterior mass
+  even when the hidden-world support is small;
+* selection and report use independent streams; an underlying world may recur
+  naturally within or across folds without coupling their RNG draws;
 * hard-tail report folds evaluate two *logical* slots (candidate zero and the
   frozen selection winner), even when both slots name candidate zero;
 * audit report folds evaluate three logical slots (candidate zero, the frozen
@@ -54,11 +57,11 @@ from shengji.pilot_folds import world_key
 from shengji.rl.bc_generate import round_value
 
 
-SCHEMA = "teacher-stage-c-label-row-v1"
-SAMPLER_SCHEMA = "teacher-stage-c-label-sampler-v1"
-FOLD_SCHEMA = "teacher-stage-c-label-fold-v1"
-WORK_SCHEMA = "teacher-stage-c-label-work-v1"
-STREAM_SCHEMA = "teacher-stage-c-label-stream-v1"
+SCHEMA = "teacher-stage-c-label-row-v2"
+SAMPLER_SCHEMA = "teacher-stage-c-label-sampler-v2"
+FOLD_SCHEMA = "teacher-stage-c-label-fold-v2"
+WORK_SCHEMA = "teacher-stage-c-label-work-v2"
+STREAM_SCHEMA = "teacher-stage-c-label-stream-v2"
 
 ORDINARY_SELECTION_WORLDS = 256
 ORDINARY_REPORT_WORLDS = 256
@@ -73,8 +76,10 @@ PLAY_CANDIDATE_CAP = 20
 BURY_CANDIDATE_CAP = 33
 
 # One-sided 95% Student-t criticals.  These are fixed-look, fixed-pair bounds:
-# selection uses a disjoint fold, so the report contrast is not winner-picked
-# on the same observations.  They are not simultaneous intervals over states.
+# selection and report use domain-separated iid streams, so the report contrast
+# is not winner-picked on the same random draws.  Repeated underlying worlds
+# remain valid iid samples and preserve their posterior mass.  These are not
+# simultaneous intervals over states.
 HARD_T_95_DF299 = 1.649966
 AUDIT_T_95_DF399 = 1.648682
 
@@ -151,7 +156,7 @@ class WorkLedger:
     sampler_sequence: list[str] = field(default_factory=list)
     world_hashes_by_fold: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
-    def excluded_world_hashes(self) -> set[str]:
+    def prior_world_hashes(self) -> set[str]:
         return {value for values in self.world_hashes_by_fold.values()
                 for value in values}
 
@@ -159,10 +164,19 @@ class WorkLedger:
         if fold not in FOLDS or fold in self.samplers:
             raise LabelRefused("duplicate or unknown label sampler fold")
         hashes = sampler.get("world_key_sha256s")
-        if (not isinstance(hashes, list)
-                or len(set(hashes)) != len(hashes)
-                or self.excluded_world_hashes().intersection(hashes)):
-            raise LabelRefused("label sampler world identities overlap")
+        if not isinstance(hashes, list):
+            raise LabelRefused("label sampler world identities are missing")
+        prior = self.prior_world_hashes()
+        duplicate_draws = len(hashes) - len(set(hashes))
+        prior_overlaps = sum(value in prior for value in hashes)
+        if (sampler.get("accepted") != len(hashes)
+                or sampler.get("unique_worlds") != len(set(hashes))
+                or sampler.get("duplicate_draws_retained") != duplicate_draws
+                or sampler.get("prior_fold_overlap_draws_retained")
+                != prior_overlaps
+                or sampler.get("sampling_with_replacement") is not True
+                or sampler.get("domain_separated_stream") is not True):
+            raise LabelRefused("label sampler iid stream telemetry drift")
         self.samplers[fold] = dict(sampler)
         self.sampler_sequence.append(fold)
         self.world_hashes_by_fold[fold] = tuple(str(value) for value in hashes)
@@ -216,9 +230,9 @@ def draw_common_worlds(rnd, seat: int, count: int, seed: int, *,
     worlds: list[tuple] = []
     world_hashes: list[str] = []
     seen: set[str] = set()
-    excluded = ledger.excluded_world_hashes()
-    overlap_discarded = 0
-    duplicate_discarded = 0
+    prior = ledger.prior_world_hashes()
+    prior_overlap_draws = 0
+    duplicate_draws = 0
     attempts = 0
     cap = count * factor
     while len(worlds) < count and attempts < cap:
@@ -226,12 +240,10 @@ def draw_common_worlds(rnd, seat: int, count: int, seed: int, *,
         sampled = bot._sample_hands(rnd, seat, mem)
         if sampled is not None:
             digest = _world_hash(*sampled)
-            if digest in excluded:
-                overlap_discarded += 1
-                continue
             if digest in seen:
-                duplicate_discarded += 1
-                continue
+                duplicate_draws += 1
+            if digest in prior:
+                prior_overlap_draws += 1
             seen.add(digest)
             worlds.append(sampled)
             world_hashes.append(digest)
@@ -248,15 +260,16 @@ def draw_common_worlds(rnd, seat: int, count: int, seed: int, *,
         "counters": delta,
         "world_key_sha256s": world_hashes,
         "world_keys_sha256": sha256_bytes(canonical_json(world_hashes)),
-        "overlap_discarded": overlap_discarded,
-        "duplicate_discarded": duplicate_discarded,
-        "exactly_disjoint_from_prior_folds": True,
+        "unique_worlds": len(seen),
+        "duplicate_draws_retained": duplicate_draws,
+        "prior_fold_overlap_draws_retained": prior_overlap_draws,
+        "sampling_with_replacement": True,
+        "domain_separated_stream": True,
         "complete": len(worlds) == count,
     }
     ledger.record_sampler(fold, sampler)
     if (delta["sample_attempts"] != attempts
-            or delta["accepted_worlds"] !=
-            len(worlds) + overlap_discarded + duplicate_discarded
+            or delta["accepted_worlds"] != len(worlds)
             or delta["sample_attempts"] !=
             delta["accepted_worlds"] + delta["failed_worlds"]
             or delta["rejected_worlds"] > delta["failed_worlds"]
@@ -320,6 +333,30 @@ def score_actions(bot, rnd, state: Mapping[str, object], worlds: Sequence[tuple]
     }
 
 
+def _validate_domain_separated_streams(
+        samplers: Sequence[Mapping[str, object]]) -> None:
+    """Authenticate independent RNG streams without forbidding iid repeats."""
+    seeds: list[int] = []
+    prior: set[str] = set()
+    for sampler in samplers:
+        hashes = sampler.get("world_key_sha256s")
+        seed = sampler.get("seed")
+        if (not isinstance(hashes, list)
+                or isinstance(seed, bool) or not isinstance(seed, int)
+                or sampler.get("domain_separated_stream") is not True
+                or sampler.get("sampling_with_replacement") is not True
+                or sampler.get("unique_worlds") != len(set(hashes))
+                or sampler.get("duplicate_draws_retained")
+                != len(hashes) - len(set(hashes))
+                or sampler.get("prior_fold_overlap_draws_retained")
+                != sum(value in prior for value in hashes)):
+            raise LabelRefused("Stage-C iid stream separation drift")
+        seeds.append(seed)
+        prior.update(str(value) for value in hashes)
+    if len(set(seeds)) != len(seeds):
+        raise LabelRefused("Stage-C label folds reused an RNG stream")
+
+
 def run_fold(rnd, state: Mapping[str, object], candidate_indices: Sequence[int],
              count: int, purpose: str, ledger: WorkLedger) -> dict:
     seed = seed_for(state, purpose)
@@ -361,7 +398,8 @@ def paired_summary(left: Sequence[float], right: Sequence[float], *,
         "critical": float(critical),
         "one_sided_95_lcb": mean - float(critical) * se,
         "one_sided_95_ucb": mean + float(critical) * se,
-        "family": "per-state fixed-pair Student-t; selection/report disjoint",
+        "family": ("per-state fixed-pair Student-t; independent iid "
+                   "selection/report streams with replacement"),
     }
 
 
@@ -456,7 +494,7 @@ def label_replayed_state(state: Mapping[str, object], rnd, *,
                 audit_selection_winner=audit_winner,
                 frozen_label_choice=final_index,
             ),
-            "all_worlds_disjoint_from_label": True,
+            "independent_stream_from_label": True,
         }
     work = ledger.snapshot()
     expected = expected_label + (
@@ -468,17 +506,8 @@ def label_replayed_state(state: Mapping[str, object], rnd, *,
     used_folds = [selection, report]
     if audit is not None:
         used_folds.extend([audit["selection"], audit["report"]])
-    seeds = [fold["seed"] for fold in used_folds]
-    world_digests = [fold["sampler"]["world_keys_sha256"]
-                     for fold in used_folds]
-    world_hash_sets = [set(fold["sampler"]["world_key_sha256s"])
-                       for fold in used_folds]
-    overlaps = any(world_hash_sets[left].intersection(world_hash_sets[right])
-                   for left in range(len(world_hash_sets))
-                   for right in range(left + 1, len(world_hash_sets)))
-    if len(set(seeds)) != len(seeds) or len(set(world_digests)) != len(
-            world_digests) or overlaps:
-        raise LabelRefused("Stage-C label/audit worlds are not disjoint")
+    _validate_domain_separated_streams(
+        [fold["sampler"] for fold in used_folds])
     final = candidates[final_index]
     row = {
         "schema": SCHEMA,
@@ -584,8 +613,9 @@ def _validate_sampler(sampler: Mapping[str, object], *, state: Mapping[str, obje
                       fold: str, requested: int) -> None:
     counters = sampler.get("counters")
     hashes = sampler.get("world_key_sha256s")
-    overlap = sampler.get("overlap_discarded")
-    duplicate = sampler.get("duplicate_discarded")
+    unique_worlds = sampler.get("unique_worlds")
+    duplicate_draws = sampler.get("duplicate_draws_retained")
+    prior_overlaps = sampler.get("prior_fold_overlap_draws_retained")
     if (sampler.get("schema") != SAMPLER_SCHEMA
             or sampler.get("fold") != fold
             or sampler.get("seed") != seed_for(state, fold)
@@ -602,12 +632,7 @@ def _validate_sampler(sampler: Mapping[str, object], *, state: Mapping[str, obje
                        and value >= 0 for value in counters.values())
             or counters["sample_attempts"] != sampler["attempts"]
             or sampler.get("accepted_draws") != counters["accepted_worlds"]
-            or not isinstance(overlap, int) or isinstance(overlap, bool)
-            or overlap < 0
-            or not isinstance(duplicate, int) or isinstance(duplicate, bool)
-            or duplicate < 0
-            or counters["accepted_worlds"]
-            != requested + overlap + duplicate
+            or counters["accepted_worlds"] != requested
             or counters["accepted_worlds"] + counters["failed_worlds"]
             != counters["sample_attempts"]
             or counters["rejected_worlds"] > counters["failed_worlds"]
@@ -616,13 +641,22 @@ def _validate_sampler(sampler: Mapping[str, object], *, state: Mapping[str, obje
             or any(char not in "0123456789abcdef"
                    for char in sampler["world_keys_sha256"])
             or not isinstance(hashes, list) or len(hashes) != requested
-            or len(set(hashes)) != requested
             or not all(isinstance(value, str) and len(value) == 64
                        and not any(char not in "0123456789abcdef"
                                    for char in value) for value in hashes)
+            or isinstance(unique_worlds, bool)
+            or not isinstance(unique_worlds, int)
+            or unique_worlds != len(set(hashes))
+            or isinstance(duplicate_draws, bool)
+            or not isinstance(duplicate_draws, int)
+            or duplicate_draws != requested - unique_worlds
+            or isinstance(prior_overlaps, bool)
+            or not isinstance(prior_overlaps, int)
+            or not 0 <= prior_overlaps <= requested
             or sampler["world_keys_sha256"]
             != sha256_bytes(canonical_json(hashes))
-            or sampler.get("exactly_disjoint_from_prior_folds") is not True
+            or sampler.get("sampling_with_replacement") is not True
+            or sampler.get("domain_separated_stream") is not True
             or sampler.get("complete") is not True):
         raise LabelRefused(f"Stage-C {fold} sampler semantic drift")
 
@@ -772,20 +806,13 @@ def validate_label_row(state: Mapping[str, object], rnd,
             audit["report"], audit_selection_winner=audit_winner,
             frozen_label_choice=final_index)
         if (audit.get("decision") != expected_audit
-                or audit.get("all_worlds_disjoint_from_label") is not True):
+                or audit.get("independent_stream_from_label") is not True):
             raise LabelRefused("Stage-C audit decision drift")
         used.extend([audit["selection"], audit["report"]])
     elif audit is not None:
         raise LabelRefused("Stage-C non-audit row exposed audit outcomes")
-    seeds = [value["seed"] for value in used]
-    digests = [value["sampler"]["world_keys_sha256"] for value in used]
-    hashes = [set(value["sampler"]["world_key_sha256s"]) for value in used]
-    overlaps = any(hashes[left].intersection(hashes[right])
-                   for left in range(len(hashes))
-                   for right in range(left + 1, len(hashes)))
-    if (len(set(seeds)) != len(seeds) or len(set(digests)) != len(digests)
-            or overlaps):
-        raise LabelRefused("Stage-C label fold separation drift")
+    _validate_domain_separated_streams(
+        [value["sampler"] for value in used])
     expected_fold_work = {
         "selection": len(candidates) * selection_worlds,
         "report": len(report_indices) * report_worlds,
@@ -832,8 +859,9 @@ def _validate_refusal_sampler(sampler: Mapping[str, object], *,
     hashes = sampler.get("world_key_sha256s")
     accepted = sampler.get("accepted")
     attempts = sampler.get("attempts")
-    overlap = sampler.get("overlap_discarded")
-    duplicate = sampler.get("duplicate_discarded")
+    unique_worlds = sampler.get("unique_worlds")
+    duplicate_draws = sampler.get("duplicate_draws_retained")
+    prior_overlaps = sampler.get("prior_fold_overlap_draws_retained")
     if (sampler.get("schema") != SAMPLER_SCHEMA
             or sampler.get("fold") != fold
             or sampler.get("seed") != seed_for(state, fold)
@@ -849,22 +877,27 @@ def _validate_refusal_sampler(sampler: Mapping[str, object], *,
                        and value >= 0 for value in counters.values())
             or counters["sample_attempts"] != attempts
             or sampler.get("accepted_draws") != counters["accepted_worlds"]
-            or isinstance(overlap, bool) or not isinstance(overlap, int)
-            or overlap < 0
-            or isinstance(duplicate, bool) or not isinstance(duplicate, int)
-            or duplicate < 0
-            or counters["accepted_worlds"] != accepted + overlap + duplicate
+            or counters["accepted_worlds"] != accepted
             or counters["accepted_worlds"] + counters["failed_worlds"]
             != attempts
             or counters["rejected_worlds"] > counters["failed_worlds"]
             or not isinstance(hashes, list) or len(hashes) != accepted
-            or len(set(hashes)) != accepted
             or not all(isinstance(value, str) and len(value) == 64
                        and not any(char not in "0123456789abcdef"
                                    for char in value) for value in hashes)
+            or isinstance(unique_worlds, bool)
+            or not isinstance(unique_worlds, int)
+            or unique_worlds != len(set(hashes))
+            or isinstance(duplicate_draws, bool)
+            or not isinstance(duplicate_draws, int)
+            or duplicate_draws != accepted - unique_worlds
+            or isinstance(prior_overlaps, bool)
+            or not isinstance(prior_overlaps, int)
+            or not 0 <= prior_overlaps <= accepted
             or sampler.get("world_keys_sha256")
             != sha256_bytes(canonical_json(hashes))
-            or sampler.get("exactly_disjoint_from_prior_folds") is not True
+            or sampler.get("sampling_with_replacement") is not True
+            or sampler.get("domain_separated_stream") is not True
             or sampler.get("complete") is not (accepted == requested)):
         raise LabelRefused(f"Stage-C refusal sampler drift: {fold}")
 
@@ -930,16 +963,14 @@ def validate_refusal_record(state: Mapping[str, object],
         sequence.extend(["audit_selection", "audit_report"])
     if sampler_sequence != sequence[:len(sampler_sequence)]:
         raise LabelRefused("Stage-C refusal sampler sequence is not a prefix")
-    hashes = []
-    for fold, sampler in samplers.items():
+    ordered_samplers = []
+    for fold in sampler_sequence:
+        sampler = samplers[fold]
         if not isinstance(sampler, dict):
             raise LabelRefused("Stage-C refusal sampler type drift")
         _validate_refusal_sampler(sampler, state=state, fold=fold)
-        hashes.append(set(sampler["world_key_sha256s"]))
-    if any(hashes[left].intersection(hashes[right])
-           for left in range(len(hashes))
-           for right in range(left + 1, len(hashes))):
-        raise LabelRefused("Stage-C refusal fold worlds overlap")
+        ordered_samplers.append(sampler)
+    _validate_domain_separated_streams(ordered_samplers)
     candidates = len(state["candidates"])
     fold_ceilings = {
         "selection": candidates * _expected_sampler_worlds(state, "selection"),
@@ -1575,7 +1606,7 @@ def _audit_gate(rows: Sequence[Mapping[str, object]],
                      and hard["one_sided_95_ucb"] <= 0.10)
     recall_pass = v11["one_sided_95_lcb"] > 0
     return {
-        "schema": "teacher-stage-c-label-fidelity-gate-v1",
+        "schema": "teacher-stage-c-label-fidelity-gate-v2",
         "audit_states": 256,
         "ordinary_anchor_regret": ordinary,
         "hard_tail_regret": hard,

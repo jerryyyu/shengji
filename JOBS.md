@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 22:41 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 22:51 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -9,7 +9,7 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 | host | job | status / next admitted use |
 |---|---|---|
 | Mini | `s4-point-banking-duel-screen-100b-v2` | **RUNNING / OUTCOME SEALED.** Exact `cad3992`, packet `17036e63…1385`, admission `1d99bb55…bdbf`, receipt `20a420d2…5cc`; eight shards × 256. Latest count-only heartbeat: `165,163,160,163,167,165,164,163 / 256` (1,310/2,048), all workers CPU-bound at 22:39. Never inspect partial outcomes, retry, extend or move the pinned checkout. |
-| Air | none | **FREE.** H0-v3 is terminal and consumed; PR #9's Stage-C capture controller awaits external review and has no receipt. The hydrated broad rerun is 1,432 passed / 7 skipped / two known historical absolute-root failures; no controller regression surfaced. Capture, labels and training remain closed. |
+| Air | none | **FREE.** H0-v3 and one-card S3c are terminal and consumed; PR #9's Stage-C capture controller awaits external review and has no receipt. S3c now opens two-card packet review only. The hydrated broad rerun is 1,432 passed / 7 skipped / two known historical absolute-root failures; no controller regression surfaced. Capture, labels, training and two-card execution remain closed. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
 ## S4 legal next action
@@ -37,6 +37,7 @@ The canonical numbers and meanings are in the results table in
 
 | date | job | terminal verdict | anchor |
 |---|---|---|---|
+| 08-09 | S3c one-card mechanics/capacity execution v2 | **AUTHORIZE TWO-CARD PACKET REVIEW / CLOSED** | exact source `4ebcd09`, packet `cafbee43…f23e`, receipt file `350553b7…9aad`, result file `f1777267…ff11`, terminal file `ed045ab0…78d2` / internal final `7270fab8…33a6`; 64/64 roots and 256/256 worlds complete, 192 exact attempts/successes, 192 execution + 192 replay nodes, zero refusals/overflows; action values unpublished and no strength claim |
 | 08-09 | H0 human/V11 counterfactual execution v3 | **VERIFIED REFUSED INCOMPLETE / NO UTILITY / CLOSED** | exact source `4ebcd09`, packet `cf074871…35392`, receipt `37ab77a9…748c6`, aggregate `84ef4400…196c`; 557 terminal rows = 555 complete + two DESIGN follow-play validation refusals; 705,750 candidate-worlds completed; every complete row replayed, refused rows not retried; no labels/training/strength and no human rule admitted |
 | 08-09 | Teacher Stage-C capture controller v1 | **FROZEN / EXTERNAL REVIEW REQUIRED / ZERO STATES** | draft PR #9; source `67fb31f`; packet commit `54ae266`; external `e23356f7…96f2`; internal `c1ee112c…3884`; 113/113 focused compiled tests and exact freeze/recompute pass; no receipt or capture |
 | 08-09 | S3a structured-bury full-game screen | **SELECT NONE / CLOSED** | exact `c599b42`; all 2,048 clusters verified; aggregate `20609613…271f`, final `32156d79…c9ff`; no confirmation, retry, tuning or promotion |

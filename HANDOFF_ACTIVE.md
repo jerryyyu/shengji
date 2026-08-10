@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 22:41 EDT. This is the executable mailbox.
+Last compacted: 2026-08-09 22:51 EDT. This is the executable mailbox.
 Terminal markers live in `HANDOFF_REVIEW.md`, policy synthesis in
 `AI_POLICIES.md`, live jobs in `JOBS.md`, and queue order in `BACKLOG.md`.
 
@@ -13,7 +13,7 @@ Terminal markers live in `HANDOFF_REVIEW.md`, policy synthesis in
 | S3a structured bury | **TERMINAL SELECT NONE / IMMUTABLY CLOSED** | Aggregate `20609613…271f` and final `32156d79…c9ff` rehash; exact recomputation returned `verified=true`, `+0.0464`, LCB `-0.0041`. Preserve the negative result; no retry, tuning, pooling or confirmation. |
 | S4 point banking | **SEALED MINI SCREEN RUNNING** | Exact `cad3992`, packet `17036e63…1385`, receipt `20a420d2…5cc`; 1,310 count-only shard-log lines at 22:39 with eight CPU-bound workers. Do not inspect partial outcomes. This science result is no longer a T3 readiness blocker. |
 | Human H0 | **TERMINAL VERIFIED REFUSAL / NO UTILITY** | Exact source `4ebcd09`, packet `cf074871…35392`, receipt `37ab77a9…748c6`, aggregate `84ef4400…196c`. All 557 rows terminated and replay-verified: 555 complete, two DESIGN follow-play rows refused because play-candidate diagnostics did not reconcile. The aggregate correctly published no utility. Preserve this one-shot result; do not retry, drop rows or admit a human-derived Stage-C rule. |
-| S3c small endgames | **V2 EXTERNAL PASS / ZERO SOLVER WORK** | Exact packet `cafbee43…f23e` passed at `205b6af`. One T4 mechanics receipt is eligible, but none exists. |
+| S3c small endgames | **ONE-CARD CAPACITY PASS / TWO-CARD PACKET REVIEW OPEN** | Exact packet `cafbee43…f23e`, receipt `350553b7…9aad`, result `f1777267…ff11`, final file `ed045ab0…78d2`. All 64 roots / 256 worlds completed with zero refusal or overflow; terminal verification re-executed every root and returned `AUTHORIZE_TWO_CARD_MECHANISM_PACKET_REVIEW`. No action value or strength evidence was published. **Next:** freeze/review a bounded two-card action-selection packet; do not launch it yet. |
 | Teacher Stage C | **CAPTURE CONTROLLER FROZEN / CLAUDE REVIEW REQUIRED / ZERO STATES** | Draft PR #9; exact source `67fb31f`, packet commit `54ae266`, external packet `e23356f7…96f2`, internal packet `c1ee112c…3884`. Exact freeze and recomputation passed with zero states/worlds. **Left:** independent review of the executable capture boundary. Do not admit or launch capture before one exact PASS marker. |
 | S5 point protection | **BOUNDARY FIXTURE PASS / NO CENSUS** | Exact PR #4 head `2351b36` passed; one deterministic score-free census freeze is eligible later. This support lane was not required for T3 completion. |
 | HUMAN-C1 | **DEFINED / PARKED / NO TRAFFIC** | The leakage-safe ladder and inert no-traffic boundary exist. Resume only after a challenger beats report-LCB in confirmation and a separate traffic packet receives explicit authority. |
@@ -41,7 +41,9 @@ Terminal markers live in `HANDOFF_REVIEW.md`, policy synthesis in
   caps, 10,494,720 maximum nonrecursive candidate-world rollouts and every
   false capture/training/promotion authority.
 - **S3c:** the reviewed one-card mechanics controller preserves the natural
-  endgame ladder and passed with zero worlds or solver sessions.
+  endgame ladder. Its one T4 capacity execution completed all 64 roots / 256
+  worlds without refusal or overflow and opened two-card packet review; it
+  published no action values or strength claim.
 - **Evaluation:** human logs are proposal diagnostics only. DESIGN/AUDIT data
   cannot enter model-selection REPORT; future `HUMAN-C1` or
   `training_excluded=true` rounds make corpus publication fail closed. The
@@ -115,10 +117,11 @@ more contracts:
 
 - Mini: S4 only; read count/status until all workers stop, then invoke the
   exact terminal verifier once.
-- Air: available for review reproduction or later capture overflow. The H0
-  one-shot is consumed and terminal; no T4 capture receipt exists and review
-  has not authorized capture.
+- Air: available for review reproduction, two-card packet coding/tests or later
+  capture overflow. H0 and the one-card S3c receipt are consumed and terminal;
+  no T4 capture receipt exists and review has not authorized capture.
 - Fly: production `mc-s0-report-lcb` only.
-- Do not reissue H0, issue S3c, capture Stage C, label, train, promote or deploy
-  merely because T3 closed. Each remaining action is a separate T4 gate.
+- Do not reissue H0 or one-card S3c, launch a future two-card solver, capture
+  Stage C, label, train, promote or deploy merely because an earlier gate
+  passed. Each remaining action is a separate T4 gate.
 - Never retry, extend, tune from or pool a consumed one-shot stream.

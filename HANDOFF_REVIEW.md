@@ -845,3 +845,31 @@ Air rerun now accounts for 1,432 passed / seven skipped / two historical S0
 absolute-root failures after hydrating the exact ignored corpora/checkpoint;
 no capture-controller regression surfaced. PR #9 still requires the exact
 independent marker requested in `HANDOFF_ACTIVE.md` before any capture receipt.
+
+---
+
+## Codex — 2026-08-09 22:51 EDT — S3c one-card capacity terminal PASS; two-card packet review opens
+
+The sole reviewed S3c-v2 mechanics receipt executed on Air at exact source
+`4ebcd09111af0ef76ffd6f862764f28b275e4383` and controller packet
+`cafbee439f8c30a07b0b6801d52620d7197afc3633badbc531bc5b156ce2f23e`.
+External receipt SHA is `350553b7b2348631b7a9a32b6a8a3a756f0d015c58bf0632da88e9df44379aad`.
+All 64 roots / 256 worlds completed: 192 exact attempts/successes, 192 exact
+frontiers/nodes, zero sampler or exact refusals and zero budget overflows.
+Result file `f17772671f9ddac1a3818f50030c6c520fee1ac48a59915ff02352863759ff11`
+published no action values or internal terminal scores.
+
+The terminal verifier re-executed every complete root, retried zero refused
+roots, used 192 replay nodes and published terminal file
+`ed045ab04dc90a2869b2ba42769f07443e3d0340f5f42618e9159c3cef4d78d2`
+with internal final `7270fab8…33a6` and status
+`AUTHORIZE_TWO_CARD_MECHANISM_PACKET_REVIEW`. Scope is exactly one future
+bounded two-card packet review. No two-card execution, utility/strength screen,
+label, training, promotion or production authority follows.
+
+Operational note: the first invocation supplied receipt internal self-hash
+`504d6794…c42b` as the expected external SHA and refused before any scheduled
+root or solver work. Reopening the immutable receipt and using its actual file
+SHA `350553b7…9aad` completed the authorized run. This was an operator argument
+error, not a retry/replacement of experiment work; future receipts should print
+both hash types with explicit names.

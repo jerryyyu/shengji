@@ -294,6 +294,35 @@ def test_admission_is_durable_and_one_shot(tmp_path: Path,
         capacity._consume_admission(packet, "b" * 64, review)
 
 
+def test_postcompute_identity_reopens_every_reviewed_input(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    packet = {"packet": "frozen"}
+    state_set = {"states": ["frozen"]}
+    review = {"verdict": "PASS"}
+    calls = []
+
+    def reopen(*args):
+        calls.append(args)
+        return packet, state_set, review
+
+    monkeypatch.setattr(capacity, "_reopen_packet", reopen)
+    capacity._require_postcompute_identity(
+        Path("packet.json"), "a" * 64,
+        Path("controller-review.md"), Path("state-review.md"),
+        packet, state_set, review)
+    assert len(calls) == 1
+
+    changed = {"packet": "changed"}
+    monkeypatch.setattr(
+        capacity, "_reopen_packet",
+        lambda *_args: (changed, state_set, review))
+    with pytest.raises(capacity.CapacityRefused, match="changed during"):
+        capacity._require_postcompute_identity(
+            Path("packet.json"), "a" * 64,
+            Path("controller-review.md"), Path("state-review.md"),
+            packet, state_set, review)
+
+
 def test_packet_and_result_review_markers_are_exact(tmp_path: Path) -> None:
     state_set = _state_set()
     schedule = capacity.build_capacity_schedule(state_set)

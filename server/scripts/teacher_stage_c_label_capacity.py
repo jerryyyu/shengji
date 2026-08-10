@@ -500,6 +500,22 @@ def _reopen_packet(
     return packet, state_set, review
 
 
+def _require_postcompute_identity(
+    packet_path: Path, expected_packet_sha256: str,
+    controller_review_record: Path, state_set_review_record: Path,
+    packet: Mapping[str, object], state_set: Mapping[str, object],
+    review: Mapping[str, object],
+) -> None:
+    """Fail closed if any reviewed input or runtime source changed in flight."""
+    reopened_packet, reopened_state_set, reopened_review = _reopen_packet(
+        packet_path, expected_packet_sha256,
+        controller_review_record, state_set_review_record)
+    if (reopened_packet != packet or reopened_state_set != state_set
+            or reopened_review != review):
+        raise CapacityRefused(
+            "capacity controller/input identity changed during preflight")
+
+
 def _aggregate_sampler_telemetry(work: Mapping[str, object]) -> dict[str, int]:
     values = {
         "sampler_attempts": 0,
@@ -1042,6 +1058,10 @@ def run_capacity(
             }, sort_keys=True), file=sys.stderr, flush=True)
         pool.close()
         pool.join()
+        _require_postcompute_identity(
+            packet_path, expected_packet_sha256,
+            controller_review_record, state_set_review_record,
+            packet, state_set, review)
         label_schedule = CTRL.build_schedule(state_set)
         result = build_pass_or_hold_result(
             packet, expected_packet_sha256, admission_sha256,

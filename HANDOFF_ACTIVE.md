@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-10 07:42 EDT. This is the executable mailbox.
+Last compacted: 2026-08-10 07:53 EDT. This is the executable mailbox.
 Terminal markers live in `HANDOFF_REVIEW.md`, policy synthesis in
 `AI_POLICIES.md`, job artifacts in `JOBS.md`, and queue order in `BACKLOG.md`.
 
@@ -34,9 +34,9 @@ a valid phase fix but superseded before admission.
 | H0 human/V11 diagnostic | **TERMINAL NO-USE:** 555/557 complete, two score-free refusals, status `REFUSED_INCOMPLETE_NO_AGGREGATE_UTILITY`. | No retry and no partial-row mining. Stage C admits no human-derived proposer. V11 remains only its separately frozen bounded proposal source. |
 | Stage-C capture | **V3 TERMINAL HOLD; V4 PASSED BUT WAS SUPERSEDED PRE-ADMISSION; V5 REVIEW REQUIRED.** V5 source `a71c67e`, packet `e299ac6c…cf749`, 55/55 tests, zero states/worlds. | External PASS/HOLD on the exact canonical-source delta. On PASS, admit v5 once and restart all 24 shards on Mini in three waves of eight. |
 | Stage-C state set | Not created. | After capture, freeze exactly 2,048 states (`1024/512/512`, play/bury `1920/128`) and replay all 750,000 dispositions with eight workers; then external state-set review. |
-| Stage-C labels | V4-bound source `2376b5f` exists but is now stale before packet/outcomes. The runtime already reopens all inputs after capacity workers finish. | Propagate the exact v5 candidate-source implementation and bindings while capture runs; retest, then after state-set PASS freeze/review the 32-state capacity pilot. |
-| Stage-C model / REPORT | Training `899f843` and REPORT `4390569` are v4-bound and therefore need a score-free v5 parent rebind; no checkpoint or REPORT result exists. Air remains clean and idle. | Rebind/test before labels finish. After reviewed labels, run eight seeds × play/bury × 25/50/100% on Air; select only on DESIGN/CALIB and open REPORT once. |
-| Stage-C composition | Head `ae4fe5f` has the intended protected-anchor design but the v4 candidate library/bindings are stale. No run exists. | Canonicalize the shared candidate source, rebind through v5, and request source rereview while capture/labels compute. |
+| Stage-C labels | V5-bound source `c45cc8a`; no packet/outcome. It refuses v4, reopens inputs after capacity work, and passes 108/108 capture-through-label tests. | After state-set PASS, freeze/review the 32-state capacity pilot. Only a reviewed PASS may open the 16-shard label packet. |
+| Stage-C model / REPORT | Training `535fc39` and REPORT `bc566ff` are v5-bound; 143/143 and 156/156 lineage tests pass. Air is cleanly restaged at `535fc39` with 80/80 staged tests. No checkpoint or REPORT result exists. | After reviewed labels, run eight seeds × play/bury × 25/50/100% on Air; select only on DESIGN/CALIB and open REPORT once. |
+| Stage-C composition | V5-bound head `d182572` uses candidate-source schema/screen namespace v2, canonicalizes play/follow/bury inference, and passes 216/216. No packet or run exists. | Exact source rereview may proceed while capture/labels compute; later capacity and screen remain conditional on a REPORT passer. |
 | S6 throw sourcing | PR #19 at `bf7eace` freezes three exact KESP omissions (partial near-boss, AKQ/boss bundle, 876/whole-suit evacuation) and two public-information families, capped at eight additions. Codex's compiled source audit passes the 25-test throw/current-ballot slice: the human submissions stood as full throws, hidden hands do not affect sourcing, and follow positions emit nothing. | Source semantics review only. A later packet must union these additions with the literal live ballot while preserving candidate zero, let rollouts price failed-throw/ruff risk, and include a same-work control. Even source PASS does not authorize a screen. |
 
 ## Compute sequence after capture-v5 PASS
@@ -51,8 +51,8 @@ a valid phase fix but superseded before admission.
 4. Review the capacity result and label packet. If passed, Mini executes 16
    label shards with eight workers; the contract caps the projected full run
    at 192 fleet-hours / 24 wall-hours.
-5. Air is already staged cleanly at training source `899f843` with Python
-   3.14.6, NumPy 2.5.1, Torch 2.13.0 and a passing 44-test no-data slice. Once
+5. Air is staged cleanly at v5 training source `535fc39` with Python
+   3.14.6 and a passing 80-test staged slice. Once
    labels pass, run 48 cells (play/bury × eight seeds × 25/50/100% curves), at
    most eight concurrently.
 6. Select one capability only from DESIGN/CALIB, open sealed REPORT exactly

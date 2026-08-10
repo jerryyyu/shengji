@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-10 07:42 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-10 07:53 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -9,7 +9,7 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 | host | job | status / next admitted use |
 |---|---|---|
 | Mini | none | **FREE / WAITING ON CAPTURE-V5 REVIEW.** V4 passed but was superseded before admission by the canonical candidate-source repair. On exact v5 PASS, Mini consumes the fresh slot once and runs 24 shards in three waves of eight, then freezes 2,048 states and replay-authenticates all 750,000 dispositions. |
-| Air | none | **FREE / RESERVED FOR TRAINING AFTER LABELS.** Its currently staged v4-bound head must be rebound to v5 before use. Air starts the 48-cell play/bury × eight-seed × 25/50/100% matrix only after complete reviewed labels exist. |
+| Air | none | **FREE / V5 TRAINING SOURCE STAGED.** Detached head `535fc39` passes an 80-test staged slice under Python 3.14.6. Air starts the 48-cell play/bury × eight-seed × 25/50/100% matrix only after complete reviewed labels exist. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
 ## Next admitted execution
@@ -26,10 +26,10 @@ six partials remain terminal no-use. After v5 PASS:
    scan. External state-set review follows.
 3. Mini runs a reviewed 32-state label-capacity pilot, then (only on PASS) the
    16 label shards at eight-way concurrency.
-4. In parallel with Mini's capture/label work, propagate the canonical v5
-   candidate source and parent bindings through labels, training, REPORT and
-   composition, then obtain the required source reviews.
-5. Air starts only after complete reviewed labels, using the rebound 48-cell
+4. **Code propagation complete:** labels `c45cc8a` (108 tests), training
+   `535fc39` (143), REPORT `bc566ff` (156), composition `d182572` (216).
+   Composition source rereview can proceed without blocking Mini.
+5. Air starts only after complete reviewed labels, using the v5-bound 48-cell
    training controller. DESIGN/CALIB choose a capability; untouched REPORT
    remains closed until that selection is final.
 

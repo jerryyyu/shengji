@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 20:03 EDT. This is the executable mailbox.
+Last compacted: 2026-08-09 20:15 EDT. This is the executable mailbox.
 Terminal markers live in `HANDOFF_REVIEW.md`, policy synthesis in
 `AI_POLICIES.md`, live jobs in `JOBS.md`, and queue order in `BACKLOG.md`.
 
@@ -10,9 +10,9 @@ Terminal markers live in `HANDOFF_REVIEW.md`, policy synthesis in
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; no production change is open. |
 | S3a structured bury | **TERMINAL SELECT NONE** | Preserve `+0.0464`, LCB `-0.0041`; no retry, tuning, pooling or confirmation. |
-| S4 point banking | **SEALED MINI SCREEN RUNNING** | Exact `cad3992`, packet `17036e63…1385`, receipt `20a420d2…5cc`; 676 count-only shard lines at 20:03 with eight CPU-bound workers. Do not inspect partial outcomes. |
+| S4 point banking | **SEALED MINI SCREEN RUNNING** | Exact `cad3992`, packet `17036e63…1385`, receipt `20a420d2…5cc`; 724 count-only shard lines at 20:15 with eight CPU-bound workers. Do not inspect partial outcomes. |
 | Human H0 | **V2 REVIEW LOGIC PASS / OPERATIONAL HOLD; V3 REVIEW OPEN** | The v2 admission tombstone dirties Git and makes runtime reopen impossible. Review PR #6 source `4ebcd09` plus packet `cf074871…35392`; do not issue a receipt. |
-| Teacher Stage C | **V3 DESIGN PASS / ZERO STATES / REBIND BLOCKED** | Claude passed design packet `f213314a…3b4` at commit `d92f595`. It binds broken H0-v2 and conditionally names broken S3c-v1; after both replacements pass, one successor must rebind them without changing curriculum geometry. |
+| Teacher Stage C | **V3 DESIGN PASS / ZERO STATES / REBIND FREEZE BLOCKED** | Claude passed design packet `f213314a…3b4`. Score-free bridge source `7018f36` is prepared with 105 tests: it binds the immutable design plus H0-v3/S3c-v2 without copying curriculum fields. A real packet still requires both replacement PASS markers. |
 | S3c small endgames | **V1 REVIEW LOGIC PASS / OPERATIONAL HOLD; V2 REVIEW OPEN** | The same tombstone bug blocks v1. Review PR #6 packet `cafbee43…f23e`; do not issue a mechanics receipt. |
 | S5 point protection | **BOUNDARY FIXTURE PUSHED / RE-REVIEW OPEN / NO CENSUS** | PR #4 head `2351b36` adds a real lower-ranked-but-equal-point witness and mutation proof. Re-review before one deterministic census freeze. |
 | HUMAN-C1 | **PARKED / NO TRAFFIC** | Resume only after a challenger beats report-LCB in confirmation. |
@@ -106,6 +106,17 @@ Please re-review only commit `2351b36` and confirm the equal-point witness is a
 genuine cheaper-card boundary and turns the named `<`→`<=` mutation red. A
 PASS authorizes one deterministic score-free census freeze only; no S5
 treatment, Stage-C eligibility decision, strength compute or training follows.
+
+## Queued after review — Stage-C dependency bridge
+
+Branch `codex/stage-c-controller-rebind`, source `7018f36`, contains a
+score-free bridge implementation and eight focused tests. The bridge consumes
+the exact passed Stage-C packet `f213314a…3b4` plus exact reviewed H0-v3 and
+S3c-v2 packets; it stores only hashes of the original objective, population,
+candidate, label, work, gate and execution contracts, and declares every
+curriculum delta false. The combined Stage-C/H0/S3c/endgame battery passes
+105/105 under compiled strict-void mode. Do not review or freeze a real bridge
+packet yet: it intentionally refuses until both controller PASS markers exist.
 
 ## Fleet and safety
 

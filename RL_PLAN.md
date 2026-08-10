@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 20:03 EDT
+## Current synthesis — 2026-08-09 20:15 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -334,8 +334,10 @@ decision tree.
    conditional mechanism cells and 10,494,720 maximum candidate-world work.
    `HeuristicBot` continuation keeps recursive MC at zero. Claude passed that
    curriculum design at `d92f595`, but it names unusable H0-v2 and conditional
-   S3c-v1. After both replacements pass, freeze and review one allowlisted
-   identity/lock rebind; capture, labels, compute and training remain closed.
+   S3c-v1. Source `7018f36` prepares a hash-only bridge that leaves every
+   curriculum contract unchanged and passes the 105-test combined battery.
+   After both replacements pass, freeze and review that bridge; capture,
+   labels, compute and training remain closed.
 5. **Repair the S3c one-card controller before T4 mechanics.** The score-free
    curriculum and source `e9db4a2` / packet `f58d23b7…3874` passed component
    review, but share H0's unignored-lock reopen failure. Replacement source

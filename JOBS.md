@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 20:03 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 20:15 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,7 +8,7 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | `s4-point-banking-duel-screen-100b-v2` | **RUNNING / OUTCOME SEALED.** Exact `cad3992`, packet `17036e63…1385`, admission `1d99bb55…bdbf`, receipt `20a420d2…5cc`; eight shards × 256. Latest count-only heartbeat: `88,84,81,85,84,85,85,84 / 256` (676/2,048), all workers CPU-bound at 20:03. Never inspect partial outcomes, retry, extend or move the pinned checkout. |
+| Mini | `s4-point-banking-duel-screen-100b-v2` | **RUNNING / OUTCOME SEALED.** Exact `cad3992`, packet `17036e63…1385`, admission `1d99bb55…bdbf`, receipt `20a420d2…5cc`; eight shards × 256. Latest count-only heartbeat: `93,91,87,91,90,91,91,90 / 256` (724/2,048), all workers CPU-bound at 20:15. Never inspect partial outcomes, retry, extend or move the pinned checkout. |
 | Air | none | **FREE.** H0-v3 and S3c-v2 replacement packets require review; Stage C then requires a minimal reviewed rebind, and S5 needs one boundary fixture. No reviewed strength launch exists. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 

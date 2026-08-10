@@ -635,17 +635,17 @@ def _curve_diagnostics(
     return rows
 
 
-def aggregate(*, packet_path: Path, expected_packet_sha256: str,
-              receipt_path: Path, expected_receipt_sha256: str,
-              review_record: Path, cell_paths: Sequence[Path],
-              out: Path) -> dict:
+def recompute_aggregate(*, packet_path: Path, expected_packet_sha256: str,
+                        receipt_path: Path, expected_receipt_sha256: str,
+                        review_record: Path,
+                        cell_paths: Sequence[Path]) -> dict:
+    """Reopen every cell/checkpoint and reconstruct the terminal aggregate."""
     packet, dataset = _packet(packet_path, expected_packet_sha256)
     packet["external_sha256"] = expected_packet_sha256
     _receipt(receipt_path, expected_receipt_sha256, packet,
              expected_packet_sha256, review_record)
-    if out.resolve() != _expected_aggregate_path() \
-            or len(cell_paths) != CTRL.TRAINING_CELLS:
-        raise TrainingRuntimeRefused("Stage-C training aggregate path/count drift")
+    if len(cell_paths) != CTRL.TRAINING_CELLS:
+        raise TrainingRuntimeRefused("Stage-C training aggregate cell-count drift")
     verified = []
     for index, path in enumerate(cell_paths):
         expected = (REPO / packet["schedule"]["cells"][index]["result"]).resolve()
@@ -729,6 +729,22 @@ def aggregate(*, packet_path: Path, expected_packet_sha256: str,
     if final_dataset != dataset:
         raise TrainingRuntimeRefused(
             "Stage-C model dataset changed during aggregate")
+    return payload
+
+
+def aggregate(*, packet_path: Path, expected_packet_sha256: str,
+              receipt_path: Path, expected_receipt_sha256: str,
+              review_record: Path, cell_paths: Sequence[Path],
+              out: Path) -> dict:
+    if out.resolve() != _expected_aggregate_path():
+        raise TrainingRuntimeRefused("Stage-C training aggregate path drift")
+    payload = recompute_aggregate(
+        packet_path=packet_path,
+        expected_packet_sha256=expected_packet_sha256,
+        receipt_path=receipt_path,
+        expected_receipt_sha256=expected_receipt_sha256,
+        review_record=review_record,
+        cell_paths=cell_paths)
     publish_exclusive(out, payload)
     return payload
 

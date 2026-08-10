@@ -29,24 +29,26 @@ terminal no-use; v4 and v5 are both superseded before admission.
 | H0 human/V11 diagnostic | **TERMINAL NO-USE:** 555/557 complete, two score-free refusals, status `REFUSED_INCOMPLETE_NO_AGGREGATE_UTILITY`. | No retry and no partial-row mining. Stage C admits no human-derived proposer. V11 remains only its separately frozen bounded proposal source. |
 | Stage-C capture | **V3 TERMINAL HOLD; V4 PASSED; V5 HELD; V6 REVIEW REQUIRED.** V6 source `2bdb094`, packet `40c602ea…20ffd`, 57/57 tests plus 350-state soak, zero states/worlds. | External PASS/HOLD on the exact incumbent-bury delta. On PASS, admit v6 once and restart all 24 shards on Mini in three waves of eight. |
 | Stage-C state set | Not created. | After capture, freeze exactly 2,048 states (`1024/512/512`, play/bury `1920/128`) and replay all 750,000 dispositions with eight workers; then external state-set review. |
-| Stage-C labels | V5-bound source `c45cc8a` is now stale; no packet/outcome. Its finite-work and TOCTOU repairs remain useful. | Rebind source-only to the exact v6 packet, rerun the lineage suite, then wait for state-set PASS before the 32-state capacity packet. |
-| Stage-C model / REPORT | Training `535fc39` and REPORT `bc566ff` are v5-bound and now stale; no checkpoint or REPORT result exists. | Rebind source-only to v6 while capture review/runs proceed. Training remains closed until reviewed labels. |
-| Stage-C composition | PR #18 `59ae21e` review is **withdrawn**: its optional default bury incumbent has the same v5 order bug. No packet or run exists. | Repair/rebind after v6, repeat the 350-state source soak and request a fresh source review. Later execution remains conditional on a REPORT passer. |
+| Stage-C labels | V6-bound source `7d3e6ad`; capture-through-label lineage passes 110/110. No packet/outcome. | Wait for state-set PASS, then freeze/review the 32-state capacity packet. |
+| Stage-C model / REPORT | V6-bound training `8ca347f` passes 145/145 locally and on staged Air; REPORT `e788fde` passes 158/158. No checkpoint or REPORT result exists. | Training remains closed until reviewed labels; Air is ready without more source work. |
+| Stage-C composition | PR #18 head `268ebeb` is rebound to v6 and repaired. Its 12-file diff is composition-only over REPORT base `e788fde`; the full Stage-C/S3c/live slice passes 257/257 and the fresh 350-state parity soak passes. No packet/run. | Source rereview is queued behind capture-v6. Later execution remains conditional on one REPORT passer. |
 | S6 throw sourcing | PR #19 at `bf7eace` freezes three exact KESP omissions (partial near-boss, AKQ/boss bundle, 876/whole-suit evacuation) and two public-information families, capped at eight additions. Codex's compiled source audit passes the 25-test throw/current-ballot slice: the human submissions stood as full throws, hidden hands do not affect sourcing, and follow positions emit nothing. | Source semantics review only. A later packet must union these additions with the literal live ballot while preserving candidate zero, let rollouts price failed-throw/ruff risk, and include a same-work control. Even source PASS does not authorize a screen. |
 
-## Secondary review withdrawn pending v6 rebind
+## Secondary source review repaired; queued behind capture-v6
 
-PR #18 source rereview is not currently valid at exact head
-`59ae21ea4684e25c6212415dbd90ef200a82a709` on current REPORT base
-`bc566ff`. Its merge-base diff is composition-only: six source files and six
+PR #18 source rereview is ready at exact head
+`268ebebeeb452d014a65f6626644a2de0aed4644` on v6 REPORT base
+`e788fde`. Its merge-base diff is composition-only: six source files and six
 test files. Ordered material recipe is exactly
 `shasum -a 256 <the 12 paths listed by git diff --name-only, in lexical order> | shasum -a 256`;
-result `cdaa2554cc9ccf06a22a13afa9f5cd33588124e904d49f6fe0658bf186c38581`.
-Its prior tests passed, but seed `190000063` exposed an untested optional
-incumbent path with the same hand-order defect as capture v5. Repair it and
-bind the final capture source before reopening review.
+result `47519c087aa53761d999b11f1fbbf5bb1e64f1c7390d385a88de2285e7845993`.
+The optional incumbent path now canonicalizes and unconditionally restores the
+hand exactly like capture v6; caller-provided live candidate zero remains
+literal. Named tie/exception regressions pass, the complete Stage-C slice is
+220/220, Stage-C plus S3c/live is 257/257, and capture/source parity passed on
+300 eligible play plus 50 eligible bury states.
 
-When review is reopened, it should falsify:
+After capture-v6 adjudication, review should falsify:
 
 1. candidate generation is public-only, invariant to incidental hand order,
    preserves literal live candidate zero and restores the hand on exceptions;

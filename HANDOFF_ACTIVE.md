@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-10 10:11 EDT. This is the executable mailbox.
+Last compacted: 2026-08-10 10:24 EDT. This is the executable mailbox.
 Terminal markers live in `HANDOFF_REVIEW.md`, policy synthesis in
 `AI_POLICIES.md`, job artifacts in `JOBS.md`, and queue order in `BACKLOG.md`.
 
@@ -33,7 +33,7 @@ this state set and any label execution.
 | Stage-C labels | V7-bound source `3f6f048` passes 148 relevant tests and hard-refuses an unreviewed or stale state set. No packet/outcome. | After state-set PASS, freeze/run the reviewed outcome-free 32-state capacity pilot; then capacity-result and label-controller reviews before 16 shards. |
 | Stage-C model / REPORT | V7-bound training `57f8e72` and REPORT `4c8d23b` are source-green (161 REPORT/design tests); no checkpoint or REPORT look exists. | Training remains closed until complete reviewed labels. REPORT remains sealed until DESIGN/CALIB selects one capability. |
 | Stage-C composition | V7-bound head `68e351b` passes 260 Stage-C/S3c tests and a 300-play/50-bury parity soak. No packet/run. | Execute only after one REPORT passer, then capacity and one same-work whole-game screen. |
-| S6 throw sourcing | Head `bf7eace` freezes three KESP omissions and two public-only lead sources, capped at eight additions; 25/25 focused tests pass. **New required contract:** whenever a legal shuai-pai lead exists, the ballot must include at least one legal shuai candidate in early, mid and late game—not merely the three KESP fixtures. | After the current Stage-C state-set gate, broaden witnesses/coverage while preserving lead-only public sourcing, deterministic bounded cap, literal candidate zero and matched same-work control. Source PASS still cannot authorize a screen. |
+| S6 throw sourcing | Draft PR #19 head `cfa5a53` now implements the new contract without touching production: whenever any effective-suit holding permits a multi-component lead, an append-only widened ballot contains at least one shuai in early/mid/late. The old source failed a natural late trump-only seed-1 state; v2 adds a bounded trump fallback. Literal live ballot/candidate zero remain first; 11 focused and 58 broader tests pass. | Defer external source-semantics review until the current state-set gate is answered. Review must preserve public/lead-only inputs, ≤8 additions, no-op/follow negatives and equal-work later evaluation. Source PASS still cannot authorize a screen. |
 
 ## Downstream implementation ready without execution authority
 

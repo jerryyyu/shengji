@@ -40,20 +40,21 @@ here.
   selected states. Claude independently passed state set `c7a769c4…e8e1c` and
   verifier `143fb2db…4adb`. The 32-state capacity packet
   `e8967d6f…d2a58` externally passed; its sole Mini execution completed 32/32
-  with zero refusals and no retained outcome. Result `111092b7…cee0` projects
-  the full labels at only `1.545` fleet-hours / `0.219` eight-worker wall-hours
-  and now needs external review. The required unequal-rate fixture is closed at
-  `202a1d2`; no label, checkpoint or REPORT result exists.
+  with zero refusals and no retained outcome. Claude passed result
+  `111092b7…cee0` and the unequal-rate fixture. Frozen/reproduced label packet
+  `e4958358…09c2` now awaits external review: 16 shards, exact 4,984,960
+  candidate-worlds. No label, checkpoint or REPORT result exists.
 - **S5 replay:** Claude passed PR #4 head `2351b36`, including the required
   lower-ranked-but-equal-point negative fixture and red `<`→`<=` mutation.
   One deterministic score-free census freeze is eligible later; no census,
   treatment or strength run exists.
 - **Learners:** V11 direct-v2, Direct-Q, O0 and O0-v2 all selected none under
   their registered gates. They remain diagnostics, not deployable policies.
-- **Capacity:** Mini and Air are idle at capacity-result review. The one-shot
-  run is terminal PASS at `111092b7…cee0`; exact external PASS is required
-  before the label-controller packet may freeze. Air waits for complete
-  reviewed labels before the 48-cell matrix. Capture/capacity may never rerun.
+- **Capacity:** complete / external PASS at `111092b7…cee0`. Mini is idle at
+  label-packet review; packet `e4958358…09c2` froze without admission or
+  outcomes. Air is pre-staged at integrated `42e17269…160c` with the exact
+  reviewed fast binary and waits for complete reviewed labels. Capture and
+  capacity may never rerun.
   HUMAN-C1 remains parked until a challenger first beats report-LCB.
 
 ## NOW — output ledger ordered by value
@@ -65,13 +66,13 @@ scientific output of that step.
 | priority / milestone | strategy and problem, in plain English | progress so far and what's left, in plain English | next work | required output | exact exit gate |
 |---|---|---|---|---|---|
 | **DONE / T4.2 capture + state set** | Mine a balanced set of ordinary and hard decisions where a stronger Teacher can reveal choices the live bot misses. | **Complete and externally passed.** V7 has one consumed receipt, 24/24 fresh shards, exact 2,048-state freeze, clean full replay and independent population/digest review. **Left:** none; preserve immutable assets. | No new compute | Exactly 1,024 DESIGN + 512 CALIB + 512 untouched REPORT states, including 1,920 play and 128 bury rows | Satisfied by reviewed state set `c7a769c4…e8e1c` and verifier `143fb2db…4adb`; no retry, pooling or extension. |
-| **P0 / T4.2 labels** | Price every candidate with a stronger, explicitly bounded Teacher so the learner receives counterfactual ranking signal rather than another imitation label. | Capacity packet and one-shot run passed operationally: 32/32, zero refusals, result `111092b7…cee0`, no retained outcome, projected `1.545` fleet-hours / `0.219` eight-worker wall-hours. Unequal-rate regression fixture `202a1d2` is green and mutation-sensitive. **Left:** external result PASS, label-controller freeze + external PASS, then 16 complete shards. | Review capacity result; then review label packet before labels | Complete candidate-level labels with exact fold, continuation, work and refusal provenance | Every row and aggregate reopens; underfill, parent drift or budget breach terminally holds without partial utility. |
+| **P0 / T4.2 labels** | Price every candidate with a stronger, explicitly bounded Teacher so the learner receives counterfactual ranking signal rather than another imitation label. | Capacity result externally passed. Label packet `e4958358…09c2` froze/reproduced with 2,048 states, 16 shards and exact 4,984,960 candidate-worlds; no admission/label exists. **Left:** external packet PASS, then one admission, 16 complete shards and reviewed aggregate. | Review label packet before labels | Complete candidate-level labels with exact fold, continuation, work and refusal provenance | Every row and aggregate reopens; underfill, parent drift or budget breach terminally holds without partial utility. |
 | **P0 / T4.3 seeded models** | Learn a stable ranker and calibrated outcome signal from the new Teacher rather than selecting one lucky checkpoint. | Integrated `42e1726` found and fixes the otherwise-impossible label-parent Git handoff while requiring exact packet and byte-identical label sources; 36 focused / 215 Stage-C / 252 Stage-C+S3c tests pass on Air. No checkpoint exists. **Left:** parallel source feedback, complete labels, freeze/review training packet, then 48 play/bury × eight-seed × 25/50/100% cells using DESIGN/CALIB only. | Air runs at most eight cells concurrently after reviewed labels and training packet | Eight seeds per surface/head family plus state-count learning curves, seed dispersion and one frozen CALIB selection | No single seed advances. The full-data cohort must meet the predeclared stability/calibration gate before REPORT opens. |
 | **P0 / T4.4 untouched REPORT** | Ask once on unseen states whether the frozen learner improves Teacher choice/regret and calibration before paying for games. | Integrated `42e1726` routes both REPORT parent reads through the same exact-hash/source validator; REPORT has never opened. **Left:** wait for one DESIGN/CALIB selection, freeze/review exact evaluator assets, then consume REPORT once. | Later evaluate only the selected surface/head/epoch cohort | One 512-state REPORT result with ranking regret/coverage and signed-outcome calibration against the live baseline | Exactly one capability passes the frozen REPORT gate or the generation selects none; no REPORT retuning or second look. |
 | **P0 / T4.5 composed challenger** | Let the model focus fresh report-LCB search on one Teacher-supported challenger, while a matched random proposal tells us whether the learned ranking—not merely narrowing the ballot—adds strength. | Integrated `42e1726` retains `68e351b` composition behavior and the prior 300-play/50-bury parity result while making the full parent chain executable. No model, packet or run exists. **Left:** later packet/source review, then after a REPORT passer score-free capacity and one fresh screen. | Execute only from the single REPORT passer | One mirrored treatment/null/champion result against `mc-s0-report-lcb` | Treatment must have positive one-sided utility LCB versus both champion and null; null must remain compatible with champion. PASS opens confirmation-packet review only. |
 | **DONE / T4.1 H0 diagnostic** | Test whether human or V11 proposals survive fair counterfactual pricing before admitting them into the Teacher curriculum. | **Terminal no-use.** The one run completed 555/557 rows; two score-free refusals forced `REFUSED_INCOMPLETE_NO_AGGREGATE_UTILITY`. **Left:** none for this exact diagnostic. Never retry or mine partial utilities. | Preserve the refusal and omit H0-derived rules | Immutable aggregate `84ef4400…196c` / internal `c314a2e1…6630` | Satisfied as a negative operational result. Stage C admits no human-derived proposer; V11 remains only its separately frozen bounded source. |
 | **DONE / S4 whole-game screen** | Correct rollout opponents that always take a trick with the cheapest winner and therefore underprice point-banking replies. | **Terminal PASS.** Treatment-minus-live `+0.086914 +/- 0.056166`, LCB `+0.030748`; treatment and matched null were identical. **Left in T4:** none—preserve; do not launch the 365.6 fleet-hour confirmation under this goal. | No compute | Verified screen and projection | Confirmation-packet review is eligible, but launch/promotion/deploy require separate authority. |
-| **P1 / S6 shuai-pai sourcing** | Whenever a legal lead can be played as shuai-pai, make at least one such choice visible so search can price success, failed-throw and ruff risk instead of silently excluding the tactic. | Draft PR #19 head `cfa5a53` now covers the KESP actions plus natural early/mid/late states. A late trump-only witness is red under v1 and green under v2; append-only union preserves the literal live ballot and candidate zero. 11 focused / 58 broader tests pass. **Left:** external semantics review and an equal-work packet/screen after T4's current gate. | Review source after the immediate capacity gate, without launching compute | Public-only, lead-only, deterministic ≤8 additions with ≥1 legal shuai whenever possible, unioned with literal candidate zero plus same-work control | Source PASS authorizes packet design only; missing an available shuai in any phase fails the source gate, and no source PASS alone authorizes a screen. |
+| **P1 / S6 shuai-pai sourcing** | Whenever a legal lead can be played as shuai-pai, make at least one such choice visible so search can price success, failed-throw and ruff risk instead of silently excluding the tactic. | Draft PR #19 head `cfa5a53` now covers the KESP actions plus natural early/mid/late states. A late trump-only witness is red under v1 and green under v2; append-only union preserves the literal live ballot and candidate zero. 11 focused / 58 broader tests pass. **Left:** external semantics review and an equal-work packet/screen after T4's current gate. | Review source after the immediate label gate, without launching compute | Public-only, lead-only, deterministic ≤8 additions with ≥1 legal shuai whenever possible, unioned with literal candidate zero plus same-work control | Source PASS authorizes packet design only; missing an available shuai in any phase fails the source gate, and no source PASS alone authorizes a screen. |
 | **P1 / S5 replay census** | Determine whether the bot really donates points to lost tricks when a cheaper legal discard exists, instead of trusting observational log correlations. | Exact fixture boundary at `2351b36` passed, including the equal-point negative witness. **Left:** one deterministic score-free census freeze when it does not compete with T4. | Freeze/review census later | Trigger/refusal counts and replayable identifier-free witnesses | Census may open treatment design only; it cannot enter Stage C or claim strength automatically. |
 | **PARKED / HUMAN-C1** | Ultimately prove the challenger is better for people, not merely against bots. | Inert harness only. **Left:** account binding, runtime identity, immutable blocks, candidate receipt, synthetic C0 and estimator. | Resume only after a challenger beats report-LCB in confirmation | Reviewed blinded candidate-versus-champion human test | Separate traffic packet and explicit user authority required. |
 
@@ -135,10 +136,10 @@ unreviewed strength compute, training, promotion and production changes.
 7. **S5 boundary fixture closed PASS:** PR #4 head `2351b36` pins the
    lower-ranked-but-equal-point non-trigger. One score-free census freeze is
    eligible later; it was not required for T3.
-8. Mini and Air are idle pending capacity-result review. On PASS, Mini freezes
-   and seeks review of the label controller, then owns the 16-shard label run;
-   Air waits for reviewed labels and the v7-bound 48-cell matrix. Idle compute
-   is not a reason to invent an unregistered strength run.
+8. Mini and Air are idle pending label-packet review. On PASS, Mini owns the
+   16-shard label run; Air is already staged at integrated `42e17269…160c` and
+   waits for reviewed labels before the 48-cell matrix. Idle compute is not a
+   reason to invent an unregistered strength run.
 9. Keep the next real product gate as candidate-versus-champion performance
    against the same blinded human cohort, followed by an absolute experienced-
    human benchmark. Bot Elo and site-average win rate remain diagnostics.

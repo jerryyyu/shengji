@@ -8,10 +8,10 @@ information state:
 * an eight-bin distribution over acting-team signed level utility.
 
 Play and bury use separate checkpoints.  Eight fixed seeds are evaluated as a
-cohort; CALIB chooses one epoch globally and never cherry-picks a seed.  This
-module contains model/target/loss/metric mechanics only.  It does not open the
-sealed REPORT fold, authorize training, compose a policy, or launch strength
-compute.
+cohort; CALIB chooses exactly one surface/head/epoch capability and never
+cherry-picks a seed.  This module contains model/target/loss/metric mechanics
+only.  It does not open the sealed REPORT fold, authorize training, compose a
+policy, or launch strength compute.
 """
 from __future__ import annotations
 
@@ -27,8 +27,9 @@ from .encode import ACT_DIM, OBS_DIM, encode_action, encode_obs
 
 SCHEMA = "teacher-stage-c-model-example-v1"
 MODEL_SCHEMA = "teacher-stage-c-ranking-outcome-model-v1"
-SELECTION_SCHEMA = "teacher-stage-c-model-selection-v1"
+SELECTION_SCHEMA = "teacher-stage-c-model-selection-v2"
 SURFACES = ("play", "bury")
+CAPABILITY_HEADS = ("ranking", "outcome")
 UTILITY_BINS = (-3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5)
 TRAINING_SEEDS = (41, 73, 101, 137, 173, 211, 251, 293)
 CURVE_FRACTIONS = (0.25, 0.5, 1.0)
@@ -491,9 +492,12 @@ def evaluate_predictions(examples: Sequence[Mapping[str, object]],
     if prior_distribution is not None:
         distribution_mean(prior_distribution)
     regrets = []
+    outcome_head_regrets = []
     baseline_regrets = []
     agreements = []
+    outcome_head_agreements = []
     top3 = []
+    outcome_head_top3 = []
     nll = []
     brier = []
     utility_mae = []
@@ -521,6 +525,7 @@ def evaluate_predictions(examples: Sequence[Mapping[str, object]],
         state_brier = []
         state_mae = []
         state_prior = []
+        predicted_means = []
         for predicted, actual in zip(predictions, distributions, strict=True):
             if (len(predicted) != len(UTILITY_BINS)
                     or any(isinstance(value, bool)
@@ -545,6 +550,7 @@ def evaluate_predictions(examples: Sequence[Mapping[str, object]],
                 utility * float(probability)
                 for utility, probability in zip(
                     UTILITY_BINS, predicted, strict=True))
+            predicted_means.append(predicted_mean)
             state_mae.append(abs(predicted_mean
                                  - distribution_mean(actual)))
             if prior_distribution is not None:
@@ -557,6 +563,14 @@ def evaluate_predictions(examples: Sequence[Mapping[str, object]],
         utility_mae.append(sum(state_mae) / len(state_mae))
         if state_prior:
             prior_nll.append(sum(state_prior) / len(state_prior))
+        outcome_selected = max(
+            range(count), key=lambda index: (predicted_means[index], -index))
+        outcome_head_regrets.append(
+            teacher_best - means[outcome_selected])
+        outcome_head_agreements.append(float(outcome_selected == label))
+        outcome_ordered = sorted(
+            range(count), key=lambda index: (-predicted_means[index], index))
+        outcome_head_top3.append(float(label in outcome_ordered[:3]))
 
     def mean(values):
         return sum(values) / len(values) if values else None
@@ -567,8 +581,14 @@ def evaluate_predictions(examples: Sequence[Mapping[str, object]],
         "candidate0_mean_teacher_regret": mean(baseline_regrets),
         "ranking_improvement_vs_candidate0": (
             mean(baseline_regrets) - mean(regrets)),
+        "outcome_head_mean_teacher_regret": mean(outcome_head_regrets),
+        "outcome_head_ranking_improvement_vs_candidate0": (
+            mean(baseline_regrets) - mean(outcome_head_regrets)),
         "frozen_label_top1_agreement": mean(agreements),
         "frozen_label_top3_coverage": mean(top3),
+        "outcome_head_frozen_label_top1_agreement":
+            mean(outcome_head_agreements),
+        "outcome_head_frozen_label_top3_coverage": mean(outcome_head_top3),
         "outcome_nll": mean(nll),
         "outcome_brier": mean(brier),
         "expected_utility_mae": mean(utility_mae),
@@ -580,7 +600,14 @@ def evaluate_predictions(examples: Sequence[Mapping[str, object]],
 
 
 def select_global_epoch(records: Sequence[Mapping[str, object]]) -> dict:
-    """Choose one CALIB epoch for the complete eight-seed surface ensemble."""
+    """Choose one CALIB-only capability for an eight-seed REPORT ensemble.
+
+    Play and bury have independent weights, and ranking versus expected-outcome
+    proposals are distinct decision mechanisms.  Requiring all four to pass
+    together would let an unrelated small surface veto a useful capability.
+    CALIB therefore selects exactly one surface/head/epoch cohort; untouched
+    REPORT later gets one accept/reject look at that frozen choice.
+    """
     by_epoch: dict[int, list[Mapping[str, object]]] = defaultdict(list)
     for record in records:
         epoch = record.get("epoch")
@@ -593,8 +620,10 @@ def select_global_epoch(records: Sequence[Mapping[str, object]]) -> dict:
             raise StageCModelError("Stage-C CALIB record identity drift")
         metrics = record.get("metrics")
         required_metrics = {
-            "ranking_improvement_vs_candidate0", "outcome_nll_improvement_vs_prior",
-            "mean_teacher_regret", "outcome_nll",
+            "ranking_improvement_vs_candidate0",
+            "outcome_head_ranking_improvement_vs_candidate0",
+            "outcome_nll_improvement_vs_prior", "mean_teacher_regret",
+            "outcome_head_mean_teacher_regret", "outcome_nll",
         }
         if (not isinstance(metrics, dict)
                 or any(name not in metrics
@@ -612,62 +641,78 @@ def select_global_epoch(records: Sequence[Mapping[str, object]]) -> dict:
         cells = {(value["surface"], value["seed"]) for value in values}
         if cells != expected_cells or len(values) != len(expected_cells):
             raise StageCModelError("Stage-C CALIB epoch population drift")
-        surface_summary = {}
-        eligible = True
         for surface in SURFACES:
             metrics = [value["metrics"] for value in values
                        if value["surface"] == surface]
-            ranking = sorted(float(value[
-                "ranking_improvement_vs_candidate0"]) for value in metrics)
             calibration = sorted(float(value[
                 "outcome_nll_improvement_vs_prior"]) for value in metrics)
-            ranking_positive = sum(value > 0 for value in ranking)
             calibration_positive = sum(value > 0 for value in calibration)
-            median_ranking = (ranking[3] + ranking[4]) / 2
             median_calibration = (calibration[3] + calibration[4]) / 2
-            surface_summary[surface] = {
-                "ranking_positive_seeds": ranking_positive,
-                "calibration_positive_seeds": calibration_positive,
-                "median_ranking_improvement": median_ranking,
-                "median_outcome_nll_improvement": median_calibration,
-                "mean_teacher_regret": sum(float(value[
-                    "mean_teacher_regret"]) for value in metrics) / len(metrics),
-                "mean_outcome_nll": sum(float(value["outcome_nll"])
-                                         for value in metrics) / len(metrics),
-            }
-            eligible &= (ranking_positive >= 6 and calibration_positive >= 6
-                         and median_ranking > 0 and median_calibration > 0)
-        candidates.append({
-            "epoch": epoch,
-            "eligible": eligible,
-            "surfaces": surface_summary,
-            "worst_surface_median_ranking_improvement": min(
-                value["median_ranking_improvement"]
-                for value in surface_summary.values()),
-            "mean_outcome_nll": sum(value["mean_outcome_nll"]
-                                    for value in surface_summary.values()) / 2,
-        })
+            for head in CAPABILITY_HEADS:
+                improvement_key = (
+                    "ranking_improvement_vs_candidate0"
+                    if head == "ranking" else
+                    "outcome_head_ranking_improvement_vs_candidate0")
+                regret_key = ("mean_teacher_regret" if head == "ranking"
+                              else "outcome_head_mean_teacher_regret")
+                improvements = sorted(float(value[improvement_key])
+                                      for value in metrics)
+                positive = sum(value > 0 for value in improvements)
+                median_improvement = (
+                    improvements[3] + improvements[4]) / 2
+                eligible = positive >= 6 and median_improvement > 0
+                # Expected-utility selection is allowed only when its
+                # distribution head is also calibrated beyond the frozen
+                # DESIGN prior on the same CALIB cohort.
+                if head == "outcome":
+                    eligible &= (calibration_positive >= 6
+                                 and median_calibration > 0)
+                candidates.append({
+                    "surface": surface,
+                    "head": head,
+                    "epoch": epoch,
+                    "eligible": eligible,
+                    "action_improvement_positive_seeds": positive,
+                    "median_action_improvement_vs_candidate0":
+                        median_improvement,
+                    "mean_teacher_regret": sum(float(value[regret_key])
+                                                for value in metrics)
+                        / len(metrics),
+                    "calibration_positive_seeds": calibration_positive,
+                    "median_outcome_nll_improvement": median_calibration,
+                    "outcome_calibration_required": head == "outcome",
+                })
     passing = [value for value in candidates if value["eligible"]]
     selected = max(
         passing,
         key=lambda value: (
-            value["worst_surface_median_ranking_improvement"],
-            -value["mean_outcome_nll"], -value["epoch"]),
+            value["median_action_improvement_vs_candidate0"],
+            value["action_improvement_positive_seeds"],
+            -value["mean_teacher_regret"], -value["epoch"],
+            -SURFACES.index(value["surface"]),
+            -CAPABILITY_HEADS.index(value["head"])),
     ) if passing else None
     result = {
         "schema": SELECTION_SCHEMA,
         "seeds": list(TRAINING_SEEDS),
         "surfaces": list(SURFACES),
         "epoch_grid": list(EPOCH_GRID),
+        "capability_heads": list(CAPABILITY_HEADS),
         "criterion": (
-            "both surfaces: >=6/8 seeds improve ranking and outcome NLL; "
-            "positive medians; maximize worst-surface median ranking gain, "
-            "then minimize mean NLL, then earliest epoch"
+            "each surface/head/epoch is one eight-seed capability; require "
+            ">=6/8 positive action-improvement seeds and a positive median; "
+            "outcome-head capabilities additionally require >=6/8 positive "
+            "NLL-improvement seeds and a positive median; choose maximum "
+            "median action improvement, then positive-seed count, lower "
+            "teacher regret, earlier epoch, play before bury, ranking before "
+            "outcome"
         ),
         "candidates": candidates,
-        "decision": ("FREEZE_EIGHT_SEED_ENSEMBLE_FOR_REPORT_REVIEW"
+        "decision": ("FREEZE_SINGLE_CAPABILITY_FOR_REPORT_REVIEW"
                      if selected is not None else "SELECT_NONE"),
         "selected_epoch": selected["epoch"] if selected else None,
+        "selected_capability": dict(selected) if selected else None,
+        "single_capability_selection": True,
         "single_seed_selection": False,
         "report_open_authorized": False,
         "strength_claim": False,

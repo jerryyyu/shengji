@@ -126,6 +126,19 @@ def _losing_follow_state() -> Round:
     return rnd
 
 
+def _equal_point_follow_state() -> Round:
+    """The cheaper H10 and historical HK both carry exactly 10 points."""
+    rnd = Round("2", 0, random.Random(19))
+    rnd.trump_suit = "S"
+    rnd.trump_is_nt = False
+    rnd.ordering = Ordering("S", "2")
+    rnd.phase = "play"
+    rnd.turn = 1
+    rnd.hands = [["C3"], ["H10", "HK"], ["C4"], ["C5"]]
+    rnd.trick = Trick(leader=0, plays=[TrickPlay(0, ["HA"])])
+    return rnd
+
+
 def test_distinct_multisets_and_legal_follow_universe_are_exhaustive() -> None:
     actions, examined = s5._multiset_actions(["H3", "H3", "H5"], 2, 10)
     assert set(actions) == {("H3", "H3"), ("H3", "H5")}
@@ -165,6 +178,47 @@ def test_trigger_proves_avoidable_points_and_current_incumbent_reproduction() ->
     assert row["classification"] == \
         "historical_identity_unknown_current_ballot_has_lower"
     assert s5.forbidden_public_paths(row) == []
+
+
+def test_equal_point_only_alternative_is_not_a_protection_trigger(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """The S5 defect requires strictly fewer points, not merely another play."""
+    bot = _PolicySurface([["HK"], ["H10"]], ["H10"])
+    monkeypatch.setattr(s5, "_logged_decision", lambda *_args, **_kwargs: {
+        "present": True,
+        "valid": True,
+        "problems": [],
+        "candidates": [
+            s5.action_key(["HK"]),
+            s5.action_key(["H10"]),
+        ],
+        "work_complete": True,
+    })
+    rnd = _equal_point_follow_state()
+    assert rnd.ordering is not None
+    assert rnd.ordering.level("H10") < rnd.ordering.level("HK")
+    row = s5.analyze_bot_follow(
+        rnd,
+        1,
+        ["HK"],
+        {"bot": True},
+        source_sha256="c" * 64,
+        round_no=3,
+        event_index=8,
+        production_bot=bot,
+    )
+    row = s5._finalize_row(row, final_winner=0, seat=1)
+
+    assert row["legal_action_count"] == 2
+    assert row["historical_points"] == 10
+    assert row["minimum_legal_points"] == 10
+    assert row["minimum_action_count"] == 2
+    assert row["avoidable_point_delta"] == 0
+    assert row["lower_point_legal_count"] == 0
+    assert row["lower_point_on_current_ballot"] is False
+    assert row["lower_point_on_logged_ballot"] is False
+    assert row["structural_trigger"] is False
+    assert row["classification"] is None
 
 
 def test_historical_trigger_can_be_distinguished_from_current_surface() -> None:

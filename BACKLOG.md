@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-10 14:24 EDT.
+Last re-derived: 2026-08-10 15:09 EDT.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
 `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -24,8 +24,11 @@ here.
   fresh full-game screen. Treatment-minus-live was
   `+0.086914 +/- 0.056166`, one-sided LCB `+0.030748`; treatment and matched
   null were identical and null-minus-live was zero. Preserve the PASS.
-  Confirmation is intentionally not launched in T4; its projection is
-  `365.592` fleet-hours / `45.699` max-shard hours.
+  The old 8,192-cluster confirmation remains too expensive at `365.592`
+  fleet-hours / `45.699` max-shard hours. A cheaper fixed replication is now
+  source-review open at `fb6ec1a`: all 2,048 treatment/champion clusters are
+  retained, while the exact-null control becomes a balanced 256-cluster
+  sentinel. It is staged on Air but has run zero preflight/outcome work.
 - **Human corpus / H0:** reviewed `human_v8` contains 2,830 plays and 45 buries.
   The one authorized H0-v3 diagnostic ran, but only 555/557 rows completed;
   two score-free refusals forced terminal
@@ -39,8 +42,11 @@ here.
   refused because v1 discarded repeated realized worlds. No aggregate or
   partial utility is usable, and its other eight slots may never run. Fresh
   iid-with-replacement source `8a202e9` retains posterior mass and validates
-  duplicate/overlap telemetry. Capacity-v2 packet `a667b6bb…795c` is frozen
-  with zero worlds and awaits exact external review.
+  duplicate/overlap telemetry. Capacity-v2 then terminated before sampling:
+  Codex launched from its own marker and bare Mini Python lacked NumPy, so all
+  32 V11 loads refused with zero candidate worlds, sampler attempts or retained
+  outcomes. Fresh v3 `167feab` / `b53eb509…ce19` proves exact Mini/Python/NumPy
+  and V11 loading before admission; it awaits Claude's external review.
 - **S5 replay:** Claude passed PR #4 head `2351b36`, including the required
   lower-ranked-but-equal-point negative fixture and red `<`→`<=` mutation.
   One deterministic score-free census freeze is eligible later; no census,
@@ -48,10 +54,11 @@ here.
 - **Learners:** V11 direct-v2, Direct-Q, O0 and O0-v2 all selected none under
   their registered gates. They remain diagnostics, not deployable policies.
 - **Capacity:** v1 result `111092b7…cee0` remains a valid terminal sizing
-  artifact but did not target late small-support states and cannot authorize
-  v2. Mini is idle at iid-v2 capacity-packet review. Air is staged at exact
-  `8a202e9` with the reviewed fast binary; 184/184 affected Stage-C/S3c tests
-  pass. Capture and every consumed v1 slot may never rerun.
+  artifact but did not target late small-support states. V2 is terminal no-use
+  at result `64fdda5f…4cf2`; it measured an environment omission, not sampler
+  capacity. Mini is idle at capacity-v3 review. Air is separately staged at
+  S4 source `fb6ec1a` with exact runtime/screen parents and zero new worlds.
+  Capture, label-v1 and capacity-v2 consumed slots may never rerun.
   HUMAN-C1 remains parked until a challenger first beats report-LCB.
 
 ## NOW — output ledger ordered by value
@@ -63,12 +70,12 @@ scientific output of that step.
 | priority / milestone | strategy and problem, in plain English | progress so far and what's left, in plain English | next work | required output | exact exit gate |
 |---|---|---|---|---|---|
 | **DONE / T4.2 capture + state set** | Mine a balanced set of ordinary and hard decisions where a stronger Teacher can reveal choices the live bot misses. | **Complete and externally passed.** V7 has one consumed receipt, 24/24 fresh shards, exact 2,048-state freeze, clean full replay and independent population/digest review. **Left:** none; preserve immutable assets. | No new compute | Exactly 1,024 DESIGN + 512 CALIB + 512 untouched REPORT states, including 1,920 play and 128 bury rows | Satisfied by reviewed state set `c7a769c4…e8e1c` and verifier `143fb2db…4adb`; no retry, pooling or extension. |
-| **P0 / T4.2 labels** | Price every candidate with a stronger, explicitly bounded Teacher so the learner receives counterfactual ranking signal rather than another imitation label. | **V1 terminal no-use:** eight slots consumed, 2 complete/6 refused shards, no aggregate; repeated-world deletion both exhausted late-state support and biased the posterior. **V2 ready for review:** exact `8a202e9` retains iid draws with replacement; capacity packet `a667b6bb…795c` has zero worlds. **Left:** packet PASS, one capacity run + result review, fresh label-packet review, 16 complete shards and reviewed aggregate. | Review iid-v2 capacity packet before any sampling | Complete candidate-level labels with correct posterior mass plus exact fold, continuation, work and refusal provenance | Every row and aggregate reopens; underfill, parent drift or budget breach terminally holds without partial utility. V1 may never continue or aggregate. |
+| **P0 / T4.2 labels** | Price every candidate with a stronger, explicitly bounded Teacher so the learner receives counterfactual ranking signal rather than another imitation label. | **V1 terminal no-use:** repeated-world deletion exhausted late support and biased posterior mass. **Capacity-v2 terminal no-use:** missing NumPy caused 32 pre-world V11-load refusals; zero sampler work/outcomes, consumed slot. **V3 review open:** `167feab` / packet `b53eb509…ce19` loads and fingerprints exact V11 before admission. **Left:** Claude packet PASS, one Mini capacity run + result review, fresh label-packet review, 16 complete shards and reviewed aggregate. | Externally review capacity-v3; no Mini world before PASS | Complete candidate-level labels with correct posterior mass plus exact fold, continuation, work and refusal provenance | Every row and aggregate reopens; underfill, parent/runtime drift or budget breach terminally holds without partial utility. V1/v2 may never continue or aggregate. |
 | **P0 / T4.3 seeded models** | Learn a stable ranker and calibrated outcome signal from the new Teacher rather than selecting one lucky checkpoint. | Iid-v2 head `8a202e9` retains integrated cross-Git authentication and schema-separates v1/v2; focused tests pass 51/51 on Mini and affected compiled tests 184/184 on Air. No checkpoint exists. **Left:** complete/review v2 labels, freeze/review training packet, then 48 play/bury × eight-seed × 25/50/100% cells using DESIGN/CALIB only. | Air runs at most eight cells concurrently after reviewed labels and training packet | Eight seeds per surface/head family plus state-count learning curves, seed dispersion and one frozen CALIB selection | No single seed advances. The full-data cohort must meet the predeclared stability/calibration gate before REPORT opens. |
 | **P0 / T4.4 untouched REPORT** | Ask once on unseen states whether the frozen learner improves Teacher choice/regret and calibration before paying for games. | Integrated `42e1726` routes both REPORT parent reads through the same exact-hash/source validator; REPORT has never opened. **Left:** wait for one DESIGN/CALIB selection, freeze/review exact evaluator assets, then consume REPORT once. | Later evaluate only the selected surface/head/epoch cohort | One 512-state REPORT result with ranking regret/coverage and signed-outcome calibration against the live baseline | Exactly one capability passes the frozen REPORT gate or the generation selects none; no REPORT retuning or second look. |
 | **P0 / T4.5 composed challenger** | Let the model focus fresh report-LCB search on one Teacher-supported challenger, while a matched random proposal tells us whether the learned ranking—not merely narrowing the ballot—adds strength. | Integrated `42e1726` retains `68e351b` composition behavior and the prior 300-play/50-bury parity result while making the full parent chain executable. No model, packet or run exists. **Left:** later packet/source review, then after a REPORT passer score-free capacity and one fresh screen. | Execute only from the single REPORT passer | One mirrored treatment/null/champion result against `mc-s0-report-lcb` | Treatment must have positive one-sided utility LCB versus both champion and null; null must remain compatible with champion. PASS opens confirmation-packet review only. |
 | **DONE / T4.1 H0 diagnostic** | Test whether human or V11 proposals survive fair counterfactual pricing before admitting them into the Teacher curriculum. | **Terminal no-use.** The one run completed 555/557 rows; two score-free refusals forced `REFUSED_INCOMPLETE_NO_AGGREGATE_UTILITY`. **Left:** none for this exact diagnostic. Never retry or mine partial utilities. | Preserve the refusal and omit H0-derived rules | Immutable aggregate `84ef4400…196c` / internal `c314a2e1…6630` | Satisfied as a negative operational result. Stage C admits no human-derived proposer; V11 remains only its separately frozen bounded source. |
-| **DONE / S4 whole-game screen** | Correct rollout opponents that always take a trick with the cheapest winner and therefore underprice point-banking replies. | **Terminal PASS.** Treatment-minus-live `+0.086914 +/- 0.056166`, LCB `+0.030748`; treatment and matched null were identical. **Left in T4:** none—preserve; do not launch the 365.6 fleet-hour confirmation under this goal. | No compute | Verified screen and projection | Confirmation-packet review is eligible, but launch/promotion/deploy require separate authority. |
+| **P0 parallel / S4 fixed replication** | Check whether point banking's first positive whole-game result repeats independently without spending 365.6 fleet-hours on a redundant full null arm. | **Screen PASS preserved.** Source `fb6ec1a` keeps 2,048 fresh treatment/champion clusters and uses an exact-null 256-cluster sentinel: 8,704 records, 29% below a full repeat and 82% below the old confirmation. Air staging reopens exact runtime/screen parents. **Left:** Claude source PASS, one score-free preflight, packet review, then one fixed run. | Use idle Air only after each separate gate; Mini remains T4 labels | Independent fixed-look replication plus exact null-sentinel control | LCB95(treatment−champion)>0 over all 2,048 clusters, null equals champion on all 256 sentinel clusters, exact dose/work; no retry/extension or automatic deploy. |
 | **P1 / S6 shuai-pai sourcing** | Whenever a legal lead can be played as shuai-pai, make at least one such choice visible so search can price success, failed-throw and ruff risk instead of silently excluding the tactic. | Draft PR #19 head `cfa5a53` now covers the KESP actions plus natural early/mid/late states. A late trump-only witness is red under v1 and green under v2; append-only union preserves the literal live ballot and candidate zero. 11 focused / 58 broader tests pass. **Left:** external semantics review and an equal-work packet/screen after T4's current gate. | Review source after the immediate label gate, without launching compute | Public-only, lead-only, deterministic ≤8 additions with ≥1 legal shuai whenever possible, unioned with literal candidate zero plus same-work control | Source PASS authorizes packet design only; missing an available shuai in any phase fails the source gate, and no source PASS alone authorizes a screen. |
 | **P1 / S5 replay census** | Determine whether the bot really donates points to lost tricks when a cheaper legal discard exists, instead of trusting observational log correlations. | Exact fixture boundary at `2351b36` passed, including the equal-point negative witness. **Left:** one deterministic score-free census freeze when it does not compete with T4. | Freeze/review census later | Trigger/refusal counts and replayable identifier-free witnesses | Census may open treatment design only; it cannot enter Stage C or claim strength automatically. |
 | **PARKED / HUMAN-C1** | Ultimately prove the challenger is better for people, not merely against bots. | Inert harness only. **Left:** account binding, runtime identity, immutable blocks, candidate receipt, synthetic C0 and estimator. | Resume only after a challenger beats report-LCB in confirmation | Reviewed blinded candidate-versus-champion human test | Separate traffic packet and explicit user authority required. |

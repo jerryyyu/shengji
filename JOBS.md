@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-10 14:24 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-10 15:09 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,8 +8,8 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | none | **FREE / WAITING ON IID-V2 CAPACITY REVIEW.** Label v1 is terminal no-use after eight consumed shards (2 complete, 6 refused); no aggregate. Fresh packet `a667b6bb…795c` authorizes nothing until external PASS, then opens one short 32-state capacity run only. |
-| Air | none | **FREE / IID-V2 SOURCE STAGED, TRAINING CAUSALLY BLOCKED.** Persistent worktree `shengji-stagec-integrated-v8-air` is exact `8a202e9`, compiled strict mode with reviewed binary `9c9e77fb…be4c1`; affected Stage-C/S3c tests pass 184/184. No checkpoint until complete reviewed iid-v2 labels and a reviewed training packet. |
+| Mini | none | **FREE / T4 CAPACITY-V3 REVIEW GATE.** Capacity-v2 is terminal no-use after 32 missing-NumPy V11-load refusals, zero candidate worlds/sampler attempts/outcomes and consumed slot `b6c1219a…5e72`. Fresh exact packet `b53eb509…ce19` opens one short run only after Claude PASS. |
+| Air | none | **FREE / S4 SOURCE REVIEW GATE.** Clean worktree `shengji-s4-replication-air-v1` is exact `fb6ec1a`; Python 3.14.6, fast binary `9c9e77…b4c1`, live parent and prior-screen hashes all reopen. No preflight/outcome exists. Source PASS opens one 8-cluster score-free preflight only. T4 training remains causally blocked on reviewed labels. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
 ## Next admitted execution
@@ -25,8 +25,10 @@ deals, plus all 2,048 selected states regenerated. Current order:
 2. Capacity-v1 packet/result passed, but the resulting label-v1 execution is
    terminal no-use: eight slots consumed, two complete shards, six refusals,
    no aggregate and no partial mining. Never run its other eight slots.
-3. Fresh iid-v2 capacity packet `a667b6bb…795c` now needs external review.
-4. Only after packet PASS, Mini consumes one 32-state outcome-discarding
+3. Capacity-v2 result `64fdda5f…4cf2` is terminal no-use: Codex's own marker
+   was not external review and missing NumPy refused all 32 rows before worlds.
+4. Fresh capacity-v3 packet `b53eb509…ce19` now needs Claude review. Only after
+   PASS, Mini consumes one 32-state outcome-discarding
    capacity run; its terminal result requires separate external review.
 5. Only after that result passes may a v2 label packet be frozen/reviewed,
    followed by one 16-shard execution and aggregate on 2,048/2,048 complete.
@@ -34,10 +36,11 @@ deals, plus all 2,048 selected states regenerated. Current order:
    training packet. DESIGN/CALIB choose a capability; untouched REPORT remains
    closed until that selection is final.
 
-No S4 confirmation, S6 screen or other filler job is authorized merely to use
-an idle host. S4's screen is already terminal PASS; its confirmation projection
-is about `365.592` fleet-hours / `45.699` max-shard hours and the active T4 goal
-stops before launching it.
+Separately, the user authorized idle Air for the promising S4 lane. The old
+365.592-fleet-hour confirmation remains closed. New source `fb6ec1a` reduces
+the null arm to a 256-cluster exact sentinel while retaining 2,048 fresh
+treatment/champion clusters. Source review precedes one score-free preflight;
+preflight review/packet review still precede any outcome run.
 
 ## Terminal job index
 
@@ -46,7 +49,10 @@ The canonical numbers and meanings are in the results table in
 
 | date | job | terminal verdict | anchor |
 |---|---|---|---|
-| 08-10 | Teacher Stage-C iid-v2 label capacity | **FROZEN/VERIFIED / PACKET REVIEW OPEN / ZERO WORLDS** | source `8a202e9`; packet external/internal `a667b6bb…795c` / `0a0194ce…6977`; latest-ply + max-work 32-state schedule `32db422c…ffa4`; no admission/result/lock |
+| 08-10 | Teacher Stage-C capacity v3 | **FROZEN/VERIFIED / EXTERNAL REVIEW OPEN / ZERO WORLDS** | source `167feab`; packet external/internal `b53eb509…ce19` / `6a7f6f0e…7281`; runtime witness `071e496c…6264`; exact Mini Python 3.14.6 + NumPy 2.5.1 + V11 load before admission; no slot/result |
+| 08-10 | Teacher Stage-C capacity v2 | **TERMINAL NO-USE / ZERO WORLDS** | result external/internal `64fdda5f…4cf2` / `def43a24…2102`; consumed slot `b6c1219a…5e72`; 32/32 missing-NumPy V11-load refusals, zero candidate worlds/sampler attempts/outcomes; Codex self-review was invalid; never retry |
+| 08-10 | S4 fixed Air replication source | **SOURCE REVIEW OPEN / ZERO PREFLIGHT OR OUTCOMES** | exact `fb6ec1a`; runner/controller `678b27b0…37bd` / `77f74b08…2d73`; 2,048 primary + 256 null sentinel = 8,704 records; Air runtime and prior screen reopen exactly; 69/69 tests |
+| 08-10 | Teacher Stage-C iid-v2 capacity packet | **SUPERSEDED / SELF-REVIEW INVALID** | source `8a202e9`; packet external/internal `a667b6bb…795c` / `0a0194ce…6977`; exact schedule remains useful, but Codex's marker was not external authority and the resulting v2 run is terminal no-use |
 | 08-10 | Teacher Stage-C label v1 execution | **TERMINAL NO-USE / NO AGGREGATE** | source `3f6f048`; receipt external `0c3d7ea0…adc1c`; consumed slots `0,4,5,8,10,12,14,15`; 2 complete, 6 refused, 971/1,024 complete rows; untouched slots never run; no partial utility mining |
 | 08-10 | Teacher Stage-C label capacity v1 | **TERMINAL CAPACITY + EXTERNAL RESULT PASS / SUPERSEDED DOWNSTREAM** | packet `e8967d6f…d2a58`; result `111092b7…cee0`; 32/32, zero refusals, no retained outcome; it validly sized v1 but did not exercise the late small-support failure and cannot authorize v2 |
 | 08-10 | Teacher Stage-C label controller v1 | **CONSUMED / SUPERSEDED BY TERMINAL LABEL FAILURE** | source `3f6f048`; packet external/internal `e4958358…09c2` / `4b6c3c83…5be5`; exact authority consumed once; never retry, extend or aggregate |

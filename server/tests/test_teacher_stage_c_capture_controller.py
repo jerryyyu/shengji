@@ -154,6 +154,12 @@ def test_build_packet_is_score_free_and_review_only(
         == ctrl.POPULATION_EXPERIMENT_ID
     assert packet["capture_contract"]["validation_namespace_run_id"] \
         == ctrl.RUN_ID
+    assert packet["capture_contract"][
+        "candidate_source_hand_order_invariant"] is True
+    assert packet["capture_contract"][
+        "candidate_source_canonical_action_order"] == "sorted action_key"
+    assert packet["result_contract"][
+        "candidate_source_hand_order_invariant"] is True
     assert len(packet["commands"]["run_shards"]) == 24
     assert "--disposition-replay-workers" in packet["commands"][
         "verify_dataset"]
@@ -187,6 +193,7 @@ def test_review_claim_authorizes_capture_only(
             "required_play_states": 1920,
             "required_bury_states": 128,
             "exact_late_requires_phase_late": True,
+            "candidate_source_hand_order_invariant": True,
             "terminal_disposition_replay_deals": 750_000,
             "terminal_disposition_replay_workers": 8,
             "terminal_disposition_progress_every": 250,
@@ -200,6 +207,7 @@ def test_review_claim_authorizes_capture_only(
     assert claim["states_captured_before_review"] == 0
     assert claim["population_experiment_id"] \
         == ctrl.POPULATION_EXPERIMENT_ID
+    assert claim["candidate_source_hand_order_invariant"] is True
     assert claim["terminal_replays_all_scan_dispositions"] is True
     assert claim["terminal_disposition_progress_every"] == 250
 

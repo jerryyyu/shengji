@@ -474,6 +474,54 @@ def test_bury_capture_replays_and_candidate_union_is_exact() -> None:
     assert len(hydrated["candidates"]) <= 33
 
 
+@pytest.mark.parametrize(("cell_id", "seed"), [
+    ("DESIGN:play:ordinary_anchor:early:attacker:follow", 170_000_133),
+    ("DESIGN:play:ordinary_anchor:mid:attacker:lead", 170_000_308),
+])
+def test_play_candidate_union_ignores_incidental_hand_order(
+        cell_id: str, seed: int) -> None:
+    """The model observation is a hand multiset, so its ballot must be too."""
+    base = _base()
+    cell = next(cell for cell in ctrl.quota_cells(base)["DESIGN"]
+                if cell["cell_id"] == cell_id)
+    state, reason = runtime.capture_deal(
+        seed, "DESIGN", cell, runtime._actor_identity())
+    assert reason == "eligible" and state is not None
+    original = runtime.replay_state(state)
+    reordered = copy.deepcopy(original)
+    reordered.hands[state["seat"]] = list(reversed(
+        reordered.hands[state["seat"]]))
+    assert runtime.encode_obs(original, state["seat"]) == runtime.encode_obs(
+        reordered, state["seat"])
+    net = runtime._load_npnet(str(_repo() / runtime.V11_PATH))
+    expected = runtime._build_play_union(
+        original, state["seat"], state["state_id"], "DESIGN", net)
+    actual = runtime._build_play_union(
+        reordered, state["seat"], state["state_id"], "DESIGN", net)
+    assert actual == expected
+
+
+def test_bury_candidate_union_ignores_incidental_hand_order() -> None:
+    base = _base()
+    cell = next(cell for cell in ctrl.quota_cells(base)["DESIGN"]
+                if cell["surface_type"] == "bury"
+                and cell["stratum"] == "ordinary_anchor")
+    state, reason = runtime.capture_deal(
+        170_000_000, "DESIGN", cell, runtime._actor_identity())
+    assert reason == "eligible" and state is not None
+    original = runtime.replay_state(state)
+    reordered = copy.deepcopy(original)
+    reordered.hands[state["seat"]] = list(reversed(
+        reordered.hands[state["seat"]]))
+    assert runtime.encode_obs(original, state["seat"]) == runtime.encode_obs(
+        reordered, state["seat"])
+    expected = runtime._build_bury_union(
+        original, state["seat"], state["state_id"])
+    actual = runtime._build_bury_union(
+        reordered, state["seat"], state["state_id"])
+    assert actual == expected
+
+
 def test_one_card_exact_late_capture_replays() -> None:
     base = _base()
     cells = [cell for cell in ctrl.quota_cells(base)["DESIGN"]

@@ -13,8 +13,11 @@ bot, open evidence, or authorize strength/promotion/deployment.
 from __future__ import annotations
 
 import hashlib
+import random
+import time
 from typing import Callable, Mapping, Sequence
 
+from ..ai.memory import Memory
 from .encode import encode_action, encode_obs
 from .stage_c_model import canonical_json
 from .stage_c_npnet import StageCEnsemble
@@ -234,3 +237,225 @@ def make_play_report_lcb_bot(
         "StageCPlayReportLCB" if arm == "treatment"
         else "StageCPlayMatchedNullReportLCB")
     return StageCFocusedReportLCB(seed)
+
+
+def _bury_report_fold_gap(bot, rnd, seat: int, mem, cand_a, cand_b,
+                          n: int, *, seed: int) -> dict:
+    """Evaluate two buries on fresh paired worlds from the banker's view."""
+    if (isinstance(n, bool) or not isinstance(n, int) or n <= 0
+            or isinstance(seed, bool) or not isinstance(seed, int)):
+        raise StageCCompositionError("Stage-C bury report work drift")
+    d_sum = d_sq = 0.0
+    used = attempts = 0
+    cap = n * bot.SAMPLE_ATTEMPT_FACTOR
+    original_rng = bot.rng
+    try:
+        bot.rng = random.Random(seed)
+        while used < n and attempts < cap:
+            attempts += 1
+            sampled = bot._sample_hands(rnd, seat, mem)
+            if sampled is None:
+                continue
+            hands, _buried = sampled
+            # _rollout_from_bury returns attacker points. Higher is worse for
+            # the banker, so negate the live bot's level-aware score before
+            # taking challenger-minus-incumbent.
+            value_a = -bot._score(bot._rollout_from_bury(
+                rnd, seat, hands, list(cand_a)))
+            value_b = -bot._score(bot._rollout_from_bury(
+                rnd, seat, hands, list(cand_b)))
+            delta = value_a - value_b
+            d_sum += delta
+            d_sq += delta * delta
+            used += 1
+    finally:
+        bot.rng = original_rng
+    mean = d_sum / used if used else 0.0
+    return {
+        "gap": mean,
+        "se": bot._paired_se(d_sum, d_sq, used),
+        "worlds": used,
+        "attempts": attempts,
+        "rejected": attempts - used,
+        "complete": used == n,
+        "seed": seed,
+    }
+
+
+def _child_seed(state, purpose: str) -> int:
+    raw = hashlib.sha256(f"{purpose}|{state!r}".encode()).digest()
+    return int.from_bytes(raw[:16], "big")
+
+
+def make_bury_report_lcb_bot(
+    ensemble: StageCEnsemble, candidate_source: CandidateSource, *,
+    arm: str, seed: int | None = None,
+):
+    """Protect one model-selected bury with a fresh paired report-LCB fold.
+
+    The model is only a proposer.  On every trigger, treatment and matched
+    null each price exactly incumbent plus one challenger on the same N=300
+    work geometry. A challenger can be played only when its fresh banker's-
+    perspective lower confidence bound is positive. Any source/model failure,
+    report underfill, or negative bound keeps the literal live incumbent.
+    """
+    if ensemble.surface != "bury" or arm not in {"treatment", "matched-null"}:
+        raise StageCCompositionError("Stage-C bury wrapper identity drift")
+    if not callable(candidate_source):
+        raise StageCCompositionError("Stage-C candidate source is not callable")
+    from ..ai.registry import REGISTRY
+
+    base = REGISTRY.get("mc-s0-report-lcb")
+    if not isinstance(base, type):
+        raise StageCCompositionError("live report-LCB class is unavailable")
+
+    class StageCFocusedBuryReportLCB(base):
+        stage_c_arm = arm
+
+        def __init__(self, policy_seed=None):
+            super().__init__(policy_seed)
+            self.stage_c_focus_calls = 0
+            self.stage_c_focus_triggers = 0
+            self.stage_c_focus_fallbacks = 0
+            self.stage_c_report_underfills = 0
+            self.last_stage_c_focus_record = None
+            self.policy_name = f"stage-c-bury-{arm}"
+
+        def _publish_bury_record(self, record: dict, played) -> list[str]:
+            record["played"] = list(played)
+            self.last_stage_c_focus_record = record
+            self.last_bury_record = record
+            return list(played)
+
+        def decide_bury(self, rnd, seat):
+            self.last_stage_c_focus_record = None
+            self.last_override_stats = None
+            self.last_n_worlds = 0
+            incumbent = list(super().decide_bury(rnd, seat))
+            self.stage_c_focus_calls += 1
+            try:
+                union, source_record = candidate_source(
+                    self, rnd, seat, [incumbent])
+                union = _candidate_union(union, "bury")
+                if action_key(union[0]) != action_key(incumbent):
+                    raise StageCCompositionError(
+                        "Stage-C bury candidate zero differs from live")
+                if not isinstance(source_record, Mapping):
+                    raise StageCCompositionError(
+                        "Stage-C candidate-source record drift")
+                state_key = _state_key(rnd, seat, union)
+                record = focused_pairs(
+                    ensemble, rnd, seat, union, state_key=state_key)
+                record["candidate_source"] = dict(source_record)
+                record["arm"] = arm
+                record["fallback_to_live_ballot"] = False
+                record["report_worlds_requested"] = self.REPORT_FOLD_WORLDS
+                record["report_rule"] = self.REPORT_RULE
+                if not record["model_triggered"]:
+                    record["reason"] = "model_kept_incumbent"
+                    record["played_candidate_union_index"] = 0
+                    record["report_fold"] = None
+                    record["work"] = {
+                        "report_budget": 0, "report_rollouts": 0,
+                        "complete": True,
+                    }
+                    return self._publish_bury_record(record, incumbent)
+
+                self.stage_c_focus_triggers += 1
+                indices = (record["treatment_indices"]
+                           if arm == "treatment" else record["null_indices"])
+                if len(indices) != 2 or indices[0] != 0 or indices[1] == 0:
+                    raise StageCCompositionError(
+                        "Stage-C bury focused arm geometry drift")
+                challenger_index = indices[1]
+                challenger = union[challenger_index]
+                before = self._sampler_snapshot()
+                pre_rng_state = self.rng.getstate()
+                report_seed = _child_seed(
+                    pre_rng_state, "stage-c-bury-report")
+                started = time.perf_counter()
+                self.search_calls += 1
+                self.bury_search_calls += 1
+                mem = Memory(
+                    rnd, seat,
+                    own_kitty=getattr(self, "BANKER_KITTY", True),
+                )
+                report = _bury_report_fold_gap(
+                    self, rnd, seat, mem, challenger, incumbent,
+                    self.REPORT_FOLD_WORLDS, seed=report_seed)
+                self.last_n_worlds = report["worlds"]
+                elapsed = time.perf_counter() - started
+                rollouts = 2 * report["worlds"]
+                self.rollouts += rollouts
+                self.bury_rollouts += rollouts
+                self.search_secs += elapsed
+                self.bury_search_secs += elapsed
+                critical = statistic = None
+                if report["complete"]:
+                    critical = (0.0 if self.REPORT_RULE == "mean"
+                                else self._report_critical(report["worlds"]))
+                    statistic = report["gap"] - critical * report["se"]
+                report_record = {
+                    **report,
+                    "fold": "report",
+                    "rule": self.REPORT_RULE,
+                    "critical": critical,
+                    "statistic": statistic,
+                    "min_gain": self.REPORT_MIN_GAIN,
+                    "bound": (
+                        "paired_mean" if self.REPORT_RULE == "mean" else
+                        "paired_student_t_one_sided_95_conservative_df>=29"),
+                }
+                self.last_override_stats = report_record
+                record["rng_state"] = pre_rng_state
+                record["report_seed"] = report_seed
+                record["report_fold"] = report_record
+                record["challenger_candidate_union_index"] = challenger_index
+                record["search_secs"] = elapsed
+                record["work"] = {
+                    "report_budget": 2 * self.REPORT_FOLD_WORLDS,
+                    "report_rollouts": rollouts,
+                    "complete": report["complete"],
+                }
+                record["sampler_counters"] = {
+                    "before": before,
+                    "after": self._sampler_snapshot(),
+                    "delta": self._sampler_delta(before),
+                }
+                if not report["complete"]:
+                    self.short_search_decisions += 1
+                    self.stage_c_report_underfills += 1
+                    record["reason"] = "report_underfilled"
+                    record["played_candidate_union_index"] = 0
+                    return self._publish_bury_record(record, incumbent)
+                if statistic < self.REPORT_MIN_GAIN:
+                    record["reason"] = f"report_{self.REPORT_RULE}_below_min_gain"
+                    record["played_candidate_union_index"] = 0
+                    return self._publish_bury_record(record, incumbent)
+                record["reason"] = f"report_{self.REPORT_RULE}_override"
+                record["played_candidate_union_index"] = challenger_index
+                return self._publish_bury_record(record, challenger)
+            except Exception as exc:
+                self.stage_c_focus_fallbacks += 1
+                record = {
+                    "schema": SCHEMA,
+                    "surface": "bury",
+                    "arm": arm,
+                    "candidate_count": 1,
+                    "fallback_to_live_ballot": True,
+                    "failure_type": type(exc).__name__,
+                    "failure": str(exc),
+                    "reason": "stage_c_failure_live_incumbent",
+                    "played_candidate_union_index": 0,
+                    "model_direct_override_authorized": False,
+                    "fresh_paired_report_lcb_required": True,
+                    "strength_claim": False,
+                    "production_promotion": False,
+                    "production_deployment": False,
+                }
+                return self._publish_bury_record(record, incumbent)
+
+    StageCFocusedBuryReportLCB.__name__ = (
+        "StageCBuryReportLCB" if arm == "treatment"
+        else "StageCBuryMatchedNullReportLCB")
+    return StageCFocusedBuryReportLCB(seed)

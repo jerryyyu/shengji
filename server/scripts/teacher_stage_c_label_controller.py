@@ -53,6 +53,7 @@ STATE_SET_REVIEW_SCHEMA = "teacher-stage-c-state-set-review-v1"
 STATE_SET_REVIEW_MARKER = "TEACHER_STAGE_C_STATE_SET_V3_REVIEW "
 RECEIPT_SCHEMA = "teacher-stage-c-label-receipt-v1"
 ADMISSION_SCHEMA = "teacher-stage-c-label-admission-v1"
+SHARD_ADMISSION_SCHEMA = "teacher-stage-c-label-shard-admission-v1"
 SHARD_SCHEMA = "teacher-stage-c-label-shard-v1"
 AGGREGATE_SCHEMA = "teacher-stage-c-label-aggregate-v1"
 
@@ -89,6 +90,7 @@ REVIEW_FIELDS = (
     "states_per_shard", "max_candidate_worlds",
     "audit_report_actions", "audit_report_worlds",
     "audit_report_candidate_worlds", "report_labels_sealed_from_training",
+    "shard_admission_slots",
     "worlds_sampled_before_review", "outcomes_computed_before_review",
     "independent_review", "one_label_execution_authorized",
     "training_authorized", "strength_claim", "production_promotion",
@@ -181,6 +183,27 @@ def require_admission_slot_ignored() -> dict:
     if result.returncode != 0:
         raise ControllerRefused(f"admission slot is not Git-ignored: {logical}")
     return {"logical_path": logical, "gitignored": True}
+
+
+def shard_admission_logical_path(index: int) -> str:
+    if not 0 <= index < LABEL_SHARDS:
+        raise ControllerRefused("label shard admission index outside schedule")
+    return f"server/runs/locks/{RUN_ID}.shard-{index:02d}.consumed.json"
+
+
+def require_shard_admission_slots_ignored() -> list[str]:
+    values = []
+    for index in range(LABEL_SHARDS):
+        logical = shard_admission_logical_path(index)
+        result = subprocess.run(
+            ["git", "check-ignore", "--quiet", logical], cwd=REPO,
+            capture_output=True,
+        )
+        if result.returncode != 0:
+            raise ControllerRefused(
+                f"label shard admission slot is not Git-ignored: {logical}")
+        values.append(logical)
+    return values
 
 
 def producer_identity(*, smoke: bool) -> dict:
@@ -578,6 +601,8 @@ def build_packet(
             "max_candidate_worlds": BASE_MAX_CANDIDATE_WORLDS,
             "max_sampler_attempts": schedule["sampler_attempt_cap"],
             "one_shot_admission": require_admission_slot_ignored(),
+            "shard_admission_slots": require_shard_admission_slots_ignored(),
+            "shard_retry_after_any_sampling": "TERMINAL_HOLD_NO_RETRY",
             "any_refusal_status": "TERMINAL_HOLD_NO_EXTENSION",
         },
         "commands": {
@@ -681,6 +706,7 @@ def expected_review_claim(packet: Mapping[str, object], packet_sha256: str) -> d
         "audit_report_worlds": LABEL.AUDIT_REPORT_WORLDS,
         "audit_report_candidate_worlds": LABEL.AUDIT_REPORT_CANDIDATE_WORLDS,
         "report_labels_sealed_from_training": True,
+        "shard_admission_slots": LABEL_SHARDS,
         "worlds_sampled_before_review": 0,
         "outcomes_computed_before_review": False,
         "independent_review": True,

@@ -487,6 +487,7 @@ def test_admit_run_shard_and_aggregate_execution_seam(
         RUN_ID = "test-stage-c-labels"
         RECEIPT_SCHEMA = "test-receipt"
         ADMISSION_SCHEMA = "test-admission"
+        SHARD_ADMISSION_SCHEMA = "test-shard-admission"
         SHARD_SCHEMA = "test-shard"
         AGGREGATE_SCHEMA = "test-aggregate"
         LABEL_SHARDS = 1
@@ -495,6 +496,11 @@ def test_admit_run_shard_and_aggregate_execution_seam(
         @staticmethod
         def admission_slot_logical_path():
             return FakeCtrl.slot_logical
+
+        @staticmethod
+        def shard_admission_logical_path(index):
+            assert index == 0
+            return FakeCtrl.shard_slot_logical
 
         sha256_file = staticmethod(
             lambda path: hashlib.sha256(Path(path).read_bytes()).hexdigest())
@@ -506,6 +512,8 @@ def test_admit_run_shard_and_aggregate_execution_seam(
         root = Path(raw)
         FakeCtrl.slot_logical = str((root / "admission.json").relative_to(
             runtime.REPO))
+        FakeCtrl.shard_slot_logical = str((
+            root / "shard-admission.json").relative_to(runtime.REPO))
         packet_path = root / "controller.json"
         packet_path.write_text("{}\n")
         review = root / "review.txt"
@@ -539,6 +547,7 @@ def test_admit_run_shard_and_aggregate_execution_seam(
                 "aggregate": str(aggregate_path.relative_to(runtime.REPO)),
                 "max_candidate_worlds": 0,
                 "max_sampler_attempts": 0,
+                "shard_admission_slots": [FakeCtrl.shard_slot_logical],
             },
         }
         monkeypatch.setattr(runtime, "_ctrl", lambda: FakeCtrl)
@@ -592,6 +601,10 @@ def test_admit_run_shard_and_aggregate_execution_seam(
             shard_index=0,
             progress_every=1, out=shard_path)
         assert shard["status"] == "COMPLETE"
+        with pytest.raises(runtime.LabelRefused, match="already consumed"):
+            runtime._consume_shard_slot(
+                packet, index=0, packet_sha256="b" * 64,
+                receipt_sha256=receipt_sha)
         aggregate = runtime.aggregate(
             packet_path=packet_path, expected_packet_sha256="b" * 64,
             receipt_path=receipt_path, expected_receipt_sha256=receipt_sha,

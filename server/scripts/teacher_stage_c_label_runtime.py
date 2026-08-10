@@ -913,6 +913,7 @@ def _controller_packet(path: Path, expected_sha256: str) -> dict:
         runtime_mode = ctrl.CAPTURE_CTRL.require_runtime_mode()
         sources = ctrl.runtime_sources()
         ctrl.require_admission_slot_ignored()
+        shard_slots = ctrl.require_shard_admission_slots_ignored()
     except ctrl.ControllerRefused as exc:
         raise LabelRefused(str(exc)) from exc
     if (packet.get("schema") != ctrl.SCHEMA
@@ -923,6 +924,8 @@ def _controller_packet(path: Path, expected_sha256: str) -> dict:
             != _git("rev-parse", "HEAD")
             or packet.get("runtime_mode") != runtime_mode
             or packet.get("runtime_sources") != sources
+            or packet.get("result_contract", {}).get(
+                "shard_admission_slots") != shard_slots
             or authority.get("score_free") is not True
             or authority.get("worlds_sampled") is not False
             or authority.get("outcomes_computed") is not False
@@ -1095,6 +1098,60 @@ def _expected_shard_path(packet: Mapping[str, object], index: int) -> Path:
     return (REPO / logical).resolve()
 
 
+def _consume_shard_slot(packet: Mapping[str, object], *, index: int,
+                        packet_sha256: str, receipt_sha256: str) -> tuple[dict, str]:
+    ctrl = _ctrl()
+    logical = ctrl.shard_admission_logical_path(index)
+    if packet["result_contract"]["shard_admission_slots"][index] != logical:
+        raise LabelRefused("Stage-C label shard admission path drift")
+    path = (REPO / logical).resolve()
+    if os.path.lexists(path) or os.path.lexists(Path(str(path) + ".partial")):
+        raise LabelRefused("Stage-C label shard admission already consumed")
+    schedule = packet["schedule"]["shards"][index]
+    slot = {
+        "schema": ctrl.SHARD_ADMISSION_SCHEMA,
+        "run_id": ctrl.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": packet_sha256,
+        "label_receipt_sha256": receipt_sha256,
+        "shard_index": index,
+        "state_ids_sha256": schedule["state_ids_sha256"],
+        "consumed_before_sampler_or_outcome": True,
+        "retry_after_crash_or_refusal_authorized": False,
+    }
+    slot["slot_sha256"] = _self_hash(slot, "slot_sha256")
+    _publish_exclusive(path, slot)
+    return slot, ctrl.sha256_file(path)
+
+
+def _validate_shard_slot(packet: Mapping[str, object], *, index: int,
+                         packet_sha256: str, receipt_sha256: str,
+                         expected_file_sha256: str) -> None:
+    ctrl = _ctrl()
+    logical = ctrl.shard_admission_logical_path(index)
+    path = (REPO / logical).resolve()
+    if (packet["result_contract"]["shard_admission_slots"][index] != logical
+            or not _terminal_file(path)
+            or ctrl.sha256_file(path) != expected_file_sha256):
+        raise LabelRefused("Stage-C label shard admission file drift")
+    slot = _load_json(path)
+    expected = {
+        "schema": ctrl.SHARD_ADMISSION_SCHEMA,
+        "run_id": ctrl.RUN_ID,
+        "git": packet["producer"]["git"],
+        "controller_packet_sha256": packet_sha256,
+        "label_receipt_sha256": receipt_sha256,
+        "shard_index": index,
+        "state_ids_sha256": packet["schedule"]["shards"][index][
+            "state_ids_sha256"],
+        "consumed_before_sampler_or_outcome": True,
+        "retry_after_crash_or_refusal_authorized": False,
+    }
+    expected["slot_sha256"] = _self_hash(expected, "slot_sha256")
+    if slot != expected:
+        raise LabelRefused("Stage-C label shard admission content drift")
+
+
 def _state_map(state_set: Mapping[str, object]) -> dict[str, dict]:
     states = state_set.get("states")
     if not isinstance(states, list):
@@ -1153,6 +1210,10 @@ def run_shard(*, packet_path: Path, expected_packet_sha256: str,
     if os.path.lexists(out) or os.path.lexists(Path(str(out) + ".partial")):
         raise LabelRefused("refusing existing Stage-C label shard/partial")
     schedule = packet["schedule"]["shards"][shard_index]
+    _slot, slot_file_sha256 = _consume_shard_slot(
+        packet, index=shard_index,
+        packet_sha256=expected_packet_sha256,
+        receipt_sha256=expected_receipt_sha256)
     states = _state_map(state_set)
     net = _load_v11()
     audit_ids = set(schedule["audit_state_ids"])
@@ -1194,6 +1255,8 @@ def run_shard(*, packet_path: Path, expected_packet_sha256: str,
         "state_ids": list(schedule["state_ids"]),
         "state_ids_sha256": schedule["state_ids_sha256"],
         "audit_state_ids": list(schedule["audit_state_ids"]),
+        "shard_admission_slot": ctrl.shard_admission_logical_path(shard_index),
+        "shard_admission_file_sha256": slot_file_sha256,
         "status": ("COMPLETE" if refusals == 0
                    else "REFUSED_INCOMPLETE_NO_AGGREGATE_UTILITY"),
         "complete_rows": len(rows) - refusals,
@@ -1241,11 +1304,18 @@ def validate_shard(shard: Mapping[str, object], *, packet: Mapping[str, object],
             or shard.get("state_ids") != schedule["state_ids"]
             or shard.get("state_ids_sha256") != schedule["state_ids_sha256"]
             or shard.get("audit_state_ids") != schedule["audit_state_ids"]
+            or shard.get("shard_admission_slot")
+            != ctrl.shard_admission_logical_path(index)
+            or not isinstance(shard.get("shard_admission_file_sha256"), str)
             or not isinstance(rows, list) or len(rows) != schedule["state_count"]
             or shard.get("shard_sha256") != _self_hash(shard, "shard_sha256")
             or shard.get("training_authorized") is not False
             or shard.get("report_open_authorized") is not False):
         raise LabelRefused(f"Stage-C label shard {index} identity drift")
+    _validate_shard_slot(
+        packet, index=index, packet_sha256=packet["external_sha256"],
+        receipt_sha256=receipt_sha256,
+        expected_file_sha256=shard["shard_admission_file_sha256"])
     states = _state_map(state_set)
     audit_ids = set(schedule["audit_state_ids"])
     complete = 0

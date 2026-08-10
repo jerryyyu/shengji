@@ -102,3 +102,61 @@ def test_play_union_is_exactly_parity_with_frozen_capture_source() -> None:
     assert actual_union == expected_union
     for key, value in expected_diagnostics.items():
         assert actual_diagnostics[key] == value
+
+
+def test_live_play_source_and_wrapper_integrate_on_replayed_state() -> None:
+    from shengji.rl import stage_c_composition as composition
+
+    runtime = _capture_runtime()
+    base = runtime._load_json(runtime.REPO / runtime.BASE_PATH)
+    cell = next(cell for cell in runtime.CTRL.quota_cells(base)["DESIGN"]
+                if cell["cell_id"] == (
+                    "DESIGN:play:ordinary_anchor:early:attacker:follow"))
+    state, reason = runtime.capture_deal(
+        170_000_000, "DESIGN", cell, runtime._actor_identity())
+    assert reason == "eligible" and state is not None
+    rnd = runtime.replay_state(state)
+    net = runtime._load_npnet(str(runtime.REPO / runtime.V11_PATH))
+
+    class SelectLast:
+        surface = "play"
+        head = "ranking"
+        epoch = 1
+
+        def select(self, _obs, actions):
+            return {
+                "surface": self.surface, "head": self.head,
+                "epoch": self.epoch, "candidate_count": len(actions),
+                "selected_index": len(actions) - 1,
+            }
+
+    source = SOURCE.make_play_candidate_source(net)
+    bot = composition.make_play_report_lcb_bot(
+        SelectLast(), source, arm="treatment", seed=5)
+    focused = bot._candidates(rnd, state["seat"])
+    live = SOURCE.make_bot("mc-s0-report-lcb", seed=0)._candidates(
+        rnd, state["seat"])
+    assert SOURCE.action_key(focused[0]) == SOURCE.action_key(live[0])
+    assert 1 <= len(focused) <= 2
+    assert bot.stage_c_focus_fallbacks == 0
+    assert bot.last_stage_c_focus_record["candidate_source"][
+        "public_information_only"] is True
+
+
+def test_live_bury_source_integrates_on_replayed_state() -> None:
+    runtime = _capture_runtime()
+    base = runtime._load_json(runtime.REPO / runtime.BASE_PATH)
+    cell = next(cell for cell in runtime.CTRL.quota_cells(base)["DESIGN"]
+                if cell["surface_type"] == "bury"
+                and cell["stratum"] == "ordinary_anchor")
+    state, reason = runtime.capture_deal(
+        170_000_011, "DESIGN", cell, runtime._actor_identity())
+    assert reason == "eligible" and state is not None
+    rnd = runtime.replay_state(state)
+    production = SOURCE.make_bot("mc-s0-report-lcb", seed=0)
+    incumbent = production.decide_bury(rnd, state["seat"])
+    union, record = SOURCE.make_bury_candidate_source()(
+        object(), rnd, state["seat"], [incumbent])
+    assert SOURCE.action_key(union[0]) == SOURCE.action_key(incumbent)
+    assert 1 <= len(union) <= SOURCE.BURY_CANDIDATE_CAP
+    assert record["public_information_only"] is True

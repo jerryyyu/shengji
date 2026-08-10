@@ -158,6 +158,7 @@ def test_packet_exposes_only_training_review_authority(monkeypatch) -> None:
         "production_deployment": False,
     }
     claim = CTRL.expected_review_claim(packet, "3" * 64)
+    assert claim["training_supervisor_sha256"] == "a" * 64
     assert claim["training_cells"] == 48
     assert claim["training_seeds"] == 8
     assert claim["execution_host"] == "mini"
@@ -170,6 +171,18 @@ def test_packet_exposes_only_training_review_authority(monkeypatch) -> None:
     assert packet["result_contract"]["selected_ensemble_models"] == 8
     assert packet["result_contract"]["single_capability_selection"] is True
     assert claim["single_capability_selection"] is True
+    assert claim["max_concurrent_cells"] == 8
+    assert claim["supervisor_heartbeat_seconds"] == 30
+    assert claim["supervisor_resume_authorized"] is False
+    assert claim["supervisor_retry_authorized"] is False
+    assert packet["result_contract"]["supervision"] == {
+        "max_concurrent_cells": 8,
+        "heartbeat_seconds": 30,
+        "starts_all_frozen_cells": True,
+        "resume_authorized": False,
+        "retry_authorized": False,
+        "aggregate_only_after_all_cells_exit_zero": True,
+    }
 
 
 def test_manifest_order_refuses_report_reentry_or_swapped_shards() -> None:

@@ -47,6 +47,7 @@ CONTROLLER_RUN_ID = "teacher-v3-hard-tail-stage-c-training-controller-v1"
 DATASET_SCHEMA = "teacher-stage-c-model-dataset-v1"
 DATASET_PATH = f"server/runs/logs/{CONTROLLER_RUN_ID}/model-dataset.json"
 PACKET_PATH = f"server/runs/logs/{CONTROLLER_RUN_ID}/controller_packet.json"
+SUPERVISOR_PATH = "server/scripts/teacher_stage_c_training_supervisor.py"
 LABEL_AGGREGATE_REVIEW_SCHEMA = "teacher-stage-c-label-aggregate-review-v2"
 LABEL_AGGREGATE_REVIEW_MARKER = "TEACHER_STAGE_C_LABEL_AGGREGATE_V2_REVIEW "
 REVIEW_SCHEMA = "teacher-stage-c-training-controller-review-v1"
@@ -59,10 +60,13 @@ EXPECTED_SURFACES = {
 }
 TRAINING_CELLS = len(MODEL.SURFACES) * len(MODEL.TRAINING_SEEDS) \
     * len(MODEL.CURVE_FRACTIONS)
+SUPERVISOR_MAX_WORKERS = len(MODEL.TRAINING_SEEDS)
+SUPERVISOR_HEARTBEAT_SECONDS = 30
 
 SOURCE_PATHS = (
     "server/scripts/teacher_stage_c_training_controller.py",
     "server/scripts/teacher_stage_c_training_runtime.py",
+    SUPERVISOR_PATH,
     "server/shengji/rl/stage_c_model.py",
     "server/shengji/rl/stage_c_training.py",
     "server/shengji/rl/encode.py",
@@ -156,8 +160,11 @@ def runtime_contract() -> dict:
         "numpy": str(numpy.__version__),
         "device": "cpu",
         "cpu_threads_per_cell": TRAIN.CPU_THREADS,
-        "max_concurrent_cells": len(MODEL.TRAINING_SEEDS),
-        "heartbeat": "one JSON record after every epoch",
+        "max_concurrent_cells": SUPERVISOR_MAX_WORKERS,
+        "heartbeat": (
+            "each cell logs one JSON record after every epoch; the one-shot "
+            "supervisor publishes fleet progress at least every 30 seconds"
+        ),
     }
 
 
@@ -498,6 +505,10 @@ def result_contract(schedule: Mapping[str, object]) -> dict:
     return {
         "cells": [value["result"] for value in schedule["cells"]],
         "aggregate": f"server/runs/logs/{RUN_ID}/training-aggregate.json",
+        "supervisor_progress":
+            f"server/runs/logs/{RUN_ID}/training-supervisor.jsonl",
+        "supervisor_final":
+            f"server/runs/logs/{RUN_ID}/training-supervisor-final.json",
         "selection_rule": MODEL.SELECTION_SCHEMA,
         "curve_diagnostics": {
             "surfaces": list(MODEL.SURFACES),
@@ -510,11 +521,19 @@ def result_contract(schedule: Mapping[str, object]) -> dict:
         "selected_ensemble_models": len(MODEL.TRAINING_SEEDS),
         "single_capability_selection": True,
         "report_packet_review_only_on_pass": True,
+        "supervision": {
+            "max_concurrent_cells": SUPERVISOR_MAX_WORKERS,
+            "heartbeat_seconds": SUPERVISOR_HEARTBEAT_SECONDS,
+            "starts_all_frozen_cells": True,
+            "resume_authorized": False,
+            "retry_authorized": False,
+            "aggregate_only_after_all_cells_exit_zero": True,
+        },
     }
 
 
 def commands(schedule: Mapping[str, object]) -> dict:
-    return {
+    values = {
         "admit": [
             "{python}", "server/scripts/teacher_stage_c_training_runtime.py",
             "admit", "--expected-git", "{git}",
@@ -551,6 +570,29 @@ def commands(schedule: Mapping[str, object]) -> dict:
             "--out", f"server/runs/logs/{RUN_ID}/training-aggregate.json",
         ],
     }
+    values["supervise"] = [
+        "{python}", SUPERVISOR_PATH, "launch",
+        "--expected-git", "{git}",
+        "--controller-packet", PACKET_PATH,
+        "--expected-controller-packet-sha256", "{packet_sha256}",
+        "--controller-review-record", "{controller_review_record}",
+        "--training-receipt",
+        f"server/runs/logs/{RUN_ID}/training-receipt.json",
+        "--expected-training-receipt-sha256", "{receipt_sha256}",
+        "--heartbeat-seconds", str(SUPERVISOR_HEARTBEAT_SECONDS),
+    ]
+    values["verify_supervisor"] = [
+        "{python}", SUPERVISOR_PATH, "verify",
+        "--expected-git", "{git}",
+        "--controller-packet", PACKET_PATH,
+        "--expected-controller-packet-sha256", "{packet_sha256}",
+        "--controller-review-record", "{controller_review_record}",
+        "--training-receipt",
+        f"server/runs/logs/{RUN_ID}/training-receipt.json",
+        "--expected-training-receipt-sha256", "{receipt_sha256}",
+        "--heartbeat-seconds", str(SUPERVISOR_HEARTBEAT_SECONDS),
+    ]
+    return values
 
 
 def build_packet(
@@ -626,6 +668,7 @@ def expected_review_claim(packet: Mapping[str, object],
             "server/shengji/rl/stage_c_training.py"],
         "training_runtime_cli_sha256": sources[
             "server/scripts/teacher_stage_c_training_runtime.py"],
+        "training_supervisor_sha256": sources[SUPERVISOR_PATH],
         "encoder_sha256": sources["server/shengji/rl/encode.py"],
         "model_contract_sha256": _manifest_hash(packet["model_contract"]),
         "runtime_contract_sha256": _manifest_hash(packet["runtime_contract"]),
@@ -650,6 +693,11 @@ def expected_review_claim(packet: Mapping[str, object],
         "cpu_only_deterministic": True,
         "single_seed_selection": False,
         "single_capability_selection": True,
+        "max_concurrent_cells": packet["runtime_contract"][
+            "max_concurrent_cells"],
+        "supervisor_heartbeat_seconds": SUPERVISOR_HEARTBEAT_SECONDS,
+        "supervisor_resume_authorized": False,
+        "supervisor_retry_authorized": False,
         "independent_review": True,
         "one_training_execution_authorized": True,
         "report_open_authorized": False,

@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 21:17 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-10 07:25 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,27 +8,31 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | `s4-point-banking-duel-screen-100b-v2` | **RUNNING / OUTCOME SEALED.** Exact `cad3992`, packet `17036e63…1385`, admission `1d99bb55…bdbf`, receipt `20a420d2…5cc`; eight shards × 256. Latest count-only heartbeat: `122,122,120,121,122,123,122,122 / 256` (974/2,048), all workers CPU-bound at 21:17. Never inspect partial outcomes, retry, extend or move the pinned checkout. |
-| Air | none | **FREE / DIRECTLY CHECKED 21:13.** T3 reviews are complete, but no reviewed T4 capture, H0 execution, S3c execution or training launch exists. Idle capacity is not launch authority. |
+| Mini | none | **FREE / WAITING ON CAPTURE-V4 REVIEW.** Capture v3 terminally held after six no-use partial shards; no v4 admission exists. On exact v4 PASS, Mini consumes the fresh slot once and runs 24 shards in three waves of eight, then freezes 2,048 states and replay-authenticates all 750,000 dispositions. |
+| Air | none | **FREE / TRAINING SOURCE STAGED.** Clean head `899f843` passes its no-data training slice under Python 3.14.6. Air remains idle until reviewed labels exist; then it runs the frozen 48-cell play/bury × eight-seed × 25/50/100% matrix, at most eight cells concurrently. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
-## S4 legal next action
+## Next admitted execution
 
-Monitor only `supervisor.jsonl.partial` count/status fields until all workers
-terminate. Then invoke the exact `cad3992` controller verifier once:
+The only immediate compute gate is external review of capture-v4 source
+`5a51a1e`, packet commit `04f45b7`, external packet SHA
+`0d1a94d4…54eaa`. Capture-v3 is terminal no-use: two first-wave workers
+correctly refused phase-mismatched exact-late states, so its six published
+partials cannot be pooled or retried. After v4 PASS:
 
-- `AUTHORIZE_CONFIRM_PACKET_REVIEW`: freeze one fresh 8,192-cluster
-  confirmation packet and request external review. This does not authorize its
-  launch.
-- `SELECT_NONE`: preserve the terminal aggregate/final and close the exact S4
-  recipe. Do not retry, tune from outcomes or pool it with the 64-state
-  mechanism screen.
-- operational refusal: preserve the namespace and diagnose without reading or
-  manufacturing strength evidence.
+1. Mini runs all 24 capture shards from scratch in three eight-worker waves.
+2. Mini freezes exactly 2,048 states and authenticates the full 750,000-deal
+   scan. External state-set review follows.
+3. Mini runs a reviewed 32-state label-capacity pilot, then (only on PASS) the
+   16 label shards at eight-way concurrency.
+4. Air starts only after complete reviewed labels, using the already staged
+   48-cell training controller. DESIGN/CALIB choose a capability; untouched
+   REPORT remains closed until that selection is final.
 
-The reviewed preflight completed 4/4 score-free clusters in 321.32 seconds and
-projected the screen at `91.40` fleet-hours / `11.42` max-shard hours. That is
-capacity evidence, not a strength result.
+No S4 confirmation, S6 screen or other filler job is authorized merely to use
+an idle host. S4's screen is already terminal PASS; its confirmation projection
+is about `365.592` fleet-hours / `45.699` max-shard hours and the active T4 goal
+stops before launching it.
 
 ## Terminal job index
 
@@ -47,7 +51,9 @@ The canonical numbers and meanings are in the results table in
 | 08-09 | S3c one-card controller v1 | **COMPONENT PASS / OPERATIONAL HOLD** | source `e9db4a2`; packet `f58d23b7…3874`; same unignored-lock admit→runtime failure; zero worlds/exact sessions |
 | 08-09 | Human H0-v3 controller v1 | **HOLD / SUPERSEDED BEFORE OUTCOMES** | producer `931f504`; asset `ff277b4`; packet `13d9a97f…61fc`; runtime did not self-enforce compiled/strict-void mode and receipt deletion could reissue; preserved and replaced by frozen v2 |
 | 08-09 | S3c natural-prefix census + curriculum | **DESIGN PASS / ONE-CARD CONTROLLER IMPLEMENTATION ONLY** | producer `0b96fae`; asset `4fb90a1`; 768 roots; census `23632609…b52a`; packet `df102428…9eca`; Claude marker commit `084ba7e`; no solver/screen/training/strength authority |
-| 08-09 | S4 complete-round v2 preflight + packet | **PACKET PASS / MINI SCREEN RUNNING** | exact `cad3992`; preflight `fcc8b891…ee060`, 91.40 fleet-hours / 11.42 max-shard hours; packet `17036e63…1385`; Claude marker `51a864c`; admission `1d99bb55…bdbf`, receipt `20a420d2…5cc`; no confirmation/strength |
+| 08-10 | Teacher Stage-C capture v3 | **TERMINAL HOLD / SIX PARTIAL SHARDS NO-USE** | exact source `0b697b6`; first wave found deterministic exact-late phase drift at seeds `170002101` and `170007422`; no later waves, pooling or retry |
+| 08-10 | Teacher Stage-C capture v4 repair | **EXTERNAL REVIEW OPEN / ZERO V4 STATES** | source `5a51a1e`; packet commit `04f45b7`; packet `0d1a94d4…54eaa`; exact phase predicate plus two named regressions; 52/52 focused tests; no admission yet |
+| 08-09 | S4 complete-round v2 screen | **TERMINAL PASS / CONFIRMATION NOT LAUNCHED** | exact `cad3992`; treatment−champion `+0.086914 +/- 0.056166`, LCB `+0.030748`; treatment and matched null identical, null−champion zero; confirmation projection `365.592` fleet-hours / `45.699` max-shard hours |
 | 08-09 | S4 point-banking exact-state screen | **MECHANISM PASS / FULL-GAME PACKET REVIEW** | screen `abd9f36f…cdc00`; receipt `90124eb6…f526b`; overall point delta `+5.156`, LCB `+3.029`; both roles positive; no strength or launch authority |
 | 08-09 | Human H0 design v3 | **DESIGN PASS / CONTROLLER FROZEN** | source `b02b6de`, packet commit `d6214ce`, packet `4d3f0a35…8cc3c`; Claude marker `239f13c`; preserved plays, frozen buries, 17/33 caps, explicit continuation, finite work; no outcomes |
 | 08-09 | Human H0 design v2 | **IDENTITY DELTA PASS / SUPERSEDED PRE-CONTROLLER** | exact `12dac55`; packet `2cccf580…8f2b`; Claude marker `9fdb67a`; real V11 + portable parent passed, later bounded-design audit superseded it; no outcomes |

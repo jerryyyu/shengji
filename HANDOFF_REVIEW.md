@@ -18,6 +18,11 @@ v6. The ordinary seed `170000000`, the newly named tied-boundary state seed
 and identical complete unions after hand reversal. A fresh post-fix soak over
 300 eligible play plus 50 eligible bury states (701 deals, seeds
 `190000000..190000700`) found zero observation/union/provenance mismatches.
+The exact HOLD witness was also rerun directly: the `Random(25)` 33-card
+sample from `make_deck()` under H2 still makes raw SmartBot choose `...D9...` versus
+`...C8...` after reversal, while v6 returns the identical complete union and
+canonical candidate zero `C3 C7 C8 D8 S3 S6 S7 S8` in both orders, with both
+original hand objects restored.
 The complete capture/controller/rebind/live-parent slice passes 57/57 under
 compiled strict-void mode.
 
@@ -33,8 +38,9 @@ the durable admission slot and run namespace are absent.
 
 Please review only this successor delta:
 
-1. reproduce both bury A/B witnesses, especially the `190000063` tied
-   eight-card boundary, and confirm complete union/order/provenance equality;
+1. reproduce both bury A/B witnesses, including the exact `Random(25)` hand
+   above and state seed `190000063`, and confirm complete
+   union/order/provenance equality;
 2. inject an exception from incumbent construction and prove the exact
    original hand list object and contents survive;
 3. retain v5's passed lead/follow canonicality and v4's passed phase guard;

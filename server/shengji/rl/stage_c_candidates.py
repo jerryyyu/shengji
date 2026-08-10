@@ -260,10 +260,19 @@ def build_bury_union(
     if (not isinstance(state_id, str) or not state_id
             or not isinstance(experiment_id, str) or not experiment_id):
         raise StageCCandidateError("Stage-C bury source identity drift")
-    incumbent = (SmartBot().decide_bury(rnd, seat)
-                 if incumbent is None else list(incumbent))
-    ballot = structured_bury_ballot(
-        rnd.hands[seat], rnd.ordering, incumbent, max_candidates=32)
+    # Match the frozen capture source: the model observation is a hand
+    # multiset, while SmartBot's stable bury sort otherwise inherits list
+    # order at equal-valued boundaries.  A caller-provided live incumbent
+    # remains literal; only the supplemental ballot sees the canonical hand.
+    saved_hand = rnd.hands[seat]
+    rnd.hands[seat] = sorted(saved_hand)
+    try:
+        incumbent = (SmartBot().decide_bury(rnd, seat)
+                     if incumbent is None else list(incumbent))
+        ballot = structured_bury_ballot(
+            rnd.hands[seat], rnd.ordering, incumbent, max_candidates=32)
+    finally:
+        rnd.hands[seat] = saved_hand
     if (not ballot.candidates or len(ballot.candidates) > 32
             or action_key(ballot.candidates[0].cards)
             != action_key(incumbent)):

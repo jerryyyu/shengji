@@ -217,14 +217,15 @@ def test_play_union_is_invariant_to_incidental_hand_order(
     assert actual == expected
 
 
-def test_bury_union_is_invariant_to_incidental_hand_order() -> None:
+@pytest.mark.parametrize("seed", [170_000_000, 190_000_063])
+def test_bury_union_is_invariant_to_incidental_hand_order(seed: int) -> None:
     runtime = _capture_runtime()
     base = runtime._load_json(runtime.REPO / runtime.BASE_PATH)
     cell = next(cell for cell in runtime.CTRL.quota_cells(base)["DESIGN"]
                 if cell["surface_type"] == "bury"
                 and cell["stratum"] == "ordinary_anchor")
     state, reason = runtime.capture_deal(
-        170_000_000, "DESIGN", cell, runtime._actor_identity())
+        seed, "DESIGN", cell, runtime._actor_identity())
     assert reason == "eligible" and state is not None
     original = runtime.replay_state(state)
     reordered = copy.deepcopy(original)
@@ -239,6 +240,35 @@ def test_bury_union_is_invariant_to_incidental_hand_order() -> None:
         reordered, state["seat"], state["state_id"],
         experiment_id=runtime.CTRL.EXPERIMENT_ID)
     assert actual == expected
+
+
+def test_bury_union_restores_hand_when_incumbent_helper_raises(
+        monkeypatch) -> None:
+    runtime = _capture_runtime()
+    base = runtime._load_json(runtime.REPO / runtime.BASE_PATH)
+    cell = next(cell for cell in runtime.CTRL.quota_cells(base)["DESIGN"]
+                if cell["surface_type"] == "bury"
+                and cell["stratum"] == "ordinary_anchor")
+    state, reason = runtime.capture_deal(
+        190_000_063, "DESIGN", cell, runtime._actor_identity())
+    assert reason == "eligible" and state is not None
+    rnd = runtime.replay_state(state)
+    seat = state["seat"]
+    original_hand = rnd.hands[seat]
+    original_cards = list(original_hand)
+
+    def refuse(_bot, probe, probe_seat):
+        assert probe is rnd and probe_seat == seat
+        assert probe.hands[seat] == sorted(original_cards)
+        raise RuntimeError("named incumbent failure")
+
+    monkeypatch.setattr(SOURCE.SmartBot, "decide_bury", refuse)
+    with pytest.raises(RuntimeError, match="named incumbent failure"):
+        SOURCE.build_bury_union(
+            rnd, seat, state["state_id"],
+            experiment_id=runtime.CTRL.EXPERIMENT_ID)
+    assert rnd.hands[seat] is original_hand
+    assert rnd.hands[seat] == original_cards
 
 
 def test_structured_follow_restores_hand_when_helper_raises(

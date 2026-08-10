@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 20:15 EDT. This is the executable mailbox.
+Last compacted: 2026-08-09 20:21 EDT. This is the executable mailbox.
 Terminal markers live in `HANDOFF_REVIEW.md`, policy synthesis in
 `AI_POLICIES.md`, live jobs in `JOBS.md`, and queue order in `BACKLOG.md`.
 
@@ -9,8 +9,8 @@ Terminal markers live in `HANDOFF_REVIEW.md`, policy synthesis in
 | area | status | next legal action |
 |---|---|---|
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; no production change is open. |
-| S3a structured bury | **TERMINAL SELECT NONE** | Preserve `+0.0464`, LCB `-0.0041`; no retry, tuning, pooling or confirmation. |
-| S4 point banking | **SEALED MINI SCREEN RUNNING** | Exact `cad3992`, packet `17036e63…1385`, receipt `20a420d2…5cc`; 724 count-only shard lines at 20:15 with eight CPU-bound workers. Do not inspect partial outcomes. |
+| S3a structured bury | **TERMINAL VERIFIED / SELECT NONE** | The exact original verifier returned `verified=true` at 20:20 with aggregate `20609613…271f` and final `32156d79…c9ff`; preserve `+0.0464`, LCB `-0.0041`; no retry, tuning, pooling or confirmation. |
+| S4 point banking | **SEALED MINI SCREEN RUNNING** | Exact `cad3992`, packet `17036e63…1385`, receipt `20a420d2…5cc`; 750 count-only shard lines at 20:21 with eight CPU-bound workers. Do not inspect partial outcomes. |
 | Human H0 | **V2 REVIEW LOGIC PASS / OPERATIONAL HOLD; V3 REVIEW OPEN** | The v2 admission tombstone dirties Git and makes runtime reopen impossible. Review PR #6 source `4ebcd09` plus packet `cf074871…35392`; do not issue a receipt. |
 | Teacher Stage C | **V3 DESIGN PASS / ZERO STATES / REBIND FREEZE BLOCKED** | Claude passed design packet `f213314a…3b4`. Score-free bridge source `7018f36` is prepared with 105 tests: it binds the immutable design plus H0-v3/S3c-v2 without copying curriculum fields. A real packet still requires both replacement PASS markers. |
 | S3c small endgames | **V1 REVIEW LOGIC PASS / OPERATIONAL HOLD; V2 REVIEW OPEN** | The same tombstone bug blocks v1. Review PR #6 packet `cafbee43…f23e`; do not issue a mechanics receipt. |

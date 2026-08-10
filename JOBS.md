@@ -32,9 +32,10 @@ deals, plus all 2,048 selected states regenerated. Current order:
    capacity run; its terminal result requires separate external review.
 5. Only after that result passes may a v2 label packet be frozen/reviewed,
    followed by one 16-shard execution and aggregate on 2,048/2,048 complete.
-6. Air starts only after complete reviewed iid-v2 labels and a reviewed
-   training packet. DESIGN/CALIB choose a capability; untouched REPORT remains
-   closed until that selection is final.
+6. Mini starts the model sweep only after complete reviewed iid-v2 labels and
+   a reviewed training packet. DESIGN/CALIB choose a capability; untouched
+   REPORT remains closed until that selection is final. Air stays on the
+   separately gated S4 lane.
 
 Separately, the user authorized idle Air for the promising S4 lane. The old
 365.592-fleet-hour confirmation remains closed. New source `fb6ec1a` reduces

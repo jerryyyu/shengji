@@ -69,8 +69,9 @@ REPORT evaluation eventually selects a capability.
 3. Freeze and externally review a fresh iid-v2 label-controller packet. Only
    then execute all 16 shards with eight workers and aggregate on 2,048/2,048
    complete rows with zero refusals.
-4. Review the aggregate and freeze/review the v2 training packet. Air then runs
-   48 cells (play/bury × eight seeds × 25/50/100%), at most eight concurrently.
+4. Review the aggregate and freeze/review the v2 training packet. Mini then
+   runs 48 cells (play/bury × eight seeds × 25/50/100%), at most eight
+   concurrently. Air remains isolated to the separately gated S4 lane.
 5. Select one capability only from DESIGN/CALIB, open sealed REPORT exactly
    once, compose the passer inside report-LCB with incumbent fallback and a
    same-work null, then run a fresh whole-game screen against the live champion.

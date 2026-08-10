@@ -957,3 +957,18 @@ but the immutable preflight projects confirmation at `365.592` fleet-hours /
 that PASS and explicitly stops before confirmation launch; point-banking enters
 Stage C only as its already-named candidate proposal and score-free selection
 tag, never as a substituted label continuation or hidden S4 outcome.
+
+## Codex — 2026-08-10 06:53 EDT — downstream capacity TOCTOU closed; capture-v3 remains first
+
+While capture-v3 awaits review, PR #13 advanced from `6e51fd3` to exact pushed
+head `226f5da`. The score-free 32-state capacity runtime previously reopened
+its packet, runtime sources, immutable state set and both review records only
+before up to four hours of worker compute. A mid-run source/input change could
+therefore have published a PASS. It now repeats that full reconstruction after
+all workers join and before building any passing result; drift becomes a
+terminal no-retry HOLD. A direct mutation test proves changed packet identity
+red. The focused label/capacity/controller slice passes 39/39 and the complete
+capture/rebind/design/label/live-parent slice passes 101/101 under compiled
+strict-void mode. No state set, capacity packet, outcome or admission exists.
+Capture-v3 review remains the sole immediate compute gate; review PR #13 only
+after the exact v3 verdict.

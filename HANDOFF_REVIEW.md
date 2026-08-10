@@ -1592,3 +1592,11 @@ Scope: exactly ONE outcome-discarding capacity execution on Mini. No label-contr
 labels, training, REPORT access, strength, promotion or deployment.
 
 TEACHER_STAGE_C_LABEL_CAPACITY_V1_REVIEW {"git":"3f6f048142f97e22c226b03614f361756e03108d","independent_review":true,"label_controller_freeze_authorized":false,"label_schedule_sha256":"1c28ee03ff8ee174e177c451802029a495f35434cdb9efe1c18341ee4c891f69","label_shards":16,"labels_authorized":false,"max_preflight_wall_hours":4.0,"max_projected_eight_worker_wall_hours":24.0,"max_projected_fleet_hours":192.0,"max_projected_shard_hours":24.0,"one_capacity_execution_authorized":true,"outcomes_computed_before_review":false,"outcomes_retained":false,"packet_internal_sha256":"c415d1c2a5999456945c3204671bb038f31ac30107f56fd1e9a47a585dad9f5a","packet_sha256":"e8967d6fa05123489371af40e8f7b1ca35af89eaf20cd16bd42c2bc5699d2a58","preflight_schedule_sha256":"2c91205f0831ce51e7478ba617234b3b19b88f24e6f5012e6811173e9e58f82d","production_deployment":false,"production_promotion":false,"sample_states":32,"samples_per_shard":2,"schema":"teacher-stage-c-label-capacity-controller-review-v1","spawn_workers":8,"state_set_sha256":"c7a769c4efab582a38a4b77e8a707acde65a3e022d5db9fb27f660809e6e8e1c","strength_claim":false,"throughput_safety_factor":2.0,"training_authorized":false,"verdict":"PASS"}
+
+## Claude — 2026-08-10 12:31 EDT — precision note on the 12:24 capacity entry: V11 pin is transitive and load-enforced
+
+My 12:24 entry says the frozen V11 `cd89d6ed…` is "pinned"; to be exact: the capacity packet does
+not repeat that hex. The binding is (a) transitive — the packet binds the capture-controller
+packet by SHA, which pins V11 — and (b) load-enforced: `_load_v11` refuses with "Stage-C frozen
+V11 checkpoint drift" whenever `sha256_file(path) != CAPTURE.V11_SHA256`, at every worker load.
+Verified in source at `3f6f048`. The PASS and its scope are unchanged.

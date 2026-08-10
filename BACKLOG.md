@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-09 19:52 EDT.
+Last re-derived: 2026-08-09 20:03 EDT.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
 `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -24,7 +24,7 @@ here.
   testing in both roles (`+5.156` points; LCB `+3.029`). Its separately
   reviewed full-game v2 screen is now running on Mini under exact `cad3992`,
   packet `17036e63…1385`, admission `1d99bb55…bdbf` and receipt
-  `20a420d2…5cc`. At 19:52 all eight workers were CPU-bound with 634/2,048
+  `20a420d2…5cc`. At 20:03 all eight workers were CPU-bound with 676/2,048
   count-only progress lines. Outcomes stay sealed until one terminal verification.
 - **Human corpus / H0:** reviewed `human_v8` contains 2,830 plays and 45 buries
   from the exact Fly snapshot, and bounded design v3 passed. Controller v1
@@ -39,9 +39,9 @@ here.
   defect. Replacement v2 packet `cafbee43…f23e` is under review, with zero
   solver work and no eligible mechanics execution.
 - **S5 replay:** score-free census code is pushed as draft PR #4 at source
-  `c7bba40`. Its main logic passed review, but an equal-point-only negative
-  fixture and re-review remain before any real census freeze. It cannot
-  authorize a treatment or strength run.
+  `c7bba40`. Commit `2351b36` adds the required lower-ranked-but-equal-point
+  negative fixture and turns the named `<`→`<=` mutation red. Re-review remains
+  before any real census freeze; no treatment or strength run is authorized.
 - **Learners:** V11 direct-v2, Direct-Q, O0 and O0-v2 all selected none under
   their registered gates. They remain diagnostics, not deployable policies.
 - **Capacity:** Mini is dedicated to sealed S4; Air is free for exact review
@@ -58,7 +58,7 @@ scientific output of that step.
 |---|---|---|---|---|---|
 | **DONE / T3.1 S3a terminal** | The banker is extremely reluctant to bury points. Give it deliberate point/void/trump kitty plans and test whether that makes the complete bot win more—not merely whether individual buries look better. | **Closed SELECT NONE.** Structured-minus-champion was `+0.0464`, LCB `-0.0041`: a near miss, not a PASS. **Left:** none in T3; preserve diagnostics. A revisit must be a separately preregistered fresh larger design. | No reuse of the consumed stream | Verified aggregate `20609613…271f` and final `32156d79…c9ff` | Satisfied. No retry, tuning, confirmation, pooling or promotion. |
 | **P0 / T3.2 S4 whole-game screen** | Current rollouts usually win a trick with the cheapest card and can miss free 5/10/K points. Let simulated players bank a point card when they can still retain higher control, then test whether that local improvement survives a whole round. | The targeted state test passed in both roles (`+5.156` points, LCB `+3.029`). The reviewed 2,048-cluster full-game screen is running on Mini and outcomes are sealed. **Left:** terminally verify once, then close or freeze a confirmation packet. | Count/status monitoring only until all shards stop | One verifier-authenticated three-arm whole-game verdict versus live report-LCB and matched null | Exact `cad3992` / `17036e63…1385`, admission `1d99bb55…bdbf`, receipt `20a420d2…5cc`. PASS may open confirmation-packet review; SELECT NONE closes v2. |
-| **P1 / T3-support S5 replay gate** | Live-loss mining suggests bots may give points to an enemy-owned trick even when a cheaper legal discard exists. First prove that exact situation exists and that today's champion still makes it; do not patch from an observational aggregate. | The normalization error is withdrawn and Claude passed PR #4's exhaustive replay logic. Mutation review found one missing boundary witness: changing strictly-fewer points to fewer-or-equal still leaves 11/11 tests green. **Left:** add an equal-point-only alternative fixture, rerun review, then freeze one deterministic census. | Add the required negative fixture; do not run the real census yet | Exact trigger/refusal counts, identifier-free witness digests, legal strictly-lower-point alternatives, ballot membership and current champion/rollout reproduction; then either close the hypothesis or freeze an S5 design | Fixture + code re-review authorizes one score-free census freeze only. No treatment or strength run until replay proves the avoidable action exists and isolates sourcing, ranking or continuation. |
+| **P1 / T3-support S5 replay gate** | Live-loss mining suggests bots may give points to an enemy-owned trick even when a cheaper legal discard exists. First prove that exact situation exists and that today's champion still makes it; do not patch from an observational aggregate. | The normalization error is withdrawn and Claude passed PR #4's exhaustive replay logic. Commit `2351b36` now proves a lower-ranked `H10` alternative to historical `HK` is **not** a trigger because both carry 10 points; the named `<`→`<=` mutation fails. Focused tests are 12/12 and the broader available battery 52/52. **Left:** external fixture re-review, then one deterministic census freeze. | Re-review PR #4 head `2351b36`; do not run the real census yet | Exact trigger/refusal counts, identifier-free witness digests, legal strictly-lower-point alternatives, ballot membership and current champion/rollout reproduction; then either close the hypothesis or freeze an S5 design | Fixture re-review PASS authorizes one score-free census freeze only. No treatment or strength run until replay proves the avoidable action exists and isolates sourcing, ranking or continuation. |
 | **P1 / T3.3 H0 bounded design** | Humans and V11 sometimes suggest moves outside the production bot's habits. Define a finite, fair experiment that evaluates those moves instead of blindly copying the human or flooding the ballot. | **Closed PASS.** V1 had a bad model identity; V2 repaired identity but left work/candidate semantics vague. Claude independently passed bounded v3 at marker `239f13c`. **Left:** none for the design; hand its exact contract to T3.4. | Preserve exact packet `4d3f0a35…8cc3c` and review marker `239f13c` | One external PASS marker binding caps, folds, continuation and the 1,329,210-work ceiling | Satisfied. The PASS authorizes score-free controller implementation only—no counterfactual outcomes. |
 | **P0 / T3.4 H0 controller repair** | Turn the H0 paper experiment into a genuinely runnable one-shot program so every human/model/random proposal is judged fairly. | Claude passed v2's component logic, but admission writes an unignored consumed-slot and every subsequent runtime reopen rejects its own dirty tree. No outcome ran. PR #6 versions v3, binds the exact ignore rule and proves real admit→reopen while unrelated tracked/untracked dirt still refuses. **Left:** external PASS/HOLD on source `4ebcd09`, packet `cf074871…35392`. | Review PR #6; do not create a receipt | One executable, externally passed H0-v3 packet with 557 score-free rows and a real admit→runtime regression | PASS makes one later T4 diagnostic receipt eligible. It does not authorize labels, training, strength or production. |
 | **P0 / T3.5 Teacher Stage-C v3 rebind** | Earlier Teachers mostly repeated normal heuristic self-play. Build a mixed curriculum that spends deeper work on uncertainty, novel proposals, bury, point play and tiny endgames. | **Design PASS / zero states.** Claude passed exact `20bdb95` / `f213314a…3b4`: 1,024 DESIGN / 512 CALIB / 512 REPORT, 20/33 caps and 10,494,720 maximum work with zero recursive MC. The packet is bound to operationally broken H0-v2. **Left:** after H0-v3 PASS, freeze/review a minimal successor that changes only the H0 controller identity and lock semantics. | Review H0-v3, then rebind; do not capture or label | One externally passed Stage-C successor bound to executable H0-v3 while preserving the passed population/label/work contract | Rebind PASS makes capture-controller implementation legal; it still does not create states, labels or training authority. |
@@ -125,9 +125,9 @@ unreviewed strength compute, training, promotion and production changes.
    freeze/review a minimal rebind before capture, labels or training.
 6. **T3.6 reopened operationally:** PR #6 S3c-v2 packet
    `cafbee43…f23e` awaits review; no mechanics receipt before PASS.
-7. **S5 code passed with one required fixture:** add an equal-point-only
-   alternative witness that must not trigger, then re-review before one
-   deterministic score-free census freeze.
+7. **S5 boundary fixture pushed:** PR #4 head `2351b36` adds the
+   lower-ranked-but-equal-point non-trigger and mutation proof. Re-review it
+   before one deterministic score-free census freeze.
 8. Keep Mini on the reviewed S4 job and use Air for exact review reproduction
    or bounded coding tests. Idle compute is not a reason to invent an
    unregistered strength run.

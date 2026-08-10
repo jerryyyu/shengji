@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 19:52 EDT
+## Current synthesis — 2026-08-09 20:03 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -132,8 +132,9 @@ what those results change in the research plan.
   to avoid points and the MC ballot already contains point-avoiding and
   point-seeking follows, so S5 begins with exact source-bound replay, legal
   alternative enumeration and current-champion reproduction—not a policy
-  patch or strength run. Claude passed draft PR #4's replay logic but found a
-  missing equal-point boundary witness. Add that negative fixture and re-review
+  patch or strength run. Claude passed draft PR #4's replay logic. Commit
+  `2351b36` adds the required lower-ranked-but-equal-point negative witness and
+  makes the named `<`→`<=` mutation fail. External fixture re-review remains
   before any real census freeze.
 - **Data/sampler:** the bounded strict sampler certificate passed, but posterior
   fidelity and global constructive completeness remain open. High-N and
@@ -567,8 +568,8 @@ replay supports it, Stage C gains a named hard-tail stratum and a separately
 reviewed candidate/continuation source. If not, preserve the negative and do
 not manufacture a “never discard points” rule that duplicates existing logic.
 Draft PR #4 / source `c7bba40` contains the score-free replay census. Its logic
-passed review, but one equal-point-only negative fixture and re-review remain
-before a deterministic freeze.
+passed review, and commit `2351b36` adds the required equal-point-only negative
+fixture plus mutation proof. Re-review remains before a deterministic freeze.
 
 This breaks the closed heuristic-self-play loop without declaring every human
 move optimal or leaking private full-deal information into a deployable model.

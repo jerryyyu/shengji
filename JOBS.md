@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 19:52 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 20:03 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,7 +8,7 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | `s4-point-banking-duel-screen-100b-v2` | **RUNNING / OUTCOME SEALED.** Exact `cad3992`, packet `17036e63…1385`, admission `1d99bb55…bdbf`, receipt `20a420d2…5cc`; eight shards × 256. Latest count-only heartbeat: `82,79,76,79,79,80,80,79 / 256` (634/2,048), all workers CPU-bound at 19:52. Never inspect partial outcomes, retry, extend or move the pinned checkout. |
+| Mini | `s4-point-banking-duel-screen-100b-v2` | **RUNNING / OUTCOME SEALED.** Exact `cad3992`, packet `17036e63…1385`, admission `1d99bb55…bdbf`, receipt `20a420d2…5cc`; eight shards × 256. Latest count-only heartbeat: `88,84,81,85,84,85,85,84 / 256` (676/2,048), all workers CPU-bound at 20:03. Never inspect partial outcomes, retry, extend or move the pinned checkout. |
 | Air | none | **FREE.** H0-v3 and S3c-v2 replacement packets require review; Stage C then requires a minimal reviewed rebind, and S5 needs one boundary fixture. No reviewed strength launch exists. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
@@ -39,7 +39,7 @@ The canonical numbers and meanings are in the results table in
 |---|---|---|---|
 | 08-09 | S3a structured-bury full-game screen | **SELECT NONE / CLOSED** | exact `c599b42`; all 2,048 clusters verified; aggregate `20609613…271f`, final `32156d79…c9ff`; no confirmation, retry, tuning or promotion |
 | 08-09 | Teacher Stage-C design v3 | **DESIGN PASS / OPERATIONAL REBIND PENDING** | source `20bdb95`; asset `1a29418`; packet `f213314a…3b4`; Claude PASS at `d92f595`; zero states/labels; still binds broken H0-v2, so capture remains closed |
-| 08-09 | S5 replay-census code | **CODE PASS / BOUNDARY FIXTURE REQUIRED / NO CENSUS** | draft PR #4; source `c7bba40`; add equal-point-only negative witness, re-review, then one deterministic score-free freeze may become eligible |
+| 08-09 | S5 replay-census code | **BOUNDARY FIXTURE PUSHED / RE-REVIEW OPEN / NO CENSUS** | draft PR #4 head `2351b36`; real `HK` versus lower-ranked equal-point `H10` witness; named `<`→`<=` mutation fails; 12 focused + 52 broader available tests pass |
 | 08-09 | H0 controller admit→runtime repair | **V3 PACKET REVIEW OPEN / ZERO OUTCOMES** | PR #6; source `4ebcd09`; packet `cf074871…35392`; 557 rows; 97 combined tests; no diagnostic receipt before external PASS |
 | 08-09 | Human H0-v3 controller v2 | **COMPONENT PASS / OPERATIONAL HOLD** | source `6977dbb`; packet `3f68dc6e…7fcf`; admission's unignored lock makes runtime reject its own dirty tree; zero worlds/outcomes |
 | 08-09 | S3c one-card controller repair | **V2 PACKET REVIEW OPEN / ZERO SOLVER WORK** | PR #6; source `4ebcd09`; packet `cafbee43…f23e`; 64 roots; no mechanics receipt before external PASS |

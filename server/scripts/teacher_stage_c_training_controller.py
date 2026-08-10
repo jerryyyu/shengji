@@ -474,6 +474,9 @@ def model_contract() -> dict:
         "device": "cpu",
         "cpu_threads": TRAIN.CPU_THREADS,
         "deterministic_algorithms": True,
+        "calib_selection": (
+            "exactly one surface/head/epoch eight-seed capability; "
+            "no unrelated-surface conjunction and no seed cherry-pick"),
     }
 
 
@@ -504,6 +507,8 @@ def result_contract(schedule: Mapping[str, object]) -> dict:
             "selection_eligible_curve_fraction": 1.0,
             "smaller_curves_are_diagnostic_only": True,
         },
+        "selected_ensemble_models": len(MODEL.TRAINING_SEEDS),
+        "single_capability_selection": True,
         "report_packet_review_only_on_pass": True,
     }
 
@@ -644,6 +649,7 @@ def expected_review_claim(packet: Mapping[str, object],
         "schedule_sha256": schedule["schedule_sha256"],
         "cpu_only_deterministic": True,
         "single_seed_selection": False,
+        "single_capability_selection": True,
         "independent_review": True,
         "one_training_execution_authorized": True,
         "report_open_authorized": False,

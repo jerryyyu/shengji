@@ -598,6 +598,9 @@ def _curve_diagnostics(
                     "ranking_improvement_vs_candidate0"]) for value in metrics]
                 calibration = [float(value[
                     "outcome_nll_improvement_vs_prior"]) for value in metrics]
+                outcome_action = [float(value[
+                    "outcome_head_ranking_improvement_vs_candidate0"])
+                    for value in metrics]
                 rows.append({
                     "surface": surface,
                     "curve_fraction": fraction,
@@ -609,10 +612,14 @@ def _curve_diagnostics(
                                                   for value in ranking),
                     "outcome_nll_positive_seeds": sum(
                         value > 0 for value in calibration),
+                    "outcome_head_action_positive_seeds": sum(
+                        value > 0 for value in outcome_action),
                     "median_ranking_improvement_vs_candidate0":
                         statistics.median(ranking),
                     "median_outcome_nll_improvement_vs_prior":
                         statistics.median(calibration),
+                    "median_outcome_head_action_improvement_vs_candidate0":
+                        statistics.median(outcome_action),
                     "mean_teacher_regret": statistics.fmean(float(value[
                         "mean_teacher_regret"]) for value in metrics),
                     "mean_outcome_nll": statistics.fmean(float(value[
@@ -668,14 +675,17 @@ def aggregate(*, packet_path: Path, expected_packet_sha256: str,
     selection = MODEL.select_global_epoch(records)
     curve_diagnostics = _curve_diagnostics(verified)
     selected = []
-    if selection["selected_epoch"] is not None:
+    capability = selection["selected_capability"]
+    if capability is not None:
         for cell in verified:
-            if cell["curve_fraction"] != 1.0:
+            if (cell["curve_fraction"] != 1.0
+                    or cell["surface"] != capability["surface"]):
                 continue
             snapshot = next(value for value in cell["snapshots"]
-                            if value["epoch"] == selection["selected_epoch"])
+                            if value["epoch"] == capability["epoch"])
             selected.append({
                 "surface": cell["surface"], "seed": cell["seed"],
+                "head": capability["head"],
                 "epoch": snapshot["epoch"],
                 "checkpoint_path": snapshot["checkpoint_path"],
                 "checkpoint_sha256": snapshot["checkpoint_sha256"],
@@ -702,7 +712,7 @@ def aggregate(*, packet_path: Path, expected_packet_sha256: str,
         "decision": selection["decision"],
         "report_packet_review_authorized":
             selection["decision"]
-            == "FREEZE_EIGHT_SEED_ENSEMBLE_FOR_REPORT_REVIEW",
+            == "FREEZE_SINGLE_CAPABILITY_FOR_REPORT_REVIEW",
         "report_rows_opened": 0,
         "report_open_authorized": False,
         "strength_claim": False,
@@ -710,7 +720,7 @@ def aggregate(*, packet_path: Path, expected_packet_sha256: str,
         "production_deployment": False,
     }
     if (payload["report_packet_review_authorized"]
-            and len(selected) != len(MODEL.SURFACES) * len(MODEL.TRAINING_SEEDS)):
+            and len(selected) != len(MODEL.TRAINING_SEEDS)):
         raise TrainingRuntimeRefused("Stage-C selected ensemble geometry drift")
     payload["aggregate_sha256"] = self_hash(payload, "aggregate_sha256")
     final_packet, final_dataset = _packet(packet_path, expected_packet_sha256)

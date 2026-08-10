@@ -29,6 +29,9 @@ def _dataset() -> dict:
 def _metrics(*, good: bool) -> dict:
     return {
         "ranking_improvement_vs_candidate0": 0.2 if good else -0.1,
+        "outcome_head_ranking_improvement_vs_candidate0":
+            0.1 if good else -0.1,
+        "outcome_head_mean_teacher_regret": 0.2 if good else 0.3,
         "outcome_nll_improvement_vs_prior": 0.1 if good else -0.1,
         "mean_teacher_regret": 0.1 if good else 0.3,
         "outcome_nll": 1.0 if good else 2.0,
@@ -93,7 +96,7 @@ def test_run_cell_publishes_all_frozen_epochs_without_report(
     assert out.is_file()
 
 
-def test_aggregate_uses_only_full_curves_and_freezes_all_sixteen_models(
+def test_aggregate_uses_only_full_curves_and_freezes_one_eight_model_capability(
         monkeypatch, tmp_path) -> None:
     packet = _packet()
     dataset = _dataset()
@@ -135,10 +138,14 @@ def test_aggregate_uses_only_full_curves_and_freezes_all_sixteen_models(
         expected_receipt_sha256="e" * 64,
         review_record=tmp_path / "review.md", cell_paths=paths, out=out)
     assert value["decision"] \
-        == "FREEZE_EIGHT_SEED_ENSEMBLE_FOR_REPORT_REVIEW"
+        == "FREEZE_SINGLE_CAPABILITY_FOR_REPORT_REVIEW"
     assert value["selection"]["selected_epoch"] == 8
-    assert len(value["selected_ensemble"]) == 16
+    assert value["selection"]["selected_capability"]["surface"] == "play"
+    assert value["selection"]["selected_capability"]["head"] == "ranking"
+    assert len(value["selected_ensemble"]) == 8
     assert all(row["epoch"] == 8 for row in value["selected_ensemble"])
+    assert all(row["surface"] == "play" and row["head"] == "ranking"
+               for row in value["selected_ensemble"])
     assert len(value["curve_diagnostics"]) == 36
     assert sum(row["selection_eligible"]
                for row in value["curve_diagnostics"]) == 12

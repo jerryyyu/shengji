@@ -166,6 +166,9 @@ def test_packet_exposes_only_training_review_authority(monkeypatch) -> None:
         "selection_eligible_curve_fraction"] == 1.0
     assert packet["result_contract"]["curve_diagnostics"][
         "smaller_curves_are_diagnostic_only"] is True
+    assert packet["result_contract"]["selected_ensemble_models"] == 8
+    assert packet["result_contract"]["single_capability_selection"] is True
+    assert claim["single_capability_selection"] is True
 
 
 def test_manifest_order_refuses_report_reentry_or_swapped_shards() -> None:

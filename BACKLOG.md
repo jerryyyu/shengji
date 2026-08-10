@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-10 07:30 EDT.
+Last re-derived: 2026-08-10 07:42 EDT.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
 `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -33,21 +33,23 @@ here.
   utilities. No human-derived proposer enters Stage C; V11 survives only as
   its separately frozen bounded proposal source.
 - **Teacher Stage C:** capture-v3 correctly held after two first-wave shards
-  exposed exact-late phase drift; its six published partials are no-use. The
-  narrow v4 repair is frozen at source `5a51a1e`, packet commit `04f45b7`,
-  packet `0d1a94d4…54eaa`, with both deterministic witnesses and 52/52 focused
-  tests. External v4 review is the immediate gate. Downstream label, model,
-  REPORT and composition sources are already rebound to v4; zero v4 states,
-  labels or checkpoints exist.
+  exposed exact-late phase drift; its six partials are no-use. Claude passed
+  v4's narrow phase repair, but before admission a same-encoding audit found
+  hand-order-dependent candidate generation. V4 is superseded with zero
+  states. V5 source `a71c67e`, packet commit `542f82a`, packet
+  `e299ac6c…cf749` canonicalize play/follow/bury sources and pass 55/55.
+  External v5 review is the immediate gate. Downstream sources require a
+  score-free v5 rebind; zero v5 states, labels or checkpoints exist.
 - **S5 replay:** Claude passed PR #4 head `2351b36`, including the required
   lower-ranked-but-equal-point negative fixture and red `<`→`<=` mutation.
   One deterministic score-free census freeze is eligible later; no census,
   treatment or strength run exists.
 - **Learners:** V11 direct-v2, Direct-Q, O0 and O0-v2 all selected none under
   their registered gates. They remain diagnostics, not deployable policies.
-- **Capacity:** Mini and Air are idle. On capture-v4 PASS, Mini runs capture,
-  freeze/replay and the later label stages. Air is cleanly staged at training
-  head `899f843` but waits for reviewed labels before the 48-cell matrix.
+- **Capacity:** Mini and Air are idle. On capture-v5 PASS, Mini runs capture,
+  freeze/replay and the later label stages. Air waits for reviewed labels and
+  a v5-rebound training head before the 48-cell matrix. Candidate-source and
+  parent propagation proceeds in parallel with Mini compute.
   HUMAN-C1 remains parked until a challenger first beats report-LCB.
 
 ## NOW — output ledger ordered by value
@@ -58,11 +60,11 @@ scientific output of that step.
 
 | priority / milestone | strategy and problem, in plain English | progress so far and what's left, in plain English | next work | required output | exact exit gate |
 |---|---|---|---|---|---|
-| **P0 / T4.2 capture + state set** | Mine a balanced set of ordinary and hard decisions where a stronger Teacher can reveal choices the live bot misses. | Capture-v3 terminally held on a real phase bug; its six partial shards are no-use. V4 source `5a51a1e`, packet `0d1a94d4…54eaa`, and both named regressions pass 52/52. **Left:** exact external v4 PASS, one 24-shard capture, freeze 2,048 states, replay all 750,000 dispositions, then state-set review. | On PASS, run Mini in three waves of eight and stop on any quota/replay mismatch | Exactly 1,024 DESIGN + 512 CALIB + 512 untouched REPORT states, including 1,920 play and 128 bury rows | One immutable reviewed v4 state set; no partial pooling, extension, label or training before PASS. |
-| **P0 / T4.2 labels** | Price every candidate with a stronger, explicitly bounded Teacher so the learner receives counterfactual ranking signal rather than another imitation label. | Label source `2376b5f` is rebound to capture-v4 and explicitly refuses v3; 105/105 lineage tests pass. No packet, capacity result or label exists. **Left:** after state-set PASS, freeze/review a 32-state capacity pilot, run it on Mini, then freeze/review and execute 16 shards. | Capacity first; full labels only if projection stays within 192 fleet-hours / 24 wall-hours | Complete candidate-level labels with exact fold, continuation, work and refusal provenance | Every row and aggregate reopens; underfill, parent drift or budget breach terminally holds without partial utility. |
-| **P0 / T4.3 seeded models** | Learn a stable ranker and calibrated outcome signal from the new Teacher rather than selecting one lucky checkpoint. | Training head `899f843` carries the v4 lineage; Mini passes 140/140 and staged Air passes its no-data slice. No checkpoint exists. **Left:** freeze the post-label recipe, run 48 play/bury × eight-seed × 25/50/100% cells, and select only with DESIGN/CALIB. | Air runs at most eight cells concurrently after reviewed labels | Eight seeds per surface/head family plus state-count learning curves, seed dispersion and one frozen CALIB selection | No single seed advances. The full-data cohort must meet the predeclared stability/calibration gate before REPORT opens. |
-| **P0 / T4.4 untouched REPORT** | Ask once on unseen states whether the frozen learner improves Teacher choice/regret and calibration before paying for games. | REPORT head `4390569` carries the v4 lineage and its 153-test slice passes. REPORT has never opened. **Left:** wait for one final DESIGN/CALIB selection, freeze/review the evaluator packet, then consume the one-shot REPORT slot exactly once. | Evaluate only the selected surface/head/epoch cohort | One 512-state REPORT result with ranking regret/coverage and signed-outcome calibration against the live baseline | Exactly one capability passes the frozen REPORT gate or the generation selects none; no REPORT retuning or second look. |
-| **P0 / T4.5 composed challenger** | Let the model focus fresh report-LCB search on one Teacher-supported challenger, while a matched random proposal tells us whether the learned ranking—not merely narrowing the ballot—adds strength. | Composition head `ae4fe5f` includes all known HOLD repairs and v4 lineage; 209/209 tests pass. It deliberately focuses to candidate 0 plus at most one challenger and compares against both live champion and same-work random null. No model, packet or run exists. **Left:** source rereview after a REPORT passer, score-free capacity review, then one fresh whole-game screen. | Build the packet from the single REPORT passer; preserve full-live fallback on source/runtime failure and zero-fallback evidence | One mirrored treatment/null/champion result against `mc-s0-report-lcb` | Treatment must have positive one-sided utility LCB versus both champion and null; null must remain compatible with champion. PASS opens confirmation-packet review only. |
+| **P0 / T4.2 capture + state set** | Mine a balanced set of ordinary and hard decisions where a stronger Teacher can reveal choices the live bot misses. | V3 terminally held on the phase bug. V4 passed that repair but was superseded pre-admission when identical encoded states produced different ballots. V5 `a71c67e` / `e299ac6c…cf749` fixes all named play/follow/bury witnesses and passes 55/55. **Left:** exact v5 PASS, one 24-shard capture, freeze 2,048 states, replay all 750,000 dispositions, then state-set review. | On PASS, run Mini in three waves of eight and stop on any quota/replay mismatch | Exactly 1,024 DESIGN + 512 CALIB + 512 untouched REPORT states, including 1,920 play and 128 bury rows | One immutable reviewed v5 state set; no partial pooling, extension, label or training before PASS. |
+| **P0 / T4.2 labels** | Price every candidate with a stronger, explicitly bounded Teacher so the learner receives counterfactual ranking signal rather than another imitation label. | V4-bound source `2376b5f` has no packet/outcome and is safely stale. **Left:** port the exact canonical source and v5 bindings; retest/review; after state-set PASS freeze/review a 32-state capacity pilot, then freeze/review and execute 16 shards. | Rebind during capture; capacity first; full labels only if projection stays within 192 fleet-hours / 24 wall-hours | Complete candidate-level labels with exact fold, continuation, work and refusal provenance | Every row and aggregate reopens; underfill, parent drift or budget breach terminally holds without partial utility. |
+| **P0 / T4.3 seeded models** | Learn a stable ranker and calibrated outcome signal from the new Teacher rather than selecting one lucky checkpoint. | V4-bound training head `899f843` passed its no-data tests but is not executable against v5 labels. **Left:** score-free v5 rebind, freeze the post-label recipe, run 48 play/bury × eight-seed × 25/50/100% cells, and select only with DESIGN/CALIB. | Rebind during Mini compute; Air runs at most eight cells concurrently after reviewed labels | Eight seeds per surface/head family plus state-count learning curves, seed dispersion and one frozen CALIB selection | No single seed advances. The full-data cohort must meet the predeclared stability/calibration gate before REPORT opens. |
+| **P0 / T4.4 untouched REPORT** | Ask once on unseen states whether the frozen learner improves Teacher choice/regret and calibration before paying for games. | V4-bound REPORT head `4390569` has never opened and is safely stale. **Left:** v5 rebind/retest, wait for one final DESIGN/CALIB selection, freeze/review the evaluator packet, then consume REPORT exactly once. | Rebind now; later evaluate only the selected surface/head/epoch cohort | One 512-state REPORT result with ranking regret/coverage and signed-outcome calibration against the live baseline | Exactly one capability passes the frozen REPORT gate or the generation selects none; no REPORT retuning or second look. |
+| **P0 / T4.5 composed challenger** | Let the model focus fresh report-LCB search on one Teacher-supported challenger, while a matched random proposal tells us whether the learned ranking—not merely narrowing the ballot—adds strength. | V4-bound composition head `ae4fe5f` has the intended protected-anchor/null design but stale candidate semantics. No run exists. **Left:** port canonical v5 candidate generation and bindings, source rereview, then after a REPORT passer run score-free capacity and one fresh screen. | Canonicalize/rebind during Mini compute; later build only from the single REPORT passer | One mirrored treatment/null/champion result against `mc-s0-report-lcb` | Treatment must have positive one-sided utility LCB versus both champion and null; null must remain compatible with champion. PASS opens confirmation-packet review only. |
 | **DONE / T4.1 H0 diagnostic** | Test whether human or V11 proposals survive fair counterfactual pricing before admitting them into the Teacher curriculum. | **Terminal no-use.** The one run completed 555/557 rows; two score-free refusals forced `REFUSED_INCOMPLETE_NO_AGGREGATE_UTILITY`. **Left:** none for this exact diagnostic. Never retry or mine partial utilities. | Preserve the refusal and omit H0-derived rules | Immutable aggregate `84ef4400…196c` / internal `c314a2e1…6630` | Satisfied as a negative operational result. Stage C admits no human-derived proposer; V11 remains only its separately frozen bounded source. |
 | **DONE / S4 whole-game screen** | Correct rollout opponents that always take a trick with the cheapest winner and therefore underprice point-banking replies. | **Terminal PASS.** Treatment-minus-live `+0.086914 +/- 0.056166`, LCB `+0.030748`; treatment and matched null were identical. **Left in T4:** none—preserve; do not launch the 365.6 fleet-hour confirmation under this goal. | No compute | Verified screen and projection | Confirmation-packet review is eligible, but launch/promotion/deploy require separate authority. |
 | **P1 / S6 shuai-pai sourcing** | Make AKQ, 876 evacuation and partial near-boss throws visible so search can price their failure and ruff risk instead of never considering them. | Source head `bf7eace` freezes the three KESP witnesses; 25/25 focused tests pass. **Left:** external semantics review and, later, a candidate-zero-preserving equal-work packet. | Review source only while T4 capture waits | Public-only, lead-only, ≤8 additions unioned with the literal live ballot plus same-work control | Source PASS authorizes packet design only, never a screen or production change. |
@@ -129,8 +131,9 @@ unreviewed strength compute, training, promotion and production changes.
 7. **S5 boundary fixture closed PASS:** PR #4 head `2351b36` pins the
    lower-ranked-but-equal-point non-trigger. One score-free census freeze is
    eligible later; it was not required for T3.
-8. Mini and Air are idle pending capture-v4 review. On PASS, Mini owns capture
-   and labels; Air waits for the reviewed 48-cell training matrix. Idle compute
+8. Mini and Air are idle pending capture-v5 review. On PASS, Mini owns capture
+   and labels; Air waits for reviewed labels and the v5-rebound 48-cell matrix.
+   Candidate-source propagation and source review run in parallel; idle compute
    is not a reason to invent an unregistered strength run.
 9. Keep the next real product gate as candidate-versus-champion performance
    against the same blinded human cohort, followed by an absolute experienced-

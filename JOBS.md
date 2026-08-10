@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-10 10:38 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-10 10:41 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,7 +8,7 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | none | **FREE / WAITING ON STATE-SET REVIEW.** Capture-v7 completed once: 24/24 shards, exact 2,048-state freeze, all 750,000 dispositions and every selected state replay-authenticated. No capacity/label job may start before the exact state-set PASS. |
+| Mini | none | **FREE / WAITING ON CAPACITY-PACKET REVIEW.** The state set passed. Exact capacity packet `e8967d6f…d2a58` is frozen/reproduced; no admission/result/partial exists. One capacity run may start only after its raw PASS marker. |
 | Air | none | **FREE / TRAINING CAUSALLY BLOCKED.** V7 training head `57f8e72` is source-green. Air starts no checkpoint until a complete reviewed state set and labels exist. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
@@ -21,10 +21,10 @@ play/bury surfaces, and terminal verification returned
 `143fb2db…4adb`, 24/24 byte-identical disposition replays totaling 750,000
 deals, plus all 2,048 selected states regenerated. Current order:
 
-1. External review of the immutable v7 state set using the exact request and
-   marker at the top of `HANDOFF_REVIEW.md`.
-2. On PASS, freeze the 32-state outcome-discarding capacity packet and obtain
-   its own exact external PASS; freeze samples no worlds and consumes no admission.
+1. External review of the immutable v7 state set is **complete / PASS**.
+2. The frozen 32-state outcome-discarding capacity packet
+   `e8967d6f…d2a58` now needs exact external PASS; freeze sampled no worlds and
+   consumed no admission.
 3. Mini then runs the pilot once. Review its result, then freeze and externally
    review the v7 label-controller packet.
 4. Only after all three PASSes, Mini runs 16 label shards at eight-way concurrency.
@@ -58,7 +58,7 @@ The canonical numbers and meanings are in the results table in
 | 08-10 | Teacher Stage-C capture v4 repair | **EXTERNAL PASS / SUPERSEDED PRE-ADMISSION** | source `5a51a1e`; packet `0d1a94d4…54eaa`; Claude PASS `8263492`; exact phase fix remains valid, but a later candidate canonicality defect means no v4 receipt/state may be issued |
 | 08-10 | Teacher Stage-C capture v5 canonical-source repair | **HOLD / SUPERSEDED BEFORE ADMISSION** | source `a71c67e`; packet `e299ac6c…cf749`; play/follow/random-source repairs were sound, but equal-valued SmartBot incumbent buries still inherited hand order; zero v5 states/worlds |
 | 08-10 | Teacher Stage-C capture v6 incumbent repair | **TERMINAL HOLD / 24 SHARDS NO-USE** | Claude PASS `8d6ce71`; source `2bdb094`; receipt external `8580b336…f8c66`; ordered shards `89af231f…8d6`; six exact-late follow cells `0/N`; no state set/verification, retry or extension |
-| 08-10 | Teacher Stage-C capture v7 + state set | **TERMINAL CAPTURE PASS / STATE-SET REVIEW OPEN** | Claude source PASS `83e3fce`; source `03c87d6`; packet `b53af06c…8a43`; receipt `8fdfdef5…f0ef5`; 24/24 fresh shards; exact 2,048-state set `c7a769c4…e8e1c`; verifier `143fb2db…4adb`, all 750,000 dispositions and every state replayed |
+| 08-10 | Teacher Stage-C capture v7 + state set | **TERMINAL CAPTURE + EXTERNAL STATE-SET PASS** | Claude source PASS `83e3fce`; source `03c87d6`; packet `b53af06c…8a43`; receipt `8fdfdef5…f0ef5`; 24/24 fresh shards; reviewed 2,048-state set `c7a769c4…e8e1c`; verifier `143fb2db…4adb`, all 750,000 dispositions and every state replayed |
 | 08-09 | S4 complete-round v2 screen | **TERMINAL PASS / CONFIRMATION NOT LAUNCHED** | exact `cad3992`; treatment−champion `+0.086914 +/- 0.056166`, LCB `+0.030748`; treatment and matched null identical, null−champion zero; confirmation projection `365.592` fleet-hours / `45.699` max-shard hours |
 | 08-09 | S4 point-banking exact-state screen | **MECHANISM PASS / FULL-GAME PACKET REVIEW** | screen `abd9f36f…cdc00`; receipt `90124eb6…f526b`; overall point delta `+5.156`, LCB `+3.029`; both roles positive; no strength or launch authority |
 | 08-09 | Human H0 design v3 | **DESIGN PASS / CONTROLLER FROZEN** | source `b02b6de`, packet commit `d6214ce`, packet `4d3f0a35…8cc3c`; Claude marker `239f13c`; preserved plays, frozen buries, 17/33 caps, explicit continuation, finite work; no outcomes |

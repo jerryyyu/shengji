@@ -65,6 +65,10 @@ that exact object.
 Additional measured staging evidence: all label runtime-source manifests are
 byte-identical between frozen label Git `3f6f048` and integrated Git
 `42e17269…160c`; compiled strict-void Stage-C+S3c tests pass 252/252 on Air.
+A real-boundary replay against frozen packet `e4958358…09c2` demonstrates the
+defect and repair directly: the former validator refuses
+`label-controller identity/authority drift`, while the new validator accepts
+producer `3f6f048`, the exact external hash and all 26 pinned runtime sources.
 A fresh Cython rebuild produced a different binary hash (`69817399…07b`), so
 it was not admitted; the worktree is staged with the already-reviewed exact
 binary `9c9e77fb…be4c1`, and `require_runtime_mode()` reproduces the frozen

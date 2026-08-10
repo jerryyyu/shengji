@@ -15,3 +15,8 @@ server/build/
 server/shengji/engine/_fast.c
 *.so
 logs/local/
+
+# Durable one-shot experiment tombstones are runtime state, not source.  Keep
+# them outside Git's cleanliness boundary so an admitted run can reopen its
+# frozen controller while unrelated tracked or untracked changes still fail.
+server/runs/locks/

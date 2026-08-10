@@ -37,14 +37,15 @@ sys.path.insert(0, str(SERVER))
 import s3c_exact_root_design as DESIGN  # noqa: E402
 
 
-SCHEMA = "s3c-one-card-capacity-controller-v1"
-PACKET_ID = "s3c-one-card-capacity-173m-v1"
+SCHEMA = "s3c-one-card-capacity-controller-v2"
+PACKET_ID = "s3c-one-card-capacity-173m-v2"
 RUN_ID = PACKET_ID
-RECEIPT_SCHEMA = "s3c-one-card-capacity-execution-receipt-v1"
-RESULT_SCHEMA = "s3c-one-card-capacity-result-v1"
-FINAL_SCHEMA = "s3c-one-card-capacity-final-v1"
-REVIEW_SCHEMA = "s3c-one-card-capacity-controller-review-v1"
-REVIEW_MARKER = "S3C_ONE_CARD_CAPACITY_CONTROLLER_V1_REVIEW "
+RECEIPT_SCHEMA = "s3c-one-card-capacity-execution-receipt-v2"
+ADMISSION_SCHEMA = "s3c-one-card-capacity-admission-slot-v2"
+RESULT_SCHEMA = "s3c-one-card-capacity-result-v2"
+FINAL_SCHEMA = "s3c-one-card-capacity-final-v2"
+REVIEW_SCHEMA = "s3c-one-card-capacity-controller-review-v2"
+REVIEW_MARKER = "S3C_ONE_CARD_CAPACITY_CONTROLLER_V2_REVIEW "
 
 DESIGN_PACKET_LOGICAL_PATH = (
     "server/runs/logs/s3c-exact-root-curriculum-v1/design_packet.json"
@@ -87,6 +88,7 @@ SAMPLER_FLAGS = (
     "SHENGJI_ALLOW_BALLOT_MISMATCH",
 )
 SOURCE_PATHS = (
+    ".gitignore",
     "server/scripts/s3c_one_card_controller.py",
     "server/scripts/s3c_one_card_runtime.py",
     "server/scripts/s3c_exact_root_design.py",
@@ -177,6 +179,27 @@ def git(*args: str) -> str:
     ).stdout.strip()
 
 
+def admission_slot_logical_path() -> str:
+    return f"server/runs/locks/{RUN_ID}.consumed.json"
+
+
+def require_admission_slot_ignored() -> dict:
+    logical_path = admission_slot_logical_path()
+    result = subprocess.run(
+        ["git", "check-ignore", "--quiet", logical_path], cwd=REPO,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        raise ControllerRefused(
+            f"admission slot is not Git-ignored: {logical_path}")
+    return {"logical_path": logical_path, "gitignored": True}
+
+
+def require_clean_tree(message: str) -> None:
+    if git("status", "--porcelain", "--untracked-files=all"):
+        raise ControllerRefused(message)
+
+
 def require_ancestor(commit: str) -> None:
     result = subprocess.run(
         ["git", "merge-base", "--is-ancestor", commit, "HEAD"], cwd=REPO,
@@ -188,7 +211,8 @@ def require_ancestor(commit: str) -> None:
 
 def producer_identity(*, smoke: bool) -> dict:
     head = git("rev-parse", "HEAD")
-    dirty = bool(git("status", "--porcelain"))
+    require_admission_slot_ignored()
+    dirty = bool(git("status", "--porcelain", "--untracked-files=all"))
     if dirty and not smoke:
         raise ControllerRefused("real controller freeze refuses a dirty tree")
     return {
@@ -508,9 +532,12 @@ def command_templates() -> dict:
 def result_contract(schedule: Mapping[str, object]) -> dict:
     return {
         "single_process_atomic_result": True,
-        "durable_one_shot_admission_slot": (
-            "server/runs/locks/s3c-one-card-capacity-173m-v1.consumed.json"),
+        "durable_one_shot_admission_slot": admission_slot_logical_path(),
         "admission_slot_published_before_receipt": True,
+        "receipt_deletion_cannot_reissue": True,
+        "admission_slot_gitignored": True,
+        "admit_then_runtime_reopen_required": True,
+        "unrelated_git_dirt_refused": True,
         "result_schema": RESULT_SCHEMA,
         "terminal_schema": FINAL_SCHEMA,
         "every_selected_root_exactly_once": True,
@@ -661,6 +688,15 @@ def packet_problems(actual: dict, expected: dict) -> list[str]:
             or preflight.get("action_values_computed") is not False
             or preflight.get("outcomes_computed") is not False):
         problems.append("controller preflight is not score-free")
+    contract = actual.get("result_contract", {})
+    if (contract.get("durable_one_shot_admission_slot")
+            != admission_slot_logical_path()
+            or contract.get("admission_slot_published_before_receipt") is not True
+            or contract.get("receipt_deletion_cannot_reissue") is not True
+            or contract.get("admission_slot_gitignored") is not True
+            or contract.get("admit_then_runtime_reopen_required") is not True
+            or contract.get("unrelated_git_dirt_refused") is not True):
+        problems.append("one-shot admission contract drift")
     return sorted(set(problems))
 
 

@@ -25,8 +25,6 @@ REPO = SERVER.parent
 sys.path.insert(0, str(SCRIPT.parent))
 
 import live_champion_parent as LIVE_PARENT_AUTH  # noqa: E402
-import h0_human_counterfactual_controller as H0_CONTROLLER  # noqa: E402
-import h0_human_counterfactual_runtime as H0_RUNTIME  # noqa: E402
 
 
 SCHEMA = "teacher-stage-c-hard-tail-design-v3"
@@ -39,6 +37,10 @@ PACKET_ID = "teacher-v3-hard-tail-stage-c-design-v1"
 ADAPTER_SCHEMA = "teacher-v3-terminal-adapter-v2"
 ADAPTER_SHA256 = "56ccefbd62d9ea2aef30a4c6e54e11a0d2231e464f129e754b84b3488f1c2442"
 H0_CONTROLLER_SCHEMA = "human-h0-counterfactual-controller-v2"
+H0_CONTROLLER_PACKET_ID = "human-v8-h0-counterfactual-controller-v2"
+H0_CONTROLLER_RUN_ID = "human-v8-h0-counterfactual-execution-v2"
+H0_CONTROLLER_REVIEW_SCHEMA = "human-h0-counterfactual-controller-review-v2"
+H0_CONTROLLER_REVIEW_MARKER = "H0_HUMAN_COUNTERFACTUAL_CONTROLLER_V2_REVIEW "
 H0_CONTROLLER_SHA256 = (
     "3f68dc6ec6d5f90043f36c0a68847ca9ef510641e01760ac4fa11ebd6a6a7fcf"
 )
@@ -47,6 +49,33 @@ H0_CONTROLLER_INTERNAL_SHA256 = (
 )
 H0_CONTROLLER_GIT = "6977dbbdc77276b115faf941509b8034d7801bf0"
 H0_CONTROLLER_PACKET_GIT = "d99f7e8245e8f521475a1f109dcf7a9196e88878"
+H0_CONTROLLER_SCRIPT_SHA256 = (
+    "108e6bb20983350db2a7b679cd080f29acf6128fa0557d4d0e7f1a1823eaf379"
+)
+H0_RUNTIME_SCRIPT_SHA256 = (
+    "ddf8b2504ff70d7af928e3c6f39c5a9e5071abd8eaea0c6af9c6719c2992a124"
+)
+H0_DESIGN_PACKET_SHA256 = (
+    "4d3f0a35082c6957f2a468686b8eedbd6d7cbbf9540503fcea08cccf27c8cc3c"
+)
+H0_DESIGN_REVIEW_GIT = "239f13ce52a8be81108fdebf9bd0e96742e60133"
+H0_SOURCE_MANIFEST_SHA256 = (
+    "07ff18fb35f2fb987f18b37b5100172e2751681fbfed17285ce7d7035232aa5e"
+)
+H0_V11PAIR_SHA256 = (
+    "cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003"
+)
+H0_SELECTED_PLAY_ROWS_SHA256 = (
+    "18673b20ca0a5b1a8e476f3bcf45cf9d08f90f4244f9c5ee07cb8bd8cd47711d"
+)
+H0_SELECTED_BURY_ROWS_SHA256 = (
+    "cdfe77dfbec0e97fb8935c5822239acd6db60c644c433c32a4445913459aa1e8"
+)
+H0_MAX_CANDIDATE_WORLDS = 1_329_210
+H0_ADMISSION_SLOT = (
+    "server/runs/locks/"
+    "human-v8-h0-counterfactual-execution-v2.consumed.json"
+)
 H0_SCHEDULE_SHA256 = (
     "f54ce37425707dfeea3563bbc5d635617943152166a82825a74e55ad00131793"
 )
@@ -153,6 +182,78 @@ def sha256_file(path: str | os.PathLike[str]) -> str:
         for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def is_regular_unlinked(path: Path) -> bool:
+    try:
+        info = path.lstat()
+    except OSError:
+        return False
+    return (stat.S_ISREG(info.st_mode) and info.st_nlink == 1
+            and not path.is_symlink())
+
+
+def marker_claim(path: Path, marker: str) -> dict:
+    try:
+        lines = path.read_text().splitlines()
+    except OSError as exc:
+        raise StageCDesignError(f"cannot read review record: {exc}") from exc
+    matches = [line[len(marker):] for line in lines if line.startswith(marker)]
+    if len(matches) != 1:
+        raise StageCDesignError(
+            f"review record must contain exactly one {marker.strip()} marker")
+    try:
+        claim = json.loads(matches[0])
+    except ValueError as exc:
+        raise StageCDesignError("review marker is not valid JSON") from exc
+    if not isinstance(claim, dict):
+        raise StageCDesignError("review marker claim is not an object")
+    return claim
+
+
+def expected_h0_v2_review_claim(packet: dict) -> dict:
+    """Reopen the immutable H0-v2 evidence without importing moving code.
+
+    Stage-C-v3 is a historical score-free packet bound to H0-v2.  A future H0
+    implementation must not silently change what this packet meant; a reviewed
+    H0 successor instead requires a separately versioned Stage-C rebind.
+    """
+    return {
+        "schema": H0_CONTROLLER_REVIEW_SCHEMA,
+        "git": packet["producer"]["git"],
+        "controller_script_sha256": packet["producer"]["script_sha256"],
+        "runtime_script_sha256": H0_RUNTIME_SCRIPT_SHA256,
+        "packet_sha256": H0_CONTROLLER_SHA256,
+        "design_packet_sha256": H0_DESIGN_PACKET_SHA256,
+        "design_review_git": H0_DESIGN_REVIEW_GIT,
+        "corpus_manifest_sha256": HUMAN_CORPUS_SHA256,
+        "source_manifest_sha256": H0_SOURCE_MANIFEST_SHA256,
+        "v11_checkpoint_sha256": H0_V11PAIR_SHA256,
+        "selected_play_rows_sha256": H0_SELECTED_PLAY_ROWS_SHA256,
+        "selected_bury_rows_sha256": H0_SELECTED_BURY_ROWS_SHA256,
+        "schedule_sha256": packet["schedule"]["schedule_sha256"],
+        "candidate_geometry_sha256": packet["score_free_preflight"][
+            "candidate_geometry_sha256"],
+        "max_candidate_worlds": H0_MAX_CANDIDATE_WORLDS,
+        "score_free_preflight_verified": True,
+        "strict_runtime_verified": True,
+        "fast_router_sha256": packet["execution_runtime"][
+            "fast_router_sha256"],
+        "compiled_fast_binary_sha256": packet["execution_runtime"][
+            "compiled_fast_binary_sha256"],
+        "admission_slot_logical_path": H0_ADMISSION_SLOT,
+        "deletion_proof_one_shot": True,
+        "worlds_sampled_before_review": 0,
+        "outcomes_computed_before_review": False,
+        "independent_review": True,
+        "one_counterfactual_execution_authorized": True,
+        "labels_authorized": False,
+        "training_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+        "verdict": "PASS",
+    }
 
 
 def _load_json(path: Path) -> dict:
@@ -328,7 +429,7 @@ def validate_h0_controller(path: Path, expected_sha256: str,
     marker while preserving the controller's no-outcome/no-label authority.
     """
     if (expected_sha256 != H0_CONTROLLER_SHA256
-            or not H0_CONTROLLER.is_regular_unlinked(path)
+            or not is_regular_unlinked(path)
             or sha256_file(path) != H0_CONTROLLER_SHA256):
         raise StageCDesignError("H0 controller packet SHA-256 drift")
     packet = _load_json(path)
@@ -337,29 +438,31 @@ def validate_h0_controller(path: Path, expected_sha256: str,
     inputs = packet.get("inputs", {})
     result = packet.get("result_contract", {})
     if (packet.get("schema") != H0_CONTROLLER_SCHEMA
-            or packet.get("packet_id") != H0_CONTROLLER.PACKET_ID
-            or packet.get("run_id") != H0_CONTROLLER.RUN_ID
+            or packet.get("packet_id") != H0_CONTROLLER_PACKET_ID
+            or packet.get("run_id") != H0_CONTROLLER_RUN_ID
             or packet.get("packet_sha256") !=
             H0_CONTROLLER_INTERNAL_SHA256
             or packet.get("producer") != {
                 "git": H0_CONTROLLER_GIT,
                 "promotable": True,
-                "script_sha256": H0_CONTROLLER.sha256_file(
-                    H0_CONTROLLER.SCRIPT),
+                "script_sha256": H0_CONTROLLER_SCRIPT_SHA256,
                 "tree_dirty": False,
             }
+            or packet.get("runtime_sources", {}).get(
+                "server/scripts/h0_human_counterfactual_runtime.py") !=
+            H0_RUNTIME_SCRIPT_SHA256
             or packet.get("design", {}).get("sha256") !=
-            H0_CONTROLLER.DESIGN_PACKET_SHA256
+            H0_DESIGN_PACKET_SHA256
             or inputs.get("human_corpus", {}).get("manifest_sha256") !=
             HUMAN_CORPUS_SHA256
             or inputs.get("source_snapshot", {}).get("manifest_sha256") !=
-            H0_CONTROLLER.SOURCE_MANIFEST_SHA256
+            H0_SOURCE_MANIFEST_SHA256
             or inputs.get("v11pair", {}).get("sha256") !=
-            H0_CONTROLLER.V11PAIR_SHA256
+            H0_V11PAIR_SHA256
             or inputs.get("selected_play_rows_sha256") !=
-            H0_CONTROLLER.SELECTED_PLAY_ROWS_SHA256
+            H0_SELECTED_PLAY_ROWS_SHA256
             or inputs.get("selected_bury_rows_sha256") !=
-            H0_CONTROLLER.SELECTED_BURY_ROWS_SHA256
+            H0_SELECTED_BURY_ROWS_SHA256
             or preflight.get("status") != "VERIFIED_SCORE_FREE"
             or preflight.get("rows_replayed") != 557
             or preflight.get("worlds_sampled") != 0
@@ -378,9 +481,9 @@ def validate_h0_controller(path: Path, expected_sha256: str,
             or preflight.get("candidate_geometry_sha256") !=
             H0_CANDIDATE_GEOMETRY_SHA256
             or result.get("work", {}).get("candidate_world_ceiling") !=
-            H0_CONTROLLER.MAX_CANDIDATE_WORLDS
+            H0_MAX_CANDIDATE_WORLDS
             or result.get("durable_one_shot_admission_slot") !=
-            H0_CONTROLLER.admission_slot_logical_path()
+            H0_ADMISSION_SLOT
             or result.get("receipt_deletion_cannot_reissue") is not True
             or authority != {
                 "score_free": True,
@@ -400,14 +503,12 @@ def validate_h0_controller(path: Path, expected_sha256: str,
         LIVE_PARENT_AUTH.require_parent_payload(inputs.get("live_parent"))
     except LIVE_PARENT_AUTH.ProtocolRefused as exc:
         raise StageCDesignError("H0 controller live-parent drift") from exc
-    if not H0_CONTROLLER.is_regular_unlinked(review_record):
+    if not is_regular_unlinked(review_record):
         raise StageCDesignError("H0 controller review record is not regular")
     try:
-        claim = H0_CONTROLLER._marker_claim(
-            review_record, H0_CONTROLLER.REVIEW_MARKER)
-        expected_claim = H0_RUNTIME._expected_review_claim(
-            packet, H0_CONTROLLER_SHA256)
-    except (H0_CONTROLLER.ControllerRefused, KeyError, TypeError) as exc:
+        claim = marker_claim(review_record, H0_CONTROLLER_REVIEW_MARKER)
+        expected_claim = expected_h0_v2_review_claim(packet)
+    except (StageCDesignError, KeyError, TypeError) as exc:
         raise StageCDesignError("H0 controller review cannot reopen") from exc
     if claim != expected_claim:
         raise StageCDesignError("H0 controller PASS marker drift")
@@ -542,13 +643,13 @@ def build_packet(adapter_path: Path, adapter_sha256: str,
                 "source_git": H0_CONTROLLER_GIT,
                 "packet_git": H0_CONTROLLER_PACKET_GIT,
                 "design_packet_sha256":
-                    H0_CONTROLLER.DESIGN_PACKET_SHA256,
+                    H0_DESIGN_PACKET_SHA256,
                 "review_claim": h0_review,
                 "schedule_sha256": H0_SCHEDULE_SHA256,
                 "candidate_geometry_sha256":
                     H0_CANDIDATE_GEOMETRY_SHA256,
                 "max_candidate_worlds":
-                    H0_CONTROLLER.MAX_CANDIDATE_WORLDS,
+                    H0_MAX_CANDIDATE_WORLDS,
                 "execution_is_diagnostic_not_label_authority": True,
             },
         },
@@ -593,7 +694,7 @@ def build_packet(adapter_path: Path, adapter_sha256: str,
             "human_witnesses": {
                 "h0_controller_packet_sha256": H0_CONTROLLER_SHA256,
                 "h0_controller_review_schema":
-                    H0_CONTROLLER.REVIEW_SCHEMA,
+                    H0_CONTROLLER_REVIEW_SCHEMA,
                 "allowed_source_split": "DESIGN",
                 "supplemental_dev_diagnostic_only": True,
                 "included_in_calib_or_report": False,
@@ -861,7 +962,7 @@ def expected_review_claim(packet: dict, packet_sha256: str) -> dict:
         "packet_sha256": packet_sha256,
         "adapter_sha256": ADAPTER_SHA256,
         "h0_controller_sha256": H0_CONTROLLER_SHA256,
-        "h0_controller_review_schema": H0_CONTROLLER.REVIEW_SCHEMA,
+        "h0_controller_review_schema": H0_CONTROLLER_REVIEW_SCHEMA,
         "live_parent_schema": LIVE_PARENT_AUTH.SCHEMA,
         "live_parent_policy": LIVE_PARENT_AUTH.CHAMPION_POLICY,
         "states": packet["population_contract"]["total_states"],

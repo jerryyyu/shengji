@@ -36,6 +36,9 @@ EPOCH_GRID = (1, 2, 4, 8, 16, 32)
 PAIRWISE_WEIGHT = 1.0
 LABEL_CE_WEIGHT = 0.25
 OUTCOME_CE_WEIGHT = 1.0
+ORDINARY_WORLDS = 256
+HARD_SELECTION_WORLDS = 64
+HARD_REPORT_WORLDS = 300
 
 
 class StageCModelError(RuntimeError):
@@ -174,6 +177,10 @@ def build_target(state: Mapping[str, object], row: Mapping[str, object]) -> dict
     sample_worlds = [len(values) for values in utilities]
     if len(set(sample_worlds)) != 1:
         raise StageCModelError("Stage-C target common-world count drift")
+    expected_base_worlds = (ORDINARY_WORLDS if recipe == "ordinary_anchor"
+                            else HARD_SELECTION_WORLDS)
+    if sample_worlds[0] != expected_base_worlds:
+        raise StageCModelError("Stage-C target world budget drift")
     ranking_distributions = [utility_distribution(values)
                              for values in utilities]
     # All-candidate ranking metrics must stay on one common-world fold.  A
@@ -194,6 +201,7 @@ def build_target(state: Mapping[str, object], row: Mapping[str, object]) -> dict
             pair_weights[left][right] = pair_weights[right][left] = 1.0
 
     deeper_pair = None
+    deeper_indices = None
     if recipe == "hard_tail":
         report = row.get("report")
         if not isinstance(report, dict):
@@ -210,6 +218,8 @@ def build_target(state: Mapping[str, object], row: Mapping[str, object]) -> dict
         right_values = list(report_actions[1]["signed_level_utility"])
         if len(left_values) != len(right_values) or not left_values:
             raise StageCModelError("Stage-C hard-tail report worlds drift")
+        if len(left_values) != HARD_REPORT_WORLDS:
+            raise StageCModelError("Stage-C hard-tail report budget drift")
         distributions[left_index] = utility_distribution(left_values)
         distributions[right_index] = utility_distribution(right_values)
         if left_index != right_index:
@@ -224,11 +234,14 @@ def build_target(state: Mapping[str, object], row: Mapping[str, object]) -> dict
             "worlds": len(left_values),
             "replaced_all_candidate_pair": left_index != right_index,
         }
+        deeper_indices = {left_index, right_index}
 
     label = row.get("label_action", {}).get("index")
     if (isinstance(label, bool) or not isinstance(label, int)
             or not 0 <= label < count):
         raise StageCModelError("Stage-C frozen label index drift")
+    if deeper_indices is not None and label not in deeper_indices:
+        raise StageCModelError("Stage-C hard-tail label/report identity drift")
     target = {
         "schema": "teacher-stage-c-model-target-v1",
         "state_id": state["state_id"],
@@ -510,7 +523,10 @@ def evaluate_predictions(examples: Sequence[Mapping[str, object]],
         state_prior = []
         for predicted, actual in zip(predictions, distributions, strict=True):
             if (len(predicted) != len(UTILITY_BINS)
-                    or any(float(value) <= 0 or not math.isfinite(float(value))
+                    or any(isinstance(value, bool)
+                           or not isinstance(value, (int, float))
+                           or float(value) <= 0
+                           or not math.isfinite(float(value))
                            for value in predicted)
                     or not math.isclose(sum(float(value) for value in predicted),
                                         1.0, rel_tol=1e-6, abs_tol=1e-6)):
@@ -571,8 +587,22 @@ def select_global_epoch(records: Sequence[Mapping[str, object]]) -> dict:
         if (isinstance(epoch, bool) or not isinstance(epoch, int)
                 or epoch not in EPOCH_GRID
                 or record.get("seed") not in TRAINING_SEEDS
-                or record.get("surface") not in SURFACES):
+                or record.get("surface") not in SURFACES
+                or record.get("split") != "CALIB"
+                or record.get("curve_fraction") != 1.0):
             raise StageCModelError("Stage-C CALIB record identity drift")
+        metrics = record.get("metrics")
+        required_metrics = {
+            "ranking_improvement_vs_candidate0", "outcome_nll_improvement_vs_prior",
+            "mean_teacher_regret", "outcome_nll",
+        }
+        if (not isinstance(metrics, dict)
+                or any(name not in metrics
+                       or isinstance(metrics[name], bool)
+                       or not isinstance(metrics[name], (int, float))
+                       or not math.isfinite(float(metrics[name]))
+                       for name in required_metrics)):
+            raise StageCModelError("Stage-C CALIB metric drift")
         by_epoch[epoch].append(record)
     candidates = []
     expected_cells = {(surface, seed) for surface in SURFACES

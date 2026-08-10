@@ -35,9 +35,9 @@ def _state(*, recipe: str = "ordinary_anchor", split: str = "DESIGN",
 def _row(*, recipe: str = "ordinary_anchor", split: str = "DESIGN",
          surface: str = "play", state_id: str = "s0") -> dict:
     base = [
-        [-1.5, -0.5, 0.5, 1.5],
-        [0.5, 0.5, 1.5, 1.5],
-        [-1.5, -1.5, -0.5, -0.5],
+        [-1.5, -0.5, 0.5, 1.5] * 64,
+        [0.5, 0.5, 1.5, 1.5] * 64,
+        [-1.5, -1.5, -0.5, -0.5] * 64,
     ]
     selection = {
         "candidate_indices": [0, 1, 2],
@@ -46,12 +46,16 @@ def _row(*, recipe: str = "ordinary_anchor", split: str = "DESIGN",
     }
     report = copy.deepcopy(selection)
     if recipe == "hard_tail":
+        selection = {
+            "candidate_indices": [0, 1, 2],
+            "actions": [_action(index, values[:64])
+                        for index, values in enumerate(base)],
+        }
         report = {
             "candidate_indices": [0, 1],
             "actions": [
-                _action(0, [-1.5, -1.5, -0.5, -0.5,
-                            -0.5, 0.5, 0.5, 0.5]),
-                {**_action(1, [1.5] * 8), "logical_index": 1},
+                _action(0, [-0.5] * 300),
+                {**_action(1, [1.5] * 300), "logical_index": 1},
             ],
         }
     return {
@@ -105,7 +109,7 @@ def test_paired_preference_uses_common_world_wins_and_half_ties() -> None:
 def test_ordinary_target_uses_all_candidate_report_fold() -> None:
     target = MODEL.build_target(_state(), _row())
     assert target["all_candidate_fold"] == "report"
-    assert target["all_candidate_worlds"] == 4
+    assert target["all_candidate_worlds"] == 256
     assert target["deeper_report_pair"] is None
     assert target["pairwise_preference"][1][0] == pytest.approx(0.875)
     assert target["ranking_mean_signed_level_utility"] == pytest.approx(
@@ -125,16 +129,16 @@ def test_hard_tail_target_replaces_only_deeper_zero_winner_evidence() -> None:
     assert target["all_candidate_fold"] == "selection"
     assert target["deeper_report_pair"] == {
         "candidate_indices": [0, 1],
-        "worlds": 8,
+        "worlds": 300,
         "replaced_all_candidate_pair": True,
     }
     assert target["pairwise_preference"][1][0] == 1.0
-    assert target["pairwise_weight"][1][0] == 2.0
+    assert target["pairwise_weight"][1][0] == pytest.approx(300 / 64)
     # Candidate 2 still comes from the all-candidate selection fold.
     assert target["ranking_mean_signed_level_utility"] == pytest.approx(
         [0.0, 1.0, -1.0])
     assert target["outcome_mean_signed_level_utility"][0] == pytest.approx(
-        -0.375)
+        -0.5)
     assert target["outcome_mean_signed_level_utility"][1] == pytest.approx(1.5)
     assert target["outcome_mean_signed_level_utility"][2] == pytest.approx(-1.0)
 
@@ -166,6 +170,19 @@ def test_target_rejects_state_recipe_or_stratum_drift() -> None:
     row["recipe"] = "hard_tail"
     with pytest.raises(MODEL.StageCModelError, match="state/recipe"):
         MODEL.build_target(_state(), row)
+
+
+def test_target_rejects_world_budget_and_hard_label_drift() -> None:
+    row = _row()
+    row["report"]["actions"][0]["signed_level_utility"].pop()
+    row["report"]["actions"][1]["signed_level_utility"].pop()
+    row["report"]["actions"][2]["signed_level_utility"].pop()
+    with pytest.raises(MODEL.StageCModelError, match="budget"):
+        MODEL.build_target(_state(), row)
+    row = _row(recipe="hard_tail")
+    row["label_action"]["index"] = 2
+    with pytest.raises(MODEL.StageCModelError, match="label/report"):
+        MODEL.build_target(_state(recipe="hard_tail"), row)
     row = _row()
     row["stratum"] = "proposal_disagreement"
     with pytest.raises(MODEL.StageCModelError, match="identity"):
@@ -228,6 +245,7 @@ def _selection_records(*, passing: bool) -> list[dict]:
                 good = passing and epoch == 8
                 records.append({
                     "epoch": epoch, "surface": surface, "seed": seed,
+                    "split": "CALIB", "curve_fraction": 1.0,
                     "metrics": {
                         "ranking_improvement_vs_candidate0": 0.2 if good else -0.1,
                         "outcome_nll_improvement_vs_prior": 0.1 if good else -0.1,

@@ -893,6 +893,11 @@ def validate_pass_result_semantics(
                            and value >= 0 for value in sampler.values())
                 or sampler["accepted_worlds"]
                 + sampler["failed_worlds"] != sampler["sampler_attempts"]
+                or sampler["unique_worlds_within_folds"]
+                + sampler["duplicate_draws_retained"]
+                != sampler["accepted_worlds"]
+                or sampler["prior_fold_overlap_draws_retained"]
+                > sampler["accepted_worlds"]
                 or sampler["rejected_worlds"] > sampler["failed_worlds"]
                 or sample.get("reason_class") is not None
                 or sample.get("reason_sha256") is not None

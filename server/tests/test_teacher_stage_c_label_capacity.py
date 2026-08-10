@@ -223,6 +223,11 @@ def test_result_semantics_recompute_projection_and_sample_identity() -> None:
     with pytest.raises(capacity.CapacityRefused, match="sample identity"):
         capacity.validate_pass_result_semantics(changed, packet, state_set)
 
+    changed = copy.deepcopy(result)
+    changed["samples"][0]["sampler"]["duplicate_draws_retained"] = 1
+    with pytest.raises(capacity.CapacityRefused, match="safe telemetry"):
+        capacity.validate_pass_result_semantics(changed, packet, state_set)
+
 
 def test_outcome_or_world_identity_mutation_is_detected_recursively() -> None:
     assert capacity.forbidden_outcome_paths({

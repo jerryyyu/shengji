@@ -681,12 +681,68 @@ def publish_exclusive(path: Path, payload: Mapping[str, object]) -> None:
         raise
 
 
+def _reviewed_upstream_label_packet(path: Path,
+                                    expected_sha256: str) -> dict:
+    """Authenticate a reviewed label packet across a downstream Git commit.
+
+    Label execution deliberately pins its producer Git for the lifetime of the
+    one-shot run.  Training is a later source commit, so requiring that old
+    producer Git to equal the training controller's Git makes the reviewed
+    label aggregate impossible to consume.  The safe cross-stage boundary is
+    the immutable packet hash plus byte-identical label runtime sources, not an
+    equality between two intentionally different producer commits.
+    """
+    expected_path = (REPO / LABEL_CTRL.CONTROLLER_PACKET_PATH).resolve()
+    if (path.resolve() != expected_path or not is_regular_unlinked(path)
+            or sha256_file(path) != expected_sha256):
+        raise TrainingControllerRefused(
+            "reviewed label-controller packet path/SHA drift")
+    packet = load_json(path)
+    producer = packet.get("producer", {})
+    authority = packet.get("authority", {})
+    producer_git = producer.get("git")
+    try:
+        runtime_mode = LABEL_CTRL.CAPTURE_CTRL.require_runtime_mode()
+        runtime_sources = LABEL_CTRL.runtime_sources()
+        shard_slots = LABEL_CTRL.require_shard_admission_slots_ignored()
+    except LABEL_CTRL.ControllerRefused as exc:
+        raise TrainingControllerRefused(
+            f"label-controller source validation failed: {exc}") from exc
+    if (not isinstance(producer_git, str) or len(producer_git) != 40
+            or any(value not in "0123456789abcdef" for value in producer_git)
+            or packet.get("schema") != LABEL_CTRL.SCHEMA
+            or packet.get("packet_id") != LABEL_CTRL.PACKET_ID
+            or packet.get("run_id") != LABEL_CTRL.RUN_ID
+            or packet.get("packet_sha256") != LABEL_CTRL.self_hash(packet)
+            or producer.get("tree_dirty") is not False
+            or producer.get("promotable") is not True
+            or packet.get("runtime_mode") != runtime_mode
+            or packet.get("runtime_sources") != runtime_sources
+            or packet.get("result_contract", {}).get(
+                "shard_admission_slots") != shard_slots
+            or authority.get("score_free") is not True
+            or authority.get("worlds_sampled") is not False
+            or authority.get("outcomes_computed") is not False
+            or authority.get("labels_computed") is not False
+            or authority.get("one_label_execution_authorized") is not False
+            or authority.get("training_authorized") is not False
+            or authority.get("report_open_authorized") is not False
+            or authority.get("strength_claim") is not False
+            or authority.get("production_promotion") is not False
+            or authority.get("production_deployment") is not False):
+        raise TrainingControllerRefused(
+            "reviewed label-controller identity/source/authority drift")
+    value = dict(packet)
+    value["external_sha256"] = expected_sha256
+    return value
+
+
 def _validated_inputs(args) -> tuple[dict, dict, dict, dict, str]:
     if _git("status", "--porcelain"):
         raise TrainingControllerRefused(
             "real Stage-C training-controller freeze refuses dirty tree")
     git = _git("rev-parse", "HEAD")
-    label_packet = LABEL._controller_packet(
+    label_packet = _reviewed_upstream_label_packet(
         Path(args.label_controller).resolve(),
         args.expected_label_controller_sha256)
     state_set, _verification = LABEL._validated_parents(

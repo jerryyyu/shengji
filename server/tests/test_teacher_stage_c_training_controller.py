@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+from pathlib import Path
 
 import pytest
 
@@ -275,3 +276,63 @@ def test_aggregate_claim_changes_when_report_manifest_changes() -> None:
     after = CTRL.expected_label_aggregate_review_claim(changed, "f" * 64)
     assert before["sealed_report_manifest_sha256"] \
         != after["sealed_report_manifest_sha256"]
+
+
+def _label_packet(runtime_sources: dict[str, str], shard_slots: list[str]) -> dict:
+    value = {
+        "schema": CTRL.LABEL_CTRL.SCHEMA,
+        "packet_id": CTRL.LABEL_CTRL.PACKET_ID,
+        "run_id": CTRL.LABEL_CTRL.RUN_ID,
+        "producer": {
+            "git": "a" * 40,
+            "tree_dirty": False,
+            "promotable": True,
+        },
+        "runtime_mode": {"compiled": True, "strict_voids": True},
+        "runtime_sources": runtime_sources,
+        "result_contract": {"shard_admission_slots": shard_slots},
+        "authority": {
+            "score_free": True,
+            "worlds_sampled": False,
+            "outcomes_computed": False,
+            "labels_computed": False,
+            "one_label_execution_authorized": False,
+            "training_authorized": False,
+            "report_open_authorized": False,
+            "strength_claim": False,
+            "production_promotion": False,
+            "production_deployment": False,
+        },
+    }
+    value["packet_sha256"] = CTRL.LABEL_CTRL.self_hash(value)
+    return value
+
+
+def test_training_accepts_reviewed_label_parent_from_different_git_only_when_sources_match(
+        monkeypatch, tmp_path: Path) -> None:
+    sources = {"server/scripts/label.py": "1" * 64}
+    slots = [f"server/runs/locks/shard-{index}.json" for index in range(16)]
+    monkeypatch.setattr(CTRL, "REPO", tmp_path)
+    monkeypatch.setattr(CTRL.LABEL_CTRL, "runtime_sources", lambda: sources)
+    monkeypatch.setattr(
+        CTRL.LABEL_CTRL, "require_shard_admission_slots_ignored",
+        lambda: slots)
+    monkeypatch.setattr(
+        CTRL.LABEL_CTRL.CAPTURE_CTRL, "require_runtime_mode",
+        lambda: {"compiled": True, "strict_voids": True})
+    path = tmp_path / CTRL.LABEL_CTRL.CONTROLLER_PACKET_PATH
+    path.parent.mkdir(parents=True)
+    packet = _label_packet(sources, slots)
+    path.write_bytes(CTRL.canonical_json(packet))
+    digest = CTRL.sha256_file(path)
+
+    reopened = CTRL._reviewed_upstream_label_packet(path, digest)
+    assert reopened["producer"]["git"] == "a" * 40
+    assert reopened["external_sha256"] == digest
+
+    monkeypatch.setattr(
+        CTRL.LABEL_CTRL, "runtime_sources",
+        lambda: {"server/scripts/label.py": "2" * 64})
+    with pytest.raises(
+            CTRL.TrainingControllerRefused, match="identity/source/authority"):
+        CTRL._reviewed_upstream_label_packet(path, digest)

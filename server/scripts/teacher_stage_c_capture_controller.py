@@ -38,15 +38,16 @@ import teacher_stage_c_controller_rebind as REBIND  # noqa: E402
 import teacher_stage_c_design as DESIGN  # noqa: E402
 
 
-SCHEMA = "teacher-stage-c-capture-controller-v1"
-PACKET_ID = "teacher-v3-hard-tail-stage-c-capture-controller-v1"
-RUN_ID = "teacher-v3-hard-tail-stage-c-capture-v1"
-REVIEW_SCHEMA = "teacher-stage-c-capture-controller-review-v1"
-REVIEW_MARKER = "TEACHER_STAGE_C_CAPTURE_CONTROLLER_V1_REVIEW "
-RECEIPT_SCHEMA = "teacher-stage-c-capture-receipt-v1"
-ADMISSION_SCHEMA = "teacher-stage-c-capture-admission-v1"
-SHARD_SCHEMA = "teacher-stage-c-capture-shard-v1"
-DATASET_SCHEMA = "teacher-stage-c-state-set-v1"
+SCHEMA = "teacher-stage-c-capture-controller-v2"
+PACKET_ID = "teacher-v3-hard-tail-stage-c-capture-controller-v2"
+RUN_ID = "teacher-v3-hard-tail-stage-c-capture-v2"
+REVIEW_SCHEMA = "teacher-stage-c-capture-controller-review-v2"
+REVIEW_MARKER = "TEACHER_STAGE_C_CAPTURE_CONTROLLER_V2_REVIEW "
+RECEIPT_SCHEMA = "teacher-stage-c-capture-receipt-v2"
+ADMISSION_SCHEMA = "teacher-stage-c-capture-admission-v2"
+SHARD_SCHEMA = "teacher-stage-c-capture-shard-v2"
+DATASET_SCHEMA = "teacher-stage-c-state-set-v2"
+GENERATION_WITNESS_SCHEMA = "teacher-stage-c-generation-witness-v2"
 
 BASE_PACKET_SHA256 = REBIND.BASE_PACKET_SHA256
 REBIND_PACKET_SHA256 = (
@@ -58,6 +59,7 @@ SHARDS_PER_SPLIT = 8
 CAPTURE_SHARDS = SHARDS_PER_SPLIT * 3
 ACTOR_POLICY = "smart"
 UNCERTAINTY_WORLDS = 30
+UNCERTAINTY_ATTEMPT_FACTOR = 10
 UNCERTAINTY_RESERVOIR_MULTIPLIER = 4
 EXPERIMENT_ID = RUN_ID
 
@@ -127,6 +129,9 @@ REVIEW_FIELDS = (
     "states", "design_states", "calib_states", "report_states",
     "play_states", "bury_states", "scan_deals", "capture_shards",
     "uncertainty_worlds", "max_uncertainty_candidate_worlds",
+    "max_uncertainty_attempts",
+    "complete_generation_witness", "terminal_recomputes_state_identity",
+    "terminal_reconciles_work",
     "worlds_sampled_before_review", "states_captured_before_review",
     "outcomes_computed_before_review", "independent_review",
     "one_capture_execution_authorized", "labels_authorized",
@@ -464,6 +469,12 @@ def build_schedule(base: dict) -> dict:
         * int(base["candidate_contract"]["max_unique_play_actions"])
         * UNCERTAINTY_WORLDS
     )
+    max_uncertainty_attempts = (
+        uncertainty_candidates
+        * SHARDS_PER_SPLIT
+        * UNCERTAINTY_WORLDS
+        * UNCERTAINTY_ATTEMPT_FACTOR
+    )
     payload = {
         "algorithm": (
             "scan every frozen seed once; preassign one quota cell by a named "
@@ -500,8 +511,10 @@ def build_schedule(base: dict) -> dict:
             ),
             "world_stream_disjoint_from_all_label_and_audit_streams": True,
             "max_candidate_worlds": max_uncertainty_candidate_worlds,
+            "max_attempts": max_uncertainty_attempts,
         },
         "max_uncertainty_candidate_worlds": max_uncertainty_candidate_worlds,
+        "max_uncertainty_attempts": max_uncertainty_attempts,
         "scan_deals": sum(int(base["population_contract"]["splits"][name][
             "scan_deals"]) for name in split_order),
     }
@@ -673,6 +686,11 @@ def build_packet(
             "quota_cells_must_match_schedule_exactly": True,
             "acceptance_and_rejection_counters_required": True,
             "candidate_union_and_source_provenance_required": True,
+            "complete_generation_witness_required": True,
+            "one_scan_record_per_scheduled_seed": True,
+            "one_diagnostic_record_per_pre_reservoir_state": True,
+            "terminal_recomputes_cell_state_priority_actor": True,
+            "nonnegative_reconciled_work_counters": True,
             "dataset_publish_is_exclusive": True,
             "dataset_freeze_authorizes_no_labels": True,
             "durable_one_shot_admission_slot": admission_slot_logical_path(),
@@ -771,6 +789,11 @@ def expected_review_claim(packet: dict, external_sha256: str) -> dict:
         "uncertainty_worlds": UNCERTAINTY_WORLDS,
         "max_uncertainty_candidate_worlds": packet["schedule"][
             "max_uncertainty_candidate_worlds"],
+        "max_uncertainty_attempts": packet["schedule"][
+            "max_uncertainty_attempts"],
+        "complete_generation_witness": True,
+        "terminal_recomputes_state_identity": True,
+        "terminal_reconciles_work": True,
         "worlds_sampled_before_review": 0,
         "states_captured_before_review": 0,
         "outcomes_computed_before_review": False,

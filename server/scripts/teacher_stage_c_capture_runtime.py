@@ -63,7 +63,6 @@ V11_SHA256 = (
     "cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003"
 )
 UNCERTAINTY_MARGIN_WINDOW = 2.5
-SAMPLE_ATTEMPT_FACTOR = 10
 
 
 class RuntimeRefused(RuntimeError):
@@ -351,6 +350,466 @@ def _priority(split: str, cell_id: str, deal_seed: int,
     return hashlib.sha256(
         f"{CTRL.EXPERIMENT_ID}|{split}|{cell_id}|{deal_seed}|{state_id}".encode()
     ).hexdigest()
+
+
+SCAN_RECORD_FIELDS = (
+    "ordinal", "seed", "cell_id", "status", "surface_type", "seat", "ply",
+    "state_id", "selection_priority",
+)
+DIAGNOSTIC_RECORD_FIELDS = (
+    "cell_id", "state_id", "selection_priority", "status", "eligible",
+    "candidate_count", "attempts", "worlds", "candidate_worlds",
+    "selection_diagnostic",
+)
+
+
+def _nonnegative_int(value: object, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise RuntimeRefused(f"{label} must be a nonnegative integer")
+    return value
+
+
+def _records_sha256(records: Sequence[Mapping[str, object]]) -> str:
+    return CTRL.sha256_bytes(CTRL.canonical_json(list(records)))
+
+
+def _canonical_state_id(*, split: str, seed: int, surface_type: str,
+                        seat: int, ply: int) -> str:
+    if not 0 <= seat < 4:
+        raise RuntimeRefused("Stage-C state seat is outside 0..3")
+    if surface_type == "bury":
+        if ply != 0:
+            raise RuntimeRefused("Stage-C bury state has nonzero ply")
+        return f"{split}:{seed}:bury:{seat}"
+    if surface_type != "play" or ply < 0:
+        raise RuntimeRefused("Stage-C state surface/ply drift")
+    return f"{split}:{seed}:{ply}:{seat}"
+
+
+def _scan_record(ordinal: int, seed: int, cell_id: str, status: str,
+                 state: Mapping[str, object] | None) -> dict:
+    if state is None:
+        identity = {
+            "surface_type": None, "seat": None, "ply": None,
+            "state_id": None, "selection_priority": None,
+        }
+    else:
+        identity = {
+            "surface_type": state["surface_type"],
+            "seat": state["seat"],
+            "ply": state["ply"],
+            "state_id": state["state_id"],
+            "selection_priority": state["selection_priority"],
+        }
+    return {
+        "ordinal": ordinal, "seed": seed, "cell_id": cell_id,
+        "status": status, **identity,
+    }
+
+
+def _diagnostic_record(*, cell_id: str, state: Mapping[str, object],
+                       status: str, eligible: bool,
+                       diagnostic: Mapping[str, object] | None) -> dict:
+    candidate_count = len(state.get("candidates", []))
+    attempts = worlds = candidate_worlds = 0
+    stored_diagnostic = None
+    if diagnostic is not None:
+        stored_diagnostic = copy.deepcopy(dict(diagnostic))
+        attempts = int(diagnostic["attempts"])
+        worlds = int(diagnostic["worlds"])
+        candidate_worlds = int(diagnostic["candidate_worlds"])
+        candidate_count = len(state.get("candidates", []))
+    return {
+        "cell_id": cell_id,
+        "state_id": state["state_id"],
+        "selection_priority": state["selection_priority"],
+        "status": status,
+        "eligible": eligible,
+        "candidate_count": candidate_count,
+        "attempts": attempts,
+        "worlds": worlds,
+        "candidate_worlds": candidate_worlds,
+        "selection_diagnostic": stored_diagnostic,
+    }
+
+
+def _validate_retained_state_identity(
+    packet: dict,
+    schedule: Mapping[str, object],
+    state: Mapping[str, object],
+    actor_identity: Mapping[str, object],
+) -> None:
+    split = str(schedule["split"])
+    if not isinstance(state, dict):
+        raise RuntimeRefused("Stage-C retained state is not an object")
+    seed = _nonnegative_int(state.get("seed"), "Stage-C retained seed")
+    if seed not in _shard_seeds(schedule):
+        raise RuntimeRefused("Stage-C retained seed is outside its shard")
+    cell = _cell_for_seed(packet, split, seed)
+    if (state.get("schema") != "teacher-stage-c-replay-state-v1"
+            or state.get("experiment_id") != CTRL.EXPERIMENT_ID
+            or state.get("capture_packet_id") != CTRL.PACKET_ID
+            or state.get("split") != split
+            or state.get("cell_id") != cell["cell_id"]
+            or state.get("surface_type") != cell["surface_type"]
+            or state.get("stratum") != cell["stratum"]
+            or state.get("role") != cell["role"]
+            or state.get("surface") != cell["surface"]):
+        raise RuntimeRefused("Stage-C retained state cell assignment drift")
+    if (cell["phase"] != "any" and state.get("phase") != cell["phase"]):
+        raise RuntimeRefused("Stage-C retained state phase assignment drift")
+    if (cell["phase"] == "any"
+            and state.get("phase") not in {"early", "mid", "late"}):
+        raise RuntimeRefused("Stage-C retained any-phase state drift")
+    seat = _nonnegative_int(state.get("seat"), "Stage-C retained seat")
+    ply = _nonnegative_int(state.get("ply"), "Stage-C retained ply")
+    plays = state.get("plays")
+    if not isinstance(plays, list) or len(plays) != ply:
+        raise RuntimeRefused("Stage-C retained play/ply identity drift")
+    state_id = _canonical_state_id(
+        split=split, seed=seed, surface_type=str(state["surface_type"]),
+        seat=seat, ply=ply)
+    if state.get("state_id") != state_id:
+        raise RuntimeRefused("Stage-C retained canonical state ID drift")
+    if state.get("selection_priority") != _priority(
+            split, str(cell["cell_id"]), seed, state_id):
+        raise RuntimeRefused("Stage-C retained selection priority drift")
+    expected_streams = [{
+        "seat": actor_seat,
+        "seed": _seed(CTRL.EXPERIMENT_ID, split, seed, "actor", actor_seat,
+                      CTRL.ACTOR_POLICY),
+        "policy": CTRL.ACTOR_POLICY,
+    } for actor_seat in range(4)]
+    if (state.get("actor_policy") != CTRL.ACTOR_POLICY
+            or state.get("actor_identity") != actor_identity
+            or state.get("actor_streams") != expected_streams):
+        raise RuntimeRefused("Stage-C retained actor identity/stream drift")
+
+
+def _reconcile_generation_witness(
+    packet: dict,
+    schedule: Mapping[str, object],
+    witness: Mapping[str, object],
+    retained_states: Sequence[dict],
+) -> tuple[dict, dict, dict]:
+    split = str(schedule["split"])
+    cells = {cell["cell_id"]: cell
+             for cell in packet["schedule"]["quota_cells"][split]}
+    if (not isinstance(witness, dict)
+            or witness.get("schema") != CTRL.GENERATION_WITNESS_SCHEMA
+            or witness.get("complete") is not True
+            or witness.get("witness_sha256")
+            != _self_hash(witness, "witness_sha256")):
+        raise RuntimeRefused("Stage-C complete generation witness drift")
+    scan_records = witness.get("scan_records")
+    diagnostic_records = witness.get("diagnostic_records")
+    if not isinstance(scan_records, list) or not isinstance(
+            diagnostic_records, list):
+        raise RuntimeRefused("Stage-C generation witness record type drift")
+    if (witness.get("scan_records_sha256") != _records_sha256(scan_records)
+            or witness.get("diagnostic_records_sha256")
+            != _records_sha256(diagnostic_records)):
+        raise RuntimeRefused("Stage-C generation witness record digest drift")
+    seeds = _shard_seeds(schedule)
+    if len(scan_records) != len(seeds):
+        raise RuntimeRefused("Stage-C generation witness seed coverage drift")
+
+    scan_by_state: dict[str, dict] = {}
+    scan_by_cell: dict[str, list[dict]] = {cell_id: [] for cell_id in cells}
+    cell_counts: dict[str, Counter[str]] = {
+        cell_id: Counter() for cell_id in cells}
+    scan_rejected = 0
+    for ordinal, (seed, record) in enumerate(
+            zip(seeds, scan_records, strict=True), 1):
+        if (not isinstance(record, dict)
+                or set(record) != set(SCAN_RECORD_FIELDS)):
+            raise RuntimeRefused("Stage-C scan witness field drift")
+        expected_cell = _cell_for_seed(packet, split, seed)
+        status = record.get("status")
+        if (record.get("ordinal") != ordinal or record.get("seed") != seed
+                or record.get("cell_id") != expected_cell["cell_id"]
+                or not isinstance(status, str) or not status):
+            raise RuntimeRefused("Stage-C scan witness schedule/cell drift")
+        cell_id = str(expected_cell["cell_id"])
+        cell_counts[cell_id]["assigned"] += 1
+        state_id = record.get("state_id")
+        if state_id is None:
+            if any(record.get(name) is not None for name in (
+                    "surface_type", "seat", "ply", "selection_priority")):
+                raise RuntimeRefused("Stage-C rejected scan identity drift")
+            if status == "eligible":
+                raise RuntimeRefused("Stage-C rejected scan has eligible status")
+            cell_counts[cell_id][f"rejected:{status}"] += 1
+            scan_rejected += 1
+            continue
+        if status != "eligible" or not isinstance(state_id, str):
+            raise RuntimeRefused("Stage-C eligible scan status/type drift")
+        surface_type = record.get("surface_type")
+        if surface_type != expected_cell["surface_type"]:
+            raise RuntimeRefused("Stage-C scan surface assignment drift")
+        seat = _nonnegative_int(record.get("seat"), "Stage-C scan seat")
+        ply = _nonnegative_int(record.get("ply"), "Stage-C scan ply")
+        canonical_id = _canonical_state_id(
+            split=split, seed=seed, surface_type=str(surface_type),
+            seat=seat, ply=ply)
+        if state_id != canonical_id:
+            raise RuntimeRefused("Stage-C scan canonical state ID drift")
+        priority = _priority(split, cell_id, seed, state_id)
+        if record.get("selection_priority") != priority:
+            raise RuntimeRefused("Stage-C scan selection priority drift")
+        if state_id in scan_by_state:
+            raise RuntimeRefused("Stage-C scan state identity collision")
+        scan_by_state[state_id] = record
+        scan_by_cell[cell_id].append(record)
+        cell_counts[cell_id]["structurally_eligible"] += 1
+
+    expected_pre: list[dict] = []
+    for cell_id in sorted(cells):
+        pool = sorted(scan_by_cell[cell_id], key=lambda record: (
+            record["selection_priority"], record["state_id"]))
+        pool = pool[:int(cells[cell_id]["pre_candidate_limit"])]
+        expected_pre.extend(pool)
+        cell_counts[cell_id]["retained_pre_diagnostic"] = len(pool)
+    expected_pre_keys = [(record["cell_id"], record["state_id"])
+                         for record in expected_pre]
+    actual_pre_keys = [(record.get("cell_id"), record.get("state_id"))
+                       for record in diagnostic_records
+                       if isinstance(record, dict)]
+    if actual_pre_keys != expected_pre_keys:
+        raise RuntimeRefused("Stage-C diagnostic witness population drift")
+
+    diagnostic_by_state: dict[str, dict] = {}
+    uncertainty_attempts = uncertainty_worlds = candidate_worlds = 0
+    eligible_by_cell: dict[str, list[dict]] = {cell_id: [] for cell_id in cells}
+    diagnostic_rejected = 0
+    for expected_scan, record in zip(
+            expected_pre, diagnostic_records, strict=True):
+        if (not isinstance(record, dict)
+                or set(record) != set(DIAGNOSTIC_RECORD_FIELDS)):
+            raise RuntimeRefused("Stage-C diagnostic witness field drift")
+        cell_id = str(expected_scan["cell_id"])
+        status = record.get("status")
+        if (record.get("cell_id") != cell_id
+                or record.get("state_id") != expected_scan["state_id"]
+                or record.get("selection_priority")
+                != expected_scan["selection_priority"]
+                or not isinstance(status, str) or not status
+                or record.get("eligible") is not (status == "eligible")):
+            raise RuntimeRefused("Stage-C diagnostic witness identity drift")
+        candidate_count = _nonnegative_int(
+            record.get("candidate_count"), "Stage-C candidate count")
+        candidate_cap = 20 if expected_scan["surface_type"] == "play" else 33
+        if candidate_count > candidate_cap or (
+                record["eligible"] and candidate_count == 0):
+            raise RuntimeRefused("Stage-C diagnostic candidate-count drift")
+        attempts = _nonnegative_int(
+            record.get("attempts"), "Stage-C uncertainty attempts")
+        worlds = _nonnegative_int(
+            record.get("worlds"), "Stage-C uncertainty worlds")
+        work = _nonnegative_int(
+            record.get("candidate_worlds"),
+            "Stage-C uncertainty candidate-worlds")
+        diagnostic = record.get("selection_diagnostic")
+        cell = cells[cell_id]
+        if cell["stratum"] == "champion_uncertainty":
+            if diagnostic is None:
+                if (any((attempts, worlds, work))
+                        or status != "uncertainty_single_candidate"
+                        or candidate_count != 0):
+                    raise RuntimeRefused(
+                        "Stage-C absent uncertainty diagnostic semantics drift")
+            else:
+                if (not isinstance(diagnostic, dict)
+                        or diagnostic.get("schema")
+                        != "teacher-stage-c-uncertainty-selection-v1"
+                        or diagnostic.get("selection_only") is not True
+                        or diagnostic.get("may_train_or_label") is not False
+                        or diagnostic.get("attempts") != attempts
+                        or diagnostic.get("worlds") != worlds
+                        or diagnostic.get("candidate_worlds") != work
+                        or diagnostic.get("eligible")
+                        is not bool(record["eligible"])
+                        or work != worlds * candidate_count
+                        or not 1 <= candidate_count <= 20
+                        or attempts > (CTRL.UNCERTAINTY_WORLDS
+                                       * CTRL.UNCERTAINTY_ATTEMPT_FACTOR)
+                        or worlds > CTRL.UNCERTAINTY_WORLDS):
+                    raise RuntimeRefused(
+                        "Stage-C uncertainty diagnostic/work reconciliation "
+                        "drift")
+                counters = diagnostic.get("sampler_counters")
+                required_counters = {
+                    "sample_attempts", "accepted_worlds", "failed_worlds",
+                    "rejected_worlds", "impossible_worlds",
+                }
+                if (not isinstance(counters, dict)
+                        or set(counters) != required_counters):
+                    raise RuntimeRefused(
+                        "Stage-C uncertainty sampler-counter schema drift")
+                checked_counters = {
+                    name: _nonnegative_int(
+                        counters.get(name),
+                        f"Stage-C uncertainty {name.replace('_', ' ')}")
+                    for name in required_counters
+                }
+                if (checked_counters["sample_attempts"] != attempts
+                        or checked_counters["accepted_worlds"] != worlds
+                        or checked_counters["sample_attempts"] != (
+                            checked_counters["accepted_worlds"]
+                            + checked_counters["failed_worlds"])
+                        or checked_counters["rejected_worlds"]
+                        > checked_counters["failed_worlds"]
+                        or checked_counters["impossible_worlds"]
+                        > checked_counters["accepted_worlds"]
+                        or checked_counters["impossible_worlds"] != 0):
+                    raise RuntimeRefused(
+                        "Stage-C uncertainty sampler counters do not "
+                        "reconcile")
+                margin = diagnostic.get("production_margin")
+                if (not isinstance(margin, (int, float))
+                        or isinstance(margin, bool)
+                        or not math.isfinite(margin)
+                        or diagnostic.get("margin_window")
+                        != UNCERTAINTY_MARGIN_WINDOW):
+                    raise RuntimeRefused(
+                        "Stage-C uncertainty margin semantics drift")
+                complete = diagnostic.get("evaluation_complete")
+                clean_sampler = not any(checked_counters[name] for name in (
+                    "failed_worlds", "rejected_worlds",
+                    "impossible_worlds"))
+                status_shape = {
+                    "eligible": (
+                        complete is True and record["eligible"] is True
+                        and worlds == CTRL.UNCERTAINTY_WORLDS
+                        and clean_sampler),
+                    "outside_uncertainty_window": (
+                        complete is True and record["eligible"] is False
+                        and worlds == CTRL.UNCERTAINTY_WORLDS
+                        and clean_sampler),
+                    "uncertainty_underfilled": (
+                        complete is False and record["eligible"] is False
+                        and worlds < CTRL.UNCERTAINTY_WORLDS
+                        and attempts == (CTRL.UNCERTAINTY_WORLDS
+                                         * CTRL.UNCERTAINTY_ATTEMPT_FACTOR)),
+                    "uncertainty_sampler_refusal": (
+                        complete is False and record["eligible"] is False
+                        and worlds == CTRL.UNCERTAINTY_WORLDS
+                        and not clean_sampler),
+                }
+                if status not in status_shape or not status_shape[status]:
+                    raise RuntimeRefused(
+                        "Stage-C uncertainty status/work semantics drift")
+                if complete is True:
+                    means = diagnostic.get("means")
+                    best = diagnostic.get("raw_best_index")
+                    numeric = (
+                        diagnostic.get("paired_gap_vs_candidate0"),
+                        diagnostic.get("paired_se_vs_candidate0"),
+                    )
+                    if (not isinstance(means, list)
+                            or len(means) != candidate_count
+                            or not all(isinstance(value, (int, float))
+                                       and not isinstance(value, bool)
+                                       and math.isfinite(value)
+                                       for value in means)
+                            or isinstance(best, bool)
+                            or not isinstance(best, int)
+                            or not 0 <= best < candidate_count
+                            or not all(isinstance(value, (int, float))
+                                       and not isinstance(value, bool)
+                                       and math.isfinite(value)
+                                       for value in numeric)):
+                        raise RuntimeRefused(
+                            "Stage-C complete uncertainty statistics drift")
+                    gap, se = numeric
+                    expected_gap = means[best] - means[0]
+                    expected_eligible = (
+                        best != 0
+                        and abs(expected_gap - float(margin))
+                        <= UNCERTAINTY_MARGIN_WINDOW)
+                    if (not math.isclose(
+                            float(gap), expected_gap,
+                            rel_tol=1e-12, abs_tol=1e-12)
+                            or float(se) < 0
+                            or record["eligible"] is not expected_eligible):
+                        raise RuntimeRefused(
+                            "Stage-C uncertainty selection semantics drift")
+                elif any(diagnostic.get(name) is not None for name in (
+                        "means", "raw_best_index",
+                        "paired_gap_vs_candidate0",
+                        "paired_se_vs_candidate0")):
+                    raise RuntimeRefused(
+                        "Stage-C incomplete uncertainty statistics drift")
+            if record["eligible"] and (
+                    diagnostic is None or worlds != CTRL.UNCERTAINTY_WORLDS):
+                raise RuntimeRefused(
+                    "Stage-C eligible uncertainty diagnostic underfilled")
+            uncertainty_attempts += attempts
+            uncertainty_worlds += worlds
+            candidate_worlds += work
+        elif (diagnostic is not None or any((attempts, worlds, work))
+              or status != "eligible" or record["eligible"] is not True):
+            raise RuntimeRefused(
+                "Stage-C non-uncertainty diagnostic semantics drift")
+        if record["eligible"]:
+            cell_counts[cell_id]["candidate_eligible"] += 1
+            eligible_by_cell[cell_id].append(record)
+        else:
+            cell_counts[cell_id][f"rejected:{status}"] += 1
+            diagnostic_rejected += 1
+        diagnostic_by_state[str(record["state_id"])] = record
+
+    expected_retained_ids = []
+    for cell_id in sorted(cells):
+        pool = sorted(eligible_by_cell[cell_id], key=lambda record: (
+            record["selection_priority"], record["state_id"]))
+        pool = pool[:int(cells[cell_id]["quota"])]
+        expected_retained_ids.extend(record["state_id"] for record in pool)
+        cell_counts[cell_id]["retained_post_diagnostic"] = len(pool)
+    actual_retained_ids = [state.get("state_id") for state in retained_states]
+    if actual_retained_ids != expected_retained_ids:
+        raise RuntimeRefused("Stage-C retained reservoir selection drift")
+    for state in retained_states:
+        state_id = str(state["state_id"])
+        scan = scan_by_state.get(state_id)
+        diagnostic = diagnostic_by_state.get(state_id)
+        if scan is None or diagnostic is None or diagnostic["eligible"] is not True:
+            raise RuntimeRefused("Stage-C retained witness membership drift")
+        if (state.get("surface_type") != scan["surface_type"]
+                or state.get("seat") != scan["seat"]
+                or state.get("ply") != scan["ply"]
+                or state.get("selection_priority")
+                != scan["selection_priority"]):
+            raise RuntimeRefused("Stage-C retained/scan identity drift")
+        candidates = state.get("candidates")
+        if (not isinstance(candidates, list)
+                or len(candidates) != diagnostic["candidate_count"]):
+            raise RuntimeRefused("Stage-C retained candidate-count drift")
+        if cells[str(state["cell_id"])]["stratum"] == "champion_uncertainty":
+            if state.get("selection_diagnostic") != diagnostic[
+                    "selection_diagnostic"]:
+                raise RuntimeRefused(
+                    "Stage-C retained uncertainty witness drift")
+
+    counts = {
+        "scanned": len(scan_records),
+        "scan_eligible": len(scan_by_state),
+        "scan_rejected": scan_rejected,
+        "diagnostic_checked": len(diagnostic_records),
+        "candidate_eligible": sum(len(rows) for rows in eligible_by_cell.values()),
+        "diagnostic_rejected": diagnostic_rejected,
+        "retained_post_diagnostic": len(expected_retained_ids),
+    }
+    reconciled_cells = {
+        cell_id: dict(sorted(values.items()))
+        for cell_id, values in sorted(cell_counts.items())
+    }
+    work = {
+        "attempts": uncertainty_attempts,
+        "worlds": uncertainty_worlds,
+        "candidate_worlds": candidate_worlds,
+    }
+    return counts, reconciled_cells, work
 
 
 def _action_key(action: Sequence[str]) -> tuple[str, ...]:
@@ -857,7 +1316,7 @@ def uncertainty_diagnostic(state: Mapping[str, object]) -> tuple[dict | None, st
     before = _sampler_snapshot(bot)
     values = []
     attempts = 0
-    cap = CTRL.UNCERTAINTY_WORLDS * SAMPLE_ATTEMPT_FACTOR
+    cap = CTRL.UNCERTAINTY_WORLDS * CTRL.UNCERTAINTY_ATTEMPT_FACTOR
     while len(values) < CTRL.UNCERTAINTY_WORLDS and attempts < cap:
         attempts += 1
         sampled = bot._sample_hands(rnd, seat, mem)
@@ -870,13 +1329,30 @@ def uncertainty_diagnostic(state: Mapping[str, object]) -> tuple[dict | None, st
             for action in actions
         ])
     counters = _sampler_delta(before, bot)
+    diagnostic = {
+        "schema": "teacher-stage-c-uncertainty-selection-v1",
+        "selection_only": True,
+        "may_train_or_label": False,
+        "evaluation_complete": False,
+        "worlds": len(values),
+        "attempts": attempts,
+        "candidate_worlds": len(values) * len(actions),
+        "sampler_counters": counters,
+        "means": None,
+        "raw_best_index": None,
+        "paired_gap_vs_candidate0": None,
+        "paired_se_vs_candidate0": None,
+        "production_margin": float(bot.MARGIN),
+        "margin_window": UNCERTAINTY_MARGIN_WINDOW,
+        "eligible": False,
+    }
     if len(values) != CTRL.UNCERTAINTY_WORLDS:
-        return None, "uncertainty_underfilled"
+        return diagnostic, "uncertainty_underfilled"
     if (counters["accepted_worlds"] != CTRL.UNCERTAINTY_WORLDS
             or counters["failed_worlds"]
             or counters["rejected_worlds"]
             or counters["impossible_worlds"]):
-        return None, "uncertainty_sampler_refusal"
+        return diagnostic, "uncertainty_sampler_refusal"
     means = [sum(row[index] for row in values) / len(values)
              for index in range(len(actions))]
     best = bot._pick_index(actions, means, range(len(actions)))
@@ -886,22 +1362,15 @@ def uncertainty_diagnostic(state: Mapping[str, object]) -> tuple[dict | None, st
     variance = sum((value - mean) ** 2 for value in diffs) / (len(diffs) - 1)
     se = math.sqrt(variance / len(diffs))
     margin = float(bot.MARGIN)
-    diagnostic = {
-        "schema": "teacher-stage-c-uncertainty-selection-v1",
-        "selection_only": True,
-        "may_train_or_label": False,
-        "worlds": len(values),
-        "attempts": attempts,
-        "candidate_worlds": len(values) * len(actions),
-        "sampler_counters": counters,
+    diagnostic.update({
+        "evaluation_complete": True,
         "means": means,
         "raw_best_index": best,
         "paired_gap_vs_candidate0": gap,
         "paired_se_vs_candidate0": se,
         "production_margin": margin,
-        "margin_window": UNCERTAINTY_MARGIN_WINDOW,
         "eligible": best != 0 and abs(gap - margin) <= UNCERTAINTY_MARGIN_WINDOW,
-    }
+    })
     if not diagnostic["eligible"]:
         return diagnostic, "outside_uncertainty_window"
     return diagnostic, "eligible"
@@ -949,18 +1418,13 @@ def run_shard(*, packet_path: Path, expected_packet_sha256: str,
     cells = {cell["cell_id"]: cell
              for cell in packet["schedule"]["quota_cells"][split]}
     reservoirs: dict[str, list[dict]] = {cell_id: [] for cell_id in cells}
-    counts: Counter[str] = Counter()
-    cell_counts: dict[str, Counter[str]] = {
-        cell_id: Counter() for cell_id in cells}
-    ledger = hashlib.sha256()
+    scan_records: list[dict] = []
     actor_identity = _actor_identity()
     net = _load_npnet(str(REPO / V11_PATH))
     seeds = _shard_seeds(schedule)
     for ordinal, seed in enumerate(seeds, 1):
         cell = _cell_for_seed(packet, split, seed)
         cell_id = str(cell["cell_id"])
-        counts["scanned"] += 1
-        cell_counts[cell_id]["assigned"] += 1
         # Every expected population miss is returned as a named reason by
         # ``capture_deal``. An exception is an implementation/correctness
         # failure and aborts the shard instead of becoming a plausible-looking
@@ -970,20 +1434,10 @@ def run_shard(*, packet_path: Path, expected_packet_sha256: str,
                 "proposal_disagreement", "structured_point_void"}):
             state, reason = hydrate_candidates(state, net)
         if state is not None:
-            cell_counts[cell_id]["structurally_eligible"] += 1
             limit = int(cell["pre_candidate_limit"])
             _reservoir_add(reservoirs[cell_id], state, limit)
-            cell_counts[cell_id]["retained_pre_diagnostic"] = len(
-                reservoirs[cell_id])
-        else:
-            cell_counts[cell_id][f"rejected:{reason}"] += 1
-            counts["rejected"] += 1
-        ledger.update(CTRL.canonical_json({
-            "ordinal": ordinal, "seed": seed, "cell_id": cell_id,
-            "status": reason,
-            "state_id": None if state is None else state["state_id"],
-            "priority": None if state is None else state["selection_priority"],
-        }))
+        scan_records.append(_scan_record(
+            ordinal, seed, cell_id, reason, state))
         if progress_every > 0 and (ordinal % progress_every == 0
                                    or ordinal == len(seeds)):
             print(json.dumps({
@@ -996,29 +1450,31 @@ def run_shard(*, packet_path: Path, expected_packet_sha256: str,
                     len(rows) for rows in reservoirs.values()),
             }, sort_keys=True), file=sys.stderr, flush=True)
 
-    uncertainty_worlds = uncertainty_candidate_worlds = 0
-    for cell_id, cell in cells.items():
+    diagnostic_records: list[dict] = []
+    for cell_id in sorted(cells):
+        cell = cells[cell_id]
         eligible: list[dict] = []
         for index, state in enumerate(reservoirs[cell_id], 1):
+            diagnostic = None
             if "candidates" in state:
                 hydrated, reason = state, "eligible"
                 _validate_candidates(hydrated, replay_state(hydrated), net)
             else:
                 hydrated, reason = hydrate_candidates(state, net)
+            evaluated = hydrated
             if hydrated is not None and cell["stratum"] == "champion_uncertainty":
                 diagnostic, reason = uncertainty_diagnostic(hydrated)
                 if diagnostic is not None:
-                    uncertainty_worlds += int(diagnostic["worlds"])
-                    uncertainty_candidate_worlds += int(diagnostic[
-                        "candidate_worlds"])
                     hydrated["selection_diagnostic"] = diagnostic
+                    evaluated = hydrated
                 if diagnostic is None or reason != "eligible":
                     hydrated = None
+            diagnostic_records.append(_diagnostic_record(
+                cell_id=cell_id, state=(evaluated if evaluated is not None else state),
+                status=reason, eligible=hydrated is not None,
+                diagnostic=diagnostic))
             if hydrated is not None:
                 eligible.append(hydrated)
-                cell_counts[cell_id]["candidate_eligible"] += 1
-            else:
-                cell_counts[cell_id][f"rejected:{reason}"] += 1
             if cell["stratum"] == "champion_uncertainty":
                 print(json.dumps({
                     "status": "UNCERTAINTY_DIAGNOSTIC",
@@ -1031,17 +1487,35 @@ def run_shard(*, packet_path: Path, expected_packet_sha256: str,
         eligible.sort(key=lambda item: (
             item["selection_priority"], item["state_id"]))
         reservoirs[cell_id] = eligible[:int(cell["quota"])]
-        cell_counts[cell_id]["retained_post_diagnostic"] = len(
-            reservoirs[cell_id])
     retained = [state for cell_id in sorted(reservoirs)
                 for state in reservoirs[cell_id]]
     if len({state["seed"] for state in retained}) != len(retained):
         raise RuntimeRefused("capture shard retained multiple states per deal")
-    if uncertainty_candidate_worlds > sum(
+    for state in retained:
+        _validate_retained_state_identity(
+            packet, schedule, state, actor_identity)
+    witness = {
+        "schema": CTRL.GENERATION_WITNESS_SCHEMA,
+        "complete": True,
+        "scan_records": scan_records,
+        "scan_records_sha256": _records_sha256(scan_records),
+        "diagnostic_records": diagnostic_records,
+        "diagnostic_records_sha256": _records_sha256(diagnostic_records),
+    }
+    witness["witness_sha256"] = _self_hash(witness, "witness_sha256")
+    counts, cell_counts, uncertainty_work = _reconcile_generation_witness(
+        packet, schedule, witness, retained)
+    if uncertainty_work["candidate_worlds"] > sum(
             int(cell["diagnostic_candidate_limit"] or 0)
             * 20 * CTRL.UNCERTAINTY_WORLDS
             for cell in cells.values()):
         raise RuntimeRefused("capture uncertainty shard exceeded work ceiling")
+    if uncertainty_work["attempts"] > sum(
+            int(cell["diagnostic_candidate_limit"] or 0)
+            * CTRL.UNCERTAINTY_WORLDS * CTRL.UNCERTAINTY_ATTEMPT_FACTOR
+            for cell in cells.values()):
+        raise RuntimeRefused(
+            "capture uncertainty shard exceeded attempt ceiling")
     # Reopen every mutable identity after compute and before publication.
     _controller_packet(packet_path, expected_packet_sha256)
     _receipt(receipt_path, expected_receipt_sha256, packet,
@@ -1062,17 +1536,13 @@ def run_shard(*, packet_path: Path, expected_packet_sha256: str,
             "first_seed": seeds.start,
             "seed_stride": seeds.step,
             "stop_exclusive": seeds.stop,
-            "ledger_sha256": ledger.hexdigest(),
+            "ledger_sha256": witness["scan_records_sha256"],
+            "generation_witness_sha256": witness["witness_sha256"],
         },
-        "counts": dict(sorted(counts.items())),
-        "cell_counts": {
-            cell_id: dict(sorted(values.items()))
-            for cell_id, values in sorted(cell_counts.items())
-        },
-        "uncertainty_work": {
-            "worlds": uncertainty_worlds,
-            "candidate_worlds": uncertainty_candidate_worlds,
-        },
+        "counts": counts,
+        "cell_counts": cell_counts,
+        "uncertainty_work": uncertainty_work,
+        "generation_witness": witness,
         "retained_states": retained,
         "retained_state_ids_sha256": CTRL.sha256_bytes(CTRL.canonical_json(
             [state["state_id"] for state in retained])),
@@ -1116,8 +1586,7 @@ def validate_shard(shard: Mapping[str, object], packet: dict,
     if (scan.get("seed_count") != len(seeds)
             or scan.get("first_seed") != seeds.start
             or scan.get("seed_stride") != seeds.step
-            or scan.get("stop_exclusive") != seeds.stop
-            or shard.get("counts", {}).get("scanned") != len(seeds)):
+            or scan.get("stop_exclusive") != seeds.stop):
         raise RuntimeRefused(f"capture shard {index} seed coverage drift")
     states = shard.get("retained_states")
     if not isinstance(states, list):
@@ -1126,29 +1595,40 @@ def validate_shard(shard: Mapping[str, object], packet: dict,
             != CTRL.sha256_bytes(CTRL.canonical_json(
                 [state.get("state_id") for state in states]))):
         raise RuntimeRefused(f"capture shard {index} state identity digest drift")
-    allowed_cells = {cell["cell_id"]: cell
-                     for cell in packet["schedule"]["quota_cells"][
-                         str(schedule["split"]) ]}
-    seen = set()
-    by_cell: Counter[str] = Counter()
+    actor_identity = _actor_identity()
+    if shard.get("actor_identity") != actor_identity:
+        raise RuntimeRefused(f"capture shard {index} actor identity drift")
     for state in states:
-        if (not isinstance(state, dict) or state.get("split") != schedule["split"]
-                or state.get("cell_id") not in allowed_cells
-                or state.get("seed") not in seeds
-                or state.get("state_id") in seen):
-            raise RuntimeRefused(f"capture shard {index} retained state drift")
-        seen.add(state["state_id"])
-        by_cell[str(state["cell_id"])] += 1
-        cell = allowed_cells[str(state["cell_id"])]
-        if by_cell[str(state["cell_id"])] > int(cell["quota"]):
-            raise RuntimeRefused(f"capture shard {index} cell reservoir overflow")
-        if cell["stratum"] == "champion_uncertainty":
-            diagnostic = state.get("selection_diagnostic", {})
-            if (diagnostic.get("eligible") is not True
-                    or diagnostic.get("may_train_or_label") is not False
-                    or diagnostic.get("worlds") != CTRL.UNCERTAINTY_WORLDS):
-                raise RuntimeRefused(
-                    f"capture shard {index} uncertainty diagnostic drift")
+        _validate_retained_state_identity(
+            packet, schedule, state, actor_identity)
+    witness = shard.get("generation_witness")
+    counts, cell_counts, uncertainty_work = _reconcile_generation_witness(
+        packet, schedule, witness, states)
+    if (shard.get("counts") != counts
+            or shard.get("cell_counts") != cell_counts
+            or shard.get("uncertainty_work") != uncertainty_work):
+        raise RuntimeRefused(
+            f"capture shard {index} generation/work counters drift")
+    if (scan.get("ledger_sha256") != witness.get("scan_records_sha256")
+            or scan.get("generation_witness_sha256")
+            != witness.get("witness_sha256")):
+        raise RuntimeRefused(f"capture shard {index} scan ledger drift")
+    max_candidate_worlds = sum(
+        int(cell["diagnostic_candidate_limit"] or 0)
+        * 20 * CTRL.UNCERTAINTY_WORLDS
+        for cell in packet["schedule"]["quota_cells"][str(schedule["split"])]
+    )
+    if uncertainty_work["candidate_worlds"] > max_candidate_worlds:
+        raise RuntimeRefused(
+            f"capture shard {index} uncertainty work ceiling drift")
+    max_attempts = sum(
+        int(cell["diagnostic_candidate_limit"] or 0)
+        * CTRL.UNCERTAINTY_WORLDS * CTRL.UNCERTAINTY_ATTEMPT_FACTOR
+        for cell in packet["schedule"]["quota_cells"][str(schedule["split"])]
+    )
+    if uncertainty_work["attempts"] > max_attempts:
+        raise RuntimeRefused(
+            f"capture shard {index} uncertainty attempt ceiling drift")
 
 
 def _audit_rows(states: Sequence[dict], packet: dict) -> list[str]:
@@ -1243,6 +1723,10 @@ def _dataset_payload(packet: dict, receipt_sha256: str,
             "index": shard["shard_index"],
             "sha256": shard["external_sha256"],
             "ledger_sha256": shard["scan"]["ledger_sha256"],
+            "generation_witness_sha256": shard["generation_witness"][
+                "witness_sha256"],
+            "diagnostic_records_sha256": shard["generation_witness"][
+                "diagnostic_records_sha256"],
         } for shard in shards],
         "complete": True,
         "state_count": len(selected),
@@ -1290,6 +1774,11 @@ def _load_shards(packet: dict, receipt_sha256: str,
         for shard in shards)
     if candidate_worlds > packet["schedule"]["max_uncertainty_candidate_worlds"]:
         raise RuntimeRefused("Stage-C capture selection work exceeded ceiling")
+    attempts = sum(int(shard["uncertainty_work"]["attempts"])
+                   for shard in shards)
+    if attempts > packet["schedule"]["max_uncertainty_attempts"]:
+        raise RuntimeRefused(
+            "Stage-C capture selection attempts exceeded ceiling")
     return shards
 
 

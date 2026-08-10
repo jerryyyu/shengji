@@ -45,6 +45,7 @@ def test_schedule_is_exactly_split_safe_and_finite() -> None:
     assert schedule["shard_count"] == 24
     assert schedule["scan_deals"] == 750_000
     assert schedule["max_uncertainty_candidate_worlds"] == 9_216_000
+    assert schedule["max_uncertainty_attempts"] == 4_608_000
     assert [item["split"] for item in schedule["shards"][:8]] == ["DESIGN"] * 8
     assert [item["split"] for item in schedule["shards"][8:16]] == ["CALIB"] * 8
     assert [item["split"] for item in schedule["shards"][16:]] == ["REPORT"] * 8

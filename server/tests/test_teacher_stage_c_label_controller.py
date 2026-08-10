@@ -18,6 +18,8 @@ controller = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = controller
 SPEC.loader.exec_module(controller)
 
+import teacher_stage_c_label_capacity as capacity  # noqa: E402
+
 CAPTURE_PACKET = (
     Path(__file__).parents[1] / "runs/logs/"
     "teacher-v3-hard-tail-stage-c-capture-controller-v3/controller_packet.json"
@@ -60,6 +62,7 @@ def _state_set() -> dict:
                          "CALIB": 171_000_000,
                          "REPORT": 172_000_000}[split] + index,
                 "seat": index % 4,
+                "ply": 0 if surface == "bury" else index % 11,
                 "candidates": [
                     {"cards": ["C2"], "sources": ["live_production_ballot"]},
                     {"cards": ["C3"], "sources": ["v11pair_top_proposal"]},
@@ -153,6 +156,49 @@ def _write_inputs(root: Path, state_set: dict | None = None):
             review_path)
 
 
+def _write_capacity_inputs(root: Path, inputs) -> tuple[Path, str, Path, str,
+                                                               Path]:
+    packet = capacity.build_packet(
+        CAPTURE_PACKET, inputs[0], inputs[1], inputs[2], inputs[3], inputs[4],
+        smoke=True)
+    packet_path = root / "capacity-controller.json"
+    packet_path.write_bytes(capacity.canonical_json(packet))
+    packet_sha = capacity.sha256_file(packet_path)
+    state_set = json.loads(inputs[0].read_text())
+    label_schedule = capacity.CTRL.build_schedule(state_set)
+    samples = []
+    for descriptor in packet["preflight_schedule"]["samples"]:
+        work = int(descriptor["expected_candidate_worlds"])
+        samples.append({
+            **descriptor,
+            "status": "COMPLETE_OUTCOMES_DISCARDED",
+            "candidate_worlds_attempted": work,
+            "candidate_worlds_completed": work,
+            "sampler": {
+                "sampler_attempts": 1, "accepted_worlds": 1,
+                "failed_worlds": 0, "rejected_worlds": 0,
+                "impossible_worlds": 0, "overlap_discarded": 0,
+                "duplicate_discarded": 0,
+            },
+            "elapsed_seconds": work / 1_000.0,
+            "v11_load_seconds": 1.0,
+            "reason_class": None,
+            "reason_sha256": None,
+            "outcome_tensor_returned": False,
+            "outcomes_retained": False,
+        })
+    result = capacity.build_pass_or_hold_result(
+        packet, packet_sha, "d" * 64, samples, 60.0, label_schedule)
+    result_path = root / "capacity-result.json"
+    result_path.write_bytes(capacity.canonical_json(result))
+    result_sha = capacity.sha256_file(result_path)
+    claim = capacity.expected_result_review_claim(result, result_sha)
+    review_path = root / "capacity-result-review.txt"
+    review_path.write_text(capacity.RESULT_REVIEW_MARKER + json.dumps(
+        claim, sort_keys=True, separators=(",", ":")) + "\n")
+    return packet_path, packet_sha, result_path, result_sha, review_path
+
+
 def test_state_set_review_and_schedule_are_exact() -> None:
     log_root = controller.REPO / "server/runs/logs"
     with tempfile.TemporaryDirectory(dir=log_root) as raw:
@@ -214,9 +260,10 @@ def test_packet_preserves_3x400_audit_and_report_seal(
                      "fast_engine": True,
                      "fast_router_sha256": "c" * 64,
                      "compiled_fast_binary_sha256": "d" * 64})
+        capacity_inputs = _write_capacity_inputs(Path(raw), inputs)
         packet = controller.build_packet(
             CAPTURE_PACKET, inputs[0], inputs[1], inputs[2], inputs[3],
-            inputs[4], smoke=True)
+            inputs[4], *capacity_inputs, smoke=True)
         amendment = packet["audit_contract_amendment"]
         assert amendment["base_report_geometry"]["candidate_worlds"] == 1200
         assert amendment["successor_report_geometry"] == {
@@ -235,6 +282,39 @@ def test_packet_preserves_3x400_audit_and_report_seal(
         assert claim["audit_report_worlds"] == 400
         assert claim["one_label_execution_authorized"] is True
         assert claim["training_authorized"] is False
+        assert claim["capacity_pass"] is True
+        assert claim["capacity_packet_sha256"] == capacity_inputs[1]
+        assert claim["capacity_result_sha256"] == capacity_inputs[3]
+
+
+def test_packet_refuses_forged_capacity_result(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    log_root = controller.REPO / "server/runs/logs"
+    with tempfile.TemporaryDirectory(dir=log_root) as raw:
+        root = Path(raw)
+        inputs = _write_inputs(root)
+        monkeypatch.setattr(
+            controller.CAPTURE_CTRL, "require_runtime_mode",
+            lambda: {"environment": {"SHENGJI_FAST": "1",
+                                     "SHENGJI_REQUIRE_VOIDS": "1"},
+                     "experimental_sampler_flags": [],
+                     "fast_engine": True,
+                     "fast_router_sha256": "c" * 64,
+                     "compiled_fast_binary_sha256": "d" * 64})
+        capacity_inputs = list(_write_capacity_inputs(root, inputs))
+        result = json.loads(capacity_inputs[2].read_text())
+        result["projection"]["projected_fleet_hours"] += 1.0
+        result["result_sha256"] = capacity.self_hash(result, "result_sha256")
+        capacity_inputs[2].write_bytes(capacity.canonical_json(result))
+        capacity_inputs[3] = capacity.sha256_file(capacity_inputs[2])
+        claim = capacity.expected_result_review_claim(result, capacity_inputs[3])
+        capacity_inputs[4].write_text(capacity.RESULT_REVIEW_MARKER + json.dumps(
+            claim, sort_keys=True, separators=(",", ":")) + "\n")
+        with pytest.raises(controller.ControllerRefused,
+                           match="projection/gate drift"):
+            controller.build_packet(
+                CAPTURE_PACKET, inputs[0], inputs[1], inputs[2], inputs[3],
+                inputs[4], *capacity_inputs, smoke=True)
 
 
 def test_review_marker_is_exact_not_subset() -> None:

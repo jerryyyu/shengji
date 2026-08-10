@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Freeze the one-shot Teacher Stage-C label controller.
 
-This controller is intentionally downstream of two independent boundaries:
+This controller is intentionally downstream of three independent boundaries:
 the replay-authenticated Stage-C capture must have published exactly 2,048
-states, and an independent reviewer must have passed that immutable state set.
-Only then may this script freeze a finite label schedule.  Freezing or
-verifying the packet samples no belief world and computes no outcome.
+states, an independent reviewer must have passed that immutable state set, and
+an outcome-discarding capacity preflight over that exact set must have passed
+and been independently reviewed.  Only then may this script freeze a finite
+label schedule.  Freezing or verifying the packet samples no belief world and
+computes no outcome.
 
 The immutable Stage-C design budgeted each REPORT audit state for two actions
 on 600 report worlds.  That geometry cannot both certify a selection winner
@@ -56,6 +58,16 @@ ADMISSION_SCHEMA = "teacher-stage-c-label-admission-v1"
 SHARD_ADMISSION_SCHEMA = "teacher-stage-c-label-shard-admission-v1"
 SHARD_SCHEMA = "teacher-stage-c-label-shard-v1"
 AGGREGATE_SCHEMA = "teacher-stage-c-label-aggregate-v1"
+CAPACITY_PACKET_SCHEMA = "teacher-stage-c-label-capacity-controller-v1"
+CAPACITY_PACKET_ID = "teacher-v3-hard-tail-stage-c-label-capacity-controller-v1"
+CAPACITY_RUN_ID = "teacher-v3-hard-tail-stage-c-label-capacity-v1"
+CAPACITY_RESULT_SCHEMA = "teacher-stage-c-label-capacity-result-v1"
+CAPACITY_RESULT_REVIEW_SCHEMA = (
+    "teacher-stage-c-label-capacity-result-review-v1"
+)
+CAPACITY_RESULT_REVIEW_MARKER = (
+    "TEACHER_STAGE_C_LABEL_CAPACITY_RESULT_V1_REVIEW "
+)
 
 CAPTURE_CONTROLLER_SHA256 = (
     "d58a9308907b53e9f61c80a4067d383c596cf39ebe303c246e7086535dad1c91"
@@ -75,6 +87,7 @@ BASE_MAX_CANDIDATE_WORLDS = 10_494_720
 SOURCE_PATHS = tuple(dict.fromkeys((
     "server/scripts/teacher_stage_c_label_controller.py",
     "server/scripts/teacher_stage_c_label_runtime.py",
+    "server/scripts/teacher_stage_c_label_capacity.py",
     "server/scripts/teacher_stage_c_capture_controller.py",
     "server/scripts/teacher_stage_c_capture_runtime.py",
     "server/scripts/teacher_stage_c_design.py",
@@ -92,6 +105,8 @@ REVIEW_FIELDS = (
     "audit_report_actions", "audit_report_worlds",
     "audit_report_candidate_worlds", "report_labels_sealed_from_training",
     "shard_admission_slots",
+    "capacity_packet_sha256", "capacity_result_sha256",
+    "capacity_result_review_schema", "capacity_pass",
     "worlds_sampled_before_review", "outcomes_computed_before_review",
     "independent_review", "one_label_execution_authorized",
     "training_authorized", "strength_claim", "production_promotion",
@@ -228,6 +243,13 @@ def runtime_sources() -> dict[str, str]:
             raise ControllerRefused(f"label runtime source unavailable: {logical}")
         values[logical] = sha256_file(path)
     return dict(sorted(values.items()))
+
+
+def _capacity_module():
+    # Imported lazily because the capacity controller itself imports this
+    # module to reuse the exact state-set and label-schedule validators.
+    import teacher_stage_c_label_capacity as capacity
+    return capacity
 
 
 def validate_capture_controller(path: Path) -> dict:
@@ -500,11 +522,85 @@ def build_schedule(state_set: Mapping[str, object]) -> dict:
     return payload
 
 
+def validate_capacity_evidence(
+    capacity_packet_path: Path, expected_capacity_packet_sha256: str,
+    capacity_result_path: Path, expected_capacity_result_sha256: str,
+    capacity_result_review_record: Path, *,
+    state_set: Mapping[str, object], state_set_sha256: str,
+    verification_sha256: str, schedule: Mapping[str, object], smoke: bool,
+) -> tuple[dict, dict, dict]:
+    """Recompute the outcome-free capacity gate before packet construction."""
+    capacity = _capacity_module()
+    try:
+        expected_preflight_schedule = capacity.build_capacity_schedule(state_set)
+        expected_runtime_sources = capacity.runtime_sources()
+    except capacity.CapacityRefused as exc:
+        raise ControllerRefused(f"capacity-controller validation failed: {exc}") \
+            from exc
+    if sha256_file(capacity_packet_path) != expected_capacity_packet_sha256:
+        raise ControllerRefused("capacity-controller external SHA-256 drift")
+    packet = load_json(capacity_packet_path)
+    producer = packet.get("producer", {})
+    parents = packet.get("parents", {})
+    authority = packet.get("authority", {})
+    if (packet.get("schema") != CAPACITY_PACKET_SCHEMA
+            or packet.get("packet_id") != CAPACITY_PACKET_ID
+            or packet.get("run_id") != CAPACITY_RUN_ID
+            or packet.get("packet_sha256")
+            != capacity.self_hash(packet, "packet_sha256")
+            or producer.get("git") != _git("rev-parse", "HEAD")
+            or (not smoke and (producer.get("tree_dirty") is not False
+                               or producer.get("promotable") is not True))
+            or parents.get("state_set", {}).get("external_sha256")
+            != state_set_sha256
+            or parents.get("capture_verification", {}).get("external_sha256")
+            != verification_sha256
+            or packet.get("label_schedule", {}).get("schedule_sha256")
+            != schedule["schedule_sha256"]
+            or packet.get("label_schedule", {}).get("candidate_worlds")
+            != schedule["candidate_worlds"]
+            or packet.get("preflight_schedule")
+            != expected_preflight_schedule
+            or packet.get("runtime_sources") != expected_runtime_sources
+            or capacity.forbidden_outcome_paths(packet)
+            or authority.get("outcomes_computed") is not False
+            or authority.get("outcomes_retained") is not False
+            or authority.get("label_controller_freeze_authorized") is not False
+            or authority.get("labels_authorized") is not False
+            or authority.get("training_authorized") is not False):
+        raise ControllerRefused("capacity-controller identity/authority drift")
+    try:
+        result = capacity.validate_result(
+            capacity_result_path, expected_capacity_result_sha256,
+            packet, expected_capacity_packet_sha256, state_set)
+    except capacity.CapacityRefused as exc:
+        raise ControllerRefused(f"capacity-result validation failed: {exc}") \
+            from exc
+    if (result.get("schema") != CAPACITY_RESULT_SCHEMA
+            or result.get("capacity_pass") is not True
+            or result.get("label_controller_freeze_authorized") is not True
+            or result.get("labels_authorized") is not False
+            or result.get("training_authorized") is not False):
+        raise ControllerRefused("capacity-result does not authorize packet review")
+    try:
+        review = capacity.validate_result_review(
+            capacity_result_review_record, result,
+            expected_capacity_result_sha256)
+    except capacity.CapacityRefused as exc:
+        raise ControllerRefused(f"capacity-result review failed: {exc}") from exc
+    if review.get("schema") != CAPACITY_RESULT_REVIEW_SCHEMA:
+        raise ControllerRefused("capacity-result review schema drift")
+    return packet, result, review
+
+
 def build_packet(
     capture_controller_path: Path,
     state_set_path: Path, state_set_sha256: str,
     verification_path: Path, verification_sha256: str,
-    state_set_review_record: Path, *, smoke: bool,
+    state_set_review_record: Path,
+    capacity_packet_path: Path, capacity_packet_sha256: str,
+    capacity_result_path: Path, capacity_result_sha256: str,
+    capacity_result_review_record: Path, *, smoke: bool,
 ) -> dict:
     capture = validate_capture_controller(capture_controller_path)
     state_set, verification, state_review = validate_state_set(
@@ -512,6 +608,14 @@ def build_packet(
         verification_path, verification_sha256,
         state_set_review_record)
     schedule = build_schedule(state_set)
+    capacity_packet, capacity_result, capacity_review = \
+        validate_capacity_evidence(
+            capacity_packet_path, capacity_packet_sha256,
+            capacity_result_path, capacity_result_sha256,
+            capacity_result_review_record,
+            state_set=state_set, state_set_sha256=state_set_sha256,
+            verification_sha256=verification_sha256,
+            schedule=schedule, smoke=smoke)
     packet = {
         "schema": SCHEMA,
         "packet_id": PACKET_ID,
@@ -538,6 +642,20 @@ def build_packet(
                 "logical_path": str(verification_path.relative_to(REPO)),
                 "external_sha256": verification_sha256,
                 "internal_sha256": verification["verification_sha256"],
+            },
+            "capacity_preflight": {
+                "controller_logical_path": str(
+                    capacity_packet_path.relative_to(REPO)),
+                "controller_external_sha256": capacity_packet_sha256,
+                "controller_internal_sha256": capacity_packet[
+                    "packet_sha256"],
+                "result_logical_path": str(
+                    capacity_result_path.relative_to(REPO)),
+                "result_external_sha256": capacity_result_sha256,
+                "result_internal_sha256": capacity_result["result_sha256"],
+                "review_claim": capacity_review,
+                "capacity_pass": True,
+                "outcomes_retained": False,
             },
         },
         "runtime_mode": CAPTURE_CTRL.require_runtime_mode(),
@@ -682,6 +800,7 @@ def expected_review_claim(packet: Mapping[str, object], packet_sha256: str) -> d
     schedule = packet["schedule"]
     source = packet["runtime_sources"]
     parents = packet["parents"]
+    capacity = parents["capacity_preflight"]
     return {
         "schema": REVIEW_SCHEMA,
         "git": packet["producer"]["git"],
@@ -713,6 +832,10 @@ def expected_review_claim(packet: Mapping[str, object], packet_sha256: str) -> d
         "audit_report_candidate_worlds": LABEL.AUDIT_REPORT_CANDIDATE_WORLDS,
         "report_labels_sealed_from_training": True,
         "shard_admission_slots": LABEL_SHARDS,
+        "capacity_packet_sha256": capacity["controller_external_sha256"],
+        "capacity_result_sha256": capacity["result_external_sha256"],
+        "capacity_result_review_schema": CAPACITY_RESULT_REVIEW_SCHEMA,
+        "capacity_pass": True,
         "worlds_sampled_before_review": 0,
         "outcomes_computed_before_review": False,
         "independent_review": True,
@@ -757,6 +880,11 @@ def parser() -> argparse.ArgumentParser:
         child.add_argument("--capture-verification", required=True)
         child.add_argument("--expected-capture-verification-sha256", required=True)
         child.add_argument("--state-set-review-record", required=True)
+        child.add_argument("--capacity-controller", required=True)
+        child.add_argument("--expected-capacity-controller-sha256", required=True)
+        child.add_argument("--capacity-result", required=True)
+        child.add_argument("--expected-capacity-result-sha256", required=True)
+        child.add_argument("--capacity-result-review-record", required=True)
         child.add_argument("--out", required=True)
         if name == "freeze":
             child.add_argument("--smoke", action="store_true")
@@ -774,6 +902,11 @@ def main() -> int:
         Path(args.capture_verification).resolve(),
         args.expected_capture_verification_sha256,
         Path(args.state_set_review_record).resolve(),
+        Path(args.capacity_controller).resolve(),
+        args.expected_capacity_controller_sha256,
+        Path(args.capacity_result).resolve(),
+        args.expected_capacity_result_sha256,
+        Path(args.capacity_result_review_record).resolve(),
         smoke=bool(getattr(args, "smoke", False)),
     )
     if args.command == "freeze":

@@ -212,8 +212,9 @@ def test_packet_validation_does_not_touch_sealed_report_paths(
         lambda *_args, **_kwargs: (training_packet, dataset))
     expected_label_packet = dict(label_packet)
     expected_label_packet["external_sha256"] = label_sha
-    monkeypatch.setattr(RUNTIME.LABEL, "_controller_packet",
-                        lambda *_args, **_kwargs: expected_label_packet)
+    monkeypatch.setattr(
+        RUNTIME.TRAIN_CTRL, "_reviewed_upstream_label_packet",
+        lambda *_args, **_kwargs: expected_label_packet)
     monkeypatch.setattr(RUNTIME, "_validate_checkpoint_manifest",
                         lambda *_args, **_kwargs: None)
     monkeypatch.setattr(RUNTIME.TRAIN, "state_balanced_prior",

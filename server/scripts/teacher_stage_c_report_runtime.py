@@ -226,9 +226,9 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, dict, dict, dict]:
     if label_path != (REPO / LABEL._ctrl().CONTROLLER_PACKET_PATH).resolve():
         raise ReportRuntimeRefused("Stage-C REPORT label packet path drift")
     try:
-        verified_label_packet = LABEL._controller_packet(
+        verified_label_packet = TRAIN_CTRL._reviewed_upstream_label_packet(
             label_path, str(parents["label_controller"]["external_sha256"]))
-    except LABEL.LabelRefused as exc:
+    except TRAIN_CTRL.TrainingControllerRefused as exc:
         raise ReportRuntimeRefused(str(exc)) from exc
     expected_label_packet = dict(label_packet)
     expected_label_packet["external_sha256"] = parents["label_controller"][

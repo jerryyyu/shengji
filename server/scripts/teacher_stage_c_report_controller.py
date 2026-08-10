@@ -528,9 +528,13 @@ def _validated_inputs(args) -> tuple[dict, dict, dict, dict, dict]:
             aggregate_sha256=args.expected_training_aggregate_sha256,
             aggregate_review_record=Path(
                 args.training_aggregate_review_record).resolve())
-    label_packet = LABEL._controller_packet(
-        Path(args.label_controller).resolve(),
-        args.expected_label_controller_sha256)
+    try:
+        label_packet = TRAIN_CTRL._reviewed_upstream_label_packet(
+            Path(args.label_controller).resolve(),
+            args.expected_label_controller_sha256)
+    except TRAIN_CTRL.TrainingControllerRefused as exc:
+        raise ReportControllerRefused(
+            f"reviewed label-controller validation failed: {exc}") from exc
     state_set, _verification = LABEL._validated_parents(
         label_packet, Path(args.state_set_review_record).resolve())
     LABEL._receipt(

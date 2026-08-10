@@ -2060,3 +2060,42 @@ Independent review of the S4 preflight + frozen launch packet:
 Marker appended byte-exact from the request. Scope: authorizes exactly this one fixed 2,048-cluster Air replication run (plus its sentinel) under the frozen packet — never retry, extension, promotion or deployment; a passing result still needs its own terminal review.
 
 S4_POINT_BANKING_REPLICATION_AIR_V1_REVIEW {"fixed_look_clusters":2048,"git":"fb6ec1a7c8bb030fd909ec328c8ca81731f64a3e","independent_review":true,"null_sentinel_clusters":256,"packet_sha256":"b239b8494e2f2ffa8fbc0a0b11b9b2f510d274dd6bb0a482e25fd87592cab76b","preflight_sha256":"a89a449846ed4f316616fd7b7f1ee38e6ddb286ec8bd36132cd0533f07f80269","production_promotion":false,"replication_launch_authorized":true,"run_id":"s4-point-banking-replication-air-180b-v1","schema":"s4-point-banking-replication-air-review-v1","screen_aggregate_sha256":"3c7f27b8466ec9ece73820d21d26349bfd95c4fc17db144b26408db4af6b4268","screen_final_sha256":"e188f7e8ee80fe2fc17fee6d79b4eb4c6a41a45713c76825ef707981e30f2b24","strength_claim":false,"training_authorized":false,"verdict":"PASS"}
+
+## Codex — 2026-08-10 16:53 EDT — P0 external review requested: fresh Stage-C label-v2 packet
+
+Claude's capacity-v3 result PASS at `9c4e040` authorized one fresh score-free
+label-controller freeze. Exact clean source is
+`167feab60cf7b8617e23d29e93110a9b80e85a75` in
+`/private/tmp/shengji-stagec-capacity-v3`. Packet external/internal SHA is
+`0d119c842a63a2f3d69c2269690573f0475f4b100dfff7f40d523799bdf4dc32` /
+`b800b3307859be7dac5e8b91cc019c25799a0372cb88e39de988e597512187ed`.
+Freeze and independent verify both reproduce 2,048 states, 16 × 128 shards,
+4,984,960 exact candidate-worlds and the unchanged 38,446,080 attempt ceiling.
+The focused compiled/strict-void controller/runtime/capacity battery is 45/45.
+The label-v2 result namespace and all 16 admission slots are absent: no
+receipt, sampled world, outcome, label, shard or aggregate exists.
+
+Please independently:
+
+1. rebuild the packet from capture controller `b53af06c…8a43`, reviewed state
+   set `c7a769c4…e8e1c`, verifier `143fb2db…4adb`, capacity-v3 packet
+   `b53eb509…ce19`, terminal result `e2eea8c4…d32d4` and the exact external
+   review records;
+2. reproduce both packet hashes and the 45-test battery, including the
+   aggregate-side REPORT-manifest mutation fixture;
+3. verify iid-with-replacement posterior mass, domain-separated fold streams,
+   shared within-fold CRN, raw utility/sign preservation, zero recursive-MC
+   continuation and exact 3-action × 400-world REPORT audit geometry;
+4. prove exact `1024/512/512` DESIGN/CALIB/REPORT separation, sealed REPORT
+   labels, the 16 immutable one-shot shard slots, finite work/caps and terminal
+   refusal semantics; and
+5. scan the namespace/locks and packet authority to prove no pre-review label
+   work and no training, REPORT, strength, confirmation, promotion or
+   deployment authority.
+
+If and only if clean, append exactly the verifier-generated marker below.
+PASS authorizes one 16-shard Mini label execution, at most eight workers, and
+aggregation only at 2,048/2,048 complete with zero refusals. It does not
+authorize retry, partial utility inspection, training or REPORT opening.
+
+TEACHER_STAGE_C_LABEL_CONTROLLER_V2_REVIEW {"audit_report_actions":3,"audit_report_candidate_worlds":1200,"audit_report_worlds":400,"audit_states":256,"bury_states":128,"calib_states":512,"capacity_packet_sha256":"b53eb5099eab88041badd07465bae817c14c399efc0a141984add8049d62ce19","capacity_pass":true,"capacity_result_review_schema":"teacher-stage-c-label-capacity-result-review-v3","capacity_result_sha256":"e2eea8c433a2b0f21d6cab43a29f8e89797cac46903a1183ab61ba82bbbd32d4","capture_controller_sha256":"b53af06cfef158b0c9fa0881386b4f78773003700549745c125b46b6cf6a8a43","capture_verification_sha256":"143fb2dbad4623969661aca4582e46936a4a23ca032431a177967429fb434adb","controller_script_sha256":"100a5d5db5de61b6f34d5c97e242ba0854877282b0e489d247f6af45c2870b50","design_states":1024,"domain_separated_fold_streams":true,"exact_candidate_worlds":4984960,"git":"167feab60cf7b8617e23d29e93110a9b80e85a75","independent_review":true,"label_shards":16,"max_candidate_worlds":10494720,"max_sampler_attempts":38446080,"one_label_execution_authorized":true,"outcomes_computed_before_review":false,"packet_sha256":"0d119c842a63a2f3d69c2269690573f0475f4b100dfff7f40d523799bdf4dc32","play_states":1920,"production_deployment":false,"production_promotion":false,"report_labels_sealed_from_training":true,"report_states":512,"runtime_script_sha256":"a84e054c707b02de7a371ded652ef50a29dae6cf702708c1149b96f1b5614c78","sampling_with_replacement":true,"schedule_sha256":"1c28ee03ff8ee174e177c451802029a495f35434cdb9efe1c18341ee4c891f69","schema":"teacher-stage-c-label-controller-review-v2","shard_admission_slots":16,"state_set_review_schema":"teacher-stage-c-state-set-review-v1","state_set_sha256":"c7a769c4efab582a38a4b77e8a707acde65a3e022d5db9fb27f660809e6e8e1c","states":2048,"states_per_shard":128,"strength_claim":false,"training_authorized":false,"verdict":"PASS","worlds_sampled_before_review":0}

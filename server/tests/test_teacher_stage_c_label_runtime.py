@@ -110,6 +110,14 @@ def test_fold_seeds_are_deterministic_and_domain_separated() -> None:
     assert runtime.seed_for(changed, "selection") != first["selection"]
 
 
+def test_work_ledger_marks_an_interrupted_candidate_world_incomplete() -> None:
+    ledger = runtime.WorkLedger()
+    ledger.begin_candidate_world("selection")
+    assert ledger.snapshot()["accounting_complete"] is False
+    ledger.finish_candidate_world("selection")
+    assert ledger.snapshot()["accounting_complete"] is True
+
+
 def test_strict_sampler_retries_and_reconciles(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeBot:
         SAMPLE_ATTEMPT_FACTOR = runtime.SAMPLE_ATTEMPT_FACTOR
@@ -422,6 +430,17 @@ def test_refusal_record_never_exposes_partial_outcomes() -> None:
             key: value for key, value in record.items()
             if key != "row_sha256"
         }))
+    runtime.validate_refusal_record(
+        state, record, audit_expected=False)
+    forged = copy.deepcopy(record)
+    forged["attempted_work"]["candidate_worlds_attempted"]["selection"] = -1
+    forged["attempted_work"]["total_candidate_worlds_attempted"] = -1
+    forged["row_sha256"] = runtime.sha256_bytes(runtime.canonical_json({
+        key: value for key, value in forged.items() if key != "row_sha256"
+    }))
+    with pytest.raises(runtime.LabelRefused, match="work ledger drift"):
+        runtime.validate_refusal_record(
+            state, forged, audit_expected=False)
 
 
 def _audit_gate_fixture(*, target_random: bool = False):

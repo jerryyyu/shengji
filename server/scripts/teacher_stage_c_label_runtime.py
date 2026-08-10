@@ -183,7 +183,7 @@ class WorkLedger:
             "total_candidate_worlds_attempted": sum(self.attempted.values()),
             "total_candidate_worlds_completed": sum(self.completed.values()),
             "samplers": dict(sorted(self.samplers.items())),
-            "accounting_complete": True,
+            "accounting_complete": self.attempted == self.completed,
         }
 
 
@@ -805,6 +805,157 @@ def validate_label_row(state: Mapping[str, object], rnd,
         raise LabelRefused("Stage-C label work ledger drift")
 
 
+def _expected_sampler_worlds(state: Mapping[str, object], fold: str) -> int:
+    recipe = recipe_for_state(state)
+    values = {
+        "selection": (ORDINARY_SELECTION_WORLDS
+                      if recipe == "ordinary_anchor" else
+                      HARD_SELECTION_WORLDS),
+        "report": (ORDINARY_REPORT_WORLDS
+                   if recipe == "ordinary_anchor" else
+                   HARD_REPORT_WORLDS),
+        "audit_selection": AUDIT_SELECTION_WORLDS,
+        "audit_report": AUDIT_REPORT_WORLDS,
+    }
+    return values[fold]
+
+
+def _validate_refusal_sampler(sampler: Mapping[str, object], *,
+                              state: Mapping[str, object], fold: str) -> None:
+    requested = _expected_sampler_worlds(state, fold)
+    counters = sampler.get("counters")
+    hashes = sampler.get("world_key_sha256s")
+    accepted = sampler.get("accepted")
+    attempts = sampler.get("attempts")
+    overlap = sampler.get("overlap_discarded")
+    duplicate = sampler.get("duplicate_discarded")
+    if (sampler.get("schema") != SAMPLER_SCHEMA
+            or sampler.get("fold") != fold
+            or sampler.get("seed") != seed_for(state, fold)
+            or sampler.get("requested") != requested
+            or isinstance(accepted, bool) or not isinstance(accepted, int)
+            or not 0 <= accepted <= requested
+            or isinstance(attempts, bool) or not isinstance(attempts, int)
+            or not accepted <= attempts <= requested * SAMPLE_ATTEMPT_FACTOR
+            or sampler.get("attempt_cap") != requested * SAMPLE_ATTEMPT_FACTOR
+            or not isinstance(counters, dict)
+            or set(counters) != set(SAMPLER_COUNTERS)
+            or not all(isinstance(value, int) and not isinstance(value, bool)
+                       and value >= 0 for value in counters.values())
+            or counters["sample_attempts"] != attempts
+            or sampler.get("accepted_draws") != counters["accepted_worlds"]
+            or isinstance(overlap, bool) or not isinstance(overlap, int)
+            or overlap < 0
+            or isinstance(duplicate, bool) or not isinstance(duplicate, int)
+            or duplicate < 0
+            or counters["accepted_worlds"] != accepted + overlap + duplicate
+            or counters["accepted_worlds"] + counters["failed_worlds"]
+            != attempts
+            or counters["rejected_worlds"] > counters["failed_worlds"]
+            or not isinstance(hashes, list) or len(hashes) != accepted
+            or len(set(hashes)) != accepted
+            or not all(isinstance(value, str) and len(value) == 64
+                       and not any(char not in "0123456789abcdef"
+                                   for char in value) for value in hashes)
+            or sampler.get("world_keys_sha256")
+            != sha256_bytes(canonical_json(hashes))
+            or sampler.get("exactly_disjoint_from_prior_folds") is not True
+            or sampler.get("complete") is not (accepted == requested)):
+        raise LabelRefused(f"Stage-C refusal sampler drift: {fold}")
+
+
+def validate_refusal_record(state: Mapping[str, object],
+                            row: Mapping[str, object], *,
+                            audit_expected: bool) -> None:
+    work = row.get("attempted_work")
+    if (row.get("schema") != SCHEMA
+            or row.get("status") != "REFUSED_NO_LABEL"
+            or row.get("state_id") != state.get("state_id")
+            or row.get("split") != state.get("split")
+            or row.get("surface_type") != state.get("surface_type")
+            or row.get("stratum") != state.get("stratum")
+            or not isinstance(row.get("reason_class"), str)
+            or not row["reason_class"]
+            or not isinstance(row.get("reason_sha256"), str)
+            or len(row["reason_sha256"]) != 64
+            or any(char not in "0123456789abcdef"
+                   for char in row["reason_sha256"])
+            or row.get("utility_published") is not False
+            or row.get("label_published") is not False
+            or row.get("training_authorized") is not False
+            or any(name in row for name in (
+                "selection", "report", "audit", "decision", "label_action"))
+            or row.get("row_sha256") != sha256_bytes(canonical_json({
+                key: value for key, value in row.items()
+                if key != "row_sha256"
+            }))
+            or not isinstance(work, dict) or work.get("schema") != WORK_SCHEMA):
+        raise LabelRefused("Stage-C refusal identity/outcome leakage")
+    attempted = work.get("candidate_worlds_attempted")
+    completed = work.get("candidate_worlds_completed")
+    samplers = work.get("samplers")
+    if (not isinstance(attempted, dict) or set(attempted) != set(FOLDS)
+            or not isinstance(completed, dict) or set(completed) != set(FOLDS)
+            or not all(isinstance(value, int) and not isinstance(value, bool)
+                       and value >= 0 for value in attempted.values())
+            or not all(isinstance(value, int) and not isinstance(value, bool)
+                       and value >= 0 for value in completed.values())
+            or any(completed[name] > attempted[name] for name in FOLDS)
+            or work.get("total_candidate_worlds_attempted")
+            != sum(attempted.values())
+            or work.get("total_candidate_worlds_completed")
+            != sum(completed.values())
+            or work.get("accounting_complete")
+            is not (attempted == completed)
+            or not isinstance(samplers, dict)
+            or not set(samplers).issubset(FOLDS)):
+        raise LabelRefused("Stage-C refusal work ledger drift")
+    allowed_folds = {"selection", "report"}
+    if audit_expected:
+        allowed_folds.update({"audit_selection", "audit_report"})
+    if not set(samplers).issubset(allowed_folds):
+        raise LabelRefused("Stage-C refusal sampled an unauthorized fold")
+    sequence = ["selection", "report"]
+    if audit_expected:
+        sequence.extend(["audit_selection", "audit_report"])
+    if set(samplers) != set(sequence[:len(samplers)]):
+        raise LabelRefused("Stage-C refusal sampler sequence is not a prefix")
+    hashes = []
+    for fold, sampler in samplers.items():
+        if not isinstance(sampler, dict):
+            raise LabelRefused("Stage-C refusal sampler type drift")
+        _validate_refusal_sampler(sampler, state=state, fold=fold)
+        hashes.append(set(sampler["world_key_sha256s"]))
+    if any(hashes[left].intersection(hashes[right])
+           for left in range(len(hashes))
+           for right in range(left + 1, len(hashes))):
+        raise LabelRefused("Stage-C refusal fold worlds overlap")
+    candidates = len(state["candidates"])
+    fold_ceilings = {
+        "selection": candidates * _expected_sampler_worlds(state, "selection"),
+        "report": ((candidates if recipe_for_state(state) == "ordinary_anchor"
+                    else 2) * _expected_sampler_worlds(state, "report")),
+        "audit_selection": (candidates * AUDIT_SELECTION_WORLDS
+                            if audit_expected else 0),
+        "audit_report": (AUDIT_REPORT_CANDIDATE_WORLDS
+                         if audit_expected else 0),
+    }
+    if (any(attempted[name] > fold_ceilings[name] for name in FOLDS)
+            or any(attempted[name] for name in FOLDS if name not in samplers)
+            or any(attempted[name] for name, sampler in samplers.items()
+                   if sampler["complete"] is not True)):
+        raise LabelRefused("Stage-C refusal fold work exceeds sampler authority")
+    expected_ceiling = (
+        candidates * (ORDINARY_SELECTION_WORLDS + ORDINARY_REPORT_WORLDS)
+        if recipe_for_state(state) == "ordinary_anchor" else
+        candidates * HARD_SELECTION_WORLDS + 2 * HARD_REPORT_WORLDS)
+    if audit_expected:
+        expected_ceiling += (candidates * AUDIT_SELECTION_WORLDS
+                             + AUDIT_REPORT_CANDIDATE_WORLDS)
+    if sum(attempted.values()) > expected_ceiling:
+        raise LabelRefused("Stage-C refusal exceeded candidate-world ceiling")
+
+
 def refusal_record(state: Mapping[str, object], exc: BaseException,
                    ledger: WorkLedger | None = None) -> dict:
     """Publish exact work and a reason hash, never partial outcome tensors."""
@@ -1331,16 +1482,8 @@ def validate_shard(shard: Mapping[str, object], *, packet: Mapping[str, object],
                 state, rnd, row, audit_expected=state_id in audit_ids)
             complete += 1
         else:
-            if (row.get("status") != "REFUSED_NO_LABEL"
-                    or row.get("utility_published") is not False
-                    or row.get("label_published") is not False
-                    or row.get("training_authorized") is not False
-                    or row.get("row_sha256") != sha256_bytes(canonical_json({
-                        key: value for key, value in row.items()
-                        if key != "row_sha256"
-                    }))):
-                raise LabelRefused(
-                    f"Stage-C label shard {index} refusal leakage")
+            validate_refusal_record(
+                state, row, audit_expected=state_id in audit_ids)
             refused += 1
     expected_status = ("COMPLETE" if refused == 0
                        else "REFUSED_INCOMPLETE_NO_AGGREGATE_UTILITY")

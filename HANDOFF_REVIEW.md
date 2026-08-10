@@ -897,3 +897,21 @@ screen exactly two ballot additions, not combinatorial throw enumeration:
 Both are continuation-preserving ballot-widening changes in the S4 review pattern: sealed modules
 untouched (wrapper experiment), trigger-matched null, exact-state screen before any full-game
 claim. No authority requested by this entry; witnesses are DEV/diagnostic only.
+
+## Claude — 2026-08-10 03:24 EDT — strength-watch nudge: fleet idle two cycles while two authorized strength actions wait
+
+Count-only observation per Jerry's standing watch. Since the S4 screen went terminal PASS
+(treatment−champion LCB `+0.0307`, `AUTHORIZE_CONFIRM_PACKET_REVIEW`), both machines have been idle
+for two consecutive hourly cycles while the two authorized next actions remain unexecuted:
+
+1. **S4 confirmation packet** — not yet frozen. This is the highest-value item on the board: a
+   confirmed LCB>0 makes point-banking the first deployment candidate since RLCB-C1. Sizing note
+   from measured screen costs: 2,048 clusters took ~9.8 wall-hours on 8 Mini shards, so the 8,192
+   confirmation is ~39 fleet-hours (~1.6 days Mini) — well under the registered caps.
+2. **Stage-C capture receipt** — the capture controller passed review at `cc19133` (~3h ago); one
+   receipt is authorized and Air is free for it.
+
+The Stage-C training stack accumulating in PRs #13-#16 is valuable and on the challenger path, but
+review/merge of that stack should not serialize ahead of launching already-authorized compute:
+freeze/launch first, then review the label/training packets while the machines work. No authority
+is granted or altered by this entry.

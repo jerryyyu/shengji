@@ -14,16 +14,17 @@ The important boundaries are executable here:
 * selection and report folds are disjoint;
 * hard-tail report folds evaluate two *logical* slots (candidate zero and the
   frozen selection winner), even when both slots name candidate zero;
+* audit report folds evaluate three logical slots (candidate zero, the frozen
+  audit-selection winner, and the frozen label choice) on 400 common worlds;
+  this preserves the reviewed 1,200 candidate-world budget that the broken
+  two-action/600-world geometry could not use to answer both estimands;
 * the report fold never reselects; and
 * raw attacker points and acting-team signed level utilities are retained for
   every action/world cell.
 
-The Stage-C design's audit-reference prose has one unresolved finite-work
-edge.  Certifying an audit winner against candidate zero and then evaluating
-it against the frozen label choice can require three distinct actions, while
-the reviewed maximum assumes two report actions.  ``audit_report_plan``
-refuses that geometry explicitly.  A successor label packet must resolve the
-contract rather than silently omitting a contrast or exceeding reviewed work.
+The 3x400 audit geometry is a narrow successor label-contract amendment.  It
+must be externally reviewed before any audit outcome is sampled; this module
+alone authorizes no labels or audit work.
 """
 from __future__ import annotations
 
@@ -59,7 +60,9 @@ ORDINARY_REPORT_WORLDS = 256
 HARD_SELECTION_WORLDS = 64
 HARD_REPORT_WORLDS = 300
 AUDIT_SELECTION_WORLDS = 128
-AUDIT_REPORT_WORLDS = 600
+AUDIT_REPORT_WORLDS = 400
+AUDIT_REPORT_ACTIONS = 3
+AUDIT_REPORT_CANDIDATE_WORLDS = 1_200
 SAMPLE_ATTEMPT_FACTOR = 40
 PLAY_CANDIDATE_CAP = 20
 BURY_CANDIDATE_CAP = 33
@@ -68,7 +71,7 @@ BURY_CANDIDATE_CAP = 33
 # selection uses a disjoint fold, so the report contrast is not winner-picked
 # on the same observations.  They are not simultaneous intervals over states.
 HARD_T_95_DF299 = 1.649966
-AUDIT_T_95_DF599 = 1.647397
+AUDIT_T_95_DF399 = 1.648682
 
 SAMPLER_COUNTERS = (
     "sample_attempts", "accepted_worlds", "failed_worlds",
@@ -79,10 +82,6 @@ FOLDS = ("selection", "report", "audit_selection", "audit_report")
 
 class LabelRefused(RuntimeError):
     """A Stage-C label row cannot satisfy its reviewed finite-work contract."""
-
-
-class AuditContractConflict(LabelRefused):
-    """The reviewed two-action audit budget cannot identify both estimands."""
 
 
 def canonical_json(value: object) -> bytes:
@@ -324,6 +323,7 @@ def paired_summary(left: Sequence[float], right: Sequence[float], *,
         "se": se,
         "critical": float(critical),
         "one_sided_95_lcb": mean - float(critical) * se,
+        "one_sided_95_ucb": mean + float(critical) * se,
         "family": "per-state fixed-pair Student-t; selection/report disjoint",
     }
 
@@ -450,29 +450,56 @@ def audit_report_plan(audit_selection_winner: int,
     """Name the report actions needed for both audit decisions.
 
     Candidate zero is needed to apply the audit winner's LCB.  The frozen
-    label choice is needed to measure regret on the same audit worlds.  If all
-    three identities differ, a two-action report cannot answer both questions.
+    label choice is needed to measure regret on the same audit worlds.  Keep
+    all three as logical slots even when identities coincide: 3 actions x 400
+    worlds preserves the original 2 actions x 600-world candidate-work ceiling
+    while making the previously-unidentified three-action case executable.
     """
     for value in (audit_selection_winner, frozen_label_choice):
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise LabelRefused("audit action index is not a nonnegative integer")
-    required = []
-    for value in (0, audit_selection_winner, frozen_label_choice):
-        if value not in required:
-            required.append(value)
-    if len(required) > 2:
-        raise AuditContractConflict(
-            "Stage-C audit needs three distinct actions (candidate0, audit "
-            "winner and frozen label choice), but reviewed audit work permits "
-            "only two report actions")
-    # Preserve exactly two logical slots even when only candidate zero exists.
-    if len(required) == 1:
-        required.append(required[0])
+    required = [0, audit_selection_winner, frozen_label_choice]
     return {
         "candidate_indices": required,
         "worlds": AUDIT_REPORT_WORLDS,
-        "candidate_worlds": 2 * AUDIT_REPORT_WORLDS,
+        "candidate_worlds": AUDIT_REPORT_ACTIONS * AUDIT_REPORT_WORLDS,
+        "slot_roles": [
+            "candidate0", "audit_selection_winner", "frozen_label_choice"],
         "can_certify_winner_and_measure_regret": True,
+    }
+
+
+def audit_report_summary(report: Mapping[str, object], *,
+                         audit_selection_winner: int,
+                         frozen_label_choice: int) -> dict:
+    """Resolve the fixed audit reference and its regret on common worlds."""
+    plan = audit_report_plan(audit_selection_winner, frozen_label_choice)
+    actions = report.get("actions")
+    if (not isinstance(actions, list) or len(actions) != AUDIT_REPORT_ACTIONS
+            or report.get("candidate_indices") != plan["candidate_indices"]
+            or report.get("worlds") != AUDIT_REPORT_WORLDS
+            or report.get("candidate_worlds")
+            != AUDIT_REPORT_CANDIDATE_WORLDS):
+        raise LabelRefused("audit report does not match fixed 3x400 geometry")
+    winner_vs_incumbent = paired_summary(
+        actions[1]["signed_level_utility"],
+        actions[0]["signed_level_utility"], critical=AUDIT_T_95_DF399)
+    audit_slot = 1 if winner_vs_incumbent["one_sided_95_lcb"] > 0 else 0
+    audit_index = plan["candidate_indices"][audit_slot]
+    regret_vs_label = paired_summary(
+        actions[audit_slot]["signed_level_utility"],
+        actions[2]["signed_level_utility"], critical=AUDIT_T_95_DF399)
+    return {
+        "audit_selection_winner_index": audit_selection_winner,
+        "frozen_label_choice_index": frozen_label_choice,
+        "audit_reference_index": audit_index,
+        "audit_reference_reason": (
+            "audit_report_lcb_override" if audit_slot == 1
+            else "audit_report_lcb_fallback_to_candidate0"),
+        "winner_vs_candidate0": winner_vs_incumbent,
+        "audit_reference_minus_label_choice": regret_vs_label,
+        "report_never_reselected": True,
+        "candidate_worlds": AUDIT_REPORT_CANDIDATE_WORLDS,
     }
 
 

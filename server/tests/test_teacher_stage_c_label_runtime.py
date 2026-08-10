@@ -199,6 +199,7 @@ def test_paired_lcb_is_fixed_pair_student_t() -> None:
     assert summary["mean"] == pytest.approx(4.0)
     assert summary["se"] > 0
     assert summary["one_sided_95_lcb"] < summary["mean"]
+    assert summary["one_sided_95_ucb"] > summary["mean"]
     assert "fixed-pair" in summary["family"]
 
 
@@ -240,11 +241,46 @@ def test_hard_tail_candidate_zero_winner_still_consumes_two_report_slots() -> No
     assert row["decision"]["final_index"] == 0
 
 
-def test_audit_report_plan_refuses_three_distinct_required_actions() -> None:
-    assert runtime.audit_report_plan(2, 0)["candidate_indices"] == [0, 2]
-    assert runtime.audit_report_plan(0, 1)["candidate_indices"] == [0, 1]
-    with pytest.raises(runtime.AuditContractConflict, match="three distinct"):
-        runtime.audit_report_plan(2, 1)
+def test_audit_report_plan_uses_three_slots_without_increasing_work() -> None:
+    distinct = runtime.audit_report_plan(2, 1)
+    assert distinct["candidate_indices"] == [0, 2, 1]
+    assert distinct["worlds"] == 400
+    assert distinct["candidate_worlds"] == 1_200
+    assert distinct["slot_roles"] == [
+        "candidate0", "audit_selection_winner", "frozen_label_choice"]
+
+    # Duplicate identities still consume three logical slots, just as the
+    # hard-tail report preserves two slots when candidate zero wins.
+    duplicate = runtime.audit_report_plan(0, 0)
+    assert duplicate["candidate_indices"] == [0, 0, 0]
+    assert duplicate["candidate_worlds"] == 2 * 600
+
+
+def test_audit_report_certifies_winner_and_measures_label_regret() -> None:
+    state = _state(candidates=3)
+    plan = runtime.audit_report_plan(2, 1)
+    report = _fold_runner(
+        [0.0, 0.0, 0.0], [0.0, 0.5, 2.0])(
+            None, state, plan["candidate_indices"], plan["worlds"],
+            "audit_report", runtime.WorkLedger())
+    summary = runtime.audit_report_summary(
+        report, audit_selection_winner=2, frozen_label_choice=1)
+    assert summary["audit_reference_index"] == 2
+    assert summary["audit_reference_reason"] == "audit_report_lcb_override"
+    assert summary["winner_vs_candidate0"]["one_sided_95_lcb"] == 2.0
+    assert summary["audit_reference_minus_label_choice"]["mean"] == 1.5
+    assert summary["candidate_worlds"] == 1_200
+
+    fallback_report = _fold_runner(
+        [0.0, 0.0, 0.0], [1.0, 2.0, 0.0])(
+            None, state, plan["candidate_indices"], plan["worlds"],
+            "audit_report", runtime.WorkLedger())
+    fallback = runtime.audit_report_summary(
+        fallback_report, audit_selection_winner=2, frozen_label_choice=1)
+    assert fallback["audit_reference_index"] == 0
+    assert fallback["audit_reference_reason"] == \
+        "audit_report_lcb_fallback_to_candidate0"
+    assert fallback["audit_reference_minus_label_choice"]["mean"] == -1.0
 
 
 def test_refusal_record_never_exposes_partial_outcomes() -> None:

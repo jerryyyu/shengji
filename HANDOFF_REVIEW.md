@@ -1473,3 +1473,37 @@ Scope: ONE score-free v7 capture — full 24-shard rerun in a fresh namespace. N
 strength claim, screen, promotion or deployment.
 
 TEACHER_STAGE_C_CAPTURE_CONTROLLER_V7_REVIEW {"base_stage_c_sha256":"f213314ace8ead497fcaccde150d0694851069b970948a10d0823cf74ceb93b4","bury_states":128,"calib_states":512,"candidate_source_hand_order_invariant":true,"capture_shards":24,"complete_generation_witness":true,"controller_script_sha256":"183487d9b35f92c9d0219527298ce0b935f680b94ffe0d22a010dc10fd5f28b3","design_states":1024,"exact_late_is_final_trick_decision":true,"exact_late_requires_phase_late":true,"exclusion_manifest_sha256":"89887733241af9a9583e2930ef0e0bd83dcdfa0a0f0dce3147d924dffa11d86c","git":"03c87d6710e9a2b894ad41c99d7905c8dd66b045","h0_controller_sha256":"cf074871cf977c0b072c528c395082b453b3b589f445c524baae9016e1d35392","independent_review":true,"labels_authorized":false,"live_parent_policy":"mc-s0-report-lcb","live_parent_schema":"live-champion-parent-v1","max_terminal_replay_uncertainty_attempts":4608000,"max_terminal_replay_uncertainty_candidate_worlds":9216000,"max_total_uncertainty_attempts":9216000,"max_total_uncertainty_candidate_worlds":18432000,"max_uncertainty_attempts":4608000,"max_uncertainty_candidate_worlds":9216000,"one_capture_execution_authorized":true,"outcomes_computed_before_review":false,"packet_sha256":"b53af06cfef158b0c9fa0881386b4f78773003700549745c125b46b6cf6a8a43","play_states":1920,"population_experiment_id":"teacher-v3-hard-tail-stage-c-capture-v2","production_deployment":false,"production_promotion":false,"rebind_sha256":"b60c4298493794b6de0ffe6907e8b92fb24f4bab6d56cc4c653eb1c67a1b7b18","report_states":512,"runtime_script_sha256":"983a36c26484e04431e5a7b1b9145764d955aff1217f3ec8d42b022c858b9ed3","s3c_controller_sha256":"cafbee439f8c30a07b0b6801d52620d7197afc3633badbc531bc5b156ce2f23e","scan_deals":750000,"schedule_sha256":"0e75ddaefb6a2846cd8723b72eb29bf65cef6570c39290103715aa042817efd1","schema":"teacher-stage-c-capture-controller-review-v7","states":2048,"states_captured_before_review":0,"strength_claim":false,"terminal_disposition_progress_every":250,"terminal_disposition_replay_deals":750000,"terminal_disposition_replay_workers":8,"terminal_recomputes_state_identity":true,"terminal_reconciles_work":true,"terminal_replays_all_scan_dispositions":true,"training_authorized":false,"uncertainty_worlds":30,"v11_checkpoint_sha256":"cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003","verdict":"PASS","worlds_sampled_before_review":0}
+
+## Claude — 2026-08-10 11:26 EDT — TEACHER_STAGE_C_STATE_SET_V7_REVIEW: PASS — 2,048-state population verified by independent recomputation; the v6-impossible follow cells are filled
+
+All MEASURED against the immutable artifacts in the detached capture worktree:
+
+1. **Hashes and bindings**: state set hashes exactly `c7a769c4…e8e1c`, terminal verification
+   `143fb2db…4adb`, receipt `8fdfdef5…f0ef5`; both artifacts bind the reviewed v7 controller packet
+   `b53af06c…8a43`, the frozen schedule `0e75ddae…`, source `03c87d6` and v7 schemas/run-id
+   (`teacher-v3-hard-tail-stage-c-capture-v7`); authority all-false.
+2. **Population, my own arithmetic on the 2,048 rows**: 2,048 unique state IDs, exactly one state
+   per deal seed; splits 1024/512/512; surfaces 1,920 play (880 lead + 1,040 follow) + 128 bury;
+   all 21 frozen cells non-zero — and the exact-late stratum is now **160 lead + 160 follow**,
+   filling the six cells that were structurally impossible in v6; 256 unique REPORT-audit IDs,
+   every one naming a REPORT row.
+3. **Digests independently recomputed**: the ordered states digest `595fc290…` and REPORT-audit-ID
+   digest `edbce7fb…` both reproduce byte-for-byte under the controller's canonical recipe
+   (sorted-keys compact JSON + trailing newline). Any single-byte state tamper breaks the digests I
+   recomputed — this, not trust in the verifier, is the integrity instrument. No label, outcome or
+   score-shaped key exists in any state row; selection metadata is marked non-training.
+4. **Replay and work**: all 24 disposition replays record `byte_identical: true` at 31,250 deals
+   each (sum exactly 750,000), each with its generation-witness SHA; uncertainty work reconciles
+   exactly — capture 403,620 worlds/attempts + 3,180,450 candidate-worlds, terminal replay
+   identical, total 807,240 / 6,360,900 = precisely twice the capture half and far under the
+   frozen ceilings. The verifier's every-state regeneration ran once (its log records the complete
+   sequence); my independent instrument for the same claim is the digest chain plus witness SHAs
+   rather than a second 750k-deal replay.
+5. **Stale-artifact isolation**: v6 never produced a state set (its freeze refused); v3 partials
+   carry v3 schemas; the v7 state-set/verifier schemas and run-id make them structurally
+   unconsumable, and the label controller's admission reopens and recomputes these exact bindings.
+
+Scope: freezing the v7-bound label controller only. Labels, capacity outcomes, training, REPORT
+access, strength, promotion and deployment all remain closed behind their own gates.
+
+TEACHER_STAGE_C_STATE_SET_V7_REVIEW {"all_scan_dispositions_replay_authenticated":true,"audit_states":256,"bury_states":128,"calib_states":512,"candidate_replay_verified":true,"capture_controller_sha256":"b53af06cfef158b0c9fa0881386b4f78773003700549745c125b46b6cf6a8a43","capture_git":"03c87d6710e9a2b894ad41c99d7905c8dd66b045","capture_receipt_sha256":"8fdfdef5d473c148cd8650d5bed6ca1905a862a5df31079034757254ae5f0ef5","capture_verification_internal_sha256":"6c872e52351c21c92fd9715e2e610948acb56ad9aa59ce622d6971c435fe3696","capture_verification_sha256":"143fb2dbad4623969661aca4582e46936a4a23ca032431a177967429fb434adb","design_states":1024,"independent_review":true,"labels_authorized":false,"labels_computed_before_review":false,"one_label_controller_freeze_authorized":true,"play_states":1920,"production_deployment":false,"production_promotion":false,"report_audit_state_ids_sha256":"edbce7fbe06cf76a281b3a809c9621107e49b44bf8ca6cc0fddbd1087c0efe97","report_states":512,"schema":"teacher-stage-c-state-set-review-v1","split_safe":true,"state_set_internal_sha256":"5291d8eba7d191d262ec555b7c1fdff2c39b89065280ec3b009516fb05f9e5d3","state_set_sha256":"c7a769c4efab582a38a4b77e8a707acde65a3e022d5db9fb27f660809e6e8e1c","states":2048,"states_sha256":"595fc290bc8dabf02bc52e90bfa4139afaaf28b01023a68d12e321566ea0794c","strength_claim":false,"terminal_disposition_replay_deals":750000,"training_authorized":false,"verdict":"PASS"}

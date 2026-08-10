@@ -193,6 +193,7 @@ def test_review_claim_authorizes_capture_only(
             "required_play_states": 1920,
             "required_bury_states": 128,
             "exact_late_requires_phase_late": True,
+            "exact_late_is_final_trick_decision": True,
             "candidate_source_hand_order_invariant": True,
             "terminal_disposition_replay_deals": 750_000,
             "terminal_disposition_replay_workers": 8,
@@ -208,6 +209,7 @@ def test_review_claim_authorizes_capture_only(
     assert claim["population_experiment_id"] \
         == ctrl.POPULATION_EXPERIMENT_ID
     assert claim["candidate_source_hand_order_invariant"] is True
+    assert claim["exact_late_is_final_trick_decision"] is True
     assert claim["terminal_replays_all_scan_dispositions"] is True
     assert claim["terminal_disposition_progress_every"] == 250
 

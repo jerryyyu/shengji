@@ -882,6 +882,29 @@ def _target_trick(split: str, cell: Mapping[str, object], seed: int) -> int:
         stop - start)
 
 
+def _is_final_trick_decision(rnd, seat: int) -> bool:
+    """Return whether this decision occurs inside a one-card final trick.
+
+    At the lead, all four hands contain one card.  At a follow decision, each
+    earlier player has correctly removed that card from their hand, so the
+    old ``all(len(hand) == 1)`` predicate made every follow cell impossible.
+    Reconstruct the start-of-trick hand size by adding each already submitted
+    single-card play back to that seat.  This is invariant across lead and all
+    three follow positions and does not rely on hidden-card identities.
+    """
+    if (rnd.phase != "play" or rnd.trick is None or rnd.turn != seat
+            or not 0 <= seat < len(rnd.hands)):
+        return False
+    played: dict[int, int] = {}
+    for play in rnd.trick.plays:
+        if (play.seat in played or len(play.cards) != 1
+                or not 0 <= play.seat < len(rnd.hands)):
+            return False
+        played[play.seat] = 1
+    return all(len(hand) + played.get(index, 0) == 1
+               for index, hand in enumerate(rnd.hands))
+
+
 def _actor_identity() -> dict:
     import shengji.ai.heuristic as heuristic
     import shengji.ai.registry as registry
@@ -1212,8 +1235,9 @@ def _validate_candidates(state: Mapping[str, object], rnd, net) -> None:
                 != state.get("point_banking_selection_tag")):
             raise RuntimeRefused("Stage-C point-banking selection tag drift")
     if (stratum == "exact_late_eligible"
-            and not all(len(hand) == 1 for hand in rnd.hands)):
-        raise RuntimeRefused("Stage-C exact-late state is not one-card")
+            and not _is_final_trick_decision(rnd, seat)):
+        raise RuntimeRefused(
+            "Stage-C exact-late state is not a final-trick decision")
 
 
 def hydrate_candidates(state: dict, net) -> tuple[dict | None, str]:
@@ -1303,7 +1327,7 @@ def capture_deal(seed: int, split: str, cell: Mapping[str, object],
                 opportunity = _point_banking_opportunity(rnd, seat)
                 target = bool(opportunity["opportunity"])
         elif cell["stratum"] == "exact_late_eligible":
-            target = (all(len(hand) == 1 for hand in rnd.hands)
+            target = (_is_final_trick_decision(rnd, seat)
                       and phase == cell["phase"]
                       and surface == cell["surface"]
                       and role == cell["role"])
@@ -1326,8 +1350,8 @@ def capture_deal(seed: int, split: str, cell: Mapping[str, object],
             if opportunity is not None:
                 state["point_banking_selection_tag"] = opportunity["telemetry"]
             if (cell["stratum"] == "exact_late_eligible"
-                    and any(len(hand) != 1 for hand in rnd.hands)):
-                return None, "not_one_card_exact_late"
+                    and not _is_final_trick_decision(rnd, seat)):
+                return None, "not_final_trick_exact_late"
             replay_state(state)
             return state, "eligible"
         cards = actors[seat].decide_play(rnd, seat)

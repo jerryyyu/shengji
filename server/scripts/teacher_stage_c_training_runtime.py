@@ -143,6 +143,7 @@ def _dataset(path: Path, expected_sha256: str) -> dict:
         raise TrainingRuntimeRefused("Stage-C model dataset path/SHA drift")
     dataset = load_json(path)
     examples = dataset.get("examples")
+    fresh = dataset.get("fresh_report_selection")
     if (dataset.get("schema") != CTRL.DATASET_SCHEMA
             or dataset.get("run_id") != CTRL.RUN_ID
             or dataset.get("dataset_sha256")
@@ -150,9 +151,16 @@ def _dataset(path: Path, expected_sha256: str) -> dict:
             or dataset.get("split_counts") != CTRL.EXPECTED_SPLITS
             or dataset.get("surface_counts") != CTRL.EXPECTED_SURFACES
             or dataset.get("report_rows_included") is not False
-            or dataset.get("report_shard_files_opened") != 0
+            or dataset.get("report_label_shard_files_opened") != 0
+            or dataset.get("old_report_labels_quarantined") is not True
+            or dataset.get("fresh_report_states_materialized") is not False
+            or dataset.get("fresh_report_capture_shards_revalidated") != 8
             or dataset.get("training_authorized") is not False
             or dataset.get("report_open_authorized") is not False
+            or not isinstance(fresh, dict)
+            or fresh.get("packet_external_sha256")
+            != CTRL.FRESH_REPORT_PACKET_SHA256
+            or fresh.get("fresh_report_states") != 512
             or not isinstance(examples, dict)
             or set(examples) != {"DESIGN", "CALIB"}):
         raise TrainingRuntimeRefused("Stage-C model dataset identity drift")
@@ -204,7 +212,9 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, dict]:
             or packet.get("authority", {}).get(
                 "report_open_authorized") is not False):
         raise TrainingRuntimeRefused("Stage-C training packet identity drift")
-    parent = packet.get("parents", {}).get("model_dataset", {})
+    parents = packet.get("parents", {})
+    parent = parents.get("model_dataset", {})
+    fresh_parent = parents.get("fresh_report_selection", {})
     dataset = _dataset(
         REPO / str(parent.get("logical_path")),
         str(parent.get("external_sha256")))
@@ -212,8 +222,18 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, dict]:
             or parent.get("design_states") != 1024
             or parent.get("calib_states") != 512
             or parent.get("report_rows_included") is not False
-            or parent.get("sealed_report_manifest_sha256")
-            != dataset.get("sealed_report_manifest_sha256")):
+            or parent.get("fresh_report_selection_sha256")
+            != CTRL._manifest_hash(dataset.get("fresh_report_selection"))
+            or fresh_parent.get("external_sha256")
+            != CTRL.FRESH_REPORT_PACKET_SHA256
+            or fresh_parent.get("internal_sha256")
+            != dataset["fresh_report_selection"]["packet_internal_sha256"]
+            or fresh_parent.get("sealed_selection_sha256")
+            != dataset["fresh_report_selection"]["sealed_selection_sha256"]
+            or fresh_parent.get("fresh_report_state_ids_sha256")
+            != dataset["fresh_report_selection"][
+                "fresh_report_state_ids_sha256"]
+            or fresh_parent.get("state_material_published") is not False):
         raise TrainingRuntimeRefused("Stage-C packet/dataset parent drift")
     return packet, dataset
 

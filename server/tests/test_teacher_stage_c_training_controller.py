@@ -53,16 +53,19 @@ def _aggregate() -> dict:
         },
         "fidelity_gate": {
             "schema": "teacher-stage-c-label-fidelity-gate-v2",
-            "decision": "AUTHORIZE_MODEL_PACKET_REVIEW",
-            "fidelity_pass": True, "v11_recall_pass": True,
+            "decision": "DIAGNOSE_FROZEN_STAGE_C_ONLY",
+            "fidelity_pass": True, "v11_recall_pass": False,
             "ordinary_anchor_regret": _gate_summary(
                 "one_sided_95_ucb", 0.05),
             "hard_tail_regret": _gate_summary("one_sided_95_ucb", 0.08),
-            "v11_recall_treatment_minus_matched_random": _gate_summary(
-                "one_sided_95_lcb", 0.01),
+            "v11_recall_treatment_minus_matched_random": {
+                "n": 48, "mean": 1.0 / 48.0,
+                "one_sided_95_lcb": -0.057994909647547,
+                "one_sided_95_ucb": 0.09966157631421366,
+            },
         },
         "utility_published": True,
-        "model_packet_review_authorized": True,
+        "model_packet_review_authorized": False,
         "training_authorized": False,
         "report_open_authorized": False,
         "strength_claim": False,
@@ -74,22 +77,29 @@ def _aggregate() -> dict:
     return value
 
 
-def _fidelity_only_aggregate() -> dict:
-    value = _aggregate()
-    gate = value["fidelity_gate"]
-    gate["decision"] = "DIAGNOSE_FROZEN_STAGE_C_ONLY"
-    gate["v11_recall_pass"] = False
-    gate["v11_recall_treatment_minus_matched_random"] = {
-        "n": 48,
-        "mean": 1.0 / 48.0,
-        "one_sided_95_lcb": -0.057994909647547,
-        "one_sided_95_ucb": 0.09966157631421366,
+def _fresh_report() -> dict:
+    sealed = {
+        "sealed_selection_sha256": "2" * 64,
+        "fresh_report_state_ids_sha256": "3" * 64,
+        "fresh_report_state_material_sha256": "4" * 64,
+        "fresh_report_per_state_hashes_sha256": "5" * 64,
+        "effective_state_ids_sha256": "6" * 64,
+        "fresh_report_states": 512,
     }
-    value["model_packet_review_authorized"] = False
-    external = value.pop("external_sha256")
-    value["aggregate_sha256"] = CTRL.self_hash(value, "aggregate_sha256")
-    value["external_sha256"] = external
-    return value
+    return {
+        "packet_sha256": "7" * 64,
+        "sealed_selection": sealed,
+    }
+
+
+def _fresh_review() -> dict:
+    return {
+        "schema": CTRL.FRESH.REVIEW_SCHEMA,
+        "one_v11_free_training_controller_freeze_authorized": True,
+        "training_authorized": False,
+        "report_open_authorized": False,
+        "verdict": "PASS",
+    }
 
 
 def _dataset() -> dict:
@@ -98,9 +108,14 @@ def _dataset() -> dict:
         "run_id": CTRL.RUN_ID,
         "split_counts": dict(CTRL.EXPECTED_SPLITS),
         "surface_counts": CTRL.EXPECTED_SURFACES,
-        "sealed_report_manifest_sha256": "1" * 64,
+        "fresh_report_selection": CTRL.fresh_report_dataset_contract(
+            _fresh_report(), _fresh_review()),
+        "candidate_provenance_contract":
+            CTRL.candidate_provenance_contract(),
+        "old_report_labels_quarantined": True,
         "report_rows_included": False,
-        "report_shard_files_opened": 0,
+        "report_label_shard_files_opened": 0,
+        "fresh_report_states_materialized": False,
     }
     value["dataset_sha256"] = CTRL.self_hash(value, "dataset_sha256")
     return value
@@ -123,59 +138,61 @@ def test_training_schedule_is_exact_complete_and_separate_by_surface() -> None:
     assert len({value["result"] for value in schedule["cells"]}) == 48
 
 
-def test_label_aggregate_review_claim_binds_gate_and_sealed_report() -> None:
+def test_label_fidelity_summary_admits_labels_but_not_v11() -> None:
     aggregate = _aggregate()
-    claim = CTRL.expected_label_aggregate_review_claim(aggregate, "f" * 64)
-    assert claim["fidelity_decision"] == "AUTHORIZE_MODEL_PACKET_REVIEW"
-    assert claim["ordinary_anchor_regret_ucb"] == 0.05
-    assert claim["hard_tail_regret_ucb"] == 0.08
-    assert claim["v11_recall_lcb"] == 0.01
-    assert claim["report_shards_opened_by_training_review"] == 0
-    assert claim["training_authorized"] is False
-
-
-def test_legacy_review_helper_refuses_fidelity_only_result() -> None:
-    with pytest.raises(
-            CTRL.TrainingControllerRefused, match="combined gate"):
-        CTRL.expected_label_aggregate_review_claim(
-            _fidelity_only_aggregate(), "f" * 64)
-
-
-def test_fidelity_consumption_claim_admits_labels_but_not_v11() -> None:
-    aggregate = _fidelity_only_aggregate()
-    claim = CTRL.expected_label_fidelity_review_claim(
-        aggregate, "f" * 64)
-    assert claim["original_combined_decision"] \
+    summary = CTRL.label_fidelity_summary(aggregate, "f" * 64)
+    assert summary["original_combined_decision"] \
         == "DIAGNOSE_FROZEN_STAGE_C_ONLY"
-    assert claim["label_fidelity_pass"] is True
-    assert claim["v11_recall_pass"] is False
-    assert claim["v11_proposer_admitted"] is False
-    assert claim["one_v11_free_training_controller_freeze_authorized"] \
-        is True
-    assert claim["training_authorized"] is False
+    assert summary["ordinary_anchor_regret_ucb"] == 0.05
+    assert summary["hard_tail_regret_ucb"] == 0.08
+    assert summary["v11_recall_lcb"] < 0
+    assert summary["v11_recall_pass"] is False
+    assert summary["v11_proposer_admitted"] is False
+    assert summary["old_report_quarantined"] is True
 
+
+def test_label_aggregate_requires_fidelity_pass_and_v11_free_route() -> None:
+    aggregate = _aggregate()
     failed = copy.deepcopy(aggregate)
     failed["fidelity_gate"]["fidelity_pass"] = False
+    failed["aggregate_sha256"] = CTRL.self_hash(failed, "aggregate_sha256")
     with pytest.raises(
-            CTRL.TrainingControllerRefused, match="fidelity-only"):
-        CTRL.expected_label_fidelity_review_claim(failed, "f" * 64)
+            CTRL.TrainingControllerRefused, match="V11-free"):
+        CTRL.label_fidelity_summary(failed, "f" * 64)
 
 
-def test_label_aggregate_and_exact_review_marker_reopen(tmp_path) -> None:
-    aggregate = _fidelity_only_aggregate()
+def test_label_aggregate_reopens_without_old_report_authority(tmp_path) -> None:
+    aggregate = _aggregate()
     aggregate.pop("external_sha256")
     path = tmp_path / "aggregate.json"
     path.write_bytes(CTRL.canonical_json(aggregate))
     digest = CTRL.sha256_file(path)
-    claim = CTRL.expected_label_fidelity_review_claim(aggregate, digest)
+    reopened = CTRL.validate_label_aggregate(path, digest)
+    assert reopened == aggregate
+
+
+def test_fresh_report_exact_review_marker_is_the_freeze_authority(
+        monkeypatch, tmp_path) -> None:
+    packet = _fresh_report()
+    review_claim = _fresh_review()
+    monkeypatch.setattr(CTRL, "REPO", tmp_path)
+    monkeypatch.setattr(CTRL.FRESH, "PACKET_PATH", "fresh.json")
+    monkeypatch.setattr(
+        CTRL.FRESH, "validate_packet", lambda **kwargs: packet)
+    monkeypatch.setattr(
+        CTRL.FRESH, "expected_review_claim",
+        lambda value, digest: review_claim)
+    path = tmp_path / "fresh.json"
+    path.write_text("{}\n")
     review = tmp_path / "review.md"
     review.write_text(
-        CTRL.LABEL_FIDELITY_REVIEW_MARKER
-        + json.dumps(claim, sort_keys=True, separators=(",", ":")) + "\n")
-    reopened, reopened_claim = CTRL.validate_label_aggregate(
-        path, digest, review)
-    assert reopened == aggregate
-    assert reopened_claim == claim
+        CTRL.FRESH.REVIEW_MARKER
+        + json.dumps(review_claim, sort_keys=True, separators=(",", ":"))
+        + "\n")
+    reopened, claim = CTRL.validate_fresh_report(
+        path, CTRL.FRESH_REPORT_PACKET_SHA256, review, tmp_path / "state.md")
+    assert reopened == packet
+    assert claim == review_claim
 
 
 def test_packet_exposes_only_training_review_authority(monkeypatch) -> None:
@@ -188,11 +205,13 @@ def test_packet_exposes_only_training_review_authority(monkeypatch) -> None:
         "max_concurrent_cells": 8,
         "heartbeat": "one JSON record after every epoch",
     })
-    aggregate = _fidelity_only_aggregate()
-    review = CTRL.expected_label_fidelity_review_claim(aggregate, "f" * 64)
+    aggregate = _aggregate()
+    fresh = _fresh_report()
+    review = _fresh_review()
     packet = CTRL.build_packet(
         git="a" * 40, dataset=_dataset(), dataset_external_sha256="2" * 64,
-        aggregate=aggregate, aggregate_review=review)
+        aggregate=aggregate, fresh_report=fresh,
+        fresh_report_review=review)
     assert packet["authority"] == {
         "examples_materialized": True,
         "training_started": False,
@@ -204,15 +223,12 @@ def test_packet_exposes_only_training_review_authority(monkeypatch) -> None:
         "production_promotion": False,
         "production_deployment": False,
     }
-    assert packet["parents"]["label_aggregate"] == {
-        "external_sha256": aggregate["external_sha256"],
-        "internal_sha256": aggregate["aggregate_sha256"],
-        "review_schema": CTRL.LABEL_FIDELITY_REVIEW_SCHEMA,
-        "review_claim_sha256": CTRL._manifest_hash(review),
-        "original_combined_decision": "DIAGNOSE_FROZEN_STAGE_C_ONLY",
-        "label_fidelity_pass": True,
-        "v11_proposer_admitted": False,
-    }
+    assert packet["parents"]["label_aggregate"][
+        "original_combined_decision"] == "DIAGNOSE_FROZEN_STAGE_C_ONLY"
+    assert packet["parents"]["label_aggregate"][
+        "old_report_labels_quarantined"] is True
+    assert packet["parents"]["fresh_report_selection"][
+        "external_sha256"] == CTRL.FRESH_REPORT_PACKET_SHA256
     claim = CTRL.expected_review_claim(packet, "3" * 64)
     assert claim["training_supervisor_sha256"] == "a" * 64
     assert claim["training_cells"] == 48
@@ -220,6 +236,7 @@ def test_packet_exposes_only_training_review_authority(monkeypatch) -> None:
     assert claim["execution_host"] == "mini"
     assert claim["one_training_execution_authorized"] is True
     assert claim["v11_inference_authorized"] is False
+    assert claim["fresh_report_states_materialized"] is False
     assert claim["report_open_authorized"] is False
     assert packet["result_contract"]["curve_diagnostics"][
         "selection_eligible_curve_fraction"] == 1.0
@@ -325,8 +342,12 @@ def test_dataset_materialization_opens_only_design_and_calib_shards(
 
     monkeypatch.setattr(CTRL, "sha256_file", fake_sha)
     monkeypatch.setattr(CTRL, "load_json", lambda path: shard_by_path[str(path)])
-    monkeypatch.setattr(CTRL.LABEL, "_load_v11", lambda: object())
-    monkeypatch.setattr(CTRL.LABEL, "validate_shard", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        CTRL.LABEL, "_load_v11",
+        lambda: pytest.fail("V11 must not load in the training controller"))
+    monkeypatch.setattr(
+        CTRL, "_validate_label_shard_without_v11",
+        lambda *args, **kwargs: None)
     monkeypatch.setattr(CTRL.CAPTURE, "replay_state", lambda state: object())
     monkeypatch.setattr(
         CTRL.MODEL, "materialize_example",
@@ -338,17 +359,23 @@ def test_dataset_materialization_opens_only_design_and_calib_shards(
         CTRL.TRAIN, "validate_population", lambda *args, **kwargs: None)
     dataset = CTRL.materialize_dataset(
         label_packet=packet, label_receipt_sha256="a" * 64,
-        state_set={"states": states}, aggregate=aggregate)
+        state_set={"states": states}, aggregate=aggregate,
+        fresh_report=_fresh_report(), fresh_report_review=_fresh_review())
     assert opened == [str(path) for path in expected_paths]
-    assert dataset["report_shard_files_opened"] == 0
+    assert dataset["report_label_shard_files_opened"] == 0
     assert dataset["report_rows_included"] is False
+    assert dataset["fresh_report_states_materialized"] is False
+    assert "sealed_report_shards" not in dataset
     assert dataset["candidate_provenance_contract"] == {
         "teacher_targets": "mc_counterfactual_signed_level_utility",
         "all_reviewed_candidate_actions_retained": True,
+        "candidate_actions_authenticated_by_reviewed_capture": True,
         "candidate_source_tags_in_examples": False,
         "candidate_source_tags_in_model_inputs": False,
         "v11_origin_actions_are_source_agnostic_examples": True,
-        "v11_checkpoint_use": "frozen_parent_revalidation_only",
+        "v11_checkpoint_use_after_label_generation": "none",
+        "training_controller_loads_v11": False,
+        "training_runtime_loads_v11": False,
         "v11_proposer_admitted_for_inference": False,
         "inference_must_not_load_v11": True,
     }
@@ -357,14 +384,98 @@ def test_dataset_materialization_opens_only_design_and_calib_shards(
         == CTRL.EXPECTED_SURFACES
 
 
-def test_aggregate_claim_changes_when_report_manifest_changes() -> None:
-    aggregate = _fidelity_only_aggregate()
-    before = CTRL.expected_label_fidelity_review_claim(aggregate, "f" * 64)
-    changed = copy.deepcopy(aggregate)
-    changed["sealed_report_manifest"]["shards"][0]["sha256"] = "9" * 64
-    after = CTRL.expected_label_fidelity_review_claim(changed, "f" * 64)
-    assert before["sealed_report_manifest_sha256"] \
-        != after["sealed_report_manifest_sha256"]
+def test_label_shard_revalidation_never_reconstructs_v11_proposals(
+        monkeypatch) -> None:
+    schedule = {
+        "split": "DESIGN", "local_shard": 0,
+        "state_ids": ["state-0"], "state_ids_sha256": "1" * 64,
+        "audit_state_ids": [], "state_count": 1,
+        "candidate_worlds": 10,
+    }
+    packet = {
+        "external_sha256": "2" * 64,
+        "producer": {"git": "a" * 40},
+        "parents": {"state_set": {"external_sha256": "3" * 64}},
+        "schedule": {"schedule_sha256": "4" * 64, "shards": [schedule]},
+    }
+    row = {"state_id": "state-0", "status": "COMPLETE",
+           "row_sha256": "5" * 64}
+    work = {"candidate_worlds_attempted": 10}
+    shard = {
+        "schema": CTRL.LABEL_CTRL.SHARD_SCHEMA,
+        "run_id": CTRL.LABEL_CTRL.RUN_ID,
+        "git": "a" * 40,
+        "controller_packet_sha256": "2" * 64,
+        "label_receipt_sha256": "6" * 64,
+        "state_set_sha256": "3" * 64,
+        "schedule_sha256": "4" * 64,
+        "shard_index": 0,
+        "split": "DESIGN",
+        "local_shard": 0,
+        "state_ids": ["state-0"],
+        "state_ids_sha256": "1" * 64,
+        "audit_state_ids": [],
+        "shard_admission_slot":
+            CTRL.LABEL_CTRL.shard_admission_logical_path(0),
+        "shard_admission_file_sha256": "7" * 64,
+        "status": "COMPLETE",
+        "complete_rows": 1,
+        "refused_rows": 0,
+        "rows": [row],
+        "row_sha256s": ["5" * 64],
+        "work": work,
+        "expected_candidate_worlds": 10,
+        "candidate_world_ceiling_respected": True,
+        "training_authorized": False,
+        "report_open_authorized": False,
+    }
+    shard["shard_sha256"] = CTRL.LABEL._self_hash(shard, "shard_sha256")
+    checked = []
+    monkeypatch.setattr(
+        CTRL.CAPTURE, "_validate_candidates",
+        lambda *args, **kwargs: pytest.fail("V11 proposal reconstruction ran"))
+    monkeypatch.setattr(
+        CTRL.LABEL, "_validate_shard_slot", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        CTRL.LABEL, "_state_map",
+        lambda state_set: {"state-0": state_set["states"][0]})
+    monkeypatch.setattr(CTRL.CAPTURE, "replay_state", lambda state: object())
+    monkeypatch.setattr(
+        CTRL.LABEL, "validate_label_row",
+        lambda state, rnd, value, audit_expected: checked.append(value))
+    monkeypatch.setattr(CTRL.LABEL, "_work_from_rows", lambda rows: work)
+    CTRL._validate_label_shard_without_v11(
+        shard, packet=packet, receipt_sha256="6" * 64,
+        state_set={"states": [{"state_id": "state-0"}]}, index=0)
+    assert checked == [row]
+
+
+def test_fresh_report_digest_changes_training_packet(monkeypatch) -> None:
+    monkeypatch.setattr(
+        CTRL, "_source_sha256s",
+        lambda: {path: "a" * 64 for path in CTRL.SOURCE_PATHS})
+    monkeypatch.setattr(CTRL, "runtime_contract", lambda: {
+        "host": "mini", "python": "3.14", "torch": "2.13",
+        "numpy": "2.5", "device": "cpu", "cpu_threads_per_cell": 1,
+        "max_concurrent_cells": 8,
+    })
+    before = CTRL.build_packet(
+        git="a" * 40, dataset=_dataset(), dataset_external_sha256="8" * 64,
+        aggregate=_aggregate(), fresh_report=_fresh_report(),
+        fresh_report_review=_fresh_review())
+    changed = _fresh_report()
+    changed["sealed_selection"]["fresh_report_state_ids_sha256"] = "9" * 64
+    changed_dataset = _dataset()
+    changed_dataset["fresh_report_selection"] = \
+        CTRL.fresh_report_dataset_contract(changed, _fresh_review())
+    changed_dataset["dataset_sha256"] = CTRL.self_hash(
+        changed_dataset, "dataset_sha256")
+    after = CTRL.build_packet(
+        git="a" * 40, dataset=changed_dataset,
+        dataset_external_sha256="9" * 64,
+        aggregate=_aggregate(), fresh_report=changed,
+        fresh_report_review=_fresh_review())
+    assert before["packet_sha256"] != after["packet_sha256"]
 
 
 def _label_packet(runtime_sources: dict[str, str], shard_slots: list[str]) -> dict:

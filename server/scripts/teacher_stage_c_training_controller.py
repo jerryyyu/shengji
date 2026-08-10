@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """Freeze the Stage-C DESIGN/CALIB model dataset and training packet.
 
-This controller is downstream of a terminal Stage-C label aggregate and its
-independent fidelity-consumption review.  Teacher-label fidelity and V11
-proposal recall are separate estimands: the controller may consume the good MC
-counterfactual labels without admitting V11.  V11-origin actions remain only
-source-agnostic state/action examples; proposal-source tags are not model
-features, and downstream inference is forbidden from loading V11.  The
+This controller is downstream of a terminal Stage-C label aggregate and a
+separately reviewed fresh REPORT selection.  Teacher-label fidelity and V11
+proposal recall are separate estimands: the controller consumes the good MC
+counterfactual labels without admitting or loading V11.  Candidate source tags
+are historical capture metadata only and are never model features.  The
 controller reopens and semantically validates only the eight DESIGN and four
-CALIB label shards.  The four REPORT shard paths and hashes are carried forward
-from the reviewed aggregate as a sealed manifest; this process never opens
-those files.
+CALIB label shards.  It binds only the digest-sealed fresh REPORT replacement;
+it never materializes those states or opens either old or fresh REPORT labels.
 
 Freezing the dataset and packet performs no training.  A later independent
 packet review is required before the one-shot training runtime can be admitted.
@@ -39,28 +37,26 @@ REPO = SCRIPT.parents[2]
 sys.path.insert(0, str(SCRIPT.parent))
 
 import teacher_stage_c_capture_runtime as CAPTURE  # noqa: E402
+import teacher_stage_c_fresh_report_controller as FRESH  # noqa: E402
 import teacher_stage_c_label_controller as LABEL_CTRL  # noqa: E402
 import teacher_stage_c_label_runtime as LABEL  # noqa: E402
 from shengji.rl import stage_c_model as MODEL  # noqa: E402
 from shengji.rl import stage_c_training as TRAIN  # noqa: E402
 
 
-SCHEMA = "teacher-stage-c-training-controller-v1"
-PACKET_ID = "teacher-v3-hard-tail-stage-c-training-controller-v1"
-RUN_ID = "teacher-v3-hard-tail-stage-c-training-v1"
-CONTROLLER_RUN_ID = "teacher-v3-hard-tail-stage-c-training-controller-v1"
-DATASET_SCHEMA = "teacher-stage-c-model-dataset-v1"
+SCHEMA = "teacher-stage-c-v11-free-training-controller-v1"
+PACKET_ID = "teacher-v3-hard-tail-stage-c-v11-free-training-controller-v1"
+RUN_ID = "teacher-v3-hard-tail-stage-c-v11-free-training-v1"
+CONTROLLER_RUN_ID = \
+    "teacher-v3-hard-tail-stage-c-v11-free-training-controller-v1"
+DATASET_SCHEMA = "teacher-stage-c-v11-free-model-dataset-v1"
 DATASET_PATH = f"server/runs/logs/{CONTROLLER_RUN_ID}/model-dataset.json"
 PACKET_PATH = f"server/runs/logs/{CONTROLLER_RUN_ID}/controller_packet.json"
 SUPERVISOR_PATH = "server/scripts/teacher_stage_c_training_supervisor.py"
-LABEL_AGGREGATE_REVIEW_SCHEMA = "teacher-stage-c-label-aggregate-review-v2"
-LABEL_AGGREGATE_REVIEW_MARKER = "TEACHER_STAGE_C_LABEL_AGGREGATE_V2_REVIEW "
-LABEL_FIDELITY_REVIEW_SCHEMA = \
-    "teacher-stage-c-label-fidelity-consumption-review-v3"
-LABEL_FIDELITY_REVIEW_MARKER = \
-    "TEACHER_STAGE_C_LABEL_FIDELITY_CONSUMPTION_V3_REVIEW "
-REVIEW_SCHEMA = "teacher-stage-c-training-controller-review-v1"
-REVIEW_MARKER = "TEACHER_STAGE_C_TRAINING_CONTROLLER_V1_REVIEW "
+FRESH_REPORT_PACKET_SHA256 = \
+    "7dd0caacff9e61e4f963ba0afa56c3eca81c05abd9da2eaaba4ece8284870e69"
+REVIEW_SCHEMA = "teacher-stage-c-v11-free-training-controller-review-v1"
+REVIEW_MARKER = "TEACHER_STAGE_C_V11_FREE_TRAINING_CONTROLLER_V1_REVIEW "
 
 EXPECTED_SPLITS = {"DESIGN": 1024, "CALIB": 512}
 EXPECTED_SURFACES = {
@@ -82,6 +78,7 @@ SOURCE_PATHS = (
     "server/shengji/rl/encode.py",
     "server/scripts/teacher_stage_c_label_controller.py",
     "server/scripts/teacher_stage_c_label_runtime.py",
+    "server/scripts/teacher_stage_c_fresh_report_controller.py",
     "server/scripts/teacher_stage_c_capture_controller.py",
     "server/scripts/teacher_stage_c_capture_runtime.py",
 )
@@ -205,89 +202,27 @@ def _manifest_hash(value: object) -> str:
     return sha256_bytes(canonical_json(value))
 
 
-def expected_label_aggregate_review_claim(
-        aggregate: Mapping[str, object], aggregate_sha256: str) -> dict:
-    gate = aggregate.get("fidelity_gate")
-    design = aggregate.get("design_calib_manifest")
-    report = aggregate.get("sealed_report_manifest")
-    if not isinstance(gate, dict) or not isinstance(design, dict) \
-            or not isinstance(report, dict):
-        raise TrainingControllerRefused(
-            "label aggregate gate/manifests are missing")
-    ordinary = gate.get("ordinary_anchor_regret")
-    hard = gate.get("hard_tail_regret")
-    recall = gate.get("v11_recall_treatment_minus_matched_random")
-    if not all(isinstance(value, dict)
-               for value in (ordinary, hard, recall)):
-        raise TrainingControllerRefused("label aggregate gate metrics missing")
-    # This legacy marker means that the original conjunction passed.  Never
-    # print a PASS-shaped authorization for a fidelity-only result: the v2
-    # label aggregate intentionally coupled Teacher fidelity to V11 proposal
-    # recall, and a caller could otherwise paste a misleading marker even
-    # though validate_label_aggregate() would later reject it.
-    if (gate.get("decision") != "AUTHORIZE_MODEL_PACKET_REVIEW"
-            or gate.get("fidelity_pass") is not True
-            or gate.get("v11_recall_pass") is not True
-            or aggregate.get("model_packet_review_authorized") is not True):
-        raise TrainingControllerRefused(
-            "legacy label aggregate review requires the combined gate")
-    return {
-        "schema": LABEL_AGGREGATE_REVIEW_SCHEMA,
-        "label_git": aggregate.get("git"),
-        "aggregate_sha256": aggregate_sha256,
-        "aggregate_internal_sha256": aggregate.get("aggregate_sha256"),
-        "state_set_sha256": aggregate.get("state_set_sha256"),
-        "states": aggregate.get("states"),
-        "complete_rows": aggregate.get("complete_rows"),
-        "refused_rows": aggregate.get("refused_rows"),
-        "fidelity_decision": gate.get("decision"),
-        "ordinary_anchor_regret_ucb": ordinary.get("one_sided_95_ucb"),
-        "hard_tail_regret_ucb": hard.get("one_sided_95_ucb"),
-        "v11_recall_lcb": recall.get("one_sided_95_lcb"),
-        "design_calib_manifest_sha256": _manifest_hash(design),
-        "sealed_report_manifest_sha256": _manifest_hash(report),
-        "report_shards_opened_by_training_review": 0,
-        "independent_review": True,
-        "one_training_controller_freeze_authorized": True,
-        "training_authorized": False,
-        "report_open_authorized": False,
-        "strength_claim": False,
-        "production_promotion": False,
-        "production_deployment": False,
-        "verdict": "PASS",
-    }
-
-
 def candidate_provenance_contract() -> dict:
     """State exactly how frozen proposal provenance may reach the learner."""
     return {
         "teacher_targets": "mc_counterfactual_signed_level_utility",
         "all_reviewed_candidate_actions_retained": True,
+        "candidate_actions_authenticated_by_reviewed_capture": True,
         "candidate_source_tags_in_examples": False,
         "candidate_source_tags_in_model_inputs": False,
         "v11_origin_actions_are_source_agnostic_examples": True,
-        "v11_checkpoint_use": "frozen_parent_revalidation_only",
+        "v11_checkpoint_use_after_label_generation": "none",
+        "training_controller_loads_v11": False,
+        "training_runtime_loads_v11": False,
         "v11_proposer_admitted_for_inference": False,
         "inference_must_not_load_v11": True,
     }
 
 
-def expected_label_fidelity_review_claim(
-        aggregate: Mapping[str, object], aggregate_sha256: str) -> dict:
-    """Build the independent authorization for V11-free label consumption.
-
-    The MC counterfactual labels and the V11 proposal-source hypothesis are
-    separate estimands.  This claim admits the former only when both frozen
-    Teacher-fidelity bounds pass.  It deliberately does not admit V11, even if
-    a future aggregate estimates positive recall.
-    """
+def _label_fidelity_values(aggregate: Mapping[str, object]) -> tuple[float, ...]:
     gate = aggregate.get("fidelity_gate")
-    design = aggregate.get("design_calib_manifest")
-    report = aggregate.get("sealed_report_manifest")
-    if not isinstance(gate, dict) or not isinstance(design, dict) \
-            or not isinstance(report, dict):
-        raise TrainingControllerRefused(
-            "label aggregate gate/manifests are missing")
+    if not isinstance(gate, dict):
+        raise TrainingControllerRefused("label aggregate gate is missing")
     ordinary = gate.get("ordinary_anchor_regret")
     hard = gate.get("hard_tail_regret")
     recall = gate.get("v11_recall_treatment_minus_matched_random")
@@ -305,70 +240,46 @@ def expected_label_fidelity_review_claim(
            or not math.isfinite(float(value)) for value in metric_values):
         raise TrainingControllerRefused(
             "label aggregate fidelity metric is missing/non-finite")
-    recall_pass = gate.get("v11_recall_pass")
-    if not isinstance(recall_pass, bool):
-        raise TrainingControllerRefused("label aggregate V11 verdict drift")
-    combined_authorized = gate.get("fidelity_pass") is True and recall_pass
-    expected_combined_decision = (
-        "AUTHORIZE_MODEL_PACKET_REVIEW" if combined_authorized
-        else "DIAGNOSE_FROZEN_STAGE_C_ONLY")
-    if (aggregate.get("status") != "COMPLETE"
-            or aggregate.get("states") != 2048
-            or aggregate.get("complete_rows") != 2048
-            or aggregate.get("refused_rows") != 0
-            or aggregate.get("utility_published") is not True
-            or gate.get("schema")
-            != "teacher-stage-c-label-fidelity-gate-v2"
+    return tuple(float(value) for value in metric_values)
+
+
+def label_fidelity_summary(
+        aggregate: Mapping[str, object], aggregate_sha256: str) -> dict:
+    values = _label_fidelity_values(aggregate)
+    gate = aggregate["fidelity_gate"]
+    if (gate.get("schema") != "teacher-stage-c-label-fidelity-gate-v2"
             or gate.get("fidelity_pass") is not True
-            or float(metric_values[1]) > 0.10
-            or float(metric_values[3]) > 0.10
-            or gate.get("decision") != expected_combined_decision
-            or aggregate.get("model_packet_review_authorized")
-            is not combined_authorized):
+            or gate.get("v11_recall_pass") is not False
+            or values[1] > 0.10
+            or values[3] > 0.10
+            or gate.get("decision") != "DIAGNOSE_FROZEN_STAGE_C_ONLY"
+            or aggregate.get("model_packet_review_authorized") is not False):
         raise TrainingControllerRefused(
-            "label aggregate does not authorize fidelity-only consumption")
-    provenance = candidate_provenance_contract()
+            "label aggregate does not admit the V11-free route")
     return {
-        "schema": LABEL_FIDELITY_REVIEW_SCHEMA,
+        "schema": "teacher-stage-c-v11-free-label-fidelity-summary-v1",
         "label_git": aggregate.get("git"),
         "aggregate_sha256": aggregate_sha256,
         "aggregate_internal_sha256": aggregate.get("aggregate_sha256"),
         "state_set_sha256": aggregate.get("state_set_sha256"),
-        "states": aggregate.get("states"),
-        "complete_rows": aggregate.get("complete_rows"),
-        "refused_rows": aggregate.get("refused_rows"),
         "original_combined_decision": gate.get("decision"),
         "label_fidelity_pass": True,
-        "ordinary_anchor_regret_mean": metric_values[0],
-        "ordinary_anchor_regret_ucb": metric_values[1],
-        "hard_tail_regret_mean": metric_values[2],
-        "hard_tail_regret_ucb": metric_values[3],
-        "v11_recall_mean": metric_values[4],
-        "v11_recall_lcb": metric_values[5],
-        "v11_recall_ucb": metric_values[6],
-        "v11_recall_pass": recall_pass,
+        "ordinary_anchor_regret_mean": values[0],
+        "ordinary_anchor_regret_ucb": values[1],
+        "hard_tail_regret_mean": values[2],
+        "hard_tail_regret_ucb": values[3],
+        "v11_recall_mean": values[4],
+        "v11_recall_lcb": values[5],
+        "v11_recall_ucb": values[6],
+        "v11_recall_pass": False,
         "v11_proposer_admitted": False,
-        "candidate_provenance_contract_sha256": _manifest_hash(provenance),
-        "training_controller_script_sha256": sha256_file(SCRIPT),
-        "stage_c_model_script_sha256": sha256_file(
-            SERVER / "shengji/rl/stage_c_model.py"),
-        "design_calib_manifest_sha256": _manifest_hash(design),
-        "sealed_report_manifest_sha256": _manifest_hash(report),
-        "report_shards_opened_by_training_review": 0,
-        "independent_review": True,
-        "one_v11_free_training_controller_freeze_authorized": True,
-        "training_authorized": False,
-        "report_open_authorized": False,
-        "strength_claim": False,
-        "production_promotion": False,
-        "production_deployment": False,
-        "verdict": "PASS",
+        "old_report_quarantined": True,
     }
 
 
 def validate_label_aggregate(
-    path: Path, expected_sha256: str, review_record: Path,
-) -> tuple[dict, dict]:
+    path: Path, expected_sha256: str,
+) -> dict:
     if sha256_file(path) != expected_sha256:
         raise TrainingControllerRefused("label aggregate external SHA-256 drift")
     aggregate = load_json(path)
@@ -376,16 +287,7 @@ def validate_label_aggregate(
     design = aggregate.get("design_calib_manifest")
     report = aggregate.get("sealed_report_manifest")
     shards = aggregate.get("shards")
-    ordinary = gate.get("ordinary_anchor_regret") if isinstance(gate, dict) \
-        else None
-    hard = gate.get("hard_tail_regret") if isinstance(gate, dict) else None
-    recall = gate.get("v11_recall_treatment_minus_matched_random") \
-        if isinstance(gate, dict) else None
-    metric_values = (
-        ordinary.get("one_sided_95_ucb") if isinstance(ordinary, dict) else None,
-        hard.get("one_sided_95_ucb") if isinstance(hard, dict) else None,
-        recall.get("one_sided_95_lcb") if isinstance(recall, dict) else None,
-    )
+    metric_values = _label_fidelity_values(aggregate)
     if (aggregate.get("schema") != LABEL_CTRL.AGGREGATE_SCHEMA
             or aggregate.get("run_id") != LABEL_CTRL.RUN_ID
             or aggregate.get("aggregate_sha256")
@@ -398,19 +300,14 @@ def validate_label_aggregate(
             or aggregate.get("training_authorized") is not False
             or aggregate.get("report_open_authorized") is not False
             or not isinstance(gate, dict)
+            or gate.get("schema")
+            != "teacher-stage-c-label-fidelity-gate-v2"
             or gate.get("fidelity_pass") is not True
-            or not isinstance(gate.get("v11_recall_pass"), bool)
-            or any(isinstance(value, bool)
-                   or not isinstance(value, (int, float))
-                   or not math.isfinite(float(value)) for value in metric_values)
-            or float(metric_values[0]) > 0.10
+            or gate.get("v11_recall_pass") is not False
             or float(metric_values[1]) > 0.10
-            or gate.get("decision") != (
-                "AUTHORIZE_MODEL_PACKET_REVIEW"
-                if gate.get("v11_recall_pass") is True else
-                "DIAGNOSE_FROZEN_STAGE_C_ONLY")
-            or aggregate.get("model_packet_review_authorized") is not (
-                gate.get("v11_recall_pass") is True)
+            or float(metric_values[3]) > 0.10
+            or gate.get("decision") != "DIAGNOSE_FROZEN_STAGE_C_ONLY"
+            or aggregate.get("model_packet_review_authorized") is not False
             or not isinstance(shards, list) or len(shards) != 16
             or [value.get("index") for value in shards] != list(range(16))
             or [value.get("split") for value in shards]
@@ -436,13 +333,58 @@ def validate_label_aggregate(
             or report["shards"] != shards[12:]):
         raise TrainingControllerRefused(
             "label aggregate status/split/authority drift")
-    claim = marker_claim(review_record, LABEL_FIDELITY_REVIEW_MARKER)
-    expected = expected_label_fidelity_review_claim(
-        aggregate, expected_sha256)
-    if claim != expected:
+    return aggregate
+
+
+def validate_fresh_report(
+    path: Path, expected_sha256: str, review_record: Path,
+    state_set_review_record: Path,
+) -> tuple[dict, dict]:
+    expected_path = (REPO / FRESH.PACKET_PATH).resolve()
+    if (path.resolve() != expected_path
+            or expected_sha256 != FRESH_REPORT_PACKET_SHA256):
         raise TrainingControllerRefused(
-            "label fidelity-consumption PASS marker drift")
-    return aggregate, claim
+            "fresh REPORT packet path/SHA-256 drift")
+    try:
+        packet = FRESH.validate_packet(
+            packet_path=path,
+            expected_external_sha256=expected_sha256,
+            state_set_review_record=state_set_review_record)
+    except FRESH.FreshReportRefused as exc:
+        raise TrainingControllerRefused(
+            f"fresh REPORT packet validation failed: {exc}") from exc
+    claim = marker_claim(review_record, FRESH.REVIEW_MARKER)
+    expected = FRESH.expected_review_claim(packet, expected_sha256)
+    if (claim != expected
+            or claim.get(
+                "one_v11_free_training_controller_freeze_authorized")
+            is not True
+            or claim.get("training_authorized") is not False
+            or claim.get("report_open_authorized") is not False):
+        raise TrainingControllerRefused("fresh REPORT PASS marker drift")
+    return packet, claim
+
+
+def fresh_report_dataset_contract(
+    fresh_report: Mapping[str, object],
+    fresh_report_review: Mapping[str, object],
+) -> dict:
+    sealed = fresh_report["sealed_selection"]
+    return {
+        "packet_external_sha256": FRESH_REPORT_PACKET_SHA256,
+        "packet_internal_sha256": fresh_report["packet_sha256"],
+        "review_claim_sha256": _manifest_hash(fresh_report_review),
+        "sealed_selection_sha256": sealed["sealed_selection_sha256"],
+        "fresh_report_state_ids_sha256": sealed[
+            "fresh_report_state_ids_sha256"],
+        "fresh_report_state_material_sha256": sealed[
+            "fresh_report_state_material_sha256"],
+        "fresh_report_per_state_hashes_sha256": sealed[
+            "fresh_report_per_state_hashes_sha256"],
+        "effective_state_ids_sha256": sealed[
+            "effective_state_ids_sha256"],
+        "fresh_report_states": 512,
+    }
 
 
 def _expected_label_shard_path(packet: Mapping[str, object], index: int) -> Path:
@@ -464,16 +406,103 @@ def _design_calib_manifest(
     return values
 
 
+def _validate_label_shard_without_v11(
+    shard: Mapping[str, object], *, packet: Mapping[str, object],
+    receipt_sha256: str, state_set: Mapping[str, object], index: int,
+) -> None:
+    """Recheck a frozen label shard without reconstructing proposal sources.
+
+    The externally reviewed capture authenticates the candidate tensor.  This
+    consumer therefore validates each row against that tensor and replays every
+    game/label/work semantic, but deliberately does not rerun the historical
+    V11 proposer that helped create some capture ballots.
+    """
+    schedule = packet["schedule"]["shards"][index]
+    rows = shard.get("rows")
+    if (shard.get("schema") != LABEL_CTRL.SHARD_SCHEMA
+            or shard.get("run_id") != LABEL_CTRL.RUN_ID
+            or shard.get("git") != packet["producer"]["git"]
+            or shard.get("controller_packet_sha256")
+            != packet["external_sha256"]
+            or shard.get("label_receipt_sha256") != receipt_sha256
+            or shard.get("state_set_sha256")
+            != packet["parents"]["state_set"]["external_sha256"]
+            or shard.get("schedule_sha256")
+            != packet["schedule"]["schedule_sha256"]
+            or shard.get("shard_index") != index
+            or shard.get("split") != schedule["split"]
+            or shard.get("local_shard") != schedule["local_shard"]
+            or shard.get("state_ids") != schedule["state_ids"]
+            or shard.get("state_ids_sha256") != schedule["state_ids_sha256"]
+            or shard.get("audit_state_ids") != schedule["audit_state_ids"]
+            or shard.get("shard_admission_slot")
+            != LABEL_CTRL.shard_admission_logical_path(index)
+            or not isinstance(shard.get("shard_admission_file_sha256"), str)
+            or not isinstance(rows, list)
+            or len(rows) != schedule["state_count"]
+            or shard.get("shard_sha256")
+            != LABEL._self_hash(shard, "shard_sha256")
+            or shard.get("training_authorized") is not False
+            or shard.get("report_open_authorized") is not False):
+        raise TrainingControllerRefused(
+            f"DESIGN/CALIB label shard {index} identity drift")
+    try:
+        LABEL._validate_shard_slot(
+            packet, index=index,
+            packet_sha256=packet["external_sha256"],
+            receipt_sha256=receipt_sha256,
+            expected_file_sha256=shard["shard_admission_file_sha256"])
+        states = LABEL._state_map(state_set)
+        audit_ids = set(schedule["audit_state_ids"])
+        complete = 0
+        refused = 0
+        for state_id, row in zip(schedule["state_ids"], rows, strict=True):
+            state = states[state_id]
+            if row.get("state_id") != state_id:
+                raise LABEL.LabelRefused(
+                    f"Stage-C label shard {index} row order drift")
+            if row.get("status") == "COMPLETE":
+                rnd = CAPTURE.replay_state(state)
+                LABEL.validate_label_row(
+                    state, rnd, row,
+                    audit_expected=state_id in audit_ids)
+                complete += 1
+            else:
+                LABEL.validate_refusal_record(
+                    state, row, audit_expected=state_id in audit_ids)
+                refused += 1
+        expected_status = ("COMPLETE" if refused == 0
+                           else "REFUSED_INCOMPLETE_NO_AGGREGATE_UTILITY")
+        work = LABEL._work_from_rows(rows)
+        if (shard.get("status") != expected_status
+                or shard.get("complete_rows") != complete
+                or shard.get("refused_rows") != refused
+                or shard.get("row_sha256s")
+                != [row["row_sha256"] for row in rows]
+                or shard.get("work") != work
+                or shard.get("expected_candidate_worlds")
+                != schedule["candidate_worlds"]
+                or shard.get("candidate_world_ceiling_respected")
+                is not (work["candidate_worlds_attempted"]
+                        <= schedule["candidate_worlds"])):
+            raise LABEL.LabelRefused(
+                f"Stage-C label shard {index} work/status drift")
+    except LABEL.LabelRefused as exc:
+        raise TrainingControllerRefused(
+            f"DESIGN/CALIB label shard {index} semantic drift: {exc}") from exc
+
+
 def materialize_dataset(
     *, label_packet: Mapping[str, object], label_receipt_sha256: str,
     state_set: Mapping[str, object], aggregate: Mapping[str, object],
+    fresh_report: Mapping[str, object],
+    fresh_report_review: Mapping[str, object],
 ) -> dict:
     """Open only DESIGN/CALIB shards and encode their public examples."""
     states = {str(value["state_id"]): value for value in state_set["states"]}
     if len(states) != 2048:
         raise TrainingControllerRefused("Stage-C state map identity drift")
     manifest = _design_calib_manifest(aggregate)
-    net = LABEL._load_v11()
     examples = {
         "DESIGN": {"play": [], "bury": []},
         "CALIB": {"play": [], "bury": []},
@@ -485,10 +514,10 @@ def materialize_dataset(
             raise TrainingControllerRefused(
                 f"DESIGN/CALIB label shard {index} external SHA drift")
         shard = load_json(path)
-        LABEL.validate_shard(
+        _validate_label_shard_without_v11(
             shard, packet=label_packet,
             receipt_sha256=label_receipt_sha256,
-            state_set=state_set, index=index, net=net)
+            state_set=state_set, index=index)
         if (shard.get("status") != "COMPLETE"
                 or shard.get("refused_rows") != 0
                 or shard.get("split") not in examples
@@ -531,7 +560,6 @@ def materialize_dataset(
             or design_ids & calib_ids:
         raise TrainingControllerRefused(
             "Stage-C model dataset split identity drift")
-    report_manifest = aggregate["sealed_report_manifest"]
     payload = {
         "schema": DATASET_SCHEMA,
         "run_id": RUN_ID,
@@ -546,11 +574,14 @@ def materialize_dataset(
             sorted(design_ids))),
         "calib_state_ids_sha256": sha256_bytes(canonical_json(
             sorted(calib_ids))),
-        "sealed_report_manifest_sha256": _manifest_hash(report_manifest),
-        "sealed_report_shards": list(report_manifest["shards"]),
+        "fresh_report_selection": fresh_report_dataset_contract(
+            fresh_report, fresh_report_review),
         "candidate_provenance_contract": candidate_provenance_contract(),
+        "old_report_labels_quarantined": True,
         "report_rows_included": False,
-        "report_shard_files_opened": 0,
+        "report_label_shard_files_opened": 0,
+        "fresh_report_states_materialized": False,
+        "fresh_report_capture_shards_revalidated": 8,
         "training_authorized": False,
         "report_open_authorized": False,
         "strength_claim": False,
@@ -743,11 +774,26 @@ def commands(schedule: Mapping[str, object]) -> dict:
 
 def build_packet(
     *, git: str, dataset: Mapping[str, object], dataset_external_sha256: str,
-    aggregate: Mapping[str, object], aggregate_review: Mapping[str, object],
+    aggregate: Mapping[str, object], fresh_report: Mapping[str, object],
+    fresh_report_review: Mapping[str, object],
 ) -> dict:
     if dataset.get("dataset_sha256") != self_hash(dataset, "dataset_sha256"):
         raise TrainingControllerRefused("model dataset internal SHA drift")
+    if (dataset.get("fresh_report_selection")
+            != fresh_report_dataset_contract(
+                fresh_report, fresh_report_review)
+            or dataset.get("candidate_provenance_contract")
+            != candidate_provenance_contract()
+            or dataset.get("old_report_labels_quarantined") is not True
+            or dataset.get("report_rows_included") is not False
+            or dataset.get("report_label_shard_files_opened") != 0
+            or dataset.get("fresh_report_states_materialized") is not False):
+        raise TrainingControllerRefused(
+            "model dataset fresh REPORT/V11-free contract drift")
     schedule = build_schedule()
+    fidelity = label_fidelity_summary(
+        aggregate, str(aggregate["external_sha256"]))
+    sealed = fresh_report["sealed_selection"]
     packet = {
         "schema": SCHEMA,
         "packet_id": PACKET_ID,
@@ -761,12 +807,29 @@ def build_packet(
             "label_aggregate": {
                 "external_sha256": aggregate["external_sha256"],
                 "internal_sha256": aggregate["aggregate_sha256"],
-                "review_schema": LABEL_FIDELITY_REVIEW_SCHEMA,
-                "review_claim_sha256": _manifest_hash(aggregate_review),
+                "fidelity_summary": fidelity,
+                "fidelity_summary_sha256": _manifest_hash(fidelity),
                 "original_combined_decision":
                     aggregate["fidelity_gate"]["decision"],
                 "label_fidelity_pass": True,
                 "v11_proposer_admitted": False,
+                "old_report_labels_quarantined": True,
+            },
+            "fresh_report_selection": {
+                "external_sha256": FRESH_REPORT_PACKET_SHA256,
+                "internal_sha256": fresh_report["packet_sha256"],
+                "review_schema": FRESH.REVIEW_SCHEMA,
+                "review_claim_sha256": _manifest_hash(fresh_report_review),
+                "sealed_selection_sha256": sealed[
+                    "sealed_selection_sha256"],
+                "fresh_report_state_ids_sha256": sealed[
+                    "fresh_report_state_ids_sha256"],
+                "fresh_report_state_material_sha256": sealed[
+                    "fresh_report_state_material_sha256"],
+                "effective_state_ids_sha256": sealed[
+                    "effective_state_ids_sha256"],
+                "fresh_report_states": sealed["fresh_report_states"],
+                "state_material_published": False,
             },
             "model_dataset": {
                 "logical_path": DATASET_PATH,
@@ -775,8 +838,8 @@ def build_packet(
                 "design_states": 1024,
                 "calib_states": 512,
                 "report_rows_included": False,
-                "sealed_report_manifest_sha256": dataset[
-                    "sealed_report_manifest_sha256"],
+                "fresh_report_selection_sha256": _manifest_hash(
+                    dataset["fresh_report_selection"]),
             },
         },
         "runtime_contract": runtime_contract(),
@@ -827,13 +890,21 @@ def expected_review_claim(packet: Mapping[str, object],
         "torch": packet["runtime_contract"]["torch"],
         "label_aggregate_sha256": packet["parents"]["label_aggregate"][
             "external_sha256"],
+        "label_fidelity_summary_sha256": packet["parents"][
+            "label_aggregate"]["fidelity_summary_sha256"],
+        "fresh_report_packet_sha256": packet["parents"][
+            "fresh_report_selection"]["external_sha256"],
+        "fresh_report_selection_sha256": packet["parents"][
+            "fresh_report_selection"]["sealed_selection_sha256"],
+        "fresh_report_state_ids_sha256": packet["parents"][
+            "fresh_report_selection"]["fresh_report_state_ids_sha256"],
+        "fresh_report_states_materialized": False,
         "model_dataset_sha256": dataset["external_sha256"],
         "design_states": dataset["design_states"],
         "calib_states": dataset["calib_states"],
         "report_rows_included": False,
-        "report_shard_files_opened": 0,
-        "sealed_report_manifest_sha256": dataset[
-            "sealed_report_manifest_sha256"],
+        "report_label_shard_files_opened": 0,
+        "old_report_labels_quarantined": True,
         "candidate_provenance_contract_sha256": _manifest_hash(
             packet["model_contract"]["candidate_provenance"]),
         "v11_inference_authorized": False,
@@ -942,7 +1013,7 @@ def _reviewed_upstream_label_packet(path: Path,
     return value
 
 
-def _validated_inputs(args) -> tuple[dict, dict, dict, dict, str]:
+def _validated_inputs(args) -> tuple[dict, dict, dict, dict, dict, str]:
     if _git("status", "--porcelain"):
         raise TrainingControllerRefused(
             "real Stage-C training-controller freeze refuses dirty tree")
@@ -957,21 +1028,33 @@ def _validated_inputs(args) -> tuple[dict, dict, dict, dict, str]:
         label_packet, args.expected_label_controller_sha256,
         Path(args.label_controller_review_record).resolve(),
         Path(args.state_set_review_record).resolve())
-    aggregate, aggregate_review = validate_label_aggregate(
+    aggregate = validate_label_aggregate(
         Path(args.label_aggregate).resolve(),
-        args.expected_label_aggregate_sha256,
-        Path(args.label_aggregate_review_record).resolve())
+        args.expected_label_aggregate_sha256)
+    fresh_report, fresh_report_review = validate_fresh_report(
+        Path(args.fresh_report_controller).resolve(),
+        args.expected_fresh_report_controller_sha256,
+        Path(args.fresh_report_review_record).resolve(),
+        Path(args.state_set_review_record).resolve())
     if (aggregate.get("controller_packet_sha256")
             != args.expected_label_controller_sha256
             or aggregate.get("label_receipt_sha256")
             != args.expected_label_receipt_sha256
             or aggregate.get("state_set_sha256")
-            != label_packet["parents"]["state_set"]["external_sha256"]):
+            != label_packet["parents"]["state_set"]["external_sha256"]
+            or fresh_report["parents"]["original_state_set"][
+                "external_sha256"] != aggregate.get("state_set_sha256")
+            or fresh_report["sealed_selection"][
+                "design_calib_state_ids_sha256"] != _manifest_hash([
+                    str(state["state_id"]) for state in state_set["states"]
+                    if state.get("split") in {"DESIGN", "CALIB"}
+                ])):
         raise TrainingControllerRefused(
-            "label aggregate/controller/receipt parent drift")
+            "label aggregate/fresh REPORT parent drift")
     aggregate = dict(aggregate)
     aggregate["external_sha256"] = args.expected_label_aggregate_sha256
-    return label_packet, state_set, aggregate, aggregate_review, git
+    return (label_packet, state_set, aggregate, fresh_report,
+            fresh_report_review, git)
 
 
 def parser() -> argparse.ArgumentParser:
@@ -987,7 +1070,10 @@ def parser() -> argparse.ArgumentParser:
         child.add_argument("--state-set-review-record", required=True)
         child.add_argument("--label-aggregate", required=True)
         child.add_argument("--expected-label-aggregate-sha256", required=True)
-        child.add_argument("--label-aggregate-review-record", required=True)
+        child.add_argument("--fresh-report-controller", required=True)
+        child.add_argument(
+            "--expected-fresh-report-controller-sha256", required=True)
+        child.add_argument("--fresh-report-review-record", required=True)
         child.add_argument("--dataset-out", required=True)
         child.add_argument("--packet-out", required=True)
         if name == "verify":
@@ -998,12 +1084,14 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = parser().parse_args()
-    label_packet, state_set, aggregate, aggregate_review, git = \
-        _validated_inputs(args)
+    (label_packet, state_set, aggregate, fresh_report,
+     fresh_report_review, git) = _validated_inputs(args)
     dataset = materialize_dataset(
         label_packet=label_packet,
         label_receipt_sha256=args.expected_label_receipt_sha256,
-        state_set=state_set, aggregate=aggregate)
+        state_set=state_set, aggregate=aggregate,
+        fresh_report=fresh_report,
+        fresh_report_review=fresh_report_review)
     dataset_out = Path(args.dataset_out).resolve()
     packet_out = Path(args.packet_out).resolve()
     if args.command == "freeze":
@@ -1016,7 +1104,8 @@ def main() -> int:
         packet = build_packet(
             git=git, dataset=dataset,
             dataset_external_sha256=dataset_external_sha256,
-            aggregate=aggregate, aggregate_review=aggregate_review)
+            aggregate=aggregate, fresh_report=fresh_report,
+            fresh_report_review=fresh_report_review)
         publish_exclusive(packet_out, packet)
     else:
         if (not is_regular_unlinked(dataset_out)
@@ -1027,7 +1116,8 @@ def main() -> int:
         packet = build_packet(
             git=git, dataset=dataset,
             dataset_external_sha256=args.expected_dataset_sha256,
-            aggregate=aggregate, aggregate_review=aggregate_review)
+            aggregate=aggregate, fresh_report=fresh_report,
+            fresh_report_review=fresh_report_review)
         if (not is_regular_unlinked(packet_out)
                 or sha256_file(packet_out) != args.expected_packet_sha256
                 or load_json(packet_out) != packet):

@@ -659,3 +659,93 @@ def test_admit_run_shard_and_aggregate_execution_seam(
         assert aggregate["model_packet_review_authorized"] is True
         assert aggregate["training_authorized"] is False
         assert aggregate["report_open_authorized"] is False
+
+
+def test_aggregate_keeps_report_shards_out_of_design_calib_manifest(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exercise the aggregate boundary with both trainable and sealed rows."""
+
+    class FakeCtrl:
+        RUN_ID = "test-stage-c-labels"
+        AGGREGATE_SCHEMA = "test-aggregate"
+        LABEL_SHARDS = 2
+        EXPECTED_STATES = 2
+
+        sha256_file = staticmethod(
+            lambda path: hashlib.sha256(Path(path).read_bytes()).hexdigest())
+
+    log_root = runtime.REPO / "server/runs/logs"
+    with tempfile.TemporaryDirectory(dir=log_root) as raw:
+        root = Path(raw)
+        packet_path = root / "controller.json"
+        receipt_path = root / "receipt.json"
+        review = root / "review.marker"
+        checkpoint = root / "v11.npz"
+        shard_paths = [root / "design.json", root / "report.json"]
+        aggregate_path = root / "aggregate.json"
+        for path, value in (
+                (packet_path, b"packet\n"),
+                (receipt_path, b"receipt\n"),
+                (review, b"review\n"),
+                (checkpoint, b"checkpoint\n")):
+            path.write_bytes(value)
+        for index, (path, split) in enumerate(zip(
+                shard_paths, ("DESIGN", "REPORT"), strict=True)):
+            path.write_text(json.dumps({
+                "shard_index": index,
+                "split": split,
+                "rows": [{"state_id": f"{split}:{index}",
+                          "status": "COMPLETE"}],
+                "row_sha256s": [str(index) * 64],
+            }) + "\n")
+
+        packet = {
+            "producer": {"git": "f" * 40},
+            "parents": {"state_set": {"external_sha256": "c" * 64}},
+            "schedule": {"schedule_sha256": "d" * 64},
+            "result_contract": {
+                "aggregate": str(aggregate_path.relative_to(runtime.REPO)),
+                "shards": [str(path.relative_to(runtime.REPO))
+                           for path in shard_paths],
+                "max_candidate_worlds": 0,
+                "max_sampler_attempts": 0,
+            },
+        }
+        state_set = {"states": [
+            {"state_id": "DESIGN:0"}, {"state_id": "REPORT:1"},
+        ]}
+        work = {
+            "candidate_worlds_attempted": 0,
+            "candidate_worlds_completed": 0,
+            "sampler_attempts": 0,
+            "accepted_worlds": 0,
+        }
+        monkeypatch.setattr(runtime, "_ctrl", lambda: FakeCtrl)
+        monkeypatch.setattr(runtime, "_controller_packet",
+                            lambda *_args, **_kwargs: packet)
+        monkeypatch.setattr(runtime, "_validated_parents",
+                            lambda *_args, **_kwargs: (state_set, {}))
+        monkeypatch.setattr(runtime, "_receipt",
+                            lambda *_args, **_kwargs: {})
+        monkeypatch.setattr(runtime, "_load_v11", lambda: object())
+        monkeypatch.setattr(runtime, "validate_shard",
+                            lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(runtime, "_work_from_rows", lambda _rows: work)
+        monkeypatch.setattr(runtime, "_audit_gate", lambda *_args: {
+            "decision": "AUTHORIZE_MODEL_PACKET_REVIEW"})
+        monkeypatch.setattr(runtime.CAPTURE, "V11_PATH",
+                            checkpoint.relative_to(runtime.REPO))
+        monkeypatch.setattr(runtime.CAPTURE, "V11_SHA256",
+                            FakeCtrl.sha256_file(checkpoint))
+
+        aggregate = runtime.aggregate(
+            packet_path=packet_path, expected_packet_sha256="b" * 64,
+            receipt_path=receipt_path, expected_receipt_sha256="e" * 64,
+            controller_review_record=review,
+            state_set_review_record=review,
+            shard_paths=shard_paths, out=aggregate_path)
+
+        assert [item["split"] for item in
+                aggregate["design_calib_manifest"]["shards"]] == ["DESIGN"]
+        assert [item["split"] for item in
+                aggregate["sealed_report_manifest"]["shards"]] == ["REPORT"]

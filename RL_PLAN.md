@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-09 21:17 EDT
+## Current synthesis — 2026-08-10 14:24 EDT
 
 Exact terminal numbers and SHAs live in the canonical table at the top of
 `AI_POLICIES.md`; `BACKLOG.md` owns live order. This section records only
@@ -48,22 +48,19 @@ what those results change in the research plan.
   oracle-minus-public at only `+0.015` with LCB `-0.067`, while its isolated
   margin-sharpening cell was worse at `-0.047` with LCB `-0.109`.
   V11 survives only as a bounded proposal/ranking/teacher diagnostic.
-- **Teacher:** Stage B and the fresh 64-state champion audit passed. On ordinary
-  states, cheap-choice and N=30-choice regret upper bounds were `0.0354` and
-  `0.0439`, both below `0.10`; N=30's boundary-eight diagnostic was weaker at
-  `0.1421`. The lesson is to retain cheap ordinary anchors and spend deeper
-  work on the hard tail, not mass-produce more heuristic-self-play labels.
-  Frozen Stage-C v3 source `20bdb95`, asset `1a29418` and packet
-  `f213314a…3b4` now define exactly 1,024 DESIGN / 512 CALIB / 512 REPORT
-  states, 20/33 play/bury caps and at most 10,494,720 candidate-world rollouts.
-  Hard-tail selection/report folds use `HeuristicBot` continuation and zero
-  recursive-MC continuation rollouts. Raw human actions cannot become labels;
-  supported proposal rules and S4/S3c/S5 mechanisms enter only through their
-  own gates. Claude passed the design at `d92f595`; replacement H0-v3 and
-  S3c-v2 then passed at `205b6af`. Minimal rebind source `7018f36` / packet
-  `b60c4298…7b18` passed independently at `cb9471b`, preserving all seven
-  curriculum commitments exactly. Capture-controller implementation is now
-  eligible; zero states, labels or models exist.
+- **Teacher:** Stage B and the fresh 64-state audit established that cheap
+  labels are adequate on ordinary states while the boundary tail needs deeper
+  work. Stage C has now spent that design: capture-v7 replayed all 750,000
+  dispositions and froze an externally reviewed 2,048-state population at
+  exact DESIGN/CALIB/REPORT `1024/512/512` and play/bury `1920/128`.
+  Human H0 terminally produced no aggregate, so no human-derived rule entered;
+  V11 remains only its separately bounded proposal source. The first reviewed
+  label wave then exposed a new statistical bug: deleting repeated realized
+  hidden worlds both exhausted late-state support and flattened posterior
+  mass. V1 is terminal no-use after 2 complete / 6 refused shards and no
+  aggregate. Iid-v2 source `8a202e9` retains draws with replacement,
+  domain-separates folds and awaits capacity-packet review at
+  `a667b6bb…795c`. No model or REPORT look exists.
 - **Search challengers:** the independently reviewed live-parent contract binds
   S3a/S3b to exact report-LCB and prevents old baselines from silently
   re-entering. S3b v2 remains closed on its 250k-node capacity failure. S3a's
@@ -101,10 +98,11 @@ what those results change in the research plan.
   score-free Air preflight `fcc8b891…ee060` passed in 321.32 seconds, projected
   the screen at 91.40 fleet-hours / 11.42 max-shard hours, and packet
   `17036e63…1385` fully recomputes. Claude independently passed that packet at
-  `51a864c`. After S3a closed, exactly one 2,048-cluster Mini screen launched
-  under admission `1d99bb55…bdbf` and receipt `20a420d2…5cc`. Outcomes remain
-  sealed until terminal verification; confirmation is hard-closed pending a
-  future reviewed packet.
+  `51a864c`. The one 2,048-cluster Mini screen then completed and independently
+  verified: treatment-minus-live was `+0.086914 +/- 0.056166`, one-sided LCB
+  `+0.030748`; treatment and matched null were identical and null-minus-live
+  was zero. This is a terminal whole-game SCREEN PASS. The current T4 goal
+  preserves it but stops before the separately reviewed confirmation launch.
 - **Small-endgame S3c:** the independently passed census contains 256 natural
   roots in each one-/two-/three-card band. One-card roots are forced moves;
   two-card roots have median/max 2/3 legal actions and three-card roots 3/7.
@@ -115,15 +113,12 @@ what those results change in the research plan.
   execution is eligible; zero solver work or strength evidence exists, and
   two-card work remains gated.
 - **Human data / H0:** reviewed `human_v8` contains 2,830 plays and 45 buries.
-  Bounded H0 v3 evaluates production, human, V11 and matched-random proposals
-  under fixed candidate caps and disjoint shared-world folds rather than
-  imitating people. Source `6977dbb` / packet `3f68dc6e…7fcf` passed component
-  review but failed the real admit→runtime seam. Replacement source `4ebcd09` /
-  packet `cf074871…35392` repaired that boundary and passed externally at
-  `205b6af`. One later T4 diagnostic execution is eligible, but no receipt,
-  world or outcome exists. Name-based historical splits
-  do not prove true-person independence, so H0 remains proposal diagnostics;
-  the forward-only HUMAN-C1 ladder owns people-facing strength.
+  The one bounded H0-v3 diagnostic later completed 555/557 rows; two score-free
+  refusals forced terminal `REFUSED_INCOMPLETE_NO_AGGREGATE_UTILITY`. No retry
+  or partial mining is allowed, so Stage C admits no human-derived proposer.
+  This says the experiment produced no usable aggregate—not that human actions
+  are weak. Name-based historical splits still do not prove true-person
+  independence; the forward-only HUMAN-C1 ladder owns people-facing strength.
 - **Human loss forensics:** the initial aggregate claim that bots slough nearly
   twice as many points as humans was withdrawn after seat-count normalization
   (roughly 19 versus 17 points per seat-round). The surviving DEV signals map
@@ -139,9 +134,13 @@ what those results change in the research plan.
   `205b6af`; one score-free census freeze is eligible, but no census or
   treatment exists.
 - **Data/sampler:** the bounded strict sampler certificate passed, but posterior
-  fidelity and global constructive completeness remain open. High-N and
-  late-ply data are replayable state reservoirs under old named targets, not
-  generic oracles. Contaminated encoder caches remain quarantined.
+  fidelity and global constructive completeness remain open. Stage-C label v1
+  bought a sharper rule: independent samples means independent RNG draws, not
+  unique realized hidden worlds. Deduplicating or forcing disjoint realized
+  identities changes the posterior; folds should be domain-separated while
+  retaining repeated draws with replacement. High-N and late-ply data remain
+  replayable state reservoirs under old named targets, not generic oracles.
+  Contaminated encoder caches remain quarantined.
 
 ### Decisions that survive
 
@@ -176,6 +175,10 @@ what those results change in the research plan.
 11. Human-loss aggregates generate hypotheses only after per-seat normalization.
     Replay bot decisions separately from H0, prove the legal counterfactual and
     reproduce it under the current policy before creating a new mechanism.
+12. Common random numbers mean candidate actions share the same iid draws inside
+    a fold. Fold independence comes from separate deterministic RNG streams;
+    never deduplicate repeated realized worlds or forbid cross-fold realization
+    overlap, because both operations reweight the hidden-state posterior.
 
 ## Literature-derived design constraints — 2026-08-04
 
@@ -298,10 +301,10 @@ result.
 
 The baseline is the exact deployed `mc-s0-report-lcb` policy, not “MC” in the
 abstract. Every challenger binds that parent plus a matched null at freeze
-time. **T3 is the execution-ready strength bridge:** S3a is terminal negative,
-S4 is receiving its fresh whole-game test, and the human/Teacher/endgame lanes
-are being made executable. It is not itself a claim that a learned model became
-stronger. **T4 is the first closed Teacher generation:** execute H0 once,
+time. **T3 was the execution-ready strength bridge:** S3a closed negative, S4
+passed its fresh whole-game screen, and the human/Teacher/endgame lanes became
+executable. It was not itself a claim that a learned model became stronger.
+**T4 is the first closed Teacher generation:** execute H0 once,
 capture, label, train, integrate and test one challenger end to end. Live order
 and machine ownership remain in `BACKLOG.md`; this section owns the durable
 decision tree.
@@ -312,33 +315,30 @@ decision tree.
    mechanism passed, but the fresh 2,048-cluster full-game screen selected none.
    The exact policy recipe is closed without confirmation, tuning, retry or
    pooled inference. Its candidate disagreements may remain diagnostic input.
-2. **Carry S4 from mechanism evidence to whole-game evidence.** The reviewed
+2. **Preserve S4's whole-game PASS.** The reviewed
    one-shot exact-state screen passed in both roles at terminal
    `abd9f36f…cdc00`. The repaired complete-round v2 controller and packet are
    frozen at `cad3992` / `17036e63…1385`, preserving natural trigger traffic
    against the exact live champion and an analysis-identical matched null.
-   Claude independently passed the repaired packet at `51a864c`; exactly one
-   2,048-cluster Mini screen is now running under admission
-   `1d99bb55…bdbf` and receipt `20a420d2…5cc`. Do not treat `+5.156` points as
-   a duel-strength estimate: using a K now can still waste future control over
-   a full continuation. Keep outcomes sealed until one terminal verify.
-3. **Execute the now-passed human-action controller once in T4.** H0 uses
-   the production ballot plus at most one human, V11 and matched-random
-   proposal; selects on 30 shared worlds and reports fixed choices on 300 fresh
-   worlds with `HeuristicBot` continuation. Source `6977dbb` failed the real
-   admission seam; replacement source `4ebcd09` / packet `cf074871…35392`
-   repairs it and passed externally at `205b6af`. T4 may issue its one receipt
-   after S4 releases Mini; no outcome exists yet.
-4. **Implement capture from the passed Teacher Stage C v3 rebind.** Frozen source `20bdb95`,
-   asset `1a29418` and packet `f213314a…3b4` define the 2,048-state split,
-   ordinary anchors, hard-tail selection/report folds, 20/33 candidate caps,
-   conditional mechanism cells and 10,494,720 maximum candidate-world work.
-   `HeuristicBot` continuation keeps recursive MC at zero. Claude passed that
-   curriculum design at `d92f595`. Source `7018f36` / packet `b60c4298…7b18`
-   rebinds passed H0-v3/S3c-v2 while leaving every curriculum hash unchanged;
-   its 105-test combined battery and external review passed at `cb9471b`.
-   Capture-controller implementation is eligible; capture, labels, compute and
-   training remain closed until their own reviews.
+   Claude independently passed the repaired packet at `51a864c`; its sole
+   2,048-cluster Mini screen passed treatment-minus-live at
+   `+0.086914 +/- 0.056166`, LCB `+0.030748`, while matched null remained
+   exactly champion. Confirmation is eligible for a separately designed and
+   reviewed future milestone, but its frozen 8,192-cluster projection is
+   `365.592` fleet-hours and T4 explicitly stops before launching it.
+3. **Preserve H0's terminal no-use result.** The bounded human/V11 diagnostic
+   completed 555/557 rows, but two score-free refusals correctly prevented an
+   aggregate. Never retry or mine the partial utilities. This is no evidence
+   that human ideas are weak; it simply admits no H0-derived proposer into this
+   Stage-C generation. V11 remains only its separately frozen bounded source.
+4. **Advance Stage C from its reviewed state set through iid labels.** Capture
+   v7 completed and independently authenticated exact `1024/512/512` splits,
+   `1920/128` play/bury surfaces, all 750,000 scan dispositions and all 2,048
+   selected states. Label v1 then terminally exposed realized-world
+   deduplication as both a finite-support failure and a posterior bias. Preserve
+   its 2 complete / 6 refused shards without aggregate. Fresh iid-v2 `8a202e9`
+   retains with-replacement draws; capacity packet `a667b6bb…795c` is the
+   current external review gate before any more sampling.
 5. **Run the passed S3c one-card controller only as T4 mechanics.** The score-free
    curriculum and source `e9db4a2` / packet `f58d23b7…3874` passed component
    review, but shared H0's unignored-lock reopen failure. Replacement source
@@ -352,29 +352,28 @@ decision tree.
    Close the hypothesis if the action was forced or no longer reproduced. Only
    a reproducible defect may open a separately reviewed treatment/null design.
 
-T3 closed with S3a immutably negative, the reviewed S4 whole-game screen
-launched, executable reviewed H0 and Stage-C contracts, and the leakage-safe
-human ladder plus executable reviewed S3c feasibility asset. H0-v3, S3c-v2 and
-the minimal Stage-C rebind all passed externally with zero outcomes, solver
-sessions or captured states. S5 replay remains useful support work and does not
-silently expand the T3 exit gate. A review is a routing boundary, not a
+T3 closed with S3a immutably negative, S4's whole-game experiment executable,
+and reviewed H0, Stage-C and S3c contracts. Later T4 execution has since made
+the distinction concrete: S4 passed; H0 produced no usable aggregate; capture
+v7 produced the frozen state set; label v1 exposed an invalid statistical
+assumption now repaired in iid-v2. S5 replay remains useful support work and
+does not silently expand the T4 gate. A review is a routing boundary, not a
 strength result.
 
 ### T4 — first closed stronger-Teacher generation
 
-T4 must produce artifacts and a challenger, not another design-only audit:
+T4 must produce artifacts and a challenger, not another design-only audit.
+H0 and capture are terminal; the active sequence is:
 
-1. execute the reviewed H0 counterfactual once and identify human/model actions
-   that survive fresh common-world evaluation;
-2. capture the frozen 2,048-state Stage-C asset, publish acceptance/rejection
-   counters, and label ordinary versus hard-tail rows under their named budgets;
-3. train at least eight seeds of separate play-ranking and calibrated-outcome
+1. pass and run iid-v2 capacity, then freeze/review/run all 16 label shards and
+   aggregate only on 2,048/2,048 valid rows;
+2. train at least eight seeds of separate play-ranking and calibrated-outcome
    heads, with bury separate, and choose the recipe/checkpoint only on CALIB;
-4. open the untouched REPORT fold once; only a passing recipe becomes the one
+3. open the untouched REPORT fold once; only a passing recipe becomes the one
    bounded proposal/ranking challenger;
-5. run that challenger in a fresh paired whole-game screen against report-LCB
+4. run that challenger in a fresh paired whole-game screen against report-LCB
    plus a same-budget random/null arm; and
-6. grow to 10k/50k states only if the 2,048-state learning curves and online
+5. grow to 10k/50k states only if the 2,048-state learning curves and online
    screen show the intended signal. Otherwise classify the failure as data,
    target, capacity or composition and route a new mechanism instead of merely
    closing the family.
@@ -389,12 +388,12 @@ produce privileged diagnostic targets for a cheap distilled endgame head.
   point/void/trump proposals improved the selected-state objective, but the
   full-game screen selected none. The policy recipe is closed; its useful
   residue is a set of proposal/continuation disagreement states for Stage C.
-- **S4 point-banking continuation** has passed its exact-state mechanism
-  screen in both roles and its complete-round packet review. Packet
-  `17036e63…1385` is frozen and independently passed at `51a864c`; its sole
-  Mini screen is now running. The remaining empirical question is deployment
-  relevance: does the continuation-only change improve complete-round utility
-  under natural traffic against the live champion and matched null?
+- **S4 point-banking continuation** passed its exact-state mechanism screen in
+  both roles and its sole 2,048-cluster complete-round screen. The natural-
+  traffic estimate is `+0.086914 +/- 0.056166` versus the live champion with
+  positive LCB; matched null was exactly champion. Preserve that evidence.
+  Independent confirmation, promotion and deployment are later decisions, not
+  T4 filler work.
 - **S5 defensive point protection** is not yet an implementation hypothesis.
   Observational loss mining suggests a narrower avoidable-slough surface, but
   its original global headline disappeared after per-seat normalization.
@@ -445,7 +444,7 @@ This table separates them by the training signal they actually produced.
 | **Teacher-v3 Stage A** | Run the complete dense label schema twice on the same 64 frozen states under distinct receipts. | Exact deterministic replay/mechanics passed and exposed multiple publication/identity defects before scale. | This certified the producer, not label quality or strength. Keep as the small falsifiability preflight for future Teacher versions. |
 | **Teacher-v3 Stage B** | On 128 disjoint mostly ordinary states, compare cheap heuristic-continuation choices with much more expensive `mc-strong@N=30` continuation labels. | Cheap-minus-gold regret upper bound was `0.0195 < 0.10`; the cheap proxy was adequate on this sampled population. | It only showed agreement with the old MC continuation on ordinary states. It did not create a dataset/model or show labels beyond the live champion. |
 | **Fresh live-champion audit** | On an untouched 64-state complement, compare frozen cheap and N=30 choices against the deployed report-LCB root evaluator. | Cheap and N=30 all-state regret bounds passed (`0.0354` and `0.0439`), but the eight boundary states had a weaker N=30 bound (`0.1421`). | Ordinary rows can be labeled cheaply; uncertain/boundary rows need escalation. This is the direct empirical reason for Stage C's mixed-budget hard tail. |
-| **Teacher Stage C v3 (design/rebind passed, not executed)** | Capture 2,048 fresh split-safe states; mix ordinary anchors with uncertainty/disagreement, human/V11/structured proposals, bury, point play and tiny endgames. Use cheap labels where certified and deeper disjoint root comparisons on the hard tail, without recursively calling MC inside MC. | Base `20bdb95` / `f213314a…3b4` freezes the exact 1,024/512/512 split, 20/33 caps and 10,494,720 maximum work. Rebind `7018f36` / `b60c4298…7b18` passed at `cb9471b` with the curriculum unchanged. **No impact result yet:** zero states, labels, checkpoints or challengers exist. | Implement/review capture and labeling; train at least eight seeds and require an untouched Teacher gate plus fresh whole-game win. |
+| **Teacher Stage C (active T4 generation)** | Capture 2,048 fresh split-safe states; mix ordinary anchors with uncertainty/disagreement, bounded V11/structured proposals, bury, point play and tiny endgames. Use cheap labels where certified and deeper independent root comparisons on the hard tail, without recursively calling MC inside MC. | Capture-v7 and external replay review completed exact `1024/512/512`, `1920/128`. H0 produced no aggregate, so no human rule entered. Label v1 terminally failed after 2 complete/6 refused shards because realized-world deduplication exhausted late support and biased posterior mass; no aggregate was used. Iid-v2 `8a202e9` corrects the estimand and awaits capacity review. **No impact result yet:** zero usable labels, checkpoints or challengers. | Pass/run/review iid-v2 capacity, then freeze/review/run all labels; train at least eight seeds and require an untouched Teacher gate plus fresh whole-game win. |
 
 In plain English, Stage B asked, “Can the cheap grader reproduce the expensive
 grader on normal exam questions?” Stage C asks, “Can we write a better exam,

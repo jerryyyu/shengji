@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-10 12:48 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-10 14:24 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,8 +8,8 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | none | **FREE / WAITING ON LABEL-PACKET REVIEW.** Capacity result passed. Label packet `e4958358…09c2` is frozen/reproduced with zero admission/label; PASS opens one 16-shard run projected at ~13 minutes. |
-| Air | none | **FREE / PRE-STAGED, TRAINING CAUSALLY BLOCKED.** Persistent worktree `shengji-stagec-integrated-v8-air` is exact `42e17269…160c`, compiled strict mode with reviewed binary `9c9e77fb…be4c1`; 252 tests pass. No checkpoint until complete reviewed labels and a reviewed training packet. |
+| Mini | none | **FREE / WAITING ON IID-V2 CAPACITY REVIEW.** Label v1 is terminal no-use after eight consumed shards (2 complete, 6 refused); no aggregate. Fresh packet `a667b6bb…795c` authorizes nothing until external PASS, then opens one short 32-state capacity run only. |
+| Air | none | **FREE / IID-V2 SOURCE STAGED, TRAINING CAUSALLY BLOCKED.** Persistent worktree `shengji-stagec-integrated-v8-air` is exact `8a202e9`, compiled strict mode with reviewed binary `9c9e77fb…be4c1`; affected Stage-C/S3c tests pass 184/184. No checkpoint until complete reviewed iid-v2 labels and a reviewed training packet. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
 ## Next admitted execution
@@ -22,13 +22,17 @@ play/bury surfaces, and terminal verification returned
 deals, plus all 2,048 selected states regenerated. Current order:
 
 1. External review of the immutable v7 state set is **complete / PASS**.
-2. Capacity packet/result externally passed; result `111092b7…cee0` is closed.
-3. Frozen label-controller packet `e4958358…09c2` now needs external review.
-4. Only after packet PASS, Mini admits once and runs 16 label shards at
-   eight-way concurrency, then aggregates only on 2,048/2,048 complete rows.
-5. Air starts only after complete reviewed labels, using the v7-bound 48-cell
-   training controller. DESIGN/CALIB choose a capability; untouched REPORT
-   remains closed until that selection is final.
+2. Capacity-v1 packet/result passed, but the resulting label-v1 execution is
+   terminal no-use: eight slots consumed, two complete shards, six refusals,
+   no aggregate and no partial mining. Never run its other eight slots.
+3. Fresh iid-v2 capacity packet `a667b6bb…795c` now needs external review.
+4. Only after packet PASS, Mini consumes one 32-state outcome-discarding
+   capacity run; its terminal result requires separate external review.
+5. Only after that result passes may a v2 label packet be frozen/reviewed,
+   followed by one 16-shard execution and aggregate on 2,048/2,048 complete.
+6. Air starts only after complete reviewed iid-v2 labels and a reviewed
+   training packet. DESIGN/CALIB choose a capability; untouched REPORT remains
+   closed until that selection is final.
 
 No S4 confirmation, S6 screen or other filler job is authorized merely to use
 an idle host. S4's screen is already terminal PASS; its confirmation projection
@@ -42,8 +46,10 @@ The canonical numbers and meanings are in the results table in
 
 | date | job | terminal verdict | anchor |
 |---|---|---|---|
-| 08-10 | Teacher Stage-C label capacity | **TERMINAL CAPACITY + EXTERNAL RESULT PASS** | packet `e8967d6f…d2a58`; result `111092b7…cee0`; 32/32, zero refusals, no retained outcome; `1.545` projected fleet-hours / `0.219` eight-worker wall-hours; unequal-rate fixture `202a1d2` mutation-sensitive |
-| 08-10 | Teacher Stage-C label controller | **FROZEN/VERIFIED / PACKET REVIEW OPEN / ZERO LABELS** | source `3f6f048`; packet external/internal `e4958358…09c2` / `4b6c3c83…5be5`; 2,048 states, 16 shards, 4,984,960 candidate-worlds; no receipt/admission/shard/partial |
+| 08-10 | Teacher Stage-C iid-v2 label capacity | **FROZEN/VERIFIED / PACKET REVIEW OPEN / ZERO WORLDS** | source `8a202e9`; packet external/internal `a667b6bb…795c` / `0a0194ce…6977`; latest-ply + max-work 32-state schedule `32db422c…ffa4`; no admission/result/lock |
+| 08-10 | Teacher Stage-C label v1 execution | **TERMINAL NO-USE / NO AGGREGATE** | source `3f6f048`; receipt external `0c3d7ea0…adc1c`; consumed slots `0,4,5,8,10,12,14,15`; 2 complete, 6 refused, 971/1,024 complete rows; untouched slots never run; no partial utility mining |
+| 08-10 | Teacher Stage-C label capacity v1 | **TERMINAL CAPACITY + EXTERNAL RESULT PASS / SUPERSEDED DOWNSTREAM** | packet `e8967d6f…d2a58`; result `111092b7…cee0`; 32/32, zero refusals, no retained outcome; it validly sized v1 but did not exercise the late small-support failure and cannot authorize v2 |
+| 08-10 | Teacher Stage-C label controller v1 | **CONSUMED / SUPERSEDED BY TERMINAL LABEL FAILURE** | source `3f6f048`; packet external/internal `e4958358…09c2` / `4b6c3c83…5be5`; exact authority consumed once; never retry, extend or aggregate |
 | 08-09 | S3a structured-bury full-game screen | **SELECT NONE / CLOSED** | exact `c599b42`; all 2,048 clusters verified; aggregate `20609613…271f`, final `32156d79…c9ff`; no confirmation, retry, tuning or promotion |
 | 08-09 | Teacher Stage-C controller rebind | **EXTERNAL PASS / ZERO STATES** | source `7018f36`; packet commit `45429f3`; packet `b60c4298…7b18`; Claude PASS at `cb9471b`; all seven curriculum commitments unchanged; capture-controller implementation only |
 | 08-09 | Teacher Stage-C design v3 | **DESIGN PASS / SUPERSEDED ONLY BY IDENTITY REBIND** | source `20bdb95`; asset `1a29418`; packet `f213314a…3b4`; Claude PASS at `d92f595`; zero states/labels; curriculum preserved exactly by passed rebind `b60c4298…7b18` |

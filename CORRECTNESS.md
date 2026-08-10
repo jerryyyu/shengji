@@ -112,6 +112,16 @@ failed draw is not itself a protocol failure when the final accepted dose is
 exact and counters reconcile; silently searching fewer worlds is. Report folds
 run on a named stream disjoint from selection, and partial folds never decide.
 
+**Independent draws do not mean unique realized worlds.** Hidden-world folds
+sample with replacement from the posterior. Repeated world identities inside a
+fold, or the same realized world appearing in two domain-separated folds, are
+valid and must retain their probability mass. Candidate actions within one
+fold deliberately share the same sampled worlds for paired comparison;
+selection/report/audit folds use independent RNG streams. Deduplicating
+realized worlds both flattens the posterior and can make a finite-support late
+state underfill despite thousands of successful draws. Telemetry should report
+duplicates and cross-fold identity overlap, never discard them.
+
 The immutable S0 challenge/calibration asset is
 `server/tests/data/s0_override_audit.v1.json` (SHA-256
 `9703b50817fb03622c3739e44f73e19083b1e8337300be7054774e2308e13ef5`).
@@ -262,6 +272,7 @@ safely refused.
 | 08-05 | adaptive search could re-admit a pruned candidate on its frozen noisy mean, strand residual work, and omit disjoint-report work/time from counters | search/action and equal-work correctness | exact-work S0 controls and sanitised incident accounting witness |
 | 08-05 | JSON preserved RNG bytes but decoded tuples as lists that `Random.setstate()` rejects; partial report folds with >=2 worlds could still decide | claimed replay/refusal contract was not executable | exact JSON replay and underfilled-fold regressions |
 | 08-09 | Fly SFTP refused existing filenames while the fetch script swallowed errors; five growing production logs stayed stale locally. Human extraction then silently discarded replay failures and emitted no provenance or bury surface. | corpus freshness / silent data rejection | atomic hash-manifest refresh + fail-closed human-v1 builder |
+| 08-10 | Stage-C label v1 discarded repeated realized hidden worlds within and across independent folds; six shards refused and retained worlds had flattened posterior mass | statistical sampler semantics / terminal no-use labels | iid-v2 with-replacement regression, domain-separated fold RNG and retained-overlap telemetry |
 
 Update this table whenever a correctness incident occurs — the log is
 the argument for the rules.

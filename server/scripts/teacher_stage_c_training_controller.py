@@ -55,6 +55,14 @@ PACKET_PATH = f"server/runs/logs/{CONTROLLER_RUN_ID}/controller_packet.json"
 SUPERVISOR_PATH = "server/scripts/teacher_stage_c_training_supervisor.py"
 FRESH_REPORT_PACKET_SHA256 = \
     "7dd0caacff9e61e4f963ba0afa56c3eca81c05abd9da2eaaba4ece8284870e69"
+LABEL_AGGREGATE_SHA256 = \
+    "d0b4397ce0135b5ae665a76f9188ae3c974e2e440e0d6dc047d5080b27e6cdb9"
+LABEL_AGGREGATE_INTERNAL_SHA256 = \
+    "882baad7a5a8adf5044d8d6249e47b1a44f2dd838d1cb67c304fcbde1f02aac0"
+LABEL_FIDELITY_REVIEW_SCHEMA = \
+    "teacher-stage-c-label-fidelity-consumption-review-v3"
+LABEL_FIDELITY_REVIEW_MARKER = \
+    "TEACHER_STAGE_C_LABEL_FIDELITY_CONSUMPTION_V3_REVIEW "
 REVIEW_SCHEMA = "teacher-stage-c-v11-free-training-controller-review-v1"
 REVIEW_MARKER = "TEACHER_STAGE_C_V11_FREE_TRAINING_CONTROLLER_V1_REVIEW "
 
@@ -277,10 +285,67 @@ def label_fidelity_summary(
     }
 
 
+def expected_label_fidelity_review_claim(
+        aggregate: Mapping[str, object], aggregate_sha256: str) -> dict:
+    """Bind V11-free consumption to the independently replayed label result."""
+    if (aggregate_sha256 != LABEL_AGGREGATE_SHA256
+            or aggregate.get("aggregate_sha256")
+            != LABEL_AGGREGATE_INTERNAL_SHA256):
+        raise TrainingControllerRefused(
+            "label fidelity review does not name the terminal aggregate")
+    summary = label_fidelity_summary(aggregate, aggregate_sha256)
+    design = aggregate.get("design_calib_manifest")
+    report = aggregate.get("sealed_report_manifest")
+    if not isinstance(design, dict) or not isinstance(report, dict):
+        raise TrainingControllerRefused(
+            "label aggregate manifests are missing")
+    return {
+        "schema": LABEL_FIDELITY_REVIEW_SCHEMA,
+        "label_git": aggregate.get("git"),
+        "aggregate_sha256": aggregate_sha256,
+        "aggregate_internal_sha256": aggregate.get("aggregate_sha256"),
+        "state_set_sha256": aggregate.get("state_set_sha256"),
+        "states": aggregate.get("states"),
+        "complete_rows": aggregate.get("complete_rows"),
+        "refused_rows": aggregate.get("refused_rows"),
+        "original_combined_decision": summary[
+            "original_combined_decision"],
+        "label_fidelity_pass": True,
+        "ordinary_anchor_regret_mean": summary[
+            "ordinary_anchor_regret_mean"],
+        "ordinary_anchor_regret_ucb": summary[
+            "ordinary_anchor_regret_ucb"],
+        "hard_tail_regret_mean": summary["hard_tail_regret_mean"],
+        "hard_tail_regret_ucb": summary["hard_tail_regret_ucb"],
+        "v11_recall_mean": summary["v11_recall_mean"],
+        "v11_recall_lcb": summary["v11_recall_lcb"],
+        "v11_recall_ucb": summary["v11_recall_ucb"],
+        "v11_recall_pass": False,
+        "v11_proposer_admitted": False,
+        "candidate_provenance_contract_sha256": _manifest_hash(
+            candidate_provenance_contract()),
+        "training_controller_script_sha256": sha256_file(SCRIPT),
+        "stage_c_model_script_sha256": sha256_file(
+            SERVER / "shengji/rl/stage_c_model.py"),
+        "design_calib_manifest_sha256": _manifest_hash(design),
+        "sealed_report_manifest_sha256": _manifest_hash(report),
+        "report_shards_opened_by_training_review": 0,
+        "independent_review": True,
+        "one_v11_free_training_controller_freeze_authorized": True,
+        "training_authorized": False,
+        "report_open_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+        "verdict": "PASS",
+    }
+
+
 def validate_label_aggregate(
-    path: Path, expected_sha256: str,
-) -> dict:
-    if sha256_file(path) != expected_sha256:
+    path: Path, expected_sha256: str, review_record: Path,
+) -> tuple[dict, dict]:
+    if (expected_sha256 != LABEL_AGGREGATE_SHA256
+            or sha256_file(path) != expected_sha256):
         raise TrainingControllerRefused("label aggregate external SHA-256 drift")
     aggregate = load_json(path)
     gate = aggregate.get("fidelity_gate")
@@ -290,6 +355,8 @@ def validate_label_aggregate(
     metric_values = _label_fidelity_values(aggregate)
     if (aggregate.get("schema") != LABEL_CTRL.AGGREGATE_SCHEMA
             or aggregate.get("run_id") != LABEL_CTRL.RUN_ID
+            or aggregate.get("aggregate_sha256")
+            != LABEL_AGGREGATE_INTERNAL_SHA256
             or aggregate.get("aggregate_sha256")
             != self_hash(aggregate, "aggregate_sha256")
             or aggregate.get("status") != "COMPLETE"
@@ -333,7 +400,13 @@ def validate_label_aggregate(
             or report["shards"] != shards[12:]):
         raise TrainingControllerRefused(
             "label aggregate status/split/authority drift")
-    return aggregate
+    claim = marker_claim(review_record, LABEL_FIDELITY_REVIEW_MARKER)
+    expected = expected_label_fidelity_review_claim(
+        aggregate, expected_sha256)
+    if claim != expected:
+        raise TrainingControllerRefused(
+            "label fidelity-consumption PASS marker drift")
+    return aggregate, claim
 
 
 def validate_fresh_report(
@@ -774,11 +847,23 @@ def commands(schedule: Mapping[str, object]) -> dict:
 
 def build_packet(
     *, git: str, dataset: Mapping[str, object], dataset_external_sha256: str,
-    aggregate: Mapping[str, object], fresh_report: Mapping[str, object],
+    aggregate: Mapping[str, object], aggregate_review: Mapping[str, object],
+    fresh_report: Mapping[str, object],
     fresh_report_review: Mapping[str, object],
 ) -> dict:
     if dataset.get("dataset_sha256") != self_hash(dataset, "dataset_sha256"):
         raise TrainingControllerRefused("model dataset internal SHA drift")
+    if (aggregate_review.get("schema") != LABEL_FIDELITY_REVIEW_SCHEMA
+            or aggregate_review.get("aggregate_sha256")
+            != aggregate.get("external_sha256")
+            or aggregate_review.get("aggregate_internal_sha256")
+            != aggregate.get("aggregate_sha256")
+            or aggregate_review.get(
+                "one_v11_free_training_controller_freeze_authorized")
+            is not True
+            or aggregate_review.get("verdict") != "PASS"):
+        raise TrainingControllerRefused(
+            "label fidelity-consumption review binding drift")
     if (dataset.get("fresh_report_selection")
             != fresh_report_dataset_contract(
                 fresh_report, fresh_report_review)
@@ -807,6 +892,8 @@ def build_packet(
             "label_aggregate": {
                 "external_sha256": aggregate["external_sha256"],
                 "internal_sha256": aggregate["aggregate_sha256"],
+                "review_schema": LABEL_FIDELITY_REVIEW_SCHEMA,
+                "review_claim_sha256": _manifest_hash(aggregate_review),
                 "fidelity_summary": fidelity,
                 "fidelity_summary_sha256": _manifest_hash(fidelity),
                 "original_combined_decision":
@@ -892,6 +979,8 @@ def expected_review_claim(packet: Mapping[str, object],
             "external_sha256"],
         "label_fidelity_summary_sha256": packet["parents"][
             "label_aggregate"]["fidelity_summary_sha256"],
+        "label_fidelity_review_claim_sha256": packet["parents"][
+            "label_aggregate"]["review_claim_sha256"],
         "fresh_report_packet_sha256": packet["parents"][
             "fresh_report_selection"]["external_sha256"],
         "fresh_report_selection_sha256": packet["parents"][
@@ -1013,7 +1102,7 @@ def _reviewed_upstream_label_packet(path: Path,
     return value
 
 
-def _validated_inputs(args) -> tuple[dict, dict, dict, dict, dict, str]:
+def _validated_inputs(args) -> tuple[dict, dict, dict, dict, dict, dict, str]:
     if _git("status", "--porcelain"):
         raise TrainingControllerRefused(
             "real Stage-C training-controller freeze refuses dirty tree")
@@ -1028,9 +1117,10 @@ def _validated_inputs(args) -> tuple[dict, dict, dict, dict, dict, str]:
         label_packet, args.expected_label_controller_sha256,
         Path(args.label_controller_review_record).resolve(),
         Path(args.state_set_review_record).resolve())
-    aggregate = validate_label_aggregate(
+    aggregate, aggregate_review = validate_label_aggregate(
         Path(args.label_aggregate).resolve(),
-        args.expected_label_aggregate_sha256)
+        args.expected_label_aggregate_sha256,
+        Path(args.label_aggregate_review_record).resolve())
     fresh_report, fresh_report_review = validate_fresh_report(
         Path(args.fresh_report_controller).resolve(),
         args.expected_fresh_report_controller_sha256,
@@ -1053,8 +1143,8 @@ def _validated_inputs(args) -> tuple[dict, dict, dict, dict, dict, str]:
             "label aggregate/fresh REPORT parent drift")
     aggregate = dict(aggregate)
     aggregate["external_sha256"] = args.expected_label_aggregate_sha256
-    return (label_packet, state_set, aggregate, fresh_report,
-            fresh_report_review, git)
+    return (label_packet, state_set, aggregate, aggregate_review,
+            fresh_report, fresh_report_review, git)
 
 
 def parser() -> argparse.ArgumentParser:
@@ -1070,6 +1160,7 @@ def parser() -> argparse.ArgumentParser:
         child.add_argument("--state-set-review-record", required=True)
         child.add_argument("--label-aggregate", required=True)
         child.add_argument("--expected-label-aggregate-sha256", required=True)
+        child.add_argument("--label-aggregate-review-record", required=True)
         child.add_argument("--fresh-report-controller", required=True)
         child.add_argument(
             "--expected-fresh-report-controller-sha256", required=True)
@@ -1084,7 +1175,7 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = parser().parse_args()
-    (label_packet, state_set, aggregate, fresh_report,
+    (label_packet, state_set, aggregate, aggregate_review, fresh_report,
      fresh_report_review, git) = _validated_inputs(args)
     dataset = materialize_dataset(
         label_packet=label_packet,
@@ -1104,7 +1195,8 @@ def main() -> int:
         packet = build_packet(
             git=git, dataset=dataset,
             dataset_external_sha256=dataset_external_sha256,
-            aggregate=aggregate, fresh_report=fresh_report,
+            aggregate=aggregate, aggregate_review=aggregate_review,
+            fresh_report=fresh_report,
             fresh_report_review=fresh_report_review)
         publish_exclusive(packet_out, packet)
     else:
@@ -1116,7 +1208,8 @@ def main() -> int:
         packet = build_packet(
             git=git, dataset=dataset,
             dataset_external_sha256=args.expected_dataset_sha256,
-            aggregate=aggregate, fresh_report=fresh_report,
+            aggregate=aggregate, aggregate_review=aggregate_review,
+            fresh_report=fresh_report,
             fresh_report_review=fresh_report_review)
         if (not is_regular_unlinked(packet_out)
                 or sha256_file(packet_out) != args.expected_packet_sha256

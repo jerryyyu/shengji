@@ -102,6 +102,17 @@ def _fresh_review() -> dict:
     }
 
 
+def _aggregate_review(aggregate: dict | None = None) -> dict:
+    aggregate = aggregate or _aggregate()
+    return {
+        "schema": CTRL.LABEL_FIDELITY_REVIEW_SCHEMA,
+        "aggregate_sha256": aggregate["external_sha256"],
+        "aggregate_internal_sha256": aggregate["aggregate_sha256"],
+        "one_v11_free_training_controller_freeze_authorized": True,
+        "verdict": "PASS",
+    }
+
+
 def _dataset() -> dict:
     value = {
         "schema": CTRL.DATASET_SCHEMA,
@@ -161,14 +172,41 @@ def test_label_aggregate_requires_fidelity_pass_and_v11_free_route() -> None:
         CTRL.label_fidelity_summary(failed, "f" * 64)
 
 
-def test_label_aggregate_reopens_without_old_report_authority(tmp_path) -> None:
+def test_label_aggregate_requires_exact_hash_and_independent_marker(
+        monkeypatch, tmp_path) -> None:
     aggregate = _aggregate()
     aggregate.pop("external_sha256")
     path = tmp_path / "aggregate.json"
     path.write_bytes(CTRL.canonical_json(aggregate))
     digest = CTRL.sha256_file(path)
-    reopened = CTRL.validate_label_aggregate(path, digest)
+    monkeypatch.setattr(CTRL, "LABEL_AGGREGATE_SHA256", digest)
+    monkeypatch.setattr(
+        CTRL, "LABEL_AGGREGATE_INTERNAL_SHA256",
+        aggregate["aggregate_sha256"])
+    review = tmp_path / "review.md"
+    review.write_text("no marker\n")
+    with pytest.raises(
+            CTRL.TrainingControllerRefused, match="exactly one"):
+        CTRL.validate_label_aggregate(path, digest, review)
+    claim = CTRL.expected_label_fidelity_review_claim(aggregate, digest)
+    review.write_text(
+        CTRL.LABEL_FIDELITY_REVIEW_MARKER
+        + json.dumps(claim, sort_keys=True, separators=(",", ":")) + "\n")
+    reopened, reopened_claim = CTRL.validate_label_aggregate(
+        path, digest, review)
     assert reopened == aggregate
+    assert reopened_claim == claim
+
+    synthetic = copy.deepcopy(aggregate)
+    synthetic["states"] = 2047
+    synthetic["aggregate_sha256"] = CTRL.self_hash(
+        synthetic, "aggregate_sha256")
+    synthetic_path = tmp_path / "synthetic.json"
+    synthetic_path.write_bytes(CTRL.canonical_json(synthetic))
+    with pytest.raises(
+            CTRL.TrainingControllerRefused, match="external SHA"):
+        CTRL.validate_label_aggregate(
+            synthetic_path, CTRL.sha256_file(synthetic_path), review)
 
 
 def test_fresh_report_exact_review_marker_is_the_freeze_authority(
@@ -210,7 +248,8 @@ def test_packet_exposes_only_training_review_authority(monkeypatch) -> None:
     review = _fresh_review()
     packet = CTRL.build_packet(
         git="a" * 40, dataset=_dataset(), dataset_external_sha256="2" * 64,
-        aggregate=aggregate, fresh_report=fresh,
+        aggregate=aggregate, aggregate_review=_aggregate_review(aggregate),
+        fresh_report=fresh,
         fresh_report_review=review)
     assert packet["authority"] == {
         "examples_materialized": True,
@@ -461,7 +500,8 @@ def test_fresh_report_digest_changes_training_packet(monkeypatch) -> None:
     })
     before = CTRL.build_packet(
         git="a" * 40, dataset=_dataset(), dataset_external_sha256="8" * 64,
-        aggregate=_aggregate(), fresh_report=_fresh_report(),
+        aggregate=_aggregate(), aggregate_review=_aggregate_review(),
+        fresh_report=_fresh_report(),
         fresh_report_review=_fresh_review())
     changed = _fresh_report()
     changed["sealed_selection"]["fresh_report_state_ids_sha256"] = "9" * 64
@@ -473,7 +513,8 @@ def test_fresh_report_digest_changes_training_packet(monkeypatch) -> None:
     after = CTRL.build_packet(
         git="a" * 40, dataset=changed_dataset,
         dataset_external_sha256="9" * 64,
-        aggregate=_aggregate(), fresh_report=changed,
+        aggregate=_aggregate(), aggregate_review=_aggregate_review(),
+        fresh_report=changed,
         fresh_report_review=_fresh_review())
     assert before["packet_sha256"] != after["packet_sha256"]
 

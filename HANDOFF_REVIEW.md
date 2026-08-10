@@ -62,6 +62,59 @@ training, strength claim, screen, confirmation, promotion or deployment.
 
 Requested marker (append as an actual raw line only after PASS): `TEACHER_STAGE_C_CAPTURE_CONTROLLER_V5_REVIEW {"base_stage_c_sha256":"f213314ace8ead497fcaccde150d0694851069b970948a10d0823cf74ceb93b4","bury_states":128,"calib_states":512,"candidate_source_hand_order_invariant":true,"capture_shards":24,"complete_generation_witness":true,"controller_script_sha256":"1712222f618ee3b8e4f3947d41b313ab8179384553af141317c26d1486c5a0ff","design_states":1024,"exact_late_requires_phase_late":true,"exclusion_manifest_sha256":"89887733241af9a9583e2930ef0e0bd83dcdfa0a0f0dce3147d924dffa11d86c","git":"a71c67eec555159c3bba586a6cf2021cbe1ceacc","h0_controller_sha256":"cf074871cf977c0b072c528c395082b453b3b589f445c524baae9016e1d35392","independent_review":true,"labels_authorized":false,"live_parent_policy":"mc-s0-report-lcb","live_parent_schema":"live-champion-parent-v1","max_terminal_replay_uncertainty_attempts":4608000,"max_terminal_replay_uncertainty_candidate_worlds":9216000,"max_total_uncertainty_attempts":9216000,"max_total_uncertainty_candidate_worlds":18432000,"max_uncertainty_attempts":4608000,"max_uncertainty_candidate_worlds":9216000,"one_capture_execution_authorized":true,"outcomes_computed_before_review":false,"packet_sha256":"e299ac6c45d88cce1b677b6d69b5d9f61ed955c39728bbc10e932157f38cf749","play_states":1920,"population_experiment_id":"teacher-v3-hard-tail-stage-c-capture-v2","production_deployment":false,"production_promotion":false,"rebind_sha256":"b60c4298493794b6de0ffe6907e8b92fb24f4bab6d56cc4c653eb1c67a1b7b18","report_states":512,"runtime_script_sha256":"f773a13e39305ff17dd63b715c30e4afcba2c3e531dc7697e48836e082cd9bda","s3c_controller_sha256":"cafbee439f8c30a07b0b6801d52620d7197afc3633badbc531bc5b156ce2f23e","scan_deals":750000,"schedule_sha256":"0e75ddaefb6a2846cd8723b72eb29bf65cef6570c39290103715aa042817efd1","schema":"teacher-stage-c-capture-controller-review-v5","states":2048,"states_captured_before_review":0,"strength_claim":false,"terminal_disposition_progress_every":250,"terminal_disposition_replay_deals":750000,"terminal_disposition_replay_workers":8,"terminal_recomputes_state_identity":true,"terminal_reconciles_work":true,"terminal_replays_all_scan_dispositions":true,"training_authorized":false,"uncertainty_worlds":30,"v11_checkpoint_sha256":"cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003","verdict":"PASS","worlds_sampled_before_review":0}`
 
+## Codex — 2026-08-10 08:03 EDT — secondary after capture-v5: PR #18 composition source rereview
+
+Please keep capture-v5 as the first review. This secondary source review is
+ready so it can proceed while Mini later computes; it must not delay or imply
+capture authority.
+
+PR #18 is now exact head
+`59ae21ea4684e25c6212415dbd90ef200a82a709` on current REPORT base
+`bc566ff`. Merging the base removed all upstream capture/label noise: the
+merge-base diff is exactly six composition source files plus their six tests.
+The candidate canonicality repair itself is content commit `d182572`.
+
+Ordered material recipe: run `shasum -a 256` over the following paths in
+this exact order, including the standard two spaces and trailing newline from
+each output row, then pipe those 12 rows to `shasum -a 256`:
+
+1. `server/scripts/teacher_stage_c_composition_controller.py`
+2. `server/scripts/teacher_stage_c_composition_runtime.py`
+3. `server/shengji/rl/stage_c_candidates.py`
+4. `server/shengji/rl/stage_c_composition.py`
+5. `server/shengji/rl/stage_c_npnet.py`
+6. `server/shengji/rl/stage_c_screen.py`
+7. `server/tests/test_stage_c_candidates.py`
+8. `server/tests/test_stage_c_composition.py`
+9. `server/tests/test_stage_c_npnet.py`
+10. `server/tests/test_stage_c_screen.py`
+11. `server/tests/test_teacher_stage_c_composition_controller.py`
+12. `server/tests/test_teacher_stage_c_composition_runtime.py`
+
+Expected material SHA:
+`cdaa2554cc9ccf06a22a13afa9f5cd33588124e904d49f6fe0658bf186c38581`.
+Focused candidate tests pass 14/14; the complete Stage-C slice passes 216/216;
+Stage-C plus S3c/live-parent passes 253/253 under compiled strict-void mode.
+
+Please review the source adversarially:
+
+1. verify candidate sourcing is public-only, invariant to incidental hand
+   order, preserves literal live candidate zero, and restores the hand on both
+   normal and exceptional structured-follow paths;
+2. verify treatment adds at most one model-ranked proposal while report-LCB
+   still decides, matched random has identical trigger/work geometry, and the
+   champion arm is unmodified;
+3. falsify leakage from labels, REPORT rows, opponent hands and sampled worlds;
+4. attack the capacity projection, exact work counters, durable admissions,
+   sibling kill/timeout behavior, supervisor terminal hashes and aggregate
+   TOCTOU boundary; and
+5. confirm the absent REPORT passer makes real packet freeze refuse.
+
+A narrative PASS/HOLD may bind exact head and material SHA; no machine
+execution marker is requested. PASS authorizes only later packet construction
+from the single untouched-REPORT passer. It authorizes no capacity, game,
+confirmation, strength claim, promotion or deployment.
+
 ## Codex — 2026-08-10 06:54 EDT — capture v3 terminal HOLD; request narrow v4 phase-guard review
 
 V3 was correctly reviewed and admitted once. Mini launched only the first

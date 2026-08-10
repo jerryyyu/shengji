@@ -234,6 +234,9 @@ def test_prediction_metrics_reward_better_ranking_and_calibration() -> None:
     assert metrics["mean_teacher_regret"] == 0.0
     assert metrics["ranking_improvement_vs_candidate0"] > 0
     assert metrics["frozen_label_top1_agreement"] == 1.0
+    assert metrics["outcome_head_mean_teacher_regret"] == 0.0
+    assert metrics["outcome_head_ranking_improvement_vs_candidate0"] > 0
+    assert metrics["outcome_head_frozen_label_top1_agreement"] == 1.0
     assert metrics["outcome_nll_improvement_vs_prior"] > 0
 
 
@@ -242,31 +245,63 @@ def _selection_records(*, passing: bool) -> list[dict]:
     for epoch in MODEL.EPOCH_GRID:
         for surface in MODEL.SURFACES:
             for seed in MODEL.TRAINING_SEEDS:
-                good = passing and epoch == 8
+                ranking_good = (passing and epoch == 8
+                                and surface == "play")
                 records.append({
                     "epoch": epoch, "surface": surface, "seed": seed,
                     "split": "CALIB", "curve_fraction": 1.0,
                     "metrics": {
-                        "ranking_improvement_vs_candidate0": 0.2 if good else -0.1,
-                        "outcome_nll_improvement_vs_prior": 0.1 if good else -0.1,
-                        "mean_teacher_regret": 0.1 if good else 0.3,
-                        "outcome_nll": 1.0 if good else 2.0,
+                        "ranking_improvement_vs_candidate0":
+                            0.2 if ranking_good else -0.1,
+                        "outcome_head_ranking_improvement_vs_candidate0":
+                            0.1 if ranking_good else -0.1,
+                        "outcome_nll_improvement_vs_prior":
+                            0.1 if ranking_good else -0.1,
+                        "mean_teacher_regret":
+                            0.1 if ranking_good else 0.3,
+                        "outcome_head_mean_teacher_regret":
+                            0.2 if ranking_good else 0.3,
+                        "outcome_nll": 1.0 if ranking_good else 2.0,
                     },
                 })
     return records
 
 
-def test_calib_selects_one_epoch_for_all_eight_seeds_not_one_checkpoint() -> None:
+def test_calib_selects_one_capability_without_unrelated_surface_veto() -> None:
     selected = MODEL.select_global_epoch(_selection_records(passing=True))
     assert selected["decision"] == \
-        "FREEZE_EIGHT_SEED_ENSEMBLE_FOR_REPORT_REVIEW"
+        "FREEZE_SINGLE_CAPABILITY_FOR_REPORT_REVIEW"
     assert selected["selected_epoch"] == 8
+    assert selected["selected_capability"]["surface"] == "play"
+    assert selected["selected_capability"]["head"] == "ranking"
+    assert selected["single_capability_selection"] is True
     assert selected["single_seed_selection"] is False
     assert selected["report_open_authorized"] is False
 
     rejected = MODEL.select_global_epoch(_selection_records(passing=False))
     assert rejected["decision"] == "SELECT_NONE"
     assert rejected["selected_epoch"] is None
+    assert rejected["selected_capability"] is None
+
+
+def test_calib_can_select_calibrated_outcome_proposer() -> None:
+    records = _selection_records(passing=False)
+    for record in records:
+        if record["surface"] == "bury" and record["epoch"] == 16:
+            record["metrics"].update({
+                "outcome_head_ranking_improvement_vs_candidate0": 0.3,
+                "outcome_head_mean_teacher_regret": 0.05,
+                "outcome_nll_improvement_vs_prior": 0.2,
+            })
+    selected = MODEL.select_global_epoch(records)
+    assert selected["selected_capability"]["surface"] == "bury"
+    assert selected["selected_capability"]["head"] == "outcome"
+    assert selected["selected_epoch"] == 16
+
+    for record in records:
+        record["metrics"]["outcome_nll_improvement_vs_prior"] = -0.2
+    rejected = MODEL.select_global_epoch(records)
+    assert rejected["decision"] == "SELECT_NONE"
 
 
 def test_checkpoint_contract_keeps_play_and_bury_weights_separate() -> None:

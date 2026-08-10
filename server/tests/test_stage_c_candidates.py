@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
@@ -183,6 +184,89 @@ def test_play_union_is_exactly_parity_with_frozen_capture_source() -> None:
     assert actual_union == expected_union
     for key, value in expected_diagnostics.items():
         assert actual_diagnostics[key] == value
+
+
+@pytest.mark.parametrize(("cell_id", "seed"), [
+    ("DESIGN:play:ordinary_anchor:early:attacker:follow", 170_000_133),
+    ("DESIGN:play:ordinary_anchor:mid:attacker:lead", 170_000_308),
+])
+def test_play_union_is_invariant_to_incidental_hand_order(
+        cell_id: str, seed: int) -> None:
+    runtime = _capture_runtime()
+    base = runtime._load_json(runtime.REPO / runtime.BASE_PATH)
+    cell = next(cell for cell in runtime.CTRL.quota_cells(base)["DESIGN"]
+                if cell["cell_id"] == cell_id)
+    state, reason = runtime.capture_deal(
+        seed, "DESIGN", cell, runtime._actor_identity())
+    assert reason == "eligible" and state is not None
+    original = runtime.replay_state(state)
+    reordered = copy.deepcopy(original)
+    reordered.hands[state["seat"]] = list(reversed(
+        reordered.hands[state["seat"]]))
+    assert SOURCE.encode_obs(original, state["seat"]) == SOURCE.encode_obs(
+        reordered, state["seat"])
+    net = runtime._load_npnet(str(runtime.REPO / runtime.V11_PATH))
+    expected = SOURCE.build_play_union(
+        original, state["seat"], state["state_id"], "DESIGN", net,
+        SOURCE.make_bot("mc-s0-report-lcb", seed=0),
+        experiment_id=runtime.CTRL.EXPERIMENT_ID)
+    actual = SOURCE.build_play_union(
+        reordered, state["seat"], state["state_id"], "DESIGN", net,
+        SOURCE.make_bot("mc-s0-report-lcb", seed=0),
+        experiment_id=runtime.CTRL.EXPERIMENT_ID)
+    assert actual == expected
+
+
+def test_bury_union_is_invariant_to_incidental_hand_order() -> None:
+    runtime = _capture_runtime()
+    base = runtime._load_json(runtime.REPO / runtime.BASE_PATH)
+    cell = next(cell for cell in runtime.CTRL.quota_cells(base)["DESIGN"]
+                if cell["surface_type"] == "bury"
+                and cell["stratum"] == "ordinary_anchor")
+    state, reason = runtime.capture_deal(
+        170_000_000, "DESIGN", cell, runtime._actor_identity())
+    assert reason == "eligible" and state is not None
+    original = runtime.replay_state(state)
+    reordered = copy.deepcopy(original)
+    reordered.hands[state["seat"]] = list(reversed(
+        reordered.hands[state["seat"]]))
+    assert SOURCE.encode_obs(original, state["seat"]) == SOURCE.encode_obs(
+        reordered, state["seat"])
+    expected = SOURCE.build_bury_union(
+        original, state["seat"], state["state_id"],
+        experiment_id=runtime.CTRL.EXPERIMENT_ID)
+    actual = SOURCE.build_bury_union(
+        reordered, state["seat"], state["state_id"],
+        experiment_id=runtime.CTRL.EXPERIMENT_ID)
+    assert actual == expected
+
+
+def test_structured_follow_restores_hand_when_helper_raises(
+        monkeypatch) -> None:
+    original = ["H4", "H2", "H3"]
+    rnd = SimpleNamespace(
+        trick=SimpleNamespace(plays=[(1, ["H5"])]),
+        hands=[original, [], [], []],
+    )
+    monkeypatch.setattr(SOURCE, "enumerate_actions",
+                        lambda *_args, **_kw: [["H2"], ["H3"]])
+    monkeypatch.setattr(SOURCE, "encode_obs", lambda *_args: [0.0])
+    monkeypatch.setattr(SOURCE, "encode_action", lambda action, _rnd: action)
+
+    class RefusingFollow:
+        def __init__(self, *, apply_treatment):
+            assert apply_treatment is True
+
+        def _follow(self, actual_round, seat):
+            assert actual_round.hands[seat] == sorted(original)
+            raise RuntimeError("named refusal")
+
+    monkeypatch.setattr(SOURCE, "PointBankingRolloutPolicy", RefusingFollow)
+    with pytest.raises(RuntimeError, match="named refusal"):
+        SOURCE.build_play_union(
+            rnd, 0, "state", "SCREEN", _Net(), _Production(),
+            experiment_id="experiment")
+    assert rnd.hands[0] is original
 
 
 def test_live_play_source_and_wrapper_integrate_on_replayed_state() -> None:

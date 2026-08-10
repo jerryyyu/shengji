@@ -29,8 +29,8 @@ from .encode import encode_action, encode_obs
 from .stage_c_model import canonical_json
 
 
-SCHEMA = "teacher-stage-c-candidate-source-v1"
-INFERENCE_EXPERIMENT_ID = "teacher-stage-c-composition-screen-v1"
+SCHEMA = "teacher-stage-c-candidate-source-v2"
+INFERENCE_EXPERIMENT_ID = "teacher-stage-c-composition-screen-v2"
 INFERENCE_SPLIT = "SCREEN"
 PLAY_CANDIDATE_CAP = 20
 BURY_CANDIDATE_CAP = 33
@@ -148,8 +148,12 @@ def build_play_union(
     if not live or len(live) > PLAY_CANDIDATE_CAP:
         raise StageCCandidateError("live Stage-C play ballot cap/emptiness drift")
 
-    exhaustive = _dedupe(enumerate_actions(
-        rnd, seat, exhaustive_follows=True, include_throws=True))
+    # The model observation and action encoding treat the hand as a multiset.
+    # enumerate_actions preserves incidental engine-list order, so canonicalize
+    # before V11 tie-breaking and deterministic random selection.
+    exhaustive = sorted(_dedupe(enumerate_actions(
+        rnd, seat, exhaustive_follows=True, include_throws=True)),
+        key=action_key)
     live_keys = {action_key(action) for action in live}
     novel = [action for action in exhaustive
              if action_key(action) not in live_keys]
@@ -181,7 +185,15 @@ def build_play_union(
                            if action_key(action) not in live_keys), None)
     else:
         treatment = PointBankingRolloutPolicy(apply_treatment=True)
-        candidate = treatment._follow(rnd, seat)
+        # The shared follow heuristic walks the stored hand list. Match the
+        # capture source's multiset boundary without changing shared policy
+        # code or leaving the live round mutated.
+        saved_hand = rnd.hands[seat]
+        rnd.hands[seat] = sorted(saved_hand)
+        try:
+            candidate = treatment._follow(rnd, seat)
+        finally:
+            rnd.hands[seat] = saved_hand
         if action_key(candidate) not in live_keys:
             structured = list(candidate)
 
@@ -274,7 +286,7 @@ def build_bury_union(
         add(candidate.cards,
             ("s3a_structured_point_void_bury", *candidate.sources))
     rng = random.Random(_seed(experiment_id, state_id, "random-bury"))
-    hand = list(rnd.hands[seat])
+    hand = sorted(rnd.hands[seat])
     for _ in range(64):
         indices = sorted(rng.sample(range(len(hand)), 8))
         candidate = [hand[index] for index in indices]

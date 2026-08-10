@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-10 07:53 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-10 08:37 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,28 +8,28 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | none | **FREE / WAITING ON CAPTURE-V5 REVIEW.** V4 passed but was superseded before admission by the canonical candidate-source repair. On exact v5 PASS, Mini consumes the fresh slot once and runs 24 shards in three waves of eight, then freezes 2,048 states and replay-authenticates all 750,000 dispositions. |
-| Air | none | **FREE / V5 TRAINING SOURCE STAGED.** Detached head `535fc39` passes an 80-test staged slice under Python 3.14.6. Air starts the 48-cell play/bury × eight-seed × 25/50/100% matrix only after complete reviewed labels exist. |
+| Mini | none | **FREE / WAITING ON CAPTURE-V6 REVIEW.** V5 was held before admission on an equal-value incumbent-bury ordering bug. On exact v6 PASS, Mini consumes the fresh slot once and runs 24 shards in three waves of eight, then freezes 2,048 states and replay-authenticates all 750,000 dispositions. |
+| Air | none | **FREE / V6 TRAINING SOURCE STAGED.** Detached head `8ca347f` passes 145/145 under Python 3.14.6. Air starts the 48-cell play/bury × eight-seed × 25/50/100% matrix only after complete reviewed labels exist. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
 ## Next admitted execution
 
-The only immediate compute gate is external review of capture-v5 source
-`a71c67e`, packet commit `542f82a`, external packet SHA
-`e299ac6c…cf749`. V4's phase review passed at `8263492`, but a later
-same-encoding audit found hand-order-dependent candidate generation before
-admission; v4 therefore has no receipt/state and is superseded. Capture-v3's
-six partials remain terminal no-use. After v5 PASS:
+The only immediate compute gate is external review of capture-v6 source
+`2bdb094`, packet commit `055a196`, external packet SHA
+`40c602ea…20ffd`. V5's review found one remaining equal-valued incumbent-bury
+tie after its play/follow/random-source repairs; it has no receipt/state and is
+superseded. Capture-v3's six partials remain terminal no-use. After v6 PASS:
 
 1. Mini runs all 24 capture shards from scratch in three eight-worker waves.
 2. Mini freezes exactly 2,048 states and authenticates the full 750,000-deal
    scan. External state-set review follows.
 3. Mini runs a reviewed 32-state label-capacity pilot, then (only on PASS) the
    16 label shards at eight-way concurrency.
-4. **Code propagation complete:** labels `c45cc8a` (108 tests), training
-   `535fc39` (143), REPORT `bc566ff` (156), composition `d182572` (216).
+4. **Code propagation complete:** labels `7d3e6ad` (110 tests), training
+   `8ca347f` (145), REPORT `e788fde` (158), composition `268ebeb`
+   (220 Stage-C / 257 including S3c/live).
    Composition source rereview can proceed without blocking Mini.
-5. Air starts only after complete reviewed labels, using the v5-bound 48-cell
+5. Air starts only after complete reviewed labels, using the v6-bound 48-cell
    training controller. DESIGN/CALIB choose a capability; untouched REPORT
    remains closed until that selection is final.
 
@@ -57,7 +57,8 @@ The canonical numbers and meanings are in the results table in
 | 08-09 | S3c natural-prefix census + curriculum | **DESIGN PASS / ONE-CARD CONTROLLER IMPLEMENTATION ONLY** | producer `0b96fae`; asset `4fb90a1`; 768 roots; census `23632609…b52a`; packet `df102428…9eca`; Claude marker commit `084ba7e`; no solver/screen/training/strength authority |
 | 08-10 | Teacher Stage-C capture v3 | **TERMINAL HOLD / SIX PARTIAL SHARDS NO-USE** | exact source `0b697b6`; first wave found deterministic exact-late phase drift at seeds `170002101` and `170007422`; no later waves, pooling or retry |
 | 08-10 | Teacher Stage-C capture v4 repair | **EXTERNAL PASS / SUPERSEDED PRE-ADMISSION** | source `5a51a1e`; packet `0d1a94d4…54eaa`; Claude PASS `8263492`; exact phase fix remains valid, but a later candidate canonicality defect means no v4 receipt/state may be issued |
-| 08-10 | Teacher Stage-C capture v5 canonical-source repair | **EXTERNAL REVIEW OPEN / ZERO V5 STATES** | source `a71c67e`; packet commit `542f82a`; packet `e299ac6c…cf749`; named lead/follow/bury same-encoding regressions; 55/55 focused tests |
+| 08-10 | Teacher Stage-C capture v5 canonical-source repair | **HOLD / SUPERSEDED BEFORE ADMISSION** | source `a71c67e`; packet `e299ac6c…cf749`; play/follow/random-source repairs were sound, but equal-valued SmartBot incumbent buries still inherited hand order; zero v5 states/worlds |
+| 08-10 | Teacher Stage-C capture v6 incumbent repair | **EXTERNAL REVIEW OPEN / ZERO V6 STATES** | source `2bdb094`; packet commit `055a196`; packet `40c602ea…20ffd`; exact `Random(25)` tie witness plus 350-state soak; 57/57 focused tests |
 | 08-09 | S4 complete-round v2 screen | **TERMINAL PASS / CONFIRMATION NOT LAUNCHED** | exact `cad3992`; treatment−champion `+0.086914 +/- 0.056166`, LCB `+0.030748`; treatment and matched null identical, null−champion zero; confirmation projection `365.592` fleet-hours / `45.699` max-shard hours |
 | 08-09 | S4 point-banking exact-state screen | **MECHANISM PASS / FULL-GAME PACKET REVIEW** | screen `abd9f36f…cdc00`; receipt `90124eb6…f526b`; overall point delta `+5.156`, LCB `+3.029`; both roles positive; no strength or launch authority |
 | 08-09 | Human H0 design v3 | **DESIGN PASS / CONTROLLER FROZEN** | source `b02b6de`, packet commit `d6214ce`, packet `4d3f0a35…8cc3c`; Claude marker `239f13c`; preserved plays, frozen buries, 17/33 caps, explicit continuation, finite work; no outcomes |

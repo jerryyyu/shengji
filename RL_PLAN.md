@@ -62,11 +62,12 @@ what those results change in the research plan.
   own gates. Claude passed the design at `d92f595`; replacement H0-v3 and
   S3c-v2 then passed at `205b6af`. Minimal rebind source `7018f36` / packet
   `b60c4298…7b18` passed independently at `cb9471b`, preserving all seven
-  curriculum commitments exactly. Capture-controller implementation is now
-  frozen in draft PR #9 at source `67fb31f` / external packet
-  `e23356f7…96f2`; 113 focused compiled tests and the zero-work freeze pass.
-  External controller review is the next gate. Zero states, labels or models
-  exist.
+  curriculum commitments exactly. Capture-controller v1 then failed
+  adversarial review because terminal validation did not reconstruct cell,
+  priority, ledger and work identity. Repaired v2 is frozen in draft PR #9 at
+  source `debec42` / external packet `fe79b5bb…6b30f`; focused 31/31,
+  cross-lane 153/153 and the zero-work freeze/recompute pass. External v2
+  review is the next gate. Zero states, labels or models exist.
 - **Search challengers:** the independently reviewed live-parent contract binds
   S3a/S3b to exact report-LCB and prevents old baselines from silently
   re-entering. S3b v2 remains closed on its 250k-node capacity failure. S3a's
@@ -327,8 +328,8 @@ T4 must produce artifacts and a challenger, not another design-only audit:
 
 1. **resolve the inputs:** preserve H0's terminal refusal without a human rule,
    and resolve S4's sealed whole-game screen once;
-2. **review and capture:** externally pass exact capture controller
-   `67fb31f` / `e23356f7…96f2`, then issue one receipt and capture exactly 2,048
+2. **review and capture:** externally pass exact capture controller v2
+   `debec42` / `fe79b5bb…6b30f`, then issue one receipt and capture exactly 2,048
    split-safe Stage-C states with full replay/provenance;
 3. **label separately:** freeze and review the label job, then label ordinary
    anchors cheaply and hard-tail rows with deeper disjoint comparisons under
@@ -412,7 +413,7 @@ This table separates them by the training signal they actually produced.
 | **Teacher-v3 Stage A** | Run the complete dense label schema twice on the same 64 frozen states under distinct receipts. | Exact deterministic replay/mechanics passed and exposed multiple publication/identity defects before scale. | This certified the producer, not label quality or strength. Keep as the small falsifiability preflight for future Teacher versions. |
 | **Teacher-v3 Stage B** | On 128 disjoint mostly ordinary states, compare cheap heuristic-continuation choices with much more expensive `mc-strong@N=30` continuation labels. | Cheap-minus-gold regret upper bound was `0.0195 < 0.10`; the cheap proxy was adequate on this sampled population. | It only showed agreement with the old MC continuation on ordinary states. It did not create a dataset/model or show labels beyond the live champion. |
 | **Fresh live-champion audit** | On an untouched 64-state complement, compare frozen cheap and N=30 choices against the deployed report-LCB root evaluator. | Cheap and N=30 all-state regret bounds passed (`0.0354` and `0.0439`), but the eight boundary states had a weaker N=30 bound (`0.1421`). | Ordinary rows can be labeled cheaply; uncertain/boundary rows need escalation. This is the direct empirical reason for Stage C's mixed-budget hard tail. |
-| **Teacher Stage C v3 (design/rebind passed, capture controller in review)** | Capture 2,048 fresh split-safe states; mix ordinary anchors with uncertainty/disagreement, V11/structured/matched-random proposals, bury, point play and tiny endgames. Human proposals remain conditional and are absent because H0 published no utility. Use cheap labels where certified and deeper disjoint root comparisons on the hard tail, without recursively calling MC inside MC. | Base `20bdb95` / `f213314a…3b4` freezes the exact 1,024/512/512 split, 20/33 caps and 10,494,720 maximum label work. Rebind `7018f36` / `b60c4298…7b18` passed unchanged. Capture controller `67fb31f` / `e23356f7…96f2` is frozen for external review. **No impact result yet:** zero states, labels, checkpoints or challengers exist. | Pass capture review, collect/replay the exact asset, separately review labels, train at least eight seeds and require untouched REPORT plus a fresh whole-game screen. |
+| **Teacher Stage C v3 (design/rebind passed, capture controller v2 in review)** | Capture 2,048 fresh split-safe states; mix ordinary anchors with uncertainty/disagreement, V11/structured/matched-random proposals, bury, point play and tiny endgames. Human proposals remain conditional and are absent because H0 published no utility. Use cheap labels where certified and deeper disjoint root comparisons on the hard tail, without recursively calling MC inside MC. | Base `20bdb95` / `f213314a…3b4` freezes the exact 1,024/512/512 split, 20/33 caps and 10,494,720 maximum label work. Rebind `7018f36` / `b60c4298…7b18` passed unchanged. Capture v1 was held; repaired v2 `debec42` / `fe79b5bb…6b30f` is frozen for external review. **No impact result yet:** zero states, labels, checkpoints or challengers exist. | Pass capture review, collect/replay the exact asset, separately review labels, train at least eight seeds and require untouched REPORT plus a fresh whole-game screen. |
 
 In plain English, Stage B asked, “Can the cheap grader reproduce the expensive
 grader on normal exam questions?” Stage C asks, “Can we write a better exam,

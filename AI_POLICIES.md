@@ -36,7 +36,7 @@ results table.
 | 08-08 | Teacher-v3 Stage B / audit-v2 | Compare cheap heuristic-continuation labels with much deeper MC-continuation labels on ordinary states to see whether cheap labels are trustworthy. | **STAGE B PASS / AUDIT OPERATIONAL REFUSAL** | cheap-minus-gold regret upper bound `0.0195 < 0.10`; audit shard 6 stopped on an incomplete champion-report continuation and published no labels/gate | Cheap labels agreed on sampled ordinary states. The continuation audit produced no ML verdict and is nonretryable; reviewed score-free diagnostics now gate a fresh versioned synthetic contract. |
 | 08-09 | Teacher-v3 fresh champion audit | Repeat that label-fidelity comparison on an untouched 64-state complement and identify where ordinary N=30 labels become uncertain enough to need expensive treatment. | **PASS / STAGE-C DESIGN** | cheap-choice all-64 regret upper bound `0.0354`; N=30-choice upper bound `0.0439`, both below `0.10`; N=30 boundary-8 diagnostic upper bound `0.1421` | The cheap and N=30 choices are champion-faithful on the frozen 64-state complement. The boundary diagnostic motivates hard-tail escalation. Reviewed adapter `56ccefbd…c2442` now freezes that design-only contract; it authorizes no labels, training or promotion. |
 | 08-09 | Teacher Stage-C design + controller rebind | Turn the audit lesson into one finite recipe: keep broad cheap ordinary anchors, spend deeper disjoint root comparisons on hard cases, and conditionally add supported model/mechanism proposals without recursively calling MC inside MC. | **DESIGN + REBIND PASS / ZERO STATES** | base `20bdb95` / `f213314a…3b4`; rebind `7018f36` / `b60c4298…7b18`; 1,024 DESIGN / 512 CALIB / 512 REPORT; 20/33 caps; 10,494,720 maximum candidate-world rollouts | Claude passed both the bounded curriculum and the exact dependency rebind; all seven curriculum hashes remain unchanged. H0 later supplied no admissible human rule. The curriculum is ready for capture, but no state, label, model or strength result exists. |
-| 08-09 | Teacher Stage-C capture controller | Collect the exact reviewed hard-state curriculum without allowing selection diagnostics, evaluation seeds or runtime identity drift to leak into later labels. | **FROZEN / EXTERNAL REVIEW REQUIRED / ZERO STATES** | source `67fb31f`; packet `e23356f7…96f2`; 113 focused compiled tests; exact zero-work freeze/recompute | PR #9 is the immediate T4 blocker. A PASS authorizes one score-free capture receipt only; it is not a dataset, label or policy result. |
+| 08-09 | Teacher Stage-C capture controller | Collect the exact reviewed hard-state curriculum without allowing selection diagnostics, forged population identity or hidden sampler work to leak into later labels. | **V2 FROZEN / EXTERNAL REVIEW REQUIRED / ZERO STATES** | v1 HOLD; repaired source `debec42`; packet `fe79b5bb…6b30f`; focused 31/31 + dependency 153/153; exact zero-work freeze/recompute | V1 exposed real terminal-validation gaps. PR #9 now carries the successor. A v2 PASS authorizes one score-free capture receipt only; it is not a dataset, label or policy result. |
 | 08-09 | S4 point-banking exact-state screen | In rollouts, when the bot is already winning the trick and can retain a higher winner, let it bank a 5/10/K instead of always spending the cheapest winner. | **MECHANISM PASS / FULL-GAME SCREEN RUNNING** | overall acting-team point delta `+5.156`, one-sided LCB `+3.029`; attacker/defender means `+6.406/+3.906`; 35 wins, 4 losses, 25 ties; level utility `+0.25` | Banking a point-card winner while retaining higher control helps on the frozen exact-late trigger population in both roles. This is mechanism evidence; the fresh whole-game test is now running. |
 | 08-09 | Human H0-v3 counterfactual | Put bounded human, V11 and random proposals beside production choices and evaluate them on common selection worlds plus fresh report worlds instead of blindly imitating any source. | **VERIFIED REFUSED INCOMPLETE / NO UTILITY / CLOSED** | 555/557 rows complete; two DESIGN follow rows refused candidate-diagnostic reconciliation; aggregate `84ef4400…196c` published no utility | Preserve the one-shot refusal. It is no verdict on proposal quality, grants no human-derived Stage-C rule, and must not be salvaged by dropping rows or reading partial utilities. |
 | 08-09 | S3a structured-bury full-game screen | Give the banker structured point/void/trump kitty options, then test whether the selected-state gain survives fresh complete mirrored rounds. | **SELECT NONE / CLOSED** | state mechanism `+0.997 +/- 0.401` versus incumbent; whole-game structured-minus-champion `+0.0464`, LCB `-0.0041`; all 2,048 clusters verified | Better local candidates did not become a stronger composed policy. Close the consumed stream without retry/tuning; preserve disagreements as Teacher diagnostics. |
@@ -85,10 +85,12 @@ Primary evidence anchors:
   source/asset `20bdb95` / `1a29418`; dependency rebind packet
   `b60c4298493794b6de0ffe6907e8b92fb24f4bab6d56cc4c653eb1c67a1b7b18`;
   external rebind PASS at `cb9471b`; zero states/labels.
-- Stage-C capture controller source `67fb31f8cfd16ad83e1998cda50e01ef7447f115`;
-  packet commit `54ae266`; external packet
-  `e23356f77d2e7c20a96f8ec9304df5d3a8b9bbc634a60f9696d8c06a01196f2c`;
-  zero states/worlds and external review pending.
+- Stage-C capture controller v1 was held because terminal validation accepted
+  retagged cells, forged priorities, a fabricated ledger and negative work.
+  Repaired v2 source `debec425e10a929025cf0ca802b7098765e56434`;
+  packet commit `c5d2e0f`; external packet
+  `fe79b5bba00a39ebbc412bdcd7fd16d8ec501d8f5c2836416dc8171af326b30f`;
+  zero states/worlds and exact external review pending.
 - S4 exact-state screen `abd9f36fa3e84c81b90e22f1c827f828a549f7fd6a9420ffbdb7c168974cdc00`;
   pre-outcome receipt `90124eb6f89c27cedc38770b2da5b3b8597400694281729656105f67803f526b`;
   admission `83993ec6609c2a7528853d4c1db789f137d3f0cbfff97d20fbf526cbd5ff5e6d`.
@@ -256,11 +258,14 @@ Primary evidence anchors:
   makes recursive MC work exactly zero. Claude passed the design at `d92f595`.
   Minimal successor `7018f36` / `b60c4298…7b18` then bound externally passed
   H0-v3/S3c-v2 while preserving every curriculum hash and passed at `cb9471b`.
-  Capture-controller source `67fb31f` and external packet
-  `e23356f7…96f2` are now frozen in draft PR #9 with 113 focused compiled tests
-  and zero captured states/worlds. Exact external review is the next gate. A
-  PASS may authorize one score-free capture receipt only; no label, model or
-  strength work is authorized yet.
+  Capture-controller v1 failed adversarial review on population identity and
+  work-accounting gaps. Repaired v2 source `debec42` and external packet
+  `fe79b5bb…6b30f` are now frozen in draft PR #9. They add a complete ordered
+  generation witness, reconstruct both reservoir stages, and reconcile finite
+  sampler attempts; focused 31/31 and cross-lane 153/153 pass with zero
+  captured states/worlds. Exact external review is the next gate. A PASS may
+  authorize one score-free capture receipt only; no label, model or strength
+  work is authorized yet.
 
 ### Learned policies and RL
 

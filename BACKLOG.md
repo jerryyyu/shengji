@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-09 22:58 EDT.
+Last re-derived: 2026-08-09 23:36 EDT.
 
 This file owns the **active executable queue**. `AI_POLICIES.md` owns policy
 verdicts, `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -22,10 +22,11 @@ here.
   frozen 2,048-state Stage-C curriculum, label it, train at least eight seeds,
   open untouched REPORT once, compose one passer inside report-LCB, and test it
   against the live champion plus a same-work null.
-- **Immediate blocker:** Stage-C capture controller PR #9 is frozen at source
-  `67fb31f` / packet `e23356f7…96f2` and needs one exact external PASS before a
-  receipt or state capture. No labels or training are waiting behind hidden
-  code work.
+- **Immediate blocker:** the first Stage-C packet failed adversarial review.
+  Repaired v2 on PR #9 is frozen at source `debec42` / packet
+  `fe79b5bb…6b30f` and needs one exact external PASS before a receipt or state
+  capture. The label implementation can advance in parallel, but no label
+  packet can bind a dataset that does not yet exist.
 - **Fleet:** Mini is occupied by the sealed 2,048-cluster S4 screen. Air is
   free for PR #9 review reproduction and bounded two-card packet work. Fly runs
   production only.
@@ -56,7 +57,7 @@ separate future authority.
 |---|---|---|---|---|
 | **P0 / S4 terminal verdict** | Resolve whether the point-banking rollout change occurs often enough and preserves enough future control to improve complete rounds. | Reviewed 2,048-cluster screen is running on Mini under exact `cad3992`, packet `17036e63…1385`, admission `1d99bb55…bdbf` and receipt `20a420d2…5cc`. Outcomes remain sealed. **Left:** count/status only until all shards stop, then invoke the exact verifier once. | One verifier-authenticated treatment-minus-champion and treatment-minus-null verdict | `AUTHORIZE_CONFIRM_PACKET_REVIEW` opens review of a fresh confirmation packet; `SELECT_NONE` closes v2. Neither result changes T4's Teacher critical path. |
 | **CLOSED / T4.1 H0 outcome** | Find supported human/V11 proposals before admitting them into the new Teacher. | The one-shot run ended 555 complete + two validation refusals; aggregate `84ef4400…196c` published no utility. **Left:** none—no retry, row dropping or partial inference. | Receipt `37ab77a9…748c6` plus terminal refused aggregate | Closed fail-safe. No H0-derived conditional proposer enters Stage C. This is not evidence that human or V11 actions are bad. |
-| **P0 / T4.2a capture-controller review** | Prove the program will collect exactly the reviewed state population and cannot leak selection work into future labels or REPORT. | Draft PR #9 freezes source `67fb31f`, packet commit `54ae266`, external packet `e23356f7…96f2`; 113 focused compiled tests and zero-work freeze/recompute pass. **Left:** exact independent adversarial review. | One external `TEACHER_STAGE_C_CAPTURE_CONTROLLER_V1_REVIEW` marker | PASS authorizes one score-free capture receipt only. HOLD returns a named defect; it does not authorize a weakened run. |
+| **P0 / T4.2a capture-controller review** | Prove the program will collect exactly the reviewed state population and cannot hide a retagged state, forged priority, fabricated ledger or missing sampler work. | V1 was correctly held. Repaired PR #9 freezes source `debec42`, packet commit `c5d2e0f`, external packet `fe79b5bb…6b30f`; focused 31/31 and cross-lane 153/153 pass, and the real zero-work freeze/recompute matches. **Left:** exact independent adversarial review of v2. | One external `TEACHER_STAGE_C_CAPTURE_CONTROLLER_V2_REVIEW` marker | PASS authorizes one score-free capture receipt only. HOLD returns a named defect; it does not authorize a weakened run. |
 | **P0 / T4.2b frozen 2,048-state asset** | Collect the actual hard examples where the live bot is uncertain or missing plausible ideas, while retaining broad ordinary coverage and an untouched exam. | No receipt or state exists. **Left:** after T4.2a PASS, run capture once, replay every selected state and publish quotas/rejections/provenance. | Exactly 1,024 DESIGN + 512 CALIB + 512 REPORT states; 1,920 play + 128 bury; one state/deal; complete manifest and hashes | Every quota, split, candidate cap, exclusion asset and 9,216,000 selection-work ceiling must reproduce. Underfill, drift or retry closes the receipt without a dataset. |
 | **P0 / T4.3 frozen labels** | Turn those states into better supervision: cheap labels for ordinary anchors and deeper disjoint comparisons for the hard tail. | Design budget exists, but no label controller, packet or label exists. **Left:** freeze/review a separate label job, run once, verify every accepted world and publish per-surface uncertainty/regret. | Replayable candidate ballots plus paired outcomes under the passed finite-work contract, with selection and report streams disjoint | Labels must bind the exact captured asset, champion, continuation, sampler and work. REPORT remains unopened and cannot tune the Teacher. |
 | **P0 / T4.4 eight-seed models** | Test whether the new signal is learnable and stable rather than celebrating one lucky checkpoint. | Not started because labels do not exist. **Left:** freeze one recipe; train at least eight seeds of play ranking and calibrated signed-outcome heads, with bury separate; publish state-count learning curves and seed variance. | Eight-or-more immutable checkpoints per intended head plus DESIGN/CALIB metrics and one CALIB-only selection rule | One frozen recipe/checkpoint rule selected on CALIB. If ranking passes but calibration fails, only ranking/proposal use may advance. |

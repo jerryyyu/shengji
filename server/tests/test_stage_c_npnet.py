@@ -41,6 +41,9 @@ def test_numpy_export_matches_torch_rank_and_outcome(tmp_path) -> None:
     assert np.allclose(rank, torch_rank.detach().cpu().numpy(),
                        rtol=1e-5, atol=1e-5)
     assert np.allclose(outcomes, torch_outcomes, rtol=1e-5, atol=1e-5)
+    assert all(not value.flags.writeable for value in loaded.w.values())
+    with pytest.raises(ValueError, match="read-only"):
+        loaded.w["rankb"][0] = 123.0
 
 
 def test_ensemble_requires_all_seeds_and_matches_report_rule(tmp_path) -> None:

@@ -219,7 +219,9 @@ class StageCNpNet:
                     if array.dtype != np.float32:
                         raise StageCNumpyError(
                             f"Stage-C NumPy array dtype drift: {name}")
-                    self.w[name] = np.asarray(array).copy()
+                    loaded = np.asarray(array).copy()
+                    loaded.setflags(write=False)
+                    self.w[name] = loaded
         except (OSError, ValueError) as exc:
             raise StageCNumpyError("cannot load Stage-C NumPy artifact") from exc
         if (self.metadata.get("schema") != SCHEMA

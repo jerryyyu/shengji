@@ -905,8 +905,14 @@ def _build_play_union(rnd, seat: int, state_id: str, split: str, net) -> tuple[l
     live = _dedupe(production._candidates(rnd, seat))
     if not live or len(live) > 20:
         raise RuntimeRefused("live Stage-C play ballot cap/emptiness drift")
-    exhaustive = _dedupe(enumerate_actions(
-        rnd, seat, exhaustive_follows=True, include_throws=True))
+    # The observation/action encoders treat a hand as a multiset.  Keep the
+    # proposal source on that same semantic boundary: ``enumerate_actions``
+    # preserves incidental hand-list order, which otherwise changes both the
+    # V11 tie break and the seeded random proposal for an identical encoded
+    # state.
+    exhaustive = sorted(_dedupe(enumerate_actions(
+        rnd, seat, exhaustive_follows=True, include_throws=True)),
+        key=_action_key)
     live_keys = {_action_key(action) for action in live}
     novel = [action for action in exhaustive if _action_key(action) not in live_keys]
     v11 = None
@@ -927,7 +933,15 @@ def _build_play_union(rnd, seat: int, state_id: str, split: str, net) -> tuple[l
                            if _action_key(action) not in live_keys), None)
     else:
         treatment = PointBankingRolloutPolicy(apply_treatment=True)
-        candidate = treatment._follow(rnd, seat)
+        # Heuristic follow helpers walk the hand.  Production canonicalises its
+        # live ballot in exactly this way; do the same for this extra structured
+        # proposal without changing the shared/S4 policy source.
+        saved_hand = rnd.hands[seat]
+        rnd.hands[seat] = sorted(saved_hand)
+        try:
+            candidate = treatment._follow(rnd, seat)
+        finally:
+            rnd.hands[seat] = saved_hand
         if _action_key(candidate) not in live_keys:
             structured = list(candidate)
     random_novel = None
@@ -998,7 +1012,9 @@ def _build_bury_union(rnd, seat: int, state_id: str) -> tuple[list[dict], dict]:
     for candidate in ballot.candidates:
         add(candidate.cards, ("s3a_structured_point_void_bury", *candidate.sources))
     rng = random.Random(_seed(CTRL.EXPERIMENT_ID, state_id, "random-bury"))
-    hand = list(rnd.hands[seat])
+    # Sampling indices from the engine's deal-order list made this deterministic
+    # control differ for two equivalent encodings of the same banker hand.
+    hand = sorted(rnd.hands[seat])
     for _ in range(64):
         indices = sorted(rng.sample(range(len(hand)), 8))
         candidate = [hand[index] for index in indices]

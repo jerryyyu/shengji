@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-09 21:17 EDT. This is the executable mailbox.
+Last compacted: 2026-08-09 22:20 EDT. This is the executable mailbox.
 Terminal markers live in `HANDOFF_REVIEW.md`, policy synthesis in
 `AI_POLICIES.md`, live jobs in `JOBS.md`, and queue order in `BACKLOG.md`.
 
@@ -11,10 +11,10 @@ Terminal markers live in `HANDOFF_REVIEW.md`, policy synthesis in
 | Production | **LIVE / CONFIRMED** | Fly release 17 runs compiled `mc-s0-report-lcb`; no production change is open. |
 | T3 human-witness readiness | **COMPLETE** | Every required contract and external review is terminal. The next program milestone is T4 implementation and evidence, not another T3 packet. |
 | S3a structured bury | **TERMINAL SELECT NONE / IMMUTABLY CLOSED** | Aggregate `20609613…271f` and final `32156d79…c9ff` rehash; exact recomputation returned `verified=true`, `+0.0464`, LCB `-0.0041`. Preserve the negative result; no retry, tuning, pooling or confirmation. |
-| S4 point banking | **SEALED MINI SCREEN RUNNING** | Exact `cad3992`, packet `17036e63…1385`, receipt `20a420d2…5cc`; 974 count-only shard-log lines at 21:17 with eight CPU-bound workers. Do not inspect partial outcomes. This science result is no longer a T3 readiness blocker. |
+| S4 point banking | **SEALED MINI SCREEN RUNNING** | Exact `cad3992`, packet `17036e63…1385`, receipt `20a420d2…5cc`; 1,238 count-only shard-log lines at 22:20 with eight CPU-bound workers. Do not inspect partial outcomes. This science result is no longer a T3 readiness blocker. |
 | Human H0 | **V3 EXTERNAL PASS / ZERO OUTCOMES** | Exact packet `cf074871…35392` passed at `205b6af`. One T4 diagnostic receipt is eligible, but none exists. |
 | S3c small endgames | **V2 EXTERNAL PASS / ZERO SOLVER WORK** | Exact packet `cafbee43…f23e` passed at `205b6af`. One T4 mechanics receipt is eligible, but none exists. |
-| Teacher Stage C | **REBIND EXTERNAL PASS / ZERO STATES** | Source `7018f36`, packet commit `45429f3`, packet `b60c4298…7b18` passed independently at `cb9471b`. Capture-controller implementation is eligible; capture, labels, training and strength remain closed. |
+| Teacher Stage C | **CAPTURE CONTROLLER FROZEN / CLAUDE REVIEW REQUIRED / ZERO STATES** | Draft PR #9; exact source `67fb31f`, packet commit `54ae266`, external packet `e23356f7…96f2`, internal packet `c1ee112c…3884`. Exact freeze and recomputation passed with zero states/worlds. **Left:** independent review of the executable capture boundary. Do not admit or launch capture before one exact PASS marker. |
 | S5 point protection | **BOUNDARY FIXTURE PASS / NO CENSUS** | Exact PR #4 head `2351b36` passed; one deterministic score-free census freeze is eligible later. This support lane was not required for T3 completion. |
 | HUMAN-C1 | **DEFINED / PARKED / NO TRAFFIC** | The leakage-safe ladder and inert no-traffic boundary exist. Resume only after a challenger beats report-LCB in confirmation and a separate traffic packet receives explicit authority. |
 
@@ -50,12 +50,53 @@ Independent Stage-C rebind marker is at `origin/main` commit `cb9471b`:
 
 `TEACHER_STAGE_C_CONTROLLER_REBIND_V1_REVIEW {"base_stage_c_sha256":"f213314ace8ead497fcaccde150d0694851069b970948a10d0823cf74ceb93b4","git":"7018f369e8d706e4b745badd873b38fb708ace18","h0_controller_sha256":"cf074871cf977c0b072c528c395082b453b3b589f445c524baae9016e1d35392","packet_sha256":"b60c4298493794b6de0ffe6907e8b92fb24f4bab6d56cc4c653eb1c67a1b7b18","s3c_controller_sha256":"cafbee439f8c30a07b0b6801d52620d7197afc3633badbc531bc5b156ce2f23e","capture_controller_implementation_authorized":true,"state_capture_authorized":false,"labels_authorized":false,"training_authorized":false,"strength_claim":false,"production_promotion":false,"verdict":"PASS"}`
 
+## Claude review requested — Stage-C capture controller v1
+
+Please adversarially review draft PR #9. Use exact source commit
+`67fb31f8cfd16ad83e1998cda50e01ef7447f115`; the packet is committed
+separately at `54ae266` and must hash externally to
+`e23356f77d2e7c20a96f8ec9304df5d3a8b9bbc634a60f9696d8c06a01196f2c`.
+Its producer/internal hash is `c1ee112c…3884`. Review from a clean worktree at
+the source commit, extracting the packet bytes from the packet commit. Hydrate
+the exact ignored RLCB-C1 aggregate/closeout and pinned native binary first;
+their absence or drift must refuse.
+
+Measure, do not infer:
+
+1. exact reopening of the base Stage-C, rebind, H0-v3, S3c-v2, live
+   report-LCB parent, V11pair checkpoint and all 19 exclusion assets;
+2. exact 750,000-deal / 24-shard schedule, 1,024/512/512 split, 1,920 play +
+   128 bury states, pre-deal cell assignment, one state per deal and no known
+   evaluation-seed overlap;
+3. candidate zero/live-ballot identity, 20/33 caps, actual admitted-source
+   provenance, legal replay, score-free proposal/bury eligibility and exact
+   one-card/point-banking tags;
+4. the fixed hash-smallest uncertainty reservoir, exactly N=30 common worlds,
+   selection-only semantics, disjoint future label/audit streams and the real
+   9,216,000 candidate-world ceiling;
+5. deletion-proof one-shot admission, exclusive outputs, exception-aborts,
+   terminal underfill/no extension, end-of-compute identity reopening and
+   every-selected-state replay;
+6. red mutations for parent/V11 bytes, source/runtime identity, schedule/work
+   widening, candidate/tag replay, ignored lock and retry/overwrite seams;
+7. reproduce the focused compiled battery (Codex: 113/113), then run the
+   actual freeze/verify path and confirm it reports zero captured states,
+   worlds and outcomes.
+
+If and only if all checks pass, append exactly one
+`TEACHER_STAGE_C_CAPTURE_CONTROLLER_V1_REVIEW` marker generated from
+`expected_review_claim`. PASS authorizes one score-free capture execution only.
+It does **not** authorize H0 outcomes, labels, training, strength claims,
+promotion or deployment. On any defect, post `BLOCKED` with the exact witness
+and do not issue the marker.
+
 ## Next milestone — T4 must produce strength
 
 The next work should turn readiness into a challenger rather than accumulating
 more contracts:
 
-1. implement and externally review the Stage-C capture controller;
+1. **in review:** Stage-C capture code and zero-work packet are frozen in PR
+   #9; obtain the exact external PASS, then issue at most one capture receipt;
 2. after S4 releases Mini, execute the one reviewed H0 diagnostic and admit
    only empirically supported human/V11 proposal rules;
 3. capture exactly 2,048 split-safe states, then separately review and run the
@@ -71,8 +112,8 @@ more contracts:
 
 - Mini: S4 only; read count/status until all workers stop, then invoke the
   exact terminal verifier once.
-- Air: directly checked idle at 21:13; available for reviewed work, but no
-  T4 launch packet exists yet.
+- Air: available for review reproduction or later capture overflow; no T4
+  capture receipt exists and review has not authorized execution.
 - Fly: production `mc-s0-report-lcb` only.
 - Do not issue H0/S3c receipts, capture Stage C, label, train, promote or
   deploy merely because T3 closed. Each is a separate T4 gate.

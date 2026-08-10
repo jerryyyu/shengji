@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 21:17 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-09 22:20 EDT. This file owns live compute and compact
 terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
@@ -8,8 +8,8 @@ order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
 
 | host | job | status / next admitted use |
 |---|---|---|
-| Mini | `s4-point-banking-duel-screen-100b-v2` | **RUNNING / OUTCOME SEALED.** Exact `cad3992`, packet `17036e63…1385`, admission `1d99bb55…bdbf`, receipt `20a420d2…5cc`; eight shards × 256. Latest count-only heartbeat: `122,122,120,121,122,123,122,122 / 256` (974/2,048), all workers CPU-bound at 21:17. Never inspect partial outcomes, retry, extend or move the pinned checkout. |
-| Air | none | **FREE / DIRECTLY CHECKED 21:13.** T3 reviews are complete, but no reviewed T4 capture, H0 execution, S3c execution or training launch exists. Idle capacity is not launch authority. |
+| Mini | `s4-point-banking-duel-screen-100b-v2` | **RUNNING / OUTCOME SEALED.** Exact `cad3992`, packet `17036e63…1385`, admission `1d99bb55…bdbf`, receipt `20a420d2…5cc`; eight shards × 256. Latest count-only heartbeat: `155,154,152,154,157,156,155,155 / 256` (1,238/2,048), all workers CPU-bound at 22:20. Never inspect partial outcomes, retry, extend or move the pinned checkout. |
+| Air | none | **FREE.** PR #9's Stage-C capture controller awaits external review; no receipt exists. Air may reproduce review now, but capture, H0 execution, labels and training remain closed. |
 | Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
 
 ## S4 legal next action
@@ -37,6 +37,7 @@ The canonical numbers and meanings are in the results table in
 
 | date | job | terminal verdict | anchor |
 |---|---|---|---|
+| 08-09 | Teacher Stage-C capture controller v1 | **FROZEN / EXTERNAL REVIEW REQUIRED / ZERO STATES** | draft PR #9; source `67fb31f`; packet commit `54ae266`; external `e23356f7…96f2`; internal `c1ee112c…3884`; 113/113 focused compiled tests and exact freeze/recompute pass; no receipt or capture |
 | 08-09 | S3a structured-bury full-game screen | **SELECT NONE / CLOSED** | exact `c599b42`; all 2,048 clusters verified; aggregate `20609613…271f`, final `32156d79…c9ff`; no confirmation, retry, tuning or promotion |
 | 08-09 | Teacher Stage-C controller rebind | **EXTERNAL PASS / ZERO STATES** | source `7018f36`; packet commit `45429f3`; packet `b60c4298…7b18`; Claude PASS at `cb9471b`; all seven curriculum commitments unchanged; capture-controller implementation only |
 | 08-09 | Teacher Stage-C design v3 | **DESIGN PASS / SUPERSEDED ONLY BY IDENTITY REBIND** | source `20bdb95`; asset `1a29418`; packet `f213314a…3b4`; Claude PASS at `d92f595`; zero states/labels; curriculum preserved exactly by passed rebind `b60c4298…7b18` |

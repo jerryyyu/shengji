@@ -368,10 +368,14 @@ def train_curve(
 
 def _snapshot_payload(*, state_dict: Mapping[str, object],
                       contract: Mapping[str, object]) -> dict:
+    model_state_sha256 = state_digest(state_dict)
+    if contract.get("state_dict_sha256") != model_state_sha256:
+        raise StageCTrainingError(
+            "Stage-C checkpoint contract/model-state mismatch")
     return {
         "schema": SNAPSHOT_SCHEMA,
         "contract": dict(contract),
-        "model_state_sha256": state_digest(state_dict),
+        "model_state_sha256": model_state_sha256,
         "state_dict": copy.deepcopy(dict(state_dict)),
     }
 
@@ -391,7 +395,15 @@ def publish_snapshot(path: Path, *, state_dict: Mapping[str, object],
             torch.save(payload, handle)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(partial, path)
+        # Hard-link publication is atomic and fails if another publisher wins
+        # the destination race.  Unlike os.replace(), it can never overwrite
+        # an evidence file created after the preexistence check.
+        try:
+            os.link(partial, path, follow_symlinks=False)
+        except FileExistsError as exc:
+            raise StageCTrainingError(
+                "refusing raced Stage-C snapshot publication") from exc
+        partial.unlink()
     except BaseException:
         # Preserve a partial as a loud failed publication marker when bytes may
         # have reached disk. A later controller must choose a fresh namespace.
@@ -422,7 +434,9 @@ def load_snapshot(path: Path, *, expected_contract: Mapping[str, object]
             or payload.get("contract") != dict(expected_contract)
             or not isinstance(payload.get("state_dict"), dict)
             or payload.get("model_state_sha256")
-            != state_digest(payload["state_dict"])):
+            != state_digest(payload["state_dict"])
+            or payload["contract"].get("state_dict_sha256")
+            != payload.get("model_state_sha256")):
         raise StageCTrainingError("Stage-C snapshot identity drift")
     net = MODEL.StageCRankingOutcomeNet(hidden=HIDDEN)
     try:

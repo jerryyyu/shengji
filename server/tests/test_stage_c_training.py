@@ -165,6 +165,57 @@ def test_snapshot_publication_round_trips_and_refuses_overwrite(tmp_path) -> Non
             path, state_dict=snapshot["state_dict"], contract=contract)
 
 
+@pytest.mark.skipif(MODEL.torch is None, reason="torch is optional")
+def test_snapshot_publication_cross_binds_contract_to_model_state(
+        tmp_path) -> None:
+    net = MODEL.StageCRankingOutcomeNet()
+    state = net.state_dict()
+    actual_sha256 = TRAIN.state_digest(state)
+    false_contract = MODEL.checkpoint_contract(
+        surface="play", seed=41, epoch=1, curve_fraction=1.0,
+        state_dict_sha256="0" * 64)
+    assert false_contract["state_dict_sha256"] != actual_sha256
+    with pytest.raises(TRAIN.StageCTrainingError, match="contract/model-state"):
+        TRAIN.publish_snapshot(
+            tmp_path / "false-contract.pt", state_dict=state,
+            contract=false_contract)
+    assert not (tmp_path / "false-contract.pt").exists()
+
+    forged_path = tmp_path / "forged.pt"
+    MODEL.torch.save({
+        "schema": TRAIN.SNAPSHOT_SCHEMA,
+        "contract": false_contract,
+        "model_state_sha256": actual_sha256,
+        "state_dict": state,
+    }, forged_path)
+    with pytest.raises(TRAIN.StageCTrainingError, match="identity drift"):
+        TRAIN.load_snapshot(
+            forged_path, expected_contract=false_contract)
+
+
+@pytest.mark.skipif(MODEL.torch is None, reason="torch is optional")
+def test_snapshot_publication_cannot_overwrite_raced_destination(
+        tmp_path, monkeypatch) -> None:
+    net = MODEL.StageCRankingOutcomeNet()
+    state = net.state_dict()
+    contract = MODEL.checkpoint_contract(
+        surface="play", seed=41, epoch=1, curve_fraction=1.0,
+        state_dict_sha256=TRAIN.state_digest(state))
+    path = tmp_path / "raced.pt"
+    real_link = TRAIN.os.link
+
+    def _raced_link(source, destination, *, follow_symlinks):
+        path.write_bytes(b"other publisher")
+        return real_link(
+            source, destination, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(TRAIN.os, "link", _raced_link)
+    with pytest.raises(TRAIN.StageCTrainingError, match="raced"):
+        TRAIN.publish_snapshot(path, state_dict=state, contract=contract)
+    assert path.read_bytes() == b"other publisher"
+    assert (tmp_path / "raced.pt.partial").is_file()
+
+
 def test_calib_population_cannot_be_used_as_design() -> None:
     calib = _population(split="CALIB", surface="play", count=2)
     with pytest.raises(TRAIN.StageCTrainingError, match="geometry"):

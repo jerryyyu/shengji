@@ -1557,3 +1557,38 @@ Scope: freezing the v7-bound label controller only. Labels, capacity outcomes, t
 access, strength, promotion and deployment all remain closed behind their own gates.
 
 TEACHER_STAGE_C_STATE_SET_V7_REVIEW {"all_scan_dispositions_replay_authenticated":true,"audit_states":256,"bury_states":128,"calib_states":512,"candidate_replay_verified":true,"capture_controller_sha256":"b53af06cfef158b0c9fa0881386b4f78773003700549745c125b46b6cf6a8a43","capture_git":"03c87d6710e9a2b894ad41c99d7905c8dd66b045","capture_receipt_sha256":"8fdfdef5d473c148cd8650d5bed6ca1905a862a5df31079034757254ae5f0ef5","capture_verification_internal_sha256":"6c872e52351c21c92fd9715e2e610948acb56ad9aa59ce622d6971c435fe3696","capture_verification_sha256":"143fb2dbad4623969661aca4582e46936a4a23ca032431a177967429fb434adb","design_states":1024,"independent_review":true,"labels_authorized":false,"labels_computed_before_review":false,"one_label_controller_freeze_authorized":true,"play_states":1920,"production_deployment":false,"production_promotion":false,"report_audit_state_ids_sha256":"edbce7fbe06cf76a281b3a809c9621107e49b44bf8ca6cc0fddbd1087c0efe97","report_states":512,"schema":"teacher-stage-c-state-set-review-v1","split_safe":true,"state_set_internal_sha256":"5291d8eba7d191d262ec555b7c1fdff2c39b89065280ec3b009516fb05f9e5d3","state_set_sha256":"c7a769c4efab582a38a4b77e8a707acde65a3e022d5db9fb27f660809e6e8e1c","states":2048,"states_sha256":"595fc290bc8dabf02bc52e90bfa4139afaaf28b01023a68d12e321566ea0794c","strength_claim":false,"terminal_disposition_replay_deals":750000,"training_authorized":false,"verdict":"PASS"}
+
+## Claude — 2026-08-10 12:24 EDT — TEACHER_STAGE_C_LABEL_CAPACITY_V1_REVIEW @ 3f6f048: PASS — schedules rebuilt byte-exact from the reviewed state set; one required fixture
+
+All MEASURED:
+
+1. **Identity**: packet hashes exactly `e8967d6f…d2a58` (internal `c415d1c2…9f5a` bound inside);
+   parents bind the reviewed v7 state set `c7a769c4…`, capture packet `b53af06c…` and terminal
+   verification `143fb2db…`; compiled binary `9c9e77fb…` and frozen V11 `cd89d6ed…` pinned; clean
+   producer at `3f6f048`; battery 41/41 (capacity + label controller + label runtime).
+2. **Schedules independently rebuilt**: running `build_capacity_schedule` over the reviewed state
+   set reproduces BOTH the 16-shard label schedule SHA and the 32-state preflight schedule SHA
+   byte-for-byte; 32 unique states, exactly two per shard across all 16 shards; sample work
+   246,072 candidate-worlds / 747,360 attempt cap and full-label 4,984,960 candidate-worlds all
+   reproduce from my rebuild — the selection is a deterministic function of the frozen population,
+   not a stored choice.
+3. **Outcome hygiene**: no outcome-shaped field exists in the packet beyond the explicit discard
+   claims (`outcome_tensor_discarded_before_worker_return`, ephemeral-memory-only,
+   `durable_outcome_fields_forbidden`); the packet consumed no worlds and no admission.
+4. **Projection rule verified in code**: per-shard `max(rates)` (slower observed sample), plus the
+   maximum observed V11 load added to EVERY shard, times safety 2.0, then a reproducible
+   eight-worker LPT assignment and all three ceilings (192 fleet-hours / 24 max-shard / 24 wall).
+   **Finding**: weakening `max(rates)` to `min(rates)` leaves the battery green — the projection
+   test's fixture derives `elapsed_seconds = work/1000` so every sample has an IDENTICAL rate,
+   making the slower-sample assertion vacuous on exactly its operative dimension. The shipped code
+   is correct; REQUIRED before the capacity result feeds the label-packet gate: one fixture with
+   rate-differing samples per shard asserting the slower rate wins (same treatment as the S5
+   equal-points fixture).
+5. **Terminal semantics**: exclusive result/admission namespaces, 30-second heartbeats,
+   post-compute identity reopening and no-retry/no-extension on timeout/crash/refusal/underfill/
+   budget breach — contract fields plus the refusal tests in the green battery.
+
+Scope: exactly ONE outcome-discarding capacity execution on Mini. No label-controller freeze,
+labels, training, REPORT access, strength, promotion or deployment.
+
+TEACHER_STAGE_C_LABEL_CAPACITY_V1_REVIEW {"git":"3f6f048142f97e22c226b03614f361756e03108d","independent_review":true,"label_controller_freeze_authorized":false,"label_schedule_sha256":"1c28ee03ff8ee174e177c451802029a495f35434cdb9efe1c18341ee4c891f69","label_shards":16,"labels_authorized":false,"max_preflight_wall_hours":4.0,"max_projected_eight_worker_wall_hours":24.0,"max_projected_fleet_hours":192.0,"max_projected_shard_hours":24.0,"one_capacity_execution_authorized":true,"outcomes_computed_before_review":false,"outcomes_retained":false,"packet_internal_sha256":"c415d1c2a5999456945c3204671bb038f31ac30107f56fd1e9a47a585dad9f5a","packet_sha256":"e8967d6fa05123489371af40e8f7b1ca35af89eaf20cd16bd42c2bc5699d2a58","preflight_schedule_sha256":"2c91205f0831ce51e7478ba617234b3b19b88f24e6f5012e6811173e9e58f82d","production_deployment":false,"production_promotion":false,"sample_states":32,"samples_per_shard":2,"schema":"teacher-stage-c-label-capacity-controller-review-v1","spawn_workers":8,"state_set_sha256":"c7a769c4efab582a38a4b77e8a707acde65a3e022d5db9fb27f660809e6e8e1c","strength_claim":false,"throughput_safety_factor":2.0,"training_authorized":false,"verdict":"PASS"}

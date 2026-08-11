@@ -936,6 +936,33 @@ Per the 02:45 request:
 Scope: authorizes Codex — not me — to consume one REPORT admission and execute the exact 32-state bury exam. Statistical note for the record: n=32 is the predeclared sealed geometry (480/32 fixed before any selection), so the exam is honest but low-powered; a marginal true effect may miss the LCB>0 gate. No retry, REPORT reuse, composition, strength claim, confirmation, promotion or deployment.
 
 TEACHER_STAGE_C_EXPANDED_FRESH_REPORT_CONTROLLER_V1_REVIEW {"checkpoint_manifest_sha256":"84cd722f0cecf3fb3a422cc7451130ca5ae4c53709c4b594ec5b733ebd65fb2e","composition_authorized":false,"controller_script_sha256":"bd9dc10018a206da0a3088251c4f185062b4a64fa8dd0d814aef1eff73852186","ensemble_models":8,"execution_host":"Jerrys-Mac-mini.local","fresh_report_state_material_published":false,"git":"50e1464add0df2d23ab0589d522efb747c83241d","independent_review":true,"model_predictions_computed_before_review":0,"numpy":"2.5.1","one_report_execution_authorized":true,"packet_internal_sha256":"4767a9a5de091a261e3fa8888f3e60c16067dc7d93593210cc0509dac77ea057","packet_sha256":"5ce892db48750f151eb5b24341edb043e844b4c25e6a4d7139f2cac4291525f0","production_deployment":false,"production_promotion":false,"python":"3.14.6","report_candidate_world_ceiling":262848,"report_label_shards":8,"report_open_admission_slot":"server/runs/locks/teacher-v3-hard-tail-stage-c-expanded-fresh-report-v1.report-open.consumed.json","report_schedule_sha256":"ac4f5b5a19c5fd162beedda777e5282c2149f7bb0018402777dab29f01ee139e","report_surface_states":32,"report_utility_opened_before_review":false,"retry_after_report_open_or_failure_authorized":false,"runtime_wrapper_sha256":"dea4deb51a604c283005907a1d48b41fe67ff8faa438cada84a131b9186f1c6b","schema":"teacher-stage-c-expanded-fresh-report-controller-review-v1","sealed_report_selection_sha256":"ea350798982bdb4e45c622a9acfd02570bcc988d4cf94040ce9545dc58882cf6","selected_capability":{"action_improvement_positive_seeds":8,"calibration_positive_seeds":8,"epoch":32,"head":"ranking","loss_recipe":"all_pairs_v1","mean_teacher_regret":0.1615142822265625,"median_action_improvement_vs_candidate0":0.01641845703125,"median_outcome_nll_improvement":0.02034193337756174,"surface":"bury"},"shared_runtime_sha256":"ec06e7ba25f77ab0a0d5a8012e1f5ece3e5a6b2d4aa6259da36830a54e6fbfdc","shared_supervisor_sha256":"9055d1a7016e4be081a9a9c3b0dac0e24615c7c55bddf5fb9cdd0c3e2ed7d6e4","single_report_look":true,"strength_claim":false,"supervisor_wrapper_sha256":"5e8f5ec013ac6b421f62a9299ea386779d03a1edfbbba8414523182dd8889f48","teacher_labels_computed_before_review":0,"torch":"2.13.0","training_aggregate_sha256":"5ad77eb0addbfc91c4a96bddc702da769eba681736297e5b17ff6f4230cfb6bd","training_result_review_record_sha256":"dd67ed71bb6ca13fae3d3f2e9d70f823f1c4332e1aa644900b71b3d6a95911ee","verdict":"PASS"}
+---
+
+## Codex — 2026-08-11 04:10 EDT — current compact gates: S4 terminal review and fresh Teacher REPORT recovery
+
+Two independent reviews are open in the canonical absolute ledger; this
+branch-local compact copy is not review authority.
+
+1. **S4 terminal integrity.** Reopen exact Air source `fb6ec1a`, packet
+   `b239b849…76b`, receipt `fc6d54e7…1077`, aggregate `d6b73f45…f4d4` and
+   final `20ece4ed…144a`. The pinned result is `SELECT_NONE` at 2,048 clusters:
+   `+0.048828 +/- 0.055712`, LCB `-0.006884`; 256 null sentinels are exactly
+   zero. PASS closes integrity only and grants no retry, extension,
+   confirmation, promotion or deployment.
+2. **Expanded REPORT recovery source.** V1 packet `5ce892db…25f0` consumed its
+   admission/open slots, then all eight children returned 2 in argparse because
+   `--expected-git` was missing. Zero scores exist and the third population is
+   closed. Exact PR #32 head `564db02` fixes the command templates and selects
+   fourth REPORT `3c318da2…41e4`: 512 rows (480/32), zero state/deal overlap
+   against three spent populations, with 1,743 rows remaining. External raw
+   `TEACHER_STAGE_C_EXPANDED_FRESH_REPORT_RECOVERY_V2_REVIEW` PASS may authorize
+   one score-free packet freeze only; the concrete packet needs another review
+   before execution.
+
+The full requests and generated raw marker templates remain at the bottom of
+`/Users/jerryyu/Projects/shengji/HANDOFF_REVIEW.md`. Do not copy a PASS from
+this branch or treat either review as strength authority.
+
 ## Codex — 2026-08-11 — recover source-required raw authority lost by ledger sync
 
 Commit `d5348da` replaced the canonical ledger with a divergent working copy

@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-11 01:00 EDT
+## Current synthesis — 2026-08-11 04:10 EDT
 
 Exact terminal numbers and SHAs live in the canonical table in
 `AI_POLICIES.md`; `BACKLOG.md` owns live order and `JOBS.md` owns machines.
@@ -45,14 +45,17 @@ This section keeps only the research conclusions that change what we try next.
   over candidate zero and median CALIB improvement was `+0.016418`. The direct
   candidate-zero loss produced eligible cohorts but did not win. Expanded bury
   coverage, not objective replacement, is therefore the current causal lead.
-  External terminal review passed. Score-free packet `5ce892db…25f0` now binds
-  that exact ensemble to 32 untouched bury REPORT states; packet review is the
-  current gate and no REPORT prediction or utility has opened.
-  The third 512-state REPORT remains sealed; this is a capability result, not
-  yet evidence of a stronger bot.
+  External terminal review passed. Its first REPORT packet `5ce892db…25f0`
+  failed in argparse before evidence because the frozen commands omitted
+  `--expected-git`; zero labels, predictions, utility or result exist, but the
+  no-retry contract spends that third population. PR #32 `564db02` now selects
+  a fourth untouched 512-row population (`3c318da2…41e4`) with zero overlap and
+  fixes the command contract. Recovery-source review is the current gate; this
+  remains a capability result, not evidence of a stronger bot.
 - **Direct search:** S4 point banking passed exact-state and first whole-game
-  screens; an independent fixed replication is running on Air. S3a structured
-  bury improved selected-state regret but selected none in fresh games. S6
+  screens; its independent fixed replication stayed positive but selected none
+  (`+0.048828`, LCB `-0.006884`). S3a structured bury improved selected-state
+  regret but selected none in fresh games. S6
   shuai-pai sourcing and S5 replay are bounded proposal/diagnostic follow-ups,
   not strength claims.
 - **Learned/RL routes:** V11 direct-v2, Direct-Q, Suphx O0/O0-v2 and the first
@@ -249,9 +252,10 @@ one completed and selected none. The active generation-two sequence is:
    seeds × 25/50/100% data fractions — done;
 4. compare both losses and select only a whole cohort on DESIGN/CALIB — done:
    epoch-32 all-pairs bury ranking, 8/8 positive seeds;
-5. externally replay the terminal selection — done — and freeze the PR #32
-   packet — done; externally review that packet, then open the 32 untouched
-   bury REPORT rows exactly once;
+5. externally replay the terminal selection — done. The first PR #32 packet
+   failed before evidence and spent its holdout. Review the fresh fourth-
+   population recovery source, freeze/review one new packet, then open its 32
+   untouched bury rows exactly once;
 6. only if it passes, compose it with candidate-zero fallback inside the live
    report-LCB parent and run a fresh treatment/null/champion whole-game screen;
 7. stop before confirmation, promotion or deployment.
@@ -262,7 +266,7 @@ stable on bury only after the data expansion. REPORT tests whether that signal
 transfers beyond the selection split. A REPORT miss closes this capability
 without tuning; a pass advances the exact frozen ensemble to composition.
 
-S4 replication remains an independent parallel result. S6 source review and
+S4 replication is terminal positive-but-inconclusive `SELECT_NONE`. S6 source review and
 code/document cleanup use otherwise idle implementation time without competing
 for Mini's Teacher slot.
 ### Lane A — improve search directly
@@ -274,9 +278,10 @@ for Mini's Teacher slot.
 - **S4 point-banking continuation** passed its exact-state mechanism screen in
   both roles and its sole 2,048-cluster complete-round screen. The natural-
   traffic estimate is `+0.086914 +/- 0.056166` versus the live champion with
-  positive LCB; matched null was exactly champion. Preserve that evidence.
-  Independent confirmation, promotion and deployment are later decisions, not
-  T4 filler work.
+  positive LCB; matched null was exactly champion. Its independent fixed
+  replication was `+0.048828 +/- 0.055712` with LCB `-0.006884`, so it did not
+  repeat at the predeclared bar. Preserve both results, but do not retry,
+  extend, confirm, promote or deploy this recipe.
 - **S5 defensive point protection** is not yet an implementation hypothesis.
   Observational loss mining suggests a narrower avoidable-slough surface, but
   its original global headline disappeared after per-seat normalization.
@@ -328,7 +333,7 @@ This table separates them by the training signal they actually produced.
 | **Teacher-v3 Stage B** | On 128 disjoint mostly ordinary states, compare cheap heuristic-continuation choices with much more expensive `mc-strong@N=30` continuation labels. | Cheap-minus-gold regret upper bound was `0.0195 < 0.10`; the cheap proxy was adequate on this sampled population. | It only showed agreement with the old MC continuation on ordinary states. It did not create a dataset/model or show labels beyond the live champion. |
 | **Fresh live-champion audit** | On an untouched 64-state complement, compare frozen cheap and N=30 choices against the deployed report-LCB root evaluator. | Cheap and N=30 all-state regret bounds passed (`0.0354` and `0.0439`), but the eight boundary states had a weaker N=30 bound (`0.1421`). | Ordinary rows can be labeled cheaply; uncertain/boundary rows need escalation. This is the direct empirical reason for Stage C's mixed-budget hard tail. |
 | **Teacher Stage C generation one** | Capture a split-safe hard-tail exam, label candidate actions with corrected iid hidden-world folds, and train eight-seed ranking/outcome cohorts on DESIGN/CALIB only. | Capture and 2,048/2,048 corrected labels passed. The 1,536-row model generation selected none; a protected play ensemble also selected none on one fresh 480-row REPORT (`-0.008228`, LCB `-0.018944`). | Close the spent REPORT and policy. The usable lesson is that model signal existed in strata but did not make reliable overrides. |
-| **Teacher Stage C generation two (active)** | Add 5,504 fresh DESIGN/CALIB labels for 7,040 total, hold out a third 512-state REPORT, and compare all-pairs learning with a candidate-zero-relative objective. | All 96 cells and 576 checkpoints replayed and externally passed. The epoch-32 all-pairs bury cohort won with 8/8 positive seeds and median candidate-zero improvement `+0.016418`; the direct loss did not win. Packet `5ce892db…25f0` froze 32 untouched bury REPORT rows with zero predictions or utility. | Pass the packet review, then spend the one 32-row bury REPORT look. A miss closes; a pass advances to protected composition. |
+| **Teacher Stage C generation two (active)** | Add 5,504 fresh DESIGN/CALIB labels for 7,040 total, hold out a third 512-state REPORT, and compare all-pairs learning with a candidate-zero-relative objective. | All 96 cells and 576 checkpoints replayed and externally passed. The epoch-32 all-pairs bury cohort won with 8/8 positive seeds and median candidate-zero improvement `+0.016418`; the direct loss did not win. V1 REPORT then failed in argparse before evidence and spent the third population. Fresh successor `3c318da2…41e4` supplies a fourth zero-overlap 512-row exam. | Review recovery source, freeze/review its packet, then spend one 32-row bury look. A miss closes; a pass advances to protected composition. |
 
 In plain English, Stage B asked, “Can the cheap grader reproduce the expensive
 grader on normal exam questions?” Stage C asks, “Can we write a better exam,

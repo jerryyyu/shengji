@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-11 02:13 EDT
+## Current synthesis — 2026-08-11 04:10 EDT
 
 ### Canonical terminal-results table
 
@@ -40,11 +40,13 @@ results table.
 | 08-10 | Teacher Stage-C label v1 | Evaluate every candidate on independent selection/report folds, but incorrectly require every realized hidden world to be unique within and across folds. | **TERMINAL NO-USE / NO AGGREGATE** | eight slots consumed; 2 complete and 6 refused shards; 971/1,024 rows complete; receipt `0c3d7ea0…adc1c`; no aggregate or partial mining | The refusal revealed that world-identity deduplication exhausts late-state support and reweights the posterior. Never continue or aggregate v1. Iid-with-replacement v2 must pass fresh capacity and label gates. |
 | 08-10 | Teacher Stage-C iid-v2 labels | Retain every valid hidden-world draw with replacement, while using independent random streams for selection and reporting, so late states keep their true posterior mass. | **TERMINAL PASS** | 2,048/2,048 states labeled; aggregate `d0b4397c…6cdb9`; zero REPORT access during training selection | The corrected label population is usable. Its 1,536 DESIGN/CALIB rows supported the first model generation; its original REPORT was then spent only by the protected test below and is closed. |
 | 08-11 | Teacher Stage-C expanded labels | Add 5,504 fresh hard-tail DESIGN/CALIB examples around the retained 1,536 while sealing a third untouched REPORT, so the next run can distinguish data scale from objective mismatch. | **TERMINAL + EXTERNAL PASS** | 5,504/5,504 new rows, zero refusals, exact 13,136,320 worlds; aggregate `3deb3a81…f6ca`; combined frozen dataset `c24923f…a8382` has 7,040 states | The larger split-safe training asset is real. It authorizes only the separately reviewed training packet; it is not evidence that a model or bot is stronger. |
-| 08-11 | Teacher Stage-C expanded training | Train matched eight-seed cohorts on 7,040 states, comparing the original all-pairs ranker with a direct “beat candidate zero” loss, and select one whole cohort without opening REPORT. | **TERMINAL EXTERNAL PASS / DESIGN-CALIB CAPABILITY** | 96/96 cells and 576 checkpoints independently replayed; selected epoch-32 `all_pairs_v1` bury ranker, 8/8 positive seeds, median improvement `+0.016418` versus candidate zero | More data rescued a stable bury capability; the new direct loss did not win. Its one score-free REPORT packet was frozen, but this is still not a strength claim. |
+| 08-11 | Teacher Stage-C expanded training | Train matched eight-seed cohorts on 7,040 states, comparing the original all-pairs ranker with a direct “beat candidate zero” loss, and select one whole cohort without opening REPORT. | **TERMINAL EXTERNAL PASS / DESIGN-CALIB CAPABILITY** | 96/96 cells and 576 checkpoints independently replayed; selected epoch-32 `all_pairs_v1` bury ranker, 8/8 positive seeds, median improvement `+0.016418` versus candidate zero | More data rescued a stable bury capability; the new direct loss did not win. It still needs a valid untouched REPORT exam before it can claim useful action selection. |
+| 08-11 | Teacher expanded REPORT v1 | Price the selected bury ensemble once on the third untouched REPORT tranche using the shared one-shot runtime. | **TERMINAL OPERATIONAL NO-USE / ZERO EVIDENCE** | packet `5ce892db…25f0`; receipt `3c4b1f…74bf`; all eight children returned 2 in argparse because `--expected-git` was omitted; zero labels, predictions, utility or result | This is not a model verdict. The no-retry contract spends the third population. PR #32 selects a disjoint fourth population, but no new packet or score exists yet. |
 | 08-10 | Teacher Stage-C first training generation | Train eight seeds on 1,536 DESIGN/CALIB states and select whole cohorts rather than a lucky seed, using separate play-ranking and bury surfaces. | **SELECT NONE** | all 48 cells / 288 checkpoints replayed; final play median `-0.000391` versus candidate zero with 3/8 positive seeds; bury about `-0.0372` with 0/8 positive | The training system worked, but this data/objective did not produce a stable improvement. The untouched REPORT stayed closed during selection. |
 | 08-11 | Teacher protected-anchor fresh REPORT | Give the best diagnostic play ensemble one protected chance: keep candidate zero unless an alternative beats it by a strict model margin, then price that frozen rule once on fresh REPORT labels. | **SELECT NONE** | 480/480 rows, 810,944 exact worlds; 171 triggers; mean improvement `-0.008228`, LCB `-0.018944` | The model had localized signal but its frozen overrides were worse overall. No composition, threshold tuning, REPORT reuse or strength screen is authorized. |
 | 08-09 | S4 point-banking exact-state screen | In rollouts, when the bot is already winning the trick and can retain a higher winner, let it bank a 5/10/K instead of always spending the cheapest winner. | **MECHANISM PASS** | overall acting-team point delta `+5.156`, one-sided LCB `+3.029`; attacker/defender means `+6.406/+3.906`; 35 wins, 4 losses, 25 ties; level utility `+0.25` | Banking a point-card winner while retaining higher control helps on the frozen exact-late trigger population in both roles. The whole-game row below shows the effect survives natural traffic. |
 | 08-10 | S4 complete-round screen v2 | Play complete mirrored rounds with the point-banking rollout rule, an analysis-identical null, and the live champion on the same deals and random streams. | **TERMINAL SCREEN PASS / NO CONFIRMATION LAUNCH** | treatment−champion `+0.086914 +/- 0.056166`, one-sided LCB `+0.030748`; treatment−null identical; null−champion exactly zero; 2,048 clusters | Point banking is the first post-report-LCB mechanism to pass a fresh whole-game screen. Confirmation remains a separately reviewed future milestone; T4 does not launch it. |
+| 08-11 | S4 independent fixed replication | Repeat point banking on a fresh fixed 2,048-cluster treatment/champion sample, with 256 exact-null sentinels, to test whether the first whole-game gain repeats. | **SELECT NONE / POSITIVE BUT INCONCLUSIVE** | treatment−champion `+0.048828 +/- 0.055712`, LCB `-0.006884`; all 256 null sentinels exactly zero | The direction stayed positive but missed the predeclared confidence bar. Do not retry, extend, confirm or deploy this recipe; preserve it as mechanism evidence. |
 | 08-09 | Human H0 counterfactual design v1 | Add the move a human actually played to the champion ballot alongside V11 and random proposals, then price those choices on common simulated worlds instead of imitating the human blindly. | **SPLIT REVIEW PASS / SUPERSEDED PRE-EXECUTION** | 384 DESIGN + 128 name-ID/deal-disjoint AUDIT plays; separate 36/9 buries; every eligible late/off-ballot row retained; zero outcomes | The split and authority semantics passed, but later executable audit found the pinned V11 digest names no artifact. V1 cannot parent a controller. |
 | 08-09 | Human H0 counterfactual design v2 | Preserve v1's human sample while repairing the real V11 checkpoint and deployed report-LCB parent identities. | **IDENTITY DELTA PASS / SUPERSEDED PRE-CONTROLLER** | Claude PASS `9fdb67a`; same 384/128 plays and 36/9 buries; zero outcomes | The executable artifacts reopened correctly, but the analysis-ballot cap, downstream continuation and candidate-recall estimand remained ambiguous. Bounded v3 replaces the design before any controller or result. |
 | 08-09 | Human H0 counterfactual design v3 | Cap the human/V11/random proposal union, make every source compete under fixed disjoint work, and distinguish the root report-LCB judge from the heuristic policy used inside rollouts. | **DESIGN PASS / CONTROLLER IMPLEMENTATION ONLY** | Claude PASS `239f13c`; 17/33 play/bury caps, three disjoint folds and 1,329,210 maximum candidate-world rollouts; zero outcomes | The human/model proposal experiment is now finite and executable. The PASS authorizes one score-free controller implementation—not a counterfactual run, label, training, strength claim or production change. |
@@ -92,8 +94,12 @@ Evidence anchors, in the same order:
   terminal aggregate `5ad77eb0…b6bd`. The whole-cohort selector chose the
   epoch-32 all-pairs bury ranker: 8/8 positive CALIB seeds and median
   candidate-zero improvement `+0.016418`. The direct candidate-zero loss did
-  not win. External terminal review passed; its one score-free REPORT packet
-  freeze was consumed, while REPORT execution and strength remain closed.
+  not win. External terminal review passed. Its v1 REPORT packet
+  `5ce892db…25f0` consumed receipt `3c4b1f…74bf`, but all eight shard commands
+  refused in argparse before evidence because `--expected-git` was absent.
+  Zero labels/predictions/utility/results exist and the third population is
+  closed. Fresh successor selection `3c318da2…41e4` contains 512 disjoint rows;
+  no v2 packet, execution or strength result exists.
 - S4 exact-state screen `abd9f36fa3e84c81b90e22f1c827f828a549f7fd6a9420ffbdb7c168974cdc00`;
   pre-outcome receipt `90124eb6f89c27cedc38770b2da5b3b8597400694281729656105f67803f526b`;
   admission `83993ec6609c2a7528853d4c1db789f137d3f0cbfff97d20fbf526cbd5ff5e6d`.
@@ -104,6 +110,11 @@ Evidence anchors, in the same order:
   terminal aggregate `3c7f27b8466ec9ece73820d21d26349bfd95c4fc17db144b26408db4af6b4268`
   and supervisor final
   `e188f7e8ee80fe2fc17fee6d79b4eb4c6a41a45713c76825ef707981e30f2b24`.
+- S4 independent replication packet
+  `b239b8494e2f2ffa8fbc0a0b11b9b2f510d274dd6bb0a482e25fd87592cab76b`;
+  receipt `fc6d54e7c3e660ee28fe96c16dd5babeb49856018b82e1aa309e640cdaf51077`;
+  aggregate `d6b73f45c17f1b7ae6e1648147b82d248df82fd0f5b35a82a601108e8ba8f4d4`;
+  final `20ece4eddcaa4399b45df768f4003b939a52c0346484924e3e05da9698af144a`.
 - Human H0 v1 design packet `9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3`;
   repaired v2 packet `2cccf5803ca60cf41690f18dc0e85febaf36a88ce702587e8c86a67e2a358f2b`;
   bounded v3 packet `4d3f0a35082c6957f2a468686b8eedbd6d7cbbf9540503fcea08cccf27c8cc3c`;
@@ -205,9 +216,9 @@ Evidence anchors, in the same order:
   disagreements as Teacher and proposal diagnostics.
 - **Point banking / S4:** changing only rollout continuation so a secure winner
   may bank a 5/10/K passed the exact-state mechanism test and the first
-  2,048-cluster whole-game screen. An independently frozen replication is
-  running on Air. Until that terminal result and a separately reviewed
-  confirmation, S4 remains experiment-only.
+  2,048-cluster whole-game screen. The independent fixed replication stayed
+  positive but selected none (`+0.048828`, LCB `-0.006884`). The exact recipe
+  is closed without retry, extension, confirmation or deployment.
 - **Human evidence:** the repaired Fly corpus contains 2,830 plays and 45
   buries. Human actions are proposal and coverage evidence, not labels. H0-v3's
   sole counterfactual run completed only 555/557 rows, correctly published no
@@ -223,8 +234,11 @@ Evidence anchors, in the same order:
   DESIGN/CALIB states, the second generation selected a stable bury-ranking
   cohort: all eight seeds improved over candidate zero. The original all-pairs
   objective beat the direct candidate-zero loss, so data coverage—especially
-  bury coverage—is the leading explanation. This remains a CALIB result until
-  terminal review and one untouched 32-bury-state REPORT look.
+  bury coverage—is the leading explanation. Its first REPORT execution failed
+  in argument parsing before evidence and spent that holdout. A fourth
+  zero-overlap 512-row population is selected score-free; the capability
+  remains CALIB-only until a separately reviewed packet completes one valid
+  32-bury-state look.
 - **Shuai-pai / S6:** KESP showed legal early and late throws absent from the
   search ballot. Draft PR #19 deterministically unions a bounded legal
   phase-wide shuai source with the literal incumbent ballot and keeps candidate

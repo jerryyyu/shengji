@@ -179,3 +179,46 @@ def test_successor_report_refuses_when_only_three_tranches_exist() -> None:
             original_states=original,
             current_fresh_report_states=current_fresh,
         )
+
+
+def test_play_successor_excludes_four_populations_without_spending_bury() \
+        -> None:
+    capture, retained, original, current_fresh = _parents(report_copies=5)
+    fourth = EXP.select_successor_report_states(
+        capture_packet=capture,
+        retained_states=retained,
+        original_states=original,
+        current_fresh_report_states=current_fresh,
+    )
+    result = EXP.select_play_successor_report_states(
+        capture_packet=capture,
+        retained_states=retained,
+        original_states=original,
+        current_fresh_report_states=current_fresh,
+    )
+
+    assert result["state_count"] == 480
+    assert result["surface_counts"] == {"play": 480}
+    assert result["spent_report_populations"] == 4
+    assert result["spent_report_states"] == 2_048
+    assert result["prior_fourth_report_selection_sha256"] \
+        == fourth["selection_sha256"]
+    assert result["remaining_report_supply_after_selection"] == {
+        "play": 0, "bury": 32}
+    assert all(state["surface_type"] == "play"
+               for state in result["states"])
+    assert result["spent_state_overlap"] == 0
+    assert result["spent_deal_seed_overlap"] == 0
+    assert result["labels_or_outcomes_opened"] is False
+    assert result["report_labels_opened"] is False
+
+
+def test_play_successor_refuses_when_only_four_populations_exist() -> None:
+    capture, retained, original, current_fresh = _parents(report_copies=4)
+    with pytest.raises(EXP.ExpansionError, match="supply underfilled"):
+        EXP.select_play_successor_report_states(
+            capture_packet=capture,
+            retained_states=retained,
+            original_states=original,
+            current_fresh_report_states=current_fresh,
+        )

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Freeze the expanded-Teacher bury composition screen after REPORT PASS."""
+"""Freeze the expanded-Teacher broad-play screen after REPORT PASS."""
 from __future__ import annotations
 
 import os
 import sys
 
 
-os.environ["SHENGJI_STAGE_C_COMPOSITION_PROFILE"] = "expanded-bury"
+os.environ["SHENGJI_STAGE_C_COMPOSITION_PROFILE"] = "expanded-play"
 os.environ["SHENGJI_STAGE_C_REPORT_CONTROLLER"] = \
-    "teacher_stage_c_expanded_report_controller"
+    "teacher_stage_c_expanded_play_report_controller"
 
 import teacher_stage_c_composition_controller as BASE  # noqa: E402
 from teacher_stage_c_composition_controller import *  # noqa: E402,F403

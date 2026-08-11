@@ -39,7 +39,7 @@ _REPORT_CONTROLLER_MODULE = os.environ.get(
     "teacher_stage_c_report_controller")
 if _REPORT_CONTROLLER_MODULE not in {
         "teacher_stage_c_report_controller",
-        "teacher_stage_c_expanded_report_controller"}:
+        "teacher_stage_c_expanded_play_report_controller"}:
     raise RuntimeError("unrecognized Stage-C composition REPORT controller")
 REPORT_CTRL = importlib.import_module(_REPORT_CONTROLLER_MODULE)  # noqa: E402
 import teacher_stage_c_report_runtime as REPORT_RUNTIME  # noqa: E402
@@ -57,46 +57,46 @@ from shengji.rl import stage_c_training as TRAIN  # noqa: E402
 
 _PROFILE = os.environ.get(
     "SHENGJI_STAGE_C_COMPOSITION_PROFILE", "protected-anchor")
-if _PROFILE not in {"protected-anchor", "expanded-bury"}:
+if _PROFILE not in {"protected-anchor", "expanded-play"}:
     raise RuntimeError("unrecognized Stage-C composition profile")
 
-_EXPANDED = _PROFILE == "expanded-bury"
+_EXPANDED = _PROFILE == "expanded-play"
 if _EXPANDED != (
         _REPORT_CONTROLLER_MODULE
-        == "teacher_stage_c_expanded_report_controller"):
+        == "teacher_stage_c_expanded_play_report_controller"):
     raise RuntimeError(
         "Stage-C composition/report controller profiles disagree")
-SCHEMA = ("teacher-stage-c-expanded-composition-screen-controller-v1"
+SCHEMA = ("teacher-stage-c-expanded-play-composition-screen-controller-v1"
           if _EXPANDED else
           "teacher-stage-c-composition-screen-controller-v3")
-PACKET_ID = ("teacher-v3-hard-tail-stage-c-expanded-composition-screen-v1"
-             if _EXPANDED else
-             "teacher-stage-c-composition-screen-181m-v3")
+PACKET_ID = (
+    "teacher-v3-hard-tail-stage-c-expanded-play-composition-screen-v1"
+    if _EXPANDED else "teacher-stage-c-composition-screen-181m-v3")
 RUN_ID = PACKET_ID
 PACKET_PATH = f"server/runs/logs/{RUN_ID}/controller-packet.json"
 REVIEW_SCHEMA = (
-    "teacher-stage-c-expanded-composition-screen-controller-review-v1"
+    "teacher-stage-c-expanded-play-composition-screen-controller-review-v1"
     if _EXPANDED else
     "teacher-stage-c-composition-screen-controller-review-v3")
 REVIEW_MARKER = (
-    "TEACHER_STAGE_C_EXPANDED_COMPOSITION_SCREEN_CONTROLLER_V1_REVIEW "
+    "TEACHER_STAGE_C_EXPANDED_PLAY_COMPOSITION_SCREEN_CONTROLLER_V1_REVIEW "
     if _EXPANDED else
     "TEACHER_STAGE_C_COMPOSITION_SCREEN_CONTROLLER_V3_REVIEW ")
 CAPACITY_RESULT_SCHEMA = (
-    "teacher-stage-c-expanded-composition-capacity-v1"
+    "teacher-stage-c-expanded-play-composition-capacity-v1"
     if _EXPANDED else "teacher-stage-c-composition-capacity-v3")
 CAPACITY_REVIEW_SCHEMA = (
-    "teacher-stage-c-expanded-composition-capacity-review-v1"
+    "teacher-stage-c-expanded-play-composition-capacity-review-v1"
     if _EXPANDED else "teacher-stage-c-composition-capacity-review-v3")
 CAPACITY_REVIEW_MARKER = (
-    "TEACHER_STAGE_C_EXPANDED_COMPOSITION_CAPACITY_V1_REVIEW "
+    "TEACHER_STAGE_C_EXPANDED_PLAY_COMPOSITION_CAPACITY_V1_REVIEW "
     if _EXPANDED else "TEACHER_STAGE_C_COMPOSITION_CAPACITY_V3_REVIEW ")
 SUPERVISOR_REVIEW_SCHEMA = (
-    "teacher-stage-c-expanded-composition-supervisor-final-review-v1"
+    "teacher-stage-c-expanded-play-composition-supervisor-final-review-v1"
     if _EXPANDED else
     "teacher-stage-c-composition-supervisor-final-review-v3")
 SUPERVISOR_REVIEW_MARKER = (
-    "TEACHER_STAGE_C_EXPANDED_COMPOSITION_SUPERVISOR_FINAL_V1_REVIEW "
+    "TEACHER_STAGE_C_EXPANDED_PLAY_COMPOSITION_SUPERVISOR_FINAL_V1_REVIEW "
     if _EXPANDED else
     "TEACHER_STAGE_C_COMPOSITION_SUPERVISOR_FINAL_V3_REVIEW ")
 RUNTIME_SCRIPT_PATH = (
@@ -104,25 +104,25 @@ RUNTIME_SCRIPT_PATH = (
     if _EXPANDED else
     "server/scripts/teacher_stage_c_composition_runtime.py")
 RUNTIME_ADMISSION_SCHEMA = (
-    "teacher-stage-c-expanded-composition-screen-admission-v1"
+    "teacher-stage-c-expanded-play-composition-screen-admission-v1"
     if _EXPANDED else "teacher-stage-c-composition-screen-admission-v1")
 RUNTIME_CAPACITY_ADMISSION_SCHEMA = (
-    "teacher-stage-c-expanded-composition-capacity-admission-v1"
+    "teacher-stage-c-expanded-play-composition-capacity-admission-v1"
     if _EXPANDED else "teacher-stage-c-composition-capacity-admission-v1")
 RUNTIME_SUPERVISOR_ADMISSION_SCHEMA = (
-    "teacher-stage-c-expanded-composition-supervisor-admission-v1"
+    "teacher-stage-c-expanded-play-composition-supervisor-admission-v1"
     if _EXPANDED else "teacher-stage-c-composition-supervisor-admission-v1")
 RUNTIME_SUPERVISOR_FINAL_SCHEMA = (
-    "teacher-stage-c-expanded-composition-supervisor-final-v1"
+    "teacher-stage-c-expanded-play-composition-supervisor-final-v1"
     if _EXPANDED else "teacher-stage-c-composition-supervisor-final-v1")
 RUNTIME_RECEIPT_SCHEMA = (
-    "teacher-stage-c-expanded-composition-screen-receipt-v1"
+    "teacher-stage-c-expanded-play-composition-screen-receipt-v1"
     if _EXPANDED else "teacher-stage-c-composition-screen-receipt-v1")
 RUNTIME_SHARD_SCHEMA = (
-    "teacher-stage-c-expanded-composition-screen-shard-v1"
+    "teacher-stage-c-expanded-play-composition-screen-shard-v1"
     if _EXPANDED else "teacher-stage-c-composition-screen-shard-v1")
 RUNTIME_AGGREGATE_SCHEMA = (
-    "teacher-stage-c-expanded-composition-screen-result-v1"
+    "teacher-stage-c-expanded-play-composition-screen-result-v1"
     if _EXPANDED else "teacher-stage-c-composition-screen-result-v1")
 PREFLIGHT_SEED0 = 180_000_000
 PREFLIGHT_CLUSTERS = 4
@@ -307,6 +307,55 @@ def _logical_ref(path: Path, expected_sha256: str, label: str) -> dict:
     return {"logical_path": logical, "external_sha256": expected_sha256}
 
 
+def _root_for_logical(path: Path, logical: str, label: str) -> Path:
+    path = path.resolve()
+    logical_path = Path(logical)
+    if logical_path.is_absolute() or ".." in logical_path.parts:
+        raise CompositionControllerRefused(f"{label} logical path drift")
+    root = path
+    for _part in logical_path.parts:
+        root = root.parent
+    if (root / logical_path).resolve() != path:
+        raise CompositionControllerRefused(f"{label} evidence root drift")
+    return root
+
+
+def _external_ref(
+    path: Path, expected_sha256: str, label: str, *, evidence_root: Path | None,
+) -> dict:
+    path = path.resolve()
+    if (not is_regular_unlinked(path)
+            or not is_sha256(expected_sha256)
+            or sha256_file(path) != expected_sha256):
+        raise CompositionControllerRefused(f"{label} path/SHA drift")
+    if evidence_root is None:
+        return {
+            "absolute_path": str(path),
+            "external_sha256": expected_sha256,
+        }
+    root = evidence_root.resolve()
+    try:
+        logical = str(path.relative_to(root))
+    except ValueError as exc:
+        raise CompositionControllerRefused(
+            f"{label} escapes evidence root") from exc
+    return {
+        "evidence_root_absolute_path": str(root),
+        "logical_path": logical,
+        "external_sha256": expected_sha256,
+    }
+
+
+def _parent_ref(
+    path: Path, expected_sha256: str, label: str, *,
+    evidence_root: Path | None = None,
+) -> dict:
+    if not _EXPANDED:
+        return _logical_ref(path, expected_sha256, label)
+    return _external_ref(
+        path, expected_sha256, label, evidence_root=evidence_root)
+
+
 def _marker_claim(path: Path, marker: str, label: str) -> dict:
     if not is_regular_unlinked(path):
         raise CompositionControllerRefused(
@@ -327,6 +376,181 @@ def _marker_claim(path: Path, marker: str, label: str) -> dict:
     return claim
 
 
+def _external_report_parents(
+    *, report_packet_path: Path, report_packet_sha256: str,
+    report_review_record: Path, fresh_report_review_record: Path,
+    state_set_review_record: Path, report_receipt_path: Path,
+    report_receipt_sha256: str, report_result_path: Path,
+    report_result_sha256: str, report_supervisor_final_path: Path,
+    report_supervisor_final_sha256: str,
+    report_result_review_record: Path,
+) -> tuple[Path, dict, dict]:
+    """Replay the terminal REPORT in its immutable reviewed worktree."""
+    root = _root_for_logical(
+        report_packet_path, REPORT_CTRL.PACKET_PATH, "Stage-C REPORT packet")
+    expected_paths = {
+        "Stage-C REPORT receipt":
+            (report_receipt_path.resolve(), REPORT_RUNTIME.RECEIPT_PATH),
+        "Stage-C REPORT result":
+            (report_result_path.resolve(), REPORT_RUNTIME.RESULT_PATH),
+        "Stage-C REPORT supervisor final": (
+            report_supervisor_final_path.resolve(),
+            REPORT_SUPERVISOR.FINAL_PATH),
+    }
+    for label, (path, logical) in expected_paths.items():
+        if (root / logical).resolve() != path:
+            raise CompositionControllerRefused(
+                f"{label} external evidence path drift")
+    if (not is_regular_unlinked(report_packet_path)
+            or sha256_file(report_packet_path) != report_packet_sha256
+            or not is_regular_unlinked(report_receipt_path)
+            or sha256_file(report_receipt_path) != report_receipt_sha256):
+        raise CompositionControllerRefused(
+            "Stage-C external REPORT parent path/SHA drift")
+    packet = load_json(report_packet_path)
+    producer = packet.get("producer", {})
+    if (packet.get("schema") != REPORT_CTRL.SCHEMA
+            or packet.get("packet_id") != REPORT_CTRL.PACKET_ID
+            or packet.get("run_id") != REPORT_CTRL.RUN_ID
+            or packet.get("packet_sha256")
+            != self_hash(packet, "packet_sha256")
+            or not isinstance(producer, Mapping)
+            or producer.get("tree_dirty") is not False):
+        raise CompositionControllerRefused(
+            "Stage-C external REPORT packet identity drift")
+    expected_git = producer.get("git")
+    if not isinstance(expected_git, str) or not expected_git:
+        raise CompositionControllerRefused(
+            "Stage-C external REPORT Git identity unavailable")
+    try:
+        actual_git = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=root, check=True,
+            capture_output=True, text=True).stdout.strip()
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            cwd=root, check=True, capture_output=True,
+            text=True).stdout.strip()
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise CompositionControllerRefused(
+            "Stage-C external REPORT Git unavailable") from exc
+    if actual_git != expected_git or dirty:
+        raise CompositionControllerRefused(
+            "Stage-C external REPORT Git/cleanliness drift")
+    sources = producer.get("sources")
+    if not isinstance(sources, Mapping) or not sources:
+        raise CompositionControllerRefused(
+            "Stage-C external REPORT source manifest drift")
+    for logical, expected in sources.items():
+        source = (root / str(logical)).resolve()
+        try:
+            source.relative_to(root)
+        except ValueError as exc:
+            raise CompositionControllerRefused(
+                "Stage-C external REPORT source escapes root") from exc
+        if (not is_regular_unlinked(source) or not is_sha256(expected)
+                or sha256_file(source) != expected):
+            raise CompositionControllerRefused(
+                f"Stage-C external REPORT source drift: {logical}")
+    review = _marker_claim(
+        report_review_record, REPORT_CTRL.REVIEW_MARKER,
+        "Stage-C REPORT controller review")
+    if review != REPORT_CTRL.expected_review_claim(
+            packet, report_packet_sha256):
+        raise CompositionControllerRefused(
+            "Stage-C external REPORT controller review drift")
+    terminal_review = _marker_claim(
+        report_result_review_record, REPORT_SUPERVISOR.REVIEW_MARKER,
+        "Stage-C REPORT result review")
+    if (terminal_review.get("schema") != REPORT_SUPERVISOR.REVIEW_SCHEMA
+            or terminal_review.get("git") != expected_git
+            or terminal_review.get("run_id") != REPORT_CTRL.RUN_ID
+            or terminal_review.get("controller_packet_sha256")
+            != report_packet_sha256
+            or terminal_review.get("report_receipt_sha256")
+            != report_receipt_sha256
+            or terminal_review.get("report_result_sha256")
+            != report_result_sha256
+            or terminal_review.get("supervisor_final_sha256")
+            != report_supervisor_final_sha256
+            or terminal_review.get(
+                "one_composition_controller_freeze_authorized") is not True
+            or terminal_review.get("report_reuse_authorized") is not False
+            or terminal_review.get("strength_claim") is not False
+            or terminal_review.get("production_promotion") is not False
+            or terminal_review.get("production_deployment") is not False
+            or terminal_review.get("verdict") != "PASS"):
+        raise CompositionControllerRefused(
+            "Stage-C external REPORT terminal review authority drift")
+    if (not is_regular_unlinked(report_result_path)
+            or sha256_file(report_result_path) != report_result_sha256
+            or not is_regular_unlinked(report_supervisor_final_path)
+            or sha256_file(report_supervisor_final_path)
+            != report_supervisor_final_sha256):
+        raise CompositionControllerRefused(
+            "Stage-C external REPORT terminal artifact path/SHA drift")
+
+    supervisor = (root / REPORT_CTRL.SUPERVISOR_SCRIPT_PATH).resolve()
+    if not is_regular_unlinked(supervisor):
+        raise CompositionControllerRefused(
+            "Stage-C external REPORT supervisor unavailable")
+    command = [
+        sys.executable, str(supervisor), "verify",
+        "--expected-git", expected_git,
+        "--controller-packet", str(report_packet_path.resolve()),
+        "--expected-controller-packet-sha256", report_packet_sha256,
+        "--controller-review-record", str(report_review_record.resolve()),
+        "--fresh-report-review-record",
+        str(fresh_report_review_record.resolve()),
+        "--state-set-review-record", str(state_set_review_record.resolve()),
+        "--report-receipt", str(report_receipt_path.resolve()),
+        "--expected-report-receipt-sha256", report_receipt_sha256,
+    ]
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = os.pathsep.join((
+        str(root / "server"), str(root / "server" / "scripts")))
+    completed = subprocess.run(
+        command, cwd=root, env=environment, check=False,
+        capture_output=True, text=True)
+    if completed.returncode != 0:
+        detail = completed.stderr.strip().splitlines()[-1:] or [
+            "no verifier detail"]
+        raise CompositionControllerRefused(
+            f"Stage-C external REPORT terminal replay refused: {detail[0]}")
+    try:
+        verified = json.loads(completed.stdout.strip().splitlines()[-1])
+    except (IndexError, ValueError) as exc:
+        raise CompositionControllerRefused(
+            "Stage-C external REPORT verifier output drift") from exc
+    if (not isinstance(verified, dict)
+            or verified.get("verified") is not True
+            or verified.get("run_id") != REPORT_CTRL.RUN_ID
+            or verified.get("composition_packet_review_authorized") is not True
+            or verified.get("strength_claim") is not False
+            or verified.get("production_promotion") is not False):
+        raise CompositionControllerRefused(
+            "Stage-C external REPORT terminal authority drift")
+
+    receipt = load_json(report_receipt_path)
+    if (receipt.get("schema") != REPORT_RUNTIME.RECEIPT_SCHEMA
+            or receipt.get("run_id") != REPORT_CTRL.RUN_ID
+            or receipt.get("git") != expected_git
+            or receipt.get("controller_packet_sha256")
+            != report_packet_sha256
+            or receipt.get("controller_review_record_sha256")
+            != sha256_file(report_review_record)
+            or receipt.get("selected_capability")
+            != packet["selected_capability"]
+            or receipt.get("report_execution_authorized") is not True
+            or receipt.get("teacher_labels_computed") != 0
+            or receipt.get("model_predictions_computed") != 0
+            or receipt.get("composition_authorized") is not False
+            or receipt.get("receipt_sha256")
+            != self_hash(receipt, "receipt_sha256")):
+        raise CompositionControllerRefused(
+            "Stage-C external REPORT receipt identity/authority drift")
+    return root, packet, receipt
+
+
 def validate_report_result(
     *, report_packet_path: Path, report_packet_sha256: str,
     report_review_record: Path, fresh_report_review_record: Path,
@@ -337,20 +561,37 @@ def validate_report_result(
     report_result_review_record: Path,
 ) -> tuple[dict, dict]:
     """Reopen a separately replayed terminal REPORT without reselection."""
-    try:
-        packet, _dataset, _training, _fresh, _states = \
-            REPORT_RUNTIME._packet(
-                report_packet_path.resolve(), report_packet_sha256,
-                fresh_report_review_record=
-                fresh_report_review_record.resolve(),
-                state_set_review_record=state_set_review_record.resolve())
-        receipt = REPORT_RUNTIME._receipt(
-            report_receipt_path.resolve(), report_receipt_sha256,
-            packet, report_packet_sha256, report_review_record.resolve())
-    except REPORT_RUNTIME.ReportRuntimeRefused as exc:
-        raise CompositionControllerRefused(str(exc)) from exc
+    if _EXPANDED:
+        report_root, packet, receipt = _external_report_parents(
+            report_packet_path=report_packet_path,
+            report_packet_sha256=report_packet_sha256,
+            report_review_record=report_review_record,
+            fresh_report_review_record=fresh_report_review_record,
+            state_set_review_record=state_set_review_record,
+            report_receipt_path=report_receipt_path,
+            report_receipt_sha256=report_receipt_sha256,
+            report_result_path=report_result_path,
+            report_result_sha256=report_result_sha256,
+            report_supervisor_final_path=report_supervisor_final_path,
+            report_supervisor_final_sha256=
+                report_supervisor_final_sha256,
+            report_result_review_record=report_result_review_record)
+    else:
+        report_root = REPO
+        try:
+            packet, _dataset, _training, _fresh, _states = \
+                REPORT_RUNTIME._packet(
+                    report_packet_path.resolve(), report_packet_sha256,
+                    fresh_report_review_record=
+                    fresh_report_review_record.resolve(),
+                    state_set_review_record=state_set_review_record.resolve())
+            receipt = REPORT_RUNTIME._receipt(
+                report_receipt_path.resolve(), report_receipt_sha256,
+                packet, report_packet_sha256, report_review_record.resolve())
+        except REPORT_RUNTIME.ReportRuntimeRefused as exc:
+            raise CompositionControllerRefused(str(exc)) from exc
     result_path = report_result_path.resolve()
-    if (result_path != (REPO / REPORT_RUNTIME.RESULT_PATH).resolve()
+    if (result_path != (report_root / REPORT_RUNTIME.RESULT_PATH).resolve()
             or not is_regular_unlinked(result_path)
             or sha256_file(result_path) != report_result_sha256):
         raise CompositionControllerRefused(
@@ -459,7 +700,8 @@ def validate_report_result(
             "Stage-C REPORT result identity/authority drift")
 
     supervisor_path = report_supervisor_final_path.resolve()
-    if (supervisor_path != (REPO / REPORT_SUPERVISOR.FINAL_PATH).resolve()
+    if (supervisor_path
+            != (report_root / REPORT_SUPERVISOR.FINAL_PATH).resolve()
             or not is_regular_unlinked(supervisor_path)
             or not is_sha256(report_supervisor_final_sha256)
             or sha256_file(supervisor_path)
@@ -525,6 +767,37 @@ def _checkpoint_root(packet: Mapping[str, object]) -> Path:
             "Stage-C training-evidence parent drift")
     root = Path(str(evidence.get("absolute_path", ""))).resolve()
     expected_git = evidence.get("git")
+    if expected_git is None:
+        capability_ref = packet.get("parents", {}).get("capability_packet")
+        if not isinstance(capability_ref, Mapping):
+            raise CompositionControllerRefused(
+                "Stage-C capability parent unavailable for training Git")
+        capability_path = Path(str(
+            capability_ref.get("absolute_path", ""))).resolve()
+        expected_external = capability_ref.get("external_sha256")
+        expected_internal = capability_ref.get("internal_sha256")
+        if (not is_regular_unlinked(capability_path)
+                or not is_sha256(expected_external)
+                or sha256_file(capability_path) != expected_external):
+            raise CompositionControllerRefused(
+                "Stage-C capability parent path/SHA drift")
+        capability = load_json(capability_path)
+        if (capability.get("packet_sha256") != expected_internal
+                or capability.get("packet_sha256")
+                != self_hash(capability, "packet_sha256")):
+            raise CompositionControllerRefused(
+                "Stage-C capability parent identity drift")
+        capability_evidence = capability.get("parents", {}).get(
+            "training_evidence")
+        if (not isinstance(capability_evidence, Mapping)
+                or Path(str(capability_evidence.get(
+                    "absolute_path", ""))).resolve() != root):
+            raise CompositionControllerRefused(
+                "Stage-C capability training-evidence root drift")
+        expected_git = capability_evidence.get("git")
+    if not isinstance(expected_git, str) or not expected_git:
+        raise CompositionControllerRefused(
+            "Stage-C training-evidence Git identity unavailable")
     try:
         actual_git = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=root, check=True,
@@ -1022,34 +1295,40 @@ def main() -> int:
         report_supervisor_final_sha256=
         args.expected_report_supervisor_final_sha256,
         report_result_review_record=report_result_review_path)
+    report_evidence_root = (
+        _root_for_logical(
+            report_packet_path, REPORT_CTRL.PACKET_PATH,
+            "Stage-C REPORT packet")
+        if _EXPANDED else REPO)
     _preflight_export_environment()
     exports = _export_models(packet, verify=args.command == "verify")
     output = build_packet(
         git=_git("rev-parse", "HEAD"), report_packet=packet,
-        report_packet_ref=_logical_ref(
+        report_packet_ref=_parent_ref(
             report_packet_path, args.expected_report_packet_sha256,
-            "REPORT packet"),
-        report_review_ref=_logical_ref(
+            "REPORT packet", evidence_root=report_evidence_root),
+        report_review_ref=_parent_ref(
             report_review_path, sha256_file(report_review_path),
             "REPORT review record"),
-        fresh_report_review_ref=_logical_ref(
+        fresh_report_review_ref=_parent_ref(
             fresh_report_review_path, sha256_file(fresh_report_review_path),
             "fresh REPORT review record"),
-        state_set_review_ref=_logical_ref(
+        state_set_review_ref=_parent_ref(
             state_set_review_path, sha256_file(state_set_review_path),
             "state-set review record"),
-        report_receipt_ref=_logical_ref(
+        report_receipt_ref=_parent_ref(
             report_receipt_path, args.expected_report_receipt_sha256,
-            "REPORT receipt"),
+            "REPORT receipt", evidence_root=report_evidence_root),
         report_result=result,
-        report_result_ref=_logical_ref(
+        report_result_ref=_parent_ref(
             report_result_path, args.expected_report_result_sha256,
-            "REPORT result"),
-        report_supervisor_final_ref=_logical_ref(
+            "REPORT result", evidence_root=report_evidence_root),
+        report_supervisor_final_ref=_parent_ref(
             report_supervisor_final_path,
             args.expected_report_supervisor_final_sha256,
-            "REPORT supervisor final"),
-        report_result_review_ref=_logical_ref(
+            "REPORT supervisor final",
+            evidence_root=report_evidence_root),
+        report_result_review_ref=_parent_ref(
             report_result_review_path, sha256_file(report_result_review_path),
             "REPORT result review record"),
         exports=exports)

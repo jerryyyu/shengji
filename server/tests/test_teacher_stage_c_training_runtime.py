@@ -174,6 +174,7 @@ def test_aggregate_uses_only_full_curves_and_freezes_one_eight_model_capability(
         return {
             "index": index, "cell_id": cell["cell_id"],
             "surface": cell["surface"], "seed": cell["seed"],
+            "loss_recipe": MODEL.LOSS_RECIPES[0],
             "curve_fraction": cell["curve_fraction"],
             "design_states": int(cell["design_states"]
                                  * cell["curve_fraction"]),
@@ -273,6 +274,7 @@ def test_cell_validator_refuses_work_loss_and_hyperparameter_forgery(
         "index": 0,
         "cell_id": cell["cell_id"],
         "surface": cell["surface"],
+        "loss_recipe": MODEL.LOSS_RECIPES[0],
         "seed": cell["seed"],
         "curve_fraction": cell["curve_fraction"],
         "design_states": design_count,
@@ -298,6 +300,7 @@ def test_cell_validator_refuses_work_loss_and_hyperparameter_forgery(
             * epoch,
             "mean_training_loss": {
                 "loss": 1.0, "pairwise_bce": 0.2,
+                "candidate0_advantage_huber": 0.4,
                 "label_ce": 0.3, "outcome_ce": 0.5,
             },
             "calib_metrics": _metrics(good=True),

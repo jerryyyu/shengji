@@ -71,6 +71,8 @@ EXPECTED_SURFACES = {
     "DESIGN": {"play": 960, "bury": 64},
     "CALIB": {"play": 480, "bury": 32},
 }
+EXPECTED_TOTAL_STATES = sum(EXPECTED_SPLITS.values())
+LOSS_RECIPES = (MODEL.LOSS_RECIPES[0],)
 TRAINING_CELLS = len(MODEL.SURFACES) * len(MODEL.TRAINING_SEEDS) \
     * len(MODEL.CURVE_FRACTIONS)
 SUPERVISOR_MAX_WORKERS = len(MODEL.TRAINING_SEEDS)
@@ -225,6 +227,92 @@ def candidate_provenance_contract() -> dict:
         "v11_proposer_admitted_for_inference": False,
         "inference_must_not_load_v11": True,
     }
+
+
+def validate_runtime_dataset(dataset: Mapping[str, object]) -> None:
+    """Validate the frozen V1 dataset behind the generic training runtime."""
+    examples = dataset.get("examples")
+    fresh = dataset.get("fresh_report_selection")
+    if (dataset.get("schema") != DATASET_SCHEMA
+            or dataset.get("run_id") != RUN_ID
+            or dataset.get("dataset_sha256")
+            != self_hash(dataset, "dataset_sha256")
+            or dataset.get("split_counts") != EXPECTED_SPLITS
+            or dataset.get("surface_counts") != EXPECTED_SURFACES
+            or dataset.get("report_rows_included") is not False
+            or dataset.get("report_label_shard_files_opened") != 0
+            or dataset.get("old_report_labels_quarantined") is not True
+            or dataset.get("fresh_report_states_materialized") is not False
+            or dataset.get("fresh_report_capture_shards_revalidated") != 8
+            or dataset.get("training_authorized") is not False
+            or dataset.get("report_open_authorized") is not False
+            or not isinstance(fresh, dict)
+            or fresh.get("packet_external_sha256")
+            != FRESH_REPORT_PACKET_SHA256
+            or fresh.get("fresh_report_states") != 512
+            or not isinstance(examples, dict)
+            or set(examples) != {"DESIGN", "CALIB"}):
+        raise TrainingControllerRefused(
+            "Stage-C model dataset identity drift")
+    all_ids = set()
+    for split in ("DESIGN", "CALIB"):
+        surfaces = examples.get(split)
+        if (not isinstance(surfaces, dict)
+                or set(surfaces) != set(MODEL.SURFACES)):
+            raise TrainingControllerRefused(
+                "Stage-C model dataset surface drift")
+        for surface in MODEL.SURFACES:
+            values = surfaces[surface]
+            if len(values) != EXPECTED_SURFACES[split][surface]:
+                raise TrainingControllerRefused(
+                    "Stage-C model dataset surface count drift")
+            TRAIN.validate_population(values, split=split, surface=surface)
+            ids = {str(value["state_id"]) for value in values}
+            if all_ids & ids:
+                raise TrainingControllerRefused(
+                    "Stage-C model dataset cross-cell identity overlap")
+            all_ids.update(ids)
+    if len(all_ids) != EXPECTED_TOTAL_STATES:
+        raise TrainingControllerRefused(
+            "Stage-C model dataset state count drift")
+
+
+def validate_runtime_packet_parents(
+    packet: Mapping[str, object], dataset: Mapping[str, object],
+) -> None:
+    parents = packet.get("parents", {})
+    parent = parents.get("model_dataset", {})
+    fresh_parent = parents.get("fresh_report_selection", {})
+    if (parent.get("internal_sha256") != dataset.get("dataset_sha256")
+            or parent.get("design_states") != EXPECTED_SPLITS["DESIGN"]
+            or parent.get("calib_states") != EXPECTED_SPLITS["CALIB"]
+            or parent.get("report_rows_included") is not False
+            or parent.get("fresh_report_selection_sha256")
+            != _manifest_hash(dataset.get("fresh_report_selection"))
+            or fresh_parent.get("external_sha256")
+            != FRESH_REPORT_PACKET_SHA256
+            or fresh_parent.get("internal_sha256")
+            != dataset["fresh_report_selection"][
+                "packet_internal_sha256"]
+            or fresh_parent.get("sealed_selection_sha256")
+            != dataset["fresh_report_selection"][
+                "sealed_selection_sha256"]
+            or fresh_parent.get("fresh_report_state_ids_sha256")
+            != dataset["fresh_report_selection"][
+                "fresh_report_state_ids_sha256"]
+            or fresh_parent.get("state_material_published") is not False):
+        raise TrainingControllerRefused(
+            "Stage-C packet/dataset parent drift")
+
+
+def select_global_capability(
+    records: Sequence[Mapping[str, object]],
+) -> dict:
+    if ({str(value.get("loss_recipe", MODEL.LOSS_RECIPES[0]))
+         for value in records} != set(LOSS_RECIPES)):
+        raise TrainingControllerRefused(
+            "Stage-C training loss-recipe population drift")
+    return MODEL.select_global_epoch(records)
 
 
 def _label_fidelity_values(aggregate: Mapping[str, object]) -> tuple[float, ...]:
@@ -733,7 +821,11 @@ def model_contract() -> dict:
     }
 
 
-def cell_hyperparameters() -> dict:
+def cell_hyperparameters(
+        loss_recipe: str = MODEL.LOSS_RECIPES[0]) -> dict:
+    if loss_recipe not in LOSS_RECIPES:
+        raise TrainingControllerRefused(
+            "Stage-C cell loss recipe drift")
     return {
         "architecture": f"StageCRankingOutcomeNet(hidden={TRAIN.HIDDEN})",
         "batch_size_states": TRAIN.BATCH_SIZE,
@@ -744,6 +836,7 @@ def cell_hyperparameters() -> dict:
         "cpu_threads": TRAIN.CPU_THREADS,
         "device": "cpu",
         "deterministic_algorithms": True,
+        "loss_recipe": loss_recipe,
     }
 
 

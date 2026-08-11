@@ -35,8 +35,10 @@ SCRIPT = Path(__file__).resolve()
 REPO = SCRIPT.parents[2]
 sys.path.insert(0, str(SCRIPT.parent))
 
-import teacher_stage_c_training_controller as CTRL  # noqa: E402
 import teacher_stage_c_training_runtime as RUNTIME  # noqa: E402
+
+
+CTRL = RUNTIME.CTRL
 
 
 SCHEMA = "teacher-stage-c-training-supervisor-v1"

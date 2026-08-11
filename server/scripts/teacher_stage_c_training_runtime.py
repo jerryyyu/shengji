@@ -15,6 +15,7 @@ promotes, or deploys.
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import math
 import os
@@ -31,9 +32,18 @@ SERVER = SCRIPT.parents[1]
 REPO = SCRIPT.parents[2]
 sys.path.insert(0, str(SCRIPT.parent))
 
-import teacher_stage_c_training_controller as CTRL  # noqa: E402
 from shengji.rl import stage_c_model as MODEL  # noqa: E402
 from shengji.rl import stage_c_training as TRAIN  # noqa: E402
+
+
+_CONTROLLER_MODULE = os.environ.get(
+    "SHENGJI_STAGE_C_TRAINING_CONTROLLER",
+    "teacher_stage_c_training_controller")
+if _CONTROLLER_MODULE not in {
+        "teacher_stage_c_training_controller",
+        "teacher_stage_c_expanded_training_controller"}:
+    raise RuntimeError("unsupported Stage-C training controller module")
+CTRL = importlib.import_module(_CONTROLLER_MODULE)
 
 
 RECEIPT_SCHEMA = "teacher-stage-c-training-receipt-v1"
@@ -155,46 +165,11 @@ def _dataset(path: Path, expected_sha256: str) -> dict:
             or sha256_file(path) != expected_sha256:
         raise TrainingRuntimeRefused("Stage-C model dataset path/SHA drift")
     dataset = load_json(path)
-    examples = dataset.get("examples")
-    fresh = dataset.get("fresh_report_selection")
-    if (dataset.get("schema") != CTRL.DATASET_SCHEMA
-            or dataset.get("run_id") != CTRL.RUN_ID
-            or dataset.get("dataset_sha256")
-            != self_hash(dataset, "dataset_sha256")
-            or dataset.get("split_counts") != CTRL.EXPECTED_SPLITS
-            or dataset.get("surface_counts") != CTRL.EXPECTED_SURFACES
-            or dataset.get("report_rows_included") is not False
-            or dataset.get("report_label_shard_files_opened") != 0
-            or dataset.get("old_report_labels_quarantined") is not True
-            or dataset.get("fresh_report_states_materialized") is not False
-            or dataset.get("fresh_report_capture_shards_revalidated") != 8
-            or dataset.get("training_authorized") is not False
-            or dataset.get("report_open_authorized") is not False
-            or not isinstance(fresh, dict)
-            or fresh.get("packet_external_sha256")
-            != CTRL.FRESH_REPORT_PACKET_SHA256
-            or fresh.get("fresh_report_states") != 512
-            or not isinstance(examples, dict)
-            or set(examples) != {"DESIGN", "CALIB"}):
-        raise TrainingRuntimeRefused("Stage-C model dataset identity drift")
-    all_ids = set()
-    for split in ("DESIGN", "CALIB"):
-        surfaces = examples.get(split)
-        if not isinstance(surfaces, dict) or set(surfaces) != set(MODEL.SURFACES):
-            raise TrainingRuntimeRefused("Stage-C model dataset surface drift")
-        for surface in MODEL.SURFACES:
-            values = surfaces[surface]
-            if len(values) != CTRL.EXPECTED_SURFACES[split][surface]:
-                raise TrainingRuntimeRefused(
-                    "Stage-C model dataset surface count drift")
-            TRAIN.validate_population(values, split=split, surface=surface)
-            ids = {str(value["state_id"]) for value in values}
-            if all_ids & ids:
-                raise TrainingRuntimeRefused(
-                    "Stage-C model dataset cross-cell identity overlap")
-            all_ids.update(ids)
-    if len(all_ids) != 1536:
-        raise TrainingRuntimeRefused("Stage-C model dataset state count drift")
+    try:
+        CTRL.validate_runtime_dataset(dataset)
+    except CTRL.TrainingControllerRefused as exc:
+        raise TrainingRuntimeRefused(
+            f"Stage-C model dataset refused: {exc}") from exc
     return dataset
 
 
@@ -227,27 +202,14 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, dict]:
         raise TrainingRuntimeRefused("Stage-C training packet identity drift")
     parents = packet.get("parents", {})
     parent = parents.get("model_dataset", {})
-    fresh_parent = parents.get("fresh_report_selection", {})
     dataset = _dataset(
         REPO / str(parent.get("logical_path")),
         str(parent.get("external_sha256")))
-    if (parent.get("internal_sha256") != dataset.get("dataset_sha256")
-            or parent.get("design_states") != 1024
-            or parent.get("calib_states") != 512
-            or parent.get("report_rows_included") is not False
-            or parent.get("fresh_report_selection_sha256")
-            != CTRL._manifest_hash(dataset.get("fresh_report_selection"))
-            or fresh_parent.get("external_sha256")
-            != CTRL.FRESH_REPORT_PACKET_SHA256
-            or fresh_parent.get("internal_sha256")
-            != dataset["fresh_report_selection"]["packet_internal_sha256"]
-            or fresh_parent.get("sealed_selection_sha256")
-            != dataset["fresh_report_selection"]["sealed_selection_sha256"]
-            or fresh_parent.get("fresh_report_state_ids_sha256")
-            != dataset["fresh_report_selection"][
-                "fresh_report_state_ids_sha256"]
-            or fresh_parent.get("state_material_published") is not False):
-        raise TrainingRuntimeRefused("Stage-C packet/dataset parent drift")
+    try:
+        CTRL.validate_runtime_packet_parents(packet, dataset)
+    except CTRL.TrainingControllerRefused as exc:
+        raise TrainingRuntimeRefused(
+            f"Stage-C packet/dataset parent refused: {exc}") from exc
     return packet, dataset
 
 
@@ -382,10 +344,11 @@ def _snapshot_path(cell: Mapping[str, object], epoch: int) -> Path:
 
 def _snapshot_contract(packet: Mapping[str, object], cell: Mapping[str, object],
                        epoch: int, state_sha256: str) -> dict:
+    loss_recipe = str(cell.get("loss_recipe", MODEL.LOSS_RECIPES[0]))
     value = MODEL.checkpoint_contract(
         surface=str(cell["surface"]), seed=int(cell["seed"]), epoch=epoch,
         curve_fraction=float(cell["curve_fraction"]),
-        state_dict_sha256=state_sha256)
+        state_dict_sha256=state_sha256, loss_recipe=loss_recipe)
     value.update({
         "run_id": CTRL.RUN_ID,
         "cell_id": cell["cell_id"],
@@ -419,11 +382,13 @@ def run_cell(*, packet_path: Path, expected_packet_sha256: str,
         print(json.dumps(value, sort_keys=True), file=sys.stderr, flush=True)
 
     surface = str(cell["surface"])
+    loss_recipe = str(cell.get("loss_recipe", MODEL.LOSS_RECIPES[0]))
     result = TRAIN.train_curve(
         dataset["examples"]["DESIGN"][surface],
         dataset["examples"]["CALIB"][surface],
         surface=surface, seed=int(cell["seed"]),
         curve_fraction=float(cell["curve_fraction"]),
+        loss_recipe=loss_recipe,
         max_epoch=max(MODEL.EPOCH_GRID), heartbeat=heartbeat)
     snapshots = []
     for snapshot in result["snapshots"]:
@@ -455,6 +420,7 @@ def run_cell(*, packet_path: Path, expected_packet_sha256: str,
         "index": index,
         "cell_id": cell["cell_id"],
         "surface": surface,
+        "loss_recipe": loss_recipe,
         "seed": cell["seed"],
         "curve_fraction": cell["curve_fraction"],
         "design_states": result["design_states"],
@@ -507,6 +473,8 @@ def _validate_cell(
             or value.get("index") != index
             or value.get("cell_id") != cell["cell_id"]
             or value.get("surface") != cell["surface"]
+            or value.get("loss_recipe")
+            != str(cell.get("loss_recipe", MODEL.LOSS_RECIPES[0]))
             or value.get("seed") != cell["seed"]
             or value.get("curve_fraction") != cell["curve_fraction"]
             or value.get("full_design_states")
@@ -540,7 +508,8 @@ def _validate_cell(
     if value.get("prior_distribution") != prior:
         raise TrainingRuntimeRefused(
             f"Stage-C training cell {index} prior drift")
-    if value.get("hyperparameters") != CTRL.cell_hyperparameters():
+    loss_recipe = str(cell.get("loss_recipe", MODEL.LOSS_RECIPES[0]))
+    if value.get("hyperparameters") != CTRL.cell_hyperparameters(loss_recipe):
         raise TrainingRuntimeRefused(
             f"Stage-C training cell {index} hyperparameter drift")
     snapshots = value.get("snapshots")
@@ -562,7 +531,8 @@ def _validate_cell(
                 or snapshot.get("updates") != expected_updates
                 or not isinstance(losses, dict)
                 or set(losses) != {
-                    "loss", "pairwise_bce", "label_ce", "outcome_ce"}
+                    "loss", "pairwise_bce", "candidate0_advantage_huber",
+                    "label_ce", "outcome_ce"}
                 or any(isinstance(value, bool)
                        or not isinstance(value, (int, float))
                        or not math.isfinite(float(value))
@@ -601,6 +571,7 @@ def _validate_cell(
         "index": index,
         "cell_id": cell["cell_id"],
         "surface": cell["surface"],
+        "loss_recipe": loss_recipe,
         "seed": cell["seed"],
         "curve_fraction": cell["curve_fraction"],
         "design_states": value["design_states"],
@@ -614,61 +585,74 @@ def _validate_cell(
 def _curve_diagnostics(
         cells: Sequence[Mapping[str, object]]) -> list[dict]:
     rows = []
-    for surface in MODEL.SURFACES:
-        for fraction in MODEL.CURVE_FRACTIONS:
-            population = [value for value in cells
-                          if value["surface"] == surface
-                          and value["curve_fraction"] == fraction]
-            if ({value["seed"] for value in population}
-                    != set(MODEL.TRAINING_SEEDS)
-                    or len(population) != len(MODEL.TRAINING_SEEDS)
-                    or len({value["design_states"] for value in population}) != 1
-                    or len({value["calib_states"] for value in population}) != 1):
-                raise TrainingRuntimeRefused(
-                    "Stage-C curve diagnostic population drift")
-            for epoch in MODEL.EPOCH_GRID:
-                snapshots = [next(
-                    item for item in value["snapshots"]
-                    if item["epoch"] == epoch) for value in population]
-                metrics = [value["metrics"] for value in snapshots]
-                ranking = [float(value[
-                    "ranking_improvement_vs_candidate0"]) for value in metrics]
-                calibration = [float(value[
-                    "outcome_nll_improvement_vs_prior"]) for value in metrics]
-                outcome_action = [float(value[
-                    "outcome_head_ranking_improvement_vs_candidate0"])
-                    for value in metrics]
-                rows.append({
-                    "surface": surface,
-                    "curve_fraction": fraction,
-                    "design_states": population[0]["design_states"],
-                    "calib_states": population[0]["calib_states"],
-                    "epoch": epoch,
-                    "seed_count": len(population),
-                    "ranking_positive_seeds": sum(value > 0
-                                                  for value in ranking),
-                    "outcome_nll_positive_seeds": sum(
-                        value > 0 for value in calibration),
-                    "outcome_head_action_positive_seeds": sum(
-                        value > 0 for value in outcome_action),
-                    "median_ranking_improvement_vs_candidate0":
-                        statistics.median(ranking),
-                    "median_outcome_nll_improvement_vs_prior":
-                        statistics.median(calibration),
-                    "median_outcome_head_action_improvement_vs_candidate0":
-                        statistics.median(outcome_action),
-                    "mean_teacher_regret": statistics.fmean(float(value[
-                        "mean_teacher_regret"]) for value in metrics),
-                    "mean_outcome_nll": statistics.fmean(float(value[
-                        "outcome_nll"]) for value in metrics),
-                    "selection_eligible": fraction == 1.0,
-                    "used_by_global_selector": fraction == 1.0,
-                })
-    expected = (len(MODEL.SURFACES) * len(MODEL.CURVE_FRACTIONS)
-                * len(MODEL.EPOCH_GRID))
+    for loss_recipe in CTRL.LOSS_RECIPES:
+        for surface in MODEL.SURFACES:
+            for fraction in MODEL.CURVE_FRACTIONS:
+                population = [value for value in cells
+                              if value["loss_recipe"] == loss_recipe
+                              and value["surface"] == surface
+                              and value["curve_fraction"] == fraction]
+                rows.extend(_curve_diagnostic_rows(
+                    population, loss_recipe=loss_recipe,
+                    surface=surface, fraction=fraction))
+    expected = (len(CTRL.LOSS_RECIPES) * len(MODEL.SURFACES)
+                * len(MODEL.CURVE_FRACTIONS) * len(MODEL.EPOCH_GRID))
     if len(rows) != expected:
         raise TrainingRuntimeRefused(
             "Stage-C curve diagnostic row-count drift")
+    return rows
+
+
+def _curve_diagnostic_rows(
+    population: Sequence[Mapping[str, object]], *, loss_recipe: str,
+    surface: str, fraction: float,
+) -> list[dict]:
+    if ({value["seed"] for value in population}
+            != set(MODEL.TRAINING_SEEDS)
+            or len(population) != len(MODEL.TRAINING_SEEDS)
+            or len({value["design_states"] for value in population}) != 1
+            or len({value["calib_states"] for value in population}) != 1):
+        raise TrainingRuntimeRefused(
+            "Stage-C curve diagnostic population drift")
+    rows = []
+    for epoch in MODEL.EPOCH_GRID:
+        snapshots = [next(item for item in value["snapshots"]
+                          if item["epoch"] == epoch)
+                     for value in population]
+        metrics = [value["metrics"] for value in snapshots]
+        ranking = [float(value["ranking_improvement_vs_candidate0"])
+                   for value in metrics]
+        calibration = [float(value["outcome_nll_improvement_vs_prior"])
+                       for value in metrics]
+        outcome_action = [float(value[
+            "outcome_head_ranking_improvement_vs_candidate0"])
+            for value in metrics]
+        rows.append({
+            "loss_recipe": loss_recipe,
+            "surface": surface,
+            "curve_fraction": fraction,
+            "design_states": population[0]["design_states"],
+            "calib_states": population[0]["calib_states"],
+            "epoch": epoch,
+            "seed_count": len(population),
+            "ranking_positive_seeds": sum(value > 0 for value in ranking),
+            "outcome_nll_positive_seeds": sum(
+                value > 0 for value in calibration),
+            "outcome_head_action_positive_seeds": sum(
+                value > 0 for value in outcome_action),
+            "median_ranking_improvement_vs_candidate0":
+                statistics.median(ranking),
+            "median_outcome_nll_improvement_vs_prior":
+                statistics.median(calibration),
+            "median_outcome_head_action_improvement_vs_candidate0":
+                statistics.median(outcome_action),
+            "mean_teacher_regret": statistics.fmean(float(value[
+                "mean_teacher_regret"]) for value in metrics),
+            "mean_outcome_nll": statistics.fmean(float(value[
+                "outcome_nll"]) for value in metrics),
+            "selection_eligible": fraction == 1.0,
+            "used_by_global_selector": fraction == 1.0,
+        })
     return rows
 
 
@@ -706,22 +690,26 @@ def recompute_aggregate(*, packet_path: Path, expected_packet_sha256: str,
                 "curve_fraction": 1.0,
                 "epoch": snapshot["epoch"],
                 "surface": cell["surface"],
+                "loss_recipe": cell["loss_recipe"],
                 "seed": cell["seed"],
                 "metrics": snapshot["metrics"],
             })
-    selection = MODEL.select_global_epoch(records)
+    selection = CTRL.select_global_capability(records)
     curve_diagnostics = _curve_diagnostics(verified)
     selected = []
     capability = selection["selected_capability"]
     if capability is not None:
         for cell in verified:
             if (cell["curve_fraction"] != 1.0
+                    or cell["loss_recipe"]
+                    != capability.get("loss_recipe", MODEL.LOSS_RECIPES[0])
                     or cell["surface"] != capability["surface"]):
                 continue
             snapshot = next(value for value in cell["snapshots"]
                             if value["epoch"] == capability["epoch"])
             selected.append({
                 "surface": cell["surface"], "seed": cell["seed"],
+                "loss_recipe": cell["loss_recipe"],
                 "head": capability["head"],
                 "epoch": snapshot["epoch"],
                 "checkpoint_path": snapshot["checkpoint_path"],

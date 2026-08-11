@@ -79,6 +79,49 @@ def test_selection_summary_never_publishes_state_material() -> None:
     assert summary["surface_counts"] == {"play": 480}
 
 
+def _broad_play_states() -> list[dict]:
+    dimensions = CTRL.EXPECTED_PLAY_SCOPE
+    return [{
+        "state_id": f"play-{index:03d}",
+        "surface_type": "play",
+        "stratum": dimensions["stratum"][index % len(
+            dimensions["stratum"])],
+        "phase": dimensions["phase"][index % len(dimensions["phase"])],
+        "role": dimensions["role"][index % len(dimensions["role"])],
+        "surface": dimensions["position"][index % len(
+            dimensions["position"])],
+    } for index in range(480)]
+
+
+def test_play_scope_contract_is_broad_and_excludes_bury() -> None:
+    states = _broad_play_states()
+    contract = CTRL._play_scope_contract(states)
+    assert contract["scope"] == "broad_hard_tail_trick_play"
+    assert contract["play_states"] == 480
+    assert contract["bury_states"] == 0
+    assert set(contract["stratum_counts"]) == set(
+        CTRL.EXPECTED_PLAY_SCOPE["stratum"])
+    assert set(contract["phase_counts"]) == {"early", "mid", "late"}
+    assert set(contract["role_counts"]) == {"attacker", "defender"}
+    assert set(contract["position_counts"]) == {"lead", "follow"}
+
+    states[0]["surface_type"] = "bury"
+    with pytest.raises(
+            CTRL.ExpandedPlayCapabilityRefused,
+            match="scope population drift"):
+        CTRL._play_scope_contract(states)
+
+
+def test_play_scope_contract_refuses_missing_normal_play_dimension() -> None:
+    states = _broad_play_states()
+    for state in states:
+        state["phase"] = "late"
+    with pytest.raises(
+            CTRL.ExpandedPlayCapabilityRefused,
+            match="phase coverage drift"):
+        CTRL._play_scope_contract(states)
+
+
 def test_review_claim_authorizes_only_one_controller_freeze() -> None:
     diagnostic = {
         "states": 40,
@@ -96,6 +139,8 @@ def test_review_claim_authorizes_only_one_controller_freeze() -> None:
         "checkpoint_manifest_sha256": "d" * 64,
         "diagnostics": {"DESIGN": diagnostic, "CALIB": diagnostic},
         "diagnostics_sha256": "e" * 64,
+        "play_scope_contract": CTRL._play_scope_contract(
+            _broad_play_states()),
         "fresh_play_selection": {
             "selection_sha256": "f" * 64,
             "state_ids_sha256": "0" * 64,

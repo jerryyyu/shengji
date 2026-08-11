@@ -22,7 +22,7 @@ import os
 import statistics
 import subprocess
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Mapping, Sequence
 
@@ -55,6 +55,19 @@ HEAD = "ranking"
 LOSS_RECIPE = "all_pairs_v1"
 EPOCH = 32
 CURVE_FRACTION = 1.0
+
+EXPECTED_PLAY_SCOPE = {
+    "stratum": (
+        "champion_uncertainty",
+        "exact_late_eligible",
+        "ordinary_anchor",
+        "point_banking_opportunity",
+        "proposal_disagreement",
+    ),
+    "phase": ("early", "mid", "late"),
+    "role": ("attacker", "defender"),
+    "position": ("lead", "follow"),
+}
 
 EXPECTED_CAPABILITY = {
     "loss_recipe": LOSS_RECIPE,
@@ -375,13 +388,47 @@ def _selection_summary(selection: Mapping[str, object]) -> dict:
     }
 
 
-def build_packet(
+def _play_scope_contract(states: Sequence[Mapping[str, object]]) -> dict:
+    """Bind the successor examination to broad trick play, never burying."""
+    state_ids = [state.get("state_id") for state in states]
+    if (len(states) != EXP.PLAY_REPORT_STATES
+            or any(not isinstance(state_id, str) or not state_id
+                   for state_id in state_ids)
+            or len(set(state_ids)) != EXP.PLAY_REPORT_STATES
+            or any(state.get("surface_type") != SURFACE for state in states)):
+        raise ExpandedPlayCapabilityRefused(
+            "expanded play scope population drift")
+    fields = {
+        "stratum": "stratum",
+        "phase": "phase",
+        "role": "role",
+        "position": "surface",
+    }
+    counts = {}
+    for name, state_key in fields.items():
+        values = Counter(str(state.get(state_key)) for state in states)
+        if (set(values) != set(EXPECTED_PLAY_SCOPE[name])
+                or any(values[key] <= 0
+                       for key in EXPECTED_PLAY_SCOPE[name])
+                or sum(values.values()) != EXP.PLAY_REPORT_STATES):
+            raise ExpandedPlayCapabilityRefused(
+                f"expanded play {name} coverage drift")
+        counts[f"{name}_counts"] = dict(sorted(values.items()))
+    return {
+        "scope": "broad_hard_tail_trick_play",
+        "play_states": EXP.PLAY_REPORT_STATES,
+        "bury_states": 0,
+        "selection_uses_labels_or_outcomes": False,
+        **counts,
+    }
+
+
+def _build_packet(
     *, evidence_repo: Path, training_result_review_record: Path,
     capture_evidence_repo: Path, state_set_review_record: Path,
     fresh_report_review_record: Path, bury_result_review_record: Path,
     expected_git: str,
 ) -> dict:
-    _require_clean_tree(expected_git)
     try:
         training_packet, dataset, _receipt, aggregate, _final, _bury = \
             BASE.validate_training_evidence(
@@ -460,6 +507,7 @@ def build_packet(
         "checkpoint_manifest_sha256": _manifest_hash(manifest),
         "diagnostics": {"DESIGN": design, "CALIB": calib},
         "fresh_play_selection": _selection_summary(selection),
+        "play_scope_contract": _play_scope_contract(selection["states"]),
         "authority": {
             "new_training_authorized": False,
             "training_retry_authorized": False,
@@ -477,6 +525,23 @@ def build_packet(
     value["diagnostics_sha256"] = _manifest_hash(value["diagnostics"])
     value["packet_sha256"] = self_hash(value, "packet_sha256")
     return value
+
+
+def build_packet(
+    *, evidence_repo: Path, training_result_review_record: Path,
+    capture_evidence_repo: Path, state_set_review_record: Path,
+    fresh_report_review_record: Path, bury_result_review_record: Path,
+    expected_git: str,
+) -> dict:
+    _require_clean_tree(expected_git)
+    return _build_packet(
+        evidence_repo=evidence_repo,
+        training_result_review_record=training_result_review_record,
+        capture_evidence_repo=capture_evidence_repo,
+        state_set_review_record=state_set_review_record,
+        fresh_report_review_record=fresh_report_review_record,
+        bury_result_review_record=bury_result_review_record,
+        expected_git=expected_git)
 
 
 def expected_review_claim(
@@ -515,6 +580,7 @@ def expected_review_claim(
         "fresh_play_state_ids_sha256": selection["state_ids_sha256"],
         "fresh_play_states": selection["state_count"],
         "fresh_play_surface_counts": selection["surface_counts"],
+        "play_scope_contract": packet["play_scope_contract"],
         "prior_report_populations_spent":
             selection["spent_report_populations"],
         "prior_report_states_spent": selection["spent_report_states"],

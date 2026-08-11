@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-11 04:10 EDT
+## Current synthesis — 2026-08-11 04:54 EDT
 
 ### Canonical terminal-results table
 
@@ -41,7 +41,7 @@ results table.
 | 08-10 | Teacher Stage-C iid-v2 labels | Retain every valid hidden-world draw with replacement, while using independent random streams for selection and reporting, so late states keep their true posterior mass. | **TERMINAL PASS** | 2,048/2,048 states labeled; aggregate `d0b4397c…6cdb9`; zero REPORT access during training selection | The corrected label population is usable. Its 1,536 DESIGN/CALIB rows supported the first model generation; its original REPORT was then spent only by the protected test below and is closed. |
 | 08-11 | Teacher Stage-C expanded labels | Add 5,504 fresh hard-tail DESIGN/CALIB examples around the retained 1,536 while sealing a third untouched REPORT, so the next run can distinguish data scale from objective mismatch. | **TERMINAL + EXTERNAL PASS** | 5,504/5,504 new rows, zero refusals, exact 13,136,320 worlds; aggregate `3deb3a81…f6ca`; combined frozen dataset `c24923f…a8382` has 7,040 states | The larger split-safe training asset is real. It authorizes only the separately reviewed training packet; it is not evidence that a model or bot is stronger. |
 | 08-11 | Teacher Stage-C expanded training | Train matched eight-seed cohorts on 7,040 states, comparing the original all-pairs ranker with a direct “beat candidate zero” loss, and select one whole cohort without opening REPORT. | **TERMINAL EXTERNAL PASS / DESIGN-CALIB CAPABILITY** | 96/96 cells and 576 checkpoints independently replayed; selected epoch-32 `all_pairs_v1` bury ranker, 8/8 positive seeds, median improvement `+0.016418` versus candidate zero | More data rescued a stable bury capability; the new direct loss did not win. It still needs a valid untouched REPORT exam before it can claim useful action selection. |
-| 08-11 | Teacher expanded REPORT v1 | Price the selected bury ensemble once on the third untouched REPORT tranche using the shared one-shot runtime. | **TERMINAL OPERATIONAL NO-USE / ZERO EVIDENCE** | packet `5ce892db…25f0`; receipt `3c4b1f…74bf`; all eight children returned 2 in argparse because `--expected-git` was omitted; zero labels, predictions, utility or result | This is not a model verdict. The no-retry contract spends the third population. PR #32 selects a disjoint fourth population, but no new packet or score exists yet. |
+| 08-11 | Teacher expanded REPORT v1 | Price the selected bury ensemble once on the third untouched REPORT tranche using the shared one-shot runtime. | **TERMINAL OPERATIONAL NO-USE / ZERO EVIDENCE** | packet `5ce892db…25f0`; receipt `3c4b1f…74bf`; all eight children returned 2 in argparse because `--expected-git` was omitted; zero labels, predictions, utility or result | This is not a model verdict. The no-retry contract spends the third population. A disjoint fourth population and score-free v2 packet are now frozen and reviewed twice locally; execution still awaits independent packet review. |
 | 08-10 | Teacher Stage-C first training generation | Train eight seeds on 1,536 DESIGN/CALIB states and select whole cohorts rather than a lucky seed, using separate play-ranking and bury surfaces. | **SELECT NONE** | all 48 cells / 288 checkpoints replayed; final play median `-0.000391` versus candidate zero with 3/8 positive seeds; bury about `-0.0372` with 0/8 positive | The training system worked, but this data/objective did not produce a stable improvement. The untouched REPORT stayed closed during selection. |
 | 08-11 | Teacher protected-anchor fresh REPORT | Give the best diagnostic play ensemble one protected chance: keep candidate zero unless an alternative beats it by a strict model margin, then price that frozen rule once on fresh REPORT labels. | **SELECT NONE** | 480/480 rows, 810,944 exact worlds; 171 triggers; mean improvement `-0.008228`, LCB `-0.018944` | The model had localized signal but its frozen overrides were worse overall. No composition, threshold tuning, REPORT reuse or strength screen is authorized. |
 | 08-09 | S4 point-banking exact-state screen | In rollouts, when the bot is already winning the trick and can retain a higher winner, let it bank a 5/10/K instead of always spending the cheapest winner. | **MECHANISM PASS** | overall acting-team point delta `+5.156`, one-sided LCB `+3.029`; attacker/defender means `+6.406/+3.906`; 35 wins, 4 losses, 25 ties; level utility `+0.25` | Banking a point-card winner while retaining higher control helps on the frozen exact-late trigger population in both roles. The whole-game row below shows the effect survives natural traffic. |
@@ -98,8 +98,11 @@ Evidence anchors, in the same order:
   `5ce892db…25f0` consumed receipt `3c4b1f…74bf`, but all eight shard commands
   refused in argparse before evidence because `--expected-git` was absent.
   Zero labels/predictions/utility/results exist and the third population is
-  closed. Fresh successor selection `3c318da2…41e4` contains 512 disjoint rows;
-  no v2 packet, execution or strength result exists.
+  closed. Externally passed successor selection `3c318da2…41e4` contains 512
+  disjoint rows. Score-free v2 packet external/internal
+  `e856c02e…175e2` / `96840fdb…82116` freezes the 32 bury rows in eight shards;
+  two pinned verifier runs returned `VERIFIED_NO_REPORT_OPEN`. Its independent
+  concrete-controller review is open; no execution or strength result exists.
 - S4 exact-state screen `abd9f36fa3e84c81b90e22f1c827f828a549f7fd6a9420ffbdb7c168974cdc00`;
   pre-outcome receipt `90124eb6f89c27cedc38770b2da5b3b8597400694281729656105f67803f526b`;
   admission `83993ec6609c2a7528853d4c1db789f137d3f0cbfff97d20fbf526cbd5ff5e6d`.
@@ -114,7 +117,8 @@ Evidence anchors, in the same order:
   `b239b8494e2f2ffa8fbc0a0b11b9b2f510d274dd6bb0a482e25fd87592cab76b`;
   receipt `fc6d54e7c3e660ee28fe96c16dd5babeb49856018b82e1aa309e640cdaf51077`;
   aggregate `d6b73f45c17f1b7ae6e1648147b82d248df82fd0f5b35a82a601108e8ba8f4d4`;
-  final `20ece4eddcaa4399b45df768f4003b939a52c0346484924e3e05da9698af144a`.
+  final `20ece4eddcaa4399b45df768f4003b939a52c0346484924e3e05da9698af144a`;
+  independent terminal-integrity review passed.
 - Human H0 v1 design packet `9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3`;
   repaired v2 packet `2cccf5803ca60cf41690f18dc0e85febaf36a88ce702587e8c86a67e2a358f2b`;
   bounded v3 packet `4d3f0a35082c6957f2a468686b8eedbd6d7cbbf9540503fcea08cccf27c8cc3c`;

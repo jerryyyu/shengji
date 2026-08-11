@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-11 04:10 EDT
+## Current synthesis — 2026-08-11 04:54 EDT
 
 Exact terminal numbers and SHAs live in the canonical table in
 `AI_POLICIES.md`; `BACKLOG.md` owns live order and `JOBS.md` owns machines.
@@ -48,10 +48,12 @@ This section keeps only the research conclusions that change what we try next.
   External terminal review passed. Its first REPORT packet `5ce892db…25f0`
   failed in argparse before evidence because the frozen commands omitted
   `--expected-git`; zero labels, predictions, utility or result exist, but the
-  no-retry contract spends that third population. PR #32 `564db02` now selects
-  a fourth untouched 512-row population (`3c318da2…41e4`) with zero overlap and
-  fixes the command contract. Recovery-source review is the current gate; this
-  remains a capability result, not evidence of a stronger bot.
+  no-retry contract spends that third population. PR #32 `564db02` selected a
+  fourth untouched 512-row population (`3c318da2…41e4`) with zero overlap and
+  fixed the command contract; external recovery review passed. Score-free v2
+  packet `e856c02e…175e2` now freezes the 32 bury rows, and two pinned rebuilds
+  verified no REPORT access. Concrete-controller review is the current gate;
+  this remains a capability result, not evidence of a stronger bot.
 - **Direct search:** S4 point banking passed exact-state and first whole-game
   screens; its independent fixed replication stayed positive but selected none
   (`+0.048828`, LCB `-0.006884`). S3a structured bury improved selected-state
@@ -253,9 +255,9 @@ one completed and selected none. The active generation-two sequence is:
 4. compare both losses and select only a whole cohort on DESIGN/CALIB — done:
    epoch-32 all-pairs bury ranking, 8/8 positive seeds;
 5. externally replay the terminal selection — done. The first PR #32 packet
-   failed before evidence and spent its holdout. Review the fresh fourth-
-   population recovery source, freeze/review one new packet, then open its 32
-   untouched bury rows exactly once;
+   failed before evidence and spent its holdout. The fresh fourth-population
+   recovery passed and score-free packet `e856c02e…175e2` is frozen/rebuilt;
+   independently review it, then open its 32 untouched bury rows exactly once;
 6. only if it passes, compose it with candidate-zero fallback inside the live
    report-LCB parent and run a fresh treatment/null/champion whole-game screen;
 7. stop before confirmation, promotion or deployment.
@@ -333,7 +335,7 @@ This table separates them by the training signal they actually produced.
 | **Teacher-v3 Stage B** | On 128 disjoint mostly ordinary states, compare cheap heuristic-continuation choices with much more expensive `mc-strong@N=30` continuation labels. | Cheap-minus-gold regret upper bound was `0.0195 < 0.10`; the cheap proxy was adequate on this sampled population. | It only showed agreement with the old MC continuation on ordinary states. It did not create a dataset/model or show labels beyond the live champion. |
 | **Fresh live-champion audit** | On an untouched 64-state complement, compare frozen cheap and N=30 choices against the deployed report-LCB root evaluator. | Cheap and N=30 all-state regret bounds passed (`0.0354` and `0.0439`), but the eight boundary states had a weaker N=30 bound (`0.1421`). | Ordinary rows can be labeled cheaply; uncertain/boundary rows need escalation. This is the direct empirical reason for Stage C's mixed-budget hard tail. |
 | **Teacher Stage C generation one** | Capture a split-safe hard-tail exam, label candidate actions with corrected iid hidden-world folds, and train eight-seed ranking/outcome cohorts on DESIGN/CALIB only. | Capture and 2,048/2,048 corrected labels passed. The 1,536-row model generation selected none; a protected play ensemble also selected none on one fresh 480-row REPORT (`-0.008228`, LCB `-0.018944`). | Close the spent REPORT and policy. The usable lesson is that model signal existed in strata but did not make reliable overrides. |
-| **Teacher Stage C generation two (active)** | Add 5,504 fresh DESIGN/CALIB labels for 7,040 total, hold out a third 512-state REPORT, and compare all-pairs learning with a candidate-zero-relative objective. | All 96 cells and 576 checkpoints replayed and externally passed. The epoch-32 all-pairs bury cohort won with 8/8 positive seeds and median candidate-zero improvement `+0.016418`; the direct loss did not win. V1 REPORT then failed in argparse before evidence and spent the third population. Fresh successor `3c318da2…41e4` supplies a fourth zero-overlap 512-row exam. | Review recovery source, freeze/review its packet, then spend one 32-row bury look. A miss closes; a pass advances to protected composition. |
+| **Teacher Stage C generation two (active)** | Add 5,504 fresh DESIGN/CALIB labels for 7,040 total, hold out a third 512-state REPORT, and compare all-pairs learning with a candidate-zero-relative objective. | All 96 cells and 576 checkpoints replayed and externally passed. The epoch-32 all-pairs bury cohort won with 8/8 positive seeds and median candidate-zero improvement `+0.016418`; the direct loss did not win. V1 REPORT then failed in argparse before evidence and spent the third population. Fresh successor `3c318da2…41e4` passed external recovery review; score-free packet `e856c02e…175e2` freezes its 32 bury rows and has been rebuilt twice without opening outcomes. | Obtain the concrete-controller PASS, spend the one 32-row bury look, and externally replay the terminal result. A miss closes; a pass advances to protected composition. |
 
 In plain English, Stage B asked, “Can the cheap grader reproduce the expensive
 grader on normal exam questions?” Stage C asks, “Can we write a better exam,

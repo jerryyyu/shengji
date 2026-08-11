@@ -131,6 +131,9 @@ bounded adaptation mechanism; estimator-only repairs and O1 remain closed.
   core one bounded phase at a time, with pure/compiled parity and bot timing.
 - [ ] Vectorize `bc_train`; the per-decision loop is MPS-dispatch-bound.
 - [ ] Add a concurrent-room production latency gate; keep Xray work off-loop.
+- [ ] Centralize versioned environment-flag parsing. `SHENGJI_FAST=0` currently
+  means false to some paths and true to others, so pure-route evidence must
+  unset the variable until the migration lands with route/provenance tests.
 - [ ] Add CI for server tests, frontend tests/build and a short compiled duel.
 - [ ] Finish reconnect/takeover, spectator privacy, trick history and portrait/
   zh-CN work as separate product lanes.

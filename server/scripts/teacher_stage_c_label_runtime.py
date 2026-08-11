@@ -1625,20 +1625,13 @@ def _audit_gate(rows: Sequence[Mapping[str, object]],
     }
 
 
-def aggregate(*, packet_path: Path, expected_packet_sha256: str,
-              receipt_path: Path, expected_receipt_sha256: str,
-              controller_review_record: Path, state_set_review_record: Path,
-              shard_paths: Sequence[Path], out: Path) -> dict:
+def recompute_aggregate_payload(
+    *, packet: Mapping[str, object], expected_packet_sha256: str,
+    expected_receipt_sha256: str, state_set: Mapping[str, object],
+    shard_paths: Sequence[Path],
+) -> tuple[dict, list[dict]]:
+    """Reopen every label row and deterministically rebuild the aggregate."""
     ctrl = _ctrl()
-    packet = _controller_packet(packet_path, expected_packet_sha256)
-    state_set, _verification = _validated_parents(
-        packet, state_set_review_record)
-    _receipt(receipt_path, expected_receipt_sha256, packet,
-             expected_packet_sha256, controller_review_record,
-             state_set_review_record)
-    expected_out = (REPO / packet["result_contract"]["aggregate"]).resolve()
-    if out.resolve() != expected_out:
-        raise LabelRefused("Stage-C label aggregate output path drift")
     if len(shard_paths) != ctrl.LABEL_SHARDS:
         raise LabelRefused("Stage-C aggregate requires all label shards")
     net = _load_v11()
@@ -1669,6 +1662,21 @@ def aggregate(*, packet_path: Path, expected_packet_sha256: str,
         "row_sha256s_sha256": sha256_bytes(canonical_json(
             shard["row_sha256s"])),
     } for shard in shards]
+    training_label_states = getattr(ctrl, "TRAINING_LABEL_STATES", None)
+    if training_label_states is None:
+        expected_splits = getattr(ctrl, "EXPECTED_SPLITS", None)
+        if expected_splits is not None:
+            training_label_states = (expected_splits["DESIGN"]
+                                     + expected_splits["CALIB"])
+        else:
+            training_label_states = sum(
+                len(shard["rows"]) for shard in shards
+                if shard["split"] in {"DESIGN", "CALIB"})
+    training_label_states = int(training_label_states)
+    reused_label_states = int(getattr(ctrl, "REUSED_LABEL_STATES", 0))
+    sealed_report_states = int(getattr(ctrl, "SEALED_REPORT_STATES", 512))
+    compute_fidelity_gate = bool(getattr(
+        ctrl, "COMPUTE_FIDELITY_GATE", True))
     payload = {
         "schema": ctrl.AGGREGATE_SCHEMA,
         "run_id": ctrl.RUN_ID,
@@ -1688,7 +1696,8 @@ def aggregate(*, packet_path: Path, expected_packet_sha256: str,
             "splits": ["DESIGN", "CALIB"],
             "shards": [item for item in shard_manifest
                        if item["split"] in {"DESIGN", "CALIB"}],
-            "states": 1536,
+            "states": training_label_states,
+            "reused_labels_not_in_shards": reused_label_states,
             "report_rows_included": False,
             "training_packet_review_authorized": False,
         },
@@ -1696,7 +1705,7 @@ def aggregate(*, packet_path: Path, expected_packet_sha256: str,
             "split": "REPORT",
             "shards": [item for item in shard_manifest
                        if item["split"] == "REPORT"],
-            "states": 512,
+            "states": sealed_report_states,
             "sealed_from_training_and_seed_selection": True,
             "report_open_authorized": False,
         },
@@ -1709,12 +1718,53 @@ def aggregate(*, packet_path: Path, expected_packet_sha256: str,
         "production_promotion": False,
         "production_deployment": False,
     }
-    if refusals == 0:
+    if not hasattr(ctrl, "REUSED_LABEL_STATES"):
+        payload["design_calib_manifest"].pop(
+            "reused_labels_not_in_shards")
+    if refusals == 0 and compute_fidelity_gate:
         gate = _audit_gate(rows, _state_map(state_set))
         payload["fidelity_gate"] = gate
         payload["model_packet_review_authorized"] = (
             gate["decision"] == "AUTHORIZE_MODEL_PACKET_REVIEW")
+    elif refusals == 0:
+        # Expanded labels add no audit/REPORT rows.  The original immutable
+        # 2,048-state aggregate already passed its fidelity gate; this run's
+        # only admissible question is whether every newly scheduled row
+        # completed inside the frozen work ceiling.  A later model packet must
+        # still independently authenticate and merge the reused labels.
+        payload["fidelity_gate"] = {
+            "schema": "teacher-stage-c-expanded-label-completion-gate-v1",
+            "fidelity_recomputed": False,
+            "reason": "no audit or REPORT rows scheduled in expansion",
+            "original_fidelity_parent_required": True,
+            "all_new_rows_complete": True,
+            "decision": "AUTHORIZE_MODEL_PACKET_REVIEW",
+            "training_authorized": False,
+            "report_open_authorized": False,
+        }
+        payload["model_packet_review_authorized"] = True
     payload["aggregate_sha256"] = _self_hash(payload, "aggregate_sha256")
+    return payload, shards
+
+
+def aggregate(*, packet_path: Path, expected_packet_sha256: str,
+              receipt_path: Path, expected_receipt_sha256: str,
+              controller_review_record: Path, state_set_review_record: Path,
+              shard_paths: Sequence[Path], out: Path) -> dict:
+    ctrl = _ctrl()
+    packet = _controller_packet(packet_path, expected_packet_sha256)
+    state_set, _verification = _validated_parents(
+        packet, state_set_review_record)
+    _receipt(receipt_path, expected_receipt_sha256, packet,
+             expected_packet_sha256, controller_review_record,
+             state_set_review_record)
+    expected_out = (REPO / packet["result_contract"]["aggregate"]).resolve()
+    if out.resolve() != expected_out:
+        raise LabelRefused("Stage-C label aggregate output path drift")
+    payload, shards = recompute_aggregate_payload(
+        packet=packet, expected_packet_sha256=expected_packet_sha256,
+        expected_receipt_sha256=expected_receipt_sha256,
+        state_set=state_set, shard_paths=shard_paths)
     _controller_packet(packet_path, expected_packet_sha256)
     final_state_set, _final_verification = _validated_parents(
         packet, state_set_review_record)

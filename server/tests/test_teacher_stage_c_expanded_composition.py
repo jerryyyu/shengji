@@ -234,7 +234,7 @@ def test_external_parent_refs_are_pinned_and_traversal_safe(
         RUNTIME._path_from_ref(escaped, "example")
 
 
-def test_external_report_terminal_authority_precedes_verifier(
+def test_external_report_terminal_authority_precedes_exact_replay(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ):
     """A weak terminal marker must not reach the outcome-opening verifier."""
@@ -248,6 +248,9 @@ def test_external_report_terminal_authority_precedes_verifier(
 
     source_logical = "server/scripts/frozen-report-source.py"
     source = artifact(source_logical, b"# frozen\n")
+    monkeypatch.setattr(
+        BASE.REPORT_CTRL, "SUPERVISOR_SCRIPT_PATH", source_logical,
+        raising=False)
     packet = {
         "schema": BASE.REPORT_CTRL.SCHEMA,
         "packet_id": BASE.REPORT_CTRL.PACKET_ID,
@@ -299,6 +302,7 @@ def test_external_report_terminal_authority_precedes_verifier(
                 == terminal_review.resolve() else controller_claim)
 
     verifier_calls = []
+    allow_verifier = False
 
     def run(argv, *, cwd, check, capture_output, text, **kwargs):
         if argv[0] == "git":
@@ -307,7 +311,19 @@ def test_external_report_terminal_authority_precedes_verifier(
             return SimpleNamespace(
                 returncode=0, stdout=stdout, stderr="")
         verifier_calls.append((argv, cwd, kwargs))
-        raise AssertionError("terminal verifier opened weakly authorized data")
+        if not allow_verifier:
+            raise AssertionError(
+                "terminal verifier opened weakly authorized data")
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({
+                "verified": True,
+                "run_id": BASE.REPORT_CTRL.RUN_ID,
+                "composition_packet_review_authorized": True,
+                "strength_claim": False,
+                "production_promotion": False,
+            }) + "\n",
+            stderr="")
 
     monkeypatch.setattr(BASE, "_marker_claim", marker_claim)
     monkeypatch.setattr(
@@ -333,3 +349,43 @@ def test_external_report_terminal_authority_precedes_verifier(
             report_supervisor_final_sha256=BASE.sha256_file(final_path),
             report_result_review_record=terminal_review)
     assert verifier_calls == []
+
+    receipt = {
+        "schema": BASE.REPORT_RUNTIME.RECEIPT_SCHEMA,
+        "run_id": BASE.REPORT_CTRL.RUN_ID,
+        "git": "a" * 40,
+        "controller_packet_sha256": BASE.sha256_file(packet_path),
+        "controller_review_record_sha256":
+            BASE.sha256_file(controller_review),
+        "selected_capability": packet["selected_capability"],
+        "report_execution_authorized": True,
+        "teacher_labels_computed": 0,
+        "model_predictions_computed": 0,
+        "composition_authorized": False,
+    }
+    receipt["receipt_sha256"] = BASE.self_hash(receipt, "receipt_sha256")
+    receipt_path.write_bytes(BASE.canonical_json(receipt))
+    weak_terminal_claim.update({
+        "report_receipt_sha256": BASE.sha256_file(receipt_path),
+        "one_composition_controller_freeze_authorized": True,
+    })
+    allow_verifier = True
+
+    reopened_root, reopened_packet, reopened_receipt = \
+        BASE._external_report_parents(
+            report_packet_path=packet_path,
+            report_packet_sha256=BASE.sha256_file(packet_path),
+            report_review_record=controller_review,
+            fresh_report_review_record=fresh_review,
+            state_set_review_record=state_review,
+            report_receipt_path=receipt_path,
+            report_receipt_sha256=BASE.sha256_file(receipt_path),
+            report_result_path=result_path,
+            report_result_sha256=BASE.sha256_file(result_path),
+            report_supervisor_final_path=final_path,
+            report_supervisor_final_sha256=BASE.sha256_file(final_path),
+            report_result_review_record=terminal_review)
+    assert reopened_root == root.resolve()
+    assert reopened_packet == packet
+    assert reopened_receipt == receipt
+    assert len(verifier_calls) == 1

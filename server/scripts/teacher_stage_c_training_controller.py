@@ -1025,11 +1025,34 @@ def expected_review_claim(packet: Mapping[str, object],
     }
 
 
-def publish_exclusive(path: Path, payload: Mapping[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _require_output_available(path: Path) -> None:
     partial = Path(str(path) + ".partial")
     if os.path.lexists(path) or os.path.lexists(partial):
         raise TrainingControllerRefused(f"refusing existing output: {path}")
+
+
+def require_freeze_outputs_available(
+        dataset_out: Path, packet_out: Path) -> None:
+    """Refuse either half of the immutable freeze before publishing one.
+
+    The dataset and controller packet are one logical artifact pair.  Checking
+    only the file currently being published can strand a dataset if the packet
+    path was already occupied.  Check both final and partial names together,
+    once before opening the reviewed inputs and again immediately before the
+    first publication.
+    """
+    if (dataset_out != (REPO / DATASET_PATH).resolve()
+            or packet_out != (REPO / PACKET_PATH).resolve()):
+        raise TrainingControllerRefused(
+            "real Stage-C model dataset/packet output path drift")
+    _require_output_available(dataset_out)
+    _require_output_available(packet_out)
+
+
+def publish_exclusive(path: Path, payload: Mapping[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = Path(str(path) + ".partial")
+    _require_output_available(path)
     data = canonical_json(payload)
     try:
         with partial.open("xb") as handle:
@@ -1175,6 +1198,10 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = parser().parse_args()
+    dataset_out = Path(args.dataset_out).resolve()
+    packet_out = Path(args.packet_out).resolve()
+    if args.command == "freeze":
+        require_freeze_outputs_available(dataset_out, packet_out)
     (label_packet, state_set, aggregate, aggregate_review, fresh_report,
      fresh_report_review, git) = _validated_inputs(args)
     dataset = materialize_dataset(
@@ -1183,21 +1210,16 @@ def main() -> int:
         state_set=state_set, aggregate=aggregate,
         fresh_report=fresh_report,
         fresh_report_review=fresh_report_review)
-    dataset_out = Path(args.dataset_out).resolve()
-    packet_out = Path(args.packet_out).resolve()
     if args.command == "freeze":
-        if (dataset_out != (REPO / DATASET_PATH).resolve()
-                or packet_out != (REPO / PACKET_PATH).resolve()):
-            raise TrainingControllerRefused(
-                "real Stage-C model dataset/packet output path drift")
-        publish_exclusive(dataset_out, dataset)
-        dataset_external_sha256 = sha256_file(dataset_out)
+        dataset_external_sha256 = sha256_bytes(canonical_json(dataset))
         packet = build_packet(
             git=git, dataset=dataset,
             dataset_external_sha256=dataset_external_sha256,
             aggregate=aggregate, aggregate_review=aggregate_review,
             fresh_report=fresh_report,
             fresh_report_review=fresh_report_review)
+        require_freeze_outputs_available(dataset_out, packet_out)
+        publish_exclusive(dataset_out, dataset)
         publish_exclusive(packet_out, packet)
     else:
         if (not is_regular_unlinked(dataset_out)

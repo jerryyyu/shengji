@@ -233,6 +233,49 @@ def test_fresh_report_exact_review_marker_is_the_freeze_authority(
     assert claim == review_claim
 
 
+@pytest.mark.parametrize(
+    "occupied",
+    ("dataset", "dataset.partial", "packet", "packet.partial"),
+)
+def test_freeze_preflights_the_complete_output_pair_before_opening_inputs(
+        monkeypatch, tmp_path: Path, occupied: str) -> None:
+    monkeypatch.setattr(CTRL, "REPO", tmp_path)
+    dataset_out = (tmp_path / CTRL.DATASET_PATH).resolve()
+    packet_out = (tmp_path / CTRL.PACKET_PATH).resolve()
+    paths = {
+        "dataset": dataset_out,
+        "dataset.partial": Path(str(dataset_out) + ".partial"),
+        "packet": packet_out,
+        "packet.partial": Path(str(packet_out) + ".partial"),
+    }
+    paths[occupied].parent.mkdir(parents=True, exist_ok=True)
+    paths[occupied].write_text("occupied\n")
+
+    class FrozenArgs:
+        pass
+
+    frozen_args = FrozenArgs()
+    frozen_args.command = "freeze"
+    frozen_args.dataset_out = str(dataset_out)
+    frozen_args.packet_out = str(packet_out)
+
+    class FrozenParser:
+        @staticmethod
+        def parse_args():
+            return frozen_args
+
+    monkeypatch.setattr(CTRL, "parser", lambda: FrozenParser())
+    monkeypatch.setattr(
+        CTRL, "_validated_inputs",
+        lambda args: pytest.fail("reviewed inputs opened before pair preflight"))
+
+    with pytest.raises(CTRL.TrainingControllerRefused, match="existing output"):
+        CTRL.main()
+    if occupied not in {"dataset", "dataset.partial"}:
+        assert not dataset_out.exists()
+        assert not Path(str(dataset_out) + ".partial").exists()
+
+
 def test_packet_exposes_only_training_review_authority(monkeypatch) -> None:
     monkeypatch.setattr(
         CTRL, "_source_sha256s",

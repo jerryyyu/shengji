@@ -10,9 +10,12 @@ deploys the policy itself.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import math
 import os
+import re
+import signal
 import stat
 import subprocess
 import sys
@@ -49,6 +52,17 @@ AGGREGATE_SCHEMA = "teacher-stage-c-composition-screen-result-v1"
 
 class CompositionRuntimeRefused(RuntimeError):
     """The reviewed packet, evidence population, or work contract drifted."""
+
+
+class CompositionSupervisorInterrupted(BaseException):
+    """A handled signal terminally interrupted the one-shot screen owner."""
+
+    def __init__(self, signum: int):
+        self.signum = int(signum)
+        self.signal_name = signal.Signals(signum).name
+        super().__init__(
+            f"composition supervisor received {self.signal_name}; "
+            "all owned shard children are terminally stopped")
 
 
 canonical_json = CTRL.canonical_json
@@ -885,20 +899,109 @@ def _child_command(
 
 def _terminate_children(processes: Sequence[subprocess.Popen]) -> None:
     live = [process for process in processes if process.poll() is None]
+    if not live:
+        return
     for process in live:
-        process.terminate()
+        try:
+            process.terminate()
+        except ProcessLookupError:
+            pass
     deadline = time.monotonic() + 5.0
     while live and time.monotonic() < deadline:
         live = [process for process in live if process.poll() is None]
         if live:
             time.sleep(0.05)
     for process in live:
-        process.kill()
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
     for process in processes:
         try:
             process.wait(timeout=5.0)
         except subprocess.TimeoutExpired:
-            process.kill()
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+            process.wait()
+
+
+class SupervisorSignalOwner:
+    """Own shard children across signals, including the Popen return gap."""
+
+    def __init__(self) -> None:
+        self.signals = tuple(
+            getattr(signal, name) for name in CTRL.SUPERVISOR_HANDLED_SIGNALS)
+        self.previous: dict[int, object] = {}
+        self.processes: list[subprocess.Popen] = []
+        self.interrupted_by: int | None = None
+        self.spawning = False
+
+    def __enter__(self) -> "SupervisorSignalOwner":
+        self.previous = {
+            signum: signal.getsignal(signum) for signum in self.signals}
+        for signum in self.signals:
+            signal.signal(signum, self._handle)
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> bool:
+        try:
+            if exc_type is not None or self.processes:
+                _terminate_children(self.processes)
+        finally:
+            for signum, previous in self.previous.items():
+                signal.signal(signum, previous)
+        return False
+
+    def _handle(self, signum: int, _frame: object) -> None:
+        if self.interrupted_by is None:
+            self.interrupted_by = signum
+            for handled in self.signals:
+                signal.signal(handled, signal.SIG_IGN)
+        if not self.spawning:
+            raise CompositionSupervisorInterrupted(self.interrupted_by)
+
+    def register(self, process: subprocess.Popen) -> None:
+        if process in self.processes:
+            raise CompositionRuntimeRefused(
+                "duplicate composition shard signal ownership")
+        self.processes.append(process)
+
+    @contextlib.contextmanager
+    def deferred_until_registered(self):
+        if self.spawning:
+            raise CompositionRuntimeRefused(
+                "nested composition shard spawn is not authorized")
+        self.spawning = True
+        try:
+            yield
+        finally:
+            self.spawning = False
+            if self.interrupted_by is not None:
+                raise CompositionSupervisorInterrupted(self.interrupted_by)
+
+
+_SHARD_PROGRESS_RE = re.compile(
+    r"^\s*(treatment|matched_null|champion): (\d+)/(\d+) rounds$")
+
+
+def _latest_shard_progress(index: int, path: Path) -> dict | None:
+    """Read only a child's outcome-free progress line for the heartbeat."""
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        return None
+    for line in reversed(lines):
+        match = _SHARD_PROGRESS_RE.match(line)
+        if match is not None:
+            return {
+                "shard_index": index,
+                "arm": match.group(1),
+                "rounds_complete": int(match.group(2)),
+                "rounds_total": int(match.group(3)),
+            }
+    return None
 
 
 def supervise(
@@ -957,35 +1060,46 @@ def supervise(
     processes: list[subprocess.Popen] = []
     started = time.monotonic()
     try:
-        for command, log_path in zip(commands, log_paths, strict=True):
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            handle = log_path.open("xb")
-            handles.append(handle)
-            processes.append(subprocess.Popen(
-                command, cwd=REPO, stdout=handle,
-                stderr=subprocess.STDOUT))
-        deadline = (started + float(capacity["screen_max_shard_seconds"])
-                    + 120.0)
-        next_heartbeat = started
-        while True:
-            codes = [process.poll() for process in processes]
-            if any(code not in {None, 0} for code in codes):
-                _terminate_children(processes)
-                raise CompositionRuntimeRefused(
-                    f"composition supervisor child failure: {codes}")
-            if all(code == 0 for code in codes):
-                break
-            now = time.monotonic()
-            if now >= deadline:
-                _terminate_children(processes)
-                raise CompositionRuntimeRefused(
-                    "composition supervisor exceeded reviewed shard timeout")
-            if now >= next_heartbeat:
-                complete = sum(code == 0 for code in codes)
-                print(f"composition screen: {complete}/{CTRL.SHARD_COUNT} "
-                      "shards complete", flush=True)
-                next_heartbeat = now + 30.0
-            time.sleep(0.25)
+        with SupervisorSignalOwner() as owner:
+            for command, log_path in zip(commands, log_paths, strict=True):
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                handle = log_path.open("xb")
+                handles.append(handle)
+                with owner.deferred_until_registered():
+                    process = subprocess.Popen(
+                        command, cwd=REPO, stdout=handle,
+                        stderr=subprocess.STDOUT)
+                    processes.append(process)
+                    owner.register(process)
+            deadline = (started + float(capacity["screen_max_shard_seconds"])
+                        + 120.0)
+            next_heartbeat = started
+            while True:
+                codes = [process.poll() for process in processes]
+                if any(code not in {None, 0} for code in codes):
+                    raise CompositionRuntimeRefused(
+                        f"composition supervisor child failure: {codes}")
+                if all(code == 0 for code in codes):
+                    break
+                now = time.monotonic()
+                if now >= deadline:
+                    raise CompositionRuntimeRefused(
+                        "composition supervisor exceeded reviewed shard timeout")
+                if now >= next_heartbeat:
+                    complete = sum(code == 0 for code in codes)
+                    child_progress = [value for value in (
+                        _latest_shard_progress(index, path)
+                        for index, path in enumerate(log_paths))
+                        if value is not None]
+                    print(json.dumps({
+                        "event": "stage-c-composition-screen-progress-v1",
+                        "shards_complete": complete,
+                        "shards_total": CTRL.SHARD_COUNT,
+                        "progress": child_progress,
+                    }, sort_keys=True), flush=True)
+                    next_heartbeat = (
+                        now + CTRL.SUPERVISOR_HEARTBEAT_SECONDS)
+                time.sleep(0.25)
     except BaseException:
         _terminate_children(processes)
         raise
@@ -1674,6 +1788,9 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
+    except CompositionSupervisorInterrupted as exc:
+        print(f"REFUSED: {exc}", file=sys.stderr)
+        raise SystemExit(128 + exc.signum) from exc
     except (CompositionRuntimeRefused, SCREEN.StageCScreenError,
             COMPOSITION.StageCCompositionError,
             NPNET.StageCNumpyError) as exc:

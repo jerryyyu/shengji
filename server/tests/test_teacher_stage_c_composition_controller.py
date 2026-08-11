@@ -236,6 +236,13 @@ def test_packet_binds_exact_models_population_and_narrow_authority(
                         lambda: {"source": "6" * 64})
     monkeypatch.setattr(CTRL, "runtime_contract", lambda: {
         "host": "mini", "python": "3.14", "numpy": "2.5",
+        "supervisor_heartbeat_seconds": 30,
+        "supervisor_signal_contract": {
+            "handled_signals": ["SIGHUP", "SIGINT", "SIGTERM"],
+            "signals_deferred_until_child_registered": True,
+            "terminates_all_owned_children": True,
+            "orphaned_shards_authorized": False,
+        },
     })
     built = CTRL.build_packet(
         git="a" * 40, report_packet=packet,
@@ -263,6 +270,12 @@ def test_packet_binds_exact_models_population_and_narrow_authority(
     assert len(built["model_exports"]) == 8
     assert built["screen_contract"]["clusters"] == 2_048
     assert built["screen_contract"]["shards"] == 8
+    assert built["screen_contract"]["supervisor_signal_contract"] == {
+        "handled_signals": ["SIGHUP", "SIGINT", "SIGTERM"],
+        "signals_deferred_until_child_registered": True,
+        "terminates_all_owned_children": True,
+        "orphaned_shards_authorized": False,
+    }
     assert built["capacity_contract"]["clusters"] == 4
     assert built["authority"] == {
         "capacity_preflight_review_authorized": True,
@@ -332,6 +345,13 @@ def test_initial_review_claim_authorizes_capacity_only(
     monkeypatch.setattr(CTRL, "_source_sha256s", lambda: {})
     monkeypatch.setattr(CTRL, "runtime_contract", lambda: {
         "host": "mini", "python": "3.14", "numpy": "2.5",
+        "supervisor_heartbeat_seconds": 30,
+        "supervisor_signal_contract": {
+            "handled_signals": ["SIGHUP", "SIGINT", "SIGTERM"],
+            "signals_deferred_until_child_registered": True,
+            "terminates_all_owned_children": True,
+            "orphaned_shards_authorized": False,
+        },
     })
     built = CTRL.build_packet(
         git="a" * 40, report_packet=packet,
@@ -345,6 +365,9 @@ def test_initial_review_claim_authorizes_capacity_only(
     claim = CTRL.expected_review_claim(built, "8" * 64)
     assert claim["one_capacity_preflight_authorized"] is True
     assert claim["one_screen_execution_authorized"] is False
+    assert claim["supervisor_heartbeat_seconds"] == 30
+    assert claim["supervisor_signal_contract"][
+        "orphaned_shards_authorized"] is False
     assert claim["confirmation_launch_authorized"] is False
     assert claim["v11_inference_authorized"] is False
     assert claim["strength_claim"] is False

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -647,6 +650,68 @@ def test_supervisor_consumes_one_slot_before_children_and_seals_hashes(
                 "expected_capacity_result_sha256"],
             capacity_review_record=capacity["capacity_review_record"],
             out=out)
+
+
+def test_supervisor_heartbeat_reads_only_outcome_free_child_progress(
+        tmp_path: Path) -> None:
+    path = tmp_path / "shard.log"
+    path.write_text(
+        "unrelated output\n"
+        "    treatment: 100/512 rounds\n"
+        "not-json and no outcome bytes\n"
+        "    matched_null: 200/512 rounds\n")
+    assert RUNTIME._latest_shard_progress(3, path) == {
+        "shard_index": 3,
+        "arm": "matched_null",
+        "rounds_complete": 200,
+        "rounds_total": 512,
+    }
+    assert RUNTIME._latest_shard_progress(4, tmp_path / "missing") is None
+
+
+@pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGHUP])
+def test_supervisor_signal_owner_terminates_registered_real_child(
+        signum: int) -> None:
+    process = None
+    with pytest.raises(RUNTIME.CompositionSupervisorInterrupted) as caught:
+        with RUNTIME.SupervisorSignalOwner() as owner:
+            process = subprocess.Popen([
+                sys.executable, "-c", "import time; time.sleep(60)"])
+            owner.register(process)
+            os.kill(os.getpid(), signum)
+    assert caught.value.signum == signum
+    assert process is not None
+    process.wait(timeout=2.0)
+    assert process.poll() is not None
+
+
+def test_supervisor_signal_during_spawn_is_deferred_until_registration(
+        monkeypatch) -> None:
+    real_popen = subprocess.Popen
+    spawned = []
+
+    def signal_before_popen_returns(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+        spawned.append(process)
+        os.kill(os.getpid(), signal.SIGTERM)
+        return process
+
+    monkeypatch.setattr(
+        RUNTIME.subprocess, "Popen", signal_before_popen_returns)
+    try:
+        with pytest.raises(RUNTIME.CompositionSupervisorInterrupted):
+            with RUNTIME.SupervisorSignalOwner() as owner:
+                with owner.deferred_until_registered():
+                    process = RUNTIME.subprocess.Popen([
+                        sys.executable, "-c", "import time; time.sleep(60)"])
+                    owner.register(process)
+    finally:
+        for process in spawned:
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=2.0)
+    assert len(spawned) == 1
+    assert spawned[0].poll() is not None
 
 
 def test_aggregate_rejects_rehashed_shard_after_external_seal_before_open(

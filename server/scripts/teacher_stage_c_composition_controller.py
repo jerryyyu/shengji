@@ -71,6 +71,8 @@ SCREEN_SEED0 = 181_000_000
 SCREEN_CLUSTERS = 2_048
 SHARD_COUNT = 8
 CLUSTERS_PER_SHARD = SCREEN_CLUSTERS // SHARD_COUNT
+SUPERVISOR_HEARTBEAT_SECONDS = 30
+SUPERVISOR_HANDLED_SIGNALS = ("SIGHUP", "SIGINT", "SIGTERM")
 MODEL_DIR = f"server/runs/logs/{RUN_ID}/models"
 MODEL_PATHS = tuple(
     f"{MODEL_DIR}/seed-{seed}.npz" for seed in MODEL.TRAINING_SEEDS)
@@ -207,6 +209,13 @@ def runtime_contract() -> dict:
         "fast_binary_sha256": sha256_file(binary_path),
         "workers": SHARD_COUNT,
         "progress_every_clusters": 50,
+        "supervisor_heartbeat_seconds": SUPERVISOR_HEARTBEAT_SECONDS,
+        "supervisor_signal_contract": {
+            "handled_signals": list(SUPERVISOR_HANDLED_SIGNALS),
+            "signals_deferred_until_child_registered": True,
+            "terminates_all_owned_children": True,
+            "orphaned_shards_authorized": False,
+        },
     }
 
 
@@ -595,6 +604,13 @@ def screen_contract() -> dict:
         "reviewed_capacity_result_required_before_screen_admission": True,
         "per_shard_timeout_from_reviewed_capacity_required": True,
         "supervisor_owns_all_shards_and_logs": True,
+        "supervisor_heartbeat_seconds": SUPERVISOR_HEARTBEAT_SECONDS,
+        "supervisor_signal_contract": {
+            "handled_signals": list(SUPERVISOR_HANDLED_SIGNALS),
+            "signals_deferred_until_child_registered": True,
+            "terminates_all_owned_children": True,
+            "orphaned_shards_authorized": False,
+        },
         "external_supervisor_final_review_required_before_aggregate": True,
         "aggregate_slot_precedes_outcome_open": True,
         "pass_authority": "confirmation packet review only",
@@ -731,6 +747,10 @@ def expected_review_claim(packet: Mapping[str, object],
         "execution_host": packet["runtime_contract"]["host"],
         "python": packet["runtime_contract"]["python"],
         "numpy": packet["runtime_contract"]["numpy"],
+        "supervisor_heartbeat_seconds": packet["runtime_contract"][
+            "supervisor_heartbeat_seconds"],
+        "supervisor_signal_contract": packet["runtime_contract"][
+            "supervisor_signal_contract"],
         "novel_model_proposer": "stage_c_mc_teacher_ensemble",
         "v11_inference_authorized": False,
         "independent_review": True,

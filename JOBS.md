@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-11 01:08 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-11 00:42 EDT. This file owns live compute and compact
 terminal stubs. Result interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; full chronology in dated `docs_archive/` logs.
 
@@ -9,7 +9,7 @@ order in `BACKLOG.md`; full chronology in dated `docs_archive/` logs.
 | host | live job | safe progress | next admitted use |
 |---|---|---|---|
 | **Mini** | **Idle; expanded labels terminal** | Exact source `32d94a4`, receipt `48a64759…8efe`. 16/16 shards completed: 5,504 rows, zero refusals, 13,136,320 candidate worlds; aggregate `3deb3a81…f6ca`. | Independent `TEACHER_STAGE_C_EXPANDED_LABEL_RESULT_V1_REVIEW`, then freeze/review one 96-cell training packet. No training before its separate PASS. |
-| **Air** | `s4-point-banking-replication-air-180b-v1` | Exact `fb6ec1a`, receipt `fc6d54e7…1077`, 8/8 workers. Last score-free progress 1,358/2,048 primary clusters; 256 exact-null sentinels are also frozen. | Preserve to terminal publication, verify, then independent result review. Never inspect interim utility or retry. |
+| **Air** | `s4-point-banking-replication-air-180b-v1` | Exact `fb6ec1a`, receipt `fc6d54e7…1077`, 8/8 workers. Last score-free progress 1,398/2,048 primary clusters; 256 exact-null sentinels are also frozen. | Preserve to terminal publication, verify, then independent result review. Never inspect interim utility or retry. |
 | **Fly** | `mc-s0-report-lcb` | Release 17 live. Xray kitty-bury support merged in PR #11; no policy change. | Passive latency/correctness monitoring only. |
 
 ## Next compute sequence

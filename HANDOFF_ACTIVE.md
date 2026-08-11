@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-11 01:08 EDT. This is the executable mailbox, not a
+Last compacted: 2026-08-11 00:42 EDT. This is the executable mailbox, not a
 history. Exact review prose and raw markers live in `HANDOFF_REVIEW.md`;
 terminal policy conclusions in `AI_POLICIES.md`; queue order in `BACKLOG.md`.
 
@@ -38,8 +38,8 @@ interim utility, stop/restart a healthy shard, retry, extend or tune the run.
 | Expanded labels | **Terminal COMPLETE / review open:** 5,504 new labels plus 1,536 retained labels yield 7,040 DESIGN/CALIB examples. Third REPORT is sealed at 512 states. | Claude independently replays the aggregate and posts `TEACHER_STAGE_C_EXPANDED_LABEL_RESULT_V1_REVIEW`. No training-packet freeze before PASS. |
 | Expanded training | Draft PR #29 is code-complete at pushed `c18b80e`: matched `all_pairs_v1` versus `candidate0_relative_v2`, 96 cells, 321 Stage-C/Teacher tests green, and a full read-only 7,040-state replay passed. No packet exists. | After label-result PASS, freeze one DESIGN/CALIB-only training packet for a separate controller review. |
 | REPORT/composition | Third REPORT has never opened. No capability currently passes. | Train only after packet PASS; select one whole cohort on DESIGN/CALIB, open REPORT once, and compose only a REPORT passer inside report-LCB with incumbent fallback and same-work null. |
-| S6 shuai-pai | Draft PR #19 `cfa5a53` guarantees at least one bounded public lead-only shuai candidate whenever legal, including the KESP and late trump-only witnesses. No screen exists. | Reproduce the KESP omissions, finish source-semantics review, then design an equal-work state screen. Do not consume T4 compute. |
-| Repository hygiene | PR #11 merged; status-only PRs #10/#12/#21/#25 closed; 13 dead/redundant remote branches removed. Active Stage-C ancestors remain because exact runs and stacked PRs still depend on them. | Consolidate the Stage-C stack onto current `main` after terminal evidence, then close/delete ancestors only after ignored evidence is tagged or archived. |
+| S6 shuai-pai | Draft PR #19 `2605b04` guarantees at least one bounded public lead-only shuai candidate whenever legal, including KESP and late trump-only witnesses. Twelve focused/59 broader tests and a 200-deal coverage audit pass. No screen exists. | Obtain external source-semantics review, then design an equal-work state screen. Do not consume T4 compute or merge an unused source. |
+| Repository hygiene | PR #11 merged; status-only PRs #10/#12/#21/#25 closed; 16 dead/redundant remote branches and three clean routing worktrees removed. Nine source-required markers lost by `d5348da` were recovered byte-exact and regression-protected. Active Stage-C ancestors remain because exact runs and stacked PRs still depend on them. | Publish PR #30 after review. Consolidate the Stage-C stack onto current `main` after terminal evidence, then close/delete ancestors only after ignored evidence is tagged or archived. |
 
 ## Review boundaries
 

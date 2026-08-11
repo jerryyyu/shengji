@@ -3,8 +3,10 @@
 
 The expanded 7,040-state DESIGN/CALIB run selected one capability without
 opening its third 512-state REPORT tranche: the eight-seed, epoch-32 bury
-ranking ensemble trained with the original all-pairs objective.  This
-controller binds that exact terminal evidence to the 32 sealed bury states.
+ranking ensemble trained with the original all-pairs objective.  A command
+contract failure spent that third REPORT before producing evidence.  This
+controller therefore authenticates all three spent REPORT populations and
+binds the same capability to a fourth, genuinely untouched 512-state tranche.
 
 Freezing and verifying are score-free.  They reconstruct the deterministic
 REPORT population only to authenticate its hashes and schedule; they compute
@@ -39,42 +41,57 @@ from shengji.rl import stage_c_report as REPORT  # noqa: E402
 from shengji.rl import stage_c_training as TRAIN  # noqa: E402
 
 
-SCHEMA = "teacher-stage-c-expanded-fresh-report-controller-v1"
-PACKET_ID = "teacher-v3-hard-tail-stage-c-expanded-fresh-report-controller-v1"
-RUN_ID = "teacher-v3-hard-tail-stage-c-expanded-fresh-report-v1"
+SCHEMA = "teacher-stage-c-expanded-fresh-report-controller-v2"
+PACKET_ID = "teacher-v3-hard-tail-stage-c-expanded-fresh-report-controller-v2"
+RUN_ID = "teacher-v3-hard-tail-stage-c-expanded-fresh-report-v2"
 CONTROLLER_RUN_ID = \
-    "teacher-v3-hard-tail-stage-c-expanded-fresh-report-controller-v1"
+    "teacher-v3-hard-tail-stage-c-expanded-fresh-report-controller-v2"
 PACKET_PATH = f"server/runs/logs/{CONTROLLER_RUN_ID}/controller_packet.json"
 
 TRAINING_RESULT_REVIEW_SCHEMA = \
     "teacher-stage-c-expanded-training-result-review-v1"
 TRAINING_RESULT_REVIEW_MARKER = \
     "TEACHER_STAGE_C_EXPANDED_TRAINING_RESULT_V1_REVIEW "
-REVIEW_SCHEMA = "teacher-stage-c-expanded-fresh-report-controller-review-v1"
+REVIEW_SCHEMA = "teacher-stage-c-expanded-fresh-report-controller-review-v2"
 REVIEW_MARKER = \
-    "TEACHER_STAGE_C_EXPANDED_FRESH_REPORT_CONTROLLER_V1_REVIEW "
+    "TEACHER_STAGE_C_EXPANDED_FRESH_REPORT_CONTROLLER_V2_REVIEW "
+RECOVERY_REVIEW_SCHEMA = \
+    "teacher-stage-c-expanded-fresh-report-recovery-review-v2"
+RECOVERY_REVIEW_MARKER = \
+    "TEACHER_STAGE_C_EXPANDED_FRESH_REPORT_RECOVERY_V2_REVIEW "
+
+SPENT_REPORT_V1_PACKET_SHA256 = \
+    "5ce892db48750f151eb5b24341edb043e844b4c25e6a4d7139f2cac4291525f0"
+SPENT_REPORT_V1_RECEIPT_SHA256 = \
+    "3c4b1f39350aa5d4a8bc46e3574da6fba21704dcef34eae642ed28ab28f674bf"
+SPENT_REPORT_V1_PROGRESS_SHA256 = \
+    "3867db0ce657ba5349c6ae5246d32631cdff345edfb50601ce79f7492ae9735f"
+SPENT_REPORT_V1_LOG_SHA256 = \
+    "b1db628539910152828e15997ba496725d66e3ba4a3a691f8774fc884bc23db5"
+SPENT_REPORT_V1_REVIEW_RECORD_SHA256 = \
+    "ccc61a51a1f4c602726581b0531500bdbb11107d00412d62ff25eb316e3c8441"
 
 RUNTIME_RECEIPT_SCHEMA = \
-    "teacher-stage-c-expanded-fresh-report-receipt-v1"
+    "teacher-stage-c-expanded-fresh-report-receipt-v2"
 RUNTIME_ADMISSION_SCHEMA = \
-    "teacher-stage-c-expanded-fresh-report-admission-v1"
+    "teacher-stage-c-expanded-fresh-report-admission-v2"
 RUNTIME_REPORT_OPEN_ADMISSION_SCHEMA = \
-    "teacher-stage-c-expanded-fresh-report-open-admission-v1"
+    "teacher-stage-c-expanded-fresh-report-open-admission-v2"
 RUNTIME_SHARD_ADMISSION_SCHEMA = \
-    "teacher-stage-c-expanded-fresh-report-shard-admission-v1"
+    "teacher-stage-c-expanded-fresh-report-shard-admission-v2"
 RUNTIME_SHARD_SCHEMA = \
-    "teacher-stage-c-expanded-fresh-report-label-shard-v1"
-RUNTIME_RESULT_SCHEMA = "teacher-stage-c-expanded-fresh-report-result-v1"
+    "teacher-stage-c-expanded-fresh-report-label-shard-v2"
+RUNTIME_RESULT_SCHEMA = "teacher-stage-c-expanded-fresh-report-result-v2"
 SUPERVISOR_SCHEMA = \
-    "teacher-stage-c-expanded-fresh-report-supervisor-v1"
+    "teacher-stage-c-expanded-fresh-report-supervisor-v2"
 SUPERVISOR_EXIT_SCHEMA = \
-    "teacher-stage-c-expanded-fresh-report-supervisor-exit-v1"
+    "teacher-stage-c-expanded-fresh-report-supervisor-exit-v2"
 SUPERVISOR_FINAL_SCHEMA = \
-    "teacher-stage-c-expanded-fresh-report-supervisor-final-v1"
+    "teacher-stage-c-expanded-fresh-report-supervisor-final-v2"
 SUPERVISOR_REVIEW_SCHEMA = \
-    "teacher-stage-c-expanded-fresh-report-result-review-v1"
+    "teacher-stage-c-expanded-fresh-report-result-review-v2"
 SUPERVISOR_REVIEW_MARKER = \
-    "TEACHER_STAGE_C_EXPANDED_FRESH_REPORT_RESULT_V1_REVIEW "
+    "TEACHER_STAGE_C_EXPANDED_FRESH_REPORT_RESULT_V2_REVIEW "
 
 TRAINING_GIT = "c18b80e04f8daa9805bf1853c8479cdfa936d9de"
 TRAINING_PACKET_SHA256 = \
@@ -451,7 +468,7 @@ def validate_training_evidence(
 def _selected_report_states(
     *, capture_evidence_repo: Path, state_set_review_record: Path,
     fresh_report_review_record: Path,
-) -> tuple[dict, list[dict]]:
+) -> tuple[dict, dict, list[dict]]:
     try:
         parents = EXPANSION.validate_evidence(
             evidence_repo=capture_evidence_repo,
@@ -459,7 +476,13 @@ def _selected_report_states(
             fresh_report_review_record=fresh_report_review_record)
         capture, original, _verification, _state_review, shards, current = \
             parents
-        selection = EXP.select_expanded_states(
+        spent_selection = EXP.select_expanded_states(
+            capture_packet=capture,
+            retained_states=[state for shard in shards
+                             for state in shard["retained_states"]],
+            original_states=original["states"],
+            current_fresh_report_states=current)
+        selection = EXP.select_successor_report_states(
             capture_packet=capture,
             retained_states=[state for shard in shards
                              for state in shard["retained_states"]],
@@ -470,13 +493,95 @@ def _selected_report_states(
         raise ReportControllerRefused(
             f"expanded REPORT selection reconstruction refused: {exc}") \
             from exc
-    states = [state for state in selection["states"]
-              if state.get("split") == "REPORT"]
+    states = list(selection["states"])
     if (len(states) != EXP.SEALED_REPORT_STATES
+            or selection.get("spent_report_populations") != 3
+            or selection.get("spent_state_overlap") != 0
+            or selection.get("spent_deal_seed_overlap") != 0
+            or selection.get("labels_or_outcomes_opened") is not False
             or selection.get("report_labels_opened") is not False):
         raise ReportControllerRefused(
             "expanded REPORT selected population drift")
-    return selection, states
+    return spent_selection, selection, states
+
+
+def expected_recovery_review_claim(
+    selection: Mapping[str, object], *, git: str | None = None,
+) -> dict:
+    """Describe the only authority that may freeze a fourth-REPORT packet."""
+    if (selection.get("schema") != EXP.SUCCESSOR_REPORT_SCHEMA
+            or selection.get("state_count") != EXP.SEALED_REPORT_STATES
+            or selection.get("surface_counts") != REPORT_SURFACE_COUNTS
+            or selection.get("spent_report_populations") != 3
+            or selection.get("spent_report_states") != 1_536
+            or selection.get("spent_state_overlap") != 0
+            or selection.get("spent_deal_seed_overlap") != 0
+            or selection.get("labels_or_outcomes_opened") is not False
+            or selection.get("report_labels_opened") is not False
+            or selection.get("selection_sha256")
+            != _manifest_hash({key: value for key, value in selection.items()
+                               if key != "selection_sha256"})):
+        raise ReportControllerRefused(
+            "expanded REPORT recovery selection drift")
+    sources = _source_sha256s()
+    return {
+        "schema": RECOVERY_REVIEW_SCHEMA,
+        "git": git if git is not None else _git("rev-parse", "HEAD"),
+        "controller_script_sha256": sources[
+            "server/scripts/teacher_stage_c_expanded_report_controller.py"],
+        "selection_script_sha256": sources[
+            "server/shengji/rl/stage_c_expansion.py"],
+        "command_contract_test_sha256": sha256_file(
+            REPO / "server/tests/"
+            "test_teacher_stage_c_expanded_report_controller.py"),
+        "spent_report_v1_packet_sha256": SPENT_REPORT_V1_PACKET_SHA256,
+        "spent_report_v1_receipt_sha256": SPENT_REPORT_V1_RECEIPT_SHA256,
+        "spent_report_v1_progress_partial_sha256":
+            SPENT_REPORT_V1_PROGRESS_SHA256,
+        "spent_report_v1_log_sha256": SPENT_REPORT_V1_LOG_SHA256,
+        "spent_report_v1_review_record_sha256":
+            SPENT_REPORT_V1_REVIEW_RECORD_SHA256,
+        "spent_report_v1_children": 8,
+        "spent_report_v1_child_returncode": 2,
+        "spent_report_v1_labels_predictions_utility_results": 0,
+        "spent_report_v1_namespace_terminal": True,
+        "successor_report_selection_sha256": selection[
+            "selection_sha256"],
+        "successor_report_state_ids_sha256": selection[
+            "state_ids_sha256"],
+        "successor_report_state_material_sha256": selection[
+            "states_sha256"],
+        "successor_report_states": selection["state_count"],
+        "successor_report_surface_counts": selection["surface_counts"],
+        "prior_report_populations_spent": selection[
+            "spent_report_populations"],
+        "prior_report_states": selection["spent_report_states"],
+        "prior_report_state_overlap": selection["spent_state_overlap"],
+        "prior_report_deal_seed_overlap": selection[
+            "spent_deal_seed_overlap"],
+        "remaining_report_supply_after_selection": selection[
+            "remaining_report_supply_after_selection"],
+        "command_templates_parse": True,
+        "one_score_free_v2_packet_freeze_authorized": True,
+        "report_execution_authorized": False,
+        "retry_authorized": False,
+        "composition_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+        "independent_review": True,
+        "verdict": "PASS",
+    }
+
+
+def validate_recovery_review(
+    path: Path, selection: Mapping[str, object],
+) -> dict:
+    claim = marker_claim(path, RECOVERY_REVIEW_MARKER)
+    if claim != expected_recovery_review_claim(selection):
+        raise ReportControllerRefused(
+            "expanded REPORT recovery PASS marker drift")
+    return claim
 
 
 def _candidate_world_ceiling(state: Mapping[str, object]) -> int:
@@ -537,6 +642,7 @@ def build_report_schedule(
 
 def _commands(schedule: Mapping[str, object]) -> dict:
     common = [
+        "--expected-git", "{git}",
         "--controller-packet", PACKET_PATH,
         "--expected-controller-packet-sha256", "{packet_sha256}",
         "--controller-review-record", "{controller_review_record}",
@@ -548,6 +654,7 @@ def _commands(schedule: Mapping[str, object]) -> dict:
     return {
         "admit": [
             "{python}", RUNTIME_SCRIPT_PATH, "admit",
+            "--expected-git", "{git}",
             "--controller-packet", PACKET_PATH,
             "--expected-controller-packet-sha256", "{packet_sha256}",
             "--controller-review-record", "{controller_review_record}",
@@ -584,25 +691,37 @@ def _commands(schedule: Mapping[str, object]) -> dict:
 def build_packet(
     *, git: str, evidence_repo: Path, training_result_review_record: Path,
     capture_evidence_repo: Path, state_set_review_record: Path,
-    fresh_report_review_record: Path, training_packet: Mapping[str, object],
+    fresh_report_review_record: Path, recovery_review_record: Path,
+    training_packet: Mapping[str, object],
     dataset: Mapping[str, object], aggregate: Mapping[str, object],
-    manifest: Sequence[Mapping[str, object]], selection: Mapping[str, object],
-    report_states: Sequence[Mapping[str, object]],
+    manifest: Sequence[Mapping[str, object]],
+    spent_selection: Mapping[str, object],
+    selection: Mapping[str, object], report_states: Sequence[Mapping[str, object]],
 ) -> dict:
     capability = _selected_capability(aggregate)
     schedule = build_report_schedule(report_states, surface="bury")
     sealed = dataset["sealed_report_selection"]
+    spent_states = [state for state in spent_selection["states"]
+                    if state.get("split") == "REPORT"]
     if (sealed.get("state_ids_sha256")
-            != selection["sealed_report_state_ids_sha256"]
+            != spent_selection["sealed_report_state_ids_sha256"]
             or sealed.get("state_material_sha256") != _manifest_hash([
-                state for state in selection["states"]
-                if state["split"] == "REPORT"])
+                state for state in spent_states])
             or sealed.get("states") != len(report_states)
             or sealed.get("surface_counts") != {"play": 480, "bury": 32}
             or sealed.get("state_material_published") is not False
             or sealed.get("labels_or_predictions_computed") is not False):
         raise ReportControllerRefused(
             "expanded sealed REPORT dataset binding drift")
+    if (selection.get("state_count") != len(report_states)
+            or selection.get("surface_counts") != REPORT_SURFACE_COUNTS
+            or selection.get("spent_report_populations") != 3
+            or selection.get("spent_state_overlap") != 0
+            or selection.get("spent_deal_seed_overlap") != 0
+            or selection.get("labels_or_outcomes_opened") is not False
+            or selection.get("report_labels_opened") is not False):
+        raise ReportControllerRefused(
+            "expanded successor REPORT selection drift")
     prior = TRAIN.state_balanced_prior(
         dataset["examples"]["DESIGN"]["bury"])
     result = {
@@ -641,6 +760,13 @@ def build_packet(
                 "external_sha256": MODEL_DATASET_SHA256,
                 "internal_sha256": dataset["dataset_sha256"],
             },
+            "spent_expanded_report_selection": {
+                "sealed_selection_sha256": _manifest_hash(sealed),
+                "state_ids_sha256": sealed["state_ids_sha256"],
+                "state_material_sha256": sealed["state_material_sha256"],
+                "states": sealed["states"],
+                "state_material_published": False,
+            },
             "capture_evidence": {
                 "absolute_path": str(capture_evidence_repo.resolve()),
                 "git": EXPANSION.EVIDENCE_GIT,
@@ -649,14 +775,33 @@ def build_packet(
                 "fresh_report_review_record_sha256": sha256_file(
                     fresh_report_review_record),
             },
+            "recovery_review": {
+                "absolute_path": str(recovery_review_record.resolve()),
+                "sha256": sha256_file(recovery_review_record),
+                "claim_sha256": _manifest_hash(marker_claim(
+                    recovery_review_record, RECOVERY_REVIEW_MARKER)),
+                "one_score_free_v2_packet_freeze_authorized": True,
+                "report_execution_authorized": False,
+            },
             # Keep this generic alias for the shared one-shot runtime.
             "fresh_report_selection": {
-                "sealed_selection_sha256": _manifest_hash(sealed),
-                "fresh_report_state_ids_sha256": sealed[
+                "sealed_selection_sha256": selection["selection_sha256"],
+                "fresh_report_state_ids_sha256": selection[
                     "state_ids_sha256"],
-                "fresh_report_state_material_sha256": sealed[
-                    "state_material_sha256"],
-                "fresh_report_states": sealed["states"],
+                "fresh_report_state_material_sha256": selection[
+                    "states_sha256"],
+                "fresh_report_states": selection["state_count"],
+                "spent_report_populations": selection[
+                    "spent_report_populations"],
+                "spent_report_state_ids_sha256": selection[
+                    "spent_report_state_ids_sha256"],
+                "spent_report_deal_seeds_sha256": selection[
+                    "spent_report_deal_seeds_sha256"],
+                "spent_state_overlap": selection["spent_state_overlap"],
+                "spent_deal_seed_overlap": selection[
+                    "spent_deal_seed_overlap"],
+                "remaining_report_supply_after_selection": selection[
+                    "remaining_report_supply_after_selection"],
                 "state_material_published": False,
             },
         },
@@ -676,6 +821,10 @@ def build_packet(
             "v11_candidates_reconstructed": False,
             "captured_candidate_tensor_authenticated": True,
             "single_report_look": True,
+            "report_population_ordinal": 4,
+            "prior_report_populations_spent": 3,
+            "prior_report_state_overlap": 0,
+            "prior_report_deal_seed_overlap": 0,
             "protected_policy": None,
             "model_score_tie_epsilon": REPORT.MODEL_SCORE_TIE_EPSILON,
             "rank_ensemble": (
@@ -726,6 +875,10 @@ def expected_review_claim(
         "training_aggregate_sha256": TRAINING_AGGREGATE_SHA256,
         "training_result_review_record_sha256": packet["parents"][
             "training_evidence"]["training_result_review_record_sha256"],
+        "recovery_review_record_sha256": packet["parents"][
+            "recovery_review"]["sha256"],
+        "recovery_review_claim_sha256": packet["parents"][
+            "recovery_review"]["claim_sha256"],
         "selected_capability": capability,
         "checkpoint_manifest_sha256": _manifest_hash(
             packet["checkpoint_manifest"]),
@@ -746,6 +899,14 @@ def expected_review_claim(
         "model_predictions_computed_before_review": 0,
         "report_utility_opened_before_review": False,
         "fresh_report_state_material_published": False,
+        "report_population_ordinal": packet["report_contract"][
+            "report_population_ordinal"],
+        "prior_report_populations_spent": packet["report_contract"][
+            "prior_report_populations_spent"],
+        "prior_report_state_overlap": packet["report_contract"][
+            "prior_report_state_overlap"],
+        "prior_report_deal_seed_overlap": packet["report_contract"][
+            "prior_report_deal_seed_overlap"],
         "single_report_look": True,
         "report_open_admission_slot": packet["report_contract"][
             "durable_report_open_admission_slot"],
@@ -780,24 +941,28 @@ def publish_exclusive(path: Path, payload: Mapping[str, object]) -> None:
 def _build_inputs(
     *, evidence_repo: Path, training_result_review_record: Path,
     capture_evidence_repo: Path, state_set_review_record: Path,
-    fresh_report_review_record: Path, reopen_checkpoints: bool,
-) -> tuple[dict, dict, dict, list[dict], dict, list[dict]]:
+    fresh_report_review_record: Path, recovery_review_record: Path,
+    reopen_checkpoints: bool,
+) -> tuple[dict, dict, dict, list[dict], dict, dict, list[dict]]:
     packet, dataset, _receipt, aggregate, _final, manifest = \
         validate_training_evidence(
             evidence_repo=evidence_repo,
             training_result_review_record=training_result_review_record,
             reopen_checkpoints=reopen_checkpoints)
-    selection, report_states = _selected_report_states(
+    spent_selection, selection, report_states = _selected_report_states(
         capture_evidence_repo=capture_evidence_repo,
         state_set_review_record=state_set_review_record,
         fresh_report_review_record=fresh_report_review_record)
-    return packet, dataset, aggregate, manifest, selection, report_states
+    validate_recovery_review(recovery_review_record, selection)
+    return (packet, dataset, aggregate, manifest, spent_selection, selection,
+            report_states)
 
 
 def freeze(
     *, evidence_repo: Path, training_result_review_record: Path,
     capture_evidence_repo: Path, state_set_review_record: Path,
-    fresh_report_review_record: Path, out: Path, smoke: bool,
+    fresh_report_review_record: Path, recovery_review_record: Path,
+    out: Path, smoke: bool,
 ) -> dict:
     if (_git("status", "--porcelain", "--untracked-files=all") and not smoke):
         raise ReportControllerRefused(
@@ -810,6 +975,7 @@ def freeze(
         capture_evidence_repo=capture_evidence_repo,
         state_set_review_record=state_set_review_record,
         fresh_report_review_record=fresh_report_review_record,
+        recovery_review_record=recovery_review_record,
         reopen_checkpoints=True)
     packet = build_packet(
         git=_git("rev-parse", "HEAD"), evidence_repo=evidence_repo,
@@ -817,8 +983,10 @@ def freeze(
         capture_evidence_repo=capture_evidence_repo,
         state_set_review_record=state_set_review_record,
         fresh_report_review_record=fresh_report_review_record,
+        recovery_review_record=recovery_review_record,
         training_packet=values[0], dataset=values[1], aggregate=values[2],
-        manifest=values[3], selection=values[4], report_states=values[5])
+        manifest=values[3], spent_selection=values[4],
+        selection=values[5], report_states=values[6])
     publish_exclusive(out, packet)
     return packet
 
@@ -826,7 +994,8 @@ def freeze(
 def verify_frozen(
     *, evidence_repo: Path, training_result_review_record: Path,
     capture_evidence_repo: Path, state_set_review_record: Path,
-    fresh_report_review_record: Path, packet_path: Path,
+    fresh_report_review_record: Path, recovery_review_record: Path,
+    packet_path: Path,
     expected_packet_sha256: str, smoke: bool,
 ) -> dict:
     if (packet_path.resolve() != (REPO / PACKET_PATH).resolve()
@@ -843,6 +1012,7 @@ def verify_frozen(
         capture_evidence_repo=capture_evidence_repo,
         state_set_review_record=state_set_review_record,
         fresh_report_review_record=fresh_report_review_record,
+        recovery_review_record=recovery_review_record,
         reopen_checkpoints=True)
     rebuilt = build_packet(
         git=_git("rev-parse", "HEAD"), evidence_repo=evidence_repo,
@@ -850,8 +1020,10 @@ def verify_frozen(
         capture_evidence_repo=capture_evidence_repo,
         state_set_review_record=state_set_review_record,
         fresh_report_review_record=fresh_report_review_record,
+        recovery_review_record=recovery_review_record,
         training_packet=values[0], dataset=values[1], aggregate=values[2],
-        manifest=values[3], selection=values[4], report_states=values[5])
+        manifest=values[3], spent_selection=values[4],
+        selection=values[5], report_states=values[6])
     if (load_json(packet_path) != rebuilt
             or packet_path.read_bytes() != canonical_json(rebuilt)):
         raise ReportControllerRefused(
@@ -871,15 +1043,19 @@ def validate_runtime_packet(
     frozen = load_json(path)
     evidence = frozen.get("parents", {}).get("training_evidence", {})
     capture = frozen.get("parents", {}).get("capture_evidence", {})
+    recovery = frozen.get("parents", {}).get("recovery_review", {})
     training_review = Path(str(
         evidence.get("training_result_review_record_absolute_path"))).resolve()
+    recovery_review = Path(str(recovery.get("absolute_path"))).resolve()
     if (not is_regular_unlinked(training_review)
             or sha256_file(training_review)
             != evidence.get("training_result_review_record_sha256")
             or sha256_file(state_set_review_record)
             != capture.get("state_set_review_record_sha256")
             or sha256_file(fresh_report_review_record)
-            != capture.get("fresh_report_review_record_sha256")):
+            != capture.get("fresh_report_review_record_sha256")
+            or not is_regular_unlinked(recovery_review)
+            or sha256_file(recovery_review) != recovery.get("sha256")):
         raise ReportControllerRefused(
             "expanded REPORT runtime review-record drift")
     values = _build_inputs(
@@ -888,6 +1064,7 @@ def validate_runtime_packet(
         capture_evidence_repo=Path(str(capture.get("absolute_path"))).resolve(),
         state_set_review_record=state_set_review_record,
         fresh_report_review_record=fresh_report_review_record,
+        recovery_review_record=recovery_review,
         reopen_checkpoints=False)
     rebuilt = build_packet(
         git=_git("rev-parse", "HEAD"),
@@ -896,13 +1073,15 @@ def validate_runtime_packet(
         capture_evidence_repo=Path(str(capture["absolute_path"])),
         state_set_review_record=state_set_review_record,
         fresh_report_review_record=fresh_report_review_record,
+        recovery_review_record=recovery_review,
         training_packet=values[0], dataset=values[1], aggregate=values[2],
-        manifest=values[3], selection=values[4], report_states=values[5])
+        manifest=values[3], spent_selection=values[4],
+        selection=values[5], report_states=values[6])
     if (frozen != rebuilt or frozen.get("packet_sha256")
             != self_hash(frozen, "packet_sha256")):
         raise ReportControllerRefused(
             "expanded REPORT runtime packet recomputation drift")
-    return frozen, values[1], values[0], values[4], values[5]
+    return frozen, values[1], values[0], values[5], values[6]
 
 
 def parser() -> argparse.ArgumentParser:
@@ -913,6 +1092,7 @@ def parser() -> argparse.ArgumentParser:
     root.add_argument("--capture-evidence-repo", required=True)
     root.add_argument("--state-set-review-record", required=True)
     root.add_argument("--fresh-report-review-record", required=True)
+    root.add_argument("--recovery-review-record", required=True)
     root.add_argument("--out", default=PACKET_PATH)
     root.add_argument("--expected-packet-sha256")
     root.add_argument("--smoke", action="store_true")
@@ -930,6 +1110,8 @@ def main() -> int:
             args.state_set_review_record).resolve(),
         "fresh_report_review_record": Path(
             args.fresh_report_review_record).resolve(),
+        "recovery_review_record": Path(
+            args.recovery_review_record).resolve(),
         "smoke": bool(args.smoke),
     }
     if args.command == "freeze":

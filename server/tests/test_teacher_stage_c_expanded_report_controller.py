@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -5,6 +6,7 @@ import sys
 import pytest
 
 import teacher_stage_c_expanded_report_controller as CTRL
+import teacher_stage_c_report_runtime as RUNTIME
 
 
 def capability():
@@ -96,6 +98,52 @@ def test_report_schedule_refuses_underfilled_bury_population(monkeypatch):
         ], surface="bury")
 
 
+def test_recovery_review_grants_freeze_but_not_report_execution(
+        monkeypatch, tmp_path):
+    selection = {
+        "schema": CTRL.EXP.SUCCESSOR_REPORT_SCHEMA,
+        "states": [],
+        "states_sha256": "1" * 64,
+        "state_ids_sha256": "2" * 64,
+        "state_count": 512,
+        "surface_counts": {"play": 480, "bury": 32},
+        "spent_report_populations": 3,
+        "spent_report_states": 1_536,
+        "spent_report_state_ids_sha256": "3" * 64,
+        "spent_report_deal_seeds_sha256": "4" * 64,
+        "spent_state_overlap": 0,
+        "spent_deal_seed_overlap": 0,
+        "remaining_report_supply_after_selection": {
+            "play": 1_615, "bury": 128},
+        "labels_or_outcomes_opened": False,
+        "report_labels_opened": False,
+    }
+    selection["selection_sha256"] = CTRL._manifest_hash(selection)
+    monkeypatch.setattr(CTRL, "_source_sha256s", lambda: {
+        "server/scripts/teacher_stage_c_expanded_report_controller.py":
+            "5" * 64,
+        "server/shengji/rl/stage_c_expansion.py": "6" * 64,
+    })
+    monkeypatch.setattr(CTRL, "sha256_file", lambda _path: "7" * 64)
+    claim = CTRL.expected_recovery_review_claim(
+        selection, git="f" * 40)
+    assert claim["one_score_free_v2_packet_freeze_authorized"] is True
+    assert claim["report_execution_authorized"] is False
+    assert claim["retry_authorized"] is False
+
+    review = tmp_path / "recovery-review.md"
+    review.write_text(CTRL.RECOVERY_REVIEW_MARKER + json.dumps(
+        claim, sort_keys=True, separators=(",", ":")) + "\n")
+    monkeypatch.setattr(CTRL, "_git", lambda *_args, **_kwargs: "f" * 40)
+    assert CTRL.validate_recovery_review(review, selection) == claim
+
+    claim["report_execution_authorized"] = True
+    review.write_text(CTRL.RECOVERY_REVIEW_MARKER + json.dumps(
+        claim, sort_keys=True, separators=(",", ":")) + "\n")
+    with pytest.raises(CTRL.ReportControllerRefused, match="PASS marker"):
+        CTRL.validate_recovery_review(review, selection)
+
+
 def test_packet_is_score_free_and_schedules_only_selected_bury(
         monkeypatch, tmp_path):
     states = [
@@ -107,14 +155,35 @@ def test_packet_is_score_free_and_schedules_only_selected_bury(
          "split": "REPORT", "candidates": [0, 1]}
         for index in range(480)
     ]
+    spent_states = [dict(state, state_id=f"spent-{state['state_id']}")
+                    for state in states]
+    spent_selection = {
+        "states": spent_states,
+        "sealed_report_state_ids_sha256": CTRL._manifest_hash(sorted(
+            state["state_id"] for state in spent_states)),
+    }
     selection = {
         "states": states,
-        "sealed_report_state_ids_sha256": CTRL._manifest_hash(sorted(
+        "states_sha256": CTRL._manifest_hash(states),
+        "state_ids_sha256": CTRL._manifest_hash(sorted(
             state["state_id"] for state in states)),
+        "state_count": 512,
+        "surface_counts": {"play": 480, "bury": 32},
+        "spent_report_populations": 3,
+        "spent_report_state_ids_sha256": "1" * 64,
+        "spent_report_deal_seeds_sha256": "2" * 64,
+        "spent_state_overlap": 0,
+        "spent_deal_seed_overlap": 0,
+        "remaining_report_supply_after_selection": {
+            "play": 1_615, "bury": 128},
+        "labels_or_outcomes_opened": False,
+        "report_labels_opened": False,
     }
+    selection["selection_sha256"] = CTRL._manifest_hash(selection)
     sealed = {
-        "state_ids_sha256": selection["sealed_report_state_ids_sha256"],
-        "state_material_sha256": CTRL._manifest_hash(states),
+        "state_ids_sha256": spent_selection[
+            "sealed_report_state_ids_sha256"],
+        "state_material_sha256": CTRL._manifest_hash(spent_states),
         "states": 512,
         "surface_counts": {"play": 480, "bury": 32},
         "state_material_published": False,
@@ -131,8 +200,10 @@ def test_packet_is_score_free_and_schedules_only_selected_bury(
     training_review = tmp_path / "training-review.md"
     state_review = tmp_path / "state-review.md"
     fresh_review = tmp_path / "fresh-review.md"
+    recovery_review = tmp_path / "recovery-review.md"
     for path in (training_review, state_review, fresh_review):
         path.write_text("review\n")
+    recovery_review.write_text(CTRL.RECOVERY_REVIEW_MARKER + "{}\n")
     monkeypatch.setattr(CTRL, "_source_sha256s", lambda: {"source": "1"})
     monkeypatch.setattr(CTRL, "runtime_contract", lambda: {"host": "mini"})
     monkeypatch.setattr(CTRL, "_candidate_world_ceiling", lambda _state: 9)
@@ -144,15 +215,41 @@ def test_packet_is_score_free_and_schedules_only_selected_bury(
         capture_evidence_repo=tmp_path,
         state_set_review_record=state_review,
         fresh_report_review_record=fresh_review,
+        recovery_review_record=recovery_review,
         training_packet={"packet_sha256": "a" * 64}, dataset=dataset,
-        aggregate=aggregate, manifest=manifest, selection=selection,
+        aggregate=aggregate, manifest=manifest,
+        spent_selection=spent_selection, selection=selection,
         report_states=states)
     assert packet["selected_capability"]["surface"] == "bury"
     assert packet["protected_policy"] is None
     assert packet["report_schedule"]["states"] == 32
     assert packet["report_schedule"]["candidate_world_ceiling"] == 32 * 9
+    assert packet["report_contract"]["report_population_ordinal"] == 4
+    assert packet["report_contract"]["prior_report_populations_spent"] == 3
+    assert packet["parents"]["fresh_report_selection"][
+        "spent_state_overlap"] == 0
     assert packet["commands"]["run_shards"][0][1] == \
         CTRL.RUNTIME_SCRIPT_PATH
+    runtime_commands = [
+        packet["commands"]["admit"],
+        *packet["commands"]["run_shards"],
+        packet["commands"]["evaluate"],
+    ]
+    substitutions = {
+        "{python}": sys.executable,
+        "{git}": "f" * 40,
+        "{packet_sha256}": "a" * 64,
+        "{controller_review_record}": "controller-review.md",
+        "{fresh_report_review_record}": "fresh-review.md",
+        "{state_set_review_record}": "state-review.md",
+        "{receipt_sha256}": "b" * 64,
+    }
+    for command in runtime_commands:
+        assert command.count("--expected-git") == 1
+        position = command.index("--expected-git")
+        assert command[position + 1] == "{git}"
+        expanded = [substitutions.get(token, token) for token in command]
+        RUNTIME.parser().parse_args(expanded[2:])
     assert packet["authority"] == {
         "fresh_report_capture_shards_revalidated": 8,
         "fresh_report_state_material_published": False,
@@ -179,9 +276,18 @@ def test_packet_refuses_sealed_report_material_drift(monkeypatch, tmp_path):
          "split": "REPORT", "candidates": [0, 1]}
         for index in range(480)
     ]
-    selection = {
+    spent_selection = {
         "states": states,
         "sealed_report_state_ids_sha256": "a" * 64,
+    }
+    selection = {
+        "state_count": 512,
+        "surface_counts": {"play": 480, "bury": 32},
+        "spent_report_populations": 3,
+        "spent_state_overlap": 0,
+        "spent_deal_seed_overlap": 0,
+        "labels_or_outcomes_opened": False,
+        "report_labels_opened": False,
     }
     dataset = {
         "dataset_sha256": "d" * 64,
@@ -208,8 +314,10 @@ def test_packet_refuses_sealed_report_material_drift(monkeypatch, tmp_path):
             capture_evidence_repo=tmp_path,
             state_set_review_record=review,
             fresh_report_review_record=review,
+            recovery_review_record=review,
             training_packet={"packet_sha256": "a" * 64}, dataset=dataset,
-            aggregate=aggregate, manifest=[], selection=selection,
+            aggregate=aggregate, manifest=[],
+            spent_selection=spent_selection, selection=selection,
             report_states=states)
 
 

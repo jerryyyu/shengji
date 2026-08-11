@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-11 00:42 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-11 00:58 EDT. This file owns live compute and compact
 terminal stubs. Result interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; full chronology in dated `docs_archive/` logs.
 
@@ -8,19 +8,19 @@ order in `BACKLOG.md`; full chronology in dated `docs_archive/` logs.
 
 | host | live job | safe progress | next admitted use |
 |---|---|---|---|
-| **Mini** | **Idle; expanded labels terminal** | Exact source `32d94a4`, receipt `48a64759…8efe`. 16/16 shards completed: 5,504 rows, zero refusals, 13,136,320 candidate worlds; aggregate `3deb3a81…f6ca`. | Independent `TEACHER_STAGE_C_EXPANDED_LABEL_RESULT_V1_REVIEW`, then freeze/review one 96-cell training packet. No training before its separate PASS. |
-| **Air** | `s4-point-banking-replication-air-180b-v1` | Exact `fb6ec1a`, receipt `fc6d54e7…1077`, 8/8 workers. Last score-free progress 1,398/2,048 primary clusters; 256 exact-null sentinels are also frozen. | Preserve to terminal publication, verify, then independent result review. Never inspect interim utility or retry. |
+| **Mini** | **Idle; expanded training packet under review** | Label result externally passed. Exact source `c18b80e`; 7,040-state dataset `c24923f…a8382` and 96-cell packet `d137f31…71888` froze and byte-reverified. No training receipt/namespace exists. | Raw `TEACHER_STAGE_C_EXPANDED_TRAINING_CONTROLLER_V1_REVIEW`; only PASS may admit the one matched training run. |
+| **Air** | `s4-point-banking-replication-air-180b-v1` | Exact `fb6ec1a`, receipt `fc6d54e7…1077`, 8/8 workers. Last score-free progress 1,506/2,048 primary clusters; 256 exact-null sentinels are also frozen. | Preserve to terminal publication, verify, then independent result review. Never inspect interim utility or retry. |
 | **Fly** | `mc-s0-report-lcb` | Release 17 live. Xray kitty-bury support merged in PR #11; no policy change. | Passive latency/correctness monitoring only. |
 
 ## Next compute sequence
 
-1. Expanded labels finish and pass full replay plus independent terminal review.
-2. Freeze one 7,040-state matched-training packet: two loss recipes, play/bury,
-   eight seeds, three learning-curve fractions, at most eight cells live.
-3. Only a separate packet PASS may admit training. DESIGN/CALIB selects one
+1. Independently pass the frozen 7,040-state matched-training controller:
+   two loss recipes, play/bury, eight seeds, three learning-curve fractions,
+   at most eight cells live.
+2. Only that packet PASS may admit training. DESIGN/CALIB selects one
    whole cohort or `SELECT_NONE`; no seed cherry-pick.
-4. Only a selected cohort may open the third untouched 512-state REPORT once.
-5. Only a REPORT passer may be composed and screened against live report-LCB.
+3. Only a selected cohort may open the third untouched 512-state REPORT once.
+4. Only a REPORT passer may be composed and screened against live report-LCB.
 
 S4 remains an isolated Air lane. S6 source/tests and repository cleanup use no
 strength compute while Mini and Air are occupied.
@@ -29,9 +29,11 @@ strength compute while Mini and Air are occupied.
 
 | date | job | terminal verdict | anchor / meaning |
 |---|---|---|---|
+| 08-11 | Expanded Stage-C labels | **TERMINAL + EXTERNAL PASS** | Source `32d94a4`; 5,504/5,504 new rows, zero refusals, aggregate `3deb3a81…f6ca`. Its one score-free packet freeze was consumed; no training authority followed directly. |
+| 08-11 | Expanded Stage-C training packet | **FROZEN / REVIEW OPEN / ZERO TRAINING** | Source `c18b80e`; dataset `c24923f…a8382`, packet `d137f31…71888`, 96 matched cells; pinned byte-rebuild passed and third REPORT remains sealed. |
 | 08-10 | Protected Stage-C fresh REPORT | **SELECT NONE / EXTERNALLY PASSED** | Source `cd3d7bd`; result `8fa323de…aea6`; 480/480, zero refusals, 810,944 exact worlds. Triggered 171 rows; mean improvement `-0.00822754`, LCB `-0.01894357`. No composition or REPORT reuse. |
 | 08-10 | Stage-C training generation v1 | **SELECT NONE** | Source `18a6fa1`; all 48 cells / 288 checkpoints completed and replayed. Play ranker approached candidate zero but failed the 6/8 seed gate; bury was negative. Fresh REPORT remained unopened until the separately protected test above. |
-| 08-10 | Expanded label packet | **PACKET PASS / EXECUTION NOW LIVE** | Source `32d94a4`; 7,040 DESIGN/CALIB states, 5,504 new labels, 512 third REPORT sealed; controller `82447501…2084`. |
+| 08-10 | Expanded label packet | **PACKET PASS / EXECUTION CONSUMED** | Source `32d94a4`; 7,040 DESIGN/CALIB states, 5,504 new labels, 512 third REPORT sealed; controller `82447501…2084`. Execution completed in the 08-11 row above. |
 | 08-10 | Stage-C iid-v2 labels | **TERMINAL + EXTERNAL PASS** | 2,048/2,048 labels, replacement sampling, exact folds and fidelity review. These 1,536 DESIGN/CALIB rows are retained by the expansion; original REPORT is spent/quarantined. |
 | 08-10 | Stage-C label v1 | **TERMINAL NO-USE / NO AGGREGATE** | 2 complete / 6 refused shards because realized-world deduplication exhausted late support and changed posterior mass. Never retry or mine partial rows. |
 | 08-10 | Stage-C capture v7 | **CAPTURE + STATE-SET PASS** | 24/24 shards; all 750,000 dispositions and all 2,048 selected states replayed. State set `c7a769c4…e8e1c`, verifier `143fb2db…4adb`. |
@@ -43,8 +45,9 @@ strength compute while Mini and Air are occupied.
 | 08-07 | RLCB-C1 | **CONFIRM** | Aggregate `83f5a9df…f5ef5ea`; `+0.338 +/- 0.068` signed levels versus `mc-strong`, matched null flat. Supports production report-LCB. |
 
 No terminal row grants more authority than its original gate. In particular,
-S4's first PASS does not authorize deployment, and an expanded-label PASS will
-authorize only a score-free training-packet freeze for separate review.
+S4's first PASS does not authorize deployment. The expanded-label PASS
+authorized only the now-consumed score-free packet freeze; training still
+requires the separate controller PASS.
 
 ## Archive pointers
 

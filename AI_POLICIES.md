@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-11 00:45 EDT
+## Current synthesis — 2026-08-11 01:00 EDT
 
 ### Canonical terminal-results table
 
@@ -39,6 +39,7 @@ results table.
 | 08-10 | Teacher Stage-C capture v7 | Generate the promised balanced hard-tail exam, then replay every scanned deal and selected state so parallel capture cannot quietly choose a lucky subset. | **CAPTURE + EXTERNAL STATE-SET PASS** | 750,000 dispositions replayed; exact 2,048 states = `1024/512/512` DESIGN/CALIB/REPORT and `1920/128` play/bury; state set `c7a769c4…e8e1c`, verifier `143fb2db…4adb` | The first split-safe Stage-C population is real and immutable. It authorizes bounded labeling, not a model or strength claim. |
 | 08-10 | Teacher Stage-C label v1 | Evaluate every candidate on independent selection/report folds, but incorrectly require every realized hidden world to be unique within and across folds. | **TERMINAL NO-USE / NO AGGREGATE** | eight slots consumed; 2 complete and 6 refused shards; 971/1,024 rows complete; receipt `0c3d7ea0…adc1c`; no aggregate or partial mining | The refusal revealed that world-identity deduplication exhausts late-state support and reweights the posterior. Never continue or aggregate v1. Iid-with-replacement v2 must pass fresh capacity and label gates. |
 | 08-10 | Teacher Stage-C iid-v2 labels | Retain every valid hidden-world draw with replacement, while using independent random streams for selection and reporting, so late states keep their true posterior mass. | **TERMINAL PASS** | 2,048/2,048 states labeled; aggregate `d0b4397c…6cdb9`; zero REPORT access during training selection | The corrected label population is usable. Its 1,536 DESIGN/CALIB rows supported the first model generation; its original REPORT was then spent only by the protected test below and is closed. |
+| 08-11 | Teacher Stage-C expanded labels | Add 5,504 fresh hard-tail DESIGN/CALIB examples around the retained 1,536 while sealing a third untouched REPORT, so the next run can distinguish data scale from objective mismatch. | **TERMINAL + EXTERNAL PASS** | 5,504/5,504 new rows, zero refusals, exact 13,136,320 worlds; aggregate `3deb3a81…f6ca`; combined frozen dataset `c24923f…a8382` has 7,040 states | The larger split-safe training asset is real. It authorizes only the separately reviewed training packet; it is not evidence that a model or bot is stronger. |
 | 08-10 | Teacher Stage-C first training generation | Train eight seeds on 1,536 DESIGN/CALIB states and select whole cohorts rather than a lucky seed, using separate play-ranking and bury surfaces. | **SELECT NONE** | all 48 cells / 288 checkpoints replayed; final play median `-0.000391` versus candidate zero with 3/8 positive seeds; bury about `-0.0372` with 0/8 positive | The training system worked, but this data/objective did not produce a stable improvement. The untouched REPORT stayed closed during selection. |
 | 08-11 | Teacher protected-anchor fresh REPORT | Give the best diagnostic play ensemble one protected chance: keep candidate zero unless an alternative beats it by a strict model margin, then price that frozen rule once on fresh REPORT labels. | **SELECT NONE** | 480/480 rows, 810,944 exact worlds; 171 triggers; mean improvement `-0.008228`, LCB `-0.018944` | The model had localized signal but its frozen overrides were worse overall. No composition, threshold tuning, REPORT reuse or strength screen is authorized. |
 | 08-09 | S4 point-banking exact-state screen | In rollouts, when the bot is already winning the trick and can retain a higher winner, let it bank a 5/10/K instead of always spending the cheapest winner. | **MECHANISM PASS** | overall acting-team point delta `+5.156`, one-sided LCB `+3.029`; attacker/defender means `+6.406/+3.906`; 35 wins, 4 losses, 25 ties; level utility `+0.25` | Banking a point-card winner while retaining higher control helps on the frozen exact-late trigger population in both roles. The whole-game row below shows the effect survives natural traffic. |
@@ -82,9 +83,12 @@ Evidence anchors, in the same order:
   which selected none. Protected fresh-REPORT result
   `8fa323de3591f4665799225796299f0ccde97dcce0e191839b81ee7a1645aea6`
   also selected none. The distinct 7,040-state expansion is bound by reviewed
-  packet `82447501ca517d936fa5f453a793f0afae2dc05939d2088212746e75bc0e2084`.
-  All 5,504 new labels completed with zero refusals; independent terminal
-  review is open and no training or strength claim follows yet.
+  label packet `82447501ca517d936fa5f453a793f0afae2dc05939d2088212746e75bc0e2084`.
+  All 5,504 new labels completed with zero refusals and passed independent
+  terminal review; aggregate
+  `3deb3a81e31b898062d00762a6b8ec603acc4851531dfcbb5ed752b31304f6ca`.
+  Frozen dataset `c24923f…a8382` and 96-cell packet `d137f31…71888` now await
+  separate controller review; no training or strength claim follows yet.
 - S4 exact-state screen `abd9f36fa3e84c81b90e22f1c827f828a549f7fd6a9420ffbdb7c168974cdc00`;
   pre-outcome receipt `90124eb6f89c27cedc38770b2da5b3b8597400694281729656105f67803f526b`;
   admission `83993ec6609c2a7528853d4c1db789f137d3f0cbfff97d20fbf526cbd5ff5e6d`.

@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-11 00:45 EDT
+## Current synthesis — 2026-08-11 01:00 EDT
 
 Exact terminal numbers and SHAs live in the canonical table in
 `AI_POLICIES.md`; `BACKLOG.md` owns live order and `JOBS.md` owns machines.
@@ -44,8 +44,10 @@ This section keeps only the research conclusions that change what we try next.
   generation one. Scale DESIGN/CALIB labels from 1,536 to 7,040 and compare the
   old all-pairs ranking loss with a direct candidate-zero-relative loss that
   matches protected deployment. A third 512-state REPORT is sealed. The
-  reviewed 5,504-label expansion completed with zero refusals; independent
-  result review is open and it is not yet a model result.
+  5,504-label expansion completed with zero refusals and passed independent
+  terminal review. The combined dataset and 96-cell matched packet froze and
+  byte-reverified; separate controller review is the final gate before one
+  Mini training run. This is still a data/controller result, not a model one.
 - **Direct search:** S4 point banking passed exact-state and first whole-game
   screens; an independent fixed replication is running on Air. S3a structured
   bury improved selected-state regret but selected none in fresh games. S6
@@ -238,10 +240,10 @@ routing boundaries; only terminal model/report/game results change strength.
 T4 must end in a challenger decision, not another design-only audit. Generation
 one completed and selected none. The active generation-two sequence is:
 
-1. independently replay and pass all 5,504 completed expanded labels;
+1. independently replay and pass all 5,504 completed expanded labels — done;
 2. combine them with the retained 1,536 DESIGN/CALIB labels, keeping the third
-   512-state REPORT sealed;
-3. freeze and review a 96-cell schedule: two loss recipes × play/bury × eight
+   512-state REPORT sealed — frozen and byte-reverified;
+3. externally review the 96-cell schedule: two loss recipes × play/bury × eight
    seeds × 25/50/100% data fractions;
 4. compare the old all-pairs loss with a direct candidate-zero-relative loss,
    selecting only whole eight-seed cohorts on DESIGN/CALIB;
@@ -323,7 +325,7 @@ This table separates them by the training signal they actually produced.
 | **Teacher-v3 Stage B** | On 128 disjoint mostly ordinary states, compare cheap heuristic-continuation choices with much more expensive `mc-strong@N=30` continuation labels. | Cheap-minus-gold regret upper bound was `0.0195 < 0.10`; the cheap proxy was adequate on this sampled population. | It only showed agreement with the old MC continuation on ordinary states. It did not create a dataset/model or show labels beyond the live champion. |
 | **Fresh live-champion audit** | On an untouched 64-state complement, compare frozen cheap and N=30 choices against the deployed report-LCB root evaluator. | Cheap and N=30 all-state regret bounds passed (`0.0354` and `0.0439`), but the eight boundary states had a weaker N=30 bound (`0.1421`). | Ordinary rows can be labeled cheaply; uncertain/boundary rows need escalation. This is the direct empirical reason for Stage C's mixed-budget hard tail. |
 | **Teacher Stage C generation one** | Capture a split-safe hard-tail exam, label candidate actions with corrected iid hidden-world folds, and train eight-seed ranking/outcome cohorts on DESIGN/CALIB only. | Capture and 2,048/2,048 corrected labels passed. The 1,536-row model generation selected none; a protected play ensemble also selected none on one fresh 480-row REPORT (`-0.008228`, LCB `-0.018944`). | Close the spent REPORT and policy. The usable lesson is that model signal existed in strata but did not make reliable overrides. |
-| **Teacher Stage C generation two (active)** | Add 5,504 fresh DESIGN/CALIB labels for 7,040 total, hold out a third 512-state REPORT, and compare all-pairs learning with a candidate-zero-relative objective. | All 16 Mini shards completed 5,504/5,504 rows with zero refusals; independent terminal review is open. No model or new REPORT result exists. | Pass label replay, freeze/review the 96-cell two-recipe/eight-seed packet, select a cohort without seed cherry-picking, then open REPORT once. |
+| **Teacher Stage C generation two (active)** | Add 5,504 fresh DESIGN/CALIB labels for 7,040 total, hold out a third 512-state REPORT, and compare all-pairs learning with a candidate-zero-relative objective. | All 5,504 new rows passed independent terminal replay. Dataset `c24923f…a8382` and matched 96-cell packet `d137f31…71888` froze and byte-reverified; no training or REPORT access exists. | Pass the separate controller review, run one eight-seed A/B matrix, select a whole cohort without seed cherry-picking, then open REPORT once. |
 
 In plain English, Stage B asked, “Can the cheap grader reproduce the expensive
 grader on normal exam questions?” Stage C asks, “Can we write a better exam,

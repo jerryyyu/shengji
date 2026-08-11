@@ -116,6 +116,10 @@ def test_ordinary_target_uses_all_candidate_report_fold() -> None:
         [0.0, 1.0, -1.0])
     assert target["outcome_mean_signed_level_utility"] == pytest.approx(
         [0.0, 1.0, -1.0])
+    assert target["candidate0_relative_advantage"] == pytest.approx(
+        [0.0, 1.0, -1.0])
+    assert target["candidate0_relative_weight"] == pytest.approx(
+        [0.0, 1.0, 1.0])
     assert target["frozen_label_index"] == 1
     assert target["target_sha256"] == MODEL.sha256_bytes(
         MODEL.canonical_json({key: value for key, value in target.items()
@@ -141,6 +145,10 @@ def test_hard_tail_target_replaces_only_deeper_zero_winner_evidence() -> None:
         -0.5)
     assert target["outcome_mean_signed_level_utility"][1] == pytest.approx(1.5)
     assert target["outcome_mean_signed_level_utility"][2] == pytest.approx(-1.0)
+    assert target["candidate0_relative_advantage"] == pytest.approx(
+        [0.0, 2.0, -1.0])
+    assert target["candidate0_relative_weight"] == pytest.approx(
+        [0.0, 300 / 64, 1.0])
 
 
 def test_hard_tail_duplicate_candidate_zero_remains_identifiable() -> None:
@@ -231,10 +239,30 @@ def test_grouped_model_loss_is_finite_and_backpropagates() -> None:
     batch = MODEL.collate_examples(examples)
     net = MODEL.StageCRankingOutcomeNet(hidden=32)
     losses = MODEL.stage_c_loss(net, batch)
-    assert set(losses) == {"loss", "pairwise_bce", "label_ce", "outcome_ce"}
+    assert set(losses) == {
+        "loss", "pairwise_bce", "candidate0_advantage_huber",
+        "label_ce", "outcome_ce"}
     assert all(MODEL.torch.isfinite(value) for value in losses.values())
     losses["loss"].backward()
     assert any(parameter.grad is not None for parameter in net.parameters())
+
+
+@pytest.mark.skipif(MODEL.torch is None, reason="torch is optional")
+def test_candidate0_recipe_uses_direct_advantage_instead_of_all_pairs() -> None:
+    batch = MODEL.collate_examples([_example(0), _example(1)])
+    net = MODEL.StageCRankingOutcomeNet(hidden=32)
+    all_pairs = MODEL.stage_c_loss(
+        net, batch, loss_recipe="all_pairs_v1")
+    protected = MODEL.stage_c_loss(
+        net, batch, loss_recipe="candidate0_relative_v2")
+    shared = (MODEL.LABEL_CE_WEIGHT * all_pairs["label_ce"]
+              + MODEL.OUTCOME_CE_WEIGHT * all_pairs["outcome_ce"])
+    assert float(all_pairs["loss"].detach()) == pytest.approx(float((
+        MODEL.PAIRWISE_WEIGHT * all_pairs["pairwise_bce"]
+        + shared).detach()))
+    assert float(protected["loss"].detach()) == pytest.approx(float((
+        MODEL.ANCHOR_ADVANTAGE_WEIGHT
+        * protected["candidate0_advantage_huber"] + shared).detach()))
 
 
 def test_prediction_metrics_reward_better_ranking_and_calibration() -> None:
@@ -328,3 +356,4 @@ def test_checkpoint_contract_keeps_play_and_bury_weights_separate() -> None:
         state_dict_sha256="a" * 64)
     assert value["play_and_bury_share_weights"] is False
     assert value["utility_bins"] == list(MODEL.UTILITY_BINS)
+    assert value["loss_recipe"] == "all_pairs_v1"

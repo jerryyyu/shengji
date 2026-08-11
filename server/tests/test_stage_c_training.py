@@ -27,7 +27,7 @@ def _example(index: int, *, split: str = "DESIGN",
             weights[left][right] = weights[right][left] = 1.0
     state_id = f"{split.lower()}:{surface}:{index}"
     target = {
-        "schema": "teacher-stage-c-model-target-v1",
+        "schema": MODEL.TARGET_SCHEMA,
         "state_id": state_id,
         "split": split,
         "surface_type": surface,
@@ -46,6 +46,9 @@ def _example(index: int, *, split: str = "DESIGN",
         "outcome_distribution": distributions,
         "ranking_mean_signed_level_utility": ranking_means,
         "outcome_mean_signed_level_utility": ranking_means,
+        "candidate0_relative_advantage": [
+            value - ranking_means[0] for value in ranking_means],
+        "candidate0_relative_weight": [0.0, 1.0, 1.0],
         "utility_bins": list(MODEL.UTILITY_BINS),
     }
     if stratum != "ordinary_anchor":
@@ -55,6 +58,10 @@ def _example(index: int, *, split: str = "DESIGN",
             "replaced_all_candidate_pair":
                 target["frozen_label_index"] != 0,
         }
+        challenger = target["frozen_label_index"]
+        if challenger != 0:
+            target["candidate0_relative_weight"][challenger] = \
+                MODEL.HARD_REPORT_WORLDS / MODEL.HARD_SELECTION_WORLDS
     target["target_sha256"] = TRAIN._self_hash(target, "target_sha256")
     example = {
         "schema": MODEL.SCHEMA,
@@ -98,12 +105,19 @@ def test_state_balanced_prior_does_not_overweight_large_ballots() -> None:
     examples[1]["actions"] = examples[1]["actions"][:1]
     target = examples[1]["target"]
     for name in ("outcome_distribution", "ranking_mean_signed_level_utility",
-                 "outcome_mean_signed_level_utility"):
+                 "outcome_mean_signed_level_utility",
+                 "candidate0_relative_advantage",
+                 "candidate0_relative_weight"):
         target[name] = target[name][:1]
     target["pairwise_preference"] = [[0.5]]
     target["pairwise_weight"] = [[0.0]]
     target["candidate_count"] = 1
     target["frozen_label_index"] = 0
+    target["deeper_report_pair"] = {
+        "candidate_indices": [0, 0],
+        "worlds": MODEL.HARD_REPORT_WORLDS,
+        "replaced_all_candidate_pair": False,
+    }
     target["target_sha256"] = TRAIN._self_hash(target, "target_sha256")
     examples[1]["example_sha256"] = TRAIN._self_hash(
         examples[1], "example_sha256")
@@ -126,21 +140,25 @@ def test_epoch_order_is_deterministic_and_seed_specific() -> None:
 
 
 @pytest.mark.skipif(MODEL.torch is None, reason="torch is optional")
-def test_training_cell_is_reproducible_and_keeps_report_closed() -> None:
+@pytest.mark.parametrize("loss_recipe", MODEL.LOSS_RECIPES)
+def test_training_cell_is_reproducible_and_keeps_report_closed(
+        loss_recipe: str) -> None:
     design = _population(split="DESIGN", surface="play", count=12)
     calib = _population(split="CALIB", surface="play", count=6)
     first = TRAIN.train_curve(
         design, calib, surface="play", seed=41,
-        curve_fraction=1.0, max_epoch=2)
+        curve_fraction=1.0, loss_recipe=loss_recipe, max_epoch=2)
     second = TRAIN.train_curve(
         list(reversed(design)), list(reversed(calib)),
-        surface="play", seed=41, curve_fraction=1.0, max_epoch=2)
+        surface="play", seed=41, curve_fraction=1.0,
+        loss_recipe=loss_recipe, max_epoch=2)
     assert [row["model_state_sha256"] for row in first["snapshots"]] == [
         row["model_state_sha256"] for row in second["snapshots"]]
     assert [row["calib_metrics"] for row in first["snapshots"]] == [
         row["calib_metrics"] for row in second["snapshots"]]
     assert first["report_rows_opened"] == 0
     assert first["report_open_authorized"] is False
+    assert first["loss_recipe"] == loss_recipe
 
 
 @pytest.mark.skipif(MODEL.torch is None, reason="torch is optional")

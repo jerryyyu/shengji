@@ -25,16 +25,19 @@ from typing import Mapping, Sequence
 from .encode import ACT_DIM, OBS_DIM, encode_action, encode_obs
 
 
-SCHEMA = "teacher-stage-c-model-example-v1"
-MODEL_SCHEMA = "teacher-stage-c-ranking-outcome-model-v1"
+SCHEMA = "teacher-stage-c-model-example-v2"
+TARGET_SCHEMA = "teacher-stage-c-model-target-v2"
+MODEL_SCHEMA = "teacher-stage-c-ranking-outcome-model-v2"
 SELECTION_SCHEMA = "teacher-stage-c-model-selection-v2"
 SURFACES = ("play", "bury")
 CAPABILITY_HEADS = ("ranking", "outcome")
+LOSS_RECIPES = ("all_pairs_v1", "candidate0_relative_v2")
 UTILITY_BINS = (-3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5)
 TRAINING_SEEDS = (41, 73, 101, 137, 173, 211, 251, 293)
 CURVE_FRACTIONS = (0.25, 0.5, 1.0)
 EPOCH_GRID = (1, 2, 4, 8, 16, 32)
 PAIRWISE_WEIGHT = 1.0
+ANCHOR_ADVANTAGE_WEIGHT = 1.0
 LABEL_CE_WEIGHT = 0.25
 OUTCOME_CE_WEIGHT = 1.0
 ORDINARY_WORLDS = 256
@@ -237,6 +240,23 @@ def build_target(state: Mapping[str, object], row: Mapping[str, object]) -> dict
         }
         deeper_indices = {left_index, right_index}
 
+    # The production use case is protected: candidate zero remains the
+    # incumbent and the learned model proposes only alternatives.  Preserve a
+    # direct signed-utility target for that exact comparison.  Hard-tail rows
+    # use their deeper independent report evidence for the frozen challenger;
+    # other alternatives retain the coherent all-candidate selection fold.
+    candidate0_advantage = [value - ranking_means[0]
+                            for value in ranking_means]
+    candidate0_advantage_weight = [0.0] + [1.0] * (count - 1)
+    if deeper_pair is not None and deeper_pair[
+            "replaced_all_candidate_pair"]:
+        right_index = int(deeper_pair["candidate_indices"][1])
+        candidate0_advantage[right_index] = (
+            distribution_mean(distributions[right_index])
+            - distribution_mean(distributions[0]))
+        candidate0_advantage_weight[right_index] = (
+            HARD_REPORT_WORLDS / sample_worlds[0])
+
     label = row.get("label_action", {}).get("index")
     if (isinstance(label, bool) or not isinstance(label, int)
             or not 0 <= label < count):
@@ -244,7 +264,7 @@ def build_target(state: Mapping[str, object], row: Mapping[str, object]) -> dict
     if deeper_indices is not None and label not in deeper_indices:
         raise StageCModelError("Stage-C hard-tail label/report identity drift")
     target = {
-        "schema": "teacher-stage-c-model-target-v1",
+        "schema": TARGET_SCHEMA,
         "state_id": state["state_id"],
         "split": state["split"],
         "surface_type": surface,
@@ -261,6 +281,8 @@ def build_target(state: Mapping[str, object], row: Mapping[str, object]) -> dict
         "ranking_mean_signed_level_utility": ranking_means,
         "outcome_mean_signed_level_utility": [
             distribution_mean(value) for value in distributions],
+        "candidate0_relative_advantage": candidate0_advantage,
+        "candidate0_relative_weight": candidate0_advantage_weight,
         "utility_bins": list(UTILITY_BINS),
     }
     target["target_sha256"] = sha256_bytes(canonical_json(target))
@@ -381,6 +403,11 @@ def collate_examples(examples: Sequence[Mapping[str, object]], *, device=None):
     pair_targets = []
     pair_weights = []
     pair_segments = []
+    anchor_base = []
+    anchor_rows = []
+    anchor_targets = []
+    anchor_weights = []
+    anchor_segments = []
     offset = 0
     for decision, example in enumerate(examples):
         actions = example.get("actions")
@@ -404,6 +431,14 @@ def collate_examples(examples: Sequence[Mapping[str, object]], *, device=None):
                 pair_targets.append(float(preferences[left][right]))
                 pair_weights.append(float(weights[left][right]))
                 pair_segments.append(decision)
+        advantages = target["candidate0_relative_advantage"]
+        advantage_weights = target["candidate0_relative_weight"]
+        for candidate in range(1, count):
+            anchor_base.append(offset)
+            anchor_rows.append(offset + candidate)
+            anchor_targets.append(float(advantages[candidate]))
+            anchor_weights.append(float(advantage_weights[candidate]))
+            anchor_segments.append(decision)
         offset += count
     return {
         "obs": torch.as_tensor(obs_rows, dtype=torch.float32, device=device),
@@ -425,6 +460,16 @@ def collate_examples(examples: Sequence[Mapping[str, object]], *, device=None):
             pair_weights, dtype=torch.float32, device=device),
         "pair_segments": torch.as_tensor(
             pair_segments, dtype=torch.long, device=device),
+        "anchor_base": torch.as_tensor(
+            anchor_base, dtype=torch.long, device=device),
+        "anchor_rows": torch.as_tensor(
+            anchor_rows, dtype=torch.long, device=device),
+        "anchor_targets": torch.as_tensor(
+            anchor_targets, dtype=torch.float32, device=device),
+        "anchor_weights": torch.as_tensor(
+            anchor_weights, dtype=torch.float32, device=device),
+        "anchor_segments": torch.as_tensor(
+            anchor_segments, dtype=torch.long, device=device),
         "decisions": len(examples),
     }
 
@@ -450,10 +495,13 @@ def _segment_log_softmax(values, segments, count: int):
     return shifted - torch.log(denominators[segments].clamp(min=1e-12))
 
 
-def stage_c_loss(net, batch: Mapping[str, object]) -> dict:
-    """State-balanced pairwise ranking, label and distribution losses."""
+def stage_c_loss(net, batch: Mapping[str, object], *,
+                 loss_recipe: str = LOSS_RECIPES[0]) -> dict:
+    """State-balanced ranking, protected-anchor and distribution losses."""
     if torch is None:
         raise StageCModelError("Stage-C model training requires torch")
+    if loss_recipe not in LOSS_RECIPES:
+        raise StageCModelError("Stage-C loss recipe is not frozen")
     decisions = int(batch["decisions"])
     rank, outcome_logits = net.forward_grouped(
         batch["obs"], batch["actions"], batch["segments"])
@@ -463,18 +511,31 @@ def stage_c_loss(net, batch: Mapping[str, object]) -> dict:
     pairwise = _segment_mean(
         pair_rows, batch["pair_segments"], decisions,
         weights=batch["pair_weights"]).mean()
+    if batch["anchor_rows"].numel():
+        predicted_advantage = (
+            rank[batch["anchor_rows"]] - rank[batch["anchor_base"]])
+        anchor_rows = torch.nn.functional.smooth_l1_loss(
+            predicted_advantage, batch["anchor_targets"], reduction="none")
+        anchor_advantage = _segment_mean(
+            anchor_rows, batch["anchor_segments"], decisions,
+            weights=batch["anchor_weights"]).mean()
+    else:
+        anchor_advantage = rank.sum() * 0.0
     log_rank = _segment_log_softmax(rank, batch["segments"], decisions)
     label_ce = -log_rank[batch["label_rows"]].mean()
     log_outcome = torch.nn.functional.log_softmax(outcome_logits, dim=-1)
     outcome_rows = -(batch["bracket_targets"] * log_outcome).sum(dim=-1)
     outcome_ce = _segment_mean(
         outcome_rows, batch["segments"], decisions).mean()
-    total = (PAIRWISE_WEIGHT * pairwise
-             + LABEL_CE_WEIGHT * label_ce
+    ranking_loss = (PAIRWISE_WEIGHT * pairwise
+                    if loss_recipe == "all_pairs_v1" else
+                    ANCHOR_ADVANTAGE_WEIGHT * anchor_advantage)
+    total = (ranking_loss + LABEL_CE_WEIGHT * label_ce
              + OUTCOME_CE_WEIGHT * outcome_ce)
     return {
         "loss": total,
         "pairwise_bce": pairwise,
+        "candidate0_advantage_huber": anchor_advantage,
         "label_ce": label_ce,
         "outcome_ce": outcome_ce,
     }
@@ -723,9 +784,11 @@ def select_global_epoch(records: Sequence[Mapping[str, object]]) -> dict:
 
 
 def checkpoint_contract(*, surface: str, seed: int, epoch: int,
-                        curve_fraction: float, state_dict_sha256: str) -> dict:
+                        curve_fraction: float, state_dict_sha256: str,
+                        loss_recipe: str = LOSS_RECIPES[0]) -> dict:
     if (surface not in SURFACES or seed not in TRAINING_SEEDS
             or epoch not in EPOCH_GRID or curve_fraction not in CURVE_FRACTIONS
+            or loss_recipe not in LOSS_RECIPES
             or len(state_dict_sha256) != 64
             or any(character not in "0123456789abcdef"
                    for character in state_dict_sha256)):
@@ -736,10 +799,12 @@ def checkpoint_contract(*, surface: str, seed: int, epoch: int,
         "seed": seed,
         "epoch": epoch,
         "curve_fraction": curve_fraction,
+        "loss_recipe": loss_recipe,
         "architecture": "StageCRankingOutcomeNet(hidden=256)",
         "utility_bins": list(UTILITY_BINS),
         "loss_weights": {
             "pairwise_bce": PAIRWISE_WEIGHT,
+            "candidate0_advantage_huber": ANCHOR_ADVANTAGE_WEIGHT,
             "frozen_label_ce": LABEL_CE_WEIGHT,
             "outcome_distribution_ce": OUTCOME_CE_WEIGHT,
         },

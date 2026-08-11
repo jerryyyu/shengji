@@ -24,8 +24,8 @@ from . import stage_c_model as MODEL
 from .exact_resume import state_digest
 
 
-TRAINING_SCHEMA = "teacher-stage-c-training-cell-v1"
-SNAPSHOT_SCHEMA = "teacher-stage-c-model-snapshot-v1"
+TRAINING_SCHEMA = "teacher-stage-c-training-cell-v2"
+SNAPSHOT_SCHEMA = "teacher-stage-c-model-snapshot-v2"
 BATCH_SIZE = 64
 LEARNING_RATE = 3e-4
 WEIGHT_DECAY = 1e-4
@@ -85,6 +85,8 @@ def _validate_example(example: Mapping[str, object], *, split: str,
     distributions = target.get("outcome_distribution")
     ranking_means = target.get("ranking_mean_signed_level_utility")
     outcome_means = target.get("outcome_mean_signed_level_utility")
+    anchor_advantages = target.get("candidate0_relative_advantage")
+    anchor_weights = target.get("candidate0_relative_weight")
     preferences = target.get("pairwise_preference")
     weights = target.get("pairwise_weight")
     label = target.get("frozen_label_index")
@@ -95,7 +97,7 @@ def _validate_example(example: Mapping[str, object], *, split: str,
                        if expected_recipe == "ordinary_anchor"
                        else MODEL.HARD_SELECTION_WORLDS)
     deeper = target.get("deeper_report_pair")
-    if (target.get("schema") != "teacher-stage-c-model-target-v1"
+    if (target.get("schema") != MODEL.TARGET_SCHEMA
             or target.get("stratum") != example.get("stratum")
             or target.get("recipe") != expected_recipe
             or target.get("all_candidate_fold") != (
@@ -114,6 +116,8 @@ def _validate_example(example: Mapping[str, object], *, split: str,
             or any(not isinstance(value, list) for value in distributions)
             or not _finite_vector(ranking_means, count)
             or not _finite_vector(outcome_means, count)
+            or not _finite_vector(anchor_advantages, count)
+            or not _finite_vector(anchor_weights, count)
             or not isinstance(preferences, list) or len(preferences) != count
             or not isinstance(weights, list) or len(weights) != count
             or any(not _finite_vector(value, count) for value in preferences)
@@ -121,6 +125,11 @@ def _validate_example(example: Mapping[str, object], *, split: str,
             or any(not 0 <= float(value) <= 1
                    for row in preferences for value in row)
             or any(float(value) < 0 for row in weights for value in row)
+            or not math.isclose(float(anchor_advantages[0]), 0.0,
+                                rel_tol=0.0, abs_tol=1e-12)
+            or not math.isclose(float(anchor_weights[0]), 0.0,
+                                rel_tol=0.0, abs_tol=1e-12)
+            or any(float(value) <= 0 for value in anchor_weights[1:])
             or isinstance(label, bool) or not isinstance(label, int)
             or not 0 <= label < count):
         raise StageCTrainingError("Stage-C training target geometry drift")
@@ -131,6 +140,26 @@ def _validate_example(example: Mapping[str, object], *, split: str,
             MODEL.distribution_mean(distributions[index]),
             rel_tol=1e-9, abs_tol=1e-9) for index in range(count)):
         raise StageCTrainingError("Stage-C training outcome mean drift")
+    expected_anchor_advantages = [float(value) - float(ranking_means[0])
+                                  for value in ranking_means]
+    expected_anchor_weights = [0.0] + [1.0] * (count - 1)
+    if (isinstance(deeper, dict)
+            and deeper.get("replaced_all_candidate_pair") is True):
+        challenger = int(deeper["candidate_indices"][1])
+        expected_anchor_advantages[challenger] = (
+            float(outcome_means[challenger]) - float(outcome_means[0]))
+        expected_anchor_weights[challenger] = (
+            MODEL.HARD_REPORT_WORLDS / MODEL.HARD_SELECTION_WORLDS)
+    if (any(not math.isclose(float(actual), expected,
+                             rel_tol=1e-9, abs_tol=1e-9)
+            for actual, expected in zip(
+                anchor_advantages, expected_anchor_advantages, strict=True))
+            or any(not math.isclose(float(actual), expected,
+                                    rel_tol=1e-9, abs_tol=1e-9)
+                   for actual, expected in zip(
+                       anchor_weights, expected_anchor_weights, strict=True))):
+        raise StageCTrainingError(
+            "Stage-C candidate-zero-relative target drift")
     for left in range(count):
         if (not math.isclose(float(preferences[left][left]), 0.5)
                 or float(weights[left][left]) != 0.0):
@@ -266,6 +295,7 @@ def train_curve(
     design_examples: Sequence[Mapping[str, object]],
     calib_examples: Sequence[Mapping[str, object]],
     *, surface: str, seed: int, curve_fraction: float,
+    loss_recipe: str = MODEL.LOSS_RECIPES[0],
     max_epoch: int = MAX_EPOCH,
     heartbeat: Callable[[Mapping[str, object]], None] | None = None,
 ) -> dict:
@@ -273,6 +303,7 @@ def train_curve(
     torch = _require_torch()
     if (surface not in MODEL.SURFACES or seed not in MODEL.TRAINING_SEEDS
             or curve_fraction not in MODEL.CURVE_FRACTIONS
+            or loss_recipe not in MODEL.LOSS_RECIPES
             or isinstance(max_epoch, bool) or not isinstance(max_epoch, int)
             or max_epoch not in MODEL.EPOCH_GRID):
         raise StageCTrainingError("Stage-C training cell identity drift")
@@ -298,7 +329,8 @@ def train_curve(
                 selected_design, seed=seed, epoch=epoch):
             batch = MODEL.collate_examples(examples, device="cpu")
             optimizer.zero_grad(set_to_none=True)
-            losses = MODEL.stage_c_loss(net, batch)
+            losses = MODEL.stage_c_loss(
+                net, batch, loss_recipe=loss_recipe)
             if not all(torch.isfinite(value) for value in losses.values()):
                 raise StageCTrainingError("Stage-C training loss is not finite")
             losses["loss"].backward()
@@ -314,6 +346,7 @@ def train_curve(
                 "surface": surface,
                 "seed": seed,
                 "curve_fraction": curve_fraction,
+                "loss_recipe": loss_recipe,
                 "epoch": epoch,
                 "max_epoch": max_epoch,
                 "updates": updates,
@@ -326,7 +359,9 @@ def train_curve(
             "updates": updates,
             "mean_training_loss": {
                 name: sum(row[name] for row in epoch_losses) / len(epoch_losses)
-                for name in ("loss", "pairwise_bce", "label_ce", "outcome_ce")
+                for name in (
+                    "loss", "pairwise_bce", "candidate0_advantage_huber",
+                    "label_ce", "outcome_ce")
             },
             "calib_metrics": evaluate_model(
                 net, calib_examples, prior_distribution=prior),
@@ -342,6 +377,7 @@ def train_curve(
         "surface": surface,
         "seed": seed,
         "curve_fraction": curve_fraction,
+        "loss_recipe": loss_recipe,
         "design_states": len(selected_design),
         "full_design_states": len(design_examples),
         "calib_states": len(calib_examples),
@@ -356,6 +392,7 @@ def train_curve(
             "cpu_threads": CPU_THREADS,
             "device": "cpu",
             "deterministic_algorithms": True,
+            "loss_recipe": loss_recipe,
         },
         "snapshots": snapshots,
         "report_rows_opened": 0,

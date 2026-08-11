@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import importlib
 import json
 import math
 import os
@@ -29,7 +30,14 @@ SERVER = SCRIPT.parents[1]
 REPO = SCRIPT.parents[2]
 sys.path.insert(0, str(SCRIPT.parent))
 
-import teacher_stage_c_composition_controller as CTRL  # noqa: E402
+_CONTROLLER_MODULE = os.environ.get(
+    "SHENGJI_STAGE_C_COMPOSITION_CONTROLLER",
+    "teacher_stage_c_composition_controller")
+if _CONTROLLER_MODULE not in {
+        "teacher_stage_c_composition_controller",
+        "teacher_stage_c_expanded_composition_controller"}:
+    raise RuntimeError("unrecognized Stage-C composition controller module")
+CTRL = importlib.import_module(_CONTROLLER_MODULE)  # noqa: E402
 from shengji.ai.registry import make_bot  # noqa: E402
 from shengji.rl import stage_c_candidates as CANDIDATES  # noqa: E402
 from shengji.rl import stage_c_composition as COMPOSITION  # noqa: E402
@@ -38,16 +46,27 @@ from shengji.rl import stage_c_npnet as NPNET  # noqa: E402
 from shengji.rl import stage_c_screen as SCREEN  # noqa: E402
 
 
-ADMISSION_SCHEMA = "teacher-stage-c-composition-screen-admission-v1"
-CAPACITY_ADMISSION_SCHEMA = \
-    "teacher-stage-c-composition-capacity-admission-v1"
-SUPERVISOR_ADMISSION_SCHEMA = \
-    "teacher-stage-c-composition-supervisor-admission-v1"
-SUPERVISOR_FINAL_SCHEMA = \
-    "teacher-stage-c-composition-supervisor-final-v1"
-RECEIPT_SCHEMA = "teacher-stage-c-composition-screen-receipt-v1"
-SHARD_SCHEMA = "teacher-stage-c-composition-screen-shard-v1"
-AGGREGATE_SCHEMA = "teacher-stage-c-composition-screen-result-v1"
+ADMISSION_SCHEMA = getattr(
+    CTRL, "RUNTIME_ADMISSION_SCHEMA",
+    "teacher-stage-c-composition-screen-admission-v1")
+CAPACITY_ADMISSION_SCHEMA = getattr(
+    CTRL, "RUNTIME_CAPACITY_ADMISSION_SCHEMA",
+    "teacher-stage-c-composition-capacity-admission-v1")
+SUPERVISOR_ADMISSION_SCHEMA = getattr(
+    CTRL, "RUNTIME_SUPERVISOR_ADMISSION_SCHEMA",
+    "teacher-stage-c-composition-supervisor-admission-v1")
+SUPERVISOR_FINAL_SCHEMA = getattr(
+    CTRL, "RUNTIME_SUPERVISOR_FINAL_SCHEMA",
+    "teacher-stage-c-composition-supervisor-final-v1")
+RECEIPT_SCHEMA = getattr(
+    CTRL, "RUNTIME_RECEIPT_SCHEMA",
+    "teacher-stage-c-composition-screen-receipt-v1")
+SHARD_SCHEMA = getattr(
+    CTRL, "RUNTIME_SHARD_SCHEMA",
+    "teacher-stage-c-composition-screen-shard-v1")
+AGGREGATE_SCHEMA = getattr(
+    CTRL, "RUNTIME_AGGREGATE_SCHEMA",
+    "teacher-stage-c-composition-screen-result-v1")
 
 
 class CompositionRuntimeRefused(RuntimeError):
@@ -889,7 +908,8 @@ def _child_command(
 ) -> list[str]:
     return [
         sys.executable,
-        "server/scripts/teacher_stage_c_composition_runtime.py",
+        getattr(CTRL, "RUNTIME_SCRIPT_PATH",
+                "server/scripts/teacher_stage_c_composition_runtime.py"),
         "run-shard",
         "--expected-git", str(packet["producer"]["git"]),
         "--controller-packet", CTRL.PACKET_PATH,

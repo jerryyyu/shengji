@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import json
 import math
 import os
@@ -33,7 +34,14 @@ SERVER = SCRIPT.parents[1]
 REPO = SCRIPT.parents[2]
 sys.path.insert(0, str(SCRIPT.parent))
 
-import teacher_stage_c_report_controller as REPORT_CTRL  # noqa: E402
+_REPORT_CONTROLLER_MODULE = os.environ.get(
+    "SHENGJI_STAGE_C_REPORT_CONTROLLER",
+    "teacher_stage_c_report_controller")
+if _REPORT_CONTROLLER_MODULE not in {
+        "teacher_stage_c_report_controller",
+        "teacher_stage_c_expanded_report_controller"}:
+    raise RuntimeError("unrecognized Stage-C composition REPORT controller")
+REPORT_CTRL = importlib.import_module(_REPORT_CONTROLLER_MODULE)  # noqa: E402
 import teacher_stage_c_report_runtime as REPORT_RUNTIME  # noqa: E402
 import teacher_stage_c_report_supervisor as REPORT_SUPERVISOR  # noqa: E402
 from shengji.ai.registry import make_bot  # noqa: E402
@@ -47,20 +55,75 @@ from shengji.rl import stage_c_screen as SCREEN  # noqa: E402
 from shengji.rl import stage_c_training as TRAIN  # noqa: E402
 
 
-SCHEMA = "teacher-stage-c-composition-screen-controller-v3"
-PACKET_ID = "teacher-stage-c-composition-screen-181m-v3"
+_PROFILE = os.environ.get(
+    "SHENGJI_STAGE_C_COMPOSITION_PROFILE", "protected-anchor")
+if _PROFILE not in {"protected-anchor", "expanded-bury"}:
+    raise RuntimeError("unrecognized Stage-C composition profile")
+
+_EXPANDED = _PROFILE == "expanded-bury"
+if _EXPANDED != (
+        _REPORT_CONTROLLER_MODULE
+        == "teacher_stage_c_expanded_report_controller"):
+    raise RuntimeError(
+        "Stage-C composition/report controller profiles disagree")
+SCHEMA = ("teacher-stage-c-expanded-composition-screen-controller-v1"
+          if _EXPANDED else
+          "teacher-stage-c-composition-screen-controller-v3")
+PACKET_ID = ("teacher-v3-hard-tail-stage-c-expanded-composition-screen-v1"
+             if _EXPANDED else
+             "teacher-stage-c-composition-screen-181m-v3")
 RUN_ID = PACKET_ID
 PACKET_PATH = f"server/runs/logs/{RUN_ID}/controller-packet.json"
-REVIEW_SCHEMA = "teacher-stage-c-composition-screen-controller-review-v3"
-REVIEW_MARKER = "TEACHER_STAGE_C_COMPOSITION_SCREEN_CONTROLLER_V3_REVIEW "
-CAPACITY_RESULT_SCHEMA = "teacher-stage-c-composition-capacity-v3"
-CAPACITY_REVIEW_SCHEMA = "teacher-stage-c-composition-capacity-review-v3"
-CAPACITY_REVIEW_MARKER = \
-    "TEACHER_STAGE_C_COMPOSITION_CAPACITY_V3_REVIEW "
-SUPERVISOR_REVIEW_SCHEMA = \
-    "teacher-stage-c-composition-supervisor-final-review-v3"
-SUPERVISOR_REVIEW_MARKER = \
-    "TEACHER_STAGE_C_COMPOSITION_SUPERVISOR_FINAL_V3_REVIEW "
+REVIEW_SCHEMA = (
+    "teacher-stage-c-expanded-composition-screen-controller-review-v1"
+    if _EXPANDED else
+    "teacher-stage-c-composition-screen-controller-review-v3")
+REVIEW_MARKER = (
+    "TEACHER_STAGE_C_EXPANDED_COMPOSITION_SCREEN_CONTROLLER_V1_REVIEW "
+    if _EXPANDED else
+    "TEACHER_STAGE_C_COMPOSITION_SCREEN_CONTROLLER_V3_REVIEW ")
+CAPACITY_RESULT_SCHEMA = (
+    "teacher-stage-c-expanded-composition-capacity-v1"
+    if _EXPANDED else "teacher-stage-c-composition-capacity-v3")
+CAPACITY_REVIEW_SCHEMA = (
+    "teacher-stage-c-expanded-composition-capacity-review-v1"
+    if _EXPANDED else "teacher-stage-c-composition-capacity-review-v3")
+CAPACITY_REVIEW_MARKER = (
+    "TEACHER_STAGE_C_EXPANDED_COMPOSITION_CAPACITY_V1_REVIEW "
+    if _EXPANDED else "TEACHER_STAGE_C_COMPOSITION_CAPACITY_V3_REVIEW ")
+SUPERVISOR_REVIEW_SCHEMA = (
+    "teacher-stage-c-expanded-composition-supervisor-final-review-v1"
+    if _EXPANDED else
+    "teacher-stage-c-composition-supervisor-final-review-v3")
+SUPERVISOR_REVIEW_MARKER = (
+    "TEACHER_STAGE_C_EXPANDED_COMPOSITION_SUPERVISOR_FINAL_V1_REVIEW "
+    if _EXPANDED else
+    "TEACHER_STAGE_C_COMPOSITION_SUPERVISOR_FINAL_V3_REVIEW ")
+RUNTIME_SCRIPT_PATH = (
+    "server/scripts/teacher_stage_c_expanded_composition_runtime.py"
+    if _EXPANDED else
+    "server/scripts/teacher_stage_c_composition_runtime.py")
+RUNTIME_ADMISSION_SCHEMA = (
+    "teacher-stage-c-expanded-composition-screen-admission-v1"
+    if _EXPANDED else "teacher-stage-c-composition-screen-admission-v1")
+RUNTIME_CAPACITY_ADMISSION_SCHEMA = (
+    "teacher-stage-c-expanded-composition-capacity-admission-v1"
+    if _EXPANDED else "teacher-stage-c-composition-capacity-admission-v1")
+RUNTIME_SUPERVISOR_ADMISSION_SCHEMA = (
+    "teacher-stage-c-expanded-composition-supervisor-admission-v1"
+    if _EXPANDED else "teacher-stage-c-composition-supervisor-admission-v1")
+RUNTIME_SUPERVISOR_FINAL_SCHEMA = (
+    "teacher-stage-c-expanded-composition-supervisor-final-v1"
+    if _EXPANDED else "teacher-stage-c-composition-supervisor-final-v1")
+RUNTIME_RECEIPT_SCHEMA = (
+    "teacher-stage-c-expanded-composition-screen-receipt-v1"
+    if _EXPANDED else "teacher-stage-c-composition-screen-receipt-v1")
+RUNTIME_SHARD_SCHEMA = (
+    "teacher-stage-c-expanded-composition-screen-shard-v1"
+    if _EXPANDED else "teacher-stage-c-composition-screen-shard-v1")
+RUNTIME_AGGREGATE_SCHEMA = (
+    "teacher-stage-c-expanded-composition-screen-result-v1"
+    if _EXPANDED else "teacher-stage-c-composition-screen-result-v1")
 PREFLIGHT_SEED0 = 180_000_000
 PREFLIGHT_CLUSTERS = 4
 PREFLIGHT_MAX_SECONDS = 3_600.0
@@ -100,6 +163,9 @@ AGGREGATE_ADMISSION_PATH = \
 SOURCE_PATHS = (
     "server/scripts/teacher_stage_c_composition_controller.py",
     "server/scripts/teacher_stage_c_composition_runtime.py",
+    *(("server/scripts/teacher_stage_c_expanded_composition_controller.py",
+       "server/scripts/teacher_stage_c_expanded_composition_runtime.py")
+      if _EXPANDED else ()),
     "server/shengji/rl/stage_c_candidates.py",
     "server/shengji/rl/stage_c_composition.py",
     "server/shengji/rl/stage_c_npnet.py",
@@ -441,8 +507,36 @@ def validate_report_result(
     return packet, result
 
 
+def _checkpoint_root(packet: Mapping[str, object]) -> Path:
+    """Return the already-authenticated training root for selected snapshots."""
+    evidence = packet.get("parents", {}).get("training_evidence")
+    if evidence is None:
+        return REPO
+    if not isinstance(evidence, Mapping):
+        raise CompositionControllerRefused(
+            "Stage-C training-evidence parent drift")
+    root = Path(str(evidence.get("absolute_path", ""))).resolve()
+    expected_git = evidence.get("git")
+    try:
+        actual_git = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=root, check=True,
+            capture_output=True, text=True).stdout.strip()
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=root, check=True, capture_output=True,
+            text=True).stdout.strip()
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise CompositionControllerRefused(
+            "Stage-C training-evidence Git unavailable") from exc
+    if (not root.is_dir() or actual_git != expected_git or dirty):
+        raise CompositionControllerRefused(
+            "Stage-C training-evidence Git drift")
+    return root
+
+
 def _export_models(packet: Mapping[str, object], *, verify: bool) -> list[dict]:
     capability = packet["selected_capability"]
+    checkpoint_root = _checkpoint_root(packet)
     # Check the complete population before the first no-replace publication.
     # A late known collision must not leave seven newly exported models and no
     # controller packet.
@@ -457,7 +551,16 @@ def _export_models(packet: Mapping[str, object], *, verify: bool) -> list[dict]:
     exports = []
     for item, logical in zip(
             packet["checkpoint_manifest"], MODEL_PATHS, strict=True):
-        checkpoint = (REPO / str(item["checkpoint_path"])).resolve()
+        checkpoint_logical = Path(str(item["checkpoint_path"]))
+        if checkpoint_logical.is_absolute() or ".." in checkpoint_logical.parts:
+            raise CompositionControllerRefused(
+                "Stage-C checkpoint logical path escapes evidence root")
+        checkpoint = (checkpoint_root / checkpoint_logical).resolve()
+        try:
+            checkpoint.relative_to(checkpoint_root)
+        except ValueError as exc:
+            raise CompositionControllerRefused(
+                "Stage-C checkpoint resolved outside evidence root") from exc
         reopened = TRAIN.load_snapshot(
             checkpoint, expected_contract=item["checkpoint_contract"])
         out = (REPO / logical).resolve()
@@ -535,29 +638,29 @@ def _commands() -> dict:
     return {
         "capacity_preflight": [
             "{python}",
-            "server/scripts/teacher_stage_c_composition_runtime.py",
+            RUNTIME_SCRIPT_PATH,
             "capacity-preflight", *shared, "--out", CAPACITY_RESULT_PATH,
         ],
         "admit": [
             "{python}",
-            "server/scripts/teacher_stage_c_composition_runtime.py",
+            RUNTIME_SCRIPT_PATH,
             "admit", *shared, *capacity, "--out", RECEIPT_PATH,
         ],
         "supervise": [
             "{python}",
-            "server/scripts/teacher_stage_c_composition_runtime.py",
+            RUNTIME_SCRIPT_PATH,
             "supervise", *shared, *receipt, *capacity,
             "--out", SUPERVISOR_FINAL_PATH,
         ],
         "supervisor_child_shards": [[
             "{python}",
-            "server/scripts/teacher_stage_c_composition_runtime.py",
+            RUNTIME_SCRIPT_PATH,
             "run-shard", *shared, *receipt, *capacity, *supervisor,
             "--shard-index", str(index), "--out", SHARD_PATHS[index],
         ] for index in range(SHARD_COUNT)],
         "aggregate": [
             "{python}",
-            "server/scripts/teacher_stage_c_composition_runtime.py",
+            RUNTIME_SCRIPT_PATH,
             "aggregate", *shared,
             *receipt, *capacity,
             "--supervisor-final", SUPERVISOR_FINAL_PATH,

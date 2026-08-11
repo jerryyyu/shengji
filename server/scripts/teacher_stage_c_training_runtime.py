@@ -95,11 +95,24 @@ def _git(*args: str) -> str:
     ).stdout.strip()
 
 
-def publish_exclusive(path: Path, payload: Mapping[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _require_output_available(path: Path) -> None:
     partial = Path(str(path) + ".partial")
     if os.path.lexists(path) or os.path.lexists(partial):
         raise TrainingRuntimeRefused(f"refusing existing output: {path}")
+
+
+def _require_admission_outputs_available(slot_path: Path, out: Path) -> None:
+    if (slot_path != (REPO / ADMISSION_PATH).resolve()
+            or out.resolve() != _expected_receipt_path()):
+        raise TrainingRuntimeRefused("Stage-C training receipt path drift")
+    _require_output_available(slot_path)
+    _require_output_available(out)
+
+
+def publish_exclusive(path: Path, payload: Mapping[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = Path(str(path) + ".partial")
+    _require_output_available(path)
     data = canonical_json(payload)
     try:
         with partial.open("xb") as handle:
@@ -267,13 +280,12 @@ def _slot_payload(packet: Mapping[str, object], packet_sha256: str,
 
 def admit(*, packet_path: Path, expected_packet_sha256: str,
           review_record: Path, out: Path) -> dict:
+    slot_path = (REPO / ADMISSION_PATH).resolve()
+    _require_admission_outputs_available(slot_path, out)
     packet, _dataset_value = _packet(packet_path, expected_packet_sha256)
     claim = _review_claim(review_record, packet, expected_packet_sha256)
-    if out.resolve() != _expected_receipt_path():
-        raise TrainingRuntimeRefused("Stage-C training receipt path drift")
-    slot_path = (REPO / ADMISSION_PATH).resolve()
     slot = _slot_payload(packet, expected_packet_sha256, review_record)
-    publish_exclusive(slot_path, slot)
+    slot_sha256 = sha256_bytes(canonical_json(slot))
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "run_id": CTRL.RUN_ID,
@@ -286,7 +298,7 @@ def admit(*, packet_path: Path, expected_packet_sha256: str,
         "controller_review_record_sha256": sha256_file(review_record),
         "controller_review_claim": claim,
         "admission_slot": ADMISSION_PATH,
-        "admission_slot_sha256": sha256_file(slot_path),
+        "admission_slot_sha256": slot_sha256,
         "training_authorized": True,
         "report_rows_opened": 0,
         "report_open_authorized": False,
@@ -295,6 +307,11 @@ def admit(*, packet_path: Path, expected_packet_sha256: str,
         "production_deployment": False,
     }
     receipt["receipt_sha256"] = self_hash(receipt, "receipt_sha256")
+    # Build and preflight the complete logical pair before consuming the
+    # durable no-retry admission. A genuine race or I/O failure after this
+    # point still consumes admission, as the slot contract states.
+    _require_admission_outputs_available(slot_path, out)
+    publish_exclusive(slot_path, slot)
     publish_exclusive(out, receipt)
     return receipt
 

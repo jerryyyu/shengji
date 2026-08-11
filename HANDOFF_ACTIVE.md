@@ -26,7 +26,7 @@ The current blocker is one independent terminal training-result review:
   8/8 positive seeds, median candidate-zero improvement `+0.016418`. The
   direct candidate-zero loss did not win. Claude's exact terminal
   `TEACHER_STAGE_C_EXPANDED_TRAINING_RESULT_V1_REVIEW` request is canonical.
-- Draft PR #32 exact `7810ec2` implements the downstream score-free REPORT
+- Draft PR #32 exact `50e1464` implements the downstream score-free REPORT
   controller by adapting the existing one-shot runtime/supervisor. It has
   opened zero REPORT rows and cannot freeze until terminal result PASS.
 
@@ -46,7 +46,7 @@ interim utility, stop/restart a healthy shard, retry, extend or tune the run.
 | Expanded training | **CALIB capability PASS / terminal review open:** all 96 cells and 576 checkpoints replayed. Selected epoch-32 all-pairs bury ranking, 8/8 positive seeds; direct loss did not win. | Claude posts raw `TEACHER_STAGE_C_EXPANDED_TRAINING_RESULT_V1_REVIEW`. Only PASS may authorize one score-free REPORT-controller freeze. |
 | REPORT/composition | Third REPORT has never opened. Draft PR #32 binds the selected ensemble to its 32 sealed bury rows; zero packet/execution exists. | After terminal PASS, freeze and independently review one packet. Only its PASS opens REPORT once; compose only a REPORT passer inside report-LCB with fallback and same-work null. |
 | S6 shuai-pai | Draft PR #19 `2605b04` guarantees at least one bounded public lead-only shuai candidate whenever legal, including KESP and late trump-only witnesses. Twelve focused/59 broader tests and a 200-deal coverage audit pass. No screen exists. | Obtain external source-semantics review, then design an equal-work state screen. Do not consume T4 compute or merge an unused source. |
-| Repository hygiene | PR #11 merged; status-only PRs #10/#12/#21/#25 closed; 16 remote branches, eight merged/superseded local branches and eight clean worktrees removed; one stale missing-worktree record pruned. Nine source-required markers lost by `d5348da` were recovered byte-exact and regression-protected. Draft PR #31 proves and removes only unreferenced `segbatch.py`; source-pinned candidates remain untouched. | Review/merge PR #30, retarget/review #31, then consolidate the Stage-C stack on current `main` after terminal evidence. Close/delete ancestors only after ignored evidence is tagged or archived. |
+| Repository hygiene | PR #11 merged; status-only PRs #10/#12/#21/#25 closed; 16 remote branches, eight merged/superseded local branches and 15 clean worktrees removed; one stale missing-worktree record pruned. Nine source-required markers lost by `d5348da` were recovered byte-exact and regression-protected. Draft PR #31 proves and removes only unreferenced `segbatch.py`; source-pinned candidates remain untouched. | Review/merge PR #30, retarget/review #31, then consolidate the Stage-C stack on current `main` after terminal evidence. Close/delete ancestors only after ignored evidence is tagged or archived. |
 
 ## Review boundaries
 

@@ -40,7 +40,8 @@ _CONTROLLER_MODULE = os.environ.get(
 if _CONTROLLER_MODULE not in {
         "teacher_stage_c_report_controller",
         "teacher_stage_c_expanded_report_controller",
-        "teacher_stage_c_expanded_play_report_controller"}:
+        "teacher_stage_c_expanded_play_report_controller",
+        "teacher_stage_c_expanded_uncertainty_report_controller"}:
     raise RuntimeError("unrecognized Stage-C REPORT controller module")
 CTRL = importlib.import_module(_CONTROLLER_MODULE)  # noqa: E402
 import teacher_stage_c_report_runtime as RUNTIME  # noqa: E402
@@ -784,6 +785,7 @@ def expected_review_claim(
             "fresh_report_selection"]["sealed_selection_sha256"],
         "selected_capability": packet["selected_capability"],
         "protected_policy": packet.get("protected_policy"),
+        "scope_policy_contract": packet.get("scope_policy_contract"),
         "report_label_shards": result["report_label_shard_files_opened"],
         "selected_surface_rows_labeled": result[
             "selected_surface_rows_labeled"],

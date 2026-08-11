@@ -38,7 +38,8 @@ _CONTROLLER_MODULE = os.environ.get(
 if _CONTROLLER_MODULE not in {
         "teacher_stage_c_report_controller",
         "teacher_stage_c_expanded_report_controller",
-        "teacher_stage_c_expanded_play_report_controller"}:
+        "teacher_stage_c_expanded_play_report_controller",
+        "teacher_stage_c_expanded_uncertainty_report_controller"}:
     raise RuntimeError("unrecognized Stage-C REPORT controller module")
 CTRL = importlib.import_module(_CONTROLLER_MODULE)  # noqa: E402
 import teacher_stage_c_training_controller as TRAIN_CTRL  # noqa: E402
@@ -425,6 +426,7 @@ def _slot_payload(packet: Mapping[str, object], packet_sha256: str,
         "controller_packet_sha256": packet_sha256,
         "selected_capability": packet["selected_capability"],
         "protected_policy": packet.get("protected_policy"),
+        "scope_policy_contract": packet.get("scope_policy_contract"),
         "checkpoint_manifest_sha256": CTRL._manifest_hash(
             packet["checkpoint_manifest"]),
         "report_schedule_sha256": packet["report_schedule"][
@@ -915,6 +917,7 @@ def recompute_result(
             "report_open_admission_slot_sha256"],
         "selected_capability": packet["selected_capability"],
         "protected_policy": packet.get("protected_policy"),
+        "scope_policy_contract": packet.get("scope_policy_contract"),
         "checkpoint_manifest_sha256": CTRL._manifest_hash(
             packet["checkpoint_manifest"]),
         "fresh_report_selection_sha256": packet["parents"][

@@ -127,6 +127,24 @@ def test_report_result_changes_under_prediction_mutation() -> None:
     assert first["result_sha256"] != second["result_sha256"]
 
 
+def test_ensemble_renormalizes_float32_tail_without_negative_probability() \
+        -> None:
+    examples = [_example(0)]
+    members = _members(examples)
+    # This is a valid float32-shaped distribution whose Python-float sum sits
+    # above one.  The old "put the residual in the last bucket" repair made
+    # its tiny final bucket negative and refused the whole REPORT evaluation.
+    rounded = [0.50000006, 0.50000006, 1e-12, 1e-12,
+               1e-12, 1e-12, 1e-12, 1e-12]
+    for _ranks, outcomes in members:
+        outcomes[0] = [list(rounded), list(rounded)]
+    _ranks, outcomes = REPORT.average_ensemble(examples, members)
+    for distribution in outcomes[0]:
+        assert all(value >= 0 for value in distribution)
+        assert sum(distribution) == pytest.approx(1.0)
+        MODEL.distribution_mean(distribution)
+
+
 def test_numerically_tied_model_scores_choose_lowest_index() -> None:
     outcomes = [_distribution(3), _distribution(3)]
     assert REPORT._selected_index(

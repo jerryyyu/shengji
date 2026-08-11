@@ -49,6 +49,29 @@ def _rank_probabilities(values: Sequence[object]) -> list[float]:
     return result
 
 
+def _normalize_distribution(values: Sequence[object]) -> list[float]:
+    """Renormalize averaged float32 probabilities without a tail underflow.
+
+    Individual model probabilities arrive as float32 values.  Their converted
+    Python-float sums can sit slightly above one; assigning the entire residual
+    to a nearly-zero final bucket can therefore make that bucket negative.
+    Scaling every non-negative component preserves the distribution and avoids
+    making an otherwise valid REPORT population depend on which bucket is last.
+    """
+    if (len(values) != len(MODEL.UTILITY_BINS)
+            or any(isinstance(value, bool)
+                   or not isinstance(value, (int, float))
+                   or not math.isfinite(float(value))
+                   or float(value) < 0 for value in values)):
+        raise StageCReportError("Stage-C REPORT outcome probability drift")
+    total = sum(float(value) for value in values)
+    if not math.isfinite(total) or total <= 0:
+        raise StageCReportError("Stage-C REPORT outcome probability drift")
+    result = [float(value) / total for value in values]
+    MODEL.distribution_mean(result)
+    return result
+
+
 def average_ensemble(
     examples: Sequence[Mapping[str, object]],
     member_predictions: Sequence[tuple[
@@ -82,11 +105,11 @@ def average_ensemble(
         scale = 1.0 / len(member_predictions)
         state_rank = [value * scale for value in state_rank]
         state_rank[-1] += 1.0 - sum(state_rank)
-        for distribution in state_outcome:
-            for bucket in range(len(distribution)):
-                distribution[bucket] *= scale
-            distribution[-1] += 1.0 - sum(distribution)
-            MODEL.distribution_mean(distribution)
+        state_outcome = [
+            _normalize_distribution([
+                value * scale for value in distribution])
+            for distribution in state_outcome
+        ]
         rank_rows.append(state_rank)
         outcome_rows.append(state_outcome)
     return rank_rows, outcome_rows
@@ -121,11 +144,11 @@ def average_raw_logit_ensemble(
                         outcomes[state_index][candidate]):
                     state_outcome[candidate][bucket] += float(probability)
         state_rank = [value * scale for value in state_rank]
-        for distribution in state_outcome:
-            for bucket in range(len(distribution)):
-                distribution[bucket] *= scale
-            distribution[-1] += 1.0 - sum(distribution)
-            MODEL.distribution_mean(distribution)
+        state_outcome = [
+            _normalize_distribution([
+                value * scale for value in distribution])
+            for distribution in state_outcome
+        ]
         rank_rows.append(state_rank)
         outcome_rows.append(state_outcome)
     return rank_rows, outcome_rows

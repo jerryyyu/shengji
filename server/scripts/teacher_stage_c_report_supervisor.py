@@ -34,9 +34,14 @@ SCRIPT = Path(__file__).resolve()
 REPO = SCRIPT.parents[2]
 sys.path.insert(0, str(SCRIPT.parent))
 
-CTRL = importlib.import_module(os.environ.get(  # noqa: E402
+_CONTROLLER_MODULE = os.environ.get(
     "SHENGJI_STAGE_C_REPORT_CONTROLLER",
-    "teacher_stage_c_report_controller"))
+    "teacher_stage_c_report_controller")
+if _CONTROLLER_MODULE not in {
+        "teacher_stage_c_report_controller",
+        "teacher_stage_c_expanded_report_controller"}:
+    raise RuntimeError("unrecognized Stage-C REPORT controller module")
+CTRL = importlib.import_module(_CONTROLLER_MODULE)  # noqa: E402
 import teacher_stage_c_report_runtime as RUNTIME  # noqa: E402
 
 

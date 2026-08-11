@@ -122,3 +122,19 @@ def test_supervisor_wrapper_selects_expanded_schemas():
     assert completed.stdout.splitlines() == [
         CTRL.RUN_ID, CTRL.SUPERVISOR_SCHEMA,
         CTRL.SUPERVISOR_REVIEW_MARKER]
+
+
+@pytest.mark.parametrize("module", (
+    "teacher_stage_c_report_runtime",
+    "teacher_stage_c_report_supervisor",
+))
+def test_shared_report_entry_points_refuse_unknown_controller(module):
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(("server", "server/scripts"))
+    env["SHENGJI_STAGE_C_REPORT_CONTROLLER"] = "json"
+    completed = subprocess.run(
+        [sys.executable, "-c", f"import {module}"],
+        capture_output=True, text=True, env=env)
+    assert completed.returncode != 0
+    assert "unrecognized Stage-C REPORT controller module" \
+        in completed.stderr

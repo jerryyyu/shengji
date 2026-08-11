@@ -115,23 +115,16 @@ RUNTIME_SCRIPT_PATH = \
 SUPERVISOR_SCRIPT_PATH = \
     "server/scripts/teacher_stage_c_expanded_report_supervisor.py"
 
-SOURCE_PATHS = (
+SOURCE_PATHS = tuple(dict.fromkeys((
     "server/scripts/teacher_stage_c_expanded_report_controller.py",
     RUNTIME_SCRIPT_PATH,
     SUPERVISOR_SCRIPT_PATH,
     "server/scripts/teacher_stage_c_report_runtime.py",
     "server/scripts/teacher_stage_c_report_supervisor.py",
-    "server/scripts/teacher_stage_c_expanded_training_controller.py",
-    "server/scripts/teacher_stage_c_expansion_controller.py",
-    "server/scripts/teacher_stage_c_label_runtime.py",
-    "server/scripts/teacher_stage_c_capture_runtime.py",
-    "server/shengji/rl/stage_c_expansion.py",
     "server/shengji/rl/stage_c_report.py",
-    "server/shengji/rl/stage_c_model.py",
-    "server/shengji/rl/stage_c_training.py",
-    "server/shengji/rl/encode.py",
-    "server/shengji/rl/exact_resume.py",
-)
+    *TRAIN_CTRL.SOURCE_PATHS,
+    *EXPANSION.SOURCE_PATHS,
+)))
 
 
 class ReportControllerRefused(RuntimeError):
@@ -403,6 +396,13 @@ def validate_training_evidence(
     if (packet.get("producer", {}).get("git") != TRAINING_GIT
             or aggregate.get("git") != TRAINING_GIT
             or final.get("git") != TRAINING_GIT
+            or receipt.get("git") != TRAINING_GIT
+            or receipt.get("controller_packet_sha256")
+            != TRAINING_PACKET_SHA256
+            or receipt.get("controller_review_record_sha256")
+            != TRAINING_REVIEW_RECORD_SHA256
+            or receipt.get("schedule_sha256")
+            != packet["schedule"]["schedule_sha256"]
             or aggregate.get("controller_packet_sha256")
             != TRAINING_PACKET_SHA256
             or aggregate.get("training_receipt_sha256")

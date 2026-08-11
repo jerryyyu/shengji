@@ -32,9 +32,14 @@ sys.path.insert(0, str(SCRIPT.parent))
 import teacher_stage_c_capture_runtime as CAPTURE  # noqa: E402
 import teacher_stage_c_fresh_report_controller as FRESH  # noqa: E402
 import teacher_stage_c_label_runtime as LABEL  # noqa: E402
-CTRL = importlib.import_module(os.environ.get(  # noqa: E402
+_CONTROLLER_MODULE = os.environ.get(
     "SHENGJI_STAGE_C_REPORT_CONTROLLER",
-    "teacher_stage_c_report_controller"))
+    "teacher_stage_c_report_controller")
+if _CONTROLLER_MODULE not in {
+        "teacher_stage_c_report_controller",
+        "teacher_stage_c_expanded_report_controller"}:
+    raise RuntimeError("unrecognized Stage-C REPORT controller module")
+CTRL = importlib.import_module(_CONTROLLER_MODULE)  # noqa: E402
 import teacher_stage_c_training_controller as TRAIN_CTRL  # noqa: E402
 import teacher_stage_c_training_runtime as TRAIN_RUNTIME  # noqa: E402
 from shengji.rl import stage_c_model as MODEL  # noqa: E402

@@ -34,13 +34,106 @@ SERVER = SCRIPT.parents[1]
 REPO = SCRIPT.parents[2]
 sys.path.insert(0, str(SCRIPT.parent))
 
+_PROFILE = os.environ.get(
+    "SHENGJI_STAGE_C_COMPOSITION_PROFILE", "protected-anchor")
+_PROFILE_CONFIGS = {
+    "protected-anchor": {
+        "report": "teacher_stage_c_report_controller",
+        "schema": "teacher-stage-c-composition-screen-controller-v3",
+        "packet_id": "teacher-stage-c-composition-screen-181m-v3",
+        "review_schema":
+            "teacher-stage-c-composition-screen-controller-review-v3",
+        "review_marker":
+            "TEACHER_STAGE_C_COMPOSITION_SCREEN_CONTROLLER_V3_REVIEW ",
+        "capacity_schema": "teacher-stage-c-composition-capacity-v3",
+        "capacity_review_schema":
+            "teacher-stage-c-composition-capacity-review-v3",
+        "capacity_review_marker":
+            "TEACHER_STAGE_C_COMPOSITION_CAPACITY_V3_REVIEW ",
+        "supervisor_review_schema":
+            "teacher-stage-c-composition-supervisor-final-review-v3",
+        "supervisor_review_marker":
+            "TEACHER_STAGE_C_COMPOSITION_SUPERVISOR_FINAL_V3_REVIEW ",
+        "runtime": "server/scripts/teacher_stage_c_composition_runtime.py",
+        "runtime_prefix": "teacher-stage-c-composition",
+        "preflight_seed0": 180_000_000,
+        "screen_seed0": 181_000_000,
+        "wrappers": (),
+    },
+    "expanded-play": {
+        "report": "teacher_stage_c_expanded_play_report_controller",
+        "schema":
+            "teacher-stage-c-expanded-play-composition-screen-controller-v1",
+        "packet_id":
+            "teacher-v3-hard-tail-stage-c-expanded-play-composition-screen-v1",
+        "review_schema":
+            "teacher-stage-c-expanded-play-composition-screen-controller-review-v1",
+        "review_marker":
+            "TEACHER_STAGE_C_EXPANDED_PLAY_COMPOSITION_SCREEN_CONTROLLER_V1_REVIEW ",
+        "capacity_schema":
+            "teacher-stage-c-expanded-play-composition-capacity-v1",
+        "capacity_review_schema":
+            "teacher-stage-c-expanded-play-composition-capacity-review-v1",
+        "capacity_review_marker":
+            "TEACHER_STAGE_C_EXPANDED_PLAY_COMPOSITION_CAPACITY_V1_REVIEW ",
+        "supervisor_review_schema":
+            "teacher-stage-c-expanded-play-composition-supervisor-final-review-v1",
+        "supervisor_review_marker":
+            "TEACHER_STAGE_C_EXPANDED_PLAY_COMPOSITION_SUPERVISOR_FINAL_V1_REVIEW ",
+        "runtime":
+            "server/scripts/teacher_stage_c_expanded_composition_runtime.py",
+        "runtime_prefix": "teacher-stage-c-expanded-play-composition",
+        "preflight_seed0": 184_000_000,
+        "screen_seed0": 185_000_000,
+        "wrappers": (
+            "server/scripts/teacher_stage_c_expanded_composition_controller.py",
+            "server/scripts/teacher_stage_c_expanded_composition_runtime.py",
+        ),
+    },
+    "expanded-uncertainty": {
+        "report": "teacher_stage_c_expanded_uncertainty_report_controller",
+        "schema":
+            "teacher-stage-c-expanded-uncertainty-composition-screen-controller-v1",
+        "packet_id":
+            "teacher-v3-hard-tail-stage-c-expanded-uncertainty-composition-screen-v1",
+        "review_schema":
+            "teacher-stage-c-expanded-uncertainty-composition-screen-controller-review-v1",
+        "review_marker":
+            "TEACHER_STAGE_C_EXPANDED_UNCERTAINTY_COMPOSITION_SCREEN_CONTROLLER_V1_REVIEW ",
+        "capacity_schema":
+            "teacher-stage-c-expanded-uncertainty-composition-capacity-v1",
+        "capacity_review_schema":
+            "teacher-stage-c-expanded-uncertainty-composition-capacity-review-v1",
+        "capacity_review_marker":
+            "TEACHER_STAGE_C_EXPANDED_UNCERTAINTY_COMPOSITION_CAPACITY_V1_REVIEW ",
+        "supervisor_review_schema":
+            "teacher-stage-c-expanded-uncertainty-composition-supervisor-final-review-v1",
+        "supervisor_review_marker":
+            "TEACHER_STAGE_C_EXPANDED_UNCERTAINTY_COMPOSITION_SUPERVISOR_FINAL_V1_REVIEW ",
+        "runtime":
+            "server/scripts/teacher_stage_c_expanded_uncertainty_composition_runtime.py",
+        "runtime_prefix":
+            "teacher-stage-c-expanded-uncertainty-composition",
+        "preflight_seed0": 186_000_000,
+        "screen_seed0": 187_000_000,
+        "wrappers": (
+            "server/scripts/teacher_stage_c_expanded_uncertainty_composition_controller.py",
+            "server/scripts/teacher_stage_c_expanded_uncertainty_composition_runtime.py",
+        ),
+    },
+}
+if _PROFILE not in _PROFILE_CONFIGS:
+    raise RuntimeError("unrecognized Stage-C composition profile")
+_CONFIG = _PROFILE_CONFIGS[_PROFILE]
 _REPORT_CONTROLLER_MODULE = os.environ.get(
     "SHENGJI_STAGE_C_REPORT_CONTROLLER",
     "teacher_stage_c_report_controller")
 if _REPORT_CONTROLLER_MODULE not in {
-        "teacher_stage_c_report_controller",
-        "teacher_stage_c_expanded_play_report_controller"}:
+        config["report"] for config in _PROFILE_CONFIGS.values()}:
     raise RuntimeError("unrecognized Stage-C composition REPORT controller")
+if _REPORT_CONTROLLER_MODULE != _CONFIG["report"]:
+    raise RuntimeError(
+        "Stage-C composition/report controller profiles disagree")
 REPORT_CTRL = importlib.import_module(_REPORT_CONTROLLER_MODULE)  # noqa: E402
 import teacher_stage_c_report_runtime as REPORT_RUNTIME  # noqa: E402
 import teacher_stage_c_report_supervisor as REPORT_SUPERVISOR  # noqa: E402
@@ -55,82 +148,36 @@ from shengji.rl import stage_c_screen as SCREEN  # noqa: E402
 from shengji.rl import stage_c_training as TRAIN  # noqa: E402
 
 
-_PROFILE = os.environ.get(
-    "SHENGJI_STAGE_C_COMPOSITION_PROFILE", "protected-anchor")
-if _PROFILE not in {"protected-anchor", "expanded-play"}:
-    raise RuntimeError("unrecognized Stage-C composition profile")
-
-_EXPANDED = _PROFILE == "expanded-play"
-if _EXPANDED != (
-        _REPORT_CONTROLLER_MODULE
-        == "teacher_stage_c_expanded_play_report_controller"):
-    raise RuntimeError(
-        "Stage-C composition/report controller profiles disagree")
-SCHEMA = ("teacher-stage-c-expanded-play-composition-screen-controller-v1"
-          if _EXPANDED else
-          "teacher-stage-c-composition-screen-controller-v3")
-PACKET_ID = (
-    "teacher-v3-hard-tail-stage-c-expanded-play-composition-screen-v1"
-    if _EXPANDED else "teacher-stage-c-composition-screen-181m-v3")
+_EXPANDED = _PROFILE != "protected-anchor"
+_UNCERTAINTY = _PROFILE == "expanded-uncertainty"
+SCHEMA = _CONFIG["schema"]
+PACKET_ID = _CONFIG["packet_id"]
 RUN_ID = PACKET_ID
 PACKET_PATH = f"server/runs/logs/{RUN_ID}/controller-packet.json"
-REVIEW_SCHEMA = (
-    "teacher-stage-c-expanded-play-composition-screen-controller-review-v1"
-    if _EXPANDED else
-    "teacher-stage-c-composition-screen-controller-review-v3")
-REVIEW_MARKER = (
-    "TEACHER_STAGE_C_EXPANDED_PLAY_COMPOSITION_SCREEN_CONTROLLER_V1_REVIEW "
-    if _EXPANDED else
-    "TEACHER_STAGE_C_COMPOSITION_SCREEN_CONTROLLER_V3_REVIEW ")
-CAPACITY_RESULT_SCHEMA = (
-    "teacher-stage-c-expanded-play-composition-capacity-v1"
-    if _EXPANDED else "teacher-stage-c-composition-capacity-v3")
-CAPACITY_REVIEW_SCHEMA = (
-    "teacher-stage-c-expanded-play-composition-capacity-review-v1"
-    if _EXPANDED else "teacher-stage-c-composition-capacity-review-v3")
-CAPACITY_REVIEW_MARKER = (
-    "TEACHER_STAGE_C_EXPANDED_PLAY_COMPOSITION_CAPACITY_V1_REVIEW "
-    if _EXPANDED else "TEACHER_STAGE_C_COMPOSITION_CAPACITY_V3_REVIEW ")
-SUPERVISOR_REVIEW_SCHEMA = (
-    "teacher-stage-c-expanded-play-composition-supervisor-final-review-v1"
-    if _EXPANDED else
-    "teacher-stage-c-composition-supervisor-final-review-v3")
-SUPERVISOR_REVIEW_MARKER = (
-    "TEACHER_STAGE_C_EXPANDED_PLAY_COMPOSITION_SUPERVISOR_FINAL_V1_REVIEW "
-    if _EXPANDED else
-    "TEACHER_STAGE_C_COMPOSITION_SUPERVISOR_FINAL_V3_REVIEW ")
-RUNTIME_SCRIPT_PATH = (
-    "server/scripts/teacher_stage_c_expanded_composition_runtime.py"
-    if _EXPANDED else
-    "server/scripts/teacher_stage_c_composition_runtime.py")
-RUNTIME_ADMISSION_SCHEMA = (
-    "teacher-stage-c-expanded-play-composition-screen-admission-v1"
-    if _EXPANDED else "teacher-stage-c-composition-screen-admission-v1")
-RUNTIME_CAPACITY_ADMISSION_SCHEMA = (
-    "teacher-stage-c-expanded-play-composition-capacity-admission-v1"
-    if _EXPANDED else "teacher-stage-c-composition-capacity-admission-v1")
-RUNTIME_SUPERVISOR_ADMISSION_SCHEMA = (
-    "teacher-stage-c-expanded-play-composition-supervisor-admission-v1"
-    if _EXPANDED else "teacher-stage-c-composition-supervisor-admission-v1")
-RUNTIME_SUPERVISOR_FINAL_SCHEMA = (
-    "teacher-stage-c-expanded-play-composition-supervisor-final-v1"
-    if _EXPANDED else "teacher-stage-c-composition-supervisor-final-v1")
-RUNTIME_RECEIPT_SCHEMA = (
-    "teacher-stage-c-expanded-play-composition-screen-receipt-v1"
-    if _EXPANDED else "teacher-stage-c-composition-screen-receipt-v1")
-RUNTIME_SHARD_SCHEMA = (
-    "teacher-stage-c-expanded-play-composition-screen-shard-v1"
-    if _EXPANDED else "teacher-stage-c-composition-screen-shard-v1")
-RUNTIME_AGGREGATE_SCHEMA = (
-    "teacher-stage-c-expanded-play-composition-screen-result-v1"
-    if _EXPANDED else "teacher-stage-c-composition-screen-result-v1")
-PREFLIGHT_SEED0 = 184_000_000 if _EXPANDED else 180_000_000
+REVIEW_SCHEMA = _CONFIG["review_schema"]
+REVIEW_MARKER = _CONFIG["review_marker"]
+CAPACITY_RESULT_SCHEMA = _CONFIG["capacity_schema"]
+CAPACITY_REVIEW_SCHEMA = _CONFIG["capacity_review_schema"]
+CAPACITY_REVIEW_MARKER = _CONFIG["capacity_review_marker"]
+SUPERVISOR_REVIEW_SCHEMA = _CONFIG["supervisor_review_schema"]
+SUPERVISOR_REVIEW_MARKER = _CONFIG["supervisor_review_marker"]
+RUNTIME_SCRIPT_PATH = _CONFIG["runtime"]
+_RUNTIME_PREFIX = _CONFIG["runtime_prefix"]
+RUNTIME_ADMISSION_SCHEMA = f"{_RUNTIME_PREFIX}-screen-admission-v1"
+RUNTIME_CAPACITY_ADMISSION_SCHEMA = f"{_RUNTIME_PREFIX}-capacity-admission-v1"
+RUNTIME_SUPERVISOR_ADMISSION_SCHEMA = \
+    f"{_RUNTIME_PREFIX}-supervisor-admission-v1"
+RUNTIME_SUPERVISOR_FINAL_SCHEMA = f"{_RUNTIME_PREFIX}-supervisor-final-v1"
+RUNTIME_RECEIPT_SCHEMA = f"{_RUNTIME_PREFIX}-screen-receipt-v1"
+RUNTIME_SHARD_SCHEMA = f"{_RUNTIME_PREFIX}-screen-shard-v1"
+RUNTIME_AGGREGATE_SCHEMA = f"{_RUNTIME_PREFIX}-screen-result-v1"
+PREFLIGHT_SEED0 = _CONFIG["preflight_seed0"]
 PREFLIGHT_CLUSTERS = 4
 PREFLIGHT_MAX_SECONDS = 3_600.0
 THROUGHPUT_SAFETY_FACTOR = 2.0
 SCREEN_FLEET_HOUR_CAP = 384.0
 SCREEN_MAX_SHARD_HOUR_CAP = 48.0
-SCREEN_SEED0 = 185_000_000 if _EXPANDED else 181_000_000
+SCREEN_SEED0 = _CONFIG["screen_seed0"]
 SCREEN_CLUSTERS = 2_048
 SHARD_COUNT = 8
 CLUSTERS_PER_SHARD = SCREEN_CLUSTERS // SHARD_COUNT
@@ -163,9 +210,7 @@ AGGREGATE_ADMISSION_PATH = \
 SOURCE_PATHS = (
     "server/scripts/teacher_stage_c_composition_controller.py",
     "server/scripts/teacher_stage_c_composition_runtime.py",
-    *(("server/scripts/teacher_stage_c_expanded_composition_controller.py",
-       "server/scripts/teacher_stage_c_expanded_composition_runtime.py")
-      if _EXPANDED else ()),
+    *_CONFIG["wrappers"],
     "server/shengji/rl/stage_c_candidates.py",
     "server/shengji/rl/stage_c_composition.py",
     "server/shengji/rl/stage_c_npnet.py",

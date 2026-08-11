@@ -86,6 +86,59 @@ def test_expanded_runtime_imports_only_the_expanded_profile():
     }
 
 
+def test_uncertainty_controller_binds_powered_report_and_fresh_namespaces():
+    result = _python(
+        "import json; import "
+        "teacher_stage_c_expanded_uncertainty_composition_controller as c; "
+        "print(json.dumps({'schema':c.SCHEMA,'run':c.RUN_ID,"
+        "'report':c.REPORT_CTRL.__name__,'runtime':c.RUNTIME_SCRIPT_PATH,"
+        "'preflight':c.PREFLIGHT_SEED0,'screen':c.SCREEN_SEED0,"
+        "'sources':list(c.SOURCE_PATHS),'candidate':c.candidate_contract()},"
+        "sort_keys=True))")
+    assert result.returncode == 0, result.stderr
+    value = json.loads(result.stdout)
+    assert value["schema"] == (
+        "teacher-stage-c-expanded-uncertainty-composition-"
+        "screen-controller-v1")
+    assert value["run"] == (
+        "teacher-v3-hard-tail-stage-c-expanded-uncertainty-"
+        "composition-screen-v1")
+    assert value["report"] == \
+        "teacher_stage_c_expanded_uncertainty_report_controller"
+    assert value["runtime"] == (
+        "server/scripts/teacher_stage_c_expanded_uncertainty_"
+        "composition_runtime.py")
+    assert value["preflight"] == 186_000_000
+    assert value["screen"] == 187_000_000
+    assert value["runtime"] in value["sources"]
+    assert value["candidate"]["literal_live_policy_is_incumbent"] is True
+    assert value["candidate"]["novel_model_proposer"] \
+        == "v11pair_ep07_value"
+    assert value["candidate"]["public_scope_predicate"][
+        "precedes_stage_c_inference"] is True
+
+
+def test_uncertainty_runtime_imports_only_uncertainty_controller():
+    result = _python(
+        "import json; import "
+        "teacher_stage_c_expanded_uncertainty_composition_runtime as w; "
+        "r=w.BASE; print(json.dumps({'controller':r.CTRL.__name__,"
+        "'schema':r.CTRL.SCHEMA,'admission':r.ADMISSION_SCHEMA},"
+        "sort_keys=True))")
+    assert result.returncode == 0, result.stderr
+    value = json.loads(result.stdout)
+    assert value == {
+        "controller":
+            "teacher_stage_c_expanded_uncertainty_composition_controller",
+        "schema": (
+            "teacher-stage-c-expanded-uncertainty-composition-"
+            "screen-controller-v1"),
+        "admission": (
+            "teacher-stage-c-expanded-uncertainty-composition-"
+            "screen-admission-v1"),
+    }
+
+
 @pytest.mark.parametrize(("variable", "value", "module", "message"), (
     ("SHENGJI_STAGE_C_COMPOSITION_PROFILE", "unreviewed-profile",
      "teacher_stage_c_composition_controller",
@@ -109,6 +162,9 @@ def test_unknown_dynamic_profile_or_module_refuses_before_import(
     {"SHENGJI_STAGE_C_COMPOSITION_PROFILE": "expanded-play"},
     {"SHENGJI_STAGE_C_REPORT_CONTROLLER":
      "teacher_stage_c_expanded_play_report_controller"},
+    {"SHENGJI_STAGE_C_COMPOSITION_PROFILE": "expanded-uncertainty"},
+    {"SHENGJI_STAGE_C_REPORT_CONTROLLER":
+     "teacher_stage_c_expanded_uncertainty_report_controller"},
 ))
 def test_composition_and_report_profiles_must_change_together(environment):
     result = _python(

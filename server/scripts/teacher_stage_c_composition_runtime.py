@@ -35,7 +35,8 @@ _CONTROLLER_MODULE = os.environ.get(
     "teacher_stage_c_composition_controller")
 if _CONTROLLER_MODULE not in {
         "teacher_stage_c_composition_controller",
-        "teacher_stage_c_expanded_composition_controller"}:
+        "teacher_stage_c_expanded_composition_controller",
+        "teacher_stage_c_expanded_uncertainty_composition_controller"}:
     raise RuntimeError("unrecognized Stage-C composition controller module")
 CTRL = importlib.import_module(_CONTROLLER_MODULE)  # noqa: E402
 from shengji.ai.registry import make_bot  # noqa: E402

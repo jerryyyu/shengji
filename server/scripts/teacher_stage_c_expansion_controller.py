@@ -798,11 +798,11 @@ def publish_exclusive(path: Path, value: Mapping[str, object]) -> None:
     os.replace(partial, path)
 
 
-def freeze(
+def _rebuild_state_set(
     *, evidence_repo: Path, state_set_review_record: Path,
-    fresh_report_review_record: Path, state_set_out: Path, packet_out: Path,
-    smoke: bool,
-) -> tuple[dict, dict]:
+    fresh_report_review_record: Path,
+) -> tuple[dict, dict, dict, dict]:
+    """Recompute the score-free selection from its immutable parents."""
     parents = validate_evidence(
         evidence_repo=evidence_repo,
         state_set_review_record=state_set_review_record,
@@ -821,6 +821,18 @@ def freeze(
     state_set = build_training_state_set(
         selection=selection, evidence_repo=evidence_repo,
         capture_state_set=original)
+    return state_set, capture, verification, state_review
+
+
+def freeze(
+    *, evidence_repo: Path, state_set_review_record: Path,
+    fresh_report_review_record: Path, state_set_out: Path, packet_out: Path,
+    smoke: bool,
+) -> tuple[dict, dict]:
+    state_set, capture, verification, state_review = _rebuild_state_set(
+        evidence_repo=evidence_repo,
+        state_set_review_record=state_set_review_record,
+        fresh_report_review_record=fresh_report_review_record)
     if state_set_out.resolve() != (REPO / STATE_SET_PATH).resolve():
         raise ExpansionControllerRefused("expanded state-set output drift")
     publish_exclusive(state_set_out, state_set)
@@ -847,34 +859,112 @@ def freeze(
     return state_set, packet
 
 
+def verify_frozen(
+    *, evidence_repo: Path, state_set_review_record: Path,
+    fresh_report_review_record: Path, state_set_path: Path,
+    expected_state_set_sha256: str, packet_path: Path,
+    expected_packet_sha256: str, smoke: bool,
+) -> tuple[dict, dict]:
+    """Rebuild both frozen artifacts without writing or granting authority."""
+    if (state_set_path.resolve() != (REPO / STATE_SET_PATH).resolve()
+            or packet_path.resolve()
+            != (REPO / CONTROLLER_PACKET_PATH).resolve()):
+        raise ExpansionControllerRefused(
+            "expanded frozen-artifact path drift")
+    if (not is_regular_unlinked(state_set_path)
+            or sha256_file(state_set_path) != expected_state_set_sha256):
+        raise ExpansionControllerRefused(
+            "expanded frozen state-set external identity drift")
+    if (not is_regular_unlinked(packet_path)
+            or sha256_file(packet_path) != expected_packet_sha256):
+        raise ExpansionControllerRefused(
+            "expanded frozen packet external identity drift")
+
+    frozen_state_set = load_json(state_set_path)
+    frozen_packet = load_json(packet_path)
+    rebuilt_state_set, capture, verification, state_review = \
+        _rebuild_state_set(
+            evidence_repo=evidence_repo,
+            state_set_review_record=state_set_review_record,
+            fresh_report_review_record=fresh_report_review_record)
+    if (frozen_state_set != rebuilt_state_set
+            or state_set_path.read_bytes()
+            != canonical_json(rebuilt_state_set)
+            or sha256_bytes(canonical_json(rebuilt_state_set))
+            != expected_state_set_sha256):
+        raise ExpansionControllerRefused(
+            "expanded frozen state-set recomputation drift")
+
+    rebuilt_packet = build_packet(
+        state_set=rebuilt_state_set, state_set_path=state_set_path,
+        state_set_external_sha256=expected_state_set_sha256,
+        evidence_repo=evidence_repo, capture=capture,
+        verification=verification, state_review=state_review,
+        fresh_review_record=fresh_report_review_record, smoke=smoke)
+    if (frozen_packet != rebuilt_packet
+            or packet_path.read_bytes() != canonical_json(rebuilt_packet)
+            or sha256_bytes(canonical_json(rebuilt_packet))
+            != expected_packet_sha256):
+        raise ExpansionControllerRefused(
+            "expanded frozen packet recomputation drift")
+    return rebuilt_state_set, rebuilt_packet
+
+
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description=__doc__)
-    root.add_argument("command", choices=("freeze",))
+    root.add_argument("command", choices=("freeze", "verify"))
     root.add_argument("--evidence-repo", required=True)
     root.add_argument("--state-set-review-record", required=True)
     root.add_argument("--fresh-report-review-record", required=True)
     root.add_argument("--state-set-out", default=STATE_SET_PATH)
     root.add_argument("--packet-out", default=CONTROLLER_PACKET_PATH)
+    root.add_argument("--expected-state-set-sha256")
+    root.add_argument("--expected-packet-sha256")
     root.add_argument("--smoke", action="store_true")
     return root
 
 
 def main() -> int:
     args = parser().parse_args()
-    state_set, packet = freeze(
-        evidence_repo=Path(args.evidence_repo).resolve(),
-        state_set_review_record=Path(args.state_set_review_record).resolve(),
-        fresh_report_review_record=Path(
+    common = {
+        "evidence_repo": Path(args.evidence_repo).resolve(),
+        "state_set_review_record": Path(
+            args.state_set_review_record).resolve(),
+        "fresh_report_review_record": Path(
             args.fresh_report_review_record).resolve(),
-        state_set_out=Path(args.state_set_out).resolve(),
-        packet_out=Path(args.packet_out).resolve(), smoke=args.smoke)
+    }
+    if args.command == "freeze":
+        if (args.expected_state_set_sha256 is not None
+                or args.expected_packet_sha256 is not None):
+            raise ExpansionControllerRefused(
+                "freeze refuses expected output hashes")
+        state_set, packet = freeze(
+            **common,
+            state_set_out=Path(args.state_set_out).resolve(),
+            packet_out=Path(args.packet_out).resolve(), smoke=args.smoke)
+        status = "FROZEN_SCORE_FREE"
+    else:
+        if (args.expected_state_set_sha256 is None
+                or args.expected_packet_sha256 is None):
+            raise ExpansionControllerRefused(
+                "verify requires both expected output hashes")
+        state_set, packet = verify_frozen(
+            **common,
+            state_set_path=Path(args.state_set_out).resolve(),
+            expected_state_set_sha256=args.expected_state_set_sha256,
+            packet_path=Path(args.packet_out).resolve(),
+            expected_packet_sha256=args.expected_packet_sha256,
+            smoke=args.smoke)
+        status = "VERIFIED_SCORE_FREE"
     print(json.dumps({
-        "status": "FROZEN_SCORE_FREE",
+        "status": status,
         "state_set_sha256": sha256_file(Path(args.state_set_out)),
         "packet_sha256": sha256_file(Path(args.packet_out)),
         "states": state_set["state_count"],
         "new_labels": packet["schedule"]["state_count"],
         "sealed_report": SEALED_REPORT_STATES,
+        "review_claim": expected_review_claim(
+            packet, sha256_file(Path(args.packet_out))),
     }, sort_keys=True))
     return 0
 

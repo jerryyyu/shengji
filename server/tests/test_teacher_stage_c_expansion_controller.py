@@ -5,6 +5,8 @@ import hashlib
 import tempfile
 from pathlib import Path
 
+import pytest
+
 import teacher_stage_c_expansion_controller as CTRL
 import teacher_stage_c_label_runtime as LABEL_RUNTIME
 
@@ -129,6 +131,73 @@ def test_review_claim_grants_only_one_label_execution() -> None:
     assert claim["report_open_authorized"] is False
     assert claim["strength_claim"] is False
     assert claim["production_promotion"] is False
+
+
+def test_frozen_verify_rebuilds_exact_canonical_artifacts(
+        monkeypatch) -> None:
+    with tempfile.TemporaryDirectory(
+            dir=CTRL.REPO / "server/runs/logs") as raw:
+        root = Path(raw)
+        state_path = root / "state-set.json"
+        packet_path = root / "packet.json"
+        state_set = {"state_count": 7_040, "dataset_sha256": "a" * 64}
+        packet = {
+            "schedule": {"state_count": 5_504},
+            "producer": {
+                "git": "b" * 40,
+                "controller_script_sha256": "c" * 64,
+            },
+            "parents": {"state_set": {
+                "external_sha256": "d" * 64,
+                "internal_sha256": "a" * 64,
+            }},
+            "runtime_sources": {
+                "server/scripts/teacher_stage_c_expanded_label_supervisor.py":
+                    "e" * 64,
+            },
+            "supervisor_contract": {},
+            "packet_sha256": "f" * 64,
+        }
+        state_path.write_bytes(CTRL.canonical_json(state_set))
+        packet_path.write_bytes(CTRL.canonical_json(packet))
+        monkeypatch.setattr(
+            CTRL, "STATE_SET_PATH", str(state_path.relative_to(CTRL.REPO)))
+        monkeypatch.setattr(
+            CTRL, "CONTROLLER_PACKET_PATH",
+            str(packet_path.relative_to(CTRL.REPO)))
+        monkeypatch.setattr(
+            CTRL, "_rebuild_state_set",
+            lambda **_kwargs: (state_set, {}, {}, {}))
+        monkeypatch.setattr(
+            CTRL, "build_packet", lambda **_kwargs: packet)
+
+        rebuilt = CTRL.verify_frozen(
+            evidence_repo=CTRL.REPO,
+            state_set_review_record=state_path,
+            fresh_report_review_record=packet_path,
+            state_set_path=state_path,
+            expected_state_set_sha256=CTRL.sha256_file(state_path),
+            packet_path=packet_path,
+            expected_packet_sha256=CTRL.sha256_file(packet_path),
+            smoke=True)
+        assert rebuilt == (state_set, packet)
+
+        state_path.write_bytes(CTRL.canonical_json({
+            "state_count": 7_039,
+            "dataset_sha256": "a" * 64,
+        }))
+        with pytest.raises(
+                CTRL.ExpansionControllerRefused,
+                match="state-set recomputation drift"):
+            CTRL.verify_frozen(
+                evidence_repo=CTRL.REPO,
+                state_set_review_record=state_path,
+                fresh_report_review_record=packet_path,
+                state_set_path=state_path,
+                expected_state_set_sha256=CTRL.sha256_file(state_path),
+                packet_path=packet_path,
+                expected_packet_sha256=CTRL.sha256_file(packet_path),
+                smoke=True)
 
 
 def test_expanded_aggregate_uses_completion_gate_not_audit(

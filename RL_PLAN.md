@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-11 14:06 EDT
+## Current synthesis — 2026-08-11 15:41 EDT
 
 Exact terminal numbers and SHAs live in the canonical table in
 `AI_POLICIES.md`; `BACKLOG.md` owns live order and `JOBS.md` owns machines.
@@ -53,6 +53,15 @@ This section keeps only the research conclusions that change what we try next.
   terminal post-hoc outcome-head argmax also selected none (`+0.00906`, LCB
   `-0.01184`), so simply swapping heads is not a successor. No composition or
   game screen follows.
+- **Fresh mid/late successor:** the spent diagnostics suggest the ranker may be
+  useful only after trick 5, when the horizon is shorter. This is a new
+  post-hoc hypothesis, not a reinterpretation of the failed REPORT. PR #35
+  gates before source/scope/model work; source-only PR #36/head `c9fa22b`
+  freezes exactly 256 new one-state-per-deal mid/late × role triggers and
+  prices protected-model, matched-random and literal-live final actions on a
+  separate 3×N=300 fold. It opens no evidence yet. The two primary gates are
+  treatment LCB > 0 versus both live and same-work null; null-versus-live is
+  explanatory, not a third test.
 - **Direct search:** S4 point banking passed exact-state and first whole-game
   screens; its independent fixed replication stayed positive but selected none
   (`+0.048828`, LCB `-0.006884`). S3a structured bury improved selected-state

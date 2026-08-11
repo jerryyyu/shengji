@@ -232,3 +232,104 @@ def test_external_parent_refs_are_pinned_and_traversal_safe(
     with pytest.raises(RUNTIME.CompositionRuntimeRefused,
                        match="evidence reference drift"):
         RUNTIME._path_from_ref(escaped, "example")
+
+
+def test_external_report_terminal_authority_precedes_verifier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    """A weak terminal marker must not reach the outcome-opening verifier."""
+    root = tmp_path / "report"
+
+    def artifact(logical: str, payload: bytes) -> Path:
+        path = root / logical
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+        return path
+
+    source_logical = "server/scripts/frozen-report-source.py"
+    source = artifact(source_logical, b"# frozen\n")
+    packet = {
+        "schema": BASE.REPORT_CTRL.SCHEMA,
+        "packet_id": BASE.REPORT_CTRL.PACKET_ID,
+        "run_id": BASE.REPORT_CTRL.RUN_ID,
+        "producer": {
+            "git": "a" * 40,
+            "tree_dirty": False,
+            "sources": {source_logical: BASE.sha256_file(source)},
+        },
+        "selected_capability": {"surface": "play"},
+    }
+    packet["packet_sha256"] = BASE.self_hash(packet, "packet_sha256")
+    packet_path = artifact(
+        BASE.REPORT_CTRL.PACKET_PATH, BASE.canonical_json(packet))
+    receipt_path = artifact(
+        BASE.REPORT_RUNTIME.RECEIPT_PATH, b'{"receipt":true}\n')
+    result_path = artifact(
+        BASE.REPORT_RUNTIME.RESULT_PATH, b'{"result":"sealed"}\n')
+    final_path = artifact(
+        str(BASE.REPORT_SUPERVISOR.FINAL_PATH), b'{"final":"sealed"}\n')
+
+    controller_review = tmp_path / "controller-review.md"
+    fresh_review = tmp_path / "fresh-review.md"
+    state_review = tmp_path / "state-review.md"
+    terminal_review = tmp_path / "terminal-review.md"
+    for path in (controller_review, fresh_review, state_review,
+                 terminal_review):
+        path.write_text("review\n")
+
+    controller_claim = {"controller": "PASS"}
+    weak_terminal_claim = {
+        "schema": BASE.REPORT_SUPERVISOR.REVIEW_SCHEMA,
+        "git": "a" * 40,
+        "run_id": BASE.REPORT_CTRL.RUN_ID,
+        "controller_packet_sha256": BASE.sha256_file(packet_path),
+        "report_receipt_sha256": BASE.sha256_file(receipt_path),
+        "report_result_sha256": BASE.sha256_file(result_path),
+        "supervisor_final_sha256": BASE.sha256_file(final_path),
+        "one_composition_controller_freeze_authorized": False,
+        "report_reuse_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+        "verdict": "PASS",
+    }
+
+    def marker_claim(path: Path, _marker: str, _label: str) -> dict:
+        return (weak_terminal_claim if path.resolve()
+                == terminal_review.resolve() else controller_claim)
+
+    verifier_calls = []
+
+    def run(argv, *, cwd, check, capture_output, text, **kwargs):
+        if argv[0] == "git":
+            stdout = "a" * 40 + "\n" if argv[1:3] == [
+                "rev-parse", "HEAD"] else ""
+            return SimpleNamespace(
+                returncode=0, stdout=stdout, stderr="")
+        verifier_calls.append((argv, cwd, kwargs))
+        raise AssertionError("terminal verifier opened weakly authorized data")
+
+    monkeypatch.setattr(BASE, "_marker_claim", marker_claim)
+    monkeypatch.setattr(
+        BASE.REPORT_CTRL, "expected_review_claim",
+        lambda _packet, _sha: controller_claim)
+    monkeypatch.setattr(BASE.subprocess, "run", run)
+
+    with pytest.raises(
+        BASE.CompositionControllerRefused,
+        match="terminal review authority drift",
+    ):
+        BASE._external_report_parents(
+            report_packet_path=packet_path,
+            report_packet_sha256=BASE.sha256_file(packet_path),
+            report_review_record=controller_review,
+            fresh_report_review_record=fresh_review,
+            state_set_review_record=state_review,
+            report_receipt_path=receipt_path,
+            report_receipt_sha256=BASE.sha256_file(receipt_path),
+            report_result_path=result_path,
+            report_result_sha256=BASE.sha256_file(result_path),
+            report_supervisor_final_path=final_path,
+            report_supervisor_final_sha256=BASE.sha256_file(final_path),
+            report_result_review_record=terminal_review)
+    assert verifier_calls == []

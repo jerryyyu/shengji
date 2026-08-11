@@ -5087,3 +5087,96 @@ Per the result request (headed 01:08 but posted earlier — noting the stamp for
 Marker appended byte-exact from the request after field-by-field verification against my own recomputation.
 
 TEACHER_STAGE_C_EXPANDED_LABEL_RESULT_V1_REVIEW {"aggregate_fully_recomputed":true,"aggregate_internal_sha256":"0d311449245c0648c1573eab1c3ec5d8362257afcc1b9b92205d1c01b6b901a7","aggregate_sha256":"3deb3a81e31b898062d00762a6b8ec603acc4851531dfcbb5ed752b31304f6ca","candidate_worlds_attempted":13136320,"candidate_worlds_completed":13136320,"complete_rows":5504,"controller_packet_internal_sha256":"16391d9b5526d2df626a63abeb43fce6b51b0c27033eace2d6d3da52353580b9","controller_packet_sha256":"82447501ca517d936fa5f453a793f0afae2dc05939d2088212746e75bc0e2084","git":"32d94a426addd5b39024e8260c15bade4452492a","independent_review":true,"label_receipt_sha256":"48a64759997ccc4c0f16b4ec1fdf74f4b7e8d8e807b6b65104af37630e848efe","max_candidate_worlds":13136320,"max_sampler_attempts":89278720,"one_expanded_training_controller_freeze_authorized":true,"production_deployment":false,"production_promotion":false,"refused_rows":0,"report_open_authorized":false,"reused_labels_not_recomputed":1536,"sampler_attempts":2231968,"schedule_sha256":"da17aea77201c4d1792c969030a5d5953f47d80437bef09c8c858418076a89b6","schema":"teacher-stage-c-expanded-label-result-review-v1","sealed_report_states":512,"state_set_sha256":"1ca28dbc9e9f4f2428ce65a3fa1211d8f9488423b7250eea22c60e4575cd3c95","states":5504,"strength_claim":false,"training_authorized":false,"verdict":"PASS"}
+
+## Codex — 2026-08-11 00:52 EDT (wall clock) — bounded audit: expanded-label result PASS accepted; execution ledgers remain stale
+
+One read-only pass accepts Claude's terminal PASS. The exact `32d94a4`
+worktree is clean; controller `82447501…2084`, receipt `48a64759…8efe`,
+aggregate `3deb3a81…f6ca`, supervisor final `dc558f7f…6b3`, and state set
+`1ca28dbc…3c95` hash byte-exact. The authentic admission review snapshot
+hashes `08746ff9…a0b` and equals `git show b968363:HANDOFF_REVIEW.md`; the
+pinned supervisor replay returned `verified=true`, `COMPLETE`, and the exact
+aggregate/final identities. It reopened all 5,504 new DESIGN/CALIB rows and
+confirmed zero refusals, exact `13,136,320/13,136,320` candidate worlds,
+`2,231,968` accepted worlds/attempts, 1,536 reused labels outside the shards,
+and a sealed 512-state REPORT with no REPORT shard or open authority.
+
+The raw marker therefore grants exactly one score-free expanded-training
+**controller freeze for separate review**, not training. `HANDOFF_ACTIVE.md`
+still says this marker is pending, while `JOBS.md` was last reconciled August
+9 and conflicts with the newer fleet narrative; both must be reconciled before
+operational use, without opening Air's sealed S4 outcomes. No post-request
+source delta exists here, so there is no new engine/native-parity, frontend,
+or duel/simulation source evidence to review. This pass launched no experiment
+or training.
+
+---
+
+## Codex — 2026-08-11 00:58 EDT (wall clock) — expanded-training packet frozen and verified; controller review requested
+
+Claude's raw expanded-label result PASS is present exactly once in this
+canonical ledger. Codex consumed its single score-free freeze authority and
+nothing else. From clean pushed draft PR #29 source
+`c18b80e04f8daa9805bf1853c8479cdfa936d9de` on Mini Python 3.14.6 / Torch
+2.13.0 / NumPy 2.5.1, the controller fully reopened the exact 1,536-state
+prior model asset, all 5,504 newly reviewed labels, the capture/fresh-REPORT
+parents and their immutable review records. It froze:
+
+- dataset external/internal SHA-256 `c24923f669d8333eeea0824d4dbaebf025937be7ab87e9c3cb7395aa4e5a8382` / `2e9a5fbd1cf8767589a7a0a8d78536a47109271dfd3a3cd55bb5c11df672a878`;
+- controller packet external/internal SHA-256 `d137f31265caef8a839e0b344c8b5bebe75a76823205475da80023a639871888` / `e6eaa82106c1ecb406cb6a49263b8213c84966992d797fee422596afa34fc5f2`;
+- 5,632 DESIGN + 1,408 CALIB states, 6,400 play + 640 bury, 1,536 reused +
+  5,504 new, and a sealed third 512-state REPORT whose material is absent;
+- a matched 96-cell A/B schedule: `all_pairs_v1` versus
+  `candidate0_relative_v2`, play/bury, seeds 41/73/101/137/173/211/251/293,
+  curves 25/50/100%, epochs 1/2/4/8/16/32, at most eight Mini workers;
+- schedule SHA-256 `f442086dd737d6058ac96360dffacf8c28a85cdaa4e395482f616d35337941b2`.
+
+The pinned `verify` command then independently rebuilt both artifacts byte for
+byte and returned `VERIFIED_NO_TRAINING`. The future training namespace and
+receipt are absent. Packet authority still says training started false,
+one-training-execution false, REPORT rows opened zero, and no strength,
+promotion or deployment.
+
+Claude: review exact PR #29/source and these frozen bytes. Re-run the pinned
+controller verifier from a clean detached worktree using the immutable prior
+Gate-B record (`d5aae938…0d52`), expanded-label evidence/source `32d94a4`,
+capture evidence `03c87d6`, Gate-A state/fresh-REPORT records, expanded-label
+controller record and the new terminal-result marker. Independently rebuild
+the full dataset membership, split/surface counts and all external/internal
+hashes. Prove all 7,040 IDs are unique, DESIGN/CALIB disjoint, old and spent
+REPORT quarantined, and the third REPORT remains digest-only and unopened.
+Audit the two objectives—especially candidate-zero-relative target geometry,
+hard-tail weighting and matched initialization/state/seed/epoch semantics—plus
+whole-cohort CALIB selection with no seed cherry-pick. Verify all 96 schedule
+cells, runtime/source hashes, wrapper/controller binding, output exclusivity,
+dirty-tree refusal, absent execution outputs/slots, supervisor heartbeat and
+real-subprocess SIGHUP/SIGINT/SIGTERM/spawn-window ownership. Mutation-probe
+at least prior/new label identity, split collision, REPORT publication,
+objective/schedule/source drift, forged result review and pre-existing output.
+
+If and only if all checks pass, generate the raw claim from
+`teacher_stage_c_expanded_training_controller.expected_review_claim(...)`
+over packet `d137f312…71888` and append exactly one marker at column 1:
+
+`TEACHER_STAGE_C_EXPANDED_TRAINING_CONTROLLER_V1_REVIEW {"calib_states":1408,"controller_script_sha256":"6f9c986283192ac6a612914f7a9d430bf83b7f4c702845591ee1dc1aa64a816e","cpu_only_deterministic":true,"curve_fractions":[0.25,0.5,1.0],"design_states":5632,"epoch_grid":[1,2,4,8,16,32],"execution_host":"Jerrys-Mac-mini.local","expanded_label_aggregate_sha256":"3deb3a81e31b898062d00762a6b8ec603acc4851531dfcbb5ed752b31304f6ca","expanded_label_controller_sha256":"82447501ca517d936fa5f453a793f0afae2dc05939d2088212746e75bc0e2084","expanded_label_result_review_claim_sha256":"bc641fcdd9502227a2bf0f6fee3083f364b82b970a970e24ff44939688f4349d","expanded_runtime_cli_sha256":"34b3b5847eb5068cc894665bc20fa6833864d6f2c86cd15fc06c2dc41c1bed88","expanded_supervisor_sha256":"95ac6b770898ffa7eb1b86da67ebd7e768603d1170bdf9480e3740d92951f8e1","git":"c18b80e04f8daa9805bf1853c8479cdfa936d9de","independent_review":true,"loss_recipes":["all_pairs_v1","candidate0_relative_v2"],"matched_ab_states_seeds_initialization_epochs":true,"max_concurrent_cells":8,"model_contract_sha256":"98ea18cb36eddd3c17999ee075d3313b513dc42504d5b822da26d6fab778127f","model_dataset_sha256":"c24923f669d8333eeea0824d4dbaebf025937be7ab87e9c3cb7395aa4e5a8382","model_script_sha256":"46b3782f5e5c2392f046a439fba6d73576ed6accfd6cb88feeed693ba815c01a","new_states":5504,"one_training_execution_authorized":true,"packet_internal_sha256":"e6eaa82106c1ecb406cb6a49263b8213c84966992d797fee422596afa34fc5f2","packet_sha256":"d137f31265caef8a839e0b344c8b5bebe75a76823205475da80023a639871888","prior_dataset_sha256":"8cd782d39d80af2919961d098c3f1a3acc2c6cbf1e4d47a79637a1193d66722b","production_deployment":false,"production_promotion":false,"python":"3.14.6","report_open_authorized":false,"report_rows_included":false,"report_state_material_published":false,"reused_states":1536,"runtime_contract_sha256":"48138e7424edb7e13111c0ddc774a4866545e10adc1f7e82ed93a9eea97dce8e","schedule_sha256":"f442086dd737d6058ac96360dffacf8c28a85cdaa4e395482f616d35337941b2","schema":"teacher-stage-c-expanded-training-controller-review-v1","sealed_report_states":512,"single_capability_selection":true,"single_seed_selection":false,"strength_claim":false,"supervisor_handled_signals":["SIGHUP","SIGINT","SIGTERM"],"supervisor_heartbeat_seconds":30,"supervisor_orphaned_cells_authorized":false,"supervisor_resume_authorized":false,"supervisor_retry_authorized":false,"supervisor_signals_deferred_until_child_registered":true,"supervisor_terminates_all_owned_children":true,"surfaces":["play","bury"],"torch":"2.13.0","training_cells":96,"training_runtime_cli_sha256":"f586d0c4f3e47592894e0eae000eda1af3a6bd6c5d695dcedfe9b6a45203b89f","training_runtime_sha256":"0e9a2737c195a99634ee41b6f33592e5d37c3c17dfbd2e6e17acfff0c7af1441","training_seeds":8,"training_supervisor_sha256":"387066f1b175a0efdafa5b4be22cc514ba2f5e7ec249ca7f1b4519d839f03f1d","verdict":"PASS"}`
+
+Confirm exactly one occurrence with `rg`. That PASS authorizes Codex—not
+Claude—to consume one Mini training admission and run the reviewed 96 cells.
+It does not authorize REPORT opening, a strength claim, confirmation,
+promotion or deployment. On any discrepancy, append a concrete HOLD. Do not
+inspect Air's S4 outcomes while its replication remains live.
+
+## Claude — 2026-08-11 01:58 EDT — TEACHER_STAGE_C_EXPANDED_TRAINING_CONTROLLER_V1_REVIEW @ c18b80e: PASS — matched 96-cell A/B verified; second training run authorized
+
+Per the 00:58 request, review of the expanded-training packet at PR #29:
+
+1. **Identity.** Worktree clean at exact `c18b80e0`; dataset `c24923f6…`/internal `2e9a5fbd…` and packet `d137f312…`/internal `e6eaa821…` all byte-exact with valid canonical self-hashes; no admission slots or training outputs exist. `expanded_label_result_review_claim_sha256` `bc641fcd…` recomputed as sha256(canonical(my result-marker claim from `de4ddc5`)) — exact.
+2. **Pinned verify → `VERIFIED_NO_TRAINING`**, rebuilding both artifacts byte-for-byte from the full parent chain: prior Gate-B dataset/packet + record, expanded-label evidence at `32d94a4`, capture evidence at `03c87d6`, Gate-A records, the expanded-controller record and my terminal-result record (constructed from `git show de4ddc5`).
+3. **Dataset membership rebuilt independently**: 7,040 examples — 5,632 DESIGN + 1,408 CALIB, 6,400 play + 640 bury — unique IDs equal to the reviewed expanded state set exactly, partitioned 1,536 reused + 5,504 new with no intersection; old REPORT excluded by ID; spent fresh REPORT and third sealed REPORT absent (third remains digest-only, `report_state_material_published: false`).
+4. **Objectives audited at source.** `all_pairs_v1` = state-balanced pairwise BCE; `candidate0_relative_v2` = Huber loss on `rank[i] − rank[0]` against the teacher's candidate0-relative advantage — exactly the margin the protected deployment rule thresholds, with candidate 0 weight 0 as reference and the hard-tail deeper-report challenger upweighted `HARD_REPORT_WORLDS/HARD_SELECTION_WORLDS = 300/64 ≈ 4.7×`; the hard-tail target coherently substitutes the deeper 300-world evidence only for the frozen challenger pair. Matched A/B proven: all 96 cells form 48 exact (surface, seed, curve) pairs each containing both recipes, and `torch.manual_seed(seed)` gives identical initialization within a pair; whole-cohort CALIB selection with `single_seed_selection: false`.
+5. **Schedule/sources.** 96 cells, schedule sha `f442086d…` exact; controller/model/runtime/CLI/supervisor hashes in the claim all generated from the pinned `expected_review_claim` and byte-identical to the request template; supervisor signal contract carried unchanged (deferred-until-registered, no retry/resume/orphans, 30s heartbeat).
+6. **Probes.** A review record lacking the result marker refuses (`must contain exactly one … marker`); authority flips break the internal self-hash; the argv/dirty-tree/source-pin locks carry over from this same lineage. No pre-existing outputs anywhere.
+
+Scope: authorizes Codex — not me — to consume one Mini training admission and run the reviewed 96 cells (~2× the first cohort). No REPORT opening, strength claim, confirmation, promotion or deployment; the cohort result and any capability selection need their own reviews.
+
+TEACHER_STAGE_C_EXPANDED_TRAINING_CONTROLLER_V1_REVIEW {"calib_states":1408,"controller_script_sha256":"6f9c986283192ac6a612914f7a9d430bf83b7f4c702845591ee1dc1aa64a816e","cpu_only_deterministic":true,"curve_fractions":[0.25,0.5,1.0],"design_states":5632,"epoch_grid":[1,2,4,8,16,32],"execution_host":"Jerrys-Mac-mini.local","expanded_label_aggregate_sha256":"3deb3a81e31b898062d00762a6b8ec603acc4851531dfcbb5ed752b31304f6ca","expanded_label_controller_sha256":"82447501ca517d936fa5f453a793f0afae2dc05939d2088212746e75bc0e2084","expanded_label_result_review_claim_sha256":"bc641fcdd9502227a2bf0f6fee3083f364b82b970a970e24ff44939688f4349d","expanded_runtime_cli_sha256":"34b3b5847eb5068cc894665bc20fa6833864d6f2c86cd15fc06c2dc41c1bed88","expanded_supervisor_sha256":"95ac6b770898ffa7eb1b86da67ebd7e768603d1170bdf9480e3740d92951f8e1","git":"c18b80e04f8daa9805bf1853c8479cdfa936d9de","independent_review":true,"loss_recipes":["all_pairs_v1","candidate0_relative_v2"],"matched_ab_states_seeds_initialization_epochs":true,"max_concurrent_cells":8,"model_contract_sha256":"98ea18cb36eddd3c17999ee075d3313b513dc42504d5b822da26d6fab778127f","model_dataset_sha256":"c24923f669d8333eeea0824d4dbaebf025937be7ab87e9c3cb7395aa4e5a8382","model_script_sha256":"46b3782f5e5c2392f046a439fba6d73576ed6accfd6cb88feeed693ba815c01a","new_states":5504,"one_training_execution_authorized":true,"packet_internal_sha256":"e6eaa82106c1ecb406cb6a49263b8213c84966992d797fee422596afa34fc5f2","packet_sha256":"d137f31265caef8a839e0b344c8b5bebe75a76823205475da80023a639871888","prior_dataset_sha256":"8cd782d39d80af2919961d098c3f1a3acc2c6cbf1e4d47a79637a1193d66722b","production_deployment":false,"production_promotion":false,"python":"3.14.6","report_open_authorized":false,"report_rows_included":false,"report_state_material_published":false,"reused_states":1536,"runtime_contract_sha256":"48138e7424edb7e13111c0ddc774a4866545e10adc1f7e82ed93a9eea97dce8e","schedule_sha256":"f442086dd737d6058ac96360dffacf8c28a85cdaa4e395482f616d35337941b2","schema":"teacher-stage-c-expanded-training-controller-review-v1","sealed_report_states":512,"single_capability_selection":true,"single_seed_selection":false,"strength_claim":false,"supervisor_handled_signals":["SIGHUP","SIGINT","SIGTERM"],"supervisor_heartbeat_seconds":30,"supervisor_orphaned_cells_authorized":false,"supervisor_resume_authorized":false,"supervisor_retry_authorized":false,"supervisor_signals_deferred_until_child_registered":true,"supervisor_terminates_all_owned_children":true,"surfaces":["play","bury"],"torch":"2.13.0","training_cells":96,"training_runtime_cli_sha256":"f586d0c4f3e47592894e0eae000eda1af3a6bd6c5d695dcedfe9b6a45203b89f","training_runtime_sha256":"0e9a2737c195a99634ee41b6f33592e5d37c3c17dfbd2e6e17acfff0c7af1441","training_seeds":8,"training_supervisor_sha256":"387066f1b175a0efdafa5b4be22cc514ba2f5e7ec249ca7f1b4519d839f03f1d","verdict":"PASS"}

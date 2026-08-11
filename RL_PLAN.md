@@ -49,8 +49,10 @@ This section keeps only the research conclusions that change what we try next.
   untouched champion-uncertainty rows and also selected none: action
   `+0.01213`, SE `0.01011`, LCB `-0.00506`. Outcome-NLL improvement was
   strongly positive (`+0.47845`, LCB `+0.44201`) but nongating. This generation
-  learned outcome/value structure better than reliable action ranking; no
-  composition or game screen follows.
+  learned outcome/value structure better than reliable action ranking. A
+  terminal post-hoc outcome-head argmax also selected none (`+0.00906`, LCB
+  `-0.01184`), so simply swapping heads is not a successor. No composition or
+  game screen follows.
 - **Direct search:** S4 point banking passed exact-state and first whole-game
   screens; its independent fixed replication stayed positive but selected none
   (`+0.048828`, LCB `-0.006884`). S3a structured bury improved selected-state

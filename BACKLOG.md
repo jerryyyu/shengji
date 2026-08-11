@@ -25,7 +25,9 @@ dated files under `docs_archive/`, not in this queue.
   REPORT, outcome-NLL improvement was `+0.47845` with LCB `+0.44201`, but that
   diagnostic cannot override the failed action gate. The best learned
   successor is an explicit advantage or bounded value/leaf hypothesis—not
-  another direct argmax of this ranker. Post-hoc slices (diagnostic only) were
+  another direct argmax of this ranker. A terminal post-hoc outcome-head argmax
+  also missed (`+0.00906`, LCB `-0.01184`, 203/219 triggers), so absolute value
+  calibration alone is insufficient. Other post-hoc slices (diagnostic only) were
   negative early (`-0.0256`) and on 13+ candidate ballots (`-0.0102`), but
   positive mid (`+0.0234`), late (`+0.0825`) and on ≤8 candidates (`+0.0450`),
   motivating surface/horizon specialization and candidate-count calibration.

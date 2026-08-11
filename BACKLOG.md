@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-11 14:06 EDT from terminal evidence and the weekly
+Last re-derived: 2026-08-11 14:47 EDT from terminal evidence and the weekly
 strategy audit.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
@@ -19,8 +19,8 @@ dated files under `docs_archive/`, not in this queue.
   positive but inconclusive on only 32 fresh rows and selected none. Expanded
   play had positive DESIGN/CALIB bounds, but its protected broad REPORT lost
   and its powered 219-state `champion_uncertainty` REPORT returned action mean
-  `+0.012129`, SE `0.010109`, LCB `-0.005056`: provisional `SELECT_NONE`
-  pending independent terminal authentication.
+  `+0.012129`, SE `0.010109`, LCB `-0.005056`: independently reviewed
+  `SELECT_NONE`.
 - **The Teacher learned outcomes better than actions.** On the same powered
   REPORT, outcome-NLL improvement was `+0.47845` with LCB `+0.44201`, but that
   diagnostic cannot override the failed action gate. The best learned
@@ -67,8 +67,7 @@ or source review authorizes the next bounded step; it is not a strength result.
 
 | priority / milestone | strategy in plain English | progress and what is left | next output | exit gate |
 |---|---|---|---|---|
-| **P0 / T4-R3 powered uncertainty REPORT** | Test the learned ranker only in the public states where DESIGN and CALIB suggested enough signal, instead of diluting the holdout across weak strata. | **Execution complete / terminal review open.** All 219 states, zero refusals and 274,504/274,504 candidate worlds. Action mean `+0.012129`, SE `0.010109`, LCB `-0.005056`; local verifier returns `SELECT_NONE`. **Left:** independent byte/statistical authentication only. | One independent terminal result marker | Authenticate `SELECT_NONE`; no retry, extension, pooling, composition or direct-play claim. |
-| **P0 / T4-C2 protected composition** | Let Stage C add one idea only when the champion is uncertain, but keep the move production already chose unless fresh simulations prove the proposal better. | **Conditional path closed.** Source `bed8f56`, 89 focused tests and a real DESIGN smoke establish correct mechanics, but R3 did not pass. | None for this generation | Do not freeze, screen, confirm or deploy unless terminal review finds a material discrepancy. |
+| **P0 / mid/late protected Teacher successor** | Trust the learned model only after five tricks, where the horizon is shorter, and let it offer one idea to report-LCB rather than directly play it. | **Fresh hypothesis; no evidence authority.** The rule was discovered after REPORT: mid/late was positive on DESIGN (`+0.01189`, LCB `+0.00872`), CALIB (`+0.01248`, LCB `+0.00612`) and the spent REPORT slice (`+0.02255`, LCB `+0.00790`, 97 triggers), while early play was harmful. Draft PR #35 at `3668814` binds trick 5+ before source/scope/model work; 78 focused tests pass. **Left:** predeclare one final rule, capture a genuinely new deal-disjoint population, and test the actual protected final decision against live report-LCB plus a same-work null. | One small fresh state-level composition screen; no large Teacher rebuild | Treatment must beat both the literal live incumbent and trigger-matched random proposal at equal work. The spent post-hoc slice cannot count as confirmation. |
 | **P0 / S6 shuai-pai sourcing** | Ensure search can price a legal throw in early, middle and late leads instead of silently omitting the tactic. | **Source draft ready.** PR #19 `2605b04`; KESP AKQ/876 witnesses plus natural and trump-only late states; 12 focused tests pass pure and compiled+strict. A diagnostic-only 1,000-round census found a new proposal in 99%+ of eligible leads (mean additions early/mid/late 2.75/1.93/1.13), so this is broad widening rather than a rare tactic. **Left:** external semantics review, then a 64-state DEV screen with live, structured and trigger/candidate-count-matched random widening at equal candidate-world work and disjoint selection/report folds. | Public-only deterministic source followed by a small state-level capability screen—not a whole-game duel | Literal live ballot/candidate zero first; follow/no-shuai states no-op; treatment must beat both live and random widening before any game-screen design. |
 | **P1 / proposal provenance flywheel** | Learn which extra source actually supplies useful actions so proposal budget goes to tactics, V11, throws or humans—not anonymous widening. | Capture has source tags, but the 7,040-row training asset strips them. **Left:** retain tags as diagnostics; report candidate recall, regret and incremental wins per source; select a fixed 1–3 proposal budget against candidate-count-matched random. | Source-aware DESIGN/CALIB table plus one equal-work fresh-state proposal screen | A named source must beat random widening at the same candidate/world budget; source identity is diagnostic metadata, not a hidden-information feature. |
 | **P0 / continuation portfolio** | Fix systematic search pricing errors by evaluating selected actions under more than one plausible continuation, starting with point-aware winning and defensive slough discipline. | S4 was positive in both whole-game estimates but did not confirm; almost all Teacher labels still use one heuristic continuation. S5 has only a boundary fixture. **Left:** frozen S4 heterogeneity analysis, engine-replayed S5 legality census, then one substantively changed portfolio versus a matched single-continuation control. | Trigger-matched fresh-state effect by role/phase plus a bounded continuation successor | Must change the continuation contract, not retry S4. Advance only if treatment beats the matched continuation control with exact equal work. |
@@ -82,9 +81,9 @@ or source review authorizes the next bounded step; it is not a strength result.
 
 T4 exists to produce and test a stronger Teacher-generated challenger. It does
 not close as a success because capture, labels, training or reviews work. This
-generation has now reached a valid scientific `SELECT_NONE`: step 4 completed,
-but the action LCB did not authorize steps 5–6. Independent terminal
-authentication is the only remaining T4 bookkeeping gate.
+generation reached a valid, independently authenticated scientific
+`SELECT_NONE`: step 4 completed, but the action LCB did not authorize steps
+5–6. T4 has no remaining execution or review gate.
 
 The causal sequence is:
 

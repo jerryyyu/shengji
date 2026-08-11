@@ -44,8 +44,9 @@ Follow-through at 14:06 EDT: the audit's immediate recommendation was executed
 once on all 219 untouched `champion_uncertainty` states. Exact work completed
 with zero refusals. Action improvement was `+0.012129` with SE `0.010109` and a
 one-sided 95% LCB of `-0.005056`, so the reviewed verifier returned
-`SELECT_NONE` (independent terminal authentication remains open). Outcome-NLL
-improvement was much larger and clearly positive (`+0.47845`, LCB `+0.44201`),
+`SELECT_NONE`; independent terminal authentication reproduced every identity,
+work count and statistic exactly. Outcome-NLL improvement was much larger and
+clearly positive (`+0.47845`, LCB `+0.44201`),
 but it was diagnostic rather than the action gate. The protected composition
 source remains useful engineering, but this result gives it no evidence
 authority.

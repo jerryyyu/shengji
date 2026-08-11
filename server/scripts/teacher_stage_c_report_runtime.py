@@ -103,11 +103,16 @@ def _require_clean_tree() -> None:
         raise ReportRuntimeRefused("Stage-C REPORT runtime refuses a dirty tree")
 
 
-def publish_exclusive(path: Path, payload: Mapping[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _require_output_available(path: Path) -> None:
     partial = Path(str(path) + ".partial")
     if os.path.lexists(path) or os.path.lexists(partial):
         raise ReportRuntimeRefused(f"refusing existing output: {path}")
+
+
+def publish_exclusive(path: Path, payload: Mapping[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = Path(str(path) + ".partial")
+    _require_output_available(path)
     with partial.open("xb") as handle:
         handle.write(canonical_json(payload))
         handle.flush()
@@ -377,25 +382,30 @@ def _report_open_slot_payload(
     return value
 
 
+def _require_admission_outputs_available(out: Path) -> tuple[Path, Path]:
+    if out.resolve() != _expected_receipt_path():
+        raise ReportRuntimeRefused("Stage-C REPORT receipt path drift")
+    slot_path = (REPO / ADMISSION_PATH).resolve()
+    report_slot_path = (REPO / REPORT_OPEN_ADMISSION_PATH).resolve()
+    for path in (slot_path, report_slot_path, out):
+        _require_output_available(path)
+    return slot_path, report_slot_path
+
+
 def admit(*, packet_path: Path, expected_packet_sha256: str,
           review_record: Path, fresh_report_review_record: Path,
           state_set_review_record: Path, out: Path) -> dict:
-    if out.resolve() != _expected_receipt_path():
-        raise ReportRuntimeRefused("Stage-C REPORT receipt path drift")
+    slot_path, report_slot_path = _require_admission_outputs_available(out)
     packet, _dataset, _training, _fresh, _states = _packet(
         packet_path, expected_packet_sha256,
         fresh_report_review_record=fresh_report_review_record,
         state_set_review_record=state_set_review_record)
     _review_claim(review_record, packet, expected_packet_sha256)
-    slot_path = (REPO / ADMISSION_PATH).resolve()
     slot = _slot_payload(packet, expected_packet_sha256, review_record)
-    publish_exclusive(slot_path, slot)
-    slot_sha256 = sha256_file(slot_path)
-    report_slot_path = (REPO / REPORT_OPEN_ADMISSION_PATH).resolve()
+    slot_sha256 = sha256_bytes(canonical_json(slot))
     report_slot = _report_open_slot_payload(
         packet, expected_packet_sha256, review_record, slot_sha256)
-    publish_exclusive(report_slot_path, report_slot)
-    report_slot_sha256 = sha256_file(report_slot_path)
+    report_slot_sha256 = sha256_bytes(canonical_json(report_slot))
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "run_id": CTRL.RUN_ID,
@@ -423,6 +433,9 @@ def admit(*, packet_path: Path, expected_packet_sha256: str,
         fresh_report_review_record=fresh_report_review_record,
         state_set_review_record=state_set_review_record)
     _review_claim(review_record, packet, expected_packet_sha256)
+    _require_admission_outputs_available(out)
+    publish_exclusive(slot_path, slot)
+    publish_exclusive(report_slot_path, report_slot)
     publish_exclusive(out, receipt)
     return receipt
 

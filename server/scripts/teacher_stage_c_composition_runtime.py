@@ -66,6 +66,7 @@ class CompositionSupervisorInterrupted(BaseException):
 
 
 canonical_json = CTRL.canonical_json
+sha256_bytes = CTRL.sha256_bytes
 sha256_file = CTRL.sha256_file
 self_hash = CTRL.self_hash
 manifest_hash = CTRL.manifest_hash
@@ -432,12 +433,24 @@ def _slot_payload(
     return value
 
 
+def _require_admission_outputs_available(
+        slot_path: Path, out: Path) -> None:
+    if (slot_path != (REPO / CTRL.ADMISSION_PATH).resolve()
+            or out.resolve() != _expected_receipt_path()):
+        raise CompositionRuntimeRefused(
+            "composition screen receipt path drift")
+    require_publishable(slot_path, "composition screen admission")
+    require_publishable(out, "composition screen receipt")
+
+
 def admit(
     *, packet_path: Path, expected_packet_sha256: str,
     review_record: Path, capacity_result_path: Path,
     expected_capacity_result_sha256: str,
     capacity_review_record: Path, out: Path,
 ) -> dict:
+    slot_path = (REPO / CTRL.ADMISSION_PATH).resolve()
+    _require_admission_outputs_available(slot_path, out)
     packet, _ensemble = _packet(packet_path, expected_packet_sha256)
     controller_claim = _review_claim(
         review_record, packet, expected_packet_sha256)
@@ -447,15 +460,10 @@ def admit(
         capacity_result_path=capacity_result_path,
         capacity_result_sha256=expected_capacity_result_sha256,
         capacity_review_record=capacity_review_record)
-    if out.resolve() != _expected_receipt_path():
-        raise CompositionRuntimeRefused(
-            "composition screen receipt path drift")
-    require_publishable(out, "composition screen receipt")
-    slot_path = (REPO / CTRL.ADMISSION_PATH).resolve()
     slot = _slot_payload(
         packet, expected_packet_sha256, review_record,
         capacity, expected_capacity_result_sha256, capacity_review_record)
-    publish_exclusive(slot_path, slot)
+    slot_sha256 = sha256_bytes(canonical_json(slot))
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "run_id": CTRL.RUN_ID,
@@ -472,7 +480,7 @@ def admit(
         "screen_max_shard_seconds": capacity[
             "screen_max_shard_seconds"],
         "admission_slot": CTRL.ADMISSION_PATH,
-        "admission_slot_sha256": sha256_file(slot_path),
+        "admission_slot_sha256": slot_sha256,
         "selected_capability": packet["selected_capability"],
         "model_exports_sha256": packet["model_exports_sha256"],
         "screen_execution_authorized": True,
@@ -483,6 +491,8 @@ def admit(
         "retry_or_extension_authorized": False,
     }
     receipt["receipt_sha256"] = self_hash(receipt, "receipt_sha256")
+    _require_admission_outputs_available(slot_path, out)
+    publish_exclusive(slot_path, slot)
     publish_exclusive(out, receipt)
     return receipt
 

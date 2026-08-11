@@ -123,6 +123,84 @@ def _triggered_stage() -> dict:
     return value
 
 
+@pytest.mark.parametrize(
+    "occupied", ("slot", "slot.partial", "receipt", "receipt.partial"),
+)
+def test_screen_admission_preflights_slot_and_receipt_before_packet_open(
+        monkeypatch, tmp_path: Path, occupied: str) -> None:
+    monkeypatch.setattr(RUNTIME, "REPO", tmp_path)
+    slot = (tmp_path / RUNTIME.CTRL.ADMISSION_PATH).resolve()
+    receipt = (tmp_path / RUNTIME.CTRL.RECEIPT_PATH).resolve()
+    paths = {
+        "slot": slot,
+        "slot.partial": Path(str(slot) + ".partial"),
+        "receipt": receipt,
+        "receipt.partial": Path(str(receipt) + ".partial"),
+    }
+    paths[occupied].parent.mkdir(parents=True, exist_ok=True)
+    paths[occupied].write_text("occupied\n")
+    monkeypatch.setattr(
+        RUNTIME, "_packet",
+        lambda *args, **kwargs: pytest.fail(
+            "composition packet opened before admission preflight"))
+
+    with pytest.raises(
+            RUNTIME.CompositionRuntimeRefused, match="existing"):
+        RUNTIME.admit(
+            packet_path=tmp_path / "packet.json",
+            expected_packet_sha256="d" * 64,
+            review_record=tmp_path / "review.md",
+            capacity_result_path=tmp_path / "capacity.json",
+            expected_capacity_result_sha256="6" * 64,
+            capacity_review_record=tmp_path / "capacity-review.md",
+            out=receipt)
+    if occupied in {"receipt", "receipt.partial"}:
+        assert not slot.exists()
+
+
+def test_screen_admission_publishes_a_reopenable_slot_receipt_pair(
+        monkeypatch, tmp_path: Path) -> None:
+    packet = _packet()
+    review = _review(tmp_path)
+    capacity_args = _capacity_args(tmp_path)
+    capacity = {
+        "result_sha256": "7" * 64,
+        "screen_max_shard_seconds": 600.0,
+    }
+    controller_claim = {"verdict": "PASS"}
+    capacity_claim = {"verdict": "PASS"}
+    monkeypatch.setattr(RUNTIME, "REPO", tmp_path)
+    monkeypatch.setattr(
+        RUNTIME, "_packet", lambda *args, **kwargs: (packet, object()))
+    monkeypatch.setattr(
+        RUNTIME, "_review_claim",
+        lambda *args, **kwargs: controller_claim)
+    monkeypatch.setattr(
+        RUNTIME, "_validated_capacity_evidence",
+        lambda **kwargs: (capacity, capacity_claim))
+    receipt_path = (tmp_path / RUNTIME.CTRL.RECEIPT_PATH).resolve()
+
+    receipt = RUNTIME.admit(
+        packet_path=tmp_path / "packet.json",
+        expected_packet_sha256="d" * 64,
+        review_record=review, out=receipt_path, **capacity_args)
+    slot_path = (tmp_path / RUNTIME.CTRL.ADMISSION_PATH).resolve()
+
+    assert RUNTIME.is_regular_unlinked(slot_path)
+    assert RUNTIME.is_regular_unlinked(receipt_path)
+    assert receipt["admission_slot_sha256"] == RUNTIME.sha256_file(slot_path)
+    assert receipt["receipt_sha256"] \
+        == RUNTIME.self_hash(receipt, "receipt_sha256")
+    reopened, reopened_capacity = RUNTIME._receipt(
+        receipt_path, RUNTIME.sha256_file(receipt_path), packet,
+        "d" * 64, review,
+        capacity_args["capacity_result_path"],
+        capacity_args["expected_capacity_result_sha256"],
+        capacity_args["capacity_review_record"])
+    assert reopened == receipt
+    assert reopened_capacity == capacity
+
+
 def _capacity_validation() -> dict:
     off = _exact_work()
     focused = _exact_work()

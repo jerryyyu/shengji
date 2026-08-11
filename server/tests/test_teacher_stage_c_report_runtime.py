@@ -74,6 +74,10 @@ def test_admission_consumes_report_open_slot_before_any_label(
     assert receipt["v11_checkpoint_loaded"] is False
     assert (tmp_path / RUNTIME.ADMISSION_PATH).is_file()
     assert (tmp_path / RUNTIME.REPORT_OPEN_ADMISSION_PATH).is_file()
+    assert receipt["admission_slot_sha256"] == RUNTIME.sha256_file(
+        tmp_path / RUNTIME.ADMISSION_PATH)
+    assert receipt["report_open_admission_slot_sha256"] \
+        == RUNTIME.sha256_file(tmp_path / RUNTIME.REPORT_OPEN_ADMISSION_PATH)
 
     with pytest.raises(RUNTIME.ReportRuntimeRefused,
                        match="existing output"):
@@ -84,6 +88,47 @@ def test_admission_consumes_report_open_slot_before_any_label(
             fresh_report_review_record=review,
             state_set_review_record=review,
             out=out)
+
+
+@pytest.mark.parametrize(
+    "occupied",
+    (
+        "slot", "slot.partial", "report-slot", "report-slot.partial",
+        "receipt", "receipt.partial",
+    ),
+)
+def test_report_admission_preflights_all_three_outputs_before_packet_open(
+        monkeypatch, tmp_path: Path, occupied: str) -> None:
+    monkeypatch.setattr(RUNTIME, "REPO", tmp_path)
+    slot = (tmp_path / RUNTIME.ADMISSION_PATH).resolve()
+    report_slot = (tmp_path / RUNTIME.REPORT_OPEN_ADMISSION_PATH).resolve()
+    receipt = (tmp_path / RUNTIME.RECEIPT_PATH).resolve()
+    paths = {
+        "slot": slot,
+        "slot.partial": Path(str(slot) + ".partial"),
+        "report-slot": report_slot,
+        "report-slot.partial": Path(str(report_slot) + ".partial"),
+        "receipt": receipt,
+        "receipt.partial": Path(str(receipt) + ".partial"),
+    }
+    paths[occupied].parent.mkdir(parents=True, exist_ok=True)
+    paths[occupied].write_text("occupied\n")
+    monkeypatch.setattr(
+        RUNTIME, "_packet",
+        lambda *args, **kwargs: pytest.fail(
+            "REPORT packet opened before admission preflight"))
+
+    with pytest.raises(RUNTIME.ReportRuntimeRefused, match="existing output"):
+        RUNTIME.admit(
+            packet_path=tmp_path / "packet.json",
+            expected_packet_sha256="1" * 64,
+            review_record=tmp_path / "review.md",
+            fresh_report_review_record=tmp_path / "fresh-review.md",
+            state_set_review_record=tmp_path / "state-review.md",
+            out=receipt)
+    if occupied in {"receipt", "receipt.partial"}:
+        assert not slot.exists()
+        assert not report_slot.exists()
 
 
 def test_run_shard_labels_captured_tensor_without_loading_v11(

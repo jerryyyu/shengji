@@ -50,6 +50,68 @@ def test_cell_and_global_admission_slots_are_distinct() -> None:
                for value in values)
 
 
+@pytest.mark.parametrize(
+    "occupied",
+    ("slot", "slot.partial", "receipt", "receipt.partial"),
+)
+def test_admission_preflights_slot_and_receipt_before_opening_packet(
+        monkeypatch, tmp_path: Path, occupied: str) -> None:
+    monkeypatch.setattr(RUNTIME, "REPO", tmp_path)
+    slot = (tmp_path / RUNTIME.ADMISSION_PATH).resolve()
+    receipt = (tmp_path / RUNTIME.RECEIPT_PATH).resolve()
+    paths = {
+        "slot": slot,
+        "slot.partial": Path(str(slot) + ".partial"),
+        "receipt": receipt,
+        "receipt.partial": Path(str(receipt) + ".partial"),
+    }
+    paths[occupied].parent.mkdir(parents=True, exist_ok=True)
+    paths[occupied].write_text("occupied\n")
+    monkeypatch.setattr(
+        RUNTIME, "_packet",
+        lambda *args, **kwargs: pytest.fail(
+            "reviewed packet opened before admission-pair preflight"))
+
+    with pytest.raises(RUNTIME.TrainingRuntimeRefused, match="existing output"):
+        RUNTIME.admit(
+            packet_path=tmp_path / "packet.json",
+            expected_packet_sha256="d" * 64,
+            review_record=tmp_path / "review.md",
+            out=receipt)
+    if occupied not in {"slot", "slot.partial"}:
+        assert not slot.exists()
+        assert not Path(str(slot) + ".partial").exists()
+
+
+def test_admission_publishes_a_reopenable_slot_receipt_pair(
+        monkeypatch, tmp_path: Path) -> None:
+    packet = _packet()
+    monkeypatch.setattr(RUNTIME, "REPO", tmp_path)
+    monkeypatch.setattr(
+        RUNTIME, "_packet", lambda *args, **kwargs: (packet, _dataset()))
+    claim = {"verdict": "PASS"}
+    monkeypatch.setattr(
+        RUNTIME, "_review_claim", lambda *args, **kwargs: claim)
+    review = tmp_path / "review.md"
+    review.write_text("reviewed\n")
+    receipt_path = (tmp_path / RUNTIME.RECEIPT_PATH).resolve()
+
+    receipt = RUNTIME.admit(
+        packet_path=tmp_path / "packet.json",
+        expected_packet_sha256="d" * 64,
+        review_record=review, out=receipt_path)
+    slot_path = (tmp_path / RUNTIME.ADMISSION_PATH).resolve()
+
+    assert RUNTIME.is_regular_unlinked(slot_path)
+    assert RUNTIME.is_regular_unlinked(receipt_path)
+    assert receipt["admission_slot_sha256"] == RUNTIME.sha256_file(slot_path)
+    assert receipt["receipt_sha256"] \
+        == RUNTIME.self_hash(receipt, "receipt_sha256")
+    assert RUNTIME._receipt(
+        receipt_path, RUNTIME.sha256_file(receipt_path), packet,
+        "d" * 64, review) == receipt
+
+
 def test_run_cell_publishes_all_frozen_epochs_without_report(
         monkeypatch, tmp_path) -> None:
     packet = _packet()

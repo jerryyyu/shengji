@@ -166,3 +166,32 @@ def test_runtime_contract_refuses_unreviewed_python(monkeypatch) -> None:
     with pytest.raises(
             CTRL.ReportControllerRefused, match="Python 3.14.6"):
         CTRL.runtime_contract()
+
+
+def test_hold_record_binds_real_prose_and_refuses_later_raw_pass(
+        tmp_path: Path) -> None:
+    path = tmp_path / "handoff.md"
+    path.write_text(
+        CTRL.SUPERSEDED_HOLD_HEADING + "\n\n"
+        "I am not appending the requested PASS marker.\n"
+        "The worktree is clean and no output or slot exists.\n\n---\n")
+    contract = CTRL._hold_record_contract(path)
+    assert contract["hold_heading"] == CTRL.SUPERSEDED_HOLD_HEADING
+    assert contract["raw_pass_marker_occurrences_at_retirement"] == 0
+
+    path.write_text(path.read_text() + CTRL.BASE.REVIEW_MARKER + "{}\n")
+    with pytest.raises(
+            CTRL.ReportControllerRefused, match="HOLD authority drift"):
+        CTRL._hold_record_contract(path)
+
+
+def test_retirement_payload_is_terminal_and_authorizes_no_replacement() -> None:
+    packet = {"packet_sha256": "a" * 64}
+    hold = {"hold_section_sha256": "b" * 64}
+    payload = CTRL._retirement_payload(packet, hold)
+    assert payload["blocks_old_admit_before_packet_or_review_open"] is True
+    assert payload["retry_or_reactivation_authorized"] is False
+    assert payload["replacement_report_execution_authorized"] is False
+    assert payload["report_utility_opened"] is False
+    assert payload["retirement_sha256"] == CTRL.self_hash(
+        payload, "retirement_sha256")

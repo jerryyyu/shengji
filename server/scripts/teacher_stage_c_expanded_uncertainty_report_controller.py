@@ -43,40 +43,40 @@ CAP = BASE.CAP
 TRAIN = BASE.TRAIN
 MODEL = CAP.MODEL
 
-SCHEMA = "teacher-stage-c-expanded-uncertainty-report-controller-v2"
+SCHEMA = "teacher-stage-c-expanded-uncertainty-report-controller-v3"
 PACKET_ID = \
-    "teacher-v3-hard-tail-stage-c-expanded-uncertainty-report-controller-v2"
-RUN_ID = "teacher-v3-hard-tail-stage-c-expanded-uncertainty-report-v2"
+    "teacher-v3-hard-tail-stage-c-expanded-uncertainty-report-controller-v3"
+RUN_ID = "teacher-v3-hard-tail-stage-c-expanded-uncertainty-report-v3"
 CONTROLLER_RUN_ID = \
-    "teacher-v3-hard-tail-stage-c-expanded-uncertainty-report-controller-v2"
+    "teacher-v3-hard-tail-stage-c-expanded-uncertainty-report-controller-v3"
 PACKET_PATH = f"server/runs/logs/{CONTROLLER_RUN_ID}/controller_packet.json"
 REVIEW_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-controller-review-v2"
+    "teacher-stage-c-expanded-uncertainty-report-controller-review-v3"
 REVIEW_MARKER = \
-    "TEACHER_STAGE_C_EXPANDED_UNCERTAINTY_REPORT_CONTROLLER_V2_REVIEW "
+    "TEACHER_STAGE_C_EXPANDED_UNCERTAINTY_REPORT_CONTROLLER_V3_REVIEW "
 
 RUNTIME_RECEIPT_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-receipt-v2"
+    "teacher-stage-c-expanded-uncertainty-report-receipt-v3"
 RUNTIME_ADMISSION_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-admission-v2"
+    "teacher-stage-c-expanded-uncertainty-report-admission-v3"
 RUNTIME_REPORT_OPEN_ADMISSION_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-open-admission-v2"
+    "teacher-stage-c-expanded-uncertainty-report-open-admission-v3"
 RUNTIME_SHARD_ADMISSION_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-shard-admission-v2"
+    "teacher-stage-c-expanded-uncertainty-report-shard-admission-v3"
 RUNTIME_SHARD_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-label-shard-v2"
+    "teacher-stage-c-expanded-uncertainty-report-label-shard-v3"
 RUNTIME_RESULT_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-result-v2"
+    "teacher-stage-c-expanded-uncertainty-report-result-v3"
 SUPERVISOR_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-supervisor-v2"
+    "teacher-stage-c-expanded-uncertainty-report-supervisor-v3"
 SUPERVISOR_EXIT_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-supervisor-exit-v2"
+    "teacher-stage-c-expanded-uncertainty-report-supervisor-exit-v3"
 SUPERVISOR_FINAL_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-supervisor-final-v2"
+    "teacher-stage-c-expanded-uncertainty-report-supervisor-final-v3"
 SUPERVISOR_REVIEW_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-result-review-v2"
+    "teacher-stage-c-expanded-uncertainty-report-result-review-v3"
 SUPERVISOR_REVIEW_MARKER = \
-    "TEACHER_STAGE_C_EXPANDED_UNCERTAINTY_REPORT_RESULT_V2_REVIEW "
+    "TEACHER_STAGE_C_EXPANDED_UNCERTAINTY_REPORT_RESULT_V3_REVIEW "
 
 TARGET_STRATUM = "champion_uncertainty"
 TARGET_STATES = 219
@@ -94,6 +94,12 @@ SUPERVISOR_SCRIPT_PATH = \
     "server/scripts/teacher_stage_c_expanded_uncertainty_report_supervisor.py"
 SUPERSEDED_PACKET_SHA256 = \
     "aa1a94a21abf0351cea13cfcb568c20344ad18a66e6a0d8be6ad5404193008c8"
+SUPERSEDED_HOLD_HEADING = (
+    "## Claude — 2026-08-11 12:12 EDT — HOLD: "
+    "TEACHER_STAGE_C_EXPANDED_PLAY_FRESH_REPORT_CONTROLLER_V1 — "
+    "power precondition unmet; environment pin drift. No marker appended.")
+SUPERSEDED_RETIREMENT_SCHEMA = \
+    "teacher-stage-c-broad-report-admission-retirement-v1"
 
 SOURCE_PATHS = tuple(dict.fromkeys((
     "server/scripts/teacher_stage_c_expanded_uncertainty_report_controller.py",
@@ -572,7 +578,7 @@ def scope_policy_contract(
     role = Counter(str(state["role"]) for state in states)
     position = Counter(str(state["surface"]) for state in states)
     return {
-        "schema": "teacher-stage-c-champion-uncertainty-protected-scope-v2",
+        "schema": "teacher-stage-c-champion-uncertainty-protected-scope-v3",
         "scope": "champion_uncertainty_only",
         "surface": "play",
         "report_states": TARGET_STATES,
@@ -647,7 +653,7 @@ def build_report_schedule(
                 f"server/runs/logs/{RUN_ID}/labels/shard-{index:02d}.json"),
         })
     value = {
-        "schema": "teacher-stage-c-expanded-uncertainty-report-schedule-v2",
+        "schema": "teacher-stage-c-expanded-uncertainty-report-schedule-v3",
         "surface": "play",
         "stratum": TARGET_STRATUM,
         "states": len(selected),
@@ -712,7 +718,7 @@ def _commands(schedule: Mapping[str, object]) -> dict:
     }
 
 
-def _superseded_controller(path: Path) -> dict:
+def _inspect_superseded_controller(path: Path) -> tuple[dict, Path]:
     if (not is_regular_unlinked(path)
             or sha256_file(path) != SUPERSEDED_PACKET_SHA256):
         raise ReportControllerRefused(
@@ -732,12 +738,108 @@ def _superseded_controller(path: Path) -> dict:
     forbidden = [
         root / f"server/runs/logs/{BASE.RUN_ID}/report-receipt.json",
         root / f"server/runs/logs/{BASE.RUN_ID}/report-result.json",
-        root / f"server/runs/locks/{BASE.RUN_ID}.consumed.json",
         root / f"server/runs/locks/{BASE.RUN_ID}.report-open.consumed.json",
     ]
     if any(os.path.lexists(item) for item in forbidden):
         raise ReportControllerRefused(
             "superseded broad REPORT was admitted or opened")
+    slot = root / f"server/runs/locks/{BASE.RUN_ID}.consumed.json"
+    return packet, slot
+
+
+def _hold_record_contract(path: Path) -> dict:
+    if not is_regular_unlinked(path):
+        raise ReportControllerRefused(
+            "superseded broad REPORT HOLD record unavailable")
+    try:
+        text = path.read_text()
+    except (OSError, UnicodeError) as exc:
+        raise ReportControllerRefused(
+            "superseded broad REPORT HOLD record unreadable") from exc
+    if text.count(SUPERSEDED_HOLD_HEADING) != 1:
+        raise ReportControllerRefused(
+            "superseded broad REPORT HOLD section identity drift")
+    start = text.index(SUPERSEDED_HOLD_HEADING)
+    end_candidates = [
+        value for value in (
+            text.find("\n---\n", start),
+            text.find("\n## ", start + len(SUPERSEDED_HOLD_HEADING)),
+        ) if value >= 0
+    ]
+    end = min(end_candidates) if end_candidates else len(text)
+    section = text[start:end].rstrip() + "\n"
+    expected_marker = BASE.REVIEW_MARKER
+    raw_occurrences = sum(
+        line.startswith(expected_marker) for line in text.splitlines())
+    if ("I am not appending the requested PASS marker." not in section
+            or "no output or slot exists" not in section
+            or raw_occurrences != 0):
+        raise ReportControllerRefused(
+            "superseded broad REPORT HOLD authority drift")
+    return {
+        "absolute_path": str(path.resolve()),
+        "file_sha256_at_retirement": sha256_file(path),
+        "hold_heading": SUPERSEDED_HOLD_HEADING,
+        "hold_section_sha256": sha256_bytes(section.encode()),
+        "expected_pass_marker": expected_marker.strip(),
+        "raw_pass_marker_occurrences_at_retirement": 0,
+    }
+
+
+def _retirement_payload(
+    packet: Mapping[str, object], hold: Mapping[str, object],
+) -> dict:
+    value = {
+        "schema": SUPERSEDED_RETIREMENT_SCHEMA,
+        "retired_run_id": BASE.RUN_ID,
+        "retired_controller_packet_sha256": SUPERSEDED_PACKET_SHA256,
+        "retired_controller_packet_internal_sha256": packet["packet_sha256"],
+        "external_review_verdict": "HOLD_BEFORE_EVIDENCE",
+        "hold_record": copy.deepcopy(dict(hold)),
+        "population_overlap_with_replacement_states": 94,
+        "blocks_old_admit_before_packet_or_review_open": True,
+        "old_report_open_slot_consumed": False,
+        "teacher_labels_computed": 0,
+        "model_predictions_computed": 0,
+        "report_utility_opened": False,
+        "retry_or_reactivation_authorized": False,
+        "replacement_report_execution_authorized": False,
+        "composition_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+    }
+    value["retirement_sha256"] = self_hash(value, "retirement_sha256")
+    return value
+
+
+def retire_superseded_controller(
+    *, packet_path: Path, hold_record: Path,
+) -> dict:
+    packet, slot = _inspect_superseded_controller(packet_path)
+    hold = _hold_record_contract(hold_record)
+    if os.path.lexists(slot):
+        raise ReportControllerRefused(
+            "superseded broad REPORT admission slot already exists")
+    payload = _retirement_payload(packet, hold)
+    publish_exclusive(slot, payload)
+    return {
+        "status": "SUPERSEDED_ADMISSION_DURABLY_RETIRED_NO_REPORT_OPEN",
+        "admission_slot": str(slot),
+        "admission_slot_sha256": sha256_file(slot),
+        "retirement_internal_sha256": payload["retirement_sha256"],
+        "hold_section_sha256": hold["hold_section_sha256"],
+    }
+
+
+def _superseded_controller(path: Path, hold_record: Path) -> dict:
+    packet, slot = _inspect_superseded_controller(path)
+    hold = _hold_record_contract(hold_record)
+    expected = _retirement_payload(packet, hold)
+    if (not is_regular_unlinked(slot)
+            or load_json(slot) != expected):
+        raise ReportControllerRefused(
+            "superseded broad REPORT admission is not durably retired")
     return {
         "schema": "teacher-stage-c-broad-report-supersession-v1",
         "absolute_path": str(path.resolve()),
@@ -746,7 +848,12 @@ def _superseded_controller(path: Path) -> dict:
         "run_id": packet["run_id"],
         "frozen_python": packet["runtime_contract"]["python"],
         "external_review_verdict": "HOLD_BEFORE_EVIDENCE",
-        "admission_slot_absent_at_supersession": True,
+        "hold_record": hold,
+        "admission_retirement_slot": str(slot),
+        "admission_retirement_slot_sha256": sha256_file(slot),
+        "admission_retirement_internal_sha256":
+            expected["retirement_sha256"],
+        "admission_slot_durably_consumed_as_retirement": True,
         "report_open_slot_absent_at_supersession": True,
         "report_receipt_absent_at_supersession": True,
         "report_result_absent_at_supersession": True,
@@ -796,6 +903,7 @@ def build_packet(
     state_set_review_record: Path, fresh_report_review_record: Path,
     bury_result_review_record: Path,
     superseded_controller_packet: Path | None = None,
+    superseded_hold_record: Path | None = None,
     frozen_supersession: Mapping[str, object] | None = None,
     frozen_power_analysis: Mapping[str, object] | None = None,
     _validated_inputs: tuple[dict, dict, dict, dict, list[dict]] | None = None,
@@ -813,10 +921,12 @@ def build_packet(
         bury_result_review_record=bury_result_review_record)
     capability, training_packet, dataset, selection, states = values
     if frozen_supersession is None:
-        if superseded_controller_packet is None:
+        if (superseded_controller_packet is None
+                or superseded_hold_record is None):
             raise ReportControllerRefused(
-                "superseded broad controller packet is required")
-        supersession = _superseded_controller(superseded_controller_packet)
+                "superseded broad controller packet/HOLD are required")
+        supersession = _superseded_controller(
+            superseded_controller_packet, superseded_hold_record)
     else:
         supersession = copy.deepcopy(dict(frozen_supersession))
     if (supersession.get("schema")
@@ -825,6 +935,8 @@ def build_packet(
             != SUPERSEDED_PACKET_SHA256
             or supersession.get("external_review_verdict")
             != "HOLD_BEFORE_EVIDENCE"
+            or supersession.get(
+                "admission_slot_durably_consumed_as_retirement") is not True
             or supersession.get("report_rows_opened") != 0):
         raise ReportControllerRefused(
             "broad REPORT supersession contract drift")
@@ -1013,6 +1125,12 @@ def expected_review_claim(
         "superseded_broad_controller_sha256": packet["parents"][
             "superseded_broad_report_controller"]["external_sha256"],
         "superseded_broad_report_rows_opened": 0,
+        "superseded_broad_hold_section_sha256": packet["parents"][
+            "superseded_broad_report_controller"]["hold_record"][
+                "hold_section_sha256"],
+        "superseded_broad_admission_retirement_sha256": packet["parents"][
+            "superseded_broad_report_controller"][
+                "admission_retirement_slot_sha256"],
         "selected_capability": packet["selected_capability"],
         "scope_policy_contract": packet["scope_policy_contract"],
         "power_analysis_sha256": packet["power_analysis"]["analysis_sha256"],
@@ -1126,7 +1244,8 @@ def validate_runtime_packet(
 
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description=__doc__)
-    root.add_argument("command", choices=("freeze", "verify"))
+    root.add_argument(
+        "command", choices=("retire-superseded", "freeze", "verify"))
     root.add_argument("--expected-git", required=True)
     root.add_argument("--capability-packet", required=True)
     root.add_argument("--expected-capability-packet-sha256", required=True)
@@ -1138,6 +1257,7 @@ def parser() -> argparse.ArgumentParser:
     root.add_argument("--fresh-report-review-record", required=True)
     root.add_argument("--bury-result-review-record", required=True)
     root.add_argument("--superseded-controller-packet", required=True)
+    root.add_argument("--superseded-hold-record", required=True)
     root.add_argument("--out", default=PACKET_PATH)
     root.add_argument("--expected-packet-sha256")
     return root
@@ -1149,6 +1269,12 @@ def main() -> int:
             or _git("status", "--porcelain", "--untracked-files=all")):
         raise ReportControllerRefused(
             "uncertainty REPORT producer Git/cleanliness drift")
+    if args.command == "retire-superseded":
+        result = retire_superseded_controller(
+            packet_path=Path(args.superseded_controller_packet).resolve(),
+            hold_record=Path(args.superseded_hold_record).resolve())
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
     common = {
         "git": args.expected_git,
         "capability_packet_path": Path(args.capability_packet).resolve(),
@@ -1169,6 +1295,8 @@ def main() -> int:
             args.bury_result_review_record).resolve(),
         "superseded_controller_packet": Path(
             args.superseded_controller_packet).resolve(),
+        "superseded_hold_record": Path(
+            args.superseded_hold_record).resolve(),
     }
     packet = build_packet(**common)
     out = Path(args.out).resolve()

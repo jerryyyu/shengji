@@ -1,81 +1,92 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-11 04:54 EDT. This is the executable mailbox, not a
-history. Exact review prose and raw markers live in `HANDOFF_REVIEW.md`;
-terminal policy conclusions in `AI_POLICIES.md`; queue order in `BACKLOG.md`.
+> **CANONICAL PATHS:** both agents coordinate only through
+> `/Users/jerryyu/Projects/shengji/HANDOFF_ACTIVE.md` and
+> `/Users/jerryyu/Projects/shengji/HANDOFF_REVIEW.md`. Branch-local copies are
+> never review authority. Raw markers belong in `HANDOFF_REVIEW.md` at column
+> 1 and must occur exactly once.
+>
+> **LOSSLESS ARCHIVE:** the 726-line prior active ledger is preserved in
+> `docs_archive/handoff-active-through-2026-08-11-10-22.md`; the 5,807-line
+> review history is preserved in
+> `docs_archive/handoff-review-2026-08-08-through-2026-08-11-10-22.md`.
 
-> **Canonical ledger rule:** regardless of the reviewed worktree, read and
-> append through `/Users/jerryyu/Projects/shengji/HANDOFF_ACTIVE.md` and
-> `/Users/jerryyu/Projects/shengji/HANDOFF_REVIEW.md`. A branch-local copy is
-> never review authority. Raw markers start at column 1 and occur exactly once.
+Last reconciled: 2026-08-11 10:36 EDT.
 
-## Immediate state
+## Current T4 objective
 
-The expanded Teacher remains promising on CALIB but has not yet completed an
-unseen-state exam:
+Produce the first fresh whole-game challenger built from the Stage-C Teacher:
+evaluate the already-trained broad-play capability once on untouched REPORT;
+if and only if it passes, compose it inside live report-LCB with candidate-zero
+fallback and a same-work null, then screen it against `mc-s0-report-lcb`.
+Stop before confirmation, promotion or production deployment.
 
-- The reviewed v1 REPORT packet was admitted once, then every shard command
-  refused in argparse because its frozen template omitted `--expected-git`.
-  All eight return codes are 2; zero labels, predictions, utility or result
-  exist. Its no-retry contract spends that third REPORT population.
-- Exact PR #32 head `564db02` fixes the command contract and deterministically
-  selects a genuinely untouched fourth 512-row REPORT tranche. External review
-  passed its zero overlap against all 1,536 spent rows by state ID and deal
-  seed. It selects 480 play + 32 bury rows and leaves 1,743 rows; selection SHA
-  is `3c318da2…41e4`.
-- Codex consumed only the authorized score-free freeze. Concrete v2 packet
-  external/internal `e856c02e…175e2` / `96840fdb…82116` binds the 32 bury rows
-  in eight shards, schedule `b5397f56…394d`, and a 264,128 candidate-world
-  ceiling. Two pinned verifier runs returned `VERIFIED_NO_REPORT_OPEN`; 22
-  execution/admission/result paths remain absent.
-- The sole Teacher blocker is independent raw
-  `TEACHER_STAGE_C_EXPANDED_FRESH_REPORT_CONTROLLER_V2_REVIEW` PASS. Only that
-  concrete packet PASS may authorize one admission and one-shot Mini execution.
-- S4's independent 2,048-cluster replication is terminal externally reviewed
-  **SELECT_NONE**: point estimate `+0.048828`, 95% half-width `0.055712`, LCB
-  `-0.006884`; all 256 null sentinels equal champion exactly. It is closed.
-  Never retry, extend, confirm or deploy this recipe.
+## Current truth
 
-## Current truth and next legal action
-
-| area | current truth | next legal action |
+| area | plain-English status | next gate |
 |---|---|---|
-| Production | Release 17 runs compiled, confirmed `mc-s0-report-lcb`. PR #11's independently reviewed Xray kitty-bury view merged at `970cacd`. | Monitor only; T4 authorizes no production policy change. |
-| S4 | Independent replication is terminal external PASS / `SELECT_NONE`: `+0.048828 +/- 0.055712`, LCB `-0.006884`; 256/256 null sentinels equal champion. | Closed without retry, extension, confirmation or deployment. Preserve it as positive-but-inconclusive mechanism evidence. |
-| Stage-C original generation | Capture/state set and 2,048 iid-v2 labels passed. The first 1,536-state, eight-seed model generation selected none. Its protected-anchor fresh REPORT also selected none. | Closed without composition. Use the negative to test scale versus objective alignment; never reopen either spent REPORT. |
-| Expanded labels | **Terminal COMPLETE / externally passed:** 5,504 new labels plus 1,536 retained labels yield 7,040 DESIGN/CALIB examples. Third REPORT is sealed at 512 states. | Closed as a data asset; its one freeze authority is consumed. It grants no training or REPORT access. |
-| Expanded training | **Terminal external PASS:** all 96 cells and 576 checkpoints replayed. Selected epoch-32 all-pairs bury ranking, 8/8 positive seeds; direct loss did not win. | Closed as a CALIB capability result. Its one downstream packet-freeze authority is consumed. |
-| REPORT/composition | V1 is terminal operational no-use before evidence. PR #32 `564db02` and fourth REPORT `3c318da2…41e4` passed recovery review. Packet `e856c02e…175e2` is frozen and twice rebuilt with no scores opened. | Claude reviews the concrete packet. PASS permits its only Mini admission and execution. Compose only an unseen-REPORT passer inside report-LCB with fallback and same-work null. |
-| S6 shuai-pai | Draft PR #19 `2605b04` guarantees at least one bounded public lead-only shuai candidate whenever legal, including KESP and late trump-only witnesses. Twelve focused/59 broader tests and a 200-deal coverage audit pass. No screen exists. | Obtain external source-semantics review, then design an equal-work state screen. Do not consume T4 compute or merge an unused source. |
-| Repository hygiene | PR #11 merged; status-only PRs #10/#12/#21/#25 closed; 17 remote branches, 14 merged/superseded local branches and 23 clean worktrees removed; one stale missing-worktree record pruned. Nine source-required markers lost by `d5348da` were recovered byte-exact and regression-protected. Draft PR #30 adds the concise docs/PR contract and green bounded CI; draft PR #31 proves and removes only unreferenced `segbatch.py`. Source-pinned candidates remain untouched. | Reconcile/review/merge PR #30, retarget/review #31, then consolidate the Stage-C stack on current `main` after terminal evidence. Close/delete ancestors only after ignored evidence is tagged or archived. |
+| S4 point-banking | Terminal `SELECT_NONE`: positive direction but replication LCB crossed zero. Never retry or extend it. | Closed; diagnostic only. |
+| H0 human proposer | Terminal no-use after 555/557 and incomplete aggregate. No human-derived proposer was admitted. | Closed; future human data needs a new packet. |
+| Stage-C capture/labels/training | Complete and independently reviewed: 2,048 split-safe capture states; expanded 7,040-state labeled asset; eight-seed training cohorts; REPORT kept separate. | Closed prerequisites. |
+| Protected play policy | Fresh 480-state REPORT lost (`-0.00823`, LCB `-0.01894`). | Closed `SELECT_NONE`; never reuse REPORT. |
+| Expanded bury policy | Terminal `SELECT_NONE`, independently reviewed: mean `+0.03381`, LCB `-0.01525`, zero refusals, 264,128 exact worlds. | Closed; never retry, extend, compose or reuse its REPORT. |
+| Broad-play successor | Epoch-32 all-pairs play ensemble is positive on DESIGN and CALIB in 8/8 seeds. Its score-free capability packet froze from clean PR #34 head `3359b8c` and re-verifies with REPORT unopened. | **Only open review:** independent capability replay and raw `TEACHER_STAGE_C_EXPANDED_PLAY_CAPABILITY_V1_REVIEW`. |
+| Fleet | Mini and Air have no active Teacher/S4/duel workers as of this reconciliation. | Keep idle until an authorized packet exists; do not invent a run. |
 
-## Review boundaries
+## Broad-play successor: frozen design, not yet evidence
 
-1. **Expanded labels:** terminal 5,504/5,504 completion passed external replay;
-   its one packet-freeze authority is consumed and grants nothing further.
-2. **Expanded training packet:** externally passed and consumed exactly once;
-   the 96-cell execution is terminal and never retried.
-3. **Training result:** externally passed and consumed exactly once for the
-   score-free packet freeze; it grants no REPORT execution.
-4. **REPORT v1:** terminal operational no-use. Its admission/open slots and
-   third population are consumed even though no scores were produced.
-5. **REPORT recovery:** source/selection review passed and its sole score-free
-   freeze was consumed. Concrete packet review is open; only its PASS permits
-   one untouched Mini look. A refusal or non-passer closes without tuning.
-6. **Whole-game screen:** only a REPORT passer may be composed and screened.
-   The active `/goal` stops before confirmation, promotion or deployment.
+- Training evidence: DESIGN mean `+0.00904007`, one-sided LCB `+0.00541917`
+  over 5,120 play states; CALIB mean `+0.01047974`, LCB `+0.00336018` over
+  1,280 play states; all eight seeds positive.
+- Fresh fifth REPORT selection: 480 play, zero bury, zero state/deal overlap
+  against 2,048 spent REPORT rows; selection SHA `4f7b4ec0…7787`.
+- Coverage: 132 ordinary anchors, 94 champion-uncertainty, 128 proposal
+  disagreements, 42 point-banking opportunities and 84 exact-late states;
+  136 early / 146 mid / 198 late; 248 attacker / 232 defender; 236 lead / 244
+  follow.
+- Source-only PR #34 includes capability and separate one-shot REPORT
+  controller/runtime/supervisor. Capability packet `cd2d5102…a3e82` is frozen
+  and verifies `VERIFIED_NO_REPORT_OPEN`; no REPORT controller packet,
+  admission, label, prediction or utility exists.
 
-## Safety boundary
+## Exact execution order
 
-- Preserve all consumed capture, capacity, label, training and REPORT slots.
-  Never retry or pool a terminal no-use generation.
-- H0 is terminal incomplete at 555/557; no human-derived proposal rule was
-  admitted and partial utilities remain unread.
-- Label v1's realized-world deduplication was posterior-changing. All current
-  folds use domain-separated iid draws with replacement.
-- Do not open REPORT during labeling, controller review, training or
-  DESIGN/CALIB selection.
-- Do not launch S4 confirmation, S6, S5 or an unreviewed Teacher stage merely
-  to occupy idle compute.
-- Simplification may consolidate duplicated plumbing, but it may not weaken
-  one-shot admission, identity binding, replay, refusal or evidence isolation.
+1. Claude independently reviews the frozen score-free capability and appends
+   the exact raw PASS or a concrete HOLD. A PASS may authorize one downstream
+   controller freeze, not REPORT execution.
+2. Codex authenticates and snapshots that raw line, then freezes the separate
+   play REPORT controller; Claude reviews its exact
+   packet and command/runtime boundary.
+3. Codex consumes one durable REPORT-open admission and runs eight 60-state
+   shards on Mini. No retry or reuse after admission, including failure.
+4. Claude independently recomputes the terminal REPORT decision.
+5. Only a positive predeclared action-utility LCB may authorize composition.
+   Outcome NLL, strata and individual examples remain diagnostic.
+6. Compose the passing play capability inside report-LCB, preserving the live
+   incumbent/candidate-zero fallback and a trigger-matched same-work null.
+7. Run the fresh whole-game screen against live `mc-s0-report-lcb`; stop before
+   confirmation or deployment regardless of outcome.
+
+## Parallel but non-blocking work
+
+- S6 shuai-pai source is production-inactive in draft PR #19. Latest focused
+  sourcing suite passes 12/12, but the branch needs rebase/external source
+  review and then a trigger-matched strength screen. It does not block T4.
+- Repository/docs hygiene remains isolated in draft PRs #30/#31. Do not merge
+  evidence-sensitive branches merely to reduce branch count.
+- A larger Teacher dataset is a justified next learning-curve step only after
+  this fresh play REPORT: scale broad play (roughly 5k → 10k → 20k), keep bury
+  separate/small, and improve candidate sourcing alongside volume.
+
+## Standing invariants
+
+- Never inspect interim outcomes from a sealed run.
+- REPORT populations, deal seeds and labels are single-use; siblings from a
+  partially opened population count as spent.
+- Freeze, external review, admission, execution, terminal review, composition,
+  whole-game screen, confirmation and deployment are separate authorities.
+- A source PASS is not run authority; a positive diagnostic is not strength.
+- Preserve immutable evidence worktrees and snapshots. Never clean or rebase
+  a worktree containing ignored evidence without a byte inventory.
+- Prefer Mini for runs under one hour; every long job must emit durable,
+  frequent progress and own signals/children explicitly.

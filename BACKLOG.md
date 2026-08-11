@@ -137,7 +137,11 @@ bounded adaptation mechanism; estimator-only repairs and O1 remain closed.
 - [ ] Centralize versioned environment-flag parsing. `SHENGJI_FAST=0` currently
   means false to some paths and true to others, so pure-route evidence must
   unset the variable until the migration lands with route/provenance tests.
-- [ ] Add CI for server tests, frontend tests/build and a short compiled duel.
+- [x] Add fast PR CI: 139 pure-core server tests, 108 compiled/parity/seeded-
+  pairing tests, frontend tests/build, and a high-severity dependency audit.
+  The full local evidence suite remains outside CI because it requires ignored
+  corpora, machine-bound receipts and experiment runtimes; those gates stay
+  with their reviewed run packets rather than making every PR spuriously red.
 - [ ] Finish reconnect/takeover, spectator privacy, trick history and portrait/
   zh-CN work as separate product lanes.
 - [ ] Consolidate duplicated experiment wrappers only after reference audit.

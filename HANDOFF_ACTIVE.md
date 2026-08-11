@@ -11,7 +11,7 @@
 > review history is preserved in
 > `docs_archive/handoff-review-2026-08-08-through-2026-08-11-10-22.md`.
 
-Last reconciled: 2026-08-11 10:36 EDT.
+Last reconciled: 2026-08-11 10:56 EDT.
 
 ## Current T4 objective
 
@@ -69,6 +69,11 @@ Stop before confirmation, promotion or production deployment.
 
 ## Parallel but non-blocking work
 
+- Broad-play composition source is ready in draft PR #33 at `a18d896`,
+  stacked on PR #34. The obsolete bury profile was replaced with a disjoint
+  play profile; external REPORT/training worktrees are authenticated before
+  use; 362 Stage-C/Teacher tests pass. It freezes nothing and remains gated on
+  a positive independently reviewed play REPORT result.
 - S6 shuai-pai source is production-inactive in draft PR #19. Latest focused
   sourcing suite passes 12/12, but the branch needs rebase/external source
   review and then a trigger-matched strength screen. It does not block T4.

@@ -1,58 +1,107 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-11 04:54 EDT. This file owns live compute and compact
-terminal stubs. Result interpretation lives in `AI_POLICIES.md`; execution
-order in `BACKLOG.md`; full chronology in dated `docs_archive/` logs.
+Last reconciled: 2026-08-11 11:03 EDT. This file owns live compute and compact
+terminal job stubs. Exact historical detail is archived at
+`docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
+`AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
+in `HANDOFF_ACTIVE.md`.
 
 ## Live fleet
 
-| host | live job | safe progress | next admitted use |
+| host | live strength job | status / next admitted use |
+|---|---|---|
+| Mini | none | **FREE:** only the long-lived test server is present. Preferred host for the reviewed 480-state play REPORT after capability and controller review. |
+| Air | none | **FREE:** live SSH probe found no Python strength worker. Reserve for an independently reviewed long whole-game screen or other separately admitted work. |
+| Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
+
+No compute is blocked on capacity. It is blocked on evidence authority: the
+score-free broad-play capability packet `cd2d5102…a3e82` awaits independent
+review. No play-REPORT controller packet, admission, label, prediction,
+utility, composition packet or whole-game screen exists.
+
+## Next admitted execution
+
+| order | gate | plain-English progress and what remains |
+|---:|---|---|
+| 1 | Broad-play capability review | **Open:** PR #34 is clean at `3359b8c`; packet `cd2d5102…a3e82` locally re-verifies with REPORT unopened. Claude must independently append the exact capability PASS or a concrete HOLD. |
+| 2 | Play-REPORT controller review | **Source ready, packet absent:** after gate 1, freeze the score-free controller once and review its exact runtime/work boundary. |
+| 3 | One play REPORT on Mini | **Not admitted:** after gate 2, consume one REPORT-open slot and run eight fixed 60-state shards. No retry or population reuse. |
+| 4 | Terminal REPORT review | **Pending evidence:** independently replay all 480 states. Only a positive predeclared action-utility LCB can advance. |
+| 5 | Composition | **Code ready, authority absent:** draft PR #33 is clean at `186e69b`, stacked on #34; 362 tests pass. A REPORT PASS may authorize one packet freeze and capacity review. |
+| 6 | Whole-game screen | **Not designed as evidence yet:** broad play reserves fresh 184m preflight and 185m screen populations, with treatment, same-work null and unchanged `mc-s0-report-lcb`. Stop before confirmation or deployment. |
+
+S4 point-banking, H0 human/V11 proposal admission, the first protected-play
+REPORT and the expanded-bury REPORT are terminal `SELECT_NONE`; none may be
+retried, extended or reused. The 2,048-state capture, 7,040-state expanded
+labels and eight-seed training cohort are completed prerequisites, not live
+jobs.
+
+## Terminal job index
+
+| date | job | verdict / headline | evidence anchor |
 |---|---|---|---|
-| **Mini** | **Idle; concrete fresh-REPORT v2 controller review open** | Recovery source/selection passed externally. Packet `e856c02e…175e2` binds 32 untouched bury rows in eight shards; two pinned rebuilds returned `VERIFIED_NO_REPORT_OPEN`. | Raw `TEACHER_STAGE_C_EXPANDED_FRESH_REPORT_CONTROLLER_V2_REVIEW`; PASS permits its only admission and one execution. |
-| **Air** | **Idle; S4 closed** | Independent terminal review passed `SELECT_NONE` at 2,048 clusters: `+0.048828 +/- 0.055712`, LCB `-0.006884`; all 256 null sentinels exact. | Available for separately admitted work; S4 has no retry, extension or deploy authority. |
-| **Fly** | `mc-s0-report-lcb` | Release 17 live. Xray kitty-bury support merged in PR #11; no policy change. | Passive latency/correctness monitoring only. |
+| 08-11 | Expanded-bury Teacher REPORT | **SELECT NONE**; mean `+0.03381`, one-sided LCB `-0.01525`; narrow structured-point/void signal only | result `2e21a9bf...72ac4d`; final `126d73cd...e58387` |
+| 08-11 | S4 point-banking replication | **SELECT NONE**; mean `+0.04883`, LCB `-0.00688`; positive direction did not replicate conclusively | aggregate `d6b73f45...8f4d4`; final `20ece4ed...f144a` |
+| 08-10 | Protected-play Teacher REPORT | **SELECT NONE**; mean `-0.00823`, LCB `-0.01894`; proposal-disagreement overrides lost out of sample | result `8fa323de...5aea6`; final `3b42561d...1758f8` |
+| 08-09 | S3a full-game preflight | **CAPACITY PASS / SCREEN PACKET REVIEW**; 4/4 clusters, exact 952/952 structured rollouts, screen projection `72.62` fleet-hours / `9.08` max-shard hours | preflight `09692f82...edf0`; final `56943242...e9f` |
+| 08-09 | Teacher-v3 fresh audit | **PASS / STAGE-C DESIGN**; cheap upper `0.0354`, N=30 upper `0.0439` below `0.10`; no training authority | gate `8a1532b7...91f8`; supervisor `02f4f8b...6f237` |
+| 08-09 | Suphx O0-v2 | **SELECT NONE**; control `+0.015` (LCB `-0.067`), plus-margin `-0.047` (LCB `-0.109`); independently replayed | gate `0dbd9aa8...f24e`; admission `f436f4b0...01e7a` |
+| 08-08 | S3a 512-state screen | **AUTHORIZE DUEL DESIGN**; all three state-level LCBs positive; no production authority | aggregate `74aa5a39...396cd`; final `d3f2b1ab...69a6b` |
+| 08-08 | S3a v2 sizing | **CAPACITY PASS**; 0.142 fleet-hours / 0.0178 max-shard hours under frozen 400/60 caps | receipt `cf770277...5c431` |
+| 08-08 | Teacher Stage B | **PASS**; regret upper bound `0.019548 < 0.10` | gate `f607b489...89694` |
+| 08-08 | Teacher audit-v2 | **OPERATIONAL REFUSAL / NO ML VERDICT**; incomplete continuation, no labels/gate | receipt `ce51b826...71d0`; failed root preserved |
+| 08-08 | S3b v2 preflight | **TERMINAL HOLD / NO SCREEN**; exact node cap hit in cluster 1 | head `cd44ea8`; no final/partial receipt |
+| 08-08 | Suphx O0 | **SELECT NONE**; aggregate oracle signal, seed-1 reversal | gate `592a009a...bd407c` |
+| 08-07 | RLCB-C1 | **CONFIRM**; report-LCB `+0.338379 +/- 0.067706`, null flat | aggregate `83f5a9df...f5ef5ea`; closeout `06dd487d...b7aae5` |
+| 08-07 | production latency | **LIVE**; release 17, off-loop isolated search | image `latency-cd6789e`; manifest `047bcfe4...5b300` |
+| 08-07 | V11 direct-v2 | **SELECT NONE**; `-0.141113 +/- 0.069823` versus current | aggregate `b7c90ba4...05d21ad` |
+| 08-07 | Direct-Q 144M | **SELECT NONE**; positive gameplay, failed held-out learning | aggregate `1fa6789e...ce791` |
+| 08-07 | formal S0 | **SELECT NONE**; numerical S0c outcome unread/nonretryable | closeout `ef0a365...fde9a` |
+| 08-05 | DEV-512 ballot | **SELECT NONE**; no design advanced, CALIB/REPORT sealed | state asset `af787485...85d3e7b` |
+| 08-04 | sampler Package H | **PASS** within bounded strict scope; not posterior calibration | commit `aea3774`; `certify_sampler_v3.json` |
 
-## Next compute sequence
+No row grants more authority than its original gate. In particular, S3a's
+positive state screen permits duel **design**, not a duel launch, strength
+claim, policy promotion, or production change.
 
-1. Externally pass the already-frozen concrete v2 controller packet.
-2. Only that packet PASS may consume the one untouched REPORT look on Mini.
-3. Rebuild and externally review the terminal result without tuning or reuse.
-4. Only a REPORT passer may be composed and screened against live report-LCB.
+## Current terminal details
 
-S4 remains an isolated Air lane. S6 source/tests and repository cleanup use no
-strength compute while Mini and Air are occupied.
+### S3a 512-state screen — verified PASS
 
-## Recent terminal index
+- reviewed source git `14548d3da31c3cfe899cbd7e572614ae05242c0a`;
+- run ID `s3a-bury-v2-screen-136m-v1`, eight successful shards, exact seeds
+  136,000,000–136,000,511;
+- aggregate `74aa5a3947e1daaa5aa4bc33eef8ae04eaaf695d0cb900c7045eb0cbbc4396cd`;
+- supervisor final
+  `d3f2b1ab48085ccf37534b5dd7f20ea6cf0d7644c6c49304b644ecf895169a6b`;
+- separate CLI verifier exited zero with `verified=true`;
+- structured-minus-incumbent `+0.997314 +/- 0.400606`, LCB `+0.596708`;
+- structured-minus-legacy-four `+0.877848 +/- 0.379885`, LCB `+0.497963`;
+- structured-minus-random-widening `+3.252848 +/- 0.561197`, LCB
+  `+2.691652`;
+- no problems, partials or symlinks; retry/resume false; production promotion
+  false.
 
-| date | job | terminal verdict | anchor / meaning |
-|---|---|---|---|
-| 08-11 | Expanded Stage-C labels | **TERMINAL + EXTERNAL PASS** | Source `32d94a4`; 5,504/5,504 new rows, zero refusals, aggregate `3deb3a81…f6ca`. Its one score-free packet freeze was consumed; no training authority followed directly. |
-| 08-11 | Expanded Stage-C training | **TERMINAL EXTERNAL PASS / CALIB CAPABILITY** | Source `c18b80e`; all 96 cells / 576 checkpoints replayed; aggregate `5ad77eb0…b6bd` selected epoch-32 all-pairs bury ranking, 8/8 positive seeds, median `+0.016418` versus candidate zero. Its one packet-freeze authority is consumed; no strength claim. |
-| 08-11 | Expanded Stage-C REPORT v1 | **TERMINAL OPERATIONAL NO-USE / ZERO EVIDENCE** | Packet `5ce892db…25f0`, receipt `3c4b1f…74bf`; all eight shard commands returned 2 in argparse because `--expected-git` was omitted. Zero labels/predictions/utility/results; third population consumed. |
-| 08-11 | Expanded Stage-C REPORT recovery + packet | **RECOVERY EXTERNAL PASS / PACKET REVIEW OPEN / ZERO REPORT ACCESS** | PR #32 `564db02`; fourth selection `3c318da2…41e4`, 480/32 rows and zero prior state/deal overlap. Packet `e856c02e…175e2` binds 32 bury states in eight shards; two pinned rebuilds verified no REPORT open. |
-| 08-11 | S4 independent replication | **SELECT NONE / EXTERNAL INTEGRITY PASS** | Exact `fb6ec1a`; 2,048 clusters at `+0.048828 +/- 0.055712`, LCB `-0.006884`; 256 exact-null sentinels. Closed without retry, extension, confirmation or deploy. |
-| 08-10 | Protected Stage-C fresh REPORT | **SELECT NONE / EXTERNALLY PASSED** | Source `cd3d7bd`; result `8fa323de…aea6`; 480/480, zero refusals, 810,944 exact worlds. Triggered 171 rows; mean improvement `-0.00822754`, LCB `-0.01894357`. No composition or REPORT reuse. |
-| 08-10 | Stage-C training generation v1 | **SELECT NONE** | Source `18a6fa1`; all 48 cells / 288 checkpoints completed and replayed. Play ranker approached candidate zero but failed the 6/8 seed gate; bury was negative. Fresh REPORT remained unopened until the separately protected test above. |
-| 08-10 | Expanded label packet | **PACKET PASS / EXECUTION CONSUMED** | Source `32d94a4`; 7,040 DESIGN/CALIB states, 5,504 new labels, 512 third REPORT sealed; controller `82447501…2084`. Execution completed in the 08-11 row above. |
-| 08-10 | Stage-C iid-v2 labels | **TERMINAL + EXTERNAL PASS** | 2,048/2,048 labels, replacement sampling, exact folds and fidelity review. These 1,536 DESIGN/CALIB rows are retained by the expansion; original REPORT is spent/quarantined. |
-| 08-10 | Stage-C label v1 | **TERMINAL NO-USE / NO AGGREGATE** | 2 complete / 6 refused shards because realized-world deduplication exhausted late support and changed posterior mass. Never retry or mine partial rows. |
-| 08-10 | Stage-C capture v7 | **CAPTURE + STATE-SET PASS** | 24/24 shards; all 750,000 dispositions and all 2,048 selected states replayed. State set `c7a769c4…e8e1c`, verifier `143fb2db…4adb`. |
-| 08-10 | S4 whole-game screen v2 | **SCREEN PASS** | Treatment−champion `+0.086914 +/- 0.056166`, LCB `+0.030748`; matched null identical. Independent replication is the live Air job above. |
-| 08-09 | S3a structured-bury full game | **SELECT NONE / CLOSED** | 2,048 clusters; structured−champion `+0.0464`, LCB `-0.0041`. No retry/tuning. |
-| 08-09 | H0 human/V11 diagnostic | **TERMINAL INCOMPLETE / NO AGGREGATE** | 555/557 rows; two score-free refusals. No human-derived rule, no partial mining. |
-| 08-09 | S5 replay boundary | **SOURCE/FIXTURE PASS / NO CENSUS** | Exact `2351b36`; one future score-free replay census remains eligible. |
-| 08-08–09 | V11 direct-v2, Direct-Q, O0/O0-v2, S3b-v2 | **SELECT NONE / HOLD** | Preserve diagnostic lessons; none is deployable or authorizes continuation. See `AI_POLICIES.md`. |
-| 08-07 | RLCB-C1 | **CONFIRM** | Aggregate `83f5a9df…f5ef5ea`; `+0.338 +/- 0.068` signed levels versus `mc-strong`, matched null flat. Supports production report-LCB. |
+### Teacher audit-v2 — immutable refusal
 
-No terminal row grants more authority than its original gate. In particular,
-S4's first PASS does not authorize deployment. The expanded training result is
-CALIB-only. Its failed v1 REPORT is not a model verdict; the fresh recovery
-source must pass, then its concrete packet must pass before one REPORT look.
+Stage B passed, but audit-v2 shard 6 stopped after a complete selection fold
+and incomplete report continuation. The supervisor terminated siblings. No
+label final, terminal audit gate, or regular supervisor final exists, so the
+reviewed adapter cannot consume it. Preserve
+`~/Projects/shengji-teacher-audit-v2-air` and the earlier failed v1 root; never
+resume, migrate, delete, or reinterpret them. Exact retry semantics at
+`1589fb4` passed independent review but did not authorize a new run.
+
+### S3b v2 — immutable preflight HOLD
+
+The exact treatment exceeded `max_nodes=250000` before cluster 1 completed.
+No score, raw record, receipt, or partial survived. V2 may not retry or change
+its cap/fallback. Any future v3 requires a fresh resource contract and review.
 
 ## Archive pointers
 
-- `docs_archive/jobs-through-2026-08-08.md`
-- `docs_archive/daily-log-2026-08-08.md`
-- `docs_archive/daily-log-2026-08-09.md`
-- `docs_archive/daily-log-2026-08-10.md`
-- Git history preserves the pre-compaction terminal table.
+- Full pre-compaction ledger:
+  `docs_archive/jobs-through-2026-08-08.md`, SHA-256
+  `26beff936f6c0744b220fc79e233163c8f09acde8a13adcba5450327ad132252`.
+- Day chronology: `docs_archive/daily-log-2026-08-08.md`.
+- Review markers and adversarial findings: `HANDOFF_REVIEW.md`.

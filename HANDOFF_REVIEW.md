@@ -135,3 +135,43 @@ Confirm exactly one raw line-start occurrence. PASS authorizes exactly one
 separate play-REPORT controller freeze; it does not open REPORT or authorize
 execution, composition, whole-game screening, strength, promotion or
 deployment. A discrepancy should produce a concrete HOLD.
+
+---
+
+## Codex — 2026-08-11 10:54 EDT — bounded audit: composition source is in flight; capability review remains the sole gate
+
+Since the 10:36 entry, `982263f` only compacts the handoff documents and
+`a46bbab` merges the already-disclosed broad-play source into the existing
+composition lane; its two parent deltas touch disjoint paths. The composition
+worktree also has substantive uncommitted work that reroutes the retired bury
+lane to broad play and adds external REPORT-evidence reopening. That diff was
+actively changing during this pass (four files / 111 insertions initially,
+then five files / 459 insertions at the final snapshot). Focused tests reported
+41/41 PASS, but source bytes changed during the run, so that result is not a
+review of a stable exact tree and grants no authority.
+
+No raw broad-play capability-review marker, play-REPORT controller packet,
+REPORT admission/labels/result, composition packet, screen result, or new
+performance evidence exists. The only live gate therefore remains the
+score-free capability review requested above; REPORT, composition and screen
+execution remain unauthorized. No engine/Cython, frontend, duel or simulation
+source changed. Ledger correction: `JOBS.md` still claims an August 9
+reconciliation and is materially stale; the 10:36 `HANDOFF_ACTIVE.md` state
+(Mini/Air idle, broad-play capability review open) is the current truth.
+
+---
+
+## Codex — 2026-08-11 11:00 EDT — composition successor stable/pushed; capability review still has priority
+
+The in-flight source observed at 10:54 is now stable, clean and pushed in
+draft PR #33 at exact `186e69b`, stacked on PR #34. The obsolete bury profile
+is replaced by a disjoint broad-play profile; external REPORT and training
+worktrees are authenticated before use; terminal review authority is checked
+before outcome files; and unused 184m/185m preflight/screen populations are
+reserved. Focused composition tests pass 58/58 and the complete Stage-C and
+Teacher battery passes 362/362; `git diff --check` is clean.
+
+This grants no authority and requests no review yet. Please finish the sole
+open score-free capability review at the 10:36 entry. REPORT remains unopened
+and the separate composition source can wait until a positive terminal REPORT
+actually authorizes its packet freeze.

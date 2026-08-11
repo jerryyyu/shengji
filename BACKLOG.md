@@ -1,6 +1,6 @@
 # Backlog
 
-Last re-derived: 2026-08-11 13:35 EDT from terminal evidence and the weekly
+Last re-derived: 2026-08-11 14:06 EDT from terminal evidence and the weekly
 strategy audit.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
@@ -17,22 +17,24 @@ dated files under `docs_archive/`, not in this queue.
 - **T4 has produced learned capability, but still no stronger learned bot.**
   The first protected play model lost its untouched REPORT. Expanded bury was
   positive but inconclusive on only 32 fresh rows and selected none. Expanded
-  broad play is the first ensemble with positive DESIGN and CALIB ensemble
-  lower bounds plus positive means from all 8/8 seeds; its original 480-state
-  broad exam was held unopened
-  because the observed effect made it underpowered.
-- **The live Teacher hypothesis is now narrow and powered.** Every remaining
-  untouched `champion_uncertainty` row is selected: 219 states, projected
-  one-look power 84.7%/87.8%, Python 3.14.6, packet
-  `00c8ea70…16b6e`. The held broad admission is durably retired. Independent
-  execution review is the sole blocker before one Mini look; REPORT remains
-  unopened.
-- **The downstream policy bug is fixed before evidence.** Pushed head
+  play had positive DESIGN/CALIB bounds, but its protected broad REPORT lost
+  and its powered 219-state `champion_uncertainty` REPORT returned action mean
+  `+0.012129`, SE `0.010109`, LCB `-0.005056`: provisional `SELECT_NONE`
+  pending independent terminal authentication.
+- **The Teacher learned outcomes better than actions.** On the same powered
+  REPORT, outcome-NLL improvement was `+0.47845` with LCB `+0.44201`, but that
+  diagnostic cannot override the failed action gate. The best learned
+  successor is an explicit advantage or bounded value/leaf hypothesis—not
+  another direct argmax of this ranker. Post-hoc slices (diagnostic only) were
+  negative early (`-0.0256`) and on 13+ candidate ballots (`-0.0102`), but
+  positive mid (`+0.0234`), late (`+0.0825`) and on ≤8 candidates (`+0.0450`),
+  motivating surface/horizon specialization and candidate-count calibration.
+- **The downstream policy bug is fixed, but the source is not authorized.** Head
   `bed8f56` keeps the exact `mc-s0-report-lcb` move—not merely heuristic
   candidate zero—as incumbent, reproduces live/V11/structured/random sourcing,
   runs the public N=30 uncertainty predicate before Stage-C inference and
-  gives at most one proposal a fresh N=300 report. The code is ready; a REPORT
-  PASS is still required before a composition packet may be frozen.
+  gives at most one proposal a fresh N=300 report. The required REPORT PASS did
+  not occur, so never freeze or screen this generation's composition.
 - **S4 is terminal positive-but-inconclusive `SELECT_NONE`:** replication
   `+0.048828 +/-0.055712`, LCB `-0.006884`. Preserve the mechanism posterior;
   do not retry or extend the spent recipe.
@@ -42,9 +44,9 @@ dated files under `docs_archive/`, not in this queue.
   labels inherit one heuristic continuation. Proposal quality, continuation
   quality and a real two-card endgame curriculum are the next substantive
   levers.
-- **Mini and Air are free.** Mini is review-gated for the one REPORT look. Air
-  may run independent DEV-only S6, endgame, provenance or continuation work;
-  those lanes may not inspect or consume REPORT evidence.
+- **Mini and Air are free.** The Teacher REPORT is spent and complete. Both may
+  run independently admitted S6, endgame, provenance or continuation work;
+  none may reuse or pool the spent REPORT.
 - **S6:** phase-wide shuai-pai sourcing is the best compute-free P1 follow-up.
   Draft PR #19 covers the KESP omissions and a late trump-only witness while
   preserving literal candidate zero. It still needs semantics review and a
@@ -63,11 +65,11 @@ or source review authorizes the next bounded step; it is not a strength result.
 
 | priority / milestone | strategy in plain English | progress and what is left | next output | exit gate |
 |---|---|---|---|---|
-| **P0 / T4-R3 powered uncertainty REPORT** | Test the learned ranker only in the public states where DESIGN and CALIB say it has enough signal, instead of diluting a scarce holdout across weak strata. | **Frozen, unopened, review-gated.** Head `5ebd344`; all 219 untouched target states; packet `00c8ea70…16b6e`; projected power 84.7%/87.8%; old broad admission durably retired. **Left:** exact external controller PASS → one Mini execution → independent terminal replay. | One predeclared candidate-zero action-utility result on the complete untouched target supply | Positive one-sided LCB and nonzero proposals authorize composition review; otherwise `SELECT_NONE`. No retry, extension, pooling or direct-play claim. |
-| **P0 / T4-C2 protected composition** | Let Stage C add one idea only when the champion is uncertain, but keep the move production already chose unless fresh simulations prove the proposal better. | **Source ready, no evidence authority.** Head `bed8f56`; 89 focused tests. It preserves the complete live ballot and exact live incumbent, pins V11, gates before model inference, uses a same-work null and honestly counts live/scope/report work. **Left:** R3 must pass; then freeze/review one capacity packet and one fresh whole-game screen. | Mirrored treatment/null/champion screen against exact live `mc-s0-report-lcb` | Positive utility LCB versus champion and null, with null compatible with champion, nonzero scope/model triggers, zero fallback and exact work. Stop before confirmation/deploy. |
-| **P1 / S6 shuai-pai sourcing** | Ensure search can price a legal throw in early, middle and late leads instead of silently omitting the tactic. | **Source draft ready.** PR #19 `2605b04`; KESP AKQ/876 witnesses plus natural and trump-only late states; 12 focused tests pass pure and compiled+strict. A diagnostic-only 1,000-round census found a new proposal in 99%+ of eligible leads (mean additions early/mid/late 2.75/1.93/1.13), so this is broad widening rather than a rare tactic. **Left:** external semantics review, then a 64-state DEV screen with live, structured and trigger/candidate-count-matched random widening at equal candidate-world work and disjoint selection/report folds. | Public-only deterministic source followed by a small state-level capability screen—not a whole-game duel | Literal live ballot/candidate zero first; follow/no-shuai states no-op; treatment must beat both live and random widening before any game-screen design. |
+| **P0 / T4-R3 powered uncertainty REPORT** | Test the learned ranker only in the public states where DESIGN and CALIB suggested enough signal, instead of diluting the holdout across weak strata. | **Execution complete / terminal review open.** All 219 states, zero refusals and 274,504/274,504 candidate worlds. Action mean `+0.012129`, SE `0.010109`, LCB `-0.005056`; local verifier returns `SELECT_NONE`. **Left:** independent byte/statistical authentication only. | One independent terminal result marker | Authenticate `SELECT_NONE`; no retry, extension, pooling, composition or direct-play claim. |
+| **P0 / T4-C2 protected composition** | Let Stage C add one idea only when the champion is uncertain, but keep the move production already chose unless fresh simulations prove the proposal better. | **Conditional path closed.** Source `bed8f56`, 89 focused tests and a real DESIGN smoke establish correct mechanics, but R3 did not pass. | None for this generation | Do not freeze, screen, confirm or deploy unless terminal review finds a material discrepancy. |
+| **P0 / S6 shuai-pai sourcing** | Ensure search can price a legal throw in early, middle and late leads instead of silently omitting the tactic. | **Source draft ready.** PR #19 `2605b04`; KESP AKQ/876 witnesses plus natural and trump-only late states; 12 focused tests pass pure and compiled+strict. A diagnostic-only 1,000-round census found a new proposal in 99%+ of eligible leads (mean additions early/mid/late 2.75/1.93/1.13), so this is broad widening rather than a rare tactic. **Left:** external semantics review, then a 64-state DEV screen with live, structured and trigger/candidate-count-matched random widening at equal candidate-world work and disjoint selection/report folds. | Public-only deterministic source followed by a small state-level capability screen—not a whole-game duel | Literal live ballot/candidate zero first; follow/no-shuai states no-op; treatment must beat both live and random widening before any game-screen design. |
 | **P1 / proposal provenance flywheel** | Learn which extra source actually supplies useful actions so proposal budget goes to tactics, V11, throws or humans—not anonymous widening. | Capture has source tags, but the 7,040-row training asset strips them. **Left:** retain tags as diagnostics; report candidate recall, regret and incremental wins per source; select a fixed 1–3 proposal budget against candidate-count-matched random. | Source-aware DESIGN/CALIB table plus one equal-work fresh-state proposal screen | A named source must beat random widening at the same candidate/world budget; source identity is diagnostic metadata, not a hidden-information feature. |
-| **P1 / continuation portfolio** | Fix systematic search pricing errors by evaluating selected actions under more than one plausible continuation, starting with point-aware winning and defensive slough discipline. | S4 was positive in both whole-game estimates but did not confirm; almost all Teacher labels still use one heuristic continuation. S5 has only a boundary fixture. **Left:** frozen S4 heterogeneity analysis, engine-replayed S5 legality census, then one substantively changed portfolio versus a matched single-continuation control. | Trigger-matched fresh-state effect by role/phase plus a bounded continuation successor | Must change the continuation contract, not retry S4. Advance only if treatment beats the matched continuation control with exact equal work. |
+| **P0 / continuation portfolio** | Fix systematic search pricing errors by evaluating selected actions under more than one plausible continuation, starting with point-aware winning and defensive slough discipline. | S4 was positive in both whole-game estimates but did not confirm; almost all Teacher labels still use one heuristic continuation. S5 has only a boundary fixture. **Left:** frozen S4 heterogeneity analysis, engine-replayed S5 legality census, then one substantively changed portfolio versus a matched single-continuation control. | Trigger-matched fresh-state effect by role/phase plus a bounded continuation successor | Must change the continuation contract, not retry S4. Advance only if treatment beats the matched continuation control with exact equal work. |
 | **P1 / exact two-card endgame curriculum** | Solve a genuinely smaller game first, then distill it: at two cards per seat, alternate actions and hidden worlds are still meaningful but the horizon is bounded. | One-card controller exists but performed zero solver work; all 1,087 exact-late Teacher rows have candidate count one. **Left:** generate real/live-history two-card roots, enumerate alternate legal actions, solve each sampled world under a node cap, aggregate public-belief regret labels, then train/screen a student. | A versioned two-card dataset with solver work, alternate-action regret and a fresh student screen | Nonzero alternate candidates and exact solver work; bounded completion; student beats candidate zero on fresh roots before expanding to three cards. |
 | **P1 / human proposal diagnostic v2** | Use strong human moves as ideas and hard-tail witnesses, then let counterfactual evaluation decide whether they help instead of copying every player. | H0 stopped at 555/557 and published no aggregate; this is no scientific verdict. Server corpus has 2,830 plays/45 buries and identified bury, point-banking and throw witnesses. **Left:** reusable zero-look repair semantics, complete legal replay, source tags and matched human/V11/random comparisons. | Completed engine-replayed proposal-value table by human cohort and decision type | Human proposal must beat matched random on counterfactual value; observational win/loss correlation alone cannot admit a rule. |
 | **P2 / posterior calibration** | Check whether determinized hidden hands have the right probabilities, not only legal support; more MC converges to the sampler's distribution even when that distribution is biased. | Hard validity/support gates pass; global posterior fidelity is unproved. **Left:** exact-toy posterior targets, likelihood/calibration diagnostics, then a separately gated weighting or belief model. | Exact-toy calibration report with a falsifiable uniform-baseline comparison | No posterior-changing production flag until calibration improves without breaking support, replayability or action semantics. |
@@ -77,7 +79,10 @@ or source review authorizes the next bounded step; it is not a strength result.
 ## T4 milestone — what counts as progress
 
 T4 exists to produce and test a stronger Teacher-generated challenger. It does
-not close as a success because capture, labels, training or reviews work.
+not close as a success because capture, labels, training or reviews work. This
+generation has now reached a valid scientific `SELECT_NONE`: step 4 completed,
+but the action LCB did not authorize steps 5–6. Independent terminal
+authentication is the only remaining T4 bookkeeping gate.
 
 The causal sequence is:
 

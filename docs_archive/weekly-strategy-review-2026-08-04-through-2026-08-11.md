@@ -23,10 +23,10 @@ strength conversion relative to the effort spent**.
   bury improved selected states but missed its whole-game bar; point banking
   passed one whole-game screen and stayed positive, but missed its independent
   replication bar.
-- No learned policy has beaten the live report-LCB champion. The current
-  expanded Teacher play ensemble is the first learned candidate with positive
-  DESIGN and CALIB lower bounds, but it has not opened REPORT or played a
-  game-level screen.
+- No learned policy has beaten the live report-LCB champion. The expanded
+  Teacher play ensemble was the first learned candidate with positive DESIGN
+  and CALIB lower bounds, but both its broad protected exam and its powered
+  219-state champion-uncertainty exam selected none on untouched REPORT.
 - The sampler, action semantics, evaluator, data provenance and compiled path
   became materially more trustworthy. Several fixes prevented invalid results,
   so this was not cosmetic bureaucracy.
@@ -40,14 +40,15 @@ Plain English: **we built a much better laboratory and found one stronger bot,
 but we are still operating the laboratory as if each experiment requires a new
 building inspection.**
 
-Follow-through at 13:35 EDT: the audit's immediate recommendation is now
-implemented without opening evidence. The complete 219-state
-`champion_uncertainty` REPORT packet is frozen under Python 3.14.6 with
-84.7%/87.8% projected power and awaits independent execution review. The
-downstream source also now protects the exact live report-LCB decision, rather
-than collapsing to heuristic candidate zero, and reproduces the frozen
-live/V11/structured/random proposal family. These are readiness improvements;
-neither is a strength result until REPORT and a fresh whole-game screen pass.
+Follow-through at 14:06 EDT: the audit's immediate recommendation was executed
+once on all 219 untouched `champion_uncertainty` states. Exact work completed
+with zero refusals. Action improvement was `+0.012129` with SE `0.010109` and a
+one-sided 95% LCB of `-0.005056`, so the reviewed verifier returned
+`SELECT_NONE` (independent terminal authentication remains open). Outcome-NLL
+improvement was much larger and clearly positive (`+0.47845`, LCB `+0.44201`),
+but it was diagnostic rather than the action gate. The protected composition
+source remains useful engineering, but this result gives it no evidence
+authority.
 
 ## What tangibly moved
 
@@ -60,7 +61,7 @@ neither is a strength result until REPORT and a fresh whole-game screen pass.
 | V11pair | Pairwise action deltas beat SmartBot and supplied disagreement proposals. | Confirmed 57.7% versus SmartBot; corrected direct-v2 was `-0.141 +/- 0.070` versus live. | **Useful proposer/ranker, not a direct policy or scalar leaf.** |
 | Direct-Q | Role-conditioned action values from terminal returns. | Gameplay tail `+0.163 +/- 0.059`, but a seed and both pooled-role held-out learning gates failed. | **Promising clue, invalid promotion.** Redesign target/surface rather than extend the same run. |
 | Suphx O0/O0-v2 | Training-time full-information signal and a shared-public CRN repair. | O0 aggregate positive but seed-unstable; O0-v2 control and margin arms did not pass. | **These scalar/margin mechanisms are closed.** This was not a faithful test of the full Suphx curriculum idea. |
-| Teacher Stage C | Split-safe capture, iid hidden-world labels, 7,040 DESIGN/CALIB examples, eight-seed cohort training and untouched REPORT populations. | First generation and protected play failed. Expanded bury failed REPORT. Expanded broad play now has DESIGN `+0.00904` (LCB `+0.00542`) and CALIB `+0.01048` (LCB `+0.00336`), 8/8 positive seeds. | **Real learned capability, no strength claim yet.** Current n=480 broad REPORT is underpowered at the observed effect and is correctly on HOLD. |
+| Teacher Stage C | Split-safe capture, iid hidden-world labels, 7,040 DESIGN/CALIB examples, eight-seed cohort training and untouched REPORT populations. | First generation and protected play failed. Expanded bury failed REPORT. Expanded play had positive DESIGN/CALIB bounds, but the powered 219-state uncertainty REPORT was only `+0.01213` with LCB `-0.00506`; outcome-NLL improved `+0.47845` with LCB `+0.44201`. | **The generation learned value/calibration better than action ranking and selected none.** No composition or game screen. |
 | Human data / H0 | Refreshed 2,830 plays and 45 buries; designed a fixed-work human/V11/random proposal comparison. | Sole H0 execution completed 555/557 and emitted no aggregate. | **Operational no-result, not evidence humans are unhelpful.** Human actions remain witnesses/proposals, not labels. |
 | Exact endgame / S3c | Bounded one-card controller and 768-root design. | Zero solver work and no model labels. | **Architecture only.** The AutoGo-style curriculum has not actually started. |
 | Correctness | Bounded sampler validity/support certificate, action-semantics invariance, exact-work accounting, seeded pairing, encoder/sampler repairs and replayable provenance. | Prevented invalid worlds, wrong actors/signs, swallowed seeds, stale decisions and contaminated data from becoming strength claims. | **Necessary foundation.** Posterior probability fidelity remains open. |
@@ -141,6 +142,30 @@ exam first and checking power later is backwards.
 The hold is scientifically correct. The process failure is that power and the
 runtime environment were not machine-checked before the freeze/review request.
 
+### 9. The Teacher learned the position better than it learned the move
+
+The powered uncertainty exam is the cleanest diagnosis of the current model.
+Its outcome-NLL improvement generalized very strongly, but replacing candidate
+zero with its ranked action did not clear zero. The DESIGN/CALIB targeted
+effect (`~+0.027` to `+0.028`) shrank to `+0.0121` on REPORT. This is not an
+implementation failure: exact work, folds, population and runtime all held.
+
+The next learned-policy hypothesis should therefore not be “train the same
+ranker on more rows and take its argmax.” Test either an explicit pairwise
+advantage target on named candidate comparisons, or use the value head as a
+bounded leaf/continuation critic while report-LCB retains final action
+authority. Both require fresh validation; good outcome calibration alone does
+not prove useful action differences.
+
+Post-hoc, unadjusted slices make the next hypothesis more specific. Mean action
+improvement was negative early (`-0.0256`, n=89), positive mid (`+0.0234`,
+n=98) and larger late (`+0.0825`, n=32); early attackers were `-0.0516`, while
+mid follows were `+0.0938`. Wider ballots were also harder: 13+ candidates
+averaged `-0.0102`, versus `+0.0450` for at most eight. These are diagnostic
+multiple looks—not promotion evidence—but they argue for horizon/surface-
+specific advantage learning and explicit candidate-count calibration rather
+than another global argmax ranker.
+
 ## Larger strategic misses
 
 ### Milestones measured machinery more often than outcomes
@@ -195,12 +220,12 @@ learned components, not side diagnostics.
 
 | rank | hypothesis | confidence now | why it could work | next falsifiable output |
 |---|---|---|---|---|
-| **1** | **Use the expanded Teacher ranker only where the champion is uncertain, inside report-LCB's protected fallback.** | **Medium-high for a state-level pass; medium-low for a game-level win.** | Champion-uncertainty is the only broad-play stratum consistently strong on DESIGN and CALIB: `+0.02715` / `+0.02848`, SD `0.14749` / `0.14698`, with positive LCBs. The global effect is diluted by exact-late zero-choice rows and weaker strata. | Re-freeze all 219 untouched eligible champion-uncertainty states under Python 3.14.6. Their plug-in break-even is only 86/78 states and approximate power is 85–88% at the observed effects; if REPORT passes, run one protected treatment/random/champion game screen. |
-| **2** | **Build a source-aware proposal flywheel: S6 throws, V11, structured tactics and supported human actions propose; the Teacher ranks.** | **Medium-high strategic upside.** | V11's verified value is relative ranking; S6 proves the live ballot broadly omits throws; S3a proves structured actions can beat equal-width random. MC cannot recover an absent action. | Preserve source tags, report recall/regret by source, and train/select a 1–3 action proposal budget that beats candidate-count-matched random widening on fresh states. |
-| **3** | **Improve the continuation model with a small policy portfolio, starting with point-aware play.** | **Medium-high mechanism confidence; medium game confidence.** | S4 is positive in both independent game samples, and the local-to-game shrinkage identifies continuation/trigger interaction rather than a dead idea. | Reanalyze frozen S4 heterogeneity without reopening selection; preregister a changed point-aware continuation bundle or robust portfolio and test it against a matched single-continuation control. |
-| **4** | **Actually solve and distill small endgames, then expand horizon.** | **Medium confidence, high upside.** | Hidden information and long horizons shrink late; this is the cleanest AutoGo-style curriculum and can create labels beyond heuristic continuation. Current exact-late rows provide no ranking signal, so the hypothesis is nearly untested. | Two-card roots with alternate legal actions, sampled-belief exact values, bounded nodes, regret labels and a student-vs-candidate-zero fresh state screen. |
-| **5** | **Train decision/role-specialized advantage models rather than one global Q policy.** | **Medium.** | Direct-Q's gameplay tail and Teacher's surface differences suggest signal exists but is being mixed across bury/lead/follow and attacker/defender contracts. | One predeclared surface, eight seeds, held-out role learning gate and protected composition; no global self-play scale until it passes. |
-| **6** | **Use human play for proposal diversity and hard-tail discovery, not direct imitation.** | **Medium as a source, low as a standalone policy.** | Live logs found concrete bury, point-banking and shuai-pai misses. H0 failed operationally, not scientifically. Human skill is mixed, so counterfactual Teacher scoring is essential. | A new reusable H0-style diagnostic that completes, retains source metadata, and reports human-proposal incremental value versus matched random. |
+| **1** | **Build a source-aware proposal flywheel: S6 throws, V11, structured tactics and supported human actions propose; search judges.** | **Medium-high strategic upside; medium immediate confidence.** | V11's verified value is relative ranking; KESP proves throws are omitted; S3a proves named structured actions can beat equal-width random. MC cannot recover an absent action, and the current Teacher dataset strips the metadata needed to learn which source helped. | Preserve source tags, report recall/regret by source, and select a fixed 1–3 action proposal budget that beats candidate-count-matched random widening on fresh states. |
+| **2** | **Improve the continuation model with a small policy portfolio, starting with point-aware play.** | **Medium-high mechanism confidence; medium game confidence.** | S4 stayed positive in two independent game samples, while the current Teacher inherits one heuristic continuation. This is the strongest repeated evidence of a systematic pricing bias. | Analyze frozen S4 heterogeneity, replay S5 legality, then preregister a substantively changed point-aware portfolio against an equal-work single-continuation control. |
+| **3** | **Convert the Teacher's value/calibration signal into an explicit advantage critic or bounded leaf—not another direct argmax ranker.** | **Medium.** | The powered REPORT showed a large outcome-NLL gain (`+0.47845`, LCB `+0.44201`) but an inconclusive action gain (`+0.01213`, LCB `-0.00506`). The model understands outcomes better than candidate ordering. | On one named decision surface, predict pairwise action advantage under common worlds or insert the value estimate only as a bounded leaf; require a fresh candidate-zero-relative screen before game compute. |
+| **4** | **Actually solve and distill small endgames, then expand horizon.** | **Medium confidence, high upside.** | Hidden information and long horizons shrink late; this is the cleanest AutoGo-style curriculum and creates labels beyond heuristic continuation. Current exact-late rows provide no ranking signal, so the hypothesis is nearly untested. | Two-card roots with alternate legal actions, sampled-belief exact values, bounded nodes, regret labels and a student-vs-candidate-zero fresh state screen. |
+| **5** | **Train decision/role-specialized models instead of one global play ranker.** | **Medium-low to medium.** | Direct-Q's gameplay tail and Teacher's surface differences suggest signal is mixed across bury/lead/follow and attacker/defender contracts. The powered uncertainty set was also 188/219 lead, so it was not a balanced test of every play surface. | One predeclared surface, eight seeds, held-out role learning gate and protected composition; no global scale until it passes. |
+| **6** | **Use human play for proposal diversity and hard-tail discovery, not direct imitation.** | **Medium as a source, low as a standalone policy.** | Live logs found concrete bury, point-banking and shuai-pai misses. H0 failed operationally, not scientifically. Human skill is mixed, so counterfactual scoring is essential. | A reusable H0 successor that completes, retains source metadata, and reports human-proposal incremental value versus matched random by decision type and player cohort. |
 | **7** | **Learn or correct the hidden-world posterior.** | **High eventual upside, currently blocked.** | More MC converges to the sampler's distribution; legal-but-biased worlds can systematically misprice actions. | Exact-toy posterior calibration and weighted/uniform completion repair before any learned belief reweighting or promotion use. |
 
 ### Low-priority hypotheses now
@@ -249,22 +274,20 @@ Reviews and commits are not the numerator.
 
 ## Immediate decision
 
-Do not spend the current n=480 broad-play REPORT as frozen. It is underpowered
-at the observed global effect, and its Python 3.14.3 pin drifts from the
-reviewed 3.14.6 chain.
+Do not compose or game-screen the current Stage-C ranker. The powered narrow
+REPORT completed and its action LCB crossed zero. This generation is a useful
+negative result, not an unfinished launch: more of the same ranking data is no
+longer the default next step.
 
-The highest-value successor is a **new, explicitly narrow policy hypothesis**:
-use the ensemble only on champion-uncertainty states, where DESIGN and CALIB
-effects are `+0.02715` / `+0.02848` with SD `0.14749` / `0.14698`; preserve
-candidate zero elsewhere. The independently recomputed plug-in break-even is
-86/78 comparable states. All 219 untouched eligible champion-uncertainty rows
-after the four prior exclusions give roughly 85–88% normal-approximation power
-at the observed effects, versus an underpowered broad n=480 mixture. Freeze
-that exact 219-state scope under 3.14.6 and then take one fresh look. This is
-not a claim that the broad model passed; it is a protected, targeted
-composition chosen entirely from DESIGN/CALIB before REPORT.
+The next strength milestone should produce **two cheap, genuinely different
+mechanism estimates before another large Teacher run**:
 
-In parallel, do not leave the fleet blocked on that review. S6's equal-work
-64-state proposal-quality screen, source-provenance retention, and the two-card
-endgame labeler are independent code/DEV work. They directly increase future
-hypothesis throughput and address current strategic gaps.
+1. S6/source-aware proposal quality versus candidate-count-matched random; and
+2. a changed continuation portfolio informed by S4/S5, versus equal-work
+   heuristic continuation.
+
+In parallel, retain proposal provenance in future data and build the first real
+two-card alternate-action labeler. Then choose one learned successor: either a
+surface-specific pairwise advantage model or a bounded value/leaf critic. Its
+first gate is a fresh candidate-zero-relative state screen, not another long
+controller chain or immediate whole-game duel.

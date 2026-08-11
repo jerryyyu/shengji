@@ -22,7 +22,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-11 04:54 EDT
+## Current synthesis — 2026-08-11 14:06 EDT
 
 Exact terminal numbers and SHAs live in the canonical table in
 `AI_POLICIES.md`; `BACKLOG.md` owns live order and `JOBS.md` owns machines.
@@ -40,20 +40,17 @@ This section keeps only the research conclusions that change what we try next.
   ensemble then received one untouched 480-row REPORT look, triggered 171
   times, and lost to candidate zero (mean `-0.008228`, LCB `-0.018944`).
   That REPORT and policy are closed—no threshold tuning or composition.
-- **Teacher generation two:** the 7,040-state matched A/B is terminal. The
-  selector chose the eight epoch-32 all-pairs bury rankers: 8/8 seeds improved
-  over candidate zero and median CALIB improvement was `+0.016418`. The direct
-  candidate-zero loss produced eligible cohorts but did not win. Expanded bury
-  coverage, not objective replacement, is therefore the current causal lead.
-  External terminal review passed. Its first REPORT packet `5ce892db…25f0`
-  failed in argparse before evidence because the frozen commands omitted
-  `--expected-git`; zero labels, predictions, utility or result exist, but the
-  no-retry contract spends that third population. PR #32 `564db02` selected a
-  fourth untouched 512-row population (`3c318da2…41e4`) with zero overlap and
-  fixed the command contract; external recovery review passed. Score-free v2
-  packet `e856c02e…175e2` now freezes the 32 bury rows, and two pinned rebuilds
-  verified no REPORT access. Concrete-controller review is the current gate;
-  this remains a capability result, not evidence of a stronger bot.
+- **Teacher generation two:** the 7,040-state matched A/B and all untouched
+  exams are terminal. More data made the old all-pairs loss stable; the new
+  candidate-zero-relative loss did not win. Expanded bury then selected none
+  on 32 fresh rows (`+0.03381`, LCB `-0.01525`). Expanded play had positive
+  DESIGN/CALIB ensemble bounds, but its protected 480-row REPORT lost
+  (`-0.00823`, LCB `-0.01894`). A predeclared powered exam used all 219
+  untouched champion-uncertainty rows and also selected none: action
+  `+0.01213`, SE `0.01011`, LCB `-0.00506`. Outcome-NLL improvement was
+  strongly positive (`+0.47845`, LCB `+0.44201`) but nongating. This generation
+  learned outcome/value structure better than reliable action ranking; no
+  composition or game screen follows.
 - **Direct search:** S4 point banking passed exact-state and first whole-game
   screens; its independent fixed replication stayed positive but selected none
   (`+0.048828`, LCB `-0.006884`). S3a structured bury improved selected-state
@@ -245,28 +242,25 @@ routing boundaries; only terminal model/report/game results change strength.
 ### T4 — first stronger-Teacher challenger
 
 T4 must end in a challenger decision, not another design-only audit. Generation
-one completed and selected none. The active generation-two sequence is:
+one and generation two both completed with valid challenger decisions:
 
-1. independently replay and pass all 5,504 completed expanded labels — done;
-2. combine them with the retained 1,536 DESIGN/CALIB labels, keeping the third
-   512-state REPORT sealed — frozen and byte-reverified;
-3. externally review the 96-cell schedule: two loss recipes × play/bury × eight
-   seeds × 25/50/100% data fractions — done;
-4. compare both losses and select only a whole cohort on DESIGN/CALIB — done:
-   epoch-32 all-pairs bury ranking, 8/8 positive seeds;
-5. externally replay the terminal selection — done. The first PR #32 packet
-   failed before evidence and spent its holdout. The fresh fourth-population
-   recovery passed and score-free packet `e856c02e…175e2` is frozen/rebuilt;
-   independently review it, then open its 32 untouched bury rows exactly once;
-6. only if it passes, compose it with candidate-zero fallback inside the live
-   report-LCB parent and run a fresh treatment/null/champion whole-game screen;
-7. stop before confirmation, promotion or deployment.
+1. capture and label a split-safe hard-tail population — done;
+2. expand to 7,040 DESIGN/CALIB rows and train matched eight-seed cohorts —
+   done; scale helped more than the alternative loss;
+3. test the selected bury capability once on untouched REPORT — done,
+   `SELECT_NONE`;
+4. test the selected broad-play capability with candidate-zero protection —
+   done, `SELECT_NONE`;
+5. power and execute a narrower champion-uncertainty exam chosen entirely from
+   DESIGN/CALIB — done, provisional `SELECT_NONE` pending independent terminal
+   authentication; and
+6. stop before composition because the required action LCB was not positive.
 
-This is an actual strength hypothesis. The matched result now says scale and
-coverage mattered more than the alternative loss: the old objective became
-stable on bury only after the data expansion. REPORT tests whether that signal
-transfers beyond the selection split. A REPORT miss closes this capability
-without tuning; a pass advances the exact frozen ensemble to composition.
+T4 therefore closes scientifically as **learned capability without a stronger
+learned bot**. The important positive residue is a value/calibration signal;
+the important negative result is that the global ranking/argmax use did not
+transport. A successor must change model use, decision surface, proposal set or
+continuation—not simply extend this training recipe.
 
 S4 replication is terminal positive-but-inconclusive `SELECT_NONE`. S6 source review and
 code/document cleanup use otherwise idle implementation time without competing

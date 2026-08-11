@@ -45,6 +45,9 @@ This section keeps only the research conclusions that change what we try next.
   over candidate zero and median CALIB improvement was `+0.016418`. The direct
   candidate-zero loss produced eligible cohorts but did not win. Expanded bury
   coverage, not objective replacement, is therefore the current causal lead.
+  External terminal review passed. Score-free packet `5ce892db…25f0` now binds
+  that exact ensemble to 32 untouched bury REPORT states; packet review is the
+  current gate and no REPORT prediction or utility has opened.
   The third 512-state REPORT remains sealed; this is a capability result, not
   yet evidence of a stronger bot.
 - **Direct search:** S4 point banking passed exact-state and first whole-game
@@ -246,8 +249,9 @@ one completed and selected none. The active generation-two sequence is:
    seeds × 25/50/100% data fractions — done;
 4. compare both losses and select only a whole cohort on DESIGN/CALIB — done:
    epoch-32 all-pairs bury ranking, 8/8 positive seeds;
-5. externally replay the terminal selection, freeze/review the already-coded
-   PR #32 evaluator, then open the 32 sealed bury REPORT rows exactly once;
+5. externally replay the terminal selection — done — and freeze the PR #32
+   packet — done; externally review that packet, then open the 32 untouched
+   bury REPORT rows exactly once;
 6. only if it passes, compose it with candidate-zero fallback inside the live
    report-LCB parent and run a fresh treatment/null/champion whole-game screen;
 7. stop before confirmation, promotion or deployment.
@@ -324,7 +328,7 @@ This table separates them by the training signal they actually produced.
 | **Teacher-v3 Stage B** | On 128 disjoint mostly ordinary states, compare cheap heuristic-continuation choices with much more expensive `mc-strong@N=30` continuation labels. | Cheap-minus-gold regret upper bound was `0.0195 < 0.10`; the cheap proxy was adequate on this sampled population. | It only showed agreement with the old MC continuation on ordinary states. It did not create a dataset/model or show labels beyond the live champion. |
 | **Fresh live-champion audit** | On an untouched 64-state complement, compare frozen cheap and N=30 choices against the deployed report-LCB root evaluator. | Cheap and N=30 all-state regret bounds passed (`0.0354` and `0.0439`), but the eight boundary states had a weaker N=30 bound (`0.1421`). | Ordinary rows can be labeled cheaply; uncertain/boundary rows need escalation. This is the direct empirical reason for Stage C's mixed-budget hard tail. |
 | **Teacher Stage C generation one** | Capture a split-safe hard-tail exam, label candidate actions with corrected iid hidden-world folds, and train eight-seed ranking/outcome cohorts on DESIGN/CALIB only. | Capture and 2,048/2,048 corrected labels passed. The 1,536-row model generation selected none; a protected play ensemble also selected none on one fresh 480-row REPORT (`-0.008228`, LCB `-0.018944`). | Close the spent REPORT and policy. The usable lesson is that model signal existed in strata but did not make reliable overrides. |
-| **Teacher Stage C generation two (active)** | Add 5,504 fresh DESIGN/CALIB labels for 7,040 total, hold out a third 512-state REPORT, and compare all-pairs learning with a candidate-zero-relative objective. | All 96 cells and 576 checkpoints replayed. The epoch-32 all-pairs bury cohort won with 8/8 positive seeds and median candidate-zero improvement `+0.016418`; the direct loss did not win. REPORT is still sealed. | Pass terminal selection review, freeze/review PR #32, then spend the one 32-row bury REPORT look. A miss closes; a pass advances to protected composition. |
+| **Teacher Stage C generation two (active)** | Add 5,504 fresh DESIGN/CALIB labels for 7,040 total, hold out a third 512-state REPORT, and compare all-pairs learning with a candidate-zero-relative objective. | All 96 cells and 576 checkpoints replayed and externally passed. The epoch-32 all-pairs bury cohort won with 8/8 positive seeds and median candidate-zero improvement `+0.016418`; the direct loss did not win. Packet `5ce892db…25f0` froze 32 untouched bury REPORT rows with zero predictions or utility. | Pass the packet review, then spend the one 32-row bury REPORT look. A miss closes; a pass advances to protected composition. |
 
 In plain English, Stage B asked, “Can the cheap grader reproduce the expensive
 grader on normal exam questions?” Stage C asks, “Can we write a better exam,

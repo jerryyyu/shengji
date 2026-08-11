@@ -377,7 +377,7 @@ def champion_uncertainty_diagnostic(
 
 def make_play_report_lcb_bot(
     ensemble: StageCEnsemble, candidate_source: CandidateSource, *,
-    arm: str, seed: int | None = None,
+    arm: str, seed: int | None = None, min_completed_tricks: int = 0,
 ):
     """Add one protected Stage-C proposal to the literal live policy.
 
@@ -390,6 +390,11 @@ def make_play_report_lcb_bot(
     """
     if ensemble.surface != "play" or arm not in {"treatment", "matched-null"}:
         raise StageCCompositionError("Stage-C play wrapper identity drift")
+    if (isinstance(min_completed_tricks, bool)
+            or not isinstance(min_completed_tricks, int)
+            or min_completed_tricks < 0):
+        raise StageCCompositionError(
+            "Stage-C play phase threshold drift")
     if not callable(candidate_source):
         raise StageCCompositionError("Stage-C candidate source is not callable")
     # Lazy import avoids making ordinary game/server imports depend on this
@@ -402,6 +407,7 @@ def make_play_report_lcb_bot(
 
     class StageCFocusedReportLCB(base):
         stage_c_arm = arm
+        stage_c_min_completed_tricks = min_completed_tricks
 
         def __init__(self, policy_seed=None):
             super().__init__(policy_seed)
@@ -451,6 +457,18 @@ def make_play_report_lcb_bot(
             live_record = copy.deepcopy(self.last_decision_record)
             focus_started = False
             try:
+                # The phase gate is public, deterministic, and precedes every
+                # proposal/scope/model operation.  The literal live policy has
+                # already made the incumbent decision, so an early state is
+                # byte-for-byte the existing champion path and spends no
+                # Stage-C work.  Threshold zero preserves all prior profiles.
+                if min_completed_tricks:
+                    history = getattr(rnd, "history", None)
+                    if not isinstance(history, list):
+                        raise StageCCompositionError(
+                            "Stage-C play history geometry drift")
+                    if len(history) < min_completed_tricks:
+                        return live_play
                 # Re-read the deterministic ballot through the exact parent.
                 # When the live decision searched, require byte-equivalent
                 # candidates rather than silently composing around a new set.

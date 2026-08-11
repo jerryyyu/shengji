@@ -264,6 +264,76 @@ def test_play_wrapper_focuses_one_challenger_and_falls_back_to_full_live(
         "fallback_to_live_ballot"] is True
 
 
+def test_play_wrapper_phase_gate_precedes_source_scope_and_model(
+        monkeypatch) -> None:
+    live = [["H2"], ["HA"]]
+    _patch_live_parent(monkeypatch, live, incumbent_index=1)
+
+    class MustNotRun(_Ensemble):
+        def select(self, _obs, _actions):
+            raise AssertionError("Stage C ran in an early state")
+
+    calls = []
+
+    def source(*_args):
+        calls.append("source")
+        raise AssertionError("candidate source ran in an early state")
+
+    monkeypatch.setattr(
+        COMPOSE, "champion_uncertainty_diagnostic",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("scope ran in an early state")))
+    bot = COMPOSE.make_play_report_lcb_bot(
+        MustNotRun(1), source, arm="treatment", seed=7,
+        min_completed_tricks=5)
+    rnd = _round()
+    rnd.history = [object()] * 4
+    assert bot.decide_play(rnd, 2) == ["HA"]
+    assert calls == []
+    assert bot.stage_c_focus_calls == 0
+    assert bot.stage_c_scope_checks == 0
+    assert bot.stage_c_focus_triggers == 0
+    assert bot.last_stage_c_focus_record is None
+    assert bot.last_decision_record["played_index"] == 1
+
+
+def test_play_wrapper_phase_gate_opens_at_exact_threshold(monkeypatch) -> None:
+    live = [["H2"], ["HA"]]
+    _patch_live_parent(monkeypatch, live, incumbent_index=0)
+    monkeypatch.setattr(COMPOSE, "encode_obs", lambda _rnd, _seat: [0.0])
+    monkeypatch.setattr(COMPOSE, "encode_action", lambda _action, _rnd: [0.0])
+    monkeypatch.setattr(
+        COMPOSE, "champion_uncertainty_diagnostic",
+        lambda _bot, _rnd, _seat, candidates, **_kw:
+            _eligible_scope(len(candidates)))
+    calls = []
+
+    def source(_bot, _rnd, _seat, observed):
+        calls.append("source")
+        return observed, {"source": "threshold-test"}
+
+    bot = COMPOSE.make_play_report_lcb_bot(
+        _Ensemble(1), source, arm="treatment", seed=7,
+        min_completed_tricks=5)
+    rnd = _round()
+    rnd.history = [object()] * 5
+    assert bot.decide_play(rnd, 2) == ["HA"]
+    assert calls == ["source"]
+    assert bot.stage_c_focus_calls == 1
+    assert bot.stage_c_scope_checks == 1
+    assert bot.stage_c_focus_triggers == 1
+
+
+@pytest.mark.parametrize("threshold", (True, -1, 1.5, "5"))
+def test_play_wrapper_rejects_invalid_phase_threshold(
+        monkeypatch, threshold) -> None:
+    _patch_live_parent(monkeypatch, [["H2"]], incumbent_index=0)
+    with pytest.raises(COMPOSE.StageCCompositionError, match="threshold"):
+        COMPOSE.make_play_report_lcb_bot(
+            _Ensemble(0), lambda *_args: ([["H2"]], {}),
+            arm="treatment", min_completed_tricks=threshold)
+
+
 def test_play_wrapper_treatment_and_null_share_triggered_arm_count(
         monkeypatch) -> None:
     live = [["H2"], ["HA"], ["S3"], ["D4"]]

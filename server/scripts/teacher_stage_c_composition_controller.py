@@ -58,6 +58,7 @@ _PROFILE_CONFIGS = {
         "runtime_prefix": "teacher-stage-c-composition",
         "preflight_seed0": 180_000_000,
         "screen_seed0": 181_000_000,
+        "model_min_completed_tricks": 0,
         "wrappers": (),
     },
     "expanded-play": {
@@ -85,6 +86,7 @@ _PROFILE_CONFIGS = {
         "runtime_prefix": "teacher-stage-c-expanded-play-composition",
         "preflight_seed0": 184_000_000,
         "screen_seed0": 185_000_000,
+        "model_min_completed_tricks": 0,
         "wrappers": (
             "server/scripts/teacher_stage_c_expanded_composition_controller.py",
             "server/scripts/teacher_stage_c_expanded_composition_runtime.py",
@@ -116,6 +118,7 @@ _PROFILE_CONFIGS = {
             "teacher-stage-c-expanded-uncertainty-composition",
         "preflight_seed0": 186_000_000,
         "screen_seed0": 187_000_000,
+        "model_min_completed_tricks": 5,
         "wrappers": (
             "server/scripts/teacher_stage_c_expanded_uncertainty_composition_controller.py",
             "server/scripts/teacher_stage_c_expanded_uncertainty_composition_runtime.py",
@@ -1030,6 +1033,9 @@ def candidate_contract() -> dict:
             "raw_best_index_nonzero": True,
             "precedes_stage_c_inference": True,
         },
+        "model_min_completed_tricks":
+            _CONFIG["model_min_completed_tricks"],
+        "phase_gate_precedes_candidate_source_scope_and_model": True,
         "model_proposes_at_most_one_challenger": True,
         "fresh_report_lcb_required": True,
         "direct_model_override_authorized": False,

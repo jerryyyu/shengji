@@ -116,6 +116,9 @@ def test_uncertainty_controller_binds_powered_report_and_fresh_namespaces():
         == "v11pair_ep07_value"
     assert value["candidate"]["public_scope_predicate"][
         "precedes_stage_c_inference"] is True
+    assert value["candidate"]["model_min_completed_tricks"] == 5
+    assert value["candidate"][
+        "phase_gate_precedes_candidate_source_scope_and_model"] is True
 
 
 def test_uncertainty_runtime_imports_only_uncertainty_controller():

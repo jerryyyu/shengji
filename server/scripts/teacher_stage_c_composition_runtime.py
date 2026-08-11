@@ -655,6 +655,7 @@ def _load_v11_proposer(packet: Mapping[str, object]):
 
 def _factories(packet: Mapping[str, object], ensemble):
     surface = str(packet["selected_capability"]["surface"])
+    contract = packet["candidate_contract"]
     if surface == "play":
         v11 = _load_v11_proposer(packet)
         source = CANDIDATES.make_play_candidate_source(
@@ -668,12 +669,18 @@ def _factories(packet: Mapping[str, object], ensemble):
             "composition selected surface drift")
 
     def treatment(seed: int):
-        return make_stage(
-            ensemble, source, arm="treatment", seed=seed)
+        kwargs = {"arm": "treatment", "seed": seed}
+        if surface == "play":
+            kwargs["min_completed_tricks"] = contract[
+                "model_min_completed_tricks"]
+        return make_stage(ensemble, source, **kwargs)
 
     def matched_null(seed: int):
-        return make_stage(
-            ensemble, source, arm="matched-null", seed=seed)
+        kwargs = {"arm": "matched-null", "seed": seed}
+        if surface == "play":
+            kwargs["min_completed_tricks"] = contract[
+                "model_min_completed_tricks"]
+        return make_stage(ensemble, source, **kwargs)
 
     def champion(seed: int):
         return make_bot("mc-s0-report-lcb", seed=seed)

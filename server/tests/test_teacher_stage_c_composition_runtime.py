@@ -26,6 +26,7 @@ def _packet():
             "novel_model_proposer": "v11pair_ep07_value",
             "v11_artifact_path": RUNTIME.V11_PATH,
             "v11_artifact_sha256": RUNTIME.V11_SHA256,
+            "model_min_completed_tricks": 0,
         },
         "authority": {"v11_inference_authorized": True},
         "runtime_contract": {
@@ -462,8 +463,10 @@ def test_factories_route_selected_surface_and_keep_champion_literal(
         lambda net, **kwargs: seen_source.append((net, kwargs)) or source)
     created = []
 
-    def make_stage(_ensemble, actual_source, *, arm, seed):
-        created.append((actual_source, arm, seed))
+    def make_stage(_ensemble, actual_source, *, arm, seed,
+                   min_completed_tricks):
+        created.append((
+            actual_source, arm, seed, min_completed_tricks))
         return SimpleNamespace(arm=arm, seed=seed)
 
     monkeypatch.setattr(
@@ -476,8 +479,8 @@ def test_factories_route_selected_surface_and_keep_champion_literal(
     assert treatment(1).arm == "treatment"
     assert null(2).arm == "matched-null"
     champion(3)
-    assert created == [(source, "treatment", 1),
-                       (source, "matched-null", 2)]
+    assert created == [(source, "treatment", 1, 0),
+                       (source, "matched-null", 2, 0)]
     assert seen_source == [(v11, {
         "novel_model_source": "v11pair",
     })]

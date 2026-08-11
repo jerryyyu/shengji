@@ -211,6 +211,8 @@ def test_screen_admission_publishes_a_reopenable_slot_receipt_pair(
     assert receipt["admission_slot_sha256"] == RUNTIME.sha256_file(slot_path)
     assert receipt["receipt_sha256"] \
         == RUNTIME.self_hash(receipt, "receipt_sha256")
+    assert receipt["python_executable"] == "/reviewed/python"
+    assert receipt["python_executable_sha256"] == "f" * 64
     reopened, reopened_capacity = RUNTIME._receipt(
         receipt_path, RUNTIME.sha256_file(receipt_path), packet,
         "d" * 64, review,
@@ -219,6 +221,20 @@ def test_screen_admission_publishes_a_reopenable_slot_receipt_pair(
         capacity_args["capacity_review_record"])
     assert reopened == receipt
     assert reopened_capacity == capacity
+
+    tampered = dict(receipt)
+    tampered["python_executable"] = "/unreviewed/python"
+    tampered["receipt_sha256"] = RUNTIME.self_hash(
+        tampered, "receipt_sha256")
+    receipt_path.write_bytes(RUNTIME.canonical_json(tampered))
+    with pytest.raises(RUNTIME.CompositionRuntimeRefused,
+                       match="receipt/admission drift"):
+        RUNTIME._receipt(
+            receipt_path, RUNTIME.sha256_file(receipt_path), packet,
+            "d" * 64, review,
+            capacity_args["capacity_result_path"],
+            capacity_args["expected_capacity_result_sha256"],
+            capacity_args["capacity_review_record"])
 
 
 def _capacity_validation() -> dict:

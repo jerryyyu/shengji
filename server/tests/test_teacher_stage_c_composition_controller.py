@@ -363,6 +363,10 @@ def test_initial_review_claim_authorizes_capacity_only(
     claim = CTRL.expected_review_claim(built, "8" * 64)
     assert claim["one_capacity_preflight_authorized"] is True
     assert claim["one_screen_execution_authorized"] is False
+    assert claim["python_executable"] == "/reviewed/python"
+    assert claim["python_executable_resolved"] \
+        == "/resolved/reviewed/python"
+    assert claim["python_executable_sha256"] == "e" * 64
     assert claim["supervisor_heartbeat_seconds"] == 30
     assert claim["supervisor_signal_contract"][
         "orphaned_shards_authorized"] is False

@@ -266,9 +266,17 @@ def runtime_contract() -> dict:
     if binary_path is None or not is_regular_unlinked(binary_path):
         raise CompositionControllerRefused(
             "composition packet lacks regular compiled binary")
+    python_path = Path(sys.executable)
+    python_resolved = python_path.resolve()
+    if not is_regular_unlinked(python_resolved):
+        raise CompositionControllerRefused(
+            "composition packet lacks regular Python executable")
     return {
         "host": platform.node(),
         "python": platform.python_version(),
+        "python_executable": str(python_path),
+        "python_executable_resolved": str(python_resolved),
+        "python_executable_sha256": sha256_file(python_resolved),
         "numpy": str(NPNET.np.__version__),
         "fast_engine": True,
         "fast_routed": True,
@@ -849,6 +857,12 @@ def expected_review_claim(packet: Mapping[str, object],
         "screen_shards": SHARD_COUNT,
         "execution_host": packet["runtime_contract"]["host"],
         "python": packet["runtime_contract"]["python"],
+        "python_executable": packet["runtime_contract"][
+            "python_executable"],
+        "python_executable_resolved": packet["runtime_contract"][
+            "python_executable_resolved"],
+        "python_executable_sha256": packet["runtime_contract"][
+            "python_executable_sha256"],
         "numpy": packet["runtime_contract"]["numpy"],
         "supervisor_heartbeat_seconds": packet["runtime_contract"][
             "supervisor_heartbeat_seconds"],

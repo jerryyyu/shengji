@@ -22,6 +22,10 @@ def _packet():
             "surface": "play", "head": "ranking", "epoch": 8,
         },
         "model_exports_sha256": "c" * 64,
+        "runtime_contract": {
+            "python_executable": "/reviewed/python",
+            "python_executable_sha256": "f" * 64,
+        },
     }
 
 
@@ -96,6 +100,22 @@ def test_review_marker_requires_one_exact_narrow_claim(
     with pytest.raises(RUNTIME.CompositionRuntimeRefused,
                        match="exactly one"):
         RUNTIME._review_claim(path, packet, "d" * 64)
+
+
+def test_child_command_uses_packet_pinned_python_not_verifier_python(
+        tmp_path: Path) -> None:
+    packet = _packet()
+    command = RUNTIME._child_command(
+        index=0, packet=packet, packet_sha256="d" * 64,
+        controller_review_record=tmp_path / "review.txt",
+        receipt_path=tmp_path / "receipt.json",
+        receipt_sha256="e" * 64,
+        capacity_result_path=tmp_path / "capacity.json",
+        capacity_result_sha256="6" * 64,
+        capacity_review_record=tmp_path / "capacity-review.txt",
+        supervisor_slot_sha256="7" * 64)
+    assert command[0] == "/reviewed/python"
+    assert command[0] != sys.executable
 
 
 def _exact_work(searches: int = 1, rollouts: int = 660,

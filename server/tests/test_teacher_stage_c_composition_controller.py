@@ -15,6 +15,22 @@ def _capability():
     return {"surface": "play", "head": "ranking", "epoch": 8}
 
 
+def _runtime_contract():
+    return {
+        "host": "mini", "python": "3.14", "numpy": "2.5",
+        "python_executable": "/reviewed/python",
+        "python_executable_resolved": "/resolved/reviewed/python",
+        "python_executable_sha256": "e" * 64,
+        "supervisor_heartbeat_seconds": 30,
+        "supervisor_signal_contract": {
+            "handled_signals": ["SIGHUP", "SIGINT", "SIGTERM"],
+            "signals_deferred_until_child_registered": True,
+            "terminates_all_owned_children": True,
+            "orphaned_shards_authorized": False,
+        },
+    }
+
+
 def _report_packet():
     return {
         "producer": {"git": "a" * 40},
@@ -234,16 +250,7 @@ def test_packet_binds_exact_models_population_and_narrow_authority(
     monkeypatch.setattr(CTRL, "is_regular_unlinked", lambda _path: True)
     monkeypatch.setattr(CTRL, "_source_sha256s",
                         lambda: {"source": "6" * 64})
-    monkeypatch.setattr(CTRL, "runtime_contract", lambda: {
-        "host": "mini", "python": "3.14", "numpy": "2.5",
-        "supervisor_heartbeat_seconds": 30,
-        "supervisor_signal_contract": {
-            "handled_signals": ["SIGHUP", "SIGINT", "SIGTERM"],
-            "signals_deferred_until_child_registered": True,
-            "terminates_all_owned_children": True,
-            "orphaned_shards_authorized": False,
-        },
-    })
+    monkeypatch.setattr(CTRL, "runtime_contract", _runtime_contract)
     built = CTRL.build_packet(
         git="a" * 40, report_packet=packet,
         report_packet_ref={"logical_path": "report-packet.json",
@@ -343,16 +350,7 @@ def test_initial_review_claim_authorizes_capacity_only(
     monkeypatch.setattr(CTRL, "sha256_file", lambda _path: "5" * 64)
     monkeypatch.setattr(CTRL, "is_regular_unlinked", lambda _path: True)
     monkeypatch.setattr(CTRL, "_source_sha256s", lambda: {})
-    monkeypatch.setattr(CTRL, "runtime_contract", lambda: {
-        "host": "mini", "python": "3.14", "numpy": "2.5",
-        "supervisor_heartbeat_seconds": 30,
-        "supervisor_signal_contract": {
-            "handled_signals": ["SIGHUP", "SIGINT", "SIGTERM"],
-            "signals_deferred_until_child_registered": True,
-            "terminates_all_owned_children": True,
-            "orphaned_shards_authorized": False,
-        },
-    })
+    monkeypatch.setattr(CTRL, "runtime_contract", _runtime_contract)
     built = CTRL.build_packet(
         git="a" * 40, report_packet=packet,
         report_packet_ref={}, report_review_ref={},

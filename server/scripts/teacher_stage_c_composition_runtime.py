@@ -451,6 +451,10 @@ def _slot_payload(
             "screen_max_shard_seconds"],
         "selected_capability": packet["selected_capability"],
         "model_exports_sha256": packet["model_exports_sha256"],
+        "python_executable": packet["runtime_contract"][
+            "python_executable"],
+        "python_executable_sha256": packet["runtime_contract"][
+            "python_executable_sha256"],
         "receipt_path": CTRL.RECEIPT_PATH,
         "consumed_before_receipt": True,
         "retry_or_extension_authorized": False,
@@ -509,6 +513,10 @@ def admit(
         "admission_slot_sha256": slot_sha256,
         "selected_capability": packet["selected_capability"],
         "model_exports_sha256": packet["model_exports_sha256"],
+        "python_executable": packet["runtime_contract"][
+            "python_executable"],
+        "python_executable_sha256": packet["runtime_contract"][
+            "python_executable_sha256"],
         "screen_execution_authorized": True,
         "confirmation_launch_authorized": False,
         "strength_claim": False,
@@ -572,6 +580,10 @@ def _receipt(
             != packet["selected_capability"]
             or receipt.get("model_exports_sha256")
             != packet["model_exports_sha256"]
+            or receipt.get("python_executable")
+            != packet["runtime_contract"]["python_executable"]
+            or receipt.get("python_executable_sha256")
+            != packet["runtime_contract"]["python_executable_sha256"]
             or receipt.get("screen_execution_authorized") is not True
             or receipt.get("confirmation_launch_authorized") is not False
             or receipt.get("strength_claim") is not False
@@ -895,6 +907,10 @@ def _supervisor_slot_payload(
             capacity_review_record),
         "child_command_templates": packet["commands"][
             "supervisor_child_shards"],
+        "python_executable": packet["runtime_contract"][
+            "python_executable"],
+        "python_executable_sha256": packet["runtime_contract"][
+            "python_executable_sha256"],
         "shard_outputs": list(CTRL.SHARD_PATHS),
         "shard_logs": list(CTRL.SHARD_LOG_PATHS),
         "supervisor_final": CTRL.SUPERVISOR_FINAL_PATH,
@@ -935,7 +951,7 @@ def _child_command(
     supervisor_slot_sha256: str,
 ) -> list[str]:
     return [
-        sys.executable,
+        str(packet["runtime_contract"]["python_executable"]),
         getattr(CTRL, "RUNTIME_SCRIPT_PATH",
                 "server/scripts/teacher_stage_c_composition_runtime.py"),
         "run-shard",

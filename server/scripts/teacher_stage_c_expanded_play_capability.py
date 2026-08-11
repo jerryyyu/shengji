@@ -265,6 +265,7 @@ def _play_manifest(
 
 def _split_diagnostics(
     examples: Sequence[Mapping[str, object]], nets: Sequence[object],
+    *, prior_distribution: Sequence[float],
 ) -> dict:
     ordered = sorted(examples, key=lambda value: str(value["state_id"]))
     if not ordered or len(nets) != len(MODEL.TRAINING_SEEDS):
@@ -272,7 +273,9 @@ def _split_diagnostics(
             "expanded play diagnostic population drift")
     predictions = [TRAIN.predict_examples(net, ordered) for net in nets]
     ranks, outcomes = REPORT.average_ensemble(ordered, predictions)
-    canonical = MODEL.evaluate_predictions(ordered, ranks, outcomes)
+    canonical = MODEL.evaluate_predictions(
+        ordered, ranks, outcomes,
+        prior_distribution=prior_distribution)
     improvements = []
     trigger_count = 0
     strata: dict[str, list[float]] = defaultdict(list)
@@ -391,10 +394,14 @@ def build_packet(
     manifest, nets = _play_manifest(
         evidence_repo=evidence_repo, training_packet=training_packet,
         aggregate=aggregate, reopen=True)
+    prior = TRAIN.state_balanced_prior(
+        dataset["examples"]["DESIGN"][SURFACE])
     design = _split_diagnostics(
-        dataset["examples"]["DESIGN"][SURFACE], nets)
+        dataset["examples"]["DESIGN"][SURFACE], nets,
+        prior_distribution=prior)
     calib = _split_diagnostics(
-        dataset["examples"]["CALIB"][SURFACE], nets)
+        dataset["examples"]["CALIB"][SURFACE], nets,
+        prior_distribution=prior)
     if (design["teacher_improvement_vs_candidate0"][
             "one_sided_95_lcb"] <= 0
             or calib["teacher_improvement_vs_candidate0"][
@@ -448,6 +455,7 @@ def build_packet(
             },
         },
         "capability": capability,
+        "design_prior_distribution": prior,
         "checkpoint_manifest": manifest,
         "checkpoint_manifest_sha256": _manifest_hash(manifest),
         "diagnostics": {"DESIGN": design, "CALIB": calib},

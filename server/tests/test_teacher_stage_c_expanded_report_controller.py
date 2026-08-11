@@ -5,6 +5,7 @@ import sys
 import pytest
 
 import teacher_stage_c_expanded_report_controller as CTRL
+import teacher_stage_c_report_runtime as RUNTIME
 
 
 def capability():
@@ -153,6 +154,26 @@ def test_packet_is_score_free_and_schedules_only_selected_bury(
     assert packet["report_schedule"]["candidate_world_ceiling"] == 32 * 9
     assert packet["commands"]["run_shards"][0][1] == \
         CTRL.RUNTIME_SCRIPT_PATH
+    runtime_commands = [
+        packet["commands"]["admit"],
+        *packet["commands"]["run_shards"],
+        packet["commands"]["evaluate"],
+    ]
+    substitutions = {
+        "{python}": sys.executable,
+        "{git}": "f" * 40,
+        "{packet_sha256}": "a" * 64,
+        "{controller_review_record}": "controller-review.md",
+        "{fresh_report_review_record}": "fresh-review.md",
+        "{state_set_review_record}": "state-review.md",
+        "{receipt_sha256}": "b" * 64,
+    }
+    for command in runtime_commands:
+        assert command.count("--expected-git") == 1
+        position = command.index("--expected-git")
+        assert command[position + 1] == "{git}"
+        expanded = [substitutions.get(token, token) for token in command]
+        RUNTIME.parser().parse_args(expanded[2:])
     assert packet["authority"] == {
         "fresh_report_capture_shards_revalidated": 8,
         "fresh_report_state_material_published": False,

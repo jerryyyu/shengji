@@ -39,42 +39,42 @@ from shengji.rl import stage_c_report as REPORT  # noqa: E402
 from shengji.rl import stage_c_training as TRAIN  # noqa: E402
 
 
-SCHEMA = "teacher-stage-c-expanded-fresh-report-controller-v1"
-PACKET_ID = "teacher-v3-hard-tail-stage-c-expanded-fresh-report-controller-v1"
-RUN_ID = "teacher-v3-hard-tail-stage-c-expanded-fresh-report-v1"
+SCHEMA = "teacher-stage-c-expanded-fresh-report-controller-v2"
+PACKET_ID = "teacher-v3-hard-tail-stage-c-expanded-fresh-report-controller-v2"
+RUN_ID = "teacher-v3-hard-tail-stage-c-expanded-fresh-report-v2"
 CONTROLLER_RUN_ID = \
-    "teacher-v3-hard-tail-stage-c-expanded-fresh-report-controller-v1"
+    "teacher-v3-hard-tail-stage-c-expanded-fresh-report-controller-v2"
 PACKET_PATH = f"server/runs/logs/{CONTROLLER_RUN_ID}/controller_packet.json"
 
 TRAINING_RESULT_REVIEW_SCHEMA = \
     "teacher-stage-c-expanded-training-result-review-v1"
 TRAINING_RESULT_REVIEW_MARKER = \
     "TEACHER_STAGE_C_EXPANDED_TRAINING_RESULT_V1_REVIEW "
-REVIEW_SCHEMA = "teacher-stage-c-expanded-fresh-report-controller-review-v1"
+REVIEW_SCHEMA = "teacher-stage-c-expanded-fresh-report-controller-review-v2"
 REVIEW_MARKER = \
-    "TEACHER_STAGE_C_EXPANDED_FRESH_REPORT_CONTROLLER_V1_REVIEW "
+    "TEACHER_STAGE_C_EXPANDED_FRESH_REPORT_CONTROLLER_V2_REVIEW "
 
 RUNTIME_RECEIPT_SCHEMA = \
-    "teacher-stage-c-expanded-fresh-report-receipt-v1"
+    "teacher-stage-c-expanded-fresh-report-receipt-v2"
 RUNTIME_ADMISSION_SCHEMA = \
-    "teacher-stage-c-expanded-fresh-report-admission-v1"
+    "teacher-stage-c-expanded-fresh-report-admission-v2"
 RUNTIME_REPORT_OPEN_ADMISSION_SCHEMA = \
-    "teacher-stage-c-expanded-fresh-report-open-admission-v1"
+    "teacher-stage-c-expanded-fresh-report-open-admission-v2"
 RUNTIME_SHARD_ADMISSION_SCHEMA = \
-    "teacher-stage-c-expanded-fresh-report-shard-admission-v1"
+    "teacher-stage-c-expanded-fresh-report-shard-admission-v2"
 RUNTIME_SHARD_SCHEMA = \
-    "teacher-stage-c-expanded-fresh-report-label-shard-v1"
-RUNTIME_RESULT_SCHEMA = "teacher-stage-c-expanded-fresh-report-result-v1"
+    "teacher-stage-c-expanded-fresh-report-label-shard-v2"
+RUNTIME_RESULT_SCHEMA = "teacher-stage-c-expanded-fresh-report-result-v2"
 SUPERVISOR_SCHEMA = \
-    "teacher-stage-c-expanded-fresh-report-supervisor-v1"
+    "teacher-stage-c-expanded-fresh-report-supervisor-v2"
 SUPERVISOR_EXIT_SCHEMA = \
-    "teacher-stage-c-expanded-fresh-report-supervisor-exit-v1"
+    "teacher-stage-c-expanded-fresh-report-supervisor-exit-v2"
 SUPERVISOR_FINAL_SCHEMA = \
-    "teacher-stage-c-expanded-fresh-report-supervisor-final-v1"
+    "teacher-stage-c-expanded-fresh-report-supervisor-final-v2"
 SUPERVISOR_REVIEW_SCHEMA = \
-    "teacher-stage-c-expanded-fresh-report-result-review-v1"
+    "teacher-stage-c-expanded-fresh-report-result-review-v2"
 SUPERVISOR_REVIEW_MARKER = \
-    "TEACHER_STAGE_C_EXPANDED_FRESH_REPORT_RESULT_V1_REVIEW "
+    "TEACHER_STAGE_C_EXPANDED_FRESH_REPORT_RESULT_V2_REVIEW "
 
 TRAINING_GIT = "c18b80e04f8daa9805bf1853c8479cdfa936d9de"
 TRAINING_PACKET_SHA256 = \
@@ -537,6 +537,7 @@ def build_report_schedule(
 
 def _commands(schedule: Mapping[str, object]) -> dict:
     common = [
+        "--expected-git", "{git}",
         "--controller-packet", PACKET_PATH,
         "--expected-controller-packet-sha256", "{packet_sha256}",
         "--controller-review-record", "{controller_review_record}",
@@ -548,6 +549,7 @@ def _commands(schedule: Mapping[str, object]) -> dict:
     return {
         "admit": [
             "{python}", RUNTIME_SCRIPT_PATH, "admit",
+            "--expected-git", "{git}",
             "--controller-packet", PACKET_PATH,
             "--expected-controller-packet-sha256", "{packet_sha256}",
             "--controller-review-record", "{controller_review_record}",

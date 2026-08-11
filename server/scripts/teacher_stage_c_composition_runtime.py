@@ -182,8 +182,39 @@ def _expected_supervisor_final_path() -> Path:
     return (REPO / CTRL.SUPERVISOR_FINAL_PATH).resolve()
 
 
+def _path_from_ref(ref: Mapping[str, object], label: str) -> Path:
+    absolute = ref.get("absolute_path")
+    evidence_root = ref.get("evidence_root_absolute_path")
+    logical = ref.get("logical_path")
+    if absolute is not None:
+        if evidence_root is not None or logical is not None:
+            raise CompositionRuntimeRefused(f"{label} reference shape drift")
+        path = Path(str(absolute)).resolve()
+        if str(path) != absolute:
+            raise CompositionRuntimeRefused(
+                f"{label} absolute path is not canonical")
+        return path
+    if evidence_root is not None:
+        root = Path(str(evidence_root)).resolve()
+        logical_path = Path(str(logical))
+        if (str(root) != evidence_root or logical_path.is_absolute()
+                or ".." in logical_path.parts):
+            raise CompositionRuntimeRefused(
+                f"{label} evidence reference drift")
+        path = (root / logical_path).resolve()
+        try:
+            path.relative_to(root)
+        except ValueError as exc:
+            raise CompositionRuntimeRefused(
+                f"{label} escapes evidence root") from exc
+        return path
+    if not isinstance(logical, str):
+        raise CompositionRuntimeRefused(f"{label} logical path drift")
+    return (REPO / logical).resolve()
+
+
 def _artifact(ref: Mapping[str, object], label: str) -> tuple[Path, dict]:
-    path = (REPO / str(ref.get("logical_path"))).resolve()
+    path = _path_from_ref(ref, label)
     expected = ref.get("external_sha256")
     if (not is_regular_unlinked(path) or not CTRL.is_sha256(expected)
             or sha256_file(path) != expected):
@@ -335,7 +366,7 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, object]:
                 (state_set_review_ref, "composition state-set review"),
                 (report_result_review_ref,
                  "composition REPORT result review")):
-            path = (REPO / str(ref.get("logical_path"))).resolve()
+            path = _path_from_ref(ref, label)
             if (not is_regular_unlinked(path)
                     or sha256_file(path) != ref.get("external_sha256")):
                 raise CompositionRuntimeRefused(f"{label} path/SHA drift")
@@ -344,10 +375,14 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, object]:
          state_set_review_path, report_result_review_path) = review_paths
         report_receipt_path, _ = _artifact(
             report_receipt_ref, "composition REPORT receipt")
-        report_result_path, _ = _artifact(
+        report_result_path = _path_from_ref(
             report_result_ref, "composition REPORT result")
-        report_supervisor_path, _ = _artifact(
+        report_supervisor_path = _path_from_ref(
             report_supervisor_ref, "composition REPORT supervisor final")
+        if (not is_regular_unlinked(report_result_path)
+                or not is_regular_unlinked(report_supervisor_path)):
+            raise CompositionRuntimeRefused(
+                "composition REPORT terminal artifact unavailable")
         report_packet, report_result = CTRL.validate_report_result(
             report_packet_path=report_packet_path,
             report_packet_sha256=str(

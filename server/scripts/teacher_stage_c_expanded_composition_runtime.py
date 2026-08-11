@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Run the reviewed expanded-Teacher bury composition screen."""
+"""Run the reviewed expanded-Teacher broad-play composition screen."""
 from __future__ import annotations
 
 import os
 import sys
 
 
-os.environ["SHENGJI_STAGE_C_COMPOSITION_PROFILE"] = "expanded-bury"
+os.environ["SHENGJI_STAGE_C_COMPOSITION_PROFILE"] = "expanded-play"
 os.environ["SHENGJI_STAGE_C_REPORT_CONTROLLER"] = \
-    "teacher_stage_c_expanded_report_controller"
+    "teacher_stage_c_expanded_play_report_controller"
 os.environ["SHENGJI_STAGE_C_COMPOSITION_CONTROLLER"] = \
     "teacher_stage_c_expanded_composition_controller"
 

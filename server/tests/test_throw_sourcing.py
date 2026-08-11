@@ -216,6 +216,56 @@ def test_every_phase_sources_a_throw_whenever_one_is_possible(
         assert ballot.candidates[0].sources == (WHOLE_TRUMP_EVACUATION,)
 
 
+def test_natural_rounds_never_drop_an_available_lead_throw():
+    """Keep the phase-wide contract broader than the named KESP fixtures.
+
+    The fixed early/mid/late witnesses above make failures easy to diagnose;
+    this small deterministic census protects against a source edit that still
+    passes those three states but silently loses coverage elsewhere.
+    """
+    eligible_by_phase = {"early": 0, "mid": 0, "late": 0}
+    for seed in range(16):
+        rnd = Game(random.Random(seed)).start_round()
+        bots = [HeuristicBot() for _ in range(4)]
+        while rnd.phase == "deal":
+            seat, _, _ = rnd.deal_next()
+            cards = bots[seat].decide_declare(rnd, seat)
+            if cards:
+                rnd.declare(seat, cards)
+        for seat in range(4):
+            cards = bots[seat].decide_declare(rnd, seat, final=True)
+            if cards:
+                rnd.declare(seat, cards)
+        rnd.finalize_declare()
+        assert rnd.banker is not None
+        rnd.bury(
+            rnd.banker,
+            bots[rnd.banker].decide_bury(rnd, rnd.banker),
+        )
+
+        while rnd.phase == "play":
+            assert rnd.trick is not None and rnd.turn is not None
+            seat = rnd.turn
+            if not rnd.trick.plays:
+                eligible = _eligible_throw_suits(rnd, seat)
+                ballot = structured_throw_ballot(rnd, seat)
+                assert ballot.eligible_suits == eligible
+                assert len(ballot.candidates) <= MAX_CANDIDATES
+                if eligible:
+                    phase = "early" if len(rnd.history) < 5 else (
+                        "mid" if len(rnd.history) < 12 else "late")
+                    eligible_by_phase[phase] += 1
+                    assert ballot.coverage_satisfied
+                    assert ballot.candidates
+                    for candidate in ballot.candidates:
+                        clone = copy.deepcopy(rnd)
+                        clone.play(seat, list(candidate.cards))
+                        assert clone.trick is not None and clone.trick.plays
+            rnd.play(seat, bots[seat].decide_play(rnd, seat))
+
+    assert all(eligible_by_phase.values()), eligible_by_phase
+
+
 def test_no_throw_opportunity_does_not_invent_one():
     rnd, seat = _lead_state(seed=1, completed_tricks=0)
     # Retain at most one card in each effective suit.  Every holding is then a

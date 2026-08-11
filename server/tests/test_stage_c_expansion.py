@@ -28,7 +28,9 @@ def _state(*, split: str, surface: str, index: int) -> dict:
     }
 
 
-def _parents() -> tuple[dict, list[dict], list[dict], list[dict]]:
+def _parents(
+    *, report_copies: int = 3,
+) -> tuple[dict, list[dict], list[dict], list[dict]]:
     cells = {
         split: [{
             "cell_id": f"{split}:{surface}:only-cell",
@@ -45,7 +47,7 @@ def _parents() -> tuple[dict, list[dict], list[dict], list[dict]]:
         for surface in EXP.SURFACES:
             original_count = ORIGINAL_SURFACES[split][surface]
             if split == "REPORT":
-                retained_count = 3 * original_count
+                retained_count = report_copies * original_count
             else:
                 retained_count = EXP.TARGET_SURFACES[split][surface]
             pool = [_state(
@@ -128,6 +130,52 @@ def test_expanded_selection_refuses_outcome_material_or_short_supply() \
         EXP.select_expanded_states(
             capture_packet=capture,
             retained_states=short,
+            original_states=original,
+            current_fresh_report_states=current_fresh,
+        )
+
+
+def test_successor_report_excludes_all_three_spent_populations() -> None:
+    capture, retained, original, current_fresh = _parents(report_copies=4)
+    expanded = EXP.select_expanded_states(
+        capture_packet=capture,
+        retained_states=retained,
+        original_states=original,
+        current_fresh_report_states=current_fresh,
+    )
+    result = EXP.select_successor_report_states(
+        capture_packet=capture,
+        retained_states=retained,
+        original_states=original,
+        current_fresh_report_states=current_fresh,
+    )
+
+    spent = [state for state in original if state["split"] == "REPORT"]
+    spent += current_fresh
+    spent += [state for state in expanded["states"]
+              if state["split"] == "REPORT"]
+    assert result["state_count"] == 512
+    assert result["surface_counts"] == {"play": 480, "bury": 32}
+    assert result["spent_report_populations"] == 3
+    assert result["spent_report_states"] == 1_536
+    assert result["spent_state_overlap"] == 0
+    assert result["spent_deal_seed_overlap"] == 0
+    assert result["remaining_report_supply_after_selection"] == {
+        "play": 0, "bury": 0}
+    assert not ({state["state_id"] for state in result["states"]}
+                & {state["state_id"] for state in spent})
+    assert not ({state["seed"] for state in result["states"]}
+                & {state["seed"] for state in spent})
+    assert result["labels_or_outcomes_opened"] is False
+    assert result["report_labels_opened"] is False
+
+
+def test_successor_report_refuses_when_only_three_tranches_exist() -> None:
+    capture, retained, original, current_fresh = _parents()
+    with pytest.raises(EXP.ExpansionError, match="supply underfilled"):
+        EXP.select_successor_report_states(
+            capture_packet=capture,
+            retained_states=retained,
             original_states=original,
             current_fresh_report_states=current_fresh,
         )

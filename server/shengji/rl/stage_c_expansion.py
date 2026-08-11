@@ -26,6 +26,7 @@ from typing import Mapping, Sequence
 
 
 SCHEMA = "teacher-stage-c-expanded-state-selection-v1"
+SUCCESSOR_REPORT_SCHEMA = "teacher-stage-c-successor-report-selection-v1"
 SPLIT_ORDER = ("DESIGN", "CALIB", "REPORT")
 SURFACES = ("play", "bury")
 TARGET_SURFACES = {
@@ -309,6 +310,143 @@ def select_expanded_states(
         "sealed_report_state_ids_sha256": manifest_hash(sealed_report_ids),
         "original_state_overlap": len(original_overlap),
         "current_fresh_report_overlap": len(report_ids & fresh_ids),
+        "labels_or_outcomes_opened": False,
+        "report_labels_opened": False,
+    }
+    result["selection_sha256"] = manifest_hash(result)
+    return result
+
+
+def select_successor_report_states(
+    *, capture_packet: Mapping[str, object],
+    retained_states: Sequence[Mapping[str, object]],
+    original_states: Sequence[Mapping[str, object]],
+    current_fresh_report_states: Sequence[Mapping[str, object]],
+) -> dict:
+    """Select a fourth REPORT tranche after authenticating the first three.
+
+    The original REPORT, its first fresh replacement, and the expanded
+    training packet's third REPORT are all treated as spent.  Selection uses
+    only frozen quota weights and score-free reservoir order.
+    """
+    expanded = select_expanded_states(
+        capture_packet=capture_packet,
+        retained_states=retained_states,
+        original_states=original_states,
+        current_fresh_report_states=current_fresh_report_states,
+    )
+    expanded_report = [state for state in expanded["states"]
+                       if state["split"] == "REPORT"]
+    original_report = [state for state in original_states
+                       if state["split"] == "REPORT"]
+    if (len(original_report) != SEALED_REPORT_STATES
+            or len(current_fresh_report_states) != SEALED_REPORT_STATES
+            or len(expanded_report) != SEALED_REPORT_STATES):
+        raise ExpansionError("spent REPORT population drift")
+
+    spent = [*original_report, *current_fresh_report_states, *expanded_report]
+    spent_ids = {str(state["state_id"]) for state in spent}
+    spent_seeds = {int(state["seed"]) for state in spent}
+    if (len(spent_ids) != 3 * SEALED_REPORT_STATES
+            or len(spent_seeds) != 3 * SEALED_REPORT_STATES):
+        raise ExpansionError("spent REPORT identity collision")
+
+    raw_cells = capture_packet["schedule"]["quota_cells"]["REPORT"]
+    selected = []
+    cell_manifest = []
+    for surface in SURFACES:
+        surface_cells = [cell for cell in raw_cells
+                         if cell.get("surface_type") == surface]
+        pools = {}
+        capacities = {}
+        for cell in surface_cells:
+            cell_id = str(cell["cell_id"])
+            pool = [state for state in retained_states
+                    if state.get("split") == "REPORT"
+                    and state.get("surface_type") == surface
+                    and state.get("cell_id") == cell_id
+                    and str(state["state_id"]) not in spent_ids
+                    and int(state["seed"]) not in spent_seeds]
+            pool.sort(key=lambda state: (
+                state["selection_priority"], state["state_id"]))
+            pools[cell_id] = pool
+            capacities[cell_id] = len(pool)
+        allocation = weighted_capacity_allocation(
+            surface_cells, capacities, TARGET_SURFACES["REPORT"][surface])
+        for cell in sorted(surface_cells,
+                           key=lambda value: str(value["cell_id"])):
+            cell_id = str(cell["cell_id"])
+            count = allocation[cell_id]
+            chosen = pools[cell_id][:count]
+            for rank, state in enumerate(chosen, 1):
+                value = copy.deepcopy(state)
+                value["successor_report_selection"] = {
+                    "schema": SUCCESSOR_REPORT_SCHEMA,
+                    "base_quota": int(cell["quota"]),
+                    "cell_capacity_after_three_report_exclusions":
+                        capacities[cell_id],
+                    "successor_cell_allocation": count,
+                    "rank": rank,
+                    "selection_uses_labels_or_outcomes": False,
+                }
+                selected.append(value)
+            cell_manifest.append({
+                "surface_type": surface,
+                "cell_id": cell_id,
+                "base_quota": int(cell["quota"]),
+                "eligible_supply_after_three_report_exclusions":
+                    capacities[cell_id],
+                "allocation": count,
+                "spare_after_selection": capacities[cell_id] - count,
+                "selected_state_ids_sha256": manifest_hash(
+                    [state["state_id"] for state in chosen]),
+            })
+
+    selected.sort(key=lambda state: (
+        SURFACES.index(str(state["surface_type"])), str(state["cell_id"]),
+        state["selection_priority"], state["state_id"]))
+    selected_ids = [str(state["state_id"]) for state in selected]
+    selected_seeds = [int(state["seed"]) for state in selected]
+    surface_counts = Counter(str(state["surface_type"])
+                             for state in selected)
+    expected_surfaces = TARGET_SURFACES["REPORT"]
+    if (len(selected) != SEALED_REPORT_STATES
+            or len(set(selected_ids)) != SEALED_REPORT_STATES
+            or len(set(selected_seeds)) != SEALED_REPORT_STATES
+            or dict(surface_counts) != expected_surfaces
+            or set(selected_ids) & spent_ids
+            or set(selected_seeds) & spent_seeds
+            or _forbidden_label_material(selected)):
+        raise ExpansionError("successor REPORT population contract drift")
+
+    result = {
+        "schema": SUCCESSOR_REPORT_SCHEMA,
+        "selection_rule": (
+            "recompute and exclude the original, first-fresh, and expanded "
+            "REPORT populations; within REPORT/surface allocate the frozen "
+            "480/32 target in proportion to original quota weights, "
+            "saturating scarce cells; within each cell take the first "
+            "(selection_priority,state_id) score-free rows"
+        ),
+        "states": selected,
+        "states_sha256": manifest_hash(selected),
+        "state_ids_sha256": manifest_hash(sorted(selected_ids)),
+        "state_count": len(selected),
+        "surface_counts": dict(surface_counts),
+        "cell_manifest": cell_manifest,
+        "cell_manifest_sha256": manifest_hash(cell_manifest),
+        "spent_report_populations": 3,
+        "spent_report_states": len(spent_ids),
+        "spent_report_state_ids_sha256": manifest_hash(sorted(spent_ids)),
+        "spent_report_deal_seeds_sha256": manifest_hash(sorted(spent_seeds)),
+        "spent_state_overlap": 0,
+        "spent_deal_seed_overlap": 0,
+        "remaining_report_supply_after_selection": {
+            surface: sum(
+                item["spare_after_selection"] for item in cell_manifest
+                if item["surface_type"] == surface)
+            for surface in SURFACES
+        },
         "labels_or_outcomes_opened": False,
         "report_labels_opened": False,
     }

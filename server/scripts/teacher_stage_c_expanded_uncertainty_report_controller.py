@@ -43,40 +43,40 @@ CAP = BASE.CAP
 TRAIN = BASE.TRAIN
 MODEL = CAP.MODEL
 
-SCHEMA = "teacher-stage-c-expanded-uncertainty-report-controller-v1"
+SCHEMA = "teacher-stage-c-expanded-uncertainty-report-controller-v2"
 PACKET_ID = \
-    "teacher-v3-hard-tail-stage-c-expanded-uncertainty-report-controller-v1"
-RUN_ID = "teacher-v3-hard-tail-stage-c-expanded-uncertainty-report-v1"
+    "teacher-v3-hard-tail-stage-c-expanded-uncertainty-report-controller-v2"
+RUN_ID = "teacher-v3-hard-tail-stage-c-expanded-uncertainty-report-v2"
 CONTROLLER_RUN_ID = \
-    "teacher-v3-hard-tail-stage-c-expanded-uncertainty-report-controller-v1"
+    "teacher-v3-hard-tail-stage-c-expanded-uncertainty-report-controller-v2"
 PACKET_PATH = f"server/runs/logs/{CONTROLLER_RUN_ID}/controller_packet.json"
 REVIEW_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-controller-review-v1"
+    "teacher-stage-c-expanded-uncertainty-report-controller-review-v2"
 REVIEW_MARKER = \
-    "TEACHER_STAGE_C_EXPANDED_UNCERTAINTY_REPORT_CONTROLLER_V1_REVIEW "
+    "TEACHER_STAGE_C_EXPANDED_UNCERTAINTY_REPORT_CONTROLLER_V2_REVIEW "
 
 RUNTIME_RECEIPT_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-receipt-v1"
+    "teacher-stage-c-expanded-uncertainty-report-receipt-v2"
 RUNTIME_ADMISSION_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-admission-v1"
+    "teacher-stage-c-expanded-uncertainty-report-admission-v2"
 RUNTIME_REPORT_OPEN_ADMISSION_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-open-admission-v1"
+    "teacher-stage-c-expanded-uncertainty-report-open-admission-v2"
 RUNTIME_SHARD_ADMISSION_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-shard-admission-v1"
+    "teacher-stage-c-expanded-uncertainty-report-shard-admission-v2"
 RUNTIME_SHARD_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-label-shard-v1"
+    "teacher-stage-c-expanded-uncertainty-report-label-shard-v2"
 RUNTIME_RESULT_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-result-v1"
+    "teacher-stage-c-expanded-uncertainty-report-result-v2"
 SUPERVISOR_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-supervisor-v1"
+    "teacher-stage-c-expanded-uncertainty-report-supervisor-v2"
 SUPERVISOR_EXIT_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-supervisor-exit-v1"
+    "teacher-stage-c-expanded-uncertainty-report-supervisor-exit-v2"
 SUPERVISOR_FINAL_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-supervisor-final-v1"
+    "teacher-stage-c-expanded-uncertainty-report-supervisor-final-v2"
 SUPERVISOR_REVIEW_SCHEMA = \
-    "teacher-stage-c-expanded-uncertainty-report-result-review-v1"
+    "teacher-stage-c-expanded-uncertainty-report-result-review-v2"
 SUPERVISOR_REVIEW_MARKER = \
-    "TEACHER_STAGE_C_EXPANDED_UNCERTAINTY_REPORT_RESULT_V1_REVIEW "
+    "TEACHER_STAGE_C_EXPANDED_UNCERTAINTY_REPORT_RESULT_V2_REVIEW "
 
 TARGET_STRATUM = "champion_uncertainty"
 TARGET_STATES = 219
@@ -572,7 +572,7 @@ def scope_policy_contract(
     role = Counter(str(state["role"]) for state in states)
     position = Counter(str(state["surface"]) for state in states)
     return {
-        "schema": "teacher-stage-c-champion-uncertainty-protected-scope-v1",
+        "schema": "teacher-stage-c-champion-uncertainty-protected-scope-v2",
         "scope": "champion_uncertainty_only",
         "surface": "play",
         "report_states": TARGET_STATES,
@@ -647,7 +647,7 @@ def build_report_schedule(
                 f"server/runs/logs/{RUN_ID}/labels/shard-{index:02d}.json"),
         })
     value = {
-        "schema": "teacher-stage-c-expanded-uncertainty-report-schedule-v1",
+        "schema": "teacher-stage-c-expanded-uncertainty-report-schedule-v2",
         "surface": "play",
         "stratum": TARGET_STRATUM,
         "states": len(selected),

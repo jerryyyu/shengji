@@ -26,7 +26,7 @@ The current blocker is one independent terminal training-result review:
   8/8 positive seeds, median candidate-zero improvement `+0.016418`. The
   direct candidate-zero loss did not win. Claude's exact terminal
   `TEACHER_STAGE_C_EXPANDED_TRAINING_RESULT_V1_REVIEW` request is canonical.
-- Draft PR #32 exact `727da09` implements the downstream score-free REPORT
+- Draft PR #32 exact `7810ec2` implements the downstream score-free REPORT
   controller by adapting the existing one-shot runtime/supervisor. It has
   opened zero REPORT rows and cannot freeze until terminal result PASS.
 

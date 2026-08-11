@@ -1,124 +1,55 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-10 16:53 EDT. This file owns live compute and compact
-terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
-order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
+Last reconciled: 2026-08-11 01:08 EDT. This file owns live compute and compact
+terminal stubs. Result interpretation lives in `AI_POLICIES.md`; execution
+order in `BACKLOG.md`; full chronology in dated `docs_archive/` logs.
 
 ## Live fleet
 
-| host | job | status / next admitted use |
-|---|---|---|
-| Mini | none | **FREE / T4 LABEL-V2 PACKET REVIEW.** Capacity-v3 result passed externally. Fresh score-free packet `0d119c84…dc32` re-verifies at exact `167feab`; no label receipt, shard slot, world or outcome exists. Only its external PASS may start the 16 shards. |
-| Air | S4 fixed replication | **LIVE, 8/8 SHARDS STARTED.** Exact `fb6ec1a`; packet `b239b849…ab76b`, admission `5fc07959…cb88`, receipt `fc6d54e7…1077`. Supervisor heartbeats every 30 seconds across 2,048 primary clusters plus 256 balanced null sentinels; projected max shard 7.732 hours. No interim inference or retry. |
-| Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
-
-## Next admitted execution
-
-Capture-v7 passed exact review and consumed its one admission. All 24 fresh
-shards completed, freeze published exact `1024/512/512` splits and `1920/128`
-play/bury surfaces, and terminal verification returned
-`VERIFIED_STAGE_C_CAPTURE`: state set `c7a769c4…e8e1c`, verifier
-`143fb2db…4adb`, 24/24 byte-identical disposition replays totaling 750,000
-deals, plus all 2,048 selected states regenerated. Current order:
-
-1. External review of the immutable v7 state set is **complete / PASS**.
-2. Capacity-v1 packet/result passed, but the resulting label-v1 execution is
-   terminal no-use: eight slots consumed, two complete shards, six refusals,
-   no aggregate and no partial mining. Never run its other eight slots.
-3. Capacity-v2 result `64fdda5f…4cf2` is terminal no-use: Codex's own marker
-   was not external review and missing NumPy refused all 32 rows before worlds.
-4. Capacity-v3 packet, one Mini run and terminal result review are complete.
-5. Label-v2 packet `0d119c84…dc32` is frozen and review-open. Only its exact
-   PASS may admit one 16-shard execution and aggregate on 2,048/2,048 complete.
-6. Mini starts the model sweep only after complete reviewed iid-v2 labels and
-   a reviewed training packet. DESIGN/CALIB choose a capability; untouched
-   REPORT remains closed until that selection is final. Air stays on the
-   separately gated S4 lane.
-
-Separately, the user authorized idle Air for the promising S4 lane. The old
-365.592-fleet-hour confirmation remains closed. New source `fb6ec1a` reduces
-the null arm to a 256-cluster exact sentinel while retaining 2,048 fresh
-treatment/champion clusters. Source, preflight and packet reviews passed; the
-one fixed run is live under receipt `fc6d54e7…1077`.
-
-## Terminal job index
-
-The canonical numbers and meanings are in the results table in
-`AI_POLICIES.md`; this table is only an artifact locator.
-
-| date | job | terminal verdict | anchor |
+| host | live job | safe progress | next admitted use |
 |---|---|---|---|
-| 08-10 | Teacher Stage-C label controller v2 | **FROZEN / EXTERNAL PACKET REVIEW OPEN / ZERO WORLDS** | source `167feab`; packet external/internal `0d119c84…dc32` / `b800b330…87ed`; 2,048 states, 16 shards, 4,984,960 exact candidate-worlds; 45/45 focused tests; no receipt/slot/label/outcome |
-| 08-10 | Teacher Stage-C capacity v3 | **TERMINAL + EXTERNAL RESULT PASS** | source `167feab`; result external/internal `e2eea8c4…d32d4` / `00bd3456…7e9f`; slot `6dc1f9bd…d0fb`; 32/32, 147,384 exact worlds, zero refusals/outcomes; projection 1.640 fleet-hours / 0.235 wall-hours; Claude PASS `9c4e040` |
-| 08-10 | Teacher Stage-C capacity v2 | **TERMINAL NO-USE / ZERO WORLDS** | result external/internal `64fdda5f…4cf2` / `def43a24…2102`; consumed slot `b6c1219a…5e72`; 32/32 missing-NumPy V11-load refusals, zero candidate worlds/sampler attempts/outcomes; Codex self-review was invalid; never retry |
-| 08-10 | S4 fixed Air replication | **PACKET PASS / LIVE 8-SHARD OUTCOME RUN** | exact `fb6ec1a`; preflight `a89a4498…69`; packet `b239b849…ab76b`; admission `5fc07959…cb88`; receipt `fc6d54e7…1077`; 2,048 primary + 256 null-sentinel clusters; no interim verdict |
-| 08-10 | Teacher Stage-C iid-v2 capacity packet | **SUPERSEDED / SELF-REVIEW INVALID** | source `8a202e9`; packet external/internal `a667b6bb…795c` / `0a0194ce…6977`; exact schedule remains useful, but Codex's marker was not external authority and the resulting v2 run is terminal no-use |
-| 08-10 | Teacher Stage-C label v1 execution | **TERMINAL NO-USE / NO AGGREGATE** | source `3f6f048`; receipt external `0c3d7ea0…adc1c`; consumed slots `0,4,5,8,10,12,14,15`; 2 complete, 6 refused, 971/1,024 complete rows; untouched slots never run; no partial utility mining |
-| 08-10 | Teacher Stage-C label capacity v1 | **TERMINAL CAPACITY + EXTERNAL RESULT PASS / SUPERSEDED DOWNSTREAM** | packet `e8967d6f…d2a58`; result `111092b7…cee0`; 32/32, zero refusals, no retained outcome; it validly sized v1 but did not exercise the late small-support failure and cannot authorize v2 |
-| 08-10 | Teacher Stage-C label controller v1 | **CONSUMED / SUPERSEDED BY TERMINAL LABEL FAILURE** | source `3f6f048`; packet external/internal `e4958358…09c2` / `4b6c3c83…5be5`; exact authority consumed once; never retry, extend or aggregate |
-| 08-09 | S3a structured-bury full-game screen | **SELECT NONE / CLOSED** | exact `c599b42`; all 2,048 clusters verified; aggregate `20609613…271f`, final `32156d79…c9ff`; no confirmation, retry, tuning or promotion |
-| 08-09 | Teacher Stage-C controller rebind | **EXTERNAL PASS / ZERO STATES** | source `7018f36`; packet commit `45429f3`; packet `b60c4298…7b18`; Claude PASS at `cb9471b`; all seven curriculum commitments unchanged; capture-controller implementation only |
-| 08-09 | Teacher Stage-C design v3 | **DESIGN PASS / SUPERSEDED ONLY BY IDENTITY REBIND** | source `20bdb95`; asset `1a29418`; packet `f213314a…3b4`; Claude PASS at `d92f595`; zero states/labels; curriculum preserved exactly by passed rebind `b60c4298…7b18` |
-| 08-09 | S5 replay-census code | **BOUNDARY FIXTURE PASS / NO CENSUS** | draft PR #4 head `2351b36`; real `HK` versus lower-ranked equal-point `H10` witness; named `<`→`<=` mutation fails; 12 focused + 52 broader available tests pass; one score-free census freeze eligible |
-| 08-09 | H0 controller admit→runtime repair | **V3 EXTERNAL PASS / ZERO OUTCOMES** | PR #6; source `4ebcd09`; packet `cf074871…35392`; Claude PASS at `205b6af`; 557 rows; no diagnostic receipt yet |
-| 08-09 | Human H0-v3 controller v2 | **COMPONENT PASS / OPERATIONAL HOLD** | source `6977dbb`; packet `3f68dc6e…7fcf`; admission's unignored lock makes runtime reject its own dirty tree; zero worlds/outcomes |
-| 08-09 | S3c one-card controller repair | **V2 EXTERNAL PASS / ZERO SOLVER WORK** | PR #6; source `4ebcd09`; packet `cafbee43…f23e`; Claude PASS at `205b6af`; 64 roots; no mechanics receipt yet |
-| 08-09 | S3c one-card controller v1 | **COMPONENT PASS / OPERATIONAL HOLD** | source `e9db4a2`; packet `f58d23b7…3874`; same unignored-lock admit→runtime failure; zero worlds/exact sessions |
-| 08-09 | Human H0-v3 controller v1 | **HOLD / SUPERSEDED BEFORE OUTCOMES** | producer `931f504`; asset `ff277b4`; packet `13d9a97f…61fc`; runtime did not self-enforce compiled/strict-void mode and receipt deletion could reissue; preserved and replaced by frozen v2 |
-| 08-09 | S3c natural-prefix census + curriculum | **DESIGN PASS / ONE-CARD CONTROLLER IMPLEMENTATION ONLY** | producer `0b96fae`; asset `4fb90a1`; 768 roots; census `23632609…b52a`; packet `df102428…9eca`; Claude marker commit `084ba7e`; no solver/screen/training/strength authority |
-| 08-10 | Teacher Stage-C capture v3 | **TERMINAL HOLD / SIX PARTIAL SHARDS NO-USE** | exact source `0b697b6`; first wave found deterministic exact-late phase drift at seeds `170002101` and `170007422`; no later waves, pooling or retry |
-| 08-10 | Teacher Stage-C capture v4 repair | **EXTERNAL PASS / SUPERSEDED PRE-ADMISSION** | source `5a51a1e`; packet `0d1a94d4…54eaa`; Claude PASS `8263492`; exact phase fix remains valid, but a later candidate canonicality defect means no v4 receipt/state may be issued |
-| 08-10 | Teacher Stage-C capture v5 canonical-source repair | **HOLD / SUPERSEDED BEFORE ADMISSION** | source `a71c67e`; packet `e299ac6c…cf749`; play/follow/random-source repairs were sound, but equal-valued SmartBot incumbent buries still inherited hand order; zero v5 states/worlds |
-| 08-10 | Teacher Stage-C capture v6 incumbent repair | **TERMINAL HOLD / 24 SHARDS NO-USE** | Claude PASS `8d6ce71`; source `2bdb094`; receipt external `8580b336…f8c66`; ordered shards `89af231f…8d6`; six exact-late follow cells `0/N`; no state set/verification, retry or extension |
-| 08-10 | Teacher Stage-C capture v7 + state set | **TERMINAL CAPTURE + EXTERNAL STATE-SET PASS** | Claude source PASS `83e3fce`; source `03c87d6`; packet `b53af06c…8a43`; receipt `8fdfdef5…f0ef5`; 24/24 fresh shards; reviewed 2,048-state set `c7a769c4…e8e1c`; verifier `143fb2db…4adb`, all 750,000 dispositions and every state replayed |
-| 08-09 | S4 complete-round v2 screen | **TERMINAL PASS / CONFIRMATION NOT LAUNCHED** | exact `cad3992`; treatment−champion `+0.086914 +/- 0.056166`, LCB `+0.030748`; treatment and matched null identical, null−champion zero; confirmation projection `365.592` fleet-hours / `45.699` max-shard hours |
-| 08-09 | S4 point-banking exact-state screen | **MECHANISM PASS / FULL-GAME PACKET REVIEW** | screen `abd9f36f…cdc00`; receipt `90124eb6…f526b`; overall point delta `+5.156`, LCB `+3.029`; both roles positive; no strength or launch authority |
-| 08-09 | Human H0 design v3 | **DESIGN PASS / CONTROLLER FROZEN** | source `b02b6de`, packet commit `d6214ce`, packet `4d3f0a35…8cc3c`; Claude marker `239f13c`; preserved plays, frozen buries, 17/33 caps, explicit continuation, finite work; no outcomes |
-| 08-09 | Human H0 design v2 | **IDENTITY DELTA PASS / SUPERSEDED PRE-CONTROLLER** | exact `12dac55`; packet `2cccf580…8f2b`; Claude marker `9fdb67a`; real V11 + portable parent passed, later bounded-design audit superseded it; no outcomes |
-| 08-09 | Human H0 design v1 | **SPLIT REVIEW PASS / SUPERSEDED PRE-EXECUTION** | exact `9770313`; packet `9ff160a9…247d3`; split semantics passed, but pinned V11 SHA names no artifact; no outcomes computed |
-| 08-09 | Teacher Stage-C design freeze v2 | **HELD PRE-REVIEW / H0 PARENT SUPERSEDED** | exact `b0ef0f9`; 1,024/512/512 DESIGN/CALIB/REPORT; packet `45802e47…a350`; rebind only after H0 controller-v2 PASS; no capture/labels/compute |
-| 08-09 | S4 v2 generation replay | **SCORE-FREE COMPLETE / CONSUMED BY REVIEWED SCREEN** | exact verifier `b0ef0f9`; all 69,047 ascending deals rescanned and all 64 states rebuilt exactly; witness `3079fb16…f0a9` |
-| 08-09 | S4 fresh state capture v2 | **SCORE-FREE COMPLETE / CONSUMED BY REVIEWED SCREEN** | exact `1b35fb7`; 64 unique deals (32/role); states `4538be85…6b5f`; Air native `d14eefdd…ebe2e0` |
-| 08-09 | S4 fresh state capture v1 | **HOLD / CLOSED WITHOUT OUTCOMES** | exact `402c012`; state asset internally valid, but claimed material digest was irreproducible and test counts were unpinned; replaced by fresh v2 rather than reused |
-| 08-09 | Teacher-v3 fresh audit | **PASS / STAGE-C DESIGN** | gate `8a1532b7…91f8`; supervisor `02f4f8b…6f237`; adapter `56ccefbd…c2442` |
-| 08-09 | Suphx O0-v2 | **SELECT NONE** | gate `0dbd9aa8…f24e`; independent semantic replay `verified=true` |
-| 08-09 | S3a full-game preflight | **CAPACITY PASS** | preflight `09692f82…edf0`; final `56943242…e9f` |
-| 08-08 | S3a 512-state screen | **MECHANISM PASS** | aggregate `74aa5a39…396cd`; final `d3f2b1ab…69a6b` |
-| 08-08 | S3b-v2 preflight | **TERMINAL HOLD / NO SCREEN** | exact head `cd44ea8`; no receipt/final by design |
-| 08-08 | Teacher Stage B | **PASS** | gate `f607b489…89694` |
-| 08-08 | Teacher audit-v2 | **OPERATIONAL REFUSAL / NO ML VERDICT** | receipt `ce51b826…71d0`; failed root preserved |
-| 08-08 | Suphx O0 | **SELECT NONE** | gate `592a009a…bd407c` |
-| 08-07 | RLCB-C1 | **CONFIRM** | aggregate `83f5a9df…f5ef5ea`; closeout `06dd487d…b7aae5` |
-| 08-07 | production latency | **LIVE** | image `latency-cd6789e`; manifest `047bcfe4…5b300` |
-| 08-07 | V11 direct-v2 | **SELECT NONE** | aggregate `b7c90ba4…05d21ad` |
-| 08-07 | Direct-Q 144M | **SELECT NONE** | aggregate `1fa6789e…ce791` |
-| 08-07 | formal S0 | **SELECT NONE / OUTCOMES UNREAD** | closeout `ef0a365…fde9a` |
-| 08-05 | DEV-512 ballot | **SELECT NONE** | asset `af787485…85d3e7b` |
-| 08-04 | sampler Package H | **BOUNDED PASS** | commit `aea3774`; `certify_sampler_v3.json` |
+| **Mini** | **Idle; expanded labels terminal** | Exact source `32d94a4`, receipt `48a64759…8efe`. 16/16 shards completed: 5,504 rows, zero refusals, 13,136,320 candidate worlds; aggregate `3deb3a81…f6ca`. | Independent `TEACHER_STAGE_C_EXPANDED_LABEL_RESULT_V1_REVIEW`, then freeze/review one 96-cell training packet. No training before its separate PASS. |
+| **Air** | `s4-point-banking-replication-air-180b-v1` | Exact `fb6ec1a`, receipt `fc6d54e7…1077`, 8/8 workers. Last score-free progress 1,358/2,048 primary clusters; 256 exact-null sentinels are also frozen. | Preserve to terminal publication, verify, then independent result review. Never inspect interim utility or retry. |
+| **Fly** | `mc-s0-report-lcb` | Release 17 live. Xray kitty-bury support merged in PR #11; no policy change. | Passive latency/correctness monitoring only. |
+
+## Next compute sequence
+
+1. Expanded labels finish and pass full replay plus independent terminal review.
+2. Freeze one 7,040-state matched-training packet: two loss recipes, play/bury,
+   eight seeds, three learning-curve fractions, at most eight cells live.
+3. Only a separate packet PASS may admit training. DESIGN/CALIB selects one
+   whole cohort or `SELECT_NONE`; no seed cherry-pick.
+4. Only a selected cohort may open the third untouched 512-state REPORT once.
+5. Only a REPORT passer may be composed and screened against live report-LCB.
+
+S4 remains an isolated Air lane. S6 source/tests and repository cleanup use no
+strength compute while Mini and Air are occupied.
+
+## Recent terminal index
+
+| date | job | terminal verdict | anchor / meaning |
+|---|---|---|---|
+| 08-10 | Protected Stage-C fresh REPORT | **SELECT NONE / EXTERNALLY PASSED** | Source `cd3d7bd`; result `8fa323de…aea6`; 480/480, zero refusals, 810,944 exact worlds. Triggered 171 rows; mean improvement `-0.00822754`, LCB `-0.01894357`. No composition or REPORT reuse. |
+| 08-10 | Stage-C training generation v1 | **SELECT NONE** | Source `18a6fa1`; all 48 cells / 288 checkpoints completed and replayed. Play ranker approached candidate zero but failed the 6/8 seed gate; bury was negative. Fresh REPORT remained unopened until the separately protected test above. |
+| 08-10 | Expanded label packet | **PACKET PASS / EXECUTION NOW LIVE** | Source `32d94a4`; 7,040 DESIGN/CALIB states, 5,504 new labels, 512 third REPORT sealed; controller `82447501…2084`. |
+| 08-10 | Stage-C iid-v2 labels | **TERMINAL + EXTERNAL PASS** | 2,048/2,048 labels, replacement sampling, exact folds and fidelity review. These 1,536 DESIGN/CALIB rows are retained by the expansion; original REPORT is spent/quarantined. |
+| 08-10 | Stage-C label v1 | **TERMINAL NO-USE / NO AGGREGATE** | 2 complete / 6 refused shards because realized-world deduplication exhausted late support and changed posterior mass. Never retry or mine partial rows. |
+| 08-10 | Stage-C capture v7 | **CAPTURE + STATE-SET PASS** | 24/24 shards; all 750,000 dispositions and all 2,048 selected states replayed. State set `c7a769c4…e8e1c`, verifier `143fb2db…4adb`. |
+| 08-10 | S4 whole-game screen v2 | **SCREEN PASS** | Treatment−champion `+0.086914 +/- 0.056166`, LCB `+0.030748`; matched null identical. Independent replication is the live Air job above. |
+| 08-09 | S3a structured-bury full game | **SELECT NONE / CLOSED** | 2,048 clusters; structured−champion `+0.0464`, LCB `-0.0041`. No retry/tuning. |
+| 08-09 | H0 human/V11 diagnostic | **TERMINAL INCOMPLETE / NO AGGREGATE** | 555/557 rows; two score-free refusals. No human-derived rule, no partial mining. |
+| 08-09 | S5 replay boundary | **SOURCE/FIXTURE PASS / NO CENSUS** | Exact `2351b36`; one future score-free replay census remains eligible. |
+| 08-08–09 | V11 direct-v2, Direct-Q, O0/O0-v2, S3b-v2 | **SELECT NONE / HOLD** | Preserve diagnostic lessons; none is deployable or authorizes continuation. See `AI_POLICIES.md`. |
+| 08-07 | RLCB-C1 | **CONFIRM** | Aggregate `83f5a9df…f5ef5ea`; `+0.338 +/- 0.068` signed levels versus `mc-strong`, matched null flat. Supports production report-LCB. |
 
 No terminal row grants more authority than its original gate. In particular,
-Teacher's passed Stage-C rebind authorizes capture-controller implementation
-only and does not authorize state capture, labels or training; the S3a state
-screen authorized only the now-terminal full-game test; and O0-v2 does not
-authorize O1.
-
-## Preserved failures
-
-- S4 full-game v1 `b64bc95` / `80e4f1bf…6947` is superseded before external
-  review. Adversarial probes found outcome-sign/bound, accepted-work and direct-
-  authority gaps. It never launched and published no outcomes; repaired v2 is
-  a fresh seed namespace rather than a retry.
-- Teacher audit-v1/v2 roots remain immutable evidence of publication and
-  underfilled-continuation refusals. The fresh v3 audit supersedes them
-  operationally but does not rewrite them.
-- S3b-v2 exceeded its frozen 250k-node cap before completing its first
-  treatment cluster. No score, partial or receipt survived; v2 cannot retry.
-- Formal S0c completed compute but failed the evidence chain before corrected
-  score parsing. Its numerical result remains permanently unread.
+S4's first PASS does not authorize deployment, and an expanded-label PASS will
+authorize only a score-free training-packet freeze for separate review.
 
 ## Archive pointers
 
 - `docs_archive/jobs-through-2026-08-08.md`
 - `docs_archive/daily-log-2026-08-08.md`
 - `docs_archive/daily-log-2026-08-09.md`
-- `docs_archive/handoff-review-2026-08-08-through-2026-08-09-t1-t2.md`
+- `docs_archive/daily-log-2026-08-10.md`
+- Git history preserves the pre-compaction terminal table.

@@ -40,6 +40,15 @@ Plain English: **we built a much better laboratory and found one stronger bot,
 but we are still operating the laboratory as if each experiment requires a new
 building inspection.**
 
+Follow-through at 13:35 EDT: the audit's immediate recommendation is now
+implemented without opening evidence. The complete 219-state
+`champion_uncertainty` REPORT packet is frozen under Python 3.14.6 with
+84.7%/87.8% projected power and awaits independent execution review. The
+downstream source also now protects the exact live report-LCB decision, rather
+than collapsing to heuristic candidate zero, and reproduces the frozen
+live/V11/structured/random proposal family. These are readiness improvements;
+neither is a strength result until REPORT and a fresh whole-game screen pass.
+
 ## What tangibly moved
 
 | area | tangible output | strength impact | audit verdict |

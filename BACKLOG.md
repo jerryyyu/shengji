@@ -1,6 +1,7 @@
 # Backlog
 
-Last re-derived: 2026-08-11 04:54 EDT.
+Last re-derived: 2026-08-11 13:35 EDT from terminal evidence and the weekly
+strategy audit.
 
 This file owns the executable queue. `AI_POLICIES.md` owns terminal results,
 `RL_PLAN.md` owns research design, `JOBS.md` owns compute, and
@@ -13,27 +14,36 @@ dated files under `docs_archive/`, not in this queue.
   Fresh RLCB-C1 confirmed `+0.338 +/- 0.068` signed levels versus `mc-strong`;
   the matched null was flat. Runtime rollback is release 16; policy rollback is
   `mc-strong`.
-- **T4's first Teacher generation was honest but not stronger.** The
-  1,536-state, eight-seed generation selected none on DESIGN/CALIB. A
-  post-hoc-but-protected play ranker then received one untouched REPORT look;
-  it triggered 171/480 states and lost to candidate zero (mean
-  `-0.00822754`, LCB `-0.01894357`). Both spent REPORT populations are closed;
-  no threshold retry or composition is legal.
-- **The expanded Teacher produced a real capability, not strength yet.** On
-  7,040 DESIGN/CALIB states, the epoch-32 all-pairs bury ranker passed in all
-  eight seeds with median candidate-zero improvement `+0.016418`. The direct
-  loss did not win, so increased coverage is the leading explanation.
-- **Mini:** the reviewed REPORT v1 commands failed in argparse before evidence
-  because `--expected-git` was missing; its third holdout is nevertheless
-  spent by the no-retry contract. The fourth untouched 512-row selection
-  (`3c318da2…41e4`) passed external review. Score-free v2 packet
-  `e856c02e…175e2` freezes its 32 bury rows and has been rebuilt twice without
-  opening scores. Independent concrete-controller review is the sole blocker
-  before one Mini execution.
-- **Air:** S4 replication is terminal positive-but-inconclusive `SELECT_NONE`:
-  `+0.048828 +/- 0.055712`, LCB `-0.006884`; all 256 null sentinels are exact
-  and independent terminal-integrity review passed. The recipe is closed
-  without retry, extension, confirmation or deployment.
+- **T4 has produced learned capability, but still no stronger learned bot.**
+  The first protected play model lost its untouched REPORT. Expanded bury was
+  positive but inconclusive on only 32 fresh rows and selected none. Expanded
+  broad play is the first ensemble with positive DESIGN and CALIB lower bounds
+  in all eight seeds; its original 480-state broad exam was held unopened
+  because the observed effect made it underpowered.
+- **The live Teacher hypothesis is now narrow and powered.** Every remaining
+  untouched `champion_uncertainty` row is selected: 219 states, projected
+  one-look power 84.7%/87.8%, Python 3.14.6, packet
+  `00c8ea70…16b6e`. The held broad admission is durably retired. Independent
+  execution review is the sole blocker before one Mini look; REPORT remains
+  unopened.
+- **The downstream policy bug is fixed before evidence.** Pushed head
+  `bed8f56` keeps the exact `mc-s0-report-lcb` move—not merely heuristic
+  candidate zero—as incumbent, reproduces live/V11/structured/random sourcing,
+  runs the public N=30 uncertainty predicate before Stage-C inference and
+  gives at most one proposal a fresh N=300 report. The code is ready; a REPORT
+  PASS is still required before a composition packet may be frozen.
+- **S4 is terminal positive-but-inconclusive `SELECT_NONE`:** replication
+  `+0.048828 +/-0.055712`, LCB `-0.006884`. Preserve the mechanism posterior;
+  do not retry or extend the spent recipe.
+- **The next strategic gaps are not more generic MC.** The 7,040-state asset
+  discards candidate-source provenance; 1,298/6,400 play rows have only one
+  candidate and all 1,087 exact-late rows have zero ranking choice; almost all
+  labels inherit one heuristic continuation. Proposal quality, continuation
+  quality and a real two-card endgame curriculum are the next substantive
+  levers.
+- **Mini and Air are free.** Mini is review-gated for the one REPORT look. Air
+  may run independent DEV-only S6, endgame, provenance or continuation work;
+  those lanes may not inspect or consume REPORT evidence.
 - **S6:** phase-wide shuai-pai sourcing is the best compute-free P1 follow-up.
   Draft PR #19 covers the KESP omissions and a late trump-only witness while
   preserving literal candidate zero. It still needs semantics review and a
@@ -52,14 +62,14 @@ or source review authorizes the next bounded step; it is not a strength result.
 
 | priority / milestone | strategy in plain English | progress and what is left | next output | exit gate |
 |---|---|---|---|---|
-| **P0 / T4-L2 expanded labels** | Generate enough high-quality counterfactual labels to tell whether the first Teacher miss was data-limited, while keeping a new exam untouched. | **Terminal COMPLETE / external PASS.** Source `32d94a4`, receipt `48a64759…8efe`; 5,504/5,504 rows, zero refusals, aggregate `3deb3a81…f6ca`. The one packet-freeze authority is consumed. **Left:** none for this asset; it grants no training directly. | `TEACHER_STAGE_C_EXPANDED_LABEL_RESULT_V1_REVIEW` | **Closed.** Byte-identical aggregate, shard membership and finite-work replay passed. |
-| **P0 / T4-M2 matched Teacher objectives** | On the same 7,040 states, test whether more data helps the old loss and whether directly learning “is this move better than candidate zero?” fits the protected production decision better. | **Terminal COMPLETE.** The reviewed 96-cell A/B ran once. The old `all_pairs_v1` loss won selection; `candidate0_relative_v2` produced eligible cohorts but did not win. **Left:** none for the objective comparison. | Aggregate `5ad77eb0…b6bd`; original loss selected | The controlled comparison says expanded coverage mattered more than replacing the objective. This is not a strength verdict. |
-| **P0 / T4-M3 train and select** | Learn whole eight-seed cohorts and select only a stable capability, not a lucky seed or checkpoint. | **Terminal external PASS.** All 96 cells and 576 checkpoints replayed. Selected epoch-32 all-pairs bury ranking: 8/8 positive seeds, median candidate-zero improvement `+0.016418`. The direct loss did not win. **Left:** none; its one packet-freeze authority is consumed. | Externally authenticated eight-model ensemble | **Closed as capability evidence.** No seed cherry-pick; no REPORT execution or strength follows directly. |
-| **P0 / T4-R1 untouched REPORT** | Ask once whether the frozen bury ranker transfers to genuinely unseen states before paying for games. | **V1 terminal operational no-use:** eight argparse refusals, zero scores; its third population is spent. **V2 packet frozen:** external recovery review passed for PR #32 `564db02` and fourth REPORT `3c318da2…41e4` (480/32), with zero overlap against three prior populations. Packet `e856c02e…175e2` binds the 32 bury rows in eight shards and has twice returned `VERIFIED_NO_REPORT_OPEN`. **Left:** independent concrete-controller PASS → one Mini look → terminal replay/review. | One candidate-zero comparison for the exact eight-model bury ensemble on the fourth untouched population | Positive predeclared REPORT LCB and at least one trigger, or `SELECT_NONE`. No retry of v1, tuning, reuse, second capability or pooling. |
-| **P0 / T4-C1 composition and game screen** | Let a REPORT-passing bury model propose one alternative, keep report-LCB/candidate zero as the safety fallback, and compare against a same-work random proposal. | **Source ready; no packet or REPORT authority yet.** Draft PR #33 exact `b85f810` reuses the reviewed one-shot runtime, isolates the expanded lane, and pins the reviewed Python path into every admission and child launch; 342 Stage-C tests pass, including receipt-tamper and expanded-profile-isolation checks. **Left:** R1 must pass, then freeze/review one composition packet, capacity preflight and fresh whole-game screen. | Mirrored treatment/null/champion screen against live `mc-s0-report-lcb` | Treatment must have positive one-sided utility LCB versus both champion and null; null must remain compatible with champion. Goal stops before confirmation/promotion/deploy. |
-| **P0 parallel / S4 replication** | Check whether point banking's first positive whole-game result repeats independently without rerunning an expensive redundant full null arm. | **Terminal external PASS / `SELECT_NONE`.** Exact `fb6ec1a`; 2,048 clusters give `+0.048828 +/- 0.055712`, LCB `-0.006884`; 256 null sentinels equal champion and independent review authenticated the evidence. **Left:** none for this recipe; no retry or extension. | Reviewed terminal result `d6b73f45…8f4d4` | **Closed.** Preserve the positive estimate as diagnostic evidence; no confirmation or deploy. |
+| **P0 / T4-R3 powered uncertainty REPORT** | Test the learned ranker only in the public states where DESIGN and CALIB say it has enough signal, instead of diluting a scarce holdout across weak strata. | **Frozen, unopened, review-gated.** Head `5ebd344`; all 219 untouched target states; packet `00c8ea70…16b6e`; projected power 84.7%/87.8%; old broad admission durably retired. **Left:** exact external controller PASS → one Mini execution → independent terminal replay. | One predeclared candidate-zero action-utility result on the complete untouched target supply | Positive one-sided LCB and nonzero proposals authorize composition review; otherwise `SELECT_NONE`. No retry, extension, pooling or direct-play claim. |
+| **P0 / T4-C2 protected composition** | Let Stage C add one idea only when the champion is uncertain, but keep the move production already chose unless fresh simulations prove the proposal better. | **Source ready, no evidence authority.** Head `bed8f56`; 89 focused tests. It preserves the complete live ballot and exact live incumbent, pins V11, gates before model inference, uses a same-work null and honestly counts live/scope/report work. **Left:** R3 must pass; then freeze/review one capacity packet and one fresh whole-game screen. | Mirrored treatment/null/champion screen against exact live `mc-s0-report-lcb` | Positive utility LCB versus champion and null, with null compatible with champion, nonzero scope/model triggers, zero fallback and exact work. Stop before confirmation/deploy. |
 | **P1 / S6 shuai-pai sourcing** | Ensure search can price a legal throw in early, middle and late leads instead of silently omitting the tactic. | **Source draft ready.** PR #19 `2605b04`; KESP AKQ/876 witnesses plus natural and trump-only late states; 12 focused tests pass pure and compiled+strict. A diagnostic-only 1,000-round census found a new proposal in 99%+ of eligible leads (mean additions early/mid/late 2.75/1.93/1.13), so this is broad widening rather than a rare tactic. **Left:** external semantics review, then a 64-state DEV screen with live, structured and trigger/candidate-count-matched random widening at equal candidate-world work and disjoint selection/report folds. | Public-only deterministic source followed by a small state-level capability screen—not a whole-game duel | Literal live ballot/candidate zero first; follow/no-shuai states no-op; treatment must beat both live and random widening before any game-screen design. |
-| **P1 / S5 replay census** | Determine whether the bot actually donates point cards on lost tricks when a lower-point legal discard exists. | Boundary fixture passed at `2351b36`; no census run. **Left:** one deterministic score-free replay freeze when it does not compete with T4. | Trigger/refusal counts and replayable identifier-free witnesses | Census may open treatment design only; descriptive human logs alone cannot claim the mechanism. |
+| **P1 / proposal provenance flywheel** | Learn which extra source actually supplies useful actions so proposal budget goes to tactics, V11, throws or humans—not anonymous widening. | Capture has source tags, but the 7,040-row training asset strips them. **Left:** retain tags as diagnostics; report candidate recall, regret and incremental wins per source; select a fixed 1–3 proposal budget against candidate-count-matched random. | Source-aware DESIGN/CALIB table plus one equal-work fresh-state proposal screen | A named source must beat random widening at the same candidate/world budget; source identity is diagnostic metadata, not a hidden-information feature. |
+| **P1 / continuation portfolio** | Fix systematic search pricing errors by evaluating selected actions under more than one plausible continuation, starting with point-aware winning and defensive slough discipline. | S4 was positive in both whole-game estimates but did not confirm; almost all Teacher labels still use one heuristic continuation. S5 has only a boundary fixture. **Left:** frozen S4 heterogeneity analysis, engine-replayed S5 legality census, then one substantively changed portfolio versus a matched single-continuation control. | Trigger-matched fresh-state effect by role/phase plus a bounded continuation successor | Must change the continuation contract, not retry S4. Advance only if treatment beats the matched continuation control with exact equal work. |
+| **P1 / exact two-card endgame curriculum** | Solve a genuinely smaller game first, then distill it: at two cards per seat, alternate actions and hidden worlds are still meaningful but the horizon is bounded. | One-card controller exists but performed zero solver work; all 1,087 exact-late Teacher rows have candidate count one. **Left:** generate real/live-history two-card roots, enumerate alternate legal actions, solve each sampled world under a node cap, aggregate public-belief regret labels, then train/screen a student. | A versioned two-card dataset with solver work, alternate-action regret and a fresh student screen | Nonzero alternate candidates and exact solver work; bounded completion; student beats candidate zero on fresh roots before expanding to three cards. |
+| **P1 / human proposal diagnostic v2** | Use strong human moves as ideas and hard-tail witnesses, then let counterfactual evaluation decide whether they help instead of copying every player. | H0 stopped at 555/557 and published no aggregate; this is no scientific verdict. Server corpus has 2,830 plays/45 buries and identified bury, point-banking and throw witnesses. **Left:** reusable zero-look repair semantics, complete legal replay, source tags and matched human/V11/random comparisons. | Completed engine-replayed proposal-value table by human cohort and decision type | Human proposal must beat matched random on counterfactual value; observational win/loss correlation alone cannot admit a rule. |
+| **P2 / posterior calibration** | Check whether determinized hidden hands have the right probabilities, not only legal support; more MC converges to the sampler's distribution even when that distribution is biased. | Hard validity/support gates pass; global posterior fidelity is unproved. **Left:** exact-toy posterior targets, likelihood/calibration diagnostics, then a separately gated weighting or belief model. | Exact-toy calibration report with a falsifiable uniform-baseline comparison | No posterior-changing production flag until calibration improves without breaking support, replayability or action semantics. |
 | **P1 / repo integration cleanup** | Replace the long experimental PR stack with one reviewable integration on current `main`, without deleting run provenance. | PR #11 merged; #10/#12/#21/#25 and terminal no-use #26 closed; 17 remote branches, 14 merged/superseded local branch names and 23 clean worktrees removed. Evidence-bearing merged worktrees were detached but retained. One already-missing V11 worktree record was pruned. Draft PR #30 compacts docs, protects nine source-required markers and adds green PR checks; stacked PR #31 removes only proven-unreferenced `segbatch.py`. **Left:** review/merge #30, retarget/review #31, finish T4 evidence, then build one current-main Stage-C integration and audit evidence worktrees before removal. | One current-main integration PR plus branch/worktree inventory | Every retained source path has a consumer; every removed branch is merged/superseded or patch-equivalent and owns no sole evidence bytes. |
 | **PARKED / HUMAN-C1** | Ultimately prove a candidate improves play against people, not only other bots. | Inert harness only; no traffic authority. **Left:** identity-bound candidate receipt, authenticated consent, immutable blocks, synthetic C0 and estimator. | Reviewed blinded candidate-versus-champion human test | Resume only after a challenger beats report-LCB in fresh bot confirmation and separate traffic authority exists. |
 
@@ -74,7 +84,8 @@ The causal sequence is:
 2. train at least eight seeds for each predeclared objective;
 3. choose one whole cohort on DESIGN/CALIB;
 4. open untouched REPORT once;
-5. compose only a REPORT passer inside the live search policy; and
+5. compose only a REPORT passer as one proposal against the exact live-policy
+   decision; and
 6. run a fresh treatment/null/champion whole-game screen.
 
 `SELECT_NONE` at steps 3 or 4 is a valid scientific closeout for that exact
@@ -90,7 +101,8 @@ separate confirmation design; it does not authorize confirmation or deploy.
   `SELECT_NONE`. Preserve disagreements as Teacher data; do not tune the spent
   recipe.
 - **S4 point banking:** exact-state and initial whole-game screens passed;
-  independent replication is live.
+  independent replication stayed positive but crossed zero. The exact recipe
+  is closed; continuation heterogeneity may inform a changed successor.
 - **S5 point protection:** replay hypothesis only. Prove the legal alternative
   and current-policy reproduction before writing a treatment.
 - **S6 shuai-pai:** missing-action hypothesis. Source the tactic broadly but
@@ -104,15 +116,20 @@ separate confirmation design; it does not authorize confirmation or deploy.
   exact-late states. Human plays propose actions/states; they are not labels.
 - Store candidate ballots and paired common-world outcomes, not only argmax
   labels. Bind sampler, continuation and acting-team signed utility.
+- Retain candidate provenance for diagnostics; a ranker cannot improve actions
+  it never sees, and anonymous widening prevents source-budget learning.
 - Scale only when learning curves, seed stability and untouched REPORT show the
-  signal survives. Row count alone is not progress.
+  signal survives. Candidate-rich rows and better continuation targets matter
+  more than row count alone.
 
 ### Lane C — learn beyond MC imitation
 
 V11 direct-v2, Direct-Q, O0 and O0-v2 selected none under different gates.
 Their reusable contribution is the eight-seed/CRN/replay chassis. A successor
 must change a substantive target, credit, curriculum, role specialization or
-bounded adaptation mechanism; estimator-only repairs and O1 remain closed.
+bounded adaptation mechanism. Large AWAC/self-play is parked until one
+specialized learner or Teacher composition beats the live champion; otherwise
+it mostly amplifies the same actor, ballot and continuation ceiling.
 
 ## Correctness and data
 

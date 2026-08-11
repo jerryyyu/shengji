@@ -834,12 +834,33 @@ def retire_superseded_controller(
 
 def _superseded_controller(path: Path, hold_record: Path) -> dict:
     packet, slot = _inspect_superseded_controller(path)
-    hold = _hold_record_contract(hold_record)
-    expected = _retirement_payload(packet, hold)
-    if (not is_regular_unlinked(slot)
-            or load_json(slot) != expected):
+    current_hold = _hold_record_contract(hold_record)
+    if not is_regular_unlinked(slot):
         raise ReportControllerRefused(
             "superseded broad REPORT admission is not durably retired")
+    retirement = load_json(slot)
+    frozen_hold = retirement.get("hold_record")
+    if (retirement.get("schema") != SUPERSEDED_RETIREMENT_SCHEMA
+            or retirement.get("retired_run_id") != BASE.RUN_ID
+            or retirement.get("retired_controller_packet_sha256")
+            != SUPERSEDED_PACKET_SHA256
+            or retirement.get("retired_controller_packet_internal_sha256")
+            != packet["packet_sha256"]
+            or not isinstance(frozen_hold, dict)
+            or frozen_hold.get("absolute_path")
+            != str(hold_record.resolve())
+            or frozen_hold.get("hold_section_sha256")
+            != current_hold["hold_section_sha256"]
+            or frozen_hold.get("raw_pass_marker_occurrences_at_retirement")
+            != 0
+            or retirement.get("blocks_old_admit_before_packet_or_review_open")
+            is not True
+            or retirement.get("retry_or_reactivation_authorized") is not False
+            or retirement.get("report_utility_opened") is not False
+            or retirement.get("retirement_sha256")
+            != self_hash(retirement, "retirement_sha256")):
+        raise ReportControllerRefused(
+            "superseded broad REPORT retirement tombstone drift")
     return {
         "schema": "teacher-stage-c-broad-report-supersession-v1",
         "absolute_path": str(path.resolve()),
@@ -848,11 +869,11 @@ def _superseded_controller(path: Path, hold_record: Path) -> dict:
         "run_id": packet["run_id"],
         "frozen_python": packet["runtime_contract"]["python"],
         "external_review_verdict": "HOLD_BEFORE_EVIDENCE",
-        "hold_record": hold,
+        "hold_record": frozen_hold,
         "admission_retirement_slot": str(slot),
         "admission_retirement_slot_sha256": sha256_file(slot),
         "admission_retirement_internal_sha256":
-            expected["retirement_sha256"],
+            retirement["retirement_sha256"],
         "admission_slot_durably_consumed_as_retirement": True,
         "report_open_slot_absent_at_supersession": True,
         "report_receipt_absent_at_supersession": True,
@@ -929,6 +950,17 @@ def build_packet(
             superseded_controller_packet, superseded_hold_record)
     else:
         supersession = copy.deepcopy(dict(frozen_supersession))
+        try:
+            rebuilt_supersession = _superseded_controller(
+                Path(str(supersession["absolute_path"])).resolve(),
+                Path(str(supersession["hold_record"][
+                    "absolute_path"])).resolve())
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ReportControllerRefused(
+                "frozen broad REPORT supersession identity drift") from exc
+        if rebuilt_supersession != supersession:
+            raise ReportControllerRefused(
+                "frozen broad REPORT supersession recomputation drift")
     if (supersession.get("schema")
             != "teacher-stage-c-broad-report-supersession-v1"
             or supersession.get("external_sha256")

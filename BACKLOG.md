@@ -147,10 +147,11 @@ bounded adaptation mechanism; estimator-only repairs and O1 remain closed.
 - [ ] Finish reconnect/takeover, spectator privacy, trick history and portrait/
   zh-CN work as separate product lanes.
 - [ ] Consolidate duplicated experiment wrappers only after reference audit.
-  Draft PR #31 already proves and removes unreferenced `segbatch.py`.
-  Remaining candidates include source-pinned `replay_log.pretty_cards`,
-  duplicated card/seat helpers and superseded one-shot launch controllers;
-  none may move without the same consumer/provenance audit.
+  `segbatch.py` is proven unreferenced and removed by draft PR #31. Remaining
+  candidates include `replay_log.pretty_cards`, duplicated card/seat helpers
+  and superseded one-shot launch controllers; `replay_log.py` is currently
+  source-pinned by H0/S5, so none may move without the same consumer and
+  provenance audit.
 - [ ] Do not simplify away admission, source/hash identity, replay, refusal or
   evidence isolation; replace those only with equally falsifiable machinery.
 

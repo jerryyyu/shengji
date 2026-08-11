@@ -108,7 +108,7 @@ def test_power_summary_exposes_break_even_and_projected_power() -> None:
 
 def test_scope_contract_requires_online_public_reproduction() -> None:
     contract = CTRL.scope_policy_contract(_states())
-    assert contract["outside_scope_action"] == "candidate0"
+    assert contract["report_evaluation_baseline_index"] == 0
     assert contract["capture_predicate"]["evaluator"] == "mc-strong"
     assert contract["capture_predicate"][
         "common_worlds_across_candidate_union"] == 30
@@ -122,7 +122,10 @@ def test_scope_contract_requires_online_public_reproduction() -> None:
         is True
     assert downstream["model_direct_play_authorized"] is False
     assert downstream["scope_trigger_precedes_stage_c_model_proposal"] is True
-    assert downstream["report_lcb_incumbent_fallback_required"] is True
+    assert downstream["outside_scope_policy"] == "unchanged_mc_s0_report_lcb"
+    assert downstream["preserve_complete_live_report_lcb_candidate_ballot"] \
+        is True
+    assert downstream["unchanged_live_policy_is_literal_fallback"] is True
     assert downstream["fresh_whole_game_screen_required"] is True
 
 

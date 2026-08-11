@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import hashlib
+import importlib
 import json
 import os
 import signal
@@ -33,19 +34,27 @@ SCRIPT = Path(__file__).resolve()
 REPO = SCRIPT.parents[2]
 sys.path.insert(0, str(SCRIPT.parent))
 
-import teacher_stage_c_report_controller as CTRL  # noqa: E402
+CTRL = importlib.import_module(os.environ.get(  # noqa: E402
+    "SHENGJI_STAGE_C_REPORT_CONTROLLER",
+    "teacher_stage_c_report_controller"))
 import teacher_stage_c_report_runtime as RUNTIME  # noqa: E402
 
 
-SCHEMA = "teacher-stage-c-protected-anchor-fresh-report-supervisor-v1"
-EXIT_SCHEMA = \
-    "teacher-stage-c-protected-anchor-fresh-report-supervisor-exit-v1"
-FINAL_SCHEMA = \
-    "teacher-stage-c-protected-anchor-fresh-report-supervisor-final-v1"
-REVIEW_SCHEMA = \
-    "teacher-stage-c-protected-anchor-fresh-report-result-review-v1"
-REVIEW_MARKER = \
-    "TEACHER_STAGE_C_V11_FREE_FRESH_REPORT_RESULT_V1_REVIEW "
+SCHEMA = getattr(
+    CTRL, "SUPERVISOR_SCHEMA",
+    "teacher-stage-c-protected-anchor-fresh-report-supervisor-v1")
+EXIT_SCHEMA = getattr(
+    CTRL, "SUPERVISOR_EXIT_SCHEMA",
+    "teacher-stage-c-protected-anchor-fresh-report-supervisor-exit-v1")
+FINAL_SCHEMA = getattr(
+    CTRL, "SUPERVISOR_FINAL_SCHEMA",
+    "teacher-stage-c-protected-anchor-fresh-report-supervisor-final-v1")
+REVIEW_SCHEMA = getattr(
+    CTRL, "SUPERVISOR_REVIEW_SCHEMA",
+    "teacher-stage-c-protected-anchor-fresh-report-result-review-v1")
+REVIEW_MARKER = getattr(
+    CTRL, "SUPERVISOR_REVIEW_MARKER",
+    "TEACHER_STAGE_C_V11_FREE_FRESH_REPORT_RESULT_V1_REVIEW ")
 MAX_WORKERS = CTRL.SUPERVISOR_MAX_WORKERS
 HEARTBEAT_SECONDS = CTRL.SUPERVISOR_HEARTBEAT_SECONDS
 PROGRESS_PATH = Path(
@@ -410,8 +419,11 @@ def preflight_problems(packet: Mapping[str, object], config: Config) \
     except (OSError, subprocess.SubprocessError) as exc:
         problems.append(f"REPORT process inspection failed: {exc}")
     else:
-        if any("teacher_stage_c_report_runtime.py run-shard" in row
-               or "teacher_stage_c_report_runtime.py evaluate" in row
+        runtime_name = Path(getattr(
+            CTRL, "RUNTIME_SCRIPT_PATH",
+            "server/scripts/teacher_stage_c_report_runtime.py")).name
+        if any(f"{runtime_name} run-shard" in row
+               or f"{runtime_name} evaluate" in row
                for row in rows):
             problems.append("a Stage-C REPORT worker process already exists")
     return sorted(set(problems))
@@ -765,7 +777,7 @@ def expected_review_claim(
         "fresh_report_selection_sha256": packet["parents"][
             "fresh_report_selection"]["sealed_selection_sha256"],
         "selected_capability": packet["selected_capability"],
-        "protected_policy": packet["protected_policy"],
+        "protected_policy": packet.get("protected_policy"),
         "report_label_shards": result["report_label_shard_files_opened"],
         "selected_surface_rows_labeled": result[
             "selected_surface_rows_labeled"],

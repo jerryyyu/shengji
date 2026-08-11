@@ -14,6 +14,7 @@ Every admission is consumed even when later work crashes or refuses.
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 import stat
@@ -31,7 +32,9 @@ sys.path.insert(0, str(SCRIPT.parent))
 import teacher_stage_c_capture_runtime as CAPTURE  # noqa: E402
 import teacher_stage_c_fresh_report_controller as FRESH  # noqa: E402
 import teacher_stage_c_label_runtime as LABEL  # noqa: E402
-import teacher_stage_c_report_controller as CTRL  # noqa: E402
+CTRL = importlib.import_module(os.environ.get(  # noqa: E402
+    "SHENGJI_STAGE_C_REPORT_CONTROLLER",
+    "teacher_stage_c_report_controller"))
 import teacher_stage_c_training_controller as TRAIN_CTRL  # noqa: E402
 import teacher_stage_c_training_runtime as TRAIN_RUNTIME  # noqa: E402
 from shengji.rl import stage_c_model as MODEL  # noqa: E402
@@ -39,16 +42,24 @@ from shengji.rl import stage_c_report as REPORT  # noqa: E402
 from shengji.rl import stage_c_training as TRAIN  # noqa: E402
 
 
-RECEIPT_SCHEMA = "teacher-stage-c-protected-anchor-fresh-report-receipt-v1"
-ADMISSION_SCHEMA = \
-    "teacher-stage-c-protected-anchor-fresh-report-admission-v1"
-REPORT_OPEN_ADMISSION_SCHEMA = \
-    "teacher-stage-c-protected-anchor-fresh-report-open-admission-v1"
-SHARD_ADMISSION_SCHEMA = \
-    "teacher-stage-c-protected-anchor-fresh-report-shard-admission-v1"
-SHARD_SCHEMA = \
-    "teacher-stage-c-protected-anchor-fresh-report-label-shard-v1"
-RESULT_SCHEMA = "teacher-stage-c-protected-anchor-fresh-report-result-v1"
+RECEIPT_SCHEMA = getattr(
+    CTRL, "RUNTIME_RECEIPT_SCHEMA",
+    "teacher-stage-c-protected-anchor-fresh-report-receipt-v1")
+ADMISSION_SCHEMA = getattr(
+    CTRL, "RUNTIME_ADMISSION_SCHEMA",
+    "teacher-stage-c-protected-anchor-fresh-report-admission-v1")
+REPORT_OPEN_ADMISSION_SCHEMA = getattr(
+    CTRL, "RUNTIME_REPORT_OPEN_ADMISSION_SCHEMA",
+    "teacher-stage-c-protected-anchor-fresh-report-open-admission-v1")
+SHARD_ADMISSION_SCHEMA = getattr(
+    CTRL, "RUNTIME_SHARD_ADMISSION_SCHEMA",
+    "teacher-stage-c-protected-anchor-fresh-report-shard-admission-v1")
+SHARD_SCHEMA = getattr(
+    CTRL, "RUNTIME_SHARD_SCHEMA",
+    "teacher-stage-c-protected-anchor-fresh-report-label-shard-v1")
+RESULT_SCHEMA = getattr(
+    CTRL, "RUNTIME_RESULT_SCHEMA",
+    "teacher-stage-c-protected-anchor-fresh-report-result-v1")
 RECEIPT_PATH = f"server/runs/logs/{CTRL.RUN_ID}/report-receipt.json"
 RESULT_PATH = f"server/runs/logs/{CTRL.RUN_ID}/report-result.json"
 ADMISSION_PATH = f"server/runs/locks/{CTRL.RUN_ID}.consumed.json"
@@ -187,6 +198,19 @@ def _packet(
     state_set_review_record: Path,
 ) -> tuple[dict, dict, dict, dict, list[dict]]:
     _require_clean_tree()
+    adapter = getattr(CTRL, "validate_runtime_packet", None)
+    if adapter is not None:
+        try:
+            value = adapter(
+                path=path, expected_sha256=expected_sha256,
+                fresh_report_review_record=fresh_report_review_record,
+                state_set_review_record=state_set_review_record)
+        except CTRL.ReportControllerRefused as exc:
+            raise ReportRuntimeRefused(str(exc)) from exc
+        if not isinstance(value, tuple) or len(value) != 5:
+            raise ReportRuntimeRefused(
+                "Stage-C REPORT controller adapter contract drift")
+        return value
     if (path.resolve() != _expected_packet_path()
             or not is_regular_unlinked(path)
             or sha256_file(path) != expected_sha256):
@@ -394,7 +418,7 @@ def _slot_payload(packet: Mapping[str, object], packet_sha256: str,
         "git": packet["producer"]["git"],
         "controller_packet_sha256": packet_sha256,
         "selected_capability": packet["selected_capability"],
-        "protected_policy": packet["protected_policy"],
+        "protected_policy": packet.get("protected_policy"),
         "checkpoint_manifest_sha256": CTRL._manifest_hash(
             packet["checkpoint_manifest"]),
         "report_schedule_sha256": packet["report_schedule"][
@@ -425,7 +449,7 @@ def _report_open_slot_payload(
         "report_schedule_sha256": packet["report_schedule"][
             "schedule_sha256"],
         "selected_capability": packet["selected_capability"],
-        "protected_policy": packet["protected_policy"],
+        "protected_policy": packet.get("protected_policy"),
         "consumed_before_any_teacher_label_or_model_prediction": True,
         "retry_after_failure_authorized": False,
     }
@@ -464,7 +488,7 @@ def admit(*, packet_path: Path, expected_packet_sha256: str,
         "controller_packet_sha256": expected_packet_sha256,
         "controller_review_record_sha256": sha256_file(review_record),
         "selected_capability": packet["selected_capability"],
-        "protected_policy": packet["protected_policy"],
+        "protected_policy": packet.get("protected_policy"),
         "admission_slot": ADMISSION_PATH,
         "admission_slot_sha256": slot_sha256,
         "report_open_admission_slot": REPORT_OPEN_ADMISSION_PATH,
@@ -512,7 +536,8 @@ def _receipt(path: Path, expected_sha256: str,
             != sha256_file(review_record)
             or receipt.get("selected_capability")
             != packet["selected_capability"]
-            or receipt.get("protected_policy") != packet["protected_policy"]
+            or receipt.get("protected_policy") != packet.get(
+                "protected_policy")
             or receipt.get("admission_slot") != ADMISSION_PATH
             or receipt.get("admission_slot_sha256") != sha256_file(slot_path)
             or receipt.get("report_open_admission_slot")
@@ -866,7 +891,7 @@ def recompute_result(
             examples, predictions, surface=capability["surface"],
             head=capability["head"],
             prior_distribution=packet["design_prior_distribution"],
-            protected_policy=packet["protected_policy"])
+            protected_policy=packet.get("protected_policy"))
         decision = evaluation["decision"]
         composition_authorized = evaluation[
             "composition_packet_review_authorized"]
@@ -883,7 +908,7 @@ def recompute_result(
         "report_open_admission_slot_sha256": receipt[
             "report_open_admission_slot_sha256"],
         "selected_capability": packet["selected_capability"],
-        "protected_policy": packet["protected_policy"],
+        "protected_policy": packet.get("protected_policy"),
         "checkpoint_manifest_sha256": CTRL._manifest_hash(
             packet["checkpoint_manifest"]),
         "fresh_report_selection_sha256": packet["parents"][

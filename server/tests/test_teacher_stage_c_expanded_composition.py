@@ -37,6 +37,7 @@ def test_expanded_controller_profile_is_namespaced_and_uses_wrappers():
         "'report_runtime':c.REPORT_RUNTIME.CTRL.__name__,"
         "'report_supervisor':c.REPORT_SUPERVISOR.CTRL.__name__,"
         "'runtime':c.RUNTIME_SCRIPT_PATH,"
+        "'preflight_seed0':c.PREFLIGHT_SEED0,'screen_seed0':c.SCREEN_SEED0,"
         "'sources':list(c.SOURCE_PATHS),'commands':c._commands(),"
         "'receipt':c.RUNTIME_RECEIPT_SCHEMA},sort_keys=True))")
     assert result.returncode == 0, result.stderr
@@ -55,6 +56,8 @@ def test_expanded_controller_profile_is_namespaced_and_uses_wrappers():
         == "server/scripts/teacher_stage_c_expanded_composition_runtime.py"
     assert value["receipt"] \
         == "teacher-stage-c-expanded-play-composition-screen-receipt-v1"
+    assert value["preflight_seed0"] == 184_000_000
+    assert value["screen_seed0"] == 185_000_000
     assert value["runtime"] in value["sources"]
     assert "server/scripts/teacher_stage_c_expanded_composition_controller.py" \
         in value["sources"]

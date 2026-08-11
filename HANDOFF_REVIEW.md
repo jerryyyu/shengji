@@ -768,3 +768,48 @@ controller review will follow only a real frozen packet at PR #37's head.
 TEACHER_STAGE_C_MIDLATE_STATE_SCREEN_SOURCE_V1_REVIEW {"controller_freeze_implementation_authorized":true,"evidence_open_authorized":false,"git":"c9fa22b1abeb595b7e5083f37cc5d7cb676f82e3","independent_review":true,"production_deployment":false,"production_promotion":false,"schema":"teacher-stage-c-midlate-state-screen-source-review-v1","strength_claim":false,"verdict":"PASS","whole_game_launch_authorized":false}
 
 ---
+
+## Claude — 2026-08-11 17:38 EDT — PR #30 docs review: merge would truncate the live ledger tail; its own inventory test fails on its own tree
+
+Direct review of docs/hygiene PR #30 at head `ba78d89` (no packet; hourly
+rolling pass). Three concrete findings, none blocking main today but all
+blocking a safe merge:
+
+1. Stale-prefix truncation. The PR's `HANDOFF_REVIEW.md` is an exact byte
+   prefix of current main's (177 of 770 lines; verified with cmp). Merging
+   as-is would drop everything after the 10:22 compaction point: the 15:41
+   and 16:09 Codex entries, my acceptance and 16:52 PASS entries, and five
+   answered column-1 markers including
+   `TEACHER_STAGE_C_MIDLATE_STATE_SCREEN_SOURCE_V1_REVIEW` (which PR #37's
+   frozen packet must authenticate against) and both V3 uncertainty result
+   markers. `HANDOFF_ACTIVE.md` likewise diverges from main's current
+   version (100 vs 96 lines, differing from line 3). Main already adopted
+   this compaction plus the live tail, so the fix is to drop both handoff
+   files from the PR (or regenerate them from main at merge time); any
+   both-modified conflict must be resolved toward main's longer file, never
+   the PR side.
+
+2. The new guard cannot pass. `server/tests/test_review_authority_inventory.py`
+   requires nine markers (H0_*, S3A/S3C_*, S4_POINT_BANKING_DUEL_PACKET_V2,
+   TEACHER_STAGE_C_V3, TEACHER_STAGE_C_CONTROLLER_REBIND_V1) to appear
+   exactly once at column 1 of `HANDOFF_REVIEW.md`, but the PR's compacted
+   ledger contains none of them (they live in the 08-08..08-11 archive
+   file). Measured on the PR's own tree: FAILED
+   ('H0_HUMAN_COUNTERFACTUAL_CONTROLLER_V2_REVIEW', 0). Either the
+   compaction must retain those nine source-required lines in the operative
+   ledger, or the test must read the archive; as written it was evidently
+   never executed. The new `pr-checks.yml` does not run this test, so CI
+   would ship it failing silently and every full local suite gains a
+   permanent 26th failure.
+
+3. Stale current-truth claims. The PR body and docs still describe the
+   pre-exam state ("Mini awaits one concrete packet review", Air free after
+   S4) — superseded by the V3 powered exam's terminal SELECT_NONE (T4
+   closed) and the mid/late lane (PR #35/#36 source PASS at c9fa22b1, PR #37
+   awaiting its frozen packet). Current-state docs should be regenerated at
+   merge time with a date, per the standing docs rule.
+
+No marker requested or issued; this is a docs-PR review comment, mirrored on
+PR #30.
+
+---

@@ -11,6 +11,24 @@ import copy
 import os
 
 
+_BURY_WORK_FIELDS = (
+    "cap",
+    "worlds_requested",
+    "worlds_used",
+    "attempts",
+    "attempt_cap",
+    "candidate_rollouts",
+    "complete",
+)
+_SAMPLER_DELTA_FIELDS = (
+    "sample_attempts",
+    "accepted_worlds",
+    "failed_worlds",
+    "rejected_worlds",
+    "impossible_worlds",
+)
+
+
 def _snapshot_xray(rnd, source_bot):
     """Detach every object the worker may read or mutate.
 
@@ -19,6 +37,99 @@ def _snapshot_xray(rnd, source_bot):
     it after the lock is released.
     """
     return copy.deepcopy(rnd), copy.deepcopy(source_bot)
+
+
+def _bury_xray(rnd, seat: int, isolated_bot) -> dict:
+    """Run and redact one banker-kitty decision for the debug overlay.
+
+    ``last_bury_record`` intentionally contains replay-only material such as
+    the full pre-decision RNG state.  The browser needs the action, scores and
+    finite-work account, not that internal record.  Keep an explicit allowlist
+    here so future fields do not become client-visible by accident.
+    """
+    pick = list(isolated_bot.decide_bury(rnd, seat))
+    policy = getattr(
+        isolated_bot, "policy_name", type(isolated_bot).__name__)
+    record = getattr(isolated_bot, "last_bury_record", None)
+
+    if record is None:
+        return {
+            "policy": policy,
+            "mode": "heuristic",
+            "chosen": pick,
+            "reason": "heuristic_pick",
+            "fallback": False,
+            "margin": None,
+            "gap_vs_incumbent": None,
+            "search_secs": 0.0,
+            "work": None,
+            "sampler_delta": None,
+            "candidates": [{
+                "cards": pick,
+                "sources": ["heuristic"],
+                "banker_avg": None,
+                "worlds": 0,
+                "incumbent": True,
+                "raw_winner": True,
+                "bot_buries": True,
+            }],
+        }
+
+    incumbent_index = record.get("incumbent_index")
+    raw_winner_index = record.get("raw_winner_index")
+    played_index = record.get("played_index")
+    candidates = []
+    for index, candidate in enumerate(record.get("candidates", [])):
+        cards = list(candidate.get("cards", []))
+        candidates.append({
+            "cards": cards,
+            "sources": list(candidate.get("sources", [])),
+            "banker_avg": candidate.get("mean_banker_value"),
+            "worlds": candidate.get("worlds", 0),
+            "incumbent": index == incumbent_index,
+            "raw_winner": index == raw_winner_index,
+            # Bind the UI to the action actually returned, not merely to a
+            # stored index: this stays truthful if a future fallback rewrites
+            # the returned action after search.
+            "bot_buries": sorted(cards) == sorted(pick),
+        })
+    if not candidates:
+        candidates = [{
+            "cards": pick,
+            "sources": ["recorded_choice"],
+            "banker_avg": None,
+            "worlds": 0,
+            "incumbent": played_index == incumbent_index,
+            "raw_winner": played_index == raw_winner_index,
+            "bot_buries": True,
+        }]
+
+    raw_work = record.get("work")
+    work = ({name: raw_work[name] for name in _BURY_WORK_FIELDS
+             if name in raw_work}
+            if isinstance(raw_work, dict) else None)
+    raw_sampler = record.get("sampler_counters")
+    raw_delta = (raw_sampler.get("delta")
+                 if isinstance(raw_sampler, dict) else None)
+    sampler_delta = ({name: raw_delta[name] for name in _SAMPLER_DELTA_FIELDS
+                      if name in raw_delta}
+                     if isinstance(raw_delta, dict) else None)
+
+    return {
+        "policy": record.get("policy", policy),
+        "mode": record.get("mode", "search"),
+        "chosen": pick,
+        "reason": record.get("reason", "recorded_choice"),
+        "fallback": (raw_winner_index is not None
+                     and played_index is not None
+                     and raw_winner_index != played_index),
+        "margin": record.get("margin"),
+        "gap_vs_incumbent": record.get("gap_vs_incumbent"),
+        "search_secs": record.get("search_secs", 0.0),
+        "work": work,
+        "sampler_delta": sampler_delta,
+        "candidates": candidates,
+    }
 
 
 def _xray(rnd, seat: int, isolated_bot) -> dict:
@@ -46,8 +157,11 @@ def _xray(rnd, seat: int, isolated_bot) -> dict:
                              if suit_cards(hand, s, o)
                              and mem.ruff_risk(s, opps)],
         "candidates": None,
+        "bury": None,
     }
-    if rnd.phase == "play" and rnd.turn == seat:
+    if rnd.phase == "bury" and rnd.turn == seat:
+        out["bury"] = _bury_xray(rnd, seat, isolated_bot)
+    elif rnd.phase == "play" and rnd.turn == seat:
         # The snapshot starts at the live bot's exact RNG position.  The pick
         # and displayed values come from the same isolated evaluation.
         pick = isolated_bot.decide_play(rnd, seat)

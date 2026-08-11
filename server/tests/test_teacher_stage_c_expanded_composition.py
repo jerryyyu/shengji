@@ -32,7 +32,10 @@ def test_expanded_controller_profile_is_namespaced_and_uses_wrappers():
     result = _python(
         "import json; import teacher_stage_c_expanded_composition_controller "
         "as c; print(json.dumps({'schema':c.SCHEMA,'run':c.RUN_ID,"
-        "'report':c.REPORT_CTRL.__name__,'runtime':c.RUNTIME_SCRIPT_PATH,"
+        "'report':c.REPORT_CTRL.__name__,"
+        "'report_runtime':c.REPORT_RUNTIME.CTRL.__name__,"
+        "'report_supervisor':c.REPORT_SUPERVISOR.CTRL.__name__,"
+        "'runtime':c.RUNTIME_SCRIPT_PATH,"
         "'sources':list(c.SOURCE_PATHS),'commands':c._commands(),"
         "'receipt':c.RUNTIME_RECEIPT_SCHEMA},sort_keys=True))")
     assert result.returncode == 0, result.stderr
@@ -42,6 +45,10 @@ def test_expanded_controller_profile_is_namespaced_and_uses_wrappers():
     assert value["run"] \
         == "teacher-v3-hard-tail-stage-c-expanded-composition-screen-v1"
     assert value["report"] == "teacher_stage_c_expanded_report_controller"
+    assert value["report_runtime"] \
+        == "teacher_stage_c_expanded_report_controller"
+    assert value["report_supervisor"] \
+        == "teacher_stage_c_expanded_report_controller"
     assert value["runtime"] \
         == "server/scripts/teacher_stage_c_expanded_composition_runtime.py"
     assert value["receipt"] \

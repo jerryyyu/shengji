@@ -186,7 +186,7 @@ learned components, not side diagnostics.
 
 | rank | hypothesis | confidence now | why it could work | next falsifiable output |
 |---|---|---|---|---|
-| **1** | **Use the expanded Teacher ranker only where the champion is uncertain, inside report-LCB's protected fallback.** | **Medium-high for a state-level pass; medium-low for a game-level win.** | Champion-uncertainty is the only broad-play stratum consistently strong on DESIGN and CALIB: about `+0.0271` and `+0.0285`. The global effect is diluted by exact-late zero-choice rows and weaker strata. | Re-freeze under Python 3.14.6 with a predeclared, power-qualified champion-uncertainty scope; if REPORT passes, run one protected treatment/random/champion game screen. |
+| **1** | **Use the expanded Teacher ranker only where the champion is uncertain, inside report-LCB's protected fallback.** | **Medium-high for a state-level pass; medium-low for a game-level win.** | Champion-uncertainty is the only broad-play stratum consistently strong on DESIGN and CALIB: `+0.02715` / `+0.02848`, SD `0.14749` / `0.14698`, with positive LCBs. The global effect is diluted by exact-late zero-choice rows and weaker strata. | Re-freeze all 219 untouched eligible champion-uncertainty states under Python 3.14.6. Their plug-in break-even is only 86/78 states and approximate power is 85–88% at the observed effects; if REPORT passes, run one protected treatment/random/champion game screen. |
 | **2** | **Build a source-aware proposal flywheel: S6 throws, V11, structured tactics and supported human actions propose; the Teacher ranks.** | **Medium-high strategic upside.** | V11's verified value is relative ranking; S6 proves the live ballot broadly omits throws; S3a proves structured actions can beat equal-width random. MC cannot recover an absent action. | Preserve source tags, report recall/regret by source, and train/select a 1–3 action proposal budget that beats candidate-count-matched random widening on fresh states. |
 | **3** | **Improve the continuation model with a small policy portfolio, starting with point-aware play.** | **Medium-high mechanism confidence; medium game confidence.** | S4 is positive in both independent game samples, and the local-to-game shrinkage identifies continuation/trigger interaction rather than a dead idea. | Reanalyze frozen S4 heterogeneity without reopening selection; preregister a changed point-aware continuation bundle or robust portfolio and test it against a matched single-continuation control. |
 | **4** | **Actually solve and distill small endgames, then expand horizon.** | **Medium confidence, high upside.** | Hidden information and long horizons shrink late; this is the cleanest AutoGo-style curriculum and can create labels beyond heuristic continuation. Current exact-late rows provide no ranking signal, so the hypothesis is nearly untested. | Two-card roots with alternate legal actions, sampled-belief exact values, bounded nodes, regret labels and a student-vs-candidate-zero fresh state screen. |
@@ -246,11 +246,14 @@ reviewed 3.14.6 chain.
 
 The highest-value successor is a **new, explicitly narrow policy hypothesis**:
 use the ensemble only on champion-uncertainty states, where DESIGN and CALIB
-effects are both about `+0.028`; preserve candidate zero elsewhere. Recompute
-the stratum-specific variance and available untouched supply, pin power before
-selection, freeze under 3.14.6, and then take one fresh look. This is not a
-claim that the broad model passed; it is a protected, targeted composition
-chosen entirely from DESIGN/CALIB before REPORT.
+effects are `+0.02715` / `+0.02848` with SD `0.14749` / `0.14698`; preserve
+candidate zero elsewhere. The independently recomputed plug-in break-even is
+86/78 comparable states. All 219 untouched eligible champion-uncertainty rows
+after the four prior exclusions give roughly 85–88% normal-approximation power
+at the observed effects, versus an underpowered broad n=480 mixture. Freeze
+that exact 219-state scope under 3.14.6 and then take one fresh look. This is
+not a claim that the broad model passed; it is a protected, targeted
+composition chosen entirely from DESIGN/CALIB before REPORT.
 
 In parallel, do not leave the fleet blocked on that review. S6's equal-work
 64-state proposal-quality screen, source-provenance retention, and the two-card

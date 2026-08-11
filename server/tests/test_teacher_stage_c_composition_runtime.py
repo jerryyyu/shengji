@@ -22,6 +22,12 @@ def _packet():
             "surface": "play", "head": "ranking", "epoch": 8,
         },
         "model_exports_sha256": "c" * 64,
+        "candidate_contract": {
+            "novel_model_proposer": "v11pair_ep07_value",
+            "v11_artifact_path": RUNTIME.V11_PATH,
+            "v11_artifact_sha256": RUNTIME.V11_SHA256,
+        },
+        "authority": {"v11_inference_authorized": True},
     }
 
 
@@ -117,6 +123,9 @@ def _triggered_stage() -> dict:
     value = RUNTIME.SCREEN.feature_off_telemetry()
     value.update({
         "focus_calls": 1,
+        "scope_checks": 1,
+        "scope_eligible": 1,
+        "scope_candidate_rollouts": 60,
         "model_triggers": 1,
         "report_rejections": 1,
     })
@@ -203,7 +212,7 @@ def test_screen_admission_publishes_a_reopenable_slot_receipt_pair(
 
 def _capacity_validation() -> dict:
     off = _exact_work()
-    focused = _exact_work()
+    focused = _exact_work(searches=3, rollouts=1_320, accepted=660)
     return {
         "record_counts": {
             label: 2 * RUNTIME.CTRL.PREFLIGHT_CLUSTERS
@@ -265,7 +274,7 @@ def test_capacity_summary_rejects_rehashed_zero_work() -> None:
     value["work_totals"]["treatment"]["arm"] = _exact_work(
         searches=0, rollouts=0, accepted=0)
     problems = RUNTIME._capacity_summary_problems(value)
-    assert any("work drift" in problem or "differ" in problem
+    assert any("drift" in problem or "differ" in problem
                for problem in problems)
 
 
@@ -409,6 +418,8 @@ def test_factories_route_selected_surface_and_keep_champion_literal(
     packet = _packet()
     source = object()
     ensemble = object()
+    v11 = object()
+    monkeypatch.setattr(RUNTIME, "_load_v11_proposer", lambda _packet: v11)
     seen_source = []
     monkeypatch.setattr(
         RUNTIME.CANDIDATES, "make_play_candidate_source",
@@ -431,8 +442,8 @@ def test_factories_route_selected_surface_and_keep_champion_literal(
     champion(3)
     assert created == [(source, "treatment", 1),
                        (source, "matched-null", 2)]
-    assert seen_source == [(ensemble, {
-        "novel_model_source": "stage_c_mc_teacher",
+    assert seen_source == [(v11, {
+        "novel_model_source": "v11pair",
     })]
     assert champions == [("mc-s0-report-lcb", 3)]
 

@@ -78,7 +78,7 @@ def test_live_source_uses_observing_wrapper_not_detached_helper(
     assert seen["production"] is wrapper
     assert seen["observed_live"] == observed
     assert seen["observed_live_is_parent_bound"] is True
-    assert seen["novel_model_source"] == "stage_c_mc_teacher"
+    assert seen["novel_model_source"] == "v11pair"
 
 
 def test_play_union_uses_teacher_model_without_v11_value_api(
@@ -362,14 +362,13 @@ def test_live_play_source_and_wrapper_integrate_on_replayed_state() -> None:
         net, novel_model_source="v11pair")
     bot = composition.make_play_report_lcb_bot(
         SelectLast(), source, arm="treatment", seed=5)
-    focused = bot._candidates(rnd, state["seat"])
-    live = SOURCE.make_bot("mc-s0-report-lcb", seed=0)._candidates(
-        rnd, state["seat"])
-    assert SOURCE.action_key(focused[0]) == SOURCE.action_key(live[0])
-    assert 1 <= len(focused) <= 2
-    assert bot.stage_c_focus_fallbacks == 0
-    assert bot.last_stage_c_focus_record["candidate_source"][
-        "public_information_only"] is True
+    live = bot._candidates(rnd, state["seat"])
+    union, record = source(bot, rnd, state["seat"], live)
+    assert [SOURCE.action_key(value) for value in union[:len(live)]] \
+        == [SOURCE.action_key(value) for value in live]
+    assert len(live) <= len(union) <= SOURCE.PLAY_CANDIDATE_CAP
+    assert record["public_information_only"] is True
+    assert record["novel_model_source"] == "v11pair"
 
 
 def test_live_lead_source_and_wrapper_do_not_recurse() -> None:
@@ -402,12 +401,14 @@ def test_live_lead_source_and_wrapper_do_not_recurse() -> None:
         SelectLast(), SOURCE.make_play_candidate_source(
             net, novel_model_source="v11pair"),
         arm="treatment", seed=5)
-    focused = bot._candidates(rnd, state["seat"])
-    assert 1 <= len(focused) <= 2
-    assert bot.stage_c_focus_fallbacks == 0
-    assert bot.last_stage_c_focus_record["fallback_to_live_ballot"] is False
-    assert bot.last_stage_c_focus_record["candidate_source"]["schema"] \
-        == SOURCE.SCHEMA
+    live = bot._candidates(rnd, state["seat"])
+    union, record = SOURCE.make_play_candidate_source(
+        net, novel_model_source="v11pair")(
+            bot, rnd, state["seat"], live)
+    assert [SOURCE.action_key(value) for value in union[:len(live)]] \
+        == [SOURCE.action_key(value) for value in live]
+    assert len(live) <= len(union) <= SOURCE.PLAY_CANDIDATE_CAP
+    assert record["schema"] == SOURCE.SCHEMA
 
 
 def test_live_bury_source_integrates_on_replayed_state() -> None:

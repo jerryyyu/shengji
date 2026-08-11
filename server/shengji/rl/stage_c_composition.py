@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import math
 import random
 import time
 from typing import Callable, Mapping, Sequence
@@ -29,9 +30,14 @@ SCHEMA = "teacher-stage-c-focused-proposal-v1"
 PLAY_CANDIDATE_CAP = 20
 BURY_CANDIDATE_CAP = 33
 TELEMETRY_FIELDS = (
-    "focus_calls", "model_keeps", "model_triggers", "fallbacks",
-    "report_overrides", "report_rejections", "report_underfills",
+    "focus_calls", "scope_checks", "scope_eligible", "scope_ineligible",
+    "scope_candidate_rollouts", "model_keeps", "model_triggers",
+    "fallbacks", "report_overrides", "report_rejections",
+    "report_underfills",
 )
+SCOPE_WORLDS = 30
+SCOPE_ATTEMPT_FACTOR = 10
+SCOPE_MARGIN_WINDOW = 2.5
 
 
 class StageCCompositionError(RuntimeError):
@@ -87,6 +93,13 @@ def stage_c_policy_telemetry(bots: Sequence[object]) -> dict:
     for bot in bots:
         values = {
             "focus_calls": getattr(bot, "stage_c_focus_calls", None),
+            "scope_checks": getattr(bot, "stage_c_scope_checks", None),
+            "scope_eligible": getattr(
+                bot, "stage_c_scope_eligible", None),
+            "scope_ineligible": getattr(
+                bot, "stage_c_scope_ineligible", None),
+            "scope_candidate_rollouts": getattr(
+                bot, "stage_c_scope_candidate_rollouts", None),
             "model_keeps": getattr(bot, "stage_c_model_keeps", None),
             "model_triggers": getattr(bot, "stage_c_focus_triggers", None),
             "fallbacks": getattr(bot, "stage_c_focus_fallbacks", None),
@@ -103,13 +116,19 @@ def stage_c_policy_telemetry(bots: Sequence[object]) -> dict:
                 "Stage-C telemetry counter population drift")
         for field, value in values.items():
             totals[field] += value
-    if totals["model_triggers"] > totals["focus_calls"]:
-        raise StageCCompositionError("Stage-C triggers exceed focus calls")
+    if (totals["scope_checks"] > totals["focus_calls"]
+            or totals["scope_eligible"] + totals["scope_ineligible"]
+            > totals["scope_checks"]
+            or totals["model_triggers"] > totals["scope_eligible"]):
+        raise StageCCompositionError("Stage-C scope counters do not nest")
     # A zero-fallback evidence run has a closed decision tree. When a fallback
     # occurred, retain the raw counters so the future gate can reject the run;
     # an exception may have happened after a trigger and therefore overlap it.
     if totals["fallbacks"] == 0 and (
-            totals["focus_calls"]
+            totals["focus_calls"] != totals["scope_checks"]
+            or totals["scope_checks"]
+            != totals["scope_eligible"] + totals["scope_ineligible"]
+            or totals["scope_eligible"]
             != totals["model_keeps"] + totals["model_triggers"]
             or totals["model_triggers"]
             != totals["report_overrides"]
@@ -145,21 +164,29 @@ def _candidate_union(candidates: Sequence[Sequence[str]], surface: str
 
 
 def _matched_random_index(candidates: Sequence[Sequence[str]], *,
-                          state_key: str) -> int:
+                          state_key: str, incumbent_index: int) -> int:
     if not isinstance(state_key, str) or not state_key:
         raise StageCCompositionError("Stage-C composition state key drift")
-    if len(candidates) <= 1:
-        return 0
+    if (isinstance(incumbent_index, bool)
+            or not isinstance(incumbent_index, int)
+            or not 0 <= incumbent_index < len(candidates)):
+        raise StageCCompositionError("Stage-C null incumbent drift")
+    alternatives = [index for index in range(len(candidates))
+                    if index != incumbent_index]
+    if not alternatives:
+        return incumbent_index
     identity = [list(action_key(candidate)) for candidate in candidates]
     digest = hashlib.sha256(
         ("teacher-stage-c-composition-null-v1|" + state_key + "|"
          + repr(identity)).encode()).digest()
-    return 1 + int.from_bytes(digest[:16], "big") % (len(candidates) - 1)
+    return alternatives[int.from_bytes(digest[:16], "big")
+                        % len(alternatives)]
 
 
 def focused_pairs(
     ensemble: StageCEnsemble, rnd, seat: int,
     candidates: Sequence[Sequence[str]], *, state_key: str,
+    protected_incumbent: Sequence[str] | None = None,
 ) -> dict:
     """Freeze treatment/null arms with identical model-triggered work geometry."""
     surface = ensemble.surface
@@ -181,11 +208,23 @@ def focused_pairs(
             or selection.get("surface") != surface
             or selection.get("candidate_count") != len(values)):
         raise StageCCompositionError("Stage-C composition model selection drift")
-    triggered = model_index != 0
-    null_index = (_matched_random_index(values, state_key=state_key)
-                  if triggered else 0)
-    treatment_indices = [0] if not triggered else [0, model_index]
-    null_indices = [0] if not triggered else [0, null_index]
+    incumbent_key = action_key(
+        values[0] if protected_incumbent is None else protected_incumbent)
+    incumbent_matches = [index for index, value in enumerate(values)
+                         if action_key(value) == incumbent_key]
+    if len(incumbent_matches) != 1:
+        raise StageCCompositionError(
+            "Stage-C protected incumbent is absent or duplicated")
+    incumbent_index = incumbent_matches[0]
+    triggered = model_index != incumbent_index
+    null_index = incumbent_index
+    if triggered:
+        null_index = _matched_random_index(
+            values, state_key=state_key, incumbent_index=incumbent_index)
+    treatment_indices = ([incumbent_index] if not triggered else
+                         [incumbent_index, model_index])
+    null_indices = ([incumbent_index] if not triggered else
+                    [incumbent_index, null_index])
     result = {
         "schema": SCHEMA,
         "surface": surface,
@@ -194,7 +233,7 @@ def focused_pairs(
         "state_key": state_key,
         "candidate_count": len(values),
         "candidate_keys": [list(action_key(value)) for value in values],
-        "incumbent_index": 0,
+        "incumbent_index": incumbent_index,
         "model_selected_index": model_index,
         "model_triggered": triggered,
         "matched_random_index": null_index,
@@ -211,8 +250,8 @@ def focused_pairs(
         "production_promotion": False,
         "production_deployment": False,
     }
-    if (result["treatment_candidates"][0] != values[0]
-            or result["null_candidates"][0] != values[0]
+    if (result["treatment_candidates"][0] != values[incumbent_index]
+            or result["null_candidates"][0] != values[incumbent_index]
             or result["searched_arms_treatment"]
             != result["searched_arms_null"]):
         raise StageCCompositionError("Stage-C composition matched-arm drift")
@@ -233,17 +272,121 @@ CandidateSource = Callable[[object, object, int, list[list[str]]],
                            tuple[Sequence[Sequence[str]], Mapping[str, object]]]
 
 
+def champion_uncertainty_diagnostic(
+    bot, rnd, seat: int, candidates: Sequence[Sequence[str]], *,
+    state_key: str,
+) -> dict:
+    """Recompute the score-free capture predicate before Stage-C inference.
+
+    The diagnostic is the same public N=30 common-world ``mc-strong`` test
+    used to source the frozen champion-uncertainty stratum.  It is deliberately
+    separate from both the live champion decision and the later fresh report
+    fold.  Its deterministic stream depends only on the public state key; it
+    never consumes or changes the live policy RNG.
+    """
+    values = _candidate_union(candidates, "play")
+    if len(values) < 2:
+        raise StageCCompositionError(
+            "Stage-C uncertainty scope needs at least two candidates")
+    if not isinstance(state_key, str) or not state_key:
+        raise StageCCompositionError("Stage-C uncertainty state key drift")
+    mem = Memory(
+        rnd, seat, own_kitty=getattr(bot, "BANKER_KITTY", True))
+    before = bot._sampler_snapshot()
+    rows: list[list[float]] = []
+    attempts = 0
+    cap = SCOPE_WORLDS * SCOPE_ATTEMPT_FACTOR
+    original_rng = bot.rng
+    started = time.perf_counter()
+    bot.search_calls += 1
+    try:
+        seed = int.from_bytes(hashlib.sha256(
+            ("teacher-stage-c-live-uncertainty-v1|" + state_key).encode()
+        ).digest()[:16], "big")
+        bot.rng = random.Random(seed)
+        while len(rows) < SCOPE_WORLDS and attempts < cap:
+            attempts += 1
+            sampled = bot._sample_hands(rnd, seat, mem)
+            if sampled is None:
+                continue
+            hands, buried = sampled
+            sign = 1.0 if rnd.is_attacker(seat) else -1.0
+            rows.append([
+                sign * bot._score(bot._rollout(
+                    rnd, seat, hands, buried, candidate))
+                for candidate in values
+            ])
+    finally:
+        bot.rng = original_rng
+        elapsed = time.perf_counter() - started
+        bot.search_secs += elapsed
+        bot.rollouts += len(rows) * len(values)
+    counters = bot._sampler_delta(before)
+    diagnostic = {
+        "schema": "teacher-stage-c-live-uncertainty-selection-v1",
+        "selection_only": True,
+        "stage_c_inference_performed": False,
+        "public_information_only": True,
+        "worlds": len(rows),
+        "attempts": attempts,
+        "candidate_worlds": len(rows) * len(values),
+        "sampler_counters": counters,
+        "means": None,
+        "raw_best_index": None,
+        "paired_gap_vs_candidate0": None,
+        "paired_se_vs_candidate0": None,
+        "production_margin": float(bot.MARGIN),
+        "margin_window": SCOPE_MARGIN_WINDOW,
+        "evaluation_complete": False,
+        "eligible": False,
+        "elapsed_seconds": elapsed,
+    }
+    if len(rows) != SCOPE_WORLDS:
+        bot.short_search_decisions += 1
+        diagnostic["reason"] = "uncertainty_underfilled"
+        return diagnostic
+    if (counters["accepted_worlds"] != SCOPE_WORLDS
+            or counters["failed_worlds"]
+            or counters["rejected_worlds"]
+            or counters["impossible_worlds"]):
+        diagnostic["reason"] = "uncertainty_sampler_refusal"
+        return diagnostic
+    means = [sum(row[index] for row in rows) / len(rows)
+             for index in range(len(values))]
+    best = bot._pick_index(values, means, range(len(values)))
+    gap = means[best] - means[0]
+    diffs = [row[best] - row[0] for row in rows]
+    mean = sum(diffs) / len(diffs)
+    variance = sum((value - mean) ** 2 for value in diffs) / (
+        len(diffs) - 1)
+    se = math.sqrt(variance / len(diffs))
+    margin = float(bot.MARGIN)
+    eligible = best != 0 and abs(gap - margin) <= SCOPE_MARGIN_WINDOW
+    diagnostic.update({
+        "means": means,
+        "raw_best_index": best,
+        "paired_gap_vs_candidate0": gap,
+        "paired_se_vs_candidate0": se,
+        "evaluation_complete": True,
+        "eligible": eligible,
+        "reason": ("eligible" if eligible else
+                   "outside_uncertainty_window"),
+    })
+    return diagnostic
+
+
 def make_play_report_lcb_bot(
     ensemble: StageCEnsemble, candidate_source: CandidateSource, *,
     arm: str, seed: int | None = None,
 ):
-    """Wrap the exact live report-LCB bot with one focused play challenger.
+    """Add one protected Stage-C proposal to the literal live policy.
 
-    The source must construct the separately reviewed Stage-C candidate union.
-    Any source/model/geometry failure falls back to the *entire* unchanged live
-    ballot and is recorded; a whole-game evidence gate must require zero such
-    fallbacks and nonzero model triggers. The learned action still must clear
-    the base policy's fresh paired N=300 report LCB before it can be played.
+    The live report-LCB decision is made first and remains the incumbent.  A
+    separate public N=30 diagnostic over the reviewed capture union determines
+    whether the state is in scope *before* Stage-C runs.  In scope, Stage-C may
+    nominate one challenger; a fresh paired N=300 LCB can replace the already-
+    chosen live action.  Any failure or non-positive report keeps that exact
+    action, not merely candidate zero from the heuristic ballot.
     """
     if ensemble.surface != "play" or arm not in {"treatment", "matched-null"}:
         raise StageCCompositionError("Stage-C play wrapper identity drift")
@@ -264,6 +407,10 @@ def make_play_report_lcb_bot(
             super().__init__(policy_seed)
             _require_live_report_lcb(self)
             self.stage_c_focus_calls = 0
+            self.stage_c_scope_checks = 0
+            self.stage_c_scope_eligible = 0
+            self.stage_c_scope_ineligible = 0
+            self.stage_c_scope_candidate_rollouts = 0
             self.stage_c_focus_triggers = 0
             self.stage_c_focus_fallbacks = 0
             self.stage_c_model_keeps = 0
@@ -273,77 +420,212 @@ def make_play_report_lcb_bot(
             self.last_stage_c_focus_record = None
             self.policy_name = f"stage-c-play-{arm}"
 
-        def _candidates(self, rnd, seat):
-            live = [list(value) for value in super()._candidates(rnd, seat)]
-            self.stage_c_focus_calls += 1
+        def _publish_play_record(
+            self, record: dict, live_record: dict | None,
+            live_play, played,
+        ) -> list[str]:
+            record["live_incumbent"] = list(live_play)
+            record["played"] = list(played)
+            record["live_policy_decision"] = copy.deepcopy(live_record)
+            self.last_stage_c_focus_record = record
+            if live_record is None:
+                decision = {
+                    "schema": "stage-c-composed-decision-v1",
+                    "policy": self.policy_name,
+                    "live_policy_decision": None,
+                }
+            else:
+                decision = copy.deepcopy(live_record)
+            decision["stage_c_composition"] = {
+                key: copy.deepcopy(value) for key, value in record.items()
+                if key != "live_policy_decision"
+            }
+            decision["final_played"] = list(played)
+            decision["final_reason"] = record["reason"]
+            self.last_decision_record = decision
+            return list(played)
+
+        def decide_play(self, rnd, seat):
+            self.last_stage_c_focus_record = None
+            live_play = list(super().decide_play(rnd, seat))
+            live_record = copy.deepcopy(self.last_decision_record)
+            focus_started = False
             try:
-                union, source_record = candidate_source(self, rnd, seat, live)
-                union = _candidate_union(union, "play")
-                if action_key(union[0]) != action_key(live[0]):
+                # Re-read the deterministic ballot through the exact parent.
+                # When the live decision searched, require byte-equivalent
+                # candidates rather than silently composing around a new set.
+                live = [list(value) for value in super()._candidates(rnd, seat)]
+                if (live_record is not None
+                        and live_record.get("candidates") is not None
+                        and [list(value) for value in
+                             live_record["candidates"]] != live):
                     raise StageCCompositionError(
-                        "Stage-C union candidate zero differs from live")
-                _validate_candidate_legality(rnd, seat, union, "play")
-                state_key = _state_key(rnd, seat, union)
-                record = focused_pairs(
-                    ensemble, rnd, seat, union, state_key=state_key)
+                        "Stage-C live ballot changed after incumbent decision")
+                union, source_record = candidate_source(
+                    self, rnd, seat, live)
+                union = _candidate_union(union, "play")
+                if len(union) < 2:
+                    return live_play
+                focus_started = True
+                self.stage_c_focus_calls += 1
+                live_keys = [action_key(value) for value in live]
+                union_keys = [action_key(value) for value in union]
+                if union_keys[:len(live_keys)] != live_keys:
+                    raise StageCCompositionError(
+                        "Stage-C union did not preserve the complete live ballot")
+                if action_key(live_play) not in union_keys:
+                    raise StageCCompositionError(
+                        "Stage-C live incumbent is absent from candidate union")
                 if not isinstance(source_record, Mapping):
                     raise StageCCompositionError(
                         "Stage-C candidate-source record drift")
-                record["candidate_source"] = dict(source_record)
-                record["arm"] = arm
-                record["fallback_to_live_ballot"] = False
-                selected = (record["treatment_candidates"]
-                            if arm == "treatment" else
-                            record["null_candidates"])
-                if record["model_triggered"]:
-                    self.stage_c_focus_triggers += 1
-                else:
-                    self.stage_c_model_keeps += 1
-                self.last_stage_c_focus_record = record
-                return [list(value) for value in selected]
-            except Exception as exc:
-                self.stage_c_focus_fallbacks += 1
-                self.last_stage_c_focus_record = {
+                _validate_candidate_legality(rnd, seat, union, "play")
+                state_key = _state_key(rnd, seat, union)
+
+                # This must precede Stage-C inference.  It deliberately uses
+                # the capture candidate-zero baseline even when the live
+                # report-LCB policy chose a different incumbent.
+                scope = champion_uncertainty_diagnostic(
+                    self, rnd, seat, union, state_key=state_key)
+                if (scope["evaluation_complete"] is not True
+                        or scope["reason"] == "uncertainty_sampler_refusal"):
+                    raise StageCCompositionError(
+                        f"Stage-C scope refused: {scope['reason']}")
+                self.stage_c_scope_checks += 1
+                self.stage_c_scope_candidate_rollouts += int(
+                    scope["candidate_worlds"])
+                base_record = {
                     "schema": SCHEMA,
                     "surface": "play",
                     "arm": arm,
-                    "candidate_count": len(live),
-                    "fallback_to_live_ballot": True,
-                    "failure_type": type(exc).__name__,
-                    "failure": str(exc),
+                    "candidate_count": len(union),
+                    "candidate_source": dict(source_record),
+                    "scope_diagnostic": scope,
+                    "fallback_to_live_ballot": False,
                     "model_direct_override_authorized": False,
                     "fresh_paired_report_lcb_required": True,
                     "strength_claim": False,
                     "production_promotion": False,
                     "production_deployment": False,
                 }
-                return live
-
-        def decide_play(self, rnd, seat):
-            self.last_stage_c_focus_record = None
-            played = super().decide_play(rnd, seat)
-            if self.last_stage_c_focus_record is not None:
-                self.last_stage_c_focus_record["played"] = list(played)
-                decision = self.last_decision_record
-                self.last_stage_c_focus_record["report_lcb_decision"] = (
-                    None if decision is None else {
-                        "reason": decision.get("reason"),
-                        "played_index": decision.get("played_index"),
-                        "report_fold": decision.get("report_fold"),
-                        "work": decision.get("work"),
+                if not scope["eligible"]:
+                    self.stage_c_scope_ineligible += 1
+                    base_record.update({
+                        "model_triggered": False,
+                        "reason": "outside_champion_uncertainty_scope",
+                        "report_fold": None,
                     })
-                record = self.last_stage_c_focus_record
-                if (not record.get("fallback_to_live_ballot")
-                        and record.get("model_triggered")):
-                    reason = (None if decision is None
-                              else decision.get("reason"))
-                    if reason == "report_lcb_override":
-                        self.stage_c_report_overrides += 1
-                    elif reason == "report_lcb_below_min_gain":
-                        self.stage_c_report_rejections += 1
-                    else:
-                        self.stage_c_report_underfills += 1
-            return played
+                    return self._publish_play_record(
+                        base_record, live_record, live_play, live_play)
+
+                record = focused_pairs(
+                    ensemble, rnd, seat, union, state_key=state_key,
+                    protected_incumbent=live_play)
+                record.update(base_record)
+                if not record["model_triggered"]:
+                    self.stage_c_scope_eligible += 1
+                    self.stage_c_model_keeps += 1
+                    record.update({
+                        "reason": "model_kept_live_incumbent",
+                        "report_fold": None,
+                    })
+                    return self._publish_play_record(
+                        record, live_record, live_play, live_play)
+
+                indices = (record["treatment_indices"]
+                           if arm == "treatment" else record["null_indices"])
+                if (len(indices) != 2
+                        or indices[0] != record["incumbent_index"]
+                        or indices[1] == record["incumbent_index"]):
+                    raise StageCCompositionError(
+                        "Stage-C focused play pair geometry drift")
+                challenger_index = indices[1]
+                challenger = union[challenger_index]
+                pre_rng_state = self.rng.getstate()
+                report_seed = _child_seed(
+                    pre_rng_state, "stage-c-play-report")
+                mem = Memory(
+                    rnd, seat,
+                    own_kitty=getattr(self, "BANKER_KITTY", True))
+                before = self._sampler_snapshot()
+                started = time.perf_counter()
+                self.search_calls += 1
+                report = self._report_fold_gap(
+                    rnd, seat, mem, rnd.is_attacker(seat),
+                    challenger, live_play, self.REPORT_FOLD_WORLDS,
+                    seed=report_seed)
+                elapsed = time.perf_counter() - started
+                rollouts = 2 * report["worlds"]
+                self.rollouts += rollouts
+                self.search_secs += elapsed
+                critical = statistic = None
+                if report["complete"]:
+                    critical = self._report_critical(report["worlds"])
+                    statistic = report["gap"] - critical * report["se"]
+                report_record = {
+                    **report,
+                    "fold": "fresh_stage_c_report",
+                    "rule": self.REPORT_RULE,
+                    "critical": critical,
+                    "statistic": statistic,
+                    "min_gain": self.REPORT_MIN_GAIN,
+                    "bound":
+                        "paired_student_t_one_sided_95_conservative_df>=29",
+                }
+                record.update({
+                    "report_seed": report_seed,
+                    "report_fold": report_record,
+                    "challenger_candidate_union_index": challenger_index,
+                    "search_secs": elapsed,
+                    "work": {
+                        "report_budget": 2 * self.REPORT_FOLD_WORLDS,
+                        "report_rollouts": rollouts,
+                        "complete": report["complete"],
+                    },
+                    "sampler_counters": {
+                        "before": before,
+                        "after": self._sampler_snapshot(),
+                        "delta": self._sampler_delta(before),
+                    },
+                })
+                self.stage_c_scope_eligible += 1
+                self.stage_c_focus_triggers += 1
+                if not report["complete"]:
+                    self.short_search_decisions += 1
+                    self.stage_c_report_underfills += 1
+                    record["reason"] = "stage_c_report_underfilled"
+                    return self._publish_play_record(
+                        record, live_record, live_play, live_play)
+                if statistic < self.REPORT_MIN_GAIN:
+                    self.stage_c_report_rejections += 1
+                    record["reason"] = "stage_c_report_lcb_below_min_gain"
+                    return self._publish_play_record(
+                        record, live_record, live_play, live_play)
+                self.stage_c_report_overrides += 1
+                record["reason"] = "stage_c_report_lcb_override"
+                return self._publish_play_record(
+                    record, live_record, live_play, challenger)
+            except Exception as exc:
+                if not focus_started:
+                    self.stage_c_focus_calls += 1
+                self.stage_c_focus_fallbacks += 1
+                record = {
+                    "schema": SCHEMA,
+                    "surface": "play",
+                    "arm": arm,
+                    "candidate_count": 0,
+                    "fallback_to_live_ballot": True,
+                    "failure_type": type(exc).__name__,
+                    "failure": str(exc),
+                    "reason": "stage_c_failure_live_incumbent",
+                    "model_direct_override_authorized": False,
+                    "fresh_paired_report_lcb_required": True,
+                    "strength_claim": False,
+                    "production_promotion": False,
+                    "production_deployment": False,
+                }
+                return self._publish_play_record(
+                    record, live_record, live_play, live_play)
 
     StageCFocusedReportLCB.__name__ = (
         "StageCPlayReportLCB" if arm == "treatment"
@@ -428,6 +710,10 @@ def make_bury_report_lcb_bot(
             super().__init__(policy_seed)
             _require_live_report_lcb(self)
             self.stage_c_focus_calls = 0
+            self.stage_c_scope_checks = 0
+            self.stage_c_scope_eligible = 0
+            self.stage_c_scope_ineligible = 0
+            self.stage_c_scope_candidate_rollouts = 0
             self.stage_c_focus_triggers = 0
             self.stage_c_focus_fallbacks = 0
             self.stage_c_model_keeps = 0
@@ -463,6 +749,8 @@ def make_bury_report_lcb_bot(
                 state_key = _state_key(rnd, seat, union)
                 record = focused_pairs(
                     ensemble, rnd, seat, union, state_key=state_key)
+                self.stage_c_scope_checks += 1
+                self.stage_c_scope_eligible += 1
                 record["candidate_source"] = dict(source_record)
                 record["arm"] = arm
                 record["fallback_to_live_ballot"] = False

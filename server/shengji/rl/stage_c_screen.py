@@ -133,8 +133,14 @@ def _telemetry_problems(value: object, *, feature_on: bool) -> list[str]:
         if fields["fallbacks"]:
             problems.append("Stage-C feature arm used a fallback")
         if fields["focus_calls"] != (
-                fields["model_keeps"] + fields["model_triggers"]):
+                fields["scope_checks"]):
             problems.append("Stage-C feature focus calls do not reconcile")
+        if fields["scope_checks"] != (
+                fields["scope_eligible"] + fields["scope_ineligible"]):
+            problems.append("Stage-C scope checks do not reconcile")
+        if fields["scope_eligible"] != (
+                fields["model_keeps"] + fields["model_triggers"]):
+            problems.append("Stage-C eligible scope does not reconcile")
         if fields["model_triggers"] != (
                 fields["report_overrides"] + fields["report_rejections"]
                 + fields["report_underfills"]):
@@ -179,14 +185,11 @@ def _search_work_problems(
     """Recompute exact live/report work from searches and model triggers.
 
     Live report-LCB spends 30 common selection worlds and 300 paired report
-    worlds per contested play. With K candidates this is ``30*K + 600``
-    rollouts, where ``2 <= K <= 14``, and exactly 330 accepted worlds.
-
-    A focused play trigger fixes K=2. A focused bury trigger adds one N=300
-    two-candidate banker report (600 rollouts, 300 accepted worlds) while its
-    later play decisions retain the ordinary live formula. These identities
-    make a zero-work or partially-accounted record red instead of trusting a
-    hard-coded exact-work flag.
+    worlds per contested play. The protected play wrapper keeps that complete
+    live search, adds one N=30 public scope diagnostic over 2..20 candidates,
+    and on a model trigger adds one fresh N=300 two-action report. A focused
+    bury trigger retains its older one-report geometry. These identities make
+    hidden or partially-accounted work red instead of trusting a boolean.
     """
     if surface not in {"play", "bury"}:
         return ["Stage-C work surface drift"]
@@ -195,13 +198,28 @@ def _search_work_problems(
     accepted = int(counters["accepted_worlds"])
     triggers = int(telemetry["model_triggers"]) if feature_on else 0
     if feature_on and surface == "play":
+        scope_checks = int(telemetry["scope_checks"])
+        scope_rollouts = int(telemetry["scope_candidate_rollouts"])
         problems = []
-        if searches != triggers:
-            problems.append("focused play searches differ from model triggers")
-        if accepted != 330 * triggers:
-            problems.append("focused play accepted-world work drift")
-        if rollouts != 660 * triggers:
-            problems.append("focused play rollout work drift")
+        if (scope_rollouts < 60 * scope_checks
+                or scope_rollouts > 600 * scope_checks
+                or scope_rollouts % 30):
+            problems.append("uncertainty-scope candidate work drift")
+        live_searches = searches - scope_checks - triggers
+        if live_searches < 0:
+            problems.append("protected play search decomposition drift")
+            return problems
+        expected_accepted = (
+            330 * live_searches + 30 * scope_checks + 300 * triggers)
+        if accepted != expected_accepted:
+            problems.append("protected play accepted-world work drift")
+        live_selection_rollouts = (
+            rollouts - scope_rollouts
+            - 600 * live_searches - 600 * triggers)
+        if (live_selection_rollouts < 60 * live_searches
+                or live_selection_rollouts > 420 * live_searches
+                or live_selection_rollouts % 30):
+            problems.append("protected live selection work drift")
         return problems
 
     # Feature-off policies have only live play searches. A bury-focused policy

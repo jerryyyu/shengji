@@ -1,12 +1,12 @@
 """Public-information candidate sourcing for Stage-C model composition.
 
 Stage-C was trained on a bounded union rather than the live MC ballot alone.
-The frozen corpus included a V11-origin action, but proposal provenance is not
-a model feature and the terminal recall gate did not admit V11 for inference.
-Production therefore uses the learned MC-Teacher ensemble itself to propose
-one exhaustive novel action, alongside the live ballot, one named structured
-proposal, and one deterministic random novel action.  The final whole-game
-screen is the authority for this deliberate source-distribution change.
+That frozen union contained the complete live ballot plus a V11-origin action,
+one named structured proposal and one deterministic random novel action.  The
+composition path must reproduce that source family before Stage-C inference;
+using Stage-C itself as the exhaustive proposer would change the distribution
+whose ranking capability passed the state gate and would ask one model to both
+invent and judge its own action.
 
 The builders below deliberately accept the experiment namespace, split and
 state key as inputs.  That lets tests reproduce the frozen capture source
@@ -349,7 +349,7 @@ def build_bury_union(
 
 def make_play_candidate_source(
     net, *, policy: str = "mc-s0-report-lcb",
-    novel_model_source: str = "stage_c_mc_teacher",
+    novel_model_source: str = "v11pair",
 ):
     """Return the candidate-source callback consumed by the play wrapper."""
     # Resolve the policy eagerly so a stale registry name refuses factory

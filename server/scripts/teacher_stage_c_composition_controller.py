@@ -103,6 +103,7 @@ SOURCE_PATHS = (
     "server/shengji/rl/stage_c_candidates.py",
     "server/shengji/rl/stage_c_composition.py",
     "server/shengji/rl/stage_c_npnet.py",
+    "server/shengji/rl/npnet.py",
     "server/shengji/rl/stage_c_screen.py",
 )
 
@@ -576,9 +577,30 @@ def candidate_contract() -> dict:
         "play_candidate_cap": CANDIDATES.PLAY_CANDIDATE_CAP,
         "bury_candidate_cap": CANDIDATES.BURY_CANDIDATE_CAP,
         "live_parent": "mc-s0-report-lcb",
-        "novel_model_proposer": "stage_c_mc_teacher_ensemble",
-        "v11_proposer_admitted": False,
-        "v11_artifact_loaded": False,
+        "literal_live_policy_is_incumbent": True,
+        "complete_live_ballot_preserved": True,
+        "novel_model_proposer": "v11pair_ep07_value",
+        "v11_proposer_admitted": True,
+        "v11_artifact_loaded": True,
+        "v11_artifact_path":
+            "server/snapshots_v11pair/ep07.npz",
+        "v11_artifact_sha256":
+            "cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003",
+        "proposal_sources": [
+            "v11pair_top_proposal",
+            "named_structured_lead_or_follow_mechanism",
+            "same_budget_random_diversifier",
+        ],
+        "public_scope_predicate": {
+            "policy": "mc-strong",
+            "common_worlds": COMPOSITION.SCOPE_WORLDS,
+            "attempt_factor": COMPOSITION.SCOPE_ATTEMPT_FACTOR,
+            "production_margin_points": 5.0,
+            "absolute_gap_to_margin_at_most_points":
+                COMPOSITION.SCOPE_MARGIN_WINDOW,
+            "raw_best_index_nonzero": True,
+            "precedes_stage_c_inference": True,
+        },
         "model_proposes_at_most_one_challenger": True,
         "fresh_report_lcb_required": True,
         "direct_model_override_authorized": False,
@@ -712,7 +734,7 @@ def build_packet(
             "screen_packet_review_authorized": False,
             "screen_launch_authorized": False,
             "confirmation_launch_authorized": False,
-            "v11_inference_authorized": False,
+            "v11_inference_authorized": True,
             "strength_claim": False,
             "production_promotion": False,
             "production_deployment": False,
@@ -751,8 +773,12 @@ def expected_review_claim(packet: Mapping[str, object],
             "supervisor_heartbeat_seconds"],
         "supervisor_signal_contract": packet["runtime_contract"][
             "supervisor_signal_contract"],
-        "novel_model_proposer": "stage_c_mc_teacher_ensemble",
-        "v11_inference_authorized": False,
+        "novel_model_proposer": "v11pair_ep07_value",
+        "v11_artifact_path": packet["candidate_contract"][
+            "v11_artifact_path"],
+        "v11_artifact_sha256": packet["candidate_contract"][
+            "v11_artifact_sha256"],
+        "v11_inference_authorized": True,
         "independent_review": True,
         "one_capacity_preflight_authorized": True,
         "one_screen_execution_authorized": False,

@@ -38,6 +38,9 @@ class _Round(SimpleNamespace):
     def bury(self, _seat, _cards):
         return None
 
+    def is_attacker(self, _seat):
+        return True
+
 
 def _round():
     return _Round(phase="play", turn=2, banker=0)
@@ -45,6 +48,45 @@ def _round():
 
 def _bury_round():
     return _Round(phase="bury", turn=None, banker=0)
+
+
+def _eligible_scope(candidate_count: int) -> dict:
+    return {
+        "schema": "teacher-stage-c-live-uncertainty-selection-v1",
+        "evaluation_complete": True,
+        "eligible": True,
+        "reason": "eligible",
+        "candidate_worlds": 30 * candidate_count,
+    }
+
+
+def _patch_live_parent(monkeypatch, live, *, incumbent_index: int = 1):
+    from shengji.ai.registry import REGISTRY
+
+    base = REGISTRY["mc-s0-report-lcb"]
+    monkeypatch.setattr(
+        base, "_candidates",
+        lambda _self, _rnd, _seat: copy.deepcopy(live))
+
+    def decide(self, _rnd, _seat):
+        self.last_decision_record = {
+            "schema": "mc-decision-v2",
+            "candidates": copy.deepcopy(live),
+            "reason": "report_lcb_override",
+            "played_index": incumbent_index,
+        }
+        return list(live[incumbent_index])
+
+    monkeypatch.setattr(base, "decide_play", decide)
+    monkeypatch.setattr(COMPOSE, "Memory", lambda *_args, **_kw: object())
+    monkeypatch.setattr(
+        base, "_report_fold_gap",
+        lambda *_args, **_kw: {
+            "gap": 2.0, "se": 0.1, "worlds": 300,
+            "attempts": 300, "rejected": 0, "complete": True,
+            "seed": _kw["seed"],
+        })
+    return base
 
 
 def test_model_trigger_focuses_treatment_and_matches_null_work(monkeypatch) -> None:
@@ -91,6 +133,76 @@ def test_matched_random_is_replayable_and_candidate_identity_bound(
     assert first["candidate_keys"] != changed["candidate_keys"]
 
 
+def test_protected_incumbent_need_not_be_capture_candidate_zero(
+        monkeypatch) -> None:
+    monkeypatch.setattr(COMPOSE, "encode_obs", lambda _rnd, _seat: [0.0])
+    monkeypatch.setattr(COMPOSE, "encode_action", lambda _action, _rnd: [0.0])
+    candidates = [["H2"], ["HA"], ["S3"], ["D4"]]
+    result = COMPOSE.focused_pairs(
+        _Ensemble(2), _round(), 2, candidates, state_key="protected",
+        protected_incumbent=["HA"])
+    assert result["incumbent_index"] == 1
+    assert result["treatment_indices"] == [1, 2]
+    assert result["null_indices"][0] == 1
+    assert result["null_indices"][1] != 1
+
+
+def test_uncertainty_scope_replays_capture_arithmetic_without_rng_drift(
+        monkeypatch) -> None:
+    monkeypatch.setattr(COMPOSE, "Memory", lambda *_args, **_kw: object())
+    class Bot:
+        MARGIN = 5.0
+        BANKER_KITTY = True
+
+        def __init__(self):
+            self.rng = random.Random(17)
+            self.search_calls = self.rollouts = self.short_search_decisions = 0
+            self.search_secs = 0.0
+            self.sample_attempts = self.accepted_worlds = 0
+            self.failed_worlds = self.rejected_worlds = 0
+            self.impossible_worlds = 0
+
+        def _sampler_snapshot(self):
+            return {name: getattr(self, name) for name in (
+                "sample_attempts", "accepted_worlds", "failed_worlds",
+                "rejected_worlds", "impossible_worlds")}
+
+        def _sampler_delta(self, before):
+            return {name: getattr(self, name) - value
+                    for name, value in before.items()}
+
+        def _sample_hands(self, _rnd, _seat, _mem):
+            self.sample_attempts += 1
+            self.accepted_worlds += 1
+            return {}, []
+
+        @staticmethod
+        def _rollout(_rnd, _seat, _hands, _buried, candidate):
+            return 5.0 if candidate == ["HA"] else 0.0
+
+        @staticmethod
+        def _score(value):
+            return value
+
+        @staticmethod
+        def _pick_index(_candidates, means, indices):
+            return max(indices, key=lambda index: means[index])
+
+    bot = Bot()
+    rnd = _round()
+    before_rng = bot.rng.getstate()
+    result = COMPOSE.champion_uncertainty_diagnostic(
+        bot, rnd, 2, [["H2"], ["HA"]], state_key="public")
+    assert result["eligible"] is True
+    assert result["raw_best_index"] == 1
+    assert result["paired_gap_vs_candidate0"] == 5.0
+    assert result["paired_se_vs_candidate0"] == 0.0
+    assert result["worlds"] == 30
+    assert result["candidate_worlds"] == 60
+    assert bot.search_calls == 1 and bot.rollouts == 60
+    assert bot.rng.getstate() == before_rng
+
+
 @pytest.mark.parametrize("candidates,match", [
     ([[]], "action"),
     ([["H2"], ["H2"]], "candidate union"),
@@ -118,14 +230,14 @@ def test_wrong_turn_or_model_index_refuses(monkeypatch) -> None:
 
 def test_play_wrapper_focuses_one_challenger_and_falls_back_to_full_live(
         monkeypatch) -> None:
-    from shengji.ai.registry import REGISTRY
-
-    base = REGISTRY["mc-s0-report-lcb"]
     live = [["H2"], ["HA"], ["S3"]]
-    monkeypatch.setattr(base, "_candidates",
-                        lambda _self, _rnd, _seat: copy.deepcopy(live))
+    _patch_live_parent(monkeypatch, live, incumbent_index=1)
     monkeypatch.setattr(COMPOSE, "encode_obs", lambda _rnd, _seat: [0.0])
     monkeypatch.setattr(COMPOSE, "encode_action", lambda _action, _rnd: [0.0])
+    monkeypatch.setattr(
+        COMPOSE, "champion_uncertainty_diagnostic",
+        lambda _bot, _rnd, _seat, candidates, **_kw:
+            _eligible_scope(len(candidates)))
 
     def source(_bot, _rnd, _seat, observed):
         assert observed == live
@@ -133,8 +245,8 @@ def test_play_wrapper_focuses_one_challenger_and_falls_back_to_full_live(
 
     bot = COMPOSE.make_play_report_lcb_bot(
         _Ensemble(3), source, arm="treatment", seed=7)
-    focused = bot._candidates(_round(), 2)
-    assert focused == [["H2"], ["D4"]]
+    assert bot._candidates(_round(), 2) == live
+    assert bot.decide_play(_round(), 2) == ["D4"]
     assert bot.stage_c_focus_calls == 1
     assert bot.stage_c_focus_triggers == 1
     assert bot.stage_c_focus_fallbacks == 0
@@ -146,7 +258,7 @@ def test_play_wrapper_focuses_one_challenger_and_falls_back_to_full_live(
 
     fallback = COMPOSE.make_play_report_lcb_bot(
         _Ensemble(1), broken, arm="matched-null", seed=8)
-    assert fallback._candidates(_round(), 2) == live
+    assert fallback.decide_play(_round(), 2) == ["HA"]
     assert fallback.stage_c_focus_fallbacks == 1
     assert fallback.last_stage_c_focus_record[
         "fallback_to_live_ballot"] is True
@@ -154,28 +266,64 @@ def test_play_wrapper_focuses_one_challenger_and_falls_back_to_full_live(
 
 def test_play_wrapper_treatment_and_null_share_triggered_arm_count(
         monkeypatch) -> None:
-    from shengji.ai.registry import REGISTRY
-
-    base = REGISTRY["mc-s0-report-lcb"]
     live = [["H2"], ["HA"], ["S3"], ["D4"]]
-    monkeypatch.setattr(base, "_candidates",
-                        lambda _self, _rnd, _seat: copy.deepcopy(live))
+    _patch_live_parent(monkeypatch, live, incumbent_index=1)
     monkeypatch.setattr(COMPOSE, "encode_obs", lambda _rnd, _seat: [0.0])
     monkeypatch.setattr(COMPOSE, "encode_action", lambda _action, _rnd: [0.0])
+    monkeypatch.setattr(
+        COMPOSE, "champion_uncertainty_diagnostic",
+        lambda _bot, _rnd, _seat, candidates, **_kw:
+            _eligible_scope(len(candidates)))
     source = lambda _bot, _rnd, _seat, observed: (observed, {})
     treatment = COMPOSE.make_play_report_lcb_bot(
         _Ensemble(2), source, arm="treatment", seed=1)
     null = COMPOSE.make_play_report_lcb_bot(
         _Ensemble(2), source, arm="matched-null", seed=1)
-    assert len(treatment._candidates(_round(), 2)) == 2
-    assert len(null._candidates(_round(), 2)) == 2
+    treatment.decide_play(_round(), 2)
+    null.decide_play(_round(), 2)
     assert treatment.last_stage_c_focus_record["model_selected_index"] \
         == null.last_stage_c_focus_record["model_selected_index"] == 2
+    assert treatment.last_stage_c_focus_record["incumbent_index"] == 1
+    assert null.last_stage_c_focus_record["incumbent_index"] == 1
+    assert treatment.last_stage_c_focus_record["searched_arms_treatment"] \
+        == null.last_stage_c_focus_record["searched_arms_null"] == 2
+
+
+def test_outside_scope_never_invokes_stage_c_and_keeps_live_action(
+        monkeypatch) -> None:
+    live = [["H2"], ["HA"]]
+    _patch_live_parent(monkeypatch, live, incumbent_index=1)
+    monkeypatch.setattr(COMPOSE, "encode_obs", lambda _rnd, _seat: [0.0])
+    monkeypatch.setattr(COMPOSE, "encode_action", lambda _action, _rnd: [0.0])
+    monkeypatch.setattr(
+        COMPOSE, "champion_uncertainty_diagnostic",
+        lambda _bot, _rnd, _seat, candidates, **_kw: {
+            **_eligible_scope(len(candidates)),
+            "eligible": False,
+            "reason": "outside_uncertainty_window",
+        })
+
+    class MustNotRun(_Ensemble):
+        def select(self, _obs, _actions):
+            raise AssertionError("Stage C ran before its public scope gate")
+
+    source = lambda *_args: (copy.deepcopy(live), {})
+    bot = COMPOSE.make_play_report_lcb_bot(
+        MustNotRun(0), source, arm="treatment", seed=4)
+    assert bot.decide_play(_round(), 2) == ["HA"]
+    telemetry = COMPOSE.stage_c_policy_telemetry([bot])
+    assert telemetry["scope_ineligible"] == 1
+    assert telemetry["scope_eligible"] == 0
+    assert telemetry["model_triggers"] == 0
 
 
 def test_stage_c_policy_telemetry_reconciles_zero_fallback_run() -> None:
     bot = SimpleNamespace(
         stage_c_focus_calls=7,
+        stage_c_scope_checks=7,
+        stage_c_scope_eligible=7,
+        stage_c_scope_ineligible=0,
+        stage_c_scope_candidate_rollouts=2_100,
         stage_c_model_keeps=3,
         stage_c_focus_triggers=4,
         stage_c_focus_fallbacks=0,
@@ -193,24 +341,14 @@ def test_stage_c_policy_telemetry_reconciles_zero_fallback_run() -> None:
 
 
 def test_play_wrapper_records_closed_activation_telemetry(monkeypatch) -> None:
-    from shengji.ai.registry import REGISTRY
-
-    base = REGISTRY["mc-s0-report-lcb"]
     live = [["H2"], ["HA"]]
-    monkeypatch.setattr(base, "_candidates",
-                        lambda _self, _rnd, _seat: copy.deepcopy(live))
-
-    def decide(self, rnd, seat):
-        candidates = self._candidates(rnd, seat)
-        self.last_decision_record = {
-            "reason": "report_lcb_override", "played_index": 1,
-            "report_fold": {"complete": True}, "work": {"complete": True},
-        }
-        return candidates[1]
-
-    monkeypatch.setattr(base, "decide_play", decide)
+    _patch_live_parent(monkeypatch, live, incumbent_index=0)
     monkeypatch.setattr(COMPOSE, "encode_obs", lambda _rnd, _seat: [0.0])
     monkeypatch.setattr(COMPOSE, "encode_action", lambda _action, _rnd: [0.0])
+    monkeypatch.setattr(
+        COMPOSE, "champion_uncertainty_diagnostic",
+        lambda _bot, _rnd, _seat, candidates, **_kw:
+            _eligible_scope(len(candidates)))
     source = lambda *_args: (copy.deepcopy(live), {})
     bot = COMPOSE.make_play_report_lcb_bot(
         _Ensemble(1), source, arm="treatment", seed=3)
@@ -235,12 +373,8 @@ def test_wrapper_refuses_parent_contract_drift(monkeypatch) -> None:
 
 def test_play_wrapper_falls_back_when_source_candidate_is_illegal(
         monkeypatch) -> None:
-    from shengji.ai.registry import REGISTRY
-
-    base = REGISTRY["mc-s0-report-lcb"]
     live = [["H2"], ["HA"]]
-    monkeypatch.setattr(base, "_candidates",
-                        lambda _self, _rnd, _seat: copy.deepcopy(live))
+    _patch_live_parent(monkeypatch, live, incumbent_index=1)
     monkeypatch.setattr(COMPOSE, "encode_obs", lambda _rnd, _seat: [0.0])
     monkeypatch.setattr(COMPOSE, "encode_action", lambda _action, _rnd: [0.0])
 
@@ -256,7 +390,7 @@ def test_play_wrapper_falls_back_when_source_candidate_is_illegal(
     source = lambda *_args: (live + [["BAD"]], {})
     bot = COMPOSE.make_play_report_lcb_bot(
         _Ensemble(2), source, arm="treatment", seed=2)
-    assert bot._candidates(rnd, 2) == live
+    assert bot.decide_play(rnd, 2) == ["HA"]
     assert bot.stage_c_focus_fallbacks == 1
     assert "replay-illegal" in bot.last_stage_c_focus_record["failure"]
 

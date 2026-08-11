@@ -36,6 +36,13 @@ from shengji.rl import stage_c_composition as COMPOSITION  # noqa: E402
 from shengji.rl import stage_c_model as MODEL  # noqa: E402
 from shengji.rl import stage_c_npnet as NPNET  # noqa: E402
 from shengji.rl import stage_c_screen as SCREEN  # noqa: E402
+from shengji.rl.npnet import NpNet as V11NpNet  # noqa: E402
+
+
+V11_PATH = "server/snapshots_v11pair/ep07.npz"
+V11_SHA256 = (
+    "cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003"
+)
 
 
 ADMISSION_SCHEMA = "teacher-stage-c-composition-screen-admission-v1"
@@ -266,7 +273,7 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, object]:
                 "screen_packet_review_authorized": False,
                 "screen_launch_authorized": False,
                 "confirmation_launch_authorized": False,
-                "v11_inference_authorized": False,
+                "v11_inference_authorized": True,
                 "strength_claim": False,
                 "production_promotion": False,
                 "production_deployment": False,
@@ -559,11 +566,32 @@ def _receipt(
     return receipt, capacity
 
 
+def _load_v11_proposer(packet: Mapping[str, object]):
+    contract = packet.get("candidate_contract")
+    if (not isinstance(contract, dict)
+            or contract.get("novel_model_proposer") != "v11pair_ep07_value"
+            or contract.get("v11_artifact_path") != V11_PATH
+            or contract.get("v11_artifact_sha256") != V11_SHA256
+            or packet.get("authority", {}).get("v11_inference_authorized")
+            is not True):
+        raise CompositionRuntimeRefused(
+            "composition V11 proposal contract drift")
+    path = REPO / V11_PATH
+    if not is_regular_unlinked(path) or sha256_file(path) != V11_SHA256:
+        raise CompositionRuntimeRefused(
+            "composition V11 proposal artifact drift")
+    net = V11NpNet(str(path))
+    for value in net.w.values():
+        value.flags.writeable = False
+    return net
+
+
 def _factories(packet: Mapping[str, object], ensemble):
     surface = str(packet["selected_capability"]["surface"])
     if surface == "play":
+        v11 = _load_v11_proposer(packet)
         source = CANDIDATES.make_play_candidate_source(
-            ensemble, novel_model_source="stage_c_mc_teacher")
+            v11, novel_model_source="v11pair")
         make_stage = COMPOSITION.make_play_report_lcb_bot
     elif surface == "bury":
         source = CANDIDATES.make_bury_candidate_source()

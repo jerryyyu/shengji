@@ -38,6 +38,8 @@ def _stage(*, trigger: bool, override: bool = False):
     if trigger:
         values.update({
             "focus_calls": 1,
+            "scope_checks": 1,
+            "scope_eligible": 1,
             "model_triggers": 1,
             "report_overrides": int(override),
             "report_rejections": int(not override),
@@ -152,6 +154,10 @@ def test_factory_runner_uses_mirrored_seed_streams_and_records_telemetry(
         value = SimpleNamespace()
         if stage_c:
             value.stage_c_focus_calls = 1
+            value.stage_c_scope_checks = 1
+            value.stage_c_scope_eligible = 1
+            value.stage_c_scope_ineligible = 0
+            value.stage_c_scope_candidate_rollouts = 60
             value.stage_c_model_keeps = 1
             value.stage_c_focus_triggers = 0
             value.stage_c_focus_fallbacks = 0

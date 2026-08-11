@@ -283,7 +283,7 @@ def test_packet_binds_exact_models_population_and_narrow_authority(
         "screen_packet_review_authorized": False,
         "screen_launch_authorized": False,
         "confirmation_launch_authorized": False,
-        "v11_inference_authorized": False,
+        "v11_inference_authorized": True,
         "strength_claim": False,
         "production_promotion": False,
         "production_deployment": False,
@@ -291,10 +291,11 @@ def test_packet_binds_exact_models_population_and_narrow_authority(
     assert built["packet_sha256"] == CTRL.self_hash(
         built, "packet_sha256")
     assert len(built["result_contract"]["shard_admission_slots"]) == 8
-    assert "v11pair" not in built["parents"]
     assert built["candidate_contract"]["novel_model_proposer"] \
-        == "stage_c_mc_teacher_ensemble"
-    assert built["candidate_contract"]["v11_artifact_loaded"] is False
+        == "v11pair_ep07_value"
+    assert built["candidate_contract"]["v11_artifact_loaded"] is True
+    assert built["candidate_contract"]["literal_live_policy_is_incumbent"] \
+        is True
 
 
 def test_commands_cover_each_shard_and_bind_existing_receipt() -> None:
@@ -369,7 +370,7 @@ def test_initial_review_claim_authorizes_capacity_only(
     assert claim["supervisor_signal_contract"][
         "orphaned_shards_authorized"] is False
     assert claim["confirmation_launch_authorized"] is False
-    assert claim["v11_inference_authorized"] is False
+    assert claim["v11_inference_authorized"] is True
     assert claim["strength_claim"] is False
     assert claim["production_promotion"] is False
 

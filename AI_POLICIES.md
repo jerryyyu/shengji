@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-11 01:00 EDT
+## Current synthesis — 2026-08-11 02:13 EDT
 
 ### Canonical terminal-results table
 
@@ -40,6 +40,7 @@ results table.
 | 08-10 | Teacher Stage-C label v1 | Evaluate every candidate on independent selection/report folds, but incorrectly require every realized hidden world to be unique within and across folds. | **TERMINAL NO-USE / NO AGGREGATE** | eight slots consumed; 2 complete and 6 refused shards; 971/1,024 rows complete; receipt `0c3d7ea0…adc1c`; no aggregate or partial mining | The refusal revealed that world-identity deduplication exhausts late-state support and reweights the posterior. Never continue or aggregate v1. Iid-with-replacement v2 must pass fresh capacity and label gates. |
 | 08-10 | Teacher Stage-C iid-v2 labels | Retain every valid hidden-world draw with replacement, while using independent random streams for selection and reporting, so late states keep their true posterior mass. | **TERMINAL PASS** | 2,048/2,048 states labeled; aggregate `d0b4397c…6cdb9`; zero REPORT access during training selection | The corrected label population is usable. Its 1,536 DESIGN/CALIB rows supported the first model generation; its original REPORT was then spent only by the protected test below and is closed. |
 | 08-11 | Teacher Stage-C expanded labels | Add 5,504 fresh hard-tail DESIGN/CALIB examples around the retained 1,536 while sealing a third untouched REPORT, so the next run can distinguish data scale from objective mismatch. | **TERMINAL + EXTERNAL PASS** | 5,504/5,504 new rows, zero refusals, exact 13,136,320 worlds; aggregate `3deb3a81…f6ca`; combined frozen dataset `c24923f…a8382` has 7,040 states | The larger split-safe training asset is real. It authorizes only the separately reviewed training packet; it is not evidence that a model or bot is stronger. |
+| 08-11 | Teacher Stage-C expanded training | Train matched eight-seed cohorts on 7,040 states, comparing the original all-pairs ranker with a direct “beat candidate zero” loss, and select one whole cohort without opening REPORT. | **DESIGN/CALIB CAPABILITY PASS / EXTERNAL RESULT REVIEW OPEN** | 96/96 cells and 576 checkpoints replayed; selected epoch-32 `all_pairs_v1` bury ranker, 8/8 positive seeds, median improvement `+0.016418` versus candidate zero | More data rescued a stable bury capability; the new direct loss did not win. This earns one sealed REPORT-controller review, not a strength claim. |
 | 08-10 | Teacher Stage-C first training generation | Train eight seeds on 1,536 DESIGN/CALIB states and select whole cohorts rather than a lucky seed, using separate play-ranking and bury surfaces. | **SELECT NONE** | all 48 cells / 288 checkpoints replayed; final play median `-0.000391` versus candidate zero with 3/8 positive seeds; bury about `-0.0372` with 0/8 positive | The training system worked, but this data/objective did not produce a stable improvement. The untouched REPORT stayed closed during selection. |
 | 08-11 | Teacher protected-anchor fresh REPORT | Give the best diagnostic play ensemble one protected chance: keep candidate zero unless an alternative beats it by a strict model margin, then price that frozen rule once on fresh REPORT labels. | **SELECT NONE** | 480/480 rows, 810,944 exact worlds; 171 triggers; mean improvement `-0.008228`, LCB `-0.018944` | The model had localized signal but its frozen overrides were worse overall. No composition, threshold tuning, REPORT reuse or strength screen is authorized. |
 | 08-09 | S4 point-banking exact-state screen | In rollouts, when the bot is already winning the trick and can retain a higher winner, let it bank a 5/10/K instead of always spending the cheapest winner. | **MECHANISM PASS** | overall acting-team point delta `+5.156`, one-sided LCB `+3.029`; attacker/defender means `+6.406/+3.906`; 35 wins, 4 losses, 25 ties; level utility `+0.25` | Banking a point-card winner while retaining higher control helps on the frozen exact-late trigger population in both roles. The whole-game row below shows the effect survives natural traffic. |
@@ -87,8 +88,11 @@ Evidence anchors, in the same order:
   All 5,504 new labels completed with zero refusals and passed independent
   terminal review; aggregate
   `3deb3a81e31b898062d00762a6b8ec603acc4851531dfcbb5ed752b31304f6ca`.
-  Frozen dataset `c24923f…a8382` and 96-cell packet `d137f31…71888` now await
-  separate controller review; no training or strength claim follows yet.
+  Frozen dataset `c24923f…a8382` and 96-cell packet `d137f31…71888` produced
+  terminal aggregate `5ad77eb0…b6bd`. The whole-cohort selector chose the
+  epoch-32 all-pairs bury ranker: 8/8 positive CALIB seeds and median
+  candidate-zero improvement `+0.016418`. The direct candidate-zero loss did
+  not win. REPORT remains sealed and the result is under external review.
 - S4 exact-state screen `abd9f36fa3e84c81b90e22f1c827f828a549f7fd6a9420ffbdb7c168974cdc00`;
   pre-outcome receipt `90124eb6f89c27cedc38770b2da5b3b8597400694281729656105f67803f526b`;
   admission `83993ec6609c2a7528853d4c1db789f137d3f0cbfff97d20fbf526cbd5ff5e6d`.
@@ -214,13 +218,12 @@ Evidence anchors, in the same order:
   action existed and the current champion reproduces the donation. The source
   fixture passed; no census or treatment exists.
 - **Teacher Stage C:** the first 1,536-state, eight-seed generation selected
-  none, and its one protected fresh-REPORT test also selected none. The new
-  experiment is materially different: 7,040 DESIGN/CALIB labels, a third sealed
-  512-state REPORT, and a direct candidate-zero-relative objective compared
-  with the old all-pairs loss. The 5,504-label expansion completed on Mini
-  with zero refusals. It grants no model or strength claim until external
-  terminal review, frozen cohort
-  selection and one untouched REPORT look.
+  none, and its protected play policy selected none on fresh REPORT. At 7,040
+  DESIGN/CALIB states, the second generation selected a stable bury-ranking
+  cohort: all eight seeds improved over candidate zero. The original all-pairs
+  objective beat the direct candidate-zero loss, so data coverage—especially
+  bury coverage—is the leading explanation. This remains a CALIB result until
+  terminal review and one untouched 32-bury-state REPORT look.
 - **Shuai-pai / S6:** KESP showed legal early and late throws absent from the
   search ballot. Draft PR #19 deterministically unions a bounded legal
   phase-wide shuai source with the literal incumbent ballot and keeps candidate

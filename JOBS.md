@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-11 00:58 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-11 02:13 EDT. This file owns live compute and compact
 terminal stubs. Result interpretation lives in `AI_POLICIES.md`; execution
 order in `BACKLOG.md`; full chronology in dated `docs_archive/` logs.
 
@@ -8,18 +8,16 @@ order in `BACKLOG.md`; full chronology in dated `docs_archive/` logs.
 
 | host | live job | safe progress | next admitted use |
 |---|---|---|---|
-| **Mini** | **Idle; expanded training packet under review** | Label result externally passed. Exact source `c18b80e`; 7,040-state dataset `c24923f…a8382` and 96-cell packet `d137f31…71888` froze and byte-reverified. No training receipt/namespace exists. | Raw `TEACHER_STAGE_C_EXPANDED_TRAINING_CONTROLLER_V1_REVIEW`; only PASS may admit the one matched training run. |
-| **Air** | `s4-point-banking-replication-air-180b-v1` | Exact `fb6ec1a`, receipt `fc6d54e7…1077`, 8/8 workers. Last score-free progress 1,506/2,048 primary clusters; 256 exact-null sentinels are also frozen. | Preserve to terminal publication, verify, then independent result review. Never inspect interim utility or retry. |
+| **Mini** | **Idle; expanded training terminal** | Exact `c18b80e`; 96/96 cells and 576 checkpoints fully replayed. Aggregate `5ad77eb0…b6bd` selected the eight epoch-32 all-pairs bury rankers (8/8 positive CALIB seeds). REPORT remains sealed. | Raw `TEACHER_STAGE_C_EXPANDED_TRAINING_RESULT_V1_REVIEW`; only PASS may freeze the score-free PR #32 REPORT packet. |
+| **Air** | `s4-point-banking-replication-air-180b-v1` | Exact `fb6ec1a`, receipt `fc6d54e7…1077`, 8/8 workers. Last score-free progress 1,703/2,048 primary clusters; 256 exact-null sentinels are also frozen. | Preserve to terminal publication, verify, then independent result review. Never inspect interim utility or retry. |
 | **Fly** | `mc-s0-report-lcb` | Release 17 live. Xray kitty-bury support merged in PR #11; no policy change. | Passive latency/correctness monitoring only. |
 
 ## Next compute sequence
 
-1. Independently pass the frozen 7,040-state matched-training controller:
-   two loss recipes, play/bury, eight seeds, three learning-curve fractions,
-   at most eight cells live.
-2. Only that packet PASS may admit training. DESIGN/CALIB selects one
-   whole cohort or `SELECT_NONE`; no seed cherry-pick.
-3. Only a selected cohort may open the third untouched 512-state REPORT once.
+1. Independently pass the terminal 96-cell selection and exact eight-model
+   bury ensemble; no REPORT access follows directly.
+2. Freeze and externally review PR #32's score-free 32-bury-state schedule.
+3. Only that packet PASS may consume the one untouched REPORT look.
 4. Only a REPORT passer may be composed and screened against live report-LCB.
 
 S4 remains an isolated Air lane. S6 source/tests and repository cleanup use no
@@ -30,7 +28,8 @@ strength compute while Mini and Air are occupied.
 | date | job | terminal verdict | anchor / meaning |
 |---|---|---|---|
 | 08-11 | Expanded Stage-C labels | **TERMINAL + EXTERNAL PASS** | Source `32d94a4`; 5,504/5,504 new rows, zero refusals, aggregate `3deb3a81…f6ca`. Its one score-free packet freeze was consumed; no training authority followed directly. |
-| 08-11 | Expanded Stage-C training packet | **FROZEN / REVIEW OPEN / ZERO TRAINING** | Source `c18b80e`; dataset `c24923f…a8382`, packet `d137f31…71888`, 96 matched cells; pinned byte-rebuild passed and third REPORT remains sealed. |
+| 08-11 | Expanded Stage-C training | **CALIB CAPABILITY PASS / RESULT REVIEW OPEN** | Source `c18b80e`; all 96 cells / 576 checkpoints replayed; aggregate `5ad77eb0…b6bd` selected epoch-32 all-pairs bury ranking, 8/8 positive seeds, median `+0.016418` versus candidate zero. REPORT sealed; no strength claim. |
+| 08-11 | Expanded Stage-C REPORT source | **CODE READY / ZERO REPORT ACCESS** | Draft PR #32 `727da09` binds the selected ensemble to 32 sealed bury rows and reuses the existing one-shot runtime/supervisor. Packet freeze waits on terminal training-result PASS. |
 | 08-10 | Protected Stage-C fresh REPORT | **SELECT NONE / EXTERNALLY PASSED** | Source `cd3d7bd`; result `8fa323de…aea6`; 480/480, zero refusals, 810,944 exact worlds. Triggered 171 rows; mean improvement `-0.00822754`, LCB `-0.01894357`. No composition or REPORT reuse. |
 | 08-10 | Stage-C training generation v1 | **SELECT NONE** | Source `18a6fa1`; all 48 cells / 288 checkpoints completed and replayed. Play ranker approached candidate zero but failed the 6/8 seed gate; bury was negative. Fresh REPORT remained unopened until the separately protected test above. |
 | 08-10 | Expanded label packet | **PACKET PASS / EXECUTION CONSUMED** | Source `32d94a4`; 7,040 DESIGN/CALIB states, 5,504 new labels, 512 third REPORT sealed; controller `82447501…2084`. Execution completed in the 08-11 row above. |
@@ -45,9 +44,9 @@ strength compute while Mini and Air are occupied.
 | 08-07 | RLCB-C1 | **CONFIRM** | Aggregate `83f5a9df…f5ef5ea`; `+0.338 +/- 0.068` signed levels versus `mc-strong`, matched null flat. Supports production report-LCB. |
 
 No terminal row grants more authority than its original gate. In particular,
-S4's first PASS does not authorize deployment. The expanded-label PASS
-authorized only the now-consumed score-free packet freeze; training still
-requires the separate controller PASS.
+S4's first PASS does not authorize deployment. The expanded training result is
+CALIB-only; it authorizes nothing until external replay, and even a PASS grants
+only a separately reviewed score-free REPORT-controller freeze.
 
 ## Archive pointers
 

@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Freeze the one-shot fresh-REPORT evaluator for a CALIB-selected model.
+"""Freeze one fresh-REPORT evaluation of the protected-anchor Teacher.
 
-The original Stage-C REPORT labels are diagnostic-only: the V11-free route was
-chosen after their V11 statistic was inspected.  This controller therefore
-binds the separately reviewed fresh REPORT replacement and the exact
-eight-model capability selected on DESIGN/CALIB.  It derives only a digest-
-sealed, score-free eight-shard work schedule.  It does not publish state
-material, compute Teacher labels, run model inference, or open REPORT utility.
+The unconditional Stage-C training route terminally selected no capability.
+A separately reviewed post-terminal diagnostic froze one narrower policy on
+DESIGN: average the eight epoch-32 play-ranking logits and keep candidate zero
+unless the strongest alternative clears a strict 0.2 margin.  CALIB supported
+that hypothesis but was diagnostic, not fresh confirmation.
+
+This controller binds that exact protected policy to the separately reviewed
+fresh REPORT replacement.  It derives only a digest-sealed, score-free
+eight-shard work schedule.  It does not publish state material, compute Teacher
+labels, run model inference, or open REPORT utility.
 
 After independent review, one runtime may consume the durable REPORT slot,
 reconstruct the reviewed fresh states, label the already-selected surface with
@@ -16,6 +20,7 @@ V11 is neither loaded nor reconstructed on this path.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import platform
@@ -34,6 +39,7 @@ sys.path.insert(0, str(SCRIPT.parent))
 import teacher_stage_c_capture_runtime as CAPTURE  # noqa: E402
 import teacher_stage_c_fresh_report_controller as FRESH  # noqa: E402
 import teacher_stage_c_label_runtime as LABEL  # noqa: E402
+import teacher_stage_c_protected_anchor_controller as PROTECTED  # noqa: E402
 import teacher_stage_c_training_controller as TRAIN_CTRL  # noqa: E402
 import teacher_stage_c_training_runtime as TRAIN_RUNTIME  # noqa: E402
 from shengji.rl import stage_c_model as MODEL  # noqa: E402
@@ -41,19 +47,17 @@ from shengji.rl import stage_c_report as REPORT  # noqa: E402
 from shengji.rl import stage_c_training as TRAIN  # noqa: E402
 
 
-SCHEMA = "teacher-stage-c-v11-free-fresh-report-controller-v1"
-PACKET_ID = "teacher-v3-hard-tail-stage-c-v11-free-fresh-report-controller-v1"
-RUN_ID = "teacher-v3-hard-tail-stage-c-v11-free-fresh-report-v1"
+SCHEMA = "teacher-stage-c-protected-anchor-fresh-report-controller-v1"
+PACKET_ID = \
+    "teacher-v3-hard-tail-stage-c-protected-anchor-fresh-report-controller-v1"
+RUN_ID = "teacher-v3-hard-tail-stage-c-protected-anchor-fresh-report-v1"
 CONTROLLER_RUN_ID = \
-    "teacher-v3-hard-tail-stage-c-v11-free-fresh-report-controller-v1"
+    "teacher-v3-hard-tail-stage-c-protected-anchor-fresh-report-controller-v1"
 PACKET_PATH = f"server/runs/logs/{CONTROLLER_RUN_ID}/controller_packet.json"
-TRAINING_AGGREGATE_REVIEW_SCHEMA = \
-    "teacher-stage-c-training-aggregate-review-v1"
-TRAINING_AGGREGATE_REVIEW_MARKER = \
-    "TEACHER_STAGE_C_TRAINING_AGGREGATE_V1_REVIEW "
-REVIEW_SCHEMA = "teacher-stage-c-v11-free-fresh-report-controller-review-v1"
+REVIEW_SCHEMA = \
+    "teacher-stage-c-protected-anchor-fresh-report-controller-review-v1"
 REVIEW_MARKER = \
-    "TEACHER_STAGE_C_V11_FREE_FRESH_REPORT_CONTROLLER_V1_REVIEW "
+    "TEACHER_STAGE_C_PROTECTED_ANCHOR_FRESH_REPORT_CONTROLLER_V1_REVIEW "
 
 REPORT_SURFACE_COUNTS = {"play": 480, "bury": 32}
 REPORT_SHARDS = 8
@@ -74,6 +78,7 @@ SOURCE_PATHS = (
     "server/scripts/teacher_stage_c_label_runtime.py",
     "server/scripts/teacher_stage_c_fresh_report_controller.py",
     "server/scripts/teacher_stage_c_capture_runtime.py",
+    "server/scripts/teacher_stage_c_protected_anchor_controller.py",
 )
 
 
@@ -169,111 +174,191 @@ def runtime_contract() -> dict:
     }
 
 
-def expected_training_aggregate_review_claim(
-    aggregate: Mapping[str, object], aggregate_external_sha256: str,
-) -> dict:
-    selection = aggregate.get("selection")
-    ensemble = aggregate.get("selected_ensemble")
-    if not isinstance(selection, dict) or not isinstance(ensemble, list):
-        raise ReportControllerRefused(
-            "Stage-C training selection/ensemble is missing")
-    return {
-        "schema": TRAINING_AGGREGATE_REVIEW_SCHEMA,
-        "git": aggregate.get("git"),
-        "aggregate_sha256": aggregate_external_sha256,
-        "aggregate_internal_sha256": aggregate.get("aggregate_sha256"),
-        "controller_packet_sha256": aggregate.get(
-            "controller_packet_sha256"),
-        "training_receipt_sha256": aggregate.get("training_receipt_sha256"),
-        "model_dataset_sha256": aggregate.get("model_dataset_sha256"),
-        "cell_count": aggregate.get("cell_count"),
-        "decision": aggregate.get("decision"),
-        "selection_sha256": selection.get("selection_sha256"),
-        "selected_capability": selection.get("selected_capability"),
-        "selected_ensemble_sha256": _manifest_hash(ensemble),
-        "selected_ensemble_models": len(ensemble),
-        "report_rows_opened_by_training_review": 0,
-        "independent_review": True,
-        "one_report_controller_freeze_authorized": True,
-        "report_open_authorized": False,
-        "composition_authorized": False,
-        "strength_claim": False,
-        "production_promotion": False,
-        "production_deployment": False,
-        "verdict": "PASS",
-    }
-
-
-def _cell_paths(training_packet: Mapping[str, object]) -> list[Path]:
-    return [(REPO / str(cell["result"])).resolve()
-            for cell in training_packet["schedule"]["cells"]]
+@contextlib.contextmanager
+def evidence_scope(evidence_repo: Path):
+    """Point frozen-parent validators at the immutable evidence worktree."""
+    modules = []
+    for module in (
+            TRAIN_CTRL, TRAIN_RUNTIME, FRESH, CAPTURE, LABEL,
+            getattr(FRESH, "LABEL", None), getattr(FRESH, "CAPTURE", None)):
+        if module is not None and hasattr(module, "REPO") \
+                and all(module is not value[0] for value in modules):
+            modules.append((module, module.REPO))
+    try:
+        for module, _old in modules:
+            module.REPO = evidence_repo
+        yield
+    finally:
+        for module, old in modules:
+            module.REPO = old
 
 
 def validate_training_aggregate(
-    *, training_packet_path: Path, training_packet_sha256: str,
-    training_review_record: Path, training_receipt_path: Path,
-    training_receipt_sha256: str, aggregate_path: Path,
-    aggregate_sha256: str, aggregate_review_record: Path,
-) -> tuple[dict, dict, dict, dict]:
-    packet, dataset = TRAIN_RUNTIME._packet(
-        training_packet_path, training_packet_sha256)
-    packet["external_sha256"] = training_packet_sha256
-    TRAIN_RUNTIME._receipt(
-        training_receipt_path, training_receipt_sha256, packet,
-        training_packet_sha256, training_review_record)
-    expected = TRAIN_RUNTIME.recompute_aggregate(
-        packet_path=training_packet_path,
-        expected_packet_sha256=training_packet_sha256,
-        receipt_path=training_receipt_path,
-        expected_receipt_sha256=training_receipt_sha256,
-        review_record=training_review_record,
-        cell_paths=_cell_paths(packet))
-    if (aggregate_path.resolve()
-            != (REPO / TRAIN_RUNTIME.AGGREGATE_PATH).resolve()
-            or sha256_file(aggregate_path) != aggregate_sha256
-            or load_json(aggregate_path) != expected):
+    *, evidence_repo: Path, training_review_record: Path,
+) -> tuple[dict, dict, dict]:
+    try:
+        packet, dataset, expected, _play_cells = PROTECTED.validate_parent(
+            evidence_repo=evidence_repo,
+            training_review_record=training_review_record)
+    except (PROTECTED.ProtectedAnchorRefused,
+            TRAIN_RUNTIME.TrainingRuntimeRefused,
+            TRAIN_CTRL.TrainingControllerRefused,
+            TRAIN.StageCTrainingError) as exc:
         raise ReportControllerRefused(
-            "Stage-C training aggregate replay/path/SHA drift")
+            f"Stage-C terminal training replay refused: {exc}") from exc
     selection = expected.get("selection", {})
-    ensemble = expected.get("selected_ensemble")
-    capability = selection.get("selected_capability")
     if (expected.get("decision")
-            != "FREEZE_SINGLE_CAPABILITY_FOR_REPORT_REVIEW"
-            or expected.get("report_packet_review_authorized") is not True
+            != "SELECT_NONE"
+            or expected.get("report_packet_review_authorized") is not False
             or expected.get("report_rows_opened") != 0
             or expected.get("report_open_authorized") is not False
-            or not isinstance(capability, dict)
-            or capability.get("surface") not in MODEL.SURFACES
-            or capability.get("head") not in MODEL.CAPABILITY_HEADS
-            or capability.get("epoch") not in MODEL.EPOCH_GRID
-            or not isinstance(ensemble, list)
-            or len(ensemble) != len(MODEL.TRAINING_SEEDS)
-            or [value.get("seed") for value in ensemble]
+            or selection.get("selected_capability") is not None
+            or expected.get("selected_ensemble") != []
+            or expected.get("aggregate_sha256")
+            != PROTECTED.TRAINING_AGGREGATE_INTERNAL_SHA256
+            or expected.get("model_dataset_sha256")
+            != PROTECTED.MODEL_DATASET_SHA256):
+        raise ReportControllerRefused(
+            "Stage-C terminal training aggregate identity/authority drift")
+    return packet, dataset, expected
+
+
+def protected_policy_contract(capability: Mapping[str, object]) -> dict:
+    """Map the reviewed capability to the exact executable REPORT contract."""
+    expected_capability = {
+        "surface": PROTECTED.SURFACE,
+        "head": PROTECTED.HEAD,
+        "epoch": PROTECTED.EPOCH,
+        "curve_fraction": PROTECTED.CURVE_FRACTION,
+        "seeds": list(MODEL.TRAINING_SEEDS),
+        "ensemble": "arithmetic mean of per-seed rank logits",
+        "incumbent": "candidate0",
+        "alternative": (
+            "highest ensemble-mean rank logit among candidate indices 1+; "
+            "ties choose the lowest index"
+        ),
+        "activation": (
+            "override candidate0 iff alternative ensemble rank logit minus "
+            "candidate0 ensemble rank logit is strictly greater than 0.2"
+        ),
+        "threshold": PROTECTED.EXPECTED_SELECTED_THRESHOLD,
+        "strict_greater_than_threshold": True,
+        "fallback": "candidate0",
+        "bury_behavior": "unchanged incumbent",
+    }
+    if dict(capability) != expected_capability:
+        raise ReportControllerRefused(
+            "protected-anchor capability policy drift")
+    return {
+        "schema": REPORT.PROTECTED_POLICY_SCHEMA,
+        "surface": "play",
+        "head": "ranking",
+        "ensemble": "arithmetic_mean_raw_rank_logits_across_eight_seeds",
+        "incumbent_index": 0,
+        "alternative_start_index": 1,
+        "threshold": PROTECTED.EXPECTED_SELECTED_THRESHOLD,
+        "strict_greater_than_threshold": True,
+        "alternative_tie_break": "lowest_candidate_index",
+        "fallback_index": 0,
+        "bury_behavior": "unchanged_incumbent",
+    }
+
+
+def validate_protected_capability(
+    *, packet_path: Path, packet_sha256: str, review_record: Path,
+    training_aggregate: Mapping[str, object],
+) -> tuple[dict, dict]:
+    if (not is_regular_unlinked(packet_path)
+            or sha256_file(packet_path) != packet_sha256):
+        raise ReportControllerRefused(
+            "protected-anchor packet path/SHA drift")
+    packet = load_json(packet_path)
+    authority = {
+        "new_training_authorized": False,
+        "training_retry_authorized": False,
+        "report_rows_opened": 0,
+        "report_open_authorized": False,
+        "one_report_controller_freeze_authorized": False,
+        "report_execution_authorized": False,
+        "composition_authorized": False,
+        "whole_game_screen_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+    }
+    parent = packet.get("parent", {})
+    manifest = packet.get("checkpoint_manifest")
+    threshold_selection = packet.get("threshold_selection", {})
+    if (packet.get("schema") != PROTECTED.SCHEMA
+            or packet.get("packet_id") != PROTECTED.PACKET_ID
+            or packet.get("packet_sha256")
+            != self_hash(packet, "packet_sha256")
+            or packet.get("producer", {}).get("git")
+            != "65c2b3c56e4e26af92e5710652809df72071e06f"
+            or packet.get("producer", {}).get("tree_dirty") is not False
+            or parent.get("training_aggregate_sha256")
+            != PROTECTED.TRAINING_AGGREGATE_SHA256
+            or parent.get("training_aggregate_internal_sha256")
+            != PROTECTED.TRAINING_AGGREGATE_INTERNAL_SHA256
+            or parent.get("terminal_decision") != "SELECT_NONE"
+            or parent.get("report_rows_opened") != 0
+            or training_aggregate.get("aggregate_sha256")
+            != parent.get("training_aggregate_internal_sha256")
+            or packet.get("authority") != authority
+            or packet.get("diagnostics", {}).get("screen_gate", {}).get(
+                "decision") != "REQUEST_EXTERNAL_CAPABILITY_REVIEW"
+            or not isinstance(manifest, list)
+            or len(manifest) != len(MODEL.TRAINING_SEEDS)
+            or [value.get("seed") for value in manifest]
             != list(MODEL.TRAINING_SEEDS)
-            or any(value.get("surface") != capability["surface"]
-                   or value.get("head") != capability["head"]
-                   or value.get("epoch") != capability["epoch"]
-                   for value in ensemble)):
+            or any(value.get("surface") != PROTECTED.SURFACE
+                   or value.get("head") != PROTECTED.HEAD
+                   or value.get("epoch") != PROTECTED.EPOCH
+                   or value.get("curve_fraction")
+                   != PROTECTED.CURVE_FRACTION
+                   for value in manifest)
+            or packet.get("checkpoint_manifest_sha256")
+            != _manifest_hash(manifest)
+            or packet.get("diagnostics_sha256")
+            != _manifest_hash(packet.get("diagnostics"))
+            or threshold_selection.get("grid")
+            != list(PROTECTED.THRESHOLD_GRID)
+            or threshold_selection.get("selection_split") != "DESIGN"
+            or threshold_selection.get("selected_threshold")
+            != PROTECTED.EXPECTED_SELECTED_THRESHOLD
+            or threshold_selection.get("post_terminal_exploration") is not True
+            or threshold_selection.get("calib_was_inspected_during_diagnosis")
+            is not True
+            or threshold_selection.get("calib_role")
+            != "diagnostic screen only, not fresh confirmation"
+            or threshold_selection.get("fresh_report_role")
+            != "only untouched final offline confirmation"):
         raise ReportControllerRefused(
-            "Stage-C training aggregate selection/authority drift")
-    claim = marker_claim(
-        aggregate_review_record, TRAINING_AGGREGATE_REVIEW_MARKER)
-    expected_claim = expected_training_aggregate_review_claim(
-        expected, aggregate_sha256)
-    if claim != expected_claim:
+            "protected-anchor packet identity/authority drift")
+    policy = protected_policy_contract(packet.get("capability", {}))
+    claim = marker_claim(review_record, PROTECTED.REVIEW_MARKER)
+    if claim != PROTECTED.expected_review_claim(packet, packet_sha256):
         raise ReportControllerRefused(
-            "Stage-C training aggregate PASS marker drift")
-    return packet, dataset, expected, claim
+            "protected-anchor capability PASS marker drift")
+    return packet, policy
 
 
 def _checkpoint_manifest(
     training_packet: Mapping[str, object],
-    aggregate: Mapping[str, object],
+    protected_capability: Mapping[str, object],
+    evidence_repo: Path,
 ) -> list[dict]:
     values = []
-    capability = aggregate["selection"]["selected_capability"]
-    for item in aggregate["selected_ensemble"]:
-        path = (REPO / str(item["checkpoint_path"])).resolve()
+    capability = protected_capability["capability"]
+    manifest = protected_capability.get("checkpoint_manifest")
+    if (not isinstance(manifest, list)
+            or len(manifest) != len(MODEL.TRAINING_SEEDS)
+            or [value.get("seed") for value in manifest]
+            != list(MODEL.TRAINING_SEEDS)):
+        raise ReportControllerRefused(
+            "protected-anchor checkpoint manifest population drift")
+    for item in manifest:
+        path = (evidence_repo / str(item["checkpoint_path"])).resolve()
         if (not is_regular_unlinked(path)
                 or sha256_file(path) != item["checkpoint_sha256"]):
             raise ReportControllerRefused(
@@ -289,10 +374,13 @@ def _checkpoint_manifest(
         if reopened["model_state_sha256"] != item["model_state_sha256"]:
             raise ReportControllerRefused(
                 "Stage-C selected checkpoint model-state drift")
-        values.append({
-            **dict(item),
-            "checkpoint_contract": contract,
-        })
+        if item.get("checkpoint_contract") != contract:
+            raise ReportControllerRefused(
+                "protected-anchor checkpoint contract drift")
+        values.append(dict(item))
+    if values != manifest:
+        raise ReportControllerRefused(
+            "protected-anchor checkpoint manifest drift")
     return values
 
 
@@ -313,15 +401,18 @@ def _candidate_world_ceiling(state: Mapping[str, object]) -> int:
 
 def _selected_fresh_states(
     fresh_report: Mapping[str, object], state_set_review_record: Path,
+    evidence_repo: Path,
 ) -> list[dict]:
     """Recompute the sealed population without publishing its material."""
     try:
         capture_packet, state_set, _verification, _review = \
             FRESH._capture_parents(
-                capture_packet_path=(REPO / FRESH.CAPTURE_PACKET_PATH).resolve(),
-                state_set_path=(REPO / FRESH.CAPTURE_STATE_SET_PATH).resolve(),
+                capture_packet_path=(
+                    evidence_repo / FRESH.CAPTURE_PACKET_PATH).resolve(),
+                state_set_path=(
+                    evidence_repo / FRESH.CAPTURE_STATE_SET_PATH).resolve(),
                 verification_path=(
-                    REPO / FRESH.CAPTURE_VERIFICATION_PATH).resolve(),
+                    evidence_repo / FRESH.CAPTURE_VERIFICATION_PATH).resolve(),
                 state_set_review_record=state_set_review_record)
         capture_shards = FRESH._report_shards(capture_packet, state_set)
         sealed, states = FRESH.sealed_selection(
@@ -388,17 +479,21 @@ def build_report_schedule(
 
 def build_packet(
     *, git: str, training_packet: Mapping[str, object],
+    evidence_repo: Path, training_review_record: Path,
     training_aggregate: Mapping[str, object],
     training_aggregate_sha256: str,
-    training_aggregate_review: Mapping[str, object],
+    protected_capability: Mapping[str, object],
+    protected_capability_sha256: str,
+    protected_capability_review: Mapping[str, object],
+    policy_contract: Mapping[str, object],
     dataset: Mapping[str, object], fresh_report: Mapping[str, object],
     fresh_report_review: Mapping[str, object],
     fresh_states: Sequence[Mapping[str, object]],
 ) -> dict:
-    capability = training_aggregate["selection"]["selected_capability"]
+    capability = protected_capability["capability"]
     surface = str(capability["surface"])
     checkpoints = _checkpoint_manifest(
-        training_packet, training_aggregate)
+        training_packet, protected_capability, evidence_repo)
     report_schedule = build_report_schedule(fresh_states, surface=surface)
     prior = TRAIN.state_balanced_prior(
         dataset["examples"]["DESIGN"][surface])
@@ -418,6 +513,15 @@ def build_packet(
             "sources": _source_sha256s(),
         },
         "parents": {
+            "training_evidence": {
+                "absolute_path": str(evidence_repo.resolve()),
+                "git": PROTECTED.PARENT_GIT,
+                "tracked_tree_clean": True,
+                "training_review_record_absolute_path": str(
+                    training_review_record.resolve()),
+                "training_review_record_sha256": sha256_file(
+                    training_review_record),
+            },
             "training_packet": {
                 "logical_path": TRAIN_CTRL.PACKET_PATH,
                 "external_sha256": training_aggregate[
@@ -428,8 +532,20 @@ def build_packet(
                 "external_sha256": training_aggregate_sha256,
                 "internal_sha256": training_aggregate["aggregate_sha256"],
             },
-            "training_aggregate_review_claim_sha256": _manifest_hash(
-                training_aggregate_review),
+            "protected_capability": {
+                "logical_path": PROTECTED.PACKET_PATH,
+                "external_sha256": protected_capability_sha256,
+                "internal_sha256": protected_capability["packet_sha256"],
+                "review_claim_sha256": _manifest_hash(
+                    protected_capability_review),
+                "checkpoint_manifest_sha256": protected_capability[
+                    "checkpoint_manifest_sha256"],
+                "diagnostics_sha256": protected_capability[
+                    "diagnostics_sha256"],
+                "parent_terminal_decision": protected_capability[
+                    "parent"]["terminal_decision"],
+                "report_rows_opened": 0,
+            },
             "model_dataset": {
                 "logical_path": TRAIN_CTRL.DATASET_PATH,
                 "external_sha256": training_aggregate[
@@ -452,6 +568,7 @@ def build_packet(
             },
         },
         "selected_capability": dict(capability),
+        "protected_policy": dict(policy_contract),
         "runtime_contract": current_runtime,
         "checkpoint_manifest": checkpoints,
         "design_prior_distribution": prior,
@@ -462,11 +579,12 @@ def build_packet(
             "states": REPORT_SURFACE_COUNTS[surface],
             "ensemble_models": len(MODEL.TRAINING_SEEDS),
             "ensemble_seeds": list(MODEL.TRAINING_SEEDS),
-            "rank_ensemble":
-                "mean within-ballot softmax probability across seeds",
+            "rank_ensemble": "arithmetic mean of raw rank logits across seeds",
             "outcome_ensemble": "mean eight-bin probability across seeds",
-            "model_score_tie_epsilon": REPORT.MODEL_SCORE_TIE_EPSILON,
-            "tie_break": "lowest candidate index within epsilon",
+            "protected_policy": dict(policy_contract),
+            "activation_threshold": policy_contract["threshold"],
+            "activation_is_strict": True,
+            "tie_break": "lowest alternative candidate index",
             "primary_gate":
                 "paired-state Teacher improvement vs candidate0 LCB > 0",
             "outcome_head_additional_gate":
@@ -587,7 +705,18 @@ def expected_review_claim(packet: Mapping[str, object],
             "server/shengji/rl/stage_c_report.py"],
         "training_aggregate_sha256": packet["parents"][
             "training_aggregate"]["external_sha256"],
+        "training_evidence_git": packet["parents"][
+            "training_evidence"]["git"],
+        "training_review_record_sha256": packet["parents"][
+            "training_evidence"]["training_review_record_sha256"],
+        "training_parent_terminal_decision": packet["parents"][
+            "protected_capability"]["parent_terminal_decision"],
+        "protected_capability_packet_sha256": packet["parents"][
+            "protected_capability"]["external_sha256"],
+        "protected_capability_review_claim_sha256": packet["parents"][
+            "protected_capability"]["review_claim_sha256"],
         "selected_capability": capability,
+        "protected_policy": packet["protected_policy"],
         "checkpoint_manifest_sha256": _manifest_hash(
             packet["checkpoint_manifest"]),
         "ensemble_models": len(packet["checkpoint_manifest"]),
@@ -605,8 +734,10 @@ def expected_review_claim(packet: Mapping[str, object],
         "supervisor_heartbeat_seconds": SUPERVISOR_HEARTBEAT_SECONDS,
         "supervisor_signal_contract": packet["runtime_contract"][
             "supervisor_signal_contract"],
-        "model_score_tie_epsilon": packet["report_contract"][
-            "model_score_tie_epsilon"],
+        "activation_threshold": packet["report_contract"][
+            "activation_threshold"],
+        "activation_is_strict": packet["report_contract"][
+            "activation_is_strict"],
         "execution_host": packet["runtime_contract"]["host"],
         "python": packet["runtime_contract"]["python"],
         "torch": packet["runtime_contract"]["torch"],
@@ -650,14 +781,12 @@ def publish_exclusive(path: Path, payload: Mapping[str, object]) -> None:
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description=__doc__)
     root.add_argument("command", choices=("freeze", "verify"))
-    root.add_argument("--training-packet", required=True)
-    root.add_argument("--expected-training-packet-sha256", required=True)
+    root.add_argument("--evidence-repo", required=True)
     root.add_argument("--training-review-record", required=True)
-    root.add_argument("--training-receipt", required=True)
-    root.add_argument("--expected-training-receipt-sha256", required=True)
-    root.add_argument("--training-aggregate", required=True)
-    root.add_argument("--expected-training-aggregate-sha256", required=True)
-    root.add_argument("--training-aggregate-review-record", required=True)
+    root.add_argument("--protected-capability-packet", required=True)
+    root.add_argument(
+        "--expected-protected-capability-packet-sha256", required=True)
+    root.add_argument("--protected-capability-review-record", required=True)
     root.add_argument("--fresh-report-controller", required=True)
     root.add_argument("--expected-fresh-report-controller-sha256", required=True)
     root.add_argument("--fresh-report-review-record", required=True)
@@ -667,27 +796,33 @@ def parser() -> argparse.ArgumentParser:
     return root
 
 
-def _validated_inputs(args) -> tuple[dict, dict, dict, dict, dict, dict, list]:
+def _validated_inputs(args) -> tuple[
+        dict, dict, dict, dict, dict, dict, dict, dict, list, Path, Path]:
     if _git("status", "--porcelain"):
         raise ReportControllerRefused(
             "real Stage-C REPORT packet freeze refuses dirty tree")
-    training_packet, dataset, training_aggregate, training_review = \
+    evidence_repo = Path(args.evidence_repo).resolve()
+    training_review_record = Path(args.training_review_record).resolve()
+    training_packet, dataset, training_aggregate = \
         validate_training_aggregate(
-            training_packet_path=Path(args.training_packet).resolve(),
-            training_packet_sha256=args.expected_training_packet_sha256,
-            training_review_record=Path(args.training_review_record).resolve(),
-            training_receipt_path=Path(args.training_receipt).resolve(),
-            training_receipt_sha256=args.expected_training_receipt_sha256,
-            aggregate_path=Path(args.training_aggregate).resolve(),
-            aggregate_sha256=args.expected_training_aggregate_sha256,
-            aggregate_review_record=Path(
-                args.training_aggregate_review_record).resolve())
+            evidence_repo=evidence_repo,
+            training_review_record=training_review_record)
+    protected_capability, policy = validate_protected_capability(
+        packet_path=Path(args.protected_capability_packet).resolve(),
+        packet_sha256=args.expected_protected_capability_packet_sha256,
+        review_record=Path(
+            args.protected_capability_review_record).resolve(),
+        training_aggregate=training_aggregate)
+    protected_review = marker_claim(
+        Path(args.protected_capability_review_record).resolve(),
+        PROTECTED.REVIEW_MARKER)
     try:
-        fresh_report, fresh_review = TRAIN_CTRL.validate_fresh_report(
-            Path(args.fresh_report_controller).resolve(),
-            args.expected_fresh_report_controller_sha256,
-            Path(args.fresh_report_review_record).resolve(),
-            Path(args.state_set_review_record).resolve())
+        with evidence_scope(evidence_repo):
+            fresh_report, fresh_review = TRAIN_CTRL.validate_fresh_report(
+                Path(args.fresh_report_controller).resolve(),
+                args.expected_fresh_report_controller_sha256,
+                Path(args.fresh_report_review_record).resolve(),
+                Path(args.state_set_review_record).resolve())
     except TRAIN_CTRL.TrainingControllerRefused as exc:
         raise ReportControllerRefused(
             f"reviewed fresh REPORT validation failed: {exc}") from exc
@@ -702,10 +837,14 @@ def _validated_inputs(args) -> tuple[dict, dict, dict, dict, dict, dict, list]:
             or dataset.get("fresh_report_states_materialized") is not False):
         raise ReportControllerRefused(
             "Stage-C REPORT fresh-selection/training parent drift")
-    fresh_states = _selected_fresh_states(
-        fresh_report, Path(args.state_set_review_record).resolve())
-    return (training_packet, dataset, training_aggregate, training_review,
-            fresh_report, fresh_review, fresh_states)
+    with evidence_scope(evidence_repo):
+        fresh_states = _selected_fresh_states(
+            fresh_report, Path(args.state_set_review_record).resolve(),
+            evidence_repo)
+    return (training_packet, dataset, training_aggregate,
+            protected_capability, protected_review, policy,
+            fresh_report, fresh_review, fresh_states,
+            evidence_repo, training_review_record)
 
 
 def main() -> int:
@@ -714,10 +853,15 @@ def main() -> int:
     packet = build_packet(
         git=_git("rev-parse", "HEAD"),
         training_packet=inputs[0], dataset=inputs[1],
+        evidence_repo=inputs[9], training_review_record=inputs[10],
         training_aggregate=inputs[2],
-        training_aggregate_sha256=args.expected_training_aggregate_sha256,
-        training_aggregate_review=inputs[3], fresh_report=inputs[4],
-        fresh_report_review=inputs[5], fresh_states=inputs[6])
+        training_aggregate_sha256=PROTECTED.TRAINING_AGGREGATE_SHA256,
+        protected_capability=inputs[3],
+        protected_capability_sha256=
+            args.expected_protected_capability_packet_sha256,
+        protected_capability_review=inputs[4], policy_contract=inputs[5],
+        fresh_report=inputs[6], fresh_report_review=inputs[7],
+        fresh_states=inputs[8])
     out = Path(args.out).resolve()
     if out != (REPO / PACKET_PATH).resolve():
         raise ReportControllerRefused("Stage-C REPORT packet output path drift")

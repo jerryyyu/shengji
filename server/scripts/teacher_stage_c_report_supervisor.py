@@ -37,11 +37,13 @@ import teacher_stage_c_report_controller as CTRL  # noqa: E402
 import teacher_stage_c_report_runtime as RUNTIME  # noqa: E402
 
 
-SCHEMA = "teacher-stage-c-v11-free-fresh-report-supervisor-v1"
-EXIT_SCHEMA = "teacher-stage-c-v11-free-fresh-report-supervisor-exit-v1"
-FINAL_SCHEMA = "teacher-stage-c-v11-free-fresh-report-supervisor-final-v1"
+SCHEMA = "teacher-stage-c-protected-anchor-fresh-report-supervisor-v1"
+EXIT_SCHEMA = \
+    "teacher-stage-c-protected-anchor-fresh-report-supervisor-exit-v1"
+FINAL_SCHEMA = \
+    "teacher-stage-c-protected-anchor-fresh-report-supervisor-final-v1"
 REVIEW_SCHEMA = \
-    "teacher-stage-c-v11-free-fresh-report-result-review-v1"
+    "teacher-stage-c-protected-anchor-fresh-report-result-review-v1"
 REVIEW_MARKER = \
     "TEACHER_STAGE_C_V11_FREE_FRESH_REPORT_RESULT_V1_REVIEW "
 MAX_WORKERS = CTRL.SUPERVISOR_MAX_WORKERS
@@ -763,6 +765,7 @@ def expected_review_claim(
         "fresh_report_selection_sha256": packet["parents"][
             "fresh_report_selection"]["sealed_selection_sha256"],
         "selected_capability": packet["selected_capability"],
+        "protected_policy": packet["protected_policy"],
         "report_label_shards": result["report_label_shard_files_opened"],
         "selected_surface_rows_labeled": result[
             "selected_surface_rows_labeled"],

@@ -51,6 +51,22 @@ def _members(examples, *, choose_one: bool = True,
     return values
 
 
+def _protected_policy() -> dict:
+    return {
+        "schema": REPORT.PROTECTED_POLICY_SCHEMA,
+        "surface": "play",
+        "head": "ranking",
+        "ensemble": "arithmetic_mean_raw_rank_logits_across_eight_seeds",
+        "incumbent_index": 0,
+        "alternative_start_index": 1,
+        "threshold": 0.2,
+        "strict_greater_than_threshold": True,
+        "alternative_tie_break": "lowest_candidate_index",
+        "fallback_index": 0,
+        "bury_behavior": "unchanged_incumbent",
+    }
+
+
 def test_report_ranking_capability_passes_with_positive_paired_lcb() -> None:
     examples = [_example(index) for index in range(40)]
     result = REPORT.evaluate_capability(
@@ -117,3 +133,51 @@ def test_numerically_tied_model_scores_choose_lowest_index() -> None:
         [0.0, REPORT.MODEL_SCORE_TIE_EPSILON / 2], outcomes, "ranking") == 0
     assert REPORT._selected_index(
         [0.0, REPORT.MODEL_SCORE_TIE_EPSILON * 2], outcomes, "ranking") == 1
+
+
+def test_protected_policy_averages_raw_logits_not_member_softmax_votes() -> None:
+    examples = [_example(index) for index in range(40)]
+    members = _members(examples)
+    # One very confident seed outweighs seven mildly negative raw margins.
+    # Averaging per-member softmax votes would choose candidate zero instead.
+    for member_index, (ranks, _outcomes) in enumerate(members):
+        for state_index in range(len(examples)):
+            ranks[state_index] = ([0.0, 10.0] if member_index == 0
+                                  else [0.0, -1.0])
+    softmax_ranks, _ = REPORT.average_ensemble(examples, members)
+    assert softmax_ranks[0][0] > softmax_ranks[0][1]
+    raw_ranks, _ = REPORT.average_raw_logit_ensemble(examples, members)
+    assert raw_ranks[0] == pytest.approx([0.0, 0.375])
+
+    result = REPORT.evaluate_capability(
+        examples, members, surface="play", head="ranking",
+        prior_distribution=[1 / 8] * 8,
+        protected_policy=_protected_policy())
+    assert result["decision"] \
+        == "AUTHORIZE_STAGE_C_COMPOSITION_PACKET_REVIEW"
+    assert result["proposal_triggers"] == 40
+    assert result["rows"][0]["activation_margin"] == pytest.approx(0.375)
+    assert result["ensemble_rule"]["ranking"] \
+        == "arithmetic mean of raw rank logits across seeds"
+
+
+def test_protected_policy_uses_strict_margin_and_candidate_zero_fallback() \
+        -> None:
+    policy = _protected_policy()
+    assert REPORT._protected_selected_index([0.0, 0.2], policy) \
+        == (0, 0.2)
+    selected, margin = REPORT._protected_selected_index(
+        [0.0, 0.2000001, 0.2000002], policy)
+    assert selected == 2
+    assert margin == pytest.approx(0.2000002)
+    assert REPORT._protected_selected_index([4.0], policy) == (0, 0.0)
+
+
+def test_protected_policy_contract_mutation_refuses() -> None:
+    examples = [_example(index) for index in range(40)]
+    changed = _protected_policy()
+    changed["threshold"] = 0.1
+    with pytest.raises(REPORT.StageCReportError, match="policy contract drift"):
+        REPORT.evaluate_capability(
+            examples, _members(examples), surface="play", head="ranking",
+            prior_distribution=[1 / 8] * 8, protected_policy=changed)

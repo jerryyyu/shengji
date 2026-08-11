@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Label and evaluate one reviewed fresh Stage-C REPORT exactly once.
+"""Label and evaluate the reviewed protected-anchor policy once on REPORT.
 
-Admission authenticates the frozen DESIGN/CALIB-selected ensemble and the
+Admission authenticates the frozen DESIGN-selected protected ensemble and the
 digest-sealed replacement population without computing a label or prediction.
 Eight one-shot workers then reconstruct their reviewed state partitions and
 run the finite-work Teacher directly on the captured candidate tensor; they
@@ -39,14 +39,16 @@ from shengji.rl import stage_c_report as REPORT  # noqa: E402
 from shengji.rl import stage_c_training as TRAIN  # noqa: E402
 
 
-RECEIPT_SCHEMA = "teacher-stage-c-v11-free-fresh-report-receipt-v1"
-ADMISSION_SCHEMA = "teacher-stage-c-v11-free-fresh-report-admission-v1"
+RECEIPT_SCHEMA = "teacher-stage-c-protected-anchor-fresh-report-receipt-v1"
+ADMISSION_SCHEMA = \
+    "teacher-stage-c-protected-anchor-fresh-report-admission-v1"
 REPORT_OPEN_ADMISSION_SCHEMA = \
-    "teacher-stage-c-v11-free-fresh-report-open-admission-v1"
+    "teacher-stage-c-protected-anchor-fresh-report-open-admission-v1"
 SHARD_ADMISSION_SCHEMA = \
-    "teacher-stage-c-v11-free-fresh-report-shard-admission-v1"
-SHARD_SCHEMA = "teacher-stage-c-v11-free-fresh-report-label-shard-v1"
-RESULT_SCHEMA = "teacher-stage-c-v11-free-fresh-report-result-v1"
+    "teacher-stage-c-protected-anchor-fresh-report-shard-admission-v1"
+SHARD_SCHEMA = \
+    "teacher-stage-c-protected-anchor-fresh-report-label-shard-v1"
+RESULT_SCHEMA = "teacher-stage-c-protected-anchor-fresh-report-result-v1"
 RECEIPT_PATH = f"server/runs/logs/{CTRL.RUN_ID}/report-receipt.json"
 RESULT_PATH = f"server/runs/logs/{CTRL.RUN_ID}/report-result.json"
 ADMISSION_PATH = f"server/runs/locks/{CTRL.RUN_ID}.consumed.json"
@@ -146,7 +148,8 @@ def _parent_file(parent: Mapping[str, object], label: str) -> tuple[Path, dict]:
 
 
 def _validate_checkpoint_manifest(packet: Mapping[str, object],
-                                  training_packet: Mapping[str, object]) -> None:
+                                  training_packet: Mapping[str, object],
+                                  evidence_repo: Path) -> None:
     capability = packet["selected_capability"]
     manifest = packet.get("checkpoint_manifest")
     if (not isinstance(manifest, list)
@@ -158,7 +161,7 @@ def _validate_checkpoint_manifest(packet: Mapping[str, object],
     training_packet["external_sha256"] = packet["parents"][
         "training_packet"]["external_sha256"]
     for item in manifest:
-        path = (REPO / str(item.get("checkpoint_path"))).resolve()
+        path = (evidence_repo / str(item.get("checkpoint_path"))).resolve()
         if (not is_regular_unlinked(path)
                 or sha256_file(path) != item.get("checkpoint_sha256")
                 or item.get("surface") != capability["surface"]
@@ -218,62 +221,102 @@ def _packet(
 
     parents = packet.get("parents")
     if not isinstance(parents, dict) or set(parents) != {
-            "training_packet", "training_aggregate",
-            "training_aggregate_review_claim_sha256", "model_dataset",
+            "training_evidence", "training_packet", "training_aggregate",
+            "protected_capability", "model_dataset",
             "fresh_report_selection"}:
         raise ReportRuntimeRefused("Stage-C REPORT parent population drift")
-    training_packet_path, training_packet = _parent_file(
-        parents["training_packet"], "training packet")
-    if training_packet_path != (REPO / TRAIN_CTRL.PACKET_PATH).resolve():
-        raise ReportRuntimeRefused("Stage-C REPORT training packet path drift")
-    try:
-        verified_training_packet, verified_dataset = TRAIN_RUNTIME._packet(
-            training_packet_path,
-            str(parents["training_packet"]["external_sha256"]))
-    except TRAIN_RUNTIME.TrainingRuntimeRefused as exc:
-        raise ReportRuntimeRefused(str(exc)) from exc
-    if verified_training_packet != training_packet:
-        raise ReportRuntimeRefused(
-            "Stage-C REPORT training packet replay drift")
 
-    aggregate_path, aggregate = _parent_file(
-        parents["training_aggregate"], "training aggregate")
-    if (aggregate_path != (REPO / TRAIN_RUNTIME.AGGREGATE_PATH).resolve()
-            or aggregate.get("aggregate_sha256")
-            != parents["training_aggregate"]["internal_sha256"]
-            or aggregate.get("selection", {}).get("selected_capability")
-            != packet.get("selected_capability")
-            or aggregate.get("selected_ensemble")
-            != [{key: value for key, value in item.items()
-                 if key != "checkpoint_contract"}
-                for item in packet.get("checkpoint_manifest", [])]):
-        raise ReportRuntimeRefused(
-            "Stage-C REPORT training aggregate selection drift")
-    dataset_path, dataset = _parent_file(
-        parents["model_dataset"], "model dataset")
-    if (dataset_path != (REPO / TRAIN_CTRL.DATASET_PATH).resolve()
-            or dataset != verified_dataset
+    evidence = parents["training_evidence"]
+    if not isinstance(evidence, dict):
+        raise ReportRuntimeRefused("Stage-C REPORT evidence parent drift")
+    evidence_repo = Path(str(evidence.get("absolute_path"))).resolve()
+    training_review_record = Path(str(
+        evidence.get("training_review_record_absolute_path"))).resolve()
+    if (str(evidence_repo) != evidence.get("absolute_path")
+            or evidence.get("git") != CTRL.PROTECTED.PARENT_GIT
+            or evidence.get("tracked_tree_clean") is not True
+            or not CTRL.is_regular_unlinked(training_review_record)
+            or CTRL.sha256_file(training_review_record)
+            != evidence.get("training_review_record_sha256")):
+        raise ReportRuntimeRefused("Stage-C REPORT evidence identity drift")
+    try:
+        training_packet, dataset, aggregate = \
+            CTRL.validate_training_aggregate(
+                evidence_repo=evidence_repo,
+                training_review_record=training_review_record)
+    except CTRL.ReportControllerRefused as exc:
+        raise ReportRuntimeRefused(str(exc)) from exc
+    expected_training_packet_parent = {
+        "logical_path": TRAIN_CTRL.PACKET_PATH,
+        "external_sha256": CTRL.PROTECTED.TRAINING_PACKET_SHA256,
+    }
+    expected_aggregate_parent = {
+        "logical_path": TRAIN_RUNTIME.AGGREGATE_PATH,
+        "external_sha256": CTRL.PROTECTED.TRAINING_AGGREGATE_SHA256,
+        "internal_sha256": CTRL.PROTECTED.TRAINING_AGGREGATE_INTERNAL_SHA256,
+    }
+    expected_dataset_parent = {
+        "logical_path": TRAIN_CTRL.DATASET_PATH,
+        "external_sha256": CTRL.PROTECTED.MODEL_DATASET_SHA256,
+    }
+    if (parents["training_packet"] != expected_training_packet_parent
+            or parents["training_aggregate"] != expected_aggregate_parent
+            or parents["model_dataset"] != expected_dataset_parent
             or dataset.get("dataset_sha256")
-            != TRAIN_CTRL.self_hash(dataset, "dataset_sha256")
+            != CTRL.PROTECTED.MODEL_DATASET_INTERNAL_SHA256
             or dataset.get("old_report_labels_quarantined") is not True
             or dataset.get("report_rows_included") is not False
             or dataset.get("report_label_shard_files_opened") != 0
             or dataset.get("fresh_report_states_materialized") is not False):
-        raise ReportRuntimeRefused("Stage-C REPORT model dataset drift")
+        raise ReportRuntimeRefused(
+            "Stage-C REPORT terminal training parent drift")
 
+    protected_parent = parents["protected_capability"]
+    protected_path, protected = _parent_file(
+        protected_parent, "protected capability")
+    expected_protected_parent = {
+        "logical_path": CTRL.PROTECTED.PACKET_PATH,
+        "external_sha256": protected_parent["external_sha256"],
+        "internal_sha256": protected.get("packet_sha256"),
+        "review_claim_sha256": protected_parent["review_claim_sha256"],
+        "checkpoint_manifest_sha256": protected.get(
+            "checkpoint_manifest_sha256"),
+        "diagnostics_sha256": protected.get("diagnostics_sha256"),
+        "parent_terminal_decision": "SELECT_NONE",
+        "report_rows_opened": 0,
+    }
+    if (protected_path
+            != (REPO / CTRL.PROTECTED.PACKET_PATH).resolve()
+            or protected_parent != expected_protected_parent
+            or protected.get("schema") != CTRL.PROTECTED.SCHEMA
+            or protected.get("packet_sha256")
+            != self_hash(protected, "packet_sha256")
+            or protected.get("capability")
+            != packet.get("selected_capability")
+            or protected.get("checkpoint_manifest")
+            != packet.get("checkpoint_manifest")
+            or protected.get("authority", {}).get("report_open_authorized")
+            is not False
+            or protected.get("authority", {}).get(
+                "report_execution_authorized") is not False
+            or protected.get("authority", {}).get("strength_claim")
+            is not False
+            or protected.get("parent", {}).get(
+                "training_aggregate_internal_sha256")
+            != aggregate.get("aggregate_sha256")
+            or CTRL.protected_policy_contract(protected["capability"])
+            != packet.get("protected_policy")):
+        raise ReportRuntimeRefused(
+            "Stage-C REPORT protected-capability parent drift")
     fresh_parent = parents["fresh_report_selection"]
-    fresh_path, fresh_on_disk = _parent_file(
-        fresh_parent, "fresh REPORT packet")
-    if fresh_path != (REPO / FRESH.PACKET_PATH).resolve():
-        raise ReportRuntimeRefused("fresh REPORT packet path drift")
+    fresh_path = (evidence_repo / FRESH.PACKET_PATH).resolve()
     try:
-        fresh_report, fresh_review = TRAIN_CTRL.validate_fresh_report(
-            fresh_path, str(fresh_parent["external_sha256"]),
-            fresh_report_review_record, state_set_review_record)
+        with CTRL.evidence_scope(evidence_repo):
+            fresh_report, fresh_review = TRAIN_CTRL.validate_fresh_report(
+                fresh_path, str(fresh_parent["external_sha256"]),
+                fresh_report_review_record, state_set_review_record)
     except TRAIN_CTRL.TrainingControllerRefused as exc:
         raise ReportRuntimeRefused(str(exc)) from exc
-    if fresh_report != fresh_on_disk:
-        raise ReportRuntimeRefused("fresh REPORT packet replay drift")
     sealed = fresh_report["sealed_selection"]
     expected_fresh_parent = {
         "logical_path": FRESH.PACKET_PATH,
@@ -294,10 +337,11 @@ def _packet(
                 fresh_report, fresh_review)):
         raise ReportRuntimeRefused(
             "fresh REPORT selection/dataset binding drift")
-    states = CTRL._selected_fresh_states(
-        fresh_report, state_set_review_record)
+    with CTRL.evidence_scope(evidence_repo):
+        states = CTRL._selected_fresh_states(
+            fresh_report, state_set_review_record, evidence_repo)
 
-    _validate_checkpoint_manifest(packet, training_packet)
+    _validate_checkpoint_manifest(packet, training_packet, evidence_repo)
     surface = packet["selected_capability"]["surface"]
     prior = TRAIN.state_balanced_prior(dataset["examples"]["DESIGN"][surface])
     schedule = CTRL.build_report_schedule(states, surface=surface)
@@ -314,10 +358,15 @@ def _packet(
             or contract.get("captured_candidate_tensor_authenticated")
             is not True
             or contract.get("single_report_look") is not True
-            or contract.get("model_score_tie_epsilon")
-            != REPORT.MODEL_SCORE_TIE_EPSILON
+            or contract.get("protected_policy")
+            != packet.get("protected_policy")
+            or contract.get("activation_threshold")
+            != CTRL.PROTECTED.EXPECTED_SELECTED_THRESHOLD
+            or contract.get("activation_is_strict") is not True
+            or contract.get("rank_ensemble")
+            != "arithmetic mean of raw rank logits across seeds"
             or contract.get("tie_break")
-            != "lowest candidate index within epsilon"
+            != "lowest alternative candidate index"
             or contract.get("durable_report_open_admission_slot")
             != REPORT_OPEN_ADMISSION_PATH
             or contract.get("retry_after_report_open_or_failure_authorized")
@@ -345,6 +394,7 @@ def _slot_payload(packet: Mapping[str, object], packet_sha256: str,
         "git": packet["producer"]["git"],
         "controller_packet_sha256": packet_sha256,
         "selected_capability": packet["selected_capability"],
+        "protected_policy": packet["protected_policy"],
         "checkpoint_manifest_sha256": CTRL._manifest_hash(
             packet["checkpoint_manifest"]),
         "report_schedule_sha256": packet["report_schedule"][
@@ -375,6 +425,7 @@ def _report_open_slot_payload(
         "report_schedule_sha256": packet["report_schedule"][
             "schedule_sha256"],
         "selected_capability": packet["selected_capability"],
+        "protected_policy": packet["protected_policy"],
         "consumed_before_any_teacher_label_or_model_prediction": True,
         "retry_after_failure_authorized": False,
     }
@@ -413,6 +464,7 @@ def admit(*, packet_path: Path, expected_packet_sha256: str,
         "controller_packet_sha256": expected_packet_sha256,
         "controller_review_record_sha256": sha256_file(review_record),
         "selected_capability": packet["selected_capability"],
+        "protected_policy": packet["protected_policy"],
         "admission_slot": ADMISSION_PATH,
         "admission_slot_sha256": slot_sha256,
         "report_open_admission_slot": REPORT_OPEN_ADMISSION_PATH,
@@ -460,6 +512,7 @@ def _receipt(path: Path, expected_sha256: str,
             != sha256_file(review_record)
             or receipt.get("selected_capability")
             != packet["selected_capability"]
+            or receipt.get("protected_policy") != packet["protected_policy"]
             or receipt.get("admission_slot") != ADMISSION_PATH
             or receipt.get("admission_slot_sha256") != sha256_file(slot_path)
             or receipt.get("report_open_admission_slot")
@@ -720,9 +773,11 @@ def validate_shard(shard: Mapping[str, object], *,
 def _member_predictions(packet: Mapping[str, object],
                         examples: list[dict]):
     TRAIN._configure_determinism(MODEL.TRAINING_SEEDS[0])
+    evidence_repo = Path(str(packet["parents"]["training_evidence"][
+        "absolute_path"])).resolve()
     values = []
     for item in packet["checkpoint_manifest"]:
-        path = (REPO / str(item["checkpoint_path"])).resolve()
+        path = (evidence_repo / str(item["checkpoint_path"])).resolve()
         reopened = TRAIN.load_snapshot(
             path, expected_contract=item["checkpoint_contract"])
         net = MODEL.StageCRankingOutcomeNet(hidden=TRAIN.HIDDEN)
@@ -810,7 +865,8 @@ def recompute_result(
         evaluation = REPORT.evaluate_capability(
             examples, predictions, surface=capability["surface"],
             head=capability["head"],
-            prior_distribution=packet["design_prior_distribution"])
+            prior_distribution=packet["design_prior_distribution"],
+            protected_policy=packet["protected_policy"])
         decision = evaluation["decision"]
         composition_authorized = evaluation[
             "composition_packet_review_authorized"]
@@ -827,6 +883,7 @@ def recompute_result(
         "report_open_admission_slot_sha256": receipt[
             "report_open_admission_slot_sha256"],
         "selected_capability": packet["selected_capability"],
+        "protected_policy": packet["protected_policy"],
         "checkpoint_manifest_sha256": CTRL._manifest_hash(
             packet["checkpoint_manifest"]),
         "fresh_report_selection_sha256": packet["parents"][

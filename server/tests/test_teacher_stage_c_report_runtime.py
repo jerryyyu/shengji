@@ -40,7 +40,17 @@ def _packet(states: list[dict]) -> dict:
     return {
         "producer": {"git": "a" * 40},
         "selected_capability": {
-            "surface": "play", "head": "ranking", "epoch": 8},
+            "surface": "play", "head": "ranking", "epoch": 32},
+        "protected_policy": {
+            "schema": RUNTIME.REPORT.PROTECTED_POLICY_SCHEMA,
+            "surface": "play", "head": "ranking",
+            "ensemble":
+                "arithmetic_mean_raw_rank_logits_across_eight_seeds",
+            "incumbent_index": 0, "alternative_start_index": 1,
+            "threshold": 0.2, "strict_greater_than_threshold": True,
+            "alternative_tie_break": "lowest_candidate_index",
+            "fallback_index": 0, "bury_behavior": "unchanged_incumbent",
+        },
         "checkpoint_manifest": [],
         "parents": {"fresh_report_selection": {
             "sealed_selection_sha256": "2" * 64}},

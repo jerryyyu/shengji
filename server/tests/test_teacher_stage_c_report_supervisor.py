@@ -265,6 +265,16 @@ def test_terminal_review_claim_authorizes_only_composition_freeze() -> None:
             "sealed_selection_sha256": "e" * 64}},
         "selected_capability": {
             "surface": "play", "head": "ranking", "epoch": 8},
+        "protected_policy": {
+            "schema": CTRL.REPORT.PROTECTED_POLICY_SCHEMA,
+            "surface": "play", "head": "ranking",
+            "ensemble":
+                "arithmetic_mean_raw_rank_logits_across_eight_seeds",
+            "incumbent_index": 0, "alternative_start_index": 1,
+            "threshold": 0.2, "strict_greater_than_threshold": True,
+            "alternative_tie_break": "lowest_candidate_index",
+            "fallback_index": 0, "bury_behavior": "unchanged_incumbent",
+        },
     }
     result = {
         "result_sha256": "f" * 64,

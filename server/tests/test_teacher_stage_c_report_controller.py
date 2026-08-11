@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 
 import pytest
 
@@ -66,8 +67,103 @@ def test_report_schedule_rejects_missing_surface_row() -> None:
         CTRL.build_report_schedule(_fresh_states()[:-1], surface="bury")
 
 
+def _reviewable_protected_packet() -> dict:
+    capability = {
+        "surface": "play", "head": "ranking", "epoch": 32,
+        "curve_fraction": 1.0, "seeds": list(MODEL.TRAINING_SEEDS),
+        "ensemble": "arithmetic mean of per-seed rank logits",
+        "incumbent": "candidate0",
+        "alternative": (
+            "highest ensemble-mean rank logit among candidate indices 1+; "
+            "ties choose the lowest index"),
+        "activation": (
+            "override candidate0 iff alternative ensemble rank logit minus "
+            "candidate0 ensemble rank logit is strictly greater than 0.2"),
+        "threshold": 0.2, "strict_greater_than_threshold": True,
+        "fallback": "candidate0", "bury_behavior": "unchanged incumbent",
+    }
+    manifest = [{
+        "seed": seed, "surface": "play", "head": "ranking", "epoch": 32,
+        "curve_fraction": 1.0,
+    } for seed in MODEL.TRAINING_SEEDS]
+    diagnostics = {
+        "screen_gate": {"decision": "REQUEST_EXTERNAL_CAPABILITY_REVIEW"},
+        "selected_design": {}, "selected_calib": {},
+    }
+    packet = {
+        "schema": CTRL.PROTECTED.SCHEMA,
+        "packet_id": CTRL.PROTECTED.PACKET_ID,
+        "producer": {
+            "git": "65c2b3c56e4e26af92e5710652809df72071e06f",
+            "tree_dirty": False,
+        },
+        "parent": {
+            "training_aggregate_sha256":
+                CTRL.PROTECTED.TRAINING_AGGREGATE_SHA256,
+            "training_aggregate_internal_sha256":
+                CTRL.PROTECTED.TRAINING_AGGREGATE_INTERNAL_SHA256,
+            "terminal_decision": "SELECT_NONE", "report_rows_opened": 0,
+        },
+        "capability": capability,
+        "checkpoint_manifest": manifest,
+        "checkpoint_manifest_sha256": CTRL._manifest_hash(manifest),
+        "threshold_selection": {
+            "grid": list(CTRL.PROTECTED.THRESHOLD_GRID),
+            "selection_split": "DESIGN", "selected_threshold": 0.2,
+            "post_terminal_exploration": True,
+            "calib_was_inspected_during_diagnosis": True,
+            "calib_role": "diagnostic screen only, not fresh confirmation",
+            "fresh_report_role": "only untouched final offline confirmation",
+        },
+        "diagnostics": diagnostics,
+        "diagnostics_sha256": CTRL._manifest_hash(diagnostics),
+        "authority": {
+            "new_training_authorized": False,
+            "training_retry_authorized": False,
+            "report_rows_opened": 0, "report_open_authorized": False,
+            "one_report_controller_freeze_authorized": False,
+            "report_execution_authorized": False,
+            "composition_authorized": False,
+            "whole_game_screen_authorized": False,
+            "strength_claim": False, "production_promotion": False,
+            "production_deployment": False,
+        },
+    }
+    packet["packet_sha256"] = CTRL.self_hash(packet, "packet_sha256")
+    return packet
+
+
+def test_protected_capability_review_binds_policy_and_mutations(
+        tmp_path) -> None:
+    packet = _reviewable_protected_packet()
+    packet_path = tmp_path / "capability.json"
+    packet_path.write_bytes(CTRL.canonical_json(packet))
+    external = CTRL.sha256_file(packet_path)
+    review = tmp_path / "review.md"
+    claim = CTRL.PROTECTED.expected_review_claim(packet, external)
+    review.write_text(
+        CTRL.PROTECTED.REVIEW_MARKER + json.dumps(claim, sort_keys=True) + "\n")
+    aggregate = {
+        "aggregate_sha256":
+            CTRL.PROTECTED.TRAINING_AGGREGATE_INTERNAL_SHA256}
+    actual, policy = CTRL.validate_protected_capability(
+        packet_path=packet_path, packet_sha256=external,
+        review_record=review, training_aggregate=aggregate)
+    assert actual == packet
+    assert policy["threshold"] == 0.2
+
+    changed = copy.deepcopy(packet)
+    changed["capability"]["strict_greater_than_threshold"] = False
+    changed["packet_sha256"] = CTRL.self_hash(changed, "packet_sha256")
+    packet_path.write_bytes(CTRL.canonical_json(changed))
+    with pytest.raises(CTRL.ReportControllerRefused, match="policy drift"):
+        CTRL.validate_protected_capability(
+            packet_path=packet_path, packet_sha256=CTRL.sha256_file(packet_path),
+            review_record=review, training_aggregate=aggregate)
+
+
 def test_report_packet_binds_fresh_selection_and_no_v11_dependency(
-        monkeypatch) -> None:
+        monkeypatch, tmp_path) -> None:
     runtime = {
         "host": "mini", "python": "3.14", "torch": "2.13",
         "numpy": "2.5", "device": "cpu", "cpu_threads": 1,
@@ -80,9 +176,22 @@ def test_report_packet_binds_fresh_selection_and_no_v11_dependency(
             "orphaned_label_workers_authorized": False,
         },
     }
-    capability = {"surface": "play", "head": "ranking", "epoch": 8}
+    capability = {
+        "surface": "play", "head": "ranking", "epoch": 32,
+        "curve_fraction": 1.0, "seeds": list(MODEL.TRAINING_SEEDS),
+        "ensemble": "arithmetic mean of per-seed rank logits",
+        "incumbent": "candidate0",
+        "alternative": (
+            "highest ensemble-mean rank logit among candidate indices 1+; "
+            "ties choose the lowest index"),
+        "activation": (
+            "override candidate0 iff alternative ensemble rank logit minus "
+            "candidate0 ensemble rank logit is strictly greater than 0.2"),
+        "threshold": 0.2, "strict_greater_than_threshold": True,
+        "fallback": "candidate0", "bury_behavior": "unchanged incumbent",
+    }
     ensemble = [{
-        "seed": seed, "surface": "play", "head": "ranking", "epoch": 8,
+        "seed": seed, "surface": "play", "head": "ranking", "epoch": 32,
         "checkpoint_path": f"checkpoint-{seed}.pt",
         "checkpoint_sha256": f"{seed + 1:064x}",
         "model_state_sha256": f"{seed + 101:064x}",
@@ -95,12 +204,18 @@ def test_report_packet_binds_fresh_selection_and_no_v11_dependency(
         },
     }
     aggregate = {
-        "selection": {"selected_capability": capability},
-        "selected_ensemble": ensemble,
         "controller_packet_sha256": "1" * 64,
         "aggregate_sha256": "2" * 64,
         "model_dataset_sha256": "3" * 64,
     }
+    protected = {
+        "capability": capability, "checkpoint_manifest": ensemble,
+        "packet_sha256": "a" * 64,
+        "checkpoint_manifest_sha256": "b" * 64,
+        "diagnostics_sha256": "c" * 64,
+        "parent": {"terminal_decision": "SELECT_NONE"},
+    }
+    policy = CTRL.protected_policy_contract(capability)
     dataset = {"examples": {"DESIGN": {"play": [{}]}}}
     sealed = {
         "sealed_selection_sha256": "4" * 64,
@@ -118,17 +233,23 @@ def test_report_packet_binds_fresh_selection_and_no_v11_dependency(
                         lambda *_args: ensemble)
     monkeypatch.setattr(
         CTRL.TRAIN, "state_balanced_prior", lambda _examples: [0.125] * 8)
+    review = tmp_path / "training-review.md"
+    review.write_text("review\n")
 
     packet = CTRL.build_packet(
         git="a" * 40, training_packet=training_packet,
+        evidence_repo=tmp_path, training_review_record=review,
         training_aggregate=aggregate, training_aggregate_sha256="9" * 64,
-        training_aggregate_review={"verdict": "PASS"}, dataset=dataset,
+        protected_capability=protected,
+        protected_capability_sha256="d" * 64,
+        protected_capability_review={"verdict": "PASS"},
+        policy_contract=policy, dataset=dataset,
         fresh_report=fresh, fresh_report_review=fresh_review,
         fresh_states=_fresh_states())
 
     assert set(packet["parents"]) == {
-        "training_packet", "training_aggregate",
-        "training_aggregate_review_claim_sha256", "model_dataset",
+        "training_evidence", "training_packet", "training_aggregate",
+        "protected_capability", "model_dataset",
         "fresh_report_selection",
     }
     assert "label_controller" not in packet["parents"]
@@ -141,6 +262,9 @@ def test_report_packet_binds_fresh_selection_and_no_v11_dependency(
         "server/scripts/teacher_stage_c_report_supervisor.py")
     assert packet["report_contract"]["v11_checkpoint_loaded"] is False
     assert packet["report_contract"]["v11_candidates_reconstructed"] is False
+    assert packet["protected_policy"] == policy
+    assert packet["report_contract"]["activation_threshold"] == 0.2
+    assert packet["report_contract"]["activation_is_strict"] is True
     assert packet["authority"] == {
         "fresh_report_capture_shards_revalidated": 8,
         "fresh_report_state_material_published": False,
@@ -158,6 +282,8 @@ def test_report_packet_binds_fresh_selection_and_no_v11_dependency(
     assert claim["teacher_labels_computed_before_review"] == 0
     assert claim["model_predictions_computed_before_review"] == 0
     assert claim["v11_checkpoint_loaded"] is False
+    assert claim["protected_capability_packet_sha256"] == "d" * 64
+    assert claim["protected_policy"] == policy
     assert claim["max_concurrent_label_shards"] == 8
     assert claim["supervisor_signal_contract"] == runtime[
         "supervisor_signal_contract"]

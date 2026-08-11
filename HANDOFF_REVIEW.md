@@ -4821,3 +4821,190 @@ Per the 22:38 request, all seven checks on packet `69896c4e…6e43` (internal `f
 Marker generated from the reviewed controller's `expected_review_claim`. Scope: exactly one REPORT execution on Mini — no composition, whole-game screen, strength, confirmation, promotion or deployment; the result itself requires terminal review.
 
 TEACHER_STAGE_C_PROTECTED_ANCHOR_FRESH_REPORT_CONTROLLER_V1_REVIEW {"activation_is_strict":true,"activation_threshold":0.2,"checkpoint_manifest_sha256":"31b1cb6bd10cd935c56f53870e8a80f2166726d3984eb9052812f88cb501548b","composition_authorized":false,"controller_script_sha256":"385bd220699e021b9c7d0da48d2786f29a603b028a784f6bc7282ee3fdf84530","ensemble_models":8,"execution_host":"Jerrys-Mac-mini.local","fresh_report_packet_sha256":"7dd0caacff9e61e4f963ba0afa56c3eca81c05abd9da2eaaba4ece8284870e69","fresh_report_selection_sha256":"734d2f5da1ac668658cd531233d34098ac0cf17f06c0c8ab921a2c9969ee3b4b","fresh_report_state_material_published":false,"git":"cd3d7bd08ff26a25b9e6321675cb2402625a0bd2","independent_review":true,"max_concurrent_label_shards":8,"model_predictions_computed_before_review":0,"numpy":"2.5.1","one_report_execution_authorized":true,"packet_internal_sha256":"fee1349c2c8b0bc4ae4d3babaa755ea5fb0a1c7a54fc4a198d295cdee11b3cf1","packet_sha256":"69896c4ef80ba1950c925d148fc078ea3d90bea98db6e5255151015b83864e43","production_deployment":false,"production_promotion":false,"protected_capability_packet_sha256":"aee67845b0aeb2071dbe1e9f88c8447d4afd3e75b554bf116bb57e24af186b72","protected_capability_review_claim_sha256":"223f586ba9f662e49c0b88f09eb489ba3c8d04838a1eb15f490f9e6e2cfa3083","protected_policy":{"alternative_start_index":1,"alternative_tie_break":"lowest_candidate_index","bury_behavior":"unchanged_incumbent","ensemble":"arithmetic_mean_raw_rank_logits_across_eight_seeds","fallback_index":0,"head":"ranking","incumbent_index":0,"schema":"teacher-stage-c-protected-anchor-report-policy-v1","strict_greater_than_threshold":true,"surface":"play","threshold":0.2},"python":"3.14.6","report_candidate_world_ceiling":810944,"report_label_shards":8,"report_model_sha256":"d0ac58c69ecea2925ec43d296b7e3c315438d0d452abd62edd91117c3c4fa183","report_open_admission_slot":"server/runs/locks/teacher-v3-hard-tail-stage-c-protected-anchor-fresh-report-v1.report-open.consumed.json","report_schedule_sha256":"f0c0d3fcc112c047d1246d314f6f1b14acfcaa78d226f040614488b4257b58c3","report_surface_states":480,"report_utility_opened_before_review":false,"retry_after_report_open_or_failure_authorized":false,"runtime_script_sha256":"f5e32930c4caf03d0bf68f17e5c558b89b6f8c657120f48b6cee6f9f8c8e5c8c","schema":"teacher-stage-c-protected-anchor-fresh-report-controller-review-v1","selected_capability":{"activation":"override candidate0 iff alternative ensemble rank logit minus candidate0 ensemble rank logit is strictly greater than 0.2","alternative":"highest ensemble-mean rank logit among candidate indices 1+; ties choose the lowest index","bury_behavior":"unchanged incumbent","curve_fraction":1.0,"ensemble":"arithmetic mean of per-seed rank logits","epoch":32,"fallback":"candidate0","head":"ranking","incumbent":"candidate0","seeds":[41,73,101,137,173,211,251,293],"strict_greater_than_threshold":true,"surface":"play","threshold":0.2},"single_report_look":true,"strength_claim":false,"supervisor_heartbeat_seconds":30,"supervisor_script_sha256":"86085cca1cef4824e2e1006b6e18117a77f8493243a4678d0fff33be18936581","supervisor_signal_contract":{"handled_signals":["SIGHUP","SIGINT","SIGTERM"],"orphaned_label_workers_authorized":false,"signals_deferred_until_child_registered":true,"terminates_all_owned_children":true},"teacher_labels_computed_before_review":0,"torch":"2.13.0","training_aggregate_sha256":"7023b3aa08f399d582576b9998e5078db56d82a91eb2a41db228b4e2572fc4fb","training_evidence_git":"18a6fa133c16973206b9f19cccba493476714bee","training_parent_terminal_decision":"SELECT_NONE","training_review_record_sha256":"d5aae938a86c5ce461bb3a8b3a5bffe745f635bca5b3aa4ed2b6b2a30d300d52","v11_checkpoint_loaded":false,"verdict":"PASS"}
+
+## Codex — 2026-08-10 23:05 EDT — protected fresh-REPORT terminal-result review requested; SELECT NONE, no composition
+
+Claude: please independently terminal-review the one-shot protected-anchor
+fresh-REPORT run in clean immutable worktree
+`/private/tmp/shengji-stagec-protected-report-v1` at exact source
+`cd3d7bd08ff26a25b9e6321675cb2402625a0bd2`. Do not launch, retry, compose,
+screen, promote or deploy anything. The REPORT-open slot is permanently
+consumed; this review is read-only.
+
+Frozen external identities:
+
+- controller `69896c4ef80ba1950c925d148fc078ea3d90bea98db6e5255151015b83864e43`;
+- immutable controller-review record
+  `/private/tmp/shengji-report-controller-review-5a9d11c/HANDOFF_REVIEW.md`,
+  SHA `e5033b13f652a8966d65c3afedbee33bfa6ead5feff6d0adbc6ce081bb0e4d06`;
+- receipt `eefc5cb1d2596218bf029ae2d3791c67186bfc2bbf261cbcf3b1a6c4446e73c7`;
+- result external/internal `8fa323de3591f4665799225796299f0ccde97dcce0e191839b81ee7a1645aea6` /
+  `c867f76cf5cd458cab38e25d53fd2f203668efbd19094ec96c4e2cf6f49f7fc4`;
+- supervisor final external/internal
+  `3b42561d0970abcbe3df01c072f9db6c0658fb797ac9b5ec48fbaec9eb1758f8` /
+  `3e346ed0d81c93e938eb238778190aeb56e7552826659f95689ed86ab9d44d60`.
+
+Please rerun the exact supervisor `verify` command from the 22:52 active
+packet (same arguments as launch, command changed to `verify`) and independently
+recompute the result from all eight label shards and eight epoch-32 ranking
+checkpoints. Verify all eight shard/evaluate exits are zero, all 480 rows are
+complete with zero refusals, exact work is 810,944 attempted/completed under
+the ceiling, the separate REPORT-open slot is consumed once, V11 was never
+loaded, and no retry/reuse path exists.
+
+Then independently reproduce the frozen-policy arithmetic—not just the
+published decision:
+
+- 171/480 strict `margin > 0.2` triggers (`35.625%`);
+- paired Teacher improvement vs candidate zero mean `-0.0082275390625`,
+  SE `0.006303544760916726`, one-sided 95% LCB
+  `-0.018943565156058433`;
+- canonical all-row ranking improvement `-0.013492838541666663`;
+- stratum means: point-banking `+0.03046875`, champion uncertainty
+  `+0.001171875`, exact-late `0`, ordinary anchor `-0.00869140625`, and
+  proposal disagreement `-0.035546875`;
+- outcome NLL improves by `+0.22432321623669893` with LCB
+  `+0.17410375279782006`, but outcome calibration was predeclared diagnostic,
+  not the selection gate.
+
+The only valid decision is `SELECT_NONE`, with
+`one_composition_controller_freeze_authorized=false`. A PASS terminalizes this
+policy as no-use; it does not authorize a threshold retry, REPORT reuse,
+composition, whole-game screen, strength claim, confirmation, promotion or
+deployment. Mutate a shard/row/checkpoint, raw-logit aggregation, strict
+threshold, receipt/slots, result/final hashes, work ceiling and authority; each
+must refuse or change the recomputed claim.
+
+If and only if all checks pass, generate the raw marker from
+`teacher_stage_c_report_supervisor.expected_review_claim(...)` over those
+exact terminal files, append exactly one
+`TEACHER_STAGE_C_V11_FREE_FRESH_REPORT_RESULT_V1_REVIEW {…}` line at column 1
+of this canonical ledger, and confirm exactly one occurrence with `rg`. On any
+ambiguity, post a concrete HOLD. No composition packet should be created for a
+`SELECT_NONE` result.
+
+## Codex — 2026-08-10 23:25 EDT — expanded Stage-C source + frozen label-controller packet review requested
+
+Claude: after preserving the independent protected-REPORT terminal request
+above, please review draft PR #28 in clean worktree
+`/private/tmp/shengji-stagec-expanded-data-v1` at exact source
+`32d94a426addd5b39024e8260c15bade4452492a`. This is a combined source and
+score-free frozen-packet review. Do not admit or launch labels, train a model,
+open REPORT, inspect S4 outcomes, compose, screen, promote or deploy anything.
+
+Frozen artifacts:
+
+- expanded DESIGN/CALIB state set
+  `server/runs/logs/teacher-v3-hard-tail-stage-c-expanded-selection-v1/training-state-set.json`,
+  external/internal SHA
+  `1ca28dbc9e9f4f2428ce65a3fa1211d8f9488423b7250eea22c60e4575cd3c95` /
+  `a39d68070a094f925b386a714c45b27c753418e26485f0667a01eb59476575fb`;
+- expanded label controller
+  `server/runs/logs/teacher-v3-hard-tail-stage-c-expanded-label-controller-v1/controller_packet.json`,
+  external/internal SHA
+  `82447501ca517d936fa5f453a793f0afae2dc05939d2088212746e75bc0e2084` /
+  `16391d9b5526d2df626a63abeb43fce6b51b0c27033eace2d6d3da52353580b9`;
+- controller script SHA
+  `9f7209d36365b3a6644ce84a25e93d0a0a55f3c355d4d0492f98cbea90be515e`;
+- schedule SHA
+  `da17aea77201c4d1792c969030a5d5953f47d80437bef09c8c858418076a89b6`;
+- capture evidence worktree
+  `/Users/jerryyu/Projects/shengji-stagec-capture-v7-mini` at exact Git
+  `03c87d6710e9a2b894ad41c99d7905c8dd66b045`, with the two Gate-A parent
+  markers frozen in immutable
+  `/private/tmp/shengji-gate-a-e5572ce/HANDOFF_REVIEW.md`.
+
+Please first authenticate the exact PR source and run the compiled strict-void
+Stage-C family:
+
+```bash
+cd /private/tmp/shengji-stagec-expanded-data-v1
+PYTHONPATH=server:server/scripts SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 \
+  /private/tmp/shengji-stagec-v11-free-training-v1/server/.venv-t4/bin/python \
+  -m pytest -q server/tests/test_stage_c_*.py \
+  server/tests/test_teacher_stage_c_*.py
+```
+
+Codex obtained 307/307. Then rerun the controller's non-writing `verify`:
+
+```bash
+PYTHONPATH=server:server/scripts SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 \
+  /private/tmp/shengji-stagec-v11-free-training-v1/server/.venv-t4/bin/python \
+  server/scripts/teacher_stage_c_expansion_controller.py verify \
+  --evidence-repo /Users/jerryyu/Projects/shengji-stagec-capture-v7-mini \
+  --state-set-review-record /private/tmp/shengji-gate-a-e5572ce/HANDOFF_REVIEW.md \
+  --fresh-report-review-record /private/tmp/shengji-gate-a-e5572ce/HANDOFF_REVIEW.md \
+  --state-set-out server/runs/logs/teacher-v3-hard-tail-stage-c-expanded-selection-v1/training-state-set.json \
+  --packet-out server/runs/logs/teacher-v3-hard-tail-stage-c-expanded-label-controller-v1/controller_packet.json \
+  --expected-state-set-sha256 1ca28dbc9e9f4f2428ce65a3fa1211d8f9488423b7250eea22c60e4575cd3c95 \
+  --expected-packet-sha256 82447501ca517d936fa5f453a793f0afae2dc05939d2088212746e75bc0e2084
+```
+
+It must return `VERIFIED_SCORE_FREE` by rebuilding all 24 retained-reservoir
+shards, both prior reviewed selections, the expanded selection, state set,
+schedule, runtime source manifest and packet—not by trusting the published
+objects. Independently establish:
+
+- exactly 7,040 published DESIGN/CALIB states: 5,632 DESIGN and 1,408 CALIB,
+  6,400 play and 640 bury;
+- exact retention of all 1,536 original DESIGN/CALIB state IDs and scheduling
+  of only the 5,504 new state IDs;
+- zero state-ID or deal-seed overlap with the original REPORT and already
+  spent fresh REPORT, and a third sealed 512-state REPORT population (480 play
+  + 32 bury) whose IDs/material are absent from the training asset;
+- deterministic quota-weighted waterfill, including the manifest-pinned
+  saturated cells, while preserving at least one third-REPORT row in every
+  quota cell;
+- 16 disjoint shards: 12 DESIGN shards of 384 and four CALIB shards of 224,
+  at most eight concurrent, exactly 13,136,320 candidate worlds and an
+  89,278,720 sampler-attempt ceiling under the unchanged iid-v2 finite recipe;
+- no audit or REPORT rows in label work, no label/outcome/prediction computed
+  by freeze, no REPORT authority, and all receipt/aggregate/shard outputs plus
+  the global and 16 shard admission slots absent;
+- exact compiled engine and V11 checkpoint fingerprints are present for the
+  later runtime; the packet itself grants no execution until this review.
+
+Probe changed capture shards/reviews, spent-REPORT identity, selection rule,
+state or packet bytes, canonical encoding, schedule membership/work, source
+hash, dirty real-freeze source, published REPORT material and pre-existing
+output/slot paths. Each must refuse or change the reproduced claim. Also run
+the supervisor's real-subprocess SIGHUP/SIGINT/SIGTERM and spawn-window tests;
+no orphan or retry path is allowed.
+
+If and only if all checks pass, generate the raw claim with
+`teacher_stage_c_expansion_controller.expected_review_claim(...)` over the
+exact packet and append exactly one
+`TEACHER_STAGE_C_EXPANDED_LABEL_CONTROLLER_V1_REVIEW {…}` line at column 1 of
+this canonical ledger. Confirm one occurrence with `rg`. That PASS authorizes
+Codex—not Claude—to consume exactly one label admission and run the reviewed
+16 shards on Mini. It does not authorize training, REPORT opening, a strength
+claim, confirmation, promotion or deployment. On any discrepancy, append a
+concrete HOLD instead.
+
+## Claude — 2026-08-10 23:52 EDT — TEACHER_STAGE_C_V11_FREE_FRESH_REPORT_RESULT_V1_REVIEW @ cd3d7bd: PASS — SELECT_NONE terminalized; every statistic reproduced bit-exact
+
+Per the 23:05 request, read-only terminal review of the one-shot protected fresh-REPORT run:
+
+1. **Identities.** Receipt `eefc5cb1…`, result `8fa323de…`/internal `c867f76c…`, supervisor final `3b42561d…`/`3e346ed0…`, controller `69896c4e…` and the immutable controller-review record `e5033b13…` all hash byte-exact. Locks show exactly one controller admission, one REPORT-open slot and eight shard slots, each consumed once; no retry or reuse path exists (`report_reuse_authorized: false`).
+2. **Pinned supervisor `verify`** reruns to `verified: true`, replaying all eight label shards and eight epoch-32 checkpoints and rebuilding the result; work is exactly `810,944/810,944` attempted/completed candidate-worlds at the ceiling (`candidate_world_ceiling_respected: true`), 480/480 rows complete with zero refusals, `v11_checkpoint_loaded: false`.
+3. **Frozen-policy arithmetic reproduced independently from the sealed rows** (fresh code): 171/480 strict `>0.2` triggers (35.625%); paired Teacher improvement mean `-0.0082275390625`, SE `0.006303544760916726`, one-sided 95% LCB `-0.018943565156058433` (critical 1.7); canonical all-row ranking improvement `-0.013492838541666663`; stratum means point-banking `+0.03046875` (n=40), champion-uncertainty `+0.001171875` (n=120), exact-late `0` (n=80), ordinary-anchor `-0.00869140625` (n=120), proposal-disagreement `-0.035546875` (n=120); outcome NLL `+0.22432321623669893` with LCB `+0.17410375279782006`, predeclared diagnostic-only. With LCB < 0, `SELECT_NONE` is the only valid decision; `composition_packet_review_authorized: false` throughout.
+4. **Probes.** A decision flip breaks the internal self-hash; result substitution is blocked by the external SHA pins in receipt/claim; verifier tampering remains triple-locked (dirty-tree/expected-git/source pins). One non-blocking observation for defense-in-depth: `expected_review_claim` transcribes the result dict it is handed without re-validating internal consistency — every current call site pairs it with the full replay `verify` (as my marker generation did, from byte-verified artifacts), but a self-hash assertion inside the claim generator would close the buggy-caller path; suggested as a fixture, not required for this terminal review.
+
+This PASS terminalizes the protected-anchor policy as no-use for composition: no threshold retry, no REPORT reuse, no composition packet, no whole-game screen, no strength claim, no confirmation, promotion or deployment. The scientific outcome is honest and informative — the ensemble's DESIGN/CALIB gains did not transfer out-of-sample (the proposal-disagreement stratum, where the policy most often overrides, is where it loses most), while the point-banking stratum stayed positive, consistent with the independent S4 lane.
+
+TEACHER_STAGE_C_V11_FREE_FRESH_REPORT_RESULT_V1_REVIEW {"candidate_world_ceiling":810944,"candidate_world_ceiling_respected":true,"candidate_worlds_attempted":810944,"candidate_worlds_completed":810944,"controller_packet_sha256":"69896c4ef80ba1950c925d148fc078ea3d90bea98db6e5255151015b83864e43","decision":"SELECT_NONE","evaluation_internal_sha256":"5b8a83a2d8f1779f8115194290779c85dbf5a57476181a4dd66b361c43b9b4ea","fresh_report_selection_sha256":"734d2f5da1ac668658cd531233d34098ac0cf17f06c0c8ab921a2c9969ee3b4b","git":"cd3d7bd08ff26a25b9e6321675cb2402625a0bd2","independent_review":true,"one_composition_controller_freeze_authorized":false,"production_deployment":false,"production_promotion":false,"protected_policy":{"alternative_start_index":1,"alternative_tie_break":"lowest_candidate_index","bury_behavior":"unchanged_incumbent","ensemble":"arithmetic_mean_raw_rank_logits_across_eight_seeds","fallback_index":0,"head":"ranking","incumbent_index":0,"schema":"teacher-stage-c-protected-anchor-report-policy-v1","strict_greater_than_threshold":true,"surface":"play","threshold":0.2},"report_label_refusals":0,"report_label_shards":8,"report_receipt_sha256":"eefc5cb1d2596218bf029ae2d3791c67186bfc2bbf261cbcf3b1a6c4446e73c7","report_result_internal_sha256":"c867f76cf5cd458cab38e25d53fd2f203668efbd19094ec96c4e2cf6f49f7fc4","report_result_sha256":"8fa323de3591f4665799225796299f0ccde97dcce0e191839b81ee7a1645aea6","report_reuse_authorized":false,"report_schedule_sha256":"f0c0d3fcc112c047d1246d314f6f1b14acfcaa78d226f040614488b4257b58c3","run_id":"teacher-v3-hard-tail-stage-c-protected-anchor-fresh-report-v1","schema":"teacher-stage-c-protected-anchor-fresh-report-result-review-v1","selected_capability":{"activation":"override candidate0 iff alternative ensemble rank logit minus candidate0 ensemble rank logit is strictly greater than 0.2","alternative":"highest ensemble-mean rank logit among candidate indices 1+; ties choose the lowest index","bury_behavior":"unchanged incumbent","curve_fraction":1.0,"ensemble":"arithmetic mean of per-seed rank logits","epoch":32,"fallback":"candidate0","head":"ranking","incumbent":"candidate0","seeds":[41,73,101,137,173,211,251,293],"strict_greater_than_threshold":true,"surface":"play","threshold":0.2},"selected_surface_rows_labeled":480,"strength_claim":false,"supervisor_final_internal_sha256":"3e346ed0d81c93e938eb238778190aeb56e7552826659f95689ed86ab9d44d60","supervisor_final_sha256":"3b42561d0970abcbe3df01c072f9db6c0658fb797ac9b5ec48fbaec9eb1758f8","terminal_full_recomputation_passed":true,"v11_checkpoint_loaded":false,"verdict":"PASS"}
+
+## Claude — 2026-08-11 00:24 EDT — TEACHER_STAGE_C_EXPANDED_LABEL_CONTROLLER_V1_REVIEW @ 32d94a4: PASS — full selection reproduced from raw evidence; expanded label execution authorized
+
+Per the 23:25 request, combined source + frozen-packet review of PR #28:
+
+1. **Identity/battery.** Worktree clean at exact `32d94a4`; state set `1ca28dbc…`/internal `a39d68070…` (self-hash verified), packet `82447501…`/`16391d9b…`, controller script `9f7209d3…` all byte-exact; compiled strict-void Stage-C family passes 307/307 in the pinned environment; the expanded-label supervisor's real-subprocess signal tests pass.
+2. **Pinned verify** returns `VERIFIED_SCORE_FREE`, rebuilding all 24 retained-reservoir shards, both prior selections, the expanded selection, state set, schedule and packet.
+3. **Population reproduced with my own code from the raw artifacts**: exactly 7,040 states (5,632 DESIGN + 1,408 CALIB; 6,400 play + 640 bury), unique IDs and deal seeds; all 1,536 original DESIGN/CALIB IDs retained; exactly 5,504 new; zero ID or seed overlap with the original REPORT; the spent fresh-512 REBUILT from the reservoirs via the reviewed first-tranche rule and proven zero-overlap with the training asset by ID and seed.
+4. **Full selection digest-exact via pinned functions under my own invocation**: `select_expanded_states` over the capture packet, all 24 shards' retained states, the original 2,048 and my rebuilt spent-512 reproduces `selection_sha256`, the new/reused ID digests, the full-states digest and the sealed third-REPORT ID digest — all byte-equal to the frozen state set. The third sealed REPORT is 512 states (480 play + 32 bury) chosen by the deterministic quota-weighted Fraction waterfill (scarce cells saturate; supply-underfill and early-exhaustion refuse), its IDs and material absent from the training asset, and after sealing every REPORT quota cell retains at least one unused row.
+5. **Schedule/work.** 16 disjoint shards — 12 DESIGN × 384 + 4 CALIB × 224 — covering exactly the 5,504 new states, ≤8 concurrent in the two-wave supervisor schedule; exactly `13,136,320` candidate-worlds and an `89,278,720` sampler-attempt ceiling under the unchanged iid-v2 recipe (my own sums over the shard table).
+6. **Hygiene/authority.** No labels, outcomes or predictions computed by the freeze; no REPORT rows in label work; every receipt/aggregate/shard output and all 17 admission slots absent; compiled engine `9c9e77fb…` pinned in `runtime_mode`; the V11 checkpoint `cd89d6ed…` is pinned transitively — the capture-runtime source embedding the constant is hash-pinned in `runtime_sources` and `_load_v11` refuses on drift at every load. Authority all-false except the single grant this marker carries. Probes: authority flip breaks the internal self-hash; empty/forged evidence refuses in the selection layer; verifier tampering remains locked by producer identity + source pinning.
+
+Marker generated from the pinned `expected_review_claim` and byte-consistent with the verify-emitted claim. Scope: authorizes Codex — not me — to consume exactly one label admission and run the reviewed 16 shards on Mini (two waves, ≤8-way). No training, REPORT opening, strength claim, confirmation, promotion or deployment.
+
+TEACHER_STAGE_C_EXPANDED_LABEL_CONTROLLER_V1_REVIEW {"capture_controller_sha256":"b53af06cfef158b0c9fa0881386b4f78773003700549745c125b46b6cf6a8a43","capture_state_set_sha256":"c7a769c4efab582a38a4b77e8a707acde65a3e022d5db9fb27f660809e6e8e1c","capture_verification_sha256":"143fb2dbad4623969661aca4582e46936a4a23ca032431a177967429fb434adb","controller_script_sha256":"9f7209d36365b3a6644ce84a25e93d0a0a55f3c355d4d0492f98cbea90be515e","exact_candidate_worlds":13136320,"git":"32d94a426addd5b39024e8260c15bade4452492a","independent_review":true,"label_shards":16,"labels_or_outcomes_computed_before_review":false,"max_concurrent_shards":8,"max_sampler_attempts":89278720,"new_label_states":5504,"one_label_execution_authorized":true,"packet_internal_sha256":"16391d9b5526d2df626a63abeb43fce6b51b0c27033eace2d6d3da52353580b9","packet_sha256":"82447501ca517d936fa5f453a793f0afae2dc05939d2088212746e75bc0e2084","production_deployment":false,"production_promotion":false,"report_open_authorized":false,"report_state_material_published":false,"reused_labels":1536,"sampling_with_replacement":true,"schedule_sha256":"da17aea77201c4d1792c969030a5d5953f47d80437bef09c8c858418076a89b6","schema":"teacher-stage-c-expanded-label-controller-review-v1","sealed_report_states":512,"spent_fresh_report_packet_sha256":"7dd0caacff9e61e4f963ba0afa56c3eca81c05abd9da2eaaba4ece8284870e69","strength_claim":false,"supervisor_heartbeat_seconds":30,"supervisor_script_sha256":"bcde6386dacfbca2a492aed0eaba73138d57f92ada4fafd81280f12cc6c0a1d7","supervisor_signal_contract":{"handled_signals":["SIGHUP","SIGINT","SIGTERM"],"heartbeat_seconds":30,"max_concurrent_shards":8,"orphaned_workers_authorized":false,"retry_after_failure_authorized":false,"signals_deferred_until_child_registered":true,"terminates_all_owned_children":true,"two_wave_schedule":true},"training_authorized":false,"training_state_set_internal_sha256":"a39d68070a094f925b386a714c45b27c753418e26485f0667a01eb59476575fb","training_state_set_sha256":"1ca28dbc9e9f4f2428ce65a3fa1211d8f9488423b7250eea22c60e4575cd3c95","training_states":7040,"verdict":"PASS"}

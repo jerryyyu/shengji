@@ -350,6 +350,31 @@ def test_calib_can_select_calibrated_outcome_proposer() -> None:
     assert rejected["decision"] == "SELECT_NONE"
 
 
+def test_recipe_selector_compares_whole_cohorts_without_seed_pick() -> None:
+    records = []
+    for loss_recipe in MODEL.LOSS_RECIPES:
+        recipe_records = _selection_records(passing=True)
+        for record in recipe_records:
+            record["loss_recipe"] = loss_recipe
+            if (loss_recipe == "candidate0_relative_v2"
+                    and record["surface"] == "play"
+                    and record["epoch"] == 8):
+                record["metrics"][
+                    "ranking_improvement_vs_candidate0"] = 0.3
+            records.append(record)
+    selected = MODEL.select_global_recipe_epoch(records)
+    assert selected["decision"] == \
+        "FREEZE_SINGLE_CAPABILITY_FOR_REPORT_REVIEW"
+    assert selected["selected_capability"]["loss_recipe"] == \
+        "candidate0_relative_v2"
+    assert selected["selected_capability"]["surface"] == "play"
+    assert selected["selected_capability"]["head"] == "ranking"
+    assert selected["single_seed_selection"] is False
+
+    with pytest.raises(MODEL.StageCModelError, match="population"):
+        MODEL.select_global_recipe_epoch(records[:-1])
+
+
 def test_checkpoint_contract_keeps_play_and_bury_weights_separate() -> None:
     value = MODEL.checkpoint_contract(
         surface="bury", seed=41, epoch=8, curve_fraction=1.0,

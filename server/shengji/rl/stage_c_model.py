@@ -29,6 +29,7 @@ SCHEMA = "teacher-stage-c-model-example-v2"
 TARGET_SCHEMA = "teacher-stage-c-model-target-v2"
 MODEL_SCHEMA = "teacher-stage-c-ranking-outcome-model-v2"
 SELECTION_SCHEMA = "teacher-stage-c-model-selection-v2"
+RECIPE_SELECTION_SCHEMA = "teacher-stage-c-model-recipe-selection-v1"
 SURFACES = ("play", "bury")
 CAPABILITY_HEADS = ("ranking", "outcome")
 LOSS_RECIPES = ("all_pairs_v1", "candidate0_relative_v2")
@@ -768,6 +769,72 @@ def select_global_epoch(records: Sequence[Mapping[str, object]]) -> dict:
             "teacher regret, earlier epoch, play before bury, ranking before "
             "outcome"
         ),
+        "candidates": candidates,
+        "decision": ("FREEZE_SINGLE_CAPABILITY_FOR_REPORT_REVIEW"
+                     if selected is not None else "SELECT_NONE"),
+        "selected_epoch": selected["epoch"] if selected else None,
+        "selected_capability": dict(selected) if selected else None,
+        "single_capability_selection": True,
+        "single_seed_selection": False,
+        "report_open_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+    }
+    result["selection_sha256"] = sha256_bytes(canonical_json(result))
+    return result
+
+
+def select_global_recipe_epoch(
+    records: Sequence[Mapping[str, object]],
+) -> dict:
+    """Select one cohort across predeclared loss recipes without seed picks."""
+    if not records:
+        raise StageCModelError("Stage-C recipe selector is empty")
+    per_recipe = []
+    candidates = []
+    for loss_recipe in LOSS_RECIPES:
+        population = [value for value in records
+                      if value.get("loss_recipe") == loss_recipe]
+        expected = (len(SURFACES) * len(TRAINING_SEEDS)
+                    * len(EPOCH_GRID))
+        if len(population) != expected:
+            raise StageCModelError(
+                "Stage-C recipe selector population drift")
+        selected = select_global_epoch(population)
+        per_recipe.append({
+            "loss_recipe": loss_recipe,
+            "selection_sha256": selected["selection_sha256"],
+            "decision": selected["decision"],
+        })
+        for value in selected["candidates"]:
+            candidates.append({"loss_recipe": loss_recipe, **value})
+    passing = [value for value in candidates if value["eligible"]]
+    selected = max(
+        passing,
+        key=lambda value: (
+            value["median_action_improvement_vs_candidate0"],
+            value["action_improvement_positive_seeds"],
+            -value["mean_teacher_regret"], -value["epoch"],
+            -LOSS_RECIPES.index(value["loss_recipe"]),
+            -SURFACES.index(value["surface"]),
+            -CAPABILITY_HEADS.index(value["head"])),
+    ) if passing else None
+    result = {
+        "schema": RECIPE_SELECTION_SCHEMA,
+        "loss_recipes": list(LOSS_RECIPES),
+        "seeds": list(TRAINING_SEEDS),
+        "surfaces": list(SURFACES),
+        "epoch_grid": list(EPOCH_GRID),
+        "capability_heads": list(CAPABILITY_HEADS),
+        "criterion": (
+            "apply the unchanged eight-seed CALIB gate independently to each "
+            "loss recipe; among eligible recipe/surface/head/epoch cohorts, "
+            "choose maximum median candidate-zero improvement, then positive "
+            "seed count, lower regret, earlier epoch, all-pairs control before "
+            "candidate-zero-relative on an exact tie, play before bury, and "
+            "ranking before outcome"
+        ),
+        "per_recipe": per_recipe,
         "candidates": candidates,
         "decision": ("FREEZE_SINGLE_CAPABILITY_FOR_REPORT_REVIEW"
                      if selected is not None else "SELECT_NONE"),

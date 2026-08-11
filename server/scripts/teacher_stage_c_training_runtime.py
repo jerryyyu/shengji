@@ -2,9 +2,9 @@
 """Execute and aggregate one reviewed Stage-C model-training packet.
 
 The runtime consumes only the materialized DESIGN/CALIB dataset frozen by the
-training controller.  Forty-eight immutable cells cover separate play/bury
-models, eight seeds and three nested DESIGN curves.  Every cell consumes its
-own durable admission before training.  There is no retry path.
+training controller. The controller freezes the exact cell matrix (surface,
+seed, curve, and any predeclared loss recipe). Every cell consumes its own
+durable admission before training. There is no retry path.
 
 Aggregation reopens every checkpoint and recomputes every CALIB metric from
 the frozen dataset.  Only full-data cells enter the single global epoch rule.

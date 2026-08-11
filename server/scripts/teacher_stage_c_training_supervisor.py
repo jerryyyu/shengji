@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Own the one reviewed Stage-C training execution from cells to aggregate.
 
-The training runtime deliberately gives every one of its 48 cells an
-immutable admission slot and no retry path.  This supervisor supplies the
-missing operational owner: it keeps exactly eight cells live, starts every
+The training runtime deliberately gives every frozen cell an immutable
+admission slot and no retry path. This supervisor supplies the operational
+owner: it respects the controller's reviewed concurrency cap, starts every
 later wave, records each child exit, emits visible progress, and invokes the
-frozen aggregate only after all 48 cells exit zero.  It never changes a model,
-target, split, seed, curve, epoch, selector, or output path.
+frozen aggregate only after every scheduled cell exits zero. It never changes
+a model, target, split, seed, curve, loss recipe, epoch, selector, or output
+path.
 
 Any child failure, collision, handled termination signal, identity drift, or
 publication failure terminates the remaining children and leaves the progress

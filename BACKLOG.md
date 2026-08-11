@@ -17,8 +17,9 @@ dated files under `docs_archive/`, not in this queue.
 - **T4 has produced learned capability, but still no stronger learned bot.**
   The first protected play model lost its untouched REPORT. Expanded bury was
   positive but inconclusive on only 32 fresh rows and selected none. Expanded
-  broad play is the first ensemble with positive DESIGN and CALIB lower bounds
-  in all eight seeds; its original 480-state broad exam was held unopened
+  broad play is the first ensemble with positive DESIGN and CALIB ensemble
+  lower bounds plus positive means from all 8/8 seeds; its original 480-state
+  broad exam was held unopened
   because the observed effect made it underpowered.
 - **The live Teacher hypothesis is now narrow and powered.** Every remaining
   untouched `champion_uncertainty` row is selected: 219 states, projected

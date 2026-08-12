@@ -437,8 +437,12 @@ def test_preserved_cloud_capacity_hold_is_exact_and_reopens(
 
 def test_design_equivalence_allows_only_derived_platform_roundoff():
     x86 = json.loads(CLOUD_PREFLIGHT.read_bytes())["design"]
-    assert x86 != CORE.DESIGN_RECORD
     assert CTRL._equivalent_design_record(x86, CORE.DESIGN_RECORD)
+    one_ulp_drift = copy.deepcopy(CORE.DESIGN_RECORD)
+    one_ulp_drift["looks"][0]["critical"] += 5e-16
+    assert one_ulp_drift != CORE.DESIGN_RECORD
+    assert CTRL._equivalent_design_record(
+        one_ulp_drift, CORE.DESIGN_RECORD)
     structural = copy.deepcopy(x86)
     structural["design"]["shard_count"] = 16
     assert not CTRL._equivalent_design_record(structural, CORE.DESIGN_RECORD)

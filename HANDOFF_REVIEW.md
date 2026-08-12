@@ -2383,3 +2383,75 @@ This permits score-free equal-work capacity packet design/review only. It
 authorizes no preflight, scored screen, strength claim, promotion or deploy.
 
 ---
+
+## Claude — 2026-08-12 03:44 EDT — PASS: pair-aware capacity packet v2 (PR #46, 2321790); one score-free Air preflight authorized. The withdrawn v1 was correctly never answered
+
+Review per the 03:28 request (v1 stands withdrawn per its own audit — the
+fixed-100-action validator defect was real, and the v2 repair is correct:
+complete rounds are 4–100 plays in multiples of four with an 84-action
+regression witness). Every v2 claim reproduces on exact Air; the requested
+marker is below.
+
+Verified on `Jerrys-MacBook-Air.local` with the pinned CPython 3.14.6 and
+branch-built strict engine (`9371ab7f…`): worktree clean at `2321790`;
+packet external `ba0bb693…`/internal `80e8ff89…`; the controller's `verify`
+returns VERIFIED with full reconstruction. Both parent review records bind
+byte-exactly — the packet's embedded record hashes equal the SHA-256 of my
+own appended marker lines for the exact-screen and root-dose PASSes.
+Air-identity binding is real, not advisory: constants pin host, Python
+version/implementation/executable and fast-binary hash, and running the
+same gate on Mini refuses with "runtime is not exact Air" (my probe).
+
+Semantics: the duel core's matched null is structurally champion-identical
+(exact history and outcome equality enforced per cluster, `natural_root_dose`
+compares only the shared trajectory to its first divergence, requires the
+divergent actor on the treatment team, and refuses impossible equal-prefix/
+different-length terminations). The preflight serialization discards every
+record — only summed work counters, pair-trigger dose, first-divergence
+prevalence and the 2,048/8,192 cost projections survive, with a recursive
+forbidden-score walk; the singleton admission path is fixed and unconsumed;
+every successor-authority bit in the packet is false. 38 focused tests pass
+on Air. Falsifications: a packet tamper with forged internal digest refuses
+via full reconstruction comparison; a verdict-flipped review record refuses
+at marker parse; the Mini-host probe refuses. The verifier-generated claim
+byte-matches the requested marker.
+
+The marker below authorizes exactly one four-cluster score-free preflight
+on Air. No scored screen, strength claim, merge, promotion, deployment or
+restart.
+
+PAIR_AWARE_ROLLOUT_CAPACITY_PACKET_V2_REVIEW {"git":"2321790ee7a56106d2d4ded70f34531bd163d913","independent_review":true,"one_score_free_preflight_authorized":true,"packet_sha256":"ba0bb693642c6fcb41357558f96e6b9d8707b810fa8926c97ec01d223abaa0b6","production_deployment":false,"production_promotion":false,"run_id":"pair-aware-whole-round-screen-v2","schema":"pair-aware-rollout-capacity-packet-review-v2","screen_execution_authorized":false,"strength_claim":false,"verdict":"PASS"}
+
+---
+
+## Claude — 2026-08-12 03:44 EDT — PASS: pair-cap v2 incremental dose (PR #48, b4154f1); score-free whole-round capacity packet design authorized
+
+Review per the 03:34 request. Every claim reproduces; the requested marker
+is below.
+
+Artifact `f2e1d28b…`/internal `ab8c1074…` byte-verified; produced on Air
+(CPython 3.14.6) at clean `b4154f1`. My independent recount from the 192
+rows: exactly 6×32 balanced cells, 192 unique state ids and public-state
+digests, v1 root changes 9, v2 root changes 10, exactly three roots differ
+(two new changes, one reversion to matched-null), 57 v2-cap trigger states
+concentrated early/mid (51/6/0) — every number matches the disclosure. The
+recursive score scan finds no outcome field at any depth. Source semantics:
+the v2 lane is strictly incremental — v1's global-boss proof takes exact
+precedence; the new lane fires only when public counting proves BOTH
+opponents cap at zero pairs in the suit (partner may hold the threat),
+still declining on ruff risk; nothing reads determinized hidden hands, and
+the root-level reversion is a legitimate emergent effect of changed rollout
+values, not a logic contradiction. The per-row
+`post_divergence_pair_streams_equal=false` on 75 rows is the honest
+trajectory-divergence diagnostic (the identity contract remains root
+ballot + MC work, which holds on all 192 rows). On Air I reran all three
+differing states plus one control end-to-end from their deal seeds with the
+recorded decision seeds: byte-identical rows. 12 focused tests pass on Air.
+
+The marker below authorizes score-free whole-round capacity packet design
+only. No preflight execution, scored run, strength claim, merge,
+registration, promotion, deployment or restart.
+
+PAIR_CAP_ROLLOUT_INCREMENTAL_DOSE_V1_REVIEW {"artifact_sha256":"f2e1d28bff52e6dee7d733d78eedb9d6d741c414b4e864b477d60f881d7b0d78","decision":"ADVANCE_TO_SCORE_FREE_WHOLE_ROUND_CAPACITY_PACKET_DESIGN","git":"b4154f10ecc81989a647d684f66e6a7ea961c092","independent_review":true,"new_root_changes":2,"production_deployment":false,"production_promotion":false,"result_git":"6789f1c","reverted_v1_root_changes":1,"schema":"pair-cap-rollout-incremental-dose-review-v1","score_free_recomputation_passed":true,"states":192,"strength_claim":false,"v1_root_changes":9,"v2_incremental_root_changes":3,"v2_root_changes":10,"verdict":"PASS","whole_game_execution_authorized":false,"whole_game_preflight_execution_authorized":false,"whole_game_preflight_packet_design_authorized":true}
+
+---

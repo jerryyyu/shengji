@@ -29,6 +29,8 @@ sys.path.insert(0, str(SCRIPT.parent))
 
 import s6_boss_near_dev_pilot as PILOT  # noqa: E402
 import s6_throw_duel as BASE  # noqa: E402
+from shengji.ai import throw_sourcing as SOURCE  # noqa: E402
+from shengji.ai.memory import Memory  # noqa: E402
 from shengji.engine import combos, fast  # noqa: E402
 from shengji.engine.game import Game  # noqa: E402
 from shengji.engine.round import actual_play_after  # noqa: E402
@@ -89,6 +91,43 @@ def compact_search(record: object) -> dict | None:
     }
 
 
+def component_proof(rnd, seat: int, cards: list[str]) -> dict:
+    """Classify a proposed bundle using only information available to actor."""
+    if rnd.ordering is None or not cards:
+        raise ReplayRefused("component proof requires an ordered nonempty play")
+    ordering = rnd.ordering
+    suits = {ordering.eff_suit(card) for card in cards}
+    if len(suits) != 1:
+        raise ReplayRefused("S6 throw candidate spans effective suits")
+    suit = next(iter(suits))
+    memory = Memory(rnd, seat, own_kitty=True)
+    components = []
+    for component in combos.decompose(cards, ordering).components:
+        top = max(component.cards, key=ordering.level)
+        if component.pair_len:
+            boss = memory.pair_is_boss(top)
+            near = SOURCE._pair_near_boss(top, suit, memory)
+        else:
+            boss = memory.is_boss(top)
+            near = False
+        components.append({
+            "cards": list(component.cards),
+            "top": top,
+            "pair_len": component.pair_len,
+            "publicly_proven_boss": boss,
+            "publicly_near_boss": near,
+        })
+    return {
+        "effective_suit": suit,
+        "components": components,
+        "all_components_publicly_proven_boss": all(
+            row["publicly_proven_boss"] for row in components),
+        "near_boss_components": sum(
+            row["publicly_near_boss"] and not row["publicly_proven_boss"]
+            for row in components),
+    }
+
+
 def _policies(label: str, seed: int, flip: int) -> list:
     a1 = PILOT.make_arm(label, seed + BASE.POLICY_ROLE_OFFSETS[0])
     a2 = PILOT.make_arm(label, seed + BASE.POLICY_ROLE_OFFSETS[1])
@@ -133,6 +172,9 @@ def trace_round(label: str, seed: int, flip: int) -> dict:
         attempted = bot.decide_play(rnd, seat)
         decision = deepcopy(getattr(bot, "last_decision_record", None))
         s6 = deepcopy(getattr(bot, "last_s6_throw_record", None))
+        proof = (component_proof(rnd, seat, list(attempted))
+                 if isinstance(s6, dict)
+                 and s6.get("treatment_override") is True else None)
         previous_last = rnd.last_trick
         rnd.play(seat, attempted)
         actual = actual_play_after(rnd, seat, previous_last)
@@ -170,6 +212,7 @@ def trace_round(label: str, seed: int, flip: int) -> dict:
                 "attempted": list(attempted),
                 "actual": list(actual),
                 "s6": s6,
+                "component_proof": proof,
                 "search": compact_search(decision),
                 "incumbent_search": compact_search(incumbent),
             })
@@ -243,6 +286,7 @@ def summarize_witness(treatment: dict, champion: dict) -> dict:
         "actual": actual,
         "throw_succeeded": Counter(attempted) == Counter(actual),
         "ballot": event["s6"]["ballot"],
+        "component_proof": event["component_proof"],
         "report": report,
         "treatment_attacker_points": treatment["attacker_points"],
         "champion_attacker_points": champion["attacker_points"],
@@ -276,6 +320,8 @@ def build_census_payload(expected_git: str, workers: int) -> dict:
     rows = [summarize_witness(*traces[witness])
             for witness in OVERRIDE_WITNESSES]
     failed = [row for row in rows if not row["throw_succeeded"]]
+    proven = [row for row in rows if row["component_proof"][
+        "all_components_publicly_proven_boss"]]
     payload = {
         "schema": "s6-boss-near-override-census-v1",
         "git": expected_git,
@@ -293,6 +339,13 @@ def build_census_payload(expected_git: str, workers: int) -> dict:
                 row["signed_level_utility_delta"] < 0 for row in rows),
             "failed_throw_negative_utility": sum(
                 row["signed_level_utility_delta"] < 0 for row in failed),
+            "all_boss_public_proof": len(proven),
+            "all_boss_positive_utility": sum(
+                row["signed_level_utility_delta"] > 0 for row in proven),
+            "all_boss_neutral_utility": sum(
+                row["signed_level_utility_delta"] == 0 for row in proven),
+            "all_boss_negative_utility": sum(
+                row["signed_level_utility_delta"] < 0 for row in proven),
         },
         "exploration_only": True,
         "confirmatory_claim": False,

@@ -51,6 +51,10 @@ def test_witness_summary_identifies_failed_throw_without_calling_it_strength():
             "attempted": ["C3", "C3", "C4", "C4"],
             "actual": ["C3", "C3"],
             "s6": {"treatment_override": True, "ballot": {"candidates": []}},
+            "component_proof": {
+                "all_components_publicly_proven_boss": False,
+                "near_boss_components": 1,
+            },
             "search": {"report_fold": {"complete": True, "gap": 2.0}},
             "incumbent_search": {"played": ["D3"]},
         }],

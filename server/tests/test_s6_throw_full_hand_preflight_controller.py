@@ -45,15 +45,15 @@ def _record(label: str, flip: int, *, points: int = 40) -> dict:
 
 def test_screen_size_is_powered_from_disclosed_fitting_inputs():
     planning = S.planning_values()
-    assert S.SCREEN_CLUSTERS == 6_144
+    assert S.SCREEN_CLUSTERS == 7_168
     assert S.SHARD_COUNT == 8
     assert planning["expected_triggered_clusters"] > 120
     assert planning["mixture_planning_mean"] == pytest.approx(0.0062002734375)
     assert planning["mixture_planning_sd"] == pytest.approx(
         0.13569923072248874)
     assert planning["mde80_one_sided_95"] == pytest.approx(
-        0.004304630265064269)
-    assert planning["planning_power_at_fitting_mean"] > 0.97
+        0.003985313221485745)
+    assert planning["planning_power_at_fitting_mean"] > 0.98
 
 
 def test_policy_contract_is_literal_champion_plus_unregistered_gate():
@@ -95,8 +95,8 @@ def test_packet_reconstructs_exactly_and_grants_no_execution(
     internal = packet.pop("internal_sha256")
     assert S.stable_digest(packet) == internal
     packet["internal_sha256"] = internal
-    assert packet["proposed_screen"]["clusters"] == 6_144
-    assert packet["proposed_screen"]["clusters_per_shard"] == 768
+    assert packet["proposed_screen"]["clusters"] == 7_168
+    assert packet["proposed_screen"]["clusters_per_shard"] == 896
     assert packet["authority"] == {
         "preflight_execution_authorized": False,
         "screen_packet_design_authorized": False,

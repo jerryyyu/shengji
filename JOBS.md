@@ -1,137 +1,55 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-09 06:40 EDT. This file owns live compute and compact
-terminal job stubs. Exact historical detail is archived at
-`docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
-`AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
-in `HANDOFF_ACTIVE.md`.
+Last reconciled: 2026-08-12 01:39 EDT. This file owns current compute and
+compact terminal stubs. Historical detail is archived in
+`docs_archive/jobs-through-2026-08-11.md`; execution priority is in
+`BACKLOG.md`.
 
 ## Live fleet
 
-| host | live strength job | status / next admitted use |
+| host | live strength job | health / next use |
 |---|---|---|
-| Mini | none | **FREE / S3a PREFLIGHT PASS:** the reviewed four-cluster score-free run ended `AUTHORIZE_SCREEN_PACKET_REVIEW`; final `56943242…e9f`. No screen is admitted until a separate one-shot packet passes external review. |
-| Air | none | **FREE / O0-v2 CLOSED:** all 32 training endpoints, 16 evaluations, terminal gate and independent replay completed. Gate `0dbd9aa8…f24e` is `SELECT_NONE` and independently `verified=true`. No O1/strength/production authority and no reviewed Air successor. |
-| Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
+| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; all remain CPU-bound. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
+| **Air** | none | **FREE.** It completed the pair-aware exact diagnostic and has no live strength worker. Reserve it for the first externally authorized S4 or S6 score-free preflight. |
+| **Fly production** | `mc-s0-report-lcb` | Release 17 remains live. No deploy, restart, room wipe or policy change is authorized. |
 
-The T1 Teacher audit is **terminal PASS**. Receipt
-`e293858c…a10d` and preparation `83892930…c39` are exact, and the supervisor
-post-preparation preflight returned zero problems. All 64 states and 8 shards
-completed, and independent aggregation reproduced the gate byte-for-byte. Air
-completed and independently verified the admitted O0-v2 terminal result.
+## Reviewed queue
 
-## Next admitted execution
+| order | job | current gate |
+|---:|---|---|
+| 1 | S4 future-only sequential preflight | PR #40 head `3403cdf`; controller review pending. A PASS permits one score-free Air preflight and packet design only. |
+| 2 | S6 shuai-pai preflight | PR #41 head `ea07efa`; Air-bound packet v2 review pending. A PASS permits one score-free four-cluster Air preflight only. |
+| 3 | Pair-aware whole-game design | PR #42 head `d4d8ebd`; source/result review pending. A PASS permits whole-game packet design only. |
 
-### T1 Teacher
+Whichever of S4 or S6 receives its exact marker first takes Air. Preflight
+artifacts must stay score-free; a later independent packet review is required
+before scored execution.
 
-1. **Complete:** exact Mini launch review passed for evaluator `f78e904`,
-   controller `0399591`, and material `645b8f54…b894d`.
-2. **Complete:** the one-shot preparer emitted exact receipt
-   `e293858c…a10d` and preparation `83892930…c39`; both reopened cleanly.
-3. **Complete:** all eight shards exited zero; terminal gate `8a1532b7…91f8`
-   is PASS and supervisor final is `02f4f8b…6f237`.
-4. **Complete:** a fresh exact evaluator aggregation returned zero and matched
-   the canonical gate byte-for-byte.
-5. **Review open:** the previously passed adapter `5b26c4b` correctly refused
-   the real absolute label paths because its fixture predicted relative paths.
-   Exact `60d46e1` changes only that literal contract, passes 30/30 and reopens
-   the real gate/supervisor with zero problems. Await external PASS, then
-   create/verify one design-only adapter. Never retry, extend or train here.
+## T4 closeout
 
-### T2 S3a
+1. Supervisor and eight shards finish naturally; no retry or resize.
+2. External reviewer authenticates the score-free supervisor final.
+3. One aggregation is admitted only after that PASS.
+4. External reviewer independently reproduces the aggregate and posts the
+   terminal verdict.
 
-The state-level screen has already passed. Claude passed repaired core
-`b5dee2e` and Mini-only controller `0085409`; integration `fcad972` preserved
-the reviewed bytes and passed 76/76. The first literal packet is superseded
-because Teacher exclusivity was prose-only. Exact `e6f2493` hashes and enforces
-the terminal-final/no-partial/no-live-worker gate; its focused tests pass
-16/16, including wiring non-vacuity, and a real live-Teacher probe refused
-before creating a namespace. Claude independently passed superseding contract
-`5e0f6ade…b44653`, all 16 tests and the equivalent `192/24`, `768/96` caps.
-The exact preflight ran once after the Teacher guard cleared. It completed in
-255.3 seconds with exact work, zero bad counters, receipt `97280974…68ca`,
-preflight `09692f82…edf0` and final `56943242…e9f`. The 2× projection is
-`72.62` fleet-hours / `9.08` max-shard hours for the screen and `290.50` /
-`36.31` for confirmation. Its only authority is design and external review of
-the screen packet; no strength run has started.
+Safe monitoring: tmux/process state, CPU, supervisor console and durable
+heartbeats. Forbidden before review: opening or parsing `shard-*.json` or any
+outcome-bearing aggregate input.
 
-### T2 learner
+## Recent terminal stubs
 
-O0-v2 public-key integration and mandatory semantic replay are reviewed.
-Claude's V3 PASS confirmed test-only exact `2e13c35`, including the direct
-endpoint replay removal witness and 163/163 local/strict-Air tests. The one
-score-redacted Air preflight passed at `f8e1dc16…12eaf`; its 2x projection is
-59.4 minutes. Packet `20d2aaee…5cab0` is frozen and independently reverified.
-Claude's separate packet review passed after in-situ reopen and adversarial
-mutation probes. Exact committed review `116dfb8c…e3d` was admitted once at
-`f436f4b0…01e7a`; all 32 training and 16 evaluation endpoints exited zero.
-The terminal gate selected none at `0dbd9aa8…f24e`; a separate full semantic
-replay exited with the expected code 4 and `verified=true`. Neither factorial
-cell advanced. O1, strength and production remain unauthorized.
-
-## Terminal job index
-
-| date | job | verdict / headline | evidence anchor |
+| date | job | verdict / headline | anchor |
 |---|---|---|---|
-| 08-09 | S3a full-game preflight | **CAPACITY PASS / SCREEN PACKET REVIEW**; 4/4 clusters, exact 952/952 structured rollouts, screen projection `72.62` fleet-hours / `9.08` max-shard hours | preflight `09692f82...edf0`; final `56943242...e9f` |
-| 08-09 | Teacher-v3 fresh audit | **PASS / STAGE-C DESIGN**; cheap upper `0.0354`, N=30 upper `0.0439` below `0.10`; no training authority | gate `8a1532b7...91f8`; supervisor `02f4f8b...6f237` |
-| 08-09 | Suphx O0-v2 | **SELECT NONE**; control `+0.015` (LCB `-0.067`), plus-margin `-0.047` (LCB `-0.109`); independently replayed | gate `0dbd9aa8...f24e`; admission `f436f4b0...01e7a` |
-| 08-08 | S3a 512-state screen | **AUTHORIZE DUEL DESIGN**; all three state-level LCBs positive; no production authority | aggregate `74aa5a39...396cd`; final `d3f2b1ab...69a6b` |
-| 08-08 | S3a v2 sizing | **CAPACITY PASS**; 0.142 fleet-hours / 0.0178 max-shard hours under frozen 400/60 caps | receipt `cf770277...5c431` |
-| 08-08 | Teacher Stage B | **PASS**; regret upper bound `0.019548 < 0.10` | gate `f607b489...89694` |
-| 08-08 | Teacher audit-v2 | **OPERATIONAL REFUSAL / NO ML VERDICT**; incomplete continuation, no labels/gate | receipt `ce51b826...71d0`; failed root preserved |
-| 08-08 | S3b v2 preflight | **TERMINAL HOLD / NO SCREEN**; exact node cap hit in cluster 1 | head `cd44ea8`; no final/partial receipt |
-| 08-08 | Suphx O0 | **SELECT NONE**; aggregate oracle signal, seed-1 reversal | gate `592a009a...bd407c` |
-| 08-07 | RLCB-C1 | **CONFIRM**; report-LCB `+0.338379 +/- 0.067706`, null flat | aggregate `83f5a9df...f5ef5ea`; closeout `06dd487d...b7aae5` |
-| 08-07 | production latency | **LIVE**; release 17, off-loop isolated search | image `latency-cd6789e`; manifest `047bcfe4...5b300` |
-| 08-07 | V11 direct-v2 | **SELECT NONE**; `-0.141113 +/- 0.069823` versus current | aggregate `b7c90ba4...05d21ad` |
-| 08-07 | Direct-Q 144M | **SELECT NONE**; positive gameplay, failed held-out learning | aggregate `1fa6789e...ce791` |
-| 08-07 | formal S0 | **SELECT NONE**; numerical S0c outcome unread/nonretryable | closeout `ef0a365...fde9a` |
-| 08-05 | DEV-512 ballot | **SELECT NONE**; no design advanced, CALIB/REPORT sealed | state asset `af787485...85d3e7b` |
-| 08-04 | sampler Package H | **PASS** within bounded strict scope; not posterior calibration | commit `aea3774`; `certify_sampler_v3.json` |
+| 08-12 | Pair-aware exact endgame diagnostic | **ADVANCE TO WHOLE-GAME DESIGN (exploration only):** `+9.21875` acting-team points, one-sided LCB `+6.67570`, both roles positive | result `031a365d…919` / PR #42 |
+| 08-11 | Mid/late protected state screen | **PASS:** treatment−live `+0.02020`, LCB `+0.01275`; treatment−same-work-null `+0.01570`, LCB `+0.00880` | result `f18c2e42…948f6` |
+| 08-11 | Powered uncertainty Teacher REPORT | **SELECT NONE:** action mean `+0.01213`, LCB `-0.00506`; outcome prediction improved but was nongating | result `e2e774da…b4c5` |
+| 08-11 | Expanded-bury Teacher REPORT | **SELECT NONE:** mean `+0.03381`, LCB `-0.01525`; narrow structured-point/void signal survived | result `2e21a9bf…ac4d` |
+| 08-11 | S4 point-banking independent replication | **SELECT NONE under its one-shot rule:** mean `+0.04883`, LCB `-0.00688`; implementation sentinels stayed exact | aggregate `d6b73f45…f4d4` |
+| 08-10 | Protected-play Teacher REPORT | **SELECT NONE:** `-0.00823`, LCB `-0.01894` | result `8fa323de…aea6` |
+| 08-08 | S3a 512-state mechanism screen | **PASS / DUEL DESIGN ONLY:** all three state-level lower bounds positive | aggregate `74aa5a39…396cd` |
+| 08-07 | RLCB-C1 | **CONFIRM:** report-LCB `+0.338379 +/- 0.067706`, null flat | aggregate `83f5a9df…f5ef5ea` |
 
-No row grants more authority than its original gate. In particular, S3a's
-positive state screen permits duel **design**, not a duel launch, strength
-claim, policy promotion, or production change.
-
-## Current terminal details
-
-### S3a 512-state screen — verified PASS
-
-- reviewed source git `14548d3da31c3cfe899cbd7e572614ae05242c0a`;
-- run ID `s3a-bury-v2-screen-136m-v1`, eight successful shards, exact seeds
-  136,000,000–136,000,511;
-- aggregate `74aa5a3947e1daaa5aa4bc33eef8ae04eaaf695d0cb900c7045eb0cbbc4396cd`;
-- supervisor final
-  `d3f2b1ab48085ccf37534b5dd7f20ea6cf0d7644c6c49304b644ecf895169a6b`;
-- separate CLI verifier exited zero with `verified=true`;
-- structured-minus-incumbent `+0.997314 +/- 0.400606`, LCB `+0.596708`;
-- structured-minus-legacy-four `+0.877848 +/- 0.379885`, LCB `+0.497963`;
-- structured-minus-random-widening `+3.252848 +/- 0.561197`, LCB
-  `+2.691652`;
-- no problems, partials or symlinks; retry/resume false; production promotion
-  false.
-
-### Teacher audit-v2 — immutable refusal
-
-Stage B passed, but audit-v2 shard 6 stopped after a complete selection fold
-and incomplete report continuation. The supervisor terminated siblings. No
-label final, terminal audit gate, or regular supervisor final exists, so the
-reviewed adapter cannot consume it. Preserve
-`~/Projects/shengji-teacher-audit-v2-air` and the earlier failed v1 root; never
-resume, migrate, delete, or reinterpret them. Exact retry semantics at
-`1589fb4` passed independent review but did not authorize a new run.
-
-### S3b v2 — immutable preflight HOLD
-
-The exact treatment exceeded `max_nodes=250000` before cluster 1 completed.
-No score, raw record, receipt, or partial survived. V2 may not retry or change
-its cap/fallback. Any future v3 requires a fresh resource contract and review.
-
-## Archive pointers
-
-- Full pre-compaction ledger:
-  `docs_archive/jobs-through-2026-08-08.md`, SHA-256
-  `26beff936f6c0744b220fc79e233163c8f09acde8a13adcba5450327ad132252`.
-- Day chronology: `docs_archive/daily-log-2026-08-08.md`.
-- Review markers and adversarial findings: `HANDOFF_REVIEW.md`.
+No terminal row grants more authority than its original gate. In particular,
+the pair diagnostic is not whole-game strength, the mid/late state result is
+not a deploy claim, and the old S4 populations cannot be pooled post hoc.

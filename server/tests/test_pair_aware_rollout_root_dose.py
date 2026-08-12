@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import sys
 from pathlib import Path
 
@@ -11,6 +13,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
 import pair_aware_rollout_root_dose as DOSE  # noqa: E402
+
+
+RESULT = Path(__file__).parent / "data/pair_aware_rollout_root_dose.v1.json"
 
 
 def test_phase_band_covers_exact_round_without_overlap():
@@ -85,3 +90,43 @@ def test_exclusive_writer_refuses_overwrite(tmp_path: Path):
     DOSE.write_exclusive(target, {"schema": DOSE.SCHEMA})
     with pytest.raises(DOSE.DoseRefused, match="overwrite"):
         DOSE.write_exclusive(target, {"schema": DOSE.SCHEMA})
+
+
+def test_preserved_air_census_is_score_free_and_recomputes_exactly():
+    raw = RESULT.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == (
+        "e530da6a55e53cb29f941a4b539870d15b45bb279d8265f72a6276b80cfbbbb8"
+    )
+    payload = json.loads(raw)
+    internal = payload.pop("internal_sha256")
+    assert DOSE.stable_digest(payload) == internal == (
+        "1914ef6d8db4ef3da2db6896962093a31884a6dafd6440d8e9ed1962c19f398f"
+    )
+    DOSE._assert_score_free(payload)
+    rows = payload["rows"]
+    assert len(rows) == len({row["state_id"] for row in rows}) == 24
+    assert payload["aggregate"] == {
+        "accepted_worlds": 7590,
+        "cell_counts": {
+            "early_attacker": 4,
+            "early_defender": 4,
+            "late_attacker": 4,
+            "late_defender": 4,
+            "mid_attacker": 4,
+            "mid_defender": 4,
+        },
+        "elapsed_seconds": 32.61224741698243,
+        "matched_null_triggered_states": 17,
+        "matched_null_triggers": 4833,
+        "root_action_changes": 1,
+        "searched_states": 23,
+        "searches": 23,
+        "states": 24,
+        "treatment_triggered_states": 17,
+        "treatment_triggers": 4038,
+    }
+    changed = [row for row in rows if row["root_action_changed"]]
+    assert [(row["state_id"], row["matched_null_action"],
+             row["treatment_action"]) for row in changed] == [
+        ("333000000:3:1", ["CA"], ["H10", "H10"]),
+    ]

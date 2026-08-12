@@ -21,6 +21,10 @@ WITHDRAWN_V1_PACKET = (
     Path(__file__).resolve().parents[1]
     / "runs/logs/pair-aware-whole-round-preflight-v1/controller-packet.json"
 )
+FROZEN_V2_PACKET = (
+    Path(__file__).resolve().parents[1]
+    / "runs/logs/pair-aware-whole-round-preflight-v2/controller-packet.json"
+)
 
 
 def _review(path: Path) -> Path:
@@ -379,3 +383,20 @@ def test_withdrawn_v1_packet_is_preserved_and_grants_no_gameplay():
     assert all(value is False for value in packet["authority"].values())
     assert packet["schema"] != C.PACKET_SCHEMA
     assert packet["preflight_run_id"] != C.PREFLIGHT_RUN_ID
+
+
+def test_repaired_v2_air_packet_is_hash_pinned_and_grants_no_gameplay():
+    raw = FROZEN_V2_PACKET.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == (
+        "ba0bb693642c6fcb41357558f96e6b9d8707b810fa8926c97ec01d223abaa0b6")
+    packet = json.loads(raw)
+    internal = packet.pop("internal_sha256")
+    assert C.stable_digest(packet) == internal == (
+        "80e8ff89fd6d1c194670d1770422cabf63929278f2dce9b280fab63666056c99")
+    assert packet["git"] == "2321790ee7a56106d2d4ded70f34531bd163d913"
+    assert packet["schema"] == C.PACKET_SCHEMA
+    assert packet["preflight_run_id"] == C.PREFLIGHT_RUN_ID
+    assert packet["runtime"] == _air_runtime()
+    assert packet["preflight"]["clusters"] == 4
+    assert packet["successor_projection"]["candidate_clusters"] == [2048, 8192]
+    assert all(value is False for value in packet["authority"].values())

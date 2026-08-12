@@ -16,6 +16,18 @@ import s4_point_banking_future as CORE  # noqa: E402
 import s4_point_banking_future_cloud as CTRL  # noqa: E402
 
 
+DATA = Path(__file__).parent / "data"
+CLOUD_PREFLIGHT = DATA / "s4_point_banking_future_cloud_preflight.v1.json"
+CLOUD_PREFLIGHT_SHA256 = (
+    "70a15405c7edb94ecfdd89fb8c86d158ba64d8161eeba82c57851b67d513413e"
+)
+CLOUD_PREFLIGHT_ADMISSION = (
+    DATA / "s4_point_banking_future_cloud_preflight_admission.v1.json")
+CLOUD_PREFLIGHT_ADMISSION_SHA256 = (
+    "8332404e8ff4f97c4cdbaea232f9cdf695a83a2ceb121151923f2c99610fb9ca"
+)
+
+
 def _config() -> CTRL.Config:
     return CTRL.Config(
         expected_git="a" * 40,
@@ -87,6 +99,7 @@ def _install_receipt_chain(tmp_path: Path, monkeypatch, *,
         "sha256": preflight_sha,
         "score_free": True,
         "outcomes_published": False,
+        "status": "AUTHORIZE_SEQUENTIAL_PACKET_REVIEW",
     }
     packet = CTRL.packet_contract(
         config, CTRL.paths_for(), parent=parent, runtime=runtime,
@@ -265,7 +278,8 @@ def test_packet_embeds_verbatim_transition_and_pre_authorizes_tranche_two():
         parent={"champion_policy": CORE.DUEL.CHAMPION},
         runtime={"git": "a" * 40},
         preflight={"sha256": "e" * 64, "score_free": True,
-                   "outcomes_published": False},
+                   "outcomes_published": False,
+                   "status": "AUTHORIZE_SEQUENTIAL_PACKET_REVIEW"},
         design_review=_design_review())
     assert packet["design"] == CORE.DESIGN_RECORD
     assert packet["transition_table"] == {
@@ -278,6 +292,160 @@ def test_packet_embeds_verbatim_transition_and_pre_authorizes_tranche_two():
         "look_1_status_exactly_CONTINUE_AUTOMATICALLY"
     assert len(packet["tranches"][0]["jobs"]) == 8
     assert len(packet["tranches"][1]["jobs"]) == 8
+
+
+def _preflight_payload(*, parent: dict, runtime: dict,
+                       status: str, within_caps: bool) -> dict:
+    fleet_hours = (CORE.MAX_PROJECTED_FLEET_HOURS / 2 if within_caps
+                   else CORE.MAX_PROJECTED_FLEET_HOURS + 1)
+    shard_hours = (CORE.MAX_PROJECTED_SHARD_HOURS / 2 if within_caps
+                   else CORE.MAX_PROJECTED_SHARD_HOURS + 1)
+    criteria = {
+        "records_valid": True,
+        "stream_populations_disjoint": True,
+        "treatment_triggered_both_roles": True,
+        "matched_null_triggered_both_roles": True,
+        "treatment_dose_exact": True,
+        "matched_null_dose_exact": True,
+        "champion_feature_off": True,
+        "fleet_hours_le_cap": within_caps,
+        "max_shard_hours_le_cap": within_caps,
+        "all": within_caps,
+    }
+    return {
+        "schema": CORE.PREFLIGHT_SCHEMA,
+        "complete": True,
+        "score_free": True,
+        "outcomes_published": False,
+        "outcomes_discarded": True,
+        "run_id": CORE.PREFLIGHT_RUN_ID,
+        "clusters": CORE.PREFLIGHT_CLUSTERS,
+        "seed0": CORE.PREFLIGHT_SEED0,
+        "stream_stride": CORE.DUEL.STREAM_STRIDE,
+        "parent": parent,
+        "runtime": runtime,
+        "design": CORE.DESIGN_RECORD,
+        "controller_review": {"path": "review", "sha256": "1" * 64},
+        "preflight_admission": {"path": "admission", "sha256": "2" * 64},
+        "elapsed_seconds": 1.0,
+        "throughput_safety_factor": CORE.THROUGHPUT_SAFETY_FACTOR,
+        "counter_totals": {},
+        "point_banking_telemetry": {},
+        "projection": {
+            "fleet_hours": fleet_hours,
+            "max_shard_hours": shard_hours,
+            "target_arm_clusters": 1,
+            "preflight_arm_clusters": 1,
+            "look_1_fleet_hours": fleet_hours / 2,
+            "look_1_max_shard_hours": shard_hours / 2,
+        },
+        "criteria": criteria,
+        "status": status,
+        "sequential_launch_authorized": False,
+        "tranche_2_pre_authorized": False,
+        "strength_claim": False,
+        "training_authorized": False,
+        "production_promotion": False,
+        "retry_or_extension_authorized": False,
+    }
+
+
+@pytest.mark.parametrize(("within_caps", "status"), [
+    (True, "AUTHORIZE_SEQUENTIAL_PACKET_REVIEW"),
+    (False, "HOLD"),
+])
+def test_preflight_evidence_accepts_coherent_pass_or_hold(
+        tmp_path, monkeypatch, within_caps, status):
+    parent = {"champion_policy": CORE.DUEL.CHAMPION}
+    runtime = {"host": CTRL.EXPECTED_HOST}
+    paths = replace(
+        CTRL.paths_for(),
+        preflight=tmp_path / "preflight.json",
+        preflight_review_copy=tmp_path / "review.txt",
+        preflight_admission=tmp_path / "admission.json")
+    payload = _preflight_payload(
+        parent=parent, runtime=runtime, status=status,
+        within_caps=within_caps)
+    _write_json(paths.preflight, payload)
+    paths.preflight_review_copy.write_text("review\n")
+    paths.preflight_admission.write_text("admission\n")
+    refs = {
+        paths.preflight: {"path": str(paths.preflight),
+                          "sha256": CORE.sha256(paths.preflight)},
+        paths.preflight_review_copy: {"path": "review", "sha256": "1" * 64},
+        paths.preflight_admission: {"path": "admission", "sha256": "2" * 64},
+    }
+    monkeypatch.setattr(CTRL, "_require_preflight_chain",
+                        lambda _config, _paths: ({}, {}))
+    monkeypatch.setattr(
+        CTRL, "_artifact_ref",
+        lambda path, _expected, _label: refs[path])
+    evidence = CTRL.preflight_evidence(
+        _config(), paths, parent=parent, runtime=runtime)
+    assert evidence["status"] == status
+
+
+def test_preflight_hold_cannot_freeze_a_packet():
+    with pytest.raises(CTRL.SupervisorRefused,
+                       match="did not authorize packet review"):
+        CTRL.packet_contract(
+            _config(), CTRL.paths_for(),
+            parent={"champion_policy": CORE.DUEL.CHAMPION},
+            runtime={"git": "a" * 40},
+            preflight={"status": "HOLD"},
+            design_review=_design_review())
+
+
+def test_preserved_cloud_capacity_hold_is_exact_and_reopens(
+        tmp_path, monkeypatch):
+    assert CORE.sha256(CLOUD_PREFLIGHT) == CLOUD_PREFLIGHT_SHA256
+    assert CORE.sha256(CLOUD_PREFLIGHT_ADMISSION) == \
+        CLOUD_PREFLIGHT_ADMISSION_SHA256
+    payload = json.loads(CLOUD_PREFLIGHT.read_bytes())
+    assert payload["status"] == "HOLD"
+    assert payload["criteria"]["all"] is False
+    assert payload["criteria"]["fleet_hours_le_cap"] is False
+    assert payload["criteria"]["max_shard_hours_le_cap"] is False
+    assert payload["preflight_admission"]["sha256"] == \
+        CLOUD_PREFLIGHT_ADMISSION_SHA256
+
+    review = tmp_path / "controller-review.txt"
+    review.write_text("review bytes are authenticated by the artifact ref\n")
+    paths = replace(
+        CTRL.paths_for(), preflight=CLOUD_PREFLIGHT,
+        preflight_review_copy=review,
+        preflight_admission=CLOUD_PREFLIGHT_ADMISSION)
+    refs = {
+        CLOUD_PREFLIGHT: {
+            "path": str(CORE.PREFLIGHT_NAMESPACE / "preflight.json"),
+            "sha256": CLOUD_PREFLIGHT_SHA256,
+        },
+        review: payload["controller_review"],
+        CLOUD_PREFLIGHT_ADMISSION: payload["preflight_admission"],
+    }
+    monkeypatch.setattr(CTRL, "_require_preflight_chain",
+                        lambda _config, _paths: ({}, {}))
+    monkeypatch.setattr(
+        CTRL, "_artifact_ref",
+        lambda path, _expected, _label: refs[path])
+    evidence = CTRL.preflight_evidence(
+        _config(), paths, parent=payload["parent"],
+        runtime=payload["runtime"])
+    assert evidence["status"] == "HOLD"
+    assert evidence["projection"] == payload["projection"]
+
+
+def test_design_equivalence_allows_only_derived_platform_roundoff():
+    x86 = json.loads(CLOUD_PREFLIGHT.read_bytes())["design"]
+    assert x86 != CORE.DESIGN_RECORD
+    assert CTRL._equivalent_design_record(x86, CORE.DESIGN_RECORD)
+    structural = copy.deepcopy(x86)
+    structural["design"]["shard_count"] = 16
+    assert not CTRL._equivalent_design_record(structural, CORE.DESIGN_RECORD)
+    large_float_drift = copy.deepcopy(x86)
+    large_float_drift["looks"][0]["critical"] += 1e-8
+    assert not CTRL._equivalent_design_record(
+        large_float_drift, CORE.DESIGN_RECORD)
 
 
 def test_review_marker_is_one_exact_narrow_claim():

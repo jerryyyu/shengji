@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import secrets
 import signal
@@ -386,6 +387,36 @@ def _require_preflight_chain(config: Config, paths: Paths) -> tuple[dict, dict]:
     return review_ref, admission_ref
 
 
+def _equivalent_design_record(actual: object, expected: object) -> bool:
+    """Allow only platform-roundoff in derived, non-authorizing display data."""
+    if not isinstance(actual, dict) or not isinstance(expected, dict):
+        return False
+    left = CORE.json_copy(actual)
+    right = CORE.json_copy(expected)
+    try:
+        if len(left["looks"]) != len(right["looks"]):
+            return False
+        for index in range(len(left["looks"])):
+            for field in (
+                    "critical", "power_at_plus_0_03",
+                    "power_at_replicated_effect", "projected_half_width"):
+                lhs = left["looks"][index][field]
+                rhs = right["looks"][index][field]
+                if (not isinstance(lhs, (int, float))
+                        or isinstance(lhs, bool)
+                        or not isinstance(rhs, (int, float))
+                        or isinstance(rhs, bool)
+                        or not math.isfinite(lhs) or not math.isfinite(rhs)
+                        or not math.isclose(
+                            lhs, rhs, rel_tol=0.0, abs_tol=1e-15)):
+                    return False
+                left["looks"][index][field] = 0.0
+                right["looks"][index][field] = 0.0
+    except (KeyError, TypeError):
+        return False
+    return left == right
+
+
 def run_score_free_preflight(config: Config, review_record: Path,
                              expected_review_sha256: str) -> dict:
     paths = paths_for()
@@ -447,6 +478,50 @@ def preflight_evidence(config: Config, paths: Paths, *,
     }
     projection = payload.get("projection")
     criteria = payload.get("criteria")
+    projection_fields = {
+        "fleet_hours", "max_shard_hours", "target_arm_clusters",
+        "preflight_arm_clusters", "look_1_fleet_hours",
+        "look_1_max_shard_hours",
+    }
+    criteria_fields = {
+        "records_valid", "stream_populations_disjoint",
+        "treatment_triggered_both_roles",
+        "matched_null_triggered_both_roles", "treatment_dose_exact",
+        "matched_null_dose_exact", "champion_feature_off",
+        "fleet_hours_le_cap", "max_shard_hours_le_cap", "all",
+    }
+    projection_valid = (
+        isinstance(projection, dict)
+        and set(projection) == projection_fields
+        and all(isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and math.isfinite(value) and value >= 0
+                for value in projection.values())
+    )
+    criteria_valid = (
+        isinstance(criteria, dict)
+        and set(criteria) == criteria_fields
+        and all(type(value) is bool for value in criteria.values())
+    )
+    if projection_valid and criteria_valid:
+        expected_fleet_cap = (
+            projection["fleet_hours"] <= CORE.MAX_PROJECTED_FLEET_HOURS)
+        expected_shard_cap = (
+            projection["max_shard_hours"] <=
+            CORE.MAX_PROJECTED_SHARD_HOURS)
+        component_values = [
+            value for name, value in criteria.items() if name != "all"]
+        criteria_coherent = (
+            criteria["fleet_hours_le_cap"] is expected_fleet_cap
+            and criteria["max_shard_hours_le_cap"] is expected_shard_cap
+            and criteria["all"] is all(component_values)
+        )
+        expected_status = (
+            "AUTHORIZE_SEQUENTIAL_PACKET_REVIEW"
+            if criteria["all"] else "HOLD")
+    else:
+        criteria_coherent = False
+        expected_status = None
     if (set(payload) != expected_fields
             or payload.get("schema") != CORE.PREFLIGHT_SCHEMA
             or payload.get("complete") is not True
@@ -459,21 +534,15 @@ def preflight_evidence(config: Config, paths: Paths, *,
             or payload.get("stream_stride") != CORE.DUEL.STREAM_STRIDE
             or payload.get("parent") != parent
             or payload.get("runtime") != runtime
-            or payload.get("design") != CORE.DESIGN_RECORD
+            or not _equivalent_design_record(
+                payload.get("design"), CORE.DESIGN_RECORD)
             or payload.get("controller_review") != {
                 "path": review_ref["path"], "sha256": review_ref["sha256"]}
             or payload.get("preflight_admission") != {
                 "path": admission_ref["path"],
                 "sha256": admission_ref["sha256"]}
-            or payload.get("status") != "AUTHORIZE_SEQUENTIAL_PACKET_REVIEW"
-            or not isinstance(criteria, dict)
-            or criteria.get("all") is not True
-            or not all(criteria.values())
-            or not isinstance(projection, dict)
-            or projection.get("fleet_hours", float("inf")) >
-            CORE.MAX_PROJECTED_FLEET_HOURS
-            or projection.get("max_shard_hours", float("inf")) >
-            CORE.MAX_PROJECTED_SHARD_HOURS
+            or not criteria_coherent
+            or payload.get("status") != expected_status
             or payload.get("sequential_launch_authorized") is not False
             or payload.get("tranche_2_pre_authorized") is not False
             or payload.get("strength_claim") is not False
@@ -508,6 +577,9 @@ def design_review_evidence(path: Path) -> dict:
 def packet_contract(config: Config, paths: Paths, *, parent: dict,
                     runtime: dict, preflight: dict,
                     design_review: dict) -> dict:
+    if preflight.get("status") != "AUTHORIZE_SEQUENTIAL_PACKET_REVIEW":
+        raise SupervisorRefused(
+            "future S4 preflight did not authorize packet review")
     return {
         "schema": CORE.PACKET_SCHEMA,
         "run_id": RUN_ID,

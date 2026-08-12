@@ -23,6 +23,8 @@ SCRIPT = Path(__file__).resolve()
 BASE_CONTROLLER = SCRIPT.with_name("s4_point_banking_future_cloud.py")
 RUNNER = Path("server/scripts/s4_point_banking_future_c2.py")
 CONTROLLER = Path("server/scripts/s4_point_banking_future_cloud_c2.py")
+CAPACITY_ADMISSION = DESIGN.CAPACITY_RESULT.with_name(
+    "s4_point_banking_future_cloud_preflight_admission.v1.json")
 
 
 def _load_base_controller():
@@ -132,6 +134,10 @@ def controller_review_claim(config) -> dict:
         "design_git": CORE.DESIGN_REVIEW_GIT,
         "design_sha256": _CTRL.sha256_file(Path(DESIGN.__file__)),
         "capacity_result_sha256": DESIGN.CAPACITY_RESULT_SHA256,
+        "capacity_admission_sha256": DESIGN.CAPACITY_ADMISSION_SHA256,
+        "expected_host": _CTRL.EXPECTED_HOST,
+        "expected_python": _CTRL.EXPECTED_PYTHON,
+        "expected_fast_binary_sha256": _CTRL.EXPECTED_FAST_SHA256,
         "sixteen_shard_contract_verified": True,
         "reused_score_free_capacity_verified": True,
         "new_preflight_authorized": False,
@@ -179,13 +185,16 @@ def capacity_evidence() -> dict:
     ref = _CTRL._artifact_ref(
         DESIGN.CAPACITY_RESULT, DESIGN.CAPACITY_RESULT_SHA256,
         "reviewed S4 C1 capacity result")
+    admission_ref = _CTRL._artifact_ref(
+        CAPACITY_ADMISSION, DESIGN.CAPACITY_ADMISSION_SHA256,
+        "reviewed S4 C1 capacity admission")
     return {
         **ref,
         "schema": "s4-point-banking-future-c2-reused-capacity-v1",
         "score_free": True,
         "outcomes_published": False,
         "source_status": "HOLD",
-        "source_admission_sha256": DESIGN.CAPACITY_ADMISSION_SHA256,
+        "source_admission": admission_ref,
         "source_projection": source["projection"],
         "projection": projection,
         "old_shard_count": C1_SHARD_COUNT,

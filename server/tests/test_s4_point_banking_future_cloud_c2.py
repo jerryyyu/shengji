@@ -73,6 +73,8 @@ def test_capacity_reuse_is_score_free_and_passes_only_adjusted_envelope():
     assert evidence["score_free"] is True
     assert evidence["outcomes_published"] is False
     assert evidence["source_status"] == "HOLD"
+    assert evidence["source_admission"]["sha256"] == (
+        DESIGN.CAPACITY_ADMISSION_SHA256)
     assert evidence["status"] == "AUTHORIZE_SEQUENTIAL_PACKET_REVIEW"
     assert evidence["old_shard_count"] == 8
     assert evidence["new_shard_count"] == 16
@@ -87,6 +89,9 @@ def test_controller_claim_authorizes_freeze_but_no_run():
     assert claim["new_preflight_authorized"] is False
     assert claim["sequential_execution_authorized"] is False
     assert claim["strength_claim"] is False
+    assert claim["expected_host"] == "ubuntu-32gb-hel1-1"
+    assert claim["expected_python"] == "3.14.4"
+    assert claim["expected_fast_binary_sha256"] == CTRL.EXPECTED_FAST_SHA256
 
 
 def test_review_markers_are_exact_raw_singletons():

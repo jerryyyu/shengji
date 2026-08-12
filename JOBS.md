@@ -1,109 +1,77 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-11 21:28 EDT. This file owns live compute and compact
-terminal job stubs. Exact historical detail is archived at
-`docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
-`AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
-in `HANDOFF_ACTIVE.md`.
+Last reconciled: 2026-08-12 10:00 EDT. This file owns current compute and
+compact terminal stubs. Historical detail is archived in
+`docs_archive/jobs-through-2026-08-11.md`; execution priority is in
+`BACKLOG.md`.
 
 ## Live fleet
 
-| host | live strength job | status / next admitted use |
+| host | live strength job | health / next use |
 |---|---|---|
-| Mini | none | **FREE:** preferred host for the Teacher whole-game capacity preflight and screen after their separate reviews. |
-| Air | none | **FREE:** reserve for the separately reviewed long S4 N=12,288 confirmation or another admitted long job. |
-| Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
+| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; at 10:00 all eight remained at roughly 96–99% CPU after 10h39m and every shard's reviewed score-free heartbeat had reached `treatment 200/512`. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
+| **Air** | `pair-aware-whole-round-screen-v3` | **HEALTHY / SATURATED.** The sole reviewed 7,168-cluster screen was admitted and launched around 07:24 under exact source `cd20670`. At 10:00 detached supervisor PID 88455 and all eight workers remained CPU-bound after 2h35m; the score-free heartbeat reported 0/8 terminal shards. Do not inspect shard JSON; safe monitoring is process state and the reviewed score-free supervisor heartbeat only. |
+| **Cloud** | `pair-retention-census-v1` | **HEALTHY / SATURATED, SOURCE-ONLY.** Sixteen workers run under detached tmux from exact PR #55 head `1d6bd2f`. Process identity, CPU, tmux and progress/result file metadata are visible. The temporary census producer/schema has not been independently reviewed, so no progress or result content may be opened yet. No score or game outcome is intended. |
+| **Fly production** | `mc-s0-report-lcb` | Release 18 / image `kitty-xray-b5a35ae` is healthy. This is the release-17 runtime plus PR #11 kitty X-ray only; no policy changed. Rollback runtime remains release 17 / `latency-cd6789e`. |
 
-No compute is blocked on capacity. The next Teacher work is blocked on code
-and evidence authority: the mid/late state screen passed, but its separate
-whole-game controller packet does not exist yet and therefore no whole-game
-launch is authorized.
+## Reviewed queue
 
-## Next admitted execution
-
-| order | gate | plain-English progress and what remains |
+| order | job | current gate |
 |---:|---|---|
-| 1 | Teacher whole-game implementation | **In progress:** extend exact reviewed head `ee5e9ec`; preserve trick-5+ model proposal, fresh N=300 protection, literal champion and same-work uninformed control. |
-| 2 | Source/controller packet review | **Not frozen:** bind fresh deal streams, fixed work, progress, supervisor ownership and the reviewed state-result parent. No outcomes may open. |
-| 3 | Score-free capacity preflight | **Not admitted:** after exact packet PASS, run a tiny preflight on Mini and publish only trigger/work/throughput counters. |
-| 4 | Capacity review | **Pending evidence:** verify nonzero exposure, exact work/fallbacks and a feasible fixed screen before admitting score-bearing shards. |
-| 5 | One Teacher whole-game screen | **Not authorized:** run mirrored treatment/null/champion arms on Mini only after capacity PASS; publish no interim inference. |
-| 6 | Terminal result review | **Pending future evidence:** independently replay utility, win rate, work and gates. Stop before confirmation or deployment regardless of outcome. |
+| 1 | S4 future-only sequential preflight | Claude passed the Mini controller at `3e668fb`, but it is superseded for the current launch order. Cloud successor PR #56 head `b0176fc` awaits exact-controller review plus a preserved cross-architecture replay witness. A Cloud PASS permits one score-free Cloud preflight and packet design only; no scored authority follows. |
+| 2 | Selective S6 shuai-pai preflight | **V2 PACKET REVIEW PENDING.** Source `a48542d` closes the unit-map, singleton-freeze and factual-runtime HOLDs. PR #50 `936345b` preserves packet `19f3b2a3…79dd0` plus receipt `df54dcfe…aebba`; 62 S6 tests pass. A PASS permits one four-cluster score-free preflight, queued until Air is free. |
 
-The global Teacher REPORT recipes, H0-v3, the first protected-play REPORT and
-expanded-bury REPORT are terminal no-use/`SELECT_NONE`; none may be retried,
-extended or reused. S4's old populations also remain closed, although a new
-future-only N=12,288 namespace is eligible for separate packet review. The
-2,048-state capture, 7,040-state labels and eight-seed cohort are completed
-assets, not live jobs.
+Pair-v3 now owns Air and has no retry or extension authority. S4 waits on its
+Cloud-specific raw controller marker; neither the old Air marker nor the valid
+Mini marker can authorize the Cloud profile. Selective S6's old v1 packet is
+superseded and must never run. A
+packet or implementation review never substitutes for its named later
+authority.
 
-## Terminal job index
+## T4 closeout
 
-| date | job | verdict / headline | evidence anchor |
+1. Supervisor and eight shards finish naturally; no retry or resize.
+2. External reviewer authenticates the score-free supervisor final.
+3. One aggregation is admitted only after that PASS.
+4. External reviewer independently reproduces the aggregate and posts the
+   terminal verdict.
+
+Safe monitoring: tmux/process state, CPU, supervisor console and durable
+heartbeats. Forbidden before review: opening or parsing `shard-*.json` or any
+outcome-bearing aggregate input.
+
+## Recent terminal stubs
+
+| date | job | verdict / headline | anchor |
 |---|---|---|---|
-| 08-11 | Mid/late Teacher hybrid state screen | **PASS / WHOLE-GAME DESIGN:** treatment−live `+0.02020`, lower bound `+0.01275`; treatment−same-work-null `+0.01570`, lower bound `+0.00880`; no strength claim yet | result `f18c2e42...948f6`; aggregate `269eadf3...f2402` |
-| 08-11 | Expanded-bury Teacher REPORT | **SELECT NONE**; mean `+0.03381`, one-sided LCB `-0.01525`; narrow structured-point/void signal only | result `2e21a9bf...72ac4d`; final `126d73cd...e58387` |
-| 08-11 | S4 point-banking replication | **SELECT NONE**; mean `+0.04883`, LCB `-0.00688`; positive direction did not replicate conclusively | aggregate `d6b73f45...8f4d4`; final `20ece4ed...f144a` |
-| 08-10 | Protected-play Teacher REPORT | **SELECT NONE**; mean `-0.00823`, LCB `-0.01894`; proposal-disagreement overrides lost out of sample | result `8fa323de...5aea6`; final `3b42561d...1758f8` |
-| 08-09 | S3a full-game preflight | **CAPACITY PASS / SCREEN PACKET REVIEW**; 4/4 clusters, exact 952/952 structured rollouts, screen projection `72.62` fleet-hours / `9.08` max-shard hours | preflight `09692f82...edf0`; final `56943242...e9f` |
-| 08-09 | Teacher-v3 fresh audit | **PASS / STAGE-C DESIGN**; cheap upper `0.0354`, N=30 upper `0.0439` below `0.10`; no training authority | gate `8a1532b7...91f8`; supervisor `02f4f8b...6f237` |
-| 08-09 | Suphx O0-v2 | **SELECT NONE**; control `+0.015` (LCB `-0.067`), plus-margin `-0.047` (LCB `-0.109`); independently replayed | gate `0dbd9aa8...f24e`; admission `f436f4b0...01e7a` |
-| 08-08 | S3a 512-state screen | **AUTHORIZE DUEL DESIGN**; all three state-level LCBs positive; no production authority | aggregate `74aa5a39...396cd`; final `d3f2b1ab...69a6b` |
-| 08-08 | S3a v2 sizing | **CAPACITY PASS**; 0.142 fleet-hours / 0.0178 max-shard hours under frozen 400/60 caps | receipt `cf770277...5c431` |
-| 08-08 | Teacher Stage B | **PASS**; regret upper bound `0.019548 < 0.10` | gate `f607b489...89694` |
-| 08-08 | Teacher audit-v2 | **OPERATIONAL REFUSAL / NO ML VERDICT**; incomplete continuation, no labels/gate | receipt `ce51b826...71d0`; failed root preserved |
-| 08-08 | S3b v2 preflight | **TERMINAL HOLD / NO SCREEN**; exact node cap hit in cluster 1 | head `cd44ea8`; no final/partial receipt |
-| 08-08 | Suphx O0 | **SELECT NONE**; aggregate oracle signal, seed-1 reversal | gate `592a009a...bd407c` |
-| 08-07 | RLCB-C1 | **CONFIRM**; report-LCB `+0.338379 +/- 0.067706`, null flat | aggregate `83f5a9df...f5ef5ea`; closeout `06dd487d...b7aae5` |
-| 08-07 | production latency | **LIVE**; release 17, off-loop isolated search | image `latency-cd6789e`; manifest `047bcfe4...5b300` |
-| 08-07 | V11 direct-v2 | **SELECT NONE**; `-0.141113 +/- 0.069823` versus current | aggregate `b7c90ba4...05d21ad` |
-| 08-07 | Direct-Q 144M | **SELECT NONE**; positive gameplay, failed held-out learning | aggregate `1fa6789e...ce791` |
-| 08-07 | formal S0 | **SELECT NONE**; numerical S0c outcome unread/nonretryable | closeout `ef0a365...fde9a` |
-| 08-05 | DEV-512 ballot | **SELECT NONE**; no design advanced, CALIB/REPORT sealed | state asset `af787485...85d3e7b` |
-| 08-04 | sampler Package H | **PASS** within bounded strict scope; not posterior calibration | commit `aea3774`; `certify_sampler_v3.json` |
+| 08-12 | S6 literal-champion source census | **DOSE TRANSFERS / SCORE-FREE:** 13/512 rounds (`2.54%`) and 13/9,382 leads (`0.139%`) exposed the full-hand gate; all triggers were mid/late, split 10 attacker / 3 defender. This is slightly above the 2.02% heuristic trajectory estimate, so the 7,168-cluster screen keeps its conservative lower-rate sizing. | aggregate `65eacf05…bf14` / PR #50 `90f05eb` |
+| 08-12 | S6 actor-visible full-hand selector | **ADVANCE TO FRESH WHOLE-GAME PACKET DESIGN (reused DEV):** 512 decisions on 128 public states; 427 overrides, 101 beneficial / 20 harmful / 306 neutral; state-cluster mean `+0.307`, LCB `+0.175`, both roles positive. This is selector feasibility, not independent strength. | result `54733434…984c` / PR #50 `f3918d2` |
+| 08-12 | S6 full-hand natural prevalence | **VIABLE SELECTIVE DOSE / SCORE-FREE:** 1,011/50,000 deals (2.02%) triggered; 1,085/1,067,189 leads, all mid/late; 126 occurred at four cards. | result `8934c2e3…ea45` / PR #50 |
+| 08-12 | S6 full-hand boss/near exact replication | **ADVANCE TO DEV SELECTOR:** 128 fresh balanced states, mean `+0.234` levels, one-sided LCB `+0.100`, 24W/8L/96T; both role means positive. Perfect-information action-set value, not whole-game strength. | result `946b029c…cebe` / PR #50 `469b064` |
+| 08-12 | Pair-aware powered screen packet | **REVIEWED / RUNNING:** 7,168 clusters, 8×896, ~84% planning power at `+0.05`; one admitted execution began on Air around 07:27. Outcomes remain sealed until score-free supervisor review. | packet `4ece02b9…ae47` / source `cd20670` |
+| 08-12 | S6 level-objective audit | **STOP THIS FILTER:** on the exact 300 report worlds, level-bracket scoring kept 5/12 selected throws, still retained the only two-level loss and retained zero wins. A full matched pilot is not justified from this evidence. | artifact `f6478bac…6329` / PR #47 |
+| 08-12 | Pair-aware powered screen implementation | **RUNNABLE SOURCE, FREEZE BLOCKED:** PR #49 implements 7,168 clusters under the reviewed caps with ~84% power at `+0.05`; capacity PASS and then packet review remain mandatory. | PR #49 `cd20670` |
+| 08-12 | Pair-aware v1 selected-root audit | **ENCOURAGING, NOT STRENGTH:** across all nine finite-search v1 changes at 4,096 fresh common worlds, primary level utility favored v1 on 5–6 roots, opposed it on 1–2 and left two unresolved under two continuation models. One points-positive root was level-negative, so points alone are insufficient. | artifact `131a64e…7eaa3` / PR #48 |
+| 08-12 | Pair-aware v3 capacity | **EXTERNAL PASS / PACKET FROZEN:** v1 changed 6/8 mirrored natural roots; no utility was published. The successor now waits on packet review. | result `08f7282c…f7c1` / review `051129e` |
+| 08-12 | S6 report-world failure audit | **SAFETY SIGNAL, NO WIN:** 276 full-throw failures across the 12 override folds; zero-failure gating catches the only loss but retains ten neutral all-boss overrides and no positive utility. | artifact `fd1435b9…c966` / PR #47 |
+| 08-12 | S6 boss/near override census | **FAILED-THROW RISK ISOLATED (EXPLORATION):** 11 successful throws were utility-neutral; the sole failed throw was the sole −2 result. Ten publicly proven all-boss bundles were all neutral, so that safer gate removes the observed loss but has no positive strength signal. | artifact `f910a94c…4d80` / PR #47 |
+| 08-12 | S6 boss/near DEV pilot | **NO RETAINED SIGNAL (EXPLORATION):** 31/32 clusters tied; one treatment cluster lost two levels; 12 overrides yielded 11 ties and one loss, zero wins. Mean `-0.0625`, 95% interval `[-0.185,+0.060]`. | artifact `ad3eae32…b8b8e` / PR #47 |
+| 08-12 | Pair-capacity v2 preflight | **ABORTED AT 1/4, NO RESULT:** a superseding audit found the short-round fixture did not prove 100 played cards. Consumed admission and one progress line are hash-preserved; fresh v3 packet is under review. | admission `19b60b02…0444176` / PR #46 |
+| 08-12 | Pair-cap v2 incremental-dose census | **NONZERO DOSE, SCORE-FREE:** 57/192 states triggered; v1/v2 changed 9/10 roots; v2 differed on three (two new, one reverted). Utility remains unknown. | result `f2e1d28b…b0d78` / PR #48 |
+| 08-12 | S6 boss/near search-spend census | **87.37% FEWER SECOND SEARCHES, SCORE-FREE:** complete source ballot preserved; boss/near gate triggered 1,283 versus 10,162 broad triggers across 10,895 leads, with all phases/roles represented | result `167eabbc…e88c3` / PR #47 |
+| 08-12 | Pair-cap live high-N diagnostic | **8/8 POSITIVE, EXPLORATION ONLY:** every pair-cap-only live state favored the proposed low pair at 3,000 common worlds; mean state gap `+5.0023` points. Rows share rooms/rounds and are not independent. | result `b323827f…8b1f3` / internal `f698c83d…db38` |
+| 08-12 | S6 exact source-shape exploration | **NARROW THE HYPOTHESIS:** boss/near was the only nonnegative late action-set stratum (`+0.0156`, 4W/4L/56T); generic whole-plain and whole-trump had zero wins over the best live ballot. Exploration only. | result `fc670903…806c` / PR #45 |
+| 08-12 | S6 source prevalence census | **BROAD / SCORE-FREE:** new candidates on 10,201/10,924 natural leads (93.4%), 18,882 additions; capacity and actual move changes still unknown | disjoint DEV seeds starting `431000000`; no scored artifact |
+| 08-12 | Pair-aware natural lead-root dose | **SPARSE BUT NONZERO (score-free):** treatment activated in 17/24 balanced lead roots and changed one move; follow roots and complete-round prevalence remain unmeasured | result `e530da6a…bbbb8` / PR #44 |
+| 08-12 | Pair-aware exact endgame diagnostic | **ADVANCE TO WHOLE-GAME DESIGN (exploration only):** `+9.21875` acting-team points, one-sided LCB `+6.67570`, both roles positive | result `031a365d…919` / PR #42 |
+| 08-11 | Mid/late protected state screen | **PASS:** treatment−live `+0.02020`, LCB `+0.01275`; treatment−same-work-null `+0.01570`, LCB `+0.00880` | result `f18c2e42…948f6` |
+| 08-11 | Powered uncertainty Teacher REPORT | **SELECT NONE:** action mean `+0.01213`, LCB `-0.00506`; outcome prediction improved but was nongating | result `e2e774da…b4c5` |
+| 08-11 | Expanded-bury Teacher REPORT | **SELECT NONE:** mean `+0.03381`, LCB `-0.01525`; narrow structured-point/void signal survived | result `2e21a9bf…ac4d` |
+| 08-11 | S4 point-banking independent replication | **SELECT NONE under its one-shot rule:** mean `+0.04883`, LCB `-0.00688`; implementation sentinels stayed exact | aggregate `d6b73f45…f4d4` |
+| 08-10 | Protected-play Teacher REPORT | **SELECT NONE:** `-0.00823`, LCB `-0.01894` | result `8fa323de…aea6` |
+| 08-08 | S3a 512-state mechanism screen | **PASS / DUEL DESIGN ONLY:** all three state-level lower bounds positive | aggregate `74aa5a39…396cd` |
+| 08-07 | RLCB-C1 | **CONFIRM:** report-LCB `+0.338379 +/- 0.067706`, null flat | aggregate `83f5a9df…f5ef5ea` |
 
-No row grants more authority than its original gate. In particular, S3a's
-positive state screen permits duel **design**, not a duel launch, strength
-claim, policy promotion, or production change.
-
-## Current terminal details
-
-### S3a 512-state screen — verified PASS
-
-- reviewed source git `14548d3da31c3cfe899cbd7e572614ae05242c0a`;
-- run ID `s3a-bury-v2-screen-136m-v1`, eight successful shards, exact seeds
-  136,000,000–136,000,511;
-- aggregate `74aa5a3947e1daaa5aa4bc33eef8ae04eaaf695d0cb900c7045eb0cbbc4396cd`;
-- supervisor final
-  `d3f2b1ab48085ccf37534b5dd7f20ea6cf0d7644c6c49304b644ecf895169a6b`;
-- separate CLI verifier exited zero with `verified=true`;
-- structured-minus-incumbent `+0.997314 +/- 0.400606`, LCB `+0.596708`;
-- structured-minus-legacy-four `+0.877848 +/- 0.379885`, LCB `+0.497963`;
-- structured-minus-random-widening `+3.252848 +/- 0.561197`, LCB
-  `+2.691652`;
-- no problems, partials or symlinks; retry/resume false; production promotion
-  false.
-
-### Teacher audit-v2 — immutable refusal
-
-Stage B passed, but audit-v2 shard 6 stopped after a complete selection fold
-and incomplete report continuation. The supervisor terminated siblings. No
-label final, terminal audit gate, or regular supervisor final exists, so the
-reviewed adapter cannot consume it. Preserve
-`~/Projects/shengji-teacher-audit-v2-air` and the earlier failed v1 root; never
-resume, migrate, delete, or reinterpret them. Exact retry semantics at
-`1589fb4` passed independent review but did not authorize a new run.
-
-### S3b v2 — immutable preflight HOLD
-
-The exact treatment exceeded `max_nodes=250000` before cluster 1 completed.
-No score, raw record, receipt, or partial survived. V2 may not retry or change
-its cap/fallback. Any future v3 requires a fresh resource contract and review.
-
-## Archive pointers
-
-- Full pre-compaction ledger:
-  `docs_archive/jobs-through-2026-08-08.md`, SHA-256
-  `26beff936f6c0744b220fc79e233163c8f09acde8a13adcba5450327ad132252`.
-- Day chronology: `docs_archive/daily-log-2026-08-08.md`.
-- Review markers and adversarial findings: `HANDOFF_REVIEW.md`.
+No terminal row grants more authority than its original gate. In particular,
+the pair diagnostic is not whole-game strength, the mid/late state result is
+not a deploy claim, and the old S4 populations cannot be pooled post hoc.

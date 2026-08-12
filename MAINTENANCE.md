@@ -15,9 +15,12 @@ all-clear.
 ## 1. Establish live fleet truth
 
 Run `server/scripts/fleet_status.sh` as a first-pass convenience, then verify
-each important job at its actual root. The script's Air section still probes
-the legacy `~/Projects/shengji-compute` checkout and may omit isolated evidence
-worktrees such as the current Teacher audit; it is not authoritative by itself.
+each important job at its actual root. The script inventories Python processes
+host-wide and resolves each process's command and working directory, including
+isolated evidence worktrees. It tails content only from an explicit allowlist
+of reviewed score-free progress streams; every other recent evidence file is
+reported by metadata only. It remains a convenience view, not authority by
+itself.
 
 For every live job record:
 
@@ -26,6 +29,12 @@ For every live job record:
 - immutable run ID, parent/receipt/preparation identities and namespace;
 - latest score-free heartbeat/progress and whether every expected worker lives;
 - terminal/final/partial files by metadata only when outcomes are still sealed.
+
+Before declaring a job dead or a host idle, all four views must agree: the
+expected PID set, a broad unfiltered Python inventory, per-worker heartbeat or
+log modification times, and terminal output count. A missing tool, SSH error,
+or zero rows from a remembered-name filter means `UNKNOWN`. Never launch a
+replacement until the old cohort is positively proven absent. See INC-12.
 
 Never open a partial outcome, change a stopping rule from live scores, duplicate
 a one-shot run, or infer success from a filename that may be published before a

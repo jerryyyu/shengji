@@ -1,99 +1,105 @@
 # Active Claude/Codex handoff
 
-> **CANONICAL PATHS:** both agents coordinate only through
+> **Canonical paths:** coordinate only through
 > `/Users/jerryyu/Projects/shengji/HANDOFF_ACTIVE.md` and
-> `/Users/jerryyu/Projects/shengji/HANDOFF_REVIEW.md`. Branch-local copies are
-> never review authority. Raw markers belong in `HANDOFF_REVIEW.md` at column
-> 1 and must occur exactly once.
+> `/Users/jerryyu/Projects/shengji/HANDOFF_REVIEW.md`. Branch-local ledgers
+> are never review authority. Raw review markers belong at column 1 in the
+> canonical review ledger and must occur exactly once.
 >
-> **LOSSLESS ARCHIVE:** the prior ledgers are preserved in
+> Full history is preserved in
 > `docs_archive/handoff-active-through-2026-08-11-10-22.md` and
 > `docs_archive/handoff-review-2026-08-08-through-2026-08-11-10-22.md`.
 
-Last reconciled: 2026-08-11 21:28 EDT.
+Last reconciled: 2026-08-12 10:00 EDT.
 
-## Immediate gate
+## Immediate objective
 
-**Implement and externally review one fresh whole-game screen for the passed
-mid/late Teacher hybrid. Do not launch it yet.** The independently reviewed
-256-state result authorized screen *design only*: treatment-minus-live
-`+0.02020` (one-sided lower bound `+0.01275`) and
-treatment-minus-same-work-null `+0.01570` (lower bound `+0.00880`). The new
-screen must preserve the exact trick-5+ model proposal, fresh N=300 Monte
-Carlo protection, literal `mc-s0-report-lcb` incumbent, and uninformed
-same-work control. It must stop before confirmation, promotion or deployment.
+Carry the admitted T4 mid/late hybrid through a reviewed whole-game verdict.
+While all three compute hosts are occupied, prepare the next reviewed work without bypassing its
+gates: the fresh S4 point-banking confirmation, S6 shuai-pai sourcing, and
+bury/lead exploration. Pair-aware rollouts already own Air.
 
 ## Current truth
 
-| area | plain-English status | next gate |
+| lane | plain-English progress | exact next gate |
 |---|---|---|
-| Production | Release 17 still runs confirmed `mc-s0-report-lcb`. | Monitor only; no production mutation is authorized. |
-| Teacher data and global models | The reviewed 7,040-state asset, 96-cell/eight-seed cohort and global REPORT exams are terminal. Direct global play and bury rankers selected none. | Preserve them. Do not reopen spent REPORT populations. |
-| Mid/late Teacher hybrid | **Fresh state screen PASS.** On 256 balanced trick-5+ states, model-guided search beat both the literal live action and a same-work uninformed proposal. This is local capability evidence, not whole-bot strength. | Build and review one mirrored whole-round treatment/null/champion screen. No launch authority exists yet. |
-| S4 point banking | Two independent whole-round estimates were positive, but the second fixed result selected none (`+0.04883`, lower bound `-0.00688`). | Separately design/review the future-only N=12,288 fixed confirmation; never pool or extend old populations post hoc. |
-| H0 human proposals | The sole v3 run stopped at 555/557 because two seven-card follow throws exposed a 12-live-candidate versus 3-analysis-candidate tooling mismatch. It published no aggregate. | A future exploratory v4 must prevalidate complete live-ballot geometry and predeclare row/stratum exclusions or deterministic repairs. |
-| S6 shuai-pai | Draft PR #19 head `2605b04` is production-inactive; 12/12 focused tests pass in pure and compiled/strict modes. | Isolate the three S6 commits on current main, obtain semantics review, then run a small equal-work state screen. |
-| Fleet | Mini and Air have no active strength workers. | Mini is preferred for the Teacher capacity preflight/screen after review; Air is available for the separately reviewed long S4 run. |
+| **T4 mid/late Teacher hybrid** | The model may propose one move after trick five; fresh Monte Carlo search still prices it and preserves the live champion as fallback. Its 256-state test passed both controls. The sole 2,048-cluster whole-round screen started on Mini at 23:20 EDT; at 10:00 all eight workers remained CPU-bound after 10h39m and every shard's reviewed score-free heartbeat had reached `treatment 200/512`. Outcomes remain sealed. | Monitor only. After all workers finish, Claude reviews the score-free `supervisor-final.json`; only a PASS permits aggregation and outcome access. The aggregate then needs terminal external review. |
+| **S4 point banking** | Two independent 2,048-cluster runs were directionally positive. A genuinely fresh automatic two-look design can resolve a roughly `+0.03` effect. Claude passed the Mini controller at `3e668fb`, but that host authority is superseded for the current launch order. Stacked draft PR #56 at exact head `b0176fc` mechanically rebinds the unchanged design to the new 16-core x86 Cloud worker. Forty-five focused engine/action/Cython parity and controller tests pass on that exact host; no preflight/gameplay ran. | Review exact PR #56 and preserve the requested cross-architecture replay witness. A cloud PASS may authorize exactly one score-free **Cloud** preflight and sequential-packet design—not scored execution. Neither the Air nor Mini marker can authorize Cloud. |
+| **S6 shuai-pai sourcing** | Selector review passed. The actor-visible selector realized `+0.307` levels versus its incumbent (LCB `+0.175`) on reused DEV; a separate literal-champion census found 13 triggers in 512 rounds (`2.54%`). Source `a48542d` closes the unit-map, singleton-freeze and factual-native-runtime HOLDs. Its exact v2 packet `19f3b2a3…79dd0` and receipt are preserved at PR #50 `936345b`; 62 S6 tests pass. | Claude reviews the v2 packet requested at 07:36. A PASS authorizes one four-cluster **score-free** Air capacity preflight only. Air is currently occupied, so do not run it yet. |
+| **Pair-aware rollout** | V3 capacity passed externally after changing 6/8 mirrored roots. The reviewed 7,168-cluster packet (`4ece02b9…ae47`) was admitted once and launched on Air at about 07:24. At 10:00 its detached supervisor and all eight workers remained healthy and CPU-bound after 2h35m; its score-free heartbeat still reported 0/8 terminal shards. | Monitor process state and score-free supervisor heartbeat only; never inspect shard outcomes. After completion Claude reviews `supervisor-final.json`, then and only then may aggregation be admitted. |
+| **Pair ballot retention** | Draft PR #55 `1d6bd2f` keeps candidate zero and every actor-visible legal pair ahead of discretionary cap users under an off-by-default, identity-bound flag. A local 1,000-round source census found missing pairs only in 14/4,000 early leads and none in 14,618 mid/late leads. A larger source-only census is using all 16 Cloud workers, but its temporary producer/schema has not been reviewed. | Review the producer and content boundary before opening progress or result contents. Process identity, CPU, tmux and file metadata only are currently safe. Then decide whether this rare early-game source gap merits an equal-work screen; it is separate from the active pair-valuation run. |
+| **Bury hand-shape exploration** | Claude passed PR #51's composition at old head `59cc2c6`; current `a1d107b` still needs its two-change delta review. PR #52 `fd7b434` pins the opened 32+32 population and resumable state journal. Stacked draft PR #54 `959cdbd` now makes later shuai-pai explicit without recursive MC: `all_boss` requires every component to be publicly boss and no public ruff warning, while the engine still prices hidden ruffs; `boss_near` is an aggressive DEV sensitivity. Baseline remains literal `HeuristicBot`; manifest and output bind mode and dose. Fifty-nine focused/parent tests pass in strict compiled mode; no census, real rollout, job or policy ran. | Review #51, then #52, then the bounded actor-information/action semantics of #54. Afterward run the source-only census and one-state/one-world capacity when a host frees. These are reusable diagnostics, not strength authority. |
 
-## Teacher whole-game screen contract
+## Review queue — precise asks
 
-1. Start from the exact reviewed Stage-C model exports and composition source
-   lineage; authenticate the terminal mid/late result marker before freezing.
-2. Treatment changes only trick-5+ play decisions: the model nominates at most
-   one candidate and fresh N=300 common-world search may accept it. The literal
-   live action remains the fallback.
-3. The matched control uses the same trigger and candidate-world work but an
-   uninformed deterministic proposal. The champion is unchanged
-   `mc-s0-report-lcb`.
-4. All three arms use the same fresh deal seeds and both team flips. Signed
-   level utility is primary; win rate, role, trigger, work and tail outcomes
-   are diagnostics.
-5. A score-free capacity preflight must complete before score-bearing
-   admission. Every long-running shard emits durable progress and is owned by
-   one signal-aware supervisor.
-6. Pass requires positive predeclared lower bounds versus both champion and
-   matched control, exact work, nonzero treatment exposure and clean fallback
-   accounting. The control-versus-champion interval is diagnostic.
-7. A passing screen authorizes a separately powered confirmation *design*
-   only. This milestone stops before confirmation launch or production.
+1. **S4 Cloud controller / draft PR #56:** independently review exact head
+   `b0176fc` and preserve the requested sealed ARM-to-x86 replay witness. If
+   clean, emit only the controller-generated
+   `S4_POINT_BANKING_FUTURE_CLOUD_CONTROLLER_V1_REVIEW` claim. The Mini PASS at
+   `3e668fb` is valid but superseded for this launch order and cannot authorize
+   Cloud. This remains packet design plus one score-free preflight only; no
+   scored authority follows.
+2. **Selective S6 v2 packet / PR #50:** review exact source `a48542d`, artifact
+   commit `936345b`, packet `19f3b2a3…79dd0` and singleton receipt
+   `df54dcfe…aebba` under the 07:36 canonical request. The old v1 request is
+   explicitly superseded. A PASS permits one score-free four-cluster preflight.
+3. **Narrow PR #51 delta:** inspect exact current head `a1d107b` versus passed
+   parent `59cc2c6`. Confirm only the pre-rollout hidden-kitty refusal and JSON
+   `null` one-world SE changed, both tests are real, and no authority changed.
+4. **Nonblocking PR #52 follow-up:** after higher-priority S4/S6 reviews and
+   the #51 delta, inspect exact head `fd7b434` for pinned reconstruction,
+   outcome-blind 32+32 selection, per-state resume, and refusal on changed
+   manifests or corrupt records. Both asks are prose-only; no run or strength
+   marker is requested.
+5. **Nonblocking PR #54 follow-up:** after #52, inspect exact head `959cdbd`.
+   Confirm later-lead selection is actor-visible, the ruff-warning signal is
+   only public evidence, the `all_boss`/`boss_near` distinction is literal,
+   and hidden ruffs remain priced by the determinized engine. Baseline stays
+   unchanged, recursive MC is impossible, and journal mode/dose cannot mix.
+   This is prose-only and grants no run, policy or strength authority.
+6. **Pair-ballot source boundary / draft PR #55:** review exact head `1d6bd2f`
+   plus the temporary Cloud census producer before anyone opens its progress
+   or terminal contents. The code PR itself is source-only and grants no run,
+   strength, policy or deployment authority.
 
-## Exact execution order
+Pair has no current review blocker because its one authorized screen is
+running. T4's next review starts only after its supervisor publishes a terminal
+score-free final.
 
-1. Codex implements the whole-game controller/runtime and focused adversarial
-   tests on a new branch descending from reviewed head `ee5e9ec`.
-2. Freeze a score-free source/controller packet with a fresh seed namespace,
-   fixed population, work accounting, progress and result contract.
-3. Claude independently reviews that exact packet and appends one raw PASS or
-   a concrete HOLD to the canonical review ledger.
-4. Only an exact PASS may admit the score-free capacity preflight. Review its
-   trigger/work/throughput result before opening outcomes.
-5. Only the capacity PASS may admit one mirrored screen, preferably on Mini.
-6. Publish and independently replay the terminal aggregate; stop regardless
-   of outcome before any confirmation or deployment action.
+## Fleet and launch order
 
-## Parallel work that does not block the Teacher screen
+| host | current use | next authorized use |
+|---|---|---|
+| **Mini** | T4 eight-shard whole-round screen; projected maximum about 45.4 wall hours. | Keep isolated until T4 terminal seal; Cloud is now the canonical S4 target. |
+| **Air** | Pair-aware 7,168-cluster whole-game screen, eight workers under detached supervisor PID 88455. | Keep isolated until the pair supervisor terminal seal and review. S4/S6 preflights remain queued, not competing with the live run. |
+| **Cloud** | One-million-round pair-ballot source census at 16 workers under detached tmux. The source stream remains content-closed pending review. | After the census and exact cloud-controller PASS, S4's score-free Cloud preflight is first. No scored S4 work runs without the later packet/execution gate. |
+| **Production** | Release 18 image `kitty-xray-b5a35ae`, `mc-s0-report-lcb`; only PR #11 kitty X-ray differs from release 17. | Runtime rollback is release 17 / `latency-cd6789e`; no further deploy, restart, room wipe or policy mutation without explicit user approval. |
 
-- Freeze the new N=12,288 S4 confirmation packet for later review/Air use.
-- Rebase/isolate S6 and request its bounded semantics review.
-- Design the learning-first H0 repair; confirmation remains fail-closed, while
-  exploration may retain predeclared valid rows and report missingness.
-- Expand Teacher data only after the whole-game result: first add roughly
-  7,000 candidate-rich play rows with source provenance, then scale further
-  only if fresh action ranking and seed stability improve.
-- Documentation/repository hygiene stays in draft PR #30 until its one bounded
-  reconciliation review passes. Evidence worktrees are never removed merely
-  to reduce branch count.
+Do not inspect T4 or pair `shard-*.json`. Process state, CPU, tmux and only
+explicitly reviewed score-free heartbeats are safe; generic and unreviewed
+Cloud census logs remain content-sealed. Do not
+launch S4/S6/pair scored work from
+an implementation review; each requires its later packet/execution review.
+
+## T4 terminal sequence
+
+1. Eight Mini shards finish under the existing supervisor.
+2. Claude reviews the score-free supervisor final; no outcome file is opened.
+3. If and only if that review passes, Codex admits one aggregation.
+4. Claude independently reproduces and terminally reviews the aggregate.
+5. A positive screen may authorize confirmation **design**; it never deploys.
+   A failed screen closes this exact composition while preserving the learned
+   mid/late capability result as diagnostic evidence.
 
 ## Standing invariants
 
-- Never inspect interim outcomes from a sealed run.
-- REPORT populations, deal seeds and labels are single-use; siblings from a
-  partially opened population count as spent.
-- Freeze, review, admission, execution, terminal review, confirmation and
-  deployment are separate authorities.
-- Exploration may degrade gracefully only under a predeclared missingness and
-  repair policy. Confirmation and deployment remain exact and fail-closed.
-- Preserve immutable evidence worktrees and snapshots. Never clean or rebase
-  one containing ignored evidence without a byte inventory.
-- Prefer Mini for runs under one hour; every long job must emit durable,
-  frequent progress and own signals/children explicitly.
+- Exploration may be fast and reusable; deployment evidence remains sealed,
+  powered, independently reviewed and one-shot.
+- Never pool old S4 outcomes post hoc. The new design uses only fresh future
+  populations and an automatic predeclared transition.
+- Same deals, role flips and policy RNG are shared across treatment, matched
+  null and champion. Null must be behavior-identical to champion.
+- Feature telemetry is dose/integrity evidence, never a substitute for
+  whole-game utility.
+- No retry, extension, tuning on REPORT, production promotion or deployment
+  is implied by a screen or controller PASS.

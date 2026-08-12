@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -23,6 +24,8 @@ import s6_boss_near_prevalence as CENSUS  # noqa: E402
 
 
 FIXTURE = Path(__file__).with_name("data") / "s6_kesp_throw_witnesses.v1.json"
+RESULT = Path(__file__).with_name("data") / \
+    "s6_boss_near_prevalence.v1.json"
 
 
 def _state(witness_id: str):
@@ -115,3 +118,30 @@ def test_exclusive_writer_refuses_overwrite(tmp_path):
     CENSUS.write_exclusive(target, {"schema": CENSUS.SCHEMA})
     with pytest.raises(CENSUS.CensusRefused, match="overwrite"):
         CENSUS.write_exclusive(target, {"schema": CENSUS.SCHEMA})
+
+
+def test_preserved_air_prevalence_recomputes_and_keeps_source_coverage():
+    raw = RESULT.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == (
+        "167eabbce94aeb0b202a938c8a604c73e1d874dbc566763360d9b38d0c2e88c3")
+    payload = json.loads(raw)
+    internal = payload.pop("internal_sha256")
+    assert CENSUS.stable_digest(payload) == internal == (
+        "ab5547372d9b37c2aaa579a1cbd83c9032068eca51e503a37f1b6ca50b707cf6")
+    CENSUS._assert_score_free(payload)
+    assert payload["git"] == "6c61f1fb1ffdbe5bd0e358aec38a3274e6fe7f28"
+    assert payload["tree_dirty"] is False
+    rows = payload["rows"]
+    assert len(rows) == len({row["state_id"] for row in rows}) == 10_895
+    assert payload["aggregate"]["source_candidates"] == 19_893
+    assert payload["aggregate"]["broad_triggers"] == 10_162
+    assert payload["aggregate"]["gated_triggers"] == 1_283
+    assert payload["aggregate"]["second_search_trigger_reduction"] == \
+        pytest.approx(0.8737453257232828)
+    assert all(row["gated_new_candidates"] <= row["broad_new_candidates"]
+               and (not row["gated_trigger"] or row["broad_trigger"])
+               for row in rows)
+    assert all(payload["aggregate"]["by_phase"][phase]["gated_triggers"] > 0
+               for phase in ("early", "mid", "late"))
+    assert all(payload["aggregate"]["by_role"][role]["gated_triggers"] > 0
+               for role in ("attacker", "defender"))

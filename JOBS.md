@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-12 03:48 EDT. This file owns current compute and
+Last reconciled: 2026-08-12 04:10 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -9,8 +9,8 @@ compact terminal stubs. Historical detail is archived in
 
 | host | live strength job | health / next use |
 |---|---|---|
-| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; all remain CPU-bound. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
-| **Air** | `s6-boss-near-dev-v1` | **HEALTHY / FOUR WORKERS.** Fixed 32-cluster reusable DEV pilot at `ac9d704`; no sealed population or promotion claim. Next is the already-authorized pair-aware four-cluster score-free preflight. |
+| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; at 03:47 each had completed 100/512 treatment rounds and all remained CPU-bound. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
+| **Air** | none | **FREE.** S6 boss/near DEV completed. Pair-capacity v2 was stopped at 1/4 after its PASS was superseded; admission/progress are preserved and no result exists. Next is the first newly authenticated S4, broad-S6 or corrected-pair-v3 score-free preflight. |
 | **Fly production** | `mc-s0-report-lcb` | Release 17 remains live. No deploy, restart, room wipe or policy change is authorized. |
 
 ## Reviewed queue
@@ -19,7 +19,7 @@ compact terminal stubs. Historical detail is archived in
 |---:|---|---|
 | 1 | S4 future-only sequential preflight | PR #40 head `3403cdf`; controller review pending. A PASS permits one score-free Air preflight and packet design only. |
 | 2 | S6 shuai-pai preflight | PR #41 head `ea07efa`; Air-bound packet v2 review pending. A PASS permits one score-free four-cluster Air preflight only. |
-| 3 | Pair-aware capacity preflight | **AUTHORIZED / NEXT ON AIR.** PR #46 controller `2321790`, repaired packet `ba0bb693…baa0b6`; exact marker authenticated once. Run one four-cluster score-free preflight after the bounded S6 DEV pilot, then seek capacity-result review. No scored screen is authorized. |
+| 3 | Pair-aware capacity preflight | **V2 WITHDRAWN / V3 REVIEW OPEN.** The v2 process was halted after one score-free cluster when its synthetic 84-card witness was found invalid; no result published. PR #46 source `1ef8a4d`, packet `67294a93…e4a9b4` proves terminal 100-card/25-per-seat histories in fresh v3 paths. Await `PAIR_AWARE_ROLLOUT_CAPACITY_PACKET_V3_REVIEW`; a PASS permits one score-free preflight only. |
 
 Whichever of S4, S6 or pair-aware receives its exact marker first takes Air. Preflight
 artifacts must stay score-free; a later independent packet review is required
@@ -41,6 +41,8 @@ outcome-bearing aggregate input.
 
 | date | job | verdict / headline | anchor |
 |---|---|---|---|
+| 08-12 | S6 boss/near DEV pilot | **NO RETAINED SIGNAL (EXPLORATION):** 31/32 clusters tied; one treatment cluster lost two levels; 12 overrides yielded 11 ties and one loss, zero wins. Mean `-0.0625`, 95% interval `[-0.185,+0.060]`. | artifact `ad3eae32…b8b8e` / PR #47 |
+| 08-12 | Pair-capacity v2 preflight | **ABORTED AT 1/4, NO RESULT:** a superseding audit found the short-round fixture did not prove 100 played cards. Consumed admission and one progress line are hash-preserved; fresh v3 packet is under review. | admission `19b60b02…0444176` / PR #46 |
 | 08-12 | Pair-cap v2 incremental-dose census | **NONZERO DOSE, SCORE-FREE:** 57/192 states triggered; v1/v2 changed 9/10 roots; v2 differed on three (two new, one reverted). Utility remains unknown. | result `f2e1d28b…b0d78` / PR #48 |
 | 08-12 | S6 boss/near search-spend census | **87.37% FEWER SECOND SEARCHES, SCORE-FREE:** complete source ballot preserved; boss/near gate triggered 1,283 versus 10,162 broad triggers across 10,895 leads, with all phases/roles represented | result `167eabbc…e88c3` / PR #47 |
 | 08-12 | Pair-cap live high-N diagnostic | **8/8 POSITIVE, EXPLORATION ONLY:** every pair-cap-only live state favored the proposed low pair at 3,000 common worlds; mean state gap `+5.0023` points. Rows share rooms/rounds and are not independent. | result `b323827f…8b1f3` / internal `f698c83d…db38` |

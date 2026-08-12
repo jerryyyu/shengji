@@ -1,6 +1,6 @@
 # Backlog
 
-Last reconciled: 2026-08-12 03:48 EDT. This file is the active execution
+Last reconciled: 2026-08-12 04:10 EDT. This file is the active execution
 queue. Detailed policy interpretation belongs in `AI_POLICIES.md`, experiment
 design in `RL_PLAN.md`, live compute in `JOBS.md`, and historical queues in
 `docs_archive/backlog-through-2026-08-11.md`.
@@ -16,10 +16,10 @@ whole-game utility against the named live champion establishes bot strength.
 
 | priority / lane | plain-English strategy | progress so far and what is left | next concrete output | gate |
 |---|---|---|---|---|
-| **P0 / T4 mid/late Teacher hybrid** | Use the learned model as a proposal inside Monte Carlo search after trick five, so the model contributes ideas while fresh simulations and the live move protect against bad guesses. | **Running on Mini.** A 256-state test beat both live and same-work random widening. The sole 2,048-cluster whole-round screen began 2026-08-11 23:20 EDT; eight workers are healthy and outcomes remain sealed. **Left:** score-free supervisor review, one admitted aggregate, and independent terminal result review. | Reviewed whole-game verdict versus literal live champion and matched uninformed proposal | Treatment must have positive one-sided 95% lower bounds versus both controls, exact work, both-role coverage and no integrity failure. A screen PASS opens confirmation design only. |
+| **P0 / T4 mid/late Teacher hybrid** | Use the learned model as a proposal inside Monte Carlo search after trick five, so the model contributes ideas while fresh simulations and the live move protect against bad guesses. | **Running on Mini.** A 256-state test beat both live and same-work random widening. The sole 2,048-cluster whole-round screen began 2026-08-11 23:20 EDT; at 03:47 every shard had completed 100/512 treatment rounds and all eight workers were CPU-bound. Outcomes remain sealed. **Left:** score-free supervisor review, one admitted aggregate, and independent terminal result review. | Reviewed whole-game verdict versus literal live champion and matched uninformed proposal | Treatment must have positive one-sided 95% lower bounds versus both controls, exact work, both-role coverage and no integrity failure. A screen PASS opens confirmation design only. |
 | **P0 / S4 fresh point-banking confirmation** | Make simulated players collect points with a winning point card when it is safe, so Monte Carlo prices realistic point flow. Accumulate evidence prospectively instead of discarding several small positive runs. | **Controller ready; review open.** PR #40 `3403cdf` implements automatic looks at 8,192 and 16,384 fresh clusters. Launch audit repaired only the ignored Air staging: exact compiled binary and RLCB parent evidence now authenticate, with no source or outcome change. At true `+0.03`, maximum power is about 84.7%. **Left:** controller PASS, score-free Air preflight, packet review, then the authorized sequence. | Reviewed, Air-runnable two-look packet with measured capacity; ultimately a terminal fresh sequential verdict | No historical pooling. Look 1 stops PASS if LCB > 0, otherwise automatically continues when clean; final look PASS/SELECT_NONE/HOLD is mechanical. |
-| **P0 / S6 shuai-pai sourcing** | Always expose legal throws, but spend expensive search where the added action can plausibly beat the existing ballot. | **Broad reviews open; narrow DEV utility running.** PR #41 is exact-Air green. PR #47 preserves the full ballot while searching boss/near additions only: 1,283 versus 10,162 triggers (87.37% fewer). A fixed 32-cluster treatment/null/champion DEV pilot now runs with four Air workers to learn whether that cost cut retains whole-round signal. **Left:** finish/preserve the pilot; broad packet review/preflight; boss/near gate review and, if warranted, narrow capacity packet. | Reviewed capacity result and either a viable broad equal-work screen or a reviewed narrower boss/near-first packet | Literal live ballot stays candidate zero. Treatment must improve over live and matched null; DEV signal, source coverage and cost reduction alone are not strength. |
-| **P0 / pair-aware rollout** | Remember which higher pairs have been exhausted inside simulated continuations, so search recognizes when a low pair has become unbeatable rather than treating every rollout as memoryless. | **Both pending reviews passed.** PR #46's repaired packet `ba0bb693…baa0b6` authorizes one four-cluster score-free Air preflight. PR #48's broader public proof is reviewed through capacity-packet design. **Left:** run v1 preflight after the bounded S6 pilot, review measured traffic/cost, then choose a powered successor or stop; defer duplicating v2 machinery until v1 capacity informs it. | Reviewed score-free whole-round capacity result and an adequately powered treatment/null/champion design—or a quantified stop decision | Actor-available information only; no determinized hidden-hand leakage. Matched null does identical analysis/work and returns champion. Exact and high-N diagnostics motivate the lane but never establish whole-game strength. |
+| **P0 / S6 shuai-pai sourcing** | Always expose legal throws, but spend expensive search where the added action can plausibly beat the existing ballot. | **Broad reviews open; narrow DEV result negative/neutral.** PR #41 is exact-Air green. PR #47 preserves the full ballot while searching boss/near additions only: 1,283 versus 10,162 triggers (87.37% fewer). Its 32-cluster pilot produced 31 ties, one −2-level loss and zero wins. **Left:** broad packet review/preflight; source-gate review for semantics/cost closure; diagnose the losing override and choose a better targeting rule before any large narrow run. | Reviewed broad capacity result plus a revised, evidence-backed selective-search hypothesis—or a quantified stop for boss/near-only | Literal live ballot stays candidate zero. Treatment must improve over live and matched null; DEV signal, source coverage and cost reduction alone are not strength. |
+| **P0 / pair-aware rollout** | Remember which higher pairs have been exhausted inside simulated continuations, so search recognizes when a low pair has become unbeatable rather than treating every rollout as memoryless. | **Fresh v3 packet under review.** The reviewed v2 packet used an impossible synthetic 84-card “round”; its Air preflight was stopped at 1/4 with no result. Source `1ef8a4d` now proves 100 physical cards/25 per seat using a real 68-action engine witness and fresh paths/seeds; packet `67294a93…e4a9b4` reconstructs on exact Air. **Left:** external v3 packet PASS, one score-free preflight, capacity-result review, then size a powered successor or stop. PR #48's incremental public proof remains valid. | Reviewed score-free whole-round capacity result and an adequately powered treatment/null/champion design—or a quantified stop decision | Actor-available information only; no determinized hidden-hand leakage. Matched null does identical analysis/work and returns champion. Exact and high-N diagnostics motivate the lane but never establish whole-game strength. |
 | **P1 / documentation and repository hygiene** | Keep one clear source of current truth so compute and review time go to hypotheses rather than reconstructing history. | **Compaction in progress.** Full old handoff/backlog history is archived; current handoff now names only live lanes and exact blockers. **Left:** push this compact slate, keep `JOBS.md` and the daily log current, then prune merged branches/obsolete PRs without touching active experiment heads. | Small reviewed docs PR plus a verified active-branch/PR inventory | No evidence marker, live run artifact or unmerged experimental head may be deleted. |
 
 ## T4 milestone — stronger learned-search composition
@@ -45,7 +45,7 @@ stronger, not whether a bare neural network can replace Monte Carlo.
 |---|---|
 | **S4** | A reviewed score-free preflight and frozen sequential packet ready to launch, or a concrete external HOLD with a repaired packet pushed for review. |
 | **S6** | A reviewed score-free Air preflight and frozen equal-work screen packet ready to launch, or a concrete external HOLD with a repaired packet pushed for review. |
-| **Pair-aware** | A reviewed source/result plus a capacity-sized whole-game packet ready for execution review, or a concrete reviewed reason this mechanism should stop. |
+| **Pair-aware** | A reviewed v3 score-free capacity result plus a capacity-sized whole-game packet ready for execution review, or a concrete reviewed reason this mechanism should stop. |
 
 ## Next mechanism queue — cheap exploration before full ceremony
 
@@ -66,8 +66,9 @@ active lanes wait on compute or review.
   prefers Mini only when it does not contend with the live T4 run; otherwise
   use Air.
 - Air takes the first externally authorized S4 or S6 score-free preflight.
-  Pair exploration may use otherwise idle Air only when it cannot contaminate
-  a frozen run namespace.
+  Corrected pair-v3 may take Air on the same first-reviewed basis. Pair
+  exploration may use otherwise idle Air only when it cannot contaminate a
+  frozen run namespace.
 - Exploration sets may be reused with explicit correction and diagnostic
   labels. Deployment claims use fresh, sealed, adequately powered populations.
 - Before spending a sealed population, show that its minimum detectable effect
@@ -76,6 +77,9 @@ active lanes wait on compute or review.
   full one-shot review machinery only for strength/deployment evidence.
 - Positive point estimates are not discarded as “nothing,” but they do not
   become claims without a predeclared accumulation rule.
+- Exploratory drivers should journal completed clusters durably; a late crash
+  may refuse a confirmatory aggregate without erasing already-earned
+  diagnostic learning.
 - Never deploy, restart production, wipe rooms, retry a spent population,
   inspect sealed outcomes or alter a running packet without explicit authority.
 

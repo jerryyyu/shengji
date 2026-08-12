@@ -98,6 +98,10 @@ variable and lacking a tested supervisor contract.
 6. **Make monitors tool-portable.** Fleet checks use POSIX tools available on
    each host, print command failures, and never hide SSH/probe errors behind an
    empty result.
+7. **Separate identity metadata from evidence content.** Broad inventory may
+   inspect process commands, working directories, file names, sizes and mtimes.
+   It may tail only exact reviewed score-free heartbeat/progress paths; a
+   generic recent-log fallback must never open sealed outcome-bearing bytes.
 
 ## Lesson
 

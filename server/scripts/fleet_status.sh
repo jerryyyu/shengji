@@ -17,6 +17,17 @@ cd "$(dirname "$0")/.." || { echo "FATAL: cannot reach server/"; exit 1; }
 
 hdr() { printf "\n\033[1m== %s ==\033[0m\n" "$1"; }
 
+# Content reads are a separate authority from file metadata.  These exact
+# paths are bound to reviewed supervisors whose stdout is score-free while
+# outcomes remain sealed.  Add a future run only after checking its source;
+# never broaden this to generic *.log / *.jsonl matching.
+score_free_progress_file() {
+  case "$1" in
+    */teacher-v3-stage-c-midlate-composition-screen-v1/supervisor-console.log|*/pair-aware-whole-round-screen-v3/supervisor-console.log) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # Any unexpected failure must be LOUD, not an empty section.
 trap 'echo "FLEET_STATUS FAILED at line $LINENO — do not read the output above as an all-clear"' ERR
 
@@ -30,11 +41,12 @@ for pid in $(pgrep -f "server/.venv/bin/python"); do
     sed -n 's|.*\(server/scripts/[^ ]*\.py\).*|\1|p' | head -1)
   echo "  pid=$pid up/cpu:$line  job: ${script:-(wrapper/interactive)}  touches: ${label:-(none)}"
 done
-echo "  --- current isolated-worktree supervisor heartbeats (30m)"
+echo "  --- allowlisted score-free supervisor heartbeats (30m)"
 find /private/tmp -maxdepth 7 -type f \
   -path "*/server/runs/logs/*" -mmin -30 \
   -name "*supervisor-console.log" -print 2>/dev/null |
   while IFS= read -r f; do
+    score_free_progress_file "$f" || continue
     age=$(( ($(date +%s) - $(stat -f %m "$f")) / 60 ))
     printf "  %s (%sm): %s\n" "$f" "$age" \
       "$(tail -1 "$f" 2>/dev/null | cut -c1-160)"
@@ -47,6 +59,12 @@ hdr "AIR — broad process identity + live progress"
 # every Python process first, retain its full command and cwd, and make a zero
 # count explicitly UNKNOWN until expected run manifests are reconciled.
 if ! ssh -o BatchMode=yes -o ConnectTimeout=8 air '
+  score_free_progress_file() {
+    case "$1" in
+      */teacher-v3-stage-c-midlate-composition-screen-v1/supervisor-console.log|*/pair-aware-whole-round-screen-v3/supervisor-console.log) return 0 ;;
+      *) return 1 ;;
+    esac
+  }
   # Match the executable column, not the full argv: the probe command itself
   # command text contains the word "python" and would otherwise count itself.
   pids=$(ps -Ao pid=,comm= |
@@ -78,14 +96,25 @@ if ! ssh -o BatchMode=yes -o ConnectTimeout=8 air '
       echo "  pid=$pid vanished during probe; reconcile before status claim"
     fi
   done
-  echo "  --- recently advancing isolated-worktree logs (30m)"
+  echo "  --- allowlisted score-free progress content (30m)"
   find /private/tmp -maxdepth 7 -type f \
     -path "*/server/runs/logs/*" -mmin -30 \
     \( -name "*.log" -o -name "*.jsonl" \) -print 2>/dev/null |
     while IFS= read -r f; do
+      score_free_progress_file "$f" || continue
       age=$(( ($(date +%s) - $(stat -f %m "$f")) / 60 ))
       printf "  %s (%sm): %s\n" "$f" "$age" \
         "$(tail -1 "$f" 2>/dev/null | cut -c1-120)"
+    done
+  echo "  --- other recent evidence files: metadata only (30m)"
+  find /private/tmp -maxdepth 7 -type f \
+    -path "*/server/runs/logs/*" -mmin -30 \
+    \( -name "*.log" -o -name "*.jsonl" \) -print 2>/dev/null |
+    while IFS= read -r f; do
+      score_free_progress_file "$f" && continue
+      age=$(( ($(date +%s) - $(stat -f %m "$f")) / 60 ))
+      size=$(stat -f %z "$f" 2>/dev/null || echo unknown)
+      printf "  %s (%sm, %sB; content sealed)\n" "$f" "$age" "$size"
     done
 '; then
   echo "  Air probe FAILED — state UNKNOWN (not idle)"
@@ -140,20 +169,19 @@ else
   echo "  (HANDOFF_REVIEW.md not found)"
 fi
 
-hdr "JOB LOGS — age / size / last line (dead jobs have age but no output)"
-# Only recent logs; older ones are history, and a finished job's log is
-# small-but-complete (check the LAST LINE, not just the size).
+hdr "JOB LOGS — metadata only (content requires an explicit safe boundary)"
+# Generic logs may contain sealed outcomes.  File age and size are operational
+# metadata; content is shown only in the exact score-free allowlist above.
 now=$(date +%s)
 for f in runs/logs/*.log; do
   [ -f "$f" ] || continue
   age=$(( (now - $(stat -f %m "$f")) / 60 ))
   [ "$age" -gt 720 ] && continue                 # ignore logs older than 12h
   sz=$(stat -f %z "$f")
-  last=$(tail -1 "$f" 2>/dev/null | cut -c1-70)
   flag=""
   # A log with no meaningful output after 10 minutes is almost certainly a
   # launch failure (bad PATH, missing script). This exact pattern hid two
   # dead Air jobs for hours on 2026-08-03.
   [ "$sz" -lt 40 ] && [ "$age" -gt 10 ] && flag="   <<< NO OUTPUT — LIKELY DEAD"
-  printf "  %-34s %4dm %7dB  %s%s\n" "$(basename "$f")" "$age" "$sz" "$last" "$flag"
+  printf "  %-34s %4dm %7dB%s\n" "$(basename "$f")" "$age" "$sz" "$flag"
 done | sort -k2 -n

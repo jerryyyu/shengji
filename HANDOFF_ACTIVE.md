@@ -10,7 +10,7 @@
 > `docs_archive/handoff-active-through-2026-08-11-10-22.md` and
 > `docs_archive/handoff-review-2026-08-08-through-2026-08-11-10-22.md`.
 
-Last reconciled: 2026-08-12 03:42 EDT.
+Last reconciled: 2026-08-12 03:48 EDT.
 
 ## Immediate objective
 
@@ -24,9 +24,9 @@ shuai-pai sourcing, and pair-aware rollouts.
 | lane | plain-English progress | exact next gate |
 |---|---|---|
 | **T4 mid/late Teacher hybrid** | The model may propose one move after trick five; fresh Monte Carlo search still prices it and preserves the live champion as fallback. Its 256-state test passed both the live and same-work-random controls. The sole 2,048-cluster whole-round screen started on Mini at 23:20 EDT. All eight workers remain CPU-bound; shard outcomes are sealed. | Monitor only. After all workers finish, Claude reviews the score-free `supervisor-final.json`; only a PASS permits aggregation and outcome access. The aggregate then needs terminal external review. |
-| **S4 point banking** | Two independent 2,048-cluster runs were directionally positive. A genuinely fresh automatic two-look design now has enough maximum sample to resolve a roughly `+0.03` utility effect instead of repeating an underpowered one-shot. Controller PR #40 is pushed at `3403cdf`. | External controller review. A PASS authorizes exactly one score-free Air preflight and sequential-packet design—not scored execution. |
+| **S4 point banking** | Two independent 2,048-cluster runs were directionally positive. A genuinely fresh automatic two-look design can resolve a roughly `+0.03` effect. Controller PR #40 is pushed at `3403cdf`; a launch audit staged the exact pinned Air binary and RLCB parent evidence, and `require_runtime` now passes without changing source or outcomes. | External controller review. A PASS authorizes exactly one score-free Air preflight and sequential-packet design—not scored execution. |
 | **S6 shuai-pai sourcing** | PR #41's broad Air packet remains ready. PR #47 keeps every S6 action visible but searches only boss/near additions: 1,283 versus 10,162 triggers over 10,895 leads, an 87.37% reduction. Formal gate review is requested. While that review waits, a fixed 32-cluster reusable DEV treatment/null/champion pilot at `ac9d704` is running on Air to learn whether the cost cut retains any whole-round signal. | External v2 packet review governs the broad preflight. Separately review PR #47's gate; its PASS permits narrow capacity-packet design only. The DEV pilot can guide design but cannot authorize strength or deployment. |
-| **Pair-aware rollout** | Both v1 parents passed. Exact endgames were `+9.21875` points (LCB `+6.67570`). PR #46's repaired whole-round v2 packet `ba0bb693…baa0b6` fixes the caught 100-action assumption. The broader public pair-cap PR #48 census is also complete: 192 states, 57 triggered; v1 changed 9 roots, v2 changed 10, with two new changes and one reversion. This is dose, not strength. | Review PR #46 v2 packet for one score-free preflight. Separately review PR #48 source/result; a PASS permits only capacity-packet design for the broader public proof. Natural root changes and power—not internal rollout triggers—decide any scored successor. |
+| **Pair-aware rollout** | The repaired PR #46 packet and PR #48 broader public-proof result both passed external review. Exact endgames were `+9.21875` points (LCB `+6.67570`); the broader census triggered in 57/192 states and changed two new roots while reverting one. The one authorized v1 four-cluster score-free preflight is staged on exact Air. | Run that preflight immediately after the bounded S6 DEV pilot frees Air, then request capacity-result review. No scored pair screen is authorized. PR #48 may now design a separate score-free capacity packet, but should wait for v1 traffic/cost unless idle. |
 
 ## Review queue — precise asks
 
@@ -56,28 +56,14 @@ Nonblocking exploration note: PR #45 result head `4331064` preserves a fresh
 It is useful context for interpreting preflight cost, but seeks no authority
 marker and must not delay the v2 packet review.
 
-### 3. Pair-aware whole-round capacity packet, PR #46
+### 3. S6 boss/near search-spend gate, PR #47
 
-Both parent PASSes are complete. The v1 packet is withdrawn: its validator
-incorrectly required 100 actions and it received no review marker or gameplay.
-Review controller git `2321790` and repaired v2 packet SHA
-`ba0bb693642c6fcb41357558f96e6b9d8707b810fa8926c97ec01d223abaa0b6`.
-Reconstruct exact Air identity, variable-length complete-round acceptance,
-common mirrored deals, matched-null/champion history equality,
-first-divergence-only dose accounting, score-field removal, singleton admission
-and false successor authority. If clean, append the exact
-`PAIR_AWARE_ROLLOUT_CAPACITY_PACKET_V2_REVIEW` marker requested at the bottom
-of `HANDOFF_REVIEW.md`. It permits one score-free four-cluster preflight only.
-
-### 4. Pair-cap v2 source and incremental dose, PR #48
-
-Review source git `b4154f1`, result head `6789f1c` and artifact SHA
-`f2e1d28bff52e6dee7d733d78eedb9d6d741c414b4e864b477d60f881d7b0d78`.
-Recompute 192 balanced states, 57 triggered states, v1/v2 root changes 9/10,
-and the three incremental differences (two new, one reverted). Challenge the
-public-only opponent-pair-cap proof and exact work/ballot/null identity. If
-clean, append the requested `PAIR_CAP_ROLLOUT_INCREMENTAL_DOSE_V1_REVIEW`
-marker. It permits capacity-packet design only, not execution.
+Review source `6c61f1f`, result head `a693b11` and artifact SHA
+`167eabbce94aeb0b202a938c8a604c73e1d874dbc566763360d9b38d0c2e88c3`.
+Recompute full-source preservation and the 10,162-to-1,283 second-search
+reduction. If clean, append the requested
+`S6_BOSS_NEAR_SEARCH_GATE_V1_REVIEW` marker. It permits narrow score-free
+capacity-packet design only, not execution. The running DEV pilot is separate.
 
 ## Fleet and launch order
 

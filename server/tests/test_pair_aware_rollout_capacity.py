@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -14,6 +15,12 @@ SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import pair_aware_rollout_capacity as C  # noqa: E402
 import pair_aware_rollout_duel as D  # noqa: E402
+
+
+FROZEN_PACKET = (
+    Path(__file__).resolve().parents[1]
+    / "runs/logs/pair-aware-whole-round-preflight-v1/controller-packet.json"
+)
 
 
 def _review(path: Path) -> Path:
@@ -315,3 +322,18 @@ def test_preflight_binds_singleton_slot_before_opening_packet(
     with pytest.raises(C.CapacityRefused, match="singleton path"):
         C.preflight_command(args)
     assert opened is False
+
+
+def test_frozen_air_packet_is_hash_pinned_and_grants_no_gameplay():
+    raw = FROZEN_PACKET.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == (
+        "2fc732fd3745134d452b6a2a3c5b3d1fde4836ef044e12629d604b16c0f25610")
+    packet = json.loads(raw)
+    internal = packet.pop("internal_sha256")
+    assert C.stable_digest(packet) == internal == (
+        "61875c15d081342444377c9049f4779e292265cb8922f8b1494a77ad956d9aab")
+    assert packet["git"] == "54ec8185b16ab82cacb5f0393a8c194fdef60c86"
+    assert packet["runtime"] == _air_runtime()
+    assert packet["preflight"]["clusters"] == 4
+    assert packet["successor_projection"]["candidate_clusters"] == [2048, 8192]
+    assert all(value is False for value in packet["authority"].values())

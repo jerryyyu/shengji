@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import random
 import sys
 from pathlib import Path
@@ -24,6 +26,12 @@ from shengji.engine.round import Round, Trick, TrickPlay
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import pair_cap_rollout_incremental_dose as DOSE  # noqa: E402
+
+
+FROZEN_DOSE = (
+    Path(__file__).resolve().parent
+    / "data/pair_cap_rollout_incremental_dose.v1.json"
+)
 
 
 def _pair_cap_only_state() -> Round:
@@ -156,3 +164,49 @@ def test_score_free_guard_and_exclusive_writer(tmp_path):
     DOSE.write_exclusive(target, {"schema": DOSE.SCHEMA})
     with pytest.raises(DOSE.DoseRefused, match="overwrite"):
         DOSE.write_exclusive(target, {"schema": DOSE.SCHEMA})
+
+
+def test_frozen_incremental_dose_is_hash_pinned_and_recomputes():
+    raw = FROZEN_DOSE.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == (
+        "f2e1d28bff52e6dee7d733d78eedb9d6d741c414b4e864b477d60f881d7b0d78")
+    payload = json.loads(raw)
+    internal = payload.pop("internal_sha256")
+    assert DOSE.stable_digest(payload) == internal == (
+        "ab8c1074a92fde469b44a27db93279648e1e9466bc6c9d5f14bf72f920062010")
+    assert payload["git"] == "b4154f10ecc81989a647d684f66e6a7ea961c092"
+    assert payload["tree_dirty"] is False
+    source_paths = {
+        "dose": SCRIPTS / "pair_cap_rollout_incremental_dose.py",
+        "pair_cap": SCRIPTS.parent / "shengji/ai/pair_cap_rollout.py",
+        "pair_v1": SCRIPTS.parent / "shengji/ai/pair_aware_rollout.py",
+        "mcbot": SCRIPTS.parent / "shengji/ai/mcbot.py",
+        "memory": SCRIPTS.parent / "shengji/ai/memory.py",
+        "heuristic": SCRIPTS.parent / "shengji/ai/heuristic.py",
+        "evaluation": SCRIPTS.parent / "shengji/evaluation.py",
+        "round": SCRIPTS.parent / "shengji/engine/round.py",
+    }
+    assert payload["source_sha256s"] == {
+        name: DOSE.sha256(path) for name, path in source_paths.items()
+    }
+    rows = payload["rows"]
+    assert len(rows) == len({row["state_id"] for row in rows}) == 192
+    assert len({row["public_state_sha256"] for row in rows}) == 192
+    aggregate = payload["aggregate"]
+    assert aggregate["cell_counts"] == {
+        f"{phase}_{role}": 32
+        for phase in DOSE.PHASES for role in DOSE.ROLES
+    }
+    assert aggregate["pair_cap_triggered_states"] == sum(
+        row["v2_pair_cap_dose"]["triggers"] > 0 for row in rows)
+    assert aggregate["pair_cap_triggers"] == sum(
+        row["v2_pair_cap_dose"]["triggers"] for row in rows)
+    assert aggregate["v1_root_changes"] == sum(
+        row["v1_root_change"] for row in rows) == 9
+    assert aggregate["v2_root_changes"] == sum(
+        row["v2_root_change"] for row in rows) == 10
+    assert aggregate["v2_incremental_root_changes"] == sum(
+        row["v2_incremental_root_change"] for row in rows) == 3
+    assert payload["score_free"] is True
+    assert payload["outcomes_published"] is False
+    assert payload["strength_claim"] is False

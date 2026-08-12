@@ -59,6 +59,8 @@ def load_shard(path: Path) -> dict:
     payload = json.loads(path.read_bytes())
     if payload.get("schema") != EVAL.SHARD_SCHEMA:
         raise EVAL.EvalRefused("pair evaluation shard schema drift")
+    if set(payload) != EVAL.SHARD_FIELDS:
+        raise EVAL.EvalRefused("pair evaluation shard field population drift")
     body = dict(payload)
     observed_sha = body.pop("artifact_sha256", None)
     if observed_sha != STATES.sha256_bytes(STATES.canonical_json(body)):
@@ -66,11 +68,27 @@ def load_shard(path: Path) -> dict:
     rows = payload.get("results")
     split = payload.get("split")
     report_worlds = payload.get("report_worlds")
+    runtime = payload.get("runtime")
+    sources = payload.get("source_sha256s")
     if (split not in EVAL.ALLOWED_SPLITS
             or not isinstance(rows, list)
             or payload.get("rows") != len(rows)
             or isinstance(report_worlds, bool)
-            or not isinstance(report_worlds, int) or report_worlds <= 0
+            or report_worlds != EVAL.REPORT_WORLDS
+            or not isinstance(runtime, dict)
+            or set(runtime) != STATES.RUNTIME_FIELDS
+            or runtime.get("tree_dirty") is not False
+            or runtime.get("fast_engine") is not True
+            or runtime.get("score_free") is not True
+            or runtime.get("outcomes_computed") is not False
+            or runtime.get("strength_claim") is not False
+            or runtime.get("production_authority") is not False
+            or not isinstance(sources, dict)
+            or set(sources) != EVAL.SOURCE_FIELDS
+            or sources != {
+                "evaluator": STATES.sha256_file(EVAL.__file__),
+                "capture": STATES.sha256_file(STATES.__file__),
+            }
             or payload.get("diagnostic_only") is not True
             or payload.get("strength_claim") is not False
             or payload.get("production_promotion") is not False
@@ -143,9 +161,14 @@ def aggregate(*, population: Path, shard_paths: list[Path],
     if split not in EVAL.ALLOWED_SPLITS or not shard_paths:
         raise EVAL.EvalRefused("aggregate requires DEV/CALIB and shard inputs")
     source = EVAL.load_population(population)
-    shards = [load_shard(path) for path in shard_paths]
+    loaded = [(path, load_shard(path)) for path in shard_paths]
+    loaded.sort(key=lambda item: item[1].get("shard_index", -1))
+    shard_paths = [path for path, _ in loaded]
+    shards = [shard for _, shard in loaded]
     shard_count = shards[0].get("shard_count")
     report_worlds = shards[0].get("report_worlds")
+    runtime = shards[0].get("runtime")
+    source_sha256s = shards[0].get("source_sha256s")
     expected_source_sha = STATES.sha256_file(population)
     indices = []
     rows = []
@@ -153,6 +176,8 @@ def aggregate(*, population: Path, shard_paths: list[Path],
         if (shard.get("split") != split
                 or shard.get("shard_count") != shard_count
                 or shard.get("report_worlds") != report_worlds
+                or shard.get("runtime") != runtime
+                or shard.get("source_sha256s") != source_sha256s
                 or shard.get("source_file_sha256") != expected_source_sha
                 or shard.get("source_artifact_sha256")
                 != source["artifact_sha256"]):
@@ -193,6 +218,14 @@ def aggregate(*, population: Path, shard_paths: list[Path],
         "split": split,
         "source_file_sha256": expected_source_sha,
         "source_artifact_sha256": source["artifact_sha256"],
+        "source_sha256s": source_sha256s,
+        "runtime": runtime,
+        "inputs": [{
+            "path": str(path),
+            "file_sha256": STATES.sha256_file(path),
+            "artifact_sha256": shard["artifact_sha256"],
+            "shard_index": shard["shard_index"],
+        } for path, shard in zip(shard_paths, shards, strict=True)],
         "shard_count": shard_count,
         "report_worlds": report_worlds,
         "dose": dose,

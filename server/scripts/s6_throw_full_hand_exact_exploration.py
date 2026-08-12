@@ -20,6 +20,7 @@ import hashlib
 import json
 import math
 import os
+import platform
 import subprocess
 import sys
 from collections import Counter
@@ -33,6 +34,7 @@ sys.path.insert(0, str(SERVER))
 sys.path.insert(0, str(SCRIPT.parent))
 
 import s6_throw_exact_shape_exploration as BASE  # noqa: E402
+from shengji.engine import combos, fast  # noqa: E402
 
 
 CAPTURE_SCHEMA = "s6-throw-full-hand-exact-capture-v1"
@@ -83,7 +85,24 @@ def source_sha256s() -> dict[str, str]:
         "round": SERVER / "shengji/engine/round.py",
         "game": SERVER / "shengji/engine/game.py",
     }
+    if fast.HAVE_FAST and fast._fast is not None:
+        paths["fast_binary"] = Path(fast._fast.__file__).resolve()
     return {name: sha256(path) for name, path in sorted(paths.items())}
+
+
+def runtime_snapshot() -> dict[str, object]:
+    return {
+        "host": platform.node(),
+        "python": platform.python_version(),
+        "implementation": platform.python_implementation(),
+        "python_executable": str(Path(sys.executable).resolve()),
+        "fast_active": bool(
+            fast.HAVE_FAST and fast._fast is not None
+            and combos.decompose is fast.decompose),
+        "fast_binary_sha256": (
+            sha256(Path(fast._fast.__file__).resolve())
+            if fast.HAVE_FAST and fast._fast is not None else None),
+    }
 
 
 def action_key(cards) -> tuple[str, ...]:
@@ -168,6 +187,7 @@ def capture_population(*, seed0: int = SEED0, max_deals: int = MAX_DEALS,
         "schema": CAPTURE_SCHEMA,
         "git": git("rev-parse", "HEAD"),
         "source_sha256s": source_sha256s(),
+        "runtime": runtime_snapshot(),
         "score_free": True,
         "outcomes_computed": False,
         "seed0": seed0,
@@ -298,6 +318,7 @@ def validate_capture(capture: dict, *, expected_git: str) -> None:
     if (capture.get("schema") != CAPTURE_SCHEMA
             or capture.get("git") != expected_git
             or capture.get("source_sha256s") != source_sha256s()
+            or capture.get("runtime") != runtime_snapshot()
             or capture.get("score_free") is not True
             or capture.get("outcomes_computed") is not False
             or capture.get("seed0") != SEED0

@@ -10,7 +10,7 @@
 > `docs_archive/handoff-active-through-2026-08-11-10-22.md` and
 > `docs_archive/handoff-review-2026-08-08-through-2026-08-11-10-22.md`.
 
-Last reconciled: 2026-08-12 05:45 EDT.
+Last reconciled: 2026-08-12 06:02 EDT.
 
 ## Immediate objective
 
@@ -25,7 +25,7 @@ shuai-pai sourcing, and pair-aware rollouts.
 |---|---|---|
 | **T4 mid/late Teacher hybrid** | The model may propose one move after trick five; fresh Monte Carlo search still prices it and preserves the live champion as fallback. Its 256-state test passed both controls. The sole 2,048-cluster whole-round screen started on Mini at 23:20 EDT; at 05:40 all eight workers remained CPU-bound after 6h20m. Outcomes remain sealed. | Monitor only. After all workers finish, Claude reviews the score-free `supervisor-final.json`; only a PASS permits aggregation and outcome access. The aggregate then needs terminal external review. |
 | **S4 point banking** | Two independent 2,048-cluster runs were directionally positive. A genuinely fresh automatic two-look design can resolve a roughly `+0.03` effect. Controller PR #40 is pushed at `3403cdf`; a launch audit staged the exact pinned Air binary and RLCB parent evidence, and `require_runtime` now passes without changing source or outcomes. | External controller review. A PASS authorizes exactly one score-free Air preflight and sequential-packet design—not scored execution. |
-| **S6 shuai-pai sourcing** | PR #41's broad Air packet remains ready. The 32-cluster boss/near pilot had 31 ties, one −2 and zero wins. Zero-failure gating catches the loss but keeps only neutral actions. A same-world level-objective audit kept 5/12 overrides, still kept the loss and found no wins. | External v2 packet review still governs the broad preflight. Separately review PR #47's source gate. Do not fund another filter over these 12 selected rows; a successor needs a materially different evaluator or positive targeted screen. |
+| **S6 shuai-pai sourcing** | The broad packet remains ready and old boss/near filters remain negative. A genuinely different fresh exact test found a positive public stratum: full-hand boss/near throws scored `+0.234` levels with LCB `+0.100` on 128 balanced states (24W/8L/96T), both role means positive; PR #50 head `469b064`. | Continue broad PR #41/#47 reviews independently. In exploration tier, implement an actor-only full-hand gate/evaluator and a fresh treatment/null DEV packet. Do not treat perfect-information oracle value as whole-game strength. |
 | **Pair-aware rollout** | V3 capacity passed externally after changing 6/8 mirrored roots. Exact source `cd20670` froze PR #49's 7,168-cluster packet (`4ece02b9…ae47`) on Air; it remains unadmitted and contains no gameplay. | Review the exact source and packet. The reviewer must explicitly resolve the 7,168-cluster design against the capacity review's “bounded at 2,048” prose. Only the requested raw packet marker may authorize execution. |
 
 ## Review queue — precise asks
@@ -71,6 +71,12 @@ artifact `f910a94c…4d80` showed that loss was the only failed throw, while ten
 publicly proven all-boss overrides were all neutral. This closes a direct jump
 to large boss/near confirmation but does not change the score-free source-gate
 review request.
+
+Fresh nonblocking successor: PR #50 head `469b064` preserves score-free
+capture `99debb54…e5708` and exact result `946b029c…cebe`. Its full-hand
+boss/near selector is actor-visible, but its labels use perfect information;
+therefore it authorizes only the next DEV evaluator design, not a scored
+strength run or promotion.
 
 ### 4. Pair-aware powered screen packet, PR #49
 

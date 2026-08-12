@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-12 05:45 EDT. This file owns current compute and
+Last reconciled: 2026-08-12 06:02 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -10,7 +10,7 @@ compact terminal stubs. Historical detail is archived in
 | host | live strength job | health / next use |
 |---|---|---|
 | **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; at 05:40 all remained CPU-bound after 6h20m. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
-| **Air** | — | **IDLE / REVIEW-BOUND.** Pair v3 capacity passed and exact source `cd20670` froze the 7,168-cluster packet (`4ece02b9…ae47`), but it is unadmitted. S4, S6 and pair scored work remain unauthorized until their distinct raw markers land. |
+| **Air** | — | **IDLE / REVIEW-BOUND AFTER USEFUL EXPLORATION.** Pair's 7,168-cluster packet is frozen but unadmitted. The fresh S6 full-hand exact run completed 128/128 with a positive mechanism result. S4, broad S6 and pair scored work remain unauthorized until their distinct raw markers land. |
 | **Fly production** | `mc-s0-report-lcb` | Release 17 remains live. No deploy, restart, room wipe or policy change is authorized. |
 
 ## Reviewed queue
@@ -42,11 +42,12 @@ outcome-bearing aggregate input.
 
 | date | job | verdict / headline | anchor |
 |---|---|---|---|
+| 08-12 | S6 full-hand boss/near exact replication | **ADVANCE TO DEV SELECTOR:** 128 fresh balanced states, mean `+0.234` levels, one-sided LCB `+0.100`, 24W/8L/96T; both role means positive. Perfect-information action-set value, not whole-game strength. | result `946b029c…cebe` / PR #50 `469b064` |
 | 08-12 | Pair-aware powered screen packet | **FROZEN / NOT RUNNING:** 7,168 clusters, 8×896, ~84% planning power at `+0.05`; external packet/source review must resolve the capacity-prose ambiguity before execution. | packet `4ece02b9…ae47` / PR #49 `9edadcf` |
 | 08-12 | S6 level-objective audit | **STOP THIS FILTER:** on the exact 300 report worlds, level-bracket scoring kept 5/12 selected throws, still retained the only two-level loss and retained zero wins. A full matched pilot is not justified from this evidence. | artifact `f6478bac…6329` / PR #47 |
 | 08-12 | Pair-aware powered screen implementation | **RUNNABLE SOURCE, FREEZE BLOCKED:** PR #49 implements 7,168 clusters under the reviewed caps with ~84% power at `+0.05`; capacity PASS and then packet review remain mandatory. | PR #49 `cd20670` |
 | 08-12 | Pair-aware v1 selected-root audit | **ENCOURAGING, NOT STRENGTH:** across all nine finite-search v1 changes at 4,096 fresh common worlds, primary level utility favored v1 on 5–6 roots, opposed it on 1–2 and left two unresolved under two continuation models. One points-positive root was level-negative, so points alone are insufficient. | artifact `131a64e…7eaa3` / PR #48 |
-| 08-12 | Pair-aware v3 capacity | **PASS AT PRODUCER / EXTERNAL REVIEW PENDING:** v1 changed 6/8 mirrored natural roots; 2,048 clusters project to 143.1 fleet-hours and 17.9 maximum shard-hours. No utility was published. | result `08f7282c…f7c1` / PR #46 |
+| 08-12 | Pair-aware v3 capacity | **EXTERNAL PASS / PACKET FROZEN:** v1 changed 6/8 mirrored natural roots; no utility was published. The successor now waits on packet review. | result `08f7282c…f7c1` / review `051129e` |
 | 08-12 | S6 report-world failure audit | **SAFETY SIGNAL, NO WIN:** 276 full-throw failures across the 12 override folds; zero-failure gating catches the only loss but retains ten neutral all-boss overrides and no positive utility. | artifact `fd1435b9…c966` / PR #47 |
 | 08-12 | S6 boss/near override census | **FAILED-THROW RISK ISOLATED (EXPLORATION):** 11 successful throws were utility-neutral; the sole failed throw was the sole −2 result. Ten publicly proven all-boss bundles were all neutral, so that safer gate removes the observed loss but has no positive strength signal. | artifact `f910a94c…4d80` / PR #47 |
 | 08-12 | S6 boss/near DEV pilot | **NO RETAINED SIGNAL (EXPLORATION):** 31/32 clusters tied; one treatment cluster lost two levels; 12 overrides yielded 11 ties and one loss, zero wins. Mean `-0.0625`, 95% interval `[-0.185,+0.060]`. | artifact `ad3eae32…b8b8e` / PR #47 |

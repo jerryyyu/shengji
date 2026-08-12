@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
 from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
 import pair_aware_rollout_exact_screen as S  # noqa: E402
+
+
+ASSET = Path(__file__).parent / "data/pair_aware_rollout_exact_screen.v1.json"
+ASSET_SHA256 = (
+    "031a365dabff0601ca66299b7b62cb2e38ff4231362b9004f683f26e14112919")
 
 
 def test_named_fresh_trigger_is_real_and_exactly_scoreable():
@@ -63,3 +70,49 @@ def test_design_is_small_fresh_and_balanced():
     assert S.MAX_HAND_CARDS == 4
     assert S.MAX_EXACT_NODES == 500_000
     assert S.T_CRITICAL == 1.669
+
+
+def test_air_result_asset_preserves_the_exploration_verdict_exactly():
+    raw = ASSET.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == ASSET_SHA256
+    result = json.loads(raw)
+    assert result["git"] == "c3faec3f34ff3273de003848ea0e5f0f99be68f8"
+    assert result["tree_dirty"] is False
+    assert result["deals_scanned"] == 24_412
+    assert result["exact_refusals"] == {}
+    assert result["aggregate"] == {
+        "by_role": {
+            "attacker": {
+                "lcb_one_sided_95": 9.995163823075686,
+                "mean": 13.59375,
+                "n": 32,
+                "se": 2.156133119786887,
+            },
+            "defender": {
+                "lcb_one_sided_95": 1.6979440514398023,
+                "mean": 4.84375,
+                "n": 32,
+                "se": 1.8848447864351094,
+            },
+        },
+        "criteria": {
+            "both_role_point_means_ge_0": True,
+            "level_utility_mean_ge_0": True,
+            "overall_point_lcb_gt_0": True,
+        },
+        "exploration_verdict": "ADVANCE_TO_REVIEWED_WHOLE_GAME_SCREEN",
+        "level_utility_mean": 0.375,
+        "losses": 1,
+        "points": {
+            "lcb_one_sided_95": 6.675695030629216,
+            "mean": 9.21875,
+            "n": 64,
+            "se": 1.5236998018998111,
+        },
+        "primary": "acting-team signed exact final attacker-point delta",
+        "production_promotion": False,
+        "strength_claim": False,
+        "ties": 33,
+        "whole_game_execution_authorized": False,
+        "wins": 30,
+    }

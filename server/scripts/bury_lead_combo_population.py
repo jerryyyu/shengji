@@ -66,6 +66,16 @@ SHAPE_KEYS = {
     "structured_throw_candidates", "pair_lead_candidates",
     "live_lead_candidates",
 }
+SELECTION_KEYS = {
+    "schema", "population", "selection", "projected_work", "score_free",
+    "source_population_already_opened", "source_outcomes_read",
+    "exploration_only", "confirmatory_inference", "strength_claim",
+    "production_promotion", "production_deployment",
+}
+SELECTION_ROW_KEYS = {
+    "state_id", "source_state_id", "deal_seed", "selection_group",
+    "selection_reason", "combo_count",
+}
 METRICS = (
     "combo_count",
     "feasible_void_count",
@@ -162,7 +172,7 @@ def census_state(
             "trump_rank": rnd.ordering.trump_rank,
         },
     }
-    return {
+    result = {
         "schema": SCHEMA,
         "population_id": POPULATION_ID,
         "state_id": f"{POPULATION_ID}:deal:{deal_seed}:banker:{seat}",
@@ -187,6 +197,7 @@ def census_state(
         "strength_claim": False,
         "production_deployment": False,
     }
+    return result
 
 
 def state_problems(row: Mapping[str, object]) -> list[str]:
@@ -274,6 +285,120 @@ def _source_manifest_digest(rows: Iterable[Mapping[str, object]]) -> str:
         "source_replay_sha256": row["source_replay_sha256"],
     } for row in sorted(rows, key=lambda value: value["deal_seed"])]
     return stable_digest(material)
+
+
+def selection_problems(value: object, *, require_full_population: bool = True) \
+        -> list[str]:
+    """Validate a materialized selection without trusting its description."""
+    if not isinstance(value, Mapping):
+        return ["selection is not an object"]
+    problems = []
+    if set(value) != SELECTION_KEYS or value.get("schema") != SELECTION_SCHEMA:
+        problems.append("selection field population or schema")
+    if (value.get("score_free") is not True
+            or value.get("source_population_already_opened") is not True
+            or value.get("source_outcomes_read") is not False
+            or value.get("exploration_only") is not True
+            or value.get("confirmatory_inference") is not False
+            or value.get("strength_claim") is not False
+            or value.get("production_promotion") is not False
+            or value.get("production_deployment") is not False):
+        problems.append("selection authority boundary")
+
+    population = value.get("population")
+    expected_population = {
+        "id": POPULATION_ID,
+        "opened_reusable_dev": True,
+        "source_git": SOURCE_GIT,
+        "source_aggregate_sha256": SOURCE_AGGREGATE_SHA256,
+        "source_state_manifest_sha256": SOURCE_STATE_MANIFEST_SHA256,
+        "source_shard_sha256s": list(SOURCE_SHARD_SHA256S),
+        "deal_seed0": DEAL_SEED0,
+    }
+    if not isinstance(population, Mapping):
+        problems.append("selection population missing")
+    else:
+        for key, expected in expected_population.items():
+            if population.get(key) != expected:
+                problems.append(f"selection population {key}")
+        states = population.get("states")
+        if (isinstance(states, bool) or not isinstance(states, int)
+                or states < 1
+                or (require_full_population
+                    and states != POPULATION_STATES)):
+            problems.append("selection population states")
+
+    selection = value.get("selection")
+    rows = selection.get("rows") if isinstance(selection, Mapping) else None
+    if not isinstance(rows, list) or not rows:
+        problems.append("selection rows missing")
+        rows = []
+    else:
+        ids = []
+        seeds = []
+        groups = {"shape_rich": 0, "hash_uniform_anchor": 0}
+        for row in rows:
+            if not isinstance(row, Mapping) or set(row) != SELECTION_ROW_KEYS:
+                problems.append("selection row fields")
+                continue
+            seed = row.get("deal_seed")
+            state_id = row.get("state_id")
+            source_state_id = row.get("source_state_id")
+            if (isinstance(seed, bool) or not isinstance(seed, int)
+                    or not DEAL_SEED0 <= seed <
+                    DEAL_SEED0 + POPULATION_STATES):
+                problems.append("selection row deal seed")
+            if not isinstance(state_id, str) or f":deal:{seed}:" not in state_id:
+                problems.append("selection row state id")
+            if (not isinstance(source_state_id, str)
+                    or f":deal:{seed}:" not in source_state_id):
+                problems.append("selection row source state id")
+            group = row.get("selection_group")
+            if group not in groups:
+                problems.append("selection row group")
+            else:
+                groups[group] += 1
+            combo_count = row.get("combo_count")
+            if (isinstance(combo_count, bool)
+                    or not isinstance(combo_count, int)
+                    or not 1 <= combo_count <= 1088):
+                problems.append("selection row combo count")
+            ids.append(state_id)
+            seeds.append(seed)
+        if len(ids) != len(set(ids)) or len(seeds) != len(set(seeds)):
+            problems.append("selection row duplicates")
+        if isinstance(selection, Mapping):
+            if selection.get("total") != len(rows):
+                problems.append("selection total")
+            if selection.get("shape_rich") != groups["shape_rich"]:
+                problems.append("selection shape count")
+            if selection.get("hash_uniform_anchor") != \
+                    groups["hash_uniform_anchor"]:
+                problems.append("selection anchor count")
+            if selection.get("metrics") != list(METRICS):
+                problems.append("selection metrics")
+            if selection.get("rows_sha256") != stable_digest(rows):
+                problems.append("selection rows digest")
+
+    work = value.get("projected_work")
+    if not isinstance(work, Mapping):
+        problems.append("selection projected work missing")
+    else:
+        total = sum(
+            int(row["combo_count"]) for row in rows
+            if isinstance(row, Mapping)
+            and isinstance(row.get("combo_count"), int)
+            and not isinstance(row.get("combo_count"), bool))
+        expected_work = {
+            "total_combos_per_common_world": total,
+            "candidate_rollouts_at_1_world": total,
+            "candidate_rollouts_at_5_worlds": 5 * total,
+            "candidate_rollouts_at_30_worlds": 30 * total,
+            "capacity_measurement_required_before_run": True,
+        }
+        if dict(work) != expected_work:
+            problems.append("selection projected work")
+    return sorted(set(problems))
 
 
 def select_dev_states(
@@ -366,7 +491,7 @@ def select_dev_states(
         for index in anchors
     ]
     total_combos = sum(int(row["combo_count"]) for row in selected_rows)
-    return {
+    result = {
         "schema": SELECTION_SCHEMA,
         "population": {
             "id": POPULATION_ID,
@@ -402,3 +527,8 @@ def select_dev_states(
         "production_promotion": False,
         "production_deployment": False,
     }
+    final_problems = selection_problems(
+        result, require_full_population=require_full_population)
+    if final_problems:
+        raise PopulationRefused("; ".join(final_problems))
+    return result

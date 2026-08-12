@@ -104,6 +104,8 @@ def test_selection_is_order_invariant_diverse_and_work_explicit():
         shuffled, shape_count=8, anchor_count=8,
         require_full_population=False)
     assert first == second
+    assert P.selection_problems(
+        first, require_full_population=False) == []
     selected = first["selection"]["rows"]
     assert len(selected) == 16
     assert len({row["state_id"] for row in selected}) == 16
@@ -154,3 +156,23 @@ def test_selection_refuses_bad_authority_or_impossible_caps():
     row = _row(0)
     row["combo_count"] = row["combo_cap"] + 1
     assert "combo cap" in P.state_problems(row)
+
+
+@pytest.mark.parametrize(("mutator", "problem"), [
+    (lambda value: value["selection"].__setitem__("rows_sha256", "0" * 64),
+     "selection rows digest"),
+    (lambda value: value["selection"]["rows"][0].__setitem__(
+        "combo_count", 0), "selection row combo count"),
+    (lambda value: value.__setitem__("strength_claim", True),
+     "selection authority boundary"),
+    (lambda value: value["projected_work"].__setitem__(
+        "candidate_rollouts_at_30_worlds", 1),
+     "selection projected work"),
+])
+def test_selection_validator_rejects_self_describing_drift(mutator, problem):
+    selection = P.select_dev_states(
+        [_row(index) for index in range(16)], shape_count=4,
+        anchor_count=4, require_full_population=False)
+    mutator(selection)
+    assert problem in P.selection_problems(
+        selection, require_full_population=False)

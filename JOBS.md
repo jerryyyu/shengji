@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-12 02:34 EDT. This file owns current compute and
+Last reconciled: 2026-08-12 03:05 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -10,7 +10,7 @@ compact terminal stubs. Historical detail is archived in
 | host | live strength job | health / next use |
 |---|---|---|
 | **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; all remain CPU-bound. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
-| **Air** | none | **FREE.** It completed the 192-state S6 exact source-shape exploration in about one minute; no worker remains live. Reserve it for the first externally authorized S4 or S6 preflight. |
+| **Air** | none | **FREE.** It completed the eight-state pair-cap high-N diagnostic and froze the exact PR #46 packet; no worker remains live. Reserve it for the first externally authorized S4, S6 or pair-aware preflight. |
 | **Fly production** | `mc-s0-report-lcb` | Release 17 remains live. No deploy, restart, room wipe or policy change is authorized. |
 
 ## Reviewed queue
@@ -19,9 +19,9 @@ compact terminal stubs. Historical detail is archived in
 |---:|---|---|
 | 1 | S4 future-only sequential preflight | PR #40 head `3403cdf`; controller review pending. A PASS permits one score-free Air preflight and packet design only. |
 | 2 | S6 shuai-pai preflight | PR #41 head `ea07efa`; Air-bound packet v2 review pending. A PASS permits one score-free four-cluster Air preflight only. |
-| 3 | Pair-aware capacity design | PR #42 head `d4d8ebd` source/result review, then PR #44 head `1801aa0` score-free dose review. Clean PASSes permit capacity-packet design only. |
+| 3 | Pair-aware capacity preflight | Parent PASSes complete. PR #46 head `63ebd70`, controller `54ec818`, packet `2fc732fd…25610`; external packet review pending. A PASS permits one score-free four-cluster Air preflight only. |
 
-Whichever of S4 or S6 receives its exact marker first takes Air. Preflight
+Whichever of S4, S6 or pair-aware receives its exact marker first takes Air. Preflight
 artifacts must stay score-free; a later independent packet review is required
 before scored execution.
 
@@ -41,6 +41,7 @@ outcome-bearing aggregate input.
 
 | date | job | verdict / headline | anchor |
 |---|---|---|---|
+| 08-12 | Pair-cap live high-N diagnostic | **8/8 POSITIVE, EXPLORATION ONLY:** every pair-cap-only live state favored the proposed low pair at 3,000 common worlds; mean state gap `+5.0023` points. Rows share rooms/rounds and are not independent. | result `b323827f…8b1f3` / internal `f698c83d…db38` |
 | 08-12 | S6 exact source-shape exploration | **NARROW THE HYPOTHESIS:** boss/near was the only nonnegative late action-set stratum (`+0.0156`, 4W/4L/56T); generic whole-plain and whole-trump had zero wins over the best live ballot. Exploration only. | result `fc670903…806c` / PR #45 |
 | 08-12 | S6 source prevalence census | **BROAD / SCORE-FREE:** new candidates on 10,201/10,924 natural leads (93.4%), 18,882 additions; capacity and actual move changes still unknown | disjoint DEV seeds starting `431000000`; no scored artifact |
 | 08-12 | Pair-aware natural lead-root dose | **SPARSE BUT NONZERO (score-free):** treatment activated in 17/24 balanced lead roots and changed one move; follow roots and complete-round prevalence remain unmeasured | result `e530da6a…bbbb8` / PR #44 |

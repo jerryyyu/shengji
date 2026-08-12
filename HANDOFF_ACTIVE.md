@@ -10,7 +10,7 @@
 > `docs_archive/handoff-active-through-2026-08-11-10-22.md` and
 > `docs_archive/handoff-review-2026-08-08-through-2026-08-11-10-22.md`.
 
-Last reconciled: 2026-08-12 02:34 EDT.
+Last reconciled: 2026-08-12 03:05 EDT.
 
 ## Immediate objective
 
@@ -26,7 +26,7 @@ shuai-pai sourcing, and pair-aware rollouts.
 | **T4 mid/late Teacher hybrid** | The model may propose one move after trick five; fresh Monte Carlo search still prices it and preserves the live champion as fallback. Its 256-state test passed both the live and same-work-random controls. The sole 2,048-cluster whole-round screen started on Mini at 23:20 EDT. All eight workers remain CPU-bound; shard outcomes are sealed. | Monitor only. After all workers finish, Claude reviews the score-free `supervisor-final.json`; only a PASS permits aggregation and outcome access. The aggregate then needs terminal external review. |
 | **S4 point banking** | Two independent 2,048-cluster runs were directionally positive. A genuinely fresh automatic two-look design now has enough maximum sample to resolve a roughly `+0.03` utility effect instead of repeating an underpowered one-shot. Controller PR #40 is pushed at `3403cdf`. | External controller review. A PASS authorizes exactly one score-free Air preflight and sequential-packet design—not scored execution. |
 | **S6 shuai-pai sourcing** | Public-only early/mid/late sourcing and the champion-anchored equal-work seam are ready at PR #41 / `ea07efa`; all 27 exact-Air tests pass. Source prevalence is very broad (10,201/10,924 DEV leads). A new 192-state exact endgame diagnostic on PR #45 found no added-oracle wins for generic whole-plain or whole-trump actions; boss/near bundles were the only nonnegative stratum (`+0.0156` level utility, 4 wins / 4 losses / 56 ties). This is late perfect-information action-set evidence, not whole-game strength. | External v2 packet review still governs the one score-free Air preflight. Measure actual policy changes and capacity; if the broad recipe is impractical, design a narrower boss/near-first lane rather than searching generic whole holdings on nearly every lead. |
-| **Pair-aware rollout** | The live root already remembers exhausted pairs, but ordinary simulated continuations did not. A fresh exact four-card-endgame diagnostic was strongly positive: `+9.21875` acting-team points, LCB `+6.67570`. A separate score-free natural **lead-state** census found treatment activation in 17/24 roots but only one move change. The lead-root dose is real and sparse; follow roots and complete rounds remain unmeasured. Source/result PR #42 is `d4d8ebd`; dose PR #44 is `1801aa0`. | Review PR #42, then PR #44. Clean PASSes authorize design of a score-free whole-round capacity/prevalence packet only; no preflight or scored execution yet. |
+| **Pair-aware rollout** | Both parent reviews passed. Exact endgames were `+9.21875` acting-team points (LCB `+6.67570`), while the first natural lead census changed 1/24 root actions. A separate correlated live-log diagnostic found all eight pair-cap-only states positive at 3,000 common worlds (mean `+5.00` points), supporting the tactic without proving whole-game strength. PR #46 now freezes complete mirrored rounds and measures natural first action divergence plus 2,048/8,192 cost projections. | Review PR #46 packet `2fc732fd…25610`. A PASS permits exactly one four-cluster score-free Air preflight; measured root-change traffic and power—not internal rollout triggers—then decide whether either scored size is viable. |
 
 ## Review queue — precise asks
 
@@ -56,32 +56,22 @@ Nonblocking exploration note: PR #45 result head `4331064` preserves a fresh
 It is useful context for interpreting preflight cost, but seeks no authority
 marker and must not delay the v2 packet review.
 
-### 3. Pair-aware source/result, PR #42
+### 3. Pair-aware whole-round capacity packet, PR #46
 
-Review exact head `d4d8ebd116aab4994b5b7af22115fe4e95762ab0` and preserved
-artifact SHA `031a365dabff0601ca66299b7b62cb2e38ff4231362b9004f683f26e14112919`.
-Challenge public-information isolation, treatment/null work identity, hidden-
-hand mutation, exact-endgame recomputation, role signs and the inference
-boundary. If clean, append the requested
-`PAIR_AWARE_ROLLOUT_EXACT_V1_REVIEW` marker. This permits whole-game packet
-design only.
-
-### 4. Pair-aware root dose, PR #44
-
-After PR #42, review exact head `1801aa0af5358705eceda8b6d611b079b64cceed`
-and score-free artifact SHA
-`e530da6a55e53cb29f941a4b539870d15b45bb279d8265f72a6276b80cfbbbb8`.
-Recompute the six balanced cells, score-field refusal, exact treatment/null
-work and the sole `CA` → `H10,H10` root change. If clean, append the requested
-`PAIR_AWARE_ROLLOUT_ROOT_DOSE_V1_REVIEW` marker. This permits capacity-packet
-design only, not preflight execution.
+Both parent PASSes are complete. Review controller git `54ec818` and frozen
+packet SHA `2fc732fd3745134d452b6a2a3c5b3d1fde4836ef044e12629d604b16c0f25610`.
+Reconstruct exact Air identity, common mirrored deals, matched-null/champion
+history equality, first-divergence-only dose accounting, score-field removal,
+singleton admission and false successor authority. If clean, append the exact
+`PAIR_AWARE_ROLLOUT_CAPACITY_PACKET_V1_REVIEW` marker requested at the bottom
+of `HANDOFF_REVIEW.md`. It permits one score-free four-cluster preflight only.
 
 ## Fleet and launch order
 
 | host | current use | next authorized use |
 |---|---|---|
 | **Mini** | T4 eight-shard whole-round screen; projected maximum about 45.4 wall hours. | Keep isolated until T4 terminal seal. |
-| **Air** | Free after the 32.6-second pair root-dose census. | First reviewed score-free preflight to arrive: S4 or S6. Preflights are short and publish no outcomes. |
+| **Air** | Free. It completed the eight-state pair-cap high-N diagnostic and froze the PR #46 packet; no worker remains. | First reviewed score-free preflight to arrive: S4, S6 or pair-aware. Preflights are short and publish no outcomes. |
 | **Production** | Release 17, `mc-s0-report-lcb`. | No deploy, restart, room wipe or policy mutation without explicit user approval. |
 
 Do not inspect T4 `shard-*.json`. Process state, CPU, tmux, supervisor console

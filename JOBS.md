@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-12 03:28 EDT. This file owns current compute and
+Last reconciled: 2026-08-12 03:34 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -10,7 +10,7 @@ compact terminal stubs. Historical detail is archived in
 | host | live strength job | health / next use |
 |---|---|---|
 | **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; all remain CPU-bound. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
-| **Air** | `pair-cap-incremental-dose-v1` | **HEALTHY / ONE CORE.** A 192-state score-free v2-minus-v1 public-proof dose census is running. It measures triggers and root changes only, not strength. After completion, reserve Air for the first externally authorized S4, S6 or pair-aware preflight. |
+| **Air** | none | **FREE.** The 192-state pair-cap incremental-dose census completed in 439 seconds. Reserve Air for the first externally authorized S4, S6 or pair-aware preflight. |
 | **Fly production** | `mc-s0-report-lcb` | Release 17 remains live. No deploy, restart, room wipe or policy change is authorized. |
 
 ## Reviewed queue
@@ -41,6 +41,7 @@ outcome-bearing aggregate input.
 
 | date | job | verdict / headline | anchor |
 |---|---|---|---|
+| 08-12 | Pair-cap v2 incremental-dose census | **NONZERO DOSE, SCORE-FREE:** 57/192 states triggered; v1/v2 changed 9/10 roots; v2 differed on three (two new, one reverted). Utility remains unknown. | result `f2e1d28b…b0d78` / PR #48 |
 | 08-12 | S6 boss/near search-spend census | **87.37% FEWER SECOND SEARCHES, SCORE-FREE:** complete source ballot preserved; boss/near gate triggered 1,283 versus 10,162 broad triggers across 10,895 leads, with all phases/roles represented | result `167eabbc…e88c3` / PR #47 |
 | 08-12 | Pair-cap live high-N diagnostic | **8/8 POSITIVE, EXPLORATION ONLY:** every pair-cap-only live state favored the proposed low pair at 3,000 common worlds; mean state gap `+5.0023` points. Rows share rooms/rounds and are not independent. | result `b323827f…8b1f3` / internal `f698c83d…db38` |
 | 08-12 | S6 exact source-shape exploration | **NARROW THE HYPOTHESIS:** boss/near was the only nonnegative late action-set stratum (`+0.0156`, 4W/4L/56T); generic whole-plain and whole-trump had zero wins over the best live ballot. Exploration only. | result `fc670903…806c` / PR #45 |

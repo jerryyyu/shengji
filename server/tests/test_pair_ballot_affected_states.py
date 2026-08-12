@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,7 @@ def witness() -> dict:
 
 
 def test_named_opening_pair_omission_becomes_exact_replay_asset(witness):
+    assert witness["schema"] == "pair-ballot-affected-state-v2"
     assert witness["state_id"] == "861614:0:1"
     assert witness["band"] == "early"
     assert witness["search_eligible"] is True
@@ -63,7 +65,8 @@ def test_search_reachability_matches_the_real_tractor_lock(witness):
 
 @pytest.mark.parametrize(("mutate", "needle"), [
     (lambda row: row["current_ballot"].pop(), "digest"),
-    (lambda row: row.__setitem__("split", "report"), "digest"),
+    (lambda row: row.__setitem__(
+        "split", "dev" if row["split"] != "dev" else "calib"), "digest"),
     (lambda row: row["missing_pairs"].clear(), "digest"),
     (lambda row: row["replay"].__setitem__("seat", 3), "digest"),
 ])
@@ -126,17 +129,42 @@ def test_global_selection_is_independent_of_shard_completion_order(witness):
                 1_000_000 + split_index * 10_000 + band_index * 100
 
 
-def test_natural_dose_weights_are_not_balanced_capture_weights():
-    weights = {
-        band: CAPTURE.NATURAL_DOSE_COUNTS[band]
-        / CAPTURE.NATURAL_DOSE_DENOMINATOR
-        for band in CAPTURE.BANDS
-    }
-    assert sum(weights.values()) == pytest.approx(1.0)
-    assert weights["early"] > 0.97
-    assert weights["mid"] < 0.024
-    assert weights["late"] < 0.001
+def test_capture_uses_the_production_final_declaration_pass(monkeypatch):
+    original_make_bot = CAPTURE.make_bot
+    final_calls = []
+
+    def traced_make_bot(name, *args, **kwargs):
+        bot = original_make_bot(name, *args, **kwargs)
+        if name == CAPTURE.SOURCE_POLICY:
+            original_decide = bot.decide_declare
+
+            def traced_decide(rnd, seat, final=False):
+                if final:
+                    final_calls.append(seat)
+                return original_decide(rnd, seat, final=final)
+
+            bot.decide_declare = traced_decide
+        return bot
+
+    monkeypatch.setattr(CAPTURE, "make_bot", traced_make_bot)
+    CAPTURE._deal_rows(861_614)
+    assert final_calls == [0, 1, 2, 3]
+
+
+def test_dose_counters_include_repeated_omissions_not_just_saved_rows():
+    observed = Counter()
+    eligible = Counter()
+    rows = CAPTURE._deal_rows(
+        850_184, observed=observed, eligible_observed=eligible)
+    assert len(rows) == 1
+    assert observed == Counter({"calib/early": 2})
+    assert eligible == Counter({"calib/early": 2})
+
+
+def test_balanced_capture_quotas_are_not_used_as_natural_dose():
     assert CAPTURE.QUOTA_PER_SPLIT == {"early": 448, "mid": 48, "late": 16}
+    assert CAPTURE.DOSE_ESTIMATOR == \
+        "all-search-reachable-omissions-in-full-capture-stream"
 
 
 def test_real_runtime_refuses_dirty_or_uncompiled(monkeypatch):

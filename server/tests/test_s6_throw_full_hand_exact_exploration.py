@@ -1,6 +1,8 @@
 """Contracts for the fresh S6 full-hand exact exploration."""
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
 from pathlib import Path
 
@@ -8,6 +10,15 @@ from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import s6_throw_full_hand_exact_exploration as S  # noqa: E402
+
+
+DATA = Path(__file__).with_name("data")
+CAPTURE = DATA / "s6_throw_full_hand_exact_capture.v1.json"
+RESULT = DATA / "s6_throw_full_hand_exact_result.v1.json"
+CAPTURE_SHA256 = (
+    "99debb547d8ba92456c9d9d8a7e36dd49fdc061b589b063ddcd86e3ab2de5708")
+RESULT_SHA256 = (
+    "946b029c0922a902ad5974977cef4a8a30ac245430563f57483c25597d65cebe")
 
 
 def _row(role: str, delta: float, points: int = 0):
@@ -75,3 +86,51 @@ def test_negative_role_blocks_advance_even_with_positive_pool():
     assert result["pooled_level_delta"]["mean"] > 0
     assert result["roles"]["defender"]["level_delta"]["mean"] < 0
     assert result["public_gate_dev_screen_design_authorized"] is False
+
+
+def test_fresh_air_result_recomputes_and_preserves_bounded_meaning():
+    capture_raw = CAPTURE.read_bytes()
+    result_raw = RESULT.read_bytes()
+    assert hashlib.sha256(capture_raw).hexdigest() == CAPTURE_SHA256
+    assert hashlib.sha256(result_raw).hexdigest() == RESULT_SHA256
+    capture = json.loads(capture_raw)
+    result = json.loads(result_raw)
+
+    assert capture["git"] == \
+        "b9e8c205359f951cb0c2a9f84d48e0f3d56a3a7d"
+    assert capture["seed0"] == S.SEED0
+    assert capture["role_counts"] == {"attacker": 64, "defender": 64}
+    assert capture["complete"] is True
+    assert capture["score_free"] is True
+    assert capture["outcomes_computed"] is False
+    assert len(capture["rows"]) == 128
+    assert all(row["score_free_selection"] is True
+               for row in capture["rows"])
+
+    internal = result.pop("internal_sha256")
+    assert internal == \
+        "3741bc6f9e4f7e17b719380a143305d2b04bc1c4a1f78b6c1448bc02b3823f45"
+    assert S.stable_digest(result) == internal
+    result["internal_sha256"] = internal
+    assert result["tree_dirty"] is False
+    assert result["capture_sha256"] == S.stable_digest(capture)
+    assert result["aggregate"] == S.aggregate(result["rows"], role_quota=64)
+
+    aggregate = result["aggregate"]
+    assert aggregate["coverage_complete"] is True
+    assert aggregate["refused_rows"] == 0
+    assert aggregate["pooled_level_delta"] == {
+        "n": 128,
+        "mean": 0.234375,
+        "se": 0.08187364758154535,
+        "lcb_one_sided_95": 0.0997048338237485,
+    }
+    assert (sum(role["wins"] for role in aggregate["roles"].values()),
+            sum(role["losses"] for role in aggregate["roles"].values()),
+            sum(role["ties"] for role in aggregate["roles"].values())) == \
+        (24, 8, 96)
+    assert aggregate["status"] == "ADVANCE_TO_PUBLIC_GATE_DEV_SCREEN"
+    assert aggregate["public_gate_dev_screen_design_authorized"] is True
+    assert aggregate["whole_game_execution_authorized"] is False
+    assert aggregate["strength_claim"] is False
+    assert result["production_deployment"] is False

@@ -10,7 +10,7 @@
 > `docs_archive/handoff-active-through-2026-08-11-10-22.md` and
 > `docs_archive/handoff-review-2026-08-08-through-2026-08-11-10-22.md`.
 
-Last reconciled: 2026-08-12 02:23 EDT.
+Last reconciled: 2026-08-12 02:34 EDT.
 
 ## Immediate objective
 
@@ -25,7 +25,7 @@ shuai-pai sourcing, and pair-aware rollouts.
 |---|---|---|
 | **T4 mid/late Teacher hybrid** | The model may propose one move after trick five; fresh Monte Carlo search still prices it and preserves the live champion as fallback. Its 256-state test passed both the live and same-work-random controls. The sole 2,048-cluster whole-round screen started on Mini at 23:20 EDT. All eight workers remain CPU-bound; shard outcomes are sealed. | Monitor only. After all workers finish, Claude reviews the score-free `supervisor-final.json`; only a PASS permits aggregation and outcome access. The aggregate then needs terminal external review. |
 | **S4 point banking** | Two independent 2,048-cluster runs were directionally positive. A genuinely fresh automatic two-look design now has enough maximum sample to resolve a roughly `+0.03` utility effect instead of repeating an underpowered one-shot. Controller PR #40 is pushed at `3403cdf`. | External controller review. A PASS authorizes exactly one score-free Air preflight and sequential-packet design—not scored execution. |
-| **S6 shuai-pai sourcing** | Public-only early/mid/late throw sourcing passed semantics review. The equal-work treatment/null policy and Air-bound v2 preflight are pushed at PR #41 / `ea07efa`; Codex's action/RNG re-audit plus all 27 exact-Air focused tests passed. A separate 512-round score-free DEV census found a new sourced move on 10,201/10,924 natural leads (93.4%), averaging 1.85 additions per trigger. Coverage is broad, so the capacity gate is load-bearing. | External v2 packet review. A PASS authorizes exactly one score-free four-cluster Air preflight—not the scored screen. Use it to measure actual move-change dose and wall time before sizing scored work. |
+| **S6 shuai-pai sourcing** | Public-only early/mid/late sourcing and the champion-anchored equal-work seam are ready at PR #41 / `ea07efa`; all 27 exact-Air tests pass. Source prevalence is very broad (10,201/10,924 DEV leads). A new 192-state exact endgame diagnostic on PR #45 found no added-oracle wins for generic whole-plain or whole-trump actions; boss/near bundles were the only nonnegative stratum (`+0.0156` level utility, 4 wins / 4 losses / 56 ties). This is late perfect-information action-set evidence, not whole-game strength. | External v2 packet review still governs the one score-free Air preflight. Measure actual policy changes and capacity; if the broad recipe is impractical, design a narrower boss/near-first lane rather than searching generic whole holdings on nearly every lead. |
 | **Pair-aware rollout** | The live root already remembers exhausted pairs, but ordinary simulated continuations did not. A fresh exact four-card-endgame diagnostic was strongly positive: `+9.21875` acting-team points, LCB `+6.67570`. A separate score-free natural **lead-state** census found treatment activation in 17/24 roots but only one move change. The lead-root dose is real and sparse; follow roots and complete rounds remain unmeasured. Source/result PR #42 is `d4d8ebd`; dose PR #44 is `1801aa0`. | Review PR #42, then PR #44. Clean PASSes authorize design of a score-free whole-round capacity/prevalence packet only; no preflight or scored execution yet. |
 
 ## Review queue — precise asks
@@ -49,6 +49,12 @@ the champion-anchored matched null, retired v1 namespace, score-free fields
 and one-shot refusal semantics. If clean, append the requested
 `S6_THROW_PREFLIGHT_PACKET_V2_REVIEW` marker. Its authority is one score-free
 four-cluster Air preflight only.
+
+Nonblocking exploration note: PR #45 result head `4331064` preserves a fresh
+192-state exact action-set diagnostic at artifact SHA
+`fc6709037cfc130e82ca07f58e6bb6ecd18c847b7d3665ac9ac4a6a6c945806c`.
+It is useful context for interpreting preflight cost, but seeks no authority
+marker and must not delay the v2 packet review.
 
 ### 3. Pair-aware source/result, PR #42
 

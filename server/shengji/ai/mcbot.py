@@ -152,6 +152,12 @@ class MCBot(SmartBot):
     #                          sourcing, not judgment). ADOPTED: 62% vs
     #                          narrow-ballot mc (75-45, n=120), +7% latency.
     LEAD_MAX_CANDIDATES = 14
+    # Keep every pair ahead of discretionary tractors/throws/top singles when
+    # the fixed lead cap fills.  The ordinary wide source *generates* every
+    # pair, but near-boss throws and tractors are appended first, so slicing to
+    # LEAD_MAX_CANDIDATES can still evict a pair.  Off by default: this is an
+    # equal-work sourcing hypothesis, not a production-policy change.
+    RETAIN_ALL_LEAD_PAIRS = False
     # Ballot V3 lead layer: offer one single per distinct effective level
     # instead of only the top and lowest-non-point card per suit.
     V3_LEAD_SINGLES = False
@@ -1321,6 +1327,21 @@ class MCBot(SmartBot):
 
         if not rnd.trick.plays:
             add(self._lead(rnd, seat))  # SmartBot's pick (throws included)
+            if self.RETAIN_ALL_LEAD_PAIRS:
+                # A post-bury hand contains at most floor(25 / 2) distinct
+                # pair codes.  Candidate zero plus all of them therefore fits
+                # under the live 14-slot cap.  Refuse a narrower experimental
+                # configuration rather than silently breaking the guarantee.
+                for s in list(PLAIN_SUITS) + [TRUMP]:
+                    cards = suit_cards(hand, s, o)
+                    for code, k in sorted(Counter(cards).items(),
+                                          key=lambda e: -o.level(e[0])):
+                        if k >= 2:
+                            add([code, code])
+                if len(cands) > self.LEAD_MAX_CANDIDATES:
+                    raise ValueError(
+                        "LEAD_MAX_CANDIDATES cannot retain candidate zero "
+                        "and every legal pair")
             if self.RISKY_THROWS or self.WIDE_LEAD_BALLOT:
                 mem_ = Memory(rnd, seat, own_kitty=getattr(self, 'BANKER_KITTY', True))
                 for t in self.near_boss_throws(rnd, seat, mem_):
@@ -1438,7 +1459,8 @@ class MCBot(SmartBot):
                     if len(cands) >= self.LEAD_MAX_CANDIDATES:
                         break
                     add([c])
-        if (self.WIDE_LEAD_BALLOT or self.V3_LEAD_SINGLES) and not rnd.trick.plays:
+        if (self.WIDE_LEAD_BALLOT or self.V3_LEAD_SINGLES or
+                self.RETAIN_ALL_LEAD_PAIRS) and not rnd.trick.plays:
             return cands[:self.LEAD_MAX_CANDIDATES]
         if self.WIDE_FOLLOW_BALLOT and rnd.trick.plays:
             return cands[:self.FOLLOW_MAX_CANDIDATES]

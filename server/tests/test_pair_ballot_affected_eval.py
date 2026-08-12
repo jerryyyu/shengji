@@ -17,7 +17,10 @@ import pair_ballot_affected_states as STATES  # noqa: E402
 
 @pytest.fixture(scope="module")
 def witness() -> dict:
-    return STATES._deal_rows(861_614)[0]
+    # This is deliberately a DEV witness.  The old 861614 witness belonged to
+    # REPORT, which contradicted the evaluator's documented authority boundary
+    # even though the formal shard entry point rejected REPORT.
+    return STATES._deal_rows(862_219)[0]
 
 
 @pytest.fixture(scope="module")
@@ -29,7 +32,7 @@ def evaluated(witness) -> dict:
 
 def test_named_witness_runs_both_complete_live_policies_at_equal_work(evaluated):
     assert evaluated["schema"] == EVAL.SCHEMA
-    assert evaluated["state_id"] == "861614:0:1"
+    assert evaluated["state_id"] == "862219:0:2"
     assert evaluated["current"]["work"]["complete"] is True
     assert evaluated["retained"]["work"]["complete"] is True
     assert evaluated["candidate_world_work"] == {
@@ -101,6 +104,13 @@ def test_report_split_is_unavailable_in_exploration_controller(tmp_path):
             out=tmp_path / "out.json")
 
 
+def test_report_row_is_unavailable_at_direct_evaluator_boundary():
+    report_witness = STATES._deal_rows(861_614)[0]
+    assert report_witness["split"] == "report"
+    with pytest.raises(EVAL.EvalRefused, match="DEV/CALIB only"):
+        EVAL.evaluate_state(report_witness, report_worlds=2)
+
+
 def test_formal_shard_refuses_a_shortened_report_fold(tmp_path):
     with pytest.raises(EVAL.EvalRefused, match="must be 300"):
         EVAL.run_shard(
@@ -110,12 +120,12 @@ def test_formal_shard_refuses_a_shortened_report_fold(tmp_path):
 
 
 def test_named_seed_streams_are_stable_and_disjoint():
-    state = "861614:0:1"
+    state = "862219:0:2"
     root = EVAL.seed_for(state, "policy-root")
     report = EVAL.seed_for(state, "external-report")
     assert root == EVAL.seed_for(state, "policy-root")
     assert root != report
-    assert root != EVAL.seed_for("861614:1:1", "policy-root")
+    assert root != EVAL.seed_for("862219:1:2", "policy-root")
 
 
 def test_evaluation_runtime_does_not_reuse_score_free_capture_claim(
@@ -189,10 +199,16 @@ def test_aggregate_recomputes_rehashed_work(evaluated):
 
 def test_aggregate_binds_report_evidence_to_recorded_play(evaluated):
     bad = copy.deepcopy(evaluated)
-    bad["retained"]["report_fold"]["statistic"] = -0.1
+    record = bad["retained"]
+    # Flip the pass/fallback side regardless of which side this witness
+    # originally occupied.  A fixed negative statistic was a no-op whenever
+    # the recorded decision had already fallen back to candidate zero.
+    statistic = (-0.1 if record["played_index"]
+                 == record["report_candidate_index"] else 0.1)
+    record["report_fold"]["statistic"] = statistic
     bad["retained"]["report_fold"]["gap"] = (
         bad["retained"]["report_fold"]["critical"]
-        * bad["retained"]["report_fold"]["se"] - 0.1)
+        * bad["retained"]["report_fold"]["se"] + statistic)
     _rehash(bad)
     with pytest.raises(EVAL.EvalRefused, match="report-fold decision"):
         AGG._validate_result(bad, split=bad["split"], report_worlds=2)
@@ -206,12 +222,17 @@ def test_aggregate_recomputes_best_inserted_pair(witness, evaluated):
         in {EVAL.action_key(action)
             for action in witness["inserted_actions"]}
     ]
-    wrong = next(index for index in inserted_indices
-                 if index != bad["best_inserted_index"])
+    wrong = next((index for index in inserted_indices
+                  if index != bad["best_inserted_index"]), None)
+    if wrong is None:
+        wrong = next(index for index in range(len(witness["retained_ballot"]))
+                     if index not in inserted_indices)
     bad["best_inserted_index"] = wrong
     bad["best_inserted_pair"] = sorted(witness["retained_ballot"][wrong])
     _rehash(bad)
-    with pytest.raises(EVAL.EvalRefused, match="action binding|selector drift"):
+    with pytest.raises(
+            EVAL.EvalRefused,
+            match="action binding|selector drift|inserted-pair binding"):
         AGG._validate_source_binding(bad, witness)
 
 

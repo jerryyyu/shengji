@@ -213,6 +213,8 @@ def _paired_mean(by_key: dict[tuple[str, ...], dict],
 
 
 def evaluate_state(row: dict, *, report_worlds: int = REPORT_WORLDS) -> dict:
+    if row.get("split") not in ALLOWED_SPLITS:
+        raise EvalRefused("exploration evaluator permits DEV/CALIB only")
     if row.get("search_eligible") is not True:
         raise EvalRefused("evaluation row is not search-reachable")
     rnd = STATES.replay_state(row)
@@ -221,9 +223,11 @@ def evaluate_state(row: dict, *, report_worlds: int = REPORT_WORLDS) -> dict:
     _, current = run_policy(
         rnd, seat, retained=False, seed=root_seed,
         expected_ballot=row["current_ballot"])
+    STATES.validate_state_record(row, rnd=rnd, replay=False)
     _, retained = run_policy(
         rnd, seat, retained=True, seed=root_seed,
         expected_ballot=row["retained_ballot"])
+    STATES.validate_state_record(row, rnd=rnd, replay=False)
 
     inserted = {action_key(cards) for cards in row["inserted_actions"]}
     evicted = {action_key(cards) for cards in row["evicted_actions"]}

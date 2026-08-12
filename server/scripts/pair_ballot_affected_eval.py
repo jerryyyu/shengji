@@ -39,6 +39,7 @@ REPORT_WORLDS = 300
 SEED_DOMAIN = "pair-ballot-affected-eval-v1"
 CHAMPION = "mc-s0-report-lcb"
 SOURCE_FIELDS = {"evaluator", "capture"}
+RUNTIME_FIELDS = {*STATES.RUNTIME_FIELDS, "diagnostic_only"}
 SHARD_FIELDS = {
     "schema", "source_path", "source_file_sha256",
     "source_artifact_sha256", "source_sha256s", "runtime", "split",
@@ -59,6 +60,25 @@ RESULT_FIELDS = {
 
 class EvalRefused(RuntimeError):
     """The state population, policy dose, or evaluation work drifted."""
+
+
+def evaluation_runtime() -> dict:
+    """Authenticate the host while describing scored diagnostic work truthfully.
+
+    The source-population producer is score-free, but this evaluator is not:
+    it rolls actions through determinized worlds and records attacker points
+    and acting-team utilities.  Reusing the capture runtime unchanged would
+    falsely claim that no outcomes were computed.
+    """
+    runtime = dict(STATES._runtime(smoke=False))
+    runtime.update({
+        "score_free": False,
+        "outcomes_computed": True,
+        "diagnostic_only": True,
+    })
+    if set(runtime) != RUNTIME_FIELDS:
+        raise EvalRefused("pair evaluation runtime field population drift")
+    return runtime
 
 
 def action_key(cards) -> tuple[str, ...]:
@@ -295,7 +315,7 @@ def run_shard(*, population: Path, split: str, shard_index: int,
     if not 0 <= shard_index < shard_count:
         raise EvalRefused("shard index must satisfy 0 <= index < count")
     source = load_population(population)
-    runtime = STATES._runtime(smoke=False)
+    runtime = evaluation_runtime()
     source_sha256s = {
         "evaluator": STATES.sha256_file(__file__),
         "capture": STATES.sha256_file(STATES.__file__),

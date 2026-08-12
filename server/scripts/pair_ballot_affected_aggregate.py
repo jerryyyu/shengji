@@ -366,6 +366,20 @@ def _validate_source_binding(result: dict, source: dict) -> None:
         raise EVAL.EvalRefused("pair aggregate selector telemetry drift")
 
 
+def _validate_scored_runtime(runtime: object) -> None:
+    if (not isinstance(runtime, dict)
+            or set(runtime) != EVAL.RUNTIME_FIELDS
+            or runtime.get("tree_dirty") is not False
+            or runtime.get("fast_engine") is not True
+            or runtime.get("score_free") is not False
+            or runtime.get("outcomes_computed") is not True
+            or runtime.get("diagnostic_only") is not True
+            or runtime.get("strength_claim") is not False
+            or runtime.get("production_authority") is not False):
+        raise EVAL.EvalRefused(
+            "pair evaluation scored-runtime authority drift")
+
+
 def load_shard(path: Path) -> dict:
     if path.is_symlink() or not path.is_file():
         raise EVAL.EvalRefused("pair evaluation shard missing/nonregular")
@@ -383,19 +397,12 @@ def load_shard(path: Path) -> dict:
     report_worlds = payload.get("report_worlds")
     runtime = payload.get("runtime")
     sources = payload.get("source_sha256s")
+    _validate_scored_runtime(runtime)
     if (split not in EVAL.ALLOWED_SPLITS
             or not isinstance(rows, list)
             or payload.get("rows") != len(rows)
             or isinstance(report_worlds, bool)
             or report_worlds != EVAL.REPORT_WORLDS
-            or not isinstance(runtime, dict)
-            or set(runtime) != STATES.RUNTIME_FIELDS
-            or runtime.get("tree_dirty") is not False
-            or runtime.get("fast_engine") is not True
-            or runtime.get("score_free") is not True
-            or runtime.get("outcomes_computed") is not False
-            or runtime.get("strength_claim") is not False
-            or runtime.get("production_authority") is not False
             or not isinstance(sources, dict)
             or set(sources) != EVAL.SOURCE_FIELDS
             or sources != {
@@ -414,6 +421,14 @@ def load_shard(path: Path) -> dict:
 
 def weighted_cluster_stats(rows: list[dict], metric: str,
                            band_weights: dict[str, float]) -> dict:
+    """Return a descriptive hybrid-weighted diagnostic.
+
+    ``band_weights`` count every search-reachable omission event in the full
+    capture stream.  Within a band, however, the frozen population retains
+    only the first affected state per deal/band.  The resulting estimate is
+    useful for routing exploration but is not an exact natural-decision or
+    whole-round estimand.
+    """
     if metric not in METRICS or not rows:
         raise EVAL.EvalRefused("unknown/empty pair diagnostic metric")
     by_band = defaultdict(list)
@@ -425,7 +440,7 @@ def weighted_cluster_stats(rows: list[dict], metric: str,
             for weight in band_weights.values())
             or not math.isclose(sum(band_weights.values()), 1.0,
                                 abs_tol=1e-12)):
-        raise EVAL.EvalRefused("pair diagnostic natural weights drift")
+        raise EVAL.EvalRefused("pair diagnostic capture-event weights drift")
     means = {
         band: sum(row["estimands"][metric] for row in values) / len(values)
         for band, values in by_band.items()
@@ -447,10 +462,17 @@ def weighted_cluster_stats(rows: list[dict], metric: str,
         "metric": metric,
         "rows": len(rows),
         "deal_clusters": clusters,
-        "natural_weighted_mean": estimate,
+        "capture_event_band_weighted_mean": estimate,
+        "selected_population_mean": (
+            sum(row["estimands"][metric] for row in rows) / len(rows)),
         "cluster_robust_se": se,
         "ci95": [estimate - 1.96 * se, estimate + 1.96 * se],
         "band_weights": dict(band_weights),
+        "band_weight_unit": "all_search_reachable_omission_events",
+        "within_band_sampling_unit":
+            "first_affected_state_per_deal_band_in_frozen_population",
+        "exact_natural_decision_estimand": False,
+        "exact_whole_round_estimand": False,
         "observation_weights": observation_weights,
         "by_band": {
             band: {"n": len(by_band[band]), "mean": means[band]}
@@ -522,9 +544,11 @@ def aggregate(*, population: Path, shard_paths: list[Path],
         "current_raw_winner_evicted": sum(
             row["current_raw_winner_was_evicted"] for row in rows),
     }
-    policy_mean = stats["retained_policy_minus_current"]["natural_weighted_mean"]
+    policy_mean = stats["retained_policy_minus_current"][
+        "capture_event_band_weighted_mean"]
     source_mean = stats[
-        "best_inserted_pair_minus_current"]["natural_weighted_mean"]
+        "best_inserted_pair_minus_current"][
+            "capture_event_band_weighted_mean"]
     payload = {
         "schema": SCHEMA,
         "split": split,
@@ -542,6 +566,14 @@ def aggregate(*, population: Path, shard_paths: list[Path],
         "report_worlds": report_worlds,
         "dose": dose,
         "metrics": stats,
+        "estimand_scope": {
+            "band_weight_unit": "all_search_reachable_omission_events",
+            "within_band_sampling_unit":
+                "first_affected_state_per_deal_band_in_frozen_population",
+            "exact_natural_decision_estimand": False,
+            "exact_whole_round_estimand": False,
+            "use": "exploration_route_only",
+        },
         "diagnostic_route": diagnostic_route(policy_mean, source_mean),
         "terminal_selection": False,
         "diagnostic_only": True,

@@ -13,6 +13,21 @@ sys.path.insert(0, str(SCRIPTS))
 import pair_ballot_affected_aggregate as AGG  # noqa: E402
 
 
+def _scored_runtime() -> dict:
+    return {
+        "git": "a" * 40,
+        "tree_dirty": False,
+        "host": "test-host",
+        "python": "3.14.0",
+        "fast_engine": True,
+        "score_free": False,
+        "outcomes_computed": True,
+        "strength_claim": False,
+        "production_authority": False,
+        "diagnostic_only": True,
+    }
+
+
 def _rows(policy_values, source_values):
     rows = []
     index = 0
@@ -31,7 +46,7 @@ def _rows(policy_values, source_values):
     return rows
 
 
-def test_natural_weighted_stats_use_band_weights_not_capture_mix():
+def test_capture_event_band_weighted_stats_disclose_hybrid_estimand():
     rows = _rows(
         {"early": [1.0, 3.0], "mid": [2.0, 4.0], "late": [10.0, 14.0]},
         {"early": [0.0, 0.0], "mid": [0.0, 0.0], "late": [0.0, 0.0]},
@@ -39,8 +54,15 @@ def test_natural_weighted_stats_use_band_weights_not_capture_mix():
     result = AGG.weighted_cluster_stats(
         rows, "retained_policy_minus_current",
         {"early": 0.8, "mid": 0.15, "late": 0.05})
-    assert result["natural_weighted_mean"] == pytest.approx(
+    assert result["capture_event_band_weighted_mean"] == pytest.approx(
         0.8 * 2.0 + 0.15 * 3.0 + 0.05 * 12.0)
+    assert result["selected_population_mean"] == pytest.approx(34 / 6)
+    assert result["band_weight_unit"] == \
+        "all_search_reachable_omission_events"
+    assert result["within_band_sampling_unit"] == \
+        "first_affected_state_per_deal_band_in_frozen_population"
+    assert result["exact_natural_decision_estimand"] is False
+    assert result["exact_whole_round_estimand"] is False
     assert result["rows"] == 6
     assert result["deal_clusters"] == 6
     assert result["cluster_robust_se"] > 0
@@ -83,7 +105,19 @@ def test_stats_refuse_missing_band_or_invalid_weights():
         AGG.weighted_cluster_stats(
             rows[:-1], "retained_policy_minus_current",
             {band: 1 / 3 for band in ("early", "mid", "late")})
-    with pytest.raises(AGG.EVAL.EvalRefused, match="natural weights"):
+    with pytest.raises(AGG.EVAL.EvalRefused, match="capture-event weights"):
         AGG.weighted_cluster_stats(
             rows, "retained_policy_minus_current",
             {"early": 0.5, "mid": 0.5, "late": 0.5})
+
+
+def test_scored_runtime_refuses_capture_authority_lie():
+    runtime = _scored_runtime()
+    AGG._validate_scored_runtime(runtime)
+
+    capture_claim = copy.deepcopy(runtime)
+    capture_claim["score_free"] = True
+    capture_claim["outcomes_computed"] = False
+    with pytest.raises(
+            AGG.EVAL.EvalRefused, match="scored-runtime authority"):
+        AGG._validate_scored_runtime(capture_claim)

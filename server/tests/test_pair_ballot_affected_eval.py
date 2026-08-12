@@ -118,6 +118,31 @@ def test_named_seed_streams_are_stable_and_disjoint():
     assert root != EVAL.seed_for("861614:1:1", "policy-root")
 
 
+def test_evaluation_runtime_does_not_reuse_score_free_capture_claim(
+        monkeypatch):
+    capture_runtime = {
+        field: False for field in STATES.RUNTIME_FIELDS
+    }
+    capture_runtime.update({
+        "git": "a" * 40,
+        "tree_dirty": False,
+        "host": "test-host",
+        "python": "3.14.0",
+        "fast_engine": True,
+        "score_free": True,
+        "outcomes_computed": False,
+        "strength_claim": False,
+        "production_authority": False,
+    })
+    monkeypatch.setattr(
+        STATES, "_runtime", lambda *, smoke: dict(capture_runtime))
+    runtime = EVAL.evaluation_runtime()
+    assert set(runtime) == EVAL.RUNTIME_FIELDS
+    assert runtime["score_free"] is False
+    assert runtime["outcomes_computed"] is True
+    assert runtime["diagnostic_only"] is True
+
+
 def test_aggregate_validator_refuses_rehashed_extra_result_fields(evaluated):
     bad = copy.deepcopy(evaluated)
     bad["winner_team"] = 0

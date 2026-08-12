@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import time
 from pathlib import Path
 
 from shengji.ai.memory import Memory
@@ -271,7 +272,8 @@ def load_population(path: Path) -> dict:
 
 def run_shard(*, population: Path, split: str, shard_index: int,
               shard_count: int, out: Path,
-              report_worlds: int = REPORT_WORLDS) -> dict:
+              report_worlds: int = REPORT_WORLDS,
+              progress_every: int = 4) -> dict:
     if split not in ALLOWED_SPLITS:
         raise EvalRefused("exploration evaluator permits DEV/CALIB only")
     if not 0 <= shard_index < shard_count:
@@ -282,7 +284,20 @@ def run_shard(*, population: Path, split: str, shard_index: int,
             and row["deal_seed"] % shard_count == shard_index]
     if not rows:
         raise EvalRefused("evaluation shard has no assigned states")
-    results = [evaluate_state(row, report_worlds=report_worlds) for row in rows]
+    results = []
+    started = time.perf_counter()
+    for complete, row in enumerate(rows, start=1):
+        results.append(evaluate_state(row, report_worlds=report_worlds))
+        if progress_every and (complete == 1 or complete % progress_every == 0
+                               or complete == len(rows)):
+            print(json.dumps({
+                "event": "pair-affected-eval-progress-v1",
+                "split": split,
+                "shard_index": shard_index,
+                "states_complete": complete,
+                "states_total": len(rows),
+                "elapsed_seconds": round(time.perf_counter() - started, 3),
+            }, sort_keys=True), flush=True)
     payload = {
         "schema": SHARD_SCHEMA,
         "source_path": str(population),
@@ -311,13 +326,15 @@ def main() -> None:
     parser.add_argument("--shard-index", type=int, required=True)
     parser.add_argument("--shard-count", type=int, required=True)
     parser.add_argument("--report-worlds", type=int, default=REPORT_WORLDS)
+    parser.add_argument("--progress-every", type=int, default=4)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     try:
         run_shard(
             population=args.population, split=args.split,
             shard_index=args.shard_index, shard_count=args.shard_count,
-            report_worlds=args.report_worlds, out=args.out)
+            report_worlds=args.report_worlds,
+            progress_every=args.progress_every, out=args.out)
     except (EvalRefused, STATES.CaptureRefused, ValueError) as exc:
         print(f"REFUSING: {exc}")
         raise SystemExit(3) from exc

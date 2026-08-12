@@ -79,9 +79,9 @@ def _rollout_bury_lead(bot, rnd: Round, seat: int,
     return float(clone.attacker_points), lead_succeeded
 
 
-def _paired_se(delta_sum: float, delta_sq: float, n: int) -> float:
+def _paired_se(delta_sum: float, delta_sq: float, n: int) -> float | None:
     if n < 2:
-        return float("inf")
+        return None
     mean = delta_sum / n
     variance = max(0.0, delta_sq / n - mean * mean) * n / (n - 1)
     return math.sqrt(variance / n)
@@ -160,7 +160,10 @@ def score_state(
         sampled = bot._sample_hands(rnd, seat, memory)
         if sampled is None:
             continue
-        hands, _ = sampled
+        hands, sampled_buried = sampled
+        if sampled_buried:
+            raise ComboExplorationRefused(
+                "pre-bury banker sampler returned a hidden kitty")
         values = []
         successes = []
         for _, _, group, lead in combos:

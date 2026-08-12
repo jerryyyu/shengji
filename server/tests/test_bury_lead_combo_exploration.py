@@ -137,6 +137,8 @@ def test_sampler_underfill_keeps_completed_dev_learning(monkeypatch):
     assert all(candidate["worlds"] == 1
                and candidate["mean_banker_value"] is not None
                for candidate in result["candidates"])
+    assert all(candidate["paired_se_vs_candidate_zero"] is None
+               for candidate in result["candidates"])
     assert result["strength_claim"] is False
     assert result["sampler_counters"]["delta"]["failed_worlds"] == 5
 
@@ -156,6 +158,26 @@ def test_candidate_world_cap_refuses_before_sampling(monkeypatch):
             rnd, seat, bot=bot, incumbent_bury=incumbent, worlds=1,
             max_candidate_rollouts=1)
     assert bot._sampler_snapshot() == before
+
+
+def test_pre_bury_sampler_hidden_kitty_refuses(monkeypatch):
+    rnd, seat = _bury_round()
+    bot, incumbent = _bot_and_incumbent(rnd, seat)
+
+    def bad_sample(self, _rnd, _seat, _memory):
+        self.sample_attempts += 1
+        self.accepted_worlds += 1
+        return {"world": 0}, ["S2"]
+
+    bot._sample_hands = MethodType(bad_sample, bot)
+    monkeypatch.setattr(
+        E, "_rollout_bury_lead",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("rollout ran after invalid sampler result")))
+    with pytest.raises(E.ComboExplorationRefused, match="hidden kitty"):
+        E.score_state(
+            rnd, seat, bot=bot, incumbent_bury=incumbent, worlds=1,
+            max_candidate_rollouts=10_000)
 
 
 def test_one_real_world_preserves_card_conservation_and_throw_resolution():

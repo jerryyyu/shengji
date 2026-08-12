@@ -1235,3 +1235,36 @@ deployment.
 TEACHER_STAGE_C_MIDLATE_STATE_SCREEN_RESULT_V1_REVIEW {"aggregate_sha256":"269eadf340b32e373cd89f978fa906cde0b0ac42492c746c921599cb0a0f2402","confirmation_launch_authorized":false,"decision":"AUTHORIZE_WHOLE_GAME_SCREEN_DESIGN","gates":{"exact_256_unique_deal_population":true,"exact_mid_late_role_quotas":true,"treatment_minus_live_lcb_gt_zero":true,"treatment_minus_matched_null_lcb_gt_zero":true,"zero_forbidden_deal_overlap":true},"git":"ee5e9ecf71df1291f352d6c039f4dfea5fbc8804","independent_review":true,"packet_sha256":"017209a3c5a1f5daba59a5c66d4276ce921f7d52a4a67bcee9164cc82ffb32f8","production_deployment":false,"production_promotion":false,"result_internal_sha256":"0fd340c7e9d80ee55bef1fe500fb6708159a04d3a43299e1d3932c30119bdbfc","result_sha256":"f18c2e424e423a269110e4e281ff5772da8d64e7d1db3c9f1dfe299a7de948f6","retry_or_extension_authorized":false,"run_id":"teacher-v3-stage-c-midlate-state-screen-v1","schema":"teacher-stage-c-midlate-state-screen-result-review-v1","selection_population_sha256":"a79be3f623252bf4a97c562ed658ebf90505aa05113f8e0c0267a9b5e5eaa092","states":256,"statistics":{"matched_null_minus_live":{"bound":"paired-state two-sided 95%; t=1.97","critical":1.97,"lower95":0.0008243643016094125,"mean":0.0044921875000000005,"n":256,"standard_error":0.0018618391870002984,"upper95":0.008160010698390589},"treatment_minus_live":{"bound":"paired-state one-sided 95%; t=1.70","critical":1.7,"mean":0.0201953125,"n":256,"one_sided_95_lcb":0.012745153924068067,"standard_error":0.004382446221136431},"treatment_minus_matched_null":{"bound":"paired-state one-sided 95%; t=1.70","critical":1.7,"mean":0.015703125,"n":256,"one_sided_95_lcb":0.008796488280948348,"standard_error":0.0040627274817950886}},"strength_claim":false,"verdict":"PASS","whole_game_launch_authorized":false,"whole_game_screen_design_authorized":true}
 
 ---
+
+## Claude — 2026-08-11 21:35 EDT — PR #30 merge-readiness: all three 17:38 findings resolved at 8b8bbdf; APPROVE TO MERGE
+
+Bounded reconciliation review at exact head `8b8bbdf` (merge-base = current
+main `71e1124`; GitHub reports MERGEABLE/CLEAN).
+
+1. Ledger preserved: the PR's `HANDOFF_REVIEW.md` is current main's file
+   plus an additions-only "source-required authority" section; the complete
+   live tail survives, every mid/late Teacher marker occurs exactly once at
+   column 1, and all nine retained records byte-match their historical
+   ledger lines (9/9 authenticated via git history, including S3A). The
+   archives are untouched and the diff contains no deletions of any file.
+2. `test_review_authority_inventory.py` passes on the PR's own tree
+   (1 passed); all nine required records present at column 1.
+3. Current-truth agreement: HANDOFF_ACTIVE, JOBS, BACKLOG, AI_POLICIES,
+   RL_PLAN and the 08-11 daily log all state the mid/late screen PASS with
+   the exact verified statistics, design-only authority (no launch/
+   strength/confirmation/promotion/deployment), Mini and Air free, and the
+   whole-game treatment/null/champion screen as the next task. No
+   contradictory live-job instructions. The cited review-claim SHA
+   `6287ac4a…e97ace` authenticates as sha256 of my raw 21:09 marker line.
+
+Notes, non-blocking: the doubled
+`TEACHER_STAGE_C_EXPANDED_UNCERTAINTY_REPORT_RESULT_V3_REVIEW` at column 1
+pre-exists on main (not introduced here; both copies identical) — worth a
+one-line disambiguation in a future pass since `marker_claim`-style
+validators demand exactly one line-start match; and the PR carries a benign
+`nanoid 3.3.16→3.3.18` lockfile bump, outside docs scope but harmless.
+
+Comment "APPROVE TO MERGE PR #30 AT 8b8bbdf" posted. No marker requested or
+issued; merge authority remains Jerry's.
+
+---

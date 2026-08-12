@@ -27,6 +27,7 @@ from shengji.ai.pair_aware_rollout import (  # noqa: E402
     make_pair_aware_bot,
 )
 from shengji.ai.registry import make_bot  # noqa: E402
+from shengji.engine.cards import make_deck  # noqa: E402
 from shengji.engine.game import Game  # noqa: E402
 from shengji.evaluation import counters  # noqa: E402
 
@@ -46,6 +47,7 @@ ROOT_WORLDS = 30
 REPORT_WORLDS = 300
 MAX_ATTACKER_POINTS = 4_120
 MAX_LEVEL_CHANGE = 101
+PHYSICAL_DECK = Counter(make_deck())
 
 
 class PairProtocolRefused(RuntimeError):
@@ -253,6 +255,53 @@ def _expected_round_outcome(*, banker: int,
     return banker_team, gain
 
 
+def history_problems(history: object) -> list[str]:
+    """Validate that a serialized history is one complete 100-card round.
+
+    A throw or tractor can consume several cards per action, so a real round
+    need not contain 100 action rows.  Completeness is instead proved from the
+    physical cards: every seat must play exactly 25 cards, each trick must have
+    four cyclic seats playing the same width, and no card code may exceed the
+    two-deck inventory.
+    """
+    if (not isinstance(history, list) or not 4 <= len(history) <= 100
+            or len(history) % 4 != 0):
+        return ["record play history"]
+    for row in history:
+        if (not isinstance(row, dict) or set(row) != {"seat", "cards"}
+                or isinstance(row.get("seat"), bool)
+                or not isinstance(row.get("seat"), int)
+                or not 0 <= row["seat"] < 4
+                or not isinstance(row.get("cards"), list)
+                or not row["cards"]
+                or any(not isinstance(card, str)
+                       or card not in PHYSICAL_DECK for card in row["cards"])):
+            return ["record play history"]
+
+    problems = []
+    seat_cards = Counter()
+    played_cards = Counter()
+    for start in range(0, len(history), 4):
+        trick = history[start:start + 4]
+        leader = trick[0]["seat"]
+        if [row["seat"] for row in trick] != [
+                (leader + offset) % 4 for offset in range(4)]:
+            problems.append("record play order")
+        width = len(trick[0]["cards"])
+        if any(len(row["cards"]) != width for row in trick):
+            problems.append("record trick width")
+        for row in trick:
+            seat_cards[row["seat"]] += len(row["cards"])
+            played_cards.update(row["cards"])
+    if seat_cards != Counter({seat: 25 for seat in range(4)}):
+        problems.append("record seat card completeness")
+    if sum(played_cards.values()) != 100 or any(
+            count > PHYSICAL_DECK[card]
+            for card, count in played_cards.items()):
+        problems.append("record physical deck completeness")
+    return sorted(set(problems))
+
+
 def record_problems(record: object, *, expected_label: str,
                     expected_seed: int, expected_flip: int,
                     expected_run_id: str) -> list[str]:
@@ -274,15 +323,7 @@ def record_problems(record: object, *, expected_label: str,
             or record.get("flip") != expected_flip):
         problems.append("record identity")
     history = record.get("history")
-    if (not isinstance(history, list) or not 4 <= len(history) <= 100
-            or len(history) % 4 != 0
-            or any(not isinstance(row, dict)
-                   or set(row) != {"seat", "cards"}
-                   or not isinstance(row["seat"], int)
-                   or not 0 <= row["seat"] < 4
-                   or not isinstance(row["cards"], list)
-                   or not row["cards"] for row in history)):
-        problems.append("record play history")
+    problems.extend(history_problems(history))
     try:
         winner, gain = _expected_round_outcome(
             banker=record.get("banker"),
@@ -329,9 +370,7 @@ def natural_root_dose(treatment: dict, matched_null: dict) -> dict:
             raise PairProtocolRefused(f"pair dose {field} identity drift")
     left = treatment.get("history")
     right = matched_null.get("history")
-    if (not isinstance(left, list) or not isinstance(right, list)
-            or not 4 <= len(left) <= 100 or not 4 <= len(right) <= 100
-            or len(left) % 4 != 0 or len(right) % 4 != 0):
+    if history_problems(left) or history_problems(right):
         raise PairProtocolRefused("pair dose history population drift")
     divergence = next(
         (index for index, (a, b) in enumerate(zip(left, right))

@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import json
 import hashlib
+import random
 import sys
+from collections import Counter
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +17,10 @@ SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import pair_aware_rollout_capacity as C  # noqa: E402
 import pair_aware_rollout_duel as D  # noqa: E402
+from shengji.ai.env import play_round  # noqa: E402
+from shengji.ai.registry import make_bot  # noqa: E402
+from shengji.engine.cards import make_deck  # noqa: E402
+from shengji.engine.game import Game  # noqa: E402
 
 
 WITHDRAWN_V1_PACKET = (
@@ -86,21 +92,36 @@ def _counters(mode: str) -> dict:
     return value
 
 
-def _history(*, changed: bool = False, plays: int = 100) -> list[dict]:
-    rows = [
-        {"seat": index % 4, "cards": ["C3"]}
-        for index in range(plays)
-    ]
-    if changed:
-        # Flip zero's policy team is seats 0/2.  Divergence at play 8 is valid.
-        rows[8] = {"seat": 0, "cards": ["C4"]}
+def _history(*, changed_at: int | None = None,
+             plays: int = 100) -> list[dict]:
+    assert 4 <= plays <= 100 and plays % 4 == 0
+    tricks = plays // 4
+    widths = [1] * tricks
+    for index in range(25 - tricks):
+        widths[index % tricks] += 1
+    cards = iter(make_deck()[:100])
+    rows = []
+    for width in widths:
+        for seat in range(4):
+            rows.append({"seat": seat,
+                         "cards": [next(cards) for _ in range(width)]})
+    if changed_at is not None:
+        # Exchange two same-seat actions so the altered trajectory remains a
+        # physically complete two-deck round rather than fabricating a card.
+        other = changed_at + 4
+        assert other < len(rows)
+        assert rows[changed_at]["seat"] == rows[other]["seat"]
+        assert len(rows[changed_at]["cards"]) == len(rows[other]["cards"])
+        rows[changed_at]["cards"], rows[other]["cards"] = (
+            rows[other]["cards"], rows[changed_at]["cards"])
     return rows
 
 
 def _row(label: str, seed: int, flip: int, *, changed: bool = False) -> dict:
     mode = {"treatment": "treatment", "matched_null": "matched_null",
             "champion": "off"}[label]
-    history = _history(changed=changed and label == "treatment")
+    history = _history(
+        changed_at=8 if changed and label == "treatment" else None)
     return {
         "run": C.PREFLIGHT_RUN_ID,
         "label": label,
@@ -223,19 +244,57 @@ def test_variable_length_complete_round_history_is_valid():
     }
 
 
-def test_impossible_equal_prefix_with_different_lengths_refuses():
+def test_engine_produced_short_round_proves_physical_completeness():
+    bots = [make_bot("smart", seed=seat) for seat in range(4)]
+    log = play_round(Game(random.Random(0)), bots, record=True)
+    history = D._normalise_history(log.history)
+    assert len(history) == 68
+    assert D.history_problems(history) == []
+    assert sum(len(row["cards"]) for row in history) == 100
+    assert Counter(
+        {seat: sum(len(row["cards"]) for row in history
+                   if row["seat"] == seat) for seat in range(4)}) == Counter(
+                       {seat: 25 for seat in range(4)})
+
+
+def test_complete_round_contract_refuses_impossible_deck_and_seat_counts():
+    impossible = _history(plays=84)
+    for row in impossible:
+        row["cards"] = ["C3"] * len(row["cards"])
+    assert D.history_problems(impossible) == [
+        "record physical deck completeness"]
+
+    wrong_seat = _history(plays=84)
+    wrong_seat[0]["seat"] = 1
+    assert "record seat card completeness" in D.history_problems(wrong_seat)
+    assert "record play order" in D.history_problems(wrong_seat)
+
+
+def test_complete_round_contract_refuses_unequal_trick_width():
+    history = _history(plays=84)
+    history[0]["cards"].pop()
+    problems = D.history_problems(history)
+    assert "record trick width" in problems
+    assert "record seat card completeness" in problems
+    assert "record physical deck completeness" in problems
+
+
+def test_incomplete_equal_prefix_with_different_lengths_refuses():
     treatment = _row("treatment", 7, 0)
     null = _row("matched_null", 7, 0)
     treatment["history"] = _history(plays=84)
-    null["history"] = _history(plays=80)
-    with pytest.raises(D.PairProtocolRefused, match="terminal length"):
+    null["history"] = deepcopy(treatment["history"][:-4])
+    with pytest.raises(D.PairProtocolRefused, match="history population"):
         D.natural_root_dose(treatment, null)
 
 
 @pytest.mark.parametrize("plays", [0, 3, 5, 104])
 def test_malformed_complete_round_history_lengths_refuse(plays):
     row = _row("treatment", 7, 0)
-    row["history"] = _history(plays=plays)
+    if plays <= 5:
+        row["history"] = _history()[:plays]
+    else:
+        row["history"] = _history() + _history()[:4]
     assert "record play history" in D.record_problems(
         row, expected_label="treatment", expected_seed=7,
         expected_flip=0, expected_run_id=C.PREFLIGHT_RUN_ID)
@@ -244,7 +303,7 @@ def test_malformed_complete_round_history_lengths_refuse(plays):
 def test_natural_dose_refuses_opponent_first_divergence():
     treatment = _row("treatment", 7, 0)
     null = _row("matched_null", 7, 0)
-    treatment["history"][9]["cards"] = ["C4"]
+    treatment["history"] = _history(changed_at=9)
     with pytest.raises(D.PairProtocolRefused, match="treatment-team"):
         D.natural_root_dose(treatment, null)
 
@@ -253,7 +312,7 @@ def test_matched_null_must_replay_champion_exactly():
     null = _row("matched_null", 7, 0)
     champion = _row("champion", 7, 0)
     assert D.matched_null_champion_problems(null, champion) == []
-    champion["history"][4]["cards"] = ["C5"]
+    champion["history"] = _history(changed_at=4)
     assert D.matched_null_champion_problems(null, champion)
 
 
@@ -385,7 +444,7 @@ def test_withdrawn_v1_packet_is_preserved_and_grants_no_gameplay():
     assert packet["preflight_run_id"] != C.PREFLIGHT_RUN_ID
 
 
-def test_repaired_v2_air_packet_is_hash_pinned_and_grants_no_gameplay():
+def test_withdrawn_v2_air_packet_is_hash_pinned_and_grants_no_gameplay():
     raw = FROZEN_V2_PACKET.read_bytes()
     assert hashlib.sha256(raw).hexdigest() == (
         "ba0bb693642c6fcb41357558f96e6b9d8707b810fa8926c97ec01d223abaa0b6")
@@ -394,8 +453,8 @@ def test_repaired_v2_air_packet_is_hash_pinned_and_grants_no_gameplay():
     assert C.stable_digest(packet) == internal == (
         "80e8ff89fd6d1c194670d1770422cabf63929278f2dce9b280fab63666056c99")
     assert packet["git"] == "2321790ee7a56106d2d4ded70f34531bd163d913"
-    assert packet["schema"] == C.PACKET_SCHEMA
-    assert packet["preflight_run_id"] == C.PREFLIGHT_RUN_ID
+    assert packet["schema"] != C.PACKET_SCHEMA
+    assert packet["preflight_run_id"] != C.PREFLIGHT_RUN_ID
     assert packet["runtime"] == _air_runtime()
     assert packet["preflight"]["clusters"] == 4
     assert packet["successor_projection"]["candidate_clusters"] == [2048, 8192]

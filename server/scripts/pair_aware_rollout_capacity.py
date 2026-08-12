@@ -42,17 +42,17 @@ from shengji.engine import combos, fast  # noqa: E402
 from shengji.engine.ballot import mc_ballot  # noqa: E402
 
 
-PACKET_SCHEMA = "pair-aware-rollout-capacity-packet-v2"
-ADMISSION_SCHEMA = "pair-aware-rollout-capacity-admission-v2"
-RESULT_SCHEMA = "pair-aware-rollout-capacity-result-v2"
-RUN_ID = "pair-aware-whole-round-screen-v2"
-PREFLIGHT_RUN_ID = "pair-aware-whole-round-preflight-v2"
+PACKET_SCHEMA = "pair-aware-rollout-capacity-packet-v3"
+ADMISSION_SCHEMA = "pair-aware-rollout-capacity-admission-v3"
+RESULT_SCHEMA = "pair-aware-rollout-capacity-result-v3"
+RUN_ID = "pair-aware-whole-round-screen-v3"
+PREFLIGHT_RUN_ID = "pair-aware-whole-round-preflight-v3"
 SOURCE_GIT = "d4d8ebd116aab4994b5b7af22115fe4e95762ab0"
 DOSE_GIT = "1801aa0af5358705eceda8b6d611b079b64cceed"
 EXACT_REVIEW_PREFIX = "PAIR_AWARE_ROLLOUT_EXACT_V1_REVIEW "
 DOSE_REVIEW_PREFIX = "PAIR_AWARE_ROLLOUT_ROOT_DOSE_V1_REVIEW "
-PACKET_REVIEW_PREFIX = "PAIR_AWARE_ROLLOUT_CAPACITY_PACKET_V2_REVIEW "
-CAPACITY_REVIEW_PREFIX = "PAIR_AWARE_ROLLOUT_CAPACITY_V2_REVIEW "
+PACKET_REVIEW_PREFIX = "PAIR_AWARE_ROLLOUT_CAPACITY_PACKET_V3_REVIEW "
+CAPACITY_REVIEW_PREFIX = "PAIR_AWARE_ROLLOUT_CAPACITY_V3_REVIEW "
 EXPECTED_EXECUTION_HOST = "Jerrys-MacBook-Air.local"
 EXPECTED_PYTHON_VERSION = "3.14.6"
 EXPECTED_PYTHON_IMPLEMENTATION = "CPython"
@@ -61,9 +61,9 @@ EXPECTED_PYTHON_EXECUTABLE = (
     "cpython-3.14.6-macos-aarch64-none/bin/python3.14")
 EXPECTED_FAST_BINARY_SHA256 = (
     "9371ab7fc8bbcceb19cc5c4fe799860cf5ad3f51b11b26ab0e375ced36713e32")
-PREFLIGHT_SEED0 = 444_100_000_000
+PREFLIGHT_SEED0 = 444_300_000_000
 PREFLIGHT_CLUSTERS = 4
-SCREEN_SEED0 = 445_100_000_000
+SCREEN_SEED0 = 445_300_000_000
 PROJECTION_CLUSTERS = (2_048, 8_192)
 SHARD_COUNT = 8
 STREAM_STRIDE = 3_000_017
@@ -341,6 +341,10 @@ def packet_payload(*, expected_git: str, exact_review_record: os.PathLike | str,
             "natural_dose": (
                 "compare treatment and matched-null histories only through "
                 "their first divergence on each complete mirrored round"),
+            "terminal_history_contract": (
+                "each retained round plays exactly 100 physical cards, 25 "
+                "per seat, in four-seat equal-width tricks, with no card "
+                "exceeding the two-deck inventory"),
             "admission_path": str(ADMISSION_PATH.relative_to(REPO)),
             "result_path": str(RESULT_PATH.relative_to(REPO)),
         },
@@ -416,7 +420,7 @@ def packet_review_claim(*, expected_git: str,
         "production_deployment": False,
         "production_promotion": False,
         "run_id": RUN_ID,
-        "schema": "pair-aware-rollout-capacity-packet-review-v2",
+        "schema": "pair-aware-rollout-capacity-packet-review-v3",
         "screen_execution_authorized": False,
         "strength_claim": False,
         "verdict": "PASS",
@@ -441,7 +445,7 @@ def capacity_review_claim(*, result: dict, result_sha256: str,
         "production_deployment": False,
         "production_promotion": False,
         "run_id": RUN_ID,
-        "schema": "pair-aware-rollout-capacity-review-v2",
+        "schema": "pair-aware-rollout-capacity-review-v3",
         "score_free": True,
         "screen_execution_authorized": False,
         "strength_claim": False,
@@ -538,7 +542,7 @@ def measure_preflight(packet: dict, *, clock=time.perf_counter) -> dict:
                         "invalid score-free preflight row: " + "; ".join(problems))
             by_label[label].extend(records)
         print(json.dumps({
-            "event": "pair-aware-score-free-progress-v2",
+            "event": "pair-aware-score-free-progress-v3",
             "clusters_complete": cluster_index + 1,
             "clusters_total": PREFLIGHT_CLUSTERS,
         }, sort_keys=True), flush=True)
@@ -584,6 +588,7 @@ def measure_preflight(packet: dict, *, clock=time.perf_counter) -> dict:
         and treatment["changes"] == treatment["triggers"]
         and null["changes"] == 0
         and null["matched_noops"] == null["triggers"]
+        and dose["complete_round_pairs"] == PREFLIGHT_CLUSTERS * 2
         and dose["root_action_changes"] > 0
         and dose["matched_null_champion_exact_histories"] is True
         and base_projection["fleet_hours"] <= BASE_FLEET_HOUR_CAP
@@ -601,6 +606,7 @@ def measure_preflight(packet: dict, *, clock=time.perf_counter) -> dict:
         "elapsed_seconds": elapsed,
         "counts": counts,
         "natural_dose": dose,
+        "complete_round_cards_validated": True,
         "projection": {
             "safety_factor": SAFETY_FACTOR,
             "shards": SHARD_COUNT,

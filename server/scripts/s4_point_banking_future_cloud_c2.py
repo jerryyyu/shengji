@@ -49,14 +49,15 @@ def _load_base_controller():
 _CTRL = _load_base_controller()
 
 _CTRL.CORE = CORE
-_CTRL.SCHEMA = "s4-point-banking-future-c2-cloud-controller-v1"
-_CTRL.EXIT_SCHEMA = "s4-point-banking-future-c2-cloud-exit-v1"
-_CTRL.FINAL_SCHEMA = "s4-point-banking-future-c2-cloud-final-v1"
+_CTRL.SCHEMA = "s4-point-banking-future-c2-recovery-cloud-controller-v1"
+_CTRL.EXIT_SCHEMA = "s4-point-banking-future-c2-recovery-cloud-exit-v1"
+_CTRL.FINAL_SCHEMA = "s4-point-banking-future-c2-recovery-cloud-final-v1"
 _CTRL.PREAUTH_SCHEMA = (
-    "s4-point-banking-future-c2-tranche2-preauthorization-v1")
-_CTRL.RELEASE_SCHEMA = "s4-point-banking-future-c2-tranche2-release-v1"
+    "s4-point-banking-future-c2-recovery-tranche2-preauthorization-v1")
+_CTRL.RELEASE_SCHEMA = (
+    "s4-point-banking-future-c2-recovery-tranche2-release-v1")
 _CTRL.CONTROLLER_REVIEW_MARKER = (
-    "S4_POINT_BANKING_FUTURE_C2_CONTROLLER_V1_REVIEW ")
+    "S4_POINT_BANKING_FUTURE_C2_RECOVERY_CONTROLLER_V1_REVIEW ")
 _CTRL.RUN_ID = CORE.RUN_ID
 _CTRL.NAMESPACE = CORE.NAMESPACE
 _CTRL.RUNNER = RUNNER
@@ -128,7 +129,7 @@ def design_review_evidence(path: Path) -> dict:
 
 def controller_review_claim(config) -> dict:
     return {
-        "schema": "s4-point-banking-future-c2-controller-review-v1",
+        "schema": "s4-point-banking-future-c2-recovery-controller-review-v1",
         "git": config.expected_git,
         "runner_sha256": config.expected_runner_sha256,
         "controller_sha256": config.expected_controller_sha256,
@@ -143,6 +144,9 @@ def controller_review_claim(config) -> dict:
         "expected_fast_binary_sha256": _CTRL.EXPECTED_FAST_SHA256,
         "sixteen_shard_contract_verified": True,
         "reused_score_free_capacity_verified": True,
+        "failed_launch": CORE.recovery_source_record(),
+        "fresh_recovery_namespace": CORE.RUN_ID,
+        "child_boundary_validation_required": True,
         "new_preflight_authorized": False,
         "packet_freeze_authorized": True,
         "sequential_execution_authorized": False,
@@ -209,6 +213,64 @@ def capacity_evidence() -> dict:
     }
 
 
+def recovery_source_evidence() -> dict:
+    """Authenticate the outcome-free failed launch without modifying it."""
+    expected = CORE.recovery_source_record()
+    namespace = _CTRL.ROOT / "server/runs/logs" / CORE.FAILED_RUN_ID
+    required = {
+        "launch_packet.json": CORE.FAILED_PACKET_SHA256,
+        "review_admission.json": CORE.FAILED_ADMISSION_SHA256,
+        "receipt.json": CORE.FAILED_RECEIPT_SHA256,
+        "supervisor.jsonl.partial": CORE.FAILED_SUPERVISOR_PARTIAL_SHA256,
+    }
+    for name, digest in required.items():
+        path = namespace / name
+        if (not _CTRL.is_regular_unlinked(path)
+                or _CTRL.sha256_file(path) != digest):
+            raise _CTRL.SupervisorRefused(
+                f"S4 C2 failed-launch evidence drift: {name}")
+    outputs = []
+    aggregates = []
+    exit_manifest = []
+    for index in range(CORE.SHARD_COUNT):
+        log = namespace / f"tranche-1-shard-{index:02d}.log"
+        exit_path = namespace / f"exit-tranche-1-shard-{index:02d}.json"
+        if (not _CTRL.is_regular_unlinked(log)
+                or _CTRL.sha256_file(log) != CORE.FAILED_CHILD_LOG_SHA256
+                or not _CTRL.is_regular_unlinked(exit_path)):
+            raise _CTRL.SupervisorRefused(
+                f"S4 C2 failed child evidence drift: {index}")
+        exit_record = _CTRL._load_json(exit_path)
+        exit_manifest.append({
+            "name": exit_path.name,
+            "sha256": _CTRL.sha256_file(exit_path),
+        })
+        if (exit_record.get("returncode") != 3
+                or exit_record.get("output_regular_unlinked") is not False
+                or exit_record.get("output_sha256") is not None
+                or exit_record.get("log_sha256") !=
+                CORE.FAILED_CHILD_LOG_SHA256):
+            raise _CTRL.SupervisorRefused(
+                f"S4 C2 failed child exit drift: {index}")
+    if CORE.stable_digest(exit_manifest) != CORE.FAILED_EXIT_MANIFEST_SHA256:
+        raise _CTRL.SupervisorRefused(
+            "S4 C2 failed child exit manifest drift")
+    for name in CORE.SHARD_NAMES:
+        output = namespace / name
+        if _CTRL.lexists(output) or _CTRL.lexists(_CTRL.partial(output)):
+            outputs.append(str(output))
+    for name in CORE.AGGREGATE_NAMES:
+        path = namespace / name
+        if _CTRL.lexists(path) or _CTRL.lexists(_CTRL.partial(path)):
+            aggregates.append(str(path))
+    final = namespace / _CTRL.FINAL_NAME
+    if (outputs or aggregates or _CTRL.lexists(final)
+            or _CTRL.lexists(_CTRL.partial(final))):
+        raise _CTRL.SupervisorRefused(
+            "S4 C2 failed launch unexpectedly published outcomes")
+    return expected
+
+
 C1_SHARD_COUNT = DESIGN.C1.SHARD_COUNT
 _base_packet_contract = _CTRL.packet_contract
 _base_identity_context = _CTRL._identity_context
@@ -224,10 +286,14 @@ def _identity_context(config, paths):
 
 def packet_contract(config, paths, *, parent: dict, runtime: dict,
                     preflight: dict, design_review: dict,
-                    controller_review: dict | None = None) -> dict:
+                    controller_review: dict | None = None,
+                    recovery_source: dict | None = None) -> dict:
     if controller_review != controller_review_claim(config):
         raise _CTRL.SupervisorRefused(
             "S4 C2 controller review did not authorize packet freeze")
+    if recovery_source != CORE.recovery_source_record():
+        raise _CTRL.SupervisorRefused(
+            "S4 C2 failed-launch recovery source drift")
     packet = _base_packet_contract(
         config, paths, parent=parent, runtime=runtime,
         preflight=preflight, design_review=design_review)
@@ -237,6 +303,7 @@ def packet_contract(config, paths, *, parent: dict, runtime: dict,
         "base_controller_sha256": _CTRL.sha256_file(BASE_CONTROLLER),
     }
     packet["new_preflight_run"] = False
+    packet["recovery_source"] = recovery_source
     return packet
 
 
@@ -248,7 +315,8 @@ def _expected_packet(config, paths):
     packet = packet_contract(
         config, paths, parent=parent, runtime=runtime,
         preflight=capacity_evidence(), design_review=design_review,
-        controller_review=controller_review)
+        controller_review=controller_review,
+        recovery_source=recovery_source_evidence())
     return packet, parent, runtime
 
 

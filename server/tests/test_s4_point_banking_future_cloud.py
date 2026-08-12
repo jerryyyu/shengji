@@ -631,6 +631,53 @@ def test_execution_collision_set_covers_preauthorization_and_partials():
         assert CTRL.partial(path) in targets
 
 
+def test_controller_runs_exact_child_boundary_validation(monkeypatch):
+    paths = CTRL.paths_for()
+    receipt_sha = "7" * 64
+    expected = {
+        "schema": CORE.VALIDATION_SCHEMA,
+        "run_id": CTRL.RUN_ID,
+        "receipt": {
+            "path": CTRL.rel(paths.receipt),
+            "sha256": receipt_sha,
+        },
+        "validated": True,
+        "outcomes_published": False,
+    }
+    seen = {}
+
+    def run(argv, **kwargs):
+        seen["argv"] = argv
+        seen["kwargs"] = kwargs
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(expected, sort_keys=True),
+            stderr="",
+        )
+
+    monkeypatch.setattr(CTRL.subprocess, "run", run)
+    assert CTRL._validate_child_runtime(
+        _config(), paths, receipt_sha) == expected
+    assert seen["argv"][1:3] == (
+        "server/scripts/s4_point_banking_future.py", "validate-runtime")
+    assert seen["kwargs"]["cwd"] == CTRL.ROOT
+    assert seen["kwargs"]["timeout"] == 120
+
+
+def test_controller_refuses_failed_child_boundary_validation(monkeypatch):
+    monkeypatch.setattr(
+        CTRL.subprocess, "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=3,
+            stdout="",
+            stderr="REFUSING: future S4 preflight is missing\n",
+        ))
+    with pytest.raises(CTRL.SupervisorRefused,
+                       match="child-boundary validation failed"):
+        CTRL._validate_child_runtime(
+            _config(), CTRL.paths_for(), "7" * 64)
+
+
 def test_status_heartbeat_reads_completed_final_log(tmp_path):
     log_final = tmp_path / "shard.log"
     log_final.write_text(json.dumps({

@@ -39,7 +39,8 @@ def _raw(marker: str, value: dict) -> bytes:
 def test_import_does_not_mutate_closed_c1_protocol():
     assert C1.RUN_ID == C1_RUN_ID
     assert C1.SHARD_COUNT == C1_SHARDS == 8
-    assert CORE.RUN_ID == DESIGN.RUN_ID
+    assert CORE.FAILED_RUN_ID == DESIGN.RUN_ID
+    assert CORE.RUN_ID.endswith("-recovery-v1")
     assert CORE.SHARD_COUNT == 16
 
 
@@ -65,6 +66,10 @@ def test_commands_name_only_the_c2_runner_and_namespace():
     assert "--shard-index" in command
     assert command[command.index("--shard-index") + 1] == "15"
     assert str(CORE.NAMESPACE) in command[-1]
+    validation = CORE.runtime_validation_template()
+    assert validation[1] == "server/scripts/s4_point_banking_future_c2.py"
+    assert validation[2] == "validate-runtime"
+    assert str(CORE.NAMESPACE / "receipt.json") in validation
 
 
 def test_capacity_reuse_is_score_free_and_passes_only_adjusted_envelope():
@@ -92,6 +97,9 @@ def test_controller_claim_authorizes_freeze_but_no_run():
     assert claim["expected_host"] == "ubuntu-32gb-hel1-1"
     assert claim["expected_python"] == "3.14.4"
     assert claim["expected_fast_binary_sha256"] == CTRL.EXPECTED_FAST_SHA256
+    assert claim["failed_launch"] == CORE.recovery_source_record()
+    assert claim["fresh_recovery_namespace"] == CORE.RUN_ID
+    assert claim["child_boundary_validation_required"] is True
 
 
 def test_review_markers_are_exact_raw_singletons():
@@ -159,11 +167,13 @@ def test_packet_contract_binds_reused_sources_and_review():
         runtime={"host": CTRL.EXPECTED_HOST},
         preflight=CTRL.capacity_evidence(),
         design_review={"sha256": "d" * 64},
-        controller_review=controller)
+        controller_review=controller,
+        recovery_source=CORE.recovery_source_record())
     assert packet["schema"] == CORE.PACKET_SCHEMA
     assert packet["schedule"]["shard_count"] == 16
     assert packet["controller_implementation_review"] == controller
     assert packet["new_preflight_run"] is False
+    assert packet["recovery_source"] == CORE.recovery_source_record()
     assert packet["sequential_launch_authorized"] is False
     assert packet["implementation_sources"] == {
         "base_runner_sha256": CTRL.sha256_file(CORE.BASE_RUNNER),
@@ -173,7 +183,8 @@ def test_packet_contract_binds_reused_sources_and_review():
         CTRL.packet_contract(
             config, paths, parent={}, runtime={},
             preflight=CTRL.capacity_evidence(), design_review={},
-            controller_review=None)
+            controller_review=None,
+            recovery_source=CORE.recovery_source_record())
 
 
 def test_preflight_retry_is_not_reachable():
@@ -195,3 +206,126 @@ def test_review_claim_pins_reused_implementation_sources():
         CTRL.BASE_CONTROLLER)
     assert len(claim["runner_sha256"]) == 64
     assert len(claim["controller_sha256"]) == 64
+
+
+def test_child_receipt_reopens_the_exact_c2_packet(tmp_path, monkeypatch):
+    """Exercise the child-only gate that controller verification cannot see."""
+    runner_sha = hashlib.sha256(Path(CORE.__file__).read_bytes()).hexdigest()
+    controller_sha = hashlib.sha256(
+        Path(CTRL.__file__).read_bytes()).hexdigest()
+    config = CTRL.Config(
+        expected_git="a" * 40,
+        expected_runner_sha256=runner_sha,
+        expected_controller_sha256=controller_sha,
+        heartbeat_seconds=30.0,
+    )
+    parent = {"policy": "literal-live-report-lcb"}
+    runtime = {
+        "host": CTRL.EXPECTED_HOST,
+        "python": CTRL.EXPECTED_PYTHON,
+        "fast_binary_sha256": CTRL.EXPECTED_FAST_SHA256,
+    }
+    namespace = tmp_path / CORE.NAMESPACE
+    namespace.mkdir(parents=True)
+
+    design_review_raw = b"reviewed C2 design and controller\n"
+    design_review_sha = hashlib.sha256(design_review_raw).hexdigest()
+    design_review = {
+        "path": str(CORE.NAMESPACE / "design-review-record.txt"),
+        "sha256": design_review_sha,
+        "git": CORE.DESIGN_REVIEW_GIT,
+        "verdict": "PASS_TO_IMPLEMENT",
+        "implementation_authorized": True,
+    }
+    packet = CTRL.packet_contract(
+        config, CTRL.paths_for(), parent=parent, runtime=runtime,
+        preflight=CTRL.capacity_evidence(),
+        design_review=design_review,
+        controller_review=CTRL.controller_review_claim(config),
+        recovery_source=CORE.recovery_source_record(),
+    )
+    packet_path = namespace / "launch_packet.json"
+    packet_path.write_text(json.dumps(packet, sort_keys=True), encoding="utf-8")
+    packet_sha = hashlib.sha256(packet_path.read_bytes()).hexdigest()
+
+    review_claim = CORE.expected_review_claim(
+        expected_git=config.expected_git,
+        packet_sha256=packet_sha,
+        preflight_sha256=DESIGN.CAPACITY_RESULT_SHA256,
+        design_review_sha256=design_review_sha,
+    )
+    review_raw = _raw(CORE.PACKET_REVIEW_MARKER, review_claim)
+    review_path = namespace / "review_record.txt"
+    review_path.write_bytes(review_raw)
+    review_sha = hashlib.sha256(review_raw).hexdigest()
+    admission = {
+        "schema": CORE.ADMISSION_SCHEMA,
+        "run_id": CORE.RUN_ID,
+        "packet": {"path": str(CORE.NAMESPACE / "launch_packet.json"),
+                   "sha256": packet_sha},
+        "review": {"path": str(CORE.NAMESPACE / "review_record.txt"),
+                   "sha256": review_sha},
+        "review_claim": review_claim,
+        "operator_asserted_independent_review": True,
+        "sequential_launch_authorized": True,
+        "tranche_2_pre_authorized": True,
+        "strength_claim": False,
+        "training_authorized": False,
+        "production_promotion": False,
+    }
+    admission_path = namespace / "review_admission.json"
+    admission_path.write_text(
+        json.dumps(admission, sort_keys=True), encoding="utf-8")
+    admission_sha = hashlib.sha256(admission_path.read_bytes()).hexdigest()
+
+    (namespace / "design-review-record.txt").write_bytes(design_review_raw)
+    capacity_path = tmp_path / CORE._CORE.PREFLIGHT_RESULT_PATH
+    capacity_path.parent.mkdir(parents=True, exist_ok=True)
+    capacity_path.write_bytes(DESIGN.CAPACITY_RESULT.read_bytes())
+    controller_path = tmp_path / CORE._CORE.CONTROLLER_PATH
+    controller_path.parent.mkdir(parents=True, exist_ok=True)
+    controller_path.write_bytes(Path(CTRL.__file__).read_bytes())
+
+    receipt = {
+        "schema": CORE.RECEIPT_SCHEMA,
+        "run_id": CORE.RUN_ID,
+        "complete": True,
+        "git": config.expected_git,
+        "runner_sha256": runner_sha,
+        "controller_sha256": controller_sha,
+        "design_sha256": hashlib.sha256(
+            Path(DESIGN.__file__).read_bytes()).hexdigest(),
+        "created_time_ns": 1,
+        "nonce": "0" * 64,
+        "packet_sha256": packet_sha,
+        "admission_sha256": admission_sha,
+        "preflight_sha256": DESIGN.CAPACITY_RESULT_SHA256,
+        "design_review_sha256": design_review_sha,
+        "sequential_launch_authorized": True,
+        "tranche_2_pre_authorized": True,
+        "strength_claim": False,
+        "training_authorized": False,
+        "production_promotion": False,
+        "retry_or_extension_authorized": False,
+    }
+    receipt_path = namespace / "receipt.json"
+    receipt_path.write_text(json.dumps(receipt, sort_keys=True), encoding="utf-8")
+    receipt_sha = hashlib.sha256(receipt_path.read_bytes()).hexdigest()
+
+    monkeypatch.setattr(CORE._CORE, "REPO", tmp_path)
+    monkeypatch.setattr(
+        CORE._CORE, "require_runtime",
+        lambda expected_git: (parent, runtime),
+    )
+    assert CORE.require_receipt(
+        receipt_path, receipt_sha,
+        expected_git=config.expected_git) == {
+            "path": str(CORE.NAMESPACE / "receipt.json"),
+            "sha256": receipt_sha,
+        }
+
+    capacity_path.unlink()
+    with pytest.raises(CORE.ProtocolRefused, match="preflight is missing"):
+        CORE.require_receipt(
+            receipt_path, receipt_sha,
+            expected_git=config.expected_git)

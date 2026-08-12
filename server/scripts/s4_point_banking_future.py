@@ -37,6 +37,7 @@ import s4_point_banking_future_design as DESIGN  # noqa: E402
 
 SCHEMA = "s4-point-banking-future-shard-v1"
 AGGREGATE_SCHEMA = "s4-point-banking-future-aggregate-v1"
+VALIDATION_SCHEMA = "s4-point-banking-future-runtime-validation-v1"
 PREFLIGHT_SCHEMA = "s4-point-banking-future-preflight-v1"
 PACKET_SCHEMA = "s4-point-banking-future-cloud-packet-v1"
 PACKET_REVIEW_SCHEMA = "s4-point-banking-future-cloud-review-v1"
@@ -48,6 +49,7 @@ DESIGN_REVIEW_GIT = "182459941226b96969e2c2b207406cf5b53167ab"
 RUN_ID = DESIGN.RUN_ID
 NAMESPACE = Path("server/runs/logs") / RUN_ID
 RUNNER_PATH = Path("server/scripts/s4_point_banking_future.py")
+CONTROLLER_PATH = Path("server/scripts/s4_point_banking_future_cloud.py")
 SEED0 = DESIGN.SCREEN_SEED0
 LOOK_CLUSTERS = tuple(look.clusters for look in DESIGN.Design().looks)
 LOOK1_CLUSTERS, MAX_CLUSTERS = LOOK_CLUSTERS
@@ -66,6 +68,7 @@ AGGREGATE_NAMES = ("look-1-aggregate.json", "look-2-aggregate.json")
 
 PREFLIGHT_RUN_ID = "s4-point-banking-future-cloud-preflight-239b-v1"
 PREFLIGHT_NAMESPACE = Path("server/runs/logs") / PREFLIGHT_RUN_ID
+PREFLIGHT_RESULT_PATH = PREFLIGHT_NAMESPACE / "preflight.json"
 PREFLIGHT_REVIEW_PATH = PREFLIGHT_NAMESPACE / "controller-review.txt"
 PREFLIGHT_ADMISSION_PATH = PREFLIGHT_NAMESPACE / "preflight-admission.json"
 PREFLIGHT_SEED0 = DESIGN.PREFLIGHT_SEED0
@@ -85,6 +88,8 @@ DESIGN_RECORD = json.loads(json.dumps(
 SELECTION_RULE = DESIGN.PRIMARY_EFFICACY
 LOOK1_TRANSITION = DESIGN_RECORD["look_1_transition"]
 FINAL_TRANSITION = DESIGN_RECORD["final_transition"]
+PACKET_EXTRA_FIELDS: frozenset[str] = frozenset()
+DESIGN_REVIEW_EXTRA: dict[str, object] = {}
 
 
 class ProtocolRefused(RuntimeError):
@@ -253,6 +258,16 @@ def aggregate_template(look: int) -> list[str]:
     ]
 
 
+def runtime_validation_template() -> list[str]:
+    return [
+        "{python}", str(RUNNER_PATH), "validate-runtime",
+        "--expected-git", "{git}",
+        "--execution-receipt", str(NAMESPACE / "receipt.json"),
+        "--expected-execution-receipt-sha256",
+        "{execution_receipt_sha256}",
+    ]
+
+
 def tranche_contract() -> list[dict]:
     tranches = []
     for tranche in range(1, TRANCHE_COUNT + 1):
@@ -372,6 +387,19 @@ def expected_review_claim(*, expected_git: str, packet_sha256: str,
     }
 
 
+def packet_profile_problems(packet: dict, *, expected_git: str,
+                            receipt: dict,
+                            current_runtime: dict) -> list[str]:
+    """Validate fields added by a thin runtime profile.
+
+    The base C1 packet has no profile-only fields. Successor adapters replace
+    this hook after loading C1 in isolation; the child process therefore
+    validates the same profile contract as its controller before gameplay.
+    """
+    del packet, expected_git, receipt, current_runtime
+    return []
+
+
 def require_receipt(path: Path, expected_sha256: str, *,
                     expected_git: str) -> dict:
     expected_path = (REPO / NAMESPACE / "receipt.json").resolve()
@@ -438,7 +466,7 @@ def require_receipt(path: Path, expected_sha256: str, *,
         "tranche_2_pre_authorized", "strength_claim",
         "training_authorized", "production_promotion",
         "retry_or_extension_authorized",
-    }
+    } | set(PACKET_EXTRA_FIELDS)
     runner = packet.get("runner") if isinstance(packet, dict) else None
     controller = packet.get("controller") if isinstance(packet, dict) else None
     preflight = (packet.get("score_free_preflight")
@@ -448,37 +476,38 @@ def require_receipt(path: Path, expected_sha256: str, *,
     except ProtocolRefused as exc:
         raise ProtocolRefused(
             f"cannot reopen receipt runtime: {exc}") from exc
-    preflight_path = REPO / PREFLIGHT_NAMESPACE / "preflight.json"
+    preflight_path = REPO / PREFLIGHT_RESULT_PATH
     require_regular_unlinked(preflight_path, label="future S4 preflight")
-    controller_path = REPO / "server/scripts/s4_point_banking_future_cloud.py"
+    controller_path = REPO / CONTROLLER_PATH
     require_regular_unlinked(controller_path, label="future S4 controller")
+    expected_design_review = {
+        "path": str(NAMESPACE / "design-review-record.txt"),
+        "sha256": receipt["design_review_sha256"],
+        "git": DESIGN_REVIEW_GIT,
+        "verdict": "PASS_TO_IMPLEMENT",
+        **DESIGN_REVIEW_EXTRA,
+    }
     if (set(packet) != packet_fields
             or packet.get("schema") != PACKET_SCHEMA
             or packet.get("run_id") != RUN_ID
             or packet.get("git") != expected_git
             or runner != {
-                "path": "server/scripts/s4_point_banking_future.py",
+                "path": str(RUNNER_PATH),
                 "sha256": sha256(SCRIPT),
             }
             or not isinstance(controller, dict)
-            or controller.get("path") !=
-            "server/scripts/s4_point_banking_future_cloud.py"
+            or controller.get("path") != str(CONTROLLER_PATH)
             or controller.get("sha256") != receipt["controller_sha256"]
             or sha256(controller_path) != receipt["controller_sha256"]
             or packet.get("runtime") != current_runtime
             or packet.get("parent") != parent
             or packet.get("design") != DESIGN_RECORD
-            or packet.get("design_review") != {
-                "path": str(NAMESPACE / "design-review-record.txt"),
-                "sha256": receipt["design_review_sha256"],
-                "git": DESIGN_REVIEW_GIT,
-                "verdict": "PASS_TO_IMPLEMENT"}
+            or packet.get("design_review") != expected_design_review
             or packet.get("schedule") != schedule()
             or packet.get("tranches") != tranche_contract()
             or packet.get("namespace") != str(NAMESPACE)
             or not isinstance(preflight, dict)
-            or preflight.get("path") !=
-            str(PREFLIGHT_NAMESPACE / "preflight.json")
+            or preflight.get("path") != str(PREFLIGHT_RESULT_PATH)
             or preflight.get("sha256") != receipt["preflight_sha256"]
             or sha256(preflight_path) != receipt["preflight_sha256"]
             or preflight.get("score_free") is not True
@@ -493,7 +522,10 @@ def require_receipt(path: Path, expected_sha256: str, *,
             or packet.get("strength_claim") is not False
             or packet.get("training_authorized") is not False
             or packet.get("production_promotion") is not False
-            or packet.get("retry_or_extension_authorized") is not False):
+            or packet.get("retry_or_extension_authorized") is not False
+            or packet_profile_problems(
+                packet, expected_git=expected_git, receipt=receipt,
+                current_runtime=current_runtime)):
         raise ProtocolRefused("future S4 packet identity/authority drift")
 
     marker_matches = [
@@ -530,6 +562,23 @@ def require_receipt(path: Path, expected_sha256: str, *,
     if admission != expected_admission or review_claim != expected_claim:
         raise ProtocolRefused("future S4 review/admission authority drift")
     return {"path": str(path.relative_to(REPO)), "sha256": expected_sha256}
+
+
+def validate_runtime(args: argparse.Namespace) -> None:
+    """Exercise the complete child identity boundary without gameplay."""
+    require_runtime(args.expected_git)
+    receipt = require_receipt(
+        Path(args.execution_receipt),
+        args.expected_execution_receipt_sha256,
+        expected_git=args.expected_git,
+    )
+    print(json.dumps({
+        "schema": VALIDATION_SCHEMA,
+        "run_id": RUN_ID,
+        "receipt": receipt,
+        "validated": True,
+        "outcomes_published": False,
+    }, sort_keys=True, separators=(",", ":")))
 
 
 def record_problems(record: object, *, expected_seed: int,
@@ -1058,6 +1107,12 @@ def parser() -> argparse.ArgumentParser:
     aggregate.add_argument("--expected-execution-receipt-sha256", required=True)
     aggregate.add_argument("--out", required=True)
 
+    validate = commands.add_parser("validate-runtime")
+    validate.add_argument("--expected-git", required=True)
+    validate.add_argument("--execution-receipt", required=True)
+    validate.add_argument("--expected-execution-receipt-sha256",
+                          required=True)
+
     capacity = commands.add_parser("preflight")
     capacity.add_argument("--expected-git", required=True)
     capacity.add_argument("--controller-review", required=True)
@@ -1075,6 +1130,8 @@ def main(argv: list[str] | None = None) -> None:
         run_shard(args)
     elif args.command == "aggregate":
         aggregate_command(args)
+    elif args.command == "validate-runtime":
+        validate_runtime(args)
     else:
         preflight(args)
 

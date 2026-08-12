@@ -803,6 +803,43 @@ def launch_preflight(config: Config, paths: Paths) -> tuple[dict, dict, dict]:
     return parent, runtime, admission
 
 
+def _validate_child_runtime(config: Config, paths: Paths,
+                            receipt_sha256: str) -> dict:
+    replacements = {
+        "{python}": sys.executable,
+        "{git}": config.expected_git,
+        "{execution_receipt_sha256}": receipt_sha256,
+    }
+    argv = tuple(replacements.get(value, value)
+                 for value in CORE.runtime_validation_template())
+    completed = subprocess.run(
+        argv, cwd=ROOT, text=True, capture_output=True, timeout=120,
+        check=False)
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout).strip()
+        raise SupervisorRefused(
+            f"future S4 child-boundary validation failed: {detail[:500]}")
+    try:
+        payload = json.loads(completed.stdout)
+    except ValueError as exc:
+        raise SupervisorRefused(
+            "future S4 child-boundary validation is not JSON") from exc
+    expected = {
+        "schema": CORE.VALIDATION_SCHEMA,
+        "run_id": RUN_ID,
+        "receipt": {
+            "path": rel(paths.receipt),
+            "sha256": receipt_sha256,
+        },
+        "validated": True,
+        "outcomes_published": False,
+    }
+    if payload != expected:
+        raise SupervisorRefused(
+            "future S4 child-boundary validation drift")
+    return payload
+
+
 def receipt_problems(receipt: dict, *, config: Config,
                      packet_sha256: str, admission_sha256: str,
                      preflight_sha256: str,
@@ -1216,6 +1253,8 @@ def launch(config: Config) -> None:
         tranche2_preauthorization_payload(
             packet_sha256=packet_sha256,
             receipt_sha256=execution_receipt_sha256))
+    child_runtime_validation = _validate_child_runtime(
+        config, paths, execution_receipt_sha256)
     progress = Progress(paths.progress_partial)
     all_jobs: list[Job] = []
     terminal_look = 0
@@ -1225,6 +1264,7 @@ def launch(config: Config) -> None:
             packet_sha256=packet_sha256,
             admission_sha256=admission_sha256,
             receipt_sha256=execution_receipt_sha256,
+            child_runtime_validation=child_runtime_validation,
             tranche_2_preauthorization_sha256=sha256_file(
                 paths.tranche2_preauthorization))
         aggregate = None

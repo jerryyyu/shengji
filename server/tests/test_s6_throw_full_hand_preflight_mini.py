@@ -6,6 +6,8 @@ import sys
 from copy import deepcopy
 from pathlib import Path
 
+import pytest
+
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
@@ -14,11 +16,14 @@ import s6_throw_full_hand_preflight_mini as MINI  # noqa: E402
 
 
 def _selector_review(tmp_path: Path) -> Path:
-    marker = MINI.SELECTOR_REVIEW_PREFIX + json.dumps(
+    selector = MINI.SELECTOR_REVIEW_PREFIX + json.dumps(
         MINI.EXPECTED_SELECTOR_REVIEW,
         sort_keys=True, separators=(",", ":"))
+    profile = MINI.PROFILE_REVIEW_PREFIX + json.dumps(
+        MINI.profile_review_claim(expected_git="a" * 40),
+        sort_keys=True, separators=(",", ":"))
     path = tmp_path / "review.md"
-    path.write_text(marker + "\n", encoding="utf-8")
+    path.write_text(selector + "\n" + profile + "\n", encoding="utf-8")
     return path
 
 
@@ -31,18 +36,7 @@ def test_profile_does_not_mutate_air_controller():
 
 
 def test_runtime_contract_is_exact_mini():
-    exact = {
-        "host": MINI.EXPECTED_EXECUTION_HOST,
-        "python": MINI.EXPECTED_PYTHON_VERSION,
-        "implementation": "CPython",
-        "python_executable": MINI.EXPECTED_PYTHON_EXECUTABLE,
-        "fast_required": True,
-        "strict_voids_required": True,
-        "fast_env_active": True,
-        "strict_voids_active": True,
-        "compiled_binding_active": True,
-        "fast_binary_sha256": MINI.EXPECTED_FAST_BINARY_SHA256,
-    }
+    exact = MINI.expected_mini_runtime()
     assert MINI.runtime_problems(exact) == []
     exact["host"] = AIR.EXPECTED_EXECUTION_HOST
     assert MINI.runtime_problems(exact) == [
@@ -54,6 +48,19 @@ def test_sources_bind_profile_and_reused_controller():
     assert paths["controller"] == Path(MINI.__file__).resolve()
     assert paths["base_full_hand_controller"] == Path(AIR.__file__).resolve()
     assert paths["controller"] != paths["base_full_hand_controller"]
+
+
+def test_profile_review_is_required_before_packet_freeze(tmp_path):
+    claim = MINI.profile_review_claim(expected_git="a" * 40)
+    assert claim["one_mini_packet_freeze_authorized"] is True
+    assert claim["one_score_free_preflight_authorized"] is False
+    assert claim["air_packet_remains_authorized_until_mini_packet_pass"] is True
+    path = tmp_path / "review.md"
+    path.write_text(MINI.SELECTOR_REVIEW_PREFIX + json.dumps(
+        MINI.EXPECTED_SELECTOR_REVIEW,
+        sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+    with pytest.raises(MINI.ControllerRefused, match="exactly one"):
+        MINI.profile_review_evidence(path, expected_git="a" * 40)
 
 
 def test_packet_keeps_science_and_supersedes_air(tmp_path, monkeypatch):
@@ -84,6 +91,8 @@ def test_packet_keeps_science_and_supersedes_air(tmp_path, monkeypatch):
         "same_work_and_capacity_caps": True,
         "air_packet_must_not_execute_after_mini_pass": True,
     }
+    assert packet["mini_profile_review"]["payload"] == \
+        MINI.profile_review_claim(expected_git="a" * 40)
     assert packet["supersedes_air_packet"] == MINI.AIR_PACKET
     assert MINI.packet_problems(
         packet, expected_git="a" * 40,

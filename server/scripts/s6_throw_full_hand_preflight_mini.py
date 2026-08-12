@@ -10,7 +10,9 @@ one score-free preflight can execute.
 """
 from __future__ import annotations
 
+import argparse
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -41,6 +43,9 @@ AIR_PACKET = {
     "preflight_run_id": "s6-throw-full-hand-preflight-436b-v2",
     "execution_superseded_by_mini_review": True,
 }
+PROFILE_REVIEW_PREFIX = "S6_FULL_HAND_MINI_PROFILE_V1_REVIEW "
+BASE_CONTROLLER_GIT = "a48542d756aaeaf85fa07e44816383a52da88e89"
+AIR_PACKET_ARTIFACT_GIT = "936345bc02e1454ff864bdb7ef5ce38783e7f42c"
 
 _CTRL.SCRIPT = SCRIPT
 _CTRL.PACKET_SCHEMA = "s6-throw-full-hand-mini-capacity-packet-v1"
@@ -85,19 +90,8 @@ def source_paths() -> dict[str, Path]:
 
 
 def runtime_problems(runtime: object) -> list[str]:
-    expected = {
-        "host": _CTRL.EXPECTED_EXECUTION_HOST,
-        "python": _CTRL.EXPECTED_PYTHON_VERSION,
-        "implementation": "CPython",
-        "python_executable": _CTRL.EXPECTED_PYTHON_EXECUTABLE,
-        "fast_required": True,
-        "strict_voids_required": True,
-        "fast_env_active": True,
-        "strict_voids_active": True,
-        "compiled_binding_active": True,
-        "fast_binary_sha256": _CTRL.EXPECTED_FAST_BINARY_SHA256,
-    }
-    return [] if runtime == expected else ["runtime is not exact reviewed Mini"]
+    return [] if runtime == expected_mini_runtime() else [
+        "runtime is not exact reviewed Mini"]
 
 
 def require_mini_runtime() -> dict[str, object]:
@@ -112,6 +106,51 @@ def supersession_record() -> dict[str, object]:
     return dict(AIR_PACKET)
 
 
+def expected_mini_runtime() -> dict[str, object]:
+    return {
+        "host": _CTRL.EXPECTED_EXECUTION_HOST,
+        "python": _CTRL.EXPECTED_PYTHON_VERSION,
+        "implementation": "CPython",
+        "python_executable": _CTRL.EXPECTED_PYTHON_EXECUTABLE,
+        "fast_required": True,
+        "strict_voids_required": True,
+        "fast_env_active": True,
+        "strict_voids_active": True,
+        "compiled_binding_active": True,
+        "fast_binary_sha256": _CTRL.EXPECTED_FAST_BINARY_SHA256,
+    }
+
+
+def profile_review_claim(*, expected_git: str) -> dict[str, object]:
+    return {
+        "schema": "s6-throw-full-hand-mini-profile-review-v1",
+        "git": expected_git,
+        "profile_sha256": _CTRL.sha256(SCRIPT),
+        "base_controller_git": BASE_CONTROLLER_GIT,
+        "base_controller_sha256": _CTRL.sha256(BASE_CONTROLLER),
+        "air_packet_artifact_git": AIR_PACKET_ARTIFACT_GIT,
+        "air_packet_sha256": AIR_PACKET["packet_sha256"],
+        "mini_runtime": expected_mini_runtime(),
+        "same_s6_policy_seeds_work_and_caps": True,
+        "base_controller_byte_bound": True,
+        "air_packet_remains_authorized_until_mini_packet_pass": True,
+        "one_mini_packet_freeze_authorized": True,
+        "one_score_free_preflight_authorized": False,
+        "screen_execution_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+        "verdict": "PASS",
+    }
+
+
+def profile_review_evidence(path, *, expected_git: str) -> dict[str, object]:
+    return _CTRL.parse_marker(
+        path, PROFILE_REVIEW_PREFIX,
+        profile_review_claim(expected_git=expected_git),
+        label="S6 Mini execution-profile review")
+
+
 def freeze_admission_payload(*, expected_git: str,
                              selector_review_record,
                              nonce: str,
@@ -122,6 +161,8 @@ def freeze_admission_payload(*, expected_git: str,
         nonce=nonce,
         created_unix_ns=created_unix_ns)
     payload.pop("internal_sha256")
+    payload["mini_profile_review"] = profile_review_evidence(
+        selector_review_record, expected_git=expected_git)
     payload["supersedes_air_packet"] = supersession_record()
     payload["internal_sha256"] = _CTRL.stable_digest(payload)
     return payload
@@ -133,6 +174,8 @@ def packet_payload(*, expected_git: str,
         expected_git=expected_git,
         selector_review_record=selector_review_record)
     payload.pop("internal_sha256")
+    payload["mini_profile_review"] = profile_review_evidence(
+        selector_review_record, expected_git=expected_git)
     payload["execution_profile"] = {
         "profile": "mini-alternative-v1",
         "scientific_design_changed": False,
@@ -191,6 +234,15 @@ def __getattr__(name: str):
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "profile-review-claim":
+        parser = argparse.ArgumentParser()
+        parser.add_argument("command")
+        parser.add_argument("--expected-git", required=True)
+        args = parser.parse_args()
+        print(PROFILE_REVIEW_PREFIX + json.dumps(
+            profile_review_claim(expected_git=args.expected_git),
+            sort_keys=True, separators=(",", ":")))
+        return
     _CTRL.main()
 
 

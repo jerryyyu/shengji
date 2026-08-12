@@ -1,10 +1,12 @@
-"""Experiment-only S6 root-ballot treatment and compute-matched null.
+"""Experiment-only S6 champion-anchored treatment and compute-matched null.
 
-Both arms generate and score the exact same widened ballot.  The treatment may
-select a structured shuai-pai proposal; the matched null excludes those added
-indices from selection while still paying their candidate-rollout cost.  On an
-identical state and RNG stream, the null must therefore make the same move as
-the live ``mc-s0-report-lcb`` champion.
+Both arms first execute the literal live ``mc-s0-report-lcb`` decision.  When
+the source contributes a genuinely new shuai-pai action, both then run the
+same second report-LCB probe: exact champion action as candidate zero versus
+only the new S6 suffix.  Both restore the champion's post-decision RNG state;
+the treatment may use the probe's action while the null always keeps the
+champion action.  Thus the null is behaviourally and RNG-identical to the
+champion while paying the same extra S6 work as treatment.
 
 This module registers no production policy.  A separately reviewed runner must
 construct the arms explicitly and prove null/champion outcome identity before
@@ -72,10 +74,7 @@ def _experiment_bot_class(base_cls):
             self.apply_s6_throw_treatment = bool(apply_treatment)
             self._s6_throw_totals = Counter(
                 {field: 0 for field in S6_THROW_COUNTER_FIELDS})
-            self._s6_precomputed_base: list[list[str]] | None = None
-            self._s6_precomputed_ballot: StructuredThrowBallot | None = None
-            self._s6_context: dict[str, object] | None = None
-            self._s6_lock_bypass = False
+            self._s6_secondary_candidates: list[list[str]] | None = None
             self.last_s6_throw_record: dict[str, object] | None = None
 
         @property
@@ -83,15 +82,11 @@ def _experiment_bot_class(base_cls):
             return ("treatment" if self.apply_s6_throw_treatment
                     else "matched_null")
 
-        def _candidates(self, rnd: Round, seat: int) -> list[list[str]]:
-            base = self._s6_precomputed_base
-            if base is None:
-                base = base_cls._candidates(self, rnd, seat)
-            else:
-                base = [list(candidate) for candidate in base]
-            ballot = self._s6_precomputed_ballot
-            if ballot is None:
-                ballot = structured_throw_ballot(rnd, seat)
+        def _source_plan(self, rnd: Round, seat: int) -> dict[str, object]:
+            """Freeze the live ballot and its literal S6-only suffix."""
+            base = [list(candidate)
+                    for candidate in base_cls._candidates(self, rnd, seat)]
+            ballot = structured_throw_ballot(rnd, seat)
             widened = union_with_live_ballot(base, ballot)
             base_keys = {_action_key(candidate) for candidate in base}
             added_indices = tuple(
@@ -100,7 +95,7 @@ def _experiment_bot_class(base_cls):
             )
             if added_indices != tuple(range(len(base), len(widened))):
                 raise AssertionError("S6 union is not a literal append-only suffix")
-            self._s6_context = {
+            return {
                 "base_candidates": tuple(tuple(candidate) for candidate in base),
                 "base_count": len(base),
                 "widened_candidates": tuple(
@@ -109,182 +104,160 @@ def _experiment_bot_class(base_cls):
                 "added_keys": tuple(
                     _action_key(widened[index]) for index in added_indices),
                 "ballot": ballot,
-                "tractor_lock_bypass": self._s6_lock_bypass,
             }
-            return widened
+
+        def _candidates(self, rnd: Round, seat: int) -> list[list[str]]:
+            # The first pass is the literal live champion.  Only the second,
+            # work-matched probe substitutes candidate zero = the action that
+            # champion actually chose and appends the genuinely new S6 moves.
+            # This prevents extra candidates from perturbing the champion's
+            # adaptive allocation before an S6 comparison even begins.
+            if self._s6_secondary_candidates is not None:
+                return [list(candidate)
+                        for candidate in self._s6_secondary_candidates]
+            return base_cls._candidates(self, rnd, seat)
 
         def _pick_index(self, candidates, means, indices):
-            context = self._s6_context
-            if context is None:
-                return base_cls._pick_index(self, candidates, means, indices)
-            base_count = int(context["base_count"])
-            added_indices = set(context["added_indices"])
-            if context["tractor_lock_bypass"]:
-                if self.apply_s6_throw_treatment:
-                    allowed = [index for index in indices
-                               if index == 0 or index in added_indices]
-                    if not allowed:
-                        raise AssertionError(
-                            "S6 tractor-lock treatment lost every S6 index")
-                    return base_cls._pick_index(
-                        self, candidates, means, allowed)
-                incumbent = [index for index in indices if index == 0]
-                if incumbent:
-                    return 0
-                dummy = [index for index in indices if index in added_indices]
-                if dummy:
-                    return base_cls._pick_index(
-                        self, candidates, means, dummy)
-                raise AssertionError(
-                    "S6 tractor-lock null lost its dummy report challenger")
-            if self.apply_s6_throw_treatment:
-                return base_cls._pick_index(self, candidates, means, indices)
-            base_indices = [index for index in indices if index < base_count]
-            if base_indices:
-                return base_cls._pick_index(
-                    self, candidates, means, base_indices)
-            # If the incumbent ballot had only candidate zero, the champion
-            # would return it without search.  The null nevertheless needs a
-            # report challenger to spend the treatment's fixed report work.
-            # ``decide_play`` restores the champion RNG state and action after
-            # this dummy measurement.
-            if base_count == 1 and indices:
-                return base_cls._pick_index(self, candidates, means, indices)
-            raise AssertionError("S6 matched null lost every incumbent index")
+            return base_cls._pick_index(self, candidates, means, indices)
 
         def decide_play(self, rnd: Round, seat: int) -> list[str]:
             self.last_s6_throw_record = None
-            self._s6_context = None
-            self._s6_precomputed_base = None
-            self._s6_precomputed_ballot = None
-            self._s6_lock_bypass = False
-            pre_rng_state = self.rng.getstate()
+            self._s6_secondary_candidates = None
             is_lead = bool(rnd.trick is not None and not rnd.trick.plays)
+            if not is_lead:
+                played = base_cls.decide_play(self, rnd, seat)
+                record = {
+                    "schema": "s6-throw-source-decision-v2",
+                    "mode": self.s6_throw_mode,
+                    "lead": False, "eligible": False, "ballot": None,
+                    "base_candidate_count": 0,
+                    "widened_candidate_count": 0,
+                    "secondary_candidate_count": 0,
+                    "added_indices": [], "trigger": False,
+                    "searched": False, "tractor_lock_skip": False,
+                    "tractor_lock_bypass": False,
+                    "treatment_override": False,
+                    "matched_noop": False,
+                    "forced_null_incumbent": False,
+                    "played": list(played), "exact_work_complete": True,
+                }
+                self.last_s6_throw_record = record
+                if self.last_decision_record is not None:
+                    self.last_decision_record["s6_throw_sourcing"] = record
+                self._record_s6_throw(record, rnd, seat)
+                return played
 
-            # Precompute the deterministic source on leads.  Besides avoiding a
-            # duplicate source pass, this exposes opportunities hidden behind
-            # the champion's intentional tractor-lock early return.
-            if is_lead:
-                self._s6_precomputed_base = base_cls._candidates(self, rnd, seat)
-                self._s6_precomputed_ballot = structured_throw_ballot(rnd, seat)
+            plan = self._source_plan(rnd, seat)
+            base_candidates = [list(candidate)
+                               for candidate in plan["base_candidates"]]
+            ballot = plan["ballot"]
+            added_indices = tuple(plan["added_indices"])
+            additions = [list(plan["widened_candidates"][index])
+                         for index in added_indices]
+            added_keys = set(plan["added_keys"])
 
-                widened = union_with_live_ballot(
-                    self._s6_precomputed_base, self._s6_precomputed_ballot)
-                base_keys = {_action_key(candidate)
-                             for candidate in self._s6_precomputed_base}
-                has_new_s6 = any(
-                    _action_key(candidate) not in base_keys
-                    for candidate in widened)
-                incumbent_dec = decompose(
-                    list(self._s6_precomputed_base[0]), rnd.ordering)
-                incumbent_is_locked_tractor = (
-                    self.TRACTOR_LOCK
-                    and len(incumbent_dec.components) == 1
-                    and incumbent_dec.components[0].pair_len >= 2)
-                self._s6_lock_bypass = bool(
-                    has_new_s6 and incumbent_is_locked_tractor)
+            # Pass one is literally the live champion, including its adaptive
+            # selection, report fold, tractor lock, action and RNG transition.
+            champion_play = base_cls.decide_play(self, rnd, seat)
+            champion_record = self.last_decision_record
+            champion_post_rng = self.rng.getstate()
+            base_keys = {_action_key(candidate) for candidate in base_candidates}
+            if _action_key(champion_play) not in base_keys:
+                raise AssertionError("S6 champion action escaped its frozen ballot")
+            if (champion_record is not None
+                    and champion_record.get("candidates") != base_candidates):
+                raise AssertionError("S6 champion ballot changed between passes")
+            trigger = bool(additions)
+            if not trigger:
+                record = {
+                    "schema": "s6-throw-source-decision-v2",
+                    "mode": self.s6_throw_mode, "lead": True,
+                    "eligible": bool(ballot.eligible_suits),
+                    "ballot": ballot.record(),
+                    "base_candidate_count": len(base_candidates),
+                    "widened_candidate_count": len(base_candidates),
+                    "secondary_candidate_count": 0,
+                    "added_indices": [], "trigger": False,
+                    "searched": False, "tractor_lock_skip": False,
+                    "tractor_lock_bypass": False,
+                    "treatment_override": False,
+                    "matched_noop": False,
+                    "forced_null_incumbent": False,
+                    "played": list(champion_play),
+                    "exact_work_complete": True,
+                }
+                self.last_s6_throw_record = record
+                if champion_record is not None:
+                    champion_record["s6_throw_sourcing"] = record
+                self._record_s6_throw(record, rnd, seat)
+                return champion_play
 
+            incumbent_dec = decompose(list(champion_play), rnd.ordering)
+            lock_bypass = bool(
+                self.TRACTOR_LOCK and champion_record is None
+                and len(incumbent_dec.components) == 1
+                and incumbent_dec.components[0].pair_len >= 2)
+
+            # Pass two is a work-identical probe in both arms: exact champion
+            # action as candidate zero versus only the genuinely new S6 suffix.
+            # Restore the champion's post-decision RNG afterwards in both arms,
+            # so the experiment changes an action—not the future random stream.
+            self._s6_secondary_candidates = [list(champion_play), *additions]
             had_instance_lock = "TRACTOR_LOCK" in self.__dict__
             original_instance_lock = self.__dict__.get("TRACTOR_LOCK")
-            if self._s6_lock_bypass:
-                self.TRACTOR_LOCK = False
+            self.TRACTOR_LOCK = False
             try:
-                played = base_cls.decide_play(self, rnd, seat)
+                probe_play = base_cls.decide_play(self, rnd, seat)
+                probe_record = self.last_decision_record
             finally:
-                self._s6_precomputed_base = None
-                self._s6_precomputed_ballot = None
-                if self._s6_lock_bypass:
-                    if had_instance_lock:
-                        self.TRACTOR_LOCK = original_instance_lock
-                    else:
-                        del self.TRACTOR_LOCK
+                self._s6_secondary_candidates = None
+                if had_instance_lock:
+                    self.TRACTOR_LOCK = original_instance_lock
+                else:
+                    del self.TRACTOR_LOCK
+                self.rng.setstate(champion_post_rng)
+            if probe_record is None:
+                raise AssertionError("S6 multi-candidate probe produced no record")
 
-            ballot = (self._s6_context["ballot"]
-                      if self._s6_context is not None
-                      else structured_throw_ballot(rnd, seat)
-                      if is_lead else None)
-            base_candidates = (
-                list(self._s6_context["base_candidates"])
-                if self._s6_context is not None else [])
-            added_indices = (
-                tuple(self._s6_context["added_indices"])
-                if self._s6_context is not None else ())
-            added_keys = (
-                set(self._s6_context["added_keys"])
-                if self._s6_context is not None else set())
+            probe_override = _action_key(probe_play) in added_keys
+            if (_action_key(probe_play) != _action_key(champion_play)
+                    and not probe_override):
+                raise AssertionError("S6 probe escaped champion-plus-suffix ballot")
+            played = (list(probe_play) if self.apply_s6_throw_treatment
+                      else list(champion_play))
+            override = bool(self.apply_s6_throw_treatment and probe_override)
+            primary_complete = bool(
+                champion_record is None
+                or champion_record.get("work", {}).get("complete", False))
+            probe_complete = bool(
+                probe_record.get("work", {}).get("complete", False))
+            short = not (primary_complete and probe_complete)
 
-            if is_lead and self._s6_context is None:
-                # Tractor lock returned before candidate generation.  Rebuild
-                # only the append-only identity from the already computed
-                # deterministic inputs; do not run any search or mutate RNG.
-                base_candidates = [list(candidate) for candidate in
-                                   base_cls._candidates(self, rnd, seat)]
-                assert ballot is not None
-                widened = union_with_live_ballot(base_candidates, ballot)
-                base_keys = {_action_key(candidate)
-                             for candidate in base_candidates}
-                added_indices = tuple(
-                    index for index, candidate in enumerate(widened)
-                    if _action_key(candidate) not in base_keys)
-                added_keys = {_action_key(widened[index])
-                              for index in added_indices}
-
-            trigger = bool(added_indices)
-            searched = bool(trigger and self._s6_context is not None)
-            locked = bool(trigger and self._s6_context is None)
-            lock_bypass = bool(
-                searched and self._s6_context["tractor_lock_bypass"])
-            played_key = _action_key(played)
-            override = bool(searched and played_key in added_keys)
-
-            # A one-candidate incumbent consumed no champion RNG.  The null's
-            # dummy widened search is work-only, so restore the untouched
-            # stream and literal incumbent action after recording it.
-            forced_null_incumbent = False
-            if (not self.apply_s6_throw_treatment and searched
-                    and (len(base_candidates) == 1 or lock_bypass)):
-                self.rng.setstate(pre_rng_state)
-                played = list(base_candidates[0])
-                played_key = _action_key(played)
-                override = False
-                forced_null_incumbent = True
-                if self.last_decision_record is not None:
-                    self.last_decision_record["played_index"] = 0
-                    self.last_decision_record["played"] = list(played)
-                    self.last_decision_record["reason"] = \
-                        "s6_matched_null_single_incumbent"
-
-            if not self.apply_s6_throw_treatment and override:
-                raise AssertionError("S6 matched null selected a sourced action")
-            if (not self.apply_s6_throw_treatment and searched
-                    and played_key not in {_action_key(c)
-                                           for c in base_candidates}):
-                raise AssertionError("S6 matched null changed incumbent action set")
-
-            short = bool(
-                searched and self.last_decision_record is not None
-                and not self.last_decision_record.get("work", {}).get(
-                    "complete", False))
+            probe_record["s6_incumbent_decision"] = champion_record
+            probe_record["s6_probe_played"] = list(probe_play)
+            probe_record["s6_probe_reason"] = probe_record.get("reason")
+            if not self.apply_s6_throw_treatment:
+                probe_record["played_index"] = 0
+                probe_record["played"] = list(champion_play)
+                probe_record["reason"] = "s6_matched_null_after_equal_probe"
+            self.last_decision_record = probe_record
             record = {
-                "schema": "s6-throw-source-decision-v1",
+                "schema": "s6-throw-source-decision-v2",
                 "mode": self.s6_throw_mode,
-                "lead": is_lead,
-                "eligible": bool(ballot and ballot.eligible_suits),
-                "ballot": ballot.record() if ballot is not None else None,
+                "lead": True,
+                "eligible": bool(ballot.eligible_suits),
+                "ballot": ballot.record(),
                 "base_candidate_count": len(base_candidates),
-                "widened_candidate_count": (
-                    len(self._s6_context["widened_candidates"])
-                    if self._s6_context is not None else
-                    len(base_candidates) + len(added_indices)),
+                "widened_candidate_count": len(plan["widened_candidates"]),
+                "secondary_candidate_count": 1 + len(additions),
                 "added_indices": list(added_indices),
-                "trigger": trigger,
-                "searched": searched,
-                "tractor_lock_skip": locked,
+                "trigger": True,
+                "searched": True,
+                "tractor_lock_skip": False,
                 "tractor_lock_bypass": lock_bypass,
                 "treatment_override": override,
-                "matched_noop": bool(
-                    searched and not self.apply_s6_throw_treatment),
-                "forced_null_incumbent": forced_null_incumbent,
+                "matched_noop": not self.apply_s6_throw_treatment,
+                "forced_null_incumbent": not self.apply_s6_throw_treatment,
                 "played": list(played),
                 "exact_work_complete": not short,
             }

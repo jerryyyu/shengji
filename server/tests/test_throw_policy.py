@@ -65,63 +65,67 @@ def test_treatment_and_null_share_append_only_widened_ballot(witness_id):
 
     treatment = make_s6_throw_bot(treatment=True, seed=13)
     null = make_s6_throw_bot(treatment=False, seed=13)
-    treatment_ballot = treatment._candidates(rnd, seat)
-    null_ballot = null._candidates(rnd, seat)
+    treatment_plan = treatment._source_plan(rnd, seat)
+    null_plan = null._source_plan(rnd, seat)
+    treatment_ballot = [list(action)
+                        for action in treatment_plan["widened_candidates"]]
+    null_ballot = [list(action)
+                   for action in null_plan["widened_candidates"]]
 
     assert treatment_ballot == null_ballot
     assert treatment_ballot[:len(base)] == base
     assert treatment_ballot[0] == base[0]
     assert target in {tuple(sorted(action)) for action in treatment_ballot}
-    assert treatment._s6_context["added_indices"]
+    assert treatment_plan["added_indices"]
 
 
-def test_matched_null_scores_additions_but_cannot_select_them():
+def test_treatment_and_null_run_the_same_secondary_probe_ballot():
     rnd, witness = _state("KESP:r4:jerry:partial-near-boss")
     seat = witness["seat"]
     treatment = make_s6_throw_bot(treatment=True, seed=17)
     null = make_s6_throw_bot(treatment=False, seed=17)
-    candidates = treatment._candidates(rnd, seat)
-    null_candidates = null._candidates(rnd, seat)
+    t_plan = treatment._source_plan(rnd, seat)
+    n_plan = null._source_plan(rnd, seat)
+    incumbent = list(t_plan["base_candidates"][0])
+    t_added = [list(t_plan["widened_candidates"][index])
+               for index in t_plan["added_indices"]]
+    n_added = [list(n_plan["widened_candidates"][index])
+               for index in n_plan["added_indices"]]
+    treatment._s6_secondary_candidates = [incumbent, *t_added]
+    null._s6_secondary_candidates = [incumbent, *n_added]
+    try:
+        candidates = treatment._candidates(rnd, seat)
+        null_candidates = null._candidates(rnd, seat)
+    finally:
+        treatment._s6_secondary_candidates = None
+        null._s6_secondary_candidates = None
     assert candidates == null_candidates
-    added = treatment._s6_context["added_indices"][0]
-    means = [0.0] * len(candidates)
-    means[added] = 100.0
-    incumbent_alternative = 1
-    means[incumbent_alternative] = 5.0
-
+    assert candidates[0] == incumbent
+    assert candidates[1:] == t_added
+    means = [0.0] + [100.0] + [0.0] * (len(candidates) - 2)
     assert treatment._pick_index(
-        candidates, means, range(len(candidates))) == added
+        candidates, means, range(len(candidates))) == 1
     assert null._pick_index(
-        candidates, means, range(len(candidates))) == incumbent_alternative
-    assert null._pick_index(
-        candidates, means, range(1, len(candidates))) == incumbent_alternative
+        candidates, means, range(len(candidates))) == 1
 
 
-def test_tractor_bypass_compares_only_locked_incumbent_to_s6_suffix():
+def test_secondary_probe_uses_exact_champion_action_as_candidate_zero():
     rnd, witness = _state("KESP:r4:jerry:partial-near-boss")
     seat = witness["seat"]
     treatment = make_s6_throw_bot(treatment=True, seed=19)
     null = make_s6_throw_bot(treatment=False, seed=19)
-    treatment._s6_lock_bypass = True
-    null._s6_lock_bypass = True
-    candidates = treatment._candidates(rnd, seat)
-    assert candidates == null._candidates(rnd, seat)
-    assert treatment._s6_context["tractor_lock_bypass"] is True
-    added = treatment._s6_context["added_indices"][0]
-    assert len(treatment._s6_context["base_candidates"]) > 1
-
-    # A pre-existing base alternative is deliberately made strongest.  It is
-    # still ineligible: otherwise the experiment would bundle disabling the
-    # champion's tractor lock with adding S6 proposals.
-    means = [0.0] * len(candidates)
-    means[1] = 100.0
-    means[added] = 50.0
-    assert treatment._pick_index(
-        candidates, means, range(len(candidates))) == added
-    assert null._pick_index(
-        candidates, means, range(len(candidates))) == 0
-    assert null._pick_index(
-        candidates, means, range(1, len(candidates))) == added
+    target = tuple(sorted(witness["human_action"]))
+    champion = make_bot("mc-s0-report-lcb", seed=19)
+    for bot in (champion, treatment, null):
+        _stub_search(bot, rnd, target)
+    champion_play = champion.decide_play(rnd, seat)
+    treatment.decide_play(rnd, seat)
+    null.decide_play(rnd, seat)
+    for bot in (treatment, null):
+        assert bot.last_decision_record["candidates"][0] == champion_play
+        assert bot.last_decision_record["s6_incumbent_decision"] == \
+            champion.last_decision_record
+        assert bot.last_s6_throw_record["secondary_candidate_count"] >= 2
 
 
 @pytest.mark.parametrize("witness_id", [

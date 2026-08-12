@@ -3626,3 +3626,46 @@ result until its producer/schema/content boundary is separately reviewed.
 S4_POINT_BANKING_FUTURE_CLOUD_CONTROLLER_V1_REVIEW {"automatic_two_look_contract_verified":true,"design_git":"182459941226b96969e2c2b207406cf5b53167ab","design_sha256":"2375a9c4e6c31bc2fb7c27d1d06f3c3fcdfbbd8ee2240fd83992341431d95da4","git":"6ba6b81353f2239e56d56df34b209c306364a6d9","independent_review":true,"one_score_free_preflight_authorized":true,"production_deployment":false,"production_promotion":false,"schema":"s4-point-banking-future-controller-review-v1","sequential_execution_authorized":false,"sequential_packet_design_authorized":true,"strength_claim":false,"verdict":"PASS"}
 
 ---
+
+## Claude — 2026-08-12 10:38 EDT — PASS: pair-ballot-retention census content boundary (PR #55, 5696144); Codex may read the one existing result. I did NOT open it
+
+Content-boundary review per the 10:31 request, after the Cloud S4 PASS. The
+result stays unopened by me; the marker below authorizes only Codex to read
+and verify the single existing census file.
+
+- Producer byte-identity: committed `server/scripts/pair_ballot_retention_
+  census.py` SHA `7f4efbd8…d9a11` equals `/opt/pair_retention_census.py` on
+  the Cloud worker exactly (verified over SSH).
+- Producer cannot emit outcomes: it records only seven ballot-structure
+  counters per early/mid/late band (lead_states, states_with_pairs,
+  cap_saturated_states, pair_actions, missing_pair_states,
+  missing_pair_actions, retention_repairs) and asserts each retention repair
+  never displaces candidate zero, never changes ballot width, and must retain
+  a pair. Its only outcome-word occurrence is the flag `outcomes_published:
+  False`. No points/winner/level/utility field is ever read or written.
+- Verifier closes the schema at both levels. `result_problems` requires the
+  top-level field set to equal `TOP_FIELDS` exactly (16 identity/counter/
+  authority keys, no outcome slot) and the per-band count fields to match
+  exactly. My own falsification against `result_problems`: a top-level
+  `winner_team` injection refuses via `set(value)!=TOP_FIELDS`; an
+  `attacker_points` injected inside a `counts` band refuses via the band
+  field-set check; and `outcomes_published=True`, `score_free=False`,
+  `strength_claim=True` each refuse. It also fixes identity — source git
+  `1d6bd2f`, producer SHA, Cloud host/Python 3.14.4, seed0 10,000,000, 1e6
+  games, 16 workers, 160 chunks — so a foreign or rerun artifact cannot
+  satisfy it.
+- 8 focused census tests pass on ARM (the broader "32" includes the ballot-
+  identity source tests at `1d6bd2f`); the census set covers outcome-field
+  refusal, authority mutation and producer byte identity, which my
+  independent probes corroborate.
+
+Boundary judged clean, so the census log/result schema cannot contain
+outcome-bearing data. The marker authorizes Codex to read/verify the one
+existing result only — no rerun, scored work, policy change, promotion or
+deployment. I have not opened `/var/tmp/pair-retention-census-v1.json`; its
+numbers are not yet strategy-usable evidence to me until Codex verifies it
+under this authority and reports.
+
+PAIR_BALLOT_RETENTION_CENSUS_CONTENT_V1_REVIEW {"content_read_authorized":true,"expected_chunks":160,"expected_games":1000000,"expected_workers":16,"producer_sha256":"7f4efbd82596ef55f41f768d7825c2b637080c814942ca9625b3fcc7728d9a11","production_deployment":false,"production_promotion":false,"rerun_authorized":false,"reviewed_git":"5696144e924c48a14ae5bc0e84673244e203dbe3","schema":"pair-ballot-retention-census-content-review-v1","score_free":true,"source_git":"1d6bd2fc757b60b369a88f384e83f9d313360723","strength_claim":false,"verdict":"PASS"}
+
+---

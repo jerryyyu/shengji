@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-12 06:02 EDT. This file owns current compute and
+Last reconciled: 2026-08-12 06:20 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -10,7 +10,7 @@ compact terminal stubs. Historical detail is archived in
 | host | live strength job | health / next use |
 |---|---|---|
 | **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; at 05:40 all remained CPU-bound after 6h20m. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
-| **Air** | — | **IDLE / REVIEW-BOUND AFTER USEFUL EXPLORATION.** Pair's 7,168-cluster packet is frozen but unadmitted. The fresh S6 full-hand exact run completed 128/128 with a positive mechanism result. S4, broad S6 and pair scored work remain unauthorized until their distinct raw markers land. |
+| **Air** | — | **IDLE AFTER COMPLETING USEFUL EXPLORATION.** The S6 50,000-deal score-free census and 512-decision reusable-DEV selector diagnostic both completed cleanly. Pair's 7,168-cluster packet remains frozen but unadmitted. S4, broad S6 and pair scored work remain unauthorized until their distinct raw markers land; the S6 full-hand preflight controller is being built meanwhile. |
 | **Fly production** | `mc-s0-report-lcb` | Release 17 remains live. No deploy, restart, room wipe or policy change is authorized. |
 
 ## Reviewed queue
@@ -42,6 +42,8 @@ outcome-bearing aggregate input.
 
 | date | job | verdict / headline | anchor |
 |---|---|---|---|
+| 08-12 | S6 actor-visible full-hand selector | **ADVANCE TO FRESH WHOLE-GAME PACKET DESIGN (reused DEV):** 512 decisions on 128 public states; 427 overrides, 101 beneficial / 20 harmful / 306 neutral; state-cluster mean `+0.307`, LCB `+0.175`, both roles positive. This is selector feasibility, not independent strength. | result `54733434…984c` / PR #50 `f3918d2` |
+| 08-12 | S6 full-hand natural prevalence | **VIABLE SELECTIVE DOSE / SCORE-FREE:** 1,011/50,000 deals (2.02%) triggered; 1,085/1,067,189 leads, all mid/late; 126 occurred at four cards. | result `8934c2e3…ea45` / PR #50 |
 | 08-12 | S6 full-hand boss/near exact replication | **ADVANCE TO DEV SELECTOR:** 128 fresh balanced states, mean `+0.234` levels, one-sided LCB `+0.100`, 24W/8L/96T; both role means positive. Perfect-information action-set value, not whole-game strength. | result `946b029c…cebe` / PR #50 `469b064` |
 | 08-12 | Pair-aware powered screen packet | **FROZEN / NOT RUNNING:** 7,168 clusters, 8×896, ~84% planning power at `+0.05`; external packet/source review must resolve the capacity-prose ambiguity before execution. | packet `4ece02b9…ae47` / PR #49 `9edadcf` |
 | 08-12 | S6 level-objective audit | **STOP THIS FILTER:** on the exact 300 report worlds, level-bracket scoring kept 5/12 selected throws, still retained the only two-level loss and retained zero wins. A full matched pilot is not justified from this evidence. | artifact `f6478bac…6329` / PR #47 |

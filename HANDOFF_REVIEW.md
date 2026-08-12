@@ -11,8 +11,8 @@
 > authority; the archive is the human audit trail.
 >
 > **CURRENT REVIEW QUEUE:** T4 is running with outcomes sealed. Pending
-> reviews at the bottom cover the S4 controller, S6 Air preflight packet, and
-> pair-aware complete-round capacity packet. None authorizes scored
+> reviews at the bottom cover the S4 controller, broad S6 Air preflight,
+> pair-aware powered packet, and selective S6 full-hand semantics. None authorizes scored
 > execution, promotion, deployment, or a production restart.
 
 
@@ -2748,5 +2748,49 @@ If and only if clean, append exactly one raw marker at column 1:
 A PASS authorizes exactly one supervised scored screen from this packet. It
 does not establish strength, authorize aggregation before supervisor review,
 open confirmation, permit retry/extension, promote, deploy or restart.
+
+---
+
+## Codex — 2026-08-12 06:20 EDT — review request: S6 full-hand selector semantics and bounded results (PR #50)
+
+**Blocked on this exact external semantics/result review before freezing a
+score-free whole-game preflight packet. No fresh scored whole-game population
+has been admitted or run.** Review PR #50 exact head
+`f3918d26febb434b2ef7391cd72b57c4f461fb4d` and independently reproduce:
+
+- fresh exact action-set capture `99debb54…e5708` and result
+  `946b029c…cebe`: 128 balanced four-card states, `+0.234375` level mean,
+  one-sided LCB `+0.099705`, 24W/8L/96T and nonnegative role means;
+- score-free prevalence census `8934c2e3…ea45`: 50,000 disjoint heuristic
+  deals, 1,011 triggered deals (2.02%), 1,085 triggered leads, zero early
+  triggers, and no outcome/utility publication;
+- actor-visible gate semantics in `throw_full_hand_gate.py`: the literal live
+  `mc-s0-report-lcb` decision runs first; the full structured ballot remains
+  inspectable; only a newly sourced boss/near action consuming every card in
+  the actor's current hand enters the second report-LCB search; candidate zero
+  is the actual live action; treatment and matched null restore the same RNG;
+  neither policy is registered or deployable;
+- reusable-DEV selector result `54733434…984c` / internal
+  `169870d1…301`: four fixed MC streams on each of the 128 already-public
+  states, 512/512 complete decisions, 427 overrides, 101 beneficial / 20
+  harmful / 306 neutral under exact continuation, state-cluster mean
+  `+0.306641`, LCB `+0.174586`, and positive role bounds;
+- the boundary: this fitting diagnostic shows an actor-information selector
+  can spend the known action-set opportunity. It is not independent strength,
+  training authority, a scored-run admission, promotion, deployment, retry or
+  extension authority.
+
+Challenge hidden-information access, source/ballot drift, champion anchoring,
+matched-null behavior, RNG restoration, exact-work accounting, state-level
+clustering, role signs, artifact hashes and the generated aggregate. Run the
+48 related tests or a strict superset. If and only if clean, append exactly one
+raw marker at column 1:
+
+    S6_FULL_HAND_SELECTOR_V1_REVIEW {"actor_visible_gate":true,"exact_result_sha256":"946b029c0922a902ad5974977cef4a8a30ac245430563f57483c25597d65cebe","git":"f3918d26febb434b2ef7391cd72b57c4f461fb4d","independent_review":true,"preflight_packet_design_authorized":true,"prevalence_result_sha256":"8934c2e39b68afca8a5d8dfc13f4768097c7a61f66627f8f469e1c48b17ea45a","production_deployment":false,"production_promotion":false,"scored_execution_authorized":false,"selector_result_sha256":"5473343472c272d3521a04b67bfb7719393ac2adb4263b0f8c1f070be551984c","strength_claim":false,"verdict":"PASS"}
+
+A PASS authorizes design/freezing of one score-free Air capacity-preflight
+packet only. That packet still needs a separate exact external marker before
+execution, and its capacity result needs review before any scored whole-game
+packet can be designed.
 
 ---

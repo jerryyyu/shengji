@@ -10,7 +10,7 @@
 > `docs_archive/handoff-active-through-2026-08-11-10-22.md` and
 > `docs_archive/handoff-review-2026-08-08-through-2026-08-11-10-22.md`.
 
-Last reconciled: 2026-08-12 06:02 EDT.
+Last reconciled: 2026-08-12 06:20 EDT.
 
 ## Immediate objective
 
@@ -25,7 +25,7 @@ shuai-pai sourcing, and pair-aware rollouts.
 |---|---|---|
 | **T4 mid/late Teacher hybrid** | The model may propose one move after trick five; fresh Monte Carlo search still prices it and preserves the live champion as fallback. Its 256-state test passed both controls. The sole 2,048-cluster whole-round screen started on Mini at 23:20 EDT; at 05:40 all eight workers remained CPU-bound after 6h20m. Outcomes remain sealed. | Monitor only. After all workers finish, Claude reviews the score-free `supervisor-final.json`; only a PASS permits aggregation and outcome access. The aggregate then needs terminal external review. |
 | **S4 point banking** | Two independent 2,048-cluster runs were directionally positive. A genuinely fresh automatic two-look design can resolve a roughly `+0.03` effect. Controller PR #40 is pushed at `3403cdf`; a launch audit staged the exact pinned Air binary and RLCB parent evidence, and `require_runtime` now passes without changing source or outcomes. | External controller review. A PASS authorizes exactly one score-free Air preflight and sequential-packet design—not scored execution. |
-| **S6 shuai-pai sourcing** | The broad packet remains ready and old boss/near filters remain negative. A genuinely different fresh exact test found a positive public stratum: full-hand boss/near throws scored `+0.234` levels with LCB `+0.100` on 128 balanced states (24W/8L/96T), both role means positive; PR #50 head `469b064`. | Continue broad PR #41/#47 reviews independently. In exploration tier, implement an actor-only full-hand gate/evaluator and a fresh treatment/null DEV packet. Do not treat perfect-information oracle value as whole-game strength. |
+| **S6 shuai-pai sourcing** | The full-hand boss/near stratum survived two steps. Exact oracle value was `+0.234` levels (LCB `+0.100`) on 128 balanced states. It occurs in 2.02% of 50,000 natural deals, concentrated mid/late. More importantly, the actor-visible report-LCB gate realized `+0.307` levels versus its own incumbent (state-cluster LCB `+0.175`) across 512 decisions, with both roles positive; this reused-DEV fitting result is not strength evidence. PR #50 head `f3918d2`. | External semantics/result review should authorize one score-free full-hand whole-game preflight **packet design only**. Build that controller in parallel; fresh execution still needs its own later packet marker. Keep broad PR #41/#47 reviews independent. |
 | **Pair-aware rollout** | V3 capacity passed externally after changing 6/8 mirrored roots. Exact source `cd20670` froze PR #49's 7,168-cluster packet (`4ece02b9…ae47`) on Air; it remains unadmitted and contains no gameplay. | Review the exact source and packet. The reviewer must explicitly resolve the 7,168-cluster design against the capacity review's “bounded at 2,048” prose. Only the requested raw packet marker may authorize execution. |
 
 ## Review queue — precise asks
@@ -78,6 +78,17 @@ boss/near selector is actor-visible, but its labels use perfect information;
 therefore it authorizes only the next DEV evaluator design, not a scored
 strength run or promotion.
 
+That successor is now implemented and measured at PR #50 head `f3918d2`.
+The score-free natural census (`8934c2e3…ea45`) found the gate in 1,011/50,000
+deals (2.02%), all mid/late. On the reusable public 128-state set, four fresh
+search streams per state produced 427 overrides: 101 beneficial, 20 harmful
+and 306 neutral under exact continuation. The state-cluster mean was `+0.307`
+levels with LCB `+0.175`, and both role bounds were positive. This proves the
+live information boundary can spend the known opportunity on that fitting
+set; it is not an independent whole-game strength result. Review exact source
+and artifacts under the `S6_FULL_HAND_SELECTOR_V1_REVIEW` request in the
+canonical ledger. A PASS permits preflight-packet design only.
+
 ### 4. Pair-aware powered screen packet, PR #49
 
 Capacity result review passed exactly once at `051129e`. Exact Air source
@@ -102,7 +113,7 @@ retry or extension.
 | host | current use | next authorized use |
 |---|---|---|
 | **Mini** | T4 eight-shard whole-round screen; projected maximum about 45.4 wall hours. | Keep isolated until T4 terminal seal. |
-| **Air** | Pair capacity/diagnostics complete; powered packet frozen but unadmitted. No scored work is authorized. | First authenticated marker among pair packet execution, S4 preflight or S6 preflight; keep namespaces disjoint. |
+| **Air** | The S6 score-free census and reusable-DEV selector diagnostic completed cleanly; no scored fresh population was spent. Pair's powered packet remains frozen but unadmitted. | Build the S6 full-hand score-free preflight packet while waiting. First authenticated execution marker among pair, S4 or S6 controls the next run; keep namespaces disjoint. |
 | **Production** | Release 17, `mc-s0-report-lcb`. | No deploy, restart, room wipe or policy mutation without explicit user approval. |
 
 Do not inspect T4 `shard-*.json`. Process state, CPU, tmux, supervisor console

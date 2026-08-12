@@ -43,6 +43,14 @@ FROZEN_V3_PACKET = (
     Path(__file__).resolve().parents[1]
     / "runs/logs/pair-aware-whole-round-preflight-v3/controller-packet.json"
 )
+FROZEN_V3_RESULT = FROZEN_V3_PACKET.with_name("capacity.json")
+FROZEN_V3_CONSOLE = FROZEN_V3_PACKET.with_name("console.log")
+FROZEN_V3_PACKET_REVIEW = FROZEN_V3_PACKET.with_name(
+    "packet-review-snapshot.md")
+FROZEN_V3_ADMISSION = (
+    Path(__file__).resolve().parents[1]
+    / "runs/locks/pair-aware-whole-round-preflight-v3.admission.consumed.json"
+)
 
 
 def _review(path: Path) -> Path:
@@ -513,3 +521,76 @@ def test_corrected_v3_air_packet_is_hash_pinned_and_grants_no_gameplay():
         "terminal_history_contract"]
     assert packet["successor_projection"]["candidate_clusters"] == [2048, 8192]
     assert all(value is False for value in packet["authority"].values())
+
+
+def test_corrected_v3_air_capacity_result_is_score_free_and_hash_pinned():
+    raw = FROZEN_V3_RESULT.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == (
+        "08f7282cc2317550336647642085a1c165ae708cb6483b4710d0359b498ef7c1")
+    result = json.loads(raw)
+    internal = result.pop("internal_sha256")
+    assert C.stable_digest(result) == internal == (
+        "222b89c9ff1c0d47530e9980bbb81161d1d22d8c9baf9a60a130ecb870ac9c5e")
+    result["internal_sha256"] = internal
+    assert C.score_free_result_problems(result) == []
+    assert result["schema"] == C.RESULT_SCHEMA
+    assert result["git"] == "1ef8a4d29bb0a2571997bda403b71deec3525ef5"
+    assert result["packet_sha256"] == hashlib.sha256(
+        FROZEN_V3_PACKET.read_bytes()).hexdigest()
+    assert result["admission_sha256"] == hashlib.sha256(
+        FROZEN_V3_ADMISSION.read_bytes()).hexdigest()
+    assert result["records_discarded"] == 24
+    assert result["exact_work_complete"] is True
+    assert result["complete_round_cards_validated"] is True
+    assert result["capacity_pass"] is True
+    assert result["supports_screen_packet_review"] is True
+    assert result["natural_dose"] == {
+        "change_fraction": 0.75,
+        "changes_by_phase": {"early": 5, "late": 0, "mid": 1},
+        "changes_by_role": {"attacker": 3, "defender": 3},
+        "complete_round_pairs": 8,
+        "matched_null_champion_exact_histories": True,
+        "root_action_changes": 6,
+        "rounds_without_root_change": 2,
+        "shared_prefix_plays": 230,
+    }
+    base = result["projection"]["candidates"]["2048"]
+    large = result["projection"]["candidates"]["8192"]
+    assert base["fleet_hours"] < result["projection"]["base_fleet_hour_cap"]
+    assert base["max_shard_hours"] < \
+        result["projection"]["base_max_shard_hour_cap"]
+    assert large["fleet_hours"] > result["projection"]["base_fleet_hour_cap"]
+    assert large["max_shard_hours"] > \
+        result["projection"]["base_max_shard_hour_cap"]
+    assert result["screen_packet_design_authorized"] is False
+    assert result["screen_execution_authorized"] is False
+    assert result["strength_claim"] is False
+    assert result["production_promotion"] is False
+    assert result["production_deployment"] is False
+
+
+def test_corrected_v3_admission_and_review_snapshot_bind_the_one_time_run():
+    admission_raw = FROZEN_V3_ADMISSION.read_bytes()
+    assert hashlib.sha256(admission_raw).hexdigest() == (
+        "c7c20b9bd3a4ebb10967b7bb4aa61ca05d1fccf64eed065c295d00e37ffd2dc9")
+    admission = json.loads(admission_raw)
+    internal = admission.pop("internal_sha256")
+    assert C.stable_digest(admission) == internal == (
+        "07290a71e5960788199cbc58942f3b101294978deae1a80aa8727369d5d3d168")
+    assert admission["schema"] == C.ADMISSION_SCHEMA
+    assert admission["run_id"] == C.RUN_ID
+    assert admission["git"] == "1ef8a4d29bb0a2571997bda403b71deec3525ef5"
+    assert admission["packet_sha256"] == hashlib.sha256(
+        FROZEN_V3_PACKET.read_bytes()).hexdigest()
+    review_raw = FROZEN_V3_PACKET_REVIEW.read_bytes()
+    assert hashlib.sha256(review_raw).hexdigest() == (
+        "fecfd7d33d58f4f6873880623b51636276817032a6efe5aae498765c4a222b7e")
+    claim = C.packet_review_claim(
+        expected_git=admission["git"],
+        packet_sha256=admission["packet_sha256"])
+    parsed = C.parse_marker(
+        FROZEN_V3_PACKET_REVIEW, C.PACKET_REVIEW_PREFIX, claim,
+        label="pair capacity packet review")
+    assert parsed["sha256"] == admission["packet_review_sha256"]
+    assert hashlib.sha256(FROZEN_V3_CONSOLE.read_bytes()).hexdigest() == (
+        "7bc37d1d2ff2bf404b050209daefc16b13aaa0a2789509b31a1d96884489b511")

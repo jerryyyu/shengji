@@ -145,6 +145,11 @@ def run_policy(rnd, seat: int, *, retained: bool, seed: int,
         "report_candidate_index": record["report_candidate_index"],
         "played_index": record["played_index"],
         "selection_means": list(record["means"]),
+        # Preserve the decision evidence, not only its conclusion.  Without
+        # this fold record an aggregate could check that the selected action
+        # was on the ballot, but could not check that the recorded LCB reason
+        # actually implied the recorded played index.
+        "report_fold": dict(record["report_fold"]),
         "work": dict(work),
         "sampler_counters": dict(record["sampler_counters"]["delta"]),
     }

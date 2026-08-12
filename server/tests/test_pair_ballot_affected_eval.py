@@ -133,3 +133,67 @@ def test_aggregate_binds_cluster_and_band_to_source(witness, evaluated):
     AGG._validate_result(bad, split=bad["split"], report_worlds=2)
     with pytest.raises(EVAL.EvalRefused, match="state binding"):
         AGG._validate_source_binding(bad, witness)
+
+
+def test_aggregate_recomputes_rehashed_external_utility(evaluated):
+    bad = copy.deepcopy(evaluated)
+    bad["external_report"]["actions"][0][
+        "acting_level_utilities"][0] += 1.0
+    bad["external_report"]["actions"][0][
+        "mean_acting_level_utility"] += 0.5
+    _rehash(bad)
+    with pytest.raises(EVAL.EvalRefused, match="utility mapping"):
+        AGG._validate_result(bad, split=bad["split"], report_worlds=2)
+
+
+def test_aggregate_recomputes_rehashed_estimand(evaluated):
+    bad = copy.deepcopy(evaluated)
+    bad["estimands"]["retained_policy_minus_current"] += 1.0
+    _rehash(bad)
+    with pytest.raises(EVAL.EvalRefused, match="estimand reconstruction"):
+        AGG._validate_result(bad, split=bad["split"], report_worlds=2)
+
+
+def test_aggregate_recomputes_rehashed_work(evaluated):
+    bad = copy.deepcopy(evaluated)
+    bad["candidate_world_work"]["external_report"] += 1
+    _rehash(bad)
+    with pytest.raises(EVAL.EvalRefused, match="total work reconstruction"):
+        AGG._validate_result(bad, split=bad["split"], report_worlds=2)
+
+
+def test_aggregate_binds_report_evidence_to_recorded_play(evaluated):
+    bad = copy.deepcopy(evaluated)
+    bad["retained"]["report_fold"]["statistic"] = -0.1
+    bad["retained"]["report_fold"]["gap"] = (
+        bad["retained"]["report_fold"]["critical"]
+        * bad["retained"]["report_fold"]["se"] - 0.1)
+    _rehash(bad)
+    with pytest.raises(EVAL.EvalRefused, match="report-fold decision"):
+        AGG._validate_result(bad, split=bad["split"], report_worlds=2)
+
+
+def test_aggregate_recomputes_best_inserted_pair(witness, evaluated):
+    bad = copy.deepcopy(evaluated)
+    inserted_indices = [
+        index for index, cards in enumerate(witness["retained_ballot"])
+        if EVAL.action_key(cards)
+        in {EVAL.action_key(action)
+            for action in witness["inserted_actions"]}
+    ]
+    wrong = next(index for index in inserted_indices
+                 if index != bad["best_inserted_index"])
+    bad["best_inserted_index"] = wrong
+    bad["best_inserted_pair"] = sorted(witness["retained_ballot"][wrong])
+    _rehash(bad)
+    with pytest.raises(EVAL.EvalRefused, match="action binding|selector drift"):
+        AGG._validate_source_binding(bad, witness)
+
+
+def test_aggregate_recomputes_selector_flags(witness, evaluated):
+    bad = copy.deepcopy(evaluated)
+    bad["current_raw_winner_was_evicted"] = not bad[
+        "current_raw_winner_was_evicted"]
+    _rehash(bad)
+    with pytest.raises(EVAL.EvalRefused, match="selector telemetry"):
+        AGG._validate_source_binding(bad, witness)

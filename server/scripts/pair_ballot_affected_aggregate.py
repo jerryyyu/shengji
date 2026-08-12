@@ -26,11 +26,252 @@ METRICS = (
     "retained_policy_minus_current",
     "best_inserted_pair_minus_current",
 )
+POLICY_FIELDS = {
+    "action", "reason", "raw_winner_index", "report_candidate_index",
+    "played_index", "selection_means", "report_fold", "work",
+    "sampler_counters",
+}
+WORK_FIELDS = {
+    "selection_budget", "selection_rollouts", "report_budget",
+    "report_rollouts", "total_budget", "total_rollouts", "complete",
+}
+COUNTER_FIELDS = {
+    "sample_attempts", "accepted_worlds", "failed_worlds",
+    "rejected_worlds", "impossible_worlds",
+}
+REPORT_FOLD_FIELDS = {
+    "gap", "se", "worlds", "attempts", "rejected", "complete", "seed",
+    "fold", "rule", "critical", "statistic", "min_gain", "bound",
+}
+EXTERNAL_REPORT_FIELDS = {"worlds", "sampler", "actions"}
+EXTERNAL_SAMPLER_FIELDS = {
+    "requested", "accepted", "attempts", "attempt_cap", "counters",
+}
+EXTERNAL_ACTION_FIELDS = {
+    "label", "cards", "raw_attacker_points", "acting_level_utilities",
+    "mean_acting_level_utility",
+}
 
 
 def _finite_number(value: object) -> bool:
     return (isinstance(value, (int, float)) and not isinstance(value, bool)
             and math.isfinite(value))
+
+
+def _nonnegative_int(value: object) -> bool:
+    return (isinstance(value, int) and not isinstance(value, bool)
+            and value >= 0)
+
+
+def _close(left: object, right: object) -> bool:
+    return (_finite_number(left) and _finite_number(right)
+            and math.isclose(float(left), float(right),
+                             rel_tol=1e-12, abs_tol=1e-12))
+
+
+def _canonical_action(value: object) -> tuple[str, ...]:
+    if (not isinstance(value, list) or not value
+            or any(not isinstance(card, str) or not card for card in value)):
+        raise EVAL.EvalRefused("pair evaluation action shape drift")
+    key = EVAL.action_key(value)
+    if value != list(key):
+        raise EVAL.EvalRefused("pair evaluation action canonicalization drift")
+    return key
+
+
+def _validate_counters(counters: object, *, accepted: int) -> None:
+    if (not isinstance(counters, dict) or set(counters) != COUNTER_FIELDS
+            or any(not _nonnegative_int(value)
+                   for value in counters.values())
+            or counters["accepted_worlds"] != accepted
+            or counters["sample_attempts"]
+            != counters["accepted_worlds"] + counters["failed_worlds"]
+            or counters["rejected_worlds"] > counters["failed_worlds"]
+            or counters["impossible_worlds"] > counters["failed_worlds"]):
+        raise EVAL.EvalRefused("pair evaluation sampler accounting drift")
+
+
+def _validate_report_fold(fold: object, *, played_index: int,
+                          report_index: int) -> None:
+    if (not isinstance(fold, dict) or set(fold) != REPORT_FOLD_FIELDS
+            or fold.get("fold") != "report"
+            or fold.get("rule") != "lcb"
+            or fold.get("bound")
+            != "paired_student_t_one_sided_95_conservative_df>=29"
+            or fold.get("complete") is not True
+            or fold.get("worlds") != EVAL.REPORT_WORLDS
+            or not _nonnegative_int(fold.get("attempts"))
+            or not _nonnegative_int(fold.get("rejected"))
+            or fold["attempts"] - fold["worlds"] != fold["rejected"]
+            or not _nonnegative_int(fold.get("seed"))
+            or not _finite_number(fold.get("gap"))
+            or not _finite_number(fold.get("se"))
+            or fold["se"] < 0
+            or fold.get("critical") != 1.7
+            or fold.get("min_gain") != 0.0
+            or not _close(
+                fold.get("statistic"),
+                fold["gap"] - fold["critical"] * fold["se"])):
+        raise EVAL.EvalRefused("pair evaluation report-fold evidence drift")
+    expected_played = (report_index
+                       if fold["statistic"] >= fold["min_gain"] else 0)
+    if played_index != expected_played:
+        raise EVAL.EvalRefused("pair evaluation report-fold decision drift")
+
+
+def _validate_policy_record(record: object, *, ballot: list | None = None,
+                            expected_report_seed: int | None = None) -> None:
+    if not isinstance(record, dict) or set(record) != POLICY_FIELDS:
+        raise EVAL.EvalRefused("pair evaluation policy record shape drift")
+    action = _canonical_action(record.get("action"))
+    means = record.get("selection_means")
+    if (not isinstance(means, list) or len(means) < 2
+            or any(not _finite_number(value) for value in means)):
+        raise EVAL.EvalRefused("pair evaluation selection means drift")
+    candidate_count = len(means)
+    indices = [record.get(name) for name in (
+        "raw_winner_index", "report_candidate_index", "played_index")]
+    if any(not _nonnegative_int(index) or index >= candidate_count
+           for index in indices):
+        raise EVAL.EvalRefused("pair evaluation policy index drift")
+    raw_index, report_index, played_index = indices
+    reason = record.get("reason")
+    if reason not in {"report_lcb_override", "report_lcb_below_min_gain"}:
+        raise EVAL.EvalRefused("pair evaluation policy reason drift")
+
+    selection_work = candidate_count * 30
+    expected_work = {
+        "selection_budget": selection_work,
+        "selection_rollouts": selection_work,
+        "report_budget": 2 * EVAL.REPORT_WORLDS,
+        "report_rollouts": 2 * EVAL.REPORT_WORLDS,
+        "total_budget": selection_work + 2 * EVAL.REPORT_WORLDS,
+        "total_rollouts": selection_work + 2 * EVAL.REPORT_WORLDS,
+        "complete": True,
+    }
+    work = record.get("work")
+    if (not isinstance(work, dict) or set(work) != WORK_FIELDS
+            or work != expected_work):
+        raise EVAL.EvalRefused("pair evaluation policy work drift")
+    _validate_counters(
+        record.get("sampler_counters"), accepted=30 + EVAL.REPORT_WORLDS)
+    _validate_report_fold(
+        record.get("report_fold"), played_index=played_index,
+        report_index=report_index)
+    fold = record["report_fold"]
+    if ((reason == "report_lcb_override")
+            is not (fold["statistic"] >= fold["min_gain"])):
+        raise EVAL.EvalRefused("pair evaluation policy reason/evidence drift")
+    if expected_report_seed is not None and fold["seed"] != expected_report_seed:
+        raise EVAL.EvalRefused("pair evaluation report-fold seed drift")
+
+    if ballot is None:
+        return
+    if not isinstance(ballot, list) or len(ballot) != candidate_count:
+        raise EVAL.EvalRefused("pair evaluation ballot/means drift")
+    # Frozen source ballots preserve the production generator's card order;
+    # result actions are canonicalised separately above.
+    ballot_keys = [EVAL.action_key(cards) for cards in ballot]
+    if action != ballot_keys[played_index]:
+        raise EVAL.EvalRefused("pair evaluation played action/index drift")
+    bot = EVAL.make_bot(EVAL.CHAMPION, seed=0)
+    observed_raw = bot._pick_index(ballot, means, range(candidate_count))
+    observed_report = bot._pick_index(
+        ballot, means, range(1, candidate_count))
+    if raw_index != observed_raw or report_index != observed_report:
+        raise EVAL.EvalRefused("pair evaluation selection index drift")
+
+
+def _validate_external_report(row: dict, *, report_worlds: int) -> None:
+    report = row.get("external_report")
+    if (not isinstance(report, dict)
+            or set(report) != EXTERNAL_REPORT_FIELDS
+            or report.get("worlds") != report_worlds):
+        raise EVAL.EvalRefused("pair external report shape/dose drift")
+    sampler = report.get("sampler")
+    factor = int(EVAL.make_bot(
+        EVAL.CHAMPION, seed=0).SAMPLE_ATTEMPT_FACTOR)
+    if (not isinstance(sampler, dict)
+            or set(sampler) != EXTERNAL_SAMPLER_FIELDS
+            or sampler.get("requested") != report_worlds
+            or sampler.get("accepted") != report_worlds
+            or not _nonnegative_int(sampler.get("attempts"))
+            or sampler["attempts"] < report_worlds
+            or sampler.get("attempt_cap") != report_worlds * factor
+            or sampler["attempts"] > sampler["attempt_cap"]):
+        raise EVAL.EvalRefused("pair external report sampler drift")
+    _validate_counters(sampler.get("counters"), accepted=report_worlds)
+    if sampler["counters"]["sample_attempts"] != sampler["attempts"]:
+        raise EVAL.EvalRefused("pair external report attempt drift")
+
+    targets = [
+        ("current_policy", row["current"]["action"]),
+        ("retained_policy", row["retained"]["action"]),
+        ("best_inserted_pair", row["best_inserted_pair"]),
+    ]
+    expected = []
+    seen = set()
+    for label, cards in targets:
+        key = _canonical_action(cards)
+        if key not in seen:
+            seen.add(key)
+            expected.append((label, key))
+    actions = report.get("actions")
+    if not isinstance(actions, list) or len(actions) != len(expected):
+        raise EVAL.EvalRefused("pair external report action population drift")
+    by_key = {}
+    sign = 1.0 if row.get("role") == "attacker" else -1.0
+    for record, (label, expected_key) in zip(actions, expected, strict=True):
+        if (not isinstance(record, dict)
+                or set(record) != EXTERNAL_ACTION_FIELDS
+                or record.get("label") != label
+                or _canonical_action(record.get("cards")) != expected_key):
+            raise EVAL.EvalRefused("pair external report action binding drift")
+        points = record.get("raw_attacker_points")
+        utilities = record.get("acting_level_utilities")
+        if (not isinstance(points, list) or not isinstance(utilities, list)
+                or len(points) != report_worlds
+                or len(utilities) != report_worlds
+                or any(not _finite_number(value) for value in points)
+                or any(not _finite_number(value) for value in utilities)):
+            raise EVAL.EvalRefused("pair external report utility dose drift")
+        expected_utilities = [
+            sign * EVAL.attacker_level_utility(float(point))
+            for point in points
+        ]
+        if any(not _close(observed, wanted)
+               for observed, wanted in zip(
+                   utilities, expected_utilities, strict=True)):
+            raise EVAL.EvalRefused("pair external report utility mapping drift")
+        if not _close(
+                record.get("mean_acting_level_utility"),
+                sum(utilities) / report_worlds):
+            raise EVAL.EvalRefused("pair external report mean drift")
+        by_key[expected_key] = record
+
+    def paired(left: list[str], right: list[str]) -> float:
+        lhs = by_key[EVAL.action_key(left)]["acting_level_utilities"]
+        rhs = by_key[EVAL.action_key(right)]["acting_level_utilities"]
+        return sum(a - b for a, b in zip(lhs, rhs, strict=True)) / report_worlds
+
+    expected_estimands = {
+        "retained_policy_minus_current": paired(
+            row["retained"]["action"], row["current"]["action"]),
+        "best_inserted_pair_minus_current": paired(
+            row["best_inserted_pair"], row["current"]["action"]),
+    }
+    estimands = row.get("estimands")
+    if (not isinstance(estimands, dict) or set(estimands) != set(METRICS)
+            or any(not _close(estimands[name], value)
+                   for name, value in expected_estimands.items())):
+        raise EVAL.EvalRefused("pair evaluation estimand reconstruction drift")
+    expected_work = {
+        "current_policy": row["current"]["work"]["total_rollouts"],
+        "retained_policy": row["retained"]["work"]["total_rollouts"],
+        "external_report": len(actions) * report_worlds,
+    }
+    if row.get("candidate_world_work") != expected_work:
+        raise EVAL.EvalRefused("pair evaluation total work reconstruction drift")
 
 
 def _validate_result(row: object, *, split: str,
@@ -49,18 +290,34 @@ def _validate_result(row: object, *, split: str,
             or row.get("external_report_seed") != EVAL.seed_for(
                 state_id, "external-report")
             or row.get("split") != split
+            or row.get("band") not in STATES.BANDS
+            or row.get("role") not in {"attacker", "defender"}
+            or not _nonnegative_int(row.get("deal_seed"))
+            or not isinstance(row.get("state_sha256"), str)
+            or len(row["state_sha256"]) != 64
+            or not _nonnegative_int(row.get("best_inserted_index"))
             or row.get("diagnostic_only") is not True
             or row.get("strength_claim") is not False
             or row.get("production_promotion") is not False
             or row.get("production_deployment") is not False
-            or row.get("external_report", {}).get("worlds") != report_worlds
-            or set(row.get("estimands", {})) != set(METRICS)
-            or any(not _finite_number(row["estimands"][metric])
-                   for metric in METRICS)
             or any(not isinstance(row.get(field), bool) for field in (
                 "policy_action_changed", "retained_raw_winner_is_inserted",
                 "current_raw_winner_was_evicted"))):
         raise EVAL.EvalRefused("pair evaluation result content/authority drift")
+    _canonical_action(row.get("best_inserted_pair"))
+    expected_policy_report_seed = EVAL.make_bot(
+        EVAL.CHAMPION, seed=row["policy_root_seed"]).rng.getstate()
+    # The live policy derives its report stream from the untouched initial RNG
+    # state.  Keep the private derivation in one implementation rather than
+    # duplicating its serialization here.
+    from shengji.ai.mcbot import _child_seed
+    expected_policy_report_seed = _child_seed(
+        expected_policy_report_seed, "s0-report")
+    _validate_policy_record(
+        row.get("current"), expected_report_seed=expected_policy_report_seed)
+    _validate_policy_record(
+        row.get("retained"), expected_report_seed=expected_policy_report_seed)
+    _validate_external_report(row, report_worlds=report_worlds)
 
 
 def _validate_source_binding(result: dict, source: dict) -> None:
@@ -68,6 +325,45 @@ def _validate_source_binding(result: dict, source: dict) -> None:
                   "band", "role"):
         if result.get(field) != source.get(field):
             raise EVAL.EvalRefused("pair aggregate state binding drift")
+    current_ballot = source.get("current_ballot")
+    retained_ballot = source.get("retained_ballot")
+    _validate_policy_record(result.get("current"), ballot=current_ballot)
+    _validate_policy_record(result.get("retained"), ballot=retained_ballot)
+
+    inserted = {EVAL.action_key(cards)
+                for cards in source.get("inserted_actions", [])}
+    evicted = {EVAL.action_key(cards)
+               for cards in source.get("evicted_actions", [])}
+    best_index = result["best_inserted_index"]
+    if (best_index >= len(retained_ballot)
+            or EVAL.action_key(retained_ballot[best_index])
+            != EVAL.action_key(result["best_inserted_pair"])
+            or EVAL.action_key(result["best_inserted_pair"]) not in inserted):
+        raise EVAL.EvalRefused("pair aggregate inserted-pair binding drift")
+    inserted_indices = [
+        index for index, cards in enumerate(retained_ballot)
+        if EVAL.action_key(cards) in inserted
+    ]
+    observed_best = max(
+        inserted_indices,
+        key=lambda index: result["retained"]["selection_means"][index])
+    if best_index != observed_best:
+        raise EVAL.EvalRefused("pair aggregate best inserted selector drift")
+
+    current = result["current"]
+    retained = result["retained"]
+    expected_flags = {
+        "policy_action_changed": (
+            EVAL.action_key(current["action"])
+            != EVAL.action_key(retained["action"])),
+        "retained_raw_winner_is_inserted": EVAL.action_key(
+            retained_ballot[retained["raw_winner_index"]]) in inserted,
+        "current_raw_winner_was_evicted": EVAL.action_key(
+            current_ballot[current["raw_winner_index"]]) in evicted,
+    }
+    if any(result[name] is not value
+           for name, value in expected_flags.items()):
+        raise EVAL.EvalRefused("pair aggregate selector telemetry drift")
 
 
 def load_shard(path: Path) -> dict:

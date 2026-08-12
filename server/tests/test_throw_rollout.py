@@ -63,34 +63,35 @@ def _all_boss_throw_state() -> Round:
     return rnd
 
 
-def test_boss_near_mode_recovers_named_kesp_action_but_safe_mode_declines():
+def test_boss_near_mode_recovers_named_kesp_action_but_all_boss_declines():
     rnd, witness = _kesp_state("KESP:r4:jerry:partial-near-boss")
     seat = witness["seat"]
     target = sorted(witness["human_action"])
     baseline = HeuristicBot().decide_play(rnd, seat)
     assert sorted(baseline) != target
 
-    safe = S6ThrowRolloutPolicy(mode="safe")
+    all_boss = S6ThrowRolloutPolicy(mode="all_boss")
     near = S6ThrowRolloutPolicy(mode="boss_near")
-    assert safe.decide_play(copy.deepcopy(rnd), seat) == baseline
+    assert all_boss.decide_play(copy.deepcopy(rnd), seat) == baseline
     assert sorted(near.decide_play(copy.deepcopy(rnd), seat)) == target
 
-    safe_t = safe.telemetry()
+    all_boss_t = all_boss.telemetry()
     near_t = near.telemetry()
-    assert safe_t["near_candidates"] >= 1 and safe_t["changes"] == 0
+    assert all_boss_t["near_candidates"] >= 1 \
+        and all_boss_t["changes"] == 0
     assert near_t["near_candidates"] >= 1 and near_t["changes"] == 1
     assert near_t["early_changes"] == near_t["defender_changes"] == 1
 
 
-def test_safe_mode_plays_a_publicly_proven_multi_component_boss_throw():
+def test_all_boss_mode_plays_when_public_memory_has_no_ruff_warning():
     rnd = _all_boss_throw_state()
     baseline = HeuristicBot().decide_play(rnd, 0)
     assert sorted(baseline) == ["CA", "CA"]
-    policy = S6ThrowRolloutPolicy(mode="safe")
+    policy = S6ThrowRolloutPolicy(mode="all_boss")
     assert sorted(policy.decide_play(rnd, 0)) == \
         ["CA", "CA", "CK", "CQ", "CQ"]
     record = policy.telemetry()
-    assert record["safe_candidates"] >= 1
+    assert record["all_boss_candidates"] >= 1
     assert record["eligible_leads"] == record["changes"] == 1
     assert record["defender_changes"] == record["early_changes"] == 1
 
@@ -100,7 +101,7 @@ def test_public_ruff_risk_declines_even_an_all_boss_bundle():
         "KESP:r5:jerry:boss-bundle-under-ruff-risk")
     seat = witness["seat"]
     baseline = HeuristicBot().decide_play(rnd, seat)
-    for mode in ("safe", "boss_near"):
+    for mode in ("all_boss", "boss_near"):
         policy = S6ThrowRolloutPolicy(mode=mode)
         assert policy.decide_play(copy.deepcopy(rnd), seat) == baseline
         telemetry = policy.telemetry()
@@ -144,7 +145,7 @@ def test_factory_preserves_literal_baseline_and_registers_no_policy():
     assert make_s6_continuation_policy(
         "baseline", baseline=baseline) is baseline
     assert isinstance(make_s6_continuation_policy(
-        "safe", baseline=baseline), S6ThrowRolloutPolicy)
+        "all_boss", baseline=baseline), S6ThrowRolloutPolicy)
     with pytest.raises(ValueError, match="continuation mode"):
         make_s6_continuation_policy("recursive_mc", baseline=baseline)
     assert not any("s6-rollout" in name for name in REGISTRY)

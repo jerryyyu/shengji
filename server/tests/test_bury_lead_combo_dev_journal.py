@@ -137,7 +137,7 @@ def test_continuation_mode_is_manifest_bound_and_recorded(tmp_path):
     with pytest.raises(J.JournalRefused, match="manifest differs"):
         J.journal_selection(
             selection, output, worlds=1, base_seed=7, limit=1,
-            continuation_mode="safe", runtime=_runtime(),
+            continuation_mode="all_boss", runtime=_runtime(),
             scorer=_fake_scorer())
 
 

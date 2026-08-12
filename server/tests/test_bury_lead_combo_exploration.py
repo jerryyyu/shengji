@@ -234,7 +234,7 @@ def test_s6_continuation_mode_is_passed_and_its_dose_is_recorded(monkeypatch):
         nonlocal calls
         assert sampled == {"world": 0}
         assert isinstance(continuation_policy, S6ThrowRolloutPolicy)
-        assert continuation_policy.mode == "safe"
+        assert continuation_policy.mode == "all_boss"
         assert len(continuation_policy.decide_play(
             copy.deepcopy(witness), 0)) == 5
         calls += 1
@@ -243,12 +243,12 @@ def test_s6_continuation_mode_is_passed_and_its_dose_is_recorded(monkeypatch):
     monkeypatch.setattr(E, "_rollout_bury_lead", rollout)
     result = E.score_state(
         rnd, seat, bot=bot, incumbent_bury=incumbent, worlds=1,
-        continuation_mode="safe", max_candidate_rollouts=10_000)
+        continuation_mode="all_boss", max_candidate_rollouts=10_000)
     assert calls == result["candidate_count"]
-    assert result["scoring_contract"]["continuation_mode"] == "safe"
+    assert result["scoring_contract"]["continuation_mode"] == "all_boss"
     assert result["scoring_contract"]["recursive_mc_continuation"] is False
     dose = result["continuation_dose"]
-    assert dose["mode"] == "safe"
+    assert dose["mode"] == "all_boss"
     assert dose["delta"]["changes"] == dose["delta"]["lead_calls"] == calls
 
 

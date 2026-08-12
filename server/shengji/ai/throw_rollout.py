@@ -10,9 +10,10 @@ preserved?
 These deterministic rollout policies provide two sensitivity arms without
 registering a bot or changing the production rollout:
 
-``safe``
-    Lead only an S6 boss-component bundle that public information proves is
-    ruff-safe and whose every component is currently boss.
+``all_boss``
+    Lead only an S6 bundle whose every component is currently boss and for
+    which public memory raises no ruff warning.  An unobserved void can still
+    exist; the determinized engine, not this source, prices that hidden risk.
 
 ``boss_near``
     Also permit the source's bounded near-boss pair/tractor component.  This
@@ -36,7 +37,7 @@ from .memory import Memory
 from .throw_sourcing import BOSS_NEAR_BUNDLE, structured_throw_ballot
 
 
-S6_CONTINUATION_MODES = ("baseline", "safe", "boss_near")
+S6_CONTINUATION_MODES = ("baseline", "all_boss", "boss_near")
 S6_ROLLOUT_COUNTER_FIELDS = (
     "play_calls",
     "lead_calls",
@@ -44,7 +45,7 @@ S6_ROLLOUT_COUNTER_FIELDS = (
     "source_candidates",
     "boss_near_candidates",
     "ruff_risk_declines",
-    "safe_candidates",
+    "all_boss_candidates",
     "near_candidates",
     "eligible_leads",
     "changes",
@@ -78,8 +79,9 @@ class S6ThrowRolloutPolicy(HeuristicBot):
     """Historical rollout plus one deterministic actor-visible lead seam."""
 
     def __init__(self, *, mode: str):
-        if mode not in {"safe", "boss_near"}:
-            raise ValueError("S6 rollout mode must be 'safe' or 'boss_near'")
+        if mode not in {"all_boss", "boss_near"}:
+            raise ValueError(
+                "S6 rollout mode must be 'all_boss' or 'boss_near'")
         self.mode = mode
         self._s6_rollout_totals = Counter(
             {name: 0 for name in S6_ROLLOUT_COUNTER_FIELDS})
@@ -140,7 +142,7 @@ class S6ThrowRolloutPolicy(HeuristicBot):
                 counters["early_changes"] + counters["mid_changes"]
                 + counters["late_changes"]):
             raise AssertionError("S6 rollout phase paths do not reconcile")
-        if counters["safe_candidates"] + counters["near_candidates"] > \
+        if counters["all_boss_candidates"] + counters["near_candidates"] > \
                 counters["boss_near_candidates"]:
             raise AssertionError("S6 rollout candidate classes do not reconcile")
         if counters["boss_near_candidates"] > counters["source_candidates"]:
@@ -169,9 +171,9 @@ class S6ThrowRolloutPolicy(HeuristicBot):
                 totals["ruff_risk_declines"] += 1
                 continue
             all_boss = _all_components_boss(candidate.cards, memory)
-            totals["safe_candidates" if all_boss
+            totals["all_boss_candidates" if all_boss
                    else "near_candidates"] += 1
-            if self.mode == "safe" and not all_boss:
+            if self.mode == "all_boss" and not all_boss:
                 continue
             # Prefer certainty, then shedding more cards/components.  The last
             # two fields make ties stable while exposing fewer own points when

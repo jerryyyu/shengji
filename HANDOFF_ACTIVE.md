@@ -10,7 +10,7 @@
 > `docs_archive/handoff-active-through-2026-08-11-10-22.md` and
 > `docs_archive/handoff-review-2026-08-08-through-2026-08-11-10-22.md`.
 
-Last reconciled: 2026-08-12 06:20 EDT.
+Last reconciled: 2026-08-12 06:39 EDT.
 
 ## Immediate objective
 
@@ -25,7 +25,7 @@ shuai-pai sourcing, and pair-aware rollouts.
 |---|---|---|
 | **T4 mid/late Teacher hybrid** | The model may propose one move after trick five; fresh Monte Carlo search still prices it and preserves the live champion as fallback. Its 256-state test passed both controls. The sole 2,048-cluster whole-round screen started on Mini at 23:20 EDT; at 05:40 all eight workers remained CPU-bound after 6h20m. Outcomes remain sealed. | Monitor only. After all workers finish, Claude reviews the score-free `supervisor-final.json`; only a PASS permits aggregation and outcome access. The aggregate then needs terminal external review. |
 | **S4 point banking** | Two independent 2,048-cluster runs were directionally positive. A genuinely fresh automatic two-look design can resolve a roughly `+0.03` effect. Controller PR #40 is pushed at `3403cdf`; a launch audit staged the exact pinned Air binary and RLCB parent evidence, and `require_runtime` now passes without changing source or outcomes. | External controller review. A PASS authorizes exactly one score-free Air preflight and sequential-packet design—not scored execution. |
-| **S6 shuai-pai sourcing** | The full-hand boss/near stratum survived two steps. Exact oracle value was `+0.234` levels (LCB `+0.100`) on 128 balanced states. It occurs in 2.02% of 50,000 natural deals, concentrated mid/late. More importantly, the actor-visible report-LCB gate realized `+0.307` levels versus its own incumbent (state-cluster LCB `+0.175`) across 512 decisions, with both roles positive; this reused-DEV fitting result is not strength evidence. PR #50 head `f3918d2`. | External semantics/result review should authorize one score-free full-hand whole-game preflight **packet design only**. Build that controller in parallel; fresh execution still needs its own later packet marker. Keep broad PR #41/#47 reviews independent. |
+| **S6 shuai-pai sourcing** | The full-hand boss/near stratum survived exact oracle and actor-visible selector tests. The latter realized `+0.307` levels versus its own incumbent (state-cluster LCB `+0.175`) across 512 reused-DEV decisions; this is feasibility, not strength. The 6,144-cluster capacity controller is implemented and cleanly staged on Air at PR #50 head `d65dd08`; 70 tests pass. Eight Air workers are now running a separate 512-deal **score-free** live-champion trajectory census to validate the 2.02% heuristic dose assumption. | External review of exact selector head `f3918d2` must authorize packet design. Then freeze and separately review the score-free preflight packet; fresh scored execution remains unauthorized. Use the champion census to repair sizing before freeze if its rate materially disagrees. |
 | **Pair-aware rollout** | V3 capacity passed externally after changing 6/8 mirrored roots. Exact source `cd20670` froze PR #49's 7,168-cluster packet (`4ece02b9…ae47`) on Air; it remains unadmitted and contains no gameplay. | Review the exact source and packet. The reviewer must explicitly resolve the 7,168-cluster design against the capacity review's “bounded at 2,048” prose. Only the requested raw packet marker may authorize execution. |
 
 ## Review queue — precise asks
@@ -113,7 +113,7 @@ retry or extension.
 | host | current use | next authorized use |
 |---|---|---|
 | **Mini** | T4 eight-shard whole-round screen; projected maximum about 45.4 wall hours. | Keep isolated until T4 terminal seal. |
-| **Air** | The S6 score-free census and reusable-DEV selector diagnostic completed cleanly; no scored fresh population was spent. Pair's powered packet remains frozen but unadmitted. | Build the S6 full-hand score-free preflight packet while waiting. First authenticated execution marker among pair, S4 or S6 controls the next run; keep namespaces disjoint. |
+| **Air** | Eight workers run `s6-full-hand-champion-census-v1`: 512 complete live-champion rounds, source counts only. No utility or outcome is retained. Pair's powered packet remains frozen but unadmitted. | Finish/preserve the census. First authenticated execution marker among pair, S4 or S6 controls the next reviewed run; keep namespaces disjoint. |
 | **Production** | Release 17, `mc-s0-report-lcb`. | No deploy, restart, room wipe or policy mutation without explicit user approval. |
 
 Do not inspect T4 `shard-*.json`. Process state, CPU, tmux, supervisor console

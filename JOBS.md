@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-12 06:20 EDT. This file owns current compute and
+Last reconciled: 2026-08-12 06:39 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -10,7 +10,7 @@ compact terminal stubs. Historical detail is archived in
 | host | live strength job | health / next use |
 |---|---|---|
 | **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; at 05:40 all remained CPU-bound after 6h20m. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
-| **Air** | — | **IDLE AFTER COMPLETING USEFUL EXPLORATION.** The S6 50,000-deal score-free census and 512-decision reusable-DEV selector diagnostic both completed cleanly. Pair's 7,168-cluster packet remains frozen but unadmitted. S4, broad S6 and pair scored work remain unauthorized until their distinct raw markers land; the S6 full-hand preflight controller is being built meanwhile. |
+| **Air** | `s6-full-hand-champion-census-v1` | **HEALTHY / SATURATED.** Eight workers started at 06:35 under exact head `d65dd08`, 64 deals each. They retain source/dose counts only—no winner, points, utility, action or hand. This checks whether the 2.02% heuristic prevalence transfers to literal four-seat `mc-s0-report-lcb` trajectories before sizing is frozen. |
 | **Fly production** | `mc-s0-report-lcb` | Release 17 remains live. No deploy, restart, room wipe or policy change is authorized. |
 
 ## Reviewed queue

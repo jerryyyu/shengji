@@ -8,6 +8,10 @@ import pytest
 
 
 SCRIPTS = Path(__file__).parents[1] / "scripts"
+RESULT = Path(__file__).parent / "data/pair_ballot_retention_census.v1.json"
+RESULT_SHA256 = (
+    "557df62773ce6e2f37b1a4af36ea40b7b11b030b359c892ceda6429a293c61f3"
+)
 sys.path.insert(0, str(SCRIPTS))
 
 import pair_ballot_retention_census as CENSUS  # noqa: E402
@@ -81,6 +85,21 @@ def test_content_review_claim_grants_read_only_not_rerun_or_strength():
 
 def test_result_schema_closes_count_arithmetic_without_outcomes():
     assert REVIEW.result_problems(_result()) == []
+
+
+def test_preserved_million_round_result_is_exact_and_verifies():
+    verified = REVIEW.load_and_verify(RESULT)
+    assert verified == {
+        "verified": True,
+        "artifact_sha256": RESULT_SHA256,
+        "schema": CENSUS.SCHEMA,
+        "source_git": REVIEW.SOURCE_GIT,
+        "games": REVIEW.EXPECTED_GAMES,
+        "score_free": True,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+    }
 
 
 @pytest.mark.parametrize(("mutate", "needle"), [

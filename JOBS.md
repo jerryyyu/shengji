@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-12 10:42 EDT. This file owns current compute and
+Last reconciled: 2026-08-12 11:03 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -11,19 +11,19 @@ compact terminal stubs. Historical detail is archived in
 |---|---|---|
 | **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; at 10:32 all eight remained at roughly 93–99% CPU after 11h12m and every shard's reviewed score-free heartbeat had reached `treatment 200/512`. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
 | **Air** | `pair-aware-whole-round-screen-v3` | **HEALTHY / SATURATED.** The sole reviewed 7,168-cluster screen was admitted and launched around 07:24 under exact source `cd20670`. At 10:32 detached supervisor PID 88455 and all eight workers remained CPU-bound after 3h08m; the score-free heartbeat reported 0/8 terminal shards. Do not inspect shard JSON; safe monitoring is process state and the reviewed score-free supervisor heartbeat only. |
-| **Cloud** | `s4-point-banking-future-cloud-preflight-239b-v1` | **RUNNING / SCORE-FREE.** Claude passed exact Cloud controller `6ba6b81` at main ledger commit `368c2bd`. Its one authorized four-cluster preflight was admitted at 10:37 under durable tmux `s4-future-cloud-preflight-v1`; at 10:42 it had completed 3/4 clusters and still ran alone so elapsed capacity is interpretable. The prior million-round pair-retention census has now been reviewed, verified and preserved at PR #55 `24b421d`. |
+| **Cloud** | none | **IDLE BY REVIEW GATE.** The sole S4 score-free preflight completed 4/4 and HOLDed the old eight-shard envelope at 869.30 fleet-hours / 108.66 hours per shard. Exact result `70a15405…413e` is preserved on PR #56 `9f9d80b`; C2 design PR #59 `f0c2a6d` uses 16 shards and keeps the evidence target. No retry, packet or scored run is authorized until the HOLD and design reviews complete. Pair census is reviewed/preserved at PR #55 `24b421d`. |
 | **Fly production** | `mc-s0-report-lcb` | Release 18 / image `kitty-xray-b5a35ae` is healthy. This is the release-17 runtime plus PR #11 kitty X-ray only; no policy changed. Rollback runtime remains release 17 / `latency-cd6789e`. |
 
 ## Reviewed queue
 
 | order | job | current gate |
 |---:|---|---|
-| 1 | S4 future-only sequential packet | **SCORE-FREE PREFLIGHT RUNNING.** The repaired Cloud controller `6ba6b81` passed independent review and consumed its one preflight admission at 10:37. After natural completion, Claude reviews the capacity result; only a PASS permits the sequential packet freeze/review. No scored authority follows from the controller marker. |
+| 1 | S4 C2 16-shard sequential packet | **CAPACITY HOLD + SUCCESSOR DESIGN REVIEWS PENDING.** The old eight-shard profile is terminal HOLD, not retryable. PR #56 `9f9d80b` preserves/repairs result review; PR #59 `f0c2a6d` retains 8,192/16,384 clusters with 16 shards and a measured 1,024/64 envelope. After both PASSes, implement and separately review a fresh packet. |
 | 2 | Selective S6 shuai-pai preflight | **V2 PACKET REVIEW PENDING.** Source `a48542d` closes the unit-map, singleton-freeze and factual-runtime HOLDs. PR #50 `936345b` preserves packet `19f3b2a3…79dd0` plus receipt `df54dcfe…aebba`; 62 S6 tests pass. A PASS permits one four-cluster score-free preflight, queued until Air is free. |
 
 Pair-v3 now owns Air and has no retry or extension authority. S4's exact Cloud
-controller marker has been consumed only for the score-free preflight; neither
-the old Air marker nor the valid Mini marker authorized it. Selective S6's old v1 packet is
+controller marker was consumed by a terminal capacity HOLD and grants nothing
+further; neither the old Air nor Mini marker transfers to C2. Selective S6's old v1 packet is
 superseded and must never run. A
 packet or implementation review never substitutes for its named later
 authority.
@@ -44,6 +44,7 @@ outcome-bearing aggregate input.
 
 | date | job | verdict / headline | anchor |
 |---|---|---|---|
+| 08-12 | S4 future Cloud capacity preflight | **HOLD OLD EXECUTION PROFILE:** every score-free integrity/dose criterion passed, but the frozen eight-shard schedule projects 869.30 fleet-hours / 108.66 hours per shard over 4/4 measured clusters, above 768/96 caps. Preserve the 8,192/16,384 evidence target and use a reviewed 16-shard successor; never retry this preflight. | result `70a15405…413e` / PR #56 `9f9d80b`; C2 design PR #59 `f0c2a6d` |
 | 08-12 | Pair-ballot retention source census | **REAL BUT EARLY-SKEWED SOURCE GAP:** 15,187/18,618,281 lead states (`0.0816%`) omitted at least one legal pair; 14,826 were early (`97.6%`), 352 mid and 9 late. Advance to a trigger-matched equal-work state screen, not a uniformly diluted whole-game duel. Score-free prevalence only. | result `557df627…61f3` / PR #55 `24b421d` |
 | 08-12 | S6 literal-champion source census | **DOSE TRANSFERS / SCORE-FREE:** 13/512 rounds (`2.54%`) and 13/9,382 leads (`0.139%`) exposed the full-hand gate; all triggers were mid/late, split 10 attacker / 3 defender. This is slightly above the 2.02% heuristic trajectory estimate, so the 7,168-cluster screen keeps its conservative lower-rate sizing. | aggregate `65eacf05…bf14` / PR #50 `90f05eb` |
 | 08-12 | S6 actor-visible full-hand selector | **ADVANCE TO FRESH WHOLE-GAME PACKET DESIGN (reused DEV):** 512 decisions on 128 public states; 427 overrides, 101 beneficial / 20 harmful / 306 neutral; state-cluster mean `+0.307`, LCB `+0.175`, both roles positive. This is selector feasibility, not independent strength. | result `54733434…984c` / PR #50 `f3918d2` |

@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-12 10:00 EDT. This file owns current compute and
+Last reconciled: 2026-08-12 10:42 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -9,21 +9,21 @@ compact terminal stubs. Historical detail is archived in
 
 | host | live strength job | health / next use |
 |---|---|---|
-| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; at 10:00 all eight remained at roughly 96–99% CPU after 10h39m and every shard's reviewed score-free heartbeat had reached `treatment 200/512`. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
-| **Air** | `pair-aware-whole-round-screen-v3` | **HEALTHY / SATURATED.** The sole reviewed 7,168-cluster screen was admitted and launched around 07:24 under exact source `cd20670`. At 10:00 detached supervisor PID 88455 and all eight workers remained CPU-bound after 2h35m; the score-free heartbeat reported 0/8 terminal shards. Do not inspect shard JSON; safe monitoring is process state and the reviewed score-free supervisor heartbeat only. |
-| **Cloud** | `pair-retention-census-v1` | **HEALTHY / SATURATED, SOURCE-ONLY.** Sixteen workers run under detached tmux from exact PR #55 head `1d6bd2f`. Process identity, CPU, tmux and progress/result file metadata are visible. The temporary census producer/schema has not been independently reviewed, so no progress or result content may be opened yet. No score or game outcome is intended. |
+| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; at 10:32 all eight remained at roughly 93–99% CPU after 11h12m and every shard's reviewed score-free heartbeat had reached `treatment 200/512`. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
+| **Air** | `pair-aware-whole-round-screen-v3` | **HEALTHY / SATURATED.** The sole reviewed 7,168-cluster screen was admitted and launched around 07:24 under exact source `cd20670`. At 10:32 detached supervisor PID 88455 and all eight workers remained CPU-bound after 3h08m; the score-free heartbeat reported 0/8 terminal shards. Do not inspect shard JSON; safe monitoring is process state and the reviewed score-free supervisor heartbeat only. |
+| **Cloud** | `s4-point-banking-future-cloud-preflight-239b-v1` | **RUNNING / SCORE-FREE.** Claude passed exact Cloud controller `6ba6b81` at main ledger commit `368c2bd`. Its one authorized four-cluster preflight was admitted at 10:37 under durable tmux `s4-future-cloud-preflight-v1`; at 10:42 it had completed 3/4 clusters and still ran alone so elapsed capacity is interpretable. The prior million-round pair-retention census has now been reviewed, verified and preserved at PR #55 `24b421d`. |
 | **Fly production** | `mc-s0-report-lcb` | Release 18 / image `kitty-xray-b5a35ae` is healthy. This is the release-17 runtime plus PR #11 kitty X-ray only; no policy changed. Rollback runtime remains release 17 / `latency-cd6789e`. |
 
 ## Reviewed queue
 
 | order | job | current gate |
 |---:|---|---|
-| 1 | S4 future-only sequential preflight | Claude passed the Mini controller at `3e668fb`, but it is superseded for the current launch order. Cloud successor PR #56 head `b0176fc` awaits exact-controller review plus a preserved cross-architecture replay witness. A Cloud PASS permits one score-free Cloud preflight and packet design only; no scored authority follows. |
+| 1 | S4 future-only sequential packet | **SCORE-FREE PREFLIGHT RUNNING.** The repaired Cloud controller `6ba6b81` passed independent review and consumed its one preflight admission at 10:37. After natural completion, Claude reviews the capacity result; only a PASS permits the sequential packet freeze/review. No scored authority follows from the controller marker. |
 | 2 | Selective S6 shuai-pai preflight | **V2 PACKET REVIEW PENDING.** Source `a48542d` closes the unit-map, singleton-freeze and factual-runtime HOLDs. PR #50 `936345b` preserves packet `19f3b2a3…79dd0` plus receipt `df54dcfe…aebba`; 62 S6 tests pass. A PASS permits one four-cluster score-free preflight, queued until Air is free. |
 
-Pair-v3 now owns Air and has no retry or extension authority. S4 waits on its
-Cloud-specific raw controller marker; neither the old Air marker nor the valid
-Mini marker can authorize the Cloud profile. Selective S6's old v1 packet is
+Pair-v3 now owns Air and has no retry or extension authority. S4's exact Cloud
+controller marker has been consumed only for the score-free preflight; neither
+the old Air marker nor the valid Mini marker authorized it. Selective S6's old v1 packet is
 superseded and must never run. A
 packet or implementation review never substitutes for its named later
 authority.
@@ -44,6 +44,7 @@ outcome-bearing aggregate input.
 
 | date | job | verdict / headline | anchor |
 |---|---|---|---|
+| 08-12 | Pair-ballot retention source census | **REAL BUT EARLY-SKEWED SOURCE GAP:** 15,187/18,618,281 lead states (`0.0816%`) omitted at least one legal pair; 14,826 were early (`97.6%`), 352 mid and 9 late. Advance to a trigger-matched equal-work state screen, not a uniformly diluted whole-game duel. Score-free prevalence only. | result `557df627…61f3` / PR #55 `24b421d` |
 | 08-12 | S6 literal-champion source census | **DOSE TRANSFERS / SCORE-FREE:** 13/512 rounds (`2.54%`) and 13/9,382 leads (`0.139%`) exposed the full-hand gate; all triggers were mid/late, split 10 attacker / 3 defender. This is slightly above the 2.02% heuristic trajectory estimate, so the 7,168-cluster screen keeps its conservative lower-rate sizing. | aggregate `65eacf05…bf14` / PR #50 `90f05eb` |
 | 08-12 | S6 actor-visible full-hand selector | **ADVANCE TO FRESH WHOLE-GAME PACKET DESIGN (reused DEV):** 512 decisions on 128 public states; 427 overrides, 101 beneficial / 20 harmful / 306 neutral; state-cluster mean `+0.307`, LCB `+0.175`, both roles positive. This is selector feasibility, not independent strength. | result `54733434…984c` / PR #50 `f3918d2` |
 | 08-12 | S6 full-hand natural prevalence | **VIABLE SELECTIVE DOSE / SCORE-FREE:** 1,011/50,000 deals (2.02%) triggered; 1,085/1,067,189 leads, all mid/late; 126 occurred at four cards. | result `8934c2e3…ea45` / PR #50 |

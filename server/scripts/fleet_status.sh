@@ -157,14 +157,14 @@ if [ -f "$HR" ]; then
   # "## Codex audit message ..."). The old pattern "^### \[Codex" matched
   # nothing and reported 0 unread while real replies sat in the file
   # (found 2026-08-04 — a monitor that cannot fail loudly is worse than none).
-  n=$(grep -cE "^#{2,3} Codex" "$HR" 2>/dev/null || echo 0)
+  codex_n=$(grep -cE "^#{2,3} Codex" "$HR" 2>/dev/null || echo 0)
+  claude_n=$(grep -cE "^#{2,3} Claude" "$HR" 2>/dev/null || echo 0)
   if [ ! -f "$HR" ]; then
     echo "  MAILBOX UNREADABLE at $HR — this is NOT 'no new entries'"
   fi
-  echo "  Codex entries: $n   (file mtime: $(stat -f "%Sm" -t "%m-%d %H:%M" "$HR"))"
-  last=$(grep -nE "^#{2,3} (Codex|Claude reply)" "$HR" | tail -2 | sed "s/^/    /")
+  echo "  Codex entries: $codex_n  Claude entries: $claude_n   (file mtime: $(stat -f "%Sm" -t "%m-%d %H:%M" "$HR"))"
+  last=$(grep -nE "^#{2,3} (Codex|Claude)" "$HR" | tail -2 | sed "s/^/    /")
   [ -n "$last" ] && printf "  last exchange:\n%s\n" "$last"
-  [ "$n" -gt 0 ] && sed -n "/^### \[Codex/,\$p" "$HR" | head -30
 else
   echo "  (HANDOFF_REVIEW.md not found)"
 fi

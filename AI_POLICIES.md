@@ -15,46 +15,50 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-10 14:24 EDT
+## Current synthesis — 2026-08-11 21:11 EDT
 
-### Canonical terminal-results table
+### At a glance
 
-This is the one compact index of decision-changing AI evidence. Detailed
-mechanics remain below and exact job chronology remains in `JOBS.md` and the
-dated archive. Other documents should link here instead of copying a second
-results table.
+- **Live champion:** the two-stage Monte Carlo policy is still the only
+  confirmed and deployed strength gain.
+- **Closest learned challenger:** the model now helps when it proposes one move
+  after trick five and fresh Monte Carlo search remains the judge. That passed
+  a fresh state test; it has not yet played the champion in whole rounds.
+- **Closest rollout challenger:** point-aware rollouts were positive twice, but
+  the smaller independent replication was not precise enough to confirm the
+  gain. A new adequately powered test is planned.
+- **Main model lesson:** more data produced stable outcome prediction, but a
+  model choosing moves globally did not transfer. Specialization plus search
+  protection is the first learned use to pass fresh evidence.
 
-| date | lane | strategy, in plain English | terminal verdict | headline result | what it means |
-|---|---|---|---|---|---|
-| 08-07 | report-LCB / RLCB-C1 | Let N=30 MC nominate one move, recheck that move against the heuristic choice on 300 fresh shared worlds, and override only when a conservative lower bound is positive. | **CONFIRM** | `+0.338 +/- 0.068` signed levels versus `mc-strong`; matched null `-0.019 +/- 0.068` | The deployed one-round decision rule is stronger than its named N=30 parent. It does not prove adaptive allocation or multi-round progression. |
-| 08-07 | formal S0 | Compare several confidence and work-allocation rules through one sealed screen/confirmation pipeline. | **SELECT NONE** | S0c outcomes remain unread | The evidence chain failed before the corrected evaluator parsed scores. Never retry, pool or infer a numerical result. This does not undo independent RLCB-C1. |
-| 08-05 | DEV-512 lead ballot | Offer more context-specific lead combinations, model-ranked choices, or matched random choices, then ask whether the wider ballot contains better moves at equal work. | **SELECT NONE** | quota-minus-random `+0.110 +/- 0.337`; incumbent had the lowest equal-work regret | The registered widening/selectors did not earn CALIB or a duel. It does not reject all proposal search. |
-| 08-07 | V11 direct-v2 | Use the learned V11 pairwise model to choose or propose a move while retaining the current policy as a protected fallback. | **SELECT NONE** | v11-minus-current `-0.141 +/- 0.070`; v11-minus-null `-0.110 +/- 0.070` | No direct or protected-anchor composition. V11 survives only as a proposal/ranking and teacher diagnostic hypothesis. |
-| 08-07 | Direct-Q 144M | Train an action-conditioned value model directly from played-game returns and let its predicted return choose actions. | **SELECT NONE** | gameplay `+0.163 +/- 0.059`, but seed 1 and both pooled role held-out MSE gates failed | The attractive gameplay tail cannot override the registered learning failure. Redesign rather than extend. |
-| 08-08 | Suphx O0 | Give a training-time oracle all hands and test whether its privileged signal can teach a public-information policy something useful. | **SELECT NONE** | oracle-minus-public `+0.073`, LCB `+0.0025`; seed means `+0.344/-0.207/+0.082` | Full information produced an aggregate signal but not robust seedwise benefit. O1 is unauthorized. |
-| 08-09 | Suphx O0-v2 | Repeat the oracle/public comparison on identical public trajectories and separately test whether emphasizing larger oracle margins helps. | **SELECT NONE** | CRN control oracle-minus-public `+0.015`, LCB `-0.067`; plus-margin `-0.047`, LCB `-0.109`; interaction `-0.062` | Shared-public CRN repaired the comparison mechanics but did not make oracle use robust. Margin sharpening was directionally worse, no cell advanced, and O1 remains unauthorized. |
-| 08-08 | Teacher-v3 Stage B / audit-v2 | Compare cheap heuristic-continuation labels with much deeper MC-continuation labels on ordinary states to see whether cheap labels are trustworthy. | **STAGE B PASS / AUDIT OPERATIONAL REFUSAL** | cheap-minus-gold regret upper bound `0.0195 < 0.10`; audit shard 6 stopped on an incomplete champion-report continuation and published no labels/gate | Cheap labels agreed on sampled ordinary states. The continuation audit produced no ML verdict and is nonretryable; reviewed score-free diagnostics now gate a fresh versioned synthetic contract. |
-| 08-09 | Teacher-v3 fresh champion audit | Repeat that label-fidelity comparison on an untouched 64-state complement and identify where ordinary N=30 labels become uncertain enough to need expensive treatment. | **PASS / STAGE-C DESIGN** | cheap-choice all-64 regret upper bound `0.0354`; N=30-choice upper bound `0.0439`, both below `0.10`; N=30 boundary-8 diagnostic upper bound `0.1421` | The cheap and N=30 choices are champion-faithful on the frozen 64-state complement. The boundary diagnostic motivates hard-tail escalation. Reviewed adapter `56ccefbd…c2442` now freezes that design-only contract; it authorizes no labels, training or promotion. |
-| 08-09 | Teacher Stage-C design + controller rebind | Turn the audit lesson into one finite recipe: keep broad cheap ordinary anchors, spend deeper disjoint root comparisons on hard cases, and conditionally add supported human/model/mechanism proposals without recursively calling MC inside MC. | **DESIGN + REBIND PASS / ZERO STATES** | base `20bdb95` / `f213314a…3b4`; rebind `7018f36` / `b60c4298…7b18`; 1,024 DESIGN / 512 CALIB / 512 REPORT; 20/33 caps; 10,494,720 maximum candidate-world rollouts | Claude passed both the bounded curriculum and the exact H0-v3/S3c-v2 dependency rebind at `cb9471b`; all seven curriculum hashes remain unchanged. Capture-controller implementation is eligible, but no state, label, model or strength result exists. |
-| 08-10 | Teacher Stage-C capture v7 | Generate the promised balanced hard-tail exam, then replay every scanned deal and selected state so parallel capture cannot quietly choose a lucky subset. | **CAPTURE + EXTERNAL STATE-SET PASS** | 750,000 dispositions replayed; exact 2,048 states = `1024/512/512` DESIGN/CALIB/REPORT and `1920/128` play/bury; state set `c7a769c4…e8e1c`, verifier `143fb2db…4adb` | The first split-safe Stage-C population is real and immutable. It authorizes bounded labeling, not a model or strength claim. |
-| 08-10 | Teacher Stage-C label v1 | Evaluate every candidate on independent selection/report folds, but incorrectly require every realized hidden world to be unique within and across folds. | **TERMINAL NO-USE / NO AGGREGATE** | eight slots consumed; 2 complete and 6 refused shards; 971/1,024 rows complete; receipt `0c3d7ea0…adc1c`; no aggregate or partial mining | The refusal revealed that world-identity deduplication exhausts late-state support and reweights the posterior. Never continue or aggregate v1. Iid-with-replacement v2 must pass fresh capacity and label gates. |
-| 08-09 | S4 point-banking exact-state screen | In rollouts, when the bot is already winning the trick and can retain a higher winner, let it bank a 5/10/K instead of always spending the cheapest winner. | **MECHANISM PASS** | overall acting-team point delta `+5.156`, one-sided LCB `+3.029`; attacker/defender means `+6.406/+3.906`; 35 wins, 4 losses, 25 ties; level utility `+0.25` | Banking a point-card winner while retaining higher control helps on the frozen exact-late trigger population in both roles. The whole-game row below shows the effect survives natural traffic. |
-| 08-10 | S4 complete-round screen v2 | Play complete mirrored rounds with the point-banking rollout rule, an analysis-identical null, and the live champion on the same deals and random streams. | **TERMINAL SCREEN PASS / NO CONFIRMATION LAUNCH** | treatment−champion `+0.086914 +/- 0.056166`, one-sided LCB `+0.030748`; treatment−null identical; null−champion exactly zero; 2,048 clusters | Point banking is the first post-report-LCB mechanism to pass a fresh whole-game screen. Confirmation remains a separately reviewed future milestone; T4 does not launch it. |
-| 08-09 | Human H0 counterfactual design v1 | Add the move a human actually played to the champion ballot alongside V11 and random proposals, then price those choices on common simulated worlds instead of imitating the human blindly. | **SPLIT REVIEW PASS / SUPERSEDED PRE-EXECUTION** | 384 DESIGN + 128 name-ID/deal-disjoint AUDIT plays; separate 36/9 buries; every eligible late/off-ballot row retained; zero outcomes | The split and authority semantics passed, but later executable audit found the pinned V11 digest names no artifact. V1 cannot parent a controller. |
-| 08-09 | Human H0 counterfactual design v2 | Preserve v1's human sample while repairing the real V11 checkpoint and deployed report-LCB parent identities. | **IDENTITY DELTA PASS / SUPERSEDED PRE-CONTROLLER** | Claude PASS `9fdb67a`; same 384/128 plays and 36/9 buries; zero outcomes | The executable artifacts reopened correctly, but the analysis-ballot cap, downstream continuation and candidate-recall estimand remained ambiguous. Bounded v3 replaces the design before any controller or result. |
-| 08-09 | Human H0 counterfactual design v3 | Cap the human/V11/random proposal union, make every source compete under fixed disjoint work, and distinguish the root report-LCB judge from the heuristic policy used inside rollouts. | **DESIGN PASS / CONTROLLER IMPLEMENTATION ONLY** | Claude PASS `239f13c`; 17/33 play/bury caps, three disjoint folds and 1,329,210 maximum candidate-world rollouts; zero outcomes | The human/model proposal experiment is now finite and executable. The PASS authorizes one score-free controller implementation—not a counterfactual run, label, training, strength claim or production change. |
-| 08-09 | Human H0-v3 score-free controller v1 | Replay the frozen human decisions, build the production+human+V11+random candidate unions, and bind one future diagnostic run so incomplete work cannot look like a result. | **HOLD / SUPERSEDED BEFORE OUTCOMES** | 557/557 rows replayed; geometry `876ed56b…ff2b`; **0 worlds and 0 outcomes** | Packet `13d9a97f…61fc` is preserved, but Claude found the runtime did not self-enforce compiled/strict-void mode and receipt deletion could reissue admission. This is no verdict on human/V11 proposals; frozen controller v2 replaces it. |
-| 08-09 | Human H0-v3 score-free controller v2 | Keep the same bounded human/model proposal experiment, but make the executable itself refuse weak sampler settings and consume an irreversible admission before it can publish a receipt. | **COMPONENT PASS / SUPERSEDED ON INTEGRATION HOLD** | source `6977dbb`; packet `3f68dc6e…7fcf`; external marker `cc1c293`; 557/557 rows; zero outcomes | Review verified the component logic, but admission wrote an unignored lock that made runtime reject its own tree. Replacement v3 below repairs the seam; v2 remains permanently non-executable. |
-| 08-10 | Human H0-v3 diagnostic | Fairly price production, human, V11 and matched-random proposals without treating human actions as truth. | **TERMINAL NO-USE / NO AGGREGATE** | 555/557 rows completed; two score-free refusals; aggregate `84ef4400…196c`; no partial utility mining | The experiment produced no usable human/V11 rule. This is an operational no-result, not evidence that human actions are weak; Stage C admits no H0-derived proposer. |
-| 08-09 | S3a structured-bury full-game screen | Give the banker structured point/void/trump kitty options, then test the resulting policy over fresh complete mirrored rounds rather than selected bury states. | **SELECT NONE / CLOSED** | structured-minus-champion `+0.0464`, LCB `-0.0041`; structured-minus-null `+0.0430`, LCB `-0.0228`; all 2,048 clusters verified | The positive mean narrowly missed the preregistered gate, so no confirmation or deployment. Close the consumed stream without retry/tuning; only a separately preregistered fresh larger design could revisit the mechanism. |
-| 08-09 | S3c exact-root curriculum + one-card controller | Start exact endgame work at naturally reached one-card endings, then advance to two and three cards only after each smaller problem proves bounded and useful. | **DESIGN + V2 CONTROLLER PASS / ZERO SOLVER WORK** | 768 unique-deal roots; replacement source `4ebcd09`, packet `cafbee43…f23e`, 64 forced one-card roots; Claude PASS `205b6af` | One bounded mechanics/capacity T4 receipt is eligible. It cannot claim strength, and two-/three-card work remains gated on its terminal result. |
-| 08-09 | S5 point-protection replay boundary | Test the human-log hypothesis that bots sometimes donate a point card to an already-lost trick by reconstructing legality and comparing only strictly lower-point alternatives. | **CODE + BOUNDARY FIXTURE PASS / NO CENSUS** | PR #4 head `2351b36`; equal-point `HK`/`H10` witness; `<`→`<=` mutation red; Claude PASS `205b6af` | One deterministic score-free census freeze is eligible. No observed trigger, treatment, strength result or Stage-C inclusion exists yet. |
-| 08-09 | S3a full-game score-free preflight | Check that structured-bury search is genuinely triggered, consumes exact work and fits Mini before the fresh full-game test. | **CAPACITY PASS / CONSUMED** | 4/4 clusters in 255.3 seconds; screen projection `72.62` fleet-hours / `9.08` max-shard hours | The sizing was correct and enabled the now-terminal screen. It was capacity evidence, not evidence that the policy would win. |
-| 08-08 | S3b v2 throughput | Sample compatible hidden hands, solve the remaining four-card perfect-information game exactly by partnership minimax inside each sampled world, then average those exact world values. | **HOLD / NO SCREEN** | first exact-treatment cluster exceeded the frozen cumulative `250,000`-node cap; no receipt published | The registered four-card sampled-exact recipe is not operationally admissible under its zero-overflow rule. No strength conclusion; no retry or 2,048 screen. |
-| 08-08 | S3a v2 sizing | Run a tiny score-free dry run to verify the structured-bury mechanism consumes exact work and fits available compute. | **CAPACITY PASS / NO STRENGTH VERDICT** | frozen projection `0.142` fleet-hours / `0.0178` max-shard hours, exact work and zero failed worlds | This cleared placement for the subsequently reviewed and completed 512-state screen; sizing itself made no strength claim. |
-| 08-08 | S3a structured-bury screen | Compare strategy-aware point/void/trump kitty candidates with the live heuristic choice, the old four-choice search, and equally wide random candidates on fixed states. | **MECHANISM PASS / AUTHORIZE DUEL DESIGN** | structured-minus-live-incumbent `+0.997 +/- 0.401` (LCB `+0.597`); minus legacy-four `+0.878 +/- 0.380`; minus matched random widening `+3.253 +/- 0.561` | Structured proposal generation improved the frozen state-level bury objective against every preregistered control. This is the first positive S3 mechanism signal, but only a fresh full-game duel can establish bot strength. |
+### Canonical outcome summary
 
-Evidence anchors, in the same order:
+Rows are grouped by scientific conclusion, not by controller version. A
+**lower bound** is the conservative edge after uncertainty; a positive lower
+bound clears the registered screen. Exact operational history and hashes stay
+in the collapsed evidence section and dated logs.
+
+| area | strategy in plain English | status now | best result | learning / what is next |
+|---|---|---|---|---|
+| **Production champion** | Let 30-world Monte Carlo nominate a move, then compare it with the heuristic choice on 300 fresh shared hidden worlds and override only with conservative evidence. | **Deployed and confirmed** | `+0.338 +/- 0.068` signed levels versus the previous 30-world policy; matched extra-work control was flat. | The two-stage search rule is genuinely stronger. It is the named baseline every challenger must beat. |
+| **Other confidence and allocation rules** | Try wider search, adaptive allocation, and alternative confidence rules. | **Closed; no additional winner** | The formal suite failed before readable outcomes; separate wider/adaptive tests found no resolved gain. | Do not reinterpret the unread run. New work must change proposals, continuations, or model use rather than only reshuffle the same search budget. |
+| **Teacher data and training** | Counterfactually label hard decisions, grow from 1,536 to 7,040 training states, and train complete eight-seed model cohorts. | **Reusable model/data capability; not a strength win** | The larger cohort was stable across seeds; outcome prediction improved strongly (`+0.47845`, lower bound `+0.44201`). | The pipeline and 7,040-state asset are useful. More identical rows are not enough; future data must contain meaningful alternative actions, source tags, and better continuation policies. |
+| **Model chooses moves globally** | Let the learned ranker choose or override moves across all phases. | **Closed for this model generation** | Protected fresh test: `-0.00823`, lower bound `-0.01894`. Powered uncertain-state test: `+0.01213`, lower bound `-0.00506`. | The model predicts outcomes better than it ranks actions. Do not deploy global model argmax or tune the spent tests. |
+| **Model proposes inside search after trick five** | Let the model offer one move only in middle/late play; fresh 300-world Monte Carlo search still decides whether to replace production's move. | **Fresh state screen passed; whole-game design next** | Versus live: `+0.02020`, lower bound `+0.01275`. Versus an equally expensive uninformed proposal: `+0.01570`, lower bound `+0.00880`, on 256 fresh states. | First evidence that the learned model adds value inside search. Build one fresh whole-round test; this is not yet a stronger bot or deployment approval. |
+| **Point-aware rollout policy** | In simulations, bank a point card when already winning a trick instead of mechanically spending the cheapest winner. | **Promising, not confirmed** | Whole-round estimates were `+0.08691` (lower bound `+0.03075`) and independently `+0.04883` (lower bound `-0.00688`). | Direction was positive twice. Run one new fixed 12,288-deal test sized to resolve a useful `+0.04` effect; do not pool the old runs after the fact. |
+| **Kitty and bury choices** | Offer structured point/void/trump buries or use the learned bury ranker. | **Current versions closed; narrow signal remains** | Structured whole rounds: `+0.0464`, lower bound `-0.0041`. Learned bury on 32 fresh choices: `+0.0338`, lower bound `-0.0153`. | Both estimates were positive but inconclusive. Preserve the point-and-void clue for a candidate-rich, properly powered successor rather than retrying either spent recipe. |
+| **V11 pairwise model** | Learn which ballot move beats the heuristic choice, then use that model directly or behind a protected fallback. | **Direct use closed** | Confirmed 57.7% versus SmartBot, but `-0.141 +/- 0.070` versus the live champion. | The model has proposal signal but does not beat current search. Retain it only as a proposal and disagreement source. |
+| **Direct return learning** | Learn action values directly from complete-game returns instead of imitating Monte Carlo. | **Closed at learner gate** | Gameplay tail was `+0.163 +/- 0.059`, but held-out learning failed for one seed and both pooled roles. | Interesting clue, not a promotable model. A successor must change credit assignment or specialize surfaces and pass across seeds. |
+| **Training with all cards visible** | Train an oracle with every hand visible and try to transfer its knowledge to a public-information policy. | **Tested recipes closed** | First aggregate `+0.073` was unstable across seeds; repaired shared-trajectory test was `+0.015`, lower bound `-0.067`; margin emphasis was worse. | These implementations did not transfer robustly. This does not rule out every privileged-information curriculum, but there is no authorized continuation now. |
+| **Human moves as proposals** | Add the human move to the search ballot and price it counterfactually rather than treating imitation as truth. | **No scientific result yet** | The only run completed 555 of 557 decisions. Two seven-card follow throws exposed a false candidate-enumerator assumption, so the predeclared all-or-nothing run published no aggregate. | This was a tooling failure, not evidence against human moves. Validate every candidate set before opening outcomes, then use a new population to compare human, model and equally wide random proposals. |
+| **Ballot sourcing** | Add missing strategy-specific choices, especially legal throws, rather than widen every ballot indiscriminately. | **Generic widening closed; throw-specific source ready for a small test** | The 512-state generic lead study selected none. The new throw source adds candidates broadly and passes legality tests, but has no strength result. | Test legal throw candidates against equally wide random additions before any whole-round duel. |
+| **Exact endgames and defensive point protection** | Solve genuinely small endgames and replay alleged point donations to find concrete legal alternatives. | **Mechanics only; no strength result** | Four-card exact search exceeded its node limit; one-card states had no real choice; defensive replay has only a boundary fixture. | Start at real two-card endings and run the defensive legality census before implementing either policy. |
+
+<details>
+<summary>Exact evidence identities and operational history</summary>
+
+These hashes preserve auditability; they are not required to understand the
+current policy conclusions above.
 
 - RLCB-C1 aggregate `83f5a9df2f1db1fa45d50fb005b941b776d9ecc2c9f8703d3d62efff8f5ef5ea`.
 - Formal S0 closeout `ef0a3659859b38d0b9362376e5e403fecb625f59c475600ed09906ce695fde9a`.
@@ -68,17 +72,40 @@ Evidence anchors, in the same order:
 - Teacher-v3 fresh audit gate `8a1532b7b9a610452609bb2a7a69c9b13a9f1800ad74428d0278e9572aba91f8`;
   supervisor final `02f4f8b02d674ad3f59f9fa5b607692c7c8d31bdc5d26e2c64f66c983956f237`;
   terminal adapter `56ccefbd62d9ea2aef30a4c6e54e11a0d2231e464f129e754b84b3488f1c2442`.
-- Teacher Stage-C-v3 packet `f213314ace8ead497fcaccde150d0694851069b970948a10d0823cf74ceb93b4`;
-  source/asset `20bdb95` / `1a29418`; dependency rebind packet
-  `b60c4298493794b6de0ffe6907e8b92fb24f4bab6d56cc4c653eb1c67a1b7b18`;
-  external rebind PASS at `cb9471b`. Capture-v7 state set
-  `c7a769c4efab582a38a4b77e8a707acde65a3e022d5db9fb27f660809e6e8e1c`
-  and verifier
-  `143fb2dbad4623969661aca4582e46936a4a23ca032431a177967429fb434adb`
-  externally passed. Label-v1 receipt is
-  `0c3d7ea00b2a0234102e11b46ef3bf5296437e4bd51418e048155c78693adc1c`;
-  no aggregate. Fresh iid-v2 capacity packet under review is
-  `a667b6bbe1fd0e75266a878ec54e8643d68694ba8eef19bc8f32d2df6bc8795c`.
+- Teacher Stage-C-v3 packet `f213314ace8ead497fcaccde150d0694851069b970948a10d0823cf74ceb93b4`
+  led to externally replayed capture state set
+  `c7a769c4efab582a38a4b77e8a707acde65a3e022d5db9fb27f660809e6e8e1c`.
+  Label-v1 receipt `0c3d7ea00b2a0234102e11b46ef3bf5296437e4bd51418e048155c78693adc1c`
+  remains terminal no-use. Corrected iid-v2 label aggregate
+  `d0b4397ce0135b5ae665a76f9188ae3c974e2e440e0d6dc047d5080b27e6cdb9`
+  supported first-generation training aggregate
+  `7023b3aa08f399d582576b9998e5078db56d82a91eb2a41db228b4e2572fc4fb`,
+  which selected none. Protected fresh-REPORT result
+  `8fa323de3591f4665799225796299f0ccde97dcce0e191839b81ee7a1645aea6`
+  also selected none. The distinct 7,040-state expansion is bound by reviewed
+  label packet `82447501ca517d936fa5f453a793f0afae2dc05939d2088212746e75bc0e2084`.
+  All 5,504 new labels completed with zero refusals and passed independent
+  terminal review; aggregate
+  `3deb3a81e31b898062d00762a6b8ec603acc4851531dfcbb5ed752b31304f6ca`.
+  Frozen dataset `c24923f…a8382` and 96-cell packet `d137f31…71888` produced
+  terminal aggregate `5ad77eb0…b6bd`. The whole-cohort selector chose the
+  epoch-32 all-pairs bury ranker: 8/8 positive CALIB seeds and median
+  candidate-zero improvement `+0.016418`. The direct candidate-zero loss did
+  not win. External terminal review passed. Its v1 REPORT packet
+  `5ce892db…25f0` consumed receipt `3c4b1f…74bf`, but all eight shard commands
+  refused in argparse before evidence because `--expected-git` was absent.
+  Zero labels/predictions/utility/results exist and the third population is
+  closed. Externally passed successor selection `3c318da2…41e4` contains 512
+  disjoint rows. Score-free v2 packet external/internal
+  `e856c02e…175e2` / `96840fdb…82116` froze the 32 bury rows in eight shards;
+  terminal result `2e21a9bf…ac4d` and final `126d73cd…e58387` were independently
+  reviewed `SELECT_NONE`. The powered 219-state play exam likewise selected
+  none: result `e2e774da…b4c5`, final `821c286b…f7c3`.
+  The distinct trick-5+ protected-search successor used packet
+  `017209a3…32f8`, selection `a79be3f6…a092`, aggregate
+  `269eadf3…f2402` and result `f18c2e42…948f6`; its generated independent
+  review marker is byte-identical at SHA-256 `6287ac4a…e97ace` and authorizes
+  whole-game screen design only.
 - S4 exact-state screen `abd9f36fa3e84c81b90e22f1c827f828a549f7fd6a9420ffbdb7c168974cdc00`;
   pre-outcome receipt `90124eb6f89c27cedc38770b2da5b3b8597400694281729656105f67803f526b`;
   admission `83993ec6609c2a7528853d4c1db789f137d3f0cbfff97d20fbf526cbd5ff5e6d`.
@@ -89,6 +116,12 @@ Evidence anchors, in the same order:
   terminal aggregate `3c7f27b8466ec9ece73820d21d26349bfd95c4fc17db144b26408db4af6b4268`
   and supervisor final
   `e188f7e8ee80fe2fc17fee6d79b4eb4c6a41a45713c76825ef707981e30f2b24`.
+- S4 independent replication packet
+  `b239b8494e2f2ffa8fbc0a0b11b9b2f510d274dd6bb0a482e25fd87592cab76b`;
+  receipt `fc6d54e7c3e660ee28fe96c16dd5babeb49856018b82e1aa309e640cdaf51077`;
+  aggregate `d6b73f45c17f1b7ae6e1648147b82d248df82fd0f5b35a82a601108e8ba8f4d4`;
+  final `20ece4eddcaa4399b45df768f4003b939a52c0346484924e3e05da9698af144a`;
+  independent terminal-integrity review passed.
 - Human H0 v1 design packet `9ff160a9bc54a30daa85a07b29440f5c4cdd1c8feb4574f81c102158e46247d3`;
   repaired v2 packet `2cccf5803ca60cf41690f18dc0e85febaf36a88ce702587e8c86a67e2a358f2b`;
   bounded v3 packet `4d3f0a35082c6957f2a468686b8eedbd6d7cbbf9540503fcea08cccf27c8cc3c`;
@@ -127,6 +160,8 @@ Evidence anchors, in the same order:
 - S3a v2 sizing receipt `cf7702770e2dd416b0ecfcdcc2ba6a5c32ab262aef0319d87346d05bcdf5c431`.
 - S3a screen aggregate `74aa5a3947e1daaa5aa4bc33eef8ae04eaaf695d0cb900c7045eb0cbbc4396cd`;
   supervisor final `d3f2b1ab48085ccf37534b5dd7f20ea6cf0d7644c6c49304b644ecf895169a6b`.
+
+</details>
 
 ### Production search
 
@@ -184,120 +219,45 @@ Evidence anchors, in the same order:
 
 ### Human-observed policy surfaces
 
-- **Kitty:** production is strongly point-shy rather than incapable of
-  burying points. S3a's point/void/trump alternatives improved the selected
-  512-state objective, but the fresh whole-game screen selected none. Do not
-  ship or retune this recipe; use its disagreement states as future Teacher or
-  proposal diagnostics.
-- **Point banking:** root MC can source a point-bearing winner, but shared
-  heuristic continuation selects the cheapest winner when a cheaper non-point
-  winner also exists. S4 v1 is closed HOLD without outcomes because its
-  material digest was irreproducible. Exact `1b35fb7` now supplies the fresh
-  reviewable replacement outside sealed MCBot/registry bytes: treatment and
-  matched null share analysis, preserve the root ballot and baseline contest
-  choice, act only last, and require a higher winning reserve. Named
-  continuations demonstrate both +10 immediate value and -10 future-control
-  risk. Independent score-free verifier
-  `b0ef0f9` rescanned all 69,047 ascending deals and rebuilt every stored row
-  exactly at witness `3079fb16…f0a9`. Claude passed review, and the only
-  one-shot Air screen then verified terminal result `abd9f36f…cdc00`: overall
-  point delta `+5.156` (LCB `+3.029`), positive means in both roles, 35/4/25
-  wins/losses/ties and level utility `+0.25`. This establishes the narrow
-  exact-late mechanism. The first full-game packet was superseded before
-  review or launch after adversarial probes exposed outcome-sign, bound, work
-  and authority gaps. Exact `cad3992` implements the repaired natural-traffic
-  treatment/null/champion comparison; score-free preflight `fcc8b891…ee060`
-  passed and packet `17036e63…1385` independently closed PASS at Claude marker
-  commit `51a864c`. After S3a closed, the one admitted 2,048-cluster Mini
-  screen launched under admission `1d99bb55…bdbf` and receipt
-  `20a420d2…5cc`. Its outcome remains sealed; it is not yet bot strength,
-  confirmation or production authority.
-- **People-facing target:** human agreement is a style/coverage diagnostic.
-  After bot-vs-bot confirmation, a blinded opt-in `HUMAN-C1` must compare the
-  candidate with the live champion across the same human cohort, balanced by
-  team/banker/seat and clustered by player session. Evaluation games never
-  enter training or selection. Forward-only guard through `b198839` makes the
-  human-corpus builder refuse the whole publication if any round carries the
-  HUMAN-C1 schema or a `training_excluded=true` tag. Physical separation is
-  now backed by inert room primitives through `340ae4e`: a disjoint root,
-  hidden complementary blocks, derived participant-pair identity, per-arm
-  policy/Git/image/ballot identity, exact 0/2-human versus 1/3-bot enforcement,
-  name/chat redaction and fail-closed evaluation writes. No WebSocket path can
-  construct such a room. Exact `6082589` also makes a bound-human disconnect
-  during an assigned in-progress game terminal: it records only a redacted reason and
-  stops bot cover, takeover, declaration, dealing and round advancement.
-  Completed games remain valid, stale socket teardown is a no-op, and ordinary
-  rooms retain their old behavior. The focused corpus/server battery passes
-  82/82 locally and independently on Air. Exact `859a26e` adds an inert
-  assignment constructor: a score-free reviewed design binds both arm
-  policy/Git/image/ballot identities; two consent facts must
-  match cohort and consent version; and the secret-derived arm and opaque
-  session ID are complementary, deterministic and design-domain-separated.
-  Clients still cannot reach this path or choose an arm/session. Its expanded
-  focused battery passes 88/88 locally and on exact Air. Durable one-use
-  issuance and authenticated consent ingress remain closed. Exact `fff688b`
-  adds fail-closed runtime reopening: the assigned arm must match the runtime
-  Git and image, its named policy is reconstructed from the registry, and all
-  executable ballot stages are independently rederived and compared with the
-  reviewed identity. No caller may inject a lookalike bot. The expanded suite
-  passes 94/94 locally and on exact Air. Exact `f387a30` then adds the immutable
-  receipt source: it requires hash-pinned stable bytes from a regular unlinked
-  file, exact design/active-policy identity, and explicit identity-only / no-
-  human-traffic authority before reopening. Symlinks, hard links, digest,
-  schema, authority, design and policy drift all fail closed; 100/100 focused
-  tests pass locally and on exact Air. Exact `064988f` adds durable one-use
-  slot reservation keyed independently of the secret-derived session ID;
-  exclusive publication permits one concurrent issuer, fsyncs file/directory,
-  and leaves interrupted writes consumed rather than retryable. The reservation
-  itself is identity-only and grants no traffic, training or promotion. The
-  104-test battery passes locally and on exact Air. A real candidate-specific
-  receipt freeze/review, authenticated consent ingress, synthetic C0 and the
-  terminal analyzer remain launch blockers.
-  The earlier
-  repair scans tags
-  before malformed-round rejection and terminally invalidates an evaluation
-  room after any log-write failure, so neither path can manufacture a partial
-  training or evaluation publication.
-- **Human proposal pilot:** exact `9770313` froze score-free H0 v1 at packet
-  `9ff160a9…247d3`: 384 DESIGN and 128 player/deal-disjoint AUDIT play keys plus
-  separate bury surfaces. Its split review passed, but executable audit found
-  V11 SHA `0260ad67…455e` names no artifact. Exact `12dac55` v2 preserved the
-  rows and repaired executable `ep07.npz` plus the portable live parent; Claude
-  passed that delta at `9fdb67a`. A later score-free implementation audit found
-  its action cap, downstream continuation and candidate-recall output
-  underdefined. Exact source `b02b6de` / packet commit `d6214ce` freezes
-  bounded v3 at `4d3f0a35…8cc3c`: 17/33 play/bury caps, explicit
-  `HeuristicBot` continuation, three disjoint folds and maximum 1,329,210
-  candidate-world rollouts. Claude independently passed the design at
-  `239f13c`. Exact producer `931f504` and asset `ff277b4` froze controller v1
-  packet `13d9a97f…61fc`: all 557 rows replayed, geometry is
-  `876ed56b…ff2b`, and preflight consumed zero worlds/outcomes. Claude held v1
-  because runtime mode was not self-enforced and receipt deletion could reissue
-  admission. V1 remains immutable. Replacement source `6977dbb`, asset
-  `d99f7e8` and packet `3f68dc6e…7fcf` now require compiled/strict-void runtime
-  on every packet open, reject experimental sampler flags and publish a durable
-  admission slot before the receipt. Score-free freeze/recompute still consumed
-  zero worlds/outcomes. Claude independently passed those components at
-  `cc1c293`, but a later real admit→runtime audit found that the slot itself was
-  unignored and therefore made the tree fail its own clean-tree check. V2 has
-  no execution authority. Replacement source `4ebcd09` / packet
-  `cf074871…35392` fixed that seam and passed externally at `205b6af`. Its one
-  execution later completed 555/557 rows; two score-free refusals forced
-  terminal `REFUSED_INCOMPLETE_NO_AGGREGATE_UTILITY`. Never retry or mine its
-  partial utilities. The result admits no human-derived rule into Stage C and
-  is not evidence that human proposals are weak.
-- **Teacher Stage C:** the reviewed design has now produced immutable capture-v7
-  state set `c7a769c4…e8e1c`: exact 1,024 DESIGN / 512 CALIB / 512 REPORT and
-  1,920 play / 128 bury states after all 750,000 dispositions replayed. H0's
-  one diagnostic terminally refused aggregate utility, so no human-derived
-  rule entered; V11 remains only its bounded proposal source. Label v1 then
-  proved that “disjoint folds” had been implemented incorrectly as disjoint
-  realized world identities. Eight slots produced 2 complete / 6 refused
-  shards and no aggregate. Deleting duplicates also flattened the posterior,
-  so v1 is terminal no-use rather than a capacity near-miss. Fresh iid-v2
-  `8a202e9` retains successful draws with replacement, domain-separates RNG
-  streams, schema-refuses v1 and awaits capacity packet review at
-  `a667b6bb…795c`. No usable label, checkpoint or REPORT look exists.
+- **Kitty / S3a:** production is strongly point-shy. Structured point/void/trump
+  candidates improved a selected-state objective, but the fresh complete-round
+  screen selected none. Do not ship or retune that recipe; preserve its
+  disagreements as Teacher and proposal diagnostics.
+- **Point banking / S4:** changing only rollout continuation so a secure winner
+  may bank a 5/10/K passed the exact-state mechanism test and the first
+  2,048-cluster whole-game screen. The independent fixed replication stayed
+  positive but selected none (`+0.048828`, LCB `-0.006884`). The exact recipe
+  is closed without retry, extension, confirmation or deployment.
+- **Human evidence:** the repaired Fly corpus contains 2,830 plays and 45
+  buries. Human actions are proposal and coverage evidence, not labels. H0-v3's
+  sole counterfactual run completed only 555/557 rows, correctly published no
+  aggregate, and cannot be retried or partially mined. That is an operational
+  no-result, not evidence that human moves are weak.
+- **Defensive point protection / S5:** seat-normalized log mining withdrew the
+  original broad feeding headline. The narrower question remains useful:
+  replay bot-seat losing follows and ask whether a strictly lower-point legal
+  action existed and the current champion reproduces the donation. The source
+  fixture passed; no census or treatment exists.
+- **Teacher Stage C:** the first 1,536-state, eight-seed generation selected
+  none, and its protected play policy selected none on fresh REPORT. At 7,040
+  DESIGN/CALIB states, the second generation selected a stable bury-ranking
+  cohort: all eight seeds improved over candidate zero. The original all-pairs
+  objective beat the direct candidate-zero loss, so data coverage—especially
+  bury coverage—is the leading explanation. Its first REPORT execution failed
+  in argument parsing before evidence and spent that holdout. A fourth
+  zero-overlap 512-row population is selected score-free; the capability
+  remains CALIB-only until a separately reviewed packet completes one valid
+  32-bury-state look.
+- **Shuai-pai / S6:** KESP showed legal early and late throws absent from the
+  search ballot. Draft PR #19 deterministically unions a bounded legal
+  phase-wide shuai source with the literal incumbent ballot and keeps candidate
+  zero unchanged. It still needs semantics review and an equal-work screen.
+- **People-facing target:** offline human agreement measures style and coverage.
+  A challenger must first beat the live champion on paired bot games, then pass
+  a separately consented and blinded HUMAN-C1 candidate-versus-champion test.
+  Evaluation traffic remains physically excluded from training. The harness is
+  intentionally inert until identity, receipt, consent, synthetic-C0 and
+  estimator gates close.
 
 ### Learned policies and RL
 

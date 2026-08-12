@@ -1,96 +1,99 @@
 # Active Claude/Codex handoff
 
-Last compacted: 2026-08-10 16:53 EDT. This is the executable mailbox.
-Terminal markers live in `HANDOFF_REVIEW.md`, policy synthesis in
-`AI_POLICIES.md`, job artifacts in `JOBS.md`, and queue order in `BACKLOG.md`.
+> **CANONICAL PATHS:** both agents coordinate only through
+> `/Users/jerryyu/Projects/shengji/HANDOFF_ACTIVE.md` and
+> `/Users/jerryyu/Projects/shengji/HANDOFF_REVIEW.md`. Branch-local copies are
+> never review authority. Raw markers belong in `HANDOFF_REVIEW.md` at column
+> 1 and must occur exactly once.
+>
+> **LOSSLESS ARCHIVE:** the prior ledgers are preserved in
+> `docs_archive/handoff-active-through-2026-08-11-10-22.md` and
+> `docs_archive/handoff-review-2026-08-08-through-2026-08-11-10-22.md`.
+
+Last reconciled: 2026-08-11 21:28 EDT.
 
 ## Immediate gate
 
-**Externally review the fresh Stage-C label-v2 packet before sampling one
-world.** Claude passed capacity-v3's terminal result at `9c4e040`. Exact source
-`167feab` then froze and independently re-verified score-free packet external /
-internal SHA `0d119c84…dc32` / `b800b330…87ed`: 2,048 states, 16 × 128
-one-shot shards, 4,984,960 exact candidate-worlds and the unchanged 38,446,080
-attempt ceiling. The focused compiled/strict-void battery is 45/45. No label
-receipt, shard slot, world, outcome or aggregate exists. The exact review
-request and generated marker are at the bottom of `HANDOFF_REVIEW.md`.
-
-In parallel, Claude passed S4 packet `b239b849…ab76b` at `8aa8a25`. Air
-consumed reviewed admission `5fc07959…cb88` and receipt `fc6d54e7…1077`; all
-eight fixed shards are live under the 30-second supervisor. This is the one
-2,048-cluster treatment/champion replication plus 256 balanced raw-null
-sentinels. Preserve it without retry, extension, tuning or interim inference.
+**Implement and externally review one fresh whole-game screen for the passed
+mid/late Teacher hybrid. Do not launch it yet.** The independently reviewed
+256-state result authorized screen *design only*: treatment-minus-live
+`+0.02020` (one-sided lower bound `+0.01275`) and
+treatment-minus-same-work-null `+0.01570` (lower bound `+0.00880`). The new
+screen must preserve the exact trick-5+ model proposal, fresh N=300 Monte
+Carlo protection, literal `mc-s0-report-lcb` incumbent, and uninformed
+same-work control. It must stop before confirmation, promotion or deployment.
 
 ## Current truth
 
-| area | current evidence | next legal action |
+| area | plain-English status | next gate |
 |---|---|---|
-| Production | Release 17 runs compiled, formally confirmed `mc-s0-report-lcb`. | Monitor only; no production change is part of T4. |
-| S4 point banking | **TERMINAL SCREEN PASS preserved; independent replication LIVE.** Packet PASS `8aa8a25`; admission `5fc07959…cb88`, receipt `fc6d54e7…1077`; eight Air shards started from exact `fb6ec1a`. | Supervise only. On terminal publication, run the pinned verifier and request independent result review. Never retry, extend, tune, promote or deploy. |
-| H0 human/V11 diagnostic | **TERMINAL NO-USE:** 555/557 complete, two score-free refusals, status `REFUSED_INCOMPLETE_NO_AGGREGATE_UTILITY`. | No retry and no partial-row mining. Stage C admits no human-derived proposer. V11 remains only its separately frozen bounded proposal source. |
-| Stage-C capture | **V7 TERMINAL CAPTURE PASS.** Claude passed `03c87d6` / `b53af06c…8a43`; one fresh receipt produced 24/24 shards. All 750,000 dispositions and 2,048 selected states replayed exactly. V3/v6 remain terminal no-use. | Preserve the consumed receipt, shards and verifier. Never rerun, pool or extend. |
-| Stage-C state set | **EXTERNAL PASS.** Exact `1024/512/512`, play/bury `1920/128`; state set `c7a769c4…e8e1c`, verification `143fb2db…4adb`. Claude independently recomputed population/digests and authenticated all disposition replays. | Preserve. Never rerun, extend, pool or mutate. |
-| Stage-C labels | V1 and capacity-v2 remain terminal no-use. **Capacity-v3 RESULT PASS; LABEL-V2 PACKET REVIEW OPEN:** packet external/internal `0d119c84…dc32` / `b800b330…87ed`, 2,048 states, exact 4,984,960 candidate-worlds, zero pre-review worlds/outcomes; 45/45 focused tests. | External packet review. Only its exact V2 PASS may admit one 16-shard Mini execution; labels, training and REPORT remain closed. |
-| Stage-C model / REPORT | Capacity-v3 `167feab` descends from integrated iid-v2 and retains its cross-Git/schema repairs. The isolated Mini environment now binds Python 3.14.6, NumPy 2.5.1 and Torch 2.13.0; 49/49 model/training/REPORT tests pass there. No checkpoint or REPORT look exists. | Training remains closed until complete reviewed iid-v2 labels and a new training-packet review. Mini runs the 48 cells; REPORT stays sealed until DESIGN/CALIB selects one capability. |
-| Stage-C composition | The reviewed composition behavior remains unchanged beneath iid-v2: literal live candidate zero, at most one model proposal, report-LCB override decider and same-work random null. No packet/run. | Rebind and execute only after one REPORT passer, then capacity and one same-work whole-game screen. |
-| S6 throw sourcing | Draft PR #19 head `cfa5a53` now implements the new contract without touching production: whenever any effective-suit holding permits a multi-component lead, an append-only widened ballot contains at least one shuai in early/mid/late. The old source failed a natural late trump-only seed-1 state; v2 adds a bounded trump fallback. Literal live ballot/candidate zero remain first; 11 focused and 58 broader tests pass. | Defer its external source-semantics review while the capacity packet/result is the immediate gate. Review must preserve public/lead-only inputs, ≤8 additions, no-op/follow negatives and equal-work later evaluation. Source PASS still cannot authorize a screen. |
+| Production | Release 17 still runs confirmed `mc-s0-report-lcb`. | Monitor only; no production mutation is authorized. |
+| Teacher data and global models | The reviewed 7,040-state asset, 96-cell/eight-seed cohort and global REPORT exams are terminal. Direct global play and bury rankers selected none. | Preserve them. Do not reopen spent REPORT populations. |
+| Mid/late Teacher hybrid | **Fresh state screen PASS.** On 256 balanced trick-5+ states, model-guided search beat both the literal live action and a same-work uninformed proposal. This is local capability evidence, not whole-bot strength. | Build and review one mirrored whole-round treatment/null/champion screen. No launch authority exists yet. |
+| S4 point banking | Two independent whole-round estimates were positive, but the second fixed result selected none (`+0.04883`, lower bound `-0.00688`). | Separately design/review the future-only N=12,288 fixed confirmation; never pool or extend old populations post hoc. |
+| H0 human proposals | The sole v3 run stopped at 555/557 because two seven-card follow throws exposed a 12-live-candidate versus 3-analysis-candidate tooling mismatch. It published no aggregate. | A future exploratory v4 must prevalidate complete live-ballot geometry and predeclare row/stratum exclusions or deterministic repairs. |
+| S6 shuai-pai | Draft PR #19 head `2605b04` is production-inactive; 12/12 focused tests pass in pure and compiled/strict modes. | Isolate the three S6 commits on current main, obtain semantics review, then run a small equal-work state screen. |
+| Fleet | Mini and Air have no active strength workers. | Mini is preferred for the Teacher capacity preflight/screen after review; Air is available for the separately reviewed long S4 run. |
 
-## Downstream implementation ready without execution authority
+## Teacher whole-game screen contract
 
-V1 source `3f6f048`, packet, receipt, eight consumed slots and shard artifacts
-are immutable terminal evidence. Fresh v2 source `8a202e9` is a descendant of
-integrated `42e1726`; it keeps the cross-commit authentication and composition
-behavior while replacing only the invalid world-identity uniqueness rule and
-bumping all affected schemas. An old parent Git remains acceptable downstream
-only with its exact packet and byte-identical label sources. Air passes the
-184-test compiled Stage-C/S3c slice at exact v2 head. Composition still
-preserves literal live candidate zero, proposes at most one model-ranked
-alternative, leaves report-LCB as the override decider and includes a
-trigger/work-matched random null.
+1. Start from the exact reviewed Stage-C model exports and composition source
+   lineage; authenticate the terminal mid/late result marker before freezing.
+2. Treatment changes only trick-5+ play decisions: the model nominates at most
+   one candidate and fresh N=300 common-world search may accept it. The literal
+   live action remains the fallback.
+3. The matched control uses the same trigger and candidate-world work but an
+   uninformed deterministic proposal. The champion is unchanged
+   `mc-s0-report-lcb`.
+4. All three arms use the same fresh deal seeds and both team flips. Signed
+   level utility is primary; win rate, role, trigger, work and tail outcomes
+   are diagnostics.
+5. A score-free capacity preflight must complete before score-bearing
+   admission. Every long-running shard emits durable progress and is owned by
+   one signal-aware supervisor.
+6. Pass requires positive predeclared lower bounds versus both champion and
+   matched control, exact work, nonzero treatment exposure and clean fallback
+   accounting. The control-versus-champion interval is diagnostic.
+7. A passing screen authorizes a separately powered confirmation *design*
+   only. This milestone stops before confirmation launch or production.
 
-None of those source results authorize training. The fresh label-v2 packet
-review is the current gate; composition can execute only if the one-shot
-REPORT evaluation eventually selects a capability.
+## Exact execution order
 
-## Compute sequence after state-set PASS
+1. Codex implements the whole-game controller/runtime and focused adversarial
+   tests on a new branch descending from reviewed head `ee5e9ec`.
+2. Freeze a score-free source/controller packet with a fresh seed namespace,
+   fixed population, work accounting, progress and result contract.
+3. Claude independently reviews that exact packet and appends one raw PASS or
+   a concrete HOLD to the canonical review ledger.
+4. Only an exact PASS may admit the score-free capacity preflight. Review its
+   trigger/work/throughput result before opening outcomes.
+5. Only the capacity PASS may admit one mirrored screen, preferably on Mini.
+6. Publish and independently replay the terminal aggregate; stop regardless
+   of outcome before any confirmation or deployment action.
 
-1. **Complete:** capacity-v3 packet PASS and one Mini probe; preserve consumed
-   slot `6dc1f9bd…d0fb` and result `e2eea8c4…d32d4`.
-2. **Complete:** Claude passed the terminal capacity-v3 result at `9c4e040`.
-3. **Packet frozen / review open:** iid-v2 label packet `0d119c84…dc32`.
-   Only exact external PASS may admit all 16 shards; execute with eight Mini
-   workers and aggregate only on 2,048/2,048 complete rows with zero refusals.
-4. Review the aggregate and freeze/review the v2 training packet. Mini then
-   runs 48 cells (play/bury × eight seeds × 25/50/100%), at most eight
-   concurrently. Air remains isolated to the separately gated S4 lane.
-5. Select one capability only from DESIGN/CALIB, open sealed REPORT exactly
-   once, compose the passer inside report-LCB with incumbent fallback and a
-   same-work null, then run a fresh whole-game screen against the live champion.
+## Parallel work that does not block the Teacher screen
 
-## Safety boundary
+- Freeze the new N=12,288 S4 confirmation packet for later review/Air use.
+- Rebase/isolate S6 and request its bounded semantics review.
+- Design the learning-first H0 repair; confirmation remains fail-closed, while
+  exploration may retain predeclared valid rows and report missingness.
+- Expand Teacher data only after the whole-game result: first add roughly
+  7,000 candidate-rich play rows with source provenance, then scale further
+  only if fresh action ranking and seed stability improve.
+- Documentation/repository hygiene stays in draft PR #30 until its one bounded
+  reconciliation review passes. Evidence worktrees are never removed merely
+  to reduce branch count.
 
-- V3 is terminally held. Do not reuse its receipt or six partial shards, retry
-  its deterministic failures, delete/reissue its receipt, or start later waves.
-- V4 passed its phase review and v5 was held; both were superseded before
-  admission. V6 is terminal no-use after one admitted execution: preserve its
-  receipt and 24 shards, and never retry, extend, pool or derive a state set.
-- Capture-v7 is consumed and terminally verified. Never issue another receipt,
-  retry a shard, extend the population or mutate the frozen state set.
-- Label v1 is terminal no-use. Preserve its global receipt, eight shard locks
-  and eight shard artifacts; never run untouched slots, aggregate, pool or
-  inspect partial utilities.
-- Capacity-v2 is terminal no-use. Preserve result `64fdda5f…4cf2` and consumed
-  slot `b6c1219a…5e72`; never retry it or treat Codex's own marker as external.
-- Capacity-v3 is consumed and terminal PASS. Preserve result `e2eea8c4…d32d4`
-  and slot `6dc1f9bd…d0fb`; never rerun it.
-- Preserve frozen label-v2 packet `0d119c84…dc32`. Do not admit, sample or
-  compute labels before its exact external PASS.
-- S4's reviewed Air receipt is consumed and all eight shards are live. Do not
-  stop/restart a healthy shard, retry, extend, inspect an interim utility,
-  promote or deploy; terminal result review is still required.
-- Do not retry H0, inspect its 555 partial utilities, or derive a human rule.
-- Do not launch S4 confirmation, S3a, S6 or an unreviewed Stage-C stage merely
-  to occupy an idle machine.
-- Do not open REPORT during capture, capacity, labels, training review or
-  DESIGN/CALIB selection.
-- The T4 goal stops before confirmation, promotion or deployment.
+## Standing invariants
+
+- Never inspect interim outcomes from a sealed run.
+- REPORT populations, deal seeds and labels are single-use; siblings from a
+  partially opened population count as spent.
+- Freeze, review, admission, execution, terminal review, confirmation and
+  deployment are separate authorities.
+- Exploration may degrade gracefully only under a predeclared missingness and
+  repair policy. Confirmation and deployment remain exact and fail-closed.
+- Preserve immutable evidence worktrees and snapshots. Never clean or rebase
+  one containing ignored evidence without a byte inventory.
+- Prefer Mini for runs under one hour; every long job must emit durable,
+  frequent progress and own signals/children explicitly.

@@ -65,18 +65,18 @@ this 08-04 table.
 
 ---
 
-## Current measured baselines (2026-08-02)
+## Measured baselines
 
 | metric | value | conditions |
 |---|---|---|
-| MC round, single core (pure) | ~5.7s | wide ballots, N=10, post-memo, loaded machine |
-| MC round, single core (**SHENGJI_FAST=1**) | **~1.7s (3.42x)** | same conditions; opt-in, seeded histories parity-validated |
-| full test suite (08-04 audit) | 44.8s pure / 23.7s fast | 112 passed, 2 skipped in both modes |
-| MC round, single core, SHENGJI_FAST=1 | **~1.7s (3.42x)** | same load, seed-7 best-of-3 interleaved (08-03); opt-in only, histories byte-identical (seeds 3/7/11/23/42/99 checked) |
-| generation rate | 0.03-0.04 r/s/worker | N=30, wide ballots (gen-v3 config) |
-| fleet aggregate | ~0.55 r/s (15 workers) | mini 8 + Air 7 |
-| v11 numpy inference | p50 0.25ms / p95 0.52ms | production torch-free path; first call is slower |
-| benchmark cmd | one seeded MC round, see `server/runs/perf_audit_20260802.md` | compare like-for-like load only |
+| production decision | report-LCB 0.390s / `mc-strong` 0.127s | matched Mini benchmark; policy work only |
+| MC round, one core | pure 5.74s / compiled 1.68s | wide N=10 ballot; **3.42x**, byte-identical seeded histories |
+| generation fleet | 0.335 -> 1.212 rounds/s | same workload before/after compiled activation; **3.62x** |
+| v11 numpy inference | p50 0.25ms / p95 0.52ms | torch-free path; first call slower |
+| release-17 live search | p50/p95/max 0.896/1.714/1.906s | first ordinary post-fix room, 195 search-like turns |
+
+Reproduce the engine baseline from `server/runs/perf_audit_20260802.md` and
+compare only under like-for-like load.
 
 ## Shipped
 
@@ -84,11 +84,8 @@ this 08-04 table.
 |---|---|---|---|
 | 07-31 | Ordering lookup tables | +11% single-core | killed then-#1 hotspot |
 | 08-02 | decompose memo (cache on Ordering, per-round lifetime) | **1.26x** | pure function; differential-tested byte-identical |
-| 08-03 | Cython port phases 0-2 (caller-order semantics, rules kernels, leaf ports) | **3.42x** round (5.74->1.68s); beats 11.3x micro | 54/54 both modes, goldens byte-identical 6 seeds; opt-in SHENGJI_FAST=1 |
 | 08-02 | trusted-rollout fast path (skip follow re-validation in MC clones only) | ~1% solo (memo cheapened validation) | validate_lead always runs (throw penalties) |
-| 08-03 | Cython quarantine fix: caller-order memo keys (tuple(cards)) shared with pure `_dcache`/`_trcache` | **1.10x** round (pure 5.83s / fast 5.29s, seed-7 best-of-3 interleaved) | de-quarantined; 3 red contract tests now green; hashes identical |
-| 08-03 | Cython rules port: beats / decompose_matching / validate_follow / pair_count / uniform_suit / check_in_hand | **2.36x** round (pure 6.02s / fast 2.55s) | micro: beats 11.3x, decompose_matching 6.9x, validate_follow 4.0x; 10k+ randomized parity cases per function; hashes identical |
-| 08-03 | Cython policy leaves: points/total_points tables + HeuristicBot._lowest/_forced_follow (class-patched at activate) | **3.42x** round (pure 5.74s / fast 1.68s) | partial of the int-native goal (see gap #2/#3); 10k+ randomized parity; goldens byte-identical both modes |
+| 08-03 | compiled phases 0-2: caller-order caches, rules kernels and policy leaves | **3.42x** round (5.74 -> 1.68s) | 10k+ randomized parity cases, six byte-identical seeded histories; opt-in `SHENGJI_FAST=1` |
 | 08-07 | release-17 speculative scheduler + off-loop X-ray | live searched-turn p95 `1.714s`; WebSockets responsive during search | Decision semantics unchanged; overlaps pacing, validates before commit, discards stale snapshot state. This is responsiveness isolation, not rollout-throughput speedup. |
 
 ## Gaps (ranked by ROI)
@@ -96,68 +93,42 @@ this 08-04 table.
 | # | gap | fix | est. win | status |
 |---|---|---|---|---|
 | 1 | Memory rebuilt per decision (full history rescan, O(tricks²)/round) | incremental Memory carried through rollouts | 1.1-1.2x | open |
-| 2 | str card codes ("H10") → dict-hash on every eff_suit/level/beats; list-of-str hands | u8 int cards + array hands inside engine primitives | enabler for #3 | de-quarantined 08-03 (caller-order keys, suite green both modes). str stays at ALL public boundaries; u8 conversion happens per compiled call. Full int-native hands (convert once per rollout, only back at Round.play) still open — the remaining chunk of the 10-20x. |
-| 3 | interpreted Python hot loop (PARTIALLY DONE: phases 0-2 shipped 08-03) (per round: 181k heuristic decisions, 845k decompose, 282k beats, 278k validate_follow) | Cython over combos/legal/heuristic AFTER #2 | **10-20x combined** | in progress — **3.42x measured** (rules + policy leaves compiled, opt-in SHENGJI_FAST=1). Post-3.42x profile (fast active, cProfile): heuristic._lead 1.0s, _follow orchestration ~0.8s own, Round.play/_resolve_trick 1.3s, _cheapest_winning 0.5s, _current_winner 0.5s of 4.1s profiled. Next ports: _lead/_current_winner/_cheapest_winning (est. → ~5x), then int-native hands + compiled Round.play for the rest. |
+| 2 | Python policy hot loop after compiled phases 0-2 | port `_lead`, `_current_winner` and `_cheapest_winning` one phase at a time | toward ~5x round-level | open; pure/compiled history and bot-timing gates required |
+| 3 | string cards and list hands still cross every compiled call | convert once per rollout; compile `Round.play`/trick resolution | remaining path toward 10-20x | open; keep strings at public boundaries |
 | 4 | Round/Trick clone churn per rollout (3.8k clones/round) | reusable scratch state | ~1.1x | open |
-| 5 | rollouts always play to round end | early-terminate decided brackets | speculative — BIASES values, gate carefully | parked |
-| 6 | single-machine ceiling | rented 32-core burst (~$5/gen) | 4x fleet, zero code | available anytime |
-| 7 | Rust/PyO3 full engine core | 30-100x; wasm client bonus | parked until AWAC-scale; two-implementation drift risk ⇒ 10k-seed parity harness mandatory | parked |
+| 5 | multi-room capacity is not measured | concurrent-room latency/load gate | product reliability | open |
+| 6 | feature flags mix exact `"1"` checks with string truthiness | version and centralize boolean parsing | evidence correctness | open; until then unset flags for false—`=0` is unsafe |
+| 7 | rollouts always play to round end | early-terminate decided brackets | speculative and potentially biased | parked behind a strength/correctness gate |
+| 8 | single-machine ceiling | rented 32-core burst (~$5/generation) | ~4x fleet, zero code | available when critical path is compute-bound |
+| 9 | Rust/PyO3 full engine core | 30-100x; wasm client bonus | large | parked; requires a 10k-seed two-engine parity harness |
 
 ## Plan (sequencing)
 
-1. After the v8 cycle: #1 incremental Memory (day, pure Python, easy
-   differential test).
-2. Then #2+#3 together — int-encoding + Cython pass (the big one,
-   ~days). Non-negotiable gate: byte-identical seeded play histories
-   vs the Python engine before ANY generated data is trusted
-   (Elo-798 lesson applied to rules).
-3. #6 rented burst whenever a gen run blocks the roadmap by >1 day.
-4. #7 Rust only if AWAC-scale self-play demands it.
+1. Port `_lead`, `_current_winner` and `_cheapest_winning` in bounded phases;
+   require byte-identical histories plus wall-clock bot timing each time.
+2. Move int-card conversion to the rollout boundary, then compile
+   `Round.play`/trick resolution under the same differential gate.
+3. Add a concurrent-room production capacity test; event-loop isolation alone
+   is not a capacity proof.
+4. Measure incremental Memory and clone reuse after the next profile rather
+   than assuming the old percentages still hold.
+5. Burst to more cores when the strength critical path is compute-bound.
 
-## RESOLVED 2026-08-03: fast path VALIDATED and LIVE for generation
+## Fast-path evidence and boundaries
 
-Deep validation returned CLEAN: generation records are **bit-identical**
-(2,870 decisions, 16,550 teacher floats, max |delta| = 0.0; obs vectors,
-candidate order, chosen index all identical), duel records are
-**per-game identical** (not merely aggregate-equal), 900-round × 3-tier
-sweep clean, 20k+ edge comparisons incl. 1,717 throw-penalty firings,
-69k interleave checks. Measured generation speedup at fleet conditions:
-**0.335 -> 1.212 rounds/s aggregate (3.62x)**.
+The August 3 gate was clean: 2,870 generation decisions and 16,550 teacher
+floats were bit-identical, duel records matched per game, the 900-round tier
+sweep was clean, and 20k+ edge comparisons plus 69k interleavings passed.
+`tests/test_fast_parity.py` and golden histories retain the executable gate.
+Activation lives inside spawned generation workers and `META.json` records the
+engine mode.
 
-Trap found and fixed: `SHENGJI_FAST=1` only affected pytest — activation
-now lives INSIDE `distill_generate.worker()` (mp spawn re-imports in
-children) and asserts loudly; `META.json` records the engine mode so
-fast-path data stays scopable. Both machines relaunched on it 10:2x.
-
-Caveats recorded: compiled drop-ins require `list` inputs (TypeError on
-tuple/generator — all current callers comply); the HeuristicBot
-method-patch guard is activate-time only; `_trcache` population differs
-between modes (behaviour does not); the new lowest-beatable throw rule
-is unreachable in self-play (0 firings in 900 rounds) so its only
-coverage is the constructed sweep + committed test.
-
-## Fast path: RESOLVED (2026-08-03)
-
-The deep validation this section once described as "in flight" completed:
-per-candidate VALUE parity, a 300-round sweep, duel-record equivalence, and
-interleaving safety all passed, and `SHENGJI_FAST=1` has since generated
-gen-v3 and gen-v4 and run every duel on both machines. Bit-identical parity is
-asserted by `tests/test_fast_parity.py` and the golden histories.
-
-
-## Current perf state (2026-08-03 evening)
-
-- Cython fast path VALIDATED and live for generation, duels and tests
-  (3.4x round-level; gen-v4 ran at 1.4-2.0 rounds/s aggregate per
-  machine vs 0.33 before).
-- Profiling of the vleaf hybrid at generation settings: the value net is
-  only **8%** of the cost. Per-leaf `enumerate_actions` (32%) and
-  `encode_obs` (19%) dominate. **GPU would not help** (485k params;
-  kernel-launch overhead exceeds the math; 8 workers would serialise on
-  one device — numpy already beat torch 14ms vs 17ms).
-- Highest-value remaining perf item: a **direct V(state) head** that
-  scores a position without enumerating candidates — removes both
-  dominant costs, ~2x on generation AND on vleaf play latency.
+Compiled drop-ins currently require list inputs; strings remain the public
+card representation; cache populations can differ even when behavior cannot.
+Earlier value-leaf profiling also showed candidate enumeration/encoding—not
+the small network—as the dominant cost, so adding a GPU is not the current
+bottleneck. Any shortcut that changes rollout length or action semantics is a
+new strength experiment, not a performance-only patch.
 
 ## Rules
 
@@ -168,3 +139,6 @@ asserted by `tests/test_fast_parity.py` and the golden histories.
   overstate hotspots ~2x — trust wall-clock A/Bs for claims.
 - Running workers load code at spawn: optimizations reach jobs at
   their NEXT launch, never mid-run.
+- Parse environment flags through one versioned helper. Until that migration,
+  unset a flag to mean false; several paths currently treat the string `"0"`
+  as true.

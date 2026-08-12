@@ -1,124 +1,109 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-10 16:53 EDT. This file owns live compute and compact
-terminal stubs. Policy interpretation lives in `AI_POLICIES.md`; execution
-order in `BACKLOG.md`; historical detail in dated `docs_archive/` logs.
+Last reconciled: 2026-08-11 21:28 EDT. This file owns live compute and compact
+terminal job stubs. Exact historical detail is archived at
+`docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
+`AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
+in `HANDOFF_ACTIVE.md`.
 
 ## Live fleet
 
-| host | job | status / next admitted use |
+| host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | none | **FREE / T4 LABEL-V2 PACKET REVIEW.** Capacity-v3 result passed externally. Fresh score-free packet `0d119c84…dc32` re-verifies at exact `167feab`; no label receipt, shard slot, world or outcome exists. Only its external PASS may start the 16 shards. |
-| Air | S4 fixed replication | **LIVE, 8/8 SHARDS STARTED.** Exact `fb6ec1a`; packet `b239b849…ab76b`, admission `5fc07959…cb88`, receipt `fc6d54e7…1077`. Supervisor heartbeats every 30 seconds across 2,048 primary clusters plus 256 balanced null sentinels; projected max shard 7.732 hours. No interim inference or retry. |
-| Fly | `mc-s0-report-lcb` | Release 17 live. Passive production latency monitoring only. |
+| Mini | none | **FREE:** preferred host for the Teacher whole-game capacity preflight and screen after their separate reviews. |
+| Air | none | **FREE:** reserve for the separately reviewed long S4 N=12,288 confirmation or another admitted long job. |
+| Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
+
+No compute is blocked on capacity. The next Teacher work is blocked on code
+and evidence authority: the mid/late state screen passed, but its separate
+whole-game controller packet does not exist yet and therefore no whole-game
+launch is authorized.
 
 ## Next admitted execution
 
-Capture-v7 passed exact review and consumed its one admission. All 24 fresh
-shards completed, freeze published exact `1024/512/512` splits and `1920/128`
-play/bury surfaces, and terminal verification returned
-`VERIFIED_STAGE_C_CAPTURE`: state set `c7a769c4…e8e1c`, verifier
-`143fb2db…4adb`, 24/24 byte-identical disposition replays totaling 750,000
-deals, plus all 2,048 selected states regenerated. Current order:
+| order | gate | plain-English progress and what remains |
+|---:|---|---|
+| 1 | Teacher whole-game implementation | **In progress:** extend exact reviewed head `ee5e9ec`; preserve trick-5+ model proposal, fresh N=300 protection, literal champion and same-work uninformed control. |
+| 2 | Source/controller packet review | **Not frozen:** bind fresh deal streams, fixed work, progress, supervisor ownership and the reviewed state-result parent. No outcomes may open. |
+| 3 | Score-free capacity preflight | **Not admitted:** after exact packet PASS, run a tiny preflight on Mini and publish only trigger/work/throughput counters. |
+| 4 | Capacity review | **Pending evidence:** verify nonzero exposure, exact work/fallbacks and a feasible fixed screen before admitting score-bearing shards. |
+| 5 | One Teacher whole-game screen | **Not authorized:** run mirrored treatment/null/champion arms on Mini only after capacity PASS; publish no interim inference. |
+| 6 | Terminal result review | **Pending future evidence:** independently replay utility, win rate, work and gates. Stop before confirmation or deployment regardless of outcome. |
 
-1. External review of the immutable v7 state set is **complete / PASS**.
-2. Capacity-v1 packet/result passed, but the resulting label-v1 execution is
-   terminal no-use: eight slots consumed, two complete shards, six refusals,
-   no aggregate and no partial mining. Never run its other eight slots.
-3. Capacity-v2 result `64fdda5f…4cf2` is terminal no-use: Codex's own marker
-   was not external review and missing NumPy refused all 32 rows before worlds.
-4. Capacity-v3 packet, one Mini run and terminal result review are complete.
-5. Label-v2 packet `0d119c84…dc32` is frozen and review-open. Only its exact
-   PASS may admit one 16-shard execution and aggregate on 2,048/2,048 complete.
-6. Mini starts the model sweep only after complete reviewed iid-v2 labels and
-   a reviewed training packet. DESIGN/CALIB choose a capability; untouched
-   REPORT remains closed until that selection is final. Air stays on the
-   separately gated S4 lane.
-
-Separately, the user authorized idle Air for the promising S4 lane. The old
-365.592-fleet-hour confirmation remains closed. New source `fb6ec1a` reduces
-the null arm to a 256-cluster exact sentinel while retaining 2,048 fresh
-treatment/champion clusters. Source, preflight and packet reviews passed; the
-one fixed run is live under receipt `fc6d54e7…1077`.
+The global Teacher REPORT recipes, H0-v3, the first protected-play REPORT and
+expanded-bury REPORT are terminal no-use/`SELECT_NONE`; none may be retried,
+extended or reused. S4's old populations also remain closed, although a new
+future-only N=12,288 namespace is eligible for separate packet review. The
+2,048-state capture, 7,040-state labels and eight-seed cohort are completed
+assets, not live jobs.
 
 ## Terminal job index
 
-The canonical numbers and meanings are in the results table in
-`AI_POLICIES.md`; this table is only an artifact locator.
-
-| date | job | terminal verdict | anchor |
+| date | job | verdict / headline | evidence anchor |
 |---|---|---|---|
-| 08-10 | Teacher Stage-C label controller v2 | **FROZEN / EXTERNAL PACKET REVIEW OPEN / ZERO WORLDS** | source `167feab`; packet external/internal `0d119c84…dc32` / `b800b330…87ed`; 2,048 states, 16 shards, 4,984,960 exact candidate-worlds; 45/45 focused tests; no receipt/slot/label/outcome |
-| 08-10 | Teacher Stage-C capacity v3 | **TERMINAL + EXTERNAL RESULT PASS** | source `167feab`; result external/internal `e2eea8c4…d32d4` / `00bd3456…7e9f`; slot `6dc1f9bd…d0fb`; 32/32, 147,384 exact worlds, zero refusals/outcomes; projection 1.640 fleet-hours / 0.235 wall-hours; Claude PASS `9c4e040` |
-| 08-10 | Teacher Stage-C capacity v2 | **TERMINAL NO-USE / ZERO WORLDS** | result external/internal `64fdda5f…4cf2` / `def43a24…2102`; consumed slot `b6c1219a…5e72`; 32/32 missing-NumPy V11-load refusals, zero candidate worlds/sampler attempts/outcomes; Codex self-review was invalid; never retry |
-| 08-10 | S4 fixed Air replication | **PACKET PASS / LIVE 8-SHARD OUTCOME RUN** | exact `fb6ec1a`; preflight `a89a4498…69`; packet `b239b849…ab76b`; admission `5fc07959…cb88`; receipt `fc6d54e7…1077`; 2,048 primary + 256 null-sentinel clusters; no interim verdict |
-| 08-10 | Teacher Stage-C iid-v2 capacity packet | **SUPERSEDED / SELF-REVIEW INVALID** | source `8a202e9`; packet external/internal `a667b6bb…795c` / `0a0194ce…6977`; exact schedule remains useful, but Codex's marker was not external authority and the resulting v2 run is terminal no-use |
-| 08-10 | Teacher Stage-C label v1 execution | **TERMINAL NO-USE / NO AGGREGATE** | source `3f6f048`; receipt external `0c3d7ea0…adc1c`; consumed slots `0,4,5,8,10,12,14,15`; 2 complete, 6 refused, 971/1,024 complete rows; untouched slots never run; no partial utility mining |
-| 08-10 | Teacher Stage-C label capacity v1 | **TERMINAL CAPACITY + EXTERNAL RESULT PASS / SUPERSEDED DOWNSTREAM** | packet `e8967d6f…d2a58`; result `111092b7…cee0`; 32/32, zero refusals, no retained outcome; it validly sized v1 but did not exercise the late small-support failure and cannot authorize v2 |
-| 08-10 | Teacher Stage-C label controller v1 | **CONSUMED / SUPERSEDED BY TERMINAL LABEL FAILURE** | source `3f6f048`; packet external/internal `e4958358…09c2` / `4b6c3c83…5be5`; exact authority consumed once; never retry, extend or aggregate |
-| 08-09 | S3a structured-bury full-game screen | **SELECT NONE / CLOSED** | exact `c599b42`; all 2,048 clusters verified; aggregate `20609613…271f`, final `32156d79…c9ff`; no confirmation, retry, tuning or promotion |
-| 08-09 | Teacher Stage-C controller rebind | **EXTERNAL PASS / ZERO STATES** | source `7018f36`; packet commit `45429f3`; packet `b60c4298…7b18`; Claude PASS at `cb9471b`; all seven curriculum commitments unchanged; capture-controller implementation only |
-| 08-09 | Teacher Stage-C design v3 | **DESIGN PASS / SUPERSEDED ONLY BY IDENTITY REBIND** | source `20bdb95`; asset `1a29418`; packet `f213314a…3b4`; Claude PASS at `d92f595`; zero states/labels; curriculum preserved exactly by passed rebind `b60c4298…7b18` |
-| 08-09 | S5 replay-census code | **BOUNDARY FIXTURE PASS / NO CENSUS** | draft PR #4 head `2351b36`; real `HK` versus lower-ranked equal-point `H10` witness; named `<`→`<=` mutation fails; 12 focused + 52 broader available tests pass; one score-free census freeze eligible |
-| 08-09 | H0 controller admit→runtime repair | **V3 EXTERNAL PASS / ZERO OUTCOMES** | PR #6; source `4ebcd09`; packet `cf074871…35392`; Claude PASS at `205b6af`; 557 rows; no diagnostic receipt yet |
-| 08-09 | Human H0-v3 controller v2 | **COMPONENT PASS / OPERATIONAL HOLD** | source `6977dbb`; packet `3f68dc6e…7fcf`; admission's unignored lock makes runtime reject its own dirty tree; zero worlds/outcomes |
-| 08-09 | S3c one-card controller repair | **V2 EXTERNAL PASS / ZERO SOLVER WORK** | PR #6; source `4ebcd09`; packet `cafbee43…f23e`; Claude PASS at `205b6af`; 64 roots; no mechanics receipt yet |
-| 08-09 | S3c one-card controller v1 | **COMPONENT PASS / OPERATIONAL HOLD** | source `e9db4a2`; packet `f58d23b7…3874`; same unignored-lock admit→runtime failure; zero worlds/exact sessions |
-| 08-09 | Human H0-v3 controller v1 | **HOLD / SUPERSEDED BEFORE OUTCOMES** | producer `931f504`; asset `ff277b4`; packet `13d9a97f…61fc`; runtime did not self-enforce compiled/strict-void mode and receipt deletion could reissue; preserved and replaced by frozen v2 |
-| 08-09 | S3c natural-prefix census + curriculum | **DESIGN PASS / ONE-CARD CONTROLLER IMPLEMENTATION ONLY** | producer `0b96fae`; asset `4fb90a1`; 768 roots; census `23632609…b52a`; packet `df102428…9eca`; Claude marker commit `084ba7e`; no solver/screen/training/strength authority |
-| 08-10 | Teacher Stage-C capture v3 | **TERMINAL HOLD / SIX PARTIAL SHARDS NO-USE** | exact source `0b697b6`; first wave found deterministic exact-late phase drift at seeds `170002101` and `170007422`; no later waves, pooling or retry |
-| 08-10 | Teacher Stage-C capture v4 repair | **EXTERNAL PASS / SUPERSEDED PRE-ADMISSION** | source `5a51a1e`; packet `0d1a94d4…54eaa`; Claude PASS `8263492`; exact phase fix remains valid, but a later candidate canonicality defect means no v4 receipt/state may be issued |
-| 08-10 | Teacher Stage-C capture v5 canonical-source repair | **HOLD / SUPERSEDED BEFORE ADMISSION** | source `a71c67e`; packet `e299ac6c…cf749`; play/follow/random-source repairs were sound, but equal-valued SmartBot incumbent buries still inherited hand order; zero v5 states/worlds |
-| 08-10 | Teacher Stage-C capture v6 incumbent repair | **TERMINAL HOLD / 24 SHARDS NO-USE** | Claude PASS `8d6ce71`; source `2bdb094`; receipt external `8580b336…f8c66`; ordered shards `89af231f…8d6`; six exact-late follow cells `0/N`; no state set/verification, retry or extension |
-| 08-10 | Teacher Stage-C capture v7 + state set | **TERMINAL CAPTURE + EXTERNAL STATE-SET PASS** | Claude source PASS `83e3fce`; source `03c87d6`; packet `b53af06c…8a43`; receipt `8fdfdef5…f0ef5`; 24/24 fresh shards; reviewed 2,048-state set `c7a769c4…e8e1c`; verifier `143fb2db…4adb`, all 750,000 dispositions and every state replayed |
-| 08-09 | S4 complete-round v2 screen | **TERMINAL PASS / CONFIRMATION NOT LAUNCHED** | exact `cad3992`; treatment−champion `+0.086914 +/- 0.056166`, LCB `+0.030748`; treatment and matched null identical, null−champion zero; confirmation projection `365.592` fleet-hours / `45.699` max-shard hours |
-| 08-09 | S4 point-banking exact-state screen | **MECHANISM PASS / FULL-GAME PACKET REVIEW** | screen `abd9f36f…cdc00`; receipt `90124eb6…f526b`; overall point delta `+5.156`, LCB `+3.029`; both roles positive; no strength or launch authority |
-| 08-09 | Human H0 design v3 | **DESIGN PASS / CONTROLLER FROZEN** | source `b02b6de`, packet commit `d6214ce`, packet `4d3f0a35…8cc3c`; Claude marker `239f13c`; preserved plays, frozen buries, 17/33 caps, explicit continuation, finite work; no outcomes |
-| 08-09 | Human H0 design v2 | **IDENTITY DELTA PASS / SUPERSEDED PRE-CONTROLLER** | exact `12dac55`; packet `2cccf580…8f2b`; Claude marker `9fdb67a`; real V11 + portable parent passed, later bounded-design audit superseded it; no outcomes |
-| 08-09 | Human H0 design v1 | **SPLIT REVIEW PASS / SUPERSEDED PRE-EXECUTION** | exact `9770313`; packet `9ff160a9…247d3`; split semantics passed, but pinned V11 SHA names no artifact; no outcomes computed |
-| 08-09 | Teacher Stage-C design freeze v2 | **HELD PRE-REVIEW / H0 PARENT SUPERSEDED** | exact `b0ef0f9`; 1,024/512/512 DESIGN/CALIB/REPORT; packet `45802e47…a350`; rebind only after H0 controller-v2 PASS; no capture/labels/compute |
-| 08-09 | S4 v2 generation replay | **SCORE-FREE COMPLETE / CONSUMED BY REVIEWED SCREEN** | exact verifier `b0ef0f9`; all 69,047 ascending deals rescanned and all 64 states rebuilt exactly; witness `3079fb16…f0a9` |
-| 08-09 | S4 fresh state capture v2 | **SCORE-FREE COMPLETE / CONSUMED BY REVIEWED SCREEN** | exact `1b35fb7`; 64 unique deals (32/role); states `4538be85…6b5f`; Air native `d14eefdd…ebe2e0` |
-| 08-09 | S4 fresh state capture v1 | **HOLD / CLOSED WITHOUT OUTCOMES** | exact `402c012`; state asset internally valid, but claimed material digest was irreproducible and test counts were unpinned; replaced by fresh v2 rather than reused |
-| 08-09 | Teacher-v3 fresh audit | **PASS / STAGE-C DESIGN** | gate `8a1532b7…91f8`; supervisor `02f4f8b…6f237`; adapter `56ccefbd…c2442` |
-| 08-09 | Suphx O0-v2 | **SELECT NONE** | gate `0dbd9aa8…f24e`; independent semantic replay `verified=true` |
-| 08-09 | S3a full-game preflight | **CAPACITY PASS** | preflight `09692f82…edf0`; final `56943242…e9f` |
-| 08-08 | S3a 512-state screen | **MECHANISM PASS** | aggregate `74aa5a39…396cd`; final `d3f2b1ab…69a6b` |
-| 08-08 | S3b-v2 preflight | **TERMINAL HOLD / NO SCREEN** | exact head `cd44ea8`; no receipt/final by design |
-| 08-08 | Teacher Stage B | **PASS** | gate `f607b489…89694` |
-| 08-08 | Teacher audit-v2 | **OPERATIONAL REFUSAL / NO ML VERDICT** | receipt `ce51b826…71d0`; failed root preserved |
-| 08-08 | Suphx O0 | **SELECT NONE** | gate `592a009a…bd407c` |
-| 08-07 | RLCB-C1 | **CONFIRM** | aggregate `83f5a9df…f5ef5ea`; closeout `06dd487d…b7aae5` |
-| 08-07 | production latency | **LIVE** | image `latency-cd6789e`; manifest `047bcfe4…5b300` |
-| 08-07 | V11 direct-v2 | **SELECT NONE** | aggregate `b7c90ba4…05d21ad` |
-| 08-07 | Direct-Q 144M | **SELECT NONE** | aggregate `1fa6789e…ce791` |
-| 08-07 | formal S0 | **SELECT NONE / OUTCOMES UNREAD** | closeout `ef0a365…fde9a` |
-| 08-05 | DEV-512 ballot | **SELECT NONE** | asset `af787485…85d3e7b` |
-| 08-04 | sampler Package H | **BOUNDED PASS** | commit `aea3774`; `certify_sampler_v3.json` |
+| 08-11 | Mid/late Teacher hybrid state screen | **PASS / WHOLE-GAME DESIGN:** treatment−live `+0.02020`, lower bound `+0.01275`; treatment−same-work-null `+0.01570`, lower bound `+0.00880`; no strength claim yet | result `f18c2e42...948f6`; aggregate `269eadf3...f2402` |
+| 08-11 | Expanded-bury Teacher REPORT | **SELECT NONE**; mean `+0.03381`, one-sided LCB `-0.01525`; narrow structured-point/void signal only | result `2e21a9bf...72ac4d`; final `126d73cd...e58387` |
+| 08-11 | S4 point-banking replication | **SELECT NONE**; mean `+0.04883`, LCB `-0.00688`; positive direction did not replicate conclusively | aggregate `d6b73f45...8f4d4`; final `20ece4ed...f144a` |
+| 08-10 | Protected-play Teacher REPORT | **SELECT NONE**; mean `-0.00823`, LCB `-0.01894`; proposal-disagreement overrides lost out of sample | result `8fa323de...5aea6`; final `3b42561d...1758f8` |
+| 08-09 | S3a full-game preflight | **CAPACITY PASS / SCREEN PACKET REVIEW**; 4/4 clusters, exact 952/952 structured rollouts, screen projection `72.62` fleet-hours / `9.08` max-shard hours | preflight `09692f82...edf0`; final `56943242...e9f` |
+| 08-09 | Teacher-v3 fresh audit | **PASS / STAGE-C DESIGN**; cheap upper `0.0354`, N=30 upper `0.0439` below `0.10`; no training authority | gate `8a1532b7...91f8`; supervisor `02f4f8b...6f237` |
+| 08-09 | Suphx O0-v2 | **SELECT NONE**; control `+0.015` (LCB `-0.067`), plus-margin `-0.047` (LCB `-0.109`); independently replayed | gate `0dbd9aa8...f24e`; admission `f436f4b0...01e7a` |
+| 08-08 | S3a 512-state screen | **AUTHORIZE DUEL DESIGN**; all three state-level LCBs positive; no production authority | aggregate `74aa5a39...396cd`; final `d3f2b1ab...69a6b` |
+| 08-08 | S3a v2 sizing | **CAPACITY PASS**; 0.142 fleet-hours / 0.0178 max-shard hours under frozen 400/60 caps | receipt `cf770277...5c431` |
+| 08-08 | Teacher Stage B | **PASS**; regret upper bound `0.019548 < 0.10` | gate `f607b489...89694` |
+| 08-08 | Teacher audit-v2 | **OPERATIONAL REFUSAL / NO ML VERDICT**; incomplete continuation, no labels/gate | receipt `ce51b826...71d0`; failed root preserved |
+| 08-08 | S3b v2 preflight | **TERMINAL HOLD / NO SCREEN**; exact node cap hit in cluster 1 | head `cd44ea8`; no final/partial receipt |
+| 08-08 | Suphx O0 | **SELECT NONE**; aggregate oracle signal, seed-1 reversal | gate `592a009a...bd407c` |
+| 08-07 | RLCB-C1 | **CONFIRM**; report-LCB `+0.338379 +/- 0.067706`, null flat | aggregate `83f5a9df...f5ef5ea`; closeout `06dd487d...b7aae5` |
+| 08-07 | production latency | **LIVE**; release 17, off-loop isolated search | image `latency-cd6789e`; manifest `047bcfe4...5b300` |
+| 08-07 | V11 direct-v2 | **SELECT NONE**; `-0.141113 +/- 0.069823` versus current | aggregate `b7c90ba4...05d21ad` |
+| 08-07 | Direct-Q 144M | **SELECT NONE**; positive gameplay, failed held-out learning | aggregate `1fa6789e...ce791` |
+| 08-07 | formal S0 | **SELECT NONE**; numerical S0c outcome unread/nonretryable | closeout `ef0a365...fde9a` |
+| 08-05 | DEV-512 ballot | **SELECT NONE**; no design advanced, CALIB/REPORT sealed | state asset `af787485...85d3e7b` |
+| 08-04 | sampler Package H | **PASS** within bounded strict scope; not posterior calibration | commit `aea3774`; `certify_sampler_v3.json` |
 
-No terminal row grants more authority than its original gate. In particular,
-Teacher's passed Stage-C rebind authorizes capture-controller implementation
-only and does not authorize state capture, labels or training; the S3a state
-screen authorized only the now-terminal full-game test; and O0-v2 does not
-authorize O1.
+No row grants more authority than its original gate. In particular, S3a's
+positive state screen permits duel **design**, not a duel launch, strength
+claim, policy promotion, or production change.
 
-## Preserved failures
+## Current terminal details
 
-- S4 full-game v1 `b64bc95` / `80e4f1bf…6947` is superseded before external
-  review. Adversarial probes found outcome-sign/bound, accepted-work and direct-
-  authority gaps. It never launched and published no outcomes; repaired v2 is
-  a fresh seed namespace rather than a retry.
-- Teacher audit-v1/v2 roots remain immutable evidence of publication and
-  underfilled-continuation refusals. The fresh v3 audit supersedes them
-  operationally but does not rewrite them.
-- S3b-v2 exceeded its frozen 250k-node cap before completing its first
-  treatment cluster. No score, partial or receipt survived; v2 cannot retry.
-- Formal S0c completed compute but failed the evidence chain before corrected
-  score parsing. Its numerical result remains permanently unread.
+### S3a 512-state screen — verified PASS
+
+- reviewed source git `14548d3da31c3cfe899cbd7e572614ae05242c0a`;
+- run ID `s3a-bury-v2-screen-136m-v1`, eight successful shards, exact seeds
+  136,000,000–136,000,511;
+- aggregate `74aa5a3947e1daaa5aa4bc33eef8ae04eaaf695d0cb900c7045eb0cbbc4396cd`;
+- supervisor final
+  `d3f2b1ab48085ccf37534b5dd7f20ea6cf0d7644c6c49304b644ecf895169a6b`;
+- separate CLI verifier exited zero with `verified=true`;
+- structured-minus-incumbent `+0.997314 +/- 0.400606`, LCB `+0.596708`;
+- structured-minus-legacy-four `+0.877848 +/- 0.379885`, LCB `+0.497963`;
+- structured-minus-random-widening `+3.252848 +/- 0.561197`, LCB
+  `+2.691652`;
+- no problems, partials or symlinks; retry/resume false; production promotion
+  false.
+
+### Teacher audit-v2 — immutable refusal
+
+Stage B passed, but audit-v2 shard 6 stopped after a complete selection fold
+and incomplete report continuation. The supervisor terminated siblings. No
+label final, terminal audit gate, or regular supervisor final exists, so the
+reviewed adapter cannot consume it. Preserve
+`~/Projects/shengji-teacher-audit-v2-air` and the earlier failed v1 root; never
+resume, migrate, delete, or reinterpret them. Exact retry semantics at
+`1589fb4` passed independent review but did not authorize a new run.
+
+### S3b v2 — immutable preflight HOLD
+
+The exact treatment exceeded `max_nodes=250000` before cluster 1 completed.
+No score, raw record, receipt, or partial survived. V2 may not retry or change
+its cap/fallback. Any future v3 requires a fresh resource contract and review.
 
 ## Archive pointers
 
-- `docs_archive/jobs-through-2026-08-08.md`
-- `docs_archive/daily-log-2026-08-08.md`
-- `docs_archive/daily-log-2026-08-09.md`
-- `docs_archive/handoff-review-2026-08-08-through-2026-08-09-t1-t2.md`
+- Full pre-compaction ledger:
+  `docs_archive/jobs-through-2026-08-08.md`, SHA-256
+  `26beff936f6c0744b220fc79e233163c8f09acde8a13adcba5450327ad132252`.
+- Day chronology: `docs_archive/daily-log-2026-08-08.md`.
+- Review markers and adversarial findings: `HANDOFF_REVIEW.md`.

@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-12 03:15 EDT. This file owns current compute and
+Last reconciled: 2026-08-12 03:28 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -10,7 +10,7 @@ compact terminal stubs. Historical detail is archived in
 | host | live strength job | health / next use |
 |---|---|---|
 | **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; all remain CPU-bound. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
-| **Air** | none | **FREE.** It completed the S6 boss/near prevalence census and no worker remains live. Reserve it for the first externally authorized S4, S6 or pair-aware preflight. |
+| **Air** | `pair-cap-incremental-dose-v1` | **HEALTHY / ONE CORE.** A 192-state score-free v2-minus-v1 public-proof dose census is running. It measures triggers and root changes only, not strength. After completion, reserve Air for the first externally authorized S4, S6 or pair-aware preflight. |
 | **Fly production** | `mc-s0-report-lcb` | Release 17 remains live. No deploy, restart, room wipe or policy change is authorized. |
 
 ## Reviewed queue
@@ -19,7 +19,7 @@ compact terminal stubs. Historical detail is archived in
 |---:|---|---|
 | 1 | S4 future-only sequential preflight | PR #40 head `3403cdf`; controller review pending. A PASS permits one score-free Air preflight and packet design only. |
 | 2 | S6 shuai-pai preflight | PR #41 head `ea07efa`; Air-bound packet v2 review pending. A PASS permits one score-free four-cluster Air preflight only. |
-| 3 | Pair-aware capacity preflight | Parent PASSes complete. PR #46 head `63ebd70`, controller `54ec818`, packet `2fc732fd…25610`; external packet review pending. A PASS permits one score-free four-cluster Air preflight only. |
+| 3 | Pair-aware capacity preflight | Parent PASSes complete. V1 is withdrawn after a pre-run validator bug; no marker or gameplay occurred. PR #46 preservation head `45ee0e2`, controller `2321790`, repaired v2 packet `ba0bb693…baa0b6`; external v2 packet review pending. A PASS permits one score-free four-cluster Air preflight only. |
 
 Whichever of S4, S6 or pair-aware receives its exact marker first takes Air. Preflight
 artifacts must stay score-free; a later independent packet review is required

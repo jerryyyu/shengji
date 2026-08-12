@@ -226,3 +226,52 @@ def test_exclusive_writer_does_not_replace_a_racing_target(tmp_path,
     with pytest.raises(FileExistsError):
         CAPTURE._write_exclusive(target, {"ours": True})
     assert target.read_text() == "other writer\n"
+
+
+def test_population_verifier_rebuilds_counters_and_receipts_from_shards(
+        tmp_path, monkeypatch):
+    witness_split = CAPTURE.split_for_seed(861_614)
+    monkeypatch.setattr(CAPTURE, "SPLITS", (witness_split,))
+    monkeypatch.setattr(CAPTURE, "BANDS", ("early",))
+    monkeypatch.setattr(CAPTURE, "QUOTA_PER_SPLIT", {"early": 1})
+    monkeypatch.setattr(CAPTURE, "ROWS_PER_SPLIT", 1)
+    monkeypatch.setattr(CAPTURE, "TOTAL_ROWS", 1)
+    monkeypatch.setattr(CAPTURE, "SHARD_COUNT", 1)
+    monkeypatch.setattr(CAPTURE, "SEED0", 861_614)
+    monkeypatch.setattr(CAPTURE, "MAX_DEALS", 1)
+
+    population_path = tmp_path / "pair-population.json"
+    CAPTURE.capture_shard(
+        shard_index=0, shard_count=1, seed0=861_614, max_deals=1,
+        out=population_path, smoke=True, progress_every=0)
+    population = CAPTURE.merge_shards(
+        shard_count=1, seed0=861_614, max_deals=1,
+        out=population_path, smoke=True)
+    CAPTURE.validate_population(
+        population, source_path=population_path, smoke=True)
+
+    forged_receipt = copy.deepcopy(population)
+    forged_receipt["shards"][0]["file_sha256"] = "f" * 64
+    body = dict(forged_receipt)
+    body.pop("artifact_sha256")
+    forged_receipt["artifact_sha256"] = CAPTURE.sha256_bytes(
+        CAPTURE.canonical_json(body))
+    population_path.write_bytes(CAPTURE.canonical_json(forged_receipt))
+    with pytest.raises(CAPTURE.CaptureRefused, match="file digest drift"):
+        CAPTURE.validate_population(
+            forged_receipt, source_path=population_path, smoke=True)
+
+    forged = copy.deepcopy(population)
+    cell = f"{witness_split}/early"
+    forged["capture_observed_by_cell"][cell] += 1
+    forged["capture_search_eligible_by_cell"][cell] += 1
+    forged["search_eligible_counts_by_band"]["early"] += 1
+    forged["search_eligible_denominator"] += 1
+    body = dict(forged)
+    body.pop("artifact_sha256")
+    forged["artifact_sha256"] = CAPTURE.sha256_bytes(
+        CAPTURE.canonical_json(body))
+    population_path.write_bytes(CAPTURE.canonical_json(forged))
+    with pytest.raises(CAPTURE.CaptureRefused, match="do not rebuild"):
+        CAPTURE.validate_population(
+            forged, source_path=population_path, smoke=True)

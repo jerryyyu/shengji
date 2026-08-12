@@ -715,8 +715,23 @@ def merge_shards(*, shard_count: int, seed0: int, max_deals: int,
     return payload
 
 
-def validate_population(payload: object, *, replay: bool = True) -> None:
-    """Fully reopen the merged asset rather than trusting its self-hash."""
+def validate_population(payload: object, *, source_path: Path,
+                        replay: bool = True, smoke: bool = False) -> None:
+    """Fully reconstruct the merged asset from every source shard.
+
+    A population self-hash authenticates accidental corruption only.  The
+    natural-dose counters and shard receipts are evidence, so verification
+    must reopen the exact 16 source streams and recompute them rather than
+    trusting fields that could be changed together and rehashed.
+    """
+    if source_path.is_symlink() or not source_path.is_file():
+        raise CaptureRefused("population source missing/nonregular")
+    try:
+        source_payload = json.loads(source_path.read_bytes())
+    except (OSError, ValueError) as exc:
+        raise CaptureRefused("population source is unreadable") from exc
+    if source_payload != payload:
+        raise CaptureRefused("population payload differs from source bytes")
     if (not isinstance(payload, dict)
             or payload.get("schema") != ARTIFACT_SCHEMA):
         raise CaptureRefused("population schema drift")
@@ -727,8 +742,6 @@ def validate_population(payload: object, *, replay: bool = True) -> None:
     if observed_sha != sha256_bytes(canonical_json(body)):
         raise CaptureRefused("population digest drift")
     exact = {
-        "tree_dirty": False,
-        "fast_engine": True,
         "score_free": True,
         "outcomes_computed": False,
         "strength_claim": False,
@@ -749,6 +762,11 @@ def validate_population(payload: object, *, replay: bool = True) -> None:
     }
     if any(payload.get(key) != value for key, value in exact.items()):
         raise CaptureRefused("population identity/authority drift")
+    if (not isinstance(payload.get("tree_dirty"), bool)
+            or not isinstance(payload.get("fast_engine"), bool)
+            or (not smoke and (payload["tree_dirty"] is not False
+                               or payload["fast_engine"] is not True))):
+        raise CaptureRefused("population runtime authority drift")
     source_sha256s = payload.get("source_sha256s")
     if (not isinstance(source_sha256s, dict)
             or set(source_sha256s) != SOURCE_FIELDS
@@ -840,6 +858,42 @@ def validate_population(payload: object, *, replay: bool = True) -> None:
                 row["deal_seed"], row["trick"], row["seat"]))):
         raise CaptureRefused("population state identity/order drift")
 
+    expected_runtime = {key: payload[key] for key in RUNTIME_FIELDS}
+    source_rows = []
+    source_observed = Counter()
+    source_eligible = Counter()
+    for index, receipt in enumerate(receipts):
+        path = shard_path(source_path, index, SHARD_COUNT)
+        if receipt["path"] != path.name:
+            raise CaptureRefused("population shard receipt path drift")
+        if path.is_symlink() or not path.is_file():
+            raise CaptureRefused(f"population source shard {index} missing")
+        if sha256_file(path) != receipt["file_sha256"]:
+            raise CaptureRefused("population source shard file digest drift")
+        try:
+            shard = json.loads(path.read_bytes())
+        except (OSError, ValueError) as exc:
+            raise CaptureRefused(
+                f"population source shard {index} unreadable") from exc
+        validate_shard(
+            shard, shard_index=index, shard_count=SHARD_COUNT,
+            seed0=SEED0, max_deals=MAX_DEALS,
+            expected_runtime=expected_runtime, smoke=smoke)
+        if shard["artifact_sha256"] != receipt["artifact_sha256"]:
+            raise CaptureRefused(
+                "population source shard internal digest drift")
+        source_rows.extend(shard["rows"])
+        source_observed.update(shard["observed_by_cell"])
+        source_eligible.update(shard["eligible_observed_by_cell"])
+
+    selected, shortages = select_population(source_rows)
+    if shortages or selected != rows:
+        raise CaptureRefused("population selection does not rebuild from shards")
+    if (dict(sorted(source_observed.items())) != observed
+            or dict(sorted(source_eligible.items())) != eligible):
+        raise CaptureRefused(
+            "population observation counters do not rebuild from shards")
+
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser()
@@ -872,7 +926,8 @@ def main() -> None:
             if args.out.is_symlink() or not args.out.is_file():
                 raise CaptureRefused("population missing/nonregular")
             payload = json.loads(args.out.read_bytes())
-            validate_population(payload)
+            validate_population(
+                payload, source_path=args.out, smoke=args.smoke)
             print(json.dumps({
                 "verified": True,
                 "artifact_sha256": sha256_file(args.out),

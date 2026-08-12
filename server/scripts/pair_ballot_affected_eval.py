@@ -46,6 +46,15 @@ SHARD_FIELDS = {
     "diagnostic_only", "strength_claim", "production_promotion",
     "production_deployment", "artifact_sha256",
 }
+RESULT_FIELDS = {
+    "schema", "state_id", "state_sha256", "deal_seed", "split", "band",
+    "role", "policy_root_seed", "external_report_seed", "current",
+    "retained", "best_inserted_index", "best_inserted_pair",
+    "policy_action_changed", "retained_raw_winner_is_inserted",
+    "current_raw_winner_was_evicted", "external_report", "estimands",
+    "candidate_world_work", "diagnostic_only", "strength_claim",
+    "production_promotion", "production_deployment", "result_sha256",
+}
 
 
 class EvalRefused(RuntimeError):
@@ -261,7 +270,8 @@ def load_population(path: Path) -> dict:
         raise EvalRefused("affected-state population missing/nonregular")
     payload = json.loads(path.read_bytes())
     try:
-        STATES.validate_population(payload, replay=False)
+        STATES.validate_population(
+            payload, source_path=path, replay=False, smoke=False)
     except STATES.CaptureRefused as exc:
         raise EvalRefused(
             f"affected-state population authority/content drift: {exc}") \

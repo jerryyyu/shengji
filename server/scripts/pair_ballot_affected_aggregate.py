@@ -35,13 +35,20 @@ def _finite_number(value: object) -> bool:
 
 def _validate_result(row: object, *, split: str,
                      report_worlds: int) -> None:
-    if not isinstance(row, dict) or row.get("schema") != EVAL.SCHEMA:
-        raise EVAL.EvalRefused("pair evaluation result schema drift")
+    if (not isinstance(row, dict) or row.get("schema") != EVAL.SCHEMA
+            or set(row) != EVAL.RESULT_FIELDS):
+        raise EVAL.EvalRefused("pair evaluation result field population drift")
     body = dict(row)
     observed_sha = body.pop("result_sha256", None)
     if observed_sha != STATES.sha256_bytes(STATES.canonical_json(body)):
         raise EVAL.EvalRefused("pair evaluation result digest drift")
-    if (row.get("split") != split
+    state_id = row.get("state_id")
+    if (not isinstance(state_id, str)
+            or row.get("policy_root_seed") != EVAL.seed_for(
+                state_id, "policy-root")
+            or row.get("external_report_seed") != EVAL.seed_for(
+                state_id, "external-report")
+            or row.get("split") != split
             or row.get("diagnostic_only") is not True
             or row.get("strength_claim") is not False
             or row.get("production_promotion") is not False
@@ -49,8 +56,18 @@ def _validate_result(row: object, *, split: str,
             or row.get("external_report", {}).get("worlds") != report_worlds
             or set(row.get("estimands", {})) != set(METRICS)
             or any(not _finite_number(row["estimands"][metric])
-                   for metric in METRICS)):
+                   for metric in METRICS)
+            or any(not isinstance(row.get(field), bool) for field in (
+                "policy_action_changed", "retained_raw_winner_is_inserted",
+                "current_raw_winner_was_evicted"))):
         raise EVAL.EvalRefused("pair evaluation result content/authority drift")
+
+
+def _validate_source_binding(result: dict, source: dict) -> None:
+    for field in ("state_id", "state_sha256", "deal_seed", "split",
+                  "band", "role"):
+        if result.get(field) != source.get(field):
+            raise EVAL.EvalRefused("pair aggregate state binding drift")
 
 
 def load_shard(path: Path) -> dict:
@@ -193,8 +210,7 @@ def aggregate(*, population: Path, shard_paths: list[Path],
     if len(observed) != len(rows) or set(observed) != set(expected):
         raise EVAL.EvalRefused("pair aggregate state population incomplete")
     for state_id, result in observed.items():
-        if result["state_sha256"] != expected[state_id]["state_sha256"]:
-            raise EVAL.EvalRefused("pair aggregate state binding drift")
+        _validate_source_binding(result, expected[state_id])
 
     weights = source.get("search_eligible_weights")
     stats = {metric: weighted_cluster_stats(rows, metric, weights)

@@ -11,6 +11,7 @@ SCRIPTS = Path(__file__).parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import pair_ballot_affected_eval as EVAL  # noqa: E402
+import pair_ballot_affected_aggregate as AGG  # noqa: E402
 import pair_ballot_affected_states as STATES  # noqa: E402
 
 
@@ -61,6 +62,12 @@ def math_is_finite(value: float) -> bool:
     return value == value and abs(value) != float("inf")
 
 
+def _rehash(row: dict) -> None:
+    body = dict(row)
+    body.pop("result_sha256", None)
+    row["result_sha256"] = STATES.sha256_bytes(STATES.canonical_json(body))
+
+
 def test_evaluation_is_deterministic_for_the_same_frozen_state(witness, evaluated):
     again = EVAL.evaluate_state(witness, report_worlds=2)
     assert again == evaluated
@@ -109,3 +116,20 @@ def test_named_seed_streams_are_stable_and_disjoint():
     assert root == EVAL.seed_for(state, "policy-root")
     assert root != report
     assert root != EVAL.seed_for("861614:1:1", "policy-root")
+
+
+def test_aggregate_validator_refuses_rehashed_extra_result_fields(evaluated):
+    bad = copy.deepcopy(evaluated)
+    bad["winner_team"] = 0
+    _rehash(bad)
+    with pytest.raises(EVAL.EvalRefused, match="field population"):
+        AGG._validate_result(bad, split=bad["split"], report_worlds=2)
+
+
+def test_aggregate_binds_cluster_and_band_to_source(witness, evaluated):
+    bad = copy.deepcopy(evaluated)
+    bad["deal_seed"] += 1
+    _rehash(bad)
+    AGG._validate_result(bad, split=bad["split"], report_worlds=2)
+    with pytest.raises(EVAL.EvalRefused, match="state binding"):
+        AGG._validate_source_binding(bad, witness)

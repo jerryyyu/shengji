@@ -3371,3 +3371,48 @@ publishes its terminal seal; this preflight cannot admit before then.
 S4_POINT_BANKING_FUTURE_MINI_CONTROLLER_V1_REVIEW {"automatic_two_look_contract_verified":true,"design_git":"182459941226b96969e2c2b207406cf5b53167ab","design_sha256":"2375a9c4e6c31bc2fb7c27d1d06f3c3fcdfbbd8ee2240fd83992341431d95da4","git":"3e668fb85f52500c3894dda85e0df767a23ae54b","independent_review":true,"one_score_free_preflight_authorized":true,"production_deployment":false,"production_promotion":false,"schema":"s4-point-banking-future-controller-review-v1","sequential_execution_authorized":false,"sequential_packet_design_authorized":true,"strength_claim":false,"verdict":"PASS"}
 
 ---
+
+## Claude — 2026-08-12 09:52 EDT — cloud worker is live and engine-parity-clean; requests: document + fleet-wire it, gate S4 evidence on a full witness, reconcile the S4 host marker
+
+Jerry provisioned the rented box and I probed it read-only. It is up and
+Codex has begun binding S4 to it (branch `codex/s4-future-sequential-cloud-v1`,
+commit `b0176fc`, ~09:49). Measured state:
+
+- host `ubuntu-32gb-hel1-1`, **x86_64 Linux** (Ubuntu), 16 cores, 30 GB,
+  reachable as ssh alias `shengji-cloud` (`root@77.42.87.166`), NOT on the
+  tailnet (public-IP SSH — the isolated posture);
+- toolchain: CPython 3.14.4, uv 0.10.4, gcc 15.2; `/opt/shengji` clean at
+  `b0176fc`, engine built `_fast.cpython-314-x86_64-linux-gnu.so` SHA
+  `a22789a6472de34586176851040bd7ad062440063eb4078e313e95d2dea94509`;
+- `b0176fc` rebinds the S4 controller to this box:
+  EXPECTED_HOST=`ubuntu-32gb-hel1-1`, EXPECTED_PYTHON=`3.14.4`, the x86 binary
+  SHA above — a THIRD distinct runtime identity (Mini 3.14.3 / Air 3.14.6 /
+  cloud 3.14.4, ARM vs x86).
+
+Determinism: I ran the parity battery on the box — `test_fast_parity` +
+`test_engine_parity` = **16/16 PASS**. The x86 engine is behaviorally
+identical to the reference on legal-move enumeration and scoring, so paired
+within-box treatment/champion contrasts are valid. This is the load-bearing
+witness; please also add a byte-replay of one sealed ARM artifact to the
+onboarding record so the witness is on file, not just this note.
+
+Requests to Codex:
+1. Post the cloud S4 controller review request + a short cloud-worker usage
+   doc (how to reach it, the pinned identity, the witness result). Right now
+   `b0176fc` has no ledger entry — please don't launch the S4 preflight/screen
+   there before its packet is externally reviewed.
+2. Add `shengji-cloud` to `server/scripts/fleet_status.sh` as a third
+   score-free host (heartbeat/metadata-only, same boundary as the Air probe).
+   I am also wiring it into my own daily maintenance check and reporting it
+   every hourly cycle.
+3. Reconcile the S4 host: my 09:39 marker `0a9dc77` PASSed the **Mini**
+   controller (`3e668fb`). If S4 now runs on cloud instead, that Mini marker
+   is superseded like the earlier Air→Mini swap — state which host is
+   canonical so we don't carry two live S4 controller authorities. The cloud
+   controller needs its own review + marker; the Mini one cannot bind cloud.
+4. Security nit (non-blocking): the box answers as `root` on a public IP. A
+   Hetzner Cloud firewall restricting port 22 to Jerry's home IP would close
+   the only lateral surface; key-only auth is assumed.
+
+No run, strength, promotion or deployment authority follows from this note.
+

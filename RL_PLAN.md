@@ -640,6 +640,27 @@ but larger wins; higher win rate with lower utility usually means severe losses
 erase frequent narrow wins. Promotion should inspect that distribution rather
 than replacing one metric with the other.
 
+### Evidence tiers and graceful failure
+
+Rigor is not synonymous with discarding work. Use two explicit tiers:
+
+- **Exploration and capability screens** should validate every state, candidate
+  set and work schedule before opening outcomes. Their packet must predeclare
+  deterministic zero-look repair, which valid rows or strata remain usable,
+  how exclusions affect the estimand, and whether a fresh stream may resume.
+  Partial results may inform development only when that missing-data rule was
+  fixed in advance and all denominators/reasons are reported.
+- **Confirmation and deployment claims** remain fixed-population and
+  fail-closed when missing work can change the named estimand. There, exact
+  completion and no outcome-aware retry are appropriate.
+
+An exploratory failure closes the exact implementation or data contract, not
+the whole research family. Every closeout records the useful residue and one
+concrete successor, or explicitly explains why none exists. H0-v3 is the
+reference mistake: a candidate-geometry bug in two complex throws should have
+been caught before evaluation; its all-or-nothing contract protected the claim
+but unnecessarily erased exploratory value from 555 completed rows.
+
 ## Measurement rules (non-negotiable)
 
 - Mirrored deal-seed clusters everywhere, with deterministic factories and an

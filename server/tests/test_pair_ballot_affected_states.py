@@ -171,3 +171,58 @@ def test_real_runtime_refuses_dirty_or_uncompiled(monkeypatch):
     monkeypatch.setattr(CAPTURE, "git", lambda *args: "dirty")
     with pytest.raises(CAPTURE.CaptureRefused, match="dirty"):
         CAPTURE._runtime(smoke=False)
+
+
+def test_shard_validator_refuses_extra_fields_dirty_formal_and_bad_coverage(
+        tmp_path):
+    base = tmp_path / "pair.json"
+    payload = CAPTURE.capture_shard(
+        shard_index=0, shard_count=1, seed0=861_614, max_deals=1,
+        out=base, smoke=True, progress_every=0)
+
+    extra = copy.deepcopy(payload)
+    extra["winner_team"] = 0
+    body = dict(extra)
+    body.pop("artifact_sha256")
+    extra["artifact_sha256"] = CAPTURE.sha256_bytes(
+        CAPTURE.canonical_json(body))
+    with pytest.raises(CAPTURE.CaptureRefused, match="field population"):
+        CAPTURE.validate_shard(
+            extra, shard_index=0, shard_count=1,
+            seed0=861_614, max_deals=1, smoke=True)
+
+    dirty = copy.deepcopy(payload)
+    dirty["tree_dirty"] = True
+    body = dict(dirty)
+    body.pop("artifact_sha256")
+    dirty["artifact_sha256"] = CAPTURE.sha256_bytes(
+        CAPTURE.canonical_json(body))
+    with pytest.raises(CAPTURE.CaptureRefused, match="runtime authority"):
+        CAPTURE.validate_shard(
+            dirty, shard_index=0, shard_count=1,
+            seed0=861_614, max_deals=1, smoke=False)
+
+    coverage = copy.deepcopy(payload)
+    coverage["deals_scanned"] = 0
+    body = dict(coverage)
+    body.pop("artifact_sha256")
+    coverage["artifact_sha256"] = CAPTURE.sha256_bytes(
+        CAPTURE.canonical_json(body))
+    with pytest.raises(CAPTURE.CaptureRefused, match="identity/authority"):
+        CAPTURE.validate_shard(
+            coverage, shard_index=0, shard_count=1,
+            seed0=861_614, max_deals=1, smoke=True)
+
+
+def test_exclusive_writer_does_not_replace_a_racing_target(tmp_path,
+                                                            monkeypatch):
+    target = tmp_path / "population.json"
+
+    def collide(_partial, final):
+        Path(final).write_text("other writer\n")
+        raise FileExistsError(final)
+
+    monkeypatch.setattr(CAPTURE.os, "link", collide)
+    with pytest.raises(FileExistsError):
+        CAPTURE._write_exclusive(target, {"ours": True})
+    assert target.read_text() == "other writer\n"

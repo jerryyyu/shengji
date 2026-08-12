@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import platform
 import random
@@ -47,12 +48,38 @@ BANDS = ("early", "mid", "late")
 QUOTA_PER_SPLIT = {"early": 448, "mid": 48, "late": 16}
 ROWS_PER_SPLIT = sum(QUOTA_PER_SPLIT.values())
 TOTAL_ROWS = len(SPLITS) * ROWS_PER_SPLIT
+SHARD_COUNT = 16
 SEED0 = 310_000_000
 MAX_DEALS = 12_000_000
 SALT = "pair-ballot-affected-v2"
 SOURCE_POLICY = "smart"
 DECLARATION_DRIVER = "deal-pass-plus-production-final-pass"
 DOSE_ESTIMATOR = "all-search-reachable-omissions-in-full-capture-stream"
+RUNTIME_FIELDS = {
+    "git", "tree_dirty", "host", "python", "fast_engine", "score_free",
+    "outcomes_computed", "strength_claim", "production_authority",
+}
+SOURCE_FIELDS = {
+    "producer", "mcbot", "smart", "engine_game", "engine_legal",
+    "state_replay",
+}
+SHARD_FIELDS = {
+    "schema", *RUNTIME_FIELDS, "source_sha256s", "source_policy",
+    "declaration_driver", "dose_estimator", "salt", "seed0", "max_deals",
+    "seed_ceiling_exclusive", "shard_index", "shard_count", "deals_scanned",
+    "observed_by_cell", "eligible_observed_by_cell", "rows",
+    "artifact_sha256",
+}
+ARTIFACT_FIELDS = {
+    "schema", *RUNTIME_FIELDS, "source_sha256s", "source_policy",
+    "declaration_driver", "dose_estimator", "salt", "seed0", "max_deals",
+    "seed_ceiling_exclusive", "shard_count", "selection",
+    "split_assignment", "cluster_unit", "rows_per_split", "total_rows",
+    "cell_counts", "capture_observed_by_cell",
+    "capture_search_eligible_by_cell", "search_eligible_counts_by_band",
+    "search_eligible_denominator", "search_eligible_weights", "unique_deals",
+    "max_states_per_deal", "shards", "states", "artifact_sha256",
+}
 
 
 class CaptureRefused(RuntimeError):
@@ -405,7 +432,10 @@ def _write_exclusive(path: Path, payload: object) -> None:
             handle.write(canonical_json(payload))
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(partial, path)
+        # Publish by hard link so a target created after the pre-check cannot
+        # be silently overwritten.  Capture populations are one-shot assets.
+        os.link(partial, path)
+        partial.unlink()
     except Exception:
         if partial.exists() and not path.exists():
             partial.unlink()
@@ -421,7 +451,8 @@ def capture_shard(*, shard_index: int, shard_count: int, seed0: int,
                   progress_every: int = 10_000) -> dict:
     if not 0 <= shard_index < shard_count:
         raise CaptureRefused("shard index must satisfy 0 <= index < count")
-    if not smoke and (seed0 != SEED0 or max_deals != MAX_DEALS):
+    if not smoke and (seed0 != SEED0 or max_deals != MAX_DEALS
+                      or shard_count != SHARD_COUNT):
         raise CaptureRefused("real capture seed population drift")
     runtime = _runtime(smoke=smoke)
     local = defaultdict(list)
@@ -475,9 +506,13 @@ def capture_shard(*, shard_index: int, shard_count: int, seed0: int,
 
 
 def validate_shard(payload: object, *, shard_index: int, shard_count: int,
-                   seed0: int, max_deals: int) -> None:
+                   seed0: int, max_deals: int,
+                   expected_runtime: dict | None = None,
+                   smoke: bool = False) -> None:
     if not isinstance(payload, dict) or payload.get("schema") != SHARD_SCHEMA:
         raise CaptureRefused("pair capture shard schema drift")
+    if set(payload) != SHARD_FIELDS:
+        raise CaptureRefused("pair capture shard field population drift")
     body = dict(payload)
     observed_sha = body.pop("artifact_sha256", None)
     if observed_sha != sha256_bytes(canonical_json(body)):
@@ -492,6 +527,8 @@ def validate_shard(payload: object, *, shard_index: int, shard_count: int,
         "seed_ceiling_exclusive": seed0 + max_deals,
         "shard_index": shard_index,
         "shard_count": shard_count,
+        "deals_scanned": len(range(
+            seed0 + shard_index, seed0 + max_deals, shard_count)),
         "score_free": True,
         "outcomes_computed": False,
         "strength_claim": False,
@@ -499,16 +536,20 @@ def validate_shard(payload: object, *, shard_index: int, shard_count: int,
     }
     if any(payload.get(key) != value for key, value in exact.items()):
         raise CaptureRefused("pair capture shard identity/authority drift")
+    if not smoke and (payload.get("tree_dirty") is not False
+                      or payload.get("fast_engine") is not True):
+        raise CaptureRefused("pair capture shard runtime authority drift")
+    if expected_runtime is not None and any(
+            payload.get(key) != expected_runtime.get(key)
+            for key in RUNTIME_FIELDS):
+        raise CaptureRefused("pair capture shard runtime cohort drift")
     source_sha256s = payload.get("source_sha256s")
     if (not isinstance(source_sha256s, dict)
-            or set(source_sha256s) != {
-                "producer", "mcbot", "smart", "engine_game",
-                "engine_legal", "state_replay",
-            }
+            or set(source_sha256s) != SOURCE_FIELDS
             or any(not isinstance(value, str) or len(value) != 64
                    for value in source_sha256s.values())):
         raise CaptureRefused("pair capture shard source identity drift")
-    if not payload.get("tree_dirty") and source_sha256s != _source_sha256s():
+    if source_sha256s != _source_sha256s():
         raise CaptureRefused("pair capture shard executable source drift")
     rows = payload.get("rows")
     if not isinstance(rows, list):
@@ -582,7 +623,8 @@ def select_population(rows: list[dict], *,
 
 def merge_shards(*, shard_count: int, seed0: int, max_deals: int,
                  out: Path, smoke: bool = False) -> dict:
-    if not smoke and (seed0 != SEED0 or max_deals != MAX_DEALS):
+    if not smoke and (seed0 != SEED0 or max_deals != MAX_DEALS
+                      or shard_count != SHARD_COUNT):
         raise CaptureRefused("real merge seed population drift")
     runtime = _runtime(smoke=smoke)
     rows = []
@@ -597,7 +639,8 @@ def merge_shards(*, shard_count: int, seed0: int, max_deals: int,
         payload = json.loads(path.read_bytes())
         validate_shard(
             payload, shard_index=index, shard_count=shard_count,
-            seed0=seed0, max_deals=max_deals)
+            seed0=seed0, max_deals=max_deals,
+            expected_runtime=runtime, smoke=smoke)
         if source_sha256s is None:
             source_sha256s = payload.get("source_sha256s")
         elif payload.get("source_sha256s") != source_sha256s:
@@ -672,12 +715,138 @@ def merge_shards(*, shard_count: int, seed0: int, max_deals: int,
     return payload
 
 
+def validate_population(payload: object, *, replay: bool = True) -> None:
+    """Fully reopen the merged asset rather than trusting its self-hash."""
+    if (not isinstance(payload, dict)
+            or payload.get("schema") != ARTIFACT_SCHEMA):
+        raise CaptureRefused("population schema drift")
+    if set(payload) != ARTIFACT_FIELDS:
+        raise CaptureRefused("population field population drift")
+    body = dict(payload)
+    observed_sha = body.pop("artifact_sha256", None)
+    if observed_sha != sha256_bytes(canonical_json(body)):
+        raise CaptureRefused("population digest drift")
+    exact = {
+        "tree_dirty": False,
+        "fast_engine": True,
+        "score_free": True,
+        "outcomes_computed": False,
+        "strength_claim": False,
+        "production_authority": False,
+        "source_policy": SOURCE_POLICY,
+        "declaration_driver": DECLARATION_DRIVER,
+        "dose_estimator": DOSE_ESTIMATOR,
+        "salt": SALT,
+        "seed0": SEED0,
+        "max_deals": MAX_DEALS,
+        "seed_ceiling_exclusive": SEED0 + MAX_DEALS,
+        "shard_count": SHARD_COUNT,
+        "selection": "globally earliest affected states per split/band",
+        "split_assignment": "sha256(salt|split|deal_seed) before play",
+        "cluster_unit": "deal_seed",
+        "rows_per_split": ROWS_PER_SPLIT,
+        "total_rows": TOTAL_ROWS,
+    }
+    if any(payload.get(key) != value for key, value in exact.items()):
+        raise CaptureRefused("population identity/authority drift")
+    source_sha256s = payload.get("source_sha256s")
+    if (not isinstance(source_sha256s, dict)
+            or set(source_sha256s) != SOURCE_FIELDS
+            or source_sha256s != _source_sha256s()):
+        raise CaptureRefused("population executable source drift")
+    expected_counts = {
+        cell_name(split, band): QUOTA_PER_SPLIT[band]
+        for split in SPLITS for band in BANDS
+    }
+    if payload.get("cell_counts") != expected_counts:
+        raise CaptureRefused("population cell-count drift")
+    observed = payload.get("capture_observed_by_cell")
+    eligible = payload.get("capture_search_eligible_by_cell")
+    if (not isinstance(observed, dict) or not isinstance(eligible, dict)
+            or any(cell not in all_cells() for cell in observed)
+            or any(cell not in all_cells() for cell in eligible)
+            or any(isinstance(value, bool) or not isinstance(value, int)
+                   or value < 0 for value in [*observed.values(),
+                                              *eligible.values()])
+            or any(eligible.get(cell, 0) > observed.get(cell, 0)
+                   for cell in all_cells())):
+        raise CaptureRefused("population observation accounting drift")
+    by_band = payload.get("search_eligible_counts_by_band")
+    denominator = payload.get("search_eligible_denominator")
+    weights = payload.get("search_eligible_weights")
+    expected_by_band = {
+        band: sum(eligible.get(cell_name(split, band), 0)
+                  for split in SPLITS)
+        for band in BANDS
+    }
+    if (by_band != expected_by_band
+            or isinstance(denominator, bool)
+            or not isinstance(denominator, int)
+            or denominator != sum(expected_by_band.values())
+            or denominator <= 0
+            or not isinstance(weights, dict) or set(weights) != set(BANDS)
+            or any(not isinstance(value, (int, float))
+                   or isinstance(value, bool) or not math.isfinite(value)
+                   or value <= 0 for value in weights.values())
+            or any(not math.isclose(
+                weights[band], expected_by_band[band] / denominator,
+                rel_tol=0.0, abs_tol=1e-15) for band in BANDS)
+            or not math.isclose(sum(weights.values()), 1.0,
+                                rel_tol=0.0, abs_tol=1e-15)):
+        raise CaptureRefused("population natural-dose weights drift")
+    receipts = payload.get("shards")
+    if (not isinstance(receipts, list) or len(receipts) != SHARD_COUNT
+            or [item.get("shard_index") for item in receipts]
+            != list(range(SHARD_COUNT))):
+        raise CaptureRefused("population shard receipt set drift")
+    receipt_prefixes = set()
+    for index, receipt in enumerate(receipts):
+        expected_receipt_fields = {
+            "shard_index", "path", "file_sha256", "artifact_sha256",
+            "deals_scanned",
+        }
+        if (not isinstance(receipt, dict)
+                or set(receipt) != expected_receipt_fields
+                or not isinstance(receipt.get("path"), str)
+                or not receipt["path"].endswith(
+                    f".shard-{index:02d}-of-{SHARD_COUNT:02d}.json")
+                or receipt.get("deals_scanned") != len(range(
+                    SEED0 + index, SEED0 + MAX_DEALS, SHARD_COUNT))
+                or any(not isinstance(receipt.get(field), str)
+                       or len(receipt[field]) != 64
+                       for field in ("file_sha256", "artifact_sha256"))):
+            raise CaptureRefused("population shard receipt drift")
+        receipt_prefixes.add(receipt["path"].rsplit(".shard-", 1)[0])
+    if len(receipt_prefixes) != 1:
+        raise CaptureRefused("population shard receipt namespace drift")
+    rows = payload.get("states")
+    if not isinstance(rows, list) or len(rows) != TOTAL_ROWS:
+        raise CaptureRefused("population state count drift")
+    ids = []
+    counts = Counter()
+    deal_counts = Counter()
+    for row in rows:
+        validate_state_record(row, replay=replay)
+        if row.get("search_eligible") is not True:
+            raise CaptureRefused("population retained search-unreachable state")
+        ids.append(row["state_id"])
+        counts[cell_name(row["split"], row["band"])] += 1
+        deal_counts[row["deal_seed"]] += 1
+    if (len(ids) != len(set(ids))
+            or dict(sorted(counts.items())) != expected_counts
+            or payload.get("unique_deals") != len(deal_counts)
+            or payload.get("max_states_per_deal") != max(deal_counts.values())
+            or rows != sorted(rows, key=lambda row: (
+                row["deal_seed"], row["trick"], row["seat"]))):
+        raise CaptureRefused("population state identity/order drift")
+
+
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser()
     result.add_argument("mode", choices=("capture", "merge", "verify"))
     result.add_argument("--out", type=Path, required=True)
     result.add_argument("--shard-index", type=int, default=0)
-    result.add_argument("--shard-count", type=int, default=16)
+    result.add_argument("--shard-count", type=int, default=SHARD_COUNT)
     result.add_argument("--seed0", type=int, default=SEED0)
     result.add_argument("--max-deals", type=int, default=MAX_DEALS)
     result.add_argument("--progress-every", type=int, default=10_000)
@@ -703,19 +872,12 @@ def main() -> None:
             if args.out.is_symlink() or not args.out.is_file():
                 raise CaptureRefused("population missing/nonregular")
             payload = json.loads(args.out.read_bytes())
-            if payload.get("schema") != ARTIFACT_SCHEMA:
-                raise CaptureRefused("population schema drift")
-            body = dict(payload)
-            observed_sha = body.pop("artifact_sha256", None)
-            if observed_sha != sha256_bytes(canonical_json(body)):
-                raise CaptureRefused("population digest drift")
-            for row in payload.get("states", []):
-                replay_state(row)
+            validate_population(payload)
             print(json.dumps({
                 "verified": True,
                 "artifact_sha256": sha256_file(args.out),
                 "rows": len(payload.get("states", [])),
-                "score_free": True,
+                "score_free": payload["score_free"],
             }, sort_keys=True))
     except (CaptureRefused, ValueError) as exc:
         print(f"REFUSING: {exc}")

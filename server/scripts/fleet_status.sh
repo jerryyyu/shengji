@@ -1,5 +1,6 @@
 #!/bin/bash
-# One-command status for every shengji job across the fleet (mini + Air).
+# One-command status for every shengji job across the fleet
+# (Mini + Air + the optional local `shengji-cloud` SSH alias).
 # Probes LIVE state — no registry to go stale. Run from server/.
 #
 # Job identification: our compute jobs are python processes in the
@@ -118,6 +119,65 @@ if ! ssh -o BatchMode=yes -o ConnectTimeout=8 air '
     done
 '; then
   echo "  Air probe FAILED — state UNKNOWN (not idle)"
+fi
+
+hdr "CLOUD — broad process identity + live progress"
+# The public address belongs only in the operator's local SSH config.  Keeping
+# this probe on the `shengji-cloud` alias makes the repository safe to share
+# and lets the host be replaced without editing experiment code.
+if ! ssh -o BatchMode=yes -o ConnectTimeout=8 shengji-cloud '
+  pids=$(ps -Ao pid=,comm= |
+    awk "tolower(\$0) ~ /python/ {print \$1}")
+  count=$(printf "%s\n" "$pids" | awk "NF {n++} END {print n+0}")
+  echo "  Python processes visible: $count"
+  echo "  Capacity: $(nproc) CPUs; load $(cut -d" " -f1-3 /proc/loadavg)"
+  free -h | sed -n "2s/^/  Memory: /p"
+  if [ "$count" -eq 0 ]; then
+    echo "  !! ZERO ROWS = UNKNOWN, not IDLE; reconcile expected PIDs,"
+    echo "     tmux sessions, progress mtimes and terminal outputs"
+  fi
+  echo "  --- exact process command, cwd and source"
+  printf "%s\n" "$pids" | while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    if meta=$(ps -p "$pid" -o pid=,ppid=,%cpu=,etime=); then
+      command=$(ps -p "$pid" -o command=)
+      cwd=$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)
+      git=none
+      if [ -n "$cwd" ]; then
+        probe=$cwd
+        while [ "$probe" != / ] && [ ! -e "$probe/.git" ]; do
+          probe=$(dirname "$probe")
+        done
+        if [ -e "$probe/.git" ]; then
+          git=$(git -C "$probe" rev-parse HEAD 2>/dev/null || echo unreadable)
+        fi
+      fi
+      echo "  $meta git=$git"
+      echo "    cwd=${cwd:-(unresolved)}"
+      echo "    command=$command"
+    else
+      echo "  pid=$pid vanished during probe; reconcile before status claim"
+    fi
+  done
+  echo "  --- tmux sessions"
+  tmux list-sessions 2>/dev/null | sed "s/^/  /" || echo "  (none visible)"
+  echo "  --- unreviewed census progress: metadata only"
+  f=/var/tmp/pair-retention-census-v1.log
+  if [ -f "$f" ]; then
+    age=$(( ($(date +%s) - $(stat -c %Y "$f")) / 60 ))
+    printf "  %s (%sm; %sB; content not opened)\n" "$f" "$age" \
+      "$(stat -c %s "$f")"
+  else
+    echo "  (no cloud census progress file)"
+  fi
+  echo "  --- census terminal artifact metadata only"
+  for artifact in /var/tmp/pair-retention-census-v1.json; do
+    [ -e "$artifact" ] || continue
+    printf "  %s (%sB; content not opened)\n" "$artifact" \
+      "$(stat -c %s "$artifact")"
+  done
+'; then
+  echo "  Cloud probe FAILED — state UNKNOWN (not idle)"
 fi
 
 hdr "INTEGRITY — process identity + dataset provenance"

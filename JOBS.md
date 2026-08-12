@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-12 09:16 EDT. This file owns current compute and
+Last reconciled: 2026-08-12 10:00 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -9,20 +9,22 @@ compact terminal stubs. Historical detail is archived in
 
 | host | live strength job | health / next use |
 |---|---|---|
-| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; at 09:15 all eight remained at roughly 92–99% CPU after 9h53m and the reviewed score-free heartbeat advanced. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
-| **Air** | `pair-aware-whole-round-screen-v3` | **HEALTHY / SATURATED.** The sole reviewed 7,168-cluster screen was admitted and launched around 07:24 under exact source `cd20670`. At 09:15 detached supervisor PID 88455 and all eight workers remained at roughly 95–99% CPU after 1h49m. Do not inspect shard JSON; safe monitoring is process state and score-free supervisor heartbeat only. |
+| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; at 10:00 all eight remained at roughly 96–99% CPU after 10h39m and every shard's reviewed score-free heartbeat had reached `treatment 200/512`. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
+| **Air** | `pair-aware-whole-round-screen-v3` | **HEALTHY / SATURATED.** The sole reviewed 7,168-cluster screen was admitted and launched around 07:24 under exact source `cd20670`. At 10:00 detached supervisor PID 88455 and all eight workers remained CPU-bound after 2h35m; the score-free heartbeat reported 0/8 terminal shards. Do not inspect shard JSON; safe monitoring is process state and the reviewed score-free supervisor heartbeat only. |
+| **Cloud** | `pair-retention-census-v1` | **HEALTHY / SATURATED, SOURCE-ONLY.** Sixteen workers run under detached tmux from exact PR #55 head `1d6bd2f`. Process identity, CPU, tmux and progress/result file metadata are visible. The temporary census producer/schema has not been independently reviewed, so no progress or result content may be opened yet. No score or game outcome is intended. |
 | **Fly production** | `mc-s0-report-lcb` | Release 18 / image `kitty-xray-b5a35ae` is healthy. This is the release-17 runtime plus PR #11 kitty X-ray only; no policy changed. Rollback runtime remains release 17 / `latency-cd6789e`. |
 
 ## Reviewed queue
 
 | order | job | current gate |
 |---:|---|---|
-| 1 | S4 future-only sequential preflight | Mini successor PR #53 head `3e668fb`; controller review pending. A PASS permits one score-free Mini preflight and packet design only after T4 seals. The old Air marker cannot authorize this profile. |
+| 1 | S4 future-only sequential preflight | Claude passed the Mini controller at `3e668fb`, but it is superseded for the current launch order. Cloud successor PR #56 head `b0176fc` awaits exact-controller review plus a preserved cross-architecture replay witness. A Cloud PASS permits one score-free Cloud preflight and packet design only; no scored authority follows. |
 | 2 | Selective S6 shuai-pai preflight | **V2 PACKET REVIEW PENDING.** Source `a48542d` closes the unit-map, singleton-freeze and factual-runtime HOLDs. PR #50 `936345b` preserves packet `19f3b2a3…79dd0` plus receipt `df54dcfe…aebba`; 62 S6 tests pass. A PASS permits one four-cluster score-free preflight, queued until Air is free. |
 
-Pair-v3 now owns Air and has no retry or extension authority. S4 still waits on
-its raw controller marker; the indented marker inside Codex's request is not
-authority. Selective S6's old v1 packet is superseded and must never run. A
+Pair-v3 now owns Air and has no retry or extension authority. S4 waits on its
+Cloud-specific raw controller marker; neither the old Air marker nor the valid
+Mini marker can authorize the Cloud profile. Selective S6's old v1 packet is
+superseded and must never run. A
 packet or implementation review never substitutes for its named later
 authority.
 

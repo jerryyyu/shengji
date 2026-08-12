@@ -40,6 +40,34 @@ def test_first_divergence_handles_equal_prefix_and_length_drift():
     assert REPLAY.first_divergence(left, changed) == 1
 
 
+def test_witness_summary_identifies_failed_throw_without_calling_it_strength():
+    treatment = {
+        "seed": 123, "flip": 0,
+        "history": [{"seat": 0, "cards": ["C3"]}],
+        "lead_events": [{
+            "action_index": 0, "trick_index": 0, "seat": 0,
+            "role": "defender", "attacker_points_before": 0,
+            "hand_before": ["C3", "C3", "C4", "C4"],
+            "attempted": ["C3", "C3", "C4", "C4"],
+            "actual": ["C3", "C3"],
+            "s6": {"treatment_override": True, "ballot": {"candidates": []}},
+            "search": {"report_fold": {"complete": True, "gap": 2.0}},
+            "incumbent_search": {"played": ["D3"]},
+        }],
+        "attacker_points": 75, "winner_team": 0, "level_change": 1,
+    }
+    champion = {
+        "seed": 123, "flip": 0,
+        "history": [{"seat": 0, "cards": ["D3"]}],
+        "lead_events": [],
+        "attacker_points": 75, "winner_team": 0, "level_change": 1,
+    }
+    row = REPLAY.summarize_witness(treatment, champion)
+    assert row["throw_succeeded"] is False
+    assert row["signed_level_utility_delta"] == 0
+    assert row["incumbent"] == ["D3"]
+
+
 def test_replay_is_explicitly_exploration_only(monkeypatch):
     treatment = {
         "history": [{"seat": 1, "cards": ["C4"]}],

@@ -15,6 +15,8 @@ import os
 import random
 import subprocess
 import sys
+from collections import Counter
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from copy import deepcopy
 from pathlib import Path
 
@@ -36,6 +38,18 @@ SCHEMA = "s6-boss-near-loss-replay-v1"
 WITNESS_SEED = 449_000_000_024
 WITNESS_FLIP = 1
 LABELS = ("treatment", "champion")
+OVERRIDE_WITNESSES = (
+    (449_000_000_004, 1), (449_000_000_008, 1),
+    (449_000_000_010, 1), (449_000_000_011, 1),
+    (449_000_000_014, 0), (449_000_000_016, 1),
+    (449_000_000_020, 1), (449_000_000_022, 0),
+    (449_000_000_024, 1), (449_000_000_025, 0),
+    (449_000_000_027, 1), (449_000_000_028, 1),
+)
+EXPECTED_UTILITY_DELTAS = {
+    witness: (-2 if witness == (WITNESS_SEED, WITNESS_FLIP) else 0)
+    for witness in OVERRIDE_WITNESSES
+}
 
 
 class ReplayRefused(RuntimeError):
@@ -187,6 +201,109 @@ def first_divergence(left: list[dict], right: list[dict]) -> int | None:
     return None if len(left) == len(right) else min(len(left), len(right))
 
 
+def signed_utility(trace: dict, flip: int) -> int:
+    return ((1 if trace["winner_team"] == flip else -1)
+            * max(1, trace["level_change"]))
+
+
+def summarize_witness(treatment: dict, champion: dict) -> dict:
+    seed = treatment["seed"]
+    flip = treatment["flip"]
+    if (champion.get("seed"), champion.get("flip")) != (seed, flip):
+        raise ReplayRefused("witness trace identity drift")
+    divergence = first_divergence(treatment["history"], champion["history"])
+    if divergence is None:
+        raise ReplayRefused("override witness did not diverge")
+    event = next((row for row in treatment["lead_events"]
+                  if row["action_index"] == divergence), None)
+    if (event is None or not isinstance(event.get("s6"), dict)
+            or event["s6"].get("treatment_override") is not True):
+        raise ReplayRefused("first divergence is not an S6 override")
+    report = event["search"]["report_fold"]
+    if not isinstance(report, dict) or report.get("complete") is not True:
+        raise ReplayRefused("S6 override lacks complete report evidence")
+    utility_delta = signed_utility(treatment, flip) - signed_utility(
+        champion, flip)
+    expected = EXPECTED_UTILITY_DELTAS.get((seed, flip))
+    if expected is not None and utility_delta != expected:
+        raise ReplayRefused("override utility no longer matches frozen pilot")
+    attempted = event["attempted"]
+    actual = event["actual"]
+    return {
+        "seed": seed,
+        "flip": flip,
+        "first_divergence_action_index": divergence,
+        "trick_index": event["trick_index"],
+        "seat": event["seat"],
+        "role": event["role"],
+        "attacker_points_before": event["attacker_points_before"],
+        "hand_before": event["hand_before"],
+        "incumbent": event["incumbent_search"]["played"],
+        "attempted": attempted,
+        "actual": actual,
+        "throw_succeeded": Counter(attempted) == Counter(actual),
+        "ballot": event["s6"]["ballot"],
+        "report": report,
+        "treatment_attacker_points": treatment["attacker_points"],
+        "champion_attacker_points": champion["attacker_points"],
+        "treatment_utility": signed_utility(treatment, flip),
+        "champion_utility": signed_utility(champion, flip),
+        "signed_level_utility_delta": utility_delta,
+    }
+
+
+def _trace_pair(witness: tuple[int, int]) -> tuple[tuple[int, int], dict, dict]:
+    seed, flip = witness
+    return witness, trace_round("treatment", seed, flip), trace_round(
+        "champion", seed, flip)
+
+
+def build_census_payload(expected_git: str, workers: int) -> dict:
+    if not 0 < workers <= 8:
+        raise ReplayRefused("worker count outside exploration bound")
+    traces = {}
+    with ProcessPoolExecutor(max_workers=workers) as executor:
+        pending = {executor.submit(_trace_pair, witness): witness
+                   for witness in OVERRIDE_WITNESSES}
+        for future in as_completed(pending):
+            witness, treatment, champion = future.result()
+            traces[witness] = (treatment, champion)
+            print(json.dumps({
+                "event": "s6-boss-near-override-replay-progress-v1",
+                "witnesses_complete": len(traces),
+                "witnesses_total": len(OVERRIDE_WITNESSES),
+            }, sort_keys=True), flush=True)
+    rows = [summarize_witness(*traces[witness])
+            for witness in OVERRIDE_WITNESSES]
+    failed = [row for row in rows if not row["throw_succeeded"]]
+    payload = {
+        "schema": "s6-boss-near-override-census-v1",
+        "git": expected_git,
+        "population": "all 12 treatment overrides in frozen 32-cluster DEV pilot",
+        "rows": rows,
+        "summary": {
+            "witnesses": len(rows),
+            "successful_throws": len(rows) - len(failed),
+            "failed_throws": len(failed),
+            "positive_utility": sum(
+                row["signed_level_utility_delta"] > 0 for row in rows),
+            "neutral_utility": sum(
+                row["signed_level_utility_delta"] == 0 for row in rows),
+            "negative_utility": sum(
+                row["signed_level_utility_delta"] < 0 for row in rows),
+            "failed_throw_negative_utility": sum(
+                row["signed_level_utility_delta"] < 0 for row in failed),
+        },
+        "exploration_only": True,
+        "confirmatory_claim": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+    }
+    payload["internal_sha256"] = PILOT.stable_digest(payload)
+    return payload
+
+
 def build_payload(expected_git: str) -> dict:
     traces = {label: trace_round(label, WITNESS_SEED, WITNESS_FLIP)
               for label in LABELS}
@@ -201,9 +318,8 @@ def build_payload(expected_git: str) -> dict:
     if (event is None or not isinstance(event.get("s6"), dict)
             or event["s6"].get("treatment_override") is not True):
         raise ReplayRefused("first divergence is not the S6 treatment override")
-    signed = lambda trace: ((1 if trace["winner_team"] == WITNESS_FLIP else -1)
-                            * max(1, trace["level_change"]))
-    delta = signed(treatment) - signed(champion)
+    delta = signed_utility(treatment, WITNESS_FLIP) - signed_utility(
+        champion, WITNESS_FLIP)
     if delta != -2:
         raise ReplayRefused("witness no longer reproduces the two-level loss")
     payload = {
@@ -228,6 +344,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--expected-git", required=True)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--all-overrides", action="store_true")
+    parser.add_argument("--workers", type=int, default=4)
     args = parser.parse_args()
     if git("rev-parse", "HEAD") != args.expected_git:
         raise SystemExit("REFUSED: git identity drift")
@@ -238,15 +356,19 @@ def main() -> None:
             or not fast.HAVE_FAST or fast._fast is None
             or combos.decompose is not fast.decompose):
         raise SystemExit("REFUSED: strict compiled runtime required")
-    payload = build_payload(args.expected_git)
+    payload = (build_census_payload(args.expected_git, args.workers)
+               if args.all_overrides else build_payload(args.expected_git))
     PILOT.write_exclusive(args.out, payload)
     print(json.dumps({
         "status": "COMPLETE",
         "result_sha256": PILOT.sha256(args.out),
         "result_internal_sha256": payload["internal_sha256"],
-        "first_divergence_action_index": payload[
-            "first_divergence_action_index"],
-        "signed_level_utility_delta": payload["signed_level_utility_delta"],
+        "schema": payload["schema"],
+        "first_divergence_action_index": payload.get(
+            "first_divergence_action_index"),
+        "signed_level_utility_delta": payload.get(
+            "signed_level_utility_delta"),
+        "summary": payload.get("summary"),
     }, sort_keys=True))
 
 

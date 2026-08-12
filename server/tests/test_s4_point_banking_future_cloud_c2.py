@@ -323,6 +323,13 @@ def test_child_receipt_reopens_the_exact_c2_packet(tmp_path, monkeypatch):
             "path": str(CORE.NAMESPACE / "receipt.json"),
             "sha256": receipt_sha,
         }
+    monkeypatch.chdir(tmp_path)
+    assert CORE.require_receipt(
+        CORE.NAMESPACE / "receipt.json", receipt_sha,
+        expected_git=config.expected_git) == {
+            "path": str(CORE.NAMESPACE / "receipt.json"),
+            "sha256": receipt_sha,
+        }
 
     capacity_path.unlink()
     with pytest.raises(CORE.ProtocolRefused, match="preflight is missing"):

@@ -561,7 +561,10 @@ def require_receipt(path: Path, expected_sha256: str, *,
     }
     if admission != expected_admission or review_claim != expected_claim:
         raise ProtocolRefused("future S4 review/admission authority drift")
-    return {"path": str(path.relative_to(REPO)), "sha256": expected_sha256}
+    return {
+        "path": str(path.resolve().relative_to(REPO.resolve())),
+        "sha256": expected_sha256,
+    }
 
 
 def validate_runtime(args: argparse.Namespace) -> None:

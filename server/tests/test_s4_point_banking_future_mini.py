@@ -1,4 +1,4 @@
-"""Fail-closed tests for the automatic future S4 Air controller."""
+"""Fail-closed tests for the automatic future S4 Mini controller."""
 from __future__ import annotations
 
 import copy
@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
 import s4_point_banking_future as CORE  # noqa: E402
-import s4_point_banking_future_air as CTRL  # noqa: E402
+import s4_point_banking_future_mini as CTRL  # noqa: E402
 
 
 def _config() -> CTRL.Config:
@@ -62,7 +62,7 @@ def _install_receipt_chain(tmp_path: Path, monkeypatch, *,
         if git == expected_git else (_ for _ in ()).throw(
             CORE.ProtocolRefused("git drift")))
 
-    controller_path = tmp_path / "server/scripts/s4_point_banking_future_air.py"
+    controller_path = tmp_path / "server/scripts/s4_point_banking_future_mini.py"
     controller_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(Path(CTRL.__file__), controller_path)
     config = CTRL.Config(
@@ -163,9 +163,9 @@ def _small_aggregate(*, look: int, status: str) -> dict:
     }
 
 
-def test_controller_is_air_only_and_uses_reviewed_two_look_contract():
-    assert CTRL.EXPECTED_HOST == "Jerrys-MacBook-Air.local"
-    assert CTRL.EXPECTED_PYTHON == "3.14.6"
+def test_controller_is_mini_only_and_uses_reviewed_two_look_contract():
+    assert CTRL.EXPECTED_HOST == "Jerrys-Mac-mini.local"
+    assert CTRL.EXPECTED_PYTHON == "3.14.3"
     assert CORE.LOOK_CLUSTERS == (8_192, 16_384)
     assert CORE.NULL_SENTINEL_CLUSTERS == 2_048
     assert CORE.LOOK1_TRANSITION == {
@@ -173,6 +173,67 @@ def test_controller_is_air_only_and_uses_reviewed_two_look_contract():
         "efficacy_nonpass_and_integrity_pass": "CONTINUE_AUTOMATICALLY",
         "any_integrity_nonpass": "STOP_HOLD",
     }
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("host", "Jerrys-MacBook-Air.local"),
+    ("python", "3.14.6"),
+    ("fast_binary_sha256", "0" * 64),
+])
+def test_identity_context_refuses_nonmini_runtime(
+        monkeypatch, field, value):
+    config = _config()
+    paths = CTRL.paths_for()
+    parent = {"champion_policy": CORE.DUEL.CHAMPION}
+    runtime = {
+        "host": CTRL.EXPECTED_HOST,
+        "python": CTRL.EXPECTED_PYTHON,
+        "fast_binary_sha256": CTRL.EXPECTED_FAST_SHA256,
+        "future_runner_sha256": config.expected_runner_sha256,
+    }
+    runtime[field] = value
+
+    def fake_git(*args):
+        return config.expected_git if args == ("rev-parse", "HEAD") else ""
+
+    def fake_sha(path):
+        if path == paths.runner:
+            return config.expected_runner_sha256
+        if path == paths.controller:
+            return config.expected_controller_sha256
+        raise AssertionError(f"unexpected identity path: {path}")
+
+    monkeypatch.setattr(CTRL, "_git", fake_git)
+    monkeypatch.setattr(CTRL, "sha256_file", fake_sha)
+    monkeypatch.setattr(
+        CORE, "require_runtime", lambda _git: (parent, runtime))
+    with pytest.raises(CTRL.SupervisorRefused, match="exact Mini runtime"):
+        CTRL._identity_context(config, paths)
+
+
+def test_identity_context_accepts_exact_mini_runtime(monkeypatch):
+    config = _config()
+    paths = CTRL.paths_for()
+    parent = {"champion_policy": CORE.DUEL.CHAMPION}
+    runtime = {
+        "host": CTRL.EXPECTED_HOST,
+        "python": CTRL.EXPECTED_PYTHON,
+        "fast_binary_sha256": CTRL.EXPECTED_FAST_SHA256,
+        "future_runner_sha256": config.expected_runner_sha256,
+    }
+
+    def fake_git(*args):
+        return config.expected_git if args == ("rev-parse", "HEAD") else ""
+
+    def fake_sha(path):
+        return (config.expected_runner_sha256 if path == paths.runner
+                else config.expected_controller_sha256)
+
+    monkeypatch.setattr(CTRL, "_git", fake_git)
+    monkeypatch.setattr(CTRL, "sha256_file", fake_sha)
+    monkeypatch.setattr(
+        CORE, "require_runtime", lambda _git: (parent, runtime))
+    assert CTRL._identity_context(config, paths) == (parent, runtime)
 
 
 def test_command_templates_are_path_neutral_complete_and_disjoint():

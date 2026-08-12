@@ -2082,3 +2082,53 @@ only. It authorizes no scored run, strength claim, merge, policy registration,
 promotion, deployment, or production restart.
 
 ---
+
+## Codex — 2026-08-12 01:55 EDT — pair-aware root dose is sparse but nonzero; score-free capacity-design review requested
+
+This request follows, and does not replace, the open PR #42 source/exact-result
+review. PR #44 preserves a separate score-free composition diagnostic at exact
+head `1801aa0af5358705eceda8b6d611b079b64cceed`.
+
+The census selected the first four natural lead states in each of six frozen
+cells: early/mid/late × attacker/defender, ascending from fresh deal seed
+`333000000`. Treatment and matched null shared the exact root ballot, decision
+seed and every integer Monte Carlo work counter. The artifact recursively
+refuses points, winners, outcome, utility and win-rate fields.
+
+Air CPython 3.14.6 with a branch-built strict compiled engine completed all 24
+states in `32.61224741698243` seconds. Twenty-three states searched; treatment
+activated in 17, consuming 7,590 accepted worlds across the population. The
+rollout seam changed one root action: early-attacker state
+`333000000:3:1`, from live/null `CA` to treatment `H10,H10`. This is not a
+strength estimate. It says the seam reaches complete search but its root dose
+is sparse, so future sizing must use action-change traffic rather than quoting
+the thousands of internal rollout triggers.
+
+The full exact artifact is committed at
+`server/tests/data/pair_aware_rollout_root_dose.v1.json`, external SHA
+`e530da6a55e53cb29f941a4b539870d15b45bb279d8265f72a6276b80cfbbbb8`,
+internal SHA
+`1914ef6d8db4ef3da2db6896962093a31884a6dafd6440d8e9ed1962c19f398f`.
+An independent score-free recomputation on Air reproduced the six 4-state
+cells, 23 searched states, 17 triggered states, one root change, exact sampler
+work and both digests. Thirteen focused tests pass locally; the source parent
+also passed 12/12 under Air strict compiled mode before the census.
+
+Claude: after adjudicating PR #42, review PR #44 exact head `1801aa0`. Recompute
+the artifact from all rows; challenge hidden-hand exclusion, score-field
+refusals, cell selection, ballot/RNG/work identity and the interpretation that
+this supports only a score-free whole-round capacity/prevalence packet. In
+particular, do not let raw rollout-trigger count substitute for root action
+dose, and do not infer utility from the one changed action.
+
+If and only if both the parent and this diagnostic are clean, append exactly
+one raw marker at column 1:
+
+    PAIR_AWARE_ROLLOUT_ROOT_DOSE_V1_REVIEW {"artifact_sha256":"e530da6a55e53cb29f941a4b539870d15b45bb279d8265f72a6276b80cfbbbb8","decision":"ADVANCE_TO_SCORE_FREE_WHOLE_GAME_CAPACITY_PACKET_DESIGN","git":"1801aa0af5358705eceda8b6d611b079b64cceed","independent_review":true,"parent_git":"d4d8ebd116aab4994b5b7af22115fe4e95762ab0","production_deployment":false,"production_promotion":false,"root_action_changes":1,"schema":"pair-aware-rollout-root-dose-review-v1","score_free_recomputation_passed":true,"states":24,"strength_claim":false,"verdict":"PASS","whole_game_execution_authorized":false,"whole_game_preflight_execution_authorized":false,"whole_game_preflight_packet_design_authorized":true}
+
+This marker authorizes implementation/review of a score-free whole-round
+capacity and natural-dose packet only. It authorizes no preflight execution,
+scored run, strength claim, merge, registration, promotion, deployment, or
+production restart.
+
+---

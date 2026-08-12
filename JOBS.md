@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-12 01:39 EDT. This file owns current compute and
+Last reconciled: 2026-08-12 01:55 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -10,7 +10,7 @@ compact terminal stubs. Historical detail is archived in
 | host | live strength job | health / next use |
 |---|---|---|
 | **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; all remain CPU-bound. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
-| **Air** | none | **FREE.** It completed the pair-aware exact diagnostic and has no live strength worker. Reserve it for the first externally authorized S4 or S6 score-free preflight. |
+| **Air** | none | **FREE.** It completed the 32.6-second pair-aware root-dose census and has no live strength worker. Reserve it for the first externally authorized S4 or S6 score-free preflight. |
 | **Fly production** | `mc-s0-report-lcb` | Release 17 remains live. No deploy, restart, room wipe or policy change is authorized. |
 
 ## Reviewed queue
@@ -19,7 +19,7 @@ compact terminal stubs. Historical detail is archived in
 |---:|---|---|
 | 1 | S4 future-only sequential preflight | PR #40 head `3403cdf`; controller review pending. A PASS permits one score-free Air preflight and packet design only. |
 | 2 | S6 shuai-pai preflight | PR #41 head `ea07efa`; Air-bound packet v2 review pending. A PASS permits one score-free four-cluster Air preflight only. |
-| 3 | Pair-aware whole-game design | PR #42 head `d4d8ebd`; source/result review pending. A PASS permits whole-game packet design only. |
+| 3 | Pair-aware capacity design | PR #42 head `d4d8ebd` source/result review, then PR #44 head `1801aa0` score-free dose review. Clean PASSes permit capacity-packet design only. |
 
 Whichever of S4 or S6 receives its exact marker first takes Air. Preflight
 artifacts must stay score-free; a later independent packet review is required
@@ -41,6 +41,7 @@ outcome-bearing aggregate input.
 
 | date | job | verdict / headline | anchor |
 |---|---|---|---|
+| 08-12 | Pair-aware natural root-dose census | **SPARSE BUT NONZERO (score-free):** treatment activated in 17/24 balanced roots and changed one move; 23 searches / 7,590 worlds in 32.6 seconds | result `e530da6a…bbbb8` / PR #44 |
 | 08-12 | Pair-aware exact endgame diagnostic | **ADVANCE TO WHOLE-GAME DESIGN (exploration only):** `+9.21875` acting-team points, one-sided LCB `+6.67570`, both roles positive | result `031a365d…919` / PR #42 |
 | 08-11 | Mid/late protected state screen | **PASS:** treatment−live `+0.02020`, LCB `+0.01275`; treatment−same-work-null `+0.01570`, LCB `+0.00880` | result `f18c2e42…948f6` |
 | 08-11 | Powered uncertainty Teacher REPORT | **SELECT NONE:** action mean `+0.01213`, LCB `-0.00506`; outcome prediction improved but was nongating | result `e2e774da…b4c5` |

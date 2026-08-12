@@ -35,19 +35,25 @@ def _runtime() -> dict:
         "fast_binary_sha256": "b" * 64,
         "population_source_sha256": "c" * 64,
         "scorer_source_sha256": "d" * 64,
+        "continuation_source_sha256": "f" * 64,
         "journal_source_sha256": "e" * 64,
     }
 
 
 def _fake_scorer(status: str = "COMPLETE_EXPLORATION"):
     def score(rnd, seat, *, bot, incumbent_bury, worlds,
-              attempt_factor, max_candidate_rollouts):
+              attempt_factor, max_candidate_rollouts,
+              continuation_mode):
         ballot = E.build_bury_lead_combo_ballot(
             rnd, seat, incumbent_bury, live_lead_ballot=bot._candidates)
         return {
             "schema": E.SCHEMA,
             "status": status,
             "candidate_count": ballot.combo_count,
+            "scoring_contract": {
+                "continuation_mode": continuation_mode,
+                "recursive_mc_continuation": False,
+            },
             "work": {
                 "worlds_requested": worlds,
                 "candidate_rollout_cap": max_candidate_rollouts,
@@ -91,6 +97,7 @@ def test_state_journal_extends_and_resumes_without_recomputing(tmp_path):
         runtime=_runtime(), scorer=forbidden)
     assert third["new_records"] == 0
     assert third["reused_records"] == 2
+    assert third["continuation_mode"] == "baseline"
     assert third["strength_claim"] is False
     assert third["production_deployment"] is False
 
@@ -109,6 +116,39 @@ def test_manifest_drift_refuses_before_new_scoring(tmp_path):
         J.journal_selection(
             selection, output, worlds=5, base_seed=7, limit=2,
             runtime=_runtime(), scorer=forbidden)
+
+
+def test_continuation_mode_is_manifest_bound_and_recorded(tmp_path):
+    selection = _selection()
+    output = tmp_path / "journal"
+    result = J.journal_selection(
+        selection, output, worlds=1, base_seed=7, limit=1,
+        continuation_mode="boss_near", runtime=_runtime(),
+        scorer=_fake_scorer())
+    assert result["continuation_mode"] == "boss_near"
+    manifest = json.loads((output / J.MANIFEST_NAME).read_bytes())
+    record = json.loads(next(output.glob("state-*.json")).read_bytes())
+    assert manifest["continuation_mode"] == "boss_near"
+    assert record["result"]["scoring_contract"] == {
+        "continuation_mode": "boss_near",
+        "recursive_mc_continuation": False,
+    }
+
+    with pytest.raises(J.JournalRefused, match="manifest differs"):
+        J.journal_selection(
+            selection, output, worlds=1, base_seed=7, limit=1,
+            continuation_mode="safe", runtime=_runtime(),
+            scorer=_fake_scorer())
+
+
+def test_unknown_continuation_mode_refuses_before_manifest_write(tmp_path):
+    output = tmp_path / "journal"
+    with pytest.raises(ValueError, match="continuation_mode"):
+        J.journal_selection(
+            _selection(), output, worlds=1, base_seed=7,
+            continuation_mode="recursive_mc", runtime=_runtime(),
+            scorer=_fake_scorer())
+    assert not (output / J.MANIFEST_NAME).exists()
 
 
 def test_corrupt_completed_record_refuses_instead_of_overwriting(tmp_path):

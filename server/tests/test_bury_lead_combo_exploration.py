@@ -1,6 +1,7 @@
 """Cheap contracts for the reusable bury/first-lead DEV scorer."""
 from __future__ import annotations
 
+import copy
 import random
 import sys
 from collections import Counter
@@ -15,7 +16,10 @@ sys.path.insert(0, str(SCRIPTS))
 import bury_lead_combo_exploration as E  # noqa: E402
 
 from shengji.ai.registry import make_bot  # noqa: E402
+from shengji.ai.throw_rollout import S6ThrowRolloutPolicy  # noqa: E402
+from shengji.engine.cards import Ordering  # noqa: E402
 from shengji.engine.game import Game  # noqa: E402
+from shengji.engine.round import Round, Trick  # noqa: E402
 
 
 def _bury_round(seed: int = 0):
@@ -45,6 +49,23 @@ def _install_sampler(bot, results):
         return result, []
 
     bot._sample_hands = MethodType(sample, bot)
+
+
+def _safe_throw_state():
+    rnd = Round("7", 0, random.Random(0))
+    rnd.phase = "play"
+    rnd.ordering = Ordering("H", "7")
+    rnd.trump_suit = "H"
+    rnd.trump_is_nt = False
+    rnd.turn = 0
+    rnd.hands = [
+        ["CA", "CA", "CK", "CQ", "CQ"],
+        ["S2"] * 5, ["D2"] * 5, ["H2"] * 5,
+    ]
+    rnd.buried = []
+    rnd.history = []
+    rnd.trick = Trick(leader=0)
+    return rnd
 
 
 def test_scorer_uses_exact_common_world_work_and_descriptive_winner(monkeypatch):
@@ -199,3 +220,48 @@ def test_one_real_world_preserves_card_conservation_and_throw_resolution():
     assert isinstance(succeeded, bool)
     assert Counter(rnd.hands[seat]) >= Counter(group.bury.cards)
     assert rnd.phase == "bury", "integration rollout must not mutate input"
+
+
+def test_s6_continuation_mode_is_passed_and_its_dose_is_recorded(monkeypatch):
+    rnd, seat = _bury_round()
+    bot, incumbent = _bot_and_incumbent(rnd, seat)
+    _install_sampler(bot, [{"world": 0}])
+    witness = _safe_throw_state()
+    calls = 0
+
+    def rollout(_bot, _rnd, _seat, sampled, bury, lead, *,
+                continuation_policy=None):
+        nonlocal calls
+        assert sampled == {"world": 0}
+        assert isinstance(continuation_policy, S6ThrowRolloutPolicy)
+        assert continuation_policy.mode == "safe"
+        assert len(continuation_policy.decide_play(
+            copy.deepcopy(witness), 0)) == 5
+        calls += 1
+        return float(len(bury) + len(lead)), True
+
+    monkeypatch.setattr(E, "_rollout_bury_lead", rollout)
+    result = E.score_state(
+        rnd, seat, bot=bot, incumbent_bury=incumbent, worlds=1,
+        continuation_mode="safe", max_candidate_rollouts=10_000)
+    assert calls == result["candidate_count"]
+    assert result["scoring_contract"]["continuation_mode"] == "safe"
+    assert result["scoring_contract"]["recursive_mc_continuation"] is False
+    dose = result["continuation_dose"]
+    assert dose["mode"] == "safe"
+    assert dose["delta"]["changes"] == dose["delta"]["lead_calls"] == calls
+
+
+def test_unknown_continuation_refuses_before_sampling(monkeypatch):
+    rnd, seat = _bury_round()
+    bot, incumbent = _bot_and_incumbent(rnd, seat)
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("sampling ran after invalid continuation mode")
+
+    monkeypatch.setattr(bot, "_sample_hands", forbidden)
+    with pytest.raises(ValueError, match="continuation mode"):
+        E.score_state(
+            rnd, seat, bot=bot, incumbent_bury=incumbent, worlds=1,
+            continuation_mode="recursive_mc",
+            max_candidate_rollouts=10_000)

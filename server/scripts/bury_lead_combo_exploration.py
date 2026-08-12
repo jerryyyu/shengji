@@ -25,10 +25,15 @@ from shengji.ai.bury_lead_combo import (  # noqa: E402
     build_bury_lead_combo_ballot,
 )
 from shengji.ai.memory import Memory  # noqa: E402
+from shengji.ai.throw_rollout import (  # noqa: E402
+    S6_CONTINUATION_MODES,
+    S6ThrowRolloutPolicy,
+    make_s6_continuation_policy,
+)
 from shengji.engine.round import Round, actual_play_after  # noqa: E402
 
 
-SCHEMA = "bury-first-lead-combo-state-exploration-v1"
+SCHEMA = "bury-first-lead-combo-state-exploration-v2"
 DEFAULT_WORLDS = 30
 DEFAULT_ATTEMPT_FACTOR = 40
 DEFAULT_MAX_CANDIDATE_ROLLOUTS = 200_000
@@ -48,7 +53,8 @@ def _flatten(ballot: BuryLeadComboBallot):
 
 def _rollout_bury_lead(bot, rnd: Round, seat: int,
                        sampled: dict[int, list[str]], bury_cards,
-                       lead_cards) -> tuple[float, bool]:
+                       lead_cards, *, continuation_policy=None
+                       ) -> tuple[float, bool]:
     """Play one attempted combo in one complete determinized world."""
     clone: Round = copy.copy(rnd)
     clone.hands = bot._complete_determinized_hands(
@@ -67,7 +73,8 @@ def _rollout_bury_lead(bot, rnd: Round, seat: int,
     actual = actual_play_after(clone, seat, previous_last)
     lead_succeeded = sorted(actual) == sorted(lead_cards)
 
-    policy = bot.rollout_policy
+    policy = (bot.rollout_policy if continuation_policy is None
+              else continuation_policy)
     while clone.phase == "play":
         exact = bot._exact_endgame_value(clone)
         if exact is not None:
@@ -117,6 +124,7 @@ def score_state(
     worlds: int = DEFAULT_WORLDS,
     attempt_factor: int = DEFAULT_ATTEMPT_FACTOR,
     max_candidate_rollouts: int = DEFAULT_MAX_CANDIDATE_ROLLOUTS,
+    continuation_mode: str = "baseline",
 ) -> dict:
     """Score one public bury state without turning it into a strength claim.
 
@@ -133,6 +141,14 @@ def score_state(
             raise ValueError(f"{label} must be a positive integer")
     if rnd.phase != "bury" or rnd.banker != seat:
         raise ValueError("combo scorer requires the acting banker bury state")
+    if continuation_mode not in S6_CONTINUATION_MODES:
+        raise ValueError(
+            f"continuation mode must be one of {S6_CONTINUATION_MODES}")
+    continuation_policy = make_s6_continuation_policy(
+        continuation_mode, baseline=bot.rollout_policy)
+    continuation_before = (
+        continuation_policy.snapshot()
+        if isinstance(continuation_policy, S6ThrowRolloutPolicy) else None)
 
     ballot = build_bury_lead_combo_ballot(
         rnd, seat, incumbent_bury, live_lead_ballot=bot._candidates)
@@ -167,8 +183,14 @@ def score_state(
         values = []
         successes = []
         for _, _, group, lead in combos:
-            attacker_points, succeeded = _rollout_bury_lead(
-                bot, rnd, seat, hands, group.bury.cards, lead.cards)
+            if continuation_mode == "baseline":
+                # Preserve the literal v1 call path for the reference arm.
+                attacker_points, succeeded = _rollout_bury_lead(
+                    bot, rnd, seat, hands, group.bury.cards, lead.cards)
+            else:
+                attacker_points, succeeded = _rollout_bury_lead(
+                    bot, rnd, seat, hands, group.bury.cards, lead.cards,
+                    continuation_policy=continuation_policy)
             # Banker maximises the negative attacker score, using the same
             # objective knob as ordinary MC for comparability.
             value = -float(bot._score(attacker_points))
@@ -250,11 +272,28 @@ def score_state(
         "rng_state": pre_rng_state,
         "scoring_contract": {
             "bot_class": type(bot).__name__,
-            "rollout_policy_class": type(bot.rollout_policy).__name__,
+            "baseline_rollout_policy_class": type(bot.rollout_policy).__name__,
+            "continuation_mode": continuation_mode,
+            "continuation_policy_class": type(continuation_policy).__name__,
+            "continuation_actor_visible": True,
+            "recursive_mc_continuation": False,
             "level_objective": bool(bot.LEVEL_OBJECTIVE),
             "exact_endgame": bool(bot.EXACT_ENDGAME),
             "perspective": "banker_value_is_negative_attacker_objective",
         },
+        "continuation_dose": (
+            continuation_policy.delta(continuation_before)
+            if continuation_before is not None else {
+                "schema": "s6-throw-rollout-dose-v1",
+                "mode": "baseline",
+                "deterministic": True,
+                "actor_visible": True,
+                "recursive_mc": False,
+                "exploration_only": True,
+                "before": None,
+                "after": None,
+                "delta": None,
+            }),
         "ballot": ballot.record(),
         "candidate_count": len(combos),
         "candidate_zero_index": 0,

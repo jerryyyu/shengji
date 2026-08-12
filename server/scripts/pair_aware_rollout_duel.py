@@ -274,7 +274,8 @@ def record_problems(record: object, *, expected_label: str,
             or record.get("flip") != expected_flip):
         problems.append("record identity")
     history = record.get("history")
-    if (not isinstance(history, list) or len(history) != 100
+    if (not isinstance(history, list) or not 4 <= len(history) <= 100
+            or len(history) % 4 != 0
             or any(not isinstance(row, dict)
                    or set(row) != {"seat", "cards"}
                    or not isinstance(row["seat"], int)
@@ -328,15 +329,22 @@ def natural_root_dose(treatment: dict, matched_null: dict) -> dict:
             raise PairProtocolRefused(f"pair dose {field} identity drift")
     left = treatment.get("history")
     right = matched_null.get("history")
-    if not isinstance(left, list) or not isinstance(right, list) \
-            or len(left) != 100 or len(right) != 100:
+    if (not isinstance(left, list) or not isinstance(right, list)
+            or not 4 <= len(left) <= 100 or not 4 <= len(right) <= 100
+            or len(left) % 4 != 0 or len(right) % 4 != 0):
         raise PairProtocolRefused("pair dose history population drift")
     divergence = next(
-        (index for index, (a, b) in enumerate(zip(left, right, strict=True))
+        (index for index, (a, b) in enumerate(zip(left, right))
          if a != b), None)
     if divergence is None:
+        # Equal actions deterministically create equal engine states, so one
+        # complete trajectory cannot end before the other without an earlier
+        # differing action. Refuse instead of inventing an end-of-list dose.
+        if len(left) != len(right):
+            raise PairProtocolRefused(
+                "equal shared action prefix has different terminal length")
         return {
-            "shared_prefix_plays": 100,
+            "shared_prefix_plays": len(left),
             "root_action_changed": False,
             "change_play_index": None,
             "change_phase": None,

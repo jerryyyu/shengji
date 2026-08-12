@@ -17,7 +17,7 @@ import pair_aware_rollout_capacity as C  # noqa: E402
 import pair_aware_rollout_duel as D  # noqa: E402
 
 
-FROZEN_PACKET = (
+WITHDRAWN_V1_PACKET = (
     Path(__file__).resolve().parents[1]
     / "runs/logs/pair-aware-whole-round-preflight-v1/controller-packet.json"
 )
@@ -82,10 +82,10 @@ def _counters(mode: str) -> dict:
     return value
 
 
-def _history(*, changed: bool = False) -> list[dict]:
+def _history(*, changed: bool = False, plays: int = 100) -> list[dict]:
     rows = [
         {"seat": index % 4, "cards": ["C3"]}
-        for index in range(100)
+        for index in range(plays)
     ]
     if changed:
         # Flip zero's policy team is seats 0/2.  Divergence at play 8 is valid.
@@ -198,6 +198,43 @@ def test_natural_dose_stops_at_first_shared_trajectory_change():
         "change_phase": "early",
         "change_role": "attacker",
     }
+
+
+def test_variable_length_complete_round_history_is_valid():
+    # Pair/tractor/throw leads consume multiple cards and therefore produce
+    # fewer than 25 tricks / 100 play actions in an otherwise complete round.
+    treatment = _row("treatment", 7, 0)
+    null = _row("matched_null", 7, 0)
+    treatment["history"] = _history(plays=84)
+    null["history"] = _history(plays=84)
+    assert D.record_problems(
+        treatment, expected_label="treatment", expected_seed=7,
+        expected_flip=0, expected_run_id=C.PREFLIGHT_RUN_ID) == []
+    assert D.natural_root_dose(treatment, null) == {
+        "shared_prefix_plays": 84,
+        "root_action_changed": False,
+        "change_play_index": None,
+        "change_phase": None,
+        "change_role": None,
+    }
+
+
+def test_impossible_equal_prefix_with_different_lengths_refuses():
+    treatment = _row("treatment", 7, 0)
+    null = _row("matched_null", 7, 0)
+    treatment["history"] = _history(plays=84)
+    null["history"] = _history(plays=80)
+    with pytest.raises(D.PairProtocolRefused, match="terminal length"):
+        D.natural_root_dose(treatment, null)
+
+
+@pytest.mark.parametrize("plays", [0, 3, 5, 104])
+def test_malformed_complete_round_history_lengths_refuse(plays):
+    row = _row("treatment", 7, 0)
+    row["history"] = _history(plays=plays)
+    assert "record play history" in D.record_problems(
+        row, expected_label="treatment", expected_seed=7,
+        expected_flip=0, expected_run_id=C.PREFLIGHT_RUN_ID)
 
 
 def test_natural_dose_refuses_opponent_first_divergence():
@@ -324,8 +361,11 @@ def test_preflight_binds_singleton_slot_before_opening_packet(
     assert opened is False
 
 
-def test_frozen_air_packet_is_hash_pinned_and_grants_no_gameplay():
-    raw = FROZEN_PACKET.read_bytes()
+def test_withdrawn_v1_packet_is_preserved_and_grants_no_gameplay():
+    # This packet was frozen before the variable-length complete-round bug was
+    # found.  Preserve its bytes for audit, but v2 constants make it impossible
+    # for the active controller to consume or review it.
+    raw = WITHDRAWN_V1_PACKET.read_bytes()
     assert hashlib.sha256(raw).hexdigest() == (
         "2fc732fd3745134d452b6a2a3c5b3d1fde4836ef044e12629d604b16c0f25610")
     packet = json.loads(raw)
@@ -337,3 +377,5 @@ def test_frozen_air_packet_is_hash_pinned_and_grants_no_gameplay():
     assert packet["preflight"]["clusters"] == 4
     assert packet["successor_projection"]["candidate_clusters"] == [2048, 8192]
     assert all(value is False for value in packet["authority"].values())
+    assert packet["schema"] != C.PACKET_SCHEMA
+    assert packet["preflight_run_id"] != C.PREFLIGHT_RUN_ID

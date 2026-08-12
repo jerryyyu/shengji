@@ -94,6 +94,14 @@ def test_report_split_is_unavailable_in_exploration_controller(tmp_path):
             out=tmp_path / "out.json")
 
 
+def test_formal_shard_refuses_a_shortened_report_fold(tmp_path):
+    with pytest.raises(EVAL.EvalRefused, match="must be 300"):
+        EVAL.run_shard(
+            population=tmp_path / "does-not-matter.json",
+            split="dev", shard_index=0, shard_count=1,
+            report_worlds=2, out=tmp_path / "out.json")
+
+
 def test_named_seed_streams_are_stable_and_disjoint():
     state = "861614:0:1"
     root = EVAL.seed_for(state, "policy-root")

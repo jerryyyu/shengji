@@ -38,6 +38,14 @@ ALLOWED_SPLITS = ("dev", "calib")
 REPORT_WORLDS = 300
 SEED_DOMAIN = "pair-ballot-affected-eval-v1"
 CHAMPION = "mc-s0-report-lcb"
+SOURCE_FIELDS = {"evaluator", "capture"}
+SHARD_FIELDS = {
+    "schema", "source_path", "source_file_sha256",
+    "source_artifact_sha256", "source_sha256s", "runtime", "split",
+    "shard_index", "shard_count", "report_worlds", "rows", "results",
+    "diagnostic_only", "strength_claim", "production_promotion",
+    "production_deployment", "artifact_sha256",
+}
 
 
 class EvalRefused(RuntimeError):
@@ -252,21 +260,12 @@ def load_population(path: Path) -> dict:
     if path.is_symlink() or not path.is_file():
         raise EvalRefused("affected-state population missing/nonregular")
     payload = json.loads(path.read_bytes())
-    if payload.get("schema") != STATES.ARTIFACT_SCHEMA:
-        raise EvalRefused("affected-state population schema drift")
-    body = dict(payload)
-    observed_sha = body.pop("artifact_sha256", None)
-    if observed_sha != STATES.sha256_bytes(STATES.canonical_json(body)):
-        raise EvalRefused("affected-state population digest drift")
-    rows = payload.get("states")
-    if (payload.get("score_free") is not True
-            or payload.get("outcomes_computed") is not False
-            or payload.get("strength_claim") is not False
-            or payload.get("production_authority") is not False
-            or not isinstance(rows, list)
-            or payload.get("total_rows") != len(rows)
-            or any(row.get("search_eligible") is not True for row in rows)):
-        raise EvalRefused("affected-state population authority/content drift")
+    try:
+        STATES.validate_population(payload, replay=False)
+    except STATES.CaptureRefused as exc:
+        raise EvalRefused(
+            f"affected-state population authority/content drift: {exc}") \
+            from exc
     return payload
 
 
@@ -276,9 +275,16 @@ def run_shard(*, population: Path, split: str, shard_index: int,
               progress_every: int = 4) -> dict:
     if split not in ALLOWED_SPLITS:
         raise EvalRefused("exploration evaluator permits DEV/CALIB only")
+    if report_worlds != REPORT_WORLDS:
+        raise EvalRefused("formal exploration report dose must be 300 worlds")
     if not 0 <= shard_index < shard_count:
         raise EvalRefused("shard index must satisfy 0 <= index < count")
     source = load_population(population)
+    runtime = STATES._runtime(smoke=False)
+    source_sha256s = {
+        "evaluator": STATES.sha256_file(__file__),
+        "capture": STATES.sha256_file(STATES.__file__),
+    }
     rows = [row for row in source["states"]
             if row["split"] == split
             and row["deal_seed"] % shard_count == shard_index]
@@ -303,6 +309,8 @@ def run_shard(*, population: Path, split: str, shard_index: int,
         "source_path": str(population),
         "source_file_sha256": STATES.sha256_file(population),
         "source_artifact_sha256": source["artifact_sha256"],
+        "source_sha256s": source_sha256s,
+        "runtime": runtime,
         "split": split,
         "shard_index": shard_index,
         "shard_count": shard_count,

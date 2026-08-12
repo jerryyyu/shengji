@@ -33,10 +33,13 @@ def _row(offset: int) -> dict:
         "schema": P.SCHEMA,
         "population_id": P.POPULATION_ID,
         "state_id": f"{P.POPULATION_ID}:deal:{seed}:banker:{offset % 4}",
+        "source_state_id":
+            f"s3a-bury-pilot-v2:deal:{seed}:banker:{offset % 4}",
         "deal_seed": seed,
         "banker": offset % 4,
         "champion": P.CHAMPION,
         "source_input_sha256": f"{offset + 1:064x}",
+        "source_replay_sha256": f"{offset + 51:064x}",
         "ballot_sha256": f"{offset + 101:064x}",
         "bury_count": 10 + offset,
         "generated_buries": 20 + offset,
@@ -58,6 +61,8 @@ def test_opened_population_identity_is_exact_and_not_report():
     assert len(P.SOURCE_SHARD_SHA256S) == 8
     assert P.SOURCE_AGGREGATE_SHA256 == \
         "74aa5a3947e1daaa5aa4bc33eef8ae04eaaf695d0cb900c7045eb0cbbc4396cd"
+    assert P.SOURCE_STATE_MANIFEST_SHA256 == \
+        "7313fc48a349a1fafad2e39d63c983a262ea4d858ce538a3c6697792327eaed7"
 
 
 def test_real_state_census_is_deterministic_actor_visible_and_score_free():
@@ -67,6 +72,8 @@ def test_real_state_census_is_deterministic_actor_visible_and_score_free():
     assert P.state_problems(first) == []
     assert first["source_input_sha256"] == \
         "d6a7453dbc58ad2089c3002ade54c48f49605634d8751ee2d14f6c01b30b3b95"
+    assert first["source_replay_sha256"] == \
+        "36be06f4d73563071e4fb9f84b95e71930f1ff7f3c0f76ecaf5671ba67f9dbfd"
     assert first["bury_count"] == 32
     assert first["combo_count"] == 546
     assert first["combo_count"] <= first["combo_cap"]

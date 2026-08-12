@@ -37,6 +37,8 @@ POPULATION_STATES = 512
 SOURCE_GIT = "14548d3da31c3cfe899cbd7e572614ae05242c0a"
 SOURCE_AGGREGATE_SHA256 = (
     "74aa5a3947e1daaa5aa4bc33eef8ae04eaaf695d0cb900c7045eb0cbbc4396cd")
+SOURCE_STATE_MANIFEST_SHA256 = (
+    "7313fc48a349a1fafad2e39d63c983a262ea4d858ce538a3c6697792327eaed7")
 SOURCE_SHARD_SHA256S = (
     "028d6001ae55775ac6ff27fbf0710a100b982621378b8a1ba209031e0a57fb69",
     "eb2d7cbaccffc96fe864b98d94aa7953fbf33a2276194b69ce511256ca761279",
@@ -49,8 +51,9 @@ SOURCE_SHARD_SHA256S = (
 )
 
 STATE_KEYS = {
-    "schema", "population_id", "state_id", "deal_seed", "banker",
-    "champion", "source_input_sha256", "ballot_sha256", "bury_count",
+    "schema", "population_id", "state_id", "source_state_id", "deal_seed",
+    "banker", "champion", "source_input_sha256", "source_replay_sha256",
+    "ballot_sha256", "bury_count",
     "generated_buries", "combo_count", "combo_cap",
     "feasible_single_suit_voids", "shape", "score_free",
     "source_population_already_opened", "source_outcomes_read",
@@ -108,7 +111,7 @@ def census_state(
     if (isinstance(deal_seed, bool) or not isinstance(deal_seed, int)
             or not DEAL_SEED0 <= deal_seed < DEAL_SEED0 + POPULATION_STATES):
         raise PopulationRefused("deal seed is outside the opened S3a DEV asset")
-    rnd, incumbent, _ = state_builder(deal_seed, CHAMPION)
+    rnd, incumbent, replay = state_builder(deal_seed, CHAMPION)
     seat = rnd.banker
     if rnd.phase != "bury" or seat is None or rnd.ordering is None:
         raise PopulationRefused("reconstructed state is not an acting bury")
@@ -163,10 +166,13 @@ def census_state(
         "schema": SCHEMA,
         "population_id": POPULATION_ID,
         "state_id": f"{POPULATION_ID}:deal:{deal_seed}:banker:{seat}",
+        "source_state_id":
+            f"s3a-bury-pilot-v2:deal:{deal_seed}:banker:{seat}",
         "deal_seed": deal_seed,
         "banker": seat,
         "champion": CHAMPION,
         "source_input_sha256": _source_asset_digest(source_input),
+        "source_replay_sha256": stable_digest(replay),
         "ballot_sha256": stable_digest(ballot.record()),
         "bury_count": len(groups),
         "generated_buries": ballot.generated_buries,
@@ -213,7 +219,8 @@ def state_problems(row: Mapping[str, object]) -> list[str]:
             and isinstance(row.get("combo_cap"), int)
             and row["combo_count"] > row["combo_cap"]):
         problems.append("combo cap")
-    for field in ("source_input_sha256", "ballot_sha256"):
+    for field in (
+            "source_input_sha256", "source_replay_sha256", "ballot_sha256"):
         value = row.get(field)
         if (not isinstance(value, str) or len(value) != 64
                 or any(char not in "0123456789abcdef" for char in value)):
@@ -226,6 +233,10 @@ def state_problems(row: Mapping[str, object]) -> list[str]:
             and row.get("state_id") != \
             f"{POPULATION_ID}:deal:{seed}:banker:{banker}":
         problems.append("state id")
+    if isinstance(seed, int) and isinstance(banker, int) \
+            and row.get("source_state_id") != \
+            f"s3a-bury-pilot-v2:deal:{seed}:banker:{banker}":
+        problems.append("source state id")
     voids = row.get("feasible_single_suit_voids")
     if (not isinstance(voids, list)
             or any(not isinstance(suit, str) for suit in voids)
@@ -255,6 +266,16 @@ def _tie(row: Mapping[str, object], purpose: str) -> str:
     })
 
 
+def _source_manifest_digest(rows: Iterable[Mapping[str, object]]) -> str:
+    material = [{
+        "deal_seed": row["deal_seed"],
+        "state_id": row["source_state_id"],
+        "source_input_sha256": row["source_input_sha256"],
+        "source_replay_sha256": row["source_replay_sha256"],
+    } for row in sorted(rows, key=lambda value: value["deal_seed"])]
+    return stable_digest(material)
+
+
 def select_dev_states(
     rows: Iterable[Mapping[str, object]],
     *,
@@ -281,6 +302,8 @@ def select_dev_states(
         expected = list(range(DEAL_SEED0, DEAL_SEED0 + POPULATION_STATES))
         if sorted(seeds) != expected:
             problems.append("full population coverage")
+        elif _source_manifest_digest(ordered) != SOURCE_STATE_MANIFEST_SHA256:
+            problems.append("source population material")
     if len(ordered) < shape_count + anchor_count:
         problems.append("selection exceeds population")
     if problems:
@@ -324,6 +347,7 @@ def select_dev_states(
     selected_rows = [
         {
             "state_id": ordered[index]["state_id"],
+            "source_state_id": ordered[index]["source_state_id"],
             "deal_seed": ordered[index]["deal_seed"],
             "selection_group": "shape_rich",
             "selection_reason": reasons[index],
@@ -333,6 +357,7 @@ def select_dev_states(
     ] + [
         {
             "state_id": ordered[index]["state_id"],
+            "source_state_id": ordered[index]["source_state_id"],
             "deal_seed": ordered[index]["deal_seed"],
             "selection_group": "hash_uniform_anchor",
             "selection_reason": "uniform_anchor",
@@ -348,6 +373,7 @@ def select_dev_states(
             "opened_reusable_dev": True,
             "source_git": SOURCE_GIT,
             "source_aggregate_sha256": SOURCE_AGGREGATE_SHA256,
+            "source_state_manifest_sha256": SOURCE_STATE_MANIFEST_SHA256,
             "source_shard_sha256s": list(SOURCE_SHARD_SHA256S),
             "deal_seed0": DEAL_SEED0,
             "states": len(ordered),

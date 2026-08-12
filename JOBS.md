@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-12 04:30 EDT. This file owns current compute and
+Last reconciled: 2026-08-12 04:43 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -10,7 +10,7 @@ compact terminal stubs. Historical detail is archived in
 | host | live strength job | health / next use |
 |---|---|---|
 | **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; at 03:47 each had completed 100/512 treatment rounds and all remained CPU-bound. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
-| **Air** | none | **FREE.** S6 boss/near DEV completed. Pair-capacity v2 was stopped at 1/4 after its PASS was superseded; admission/progress are preserved and no result exists. Next is the first newly authenticated S4, broad-S6 or corrected-pair-v3 score-free preflight. |
+| **Air** | `pair-aware-whole-round-preflight-v3` | **HEALTHY / RUNNING.** Claude's packet PASS authenticated exactly once; source `1ef8a4d` and packet `67294a93…e4a9b4` reverified before the fresh admission was consumed at 04:42. PID `82285` is CPU-bound. This is four score-free capacity clusters only; no scored screen or strength claim is authorized. |
 | **Fly production** | `mc-s0-report-lcb` | Release 17 remains live. No deploy, restart, room wipe or policy change is authorized. |
 
 ## Reviewed queue
@@ -19,11 +19,11 @@ compact terminal stubs. Historical detail is archived in
 |---:|---|---|
 | 1 | S4 future-only sequential preflight | PR #40 head `3403cdf`; controller review pending. A PASS permits one score-free Air preflight and packet design only. |
 | 2 | S6 shuai-pai preflight | PR #41 head `ea07efa`; Air-bound packet v2 review pending. A PASS permits one score-free four-cluster Air preflight only. |
-| 3 | Pair-aware capacity preflight | **V2 WITHDRAWN / V3 REVIEW OPEN.** The v2 process was halted after one score-free cluster when its synthetic 84-card witness was found invalid; no result published. PR #46 source `1ef8a4d`, packet `67294a93…e4a9b4` proves terminal 100-card/25-per-seat histories in fresh v3 paths. Await `PAIR_AWARE_ROLLOUT_CAPACITY_PACKET_V3_REVIEW`; a PASS permits one score-free preflight only. |
+| 3 | Pair-aware capacity preflight | **V3 RUNNING.** Packet review PASSed and the one authorized score-free Air run began at 04:42. Next is independent capacity-result review; only a PASS can open scored-packet design. |
 
-Whichever of S4, S6 or pair-aware receives its exact marker first takes Air. Preflight
-artifacts must stay score-free; a later independent packet review is required
-before scored execution.
+Pair-v3 received the first exact marker and currently owns Air. S4 and S6 wait
+without touching their namespaces. Preflight artifacts stay score-free; a
+later independent packet review is required before any scored execution.
 
 ## T4 closeout
 

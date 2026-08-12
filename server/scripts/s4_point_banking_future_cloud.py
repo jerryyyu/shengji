@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Freeze, review, admit, supervise, and verify future S4 on Mini.
+"""Freeze, review, admit, supervise, and verify future S4 on Cloud.
 
 The controller launches one reviewed two-look contract.  It creates tranche
 2's immutable pre-authorization before gameplay, runs exactly 8,192 clusters,
@@ -33,19 +33,19 @@ sys.path.insert(0, str(SCRIPTS))
 
 import s4_point_banking_future as CORE  # noqa: E402
 
-SCHEMA = "s4-point-banking-future-mini-controller-v1"
-EXIT_SCHEMA = "s4-point-banking-future-mini-exit-v1"
-FINAL_SCHEMA = "s4-point-banking-future-mini-final-v1"
+SCHEMA = "s4-point-banking-future-cloud-controller-v1"
+EXIT_SCHEMA = "s4-point-banking-future-cloud-exit-v1"
+FINAL_SCHEMA = "s4-point-banking-future-cloud-final-v1"
 PREAUTH_SCHEMA = "s4-point-banking-future-tranche2-preauthorization-v1"
 RELEASE_SCHEMA = "s4-point-banking-future-tranche2-release-v1"
 PREFLIGHT_ADMISSION_SCHEMA = (
     "s4-point-banking-future-preflight-admission-v1")
 CONTROLLER_REVIEW_MARKER = (
-    "S4_POINT_BANKING_FUTURE_MINI_CONTROLLER_V1_REVIEW ")
+    "S4_POINT_BANKING_FUTURE_CLOUD_CONTROLLER_V1_REVIEW ")
 RUN_ID = CORE.RUN_ID
 NAMESPACE = CORE.NAMESPACE
 RUNNER = Path("server/scripts/s4_point_banking_future.py")
-CONTROLLER = Path("server/scripts/s4_point_banking_future_mini.py")
+CONTROLLER = Path("server/scripts/s4_point_banking_future_cloud.py")
 SHARD_COUNT = CORE.SHARD_COUNT
 TRANCHE_COUNT = CORE.TRANCHE_COUNT
 SHARD_NAMES = CORE.SHARD_NAMES
@@ -61,10 +61,10 @@ FINAL_NAME = "supervisor-final.json"
 AGGREGATE_NAMES = CORE.AGGREGATE_NAMES
 PREFLIGHT_PATH = CORE.PREFLIGHT_NAMESPACE / "preflight.json"
 
-EXPECTED_HOST = "Jerrys-Mac-mini.local"
-EXPECTED_PYTHON = "3.14.3"
+EXPECTED_HOST = "ubuntu-32gb-hel1-1"
+EXPECTED_PYTHON = "3.14.4"
 EXPECTED_FAST_SHA256 = (
-    "9c9e77fbdc4c6caceec195465155f37ec6369e409462fd838bc142bf8a0be4c1"
+    "a22789a6472de34586176851040bd7ad062440063eb4078e313e95d2dea94509"
 )
 DESIGN_REVIEW_GIT = CORE.DESIGN_REVIEW_GIT
 DESIGN_REVIEW_HEADING = (
@@ -73,7 +73,7 @@ DESIGN_REVIEW_HEADING = (
 
 
 class SupervisorRefused(RuntimeError):
-    """The one-shot Mini packet or evidence boundary was violated."""
+    """The one-shot Cloud packet or evidence boundary was violated."""
 
 
 @dataclass(frozen=True)
@@ -303,7 +303,7 @@ def _identity_context(config: Config, paths: Paths) -> tuple[dict, dict]:
             or runtime.get("fast_binary_sha256") != EXPECTED_FAST_SHA256
             or runtime.get("future_runner_sha256") !=
             config.expected_runner_sha256):
-        raise SupervisorRefused("future S4 is frozen to exact Mini runtime")
+        raise SupervisorRefused("future S4 is frozen to exact Cloud runtime")
     return parent, runtime
 
 

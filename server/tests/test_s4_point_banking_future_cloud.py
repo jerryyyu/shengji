@@ -1,4 +1,4 @@
-"""Fail-closed tests for the automatic future S4 Mini controller."""
+"""Fail-closed tests for the automatic future S4 Cloud controller."""
 from __future__ import annotations
 
 import copy
@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
 import s4_point_banking_future as CORE  # noqa: E402
-import s4_point_banking_future_mini as CTRL  # noqa: E402
+import s4_point_banking_future_cloud as CTRL  # noqa: E402
 
 
 def _config() -> CTRL.Config:
@@ -62,7 +62,7 @@ def _install_receipt_chain(tmp_path: Path, monkeypatch, *,
         if git == expected_git else (_ for _ in ()).throw(
             CORE.ProtocolRefused("git drift")))
 
-    controller_path = tmp_path / "server/scripts/s4_point_banking_future_mini.py"
+    controller_path = tmp_path / "server/scripts/s4_point_banking_future_cloud.py"
     controller_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(Path(CTRL.__file__), controller_path)
     config = CTRL.Config(
@@ -163,9 +163,9 @@ def _small_aggregate(*, look: int, status: str) -> dict:
     }
 
 
-def test_controller_is_mini_only_and_uses_reviewed_two_look_contract():
-    assert CTRL.EXPECTED_HOST == "Jerrys-Mac-mini.local"
-    assert CTRL.EXPECTED_PYTHON == "3.14.3"
+def test_controller_is_cloud_only_and_uses_reviewed_two_look_contract():
+    assert CTRL.EXPECTED_HOST == "ubuntu-32gb-hel1-1"
+    assert CTRL.EXPECTED_PYTHON == "3.14.4"
     assert CORE.LOOK_CLUSTERS == (8_192, 16_384)
     assert CORE.NULL_SENTINEL_CLUSTERS == 2_048
     assert CORE.LOOK1_TRANSITION == {
@@ -177,10 +177,11 @@ def test_controller_is_mini_only_and_uses_reviewed_two_look_contract():
 
 @pytest.mark.parametrize(("field", "value"), [
     ("host", "Jerrys-MacBook-Air.local"),
+    ("host", "Jerrys-Mac-mini.local"),
     ("python", "3.14.6"),
     ("fast_binary_sha256", "0" * 64),
 ])
-def test_identity_context_refuses_nonmini_runtime(
+def test_identity_context_refuses_noncloud_runtime(
         monkeypatch, field, value):
     config = _config()
     paths = CTRL.paths_for()
@@ -207,11 +208,11 @@ def test_identity_context_refuses_nonmini_runtime(
     monkeypatch.setattr(CTRL, "sha256_file", fake_sha)
     monkeypatch.setattr(
         CORE, "require_runtime", lambda _git: (parent, runtime))
-    with pytest.raises(CTRL.SupervisorRefused, match="exact Mini runtime"):
+    with pytest.raises(CTRL.SupervisorRefused, match="exact Cloud runtime"):
         CTRL._identity_context(config, paths)
 
 
-def test_identity_context_accepts_exact_mini_runtime(monkeypatch):
+def test_identity_context_accepts_exact_cloud_runtime(monkeypatch):
     config = _config()
     paths = CTRL.paths_for()
     parent = {"champion_policy": CORE.DUEL.CHAMPION}

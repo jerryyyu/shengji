@@ -9,7 +9,7 @@ pre-authorized second tranche; no human can change the population, statistic,
 or stopping rule after looking.  Integrity failure always stops HOLD.
 
 This module owns deterministic schedules, shard validation, score-free capacity
-measurement, and cumulative aggregation.  The companion Mini controller owns
+measurement, and cumulative aggregation.  The companion Cloud controller owns
 review admission, process supervision, and the automatic transition.
 """
 
@@ -38,11 +38,11 @@ import s4_point_banking_future_design as DESIGN  # noqa: E402
 SCHEMA = "s4-point-banking-future-shard-v1"
 AGGREGATE_SCHEMA = "s4-point-banking-future-aggregate-v1"
 PREFLIGHT_SCHEMA = "s4-point-banking-future-preflight-v1"
-PACKET_SCHEMA = "s4-point-banking-future-mini-packet-v1"
-PACKET_REVIEW_SCHEMA = "s4-point-banking-future-mini-review-v1"
-PACKET_REVIEW_MARKER = "S4_POINT_BANKING_FUTURE_MINI_V1_REVIEW "
-ADMISSION_SCHEMA = "s4-point-banking-future-mini-admission-v1"
-RECEIPT_SCHEMA = "s4-point-banking-future-mini-receipt-v1"
+PACKET_SCHEMA = "s4-point-banking-future-cloud-packet-v1"
+PACKET_REVIEW_SCHEMA = "s4-point-banking-future-cloud-review-v1"
+PACKET_REVIEW_MARKER = "S4_POINT_BANKING_FUTURE_CLOUD_V1_REVIEW "
+ADMISSION_SCHEMA = "s4-point-banking-future-cloud-admission-v1"
+RECEIPT_SCHEMA = "s4-point-banking-future-cloud-receipt-v1"
 DESIGN_REVIEW_GIT = "182459941226b96969e2c2b207406cf5b53167ab"
 
 RUN_ID = DESIGN.RUN_ID
@@ -64,7 +64,7 @@ SHARD_NAMES = tuple(
     for index in range(SHARD_COUNT))
 AGGREGATE_NAMES = ("look-1-aggregate.json", "look-2-aggregate.json")
 
-PREFLIGHT_RUN_ID = "s4-point-banking-future-mini-preflight-239b-v1"
+PREFLIGHT_RUN_ID = "s4-point-banking-future-cloud-preflight-239b-v1"
 PREFLIGHT_NAMESPACE = Path("server/runs/logs") / PREFLIGHT_RUN_ID
 PREFLIGHT_REVIEW_PATH = PREFLIGHT_NAMESPACE / "controller-review.txt"
 PREFLIGHT_ADMISSION_PATH = PREFLIGHT_NAMESPACE / "preflight-admission.json"
@@ -449,7 +449,7 @@ def require_receipt(path: Path, expected_sha256: str, *,
             f"cannot reopen receipt runtime: {exc}") from exc
     preflight_path = REPO / PREFLIGHT_NAMESPACE / "preflight.json"
     require_regular_unlinked(preflight_path, label="future S4 preflight")
-    controller_path = REPO / "server/scripts/s4_point_banking_future_mini.py"
+    controller_path = REPO / "server/scripts/s4_point_banking_future_cloud.py"
     require_regular_unlinked(controller_path, label="future S4 controller")
     if (set(packet) != packet_fields
             or packet.get("schema") != PACKET_SCHEMA
@@ -461,7 +461,7 @@ def require_receipt(path: Path, expected_sha256: str, *,
             }
             or not isinstance(controller, dict)
             or controller.get("path") !=
-            "server/scripts/s4_point_banking_future_mini.py"
+            "server/scripts/s4_point_banking_future_cloud.py"
             or controller.get("sha256") != receipt["controller_sha256"]
             or sha256(controller_path) != receipt["controller_sha256"]
             or packet.get("runtime") != current_runtime

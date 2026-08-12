@@ -1,6 +1,6 @@
 # Daily maintenance routine
 
-Last rewritten: 2026-08-11. This is the canonical checklist, not proof that a
+Last rewritten: 2026-08-12. This is the canonical checklist, not proof that a
 cron/loop is installed or firing. A scheduled session must record its actual
 next wake and last successful execution; never infer that from this file.
 
@@ -136,6 +136,39 @@ is. Apply these gates whenever compute leaves implementation time available:
 Reconcile open PRs, remote branches, worktrees, top-level docs and reference-
 audit candidates whenever a milestone becomes terminal rather than waiting for
 a large periodic cleanup.
+
+### Pull-request and branch closeout
+
+Run this closeout whenever a successor PR becomes self-contained or an
+experiment reaches a terminal verdict. The goal is a short active queue, not
+the loss of negative results or exact evidence.
+
+1. Inventory every open PR and classify it as **merge**, **active draft**, or
+   **close**. Merge reviewed, independently useful product/infrastructure work.
+   Keep only live experiment leaves and their necessary stack bases open.
+2. Close a PR when its exact head is fully contained in a named active
+   successor, or when its terminal result and unique artifacts have been
+   preserved and synthesized. Leave a closing comment naming the successor or
+   terminal verdict; `SELECT NONE` closes promotion of that recipe, not the
+   learning or broader hypothesis.
+3. Before deleting the remote branch, prove one of these conditions:
+   `git merge-base --is-ancestor <closed-head> <surviving-head>` succeeds; the
+   branch is merged into `main`; or every unique artifact has a durable hash,
+   archive/PR reference and plain-English conclusion in the canonical docs.
+4. Never delete the exact branch of a running/sealed job, a base still needed
+   by an open stacked PR, the sole copy of ignored evidence, or a branch whose
+   review marker cannot be reconstructed from canonical bytes.
+5. Delete the remote head after the preservation proof. Remove its local
+   worktree separately only after checking dirty state, ignored artifacts,
+   open processes and open file handles. Then run `git worktree prune` and
+   remove stale local branches whose upstream is gone.
+6. Re-run the open-PR/remote-branch inventory. A healthy steady state contains
+   the small set of genuinely active experiment leaves plus reviewable product
+   changes—not every historical controller layer.
+
+At minimum, the daily pass checks for merged PR heads still present remotely,
+closed PRs whose exact heads are ancestors of an active consolidated PR, and
+open drafts whose stated gate is already terminal or superseded.
 
 ## Standing rules
 

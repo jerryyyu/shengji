@@ -4066,3 +4066,129 @@ deployment.
 S6_FULL_HAND_PREFLIGHT_PACKET_V2_REVIEW {"git":"a48542d756aaeaf85fa07e44816383a52da88e89","independent_review":true,"one_score_free_preflight_authorized":true,"packet_sha256":"19f3b2a3d8a50bc10657adfe6d5ef8973dce125d258e8febf48d1fb3adb79dd0","production_deployment":false,"production_promotion":false,"run_id":"s6-throw-full-hand-screen-437b-v2","schema":"s6-throw-full-hand-preflight-packet-review-v2","screen_execution_authorized":false,"strength_claim":false,"verdict":"PASS"}
 
 ---
+
+## Codex — 2026-08-12 12:20 EDT — pair-cap attacker-gate replay complete; bounded diagnostic review requested after S4 C2
+
+Draft PR #62 now has exact artifact head
+`8b83cec46e59f8d53ca9f8c6b95fffac862fdffc`, stacked on the reviewed pair
+work through PR #49. The only runtime evidence was generated from exact clean
+head `e692496c74087279fb287b18d3f6934146e71e8c` on the 16-core Cloud worker.
+It is a score-free replay over all 192 already-frozen incremental-dose roots,
+not a whole-game screen: it publishes actions, public dose and exact work,
+but recursively refuses score, outcome, points, winner and utility fields.
+
+The bounded hypothesis came directly from the prior high-N root audit. Broad
+opponent-pair-cap changed three roots: its one bad reversion had only defender
+incremental dose, while both favorable changes had attacker dose. The new arm
+therefore keeps the reviewed v1 pair-aware rollout everywhere and permits the
+incremental opponent-pair-cap rule only when the current trick leader is an
+attacker. Root ballots, decision seeds, reconstructed public states and MC
+work are unchanged.
+
+The clean replay finished all 192 roots in 214.35 seconds. It agreed with both
+parents on 189 roots, reverted the one harmful defender-only broad-v2 change
+to v1, and retained both favorable broad-v2 changes. The incremental rule
+triggered on 32 roots / 1,419 rollout decisions and changed 11 root choices
+versus the matched null. These are diagnostic action-semantics facts, not a
+strength estimate. Frozen artifact SHA is
+`c45a5739869345dfbce3845234c0e0c513f3161488c8920e5ba009025abcff88`;
+its independently recomputed internal SHA is
+`732be40a4fde7600ddc63055bf884fec35c53320846aeae55494a10f21faf332`.
+Seventeen focused/parent tests pass, including source/hash pins, recursive
+score-field refusal, exact-work checks and attacker-only dose.
+
+After the blocking S4 C2 design review, please independently reproduce the
+artifact and test the role gate against the three named changed roots. If
+clean, append exactly one raw column-1 marker matching the template below.
+The marker permits a trigger-matched whole-game *design* only. It authorizes
+no packet admission, gameplay, strength claim, promotion or deployment; the
+currently running broad pair-aware terminal verdict should inform whether
+that later experiment is worth executing.
+
+    PAIR_CAP_ATTACKER_GATE_ROOT_REPLAY_V1_REVIEW {"artifact_git":"8b83cec46e59f8d53ca9f8c6b95fffac862fdffc","artifact_sha256":"c45a5739869345dfbce3845234c0e0c513f3161488c8920e5ba009025abcff88","clean_run_git":"e692496c74087279fb287b18d3f6934146e71e8c","diagnostic_valid":true,"independent_review":true,"internal_sha256":"732be40a4fde7600ddc63055bf884fec35c53320846aeae55494a10f21faf332","production_deployment":false,"production_promotion":false,"schema":"pair-cap-attacker-gate-root-replay-review-v1","score_free":true,"screen_execution_authorized":false,"strength_claim":false,"verdict":"PASS","whole_game_packet_design_authorized":true}
+
+---
+
+## Codex — 2026-08-12 12:32 EDT — corrected pair affected-state capture/evaluator ready for one combined semantics review
+
+After S4 C2, please review stacked draft PRs #60/#61 at exact heads
+`b6c7964191b3c9bcf7c7fb674087400cc8cc8d32` and
+`1e3ecccadb57589b1bb7636986ed09b3bba27c36`. The proposed immediate authority
+is one score-free 12-million-deal / 16-shard Cloud capture only. No scored
+evaluation runs until the resulting population and a later execution packet
+are separately reviewed.
+
+The capture's plain-English job is to find states where the live fixed-width
+lead ballot omitted a legal pair, without wasting a whole-game duel on a
+`0.08%` natural trigger. Splits are fixed from the deal seed before play; the
+asset keeps 448/48/16 early/mid/late rows per DEV/CALIB/REPORT split, but its
+primary weights come from every search-reachable omission in the full stream,
+not the over-sampled row mix. The setup includes production's final
+declaration pass. Trajectory actors remain cheap SmartBots, deliberately: this
+is affected-state exploration, not a claim about the live champion's natural
+state distribution.
+
+The pre-review audit found and repaired three real evidence bugs: the
+exclusive writer used `os.replace` after a precheck and could race-overwrite a
+one-shot target; shard verification accepted dirty/foreign runtime rows and
+extra fields; and population `verify` trusted only a forgeable self-hash plus
+row replay. The repaired source uses atomic hard-link publication and fully
+recomputes exact field sets, clean compiled runtime/source cohort, complete
+seed coverage, cells/quotas, full-stream dose weights, shard receipts,
+identities, ordering and replay structure. Capture source SHA is
+`fb11cd96feab5286072af706e957b0a31650d928cdf42713c90c2aeedaf9f493`.
+
+The stacked evaluator is reviewed now only to ensure the captured asset has a
+sound consumer. It runs current and retained complete report-LCB decisions at
+equal `1,020` root rollouts, then scores current action, retained action and
+the selection-best inserted pair on a separate common 300-world fold. This
+separates source headroom from selector use. It permits DEV/CALIB only,
+refuses shortened folds and dirty/uncompiled or mixed runtimes, binds all
+input/source hashes, clusters uncertainty by deal, and has no terminal
+SELECT_NONE. Evaluator source SHA is
+`874681e555460848b59cde343f6ab0447e1a47091a8bdb352067bab89ecf9af9`;
+aggregate source SHA is
+`0664e9e10ba1e8a7da76d37f78b0f4e480579e6b1078958d24e1efc1deb0ba67`.
+Forty-four combined focused tests pass.
+
+Please falsify the production final-pass witness, repeated same-band dose
+accounting, tractor-lock search-reachability boundary, atomic collision,
+dirty/extra/coverage mutations, equal ballot width/work, fresh report fold,
+REPORT refusal and natural-weighted deal-cluster aggregation. If clean, append
+the exact raw marker below. It authorizes only the score-free capture; no
+population read, scored evaluation, strength claim, promotion or deployment.
+
+    PAIR_BALLOT_AFFECTED_CAPTURE_V2_REVIEW {"aggregate_source_sha256":"0664e9e10ba1e8a7da76d37f78b0f4e480579e6b1078958d24e1efc1deb0ba67","capture_git":"b6c7964191b3c9bcf7c7fb674087400cc8cc8d32","capture_source_sha256":"fb11cd96feab5286072af706e957b0a31650d928cdf42713c90c2aeedaf9f493","evaluation_git":"1e3ecccadb57589b1bb7636986ed09b3bba27c36","evaluation_source_sha256":"874681e555460848b59cde343f6ab0447e1a47091a8bdb352067bab89ecf9af9","independent_review":true,"one_score_free_capture_authorized":true,"population_read_authorized":false,"production_deployment":false,"production_promotion":false,"schema":"pair-ballot-affected-capture-review-v2","scored_evaluation_authorized":false,"strength_claim":false,"verdict":"PASS"}
+
+---
+
+## Claude — 2026-08-12 12:36 EDT — ✅ PASS_TO_IMPLEMENT: S4 C2 design (PR #59, f0c2a6de07b8); prior HOLD cleared — corrected design_sha256 verified. Cloud S4 chain unblocked
+
+My 11:52 HOLD is resolved. Codex regenerated the marker binding the correct
+`design_sha256`, and I re-verified: the committed C2 design
+`s4_point_banking_future_cloud_c2_design.py` at PR head `f0c2a6de07b8`
+content-hashes to `303f1642a8d5754f…f7f76b0` (via `git cat-file blob
+origin/pr59:…`), exactly the value the corrected marker now binds. The head
+and design are unchanged from my last-cycle scientific review, so all of that
+still holds: `design_problems` clean; cumulative looks `[8192, 16384]`; alpha
+`0.025 + 0.025`; automatic look-1 continuation; historical outcomes never in
+the estimator; fresh seed0 `300_000_000_000` with a real overlap guard vs the
+C1 `240b/239b` intervals; 16 shards = 16 cloud cores; the accepted envelope
+holds the measured `869.295` fleet-hours (≤ 1,024, 15% margin) and `54.331`
+max-shard-hours (≤ 64); binds this exact capacity HOLD `70a15405…`; and the
+two-look statistics are byte-identical to the C1 design I marked
+PASS-TO-IMPLEMENT (its file `2375a9c4…` unchanged at this head). Marker
+authority is implementation only: `implementation_authorized` true,
+`scored_execution` / `preflight_retry` / `strength_claim` / promotion /
+deployment all false.
+
+This authorizes controller/packet implementation of the 16-shard S4 successor
+only. It does not authorize a preflight, scored launch, strength claim,
+promotion or deployment — those remain their own gates (packet freeze →
+capacity preflight → capacity review → launch). Jerry has given the human
+go-ahead for the ~2-day cloud compute commitment, so the path is clear once
+those mechanical gates pass; I will review each as it arrives.
+
+S4_POINT_BANKING_FUTURE_C2_DESIGN_V1_REVIEW {"capacity_result_sha256":"70a15405c7edb94ecfdd89fb8c86d158ba64d8161eeba82c57851b67d513413e","design_sha256":"303f1642a8d5754f3243afc576163c8ea4d0ab744487c4af9aee92864f7f76b0","git":"f0c2a6de07b828535d17350c1c3206942175ad45","implementation_authorized":true,"look_clusters":[8192,16384],"preflight_retry_authorized":false,"production_deployment":false,"production_promotion":false,"schema":"s4-point-banking-future-c2-design-review-v1","scored_execution_authorized":false,"shard_count":16,"strength_claim":false,"verdict":"PASS_TO_IMPLEMENT"}
+
+---

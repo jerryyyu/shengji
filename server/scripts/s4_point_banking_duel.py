@@ -549,7 +549,8 @@ def protocol_problems(parent: dict) -> list[str]:
     return sorted(set(problems))
 
 
-def require_runtime(expected_git: str) -> tuple[dict, dict]:
+def require_runtime(expected_git: str, *,
+                    compatible_fast: bool = False) -> tuple[dict, dict]:
     if os.environ.get("SHENGJI_FAST") != "1" or \
             os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
         raise ProtocolRefused("set SHENGJI_FAST=1 and SHENGJI_REQUIRE_VOIDS=1")
@@ -565,7 +566,10 @@ def require_runtime(expected_git: str) -> tuple[dict, dict]:
     if git("status", "--porcelain"):
         raise ProtocolRefused("S4 duel refuses a dirty tree")
     try:
-        parent = LIVE_PARENT.require_portable_live_champion_parent()
+        if compatible_fast:
+            parent = LIVE_PARENT.require_compatible_live_champion_parent()
+        else:
+            parent = LIVE_PARENT.require_portable_live_champion_parent()
     except LIVE_PARENT.ProtocolRefused as exc:
         raise ProtocolRefused(f"live champion parent refused: {exc}") from exc
     problems = protocol_problems(parent)

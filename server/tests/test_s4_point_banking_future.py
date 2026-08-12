@@ -132,6 +132,22 @@ def test_future_streams_are_fresh_and_design_valid():
         min(CORE.shard_indexes(0, tranche=2))
 
 
+def test_future_runtime_requires_reviewed_compatible_fast(monkeypatch):
+    calls = []
+
+    def reopen(expected_git, *, compatible_fast=False):
+        calls.append((expected_git, compatible_fast))
+        return {"champion_policy": DUEL.CHAMPION}, {
+            "git": expected_git,
+        }
+
+    monkeypatch.setattr(DUEL, "require_runtime", reopen)
+    parent, runtime = CORE.require_runtime("a" * 40)
+    assert calls == [("a" * 40, True)]
+    assert parent["champion_policy"] == DUEL.CHAMPION
+    assert runtime["git"] == "a" * 40
+
+
 def test_record_validation_reuses_exact_s4_semantics():
     row = _record("treatment", CORE.SEED0, 0, 2, "attacker")
     assert CORE.record_problems(

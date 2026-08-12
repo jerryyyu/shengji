@@ -1,0 +1,33 @@
+{
+  "authority": {
+    "historical_confirmation_rewritten": false,
+    "production_deployment": false,
+    "production_promotion": false,
+    "strength_claim": false
+  },
+  "comparison": "exact full-round ordered play histories under the active compiled engine versus the byte-pinned historical goldens",
+  "compatible_fast_binary_sha256": "a22789a6472de34586176851040bd7ad062440063eb4078e313e95d2dea94509",
+  "compatible_runtime": {
+    "machine": "x86_64",
+    "python": "3.14.4",
+    "system": "Linux"
+  },
+  "golden_histories": {
+    "case_play_counts": {
+      "heuristic-11": 80,
+      "mc-13": 80,
+      "smart-12": 80
+    },
+    "path": "server/tests/golden_histories.json",
+    "sha256": "7784d0a3c908ac3b51a66ece0b29d4d9fe5501a38d08ad43c83b81b0dc914d8c"
+  },
+  "historical_fast_binary_sha256": "9c9e77fbdc4c6caceec195465155f37ec6369e409462fd838bc142bf8a0be4c1",
+  "policy_contract": {
+    "compatible_ballot": "mc_candidates@v1[be864762a3fa]",
+    "compatible_sha256": "0bc5876307c2c060f383817ebbdcd32a5905ce0430a8a42857d6b33471e71cb0",
+    "contract_without_ballot_sha256": "6898c2e42f42502e8cebe6b74543a4c3fdbba33f0286a7cc3969bab1ca8c2e05",
+    "historical_ballot": "mc_candidates@v1[a68f7b8bced6]",
+    "historical_sha256": "59fa033dc22d8a055b5d7f3fbcbaf9d7fb0b71993b74c4d9bb7587e3d90dc72b"
+  },
+  "schema": "live-champion-fast-compatibility-v1"
+}

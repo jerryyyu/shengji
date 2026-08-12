@@ -308,7 +308,8 @@ def stream_problems() -> list[str]:
 
 def require_runtime(expected_git: str) -> tuple[dict, dict]:
     try:
-        parent, base = DUEL.require_runtime(expected_git)
+        parent, base = DUEL.require_runtime(
+            expected_git, compatible_fast=True)
     except DUEL.ProtocolRefused as exc:
         raise ProtocolRefused(f"base S4 runtime refused: {exc}") from exc
     problems = stream_problems()

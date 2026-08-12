@@ -1,6 +1,8 @@
 """Score-free contracts for the S6 full-hand natural-traffic census."""
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
 from pathlib import Path
 
@@ -8,6 +10,12 @@ from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import s6_throw_full_hand_prevalence as S  # noqa: E402
+
+
+ASSET = Path(__file__).with_name("data") / \
+    "s6_throw_full_hand_prevalence.v1.json"
+ASSET_SHA256 = (
+    "8934c2e39b68afca8a5d8dfc13f4768097c7a61f66627f8f469e1c48b17ea45a")
 
 
 def test_design_is_fresh_and_score_free():
@@ -53,3 +61,39 @@ def test_tiny_census_publishes_counts_not_outcomes():
     assert payload["outcomes_published"] is False
     assert payload["whole_game_execution_authorized"] is False
     assert payload["strength_claim"] is False
+
+
+def test_fresh_air_census_is_pinned_score_free_and_complete():
+    raw = ASSET.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == ASSET_SHA256
+    payload = json.loads(raw)
+    assert payload["git"] == \
+        "9c7e6c845ada0c246e1949e99f3e83f8d1ff0e3d"
+    internal = payload.pop("internal_sha256")
+    assert internal == \
+        "43dc2e62d30ff671308ddba87f4f7dc0cdb45443b3888089b8feb5ecc2115a3d"
+    assert S.stable_digest(payload) == internal
+    payload["internal_sha256"] = internal
+
+    assert payload["tree_dirty"] is False
+    assert payload["counts"] == {
+        "by_hand_cards": {
+            "2": 597, "3": 308, "4": 126, "5": 39, "6": 14, "7": 1,
+        },
+        "cells": {
+            "attacker:early": 0, "attacker:mid": 222,
+            "attacker:late": 399, "defender:early": 0,
+            "defender:mid": 136, "defender:late": 328,
+        },
+        "deals": 50_000,
+        "leads": 1_067_189,
+        "new_candidates": 1_085,
+        "triggered_deals": 1_011,
+        "triggered_leads": 1_085,
+    }
+    assert payload["rates"]["triggered_deals"] == 1_011 / 50_000
+    assert payload["score_free"] is True
+    assert payload["outcomes_published"] is False
+    assert payload["whole_game_execution_authorized"] is False
+    assert payload["strength_claim"] is False
+    assert payload["production_deployment"] is False

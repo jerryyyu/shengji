@@ -36,7 +36,8 @@ _CONTROLLER_MODULE = os.environ.get(
 if _CONTROLLER_MODULE not in {
         "teacher_stage_c_composition_controller",
         "teacher_stage_c_expanded_composition_controller",
-        "teacher_stage_c_expanded_uncertainty_composition_controller"}:
+        "teacher_stage_c_expanded_uncertainty_composition_controller",
+        "teacher_stage_c_midlate_composition_controller"}:
     raise RuntimeError("unrecognized Stage-C composition controller module")
 CTRL = importlib.import_module(_CONTROLLER_MODULE)  # noqa: E402
 from shengji.ai.registry import make_bot  # noqa: E402
@@ -298,6 +299,41 @@ def _supervisor_review_claim(
     return claim
 
 
+def _ensemble_from_packet(packet: Mapping[str, object]):
+    """Reopen the common live parent and exact frozen model ensemble."""
+    try:
+        live_parent = make_bot("mc-s0-report-lcb", seed=0)
+        COMPOSITION._require_live_report_lcb(live_parent)
+    except Exception as exc:
+        raise CompositionRuntimeRefused(
+            f"composition live parent cannot reopen: {exc}") from exc
+    exports = packet.get("model_exports")
+    if (not isinstance(exports, list)
+            or len(exports) != len(MODEL.TRAINING_SEEDS)
+            or packet.get("model_exports_sha256") != manifest_hash(exports)
+            or [item.get("logical_path") for item in exports]
+            != list(CTRL.MODEL_PATHS)):
+        raise CompositionRuntimeRefused(
+            "composition model export manifest drift")
+    members = []
+    for item in exports:
+        path = (REPO / str(item["logical_path"])).resolve()
+        try:
+            member = NPNET.StageCNpNet(
+                path, expected_sha256=str(item["sha256"]),
+                expected_metadata=item["metadata"])
+        except NPNET.StageCNumpyError as exc:
+            raise CompositionRuntimeRefused(str(exc)) from exc
+        members.append(member)
+    capability = packet["selected_capability"]
+    try:
+        return NPNET.StageCEnsemble(
+            members, surface=str(capability["surface"]),
+            head=str(capability["head"]), epoch=int(capability["epoch"]))
+    except NPNET.StageCNumpyError as exc:
+        raise CompositionRuntimeRefused(str(exc)) from exc
+
+
 def _packet(path: Path, expected_sha256: str) -> tuple[dict, object]:
     _require_clean_tree()
     if (path.resolve() != _expected_packet_path()
@@ -338,6 +374,17 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, object]:
             or packet.get("result_contract") != CTRL.result_contract()):
         raise CompositionRuntimeRefused(
             "composition controller packet identity/authority drift")
+
+    parent_validator = getattr(CTRL, "validate_runtime_parent", None)
+    if parent_validator is not None:
+        if not callable(parent_validator):
+            raise CompositionRuntimeRefused(
+                "composition custom parent validator is not callable")
+        try:
+            parent_validator(packet)
+        except CTRL.CompositionControllerRefused as exc:
+            raise CompositionRuntimeRefused(str(exc)) from exc
+        return packet, _ensemble_from_packet(packet)
 
     parents = packet.get("parents", {})
     if set(parents) != {
@@ -420,38 +467,7 @@ def _packet(path: Path, expected_sha256: str) -> tuple[dict, object]:
         raise CompositionRuntimeRefused(
             "composition REPORT-open parent drift")
 
-    try:
-        live_parent = make_bot("mc-s0-report-lcb", seed=0)
-        COMPOSITION._require_live_report_lcb(live_parent)
-    except Exception as exc:
-        raise CompositionRuntimeRefused(
-            f"composition live parent cannot reopen: {exc}") from exc
-    exports = packet.get("model_exports")
-    if (not isinstance(exports, list)
-            or len(exports) != len(MODEL.TRAINING_SEEDS)
-            or packet.get("model_exports_sha256") != manifest_hash(exports)
-            or [item.get("logical_path") for item in exports]
-            != list(CTRL.MODEL_PATHS)):
-        raise CompositionRuntimeRefused(
-            "composition model export manifest drift")
-    members = []
-    for item in exports:
-        path = (REPO / str(item["logical_path"])).resolve()
-        try:
-            member = NPNET.StageCNpNet(
-                path, expected_sha256=str(item["sha256"]),
-                expected_metadata=item["metadata"])
-        except NPNET.StageCNumpyError as exc:
-            raise CompositionRuntimeRefused(str(exc)) from exc
-        members.append(member)
-    capability = packet["selected_capability"]
-    try:
-        ensemble = NPNET.StageCEnsemble(
-            members, surface=str(capability["surface"]),
-            head=str(capability["head"]), epoch=int(capability["epoch"]))
-    except NPNET.StageCNumpyError as exc:
-        raise CompositionRuntimeRefused(str(exc)) from exc
-    return packet, ensemble
+    return packet, _ensemble_from_packet(packet)
 
 
 def _validated_capacity_evidence(

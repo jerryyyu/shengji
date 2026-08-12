@@ -47,6 +47,29 @@ def _stage(*, trigger: bool, override: bool = False):
     return values
 
 
+def _set_outcome(row: dict, utility: int, *, banker: int = 0) -> None:
+    policy_team = 0 if row["flip"] == 0 else 1
+    winner_team = policy_team if utility > 0 else 1 - policy_team
+    gain = abs(utility)
+    if winner_team == banker % 2:
+        attacker_points = {1: 50, 2: 20, 3: 0}[gain]
+    else:
+        attacker_points = 80 + 40 * gain
+    expected_winner, expected_gain = SCREEN._expected_round_outcome(
+        banker=banker, attacker_points=attacker_points)
+    assert (expected_winner, expected_gain) == (winner_team, gain)
+    row.update({
+        "banker": banker,
+        "attacker_points": attacker_points,
+        "winner_team": winner_team,
+        "level_change": gain,
+        "policy_role": ("defender" if banker % 2 == policy_team
+                        else "attacker"),
+        "won": int(utility > 0),
+        "level_utility": utility,
+    })
+
+
 def _population(clusters=32, seed0=7000):
     rows = {label: [] for label in SCREEN.LABELS}
     for seed in range(seed0, seed0 + clusters):
@@ -58,19 +81,19 @@ def _population(clusters=32, seed0=7000):
                 stage = (_stage(trigger=True, override=(label == "treatment"))
                          if label != "champion" else
                          SCREEN.feature_off_telemetry())
-                rows[label].append({
+                row = {
                     "schema": SCREEN.SCHEMA,
                     "run": "screen-run",
                     "label": label,
                     "seed": seed,
                     "flip": flip,
-                    "won": 1,
-                    "level_utility": utilities[label],
                     "arm": _counters(
                         stage, feature_on=label != "champion"),
                     "opp": _counters(
                         SCREEN.feature_off_telemetry(), feature_on=False),
-                })
+                }
+                _set_outcome(row, utilities[label])
+                rows[label].append(row)
     return rows
 
 
@@ -83,6 +106,12 @@ def test_positive_screen_requires_model_gain_and_clean_null() -> None:
     assert result["stats"]["matched_null_champion"]["mean"] == 0
     assert result["criteria"]["all"] is True
     assert result["status"] == "AUTHORIZE_CONFIRM_PACKET_REVIEW"
+    assert result["diagnostics"]["round_win_rate"]["arms"][
+        "treatment"]["mean"] == 1.0
+    assert result["diagnostics"]["champion_reference_role_utility"][
+        "attacker"]["treatment_champion"]["mean"] == 1.0
+    assert result["diagnostics"]["champion_reference_role_utility"][
+        "defender"]["treatment_champion"]["mean"] == 1.0
     assert result["strength_claim"] is False
     assert result["production_promotion"] is False
 
@@ -90,13 +119,30 @@ def test_positive_screen_requires_model_gain_and_clean_null() -> None:
 def test_positive_model_result_is_rejected_when_null_also_moves() -> None:
     rows = _population()
     for row in rows["matched_null"]:
-        row["level_utility"] = 2
+        _set_outcome(row, 2)
     result = SCREEN.aggregate_screen(
         rows, expected_seed0=7000, expected_clusters=32,
         expected_surface="bury")
     assert result["criteria"][
         "matched_null_champion_interval_contains_zero"] is False
     assert result["status"] == "SELECT_NONE"
+
+
+def test_positive_but_underpowered_screen_preserves_diagnostic() -> None:
+    rows = _population()
+    # Twenty-two clusters favor treatment, ten oppose it.  The point estimate
+    # is positive, but the registered lower bounds remain below zero.
+    for index, row in enumerate(rows["treatment"]):
+        cluster = index // 2
+        _set_outcome(row, 2 if cluster < 22 else -1)
+    result = SCREEN.aggregate_screen(
+        rows, expected_seed0=7000, expected_clusters=32,
+        expected_surface="bury")
+    assert result["stats"]["treatment_champion"]["mean"] > 0
+    assert result["stats"]["treatment_champion"]["lcb95"] < 0
+    assert result["criteria"]["all"] is False
+    assert result["status"] == "POSITIVE_BUT_UNRESOLVED"
+    assert "do not claim strength" in result["exploration_interpretation"]
 
 
 def test_fallback_or_work_failure_refuses_before_statistics() -> None:
@@ -178,6 +224,7 @@ def test_factory_runner_uses_mirrored_seed_streams_and_records_telemetry(
     monkeypatch.setattr(
         SCREEN, "play_round",
         lambda _game, _policies: SimpleNamespace(
+            banker=0, attacker_points=20,
             winner_team=0, level_change=2),
     )
     records = SCREEN.run_arm_factories(

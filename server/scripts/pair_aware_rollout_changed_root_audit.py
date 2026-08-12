@@ -35,7 +35,7 @@ from shengji.ai.memory import Memory  # noqa: E402
 from shengji.ai.pair_aware_rollout import make_pair_aware_bot  # noqa: E402
 
 
-SCHEMA = "pair-aware-rollout-v1-changed-root-audit-v1"
+SCHEMA = "pair-aware-rollout-v1-changed-root-audit-v2"
 DEFAULT_WORLDS = 4_096
 SEED0 = 997_000_000
 ATTEMPT_FACTOR = 40
@@ -162,6 +162,24 @@ def _audit_task(index: int, row: dict, n_worlds: int):
         sample_seed=SEED0 + index * 1_000_003)
 
 
+def direction_summary(results: list[dict]) -> dict:
+    summary = {}
+    for metric in ("signed_level_utility_delta", "signed_point_delta"):
+        summary[metric] = {}
+        for policy in ("historical_matched_null", "v1_pair_aware"):
+            intervals = [root["by_continuation"][policy][metric]
+                         ["ci_two_sided_95"] for root in results]
+            summary[metric][policy] = {
+                "v1_action_positive_roots": sum(
+                    low > 0 for low, _ in intervals),
+                "incumbent_positive_roots": sum(
+                    high < 0 for _, high in intervals),
+                "unresolved_roots": sum(
+                    low <= 0 <= high for low, high in intervals),
+            }
+    return summary
+
+
 def run_audit(*, dose: Path = ROOT.DEFAULT_DOSE,
               n_worlds: int = DEFAULT_WORLDS, workers: int = 4) -> dict:
     if isinstance(n_worlds, bool) or not isinstance(n_worlds, int) \
@@ -187,15 +205,7 @@ def run_audit(*, dose: Path = ROOT.DEFAULT_DOSE,
                 "state_id": result["state_id"],
             }, sort_keys=True), flush=True)
     results = [finished[index] for index in range(len(rows))]
-    direction = {}
-    for policy in ("historical_matched_null", "v1_pair_aware"):
-        intervals = [root["by_continuation"][policy]["signed_point_delta"]
-                     ["ci_two_sided_95"] for root in results]
-        direction[policy] = {
-            "v1_action_positive_roots": sum(low > 0 for low, _ in intervals),
-            "incumbent_positive_roots": sum(high < 0 for _, high in intervals),
-            "unresolved_roots": sum(low <= 0 <= high for low, high in intervals),
-        }
+    direction = direction_summary(results)
     payload = {
         "schema": SCHEMA,
         "git": ROOT.git("rev-parse", "HEAD"),
@@ -214,6 +224,8 @@ def run_audit(*, dose: Path = ROOT.DEFAULT_DOSE,
             "common_worlds_across_actions_and_continuation_policies": True,
             "primary_contrast": (
                 "acting-team value of v1 action minus matched-null action"),
+            "primary_metric": "signed_level_utility_delta",
+            "secondary_metric": "signed_point_delta",
             "selection_warning": (
                 "roots were selected after finite-search v1 changes; fresh "
                 "worlds diagnose those roots but cannot establish population "
@@ -221,7 +233,7 @@ def run_audit(*, dose: Path = ROOT.DEFAULT_DOSE,
         },
         "input_dose_internal_sha256": dose_payload["internal_sha256"],
         "roots": results,
-        "direction_summary": direction,
+        "direction_summary_by_metric": direction,
         "exploration_only": True,
         "strength_claim": False,
         "whole_game_execution_authorized": False,
@@ -244,7 +256,8 @@ def main() -> None:
     ROOT.write_exclusive(args.out, payload)
     print(json.dumps({
         "status": "COMPLETE_EXPLORATION_ONLY",
-        "direction_summary": payload["direction_summary"],
+        "direction_summary_by_metric": payload[
+            "direction_summary_by_metric"],
         "output_sha256": ROOT.sha256(args.out),
         "internal_sha256": payload["internal_sha256"],
     }, sort_keys=True), flush=True)

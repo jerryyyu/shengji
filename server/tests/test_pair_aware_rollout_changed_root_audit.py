@@ -27,3 +27,30 @@ def test_two_world_single_root_smoke_is_non_authorizing():
     assert set(result["by_continuation"]) == {
         "historical_matched_null", "v1_pair_aware",
     }
+
+
+def test_direction_summary_contract_names_both_metrics():
+    root = {
+        "by_continuation": {
+            policy: {
+                "signed_level_utility_delta": {"ci_two_sided_95": [1, 2]},
+                "signed_point_delta": {"ci_two_sided_95": [-2, -1]},
+            }
+            for policy in ("historical_matched_null", "v1_pair_aware")
+        }
+    }
+    summary = AUDIT.direction_summary([root])
+    assert set(summary) == {
+        "signed_level_utility_delta", "signed_point_delta",
+    }
+    for policy in ("historical_matched_null", "v1_pair_aware"):
+        assert summary["signed_level_utility_delta"][policy] == {
+            "v1_action_positive_roots": 1,
+            "incumbent_positive_roots": 0,
+            "unresolved_roots": 0,
+        }
+        assert summary["signed_point_delta"][policy] == {
+            "v1_action_positive_roots": 0,
+            "incumbent_positive_roots": 1,
+            "unresolved_roots": 0,
+        }

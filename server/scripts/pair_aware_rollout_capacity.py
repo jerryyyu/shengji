@@ -103,6 +103,7 @@ EXPECTED_DOSE_REVIEW = {
     "root_action_changes": 1,
     "schema": "pair-aware-rollout-root-dose-review-v1",
     "score_free_recomputation_passed": True,
+    "states": 24,
     "strength_claim": False,
     "verdict": "PASS",
     "whole_game_execution_authorized": False,

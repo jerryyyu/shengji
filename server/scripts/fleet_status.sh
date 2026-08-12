@@ -161,7 +161,69 @@ if ! ssh -o BatchMode=yes -o ConnectTimeout=8 shengji-cloud '
   done
   echo "  --- tmux sessions"
   tmux list-sessions 2>/dev/null | sed "s/^/  /" || echo "  (none visible)"
-  echo "  --- unreviewed census progress: metadata only"
+  echo "  --- reviewed Pair V3 score-free capture progress"
+  pair_capture_root=/var/tmp/shengji-pair-affected-capture-v3
+  pair_capture_logs=/var/tmp/pair-affected-capture-v3-logs
+  pair_capture_git=746882859529af883bb634e4da10e567720b7ce9
+  pair_capture_seen=0
+  pair_capture_min=750000
+  pair_capture_max=0
+  pair_capture_problem=""
+  if [ ! -d "$pair_capture_root" ] \
+      || [ "$(git -C "$pair_capture_root" rev-parse HEAD 2>/dev/null)" \
+           != "$pair_capture_git" ] \
+      || [ -n "$(git -C "$pair_capture_root" status --porcelain \
+                   --untracked-files=all 2>/dev/null)" ]; then
+    pair_capture_problem="exact reviewed worktree missing or dirty"
+  else
+    for f in "$pair_capture_logs"/shard-??.log; do
+      [ -f "$f" ] || continue
+      line=$(tail -n 1 "$f" 2>/dev/null || true)
+      case "$line" in
+        *"\"event\": \"pair-affected-capture-progress-v1\""*"\"score_free\": true"*) ;;
+        *) pair_capture_problem="unexpected/non-score-free progress line"; break ;;
+      esac
+      deals=$(printf "%s\n" "$line" |
+        sed -n "s/.*\"deals_scanned\": \([0-9][0-9]*\).*/\1/p")
+      if [ -z "$deals" ]; then
+        pair_capture_problem="missing deals_scanned counter"
+        break
+      fi
+      pair_capture_seen=$((pair_capture_seen + 1))
+      [ "$deals" -lt "$pair_capture_min" ] && pair_capture_min=$deals
+      [ "$deals" -gt "$pair_capture_max" ] && pair_capture_max=$deals
+    done
+  fi
+  if [ -n "$pair_capture_problem" ]; then
+    echo "  !! content remains sealed: $pair_capture_problem"
+  elif [ "$pair_capture_seen" -eq 0 ]; then
+    echo "  (no reviewed Pair V3 heartbeat yet)"
+  else
+    pair_capture_pct=$(awk -v n="$pair_capture_min" \
+      "BEGIN {printf \"%.1f\", 100*n/750000}")
+    echo "  shards=$pair_capture_seen/16 deals_per_shard=$pair_capture_min..$pair_capture_max / 750000 (slowest ${pair_capture_pct}%)"
+    echo "  content boundary: counters only; captured states remain unopened"
+  fi
+  echo "  --- reviewed S4 handoff queue"
+  s4_queue_script=/var/tmp/s4-c2-360b-launch-queue.sh
+  s4_queue_log=/var/tmp/s4-c2-360b-launch-queue.log
+  s4_queue_sha=462a54975a4caea6a872bbc4ba474a16b03088ba690106026d3e10594ed383e9
+  if tmux has-session -t s4-c2-360b-launch-queue 2>/dev/null; then
+    actual_queue_sha=$(sha256sum "$s4_queue_script" 2>/dev/null |
+      awk "{print \$1}")
+    if [ "$actual_queue_sha" != "$s4_queue_sha" ]; then
+      echo "  !! queue session exists but script identity drifted"
+    else
+      queue_event=$(grep -E \
+        "^(queue_started|capture_complete_and_s4_admission_start|s4_launch_start)=|^HOLD:" \
+        "$s4_queue_log" 2>/dev/null | tail -n 1 || true)
+      echo "  session=s4-c2-360b-launch-queue script_sha=${actual_queue_sha}"
+      echo "  state=${queue_event:-(waiting; no safe event line)}"
+    fi
+  else
+    echo "  (no S4 queue session visible)"
+  fi
+  echo "  --- legacy unreviewed census: metadata only"
   f=/var/tmp/pair-retention-census-v1.log
   if [ -f "$f" ]; then
     age=$(( ($(date +%s) - $(stat -c %Y "$f")) / 60 ))

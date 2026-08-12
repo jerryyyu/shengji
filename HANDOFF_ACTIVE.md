@@ -10,39 +10,42 @@
 > `docs_archive/handoff-active-through-2026-08-11-10-22.md` and
 > `docs_archive/handoff-review-2026-08-08-through-2026-08-11-10-22.md`.
 
-Last reconciled: 2026-08-12 08:17 EDT.
+Last reconciled: 2026-08-12 08:35 EDT.
 
 ## Immediate objective
 
 Carry the admitted T4 mid/late hybrid through a reviewed whole-game verdict.
-While Mini computes, advance three independent strength lanes on Air without
-bypassing their review gates: the fresh S4 point-banking confirmation, S6
-shuai-pai sourcing, and pair-aware rollouts.
+While both hosts compute, prepare the next reviewed work without bypassing its
+gates: the fresh S4 point-banking confirmation, S6 shuai-pai sourcing, and
+bury/lead exploration. Pair-aware rollouts already own Air.
 
 ## Current truth
 
 | lane | plain-English progress | exact next gate |
 |---|---|---|
 | **T4 mid/late Teacher hybrid** | The model may propose one move after trick five; fresh Monte Carlo search still prices it and preserves the live champion as fallback. Its 256-state test passed both controls. The sole 2,048-cluster whole-round screen started on Mini at 23:20 EDT; at 08:02 all eight workers remained CPU-bound after 8h41m, with its reviewed score-free heartbeat advancing. Outcomes remain sealed. | Monitor only. After all workers finish, Claude reviews the score-free `supervisor-final.json`; only a PASS permits aggregation and outcome access. The aggregate then needs terminal external review. |
-| **S4 point banking** | Two independent 2,048-cluster runs were directionally positive. A genuinely fresh automatic two-look design can resolve a roughly `+0.03` effect. Controller PR #40 is pushed at `3403cdf`; a launch audit staged the exact pinned Air binary and RLCB parent evidence, and `require_runtime` now passes without changing source or outcomes. | External controller review. A PASS authorizes exactly one score-free Air preflight and sequential-packet design—not scored execution. |
+| **S4 point banking** | Two independent 2,048-cluster runs were directionally positive. A genuinely fresh automatic two-look design can resolve a roughly `+0.03` effect. Because Air's pair run may outlive T4, stacked draft PR #53 at exact head `3e668fb` converts only the execution identity to Mini: controller filename, schemas, review markers, preflight namespace, host and Python. The design, seeds, alpha, work and transition stay unchanged. Thirty-six focused tests and exact source-only Mini runtime authentication pass; no preflight/gameplay ran. | Review PR #53. A PASS authorizes exactly one score-free **Mini** preflight and sequential-packet design—not scored execution. Keep Mini isolated until T4 seals. |
 | **S6 shuai-pai sourcing** | Selector review passed. The actor-visible selector realized `+0.307` levels versus its incumbent (LCB `+0.175`) on reused DEV; a separate literal-champion census found 13 triggers in 512 rounds (`2.54%`). Source `a48542d` closes the unit-map, singleton-freeze and factual-native-runtime HOLDs. Its exact v2 packet `19f3b2a3…79dd0` and receipt are preserved at PR #50 `936345b`; 62 S6 tests pass. | Claude reviews the v2 packet requested at 07:36. A PASS authorizes one four-cluster **score-free** Air capacity preflight only. Air is currently occupied, so do not run it yet. |
 | **Pair-aware rollout** | V3 capacity passed externally after changing 6/8 mirrored roots. The reviewed 7,168-cluster packet (`4ece02b9…ae47`) was admitted once and launched on Air at about 07:24. At 08:02 its detached supervisor and all eight workers remained healthy and CPU-bound. | Monitor process state and score-free supervisor heartbeat only; never inspect shard outcomes. After completion Claude reviews `supervisor-final.json`, then and only then may aggregation be admitted. |
-| **Bury hand-shape exploration** | Draft PR #51 (`a1d107b`) crosses structured buries with existing, retained-pair and S6 immediate first leads on common worlds; its sampler/JSON boundary is fail-closed. Stacked PR #52 (`640f455`) pins the already-opened S3a 512-state banker population—including the exact source-input/replay manifest—and outcome-blindly defines a 32 shape-rich + 32 hash-anchor DEV selection. No census, score, job or policy ran. | Review #51 semantics first; then reconcile #52 and run its source-only census. A later-lead S6-aware continuation is a distinct rollout-realism arm, not silently implied by the immediate-lead combo. This does not block the four live lanes. |
+| **Bury hand-shape exploration** | Claude gave PR #51's composition seam a prose PASS: actor visibility, legality, candidate-zero ordering, finite coverage, common-world accounting and engine-priced failed throws all held. Current head `a1d107b` adds only bounded refusal/JSON repairs. Stacked PR #52 (`640f455`) pins the already-opened S3a 512-state banker population—including the exact source-input/replay manifest—and outcome-blindly defines a 32 shape-rich + 32 hash-anchor DEV selection. No census, score, job or policy ran. | Review #52's population/materialization seam, then run its source-only census once a host is free. A later-lead S6-aware continuation is a distinct rollout-realism arm, not silently implied by the immediate-lead combo. This does not block the four live lanes. |
 
 ## Review queue — precise asks
 
-1. **S4 controller / PR #40:** review exact head `3403cdf` under the existing
-   `S4_POINT_BANKING_FUTURE_CONTROLLER_V1_REVIEW` request. This remains packet
-   design plus one score-free preflight only; no scored authority follows.
+1. **S4 Mini controller / draft PR #53:** review exact head `3e668fb` under the
+   08:35 request and, if clean, emit only the new
+   `S4_POINT_BANKING_FUTURE_MINI_CONTROLLER_V1_REVIEW` claim. The older Air
+   execution-profile request at `3403cdf` is superseded for the current launch
+   order and cannot authorize Mini. This remains packet design plus one
+   score-free preflight only; no scored authority follows.
 2. **Selective S6 v2 packet / PR #50:** review exact source `a48542d`, artifact
    commit `936345b`, packet `19f3b2a3…79dd0` and singleton receipt
    `df54dcfe…aebba` under the 07:36 canonical request. The old v1 request is
    explicitly superseded. A PASS permits one score-free four-cluster preflight.
-3. **Nonblocking exploration review / draft PR #51:** inspect exact head
-   `a1d107b` for actor-visible sourcing, literal candidate-zero preservation,
-   common-world scoring, engine-priced throw failure and the three descriptive
-   references. This asks for code/semantics feedback only—no evidence marker,
-   run, strength or deployment authority.
+3. **Nonblocking exploration follow-up / draft PR #52:** after higher-priority
+   S4/S6 reviews, inspect exact head `640f455` for byte-pinned reconstruction of
+   the opened S3a population, outcome-blind 32+32 selection, capacity projection
+   and refusal on manifest drift. PR #51's composition semantics already passed;
+   this asks for no evidence marker, run, strength or deployment authority.
 
 Pair has no current review blocker because its one authorized screen is
 running. T4's next review starts only after its supervisor publishes a terminal
@@ -52,7 +55,7 @@ score-free final.
 
 | host | current use | next authorized use |
 |---|---|---|
-| **Mini** | T4 eight-shard whole-round screen; projected maximum about 45.4 wall hours. | Keep isolated until T4 terminal seal. |
+| **Mini** | T4 eight-shard whole-round screen; projected maximum about 45.4 wall hours. | Keep isolated until T4 terminal seal. Then S4's score-free Mini preflight is first if PR #53 has passed review. |
 | **Air** | Pair-aware 7,168-cluster whole-game screen, eight workers under detached supervisor PID 88455. | Keep isolated until the pair supervisor terminal seal and review. S4/S6 preflights remain queued, not competing with the live run. |
 | **Production** | Release 18 image `kitty-xray-b5a35ae`, `mc-s0-report-lcb`; only PR #11 kitty X-ray differs from release 17. | Runtime rollback is release 17 / `latency-cd6789e`; no further deploy, restart, room wipe or policy mutation without explicit user approval. |
 

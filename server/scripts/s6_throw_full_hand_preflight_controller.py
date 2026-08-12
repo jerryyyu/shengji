@@ -1,0 +1,623 @@
+#!/usr/bin/env python3
+"""Freeze and run one score-free capacity preflight for selective S6.
+
+The already-public selector diagnostic authorizes only packet design.  This
+controller consumes an exact independent selector review to freeze a packet;
+an additional packet review is then required before its four-cluster Air
+preflight may execute.  The preflight discards all outcomes and publishes
+only runtime, exact-work, null-equality, and S6 dose counters.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import platform
+import secrets
+import sys
+import time
+from pathlib import Path
+
+
+SCRIPT = Path(__file__).resolve()
+SERVER = SCRIPT.parents[1]
+REPO = SERVER.parent
+sys.path.insert(0, str(SERVER))
+sys.path.insert(0, str(SCRIPT.parent))
+
+import s6_throw_full_hand_duel as CORE  # noqa: E402
+import s6_throw_preflight_controller as BASE  # noqa: E402
+from shengji.ai.throw_full_hand_gate import (  # noqa: E402
+    FULL_HAND_BOSS_NEAR_GATE,
+    make_s6_full_hand_bot,
+)
+from shengji.ai.throw_policy import S6_THROW_COUNTER_FIELDS  # noqa: E402
+from shengji.engine import combos, fast  # noqa: E402
+from shengji.engine.ballot import mc_ballot  # noqa: E402
+
+
+PACKET_SCHEMA = "s6-throw-full-hand-capacity-packet-v1"
+RESULT_SCHEMA = "s6-throw-full-hand-capacity-result-v1"
+ADMISSION_SCHEMA = "s6-throw-full-hand-capacity-admission-v1"
+RUN_ID = "s6-throw-full-hand-screen-437b-v1"
+PREFLIGHT_RUN_ID = "s6-throw-full-hand-preflight-436b-v1"
+SELECTOR_GIT = "f3918d26febb434b2ef7391cd72b57c4f461fb4d"
+SELECTOR_REVIEW_PREFIX = "S6_FULL_HAND_SELECTOR_V1_REVIEW "
+PACKET_REVIEW_PREFIX = "S6_FULL_HAND_PREFLIGHT_PACKET_V1_REVIEW "
+EXPECTED_SELECTOR_REVIEW = {
+    "actor_visible_gate": True,
+    "exact_result_sha256":
+        "946b029c0922a902ad5974977cef4a8a30ac245430563f57483c25597d65cebe",
+    "git": SELECTOR_GIT,
+    "independent_review": True,
+    "preflight_packet_design_authorized": True,
+    "prevalence_result_sha256":
+        "8934c2e39b68afca8a5d8dfc13f4768097c7a61f66627f8f469e1c48b17ea45a",
+    "production_deployment": False,
+    "production_promotion": False,
+    "scored_execution_authorized": False,
+    "selector_result_sha256":
+        "5473343472c272d3521a04b67bfb7719393ac2adb4263b0f8c1f070be551984c",
+    "strength_claim": False,
+    "verdict": "PASS",
+}
+EXPECTED_EXECUTION_HOST = "Jerrys-MacBook-Air.local"
+EXPECTED_PYTHON_VERSION = "3.14.6"
+EXPECTED_PYTHON_EXECUTABLE = (
+    "/Users/jerryyu/.local/share/uv/python/"
+    "cpython-3.14.6-macos-aarch64-none/bin/python3.14")
+EXPECTED_FAST_BINARY_SHA256 = (
+    "9371ab7fc8bbcceb19cc5c4fe799860cf5ad3f51b11b26ab0e375ced36713e32")
+PREFLIGHT_SEED0 = 436_000_000_000
+PREFLIGHT_CLUSTERS = 4
+SCREEN_SEED0 = 437_000_000_000
+SCREEN_CLUSTERS = 6_144
+SHARD_COUNT = 8
+STREAM_STRIDE = 3_000_017
+SAFETY_FACTOR = 2.0
+SCREEN_FLEET_HOUR_CAP = 512.0
+SCREEN_MAX_SHARD_HOUR_CAP = 64.0
+PREVALENCE_RATE = 1_011 / 50_000
+SELECTOR_CONDITIONAL_MEAN = 0.306640625
+SELECTOR_CONDITIONAL_SECOND_MOMENT = 0.91259765625
+Z_ONE_SIDED_95 = 1.6448536269514722
+Z_POWER_80 = 0.8416212335729143
+RUN_LOG_DIR = SERVER / "runs/logs" / PREFLIGHT_RUN_ID
+ADMISSION_PATH = SERVER / "runs/locks" / \
+    f"{PREFLIGHT_RUN_ID}.admission.consumed.json"
+RESULT_PATH = RUN_LOG_DIR / "capacity.json"
+
+
+class ControllerRefused(RuntimeError):
+    """The requested operation lacks exact identity or review authority."""
+
+
+sha256 = BASE.sha256
+stable_digest = BASE.stable_digest
+write_exclusive = BASE.write_exclusive
+require_regular_unlinked = BASE.require_regular_unlinked
+
+
+def git(*args: str) -> str:
+    return BASE.git(*args)
+
+
+def git_is_ancestor(ancestor: str, descendant: str) -> bool:
+    return BASE.git_is_ancestor(ancestor, descendant)
+
+
+def parse_marker(path: os.PathLike | str, prefix: str,
+                 expected: dict, *, label: str) -> dict:
+    try:
+        return BASE.parse_marker(path, prefix, expected, label=label)
+    except BASE.ControllerRefused as exc:
+        raise ControllerRefused(str(exc)) from exc
+
+
+def source_paths() -> dict[str, Path]:
+    if not fast.HAVE_FAST or fast._fast is None:
+        raise ControllerRefused("compiled fast binary is unavailable")
+    return {
+        "controller": SCRIPT,
+        "protocol_utility": BASE.SCRIPT,
+        "duel_core": CORE.SCRIPT,
+        "broad_duel_validator": CORE.BASE.SCRIPT,
+        "gate": SERVER / "shengji/ai/throw_full_hand_gate.py",
+        "throw_policy": SERVER / "shengji/ai/throw_policy.py",
+        "throw_source": SERVER / "shengji/ai/throw_sourcing.py",
+        "registry": SERVER / "shengji/ai/registry.py",
+        "mcbot": SERVER / "shengji/ai/mcbot.py",
+        "memory": SERVER / "shengji/ai/memory.py",
+        "evaluation": SERVER / "shengji/evaluation.py",
+        "game": SERVER / "shengji/engine/game.py",
+        "round": SERVER / "shengji/engine/round.py",
+        "fast_binary": Path(fast._fast.__file__).resolve(),
+    }
+
+
+def source_sha256s() -> dict[str, str]:
+    return {name: sha256(path) for name, path in source_paths().items()}
+
+
+def runtime_snapshot() -> dict[str, object]:
+    if not fast.HAVE_FAST or fast._fast is None:
+        raise ControllerRefused("compiled fast binary is unavailable")
+    return {
+        "host": platform.node(),
+        "python": platform.python_version(),
+        "implementation": platform.python_implementation(),
+        "python_executable": str(Path(sys.executable).resolve()),
+        "fast_required": True,
+        "strict_voids_required": True,
+        "fast_binary_sha256": sha256(Path(fast._fast.__file__).resolve()),
+    }
+
+
+def runtime_problems(runtime: object) -> list[str]:
+    expected = {
+        "host": EXPECTED_EXECUTION_HOST,
+        "python": EXPECTED_PYTHON_VERSION,
+        "implementation": "CPython",
+        "python_executable": EXPECTED_PYTHON_EXECUTABLE,
+        "fast_required": True,
+        "strict_voids_required": True,
+        "fast_binary_sha256": EXPECTED_FAST_BINARY_SHA256,
+    }
+    return [] if runtime == expected else ["runtime is not exact reviewed Air"]
+
+
+def require_air_runtime() -> dict[str, object]:
+    runtime = runtime_snapshot()
+    problems = runtime_problems(runtime)
+    if problems:
+        raise ControllerRefused("; ".join(problems))
+    return runtime
+
+
+def _uppercase_contract(bot) -> dict[str, bool | int | float | str | None]:
+    values = {}
+    for name in dir(bot):
+        if not name.isupper():
+            continue
+        value = getattr(bot, name)
+        if not isinstance(value, (bool, int, float, str, type(None))):
+            raise ControllerRefused(f"non-serializable policy knob {name}")
+        values[name] = value
+    return values
+
+
+def policy_contracts() -> dict[str, dict]:
+    treatment = make_s6_full_hand_bot(treatment=True, seed=7)
+    null = make_s6_full_hand_bot(treatment=False, seed=7)
+    champion = CORE.make_arm("champion", 7)
+    contracts = [_uppercase_contract(bot)
+                 for bot in (treatment, null, champion)]
+    if contracts[0] != contracts[1] or contracts[0] != contracts[2]:
+        raise ControllerRefused("selective S6 arms changed champion knobs")
+    ballots = [mc_ballot(bot).digest for bot in (treatment, null, champion)]
+    if len(set(ballots)) != 1:
+        raise ControllerRefused("selective S6 root ballot drift")
+    return {
+        label: {
+            "policy": CORE.LABELS[label],
+            "class": type(bot).__name__,
+            "uppercase": contract,
+            "root_ballot_digest": ballot,
+            "s6_mode": mode,
+        }
+        for label, bot, contract, ballot, mode in zip(
+            CORE.LABEL_ORDER, (treatment, null, champion), contracts, ballots,
+            ("treatment", "matched_null", "off"), strict=True)
+    }
+
+
+def planning_values() -> dict[str, float | int]:
+    mean = PREVALENCE_RATE * SELECTOR_CONDITIONAL_MEAN
+    second = PREVALENCE_RATE * SELECTOR_CONDITIONAL_SECOND_MOMENT
+    sd = math.sqrt(second - mean * mean)
+    mde = (Z_ONE_SIDED_95 + Z_POWER_80) * sd / math.sqrt(SCREEN_CLUSTERS)
+    z = mean * math.sqrt(SCREEN_CLUSTERS) / sd - Z_ONE_SIDED_95
+    power = 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+    return {
+        "screen_clusters": SCREEN_CLUSTERS,
+        "natural_trigger_rate": PREVALENCE_RATE,
+        "expected_triggered_clusters": PREVALENCE_RATE * SCREEN_CLUSTERS,
+        "conditional_selector_mean": SELECTOR_CONDITIONAL_MEAN,
+        "mixture_planning_mean": mean,
+        "mixture_planning_sd": sd,
+        "mde80_one_sided_95": mde,
+        "planning_power_at_fitting_mean": power,
+    }
+
+
+def packet_payload(*, expected_git: str,
+                   selector_review_record: os.PathLike | str) -> dict:
+    review = parse_marker(
+        selector_review_record, SELECTOR_REVIEW_PREFIX,
+        EXPECTED_SELECTOR_REVIEW, label="S6 full-hand selector review")
+    if not git_is_ancestor(SELECTOR_GIT, expected_git):
+        raise ControllerRefused("reviewed selector is not an ancestor")
+    payload = {
+        "schema": PACKET_SCHEMA,
+        "run_id": RUN_ID,
+        "preflight_run_id": PREFLIGHT_RUN_ID,
+        "git": expected_git,
+        "selector_git": SELECTOR_GIT,
+        "selector_review": review,
+        "source_sha256s": source_sha256s(),
+        "runtime": require_air_runtime(),
+        "policy_contracts": policy_contracts(),
+        "mechanism": {
+            "search_gate": FULL_HAND_BOSS_NEAR_GATE,
+            "actor_visible": True,
+            "literal_champion_first": True,
+            "candidate_zero_is_actual_champion_action": True,
+            "matched_null_keeps_champion_action_after_equal_probe": True,
+            "post_decision_rng_restored": True,
+            "full_structured_ballot_remains_observable": True,
+        },
+        "preflight": {
+            "seed0": PREFLIGHT_SEED0,
+            "clusters": PREFLIGHT_CLUSTERS,
+            "stream_stride": STREAM_STRIDE,
+            "labels": list(CORE.LABEL_ORDER),
+            "score_free": True,
+            "outcomes_published": False,
+            "admission_path": str(ADMISSION_PATH.relative_to(REPO)),
+            "result_path": str(RESULT_PATH.relative_to(REPO)),
+        },
+        "proposed_screen": {
+            "seed0": SCREEN_SEED0,
+            "clusters": SCREEN_CLUSTERS,
+            "shards": SHARD_COUNT,
+            "clusters_per_shard": SCREEN_CLUSTERS // SHARD_COUNT,
+            "labels": list(CORE.LABEL_ORDER),
+            "primary": "paired signed whole-round level utility",
+            "secondary": "whole-round game win rate",
+            "selection_rule": (
+                "one-sided 95% LCB > 0 versus literal champion and matched "
+                "null; exact null/champion outcomes; both-role natural dose; "
+                "complete work and no integrity failure"),
+        },
+        "planning": {
+            **planning_values(),
+            "basis": (
+                "opened reusable-DEV selector distribution mixed with the "
+                "independent score-free 50,000-deal prevalence rate"),
+            "planning_only_not_strength_evidence": True,
+        },
+        "capacity": {
+            "safety_factor": SAFETY_FACTOR,
+            "screen_fleet_hour_cap": SCREEN_FLEET_HOUR_CAP,
+            "screen_max_shard_hour_cap": SCREEN_MAX_SHARD_HOUR_CAP,
+        },
+        "authority": {
+            "preflight_execution_authorized": False,
+            "screen_packet_design_authorized": False,
+            "screen_execution_authorized": False,
+            "strength_claim": False,
+            "production_promotion": False,
+            "production_deployment": False,
+        },
+    }
+    payload["internal_sha256"] = stable_digest(payload)
+    return payload
+
+
+def packet_problems(payload: object, *, expected_git: str,
+                    selector_review_record: os.PathLike | str) -> list[str]:
+    try:
+        expected = packet_payload(
+            expected_git=expected_git,
+            selector_review_record=selector_review_record)
+    except Exception as exc:
+        return [f"cannot reconstruct packet: {type(exc).__name__}: {exc}"]
+    return [] if payload == expected else ["packet differs from reconstruction"]
+
+
+def load_packet(path: os.PathLike | str, expected_sha256: str, *,
+                expected_git: str,
+                selector_review_record: os.PathLike | str) -> dict:
+    source = Path(path)
+    require_regular_unlinked(source, label="S6 full-hand capacity packet")
+    if sha256(source) != expected_sha256:
+        raise ControllerRefused("S6 full-hand packet SHA-256 drift")
+    payload = json.loads(source.read_bytes())
+    problems = packet_problems(
+        payload, expected_git=expected_git,
+        selector_review_record=selector_review_record)
+    if problems:
+        raise ControllerRefused("invalid packet: " + "; ".join(problems))
+    return payload
+
+
+def packet_review_claim(*, expected_git: str, packet_sha256: str) -> dict:
+    return {
+        "git": expected_git,
+        "independent_review": True,
+        "one_score_free_preflight_authorized": True,
+        "packet_sha256": packet_sha256,
+        "production_deployment": False,
+        "production_promotion": False,
+        "run_id": RUN_ID,
+        "schema": "s6-throw-full-hand-preflight-packet-review-v1",
+        "screen_execution_authorized": False,
+        "strength_claim": False,
+        "verdict": "PASS",
+    }
+
+
+def capacity_review_claim(*, result: dict, result_sha256: str,
+                          packet_sha256: str) -> dict:
+    """Exact bounded claim an independent capacity reviewer may publish."""
+    projection = result["projection"]
+    passed = result.get("capacity_pass") is True
+    return {
+        "capacity_pass": passed,
+        "capacity_result_internal_sha256": result["internal_sha256"],
+        "capacity_result_sha256": result_sha256,
+        "elapsed_seconds": result["elapsed_seconds"],
+        "git": result["git"],
+        "independent_review": True,
+        "null_champion_exact_outcomes":
+            result["null_champion_exact_outcomes"],
+        "one_screen_packet_design_authorized": passed,
+        "packet_sha256": packet_sha256,
+        "preflight_clusters": PREFLIGHT_CLUSTERS,
+        "production_deployment": False,
+        "production_promotion": False,
+        "run_id": RUN_ID,
+        "schema": "s6-throw-full-hand-capacity-review-v1",
+        "score_free": True,
+        "screen_clusters": SCREEN_CLUSTERS,
+        "screen_execution_authorized": False,
+        "screen_fleet_hours": projection["screen_fleet_hours"],
+        "screen_max_shard_hours": projection["screen_max_shard_hours"],
+        "strength_claim": False,
+        "verdict": "PASS" if passed else "HOLD",
+    }
+
+
+def _sum_plain(records: list[dict], side: str) -> dict:
+    return BASE._sum_plain_counters(records, side)
+
+
+def _sum_s6(records: list[dict], side: str) -> dict:
+    modes = {record[side]["s6_throw"]["mode"] for record in records}
+    if len(modes) != 1:
+        raise ControllerRefused("S6 telemetry mode drift")
+    totals = {field: 0 for field in S6_THROW_COUNTER_FIELDS}
+    for record in records:
+        for field in totals:
+            totals[field] += record[side]["s6_throw"][field]
+    return {"mode": next(iter(modes)), **totals}
+
+
+def measure_preflight(packet: dict, *, clock=time.perf_counter) -> dict:
+    started = clock()
+    by_label = {label: [] for label in CORE.LABEL_ORDER}
+    null_exact = True
+    outcome_fields = (
+        "banker", "attacker_points", "winner_team", "level_change", "won",
+        "level_utility",
+    )
+    for cluster_index in range(PREFLIGHT_CLUSTERS):
+        seed = PREFLIGHT_SEED0 + STREAM_STRIDE * cluster_index
+        cluster = {}
+        for label in CORE.LABEL_ORDER:
+            records = CORE.play_arm_cluster(
+                label, seed, run_id=PREFLIGHT_RUN_ID)
+            for flip, record in enumerate(records):
+                problems = CORE.record_problems(
+                    record, expected_label=label, expected_seed=seed,
+                    expected_flip=flip, expected_run_id=PREFLIGHT_RUN_ID)
+                if problems:
+                    raise ControllerRefused(
+                        "invalid preflight row: " + "; ".join(problems))
+                mode = {"treatment": "treatment",
+                        "matched_null": "matched_null",
+                        "champion": "off"}[label]
+                if (CORE.counter_problems(record["arm"], expected_mode=mode)
+                        or CORE.counter_problems(
+                            record["opp"], expected_mode="off")):
+                    raise ControllerRefused("preflight exact-work failure")
+            cluster[label] = records
+            by_label[label].extend(records)
+        null_exact &= all(
+            tuple(left[field] for field in outcome_fields)
+            == tuple(right[field] for field in outcome_fields)
+            for left, right in zip(
+                cluster["matched_null"], cluster["champion"], strict=True))
+        print(json.dumps({
+            "event": "s6-full-hand-score-free-progress-v1",
+            "clusters_complete": cluster_index + 1,
+            "clusters_total": PREFLIGHT_CLUSTERS,
+        }, sort_keys=True), flush=True)
+    elapsed = clock() - started
+    if not math.isfinite(elapsed) or elapsed <= 0:
+        raise ControllerRefused("preflight elapsed time is invalid")
+    counts = {
+        label: {
+            "records_discarded": len(records),
+            "arm": _sum_plain(records, "arm"),
+            "opp": _sum_plain(records, "opp"),
+            "arm_s6": _sum_s6(records, "arm"),
+            "opp_s6": _sum_s6(records, "opp"),
+        }
+        for label, records in by_label.items()
+    }
+    measured = PREFLIGHT_CLUSTERS * len(CORE.LABEL_ORDER)
+    target = SCREEN_CLUSTERS * len(CORE.LABEL_ORDER)
+    fleet_hours = elapsed / measured * target * SAFETY_FACTOR / 3_600.0
+    max_shard_hours = fleet_hours / SHARD_COUNT
+    treatment = counts["treatment"]["arm_s6"]
+    null = counts["matched_null"]["arm_s6"]
+    capacity_pass = bool(
+        null_exact and treatment["short_searches"] == 0
+        and null["short_searches"] == 0
+        and null["treatment_overrides"] == 0
+        and null["matched_noops"] == null["searched_triggers"]
+        and fleet_hours <= SCREEN_FLEET_HOUR_CAP
+        and max_shard_hours <= SCREEN_MAX_SHARD_HOUR_CAP)
+    result = {
+        "schema": RESULT_SCHEMA,
+        "run_id": RUN_ID,
+        "preflight_run_id": PREFLIGHT_RUN_ID,
+        "git": packet["git"],
+        "packet_internal_sha256": packet["internal_sha256"],
+        "score_free": True,
+        "outcomes_published": False,
+        "records_discarded": sum(
+            value["records_discarded"] for value in counts.values()),
+        "elapsed_seconds": elapsed,
+        "counts": counts,
+        "null_champion_exact_outcomes": null_exact,
+        "projection": {
+            "safety_factor": SAFETY_FACTOR,
+            "screen_clusters": SCREEN_CLUSTERS,
+            "screen_fleet_hours": fleet_hours,
+            "screen_max_shard_hours": max_shard_hours,
+            "screen_fleet_hour_cap": SCREEN_FLEET_HOUR_CAP,
+            "screen_max_shard_hour_cap": SCREEN_MAX_SHARD_HOUR_CAP,
+        },
+        "capacity_pass": capacity_pass,
+        "supports_screen_packet_review": capacity_pass,
+        "screen_packet_design_authorized": False,
+        "screen_execution_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+    }
+    result["internal_sha256"] = stable_digest(result)
+    problems = BASE.score_free_result_problems(result)
+    if problems:
+        raise ControllerRefused(
+            "preflight attempted score publication: " + "; ".join(problems))
+    return result
+
+
+def require_clean_exact_git(expected_git: str) -> None:
+    if git("rev-parse", "HEAD") != expected_git:
+        raise ControllerRefused("controller git identity drift")
+    if git("status", "--porcelain", "--untracked-files=all"):
+        raise ControllerRefused("controller worktree is dirty")
+
+
+def require_execution_runtime() -> None:
+    if (os.environ.get("SHENGJI_FAST") != "1"
+            or os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1"
+            or not fast.HAVE_FAST or fast._fast is None
+            or combos.decompose is not fast.decompose):
+        raise ControllerRefused("compiled strict runtime is not active")
+    require_air_runtime()
+
+
+def freeze_command(args) -> None:
+    require_clean_exact_git(args.expected_git)
+    payload = packet_payload(
+        expected_git=args.expected_git,
+        selector_review_record=args.selector_review_record)
+    write_exclusive(args.out, payload)
+    packet_sha = sha256(args.out)
+    claim = packet_review_claim(
+        expected_git=args.expected_git, packet_sha256=packet_sha)
+    write_exclusive(args.claim_out, claim)
+    print(json.dumps({"status": "FROZEN_NO_EXECUTION_AUTHORITY",
+                      "packet_sha256": packet_sha,
+                      "claim": claim}, sort_keys=True))
+
+
+def verify_command(args) -> None:
+    require_clean_exact_git(args.expected_git)
+    payload = load_packet(
+        args.packet, args.packet_sha256, expected_git=args.expected_git,
+        selector_review_record=args.selector_review_record)
+    print(json.dumps({"status": "VERIFIED_NO_EXECUTION_AUTHORITY",
+                      "internal_sha256": payload["internal_sha256"]},
+                     sort_keys=True))
+
+
+def preflight_command(args) -> None:
+    require_clean_exact_git(args.expected_git)
+    require_execution_runtime()
+    packet = load_packet(
+        args.packet, args.packet_sha256, expected_git=args.expected_git,
+        selector_review_record=args.selector_review_record)
+    expected_review = packet_review_claim(
+        expected_git=args.expected_git, packet_sha256=args.packet_sha256)
+    review = parse_marker(
+        args.packet_review_record, PACKET_REVIEW_PREFIX, expected_review,
+        label="S6 full-hand preflight packet review")
+    if Path(args.out).resolve() != RESULT_PATH.resolve():
+        raise ControllerRefused("preflight output path drift")
+    if (os.path.lexists(args.out)
+            or os.path.lexists(str(args.out) + ".partial")):
+        raise ControllerRefused("preflight result path is already consumed")
+    admission = {
+        "schema": ADMISSION_SCHEMA,
+        "run_id": RUN_ID,
+        "git": args.expected_git,
+        "packet_sha256": args.packet_sha256,
+        "packet_review_sha256": review["sha256"],
+        "nonce": secrets.token_hex(16),
+        "score_free": True,
+        "screen_execution_authorized": False,
+    }
+    admission["internal_sha256"] = stable_digest(admission)
+    write_exclusive(ADMISSION_PATH, admission)
+    result = measure_preflight(packet)
+    result["admission_internal_sha256"] = admission["internal_sha256"]
+    prior = result.pop("internal_sha256")
+    if prior == stable_digest(result):
+        raise ControllerRefused("admission mutation did not change result hash")
+    result["internal_sha256"] = stable_digest(result)
+    problems = BASE.score_free_result_problems(result)
+    if problems:
+        raise ControllerRefused(
+            "admission-bound result is not score-free: "
+            + "; ".join(problems))
+    write_exclusive(args.out, result)
+    print(json.dumps({
+        "status": "COMPLETE_SCORE_FREE_CAPACITY",
+        "capacity_pass": result["capacity_pass"],
+        "result_sha256": sha256(args.out),
+        "internal_sha256": result["internal_sha256"],
+    }, sort_keys=True), flush=True)
+
+
+def parser() -> argparse.ArgumentParser:
+    root = argparse.ArgumentParser()
+    sub = root.add_subparsers(dest="command", required=True)
+    for name in ("freeze", "verify"):
+        cmd = sub.add_parser(name)
+        cmd.add_argument("--expected-git", required=True)
+        cmd.add_argument("--selector-review-record", required=True)
+        if name == "freeze":
+            cmd.add_argument("--out", required=True)
+            cmd.add_argument("--claim-out", required=True)
+        else:
+            cmd.add_argument("--packet", required=True)
+            cmd.add_argument("--packet-sha256", required=True)
+    run = sub.add_parser("run-preflight")
+    run.add_argument("--expected-git", required=True)
+    run.add_argument("--selector-review-record", required=True)
+    run.add_argument("--packet", required=True)
+    run.add_argument("--packet-sha256", required=True)
+    run.add_argument("--packet-review-record", required=True)
+    run.add_argument("--out", required=True)
+    return root
+
+
+def main() -> None:
+    args = parser().parse_args()
+    if args.command == "freeze":
+        freeze_command(args)
+    elif args.command == "verify":
+        verify_command(args)
+    else:
+        preflight_command(args)
+
+
+if __name__ == "__main__":
+    main()

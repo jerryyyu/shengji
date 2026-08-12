@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-11 11:03 EDT. This file owns live compute and compact
+Last reconciled: 2026-08-11 21:28 EDT. This file owns live compute and compact
 terminal job stubs. Exact historical detail is archived at
 `docs_archive/jobs-through-2026-08-08.md`; policy interpretation belongs in
 `AI_POLICIES.md`, execution order in `BACKLOG.md`, and current review requests
@@ -10,36 +10,38 @@ in `HANDOFF_ACTIVE.md`.
 
 | host | live strength job | status / next admitted use |
 |---|---|---|
-| Mini | none | **FREE:** only the long-lived test server is present. Preferred host for the reviewed 480-state play REPORT after capability and controller review. |
-| Air | none | **FREE:** live SSH probe found no Python strength worker. Reserve for an independently reviewed long whole-game screen or other separately admitted work. |
+| Mini | none | **FREE:** preferred host for the Teacher whole-game capacity preflight and screen after their separate reviews. |
+| Air | none | **FREE:** reserve for the separately reviewed long S4 N=12,288 confirmation or another admitted long job. |
 | Fly production | `mc-s0-report-lcb` | Release 17 remains live; passive latency monitoring only. |
 
-No compute is blocked on capacity. It is blocked on evidence authority: the
-score-free broad-play capability packet `cd2d5102…a3e82` awaits independent
-review. No play-REPORT controller packet, admission, label, prediction,
-utility, composition packet or whole-game screen exists.
+No compute is blocked on capacity. The next Teacher work is blocked on code
+and evidence authority: the mid/late state screen passed, but its separate
+whole-game controller packet does not exist yet and therefore no whole-game
+launch is authorized.
 
 ## Next admitted execution
 
 | order | gate | plain-English progress and what remains |
 |---:|---|---|
-| 1 | Broad-play capability review | **Open:** PR #34 is clean at `3359b8c`; packet `cd2d5102…a3e82` locally re-verifies with REPORT unopened. Claude must independently append the exact capability PASS or a concrete HOLD. |
-| 2 | Play-REPORT controller review | **Source ready, packet absent:** after gate 1, freeze the score-free controller once and review its exact runtime/work boundary. |
-| 3 | One play REPORT on Mini | **Not admitted:** after gate 2, consume one REPORT-open slot and run eight fixed 60-state shards. No retry or population reuse. |
-| 4 | Terminal REPORT review | **Pending evidence:** independently replay all 480 states. Only a positive predeclared action-utility LCB can advance. |
-| 5 | Composition | **Code ready, authority absent:** draft PR #33 is clean at `186e69b`, stacked on #34; 362 tests pass. A REPORT PASS may authorize one packet freeze and capacity review. |
-| 6 | Whole-game screen | **Not designed as evidence yet:** broad play reserves fresh 184m preflight and 185m screen populations, with treatment, same-work null and unchanged `mc-s0-report-lcb`. Stop before confirmation or deployment. |
+| 1 | Teacher whole-game implementation | **In progress:** extend exact reviewed head `ee5e9ec`; preserve trick-5+ model proposal, fresh N=300 protection, literal champion and same-work uninformed control. |
+| 2 | Source/controller packet review | **Not frozen:** bind fresh deal streams, fixed work, progress, supervisor ownership and the reviewed state-result parent. No outcomes may open. |
+| 3 | Score-free capacity preflight | **Not admitted:** after exact packet PASS, run a tiny preflight on Mini and publish only trigger/work/throughput counters. |
+| 4 | Capacity review | **Pending evidence:** verify nonzero exposure, exact work/fallbacks and a feasible fixed screen before admitting score-bearing shards. |
+| 5 | One Teacher whole-game screen | **Not authorized:** run mirrored treatment/null/champion arms on Mini only after capacity PASS; publish no interim inference. |
+| 6 | Terminal result review | **Pending future evidence:** independently replay utility, win rate, work and gates. Stop before confirmation or deployment regardless of outcome. |
 
-S4 point-banking, H0 human/V11 proposal admission, the first protected-play
-REPORT and the expanded-bury REPORT are terminal `SELECT_NONE`; none may be
-retried, extended or reused. The 2,048-state capture, 7,040-state expanded
-labels and eight-seed training cohort are completed prerequisites, not live
-jobs.
+The global Teacher REPORT recipes, H0-v3, the first protected-play REPORT and
+expanded-bury REPORT are terminal no-use/`SELECT_NONE`; none may be retried,
+extended or reused. S4's old populations also remain closed, although a new
+future-only N=12,288 namespace is eligible for separate packet review. The
+2,048-state capture, 7,040-state labels and eight-seed cohort are completed
+assets, not live jobs.
 
 ## Terminal job index
 
 | date | job | verdict / headline | evidence anchor |
 |---|---|---|---|
+| 08-11 | Mid/late Teacher hybrid state screen | **PASS / WHOLE-GAME DESIGN:** treatment−live `+0.02020`, lower bound `+0.01275`; treatment−same-work-null `+0.01570`, lower bound `+0.00880`; no strength claim yet | result `f18c2e42...948f6`; aggregate `269eadf3...f2402` |
 | 08-11 | Expanded-bury Teacher REPORT | **SELECT NONE**; mean `+0.03381`, one-sided LCB `-0.01525`; narrow structured-point/void signal only | result `2e21a9bf...72ac4d`; final `126d73cd...e58387` |
 | 08-11 | S4 point-banking replication | **SELECT NONE**; mean `+0.04883`, LCB `-0.00688`; positive direction did not replicate conclusively | aggregate `d6b73f45...8f4d4`; final `20ece4ed...f144a` |
 | 08-10 | Protected-play Teacher REPORT | **SELECT NONE**; mean `-0.00823`, LCB `-0.01894`; proposal-disagreement overrides lost out of sample | result `8fa323de...5aea6`; final `3b42561d...1758f8` |

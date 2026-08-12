@@ -26,6 +26,18 @@ def _source_review(tmp_path: Path) -> Path:
                    C.EXPECTED_SOURCE_REVIEW)
 
 
+def _air_runtime() -> dict:
+    return {
+        "host": C.EXPECTED_EXECUTION_HOST,
+        "python": C.EXPECTED_PYTHON_VERSION,
+        "implementation": C.EXPECTED_PYTHON_IMPLEMENTATION,
+        "python_executable": C.EXPECTED_PYTHON_EXECUTABLE,
+        "fast_required": True,
+        "strict_voids_required": True,
+        "fast_binary_sha256": C.EXPECTED_FAST_BINARY_SHA256,
+    }
+
+
 def test_source_review_requires_exact_single_marker(tmp_path):
     review = _source_review(tmp_path)
     parsed = C.parse_marker(
@@ -44,6 +56,7 @@ def test_packet_reconstructs_and_keeps_every_authority_false(tmp_path,
     review = _source_review(tmp_path)
     monkeypatch.setattr(C, "git_is_ancestor", lambda *_args: True)
     monkeypatch.setattr(C, "source_sha256s", lambda: {"source": "1" * 64})
+    monkeypatch.setattr(C, "require_air_runtime", _air_runtime)
     packet = C.packet_payload(
         expected_git="a" * 40, source_review_record=review)
     assert C.packet_problems(
@@ -51,6 +64,7 @@ def test_packet_reconstructs_and_keeps_every_authority_false(tmp_path,
         source_review_record=review) == []
     assert packet["source_git"] == C.SOURCE_GIT
     assert packet["preflight"]["score_free"] is True
+    assert packet["runtime"] == _air_runtime()
     assert all(value is False for value in packet["authority"].values())
     assert packet["internal_sha256"] == C.stable_digest(
         {key: value for key, value in packet.items()
@@ -61,10 +75,13 @@ def test_packet_mutations_are_detected(tmp_path, monkeypatch):
     review = _source_review(tmp_path)
     monkeypatch.setattr(C, "git_is_ancestor", lambda *_args: True)
     monkeypatch.setattr(C, "source_sha256s", lambda: {"source": "1" * 64})
+    monkeypatch.setattr(C, "require_air_runtime", _air_runtime)
     packet = C.packet_payload(
         expected_git="a" * 40, source_review_record=review)
     for mutate in (
             lambda value: value["screen"].__setitem__("clusters", 256),
+            lambda value: value["runtime"].__setitem__(
+                "host", "Jerrys-Mac-mini.local"),
             lambda value: value["authority"].__setitem__(
                 "screen_execution_authorized", True),
             lambda value: value["capacity"].__setitem__(
@@ -77,6 +94,19 @@ def test_packet_mutations_are_detected(tmp_path, monkeypatch):
         assert C.packet_problems(
             changed, expected_git="a" * 40,
             source_review_record=review)
+
+
+def test_runtime_contract_is_exact_air_identity():
+    runtime = _air_runtime()
+    assert C.runtime_problems(runtime) == []
+    for field, bad in (
+            ("host", "Jerrys-Mac-mini.local"),
+            ("python", "3.13.0"),
+            ("python_executable", "/usr/bin/python3"),
+            ("fast_binary_sha256", "0" * 64)):
+        changed = deepcopy(runtime)
+        changed[field] = bad
+        assert C.runtime_problems(changed) == ["runtime is not exact Air"]
 
 
 def _telemetry(mode: str) -> dict:
@@ -163,6 +193,7 @@ def test_bad_exact_work_refuses_score_free_measurement(monkeypatch):
 def test_packet_review_claim_grants_only_one_score_free_preflight():
     claim = C.packet_review_claim(
         expected_git="a" * 40, packet_sha256="b" * 64)
+    assert claim["schema"] == "s6-throw-preflight-packet-review-v2"
     assert claim["one_score_free_preflight_authorized"] is True
     assert claim["screen_execution_authorized"] is False
     assert claim["strength_claim"] is False
@@ -181,6 +212,7 @@ def test_capacity_claim_can_authorize_design_but_never_execution(monkeypatch):
     claim = C.capacity_review_claim(
         result=result, result_sha256="c" * 64,
         packet_sha256="d" * 64)
+    assert claim["schema"] == "s6-throw-capacity-review-v2"
     assert claim["one_screen_packet_design_authorized"] is True
     assert claim["screen_execution_authorized"] is False
     assert claim["strength_claim"] is False

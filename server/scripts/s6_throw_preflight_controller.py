@@ -43,15 +43,23 @@ from shengji.engine import combos, fast  # noqa: E402
 from shengji.engine.ballot import mc_ballot  # noqa: E402
 
 
-PACKET_SCHEMA = "s6-throw-capacity-packet-v1"
-ADMISSION_SCHEMA = "s6-throw-capacity-admission-v1"
-RESULT_SCHEMA = "s6-throw-capacity-result-v1"
-RUN_ID = "s6-throw-screen-310b-v1"
-PREFLIGHT_RUN_ID = "s6-throw-preflight-309b-v1"
+PACKET_SCHEMA = "s6-throw-capacity-packet-v2"
+ADMISSION_SCHEMA = "s6-throw-capacity-admission-v2"
+RESULT_SCHEMA = "s6-throw-capacity-result-v2"
+RUN_ID = "s6-throw-screen-310b-v2"
+PREFLIGHT_RUN_ID = "s6-throw-preflight-309b-v2"
 SOURCE_GIT = "c78a2d8951fbd75d05b2aa718168bc609104fd4a"
 SOURCE_REVIEW_PREFIX = "S6_THROW_SOURCE_V2_REVIEW "
-PACKET_REVIEW_PREFIX = "S6_THROW_PREFLIGHT_PACKET_V1_REVIEW "
-CAPACITY_REVIEW_PREFIX = "S6_THROW_CAPACITY_V1_REVIEW "
+PACKET_REVIEW_PREFIX = "S6_THROW_PREFLIGHT_PACKET_V2_REVIEW "
+CAPACITY_REVIEW_PREFIX = "S6_THROW_CAPACITY_V2_REVIEW "
+EXPECTED_EXECUTION_HOST = "Jerrys-MacBook-Air.local"
+EXPECTED_PYTHON_VERSION = "3.14.6"
+EXPECTED_PYTHON_IMPLEMENTATION = "CPython"
+EXPECTED_PYTHON_EXECUTABLE = (
+    "/Users/jerryyu/.local/share/uv/python/"
+    "cpython-3.14.6-macos-aarch64-none/bin/python3.14")
+EXPECTED_FAST_BINARY_SHA256 = (
+    "9c9e77fbdc4c6caceec195465155f37ec6369e409462fd838bc142bf8a0be4c1")
 PREFLIGHT_SEED0 = 309_000_000_000
 PREFLIGHT_CLUSTERS = 4
 SCREEN_SEED0 = 310_000_000_000
@@ -169,6 +177,44 @@ def source_sha256s() -> dict[str, str]:
     return {name: sha256(path) for name, path in source_paths().items()}
 
 
+def runtime_snapshot() -> dict[str, str | bool]:
+    if not fast.HAVE_FAST or fast._fast is None:
+        raise ControllerRefused("compiled fast binary is unavailable")
+    fast_binary = Path(fast._fast.__file__).resolve()
+    return {
+        "host": platform.node(),
+        "python": platform.python_version(),
+        "implementation": platform.python_implementation(),
+        "python_executable": str(Path(sys.executable).resolve()),
+        "fast_required": True,
+        "strict_voids_required": True,
+        "fast_binary_sha256": sha256(fast_binary),
+    }
+
+
+def runtime_problems(runtime: object) -> list[str]:
+    if not isinstance(runtime, dict):
+        return ["runtime is not an object"]
+    expected = {
+        "host": EXPECTED_EXECUTION_HOST,
+        "python": EXPECTED_PYTHON_VERSION,
+        "implementation": EXPECTED_PYTHON_IMPLEMENTATION,
+        "python_executable": EXPECTED_PYTHON_EXECUTABLE,
+        "fast_required": True,
+        "strict_voids_required": True,
+        "fast_binary_sha256": EXPECTED_FAST_BINARY_SHA256,
+    }
+    return [] if runtime == expected else ["runtime is not exact Air"]
+
+
+def require_air_runtime() -> dict[str, str | bool]:
+    runtime = runtime_snapshot()
+    problems = runtime_problems(runtime)
+    if problems:
+        raise ControllerRefused("; ".join(problems))
+    return runtime
+
+
 def _uppercase_contract(bot) -> dict[str, bool | int | float | str | None]:
     values = {}
     for name in dir(bot):
@@ -245,13 +291,7 @@ def packet_payload(*, expected_git: str,
         "source_git": SOURCE_GIT,
         "source_review": review,
         "source_sha256s": source_sha256s(),
-        "runtime": {
-            "python": platform.python_version(),
-            "implementation": platform.python_implementation(),
-            "python_executable": str(Path(sys.executable).resolve()),
-            "fast_required": True,
-            "strict_voids_required": True,
-        },
+        "runtime": require_air_runtime(),
         "source_contract": {
             "schema": SOURCE_SCHEMA,
             "max_added_candidates": MAX_CANDIDATES,
@@ -341,7 +381,7 @@ def packet_review_claim(*, expected_git: str,
         "production_deployment": False,
         "production_promotion": False,
         "run_id": RUN_ID,
-        "schema": "s6-throw-preflight-packet-review-v1",
+        "schema": "s6-throw-preflight-packet-review-v2",
         "screen_execution_authorized": False,
         "strength_claim": False,
         "verdict": "PASS",
@@ -366,7 +406,7 @@ def capacity_review_claim(*, result: dict, result_sha256: str,
         "production_deployment": False,
         "production_promotion": False,
         "run_id": RUN_ID,
-        "schema": "s6-throw-capacity-review-v1",
+        "schema": "s6-throw-capacity-review-v2",
         "score_free": True,
         "screen_execution_authorized": False,
         "screen_fleet_hours": projection["screen_fleet_hours"],

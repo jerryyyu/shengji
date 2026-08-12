@@ -1,6 +1,8 @@
 """Contracts for the S6 actor-visible full-hand selector diagnostic."""
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
 from pathlib import Path
 
@@ -8,6 +10,12 @@ from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import s6_throw_full_hand_selector_exploration as S  # noqa: E402
+
+
+RESULT = Path(__file__).with_name("data") / \
+    "s6_throw_full_hand_selector_result.v1.json"
+RESULT_SHA256 = (
+    "5473343472c272d3521a04b67bfb7719393ac2adb4263b0f8c1f070be551984c")
 
 
 def _state(role: str, delta: float, *, override: bool = True) -> dict:
@@ -78,3 +86,43 @@ def test_named_state_runs_literal_gate_and_exact_scores_selected_action():
         decision["incumbent"]["submitted"],
         capture[0]["added_candidates"][0]["cards"],
     )
+
+
+def test_air_selector_result_recomputes_and_has_bounded_meaning():
+    raw = RESULT.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == RESULT_SHA256
+    payload = json.loads(raw)
+    assert payload["git"] == \
+        "93b25a2f6173b9856cabf0e062d6ea325a98a38f"
+    internal = payload.pop("internal_sha256")
+    assert internal == \
+        "169870d10ad48bf1fa97983cb700f8708f354dd1e7b33a8abb46556057203301"
+    assert S.stable_digest(payload) == internal
+    payload["internal_sha256"] = internal
+    assert payload["tree_dirty"] is False
+    assert payload["aggregate"] == S.aggregate(
+        payload["rows"], expected_states=128, replicates=4)
+
+    aggregate = payload["aggregate"]
+    assert aggregate["coverage_complete"] is True
+    assert aggregate["refused_states"] == 0
+    assert aggregate["decisions"] == 512
+    assert aggregate["overrides"] == 427
+    assert aggregate["beneficial_overrides"] == 101
+    assert aggregate["harmful_overrides"] == 20
+    assert aggregate["neutral_overrides"] == 306
+    assert aggregate["pooled_state_cluster_level_delta"] == {
+        "n": 128,
+        "mean": 0.306640625,
+        "se": 0.08028341447987938,
+        "lcb_one_sided_95": 0.17458615950872206,
+    }
+    assert all(
+        row["lcb_one_sided_95"] > 0
+        for row in aggregate["role_state_cluster_level_delta"].values())
+    assert aggregate["status"] == \
+        "ADVANCE_TO_FRESH_WHOLE_GAME_PACKET_DESIGN"
+    assert aggregate["fresh_whole_game_packet_design_authorized"] is True
+    assert aggregate["whole_game_execution_authorized"] is False
+    assert aggregate["strength_claim"] is False
+    assert payload["production_deployment"] is False

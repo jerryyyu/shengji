@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -61,6 +62,17 @@ def test_screen_size_is_powered_from_disclosed_fitting_inputs():
     assert planning["planning_power_at_fitting_mean"] > 0.98
 
 
+def test_census_rate_maps_conservatively_to_two_flip_cluster_estimator():
+    mapping = S.cluster_unit_mapping()
+    assert mapping["flip_treatment_seats"] == {"0": [0, 2], "1": [1, 3]}
+    assert mapping["treatment_seat_exposures_per_cluster"] == 4
+    assert mapping["census_seat_exposures_per_deal"] == 4
+    assert mapping["multiple_triggers_capped_at_one_for_planning"] is True
+    assert mapping["post_trigger_trajectory_equivalence_assumed"] is False
+    assert mapping[
+        "actual_preflight_and_screen_telemetry_is_authoritative"] is True
+
+
 def test_champion_census_is_exact_score_free_and_does_not_inflate_sizing():
     evidence = S.champion_census_evidence()
     assert evidence == {
@@ -115,6 +127,12 @@ def test_packet_reconstructs_exactly_and_grants_no_execution(
     monkeypatch.setattr(S, "git_is_ancestor", lambda left, right: True)
     monkeypatch.setattr(S, "source_sha256s", lambda: {"source": "sha"})
     monkeypatch.setattr(S, "require_air_runtime", lambda: {"host": "air"})
+    monkeypatch.setattr(
+        S, "freeze_admission_evidence",
+        lambda **kwargs: {
+            "path": "freeze.json", "sha256": "freeze-sha",
+            "internal_sha256": "freeze-internal", "consumed": True,
+        })
     packet = S.packet_payload(
         expected_git="controller", selector_review_record=review)
     internal = packet.pop("internal_sha256")
@@ -123,6 +141,9 @@ def test_packet_reconstructs_exactly_and_grants_no_execution(
     assert packet["proposed_screen"]["clusters"] == 7_168
     assert packet["proposed_screen"]["clusters_per_shard"] == 896
     assert packet["champion_trajectory_census"]["triggered_deals"] == 13
+    assert packet["planning"]["cluster_unit_mapping"] == \
+        S.cluster_unit_mapping()
+    assert packet["packet_freeze_admission"]["consumed"] is True
     assert packet["authority"] == {
         "preflight_execution_authorized": False,
         "screen_packet_design_authorized": False,
@@ -139,6 +160,88 @@ def test_packet_reconstructs_exactly_and_grants_no_execution(
         packet, expected_git="controller",
         selector_review_record=review) == [
             "packet differs from reconstruction"]
+
+
+def test_packet_freeze_admission_is_exact_singleton_contract(
+        tmp_path, monkeypatch):
+    marker = S.SELECTOR_REVIEW_PREFIX + json.dumps(
+        S.EXPECTED_SELECTOR_REVIEW, sort_keys=True, separators=(",", ":"))
+    review = tmp_path / "review.md"
+    review.write_text(marker + "\n")
+    monkeypatch.setattr(S, "git_is_ancestor", lambda left, right: True)
+    monkeypatch.setattr(S, "require_air_runtime", lambda: {
+        "host": "air", "fast_env_active": True,
+        "strict_voids_active": True, "compiled_binding_active": True,
+    })
+    payload = S.freeze_admission_payload(
+        expected_git="controller", selector_review_record=review,
+        nonce="a" * 32, created_unix_ns=123)
+    assert payload["schema"] == S.FREEZE_ADMISSION_SCHEMA
+    assert payload["packet_path"] == str(S.PACKET_PATH.relative_to(S.REPO))
+    assert payload["claim_path"] == str(S.CLAIM_PATH.relative_to(S.REPO))
+    assert S.freeze_admission_problems(
+        payload, expected_git="controller",
+        selector_review_record=review) == []
+    payload["screen_execution_authorized"] = True
+    payload["internal_sha256"] = S.stable_digest({
+        key: value for key, value in payload.items()
+        if key != "internal_sha256"})
+    assert S.freeze_admission_problems(
+        payload, expected_git="controller",
+        selector_review_record=review) == [
+            "packet-freeze admission differs from reconstruction"]
+
+
+def test_freeze_refuses_noncanonical_paths_and_second_consumption(
+        tmp_path, monkeypatch):
+    packet = tmp_path / "canonical" / "controller-packet.json"
+    claim = tmp_path / "canonical" / "packet-review-request.txt"
+    admission = tmp_path / "locks" / "freeze.consumed.json"
+    monkeypatch.setattr(S, "PACKET_PATH", packet)
+    monkeypatch.setattr(S, "CLAIM_PATH", claim)
+    monkeypatch.setattr(S, "FREEZE_ADMISSION_PATH", admission)
+    monkeypatch.setattr(S, "require_clean_exact_git", lambda git: None)
+    monkeypatch.setattr(
+        S, "freeze_admission_payload", lambda **kwargs: {
+            "schema": "admission", "internal_sha256": "receipt"})
+    monkeypatch.setattr(
+        S, "packet_payload", lambda **kwargs: {
+            "schema": "packet", "internal_sha256": "packet"})
+    monkeypatch.setattr(
+        S, "packet_review_claim", lambda **kwargs: {"schema": "claim"})
+    args = SimpleNamespace(
+        expected_git="controller", selector_review_record="review",
+        out=str(packet), claim_out=str(claim))
+    S.freeze_command(args)
+    assert packet.is_file() and claim.is_file() and admission.is_file()
+    with pytest.raises(Exception, match="already consumed"):
+        S.freeze_command(args)
+    drift = SimpleNamespace(**{**vars(args), "out": str(tmp_path / "other")})
+    with pytest.raises(S.ControllerRefused, match="output path drift"):
+        S.freeze_command(drift)
+
+
+def test_runtime_contract_requires_factual_compiled_activation():
+    exact = {
+        "host": S.EXPECTED_EXECUTION_HOST,
+        "python": S.EXPECTED_PYTHON_VERSION,
+        "implementation": "CPython",
+        "python_executable": S.EXPECTED_PYTHON_EXECUTABLE,
+        "fast_required": True,
+        "strict_voids_required": True,
+        "fast_env_active": True,
+        "strict_voids_active": True,
+        "compiled_binding_active": True,
+        "fast_binary_sha256": S.EXPECTED_FAST_BINARY_SHA256,
+    }
+    assert S.runtime_problems(exact) == []
+    for field in (
+            "fast_env_active", "strict_voids_active",
+            "compiled_binding_active"):
+        bad = dict(exact)
+        bad[field] = False
+        assert S.runtime_problems(bad) == [
+            "runtime is not exact reviewed Air"]
 
 
 def test_score_free_preflight_can_pass_without_lucky_four_cluster_trigger(

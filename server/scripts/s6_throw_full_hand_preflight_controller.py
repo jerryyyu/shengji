@@ -37,14 +37,15 @@ from shengji.engine import combos, fast  # noqa: E402
 from shengji.engine.ballot import mc_ballot  # noqa: E402
 
 
-PACKET_SCHEMA = "s6-throw-full-hand-capacity-packet-v1"
-RESULT_SCHEMA = "s6-throw-full-hand-capacity-result-v1"
-ADMISSION_SCHEMA = "s6-throw-full-hand-capacity-admission-v1"
-RUN_ID = "s6-throw-full-hand-screen-437b-v1"
-PREFLIGHT_RUN_ID = "s6-throw-full-hand-preflight-436b-v1"
+PACKET_SCHEMA = "s6-throw-full-hand-capacity-packet-v2"
+RESULT_SCHEMA = "s6-throw-full-hand-capacity-result-v2"
+ADMISSION_SCHEMA = "s6-throw-full-hand-capacity-admission-v2"
+FREEZE_ADMISSION_SCHEMA = "s6-throw-full-hand-packet-freeze-admission-v2"
+RUN_ID = "s6-throw-full-hand-screen-437b-v2"
+PREFLIGHT_RUN_ID = "s6-throw-full-hand-preflight-436b-v2"
 SELECTOR_GIT = "f3918d26febb434b2ef7391cd72b57c4f461fb4d"
 SELECTOR_REVIEW_PREFIX = "S6_FULL_HAND_SELECTOR_V1_REVIEW "
-PACKET_REVIEW_PREFIX = "S6_FULL_HAND_PREFLIGHT_PACKET_V1_REVIEW "
+PACKET_REVIEW_PREFIX = "S6_FULL_HAND_PREFLIGHT_PACKET_V2_REVIEW "
 EXPECTED_SELECTOR_REVIEW = {
     "actor_visible_gate": True,
     "exact_result_sha256":
@@ -98,6 +99,10 @@ SELECTOR_CONDITIONAL_SECOND_MOMENT = 0.91259765625
 Z_ONE_SIDED_95 = 1.6448536269514722
 Z_POWER_80 = 0.8416212335729143
 RUN_LOG_DIR = SERVER / "runs/logs" / PREFLIGHT_RUN_ID
+PACKET_PATH = RUN_LOG_DIR / "controller-packet.json"
+CLAIM_PATH = RUN_LOG_DIR / "packet-review-request.txt"
+FREEZE_ADMISSION_PATH = SERVER / "runs/locks" / \
+    f"{PREFLIGHT_RUN_ID}.packet-freeze.consumed.json"
 ADMISSION_PATH = SERVER / "runs/locks" / \
     f"{PREFLIGHT_RUN_ID}.admission.consumed.json"
 RESULT_PATH = RUN_LOG_DIR / "capacity.json"
@@ -216,6 +221,10 @@ def runtime_snapshot() -> dict[str, object]:
         "python_executable": str(Path(sys.executable).resolve()),
         "fast_required": True,
         "strict_voids_required": True,
+        "fast_env_active": os.environ.get("SHENGJI_FAST") == "1",
+        "strict_voids_active":
+            os.environ.get("SHENGJI_REQUIRE_VOIDS") == "1",
+        "compiled_binding_active": combos.decompose is fast.decompose,
         "fast_binary_sha256": sha256(Path(fast._fast.__file__).resolve()),
     }
 
@@ -228,6 +237,9 @@ def runtime_problems(runtime: object) -> list[str]:
         "python_executable": EXPECTED_PYTHON_EXECUTABLE,
         "fast_required": True,
         "strict_voids_required": True,
+        "fast_env_active": True,
+        "strict_voids_active": True,
+        "compiled_binding_active": True,
         "fast_binary_sha256": EXPECTED_FAST_BINARY_SHA256,
     }
     return [] if runtime == expected else ["runtime is not exact reviewed Air"]
@@ -278,7 +290,41 @@ def policy_contracts() -> dict[str, dict]:
     }
 
 
-def planning_values() -> dict[str, float | int]:
+def cluster_unit_mapping() -> dict[str, object]:
+    """Declare the conservative map from census deals to screen clusters.
+
+    The census observes one complete four-champion round.  The evaluator's
+    independent unit is instead one deal seed played twice: treatment owns
+    seats 0/2 in flip 0 and seats 1/3 in flip 1.  Thus one cluster exposes the
+    treatment to all four seat roles once, matching the census's four-seat
+    opportunity count.  Planning deliberately caps any number of S6 decisions
+    in a deal at one affected cluster.  This is a fitting approximation, not
+    an assertion that the post-trigger trajectories are distributionally
+    identical; measured screen telemetry remains authoritative for dose.
+    """
+    return {
+        "census_observation_unit":
+            "one complete round with the literal champion in all four seats",
+        "screen_independent_unit":
+            "one deal seed evaluated in two mirrored complete rounds",
+        "screen_primary_cluster_statistic": (
+            "sum over both flips of treatment signed level utility minus "
+            "the corresponding control sum for the same seed"),
+        "flip_treatment_seats": {"0": [0, 2], "1": [1, 3]},
+        "treatment_seat_exposures_per_cluster": 4,
+        "census_seat_exposures_per_deal": 4,
+        "planning_trigger_map": (
+            "one census deal with at least one new full-hand S6 source maps "
+            "to at most one affected mirrored cluster"),
+        "multiple_triggers_capped_at_one_for_planning": True,
+        "same_deal_seed_across_flips": True,
+        "post_trigger_trajectory_equivalence_assumed": False,
+        "actual_preflight_and_screen_telemetry_is_authoritative": True,
+        "planning_only_not_strength_evidence": True,
+    }
+
+
+def planning_values() -> dict[str, object]:
     mean = PREVALENCE_RATE * SELECTOR_CONDITIONAL_MEAN
     second = PREVALENCE_RATE * SELECTOR_CONDITIONAL_SECOND_MOMENT
     sd = math.sqrt(second - mean * mean)
@@ -294,11 +340,122 @@ def planning_values() -> dict[str, float | int]:
             CHAMPION_CENSUS_TRIGGERED_DEALS,
         "champion_trajectory_deals": CHAMPION_CENSUS_DEALS,
         "expected_triggered_clusters": PREVALENCE_RATE * SCREEN_CLUSTERS,
+        "expected_triggered_clusters_uses_one_per_deal_cap": True,
         "conditional_selector_mean": SELECTOR_CONDITIONAL_MEAN,
         "mixture_planning_mean": mean,
         "mixture_planning_sd": sd,
         "mde80_one_sided_95": mde,
         "planning_power_at_fitting_mean": power,
+    }
+
+
+def _logical_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(REPO))
+    except ValueError as exc:
+        raise ControllerRefused(f"path is outside repository: {path}") from exc
+
+
+def require_canonical_path(actual: os.PathLike | str, expected: Path, *,
+                           label: str) -> None:
+    if Path(actual).resolve() != expected.resolve():
+        raise ControllerRefused(f"{label} path drift")
+
+
+def freeze_admission_payload(*, expected_git: str,
+                             selector_review_record: os.PathLike | str,
+                             nonce: str,
+                             created_unix_ns: int) -> dict:
+    review = parse_marker(
+        selector_review_record, SELECTOR_REVIEW_PREFIX,
+        EXPECTED_SELECTOR_REVIEW, label="S6 full-hand selector review")
+    if not git_is_ancestor(SELECTOR_GIT, expected_git):
+        raise ControllerRefused("reviewed selector is not an ancestor")
+    if (not isinstance(nonce, str) or len(nonce) != 32
+            or any(char not in "0123456789abcdef" for char in nonce)):
+        raise ControllerRefused("packet-freeze nonce is invalid")
+    if (isinstance(created_unix_ns, bool)
+            or not isinstance(created_unix_ns, int)
+            or created_unix_ns <= 0):
+        raise ControllerRefused("packet-freeze timestamp is invalid")
+    payload = {
+        "schema": FREEZE_ADMISSION_SCHEMA,
+        "run_id": RUN_ID,
+        "preflight_run_id": PREFLIGHT_RUN_ID,
+        "git": expected_git,
+        "controller_sha256": sha256(SCRIPT),
+        "selector_review_sha256": review["sha256"],
+        "champion_census_sha256": CHAMPION_CENSUS_SHA256,
+        "packet_path": _logical_path(PACKET_PATH),
+        "claim_path": _logical_path(CLAIM_PATH),
+        "runtime": require_air_runtime(),
+        "nonce": nonce,
+        "created_unix_ns": created_unix_ns,
+        "score_free": True,
+        "outcomes_published": False,
+        "preflight_execution_authorized": False,
+        "screen_execution_authorized": False,
+        "strength_claim": False,
+        "production_promotion": False,
+        "production_deployment": False,
+    }
+    payload["internal_sha256"] = stable_digest(payload)
+    return payload
+
+
+def freeze_admission_problems(
+        payload: object, *, expected_git: str,
+        selector_review_record: os.PathLike | str) -> list[str]:
+    if not isinstance(payload, dict):
+        return ["packet-freeze admission is not an object"]
+    internal = payload.get("internal_sha256")
+    without = dict(payload)
+    without.pop("internal_sha256", None)
+    if not isinstance(internal, str) or stable_digest(without) != internal:
+        return ["packet-freeze admission internal SHA-256 drift"]
+    try:
+        expected = freeze_admission_payload(
+            expected_git=expected_git,
+            selector_review_record=selector_review_record,
+            nonce=payload.get("nonce"),
+            created_unix_ns=payload.get("created_unix_ns"))
+    except Exception as exc:
+        return [
+            "cannot reconstruct packet-freeze admission: "
+            f"{type(exc).__name__}: {exc}"]
+    return [] if payload == expected else [
+        "packet-freeze admission differs from reconstruction"]
+
+
+def load_freeze_admission(*, expected_git: str,
+                          selector_review_record: os.PathLike | str) -> dict:
+    require_regular_unlinked(
+        FREEZE_ADMISSION_PATH, label="S6 packet-freeze admission")
+    try:
+        payload = json.loads(FREEZE_ADMISSION_PATH.read_bytes())
+    except (OSError, ValueError) as exc:
+        raise ControllerRefused(
+            "S6 packet-freeze admission is unreadable") from exc
+    problems = freeze_admission_problems(
+        payload, expected_git=expected_git,
+        selector_review_record=selector_review_record)
+    if problems:
+        raise ControllerRefused("invalid packet-freeze admission: "
+                                + "; ".join(problems))
+    return payload
+
+
+def freeze_admission_evidence(*, expected_git: str,
+                              selector_review_record: os.PathLike | str
+                              ) -> dict[str, object]:
+    payload = load_freeze_admission(
+        expected_git=expected_git,
+        selector_review_record=selector_review_record)
+    return {
+        "path": _logical_path(FREEZE_ADMISSION_PATH),
+        "sha256": sha256(FREEZE_ADMISSION_PATH),
+        "internal_sha256": payload["internal_sha256"],
+        "consumed": True,
     }
 
 
@@ -316,6 +473,9 @@ def packet_payload(*, expected_git: str,
         "git": expected_git,
         "selector_git": SELECTOR_GIT,
         "selector_review": review,
+        "packet_freeze_admission": freeze_admission_evidence(
+            expected_git=expected_git,
+            selector_review_record=selector_review_record),
         "champion_trajectory_census": champion_census_evidence(),
         "source_sha256s": source_sha256s(),
         "runtime": require_air_runtime(),
@@ -354,11 +514,16 @@ def packet_payload(*, expected_git: str,
         },
         "planning": {
             **planning_values(),
+            "cluster_unit_mapping": cluster_unit_mapping(),
             "basis": (
                 "opened reusable-DEV selector distribution mixed with the "
                 "independent score-free 50,000-deal heuristic prevalence; "
                 "a 512-round literal-champion transfer census was higher, "
-                "so sizing conservatively retains the lower heuristic rate"),
+                "so sizing conservatively retains the lower heuristic rate. "
+                "The per-deal rate maps to one affected two-flip cluster at "
+                "most because treatment spans all four seats once per "
+                "cluster; actual dose telemetry, not this approximation, "
+                "controls interpretation"),
             "planning_only_not_strength_evidence": True,
         },
         "capacity": {
@@ -415,7 +580,7 @@ def packet_review_claim(*, expected_git: str, packet_sha256: str) -> dict:
         "production_deployment": False,
         "production_promotion": False,
         "run_id": RUN_ID,
-        "schema": "s6-throw-full-hand-preflight-packet-review-v1",
+        "schema": "s6-throw-full-hand-preflight-packet-review-v2",
         "screen_execution_authorized": False,
         "strength_claim": False,
         "verdict": "PASS",
@@ -442,7 +607,7 @@ def capacity_review_claim(*, result: dict, result_sha256: str,
         "production_deployment": False,
         "production_promotion": False,
         "run_id": RUN_ID,
-        "schema": "s6-throw-full-hand-capacity-review-v1",
+        "schema": "s6-throw-full-hand-capacity-review-v2",
         "score_free": True,
         "screen_clusters": SCREEN_CLUSTERS,
         "screen_execution_authorized": False,
@@ -504,7 +669,7 @@ def measure_preflight(packet: dict, *, clock=time.perf_counter) -> dict:
             for left, right in zip(
                 cluster["matched_null"], cluster["champion"], strict=True))
         print(json.dumps({
-            "event": "s6-full-hand-score-free-progress-v1",
+            "event": "s6-full-hand-score-free-progress-v2",
             "clusters_complete": cluster_index + 1,
             "clusters_total": PREFLIGHT_CLUSTERS,
         }, sort_keys=True), flush=True)
@@ -588,21 +753,39 @@ def require_execution_runtime() -> None:
 
 
 def freeze_command(args) -> None:
+    require_canonical_path(
+        args.out, PACKET_PATH, label="packet-freeze output")
+    require_canonical_path(
+        args.claim_out, CLAIM_PATH, label="packet-freeze claim output")
     require_clean_exact_git(args.expected_git)
+    for path, label in ((PACKET_PATH, "packet"), (CLAIM_PATH, "claim")):
+        if os.path.lexists(path) or os.path.lexists(str(path) + ".partial"):
+            raise ControllerRefused(
+                f"packet-freeze canonical {label} path is already consumed")
+    admission = freeze_admission_payload(
+        expected_git=args.expected_git,
+        selector_review_record=args.selector_review_record,
+        nonce=secrets.token_hex(16),
+        created_unix_ns=time.time_ns())
+    write_exclusive(FREEZE_ADMISSION_PATH, admission)
     payload = packet_payload(
         expected_git=args.expected_git,
         selector_review_record=args.selector_review_record)
-    write_exclusive(args.out, payload)
-    packet_sha = sha256(args.out)
+    write_exclusive(PACKET_PATH, payload)
+    packet_sha = sha256(PACKET_PATH)
     claim = packet_review_claim(
         expected_git=args.expected_git, packet_sha256=packet_sha)
-    write_exclusive(args.claim_out, claim)
+    write_exclusive(CLAIM_PATH, claim)
     print(json.dumps({"status": "FROZEN_NO_EXECUTION_AUTHORITY",
+                      "packet_freeze_admission_sha256":
+                          sha256(FREEZE_ADMISSION_PATH),
                       "packet_sha256": packet_sha,
                       "claim": claim}, sort_keys=True))
 
 
 def verify_command(args) -> None:
+    require_canonical_path(
+        args.packet, PACKET_PATH, label="packet verification input")
     require_clean_exact_git(args.expected_git)
     payload = load_packet(
         args.packet, args.packet_sha256, expected_git=args.expected_git,
@@ -613,6 +796,8 @@ def verify_command(args) -> None:
 
 
 def preflight_command(args) -> None:
+    require_canonical_path(
+        args.packet, PACKET_PATH, label="preflight packet input")
     require_clean_exact_git(args.expected_git)
     require_execution_runtime()
     packet = load_packet(

@@ -82,7 +82,10 @@ def design_review_claim() -> dict:
         "preflight_retry_authorized": False,
         "production_deployment": False,
         "production_promotion": False,
-        "schema": DESIGN.SCHEMA,
+        # The independent review record has its own schema.  Do not substitute
+        # the design artifact schema: the signed marker is the authority that
+        # this controller must consume byte-for-byte.
+        "schema": "s4-point-banking-future-c2-design-review-v1",
         "scored_execution_authorized": False,
         "shard_count": DESIGN.SHARD_COUNT,
         "strength_claim": False,

@@ -130,6 +130,25 @@ def test_design_review_claim_binds_reviewed_source_bytes(tmp_path):
         CTRL.design_review_evidence(path)
 
 
+def test_literal_signed_design_review_marker_is_consumable(tmp_path):
+    raw = (
+        b'S4_POINT_BANKING_FUTURE_C2_DESIGN_V1_REVIEW '
+        b'{"capacity_result_sha256":"70a15405c7edb94ecfdd89fb8c86d158ba64d8161eeba82c57851b67d513413e",'
+        b'"design_sha256":"303f1642a8d5754f3243afc576163c8ea4d0ab744487c4af9aee92864f7f76b0",'
+        b'"git":"f0c2a6de07b828535d17350c1c3206942175ad45",'
+        b'"implementation_authorized":true,"look_clusters":[8192,16384],'
+        b'"preflight_retry_authorized":false,"production_deployment":false,'
+        b'"production_promotion":false,'
+        b'"schema":"s4-point-banking-future-c2-design-review-v1",'
+        b'"scored_execution_authorized":false,"shard_count":16,'
+        b'"strength_claim":false,"verdict":"PASS_TO_IMPLEMENT"}\n'
+    )
+    path = tmp_path / "literal-signed-design-review.md"
+    path.write_bytes(raw)
+    assert CTRL.design_review_evidence(path)["verdict"] == (
+        "PASS_TO_IMPLEMENT")
+
+
 def test_packet_contract_binds_reused_sources_and_review():
     config = _config()
     paths = CTRL.paths_for()

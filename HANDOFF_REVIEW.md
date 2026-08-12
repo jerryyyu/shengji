@@ -4729,3 +4729,53 @@ recovery packet before signing that launch marker.
 S4_POINT_BANKING_FUTURE_C2_RECOVERY_CONTROLLER_V1_REVIEW {"base_controller_sha256":"20b898c829994a11932e9a3f6bcc7ee2a5bd5f59c26ab54000441226f2f63971","base_runner_sha256":"6ec3bae90490e3d384505f2a37682ea0163ecf48ccc9a1898317a7dbfb820267","capacity_admission_sha256":"8332404e8ff4f97c4cdbaea232f9cdf695a83a2ceb121151923f2c99610fb9ca","capacity_result_sha256":"70a15405c7edb94ecfdd89fb8c86d158ba64d8161eeba82c57851b67d513413e","child_boundary_validation_required":true,"controller_sha256":"d8cc29aaa955f8a4e21eff7a9cbc0d2c306de3bd10679255613524b13542ef23","design_git":"f0c2a6de07b828535d17350c1c3206942175ad45","design_sha256":"303f1642a8d5754f3243afc576163c8ea4d0ab744487c4af9aee92864f7f76b0","expected_fast_binary_sha256":"a22789a6472de34586176851040bd7ad062440063eb4078e313e95d2dea94509","expected_host":"ubuntu-32gb-hel1-1","expected_python":"3.14.4","failed_launch":{"aggregates_published":0,"failed_admission_sha256":"554d9fd10bee4c23b34269c2576b42eac9594343f3375e26bd34a9d20fe15daa","failed_child_count":16,"failed_child_log_sha256":"aaf7cb2f2f629eece3f04b28f1352e15dfcb71677343b27e3a4ff8c7fddd5b71","failed_child_returncode":3,"failed_exit_manifest_sha256":"3038d7d97fe78ddc2bad2aa334ac9eec5cede3bbe34f73d09424a06bdccd9a53","failed_git":"6c247b9ec2faa1e3f525adcc7a6803c87afef71a","failed_packet_sha256":"83cadbfa4ae5afded36570b38d63d4f4a9e1e8d56580884d00ed8d23805cb205","failed_receipt_sha256":"97e0b7ff21adc31dcf63481b66811a251667a789a5c33d0953206c8227b56f9c","failed_run_id":"s4-point-banking-future-c2-300b-v1","failed_supervisor_partial_sha256":"a17dfb147c16b4959b6e058f0a2af74392981dac266b08f113628029af288c46","failure_stage":"child-receipt-validation-before-gameplay","old_namespace_retry_authorized":false,"outcomes_published":false,"same_frozen_population_statistically_unopened":true,"schema":"s4-point-banking-future-c2-failed-launch-v1","shard_outputs_published":0},"fresh_recovery_namespace":"s4-point-banking-future-c2-300b-recovery-v1","git":"2448c8d8377cba1ab7ffa4e6d3978987409b020c","new_preflight_authorized":false,"packet_freeze_authorized":true,"production_deployment":false,"production_promotion":false,"reused_score_free_capacity_verified":true,"runner_sha256":"f1c4d0803c88e3012c86605f449289b8ca99ef2f9b6c3cb08da84bf4435736c7","schema":"s4-point-banking-future-c2-recovery-controller-review-v1","sequential_execution_authorized":false,"sixteen_shard_contract_verified":true,"strength_claim":false,"verdict":"PASS"}
 
 ---
+
+## Claude — 2026-08-12 14:39 EDT — ✅ PASS: pair affected-state capture V3 (PR #60 7468828 / PR #61 4c4a244); one score-free 12M-deal Cloud capture authorized. V2 superseded, not signed
+
+Review per the 13:30 request. The 13:20 self-HOLD — a population verifier
+that trusted receipt/dose fields and a forgeable self-hash without reopening
+the 16 source shards — is genuinely repaired. The requested marker is
+appended below; the superseded 12:32 V2 template remains unsigned.
+
+Source identity (all three exact):
+- capture `server/scripts/pair_ballot_affected_states.py` =
+  `e54102482c2f1652186b…` at PR #60 head `7468828`;
+- evaluator `pair_ballot_affected_eval.py` = `73f5070246f560c093b0…` and
+  aggregate `pair_ballot_affected_aggregate.py` = `1b63bcfb995dfca4faa1…`
+  at PR #61 head `4c4a244`.
+
+Repair verified structurally, not just by assertion. `validate_population`
+takes the population `source_path` and, by my own inspection of its body:
+reopens shard files from disk (not embedded fields), recomputes the
+observation counters, checks receipt agreement, and reconstructs the global
+selection — with explicit refusal points including `population payload
+differs from source bytes` and `population digest drift`. That is exactly the
+seam that was missing: a rehashed population can no longer pass by
+recomputing its own self-hash, because the counters and receipts are
+re-derived from the shards themselves.
+
+Falsification coverage confirmed by running the suite myself (47/47 pass
+under the pinned interpreter, strict compiled mode), including the two
+witnesses the request named — `test_rehashed_structural_mutations_still_refuse`
+and the four parametrized `test_mutated_state_refuses_before_replay[digest0-3]`
+— plus `test_shard_validator_refuses_extra_fields_dirty_formal_and_bad_
+coverage`, `test_population_verifier_rebuilds_counters_and_receipts_from_
+shards`, and `test_global_selection_is_independent_of_shard_completion_order`
+(order-independence matters because the selection is global across shards).
+The evaluator's added state/deal-cluster/split/phase/role binding back to the
+reopened source row is a narrowing, and it does not touch policy, ballot,
+worlds, estimands, uncertainty or routing.
+
+Authority: one score-free 12-million-deal / 16-shard Cloud capture only,
+**after S4 releases or HOLDs Cloud** — the two cannot contend for the box.
+`population_read_authorized false`, `scored_evaluation_authorized false`,
+strength/promotion/deployment false. Opening the resulting population and any
+scored evaluation each remain separate gates.
+
+Operational note: this is the right use of the idle Cloud while the S4
+recovery packet is being frozen — score-free capture that produces a reusable
+asset without touching outcomes.
+
+PAIR_BALLOT_AFFECTED_CAPTURE_V3_REVIEW {"aggregate_source_sha256":"1b63bcfb995dfca4faa1c7df74d486bfbb9062bd9a192e25db21f3870d195e0f","capture_git":"746882859529af883bb634e4da10e567720b7ce9","capture_source_sha256":"e54102482c2f1652186bfa5458f4f229fa01bd8bf74cdcb2d29c7fe133e6f4ce","evaluation_git":"4c4a2447a6698a3f2d34547a4dce5e4dd788a3df","evaluation_source_sha256":"73f5070246f560c093b0dcc2a391cfd80521c6260306d5863b6ebbf334b82751","full_source_shard_reconstruction_verified":true,"independent_review":true,"one_score_free_capture_authorized":true,"population_read_authorized":false,"production_deployment":false,"production_promotion":false,"result_source_binding_verified":true,"schema":"pair-ballot-affected-capture-review-v3","scored_evaluation_authorized":false,"strength_claim":false,"supersedes_review_schema":"pair-ballot-affected-capture-review-v2","verdict":"PASS"}
+
+---

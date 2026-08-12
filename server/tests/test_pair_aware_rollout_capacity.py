@@ -31,6 +31,18 @@ FROZEN_V2_PACKET = (
     Path(__file__).resolve().parents[1]
     / "runs/logs/pair-aware-whole-round-preflight-v2/controller-packet.json"
 )
+WITHDRAWN_V2_ADMISSION = (
+    Path(__file__).resolve().parents[1]
+    / "runs/locks/pair-aware-whole-round-preflight-v2.admission.consumed.json"
+)
+WITHDRAWN_V2_CONSOLE = (
+    Path(__file__).resolve().parents[1]
+    / "runs/logs/pair-aware-whole-round-preflight-v2/aborted-console.log"
+)
+FROZEN_V3_PACKET = (
+    Path(__file__).resolve().parents[1]
+    / "runs/logs/pair-aware-whole-round-preflight-v3/controller-packet.json"
+)
 
 
 def _review(path: Path) -> Path:
@@ -457,5 +469,47 @@ def test_withdrawn_v2_air_packet_is_hash_pinned_and_grants_no_gameplay():
     assert packet["preflight_run_id"] != C.PREFLIGHT_RUN_ID
     assert packet["runtime"] == _air_runtime()
     assert packet["preflight"]["clusters"] == 4
+    assert packet["successor_projection"]["candidate_clusters"] == [2048, 8192]
+    assert all(value is False for value in packet["authority"].values())
+
+
+def test_withdrawn_v2_admission_and_one_cluster_abort_are_preserved():
+    raw = WITHDRAWN_V2_ADMISSION.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == (
+        "19b60b02ffc93a209658b89fc5e10e831f3bc4fe743d7af1097d1c94e0444176")
+    admission = json.loads(raw)
+    internal = admission.pop("internal_sha256")
+    assert C.stable_digest(admission) == internal == (
+        "3ce59df3056f9a1f98b0850554440eeeddf40560de537522a43fae6b2ec48fed")
+    assert admission["schema"] != C.ADMISSION_SCHEMA
+    assert admission["run_id"] != C.RUN_ID
+    assert admission["packet_sha256"] == (
+        "ba0bb693642c6fcb41357558f96e6b9d8707b810fa8926c97ec01d223abaa0b6")
+    console = WITHDRAWN_V2_CONSOLE.read_bytes()
+    assert hashlib.sha256(console).hexdigest() == (
+        "8001b81caa0c6eae3a0d8c6fd30f74659d2371073c0a38a0c986264624a84764")
+    assert json.loads(console) == {
+        "clusters_complete": 1,
+        "clusters_total": 4,
+        "event": "pair-aware-score-free-progress-v2",
+    }
+    assert not (FROZEN_V2_PACKET.with_name("capacity.json")).exists()
+
+
+def test_corrected_v3_air_packet_is_hash_pinned_and_grants_no_gameplay():
+    raw = FROZEN_V3_PACKET.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == (
+        "67294a93dc94dbf4d95449518b2cb71ca13e30f085ebbb20371d313af0e4a9b4")
+    packet = json.loads(raw)
+    internal = packet.pop("internal_sha256")
+    assert C.stable_digest(packet) == internal == (
+        "d3bc90f4a56ed695feb115f14492ce13b31af005c64442cd0bec6a52b80a3f7a")
+    assert packet["git"] == "1ef8a4d29bb0a2571997bda403b71deec3525ef5"
+    assert packet["schema"] == C.PACKET_SCHEMA
+    assert packet["preflight_run_id"] == C.PREFLIGHT_RUN_ID
+    assert packet["runtime"] == _air_runtime()
+    assert packet["preflight"]["clusters"] == 4
+    assert "exactly 100 physical cards" in packet["preflight"][
+        "terminal_history_contract"]
     assert packet["successor_projection"]["candidate_clusters"] == [2048, 8192]
     assert all(value is False for value in packet["authority"].values())

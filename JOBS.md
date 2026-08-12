@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-12 06:39 EDT. This file owns current compute and
+Last reconciled: 2026-08-12 07:37 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -9,22 +9,22 @@ compact terminal stubs. Historical detail is archived in
 
 | host | live strength job | health / next use |
 |---|---|---|
-| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; at 05:40 all remained CPU-bound after 6h20m. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
-| **Air** | `s6-full-hand-champion-census-v1` | **HEALTHY / SATURATED.** Eight workers started at 06:35 under exact head `d65dd08`, 64 deals each. They retain source/dose counts only—no winner, points, utility, action or hand. This checks whether the 2.02% heuristic prevalence transfers to literal four-seat `mc-s0-report-lcb` trajectories before sizing is frozen. |
-| **Fly production** | `mc-s0-report-lcb` | Release 17 remains live. No deploy, restart, room wipe or policy change is authorized. |
+| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; at 07:37 all eight remained CPU-bound at ~799% aggregate after 8h17m and safe heartbeats advanced. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
+| **Air** | `pair-aware-whole-round-screen-v3` | **HEALTHY / SATURATED.** The sole reviewed 7,168-cluster screen was admitted and launched at about 07:27 under exact source `cd20670`. Detached supervisor PID 88455 and all eight workers were alive and CPU-bound at 07:34. Do not inspect shard JSON; safe monitoring is process state and score-free supervisor heartbeat only. |
+| **Fly production** | `mc-s0-report-lcb` | Release 18 / image `kitty-xray-b5a35ae` is healthy. This is the release-17 runtime plus PR #11 kitty X-ray only; no policy changed. Rollback runtime remains release 17 / `latency-cd6789e`. |
 
 ## Reviewed queue
 
 | order | job | current gate |
 |---:|---|---|
 | 1 | S4 future-only sequential preflight | PR #40 head `3403cdf`; controller review pending. A PASS permits one score-free Air preflight and packet design only. |
-| 2 | S6 shuai-pai preflight | PR #41 head `ea07efa`; Air-bound packet v2 review pending. A PASS permits one score-free four-cluster Air preflight only. |
-| 3 | Pair-aware powered screen | **PACKET REVIEW PENDING.** Capacity passed; PR #49 packet `4ece02b9…ae47` freezes 7,168 clusters but remains unadmitted. A raw packet marker is required for execution. |
+| 2 | Selective S6 shuai-pai preflight | **V2 PACKET REVIEW PENDING.** Source `a48542d` closes the unit-map, singleton-freeze and factual-runtime HOLDs. PR #50 `936345b` preserves packet `19f3b2a3…79dd0` plus receipt `df54dcfe…aebba`; 62 S6 tests pass. A PASS permits one four-cluster score-free preflight, queued until Air is free. |
 
-Pair-v3 received and consumed the capacity-result marker to freeze one packet;
-its scored namespace remains untouched. All three Air lanes now wait on exact
-markers. A packet or implementation review never substitutes for later
-execution authority.
+Pair-v3 now owns Air and has no retry or extension authority. S4 still waits on
+its raw controller marker; the indented marker inside Codex's request is not
+authority. Selective S6's old v1 packet is superseded and must never run. A
+packet or implementation review never substitutes for its named later
+authority.
 
 ## T4 closeout
 
@@ -42,10 +42,11 @@ outcome-bearing aggregate input.
 
 | date | job | verdict / headline | anchor |
 |---|---|---|---|
+| 08-12 | S6 literal-champion source census | **DOSE TRANSFERS / SCORE-FREE:** 13/512 rounds (`2.54%`) and 13/9,382 leads (`0.139%`) exposed the full-hand gate; all triggers were mid/late, split 10 attacker / 3 defender. This is slightly above the 2.02% heuristic trajectory estimate, so the 7,168-cluster screen keeps its conservative lower-rate sizing. | aggregate `65eacf05…bf14` / PR #50 `90f05eb` |
 | 08-12 | S6 actor-visible full-hand selector | **ADVANCE TO FRESH WHOLE-GAME PACKET DESIGN (reused DEV):** 512 decisions on 128 public states; 427 overrides, 101 beneficial / 20 harmful / 306 neutral; state-cluster mean `+0.307`, LCB `+0.175`, both roles positive. This is selector feasibility, not independent strength. | result `54733434…984c` / PR #50 `f3918d2` |
 | 08-12 | S6 full-hand natural prevalence | **VIABLE SELECTIVE DOSE / SCORE-FREE:** 1,011/50,000 deals (2.02%) triggered; 1,085/1,067,189 leads, all mid/late; 126 occurred at four cards. | result `8934c2e3…ea45` / PR #50 |
 | 08-12 | S6 full-hand boss/near exact replication | **ADVANCE TO DEV SELECTOR:** 128 fresh balanced states, mean `+0.234` levels, one-sided LCB `+0.100`, 24W/8L/96T; both role means positive. Perfect-information action-set value, not whole-game strength. | result `946b029c…cebe` / PR #50 `469b064` |
-| 08-12 | Pair-aware powered screen packet | **FROZEN / NOT RUNNING:** 7,168 clusters, 8×896, ~84% planning power at `+0.05`; external packet/source review must resolve the capacity-prose ambiguity before execution. | packet `4ece02b9…ae47` / PR #49 `9edadcf` |
+| 08-12 | Pair-aware powered screen packet | **REVIEWED / RUNNING:** 7,168 clusters, 8×896, ~84% planning power at `+0.05`; one admitted execution began on Air around 07:27. Outcomes remain sealed until score-free supervisor review. | packet `4ece02b9…ae47` / source `cd20670` |
 | 08-12 | S6 level-objective audit | **STOP THIS FILTER:** on the exact 300 report worlds, level-bracket scoring kept 5/12 selected throws, still retained the only two-level loss and retained zero wins. A full matched pilot is not justified from this evidence. | artifact `f6478bac…6329` / PR #47 |
 | 08-12 | Pair-aware powered screen implementation | **RUNNABLE SOURCE, FREEZE BLOCKED:** PR #49 implements 7,168 clusters under the reviewed caps with ~84% power at `+0.05`; capacity PASS and then packet review remain mandatory. | PR #49 `cd20670` |
 | 08-12 | Pair-aware v1 selected-root audit | **ENCOURAGING, NOT STRENGTH:** across all nine finite-search v1 changes at 4,096 fresh common worlds, primary level utility favored v1 on 5–6 roots, opposed it on 1–2 and left two unresolved under two continuation models. One points-positive root was level-negative, so points alone are insufficient. | artifact `131a64e…7eaa3` / PR #48 |

@@ -79,6 +79,11 @@ plain and `SHENGJI_FAST=1` routes required):
   match multiprocessing workers (they appear as bare `python3 -`).
   Always follow with a process-age audit and kill survivors by PID, or
   the old code keeps writing into the live dataset.
+- **Fleet absence requires positive proof**: an empty filtered process list is
+  `UNKNOWN`, not `IDLE` or `DEAD`. Before launching a replacement, reconcile
+  the expected PID set, a broad raw Python inventory, every worker heartbeat
+  or log mtime, and terminal output count. Identify jobs by exact script and
+  immutable run namespace; signal explicit PIDs and verify every stop.
 - **Dataset provenance**: every generated dataset binds source bytes, producer,
   engine/encoder, ballot, target, split and accepted/rejected work. Data from an
   engine state that later proves buggy is quarantined, not silently kept.
@@ -273,6 +278,7 @@ safely refused.
 | 08-05 | JSON preserved RNG bytes but decoded tuples as lists that `Random.setstate()` rejects; partial report folds with >=2 worlds could still decide | claimed replay/refusal contract was not executable | exact JSON replay and underfilled-fold regressions |
 | 08-09 | Fly SFTP refused existing filenames while the fetch script swallowed errors; five growing production logs stayed stale locally. Human extraction then silently discarded replay failures and emitted no provenance or bury surface. | corpus freshness / silent data rejection | atomic hash-manifest refresh + fail-closed human-v1 builder |
 | 08-10 | Stage-C label v1 discarded repeated realized hidden worlds within and across independent folds; six shards refused and retained worlds had flattened posterior mass | statistical sampler semantics / terminal no-use labels | iid-v2 with-replacement regression, domain-separated fold RNG and retained-overlap telemetry |
+| 08-12 | a mistyped Air process filter reported a healthy S6 census idle; a duplicate eight-worker cohort ran for about a minute before exact PID/namespace reconciliation stopped only the duplicate | fleet-monitor false negative / wasted compute | broad process inventory plus advancing original logs ([INC-12](incidents/INC-20260812-12-fleet-monitor-false-negative.md)) |
 
 Update this table whenever a correctness incident occurs — the log is
 the argument for the rules.

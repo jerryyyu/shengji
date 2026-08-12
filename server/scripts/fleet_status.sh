@@ -24,33 +24,72 @@ hdr "MINI — server-venv python jobs"
 for pid in $(pgrep -f "server/.venv/bin/python"); do
   line=$(ps -o etime=,%cpu= -p "$pid" | tr -s ' ')
   label=$(lsof -p "$pid" 2>/dev/null |
-    grep -oE "(snapshots_[a-z0-9]+|rl_data/[a-z0-9_]+|[a-z0-9_]+\.log)" |
+    grep -oE "runs/logs/[^[:space:]]+|rl_data/[^[:space:]]+|[A-Za-z0-9._-]+\.log" |
     sort -u | head -2 | tr '\n' ',' | sed 's/,$//')
-  echo "  pid=$pid up/cpu:$line  touches: ${label:-(none — likely a duel/eval)}"
+  script=$(ps -o command= -p "$pid" |
+    sed -n 's|.*\(server/scripts/[^ ]*\.py\).*|\1|p' | head -1)
+  echo "  pid=$pid up/cpu:$line  job: ${script:-(wrapper/interactive)}  touches: ${label:-(none)}"
 done
-for d in snapshots_v7 snapshots_v61 snapshots_v7w; do
-  [ -d "$d" ] && echo "  $d: $(ls "$d" 2>/dev/null | tr '\n' ' ')"
-done
-[ -d runs/logs ] && for f in runs/logs/*.log; do
-  [ -f "$f" ] && echo "  $(basename "$f"): $(tail -1 "$f")"
-done
-
-hdr "AIR — via JOBS.md + live probe"
-ssh -o BatchMode=yes -o ConnectTimeout=8 air '
-  cd ~/Projects/shengji-compute/server 2>/dev/null || exit 1
-  # Generic probe: name the jobs that are actually running, not the ones
-  # that happened to be running when this script was written (the pool_/
-  # gen_v3 greps outlived their jobs by two days).
-  ps -eo pid,etime,command | grep "[p]ython" | grep -v "grep" |
-    sed "s|/Users/[^ ]*/python3*|python|" | awk "{printf \"  proc %s up %s: %s %s %s\\n\", \$1, \$2, \$3, \$4, \$5}" | head -6
-  for f in runs/logs/*.log *.log; do
-    [ -f "$f" ] || continue
+echo "  --- current isolated-worktree supervisor heartbeats (30m)"
+find /private/tmp -maxdepth 7 -type f \
+  -path "*/server/runs/logs/*" -mmin -30 \
+  -name "*supervisor-console.log" -print 2>/dev/null |
+  while IFS= read -r f; do
     age=$(( ($(date +%s) - $(stat -f %m "$f")) / 60 ))
-    [ "$age" -lt 720 ] && echo "  $(basename "$f") (${age}m): $(tail -1 "$f" | cut -c1-100)"
-  done 2>/dev/null | head -8
-  echo "  --- NOTES from Air agent (if any):"
-  sed -n "/## NOTES/,\$p" ../JOBS.md | tail -n +3 | grep -v "^(leave" | head -25
-' 2>/dev/null || echo "  Air unreachable (asleep / off tailnet / SSH off)"
+    printf "  %s (%sm): %s\n" "$f" "$age" \
+      "$(tail -1 "$f" 2>/dev/null | cut -c1-160)"
+  done
+
+hdr "AIR — broad process identity + live progress"
+# INC-12: never infer IDLE from a remembered job-name substring. The prior
+# probe also changed directory to one legacy checkout before inspecting the
+# host, which could hide isolated /private/tmp evidence worktrees. Inventory
+# every Python process first, retain its full command and cwd, and make a zero
+# count explicitly UNKNOWN until expected run manifests are reconciled.
+if ! ssh -o BatchMode=yes -o ConnectTimeout=8 air '
+  # Match the executable column, not the full argv: the probe command itself
+  # command text contains the word "python" and would otherwise count itself.
+  pids=$(ps -Ao pid=,comm= |
+    awk "tolower(\$0) ~ /python/ {print \$1}")
+  count=$(printf "%s\n" "$pids" | awk "NF {n++} END {print n+0}")
+  echo "  Python processes visible: $count"
+  if [ "$count" -eq 0 ]; then
+    echo "  !! ZERO ROWS = UNKNOWN, not IDLE; reconcile expected PIDs,"
+    echo "     heartbeat/log mtimes and terminal outputs before replacement"
+  fi
+  echo "  --- exact process command and cwd"
+  printf "%s\n" "$pids" | while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    if meta=$(ps -p "$pid" -o pid=,ppid=,%cpu=,etime=); then
+      command=$(ps -p "$pid" -o command=)
+      script=$(printf "%s\n" "$command" |
+        sed -n "s|.* \([^ ]*\.py\) .*|\1|p")
+      role=$(printf "%s\n" "$command" |
+        sed -n "s|.*\.py \([^ ]*\).*|\1|p")
+      expected_git=$(printf "%s\n" "$command" |
+        sed -n "s|.*--expected-git \([^ ]*\).*|\1|p")
+      shard=$(printf "%s\n" "$command" |
+        sed -n "s|.*--shard-index \([^ ]*\).*|\1|p")
+      cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null |
+        sed -n "s/^n//p" | head -1)
+      echo "  $meta script=${script:-(unresolved)} role=${role:-(unknown)} git=${expected_git:-(none)} shard=${shard:--}"
+      echo "    cwd=${cwd:-(unresolved)}"
+    else
+      echo "  pid=$pid vanished during probe; reconcile before status claim"
+    fi
+  done
+  echo "  --- recently advancing isolated-worktree logs (30m)"
+  find /private/tmp -maxdepth 7 -type f \
+    -path "*/server/runs/logs/*" -mmin -30 \
+    \( -name "*.log" -o -name "*.jsonl" \) -print 2>/dev/null |
+    while IFS= read -r f; do
+      age=$(( ($(date +%s) - $(stat -f %m "$f")) / 60 ))
+      printf "  %s (%sm): %s\n" "$f" "$age" \
+        "$(tail -1 "$f" 2>/dev/null | cut -c1-120)"
+    done
+'; then
+  echo "  Air probe FAILED — state UNKNOWN (not idle)"
+fi
 
 hdr "INTEGRITY — process identity + dataset provenance"
 # Aggregates (hot count / total CPU) hide orphans: on 2026-08-03 two
@@ -65,7 +104,11 @@ for pid in $(pgrep -f "server/.venv/bin/python"); do
     *:*:*) hrs=${et%%:*};;
     *) hrs=0;;
   esac
-  tag=$(lsof -p "$pid" 2>/dev/null | grep -oE "runs/logs/[a-z0-9_]*\.log|rl_data/[a-z0-9_]+" | sort -u | head -1)
+  tag=$(lsof -p "$pid" 2>/dev/null |
+    grep -oE "runs/logs/[^[:space:]]+|rl_data/[^[:space:]]+|[A-Za-z0-9._-]+\.log" |
+    sort -u | head -1)
+  [ -z "$tag" ] && tag=$(ps -o command= -p "$pid" |
+    sed -n 's|.*\(server/scripts/[^ ]*\.py\).*|\1|p' | head -1)
   [ -z "$tag" ] && tag="(unidentified — INVESTIGATE)"
   if [ "${hrs:-0}" -ge 6 ] 2>/dev/null; then
     echo "  !! pid=$pid age=$et  $tag   <-- long-running, confirm intentional"

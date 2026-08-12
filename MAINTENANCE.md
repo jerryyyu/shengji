@@ -27,6 +27,12 @@ For every live job record:
 - latest score-free heartbeat/progress and whether every expected worker lives;
 - terminal/final/partial files by metadata only when outcomes are still sealed.
 
+Before declaring a job dead or a host idle, all four views must agree: the
+expected PID set, a broad unfiltered Python inventory, per-worker heartbeat or
+log modification times, and terminal output count. A missing tool, SSH error,
+or zero rows from a remembered-name filter means `UNKNOWN`. Never launch a
+replacement until the old cohort is positively proven absent. See INC-12.
+
 Never open a partial outcome, change a stopping rule from live scores, duplicate
 a one-shot run, or infer success from a filename that may be published before a
 worker's final provenance check. Mini is the default host for newly authorized

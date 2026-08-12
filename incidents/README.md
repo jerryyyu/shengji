@@ -14,6 +14,7 @@ the rules these incidents produced; this folder keeps the reasoning.
 
 | id | date | severity | title | detected by |
 |---|---|---|---|---|
+| [INC-12](INC-20260812-12-fleet-monitor-false-negative.md) | 08-12 | S3 | Wrong process filter reported Air idle and triggered a duplicate S6 census | exact process/namespace reconciliation |
 | [INC-11](INC-20260803-11-fast-path-noop.md) | 08-03 | S4 | `SHENGJI_FAST=1` was a no-op outside pytest | validation agent |
 | [INC-10](INC-20260803-10-orphaned-workers.md) | 08-03 | S1 | Orphaned workers wrote buggy-code data for 10h | process-age audit |
 | [INC-09](INC-20260803-09-throw-penalty-rule.md) | 08-03 | S2 | Failed throws forfeited the first, not lowest, beatable component | Jerry, from play |

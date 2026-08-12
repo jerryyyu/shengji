@@ -1,6 +1,8 @@
 """Contracts for the exploration-tier S6 throw-shape exact screen."""
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
 from pathlib import Path
 
@@ -8,6 +10,12 @@ from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import s6_throw_exact_shape_exploration as S  # noqa: E402
+
+
+ASSET = Path(__file__).with_name("data") / \
+    "s6_throw_exact_shape_exploration.v1.json"
+ASSET_SHA256 = (
+    "fc6709037cfc130e82ca07f58e6bb6ecd18c847b7d3665ac9ac4a6a6c945806c")
 
 
 def test_design_is_fresh_balanced_and_nonpromotable():
@@ -93,3 +101,33 @@ def test_one_named_capture_scores_new_source_against_full_live_ballot():
     assert row["strength_claim"] is False
     assert isinstance(row["signed_level_utility_delta"], float)
     assert isinstance(row["signed_point_delta"], int)
+
+
+def test_air_asset_recomputes_and_preserves_stratum_result():
+    raw = ASSET.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == ASSET_SHA256
+    payload = json.loads(raw)
+    internal = payload.pop("internal_sha256")
+    assert internal == \
+        "c8d12de9b6a5eb23b4336efa7cc57b61407be67ed5fa4a6b246697973eb200f0"
+    assert S.stable_digest(payload) == internal
+    payload["internal_sha256"] = internal
+    assert payload["git"] == \
+        "3b4ade3f2805cb1d82356815ca2b93f6318b9b26"
+    assert payload["tree_dirty"] is False
+    assert payload["capture"]["complete"] is True
+    assert payload["aggregate"] == S.aggregate(payload["rows"], cell_quota=32)
+    assert payload["aggregate"]["coverage_complete"] is True
+    assert payload["aggregate"]["refused_rows"] == 0
+
+    strata = payload["aggregate"]["strata"]
+    assert strata["boss_near"]["level_delta"]["mean"] == 0.015625
+    assert (strata["boss_near"]["wins"],
+            strata["boss_near"]["losses"],
+            strata["boss_near"]["ties"]) == (4, 4, 56)
+    assert strata["whole_plain"]["level_delta"]["mean"] == -0.109375
+    assert strata["whole_plain"]["wins"] == 0
+    assert strata["whole_trump"]["level_delta"]["mean"] == -0.0625
+    assert strata["whole_trump"]["wins"] == 0
+    assert payload["aggregate"]["strength_claim"] is False
+    assert payload["aggregate"]["whole_game_execution_authorized"] is False

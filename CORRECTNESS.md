@@ -9,7 +9,7 @@ retroactively and invalidates every measurement taken after it. Speed
 bugs cost hours; correctness bugs cost weeks and are invisible.
 
 
-### Human-corpus contamination paths (found 2026-08-04 maintenance)
+### Human-corpus contamination paths and repair
 
 Two at once, both silent:
 
@@ -26,6 +26,22 @@ Two at once, both silent:
 The general lesson: a corpus can be corrupted by writes as easily as by bad
 labels, and neither of these announced itself. The `logs/local/` split only
 helps for processes launched after it existed.
+
+The August 9 refresh closed two more silent paths. Fly SFTP refuses to
+overwrite an existing local filename, while the old fetch script swallowed
+that error, so growing production rooms remained stale. The fetcher now stages
+and JSON-validates every remote file, preserves changed local copies, replaces
+them atomically and writes a source-hash manifest. Five of 30 production files
+were stale on the first repaired refresh.
+
+The old human shard builder also caught every replay exception and continued
+without counters, emitted no source/producer/encoder manifest, and ignored
+bury decisions. The versioned builder now publishes only from fully replayed
+and score-matched rounds, counts every rejection, verifies source hashes before
+and after reading, pseudonymizes player grouping, records replay sidecars, and
+captures human buries separately. Its `.npz` remains a behavior/proposal asset:
+coarse final-round return and mixed human skill are not Teacher or strength
+truth.
 
 ## The validation suite — run after ANY change to engine/ or ai/
 
@@ -63,9 +79,9 @@ plain and `SHENGJI_FAST=1` routes required):
   match multiprocessing workers (they appear as bare `python3 -`).
   Always follow with a process-age audit and kill survivors by PID, or
   the old code keeps writing into the live dataset.
-- **Dataset provenance**: every generated dataset carries META.json
-  (ballot family, teacher git SHA, config). Data from an engine state
-  that later proves buggy is quarantined, not silently kept.
+- **Dataset provenance**: every generated dataset binds source bytes, producer,
+  engine/encoder, ballot, target, split and accepted/rejected work. Data from an
+  engine state that later proves buggy is quarantined, not silently kept.
 - **Determinism is a correctness property**: fixed seeds must reproduce
   across processes (PYTHONHASHSEED-independent). Iterating sets/dicts
   where order can influence a choice is a bug even when outputs look
@@ -95,6 +111,16 @@ or report fold that cannot fill its dose returns candidate 0, increments
 failed draw is not itself a protocol failure when the final accepted dose is
 exact and counters reconcile; silently searching fewer worlds is. Report folds
 run on a named stream disjoint from selection, and partial folds never decide.
+
+**Independent draws do not mean unique realized worlds.** Hidden-world folds
+sample with replacement from the posterior. Repeated world identities inside a
+fold, or the same realized world appearing in two domain-separated folds, are
+valid and must retain their probability mass. Candidate actions within one
+fold deliberately share the same sampled worlds for paired comparison;
+selection/report/audit folds use independent RNG streams. Deduplicating
+realized worlds both flattens the posterior and can make a finite-support late
+state underfill despite thousands of successful draws. Telemetry should report
+duplicates and cross-fold identity overlap, never discard them.
 
 The immutable S0 challenge/calibration asset is
 `server/tests/data/s0_override_audit.v1.json` (SHA-256
@@ -245,6 +271,8 @@ safely refused.
 | 08-05 | tractor-lock / one-candidate plays could retain the preceding search record; raw winner could be logged as the played move after a fallback | live observability could explain the wrong action | direct stale-sentinel and server-seam regressions |
 | 08-05 | adaptive search could re-admit a pruned candidate on its frozen noisy mean, strand residual work, and omit disjoint-report work/time from counters | search/action and equal-work correctness | exact-work S0 controls and sanitised incident accounting witness |
 | 08-05 | JSON preserved RNG bytes but decoded tuples as lists that `Random.setstate()` rejects; partial report folds with >=2 worlds could still decide | claimed replay/refusal contract was not executable | exact JSON replay and underfilled-fold regressions |
+| 08-09 | Fly SFTP refused existing filenames while the fetch script swallowed errors; five growing production logs stayed stale locally. Human extraction then silently discarded replay failures and emitted no provenance or bury surface. | corpus freshness / silent data rejection | atomic hash-manifest refresh + fail-closed human-v1 builder |
+| 08-10 | Stage-C label v1 discarded repeated realized hidden worlds within and across independent folds; six shards refused and retained worlds had flattened posterior mass | statistical sampler semantics / terminal no-use labels | iid-v2 with-replacement regression, domain-separated fold RNG and retained-overlap telemetry |
 
 Update this table whenever a correctness incident occurs — the log is
 the argument for the rules.

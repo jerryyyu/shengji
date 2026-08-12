@@ -50,6 +50,18 @@ def _confirmation_closeout() -> dict:
     }
 
 
+def _confirmation_aggregate() -> dict:
+    return {
+        "git_sha": LIVE.RLCB_ORIGINAL_GIT,
+        "complete": True,
+        "decision": "CONFIRM_REPORT_LCB",
+        "formal_confirmation": True,
+        "production_promotion": False,
+        "automatic_deployment": False,
+        "selection_digest": LIVE.RLCB_SELECTION_DIGEST,
+    }
+
+
 def test_exact_live_parent_is_report_lcb_and_never_formal_s0():
     parent = LIVE.expected_parent()
     assert LIVE.parent_problems(parent) == []
@@ -97,6 +109,30 @@ def test_confirmation_reopener_binds_exact_authority_and_sources():
             target = target[key]
         target[path[-1]] = "drift"
         assert LIVE._confirmation_problems(broken)
+
+
+def test_portable_reopener_binds_sealed_authority_not_historical_paths():
+    closeout = _confirmation_closeout()
+    aggregate = _confirmation_aggregate()
+    # Historical absolute paths are authenticated by the fixed closeout hash,
+    # but must not be interpreted as the current execution root on Air.
+    closeout["aggregate"]["path"] = \
+        "/historical/mini/server/runs/logs/rlcb-c1-150m-v1/aggregate.json"
+    closeout["freeze_receipt"]["path"] = \
+        "/historical/mini/server/scripts/rlcb_c1_freeze.v1.json"
+    assert LIVE._portable_confirmation_problems(closeout, aggregate) == []
+
+    for mutation in (
+            lambda c, a: c["aggregate"].__setitem__("decision", "SELECT_NONE"),
+            lambda c, a: c["runtime"].__setitem__(
+                "fast_binary_sha256", "0" * 64),
+            lambda c, a: a.__setitem__("formal_confirmation", False),
+            lambda c, a: a.__setitem__("selection_digest", "0" * 64)):
+        broken_closeout = copy.deepcopy(closeout)
+        broken_aggregate = copy.deepcopy(aggregate)
+        mutation(broken_closeout, broken_aggregate)
+        assert LIVE._portable_confirmation_problems(
+            broken_closeout, broken_aggregate)
 
 
 def test_parent_payload_copy_cannot_mutate_frozen_constants():

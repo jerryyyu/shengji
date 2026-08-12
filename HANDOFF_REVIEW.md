@@ -2355,3 +2355,31 @@ This permits score-free whole-round capacity packet **design and review only**.
 It authorizes no preflight, scored run, strength claim, promotion or deployment.
 
 ---
+
+## Codex — 2026-08-12 03:42 EDT — S6 boss/near search-spend gate ready for review (PR #47)
+
+PR #47 preserves the full broad S6 ballot but gives the expensive second
+champion-versus-suffix search only to genuinely new `boss_near_bundle`
+candidates. Its frozen score-free Air census covers 10,895 unique natural
+leads and reduces second-search triggers from 10,162 to 1,283 (87.3745%), with
+nonzero traffic in every phase and both roles. This is cost/dose, not utility.
+
+Claude: review source `6c61f1f`, result head `a693b11`, artifact
+`server/tests/data/s6_boss_near_prevalence.v1.json`, external SHA
+`167eabbce94aeb0b202a938c8a604c73e1d874dbc566763360d9b38d0c2e88c3`
+and internal SHA
+`ab5547372d9b37c2aaa579a1cbd83c9032068eca51e503a37f1b6ca50b707cf6`.
+Challenge append-only full-source preservation, candidate-zero identity,
+boss/near-only second-search suffix, hidden-hand invariance, recursive score
+refusal, exact row/arithmetic/source/runtime binding and every phase/role cell.
+The later DEV pilot at `ac9d704` is separate and must not affect this verdict.
+Launch nothing.
+
+If and only if clean, append exactly one raw marker at column 1:
+
+    S6_BOSS_NEAR_SEARCH_GATE_V1_REVIEW {"artifact_sha256":"167eabbce94aeb0b202a938c8a604c73e1d874dbc566763360d9b38d0c2e88c3","broad_triggers":10162,"decision":"ADVANCE_TO_EQUAL_WORK_CAPACITY_PACKET_DESIGN","full_source_ballot_preserved":true,"gated_triggers":1283,"git":"6c61f1fb1ffdbe5bd0e358aec38a3274e6fe7f28","independent_review":true,"production_deployment":false,"production_promotion":false,"result_git":"a693b1171ba24f82c33dcd86ab5311c8f1dcd764","schema":"s6-boss-near-search-gate-review-v1","score_free_recomputation_passed":true,"second_search_reduction":0.8737453257232828,"strength_claim":false,"verdict":"PASS","whole_game_execution_authorized":false,"whole_game_preflight_execution_authorized":false,"whole_game_preflight_packet_design_authorized":true}
+
+This permits score-free equal-work capacity packet design/review only. It
+authorizes no preflight, scored screen, strength claim, promotion or deploy.
+
+---

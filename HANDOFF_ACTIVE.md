@@ -10,7 +10,7 @@
 > `docs_archive/handoff-active-through-2026-08-11-10-22.md` and
 > `docs_archive/handoff-review-2026-08-08-through-2026-08-11-10-22.md`.
 
-Last reconciled: 2026-08-12 03:34 EDT.
+Last reconciled: 2026-08-12 03:42 EDT.
 
 ## Immediate objective
 
@@ -25,7 +25,7 @@ shuai-pai sourcing, and pair-aware rollouts.
 |---|---|---|
 | **T4 mid/late Teacher hybrid** | The model may propose one move after trick five; fresh Monte Carlo search still prices it and preserves the live champion as fallback. Its 256-state test passed both the live and same-work-random controls. The sole 2,048-cluster whole-round screen started on Mini at 23:20 EDT. All eight workers remain CPU-bound; shard outcomes are sealed. | Monitor only. After all workers finish, Claude reviews the score-free `supervisor-final.json`; only a PASS permits aggregation and outcome access. The aggregate then needs terminal external review. |
 | **S4 point banking** | Two independent 2,048-cluster runs were directionally positive. A genuinely fresh automatic two-look design now has enough maximum sample to resolve a roughly `+0.03` utility effect instead of repeating an underpowered one-shot. Controller PR #40 is pushed at `3403cdf`. | External controller review. A PASS authorizes exactly one score-free Air preflight and sequential-packet design—not scored execution. |
-| **S6 shuai-pai sourcing** | Public-only early/mid/late sourcing and the champion-anchored equal-work seam are ready at PR #41 / `ea07efa`; all 27 exact-Air tests pass. Broad source prevalence is 93% of leads, while the late exact diagnostic found signal only in boss/near bundles. PR #47 now keeps the entire source ballot visible but gates expensive second search to boss/near: 1,283 versus 10,162 triggers over 10,895 leads, an 87.37% reduction, with every phase/role represented. This is score-free cost evidence. | External v2 packet review still governs the one broad preflight. If broad cost/dose is poor, PR #47 `a693b11` is a concrete narrower fallback for reviewed capacity/equal-work design; it still needs a utility test. |
+| **S6 shuai-pai sourcing** | PR #41's broad Air packet remains ready. PR #47 keeps every S6 action visible but searches only boss/near additions: 1,283 versus 10,162 triggers over 10,895 leads, an 87.37% reduction. Formal gate review is requested. While that review waits, a fixed 32-cluster reusable DEV treatment/null/champion pilot at `ac9d704` is running on Air to learn whether the cost cut retains any whole-round signal. | External v2 packet review governs the broad preflight. Separately review PR #47's gate; its PASS permits narrow capacity-packet design only. The DEV pilot can guide design but cannot authorize strength or deployment. |
 | **Pair-aware rollout** | Both v1 parents passed. Exact endgames were `+9.21875` points (LCB `+6.67570`). PR #46's repaired whole-round v2 packet `ba0bb693…baa0b6` fixes the caught 100-action assumption. The broader public pair-cap PR #48 census is also complete: 192 states, 57 triggered; v1 changed 9 roots, v2 changed 10, with two new changes and one reversion. This is dose, not strength. | Review PR #46 v2 packet for one score-free preflight. Separately review PR #48 source/result; a PASS permits only capacity-packet design for the broader public proof. Natural root changes and power—not internal rollout triggers—decide any scored successor. |
 
 ## Review queue — precise asks
@@ -84,7 +84,7 @@ marker. It permits capacity-packet design only, not execution.
 | host | current use | next authorized use |
 |---|---|---|
 | **Mini** | T4 eight-shard whole-round screen; projected maximum about 45.4 wall hours. | Keep isolated until T4 terminal seal. |
-| **Air** | Free after completing the 192-state score-free pair-cap incremental-dose census in 7.3 minutes. | First reviewed score-free preflight to arrive: S4, S6 or pair-aware. Preflights are short and publish no outcomes. |
+| **Air** | Running the fixed 32-cluster S6 boss/near DEV pilot with four workers; reusable exploration, not sealed evidence. | On completion, first reviewed score-free preflight to arrive: S4, S6 or pair-aware. |
 | **Production** | Release 17, `mc-s0-report-lcb`. | No deploy, restart, room wipe or policy mutation without explicit user approval. |
 
 Do not inspect T4 `shard-*.json`. Process state, CPU, tmux, supervisor console

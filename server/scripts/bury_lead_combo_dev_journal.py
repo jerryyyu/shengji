@@ -30,11 +30,12 @@ sys.path.insert(0, str(SCRIPT.parent))
 
 import bury_lead_combo_exploration as EXPLORE  # noqa: E402
 import bury_lead_combo_population as POPULATION  # noqa: E402
+from shengji.ai import throw_rollout as CONTINUATION  # noqa: E402
 
 
-MANIFEST_SCHEMA = "bury-first-lead-dev-journal-manifest-v1"
-RECORD_SCHEMA = "bury-first-lead-dev-journal-record-v1"
-SUMMARY_SCHEMA = "bury-first-lead-dev-journal-summary-v1"
+MANIFEST_SCHEMA = "bury-first-lead-dev-journal-manifest-v2"
+RECORD_SCHEMA = "bury-first-lead-dev-journal-record-v2"
+SUMMARY_SCHEMA = "bury-first-lead-dev-journal-summary-v2"
 MANIFEST_NAME = "run-manifest.json"
 
 
@@ -126,6 +127,8 @@ def strict_runtime() -> dict:
         "fast_binary_sha256": sha256_file(Path(fast._fast.__file__)),
         "population_source_sha256": sha256_file(Path(POPULATION.__file__)),
         "scorer_source_sha256": sha256_file(Path(EXPLORE.__file__)),
+        "continuation_source_sha256": sha256_file(
+            Path(CONTINUATION.__file__)),
         "journal_source_sha256": sha256_file(SCRIPT),
     }
 
@@ -149,6 +152,7 @@ def expected_manifest(
     attempt_factor: int,
     max_candidate_rollouts: int,
     runtime: Mapping[str, object],
+    continuation_mode: str = "baseline",
 ) -> dict:
     for value, label in (
             (worlds, "worlds"), (attempt_factor, "attempt_factor"),
@@ -158,6 +162,9 @@ def expected_manifest(
     if isinstance(base_seed, bool) or not isinstance(base_seed, int) \
             or base_seed < 0:
         raise ValueError("base_seed must be a nonnegative integer")
+    if continuation_mode not in CONTINUATION.S6_CONTINUATION_MODES:
+        raise ValueError(
+            "continuation_mode must name a bounded S6 continuation mode")
     if POPULATION.selection_problems(selection):
         raise JournalRefused("selection failed exact population validation")
     selection_rows = selection["selection"]["rows"]
@@ -171,6 +178,7 @@ def expected_manifest(
         "base_seed": base_seed,
         "attempt_factor": attempt_factor,
         "max_candidate_rollouts_per_state": max_candidate_rollouts,
+        "continuation_mode": continuation_mode,
         "runtime": dict(runtime),
         "state_rng_recipe": "sha256(state_id,base_seed) first 64 bits",
         "per_state_immutable_journal": True,
@@ -214,7 +222,8 @@ def _record_payload(
         worlds=int(manifest["worlds_per_state"]),
         attempt_factor=int(manifest["attempt_factor"]),
         max_candidate_rollouts=int(
-            manifest["max_candidate_rollouts_per_state"]))
+            manifest["max_candidate_rollouts_per_state"]),
+        continuation_mode=str(manifest["continuation_mode"]))
     payload = {
         "schema": RECORD_SCHEMA,
         "manifest_sha256": stable_digest(manifest),
@@ -282,6 +291,12 @@ def record_problems(
     else:
         if result.get("candidate_count") != selection_row.get("combo_count"):
             problems.append("record candidate count")
+        scoring = result.get("scoring_contract")
+        if (not isinstance(scoring, Mapping)
+                or scoring.get("continuation_mode") !=
+                manifest["continuation_mode"]
+                or scoring.get("recursive_mc_continuation") is not False):
+            problems.append("record continuation contract")
         work = result.get("work")
         if (not isinstance(work, Mapping)
                 or work.get("worlds_requested") !=
@@ -312,6 +327,7 @@ def journal_selection(
     base_seed: int,
     attempt_factor: int = EXPLORE.DEFAULT_ATTEMPT_FACTOR,
     max_candidate_rollouts: int = EXPLORE.DEFAULT_MAX_CANDIDATE_ROLLOUTS,
+    continuation_mode: str = "baseline",
     limit: int | None = None,
     runtime: Mapping[str, object] | None = None,
     scorer: Callable = EXPLORE.score_state,
@@ -330,7 +346,8 @@ def journal_selection(
     manifest = expected_manifest(
         selection, worlds=worlds, base_seed=base_seed,
         attempt_factor=attempt_factor,
-        max_candidate_rollouts=max_candidate_rollouts, runtime=runtime)
+        max_candidate_rollouts=max_candidate_rollouts, runtime=runtime,
+        continuation_mode=continuation_mode)
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = output_dir / MANIFEST_NAME
     if os.path.lexists(manifest_path):
@@ -380,6 +397,7 @@ def journal_selection(
         "new_records": new_records,
         "reused_records": reused_records,
         "status_counts": status_counts,
+        "continuation_mode": continuation_mode,
         "per_state_immutable_journal": True,
         "opened_reusable_dev": True,
         "exploration_only": True,
@@ -417,6 +435,9 @@ def main(argv: list[str] | None = None) -> None:
                        default=EXPLORE.DEFAULT_ATTEMPT_FACTOR)
     score.add_argument("--max-candidate-rollouts", type=int,
                        default=EXPLORE.DEFAULT_MAX_CANDIDATE_ROLLOUTS)
+    score.add_argument("--continuation-mode",
+                       choices=CONTINUATION.S6_CONTINUATION_MODES,
+                       default="baseline")
     score.add_argument("--limit", type=int)
     args = parser.parse_args(argv)
     if args.command == "census":
@@ -427,7 +448,7 @@ def main(argv: list[str] | None = None) -> None:
             selection, Path(args.out_dir), worlds=args.worlds,
             base_seed=args.base_seed, attempt_factor=args.attempt_factor,
             max_candidate_rollouts=args.max_candidate_rollouts,
-            limit=args.limit,
+            continuation_mode=args.continuation_mode, limit=args.limit,
             progress=lambda event: print(
                 json.dumps(event, sort_keys=True), flush=True))
     print(json.dumps(result, sort_keys=True))

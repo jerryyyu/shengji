@@ -59,7 +59,7 @@ EXPECTED_PYTHON_EXECUTABLE = (
     "/Users/jerryyu/.local/share/uv/python/"
     "cpython-3.14.6-macos-aarch64-none/bin/python3.14")
 EXPECTED_FAST_BINARY_SHA256 = (
-    "9c9e77fbdc4c6caceec195465155f37ec6369e409462fd838bc142bf8a0be4c1")
+    "6dbff93ffcafdcb4a56591c4c9e6c29a635e607d252f7a0d54cbf146e97886f9")
 PREFLIGHT_SEED0 = 309_000_000_000
 PREFLIGHT_CLUSTERS = 4
 SCREEN_SEED0 = 310_000_000_000

@@ -43,6 +43,7 @@ def test_first_divergence_handles_equal_prefix_and_length_drift():
 def test_replay_is_explicitly_exploration_only(monkeypatch):
     treatment = {
         "history": [{"seat": 1, "cards": ["C4"]}],
+        "tricks": [],
         "lead_events": [{
             "action_index": 0,
             "s6": {"treatment_override": True},
@@ -52,6 +53,7 @@ def test_replay_is_explicitly_exploration_only(monkeypatch):
     }
     champion = {
         "history": [{"seat": 1, "cards": ["C3"]}],
+        "tricks": [],
         "lead_events": [],
         "winner_team": 1,
         "level_change": 1,

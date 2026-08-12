@@ -103,6 +103,7 @@ def trace_round(label: str, seed: int, flip: int) -> dict:
 
     policy_team = flip
     history = []
+    tricks = []
     lead_events = []
     while rnd.phase == "play":
         seat = rnd.turn
@@ -122,6 +123,20 @@ def trace_round(label: str, seed: int, flip: int) -> dict:
         rnd.play(seat, attempted)
         actual = actual_play_after(rnd, seat, previous_last)
         history.append({"seat": seat, "cards": actual})
+        if rnd.last_trick is not previous_last:
+            trick = rnd.last_trick
+            if trick is None or trick.winner is None:
+                raise ReplayRefused("resolved trick is incomplete")
+            tricks.append({
+                "trick_index": len(tricks),
+                "leader": trick.leader,
+                "plays": [{"seat": play.seat, "cards": list(play.cards)}
+                          for play in trick.plays],
+                "winner": trick.winner,
+                "points": trick.points,
+                "attackers_captured": rnd.is_attacker(trick.winner),
+                "attacker_points_after": rnd.attacker_points,
+            })
         if is_lead and seat % 2 == policy_team:
             incumbent = (decision.get("s6_incumbent_decision")
                          if isinstance(decision, dict) else None)
@@ -156,7 +171,10 @@ def trace_round(label: str, seed: int, flip: int) -> dict:
         "attacker_points": result.attacker_points,
         "winner_team": result.winner_team,
         "level_change": result.level_change,
+        "kitty_points": result.kitty_points,
+        "kitty_cards": result.kitty_cards,
         "history": history,
+        "tricks": tricks,
         "lead_events": lead_events,
     }
 

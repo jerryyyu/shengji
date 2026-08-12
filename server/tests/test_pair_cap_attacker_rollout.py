@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import sys
 from pathlib import Path
 
@@ -15,6 +17,10 @@ from shengji.ai.pair_cap_attacker_rollout import (
 
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
+FROZEN_REPLAY = (
+    Path(__file__).resolve().parent
+    / "data/pair_cap_attacker_gate_replay.v1.json"
+)
 sys.path.insert(0, str(SCRIPTS))
 import pair_cap_attacker_gate_replay as REPLAY  # noqa: E402
 import pair_cap_rollout_incremental_dose as DOSE  # noqa: E402
@@ -74,3 +80,58 @@ def test_replay_refuses_score_fields_and_mutated_parent(tmp_path):
     mutated.write_text("{}")
     with pytest.raises(REPLAY.ReplayRefused, match="input hash drift"):
         REPLAY.run_replay(dose=mutated)
+
+
+def test_frozen_attacker_gate_replay_is_hash_pinned_and_bounded():
+    raw = FROZEN_REPLAY.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == (
+        "c45a5739869345dfbce3845234c0e0c513f3161488c8920e5ba009025abcff88"
+    )
+    payload = json.loads(raw)
+    internal = payload.pop("internal_sha256")
+    assert REPLAY.stable_digest(payload) == internal == (
+        "732be40a4fde7600ddc63055bf884fec35c53320846aeae55494a10f21faf332"
+    )
+    assert payload["git"] == "e692496c74087279fb287b18d3f6934146e71e8c"
+    assert payload["tree_dirty"] is False
+    source_paths = {
+        "replay": SCRIPTS / "pair_cap_attacker_gate_replay.py",
+        "dose_artifact": REPLAY.DEFAULT_DOSE,
+        "dose_script": SCRIPTS / "pair_cap_rollout_incremental_dose.py",
+        "root_replay": SCRIPTS / "pair_cap_rollout_root_audit.py",
+        "attacker_gate": (
+            SCRIPTS.parent / "shengji/ai/pair_cap_attacker_rollout.py"),
+        "pair_cap": SCRIPTS.parent / "shengji/ai/pair_cap_rollout.py",
+        "pair_v1": SCRIPTS.parent / "shengji/ai/pair_aware_rollout.py",
+        "mcbot": SCRIPTS.parent / "shengji/ai/mcbot.py",
+        "round": SCRIPTS.parent / "shengji/engine/round.py",
+    }
+    assert payload["source_sha256s"] == {
+        name: REPLAY.sha256(path) for name, path in source_paths.items()
+    }
+    rows = payload["rows"]
+    assert len(rows) == len({row["state_id"] for row in rows}) == 192
+    assert all(row["pair_cap_dose"]["defender_triggers"] == 0
+               for row in rows)
+    aggregate = payload["aggregate"]
+    assert aggregate["relation_counts"] == {
+        "all_equal": 189,
+        "protects_v1_from_broad_v2": 1,
+        "retains_broad_v2_change": 2,
+    }
+    assert aggregate["changed_parent_root_relations"] == {
+        "447000002:5:2": "v1",
+        "447000005:2:1": "broad_v2",
+        "447000007:6:3": "broad_v2",
+    }
+    assert aggregate["root_changes_vs_null"] == 11
+    assert aggregate["pair_cap_triggered_roots"] == 32
+    assert aggregate["pair_cap_triggers"] == 1419
+    assert payload["score_free"] is True
+    assert payload["outcomes_published"] is False
+    assert payload["exploration_only"] is True
+    assert payload["strength_claim"] is False
+    assert payload["whole_game_execution_authorized"] is False
+    assert payload["production_promotion"] is False
+    assert payload["production_deployment"] is False
+    REPLAY._assert_score_free(payload)

@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-12 05:12 EDT. This file owns current compute and
+Last reconciled: 2026-08-12 05:45 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -9,8 +9,8 @@ compact terminal stubs. Historical detail is archived in
 
 | host | live strength job | health / next use |
 |---|---|---|
-| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; at 05:03 all remained CPU-bound after 5h43m. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
-| **Air** | — | **IDLE / REVIEW-BOUND.** Pair v3 capacity finished once in 503s and the follow-up all-nine selected-root audit finished. S4, S6 and pair scored work remain unauthorized until their distinct raw markers land. |
+| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED.** Eight supervised workers started 23:20 EDT under exact head `c89c871`; at 05:40 all remained CPU-bound after 6h20m. The 2,048-cluster T4 screen may take up to about 45.4 wall hours. No shard outcome may be opened before score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
+| **Air** | — | **IDLE / REVIEW-BOUND.** Pair v3 capacity passed and exact source `cd20670` froze the 7,168-cluster packet (`4ece02b9…ae47`), but it is unadmitted. S4, S6 and pair scored work remain unauthorized until their distinct raw markers land. |
 | **Fly production** | `mc-s0-report-lcb` | Release 17 remains live. No deploy, restart, room wipe or policy change is authorized. |
 
 ## Reviewed queue
@@ -19,12 +19,12 @@ compact terminal stubs. Historical detail is archived in
 |---:|---|---|
 | 1 | S4 future-only sequential preflight | PR #40 head `3403cdf`; controller review pending. A PASS permits one score-free Air preflight and packet design only. |
 | 2 | S6 shuai-pai preflight | PR #41 head `ea07efa`; Air-bound packet v2 review pending. A PASS permits one score-free four-cluster Air preflight only. |
-| 3 | Pair-aware capacity successor | **CAPACITY RESULT REVIEW PENDING.** V3 measured 6/8 natural root changes and projects 2,048 clusters at 143.1 fleet-hours. A PASS opens one powered screen-packet design, never execution. |
+| 3 | Pair-aware powered screen | **PACKET REVIEW PENDING.** Capacity passed; PR #49 packet `4ece02b9…ae47` freezes 7,168 clusters but remains unadmitted. A raw packet marker is required for execution. |
 
-Pair-v3 received and consumed the first exact preflight marker. All three Air
-lanes now wait without touching their scored namespaces. Preflight artifacts
-stay score-free; a later independent packet review is required before any
-scored execution.
+Pair-v3 received and consumed the capacity-result marker to freeze one packet;
+its scored namespace remains untouched. All three Air lanes now wait on exact
+markers. A packet or implementation review never substitutes for later
+execution authority.
 
 ## T4 closeout
 
@@ -42,6 +42,9 @@ outcome-bearing aggregate input.
 
 | date | job | verdict / headline | anchor |
 |---|---|---|---|
+| 08-12 | Pair-aware powered screen packet | **FROZEN / NOT RUNNING:** 7,168 clusters, 8×896, ~84% planning power at `+0.05`; external packet/source review must resolve the capacity-prose ambiguity before execution. | packet `4ece02b9…ae47` / PR #49 `9edadcf` |
+| 08-12 | S6 level-objective audit | **STOP THIS FILTER:** on the exact 300 report worlds, level-bracket scoring kept 5/12 selected throws, still retained the only two-level loss and retained zero wins. A full matched pilot is not justified from this evidence. | artifact `f6478bac…6329` / PR #47 |
+| 08-12 | Pair-aware powered screen implementation | **RUNNABLE SOURCE, FREEZE BLOCKED:** PR #49 implements 7,168 clusters under the reviewed caps with ~84% power at `+0.05`; capacity PASS and then packet review remain mandatory. | PR #49 `cd20670` |
 | 08-12 | Pair-aware v1 selected-root audit | **ENCOURAGING, NOT STRENGTH:** across all nine finite-search v1 changes at 4,096 fresh common worlds, primary level utility favored v1 on 5–6 roots, opposed it on 1–2 and left two unresolved under two continuation models. One points-positive root was level-negative, so points alone are insufficient. | artifact `131a64e…7eaa3` / PR #48 |
 | 08-12 | Pair-aware v3 capacity | **PASS AT PRODUCER / EXTERNAL REVIEW PENDING:** v1 changed 6/8 mirrored natural roots; 2,048 clusters project to 143.1 fleet-hours and 17.9 maximum shard-hours. No utility was published. | result `08f7282c…f7c1` / PR #46 |
 | 08-12 | S6 report-world failure audit | **SAFETY SIGNAL, NO WIN:** 276 full-throw failures across the 12 override folds; zero-failure gating catches the only loss but retains ten neutral all-boss overrides and no positive utility. | artifact `fd1435b9…c966` / PR #47 |

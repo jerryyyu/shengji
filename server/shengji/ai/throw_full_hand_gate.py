@@ -65,10 +65,20 @@ def _gated_bot_class(broad_cls):
             record = self.last_s6_throw_record
             if record is not None:
                 ballot = record.get("ballot") or {"candidates": []}
+                decision = self.last_decision_record or {}
+                probe_candidates = decision.get("candidates") or []
+                if record.get("searched"):
+                    if not probe_candidates:
+                        raise AssertionError(
+                            "searched S6 gate lost its incumbent candidate")
+                    incumbent_played = list(probe_candidates[0])
+                else:
+                    incumbent_played = list(played)
                 record["search_gate"] = FULL_HAND_BOSS_NEAR_GATE
                 record["source_candidate_count"] = len(ballot["candidates"])
                 record["searched_candidate_count"] = max(
                     0, int(record["secondary_candidate_count"]) - 1)
+                record["incumbent_played"] = incumbent_played
                 if self.last_decision_record is not None:
                     self.last_decision_record["s6_throw_sourcing"] = record
             return played

@@ -1,6 +1,8 @@
 """Score-free contracts for the live-champion S6 prevalence census."""
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -11,6 +13,13 @@ import pytest
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import s6_throw_full_hand_champion_census as S  # noqa: E402
+
+
+PRESERVED = (
+    Path(__file__).resolve().parent / "data" /
+    "s6_throw_full_hand_champion_census.v1.json")
+PRESERVED_SHA256 = (
+    "65eacf054f1093e884c1c5705bc16ca7ed7372c05423b89703234b91e3d7bf14")
 
 
 def _shard(index: int, *, git: str = "test") -> dict:
@@ -54,6 +63,19 @@ def test_design_is_bounded_parallel_and_score_free():
     assert S.SHARDS == 8
     assert S.DEALS_PER_SHARD == 64
     assert S.TOTAL_DEALS == 512
+
+
+def test_preserved_champion_census_is_exact_and_score_free():
+    assert hashlib.sha256(PRESERVED.read_bytes()).hexdigest() == \
+        PRESERVED_SHA256
+    payload = json.loads(PRESERVED.read_bytes())
+    assert payload["counts"]["deals"] == 512
+    assert payload["counts"]["leads"] == 9_382
+    assert payload["counts"]["triggered_deals"] == 13
+    assert payload["counts"]["triggered_leads"] == 13
+    assert payload["rates"]["triggered_deals"] == 13 / 512
+    assert payload["rates"]["triggered_leads"] == 13 / 9_382
+    assert S.score_free_problems(payload) == []
 
 
 def test_aggregate_recomputes_complete_disjoint_population():

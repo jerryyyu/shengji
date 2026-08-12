@@ -48,12 +48,37 @@ def test_screen_size_is_powered_from_disclosed_fitting_inputs():
     assert S.SCREEN_CLUSTERS == 7_168
     assert S.SHARD_COUNT == 8
     assert planning["expected_triggered_clusters"] > 120
+    assert planning["heuristic_trajectory_trigger_rate"] == pytest.approx(
+        1_011 / 50_000)
+    assert planning["champion_trajectory_trigger_rate"] == pytest.approx(
+        13 / 512)
+    assert planning["natural_trigger_rate"] == pytest.approx(1_011 / 50_000)
     assert planning["mixture_planning_mean"] == pytest.approx(0.0062002734375)
     assert planning["mixture_planning_sd"] == pytest.approx(
         0.13569923072248874)
     assert planning["mde80_one_sided_95"] == pytest.approx(
         0.003985313221485745)
     assert planning["planning_power_at_fitting_mean"] > 0.98
+
+
+def test_champion_census_is_exact_score_free_and_does_not_inflate_sizing():
+    evidence = S.champion_census_evidence()
+    assert evidence == {
+        "path": "server/tests/data/"
+                "s6_throw_full_hand_champion_census.v1.json",
+        "sha256": S.CHAMPION_CENSUS_SHA256,
+        "policy": "mc-s0-report-lcb",
+        "deals": 512,
+        "leads": 9_382,
+        "triggered_deals": 13,
+        "triggered_leads": 13,
+        "triggered_deal_rate": 13 / 512,
+        "triggered_lead_rate": 13 / 9_382,
+        "score_free": True,
+        "strength_claim": False,
+    }
+    assert S.PREVALENCE_RATE == S.HEURISTIC_PREVALENCE_RATE
+    assert S.CHAMPION_PREVALENCE_RATE > S.PREVALENCE_RATE
 
 
 def test_policy_contract_is_literal_champion_plus_unregistered_gate():
@@ -97,6 +122,7 @@ def test_packet_reconstructs_exactly_and_grants_no_execution(
     packet["internal_sha256"] = internal
     assert packet["proposed_screen"]["clusters"] == 7_168
     assert packet["proposed_screen"]["clusters_per_shard"] == 896
+    assert packet["champion_trajectory_census"]["triggered_deals"] == 13
     assert packet["authority"] == {
         "preflight_execution_authorized": False,
         "screen_packet_design_authorized": False,

@@ -78,7 +78,21 @@ STREAM_STRIDE = 3_000_017
 SAFETY_FACTOR = 2.0
 SCREEN_FLEET_HOUR_CAP = 512.0
 SCREEN_MAX_SHARD_HOUR_CAP = 64.0
-PREVALENCE_RATE = 1_011 / 50_000
+HEURISTIC_PREVALENCE_RATE = 1_011 / 50_000
+CHAMPION_CENSUS_DEALS = 512
+CHAMPION_CENSUS_TRIGGERED_DEALS = 13
+CHAMPION_CENSUS_LEADS = 9_382
+CHAMPION_CENSUS_TRIGGERED_LEADS = 13
+CHAMPION_PREVALENCE_RATE = (
+    CHAMPION_CENSUS_TRIGGERED_DEALS / CHAMPION_CENSUS_DEALS)
+# Keep sizing conservative: the smaller 2.02% rate has much more source-count
+# precision than the bounded 512-round champion census. The champion census is
+# an identity/dose transfer check, not permission to inflate a fitting mean.
+PREVALENCE_RATE = min(HEURISTIC_PREVALENCE_RATE, CHAMPION_PREVALENCE_RATE)
+CHAMPION_CENSUS_PATH = (
+    SERVER / "tests/data/s6_throw_full_hand_champion_census.v1.json")
+CHAMPION_CENSUS_SHA256 = (
+    "65eacf054f1093e884c1c5705bc16ca7ed7372c05423b89703234b91e3d7bf14")
 SELECTOR_CONDITIONAL_MEAN = 0.306640625
 SELECTOR_CONDITIONAL_SECOND_MOMENT = 0.91259765625
 Z_ONE_SIDED_95 = 1.6448536269514722
@@ -120,6 +134,7 @@ def source_paths() -> dict[str, Path]:
         raise ControllerRefused("compiled fast binary is unavailable")
     return {
         "controller": SCRIPT,
+        "champion_census": CHAMPION_CENSUS_PATH,
         "protocol_utility": BASE.SCRIPT,
         "duel_core": CORE.SCRIPT,
         "broad_duel_validator": CORE.BASE.SCRIPT,
@@ -133,6 +148,57 @@ def source_paths() -> dict[str, Path]:
         "game": SERVER / "shengji/engine/game.py",
         "round": SERVER / "shengji/engine/round.py",
         "fast_binary": Path(fast._fast.__file__).resolve(),
+    }
+
+
+def champion_census_evidence() -> dict[str, object]:
+    require_regular_unlinked(
+        CHAMPION_CENSUS_PATH, label="S6 champion-trajectory census")
+    if sha256(CHAMPION_CENSUS_PATH) != CHAMPION_CENSUS_SHA256:
+        raise ControllerRefused("S6 champion census SHA-256 drift")
+    try:
+        payload = json.loads(CHAMPION_CENSUS_PATH.read_bytes())
+    except (OSError, ValueError) as exc:
+        raise ControllerRefused("S6 champion census is unreadable") from exc
+    counts = payload.get("counts") if isinstance(payload, dict) else None
+    rates = payload.get("rates") if isinstance(payload, dict) else None
+    expected_cells = {
+        "attacker:early": 0, "attacker:late": 6, "attacker:mid": 4,
+        "defender:early": 0, "defender:late": 0, "defender:mid": 3,
+    }
+    if (payload.get("schema") !=
+            "s6-throw-full-hand-champion-census-v1"
+            or payload.get("git") !=
+            "d65dd08750c611dd776ba71cc776834d37fd903e"
+            or payload.get("score_free") is not True
+            or payload.get("outcomes_published") is not False
+            or payload.get("strength_claim") is not False
+            or payload.get("whole_game_execution_authorized") is not False
+            or not isinstance(counts, dict)
+            or counts.get("deals") != CHAMPION_CENSUS_DEALS
+            or counts.get("leads") != CHAMPION_CENSUS_LEADS
+            or counts.get("triggered_deals") !=
+            CHAMPION_CENSUS_TRIGGERED_DEALS
+            or counts.get("triggered_leads") !=
+            CHAMPION_CENSUS_TRIGGERED_LEADS
+            or counts.get("cells") != expected_cells
+            or not isinstance(rates, dict)
+            or rates.get("triggered_deals") != CHAMPION_PREVALENCE_RATE
+            or rates.get("triggered_leads") !=
+            CHAMPION_CENSUS_TRIGGERED_LEADS / CHAMPION_CENSUS_LEADS):
+        raise ControllerRefused("S6 champion census contract drift")
+    return {
+        "path": str(CHAMPION_CENSUS_PATH.relative_to(REPO)),
+        "sha256": CHAMPION_CENSUS_SHA256,
+        "policy": payload["design"]["policy"],
+        "deals": counts["deals"],
+        "leads": counts["leads"],
+        "triggered_deals": counts["triggered_deals"],
+        "triggered_leads": counts["triggered_leads"],
+        "triggered_deal_rate": rates["triggered_deals"],
+        "triggered_lead_rate": rates["triggered_leads"],
+        "score_free": True,
+        "strength_claim": False,
     }
 
 
@@ -222,6 +288,11 @@ def planning_values() -> dict[str, float | int]:
     return {
         "screen_clusters": SCREEN_CLUSTERS,
         "natural_trigger_rate": PREVALENCE_RATE,
+        "heuristic_trajectory_trigger_rate": HEURISTIC_PREVALENCE_RATE,
+        "champion_trajectory_trigger_rate": CHAMPION_PREVALENCE_RATE,
+        "champion_trajectory_triggered_deals":
+            CHAMPION_CENSUS_TRIGGERED_DEALS,
+        "champion_trajectory_deals": CHAMPION_CENSUS_DEALS,
         "expected_triggered_clusters": PREVALENCE_RATE * SCREEN_CLUSTERS,
         "conditional_selector_mean": SELECTOR_CONDITIONAL_MEAN,
         "mixture_planning_mean": mean,
@@ -245,6 +316,7 @@ def packet_payload(*, expected_git: str,
         "git": expected_git,
         "selector_git": SELECTOR_GIT,
         "selector_review": review,
+        "champion_trajectory_census": champion_census_evidence(),
         "source_sha256s": source_sha256s(),
         "runtime": require_air_runtime(),
         "policy_contracts": policy_contracts(),
@@ -284,7 +356,9 @@ def packet_payload(*, expected_git: str,
             **planning_values(),
             "basis": (
                 "opened reusable-DEV selector distribution mixed with the "
-                "independent score-free 50,000-deal prevalence rate"),
+                "independent score-free 50,000-deal heuristic prevalence; "
+                "a 512-round literal-champion transfer census was higher, "
+                "so sizing conservatively retains the lower heuristic rate"),
             "planning_only_not_strength_evidence": True,
         },
         "capacity": {

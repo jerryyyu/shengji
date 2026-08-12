@@ -49,15 +49,15 @@ def _load_base_controller():
 _CTRL = _load_base_controller()
 
 _CTRL.CORE = CORE
-_CTRL.SCHEMA = "s4-point-banking-future-c2-recovery-cloud-controller-v1"
-_CTRL.EXIT_SCHEMA = "s4-point-banking-future-c2-recovery-cloud-exit-v1"
-_CTRL.FINAL_SCHEMA = "s4-point-banking-future-c2-recovery-cloud-final-v1"
+_CTRL.SCHEMA = "s4-point-banking-future-c2-recovery-cloud-controller-v2"
+_CTRL.EXIT_SCHEMA = "s4-point-banking-future-c2-recovery-cloud-exit-v2"
+_CTRL.FINAL_SCHEMA = "s4-point-banking-future-c2-recovery-cloud-final-v2"
 _CTRL.PREAUTH_SCHEMA = (
-    "s4-point-banking-future-c2-recovery-tranche2-preauthorization-v1")
+    "s4-point-banking-future-c2-recovery-tranche2-preauthorization-v2")
 _CTRL.RELEASE_SCHEMA = (
-    "s4-point-banking-future-c2-recovery-tranche2-release-v1")
+    "s4-point-banking-future-c2-recovery-tranche2-release-v2")
 _CTRL.CONTROLLER_REVIEW_MARKER = (
-    "S4_POINT_BANKING_FUTURE_C2_RECOVERY_CONTROLLER_V1_REVIEW ")
+    "S4_POINT_BANKING_FUTURE_C2_RECOVERY_CONTROLLER_V2_REVIEW ")
 _CTRL.RUN_ID = CORE.RUN_ID
 _CTRL.NAMESPACE = CORE.NAMESPACE
 _CTRL.RUNNER = RUNNER
@@ -129,7 +129,7 @@ def design_review_evidence(path: Path) -> dict:
 
 def controller_review_claim(config) -> dict:
     return {
-        "schema": "s4-point-banking-future-c2-recovery-controller-review-v1",
+        "schema": "s4-point-banking-future-c2-recovery-controller-review-v2",
         "git": config.expected_git,
         "runner_sha256": config.expected_runner_sha256,
         "controller_sha256": config.expected_controller_sha256,
@@ -145,8 +145,10 @@ def controller_review_claim(config) -> dict:
         "sixteen_shard_contract_verified": True,
         "reused_score_free_capacity_verified": True,
         "failed_launch": CORE.recovery_source_record(),
+        "failed_freeze": CORE.failed_freeze_record(),
         "fresh_recovery_namespace": CORE.RUN_ID,
         "child_boundary_validation_required": True,
+        "runtime_validation_before_first_write": True,
         "new_preflight_authorized": False,
         "packet_freeze_authorized": True,
         "sequential_execution_authorized": False,
@@ -271,6 +273,26 @@ def recovery_source_evidence() -> dict:
     return expected
 
 
+def failed_freeze_evidence() -> dict:
+    """Authenticate the one-file, outcome-free first recovery freeze."""
+    expected = CORE.failed_freeze_record()
+    namespace = _CTRL.ROOT / "server/runs/logs" / CORE.FAILED_FREEZE_RUN_ID
+    if not namespace.is_dir() or namespace.is_symlink():
+        raise _CTRL.SupervisorRefused(
+            "S4 C2 failed-freeze namespace is missing or linked")
+    entries = sorted(path.name for path in namespace.iterdir())
+    if entries != [expected["published_file"]]:
+        raise _CTRL.SupervisorRefused(
+            "S4 C2 failed-freeze namespace is not exactly one file")
+    review = namespace / expected["published_file"]
+    if (not _CTRL.is_regular_unlinked(review)
+            or _CTRL.sha256_file(review) !=
+            expected["review_snapshot_sha256"]):
+        raise _CTRL.SupervisorRefused(
+            "S4 C2 failed-freeze review snapshot drift")
+    return expected
+
+
 C1_SHARD_COUNT = DESIGN.C1.SHARD_COUNT
 _base_packet_contract = _CTRL.packet_contract
 _base_identity_context = _CTRL._identity_context
@@ -287,13 +309,17 @@ def _identity_context(config, paths):
 def packet_contract(config, paths, *, parent: dict, runtime: dict,
                     preflight: dict, design_review: dict,
                     controller_review: dict | None = None,
-                    recovery_source: dict | None = None) -> dict:
+                    recovery_source: dict | None = None,
+                    failed_freeze_source: dict | None = None) -> dict:
     if controller_review != controller_review_claim(config):
         raise _CTRL.SupervisorRefused(
             "S4 C2 controller review did not authorize packet freeze")
     if recovery_source != CORE.recovery_source_record():
         raise _CTRL.SupervisorRefused(
             "S4 C2 failed-launch recovery source drift")
+    if failed_freeze_source != CORE.failed_freeze_record():
+        raise _CTRL.SupervisorRefused(
+            "S4 C2 failed-freeze recovery source drift")
     packet = _base_packet_contract(
         config, paths, parent=parent, runtime=runtime,
         preflight=preflight, design_review=design_review)
@@ -304,6 +330,7 @@ def packet_contract(config, paths, *, parent: dict, runtime: dict,
     }
     packet["new_preflight_run"] = False
     packet["recovery_source"] = recovery_source
+    packet["failed_freeze_source"] = failed_freeze_source
     return packet
 
 
@@ -316,7 +343,8 @@ def _expected_packet(config, paths):
         config, paths, parent=parent, runtime=runtime,
         preflight=capacity_evidence(), design_review=design_review,
         controller_review=controller_review,
-        recovery_source=recovery_source_evidence())
+        recovery_source=recovery_source_evidence(),
+        failed_freeze_source=failed_freeze_evidence())
     return packet, parent, runtime
 
 
@@ -331,6 +359,13 @@ def freeze_packet(config, review_record: Path,
     raw = review_record.read_bytes()
     design_review_evidence(review_record)
     controller_review_evidence(raw, config)
+    # Validate the exact native runtime and both immutable failure sources
+    # before the first durable write. A missing environment flag must not
+    # strand another one-shot namespace.
+    _identity_context(config, paths)
+    capacity_evidence()
+    recovery_source_evidence()
+    failed_freeze_evidence()
     _CTRL._write_bytes_exclusive(paths.design_review_copy, raw)
     packet, _, _ = _expected_packet(config, paths)
     _CTRL._write_json_exclusive(paths.packet, packet)

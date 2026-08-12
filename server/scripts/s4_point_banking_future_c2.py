@@ -21,7 +21,8 @@ BASE_CONTROLLER = SCRIPT.with_name("s4_point_banking_future_cloud.py")
 RUNNER_PATH = Path("server/scripts/s4_point_banking_future_c2.py")
 CONTROLLER_PATH = Path("server/scripts/s4_point_banking_future_cloud_c2.py")
 FAILED_RUN_ID = "s4-point-banking-future-c2-300b-v1"
-RUN_ID = "s4-point-banking-future-c2-300b-recovery-v1"
+FAILED_FREEZE_RUN_ID = "s4-point-banking-future-c2-300b-recovery-v1"
+RUN_ID = "s4-point-banking-future-c2-300b-recovery-v2"
 FAILED_GIT = "6c247b9ec2faa1e3f525adcc7a6803c87afef71a"
 FAILED_PACKET_SHA256 = (
     "83cadbfa4ae5afded36570b38d63d4f4a9e1e8d56580884d00ed8d23805cb205")
@@ -35,6 +36,9 @@ FAILED_CHILD_LOG_SHA256 = (
     "aaf7cb2f2f629eece3f04b28f1352e15dfcb71677343b27e3a4ff8c7fddd5b71")
 FAILED_EXIT_MANIFEST_SHA256 = (
     "3038d7d97fe78ddc2bad2aa334ac9eec5cede3bbe34f73d09424a06bdccd9a53")
+FAILED_FREEZE_GIT = "2448c8d8377cba1ab7ffa4e6d3978987409b020c"
+FAILED_FREEZE_REVIEW_SHA256 = (
+    "9f95587cd125190a6bd6dbf751c9af06e940a0651fd2b1f52ff5b62436ee05e9")
 
 import s4_point_banking_future_design as C1_DESIGN  # noqa: E402
 import s4_point_banking_future_cloud_c2_design as C2_DESIGN  # noqa: E402
@@ -85,21 +89,21 @@ _CORE = _load_base_runtime()
 # sys.modules is never touched.
 _CORE.SCRIPT = SCRIPT
 _CORE.DESIGN = DESIGN
-_CORE.SCHEMA = "s4-point-banking-future-c2-recovery-shard-v1"
+_CORE.SCHEMA = "s4-point-banking-future-c2-recovery-shard-v2"
 _CORE.AGGREGATE_SCHEMA = (
-    "s4-point-banking-future-c2-recovery-aggregate-v1")
+    "s4-point-banking-future-c2-recovery-aggregate-v2")
 _CORE.VALIDATION_SCHEMA = (
-    "s4-point-banking-future-c2-recovery-runtime-validation-v1")
+    "s4-point-banking-future-c2-recovery-runtime-validation-v2")
 _CORE.PACKET_SCHEMA = (
-    "s4-point-banking-future-c2-recovery-cloud-packet-v1")
+    "s4-point-banking-future-c2-recovery-cloud-packet-v2")
 _CORE.PACKET_REVIEW_SCHEMA = (
-    "s4-point-banking-future-c2-recovery-cloud-packet-review-v1")
+    "s4-point-banking-future-c2-recovery-cloud-packet-review-v2")
 _CORE.PACKET_REVIEW_MARKER = (
-    "S4_POINT_BANKING_FUTURE_C2_RECOVERY_PACKET_V1_REVIEW ")
+    "S4_POINT_BANKING_FUTURE_C2_RECOVERY_PACKET_V2_REVIEW ")
 _CORE.ADMISSION_SCHEMA = (
-    "s4-point-banking-future-c2-recovery-cloud-admission-v1")
+    "s4-point-banking-future-c2-recovery-cloud-admission-v2")
 _CORE.RECEIPT_SCHEMA = (
-    "s4-point-banking-future-c2-recovery-cloud-receipt-v1")
+    "s4-point-banking-future-c2-recovery-cloud-receipt-v2")
 _CORE.DESIGN_REVIEW_GIT = (
     "f0c2a6de07b828535d17350c1c3206942175ad45")
 
@@ -114,6 +118,7 @@ _CORE.PACKET_EXTRA_FIELDS = frozenset({
     "implementation_sources",
     "new_preflight_run",
     "recovery_source",
+    "failed_freeze_source",
 })
 _CORE.DESIGN_REVIEW_EXTRA = {"implementation_authorized": True}
 _CORE.SEED0 = C2_DESIGN.SCREEN_SEED0
@@ -135,11 +140,13 @@ _CORE.SHARD_NAMES = tuple(
 _CORE.MAX_PROJECTED_FLEET_HOURS = C2_DESIGN.MAX_PROJECTED_FLEET_HOURS
 _CORE.MAX_PROJECTED_SHARD_HOURS = C2_DESIGN.MAX_PROJECTED_SHARD_HOURS
 _CORE.CLAIM_BOUNDARY = (
-    "One recovery launch of the future-only, fresh-population, two-look "
+    "One second recovery launch of the future-only, fresh-population, two-look "
     "complete-round confirmation of frozen S4 versus exact live report-LCB. "
     "The failed predecessor stopped at child receipt validation before "
     "gameplay and published no outcome, so the same frozen population is "
-    "statistically untouched. The reviewed C1 score-free capacity measurement "
+    "statistically untouched. The first packet-freeze recovery stopped during "
+    "runtime validation before publishing a packet and is not reused. The "
+    "reviewed C1 score-free capacity measurement "
     "is reused only to size 16 physical shards. Matched null is an identity "
     "sentinel. No retry of the failed namespace, resize, promotion, deployment, "
     "or discretionary continuation."
@@ -149,8 +156,10 @@ _CORE.DESIGN_RECORD = json.loads(json.dumps(
 _CORE.DESIGN_RECORD["run_id"] = RUN_ID
 _CORE.DESIGN_RECORD["recovery_contract"] = {
     "failed_run_id": FAILED_RUN_ID,
+    "failed_freeze_run_id": FAILED_FREEZE_RUN_ID,
     "failure_stage": "child-receipt-validation-before-gameplay",
     "failed_outcomes_published": False,
+    "failed_freeze_packet_published": False,
     "same_frozen_population_reused": True,
     "fresh_namespace_required": True,
 }
@@ -181,6 +190,25 @@ def recovery_source_record() -> dict:
     }
 
 
+def failed_freeze_record() -> dict:
+    return {
+        "schema": "s4-point-banking-future-c2-failed-freeze-v1",
+        "failed_run_id": FAILED_FREEZE_RUN_ID,
+        "failed_git": FAILED_FREEZE_GIT,
+        "review_snapshot_sha256": FAILED_FREEZE_REVIEW_SHA256,
+        "published_file_count": 1,
+        "published_file": "design-review-record.txt",
+        "packet_published": False,
+        "admission_published": False,
+        "receipt_published": False,
+        "workers_started": False,
+        "outcomes_published": False,
+        "failure_stage": "controller-runtime-validation-before-packet",
+        "old_namespace_retry_authorized": False,
+        "same_frozen_population_statistically_unopened": True,
+    }
+
+
 def packet_profile_problems(packet: dict, *, expected_git: str,
                             receipt: dict,
                             current_runtime: dict) -> list[str]:
@@ -190,7 +218,7 @@ def packet_profile_problems(packet: dict, *, expected_git: str,
         "base_controller_sha256": _CORE.sha256(BASE_CONTROLLER),
     }
     expected_review = {
-        "schema": "s4-point-banking-future-c2-recovery-controller-review-v1",
+        "schema": "s4-point-banking-future-c2-recovery-controller-review-v2",
         "git": expected_git,
         "runner_sha256": _CORE.sha256(SCRIPT),
         "controller_sha256": receipt["controller_sha256"],
@@ -206,8 +234,10 @@ def packet_profile_problems(packet: dict, *, expected_git: str,
         "sixteen_shard_contract_verified": True,
         "reused_score_free_capacity_verified": True,
         "failed_launch": recovery_source_record(),
+        "failed_freeze": failed_freeze_record(),
         "fresh_recovery_namespace": RUN_ID,
         "child_boundary_validation_required": True,
+        "runtime_validation_before_first_write": True,
         "new_preflight_authorized": False,
         "packet_freeze_authorized": True,
         "sequential_execution_authorized": False,
@@ -225,6 +255,8 @@ def packet_profile_problems(packet: dict, *, expected_git: str,
         problems.append("C2 packet authorizes a new preflight")
     if packet.get("recovery_source") != recovery_source_record():
         problems.append("C2 failed-launch recovery source drift")
+    if packet.get("failed_freeze_source") != failed_freeze_record():
+        problems.append("C2 failed-freeze recovery source drift")
     return problems
 
 

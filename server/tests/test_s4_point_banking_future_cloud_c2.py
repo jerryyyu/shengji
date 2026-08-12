@@ -5,6 +5,7 @@ import copy
 import hashlib
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -40,7 +41,8 @@ def test_import_does_not_mutate_closed_c1_protocol():
     assert C1.RUN_ID == C1_RUN_ID
     assert C1.SHARD_COUNT == C1_SHARDS == 8
     assert CORE.FAILED_RUN_ID == DESIGN.RUN_ID
-    assert CORE.RUN_ID.endswith("-recovery-v1")
+    assert CORE.FAILED_FREEZE_RUN_ID.endswith("-recovery-v1")
+    assert CORE.RUN_ID.endswith("-recovery-v2")
     assert CORE.SHARD_COUNT == 16
 
 
@@ -98,8 +100,10 @@ def test_controller_claim_authorizes_freeze_but_no_run():
     assert claim["expected_python"] == "3.14.4"
     assert claim["expected_fast_binary_sha256"] == CTRL.EXPECTED_FAST_SHA256
     assert claim["failed_launch"] == CORE.recovery_source_record()
+    assert claim["failed_freeze"] == CORE.failed_freeze_record()
     assert claim["fresh_recovery_namespace"] == CORE.RUN_ID
     assert claim["child_boundary_validation_required"] is True
+    assert claim["runtime_validation_before_first_write"] is True
 
 
 def test_review_markers_are_exact_raw_singletons():
@@ -168,12 +172,14 @@ def test_packet_contract_binds_reused_sources_and_review():
         preflight=CTRL.capacity_evidence(),
         design_review={"sha256": "d" * 64},
         controller_review=controller,
-        recovery_source=CORE.recovery_source_record())
+        recovery_source=CORE.recovery_source_record(),
+        failed_freeze_source=CORE.failed_freeze_record())
     assert packet["schema"] == CORE.PACKET_SCHEMA
     assert packet["schedule"]["shard_count"] == 16
     assert packet["controller_implementation_review"] == controller
     assert packet["new_preflight_run"] is False
     assert packet["recovery_source"] == CORE.recovery_source_record()
+    assert packet["failed_freeze_source"] == CORE.failed_freeze_record()
     assert packet["sequential_launch_authorized"] is False
     assert packet["implementation_sources"] == {
         "base_runner_sha256": CTRL.sha256_file(CORE.BASE_RUNNER),
@@ -184,7 +190,8 @@ def test_packet_contract_binds_reused_sources_and_review():
             config, paths, parent={}, runtime={},
             preflight=CTRL.capacity_evidence(), design_review={},
             controller_review=None,
-            recovery_source=CORE.recovery_source_record())
+            recovery_source=CORE.recovery_source_record(),
+            failed_freeze_source=CORE.failed_freeze_record())
 
 
 def test_preflight_retry_is_not_reachable():
@@ -206,6 +213,49 @@ def test_review_claim_pins_reused_implementation_sources():
         CTRL.BASE_CONTROLLER)
     assert len(claim["runner_sha256"]) == 64
     assert len(claim["controller_sha256"]) == 64
+
+
+def test_freeze_validates_runtime_before_first_namespace_write(
+        tmp_path, monkeypatch):
+    config = _config()
+    review = tmp_path / "combined-review.md"
+    review.write_bytes(
+        _raw(CTRL.DESIGN_REVIEW_MARKER, CTRL.design_review_claim())
+        + _raw(CTRL.CONTROLLER_REVIEW_MARKER,
+               CTRL.controller_review_claim(config)))
+    namespace = tmp_path / "fresh-recovery"
+    paths = replace(
+        CTRL.paths_for(),
+        namespace=namespace,
+        design_review_copy=namespace / "design-review-record.txt",
+        packet=namespace / "launch_packet.json",
+    )
+    monkeypatch.setattr(CTRL._CTRL, "paths_for", lambda: paths)
+
+    def refuse_runtime(_config, _paths):
+        raise CTRL.SupervisorRefused("runtime refused before write")
+
+    monkeypatch.setattr(CTRL, "_identity_context", refuse_runtime)
+    with pytest.raises(CTRL.SupervisorRefused, match="before write"):
+        CTRL.freeze_packet(
+            config, review, hashlib.sha256(review.read_bytes()).hexdigest())
+    assert not namespace.exists()
+
+
+def test_failed_freeze_evidence_requires_exactly_the_review_snapshot(
+        tmp_path, monkeypatch):
+    raw = b"immutable review snapshot\n"
+    digest = hashlib.sha256(raw).hexdigest()
+    monkeypatch.setattr(CORE, "FAILED_FREEZE_REVIEW_SHA256", digest)
+    monkeypatch.setattr(CTRL._CTRL, "ROOT", tmp_path)
+    namespace = (
+        tmp_path / "server/runs/logs" / CORE.FAILED_FREEZE_RUN_ID)
+    namespace.mkdir(parents=True)
+    (namespace / "design-review-record.txt").write_bytes(raw)
+    assert CTRL.failed_freeze_evidence() == CORE.failed_freeze_record()
+    (namespace / "launch_packet.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(CTRL.SupervisorRefused, match="exactly one file"):
+        CTRL.failed_freeze_evidence()
 
 
 def test_child_receipt_reopens_the_exact_c2_packet(tmp_path, monkeypatch):
@@ -243,6 +293,7 @@ def test_child_receipt_reopens_the_exact_c2_packet(tmp_path, monkeypatch):
         design_review=design_review,
         controller_review=CTRL.controller_review_claim(config),
         recovery_source=CORE.recovery_source_record(),
+        failed_freeze_source=CORE.failed_freeze_record(),
     )
     packet_path = namespace / "launch_packet.json"
     packet_path.write_text(json.dumps(packet, sort_keys=True), encoding="utf-8")

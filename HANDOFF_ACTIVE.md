@@ -9,16 +9,16 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 16:20 EDT from canonical main `35e0cae`.
+Last reconciled: 2026-08-13 16:45 EDT from canonical main `37374f9`.
 
 ## Live fleet
 
 | host | current work | safe progress and next boundary |
 |---|---|---|
-| **Mini** | T4 mid/late Teacher whole-round screen | Six workers remain CPU-bound and two shards have sealed terminally. Champion checkpoints are (400,500,400,500,400,300,300,100). Heartbeat lower bound: 11,192/12,288 = 91.08%; 2/8 terminal. Worker cutoff remains about 20:46:27 EDT. Keep Mini uncontended. |
-| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Three shards are 384/896 and five are 368/896: 2,992/7,168 = 41.74%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
-| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | All 16 workers are live and CPU-bound. Reviewed score-free lower bound: 2,661/8,192 = 32.48%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. |
-| **Performance Cloud** | Review-gated PR #89 and PR #94; no execution live | PR #89 V4 was admitted once, ran its first base child, then refused before raw publication because Python `-I` ignored the no-bytecode environment setting; no result exists, its evidence is preserved and V4 never retries. Fresh V5 source `603f1db` adds explicit `-B`, fresh seeds/namespace and is CI-green awaiting source review. PR #94 packet `6489d9b8…b9983` still awaits packet review; admission/records/final remain absent. PR #93 remains a reviewed over-cap negative with its admission spent. |
+| **Mini** | T4 mid/late Teacher whole-round screen | Three workers remain CPU-bound and five shards have sealed terminally. Champion checkpoints are (500,500,500,500,500,400,400,200). Heartbeat lower bound: 11,692/12,288 = 95.15%; 5/8 terminal. Worker cutoff remains about 20:46:27 EDT. Keep Mini uncontended. |
+| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Six shards are 384/896 and two are 368/896: 3,040/7,168 = 42.41%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
+| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | All 16 workers are live and CPU-bound. Reviewed score-free lower bound: 2,702/8,192 = 32.98%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. |
+| **Performance Cloud** | Review-gated PR #89 and PR #94; no execution live | PR #89 V4 remains spent after its fail-closed bytecode refusal. V5 source `603f1db` PASSed at canonical `37374f9`; fresh design `3800aecb…aa38`, native builds and closed pre-arm rehearsal are frozen under new paths, with evidence/review/unit still absent pending exact-design review. PR #94 packet `6489d9b8…b9983` still awaits packet review; admission/records/final remain absent. PR #93 remains a reviewed over-cap negative with its admission spent. |
 | **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 
 ## Current review and implementation queue
@@ -29,8 +29,10 @@ Last reconciled: 2026-08-13 16:20 EDT from canonical main `35e0cae`.
    `PYTHONDONTWRITEBYTECODE`. The closure check prevented raw/result publication.
    Exact V5 head `603f1db` uses `-I -B -P`, fresh disjoint seeds and a new
    namespace; 50 focused and 87 broader tests pass in pure and strict-compiled
-   modes, with CI green. Await exact source PASS, then freeze and separately
-   review a fresh host design. V2r1/V3/V4 never restart.
+   modes, with CI green. Source PASS is canonical at `37374f9`. Fresh host
+   design `3800aecb…aa38` and rehearsal manifest `af4129f1…5119f` reopen
+   exactly; evidence, review record and unit invocation remain absent. Await
+   exact-design `PASS_TO_RUN_THIS_DESIGN_ONLY`. V2r1/V3/V4 never restart.
 2. **S6 scored-DEV PR #94.** Claude exact-head PASSed test-only `0dd8f11` at
    canonical `3b4752b`; 12/12 guards are pinned and the full chain passes
    100/100 pure plus 100/100 strict x86. Host packet `6489d9b8…b9983`

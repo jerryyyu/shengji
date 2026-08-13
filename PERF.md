@@ -135,35 +135,33 @@ evaluation.
 
 Prepared-world PR #77 head `0381081` validates each accepted determinized
 world once, then gives every candidate fresh non-aliased hand lists. Six fresh
-exact-head x86 pairs measured `116.392s -> 113.338s`: **2.62% lower wall time**
-and **2.69% higher throughput**, with normalized decisions, RNG, sampler/work
-counters and transcripts identical. The earlier 3.37% nine-pair number mixed
-two code revisions and is retired. The larger trick-state-cache prototype is
-rejected. Its initial gain relied on append-only/stable-order assumptions that
-the public mutable dataclasses and copying contracts do not guarantee; the
-fingerprint/order/pickle-safe repair was **10.56% slower** over six fresh
+exact-head x86 pairs measured `116.391565s -> 113.338140s`: **2.6234% lower
+wall time**, **2.6941% higher throughput** and a **1.5066%** one-sided lower
+bound, with normalized decisions, RNG, sampler/work counters and transcripts
+identical. That missed the preregistered **3% retention gate**, so PR #77 is
+not retained as-is. The earlier 3.37% nine-pair number mixed two code revisions
+and is retired. The larger trick-state-cache prototype is also rejected: its
+safe fingerprint/order/pickle repair was **10.56% slower** over six fresh
 normalized full rounds, every pair slower.
 
-PR #81 head `c6c7126`, stacked on #77, follows the next exact profile rather
-than the stale pre-compiled ranking. It compiles the common single/pair/tractor
-paths of heuristic cheapest-winner selection while retaining Python's existing
-shape selector for rare multi-component throws and falling back to pure Python
-for malformed or out-of-domain public incumbent values. Six fresh balanced
-report-LCB rounds measured `121.310s -> 111.932s`: **7.73% lower wall time**
-with a paired one-sided 95% lower bound of **6.25%**. Counting rollout-lead
-pairs once per hand instead of once per suit then measured
-`60.491s -> 58.064s` over three fresh pairs: **4.01% incremental reduction**
-with lower bound **3.29%**. Every normalized gameplay, search, RNG and sampler
-artifact matched byte-for-byte; raw bundles and validators are retained for
-external review. These are performance-only measurements: #81 authorizes no
+PR #81 head `c6c7126` contains two candidates that cleared their own retain
+thresholds but is stacked on rejected PR #77. Native cheapest-winner selection
+measured **7.7306% lower wall time** with a paired one-sided lower bound of
+**6.2489%**. Counting rollout-lead pairs once per hand measured **4.0124%
+incremental reduction** with a **3.2857%** lower bound. Every normalized
+gameplay, search, RNG and sampler artifact matched byte-for-byte. Preserve the
+two candidates, not the current stack: split and rebase them onto the accepted
+PR #71/#75 path, then remeasure that exact composition. The percentages come
+from different baselines and must not be added. PR #81 authorizes no merge,
 deployment, policy change or substitution into a sealed strength run.
 
 The first native-lead prototype head `0bd073c` could segfault on a malformed
 negative seat even though ordinary gameplay parity passed. Repaired source
 `8e698e` restores the Python boundary and passes 31 ARM plus 30 x86
 boundary/parity cases; an independent adversarial audit also passed. One
-ordinary exploratory three-pair exact-final A/B then measured **10.2014% lower
-aggregate wall time** and **11.3603% higher throughput**, with normalized
+ordinary exploratory three-pair exact-final A/B measured
+`40.7905s -> 36.6293s`: **10.2014% lower aggregate wall time**, **11.3603%
+higher throughput** and a **9.22594%** one-sided lower bound, with normalized
 gameplay, search work, RNG and sampler records matching exactly. The result is
 published in stacked draft PR #83 head `69ff44e`, whose CI is green.
 
@@ -184,27 +182,27 @@ one-off experiment controllers.
 | # | gap | fix | est. win | status |
 |---|---|---|---|---|
 | 1 | Memory rebuilt per decision (historical profile) | incremental Memory carried through rollouts | `<0.1%` for current champion | rejected for report-LCB: 179 constructions were only 0.073–0.078% of x86/ARM round time; reconsider only if a Memory-aware rollout becomes active |
-| 2 | Python policy hot loop after compiled phases 0-2 | externally review PR #81's native cheapest-winner and one-count lead composition plus stacked native-lead PR #83 | measured 7.73% plus 4.01% incremental for #81; one exploratory repaired-head batch measured 10.2014% lower wall time for #83 | candidate; normalized semantics matched exactly, but #83's owner-writable remote evidence has no immutable manifest and remains exploratory |
+| 2 | Python policy hot loop after compiled phases 0-2 | split/rebase PR #81's retained native-winner and one-Counter candidates onto PR #71/#75, then remeasure; keep PR #83 exploratory | #81 measured 7.7306% and a separate 4.0124% incremental reduction on the rejected #77 stack; #83 measured 10.2014% in one exploratory batch | candidate; do not add cross-baseline gains, and #83's owner-writable remote evidence has no immutable manifest |
 | 3 | string cards and list hands still cross every compiled call | convert once per rollout; compile `Round.play`/trick resolution | remaining path toward 10-20x | open; keep strings at public boundaries |
 | 4 | Round/Trick clone churn per rollout (3.8k clones/round) | reusable scratch state | ~1.1x | open |
 | 5 | multi-room capacity is not measured | concurrent-room latency/load gate | product reliability | open |
 | 6 | feature flags mix exact `"1"` checks with string truthiness | version and centralize boolean parsing | evidence correctness | open; until then unset flags for false—`=0` is unsafe |
 | 7 | rollouts always play to round end | early-terminate decided brackets | speculative and potentially biased | parked behind a strength/correctness gate |
 | 8 | strength-compute ceiling | rented 16-vCPU x86 strength Cloud worker | roughly doubles the local 16-slot fleet, zero policy change | active; currently owns S4 |
-| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | live; native-lead measurement is complete and awaiting review in PR #83. Pair V3's sole score-free capacity result PASSed at canonical `16af447`; scored-packet design alone is open and the host has no scored execution or strength authority |
+| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | idle; PR #77 missed retention, PR #81 candidates await rebase/remeasurement and PR #83 remains exploratory. Pair V3's sole score-free capacity result PASSed at canonical `16af447`; PR #86 design review grants no scored execution or strength authority |
 | 10 | Rust/PyO3 full engine core | 30-100x; wasm client bonus | large | parked; requires a 10k-seed two-engine parity harness |
 
 ## Plan (sequencing)
 
-1. Complete adversarial review of PR #81 head `c6c7126` and its raw native and
-   incremental bundles, together with underlying compatibility PR #75
-   `90c5630` and prepared-world PR #77 `0381081`. Merge only exact reviewed
-   pieces; PR #71 remains their reviewed base.
-2. Externally review stacked draft PR #83 head `69ff44e`: reproduce the repaired
-   malformed-input boundary and exact normalized semantics, and keep its single
-   ordinary three-pair measurement explicitly exploratory because the remote
-   raw files remain owner-writable and lack an immutable manifest.
-3. After merge review, profile the exact accepted stack again. Do not infer the
+1. Retire PR #77 `0381081` as-is after its exact result missed the 3% retain
+   gate. Split PR #81 `c6c7126` into its two retained candidates, rebase them
+   onto the accepted PR #71/#75 path and remeasure the exact composition.
+2. Review PR #83 `69ff44e` as semantics and implementation evidence only. Keep
+   its three-pair estimate exploratory because the remote raw files remain
+   owner-writable and lack an immutable manifest; any retained implementation
+   must follow the accepted/rebased parent stack.
+3. After exact-stack remeasurement and review, profile the accepted stack
+   again. Do not infer the
    next hotspot from the old profile or from leaf microbenchmarks that bypass
    today's compiled globals.
 4. Consider moving int-card conversion to the rollout boundary and compiling

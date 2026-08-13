@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-13 06:41 EDT. This file owns current compute and
+Last reconciled: 2026-08-13 07:46 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -9,10 +9,10 @@ compact terminal stubs. Historical detail is archived in
 
 | host | live job | health / next use |
 |---|---|---|
-| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED; 0 TERMINAL; KNIFE-EDGE CUTOFF.** Safe counter-only progress is `6,296/12,288` sequential arm-rounds (51.24%): treatment is complete, six matched-null shards report 300/512 and two report 200/512. All eight workers are healthy at roughly 97–99% CPU. The post-null champion arm remains knife-edge against the 20:46 cutoff, and its first checkpoint is decisive. Monitor only: no tests or competing Mini work. Outcomes remain sealed until score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
-| **Air** | `pair-aware-whole-round-screen-v3` | **HEALTHY / SATURATED; 0 TERMINAL; SUBSTANTIVE TIMEOUT RISK.** All eight workers are alive; the safe detailed floor remains `240/896` clusters per shard (1,920/7,168, 26.79%) with sealed outcomes. At 10.98 clusters/hour per shard, completion projects around Aug 15 16:58 EDT versus the Aug 14 23:29 timeout; bundled arms provide no fast tail, so completion needs about 41% acceleration. Detached S6 queue `s6-preflight-queue-v2` sleeps until the pair supervisor seals, publishes its score-free final and releases every worker. Draft contingency PR #85 head `59119b6` passes 27 tests and CI but grants no execution, retry or extension authority. Do not inspect outcome-bearing shard JSON. |
-| **Cloud** | `s4-point-banking-future-c2-360b-v1` | **HEALTHY / SATURATED; 0 TERMINAL.** Reviewed score-free look-one progress is `5,915/8,192` clusters (72.20%), with all 16 workers healthy and shards at 363–376/512. No shard outcome or efficacy statistic has been opened. tmux: `s4-c2-360b-launch-queue-v2`. |
-| **Performance Cloud** | Pair V3 score-free capacity reviewed; native-lead PR #83 result complete | **NO ACTIVE PAIR WORK / NO STRENGTH AUTHORITY.** Pair V3's one authorized score-free preflight completed in 157.535 seconds wall / 182.430 seconds CPU with a 543.1 MB peak; no Pair partial or worker remains. Claude independently PASSed the result at canonical `16af447`, opening scored-packet design only. Freeze, run, scoring, REPORT, strength, training, promotion and deployment remain closed. Separately, repaired native-lead PR #83 measured 10.2014% lower wall time in one exploratory exact-final batch; its owner-writable raw evidence lacks an immutable manifest. Nothing here is a strength, deploy or scored-run authority. |
+| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED; 0 TERMINAL; KNIFE-EDGE CUTOFF.** Safe counter-only progress is `6,396/12,288` sequential arm-rounds (52.05%): treatment is complete, seven matched-null shards report 300/512 and one reports 200/512. The slow null tail projects near 16:59 EDT; the champion must then average no more than 26.7 seconds per cluster before the 20:46 child deadline. Monitor only: no tests or competing Mini work. Outcomes remain sealed until score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
+| **Air** | `pair-aware-whole-round-screen-v3` | **HEALTHY / SATURATED; 0 TERMINAL; SUBSTANTIVE TIMEOUT RISK.** All eight workers are alive; reviewed score-free progress is `2,064/7,168` clusters (28.79%) with sealed outcomes. Current pace remains on a substantive timeout trajectory. Detached S6 queue `s6-preflight-queue-v2` sleeps until the pair supervisor seals, publishes its score-free final and releases every worker. Design-only contingency PR #85 head `111314f` PASSed external review but grants no capacity screen, replacement launch, retry or extension authority. Do not inspect outcome-bearing shard JSON. |
+| **Cloud** | `s4-point-banking-future-c2-360b-v1` | **HEALTHY / SATURATED; 0 TERMINAL.** Reviewed score-free look-one progress is `6,187/8,192` clusters (75.52%), with all 16 workers healthy. No shard outcome or efficacy statistic has been opened. The reviewed controller stops or continues automatically at look one. tmux: `s4-c2-360b-launch-queue-v2`. |
+| **Performance Cloud** | Pair V3 controller-design review; performance candidates waiting | **IDLE / NO STRENGTH AUTHORITY.** Pair V3 design-only PR #86 `a43a17c` PASSed externally at canonical `fe6eb3b`, opening only a future controller-design review; implementation, freeze, run, scoring, REPORT and every strength/deploy authority remain closed. Performance PR #77 missed its 3% retain gate. PR #81's two candidates need a split/rebase onto PR #71/#75 and exact-stack remeasurement; PR #83's 10.2014% estimate remains exploratory because its raw evidence is owner-writable and lacks an immutable manifest. |
 | **Fly production** | `mc-s0-report-lcb` | Release 18 / image `kitty-xray-b5a35ae` is healthy. This is the release-17 runtime plus PR #11 kitty X-ray only; no policy changed. Rollback runtime remains release 17 / `latency-cd6789e`. |
 
 ## Reviewed queue
@@ -20,7 +20,7 @@ compact terminal stubs. Historical detail is archived in
 | order | job | current gate |
 |---:|---|---|
 | 1 | Selective S6 shuai-pai preflight | **AIR AUTHORIZED / DURABLY QUEUED; MINI FALLBACK CLOSED.** Claude's 12:10 PASS permits one four-cluster score-free Air preflight from packet `19f3b2a3…79dd0`. Exact runtime/packet verification passed at 17:19; detached queue `s6-preflight-queue-v2` is fail-closed on pair supervisor final, worker absence and unused S6 targets. Draft PR #65 and its remote branch were closed without a packet or run. |
-| 2 | Pair affected-state scored-packet design | **RESULT PASS / DESIGN ONLY OPEN.** Claude ran final read-only PR #84 head `f571146` against the exact result-review CLI and four falsifications, then appended raw marker `PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW` at canonical `16af447`. This opens design of a scored packet only—not freeze, execution, scoring, REPORT, strength, training, promotion or deployment. |
+| 2 | Pair affected-state controller design | **SCORED DESIGN EXTERNALLY PASSed / CONTROLLER DESIGN ONLY OPEN.** Claude PASSed PR #86 exact head `a43a17c` at canonical `fe6eb3b`; 73 focused and 177 chain tests pass, with a canonical-ref ancestry negative fixture requested. It grants no packet implementation/freeze/run, evidence access, scoring, REPORT, aggregation, retry, strength, training, promotion or deployment authority. |
 | 3 | Attacker-gated pair-cap incremental control | **EXTERNAL ACTION-SEMANTICS PASS / CAPACITY DESIGN UNDERWAY.** Claude PASSed PR #69 `ca1913f` at 22:36. A three-arm incremental/matched-v1/literal-champion capacity design is being built; no packet or gameplay authority exists. |
 
 Pair-aware v3 owns Air and has no retry or extension authority. Every old S4 C2
@@ -31,10 +31,11 @@ implementation review never substitutes for its named later authority.
 
 ## T4 closeout
 
-Read-only closeout helper PR #80 repaired the internal HOLD at exact head
-`9c896e2`; 17 focused tests and CI pass, and external review is pending. It has
-no launch, aggregation, scoring or live-run authority and does not block
-natural T4 computation.
+Read-only closeout helper PR #80 exact head `e61975c` PASSed external review
+and is merged on main. Its 22/22 tests pass both plain and under
+`SHENGJI_FAST=1`, including aggregate-binding, supervisor-final TOCTOU and
+sealed-shard drift refusals. It has no launch, aggregation, scoring or live-run
+authority and does not block natural T4 computation.
 
 1. Supervisor and eight shards finish naturally; no retry or resize.
 2. External reviewer authenticates the score-free supervisor final.

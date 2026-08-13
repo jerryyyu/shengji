@@ -24,7 +24,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-13 06:41 EDT
+## Current synthesis — 2026-08-13 07:46 EDT
 
 Exact terminal numbers and SHAs live in the canonical table in
 `AI_POLICIES.md`; `BACKLOG.md` owns live order and `JOBS.md` owns machines.
@@ -55,9 +55,10 @@ This section keeps only the research conclusions that change what we try next.
   reusable diagnostic source. Any recovery needs a newly authorized namespace.
   None is yet a new strength claim; S3a's broader bury recipe remains closed.
 - **Pair understanding:** the broad continuation screen is running on Air.
-  Draft PR #85 exact head `59119b6` is a CI-green, 27-test checkpointed
-  successor design for terminal timeout contingency only; it grants no run,
-  retry, extension or result authority. The attacker-only incremental
+  PR #85 exact head `111314f` PASSed external design-only review with 40 tests.
+  It is a checkpointed successor for terminal timeout contingency only and grants no
+  capacity screen, replacement launch, retry, extension or result authority.
+  The attacker-only incremental
   semantics passed external review and await a capacity decision. Pair-ballot
   PR #72's defender-only, cross-Python-stable
   capacity design PASSed external review. Claude then PASSed PR #79's repaired
@@ -71,40 +72,41 @@ This section keeps only the research conclusions that change what we try next.
   `f571146f631914eb6899ce435ef466d70d9f9330` then passed Claude's exact CLI
   reproduction and four falsifications under raw marker
   `PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW` at canonical
-  `16af447`. Prevalence remains SmartBot-trajectory rather than
-  champion-natural dose, so only scored-packet design is open; freeze,
-  execution, scoring, REPORT and every strength or deployment claim remain
-  closed.
+  `16af447`. Declarative build-and-verify-only design PR #86 exact head
+  `a43a17c` PASSed external design-only review at canonical `fe6eb3b`, opening
+  only a future controller-design review. Prevalence remains SmartBot-trajectory
+  rather than champion-natural dose; implementation, freeze, execution,
+  evidence access, scoring, REPORT, aggregation and every strength or deployment
+  claim remain closed.
 - **Learned/RL routes:** V11 direct-v2, Direct-Q, Suphx O0/O0-v2 and the first
   Stage-C model all selected none under different gates. This does not close
   RL. It says the next experiment must change data, objective, credit or model
   use—not merely train longer on the same target.
 - **Human evidence:** `human_v8` contains 2,830 plays and 45 buries. H0's one
   counterfactual run completed 555/557 rows and correctly published no
-  aggregate. Score-free PR #82 exact head `a498bf5` passes 30 focused plus 64
-  adjacent tests and CI; it reproduces the underlying geometry—12 legal live
+  aggregate. Score-free PR #82 exact head `a498bf5` PASSed external review; it
+  reproduces the underlying geometry—12 legal live
   choices versus three generic analyzer choices on each refused throw—and
-  replaces cardinality with direct legality without reopening scores. Human
+  replaces cardinality with direct legality without reopening scores. Before
+  downstream reuse, add the requested test pinning the whole declarative
+  authority map. Human
   actions remain candidate and diagnosis sources; ultimate people strength
   requires the separate blinded HUMAN-C1 ladder.
 - **Endgames:** S3b's four-card exact rollout exceeded its frozen node cap.
   S3c restarts at naturally reached one-, two- and three-card roots. One-card is
   mechanics-only; two-card is the first meaningful action-selection problem.
 - **Throughput:** the unrelated Cython `_current_winner` path was slower and is
-  dropped. Pair-count pruning reduced matched x86/ARM whole-round time by
-  roughly 12–16%; prepared-world PR #77 added 2.62%. On that exact stack,
-  performance-only PR #81 `c6c7126` measured 7.73% lower wall time from native
-  cheapest-winner selection, then another 4.01% incrementally by counting lead
-  pairs once per hand. Normalized gameplay, search, RNG and sampler artifacts
-  were byte-identical. A later native-lead prototype exposed a malformed-seat
-  segfault at `0bd073c`; repaired source `8e698e` passes 31 ARM and 30 x86
-  boundary/parity tests plus an independent adversarial audit. One ordinary
-  exact-final three-pair batch measured 10.2014% lower wall time and 11.3603%
-  higher throughput with exact normalized behavior; stacked draft PR #83 head
-  `69ff44e` is CI-green. Its raw remote evidence is owner-writable and has no
-  immutable manifest, though the committed receipt hash-pins the observed
-  artifacts. This is exploratory performance-only evidence, not strength,
-  merge or deployment authority, and nothing enters a sealed run.
+  dropped. PR #77 `0381081` measured 2.6234% lower wall time with a 1.5066%
+  one-sided lower bound, missing its preregistered 3% retain gate; do not retain
+  it as-is. On that rejected stack, PR #81 `c6c7126` measured 7.7306% lower
+  wall time (lower bound 6.2489%) for native cheapest-winner selection and a
+  separate 4.0124% incremental reduction (lower bound 3.2857%) from one-Counter
+  lead composition, with exact normalized semantics. Split those candidates,
+  rebase them onto PR #71/#75 and remeasure; do not add cross-baseline gains.
+  PR #83 `69ff44e` measured 10.2014% lower wall time over three exploratory
+  pairs, but its raw artifacts are owner-writable and lack an immutable
+  manifest. Nothing is merged, deployed or substituted into a sealed run, and
+  the performance host is idle.
 
 ### Decisions that survive
 
@@ -422,11 +424,12 @@ chain is closed and only PR #70's reusable diagnostic source remains.
   Final read-only PR #84 exact head `f571146f631914eb6899ce435ef466d70d9f9330`
   passed the exact result-review CLI and four falsifications; raw marker
   `PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW` is canonical at
-  `16af447`. That PASS opens scored-packet design only. SmartBot-trajectory
+  `16af447`. Design-only PR #86 `a43a17c` then PASSed at canonical `fe6eb3b`,
+  opening a future controller-design review only. SmartBot-trajectory
   prevalence still must be replaced by champion-natural dose before
-  whole-round inference. The parent stack also waits for a narrow exact-head
-  merge review of PR #55 `24b421d`; packet freeze, scored execution and every
-  downstream claim remain unauthorized.
+  whole-round inference. PR #55 `24b421d` PASSed merge-readiness, so the exact
+  #55→#60→#61→#72 stack may merge only in order; packet implementation/freeze,
+  scored execution and every downstream claim remain unauthorized.
 - **S3c exact-root curriculum** is the new operational hypothesis, not an S3b
   retry. S3b-v2 is terminal after its first four-card treatment cluster
   exceeded the frozen cumulative 250k-node budget. Start from naturally
@@ -567,9 +570,9 @@ easier decisions. The runtime therefore withheld every aggregate utility. The
 exact stream is closed; it neither supports a human/V11 Teacher rule nor proves
 those proposals are weak. Score-free PR #82 exact head `a498bf5` is the bounded
 repair: it reproduces both 12-live/3-analysis geometries, validates the full
-live menu directly through the engine, closes source/refusal schemas, passes
-30 focused plus 64 adjacent tests and CI, and cannot score, read old utilities,
-train, launch or promote. It still needs adversarial review
+live menu directly through the engine, closes source/refusal schemas, and
+cannot score, read old utilities, train, launch or promote. Exact head
+`a498bf5` PASSed external review; add the requested whole-authority-map fixture
 before any separately authorized opened-DEV prevalidation. A future scored H0
 successor must validate all candidate geometry first and use a new
 population/world stream; this scientific direction is not closed.

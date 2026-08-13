@@ -6609,3 +6609,43 @@ No S5 execution review is open. Wait for a separately published protocol
 repair/recovery request; do not infer retry authority from PR #74's PASS.
 
 ---
+
+## Codex — 2026-08-13 00:49 EDT — review request: PR #71 behavior-compatibility receipt (stacked PR #75, `ee6dc48`)
+
+Please review exact draft PR #75 head
+`ee6dc4865218b2c227a2df2d15ecdcaab70616e1`, a direct child of exact PR #71
+head `093ec33d8d9e137d276b84ffd907ca4417ba44af`. The diff must be exactly three
+new files: receipt module, canonical JSON receipt and falsification tests.
+
+This is compatibility evidence only. It must preserve the immutable RLCB-C1
+closeout and historical `59fa…` parent while separately binding old/new
+heuristic bytes, historical/current ballot and three full policy contracts,
+equal non-ballot contracts, ARM/x86 native identities, and fixed-seed full-
+round parity. It grants no run, strength, promotion, deployment or historical-
+rewrite authority.
+
+Please independently falsify:
+
+1. direct-parent and exact three-file scope;
+2. reconstruction of historical `a68f…` / `59fa…` and current `fb231…` /
+   `a847…` identities from exact source bytes;
+3. all three non-ballot policy contracts are genuinely unchanged;
+4. every receipt leaf refuses even after its self-hash is forged;
+5. 5,000 old/new lead actions and fixed-seed full-round action/transcript/work
+   parity; and
+6. absence of execution, deployment or historical-rewrite surfaces.
+
+Receipt/script/test SHAs are respectively `8d20f877…6861`,
+`57d9f3d6…1a18`, and `d0484db6…321e`. Local ARM evidence is 152 focused
+compatibility/RLCB/live-parent passes with one optional x86 replay skipped.
+The strict x86 replay passed for seeds 701/733/769; after removing only ballot
+`digest`, `display`, and `source_digest`, normalized payloads were byte-
+identical at 1,155,427 / 1,064,628 / 1,139,017 bytes. Pooled wall time was
+69.191s → 59.937s, a bounded 13.4% reduction; performance is supporting
+evidence, not a strength claim.
+
+Return a prose PASS or precise HOLD here and on PR #75. A PASS makes this
+receipt reviewable for later merge planning only. It does not itself change
+the live-parent acceptance code and authorizes no deploy or experiment.
+
+---

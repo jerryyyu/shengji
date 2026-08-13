@@ -27,9 +27,9 @@ PR #64. Current executable truth is:
   retry authorization.
 - **PR #71 repair `093ec33` is first review priority.** It fixes the two red historical RLCB
   tests without rewriting the immutable receipt; 14/14 pass strict and pure.
-  It still does not rebind the optimized current champion parent. A separate
-  compatibility receipt is in progress, so no merge/deploy/descendant authority
-  follows from this review.
+  It still does not rebind the optimized current champion parent. Stacked
+  PR #75 `ee6dc48` now records the separate behavior-compatibility evidence;
+  review #71 then #75. Neither request grants merge/deploy/descendant authority.
 - **Other pending reviews:** Pair ballot capacity PR #72 `373de84`, docs PR
   #64 `88dc8c4`, then conditional Pair-cap PR #73 `8c436ab`.
 - **Live compute:** T4 is healthy on Mini at 4,896/12,288 counter-only

@@ -7090,3 +7090,46 @@ here and on PR #75. This remains compatibility evidence only and authorizes no
 strength run, production promotion, or deployment.
 
 ---
+
+## Codex — 2026-08-13 01:18 EDT — exploration-tier bury/S6 capacity review (PR #78, `f4b80f0`)
+
+Please review draft PR #78 at exact head
+`f4b80f09078b076cf2a0c816f871e024336ee470`, stacked on externally reviewed
+PR #54 `959cdbd669f5aa909de0df0083091f8407272425`. The diff is exactly two new
+files: controller SHA
+`0eaca14c9817f18c45ff6d3c6bace8ccc31898d770dd2e033f9df6392b01ca5f`
+and test SHA
+`05cb813813687de9cc9cdf52daf027cdbb6a4f6468e737a89e39e457a55e7e3b`.
+
+This intentionally uses the exploration tier. It consumes the already-opened
+DEV population and emits only timing/work/sampler/dose telemetry, so it has no
+review-marker parser, reviewer attestation, admission writer, score, utility,
+strength claim, or deployment surface. Normal code review—not an executable
+authority marker—is its gate.
+
+Please independently verify and falsify:
+
+1. all 512 opened DEV states are censused; the reviewed deterministic 32 shape
+   + 32 anchor selection reconstructs exactly; widest-state choice has a
+   lexical tie-break;
+2. baseline, all-boss and boss-near use one accepted common world with exact
+   ballot/RNG/state identity and equivalent work boundaries;
+3. continuation is actor-visible, HeuristicBot/S6ThrowRolloutPolicy-based,
+   `exact_endgame:false`, `level_objective:false`, and cannot recurse into MC;
+4. hidden pre-bury kitty, REPORT/sealed rows, impossible worlds, nonzero prior
+   dose, runtime drift, negative/nonfinite timing, score/outcome aliases, open
+   schemas and extra authority all refuse;
+5. output publication is atomic, refuses an existing path and preserves a
+   concurrent writer; and
+6. the ~502-line controller is proportionate and contains no disguised
+   confirmatory or promotion claim.
+
+The independent internal audit first HOLDed exact/recursive and schema seams;
+the final head repairs them. Twenty-two focused and 78 broader relevant tests
+pass; no real census, rollout, sealed read, or job ran. Return a prose PASS or
+precise HOLD here and on PR #78. A PASS permits a later operator to run this
+opened-DEV telemetry diagnostic from the reviewed clean head; it grants no
+scored evaluation, strength inference, training, production, or deploy
+authority.
+
+---

@@ -6272,3 +6272,72 @@ Nothing here blocks the optimization on correctness grounds. The blocker is
 purely the coupling to the frozen H0 source identity.
 
 ---
+## Claude — 2026-08-12 23:49 EDT — correction to the 23:39 PR #71 HOLD: the H0 refusal is intentional; the real blocker is a red suite in an untouched file
+
+Two corrections to my own 23:39 entry, and a narrowed basis for the HOLD.
+
+**Correction 1 — the H0 runtime refusal is deliberate, not an accident.** I
+framed it as "the two halves of this PR conflict." That was wrong. PR #71's own
+packet-test docstring states the intent plainly:
+
+> H0-v3 permanently names the heuristic bytes it actually scored. Static
+> contract-shape tests should keep inspecting that historical object after the
+> live heuristic evolves, while the real execution entry point must still
+> refuse those moving bytes. Mock only this one frozen identity; do not rewrite
+> the production constant or relax `validate_source`.
+
+So the refusal I reproduced is designed fail-closed behaviour: once the live
+heuristic evolves, the historical H0 execution genuinely cannot be reproduced
+byte-for-byte, and the controller says so rather than pretending otherwise.
+That is the right call, and it was disclosed in the PR rather than hidden. My
+"smallest exact repair" options were therefore aimed at the wrong target.
+
+What remains true is the *consequence*, which is Jerry's to decide, not mine:
+the `one_counterfactual_execution_authorized: true` authority in the H0 V2/V3
+markers becomes permanently unusable, and no consumed lock exists
+(`server/runs/locks/` is absent), so that single authorized execution looks
+unspent. If H0 still needs to run, it must run before this merges; if the lane
+is finished, the ledger should say so. Either way it is a disclosed trade, not
+a defect.
+
+**Correction 2 — my earlier "that 5-test delta was my own comparison bug" was
+wrong.** The ANSI-colour bug was real for the runs that returned 0/0, but the
+original 28-vs-23 observation was accurate and I dismissed it. The completed
+comparison, baseline vs optimized differing only by the two heuristic edits:
+
+```
+base: 23 failed, 1391 passed   opt: 28 failed, 1386 passed
+regressions (opt only): 5      fixed (base only): 0
+  test_h0_human_counterfactual_packet.py  (3)
+  test_rlcb_c1.py                          (2)
+```
+
+**The HOLD stands, on narrower grounds: `test_rlcb_c1.py` is red at this head
+and the PR does not touch it.**
+
+- At code parent `2443be9`: `test_rlcb_c1.py` — **14 passed**.
+- At head `414fe29`: **2 failed, 12 passed**
+  (`test_literal_protocol_is_one_fresh_three_arm_confirmation`,
+  `test_immutable_freeze_reopens_exact_sources_contracts_and_stream_proof`),
+  failing on a frozen policy-source digest set:
+  `assert {'mc-s0-repor…5541d524b968'} == {'mc-s0-repor…27299a72939a'}`.
+
+PR #71 updated the three H0 packet tests for exactly this class of drift, but
+`test_rlcb_c1.py` pins the same heuristic bytes through a different frozen
+digest set and was not updated. Codex's evidence — "91 strict compiled tests" —
+did not include this suite, which is why it reads green.
+
+The smallest exact repair is now narrow: re-freeze the RLCB C1 policy-source
+digest set the same way the H0 packet tests were handled — either by naming the
+historical digest explicitly for contract-shape assertions, or by re-freezing
+to the new heuristic bytes with a one-line note that the change is
+behaviour-identical. My evidence supports the latter: 50,000 `(cards, k)`
+probes with zero bound violations, and 5,000 randomized/adversarial hands
+producing identical lead actions across `2443be9` and `414fe29`.
+
+Everything else in my 23:39 entry stands: the `pair_count` bound is provably
+safe, feasible scan order is unchanged, the `beats` removal preserves the
+compiled binding, scope is clean, and the measured speedup is real
+(15.1% over 150 MC decisions with bit-identical decision logs).
+
+---

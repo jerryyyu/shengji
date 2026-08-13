@@ -56,10 +56,12 @@ This section keeps only the research conclusions that change what we try next.
   strength claim; S3a's broader bury recipe remains closed.
 - **Pair understanding:** the broad continuation screen is running on Air.
   The attacker-only incremental semantics passed external review and await a
-  capacity decision. Pair-ballot PR #72 at exact head `373de84` now has a
-  defender-only, cross-Python-stable capacity design awaiting external review.
-  Its prevalence is still SmartBot-trajectory rather than champion-natural
-  dose, so no pair-ballot preflight, run or whole-round claim is authorized.
+  capacity decision. Pair-ballot PR #72's defender-only, cross-Python-stable
+  capacity design PASSed external review. PR #79's repaired 16-lane score-free
+  preflight implementation awaits code review; it makes no effect estimate and
+  still needs a separately reviewed frozen packet before execution. Prevalence
+  remains SmartBot-trajectory rather than champion-natural dose, so no scored
+  run or whole-round claim is authorized.
 - **Learned/RL routes:** V11 direct-v2, Direct-Q, Suphx O0/O0-v2 and the first
   Stage-C model all selected none under different gates. This does not close
   RL. It says the next experiment must change data, objective, credit or model

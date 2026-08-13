@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-13 01:26 EDT. This file owns current compute and
+Last reconciled: 2026-08-13 02:03 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -11,7 +11,7 @@ compact terminal stubs. Historical detail is archived in
 |---|---|---|
 | **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED; 0 TERMINAL.** Reviewed counter-only progress is `4,896/12,288` sequential arm-rounds (39.8%). Outcomes remain sealed until score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
 | **Air** | `pair-aware-whole-round-screen-v3` | **HEALTHY / SATURATED.** All eight shards are at `160/896`. Detached S6 queue `s6-preflight-queue-v2` is sleeping until the pair supervisor seals, publishes its score-free final and releases every worker. Do not inspect outcome-bearing shard JSON. |
-| **Cloud** | `s4-point-banking-future-c2-360b-v1` | **HEALTHY / SATURATED.** Look one is at `3,132/8,192` clusters (`38.2%`; 192–200/512 per shard). No shard outcome or efficacy statistic has been opened. tmux: `s4-c2-360b-launch-queue-v2`. |
+| **Cloud** | `s4-point-banking-future-c2-360b-v1` | **HEALTHY / SATURATED.** Look one is at `3,325/8,192` clusters (`40.6%`; 203–212/512 per shard). No shard outcome or efficacy statistic has been opened. tmux: `s4-c2-360b-launch-queue-v2`. |
 | **Performance Cloud** | bounded performance engineering | **AVAILABLE / PERFORMANCE-ONLY.** Corrected compatibility receipt PR #75 `90c5630` and prepared-world PR #77 `0381081` await external review. The latter measured 2.62% lower wall time across six fresh exact-head pairs with normalized semantics unchanged; the older 3.37% mixed-revision claim is retired. Trick-state caching is rejected after a safe repair ran 10.56% slower. Incremental Memory is also rejected for this champion: construction is only 0.073–0.078% of round time because its rollouts use HeuristicBot. Next use is a fresh exact-stack profile. S5 cannot use this host because its admission is spent. |
 | **Fly production** | `mc-s0-report-lcb` | Release 18 / image `kitty-xray-b5a35ae` is healthy. This is the release-17 runtime plus PR #11 kitty X-ray only; no policy changed. Rollback runtime remains release 17 / `latency-cd6789e`. |
 
@@ -20,7 +20,7 @@ compact terminal stubs. Historical detail is archived in
 | order | job | current gate |
 |---:|---|---|
 | 1 | Selective S6 shuai-pai preflight | **AIR AUTHORIZED / DURABLY QUEUED; MINI FALLBACK CLOSED.** Claude's 12:10 PASS permits one four-cluster score-free Air preflight from packet `19f3b2a3…79dd0`. Exact runtime/packet verification passed at 17:19; detached queue `s6-preflight-queue-v2` is fail-closed on pair supervisor final, worker absence and unused S6 targets. Draft PR #65 and its remote branch were closed without a packet or run. |
-| 2 | Pair affected-state capacity design | **INTERNAL PASS / EXTERNAL REVIEW PENDING.** PR #61's artifact/evaluator PASSed at 21:53. Draft PR #72 at exact head `373de84` excludes the lone attacker, combines the 1,023 defender rows over 990 deal clusters, binds exact membership/weights, and labels its source dose as SmartBot-only. Python 3.11/3.12/3.14 reproduce byte-identical design bytes after the `math.fsum` repair. No preflight or run is authorized. |
+| 2 | Pair affected-state capacity preflight | **DESIGN EXTERNAL PASS / IMPLEMENTATION REVIEW PENDING.** PR #72 `373de84` PASSed at main `d6db827`. PR #79 `6461c66` implements a 16-lane concurrent score-free preflight with canonical review provenance and systemd worker ownership; 83 tests pass. No packet has been frozen and no preflight or scored run is authorized. |
 | 3 | Attacker-gated pair-cap incremental control | **EXTERNAL ACTION-SEMANTICS PASS / CAPACITY DESIGN UNDERWAY.** Claude PASSed PR #69 `ca1913f` at 22:36. A three-arm incremental/matched-v1/literal-champion capacity design is being built; no packet or gameplay authority exists. |
 | 4 | S5 defensive point-protection diagnostic | **OPERATIONAL HOLD / OLD ONE-SHOT SPENT.** PR #70 and PR #74 portability PASSed scientifically, but PR #74's request template self-authorized a 41.7-second partial attempt and consumed the admission without a result. PR #76 `e285f47` now permanently refuses the spent run and binds the canonical admission path; it awaits validation-only review. `retry_authorized:false`; never reuse the old queue/path. A separately reviewed fresh recovery namespace would still be required before any diagnostic. |
 

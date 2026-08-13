@@ -837,7 +837,7 @@ def test_activate_routes_everything_and_deactivate_restores():
         before = {(m.__name__, a): getattr(m, a) for m, a in tracked}
         assert not any(compiled(v) for v in before.values())
         pure_methods = {a: getattr(HeuristicBot, a)
-                        for a in ("_lowest", "_forced_follow",
+                        for a in ("_lowest", "_forced_follow", "_lead",
                                   "_cheapest_winning")}
 
         fast.activate()
@@ -847,6 +847,7 @@ def test_activate_routes_everything_and_deactivate_restores():
         assert not unrouted, f"activate() missed: {unrouted}"
         assert HeuristicBot._lowest is fast._lowest_fast
         assert HeuristicBot._forced_follow is fast._forced_follow_fast
+        assert HeuristicBot._lead is fast._lead_fast
         assert HeuristicBot._cheapest_winning is fast._cheapest_winning_fast
         # a name bound AFTER activation must see the compiled function too
         late = types.ModuleType("late_import_probe")

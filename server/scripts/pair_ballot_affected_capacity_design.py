@@ -198,11 +198,14 @@ def _planning_sensitivity(*, band_weights: dict[str, float],
         cluster_weights[deal_seed] = cluster_weights.get(deal_seed, 0.0) + (
             band_weights[row["band"]] / counts[row["band"]])
     if (len(cluster_weights) != DEFENDER_DEAL_CLUSTERS
-            or not math.isclose(sum(cluster_weights.values()), 1.0,
+            or not math.isclose(math.fsum(cluster_weights.values()), 1.0,
                                 abs_tol=1e-12)):
         raise CapacityDesignRefused("defender planning cluster drift")
-    variance_factor = sum(weight * weight
-                          for weight in cluster_weights.values())
+    # ``sum`` changed its floating-point reduction in CPython 3.12.  These
+    # values enter the canonical design hash, so use a stable accurate
+    # reduction across every supported Python >=3.11 runtime.
+    variance_factor = math.fsum(
+        weight * weight for weight in cluster_weights.values())
     effective_clusters = 1.0 / variance_factor
     planning_se = PLANNING_CLUSTER_SD * math.sqrt(variance_factor)
     mde = (Z_ALPHA + Z_POWER) * planning_se

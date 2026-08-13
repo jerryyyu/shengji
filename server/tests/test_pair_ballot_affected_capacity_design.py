@@ -142,13 +142,15 @@ def test_full_dev_calib_schedule_is_fixed_and_adequately_powered(
                for lane in design["schedule"]["lanes"])
     assert design["work"]["max_candidate_world_rollouts_per_state"] == 2_940
     assert design["work"]["max_candidate_world_rollouts_total"] == 3_010_560
-    assert design["power"]["mde_at_target_power"] == pytest.approx(
-        0.040889289223836306)
+    assert design["power"]["mde_at_target_power"] \
+        == 0.040889289223836306
     assert design["power"]["state_rows"] == 1_023
     assert design["power"]["independent_deal_clusters"] == 990
     assert design["power"]["effective_clusters_under_band_weights"] \
-        == pytest.approx(924.8524611365071)
-    assert design["power"]["power_at_worthwhile_effect"] > 0.9
+        == 924.8524611365071
+    assert design["power"]["planning_se"] == 0.016441209981438
+    assert design["power"]["power_at_worthwhile_effect"] \
+        == 0.9186636345219327
     assert design["power"]["adequately_powered_at_worthwhile_effect"] is True
     assert design["scope"] == {
         "defender_states": 1_023,

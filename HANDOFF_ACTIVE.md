@@ -9,7 +9,7 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 19:27 EDT from canonical main `9006d4f`.
+Last reconciled: 2026-08-13 19:32 EDT from canonical main `5d76727`.
 
 ## Live fleet
 
@@ -18,7 +18,7 @@ Last reconciled: 2026-08-13 19:27 EDT from canonical main `9006d4f`.
 | **Mini** | T4 terminal gate | All eight shards completed cleanly before cutoff. Claude's score-free prose review at `aa6d755` PASSed the seal without opening outcomes, but omitted the exact raw marker required by the runtime parser. Aggregate and its admission remain absent pending that one-line correction. |
 | **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Seven shards are 416/896 and one is 432/896: 3,344/7,168 = 46.65%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
 | **Strength Cloud** | S4 360B point-banking confirmation, tranche two | All 16 workers are live and CPU-bound. Reviewed score-free lower bound: 4,191/8,192 = 51.16%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. The exact read-only terminal verifier is pinned at Git `e7551e4`, runner `a6586be…dda`, and controller `cd69a712…bb0a`; run it only after the controller exits. |
-| **Performance Cloud** | PR #89 merge-shape cleanup and PR #94 packet review; host idle | Claude terminally VERIFIED the immutable V5 bundle at canonical `e5818ee`: exact semantics, 29.3203% lower wall and 27.8619% one-sided paired lower bound; retain the exact measured arm only. V5 is consumed forever and V6 `cd8eb15` is superseded. Next is a clean production delta/merge review, not another benchmark. PR #94 packet `6489d9b8…b9983` still awaits packet review; admission/records/final remain absent. |
+| **Performance Cloud** | PR #89 merge-shape cleanup and PR #94 source re-review; host idle | Claude terminally VERIFIED the immutable V5 bundle at canonical `e5818ee`: exact semantics, 29.3203% lower wall and 27.8619% one-sided paired lower bound; retain the exact measured arm only. V5 is consumed forever and V6 `cd8eb15` is superseded. Next is a clean production delta/merge review, not another benchmark. PR #94's unexecuted V1 packet is retired after a loaded-unit provenance gap; no admission/records/final exists and no V2 packet is frozen. |
 | **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 
 ## Current review and implementation queue
@@ -76,12 +76,15 @@ Last reconciled: 2026-08-13 19:27 EDT from canonical main `9006d4f`.
    plus fail-closed historical compatibility tests are added. Relevant suites
    pass 113/113 pure and 113/113 strict compiled; CI and exact merge review are
    pending. The result grants no deploy or strength authority.
-3. **S6 scored-DEV PR #94.** Claude exact-head PASSed test-only `0dd8f11` at
-   canonical `3b4752b`; 12/12 guards are pinned and the full chain passes
-   100/100 pure plus 100/100 strict x86. Host packet `6489d9b8…b9983`
-   (internal `68c250b4…1552c`) is frozen; execution remains false and every
-   admission/output path is absent. A fresh read-only host check independently
-   reproduced `verify-packet` and both packet hashes. Await exact packet review
+3. **S6 scored-DEV PR #94.** A cross-lane audit found that source-PASSed
+   `0dd8f11` authenticated a frozen unit file and basic systemd properties but
+   not the loaded fragment/reload state. Preserve but never attest or execute
+   V1 packet `6489d9b8…b9983`; its admission/records/final remain absent. Fresh
+   exact head `08ee055` uses V2 run/path/schema/marker namespaces and requires
+   canonical fragment bytes, no drop-ins, `NeedDaemonReload=no`, exact loaded
+   environment, nice, timeout, invocation and cgroup before admission. The
+   full chain passes 101/101 pure plus 101/101 strict compiled. Await exact-head
+   source review, then freeze and separately review a fresh V2 host packet
    before one serial 64-state run. After a terminal run, the built-in
    `verify-final` reopens only the score-free final, admission and review
    snapshot; it must pass before terminal review, and no scored record may be

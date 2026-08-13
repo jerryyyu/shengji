@@ -7380,3 +7380,81 @@ same care that retired the S5 queue should apply to test children on a host
 owning a live screen.
 
 ---
+## Claude — 2026-08-13 04:43 EDT — ✅ PASS: frozen Pair V3 capacity preflight packet (`6461c660`); ONE score-free preflight authorized
+
+Reviewed on `shengji-perf` (`ubuntu-32gb-hel1-2`, x86_64, 16 cores, py3.14.4)
+per the utilization-critical ask. The host was idle at load 0.10 throughout.
+
+**Every bound input re-derived on the host, not taken from prose:**
+
+- worktree at exact `6461c660e1ff71a905d9010b12c0adfc4e8bc729`, clean;
+- population `6a3f8d9d5317db642b6fae75…` — the same formal artifact I
+  authenticated for PR #61 — with all **16** source receipts present;
+- design `be21b547659e49399dbaf7ea…` — the artifact I rebuilt byte-for-byte
+  for PR #72 under three interpreters;
+- packet `e054c5e582c1e665da9bc8ab…` and internal
+  `25b1888c62ff772c18e065b30a7bfcc2d724c645f5ad054c4e6823dfd56a14b5`;
+- bound native engine `45323eaf7d074c663089a2bc…` equals the worktree's
+  `_fast.cpython-314-x86_64-linux-gnu.so`, and `runtime.cpu_count` is 16 on a
+  16-core host.
+
+**The controller's `verify` path re-run by me:**
+`{"packet_internal_sha256":"25b1888c…","packet_sha256":"e054c5e5…","verified":true}`.
+
+**Falsifications, all refusing:**
+
+| probe | result |
+|---|---|
+| wrong `--expected-packet-sha256` | `preflight packet SHA-256 drift` |
+| wrong `--expected-git` | `packet differs from reconstruction` |
+| population substituted with a shard file | `formal population file digest drift` |
+
+**Authority is closed.** The packet sets
+`one_score_free_preflight_execution_authorized: false` with scored-packet,
+scored-evaluation, REPORT, strength, training, promotion and deployment all
+false; only `capacity_result_review_authorized` is true. As with PR #72, the
+artifact cannot grant itself execution — this marker does, and only for one
+score-free preflight.
+
+**Where the runtime gate actually lives — worth recording.** `verify` passed
+for me with `SHENGJI_FAST` unset. That is correct rather than a defect:
+`verify_command` is a *document* check (reconstruct the packet, re-derive the
+internal hash), so a reviewer can authenticate a packet from any host.
+Enforcement sits in `run_command`, which requires exact clean git, canonical
+admission and result paths, `require_regular_unlinked` on the design-review
+snapshot, byte-equality of that snapshot against the canonical marker,
+`require_qualified_runtime() != packet["runtime"]` → *"execution runtime differs
+from packet"*, `require_systemd_scope()`, and a `canonical_review_record` bound
+to an explicit `--packet-review-commit`. I checked the separation before
+reporting it, because "verify ignores the runtime" reads like a hole and is not
+one.
+
+**One operational finding on the host.** `/var/crash` holds an apport report
+dated 07:58:02 UTC for this exact script. It is **not** an unauthorized run: the
+recorded `ProcCmdline` is the `verify` subcommand, and it died at import with
+`ModuleNotFoundError: No module named 'shengji'` because it was invoked as bare
+`/usr/bin/python3.14` with no venv or `PYTHONPATH`. Nothing was written — the
+namespace still holds exactly two files, `controller-packet.json` and
+`design-review-snapshot.md`, with no result, admission or consumed slot
+anywhere.
+
+Two things follow. First, any earlier "verify passed" claim resting on that
+invocation verified nothing — it failed before importing the module under test,
+which is the masked-refusal pattern. Mine ran under
+`/opt/shengji-perf/server/.venv/bin/python` with `PYTHONPATH` set and genuinely
+reached the logic. Second, the packet records
+`runtime.python_executable = /usr/bin/python3.14`, the interpreter that cannot
+import `shengji` on this host. `run_command` compares
+`require_qualified_runtime()` to the whole `packet["runtime"]` mapping, so if a
+future execution qualifies under a different interpreter path it will refuse on
+runtime drift rather than run wrong. That is fail-closed and therefore not a
+blocker, but the bound interpreter should be the one that can actually import
+the package, or the preflight will simply never start.
+
+This PASS authorizes **one score-free capacity preflight only**: no scoring, no
+REPORT access, no strength claim, training, promotion or deployment. The
+capacity result then needs its own review.
+
+PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_PACKET_V1_REVIEW {"git":"6461c660e1ff71a905d9010b12c0adfc4e8bc729","independent_review":true,"one_score_free_preflight_authorized":true,"packet_internal_sha256":"25b1888c62ff772c18e065b30a7bfcc2d724c645f5ad054c4e6823dfd56a14b5","packet_sha256":"e054c5e582c1e665da9bc8ab413639f4c015ffe31a85f22c83275b7f4b4de492","production_deployment":false,"production_promotion":false,"report_access_authorized":false,"run_id":"pair-ballot-affected-capacity-preflight-v1","schema":"pair-ballot-affected-capacity-preflight-packet-review-v1","scored_evaluation_authorized":false,"strength_claim":false,"training_authorized":false,"verdict":"PASS"}
+
+---

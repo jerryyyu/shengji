@@ -114,3 +114,58 @@ deduplicated. The active ledger has 101 lines (the request's 102-line count was
 off by one). This PASS authorizes only the exact lossless rotation already
 merged. It grants no run, scoring, REPORT, strength, retry, training,
 promotion or deployment authority.
+## Claude review records — 2026-08-13 9:13 EDT — PR #87/#88/#78-result/#89 verdicts; performance deep-dive findings
+
+Deferred canonical records, now that rotation PR #88 has merged. Full detail is
+in each PR comment; these are the binding summaries.
+
+- **PR #87 rotation — PASS at actual head `dee482db38b08a06bd39634e603cc8db1f65e55f`**
+  (requested hash `dee482df…` does not exist — fifth preserved-prefix
+  corruption). Archive byte-identical to `05fb245:HANDOFF_REVIEW.md`
+  (594,364 B / 8,085 lines / `8c4e80eb…`); 53 distinct markers retained exactly
+  once; ten real-byte mutation probes refused; five Pair records + prose
+  authenticate under simulated post-merge main with design digest unchanged.
+- **PR #88 — PASS at `d5002c84`**: rotation-aware fixture repair; pre-fix 80/1
+  reproduced at the merge, 81/81 fixed; weakened archive authentication turns
+  the repaired test red; ledger delta append-only with zero new markers.
+- **PR #78 capacity result — PASS** (code `8ab5db26`, result `e1e4cb38…`/
+  internal `437d1192…`): all counts/timings exact (1,776 rollouts, three arms
+  on one common world, play_calls 28,440/26,212). Finding: `result_problems`
+  pins only git/python/tree_dirty — the engine hash and five source hashes are
+  recorded but unvalidated; I verified all six externally MATCH. The scored
+  packet design must pin those six.
+- **PR #89 A/B tooling — PASS at `fd0b13f4`**: design-freeze authority only.
+  46/46 gate tests; 66/90-measured all green (request said 67/91 — one
+  env-gated test each, please restate); t-trap and 330-world mutations caught;
+  two minor unpinned constants backstopped by `RETENTION_CONTRACT` in the
+  frozen design.
+
+**Performance deep-dive (shengji-perf, x86/16-core; Jerry-authorized test runs;
+prototype preserved at `/var/tmp/claude-perf-deep/proto`):**
+
+1. **Accepted stack verified end-to-end**: base `2443be9` 3.902 s → stack head
+   `69ff44e` 2.470 s over 150 MC decisions = **36.7% less wall, decision logs
+   bit-identical** (every play and per-candidate value).
+2. **Post-stack profile**: engine state machine (`round.play` +
+   `_resolve_trick`) ≈19% of wall; `heuristic._current_winner` recomputes the
+   trick incumbent from scratch 86.5k times; `fast.py` wrapper dispatch ≈11%;
+   `_exact_endgame_value` makes 113k no-op calls when S3b is off.
+3. **Prototype measured — incremental trick incumbent + exact-endgame hoist**:
+   `Trick.incumbent` maintained once per play in `Round.play()`, read by
+   `_current_winner`/`_resolve_trick` with a None fallback for hand-built
+   tricks. Six interleaved 150-decision trials: median **10.76% further wall
+   reduction, 6/6 paired wins, 150/150 bit-identical**; negative control
+   (incumbent frozen at leader) flips 150/150 decisions, so the harness is
+   sensitive. Full suite on the prototype shows exactly **one** new failure:
+   `test_rlcb_c1` frozen source hashes (round.py/heuristic.py are pinned) —
+   the PR #71 historical/current re-freeze pattern applies, not a behavior
+   change.
+4. **Ranked next opportunities**: native `_follow` (≈19% est., same pattern as
+   the native lead); collapse `fast.py` wrapper dispatch (≈11% est.);
+   engine-level native trick step (largest, riskiest, needs the incumbent
+   design first).
+
+No run, scoring, REPORT, strength, retry, promotion, training or deployment
+authority flows from any of these records.
+
+---

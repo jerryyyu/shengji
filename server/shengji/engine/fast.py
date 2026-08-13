@@ -211,6 +211,7 @@ _METHOD_ROUTED = (
     #  require-no-subclass-override).  A subclass's own `_lead` wins normal
     # Python dispatch and is therefore safe to preserve; the other wrappers
     # are shared policy primitives whose semantics must remain uniform.
+    ("HeuristicBot._follow", "_follow", None, False),
     ("HeuristicBot._lowest", "_lowest", _lowest_fast, True),
     ("HeuristicBot._forced_follow", "_forced_follow", _forced_follow_fast,
      True),
@@ -247,7 +248,12 @@ def activate() -> bool:
                        for k in _subclasses(HeuristicBot)), \
                 f"a HeuristicBot subclass overrides {attr}; fast path unsafe"
         _saved[key] = getattr(HeuristicBot, attr)
+        if wrapper is None:
+            # Entry-bound natives carry their own guards and pure fallback;
+            # bind the kernel directly so hot calls pay no wrapper frame.
+            wrapper = getattr(_fast, "heuristic" + attr)
         setattr(HeuristicBot, attr, wrapper)
+    _fast.set_follow_fallback(Ordering, _saved["HeuristicBot._follow"])
     return True
 
 

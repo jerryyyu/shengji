@@ -1001,6 +1001,83 @@ cdef object _cheapest_combo_in(list cards, object comp, long min_top,
     return None
 
 
+cdef object _POLICY_ORDERING_TYPE = None
+cdef object _PURE_FOLLOW = None
+
+
+def set_follow_fallback(ordering_type, pure_follow):
+    """Register the engine Ordering type and the saved pure ``_follow``.
+
+    Called once from fast-path activation.  Until registered, the entry
+    always defers, keeping import order irrelevant and pure mode untouched.
+    """
+    global _POLICY_ORDERING_TYPE, _PURE_FOLLOW
+    _POLICY_ORDERING_TYPE = ordering_type
+    _PURE_FOLLOW = pure_follow
+
+
+def heuristic_follow(bot, rnd, seat):
+    """HeuristicBot._follow drop-in over the trusted-rollout trick caches.
+
+    Routed directly as the class attribute: guards run at C speed and any
+    miss defers to the registered pure method, so hand-built, live, mutated
+    or non-trusted states keep exact legacy behavior.  Inside the trusted
+    append-only rollout contract the decision order and tie-breaks match the
+    pure method exactly, with sub-decisions on the native cores.
+    """
+    cdef int win_seat, inc_top, iseat
+    ordering = getattr(rnd, "ordering", None)
+    trick = getattr(rnd, "trick", None)
+    hands = getattr(rnd, "hands", None)
+    if (_PURE_FOLLOW is None
+            or type(ordering) is not _POLICY_ORDERING_TYPE
+            or type(seat) is not int or type(hands) is not list
+            or len(hands) != 4 or not 0 <= seat < 4
+            or trick is None
+            or getattr(rnd, "_trusted_rollout", False) is not True):
+        return _PURE_FOLLOW(bot, rnd, seat)
+    plays = getattr(trick, "plays", None)
+    inc = getattr(trick, "incumbent", None)
+    pts = getattr(trick, "running_points", None)
+    hand = hands[seat]
+    if (type(plays) is not list or not plays
+            or type(hand) is not list
+            or not 0 < len(hand) <= MAX_CARDS
+            or type(inc) is not tuple or len(inc) != 3
+            or type(inc[0]) is not int or type(inc[2]) is not int
+            or not -1 <= <long>(<object>inc[2]) <= 15
+            or type(pts) is not int):
+        return _PURE_FOLLOW(bot, rnd, seat)
+    iseat = <int>seat
+    win_seat = <int>(<object>inc[0])
+    incumbent_suit = inc[1]
+    inc_top = <int>(<object>inc[2])
+    lead = (<object>plays[0]).cards
+    cdef bint partner_winning = (win_seat % 2) == (iseat % 2)
+    cdef long trick_pts = <long>(<object>pts)
+    cdef bint is_last = len(plays) == 3
+    cdef bint strong, uses_trump, worth
+    cdef tuple ctx = _get_ctx(ordering)
+    cdef dict code2id = <dict>ctx[4]
+    cdef const unsigned char *efftab = \
+        <const unsigned char *>PyBytes_AS_STRING(ctx[3])
+    if partner_winning:
+        strong = (incumbent_suit == "T"
+                  or inc_top >= len(ordering.plain_ranks) - 1)
+        return forced_follow(hand, lead, ordering, bot.VOID_DUMP,
+                             strong or is_last, None)
+    winning = cheapest_winning(bot, hand, lead, incumbent_suit, inc_top,
+                               ordering)
+    if winning is not None:
+        uses_trump = (efftab[<int>code2id[winning[0]]] == 4
+                      and uniform_suit(lead, ordering) != "T")
+        worth = (trick_pts >= 10 or (is_last and trick_pts > 0)
+                 or not uses_trump)
+        if worth:
+            return winning
+    return forced_follow(hand, lead, ordering, bot.VOID_DUMP, False, None)
+
+
 def cheapest_winning(bot, list hand, list lead, incumbent_suit,
                      incumbent_top, ordering):
     """HeuristicBot._cheapest_winning drop-in.

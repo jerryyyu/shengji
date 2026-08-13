@@ -35,7 +35,7 @@ The lower lane table is historical detail. Current executable truth is:
   reviewer attestations. No retry, recovery namespace or diagnostic execution
   is authorized.
 - **Other pending reviews:** opened-DEV bury/S6 telemetry PR #78 `f4b80f0` and
-  docs PR #64 `dd836b0` await prose review. Conditional Pair-cap PR #73 remains
+  docs PR #64 `feeb9be` await prose review. Conditional Pair-cap PR #73 remains
   behind the broad Pair terminal result and its own economics.
 - **Live compute:** T4 is healthy on Mini at the safe known minimum
   4,896/12,288 sequential arm-rounds (39.8%). Broad Pair is healthy on Air and

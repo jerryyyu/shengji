@@ -39,11 +39,12 @@ The lower lane table is historical detail. Current executable truth is:
   spent PR #74 run and separates requests from reviewer attestations. Its raw
   marker explicitly authorizes no retry, recovery namespace or diagnostic.
 - **Other pending reviews:** opened-DEV bury/S6 telemetry PR #78 `f4b80f0`
-  and docs PR #64 `feeb9be` await review. No-write terminal-review PR #80
-  `5419c0a` is under an internal HOLD and its external request is withdrawn:
-  one T4 shard path bypassed duplicate-key JSON refusal, and a same-path
-  preloaded Python module could impersonate the reviewed import. The bounded
-  repair is in progress; do not review or merge `5419c0a`.
+  and docs PR #64 `feeb9be` await review. No-write terminal-review PR #80 is
+  repaired at exact `e0c23e6`: T4 shards now strict-load after the aggregate /
+  final / admission gates, and exact target/dependency import origins refuse
+  same-path preload forgeries. Thirteen focused tests pass. Its old `5419c0a`
+  request is superseded; the repaired helper still cannot write, launch,
+  aggregate, retry, promote or deploy.
   Conditional Pair-cap PR #73 remains behind the broad Pair terminal result and
   its own economics.
 - **Human-data repair is reviewable, not abandoned.** Draft PR #82 exact
@@ -74,10 +75,13 @@ Nothing below this section supersedes these exact priorities or authorities.
    2x projection reconstruction and one-shot paths. A PASS permits only
    freezing an outcome-free packet for a second packet-specific review; it
    does not authorize the preflight run or any scored work.
-2. **Closeout-readiness: PR #80 is temporarily HOLD.** Wait for the
-   superseding exact head that strict-loads T4 shard JSON and refuses /
-   authenticates same-path preloaded transitive modules. Do not review current
-   `5419c0a`.
+2. **Closeout-readiness: PR #80 exact `e0c23e6`.** Confirm the two internal
+   HOLDs are closed: T4 duplicate/non-finite shard JSON refuses only after the
+   reviewed aggregate/final/admission boundary, and preloaded target or
+   transitive modules cannot forge even the expected `__file__` path. Recheck
+   exact T4 wrapper/base/controller and Pair screen/capacity/duel origins,
+   recursive lane-stat reconstruction and the absence of all write/launch /
+   aggregate/deploy surfaces. This review grants no execution authority.
 3. Continue with PR #75, #77, #78 and #64 in that order after #79 unless a
    terminal supervisor final appears first.
 4. **Repository-hygiene follow-up: PR #55 exact `24b421d`.** The existing raw

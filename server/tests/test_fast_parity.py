@@ -12,6 +12,7 @@ Skipped when the extension isn't built:
 import itertools
 import random
 import sys
+from collections import Counter
 
 import pytest
 
@@ -345,6 +346,162 @@ def test_points_and_policy_leaves_random_parity(pure_routing):
     assert checked >= 10_000
 
 
+def test_cheapest_winning_named_seams_and_exceptions(pure_routing):
+    """Mutation-resistant witnesses for every contest branch.
+
+    Assertions include the exact chosen physical cards, not merely whether a
+    winner exists.  Equal-level trump-rank codes pin Python's stable Counter
+    tie, and the throw witness reaches the intentionally retained shape
+    matcher before the compiled beats check.
+    """
+    from shengji.ai.heuristic import HeuristicBot
+
+    bot = HeuristicBot()
+    pure = bot._cheapest_winning
+    cases = [
+        # label, ordering, hand, lead, incumbent suit/top, exact result
+        ("single", ("H", "7"), ["S10", "SJ", "SA"], ["S9"],
+         "S", 6, ["S10"]),
+        ("pair", ("H", "7"), ["SJ", "SJ", "S10", "S10"],
+         ["S9", "S9"], "S", 6, ["S10", "S10"]),
+        ("tractor", ("H", "7"),
+         ["S9", "S9", "S10", "S10", "SJ", "SJ"],
+         ["S8", "S8", "S9", "S9"], "S", 6,
+         ["S9", "S9", "S10", "S10"]),
+        ("void-ruff", ("H", "7"), ["H2", "H3", "C4"], ["D9"],
+         "D", 6, ["H2"]),
+        ("partial-suit", ("H", "7"), ["S10", "H2", "H3"],
+         ["S9", "S9"], "S", 6, None),
+        ("already-ruffed", ("H", "7"), ["S10", "SJ", "SA"], ["S9"],
+         "T", 2, None),
+        ("throw-ruff", ("H", "7"), ["H2", "H2", "H3", "C4"],
+         ["S3", "S3", "SA"], "S", 1, ["H2", "H2", "H3"]),
+        # D7/S7 share one trump level: first Counter insertion wins the tie.
+        ("equal-level-pair", ("H", "7"),
+         ["D7", "D7", "S7", "S7", "D4"], ["C9", "C9"],
+         "C", 6, ["D7", "D7"]),
+        # In no-trump all four rank codes tie; preserve the hand's first code.
+        ("no-trump-level-tie", (None, "7"), ["C7", "S7", "H3"],
+         ["D9"], "D", 6, ["C7"]),
+    ]
+    for label, config, hand, lead, inc_suit, inc_top, expected in cases:
+        op, of = Ordering(*config), Ordering(*config)
+        ref = pure(list(hand), list(lead), inc_suit, inc_top, op)
+        got = fast.cheapest_winning(
+            bot, list(hand), list(lead), inc_suit, inc_top, of)
+        assert ref == expected, (label, "fixture drift", ref)
+        assert got == expected, (label, got)
+
+    for lead in ([], ["S3", "H3"]):
+        assert _outcome(pure, ["S4", "H4"], lead, "S", 0,
+                        Ordering("H", "7")) == ("AssertionError",)
+        assert _outcome(fast.cheapest_winning, bot, ["S4", "H4"], lead,
+                        "S", 0, Ordering("H", "7")) == ("AssertionError",)
+
+
+def test_cheapest_winning_random_and_shape_weighted_parity(pure_routing):
+    """30k differential calls with deliberate single/pair/tractor/throw dose.
+
+    Random sampling alone almost never produces a pure tractor; half this
+    test therefore draws actual components/runs from duplicate-rich suit
+    groups.  Separate Ordering objects prevent shared caches from masking a
+    divergence.  The output list (including order/physical tied-level code),
+    None, or exception is compared exactly.
+    """
+    from shengji.ai.heuristic import HeuristicBot
+
+    rng = random.Random(20260813)
+    deck = make_deck()
+    bot = HeuristicBot()
+    pure = bot._cheapest_winning
+    seen = {"single": 0, "pair": 0, "tractor": 0, "throw": 0,
+            "trump_incumbent": 0, "partial_suit": 0,
+            "winning_result": 0}
+    for i in range(30_000):
+        config = CONFIGS[i % len(CONFIGS)]
+        op, of = Ordering(*config), Ordering(*config)
+        source = rng.sample(deck, rng.randint(4, 28))
+        groups = list(_suit_groups(source, op).values())
+        group = rng.choice(groups)
+
+        mode = i % 5
+        if mode == 0:
+            lead = [rng.choice(group)]
+        elif mode == 1:
+            pair_codes = [c for c, n in Counter(group).items() if n >= 2]
+            lead = ([rng.choice(pair_codes)] * 2 if pair_codes
+                    else [rng.choice(group)])
+        elif mode == 2:
+            # Draw from a duplicate-complete effective-suit group: ordinary
+            # random hands almost never contain even a 2-pair tractor.
+            runs = []
+            complete_group = rng.choice(list(_suit_groups(deck, op).values()))
+            for k in (2, 3, 4):
+                runs.extend(combos.find_tractor_runs(complete_group, op, k))
+            lead = list(rng.choice(runs))
+        else:
+            lead = _random_lead(rng, group)
+
+        dec = combos.decompose(lead, op)
+        kind = (dec.components[0].kind
+                if len(dec.components) == 1 else "throw")
+        seen[kind] += 1
+        hand = rng.sample(deck, rng.randint(1, 33))
+        lead_suit = legal.uniform_suit(lead, op)
+        assert lead_suit is not None
+        incumbent_suit = rng.choice(
+            [lead_suit, TRUMP, rng.choice(["S", "H", "C", "D"])])
+        incumbent_top = rng.randint(-1, 15)
+        if incumbent_suit == TRUMP:
+            seen["trump_incumbent"] += 1
+        led_count = len(legal.suit_cards(hand, lead_suit, op))
+        if 0 < led_count < len(lead):
+            seen["partial_suit"] += 1
+
+        ref = _outcome(pure, list(hand), list(lead), incumbent_suit,
+                       incumbent_top, op)
+        got = _outcome(fast.cheapest_winning, bot, list(hand), list(lead),
+                       incumbent_suit, incumbent_top, of)
+        assert got == ref, (i, config, hand, lead, incumbent_suit,
+                            incumbent_top, kind, ref, got)
+        if isinstance(ref, list):
+            seen["winning_result"] += 1
+
+    assert seen["single"] >= 8_000, seen
+    assert seen["pair"] >= 500, seen
+    assert seen["tractor"] >= 100, seen
+    assert seen["throw"] >= 4_000, seen
+    assert seen["trump_incumbent"] >= 8_000, seen
+    assert seen["partial_suit"] >= 500, seen
+    assert seen["winning_result"] >= 3_000, seen
+
+
+def test_cheapest_winning_route_is_observable(monkeypatch):
+    """Falsification probe: activation must really dispatch to this kernel.
+
+    If the method-router entry is removed, the sentinel can no longer be
+    observed and this test turns red instead of letting randomized parity
+    compare the unmodified pure method to itself.
+    """
+    from shengji.ai.heuristic import HeuristicBot
+
+    was_active = bool(fast._saved)
+    try:
+        fast.deactivate()
+        original = fast._fast.cheapest_winning
+        monkeypatch.setattr(fast._fast, "cheapest_winning",
+                            lambda *args: ["ROUTE-SENTINEL"])
+        fast.activate()
+        assert HeuristicBot()._cheapest_winning(
+            ["S4"], ["S3"], "S", 0, Ordering("H", "7")) == \
+            ["ROUTE-SENTINEL"]
+        monkeypatch.setattr(fast._fast, "cheapest_winning", original)
+    finally:
+        fast.deactivate()
+        if was_active:
+            fast.activate()
+
+
 def test_validate_follow_and_helpers_random_parity(pure_routing):
     """validate_follow / check_in_hand / uniform_suit / pair_count parity:
     same result or the same exception type AND message."""
@@ -641,7 +798,8 @@ def test_activate_routes_everything_and_deactivate_restores():
         before = {(m.__name__, a): getattr(m, a) for m, a in tracked}
         assert not any(compiled(v) for v in before.values())
         pure_methods = {a: getattr(HeuristicBot, a)
-                        for a in ("_lowest", "_forced_follow")}
+                        for a in ("_lowest", "_forced_follow",
+                                  "_cheapest_winning")}
 
         fast.activate()
         unrouted = [k for (m, a), k in
@@ -650,6 +808,7 @@ def test_activate_routes_everything_and_deactivate_restores():
         assert not unrouted, f"activate() missed: {unrouted}"
         assert HeuristicBot._lowest is fast._lowest_fast
         assert HeuristicBot._forced_follow is fast._forced_follow_fast
+        assert HeuristicBot._cheapest_winning is fast._cheapest_winning_fast
         # a name bound AFTER activation must see the compiled function too
         late = types.ModuleType("late_import_probe")
         exec("from shengji.engine.legal import beats", late.__dict__)

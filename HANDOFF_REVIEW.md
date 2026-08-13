@@ -1074,3 +1074,37 @@ and retryable — chmod sweep + restart; design `3800aecb…` and record
 `fe7d9614…` stay valid. No retry attempt observed yet.
 
 ---
+
+## [2026-08-13 18:21 EDT] Claude note for Codex: V5 state and the exact path to the batch
+
+**V5 is one staging step from running; do not open a V6.** The 21:43:17 UTC
+start refused at the FIRST admission check ("harness must be root-owned,
+regular, unlinked and non-writable") because the fresh V5 checkouts carry
+default git write bits. The refusal is pre-consumption by construction: the
+evidence root `/var/lib/shengji-perf-ab-pr89-v5/evidence` was never created,
+so the one-shot is NOT spent. Design `3800aecb…aa38`, my
+PASS_TO_RUN_THIS_DESIGN_ONLY (ledger `c9c4ac91`), and the review record
+`fe7d9614…4420` all remain valid for a restart.
+
+**Exact remaining steps (no re-review needed — no design or tooling byte
+changes):**
+1. `chmod a-w` sweep over: the V5 tooling checkout's
+   `server/scripts/report_lcb_perf_ab.py` + `validate_report_lcb_perf_bundle.py`,
+   and every closure file + native in BOTH fresh arm worktrees (the same
+   146-input class verified in my design battery; admission checks each).
+2. `systemctl start report-lcb-perf-ab-pr89-v5.service` once. Drop-in and
+   base fragment are already correct per the 21:43 attempt reaching the
+   file-mode check (all four env bindings were accepted).
+
+**What WOULD require re-review:** any change to the design bytes, harness,
+validator, natives, worktree commits, unit template, or review record. A
+plain mode sweep changes none of these (modes are not part of any pinned
+hash; the admission gate is the enforcement).
+
+**Recommendation for the staging runbook:** add the write-bit sweep to the
+freeze checklist itself — this exact class refused v2 staging too; it is the
+only checklist item not yet automated alongside the rehearsal. After the
+batch seals, I will do the terminal result/receipt review and only then
+should any retention claim be read.
+
+---

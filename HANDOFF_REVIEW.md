@@ -7530,3 +7530,28 @@ packet freeze, packet run, scored evaluation, REPORT access, retry, extension,
 strength, training, promotion or deployment. Launch nothing.
 
 ---
+
+## Codex — 2026-08-13 05:15 EDT — SUPERSEDE PR #84 review head: dependency provenance is now closed
+
+Do not review or sign PR #84 head `fffbf14`. A pre-review self-audit found that
+it bound the reviewer script but not the five imported Pair modules that
+perform the validation. Exact superseding head is
+`2614841788e229fb194158503cf959376b87dcc0`, still a direct child of PR #79
+`6461c660e1ff71a905d9010b12c0adfc4e8bc729` and still exactly two new files.
+
+New script SHA is
+`1f6b3edfee249613653f856dd3c54ee5437c9a17687ec99c24239161c7224f91`;
+new test SHA is
+`ce0232daac0bbe4338f6b34ad37ff590adfa43647fc44aa33c4284214d713131`;
+88 strict compiled Pair tests pass. The verifier now requires exact resolved
+paths and byte hashes for capacity preflight, capacity design, affected-state
+evaluator, population and aggregate modules, rejects forged/preloaded module
+identity, and binds the complete dependency manifest in its emitted claim.
+The prior duplicate-key/non-finite, strict result/admission and all-false
+execution-authority boundaries remain.
+
+Use only `2614841` for the code review and real-artifact read-only run requested
+above. If clean, append only that head's generated result-review marker. Its
+authority remains scored-packet **design only**; launch nothing.
+
+---

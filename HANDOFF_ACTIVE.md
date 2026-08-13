@@ -6,99 +6,120 @@
 > are never review authority. Raw review markers belong at column 1 in the
 > canonical review ledger and must occur exactly once.
 >
-> Full history is preserved in
-> `docs_archive/handoff-active-through-2026-08-11-10-22.md` and
-> `docs_archive/handoff-review-2026-08-08-through-2026-08-11-10-22.md`.
+> Full earlier history is preserved in `docs_archive/`. This file is only the
+> current executable truth; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-12 11:03 EDT.
+Last reconciled: 2026-08-13 07:29 EDT from canonical main `5bdb231`.
 
-## Immediate objective
+## Pair V3 capacity gate
 
-Carry the admitted T4 mid/late hybrid through a reviewed whole-game verdict.
-While the compute hosts run reviewed work, prepare the next reviewed step without bypassing its
-gates: the fresh S4 point-banking confirmation, S6 shuai-pai sourcing, and
-bury/lead exploration. Pair-aware rollouts already own Air.
+The frozen Pair V3 capacity packet PASS at canonical commit `88866f25` was
+authenticated and consumed exactly once on the performance Cloud. The
+systemd-owned **score-free** preflight finished in 157.535 wall seconds and
+182.430 CPU seconds, used 543.1 MB peak memory, and left no workers or partial
+files. Its one result is `544499d1…a764` / internal `ca36d1af…a4fb`; scored
+evaluation, REPORT access, strength claims, training, promotion and deployment
+all remain closed.
 
-## Current truth
+Claude independently reproduced the result science in canonical commit
+`8843be7`: 1.0499 projected fleet-hours against the 64-hour cap, 0.088 hours
+on the worst lane against 4 hours, closed score-free schema and no retry.
+Claude then reviewed final PR #84 head `f571146`, ran its read-only verifier
+against the canonical artifacts and appended the generated raw PASS marker at
+canonical commit `16af447`. The verifier binds the exact dependency bytes and
+stable single-read artifact identities; script SHA is `5ca14e1f…646a1`, test
+SHA is `d7959903…9f3b`, and 21 focused tests pass.
 
-| lane | plain-English progress | exact next gate |
+That marker opens **scored-packet design only**. PR #86 exact head `a43a17c`
+now publishes the declarative scored-packet design after an independent
+internal PASS, and exact-head external review has been requested. It only
+builds and verifies the design; no packet has been frozen or run. Packet
+freeze, packet execution, scored evaluation, REPORT access, retry, extension,
+strength claims, training, production promotion and deployment all remain
+explicitly closed pending separate exact-design and authority review.
+
+## Live fleet
+
+| host | current work | safe progress and next boundary |
 |---|---|---|
-| **T4 mid/late Teacher hybrid** | The model may propose one move after trick five; fresh Monte Carlo search still prices it and preserves the live champion as fallback. Its 256-state test passed both controls. The sole 2,048-cluster whole-round screen started on Mini at 23:20 EDT; at 10:32 all eight workers remained CPU-bound after 11h12m and every shard's reviewed score-free heartbeat had reached `treatment 200/512`. Outcomes remain sealed. | Monitor only. After all workers finish, Claude reviews the score-free `supervisor-final.json`; only a PASS permits aggregation and outcome access. The aggregate then needs terminal external review. |
-| **S4 point banking** | The one reviewed Cloud preflight finished 4/4 score-free. All integrity/dose checks passed, but the old eight-shard profile projects 869.30 fleet-hours / 108.66 hours per shard and correctly HOLDs its 768/96 caps. PR #56 `9f9d80b` preserves artifact `70a15405…413e`, makes coherent HOLD reviewable, prevents packet freeze and bounds ARM/x86 display roundoff. PR #59 `f0c2a6d` keeps 8,192/16,384 clusters and automatic stopping but uses all 16 cores, fresh 300B seeds and a 1,024/64-hour envelope; 50 tests and rendered digest `ea00b1ad…ad9` match on ARM/x86. | Claude reviews the exact capacity HOLD and then the C2 design. A design PASS permits implementation only. Freeze/review a new 16-shard packet afterward; scored execution still needs separate authority. Never retry the spent preflight. |
-| **S6 shuai-pai sourcing** | Selector review passed. The actor-visible selector realized `+0.307` levels versus its incumbent (LCB `+0.175`) on reused DEV; a separate literal-champion census found 13 triggers in 512 rounds (`2.54%`). Source `a48542d` closes the unit-map, singleton-freeze and factual-native-runtime HOLDs. Its exact v2 packet `19f3b2a3…79dd0` and receipt are preserved at PR #50 `936345b`; 62 S6 tests pass. | Claude reviews the v2 packet requested at 07:36. A PASS authorizes one four-cluster **score-free** Air capacity preflight only. Air is currently occupied, so do not run it yet. |
-| **Pair-aware rollout** | V3 capacity passed externally after changing 6/8 mirrored roots. The reviewed 7,168-cluster packet (`4ece02b9…ae47`) was admitted once and launched on Air at about 07:24. At 10:32 its detached supervisor and all eight workers remained healthy and CPU-bound after 3h08m; its score-free heartbeat still reported 0/8 terminal shards. | Monitor process state and score-free supervisor heartbeat only; never inspect shard outcomes. After completion Claude reviews `supervisor-final.json`, then and only then may aggregation be admitted. |
-| **Pair ballot retention** | Claude passed the content boundary and Codex verified the exact million-round artifact (`557df627…61f3`). Current ballots omit a legal pair on 15,187/18,618,281 leads (`0.0816%`): 14,826 early, 352 mid and 9 late. PR #55 `24b421d` preserves the artifact and regression. This is a real availability gap but much too diluted for an immediate uniform whole-game test. | Freeze a fresh disjoint, score-free capture of affected states, weighted toward the dominant early band while retaining named mid/late witnesses. Then run retention versus current at identical ballot width and search work. No strength or deployment authority follows from prevalence. |
-| **Bury hand-shape exploration** | Claude passed PR #51's composition at old head `59cc2c6`; current `a1d107b` still needs its two-change delta review. PR #52 `fd7b434` pins the opened 32+32 population and resumable state journal. Stacked draft PR #54 `959cdbd` now makes later shuai-pai explicit without recursive MC: `all_boss` requires every component to be publicly boss and no public ruff warning, while the engine still prices hidden ruffs; `boss_near` is an aggressive DEV sensitivity. Baseline remains literal `HeuristicBot`; manifest and output bind mode and dose. Fifty-nine focused/parent tests pass in strict compiled mode; no census, real rollout, job or policy ran. | Review #51, then #52, then the bounded actor-information/action semantics of #54. Afterward run the source-only census and one-state/one-world capacity when a host frees. These are reusable diagnostics, not strength authority. |
+| **Mini** | T4 mid/late Teacher whole-round screen, eight workers | All workers are live. The safe lower bound is 6,396/12,288 = 52.05%: treatment is complete, seven shards have reached matched-null 300/512 and one has reached 200/512. The deadline remains knife-edge; the slow tail projects to about 16:59 EDT, after which the champion arm must average no more than 26.7 seconds per cluster to beat the 20:46 child deadline. Monitor only. On terminal publication, Claude reviews the score-free supervisor final before any aggregation or outcome access. |
+| **Air** | Broad Pair-aware whole-game screen, eight workers | The reviewed safe counter is 2,064/7,168 = 28.79%. The current pace remains on a substantive timeout trajectory; do not inspect shard outcomes or intervene. A terminal supervisor final, including timeout, needs score-free review before aggregation. Reviewed S6 preflight remains queued behind this run. |
+| **Strength Cloud** | S4 360B point-banking sequential confirmation, 16 workers | All workers are healthy. The reviewed score-free look-one counter is 6,187/8,192 = 75.52%. The reviewed controller automatically stops or continues at look one. Inspect only reviewed score-free telemetry. |
+| **Performance Cloud** | Pair V3 score-free preflight is complete; no live strength worker | Idle because authority remains design-only and PR #86 awaits external review. The completed preflight namespace is one-shot and must not be retried or altered. Performance exploration must not mutate frozen strength code or evidence. |
+| **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 
-## Review queue — precise asks
+## Current review queue
 
-1. **S4 Cloud capacity HOLD / PR #56:** review exact preflight
-   `70a15405…413e` and current repair head `9f9d80b` under the 10:55 canonical
-   request. Confirm only the two capacity caps failed, HOLD cannot freeze a
-   packet, and the ARM/x86 tolerance is restricted to named derived fields.
-2. **S4 C2 design / PR #59:** after the HOLD review, inspect exact `f0c2a6d`.
-   Confirm unchanged 8,192/16,384 evidence and alpha, 16-way geometry, fresh
-   300B population, measured 1,024/64 envelope and all-false run authority.
-3. **Selective S6 v2 packet / PR #50:** review exact source `a48542d`, artifact
-   commit `936345b`, packet `19f3b2a3…79dd0` and singleton receipt
-   `df54dcfe…aebba` under the 07:36 canonical request. The old v1 request is
-   explicitly superseded. A PASS permits one score-free four-cluster preflight.
-4. **Narrow PR #51 delta:** inspect exact current head `a1d107b` versus passed
-   parent `59cc2c6`. Confirm only the pre-rollout hidden-kitty refusal and JSON
-   `null` one-world SE changed, both tests are real, and no authority changed.
-5. **Nonblocking PR #52 follow-up:** after higher-priority S4/S6 reviews and
-   the #51 delta, inspect exact head `fd7b434` for pinned reconstruction,
-   outcome-blind 32+32 selection, per-state resume, and refusal on changed
-   manifests or corrupt records. Both asks are prose-only; no run or strength
-   marker is requested.
-6. **Nonblocking PR #54 follow-up:** after #52, inspect exact head `959cdbd`.
-   Confirm later-lead selection is actor-visible, the ruff-warning signal is
-   only public evidence, the `all_boss`/`boss_near` distinction is literal,
-   and hidden ruffs remain priced by the determinized engine. Baseline stays
-   unchanged, recursive MC is impossible, and journal mode/dose cannot mix.
-   This is prose-only and grants no run, policy or strength authority.
+1. **Pair V3 scored-packet design / PR #86 `a43a17c`.** The declarative
+   build-and-verify-only design passed independent internal audit and awaits
+   exact-head external review. It grants no packet-freeze, run, result-access,
+   retry, strength, training, promotion or deployment authority.
+2. **Terminal closeout helper follow-up / PR #80 `e61975c`.** Claude prose
+   PASSed parent `9c896e2` at canonical `3f7916d`. This direct child adds the
+   requested aggregate pre-open binding, final-change TOCTOU and sealed-shard
+   drift refusal fixtures and isolates the dependency-path test from
+   `SHENGJI_FAST`; 22/22 tests pass both plain and fast, and CI is green.
+   Exact-head delta review is pending, with no new verdict or execution
+   authority.
+3. **Performance stack, in dependency order.** PR #75 `90c5630` binds PR #71
+   compatibility to the corrected 64-character native identity; PR #77
+   `0381081` prepares accepted hidden worlds once; PR #81 `c6c7126` adds the
+   native common-case winner path; PR #83 `69ff44e` adds the guarded native
+   lead path. PR #83's ordinary three-seed exploratory A/B was positive on all
+   pairs and 10.20% lower wall in aggregate with normalized semantics and work
+   unchanged; an independent internal audit passed, but its raw evidence is
+   owner-writable and is not authoritative strength evidence. The attempted
+   resolve-trick successor is retired: its forced/no-search harness refused, so
+   no timing claim was made. None of these PRs changes strength authority.
+4. **Exploration/docs.** PR #78 `8ab5db2` is the opened-DEV bury/S6 diagnostic;
+   83 tests and CI are green. PR #82 `a498bf5` is the score-free H0
+   legality/geometry repair; 30 focused plus 64 adjacent tests and CI are
+   green. Both superseding heads await review. Docs PR #64 is currently
+   `c7782be`; request and review only that exact head after the technical
+   blockers.
+5. **Air timeout contingency / PR #85 `111314f`.** This repaired design-only
+   successor closes strict hash/type, dynamic worker-seed overlap, exact
+   ceiling-economics and 48-hour-cap gaps; 40 tests and CI are green. Its
+   superseding exact head awaits re-review while the current Air run remains
+   untouched, and it authorizes no replacement launch, retry or extension.
+6. **Pair stack merge gap.** PR #55 exact head `24b421d` still needs review of
+   its one artifact-preservation commit beyond the passed `5696144` boundary.
+   If clean, merge readiness can cover #55 → #60 `7468828` → #61
+   `22ddfa3` → #72 `373de84` in order. Do not mutate this stack during the
+   active Pair scored-design lane.
 
-The spent S4 controller PASS grants no further launch. The terminal capacity
-HOLD and C2 design are separate reviews; neither authorizes scored work.
+Already reviewed: PRs #51, #52 and #54 passed for bounded bury/S6 exploration;
+PR #69 passed for the incremental attacker-gated Pair-cap design; PR #80
+`9c896e2` prose-PASSed at canonical `3f7916d` with the follow-up fixtures above;
+PR #84 `f571146` passed at canonical `16af447` for scored-packet design only;
+PR #50's S6 v2 packet passed for one score-free preflight and sleeps behind
+Air. PR #73 remains conditional on the broad Pair terminal result and its
+economics. S5 is closed: its old admission is spent, PR #76 is validation-only,
+and no retry or diagnostic execution is authorized.
 
-Pair has no current review blocker because its one authorized screen is
-running. T4's next review starts only after its supervisor publishes a terminal
-score-free final.
+## Terminal sequences
 
-## Fleet and launch order
+For T4 or broad Pair:
 
-| host | current use | next authorized use |
-|---|---|---|
-| **Mini** | T4 eight-shard whole-round screen; projected maximum about 45.4 wall hours. | Keep isolated until T4 terminal seal; Cloud is now the canonical S4 target. |
-| **Air** | Pair-aware 7,168-cluster whole-game screen, eight workers under detached supervisor PID 88455. | Keep isolated until the pair supervisor terminal seal and review. S4/S6 preflights remain queued, not competing with the live run. |
-| **Cloud** | Idle by gate after the one reviewed S4 preflight completed 4/4 and HOLDed the old eight-shard envelope. Pair census is reviewed and preserved. | Review capacity HOLD and C2 design; then implement/freeze/review the 16-shard packet. No scored S4 work runs without its later execution gate. |
-| **Production** | Release 18 image `kitty-xray-b5a35ae`, `mc-s0-report-lcb`; only PR #11 kitty X-ray differs from release 17. | Runtime rollback is release 17 / `latency-cd6789e`; no further deploy, restart, room wipe or policy mutation without explicit user approval. |
-
-Do not inspect T4 or pair `shard-*.json`. Process state, CPU, tmux and only
-explicitly reviewed score-free heartbeats are safe. The old pair census log
-was never needed and remains unopened. Do not
-launch S4/S6/pair scored work from
-an implementation review; each requires its later packet/execution review.
-
-## T4 terminal sequence
-
-1. Eight Mini shards finish under the existing supervisor.
-2. Claude reviews the score-free supervisor final; no outcome file is opened.
-3. If and only if that review passes, Codex admits one aggregation.
+1. The existing supervisor publishes a terminal score-free final.
+2. Claude reviews that final without opening shard outcomes.
+3. Only an explicit PASS may admit one aggregation.
 4. Claude independently reproduces and terminally reviews the aggregate.
-5. A positive screen may authorize confirmation **design**; it never deploys.
-   A failed screen closes this exact composition while preserving the learned
-   mid/late capability result as diagnostic evidence.
+5. A positive screen can justify a fresh confirmation design; it never deploys.
+
+For S4, follow the predeclared two-look controller exactly. Never pool old S4
+outcomes post hoc, inspect a live tranche, or manually override its automatic
+transition.
 
 ## Standing invariants
 
-- Exploration may be fast and reusable; deployment evidence remains sealed,
+- Do not inspect live or sealed shard result files; process state and explicitly
+  reviewed score-free heartbeats are the safe monitoring surface.
+- Exploration may be fast and reusable. Deployment evidence remains sealed,
   powered, independently reviewed and one-shot.
-- Never pool old S4 outcomes post hoc. The new design uses only fresh future
-  populations and an automatic predeclared transition.
-- Same deals, role flips and policy RNG are shared across treatment, matched
-  null and champion. Null must be behavior-identical to champion.
-- Feature telemetry is dose/integrity evidence, never a substitute for
-  whole-game utility.
-- No retry, extension, tuning on REPORT, production promotion or deployment
-  is implied by a screen or controller PASS.
+- Same deals, role flips and policy randomness are shared across treatment,
+  matched null and champion; the null must remain behavior-identical to the
+  champion.
+- Feature telemetry is dose/integrity evidence, not whole-game utility.
+- No screen or controller PASS implies REPORT reuse, retry, training,
+  production promotion or deployment.

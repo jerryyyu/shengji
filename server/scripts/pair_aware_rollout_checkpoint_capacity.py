@@ -85,8 +85,15 @@ IMPLEMENTATION_REVIEW_SCHEMA = (
 PACKET_REVIEW_SCHEMA = (
     "pair-aware-rollout-checkpoint-capacity-packet-review-v1"
 )
-IMPLEMENTATION_REVIEW_PREFIX = (
+# The V1 marker was appended by a Jerry-authored/co-authored commit.  That
+# records a valid prose review, but it deliberately cannot satisfy this
+# controller's independent Claude author+committer gate.  Retire that
+# namespace and require a fresh, independently introduced V2 attestation.
+RETIRED_IMPLEMENTATION_REVIEW_PREFIX = (
     "PAIR_AWARE_ROLLOUT_CHECKPOINT_CAPACITY_IMPLEMENTATION_V1_REVIEW "
+)
+IMPLEMENTATION_REVIEW_PREFIX = (
+    "PAIR_AWARE_ROLLOUT_CHECKPOINT_CAPACITY_IMPLEMENTATION_V2_REVIEW "
 )
 PACKET_REVIEW_PREFIX = (
     "PAIR_AWARE_ROLLOUT_CHECKPOINT_CAPACITY_PACKET_V1_REVIEW "

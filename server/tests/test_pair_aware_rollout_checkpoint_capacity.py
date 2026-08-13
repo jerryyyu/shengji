@@ -110,6 +110,8 @@ def test_controller_is_capacity_only_and_binds_reviewed_design():
     assert claim["resume_execution_authorized"] is False
     assert claim["aggregate_execution_authorized"] is False
     assert claim["strength_claim"] is False
+    assert C.IMPLEMENTATION_REVIEW_PREFIX != \
+        C.RETIRED_IMPLEMENTATION_REVIEW_PREFIX
 
 
 def test_modified_design_source_cannot_execute_before_hash_refusal(tmp_path):
@@ -769,6 +771,47 @@ def test_request_text_in_parent_cannot_self_authorize(monkeypatch):
         else C.REVIEWER_SESSION_TRAILER if "--format=%B" in " ".join(args)
         else C.REVIEW_LEDGER))
     monkeypatch.setattr(C, "git_bytes", lambda *args: marker)
+    with pytest.raises(C.CapacityRefused, match="provenance drift"):
+        C.canonical_review_record(
+            commit=commit, prefix=C.IMPLEMENTATION_REVIEW_PREFIX,
+            expected=claim, label="test review")
+
+
+def test_retired_v1_review_marker_cannot_authorize_v2(monkeypatch):
+    commit = "8" * 40
+    parent = "9" * 40
+    claim = C.implementation_review_claim(expected_git=GIT)
+    retired = C._canonical_marker(
+        C.RETIRED_IMPLEMENTATION_REVIEW_PREFIX, claim)
+    before = b"prior ledger\n"
+    current = before + retired
+
+    class Result:
+        returncode = 0
+
+    monkeypatch.setattr(C.subprocess, "run", lambda *a, **k: Result())
+
+    def fake_git(*args):
+        joined = " ".join(args)
+        if "--format=%P" in joined:
+            return parent
+        if "--format=%an" in joined or "--format=%cn" in joined:
+            return C.REVIEWER_NAME
+        if "--format=%ae" in joined or "--format=%ce" in joined:
+            return C.REVIEWER_EMAIL
+        if "--format=%B" in joined:
+            return C.REVIEWER_SESSION_TRAILER
+        if args and args[0] == "diff-tree":
+            return C.REVIEW_LEDGER
+        raise AssertionError(args)
+
+    blobs = {
+        f"{commit}:{C.REVIEW_LEDGER}": current,
+        f"{parent}:{C.REVIEW_LEDGER}": before,
+        f"{C.CANONICAL_REVIEW_REF}:{C.REVIEW_LEDGER}": current,
+    }
+    monkeypatch.setattr(C, "git", fake_git)
+    monkeypatch.setattr(C, "git_bytes", lambda *args: blobs[args[-1]])
     with pytest.raises(C.CapacityRefused, match="provenance drift"):
         C.canonical_review_record(
             commit=commit, prefix=C.IMPLEMENTATION_REVIEW_PREFIX,

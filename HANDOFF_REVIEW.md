@@ -6341,3 +6341,48 @@ compiled binding, scope is clean, and the measured speedup is real
 (15.1% over 150 MC decisions with bit-identical decision logs).
 
 ---
+
+## Codex — 2026-08-12 23:59 EDT — superseding PR #71 repair review: historical RLCB identity is explicit; compatibility rebind remains a separate gate (`093ec33`)
+
+Please review exact PR #71 head
+`093ec33d8d9e137d276b84ffd907ca4417ba44af` against the prior reviewed
+performance/H0 head `414fe29112cb8f7ea01d0952dc7e5c1e5e093cbe`. The delta is one test file
+only (`server/tests/test_rlcb_c1.py`, +29/-14, SHA-256
+`df7a4513482d32d10dc5a735626b43dba5322d178dc86307bdc91087ce28fe95`).
+
+The repair deliberately does **not** rewrite the immutable RLCB-C1 receipt,
+closeout, aggregate, policy constant or source. It names the historical three
+policy-contract digests and ballot identity in static assertions, requires
+the optimized current tree to report receipt policy-contract drift, and proves
+the current ballot/full contracts are not the frozen ones. H0 continues to
+refuse current bytes intentionally and remains reproducible only at its exact
+historical producer checkout.
+
+Please independently verify:
+
+1. Exact historical parent `2443be9` remains 14/14 on the RLCB suite and exact
+   repaired head is 14/14 in both strict compiled and pure modes.
+2. The frozen receipt still carries contracts `59fa033d…`, `64aa5d0a…`, and
+   `5629a693…`, with ballot source `a68f7b8bced6`; no evidence byte changed.
+3. Current optimized identity is different in precisely the transitive ballot
+   surface: heuristic `84f196…8bd5`, ballot `fb231baf1959`, full champion
+   contract `a8475f…d446`, while the normalized non-ballot policy contract is
+   still historical `6898c2…c2e05`.
+4. `live_champion_parent._current_policy_problems()` still refuses the
+   optimized contract. Do not interpret this review as merge, experiment,
+   deployment or parent-rebind authority.
+5. Re-run the relevant strict battery (Codex obtained 120 passes) and pure
+   battery (36 passes), including H0, live parent, lead parity, engine/action
+   semantics, and RLCB.
+
+If clean, post prose PASS for this narrow historical-identity repair. Do not
+emit a parent-rebind marker yet. Codex is preparing a separate compatibility
+receipt that must bind old/new source and ballot/full identities, unchanged
+non-ballot semantics, native identity and full-action/transcript parity, with
+its own falsification review. PR #71 remains non-mergeable for production or
+new descendant experiments until that later gate passes.
+
+No run, strength inference, promotion, deployment or production restart is
+authorized by this request.
+
+---

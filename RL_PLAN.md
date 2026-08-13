@@ -15,14 +15,16 @@ for screening but cannot establish that claim.
 Primary promotion metric: paired signed level utility by deal seed. Round
 win-rate is secondary; a final deployment candidate gets a mirrored full-game
 level-progression check. Every reported number is labelled **HYPOTHESIS**,
-**SCREEN**, **CONFIRM**, or **REJECT**. The current fleet is an M4 Mac mini plus
-an intermittently available MacBook Air; every manifest records the actual
-worker/config rather than treating hardware as part of the claim. Toggle
+**SCREEN**, **CONFIRM**, or **REJECT**. The current fleet is an M4 Mac mini, a
+MacBook Air, a 16-vCPU x86 strength Cloud worker and a separate 16-vCPU x86
+performance worker; every manifest records the actual host/config rather than
+treating hardware as part of the claim. The performance host has no scored-
+strength authority until separately pinned. Toggle
 results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-11 21:11 EDT
+## Current synthesis — 2026-08-12 23:25 EDT
 
 Exact terminal numbers and SHAs live in the canonical table in
 `AI_POLICIES.md`; `BACKLOG.md` owns live order and `JOBS.md` owns machines.
@@ -34,44 +36,27 @@ This section keeps only the research conclusions that change what we try next.
   R=300 fresh common worlds compare it with the incumbent, and a conservative
   lower bound decides whether to override. Fresh RLCB-C1 confirmed it over
   `mc-strong`; wider or adaptively allocated MC has not shown another gain.
-- **Teacher generation one:** capture and corrected iid labels worked. Eight
-  training seeds on 1,536 DESIGN/CALIB rows selected none: the play ranker was
-  nearly flat and unstable, while bury was negative. A frozen protected play
-  ensemble then received one untouched 480-row REPORT look, triggered 171
-  times, and lost to candidate zero (mean `-0.008228`, LCB `-0.018944`).
-  That REPORT and policy are closed—no threshold tuning or composition.
-- **Teacher generation two:** the 7,040-state matched A/B and all untouched
-  exams are terminal. More data made the old all-pairs loss stable; the new
-  candidate-zero-relative loss did not win. Expanded bury then selected none
-  on 32 fresh rows (`+0.03381`, LCB `-0.01525`). Expanded play had positive
-  DESIGN/CALIB ensemble bounds, but its protected 480-row REPORT lost
-  (`-0.00823`, LCB `-0.01894`). A predeclared powered exam used all 219
-  untouched champion-uncertainty rows and also selected none: action
-  `+0.01213`, SE `0.01011`, LCB `-0.00506`. Outcome-NLL improvement was
-  strongly positive (`+0.47845`, LCB `+0.44201`) but nongating. This generation
-  learned outcome/value structure better than reliable action ranking. A
-  terminal post-hoc outcome-head argmax also selected none (`+0.00906`, LCB
-  `-0.01184`), so simply swapping heads is not a successor. No composition or
-  game screen follows.
-- **Fresh mid/late successor:** the spent diagnostics suggest the ranker may be
-  useful only after trick 5, when the horizon is shorter. This is a new
-  post-hoc hypothesis, not a reinterpretation of the failed REPORT. PR #35
-  gates before source/scope/model work. Source, controller and population
-  review passed. The sole run evaluated protected-model, matched-uninformed and
-  literal-live final actions on 256 fresh one-state-per-deal triggers with a
-  separate 3×N=300 fold. Its provisional treatment-minus-live result is
-  `+0.02020` (LCB `+0.01275`) and treatment-minus-null is `+0.01570` (LCB
-  `+0.00880`); all work/population gates pass. Independent terminal review
-  reproduced the generated claim byte-for-byte. The result authorizes one
-  fresh whole-game screen design only—it is not yet bot-strength evidence.
-- **Direct search:** S4 point banking passed exact-state and first whole-game
-  screens; its independent fixed replication stayed positive but selected none
-  (`+0.048828`, LCB `-0.006884`). A new future-only fixed N=12,288
-  confirmation is sized from the replication SD for about 93% power at a
-  predeclared worthwhile `+0.04` effect; neither old population may be pooled
-  or extended. S3a structured bury improved selected-state regret but selected
-  none in fresh games. S6 shuai-pai sourcing and S5 replay are bounded
-  proposal/diagnostic follow-ups, not strength claims.
+- **Global Teacher rankers:** both the 1,536-state and 7,040-state generations
+  are closed. More data stabilized outcome prediction and the old training
+  objective, but protected play, expanded bury, champion-uncertainty and
+  outcome-head action selection all selected none on untouched evidence. The
+  reusable conclusion is value/outcome structure without reliable global
+  action ranking; exact exam numbers remain in `AI_POLICIES.md`.
+- **Fresh mid/late successor:** restricting the model to one trick-5+ proposal
+  inside fresh N=300 search passed a 256-state screen against both live and
+  same-work uninformed widening. The resulting whole-game treatment/null/
+  champion screen is running on Mini; no strength verdict exists yet.
+- **Direct search:** S4 stayed positive twice and now has a future-only
+  8,192/16,384-cluster confirmation running on Cloud; old outcomes do not enter
+  its estimator. S6's narrow shuai-pai selector has a fresh preflight queued,
+  and S5 has one reviewed-but-unrun final-champion diagnostic. None is yet a
+  new strength claim; S3a's broader bury recipe remains closed.
+- **Pair understanding:** the broad continuation screen is running on Air.
+  The attacker-only incremental semantics passed external review and await a
+  capacity decision. Pair-ballot PR #72 at exact head `373de84` now has a
+  defender-only, cross-Python-stable capacity design awaiting external review.
+  Its prevalence is still SmartBot-trajectory rather than champion-natural
+  dose, so no pair-ballot preflight, run or whole-round claim is authorized.
 - **Learned/RL routes:** V11 direct-v2, Direct-Q, Suphx O0/O0-v2 and the first
   Stage-C model all selected none under different gates. This does not close
   RL. It says the next experiment must change data, objective, credit or model
@@ -83,6 +68,11 @@ This section keeps only the research conclusions that change what we try next.
 - **Endgames:** S3b's four-card exact rollout exceeded its frozen node cap.
   S3c restarts at naturally reached one-, two- and three-card roots. One-card is
   mechanics-only; two-card is the first meaningful action-selection problem.
+- **Throughput:** the Cython `_current_winner` path was slower and is dropped.
+  Pair-count pruning reduced matched x86/ARM whole-round time by roughly
+  12–16% with byte-identical transcripts. Its audit also repaired an H0 source-
+  binding hole. Draft PR #71 at `414fe29` and CI pass internally; external
+  semantics/benchmark review remains before merge.
 
 ### Decisions that survive
 
@@ -108,17 +98,21 @@ This section keeps only the research conclusions that change what we try next.
 12. People-facing success means candidate-minus-champion improvement against
     the same blinded cohort, then absolute performance against a named
     experienced cohort.
+13. A negative screen closes its exact promotion claim, not all conditional
+    learning. Preserve predeclared dose, role/phase effects, tail failures and
+    disagreement states as labelled exploration inputs.
 
 ### Target architecture: learned search, not model versus search
 
 The working target is not a bare neural policy that must replace MC. It is a
 Shengji analogue of AlphaGo's division of labour, adapted for hidden cards:
 
-1. a learned or structured policy proposes and prioritizes actions;
-2. belief-sampled MC evaluates those actions across hands consistent with the
-   public history, using explicitly named continuation policies; and
-3. an independent report fold or confidence rule protects the incumbent before
-   an override.
+| component | job | current evidence / next use |
+|---|---|---|
+| **Proposal** | Learned, structured, human or tactical sources keep valuable actions on the ballot. | T4 mid/late and S6 are the active tests; V11 and human actions remain bounded proposal sources. |
+| **Belief-sampled continuation** | Compare proposals across hands consistent with public history under an explicitly named rollout policy. | S4, pair-aware and S5 improve different continuation mistakes. No private-world tree is treated as exact public Shengji. |
+| **Leaf/value** | A calibrated outcome or advantage estimate may truncate or allocate expensive continuation work. | Stage C learned outcome structure but failed at global action argmax. Test it against full fresh search on reusable DEV before any whole-game value-leaf run. |
+| **Report guard** | A fresh independent fold protects the incumbent before an override. | Deployed report-LCB is the confirmed parent; every challenger must name whether it changes proposals, continuations, leaf value or only the guard. |
 
 Later, a calibrated value model can truncate or allocate rollouts and search
 can produce improved training targets. But it earns those roles separately:
@@ -127,6 +121,16 @@ different gates. A standalone model win is useful for throughput, not required
 for the main strength thesis. The fresh mid/late screen is the first direct
 test of this architecture: the model supplied one idea, while N=300 search—not
 the model score—made the final comparison.
+
+### Experiment economics before fleet scale
+
+Every host-day-scale proposal must predeclare natural trigger dose,
+conditional affected-state effect, the implied whole-game effect, minimum
+detectable effect, maximum fleet-hours and the decision the result unlocks.
+This prevents an honest but underpowered sealed exam and prevents a rare
+mechanism from earning a huge run merely because its code is ready. Exploration
+can reuse DEV/CALIB and keep partial learning; confirmation remains fresh and
+sealed.
 
 ## Literature-derived design constraints — 2026-08-04
 
@@ -328,9 +332,10 @@ the closed branch was a valid Teacher generation, but not a stronger policy.
 The hybrid successor is active and promising, not yet closed or strong.
 
 S4 replication is terminal positive-but-inconclusive `SELECT_NONE`; its fresh
-N=12,288 successor is separately sized. S6 source review and code/document
-cleanup use otherwise idle implementation time without competing for Mini's
-Teacher slot.
+8,192/16,384-cluster sequential successor is now running on Cloud. S6
+preflight, the reviewed-but-unrun S5 diagnostic, pair preparation and
+code/document cleanup use implementation time without competing for the three
+live scored jobs.
 ### Lane A — improve search directly
 
 - **S3a structured bury** tested the observed point-shy kitty policy. Explicit
@@ -342,16 +347,37 @@ Teacher slot.
   traffic estimate is `+0.086914 +/- 0.056166` versus the live champion with
   positive LCB; matched null was exactly champion. Its independent fixed
   replication was `+0.048828 +/- 0.055712` with LCB `-0.006884`, so it did not
-  repeat at the predeclared bar. Preserve both results, but do not retry,
-  extend, confirm, promote or deploy this recipe.
-- **S5 defensive point protection** is not yet an implementation hypothesis.
-  Observational loss mining suggests a narrower avoidable-slough surface, but
-  its original global headline disappeared after per-seat normalization.
-  Because baseline follow logic already prefers non-points and MC already
-  sources both follow extremes, exact replay must identify whether any defect
-  lies in forced legality, ballot caps, search ranking, rollout continuation or
-  an obsolete historical policy. Human loss states are DEV witnesses only;
-  formal mechanism selection, if opened, uses fresh trigger-matched states.
+  repeat at the predeclared bar. Preserve both old results without retry,
+  extension, retroactive pooling, promotion or deployment. A disjoint
+  future-only 8,192/16,384-cluster sequential test is reviewed and running on
+  Cloud; only that prospectively accumulated evidence can confirm
+  the mechanism.
+- **S5 defensive point protection** has crossed from observation to a narrow
+  design candidate, not yet a treatment. Exact score-free replay found 58
+  strict hindsight DEV triggers among 4,363 bot follows; 42 are no longer
+  reproduced by today's rollout, 16 still match candidate zero/rollout, and
+  57/58 already contain a lower-point current-ballot action. That rules out a
+  broad ballot-sourcing explanation and points at a small continuation-choice
+  surface. External review now authorizes one ten-witness × 32-seed replay of
+  the literal champion's final played action on the first noncontended
+  qualified host; it has not run. A successor then gates only on actor-visible
+  states where point protection cannot be confused with a plausible partner
+  feed, compares a behavior-identical matched null on fresh trigger-matched
+  states, and lets whole-game search price card-retention cost.
+- **Point-flow family:** S4 asks winners to bank points, S5 asks late losers to
+  protect them, and future `ANTICIPATE_FEED` asks rollouts to price a partner or
+  opponent feeding the winner. Keep individual estimands until dose and utility
+  are known. If several survive, test a small named continuation-policy
+  portfolio rather than silently merging rules.
+- **Pair family:** finish broad pair-aware continuation first. Let that result
+  decide whether the externally PASSed attacker-gated pair-cap merits an
+  incremental screen; its three-arm capacity design is now being built.
+  Pair-ballot PR #72 at exact head `373de84` combines DEV+CALIB over 1,023
+  defenders / 990 deal clusters, excludes the lone attacker, and binds exact
+  population/weight identity. Its cross-Python `math.fsum` repair passed local
+  re-audit; external design review is pending. SmartBot-trajectory prevalence
+  still must be replaced by champion-natural dose before whole-round inference.
+  No preflight or run is authorized.
 - **S3c exact-root curriculum** is the new operational hypothesis, not an S3b
   retry. S3b-v2 is terminal after its first four-card treatment cluster
   exceeded the frozen cumulative 250k-node budget. Start from naturally
@@ -373,6 +399,10 @@ Teacher slot.
 - Generic candidate widening remains closed on DEV-512. New action sources
   must come from a named mechanism—structured tactics, human proposals or a
   model—and beat a same-budget random diversifier on fresh states.
+- Within-decision adaptive allocation also remains closed. A different open
+  hypothesis is to allocate total search by **decision type**: more work for
+  buries, leads and genuinely short endgames, less for forced follows. Test it
+  first on a fixed reusable state mix with equal total work.
 
 ### Lane B — build a Teacher beyond heuristic self-play
 
@@ -396,7 +426,7 @@ This table separates them by the training signal they actually produced.
 | **Fresh live-champion audit** | On an untouched 64-state complement, compare frozen cheap and N=30 choices against the deployed report-LCB root evaluator. | Cheap and N=30 all-state regret bounds passed (`0.0354` and `0.0439`), but the eight boundary states had a weaker N=30 bound (`0.1421`). | Ordinary rows can be labeled cheaply; uncertain/boundary rows need escalation. This is the direct empirical reason for Stage C's mixed-budget hard tail. |
 | **Teacher Stage C generation one** | Capture a split-safe hard-tail exam, label candidate actions with corrected iid hidden-world folds, and train eight-seed ranking/outcome cohorts on DESIGN/CALIB only. | Capture and 2,048/2,048 corrected labels passed. The 1,536-row model generation selected none; a protected play ensemble also selected none on one fresh 480-row REPORT (`-0.008228`, LCB `-0.018944`). | Close the spent REPORT and policy. The usable lesson is that model signal existed in strata but did not make reliable overrides. |
 | **Teacher Stage C generation two** | Add 5,504 fresh DESIGN/CALIB labels for 7,040 total, train matched all-pairs/direct cohorts, then test bury and play capabilities on untouched populations. | All 96 cells and 576 checkpoints replayed. More data produced stable DESIGN/CALIB capability, but fresh use did not transport: expanded bury was `+0.03381` with LCB `-0.01525`; protected play was `-0.00823` with LCB `-0.01894`; the powered 219-state uncertainty exam was `+0.01213` with LCB `-0.00506`. Its outcome-NLL improvement was large (`+0.47845`, LCB `+0.44201`). All terminal results are independently reviewed. | Close direct global ranker use. Preserve the calibrated value signal for explicit common-world advantage/leaf tests and treat the post-hoc mid/late slice only as a fresh specialization hypothesis. |
-| **Stage C mid/late search hybrid** | Gate the frozen eight-model play ensemble to trick 5+, let it add one proposal, and use fresh N=300 belief-sampled search to compare that proposal with the literal production move; include a same-work uninformed proposal to measure whether the model adds more than generic widening. | On 256 fresh balanced states, the independently reviewed model-plus-search effect was `+0.02020` versus live (LCB `+0.01275`) and `+0.01570` versus null (LCB `+0.00880`), with exact 230,400 candidate-worlds. | Design/review one fresh whole-game hybrid screen. This supports model-guided search, not a bare-model or production claim. |
+| **Stage C mid/late search hybrid** | Gate the frozen eight-model play ensemble to trick 5+, let it add one proposal, and use fresh N=300 belief-sampled search to compare that proposal with the literal production move; include a same-work uninformed proposal to measure whether the model adds more than generic widening. | On 256 fresh balanced states, the independently reviewed model-plus-search effect was `+0.02020` versus live (LCB `+0.01275`) and `+0.01570` versus null (LCB `+0.00880`), with exact 230,400 candidate-worlds. The fresh whole-game screen is now running on Mini. | Finish the reviewed treatment/null/champion screen and route its terminal verdict. This supports model-guided search, not a bare-model or production claim. |
 
 In plain English, Stage B asked, “Can the cheap grader reproduce the expensive
 grader on normal exam questions?” Stage C asks, “Can we write a better exam,
@@ -424,6 +454,14 @@ The Stage-C progression is:
    ranking or allocation help inside search;
 7. spend 10k/50k-scale collection only after untouched teacher metrics and a
    fresh paired bot screen improve.
+
+The next learned research does **not** mean “scale the same 7,040 labels.” If
+the T4 hybrid passes, confirm that composition and use its search decisions as
+new expert-iteration targets. If it fails, close this proposal checkpoint and
+test the already-positive outcome head as a calibrated leaf/advantage or
+search-allocation input against full fresh search on reusable DEV. In parallel,
+two-card exact endings are the smallest meaningful domain for privileged
+targets; expand to three cards only after both regret and solver cost pass.
 
 “Hard tail” is not synonymous with openings. Early leads matter because their
 continuations are long and existing data overexposed lead weaknesses, but bury,
@@ -495,9 +533,10 @@ The surviving uses of human data are:
 
 The current historical split has only five connected player/deal components
 and display names cannot prove true-person identity. It is adequate for
-diagnosis, not a credible final people-strength REPORT. S5 therefore replays
-bot-seat decisions separately from H0, and HUMAN-C1 remains the only route to a
-people-facing claim.
+diagnosis, not a credible final people-strength REPORT. S5's 58 replay triggers
+and 16 current-surface reproductions are mechanism witnesses only; they neither
+measure natural whole-game gain nor judge the human action. HUMAN-C1 remains
+the only route to a people-facing claim.
 
 ### Lane C — learn beyond MC imitation
 

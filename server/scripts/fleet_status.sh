@@ -1,7 +1,8 @@
 #!/bin/bash
 # One-command status for every shengji job across the fleet
-# (Mini + Air + the optional local `shengji-cloud` SSH alias).
-# Probes LIVE state — no registry to go stale. Run from server/.
+# (Mini + Air + optional local `shengji-cloud` strength and `shengji-perf`
+# performance SSH aliases). Public addresses never belong in this repository.
+# Probes LIVE state — no registry to go stale. Run from any directory.
 #
 # Job identification: our compute jobs are python processes in the
 # server venv; heredoc-launched ones have opaque cmdlines ("python3 -"),
@@ -29,6 +30,32 @@ score_free_progress_file() {
   esac
 }
 
+# A T4 heartbeat reports the current arm, not cumulative completion. Turning
+# `treatment 400/512` into 78% hid the two later 512-round arms. Report an
+# explicit sequential round-work fraction while leaving outcome bytes sealed.
+composition_round_progress() {
+  python3 -c '
+import json, sys
+try:
+    value = json.load(sys.stdin)
+    progress = value["progress"]
+    order = {"treatment": 0, "matched_null": 1, "champion": 2}
+    done = total = 0
+    for item in progress:
+        per_arm = int(item["rounds_total"])
+        complete = int(item["rounds_complete"])
+        arm = item["arm"]
+        if arm not in order or not 0 <= complete <= per_arm:
+            raise ValueError
+        done += order[arm] * per_arm + complete
+        total += 3 * per_arm
+    if progress and total:
+        print(f"sequential-round-work={done}/{total} ({100*done/total:.1f}%; {len(progress)} shards)")
+except Exception:
+    pass
+' 2>/dev/null
+}
+
 # Any unexpected failure must be LOUD, not an empty section.
 trap 'echo "FLEET_STATUS FAILED at line $LINENO — do not read the output above as an all-clear"' ERR
 
@@ -49,8 +76,16 @@ find /private/tmp -maxdepth 7 -type f \
   while IFS= read -r f; do
     score_free_progress_file "$f" || continue
     age=$(( ($(date +%s) - $(stat -f %m "$f")) / 60 ))
-    printf "  %s (%sm): %s\n" "$f" "$age" \
-      "$(tail -1 "$f" 2>/dev/null | cut -c1-160)"
+    line=$(tail -1 "$f" 2>/dev/null)
+    summary=""
+    case "$f" in
+      */teacher-v3-stage-c-midlate-composition-screen-v1/supervisor-console.log)
+        summary=$(printf "%s\n" "$line" | composition_round_progress)
+        ;;
+    esac
+    printf "  %s (%sm): %s%s\n" "$f" "$age" \
+      "$(printf "%s" "$line" | cut -c1-160)" \
+      "${summary:+  [$summary]}"
   done
 
 hdr "AIR — broad process identity + live progress"
@@ -161,6 +196,45 @@ if ! ssh -o BatchMode=yes -o ConnectTimeout=8 shengji-cloud '
   done
   echo "  --- tmux sessions"
   tmux list-sessions 2>/dev/null | sed "s/^/  /" || echo "  (none visible)"
+  echo "  --- allowlisted S4 score-free progress"
+  s4_progress_dir=/var/tmp/shengji-s4-c2-360b-run/server/runs/logs/s4-point-banking-future-c2-360b-v1
+  if [ -d "$s4_progress_dir" ]; then
+    python3 - "$s4_progress_dir" <<PY
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+rows = []
+for path in sorted(root.glob("tranche-1-shard-*.log.partial")):
+    try:
+        line = path.read_text().splitlines()[-1]
+        value = json.loads(line)
+        if value.get("event") != "s4-point-banking-future-progress-v1":
+            continue
+        rows.append((
+            int(value["shard_index"]),
+            int(value["clusters_complete"]),
+            int(value["clusters_total"]),
+        ))
+    except (IndexError, KeyError, OSError, TypeError, ValueError):
+        continue
+if len(rows) == 16 and {row[0] for row in rows} == set(range(16)):
+    totals = {row[2] for row in rows}
+    if len(totals) == 1 and all(0 <= row[1] <= row[2] for row in rows):
+        per_shard = totals.pop()
+        done = sum(row[1] for row in rows)
+        total = 16 * per_shard
+        values = [row[1] for row in rows]
+        print(f"  tranche-1 clusters={done}/{total} ({100 * done / total:.1f}%); per-shard={min(values)}-{max(values)}/{per_shard}")
+    else:
+        print("  !! S4 progress totals drifted; state UNKNOWN")
+else:
+    print(f"  !! S4 progress rows={len(rows)}/16; state UNKNOWN")
+PY
+  else
+    echo "  (active S4 progress directory absent)"
+  fi
   echo "  --- unreviewed census progress: metadata only"
   f=/var/tmp/pair-retention-census-v1.log
   if [ -f "$f" ]; then
@@ -178,6 +252,51 @@ if ! ssh -o BatchMode=yes -o ConnectTimeout=8 shengji-cloud '
   done
 '; then
   echo "  Cloud probe FAILED — state UNKNOWN (not idle)"
+fi
+
+hdr "PERFORMANCE HOST — qualification / performance work only"
+# This host is intentionally distinct from the strength Cloud worker above.
+# It is not authorized for scored evidence until a future controller pins its
+# exact runtime. This alias-only probe reads operating state, never evidence
+# files or log content.
+if ! ssh -o BatchMode=yes -o ConnectTimeout=8 shengji-perf '
+  echo "  Host: $(hostname)"
+  echo "  Capacity: $(nproc) CPUs; load $(cut -d" " -f1-3 /proc/loadavg)"
+  free -h | sed -n "2s/^/  Memory: /p"
+  pids=$(ps -Ao pid=,comm= |
+    awk "tolower(\$0) ~ /python/ {print \$1}")
+  count=$(printf "%s\n" "$pids" | awk "NF {n++} END {print n+0}")
+  echo "  Python processes visible: $count"
+  if [ "$count" -eq 0 ]; then
+    echo "  (no Python work visible; performance host remains unqualified for strength)"
+  fi
+  echo "  --- exact Python process command, cwd and source"
+  printf "%s\n" "$pids" | while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    if meta=$(ps -p "$pid" -o pid=,ppid=,%cpu=,etime=); then
+      command=$(ps -p "$pid" -o command=)
+      cwd=$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)
+      git=none
+      if [ -n "$cwd" ]; then
+        probe=$cwd
+        while [ "$probe" != / ] && [ ! -e "$probe/.git" ]; do
+          probe=$(dirname "$probe")
+        done
+        if [ -e "$probe/.git" ]; then
+          git=$(git -C "$probe" rev-parse HEAD 2>/dev/null || echo unreadable)
+        fi
+      fi
+      echo "  $meta git=$git"
+      echo "    cwd=${cwd:-(unresolved)}"
+      echo "    command=$command"
+    else
+      echo "  pid=$pid vanished during probe; reconcile before status claim"
+    fi
+  done
+  echo "  --- tmux sessions"
+  tmux list-sessions 2>/dev/null | sed "s/^/  /" || echo "  (none visible)"
+'; then
+  echo "  Performance host probe FAILED — state UNKNOWN (not idle)"
 fi
 
 hdr "INTEGRITY — process identity + dataset provenance"

@@ -14,6 +14,11 @@ the rules these incidents produced; this folder keeps the reasoning.
 
 | id | date | severity | title | detected by |
 |---|---|---|---|---|
+| [INC-17](INC-20260812-17-request-template-looked-like-review-pass.md) | 08-12 | S4 | Codex request template at column one looked like an independent S5 PASS | prefix scan plus author-heading authentication |
+| [INC-16](INC-20260812-16-s4-queue-process-filter-false-positive.md) | 08-12 | S4 | S4 handoff queue would have mistaken the persistent tmux server for a live Pair worker | pre-transition executable-identity audit |
+| [INC-15](INC-20260812-15-reviewer-witness-launched-gameplay.md) | 08-12 | S3 | Reviewer validation attempt launched 16 real S4 gameplay workers | exact fleet reconciliation and disposable-namespace inventory |
+| [INC-14](INC-20260812-14-claude-session-cron-missed.md) | 08-12 | S3 | Session-only reviewer cron missed the launch-blocking 15:11 cycle | local task timeline/state timestamps |
+| [INC-13](INC-20260812-13-s4-child-boundary-launch-failure.md) | 08-12 | S3 | Reviewed S4 controller launched 16 children that all refused before gameplay | exact native child smoke after launch failure |
 | [INC-12](INC-20260812-12-fleet-monitor-false-negative.md) | 08-12 | S3 | Wrong process filter reported Air idle and triggered a duplicate S6 census | exact process/namespace reconciliation |
 | [INC-11](INC-20260803-11-fast-path-noop.md) | 08-03 | S4 | `SHENGJI_FAST=1` was a no-op outside pytest | validation agent |
 | [INC-10](INC-20260803-10-orphaned-workers.md) | 08-03 | S1 | Orphaned workers wrote buggy-code data for 10h | process-age audit |

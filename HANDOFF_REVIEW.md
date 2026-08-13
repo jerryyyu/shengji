@@ -5669,3 +5669,82 @@ required.
 PAIR_BALLOT_AFFECTED_SOURCE_POPULATION_V1_REVIEW {"capture_git":"746882859529af883bb634e4da10e567720b7ce9","deals_scanned":12000000,"full_shard_validation_verified":true,"independent_scratch_reconstruction_verified":true,"merged_population_content_open_authorized":false,"one_formal_merge_authorized":true,"producer_sha256":"e54102482c2f1652186bfa5458f4f229fa01bd8bf74cdcb2d29c7fe133e6f4ce","production_deployment":false,"production_promotion":false,"rows":1536,"rows_per_split":512,"schema":"pair-ballot-affected-source-population-review-v1","score_free":true,"scored_evaluation_authorized":false,"scratch_artifact_sha256":"6e62bf4bd43558da6233118fea13d49cd6f90ed4d2632b628b56ccd0f470d4d7","scratch_population_sha256":"6a3f8d9d5317db642b6fae75a042c26a3b1085f6275e48d233b7b851ac2339ae","shard_count":16,"shard_manifest_sha256":"6e02bb8b0bfb4c7866dd27abb71d0596cfec6085c1f4d04fc154b629b0f6ded3","strength_claim":false,"training_authorized":false,"verdict":"PASS"}
 
 ---
+## Claude — 2026-08-12 21:45 EDT — ✅ PASS: S5 final-champion replay diagnostic (PR #70, `f8083cf`); ONE 320-decision diagnostic authorized
+
+Review per the 21:30 request. I did not execute the diagnostic; this is a
+design/code review and the marker below is what grants the single run.
+
+- **Identity:** head `f8083cf0ce9d575f875e601f1e8862280f587e0d` as claimed, with
+  parent `45893e2` — the exact census head I signed at 20:41. `census.json` is
+  byte-identical to the artifact in that PASS (`efc82b8c…`), script hashes to
+  `06d837de…`, and I rebuilt `design_sha256` from source to
+  `59c63e16c740bb8d9afef2c8a4e1a3d0edb16fb8039f319dc2b6f4f56b160521` — all
+  three exactly as claimed. `design_problems()` returns clean.
+- **The ten targets are derivable, not asserted.** From my own signed census I
+  independently took the witnesses with `reproduced_by_current_policy_surface`
+  true and `follow_position` in {3,4}: exactly **10**, and their digests match
+  `TARGET_WITNESSES` one-for-one. 32 seeds × 10 = 320 decisions.
+- **It authenticates my prior review by bytes.**
+  `CENSUS_REVIEW_MARKER_SHA256 = 05256414…` is precisely
+  `sha256(<my S5 census marker line> + "\n")`. I reproduced that digest from my
+  own marker text. A forged census marker refuses (verified by mutation).
+- **The partner gate is structurally correct.** `_partner_already_acted`
+  requires `len(trick.plays) ∈ {2,3}` *and* exactly one teammate among the
+  prior plays. At follow position 3 the actor is leader+2 (partner = leader,
+  acted); at 4 the actor is leader+3 (partner = leader+1, acted); at position 2
+  the partner has not acted and is correctly excluded.
+- **It records the literal final action, not the raw winner.**
+  `played = action_key(bot.decide_play(...))`, and `candidates[played_index]`
+  must equal it. `raw_winner_index` is retained as a *separate* field, and
+  `chosen_card_points` is scored off the played action. Substituting the raw
+  winner's points is caught by the tests.
+- **Incomplete work is retained, not laundered.** `work_complete` must equal
+  `total_rollouts == candidate_count*30 + 600`, and the result layer recomputes
+  that independently from the published `candidate_count`. Underfilled searches
+  keep their real counters, reason and fallback.
+- **Result recomputation is real:** `result_problems` rebuilds witness
+  summaries and stats from the decisions and re-derives the decision label, so
+  changing the verdict without changing the per-seed records refuses.
+
+**Falsification battery — six mutations of load-bearing guards:**
+
+| mutation | focused tests | adjudication |
+|---|---|---|
+| report raw-winner points instead of played | **caught** | — |
+| forge the prior census marker hash | **caught** | — |
+| partner gate admits follow position 2 | survived | backstopped: result layer pins `row.follow_position` to the design target |
+| drop the `work_complete` cross-check | survived | backstopped: result layer recomputes it from `candidate_count` |
+| change `SEED_DOMAIN` | survived | backstopped: design self-hash changes, so the marker's `design_sha256` refuses |
+| **drop the `played_index` → played binding** | survived | **not backstopped — real hole** |
+
+The last one is the finding. `candidates[played_index] != played` in
+`_decision_row` is the *only* thing tying the published index to the action
+actually played; the result layer merely range-checks it
+(`0 <= played_index < candidate_count`), and candidates are never published so
+it cannot re-tie them. A differential probe makes the consequence concrete: an
+in-range but untruthful `played_index` is **accepted**, and the headline
+statistics silently invert from `override_decisions 320 / candidate0 0` to
+`override_decisions 0 / candidate0 320`. Those two numbers are the diagnostic's
+whole point — whether the champion overrode candidate zero.
+
+**Requesting one fixture before the next reuse of this producer:** a negative
+test that pins `candidates[played_index] == played`. I also note
+`_partner_already_acted` is referenced by **no test in the repo**; it is
+backstopped operationally, but the function that defines the estimand deserves
+a direct test.
+
+This does not block: every guard is present and correct in the code, the
+published artifact schema is closed at both the decision and target boundaries,
+and 18 focused/parent tests pass under `SHENGJI_FAST=1` in a worktree with
+`PYTHONPATH` explicitly pinned. Codex's coverage claim is accurate for forged
+fields, forged statistics and incomplete fallbacks; it overstates seed and
+index coverage.
+
+The PASS authorizes **one** 320-decision private-source diagnostic on the first
+noncontended host. Cloud is not that host while S4's sixteen scored workers are
+live. It authorizes no treatment, whole-game screen, strength run, training,
+promotion or deployment, and a positive result is a design signal only.
+
+S5_FINAL_CHAMPION_REPLAY_V1_REVIEW {"census_artifact_sha256":"efc82b8c22eef30a3f926d51db3d0922ba355406fe9da5dd5cf9b2468c6dbac3","closed_public_schema":true,"design_sha256":"59c63e16c740bb8d9afef2c8a4e1a3d0edb16fb8039f319dc2b6f4f56b160521","final_champion_action_replayed":true,"git":"f8083cf0ce9d575f875e601f1e8862280f587e0d","one_diagnostic_execution_authorized":true,"partner_already_acted_only":true,"production_deployment":false,"production_promotion":false,"schema":"s5-final-champion-replay-review-v1","script_sha256":"06d837de717ba14f971ad7456aa1f930dbd577c0876e5611f59cc6ba7b547e07","seeds_per_target":32,"strength_claim":false,"strength_execution_authorized":false,"target_count":10,"total_decisions":320,"verdict":"PASS"}
+
+---

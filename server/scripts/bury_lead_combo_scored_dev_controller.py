@@ -303,6 +303,12 @@ def canonical_review_record(*, commit: str, prefix: str, expected: dict,
 
 def require_design_review() -> None:
     try:
+        if subprocess.run(
+                ["git", "merge-base", "--is-ancestor",
+                 DESIGN_REVIEW_COMMIT, CANONICAL_REVIEW_REF], cwd=REPO,
+                capture_output=True).returncode != 0:
+            raise ControllerRefused(
+                "design review is not reachable from canonical main")
         parents = git("show", "-s", "--format=%P", DESIGN_REVIEW_COMMIT).split()
         identity = tuple(git(
             "show", "-s", f"--format={field}", DESIGN_REVIEW_COMMIT)
@@ -322,7 +328,7 @@ def require_design_review() -> None:
             or REVIEWER_SESSION_TRAILER not in body
             or not current.startswith(previous) or not tip.startswith(current)
             or b"scored bury/S6 DEV packet design (PR #91" not in current
-            or DESIGN_GIT.encode() not in current
+            or DESIGN_GIT[:7].encode() not in current
             or DESIGN_CANONICAL_SHA256[:16].encode() not in current):
         raise ControllerRefused("design review provenance drift")
 
@@ -489,6 +495,7 @@ def runtime_problems(value: object, *, expected_git: str) -> list[str]:
     host = value.get("host")
     if (not isinstance(native, Mapping) or set(native) != {"path", "sha256"}
             or not isinstance(native.get("path"), str)
+            or not Path(native.get("path", "")).is_absolute()
             or not is_sha256(native.get("sha256"))):
         problems.append("runtime native identity drift")
     if (not isinstance(python, Mapping)
@@ -497,9 +504,21 @@ def runtime_problems(value: object, *, expected_git: str) -> list[str]:
                 "implementation", "machine", "cache_tag"}
             or python.get("implementation") != "CPython"
             or python.get("machine") != "x86_64"
+            or any(not isinstance(python.get(field), str)
+                   or not python.get(field) for field in (
+                       "executable", "resolved", "version", "cache_tag"))
+            or not Path(python.get("executable", "")).is_absolute()
+            or not Path(python.get("resolved", "")).is_absolute()
             or not is_sha256(python.get("sha256"))):
         problems.append("runtime Python identity drift")
     if (not isinstance(host, Mapping)
+            or set(host) != {
+                "hostname", "architecture", "platform", "cpu_online",
+                "memory_bytes"}
+            or not isinstance(host.get("hostname"), str)
+            or not host.get("hostname")
+            or not isinstance(host.get("platform"), str)
+            or not host.get("platform")
             or not _integer(host.get("cpu_online"), minimum=MIN_CPUS)
             or not _integer(host.get("memory_bytes"), minimum=MIN_MEMORY_BYTES)
             or host.get("architecture") != "x86_64"):
@@ -703,6 +722,12 @@ def packet_problems(value: object, *, expected_git: str) -> list[str]:
     problems.extend(runtime_problems(
         value.get("runtime"), expected_git=expected_git))
     expected_claim = implementation_review_claim(expected_git=expected_git)
+    runtime = value.get("runtime")
+    if (not isinstance(runtime, Mapping)
+            or runtime.get("source_sha256s") != source_sha256s()
+            or runtime.get("source_manifest_sha256")
+            != expected_claim["source_manifest_sha256"]):
+        problems.append("packet runtime/source-review binding drift")
     if not _review_shape(value.get("implementation_review"), expected_claim):
         problems.append("packet implementation-review provenance drift")
     return sorted(set(problems))
@@ -1112,11 +1137,73 @@ def final_problems(value: object, *, packet: dict,
         for index, (receipt, seed) in enumerate(zip(receipts, seeds, strict=True)):
             problems.extend(state_receipt_problems(
                 receipt, expected_index=index, expected_seed=seed))
-        if (len({item.get("record_sha256") for item in receipts
-                 if isinstance(item, Mapping)}) != STATE_COUNT
-                or sum(item["work"]["total_candidate_rollouts"]
-                       for item in receipts) != TOTAL_CANDIDATE_ROLLOUTS):
+        record_shas = {
+            item.get("record_sha256") for item in receipts
+            if isinstance(item, Mapping)
+        }
+        work_values = []
+        for item in receipts:
+            work = item.get("work") if isinstance(item, Mapping) else None
+            total = (work.get("total_candidate_rollouts")
+                     if isinstance(work, Mapping) else None)
+            if not _integer(total, minimum=1):
+                work_values = []
+                break
+            work_values.append(total)
+        if (len(record_shas) != STATE_COUNT
+                or len(work_values) != STATE_COUNT
+                or sum(work_values) != TOTAL_CANDIDATE_ROLLOUTS):
             problems.append("supervisor final record/work closure drift")
+    return sorted(set(problems))
+
+
+def admission_problems(value: object, *, packet: dict,
+                       packet_sha256: str, final: Mapping[str, object]) \
+        -> list[str]:
+    if not isinstance(value, Mapping):
+        return ["execution admission is not an object"]
+    expected_fields = {
+        "schema", "run_id", "git", "packet_sha256",
+        "packet_internal_sha256", "packet_review_commit",
+        "packet_review_marker_sha256", "runtime_profile_sha256",
+        "systemd_invocation_id", "nonce", "created_time_ns",
+        "one_scored_dev_execution_authorized", "records_remain_sealed",
+        "resume_authorized", "retry_or_extension_authorized",
+        "aggregation_authorized", "report_access_authorized",
+        "strength_claim", "training_authorized", "production_promotion",
+        "production_deployment", "internal_sha256",
+    }
+    material = dict(value)
+    recorded = material.pop("internal_sha256", None)
+    problems = []
+    if set(value) != expected_fields:
+        problems.append("execution admission field population drift")
+    if (recorded != digest(material)
+            or value.get("schema") != ADMISSION_SCHEMA
+            or value.get("run_id") != RUN_ID
+            or value.get("git") != packet["git"]
+            or value.get("packet_sha256") != packet_sha256
+            or value.get("packet_internal_sha256")
+            != packet["internal_sha256"]
+            or value.get("runtime_profile_sha256")
+            != packet["runtime_profile_sha256"]
+            or value.get("packet_review_commit")
+            != final.get("packet_review_commit")
+            or value.get("packet_review_marker_sha256")
+            != final.get("packet_review_marker_sha256")
+            or value.get("systemd_invocation_id")
+            != final.get("systemd_invocation_id")
+            or not isinstance(value.get("nonce"), str)
+            or not is_sha256(value.get("nonce"))
+            or not _integer(value.get("created_time_ns"), minimum=1)
+            or value.get("one_scored_dev_execution_authorized") is not True
+            or value.get("records_remain_sealed") is not True
+            or any(value.get(field) is not False for field in (
+                "resume_authorized", "retry_or_extension_authorized",
+                "aggregation_authorized", "report_access_authorized",
+                "strength_claim", "training_authorized",
+                "production_promotion", "production_deployment"))):
+        problems.append("execution admission identity/authority drift")
     return sorted(set(problems))
 
 
@@ -1203,6 +1290,28 @@ def verify_final_command(args: argparse.Namespace) -> None:
     value = strict_json(raw)
     problems = final_problems(
         value, packet=packet, packet_sha256=args.expected_packet_sha256)
+    admission_raw = stable_bytes(
+        ADMISSION_PATH, label="execution admission", root_owned=True,
+        nonwritable=True)
+    if sha256_bytes(admission_raw) != value.get("admission_sha256"):
+        problems.append("execution admission file SHA drift")
+    else:
+        problems.extend(admission_problems(
+            strict_json(admission_raw), packet=packet,
+            packet_sha256=args.expected_packet_sha256, final=value))
+    claim = packet_review_claim(
+        packet=packet, packet_sha256=args.expected_packet_sha256)
+    review, marker = canonical_review_record(
+        commit=value.get("packet_review_commit", ""),
+        prefix=PACKET_REVIEW_PREFIX, expected=claim,
+        label="scored-DEV packet review")
+    if review["marker_sha256"] != value.get("packet_review_marker_sha256"):
+        problems.append("packet review marker SHA drift")
+    snapshot = stable_bytes(
+        PACKET_REVIEW_PATH, label="packet review snapshot",
+        root_owned=True, nonwritable=True)
+    if snapshot != marker:
+        problems.append("packet review snapshot drift")
     if problems:
         raise ControllerRefused("; ".join(problems))
     print(json.dumps({

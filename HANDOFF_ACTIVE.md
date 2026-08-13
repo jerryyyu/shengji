@@ -9,7 +9,7 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 19:44 EDT from canonical main `0cc569d`.
+Last reconciled: 2026-08-13 19:48 EDT from canonical main `0329f18`.
 
 ## Live fleet
 
@@ -76,6 +76,18 @@ Last reconciled: 2026-08-13 19:44 EDT from canonical main `0cc569d`.
    plus fail-closed historical compatibility tests are added. Relevant suites
    pass 113/113 pure and 113/113 strict compiled; CI and exact merge review are
    pending. The result grants no deploy or strength authority.
+
+   **Landing/compute sequence:** obtain exact merge review for PR #71 and
+   exact-head review for PR #98; if both PASS, preserve commits, merge PR #71
+   first and retarget/recheck PR #98. Do not merge experimental PRs #77, #81,
+   #83, #89 or #90; #90's reviewed runtime bytes are already inside #98 and
+   PR #75 remains separate compatibility evidence. Defer PR #92 because it is
+   outside the measured arm. Existing sealed runners keep their exact pinned
+   trees; only future worktrees/binaries may be rebuilt after merge and any
+   current-source receipt rebind gets separate review. Park further perf
+   exploration except lightweight memory-aware-rollout design/profile work.
+   Use the freed host for S6 V2 first, then PR #96 capacity, then the reviewed
+   feed-anticipation design lane; no step inherits authority from the prior one.
 3. **S6 scored-DEV PR #94.** A cross-lane audit found that source-PASSed
    `0dd8f11` authenticated a frozen unit file and basic systemd properties but
    not the loaded fragment/reload state. Preserve but never attest or execute

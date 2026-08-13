@@ -10,7 +10,37 @@
 > `docs_archive/handoff-active-through-2026-08-11-10-22.md` and
 > `docs_archive/handoff-review-2026-08-08-through-2026-08-11-10-22.md`.
 
-Last reconciled: 2026-08-12 11:03 EDT.
+Last reconciled: 2026-08-13 00:03 EDT.
+
+## CURRENT LAUNCH BLOCKER — read before the older lane detail below
+
+The lower lane table is the last merged snapshot and is being replaced by docs
+PR #64. Current executable truth is:
+
+- **S5 x86 portability PR #74 is first review priority.** Exact head
+  `ff9bed51fce729f23205167df105d7eadd938e84`, stacked on reviewed PR #70
+  `f8083cf`. The real isolated x86 host passed unmocked fixture and parent
+  verification; no diagnostic/result ran or was opened. The exact request and
+  raw marker are canonical in `HANDOFF_REVIEW.md` at 00:02. A PASS lets the
+  already-authorized one 320-decision diagnostic consume one x86 admission;
+  it grants no new/retry run, strength claim, training, promotion or deploy.
+- **PR #71 repair `093ec33` is second.** It fixes the two red historical RLCB
+  tests without rewriting the immutable receipt; 14/14 pass strict and pure.
+  It still does not rebind the optimized current champion parent. A separate
+  compatibility receipt is in progress, so no merge/deploy/descendant authority
+  follows from this review.
+- **Other pending reviews:** Pair ballot capacity PR #72 `373de84`, docs PR
+  #64 `88dc8c4`, then conditional Pair-cap PR #73 `8c436ab`.
+- **Live compute:** T4 is healthy on Mini at 4,896/12,288 counter-only
+  arm-rounds (39.8%); broad Pair is healthy on Air; S6's reviewed score-free
+  queue sleeps behind it; S4 is healthy on strength Cloud at 2,337/8,192
+  look-one clusters (28.5%). Outcomes remain sealed.
+- **Performance Cloud:** bounded performance measurement is complete and the
+  host is free. Give it to S5 immediately after PR #74 PASS, using the exact
+  detached pre-PR71 producer. Never substitute optimized code into this frozen
+  strength diagnostic.
+
+Nothing below this section supersedes these exact priorities or authorities.
 
 ## Immediate objective
 

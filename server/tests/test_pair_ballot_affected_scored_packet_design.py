@@ -140,6 +140,30 @@ def test_review_marker_claim_substitution_refuses(monkeypatch):
         AUTHENTICATE_REVIEW_CHAIN()
 
 
+def test_review_commit_must_be_ancestor_of_canonical_ref():
+    canonical_ref = DESIGN.CAPACITY_RESULT_REVIEW_PARENT
+    ancestor = DESIGN.subprocess.run(
+        [
+            "git", "merge-base", "--is-ancestor",
+            DESIGN.CAPACITY_RESULT_REVIEW_COMMIT, canonical_ref,
+        ],
+        cwd=DESIGN.REPO, capture_output=True,
+    )
+    assert ancestor.returncode != 0
+
+    with pytest.raises(
+            DESIGN.ScoredPacketDesignRefused,
+            match=(
+                rf"review {DESIGN.CAPACITY_RESULT_REVIEW_COMMIT[:8]} "
+                r"is not on canonical main")):
+        DESIGN._canonical_review_record(
+            commit=DESIGN.CAPACITY_RESULT_REVIEW_COMMIT,
+            parent=DESIGN.CAPACITY_RESULT_REVIEW_PARENT,
+            prefix=DESIGN.CAPACITY_RESULT_REVIEW_PREFIX,
+            expected=DESIGN._capacity_result_claim(),
+            canonical_ref=canonical_ref)
+
+
 def test_later_duplicate_column_one_marker_refuses(monkeypatch):
     original = DESIGN._git_bytes
     marker = (DESIGN.CAPACITY_RESULT_REVIEW_PREFIX.encode()

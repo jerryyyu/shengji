@@ -201,7 +201,21 @@ def _write(path: Path, value: dict) -> str:
 
 def _fixture(tmp_path: Path, monkeypatch) -> dict:
     tmp_path.mkdir(parents=True, exist_ok=True)
+    population_path = tmp_path / "population.json"
+    shards = []
+    for index in range(R.STATES.SHARD_COUNT):
+        shard_path = R.STATES.shard_path(
+            population_path, index, R.STATES.SHARD_COUNT)
+        shard_path.write_bytes(b"{}\n")
+        shards.append({"shard_index": index, "path": shard_path.name})
+    population = {"shards": shards}
+    population_path.write_bytes(R.CAPACITY.canonical(population))
+    design_path = tmp_path / "design.json"
+    design_path.write_bytes(R.CAPACITY.canonical(_design()))
     packet = _packet()
+    packet_path = tmp_path / "packet.json"
+    packet_sha = _write(packet_path, packet)
+    monkeypatch.setattr(R, "EXPECTED_PACKET_SHA256", packet_sha)
     review, marker = _review()
     review_path = tmp_path / "packet-review-snapshot.md"
     review_path.write_bytes(marker)
@@ -211,15 +225,20 @@ def _fixture(tmp_path: Path, monkeypatch) -> dict:
     result_sha = _write(
         result_path, _result(admission_sha256=admission_sha))
     monkeypatch.setattr(
-        R.CAPACITY, "load_packet", lambda *_args, **_kwargs: packet)
+        R.CAPACITY, "load_packet", lambda *_args, **_kwargs: (_ for _ in ())
+        .throw(AssertionError("reviewer must not use double-read load_packet")))
+    monkeypatch.setattr(
+        R.CAPACITY, "packet_problems", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(
         R.CAPACITY, "canonical_review_record",
         lambda **_kwargs: (copy.deepcopy(review), marker))
+    monkeypatch.setattr(
+        R.CAPACITY, "load_population", lambda *_args: copy.deepcopy(population))
     monkeypatch.setattr(R.DESIGN, "verify_design", lambda *_args: _design())
     return {
-        "population_path": tmp_path / "population.json",
-        "design_path": tmp_path / "design.json",
-        "packet_path": tmp_path / "packet.json",
+        "population_path": population_path,
+        "design_path": design_path,
+        "packet_path": packet_path,
         "packet_review_snapshot_path": review_path,
         "admission_path": admission_path,
         "expected_admission_sha256": admission_sha,
@@ -245,6 +264,59 @@ def test_verified_claim_authorizes_design_only(tmp_path, monkeypatch):
         R._sha256_file(Path(R.__file__)))
     assert claim["reviewer_dependency_sha256s"] == (
         R.EXPECTED_DEPENDENCY_SHA256S)
+
+
+def test_stable_read_refuses_path_swap_during_fd_read(tmp_path, monkeypatch):
+    target = tmp_path / "evidence.json"
+    replacement = tmp_path / "replacement.json"
+    displaced = tmp_path / "displaced.json"
+    target.write_bytes(b"a" * ((1 << 20) + 1))
+    replacement.write_bytes(b"b" * ((1 << 20) + 1))
+    real_read = R.os.read
+    swapped = False
+
+    def racing_read(descriptor: int, size: int) -> bytes:
+        nonlocal swapped
+        chunk = real_read(descriptor, size)
+        if not swapped:
+            target.rename(displaced)
+            replacement.rename(target)
+            swapped = True
+        return chunk
+
+    monkeypatch.setattr(R.os, "read", racing_read)
+    with pytest.raises(
+            R.CapacityResultReviewRefused, match="changed during stable read"):
+        R._stable_bytes(target, label="racing evidence")
+
+
+def test_dependency_shard_mutation_during_reconstruction_refuses(
+        tmp_path, monkeypatch):
+    args = _fixture(tmp_path, monkeypatch)
+    shard_path = R.STATES.shard_path(
+        args["population_path"], 7, R.STATES.SHARD_COUNT)
+
+    def mutate_after_snapshot(*_args, **_kwargs):
+        shard_path.write_bytes(b'{"changed":true}\n')
+        return []
+
+    monkeypatch.setattr(R.CAPACITY, "packet_problems", mutate_after_snapshot)
+    with pytest.raises(
+            R.CapacityResultReviewRefused,
+            match="source shard 07 changed during evidence validation"):
+        R.verify(**args)
+
+
+def test_symlink_is_not_hidden_by_cli_path_normalization(tmp_path):
+    target = tmp_path / "target.json"
+    link = tmp_path / "link.json"
+    target.write_bytes(b"{}\n")
+    link.symlink_to(target)
+    lexical = R._absolute_lexical(link)
+    assert lexical.is_symlink()
+    with pytest.raises(
+            R.CapacityResultReviewRefused, match="linked, nonregular"):
+        R._stable_bytes(lexical, label="symlink evidence")
 
 
 @pytest.mark.parametrize("mutation, expected", [
@@ -284,7 +356,7 @@ def test_admission_and_review_snapshot_mutations_refuse(tmp_path, monkeypatch):
     args = _fixture(tmp_path / "second", monkeypatch)
     args["packet_review_snapshot_path"].write_bytes(b"forged\n")
     with pytest.raises(
-            R.CapacityResultReviewRefused, match="snapshot drift"):
+            R.CapacityResultReviewRefused, match="snapshot is unreadable"):
         R.verify(**args)
 
 

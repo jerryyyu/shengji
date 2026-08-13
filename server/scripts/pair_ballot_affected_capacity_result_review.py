@@ -42,6 +42,94 @@ def _sha256_bytes(value: bytes) -> str:
     return _HASHLIB_SHA256(value).hexdigest()
 
 
+def _same_file(left: os.stat_result, right: os.stat_result) -> bool:
+    """Compare the path/file identity and all mutation-visible metadata."""
+    return all(getattr(left, field) == getattr(right, field) for field in (
+        "st_dev", "st_ino", "st_mode", "st_nlink", "st_size",
+        "st_mtime_ns", "st_ctime_ns",
+    ))
+
+
+def _stable_bytes(path: Path, *, label: str) -> bytes:
+    """Read one regular unlinked file exactly once from one stable inode.
+
+    No symlink is followed.  The descriptor is checked before and after the
+    read, then checked against the path's lstat identity.  This closes the
+    hash-then-parse and path-swap windows without copying evidence anywhere.
+    A same-user writer that mutates and perfectly restores every byte and all
+    observable metadata during this short read is outside this read-only
+    reviewer's no-writer boundary.
+    """
+    partial = Path(str(path) + ".partial")
+    flags = os.O_RDONLY
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        before_path = path.lstat()
+        if (not stat.S_ISREG(before_path.st_mode)
+                or before_path.st_nlink != 1
+                or os.path.lexists(partial)):
+            raise CapacityResultReviewRefused(
+                f"{label} is linked, nonregular, or partial")
+        descriptor = os.open(path, flags)
+    except FileNotFoundError as exc:
+        raise CapacityResultReviewRefused(f"{label} is missing") from exc
+    except OSError as exc:
+        raise CapacityResultReviewRefused(f"{label} is unreadable") from exc
+    try:
+        before_fd = os.fstat(descriptor)
+        chunks = []
+        while True:
+            chunk = os.read(descriptor, 1 << 20)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        after_fd = os.fstat(descriptor)
+    except OSError as exc:
+        raise CapacityResultReviewRefused(f"{label} is unreadable") from exc
+    finally:
+        os.close(descriptor)
+    try:
+        after_path = path.lstat()
+    except OSError as exc:
+        raise CapacityResultReviewRefused(
+            f"{label} path changed during read") from exc
+    if (not _same_file(before_path, before_fd)
+            or not _same_file(before_fd, after_fd)
+            or not _same_file(after_fd, after_path)):
+        raise CapacityResultReviewRefused(
+            f"{label} changed during stable read")
+    value = b"".join(chunks)
+    if len(value) != after_fd.st_size:
+        raise CapacityResultReviewRefused(f"{label} short stable read")
+    return value
+
+
+def _strict_json_bytes(value: bytes, *, label: str) -> dict:
+    try:
+        payload = json.loads(
+            value, object_pairs_hook=_strict_object,
+            parse_constant=_reject_constant)
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise CapacityResultReviewRefused(f"{label} is unreadable") from exc
+    if not isinstance(payload, dict):
+        raise CapacityResultReviewRefused(f"{label} is not an object")
+    return payload
+
+
+def _require_snapshot_unchanged(paths: dict[str, Path],
+                                before: dict[str, bytes]) -> None:
+    for label, path in paths.items():
+        if _stable_bytes(path, label=label) != before[label]:
+            raise CapacityResultReviewRefused(
+                f"{label} changed during evidence validation")
+
+
+def _absolute_lexical(path: Path) -> Path:
+    """Make a CLI path absolute without following its final symlink."""
+    return Path(os.path.abspath(os.fspath(path)))
+
+
 def _is_sha256(value: object) -> bool:
     return (isinstance(value, str) and len(value) == 64
             and all(char in "0123456789abcdef" for char in value))
@@ -216,29 +304,46 @@ _require_dependency_sources()
 def _load_exact_json(path: Path, expected_sha256: str, *, label: str) -> dict:
     if not _is_sha256(expected_sha256):
         raise CapacityResultReviewRefused(f"{label} expected SHA-256 drift")
-    partial = Path(str(path) + ".partial")
-    try:
-        info = path.lstat()
-    except FileNotFoundError as exc:
-        raise CapacityResultReviewRefused(f"{label} is missing") from exc
-    if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
-            or os.path.lexists(partial)):
-        raise CapacityResultReviewRefused(
-            f"{label} is linked, nonregular, or partial")
-    if _sha256_file(path) != expected_sha256:
+    raw = _stable_bytes(path, label=label)
+    if _sha256_bytes(raw) != expected_sha256:
         raise CapacityResultReviewRefused(f"{label} file SHA-256 drift")
-    try:
-        value = json.loads(
-            path.read_bytes(), object_pairs_hook=_strict_object,
-            parse_constant=_reject_constant)
-    except (OSError, ValueError) as exc:
-        raise CapacityResultReviewRefused(f"{label} is unreadable") from exc
-    if not isinstance(value, dict):
-        raise CapacityResultReviewRefused(f"{label} is not an object")
-    return value
+    return _strict_json_bytes(raw, label=label)
 
 
-def _packet_review(packet: dict, review_snapshot_path: Path) -> tuple[dict, bytes]:
+def _reconstruction_snapshot(*, population_path: Path,
+                             design_path: Path) -> tuple[dict, dict[str, Path],
+                                                         dict[str, bytes]]:
+    """Freeze exact evidence bytes around dependency reconstruction."""
+    population_label = "Pair V3 reviewed population"
+    population_raw = _stable_bytes(population_path, label=population_label)
+    population = _strict_json_bytes(population_raw, label=population_label)
+    receipts = population.get("shards")
+    if (not isinstance(receipts, list)
+            or len(receipts) != STATES.SHARD_COUNT):
+        raise CapacityResultReviewRefused(
+            "Pair V3 population shard receipt set drift")
+    paths = {
+        population_label: population_path,
+        "Pair V3 reviewed capacity design": design_path,
+    }
+    before = {population_label: population_raw}
+    for index, receipt in enumerate(receipts):
+        shard_path = STATES.shard_path(
+            population_path, index, STATES.SHARD_COUNT)
+        if (not isinstance(receipt, dict)
+                or receipt.get("shard_index") != index
+                or receipt.get("path") != shard_path.name):
+            raise CapacityResultReviewRefused(
+                "Pair V3 population shard receipt path drift")
+        label = f"Pair V3 population source shard {index:02d}"
+        paths[label] = shard_path
+    for label, path in paths.items():
+        if label not in before:
+            before[label] = _stable_bytes(path, label=label)
+    return population, paths, before
+
+
+def _packet_review(packet: dict, review_snapshot_bytes: bytes) -> tuple[dict, bytes]:
     claim = CAPACITY.packet_review_claim(
         expected_git=EXPECTED_GIT,
         packet_sha256=EXPECTED_PACKET_SHA256,
@@ -250,12 +355,18 @@ def _packet_review(packet: dict, review_snapshot_path: Path) -> tuple[dict, byte
             expected=claim,
             expected_parent=PACKET_REVIEW_PARENT_GIT,
             label="Pair V3 preflight packet review")
-        CAPACITY.require_regular_unlinked(
-            review_snapshot_path, label="Pair V3 packet review snapshot")
     except CAPACITY.CapacityPreflightRefused as exc:
         raise CapacityResultReviewRefused(str(exc)) from exc
-    if (review_snapshot_path.read_bytes() != marker
-            or _sha256_file(review_snapshot_path)
+    prefix = CAPACITY.PACKET_REVIEW_PREFIX.encode("utf-8")
+    if not review_snapshot_bytes.startswith(prefix):
+        raise CapacityResultReviewRefused(
+            "Pair V3 packet review snapshot is unreadable")
+    snapshot_claim = _strict_json_bytes(
+        review_snapshot_bytes[len(prefix):],
+        label="Pair V3 packet review snapshot")
+    if (review_snapshot_bytes != marker
+            or snapshot_claim != claim
+            or _sha256_bytes(review_snapshot_bytes)
             != review["marker_sha256"]):
         raise CapacityResultReviewRefused(
             "Pair V3 packet review snapshot drift")
@@ -350,15 +461,29 @@ def verify(*, population_path: Path, design_path: Path, packet_path: Path,
            expected_result_sha256: str) -> dict:
     """Verify immutable evidence and return a design-only review claim."""
     _require_dependency_sources()
+    population_snapshot, reconstruction_paths, reconstruction_bytes = \
+        _reconstruction_snapshot(
+            population_path=population_path, design_path=design_path)
+    design_snapshot = _strict_json_bytes(
+        reconstruction_bytes["Pair V3 reviewed capacity design"],
+        label="Pair V3 reviewed capacity design")
+    packet = _load_exact_json(
+        packet_path, EXPECTED_PACKET_SHA256,
+        label="Pair V3 preflight packet")
     try:
-        packet = CAPACITY.load_packet(
-            packet_path, EXPECTED_PACKET_SHA256,
-            expected_git=EXPECTED_GIT,
-            population_path=population_path,
-            design_path=design_path)
-    except CAPACITY.CapacityPreflightRefused as exc:
-        raise CapacityResultReviewRefused(str(exc)) from exc
-    review, _marker = _packet_review(packet, packet_review_snapshot_path)
+        packet_problems = CAPACITY.packet_problems(
+            packet, expected_git=EXPECTED_GIT,
+            population_path=population_path, design_path=design_path)
+    except Exception as exc:
+        raise CapacityResultReviewRefused(
+            f"cannot reconstruct reviewed packet: {type(exc).__name__}: "
+            f"{exc}") from exc
+    if packet_problems:
+        raise CapacityResultReviewRefused("; ".join(packet_problems))
+    review_snapshot_bytes = _stable_bytes(
+        packet_review_snapshot_path,
+        label="Pair V3 packet review snapshot")
+    review, _marker = _packet_review(packet, review_snapshot_bytes)
 
     admission = _load_exact_json(
         admission_path, expected_admission_sha256,
@@ -377,11 +502,16 @@ def verify(*, population_path: Path, design_path: Path, packet_path: Path,
         raise CapacityResultReviewRefused(
             "capacity result internal digest")
     try:
+        validated_population = CAPACITY.load_population(population_path)
         design = DESIGN.verify_design(population_path, design_path)
     except Exception as exc:
+        raise CapacityResultReviewRefused(str(exc)) from exc
+    if validated_population != population_snapshot:
         raise CapacityResultReviewRefused(
-            f"cannot reconstruct reviewed design: {type(exc).__name__}: {exc}") \
-            from exc
+            "reviewed population differs from stable snapshot")
+    if design != design_snapshot:
+        raise CapacityResultReviewRefused(
+            "reviewed design differs from stable snapshot")
     problems = CAPACITY.score_free_result_problems(result, design=design)
     if result.get("git") != EXPECTED_GIT:
         problems.append("result Git binding")
@@ -400,6 +530,8 @@ def verify(*, population_path: Path, design_path: Path, packet_path: Path,
         problems.append("capacity result did not pass every criterion")
     if problems:
         raise CapacityResultReviewRefused("; ".join(sorted(set(problems))))
+    _require_snapshot_unchanged(
+        reconstruction_paths, reconstruction_bytes)
     return result_review_claim(
         admission_sha256=expected_admission_sha256,
         result_sha256=expected_result_sha256,
@@ -418,12 +550,14 @@ def main() -> None:
     parser.add_argument("--expected-result-sha256", required=True)
     args = parser.parse_args()
     claim = verify(
-        population_path=args.population.resolve(),
-        design_path=args.design.resolve(), packet_path=args.packet.resolve(),
-        packet_review_snapshot_path=args.packet_review_snapshot.resolve(),
-        admission_path=args.admission.resolve(),
+        population_path=_absolute_lexical(args.population),
+        design_path=_absolute_lexical(args.design),
+        packet_path=_absolute_lexical(args.packet),
+        packet_review_snapshot_path=_absolute_lexical(
+            args.packet_review_snapshot),
+        admission_path=_absolute_lexical(args.admission),
         expected_admission_sha256=args.expected_admission_sha256,
-        result_path=args.result.resolve(),
+        result_path=_absolute_lexical(args.result),
         expected_result_sha256=args.expected_result_sha256)
     print(RESULT_REVIEW_PREFIX + json.dumps(
         claim, sort_keys=True, separators=(",", ":")))

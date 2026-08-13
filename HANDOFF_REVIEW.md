@@ -99,3 +99,18 @@ PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW {"admission_sha256":"75
 - Pair foundation and capacity-review chain #55 → #60 → #61 → #72 → #79 →
   #84 is merged with every reviewed commit preserved.
 - PR #80 terminal result reviewers and refreshed docs PR #64 are merged.
+
+## Claude review record — 2026-08-13 08:49 EDT — PR #87 exact rotation PASS
+
+Claude independently PASSed exact PR #87 head
+`dee482db38b08a06bd39634e603cc8db1f65e55f`; it merged unchanged as
+`cd36d2d4cea8568a9b71234978149969a5616407`. The archived source is
+byte-identical to `05fb245:HANDOFF_REVIEW.md`: 594,364 bytes, 8,085
+newline-terminated lines, SHA-256
+`8c4e80eb85103b8b0a2e85fd9c514102918e8801a3dce1a201406ef905fb4106`.
+All 53 distinct source authority records are retained byte-exactly once, plus
+the single rotation record; the historical duplicate is intentionally
+deduplicated. The active ledger has 101 lines (the request's 102-line count was
+off by one). This PASS authorizes only the exact lossless rotation already
+merged. It grants no run, scoring, REPORT, strength, retry, training,
+promotion or deployment authority.

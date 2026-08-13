@@ -2,87 +2,63 @@
 
 > **Canonical paths:** coordinate only through
 > `/Users/jerryyu/Projects/shengji/HANDOFF_ACTIVE.md` and
-> `/Users/jerryyu/Projects/shengji/HANDOFF_REVIEW.md`. Branch-local ledgers
-> are never review authority. Raw review markers belong at column 1 in the
+> `/Users/jerryyu/Projects/shengji/HANDOFF_REVIEW.md`. Branch-local ledgers are
+> never review authority. Raw review markers belong at column one in the
 > canonical review ledger and must occur exactly once.
 >
-> Full earlier history is preserved in `docs_archive/`. This file is only the
-> current executable truth; the review ledger remains the evidence authority.
+> Earlier history is archived in `docs_archive/`. This file is current
+> executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 09:04 EDT from canonical main `a0ca47a`.
-
-## Pair V3 capacity gate
-
-The frozen Pair V3 capacity packet PASS at canonical commit `88866f25` was
-authenticated and consumed exactly once on the performance Cloud. The
-systemd-owned **score-free** preflight finished in 157.535 wall seconds and
-182.430 CPU seconds, used 543.1 MB peak memory, and left no workers or partial
-files. Its one result is `544499d1…a764` / internal `ca36d1af…a4fb`; scored
-evaluation, REPORT access, strength claims, training, promotion and deployment
-all remain closed.
-
-Claude independently reproduced the result science in canonical commit
-`8843be7`: 1.0499 projected fleet-hours against the 64-hour cap, 0.088 hours
-on the worst lane against 4 hours, closed score-free schema and no retry.
-Claude then reviewed final PR #84 head `f571146`, ran its read-only verifier
-against the canonical artifacts and appended the generated raw PASS marker at
-canonical commit `16af447`. The verifier binds the exact dependency bytes and
-stable single-read artifact identities; script SHA is `5ca14e1f…646a1`, test
-SHA is `d7959903…9f3b`, and 21 focused tests pass.
-
-That marker opened **scored-packet design only**. Claude PASSed PR #86's
-declarative production design at exact head `a43a17c` in canonical commit
-`fe6eb3b`; canonical bytes match Python 3.11/3.12/3.14. Test-only child
-`861c0b0` added the requested mutation-proven canonical-ref ancestry fixture,
-passed 74 focused and 135 capacity-chain tests, and was merged with PR #86 at
-`05fb245`. No packet has been frozen or run. Packet
-implementation/freeze/execution, scored output access, REPORT, aggregation,
-retry, extension, strength, training, promotion and deployment remain closed.
-
-The reviewed Pair foundation has landed on `main` in provenance-preserving
-order: PR #55 -> #60 -> #61 -> #72 -> #79 -> #84 -> #86. Exact reviewed
-commits remain ancestors; none was squashed.
+Last reconciled: 2026-08-13 11:29 EDT from canonical main `586c390`.
 
 ## Live fleet
 
 | host | current work | safe progress and next boundary |
 |---|---|---|
-| **Mini** | T4 mid/late Teacher whole-round screen, eight workers | All workers are live. The safe lower bound is 6,596/12,288 = 53.68%: treatment is complete; matched-null is 400 on shard 3 and 300 on the other seven. The deadline remains knife-edge; monitor only and keep Mini uncontended. On terminal publication, Claude reviews the score-free supervisor final before any aggregation or outcome access. |
-| **Air** | Broad Pair-aware whole-game screen, eight workers | All workers are live. The reviewed safe counter is 2,256/7,168 = 31.47%. The current pace remains on a substantive timeout trajectory; do not inspect shard outcomes or intervene. A terminal supervisor final, including timeout, needs score-free review before aggregation. Reviewed S6 preflight remains queued behind this run. |
-| **Strength Cloud** | S4 360B point-banking sequential confirmation, 16 workers | All tranche-one workers are healthy. The reviewed score-free look-one counter is 7,149/8,192 = 87.27% (439-454/512 per shard). The reviewed controller automatically stops or continues at look one. Inspect only reviewed score-free telemetry. |
-| **Performance Cloud** | No live worker | Idle after the one score-free PR #78 capacity run. Pair V3 remains design-only. Performance PR #89 awaits source/tooling review before host-specific design freeze; no benchmark is authorized. |
+| **Mini** | T4 mid/late Teacher whole-round screen, eight workers | All workers are alive and CPU-bound. Treatment is complete and all eight matched-null shards have reached 400/512, so the safe lower bound is 7,296/12,288 = 59.38%; 0/8 terminal. The worker cutoff remains about 20:46:27 EDT. Keep Mini uncontended. On terminal publication, Claude reviews the score-free supervisor final before any aggregation or shard-result access. |
+| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Reviewed score-free shard counters are `[304,304,320,304,304,304,304,304]/896`, totaling 2,448/7,168 = 34.15%; 0/8 terminal. The run remains healthy but on a substantive timeout trajectory. Do not intervene or inspect shard outcomes. The reviewed S6 preflight queue remains asleep behind this run. |
+| **Strength Cloud** | S4 360B point-banking sequential confirmation, tranche two | Look one completed cleanly. Integrity passed, but the predeclared early-efficacy boundary was not crossed, so the reviewed controller automatically released tranche two. All 16 tranche-two workers are live. This is continuation, not a failure or final efficacy verdict. Inspect only reviewed score-free progress; do not open either tranche. The controller has no hard runtime timeout and will publish one terminal result after tranche two. |
+| **Performance Cloud** | PR #89 v2 design frozen; no live worker | Exact PR #89 head `fa0f9cf` PASSed at canonical `586c390`. Frozen design `/var/tmp/report-lcb-perf-ab-pr89-v2.design.json` has SHA `b696426c…82d8`; evidence root is absent and the unit is not installed. Await the second exact-design `PASS_TO_RUN_THIS_DESIGN_ONLY` before the one-shot six-pair A/B. |
 | **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 
 ## Current review and implementation queue
 
-1. **PR #78 capacity result.** Code head `8ab5db2` and the one score-free x86
-   result `e1e4cb38…3103d` / internal `437d1192…003e` independently PASSed.
-   Timing/work/common-world evidence supports design of one bounded scored-DEV
-   packet. That design must independently pin the compiled binary plus all five
-   source hashes that the capacity validator recorded but did not enforce.
-   Packet freeze/run and outcome access remain unauthorized.
-2. **Performance PR #89 `fd0b13f`.** PR #77's prepared-world change measured
-   2.62%, below its 3% gate, and is excluded. The accepted implementation arm
-   `bfec965` is based directly on PR #71 `093ec33`; PR #75 remains separate
-   compatibility evidence. Source-pinned six-pair tooling is CI-green and
-   awaits external review. PASS permits host-specific design freeze only; the
-   filled design needs a second exact review before any benchmark.
-3. **Compatibility PR #75 `90c5630`.** Exact corrected 64-character ELF
-   receipt remains green and awaits external compatibility review. It grants no
-   strength or deploy authority.
-4. **Reviewed exploration.** PR #85 `111314f` PASSed design-only for a future
-   checkpointed Air contingency; the current Air one-shot is untouched and no
-   replacement launch, retry or extension is authorized.
-5. **Terminal lanes.** PR #80, PR #82, PR #86, docs PR #64 and the lossless
-   review-ledger rotation/follow-up PRs #87/#88 are merged. Use the read-only
-   terminal reviewer only after a reviewed supervisor final and admitted
-   aggregate; its presence is not aggregation authority.
+1. **PR #89 frozen performance design.** Claude PASSed exact source/tooling head
+   `fa0f9cf`; PR #90's accepted implementation commits are integrated into the
+   measured arm `a91eb271` rather than merged wholesale. Review frozen design
+   SHA `b696426c7dc6af5ea9cc28302dc0353581ccc6f3056116a21c30aa6fb2b782d8`.
+   A second `PASS_TO_RUN_THIS_DESIGN_ONLY` may authorize exactly one six-pair
+   N=30/R=300 batch, with no retry/tuning. It grants no merge, strength or
+   deployment authority.
+2. **Pair checkpoint capacity PR #93.** Review exact head
+   `2eb55d0dfb5bcf21e0c1a935848c16d10f09d2fa`. PASS may authorize only a
+   host-specific capacity-packet freeze. The packet needs a separate PASS before
+   one capacity attempt. The current Air screen remains untouched and
+   non-resumable.
+3. **S6 scored-DEV controller.** PR #91 design `d31995d` PASSed design-only at
+   canonical `dbed4ae`. Finish and publish the controller/scorer child, then
+   request exact-head implementation review. Even a code PASS may only open a
+   packet freeze; packet review, one-shot admission and later score-free
+   terminal review remain separate. No S6 scored run is currently authorized.
+4. **Compatibility PR #75 `90c5630`.** The corrected 64-character ELF receipt
+   remains separate compatibility evidence for PR #71 and awaits exact-head
+   external review. It grants no strength or deployment authority.
+5. **Terminal reviews.** T4, broad Pair and S4 need no live review while their
+   reviewed controllers run. Their next review begins only after a terminal
+   score-free final exists. No outcome aggregation or sealed result access is
+   allowed before its explicit terminal gate.
 
-Already reviewed: PRs #51, #52 and #54 for bounded bury/S6 exploration; PR #69
-for incremental attacker-gated Pair-cap design; PR #50's one score-free S6
-preflight sleeps behind Air. PR #73 remains conditional on the broad Pair
-terminal result and economics. S5 is closed: its admission is spent and no
-retry or diagnostic execution is authorized.
+PR #78's opened-DEV capacity code/result and PR #91's design are reviewed.
+PR #90 is an implementation source, not a direct merge candidate. PR #92's
+native-follow exploration is outside the frozen PR #89 v2 arm; profile the
+accepted measured stack before deciding whether to integrate or benchmark it.
+PR #85 remains a reviewed design-only contingency for a future fresh Air run;
+it does not authorize retry or extension of the current one-shot.
+
+The reviewed Pair foundation is on `main` in provenance-preserving order:
+PR #55 -> #60 -> #61 -> #72 -> #79 -> #84 -> #86. Pair scored-packet
+implementation/freeze/run, REPORT access, aggregation, retry, strength,
+training, promotion and deployment remain closed.
 
 ## Terminal sequences
 
@@ -92,21 +68,26 @@ For T4 or broad Pair:
 2. Claude reviews that final without opening shard outcomes.
 3. Only an explicit PASS may admit one aggregation.
 4. Claude independently reproduces and terminally reviews the aggregate.
-5. A positive screen can justify a fresh confirmation design; it never deploys.
+5. A positive screen may justify a fresh confirmation design; it never deploys.
 
-For S4, follow the predeclared two-look controller exactly. Never pool old S4
-outcomes post hoc, inspect a live tranche, or manually override its automatic
-transition.
+For S4:
+
+1. The reviewed controller completes tranche two without manual intervention.
+2. Run its exact pinned read-only verifier only after the controller is terminal.
+3. Claude independently reviews the terminal result and verifier evidence.
+4. The terminal decision may select a candidate, select none or HOLD; it never
+   deploys automatically.
 
 ## Standing invariants
 
-- Do not inspect live or sealed shard result files; process state and explicitly
+- Never inspect live or sealed shard-result files. Process state and explicitly
   reviewed score-free heartbeats are the safe monitoring surface.
-- Exploration may be fast and reusable. Deployment evidence remains sealed,
-  powered, independently reviewed and one-shot.
-- Same deals, role flips and policy randomness are shared across treatment,
-  matched null and champion; the null must remain behavior-identical to the
-  champion.
+- Do not turn an implementation/design PASS into execution authority. Every
+  packet, one-shot admission and terminal opening has its own explicit gate.
+- Exploration may be reusable; deployment evidence remains sealed, powered,
+  independently reviewed and one-shot.
+- Same deals, role flips and policy randomness remain shared across treatment,
+  matched null and champion where the frozen design requires them.
 - Feature telemetry is dose/integrity evidence, not whole-game utility.
-- No screen or controller PASS implies REPORT reuse, retry, training,
-  production promotion or deployment.
+- No review implies retry, extension, REPORT reuse, training, production
+  promotion or deployment.

@@ -47,9 +47,21 @@ def _manifest(indices=(0, 2)):
         "outcomes_opened": False,
         "statistics_published": False,
         "aggregate_execution_authorized": False,
+        "population": {
+            "seed0": DESIGN.SCREEN_SEED0,
+            "clusters": DESIGN.SCREEN_CLUSTERS,
+            "stream_stride": DESIGN.STREAM_STRIDE,
+            "max_role_offset": DESIGN.MAX_ROLE_OFFSET,
+            "microshard_clusters": DESIGN.MICROSHARD_CLUSTERS,
+            "microshards": DESIGN.MICROSHARDS,
+        },
+        "campaign_runtime_profile_sha256": PROFILE,
         "completed": [
             {
                 "microshard_index": index,
+                "cluster_index_start": index * DESIGN.MICROSHARD_CLUSTERS,
+                "seed0": DESIGN.SCREEN_SEED0 + DESIGN.STREAM_STRIDE
+                * (index * DESIGN.MICROSHARD_CLUSTERS),
                 "clusters": DESIGN.MICROSHARD_CLUSTERS,
                 "sha256": f"{index + 1:064x}",
                 "elapsed_seconds": 10.0 + index,
@@ -82,6 +94,8 @@ def test_design_is_fresh_checkpointed_and_non_authorizing():
         "current_namespace_retry_or_extension_authorized"] is False
     assert DESIGN.DESIGN["parent"]["current_outcomes_or_shards_reusable"] \
         is False
+    assert "atomically renames" in DESIGN.DESIGN["screen"][
+        "atomic_complete_bundle_directory"]
     assert not any(DESIGN.DESIGN["authority"].values())
 
 
@@ -113,6 +127,7 @@ def test_live_pace_reproduces_acceleration_problem_without_outcomes():
     lambda row: row.update(concurrent_saturation_verified=False),
     lambda row: row.update(runtime_profile_sha256="c" * 64),
     lambda row: row.update(utility=0),
+    lambda row: row.update(screen_execution_authorized=True),
     lambda row: row["lanes"].pop(),
     lambda row: row["lanes"][0].update(clusters=1),
 ])
@@ -137,9 +152,13 @@ def test_capacity_uses_slowest_concurrent_lane_not_mean():
     lambda row: row.update(outcomes_opened=True),
     lambda row: row.update(statistics_published=True),
     lambda row: row.update(aggregate_execution_authorized=True),
+    lambda row: row["population"].update(seed0=DESIGN.PARENT_SEED0),
+    lambda row: row.update(campaign_runtime_profile_sha256="d" * 64),
     lambda row: row["completed"].append(copy.deepcopy(row["completed"][0])),
     lambda row: row["completed"][0].update(sha256="bad"),
     lambda row: row["completed"][0].update(clusters=31),
+    lambda row: row["completed"][0].update(cluster_index_start=32),
+    lambda row: row["completed"][0].update(seed0=DESIGN.SCREEN_SEED0 + 1),
     lambda row: row["completed"][0].update(
         worker_runtime_profile_sha256="c" * 64),
 ])
@@ -148,13 +167,13 @@ def test_manifest_refuses_authority_duplicate_hash_and_runtime_drift(mutation):
     mutation(manifest)
     assert DESIGN.manifest_problems(
         manifest, packet_sha256=PACKET,
-        runtime_profile_sha256s={PROFILE})
+        runtime_profile_sha256=PROFILE)
 
 
 def test_reviewed_resume_constructs_only_the_missing_fixed_indices():
     missing = DESIGN.missing_microshards(
         _manifest(), packet_sha256=PACKET,
-        runtime_profile_sha256s={PROFILE}, manifest_review=_review(),
+        runtime_profile_sha256=PROFILE, manifest_review=_review(),
         manifest_sha256=MANIFEST_SHA,
         surviving_prior_workers=0)
     assert 0 not in missing and 2 not in missing
@@ -162,11 +181,20 @@ def test_reviewed_resume_constructs_only_the_missing_fixed_indices():
     assert missing == sorted(missing)
 
 
+def test_manifest_cannot_relabel_parent_population_or_parent_run():
+    manifest = _manifest()
+    manifest["run_id"] = DESIGN.PARENT_RUN_ID
+    manifest["population"]["seed0"] = DESIGN.PARENT_SEED0
+    assert DESIGN.manifest_problems(
+        manifest, packet_sha256=PACKET,
+        runtime_profile_sha256=PROFILE)
+
+
 def test_resume_refuses_surviving_worker_or_missing_review():
     with pytest.raises(DESIGN.DesignRefused, match="workers still survive"):
         DESIGN.missing_microshards(
             _manifest(), packet_sha256=PACKET,
-            runtime_profile_sha256s={PROFILE}, manifest_review=_review(),
+            runtime_profile_sha256=PROFILE, manifest_review=_review(),
             manifest_sha256=MANIFEST_SHA,
             surviving_prior_workers=1)
     review = _review()
@@ -174,6 +202,11 @@ def test_resume_refuses_surviving_worker_or_missing_review():
     with pytest.raises(DESIGN.DesignRefused, match="review"):
         DESIGN.missing_microshards(
             _manifest(), packet_sha256=PACKET,
-            runtime_profile_sha256s={PROFILE}, manifest_review=review,
+            runtime_profile_sha256=PROFILE, manifest_review=review,
             manifest_sha256=MANIFEST_SHA,
             surviving_prior_workers=0)
+    with pytest.raises(DESIGN.DesignRefused, match="malformed"):
+        DESIGN.missing_microshards(
+            _manifest(), packet_sha256=PACKET,
+            runtime_profile_sha256=PROFILE, manifest_review=_review(),
+            manifest_sha256="not-a-hash", surviving_prior_workers=0)

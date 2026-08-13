@@ -176,6 +176,8 @@ def design_record() -> dict:
             "planning_statistic": "maximum lane seconds per cluster",
             "safety_factor": CONCURRENT_CAPACITY_SAFETY_FACTOR,
             "max_planned_wall_hours": MAX_PLANNED_WALL_HOURS,
+            "independent_result_review_required": True,
+            "packet_design_authorized_by_result_itself": False,
         },
         "screen": {
             "run_id": RUN_ID,
@@ -186,10 +188,16 @@ def design_record() -> dict:
             "microshards": MICROSHARDS,
             "primary_metrics_and_decision_rule_unchanged": True,
             "fresh_population": True,
+            "atomic_complete_bundle_directory": (
+                "each microshard stages outcome.json plus an outcome-free "
+                "receipt, fsyncs both, then atomically renames the directory"
+            ),
+            "incomplete_staging_is_never_a_completed_microshard": True,
             "immutable_microshard_outputs": True,
             "outcome_files_closed_until_supervisor_review": True,
             "score_free_progress_fields": [
-                "microshard_index", "clusters", "sha256",
+                "microshard_index", "cluster_index_start", "seed0",
+                "clusters", "sha256",
                 "elapsed_seconds", "worker_runtime_profile_sha256",
             ],
         },
@@ -199,14 +207,15 @@ def design_record() -> dict:
             "completed_microshards_never_overwritten_or_recomputed": True,
             "zero_surviving_prior_workers_required": True,
             "same_packet_population_source_and_runtime_required": True,
+            "one_campaign_runtime_profile_sha256_required": True,
             "score_free_manifest_required": True,
             "independent_manifest_review_required": True,
             "outcome_access_before_resume": False,
             "aggregate_before_all_microshards": False,
             "host_migration": (
-                "allowed only between packet-bound homogeneous runtime "
-                "profiles with separately reviewed parity and concurrent "
-                "capacity evidence"
+                "allowed only when the new host reproduces the one "
+                "packet-bound campaign runtime profile SHA and has "
+                "separately reviewed concurrent capacity evidence"
             ),
         },
         "reserved_populations": [copy.deepcopy(value)
@@ -316,7 +325,7 @@ def capacity_projection(result: dict, *, expected_workers: int,
 
 
 def manifest_problems(value: object, *, packet_sha256: str,
-                      runtime_profile_sha256s: set[str]) -> list[str]:
+                      runtime_profile_sha256: str) -> list[str]:
     """Validate a score-free checkpoint inventory without opening outcomes."""
     if not isinstance(value, dict):
         return ["microshard manifest is not an object"]
@@ -325,11 +334,21 @@ def manifest_problems(value: object, *, packet_sha256: str,
     if set(value) != {
             "schema", "run_id", "packet_sha256", "outcomes_opened",
             "statistics_published", "aggregate_execution_authorized",
-            "completed"}:
+            "population", "campaign_runtime_profile_sha256", "completed"}:
         problems.append("microshard manifest field population drift")
     if (value.get("schema") != MANIFEST_SCHEMA
             or value.get("run_id") != RUN_ID
             or value.get("packet_sha256") != packet_sha256
+            or value.get("population") != {
+                "seed0": SCREEN_SEED0,
+                "clusters": SCREEN_CLUSTERS,
+                "stream_stride": STREAM_STRIDE,
+                "max_role_offset": MAX_ROLE_OFFSET,
+                "microshard_clusters": MICROSHARD_CLUSTERS,
+                "microshards": MICROSHARDS,
+            }
+            or value.get("campaign_runtime_profile_sha256")
+            != runtime_profile_sha256
             or value.get("outcomes_opened") is not False
             or value.get("statistics_published") is not False
             or value.get("aggregate_execution_authorized") is not False):
@@ -338,8 +357,8 @@ def manifest_problems(value: object, *, packet_sha256: str,
         problems.append("microshard manifest rows are missing")
         return sorted(set(problems))
     expected_fields = {
-        "microshard_index", "clusters", "sha256", "elapsed_seconds",
-        "worker_runtime_profile_sha256",
+        "microshard_index", "cluster_index_start", "seed0", "clusters",
+        "sha256", "elapsed_seconds", "worker_runtime_profile_sha256",
     }
     indices = []
     for row in rows:
@@ -347,6 +366,10 @@ def manifest_problems(value: object, *, packet_sha256: str,
                 or isinstance(row.get("microshard_index"), bool)
                 or not isinstance(row.get("microshard_index"), int)
                 or not 0 <= row["microshard_index"] < MICROSHARDS
+                or row.get("cluster_index_start")
+                != row["microshard_index"] * MICROSHARD_CLUSTERS
+                or row.get("seed0") != SCREEN_SEED0 + STREAM_STRIDE * (
+                    row["microshard_index"] * MICROSHARD_CLUSTERS)
                 or row.get("clusters") != MICROSHARD_CLUSTERS
                 or not isinstance(row.get("sha256"), str)
                 or len(row["sha256"]) != 64
@@ -356,7 +379,7 @@ def manifest_problems(value: object, *, packet_sha256: str,
                 or not math.isfinite(row["elapsed_seconds"])
                 or row["elapsed_seconds"] <= 0
                 or row.get("worker_runtime_profile_sha256")
-                not in runtime_profile_sha256s):
+                != runtime_profile_sha256):
             problems.append("microshard manifest row drift")
             continue
         indices.append(row["microshard_index"])
@@ -366,18 +389,23 @@ def manifest_problems(value: object, *, packet_sha256: str,
 
 
 def missing_microshards(value: dict, *, packet_sha256: str,
-                        runtime_profile_sha256s: set[str],
+                        runtime_profile_sha256: str,
                         manifest_review: dict,
                         manifest_sha256: str,
                         surviving_prior_workers: int) -> list[int]:
     """Construct a resume set; this function cannot launch or read a shard."""
     problems = manifest_problems(
         value, packet_sha256=packet_sha256,
-        runtime_profile_sha256s=runtime_profile_sha256s)
+        runtime_profile_sha256=runtime_profile_sha256)
     if problems:
         raise DesignRefused("; ".join(problems))
     if surviving_prior_workers != 0:
         raise DesignRefused("prior microshard workers still survive")
+    if (not isinstance(manifest_sha256, str)
+            or len(manifest_sha256) != 64
+            or any(character not in "0123456789abcdef"
+                   for character in manifest_sha256)):
+        raise DesignRefused("manifest file SHA-256 is malformed")
     if (not isinstance(manifest_review, dict)
             or set(manifest_review) != {
                 "schema", "run_id", "packet_sha256", "manifest_sha256",

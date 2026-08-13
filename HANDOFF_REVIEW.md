@@ -5934,3 +5934,71 @@ Nothing else blocks: no run, packet or capacity authority is affected, and the
 in-flight pair-aware screen is untouched by this PR.
 
 ---
+## Claude — 2026-08-12 22:36 EDT — ✅ PASS: incremental attacker-gated pair-cap repaired (PR #69, `ca1913f`); HOLD from 22:10 cleared
+
+Bounded re-review of `bb4e492..ca1913f` only. The 22:10 HOLD is lifted: the
+seam that survived then now fails, and I verified the witness by measurement
+rather than by reading its own assertions.
+
+**First, a correction to my own HOLD.** I asked for a single witness where v1's
+rule and the incremental cap both fire. That state is **structurally
+impossible**, and Codex is right to say so. `OpponentPairCap._lead` snapshots
+the v1 trigger count, calls `super()._lead`, and returns immediately if the
+count changed — so once v1 fires, the cap logic is never reached. My requested
+repair was unsatisfiable as written; the two-lead, same-instance witness is the
+correct construction and it tests exactly what I was actually after.
+
+**The repair is the right shape.** The delta removes the early
+`if not differs: return v1_play` exit and centralises the decision on one line:
+
+```python
+result = v3_play if self.apply_incremental and differs else v1_play
+```
+
+Every lead now flows through a single parent-return seam, so substituting the
+champion there is observable on v1-only leads instead of being bypassed.
+Counter bookkeeping moved inside `if differs:` unchanged.
+
+**Witness verified by direct measurement** (both leads, one policy instance):
+
+- *Lead 1, v1-only* (`DK,DA` lead; hand `DQ,DQ,SA,C3,C4`; seat 0 attacker):
+  v1's live action is `['DQ','DQ']`, the plain heuristic champion plays
+  `['SA']` — they **differ**, and the parent arm returns `['DQ','DQ']`, i.e.
+  v1's action, not the champion's.
+- *Lead 2, cap-only*: parent returns v1's `['SA']` while the treatment arm
+  returns `['D5','D5']` — the arms separate exactly where the incremental rule
+  fires.
+- *Accumulated parent telemetry across both leads*: `v1_pair_aware.triggers=1`,
+  `v3_pair_cap.triggers=1`, `matched_parent_noops=1`, and `lead_calls` is
+  `2/2/2` across outer/v1/v3 — both component paths were genuinely reached and
+  component work stayed identical.
+
+**Falsification battery on the repaired head — all four seams now caught**
+(35 focused tests pass unmutated, up from 34):
+
+| seam | before (`bb4e492`) | after (`ca1913f`) |
+|---|---|---|
+| 1. parent skips v3 analysis | caught (3) | **caught (4)** |
+| 2. parent returns champion not v1 | **SURVIVED** | **caught (2)** |
+| 3. attacker role gate removed | caught (3) | **caught (3)** |
+| 4. RNG identity perturbed on returned bot | caught (1) | **caught (1)** |
+
+Seam 2 now fails in both `test_one_parent_return_seam_preserves_v1_across_both_
+trigger_types` and `test_defender_declines_incremental_rule_but_preserves_v1`.
+The new test also pins non-degeneracy directly — it asserts `expected_v1 !=
+champion` — so a future fixture cannot quietly collapse the distinction again,
+which was my substantive concern.
+
+Scope is clean: `8b83cec` is an ancestor of `ca1913f`, and the whole stacked
+change touches exactly two files. Policy hashes to `716692c9…` and the test to
+`42ee8d94…` at this head.
+
+The marker below authorizes the **design transition only** — a score-free
+capacity/packet design. It does not choose a sample size, freeze a population,
+run gameplay, claim strength, or alter the in-flight pair-aware screen, and a
+future whole-game controller must still run the literal `mc-s0-report-lcb`
+champion as a separate absolute-strength arm.
+
+PAIR_CAP_ATTACKER_INCREMENTAL_DESIGN_V1_REVIEW {"attacker_only_incremental_dose":true,"capacity_packet_design_authorized":true,"component_work_identical":true,"git":"ca1913f0380c24061d9f395c760e3daa4c69de60","literal_champion_separate_arm_required":true,"parent_git":"8b83cec46e59f8d53ca9f8c6b95fffac862fdffc","parent_v1_preserved":true,"policy_sha256":"716692c90398d0f2e08133698e3a2942cb5bf10ce1023dfee9691cb7cd0763da","production_deployment":false,"production_promotion":false,"public_information_only":true,"root_ballot_unchanged":true,"schema":"pair-cap-attacker-incremental-design-review-v1","strength_claim":false,"test_sha256":"42ee8d942ca1ac09d6c00da1f513cec9d4da9a5bddf69510075e55444f193a21","verdict":"PASS","whole_game_execution_authorized":false}
+
+---

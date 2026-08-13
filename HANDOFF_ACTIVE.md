@@ -9,15 +9,15 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 15:50 EDT from canonical main `fd7384b`.
+Last reconciled: 2026-08-13 16:20 EDT from canonical main `35e0cae`.
 
 ## Live fleet
 
 | host | current work | safe progress and next boundary |
 |---|---|---|
-| **Mini** | T4 mid/late Teacher whole-round screen | Seven workers remain CPU-bound and one shard has sealed terminally. Champion checkpoints are (300,400,300,500,300,200,200); shard 7 remains matched-null 500. Heartbeat lower bound: 10,380/12,288 = 84.47%; 1/8 terminal. Worker cutoff remains about 20:46:27 EDT. Keep Mini uncontended. |
-| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. One shard is 384/896 and seven are 368/896: 2,960/7,168 = 41.29%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
-| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | All 16 workers are live and CPU-bound. Reviewed score-free lower bound: 2,399/8,192 = 29.28%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. |
+| **Mini** | T4 mid/late Teacher whole-round screen | Six workers remain CPU-bound and two shards have sealed terminally. Champion checkpoints are (400,500,400,500,400,300,300,100). Heartbeat lower bound: 11,192/12,288 = 91.08%; 2/8 terminal. Worker cutoff remains about 20:46:27 EDT. Keep Mini uncontended. |
+| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Three shards are 384/896 and five are 368/896: 2,992/7,168 = 41.74%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
+| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | All 16 workers are live and CPU-bound. Reviewed score-free lower bound: 2,661/8,192 = 32.48%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. |
 | **Performance Cloud** | Review-gated PR #89 and PR #94; no execution live | PR #89 V4 was admitted once, ran its first base child, then refused before raw publication because Python `-I` ignored the no-bytecode environment setting; no result exists, its evidence is preserved and V4 never retries. Fresh V5 source `603f1db` adds explicit `-B`, fresh seeds/namespace and is CI-green awaiting source review. PR #94 packet `6489d9b8…b9983` still awaits packet review; admission/records/final remain absent. PR #93 remains a reviewed over-cap negative with its admission spent. |
 | **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 
@@ -35,14 +35,16 @@ Last reconciled: 2026-08-13 15:50 EDT from canonical main `fd7384b`.
    canonical `3b4752b`; 12/12 guards are pinned and the full chain passes
    100/100 pure plus 100/100 strict x86. Host packet `6489d9b8…b9983`
    (internal `68c250b4…1552c`) is frozen; execution remains false and every
-   admission/output path is absent. Await exact packet review before one serial
-   64-state run; no record opening or downstream authority.
+   admission/output path is absent. A fresh read-only host check independently
+   reproduced `verify-packet` and both packet hashes. Await exact packet review
+   before one serial 64-state run; no record opening or downstream authority.
 3. **Pair capacity successor PR #96.** Draft exact head `c4d2df8` preserves
    the full 7,168-cluster population and 1.5x safety factor, changes only the
    explicit wall budget 48h -> 52h under review, uses a fresh disjoint V2
    capacity population and publishes a closed score-free refusal receipt with
    all 16 lane timings on another over-cap result. Focused design/controller
-   suite is 106/106. Await exact source review; no packet or run authority.
+   suite is 106/106, independently reproduced from the exact clean head.
+   Await exact source review; no packet or run authority.
 4. **PR #93 capacity HOLD.** Canonical terminal review `27c6860` records the
    real negative capacity result: projection over wall cap, fail-closed after
    complete measurement. Admission is spent; no result/receipt, retry or screen

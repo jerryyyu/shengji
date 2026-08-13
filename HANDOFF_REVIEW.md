@@ -7669,3 +7669,75 @@ and deployment all remain closed, and I am appending no authority marker from
 this prose.
 
 ---
+## Claude — 2026-08-13 06:37 EDT — ✅ PASS: Pair V3 capacity result reviewer (PR #84, `f571146`); scored packet DESIGN only
+
+Reviewed the final two-file read-only verifier and ran its posted CLI against
+the canonical completed artifacts on `shengji-perf`. The marker below is the
+line the verifier itself emitted — generated from validated bytes, not
+transcribed. Every field independently re-derived before signing.
+
+**Identity.** Head `f571146f631914eb6899ce435ef466d70d9f9330`, two new files,
++1075/−0, stacked on PR #79's `6461c660` which I passed. Reviewer script
+`5ca14e1ff66663b93ff3b9f9f35f28e5463689f9638b2126b6cbb5fe25a646a1`; 21 focused
+tests pass.
+
+**The reviewer binds exactly the modules I have already authenticated.** Its
+five dependency digests are byte-identical to artifacts from my earlier
+reviews: `pair_ballot_affected_states.py e5410248…` (PR #60/#61),
+`pair_ballot_affected_eval.py 2d4adfd0…` and
+`pair_ballot_affected_aggregate.py a1908a32…` (PR #61),
+`pair_ballot_affected_capacity_design.py caa2d0d9…` (PR #72), and
+`pair_ballot_affected_capacity_preflight.py cab2caa0…` (PR #79). That is a real
+chain rather than a restatement.
+
+**Provenance pins are genuine.** `PACKET_REVIEW_GIT 88866f25…` is my own 04:43
+packet PASS, and `PACKET_REVIEW_PARENT_GIT 023850da…` is that commit's actual
+parent. The packet's `design_review.commit d6db827…` is my PR #72 capacity
+design PASS, and the verifier requires it to be an ancestor of
+`CANONICAL_REVIEW_REF = origin/main`.
+
+**Read-only discipline is enforced, not merely claimed.**
+
+- It refuses outright without `PYTHONDONTWRITEBYTECODE=1`, so the reviewer
+  cannot even write `.pyc` files beside the evidence.
+- `_stable_bytes` opens each artifact with `O_NOFOLLOW`/`O_CLOEXEC`, requires a
+  regular file with `st_nlink == 1` and no sibling `.partial`, and compares the
+  descriptor's identity before and after the single read against the path's
+  `lstat` — closing the hash-then-parse and path-swap TOCTOU windows this
+  commit was written to fix. `_same_file` compares `st_dev`, `st_ino`,
+  `st_mode`, `st_nlink`, `st_size`, `st_mtime_ns` and `st_ctime_ns`.
+- Dependency module names are snapshotted **before** import and a preloaded
+  same-path module is refused, closing the forged-preload class.
+
+**CLI result against the canonical artifacts:** it emitted the raw marker,
+which encodes `score_free_capacity_pass: true` and
+`scored_packet_design_authorized: true` with `scored_packet_freeze_authorized`,
+`scored_packet_run_authorized`, `scored_evaluation_authorized`,
+`report_access_authorized`, `retry_authorized`, `extension_authorized`,
+`strength_claim`, `training_authorized`, `production_promotion` and
+`production_deployment` all false.
+
+**Falsifications, all refusing:**
+
+| probe | refusal |
+|---|---|
+| wrong `--expected-result-sha256` | capacity result file SHA-256 drift |
+| wrong `--expected-admission-sha256` | consumed admission file SHA-256 drift |
+| result substituted (packet file passed as result) | capacity result file SHA-256 drift |
+| `PYTHONDONTWRITEBYTECODE` unset | review requires `PYTHONDONTWRITEBYTECODE=1` |
+
+**Two staging corrections of my own, recorded because they look like findings
+and are not.** My first CLI runs refused with *"Pair V3 design review commit is
+not on canonical main"*. That was my scratch clone on the host, not the code:
+the check resolves `origin/main`, and I had updated `main` instead — `d6db827`
+was an ancestor of the former but not the stale latter. After pointing
+`refs/remotes/origin/main` at the real canonical head the verifier passed. A
+reviewer who stopped at the first refusal would have filed a false HOLD.
+
+This PASS authorizes review plus these canonical ledger and PR review records
+only. It authorizes no freeze, run, scored evaluation, REPORT access, strength
+claim, training, promotion, deployment, retry or extension.
+
+PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW {"admission_sha256":"759fc5b7d23ee619fa7a692014148d282909226fcfa7ceb23f0a7a78fda212f7","extension_authorized":false,"git":"6461c660e1ff71a905d9010b12c0adfc4e8bc729","independent_review":true,"packet_internal_sha256":"25b1888c62ff772c18e065b30a7bfcc2d724c645f5ad054c4e6823dfd56a14b5","packet_review_commit":"88866f25f3763f26996be6f45fbcfcdfe3854f30","packet_sha256":"e054c5e582c1e665da9bc8ab413639f4c015ffe31a85f22c83275b7f4b4de492","production_deployment":false,"production_promotion":false,"report_access_authorized":false,"result_internal_sha256":"ca36d1af3dda376884b09b1fb5ed4d7142a2f6c64b5af8c0b4153f20123a4fb2","result_reviewer_script_sha256":"5ca14e1ff66663b93ff3b9f9f35f28e5463689f9638b2126b6cbb5fe25a646a1","result_sha256":"544499d17df03d08aea908c33b27813771cd1edb41a51394682300a7be4ca764","retry_authorized":false,"reviewer_dependency_sha256s":{"pair_ballot_affected_aggregate.py":"a1908a32853ea62e0c775dd1975b7b7ad7316f662dc19b8fe108b25282099ba0","pair_ballot_affected_capacity_design.py":"caa2d0d9c5580c56828e72c39e3e5ad0cf5be0d3eb7a8a77603e31c73e786317","pair_ballot_affected_capacity_preflight.py":"cab2caa01f58c02d932365993c856894f811408853c8a2bef9ca42a75721ebaa","pair_ballot_affected_eval.py":"2d4adfd06d0de7517bb190ebf5d190bd95f848d9ab25fb5eb9a29f27b3cd7488","pair_ballot_affected_states.py":"e54102482c2f1652186bfa5458f4f229fa01bd8bf74cdcb2d29c7fe133e6f4ce"},"run_id":"pair-ballot-affected-capacity-preflight-v1","schema":"pair-ballot-affected-capacity-preflight-result-review-v1","score_free_capacity_pass":true,"scored_evaluation_authorized":false,"scored_packet_design_authorized":true,"scored_packet_freeze_authorized":false,"scored_packet_run_authorized":false,"strength_claim":false,"training_authorized":false,"verdict":"PASS"}
+
+---

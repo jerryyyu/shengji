@@ -9,7 +9,7 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 11:29 EDT from canonical main `586c390`.
+Last reconciled: 2026-08-13 12:00 EDT from canonical main `f9989cc`.
 
 ## Live fleet
 
@@ -18,28 +18,27 @@ Last reconciled: 2026-08-13 11:29 EDT from canonical main `586c390`.
 | **Mini** | T4 mid/late Teacher whole-round screen, eight workers | All workers are alive and CPU-bound. Treatment is complete and all eight matched-null shards have reached 400/512, so the safe lower bound is 7,296/12,288 = 59.38%; 0/8 terminal. The worker cutoff remains about 20:46:27 EDT. Keep Mini uncontended. On terminal publication, Claude reviews the score-free supervisor final before any aggregation or shard-result access. |
 | **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Reviewed score-free shard counters are `[304,304,320,304,304,304,304,304]/896`, totaling 2,448/7,168 = 34.15%; 0/8 terminal. The run remains healthy but on a substantive timeout trajectory. Do not intervene or inspect shard outcomes. The reviewed S6 preflight queue remains asleep behind this run. |
 | **Strength Cloud** | S4 360B point-banking sequential confirmation, tranche two | Look one completed cleanly. Integrity passed, but the predeclared early-efficacy boundary was not crossed, so the reviewed controller automatically released tranche two. All 16 tranche-two workers are live. This is continuation, not a failure or final efficacy verdict. Inspect only reviewed score-free progress; do not open either tranche. The controller has no hard runtime timeout and will publish one terminal result after tranche two. |
-| **Performance Cloud** | PR #89 v2 design frozen; no live worker | Exact PR #89 head `fa0f9cf` PASSed at canonical `586c390`. Frozen design `/var/tmp/report-lcb-perf-ab-pr89-v2.design.json` has SHA `b696426c…82d8`; evidence root is absent and the unit is not installed. Await the second exact-design `PASS_TO_RUN_THIS_DESIGN_ONLY` before the one-shot six-pair A/B. |
+| **Performance Cloud** | corrected PR #89 v2r1 design frozen; no live worker | Claude PASSed exact source/tooling head `fa0f9cf` and the original host design `b696426c…82d8`. A final admission probe then proved that design could not run because its evidence parent `/var/tmp` is mode 1777; it was retired before unit install, evidence creation or any arm. Corrected design `/var/tmp/report-lcb-perf-ab-pr89-v2r1.design.json` has SHA `8721aec4…ec9d`, moves the absent evidence root beneath root-owned mode-0755 `/var/lib/shengji-perf-ab-pr89-v2r1`, and awaits a replacement `PASS_TO_RUN_THIS_DESIGN_ONLY`. All six seeds remain unused. |
 | **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 
 ## Current review and implementation queue
 
-1. **PR #89 frozen performance design.** Claude PASSed exact source/tooling head
-   `fa0f9cf`; PR #90's accepted implementation commits are integrated into the
-   measured arm `a91eb271` rather than merged wholesale. Review frozen design
-   SHA `b696426c7dc6af5ea9cc28302dc0353581ccc6f3056116a21c30aa6fb2b782d8`.
-   A second `PASS_TO_RUN_THIS_DESIGN_ONLY` may authorize exactly one six-pair
-   N=30/R=300 batch, with no retry/tuning. It grants no merge, strength or
-   deployment authority.
-2. **Pair checkpoint capacity PR #93.** Review exact head
-   `2eb55d0dfb5bcf21e0c1a935848c16d10f09d2fa`. PASS may authorize only a
-   host-specific capacity-packet freeze. The packet needs a separate PASS before
-   one capacity attempt. The current Air screen remains untouched and
-   non-resumable.
-3. **S6 scored-DEV controller.** PR #91 design `d31995d` PASSed design-only at
-   canonical `dbed4ae`. Finish and publish the controller/scorer child, then
-   request exact-head implementation review. Even a code PASS may only open a
-   packet freeze; packet review, one-shot admission and later score-free
-   terminal review remain separate. No S6 scored run is currently authorized.
+1. **PR #89 corrected performance design.** Review exact frozen design SHA
+   `8721aec4765bd7965eb0c47addaf46629e1cc6aead2402c1e50cbceaaf84ec9d`.
+   The delta from the previously reviewed but unrunnable design is only the
+   root-owned evidence location and matching unit path/hash. A new
+   `PASS_TO_RUN_THIS_DESIGN_ONLY` may authorize exactly one six-pair N=30/R=300
+   batch, with no retry/tuning. The old `b696426c…82d8` design must never run.
+2. **Pair checkpoint capacity PR #93.** Claude HOLDed `2eb55d0` only because
+   four sole-defense tests were missing. Exact repair head `0045139` adds those
+   four tests; production controller bytes are unchanged, focused count is 100,
+   and exact-head delta re-review is pending. PASS may authorize only a
+   host-specific capacity-packet freeze; the packet still needs a separate PASS.
+3. **S6 scored-DEV controller PR #94.** Exact head `3ee600b` implements the
+   reviewed PR #91 design; 88 focused design/scorer/controller tests pass and
+   implementation review is pending. PASS may authorize packet freeze only;
+   packet review, one-shot admission and later score-free terminal review remain
+   separate. No S6 scored run is currently authorized.
 4. **Compatibility PR #75 `90c5630`.** The corrected 64-character ELF receipt
    remains separate compatibility evidence for PR #71 and awaits exact-head
    external review. It grants no strength or deployment authority.

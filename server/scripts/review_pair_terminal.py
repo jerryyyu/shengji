@@ -25,7 +25,9 @@ MODULES = {"server/scripts/pair_aware_rollout_screen.py":
 def review(repo: Path, packet_review: Path,
            supervisor_review: Path) -> dict:
     exact_source(repo, GIT, MODULES)
-    screen = import_script(repo, "pair_aware_rollout_screen")
+    screen = import_script(
+        repo, "pair_aware_rollout_screen",
+        "server/scripts/pair_aware_rollout_screen.py")
     # Terminal-only: aggregate existence is the first evidence condition.
     aggregate = load_json(screen.AGGREGATE_PATH, "Pair aggregate")
     capacity_review = screen.PLANNING_REVIEW_PATH

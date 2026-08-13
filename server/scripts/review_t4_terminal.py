@@ -34,7 +34,9 @@ def review(repo: Path, packet_review: Path, capacity_review: Path,
     exact_source(repo, GIT, MODULES)
     os.environ["SHENGJI_STAGE_C_COMPOSITION_CONTROLLER"] = \
         "teacher_stage_c_midlate_composition_controller"
-    runtime = import_script(repo, "teacher_stage_c_midlate_composition_runtime").BASE
+    runtime = import_script(
+        repo, "teacher_stage_c_midlate_composition_runtime",
+        "server/scripts/teacher_stage_c_midlate_composition_runtime.py").BASE
     ctrl, screen = runtime.CTRL, runtime.SCREEN
     aggregate_path = (runtime.REPO / ctrl.RESULT_PATH).resolve()
     # Terminal-only: refuse before loading any other evidence unless the

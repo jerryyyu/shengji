@@ -3,6 +3,9 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,6 +14,7 @@ import pytest
 from scripts import review_pair_terminal as PAIR_REVIEW
 from scripts import review_t4_terminal as T4_REVIEW
 from scripts.terminal_review_common import ReviewRefused
+from scripts import terminal_review_common as COMMON
 
 
 def digest(value, newline=False):
@@ -299,6 +303,47 @@ def test_pair_admission_refuses_before_malformed_shard_open(tmp_path, monkeypatc
     shard.write_bytes(b"not-json")
     with pytest.raises(ReviewRefused, match="admission"):
         PAIR_REVIEW.review(tmp_path, packet, supervisor)
+
+
+def test_common_rejects_hardlink_and_nonfinite_json(tmp_path):
+    original = write(tmp_path / "original.json", {})
+    linked = tmp_path / "linked.json"
+    os.link(original, linked)
+    with pytest.raises(ReviewRefused, match="regular unlinked"):
+        COMMON.load_json(linked, "hardlink")
+    nonfinite = tmp_path / "nonfinite.json"
+    nonfinite.write_text('{"value":NaN}\n')
+    with pytest.raises(ReviewRefused, match="strict JSON"):
+        COMMON.load_json(nonfinite, "nonfinite")
+
+
+def test_common_rejects_dirty_tracked_dependency(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.test"],
+                   cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo,
+                   check=True)
+    module = write(repo / "server/scripts/lane.py", b"VALUE = 1\n")
+    dependency = write(repo / "server/scripts/dependency.py", b"VALUE = 1\n")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True)
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo,
+                          check=True, text=True, capture_output=True).stdout.strip()
+    dependency.write_text("VALUE = 2\n")
+    with pytest.raises(ReviewRefused, match="tracked-tree"):
+        COMMON.exact_source(repo, head, {"server/scripts/lane.py": file_sha(module)})
+
+
+def test_common_rejects_preloaded_wrong_module_path(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    expected = write(repo / "server/scripts/lane.py", b"VALUE = 1\n")
+    wrong = write(tmp_path / "wrong/lane.py", b"VALUE = 2\n")
+    poisoned = SimpleNamespace(__file__=str(wrong))
+    monkeypatch.setitem(sys.modules, "lane", poisoned)
+    with pytest.raises(ReviewRefused, match="import path drift"):
+        COMMON.import_script(repo, "lane", str(expected.relative_to(repo)))
 
 
 @pytest.mark.parametrize("lane", ["t4", "pair"])

@@ -31,7 +31,8 @@ def regular_unlinked(path: Path) -> bool:
         info = path.lstat()
     except OSError:
         return False
-    return stat.S_ISREG(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+    return (stat.S_ISREG(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+            and info.st_nlink == 1)
 
 
 def _no_duplicates(pairs):
@@ -47,7 +48,10 @@ def load_json(path: Path, label: str) -> dict:
     if not regular_unlinked(path):
         raise ReviewRefused(f"{label} is not a regular unlinked file")
     try:
-        value = json.loads(path.read_text(), object_pairs_hook=_no_duplicates)
+        value = json.loads(
+            path.read_text(), object_pairs_hook=_no_duplicates,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"non-finite JSON constant: {value}")))
     except (OSError, UnicodeError, ValueError) as exc:
         raise ReviewRefused(f"{label} is not strict JSON") from exc
     if not isinstance(value, dict):
@@ -61,24 +65,27 @@ def exact_source(repo: Path, git: str, modules: dict[str, str]) -> None:
         head = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=repo, check=True,
             text=True, capture_output=True).stdout.strip()
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain=v1", "--untracked-files=no"],
+            cwd=repo, check=True, text=True, capture_output=True).stdout
     except (OSError, subprocess.CalledProcessError) as exc:
         raise ReviewRefused("source repository cannot be authenticated") from exc
-    if head != git:
-        raise ReviewRefused("source Git drift")
+    if head != git or dirty:
+        raise ReviewRefused("source Git/tracked-tree drift")
     for logical, expected in modules.items():
         path = repo / logical
         if not regular_unlinked(path) or sha256(path) != expected:
             raise ReviewRefused(f"source module drift: {logical}")
 
 
-def import_script(repo: Path, name: str):
+def import_script(repo: Path, name: str, logical: str):
     scripts = str((repo / "server" / "scripts").resolve())
     server = str((repo / "server").resolve())
     sys.path[:0] = [scripts, server]
     importlib.invalidate_caches()
     module = importlib.import_module(name)
-    if not Path(module.__file__).resolve().is_relative_to(repo.resolve()):
-        raise ReviewRefused(f"import escaped source repository: {name}")
+    if Path(module.__file__).resolve() != (repo / logical).resolve():
+        raise ReviewRefused(f"import path drift: {name}")
     return module
 
 

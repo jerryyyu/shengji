@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import copy
 import importlib.util
 import random
@@ -524,3 +525,61 @@ def test_authority_and_foreign_fields_remain_closed() -> None:
         with pytest.raises(h0x.GeometryRefused):
             h0x.validate_artifact(
                 forged, expected_sha256=forged["artifact_sha256"])
+
+
+def test_scoring_authority_is_exact_declarative_only_and_cannot_escalate() -> None:
+    expected_authority = {
+        "population_scope": "SYNTHETIC_OR_NEW_OPEN_DEV_ONLY",
+        "score_free": True,
+        "outcomes_computed": False,
+        "scoring_authorized": False,
+        "report_population_authorized": False,
+        "sealed_outcomes_authorized": False,
+        "prior_h0_artifacts_authorized": False,
+        "confirmatory_inference_authorized": False,
+        "strength_claim": False,
+        "labels_authorized": False,
+        "training_authorized": False,
+        "production_promotion": False,
+        "production_deployment": False,
+    }
+    assert h0x.AUTHORITY == expected_authority
+
+    source = ast.parse(MODULE.read_text())
+    scoring_authority_literals = [
+        node for node in ast.walk(source)
+        if isinstance(node, ast.Constant)
+        and node.value == "scoring_authorized"
+    ]
+    assert len(scoring_authority_literals) == 1
+
+    artifact = h0x.prevalidate_population(
+        [_row(1)], _simple, population_id="synthetic-no-scoring-v1", **_scope())
+    assert artifact["authority"] == expected_authority
+    assert artifact["records"][0]["authority"] == expected_authority
+
+    escalated = copy.deepcopy(artifact)
+    escalated["authority"]["scoring_authorized"] = True
+    escalated["records"][0]["authority"]["scoring_authorized"] = True
+    escalated["geometry_manifest_sha256"] = h0x.sha256(escalated["records"])
+    escalated["artifact_sha256"] = h0x.sha256({
+        key: value for key, value in escalated.items()
+        if key != "artifact_sha256"
+    })
+    with pytest.raises(h0x.GeometryRefused) as exc:
+        h0x.validate_artifact(
+            escalated, expected_sha256=escalated["artifact_sha256"])
+    assert exc.value.code == "ARTIFACT_SCHEMA"
+
+    unexpected_use = copy.deepcopy(artifact)
+    unexpected_use["records"][0]["scoring_authorized"] = False
+    unexpected_use["geometry_manifest_sha256"] = h0x.sha256(
+        unexpected_use["records"])
+    unexpected_use["artifact_sha256"] = h0x.sha256({
+        key: value for key, value in unexpected_use.items()
+        if key != "artifact_sha256"
+    })
+    with pytest.raises(h0x.GeometryRefused) as exc:
+        h0x.validate_artifact(
+            unexpected_use, expected_sha256=unexpected_use["artifact_sha256"])
+    assert exc.value.code == "ARTIFACT_RECORD"

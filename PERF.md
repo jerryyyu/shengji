@@ -153,7 +153,7 @@ one-off experiment controllers.
 
 | # | gap | fix | est. win | status |
 |---|---|---|---|---|
-| 1 | Memory rebuilt per decision (full history rescan, O(tricks²)/round) | incremental Memory carried through rollouts | 1.1-1.2x | open |
+| 1 | Memory rebuilt per decision (historical profile) | incremental Memory carried through rollouts | `<0.1%` for current champion | rejected for report-LCB: 179 constructions were only 0.073–0.078% of x86/ARM round time; reconsider only if a Memory-aware rollout becomes active |
 | 2 | Python policy hot loop after compiled phases 0-2 | re-profile, then optimize one measured leaf at a time; the Cython `_current_winner` attempt is dropped | toward ~5x round-level | open; pure/compiled history, RNG and bot-timing gates required |
 | 3 | string cards and list hands still cross every compiled call | convert once per rollout; compile `Round.play`/trick resolution | remaining path toward 10-20x | open; keep strings at public boundaries |
 | 4 | Round/Trick clone churn per rollout (3.8k clones/round) | reusable scratch state | ~1.1x | open |
@@ -169,18 +169,16 @@ one-off experiment controllers.
 1. Complete external review of PR #75 head `90c5630` and PR #77 head
    `0381081`; merge only the exact semantics-preserving pieces whose identities
    and isolated speedups reproduce. PR #71 remains their reviewed base.
-2. Explore incremental Memory reuse against PR #77, now that the correctness-
-   safe trick cache proved slower and has been dropped.
-3. Re-profile the merged compiled baseline on `shengji-perf`; do not infer the
+2. Re-profile the exact PR #71 + PR #77 stack on `shengji-perf`; do not infer the
    next hotspot from the old profile or from Cython microbenchmarks that bypass
    today's compiled globals.
-4. Move int-card conversion to the rollout boundary, then compile
+3. Move int-card conversion to the rollout boundary, then compile
    `Round.play`/trick resolution under the same differential gate.
-5. Add a concurrent-room production capacity test; event-loop isolation alone
+4. Add a concurrent-room production capacity test; event-loop isolation alone
    is not a capacity proof.
-6. Measure incremental Memory and clone reuse after the next profile rather
-   than assuming the old percentages still hold.
-7. Keep `shengji-cloud` strength evidence and `shengji-perf` optimization work
+5. Reconsider incremental Memory only if a Memory-aware rollout policy becomes
+   active; it is not a current-champion hotspot.
+6. Keep `shengji-cloud` strength evidence and `shengji-perf` optimization work
    physically and logically separate. A future strength controller needs its
    own host/runtime review before it may use the performance worker.
 

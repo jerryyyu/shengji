@@ -9,7 +9,7 @@
 > Full earlier history is preserved in `docs_archive/`. This file is only the
 > current executable truth; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 07:56 EDT from canonical main `b32eaef`.
+Last reconciled: 2026-08-13 09:04 EDT from canonical main `a0ca47a`.
 
 ## Pair V3 capacity gate
 
@@ -32,54 +32,51 @@ SHA is `d7959903…9f3b`, and 21 focused tests pass.
 
 That marker opened **scored-packet design only**. Claude PASSed PR #86's
 declarative production design at exact head `a43a17c` in canonical commit
-`fe6eb3b`; canonical bytes match Python 3.11/3.12/3.14. Claude requested one
-nonblocking canonical-ref ancestry fixture. Test-only child `861c0b0` adds that
-mutation-proven fixture, passes 74 focused and 135 capacity-chain tests, and
-awaits narrow delta review. No packet has been frozen or run. Packet
+`fe6eb3b`; canonical bytes match Python 3.11/3.12/3.14. Test-only child
+`861c0b0` added the requested mutation-proven canonical-ref ancestry fixture,
+passed 74 focused and 135 capacity-chain tests, and was merged with PR #86 at
+`05fb245`. No packet has been frozen or run. Packet
 implementation/freeze/execution, scored output access, REPORT, aggregation,
 retry, extension, strength, training, promotion and deployment remain closed.
 
 The reviewed Pair foundation has landed on `main` in provenance-preserving
-order: PR #55 -> #60 -> #61 -> #72 -> #79 -> #84. Exact reviewed commits
-remain ancestors; none was squashed. The latest merge is `b32eaef` for the
-read-only capacity-result reviewer.
+order: PR #55 -> #60 -> #61 -> #72 -> #79 -> #84 -> #86. Exact reviewed
+commits remain ancestors; none was squashed.
 
 ## Live fleet
 
 | host | current work | safe progress and next boundary |
 |---|---|---|
-| **Mini** | T4 mid/late Teacher whole-round screen, eight workers | All workers are live. The safe lower bound is 6,496/12,288 = 52.9%: treatment is complete and matched-null checkpoints total 2,400 rounds. The deadline remains knife-edge; monitor only and keep Mini uncontended. On terminal publication, Claude reviews the score-free supervisor final before any aggregation or outcome access. |
-| **Air** | Broad Pair-aware whole-game screen, eight workers | The reviewed safe counter is 2,064/7,168 = 28.79%. The current pace remains on a substantive timeout trajectory; do not inspect shard outcomes or intervene. A terminal supervisor final, including timeout, needs score-free review before aggregation. Reviewed S6 preflight remains queued behind this run. |
-| **Strength Cloud** | S4 360B point-banking sequential confirmation, 16 workers | All workers are healthy. The reviewed score-free look-one counter is 6,560/8,192 = 80.1% (404-417/512 per shard). The reviewed controller automatically stops or continues at look one. Inspect only reviewed score-free telemetry. |
-| **Performance Cloud** | Pair V3 score-free preflight is complete; no live strength worker | Idle because authority remains design-only and PR #86 awaits external review. The completed preflight namespace is one-shot and must not be retried or altered. Performance exploration must not mutate frozen strength code or evidence. |
+| **Mini** | T4 mid/late Teacher whole-round screen, eight workers | All workers are live. The safe lower bound is 6,596/12,288 = 53.68%: treatment is complete; matched-null is 400 on shard 3 and 300 on the other seven. The deadline remains knife-edge; monitor only and keep Mini uncontended. On terminal publication, Claude reviews the score-free supervisor final before any aggregation or outcome access. |
+| **Air** | Broad Pair-aware whole-game screen, eight workers | All workers are live. The reviewed safe counter is 2,256/7,168 = 31.47%. The current pace remains on a substantive timeout trajectory; do not inspect shard outcomes or intervene. A terminal supervisor final, including timeout, needs score-free review before aggregation. Reviewed S6 preflight remains queued behind this run. |
+| **Strength Cloud** | S4 360B point-banking sequential confirmation, 16 workers | All tranche-one workers are healthy. The reviewed score-free look-one counter is 7,149/8,192 = 87.27% (439-454/512 per shard). The reviewed controller automatically stops or continues at look one. Inspect only reviewed score-free telemetry. |
+| **Performance Cloud** | No live worker | Idle after the one score-free PR #78 capacity run. Pair V3 remains design-only. Performance PR #89 awaits source/tooling review before host-specific design freeze; no benchmark is authorized. |
 | **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 
 ## Current review and implementation queue
 
-1. **Pair V3 design delta / PR #86 `861c0b0`.** Production design `a43a17c`
-   is externally PASSed for future controller-design review only. The direct
-   child changes one test file and awaits narrow acknowledgment; merge only
-   after that exact delta PASS. Do not implement, freeze or run a packet.
-2. **Performance accepted stack.** PR #77's prepared-world change measured
-   2.62%, below its 3% retain gate, and must not be the production base. A local
-   branch is rebuilding implementation-only PR #81/#83 optimizations atop PR
-   #71 + compatibility PR #75, excluding PR77-bound receipts. Native winner
-   selection and guarded native lead retain exact semantic parity in prior
-   evidence, but the combined accepted stack needs one immutable preregistered
-   A/B; never add percentages from different baselines.
-3. **PR #82 test delta `bf72dff`.** Claude PASSed production head `a498bf5`
-   and requested one authority-map fixture. The direct child changes tests only,
-   passes 31/31 plain and strict, and awaits narrow delta review. It remains
-   score-free geometry exploration with no scorer or run authority.
-4. **Reviewed exploration.** PR #78 `8ab5db2` PASSed for opened-DEV bury/S6
-   telemetry; its parent exploration stack and active Air/S6 ordering still
-   control merge/run sequencing. PR #85 `111314f` PASSed design-only for a
-   future checkpointed Air contingency; the current Air one-shot is untouched
-   and no replacement launch, retry or extension is authorized.
-5. **Terminal lanes.** PR #80 exact `e61975c` and docs PR #64 exact `2fc5b273`
-   are merged on `main`. Use the read-only terminal reviewer only after a
-   reviewed supervisor final and admitted aggregate; its presence is not
-   aggregation authority.
+1. **PR #78 capacity result.** Code head `8ab5db2` and the one score-free x86
+   result `e1e4cb38…3103d` / internal `437d1192…003e` independently PASSed.
+   Timing/work/common-world evidence supports design of one bounded scored-DEV
+   packet. That design must independently pin the compiled binary plus all five
+   source hashes that the capacity validator recorded but did not enforce.
+   Packet freeze/run and outcome access remain unauthorized.
+2. **Performance PR #89 `fd0b13f`.** PR #77's prepared-world change measured
+   2.62%, below its 3% gate, and is excluded. The accepted implementation arm
+   `bfec965` is based directly on PR #71 `093ec33`; PR #75 remains separate
+   compatibility evidence. Source-pinned six-pair tooling is CI-green and
+   awaits external review. PASS permits host-specific design freeze only; the
+   filled design needs a second exact review before any benchmark.
+3. **Compatibility PR #75 `90c5630`.** Exact corrected 64-character ELF
+   receipt remains green and awaits external compatibility review. It grants no
+   strength or deploy authority.
+4. **Reviewed exploration.** PR #85 `111314f` PASSed design-only for a future
+   checkpointed Air contingency; the current Air one-shot is untouched and no
+   replacement launch, retry or extension is authorized.
+5. **Terminal lanes.** PR #80, PR #82, PR #86, docs PR #64 and the lossless
+   review-ledger rotation/follow-up PRs #87/#88 are merged. Use the read-only
+   terminal reviewer only after a reviewed supervisor final and admitted
+   aggregate; its presence is not aggregation authority.
 
 Already reviewed: PRs #51, #52 and #54 for bounded bury/S6 exploration; PR #69
 for incremental attacker-gated Pair-cap design; PR #50's one score-free S6

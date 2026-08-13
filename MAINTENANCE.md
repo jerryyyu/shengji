@@ -12,6 +12,11 @@ process list and exact manifests. Correct the schedule/checklist before using a
 stale instruction. A status command returning no rows is not automatically an
 all-clear.
 
+Recurring reviewers must keep a small machine-readable heartbeat with
+`last_started`, `last_finished`, `next_due` and the exact current blocker.
+Bound or rotate verbose session output separately; an ever-growing transcript
+is not a heartbeat and can make a healthy scheduler look opaque.
+
 ## 1. Establish live fleet truth
 
 Run `server/scripts/fleet_status.sh` as a first-pass convenience, then verify
@@ -35,6 +40,11 @@ expected PID set, a broad unfiltered Python inventory, per-worker heartbeat or
 log modification times, and terminal output count. A missing tool, SSH error,
 or zero rows from a remembered-name filter means `UNKNOWN`. Never launch a
 replacement until the old cohort is positively proven absent. See INC-12.
+The inverse is also true: a broad command-line match does not prove a worker is
+alive. Persistent tmux/shell/supervisor processes may retain old child-command
+text. Any launch-blocking survivor check must confirm the expected executable
+and immutable run arguments (or an owned PID receipt), then reconcile terminal
+progress and outputs. See INC-16.
 
 Never open a partial outcome, change a stopping rule from live scores, duplicate
 a one-shot run, or infer success from a filename that may be published before a
@@ -43,12 +53,74 @@ long and short compute; use Air as overflow or with a recorded placement reason.
 Do not migrate a healthy sealed run between machines without measured benefit
 and a protocol that permits it.
 
+Before admitting an expensive multi-process run, require an exact-host smoke
+that invokes one real child through the same packet, receipt, runtime and native
+binary boundary while stopping before gameplay. Packet/controller verification
+alone is insufficient. After launch, confirm the full expected worker set is
+still alive after at least 60 seconds and that an explicitly reviewed
+score-free heartbeat advances; otherwise preserve the namespace and report a
+pre-gameplay failure rather than retrying.
+
+Do not create a second host-specific authority merely to fill a temporarily
+idle machine. For a small score-free capacity test, first compare the saved
+wait against the permanent revocation/supersession code needed to make two
+controllers fail closed. Prefer the already-reviewed host plus another useful
+job when cross-host retirement would be more complex than the experiment. This
+proportionality rule never weakens scored, sealed or deployment authority.
+
+For every one-shot freeze or admission controller, validate the complete
+exact-host runtime, required environment flags, immutable inputs and command
+arguments **before the first namespace write**. A refusal must leave the fresh
+namespace absent. Cover this ordering with a real regression that removes a
+required flag and asserts zero files. If an older controller strands even one
+file, preserve and authenticate that namespace, use a new run ID, and never
+silently delete or reuse it.
+
 ## 2. Reconcile results and review markers
 
-Check `HANDOFF_REVIEW.md` for the newest exact marker or finding. A review PASS
-must bind the intended git/material/script digests and scope; a prose “looks
-good” is not a marker. Apply actionable findings to the queue, and open an
-incident under `incidents/` if a defect reached production or trusted data.
+Read the canonical working-tree `HANDOFF_ACTIVE.md` and `HANDOFF_REVIEW.md`
+before consulting `origin/main` or a branch-local copy. Scan for unanswered
+requests, raw PASS markers **and** HOLD findings; a PASS-only search can leave
+a precise repair sitting unnoticed. Requests and marker templates must remain
+indented, while signed raw markers begin at column one and occur exactly once.
+A review PASS must bind the intended git/material/script digests and scope; a
+prose “looks good” is not a marker. Apply actionable findings to the queue, and
+open an incident under `incidents/` if a defect reached production or trusted
+data.
+Before consuming a raw marker, also verify that its immediately preceding
+entry is an independent-reviewer heading rather than the implementer's request.
+Uniqueness and valid JSON are necessary but do not establish provenance. Every
+request must name one literal marker prefix; see INC-17.
+
+For an **executable** gate, formatting and the preceding heading are still
+insufficient. Request templates and reviewer attestations must use different
+prefixes. Read the attestation from a pinned Git review commit, bind its claim
+digest and request ancestor, and prove the request commit contains no
+attestation while the review commit adds exactly one. The mutable working tree
+alone is never authority. Tests must make request text, dirty injection,
+duplicate templates, the request commit itself and wrong-provenance descendants
+refuse. Queue and controller must share one canonical admission-path constant;
+never duplicate or guess the lock filename. See INC-18.
+
+When a deep review will outlive the lightweight blocker scan, post one
+ephemeral `REVIEW_IN_PROGRESS` PR comment naming the exact request/head before
+starting. This is coordination telemetry, never authority: it must not appear
+as a raw ledger marker and cannot authorize any action. It lets the implementer
+distinguish a running review from a missed schedule without interrupting the
+reviewer or launching replacement work on the reserved host.
+
+After publishing a narrow HOLD, re-read the canonical tail once before ending
+the review cycle. If the exact repair and fresh hashes have already landed,
+review that bounded delta immediately when practical rather than imposing an
+avoidable one-hour delay. Keep author headings accurate so automation and
+humans can distinguish implementer requests from independent verdicts.
+
+When a launch-blocking request is open, bound hourly orientation to the delta,
+exact identity and live safety checks needed for that request; decide it before
+the broad rolling audit. Unchanged fleet snapshots and open-PR inventories are
+ephemeral status, not review-ledger entries. Append only authority markers or
+concrete findings so the canonical ledger remains a review surface rather than
+an hourly transcript.
 
 `HANDOFF_REVIEW.md` is the Claude-owned append-only review ledger. Do not
 rewrite, stage or rotate it while Claude may be writing. Rotation requires an

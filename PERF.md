@@ -9,7 +9,7 @@ teacher data (gen-v3: ~28h fleet-wide), duels, tournaments, and MC's
 live latency all sit on the same rollout loop. Rough math: 10x here =
 overnight gens become 3h, and every gate duel runs in minutes.
 
-## Current production performance — release 17
+## Current production performance — release 18
 
 Production runs compiled `mc-s0-report-lcb`, not the older policies in the
 historical table below. A matched Mini benchmark measured 0.390s per decision
@@ -18,7 +18,7 @@ for report-LCB versus 0.127s for `mc-strong`; that extra work buys the confirmed
 searched turns could block room interaction and then pay a separate fixed 0.7s
 pacing delay.
 
-Release 17 preserves the exact N=30/R=300 decision semantics while searching an
+Release 17 introduced the performance change: it preserves the exact N=30/R=300 decision semantics while searching an
 isolated snapshot off the event loop and overlapping the pacing window. It
 revalidates room/round/phase/turn/controller before commit, discarding stale
 actions and cloned RNG/counters. The live ship gate kept 25 concurrent
@@ -27,7 +27,8 @@ ordinary post-fix human room produced 195 search-like turns with
 search p50/p95/max `0.896/1.714/1.906s` and full-turn
 `0.904/1.716/1.907s`; all 249 bot turns were offloaded and isolated.
 
-This fixes event-loop blocking and removes an additive wait. It does not make
+Release 18 keeps that runtime and adds kitty X-ray only; it does not change the
+policy or search cost. This fixes event-loop blocking and removes an additive wait. It does not make
 search free, precompute a response before the latest play, or prove concurrent
 multi-room capacity. Release 16 is the runtime rollback; `mc-strong` is the
 separate policy rollback. See `DEPLOY.md`.
@@ -88,31 +89,137 @@ compare only under like-for-like load.
 | 08-03 | compiled phases 0-2: caller-order caches, rules kernels and policy leaves | **3.42x** round (5.74 -> 1.68s) | 10k+ randomized parity cases, six byte-identical seeded histories; opt-in `SHENGJI_FAST=1` |
 | 08-07 | release-17 speculative scheduler + off-loop X-ray | live searched-turn p95 `1.714s`; WebSockets responsive during search | Decision semantics unchanged; overlaps pacing, validates before commit, discards stale snapshot state. This is responsiveness isolation, not rollout-throughput speedup. |
 
+## Current candidates — independently audited, external review
+
+The Cython `_current_winner` path is dropped. Corrected microbenchmarks against
+the production baseline found it about 4% slower on both ARM and x86; the
+earlier roughly 6x leaf microbenchmark did not represent production work. The
+combined `b7476e4` timing was confounded and is not a merge-candidate result.
+
+The lead candidate implementation is `414fe29`, with historical-evidence test
+repair at exact PR #71 head `093ec33`: a pair-count tractor
+prefilter plus redundant import cleanup, with no Cython leaf. The optimization
+uses a necessary condition—a `k`-pair tractor cannot exist when fewer than `k`
+physical pairs exist—so it avoids impossible enumerations without pruning a
+legal tractor.
+
+Isolated x86 measurement with compiled routing produced:
+
+- 10,000 natural lead decisions across five repeats: `0.459523s -> 0.198866s`
+  mean, **2.31x faster**, exact action digests;
+- 20 paired seeded full rounds: `1.616785s -> 1.426878s` mean, **11.75% less
+  wall time**, every paired reduction positive (`8.61%–15.66%`), exact play
+  histories and terminal results.
+
+An independent four-seed ARM check reproduced complete deck/declaration/bury,
+ordered play, trick and terminal identities; median speedup was **1.198x**.
+These are synthetic performance measurements, not strength evidence.
+
+The first audit found a pre-existing H0 integrity hole: a newly constructed
+controller could name the frozen historical heuristic while blessing today's
+runtime heuristic. The repair validates all three frozen executable sources
+(heuristic, action universe and structured bury) during controller creation and
+every runtime reopen; the test shim now returns the exact frozen byte count
+instead of a hybrid record. Fifty focused and 134 broader strict compiled tests
+pass. A second independent audit reproduced the complete guard mutations and
+found 16.22% lower median ARM whole-round time across alternating 2,000-round
+trials with identical transcript SHA. Exact head `093ec33` is draft PR #71;
+CI passes. Merge still waits for Claude's independent semantics/benchmark
+review and user approval.
+
+Corrected compatibility receipt PR #75 head `90c5630` keeps the historical
+RLCB/H0 identities immutable while binding the current heuristic, ballot,
+three-policy contracts and the exact 64-character native `.text` identity.
+It is compatibility evidence only: it authorizes no deployment or strength
+evaluation.
+
+Prepared-world PR #77 head `0381081` validates each accepted determinized
+world once, then gives every candidate fresh non-aliased hand lists. Six fresh
+exact-head x86 pairs measured `116.391565s -> 113.338140s`: **2.6234% lower
+wall time**, **2.6941% higher throughput** and a **1.5066%** one-sided lower
+bound, with normalized decisions, RNG, sampler/work counters and transcripts
+identical. That missed the preregistered **3% retention gate**, so PR #77 is
+not retained as-is. The earlier 3.37% nine-pair number mixed two code revisions
+and is retired. The larger trick-state-cache prototype is also rejected: its
+safe fingerprint/order/pickle repair was **10.56% slower** over six fresh
+normalized full rounds, every pair slower.
+
+PR #81 head `c6c7126` contains two candidates that cleared their own retain
+thresholds but is stacked on rejected PR #77. Native cheapest-winner selection
+measured **7.7306% lower wall time** with a paired one-sided lower bound of
+**6.2489%**. Counting rollout-lead pairs once per hand measured **4.0124%
+incremental reduction** with a **3.2857%** lower bound. Every normalized
+gameplay, search, RNG and sampler artifact matched byte-for-byte. Preserve the
+two candidates, not the current stack: split and rebase them onto the accepted
+PR #71/#75 path, then remeasure that exact composition. The percentages come
+from different baselines and must not be added. PR #81 authorizes no merge,
+deployment, policy change or substitution into a sealed strength run.
+
+The first native-lead prototype head `0bd073c` could segfault on a malformed
+negative seat even though ordinary gameplay parity passed. Repaired source
+`8e698e` restores the Python boundary and passes 31 ARM plus 30 x86
+boundary/parity cases; an independent adversarial audit also passed. One
+ordinary exploratory three-pair exact-final A/B measured
+`40.7905s -> 36.6293s`: **10.2014% lower aggregate wall time**, **11.3603%
+higher throughput** and a **9.22594%** one-sided lower bound, with normalized
+gameplay, search work, RNG and sampler records matching exactly. The result is
+published in stacked draft PR #83 head `69ff44e`, whose CI is green.
+
+This is deliberately not confirmatory evidence. The raw remote artifacts are
+still owner-writable and have no immutable manifest; the committed receipt
+hash-pins the observed design, result, harness and runner files, but does not
+make their remote storage immutable. Treat the number as a performance-only
+exploratory estimate with no strength, merge, review, deployment or sealed-run
+substitution authority.
+
 ## Gaps (ranked by ROI)
+
+The ordering below came from the pre-activation profile. Before choosing the
+next port, take a fresh isolated profile: the 3.62x compiled win changed where
+time is spent. Port shared engine/heuristic leaves used by active policies, not
+one-off experiment controllers.
 
 | # | gap | fix | est. win | status |
 |---|---|---|---|---|
-| 1 | Memory rebuilt per decision (full history rescan, O(tricks²)/round) | incremental Memory carried through rollouts | 1.1-1.2x | open |
-| 2 | Python policy hot loop after compiled phases 0-2 | port `_lead`, `_current_winner` and `_cheapest_winning` one phase at a time | toward ~5x round-level | open; pure/compiled history and bot-timing gates required |
+| 1 | Memory rebuilt per decision (historical profile) | incremental Memory carried through rollouts | `<0.1%` for current champion | rejected for report-LCB: 179 constructions were only 0.073–0.078% of x86/ARM round time; reconsider only if a Memory-aware rollout becomes active |
+| 2 | Python policy hot loop after compiled phases 0-2 | split/rebase PR #81's retained native-winner and one-Counter candidates onto PR #71/#75, then remeasure; keep PR #83 exploratory | #81 measured 7.7306% and a separate 4.0124% incremental reduction on the rejected #77 stack; #83 measured 10.2014% in one exploratory batch | candidate; do not add cross-baseline gains, and #83's owner-writable remote evidence has no immutable manifest |
 | 3 | string cards and list hands still cross every compiled call | convert once per rollout; compile `Round.play`/trick resolution | remaining path toward 10-20x | open; keep strings at public boundaries |
 | 4 | Round/Trick clone churn per rollout (3.8k clones/round) | reusable scratch state | ~1.1x | open |
 | 5 | multi-room capacity is not measured | concurrent-room latency/load gate | product reliability | open |
 | 6 | feature flags mix exact `"1"` checks with string truthiness | version and centralize boolean parsing | evidence correctness | open; until then unset flags for false—`=0` is unsafe |
 | 7 | rollouts always play to round end | early-terminate decided brackets | speculative and potentially biased | parked behind a strength/correctness gate |
-| 8 | single-machine ceiling | rented 32-core burst (~$5/generation) | ~4x fleet, zero code | available when critical path is compute-bound |
-| 9 | Rust/PyO3 full engine core | 30-100x; wasm client bonus | large | parked; requires a 10k-seed two-engine parity harness |
+| 8 | strength-compute ceiling | rented 16-vCPU x86 strength Cloud worker | roughly doubles the local 16-slot fleet, zero policy change | active; currently owns S4 |
+| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | idle; PR #77 missed retention, PR #81 candidates await rebase/remeasurement and PR #83 remains exploratory. Pair V3's sole score-free capacity result PASSed at canonical `16af447`; PR #86 design review grants no scored execution or strength authority |
+| 10 | Rust/PyO3 full engine core | 30-100x; wasm client bonus | large | parked; requires a 10k-seed two-engine parity harness |
 
 ## Plan (sequencing)
 
-1. Port `_lead`, `_current_winner` and `_cheapest_winning` in bounded phases;
-   require byte-identical histories plus wall-clock bot timing each time.
-2. Move int-card conversion to the rollout boundary, then compile
-   `Round.play`/trick resolution under the same differential gate.
-3. Add a concurrent-room production capacity test; event-loop isolation alone
+1. Retire PR #77 `0381081` as-is after its exact result missed the 3% retain
+   gate. Split PR #81 `c6c7126` into its two retained candidates, rebase them
+   onto the accepted PR #71/#75 path and remeasure the exact composition.
+2. Review PR #83 `69ff44e` as semantics and implementation evidence only. Keep
+   its three-pair estimate exploratory because the remote raw files remain
+   owner-writable and lack an immutable manifest; any retained implementation
+   must follow the accepted/rebased parent stack.
+3. After exact-stack remeasurement and review, profile the accepted stack
+   again. Do not infer the
+   next hotspot from the old profile or from leaf microbenchmarks that bypass
+   today's compiled globals.
+4. Consider moving int-card conversion to the rollout boundary and compiling
+   `Round.play`/trick resolution only if that fresh profile still names them.
+   The first trick-resolution candidate was retired before timing because its
+   frozen normal harness rejected 11/72 forced no-search plays before reaching
+   the head arm. Do not retry that evidence slot; future harnesses must accept
+   normal forced plays while separately pinning that the optimized seam fired.
+5. Add a concurrent-room production capacity test; event-loop isolation alone
    is not a capacity proof.
-4. Measure incremental Memory and clone reuse after the next profile rather
-   than assuming the old percentages still hold.
-5. Burst to more cores when the strength critical path is compute-bound.
+6. Reconsider incremental Memory only if a Memory-aware rollout policy becomes
+   active; it is not a current-champion hotspot.
+7. Keep `shengji-cloud` strength evidence and `shengji-perf` optimization work
+   physically and logically separate. Pair V3's score-free capacity result
+   passed external review at canonical `16af447`, opening scored-packet design
+   only. It is not permission to freeze, run or score strength work, open
+   REPORT, train, promote or deploy.
 
 ## Fast-path evidence and boundaries
 
@@ -137,6 +244,9 @@ new strength experiment, not a performance-only patch.
   data outranks speed, always.
 - Measure on like-for-like machine load; profile numbers (cProfile)
   overstate hotspots ~2x — trust wall-clock A/Bs for claims.
+- Never benchmark or run a full test suite beside a sealed scored job merely
+  because a core appears spare. Code, CI and tiny deterministic checks may run
+  elsewhere; host measurements wait for an explicit isolated window.
 - Running workers load code at spawn: optimizations reach jobs at
   their NEXT launch, never mid-run.
 - Parse environment flags through one versioned helper. Until that migration,

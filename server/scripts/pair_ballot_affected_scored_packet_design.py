@@ -36,6 +36,8 @@ FUTURE_PACKET_SCHEMA = "pair-ballot-affected-scored-packet-v1"
 FUTURE_RUN_ID = "pair-ballot-affected-scored-dev-calib-v1"
 CANONICAL_REVIEW_REF = "origin/main"
 REVIEW_LEDGER = "HANDOFF_REVIEW.md"
+REVIEW_ROTATION_PREFIX = "HANDOFF_REVIEW_ROTATION_V1 "
+REVIEW_ROTATION_SCHEMA = "handoff-review-rotation-v1"
 REVIEWER_NAME = "Claude"
 REVIEWER_EMAIL = "noreply@anthropic.com"
 REVIEWER_SESSION_TRAILER = "Claude-Session: https://claude.ai/code/session_"
@@ -420,6 +422,67 @@ def _is_append_only_ledger(before: bytes, after: bytes, *, growth: bool) -> bool
             and (not growth or len(after) > len(before)))
 
 
+def _require_review_history(
+        reviewed: bytes, canonical: bytes, *, review_commit: str,
+        canonical_ref: str) -> None:
+    """Accept append-only history or one byte-authenticated ledger rotation.
+
+    The active review mailbox is periodically compacted.  A rotation is not a
+    license to discard review provenance: its canonical record must bind the
+    exact pre-rotation Git blob to a byte-identical tracked archive, and the
+    reviewed ledger must remain an exact prefix of those archived bytes.
+    """
+    if _is_append_only_ledger(reviewed, canonical, growth=False):
+        return
+    rotation_lines = [
+        line for line in canonical.splitlines(keepends=True)
+        if line.startswith(REVIEW_ROTATION_PREFIX.encode())
+    ]
+    if len(rotation_lines) != 1:
+        raise ScoredPacketDesignRefused(
+            "canonical review ledger rewrite lacks one rotation record")
+    line = rotation_lines[0]
+    record = _strict_json(
+        line[len(REVIEW_ROTATION_PREFIX):], label="review ledger rotation")
+    if set(record) != {
+            "archive_path", "archive_sha256", "authority_changed", "schema",
+            "source_commit", "source_ledger_bytes", "source_ledger_lines",
+            "source_ledger_sha256"}:
+        raise ScoredPacketDesignRefused("review ledger rotation schema drift")
+    archive_path = record["archive_path"]
+    source_commit = record["source_commit"]
+    source_sha256 = record["source_ledger_sha256"]
+    if (record["schema"] != REVIEW_ROTATION_SCHEMA
+            or record["authority_changed"] is not False
+            or not _is_hex(source_commit, 40)
+            or not _is_hex(source_sha256, 64)
+            or record["archive_sha256"] != source_sha256
+            or not _is_nonnegative_int(record["source_ledger_bytes"])
+            or not _is_nonnegative_int(record["source_ledger_lines"])
+            or not isinstance(archive_path, str)
+            or not archive_path.startswith("docs_archive/handoff-review-")
+            or not archive_path.endswith(".md")
+            or ".." in archive_path.split("/")
+            or "\\" in archive_path):
+        raise ScoredPacketDesignRefused("review ledger rotation identity drift")
+    for ancestor, descendant in (
+            (review_commit, source_commit), (source_commit, canonical_ref)):
+        if subprocess.run(
+                ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+                cwd=REPO, capture_output=True).returncode != 0:
+            raise ScoredPacketDesignRefused(
+                "review ledger rotation ancestry drift")
+    source = _git_bytes("show", f"{source_commit}:{REVIEW_LEDGER}")
+    archive = _git_bytes("show", f"{canonical_ref}:{archive_path}")
+    if (source != archive
+            or _sha256_bytes(source) != source_sha256
+            or len(source) != record["source_ledger_bytes"]
+            or source.count(b"\n") != record["source_ledger_lines"]
+            or not _is_append_only_ledger(reviewed, source, growth=False)):
+        raise ScoredPacketDesignRefused(
+            "review ledger rotation archive drift")
+
+
 def _canonical_review_record(*, commit: str, parent: str, prefix: str,
                              expected: dict,
                              canonical_ref: str = CANONICAL_REVIEW_REF) -> dict:
@@ -451,10 +514,12 @@ def _canonical_review_record(*, commit: str, parent: str, prefix: str,
     current = _git_bytes("show", f"{commit}:{REVIEW_LEDGER}")
     previous = _git_bytes("show", f"{parent}:{REVIEW_LEDGER}")
     canonical = _git_bytes("show", f"{canonical_ref}:{REVIEW_LEDGER}")
-    if (not _is_append_only_ledger(previous, current, growth=True)
-            or not _is_append_only_ledger(current, canonical, growth=False)):
+    if not _is_append_only_ledger(previous, current, growth=True):
         raise ScoredPacketDesignRefused(
             f"review {commit[:8]} ledger ancestry is not append-only")
+    _require_review_history(
+        current, canonical, review_commit=commit,
+        canonical_ref=canonical_ref)
     marker = prefix.encode() + _canonical(expected)
     current_matches = [line for line in current.splitlines(keepends=True)
                        if line.startswith(prefix.encode())]
@@ -506,10 +571,12 @@ def _authenticate_capacity_prose_context(
     current = _git_bytes("show", f"{commit}:{REVIEW_LEDGER}")
     previous = _git_bytes("show", f"{parent}:{REVIEW_LEDGER}")
     canonical = _git_bytes("show", f"{canonical_ref}:{REVIEW_LEDGER}")
-    if (not _is_append_only_ledger(previous, current, growth=True)
-            or not _is_append_only_ledger(current, canonical, growth=False)):
+    if not _is_append_only_ledger(previous, current, growth=True):
         raise ScoredPacketDesignRefused(
             "capacity prose context ledger ancestry is not append-only")
+    _require_review_history(
+        current, canonical, review_commit=commit,
+        canonical_ref=canonical_ref)
     added = _git_bytes(
         "diff", "--unified=0", parent, commit, "--", REVIEW_LEDGER)
     required = (

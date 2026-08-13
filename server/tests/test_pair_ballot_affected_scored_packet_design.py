@@ -234,7 +234,102 @@ def test_canonical_tip_must_preserve_review_commit_ledger_bytes(monkeypatch):
 
     monkeypatch.setattr(DESIGN, "_git_bytes", rewritten)
     with pytest.raises(
-            DESIGN.ScoredPacketDesignRefused, match="not append-only"):
+            DESIGN.ScoredPacketDesignRefused,
+            match="rewrite lacks one rotation record"):
+        DESIGN._canonical_review_record(
+            commit=DESIGN.CAPACITY_RESULT_REVIEW_COMMIT,
+            parent=DESIGN.CAPACITY_RESULT_REVIEW_PARENT,
+            prefix=DESIGN.CAPACITY_RESULT_REVIEW_PREFIX,
+            expected=DESIGN._capacity_result_claim())
+
+
+def _rotation_fixture() -> tuple[bytes, bytes, str, str]:
+    reviewed = DESIGN._git_bytes(
+        "show",
+        f"{DESIGN.CAPACITY_RESULT_REVIEW_COMMIT}:{DESIGN.REVIEW_LEDGER}")
+    source = reviewed + b"\n## Later review entries before rotation\n"
+    source_commit = "a" * 40
+    archive_path = (
+        "docs_archive/handoff-review-2026-08-11-through-2026-08-13.md")
+    record = {
+        "archive_path": archive_path,
+        "archive_sha256": DESIGN._sha256_bytes(source),
+        "authority_changed": False,
+        "schema": DESIGN.REVIEW_ROTATION_SCHEMA,
+        "source_commit": source_commit,
+        "source_ledger_bytes": len(source),
+        "source_ledger_lines": source.count(b"\n"),
+        "source_ledger_sha256": DESIGN._sha256_bytes(source),
+    }
+    marker = (DESIGN.CAPACITY_RESULT_REVIEW_PREFIX.encode()
+              + DESIGN._canonical(DESIGN._capacity_result_claim()))
+    compact = (DESIGN.REVIEW_ROTATION_PREFIX.encode()
+               + DESIGN._canonical(record) + marker)
+    return compact, source, source_commit, archive_path
+
+
+def _install_rotation(monkeypatch, *, archive_drift: bool = False,
+                      source_drift: bool = False,
+                      ancestry_drift: bool = False) -> None:
+    compact, source, source_commit, archive_path = _rotation_fixture()
+    original_bytes = DESIGN._git_bytes
+    original_run = DESIGN.subprocess.run
+
+    if source_drift:
+        source = b"unrelated pre-rotation ledger\n"
+
+    def rotated_bytes(*args):
+        if args == (
+                "show",
+                f"{DESIGN.CANONICAL_REVIEW_REF}:{DESIGN.REVIEW_LEDGER}"):
+            return compact
+        if args == ("show", f"{source_commit}:{DESIGN.REVIEW_LEDGER}"):
+            return source
+        if args == (
+                "show", f"{DESIGN.CANONICAL_REVIEW_REF}:{archive_path}"):
+            return source + (b"drift" if archive_drift else b"")
+        return original_bytes(*args)
+
+    def rotated_run(args, **kwargs):
+        if (args[:3] == ["git", "merge-base", "--is-ancestor"]
+                and source_commit in args):
+            return DESIGN.subprocess.CompletedProcess(
+                args, 1 if ancestry_drift else 0, b"", b"")
+        return original_run(args, **kwargs)
+
+    monkeypatch.setattr(DESIGN, "_git_bytes", rotated_bytes)
+    monkeypatch.setattr(DESIGN.subprocess, "run", rotated_run)
+
+
+def test_authenticated_rotation_preserves_review_authority(monkeypatch):
+    _install_rotation(monkeypatch)
+    record = DESIGN._canonical_review_record(
+        commit=DESIGN.CAPACITY_RESULT_REVIEW_COMMIT,
+        parent=DESIGN.CAPACITY_RESULT_REVIEW_PARENT,
+        prefix=DESIGN.CAPACITY_RESULT_REVIEW_PREFIX,
+        expected=DESIGN._capacity_result_claim())
+    assert record["commit"] == DESIGN.CAPACITY_RESULT_REVIEW_COMMIT
+
+
+def test_authenticated_rotation_preserves_non_authority_prose(monkeypatch):
+    _install_rotation(monkeypatch)
+    record = DESIGN._authenticate_capacity_prose_context()
+    assert record["commit"] == DESIGN.CAPACITY_PROSE_REVIEW_COMMIT
+    assert record["authority"] is False
+
+
+@pytest.mark.parametrize(("mutation", "error"), (
+    ("archive", "rotation archive drift"),
+    ("source", "rotation archive drift"),
+    ("ancestry", "rotation ancestry drift"),
+))
+def test_rotation_archive_and_ancestry_drift_refuse(
+        monkeypatch, mutation, error):
+    _install_rotation(
+        monkeypatch, archive_drift=mutation == "archive",
+        source_drift=mutation == "source",
+        ancestry_drift=mutation == "ancestry")
+    with pytest.raises(DESIGN.ScoredPacketDesignRefused, match=error):
         DESIGN._canonical_review_record(
             commit=DESIGN.CAPACITY_RESULT_REVIEW_COMMIT,
             parent=DESIGN.CAPACITY_RESULT_REVIEW_PARENT,

@@ -48,7 +48,7 @@ DESIGN_CANONICAL_SHA256 = (
 DESIGN_PATH = SERVER / "scripts/bury_lead_combo_scored_dev_design.py"
 SCORER_PATH = SERVER / "scripts/bury_lead_combo_scored_dev.py"
 
-RUN_ID = "bury-lead-combo-scored-dev-64-v1"
+RUN_ID = "bury-lead-combo-scored-dev-64-v2-loaded-unit"
 RUN_DIR = SERVER / "runs/logs" / RUN_ID
 LOCK_DIR = SERVER / "runs/locks"
 PACKET_PATH = RUN_DIR / "controller-packet.json"
@@ -59,19 +59,19 @@ FINAL_PATH = RUN_DIR / "supervisor-final.json"
 ADMISSION_PATH = LOCK_DIR / f"{RUN_ID}.admission.consumed.json"
 SYSTEMD_UNIT = f"{RUN_ID}.service"
 
-PACKET_SCHEMA = "bury-lead-combo-scored-dev-controller-packet-v1"
-ADMISSION_SCHEMA = "bury-lead-combo-scored-dev-admission-v1"
-FINAL_SCHEMA = "bury-lead-combo-scored-dev-supervisor-final-v1"
-STATE_RECEIPT_SCHEMA = "bury-lead-combo-scored-dev-state-receipt-v1"
+PACKET_SCHEMA = "bury-lead-combo-scored-dev-controller-packet-v2"
+ADMISSION_SCHEMA = "bury-lead-combo-scored-dev-admission-v2"
+FINAL_SCHEMA = "bury-lead-combo-scored-dev-supervisor-final-v2"
+STATE_RECEIPT_SCHEMA = "bury-lead-combo-scored-dev-state-receipt-v2"
 IMPLEMENTATION_REVIEW_SCHEMA = (
-    "bury-lead-combo-scored-dev-controller-review-v1"
+    "bury-lead-combo-scored-dev-controller-review-v2"
 )
-PACKET_REVIEW_SCHEMA = "bury-lead-combo-scored-dev-packet-review-v1"
+PACKET_REVIEW_SCHEMA = "bury-lead-combo-scored-dev-packet-review-v2"
 IMPLEMENTATION_REVIEW_PREFIX = (
-    "BURY_LEAD_COMBO_SCORED_DEV_CONTROLLER_REVIEWER_ATTESTATION_V1 "
+    "BURY_LEAD_COMBO_SCORED_DEV_CONTROLLER_REVIEWER_ATTESTATION_V2 "
 )
 PACKET_REVIEW_PREFIX = (
-    "BURY_LEAD_COMBO_SCORED_DEV_PACKET_REVIEWER_ATTESTATION_V1 "
+    "BURY_LEAD_COMBO_SCORED_DEV_PACKET_REVIEWER_ATTESTATION_V2 "
 )
 
 STATE_COUNT = 64
@@ -85,6 +85,10 @@ REQUIRED_ENVIRONMENT = {
     "SHENGJI_FAST": "1",
     "SHENGJI_REQUIRE_VOIDS": "1",
 }
+SYSTEMD_ENVIRONMENT = (
+    "PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 SHENGJI_FAST=1 "
+    "SHENGJI_REQUIRE_VOIDS=1 PYTHONPATH=server:server/scripts"
+)
 REQUIRED_SCRIPT_PATHS = frozenset({
     "server/scripts/bury_lead_combo_scored_dev_controller.py",
     "server/scripts/bury_lead_combo_scored_dev.py",
@@ -814,6 +818,8 @@ def _systemd_properties(unit: str) -> dict[str, str]:
         "Id", "InvocationID", "LoadState", "ActiveState", "SubState",
         "Type", "Restart", "KillMode", "UID", "ControlGroup",
         "WorkingDirectory", "NRestarts", "RuntimeMaxUSec",
+        "FragmentPath", "DropInPaths", "NeedDaemonReload", "Environment",
+        "Nice",
     )
     completed = subprocess.run(
         ["systemctl", "show", unit, "--no-pager",
@@ -858,6 +864,9 @@ def require_systemd(runtime: Mapping[str, object]) -> str:
         "SubState": "running", "Type": "exec", "Restart": "no",
         "KillMode": "control-group", "WorkingDirectory": str(REPO),
         "NRestarts": "0", "RuntimeMaxUSec": "1h",
+        "FragmentPath": f"/etc/systemd/system/{SYSTEMD_UNIT}",
+        "DropInPaths": "", "NeedDaemonReload": "no",
+        "Environment": SYSTEMD_ENVIRONMENT, "Nice": "5",
     }
     if (any(properties.get(key) != value for key, value in expected.items())
             or properties.get("UID") not in {"0", "[not set]"}
@@ -870,6 +879,16 @@ def require_systemd(runtime: Mapping[str, object]) -> str:
         raise ControllerRefused("controller process is outside reviewed cgroup")
     if runtime["systemd_unit"]["name"] != SYSTEMD_UNIT:
         raise ControllerRefused("packet systemd unit identity drift")
+    frozen_path = Path(runtime["systemd_unit"]["path"])
+    frozen = stable_bytes(
+        frozen_path, label="frozen systemd unit", root_owned=True,
+        nonwritable=True)
+    installed = stable_bytes(
+        Path(properties["FragmentPath"]), label="installed systemd unit",
+        root_owned=True, nonwritable=True)
+    if (installed != frozen
+            or sha256_bytes(installed) != runtime["systemd_unit"]["sha256"]):
+        raise ControllerRefused("loaded systemd fragment bytes drift")
     return invocation
 
 

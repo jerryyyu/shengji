@@ -544,23 +544,61 @@ def test_systemd_gate_pins_unit_properties_and_cgroup(monkeypatch):
         "KillMode": "control-group", "UID": "[not set]",
         "ControlGroup": group, "WorkingDirectory": str(CTRL.REPO),
         "NRestarts": "0", "RuntimeMaxUSec": "1h",
+        "FragmentPath": f"/etc/systemd/system/{CTRL.SYSTEMD_UNIT}",
+        "DropInPaths": "", "NeedDaemonReload": "no",
+        "Environment": CTRL.SYSTEMD_ENVIRONMENT, "Nice": "5",
     }
     runtime = _runtime("a" * 40)
+    unit_bytes = b"[Service]\nType=exec\n"
+    runtime["systemd_unit"]["sha256"] = CTRL.sha256_bytes(unit_bytes)
     monkeypatch.setenv("INVOCATION_ID", invocation)
     monkeypatch.setattr(CTRL.os, "geteuid", lambda: 0)
     monkeypatch.setattr(
         CTRL, "_systemd_invocation_exists", lambda value: True)
     monkeypatch.setattr(CTRL, "_systemd_properties", lambda unit: properties)
     monkeypatch.setattr(CTRL, "_current_cgroups", lambda: [f"0::{group}"])
+    monkeypatch.setattr(
+        CTRL, "stable_bytes", lambda path, **kwargs: unit_bytes)
 
     assert CTRL.require_systemd(runtime) == invocation
     properties["Restart"] = "always"
     with pytest.raises(CTRL.ControllerRefused, match="identity"):
         CTRL.require_systemd(runtime)
     properties["Restart"] = "no"
+    properties["NeedDaemonReload"] = "yes"
+    with pytest.raises(CTRL.ControllerRefused, match="identity"):
+        CTRL.require_systemd(runtime)
+    properties["NeedDaemonReload"] = "no"
+    properties["DropInPaths"] = "/etc/systemd/system/override.conf"
+    with pytest.raises(CTRL.ControllerRefused, match="identity"):
+        CTRL.require_systemd(runtime)
+    properties["DropInPaths"] = ""
+    properties["Environment"] = "SHENGJI_FAST=0"
+    with pytest.raises(CTRL.ControllerRefused, match="identity"):
+        CTRL.require_systemd(runtime)
+    properties["Environment"] = CTRL.SYSTEMD_ENVIRONMENT
+    properties["Nice"] = "0"
+    with pytest.raises(CTRL.ControllerRefused, match="identity"):
+        CTRL.require_systemd(runtime)
+    properties["Nice"] = "5"
     monkeypatch.setattr(CTRL, "_current_cgroups", lambda: ["0::/other"])
     with pytest.raises(CTRL.ControllerRefused, match="outside"):
         CTRL.require_systemd(runtime)
+    monkeypatch.setattr(CTRL, "_current_cgroups", lambda: [f"0::{group}"])
+    fragment = Path(properties["FragmentPath"])
+    monkeypatch.setattr(
+        CTRL, "stable_bytes",
+        lambda path, **kwargs: (
+            b"[Service]\nType=notify\n"
+            if Path(path) == fragment else unit_bytes))
+    with pytest.raises(CTRL.ControllerRefused, match="fragment bytes"):
+        CTRL.require_systemd(runtime)
+
+
+def test_scored_dev_loaded_unit_repair_uses_fresh_namespace():
+    assert CTRL.RUN_ID == "bury-lead-combo-scored-dev-64-v2-loaded-unit"
+    assert CTRL.IMPLEMENTATION_REVIEW_PREFIX.endswith("_V2 ")
+    assert CTRL.PACKET_REVIEW_PREFIX.endswith("_V2 ")
 
 
 def _patch_run(monkeypatch, tmp_path, packet, *, fail_index=None):

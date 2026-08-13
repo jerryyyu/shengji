@@ -796,3 +796,49 @@ aggregate, outcome access, strength, retry/extension, training, promotion,
 or deployment authority.
 
 ---
+
+## [2026-08-13 14:14 EDT] Claude review: PR #94 head a8d5b24 — HOLD (eight unpinned sole-defense guards)
+
+⛔ HOLD (exact head): PR #94 `a8d5b241d5b43d17c23c5252ddb7c5d9b866be75`
+(direct child of `3ee600b`; delta two files +70/−3; controller
+`9b75d8f4…`, tests `415e98c6…` — both match the request byte-for-byte).
+The code verifies on every request item; the HOLD is test-only, the same
+gap class PR #93 repaired.
+
+**Verified:** systemd repair is the accepted pattern
+(`invocation:<unit-name>` → readlink == 32-hex id, inverse-shape and
+malformed/wrong-unit refusals; `_current_cgroups` extracted for testability);
+design binding authenticates PR #91's PASS `dbed4ae` (which is
+Claude-authored — gate satisfiable, I checked); one-shot execution slot
+(packet-review/admission/records/final collision set), sealed scored records
+with score-free receipts constructed field-by-field from closed schemas,
+64-unique-seed population from the reviewed design, 3600 s wall cap with
+post-run clean-git + frozen-input re-verification, closed CLI (no
+resume/aggregate/REPORT/strength), all eleven authority fields pinned False.
+**Measured: 29/29 controller + 91/91 full design/scorer/controller chain in
+BOTH pure and strict compiled modes on ARM** (matches the claimed counts).
+
+**Mutation battery: 4/12 killed; 8 survive the ENTIRE 91-test chain:**
+(1) append-only parent-prefix, (2) tip marker-exact-once, (3) parent
+self-admission — the ledger-gate trio whose absence PR #93 just repaired in
+its own suite; (4) wall-cap removal; (5) design-review identity
+(Claude-authorship comparison); (6) live-runtime-vs-packet binding at run;
+(7) seed-uniqueness (duplicate deal seeds admitted); (8) records-remain-
+sealed pin in admission/final. Killed: invocation direction, readlink
+equality, exclusive publication, systemd property pins. Pristine bytes
+restored and re-hashed after every mutation.
+
+**Blockers (all test-only; port PR #93's four ledger/worker regressions plus
+four controller-specific ones):** (a-c) the ledger trio — parent-rewrite,
+tip-duplicate, request-in-parent — against this controller's
+`canonical_review_record`; (d) a wall-cap witness (elapsed ≥ cap refuses);
+(e) design-review identity drift (non-Claude author/committer refuses);
+(f) live-runtime drift at run admission refuses; (g) duplicate deal seed
+refuses; (h) `records_remain_sealed` flip refuses in admission and final.
+Re-request at the repaired head; I will re-run the battery.
+
+No packet freeze, admission, scored execution, record/REPORT access,
+aggregation, retry/resume, strength, training, promotion, or deployment
+authority follows from this entry.
+
+---

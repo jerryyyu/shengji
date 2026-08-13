@@ -177,24 +177,25 @@ class PairCapAttackerIncrementalRolloutPolicy(HeuristicBot):
                 "attacker pair-cap action change does not match component dose")
         if cap_delta["triggers"] not in (0, 1):
             raise AssertionError("one rollout lead produced multiple cap triggers")
-        if not differs:
-            self._validate(self.pair_cap_incremental_snapshot())
-            return v1_play
+        if differs:
+            if not rnd.is_attacker(seat) or cap_delta["defender_triggers"]:
+                raise AssertionError("attacker pair-cap changed a defender lead")
+            totals["v1_v3_action_differences"] += 1
+            totals["opportunities"] += 1
+            totals["triggers"] += 1
+            totals["attacker_triggers"] += 1
+            if sum(points(card) for card in v3_play):
+                totals["point_pair_triggers"] += 1
+            if self.apply_incremental:
+                totals["changes"] += 1
+            else:
+                totals["matched_parent_noops"] += 1
 
-        if not rnd.is_attacker(seat) or cap_delta["defender_triggers"]:
-            raise AssertionError("attacker pair-cap changed a defender lead")
-        totals["v1_v3_action_differences"] += 1
-        totals["opportunities"] += 1
-        totals["triggers"] += 1
-        totals["attacker_triggers"] += 1
-        if sum(points(card) for card in v3_play):
-            totals["point_pair_triggers"] += 1
-        if self.apply_incremental:
-            totals["changes"] += 1
-            result = v3_play
-        else:
-            totals["matched_parent_noops"] += 1
-            result = v1_play
+        # One return seam governs the complete parent policy.  This matters for
+        # falsification: replacing the parent with the plain champion here must
+        # fail on v1-only states, rather than surviving because an earlier
+        # return bypassed the operative line.
+        result = v3_play if self.apply_incremental and differs else v1_play
         self._validate(self.pair_cap_incremental_snapshot())
         return result
 

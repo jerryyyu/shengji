@@ -50,6 +50,39 @@ def test_incremental_treatment_and_parent_null_do_identical_component_work():
     assert tr["counters"]["v3_pair_aware"]["triggers"] == 1
 
 
+def test_one_parent_return_seam_preserves_v1_across_both_trigger_types():
+    """The matched parent is the complete v1 policy, not the champion.
+
+    V1 and the strictly-incremental cap are mutually exclusive on one lead:
+    v3 deliberately returns as soon as v1 fires.  Exercise both paths on one
+    policy instance so replacing the centralized parent return with the plain
+    heuristic is observably red while the accumulated telemetry proves both
+    components were reached.
+    """
+    v1_only = _pair_cap_only_state()
+    v1_only.history[0].plays[-1].cards = ["DK", "DA"]
+    v1_only.hands[0] = ["DQ", "DQ", "SA", "C3", "C4"]
+    assert v1_only.is_attacker(0)
+
+    expected_v1 = PairAwareRolloutPolicy(
+        apply_treatment=True).decide_play(copy.deepcopy(v1_only), 0)
+    champion = HeuristicBot().decide_play(copy.deepcopy(v1_only), 0)
+    assert expected_v1 == ["DQ", "DQ"]
+    assert champion == ["SA"]
+    assert expected_v1 != champion
+
+    parent = PairCapAttackerIncrementalRolloutPolicy(
+        apply_incremental=False)
+    assert parent.decide_play(copy.deepcopy(v1_only), 0) == expected_v1
+    # The next lead reaches the incremental-cap branch.  Parent still returns
+    # v1 while paying for both component analyses.
+    assert parent.decide_play(copy.deepcopy(_pair_cap_only_state()), 0) == ["SA"]
+    counters = parent.pair_cap_incremental_telemetry()["counters"]
+    assert counters["v1_pair_aware"]["triggers"] == 1
+    assert counters["v3_pair_cap"]["triggers"] == 1
+    assert counters["outer"]["matched_parent_noops"] == 1
+
+
 def test_defender_declines_incremental_rule_but_preserves_v1():
     rnd = _pair_cap_only_state()
     rnd.banker = 0

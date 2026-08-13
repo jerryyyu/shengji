@@ -34,6 +34,7 @@ from . import cards as _cards
 from . import combos, legal
 from .cards import Ordering, make_deck
 from .combos import Decomposition
+from .round import HAND_SIZE, KITTY_SIZE
 
 try:
     from . import _fast  # compiled extension; see setup.py
@@ -45,6 +46,7 @@ except ImportError:  # not built — pure Python fallback
 ID2CODE: list[str] = sorted(set(make_deck()))  # 54 codes, deterministic ids
 CODE2ID: dict[str, int] = {c: i for i, c in enumerate(ID2CODE)}
 EFF_ID = {"S": 0, "H": 1, "C": 2, "D": 3, "T": 4}
+_MAX_ENGINE_HAND_CARDS = HAND_SIZE + KITTY_SIZE
 
 
 def _ctx(ordering: Ordering) -> tuple:
@@ -172,6 +174,24 @@ def _forced_follow_fast(self, hand, lead, o, prefer_points, avoid=None):
 
 
 def _lead_fast(self, rnd, seat):
+    # ``heuristic_lead`` deliberately disables Cython bounds/wraparound
+    # checks in its engine-only kernel.  Keep malformed/public calls on the
+    # pure method: besides preserving Python's indexing semantics (including
+    # bool and negative indices), this prevents an invalid seat from becoming
+    # an unchecked native list access.  The largest real hand is the banker's
+    # 25 dealt cards plus the 8-card kitty.
+    hands = getattr(rnd, "hands", None)
+    if (type(getattr(rnd, "ordering", None)) is not Ordering
+            or type(seat) is not int or type(hands) is not list
+            or len(hands) != 4 or not 0 <= seat < len(hands)):
+        return _saved["HeuristicBot._lead"](self, rnd, seat)
+    hand = hands[seat]
+    if type(hand) is not list or not 0 < len(hand) <= _MAX_ENGINE_HAND_CARDS:
+        return _saved["HeuristicBot._lead"](self, rnd, seat)
+    # The native kernel delegates tractor/lowest sub-decisions back through
+    # the currently routed bot methods.  On malformed synthetic objects a
+    # subclass/public override may reject the otherwise list-shaped input;
+    # retain pure behavior instead of letting that partial native route leak.
     return _fast.heuristic_lead(self, rnd, seat)
 
 

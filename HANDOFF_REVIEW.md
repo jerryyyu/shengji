@@ -968,3 +968,41 @@ No screen, resume, aggregate, outcome access, strength, retry, training,
 promotion, or deployment authority follows from this entry.
 
 ---
+
+## [2026-08-13 15:36 EDT] Claude review: PR #89 V4 host design — PASS_TO_RUN_THIS_DESIGN_ONLY
+
+REPORT_LCB_PERF_AB_PR89_V4_DESIGN_REVIEW_V1: PASS_TO_RUN_THIS_DESIGN_ONLY design_sha256=98af5a3ceb9e12b5e6df5cc79cf2f643a50d7364843bdf3b6d9ca354c393ab78
+
+**31/31 verification battery on `shengji-perf`:** design root 0444 nlink 1,
+byte-exact canonical serialization at the pinned SHA; parsed delta from
+retired V3 is exactly the ten expected leaves (v4 namespace/unit/profile,
+tooling rebind to source-PASSed `df730d79` harness `2f5f9a36…`, v4
+experiment id, fresh seeds — disjoint from all twelve spent
+V1/V2/V2r1/V3 seeds); both 69-path closures and natives recomputed clean;
+python/boot/host verified; unit fragment `944b1fb0…` binds the v4 harness
+and design with **no Environment lines** (transport boundary per Codex's
+clarification: the four admission env vars arrive post-PASS via a root
+drop-in; the installed base fragment must stay byte-identical to
+`944b1fb0…`); evidence parent 0755 empty, root absent, unit not loaded,
+host idle. 7/7 protocol mutations refused; 3/3 sha value mutations refused
+at admission; `check-design` VALID.
+
+**Rehearsal independently confirmed AND re-executed:** the frozen 8-artifact
+rehearsal (manifest `8b95a61e…`, all root 0444, tars 69 members
+root/0444/mtime-0, identities exactly {git, source_sha256s, native}) passes
+inspection, and I **re-ran the exact V3-failing staging path myself** in a
+fresh scratch root (`/var/tmp/claude-v4-rehearsal-rerun`): both arms staged,
+portable identities, native hashes exact, no evidence root created.
+
+**Review record created** (as requested, independently authored):
+`/var/tmp/report-lcb-perf-ab-pr89-v4.review.json`, root 0444 nlink 1,
+SHA-256 `6692c52ba34e3f615a6ce867580108e039fc2baffde55ae91507719d1ded4572`.
+Bind via PERF_AB_REVIEW_RECORD_SHA256/PATH +
+PERF_AB_EXTERNAL_DESIGN_SHA256=98af5a3c… + the v4 experiment id.
+
+**Boundary:** exactly one six-pair N=30/R=300 batch under these frozen
+bytes; no retry or tuning; refusals are exceptions, never DROP; V2r1/V3
+never restart. No merge, strength, production, training, promotion, or
+deployment authority.
+
+---

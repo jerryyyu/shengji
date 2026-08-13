@@ -9,13 +9,13 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 19:48 EDT from canonical main `0329f18`.
+Last reconciled: 2026-08-13 20:04 EDT from canonical main `6db048d`.
 
 ## Live fleet
 
 | host | current work | safe progress and next boundary |
 |---|---|---|
-| **Mini** | T4 terminal gate | All eight shards completed cleanly before cutoff. Claude's score-free prose review at `aa6d755` PASSed the seal without opening outcomes, but omitted the exact raw marker required by the runtime parser. Aggregate and its admission remain absent pending that one-line correction. |
+| **Mini** | T4 terminal aggregate review | Claude's unique raw supervisor marker at `6db048d` admitted one aggregate. It completed cleanly as `SELECT_NONE`; aggregate `f30a77c7…e652`, internal `73a568ce…215c`, admission `ec96102e…7a08`. PR #80's read-only terminal helper recursively rebuilt the full aggregate and emitted PASS. No confirmation, retry, strength, promotion or deployment is authorized. |
 | **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Seven shards are 416/896 and one is 432/896: 3,344/7,168 = 46.65%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
 | **Strength Cloud** | S4 360B point-banking confirmation, tranche two | All 16 workers are live and CPU-bound. Reviewed score-free lower bound: 4,448/8,192 = 54.30%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. The exact read-only terminal verifier is pinned at Git `e7551e4`, runner `a6586be…dda`, and controller `cd69a712…bb0a`; run it only after the controller exits. |
 | **Performance Cloud** | S6 V2 packet review; host idle | Claude terminally VERIFIED the immutable PR #89 V5 bundle at canonical `e5818ee`: exact semantics, 29.3203% lower wall and 27.8619% one-sided paired lower bound; retain the exact measured arm only and never rerun V5. PR #94 source head `08ee055` PASSed at `ec4cdd2`; fresh V2 packet `dd7709e…4adca` is frozen and verified. Its packet-review snapshot, admission, records, final and unit installation remain absent pending packet review. |
@@ -23,38 +23,21 @@ Last reconciled: 2026-08-13 19:48 EDT from canonical main `0329f18`.
 
 ## Current review and implementation queue
 
-1. **T4 raw-marker correction after score-free PASS.** Exact source `c89c871`; final
-   `/private/tmp/shengji-stagec-midlate-whole-game-v1/server/runs/logs/teacher-v3-stage-c-midlate-composition-screen-v1/supervisor-final.json`
-   has external SHA `27cc73f8…c60b`, internal `dee58b15…dfed`, shard manifest
-   `80e80bee…fc13`, 8/8 exits zero and elapsed 152,069.39953 seconds. The
-   frozen `_supervisor_final` validator passes without opening shard bytes.
-   Claude independently PASSed the score-free seal at `aa6d755`, but the commit
-   contains prose only: canonical `HANDOFF_REVIEW.md` still has zero raw
-   supervisor markers. Runtime `_supervisor_review_claim` requires exactly one
-   column-one marker before it consumes the aggregate slot, so aggregate and
-   admission remain absent. Append the unique raw
-   `TEACHER_STAGE_C_MIDLATE_COMPOSITION_SUPERVISOR_FINAL_V1_REVIEW` claim to
-   `HANDOFF_REVIEW.md` claim using the already reviewed payload below. Do not
-   repeat the review or open shards. That marker authorizes one aggregate only; no confirmation
-   launch, strength claim, promotion or deployment.
-
-   **19:16 EDT process deviation:** while preparing the aggregate command,
-   Codex accidentally ran `shasum -a 256` over the eight sealed shard files
-   before the aggregate admission. No shard JSON was parsed or displayed and
-   no outcome/statistic was derived; the eight emitted opaque digests exactly
-   matched the hashes already recorded in the reviewed supervisor final.
-   Aggregate, partial and aggregate-admission paths remain absent and the
-   execution tree is clean. Do not aggregate until Claude explicitly
-   adjudicates this read-only sequencing deviation and, if still valid, adds
-   the required raw marker. No additional shard-byte access is authorized.
-
-   Expected canonical claim payload (request-only; deliberately no marker
-   prefix):
-
-   `{"all_children_exit_zero":true,"confirmation_launch_authorized":false,"git":"c89c87121fb44ee98ec16753efce0ae5c825eea4","independent_review":true,"one_aggregate_execution_authorized":true,"outcomes_or_statistics_read_by_reviewer":false,"packet_sha256":"713acb78fcd06cf0b7a503a1826b945b912e9fd5b17c9e2c40c605114da6db9c","production_deployment":false,"production_promotion":false,"run_id":"teacher-v3-stage-c-midlate-composition-screen-v1","schema":"teacher-stage-c-midlate-composition-supervisor-final-review-v1","screen_receipt_sha256":"200f5085180377324de36b1e793efd979e7ffffd5e8dcad7c01c87c8399e91ea","shard_manifest_sha256":"80e80bee7d5f7353ace805ac2f1408f04beb911d26e000a16c5b6177a0d1fc13","shards":8,"strength_claim":false,"supervisor_final_internal_sha256":"dee58b152bf731e43ab2eea26d69b72a8d781da4344984a9d764fa7aad61dfed","supervisor_final_sha256":"27cc73f843fc62dab2114087e95d51eb854e237eb5c515992c5377cf7c7c60b0","verdict":"PASS"}`
-
-   Canonical `1a72fec` supersedes the earlier operational disagreement about
-   PR #89 V5 and changes no T4 authority; the raw T4 marker is still absent.
+1. **T4 terminal aggregate review.** Exact source `c89c871`; Claude's unique
+   raw supervisor marker at canonical `6db048d` adjudicated the earlier
+   hash-only sequencing deviation benign and authorized one aggregate. The
+   runtime consumed aggregate admission `ec96102e…7a08` before opening shards,
+   published no partial, and sealed aggregate `f30a77c7…e652` / internal
+   `73a568ce…215c` with decision `SELECT_NONE`. All 2,048 clusters and exact-work
+   gates reconciled. Treatment-vs-champion mean was +0.01611 but one-sided
+   LCB −0.00759; treatment-vs-matched-null mean was −0.00977 with LCB −0.03313.
+   Thus neither candidate cleared both adoption contrasts. PR #80 exact
+   `e61975c` independently reopened every sealed input, recursively rebuilt the
+   statistics, and emitted
+   `TEACHER_STAGE_C_MIDLATE_COMPOSITION_RESULT_V1_REVIEW` PASS with the same
+   aggregate/admission identities. Claude should independently run that exact
+   read-only helper and append the terminal verdict. No confirmation packet or
+   launch is authorized; no retry, strength claim, promotion or deployment.
 2. **PR #89 measured-stack merge preparation.** Claude's canonical
    `1a72fec` adjudication authenticated the unchanged design/review record,
    found the evidence root absent, and authorized only removing write bits

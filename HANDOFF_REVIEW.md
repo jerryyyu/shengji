@@ -7741,3 +7741,64 @@ claim, training, promotion, deployment, retry or extension.
 PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW {"admission_sha256":"759fc5b7d23ee619fa7a692014148d282909226fcfa7ceb23f0a7a78fda212f7","extension_authorized":false,"git":"6461c660e1ff71a905d9010b12c0adfc4e8bc729","independent_review":true,"packet_internal_sha256":"25b1888c62ff772c18e065b30a7bfcc2d724c645f5ad054c4e6823dfd56a14b5","packet_review_commit":"88866f25f3763f26996be6f45fbcfcdfe3854f30","packet_sha256":"e054c5e582c1e665da9bc8ab413639f4c015ffe31a85f22c83275b7f4b4de492","production_deployment":false,"production_promotion":false,"report_access_authorized":false,"result_internal_sha256":"ca36d1af3dda376884b09b1fb5ed4d7142a2f6c64b5af8c0b4153f20123a4fb2","result_reviewer_script_sha256":"5ca14e1ff66663b93ff3b9f9f35f28e5463689f9638b2126b6cbb5fe25a646a1","result_sha256":"544499d17df03d08aea908c33b27813771cd1edb41a51394682300a7be4ca764","retry_authorized":false,"reviewer_dependency_sha256s":{"pair_ballot_affected_aggregate.py":"a1908a32853ea62e0c775dd1975b7b7ad7316f662dc19b8fe108b25282099ba0","pair_ballot_affected_capacity_design.py":"caa2d0d9c5580c56828e72c39e3e5ad0cf5be0d3eb7a8a77603e31c73e786317","pair_ballot_affected_capacity_preflight.py":"cab2caa01f58c02d932365993c856894f811408853c8a2bef9ca42a75721ebaa","pair_ballot_affected_eval.py":"2d4adfd06d0de7517bb190ebf5d190bd95f848d9ab25fb5eb9a29f27b3cd7488","pair_ballot_affected_states.py":"e54102482c2f1652186bfa5458f4f229fa01bd8bf74cdcb2d29c7fe133e6f4ce"},"run_id":"pair-ballot-affected-capacity-preflight-v1","schema":"pair-ballot-affected-capacity-preflight-result-review-v1","score_free_capacity_pass":true,"scored_evaluation_authorized":false,"scored_packet_design_authorized":true,"scored_packet_freeze_authorized":false,"scored_packet_run_authorized":false,"strength_claim":false,"training_authorized":false,"verdict":"PASS"}
 
 ---
+## Claude — 2026-08-13 06:42 EDT — ✅ PASS (prose): T4/Pair terminal reviewers (PR #80, `9c896e2`); read-only, no execution authority
+
+Reviewed against the ACTIVE ask. **The pinned head is stale:** ACTIVE names
+`e0c23e6`, but the branch has advanced one commit to
+`9c896e2ffaaa557c779ec6dee579c0e8122fa312` ("Harden terminal reviewer
+provenance"), whose parent is exactly `e0c23e6`. I reviewed the current head and
+am flagging the pin so it can be re-stated rather than silently drifting.
+Four files, +464/−72.
+
+**Both properties the ask names are verified *and* pinned by tests.**
+
+1. *Strict shard loads occur only after aggregate/final/admission gates.* The
+   flow loads the aggregate and supervisor final, re-checks that the packet,
+   receipt/capacity and final did not change during validation, validates the
+   aggregate's pre-open binding — schema, run id, git, packet, receipt, final
+   external and internal digests, review record and claim, admission slot, and
+   the self-hash, with `confirmation_launch_authorized`, `strength_claim`,
+   `production_promotion`, `production_deployment` and
+   `retry_or_extension_authorized` all required false — then validates the
+   admission slot, and *only then* enters the shard loop. Neutering the
+   admission gate is **caught** by
+   `test_t4_admission_refuses_before_malformed_shard_open`, so the ordering is
+   pinned, not merely written.
+2. *Exact target and transitive import origins reject same-path preload
+   forgeries.* `import_script` builds the protected set from the expected
+   modules plus every git-tracked path under `server/scripts` and
+   `server/shengji`, then refuses if any of those — or anything named `shengji`
+   or `shengji.*` — is already in `sys.modules`. Removing that refusal is
+   **caught by four tests**.
+
+**No write, launch, aggregate, retry, promote or deploy surface exists.** I
+scanned all three scripts for write modes, `O_CREAT`, `Popen`, `mkdir`,
+`rename`, `unlink` and `shutil`: none. The only `subprocess` use is read-only
+git — `rev-parse HEAD`, `status --porcelain=v1`, and `ls-tree -r --name-only`.
+
+**Three sibling refusals are untested — fixture requests, not blockers.**
+Mutating each leaves the suite green: the aggregate pre-open binding drift
+refusal, the "supervisor final changed during validation" TOCTOU refusal, and
+the sealed-shard drift refusal (`external_sha256` / `internal_sha256` /
+`log_sha256` against the sealed manifest). All three are present and correctly
+placed; they simply have no negative fixture. The last one matters most: it is
+what ties each opened shard to the supervisor's sealed record.
+
+**A strict-mode test-isolation issue worth fixing before T4 lands.** The suite
+is **17/17 green** under a plain interpreter but **16/17 under
+`SHENGJI_FAST=1`**: `test_common_rejects_dependency_import_path_drift` then
+fails because the compiled-mode import preloads `shengji.*`, so the preload
+guard fires first and the test's expected "import path drift" message never
+appears. The guard is behaving correctly — the test cannot pass in a process
+where the engine is already imported. Since packets are normally exercised in
+strict compiled mode, this will read as a red suite to the next reviewer. It
+wants a subprocess-isolated fixture or a narrowed protected set for that one
+case. I initially reported this as a failing head and corrected myself once I
+saw the plain-interpreter run.
+
+This helper cannot write, launch, aggregate, retry, promote or deploy, and this
+review grants no execution authority. It is the reader T4's terminal result will
+need; T4 is presently mid-second-arm at `matched_null 300/512` with no
+`supervisor-final.json` yet.
+
+---

@@ -7011,3 +7011,50 @@ Any PASS is protocol-validation only and grants no retry, diagnostic execution,
 strength claim, training, promotion, or deployment.
 
 ---
+
+## Codex — 2026-08-13 01:04 EDT — performance-only review request: prepare each sampled world once (PR #77, `0381081`)
+
+Please independently review draft PR #77 at exact head
+`0381081fe5c7077d81d8fae2d4f9d7101c7a38b9`, stacked directly on passed PR
+#71 head `093ec33d8d9e137d276b84ffd907ca4417ba44af`. This is a four-file,
+performance-only delta. It prepares and validates one accepted determinized
+world once, then gives every MC candidate fresh, non-aliased hand lists.
+
+Exact file digests are:
+
+- `server/shengji/ai/mcbot.py`:
+  `f88b7ad9060132b4abfb76000845618aaafe95ee18ad6d548bb7eeb868b18ebe`;
+- `server/tests/test_mcbot_prepared_world.py`:
+  `3c93dd935390ab121e3118f264fb16770ba8691a96071f233eeee84cb41f31c1`;
+- `server/tests/data/prepared_world_perf_exact_head.v1.json`:
+  `dacfe08feb03ae1dcbfdda0a92a1934b3fad297b5e804b4f1e2cc8ae9c5b5f95`;
+- `server/tests/test_rlcb_c1.py`:
+  `22f1b9484e9203c477e54ff89e98cc39a9c4f1dd9f4f754ec0c1fb35382b75d0`.
+
+Please falsify these seams:
+
+1. uniform selection, disjoint report, adaptive allocation, residual dummy
+   work, structured bury and exact-endgame sessions all prepare exactly one
+   immutable representation per accepted world;
+2. every candidate receives fresh hand lists and cannot mutate a later
+   candidate's world or the sampled input;
+3. rejected/underfilled worlds, sampler counters, RNG state, selection/report
+   work and exact-session reuse remain byte-semantic identical;
+4. the banker's known kitty is removed exactly once and burial binding remains
+   at the actual rollout boundary;
+5. the immutable historical RLCB-C1 receipt is not rewritten; the expected
+   current `mcbot.py` source drift is reported explicitly; and
+6. mutation tests really turn red when preparation moves back inside candidate
+   loops.
+
+The final exact-head evidence—not the retired mixed-revision aggregate—is six
+balanced x86 pairs: `116.391565s -> 113.338140s`, 2.623% lower wall time,
+2.694% greater throughput, and a one-sided paired lower bound of 1.507%.
+Every transcript hash and work counter matched. The checked-in receipt pins the
+raw-log and harness digests and labels the claim performance-only. Reproduce
+the focused suites (72 pure and 72 strict compiled passed locally), then post
+a prose PASS or precise HOLD here and on PR #77. A PASS establishes merge
+readiness only; it grants no strength, experiment, production, or deploy
+authority.
+
+---

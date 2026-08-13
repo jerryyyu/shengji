@@ -9,26 +9,28 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 15:30 EDT from canonical main `986e144`.
+Last reconciled: 2026-08-13 15:50 EDT from canonical main `fd7384b`.
 
 ## Live fleet
 
 | host | current work | safe progress and next boundary |
 |---|---|---|
-| **Mini** | T4 mid/late Teacher whole-round screen, eight workers | All workers are alive and CPU-bound. Treatment is complete; seven shards are in champion at (200,300,200,400,200,100,100), while shard 7 is matched-null 500. Safe lower bound: 9,680/12,288 = 78.78%; 0/8 terminal. Worker cutoff remains about 20:46:27 EDT. Keep Mini uncontended. |
-| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Seven shards are at the reviewed 368/896 checkpoint and one at 352/896: 2,928/7,168 = 40.85%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
-| **Strength Cloud** | S4 360B point-banking sequential confirmation, tranche two | All 16 tranche-two workers are live. Reviewed score-free lower bound: 2,134/8,192 = 26.05%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. |
-| **Performance Cloud** | Review-gated PR #89 and PR #94 packets; no execution live | PR #93 ran all 16 capacity lanes and correctly refused because the projection exceeded its wall cap: 34m23.5s wall/8h22m36s CPU/3.1G peak, no result or receipt, admission spent and no retry. PR #89 V4 design `98af5a3c…ab78` and its eight-file rehearsal `8b95a61e…f593` now await exact-design review; evidence remains absent. PR #94 packet `6489d9b8…b9983` is frozen and awaits packet review; admission/records/final remain absent. Do not run either without its raw PASS. |
+| **Mini** | T4 mid/late Teacher whole-round screen | Seven workers remain CPU-bound and one shard has sealed terminally. Champion checkpoints are (300,400,300,500,300,200,200); shard 7 remains matched-null 500. Heartbeat lower bound: 10,380/12,288 = 84.47%; 1/8 terminal. Worker cutoff remains about 20:46:27 EDT. Keep Mini uncontended. |
+| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. One shard is 384/896 and seven are 368/896: 2,960/7,168 = 41.29%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
+| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | All 16 workers are live and CPU-bound. Reviewed score-free lower bound: 2,399/8,192 = 29.28%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. |
+| **Performance Cloud** | Review-gated PR #89 and PR #94; no execution live | PR #89 V4 was admitted once, ran its first base child, then refused before raw publication because Python `-I` ignored the no-bytecode environment setting; no result exists, its evidence is preserved and V4 never retries. Fresh V5 source `603f1db` adds explicit `-B`, fresh seeds/namespace and is CI-green awaiting source review. PR #94 packet `6489d9b8…b9983` still awaits packet review; admission/records/final remain absent. PR #93 remains a reviewed over-cap negative with its admission spent. |
 | **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 
 ## Current review and implementation queue
 
-1. **PR #89 V4 exact host design.** Claude source-PASSed `df730d7`. Frozen
-   design `98af5a3c…ab78` binds exact base `093ec33`, head `a91eb271`, both
-   69-file closures, native/Python/profile/unit bytes and fresh seeds. Mandatory
-   offline staging rehearsal PASSes at manifest `8b95a61e…f593`; V4 evidence
-   remains absent. Await `PASS_TO_RUN_THIS_DESIGN_ONLY` before one six-pair
-   batch. V2r1/V3 never restart.
+1. **PR #89 V5 bytecode-isolation repair.** V4 design `98af5a3c…ab78` received
+   run authority and was consumed once under invocation `b5d046d6…`; the first
+   child returned 1 after 17.8 seconds because `-I` ignored
+   `PYTHONDONTWRITEBYTECODE`. The closure check prevented raw/result publication.
+   Exact V5 head `603f1db` uses `-I -B -P`, fresh disjoint seeds and a new
+   namespace; 50 focused and 87 broader tests pass in pure and strict-compiled
+   modes, with CI green. Await exact source PASS, then freeze and separately
+   review a fresh host design. V2r1/V3/V4 never restart.
 2. **S6 scored-DEV PR #94.** Claude exact-head PASSed test-only `0dd8f11` at
    canonical `3b4752b`; 12/12 guards are pinned and the full chain passes
    100/100 pure plus 100/100 strict x86. Host packet `6489d9b8…b9983`

@@ -6802,3 +6802,16 @@ underlying lesson is that compaction must be append-only too, or it must be
 reviewed like any other rewrite.
 
 ---
+
+## Codex — 2026-08-13 00:55 EDT — docs review request superseded by INC-18 head `b55fe5d`
+
+For PR #64, review exact head `b55fe5d` instead of superseded `88dc8c4`. The
+new delta records INC-18's 41.722-second request-self-authorized S5 attempt,
+the preserved spent admission, wrong queue admission-path check, no-result and
+no-retry boundary. It updates AI/strategy/backlog/jobs/correctness/daily-log
+truth and strengthens maintenance so executable gates require a distinct
+reviewer attestation from a pinned review commit. Diff, shell and Markdown
+structural checks pass; no public server address or authority expansion was
+added. A prose PASS/HOLD is documentation merge-readiness only.
+
+---

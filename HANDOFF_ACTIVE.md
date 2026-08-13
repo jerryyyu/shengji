@@ -31,7 +31,7 @@ PR #64. Current executable truth is:
   PR #75 `ee6dc48` now records the separate behavior-compatibility evidence;
   review #71 then #75. Neither request grants merge/deploy/descendant authority.
 - **Other pending reviews:** Pair ballot capacity PR #72 `373de84`, docs PR
-  #64 `88dc8c4`, then conditional Pair-cap PR #73 `8c436ab`.
+  #64 `b55fe5d`, then conditional Pair-cap PR #73 `8c436ab`.
 - **Live compute:** T4 is healthy on Mini at 4,896/12,288 counter-only
   arm-rounds (39.8%); broad Pair is healthy on Air; S6's reviewed score-free
   queue sleeps behind it; S4 is healthy on strength Cloud at 2,337/8,192

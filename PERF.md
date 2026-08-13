@@ -180,16 +180,20 @@ hoists. Source/tooling head `fa0f9cf` PASSed external review. The isolated
 percentages above remain useful provenance but must not be added or marketed as
 the combined result.
 
-The first host design was retired before execution because its evidence root
-sat directly beneath mode-1777 `/var/tmp`. Corrected v2r1 design
-`8721aec4…ec9d` then received exact PASS and was admitted once, but refused
-before evidence creation or any arm because harness `fa0f9cf` inverted
-systemd's real symlink: the host exposes `invocation:<unit> -> <InvocationID>`.
-The failed unit remains at `NRestarts=0`; immutable receipt
-`bee03db2…b469` records zero arms, and v2r1 must never restart. PR #89 head
-`52e13f2` repairs the mapping, rejects the inverse, and binds a new v3
-experiment with six fresh seeds. It passes 84 pure/compiled tests on ARM and
-x86 and awaits source review. Even PASS freezes only a fresh host design, which
+Several one-shot designs then proved the admission path fail-closed before a
+usable timing result. V4 ran one base child and rejected bytecode created
+because `-I` ignored the environment-only no-bytecode flag. V5 added explicit
+`-B`, received exact source and host-design PASS, and was consumed once, but
+refused before evidence creation or any arm because the actual root-owned
+tooling/runtime files were still mode 0644 while only rehearsal copies were
+immutable. Every spent namespace remains preserved at `NRestarts=0` and never
+retries; none supplies a performance estimate.
+
+PR #89 V6 head `cd8eb15` moves the complete root-owned/non-writable input gate
+into `prepare-design`, so an operationally invalid design cannot reach review.
+It uses a fresh namespace and six seeds disjoint from all 24 spent seeds, and
+passes 52 focused plus 89 pure/89 compiled tests. Source review is pending; a
+PASS may only stage immutable inputs and freeze another host design, which
 still needs exact review before one batch. Retention remains byte-exact
 semantics, at least 3% aggregate wall reduction and a positive paired
 one-sided 95% lower bound.
@@ -204,21 +208,22 @@ one-off experiment controllers.
 | # | gap | fix | est. win | status |
 |---|---|---|---|---|
 | 1 | Memory rebuilt per decision (historical profile) | incremental Memory carried through rollouts | `<0.1%` for current champion | rejected for report-LCB: 179 constructions were only 0.073–0.078% of x86/ARM round time; reconsider only if a Memory-aware rollout becomes active |
-| 2 | Python policy hot loop after compiled phases 0-2 | measure exact PR #89 base `093ec33` versus composed arm `a91eb271` once under a fresh v3 design after `52e13f2` review | prior isolated candidates ranged from 4.0% to 10.2%, but only the combined fresh batch can establish retained ROI | v2r1 spent on pre-arm systemd refusal; v3 source review pending, no timing evidence |
+| 2 | Python policy hot loop after compiled phases 0-2 | measure exact PR #89 base `093ec33` versus composed arm `a91eb271` once under a fresh V6 design after `cd8eb15` review | prior isolated candidates ranged from 4.0% to 10.2%, but only the combined fresh batch can establish retained ROI | V2r1–V5 spent on fail-closed pre-result refusals; V6 source review pending, no combined timing evidence |
 | 3 | string cards and list hands still cross every compiled call | convert once per rollout; compile `Round.play`/trick resolution | remaining path toward 10-20x | open; keep strings at public boundaries |
 | 4 | Round/Trick clone churn per rollout (3.8k clones/round) | reusable scratch state | ~1.1x | open |
 | 5 | multi-room capacity is not measured | concurrent-room latency/load gate | product reliability | open |
 | 6 | feature flags mix exact `"1"` checks with string truthiness | version and centralize boolean parsing | evidence correctness | open; until then unset flags for false—`=0` is unsafe |
 | 7 | rollouts always play to round end | early-terminate decided brackets | speculative and potentially biased | parked behind a strength/correctness gate |
 | 8 | strength-compute ceiling | rented 16-vCPU x86 strength Cloud worker | roughly doubles the local 16-slot fleet, zero policy change | active; currently owns S4 |
-| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | idle after preserving PR #89's pre-arm refusal; PR #93/#94 strict x86 tests completed without gameplay. Pair V3's score-free capacity result grants no scored execution or strength authority |
+| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | idle after preserving PR #89 V5's pre-arm refusal; PR #94 packet review is pending. Pair V3's score-free capacity result grants no scored execution or strength authority |
 | 10 | Rust/PyO3 full engine core | 30-100x; wasm client bonus | large | parked; requires a 10k-seed two-engine parity harness |
 
 ## Plan (sequencing)
 
-1. Keep PR #77 retired after missing its 3% gate. Run exactly one reviewed PR
-   #89 six-pair batch for base `093ec33` versus optimized arm `a91eb271` under
-   corrected design `8721aec4…ec9d`; no retry, tuning or cross-baseline pooling.
+1. Keep PR #77 retired after missing its 3% gate. Review PR #89 V6, stage the
+   actual source/runtime inputs immutable, then freeze and review one fresh
+   six-pair design for base `093ec33` versus optimized arm `a91eb271`; no
+   retry, tuning or cross-baseline pooling.
 2. Retain the composed stack only if every normalized semantic/work/RNG record
    is exact, aggregate wall reduction is at least 3% and the paired one-sided
    lower bound is positive. Otherwise drop it as a unit and profile before

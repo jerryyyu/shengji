@@ -23,13 +23,14 @@ and put exact run detail in `JOBS.md` or the dated archive.
   confirmed and deployed strength gain.
 - **Closest learned challenger:** the model now helps when it proposes one move
   after trick five and fresh Monte Carlo search remains the judge. That passed
-  a fresh state test; its first whole-round screen is running with no verdict.
+  a fresh state test; its whole-round compute finished cleanly and remains
+  sealed pending terminal review.
 - **Closest rollout challenger:** point-aware rollouts were positive twice. A
   fresh prospectively accumulated confirmation is now running on Cloud; old
   outcomes never enter its estimator.
-- **Other live strength tests:** the mid/late learned-search hybrid runs on
-  Mini and pair-aware continuation runs on Air. S6 is reviewed and queued
-  behind Air; none has a readable terminal outcome yet.
+- **Other live strength tests:** pair-aware continuation runs on Air and S4
+  tranche two runs on Cloud. T4 awaits terminal review on Mini; S6 remains
+  queued behind Air. None has a new readable terminal outcome yet.
 - **Main model lesson:** more data produced stable outcome prediction, but a
   model choosing moves globally did not transfer. Specialization plus search
   protection is the first learned use to pass fresh evidence.
@@ -49,7 +50,7 @@ does not replace the plain-English strategy.
 | **S0-ALT** | **Other confidence and allocation rules** | Try wider search, adaptive allocation, and alternative confidence rules. | **Closed; no additional winner** | The formal suite failed before readable outcomes; separate wider/adaptive tests found no resolved gain. | Do not reinterpret the unread run. New work must change proposals, continuations, or model use rather than only reshuffle the same search budget. |
 | **T3-DATA** | **Teacher data and training** | Counterfactually label hard decisions, grow from 1,536 to 7,040 training states, and train complete eight-seed model cohorts. | **Reusable model/data capability; not a strength win** | The larger cohort was stable across seeds; outcome prediction improved strongly (`+0.47845`, lower bound `+0.44201`). | The pipeline and 7,040-state asset are useful. More identical rows are not enough; future data must contain meaningful alternative actions, source tags, and better continuation policies. |
 | **T4-GLOBAL** | **Model chooses moves globally** | Let the learned ranker choose or override moves across all phases. | **Closed for this model generation** | Protected fresh test: `-0.00823`, lower bound `-0.01894`. Powered uncertain-state test: `+0.01213`, lower bound `-0.00506`. | The model predicts outcomes better than it ranks actions. Do not deploy global model argmax or tune the spent tests. |
-| **T4-MIDLATE** | **Model proposes inside search after trick five** | Let the model offer one move only in middle/late play; fresh 300-world Monte Carlo search still decides whether to replace production's move. | **Fresh state screen passed; whole-game screen running** | Versus live: `+0.02020`, lower bound `+0.01275`. Versus an equally expensive uninformed proposal: `+0.01570`, lower bound `+0.00880`, on 256 fresh states. | First evidence that the learned model adds value inside search. The sole fresh whole-round screen is running on Mini; it must beat both live and same-work uninformed widening before a confirmation may be designed. |
+| **T4-MIDLATE** | **Model proposes inside search after trick five** | Let the model offer one move only in middle/late play; fresh 300-world Monte Carlo search still decides whether to replace production's move. | **Fresh state screen passed; whole-game compute complete, terminal review pending** | Versus live: `+0.02020`, lower bound `+0.01275`. Versus an equally expensive uninformed proposal: `+0.01570`, lower bound `+0.00880`, on 256 fresh states. | All eight whole-game shards exited zero, but outcomes remain sealed. Independent score-free-final review, one aggregation and terminal reconstruction must still decide whether the hybrid beat both controls; no confirmation is open yet. |
 | **S4** | **Point-aware rollout policy** | In simulations, bank a point card when already winning a trick instead of mechanically spending the cheapest winner. | **Promising; fresh sequential confirmation running** | Whole-round estimates were `+0.08691` (lower bound `+0.03075`) and independently `+0.04883` (lower bound `-0.00688`). | Direction was positive twice. A disjoint, prospectively reviewed 8,192/16,384-cluster test now runs on Cloud to resolve a useful `+0.04` effect; old outcomes never enter its estimator. |
 | **S3A / T4-BURY** | **Kitty and bury choices** | Offer structured point/void/trump buries or use the learned bury ranker. | **Current versions closed; narrow signal remains** | Structured whole rounds: `+0.0464`, lower bound `-0.0041`. Learned bury on 32 fresh choices: `+0.0338`, lower bound `-0.0153`. | Both estimates were positive but inconclusive. Preserve the point-and-void clue for a candidate-rich, properly powered successor rather than retrying either spent recipe. |
 | **V11** | **V11 pairwise model** | Learn which ballot move beats the heuristic choice, then use that model directly or behind a protected fallback. | **Direct use closed** | Confirmed 57.7% versus SmartBot, but `-0.141 +/- 0.070` versus the live champion. | The model has proposal signal but does not beat current search. Retain it only as a proposal and disagreement source. |

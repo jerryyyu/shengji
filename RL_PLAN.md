@@ -351,11 +351,12 @@ The fresh mid/late successor makes the required substantive change: it limits
 the model to trick 5+, asks it for one proposal, and gives fresh belief-sampled
 N=300 search final authority. Its independently reviewed 256-state result is
 positive against both literal live and a same-work uninformed proposal. The
-reviewed result is currently at step 2 of this decision tree:
+whole-game compute is now at the terminal gate of this decision tree:
 
 1. independent terminal review passes → **done**;
 2. freeze and externally review one fresh mirrored
-   treatment/null/champion whole-game screen;
+   treatment/null/champion whole-game screen → **done; all eight workers exited
+   zero and the score-free supervisor final awaits review**;
 3. whole-game screen selects none → close this composition and retain only
    the surface diagnostic;
 4. whole-game screen passes → design a separately powered confirmation; and
@@ -363,7 +364,9 @@ reviewed result is currently at step 2 of this decision tree:
 
 Thus “first closed stronger-Teacher generation” was outdated and overstated:
 the closed branch was a valid Teacher generation, but not a stronger policy.
-The hybrid successor is active and promising, not yet closed or strong.
+The hybrid successor has completed its sealed whole-game compute but is not yet
+closed or strong; only the admitted aggregate and independent terminal verdict
+can establish that.
 
 S4 replication is terminal positive-but-inconclusive `SELECT_NONE`; its fresh
 8,192/16,384-cluster sequential successor is now running on Cloud. S6

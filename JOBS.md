@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-13 12:18 EDT. This file owns current compute and
+Last reconciled: 2026-08-13 17:53 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -9,10 +9,10 @@ compact terminal stubs. Historical detail is archived in
 
 | host | live job | health / next use |
 |---|---|---|
-| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED; 0 TERMINAL; KNIFE-EDGE CUTOFF.** Safe counter-only progress is `7,296/12,288` sequential arm-rounds (59.38%): treatment is complete and all eight matched-null shards report 400/512. Worker cutoff remains about 20:46 EDT. Monitor only: no tests or competing Mini work. Outcomes remain sealed until score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
-| **Air** | `pair-aware-whole-round-screen-v3` | **HEALTHY / SATURATED; 0 TERMINAL; SUBSTANTIVE TIMEOUT RISK.** Seven reviewed score-free counters are 320/896 and one is 336/896, totaling `2,576/7,168` clusters (35.94%), with sealed outcomes. Detached S6 queue `s6-preflight-queue-v2` remains asleep until the Pair supervisor seals and releases every worker. PR #93 V2 provenance repair `4ae52fd` grants no retry or extension authority. |
-| **Cloud** | `s4-point-banking-future-c2-360b-v1`, tranche two | **HEALTHY / SATURATED; 0 TERMINAL.** Look one completed with integrity intact but below the early-efficacy boundary, so the reviewed controller automatically continued. All 16 tranche-two workers are healthy; reviewed score-free progress is `636/8,192` (7.76%). No outcome or efficacy statistic has been opened. There is no hard runtime timeout. tmux: `s4-c2-360b-launch-queue-v2`. |
-| **Performance Cloud** | PR #89 v3 review gated; PR #93/#94 validation complete | **IDLE / NO STRENGTH AUTHORITY.** The approved v2r1 batch spent its only invocation on a pre-arm systemd-provenance refusal: zero evidence/arms, failed unit preserved at `NRestarts=0`, no retry. PR #89 `52e13f2` fixes the inverse symlink check and binds fresh v3 seeds; 84 strict x86 tests pass and source review is pending. PR #93 `4ae52fd` requires a fresh Claude-authored V2 implementation marker before packet freeze; PR #94 still awaits implementation review. |
+| **Mini** | T4 terminal gate | **COMPUTE COMPLETE / OUTCOMES SEALED.** All eight shards exited zero before cutoff. Score-free supervisor final SHA `27cc73f8…c60b` validates without opening shards; aggregate and its admission remain absent pending the exact raw final-review marker. |
+| **Air** | `pair-aware-whole-round-screen-v3` | **HEALTHY / SATURATED; 0 TERMINAL; SUBSTANTIVE TIMEOUT RISK.** Seven reviewed score-free counters are 400/896 and one is 384/896, totaling `3,184/7,168` clusters (44.42%), with sealed outcomes. Detached S6 queue `s6-preflight-queue-v2` remains asleep until the Pair supervisor seals and releases every worker. Current run has no retry or extension authority. |
+| **Cloud** | `s4-point-banking-future-c2-360b-v1`, tranche two | **HEALTHY / SATURATED; 0 TERMINAL.** Look one completed with integrity intact but below the early-efficacy boundary, so the reviewed controller automatically continued. All 16 tranche-two workers are healthy; reviewed score-free progress is `3,460/8,192` (42.24%). No outcome or efficacy statistic has been opened. There is no hard runtime timeout. |
+| **Performance Cloud** | PR #89 V6 and PR #94 review gated | **IDLE / NO STRENGTH AUTHORITY.** Approved V5 was consumed once and refused in 0.171 CPU seconds before evidence creation or any arm because actual inputs were root-owned but mode 0644; `NRestarts=0`, no retry/result. V6 `cd8eb15` moves that full immutability gate to design freeze and is CI-green pending source review. PR #94 packet `6489d9b8…b9983` remains unadmitted pending packet review. |
 | **Fly production** | `mc-s0-report-lcb` | Release 18 / image `kitty-xray-b5a35ae` is healthy. This is the release-17 runtime plus PR #11 kitty X-ray only; no policy changed. Rollback runtime remains release 17 / `latency-cd6789e`. |
 
 ## Reviewed queue

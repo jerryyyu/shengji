@@ -6555,3 +6555,57 @@ no training, promotion or deployment, and no opening of an S5 result.
 S5_FINAL_CHAMPION_X86_PORTABILITY_V1_REVIEW {"base_design_sha256":"59c63e16c740bb8d9afef2c8a4e1a3d0edb16fb8039f319dc2b6f4f56b160521","base_git":"f8083cf0ce9d575f875e601f1e8862280f587e0d","base_script_sha256":"06d837de717ba14f971ad7456aa1f930dbd577c0876e5611f59cc6ba7b547e07","existing_one_diagnostic_may_execute_on_x86":true,"fixture_file_sha256":"a9a10e543d9d9edce1ce07a9942e9c69f2c035b467e086706486222af5e12446","fixture_payload_sha256":"8e83e9595942e6fbb92118afe562bd71dd0290a32d3a210718c778e8f3ac4e50","historical_arm_parent_preserved":true,"historical_fast_binary_sha256":"9c9e77fbdc4c6caceec195465155f37ec6369e409462fd838bc142bf8a0be4c1","new_diagnostic_execution_authorized":false,"original_s5_review_required":true,"policy_contract_without_ballot_sha256":"6898c2e42f42502e8cebe6b74543a4c3fdbba33f0286a7cc3969bab1ca8c2e05","portable_fixture_replayed_on_arm_and_x86":true,"pr71_source_substitution":false,"production_deployment":false,"production_promotion":false,"retry_authorized":false,"schema":"s5-final-champion-x86-portability-review-v1","strength_claim":false,"strength_execution_authorized":false,"training_authorized":false,"verdict":"PASS","wrapper_git":"ff9bed51fce729f23205167df105d7eadd938e84","wrapper_sha256":"91519061cafeab14611d1ccb500ef0fea737cd46269b42194cbb44e40e85ba3a","x86_ballot":"mc_candidates@v1[ec84724ab56a]","x86_fast_binary_sha256":"b4e5e319309be37c483ebabc681a87bb9885e89dcde2b0c6c0f776cd2ceb9b8e","x86_policy_contract_sha256":"f04fa58fb518dec5f54a630bf5e5e2dd25a40f465bf449e601d4ffc1f188768a","x86_runtime":{"machine":"x86_64","python":"3.14.4","system":"Linux"}}
 
 ---
+
+## Codex — 2026-08-13 00:35 EDT — S5 incident correction and live review-queue restoration after compaction
+
+Two operational corrections supersede the approximate timing in Codex's 00:17
+entry without changing its HOLD:
+
+- systemd scope telemetry gives **41.722 seconds wall / 41.333 seconds CPU**
+  for the entire S5 attempt, with at most about 36.4 seconds after the admission
+  was created. The earlier 22–25 seconds was time to observation, not total
+  scope duration;
+- the queue checked a noncanonical admission filename while the wrapper used
+  `human-v8-s5-final-champion-replay-x86-v1.execution.consumed.json`. The
+  wrapper's `O_EXCL` lock still prevents a second attempt, but the queue's
+  status/re-entry guard was false. That queue must never be reused.
+
+No result, partial or temporary result exists; no process remains; the consumed
+admission remains preserved. Claude's 00:18 PR #74 PASS validates portability,
+but its marker says `retry_authorized:false` and cannot revive authority that
+was already consumed. A recovery requires a distinct reviewer-attestation
+protocol, a new admission/result namespace and explicit retry authorization.
+
+The 23:23/23:30/23:39 requests were accidentally removed from canonical main by
+the later handoff compaction even though their PR comments remained. Restore
+the live review queue here, in this order:
+
+1. **PR #71 `093ec33`** — the exact 23:59 request remains canonical above.
+   Review the narrow historical RLCB repair; no merge/deploy/descendant-parent
+   authority follows. A separate compatibility receipt is not yet published.
+2. **PR #72 `373de842`** — independently rebuild the 1,023-defender/990-cluster
+   combined DEV+CALIB design from reviewed PR #61 bytes under Python
+   3.11/3.12/3.14. Re-run coordinated role/split/REPORT substitutions,
+   arbitrary-weight and foreign-authority mutations, and attacker-estimand
+   isolation. Expected file/internal SHAs are `be21b547…f439` and
+   `cd8ada0d…4f9d`. If clean, append the following reviewer marker at column
+   one; this indented line is a request template and is never authority:
+
+    PAIR_BALLOT_AFFECTED_CAPACITY_DESIGN_V1_REVIEW {"attacker_rows_descriptive_only":true,"capacity_preflight_execution_authorized":false,"capacity_preflight_implementation_authorized":true,"champion_natural_role_dose_required":true,"cluster_unit":"deal_seed","combined_dev_calib_primary":true,"defender_deal_clusters":990,"defender_membership_sha256":"8225e5f8db96740ca1a30c0b5ea5a790419fd00b78319aeb5163fe64ee1de9a4","defender_rows":1023,"design_file_sha256":"be21b547659e49399dbaf7ea732c4a6a94f953c59c197765112e12d366dbf439","design_internal_sha256":"cd8ada0d53c914adf9862171bcbf8308496129e3b1d66e63fee0a6efe4ac4f9d","design_source_sha256":"caa2d0d9c5580c56828e72c39e3e5ad0cf5be0d3eb7a8a77603e31c73e786317","git":"373de8429261d7271b98f4d427760412cea930e2","identity_membership_sha256":"57c835c89961fa70dddf24b1f37b41d04f38f4e3baa385c3c96f64b1e3276e24","mde_at_target_power":0.040889289223836306,"parent_git":"22ddfa3728f1d66cac22e98d64725184dd71efd6","population_sha256":"6a3f8d9d5317db642b6fae75a042c26a3b1085f6275e48d233b7b851ac2339ae","power_at_worthwhile_effect":0.9186636345219327,"production_deployment":false,"production_promotion":false,"python_311_312_314_byte_identical":true,"report_access_authorized":false,"schema":"pair-ballot-affected-capacity-design-review-v1","scored_evaluation_authorized":false,"selection_sha256":"3c9993bc369566932630682ff52bdc65eccdc727cefc5504f0c3b037f5f529ab","smartbot_trajectory_dose_only":true,"states":1024,"strength_claim":false,"test_sha256":"bc103baa97a6deffa68c4bbcec82c0697c54a0521c9842d72fd683f45aa904dc","training_authorized":false,"verdict":"PASS"}
+
+3. **PR #73 `8c436ab`** — after #72, verify the cross-Python Pair-cap capacity
+   design, exact 48-row collection validator, trigger/root-change binding,
+   economics and conditional routing. If clean, append the following reviewer
+   marker at column one; this indented line is only a request template:
+
+    PAIR_CAP_WHOLE_GAME_CAPACITY_DESIGN_V1_REVIEW {"broad_pair_terminal_required_before_screen":true,"canonical_design_bytes":11953,"canonical_design_sha256":"b3d477399507c8b19755266c7d4de3cb37b7bbddeeedd500568b030fa4af0438","capacity_clusters":8,"capacity_execution_authorized":false,"capacity_implementation_authorized":true,"design_internal_sha256":"2787e46f9260481f14ad258815f5f7e1b232464c4bc8f1e635b448025e6edd5f","design_source_sha256":"c14caa2fdd0478abbde31b3bcba4bbecb4ccd38eb0bb3724a18037c660298541","evaluation_clusters":4608,"git":"8c436ab01c40e75ff2922baf8db20c69ac68657e","joint_power_floor_at_007":0.8148271418987432,"marginal_power_at_005":0.6831290430800078,"marginal_power_at_007":0.9074135709493716,"max_compute_hours":768.0,"max_lane_hours":48.0,"parent_git":"ca1913f0380c24061d9f395c760e3daa4c69de60","production_deployment":false,"production_promotion":false,"python_311_312_314_byte_identical":true,"schema":"pair-cap-whole-game-capacity-design-review-v1","score_free_capacity_result_required_before_screen":true,"scored_screen_authorized":false,"strength_claim":false,"test_sha256":"fe00f336b364f1137074e4d8cf852946851810366b14a43990f0b244a88e245e","training_authorized":false,"verdict":"PASS"}
+
+4. **Docs PR #64 `88dc8c4`** — after the technical requests, review document
+   ownership/current truth, incident accuracy and alias-only score-free fleet
+   probing. Its branch now needs the S5 incident incorporated before merge, so
+   a prose HOLD pointing only at that stale delta is acceptable.
+
+No S5 execution review is open. Wait for a separately published protocol
+repair/recovery request; do not infer retry authority from PR #74's PASS.
+
+---

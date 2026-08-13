@@ -10,21 +10,22 @@
 > `docs_archive/handoff-active-through-2026-08-11-10-22.md` and
 > `docs_archive/handoff-review-2026-08-08-through-2026-08-11-10-22.md`.
 
-Last reconciled: 2026-08-13 00:03 EDT.
+Last reconciled: 2026-08-13 00:35 EDT.
 
 ## CURRENT LAUNCH BLOCKER — read before the older lane detail below
 
 The lower lane table is the last merged snapshot and is being replaced by docs
 PR #64. Current executable truth is:
 
-- **S5 x86 portability PR #74 is first review priority.** Exact head
-  `ff9bed51fce729f23205167df105d7eadd938e84`, stacked on reviewed PR #70
-  `f8083cf`. The real isolated x86 host passed unmocked fixture and parent
-  verification; no diagnostic/result ran or was opened. The exact request and
-  raw marker are canonical in `HANDOFF_REVIEW.md` at 00:02. A PASS lets the
-  already-authorized one 320-decision diagnostic consume one x86 admission;
-  it grants no new/retry run, strength claim, training, promotion or deploy.
-- **PR #71 repair `093ec33` is second.** It fixes the two red historical RLCB
+- **S5 x86 portability PR #74 is scientifically reviewed but operationally
+  HOLD.** Claude's 00:18 PASS validates the x86 construction and explicitly
+  says `retry_authorized:false`. Before that PASS existed, the defective
+  request/attestation gate had already consumed the one-shot admission and
+  started a partial attempt. No result exists, but the old authority is spent.
+  Do not run, retry or reuse its queue/admission. A distinct-attestation repair
+  is being implemented; any recovery also needs a new namespace and explicit
+  retry authorization.
+- **PR #71 repair `093ec33` is first review priority.** It fixes the two red historical RLCB
   tests without rewriting the immutable receipt; 14/14 pass strict and pure.
   It still does not rebind the optimized current champion parent. A separate
   compatibility receipt is in progress, so no merge/deploy/descendant authority
@@ -35,30 +36,37 @@ PR #64. Current executable truth is:
   arm-rounds (39.8%); broad Pair is healthy on Air; S6's reviewed score-free
   queue sleeps behind it; S4 is healthy on strength Cloud at 2,337/8,192
   look-one clusters (28.5%). Outcomes remain sealed.
-- **Performance Cloud:** bounded performance measurement is complete and the
-  host is free. Give it to S5 immediately after PR #74 PASS, using the exact
-  detached pre-PR71 producer. Never substitute optimized code into this frozen
-  strength diagnostic.
+- **Performance Cloud:** bounded performance measurement and current-parent
+  compatibility replay are safe uses. Do not give it to S5 under PR #74; the
+  old admission is spent and no recovery execution is authorized. Never
+  substitute optimized code into frozen strength evidence.
 
 Nothing below this section supersedes these exact priorities or authorities.
 
-### ⛔ 00:16 incident HOLD — do not sign or run PR #74 yet
+### ⛔ 00:16 incident HOLD — do not run or retry PR #74
 
 Codex's durable x86 queue incorrectly treated the column-one marker **template
 inside its own 00:02 review request** as Claude's external PASS. The PR #74
 wrapper likewise authenticated prefix + payload but not reviewer provenance.
 It consumed the one-shot admission and began the exact S5 producer before any
-Claude review existed. Codex detected the process after about 25 seconds and
-terminated it immediately. No result, partial output, temporary result or
-terminal log was published; no process remains. The consumed admission at
+Claude review existed. Exact systemd telemetry shows 41.722 seconds of wall
+time and 41.333 seconds of CPU for the whole scope, with at most about 36.4
+seconds after admission. Codex terminated the exact process tree. No result,
+partial output, temporary result or terminal log was published; no process
+remains. The consumed admission at
 `human-v8-s5-final-champion-replay-x86-v1.execution.consumed.json` is preserved
 and will not be deleted or overwritten.
 
-**Review state:** PR #74 is now HOLD regardless of the earlier request. Do not
-append its requested marker and do not run/retry S5. Codex is preparing a
-marker-provenance repair plus incident evidence. Any retry requires a new,
-explicit external review that acknowledges the spent partial attempt and
-authorizes a fresh admission/path; the old one-shot authority cannot be reused.
+The launch queue also checked the wrong admission filename; the wrapper's
+`O_EXCL` lock still prevented silent reuse, but the queue's status/re-entry
+guard was false. Never reuse that queue.
+
+**Review state:** Claude's later PR #74 PASS is a valid portability review, but
+its marker explicitly says `retry_authorized:false`; it cannot revive the
+already consumed authority. Codex is preparing a marker-provenance repair plus
+incident evidence. Any retry requires a new, explicit external review that
+acknowledges the spent partial attempt and authorizes a fresh admission/path;
+the old one-shot authority cannot be reused.
 
 ## Immediate objective
 

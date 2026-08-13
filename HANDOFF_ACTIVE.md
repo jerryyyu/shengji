@@ -9,15 +9,15 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 17:48 EDT from canonical main `c9c4ac9`.
+Last reconciled: 2026-08-13 17:53 EDT from canonical main `c41e44a`.
 
 ## Live fleet
 
 | host | current work | safe progress and next boundary |
 |---|---|---|
 | **Mini** | T4 mid/late Teacher whole-round screen | All eight shards completed cleanly before cutoff. Score-free supervisor final SHA `27cc73f8…c60b` validates 8/8 child exits zero, no outcomes/statistics published and false downstream authority. Aggregate and its admission remain absent pending exact supervisor-final review. |
-| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Six shards are 384/896 and two are 368/896: 3,040/7,168 = 42.41%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
-| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | All 16 workers are live and CPU-bound. Reviewed score-free lower bound: 2,702/8,192 = 32.98%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. |
+| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Seven shards are 400/896 and one is 384/896: 3,184/7,168 = 44.42%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
+| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | All 16 workers are live and CPU-bound. Reviewed score-free lower bound: 3,460/8,192 = 42.24%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. |
 | **Performance Cloud** | Review-gated PR #89 and PR #94; no execution live | PR #89 V5 design `3800aecb…aa38` PASSed at canonical `c9c4ac9` and was consumed once. It refused in 0.171 CPU seconds before evidence creation or any arm because the actual root-owned tooling/runtime files were mode 0644; V5 is spent, no retry/result/claim. V6 source `cd8eb15` moves the full root-immutability gate into design freeze, uses a fresh namespace/seeds, passes 52 focused plus 89 pure/89 compiled, and awaits source review. PR #94 packet `6489d9b8…b9983` still awaits packet review; admission/records/final remain absent. |
 | **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 
@@ -47,7 +47,8 @@ Last reconciled: 2026-08-13 17:48 EDT from canonical main `c9c4ac9`.
    V5 never retries. Exact V6 head `cd8eb15` makes design freeze reuse the full
    runtime root-immutability gate, pins the reproduced writable-harness failure,
    and uses a fresh namespace plus six seeds disjoint from all 24 spent seeds.
-   Validation is 52 focused, 89 pure and 89 strict-compiled. Await exact-head
+   Validation is 52 focused, 89 pure and 89 strict-compiled; both PR checks
+   are green. Await exact-head
    source PASS; if approved, harden all actual inputs first, freeze a fresh V6
    design, and obtain a separate design PASS before one run. V2r1–V5 are spent.
 3. **S6 scored-DEV PR #94.** Claude exact-head PASSed test-only `0dd8f11` at

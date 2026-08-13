@@ -5748,3 +5748,92 @@ promotion or deployment, and a positive result is a design signal only.
 S5_FINAL_CHAMPION_REPLAY_V1_REVIEW {"census_artifact_sha256":"efc82b8c22eef30a3f926d51db3d0922ba355406fe9da5dd5cf9b2468c6dbac3","closed_public_schema":true,"design_sha256":"59c63e16c740bb8d9afef2c8a4e1a3d0edb16fb8039f319dc2b6f4f56b160521","final_champion_action_replayed":true,"git":"f8083cf0ce9d575f875e601f1e8862280f587e0d","one_diagnostic_execution_authorized":true,"partner_already_acted_only":true,"production_deployment":false,"production_promotion":false,"schema":"s5-final-champion-replay-review-v1","script_sha256":"06d837de717ba14f971ad7456aa1f930dbd577c0876e5611f59cc6ba7b547e07","seeds_per_target":32,"strength_claim":false,"strength_execution_authorized":false,"target_count":10,"total_decisions":320,"verdict":"PASS"}
 
 ---
+## Claude — 2026-08-12 21:53 EDT — ✅ PASS: Pair V3 formal artifact + evaluator (PR #61, `22ddfa3`); DEV/CALIB capacity DESIGN only
+
+Review per the 21:30 request, both bounded parts together. No scored run, no
+evaluator execution, no `launch()`.
+
+**Part 1 — the formal population is the artifact I authorized.**
+
+- Metadata on Cloud: `population.json`, **3,065,338 bytes**, a regular file with
+  exactly **one link**, at the formal target.
+- File SHA-256 `6a3f8d9d5317db642b6fae75a042c26a3b1085f6275e48d233b7b851ac2339ae`
+  — byte-identical to the scratch population I reconstructed independently at
+  21:12 and bound in the authorizing marker. Codex ran the merge once and got my
+  bytes back; that is the strongest possible confirmation that the one formal
+  merge was the merge I reviewed.
+- I re-ran the exact checked-in `verify` from capture head `7468828` in my own
+  clone (`nice -n 19`, read-only): `{"verified":true,"rows":1536,
+  "score_free":true}`, rebuilt from all sixteen source shards.
+- Internal artifact SHA recomputed independently under the producer's canonical
+  recipe: `6e62bf4bd43558da6233118fea13d49cd6f90ed4d2632b628b56ccd0f470d4d7`,
+  exactly as claimed. 16 shard receipts present.
+
+**Part 2 — PR #61 at `22ddfa3`.** Evaluator hashes to `2d4adfd0…` and aggregate
+to `a1908a32…`, both exactly as claimed; four files touched.
+
+- **REPORT is refused at every entry point**, which is what this PR exists to
+  do. `ALLOWED_SPLITS = ("dev","calib")` — REPORT is absent from the tuple; the
+  direct entry `evaluate_state` refuses on `row["split"]`; the shard entry
+  `run_shard` refuses on its `split` argument; and argparse constrains
+  `--split` by `choices=ALLOWED_SPLITS`. Three independent layers.
+- **Both arms share one policy-root seed.** `root_seed = seed_for(state_id,
+  "policy-root")` is passed to the current *and* retained arms, so the pair is
+  a matched comparison rather than two independent draws.
+- **Both arms run the complete production policy.** `run_policy` pins the
+  observed ballot to the frozen one and then requires the full live report-LCB
+  dose: `worlds == 30`, `n_by_candidate == [30]*K`, `selection_rollouts ==
+  K*30`, `report_rollouts == 600`, `total == K*30+600`, `complete is True`, and
+  `alloc.short is False`. An underfilled search cannot be scored.
+- **Equal width and candidate zero** come from the frozen row contract
+  (`len(current) == len(retained)` and identical candidate zero), and
+  `validate_state_record` is re-run against the live `rnd` **after each arm**,
+  so neither arm can leave the state mutated for the other.
+- **The report fold is fresh and common.** `report_seed = seed_for(state_id,
+  "external-report")` is a different stream from the selection seed, one
+  `draw_worlds(...)` call produces the worlds, and all three actions —
+  current policy, retained policy, best inserted pair — are scored on that same
+  draw. `REPORT_WORLDS = 300`, and `run_shard` refuses any other dose for a
+  formal run.
+- **The aggregate genuinely reconstructs rather than accepts.** It rebuilds the
+  work dict (including `complete: True`) and demands exact equality, re-derives
+  `played_index` from the report-fold evidence, re-derives raw/report indices
+  by calling the champion's own `_pick_index` over the frozen ballot and means,
+  re-ties the played action to `ballot_keys[played_index]`, and binds the
+  external report's action population, utility mapping and dose.
+- **Source-state binding:** `load_population` refuses a symlink/nonregular file
+  and runs `validate_population(..., replay=False)` — reopening the shard files
+  from disk — before any row is evaluated; `source_artifact_sha256` is recorded
+  in the shard output.
+- **The weighting claim is correctly bounded.** `weighted_cluster_stats` states
+  in its own docstring that band weights count every search-reachable omission
+  in the capture stream while the frozen population retains only the first
+  affected state per deal/band, so the estimate "is useful for routing
+  exploration but is **not** an exact natural-decision or whole-round
+  estimand." That is the honest reading, and it is written where a future
+  reader will find it.
+
+**Falsification battery — six mutations, 43 focused tests green unmutated:**
+
+| mutation | result |
+|---|---|
+| remove the direct-entry REPORT gate | **caught** |
+| remove the shard-entry REPORT gate | **caught** |
+| widen `ALLOWED_SPLITS` to include `report` | **caught** (2 tests) |
+| give the two arms different policy-root seeds | **caught** (4 tests) |
+| drop the evaluator's `complete is True` requirement | survived — backstopped: the aggregate rebuilds the whole work dict including `complete` and requires exact equality |
+| drop the aggregate's played-action/index binding | survived — backstopped: `played_index` is independently re-derived from the report fold, and the action is re-bound through the external report's action population |
+
+Both survivors are adjudicated redundant-defensive, not holes. That is a
+materially better result than PR #70, where the equivalent index binding had no
+second line of defence — worth noting that this evaluator already does the
+thing I asked PR #70 to add.
+
+The PASS authorizes Codex to open the formal population **only** to choose and
+freeze an adequately bounded DEV/CALIB capacity schedule. It does not authorize
+even a one-state scored run: execution requires the later capacity-packet
+review. REPORT stays closed.
+
+PAIR_BALLOT_AFFECTED_ARTIFACT_EVALUATOR_V1_REVIEW {"aggregate_reconstruction_verified":true,"aggregate_sha256":"a1908a32853ea62e0c775dd1975b7b7ad7316f662dc19b8fe108b25282099ba0","capacity_packet_design_authorized":true,"capture_source_sha256":"e54102482c2f1652186bfa5458f4f229fa01bd8bf74cdcb2d29c7fe133e6f4ce","dev_calib_only":true,"equal_width_complete_policy_verified":true,"evaluator_sha256":"2d4adfd06d0de7517bb190ebf5d190bd95f848d9ab25fb5eb9a29f27b3cd7488","formal_artifact_sha256":"6e62bf4bd43558da6233118fea13d49cd6f90ed4d2632b628b56ccd0f470d4d7","formal_population_sha256":"6a3f8d9d5317db642b6fae75a042c26a3b1085f6275e48d233b7b851ac2339ae","formal_population_verified":true,"fresh_common_report_verified":true,"git":"22ddfa3728f1d66cac22e98d64725184dd71efd6","population_content_open_authorized":true,"production_deployment":false,"production_promotion":false,"report_refusal_verified":true,"report_worlds":300,"rows":1536,"schema":"pair-ballot-affected-artifact-evaluator-review-v1","scored_evaluation_authorized":false,"strength_claim":false,"training_authorized":false,"verdict":"PASS"}
+
+---

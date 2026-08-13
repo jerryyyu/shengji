@@ -42,6 +42,10 @@ def _runtime():
             "soabi": "cpython-314-x86_64-linux-gnu",
         },
         "native": {"path": "/repo/_fast.so", "sha256": "2" * 64},
+        "systemd_unit": {
+            "unit": C.SYSTEMD_UNIT,
+            "sha256": C.sha256_bytes(C.systemd_unit_bytes()),
+        },
         "fast_enabled": True,
         "fast_environment": True,
         "fast_routing_active": True,
@@ -99,12 +103,13 @@ def _result(seconds: float = 10.0):
 
 
 def test_controller_is_capacity_only_and_binds_reviewed_design():
-    assert C.DESIGN_GIT == "111314f0c1a36d8314afd7e8748bf9e20d00a278"
+    assert C.DESIGN_GIT == "36b3841f28e04a1b3ba066044db0ed8c992e8714"
     assert C.sha256_file(
         SCRIPTS / "pair_aware_rollout_checkpoint_successor_design.py"
     ) == C.DESIGN_SOURCE_SHA256
     claim = C.implementation_review_claim(expected_git=GIT)
     assert claim["capacity_packet_freeze_authorized"] is True
+    assert claim["canonical_systemd_unit_required"] is True
     assert claim["capacity_execution_authorized"] is False
     assert claim["screen_execution_authorized"] is False
     assert claim["resume_execution_authorized"] is False
@@ -176,6 +181,10 @@ def test_packet_is_closed_and_nonexecuting_before_review():
         "outcomes_published": False,
     }
     assert packet["one_capacity_execution_authorized"] is False
+    assert packet["runtime"]["systemd_unit"] == {
+        "unit": C.SYSTEMD_UNIT,
+        "sha256": C.sha256_bytes(C.systemd_unit_bytes()),
+    }
     assert not any(packet[name] for name in (
         "screen_execution_authorized", "resume_execution_authorized",
         "aggregate_execution_authorized", "strength_claim",
@@ -186,6 +195,7 @@ def test_packet_is_closed_and_nonexecuting_before_review():
     lambda row: row.update(schema="other"),
     lambda row: row.update(design_git="0" * 40),
     lambda row: row.update(runtime_profile_sha256="0" * 64),
+    lambda row: row["runtime"]["systemd_unit"].update(sha256="0" * 64),
     lambda row: row["capacity"].update(workers=8),
     lambda row: row.update(one_capacity_execution_authorized=True),
     lambda row: row.update(screen_execution_authorized=True),
@@ -247,6 +257,7 @@ def test_load_packet_reauthenticates_review_commit_and_exact_snapshot(
     lambda row: row.update(loadable_shadows=["server/shadow.pyc"]),
     lambda row: row.update(module_origins={}),
     lambda row: row["native"].update(sha256="bad"),
+    lambda row: row.update(systemd_unit={}),
     lambda row: row.update(source_sha256s={}),
 ])
 def test_runtime_requires_homogeneous_compiled_strict_host(mutation):
@@ -467,6 +478,86 @@ def test_receipt_binds_packet_admission_result_and_closes_later_authority():
         invocation_id="invocation")
 
 
+def test_refusal_receipt_preserves_lane_timings_and_closes_all_later_authority():
+    packet = _packet()
+    review = {"commit": "8" * 40, "marker_sha256": "9" * 64}
+    measurement = _result(seconds=10_000.0)
+    projection = C.DESIGN.capacity_projection_details(
+        measurement, expected_workers=C.DESIGN.MIN_WORKERS,
+        runtime_profile_sha256=packet["runtime_profile_sha256"])
+    assert projection["projected_wall_hours"] > \
+        C.DESIGN.MAX_PLANNED_WALL_HOURS
+    receipt = C.refusal_receipt_payload(
+        packet=packet, packet_sha256=PACKET_SHA, packet_review=review,
+        admission_sha256="d" * 64, measurement=measurement,
+        projection=projection, invocation_id="a" * 32)
+    assert receipt["measurement"]["lanes"] == measurement["lanes"]
+    assert receipt["capacity_terminal_review_authorized"] is True
+    assert not any(receipt[name] for name in (
+        "screen_packet_freeze_authorized", "screen_execution_authorized",
+        "resume_execution_authorized", "aggregate_execution_authorized",
+        "strength_claim", "production_deployment",
+        "retry_or_extension_authorized"))
+    assert C.refusal_receipt_problems(
+        receipt, packet=packet, packet_sha256=PACKET_SHA,
+        packet_review=review, admission_sha256="d" * 64,
+        measurement=measurement, projection=projection,
+        invocation_id="a" * 32) == []
+    forged = copy.deepcopy(receipt)
+    forged["measurement"]["lanes"][0]["elapsed_seconds"] += 1
+    forged["internal_sha256"] = C.digest({
+        key: value for key, value in forged.items()
+        if key != "internal_sha256"})
+    assert C.refusal_receipt_problems(
+        forged, packet=packet, packet_sha256=PACKET_SHA,
+        packet_review=review, admission_sha256="d" * 64,
+        measurement=measurement, projection=projection,
+        invocation_id="a" * 32)
+
+
+def test_run_publishes_score_free_refusal_receipt_before_over_cap_exit(
+        tmp_path, monkeypatch):
+    packet = _packet()
+    review = {"commit": "8" * 40, "marker_sha256": "9" * 64}
+    paths = {
+        "PACKET_PATH": tmp_path / "packet.json",
+        "PACKET_REVIEW_PATH": tmp_path / "packet-review.md",
+        "ADMISSION_PATH": tmp_path / "admission.json",
+        "RESULT_PATH": tmp_path / "capacity.json",
+        "RECEIPT_PATH": tmp_path / "execution-receipt.json",
+        "REFUSAL_RECEIPT_PATH": tmp_path / "capacity-refusal-receipt.json",
+    }
+    for name, path in paths.items():
+        monkeypatch.setattr(C, name, path)
+    monkeypatch.setattr(C, "require_fresh_process", lambda: None)
+    monkeypatch.setattr(C, "require_clean_exact_git", lambda git: None)
+    monkeypatch.setattr(C, "require_systemd", lambda _sha: "a" * 32)
+    monkeypatch.setattr(C, "load_packet", lambda *args, **kwargs: packet)
+    monkeypatch.setattr(C, "runtime_snapshot", lambda git: packet["runtime"])
+    monkeypatch.setattr(C, "require_frozen_runtime_inputs", lambda value: None)
+    monkeypatch.setattr(
+        C, "canonical_review_record",
+        lambda **kwargs: (review, b"review marker\n"))
+    over_cap = _result(seconds=10_000.0)
+    over_cap["runtime_profile_sha256"] = packet["runtime_profile_sha256"]
+    monkeypatch.setattr(C, "measure_capacity", lambda value: over_cap)
+    args = SimpleNamespace(
+        expected_git=GIT, packet=paths["PACKET_PATH"],
+        expected_packet_sha256=PACKET_SHA,
+        packet_review_commit=review["commit"],
+        admission=paths["ADMISSION_PATH"], result=paths["RESULT_PATH"],
+        receipt=paths["RECEIPT_PATH"],
+        refusal_receipt=paths["REFUSAL_RECEIPT_PATH"])
+    with pytest.raises(C.CapacityRefused, match="planned wall cap"):
+        C.run_command(args)
+    assert paths["REFUSAL_RECEIPT_PATH"].is_file()
+    refusal = json.loads(paths["REFUSAL_RECEIPT_PATH"].read_text())
+    assert refusal["status"] == "REFUSED_CAPACITY_PROJECTION"
+    assert len(refusal["measurement"]["lanes"]) == 16
+    assert not paths["RESULT_PATH"].exists()
+    assert not paths["RECEIPT_PATH"].exists()
+
+
 def test_admission_is_one_shot_capacity_only_and_closed():
     packet = _packet()
     review = {"commit": "8" * 40, "marker_sha256": "9" * 64}
@@ -522,7 +613,7 @@ def test_exclusive_publication_refuses_reuse_and_leaves_no_partial(tmp_path):
 def test_systemd_gate_refuses_unowned_process(monkeypatch):
     monkeypatch.delenv("INVOCATION_ID", raising=False)
     with pytest.raises(C.CapacityRefused, match="systemd"):
-        C.require_systemd()
+        C.require_systemd(C.sha256_bytes(C.systemd_unit_bytes()))
 
 
 def test_systemd_invocation_uses_unit_name_to_invocation_id(tmp_path):
@@ -552,9 +643,12 @@ def test_fresh_process_refuses_preloaded_shengji_dependency(monkeypatch):
         C.require_fresh_process()
 
 
-def test_systemd_gate_pins_one_shot_service_and_cgroup(monkeypatch):
+def test_systemd_gate_pins_one_shot_service_cgroup_and_fragment(
+        monkeypatch, tmp_path):
     invocation = "a" * 32
     group = "/system.slice/" + C.SYSTEMD_UNIT
+    fragment = tmp_path / C.SYSTEMD_UNIT
+    fragment.write_bytes(C.systemd_unit_bytes())
     properties = {
         "Id": C.SYSTEMD_UNIT, "InvocationID": invocation,
         "LoadState": "loaded", "ActiveState": "active",
@@ -562,25 +656,79 @@ def test_systemd_gate_pins_one_shot_service_and_cgroup(monkeypatch):
         "KillMode": "control-group", "UID": "[not set]",
         "ControlGroup": group, "WorkingDirectory": str(C.REPO),
         "NRestarts": "0",
+        "FragmentPath": f"/etc/systemd/system/{C.SYSTEMD_UNIT}",
+        "DropInPaths": "",
+        "NeedDaemonReload": "no",
+        "Environment": (
+            "PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 SHENGJI_FAST=1 "
+            "SHENGJI_REQUIRE_VOIDS=1 PYTHONPATH=server:server/scripts"
+        ),
+        "Nice": "5", "RuntimeMaxUSec": "4h",
     }
     monkeypatch.setenv("INVOCATION_ID", invocation)
     monkeypatch.setattr(C.os, "geteuid", lambda: 0)
     monkeypatch.setattr(C, "_systemd_invocation_exists", lambda value: True)
     monkeypatch.setattr(C, "_systemd_properties", lambda unit: properties)
     monkeypatch.setattr(C, "_current_cgroups", lambda: [f"0::{group}"])
-    assert C.require_systemd() == invocation
+    expected = C.sha256_bytes(C.systemd_unit_bytes())
+    monkeypatch.setattr(
+        C, "require_regular_unlinked",
+        lambda path, **kwargs: fragment.read_bytes())
+    assert C.require_systemd(expected) == invocation
 
     properties["Restart"] = "always"
     with pytest.raises(C.CapacityRefused, match="one-shot"):
-        C.require_systemd()
+        C.require_systemd(expected)
     properties["Restart"] = "no"
     properties["KillMode"] = "process"
     with pytest.raises(C.CapacityRefused, match="one-shot"):
-        C.require_systemd()
+        C.require_systemd(expected)
     properties["KillMode"] = "control-group"
     monkeypatch.setattr(C, "_current_cgroups", lambda: ["0::/other"])
     with pytest.raises(C.CapacityRefused, match="outside"):
-        C.require_systemd()
+        C.require_systemd(expected)
+    monkeypatch.setattr(C, "_current_cgroups", lambda: [f"0::{group}"])
+    properties["DropInPaths"] = "/etc/systemd/system/override.conf"
+    with pytest.raises(C.CapacityRefused, match="one-shot"):
+        C.require_systemd(expected)
+    properties["DropInPaths"] = ""
+    properties["NeedDaemonReload"] = "yes"
+    with pytest.raises(C.CapacityRefused, match="one-shot"):
+        C.require_systemd(expected)
+    properties["NeedDaemonReload"] = "no"
+    properties["Environment"] = "SHENGJI_FAST=0"
+    with pytest.raises(C.CapacityRefused, match="one-shot"):
+        C.require_systemd(expected)
+    properties["Environment"] = (
+        "PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 SHENGJI_FAST=1 "
+        "SHENGJI_REQUIRE_VOIDS=1 PYTHONPATH=server:server/scripts"
+    )
+    properties["Nice"] = "0"
+    with pytest.raises(C.CapacityRefused, match="one-shot"):
+        C.require_systemd(expected)
+    properties["Nice"] = "5"
+    properties["RuntimeMaxUSec"] = "infinity"
+    with pytest.raises(C.CapacityRefused, match="one-shot"):
+        C.require_systemd(expected)
+    properties["RuntimeMaxUSec"] = "4h"
+    fragment.write_bytes(C.systemd_unit_bytes() + b"# drift\n")
+    with pytest.raises(C.CapacityRefused, match="unit bytes drift"):
+        C.require_systemd(expected)
+
+
+def test_systemd_unit_template_is_closed_and_packet_review_binds_it():
+    raw = C.systemd_unit_bytes()
+    text = raw.decode()
+    assert text.startswith("[Unit]\n")
+    assert f"WorkingDirectory={C.REPO}\n" in text
+    assert f"^{C.PACKET_REVIEW_PREFIX}" in text
+    assert "Restart=no\n" in text
+    assert "KillMode=control-group\n" in text
+    assert "RuntimeMaxSec=4h\n" in text
+    assert "run-capacity" in text
+    packet = _packet()
+    claim = C.packet_review_claim(packet=packet, packet_sha256=PACKET_SHA)
+    assert claim["systemd_unit_sha256"] == C.sha256_bytes(raw)
 
 
 def test_frozen_runtime_requires_root(monkeypatch):
@@ -840,4 +988,5 @@ def test_retired_v1_review_marker_cannot_authorize_v2(monkeypatch):
 
 def test_capacity_run_has_no_screen_resume_or_aggregate_cli():
     choices = C.parser()._subparsers._group_actions[0].choices
-    assert set(choices) == {"freeze", "verify", "run-capacity"}
+    assert set(choices) == {
+        "unit-template", "freeze", "verify", "run-capacity"}

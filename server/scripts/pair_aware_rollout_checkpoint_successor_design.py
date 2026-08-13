@@ -26,8 +26,8 @@ import math
 from dataclasses import dataclass
 
 
-SCHEMA = "pair-aware-rollout-checkpoint-successor-design-v1"
-CAPACITY_SCHEMA = "pair-aware-rollout-concurrent-capacity-result-v1"
+SCHEMA = "pair-aware-rollout-checkpoint-successor-design-v2"
+CAPACITY_SCHEMA = "pair-aware-rollout-concurrent-capacity-result-v2"
 MANIFEST_SCHEMA = "pair-aware-rollout-microshard-manifest-v1"
 MANIFEST_REVIEW_SCHEMA = "pair-aware-rollout-microshard-manifest-review-v1"
 
@@ -38,9 +38,18 @@ PARENT_PACKET_SHA256 = (
 )
 PARENT_SEED0 = 445_300_000_000
 
+PRIOR_CAPACITY_GIT = "5451aa88239fed267e95e3bb353e7e362d6f2b14"
+PRIOR_CAPACITY_TERMINAL_REVIEW_COMMIT = (
+    "27c6860b814b70a5557f37d5afa223d9125a06b8"
+)
+PRIOR_CAPACITY_ADMISSION_SHA256 = (
+    "3a8c2e2d79d76ff85495f661f96d29afcc2cb159ab385ed4fd14d9112ec86cf5"
+)
+PRIOR_CAPACITY_INVOCATION_ID = "19c906f228644c46a87349ee0f997af5"
+
 RUN_ID = "pair-aware-whole-round-checkpoint-screen-v1"
-CAPACITY_RUN_ID = "pair-aware-whole-round-concurrent-capacity-v1"
-CAPACITY_SEED0 = 499_000_000_000
+CAPACITY_RUN_ID = "pair-aware-whole-round-concurrent-capacity-v2"
+CAPACITY_SEED0 = 640_000_000_000
 SCREEN_SEED0 = 500_000_000_000
 STREAM_STRIDE = 3_000_017
 MAX_ROLE_OFFSET = 1_500_000
@@ -57,9 +66,22 @@ MICROSHARDS = SCREEN_CLUSTERS // MICROSHARD_CLUSTERS
 MIN_WORKERS = 16
 CAPACITY_CLUSTERS_PER_WORKER = 8
 CONCURRENT_CAPACITY_SAFETY_FACTOR = 1.5
-MAX_PLANNED_WALL_HOURS = 48.0
+# The first saturated 16-lane attempt narrowly exceeded the original 48 h
+# projection cap after completing all of its score-free work.  Preserve the
+# powered 7,168-cluster population and 1.5x safety factor; make the operational
+# budget explicit instead of shrinking either scientific quantity.  Fifty-two
+# hours remains below the predecessor's 64 h hard cap while leaving a bounded
+# margin for the observed shared-host concurrency envelope.
+MAX_PLANNED_WALL_HOURS = 52.0
 
 RESERVED_POPULATIONS = (
+    {
+        "name": "pair-aware-whole-round-concurrent-capacity-v1",
+        "seed0": 499_000_000_000,
+        "clusters": MIN_WORKERS * CAPACITY_CLUSTERS_PER_WORKER,
+        "stride": STREAM_STRIDE,
+        "max_role_offset": MAX_ROLE_OFFSET,
+    },
     {
         "name": PARENT_RUN_ID,
         "seed0": PARENT_SEED0,
@@ -171,6 +193,21 @@ def design_record() -> dict:
                 "runtime and scheduling profile",
             ],
         },
+        "prior_capacity_attempt": {
+            "run_id": "pair-aware-whole-round-concurrent-capacity-v1",
+            "git": PRIOR_CAPACITY_GIT,
+            "terminal_review_commit": PRIOR_CAPACITY_TERMINAL_REVIEW_COMMIT,
+            "admission_sha256": PRIOR_CAPACITY_ADMISSION_SHA256,
+            "systemd_invocation_id": PRIOR_CAPACITY_INVOCATION_ID,
+            "wall_seconds": 2_063.512,
+            "cpu_seconds": 30_156.886,
+            "all_16_lanes_completed": True,
+            "projection_exceeded_reviewed_48h_cap": True,
+            "capacity_result_published": False,
+            "execution_receipt_published": False,
+            "retry_or_extension_authorized": False,
+            "lane_timings_reusable_as_result": False,
+        },
         "capacity": {
             "run_id": CAPACITY_RUN_ID,
             "seed0": CAPACITY_SEED0,
@@ -184,6 +221,14 @@ def design_record() -> dict:
             "planning_statistic": "maximum lane seconds per cluster",
             "safety_factor": CONCURRENT_CAPACITY_SAFETY_FACTOR,
             "max_planned_wall_hours": MAX_PLANNED_WALL_HOURS,
+            "wall_budget_change": (
+                "48h saturated-v1 projection refusal preserved; v2 uses a "
+                "52h explicit operational cap without reducing the powered "
+                "population or 1.5x safety factor"
+            ),
+            "score_free_refusal_receipt_required": True,
+            "refusal_receipt_includes_all_lane_timings": True,
+            "52h_budget_requires_new_independent_review": True,
             "independent_result_review_required": True,
             "packet_design_authorized_by_result_itself": False,
         },
@@ -270,7 +315,7 @@ def concurrent_capacity_problems(result: object, *, expected_workers: int,
     workers_valid = (
         isinstance(expected_workers, int)
         and not isinstance(expected_workers, bool)
-        and expected_workers >= MIN_WORKERS
+        and expected_workers == MIN_WORKERS
     )
     if not workers_valid:
         problems.append("capacity expected worker population drift")
@@ -331,8 +376,15 @@ def concurrent_capacity_problems(result: object, *, expected_workers: int,
     return sorted(set(problems))
 
 
-def capacity_projection(result: dict, *, expected_workers: int,
-                        runtime_profile_sha256: str) -> dict[str, float]:
+def capacity_projection_details(
+        result: dict, *, expected_workers: int,
+        runtime_profile_sha256: str) -> dict[str, float]:
+    """Reconstruct the score-free projection without granting admission.
+
+    Keeping this arithmetic separate lets a terminal refusal receipt preserve
+    every measured lane and the exact over-budget projection.  The admission
+    gate remains :func:`capacity_projection`, which enforces the reviewed cap.
+    """
     problems = concurrent_capacity_problems(
         result, expected_workers=expected_workers,
         runtime_profile_sha256=runtime_profile_sha256)
@@ -346,8 +398,6 @@ def capacity_projection(result: dict, *, expected_workers: int,
         math.ceil(MICROSHARDS / expected_workers)
         * MICROSHARD_CLUSTERS * planned / 3_600.0
     )
-    if projected_wall_hours > MAX_PLANNED_WALL_HOURS:
-        raise DesignRefused("capacity projection exceeds planned wall cap")
     return {
         "measured_slowest_lane_seconds_per_cluster": slowest,
         "planning_seconds_per_cluster": planned,
@@ -355,6 +405,16 @@ def capacity_projection(result: dict, *, expected_workers: int,
         "microshard_timeout_seconds": (
             MICROSHARD_CLUSTERS * planned + 300.0),
     }
+
+
+def capacity_projection(result: dict, *, expected_workers: int,
+                        runtime_profile_sha256: str) -> dict[str, float]:
+    projection = capacity_projection_details(
+        result, expected_workers=expected_workers,
+        runtime_profile_sha256=runtime_profile_sha256)
+    if projection["projected_wall_hours"] > MAX_PLANNED_WALL_HOURS:
+        raise DesignRefused("capacity projection exceeds planned wall cap")
+    return projection
 
 
 def manifest_problems(value: object, *, packet_sha256: str,

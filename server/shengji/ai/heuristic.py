@@ -154,7 +154,10 @@ class HeuristicBot:
         lead = rnd.trick.plays[0].cards
         win_seat, inc_suit, inc_top = self._current_winner(rnd)
         partner_winning = win_seat % 2 == seat % 2
-        trick_pts = sum(points(c) for tp in rnd.trick.plays for c in tp.cards)
+        trick_pts = getattr(rnd.trick, "running_points", None)
+        if trick_pts is None:
+            trick_pts = sum(
+                points(c) for tp in rnd.trick.plays for c in tp.cards)
         is_last = len(rnd.trick.plays) == 3
 
         if partner_winning:

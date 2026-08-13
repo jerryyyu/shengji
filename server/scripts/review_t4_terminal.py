@@ -27,6 +27,12 @@ MODULES = {
     "server/scripts/teacher_stage_c_midlate_composition_runtime.py":
         "e5247519806412e20356b286452a12a3bfe82938cd483c06005aed21d6fe606b",
 }
+DEPENDENCIES = {
+    "teacher_stage_c_composition_runtime":
+        "server/scripts/teacher_stage_c_composition_runtime.py",
+    "teacher_stage_c_midlate_composition_controller":
+        "server/scripts/teacher_stage_c_midlate_composition_controller.py",
+}
 
 
 def review(repo: Path, packet_review: Path, capacity_review: Path,
@@ -36,7 +42,8 @@ def review(repo: Path, packet_review: Path, capacity_review: Path,
         "teacher_stage_c_midlate_composition_controller"
     runtime = import_script(
         repo, "teacher_stage_c_midlate_composition_runtime",
-        "server/scripts/teacher_stage_c_midlate_composition_runtime.py").BASE
+        "server/scripts/teacher_stage_c_midlate_composition_runtime.py",
+        DEPENDENCIES).BASE
     ctrl, screen = runtime.CTRL, runtime.SCREEN
     aggregate_path = (runtime.REPO / ctrl.RESULT_PATH).resolve()
     # Terminal-only: refuse before loading any other evidence unless the
@@ -95,7 +102,7 @@ def review(repo: Path, packet_review: Path, capacity_review: Path,
     for index, sealed in enumerate(final["shards"]):
         path = (runtime.REPO / ctrl.SHARD_PATHS[index]).resolve()
         log = (runtime.REPO / ctrl.SHARD_LOG_PATHS[index]).resolve()
-        shard = runtime.load_json(path)
+        shard = load_json(path, f"T4 shard {index}")
         runtime.validate_shard(
             shard, packet=packet, packet_sha256=PACKET_SHA,
             receipt_sha256=receipt_sha, review_record=packet_review,

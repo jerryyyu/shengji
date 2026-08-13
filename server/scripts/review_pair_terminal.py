@@ -18,8 +18,19 @@ except ModuleNotFoundError:  # package import in focused tests
 GIT = "cd206707f56fbb576c6333b1ef7f86d8fc9c4451"
 PACKET_SHA = "4ece02b93ebb49020b9654bdc3d9bc2cd27d8f9db4bf9201b14443f479cdae47"
 PREFIX = "PAIR_AWARE_ROLLOUT_SCREEN_RESULT_V1_REVIEW "
-MODULES = {"server/scripts/pair_aware_rollout_screen.py":
-           "a3135593f6d1305233337d4ddf7cea6f56431c0556c5eecbe4c41bea96fc3d72"}
+MODULES = {
+    "server/scripts/pair_aware_rollout_screen.py":
+        "a3135593f6d1305233337d4ddf7cea6f56431c0556c5eecbe4c41bea96fc3d72",
+    "server/scripts/pair_aware_rollout_capacity.py":
+        "0ba9b131a49730f546653177042bc50f4ddbd5c81325e23b568f67c075b23c56",
+    "server/scripts/pair_aware_rollout_duel.py":
+        "c034f1cd04f97c6cd0e9877eb3fe186ee59194be27d93bb1b8d01e4e9ff9cc2b",
+}
+DEPENDENCIES = {
+    "pair_aware_rollout_capacity":
+        "server/scripts/pair_aware_rollout_capacity.py",
+    "pair_aware_rollout_duel": "server/scripts/pair_aware_rollout_duel.py",
+}
 
 
 def review(repo: Path, packet_review: Path,
@@ -27,7 +38,7 @@ def review(repo: Path, packet_review: Path,
     exact_source(repo, GIT, MODULES)
     screen = import_script(
         repo, "pair_aware_rollout_screen",
-        "server/scripts/pair_aware_rollout_screen.py")
+        "server/scripts/pair_aware_rollout_screen.py", DEPENDENCIES)
     # Terminal-only: aggregate existence is the first evidence condition.
     aggregate = load_json(screen.AGGREGATE_PATH, "Pair aggregate")
     capacity_review = screen.PLANNING_REVIEW_PATH

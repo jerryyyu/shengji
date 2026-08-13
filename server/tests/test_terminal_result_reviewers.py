@@ -174,6 +174,42 @@ def test_t4_admission_refuses_before_malformed_shard_open(tmp_path, monkeypatch)
         T4_REVIEW.review(tmp_path, packet, capacity, supervisor)
 
 
+def test_t4_duplicate_key_shard_refuses_after_valid_seals(
+        tmp_path, monkeypatch):
+    packet, capacity, supervisor, _, aggregate_path, shard_path = t4_fixture(
+        tmp_path, monkeypatch)
+    runtime = T4_REVIEW.import_script(None, None, None).BASE
+    ctrl = runtime.CTRL
+    shard = json.loads(shard_path.read_text())
+    raw = json.dumps(shard, sort_keys=True, separators=(",", ":"))
+    shard_path.write_text(
+        raw[:-1] + ",\"records\":" + json.dumps(
+            shard["records"], sort_keys=True, separators=(",", ":"))
+        + "}\n")
+
+    final = runtime._supervisor_final()
+    final["shards"][0]["external_sha256"] = file_sha(shard_path)
+    final_path = tmp_path / ctrl.SUPERVISOR_FINAL_PATH
+    write(final_path, final)
+    final_sha = file_sha(final_path)
+    supervisor_claim = runtime._supervisor_review_claim()
+    supervisor_claim["final"] = final_sha
+    marker(supervisor, "SUP ", supervisor_claim)
+
+    aggregate = json.loads(aggregate_path.read_text())
+    aggregate["supervisor_final_sha256"] = final_sha
+    aggregate["supervisor_review_record_sha256"] = file_sha(supervisor)
+    aggregate["supervisor_review_claim"] = supervisor_claim
+    aggregate["shards"][0]["external_sha256"] = file_sha(shard_path)
+    aggregate["result_sha256"] = digest(
+        {key: value for key, value in aggregate.items()
+         if key != "result_sha256"}, newline=True)
+    write(aggregate_path, aggregate)
+
+    with pytest.raises(ReviewRefused, match="duplicate JSON key: records"):
+        T4_REVIEW.review(tmp_path, packet, capacity, supervisor)
+
+
 class PairScreen:
     RUN_ID = "pair"
     AGGREGATE_SCHEMA = "pair-aggregate"
@@ -336,14 +372,61 @@ def test_common_rejects_dirty_tracked_dependency(tmp_path):
         COMMON.exact_source(repo, head, {"server/scripts/lane.py": file_sha(module)})
 
 
-def test_common_rejects_preloaded_wrong_module_path(tmp_path, monkeypatch):
+@pytest.mark.parametrize("claim_expected_path", [False, True])
+def test_common_rejects_preloaded_module(
+        tmp_path, monkeypatch, claim_expected_path):
     repo = tmp_path / "repo"
     expected = write(repo / "server/scripts/lane.py", b"VALUE = 1\n")
     wrong = write(tmp_path / "wrong/lane.py", b"VALUE = 2\n")
-    poisoned = SimpleNamespace(__file__=str(wrong))
-    monkeypatch.setitem(sys.modules, "lane", poisoned)
-    with pytest.raises(ReviewRefused, match="import path drift"):
-        COMMON.import_script(repo, "lane", str(expected.relative_to(repo)))
+    poisoned = SimpleNamespace(
+        __file__=str(expected if claim_expected_path else wrong))
+    monkeypatch.setitem(sys.modules, "terminal_review_test_lane", poisoned)
+    with pytest.raises(ReviewRefused, match="preloaded source module"):
+        COMMON.import_script(
+            repo, "terminal_review_test_lane",
+            str(expected.relative_to(repo)))
+
+
+def test_common_rejects_preloaded_dependency(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    lane = write(repo / "server/scripts/lane.py", b"VALUE = 1\n")
+    dependency = write(
+        repo / "server/scripts/dependency.py", b"VALUE = 1\n")
+    monkeypatch.setitem(
+        sys.modules, "terminal_review_test_dependency",
+        SimpleNamespace(__file__=str(dependency)))
+    with pytest.raises(ReviewRefused, match="preloaded source module"):
+        COMMON.import_script(
+            repo, "terminal_review_test_lane", str(lane.relative_to(repo)),
+            {"terminal_review_test_dependency":
+             str(dependency.relative_to(repo))})
+
+
+def test_common_rejects_dependency_import_path_drift(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    lane = write(repo / "server/scripts/lane.py", b"VALUE = 1\n")
+    dependency = write(
+        repo / "server/scripts/dependency.py", b"VALUE = 1\n")
+    wrong = write(tmp_path / "wrong/dependency.py", b"VALUE = 2\n")
+    lane_module = SimpleNamespace(__file__=str(lane))
+    dependency_module = SimpleNamespace(__file__=str(wrong))
+
+    def forged_import(name):
+        assert name == "terminal_review_test_lane"
+        monkeypatch.setitem(
+            sys.modules, "terminal_review_test_lane", lane_module)
+        monkeypatch.setitem(
+            sys.modules, "terminal_review_test_dependency",
+            dependency_module)
+        return lane_module
+
+    monkeypatch.setattr(COMMON.importlib, "import_module", forged_import)
+    with pytest.raises(
+            ReviewRefused, match="import path drift: terminal_review_test_dependency"):
+        COMMON.import_script(
+            repo, "terminal_review_test_lane", str(lane.relative_to(repo)),
+            {"terminal_review_test_dependency":
+             str(dependency.relative_to(repo))})
 
 
 @pytest.mark.parametrize("lane", ["t4", "pair"])

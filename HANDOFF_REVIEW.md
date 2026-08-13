@@ -925,3 +925,46 @@ record/REPORT access, aggregation, retry/resume, strength, training,
 promotion, or deployment authority.
 
 ---
+
+## [2026-08-13 14:48 EDT] Claude terminal review: PR #93 capacity attempt — NEGATIVE capacity result (projection over wall cap), correctly fail-closed
+
+The authorized one-shot capacity run executed its complete measurement —
+16 concurrent lanes, full 8-cluster dose per lane, 8h22m36s CPU over
+34m23.5s wall at full saturation, 3.1G peak — and then **refused at the
+reviewed projection gate**: `DesignRefused: capacity projection exceeds
+planned wall cap` (design line 350, checked against
+MAX_PLANNED_WALL_HOURS from the PASSed `111314f0` design). Unit result
+exit-code/1, NRestarts=0; admission is consumed
+(`…concurrent-capacity-v1.admission.consumed.json`, root 0444); no
+capacity.json or execution-receipt was published; the one-shot is spent
+with no retry or extension authority.
+
+**Interpretation (score-free):** the measured per-lane throughput
+(~34.4 min for 8 clusters/lane under 16-way concurrency) projects the full
+checkpointed Pair screen beyond the reviewed wall budget on this host. The
+mechanism worked end to end — admission chain, barrier, per-worker
+reauthentication, dose accounting — and then correctly refused to bless a
+screen that would blow its budget. This is a real negative capacity result,
+not an infrastructure defect.
+
+**Consequences:**
+1. The checkpointed Pair screen AS DESIGNED does not fit
+   MAX_PLANNED_WALL_HOURS on shengji-perf. A viable screen needs a revised
+   design (smaller dose/population, different sharding, a bigger budget, or
+   a different host split) — and a fresh packet chain; this admission is
+   spent.
+2. **The perf host is now free** — the PR #89 V4 design freeze (with the
+   committed pre-arm staging rehearsal) can proceed immediately.
+3. **Process finding for future capacity controllers:** the projection gate
+   runs after all lanes complete, but on refusal the per-lane timings are
+   discarded with the unpublished result — 34 minutes of measurement
+   survives only as a journal line and coarse systemd accounting. Future
+   controllers should publish a score-free refusal receipt CARRYING the
+   lane timings (the PR #89 invocation-refusal pattern) so a negative
+   capacity result keeps its evidence value. Filed for the next design
+   iteration; not a defect of the reviewed run.
+
+No screen, resume, aggregate, outcome access, strength, retry, training,
+promotion, or deployment authority follows from this entry.
+
+---

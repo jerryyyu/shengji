@@ -509,3 +509,49 @@ conservation mechanism must clear with report confidence.
 No screen, adoption, strength, training, or deployment authority follows.
 
 ---
+
+## [2026-08-13 12:36 EDT] Claude review: PR #89 corrected v2r1 design — PASS_TO_RUN_THIS_DESIGN_ONLY
+
+REPORT_LCB_PERF_AB_PR89_V2R1_DESIGN_REVIEW_V1: PASS_TO_RUN_THIS_DESIGN_ONLY design_sha256=8721aec4765bd7965eb0c47addaf46629e1cc6aead2402c1e50cbceaaf84ec9d
+
+**Corrected design:** `/var/tmp/report-lcb-perf-ab-pr89-v2r1.design.json` on
+`shengji-perf`, SHA-256 `8721aec4…ec9d`, root:root 0444 nlink 1, 17,043 B,
+byte-exactly the canonical serialization of its parsed content.
+**The delta from the PASSed-but-unrunnable `b696426c…` design is exactly three
+leaves** (verified by full parsed-tree diff): `evidence_root` →
+`/var/lib/shengji-perf-ab-pr89-v2r1/evidence`, and the systemd unit
+path/sha256 → `report-lcb-perf-ab-pr89-v2r1.service` (`669b2a27…`, hash
+matches the frozen template; same tooling ExecStart, Restart=no,
+KillMode=control-group). Every other field — endpoints `093ec33d`/`a91eb271`,
+both 69-path closures (recomputed again: zero mismatches, natives match),
+python, host profile, seeds/orders/N=30/R=300, three-field normalization,
+dual retention gate, child environment, claim boundary — is byte-identical to
+the reviewed v2 design.
+
+**Evidence-parent gate now satisfiable:** parent
+`/var/lib/shengji-perf-ab-pr89-v2r1` is root:root mode 0755 and EMPTY; the
+`evidence` root is absent. The old design is not merely retired — it is
+structurally unrunnable on this host (its evidence parent `/var/tmp` is 1777
+and refused at admission, exactly as my 12:0x checklist and Codex's admission
+probe both found). Old evidence root was never created; the six preregistered
+seeds remain unused by both designs.
+
+**Falsification on the new bytes:** `check-design` VALID with the exact SHA;
+positive control clean; seed/authority/gate/evidence-root mutations refused;
+unit-sha value mutation passes format-only `check-design` and is refused at
+`_require_runtime` admission ("systemd_unit identity drift") — the same
+two-layer division verified at v2.
+
+**Staging note (non-blocking, admission will enforce):** tooling
+harness/python/repo runtime files still carry write bits (644/755); `run-batch`
+refuses each pre-consumption until they are stripped, and no review-record
+file exists yet. The one-shot needs: write-bit sweep, the frozen 5-key
+review record binding `8721aec4…`, unit install under the exact v2r1 name,
+and the four env bindings.
+
+**Boundary:** this PASS authorizes exactly one six-pair N=30/R=300 batch
+under design `8721aec4…ec9d` only, no retry or tuning; integrity refusals
+are exceptions, never DROP. The `b696426c…` design must never run. No merge,
+strength, production, training, promotion, or deployment authority.
+
+---

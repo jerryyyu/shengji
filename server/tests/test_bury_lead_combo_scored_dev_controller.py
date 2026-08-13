@@ -257,6 +257,86 @@ def test_review_namespaces_are_distinct_and_request_text_cannot_authorize(
             expected=claim, label="test")
 
 
+def _patch_review_provenance(monkeypatch, *, current, parent, tip,
+                             reviewer_name=None, commit=None):
+    commit = commit or "2" * 40
+    parent_commit = "1" * 40
+    monkeypatch.setattr(
+        CTRL.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(
+            returncode=0))
+
+    def fake_git(*args):
+        joined = " ".join(args)
+        if "%P" in joined:
+            return parent_commit
+        if "%an" in joined or "%cn" in joined:
+            return reviewer_name or CTRL.REVIEWER_NAME
+        if "%ae" in joined or "%ce" in joined:
+            return CTRL.REVIEWER_EMAIL
+        if "%B" in joined:
+            return CTRL.REVIEWER_SESSION_TRAILER
+        if args and args[0] == "diff-tree":
+            return CTRL.REVIEW_LEDGER
+        raise AssertionError(args)
+
+    blobs = {
+        f"{commit}:{CTRL.REVIEW_LEDGER}": current,
+        f"{parent_commit}:{CTRL.REVIEW_LEDGER}": parent,
+        f"{CTRL.CANONICAL_REVIEW_REF}:{CTRL.REVIEW_LEDGER}": tip,
+    }
+    monkeypatch.setattr(CTRL, "git", fake_git)
+    monkeypatch.setattr(CTRL, "git_bytes", lambda *args: blobs[args[-1]])
+    return commit
+
+
+def test_review_marker_refuses_commit_that_rewrites_parent(monkeypatch):
+    claim = CTRL.implementation_review_claim(expected_git="a" * 40)
+    marker = CTRL._canonical_marker(CTRL.IMPLEMENTATION_REVIEW_PREFIX, claim)
+    current = b"rewritten parent\n" + marker
+    commit = _patch_review_provenance(
+        monkeypatch, current=current, parent=b"original parent\n",
+        tip=current + b"later\n")
+    with pytest.raises(CTRL.ControllerRefused, match="append-only"):
+        CTRL.canonical_review_record(
+            commit=commit, prefix=CTRL.IMPLEMENTATION_REVIEW_PREFIX,
+            expected=claim, label="test review")
+
+
+def test_review_marker_refuses_duplicate_at_canonical_tip(monkeypatch):
+    claim = CTRL.implementation_review_claim(expected_git="a" * 40)
+    marker = CTRL._canonical_marker(CTRL.IMPLEMENTATION_REVIEW_PREFIX, claim)
+    parent = b"prior ledger\n"
+    current = parent + marker
+    commit = _patch_review_provenance(
+        monkeypatch, current=current, parent=parent, tip=current + marker)
+    with pytest.raises(CTRL.ControllerRefused, match="provenance drift"):
+        CTRL.canonical_review_record(
+            commit=commit, prefix=CTRL.IMPLEMENTATION_REVIEW_PREFIX,
+            expected=claim, label="test review")
+
+
+def test_review_marker_in_parent_cannot_self_authorize(monkeypatch):
+    claim = CTRL.implementation_review_claim(expected_git="a" * 40)
+    marker = CTRL._canonical_marker(CTRL.IMPLEMENTATION_REVIEW_PREFIX, claim)
+    commit = _patch_review_provenance(
+        monkeypatch, current=marker, parent=marker, tip=marker)
+    with pytest.raises(CTRL.ControllerRefused, match="provenance drift"):
+        CTRL.canonical_review_record(
+            commit=commit, prefix=CTRL.IMPLEMENTATION_REVIEW_PREFIX,
+            expected=claim, label="test review")
+
+
+def test_design_review_refuses_non_claude_identity(monkeypatch):
+    current = (b"prior ledger\nscored bury/S6 DEV packet design (PR #91 "
+               + CTRL.DESIGN_GIT[:7].encode() + b" "
+               + CTRL.DESIGN_CANONICAL_SHA256[:16].encode() + b"\n")
+    _patch_review_provenance(
+        monkeypatch, current=current, parent=b"prior ledger\n", tip=current,
+        reviewer_name="Not Claude", commit=CTRL.DESIGN_REVIEW_COMMIT)
+    with pytest.raises(CTRL.ControllerRefused, match="design review"):
+        CTRL.require_design_review()
+
+
 @pytest.mark.parametrize("mutation, expected", [
     (lambda value: value["authority"].update(execution_authorized=True),
      "authority"),
@@ -341,6 +421,7 @@ def test_final_closes_all_states_and_authority(packet):
 
 @pytest.mark.parametrize("mutation, expected", [
     (lambda value: value.update(resume_authorized=True), "authority"),
+    (lambda value: value.update(records_remain_sealed=False), "authority"),
     (lambda value: value.update(packet_sha256="0" * 64), "identity"),
     (lambda value: value.update(nonce="not-a-sha"), "identity"),
     (lambda value: value.update(extra_authority=True), "field"),
@@ -365,6 +446,8 @@ def test_rehashed_admission_mutations_refuse(packet, mutation, expected):
 @pytest.mark.parametrize("mutate, expected", [
     (lambda value: value["state_receipts"].pop(), "population"),
     (lambda value: value.update(total_candidate_rollouts=1), "work"),
+    (lambda value: value.update(
+        scored_records_opened_after_publication=True), "authority"),
     (lambda value: value["authority"].update(aggregation_authorized=True),
      "authority"),
     (lambda value: value["state_receipts"][0].update(
@@ -558,3 +641,51 @@ def test_interruption_spends_admission_preserves_records_and_cannot_resume(
     assert not paths["FINAL_PATH"].exists()
     with pytest.raises(CTRL.ControllerRefused, match="consumed"):
         CTRL.run_command(args)
+
+
+def test_run_refuses_live_runtime_drift_before_admission(
+        monkeypatch, tmp_path, packet):
+    paths, args = _patch_run(monkeypatch, tmp_path, packet)
+    drifted = copy.deepcopy(packet["runtime"])
+    drifted["host"]["hostname"] = "different-host"
+    monkeypatch.setattr(
+        CTRL, "runtime_snapshot", lambda *args, **kwargs: drifted)
+    with pytest.raises(CTRL.ControllerRefused, match="live runtime"):
+        CTRL.run_command(args)
+    assert not paths["ADMISSION_PATH"].exists()
+
+
+def test_run_refuses_duplicate_deal_seeds(monkeypatch, tmp_path, packet):
+    paths, args = _patch_run(monkeypatch, tmp_path, packet)
+    duplicate = DESIGN.SELECTION_ROWS[0][0]
+    design = SimpleNamespace(
+        _selection_rows=lambda: [
+            {"deal_seed": duplicate} for _ in range(CTRL.STATE_COUNT)])
+    scorer = SimpleNamespace()
+    monkeypatch.setattr(CTRL, "_load_scorer", lambda value: (design, scorer))
+    with pytest.raises(CTRL.ControllerRefused, match="population drift"):
+        CTRL.run_command(args)
+    assert paths["ADMISSION_PATH"].exists()
+    assert not list(paths["RECORDS_DIR"].glob("state-*.json"))
+
+
+def test_run_refuses_elapsed_time_at_reviewed_wall_cap(
+        monkeypatch, tmp_path, packet):
+    paths, args = _patch_run(monkeypatch, tmp_path, packet)
+    calls = 0
+
+    def perf_counter_ns():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return 0
+        if calls == 2 * CTRL.STATE_COUNT + 2:
+            return CTRL.MAXIMUM_WALL_SECONDS * 10**9
+        return calls
+
+    monkeypatch.setattr(CTRL.time, "perf_counter_ns", perf_counter_ns)
+    with pytest.raises(CTRL.ControllerRefused, match="wall-time"):
+        CTRL.run_command(args)
+    assert paths["ADMISSION_PATH"].exists()
+    assert len(list(paths["RECORDS_DIR"].glob("state-*.json"))) == 64
+    assert not paths["FINAL_PATH"].exists()

@@ -18,6 +18,43 @@ import pair_ballot_affected_scored_packet_design as DESIGN  # noqa: E402
 AUTHENTICATE_REVIEW_CHAIN = DESIGN._authenticate_review_chain
 AUTHENTICATE_PROSE_CONTEXT = DESIGN._authenticate_capacity_prose_context
 
+EXPECTED_LANES = (
+    (0, 51, 24, 27, 44, 6, 1, 149_940,
+     "e6757756498b8ade7e35d66c55a7974a4ce83073f75e3cb1246fdb39cc0547a8"),
+    (1, 59, 35, 24, 51, 7, 1, 173_460,
+     "a191b5e861d6a6a492a15c51878cffa46121bc9d24a268f2cc4ecafdc3148cc9"),
+    (2, 60, 23, 37, 53, 3, 4, 176_400,
+     "9c8c8944f112fbe723ff4d92227f8527a419094a61103215a8ad575a0893cb0e"),
+    (3, 84, 39, 45, 75, 9, 0, 246_960,
+     "9aa037a427f56e1de8305be92a6d4ef74d567d476d77a0e81b9c04c13164d025"),
+    (4, 58, 35, 23, 52, 4, 2, 170_520,
+     "9cbdff9be1368ba92c94b77418808539ef0a6dadfd6072e6a5f68f9d35ac0d05"),
+    (5, 74, 28, 46, 67, 3, 4, 217_560,
+     "88437b2f8b972a9f83c6abdf7890aed9547219e1e335a844e7fefb2d7a344873"),
+    (6, 61, 32, 29, 50, 8, 3, 179_340,
+     "622e7365db88665eee36707866d8c4c60efa8eb915ae8eb857d4c0e4293bf57b"),
+    (7, 47, 23, 24, 36, 8, 3, 138_180,
+     "c256606d12d047c07dffd8dd2170649477eda60b99d27997970b4f5b2112290d"),
+    (8, 56, 28, 28, 48, 6, 2, 164_640,
+     "761fd15afe9b37198eabd7c0252e5749f4d8350b93e618bae4841b67b6bdaf97"),
+    (9, 50, 24, 26, 44, 2, 4, 147_000,
+     "510f74ca90c1b630b5e98f4ef13c08fad5f0f80bb7dde01a4c6d9549d7cd3a2b"),
+    (10, 71, 36, 35, 64, 5, 2, 208_740,
+     "ebfccf9fa0d84a75090474e9e25793343c5d62064fb52638bd7d9f3a7ad6494f"),
+    (11, 80, 41, 39, 69, 9, 2, 235_200,
+     "32dec86631f71d60fa08549a3b9bade2a5ce8ddced55859057371ccf42e34558"),
+    (12, 77, 45, 32, 69, 6, 2, 226_380,
+     "d9cbfbf46604faed5cbcf8e84b60e61fae392721350c00f4dde2664fa39d08d6"),
+    (13, 60, 30, 30, 51, 9, 0, 176_400,
+     "41d2ea14918e3c6072ea012bf45bab7b6b5994cb0a3b210ca59f7a47188695b8"),
+    (14, 68, 31, 37, 60, 7, 1, 199_920,
+     "2fa70c0b8a068b05b804eaa93e7c6e08fe2d9b2b291b0e1ab981c55f968de570"),
+    (15, 68, 38, 30, 63, 4, 1, 199_920,
+     "e4c6f6eb8f8ee1d21f967eaa8143b2a3734f88b17e2f8de88b32016866c722fa"),
+)
+EXPECTED_LANE_MANIFEST_SHA256 = (
+    "75e1ca0fd756083179b3e1943b528063ce53a2ddaab8a44568b498ccf48a6b37")
+
 
 @pytest.fixture(scope="module")
 def canonical_review_chain() -> dict:
@@ -127,6 +164,119 @@ def test_later_duplicate_column_one_marker_refuses(monkeypatch):
             expected=DESIGN._capacity_result_claim())
 
 
+@pytest.mark.parametrize("mutation", ("delete", "rewrite"))
+def test_review_commit_must_preserve_parent_ledger_bytes(
+        monkeypatch, mutation):
+    original = DESIGN._git_bytes
+    parent_args = (
+        "show",
+        f"{DESIGN.CAPACITY_RESULT_REVIEW_PARENT}:{DESIGN.REVIEW_LEDGER}")
+    commit_args = (
+        "show",
+        f"{DESIGN.CAPACITY_RESULT_REVIEW_COMMIT}:{DESIGN.REVIEW_LEDGER}")
+    parent = original(*parent_args)
+
+    def drifted(*args):
+        value = original(*args)
+        if args == commit_args:
+            if mutation == "delete":
+                return value[:100] + value[101:]
+            replacement = b"X" if value[100:101] != b"X" else b"Y"
+            return value[:100] + replacement + value[101:]
+        return value
+
+    assert len(parent) > 101
+    monkeypatch.setattr(DESIGN, "_git_bytes", drifted)
+    with pytest.raises(
+            DESIGN.ScoredPacketDesignRefused, match="not append-only"):
+        DESIGN._canonical_review_record(
+            commit=DESIGN.CAPACITY_RESULT_REVIEW_COMMIT,
+            parent=DESIGN.CAPACITY_RESULT_REVIEW_PARENT,
+            prefix=DESIGN.CAPACITY_RESULT_REVIEW_PREFIX,
+            expected=DESIGN._capacity_result_claim())
+
+
+def test_canonical_tip_must_preserve_review_commit_ledger_bytes(monkeypatch):
+    original = DESIGN._git_bytes
+    canonical_args = (
+        "show", f"{DESIGN.CANONICAL_REVIEW_REF}:{DESIGN.REVIEW_LEDGER}")
+
+    def rewritten(*args):
+        value = original(*args)
+        if args == canonical_args:
+            replacement = b"X" if value[100:101] != b"X" else b"Y"
+            return value[:100] + replacement + value[101:]
+        return value
+
+    monkeypatch.setattr(DESIGN, "_git_bytes", rewritten)
+    with pytest.raises(
+            DESIGN.ScoredPacketDesignRefused, match="not append-only"):
+        DESIGN._canonical_review_record(
+            commit=DESIGN.CAPACITY_RESULT_REVIEW_COMMIT,
+            parent=DESIGN.CAPACITY_RESULT_REVIEW_PARENT,
+            prefix=DESIGN.CAPACITY_RESULT_REVIEW_PREFIX,
+            expected=DESIGN._capacity_result_claim())
+
+
+def test_later_different_marker_with_same_authority_name_refuses(monkeypatch):
+    original = DESIGN._git_bytes
+    claim = DESIGN._capacity_result_claim()
+    claim["verdict"] = "HOLD"
+    later = DESIGN.CAPACITY_RESULT_REVIEW_PREFIX.encode() \
+        + DESIGN._canonical(claim)
+
+    def appended(*args):
+        value = original(*args)
+        if args == (
+                "show",
+                f"{DESIGN.CANONICAL_REVIEW_REF}:{DESIGN.REVIEW_LEDGER}"):
+            return value + later
+        return value
+
+    monkeypatch.setattr(DESIGN, "_git_bytes", appended)
+    with pytest.raises(
+            DESIGN.ScoredPacketDesignRefused,
+            match="marker is not exactly once"):
+        DESIGN._canonical_review_record(
+            commit=DESIGN.CAPACITY_RESULT_REVIEW_COMMIT,
+            parent=DESIGN.CAPACITY_RESULT_REVIEW_PARENT,
+            prefix=DESIGN.CAPACITY_RESULT_REVIEW_PREFIX,
+            expected=DESIGN._capacity_result_claim())
+
+
+@pytest.mark.parametrize(("target", "error"), (
+    ("actor", "actor drift"),
+    ("session", "session provenance missing"),
+    ("files", "changed files beyond the ledger"),
+))
+def test_review_actor_session_and_file_scope_drift_refuse(
+        monkeypatch, target, error):
+    original = DESIGN._git
+
+    def drifted(*args):
+        if (target == "actor" and args == (
+                "show", "-s", "--format=%an",
+                DESIGN.CAPACITY_RESULT_REVIEW_COMMIT)):
+            return "not-Claude"
+        if (target == "session" and args == (
+                "show", "-s", "--format=%B",
+                DESIGN.CAPACITY_RESULT_REVIEW_COMMIT)):
+            return "review without session provenance"
+        if target == "files" and args == (
+                "diff-tree", "--no-commit-id", "--name-only", "-r",
+                DESIGN.CAPACITY_RESULT_REVIEW_COMMIT):
+            return f"{DESIGN.REVIEW_LEDGER}\nother.txt"
+        return original(*args)
+
+    monkeypatch.setattr(DESIGN, "_git", drifted)
+    with pytest.raises(DESIGN.ScoredPacketDesignRefused, match=error):
+        DESIGN._canonical_review_record(
+            commit=DESIGN.CAPACITY_RESULT_REVIEW_COMMIT,
+            parent=DESIGN.CAPACITY_RESULT_REVIEW_PARENT,
+            prefix=DESIGN.CAPACITY_RESULT_REVIEW_PREFIX,
+            expected=DESIGN._capacity_result_claim())
+
+
 def test_reviewed_source_bytes_and_chain_cross_bind(design):
     sources = design["review_chain"]["reviewed_sources"]
     records = design["review_chain"]["records"]
@@ -176,9 +326,18 @@ def test_full_dev_calib_selection_and_every_lane_are_fixed(design):
     }
     schedule = design["schedule"]
     assert schedule["logical_lanes"] == 16
-    assert schedule["lanes"] == list(DESIGN.LANES)
+    observed_lanes = tuple((
+        lane["lane_index"], lane["state_count"],
+        lane["states_by_split"]["calib"],
+        lane["states_by_split"]["dev"],
+        lane["states_by_band"]["early"],
+        lane["states_by_band"]["mid"],
+        lane["states_by_band"].get("late", 0),
+        lane["max_candidate_world_rollouts"], lane["selection_sha256"],
+    ) for lane in schedule["lanes"])
+    assert observed_lanes == EXPECTED_LANES
     assert schedule["lane_manifest_sha256"] \
-        == DESIGN.LANE_MANIFEST_SHA256
+        == EXPECTED_LANE_MANIFEST_SHA256
     assert schedule["lane_manifest_provenance"] \
         == "exact reviewed capacity design file be21b547...f439"
     assert [lane["lane_index"] for lane in schedule["lanes"]] \
@@ -195,6 +354,33 @@ def test_full_dev_calib_selection_and_every_lane_are_fixed(design):
     assert schedule["scored_shard_outputs"] == 32
     assert schedule[
         "lane_manifest_bound_to_exact_reviewed_capacity_design"] is True
+
+
+def test_lane_arithmetic_refuses_rehashed_global_or_per_lane_drift(
+        monkeypatch):
+    original_lanes = copy.deepcopy(DESIGN.LANES)
+    lanes = copy.deepcopy(original_lanes)
+    lanes[0]["states_by_split"] = {"calib": 25, "dev": 26}
+    monkeypatch.setattr(DESIGN, "LANES", tuple(lanes))
+    monkeypatch.setattr(
+        DESIGN, "LANE_MANIFEST_SHA256",
+        DESIGN._sha256_bytes(DESIGN._canonical(list(lanes))))
+    with pytest.raises(
+            DESIGN.ScoredPacketDesignRefused,
+            match="fixed design arithmetic drift"):
+        DESIGN.build_design()
+
+    lanes = copy.deepcopy(original_lanes)
+    lanes[0]["max_candidate_world_rollouts"] += 1
+    lanes[1]["max_candidate_world_rollouts"] -= 1
+    monkeypatch.setattr(DESIGN, "LANES", tuple(lanes))
+    monkeypatch.setattr(
+        DESIGN, "LANE_MANIFEST_SHA256",
+        DESIGN._sha256_bytes(DESIGN._canonical(list(lanes))))
+    with pytest.raises(
+            DESIGN.ScoredPacketDesignRefused,
+            match="fixed design arithmetic drift"):
+        DESIGN.build_design()
 
 
 def test_exact_n30_r300_work_and_common_world_semantics(design):

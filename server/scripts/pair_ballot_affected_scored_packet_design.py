@@ -413,6 +413,13 @@ def _git_bytes(*args: str) -> bytes:
             from exc
 
 
+def _is_append_only_ledger(before: bytes, after: bytes, *, growth: bool) -> bool:
+    """Require exact byte-prefix ancestry at a complete ledger-line boundary."""
+    return (before.endswith(b"\n") and after.endswith(b"\n")
+            and after.startswith(before)
+            and (not growth or len(after) > len(before)))
+
+
 def _canonical_review_record(*, commit: str, parent: str, prefix: str,
                              expected: dict,
                              canonical_ref: str = CANONICAL_REVIEW_REF) -> dict:
@@ -444,6 +451,10 @@ def _canonical_review_record(*, commit: str, parent: str, prefix: str,
     current = _git_bytes("show", f"{commit}:{REVIEW_LEDGER}")
     previous = _git_bytes("show", f"{parent}:{REVIEW_LEDGER}")
     canonical = _git_bytes("show", f"{canonical_ref}:{REVIEW_LEDGER}")
+    if (not _is_append_only_ledger(previous, current, growth=True)
+            or not _is_append_only_ledger(current, canonical, growth=False)):
+        raise ScoredPacketDesignRefused(
+            f"review {commit[:8]} ledger ancestry is not append-only")
     marker = prefix.encode() + _canonical(expected)
     current_matches = [line for line in current.splitlines(keepends=True)
                        if line.startswith(prefix.encode())]
@@ -494,6 +505,11 @@ def _authenticate_capacity_prose_context(
             "capacity prose context changed files beyond the ledger")
     current = _git_bytes("show", f"{commit}:{REVIEW_LEDGER}")
     previous = _git_bytes("show", f"{parent}:{REVIEW_LEDGER}")
+    canonical = _git_bytes("show", f"{canonical_ref}:{REVIEW_LEDGER}")
+    if (not _is_append_only_ledger(previous, current, growth=True)
+            or not _is_append_only_ledger(current, canonical, growth=False)):
+        raise ScoredPacketDesignRefused(
+            "capacity prose context ledger ancestry is not append-only")
     added = _git_bytes(
         "diff", "--unified=0", parent, commit, "--", REVIEW_LEDGER)
     required = (
@@ -837,6 +853,14 @@ def build_design() -> dict:
     review_chain = _authenticate_review_chain()
     capacity_prose_context = _authenticate_capacity_prose_context()
     _validate_chain(review_chain, sources)
+    lane_split_totals = {
+        split: sum(lane["states_by_split"].get(split, 0) for lane in LANES)
+        for split in SPLITS
+    }
+    lane_band_totals = {
+        band: sum(lane["states_by_band"].get(band, 0) for lane in LANES)
+        for band in BANDS
+    }
     if (not math.isclose(math.fsum(BAND_WEIGHTS.values()), 1.0,
                          abs_tol=1e-15)
             or sum(STATES_BY_SPLIT.values()) != STATES
@@ -845,8 +869,13 @@ def build_design() -> dict:
             or [lane["lane_index"] for lane in LANES]
             != list(range(LOGICAL_LANES))
             or sum(lane["state_count"] for lane in LANES) != STATES
+            or lane_split_totals != STATES_BY_SPLIT
+            or lane_band_totals != STATES_BY_BAND
             or sum(lane["max_candidate_world_rollouts"] for lane in LANES)
             != MAX_WORK_TOTAL
+            or any(lane["max_candidate_world_rollouts"]
+                   != lane["state_count"] * MAX_WORK_PER_STATE
+                   for lane in LANES)
             or any(sum(lane["states_by_split"].values())
                    != lane["state_count"] for lane in LANES)
             or any(sum(lane["states_by_band"].values())

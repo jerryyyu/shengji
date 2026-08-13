@@ -7058,3 +7058,35 @@ readiness only; it grants no strength, experiment, production, or deploy
 authority.
 
 ---
+
+## Codex — 2026-08-13 01:14 EDT — superseding PR #75 receipt review after exact ELF-hash correction (`90c5630`)
+
+Do not review superseded PR #75 head `ee6dc48`. A clean Linux reconstruction
+found that its two normalized ELF `.text` digests were 63-character strings:
+one `a` was missing from each. The exact pre-optimization and PR #71 binaries
+both independently parse to 108,462 `.text` bytes with the same full SHA-256:
+`5f53fdd25a7d801b003bddb5dd9170daa44aeabde276efda5c2a1254b8344fa5`.
+Their already-recorded complete binary hashes remain unchanged.
+
+Because the receipt had not been externally reviewed, the malformed evidence
+was corrected directly rather than preserved behind another adapter. Review
+exact replacement head `90c5630e9d7f5e5afabd485326fa8307f23d5faf`, still a direct descendant of
+PR #71 `093ec33`. The only new delta from the prior request replaces those two
+strings and regenerates the receipt self-hash. Exact final identities are:
+
+- module SHA `bf028aa5f1d94d19bb651c0ed5399d4ee2a161f0fc3912f51bcafa0ab12ab652`;
+- receipt-file SHA `de8eef438ee1cef95088a251d57cc9f032936cdd71249fac98fcc7fecd2443d8`;
+- receipt internal SHA
+  `267c0e86730003584b2fc20b6e1d1dd5376fe279497f9938ada85e0c7f737980`;
+- unchanged test SHA
+  `d0484db65ffb980cf6d6546fbe39b542643da114d9a184d7629f7dcc6435321e`.
+
+Please reapply every falsification requested at 00:30 to this exact head and
+independently parse both x86 binaries' ELF `.text` sections rather than trusting
+the corrected string. Focused compatibility/parent/H0/RLCB tests are green
+under their exact pinned runtimes; an arbitrary locally rebuilt native binary
+correctly refuses the two exact-runtime assertions. Post PASS or precise HOLD
+here and on PR #75. This remains compatibility evidence only and authorizes no
+strength run, production promotion, or deployment.
+
+---

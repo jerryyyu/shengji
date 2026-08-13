@@ -30,6 +30,8 @@ class Trick:
     # Incremental incumbent (winner_seat, eff_suit, top_level), maintained by
     # Round.play(). None for hand-constructed tricks; readers must fall back.
     incumbent: object = None
+    # Running card points, maintained by Round.play(); None when hand-built.
+    running_points: object = None
 
 
 class Round:
@@ -193,6 +195,11 @@ class Round:
         self._remove(seat, cards)
         self.trick.plays.append(TrickPlay(seat, list(cards)))
         played = self.trick.plays[-1].cards
+        _pts = total_points(played)
+        if len(self.trick.plays) == 1:
+            self.trick.running_points = _pts
+        elif self.trick.running_points is not None:
+            self.trick.running_points += _pts
         if len(self.trick.plays) == 1:
             _suit = uniform_suit(played, self.ordering)
             if _suit is not None:
@@ -227,7 +234,9 @@ class Round:
                 if won:
                     winner, inc_top = tp.seat, top
                     inc_suit = self.ordering.eff_suit(tp.cards[0])
-        pts = total_points(c for tp in self.trick.plays for c in tp.cards)
+        pts = (self.trick.running_points
+               if self.trick.running_points is not None else
+               total_points(c for tp in self.trick.plays for c in tp.cards))
         self.trick.winner, self.trick.points = winner, pts
         if self.is_attacker(winner):
             self.attacker_points += pts

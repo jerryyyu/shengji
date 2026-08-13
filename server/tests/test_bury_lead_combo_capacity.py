@@ -33,6 +33,7 @@ def _row(offset: int = 0, combos: int = 3) -> dict:
 
 
 def _selection_summary() -> dict:
+    row = _row()
     return {
         "population_id": P.POPULATION_ID,
         "census_states": P.POPULATION_STATES,
@@ -41,6 +42,7 @@ def _selection_summary() -> dict:
         "selected_states": 64,
         "selection_sha256": "a" * 64,
         "selection_rows_sha256": "b" * 64,
+        "widest_state_sha256": C._digest(row),
     }
 
 
@@ -59,7 +61,10 @@ def _runtime() -> dict:
 
 
 def _dose(mode: str) -> dict:
-    counters = {name: 0 for name in C.CONTINUATION.S6_ROLLOUT_COUNTER_FIELDS}
+    before = {name: 0 for name in C.CONTINUATION.S6_ROLLOUT_COUNTER_FIELDS}
+    counters = dict(before)
+    if mode != "baseline":
+        counters["play_calls"] = 1
     return {
         "schema": "s6-throw-rollout-dose-v1",
         "mode": mode,
@@ -67,7 +72,7 @@ def _dose(mode: str) -> dict:
         "actor_visible": True,
         "recursive_mc": False,
         "exploration_only": True,
-        "before": None if mode == "baseline" else dict(counters),
+        "before": None if mode == "baseline" else before,
         "after": None if mode == "baseline" else dict(counters),
         "delta": None if mode == "baseline" else dict(counters),
     }
@@ -229,10 +234,10 @@ class _Bot:
         return ([list("AA"), list("BB"), list("CC"), list("DD")], buried)
 
 
-def _measured(monkeypatch, mode: str, *, mutate=None, hidden=False):
+def _measured(monkeypatch, mode: str, *, mutate=None, hidden=False, banker=0):
     bot = _Bot(hidden=hidden)
     monkeypatch.setattr(P, "build_bury_state", lambda *_: (
-        SimpleNamespace(banker=0, phase="bury"), [], {}))
+        SimpleNamespace(banker=banker, phase="bury"), [], {}))
     monkeypatch.setattr(P, "make_bot", lambda *_args, **_kwargs: bot)
     monkeypatch.setattr(C.JOURNAL, "state_rng_seed", lambda *_: 7)
 
@@ -283,6 +288,18 @@ def test_measurement_refuses_hidden_kitty(monkeypatch):
         _measured(monkeypatch, "baseline", hidden=True)
 
 
+def test_measurement_requires_nonbaseline_execution_and_exact_banker(
+        monkeypatch):
+    def zero_dose(raw):
+        for snapshot in ("after", "delta"):
+            raw["continuation_dose"][snapshot]["play_calls"] = 0
+
+    with pytest.raises(C.CapacityRefused, match="did not execute"):
+        _measured(monkeypatch, "all_boss", mutate=zero_dose)
+    with pytest.raises(C.CapacityRefused, match="banker differs"):
+        _measured(monkeypatch, "boss_near", banker=1)
+
+
 def test_result_requires_same_state_ballot_rng_and_sampled_world():
     assert C.result_problems(_result()) == []
     for field, replacement in (
@@ -298,6 +315,35 @@ def test_result_requires_same_state_ballot_rng_and_sampled_world():
         value["internal_sha256"] = C._digest(material)
         assert any("common-world" in item
                    for item in C.result_problems(value)), field
+
+
+def test_result_requires_common_sampler_attempts_and_widest_row_binding():
+    value = _result()
+    value["arms"][1]["work"]["attempts"] = 2
+    value["arms"][1]["sampler_delta"].update({
+        "sample_attempts": 2,
+        "failed_worlds": 1,
+    })
+    material = dict(value)
+    material.pop("internal_sha256")
+    value["internal_sha256"] = C._digest(material)
+    problems = C.result_problems(value)
+    assert "common-world work" in problems
+    assert "common-world sampler_delta" in problems
+
+    value = _result()
+    state = value["capacity_state"]
+    banker = (int(str(state["state_id"]).rsplit(":", 1)[-1]) + 1) % 4
+    state["state_id"] = (
+        f"{P.POPULATION_ID}:deal:{state['deal_seed']}:banker:{banker}")
+    state["source_state_id"] = (
+        f"s3a-bury-pilot-v2:deal:{state['deal_seed']}:banker:{banker}")
+    for arm in value["arms"]:
+        arm["state_id"] = state["state_id"]
+    material = dict(value)
+    material.pop("internal_sha256")
+    value["internal_sha256"] = C._digest(material)
+    assert "selection fields" in C.result_problems(value)
 
 
 def test_result_refuses_balanced_negative_timing_and_nonzero_prior_dose():
@@ -353,7 +399,9 @@ def test_closed_output_and_authority_boundary_refuse_rehashed_mutations():
 
 @pytest.mark.parametrize(("field", "replacement"), [
     ("selection_reason", "attacker_points=225"),
+    ("selection_reason", "uniform_anchor"),
     ("source_state_id", "sealed/REPORT/outcome.json"),
+    ("selection_group", "hash_uniform_anchor"),
     ("selection_group", "report_selected"),
 ])
 def test_capacity_row_refuses_outcome_or_report_aliases(field, replacement):
@@ -363,6 +411,17 @@ def test_capacity_row_refuses_outcome_or_report_aliases(field, replacement):
     material.pop("internal_sha256")
     value["internal_sha256"] = C._digest(material)
     assert "capacity state" in C.result_problems(value)
+
+
+def test_capacity_row_accepts_each_exact_group_reason_pair():
+    shape = _row()
+    assert C._row_problems(shape) == []
+    anchor = _row(1)
+    anchor.update({
+        "selection_group": "hash_uniform_anchor",
+        "selection_reason": "uniform_anchor",
+    })
+    assert C._row_problems(anchor) == []
 
 
 def test_atomic_output_refuses_overwrite_and_invalid_build(tmp_path):

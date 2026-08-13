@@ -42,7 +42,7 @@ RUNTIME_FIELDS = frozenset({
 SELECTION_FIELDS = frozenset({
     "population_id", "census_states", "shape_rich_states",
     "hash_uniform_anchor_states", "selected_states", "selection_sha256",
-    "selection_rows_sha256",
+    "selection_rows_sha256", "widest_state_sha256",
 })
 WORK_FIELDS = frozenset({
     "worlds_requested", "worlds_used", "attempts", "attempt_cap",
@@ -108,13 +108,14 @@ def _row_problems(row: object) -> list[str]:
     state_prefix = f"{POPULATION.POPULATION_ID}:deal:{seed}:banker:"
     source_prefix = f"s3a-bury-pilot-v2:deal:{seed}:banker:"
     state_id, source_id = row.get("state_id"), row.get("source_state_id")
+    group, reason = row.get("selection_group"), row.get("selection_reason")
     if (not isinstance(state_id, str) or not state_id.startswith(state_prefix)
             or state_id.removeprefix(state_prefix) not in {"0", "1", "2", "3"}
             or source_id != source_prefix + state_id.removeprefix(state_prefix)
-            or row.get("selection_group") not in {
-                "shape_rich", "hash_uniform_anchor"}
-            or row.get("selection_reason") not in
-            set(POPULATION.METRICS) | {"uniform_anchor"}):
+            or group not in {"shape_rich", "hash_uniform_anchor"}
+            or (group == "shape_rich" and reason not in POPULATION.METRICS)
+            or (group == "hash_uniform_anchor"
+                and reason != "uniform_anchor")):
         return ["capacity row semantic identity"]
     return []
 def _forbidden(value: object, path: str = "$") -> list[str]:
@@ -197,6 +198,7 @@ def _selection() -> tuple[dict, dict]:
     problems = _row_problems(row)
     if problems:
         raise CapacityRefused("; ".join(problems))
+    summary["widest_state_sha256"] = _digest(row)
     return summary, row
 
 def _capture_samples(bot) -> list[str]:
@@ -257,6 +259,8 @@ def _dose_problems(dose: object, mode: str) -> list[str]:
                     CONTINUATION.S6ThrowRolloutPolicy._validate(dict(delta))
                 except AssertionError:
                     problems.append(f"{mode} continuation reconciliation")
+                if delta.get("play_calls", 0) <= 0:
+                    problems.append(f"{mode} continuation did not execute")
     return problems
 
 def _work_problems(work: object, sampler: object, count: int) -> list[str]:
@@ -293,10 +297,15 @@ def _work_problems(work: object, sampler: object, count: int) -> list[str]:
 def _measure(mode: str, row: Mapping[str, object], *,
              scorer: Callable = EXPLORE.score_state,
              clock: Callable[[], float] = time.monotonic) -> dict:
+    problems = _row_problems(row)
+    if problems:
+        raise CapacityRefused("; ".join(problems))
     seed = int(row["deal_seed"])
     rnd, incumbent, _ = POPULATION.build_bury_state(seed, POPULATION.CHAMPION)
     if rnd.banker is None or rnd.phase != "bury":
         raise CapacityRefused("capacity reconstruction lost acting banker")
+    if str(row["state_id"]).rsplit(":", 1)[-1] != str(rnd.banker):
+        raise CapacityRefused("capacity row banker differs from reconstruction")
     bot = POPULATION.make_bot(
         POPULATION.CHAMPION,
         seed=JOURNAL.state_rng_seed(str(row["state_id"]), BASE_SEED))
@@ -406,7 +415,8 @@ def result_problems(value: object, *, expected_git: str | None = None) \
             or selection.get("hash_uniform_anchor_states") != 32
             or selection.get("selected_states") != 64
             or not _hex(selection.get("selection_sha256"))
-            or not _hex(selection.get("selection_rows_sha256"))):
+            or not _hex(selection.get("selection_rows_sha256"))
+            or selection.get("widest_state_sha256") != _digest(row)):
         problems.append("selection fields")
     count = row.get("combo_count") if isinstance(row, Mapping) else None
     if _row_problems(row):
@@ -420,7 +430,8 @@ def result_problems(value: object, *, expected_git: str | None = None) \
         problems.append("arm order")
     for field in (
             "state_id", "deal_seed", "candidate_count", "ballot_sha256",
-            "pre_rng_sha256", "post_rng_sha256", "sampled_world_commitment"):
+            "pre_rng_sha256", "post_rng_sha256", "sampled_world_commitment",
+            "work", "sampler_delta"):
         if len({_digest(arm[field]) for arm in arms}) != 1:
             problems.append(f"common-world {field}")
     for mode, arm in zip(MODES, arms, strict=True):

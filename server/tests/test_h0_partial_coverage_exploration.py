@@ -4,6 +4,7 @@ import copy
 import importlib.util
 import random
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -143,6 +144,57 @@ def test_illegal_follow_is_named_score_free_refusal() -> None:
         h0x.H0.build_play_union = old
     assert result["counts"] == {"selected": 1, "valid": 0, "refused": 1}
     assert result["records"][0]["reason_code"] == "ILLEGAL_CANDIDATE"
+
+
+def test_rollout_trust_flag_cannot_bypass_follow_legality() -> None:
+    from shengji.engine.cards import Ordering
+    from shengji.engine.round import Round, Trick, TrickPlay
+
+    rnd = Round("2", 0, random.Random(0))
+    rnd.phase = "play"
+    rnd.ordering = Ordering("S", "2")
+    rnd.trump_suit = "S"
+    rnd.trick = Trick(leader=0, plays=[TrickPlay(0, ["H5"])])
+    rnd.turn = 1
+    rnd.hands = [[], ["H3", "C3"], [], []]
+    rnd._trusted_rollout = True
+    row = _row(8, split="DEV", human_action=["C3"])
+    candidate = [{
+        "cards": ["C3"],
+        "sources": ["human_action", "live_production_ballot"],
+    }]
+    diagnostics = {
+        "live_candidates": 1, "analysis_actions": 1, "novel_pool": 0,
+        "human_in_live_ballot": True, "v11_proposed": False,
+        "random_proposed": False, "v11_random_same": False,
+        "v11_score_count": 0,
+    }
+    old = h0x.H0.build_play_union
+    h0x.H0.build_play_union = lambda *_args, **_kwargs: (
+        candidate, diagnostics)
+    try:
+        result = h0x.prevalidate_population(
+            [row], lambda _row: h0x.EngineContext(rnd, 1, _FakeNet()),
+            population_id="open-dev-no-rollout-trust-v1",
+            **_scope("OPEN_DEV"))
+    finally:
+        h0x.H0.build_play_union = old
+    assert result["records"][0]["reason_code"] == "ILLEGAL_CANDIDATE"
+
+
+def test_open_dev_requires_the_concrete_round_engine() -> None:
+    row = _row(9, split="DEV")
+    fake = SimpleNamespace(
+        phase="play", turn=1, history=[],
+        trick=SimpleNamespace(plays=[SimpleNamespace(cards=["H5"])]),
+        is_attacker=lambda _seat: True,
+        play=lambda _seat, _cards: None,
+    )
+    with pytest.raises(h0x.GeometryRefused) as exc:
+        h0x._engine_candidates(
+            row, h0x._identity(row, "OPEN_DEV"),
+            h0x.EngineContext(fake, 1, _FakeNet()))
+    assert exc.value.code == "ENGINE_CONTEXT"
 
 
 def test_failed_lead_throw_is_an_accepted_attempt_not_hidden_info_filter() -> None:
@@ -291,6 +343,51 @@ def test_bury_source_grammar_matches_both_producer_suit_orders() -> None:
     assert not h0x._bury_source("void:H+pair_preserving:boundary+4")
     assert not h0x._bury_source("void:H+H+point_preserving")
     assert not h0x._bury_source("evil:boundary+1")
+    assert not h0x._bury_source("point_preserving:boundary+01")
+    assert not h0x._bury_source("void:H+pair_preserving:boundary++3")
+
+
+def test_malformed_source_types_are_named_refusals() -> None:
+    row = _row(1)
+    value = _simple(row)
+    candidates = copy.deepcopy(list(value.candidates))
+    candidates[0]["sources"] = ["human_action", 1]
+    with pytest.raises(h0x.GeometryRefused) as exc:
+        h0x._candidate_set(
+            h0x._identity(row, "SYNTHETIC"),
+            h0x.CandidateSet(candidates, value.diagnostics))
+    assert exc.value.code == "CANDIDATE_SOURCE"
+
+
+@pytest.mark.parametrize("mutation", ["duplicate_source", "broken_prefix"])
+def test_bury_sources_reconstruct_the_producer(mutation: str) -> None:
+    row = {
+        "row_key": "SYNTHETIC|bury|bury-source-1",
+        "decision_key": "bury-source-1", "split": "SYNTHETIC",
+        "surface_type": "bury", "deal_key": "bury-source-deal-1",
+        "surface": "bury", "phase": "bury", "role": "banker",
+        "human_action": ["H5"],
+    }
+    candidates = [
+        {"cards": ["H3"],
+         "sources": ["incumbent", "structured_bury_ballot"]},
+        {"cards": ["H4"],
+         "sources": ["point_preserving", "structured_bury_ballot"]},
+        {"cards": ["H5"], "sources": ["human_action"]},
+    ]
+    if mutation == "duplicate_source":
+        candidates[1]["sources"] = ["incumbent", "structured_bury_ballot"]
+    else:
+        candidates[1], candidates[2] = candidates[2], candidates[1]
+    diagnostics = {
+        "structured_candidates": 2, "structured_generated_unique": 2,
+        "structured_truncated": False,
+        "human_in_structured_ballot": False,
+    }
+    with pytest.raises(h0x.GeometryRefused):
+        h0x._candidate_set(
+            h0x._identity(row, "SYNTHETIC"),
+            h0x.CandidateSet(candidates, diagnostics))
 
 
 def test_synthetic_candidate_set_cannot_bypass_open_dev_engine() -> None:
@@ -353,6 +450,47 @@ def test_external_digest_and_semantic_validation_resist_rehashing() -> None:
         h0x.validate_artifact(
             forged, expected_sha256=forged["artifact_sha256"])
     assert exc.value.code == "CANDIDATE_SOURCE"
+
+
+def test_rehashed_input_manifest_must_reconstruct_from_records() -> None:
+    artifact = h0x.prevalidate_population(
+        [_row(1)], _simple, population_id="synthetic-input-manifest-v1",
+        **_scope())
+    forged = copy.deepcopy(artifact)
+    forged["input_manifest_sha256"] = "0" * 64
+    forged["artifact_sha256"] = h0x.sha256({
+        key: value for key, value in forged.items()
+        if key != "artifact_sha256"})
+    with pytest.raises(h0x.GeometryRefused) as exc:
+        h0x.validate_artifact(
+            forged, expected_sha256=forged["artifact_sha256"])
+    assert exc.value.code == "ARTIFACT_ROWS"
+
+
+@pytest.mark.parametrize("mutation", ["empty_population", "empty_id"])
+def test_rehashed_artifact_cannot_bypass_population_schema(
+        mutation: str) -> None:
+    artifact = h0x.prevalidate_population(
+        [_row(1)], _simple, population_id="synthetic-population-schema-v1",
+        **_scope())
+    forged = copy.deepcopy(artifact)
+    if mutation == "empty_population":
+        forged.update({
+            "records": [], "input_row_keys": [],
+            "input_manifest_sha256": h0x.sha256([]),
+            "geometry_manifest_sha256": h0x.sha256([]),
+            "counts": {"selected": 0, "valid": 0, "refused": 0},
+            "deal_clusters": {"selected": 0, "valid": 0, "refused": 0},
+            "coverage_cells": {},
+        })
+    else:
+        forged["population_id"] = ""
+    forged["artifact_sha256"] = h0x.sha256({
+        key: value for key, value in forged.items()
+        if key != "artifact_sha256"})
+    with pytest.raises(h0x.GeometryRefused):
+        h0x.validate_artifact(
+            forged, expected_sha256=forged["artifact_sha256"])
 
 
 def test_rehashed_diagnostic_forgery_fails_reconciliation() -> None:

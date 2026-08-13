@@ -31,6 +31,7 @@ sys.path.insert(0, str(SCRIPT.parent))
 
 import h0_human_counterfactual_controller as H0  # noqa: E402
 from shengji.engine.cards import SUITS  # noqa: E402
+from shengji.engine.round import Round  # noqa: E402
 
 
 SCHEMA = "human-h0-open-dev-geometry-v1"
@@ -186,6 +187,8 @@ def _bury_source(source: str) -> bool:
             n = int(offset)
         except ValueError:
             return False
+        if offset != str(n):
+            return False
         if base in BURY_PROFILES:
             return 1 <= n <= 5
         source = base
@@ -203,11 +206,12 @@ def _bury_source(source: str) -> bool:
 
 def _sources_valid(sources: object, surface: str) -> bool:
     if (not isinstance(sources, list) or not sources
+            or any(not isinstance(source, str) for source in sources)
             or sources != sorted(set(sources))):
         return False
-    return all(isinstance(source, str) and (
+    return all(
         source in PLAY_SOURCES if surface == "play" else _bury_source(source)
-    ) for source in sources)
+        for source in sources)
 
 
 def _diagnostics(identity: Mapping[str, object], candidates: list[dict],
@@ -289,10 +293,22 @@ def _diagnostics(identity: Mapping[str, object], candidates: list[dict],
             or value["structured_truncated"] != (generated > cap)
             or value["human_in_structured_ballot"] !=
             ("structured_bury_ballot" in human[0]["sources"])
+            or candidates[:len(structured)] != structured
             or not structured or candidates[0] is not structured[0]
-            or "incumbent" not in candidates[0]["sources"]):
+            or "incumbent" not in candidates[0]["sources"]
+            or sum("incumbent" in candidate["sources"]
+                   for candidate in candidates) != 1):
         raise GeometryRefused(
             "DIAGNOSTIC_RECONCILIATION", "bury diagnostics do not close")
+    reasons = [
+        source
+        for candidate in candidates
+        for source in candidate["sources"]
+        if source not in {"human_action", "structured_bury_ballot"}
+    ]
+    if len(reasons) != len(set(reasons)):
+        raise GeometryRefused(
+            "CANDIDATE_SOURCE", "bury source is assigned more than once")
     for candidate in candidates:
         sources = set(candidate["sources"])
         structured_source = "structured_bury_ballot" in sources
@@ -344,6 +360,7 @@ def _phase(rnd) -> str:
 def _engine_candidates(row: Mapping[str, object], identity: Mapping[str, object],
                        context: EngineContext) -> CandidateSet:
     if (not isinstance(context, EngineContext)
+            or type(context.rnd) is not Round
             or isinstance(context.seat, bool) or not isinstance(context.seat, int)
             or not 0 <= context.seat < 4
             or getattr(context.rnd, "turn", None) != context.seat):
@@ -353,7 +370,7 @@ def _engine_candidates(row: Mapping[str, object], identity: Mapping[str, object]
         trick = getattr(rnd, "trick", None)
         surface = "lead" if trick is not None and not trick.plays else "follow"
         try:
-            role = "attacker" if rnd.is_attacker(seat) else "defender"
+            role = "attacker" if Round.is_attacker(rnd, seat) else "defender"
         except Exception as exc:
             raise GeometryRefused("ENGINE_CONTEXT", "team identity missing") from exc
         if (getattr(rnd, "phase", None) != "play" or trick is None
@@ -382,9 +399,12 @@ def _engine_candidates(row: Mapping[str, object], identity: Mapping[str, object]
         clone = copy.deepcopy(rnd)
         try:
             if identity["surface_type"] == "play":
-                clone.play(seat, list(item["cards"]))
+                # Evidence gates must never inherit the rollout-only follow
+                # validation bypass from a supplied state.
+                clone._trusted_rollout = False
+                Round.play(clone, seat, list(item["cards"]))
             else:
-                clone.bury(seat, list(item["cards"]))
+                Round.bury(clone, seat, list(item["cards"]))
         except Exception as exc:
             raise GeometryRefused("ILLEGAL_CANDIDATE", "engine rejected action") from exc
     return CandidateSet(validated, diagnostics)
@@ -427,14 +447,19 @@ def prevalidate_population(
     source_manifest_sha256: str,
 ) -> dict:
     """Validate every row and publish only score-free candidate geometry."""
-    if (population_kind not in POPULATION_KINDS
+    if (not isinstance(population_kind, str)
+            or population_kind not in POPULATION_KINDS
             or source_scope != SOURCE_SCOPES.get(population_kind)
             or not _is_sha(source_manifest_sha256)
             or (population_kind == "OPEN_DEV"
                 and source_manifest_sha256 in CLOSED_H0_DIGESTS)
             or not isinstance(population_id, str) or not population_id):
         raise GeometryRefused("POPULATION_AUTHORITY", "population scope drift")
-    material = [copy.deepcopy(dict(row)) for row in rows]
+    material = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            raise GeometryRefused("ROW_IDENTITY_TYPE", "row is not an object")
+        material.append(copy.deepcopy(dict(row)))
     if not material:
         raise GeometryRefused("EMPTY_POPULATION", "population is empty")
     identities = [_identity(row, population_kind) for row in material]
@@ -509,6 +534,9 @@ def validate_artifact(payload: Mapping[str, object], *, expected_sha256: str) ->
     }
     if (not isinstance(payload, Mapping) or set(payload) != keys
             or payload.get("schema") != SCHEMA
+            or not isinstance(payload.get("population_id"), str)
+            or not payload.get("population_id")
+            or not isinstance(payload.get("population_kind"), str)
             or payload.get("population_kind") not in POPULATION_KINDS
             or payload.get("source_scope") !=
             SOURCE_SCOPES.get(payload.get("population_kind"))
@@ -525,7 +553,9 @@ def validate_artifact(payload: Mapping[str, object], *, expected_sha256: str) ->
     if payload["artifact_sha256"] != own or own != expected_sha256:
         raise GeometryRefused("ARTIFACT_HASH", "artifact digest drift")
     records, row_keys = payload["records"], payload["input_row_keys"]
-    if (not isinstance(records, list) or not isinstance(row_keys, list)
+    if (not isinstance(records, list) or not records
+            or not isinstance(row_keys, list)
+            or any(not isinstance(record, Mapping) for record in records)
             or [record.get("row_key") for record in records] != row_keys
             or len(row_keys) != len(set(row_keys))
             or payload["geometry_manifest_sha256"] != sha256(records)):
@@ -533,6 +563,7 @@ def validate_artifact(payload: Mapping[str, object], *, expected_sha256: str) ->
     counts = Counter()
     cells: dict[str, Counter[str]] = defaultdict(Counter)
     semantic = []
+    material = []
     common = {"schema", "status", *ROW_KEYS, "cell", "authority"}
     for record in records:
         if not isinstance(record, Mapping):
@@ -540,6 +571,7 @@ def validate_artifact(payload: Mapping[str, object], *, expected_sha256: str) ->
         identity = _identity(
             {name: record.get(name) for name in ROW_KEYS},
             str(payload["population_kind"]))
+        material.append(identity)
         semantic.append((identity["deal_key"], identity["decision_key"]))
         if (record.get("schema") != SCHEMA or record.get("authority") != AUTHORITY
                 or record.get("cell") != _cell(identity)):
@@ -564,8 +596,10 @@ def validate_artifact(payload: Mapping[str, object], *, expected_sha256: str) ->
         counts[status] += 1
         cells[record["cell"]]["selected"] += 1
         cells[record["cell"]][status] += 1
-    if len(semantic) != len(set(semantic)):
-        raise GeometryRefused("ARTIFACT_ROWS", "semantic identity duplicated")
+    if (len(semantic) != len(set(semantic))
+            or payload["input_manifest_sha256"] != sha256(material)):
+        raise GeometryRefused(
+            "ARTIFACT_ROWS", "row identity/input manifest drift")
     expected_counts = {
         "selected": len(records), "valid": counts["valid"],
         "refused": counts["refused"],

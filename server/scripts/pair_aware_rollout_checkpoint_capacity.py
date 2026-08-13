@@ -129,6 +129,54 @@ FORBIDDEN_KEYS = frozenset({
 })
 
 
+def systemd_unit_bytes() -> bytes:
+    """Return the one canonical service fragment reviewed with the packet."""
+    packet = PACKET_PATH.resolve()
+    admission = ADMISSION_PATH.resolve()
+    result = RESULT_PATH.resolve()
+    receipt = RECEIPT_PATH.resolve()
+    refusal = REFUSAL_RECEIPT_PATH.resolve()
+    controller = Path(__file__).resolve()
+    return (
+        "[Unit]\n"
+        "Description=Pair checkpoint successor score-free capacity v2\n"
+        "After=network.target\n\n"
+        "[Service]\n"
+        "Type=exec\n"
+        "User=root\n"
+        "Nice=5\n"
+        f"WorkingDirectory={REPO}\n"
+        "Environment=PYTHONDONTWRITEBYTECODE=1\n"
+        "Environment=PYTHONHASHSEED=0\n"
+        "Environment=SHENGJI_FAST=1\n"
+        "Environment=SHENGJI_REQUIRE_VOIDS=1\n"
+        "Environment=PYTHONPATH=server:server/scripts\n"
+        "ExecStart=/bin/bash -c 'set -euo pipefail; "
+        f"packet={packet}; "
+        f"expected_git=$$(/usr/bin/git -C {REPO} rev-parse HEAD); "
+        "packet_sha=$$(/usr/bin/sha256sum \"$$packet\" | "
+        "/usr/bin/cut -d \" \" -f1); "
+        f"review_commit=$$(/usr/bin/git -C {REPO} log -1 "
+        f"--format=%%H -G \"^{PACKET_REVIEW_PREFIX}\" "
+        f"{CANONICAL_REVIEW_REF} -- {REVIEW_LEDGER}); "
+        "test -n \"$$review_commit\"; "
+        f"exec /usr/bin/python3.14 {controller} run-capacity "
+        "--expected-git \"$$expected_git\" "
+        "--packet \"$$packet\" "
+        "--expected-packet-sha256 \"$$packet_sha\" "
+        "--packet-review-commit \"$$review_commit\" "
+        f"--admission {admission} --result {result} "
+        f"--receipt {receipt} --refusal-receipt {refusal}'\n"
+        "Restart=no\n"
+        "KillMode=control-group\n"
+        "RuntimeMaxSec=4h\n"
+        "StandardOutput=journal\n"
+        "StandardError=journal\n\n"
+        "[Install]\n"
+        "WantedBy=multi-user.target\n"
+    ).encode()
+
+
 class CapacityRefused(RuntimeError):
     """The capacity packet, provenance, runtime, or score-free boundary drifted."""
 
@@ -437,6 +485,10 @@ def runtime_snapshot(expected_git: str) -> dict:
             "soabi": sysconfig.get_config_var("SOABI") or "",
         },
         "native": {"path": str(native), "sha256": sha256_file(native)},
+        "systemd_unit": {
+            "unit": SYSTEMD_UNIT,
+            "sha256": sha256_bytes(systemd_unit_bytes()),
+        },
         "fast_enabled": fast.HAVE_FAST is True,
         "fast_environment": os.environ.get("SHENGJI_FAST") == "1",
         "fast_routing_active": bool(getattr(fast, "_saved", {})),
@@ -457,7 +509,8 @@ def runtime_problems(value: object, *, expected_git: str) -> list[str]:
         return ["runtime is not an object"]
     problems = []
     if set(value) != {"git", "hostname", "machine", "platform", "cpu_count",
-                      "memory_bytes", "python", "native", "fast_enabled",
+                      "memory_bytes", "python", "native", "systemd_unit",
+                      "fast_enabled",
                       "fast_environment", "fast_routing_active",
                       "strict_voids", "dont_write_bytecode",
                       "python_hash_seed", "process_nice", "boot_id", "module_origins",
@@ -487,6 +540,10 @@ def runtime_problems(value: object, *, expected_git: str) -> list[str]:
         if (not isinstance(item, dict)
                 or not is_sha256(item.get("sha256"))):
             problems.append(f"runtime {label} identity drift")
+    if value.get("systemd_unit") != {
+            "unit": SYSTEMD_UNIT,
+            "sha256": sha256_bytes(systemd_unit_bytes())}:
+        problems.append("runtime systemd unit identity drift")
     origins = value.get("module_origins")
     if (not isinstance(origins, dict)
             or set(origins) != {"controller", "design", "duel", "fast", "native"}
@@ -530,6 +587,7 @@ def implementation_review_claim(*, expected_git: str) -> dict:
         "design_git": DESIGN_GIT,
         "design_source_sha256": DESIGN_SOURCE_SHA256,
         "capacity_packet_freeze_authorized": True,
+        "canonical_systemd_unit_required": True,
         "capacity_execution_authorized": False,
         "screen_execution_authorized": False,
         "resume_execution_authorized": False,
@@ -545,6 +603,7 @@ def packet_review_claim(*, packet: dict, packet_sha256: str) -> dict:
         "git": packet["git"], "packet_sha256": packet_sha256,
         "packet_internal_sha256": packet["internal_sha256"],
         "runtime_profile_sha256": packet["runtime_profile_sha256"],
+        "systemd_unit_sha256": packet["runtime"]["systemd_unit"]["sha256"],
         "one_capacity_execution_authorized": True,
         "screen_execution_authorized": False,
         "resume_execution_authorized": False,
@@ -971,7 +1030,7 @@ def _systemd_properties(unit: str) -> dict[str, str]:
     fields = (
         "Id", "InvocationID", "LoadState", "ActiveState", "SubState",
         "Type", "Restart", "KillMode", "UID", "ControlGroup",
-        "WorkingDirectory", "NRestarts",
+        "WorkingDirectory", "NRestarts", "FragmentPath", "DropInPaths",
     )
     completed = subprocess.run(
         ["systemctl", "show", unit, "--no-pager",
@@ -1009,9 +1068,11 @@ def _current_cgroups() -> list[str]:
     return Path("/proc/self/cgroup").read_text().splitlines()
 
 
-def require_systemd() -> str:
+def require_systemd(expected_unit_sha256: str) -> str:
     invocation = os.environ.get("INVOCATION_ID", "")
-    if (os.geteuid() != 0 or not invocation
+    if (not is_sha256(expected_unit_sha256)
+            or expected_unit_sha256 != sha256_bytes(systemd_unit_bytes())
+            or os.geteuid() != 0 or not invocation
             or not _systemd_invocation_exists(invocation)):
         raise CapacityRefused("capacity run requires a live root systemd unit")
     properties = _systemd_properties(SYSTEMD_UNIT)
@@ -1021,6 +1082,8 @@ def require_systemd() -> str:
         "SubState": "running", "Type": "exec", "Restart": "no",
         "KillMode": "control-group",
         "WorkingDirectory": str(REPO), "NRestarts": "0",
+        "FragmentPath": f"/etc/systemd/system/{SYSTEMD_UNIT}",
+        "DropInPaths": "",
     }
     if (any(properties.get(key) != value for key, value in expected.items())
             or properties.get("UID") not in {"0", "[not set]"}
@@ -1033,6 +1096,13 @@ def require_systemd() -> str:
     control_group = properties["ControlGroup"]
     if not any(line.endswith(f":{control_group}") for line in memberships):
         raise CapacityRefused("capacity process is outside the reviewed cgroup")
+    fragment = Path(properties["FragmentPath"])
+    raw = require_regular_unlinked(
+        fragment, label="installed capacity systemd unit",
+        root_owned=True, nonwritable=True)
+    if (raw != systemd_unit_bytes()
+            or sha256_bytes(raw) != expected_unit_sha256):
+        raise CapacityRefused("installed capacity systemd unit bytes drift")
     return invocation
 
 
@@ -1081,7 +1151,6 @@ def verify_command(args: argparse.Namespace) -> None:
 def run_command(args: argparse.Namespace) -> None:
     require_fresh_process()
     require_clean_exact_git(args.expected_git)
-    invocation = require_systemd()
     if (Path(args.packet).resolve() != PACKET_PATH.resolve()
             or Path(args.admission).resolve() != ADMISSION_PATH.resolve()
             or Path(args.result).resolve() != RESULT_PATH.resolve()
@@ -1091,6 +1160,8 @@ def run_command(args: argparse.Namespace) -> None:
         raise CapacityRefused("capacity execution path is not canonical")
     packet = load_packet(Path(args.packet), args.expected_packet_sha256,
                          expected_git=args.expected_git)
+    invocation = require_systemd(
+        packet["runtime"]["systemd_unit"]["sha256"])
     if runtime_snapshot(args.expected_git) != packet["runtime"]:
         raise CapacityRefused("live runtime differs from frozen packet")
     require_frozen_runtime_inputs(packet["runtime"])
@@ -1195,6 +1266,9 @@ def run_command(args: argparse.Namespace) -> None:
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description=__doc__)
     commands = root.add_subparsers(dest="command", required=True)
+    unit = commands.add_parser("unit-template")
+    unit.set_defaults(func=lambda _args: sys.stdout.buffer.write(
+        systemd_unit_bytes()))
     freeze = commands.add_parser("freeze")
     freeze.add_argument("--expected-git", required=True)
     freeze.add_argument("--implementation-review-commit", required=True)

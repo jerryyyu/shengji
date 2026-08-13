@@ -24,7 +24,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-13 01:26 EDT
+## Current synthesis — 2026-08-13 03:13 EDT
 
 Exact terminal numbers and SHAs live in the canonical table in
 `AI_POLICIES.md`; `BACKLOG.md` owns live order and `JOBS.md` owns machines.
@@ -50,10 +50,10 @@ This section keeps only the research conclusions that change what we try next.
   8,192/16,384-cluster confirmation running on Cloud; old outcomes do not enter
   its estimator. S6's narrow shuai-pai selector has a fresh preflight queued.
   S5's x86 construction PASSed, but a request-template authority defect spent
-  its one-shot admission without a result. PR #76 now permanently refuses the
-  spent run and separates reviewer attestations from requests; it still grants
-  no retry. None is yet a new
-  strength claim; S3a's broader bury recipe remains closed.
+  its one-shot admission without a result. Its validation-only refusal repair
+  PASSed and the spent PR #74/#76 chain was closed; PR #70 retains only the
+  reusable diagnostic source. Any recovery needs a newly authorized namespace.
+  None is yet a new strength claim; S3a's broader bury recipe remains closed.
 - **Pair understanding:** the broad continuation screen is running on Air.
   The attacker-only incremental semantics passed external review and await a
   capacity decision. Pair-ballot PR #72's defender-only, cross-Python-stable
@@ -68,19 +68,22 @@ This section keeps only the research conclusions that change what we try next.
   use—not merely train longer on the same target.
 - **Human evidence:** `human_v8` contains 2,830 plays and 45 buries. H0's one
   counterfactual run completed 555/557 rows and correctly published no
-  aggregate. Human actions remain candidate and diagnosis sources; ultimate
-  people strength requires the separate blinded HUMAN-C1 ladder.
+  aggregate. Score-free PR #82 now reproduces the underlying geometry—12 legal
+  live choices versus three generic analyzer choices on each refused throw—and
+  replaces cardinality with direct legality without reopening scores. Human
+  actions remain candidate and diagnosis sources; ultimate people strength
+  requires the separate blinded HUMAN-C1 ladder.
 - **Endgames:** S3b's four-card exact rollout exceeded its frozen node cap.
   S3c restarts at naturally reached one-, two- and three-card roots. One-card is
   mechanics-only; two-card is the first meaningful action-selection problem.
-- **Throughput:** the Cython `_current_winner` path was slower and is dropped.
-  Pair-count pruning reduced matched x86/ARM whole-round time by roughly
-  12–16% with byte-identical transcripts. PR #71 repair `093ec33` preserves
-  historical H0/RLCB identity; corrected compatibility receipt PR #75
-  `90c5630` binds the exact old/new native identity without rewriting evidence.
-  Prepared-world PR #77 `0381081` adds 2.62% lower wall time on six fresh
-  exact-head pairs with identical normalized decisions, RNG, work and
-  transcripts. The older 3.37% number mixed revisions and is retired.
+- **Throughput:** the unrelated Cython `_current_winner` path was slower and is
+  dropped. Pair-count pruning reduced matched x86/ARM whole-round time by
+  roughly 12–16%; prepared-world PR #77 added 2.62%. On that exact stack,
+  performance-only PR #81 `c6c7126` measured 7.73% lower wall time from native
+  cheapest-winner selection, then another 4.01% incrementally by counting lead
+  pairs once per hand. Normalized gameplay, search, RNG and sampler artifacts
+  were byte-identical. The raw evidence and boundary logic still await external
+  review; nothing is deployed or substituted into a sealed run.
 
 ### Decisions that survive
 
@@ -341,9 +344,11 @@ The hybrid successor is active and promising, not yet closed or strong.
 
 S4 replication is terminal positive-but-inconclusive `SELECT_NONE`; its fresh
 8,192/16,384-cluster sequential successor is now running on Cloud. S6
-preflight, S5's fail-closed recovery design, pair preparation and code/document
-cleanup use implementation time without competing for the three live scored
-jobs.
+preflight, pair preparation, human-geometry repair and code/document cleanup
+use implementation time without competing for the three live scored jobs. S5
+does not have runnable recovery authority: the spent PR #74/#76 execution
+chain is closed and only PR #70's reusable diagnostic source remains.
+
 ### Lane A — improve search directly
 
 - **S3a structured bury** tested the observed point-shy kitty policy. Explicit
@@ -369,8 +374,11 @@ jobs.
   surface. The ten-witness × 32-seed diagnostic and x86 portability construction
   both PASSed review, but INC-18's request-template bug consumed the one-shot
   admission during a 41.7-second partial attempt and published no result. No
-  retry is authorized. Recovery first needs a distinct reviewer attestation,
-  a new admission/result namespace and explicit retry marker. A successor then gates only on actor-visible
+  retry is authorized. The validation-only refusal repair later PASSed, then
+  PRs #74/#76 were closed rather than merging a dead execution chain; PR #70
+  retains the diagnostic source. Recovery first needs a distinct reviewer
+  attestation, a new admission/result namespace and explicit retry marker. A
+  successor then gates only on actor-visible
   states where point protection cannot be confused with a plausible partner
   feed, compares a behavior-identical matched null on fresh trigger-matched
   states, and lets whole-game search price card-retention cost.
@@ -384,10 +392,13 @@ jobs.
   incremental screen; its three-arm capacity design is now being built.
   Pair-ballot PR #72 at exact head `373de84` combines DEV+CALIB over 1,023
   defenders / 990 deal clusters, excludes the lone attacker, and binds exact
-  population/weight identity. Its cross-Python `math.fsum` repair passed local
-  re-audit; external design review is pending. SmartBot-trajectory prevalence
-  still must be replaced by champion-natural dose before whole-round inference.
-  No preflight or run is authorized.
+  population/weight identity; its external design review PASSed. PR #79
+  `6461c66` is now the sole pending strength-execution code review and measures
+  score-free 16-lane capacity only. Even a code PASS permits a packet freeze,
+  not a run. SmartBot-trajectory prevalence still must be replaced by
+  champion-natural dose before whole-round inference. The parent stack also
+  waits for a narrow exact-head merge review of PR #55 `24b421d`; no preflight
+  or scored run is authorized.
 - **S3c exact-root curriculum** is the new operational hypothesis, not an S3b
   retry. S3b-v2 is terminal after its first four-card treatment cluster
   exceeded the frozen cumulative 250k-node budget. Start from naturally
@@ -526,9 +537,13 @@ outcomes were opened. Because the two failures were exactly complex throw
 states, dropping them and averaging the other 555 could bias the answer toward
 easier decisions. The runtime therefore withheld every aggregate utility. The
 exact stream is closed; it neither supports a human/V11 Teacher rule nor proves
-those proposals are weak. A future H0 successor must validate all candidate
-geometry before opening an evaluation fold and use a new population/world
-stream; this scientific direction is not closed.
+those proposals are weak. Score-free PR #82 `82f19fd` is the bounded repair: it
+reproduces both 12-live/3-analysis geometries, validates the full live menu
+directly through the engine, closes source/refusal schemas, and cannot score,
+read old utilities, train, launch or promote. It still needs adversarial review
+before any separately authorized opened-DEV prevalidation. A future scored H0
+successor must validate all candidate geometry first and use a new
+population/world stream; this scientific direction is not closed.
 
 The surviving uses of human data are:
 

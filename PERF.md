@@ -158,13 +158,21 @@ artifact matched byte-for-byte; raw bundles and validators are retained for
 external review. These are performance-only measurements: #81 authorizes no
 deployment, policy change or substitution into a sealed strength run.
 
-The next native-lead prototype is not yet a publishable result. Its original
-head `0bd073c` could segfault on a malformed negative seat even though ordinary
-gameplay parity passed. Local repair `8e698e` restores the Python boundary and
-now passes 30 ARM plus 30 x86 boundary/parity cases. A fresh exact-final A/B is
-still running on that repaired head; retain no speed claim until its immutable
-result and validator finish. This is why adversarial boundary tests precede
-ROI reporting even for a semantics-preserving optimization.
+The first native-lead prototype head `0bd073c` could segfault on a malformed
+negative seat even though ordinary gameplay parity passed. Repaired source
+`8e698e` restores the Python boundary and passes 31 ARM plus 30 x86
+boundary/parity cases; an independent adversarial audit also passed. One
+ordinary exploratory three-pair exact-final A/B then measured **10.2014% lower
+aggregate wall time** and **11.3603% higher throughput**, with normalized
+gameplay, search work, RNG and sampler records matching exactly. The result is
+published in stacked draft PR #83 head `69ff44e`, whose CI is green.
+
+This is deliberately not confirmatory evidence. The raw remote artifacts are
+still owner-writable and have no immutable manifest; the committed receipt
+hash-pins the observed design, result, harness and runner files, but does not
+make their remote storage immutable. Treat the number as a performance-only
+exploratory estimate with no strength, merge, review, deployment or sealed-run
+substitution authority.
 
 ## Gaps (ranked by ROI)
 
@@ -176,14 +184,14 @@ one-off experiment controllers.
 | # | gap | fix | est. win | status |
 |---|---|---|---|---|
 | 1 | Memory rebuilt per decision (historical profile) | incremental Memory carried through rollouts | `<0.1%` for current champion | rejected for report-LCB: 179 constructions were only 0.073–0.078% of x86/ARM round time; reconsider only if a Memory-aware rollout becomes active |
-| 2 | Python policy hot loop after compiled phases 0-2 | externally review PR #81's native cheapest-winner and one-count lead composition; finish the repaired native-lead exact-final A/B | measured 7.73% plus 4.01% incremental for #81; repaired native-lead return pending | candidate; #81 exact normalized semantics matched, while the later lead port's original segfault is repaired and its final-head measurement is still in flight |
+| 2 | Python policy hot loop after compiled phases 0-2 | externally review PR #81's native cheapest-winner and one-count lead composition plus stacked native-lead PR #83 | measured 7.73% plus 4.01% incremental for #81; one exploratory repaired-head batch measured 10.2014% lower wall time for #83 | candidate; normalized semantics matched exactly, but #83's owner-writable remote evidence has no immutable manifest and remains exploratory |
 | 3 | string cards and list hands still cross every compiled call | convert once per rollout; compile `Round.play`/trick resolution | remaining path toward 10-20x | open; keep strings at public boundaries |
 | 4 | Round/Trick clone churn per rollout (3.8k clones/round) | reusable scratch state | ~1.1x | open |
 | 5 | multi-room capacity is not measured | concurrent-room latency/load gate | product reliability | open |
 | 6 | feature flags mix exact `"1"` checks with string truthiness | version and centralize boolean parsing | evidence correctness | open; until then unset flags for false—`=0` is unsafe |
 | 7 | rollouts always play to round end | early-terminate decided brackets | speculative and potentially biased | parked behind a strength/correctness gate |
 | 8 | strength-compute ceiling | rented 16-vCPU x86 strength Cloud worker | roughly doubles the local 16-slot fleet, zero policy change | active; currently owns S4 |
-| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | live; repaired native-lead A/B is in flight. A frozen Pair V3 capacity packet also pins this host, but has no admission or execution authority before packet-specific review |
+| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | live; native-lead measurement is complete and awaiting review in PR #83. A frozen Pair V3 capacity packet also pins this host, but has no admission or execution authority before packet-specific review |
 | 10 | Rust/PyO3 full engine core | 30-100x; wasm client bonus | large | parked; requires a 10k-seed two-engine parity harness |
 
 ## Plan (sequencing)
@@ -192,9 +200,10 @@ one-off experiment controllers.
    incremental bundles, together with underlying compatibility PR #75
    `90c5630` and prepared-world PR #77 `0381081`. Merge only exact reviewed
    pieces; PR #71 remains their reviewed base.
-2. Finish the repaired native-lead exact-final A/B at local head `8e698e`, run
-   its immutable validator and publish only if the repaired boundary and exact
-   semantics both hold. Do not reuse the original head's provisional return.
+2. Externally review stacked draft PR #83 head `69ff44e`: reproduce the repaired
+   malformed-input boundary and exact normalized semantics, and keep its single
+   ordinary three-pair measurement explicitly exploratory because the remote
+   raw files remain owner-writable and lack an immutable manifest.
 3. After merge review, profile the exact accepted stack again. Do not infer the
    next hotspot from the old profile or from leaf microbenchmarks that bypass
    today's compiled globals.

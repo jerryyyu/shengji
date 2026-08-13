@@ -24,7 +24,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-13 03:51 EDT
+## Current synthesis — 2026-08-13 04:31 EDT
 
 Exact terminal numbers and SHAs live in the canonical table in
 `AI_POLICIES.md`; `BACKLOG.md` owns live order and `JOBS.md` owns machines.
@@ -86,10 +86,14 @@ This section keeps only the research conclusions that change what we try next.
   cheapest-winner selection, then another 4.01% incrementally by counting lead
   pairs once per hand. Normalized gameplay, search, RNG and sampler artifacts
   were byte-identical. A later native-lead prototype exposed a malformed-seat
-  segfault at `0bd073c`; local repair `8e698e` now passes 30 ARM plus 30 x86
-  boundary/parity tests, and its exact-final A/B is still running. Do not claim
-  that repaired head's return yet. Nothing is deployed or substituted into a
-  sealed run.
+  segfault at `0bd073c`; repaired source `8e698e` passes 31 ARM and 30 x86
+  boundary/parity tests plus an independent adversarial audit. One ordinary
+  exact-final three-pair batch measured 10.2014% lower wall time and 11.3603%
+  higher throughput with exact normalized behavior; stacked draft PR #83 head
+  `69ff44e` is CI-green. Its raw remote evidence is owner-writable and has no
+  immutable manifest, though the committed receipt hash-pins the observed
+  artifacts. This is exploratory performance-only evidence, not strength,
+  merge or deployment authority, and nothing enters a sealed run.
 
 ### Decisions that survive
 

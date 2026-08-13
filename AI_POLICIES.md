@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-13 03:51 EDT
+## Current synthesis — 2026-08-13 04:31 EDT
 
 ### At a glance
 

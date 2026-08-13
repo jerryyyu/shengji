@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-13 03:51 EDT. This file owns current compute and
+Last reconciled: 2026-08-13 04:31 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -9,10 +9,10 @@ compact terminal stubs. Historical detail is archived in
 
 | host | live job | health / next use |
 |---|---|---|
-| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED; 0 TERMINAL.** Counter-only progress is `5,596/12,288` sequential arm-rounds (45.54%). Outcomes remain sealed until score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
+| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED; 0 TERMINAL.** Counter-only progress is `5,696/12,288` sequential arm-rounds (46.35%). Recent throughput forecasts natural completion around 18:20–19:00 EDT versus the 20:48 hard cutoff; variance and closeout leave only about 1.3–2 hours of usable margin. Monitor only: no tests or competing Mini work. Outcomes remain sealed until score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
 | **Air** | `pair-aware-whole-round-screen-v3` | **HEALTHY / SATURATED; 0 TERMINAL.** Eight workers continue the admitted broad Pair screen with sealed outcomes. Detached S6 queue `s6-preflight-queue-v2` sleeps until the pair supervisor seals, publishes its score-free final and releases every worker. Do not inspect outcome-bearing shard JSON. |
-| **Cloud** | `s4-point-banking-future-c2-360b-v1` | **HEALTHY / SATURATED; 0 TERMINAL.** Look one is at `4,279/8,192` clusters (52.23%). No shard outcome or efficacy statistic has been opened. tmux: `s4-c2-360b-launch-queue-v2`. |
-| **Performance Cloud** | repaired native-lead exact-final A/B; frozen Pair V3 packet waiting review | **BUSY WITH PERFORMANCE / NO STRENGTH RUN.** The original native-lead head `0bd073c` had a malformed-seat segfault; local repair `8e698e` passes 30 ARM and 30 x86 boundary/parity tests, and the repaired-head A/B is in flight. Do not claim its return yet. Separately, Pair V3 packet `e054c5e5…e492` / internal `25b1888c…a14b5` is frozen here with execution false and awaits packet-specific review. There is no admission, result, preflight or scored authority. |
+| **Cloud** | `s4-point-banking-future-c2-360b-v1` | **HEALTHY / SATURATED; 0 TERMINAL.** Look one is at `4,590/8,192` clusters (56.03%). No shard outcome or efficacy statistic has been opened. tmux: `s4-c2-360b-launch-queue-v2`. |
+| **Performance Cloud** | native-lead PR #83 result complete; frozen Pair V3 packet waiting review | **PERFORMANCE RESULT COMPLETE / NO STRENGTH RUN.** The original native-lead head `0bd073c` had a malformed-seat segfault; repaired source `8e698e` passes 31 ARM and 30 x86 boundary/parity tests plus independent adversarial review. One ordinary three-pair exact-final batch measured 10.2014% lower wall time and 11.3603% higher throughput with exact normalized behavior; stacked draft PR #83 head `69ff44e` is CI-green. Raw remote evidence is owner-writable and has no immutable manifest, while the committed receipt hash-pins the observed artifacts; treat it as exploratory performance-only evidence. Separately, Pair V3 packet `e054c5e5…e492` / internal `25b1888c…a14b5` remains frozen here with execution false and awaits packet-specific review. There is no admission, result, preflight or scored authority. |
 | **Fly production** | `mc-s0-report-lcb` | Release 18 / image `kitty-xray-b5a35ae` is healthy. This is the release-17 runtime plus PR #11 kitty X-ray only; no policy changed. Rollback runtime remains release 17 / `latency-cd6789e`. |
 
 ## Reviewed queue

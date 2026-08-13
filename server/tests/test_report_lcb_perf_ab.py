@@ -7,6 +7,7 @@ import hashlib
 from pathlib import Path
 import subprocess
 import sys
+from types import ModuleType
 
 import pytest
 
@@ -261,6 +262,29 @@ def test_engine_adjusted_throw_keeps_action_and_history_as_distinct_evidence(
     assert summary["engine_adjusted_plays_by_seat"] == [1, 0, 0, 0]
 
 
+def test_searched_engine_adjusted_throw_binds_attempt_and_engine_history(
+        tmp_path):
+    arm = _arm()
+    decision = arm["decision_records"][1][0]
+    attempted = ["H4", "H4", "H5"]
+    decision["action"] = attempted
+    decision["record"]["played"] = attempted
+    decision["record"]["candidates"][1] = attempted
+    decision["record"]["ballot"]["candidates"][1] = attempted
+    # The engine accepted only H4; the complete attempted and actual objects
+    # stay distinct and are both compared across A/B arms.
+    assert arm["history"][1][1] == ["H4"]
+    summary = harness.validate_arm_semantics(
+        arm, _design(tmp_path), 101)
+    assert summary["searched_decisions"] == 1
+    assert summary["engine_adjusted_plays"] == 1
+    assert summary["engine_adjusted_plays_by_seat"] == [0, 1, 0, 0]
+
+    decision["record"]["played"] = ["H4"]
+    with pytest.raises(harness.HarnessRefused, match="record/attempt drift"):
+        harness.validate_arm_semantics(arm, _design(tmp_path), 101)
+
+
 def test_changed_attempted_action_cannot_normalize_away(tmp_path):
     base, head = _arm(ballot_suffix="base"), _arm(ballot_suffix="head")
     head["decision_records"][0][0]["action"] = ["S6", "S6"]
@@ -320,12 +344,21 @@ def test_arm_semantic_schema_refuses_foreign_outcome_or_authority_fields(
 def test_actual_identity_binds_git_sources_and_native_binary(tmp_path):
     repo = tmp_path / "repo"
     source = repo / "server/shengji/engine/round.py"
+    setup = repo / "server/setup.py"
+    pyproject = repo / "server/pyproject.toml"
     native = repo / "server/shengji/engine/_fast.test.so"
     source.parent.mkdir(parents=True)
     source.write_text("ROUND = 1\n")
+    setup.write_text("# synthetic build source\n")
+    pyproject.write_text("[build-system]\nrequires = []\n")
     native.write_bytes(b"synthetic-native")
+    (repo / ".gitignore").write_text("*.so\n")
     subprocess.run(["git", "init", "-q", repo], check=True)
-    subprocess.run(["git", "-C", repo, "add", "."], check=True)
+    subprocess.run([
+        "git", "-C", repo, "add", ".gitignore",
+        "server/shengji/engine/round.py", "server/setup.py",
+        "server/pyproject.toml",
+    ], check=True)
     subprocess.run([
         "git", "-C", repo, "-c", "user.name=Test",
         "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture",
@@ -337,6 +370,8 @@ def test_actual_identity_binds_git_sources_and_native_binary(tmp_path):
         "git": git,
         "source_sha256s": {
             "server/shengji/engine/round.py": _sha(source.read_bytes()),
+            "server/setup.py": _sha(setup.read_bytes()),
+            "server/pyproject.toml": _sha(pyproject.read_bytes()),
         },
         "native": {
             "path": "server/shengji/engine/_fast.test.so",
@@ -346,9 +381,36 @@ def test_actual_identity_binds_git_sources_and_native_binary(tmp_path):
     assert harness._actual_identity("fixture", expected) == {
         key: expected[key] for key in ("git", "source_sha256s", "native")}
 
+    incomplete = copy.deepcopy(expected)
+    incomplete["source_sha256s"].pop("server/setup.py")
+    with pytest.raises(
+            harness.HarnessRefused,
+            match="tracked source manifest is incomplete"):
+        harness._actual_identity("fixture", incomplete)
+
     source.write_text("ROUND = 2\n")
     with pytest.raises(harness.HarnessRefused, match="worktree is dirty"):
         harness._actual_identity("fixture", expected)
+
+
+def test_imported_shengji_modules_must_resolve_inside_bound_repo(
+        monkeypatch, tmp_path):
+    repo = tmp_path / "repo"
+    package = repo / "server/shengji"
+    package.mkdir(parents=True)
+    origin = package / "__init__.py"
+    origin.write_text("")
+    for name in tuple(sys.modules):
+        if name == "shengji" or name.startswith("shengji."):
+            monkeypatch.delitem(sys.modules, name)
+    module = ModuleType("shengji")
+    module.__file__ = str(origin)
+    monkeypatch.setitem(sys.modules, "shengji", module)
+    harness._require_import_origins(repo)
+
+    module.__file__ = str(tmp_path / "foreign/shengji/__init__.py")
+    with pytest.raises(harness.HarnessRefused, match="escaped bound repo"):
+        harness._require_import_origins(repo)
 
 
 def test_exclusive_writes_make_a_consumed_path_non_retryable(tmp_path):

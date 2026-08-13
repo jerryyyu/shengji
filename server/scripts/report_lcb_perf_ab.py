@@ -39,6 +39,9 @@ RESULT_SCHEMA = "report-lcb-perf-ab-result-v1"
 POLICY = "mc-s0-report-lcb"
 N_DETERMINIZATIONS = 30
 REPORT_WORLDS = 300
+TRACKED_SOURCE_ROOTS = ("server/shengji",)
+TRACKED_BUILD_SOURCES = ("server/setup.py", "server/pyproject.toml")
+RUNTIME_SOURCE_SUFFIXES = (".py", ".pyx", ".pxd")
 NORMALIZED_BALLOT_FIELDS = (
     "decision_records[*].record.ballot.digest",
     "decision_records[*].record.ballot.display",
@@ -321,6 +324,8 @@ def _run_arm(design_path: Path, label: str, seed: int, raw_path: Path) -> None:
     from shengji.engine import fast
     from shengji.engine.game import Game
 
+    _require_import_origins(repo)
+
     if os.environ.get("SHENGJI_FAST") != "1" or not fast.activate():
         raise HarnessRefused("compiled engine is required")
     if os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
@@ -352,6 +357,9 @@ def _run_arm(design_path: Path, label: str, seed: int, raw_path: Path) -> None:
     started = time.perf_counter()
     log = play_round(Game(random.Random(seed)), bots, record=True)
     elapsed = time.perf_counter() - started
+    # Dynamic policy imports must stay inside the bound arm too.  Checking
+    # again after the round closes modules first reached by rollout paths.
+    _require_import_origins(repo)
     semantic = {
         "schema": ARM_SCHEMA,
         "seed": seed,
@@ -394,15 +402,21 @@ def _validate_snapshot(value: Any, label: str) -> None:
 
 
 def _validate_search(record: dict[str, Any], before: dict[str, Any],
-                     after: dict[str, Any], action: list[str], label: str) -> None:
+                     after: dict[str, Any], attempted: list[str],
+                     label: str) -> None:
     if record.get("policy") != POLICY:
         raise HarnessRefused(f"{label} searched policy drift")
     if record.get("n_determinizations") != N_DETERMINIZATIONS:
         raise HarnessRefused(f"{label} searched decision is not N=30")
     if record.get("report_worlds_requested") != REPORT_WORLDS:
         raise HarnessRefused(f"{label} searched decision is not R=300")
-    if record.get("played") != action:
-        raise HarnessRefused(f"{label} searched record/action drift")
+    # The decision record names the move returned by the bot.  A failed throw
+    # can subsequently be reduced by Round.play, so comparing this field with
+    # engine history would reject valid searched throws (or tempt a caller to
+    # overwrite the attempted action).  Both objects remain in the semantic
+    # payload and must match independently across arms.
+    if record.get("played") != attempted:
+        raise HarnessRefused(f"{label} searched record/attempt drift")
     candidates = record.get("candidates")
     if not isinstance(candidates, list) or len(candidates) < 2:
         raise HarnessRefused(f"{label} searched ballot is not contested")
@@ -522,7 +536,7 @@ def validate_arm_semantics(value: Any, design: dict[str, Any],
                     f"{label} forced/no-search play changed bot state")
             forced_by_seat[seat] += 1
         elif isinstance(record, dict):
-            _validate_search(record, before, after, action, label)
+            _validate_search(record, before, after, attempted, label)
             searched_by_seat[seat] += 1
         else:
             raise HarnessRefused(f"{label} decision record shape drift")
@@ -594,6 +608,23 @@ def _actual_identity(label: str, expected: dict[str, Any]) -> dict[str, Any]:
     if subprocess.check_output(
             ["git", "-C", repo, "status", "--porcelain"], text=True):
         raise HarnessRefused(f"{label} worktree is dirty")
+    tracked = _tracked_source_paths(repo, git)
+    if set(expected["source_sha256s"]) != tracked:
+        raise HarnessRefused(f"{label} tracked source manifest is incomplete")
+    package_root = repo / "server/shengji"
+    actual_runtime_sources = {
+        path.relative_to(repo).as_posix()
+        for path in package_root.rglob("*")
+        if path.is_file() and path.suffix in RUNTIME_SOURCE_SUFFIXES
+    }
+    tracked_runtime_sources = {
+        path for path in tracked
+        if path.startswith("server/shengji/")
+        and Path(path).suffix in RUNTIME_SOURCE_SUFFIXES
+    }
+    if actual_runtime_sources != tracked_runtime_sources:
+        raise HarnessRefused(
+            f"{label} untracked or missing runtime source path")
     sources = {
         relative: sha256_file(repo / relative)
         for relative in expected["source_sha256s"]
@@ -606,6 +637,46 @@ def _actual_identity(label: str, expected: dict[str, Any]) -> dict[str, Any]:
     if native != expected["native"]:
         raise HarnessRefused(f"{label} native identity drift")
     return {"git": git, "source_sha256s": sources, "native": native}
+
+
+def _tracked_source_paths(repo: Path, git: str) -> set[str]:
+    """Return the complete tracked package/build source closure at ``git``."""
+
+    output = subprocess.check_output([
+        "git", "-C", repo, "ls-tree", "-r", "--name-only", git, "--",
+        *TRACKED_SOURCE_ROOTS, *TRACKED_BUILD_SOURCES,
+    ], text=True)
+    paths = {line for line in output.splitlines() if line}
+    if not paths or not set(TRACKED_BUILD_SOURCES).issubset(paths):
+        raise HarnessRefused("tracked package/build source closure is incomplete")
+    for relative in paths:
+        _safe_relative(relative, "tracked source path")
+        path = repo / relative
+        status = path.lstat()
+        if path.is_symlink() or not stat.S_ISREG(status.st_mode):
+            raise HarnessRefused(f"tracked source is not a regular file: {relative}")
+    return paths
+
+
+def _require_import_origins(repo: Path) -> None:
+    """Refuse a preloaded or dynamically imported foreign ``shengji`` module."""
+
+    package_root = (repo / "server/shengji").resolve()
+    seen = 0
+    for name, module in tuple(sys.modules.items()):
+        if name != "shengji" and not name.startswith("shengji."):
+            continue
+        origin = getattr(module, "__file__", None)
+        if not isinstance(origin, str):
+            raise HarnessRefused(f"loaded module has no file origin: {name}")
+        try:
+            Path(origin).resolve().relative_to(package_root)
+        except ValueError as exc:
+            raise HarnessRefused(
+                f"loaded module origin escaped bound repo: {name}") from exc
+        seen += 1
+    if seen == 0:
+        raise HarnessRefused("bound shengji package was not imported")
 
 
 def _require_runtime(design: dict[str, Any], script_path: Path) -> None:

@@ -11,7 +11,7 @@ from __future__ import annotations
 import random
 
 from shengji.ai.registry import make_bot
-from shengji.engine.cards import Ordering
+from shengji.engine.cards import Ordering, points
 from shengji.engine.combos import decompose
 from shengji.engine.game import Game
 from shengji.engine.legal import beats, uniform_suit
@@ -60,6 +60,8 @@ def test_incumbent_matches_legacy_recomputation_on_played_rounds():
             if rnd.trick is not None and rnd.trick.plays:
                 assert rnd.trick.incumbent is not None
                 assert rnd.trick.incumbent == _legacy_current_winner(rnd)
+                assert rnd.trick.running_points == sum(
+                    points(c) for tp in rnd.trick.plays for c in tp.cards)
                 checked += 1
             rnd.play(s, actors[s].decide_play(rnd, s))
     # A degenerate loop that never checked anything must fail loudly.
@@ -94,6 +96,7 @@ def test_hand_constructed_trick_falls_back_without_incumbent():
                                        TrickPlay(2, ["H9"])])
     rnd.hands[3] = ["HK", "C3"]
     assert rnd.trick.incumbent is None
+    assert rnd.trick.running_points is None
     bot = make_bot("smart")
     winner, suit, top = bot._current_winner(rnd)
     assert (winner, suit) == (2, "H")

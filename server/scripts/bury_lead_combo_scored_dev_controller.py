@@ -827,10 +827,29 @@ def _systemd_properties(unit: str) -> dict[str, str]:
     return result
 
 
+def _systemd_invocation_exists(
+        invocation: str, *, unit: str = SYSTEMD_UNIT,
+        units_dir: Path = Path("/run/systemd/units")) -> bool:
+    """Return whether systemd binds *unit* to this exact invocation."""
+    if (len(invocation) != 32
+            or any(char not in "0123456789abcdef" for char in invocation)):
+        return False
+    link = units_dir / f"invocation:{unit}"
+    try:
+        return (os.path.lexists(link) and link.is_symlink()
+                and os.readlink(link) == invocation)
+    except OSError:
+        return False
+
+
+def _current_cgroups() -> list[str]:
+    return Path("/proc/self/cgroup").read_text().splitlines()
+
+
 def require_systemd(runtime: Mapping[str, object]) -> str:
     invocation = os.environ.get("INVOCATION_ID", "")
-    invocation_path = Path(f"/run/systemd/units/invocation:{invocation}")
-    if (os.geteuid() != 0 or not invocation or not invocation_path.exists()):
+    if (os.geteuid() != 0 or not invocation
+            or not _systemd_invocation_exists(invocation)):
         raise ControllerRefused("scored-DEV run requires live root systemd")
     properties = _systemd_properties(SYSTEMD_UNIT)
     expected = {
@@ -845,7 +864,7 @@ def require_systemd(runtime: Mapping[str, object]) -> str:
             or not properties.get("ControlGroup", "").startswith(
                 "/system.slice/")):
         raise ControllerRefused("scored-DEV systemd identity drift")
-    memberships = Path("/proc/self/cgroup").read_text().splitlines()
+    memberships = _current_cgroups()
     if not any(line.endswith(f":{properties['ControlGroup']}")
                for line in memberships):
         raise ControllerRefused("controller process is outside reviewed cgroup")

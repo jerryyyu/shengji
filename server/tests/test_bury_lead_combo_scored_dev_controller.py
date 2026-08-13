@@ -432,6 +432,54 @@ def test_parser_exposes_no_resume_retry_aggregate_or_open_command():
     }
 
 
+def test_systemd_invocation_uses_unit_name_to_invocation_id(tmp_path):
+    invocation = "a" * 32
+    os.symlink(invocation, tmp_path / f"invocation:{CTRL.SYSTEMD_UNIT}")
+
+    assert CTRL._systemd_invocation_exists(invocation, units_dir=tmp_path)
+    assert not CTRL._systemd_invocation_exists("b" * 32, units_dir=tmp_path)
+    assert not CTRL._systemd_invocation_exists("A" * 32, units_dir=tmp_path)
+    assert not CTRL._systemd_invocation_exists("short", units_dir=tmp_path)
+    assert not CTRL._systemd_invocation_exists(
+        invocation, unit="other.service", units_dir=tmp_path)
+
+
+def test_systemd_invocation_refuses_spent_inverse_shape(tmp_path):
+    invocation = "a" * 32
+    os.symlink(CTRL.SYSTEMD_UNIT, tmp_path / f"invocation:{invocation}")
+
+    assert not CTRL._systemd_invocation_exists(invocation, units_dir=tmp_path)
+
+
+def test_systemd_gate_pins_unit_properties_and_cgroup(monkeypatch):
+    invocation = "a" * 32
+    group = "/system.slice/" + CTRL.SYSTEMD_UNIT
+    properties = {
+        "Id": CTRL.SYSTEMD_UNIT, "InvocationID": invocation,
+        "LoadState": "loaded", "ActiveState": "active",
+        "SubState": "running", "Type": "exec", "Restart": "no",
+        "KillMode": "control-group", "UID": "[not set]",
+        "ControlGroup": group, "WorkingDirectory": str(CTRL.REPO),
+        "NRestarts": "0", "RuntimeMaxUSec": "1h",
+    }
+    runtime = _runtime("a" * 40)
+    monkeypatch.setenv("INVOCATION_ID", invocation)
+    monkeypatch.setattr(CTRL.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(
+        CTRL, "_systemd_invocation_exists", lambda value: True)
+    monkeypatch.setattr(CTRL, "_systemd_properties", lambda unit: properties)
+    monkeypatch.setattr(CTRL, "_current_cgroups", lambda: [f"0::{group}"])
+
+    assert CTRL.require_systemd(runtime) == invocation
+    properties["Restart"] = "always"
+    with pytest.raises(CTRL.ControllerRefused, match="identity"):
+        CTRL.require_systemd(runtime)
+    properties["Restart"] = "no"
+    monkeypatch.setattr(CTRL, "_current_cgroups", lambda: ["0::/other"])
+    with pytest.raises(CTRL.ControllerRefused, match="outside"):
+        CTRL.require_systemd(runtime)
+
+
 def _patch_run(monkeypatch, tmp_path, packet, *, fail_index=None):
     paths = {
         "PACKET_PATH": tmp_path / "packet.json",

@@ -6036,3 +6036,75 @@ touches sampling policy, seeds, ballots or authority; it narrows a refusal
 boundary and fixes a serialisation defect.
 
 ---
+## Claude — 2026-08-12 23:06 EDT — ✅ PASS: reusable bury-state selection and resume journal (PR #52, `fd7b434`); three fixture requests
+
+Reviewed against its stacked base `a1d107b` (PR #51 head, which I passed at
+22:40): three commits, four new files, +1331/−0, no existing file modified.
+Prose only — no marker was requested and this grants no scored execution,
+strength, promotion or deployment authority. 17 focused tests pass under
+`SHENGJI_FAST=1`.
+
+**Source identity.** The population pins `SOURCE_GIT 14548d3d…`,
+`SOURCE_AGGREGATE_SHA256 74aa5a39…`, `SOURCE_STATE_MANIFEST_SHA256 7313fc48…`
+and eight shard digests. `selection_problems` checks the *declared* population
+block against those constants; separately, `select_dev_states` recomputes
+`_source_manifest_digest` over the actual rows and refuses on mismatch. I
+proved that second binding works: 512 schema-valid rows with correct full seed
+coverage but different content are refused with `source population material`.
+
+**DEV-only routing, outcome-blind.** The asset is the opened S3a DEV
+population; `census_state` refuses any `deal_seed` outside
+`[DEAL_SEED0, DEAL_SEED0+512)`, and `opened_reusable_dev`, `score_free`,
+`source_outcomes_read: False`, `exploration_only`, `confirmatory_inference:
+False` are all validated in the authority block. There is no REPORT split
+anywhere in either script — the only occurrence of "report" is inside the
+champion policy name `mc-s0-report-lcb`. No rollout, value or outcome is
+computed during census.
+
+**Deterministic selection.** Selection is RNG-free: rows sorted by `state_id`,
+per-metric ranks with hash tie-breaks, then hash-uniform anchors.
+`census_state` additionally snapshots the bot's RNG and refuses if the ballot
+build consumed any (`source census consumed search RNG`).
+
+**Resume and immutability.** Records are published through `_write_exclusive`,
+`_is_regular_unlinked` rejects symlinks and multiply-linked targets, and a
+re-run against a different manifest refuses with `existing run manifest
+differs`. `strict_runtime()` refuses a dirty tree or an inactive compiled
+engine.
+
+**Mutation battery (6):**
+
+| mutation | result |
+|---|---|
+| DEV seed-range bound removed | **caught** |
+| resume-identity refusal removed | **caught** |
+| source-material digest check removed | survived — guard proved correct by probe, but unreachable by tests |
+| `census_state` RNG-consumption guard removed | survived |
+| dirty-tree refusal removed | survived |
+| `state_rng_seed` derivation perturbed | survived — see below |
+
+**Three fixture requests, none blocking:**
+
+1. **The source-material binding is untested.** Removing line 430 leaves all 17
+   tests green, because every selection test uses synthetic rows that never
+   satisfy full 512-seed coverage, so the `elif` branch is unreachable. The
+   guard does work — my probe above confirms it — but the one check that ties
+   the selection to the *actual reviewed material* rather than to its own
+   labels has no regression test. A 512-row full-coverage negative fixture (I
+   built one in a few lines from the existing `_row` helper, capping the
+   offset-dependent fields so `state_problems` stays clean) would pin it.
+2. **`state_rng_seed` has no golden vector, and its only validation cannot
+   fail.** `record_problems` checks `value["state_rng_seed"] !=
+   state_rng_seed(state_id, base_seed)` — recomputed with the *same* function —
+   so any change to the derivation stays self-consistent and undetected. I
+   perturbed the derivation and all 17 tests passed. This is a reproducibility
+   risk rather than a correctness one, but a single literal assertion
+   (`state_rng_seed("<fixed id>", 0) == <literal>`) closes it.
+3. **The dirty-tree refusal is untested** — removing it changes nothing in the
+   suite.
+
+None of these affects the artifact this PR produces today; all three are
+regression protection for a lane that is explicitly meant to be *resumed*
+later, which is exactly when a silent derivation or material drift would hurt.
+
+---

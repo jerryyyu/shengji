@@ -9,7 +9,7 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 18:33 EDT from canonical main `1a72fec`.
+Last reconciled: 2026-08-13 18:37 EDT from canonical main `e5818ee`.
 
 ## Live fleet
 
@@ -18,7 +18,7 @@ Last reconciled: 2026-08-13 18:33 EDT from canonical main `1a72fec`.
 | **Mini** | T4 terminal gate | All eight shards completed cleanly before cutoff. Claude's score-free prose review at `aa6d755` PASSed the seal without opening outcomes, but omitted the exact raw marker required by the runtime parser. Aggregate and its admission remain absent pending that one-line correction. |
 | **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Seven shards are 400/896 and one is 416/896: 3,216/7,168 = 44.87%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
 | **Strength Cloud** | S4 360B point-banking confirmation, tranche two | All 16 workers are live and CPU-bound. Reviewed score-free lower bound: 3,612/8,192 = 44.09%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. |
-| **Performance Cloud** | PR #89 terminal review and PR #94 packet review; host idle | Claude's canonical `1a72fec` adjudication bound the earlier V5 pre-evidence refusal as unconsumed and authorized only the exact 142-file mode-bit repair plus one start. The one-shot V5 batch then completed successfully under invocation `7bae1e19…43e0`; its immutable bundle independently verifies exact semantics and a 29.3203% wall reduction with 27.8619% one-sided paired lower bound. V5 is now consumed forever and awaits terminal evidence review. V6 `cd8eb15` is superseded and must not run. PR #94 packet `6489d9b8…b9983` still awaits packet review; admission/records/final remain absent. |
+| **Performance Cloud** | PR #89 merge-shape cleanup and PR #94 packet review; host idle | Claude terminally VERIFIED the immutable V5 bundle at canonical `e5818ee`: exact semantics, 29.3203% lower wall and 27.8619% one-sided paired lower bound; retain the exact measured arm only. V5 is consumed forever and V6 `cd8eb15` is superseded. Next is a clean production delta/merge review, not another benchmark. PR #94 packet `6489d9b8…b9983` still awaits packet review; admission/records/final remain absent. |
 | **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 
 ## Current review and implementation queue
@@ -45,7 +45,7 @@ Last reconciled: 2026-08-13 18:33 EDT from canonical main `1a72fec`.
 
    Canonical `1a72fec` supersedes the earlier operational disagreement about
    PR #89 V5 and changes no T4 authority; the raw T4 marker is still absent.
-2. **PR #89 V5 terminal performance review.** Claude's canonical
+2. **PR #89 measured-stack merge preparation.** Claude's canonical
    `1a72fec` adjudication authenticated the unchanged design/review record,
    found the evidence root absent, and authorized only removing write bits
    from 142 hash-exact root-owned inputs plus one start. That batch completed
@@ -56,9 +56,14 @@ Last reconciled: 2026-08-13 18:33 EDT from canonical main `1a72fec`.
    execution `c638f998…0367`. The copied frozen validator independently
    returned VERIFIED/retain: base 111.464s vs head 78.782s, 29.3203% aggregate
    wall reduction, 27.8619% one-sided paired 95% lower bound, all six pairs
-   positive, normalized gameplay/work/RNG/sampler bytes exact. Await Claude's
-   terminal evidence PASS/HOLD requested on PR #89. V5 never runs again;
-   V6 `cd8eb15` is superseded, and no merge/deploy/strength authority follows.
+   positive, normalized gameplay/work/RNG/sampler bytes exact. Claude
+   independently reopened all 63 artifacts and terminally VERIFIED/retain at
+   canonical `e5818ee`. V5 never runs again and V6 `cd8eb15` is superseded.
+   Do not merge the experimental PR #89 head directly: extract the exact
+   measured `a91eb271` implementation/tests from its harness lineage, rebase
+   that production-only delta onto the accepted source stack, run full parity
+   and compatibility checks, then request exact-head merge review. The result
+   grants no deploy or strength authority.
 3. **S6 scored-DEV PR #94.** Claude exact-head PASSed test-only `0dd8f11` at
    canonical `3b4752b`; 12/12 guards are pinned and the full chain passes
    100/100 pure plus 100/100 strict x86. Host packet `6489d9b8…b9983`

@@ -6002,3 +6002,37 @@ champion as a separate absolute-strength arm.
 PAIR_CAP_ATTACKER_INCREMENTAL_DESIGN_V1_REVIEW {"attacker_only_incremental_dose":true,"capacity_packet_design_authorized":true,"component_work_identical":true,"git":"ca1913f0380c24061d9f395c760e3daa4c69de60","literal_champion_separate_arm_required":true,"parent_git":"8b83cec46e59f8d53ca9f8c6b95fffac862fdffc","parent_v1_preserved":true,"policy_sha256":"716692c90398d0f2e08133698e3a2942cb5bf10ce1023dfee9691cb7cd0763da","production_deployment":false,"production_promotion":false,"public_information_only":true,"root_ballot_unchanged":true,"schema":"pair-cap-attacker-incremental-design-review-v1","strength_claim":false,"test_sha256":"42ee8d942ca1ac09d6c00da1f513cec9d4da9a5bddf69510075e55444f193a21","verdict":"PASS","whole_game_execution_authorized":false}
 
 ---
+## Claude — 2026-08-12 22:40 EDT — ✅ PASS: bury/lead combo sampler boundary (PR #51, `a1d107b`); delta-only review
+
+Scope limited to `59cc2c6..a1d107b` as requested — one commit, two files,
++28/−3. No marker family was requested, so this is prose only and grants no
+execution authority.
+
+**Change 1 — hidden-kitty refusal before rollout.** `score_state` now unpacks
+both sampler outputs and raises `ComboExplorationRefused("pre-bury banker
+sampler returned a hidden kitty")` when `sampled_buried` is non-empty. The
+refusal sits above the candidate loop, so no rollout can consume a world whose
+kitty was silently determinized.
+
+The accompanying test is well built: it monkeypatches `_rollout_bury_lead` to
+raise `AssertionError` if it is ever reached, so the test proves the refusal
+happens *before* rollout rather than merely that some exception escapes.
+Mutating `if sampled_buried:` to `if False:` fails
+`test_pre_bury_sampler_hidden_kitty_refuses` — the guard is pinned.
+
+**Change 2 — one-world paired SE is JSON-standard null.** `_paired_se` returns
+`None` instead of `float("inf")` when `n < 2`. This is a real correctness fix,
+not cosmetics: `json.dumps` emits bare `Infinity` for the old value, which a
+strict parser rejects (`json.loads(..., parse_constant=…)` raises on it),
+whereas `None` serialises to `null`. I verified both behaviours directly.
+
+A clean single-site mutation — reverting only line 84 to `float("inf")`, with
+`_raw_winner` left untouched — fails
+`test_sampler_underfill_keeps_completed_dev_learning`. The two changes are
+therefore independently pinned rather than jointly covered by one assertion.
+
+5 focused tests pass unmutated under `SHENGJI_FAST=1`. Nothing in this delta
+touches sampling policy, seeds, ballots or authority; it narrows a refusal
+boundary and fixes a serialisation defect.
+
+---

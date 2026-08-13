@@ -9,15 +9,15 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 12:50 EDT from canonical main `4534ea0`.
+Last reconciled: 2026-08-13 13:06 EDT from canonical main `6a21adc`.
 
 ## Live fleet
 
 | host | current work | safe progress and next boundary |
 |---|---|---|
-| **Mini** | T4 mid/late Teacher whole-round screen, eight workers | All workers are alive and CPU-bound. Treatment is complete and all eight matched-null shards have reached 400/512, so the safe lower bound is 7,296/12,288 = 59.38%; 0/8 terminal. The worker cutoff remains about 20:46:27 EDT. Keep Mini uncontended. On terminal publication, Claude reviews the score-free supervisor final before any aggregation or shard-result access. |
-| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Seven reviewed score-free shard counters are 320/896 and one is 336/896, totaling 2,576/7,168 = 35.94%; 0/8 terminal. The run remains healthy but on a substantive timeout trajectory. Do not intervene or inspect shard outcomes. The reviewed S6 preflight queue remains asleep behind this run. |
-| **Strength Cloud** | S4 360B point-banking sequential confirmation, tranche two | Look one completed cleanly. Integrity passed, but the predeclared early-efficacy boundary was not crossed, so the reviewed controller automatically released tranche two. All 16 tranche-two workers are live; the reviewed score-free lower bound is 636/8,192 = 7.76% of tranche two. This is continuation, not a failure or final efficacy verdict. Inspect only reviewed score-free progress; do not open either tranche. The controller has no hard runtime timeout and will publish one terminal result after tranche two. |
+| **Mini** | T4 mid/late Teacher whole-round screen, eight workers | All workers are alive and CPU-bound. Treatment is complete; matched null is 500/512 on shard 3 and at least 400/512 on the other seven, so the safe lower bound is 7,396/12,288 = 60.19%; 0/8 terminal. The worker cutoff remains about 20:46:27 EDT. Keep Mini uncontended. On terminal publication, Claude reviews the score-free supervisor final before any aggregation or shard-result access. |
+| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Five reviewed score-free shard counters are 336/896 and three are 320/896, totaling 2,640/7,168 = 36.83%; 0/8 terminal. The run remains healthy but on a substantive timeout trajectory. Do not intervene or inspect shard outcomes. The reviewed S6 preflight queue remains asleep behind this run. |
+| **Strength Cloud** | S4 360B point-banking sequential confirmation, tranche two | Look one completed cleanly. Integrity passed, but the predeclared early-efficacy boundary was not crossed, so the reviewed controller automatically released tranche two. All 16 tranche-two workers are live; the reviewed score-free lower bound is 888/8,192 = 10.84% of tranche two. This is continuation, not a failure or final efficacy verdict. Inspect only reviewed score-free progress; do not open either tranche. The controller has no hard runtime timeout and will publish one terminal result after tranche two. |
 | **Performance Cloud** | PR #89 v2r1 spent before evidence; fresh v3 repair awaiting review | Exact design `8721aec4…ec9d` was admitted once under systemd and immediately refused before evidence creation or any arm because harness `fa0f9cf` checked systemd's invocation symlink backwards. The failed unit is preserved at `NRestarts=0`; immutable refusal receipt `bee03db2…b469` records zero arms and v2r1 must never restart. PR #89 head `52e13f2` fixes the unit-name→InvocationID mapping, pins six fresh seeds and a new experiment ID, and passes 84 pure/compiled tests on ARM and x86. It awaits source review; even PASS may freeze only a fresh v3 host design. |
 | **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 
@@ -30,10 +30,13 @@ Last reconciled: 2026-08-13 12:50 EDT from canonical main `4534ea0`.
    freeze only a fresh host-specific design; that design still needs exact PASS.
 2. **Pair checkpoint capacity PR #93.** Claude PASSed repaired science/code at
    `0045139`, but the V1 raw marker was introduced by a Jerry-authored commit
-   and correctly cannot satisfy the controller's independent-Claude gate. Exact
-   head `4ae52fd` retires V1 and requires a fresh Claude-authored V2 marker;
-   101 tests pass. V2 PASS may authorize packet freeze only; the packet still
-   needs separate review before one capacity run.
+   and correctly cannot satisfy the controller's independent-Claude gate.
+   Current head `5451aa8` retires V1, requires a fresh Claude-authored and
+   Claude-committed V2 marker, and repairs the same backwards systemd
+   invocation-link check found by PR #89. Local and strict x86 design-chain
+   suites are 103/103, including a live-host unit-name→InvocationID witness.
+   V2 PASS may authorize packet freeze only; the packet still needs separate
+   review before one capacity run.
 3. **S6 scored-DEV controller PR #94.** Exact head `3ee600b` implements the
    reviewed PR #91 design; 88 focused design/scorer/controller tests pass and
    implementation review is pending. PASS may authorize packet freeze only;

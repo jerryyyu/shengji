@@ -18,30 +18,53 @@ retry or experiment authority.
 from __future__ import annotations
 
 import copy
-from collections import Counter
 import hashlib
+import io
 import json
 import math
 import os
 from pathlib import Path, PurePosixPath
 import random
 import stat
+import statistics
 import subprocess
 import sys
+import tarfile
 import time
 from types import MethodType
 from typing import Any
 
 
-DESIGN_SCHEMA = "report-lcb-perf-ab-design-v1"
-ARM_SCHEMA = "report-lcb-perf-ab-arm-v1"
-RESULT_SCHEMA = "report-lcb-perf-ab-result-v1"
+DESIGN_SCHEMA = "report-lcb-perf-ab-design-v2"
+ARM_SCHEMA = "report-lcb-perf-ab-arm-v2"
+RESULT_SCHEMA = "report-lcb-perf-ab-result-v2"
+BUNDLE_SCHEMA = "report-lcb-perf-ab-bundle-v1"
+EXECUTION_SCHEMA = "report-lcb-perf-ab-execution-v1"
+REVIEW_SCHEMA = "report-lcb-perf-ab-review-v1"
 POLICY = "mc-s0-report-lcb"
 N_DETERMINIZATIONS = 30
 REPORT_WORLDS = 300
+BASE_GIT = "093ec33d8d9e137d276b84ffd907ca4417ba44af"
+HEAD_GIT = "bfec965cc9a266ae519fc9efa1d44a12cc81dbb4"
+EXPERIMENT_ID = "report-lcb-perf-accepted-stack-v1"
+PAIR_SEEDS = (
+    3368250205, 194578860, 2724771798,
+    2228922925, 1533007193, 1686527578,
+)
+PAIR_ORDERS = (
+    "base_head", "head_base", "base_head",
+    "head_base", "base_head", "head_base",
+)
+PAIR_DF = 5
+PAIR_ONE_SIDED_T_95 = 2.015048373333
+MINIMUM_AGGREGATE_REDUCTION_PERCENT = 3.0
+MINIMUM_PAIRED_LCB_PERCENT_EXCLUSIVE = 0.0
 TRACKED_SOURCE_ROOTS = ("server/shengji",)
-TRACKED_BUILD_SOURCES = ("server/setup.py", "server/pyproject.toml")
+TRACKED_BUILD_SOURCES = (
+    "server/setup.py", "server/pyproject.toml", "server/uv.lock")
 RUNTIME_SOURCE_SUFFIXES = (".py", ".pyx", ".pxd")
+LOADABLE_BINARY_SUFFIXES = (".so", ".dylib", ".dll", ".pyd")
+TOP_LEVEL_IMPORTABLE_SUFFIXES = (".py", ".pyc", *LOADABLE_BINARY_SUFFIXES)
 NORMALIZED_BALLOT_FIELDS = (
     "decision_records[*].record.ballot.digest",
     "decision_records[*].record.ballot.display",
@@ -77,6 +100,30 @@ CLAIM_BOUNDARY = {
     "review_authority": False,
     "sampling_or_rng_change": False,
     "strength_claim": False,
+}
+RETENTION_CONTRACT = {
+    "aggregate_statistic": "aggregate_wall_reduction_percent",
+    "aggregate_minimum_percent_inclusive":
+        MINIMUM_AGGREGATE_REDUCTION_PERCENT,
+    "paired_statistic":
+        "paired_relative_reduction_one_sided_95_lcb_percent",
+    "paired_t_critical": PAIR_ONE_SIDED_T_95,
+    "paired_t_df": PAIR_DF,
+    "paired_minimum_percent_exclusive":
+        MINIMUM_PAIRED_LCB_PERCENT_EXCLUSIVE,
+}
+FIXED_CHILD_ENVIRONMENT = {
+    "HOME": "/nonexistent",
+    "LANG": "C.UTF-8",
+    "LC_ALL": "C.UTF-8",
+    "MKL_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONNOUSERSITE": "1",
+    "TZ": "UTC",
 }
 
 
@@ -162,7 +209,7 @@ def design_problems(design: Any) -> list[str]:
         return ["design is not an object"]
     expected = {
         "schema", "claim_boundary", "experiment", "evidence_root",
-        "python", "harness", "base", "head",
+        "python", "harness", "validator", "execution", "base", "head",
     }
     if set(design) != expected:
         problems.append("design field set drift")
@@ -181,40 +228,26 @@ def design_problems(design: Any) -> list[str]:
     if not isinstance(experiment, dict) or set(experiment) != expected_experiment:
         problems.append("experiment field set drift")
     else:
-        if not isinstance(experiment["id"], str) or not experiment["id"]:
-            problems.append("experiment id is empty")
+        if experiment["id"] != EXPERIMENT_ID:
+            problems.append("experiment id drift")
         if experiment["policy"] != POLICY:
             problems.append("policy is not literal live report-LCB")
         if experiment["n_determinizations"] != N_DETERMINIZATIONS:
             problems.append("selection dose is not N=30")
         if experiment["report_fold_worlds"] != REPORT_WORLDS:
             problems.append("report dose is not R=300")
-        seeds, orders = experiment["seeds"], experiment["orders"]
-        if (not isinstance(seeds, list) or len(seeds) < 2
-                or len(seeds) % 2 != 0
-                or any(not _is_int(seed) or seed < 0 for seed in seeds)
-                or len(set(seeds)) != len(seeds)):
-            problems.append("seeds must be distinct non-negative even-count pairs")
-        if (not isinstance(orders, list) or len(orders) != len(seeds)
-                or Counter(orders) != {
-                    "base_head": len(seeds) // 2,
-                    "head_base": len(seeds) // 2,
-                }):
-            problems.append("execution order is not exactly balanced")
+        if experiment["seeds"] != list(PAIR_SEEDS):
+            problems.append("seeds are not the six preregistered fresh pairs")
+        if experiment["orders"] != list(PAIR_ORDERS):
+            problems.append(
+                "execution order is not the preregistered alternation")
         if experiment["normalization_removed_fields"] != \
                 list(NORMALIZED_BALLOT_FIELDS):
             problems.append("normalization allowlist drift")
         if experiment["capture_excluded_fields"] != \
                 list(CAPTURE_EXCLUDED_FIELDS):
             problems.append("semantic capture exclusion drift")
-        retention = experiment["retention"]
-        if (not isinstance(retention, dict)
-                or set(retention) != {"statistic", "minimum_percent"}
-                or retention.get("statistic") !=
-                "aggregate_wall_reduction_percent"
-                or isinstance(retention.get("minimum_percent"), bool)
-                or not isinstance(retention.get("minimum_percent"), (int, float))
-                or not math.isfinite(float(retention["minimum_percent"]))):
+        if experiment["retention"] != RETENTION_CONTRACT:
             problems.append("retention contract drift")
 
     root = design.get("evidence_root")
@@ -222,22 +255,48 @@ def design_problems(design: Any) -> list[str]:
         problems.append("evidence root must be absolute")
 
     python = design.get("python")
-    if not isinstance(python, dict) or set(python) != {
-            "executable", "resolved", "version", "sha256"}:
+    python_keys = {
+        "executable", "resolved", "version", "sha256", "implementation",
+        "cache_tag", "soabi", "platform", "machine",
+    }
+    if not isinstance(python, dict) or set(python) != python_keys:
         problems.append("python identity field set drift")
     else:
         if not all(isinstance(python[key], str) and python[key]
-                   for key in ("executable", "resolved", "version")):
+                   for key in python_keys - {"sha256"}):
             problems.append("python identity is incomplete")
         check(lambda: _require_sha(python["sha256"], "python SHA"))
 
-    harness = design.get("harness")
-    if not isinstance(harness, dict) or set(harness) != {"path", "sha256"}:
-        problems.append("harness identity field set drift")
+    for label in ("harness", "validator"):
+        source = design.get(label)
+        if not isinstance(source, dict) or set(source) != {"path", "sha256"}:
+            problems.append(f"{label} identity field set drift")
+        else:
+            if (not isinstance(source["path"], str)
+                    or not Path(source["path"]).is_absolute()):
+                problems.append(f"{label} path must be absolute")
+            check(lambda value=source["sha256"], name=label:
+                  _require_sha(value, f"{name} SHA"))
+
+    execution = design.get("execution")
+    if not isinstance(execution, dict) or set(execution) != {
+            "child_environment", "host_profile", "systemd_unit", "timer"}:
+        problems.append("execution identity field set drift")
     else:
-        if not isinstance(harness["path"], str) or not Path(harness["path"]).is_absolute():
-            problems.append("harness path must be absolute")
-        check(lambda: _require_sha(harness["sha256"], "harness SHA"))
+        if execution["child_environment"] != FIXED_CHILD_ENVIRONMENT:
+            problems.append("child environment drift")
+        if execution["timer"] != "time.perf_counter_ns":
+            problems.append("timer contract drift")
+        for label in ("host_profile", "systemd_unit"):
+            item = execution[label]
+            if (not isinstance(item, dict)
+                    or set(item) != {"path", "sha256"}
+                    or not isinstance(item.get("path"), str)
+                    or not Path(item["path"]).is_absolute()):
+                problems.append(f"{label} identity field set drift")
+            else:
+                check(lambda value=item["sha256"], name=label:
+                      _require_sha(value, f"{name} SHA"))
 
     identity_keys = {"repo", "git", "source_sha256s", "native"}
     for label in ("base", "head"):
@@ -249,6 +308,9 @@ def design_problems(design: Any) -> list[str]:
             problems.append(f"{label} repo must be absolute")
         check(lambda value=identity["git"], name=label:
               _require_git(value, f"{name} git"))
+        wanted_git = BASE_GIT if label == "base" else HEAD_GIT
+        if identity.get("git") != wanted_git:
+            problems.append(f"{label} Git is not the preregistered exact head")
         sources = identity["source_sha256s"]
         if not isinstance(sources, dict) or not sources:
             problems.append(f"{label} source identity is empty")
@@ -328,6 +390,7 @@ def _run_arm(design_path: Path, label: str, seed: int, raw_path: Path) -> None:
 
     if os.environ.get("SHENGJI_FAST") != "1" or not fast.activate():
         raise HarnessRefused("compiled engine is required")
+    _require_actual_native(repo, design[label]["native"], fast)
     if os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
         raise HarnessRefused("void-respecting sampler is required")
     if os.environ.get("PERF_EXPERIMENT_ID") != design["experiment"]["id"]:
@@ -354,12 +417,15 @@ def _run_arm(design_path: Path, label: str, seed: int, raw_path: Path) -> None:
 
         bot.decide_play = MethodType(recorded, bot)
 
-    started = time.perf_counter()
-    log = play_round(Game(random.Random(seed)), bots, record=True)
-    elapsed = time.perf_counter() - started
+    game_rng = random.Random(seed)
+    started = time.perf_counter_ns()
+    log = play_round(Game(game_rng), bots, record=True)
+    elapsed_ns = time.perf_counter_ns() - started
     # Dynamic policy imports must stay inside the bound arm too.  Checking
     # again after the round closes modules first reached by rollout paths.
     _require_import_origins(repo)
+    _require_actual_native(repo, design[label]["native"], fast)
+    _actual_identity(label, design[label])
     semantic = {
         "schema": ARM_SCHEMA,
         "seed": seed,
@@ -370,6 +436,7 @@ def _run_arm(design_path: Path, label: str, seed: int, raw_path: Path) -> None:
         "winner_team": log.winner_team,
         "level_change": log.level_change,
         "history": log.history,
+        "game_rng_state": game_rng.getstate(),
         "decision_records": records,
         "final_bots": [_snapshot(bot) for bot in bots],
     }
@@ -380,7 +447,7 @@ def _run_arm(design_path: Path, label: str, seed: int, raw_path: Path) -> None:
         load_json_bytes(payload), design, seed)
     _exclusive_write(raw_path, payload)
     print(json.dumps({
-        "elapsed_seconds": elapsed,
+        "elapsed_ns": elapsed_ns,
         "semantic_bytes": len(payload),
         "semantic_sha256": sha256_bytes(payload),
         **validation,
@@ -399,6 +466,16 @@ def _validate_snapshot(value: Any, label: str) -> None:
         raise HarnessRefused(f"{label} work counter drift")
     if not isinstance(value["rng_state"], (list, tuple)):
         raise HarnessRefused(f"{label} RNG state drift")
+    if (value["short_search_decisions"] != 0
+            or value["zero_world_decisions"] != 0
+            or value["bury_short_searches"] != 0):
+        raise HarnessRefused(f"{label} contains short or zero-world work")
+    sampler = value["sampler"]
+    if (sampler["sample_attempts"] !=
+            sampler["accepted_worlds"] + sampler["failed_worlds"]
+            or sampler["rejected_worlds"] > sampler["failed_worlds"]
+            or sampler["impossible_worlds"] != 0):
+        raise HarnessRefused(f"{label} sampler totals do not reconcile")
 
 
 def _validate_search(record: dict[str, Any], before: dict[str, Any],
@@ -446,7 +523,10 @@ def _validate_search(record: dict[str, Any], before: dict[str, Any],
         raise HarnessRefused(f"{label} candidate world dose drift")
     report = record.get("report_fold")
     if (not isinstance(report, dict) or report.get("complete") is not True
-            or report.get("worlds") != REPORT_WORLDS):
+            or report.get("worlds") != REPORT_WORLDS
+            or not _is_int(report.get("attempts"))
+            or not _is_int(report.get("rejected"))
+            or report["attempts"] != report["worlds"] + report["rejected"]):
         raise HarnessRefused(f"{label} report world dose drift")
     sampler = record.get("sampler_counters")
     if (not isinstance(sampler, dict)
@@ -460,6 +540,14 @@ def _validate_search(record: dict[str, Any], before: dict[str, Any],
                 for key in SAMPLER_KEYS
             }):
         raise HarnessRefused(f"{label} sampler accounting drift")
+    delta = sampler["delta"]
+    if (delta["accepted_worlds"] !=
+            N_DETERMINIZATIONS + REPORT_WORLDS
+            or delta["sample_attempts"] !=
+            delta["accepted_worlds"] + delta["failed_worlds"]
+            or delta["rejected_worlds"] > delta["failed_worlds"]
+            or delta["impossible_worlds"] != 0):
+        raise HarnessRefused(f"{label} sampler dose is not exact")
     if record.get("rng_state") != before["rng_state"]:
         raise HarnessRefused(f"{label} pre-search RNG state drift")
     if after["search_calls"] - before["search_calls"] != 1:
@@ -482,7 +570,7 @@ def validate_arm_semantics(value: Any, design: dict[str, Any],
     expected_top = {
         "schema", "seed", "policy", "trump_rank", "banker",
         "attacker_points", "winner_team", "level_change", "history",
-        "decision_records", "final_bots",
+        "game_rng_state", "decision_records", "final_bots",
     }
     if not isinstance(value, dict) or set(value) != expected_top:
         raise HarnessRefused("arm semantic field set drift")
@@ -496,6 +584,8 @@ def validate_arm_semantics(value: Any, design: dict[str, Any],
             or not isinstance(finals, list) or len(finals) != 4
             or not isinstance(history, list)):
         raise HarnessRefused("arm play collection shape drift")
+    if not isinstance(value["game_rng_state"], (list, tuple)):
+        raise HarnessRefused("game RNG state drift")
     for seat, final in enumerate(finals):
         _validate_snapshot(final, f"final seat {seat}")
 
@@ -503,6 +593,7 @@ def validate_arm_semantics(value: Any, design: dict[str, Any],
     searched_by_seat = [0, 0, 0, 0]
     forced_by_seat = [0, 0, 0, 0]
     adjusted_by_seat = [0, 0, 0, 0]
+    previous_after: list[dict[str, Any] | None] = [None] * 4
     for play_index, play in enumerate(history):
         if (not isinstance(play, list) or len(play) != 2
                 or not _is_int(play[0]) or not 0 <= play[0] < 4
@@ -529,6 +620,14 @@ def validate_arm_semantics(value: Any, design: dict[str, Any],
         before, after = decision["before"], decision["after"]
         _validate_snapshot(before, f"{label} before")
         _validate_snapshot(after, f"{label} after")
+        if previous_after[seat] is None:
+            if (any(before[key] != 0 for key in COUNTER_KEYS)
+                    or any(before["sampler"][key] != 0
+                           for key in SAMPLER_KEYS)):
+                raise HarnessRefused(f"{label} initial counters are not zero")
+        elif previous_after[seat] != before:
+            raise HarnessRefused(f"{label} snapshot chain drift")
+        previous_after[seat] = after
         record = decision["record"]
         if record is None:
             if before != after:
@@ -542,6 +641,9 @@ def validate_arm_semantics(value: Any, design: dict[str, Any],
             raise HarnessRefused(f"{label} decision record shape drift")
     if seen != [len(seat_rows) for seat_rows in rows]:
         raise HarnessRefused("decision wrappers contain plays absent from history")
+    for seat, final in enumerate(finals):
+        if previous_after[seat] is not None and final != previous_after[seat]:
+            raise HarnessRefused(f"final seat {seat} snapshot chain drift")
     if sum(searched_by_seat) == 0:
         raise HarnessRefused("round exercised no searched decision")
     return {
@@ -564,15 +666,17 @@ def normalize_arm(value: Any) -> tuple[bytes, dict[str, int]]:
         for decision in seat_rows:
             record = decision["record"]
             ballot = record.get("ballot") if isinstance(record, dict) else None
-            if not isinstance(ballot, dict):
+            if record is None:
                 continue
+            if (not isinstance(ballot, dict)
+                    or not set(BALLOT_KEYS).issubset(ballot)):
+                raise HarnessRefused(
+                    "searched ballot lacks the normalization identity seam")
             for key in BALLOT_KEYS:
-                if key in ballot:
-                    ballot.pop(key)
-                    removals[key] += 1
-    if any(count == 0 for count in removals.values()):
-        raise HarnessRefused(
-            f"normalization seam was not fully exercised: {removals}")
+                ballot.pop(key)
+                removals[key] += 1
+    if len(set(removals.values())) != 1 or next(iter(removals.values())) == 0:
+        raise HarnessRefused(f"normalization seam population drift: {removals}")
     return canonical(normalized), removals
 
 
@@ -597,6 +701,33 @@ def _exclusive_write(path: Path, payload: bytes) -> None:
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+def _exclusive_copy(path: Path, source: Path) -> None:
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444)
+    try:
+        with source.open("rb") as incoming, os.fdopen(fd, "wb", closefd=False) as out:
+            while block := incoming.read(1024 * 1024):
+                out.write(block)
+            out.flush()
+            os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _source_archive(path: Path, identity: dict[str, Any]) -> None:
+    repo = Path(identity["repo"])
+    with tarfile.open(path, "x") as archive:
+        for relative in sorted(identity["source_sha256s"]):
+            payload = (repo / relative).read_bytes()
+            info = tarfile.TarInfo(relative)
+            info.size = len(payload)
+            info.mode = 0o444
+            info.uid = info.gid = 0
+            info.uname = info.gname = "root"
+            info.mtime = 0
+            archive.addfile(info, io.BytesIO(payload))
+    path.chmod(0o444)
 
 
 def _actual_identity(label: str, expected: dict[str, Any]) -> dict[str, Any]:
@@ -625,6 +756,7 @@ def _actual_identity(label: str, expected: dict[str, Any]) -> dict[str, Any]:
     if actual_runtime_sources != tracked_runtime_sources:
         raise HarnessRefused(
             f"{label} untracked or missing runtime source path")
+    _require_runtime_tree(repo, expected["native"]["path"])
     sources = {
         relative: sha256_file(repo / relative)
         for relative in expected["source_sha256s"]
@@ -637,6 +769,46 @@ def _actual_identity(label: str, expected: dict[str, Any]) -> dict[str, Any]:
     if native != expected["native"]:
         raise HarnessRefused(f"{label} native identity drift")
     return {"git": git, "source_sha256s": sources, "native": native}
+
+
+def _require_runtime_tree(repo: Path, native_relative: str) -> None:
+    """Refuse ignored bytecode or an unbound loadable beside tracked source."""
+
+    server_root = repo / "server"
+    package_root = repo / "server/shengji"
+    native = (repo / native_relative).resolve()
+    allowed_top_level = set(TRACKED_BUILD_SOURCES)
+    for path in server_root.iterdir():
+        if (path.is_file() and path.suffix in TOP_LEVEL_IMPORTABLE_SUFFIXES
+                and path.relative_to(repo).as_posix() not in allowed_top_level):
+            raise HarnessRefused(
+                f"unbound top-level import shadow exists: {path}")
+        if path.is_dir() and path != package_root:
+            for candidate in path.iterdir():
+                if (candidate.is_file() and candidate.stem.startswith("__init__")
+                        and candidate.suffix in TOP_LEVEL_IMPORTABLE_SUFFIXES):
+                    raise HarnessRefused(
+                        f"unbound top-level package shadow exists: {path}")
+    for path in package_root.rglob("*"):
+        if not path.is_file():
+            continue
+        if path.suffix == ".pyc":
+            raise HarnessRefused(
+                f"ignored bytecode exists in runtime tree: {path}")
+        if path.suffix in LOADABLE_BINARY_SUFFIXES \
+                and path.resolve() != native:
+            raise HarnessRefused(
+                f"unbound loadable exists in runtime tree: {path}")
+
+
+def _require_actual_native(repo: Path, expected: dict[str, Any],
+                           fast: Any) -> None:
+    module = getattr(fast, "_fast", None)
+    origin = getattr(module, "__file__", None)
+    wanted = (repo / expected["path"]).resolve()
+    if (not isinstance(origin, str) or Path(origin).resolve() != wanted
+            or sha256_file(wanted) != expected["sha256"]):
+        raise HarnessRefused("imported native extension identity drift")
 
 
 def _tracked_source_paths(repo: Path, git: str) -> set[str]:
@@ -680,56 +852,342 @@ def _require_import_origins(repo: Path) -> None:
 
 
 def _require_runtime(design: dict[str, Any], script_path: Path) -> None:
-    expected = design["python"]
-    executable = Path(expected["executable"])
-    if (str(executable.resolve()) != expected["resolved"]
-            or sha256_file(executable.resolve()) != expected["sha256"]
-            or subprocess.check_output(
-                [executable, "-c", "import platform;print(platform.python_version())"],
-                text=True).strip() != expected["version"]):
+    if _python_identity(Path(design["python"]["executable"])) != \
+            design["python"]:
         raise HarnessRefused("python runtime identity drift")
     harness = design["harness"]
     if (script_path.resolve() != Path(harness["path"]).resolve()
             or sha256_file(script_path) != harness["sha256"]):
         raise HarnessRefused("harness source identity drift")
+    for label in ("validator",):
+        item = design[label]
+        if sha256_file(Path(item["path"])) != item["sha256"]:
+            raise HarnessRefused(f"{label} source identity drift")
+    for label in ("host_profile", "systemd_unit"):
+        item = design["execution"][label]
+        if sha256_file(Path(item["path"])) != item["sha256"]:
+            raise HarnessRefused(f"{label} identity drift")
+
+
+def _python_identity(executable: Path) -> dict[str, str]:
+    executable = executable.absolute()
+    program = (
+        "import json,platform,sys,sysconfig;"
+        "print(json.dumps({"
+        "'version':platform.python_version(),"
+        "'implementation':platform.python_implementation(),"
+        "'cache_tag':sys.implementation.cache_tag or '',"
+        "'soabi':sysconfig.get_config_var('SOABI') or '',"
+        "'platform':platform.platform(),"
+        "'machine':platform.machine()}))"
+    )
+    try:
+        details = load_json_bytes(subprocess.check_output(
+            [executable, "-I", "-c", program]))
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise HarnessRefused(f"could not identify Python runtime: {exc}") from exc
+    if not isinstance(details, dict):
+        raise HarnessRefused("Python runtime identity output drift")
+    resolved = executable.resolve()
+    return {
+        "executable": str(executable),
+        "resolved": str(resolved),
+        "sha256": sha256_file(resolved),
+        **details,
+    }
+
+
+def _collect_identity(label: str, repo: Path, native_relative: str,
+                      expected_git: str) -> dict[str, Any]:
+    repo = repo.resolve()
+    git = subprocess.check_output(
+        ["git", "-C", repo, "rev-parse", "HEAD"], text=True).strip()
+    if git != expected_git:
+        raise HarnessRefused(f"{label} is not exact preregistered Git")
+    tracked = _tracked_source_paths(repo, git)
+    expected = {
+        "repo": str(repo),
+        "git": git,
+        "source_sha256s": {
+            relative: sha256_file(repo / relative)
+            for relative in sorted(tracked)
+        },
+        "native": {
+            "path": _safe_relative(native_relative, f"{label} native path"),
+            "sha256": sha256_file(repo / native_relative),
+        },
+    }
+    _actual_identity(label, expected)
+    return expected
+
+
+def _prepare_design(output: Path, evidence_root: Path, python: Path,
+                    base_repo: Path, base_native: str, head_repo: Path,
+                    head_native: str, validator: Path, systemd_unit: Path,
+                    host_profile: Path) -> dict[str, Any]:
+    """Freeze host-specific identities around the fixed reviewed protocol."""
+
+    script = Path(__file__).resolve()
+    design = {
+        "schema": DESIGN_SCHEMA,
+        "claim_boundary": CLAIM_BOUNDARY,
+        "experiment": {
+            "id": EXPERIMENT_ID,
+            "policy": POLICY,
+            "n_determinizations": N_DETERMINIZATIONS,
+            "report_fold_worlds": REPORT_WORLDS,
+            "seeds": list(PAIR_SEEDS),
+            "orders": list(PAIR_ORDERS),
+            "capture_excluded_fields": list(CAPTURE_EXCLUDED_FIELDS),
+            "normalization_removed_fields": list(NORMALIZED_BALLOT_FIELDS),
+            "retention": RETENTION_CONTRACT,
+        },
+        "evidence_root": str(evidence_root.resolve()),
+        "python": _python_identity(python),
+        "harness": {"path": str(script), "sha256": sha256_file(script)},
+        "validator": {
+            "path": str(validator.resolve()),
+            "sha256": sha256_file(validator.resolve()),
+        },
+        "execution": {
+            "child_environment": FIXED_CHILD_ENVIRONMENT,
+            "host_profile": {
+                "path": str(host_profile.resolve()),
+                "sha256": sha256_file(host_profile.resolve()),
+            },
+            "systemd_unit": {
+                "path": str(systemd_unit.resolve()),
+                "sha256": sha256_file(systemd_unit.resolve()),
+            },
+            "timer": "time.perf_counter_ns",
+        },
+        "base": _collect_identity(
+            "base", base_repo, base_native, BASE_GIT),
+        "head": _collect_identity(
+            "head", head_repo, head_native, HEAD_GIT),
+    }
+    require_design(design)
+    _exclusive_write(output.resolve(), canonical(design))
+    return design
+
+
+def _require_root_owned_regular(path: Path, label: str) -> bytes:
+    status = path.stat()
+    if (path.is_symlink() or not stat.S_ISREG(status.st_mode)
+            or status.st_nlink != 1 or status.st_uid != 0
+            or status.st_mode & 0o222):
+        raise HarnessRefused(
+            f"{label} must be root-owned, regular, unlinked and non-writable")
+    return path.read_bytes()
+
+
+def _require_root_owned_directory(path: Path, label: str) -> None:
+    status = path.stat()
+    if (path.is_symlink() or not stat.S_ISDIR(status.st_mode)
+            or status.st_uid != 0 or status.st_mode & 0o022):
+        raise HarnessRefused(
+            f"{label} must be root-owned and not group/world writable")
+
+
+def _review_record(path: Path, expected_sha: str,
+                   design_sha: str) -> tuple[dict[str, Any], bytes]:
+    payload = _require_root_owned_regular(path, "review record")
+    if sha256_bytes(payload) != expected_sha:
+        raise HarnessRefused("external review-record digest drift")
+    value = load_json_bytes(payload)
+    if (not isinstance(value, dict) or set(value) != {
+            "schema", "design_sha256", "verdict", "reviewer", "summary"}
+            or value.get("schema") != REVIEW_SCHEMA
+            or value.get("design_sha256") != design_sha
+            or value.get("verdict") != "PASS"
+            or not isinstance(value.get("reviewer"), str)
+            or not value["reviewer"]
+            or not isinstance(value.get("summary"), str)):
+        raise HarnessRefused("external review record is not an exact PASS")
+    return value, payload
+
+
+def _require_root_execution(design_path: Path, design: dict[str, Any],
+                            invocation_id: str) -> None:
+    if os.geteuid() != 0:
+        raise HarnessRefused("one-shot batch must run as root under systemd")
+    _require_root_owned_regular(design_path, "design")
+    for label in ("harness", "validator"):
+        _require_root_owned_regular(Path(design[label]["path"]), label)
+    for label in ("host_profile", "systemd_unit"):
+        _require_root_owned_regular(
+            Path(design["execution"][label]["path"]), label)
+    _require_root_owned_regular(Path(design["python"]["resolved"]), "python")
+    for label in ("base", "head"):
+        identity = design[label]
+        repo = Path(identity["repo"])
+        _require_root_owned_directory(repo, f"{label} repo")
+        for relative in (*identity["source_sha256s"],
+                         identity["native"]["path"]):
+            target = repo / relative
+            _require_root_owned_regular(target, f"{label} runtime")
+            current = target.parent
+            while current != repo:
+                _require_root_owned_directory(current, f"{label} runtime dir")
+                current = current.parent
+    parent = Path(design["evidence_root"]).parent
+    _require_root_owned_directory(parent, "evidence parent")
+    invocation = Path(f"/run/systemd/units/invocation:{invocation_id}")
+    if (not os.path.lexists(invocation)
+            or not invocation.is_symlink()
+            or Path(os.readlink(invocation)).name !=
+            Path(design["execution"]["systemd_unit"]["path"]).name):
+        raise HarnessRefused("systemd invocation/unit binding is not live")
+
+
+def paired_statistics(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    if len(rows) != len(PAIR_SEEDS):
+        raise HarnessRefused("paired statistics require exactly six rows")
+    reductions = []
+    for row, seed, order in zip(rows, PAIR_SEEDS, PAIR_ORDERS, strict=True):
+        if row.get("seed") != seed or row.get("order") != order:
+            raise HarnessRefused("result rows drifted from seed/order design")
+        base, head = row.get("base", {}), row.get("head", {})
+        base_ns, head_ns = base.get("elapsed_ns"), head.get("elapsed_ns")
+        if (not _is_int(base_ns) or not _is_int(head_ns)
+                or base_ns <= 0 or head_ns <= 0):
+            raise HarnessRefused("elapsed nanoseconds must be positive integers")
+        reductions.append(100.0 * (base_ns - head_ns) / base_ns)
+    mean = statistics.fmean(reductions)
+    sample_sd = statistics.stdev(reductions)
+    lower = mean - PAIR_ONE_SIDED_T_95 * sample_sd / math.sqrt(len(rows))
+    return {
+        "relative_reduction_percent_by_seed": reductions,
+        "relative_reduction_mean_percent": mean,
+        "relative_reduction_sample_sd_percent": sample_sd,
+        "one_sided_95_lcb_percent": lower,
+        "t_critical": PAIR_ONE_SIDED_T_95,
+        "t_df": PAIR_DF,
+    }
+
+
+def build_result(design: dict[str, Any], design_sha: str, review_sha: str,
+                 invocation_id: str, execution_sha: str,
+                 identities: dict[str, Any],
+                 rows: list[dict[str, Any]]) -> dict[str, Any]:
+    require_design(design)
+    paired = paired_statistics(rows)
+    base_wall = sum(row["base"]["elapsed_ns"] for row in rows)
+    head_wall = sum(row["head"]["elapsed_ns"] for row in rows)
+    reduction = 100.0 * (base_wall - head_wall) / base_wall
+    aggregate = {
+        "base_wall_ns": base_wall,
+        "head_wall_ns": head_wall,
+        "wall_reduction_percent": reduction,
+        "throughput_increase_percent": 100.0 * (base_wall / head_wall - 1),
+        "normalized_semantics_exact": True,
+        "searched_decisions": sum(
+            row["base"]["searched_decisions"] for row in rows),
+        "forced_no_search_decisions": sum(
+            row["base"]["forced_no_search_decisions"] for row in rows),
+        "engine_adjusted_plays": sum(
+            row["base"]["engine_adjusted_plays"] for row in rows),
+    }
+    decision = "retain" if (
+        reduction >= MINIMUM_AGGREGATE_REDUCTION_PERCENT
+        and paired["one_sided_95_lcb_percent"] >
+        MINIMUM_PAIRED_LCB_PERCENT_EXCLUSIVE) else "drop"
+    return {
+        "schema": RESULT_SCHEMA,
+        "claim_boundary": CLAIM_BOUNDARY,
+        "design_sha256": design_sha,
+        "review_record_sha256": review_sha,
+        "systemd_invocation_id": invocation_id,
+        "execution_sha256": execution_sha,
+        "identities": identities,
+        "records": rows,
+        "aggregate": aggregate,
+        "paired": paired,
+        "retention": RETENTION_CONTRACT,
+        "decision": decision,
+    }
+
+
+def _artifact_entry(root: Path, path: Path) -> dict[str, Any]:
+    relative = path.relative_to(root).as_posix()
+    status = path.stat()
+    if (path.is_symlink() or not stat.S_ISREG(status.st_mode)
+            or status.st_nlink != 1 or status.st_uid != 0
+            or status.st_gid != 0 or status.st_mode & 0o222):
+        raise HarnessRefused(f"artifact is not immutable root-owned: {relative}")
+    return {
+        "path": relative,
+        "sha256": sha256_file(path),
+        "bytes": status.st_size,
+        "mode": stat.S_IMODE(status.st_mode),
+        "uid": status.st_uid,
+        "gid": status.st_gid,
+        "nlink": status.st_nlink,
+    }
 
 
 def _run_batch(design_path: Path) -> None:
+    started_unix_ns = time.time_ns()
     design_bytes = _require_immutable_design(design_path)
     design = require_design(load_json_bytes(design_bytes))
     script_path = Path(__file__).resolve()
     _require_runtime(design, script_path)
-    # A checked design describes a future one-shot batch; it cannot authorize
-    # itself.  The operator/reviewer must separately bind this exact design
-    # digest in the environment used to launch the durable service.
     design_sha = sha256_bytes(design_bytes)
     if os.environ.get("PERF_AB_EXTERNAL_DESIGN_SHA256") != design_sha:
         raise HarnessRefused("external design authorization is absent or stale")
     review_sha = os.environ.get("PERF_AB_REVIEW_RECORD_SHA256")
+    review_path_value = os.environ.get("PERF_AB_REVIEW_RECORD_PATH")
     try:
         _require_sha(review_sha, "external review-record SHA")
     except HarnessRefused:
         raise HarnessRefused("external review-record binding is absent")
-    if os.environ.get("PERF_EXPERIMENT_ID") != design["experiment"]["id"]:
+    if not review_path_value or not Path(review_path_value).is_absolute():
+        raise HarnessRefused("external review-record path is absent")
+    if os.environ.get("PERF_EXPERIMENT_ID") != EXPERIMENT_ID:
         raise HarnessRefused("experiment identity drift")
-    if os.environ.get("INVOCATION_ID") is None:
+    invocation_id = os.environ.get("INVOCATION_ID")
+    if not invocation_id:
         raise HarnessRefused("durable systemd invocation is required")
+    _require_root_execution(design_path, design, invocation_id)
+    _, review_bytes = _review_record(
+        Path(review_path_value), review_sha, design_sha)
     identities = {
         label: _actual_identity(label, design[label])
         for label in ("base", "head")
     }
+
     root = Path(design["evidence_root"])
     root.mkdir(mode=0o755, parents=False, exist_ok=False)
     frozen_design = root / "design.json"
     _exclusive_write(frozen_design, design_bytes)
-    env = dict(os.environ)
-    env.pop("PYTHONHASHSEED", None)
+    _exclusive_write(root / "review.json", review_bytes)
+    _exclusive_write(root / "harness.py", script_path.read_bytes())
+    _exclusive_write(
+        root / "validator.py", Path(design["validator"]["path"]).read_bytes())
+    _exclusive_write(
+        root / "systemd.unit",
+        Path(design["execution"]["systemd_unit"]["path"]).read_bytes())
+    _exclusive_write(
+        root / "host-profile.json",
+        Path(design["execution"]["host_profile"]["path"]).read_bytes())
+    for label, identity in identities.items():
+        _exclusive_write(root / f"{label}.identity.json", canonical(identity))
+        _source_archive(root / f"{label}.source.tar", identity)
+        _exclusive_copy(
+            root / f"{label}.native.bin",
+            Path(identity["repo"]) / identity["native"]["path"])
+    _exclusive_copy(root / "python.bin", Path(design["python"]["resolved"]))
+
+    env = dict(FIXED_CHILD_ENVIRONMENT)
     env.update({
+        "INVOCATION_ID": invocation_id,
         "SHENGJI_FAST": "1",
         "SHENGJI_REQUIRE_VOIDS": "1",
         "PERF_AB_DESIGN_SHA256": design_sha,
+        "PERF_EXPERIMENT_ID": EXPERIMENT_ID,
     })
     rows = []
+    arm_sequence = []
     spec = design["experiment"]
     for seed, order in zip(spec["seeds"], spec["orders"], strict=True):
         row: dict[str, Any] = {"seed": seed, "order": order}
@@ -740,23 +1198,38 @@ def _run_batch(design_path: Path) -> None:
             stdout = root / f"{stem}.stdout.jsonl"
             stderr = root / f"{stem}.stderr.log"
             command = [
-                design["python"]["executable"], str(script_path), "run-arm",
-                str(frozen_design), label, str(seed), str(raw),
+                design["python"]["executable"], "-I", "-P", "-c",
+                "import runpy,sys;"
+                "sys.argv=['report_lcb_perf_ab.py',*sys.argv[1:]];"
+                f"runpy.run_path({str(script_path)!r},run_name='__main__')",
+                "run-arm", str(frozen_design), label, str(seed), str(raw),
             ]
+            arm_started = time.monotonic_ns()
             with stdout.open("xb") as out, stderr.open("xb") as err:
                 process = subprocess.run(
                     command, cwd=Path(design[label]["repo"]) / "server",
                     env=env, stdout=out, stderr=err)
+            arm_finished = time.monotonic_ns()
+            arm_sequence.append({
+                "sequence_index": len(arm_sequence),
+                "seed": seed,
+                "label": label,
+                "started_monotonic_ns": arm_started,
+                "finished_monotonic_ns": arm_finished,
+                "returncode": process.returncode,
+            })
             stdout.chmod(0o444)
             stderr.chmod(0o444)
             if process.returncode != 0:
                 raise HarnessRefused(f"{stem} exited {process.returncode}")
+            if stderr.stat().st_size:
+                raise HarnessRefused(f"{stem} emitted stderr")
             lines = stdout.read_text().splitlines()
             if len(lines) != 1:
                 raise HarnessRefused(f"{stem} emitted {len(lines)} lines")
             summary = load_json_bytes(lines[0].encode())
             expected_summary = {
-                "elapsed_seconds", "semantic_bytes", "semantic_sha256",
+                "elapsed_ns", "semantic_bytes", "semantic_sha256",
                 "history_plays", "searched_decisions",
                 "forced_no_search_decisions", "engine_adjusted_plays",
                 "searched_decisions_by_seat",
@@ -764,24 +1237,24 @@ def _run_batch(design_path: Path) -> None:
                 "engine_adjusted_plays_by_seat",
             }
             if (not isinstance(summary, dict) or set(summary) != expected_summary
-                    or isinstance(summary["elapsed_seconds"], bool)
-                    or not isinstance(summary["elapsed_seconds"], (int, float))
-                    or not math.isfinite(float(summary["elapsed_seconds"]))
-                    or summary["elapsed_seconds"] <= 0):
+                    or not _is_int(summary["elapsed_ns"])
+                    or summary["elapsed_ns"] <= 0):
                 raise HarnessRefused(f"{stem} summary contract drift")
             raw_bytes = raw.read_bytes()
-            if summary["semantic_sha256"] != sha256_bytes(raw_bytes):
-                raise HarnessRefused(f"{stem} semantic digest drift")
+            if (summary["semantic_sha256"] != sha256_bytes(raw_bytes)
+                    or summary["semantic_bytes"] != len(raw_bytes)):
+                raise HarnessRefused(f"{stem} semantic digest/size drift")
             value = load_json_bytes(raw_bytes)
             validation = validate_arm_semantics(value, design, seed)
-            if any(summary.get(key) != value_ for key, value_ in validation.items()):
+            if any(summary.get(key) != observed
+                   for key, observed in validation.items()):
                 raise HarnessRefused(f"{stem} validation summary drift")
             normalized_bytes, removals = normalize_arm(value)
             normalized_path = root / f"{stem}.normalized.json"
             _exclusive_write(normalized_path, normalized_bytes)
             normalized[label] = normalized_bytes
             row[label] = {
-                "elapsed_seconds": summary["elapsed_seconds"],
+                "elapsed_ns": summary["elapsed_ns"],
                 "raw_semantic_sha256": sha256_bytes(raw_bytes),
                 "raw_semantic_bytes": len(raw_bytes),
                 "normalized_semantic_sha256": sha256_bytes(normalized_bytes),
@@ -800,44 +1273,67 @@ def _run_batch(design_path: Path) -> None:
         row["normalized_semantics_exact"] = True
         rows.append(row)
 
-    base_wall = sum(row["base"]["elapsed_seconds"] for row in rows)
-    head_wall = sum(row["head"]["elapsed_seconds"] for row in rows)
-    reduction = 100.0 * (base_wall - head_wall) / base_wall
-    forced = sum(row["base"]["forced_no_search_decisions"] for row in rows)
-    searched = sum(row["base"]["searched_decisions"] for row in rows)
-    adjusted = sum(row["base"]["engine_adjusted_plays"] for row in rows)
-    minimum = float(spec["retention"]["minimum_percent"])
-    result = {
-        "schema": RESULT_SCHEMA,
-        "claim_boundary": CLAIM_BOUNDARY,
+    execution = {
+        "schema": EXECUTION_SCHEMA,
         "design_sha256": design_sha,
-        "identities": identities,
-        "records": rows,
-        "aggregate": {
-            "base_wall_seconds": base_wall,
-            "head_wall_seconds": head_wall,
-            "wall_reduction_percent": reduction,
-            "throughput_increase_percent": 100.0 * (base_wall / head_wall - 1),
-            "normalized_semantics_exact": True,
-            "searched_decisions": searched,
-            "forced_no_search_decisions": forced,
-            "engine_adjusted_plays": adjusted,
-        },
-        "retention": spec["retention"],
-        "decision": "retain" if reduction >= minimum else "drop",
+        "review_record_sha256": review_sha,
+        "review_record_source_path": str(Path(review_path_value).resolve()),
+        "systemd_invocation_id": invocation_id,
+        "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
+        "started_unix_ns": started_unix_ns,
+        "finished_arms_unix_ns": time.time_ns(),
+        "arms_completed": 12,
+        "arm_sequence": arm_sequence,
+        "child_environment": env,
+        "systemd_unit_sha256":
+            design["execution"]["systemd_unit"]["sha256"],
+        "host_profile_sha256":
+            design["execution"]["host_profile"]["sha256"],
     }
+    _exclusive_write(root / "execution.json", canonical(execution))
+    execution_sha = sha256_file(root / "execution.json")
+    result = build_result(
+        design, design_sha, review_sha, invocation_id, execution_sha,
+        identities, rows)
     _exclusive_write(
         root / "result.json",
         json.dumps(result, indent=2, sort_keys=True, allow_nan=False).encode()
         + b"\n")
+
+    artifact_paths = sorted(
+        (path for path in root.iterdir() if path.name != "manifest.json"),
+        key=lambda path: path.name)
+    manifest = {
+        "schema": BUNDLE_SCHEMA,
+        "design_sha256": design_sha,
+        "review_record_sha256": review_sha,
+        "systemd_invocation_id": invocation_id,
+        "artifacts": [_artifact_entry(root, path) for path in artifact_paths],
+    }
+    _exclusive_write(root / "manifest.json", canonical(manifest))
+    root.chmod(0o555)
     print(json.dumps({
-        "status": "COMPLETE", "decision": result["decision"],
+        "status": "COMPLETE_UNVERIFIED",
+        "decision": result["decision"],
         "result_sha256": sha256_file(root / "result.json"),
+        "manifest_sha256": sha256_file(root / "manifest.json"),
         **result["aggregate"],
+        **{"paired_one_sided_95_lcb_percent":
+           result["paired"]["one_sided_95_lcb_percent"]},
     }, sort_keys=True), flush=True)
 
 
 def main() -> None:
+    if len(sys.argv) == 12 and sys.argv[1] == "prepare-design":
+        design = _prepare_design(
+            Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]),
+            Path(sys.argv[5]), sys.argv[6], Path(sys.argv[7]), sys.argv[8],
+            Path(sys.argv[9]), Path(sys.argv[10]), Path(sys.argv[11]))
+        print(json.dumps({
+            "status": "FROZEN", "schema": design["schema"],
+            "design_sha256": sha256_file(Path(sys.argv[2]).resolve()),
+        }, sort_keys=True))
+        return
     if len(sys.argv) == 3 and sys.argv[1] == "check-design":
         path = Path(sys.argv[2]).resolve()
         design = require_design(load_json_bytes(path.read_bytes()))
@@ -855,8 +1351,9 @@ def main() -> None:
             Path(sys.argv[5]).resolve())
         return
     raise SystemExit(
-        "usage: report_lcb_perf_ab.py check-design DESIGN | "
-        "run-batch DESIGN")
+        "usage: report_lcb_perf_ab.py check-design DESIGN | run-batch DESIGN | "
+        "prepare-design OUT EVIDENCE_ROOT PYTHON BASE_REPO BASE_NATIVE "
+        "HEAD_REPO HEAD_NATIVE VALIDATOR SYSTEMD_UNIT HOST_PROFILE")
 
 
 if __name__ == "__main__":

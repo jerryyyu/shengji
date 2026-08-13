@@ -172,6 +172,13 @@ def _forced_follow_fast(self, hand, lead, o, prefer_points, avoid=None):
 
 
 def _cheapest_winning_fast(self, hand, lead, inc_suit, inc_top, o):
+    # Engine-produced comparison tops are -1..15.  Keep the native call on
+    # that exact domain; the method remains public/testable, so malformed or
+    # arbitrarily large Python values must retain the pure implementation's
+    # result/exception rather than being narrowed to C ``long``.
+    if type(inc_top) is not int or not -1 <= inc_top <= 15:
+        return _saved["HeuristicBot._cheapest_winning"](
+            self, hand, lead, inc_suit, inc_top, o)
     return _fast.cheapest_winning(self, hand, lead, inc_suit, inc_top, o)
 
 
